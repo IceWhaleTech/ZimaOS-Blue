@@ -88,6 +88,7 @@ declare global {
   const useDashboardStore: typeof import('./stores/dashboard').useDashboardStore
   const useDebounce: typeof import('@vueuse/core').useDebounce
   const useEventListener: typeof import('@vueuse/core').useEventListener
+  const useEventStream: typeof import('./composables/useEventStream').useEventStream
   const useFormFillerWidget: typeof import('./composables/useFormFillerWidget').useFormFillerWidget
   const useFullscreen: typeof import('./composables/useFullscreen').useFullscreen
   const useGateway: typeof import('./composables/useGateway').useGateway
@@ -248,6 +249,7 @@ declare module 'vue' {
     readonly useDashboardStore: UnwrapRef<typeof import('./stores/dashboard')['useDashboardStore']>
     readonly useDebounce: UnwrapRef<typeof import('@vueuse/core')['useDebounce']>
     readonly useEventListener: UnwrapRef<typeof import('@vueuse/core')['useEventListener']>
+    readonly useEventStream: UnwrapRef<typeof import('./composables/useEventStream')['useEventStream']>
     readonly useFormFillerWidget: UnwrapRef<typeof import('./composables/useFormFillerWidget')['useFormFillerWidget']>
     readonly useFullscreen: UnwrapRef<typeof import('./composables/useFullscreen')['useFullscreen']>
     readonly useGateway: UnwrapRef<typeof import('./composables/useGateway')['useGateway']>

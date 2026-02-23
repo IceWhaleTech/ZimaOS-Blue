@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // dnsProvider is the interface for DNS-01 challenge providers.
@@ -286,10 +288,10 @@ func alidnsDoAPIWithURL(p *alidnsDNS, baseURL string, params map[string]string) 
 	params["SignatureMethod"] = "HMAC-SHA1"
 	params["SignatureVersion"] = "1.0"
 	if params["Timestamp"] == "" {
-		params["Timestamp"] = time.Now().UTC().Format("2006-01-02T15:04:05Z")
+		params["Timestamp"] = timeutil.NowTime().UTC().Format("2006-01-02T15:04:05Z")
 	}
 	if params["SignatureNonce"] == "" {
-		params["SignatureNonce"] = fmt.Sprintf("%d%d", time.Now().UnixNano(), rand.Int())
+		params["SignatureNonce"] = fmt.Sprintf("%d%d", timeutil.NowNano(), rand.Int())
 	}
 
 	// Build sorted query string for signing

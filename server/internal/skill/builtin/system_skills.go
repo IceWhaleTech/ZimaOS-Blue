@@ -383,55 +383,42 @@ func NewNetwork() *Network {
 	}
 }
 
-// Manifest returns the skill manifest
-func (n *Network) Manifest() *skill.Manifest {
-	return n.manifest
-}
+func (n *Network) Manifest() *skill.Manifest { return n.manifest }
 
-// Validate validates the input parameters
 func (n *Network) Validate(input map[string]any) error {
 	action, ok := input["action"]
 	if !ok {
 		return fmt.Errorf("action is required")
 	}
-
 	actionStr, ok := action.(string)
 	if !ok {
 		return fmt.Errorf("action must be a string")
 	}
-
 	if actionStr == "check" {
 		if _, ok := input["host"]; !ok {
 			return fmt.Errorf("host is required for check action")
 		}
 	}
-
 	return nil
 }
 
-// Execute executes the network skill
 func (n *Network) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
 	action := input["action"].(string)
-
 	switch action {
 	case "info":
-		// Return basic network info
 		hostname, _ := os.Hostname()
 		return skill.NewResult(map[string]any{
 			"hostname": hostname,
 			"message":  "Network information retrieved",
 		}), nil
-
 	case "check":
 		host := input["host"].(string)
-		// Placeholder: In production, implement actual connectivity check
 		return skill.NewResult(map[string]any{
 			"host":      host,
 			"reachable": true,
 			"message":   fmt.Sprintf("Connectivity check for %s (placeholder)", host),
 		}), nil
 	}
-
 	return skill.NewErrorResult(fmt.Errorf("unknown action: %s", action)), nil
 }
 
@@ -482,48 +469,34 @@ func NewProcesses() *Processes {
 	}
 }
 
-// Manifest returns the skill manifest
-func (p *Processes) Manifest() *skill.Manifest {
-	return p.manifest
-}
+func (p *Processes) Manifest() *skill.Manifest { return p.manifest }
 
-// Validate validates the input parameters
 func (p *Processes) Validate(input map[string]any) error {
 	action, ok := input["action"]
 	if !ok {
 		return fmt.Errorf("action is required")
 	}
-
 	actionStr, ok := action.(string)
 	if !ok {
 		return fmt.Errorf("action must be a string")
 	}
-
 	validActions := map[string]bool{"list": true, "info": true}
 	if !validActions[actionStr] {
 		return fmt.Errorf("invalid action: %s", actionStr)
 	}
-
 	return nil
 }
 
-// Execute executes the processes skill
 func (p *Processes) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
 	action := input["action"].(string)
-
 	switch action {
 	case "list":
-		// Return current process info as placeholder
 		return skill.NewResult(map[string]any{
 			"processes": []map[string]any{
-				{
-					"pid":  os.Getpid(),
-					"name": "zimaos-blue",
-				},
+				{"pid": os.Getpid(), "name": "zimaos-blue"},
 			},
 			"message": "Process listing (limited implementation)",
 		}), nil
-
 	case "info":
 		pid := os.Getpid()
 		if p, ok := input["pid"].(float64); ok {
@@ -534,6 +507,6 @@ func (p *Processes) Execute(ctx context.Context, input map[string]any) (*skill.R
 			"message": fmt.Sprintf("Process info for PID %d (placeholder)", pid),
 		}), nil
 	}
-
 	return skill.NewErrorResult(fmt.Errorf("unknown action: %s", action)), nil
 }
+

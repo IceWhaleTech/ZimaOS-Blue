@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 const (
@@ -95,7 +96,7 @@ func (o *OTAChecker) checkIfDue(ctx context.Context) {
 	tsPath := filepath.Join(o.dataDir, timestampFile)
 	if data, err := os.ReadFile(tsPath); err == nil {
 		if t, err := time.Parse(time.RFC3339, strings.TrimSpace(string(data))); err == nil {
-			if time.Since(t) < checkInterval {
+			if timeutil.SinceTime(t) < checkInterval {
 				return
 			}
 		}
@@ -112,7 +113,7 @@ func (o *OTAChecker) checkIfDue(ctx context.Context) {
 	o.mu.Unlock()
 
 	// Persist timestamp and result
-	_ = os.WriteFile(tsPath, []byte(time.Now().UTC().Format(time.RFC3339)), 0644)
+	_ = os.WriteFile(tsPath, []byte(timeutil.NowTime().UTC().Format(time.RFC3339)), 0644)
 	if data, err := json.Marshal(resp); err == nil {
 		_ = os.WriteFile(filepath.Join(o.dataDir, otaResultFile), data, 0644)
 	}

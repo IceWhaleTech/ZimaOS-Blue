@@ -70,35 +70,36 @@ func ValidateRoutingConfig(cfg *RoutingConfig) []error {
 }
 
 // ToRuleEngine creates a RuleEngine from this config.
-func (c *RoutingConfig) ToRuleEngine() *RuleEngine {
-	return NewRuleEngine(c.Rules)
+// The optional TierResolver enables dynamic tier → model resolution.
+func (c *RoutingConfig) ToRuleEngine(tierResolver ...*TierResolver) *RuleEngine {
+	return NewRuleEngine(c.Rules, tierResolver...)
 }
 
-// DefaultRoutingConfig returns a RoutingConfig with built-in economy rules.
+// DefaultRoutingConfig returns a RoutingConfig with built-in tier-based rules.
+// Rules reference abstract tiers (economy/standard) instead of specific model names.
+// The TierResolver dynamically maps tiers to actual models based on user's available
+// model list and pricing.
 func DefaultRoutingConfig() *RoutingConfig {
 	return &RoutingConfig{
 		Enabled: false,
 		Rules: []RoutingRule{
 			{
-				Name:        "small-body-economy",
-				Priority:    10,
-				Condition:   RouteCondition{MaxBodyBytes: 3000},
-				TargetModel: "claude-3-haiku",
-				Tier:        TierEconomy,
+				Name:      "small-body-economy",
+				Priority:  10,
+				Condition: RouteCondition{MaxBodyBytes: 3000},
+				Tier:      TierEconomy,
 			},
 			{
-				Name:        "file-tools-economy",
-				Priority:    20,
-				Condition:   RouteCondition{ToolPattern: `^(list_files|file_search|grep|get_weather|calculator)$`},
-				TargetModel: "gpt-4o-mini",
-				Tier:        TierEconomy,
+				Name:      "simple-tools-economy",
+				Priority:  20,
+				Condition: RouteCondition{ToolPattern: `^(list_files|file_search|grep|get_weather|calculator)$`},
+				Tier:      TierEconomy,
 			},
 			{
-				Name:        "orchestrator-cheap",
-				Priority:    30,
-				Condition:   RouteCondition{SystemTag: "[ORCHESTRATOR]"},
-				TargetModel: "deepseek-r1",
-				Tier:        TierStandard,
+				Name:      "orchestrator-standard",
+				Priority:  30,
+				Condition: RouteCondition{SystemTag: "[ORCHESTRATOR]"},
+				Tier:      TierStandard,
 			},
 		},
 	}

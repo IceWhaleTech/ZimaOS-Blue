@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardResult } from '@/types/typeless'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardResult
@@ -14,28 +17,36 @@ const copiedIndex = ref<number | null>(null)
 
 const statusConfig = {
   success: {
-    bg: 'bg-green-50 dark:bg-green-900/20',
-    border: 'border-green-200 dark:border-green-800',
+    headerBg: 'bg-emerald-50 dark:bg-emerald-900/20',
+    headerBorder: 'border-emerald-100 dark:border-emerald-800/50',
+    border: 'border-emerald-200 dark:border-emerald-800/60',
     icon: '✓',
-    iconColor: 'text-green-500',
+    iconBg: 'bg-emerald-100 dark:bg-emerald-900/40',
+    iconColor: 'text-emerald-600 dark:text-emerald-400',
   },
   error: {
-    bg: 'bg-red-50 dark:bg-red-900/20',
-    border: 'border-red-200 dark:border-red-800',
+    headerBg: 'bg-red-50 dark:bg-red-900/20',
+    headerBorder: 'border-red-100 dark:border-red-800/50',
+    border: 'border-red-200 dark:border-red-800/60',
     icon: '✗',
-    iconColor: 'text-red-500',
+    iconBg: 'bg-red-100 dark:bg-red-900/40',
+    iconColor: 'text-red-600 dark:text-red-400',
   },
   warning: {
-    bg: 'bg-amber-50 dark:bg-amber-900/20',
-    border: 'border-amber-200 dark:border-amber-800',
+    headerBg: 'bg-amber-50 dark:bg-amber-900/20',
+    headerBorder: 'border-amber-100 dark:border-amber-800/50',
+    border: 'border-amber-200 dark:border-amber-800/60',
     icon: '⚠',
-    iconColor: 'text-amber-500',
+    iconBg: 'bg-amber-100 dark:bg-amber-900/40',
+    iconColor: 'text-amber-600 dark:text-amber-400',
   },
   info: {
-    bg: 'bg-gray-700 dark:bg-gray-500/20',
-    border: 'border-gray-900 dark:border-white dark:border-gray-900 dark:border-white',
+    headerBg: 'bg-blue-50 dark:bg-blue-900/20',
+    headerBorder: 'border-blue-100 dark:border-blue-800/50',
+    border: 'border-blue-200 dark:border-blue-800/60',
     icon: 'ℹ',
-    iconColor: 'text-gray-900 dark:text-white',
+    iconBg: 'bg-blue-100 dark:bg-blue-900/40',
+    iconColor: 'text-blue-600 dark:text-blue-400',
   },
 }
 
@@ -60,51 +71,109 @@ async function copyValue(value: string, index: number) {
 function handleAction(actionId: string) {
   emit('action', actionId, props.card.id)
 }
+
+function tLabel(label: string): string {
+  const key = 'resultCard.labels.' + label.toLowerCase().replace(/\s+/g, '_')
+  const translated = t(key, label)
+  return translated === key ? label : translated
+}
+
+function tAction(id: string, fallback: string): string {
+  const key = 'resultCard.actions.' + id
+  const translated = t(key, fallback)
+  return translated === key ? fallback : translated
+}
+
+const translatedTitle = computed(() => {
+  if (!props.card.title) return ''
+  const key = 'resultCard.titles.' + props.card.title.toLowerCase().replace(/\s+/g, '_')
+  const translated = t(key, props.card.title)
+  return translated === key ? props.card.title : translated
+})
+
+const errorKeyMap: [RegExp, string][] = [
+  [/browser start failed/i, 'uiReview.errors.browserStartFailed'],
+  [/browser service not available/i, 'uiReview.errors.browserNotAvailable'],
+  [/navigation failed/i, 'uiReview.errors.navigationFailed'],
+  [/proxy bridge not available/i, 'uiReview.errors.vlmNotAvailable'],
+]
+
+const translatedMessage = computed(() => {
+  const msg = props.card.message
+  if (!msg) return ''
+  if (props.card.status === 'error') {
+    for (const [re, key] of errorKeyMap) {
+      if (re.test(msg)) return t(key, msg)
+    }
+  }
+  return msg
+})
+
+// Filter out details that are redundant with the title/message
+const visibleDetails = computed(() => {
+  if (!props.card.details) return []
+  return props.card.details.filter(d => {
+    // Hide status/result fields that just echo the card status
+    const lbl = d.label.toLowerCase()
+    if (lbl === 'status' || lbl === '状态') return false
+    if ((lbl === 'result' || lbl === '结果') && props.card.message) return false
+    return true
+  })
+})
 </script>
 
 <template>
   <div
-    class="rounded-lg border p-4"
-    :class="[statusConfig[card.status].bg, statusConfig[card.status].border]"
+    class="rounded-lg border overflow-hidden bg-white dark:bg-gray-800 shadow-sm"
+    :class="statusConfig[card.status].border"
   >
-    <div class="flex items-start gap-3">
+    <!-- Header -->
+    <div
+      class="flex items-center gap-2.5 px-4 py-2.5 border-b"
+      :class="[statusConfig[card.status].headerBg, statusConfig[card.status].headerBorder]"
+    >
       <span
-        class="text-xl flex-shrink-0"
-        :class="statusConfig[card.status].iconColor"
+        class="w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0"
+        :class="[statusConfig[card.status].iconBg, statusConfig[card.status].iconColor]"
       >
         {{ statusConfig[card.status].icon }}
       </span>
-      <div class="flex-1 min-w-0">
-        <h4 class="font-medium text-gray-900 dark:text-white">
-          {{ card.title }}
-        </h4>
-        <p
-          v-if="card.message"
-          class="text-sm text-gray-600 dark:text-gray-300 mt-1"
-        >
-          {{ card.message }}
-        </p>
+      <span class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate flex-1">
+        {{ translatedTitle }}
+      </span>
+    </div>
 
-        <!-- Details -->
-        <div v-if="card.details && card.details.length > 0" class="mt-3 space-y-2">
+    <!-- Body -->
+    <div class="px-4 py-3">
+      <!-- Message -->
+      <p
+        v-if="card.message"
+        class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed"
+      >
+        {{ translatedMessage }}
+      </p>
+
+      <!-- Details -->
+      <div v-if="visibleDetails.length > 0" class="mt-2.5">
+        <div class="rounded-md bg-gray-50 dark:bg-gray-900/40 divide-y divide-gray-100 dark:divide-gray-700/50">
           <div
-            v-for="(detail, index) in card.details"
+            v-for="(detail, index) in visibleDetails"
             :key="index"
-            class="flex items-center justify-between text-sm"
+            class="flex items-center justify-between px-3 py-2 text-sm group"
           >
-            <span class="text-gray-500 dark:text-gray-400">{{ detail.label }}:</span>
-            <div class="flex items-center gap-2">
-              <span class="text-gray-700 dark:text-gray-300 font-mono">{{ detail.value }}</span>
+            <span class="text-gray-400 dark:text-gray-500 text-xs">{{ tLabel(detail.label) }}</span>
+            <div class="flex items-center gap-1.5">
+              <span class="text-gray-700 dark:text-gray-300 font-mono text-xs">{{ detail.value }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span>
               <button
                 v-if="detail.copyable"
-                class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                :title="copiedIndex === index ? 'Copied!' : 'Copy'"
+                class="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
+                :title="copiedIndex === index ? t('resultCard.copied', 'Copied!') : t('resultCard.copy', 'Copy')"
                 @click="copyValue(detail.value, index)"
               >
                 <svg
                   v-if="copiedIndex !== index"
                   xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4 text-gray-400"
+                  class="h-3.5 w-3.5 text-gray-400"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -119,7 +188,7 @@ function handleAction(actionId: string) {
                 <svg
                   v-else
                   xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4 text-green-500"
+                  class="h-3.5 w-3.5 text-emerald-500"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -135,21 +204,21 @@ function handleAction(actionId: string) {
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Actions -->
-        <div v-if="card.actions && card.actions.length > 0" class="mt-4 flex flex-wrap gap-2">
-          <button
-            v-for="action in card.actions"
-            :key="action.id"
-            class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            :class="buttonClasses[action.variant || 'secondary']"
-            :disabled="action.disabled"
-            @click="handleAction(action.id)"
-          >
-            <span v-if="action.icon" class="mr-1.5">{{ action.icon }}</span>
-            {{ action.label }}
-          </button>
-        </div>
+      <!-- Actions -->
+      <div v-if="card.actions && card.actions.length > 0" class="mt-3 flex flex-wrap gap-2">
+        <button
+          v-for="action in card.actions"
+          :key="action.id"
+          class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          :class="buttonClasses[action.variant || 'secondary']"
+          :disabled="action.disabled"
+          @click="handleAction(action.id)"
+        >
+          <span v-if="action.icon" class="mr-1">{{ action.icon }}</span>
+          {{ tAction(action.id, action.label) }}
+        </button>
       </div>
     </div>
   </div>

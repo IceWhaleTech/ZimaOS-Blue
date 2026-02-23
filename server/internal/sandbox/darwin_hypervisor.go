@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"syscall"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // HypervisorExecutor provides sandboxed execution on macOS using Virtualization.framework
@@ -174,7 +174,7 @@ func (e *HypervisorExecutor) Execute(ctx context.Context, req *ExecutionRequest)
 	result := &ExecutionResult{
 		ID:        req.ID,
 		Status:    StatusRunning,
-		StartTime: time.Now(),
+		StartTime: timeutil.NowTime(),
 	}
 
 	state := &executionState{
@@ -202,7 +202,7 @@ func (e *HypervisorExecutor) Execute(ctx context.Context, req *ExecutionRequest)
 		err = e.executeWithEnhancedIsolation(execCtx, req, &stdout, &stderr, state)
 	}
 
-	result.EndTime = time.Now()
+	result.EndTime = timeutil.NowTime()
 	result.Duration = result.EndTime.Sub(result.StartTime)
 	result.Stdout = truncateOutput(stdout.String(), 1024*1024)
 	result.Stderr = truncateOutput(stderr.String(), 1024*1024)

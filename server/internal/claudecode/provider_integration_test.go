@@ -47,8 +47,8 @@ func TestProviderToolRegistryIntegration(t *testing.T) {
 		t.Error("expected system prompt to contain tool description")
 	}
 
-	if !strings.Contains(systemPrompt, "Available Tools") {
-		t.Error("expected system prompt to contain 'Available Tools' section")
+	if !strings.Contains(systemPrompt, "Tool availability") {
+		t.Error("expected system prompt to contain 'Tool availability' section")
 	}
 }
 

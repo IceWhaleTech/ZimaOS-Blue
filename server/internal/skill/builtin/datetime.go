@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // DateTime is a built-in date/time skill
@@ -73,7 +74,7 @@ func (d *DateTime) Validate(input map[string]any) error {
 
 // Execute executes the date/time skill
 func (d *DateTime) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	// Handle timezone
 	if tz, ok := input["timezone"].(string); ok && tz != "" && tz != "Local" {

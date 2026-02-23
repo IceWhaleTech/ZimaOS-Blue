@@ -35,11 +35,12 @@ type Channel struct {
 	lastErrorAt *time.Time
 	msgCount    atomic.Int64
 
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	lastRowID  int64
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
+	lastRowID    int64
 	processedIDs map[int64]bool
+	closeOnce    sync.Once
 }
 
 // Config contains iMessage channel configuration.
@@ -98,10 +99,34 @@ func (c *Channel) Start(ctx context.Context) error {
 		return fmt.Errorf("iMessage channel only works on macOS")
 	}
 
-	// Check if database exists
-	if _, err := os.Stat(c.config.DatabasePath); os.IsNotExist(err) {
-		c.setError(fmt.Sprintf("Messages database not found: %s", c.config.DatabasePath))
-		return fmt.Errorf("Messages database not found: %s", c.config.DatabasePath)
+	// Fall back to default database path if not configured
+	if c.config.DatabasePath == "" {
+		c.config.DatabasePath = DefaultConfig().DatabasePath
+	}
+
+	// Fall back to default poll interval if not configured
+	if c.config.PollInterval <= 0 {
+		c.config.PollInterval = DefaultConfig().PollInterval
+	}
+
+	// Check if database exists and is accessible
+	if _, err := os.Stat(c.config.DatabasePath); err != nil {
+		if os.IsNotExist(err) {
+			// Database doesn't exist — iMessage is not set up / not logged in.
+			// This is not an error condition, just skip silently.
+			c.logger.Info("iMessage not configured — Messages database not found, skipping",
+				zap.String("path", c.config.DatabasePath))
+			c.mu.Lock()
+			c.status = channel.StatusDisconnected
+			c.mu.Unlock()
+			return fmt.Errorf("iMessage not set up (Messages database not found)")
+		}
+		if os.IsPermission(err) {
+			c.setError(fmt.Sprintf("Messages database access denied: %s — grant Full Disk Access to this app in System Settings > Privacy & Security", c.config.DatabasePath))
+			return fmt.Errorf("Messages database access denied (grant Full Disk Access): %w", err)
+		}
+		c.setError(fmt.Sprintf("cannot access Messages database: %v", err))
+		return fmt.Errorf("cannot access Messages database: %w", err)
 	}
 
 	// Open database connection (read-only)
@@ -111,15 +136,35 @@ func (c *Channel) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to open Messages database: %w", err)
 	}
 
-	// Test connection
+	// Test connection — may fail due to macOS TCC (Full Disk Access)
 	if err := db.Ping(); err != nil {
 		db.Close()
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "authorization denied") || strings.Contains(errMsg, "not authorized") || strings.Contains(errMsg, "operation not permitted") {
+			// Try to open System Settings to the Full Disk Access panel
+			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles").Run()
+			appName := tccAppName()
+			c.setError(fmt.Sprintf("Messages database access denied by macOS — grant Full Disk Access to \"%s\" in System Settings > Privacy & Security > Full Disk Access, then restart", appName))
+			return fmt.Errorf("Messages database access denied by macOS TCC — grant Full Disk Access to \"%s\" in System Settings > Privacy & Security, then restart: %w", appName, err)
+		}
 		c.setError(fmt.Sprintf("failed to connect to database: %v", err))
 		return fmt.Errorf("failed to connect to Messages database: %w", err)
 	}
 
 	c.db = db
 	c.ctx, c.cancel = context.WithCancel(ctx)
+
+	// Check if iMessage is actually signed in.
+	// chat.db exists even after signing out — verify there are active iMessage accounts.
+	if !c.hasActiveIMService() {
+		db.Close()
+		c.db = nil
+		c.logger.Info("iMessage account not signed in — skipping channel")
+		c.mu.Lock()
+		c.status = channel.StatusDisconnected
+		c.mu.Unlock()
+		return fmt.Errorf("iMessage account not signed in")
+	}
 
 	// Get the latest message ID to start from
 	c.lastRowID, err = c.getLatestMessageID()
@@ -131,6 +176,10 @@ func (c *Channel) Start(ctx context.Context) error {
 	// Start polling for new messages
 	c.wg.Add(1)
 	go c.pollMessages()
+
+	// Pre-check Automation permission for Messages.app (non-blocking).
+	// If denied, we can still receive messages but cannot reply.
+	go c.checkAutomationPermission()
 
 	now := time.Now()
 	c.mu.Lock()
@@ -358,12 +407,13 @@ func (c *Channel) Stop(ctx context.Context) error {
 		c.db.Close()
 	}
 
-	close(c.messages)
+	c.closeOnce.Do(func() { close(c.messages) })
 	c.logger.Info("iMessage channel stopped")
 	return nil
 }
 
 // Send sends a message through iMessage using AppleScript.
+// Requires macOS Automation permission for Messages.app (auto-prompted on first use).
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	if !isMacOS() {
 		return fmt.Errorf("iMessage sending only works on macOS")
@@ -373,22 +423,39 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	content := escapeAppleScript(msg.Content)
 	recipient := msg.ChatID
 
-	// Build AppleScript command
-	script := fmt.Sprintf(`
-		tell application "Messages"
-			set targetService to 1st service whose service type = iMessage
-			set targetBuddy to buddy "%s" of targetService
-			send "%s" to targetBuddy
-		end tell
-	`, recipient, content)
+	// Build AppleScript command — pass as argv to avoid shell injection
+	script := `on run argv
+	set theRecipient to item 1 of argv
+	set theMessage to item 2 of argv
+	tell application "Messages"
+		set targetService to 1st service whose service type = iMessage
+		set targetBuddy to buddy theRecipient of targetService
+		send theMessage to targetBuddy
+	end tell
+end run`
 
-	cmd := exec.CommandContext(ctx, "osascript", "-e", script)
+	cmd := exec.CommandContext(ctx, "osascript", "-e", script, recipient, content)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		c.logger.Error("failed to send iMessage",
+		outStr := string(output)
+		c.logger.Error("failed to send iMessage via AppleScript",
 			zap.String("recipient", recipient),
-			zap.String("output", string(output)),
+			zap.String("output", outStr),
 			zap.Error(err))
+		// Detect Automation permission denial — try fallback
+		if strings.Contains(outStr, "not authorized") || strings.Contains(outStr, "not authorised") || strings.Contains(outStr, "-1743") {
+			c.logger.Info("Automation denied, trying NSSharingService fallback...")
+			if fbErr := c.sendViaSharingService(ctx, recipient, msg.Content); fbErr != nil {
+				c.logger.Error("NSSharingService fallback also failed", zap.Error(fbErr))
+				appName := tccAppName()
+				errMsg := fmt.Sprintf("Cannot reply to messages — grant Automation permission for Messages.app to \"%s\" in System Settings > Privacy & Security > Automation (fallback also failed: %v)", appName, fbErr)
+				c.setError(errMsg)
+				return fmt.Errorf("%s", errMsg)
+			}
+			c.logger.Info("iMessage sent via NSSharingService fallback",
+				zap.String("recipient", recipient))
+			return nil
+		}
 		return fmt.Errorf("failed to send iMessage: %w", err)
 	}
 
@@ -461,6 +528,39 @@ func (c *Channel) Messages() <-chan channel.Message {
 	return c.messages
 }
 
+// checkAutomationPermission tests if we have Automation permission for Messages.app.
+// This runs a harmless AppleScript that doesn't send anything — just checks access.
+// If denied, it sets a warning so the user knows replies won't work.
+func (c *Channel) checkAutomationPermission() {
+	// "count of services" is a read-only query that triggers the Automation prompt
+	script := `tell application "Messages" to count of services`
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "osascript", "-e", script)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		outStr := string(output)
+		if strings.Contains(outStr, "not authorized") || strings.Contains(outStr, "not authorised") || strings.Contains(outStr, "-1743") {
+			appName := tccAppName()
+			c.mu.Lock()
+			c.lastError = fmt.Sprintf("Cannot reply to messages — grant Automation permission for Messages.app to \"%s\" in System Settings > Privacy & Security > Automation", appName)
+			now := time.Now()
+			c.lastErrorAt = &now
+			c.mu.Unlock()
+			c.logger.Warn("Automation permission denied for Messages.app",
+				zap.String("app", appName),
+				zap.String("output", outStr))
+			// Open Automation settings
+			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation").Run()
+		} else {
+			c.logger.Warn("Automation pre-check failed", zap.Error(err), zap.String("output", outStr))
+		}
+	} else {
+		c.logger.Info("Automation permission OK for Messages.app")
+	}
+}
+
 // setError sets the last error.
 func (c *Channel) setError(err string) {
 	c.mu.Lock()
@@ -474,6 +574,44 @@ func (c *Channel) setError(err string) {
 // isMacOS checks if the current OS is macOS.
 func isMacOS() bool {
 	return os.Getenv("GOOS") == "darwin" || fileExists("/System/Library/CoreServices/SystemVersion.plist")
+}
+
+// hasActiveIMService checks whether iMessage is signed in by querying the
+// chat.db for any iMessage-type handles or chats. The database file persists
+// even after signing out, so its mere existence is not sufficient.
+func (c *Channel) hasActiveIMService() bool {
+	if c.db == nil {
+		return false
+	}
+	// Check for any handle with iMessage service
+	var count int
+	err := c.db.QueryRow(`SELECT COUNT(*) FROM handle WHERE service = 'iMessage'`).Scan(&count)
+	if err != nil {
+		c.logger.Debug("failed to query iMessage handles", zap.Error(err))
+		return false
+	}
+	if count > 0 {
+		return true
+	}
+	// Fallback: check chat table for iMessage service
+	err = c.db.QueryRow(`SELECT COUNT(*) FROM chat WHERE service_name = 'iMessage'`).Scan(&count)
+	if err != nil {
+		c.logger.Debug("failed to query iMessage chats", zap.Error(err))
+		return false
+	}
+	return count > 0
+}
+
+// tccAppName returns the app name that macOS TCC associates Full Disk Access
+// permission with. TCC binds to the parent app's bundle ID:
+//   - Tauri app (.app bundle) → "Blue"
+//   - CLI (launcher forces Terminal.app) → "Terminal"
+func tccAppName() string {
+	exe, err := os.Executable()
+	if err == nil && strings.Contains(exe, ".app/Contents/MacOS/") {
+		return "Blue"
+	}
+	return "Terminal"
 }
 
 // fileExists checks if a file exists.

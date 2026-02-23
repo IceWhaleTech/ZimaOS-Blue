@@ -17,6 +17,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Config contains Viber channel configuration.
@@ -129,7 +130,7 @@ func (c *Channel) Start(ctx context.Context) error {
 		return fmt.Errorf("channel already started")
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
-	now := time.Now()
+	now := timeutil.NowTime()
 	c.status = channel.StatusConnected
 	c.connectedAt = &now
 	c.mu.Unlock()
@@ -397,7 +398,7 @@ func (c *Channel) setError(errMsg string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.lastError = errMsg
-	now := time.Now()
+	now := timeutil.NowTime()
 	c.lastErrorAt = &now
 	c.status = channel.StatusError
 }

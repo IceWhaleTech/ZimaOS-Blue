@@ -151,7 +151,7 @@ function getMethodColor(method: string | undefined): string {
   if (!method) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
   switch (method.toUpperCase()) {
     case 'GET': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-    case 'POST': return 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white'
+    case 'POST': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
     case 'PUT': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
     case 'PATCH': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
     case 'DELETE': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
@@ -162,7 +162,7 @@ function getMethodColor(method: string | undefined): string {
 function getStatusColor(status: number): string {
   if (status >= 500) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
   if (status >= 400) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-  if (status >= 300) return 'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white'
+  if (status >= 300) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
   if (status >= 200) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
   return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
 }
@@ -977,7 +977,7 @@ onUnmounted(() => {
                   <span
 :class="[
                     'px-2 py-0.5 rounded text-xs font-medium uppercase',
-                    conn.type === 'http' ? 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white' :
+                    conn.type === 'http' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' :
                     conn.type === 'websocket' ? 'bg-green-50 dark:bg-green-900/30 text-green-200 dark:text-green-200' :
                     'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
                   ]">

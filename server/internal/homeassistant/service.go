@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // CommandResult represents the result of a natural language command.
@@ -90,7 +91,7 @@ func (s *HAService) IsConnected() bool {
 func (s *HAService) GetAllEntities(ctx context.Context) ([]*Entity, error) {
 	// Check cache
 	s.cacheMu.RLock()
-	if time.Now().Before(s.cacheExpiry) && len(s.entityCache) > 0 {
+	if timeutil.NowTime().Before(s.cacheExpiry) && len(s.entityCache) > 0 {
 		entities := make([]*Entity, 0, len(s.entityCache))
 		for _, e := range s.entityCache {
 			entities = append(entities, e)
@@ -112,7 +113,7 @@ func (s *HAService) GetAllEntities(ctx context.Context) ([]*Entity, error) {
 	for _, e := range entities {
 		s.entityCache[e.EntityID] = e
 	}
-	s.cacheExpiry = time.Now().Add(s.cacheTTL)
+	s.cacheExpiry = timeutil.NowTime().Add(s.cacheTTL)
 	s.cacheMu.Unlock()
 
 	return s.applyEntityFilter(entities), nil
@@ -140,7 +141,7 @@ func (s *HAService) GetEntitiesByDomain(ctx context.Context, domain string) ([]*
 func (s *HAService) GetEntity(ctx context.Context, entityID string) (*Entity, error) {
 	// Check cache first
 	s.cacheMu.RLock()
-	if entity, ok := s.entityCache[entityID]; ok && time.Now().Before(s.cacheExpiry) {
+	if entity, ok := s.entityCache[entityID]; ok && timeutil.NowTime().Before(s.cacheExpiry) {
 		s.cacheMu.RUnlock()
 		return entity, nil
 	}

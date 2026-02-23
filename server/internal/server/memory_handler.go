@@ -8,6 +8,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MemoryHandler handles memory-related endpoints.
@@ -446,7 +447,7 @@ func (h *MemoryHandler) ExportMarkdown(c echo.Context) error {
 	}
 
 	// Build Markdown content
-	now := time.Now().Format("2006-01-02 15:04:05")
+	now := timeutil.NowTime().Format("2006-01-02 15:04:05")
 	md := "# ZimaOS-Blue Memory Export\n\n"
 	md += "> Exported at: " + now + "\n"
 	if startDate != nil || endDate != nil {

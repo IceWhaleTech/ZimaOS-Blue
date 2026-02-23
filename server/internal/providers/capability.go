@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ToolCallingSupport represents the level of tool calling support.
@@ -135,7 +136,7 @@ func (d *CapabilityDetector) GetCapability(provider string) (*ProviderCapability
 	provider = strings.ToLower(provider)
 	cap, ok := d.knownCapabilities[provider]
 	if ok {
-		cap.DetectedAt = time.Now()
+		cap.DetectedAt = timeutil.NowTime()
 		return &cap, true
 	}
 	return nil, false
@@ -165,7 +166,7 @@ func (d *CapabilityDetector) DetectCapabilities(ctx context.Context, provider st
 		MaxContextSize:  8192,
 		AdapterRequired: true,
 		AdapterType:     "cliproxy",
-		DetectedAt:      time.Now(),
+		DetectedAt:      timeutil.NowTime(),
 	}, nil
 }
 
@@ -180,7 +181,7 @@ func (d *CapabilityDetector) detectFromAPI(ctx context.Context, provider string,
 		MaxContextSize:  8192,
 		AdapterRequired: true,
 		AdapterType:     "cliproxy",
-		DetectedAt:      time.Now(),
+		DetectedAt:      timeutil.NowTime(),
 	}
 
 	// Try to get models list (OpenAI-compatible API)
@@ -236,7 +237,7 @@ func (d *CapabilityDetector) TestToolCalling(ctx context.Context, provider strin
 func (d *CapabilityDetector) GetCapabilityMatrix() map[string]ProviderCapability {
 	result := make(map[string]ProviderCapability)
 	for k, v := range d.knownCapabilities {
-		v.DetectedAt = time.Now()
+		v.DetectedAt = timeutil.NowTime()
 		result[k] = v
 	}
 	return result

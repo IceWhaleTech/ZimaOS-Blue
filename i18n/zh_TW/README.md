@@ -54,7 +54,7 @@
 
 **ZimaOS Blue 是我們的答案** — 一個完全**開源、可審計、生產就緒的代理執行環境與工具包**，讓你零摩擦地部署私有、自託管的代理。
 
-專為勇於**自由創造或精心打造自己代理**的開發者而生，Blue **為效能而設計**：以 **Go** 編寫，記憶體佔用低至 10 MB。可在**任何 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** 上運行 — 只要有電源就能啟動。
+專為勇於**自由創造或精心打造自己代理**的開發者而生，Blue **為效能而設計**：以 **Go** 編寫，記憶體佔用低至 10 MB。可在**任何 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、Windows、macOS** 上運行 — 只要有電源就能啟動。
 
 ![](../../docs/assets/features.png)
 
@@ -65,7 +65,7 @@
 更進一步：原生支援 **20+ 即時通訊平台**、**語音驅動**介面實現自然的上下文感知對話、搭配 IDE 掃描的**零配置模型切換**，以及 SOUL 分層人格系統。
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### 快速、輕量
@@ -84,7 +84,7 @@
 
 ### 純 Go，任何裝置
 
-100% Go，靜態二進位檔。**開箱即可交叉編譯至 5 個目標平台**（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。無需 Node 執行環境、無需 Python、無需容器。放到 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、舊的 x86 路由器或 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac 上 — 直接運行。**然後疊加你自己的 UI、邏輯和代理技能** — 一套程式碼，所有平台。
+100% Go，靜態二進位檔。**開箱即可交叉編譯至 5 個目標平台**（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。無需 Node 執行環境、無需 Python、無需容器。放到 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、舊的 x86 路由器或 Mac 上 — 直接運行。**然後疊加你自己的 UI、邏輯和代理技能** — 一套程式碼，所有平台。
 
 ### 安全與治理
 
@@ -101,13 +101,49 @@
 - **本地優先、超輕量、跨裝置** – 無需高階硬體。任何能運算的裝置都能運行。
 - **安全且可審計** – 會話審計、沙箱、權限控制，以及作為應用層防火牆的內建 API 代理 — 每一個位元組的進出皆可見。
 
+![](../../docs/assets/design_principle.png)
+
 我們最小化樣板程式碼，讓你**專注於真正重要的事**。秉持 <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS 的設計哲學**，Blue 提供：
 - **一鍵從零到一** – 即時部署，無需複雜配置。
 - **快速原型開發** – 自由創造或精心打造場景專屬的工具、互動和應用套件。
 - **全球就緒** – **世界很大**，不以英語為預設。**20+ 種語言，原生支援**，無障礙。
 - **開放模型生態** – 無供應商鎖定。自帶模型。
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| 供應商 | 模型 | 類型 |
+|----------|--------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | 雲端 |
+| Anthropic | Claude 4.5, Claude 4 | 雲端 |
+| Google | Gemini 2.5, Gemini 2.0 | 雲端 |
+| Ollama | Llama, Qwen, Gemma, Phi 等 | 本地 |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | 雲端 |
+| Grok | Grok-3, Grok-3-mini | 雲端 |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | 雲端 |
+| GLM | GLM-4, GLM-4-Flash | 雲端 |
+| Moonshot | Moonshot-v1 | 雲端 |
+| MiniMax | abab6.5, abab5.5 | 雲端 |
+| Venice | Llama, Mistral（隱私優先） | 雲端 |
+| AWS Bedrock | Claude, Llama, Titan | 雲端 |
+| Azure | 透過 Azure 使用 OpenAI 模型 | 雲端 |
+| OpenRouter | 100+ 聚合模型 | 雲端 |
+| AIHubMix | 多供應商聚合器 | 雲端 |
+| Codex | OpenAI Codex | 雲端 |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | 雲端 |
+| 自訂 | 任何 OpenAI / Anthropic / Gemini 相容 API | 雲端 / 本地 |
+
+</details>
+
+### 支援的 IDE
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## 快速開始
 
@@ -135,7 +171,6 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -148,11 +183,7 @@ sh build.sh
 .\build.bat
 ```
 
-> **注意：** Windows 建置需要：
-> - [MinGW-w64](https://www.mingw-w64.org/)（gcc）和 [CMake](https://cmake.org/) 來編譯原生 C 相依套件（espeak-ng、whisper.cpp、opus、kokoro、onnx）
-> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) 用於系統函式庫（winmm 等）
->
-> 請確保 `gcc`、`cmake` 已加入 `PATH` 環境變數中。
+> **注意：** Windows 建置需要 [MinGW-w64](https://www.mingw-w64.org/)（gcc）和 [CMake](https://cmake.org/) 來編譯原生 C 相依套件（espeak-ng、whisper.cpp、opus）。請確保 `gcc` 和 `cmake` 已加入 `PATH` 環境變數中。
 
 ## 架構概覽
 

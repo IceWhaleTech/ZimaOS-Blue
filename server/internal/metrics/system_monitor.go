@@ -219,7 +219,7 @@ func (m *SystemMonitor) CollectProcessMetrics(pid int32) (*ProcessMetrics, error
 	// Start time and uptime
 	if createTime, err := proc.CreateTime(); err == nil {
 		metrics.StartTime = time.UnixMilli(createTime)
-		metrics.Uptime = time.Since(metrics.StartTime)
+		metrics.Uptime = timeutil.SinceTime(metrics.StartTime)
 	}
 
 	m.mu.Lock()

@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // DegradationLevel represents the level of service degradation
@@ -93,7 +94,7 @@ func NewDegradationManager(cfg DegradationConfig) *DegradationManager {
 	return &DegradationManager{
 		config:      cfg,
 		level:       LevelNormal,
-		windowStart: time.Now(),
+		windowStart: timeutil.NowTime(),
 	}
 }
 
@@ -113,7 +114,7 @@ func (m *DegradationManager) SetLevel(level DegradationLevel) {
 		from := m.level
 		m.level = level
 		m.manualOverride = true
-		m.lastLevelChange = time.Now()
+		m.lastLevelChange = timeutil.NowTime()
 
 		if m.config.OnLevelChange != nil {
 			go m.config.OnLevelChange(from, level)
@@ -167,7 +168,7 @@ func (m *DegradationManager) UpdateLevel() {
 		newLevel = LevelPartial
 	default:
 		// Only recover if enough time has passed
-		if m.level != LevelNormal && time.Since(m.lastLevelChange) >= m.config.RecoveryTime {
+		if m.level != LevelNormal && timeutil.SinceTime(m.lastLevelChange) >= m.config.RecoveryTime {
 			newLevel = m.level - 1 // Step down one level
 		} else {
 			newLevel = m.level
@@ -177,7 +178,7 @@ func (m *DegradationManager) UpdateLevel() {
 	if newLevel != m.level {
 		from := m.level
 		m.level = newLevel
-		m.lastLevelChange = time.Now()
+		m.lastLevelChange = timeutil.NowTime()
 
 		if m.config.OnLevelChange != nil {
 			go m.config.OnLevelChange(from, newLevel)
@@ -190,7 +191,7 @@ func (m *DegradationManager) ResetMetrics() {
 	atomic.StoreInt64(&m.totalRequests, 0)
 	atomic.StoreInt64(&m.failedRequests, 0)
 	m.mu.Lock()
-	m.windowStart = time.Now()
+	m.windowStart = timeutil.NowTime()
 	m.mu.Unlock()
 }
 
@@ -280,7 +281,7 @@ func (c *ResponseCache) Set(key string, body interface{}) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	c.cache[key] = CachedResponse{
 		Body:      body,
 		CachedAt:  now,
@@ -294,7 +295,7 @@ func (c *ResponseCache) Get(key string) (interface{}, bool) {
 	defer c.mu.RUnlock()
 
 	resp, ok := c.cache[key]
-	if !ok || time.Now().After(resp.ExpiresAt) {
+	if !ok || timeutil.NowTime().After(resp.ExpiresAt) {
 		return nil, false
 	}
 	return resp.Body, true
@@ -312,7 +313,7 @@ func (c *ResponseCache) Cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	for key, resp := range c.cache {
 		if now.After(resp.ExpiresAt) {
 			delete(c.cache, key)
@@ -365,7 +366,7 @@ func (r *HealthBasedRouter) RecordResult(name string, success bool) {
 		return
 	}
 
-	backend.LastCheck = time.Now()
+	backend.LastCheck = timeutil.NowTime()
 	if success {
 		backend.SuccessCount++
 		backend.FailCount = 0

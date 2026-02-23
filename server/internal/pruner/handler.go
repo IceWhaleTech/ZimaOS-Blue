@@ -10,10 +10,11 @@ import (
 
 // APIHandler provides HTTP handlers for pruner management.
 type APIHandler struct {
-	middleware    *Middleware
-	config       *Config
-	modelManager *PrunerModelManager
-	onToggle     func(enabled bool) // callback to persist toggle state
+	middleware       *Middleware
+	config           *Config
+	modelManager     *PrunerModelManager
+	onToggle         func(enabled bool)  // callback to persist toggle state
+	onBackendChange  func(backend string) // callback to persist backend change
 }
 
 // NewAPIHandler creates a new pruner API handler.
@@ -28,6 +29,11 @@ func NewAPIHandler(mw *Middleware, cfg *Config, mm *PrunerModelManager) *APIHand
 // SetOnToggle sets a callback invoked when the enabled state changes.
 func (h *APIHandler) SetOnToggle(fn func(enabled bool)) {
 	h.onToggle = fn
+}
+
+// SetOnBackendChange sets a callback invoked when the backend changes.
+func (h *APIHandler) SetOnBackendChange(fn func(backend string)) {
+	h.onBackendChange = fn
 }
 
 // RegisterRoutes registers pruner API routes.
@@ -204,6 +210,9 @@ func (h *APIHandler) switchBackend(name string) error {
 	}
 	if h.middleware != nil {
 		h.middleware.SetBackend(b)
+	}
+	if h.onBackendChange != nil {
+		h.onBackendChange(name)
 	}
 	return nil
 }

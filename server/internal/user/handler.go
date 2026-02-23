@@ -100,6 +100,7 @@ func (h *Handler) GetPasswordPolicy(c echo.Context) error {
 		"min_length":        cfg.MinLength,
 		"require_uppercase": cfg.RequireUppercase,
 		"require_lowercase": cfg.RequireLowercase,
+		"require_letter":    cfg.RequireLetter,
 		"require_number":    cfg.RequireNumber,
 		"require_special":   cfg.RequireSpecial,
 	})

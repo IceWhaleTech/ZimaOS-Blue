@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Profile represents a browser profile configuration.
@@ -180,7 +181,7 @@ func (pm *ProfileManager) CreateProfile(ctx context.Context, profile *Profile) (
 		return nil, fmt.Errorf("profile %s already exists", profile.ID)
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	profile.CreatedAt = now
 	profile.UpdatedAt = now
 
@@ -223,7 +224,7 @@ func (pm *ProfileManager) UpdateProfile(ctx context.Context, profile *Profile) (
 
 	// Preserve creation time
 	profile.CreatedAt = existing.CreatedAt
-	profile.UpdatedAt = time.Now()
+	profile.UpdatedAt = timeutil.NowTime()
 
 	if err := pm.saveProfile(profile); err != nil {
 		return nil, fmt.Errorf("failed to save profile: %w", err)
@@ -297,14 +298,14 @@ func (pm *ProfileManager) SetDefaultProfile(ctx context.Context, profileID strin
 	for _, p := range pm.profiles {
 		if p.IsDefault {
 			p.IsDefault = false
-			p.UpdatedAt = time.Now()
+			p.UpdatedAt = timeutil.NowTime()
 			pm.saveProfile(p)
 		}
 	}
 
 	// Set new default
 	profile.IsDefault = true
-	profile.UpdatedAt = time.Now()
+	profile.UpdatedAt = timeutil.NowTime()
 	return pm.saveProfile(profile)
 }
 
@@ -333,7 +334,7 @@ func (pm *ProfileManager) CloneProfile(ctx context.Context, sourceID, newID, new
 		return nil, err
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	newProfile.ID = newID
 	newProfile.Name = newName
 	newProfile.CreatedAt = now
@@ -395,8 +396,8 @@ func (pm *ProfileManager) CreateDefaultProfile(ctx context.Context) (*Profile, e
 		Description: "Default browser profile",
 		Viewport:    &defaultVP,
 		IsDefault:   true,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		CreatedAt:   timeutil.NowTime(),
+		UpdatedAt:   timeutil.NowTime(),
 	}
 
 	if err := pm.saveProfile(profile); err != nil {

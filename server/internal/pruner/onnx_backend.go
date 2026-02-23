@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/onnx"
 	ort "github.com/yalue/onnxruntime_go"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // OnnxBackend implements Backend using ONNX Runtime for local neural pruning.
@@ -92,7 +92,7 @@ func NewOnnxBackend(cfg Config, modelDir string) (*OnnxBackend, error) {
 
 // Prune implements Backend using ONNX neural inference.
 func (b *OnnxBackend) Prune(ctx context.Context, req PruneRequest) (*PruneResponse, error) {
-	start := time.Now()
+	start := timeutil.NowTime()
 
 	content := req.GetContent()
 	if strings.TrimSpace(content) == "" {
@@ -166,7 +166,7 @@ func (b *OnnxBackend) Prune(ctx context.Context, req PruneRequest) (*PruneRespon
 		OriginalTokens:  origTokens,
 		PrunedTokens:    prunedTokens,
 		CompressionRate: compressionRate,
-		LatencyMs:       float64(time.Since(start).Microseconds()) / 1000.0,
+		LatencyMs:       float64(timeutil.SinceTime(start).Microseconds()) / 1000.0,
 	}, nil
 }
 

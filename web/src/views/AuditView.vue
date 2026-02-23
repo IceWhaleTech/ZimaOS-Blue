@@ -88,7 +88,7 @@ function getStatusColor(status: string): string {
 }
 
 function getActionColor(action: string): string {
-  if (action.includes('login')) return 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white'
+  if (action.includes('login')) return 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
   if (action.includes('create')) return 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
   if (action.includes('delete')) return 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
   if (action.includes('update')) return 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300'

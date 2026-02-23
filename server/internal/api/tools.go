@@ -9,6 +9,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/adapters"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providers"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ToolsHandler handles tool calling API requests.
@@ -200,9 +201,9 @@ func (h *ToolsHandler) TestToolCalling(c echo.Context) error {
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 30*time.Second)
 	defer cancel()
 
-	start := time.Now()
+	start := timeutil.NowTime()
 	testResult, err := h.testToolCallingWithProvider(ctx, req.Provider, req.Model)
-	latency := time.Since(start).Milliseconds()
+	latency := timeutil.SinceTime(start).Milliseconds()
 
 	if err != nil {
 		return c.JSON(http.StatusOK, &TestToolCallingResponse{

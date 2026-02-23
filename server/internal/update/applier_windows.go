@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // exec performs update on Windows using a helper bat script.
@@ -87,12 +88,12 @@ func GetStartTime() time.Time {
 			return time.Unix(ts, 0)
 		}
 	}
-	return time.Now()
+	return timeutil.NowTime()
 }
 
 // GetUptime returns the service uptime
 func GetUptime() time.Duration {
-	return time.Since(GetStartTime())
+	return timeutil.SinceTime(GetStartTime())
 }
 
 // CleanupOldBinary removes leftover files from previous updates.

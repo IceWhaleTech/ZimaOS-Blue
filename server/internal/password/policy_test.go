@@ -8,14 +8,17 @@ import (
 func TestDefaultPolicyConfig(t *testing.T) {
 	config := DefaultPolicyConfig()
 
-	if config.MinLength != 8 {
-		t.Errorf("expected MinLength to be 8, got %d", config.MinLength)
+	if config.MinLength != 6 {
+		t.Errorf("expected MinLength to be 6, got %d", config.MinLength)
 	}
-	if !config.RequireUppercase {
-		t.Error("expected RequireUppercase to be true")
+	if config.RequireUppercase {
+		t.Error("expected RequireUppercase to be false")
 	}
-	if !config.RequireLowercase {
-		t.Error("expected RequireLowercase to be true")
+	if config.RequireLowercase {
+		t.Error("expected RequireLowercase to be false")
+	}
+	if !config.RequireLetter {
+		t.Error("expected RequireLetter to be true")
 	}
 	if !config.RequireNumber {
 		t.Error("expected RequireNumber to be true")
@@ -38,22 +41,17 @@ func TestPolicy_Validate(t *testing.T) {
 	}{
 		{
 			name:     "valid password",
-			password: "SecurePass123!",
+			password: "pass1!",
 			wantErrs: 0,
 		},
 		{
 			name:     "too short",
-			password: "Short1!",
+			password: "Pa1!",
 			wantErrs: 1, // too short
 		},
 		{
-			name:     "no uppercase",
-			password: "securepass123!",
-			wantErrs: 1,
-		},
-		{
-			name:     "no lowercase",
-			password: "SECUREPASS123!",
+			name:     "no letter",
+			password: "123456!@",
 			wantErrs: 1,
 		},
 		{
@@ -68,13 +66,13 @@ func TestPolicy_Validate(t *testing.T) {
 		},
 		{
 			name:     "multiple violations",
-			password: "short",
-			wantErrs: 4, // too short, no uppercase, no number, no special
+			password: "12!",
+			wantErrs: 2, // too short + no letter
 		},
 		{
 			name:     "common password base",
 			password: "password",
-			wantErrs: 4, // no uppercase + no number + no special + common
+			wantErrs: 3, // no number + no special + common
 		},
 	}
 
@@ -117,12 +115,12 @@ func TestPolicy_ValidateWithHistory(t *testing.T) {
 	hasher := NewHasher(nil)
 
 	// Create password history
-	oldPassword := "OldSecurePass1!"
+	oldPassword := "OldPass1!"
 	oldHash, _ := hasher.Hash(oldPassword)
 	history := []string{oldHash}
 
 	// New password should pass
-	newPassword := "NewSecurePass2@"
+	newPassword := "NewPass2@"
 	errs := policy.ValidateWithHistory(newPassword, history, hasher)
 	if len(errs) != 0 {
 		t.Errorf("ValidateWithHistory() new password got errors: %v", errs)
@@ -146,7 +144,7 @@ func TestPolicy_ValidateWithHistory_EmptyHistory(t *testing.T) {
 	policy := NewPolicy(nil)
 	hasher := NewHasher(nil)
 
-	password := "SecurePass123!"
+	password := "pass12!"
 	errs := policy.ValidateWithHistory(password, nil, hasher)
 	if len(errs) != 0 {
 		t.Errorf("ValidateWithHistory() with empty history got errors: %v", errs)
@@ -161,7 +159,7 @@ func TestPolicy_ValidateWithHistory_EmptyHistory(t *testing.T) {
 func TestPolicy_IsValid(t *testing.T) {
 	policy := NewPolicy(nil)
 
-	if !policy.IsValid("SecurePass123!") {
+	if !policy.IsValid("pass1!") {
 		t.Error("IsValid() should return true for valid password")
 	}
 
@@ -174,8 +172,9 @@ func TestPolicy_GetRequirements(t *testing.T) {
 	policy := NewPolicy(nil)
 	reqs := policy.GetRequirements()
 
-	if len(reqs) != 5 {
-		t.Errorf("GetRequirements() expected 5 requirements, got %d", len(reqs))
+	// Default: length + letter + number + special = 4
+	if len(reqs) != 4 {
+		t.Errorf("GetRequirements() expected 4 requirements, got %d: %v", len(reqs), reqs)
 	}
 }
 
@@ -316,23 +315,18 @@ func TestPolicy_Validate_SpecificErrors(t *testing.T) {
 			wantErr:  ErrPasswordTooShort,
 		},
 		{
-			name:     "no uppercase",
-			password: "securepass123!a",
-			wantErr:  ErrPasswordNoUppercase,
-		},
-		{
-			name:     "no lowercase",
-			password: "SECUREPASS123!A",
-			wantErr:  ErrPasswordNoLowercase,
+			name:     "no letter",
+			password: "123456!@",
+			wantErr:  ErrPasswordNoLetter,
 		},
 		{
 			name:     "no number",
-			password: "SecurePassword!a",
+			password: "abcdef!@",
 			wantErr:  ErrPasswordNoNumber,
 		},
 		{
 			name:     "no special",
-			password: "SecurePass12345",
+			password: "abcdef12",
 			wantErr:  ErrPasswordNoSpecial,
 		},
 	}

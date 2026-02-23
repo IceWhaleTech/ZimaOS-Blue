@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
 import type { Conversation, Message, SendMessageRequest, MessageStats, MessageAttachment } from '@/api/chat'
 import { conversationApi, messageApi } from '@/api/chat'
+import { approvalApi } from '@/api/approval'
+import type { Decision } from '@/api/approval'
 import { SSEClient } from '@/utils/sse'
 import { useSettingsStore } from './settings'
 import { useProviderPoolStore } from './providerPool'
@@ -27,6 +29,8 @@ export const useChatStore = defineStore('chat', () => {
   const streamError = ref<string | null>(null) // Error from stream (displayed in chat area)
   const securityBlocked = ref<{ message: string; threatLevel: string } | null>(null)
   const trialExhausted = ref(false) // Trial quota exhausted flag
+  const toolExecuting = ref(false) // Tool execution in progress
+  const toolExecutingStartTime = ref<number>(0) // Timestamp when tool execution started
   const contextTrimInfo = ref<{ type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number } | null>(null)
 
   // Pagination state
@@ -41,6 +45,14 @@ export const useChatStore = defineStore('chat', () => {
 
   // Multi-select state
   const selectedMessageIds = ref<Set<string>>(new Set())
+
+  // Tool approval state
+  const pendingApproval = ref<{
+    request_id: string
+    tool_name: string
+    tool_call_id: string
+    arguments: Record<string, unknown>
+  } | null>(null)
   const isMultiSelectMode = ref(false)
 
   // SSE client for streaming
@@ -322,6 +334,13 @@ export const useChatStore = defineStore('chat', () => {
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
           if (!chunk.delta) return
+          // Clear tool executing state when new content arrives
+          if (toolExecuting.value) {
+            toolExecuting.value = false
+            // Reset streaming content — previous round's text was pre-tool,
+            // the LLM is now generating a fresh response after tool results
+            streamingContent.value = ''
+          }
           streamingContent.value += chunk.delta
           // Update the last message (assistant's response) - use shallowRef properly
           const lastIndex = messages.value.length - 1
@@ -338,7 +357,25 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
+        onToolExecuting: (_toolCount) => {
+          toolExecuting.value = true
+          toolExecutingStartTime.value = Date.now()
+          // Update the streaming message to show tool execution indicator
+          const lastIndex = messages.value.length - 1
+          if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
+            const newMessages = [...messages.value]
+            const currentMsg = newMessages[lastIndex]
+            if (currentMsg) {
+              newMessages[lastIndex] = {
+                ...currentMsg,
+                content: streamingContent.value,
+              }
+              messages.value = newMessages
+            }
+          }
+        },
         onError: (err) => {
+          toolExecuting.value = false
           // Map error codes to i18n keys for accurate error messages
           const errorMap: Record<string, string> = {
             'STREAM_EMPTY': 'streamEmpty',
@@ -391,6 +428,7 @@ export const useChatStore = defineStore('chat', () => {
         },
         onComplete: (finalChunk) => {
           streaming.value = false
+          toolExecuting.value = false
           // Store metadata from final chunk directly on the message object
           // This ensures metadata persists even after fetchMessages() refreshes the list
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
@@ -444,6 +482,7 @@ export const useChatStore = defineStore('chat', () => {
     } finally {
       sending.value = false
       streaming.value = false
+      toolExecuting.value = false
       streamingContent.value = ''
     }
   }
@@ -451,6 +490,7 @@ export const useChatStore = defineStore('chat', () => {
   function cancelStreaming() {
     sseClient.disconnect()
     streaming.value = false
+    toolExecuting.value = false
     streamingContent.value = ''
   }
 
@@ -483,6 +523,10 @@ export const useChatStore = defineStore('chat', () => {
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
           if (!chunk.delta) return
+          if (toolExecuting.value) {
+            toolExecuting.value = false
+            streamingContent.value = ''
+          }
           streamingContent.value += chunk.delta
           // Update the last message
           const lastIndex = messages.value.length - 1
@@ -498,21 +542,29 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
+        onToolExecuting: () => {
+          toolExecuting.value = true
+          toolExecutingStartTime.value = Date.now()
+        },
         onError: (err) => {
           error.value = err.message
           streaming.value = false
+          toolExecuting.value = false
         },
         onBlocked: (message, threatLevel) => {
           securityBlocked.value = { message, threatLevel }
           streaming.value = false
+          toolExecuting.value = false
         },
         onTrialExhausted: () => {
           trialExhausted.value = true
           streaming.value = false
+          toolExecuting.value = false
           sending.value = false
         },
         onComplete: (finalChunk) => {
           streaming.value = false
+          toolExecuting.value = false
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
@@ -538,6 +590,7 @@ export const useChatStore = defineStore('chat', () => {
     } finally {
       sending.value = false
       streaming.value = false
+      toolExecuting.value = false
       streamingContent.value = ''
     }
   }
@@ -597,6 +650,10 @@ export const useChatStore = defineStore('chat', () => {
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
           if (!chunk.delta) return
+          if (toolExecuting.value) {
+            toolExecuting.value = false
+            streamingContent.value = ''
+          }
           streamingContent.value += chunk.delta
           const lastIndex = messages.value.length - 1
           if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
@@ -611,8 +668,13 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
+        onToolExecuting: () => {
+          toolExecuting.value = true
+          toolExecutingStartTime.value = Date.now()
+        },
         onError: (err) => {
           error.value = err.message
+          toolExecuting.value = false
           // Keep message with content, mark as interrupted
           const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
           if (streamingMsg && streamingMsg.content.trim()) {
@@ -633,11 +695,13 @@ export const useChatStore = defineStore('chat', () => {
         onTrialExhausted: () => {
           trialExhausted.value = true
           streaming.value = false
+          toolExecuting.value = false
           sending.value = false
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
         },
         onComplete: (finalChunk) => {
           streaming.value = false
+          toolExecuting.value = false
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
@@ -673,6 +737,7 @@ export const useChatStore = defineStore('chat', () => {
     } finally {
       sending.value = false
       streaming.value = false
+      toolExecuting.value = false
       streamingContent.value = ''
     }
   }
@@ -788,6 +853,35 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function resolveApproval(decision: Decision) {
+    if (!pendingApproval.value) return
+    try {
+      await approvalApi.resolve(pendingApproval.value.request_id, decision)
+    } finally {
+      pendingApproval.value = null
+    }
+  }
+
+  async function checkPendingApprovals() {
+    try {
+      const response = await approvalApi.listPending()
+      const pending = response.data
+      if (pending && pending.length > 0) {
+        const first = pending[0]
+        if (first) {
+          pendingApproval.value = {
+            request_id: first.id,
+            tool_name: first.tool_name,
+            tool_call_id: first.tool_call_id,
+            arguments: first.arguments,
+          }
+        }
+      }
+    } catch {
+      // Approval endpoint may not exist yet — ignore
+    }
+  }
+
   async function clearAllConversations() {
     try {
       // Delete all conversations one by one
@@ -819,6 +913,8 @@ export const useChatStore = defineStore('chat', () => {
     streamError,
     securityBlocked,
     trialExhausted,
+    toolExecuting,
+    toolExecutingStartTime,
     contextTrimInfo,
     hasMoreMessages,
     loadingMore,
@@ -826,6 +922,7 @@ export const useChatStore = defineStore('chat', () => {
     searching,
     selectedMessageIds,
     isMultiSelectMode,
+    pendingApproval,
 
     // Computed
     currentConversation,
@@ -859,5 +956,7 @@ export const useChatStore = defineStore('chat', () => {
     exitMultiSelectMode,
     deleteSelectedMessages,
     clearAllConversations,
+    resolveApproval,
+    checkPendingApprovals,
   }
 })

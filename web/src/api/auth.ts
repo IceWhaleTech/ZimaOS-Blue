@@ -15,14 +15,7 @@ export interface LoginRequest {
   password: string
 }
 
-export interface LoginResponse {
-  token: string
-  refresh_token: string
-  expires_at: string
-  user: User
-}
-
-export interface RefreshResponse {
+export interface AuthTokenResponse {
   token: string
   refresh_token: string
   expires_at: string
@@ -54,18 +47,19 @@ export interface PasswordPolicy {
   min_length: number
   require_uppercase: boolean
   require_lowercase: boolean
+  require_letter: boolean
   require_number: boolean
   require_special: boolean
 }
 
 // Auth API
 export const authApi = {
-  login: (data: LoginRequest) => api.post<LoginResponse>('/auth/login', data),
+  login: (data: LoginRequest) => api.post<AuthTokenResponse>('/auth/login', data),
 
   logout: () => api.post<{ success: boolean }>('/auth/logout'),
 
   refresh: (refreshToken: string) =>
-    api.post<RefreshResponse>('/auth/refresh', { refresh_token: refreshToken }),
+    api.post<AuthTokenResponse>('/auth/refresh', { refresh_token: refreshToken }),
 
   me: () => api.get<User>('/users/me'),
 

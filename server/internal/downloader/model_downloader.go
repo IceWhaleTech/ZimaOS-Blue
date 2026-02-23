@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ModelFile describes a downloadable model file with fallback mirrors.
@@ -282,7 +283,7 @@ func (d *ModelDownloader) downloadFile(ctx context.Context, url, destPath string
 	d.progress.Total = resp.ContentLength
 	d.mu.Unlock()
 
-	startTime := time.Now()
+	startTime := timeutil.NowTime()
 	buf := make([]byte, 32*1024)
 	var downloaded int64
 
@@ -313,7 +314,7 @@ func (d *ModelDownloader) downloadFile(ctx context.Context, url, destPath string
 			}
 
 			// Calculate speed and ETA
-			elapsed := time.Since(startTime).Seconds()
+			elapsed := timeutil.SinceTime(startTime).Seconds()
 			if elapsed > 0 {
 				speed := float64(downloaded) / elapsed
 				d.progress.SpeedHuman = formatSpeed(speed)

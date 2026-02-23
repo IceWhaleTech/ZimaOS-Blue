@@ -59,7 +59,7 @@ Construido para desarrolladores audaces que quieren **crear sus propios agentes 
 Lleva las cosas más lejos: ofrece soporte nativo para **más de 20 plataformas de mensajería instantánea**, interfaces **controladas por voz** para diálogos naturales y conscientes del contexto, **cambio de modelo sin configuración** con escaneo de IDE, y personalidades con capas SOUL.
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Rápido y Ligero
@@ -95,13 +95,49 @@ Creemos que la **computación personal de próxima generación** abraza los LLMs
 - **Local-First, Ultra Ligero, Multi-Dispositivo** – No requiere hardware de gama alta. Se ejecuta en cualquier cosa que pueda computar.
 - **Seguro y Auditable** – Auditoría de sesiones, sandboxing, controles de permisos y un proxy API integrado que actúa como firewall a nivel de aplicación — cada byte de entrada/salida es visible.
 
+![](../../docs/assets/design_principle.png)
+
 Minimizamos el código repetitivo para que te **concentres en lo que importa**. Fiel a la <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **filosofía de diseño de ZimaOS**, Blue ofrece:
 - **De Cero a Uno en Un Clic** – Despliega al instante, sin configuración compleja.
 - **Prototipado Rápido** – Crea herramientas, interacciones y paquetes de aplicaciones específicos para cada escenario con vibe coding o a mano.
 - **Listo para el Mundo** – **El mundo es enorme**, y no tiene por qué ser solo en inglés. **Más de 20 idiomas, nativos**, sin barreras.
 - **Ecosistema de Modelos Abierto** – Sin dependencia de proveedores. Trae tus propios modelos.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Proveedor | Modelos | Tipo |
+|-----------|---------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Nube |
+| Anthropic | Claude 4.5, Claude 4 | Nube |
+| Google | Gemini 2.5, Gemini 2.0 | Nube |
+| Ollama | Llama, Qwen, Gemma, Phi, etc. | Local |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Nube |
+| Grok | Grok-3, Grok-3-mini | Nube |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Nube |
+| GLM | GLM-4, GLM-4-Flash | Nube |
+| Moonshot | Moonshot-v1 | Nube |
+| MiniMax | abab6.5, abab5.5 | Nube |
+| Venice | Llama, Mistral (privacidad primero) | Nube |
+| AWS Bedrock | Claude, Llama, Titan | Nube |
+| Azure | Modelos OpenAI vía Azure | Nube |
+| OpenRouter | 100+ modelos agregados | Nube |
+| AIHubMix | Agregador multi-proveedor | Nube |
+| Codex | OpenAI Codex | Nube |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Nube |
+| Personalizado | Cualquier API compatible con OpenAI / Anthropic / Gemini | Nube / Local |
+
+</details>
+
+### IDEs Compatibles
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Inicio Rápido
 
@@ -129,7 +165,6 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -142,11 +177,7 @@ sh build.sh
 .\build.bat
 ```
 
-> **Note:** Windows builds require:
-> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus, kokoro, onnx)
-> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) for system libraries (winmm, etc.)
->
-> Make sure `gcc`, `cmake` are in your `PATH`.
+> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
 
 ## Visión General de la Arquitectura
 

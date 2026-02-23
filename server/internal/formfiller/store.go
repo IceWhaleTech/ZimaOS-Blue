@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Store handles persistence for form filler data.
@@ -61,8 +61,8 @@ func NewStore(dataDir string) (*Store, error) {
 			Name:      "Personal",
 			IsDefault: true,
 			Fields:    make(map[string]string),
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt: timeutil.NowTime(),
+			UpdatedAt: timeutil.NowTime(),
 		}
 		s.templates[defaultTemplate.ID] = defaultTemplate
 		_ = s.saveTemplates()
@@ -225,8 +225,8 @@ func (s *Store) CreateTemplate(req *CreateTemplateRequest) (*FillTemplate, error
 		Name:      req.Name,
 		IsDefault: req.IsDefault,
 		Fields:    req.Fields,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: timeutil.NowTime(),
+		UpdatedAt: timeutil.NowTime(),
 	}
 
 	if template.Fields == nil {
@@ -268,7 +268,7 @@ func (s *Store) UpdateTemplate(id string, req *UpdateTemplateRequest) (*FillTemp
 	if req.Fields != nil {
 		t.Fields = req.Fields
 	}
-	t.UpdatedAt = time.Now()
+	t.UpdatedAt = timeutil.NowTime()
 
 	if err := s.saveTemplates(); err != nil {
 		return nil, err
@@ -305,7 +305,7 @@ func (s *Store) UpdatePatterns(patterns map[FieldType][]string) error {
 	defer s.mu.Unlock()
 
 	s.patterns.Patterns = patterns
-	s.patterns.UpdatedAt = time.Now()
+	s.patterns.UpdatedAt = timeutil.NowTime()
 
 	return s.savePatterns()
 }
@@ -341,7 +341,7 @@ func (s *Store) SaveSiteMapping(mapping *SiteMapping) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	mapping.LastUsed = time.Now()
+	mapping.LastUsed = timeutil.NowTime()
 	s.sites[mapping.Domain] = mapping
 
 	return s.saveSiteMapping(mapping)

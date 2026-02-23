@@ -157,44 +157,13 @@ api.interceptors.response.use(
         return Promise.reject(error)
       }
 
-      if (isRefreshing) {
-        // Another request is already refreshing — queue this one
-        return new Promise((resolve) => {
-          addRefreshSubscriber((newToken: string) => {
-            originalRequest.headers.Authorization = `Bearer ${newToken}`
-            resolve(api(originalRequest))
-          })
-        })
-      }
-
-      isRefreshing = true
-      const refreshTokenValue = localStorage.getItem('refresh_token')
-
-      if (!refreshTokenValue) {
-        isRefreshing = false
-        clearAuthAndRedirect()
-        return Promise.reject(error)
-      }
-
-      try {
-        const response = await api.post('/auth/refresh', { refresh_token: refreshTokenValue })
-        const { token, refresh_token: newRefreshToken } = response.data
-
-        localStorage.setItem('token', token)
-        localStorage.setItem('refresh_token', newRefreshToken)
-
-        isRefreshing = false
-        onRefreshed(token)
-
-        // Retry original request with new token
-        originalRequest.headers.Authorization = `Bearer ${token}`
+      // Reuse ensureFreshToken() which uses raw fetch (avoids recursive interceptor)
+      const newToken = await ensureFreshToken()
+      if (newToken) {
+        originalRequest.headers.Authorization = `Bearer ${newToken}`
         return api(originalRequest)
-      } catch {
-        isRefreshing = false
-        refreshSubscribers = []
-        clearAuthAndRedirect()
-        return Promise.reject(error)
       }
+      return Promise.reject(error)
     }
 
     // Enhance error with translated message

@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Info contains comprehensive system information
@@ -142,7 +142,7 @@ func CollectRuntime() RuntimeInfo {
 func collectOSInfo() OSInfo {
 	hostname, _ := os.Hostname()
 	uptime := getUptime()
-	bootTime := time.Now().Unix() - uptime
+	bootTime := timeutil.Now() - uptime
 
 	return OSInfo{
 		Name:         runtime.GOOS,

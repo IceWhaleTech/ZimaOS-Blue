@@ -213,7 +213,7 @@ function getExecutionStatusColor(status: string): string {
     case 'completed':
       return 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
     case 'running':
-      return 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white'
+      return 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
     case 'pending':
       return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
     case 'failed':
@@ -339,7 +339,7 @@ function getNodeTypeColor(type: NodeType): string {
     case 'trigger':
       return 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700'
     case 'action':
-      return 'bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white border-gray-900 dark:border-white dark:border-gray-900 dark:border-white'
+      return 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700'
     case 'condition':
       return 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700'
     case 'loop':

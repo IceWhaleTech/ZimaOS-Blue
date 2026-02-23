@@ -128,7 +128,7 @@ func (p *PoolManager) StopHealthCheck() {
 
 // checkHealth performs a health check on the connection pool.
 func (p *PoolManager) checkHealth(ctx context.Context) bool {
-	start := time.Now()
+	start := timeutil.NowTime()
 
 	// Try to ping the database
 	err := p.db.PingContext(ctx)
@@ -151,7 +151,7 @@ func (p *PoolManager) checkHealth(ctx context.Context) bool {
 	p.stats.LastHealthCheck = timeutil.NowTime()
 
 	p.logger.Debug().
-		Dur("duration", time.Since(start)).
+		Dur("duration", timeutil.SinceTime(start)).
 		Msg("Health check passed")
 
 	return true

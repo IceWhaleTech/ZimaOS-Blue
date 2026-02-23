@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/go-jose/go-jose/v3/jwt"
 	"github.com/google/uuid"
 )
@@ -93,7 +94,7 @@ func (s *RefreshTokenStore) Generate(userID, username, clientID string, scope []
 		Username:  username,
 		ClientID:  clientID,
 		Scope:     scope,
-		ExpiresAt: time.Now().Add(ttl),
+		ExpiresAt: timeutil.NowTime().Add(ttl),
 		Revoked:   false,
 	}
 
@@ -118,7 +119,7 @@ func (s *RefreshTokenStore) Validate(token, clientID string) (*RefreshToken, err
 		return nil, ErrTokenRevoked
 	}
 
-	if time.Now().After(rt.ExpiresAt) {
+	if timeutil.NowNano() > rt.ExpiresAt.UnixNano() {
 		return nil, ErrTokenExpired
 	}
 
@@ -162,7 +163,7 @@ func (s *RefreshTokenStore) cleanup() {
 
 	for range ticker.C {
 		s.mu.Lock()
-		now := time.Now()
+		now := timeutil.NowTime()
 		for token, rt := range s.tokens {
 			if now.After(rt.ExpiresAt) || rt.Revoked {
 				delete(s.tokens, token)
@@ -196,7 +197,7 @@ func NewTokenService(keyManager *KeyManager, issuer string, accessTTL, refreshTT
 
 // GenerateTokens generates access, refresh, and ID tokens.
 func (s *TokenService) GenerateTokens(authCode *AuthorizationCode) (*TokenResponse, error) {
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	// Generate access token
 	accessToken, err := s.generateAccessToken(authCode.UserID, authCode.ClientID, authCode.Scope, now)
@@ -252,7 +253,7 @@ func (s *TokenService) RefreshTokens(refreshToken, clientID string) (*TokenRespo
 		return nil, err
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	// Generate new access token
 	accessToken, err := s.generateAccessToken(rt.UserID, rt.ClientID, rt.Scope, now)
@@ -362,7 +363,7 @@ func (s *TokenService) ValidateAccessToken(tokenString string) (*TokenClaims, er
 	}
 
 	// Validate expiry
-	if claims.Expiry != nil && time.Now().After(claims.Expiry.Time()) {
+	if claims.Expiry != nil && timeutil.NowNano() > claims.Expiry.Time().UnixNano() {
 		return nil, ErrTokenExpired
 	}
 

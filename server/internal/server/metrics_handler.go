@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MetricsHandler handles metrics-related API endpoints
@@ -31,7 +32,7 @@ func (h *MetricsHandler) GetCurrentMetrics(c echo.Context) error {
 	latest := h.collector.GetLatest()
 	if latest == nil {
 		return c.JSON(http.StatusOK, metrics.SystemMetrics{
-			Timestamp: time.Now(),
+			Timestamp: timeutil.NowTime(),
 		})
 	}
 	return c.JSON(http.StatusOK, latest)

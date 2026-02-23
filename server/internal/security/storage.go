@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Storage handles persistence of security data.
@@ -192,7 +194,7 @@ func (s *Storage) IsIPBlocked(ip string) bool {
 	}
 
 	// Check if block has expired
-	if !blocked.Permanent && time.Now().After(blocked.ExpiresAt) {
+	if !blocked.Permanent && timeutil.NowNano() > blocked.ExpiresAt.UnixNano() {
 		return false
 	}
 
@@ -207,7 +209,7 @@ func (s *Storage) SaveScanCache(items []SecurityScanItem, summary ScanSummary) e
 	s.scanCache = &ScanCache{
 		Items:     items,
 		Summary:   summary,
-		Timestamp: time.Now(),
+		Timestamp: timeutil.NowTime(),
 	}
 
 	filePath := s.scanCacheFile()
@@ -234,7 +236,7 @@ func (s *Storage) CleanupExpired(retentionDays int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	cutoff := now.AddDate(0, 0, -retentionDays)
 
 	// Cleanup old event files
@@ -301,7 +303,7 @@ func (s *Storage) loadEvents() error {
 	}
 
 	// Load only recent events (last 7 days)
-	cutoff := time.Now().AddDate(0, 0, -7)
+	cutoff := timeutil.NowTime().AddDate(0, 0, -7)
 
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
@@ -426,7 +428,7 @@ func (s *Storage) GetEventStats(period string) (*EventStats, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	var startDate time.Time
 
 	switch period {

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Status represents the account status.
@@ -65,7 +66,7 @@ type User struct {
 
 // NewUser creates a new User with default values.
 func NewUser(username, passwordHash string) *User {
-	now := time.Now().UTC()
+	now := timeutil.NowTime().UTC()
 	return &User{
 		ID:           uuid.New(),
 		Username:     username,
@@ -82,7 +83,7 @@ func (u *User) IsActive() bool {
 	if u.Status != StatusActive {
 		return false
 	}
-	if u.LockedUntil != nil && time.Now().Before(*u.LockedUntil) {
+	if u.LockedUntil != nil && timeutil.NowTime().Before(*u.LockedUntil) {
 		return false
 	}
 	return true
@@ -93,7 +94,7 @@ func (u *User) IsLocked() bool {
 	if u.Status == StatusLocked {
 		return true
 	}
-	if u.LockedUntil != nil && time.Now().Before(*u.LockedUntil) {
+	if u.LockedUntil != nil && timeutil.NowTime().Before(*u.LockedUntil) {
 		return true
 	}
 	return false
@@ -128,7 +129,7 @@ func NewSession(userID uuid.UUID, refreshToken, userAgent, ipAddress string, exp
 		UserAgent:    userAgent,
 		IPAddress:    ipAddress,
 		ExpiresAt:    expiresAt,
-		CreatedAt:    time.Now().UTC(),
+		CreatedAt:    timeutil.NowTime().UTC(),
 	}
 }
 
@@ -137,7 +138,7 @@ func (s *Session) IsValid() bool {
 	if s.RevokedAt != nil {
 		return false
 	}
-	return time.Now().Before(s.ExpiresAt)
+	return timeutil.NowTime().Before(s.ExpiresAt)
 }
 
 // CreateUserRequest represents a request to create a user.

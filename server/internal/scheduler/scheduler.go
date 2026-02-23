@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Common errors
@@ -162,7 +163,7 @@ func (s *Scheduler) Schedule(name string, handler TaskHandler, opts ...TaskOptio
 		Name:        name,
 		Priority:    PriorityNormal,
 		Status:      TaskStatusPending,
-		ScheduledAt: time.Now(),
+		ScheduledAt: timeutil.NowTime(),
 		MaxRetries:  s.config.DefaultMaxRetries,
 		Timeout:     s.config.DefaultTimeout,
 		Metadata:    make(map[string]string),
@@ -373,7 +374,7 @@ func (s *Scheduler) executeTask(task *Task) {
 	// Update task status
 	s.mu.Lock()
 	task.Status = TaskStatusRunning
-	now := time.Now()
+	now := timeutil.NowTime()
 	task.StartedAt = &now
 	s.mu.Unlock()
 
@@ -391,7 +392,7 @@ func (s *Scheduler) executeTask(task *Task) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	completedAt := time.Now()
+	completedAt := timeutil.NowTime()
 	task.CompletedAt = &completedAt
 
 	if err != nil {

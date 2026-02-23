@@ -19,8 +19,9 @@ type SettingsHandler struct {
 
 // Settings represents user preferences stored on backend
 type Settings struct {
-	Locale   string `json:"locale,omitempty"`   // User's preferred locale (e.g., "zh-CN", "en-US")
-	Timezone string `json:"timezone,omitempty"` // User's timezone
+	Locale             string `json:"locale,omitempty"`               // User's preferred locale (e.g., "zh-CN", "en-US")
+	Timezone           string `json:"timezone,omitempty"`             // User's timezone
+	SmartToolSelection *bool  `json:"smart_tool_selection,omitempty"` // IR-based tool filtering (nil = default true)
 }
 
 // NewSettingsHandler creates a new settings handler
@@ -83,6 +84,11 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 	if timezone, ok := updates["timezone"].(string); ok {
 		h.settings.Timezone = timezone
 	}
+	if v, ok := updates["smart_tool_selection"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmartToolSelection = &b
+		}
+	}
 
 	if err := h.save(); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to save settings"})
@@ -96,6 +102,16 @@ func (h *SettingsHandler) GetLocale() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.settings.Locale
+}
+
+// GetSmartToolSelection returns whether smart tool selection is enabled (default true).
+func (h *SettingsHandler) GetSmartToolSelection() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmartToolSelection == nil {
+		return true
+	}
+	return *h.settings.SmartToolSelection
 }
 
 // load reads settings from disk

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // GrayscaleConfig holds grayscale/feature flag configuration.
@@ -159,7 +160,7 @@ func (e *FlagEvaluator) GetABTestVariant(testName string, ctx *EvaluationContext
 		return nil
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	if !test.StartTime.IsZero() && now.Before(test.StartTime) {
 		return nil
 	}

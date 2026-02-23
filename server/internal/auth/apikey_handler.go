@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/labstack/echo/v4"
 )
 
@@ -104,7 +105,7 @@ func (h *APIKeyHandler) CreateKey(c echo.Context) error {
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid expires_in format")
 		}
-		expiresAt = time.Now().Add(duration)
+		expiresAt = timeutil.NowTime().Add(duration)
 	}
 
 	key, err := h.service.CreateKey(c.Request().Context(), &CreateKeyRequest{

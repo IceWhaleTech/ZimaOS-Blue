@@ -10,7 +10,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // route53Provider is a lightweight Route53 DNS-01 provider that replaces
@@ -99,7 +100,7 @@ func (p *route53Provider) changeRecord(action, fqdn, value string) error {
 // signV4 signs the request using AWS Signature Version 4.
 // Route53 is a global service but uses us-east-1 for signing.
 func (p *route53Provider) signV4(req *http.Request, payload []byte) {
-	now := time.Now().UTC()
+	now := timeutil.NowTime().UTC()
 	date := now.Format("20060102")
 	amzDate := now.Format("20060102T150405Z")
 	region := "us-east-1" // Route53 always signs with us-east-1

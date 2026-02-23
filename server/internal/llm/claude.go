@@ -50,9 +50,10 @@ func RememberToolCap(baseURL string, level ToolCapLevel) {
 
 // ClaudeProvider implements the Provider interface for Anthropic Claude.
 type ClaudeProvider struct {
-	apiKey  string
-	baseURL string
-	client  *http.Client
+	apiKey       string
+	baseURL      string
+	client       *http.Client
+	streamClient *http.Client // no Timeout — streaming relies on context cancellation
 }
 
 // NewClaudeProvider creates a new Claude provider.
@@ -71,6 +72,13 @@ func NewClaudeProvider(apiKey, baseURL string) *ClaudeProvider {
 			Timeout: claudeTimeout,
 			Transport: &http.Transport{
 				// Disable response buffering for streaming
+				DisableCompression: true,
+			},
+		},
+		streamClient: &http.Client{
+			// No Timeout — http.Client.Timeout kills long-running SSE streams.
+			// Context cancellation handles cleanup instead.
+			Transport: &http.Transport{
 				DisableCompression: true,
 			},
 		},
@@ -302,8 +310,8 @@ func (p *ClaudeProvider) ChatStreamCallback(ctx context.Context, req ChatRequest
 		p.applyToolLevel(&claudeReq, cachedLevel, req.Tools, origSystem)
 	}
 
-	// Try the request
-	resp, err := p.doClaudeRequest(ctx, claudeReq)
+	// Try the request (use stream client — no hard timeout for SSE)
+	resp, err := p.doClaudeStreamRequest(ctx, claudeReq)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -339,7 +347,7 @@ func (p *ClaudeProvider) ChatStreamCallback(ctx context.Context, req ChatRequest
 			claudeReq.Tools = nil // clear before reapply
 			p.applyToolLevel(&claudeReq, level, req.Tools, origSystem)
 
-			retryResp, retryErr := p.doClaudeRequest(ctx, claudeReq)
+			retryResp, retryErr := p.doClaudeStreamRequest(ctx, claudeReq)
 			if retryErr != nil {
 				continue
 			}
@@ -363,6 +371,15 @@ func (p *ClaudeProvider) ChatStreamCallback(ctx context.Context, req ChatRequest
 
 // doClaudeRequest marshals and sends a claude request, returning the raw HTTP response.
 func (p *ClaudeProvider) doClaudeRequest(ctx context.Context, claudeReq claudeRequest) (*http.Response, error) {
+	return p.doClaudeRequestWithClient(ctx, claudeReq, p.client)
+}
+
+// doClaudeStreamRequest sends a Claude API request using the streaming client (no hard timeout).
+func (p *ClaudeProvider) doClaudeStreamRequest(ctx context.Context, claudeReq claudeRequest) (*http.Response, error) {
+	return p.doClaudeRequestWithClient(ctx, claudeReq, p.streamClient)
+}
+
+func (p *ClaudeProvider) doClaudeRequestWithClient(ctx context.Context, claudeReq claudeRequest, client *http.Client) (*http.Response, error) {
 	body, err := json.Marshal(claudeReq)
 	if err != nil {
 		return nil, err
@@ -375,7 +392,7 @@ func (p *ClaudeProvider) doClaudeRequest(ctx context.Context, claudeReq claudeRe
 	httpReq.Header.Set("x-api-key", p.apiKey)
 	httpReq.Header.Set("anthropic-version", claudeAPIVersion)
 	httpReq.Header.Set("Accept", "text/event-stream")
-	return p.client.Do(httpReq)
+	return client.Do(httpReq)
 }
 
 // applyToolLevel modifies claudeReq in-place to match the given tool capability level.

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Storage defines the interface for provider data persistence
@@ -91,8 +93,16 @@ type providerStorage struct {
 
 // providerData stores provider with API keys (for storage only)
 type providerData struct {
-	Provider *Provider `json:"provider"`
-	APIKeys  []string  `json:"api_keys,omitempty"` // Store actual keys separately
+	Provider     *Provider     `json:"provider"`
+	APIKeys      []string      `json:"api_keys,omitempty"`      // Store actual keys separately
+	OAuthSecrets *oauthSecrets `json:"oauth_secrets,omitempty"` // Store OAuth tokens separately
+}
+
+// oauthSecrets stores OAuth tokens that have json:"-" tags on OAuthConfig
+type oauthSecrets struct {
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	ClientSecret string `json:"client_secret,omitempty"`
 }
 
 // SaveProvider saves a provider to storage
@@ -125,8 +135,9 @@ func (s *FileStorage) SaveProvider(provider *Provider) error {
 	storage.Providers[provider.ID] = &providerData{
 		Provider: provider,
 		APIKeys:  apiKeys,
+		OAuthSecrets: extractOAuthSecrets(provider),
 	}
-	storage.UpdatedAt = time.Now()
+	storage.UpdatedAt = timeutil.NowTime()
 
 	return s.saveProvidersInternal(storage)
 }
@@ -156,6 +167,9 @@ func (s *FileStorage) LoadProvider(id string) (*Provider, error) {
 			provider.APIKeys[i].Key = data.APIKeys[i]
 		}
 	}
+
+	// Restore OAuth secrets
+	restoreOAuthSecrets(provider, data.OAuthSecrets)
 
 	return provider, nil
 }
@@ -188,12 +202,14 @@ func (s *FileStorage) LoadAllProviders() ([]*Provider, error) {
 				needsSave = true
 			}
 		}
+		// Restore OAuth secrets
+		restoreOAuthSecrets(provider, data.OAuthSecrets)
 		providers = append(providers, provider)
 	}
 
 	// Persist backfilled IDs so they're stable across restarts
 	if needsSave {
-		storage.UpdatedAt = time.Now()
+		storage.UpdatedAt = timeutil.NowTime()
 		_ = s.saveProvidersInternal(storage)
 	}
 
@@ -215,7 +231,7 @@ func (s *FileStorage) DeleteProvider(id string) error {
 	}
 
 	delete(storage.Providers, id)
-	storage.UpdatedAt = time.Now()
+	storage.UpdatedAt = timeutil.NowTime()
 
 	// Also delete models file
 	modelsPath := s.modelsFile(id)
@@ -503,4 +519,29 @@ func (s *FileStorage) LoadConfig() (*PoolConfig, error) {
 	}
 
 	return &config, nil
+}
+
+// extractOAuthSecrets extracts OAuth secrets from a provider for storage.
+func extractOAuthSecrets(provider *Provider) *oauthSecrets {
+	if provider.OAuth == nil {
+		return nil
+	}
+	if provider.OAuth.AccessToken == "" && provider.OAuth.RefreshToken == "" && provider.OAuth.ClientSecret == "" {
+		return nil
+	}
+	return &oauthSecrets{
+		AccessToken:  provider.OAuth.AccessToken,
+		RefreshToken: provider.OAuth.RefreshToken,
+		ClientSecret: provider.OAuth.ClientSecret,
+	}
+}
+
+// restoreOAuthSecrets restores OAuth secrets from storage into a provider.
+func restoreOAuthSecrets(provider *Provider, secrets *oauthSecrets) {
+	if secrets == nil || provider.OAuth == nil {
+		return
+	}
+	provider.OAuth.AccessToken = secrets.AccessToken
+	provider.OAuth.RefreshToken = secrets.RefreshToken
+	provider.OAuth.ClientSecret = secrets.ClientSecret
 }

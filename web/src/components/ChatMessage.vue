@@ -61,6 +61,26 @@ const ttsError = ref<string | null>(null)
 // Attachment preview state
 const previewAttachment = ref<{ type: string; src: string; name: string; content?: string } | null>(null)
 
+// Tool execution elapsed timer
+const toolElapsedSeconds = ref(0)
+let toolTimerHandle: ReturnType<typeof setInterval> | null = null
+
+watch(() => chatStore.toolExecuting, (executing) => {
+  if (executing) {
+    toolElapsedSeconds.value = 0
+    toolTimerHandle = setInterval(() => {
+      if (chatStore.toolExecutingStartTime > 0) {
+        toolElapsedSeconds.value = Math.floor((Date.now() - chatStore.toolExecutingStartTime) / 1000)
+      }
+    }, 1000)
+  } else {
+    if (toolTimerHandle) {
+      clearInterval(toolTimerHandle)
+      toolTimerHandle = null
+    }
+  }
+})
+
 // Helper to strip markdown heading from first line if present
 function stripFirstLineHeading(content: string): string {
   const lines = content.split('\n')
@@ -149,6 +169,12 @@ const contentSegments = computed(() => {
 
 // Check if message has typeless cards
 const hasCards = computed(() => parsedContent.value !== null && parsedContent.value.cards.length > 0)
+
+// Card-only: no text segments, only cards — skip assistant bubble wrapper
+const isCardOnly = computed(() => {
+  if (!hasCards.value || !contentSegments.value) return false
+  return contentSegments.value.every(s => s.type !== 'text' || !(s.content as string).trim())
+})
 
 const formattedTime = computed(() => {
   const date = new Date(props.message.created_at)
@@ -248,6 +274,10 @@ async function handleCopyMessage() {
 // Clean up incremental parse state when component is unmounted
 onUnmounted(() => {
   clearIncrementalState(props.message.id, props.message.conversation_id)
+  if (toolTimerHandle) {
+    clearInterval(toolTimerHandle)
+    toolTimerHandle = null
+  }
   // Only stop manually-triggered TTS (not auto-play streaming which survives component remount)
   // When streaming ends, the message component remounts with a new server ID —
   // we must not kill the streaming TTS manager during that transition.
@@ -346,12 +376,18 @@ watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
 async function handleCardAction(actionId: string, cardId?: string) {
   if (!cardId) return
 
-  // Find the action label from the card
+  // Find the action label and card metadata (actions exist on result, ui-review, alert, action cards)
   let actionLabel: string | undefined
-  const card = parsedContent.value?.cards.find(c => c.id === cardId) as TypelessCardAction | undefined
-  if (card?.type === 'action') {
-    const action = card.actions?.find(a => a.id === actionId)
-    actionLabel = action?.label
+  let cardType: string | undefined
+  let cardTitle: string | undefined
+  const card = parsedContent.value?.cards.find(c => c.id === cardId)
+  if (card) {
+    cardType = card.type
+    if ('title' in card) cardTitle = (card as any).title
+    if ('actions' in card && Array.isArray((card as any).actions)) {
+      const action = (card as any).actions.find((a: any) => a.id === actionId)
+      actionLabel = action?.label
+    }
   }
 
   cardActionLoading.value = cardId
@@ -843,6 +879,20 @@ async function handleMobileDelete() {
           </button>
         </div>
 
+        <!-- Card-only assistant message: render cards directly without bubble wrapper -->
+        <div
+          v-else-if="isCardOnly && contentSegments"
+          class="assistant-message-wrapper relative"
+        >
+          <TypelessCardComponent
+            v-for="segment in contentSegments.filter(s => s.type !== 'text')"
+            :key="segment.key"
+            :card="segment.content as TypelessCard"
+            @action="handleCardAction"
+            @select="handleCardSelect"
+          />
+        </div>
+
         <!-- Assistant message -->
         <div
           v-else
@@ -915,7 +965,17 @@ async function handleMobileDelete() {
 
         <!-- Streaming indicator -->
         <div v-if="isStreaming && isAssistant" class="streaming-indicator mt-2">
-          <span class="inline-flex gap-1">
+          <!-- Tool execution indicator -->
+          <div v-if="chatStore.toolExecuting" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
+            <svg class="w-4 h-4 text-gray-600 dark:text-gray-300 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span class="text-sm text-gray-600 dark:text-gray-300">{{ t('tools.callingProgress') }}</span>
+            <span class="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{{ toolElapsedSeconds }}s</span>
+          </div>
+          <!-- Regular streaming dots -->
+          <span v-else class="inline-flex gap-1">
             <span class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce" style="animation-delay: 0ms" />
             <span class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce" style="animation-delay: 150ms" />
             <span class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce" style="animation-delay: 300ms" />

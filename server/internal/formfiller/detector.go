@@ -231,3 +231,10 @@ func (d *Detector) generateSelector(attrs FieldAttributes, index int) string {
 	}
 	return "input:nth-of-type(" + string(rune('0'+index+1)) + ")"
 }
+
+// splitByWhitespace splits text by any whitespace (spaces, tabs, newlines)
+// and returns non-empty trimmed tokens.
+func splitByWhitespace(text string) []string {
+	parts := strings.Fields(text)
+	return parts
+}

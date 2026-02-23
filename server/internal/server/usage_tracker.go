@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // UsageStats tracks usage statistics per provider and model
@@ -53,7 +54,7 @@ func (ut *UsageTracker) RecordRequest(provider, model string, success bool, late
 		stats = &UsageStats{
 			Provider:  provider,
 			Model:     model,
-			CreatedAt: time.Now(),
+			CreatedAt: timeutil.NowTime(),
 			MinLatency: 1<<63 - 1,
 		}
 		ut.stats[key] = stats
@@ -91,7 +92,7 @@ func (ut *UsageTracker) RecordRequest(provider, model string, success bool, late
 		}
 	}
 
-	stats.LastUsed = time.Now()
+	stats.LastUsed = timeutil.NowTime()
 }
 
 // GetStats returns usage statistics for a provider-model combination

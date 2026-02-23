@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // remoteRequest matches the SWE-Pruner FastAPI /prune endpoint.
@@ -42,7 +42,7 @@ func NewRemoteBackend(baseURL string, client *http.Client) *RemoteBackend {
 
 // Prune sends code to the remote SWE-Pruner service and returns pruned output.
 func (r *RemoteBackend) Prune(ctx context.Context, req PruneRequest) (*PruneResponse, error) {
-	start := time.Now()
+	start := timeutil.NowTime()
 
 	body, err := json.Marshal(remoteRequest{
 		Code:      req.Code,
@@ -98,7 +98,7 @@ func (r *RemoteBackend) Prune(ctx context.Context, req PruneRequest) (*PruneResp
 		OriginalTokens:  origTokens,
 		PrunedTokens:    prunedTokens,
 		CompressionRate: compressionRate,
-		LatencyMs:       float64(time.Since(start).Microseconds()) / 1000.0,
+		LatencyMs:       float64(timeutil.SinceTime(start).Microseconds()) / 1000.0,
 	}, nil
 }
 

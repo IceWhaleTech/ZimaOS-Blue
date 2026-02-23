@@ -14,6 +14,8 @@ var (
 	ErrPasswordNoUppercase = errors.New("password must contain at least one uppercase letter")
 	// ErrPasswordNoLowercase is returned when password lacks lowercase letters.
 	ErrPasswordNoLowercase = errors.New("password must contain at least one lowercase letter")
+	// ErrPasswordNoLetter is returned when password lacks any letters.
+	ErrPasswordNoLetter = errors.New("password must contain at least one letter")
 	// ErrPasswordNoNumber is returned when password lacks numbers.
 	ErrPasswordNoNumber = errors.New("password must contain at least one number")
 	// ErrPasswordNoSpecial is returned when password lacks special characters.
@@ -32,6 +34,8 @@ type PolicyConfig struct {
 	RequireUppercase bool
 	// RequireLowercase requires at least one lowercase letter.
 	RequireLowercase bool
+	// RequireLetter requires at least one letter (upper or lower).
+	RequireLetter bool
 	// RequireNumber requires at least one number.
 	RequireNumber bool
 	// RequireSpecial requires at least one special character.
@@ -45,9 +49,10 @@ type PolicyConfig struct {
 // DefaultPolicyConfig returns the recommended password policy configuration.
 func DefaultPolicyConfig() *PolicyConfig {
 	return &PolicyConfig{
-		MinLength:            8,
-		RequireUppercase:     true,
-		RequireLowercase:     true,
+		MinLength:            6,
+		RequireUppercase:     false,
+		RequireLowercase:     false,
+		RequireLetter:        true,
 		RequireNumber:        true,
 		RequireSpecial:       true,
 		HistoryCount:         5,
@@ -89,6 +94,10 @@ func (p *Policy) Validate(password string) []error {
 
 	if p.config.RequireLowercase && !hasLowercase(password) {
 		errs = append(errs, ErrPasswordNoLowercase)
+	}
+
+	if p.config.RequireLetter && !hasLetter(password) {
+		errs = append(errs, ErrPasswordNoLetter)
 	}
 
 	if p.config.RequireNumber && !hasNumber(password) {
@@ -146,6 +155,9 @@ func (p *Policy) GetRequirements() []string {
 	if p.config.RequireLowercase {
 		reqs = append(reqs, "At least one lowercase letter (a-z)")
 	}
+	if p.config.RequireLetter {
+		reqs = append(reqs, "At least one letter (a-z, A-Z)")
+	}
 	if p.config.RequireNumber {
 		reqs = append(reqs, "At least one number (0-9)")
 	}
@@ -168,6 +180,15 @@ func hasUppercase(s string) bool {
 func hasLowercase(s string) bool {
 	for _, r := range s {
 		if unicode.IsLower(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasLetter(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) {
 			return true
 		}
 	}

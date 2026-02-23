@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // RequestPipeline implements request pipelining for concurrent processing
@@ -163,7 +164,7 @@ func (scs *SmartCacheStrategy) RecordAccess(key string, hit bool) {
 	} else {
 		atomic.AddInt64(&stats.Misses, 1)
 	}
-	stats.LastUpdate = time.Now()
+	stats.LastUpdate = timeutil.NowTime()
 }
 
 // GetStrategy returns cache strategy for a key
@@ -242,7 +243,7 @@ func (cb *CircuitBreaker) RecordFailure() {
 	defer cb.mu.Unlock()
 
 	atomic.AddInt64(&cb.failureCount, 1)
-	cb.lastFailTime = time.Now()
+	cb.lastFailTime = timeutil.NowTime()
 
 	if atomic.LoadInt64(&cb.failureCount) >= cb.threshold {
 		cb.state = "open"
@@ -259,7 +260,7 @@ func (cb *CircuitBreaker) CanExecute() bool {
 	}
 
 	if cb.state == "open" {
-		if time.Since(cb.lastFailTime) > cb.timeout {
+		if timeutil.SinceTime(cb.lastFailTime) > cb.timeout {
 			cb.state = "half-open"
 			return true
 		}

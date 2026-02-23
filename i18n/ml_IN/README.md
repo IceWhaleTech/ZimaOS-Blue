@@ -64,7 +64,7 @@ Clawdbot-ൽ നിന്ന് പ്രചോദനം ഉൾക്കൊണ�
 കൂടുതൽ മുന്നോട്ട്: **20-ലധികം IM പ്ലാറ്റ്‌ഫോമുകൾക്ക്** നേറ്റീവ് സപ്പോർട്ട്, സ്വാഭാവികവും സന്ദർഭ-അവബോധമുള്ളതുമായ സംഭാഷണത്തിനുള്ള **വോയ്‌സ്-ഡ്രിവൺ** ഇന്റർഫേസുകൾ, IDE സ്‌കാനിംഗ് ഉപയോഗിച്ച് **സീറോ-കോൺഫിഗ് മോഡൽ സ്വിച്ചിംഗ്**, SOUL-ലേയേർഡ് പേഴ്‌സണാലിറ്റികൾ.
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### വേഗമേറിയത്, ഭാരം കുറഞ്ഞത്
@@ -100,13 +100,49 @@ Go-യിൽ നേറ്റീവായി കംപൈൽ ചെയ്തത�
 - **ലോക്കൽ-ഫസ്റ്റ്, അൾട്രാ-ലൈറ്റ്‌വെയ്റ്റ്, ക്രോസ്-ഡിവൈസ്** – ഹൈ-എൻഡ് ഹാർഡ്‌വെയർ ആവശ്യമില്ല. കമ്പ്യൂട്ട് ചെയ്യാൻ കഴിയുന്ന എന്തിലും പ്രവർത്തിക്കുന്നു.
 - **സുരക്ഷിതവും ഓഡിറ്റ് ചെയ്യാവുന്നതും** – സെഷൻ ഓഡിറ്റിംഗ്, സാൻഡ്‌ബോക്‌സിംഗ്, പെർമിഷൻ കൺട്രോളുകൾ, ആപ്ലിക്കേഷൻ-ലേയർ ഫയർവാളായി പ്രവർത്തിക്കുന്ന ബിൽറ്റ്-ഇൻ API പ്രോക്‌സി — എല്ലാ ബൈറ്റും ദൃശ്യമാണ്.
 
+![](../../docs/assets/design_principle.png)
+
 ബോയിലർപ്ലേറ്റ് കുറച്ച് **പ്രധാനമായതിൽ ശ്രദ്ധ കേന്ദ്രീകരിക്കാൻ** ഞങ്ങൾ സഹായിക്കുന്നു. <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS-ന്റെ ഡിസൈൻ ഫിലോസഫിക്ക്** വിശ്വസ്തമായി, Blue നൽകുന്നത്:
 - **ഒരു ക്ലിക്കിൽ സീറോ-ടു-വൺ** – സങ്കീർണ്ണമായ കോൺഫിഗറേഷൻ ഇല്ലാതെ തൽക്ഷണം ഡിപ്ലോയ് ചെയ്യുക.
 - **റാപ്പിഡ് പ്രോട്ടോടൈപ്പിംഗ്** – സാഹചര്യ-നിർദ്ദിഷ്ട ടൂളുകൾ, ഇന്ററാക്ഷനുകൾ, ആപ്പ് പാക്കേജുകൾ വൈബ് കോഡ് ചെയ്യുക അല്ലെങ്കിൽ കരകൗശലമായി നിർമ്മിക്കുക.
 - **ഗ്ലോബൽ-റെഡി** – **ലോകം വലുതാണ്**, ഇംഗ്ലീഷ് ഡിഫോൾട്ട് അല്ല. **20-ലധികം ഭാഷകൾ, നേറ്റീവ്**, തടസ്സങ്ങളില്ല.
 - **ഓപ്പൺ മോഡൽ ഇക്കോസിസ്റ്റം** – വെൻഡർ ലോക്ക്-ഇൻ ഇല്ല. നിങ്ങളുടെ സ്വന്തം മോഡലുകൾ കൊണ്ടുവരൂ.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| പ്രൊവൈഡർ | മോഡലുകൾ | തരം |
+|-----------|----------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
+| Anthropic | Claude 4.5, Claude 4 | Cloud |
+| Google | Gemini 2.5, Gemini 2.0 | Cloud |
+| Ollama | Llama, Qwen, Gemma, Phi മുതലായവ | ലോക്കൽ |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| Grok | Grok-3, Grok-3-mini | Cloud |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
+| GLM | GLM-4, GLM-4-Flash | Cloud |
+| Moonshot | Moonshot-v1 | Cloud |
+| MiniMax | abab6.5, abab5.5 | Cloud |
+| Venice | Llama, Mistral (സ്വകാര്യത-ആദ്യം) | Cloud |
+| AWS Bedrock | Claude, Llama, Titan | Cloud |
+| Azure | Azure വഴി OpenAI മോഡലുകൾ | Cloud |
+| OpenRouter | 100+ സമാഹരിച്ച മോഡലുകൾ | Cloud |
+| AIHubMix | മൾട്ടി-പ്രൊവൈഡർ അഗ്രിഗേറ്റർ | Cloud |
+| Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
+| ഇഷ്ടാനുസൃതം | OpenAI / Anthropic / Gemini അനുയോജ്യമായ ഏത് API-യും | Cloud / ലോക്കൽ |
+
+</details>
+
+### പിന്തുണയ്ക്കുന്ന IDE-കൾ
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## ക്വിക്ക് സ്റ്റാർട്ട്
 
@@ -134,7 +170,6 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -146,12 +181,6 @@ sh build.sh
 ```powershell
 .\build.bat
 ```
-
-> **കുറിപ്പ്:** Windows ബിൽഡുകൾക്ക് ആവശ്യമാണ്:
-> - നേറ്റീവ് C ഡിപൻഡൻസികൾക്കായി (espeak-ng, whisper.cpp, opus, kokoro, onnx) [MinGW-w64](https://www.mingw-w64.org/) (gcc) ഉം [CMake](https://cmake.org/) ഉം
-> - സിസ്റ്റം ലൈബ്രറികൾക്കായി (winmm, etc.) [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/)
->
-> `gcc` ഉം `cmake` ഉം `PATH`-ൽ ഉണ്ടെന്ന് ഉറപ്പാക്കുക.
 
 ## ആർക്കിടെക്ചർ അവലോകനം
 

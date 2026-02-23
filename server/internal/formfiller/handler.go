@@ -189,6 +189,7 @@ func (h *Handler) DetectFields(c echo.Context) error {
 	var req struct {
 		Fields     []FieldAttributes `json:"fields"`
 		TemplateID string            `json:"template_id,omitempty"`
+		FillData   string            `json:"fill_data,omitempty"`
 	}
 
 	if err := c.Bind(&req); err != nil {
@@ -211,6 +212,16 @@ func (h *Handler) DetectFields(c echo.Context) error {
 
 	// Detect fields
 	detected := h.detector.DetectFields(req.Fields, template)
+
+	// If fill_data is provided, split by whitespace and assign positionally
+	if req.FillData != "" {
+		tokens := splitByWhitespace(req.FillData)
+		for i := range detected {
+			if i < len(tokens) {
+				detected[i].SuggestedValue = tokens[i]
+			}
+		}
+	}
 
 	return c.JSON(http.StatusOK, DetectResponse{
 		Fields: detected,

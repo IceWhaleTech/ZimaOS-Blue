@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // RequestCoalescing combines multiple identical concurrent requests into one
@@ -108,7 +109,7 @@ func (lo *LatencyOptimizer) RecordLatency(provider, model string, latency int64)
 	}
 
 	pred.SampleCount++
-	pred.LastUpdated = time.Now()
+	pred.LastUpdated = timeutil.NowTime()
 }
 
 // GetPrediction gets latency prediction

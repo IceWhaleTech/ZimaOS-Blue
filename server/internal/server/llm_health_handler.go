@@ -9,6 +9,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // LLMHealthHandler handles LLM health-related endpoints.
@@ -94,7 +95,7 @@ func (h *LLMHealthHandler) GetHealth(c echo.Context) error {
 			HealthyCount:    0,
 			TotalCount:      0,
 			Chains:          make(map[string]ChainHealth),
-			LastHealthCheck: time.Now(),
+			LastHealthCheck: timeutil.NowTime(),
 		})
 	}
 
@@ -102,7 +103,7 @@ func (h *LLMHealthHandler) GetHealth(c echo.Context) error {
 
 	response := LLMHealthResponse{
 		Chains:          make(map[string]ChainHealth),
-		LastHealthCheck: time.Now(),
+		LastHealthCheck: timeutil.NowTime(),
 	}
 
 	totalHealthy := 0

@@ -24,9 +24,10 @@ const error = ref<string | null>(null)
 
 // Password policy from backend
 const policy = ref<PasswordPolicy>({
-  min_length: 8,
-  require_uppercase: true,
-  require_lowercase: true,
+  min_length: 6,
+  require_uppercase: false,
+  require_lowercase: false,
+  require_letter: true,
   require_number: true,
   require_special: true,
 })
@@ -42,11 +43,9 @@ onMounted(async () => {
 
 // Validation
 const isValid = computed(() => {
-  return (
-    username.value.length >= 3 &&
-    allPasswordChecksPassed.value &&
-    password.value === confirmPassword.value
-  )
+  const baseValid = username.value.length >= 3 && allPasswordChecksPassed.value
+  if (showPassword.value) return baseValid
+  return baseValid && password.value === confirmPassword.value
 })
 
 const passwordMismatch = computed(() => {
@@ -59,8 +58,7 @@ const passwordChecks = computed(() => {
   const p = policy.value
   return {
     length: pwd.length >= p.min_length,
-    uppercase: !p.require_uppercase || /[A-Z]/.test(pwd),
-    lowercase: !p.require_lowercase || /[a-z]/.test(pwd),
+    letter: !p.require_letter || /\p{L}/u.test(pwd),
     number: !p.require_number || /[0-9]/.test(pwd),
     special: !p.require_special || /[^\p{L}\p{N}\s]/u.test(pwd),
   }
@@ -73,7 +71,7 @@ const passwordStrength = computed(() => {
 
 const allPasswordChecksPassed = computed(() => {
   const checks = passwordChecks.value
-  return checks.length && checks.uppercase && checks.lowercase && checks.number && checks.special
+  return checks.length && checks.letter && checks.number && checks.special
 })
 
 async function handleSubmit() {
@@ -189,7 +187,7 @@ async function handleSubmit() {
                 class="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('auth.passwordPlaceholder')"
                 required
-                minlength="8"
+                minlength="6"
               />
               <button
                 type="button"
@@ -210,7 +208,7 @@ async function handleSubmit() {
               <!-- Strength Bar -->
               <div class="flex gap-1">
                 <div
-                  v-for="i in 5"
+                  v-for="i in 4"
                   :key="i"
                   class="h-1 flex-1 rounded-full transition-colors"
                   :class="i <= passwordStrength ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
@@ -227,19 +225,11 @@ async function handleSubmit() {
                   </span>
                 </div>
                 <div class="flex items-center gap-1.5">
-                  <span :class="passwordChecks.uppercase ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'">
-                    {{ passwordChecks.uppercase ? '✓' : '○' }}
+                  <span :class="passwordChecks.letter ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'">
+                    {{ passwordChecks.letter ? '✓' : '○' }}
                   </span>
-                  <span :class="passwordChecks.uppercase ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
-                    {{ t('preview.passwordCheck.uppercase') }}
-                  </span>
-                </div>
-                <div class="flex items-center gap-1.5">
-                  <span :class="passwordChecks.lowercase ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'">
-                    {{ passwordChecks.lowercase ? '✓' : '○' }}
-                  </span>
-                  <span :class="passwordChecks.lowercase ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
-                    {{ t('preview.passwordCheck.lowercase') }}
+                  <span :class="passwordChecks.letter ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
+                    {{ t('preview.passwordCheck.letter') }}
                   </span>
                 </div>
                 <div class="flex items-center gap-1.5">
@@ -250,7 +240,7 @@ async function handleSubmit() {
                     {{ t('preview.passwordCheck.number') }}
                   </span>
                 </div>
-                <div class="flex items-center gap-1.5 col-span-2">
+                <div class="flex items-center gap-1.5">
                   <span :class="passwordChecks.special ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'">
                     {{ passwordChecks.special ? '✓' : '○' }}
                   </span>
@@ -262,14 +252,14 @@ async function handleSubmit() {
             </div>
           </div>
 
-          <!-- Confirm Password -->
-          <div>
+          <!-- Confirm Password (hidden when password is visible) -->
+          <div v-if="!showPassword">
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               {{ t('auth.confirmPassword') }}
             </label>
             <input
               v-model="confirmPassword"
-              :type="showPassword ? 'text' : 'password'"
+              type="password"
               class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               :class="passwordMismatch ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
               :placeholder="t('auth.confirmPasswordPlaceholder')"

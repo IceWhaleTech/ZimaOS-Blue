@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // BatchExecutor provides batch database operations.
@@ -58,7 +59,7 @@ func (b *BatchExecutor) BatchInsert(ctx context.Context, table string, columns [
 		return &BatchResult{}, nil
 	}
 
-	start := time.Now()
+	start := timeutil.NowTime()
 	result := &BatchResult{
 		TotalRows: int64(len(values)),
 	}
@@ -80,10 +81,10 @@ func (b *BatchExecutor) BatchInsert(ctx context.Context, table string, columns [
 			result.AffectedRows += affected
 		}
 		result.Batches++
-		b.recordBatch(time.Since(start))
+		b.recordBatch(timeutil.SinceTime(start))
 	}
 
-	result.Duration = time.Since(start)
+	result.Duration = timeutil.SinceTime(start)
 	return result, nil
 }
 
@@ -165,7 +166,7 @@ func (b *BatchExecutor) BatchUpdate(ctx context.Context, table string, updates [
 		return &BatchResult{}, nil
 	}
 
-	start := time.Now()
+	start := timeutil.NowTime()
 	result := &BatchResult{
 		TotalRows: int64(len(updates)),
 	}
@@ -187,10 +188,10 @@ func (b *BatchExecutor) BatchUpdate(ctx context.Context, table string, updates [
 			result.AffectedRows += affected
 		}
 		result.Batches++
-		b.recordBatch(time.Since(start))
+		b.recordBatch(timeutil.SinceTime(start))
 	}
 
-	result.Duration = time.Since(start)
+	result.Duration = timeutil.SinceTime(start)
 	return result, nil
 }
 
@@ -288,7 +289,7 @@ func (b *BatchExecutor) BatchDelete(ctx context.Context, table string, whereColu
 		return &BatchResult{}, nil
 	}
 
-	start := time.Now()
+	start := timeutil.NowTime()
 	result := &BatchResult{
 		TotalRows: int64(len(values)),
 	}
@@ -310,10 +311,10 @@ func (b *BatchExecutor) BatchDelete(ctx context.Context, table string, whereColu
 			result.AffectedRows += affected
 		}
 		result.Batches++
-		b.recordBatch(time.Since(start))
+		b.recordBatch(timeutil.SinceTime(start))
 	}
 
-	result.Duration = time.Since(start)
+	result.Duration = timeutil.SinceTime(start)
 	return result, nil
 }
 
@@ -378,7 +379,7 @@ func (b *BatchExecutor) BatchDeleteWithCondition(ctx context.Context, table stri
 		return &BatchResult{}, nil
 	}
 
-	start := time.Now()
+	start := timeutil.NowTime()
 	result := &BatchResult{
 		TotalRows: int64(len(conditions)),
 	}
@@ -400,10 +401,10 @@ func (b *BatchExecutor) BatchDeleteWithCondition(ctx context.Context, table stri
 			result.AffectedRows += affected
 		}
 		result.Batches++
-		b.recordBatch(time.Since(start))
+		b.recordBatch(timeutil.SinceTime(start))
 	}
 
-	result.Duration = time.Since(start)
+	result.Duration = timeutil.SinceTime(start)
 	return result, nil
 }
 

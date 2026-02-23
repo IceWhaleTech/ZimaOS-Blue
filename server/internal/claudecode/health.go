@@ -152,7 +152,7 @@ func (h *HealthChecker) Check(ctx context.Context) HealthStatus {
 
 // checkBinary checks if the CLI binary is available.
 func (h *HealthChecker) checkBinary(ctx context.Context) CheckResult {
-	start := time.Now()
+	start := timeutil.NowTime()
 	result := CheckResult{
 		Name:      "binary",
 		LastCheck: start,
@@ -163,7 +163,7 @@ func (h *HealthChecker) checkBinary(ctx context.Context) CheckResult {
 	if err != nil {
 		result.Healthy = false
 		result.Message = "Binary not found: " + err.Error()
-		result.Duration = time.Since(start)
+		result.Duration = timeutil.SinceTime(start)
 		return result
 	}
 
@@ -172,19 +172,19 @@ func (h *HealthChecker) checkBinary(ctx context.Context) CheckResult {
 	if err := cmd.Run(); err != nil {
 		result.Healthy = false
 		result.Message = "Binary not executable: " + err.Error()
-		result.Duration = time.Since(start)
+		result.Duration = timeutil.SinceTime(start)
 		return result
 	}
 
 	result.Healthy = true
 	result.Message = "Binary available at " + binaryPath
-	result.Duration = time.Since(start)
+	result.Duration = timeutil.SinceTime(start)
 	return result
 }
 
 // checkVersion checks if the CLI version is compatible.
 func (h *HealthChecker) checkVersion(ctx context.Context) CheckResult {
-	start := time.Now()
+	start := timeutil.NowTime()
 	result := CheckResult{
 		Name:      "version",
 		LastCheck: start,
@@ -195,7 +195,7 @@ func (h *HealthChecker) checkVersion(ctx context.Context) CheckResult {
 	if err != nil {
 		result.Healthy = false
 		result.Message = "Cannot check version: binary not found"
-		result.Duration = time.Since(start)
+		result.Duration = timeutil.SinceTime(start)
 		return result
 	}
 
@@ -205,14 +205,14 @@ func (h *HealthChecker) checkVersion(ctx context.Context) CheckResult {
 	if err != nil {
 		result.Healthy = false
 		result.Message = "Failed to get version: " + err.Error()
-		result.Duration = time.Since(start)
+		result.Duration = timeutil.SinceTime(start)
 		return result
 	}
 
 	version := strings.TrimSpace(string(output))
 	result.Healthy = true
 	result.Message = "Version: " + version
-	result.Duration = time.Since(start)
+	result.Duration = timeutil.SinceTime(start)
 	return result
 }
 

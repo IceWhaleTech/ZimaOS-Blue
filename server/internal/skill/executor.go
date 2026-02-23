@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Executor handles skill execution
@@ -66,7 +67,7 @@ func (e *Executor) Execute(ctx context.Context, skillID string, input map[string
 	}
 
 	// Execute skill
-	startTime := time.Now()
+	startTime := timeutil.NowTime()
 	e.logger.Info("executing skill",
 		"skill_id", skillID,
 		"skill_name", skill.Manifest().Name,
@@ -74,7 +75,7 @@ func (e *Executor) Execute(ctx context.Context, skillID string, input map[string
 
 	result, err := skill.Execute(ctx, input)
 
-	duration := time.Since(startTime)
+	duration := timeutil.SinceTime(startTime)
 	if err != nil {
 		e.logger.Error("skill execution failed",
 			"skill_id", skillID,

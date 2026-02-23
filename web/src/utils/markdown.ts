@@ -464,6 +464,20 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
   flushTable()
   flushTree()
 
+  // Flush unclosed code block (streaming)
+  if (inCodeBlock && codeBlockContent.length > 0) {
+    const code = codeBlockContent.join('\n')
+    const highlighted = highlightCode(code, codeBlockLang)
+    result.push(
+      `<div class="code-block my-3 rounded-lg overflow-hidden bg-gray-700">` +
+        `<div class="code-header flex justify-between items-center px-4 py-2 bg-gray-700 text-gray-400 text-sm">` +
+        `<span>${codeBlockLang || 'code'}</span>` +
+        `</div>` +
+        `<pre class="p-4 overflow-x-auto"><code class="text-sm font-mono text-gray-100">${highlighted}</code></pre>` +
+        `</div>`
+    )
+  }
+
   return result.join('\n')
 }
 

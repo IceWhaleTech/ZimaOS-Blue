@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -137,7 +138,7 @@ func (s *JWTService) GenerateRefreshToken(userClaims *UserClaims) (string, error
 
 // generateToken creates a JWT token with the specified type and expiration
 func (s *JWTService) generateToken(userClaims *UserClaims, tokenType TokenType, expiration time.Duration) (string, error) {
-	now := time.Now()
+	now := timeutil.NowTime()
 	claims := &Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    s.config.Issuer,
@@ -248,7 +249,7 @@ func (s *JWTService) isBlacklisted(tokenID string) bool {
 
 // cleanupBlacklist removes expired entries from the blacklist
 func (s *JWTService) cleanupBlacklist() {
-	now := time.Now()
+	now := timeutil.NowTime()
 	for id, expiry := range s.blacklist {
 		if expiry.Before(now) {
 			delete(s.blacklist, id)

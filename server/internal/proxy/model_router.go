@@ -35,42 +35,16 @@ type ModelRouterConfig struct {
 	RegexCustomRules []*RegexRule   `json:"regex_rules" yaml:"regex_rules"` // Expert-level regex rules
 }
 
-// DefaultModelRouterConfig returns default model router configuration
+// DefaultModelRouterConfig returns default model router configuration.
+// Families and BackgroundModels are intentionally empty — the TierResolver
+// dynamically handles model classification based on actual pricing data.
+// Users can still add custom RegexCustomRules for explicit overrides.
 func DefaultModelRouterConfig() *ModelRouterConfig {
 	return &ModelRouterConfig{
-		Enabled:       true,
-		DefaultFamily: "claude-3",
-		Families: []*ModelFamily{
-			{
-				Name:     "claude-3",
-				Patterns: []string{"^claude-3.*", "^claude-opus.*", "^claude-sonnet.*"},
-				Provider: "anthropic",
-				Fallback: "claude-3-haiku-20240307",
-			},
-			{
-				Name:     "gpt-4",
-				Patterns: []string{"^gpt-4.*", "^chatgpt-4.*"},
-				Provider: "openai",
-				Fallback: "gpt-4o-mini",
-			},
-			{
-				Name:     "gemini-pro",
-				Patterns: []string{"^gemini-.*-pro.*", "^gemini-pro.*"},
-				Provider: "google",
-				Fallback: "gemini-1.5-flash",
-			},
-			{
-				Name:     "gemini-flash",
-				Patterns: []string{"^gemini-.*-flash.*"},
-				Provider: "google",
-				Fallback: "", // Already a flash model
-			},
-		},
-		BackgroundModels: []string{
-			"claude-3-haiku",
-			"gpt-4o-mini",
-			"gemini-1.5-flash",
-		},
+		Enabled:          true,
+		DefaultFamily:    "",
+		Families:         nil,
+		BackgroundModels: nil,
 		RegexCustomRules: []*RegexRule{},
 	}
 }
@@ -89,10 +63,11 @@ type compiledFamily struct {
 
 // ModelRouter handles intelligent model-based routing
 type ModelRouter struct {
-	config    *ModelRouterConfig
-	families  map[string]*compiledFamily
-	rules     []*compiledRule
-	mu        sync.RWMutex
+	config       *ModelRouterConfig
+	families     map[string]*compiledFamily
+	rules        []*compiledRule
+	tierResolver *TierResolver
+	mu           sync.RWMutex
 }
 
 // ModelRoute represents the routing decision
@@ -199,11 +174,31 @@ func (mr *ModelRouter) RouteModel(requestedModel string, isBackground bool) (*Mo
 		}
 	}
 
-	// 3. No match found - return as-is
+	// 3. TierResolver-based background downgrade
+	if isBackground && mr.tierResolver != nil && mr.tierResolver.IsEnabled() {
+		economyModel := mr.tierResolver.BestModelForTier(TierEconomy)
+		if economyModel != "" && economyModel != requestedModel {
+			return &ModelRoute{
+				OriginalModel: requestedModel,
+				TargetModel:   economyModel,
+				RuleApplied:   "tier-background-downgrade",
+				Downgraded:    true,
+			}, nil
+		}
+	}
+
+	// 4. No match found - return as-is
 	return &ModelRoute{
 		OriginalModel: requestedModel,
 		TargetModel:   requestedModel,
 	}, nil
+}
+
+// SetTierResolver sets the tier resolver for dynamic background downgrade.
+func (mr *ModelRouter) SetTierResolver(tr *TierResolver) {
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
+	mr.tierResolver = tr
 }
 
 // IsBackgroundRequest detects if request is a background task (e.g., title generation)

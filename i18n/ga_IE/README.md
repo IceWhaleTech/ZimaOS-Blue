@@ -59,7 +59,7 @@ Tógtha d'fhorbróirí dána ar mhaith leo **a gcuid gníomhairí féin a chruth
 Téigh níos faide: soláthraíonn sé tacaíocht dhúchasach do **20+ ardán IM**, comhéadain **tiomáinte ag guth** le haghaidh comhrá nádúrtha, comhthéacs-fheasach, **athrú samhla gan aon chumraíocht** le scanadh IDE, agus pearsantachtaí SOUL-sraitheacha.
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Tapa, Éadrom
@@ -95,13 +95,49 @@ Creidimid go nglacann **ríomhaireacht phearsanta na chéad ghlúine eile** le L
 - **Áitiúil-ar-Dtús, Ultra-Éadrom, Tras-Ghléas** – Níl crua-earraí ardleibhéil ag teastáil. Ritheann sé ar aon rud is féidir ríomhaireacht a dhéanamh.
 - **Slán & In-iniúchta** – Iniúchadh seisiúin, gaineamhbhoscú, rialtáin ceadanna, agus seachfhreastalaí API ionsuite a fheidhmíonn mar bhalla dóiteáin ciseal feidhmchláir — tá gach beart isteach/amach le feiceáil.
 
+![](../../docs/assets/design_principle.png)
+
 Laghdaímid an cód réamhdhéanta ionas go **ndíríonn tú ar an méid is tábhachtaí**. Ag fanacht dílis d'<a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **fhealsúnacht deartha ZimaOS**, soláthraíonn Blue:
 - **Ó Nialas go hAon le Clic Amháin** – Imscaradh láithreach, gan cumraíocht chasta.
 - **Fréamhshamhlú Tapa** – Cruthaigh nó ceardaigh uirlisí, idirghníomhaíochtaí, agus pacáistí feidhmchlár atá sainiúil do chásanna.
 - **Réidh don Domhan** – **Tá an domhan mór**, agus ní Béarla an réamhshocrú. **20+ teanga, dúchasach**, gan bacainní.
 - **Éiceachóras Samhlacha Oscailte** – Gan glasáil díoltóra. Tabhair do shamhlacha féin leat.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Soláthróir | Samhlacha | Cineál |
+|------------|-----------|--------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Néal |
+| Anthropic | Claude 4.5, Claude 4 | Néal |
+| Google | Gemini 2.5, Gemini 2.0 | Néal |
+| Ollama | Llama, Qwen, Gemma, Phi, srl. | Áitiúil |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Néal |
+| Grok | Grok-3, Grok-3-mini | Néal |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Néal |
+| GLM | GLM-4, GLM-4-Flash | Néal |
+| Moonshot | Moonshot-v1 | Néal |
+| MiniMax | abab6.5, abab5.5 | Néal |
+| Venice | Llama, Mistral (príobháideacht ar dtús) | Néal |
+| AWS Bedrock | Claude, Llama, Titan | Néal |
+| Azure | Samhlacha OpenAI trí Azure | Néal |
+| OpenRouter | 100+ samhail comhiomlánaithe | Néal |
+| AIHubMix | Comhiomlánóir ilsoláthróra | Néal |
+| Codex | OpenAI Codex | Néal |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Néal |
+| Saincheaptha | Aon API comhoiriúnach le OpenAI / Anthropic / Gemini | Néal / Áitiúil |
+
+</details>
+
+### IDEanna Tacaithe
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Tús Tapa
 
@@ -129,7 +165,6 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -142,11 +177,7 @@ sh build.sh
 .\build.bat
 ```
 
-> **Note:** Windows builds require:
-> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus, kokoro, onnx)
-> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) for system libraries (winmm, etc.)
->
-> Make sure `gcc`, `cmake` are in your `PATH`.
+> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
 
 ## Forbhreathnú Ailtireachta
 

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // StreamPool manages reusable ISpStream objects for TTS
@@ -97,7 +98,7 @@ func (c *TTSCache) Get(key string) (*CachedAudio, bool) {
 	}
 
 	// Check if expired
-	if time.Since(audio.Timestamp) > c.ttl {
+	if timeutil.SinceTime(audio.Timestamp) > c.ttl {
 		return nil, false
 	}
 
@@ -131,7 +132,7 @@ func (c *TTSCache) Set(key string, audio []byte, sampleRate int) {
 	c.cache[key] = &CachedAudio{
 		Audio:      audio,
 		SampleRate: sampleRate,
-		Timestamp:  time.Now(),
+		Timestamp:  timeutil.NowTime(),
 	}
 }
 
@@ -142,7 +143,7 @@ func (c *TTSCache) cleanup() {
 
 	for range ticker.C {
 		c.mu.Lock()
-		now := time.Now()
+		now := timeutil.NowTime()
 		for key, audio := range c.cache {
 			if now.Sub(audio.Timestamp) > c.ttl {
 				delete(c.cache, key)

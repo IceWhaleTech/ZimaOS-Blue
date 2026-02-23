@@ -20,7 +20,6 @@ import MetricsOverviewCard from './cards/MetricsOverviewCard.vue'
 import TokenUsageChartCard from './cards/TokenUsageChartCard.vue'
 import LatencyChartCard from './cards/LatencyChartCard.vue'
 import ModelStatsCard from './cards/ModelStatsCard.vue'
-import CacheStatsCard from './cards/CacheStatsCard.vue'
 import TokenEconomyCard from './cards/TokenEconomyCard.vue'
 
 defineProps<{
@@ -53,7 +52,6 @@ const componentMap: Record<string, Component> = {
   TokenUsageChartCard: markRaw(TokenUsageChartCard),
   LatencyChartCard: markRaw(LatencyChartCard),
   ModelStatsCard: markRaw(ModelStatsCard),
-  CacheStatsCard: markRaw(CacheStatsCard),
   TokenEconomyCard: markRaw(TokenEconomyCard),
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"golang.ngrok.com/ngrok/v2"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // NgrokManager manages ngrok tunnels via the ngrok Go SDK.
@@ -74,7 +75,7 @@ func (m *NgrokManager) Start(ctx context.Context, cfg *Config) error {
 	m.url = tunnelURL
 	m.forwarder = fwd
 	m.cancelFunc = cancel
-	m.startedAt = time.Now()
+	m.startedAt = timeutil.NowTime()
 	m.expiresAt = m.startedAt.Add(8 * time.Hour)
 	m.mu.Unlock()
 
@@ -132,7 +133,7 @@ func (m *NgrokManager) GetStatus() Status {
 		return Status{Active: false, Provider: ProviderNgrok}
 	}
 
-	remaining := m.expiresAt.Sub(time.Now())
+	remaining := m.expiresAt.Sub(timeutil.NowTime())
 	remainingStr := ""
 	if remaining > 0 {
 		hours := int(remaining.Hours())
@@ -177,6 +178,6 @@ func (m *NgrokManager) IncrementRenewedCount() {
 func (m *NgrokManager) ResetExpiry() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.startedAt = time.Now()
+	m.startedAt = timeutil.NowTime()
 	m.expiresAt = m.startedAt.Add(8 * time.Hour)
 }

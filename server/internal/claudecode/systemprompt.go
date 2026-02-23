@@ -43,6 +43,7 @@ type SystemPromptBuilder struct {
 	workspace        *workspace.Manager
 	maxContextTokens int
 	lastContextStats atomic.Pointer[ContextStats]
+	lastUserMessage  string // set before Build() for scenario-based enhancement
 }
 
 // NewSystemPromptBuilder creates a new SystemPromptBuilder.
@@ -66,6 +67,12 @@ func (b *SystemPromptBuilder) SetMaxContextTokens(n int) {
 	b.maxContextTokens = n
 }
 
+// SetLastUserMessage stores the latest user message for scenario-based
+// enhancement detection. Call this before Build().
+func (b *SystemPromptBuilder) SetLastUserMessage(msg string) {
+	b.lastUserMessage = msg
+}
+
 // LastContextStats returns the stats from the most recent buildProjectContext call.
 func (b *SystemPromptBuilder) LastContextStats() *ContextStats {
 	return b.lastContextStats.Load()
@@ -77,6 +84,11 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 
 	// Add identity
 	parts = append(parts, "You are a personal assistant running inside ZimaOS Blue.")
+
+	// Add scenario-based response enhancement
+	if enhancement := b.buildEnhancement(b.lastUserMessage); enhancement != "" {
+		parts = append(parts, enhancement)
+	}
 
 	// Add safety guardrails
 	parts = append(parts, b.buildSafetyGuidance())
@@ -122,6 +134,15 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 	return strings.Join(parts, "\n\n")
 }
 
+// toolUsageHints provides intent-based descriptions that help the LLM choose
+// the right tool. These are language-agnostic — they describe *intent*, not
+// keywords, so they work across all languages.
+var toolUsageHints = map[string]string{
+	"ui_reviewer": "Evaluate UI/UX quality of a website URL or screenshot. Use when the user's intent is to assess, score, or critique visual design — NOT to look up information about the site. Accepts a URL directly and handles navigation + screenshots internally.",
+	"browser":     "Interact with a specific web page: navigate, click, fill forms, read page content via accessibility tree. Use when the user wants to *do something* on a page, not just evaluate its design.",
+	"web_search":  "Search the web for factual information, news, or general knowledge. Use when the user wants to *find information* — not evaluate a website's UI or interact with a page.",
+}
+
 // buildToolsInfo builds information about available tools.
 func (b *SystemPromptBuilder) buildToolsInfo() string {
 	if b.toolRegistry == nil {
@@ -136,12 +157,17 @@ func (b *SystemPromptBuilder) buildToolsInfo() string {
 	var lines []string
 	lines = append(lines, "# Available Tools")
 	lines = append(lines, "")
-	lines = append(lines, "The following tools are available through the ZimaOS-Blue API:")
+	lines = append(lines, "Tool names are case-sensitive. Call tools exactly as listed below. Do NOT call tools that are not in this list (e.g., WebFetch, WebSearch, Read, Bash — these do NOT exist).")
 	lines = append(lines, "")
 
 	for _, def := range defs {
 		lines = append(lines, fmt.Sprintf("## %s", def.Name))
-		lines = append(lines, def.Description)
+		// Use the hint if available, otherwise fall back to the tool's own description
+		if hint, ok := toolUsageHints[def.Name]; ok {
+			lines = append(lines, hint)
+		} else {
+			lines = append(lines, def.Description)
+		}
 		if def.Parameters != nil {
 			paramsJSON, _ := json.MarshalIndent(def.Parameters, "", "  ")
 			lines = append(lines, "Parameters:")
@@ -151,6 +177,14 @@ func (b *SystemPromptBuilder) buildToolsInfo() string {
 		}
 		lines = append(lines, "")
 	}
+
+	// Tool routing rules — higher priority overrides lower
+	lines = append(lines, "## Tool Routing Rules")
+	lines = append(lines, "When a user message could match multiple tools, use these priority rules:")
+	lines = append(lines, "- URL + UI/design evaluation intent → ui_reviewer (NOT web_search or browser)")
+	lines = append(lines, "- URL + form filling/clicking/interaction → browser")
+	lines = append(lines, "- General factual query without a specific URL → web_search")
+	lines = append(lines, "")
 
 	return strings.Join(lines, "\n")
 }
@@ -267,6 +301,11 @@ func (b *SystemPromptBuilder) BuildWithContext(ctx context.Context, extraPrompt 
 
 	// Add identity
 	parts = append(parts, "You are a personal assistant running inside ZimaOS Blue.")
+
+	// Add scenario-based response enhancement
+	if enhancement := b.buildEnhancement(b.lastUserMessage); enhancement != "" {
+		parts = append(parts, enhancement)
+	}
 
 	// Add safety guardrails
 	parts = append(parts, b.buildSafetyGuidance())

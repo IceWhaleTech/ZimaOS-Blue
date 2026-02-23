@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 const (
@@ -103,7 +105,7 @@ func (m *TrialQuotaManager) loadFromStorage() {
 			m.tokensUsed = 0
 			m.exhausted = false
 			m.exhaustedReason = ""
-			m.lastUpdated = time.Now()
+			m.lastUpdated = timeutil.NowTime()
 			m.mu.Unlock()
 			m.saveState()
 			fmt.Printf("[TrialQuotaManager] New license version detected (old_iat=%d, new_iat=%d), resetting quota\n",
@@ -118,7 +120,7 @@ func (m *TrialQuotaManager) loadFromStorage() {
 			m.mu.Lock()
 			m.exhausted = true
 			m.exhaustedReason = "state_tampered"
-			m.lastUpdated = time.Now()
+			m.lastUpdated = timeutil.NowTime()
 			m.mu.Unlock()
 			m.saveState()
 			fmt.Printf("[TrialQuotaManager] State file tampered, treating as exhausted\n")
@@ -128,7 +130,7 @@ func (m *TrialQuotaManager) loadFromStorage() {
 		m.mu.Lock()
 		m.tokensUsed = 0
 		m.exhausted = false
-		m.lastUpdated = time.Now()
+		m.lastUpdated = timeutil.NowTime()
 		m.mu.Unlock()
 		m.saveState()
 		return
@@ -138,21 +140,21 @@ func (m *TrialQuotaManager) loadFromStorage() {
 		m.mu.Lock()
 		m.tokensUsed = 0
 		m.exhausted = false
-		m.lastUpdated = time.Now()
+		m.lastUpdated = timeutil.NowTime()
 		m.mu.Unlock()
 		m.saveState()
 		fmt.Printf("[TrialQuotaManager] Fresh install, starting with zero usage\n")
 		return
 	}
 
-	now := time.Now().Unix()
+	now := timeutil.Now()
 
 	// Clock-rollback detection: 5-minute tolerance for NTP drift
 	if state.HighWaterMark > 0 && now < state.HighWaterMark-300 {
 		m.mu.Lock()
 		m.exhausted = true
 		m.exhaustedReason = "clock_rollback"
-		m.lastUpdated = time.Now()
+		m.lastUpdated = timeutil.NowTime()
 		m.mu.Unlock()
 		m.saveState()
 		fmt.Printf("[TrialQuotaManager] Clock rollback detected (now=%d, hwm=%d), exhausting trial\n", now, state.HighWaterMark)
@@ -173,7 +175,7 @@ func (m *TrialQuotaManager) saveState() {
 	if m.licenseSig == nil {
 		return
 	}
-	now := time.Now().Unix()
+	now := timeutil.Now()
 	var licenseIAT int64
 	if m.claims != nil {
 		licenseIAT = m.claims.IssuedAt
@@ -211,7 +213,7 @@ func (m *TrialQuotaManager) RecordUsage(inputTokens, outputTokens int64, session
 
 	previousUsed := m.tokensUsed
 	m.tokensUsed += inputTokens + outputTokens
-	m.lastUpdated = time.Now()
+	m.lastUpdated = timeutil.NowTime()
 
 	fmt.Printf("[TrialQuotaManager] RecordUsage: input=%d, output=%d, previous=%d, new=%d, limit=%d\n",
 		inputTokens, outputTokens, previousUsed, m.tokensUsed, m.tokenLimit)
@@ -250,7 +252,7 @@ func (m *TrialQuotaManager) GetStatus() *TrialQuotaStatus {
 	}
 	if m.claims != nil && m.claims.ExpiresAt > 0 {
 		status.ExpiresAt = m.claims.ExpiresAt
-		status.IsExpired = time.Now().Unix() > m.claims.ExpiresAt
+		status.IsExpired = timeutil.Now() > m.claims.ExpiresAt
 	}
 	return status
 }
@@ -300,7 +302,7 @@ func (m *TrialQuotaManager) Reset() {
 	m.tokensUsed = 0
 	m.exhausted = false
 	m.exhaustedReason = ""
-	m.lastUpdated = time.Now()
+	m.lastUpdated = timeutil.NowTime()
 }
 
 // IsTrialProvider checks if a provider ID is the trial provider

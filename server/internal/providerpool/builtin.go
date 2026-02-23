@@ -1,7 +1,8 @@
 package providerpool
 
 import (
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool/oauth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Build-time variables (injected via -ldflags)
@@ -34,8 +35,8 @@ func BuiltinProviders() []*Provider {
 			Description: "OpenAI API - GPT-4, GPT-4o, o1, and more",
 			Website:     "https://openai.com",
 			APIKeyURL:   "https://platform.openai.com/api-keys",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "anthropic",
@@ -52,8 +53,8 @@ func BuiltinProviders() []*Provider {
 			Description: "Anthropic API - Claude Opus, Sonnet, Haiku",
 			Website:     "https://anthropic.com",
 			APIKeyURL:   "https://console.anthropic.com/settings/keys",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "google",
@@ -70,13 +71,13 @@ func BuiltinProviders() []*Provider {
 			Description: "Google Gemini API - Gemini Pro, Ultra",
 			Website:     "https://ai.google.dev",
 			APIKeyURL:   "https://aistudio.google.com/apikey",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "nvidia",
 			Name:        "NVIDIA NIM",
-			Type:        ProviderTypeBuiltin,
+			Type:        ProviderTypePlatform,
 			Location:    ProviderLocationCloud,
 			Enabled:     false,
 			Status:      ProviderStatusInactive,
@@ -88,8 +89,8 @@ func BuiltinProviders() []*Provider {
 			Description: "NVIDIA NIM - GPU-accelerated inference for leading open and commercial models",
 			Website:     "https://build.nvidia.com",
 			APIKeyURL:   "https://build.nvidia.com/explore/discover",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "deepseek",
@@ -106,8 +107,8 @@ func BuiltinProviders() []*Provider {
 			Description: "DeepSeek API - DeepSeek Chat, Coder",
 			Website:     "https://deepseek.com",
 			APIKeyURL:   "https://platform.deepseek.com/api_keys",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "moonshot",
@@ -124,13 +125,13 @@ func BuiltinProviders() []*Provider {
 			Description: "Moonshot AI (Kimi) API",
 			Website:     "https://moonshot.cn",
 			APIKeyURL:   "https://platform.moonshot.cn/console/api-keys",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "azure-openai",
 			Name:        "Azure OpenAI",
-			Type:        ProviderTypeBuiltin,
+			Type:        ProviderTypePlatform,
 			Location:    ProviderLocationCloud,
 			Enabled:     false,
 			Status:      ProviderStatusInactive,
@@ -142,13 +143,13 @@ func BuiltinProviders() []*Provider {
 			Description: "Azure OpenAI Service",
 			Website:     "https://azure.microsoft.com/products/ai-services/openai-service",
 			APIKeyURL:   "https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/OpenAI",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "openrouter",
 			Name:        "OpenRouter",
-			Type:        ProviderTypeBuiltin,
+			Type:        ProviderTypePlatform,
 			Location:    ProviderLocationCloud,
 			Enabled:     false,
 			Status:      ProviderStatusInactive,
@@ -160,13 +161,13 @@ func BuiltinProviders() []*Provider {
 			Description: "OpenRouter - Access multiple models through one API",
 			Website:     "https://openrouter.ai",
 			APIKeyURL:   "https://openrouter.ai/keys",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "aihubmix",
 			Name:        "AiHubMix",
-			Type:        ProviderTypeBuiltin,
+			Type:        ProviderTypePlatform,
 			Location:    ProviderLocationCloud,
 			Enabled:     false,
 			Status:      ProviderStatusInactive,
@@ -178,13 +179,13 @@ func BuiltinProviders() []*Provider {
 			Description: "AiHubMix - AI model aggregator",
 			Website:     "https://aihubmix.com",
 			APIKeyURL:   "https://aihubmix.com/token",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "ollama",
 			Name:        "Ollama",
-			Type:        ProviderTypeBuiltin,
+			Type:        ProviderTypePlatform,
 			Location:    ProviderLocationLocal,
 			Enabled:     false,
 			Status:      ProviderStatusInactive,
@@ -195,8 +196,8 @@ func BuiltinProviders() []*Provider {
 			Icon:        "ollama",
 			Description: "Ollama - Run LLMs locally",
 			Website:     "https://ollama.com",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "minimax",
@@ -211,10 +212,10 @@ func BuiltinProviders() []*Provider {
 			Priority:    30,
 			Icon:        "minimax",
 			Description: "MiniMax API - abab series models",
-			Website:     "https://minimax.chat",
+			Website:     "https://www.minimax.io/",
 			APIKeyURL:   "https://platform.minimaxi.com/user-center/basic-information/interface-key",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "codex",
@@ -231,8 +232,8 @@ func BuiltinProviders() []*Provider {
 			Description: "Codex API - Code generation models",
 			Website:     "https://codex.com",
 			APIKeyURL:   "https://codex.com/settings/api-keys",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "grok",
@@ -249,8 +250,8 @@ func BuiltinProviders() []*Provider {
 			Description: "xAI Grok API - Advanced AI models from xAI",
 			Website:     "https://x.ai",
 			APIKeyURL:   "https://console.x.ai/team/default/api-keys",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "qwen",
@@ -267,13 +268,13 @@ func BuiltinProviders() []*Provider {
 			Description: "Alibaba Cloud Qwen API - Qwen series models with multilingual support",
 			Website:     "https://tongyi.aliyun.com",
 			APIKeyURL:   "https://dashscope.console.aliyun.com/apiKey",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "venice",
 			Name:        "Venice AI",
-			Type:        ProviderTypeBuiltin,
+			Type:        ProviderTypePlatform,
 			Location:    ProviderLocationCloud,
 			Enabled:     false,
 			Status:      ProviderStatusInactive,
@@ -285,13 +286,13 @@ func BuiltinProviders() []*Provider {
 			Description: "Venice AI - Privacy-focused AI with uncensored models",
 			Website:     "https://venice.ai",
 			APIKeyURL:   "https://venice.ai/settings/api",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "bedrock",
 			Name:        "Amazon Bedrock",
-			Type:        ProviderTypeBuiltin,
+			Type:        ProviderTypePlatform,
 			Location:    ProviderLocationCloud,
 			Enabled:     false,
 			Status:      ProviderStatusInactive,
@@ -303,8 +304,8 @@ func BuiltinProviders() []*Provider {
 			Description: "Amazon Bedrock - AWS managed AI service with Claude, Llama, and more",
 			Website:     "https://aws.amazon.com/bedrock",
 			APIKeyURL:   "https://console.aws.amazon.com/bedrock",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "glm",
@@ -321,13 +322,13 @@ func BuiltinProviders() []*Provider {
 			Description: "Zhipu AI GLM API - GLM-4 series models with Chinese language support",
 			Website:     "https://open.bigmodel.cn",
 			APIKeyURL:   "https://open.bigmodel.cn/usercenter/apikeys",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 		{
 			ID:          "siliconflow",
 			Name:        "SiliconFlow (硅基流动)",
-			Type:        ProviderTypeBuiltin,
+			Type:        ProviderTypePlatform,
 			Location:    ProviderLocationCloud,
 			Enabled:     false,
 			Status:      ProviderStatusInactive,
@@ -339,10 +340,190 @@ func BuiltinProviders() []*Provider {
 			Description: "SiliconFlow - Chinese AI cloud platform with OpenAI-compatible API",
 			Website:     "https://siliconflow.cn",
 			APIKeyURL:   "https://cloud.siliconflow.cn/account/ak",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
 		},
 	}
+
+	// --- OAuth-based Providers ---
+	// These use OAuth authentication instead of API keys.
+	antigravityCfg := oauth.AntigravityConfig()
+	geminiCLICfg := oauth.GeminiCLIConfig()
+	copilotCfg := oauth.CopilotConfig()
+	codexCfg := oauth.CodexConfig()
+
+	providers = append(providers,
+		&Provider{
+			ID:          "google-antigravity",
+			Name:        "Google Cloud Code",
+			Type:        ProviderTypePlatform,
+			Location:    ProviderLocationCloud,
+			Enabled:     false,
+			Status:      ProviderStatusInactive,
+			BaseURL:     antigravityCfg.CloudCodeEndpoints[0],
+			APIVersion:  "v1internal",
+			APIFormat:   APIFormatCloudCode,
+			Priority:    55,
+			Icon:        "google",
+			Description: "Google Cloud Code Assist via Antigravity - Claude, Gemini, and more",
+			Website:     "https://cloud.google.com/code",
+			OAuth: &OAuthConfig{
+				ClientID:     antigravityCfg.ClientID,
+				Scopes:       antigravityCfg.Scopes,
+				ProviderType: "antigravity",
+				Endpoint:     antigravityCfg.CloudCodeEndpoints[0],
+			},
+			CreatedAt: timeutil.NowTime(),
+			UpdatedAt: timeutil.NowTime(),
+		},
+		&Provider{
+			ID:          "google-gemini-cli",
+			Name:        "Google Cloud Code",
+			Type:        ProviderTypePlatform,
+			Location:    ProviderLocationCloud,
+			Enabled:     false,
+			Status:      ProviderStatusInactive,
+			BaseURL:     geminiCLICfg.CloudCodeEndpoints[0],
+			APIVersion:  "v1internal",
+			APIFormat:   APIFormatCloudCode,
+			Priority:    50,
+			Icon:        "google",
+			Description: "Google Cloud Code Assist via Gemini CLI - Gemini models",
+			Website:     "https://cloud.google.com/code",
+			OAuth: &OAuthConfig{
+				ClientID:     geminiCLICfg.ClientID,
+				Scopes:       geminiCLICfg.Scopes,
+				ProviderType: "gemini-cli",
+				Endpoint:     geminiCLICfg.CloudCodeEndpoints[0],
+			},
+			CreatedAt: timeutil.NowTime(),
+			UpdatedAt: timeutil.NowTime(),
+		},
+		&Provider{
+			ID:          "github-copilot",
+			Name:        "GitHub Copilot",
+			Type:        ProviderTypePlatform,
+			Location:    ProviderLocationCloud,
+			Enabled:     false,
+			Status:      ProviderStatusInactive,
+			BaseURL:     "https://api.githubcopilot.com",
+			APIVersion:  "v1",
+			APIFormat:   APIFormatCopilot,
+			Priority:    50,
+			Icon:        "copilot",
+			Description: "GitHub Copilot via OAuth - GPT-4o, Claude, and more",
+			Website:     "https://github.com/features/copilot",
+			OAuth: &OAuthConfig{
+				ClientID:     copilotCfg.ClientID,
+				Scopes:       copilotCfg.Scopes,
+				ProviderType: "copilot",
+				Endpoint:     "https://api.githubcopilot.com",
+			},
+			CreatedAt: timeutil.NowTime(),
+			UpdatedAt: timeutil.NowTime(),
+		},
+		&Provider{
+			ID:          "openai-codex",
+			Name:        "Codex CLI (OpenAI)",
+			Type:        ProviderTypePlatform,
+			Location:    ProviderLocationCloud,
+			Enabled:     false,
+			Status:      ProviderStatusInactive,
+			BaseURL:     codexCfg.APIEndpoint,
+			APIFormat:   APIFormatOpenAI,
+			Priority:    50,
+			Icon:        "openai",
+			Description: "OpenAI Codex CLI via OAuth - ChatGPT subscription models",
+			Website:     "https://chatgpt.com",
+			OAuth: &OAuthConfig{
+				ClientID:     codexCfg.ClientID,
+				Scopes:       codexCfg.Scopes,
+				ProviderType: "codex",
+				Endpoint:     codexCfg.APIEndpoint,
+			},
+			CreatedAt: timeutil.NowTime(),
+			UpdatedAt: timeutil.NowTime(),
+		},
+	)
+
+	// --- Media Generation Providers ---
+	// These use ProviderTypeMedia and are shown in a separate "Media" tab in the UI.
+	// They share the same Provider struct but are wired to the mediagen package instead of the LLM proxy.
+
+	providers = append(providers,
+		&Provider{
+			ID:          "dashscope-image",
+			Name:        "DashScope (Qwen Image)",
+			Type:        ProviderTypeMedia,
+			Location:    ProviderLocationCloud,
+			Enabled:     false,
+			Status:      ProviderStatusInactive,
+			BaseURL:     "https://dashscope.aliyuncs.com",
+			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
+			Priority:    50,
+			Icon:        "qwen",
+			Description: "Alibaba DashScope - Qwen Image, Wanx text-to-image models",
+			Website:     "https://dashscope.aliyun.com",
+			APIKeyURL:   "https://dashscope.console.aliyun.com/apiKey",
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
+		},
+		&Provider{
+			ID:          "gemini-image",
+			Name:        "Gemini Image",
+			Type:        ProviderTypeMedia,
+			Location:    ProviderLocationCloud,
+			Enabled:     false,
+			Status:      ProviderStatusInactive,
+			BaseURL:     "https://generativelanguage.googleapis.com",
+			APIVersion:  "v1beta",
+			APIFormat:   APIFormatGoogle,
+			Priority:    50,
+			Icon:        "google",
+			Description: "Google Gemini - Native image generation via Imagen and Gemini models",
+			Website:     "https://ai.google.dev",
+			APIKeyURL:   "https://aistudio.google.com/apikey",
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
+		},
+		&Provider{
+			ID:          "mulerouter",
+			Name:        "MuleRouter",
+			Type:        ProviderTypeMedia,
+			Location:    ProviderLocationCloud,
+			Enabled:     false,
+			Status:      ProviderStatusInactive,
+			BaseURL:     "https://api.mulerouter.com",
+			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
+			Priority:    60,
+			Icon:        "mulerouter",
+			Description: "MuleRouter - Unified aggregator for DALL-E, Midjourney, Qwen Image, Wan2 video",
+			Website:     "https://www.mulerouter.ai/",
+			APIKeyURL:   "https://www.mulerouter.ai/app/api-keys",
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
+		},
+		&Provider{
+			ID:          "minimax-audio",
+			Name:        "MiniMax Audio",
+			Type:        ProviderTypeMedia,
+			Location:    ProviderLocationCloud,
+			Enabled:     false,
+			Status:      ProviderStatusInactive,
+			BaseURL:     "https://api.minimax.chat/v1",
+			APIVersion:  "v1",
+			APIFormat:   APIFormatOpenAI,
+			Priority:    40,
+			Icon:        "minimax",
+			Description: "MiniMax - Text-to-speech and music generation",
+			Website:     "https://www.minimax.io/audio",
+			APIKeyURL:   "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+			CreatedAt:   timeutil.NowTime(),
+			UpdatedAt:   timeutil.NowTime(),
+		},
+	)
 
 	// Only include trial provider if a valid signed license was injected at build time
 	if claims := getTrialClaims(); claims != nil {
@@ -370,10 +551,10 @@ func BuiltinProviders() []*Provider {
 			Website:     "https://zimaos.com",
 			APIKeys: []APIKey{{
 				ID: "trial-key", Key: claims.Key, KeyHash: HashAPIKey(claims.Key),
-				Label: "Trial API Key", Enabled: true, CreatedAt: time.Now(),
+				Label: "Trial API Key", Enabled: true, CreatedAt: timeutil.NowTime(),
 			}},
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt: timeutil.NowTime(),
+			UpdatedAt: timeutil.NowTime(),
 		})
 	}
 
@@ -1513,6 +1694,296 @@ func BuiltinModels() map[string][]*Model {
 				MaxOutput:     8192,
 				InputPrice:    0.8,
 				OutputPrice:   4.0,
+			},
+		},
+		// --- OAuth-based Provider Models ---
+		"google-antigravity": {
+			{
+				ID: "claude-sonnet-4-5-20250929", ProviderID: "google-antigravity",
+				Name: "claude-sonnet-4-5-20250929", DisplayName: "Claude Sonnet 4.5 (Cloud Code)",
+				Enabled: true,
+				Capabilities: ModelCapabilities{
+					Chat: true, Vision: true, FunctionCall: true, Streaming: true, Thinking: true, JSON: true, SystemPrompt: true,
+				},
+				ContextWindow: 200000, MaxOutput: 64000,
+				InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.3,
+			},
+			{
+				ID: "gemini-2.0-flash", ProviderID: "google-antigravity",
+				Name: "gemini-2.0-flash", DisplayName: "Gemini 2.0 Flash (Cloud Code)",
+				Enabled: true,
+				Capabilities: ModelCapabilities{
+					Chat: true, Vision: true, FunctionCall: true, Streaming: true, JSON: true, SystemPrompt: true,
+				},
+				ContextWindow: 1000000, MaxOutput: 8192,
+				InputPrice: 0.1, OutputPrice: 0.4, CachePrice: 0.025,
+			},
+		},
+		"google-gemini-cli": {
+			{
+				ID: "gemini-2.0-flash", ProviderID: "google-gemini-cli",
+				Name: "gemini-2.0-flash", DisplayName: "Gemini 2.0 Flash (Gemini CLI)",
+				Enabled: true,
+				Capabilities: ModelCapabilities{
+					Chat: true, Vision: true, FunctionCall: true, Streaming: true, JSON: true, SystemPrompt: true,
+				},
+				ContextWindow: 1000000, MaxOutput: 8192,
+				InputPrice: 0.1, OutputPrice: 0.4, CachePrice: 0.025,
+			},
+			{
+				ID: "gemini-1.5-pro", ProviderID: "google-gemini-cli",
+				Name: "gemini-1.5-pro", DisplayName: "Gemini 1.5 Pro (Gemini CLI)",
+				Enabled: true,
+				Capabilities: ModelCapabilities{
+					Chat: true, Vision: true, FunctionCall: true, Streaming: true, JSON: true, SystemPrompt: true,
+				},
+				ContextWindow: 2000000, MaxOutput: 8192,
+				InputPrice: 1.25, OutputPrice: 5.0, CachePrice: 0.3125,
+			},
+		},
+		"github-copilot": {
+			{
+				ID: "gpt-4o", ProviderID: "github-copilot",
+				Name: "gpt-4o", DisplayName: "GPT-4o (Copilot)",
+				Enabled: true,
+				Capabilities: ModelCapabilities{
+					Chat: true, Vision: true, FunctionCall: true, Streaming: true, JSON: true, SystemPrompt: true,
+				},
+				ContextWindow: 128000, MaxOutput: 16384,
+				InputPrice: 2.5, OutputPrice: 10.0, CachePrice: 1.25,
+			},
+			{
+				ID: "claude-3.5-sonnet", ProviderID: "github-copilot",
+				Name: "claude-3.5-sonnet", DisplayName: "Claude 3.5 Sonnet (Copilot)",
+				Enabled: true,
+				Capabilities: ModelCapabilities{
+					Chat: true, Vision: true, FunctionCall: true, Streaming: true, JSON: true, SystemPrompt: true,
+				},
+				ContextWindow: 200000, MaxOutput: 8192,
+				InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.375,
+			},
+		},
+		"openai-codex": {
+			{
+				ID: "o3", ProviderID: "openai-codex",
+				Name: "o3", DisplayName: "o3 (Codex)",
+				Enabled: true,
+				Capabilities: ModelCapabilities{
+					Chat: true, Vision: true, FunctionCall: true, Streaming: true, Thinking: true, JSON: true, SystemPrompt: true,
+				},
+				ContextWindow: 200000, MaxOutput: 100000,
+				InputPrice: 2.0, OutputPrice: 8.0, CachePrice: 1.0,
+			},
+			{
+				ID: "o4-mini", ProviderID: "openai-codex",
+				Name: "o4-mini", DisplayName: "o4-mini (Codex)",
+				Enabled: true,
+				Capabilities: ModelCapabilities{
+					Chat: true, Vision: true, FunctionCall: true, Streaming: true, Thinking: true, JSON: true, SystemPrompt: true,
+				},
+				ContextWindow: 200000, MaxOutput: 100000,
+				InputPrice: 1.1, OutputPrice: 4.4, CachePrice: 0.55,
+			},
+		},
+		// --- Media Generation Providers ---
+		"dashscope-image": {
+			{
+				ID:          "wanx-v1",
+				ProviderID:  "dashscope-image",
+				Name:        "wanx-v1",
+				DisplayName: "Wanx V1",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					ImageGeneration: true,
+				},
+				PricePerRequest: 0.02, // ~¥0.14/image
+			},
+			{
+				ID:          "wanx2.1-t2i-turbo",
+				ProviderID:  "dashscope-image",
+				Name:        "wanx2.1-t2i-turbo",
+				DisplayName: "Wanx 2.1 Turbo",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					ImageGeneration: true,
+				},
+				PricePerRequest: 0.01, // ~¥0.08/image
+			},
+			{
+				ID:          "qwen-image-max",
+				ProviderID:  "dashscope-image",
+				Name:        "qwen-image-max",
+				DisplayName: "Qwen Image Max",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					ImageGeneration: true,
+				},
+				PricePerRequest: 0.04, // ~¥0.28/image
+			},
+		},
+		"gemini-image": {
+			{
+				ID:          "gemini-2.0-flash-exp-image-generation",
+				ProviderID:  "gemini-image",
+				Name:        "gemini-2.0-flash-exp-image-generation",
+				DisplayName: "Gemini 2.0 Flash Image",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					ImageGeneration: true,
+				},
+				PricePerRequest: 0.0, // Free during experimental phase
+			},
+			{
+				ID:          "imagen-3.0-generate-002",
+				ProviderID:  "gemini-image",
+				Name:        "imagen-3.0-generate-002",
+				DisplayName: "Imagen 3.0",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					ImageGeneration: true,
+				},
+				PricePerRequest: 0.04, // $0.04/image (1024x1024)
+			},
+		},
+		"mulerouter": {
+			// OpenAI vendor
+			{
+				ID:          "dall-e-3",
+				ProviderID:  "mulerouter",
+				Name:        "dall-e-3",
+				DisplayName: "DALL-E 3",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					ImageGeneration: true,
+				},
+				PricePerRequest: 0.04, // $0.040/image (1024x1024 standard)
+			},
+			// Alibaba vendor — image
+			{
+				ID:          "qwen-image-max",
+				ProviderID:  "mulerouter",
+				Name:        "qwen-image-max",
+				DisplayName: "Qwen Image Max",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					ImageGeneration: true,
+				},
+				PricePerRequest: 0.04,
+			},
+			{
+				ID:          "qwen-image-edit-max",
+				ProviderID:  "mulerouter",
+				Name:        "qwen-image-edit-max",
+				DisplayName: "Qwen Image Edit Max",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					ImageGeneration: true,
+				},
+				PricePerRequest: 0.04,
+			},
+			{
+				ID:          "nano-banana-pro",
+				ProviderID:  "mulerouter",
+				Name:        "nano-banana-pro",
+				DisplayName: "Nano Banana Pro",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					ImageGeneration: true,
+				},
+				PricePerRequest: 0.02,
+			},
+			// Midjourney vendor — image
+			{
+				ID:          "midjourney",
+				ProviderID:  "mulerouter",
+				Name:        "midjourney",
+				DisplayName: "Midjourney",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					ImageGeneration: true,
+				},
+				PricePerRequest: 0.10, // ~$0.10/image via API
+			},
+			// Alibaba vendor — video
+			{
+				ID:          "wan2.6-t2v",
+				ProviderID:  "mulerouter",
+				Name:        "wan2.6-t2v",
+				DisplayName: "Wan2 Text-to-Video",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					VideoGeneration: true,
+				},
+				PricePerRequest: 0.20, // ~$0.20/video (5s)
+			},
+			{
+				ID:          "wan2.6-i2v",
+				ProviderID:  "mulerouter",
+				Name:        "wan2.6-i2v",
+				DisplayName: "Wan2 Image-to-Video",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					VideoGeneration: true,
+				},
+				PricePerRequest: 0.20,
+			},
+			{
+				ID:          "wan2-spark-t2v",
+				ProviderID:  "mulerouter",
+				Name:        "wan2-spark-t2v",
+				DisplayName: "Wan2 Spark Text-to-Video",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					VideoGeneration: true,
+				},
+				PricePerRequest: 0.10,
+			},
+			// Midjourney vendor — video
+			{
+				ID:          "midjourney-video",
+				ProviderID:  "mulerouter",
+				Name:        "midjourney-video",
+				DisplayName: "Midjourney Video",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					VideoGeneration: true,
+				},
+				PricePerRequest: 0.20,
+			},
+		},
+		"minimax-audio": {
+			{
+				ID:          "speech-02-hd",
+				ProviderID:  "minimax-audio",
+				Name:        "speech-02-hd",
+				DisplayName: "Speech-02 HD (TTS)",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					AudioGeneration: true,
+				},
+				PricePerRequest: 0.015, // ~¥0.1/1000 chars
+			},
+			{
+				ID:          "speech-02-turbo",
+				ProviderID:  "minimax-audio",
+				Name:        "speech-02-turbo",
+				DisplayName: "Speech-02 Turbo (TTS)",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					AudioGeneration: true,
+				},
+				PricePerRequest: 0.007, // ~¥0.05/1000 chars
+			},
+			{
+				ID:          "music-01",
+				ProviderID:  "minimax-audio",
+				Name:        "music-01",
+				DisplayName: "Music-01",
+				Enabled:     true,
+				Capabilities: ModelCapabilities{
+					AudioGeneration: true,
+				},
+				PricePerRequest: 0.05, // ~¥0.35/generation
 			},
 		},
 	}

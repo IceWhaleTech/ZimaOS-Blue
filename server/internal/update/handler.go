@@ -300,6 +300,73 @@ func (h *Handler) LoadHistory(path string) error {
 	return json.Unmarshal(data, &h.history)
 }
 
+// GetCurrentVersion returns the current version string.
+func (h *Handler) GetCurrentVersion() string {
+	return h.currentVersion
+}
+
+// GetStatus returns the current update status.
+func (h *Handler) GetStatus() *UpdateStatus {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	s := *h.status // copy
+	return &s
+}
+
+// CheckForUpdate checks for available updates and returns the info.
+func (h *Handler) CheckForUpdate(ctx context.Context) (*UpdateInfo, error) {
+	latest, err := h.github.GetLatestVersion(ctx, h.config.ReleaseChannel)
+	if err != nil {
+		return nil, err
+	}
+	current, _ := ParseVersion(h.currentVersion)
+	updateAvailable := latest.IsNewerThan(current)
+	return &UpdateInfo{
+		CurrentVersion:  h.currentVersion,
+		LatestVersion:   latest.String(),
+		UpdateAvailable: updateAvailable,
+		ReleaseChannel:  h.config.ReleaseChannel,
+		DownloadURL:     h.github.GetDownloadURL(latest.String()),
+	}, nil
+}
+
+// StartDownload starts downloading the update in the background.
+func (h *Handler) StartDownload(ctx context.Context) error {
+	h.mu.Lock()
+	if h.status.State != StateIdle {
+		h.mu.Unlock()
+		return fmt.Errorf("update already in progress (state: %s)", h.status.State)
+	}
+	h.status.State = StateDownloading
+	h.status.Progress = 0
+	h.mu.Unlock()
+
+	go h.downloadAsync(ctx)
+	return nil
+}
+
+// ApplyUpdate applies the downloaded update.
+func (h *Handler) ApplyUpdate() error {
+	h.mu.Lock()
+	path := h.status.DownloadedPath
+	if path == "" {
+		h.mu.Unlock()
+		return fmt.Errorf("no update downloaded")
+	}
+	h.status.State = StateApplying
+	h.mu.Unlock()
+
+	if err := h.applier.Apply(path); err != nil {
+		h.setError(err.Error())
+		return err
+	}
+
+	h.mu.Lock()
+	h.status.State = StateRestarting
+	h.mu.Unlock()
+	return nil
+}
+
 // OTAStatus returns the latest OTA check result.
 // GET /api/v1/system/update/ota?desktop=1
 func (h *Handler) OTAStatus(c echo.Context) error {

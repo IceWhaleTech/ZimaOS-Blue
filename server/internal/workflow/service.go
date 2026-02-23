@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // WorkflowService implements the Service interface.
@@ -147,7 +148,7 @@ func (s *WorkflowService) EnableWorkflow(ctx context.Context, id string) error {
 	}
 
 	workflow.Status = WorkflowStatusActive
-	workflow.UpdatedAt = time.Now()
+	workflow.UpdatedAt = timeutil.NowTime()
 
 	if err := s.repo.UpdateWorkflow(ctx, workflow); err != nil {
 		return err
@@ -165,7 +166,7 @@ func (s *WorkflowService) DisableWorkflow(ctx context.Context, id string) error 
 	}
 
 	workflow.Status = WorkflowStatusInactive
-	workflow.UpdatedAt = time.Now()
+	workflow.UpdatedAt = timeutil.NowTime()
 
 	if err := s.repo.UpdateWorkflow(ctx, workflow); err != nil {
 		return err
@@ -298,7 +299,7 @@ func (s *WorkflowService) CancelExecution(ctx context.Context, id string) error 
 	}
 
 	execution.Status = ExecutionStatusCancelled
-	now := time.Now()
+	now := timeutil.NowTime()
 	execution.CompletedAt = &now
 
 	return s.repo.SaveExecution(ctx, execution)
@@ -465,7 +466,7 @@ func (s *WorkflowService) registerScheduleTrigger(ctx context.Context, workflow 
 	// Add new job
 	entryID, err := s.cron.AddFunc(cronExpr, func() {
 		triggerData := map[string]interface{}{
-			"scheduled_at": time.Now().Format(time.RFC3339),
+			"scheduled_at": timeutil.NowTime().Format(time.RFC3339),
 			"cron":         cronExpr,
 		}
 

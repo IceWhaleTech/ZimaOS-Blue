@@ -28,6 +28,15 @@ func (s *RoutingStats) Record(originalModel, actualModel string, respBody []byte
 	}
 
 	inputTokens, outputTokens := parseUsageTokens(respBody)
+	s.RecordTokens(originalModel, actualModel, inputTokens, outputTokens)
+}
+
+// RecordTokens accumulates cost savings from pre-parsed token counts.
+// Used by streaming paths where tokens are already extracted.
+func (s *RoutingStats) RecordTokens(originalModel, actualModel string, inputTokens, outputTokens int) {
+	if originalModel == "" || actualModel == "" || originalModel == actualModel {
+		return
+	}
 	if inputTokens == 0 && outputTokens == 0 {
 		return
 	}
@@ -66,6 +75,13 @@ func (s *RoutingStats) Snapshot() RoutingStatsSnapshot {
 		TokensRouted:   atomic.LoadInt64(&s.inputTokensRouted),
 		CostSavedUSD:   float64(micro) / 1_000_000,
 	}
+}
+
+// Load restores persisted counters (called on startup).
+func (s *RoutingStats) Load(routedRequests, tokensRouted, costSavedMicro int64) {
+	atomic.StoreInt64(&s.routedRequests, routedRequests)
+	atomic.StoreInt64(&s.inputTokensRouted, tokensRouted)
+	atomic.StoreInt64(&s.costSavedMicro, costSavedMicro)
 }
 
 // parseUsageTokens extracts input/output token counts from a response body.

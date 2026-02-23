@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sysinfo"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 type HealthStatus struct {
@@ -64,7 +65,7 @@ func healthHandler(c echo.Context) error {
 	status := HealthStatus{
 		Status:        "ok",
 		Service:       "zimaos-blue",
-		Timestamp:     time.Now(),
+		Timestamp:     timeutil.NowTime(),
 		Uptime:        formatUptime(uptime),
 		UptimeSeconds: uptime.Seconds(),
 		Version:       version,

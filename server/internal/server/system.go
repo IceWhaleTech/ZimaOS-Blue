@@ -10,6 +10,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/scheduler"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sysinfo"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/watcher"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SystemStatus represents the complete system status.
@@ -77,8 +78,8 @@ func (h *SystemStatusHandler) getSystemStatus(c echo.Context) error {
 
 	status := SystemStatus{
 		Status:    "ok",
-		Timestamp: time.Now(),
-		Uptime:    time.Since(startTime).String(),
+		Timestamp: timeutil.NowTime(),
+		Uptime:    timeutil.SinceTime(startTime).String(),
 		Version:   version,
 		Runtime: RuntimeStatus{
 			GoVersion:    runtime.Version(),

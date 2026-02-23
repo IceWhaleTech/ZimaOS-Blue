@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getUrlProbability, getTokenProbability, parseClipboardData } from '@/utils/clipboardParser'
+import { getUrlProbability, getTokenProbability, parseClipboardData, parseClipboardFields } from '@/utils/clipboardParser'
 
 describe('Clipboard Parser', () => {
   describe('getUrlProbability', () => {
@@ -81,19 +81,19 @@ describe('Clipboard Parser', () => {
   describe('parseClipboardData', () => {
     describe('URL + Token pattern', () => {
       it('should parse URL and token on separate lines', () => {
-        const data = `https://test.claude-api-dummy.com/
+        const data = `https://api.example.com/
 sk-Zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
         const result = parseClipboardData(data)
-        expect(result['url']).toBe('https://test.claude-api-dummy.com/')
-        expect(result['api_key']).toBe('sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE')
+        expect(result['base_url']).toBe('https://api.example.com/')
+        expect(result['api_key']).toBe('sk-Zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
       })
 
       it('should parse token and URL in reverse order', () => {
         const data = `sk-Zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-https://test.claude-api-dummy.com/`
+https://api.example.com/`
         const result = parseClipboardData(data)
-        expect(result['url']).toBe('https://test.claude-api-dummy.com/')
-        expect(result['api_key']).toBe('sk-ZAFeyOQ06TUW9qKlolQsKFtaePRsZYRzS1YOrYtx5n44X8zE')
+        expect(result['base_url']).toBe('https://api.example.com/')
+        expect(result['api_key']).toBe('sk-Zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
       })
 
       it('should handle extra whitespace and newlines', () => {
@@ -101,7 +101,7 @@ https://test.claude-api-dummy.com/`
 
   sk-testkey180789012345  `
         const result = parseClipboardData(data)
-        expect(result['url']).toBe('https://api.example.com/v1')
+        expect(result['base_url']).toBe('https://api.example.com/v1')
         expect(result['api_key']).toBe('sk-testkey180789012345')
       })
     })
@@ -251,10 +251,10 @@ MODEL=gpt-4`
       })
 
       it('should parse third-party API config', () => {
-        const data = `https://test.claude-api-dummy.com/
+        const data = `https://api.example.com/
 sk-Zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
         const result = parseClipboardData(data)
-        expect(result['api_url']).toBe('https://test.claude-api-dummy.com/')
+        expect(result['base_url']).toBe('https://api.example.com/')
         expect(result['api_key']).toBe('sk-Zxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
       })
 
@@ -274,6 +274,93 @@ url: https://api.example.com`
         // Comments are parsed as key-value with # as part of key
         expect(result['api_key']).toBe('sk-abc123')
         expect(result['url']).toBe('https://api.example.com')
+      })
+    })
+  })
+
+  describe('parseClipboardFields', () => {
+    describe('newline-separated values', () => {
+      it('should parse multiple lines as positional tokens', () => {
+        const data = `cli_xxxxxxxxxxxxxxxxxx
+aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpP
+qQrRsStTuUvVwWxXyYzZ0011223344556`
+        const result = parseClipboardFields(data)
+        expect(result).toHaveLength(3)
+        expect(result[0]).toBe('cli_xxxxxxxxxxxxxxxxxx')
+        expect(result[1]).toBe('aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpP')
+        expect(result[2]).toBe('qQrRsStTuUvVwWxXyYzZ0011223344556')
+      })
+
+      it('should skip empty lines', () => {
+        const data = `token_aaa\n\ntoken_bbb\n\ntoken_ccc`
+        const result = parseClipboardFields(data)
+        expect(result).toEqual(['token_aaa', 'token_bbb', 'token_ccc'])
+      })
+    })
+
+    describe('whitespace-separated values', () => {
+      it('should parse space-separated tokens on a single line', () => {
+        const data = 'val_alpha val_beta val_gamma'
+        const result = parseClipboardFields(data)
+        expect(result).toEqual(['val_alpha', 'val_beta', 'val_gamma'])
+      })
+
+      it('should parse tab-separated tokens on a single line', () => {
+        const data = 'val_one\tval_two\tval_three'
+        const result = parseClipboardFields(data)
+        expect(result).toEqual(['val_one', 'val_two', 'val_three'])
+      })
+
+      it('should handle mixed spaces and tabs', () => {
+        const data = 'val_x \t val_y  val_z'
+        const result = parseClipboardFields(data)
+        expect(result).toEqual(['val_x', 'val_y', 'val_z'])
+      })
+    })
+
+    describe('mixed line and whitespace separators', () => {
+      it('should split lines then split by whitespace within each line', () => {
+        const data = `val_a val_b
+val_c
+val_d val_e val_f`
+        const result = parseClipboardFields(data)
+        expect(result).toEqual(['val_a', 'val_b', 'val_c', 'val_d', 'val_e', 'val_f'])
+      })
+
+      it('should handle tabs and newlines mixed', () => {
+        const data = `tok_1\ttok_2
+tok_3\ttok_4\ttok_5`
+        const result = parseClipboardFields(data)
+        expect(result).toEqual(['tok_1', 'tok_2', 'tok_3', 'tok_4', 'tok_5'])
+      })
+    })
+
+    describe('edge cases', () => {
+      it('should return empty array for empty input', () => {
+        expect(parseClipboardFields('')).toEqual([])
+        expect(parseClipboardFields('   ')).toEqual([])
+        expect(parseClipboardFields('\n\n')).toEqual([])
+      })
+
+      it('should return empty array for single token', () => {
+        expect(parseClipboardFields('only_one_value')).toEqual([])
+      })
+
+      it('should return empty array when key-value parsing succeeds', () => {
+        expect(parseClipboardFields('api_key: sk-test123')).toEqual([])
+        expect(parseClipboardFields('KEY=value')).toEqual([])
+      })
+
+      it('should handle Windows line endings', () => {
+        const data = "tok_a\r\ntok_b\r\ntok_c"
+        const result = parseClipboardFields(data)
+        expect(result).toEqual(['tok_a', 'tok_b', 'tok_c'])
+      })
+
+      it('should trim leading/trailing whitespace', () => {
+        const data = '  tok_first   tok_second  '
+        const result = parseClipboardFields(data)
+        expect(result).toEqual(['tok_first', 'tok_second'])
       })
     })
   })

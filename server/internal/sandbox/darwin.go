@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // DarwinExecutorMode specifies which executor to use on macOS.
@@ -110,7 +110,7 @@ func (e *DarwinExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*E
 	result := &ExecutionResult{
 		ID:        req.ID,
 		Status:    StatusRunning,
-		StartTime: time.Now(),
+		StartTime: timeutil.NowTime(),
 	}
 
 	state := &executionState{
@@ -125,7 +125,7 @@ func (e *DarwinExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*E
 
 	// Run command
 	err := cmd.Run()
-	result.EndTime = time.Now()
+	result.EndTime = timeutil.NowTime()
 	result.Duration = result.EndTime.Sub(result.StartTime)
 	result.Stdout = truncateOutput(stdout.String(), 1024*1024)
 	result.Stderr = truncateOutput(stderr.String(), 1024*1024)

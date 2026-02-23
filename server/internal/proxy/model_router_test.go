@@ -18,9 +18,7 @@ func TestNewModelRouter(t *testing.T) {
 	if !mr.config.Enabled {
 		t.Error("Default config should have Enabled=true")
 	}
-	if len(mr.config.Families) == 0 {
-		t.Error("Default config should have families")
-	}
+	// Default config intentionally has no hardcoded families — TierResolver handles classification
 }
 
 func TestNewModelRouterWithInvalidRegex(t *testing.T) {

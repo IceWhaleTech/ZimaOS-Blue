@@ -34,6 +34,65 @@ const (
 	MsgProvidersInCooldown = "error.providers_in_cooldown"
 )
 
+// Message keys for iMessage channel.
+const (
+	MsgIMNotSetUp          = "imessage.not_set_up"
+	MsgIMNotSignedIn       = "imessage.not_signed_in"
+	MsgIMFullDiskAccess    = "imessage.full_disk_access"
+	MsgIMAutomationDenied  = "imessage.automation_denied"
+	MsgIMUnavailablePlatform = "imessage.unavailable_platform"
+)
+
+// Message keys for UI review report.
+const (
+	MsgUIReviewTitle         = "ui_review.title"
+	MsgUIReviewOverall       = "ui_review.overall"
+	MsgUIReviewPass          = "ui_review.pass"
+	MsgUIReviewFail          = "ui_review.fail"
+	MsgUIReviewVisual        = "ui_review.visual"
+	MsgUIReviewFunctional    = "ui_review.functional"
+	MsgUIReviewAccessibility = "ui_review.accessibility"
+	MsgUIReviewIssues        = "ui_review.issues"
+	MsgUIReviewSuggestions   = "ui_review.suggestions"
+	MsgUIReviewCritical      = "ui_review.critical"
+	MsgUIReviewMajor         = "ui_review.major"
+	MsgUIReviewMinor         = "ui_review.minor"
+)
+
+// Message keys for UI review step names.
+const (
+	MsgStepPageLoad      = "ui_review.step.page_load"
+	MsgStepFunctional    = "ui_review.step.functional"
+	MsgStepAccessibility = "ui_review.step.accessibility"
+	MsgStepViewport      = "ui_review.step.viewport"
+	MsgStepScroll        = "ui_review.step.scroll"
+	MsgStepScreenshot    = "ui_review.step.screenshot"
+	MsgStepVisualReview  = "ui_review.step.visual_review"
+	MsgStepVLMSkipped    = "ui_review.step.vlm_skipped"
+	MsgStepVLMFailed     = "ui_review.step.vlm_failed"
+	MsgStepStructural    = "ui_review.step.structural"
+	MsgStepStructuralMsg = "ui_review.step.structural_msg"
+	MsgSuggestionNoVLM   = "ui_review.suggestion.no_vlm"
+
+	// Structural analysis issue descriptions
+	MsgIssueNoHeading     = "ui_review.issue.no_heading"
+	MsgIssueNoNavigation  = "ui_review.issue.no_navigation"
+	MsgIssueSparseContent = "ui_review.issue.sparse_content"
+	MsgIssueNoA11yTree    = "ui_review.issue.no_a11y_tree"
+	MsgIssueA11yTreeFail  = "ui_review.issue.a11y_tree_fail"
+	MsgIssueNoHeadingA11y = "ui_review.issue.no_heading_a11y"
+	MsgIssueNoNavA11y     = "ui_review.issue.no_nav_a11y"
+	MsgIssueVLMFailed     = "ui_review.issue.vlm_failed"
+
+	// Card action messages (sent as user message when clicking card buttons)
+	MsgActionRecheck     = "ui_review.action.recheck"
+	MsgActionRecheckURL  = "ui_review.action.recheck_url"
+	MsgActionA11yOnly    = "ui_review.action.a11y_only"
+	MsgActionA11yOnlyURL = "ui_review.action.a11y_only_url"
+	MsgActionFullReport  = "ui_review.action.full_report"
+	MsgActionFullReportURL = "ui_review.action.full_report_url"
+)
+
 var (
 	translations = map[Language]map[string]string{
 		LangEnUS: {
@@ -47,6 +106,48 @@ var (
 			MsgInternalError:       "An internal error occurred. Please try again later.",
 			MsgNoProviderAvailable: "No AI service provider is available. Please check the configuration or contact the administrator.",
 			MsgProvidersInCooldown: "No AI service provider is currently available (%d providers are in cooldown). Please try again later.",
+			// UI Review
+			MsgUIReviewTitle:         "📋 UI Review Report",
+			MsgUIReviewOverall:       "Overall Score",
+			MsgUIReviewPass:          "✅ PASS",
+			MsgUIReviewFail:          "❌ FAIL",
+			MsgUIReviewVisual:        "👁️ Visual",
+			MsgUIReviewFunctional:    "⚙️ Functional",
+			MsgUIReviewAccessibility: "♿ Accessibility",
+			MsgUIReviewIssues:        "🔍 Issues (%d)",
+			MsgUIReviewSuggestions:   "💡 Suggestions",
+			MsgUIReviewCritical:      "critical",
+			MsgUIReviewMajor:         "major",
+			MsgUIReviewMinor:         "minor",
+			// UI Review Steps
+			MsgStepPageLoad:      "Page Load",
+			MsgStepFunctional:    "Functional Check",
+			MsgStepAccessibility: "Accessibility Check",
+			MsgStepViewport:      "Viewport %s",
+			MsgStepScroll:        "Scroll (%s)",
+			MsgStepScreenshot:    "Screenshot (%s)",
+			MsgStepVisualReview:  "Visual Review (%s)",
+			MsgStepVLMSkipped:    "No LLM provider configured",
+			MsgStepVLMFailed:     "VLM returned no result",
+			MsgStepStructural:    "Structural Analysis (%s)",
+			MsgStepStructuralMsg: "Estimated from page structure (no vision model)",
+			MsgSuggestionNoVLM:   "Visual score is estimated from page structure (no vision model available). For accurate visual review, configure a vision-capable model.",
+			// Structural analysis issues
+			MsgIssueNoHeading:     "No heading structure detected — visual hierarchy may be unclear",
+			MsgIssueNoNavigation:  "No navigation landmark — layout structure may be unclear",
+			MsgIssueSparseContent: "Very few elements detected — page may be sparse or not fully loaded",
+			MsgIssueNoA11yTree:    "Page accessibility tree unavailable — page may not have loaded correctly",
+			MsgIssueA11yTreeFail:  "Could not retrieve accessibility tree",
+			MsgIssueNoHeadingA11y: "No heading elements found in accessibility tree",
+			MsgIssueNoNavA11y:     "No navigation landmark found",
+			MsgIssueVLMFailed:     "VLM review failed — no visual score available",
+			// Card action messages
+			MsgActionRecheck:       "Please retry the UI review",
+			MsgActionRecheckURL:    "Please re-run the UI review for %s",
+			MsgActionA11yOnly:      "Run accessibility check",
+			MsgActionA11yOnlyURL:   "Run accessibility check only for %s",
+			MsgActionFullReport:    "Show full report",
+			MsgActionFullReportURL: "Show full human-readable UI review report for %s",
 		},
 		LangZhCN: {
 			MsgProcessingError:     "抱歉，处理您的消息时发生错误：%v",
@@ -59,6 +160,48 @@ var (
 			MsgInternalError:       "发生内部错误，请稍后重试。",
 			MsgNoProviderAvailable: "没有可用的AI服务提供商，请检查配置或联系管理员。",
 			MsgProvidersInCooldown: "暂时没有可用的AI服务提供商（有 %d 个提供商正在冷却中），请稍后重试。",
+			// UI Review
+			MsgUIReviewTitle:         "📋 UI 评审报告",
+			MsgUIReviewOverall:       "综合评分",
+			MsgUIReviewPass:          "✅ 通过",
+			MsgUIReviewFail:          "❌ 未通过",
+			MsgUIReviewVisual:        "👁️ 视觉",
+			MsgUIReviewFunctional:    "⚙️ 功能",
+			MsgUIReviewAccessibility: "♿ 可访问性",
+			MsgUIReviewIssues:        "🔍 问题 (%d)",
+			MsgUIReviewSuggestions:   "💡 建议",
+			MsgUIReviewCritical:      "严重",
+			MsgUIReviewMajor:         "重要",
+			MsgUIReviewMinor:         "轻微",
+			// UI Review Steps
+			MsgStepPageLoad:      "页面加载",
+			MsgStepFunctional:    "功能检查",
+			MsgStepAccessibility: "可访问性检查",
+			MsgStepViewport:      "视口 %s",
+			MsgStepScroll:        "滚动 (%s)",
+			MsgStepScreenshot:    "截图 (%s)",
+			MsgStepVisualReview:  "视觉评审 (%s)",
+			MsgStepVLMSkipped:    "未配置 LLM 提供商",
+			MsgStepVLMFailed:     "VLM 未返回结果",
+			MsgStepStructural:    "结构分析 (%s)",
+			MsgStepStructuralMsg: "基于页面结构估算（无视觉模型）",
+			MsgSuggestionNoVLM:   "视觉评分基于页面结构估算（无视觉模型）。如需精确的视觉评审，请配置支持视觉的模型。",
+			// Structural analysis issues
+			MsgIssueNoHeading:     "未检测到标题结构——视觉层次可能不清晰",
+			MsgIssueNoNavigation:  "未检测到导航区域——布局结构可能不清晰",
+			MsgIssueSparseContent: "检测到的元素很少——页面可能内容稀疏或未完全加载",
+			MsgIssueNoA11yTree:    "无法获取页面可访问性树——页面可能未正确加载",
+			MsgIssueA11yTreeFail:  "无法获取可访问性树",
+			MsgIssueNoHeadingA11y: "可访问性树中未找到标题元素",
+			MsgIssueNoNavA11y:     "未找到导航区域",
+			MsgIssueVLMFailed:     "VLM 评审失败——无法获取视觉评分",
+			// Card action messages
+			MsgActionRecheck:       "请重新进行 UI 评审",
+			MsgActionRecheckURL:    "请重新评审 %s",
+			MsgActionA11yOnly:      "仅进行可访问性检查",
+			MsgActionA11yOnlyURL:   "仅对 %s 进行可访问性检查",
+			MsgActionFullReport:    "显示完整报告",
+			MsgActionFullReportURL: "显示 %s 的完整 UI 评审报告",
 		},
 	}
 	mu sync.RWMutex

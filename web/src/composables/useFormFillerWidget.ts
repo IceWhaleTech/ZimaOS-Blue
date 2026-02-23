@@ -7,6 +7,7 @@ import {
 } from '@/api/formfiller'
 import {
   parseClipboardData,
+  parseClipboardFields,
 } from '@/utils/clipboardParser'
 
 export interface FillHistoryEntry {
@@ -37,6 +38,7 @@ export interface WidgetState {
   isInitialized: boolean
   clipboardData: string
   parsedClipboardFields: Record<string, string>
+  parsedClipboardTokens: string[]
   revealedPasswordFields: Set<HTMLInputElement>
 }
 
@@ -55,6 +57,7 @@ const globalState = reactive<WidgetState>({
   isInitialized: false,
   clipboardData: '',
   parsedClipboardFields: {},
+  parsedClipboardTokens: [],
   revealedPasswordFields: new Set(),
 })
 
@@ -82,7 +85,9 @@ export function useFormFillerWidget() {
   // Computed
   const canUndo = computed(() => globalState.fillHistory.length > 0)
   const hasClipboardData = computed(() => globalState.clipboardData.trim().length > 0)
-  const parsedFieldCount = computed(() => Object.keys(globalState.parsedClipboardFields).length)
+  const parsedFieldCount = computed(() =>
+    Object.keys(globalState.parsedClipboardFields).length || globalState.parsedClipboardTokens.length
+  )
 
   // Load configuration and templates
   async function initialize() {
@@ -269,6 +274,7 @@ export function useFormFillerWidget() {
   function setClipboardData(data: string) {
     globalState.clipboardData = data
     globalState.parsedClipboardFields = parseClipboardData(data)
+    globalState.parsedClipboardTokens = parseClipboardFields(data)
   }
 
   // Read from system clipboard
@@ -289,6 +295,7 @@ export function useFormFillerWidget() {
   function clearClipboardData() {
     globalState.clipboardData = ''
     globalState.parsedClipboardFields = {}
+    globalState.parsedClipboardTokens = []
   }
 
   // Reveal password field (change type to text)
@@ -524,7 +531,24 @@ export function useFormFillerWidget() {
   function fillCurrentField() {
     if (!globalState.focusedElement) return
 
-    const value = findValueForField(globalState.focusedElement)
+    let value: string | null = null
+
+    // Positional mode: use the field's DOM index to pick the corresponding line
+    if (globalState.parsedClipboardTokens.length > 0) {
+      const inputs = document.querySelectorAll('input, select, textarea')
+      const fillableFields: Element[] = []
+      inputs.forEach((el) => { if (isFillableField(el)) fillableFields.push(el) })
+      const idx = fillableFields.indexOf(globalState.focusedElement)
+      if (idx >= 0 && idx < globalState.parsedClipboardTokens.length) {
+        value = globalState.parsedClipboardTokens[idx]!
+      }
+    }
+
+    // Fall back to key-value matching
+    if (!value) {
+      value = findValueForField(globalState.focusedElement)
+    }
+
     if (!value) {
       globalState.error = 'No matching value found for this field'
       setTimeout(() => { globalState.error = null }, 2000)
@@ -568,6 +592,37 @@ export function useFormFillerWidget() {
       fields: [],
     }
 
+    // Positional mode: plain lines without keys → fill fields in DOM order
+    if (globalState.parsedClipboardTokens.length > 0) {
+      const fillableFields: (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[] = []
+      inputs.forEach((el) => {
+        if (isFillableField(el)) fillableFields.push(el)
+      })
+
+      const lines = globalState.parsedClipboardTokens
+      const count = Math.min(lines.length, fillableFields.length)
+      for (let i = 0; i < count; i++) {
+        const element = fillableFields[i]!
+        const value = lines[i]!
+        const wasPasswordField = element instanceof HTMLInputElement && element.type === 'password'
+        const oldValue = element.value
+        element.value = value
+        element.dispatchEvent(new Event('input', { bubbles: true }))
+        element.dispatchEvent(new Event('change', { bubbles: true }))
+        if (wasPasswordField && element instanceof HTMLInputElement) {
+          revealPassword(element)
+        }
+        historyEntry.fields.push({ element, oldValue, newValue: value })
+      }
+
+      if (historyEntry.fields.length > 0) {
+        globalState.fillHistory.push(historyEntry)
+        if (globalState.fillHistory.length > 20) globalState.fillHistory.shift()
+      }
+      return historyEntry.fields.length
+    }
+
+    // Key-value mode: match clipboard keys to field identifiers
     // Track used clipboard keys to prevent duplicate fills
     const usedKeys = new Set<string>()
 

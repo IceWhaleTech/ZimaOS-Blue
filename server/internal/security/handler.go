@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/sync/singleflight"
 
@@ -314,7 +315,7 @@ func (h *Handler) GetStats(c echo.Context) error {
 	}
 
 	// Count failed logins in last 24 hours
-	cutoff := time.Now().Add(-24 * time.Hour)
+	cutoff := timeutil.NowTime().Add(-24 * time.Hour)
 	for _, event := range h.events {
 		if event.Type == "failed_login" && event.Timestamp.After(cutoff) {
 			stats.FailedLogins24h++
@@ -345,7 +346,7 @@ func (h *Handler) GetEventStats(c echo.Context) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	var startDate time.Time
 
 	switch period {
@@ -438,11 +439,11 @@ func (h *Handler) BlockIP(c echo.Context) error {
 	blocked := &BlockedIP{
 		IPAddress: req.IPAddress,
 		Reason:    req.Reason,
-		BlockedAt: time.Now(),
+		BlockedAt: timeutil.NowTime(),
 		Permanent: req.Permanent,
 	}
 	if !req.Permanent {
-		blocked.ExpiresAt = time.Now().Add(24 * time.Hour)
+		blocked.ExpiresAt = timeutil.NowTime().Add(24 * time.Hour)
 	}
 
 	h.blockedIPs[req.IPAddress] = blocked
@@ -536,7 +537,7 @@ func (h *Handler) ExportThreats(c echo.Context) error {
 
 	// Filter by period if specified
 	if period != "" {
-		now := time.Now()
+		now := timeutil.NowTime()
 		var cutoff time.Time
 		switch period {
 		case "day":
@@ -589,7 +590,7 @@ func (h *Handler) ExportThreats(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"threats":     threats,
 		"total":       len(threats),
-		"exported_at": time.Now(),
+		"exported_at": timeutil.NowTime(),
 	})
 }
 
@@ -692,7 +693,7 @@ func (h *Handler) RunSecurityScan(c echo.Context) error {
 		scanResult := SecurityScanResult{
 			Items:     items,
 			Summary:   summary,
-			Timestamp: time.Now(),
+			Timestamp: timeutil.NowTime(),
 		}
 
 		// Cache the result
@@ -1710,7 +1711,7 @@ func (h *Handler) IsIPBlocked(ip string) bool {
 	}
 
 	// Check if block has expired
-	if !blocked.Permanent && time.Now().After(blocked.ExpiresAt) {
+	if !blocked.Permanent && timeutil.NowNano() > blocked.ExpiresAt.UnixNano() {
 		return false
 	}
 

@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -313,4 +314,26 @@ func TestScreenshotFormats(t *testing.T) {
 	assert.Equal(t, ScreenshotFormat("png"), FormatPNG)
 	assert.Equal(t, ScreenshotFormat("jpeg"), FormatJPEG)
 	assert.Equal(t, ScreenshotFormat("webp"), FormatWebP)
+}
+
+func TestIsConnectionClosed(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		expect bool
+	}{
+		{"nil", nil, false},
+		{"normal error", fmt.Errorf("timeout"), false},
+		{"closed connection", fmt.Errorf("write tcp 127.0.0.1:1234->127.0.0.1:5678: use of closed network connection"), true},
+		{"connection reset", fmt.Errorf("connection reset by peer"), true},
+		{"broken pipe", fmt.Errorf("write: broken pipe"), true},
+		{"websocket close", fmt.Errorf("websocket: close 1006"), true},
+		{"EOF", fmt.Errorf("EOF"), true},
+		{"wrapped", fmt.Errorf("navigate failed: %w", fmt.Errorf("use of closed network connection")), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expect, isConnectionClosed(tt.err))
+		})
+	}
 }

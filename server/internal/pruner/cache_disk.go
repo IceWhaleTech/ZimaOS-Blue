@@ -7,6 +7,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // DiskCache provides SQLite-backed cache persistence with TTL expiration.
@@ -76,7 +77,7 @@ func (d *DiskCache) Get(key string) ([]ScoredSegment, bool) {
 
 	// Check TTL
 	ca, err := time.Parse(time.RFC3339, createdAt)
-	if err != nil || time.Since(ca) > d.ttl {
+	if err != nil || timeutil.SinceTime(ca) > d.ttl {
 		go func() {
 			d.mu.Lock()
 			defer d.mu.Unlock()
@@ -110,7 +111,7 @@ func (d *DiskCache) Put(key string, segments []ScoredSegment) {
 	d.db.Exec(`
 		INSERT OR REPLACE INTO pruner_cache (key, data, created_at)
 		VALUES (?, ?, ?)
-	`, key, data, time.Now().UTC().Format(time.RFC3339))
+	`, key, data, timeutil.NowTime().UTC().Format(time.RFC3339))
 }
 
 // Cleanup removes expired entries.
@@ -122,7 +123,7 @@ func (d *DiskCache) Cleanup() int64 {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	cutoff := time.Now().Add(-d.ttl).UTC().Format(time.RFC3339)
+	cutoff := timeutil.NowTime().Add(-d.ttl).UTC().Format(time.RFC3339)
 	result, err := d.db.Exec("DELETE FROM pruner_cache WHERE created_at <= ?", cutoff)
 	if err != nil {
 		return 0

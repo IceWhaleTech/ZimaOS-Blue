@@ -275,7 +275,6 @@ func TestRegisterAll(t *testing.T) {
 		NewCalculator(),
 		NewSystemInfo(),
 		NewDateTime(),
-		NewWeather(nil),
 		NewSearch(),
 		// Productivity (4)
 		NewTimer(),
@@ -300,15 +299,12 @@ func TestRegisterAll(t *testing.T) {
 		NewEmail(nil),
 		NewCalendar(nil),
 		NewContacts(nil),
-		// Information (3)
-		NewNews(nil),
-		NewStocks(nil),
-		NewCrypto(nil),
 		// Integration (4)
 		NewGitHub(nil),
 		NewNotion(nil),
 		NewSlackSkill(nil),
 		NewDiscordSkill(nil),
+		// Note: Weather, News, Stocks, Crypto are API-key-gated (not always-on)
 	}
 
 	expected := GetSkillCount()

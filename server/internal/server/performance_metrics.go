@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // PerformanceMetrics tracks detailed performance metrics for the chat system
@@ -59,8 +60,8 @@ type RequestMetric struct {
 // NewPerformanceMetrics creates a new performance metrics tracker
 func NewPerformanceMetrics() *PerformanceMetrics {
 	return &PerformanceMetrics{
-		startTime:  time.Now(),
-		lastReset:  time.Now(),
+		startTime:  timeutil.NowTime(),
+		lastReset:  timeutil.NowTime(),
 		latencies:  make([]int64, 0, 10000),
 		minLatency: 1<<63 - 1, // Max int64
 	}
@@ -168,7 +169,7 @@ func (pm *PerformanceMetrics) GetMetrics() map[string]interface{} {
 		cacheHitRate = float64(cacheHits) / float64(cacheHits+cacheMisses) * 100
 	}
 
-	uptime := time.Since(pm.startTime).Seconds()
+	uptime := timeutil.SinceTime(pm.startTime).Seconds()
 	rps := float64(0)
 	if uptime > 0 {
 		rps = float64(totalReqs) / uptime
@@ -212,5 +213,5 @@ func (pm *PerformanceMetrics) Reset() {
 	pm.latencies = pm.latencies[:0]
 	pm.latencyMu.Unlock()
 
-	pm.lastReset = time.Now()
+	pm.lastReset = timeutil.NowTime()
 }

@@ -5,7 +5,7 @@ import (
 	"context"
 	"os/exec"
 	"sync"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // BaseExecutor provides common functionality for all executors.
@@ -65,7 +65,7 @@ func (e *BaseExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*Exe
 	result := &ExecutionResult{
 		ID:        req.ID,
 		Status:    StatusRunning,
-		StartTime: time.Now(),
+		StartTime: timeutil.NowTime(),
 	}
 
 	state := &executionState{
@@ -80,7 +80,7 @@ func (e *BaseExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*Exe
 
 	// Run command
 	err := cmd.Run()
-	result.EndTime = time.Now()
+	result.EndTime = timeutil.NowTime()
 	result.Duration = result.EndTime.Sub(result.StartTime)
 	result.Stdout = stdout.String()
 	result.Stderr = stderr.String()

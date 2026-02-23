@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SyncService handles on-demand synchronization of skills from remote sources.
@@ -214,7 +215,7 @@ func (s *SyncService) ForceSyncAll(ctx context.Context) {
 
 // doSync performs the actual sync operation for a source.
 func (s *SyncService) doSync(ctx context.Context, source *Source) error {
-	startTime := time.Now()
+	startTime := timeutil.NowTime()
 
 	// Set in-memory progress
 	s.progressMu.Lock()
@@ -245,7 +246,7 @@ func (s *SyncService) doSync(ctx context.Context, source *Source) error {
 		err = fmt.Errorf("unsupported source type: %s", source.Type)
 	}
 
-	duration := time.Since(startTime).Milliseconds()
+	duration := timeutil.SinceTime(startTime).Milliseconds()
 
 	if err != nil {
 		// Even if there's an error, we may have inserted some skills
@@ -307,7 +308,7 @@ func (s *SyncService) hasSyncedToday(ctx context.Context, sourceID string) (bool
 	}
 
 	// Compare dates (same day in local timezone)
-	now := time.Now()
+	now := timeutil.NowTime()
 	lastSync := status.LastSyncAt
 
 	return isSameDay(now, lastSync), nil
@@ -488,7 +489,7 @@ func (s *SyncService) fetchClawHubSkillsWithInsert(ctx context.Context, source *
 		consecutiveEmpty = 0
 
 		// Convert to local skill format
-		now := time.Now()
+		now := timeutil.NowTime()
 		var pageSkills []*Skill
 		for _, item := range apiResp.Items {
 			// Extract categories from tags (up to 3 tags as categories)
@@ -660,7 +661,7 @@ func (s *SyncService) fetchClawHubSkillDetail(ctx context.Context, source *Sourc
 		return nil, err
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	skill := &Skill{
 		ID:          detail.Slug,
 		Name:        detail.DisplayName,

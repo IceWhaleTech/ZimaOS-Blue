@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/go-jose/go-jose/v3"
 	"github.com/google/uuid"
 )
@@ -97,7 +98,7 @@ func (km *KeyManager) loadKey() error {
 	}
 
 	keyID := uuid.New().String()[:8]
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	km.mu.Lock()
 	defer km.mu.Unlock()
@@ -138,7 +139,7 @@ func (km *KeyManager) generateKey() error {
 	}
 
 	keyID := uuid.New().String()[:8]
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	km.mu.Lock()
 	defer km.mu.Unlock()
@@ -205,7 +206,7 @@ func (km *KeyManager) RotateKey() error {
 	currentKey, ok := km.keys[km.currentKeyID]
 	km.mu.RUnlock()
 
-	if !ok || time.Now().After(currentKey.ExpiresAt) {
+	if !ok || timeutil.NowNano() > currentKey.ExpiresAt.UnixNano() {
 		return km.generateKey()
 	}
 

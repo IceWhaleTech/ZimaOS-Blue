@@ -1,9 +1,11 @@
 package memory
 
 import (
-	"regexp"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ImportanceScorer calculates importance scores for memory chunks.
@@ -119,7 +121,7 @@ type ImportanceDetails struct {
 
 // calculateRecencyScore returns a score based on how recent the memory is.
 func (s *ImportanceScorer) calculateRecencyScore(createdAt time.Time) float32 {
-	daysSince := time.Since(createdAt).Hours() / 24
+	daysSince := timeutil.SinceTime(createdAt).Hours() / 24
 
 	if daysSince <= float64(s.config.RecencyDecayDays) {
 		return 1.0
@@ -236,9 +238,8 @@ func ExtractImportantContent(content string, maxSentences int) string {
 		maxSentences = 3
 	}
 
-	// Split into sentences
-	sentencePattern := regexp.MustCompile(`[.!?]+\s*`)
-	sentences := sentencePattern.Split(content, -1)
+	// Split into sentences using shared IR primitive
+	sentences := pruner.SplitSentences(content)
 
 	// Score each sentence
 	scorer := NewImportanceScorer(DefaultImportanceConfig())

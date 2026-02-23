@@ -9,6 +9,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Cache caches embeddings to avoid redundant API calls.
@@ -102,7 +103,7 @@ func (c *Cache) Get(ctx context.Context, textHash string) ([]float32, bool) {
 	// Update accessed_at
 	_, _ = c.db.ExecContext(ctx,
 		"UPDATE embedding_cache SET accessed_at = ? WHERE provider = ? AND model = ? AND text_hash = ?",
-		time.Now(), c.provider, c.model, textHash,
+		timeutil.NowTime(), c.provider, c.model, textHash,
 	)
 
 	var embedding []float32
@@ -123,7 +124,7 @@ func (c *Cache) Set(ctx context.Context, textHash string, embedding []float32) e
 		return fmt.Errorf("failed to marshal embedding: %w", err)
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	_, err = c.db.ExecContext(ctx, `
 		INSERT INTO embedding_cache (provider, model, text_hash, embedding, dimensions, created_at, accessed_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -173,7 +174,7 @@ func (c *Cache) GetBatch(ctx context.Context, textHashes []string) (map[string][
 
 	// Update accessed_at for found entries
 	if len(result) > 0 {
-		now := time.Now()
+		now := timeutil.NowTime()
 		for hash := range result {
 			_, _ = c.db.ExecContext(ctx,
 				"UPDATE embedding_cache SET accessed_at = ? WHERE provider = ? AND model = ? AND text_hash = ?",
@@ -208,7 +209,7 @@ func (c *Cache) SetBatch(ctx context.Context, embeddings map[string][]float32) e
 	}
 	defer stmt.Close()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	for hash, embedding := range embeddings {
 		embeddingJSON, err := json.Marshal(embedding)
 		if err != nil {

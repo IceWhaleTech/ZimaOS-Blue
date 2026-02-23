@@ -43,7 +43,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
@@ -60,6 +59,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
+
+	reminderPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reminder"
+	ssePkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
 
 var (
@@ -296,6 +298,16 @@ func runServer() {
 
 	// Initialize chat handler
 	chatHandler := server.NewChatHandler(memoryStore, llmRegistry, toolRegistry)
+
+	// Enable smart tool selection if configured
+	if cfg.ToolCalling.SmartSelection {
+		ts := tools.DefaultToolSelector()
+		if cfg.ToolCalling.SmartSelectionMaxTools > 0 {
+			ts.MaxTools = cfg.ToolCalling.SmartSelectionMaxTools
+		}
+		chatHandler.SetToolSelector(ts)
+		logger.Info().Int("max_tools", ts.MaxTools).Msg("Smart tool selection enabled")
+	}
 
 	// Initialize external auth service (for OAuth/OIDC providers)
 	extauthService, err := extauth.NewService(&extauth.ServiceConfig{
@@ -576,6 +588,48 @@ func runServer() {
 		}
 	}
 
+	// SSE event broker — created early so reminder service can use it as EventPublisher
+	sseBroker := ssePkg.NewBroker()
+
+	// Wire reminder service (SQLite + cron + message injection)
+	{
+		reminderStore, err := reminderPkg.NewStore(db)
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize reminder store")
+		} else {
+			reminderSvc := reminderPkg.NewService(reminderStore, zapLogger)
+
+			// Wire cron for scheduled firing
+			cronAdapter := reminderPkg.NewCronAdapter(cronHandler.GetService)
+			reminderSvc.SetCron(cronAdapter)
+
+			// Wire message injector for conversation delivery
+			reminderSvc.SetMessageInjector(reminderPkg.NewMemoryStoreInjector(memoryStore))
+
+			// Wire SSE event publisher
+			reminderSvc.SetEventPublisher(sseBroker)
+
+			// Wire into builtin skill
+			if reminderSkill := skillRegistry.Get("reminders"); reminderSkill != nil {
+				if rs, ok := reminderSkill.(*builtin.Reminders); ok {
+					adapter := reminderPkg.NewSkillAdapter(func() *reminderPkg.Service { return reminderSvc })
+					rs.SetReminderService(adapter)
+				}
+			}
+
+			// Restore pending reminders from previous session
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if err := reminderSvc.RestorePendingReminders(ctx); err != nil {
+					logger.Warn().Err(err).Msg("Failed to restore pending reminders")
+				} else {
+					logger.Info().Msg("Pending reminders restored")
+				}
+			}()
+		}
+	}
+
 	// Wire browser service into browser skill (lazy — creates rod service on first skill call)
 	if browserSkill := skillRegistry.Get("browser"); browserSkill != nil {
 		if bs, ok := browserSkill.(*builtin.Browser); ok {
@@ -595,11 +649,12 @@ func runServer() {
 			}
 			bs.SetBrowserService(browser.NewLazySkillAdapter(lazyBrowserSvc))
 
-			// Wire UI reviewer with same lazy browser service
-			if uiSkill := skillRegistry.Get("ui_reviewer"); uiSkill != nil {
-				if ur, ok := uiSkill.(*builtin.UIReviewer); ok {
-					ur.SetBrowserService(browser.NewLazySkillAdapter(lazyBrowserSvc))
-				}
+			// Wire native UI reviewer tool with same lazy browser service
+			if uiTool := tools.GetUIReviewerTool(toolRegistry); uiTool != nil {
+				uiTool.SetBrowser(tools.NewLazyRodBrowserAdapter(lazyBrowserSvc))
+				mediaDir := filepath.Join(dataDir, "media")
+				_ = os.MkdirAll(mediaDir, 0750)
+				uiTool.SetMediaDir(mediaDir)
 			}
 		}
 	}
@@ -710,7 +765,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader, sseBroker)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -793,7 +848,7 @@ func runServer() {
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -985,33 +1040,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		logger.Info("Vector memory store disabled by config")
 	}
 
-	// Initialize shared cache
-	var sharedCache *proxy.CCCache
-	cacheConfig := proxy.DefaultCacheConfig()
-	if cfg.Proxy != nil && cfg.Proxy.Cache != nil {
-		cacheConfig = cfg.Proxy.Cache
-	}
-	// Set disk cache path relative to dataDir if using default
-	if cacheConfig.StoragePath == "" || cacheConfig.StoragePath == "./data/cache.db" {
-		cacheConfig.StoragePath = filepath.Join(dataDir, "cache.db")
-	}
-	// Ensure disk cache directory exists
-	if cacheConfig.StoragePath != "" {
-		if dir := filepath.Dir(cacheConfig.StoragePath); dir != "" {
-			os.MkdirAll(dir, 0755)
-		}
-	}
-	sharedCache = proxy.NewCCCache(cacheConfig)
-	// Startup warmup: load hot entries from L2 disk into L1 memory
-	if cacheConfig.Warming.Enabled {
-		topN := cacheConfig.Warming.MaxRequests
-		if topN <= 0 {
-			topN = 1000
-		}
-		go sharedCache.Warmup(topN)
-	}
-	chatHandler.SetCache(sharedCache)
-
 	// Initialize channel config store
 	channelConfigStore := server.NewChannelConfigStore(dataDir)
 
@@ -1096,12 +1124,15 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		ClaudeCodeHandler:  claudeCodeHandler,
 		MemoryHandler:      memoryHandler,
 		ChannelConfigStore: channelConfigStore,
-		SharedCache:        sharedCache,
 		HotReloader:        hotReloader,
 		WorkspaceHandler:   workspace.NewHandler(workspaceMgr),
 	}
 
 	apiProtected := bootstrap.RegisterAllRoutes(e, deps)
+
+	// SSE event stream endpoint — register on /api/v1/events (protected)
+	sseHandler := ssePkg.NewHandler(sseBroker)
+	sseHandler.RegisterRoutes(apiProtected.Group("/v1"))
 
 	channelConfigHandler := server.NewChannelConfigHandler(channelConfigStore)
 	channelManager := channel.NewManager(channel.DefaultConfig(), zapLogger)

@@ -2,8 +2,11 @@ package providerpool
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Registry manages provider registration and lifecycle
@@ -38,6 +41,22 @@ func WithHealthCheck(interval, timeout time.Duration) RegistryOption {
 func WithProviderChangeCallback(cb func(provider *Provider, action string)) RegistryOption {
 	return func(r *Registry) {
 		r.onProviderChange = cb
+	}
+}
+
+// AddProviderChangeListener chains an additional callback onto the existing
+// onProviderChange handler. The new listener fires after the original callback.
+func (r *Registry) AddProviderChangeListener(cb func(provider *Provider, action string)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	prev := r.onProviderChange
+	if prev == nil {
+		r.onProviderChange = cb
+	} else {
+		r.onProviderChange = func(provider *Provider, action string) {
+			prev(provider, action)
+			cb(provider, action)
+		}
 	}
 }
 
@@ -103,9 +122,9 @@ func (r *Registry) Register(provider *Provider) error {
 
 	// Set defaults
 	if provider.CreatedAt.IsZero() {
-		provider.CreatedAt = time.Now()
+		provider.CreatedAt = timeutil.NowTime()
 	}
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 	if provider.Status == "" {
 		provider.Status = ProviderStatusInactive
 	}
@@ -214,7 +233,7 @@ func (r *Registry) Update(provider *Provider) error {
 		return ErrProviderNotFound
 	}
 
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 
 	if err := r.storage.SaveProvider(provider); err != nil {
 		return err
@@ -240,7 +259,7 @@ func (r *Registry) Enable(id string) error {
 	}
 
 	provider.Enabled = true
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 
 	if err := r.storage.SaveProvider(provider); err != nil {
 		return err
@@ -265,7 +284,7 @@ func (r *Registry) Disable(id string) error {
 
 	provider.Enabled = false
 	provider.Status = ProviderStatusInactive
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 
 	if err := r.storage.SaveProvider(provider); err != nil {
 		return err
@@ -289,10 +308,10 @@ func (r *Registry) UpdateStatus(id string, status ProviderStatus, lastError stri
 	}
 
 	provider.Status = status
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 	if lastError != "" {
 		provider.LastError = lastError
-		provider.LastErrorTime = time.Now()
+		provider.LastErrorTime = timeutil.NowTime()
 	}
 
 	if err := r.storage.SaveProvider(provider); err != nil {
@@ -409,7 +428,7 @@ func (r *Registry) AddAPIKey(providerID string, key *APIKey) error {
 		key.ID = GenerateID("key")
 	}
 	if key.CreatedAt.IsZero() {
-		key.CreatedAt = time.Now()
+		key.CreatedAt = timeutil.NowTime()
 	}
 	if key.KeyHash == "" {
 		key.KeyHash = HashAPIKey(key.Key)
@@ -423,7 +442,7 @@ func (r *Registry) AddAPIKey(providerID string, key *APIKey) error {
 	}
 
 	provider.APIKeys = append(provider.APIKeys, *key)
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 
 	return r.storage.SaveProvider(provider)
 }
@@ -453,7 +472,7 @@ func (r *Registry) RemoveAPIKey(providerID, keyID string) error {
 	}
 
 	provider.APIKeys = newKeys
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 
 	return r.storage.SaveProvider(provider)
 }
@@ -482,6 +501,23 @@ func (r *Registry) GetAPIKey(providerID string) (*APIKey, error) {
 	return nil, ErrNoAPIKey
 }
 
+// GetOAuthConfig returns the OAuth configuration for a provider, if connected.
+func (r *Registry) GetOAuthConfig(providerID string) (*OAuthConfig, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	provider, exists := r.providers[providerID]
+	if !exists {
+		return nil, ErrProviderNotFound
+	}
+
+	if provider.OAuth == nil || !provider.OAuth.Connected {
+		return nil, fmt.Errorf("no oauth configured for provider %s", providerID)
+	}
+
+	return provider.OAuth, nil
+}
+
 // HealthChecker defines the interface for health checking
 type HealthChecker interface {
 	Check(ctx context.Context, provider *Provider) *HealthCheckResult
@@ -492,7 +528,7 @@ type DefaultHealthChecker struct{}
 
 // Check performs a basic health check
 func (c *DefaultHealthChecker) Check(ctx context.Context, provider *Provider) *HealthCheckResult {
-	start := time.Now()
+	start := timeutil.NowTime()
 	result := &HealthCheckResult{
 		ProviderID: provider.ID,
 		CheckedAt:  start,
@@ -507,7 +543,7 @@ func (c *DefaultHealthChecker) Check(ctx context.Context, provider *Provider) *H
 	}
 
 	result.Healthy = true
-	result.Latency = time.Since(start)
+	result.Latency = timeutil.SinceTime(start)
 	return result
 }
 
@@ -573,7 +609,7 @@ func (pm *PricingManager) SetDefaultPricing(inputPrice, outputPrice, cachePrice 
 	pm.config.DefaultInputPrice = inputPrice
 	pm.config.DefaultOutputPrice = outputPrice
 	pm.config.DefaultCachePrice = cachePrice
-	pm.config.UpdatedAt = time.Now()
+	pm.config.UpdatedAt = timeutil.NowTime()
 
 	if err := pm.storage.SavePricingConfig(pm.config); err != nil {
 		return err
@@ -592,7 +628,7 @@ func (pm *PricingManager) SetModelPricing(pricing *ModelPricing) error {
 	defer pm.mu.Unlock()
 
 	pricing.IsCustom = true
-	pricing.UpdatedAt = time.Now()
+	pricing.UpdatedAt = timeutil.NowTime()
 
 	// Use model_id as key, or provider_id:model_id if provider-specific
 	key := pricing.ModelID
@@ -601,7 +637,7 @@ func (pm *PricingManager) SetModelPricing(pricing *ModelPricing) error {
 	}
 
 	pm.config.CustomPricing[key] = pricing
-	pm.config.UpdatedAt = time.Now()
+	pm.config.UpdatedAt = timeutil.NowTime()
 
 	if err := pm.storage.SavePricingConfig(pm.config); err != nil {
 		return err
@@ -629,7 +665,7 @@ func (pm *PricingManager) RemoveModelPricing(modelID, providerID string) error {
 	}
 
 	delete(pm.config.CustomPricing, key)
-	pm.config.UpdatedAt = time.Now()
+	pm.config.UpdatedAt = timeutil.NowTime()
 
 	if err := pm.storage.SavePricingConfig(pm.config); err != nil {
 		return err

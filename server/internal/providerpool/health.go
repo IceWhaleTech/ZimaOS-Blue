@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // HTTPHealthChecker performs HTTP-based health checks
@@ -32,7 +34,7 @@ func NewHTTPHealthChecker(timeout time.Duration) *HTTPHealthChecker {
 
 // Check performs an HTTP health check on a provider
 func (c *HTTPHealthChecker) Check(ctx context.Context, provider *Provider) *HealthCheckResult {
-	start := time.Now()
+	start := timeutil.NowTime()
 	result := &HealthCheckResult{
 		ProviderID: provider.ID,
 		CheckedAt:  start,
@@ -77,12 +79,12 @@ func (c *HTTPHealthChecker) Check(ctx context.Context, provider *Provider) *Heal
 		resp, err := httpClient.Do(req)
 		if err != nil {
 			lastErr = sanitizeHealthError(err)
-			result.Latency = time.Since(start)
+			result.Latency = timeutil.SinceTime(start)
 			continue
 		}
 		resp.Body.Close()
 
-		result.Latency = time.Since(start)
+		result.Latency = timeutil.SinceTime(start)
 
 		switch {
 		case resp.StatusCode >= 200 && resp.StatusCode < 400:
@@ -242,6 +244,6 @@ func (c *CompositeHealthChecker) Check(ctx context.Context, provider *Provider) 
 		ProviderID: provider.ID,
 		Healthy:    false,
 		Error:      "no health checkers configured",
-		CheckedAt:  time.Now(),
+		CheckedAt:  timeutil.NowTime(),
 	}
 }

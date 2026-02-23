@@ -1452,3 +1452,221 @@ func TestRouterBlindFallback_PassthroughModel(t *testing.T) {
 		t.Errorf("Expected passthrough model gpt-5.3-codex, got %s", receivedModel)
 	}
 }
+
+// --- OAuth provider routing tests ---
+
+// setupOAuthRouterTest creates a router with one API-key provider and one OAuth-only provider.
+func setupOAuthRouterTest(t *testing.T) (*Router, func()) {
+	t.Helper()
+	tmpDir, err := os.MkdirTemp("", "router-oauth-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	apiKeyProvider := &Provider{
+		ID: "apikey-prov", Name: "API Key Provider", Type: ProviderTypeBuiltin,
+		Location: ProviderLocationCloud, Enabled: true, Status: ProviderStatusActive,
+		Priority: 80,
+		APIKeys:  []APIKey{{ID: "k1", Key: "sk-test", Enabled: true}},
+	}
+	oauthProvider := &Provider{
+		ID: "oauth-prov", Name: "OAuth Provider", Type: ProviderTypeBuiltin,
+		Location: ProviderLocationCloud, Enabled: true, Status: ProviderStatusActive,
+		Priority: 100,
+		// No APIKeys — only OAuth
+		OAuth: &OAuthConfig{Connected: true, ProviderType: "antigravity"},
+	}
+
+	registry.Register(apiKeyProvider)
+	registry.Register(oauthProvider)
+
+	model := &Model{
+		ID: "gemini-2.5-pro", Name: "gemini-2.5-pro", DisplayName: "Gemini 2.5 Pro",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true, Streaming: true},
+	}
+	model.ProviderID = "apikey-prov"
+	model.InputPrice = 10.0
+	model.OutputPrice = 20.0
+	storage.SaveModels("apikey-prov", []*Model{model})
+
+	model.ProviderID = "oauth-prov"
+	model.InputPrice = 5.0
+	model.OutputPrice = 10.0
+	storage.SaveModels("oauth-prov", []*Model{model})
+
+	router.RebuildCandidates()
+
+	return router, func() { os.RemoveAll(tmpDir) }
+}
+
+// TestOAuthProviderInCandidateSnapshot verifies OAuth-only cloud providers
+// are included in the candidate snapshot (not skipped).
+func TestOAuthProviderInCandidateSnapshot(t *testing.T) {
+	router, cleanup := setupOAuthRouterTest(t)
+	defer cleanup()
+
+	// Route should find both providers as candidates
+	result, err := router.Route(&RouteRequest{
+		ModelID:  "gemini-2.5-pro",
+		Strategy: RoutingStrategyPriority,
+	})
+	if err != nil {
+		t.Fatalf("Route failed: %v", err)
+	}
+
+	// oauth-prov (priority 100) should be primary, apikey-prov (80) should be fallback
+	if result.Provider.ID != "oauth-prov" {
+		t.Errorf("Expected oauth-prov as primary, got %s", result.Provider.ID)
+	}
+	if len(result.Fallbacks) != 1 {
+		t.Fatalf("Expected 1 fallback, got %d", len(result.Fallbacks))
+	}
+	if result.Fallbacks[0].Provider.ID != "apikey-prov" {
+		t.Errorf("Expected apikey-prov as fallback, got %s", result.Fallbacks[0].Provider.ID)
+	}
+}
+
+// TestOAuthProviderRoutesPriority verifies OAuth provider wins when it has higher priority.
+func TestOAuthProviderRoutesPriority(t *testing.T) {
+	router, cleanup := setupOAuthRouterTest(t)
+	defer cleanup()
+
+	result, err := router.Route(&RouteRequest{
+		ModelID:  "gemini-2.5-pro",
+		Strategy: RoutingStrategyPriority,
+	})
+	if err != nil {
+		t.Fatalf("Route failed: %v", err)
+	}
+
+	// oauth-prov has priority 100 > apikey-prov 80
+	if result.Provider.ID != "oauth-prov" {
+		t.Errorf("Expected oauth-prov (priority 100), got %s", result.Provider.ID)
+	}
+	if result.OAuth == nil || !result.OAuth.Connected {
+		t.Error("Route result should carry OAuth config")
+	}
+}
+
+// TestOAuthProviderRoutesCost verifies OAuth provider participates in cost-based routing.
+func TestOAuthProviderRoutesCost(t *testing.T) {
+	router, cleanup := setupOAuthRouterTest(t)
+	defer cleanup()
+
+	result, err := router.Route(&RouteRequest{
+		ModelID:  "gemini-2.5-pro",
+		Strategy: RoutingStrategyCost,
+	})
+	if err != nil {
+		t.Fatalf("Route failed: %v", err)
+	}
+
+	// oauth-prov has lower cost (5+10=15) vs apikey-prov (10+20=30)
+	if result.Provider.ID != "oauth-prov" {
+		t.Errorf("Expected oauth-prov (cheapest), got %s", result.Provider.ID)
+	}
+}
+
+// TestOAuthProviderFailover verifies OAuth provider participates in failover.
+func TestOAuthProviderFailover(t *testing.T) {
+	router, cleanup := setupOAuthRouterTest(t)
+	defer cleanup()
+
+	var tried []string
+	err := router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "gemini-2.5-pro",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		tried = append(tried, result.Provider.ID)
+		if result.Provider.ID == "oauth-prov" {
+			return errors.New("simulated oauth failure")
+		}
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("RouteWithFallback failed: %v", err)
+	}
+	if len(tried) != 2 {
+		t.Fatalf("Expected 2 attempts, got %d: %v", len(tried), tried)
+	}
+	if tried[0] != "oauth-prov" {
+		t.Errorf("First attempt should be oauth-prov, got %s", tried[0])
+	}
+	if tried[1] != "apikey-prov" {
+		t.Errorf("Fallback should be apikey-prov, got %s", tried[1])
+	}
+}
+
+// TestOAuthDisconnectedExcluded verifies that an OAuth provider with Connected=false
+// is excluded from routing (same as having no credentials).
+func TestOAuthDisconnectedExcluded(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "router-oauth-disc-test-*")
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	// OAuth provider with Connected=false, no API keys
+	disconnected := &Provider{
+		ID: "disc-prov", Name: "Disconnected", Type: ProviderTypeBuiltin,
+		Location: ProviderLocationCloud, Enabled: true, Status: ProviderStatusActive,
+		Priority: 100,
+		OAuth:    &OAuthConfig{Connected: false, ProviderType: "copilot"},
+	}
+	registry.Register(disconnected)
+
+	storage.SaveModels("disc-prov", []*Model{{
+		ID: "test-model", ProviderID: "disc-prov", Name: "test-model",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true},
+	}})
+	router.RebuildCandidates()
+
+	_, err := router.Route(&RouteRequest{ModelID: "test-model"})
+	if err != ErrNoAvailableProvider {
+		t.Errorf("Expected ErrNoAvailableProvider for disconnected OAuth, got %v", err)
+	}
+}
+
+// TestOAuthProviderBlindFallback verifies OAuth providers participate in blind fallback.
+func TestOAuthProviderBlindFallback(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "router-oauth-blind-test-*")
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	// Only an OAuth provider, no models registered
+	oauthProv := &Provider{
+		ID: "oauth-only", Name: "OAuth Only", Type: ProviderTypeBuiltin,
+		Location: ProviderLocationCloud, Enabled: true, Status: ProviderStatusActive,
+		Priority: 100,
+		OAuth:    &OAuthConfig{Connected: true, ProviderType: "gemini-cli"},
+	}
+	registry.Register(oauthProv)
+	router.RebuildCandidates()
+
+	var tried []string
+	err := router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID: "unknown-model",
+	}, func(result *RouteResult) error {
+		tried = append(tried, result.Provider.ID)
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("Expected blind fallback to succeed, got: %v", err)
+	}
+	if len(tried) != 1 || tried[0] != "oauth-only" {
+		t.Errorf("Expected oauth-only in blind fallback, got: %v", tried)
+	}
+}

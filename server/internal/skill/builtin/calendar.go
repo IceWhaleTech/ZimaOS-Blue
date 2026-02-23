@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // CalendarEvent represents a calendar event
@@ -210,7 +211,7 @@ func (c *Calendar) createEvent(input map[string]any) (*skill.Result, error) {
 
 	c.counter++
 	id := fmt.Sprintf("event-%d", c.counter)
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	startStr := input["start"].(string)
 	start, err := time.Parse(time.RFC3339, startStr)
@@ -318,7 +319,7 @@ func (c *Calendar) updateEvent(input map[string]any) (*skill.Result, error) {
 	if recurring, ok := input["recurring"].(string); ok {
 		event.Recurring = recurring
 	}
-	event.Updated = time.Now()
+	event.Updated = timeutil.NowTime()
 
 	return skill.NewResult(map[string]any{
 		"updated": true,
@@ -372,7 +373,7 @@ func (c *Calendar) todayEvents() (*skill.Result, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	tomorrow := today.Add(24 * time.Hour)
 
@@ -405,7 +406,7 @@ func (c *Calendar) upcomingEvents(input map[string]any) (*skill.Result, error) {
 		days = int(d)
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	endDate := now.Add(time.Duration(days) * 24 * time.Hour)
 
 	var events []*CalendarEvent
@@ -427,3 +428,4 @@ func (c *Calendar) upcomingEvents(input map[string]any) (*skill.Result, error) {
 		"message": fmt.Sprintf("Found %d events in the next %d days", len(events), days),
 	}), nil
 }
+

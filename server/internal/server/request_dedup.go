@@ -3,6 +3,7 @@ package server
 import (
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // RequestDeduplicator prevents duplicate concurrent requests from hitting the backend
@@ -67,7 +68,7 @@ func (rd *RequestDeduplicator) Do(key string, fn func() (interface{}, error)) (i
 	inFlight := &InFlightRequest{
 		resultChan: make(chan interface{}, 1),
 		errChan:    make(chan error, 1),
-		startTime:  time.Now(),
+		startTime:  timeutil.NowTime(),
 		waiters:    1,
 	}
 	rd.inFlight[key] = inFlight

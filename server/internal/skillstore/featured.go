@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // FeaturedSkill represents a curated skill in the featured list
@@ -306,7 +307,7 @@ func (s *LocalSkillScanner) parseSkillFile(path string) (*LocalSkill, error) {
 	skill := &LocalSkill{
 		FilePath:     path,
 		Content:      string(content),
-		DiscoveredAt: time.Now(),
+		DiscoveredAt: timeutil.NowTime(),
 		LastModified: info.ModTime(),
 	}
 

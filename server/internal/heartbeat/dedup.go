@@ -4,6 +4,7 @@ import (
 	"hash/fnv"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // DedupCache prevents delivering identical heartbeat alerts within a time window.
@@ -25,7 +26,7 @@ func NewDedupCache(ttl time.Duration) *DedupCache {
 // Also performs lazy eviction of expired entries.
 func (d *DedupCache) IsDuplicate(text string) bool {
 	h := hashText(text)
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -48,7 +49,7 @@ func (d *DedupCache) Record(text string) {
 	h := hashText(text)
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.entries[h] = time.Now()
+	d.entries[h] = timeutil.NowTime()
 }
 
 func hashText(text string) uint64 {

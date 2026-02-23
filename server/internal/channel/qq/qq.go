@@ -18,6 +18,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Config contains QQ Bot channel configuration.
@@ -214,7 +215,7 @@ func (c *Channel) refreshAccessToken(ctx context.Context) error {
 
 	c.tokenMu.Lock()
 	c.accessToken = tokenResp.AccessToken
-	c.tokenExpiry = time.Now().Add(time.Duration(expiresIn) * time.Second)
+	c.tokenExpiry = timeutil.NowTime().Add(time.Duration(expiresIn) * time.Second)
 	c.tokenMu.Unlock()
 
 	c.logger.Debug("access token refreshed", zap.Int("expires_in", expiresIn))
@@ -290,7 +291,7 @@ func (c *Channel) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to connect WebSocket: %w", err)
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	c.mu.Lock()
 	c.status = channel.StatusConnected
 	c.connectedAt = &now
@@ -388,7 +389,7 @@ func (c *Channel) readLoop() {
 			return
 		}
 
-		c.ws.SetReadDeadline(time.Now().Add(heartbeatInterval + 10*time.Second))
+		c.ws.SetReadDeadline(timeutil.NowTime().Add(heartbeatInterval + 10*time.Second))
 		var payload wsPayload
 		if err := c.ws.ReadJSON(&payload); err != nil {
 			if c.ctx.Err() != nil {
@@ -505,7 +506,7 @@ func (c *Channel) reconnect() {
 			}
 		}
 
-		now := time.Now()
+		now := timeutil.NowTime()
 		c.mu.Lock()
 		c.status = channel.StatusConnected
 		c.connectedAt = &now
@@ -681,7 +682,7 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 
 	var fullContent strings.Builder
 	chunkSize := 500
-	lastSend := time.Now()
+	lastSend := timeutil.NowTime()
 	sendInterval := 800 * time.Millisecond
 
 	for {
@@ -704,7 +705,7 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 			fullContent.WriteString(chunk)
 
 			// Send intermediate chunks to provide streaming feel.
-			if fullContent.Len() >= chunkSize && time.Since(lastSend) >= sendInterval {
+			if fullContent.Len() >= chunkSize && timeutil.SinceTime(lastSend) >= sendInterval {
 				if err := c.Send(ctx, channel.OutgoingMessage{
 					ChatID:    chatID,
 					ReplyToID: replyToID,
@@ -713,7 +714,7 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 					c.logger.Warn("failed to send streaming chunk", zap.Error(err))
 				}
 				fullContent.Reset()
-				lastSend = time.Now()
+				lastSend = timeutil.NowTime()
 			}
 		}
 	}
@@ -742,7 +743,7 @@ func (c *Channel) setError(errMsg string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.lastError = errMsg
-	now := time.Now()
+	now := timeutil.NowTime()
 	c.lastErrorAt = &now
 	c.status = channel.StatusError
 }

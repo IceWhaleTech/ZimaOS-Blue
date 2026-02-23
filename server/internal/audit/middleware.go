@@ -5,10 +5,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MiddlewareConfig holds configuration for the audit middleware.
@@ -82,9 +82,9 @@ func Middleware(config *MiddlewareConfig) echo.MiddlewareFunc {
 			c.Response().Writer = mw
 
 			// Process request
-			start := time.Now()
+			start := timeutil.NowTime()
 			err := next(c)
-			duration := time.Since(start)
+			duration := timeutil.SinceTime(start)
 
 			// Determine status
 			status := StatusSuccess

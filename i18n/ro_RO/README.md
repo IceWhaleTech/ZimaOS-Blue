@@ -59,7 +59,7 @@ Construit pentru dezvoltatori curajoși care doresc să-și **creeze propriii ag
 Mergem mai departe: suport nativ pentru **peste 20 de platforme IM**, interfețe **controlate vocal** pentru dialog natural și conștient de context, **comutare automată a modelelor** cu scanare IDE și personalități bazate pe SOUL.
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Rapid și ușor
@@ -95,13 +95,49 @@ Credem că **informatica personală de nouă generație** îmbrățișează LLM-
 - **Prioritate locală, ultra-ușor, multi-dispozitiv** – Nu necesită hardware de ultimă generație. Rulează pe orice poate calcula.
 - **Securizat și auditabil** – Auditarea sesiunilor, sandboxing, controlul permisiunilor și un proxy API integrat care acționează ca un firewall la nivel de aplicație — fiecare octet de intrare/ieșire este vizibil.
 
+![](../../docs/assets/design_principle.png)
+
 Minimizăm codul repetitiv pentru ca dvs. să vă **concentrați pe ceea ce contează**. Fideli <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **filozofiei de design a ZimaOS**, Blue oferă:
 - **De la zero la unu cu un singur clic** – Implementare instantanee, fără configurare complexă.
 - **Prototipare rapidă** – Creați liber sau manual instrumente, interacțiuni și pachete de aplicații specifice scenariului.
 - **Pregătit global** – **Lumea este mare** și nu vorbește implicit engleză. **Peste 20 de limbi, nativ**, fără bariere.
 - **Ecosistem deschis de modele** – Fără dependență de furnizor. Aduceți propriile modele.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Furnizor | Modele | Tip |
+|----------|--------|-----|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
+| Anthropic | Claude 4.5, Claude 4 | Cloud |
+| Google | Gemini 2.5, Gemini 2.0 | Cloud |
+| Ollama | Llama, Qwen, Gemma, Phi etc. | Local |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| Grok | Grok-3, Grok-3-mini | Cloud |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
+| GLM | GLM-4, GLM-4-Flash | Cloud |
+| Moonshot | Moonshot-v1 | Cloud |
+| MiniMax | abab6.5, abab5.5 | Cloud |
+| Venice | Llama, Mistral (confidențialitate prioritară) | Cloud |
+| AWS Bedrock | Claude, Llama, Titan | Cloud |
+| Azure | Modele OpenAI prin Azure | Cloud |
+| OpenRouter | 100+ modele agregate | Cloud |
+| AIHubMix | Agregator multi-furnizor | Cloud |
+| Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
+| Personalizat | Orice API compatibil OpenAI / Anthropic / Gemini | Cloud / Local |
+
+</details>
+
+### IDE-uri suportate
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Pornire rapidă
 
@@ -129,7 +165,6 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -141,12 +176,6 @@ sh build.sh
 ```powershell
 .\build.bat
 ```
-
-> **Notă:** Compilările Windows necesită:
-> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) și [CMake](https://cmake.org/) pentru dependențe native C (espeak-ng, whisper.cpp, opus, kokoro, onnx)
-> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) pentru biblioteci de sistem (winmm, etc.)
->
-> Asigurați-vă că `gcc`, `cmake` sunt în `PATH`.
 
 ## Prezentare generală a arhitecturii
 

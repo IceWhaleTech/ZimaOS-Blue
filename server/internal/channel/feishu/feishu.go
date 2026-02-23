@@ -303,7 +303,7 @@ func (c *Channel) onBotP2pChatEntered(ctx context.Context, eventData json.RawMes
 
 func (c *Channel) SendText(ctx context.Context, chatID string, text string, replyToID string) error {
 	// Humanize: strip markdown formatting for IM readability
-	text = humanizer.Humanize(text, humanizer.ModeIM)
+	text, _ = humanizer.HumanizeForChannel(text, "feishu")
 	content, _ := json.Marshal(map[string]string{"text": text})
 	receiveIDType := "chat_id"
 	if strings.HasPrefix(chatID, "ou_") {

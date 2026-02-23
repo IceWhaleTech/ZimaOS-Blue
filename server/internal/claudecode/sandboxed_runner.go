@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SandboxedRunner wraps a Runner with sandbox execution support.
@@ -93,7 +94,7 @@ func (sr *SandboxedRunner) RunStream(ctx context.Context, params *RunParams) (<-
 
 // runSandboxed executes a command in the sandbox.
 func (sr *SandboxedRunner) runSandboxed(ctx context.Context, params *RunParams) (*RunResult, error) {
-	startTime := time.Now()
+	startTime := timeutil.NowTime()
 
 	// Apply defaults
 	if params.Backend == nil {
@@ -134,7 +135,7 @@ func (sr *SandboxedRunner) runSandboxed(ctx context.Context, params *RunParams) 
 		return nil, ErrCliExecution{Command: params.Backend.Command, Cause: err}
 	}
 
-	duration := time.Since(startTime)
+	duration := timeutil.SinceTime(startTime)
 
 	// Check execution status
 	switch result.Status {

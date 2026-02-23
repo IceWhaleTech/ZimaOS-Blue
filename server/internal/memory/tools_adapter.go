@@ -2,13 +2,15 @@ package memory
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // ToolsAdapter adapts UnifiedMemoryService to tools.MemoryServiceInterface.
 type ToolsAdapter struct {
-	service *UnifiedMemoryService
+	service             *UnifiedMemoryService
+	progressiveSearcher *ProgressiveSearcher
 }
 
 // NewToolsAdapter creates a new tools adapter for the memory service.
@@ -80,5 +82,50 @@ func (a *ToolsAdapter) GetActiveBackend() string {
 	return a.service.GetActiveBackend()
 }
 
+// Remember stores a new memory and returns it in the tools interface format.
+func (a *ToolsAdapter) Remember(ctx context.Context, content string, tags []string) (*tools.MemoryChunkResult, error) {
+	chunk, err := a.service.Remember(ctx, content, tags)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tools.MemoryChunkResult{
+		ID:        chunk.ID,
+		Content:   chunk.Content,
+		Metadata:  chunk.Metadata,
+		CreatedAt: chunk.CreatedAt,
+		UpdatedAt: chunk.UpdatedAt,
+	}, nil
+}
+
+// Forget deletes a memory by ID.
+func (a *ToolsAdapter) Forget(ctx context.Context, id string) error {
+	return a.service.Forget(ctx, id)
+}
+
+// SetProgressiveSearcher sets the progressive searcher for the adapter.
+func (a *ToolsAdapter) SetProgressiveSearcher(ps *ProgressiveSearcher) {
+	a.progressiveSearcher = ps
+}
+
+// ProgressiveSearch implements tools.ProgressiveSearchInterface.
+func (a *ToolsAdapter) ProgressiveSearch(ctx context.Context, query string, depth int, ids []string, limit int) (interface{}, error) {
+	if a.progressiveSearcher == nil {
+		return nil, fmt.Errorf("progressive search not available")
+	}
+
+	req := ProgressiveSearchRequest{
+		Query: query,
+		Depth: SearchDepth(depth),
+		IDs:   ids,
+		Limit: limit,
+	}
+
+	return a.progressiveSearcher.Search(ctx, req)
+}
+
 // Ensure ToolsAdapter implements tools.MemoryServiceInterface
 var _ tools.MemoryServiceInterface = (*ToolsAdapter)(nil)
+
+// Ensure ToolsAdapter implements tools.ProgressiveSearchInterface
+var _ tools.ProgressiveSearchInterface = (*ToolsAdapter)(nil)

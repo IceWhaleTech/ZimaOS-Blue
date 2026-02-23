@@ -196,7 +196,7 @@ function getStatusCodeColor(code: number): string {
               >
                 {{ webhook.enabled ? t('webhook.enabled') : t('webhook.disabled') }}
               </span>
-              <span class="px-2 py-0.5 bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white rounded-full text-xs font-medium">
+              <span class="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full text-xs font-medium">
                 {{ webhook.type }}
               </span>
             </div>
@@ -406,7 +406,7 @@ function getStatusCodeColor(code: number): string {
             >
               <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-2">
-                  <span class="px-2 py-0.5 bg-gray-700 dark:bg-gray-500/50 text-gray-900 dark:text-white dark:text-white rounded text-xs font-medium">
+                  <span class="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded text-xs font-medium">
                     {{ event.method }}
                   </span>
                   <span :class="['text-sm font-medium', getStatusCodeColor(event.status_code)]">

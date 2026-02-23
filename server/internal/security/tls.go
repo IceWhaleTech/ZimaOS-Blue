@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
@@ -152,8 +153,8 @@ func (m *TLSManager) GenerateSelfSigned(domains []string, validDays int) error {
 			Organization: []string{"ZimaOS Blue"},
 			CommonName:   domains[0],
 		},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(0, 0, validDays),
+		NotBefore: timeutil.NowTime(),
+		NotAfter:              timeutil.NowTime().AddDate(0, 0, validDays),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,

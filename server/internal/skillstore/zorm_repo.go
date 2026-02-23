@@ -4,9 +4,9 @@ package skillstore
 import (
 	"context"
 	"database/sql"
-	"time"
 
 	z "github.com/IceWhaleTech/zorm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ZormStore wraps zorm operations for skill storage.
@@ -33,7 +33,7 @@ func (zs *ZormStore) UpdateReadmeBatchZorm(ctx context.Context, updates []readme
 	}
 	defer tx.Rollback()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	// Prepare update statement
 	stmt, err := tx.PrepareContext(ctx, `
@@ -63,7 +63,7 @@ func (zs *ZormStore) UpdateReadmeZorm(ctx context.Context, id, readme, hash stri
 		map[string]interface{}{
 			"readme":      readme,
 			"readme_hash": hash,
-			"updated_at":  time.Now(),
+			"updated_at":  timeutil.NowTime(),
 		},
 		z.Where(
 			z.Eq("id", id),

@@ -12,12 +12,15 @@ const aliases: Record<string, string> = {
   'azure-openai': 'azure',
   'bedrock': 'aws',
   'zimaos-blue-trial': '__trial__',
+  'dashscope-image': 'qwen',
+  'gemini-image': 'google',
+  'minimax-audio': 'minimax',
 }
 
 // Known provider icon files
 const knownIcons = new Set([
-  'aihubmix', 'anthropic', 'aws', 'azure', 'codex', 'deepseek', 'default',
-  'glm', 'google', 'grok', 'minimax', 'moonshot', 'ngrok', 'nvidia', 'ollama',
+  'aihubmix', 'anthropic', 'aws', 'azure', 'codex', 'copilot', 'deepseek', 'default',
+  'glm', 'google', 'grok', 'minimax', 'moonshot', 'mulerouter', 'ngrok', 'nvidia', 'ollama',
   'openai', 'openrouter', 'qwen', 'siliconflow', 'venice',
 ])
 

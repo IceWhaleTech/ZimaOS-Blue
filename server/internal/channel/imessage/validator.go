@@ -30,14 +30,33 @@ func (v *Validator) Validate(ctx context.Context, config map[string]string) vali
 	// Check if database path is provided
 	dbPath := config["database_path"]
 	if dbPath == "" {
-		dbPath = os.ExpandEnv("$HOME/Library/Messages/chat.db")
+		homeDir, _ := os.UserHomeDir()
+		if homeDir != "" {
+			dbPath = homeDir + "/Library/Messages/chat.db"
+		} else {
+			dbPath = os.ExpandEnv("$HOME/Library/Messages/chat.db")
+		}
 	}
 
-	// Check if database exists
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+	// Check if database exists and is accessible
+	if _, err := os.Stat(dbPath); err != nil {
+		if os.IsNotExist(err) {
+			return validator.Result{
+				Success:    false,
+				Error:      "Messages database not found at: " + dbPath,
+				MessageKey: "channels.imessageDatabaseNotFound",
+			}
+		}
+		if os.IsPermission(err) {
+			return validator.Result{
+				Success:    false,
+				Error:      "Messages database access denied — grant Full Disk Access in System Settings > Privacy & Security",
+				MessageKey: "channels.imessageAccessDenied",
+			}
+		}
 		return validator.Result{
 			Success:    false,
-			Error:      "Messages database not found at: " + dbPath,
+			Error:      "Cannot access Messages database: " + err.Error(),
 			MessageKey: "channels.imessageDatabaseNotFound",
 		}
 	}

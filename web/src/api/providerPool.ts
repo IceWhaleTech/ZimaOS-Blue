@@ -13,12 +13,12 @@ export interface ModelParams {
 
 export type ProviderLocation = 'cloud' | 'local'
 export type RoutingMode = 'auto' | 'cloud' | 'local'
-export type APIFormat = 'openai' | 'anthropic' | 'ollama' | 'google' | ''
+export type APIFormat = 'openai' | 'anthropic' | 'ollama' | 'google' | 'cloudcode' | 'copilot' | ''
 
 export interface Provider {
   id: string
   name: string
-  type: 'builtin' | 'custom' | 'acp' | 'ide' | 'trial'
+  type: 'builtin' | 'platform' | 'custom' | 'acp' | 'ide' | 'trial' | 'media'
   location: ProviderLocation
   enabled: boolean
   status: 'active' | 'inactive' | 'error'
@@ -39,6 +39,7 @@ export interface Provider {
   last_health_check?: string
   last_error?: string
   models?: Model[]
+  oauth?: OAuthConfig
 }
 
 export interface APIKey {
@@ -49,11 +50,14 @@ export interface APIKey {
   last_used?: string
   created_at: string
   enabled: boolean
+  models?: Model[]
+  models_updated_at?: string
 }
 
 export interface Model {
   id: string
   provider_id: string
+  api_key_id?: string
   name: string
   display_name: string
   enabled: boolean
@@ -61,6 +65,7 @@ export interface Model {
   input_price?: number
   output_price?: number
   cache_price?: number
+  price_per_request?: number
   context_window?: number
   max_output?: number
   description?: string
@@ -144,10 +149,51 @@ export interface ImportConfig {
   provider?: string
   config_path?: string
   env_var?: string
-  source: 'config' | 'env' | 'cc-switch' | 'extension'
+  source: 'config' | 'env' | 'cc-switch' | 'extension' | 'oauth'
   can_import: boolean
   already_imported?: boolean
   extension_config?: ClaudeCodeExtConfig
+  has_oauth?: boolean
+  oauth_type?: string
+  oauth_email?: string
+}
+
+// OAuth types
+export interface OAuthConfig {
+  client_id: string
+  token_expiry?: string
+  scopes?: string[]
+  provider_type?: string
+  project_id?: string
+  email?: string
+  endpoint?: string
+  connected: boolean
+}
+
+export interface OAuthStatus {
+  connected: boolean
+  provider_type: string
+  email?: string
+  project_id?: string
+  token_expiry?: string
+}
+
+export interface OAuthStartResult {
+  auth_url?: string
+  device_code?: string
+  user_code?: string
+  verification_uri?: string
+  expires_in?: number
+  interval?: number
+}
+
+export interface OAuthScanResult {
+  ide_type: string
+  ide_name: string
+  found: boolean
+  email?: string
+  provider_type?: string
+  error?: string
 }
 
 export interface ClaudeCodeExtConfig {
@@ -196,6 +242,14 @@ export interface LocationStats {
 }
 
 // Failover types
+export interface ProbeResult {
+  model_id: string
+  available: boolean
+  status_code: number
+  error?: string
+  latency: number
+}
+
 export interface FailoverMetrics {
   errors_by_type: Record<string, number>
   failover_total: number
@@ -288,8 +342,21 @@ export const providerPoolApi = {
   fetchProviderModels: (providerId: string) =>
     api.post<{ models: Model[]; total: number }>(`/providers/${providerId}/models/fetch`),
 
+  probeProviderModels: (providerId: string, concurrency = 5) =>
+    api.post<{ results: ProbeResult[]; total: number; available: number; unavailable: number }>(
+      `/providers/${providerId}/models/probe`,
+      { concurrency }
+    ),
+
   listAllModels: () =>
     api.get<{ models: Model[]; total: number }>('/models'),
+
+  // Per-key model operations
+  listKeyModels: (providerId: string, keyId: string) =>
+    api.get<{ models: Model[]; total: number }>(`/providers/${providerId}/keys/${keyId}/models`),
+
+  fetchKeyModels: (providerId: string, keyId: string) =>
+    api.post<{ models: Model[]; total: number }>(`/providers/${providerId}/keys/${keyId}/models/fetch`),
 
   // API Key operations
   addAPIKey: (providerId: string, key: string, label?: string) =>
@@ -390,6 +457,25 @@ export const providerPoolApi = {
 
   getLocationStats: () =>
     api.get<LocationStats>('/config/location-stats'),
+
+  // OAuth operations
+  startOAuth: (providerId: string) =>
+    api.post<OAuthStartResult>(`/providers/${providerId}/oauth/start`),
+
+  completeDeviceFlow: (providerId: string, deviceCode: string) =>
+    api.post<{ message: string }>(`/providers/${providerId}/oauth/device-complete`, { device_code: deviceCode }),
+
+  disconnectOAuth: (providerId: string) =>
+    api.post<{ message: string }>(`/providers/${providerId}/oauth/disconnect`),
+
+  getOAuthStatus: (providerId: string) =>
+    api.get<OAuthStatus>(`/providers/${providerId}/oauth/status`),
+
+  importOAuthToken: (ideType: string) =>
+    api.post<{ message: string; provider_id: string }>(`/ide/import-oauth/${ideType}`),
+
+  scanOAuthTokens: () =>
+    api.get<{ results: OAuthScanResult[] }>('/ide/scan-oauth'),
 }
 
 export default providerPoolApi

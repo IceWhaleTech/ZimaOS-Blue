@@ -1,42 +1,32 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { proxyCacheApi, type CacheStats, type PrunerStats, type RoutingStats } from '@/api/proxyCache'
+import { proxyCacheApi, type PrunerStats, type RoutingStats } from '@/api/proxyCache'
+import { settingsApi, type ToolSelectorStats } from '@/api/settings'
 
 const { t } = useI18n()
 
-const stats = ref<CacheStats | null>(null)
 const prunerStats = ref<PrunerStats | null>(null)
 const routingStats = ref<RoutingStats | null>(null)
+const toolStats = ref<ToolSelectorStats | null>(null)
 const loading = ref(false)
-
-const hitRate = computed(() => {
-  if (!stats.value) return 0
-  const total = stats.value.hits + stats.value.misses
-  if (total === 0) return 0
-  return (stats.value.hits / total) * 100
-})
-
-const cacheTokensSaved = computed(() => {
-  return (stats.value?.input_tokens_saved ?? 0) + (stats.value?.output_tokens_saved ?? 0)
-})
 
 const prunerTokensSaved = computed(() => prunerStats.value?.stats?.tokens_saved ?? 0)
 
+const toolTokensSaved = computed(() => toolStats.value?.tokens_saved ?? 0)
+
 const totalTokensSaved = computed(() => {
-  return cacheTokensSaved.value + prunerTokensSaved.value + (routingStats.value?.tokens_routed ?? 0)
+  return prunerTokensSaved.value + toolTokensSaved.value + (routingStats.value?.tokens_routed ?? 0)
 })
 
 const costSaved = computed(() => {
-  // Cache: use real input/output tokens with $3/$15 per 1M (Sonnet pricing)
-  const cacheInput = stats.value?.input_tokens_saved ?? 0
-  const cacheOutput = stats.value?.output_tokens_saved ?? 0
-  const cacheCost = (cacheInput / 1_000_000) * 3.0 + (cacheOutput / 1_000_000) * 15.0
   // Pruner: saved tokens are input tokens (context reduction), use $3/M
   const prunerCost = (prunerTokensSaved.value / 1_000_000) * 3.0
+  // Tool selection: saved tokens are input tokens (tool definitions), use $3/M
+  const toolCost = (toolTokensSaved.value / 1_000_000) * 3.0
   // Router: already computed as USD on backend
   const routerCost = routingStats.value?.cost_saved_usd ?? 0
-  return cacheCost + prunerCost + routerCost
+  return prunerCost + toolCost + routerCost
 })
 
 function formatTokens(n: number): string {
@@ -55,14 +45,14 @@ function formatCost(n: number): string {
 async function fetchStats() {
   loading.value = true
   try {
-    const [cacheRes, prunerRes, routingRes] = await Promise.all([
-      proxyCacheApi.getStats(),
+    const [prunerRes, routingRes, toolRes] = await Promise.all([
       proxyCacheApi.getPrunerStats().catch(() => null),
       proxyCacheApi.getRoutingStats().catch(() => null),
+      settingsApi.getToolStats().catch(() => null),
     ])
-    stats.value = cacheRes.data
     if (prunerRes) prunerStats.value = prunerRes.data
     if (routingRes) routingStats.value = routingRes.data
+    if (toolRes) toolStats.value = toolRes.data
   } catch {
     // Ignore errors
   } finally {
@@ -118,26 +108,6 @@ defineExpose({ refresh: fetchStats })
       </div>
     </div>
 
-    <!-- Cache Card -->
-    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('tokenEconomy.cache') }}</p>
-          <p class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ stats ? hitRate.toFixed(1) + '%' : '-' }}
-          </p>
-        </div>
-        <div class="p-3 bg-indigo-100 dark:bg-indigo-900/30 rounded-full">
-          <svg class="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-          </svg>
-        </div>
-      </div>
-      <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-        <span>{{ cacheTokensSaved > 0 ? formatTokens(cacheTokensSaved) + ' tokens' : (stats?.entries ?? 0) + ' ' + t('tokenEconomy.entries') }}</span>
-      </div>
-    </div>
-
     <!-- Pruner Card -->
     <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
@@ -155,6 +125,26 @@ defineExpose({ refresh: fetchStats })
       </div>
       <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
         <span>{{ prunerStats?.enabled ? t('tokenEconomy.prunerActive') : t('tokenEconomy.prunerInactive') }}</span>
+      </div>
+    </div>
+
+    <!-- Smart Tools Card -->
+    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('tokenEconomy.smartTools') }}</p>
+          <p class="text-2xl font-bold text-gray-900 dark:text-white">
+            {{ toolTokensSaved > 0 ? formatTokens(toolTokensSaved) : '-' }}
+          </p>
+        </div>
+        <div class="p-3 bg-cyan-100 dark:bg-cyan-900/30 rounded-full">
+          <svg class="w-6 h-6 text-cyan-600 dark:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+          </svg>
+        </div>
+      </div>
+      <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
+        <span>{{ toolStats?.requests ? toolStats.requests + ' ' + t('tokenEconomy.smartToolsReqs') : t('tokenEconomy.smartToolsInactive') }}</span>
       </div>
     </div>
     </div>

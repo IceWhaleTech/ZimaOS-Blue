@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // segmentTokens returns the pre-computed token count or estimates it.
@@ -151,7 +151,7 @@ func NewBM25Backend(cfg Config) *BM25Backend {
 
 // Prune implements Backend using the BM25 + segment pipeline.
 func (b *BM25Backend) Prune(ctx context.Context, req PruneRequest) (*PruneResponse, error) {
-	start := time.Now()
+	start := timeutil.NowTime()
 
 	lines := strings.Split(req.Code, "\n")
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
@@ -225,7 +225,7 @@ func (b *BM25Backend) Prune(ctx context.Context, req PruneRequest) (*PruneRespon
 		OriginalTokens:  origTokens,
 		PrunedTokens:    prunedTokens,
 		CompressionRate: compressionRate,
-		LatencyMs:       float64(time.Since(start).Microseconds()) / 1000.0,
+		LatencyMs:       float64(timeutil.SinceTime(start).Microseconds()) / 1000.0,
 	}, nil
 }
 

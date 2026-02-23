@@ -288,7 +288,7 @@ func (m *DownloadManager) GetProgress() DownloadProgress {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	elapsed := time.Since(m.startTime).Seconds()
+	elapsed := timeutil.SinceTime(m.startTime).Seconds()
 	speed := float64(0)
 	if elapsed > 0 {
 		speed = float64(m.currentBytes) / elapsed

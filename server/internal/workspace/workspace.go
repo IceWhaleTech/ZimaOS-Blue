@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MaxFileSize is the maximum allowed size for a workspace file (1 MB).
@@ -263,7 +263,7 @@ func (m *Manager) AppendDailyLog(content string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	today := time.Now().Format("2006-01-02")
+	today := timeutil.NowTime().Format("2006-01-02")
 	logPath := filepath.Join(m.dir, "memory", today+".md")
 
 	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -282,7 +282,7 @@ func (m *Manager) AppendDailyLog(content string) error {
 	}
 
 	// Append timestamped entry
-	ts := time.Now().Format("15:04")
+	ts := timeutil.NowTime().Format("15:04")
 	entry := fmt.Sprintf("## %s\n%s\n\n", ts, content)
 	_, err = f.WriteString(entry)
 	return err
@@ -292,7 +292,7 @@ func (m *Manager) AppendDailyLog(content string) error {
 // Must be called with m.mu held (at least RLock).
 func (m *Manager) loadRecentDailyLogs() []BootstrapFile {
 	memDir := filepath.Join(m.dir, "memory")
-	now := time.Now()
+	now := timeutil.NowTime()
 	dates := []string{
 		now.Format("2006-01-02"),
 		now.AddDate(0, 0, -1).Format("2006-01-02"),

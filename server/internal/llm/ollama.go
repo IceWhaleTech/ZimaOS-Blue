@@ -19,6 +19,7 @@ const (
 type OllamaProvider struct {
 	baseURL      string
 	client       *http.Client
+	streamClient *http.Client // no Timeout — streaming relies on context cancellation
 	cachedModels []string
 }
 
@@ -31,6 +32,9 @@ func NewOllamaProvider(baseURL string) *OllamaProvider {
 		baseURL: baseURL,
 		client: &http.Client{
 			Timeout: ollamaTimeout,
+		},
+		streamClient: &http.Client{
+			// No Timeout for streaming — Ollama local models can be very slow.
 		},
 	}
 }
@@ -329,8 +333,8 @@ func (p *OllamaProvider) ChatStreamCallback(ctx context.Context, req ChatRequest
 
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	// Send request
-	resp, err := p.client.Do(httpReq)
+	// Send request — use streamClient (no hard timeout) for streaming
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}

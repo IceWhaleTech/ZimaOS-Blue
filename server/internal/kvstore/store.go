@@ -13,6 +13,7 @@ import (
 
 	z "github.com/IceWhaleTech/zorm"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Common errors
@@ -58,7 +59,7 @@ func (e *entry) isExpired() bool {
 	if e.expiresAt.IsZero() {
 		return false
 	}
-	return time.Now().After(e.expiresAt)
+	return timeutil.NowTime().After(e.expiresAt)
 }
 
 // MemoryStore is an in-memory key-value store.
@@ -94,7 +95,7 @@ func (s *MemoryStore) Set(ctx context.Context, key string, value interface{}, tt
 
 	e := &entry{value: value}
 	if ttl > 0 {
-		e.expiresAt = time.Now().Add(ttl)
+		e.expiresAt = timeutil.NowTime().Add(ttl)
 	}
 
 	s.data[key] = e
@@ -313,7 +314,7 @@ func (s *SQLiteStore) Get(ctx context.Context, key string) (interface{}, error) 
 	row := rows[0]
 	// Check expiration
 	expiresAt := parseKVTime(row.ExpiresAt)
-	if expiresAt != nil && time.Now().After(*expiresAt) {
+	if expiresAt != nil && timeutil.NowTime().After(*expiresAt) {
 		// Delete expired key
 		s.Delete(ctx, key)
 		return nil, ErrKeyNotFound
@@ -329,7 +330,7 @@ func (s *SQLiteStore) Set(ctx context.Context, key string, value interface{}, tt
 
 	var expiresAt interface{}
 	if ttl > 0 {
-		expiresAt = time.Now().Add(ttl)
+		expiresAt = timeutil.NowTime().Add(ttl)
 	}
 
 	valueStr := fmt.Sprintf("%v", value)
@@ -363,7 +364,7 @@ func (s *SQLiteStore) Exists(ctx context.Context, key string) (bool, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM kvstore WHERE key = ? AND (expires_at IS NULL OR expires_at > ?)",
-		key, time.Now(),
+		key, timeutil.NowTime(),
 	).Scan(&count)
 
 	if err != nil {
@@ -380,7 +381,7 @@ func (s *SQLiteStore) Keys(ctx context.Context, pattern string) ([]string, error
 		z.Fields("key"),
 		z.Where(
 			z.Like("key", pattern),
-			z.Or(z.IsNull("expires_at"), z.Gt("expires_at", time.Now())),
+			z.Or(z.IsNull("expires_at"), z.Gt("expires_at", timeutil.NowTime())),
 		),
 	)
 	if err != nil {

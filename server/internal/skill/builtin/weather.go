@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Weather is a built-in weather skill
@@ -205,7 +206,7 @@ func (w *Weather) getMockWeather(location, units string) *skill.Result {
 			"direction": 180,
 		},
 		"clouds":    10,
-		"timestamp": time.Now().Unix(),
+		"timestamp": timeutil.Now(),
 		"mock":      true,
 		"note":      "This is mock data. Configure API key for real weather data.",
 	})

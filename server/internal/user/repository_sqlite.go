@@ -9,6 +9,7 @@ import (
 
 	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SQLiteRepository implements Repository using SQLite.
@@ -209,7 +210,7 @@ func (r *SQLiteRepository) GetByEmail(ctx context.Context, email string) (*User,
 
 // Update updates a user.
 func (r *SQLiteRepository) Update(ctx context.Context, user *User) error {
-	user.UpdatedAt = time.Now().UTC()
+	user.UpdatedAt = timeutil.NowTime().UTC()
 	n, err := r.usersTable(ctx).Update(
 		z.V{
 			"username":              user.Username,
@@ -243,7 +244,7 @@ func (r *SQLiteRepository) Update(ctx context.Context, user *User) error {
 
 // Delete soft-deletes a user.
 func (r *SQLiteRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	now := time.Now().UTC()
+	now := timeutil.NowTime().UTC()
 	n, err := r.usersTable(ctx).Update(
 		z.V{"deleted_at": now, "updated_at": now},
 		z.Where(z.Eq("id", id.String()), z.IsNull("deleted_at")),
@@ -377,7 +378,7 @@ func (r *SQLiteRepository) AddPasswordHistory(ctx context.Context, userID uuid.U
 		"id":            uuid.New().String(),
 		"user_id":       userID.String(),
 		"password_hash": passwordHash,
-		"created_at":    time.Now().UTC(),
+		"created_at":    timeutil.NowTime().UTC(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add password history: %w", err)
@@ -474,7 +475,7 @@ func (r *SQLiteRepository) GetUserSessions(ctx context.Context, userID uuid.UUID
 		z.Where(
 			z.Eq("user_id", userID.String()),
 			z.IsNull("revoked_at"),
-			z.Gt("expires_at", time.Now().UTC()),
+			z.Gt("expires_at", timeutil.NowTime().UTC()),
 		),
 		z.OrderBy("created_at DESC"),
 	)
@@ -492,7 +493,7 @@ func (r *SQLiteRepository) GetUserSessions(ctx context.Context, userID uuid.UUID
 // RevokeSession revokes a session.
 func (r *SQLiteRepository) RevokeSession(ctx context.Context, id uuid.UUID) error {
 	n, err := r.sessionsTable(ctx).Update(
-		z.V{"revoked_at": time.Now().UTC()},
+		z.V{"revoked_at": timeutil.NowTime().UTC()},
 		z.Where(z.Eq("id", id.String()), z.IsNull("revoked_at")),
 	)
 	if err != nil {
@@ -507,7 +508,7 @@ func (r *SQLiteRepository) RevokeSession(ctx context.Context, id uuid.UUID) erro
 // RevokeUserSessions revokes all sessions for a user.
 func (r *SQLiteRepository) RevokeUserSessions(ctx context.Context, userID uuid.UUID) error {
 	_, err := r.sessionsTable(ctx).Update(
-		z.V{"revoked_at": time.Now().UTC()},
+		z.V{"revoked_at": timeutil.NowTime().UTC()},
 		z.Where(z.Eq("user_id", userID.String()), z.IsNull("revoked_at")),
 	)
 	if err != nil {
@@ -520,7 +521,7 @@ func (r *SQLiteRepository) RevokeUserSessions(ctx context.Context, userID uuid.U
 func (r *SQLiteRepository) CleanupExpiredSessions(ctx context.Context) error {
 	_, err := r.sessionsTable(ctx).Delete(
 		z.Where(z.Or(
-			z.Lt("expires_at", time.Now().UTC().Add(-24*time.Hour)),
+			z.Lt("expires_at", timeutil.NowTime().UTC().Add(-24*time.Hour)),
 			z.IsNotNull("revoked_at"),
 		)),
 	)

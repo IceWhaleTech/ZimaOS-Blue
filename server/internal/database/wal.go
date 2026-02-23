@@ -188,7 +188,7 @@ const (
 
 // Checkpoint performs a WAL checkpoint.
 func (w *WALManager) Checkpoint(ctx context.Context, mode CheckpointMode) error {
-	start := time.Now()
+	start := timeutil.NowTime()
 
 	query := fmt.Sprintf("PRAGMA wal_checkpoint(%s)", mode)
 	rows, err := w.db.QueryContext(ctx, query)
@@ -206,7 +206,7 @@ func (w *WALManager) Checkpoint(ctx context.Context, mode CheckpointMode) error 
 		}
 	}
 
-	duration := time.Since(start)
+	duration := timeutil.SinceTime(start)
 	w.recordSuccessCheckpoint(duration)
 
 	w.logger.Debug().

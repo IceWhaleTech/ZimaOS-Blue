@@ -21,6 +21,10 @@ func newMockCronService() *mockCronService {
 }
 
 func (m *mockCronService) Create(name, description, schedule, handler string, payload map[string]interface{}) (CronJobInfo, error) {
+	return m.CreateForOwner("", name, description, schedule, handler, payload)
+}
+
+func (m *mockCronService) CreateForOwner(ownerID, name, description, schedule, handler string, payload map[string]interface{}) (CronJobInfo, error) {
 	id := fmt.Sprintf("job-%d", len(m.jobs)+1)
 	job := CronJobInfo{
 		ID: id, Name: name, Description: description,
@@ -38,12 +42,20 @@ func (m *mockCronService) List() []CronJobInfo {
 	return out
 }
 
+func (m *mockCronService) ListByOwner(ownerID string) []CronJobInfo {
+	return m.List()
+}
+
 func (m *mockCronService) Delete(id string) error {
 	if _, ok := m.jobs[id]; !ok {
 		return fmt.Errorf("job not found: %s", id)
 	}
 	delete(m.jobs, id)
 	return nil
+}
+
+func (m *mockCronService) DeleteByOwner(id, ownerID string) error {
+	return m.Delete(id)
 }
 
 func (m *mockCronService) Trigger(id string) error {
@@ -319,6 +331,31 @@ func (m *mockBrowserService) Screenshot(_ context.Context, _ string) (string, er
 
 func (m *mockBrowserService) ScreenshotTab(_ context.Context, _ string) (string, error) {
 	return "base64tabdata", nil
+}
+
+func (m *mockBrowserService) ScreenshotViewport(_ context.Context, _ string) (string, error) {
+	return "base64viewportdata", nil
+}
+
+func (m *mockBrowserService) ScreenshotViewportRaw(_ context.Context, _ string) ([]byte, error) {
+	return []byte("rawviewportdata"), nil
+}
+
+func (m *mockBrowserService) SetViewport(_ context.Context, _ string, _, _ int) error {
+	return nil
+}
+
+func (m *mockBrowserService) ScrollTo(_ context.Context, _ string, _, _ int) error {
+	return nil
+}
+
+func (m *mockBrowserService) PageDimensions(_ context.Context, _ string) (int, int, error) {
+	return 800, 800, nil // single viewport height = scroll height (no chunking needed)
+}
+
+func (m *mockBrowserService) Stop(_ context.Context) error {
+	m.started = false
+	return nil
 }
 
 func (m *mockBrowserService) CloseTab(_ context.Context, targetID string) error {

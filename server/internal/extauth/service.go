@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // TokenGenerator generates access tokens for authenticated users.
@@ -142,8 +143,8 @@ func (s *DefaultService) Authorize(ctx context.Context, req *AuthorizeRequest) (
 		ProviderID:   req.ProviderID,
 		RedirectURI:  req.RedirectURI,
 		CodeVerifier: codeVerifier,
-		CreatedAt:    time.Now(),
-		ExpiresAt:    time.Now().Add(s.stateTTL),
+		CreatedAt:    timeutil.NowTime(),
+		ExpiresAt:    timeutil.NowTime().Add(s.stateTTL),
 		UserID:       req.UserID,
 	}
 
@@ -185,7 +186,7 @@ func (s *DefaultService) Callback(ctx context.Context, req *CallbackRequest) (*C
 		_ = s.stateStore.Delete(ctx, req.State)
 
 		// Check expiry
-		if time.Now().After(authState.ExpiresAt) {
+		if timeutil.NowTime().After(authState.ExpiresAt) {
 			return nil, ErrStateExpired
 		}
 
@@ -295,9 +296,9 @@ func (s *DefaultService) Callback(ctx context.Context, req *CallbackRequest) (*C
 			Picture:        userInfo.Picture,
 			AccessToken:    tokenResp.AccessToken,
 			RefreshToken:   tokenResp.RefreshToken,
-			TokenExpiry:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
+			TokenExpiry:    timeutil.NowTime().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
+			CreatedAt:      timeutil.NowTime(),
+			UpdatedAt:      timeutil.NowTime(),
 		}
 
 		if linkedAccount != nil {

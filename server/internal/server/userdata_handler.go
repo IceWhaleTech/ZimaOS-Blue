@@ -17,6 +17,7 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // UserDataExport represents the exported user data structure
@@ -146,7 +147,7 @@ func (h *UserDataHandler) Export(c echo.Context) error {
 	// Build export data
 	export := &UserDataExport{
 		Version:    "1.0",
-		ExportedAt: time.Now(),
+		ExportedAt: timeutil.NowTime(),
 		DataType:   req.Format,
 		Settings:   req.Settings,
 	}

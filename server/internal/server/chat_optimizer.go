@@ -3,7 +3,8 @@ package server
 import (
 	"sync"
 	"sync/atomic"
-	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ChatCallChainOptimizer optimizes the Chat → Proxy Handler call chain
@@ -17,21 +18,14 @@ type ChatCallChainOptimizer struct {
 	// Performance metrics
 	metrics *PerformanceMetrics
 
-	// Adaptive cache
-	adaptiveCache *AdaptiveCacheManager
-
 	// Connection pooling
 	connPool *ConnectionPool
-
-	// Cache prefetcher
-	prefetcher *CachePrefetcher
 
 	// Request batching
 	batchProcessor *BatchProcessor
 
 	// Metrics
 	optimizedRequests int64
-	cachedResponses   int64
 	dedupedRequests   int64
 
 	mu sync.RWMutex
@@ -43,21 +37,19 @@ func NewChatCallChainOptimizer() *ChatCallChainOptimizer {
 		deduplicator:   NewRequestDeduplicator(),
 		usageTracker:   NewUsageTracker(),
 		metrics:        NewPerformanceMetrics(),
-		adaptiveCache:  NewAdaptiveCacheManager(100, 10, 500),
 		connPool:       NewConnectionPool(100, 10),
-		prefetcher:     NewCachePrefetcher(1000, 5, 4),
 	}
 }
 
 // OptimizeRequest optimizes a chat request through the call chain
 func (cco *ChatCallChainOptimizer) OptimizeRequest(provider, model string, fn func() (interface{}, error)) (interface{}, error, bool) {
-	startTime := time.Now()
+	startTime := timeutil.NowTime()
 
 	// Try deduplication first
 	dedupKey := provider + ":" + model
 	result, err, wasDeduped := cco.deduplicator.Do(dedupKey, fn)
 
-	duration := time.Now().Sub(startTime).Milliseconds()
+	duration := timeutil.SinceTime(startTime).Milliseconds()
 	success := err == nil
 
 	// Track usage
@@ -66,7 +58,7 @@ func (cco *ChatCallChainOptimizer) OptimizeRequest(provider, model string, fn fu
 	// Track metrics
 	metric := &RequestMetric{
 		StartTime:  startTime,
-		EndTime:    time.Now(),
+		EndTime:    timeutil.NowTime(),
 		Provider:   provider,
 		Model:      model,
 		CacheHit:   wasDeduped,
@@ -104,18 +96,20 @@ func (cco *ChatCallChainOptimizer) GetMetrics() map[string]interface{} {
 
 // GetOptimizationStats returns optimization statistics
 func (cco *ChatCallChainOptimizer) GetOptimizationStats() map[string]interface{} {
+	optimized := atomic.LoadInt64(&cco.optimizedRequests)
+	deduped := atomic.LoadInt64(&cco.dedupedRequests)
+	var dedupRate float64
+	if optimized > 0 {
+		dedupRate = float64(deduped) / float64(optimized) * 100
+	}
 	return map[string]interface{}{
-		"optimized_requests": atomic.LoadInt64(&cco.optimizedRequests),
-		"deduped_requests":   atomic.LoadInt64(&cco.dedupedRequests),
-		"dedup_rate":         float64(atomic.LoadInt64(&cco.dedupedRequests)) / float64(atomic.LoadInt64(&cco.optimizedRequests)) * 100,
-		"memory_pressure":    cco.adaptiveCache.GetMemoryPressure(),
-		"cache_size":         cco.adaptiveCache.GetCacheSize(),
+		"optimized_requests": optimized,
+		"deduped_requests":   deduped,
+		"dedup_rate":         dedupRate,
 	}
 }
 
 // Close closes the optimizer and releases resources
 func (cco *ChatCallChainOptimizer) Close() {
-	cco.prefetcher.Stop()
-	cco.adaptiveCache.Stop()
 	cco.connPool.Close()
 }

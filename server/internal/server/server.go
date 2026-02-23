@@ -21,6 +21,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"golang.org/x/net/netutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // actualPort stores the actual port the server is listening on
@@ -383,14 +384,14 @@ func zerologMiddleware() echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			req := c.Request()
 			res := c.Response()
-			start := time.Now()
+			start := timeutil.NowTime()
 
 			err := next(c)
 			if err != nil {
 				c.Error(err)
 			}
 
-			latency := time.Since(start)
+			latency := timeutil.SinceTime(start)
 			status := res.Status
 
 			// Choose log level based on status code

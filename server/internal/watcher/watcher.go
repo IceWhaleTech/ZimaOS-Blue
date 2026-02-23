@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // EventType represents the type of file system event.
@@ -288,7 +289,7 @@ func (w *Watcher) handleFsEvent(fsEvent fsnotify.Event) {
 		Path:      fsEvent.Name,
 		Name:      filepath.Base(fsEvent.Name),
 		IsDir:     isDir,
-		Timestamp: time.Now(),
+		Timestamp: timeutil.NowTime(),
 	}
 
 	// Handle recursive watching for new directories

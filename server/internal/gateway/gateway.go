@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MessageType represents the type of gateway message.
@@ -182,7 +183,7 @@ func (g *Gateway) handleConnection(conn *Connection) {
 
 	// Set pong handler
 	conn.ws.SetPongHandler(func(string) error {
-		conn.ws.SetReadDeadline(time.Now().Add(time.Duration(g.config.PongTimeoutSeconds) * time.Second))
+		conn.ws.SetReadDeadline(timeutil.NowTime().Add(time.Duration(g.config.PongTimeoutSeconds) * time.Second))
 		return nil
 	})
 
@@ -200,7 +201,7 @@ func (g *Gateway) handleConnection(conn *Connection) {
 		}
 
 		// Set read deadline
-		conn.ws.SetReadDeadline(time.Now().Add(time.Duration(g.config.PongTimeoutSeconds) * time.Second))
+		conn.ws.SetReadDeadline(timeutil.NowTime().Add(time.Duration(g.config.PongTimeoutSeconds) * time.Second))
 
 		// Read message
 		_, data, err := conn.ws.ReadMessage()
@@ -265,7 +266,7 @@ func (g *Gateway) handleMessage(conn *Connection, msg *Message) {
 	if response != nil {
 		response.ID = msg.ID
 		response.Type = TypeResponse
-		response.Timestamp = time.Now().UnixMilli()
+		response.Timestamp = timeutil.NowMilli()
 		conn.Send(response)
 	}
 }
@@ -282,7 +283,7 @@ func (g *Gateway) pingLoop(conn *Connection) {
 		case <-conn.done:
 			return
 		case <-ticker.C:
-			conn.ws.SetWriteDeadline(time.Now().Add(time.Duration(g.config.WriteTimeoutSeconds) * time.Second))
+			conn.ws.SetWriteDeadline(timeutil.NowTime().Add(time.Duration(g.config.WriteTimeoutSeconds) * time.Second))
 			if err := conn.ws.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -299,7 +300,7 @@ func (g *Gateway) sendError(conn *Connection, msgID string, code int, message st
 			Code:    code,
 			Message: message,
 		},
-		Timestamp: time.Now().UnixMilli(),
+		Timestamp: timeutil.NowMilli(),
 	}
 	conn.Send(errMsg)
 }
@@ -412,7 +413,7 @@ func NewConnection(ws *websocket.Conn, cfg Config, logger *zap.Logger) *Connecti
 		sendChan:    make(chan *Message, 256),
 		done:        make(chan struct{}),
 		Metadata:    make(map[string]interface{}),
-		ConnectedAt: time.Now(),
+		ConnectedAt: timeutil.NowTime(),
 	}
 
 	// Start send goroutine
@@ -427,7 +428,7 @@ func generateSecureConnectionID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		// Fallback to time-based ID if crypto/rand fails (should never happen)
-		return fmt.Sprintf("conn_%d", time.Now().UnixNano())
+		return fmt.Sprintf("conn_%d", timeutil.NowNano())
 	}
 	return fmt.Sprintf("conn_%s", hex.EncodeToString(b))
 }
@@ -452,7 +453,7 @@ func (c *Connection) sendLoop() {
 			return
 		case msg := <-c.sendChan:
 			c.mu.Lock()
-			c.ws.SetWriteDeadline(time.Now().Add(time.Duration(c.config.WriteTimeoutSeconds) * time.Second))
+			c.ws.SetWriteDeadline(timeutil.NowTime().Add(time.Duration(c.config.WriteTimeoutSeconds) * time.Second))
 			err := c.ws.WriteJSON(msg)
 			c.mu.Unlock()
 

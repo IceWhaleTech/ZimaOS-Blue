@@ -9,6 +9,7 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Handler handles HTTP requests for MFA operations.
@@ -496,7 +497,7 @@ func (h *Handler) WebAuthnRegisterFinish(c echo.Context) error {
 	}
 
 	// Check if session is expired
-	if time.Now().After(session.ExpiresAt) {
+	if timeutil.NowTime().After(session.ExpiresAt) {
 		h.registrationSessions.Delete(sessionKey)
 		return echo.NewHTTPError(http.StatusBadRequest, "registration session expired")
 	}

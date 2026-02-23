@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Handler handles browser automation HTTP requests.
@@ -120,7 +121,7 @@ func (h *Handler) CreateTask(c echo.Context) error {
 	}
 
 	// Generate unique ID
-	id := time.Now().Format("20060102150405") + "-" + randomString(6)
+	id := timeutil.NowTime().Format("20060102150405") + "-" + randomString(6)
 
 	task := &BrowserTask{
 		ID:          id,
@@ -128,7 +129,7 @@ func (h *Handler) CreateTask(c echo.Context) error {
 		Description: req.Description,
 		Status:      "pending",
 		Steps:       req.Steps,
-		CreatedAt:   time.Now().Format(time.RFC3339),
+		CreatedAt:   timeutil.NowTime().Format(time.RFC3339),
 	}
 
 	h.tasksMu.Lock()
@@ -143,7 +144,7 @@ func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyz0180789"
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+		b[i] = letters[timeutil.NowNano()%int64(len(letters))]
 		time.Sleep(time.Nanosecond)
 	}
 	return string(b)
@@ -171,7 +172,7 @@ func (h *Handler) RunTask(c echo.Context) error {
 	task, exists := h.tasks[id]
 	if exists {
 		task.Status = "running"
-		task.StartedAt = time.Now().Format(time.RFC3339)
+		task.StartedAt = timeutil.NowTime().Format(time.RFC3339)
 	}
 	h.tasksMu.Unlock()
 
@@ -185,7 +186,7 @@ func (h *Handler) RunTask(c echo.Context) error {
 		h.tasksMu.Lock()
 		if t, ok := h.tasks[id]; ok {
 			t.Status = "completed"
-			t.CompletedAt = time.Now().Format(time.RFC3339)
+			t.CompletedAt = timeutil.NowTime().Format(time.RFC3339)
 		}
 		h.tasksMu.Unlock()
 	}()
@@ -201,7 +202,7 @@ func (h *Handler) CancelTask(c echo.Context) error {
 	task, exists := h.tasks[id]
 	if exists && task.Status == "running" {
 		task.Status = "cancelled"
-		task.CompletedAt = time.Now().Format(time.RFC3339)
+		task.CompletedAt = timeutil.NowTime().Format(time.RFC3339)
 	}
 	h.tasksMu.Unlock()
 
@@ -247,12 +248,12 @@ func (h *Handler) CreateSession(c echo.Context) error {
 	if err != nil {
 		// Return a stub session if browser not available or timeout
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"id":            "session-" + time.Now().Format("20060102150405"),
+			"id":            "session-" + timeutil.NowTime().Format("20060102150405"),
 			"status":        "idle",
 			"current_url":   "",
 			"page_title":    "",
-			"created_at":    time.Now().Format(time.RFC3339),
-			"last_activity": time.Now().Format(time.RFC3339),
+			"created_at":    timeutil.NowTime().Format(time.RFC3339),
+			"last_activity": timeutil.NowTime().Format(time.RFC3339),
 		})
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -260,8 +261,8 @@ func (h *Handler) CreateSession(c echo.Context) error {
 		"status":        "active",
 		"current_url":   tab.URL,
 		"page_title":    tab.Title,
-		"created_at":    time.Now().Format(time.RFC3339),
-		"last_activity": time.Now().Format(time.RFC3339),
+		"created_at":    timeutil.NowTime().Format(time.RFC3339),
+		"last_activity": timeutil.NowTime().Format(time.RFC3339),
 	})
 }
 
@@ -273,8 +274,8 @@ func (h *Handler) GetSession(c echo.Context) error {
 		"status":        "active",
 		"current_url":   "",
 		"page_title":    "",
-		"created_at":    time.Now().Format(time.RFC3339),
-		"last_activity": time.Now().Format(time.RFC3339),
+		"created_at":    timeutil.NowTime().Format(time.RFC3339),
+		"last_activity": timeutil.NowTime().Format(time.RFC3339),
 	})
 }
 

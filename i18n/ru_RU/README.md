@@ -59,7 +59,7 @@
 Идём дальше: нативная поддержка **20+ IM-платформ**, **голосовые** интерфейсы для естественного контекстного диалога, **автоматическое переключение моделей** со сканированием IDE и многоуровневые персональности SOUL.
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Быстрый и лёгкий
@@ -95,13 +95,49 @@
 - **Локальный, сверхлёгкий, кроссплатформенный** – Не требует мощного оборудования. Работает на всём, что способно вычислять.
 - **Безопасный и проверяемый** – Аудит сессий, песочница, контроль разрешений и встроенный API-прокси, действующий как межсетевой экран прикладного уровня — каждый байт на входе/выходе виден.
 
+![](../../docs/assets/design_principle.png)
+
 Мы минимизируем шаблонный код, чтобы вы **сосредоточились на главном**. Следуя <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **философии дизайна ZimaOS**, Blue обеспечивает:
 - **От нуля до результата в один клик** – Мгновенное развёртывание без сложной настройки.
 - **Быстрое прототипирование** – Экспериментируйте или вручную создавайте инструменты, взаимодействия и пакеты приложений для конкретных сценариев.
 - **Готовность к глобальному рынку** – **Мир огромен**, и он не говорит только по-английски. **20+ языков, нативно**, без барьеров.
 - **Открытая экосистема моделей** – Без привязки к поставщику. Используйте свои модели.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Провайдер | Модели | Тип |
+|-----------|--------|-----|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Облако |
+| Anthropic | Claude 4.5, Claude 4 | Облако |
+| Google | Gemini 2.5, Gemini 2.0 | Облако |
+| Ollama | Llama, Qwen, Gemma, Phi и др. | Локально |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Облако |
+| Grok | Grok-3, Grok-3-mini | Облако |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Облако |
+| GLM | GLM-4, GLM-4-Flash | Облако |
+| Moonshot | Moonshot-v1 | Облако |
+| MiniMax | abab6.5, abab5.5 | Облако |
+| Venice | Llama, Mistral (приватность) | Облако |
+| AWS Bedrock | Claude, Llama, Titan | Облако |
+| Azure | Модели OpenAI через Azure | Облако |
+| OpenRouter | 100+ агрегированных моделей | Облако |
+| AIHubMix | Мульти-провайдер агрегатор | Облако |
+| Codex | OpenAI Codex | Облако |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Облако |
+| Пользовательский | Любой OpenAI / Anthropic / Gemini совместимый API | Облако / Локально |
+
+</details>
+
+### Поддерживаемые IDE
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Быстрый старт
 
@@ -129,7 +165,6 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -141,12 +176,6 @@ sh build.sh
 ```powershell
 .\build.bat
 ```
-
-> **Примечание:** Для сборки в Windows требуются:
-> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) и [CMake](https://cmake.org/) для компиляции нативных C-зависимостей (espeak-ng, whisper.cpp, opus, kokoro, onnx)
-> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) для системных библиотек (winmm, etc.)
->
-> Убедитесь, что `gcc`, `cmake` добавлены в `PATH`.
 
 ## Обзор архитектуры
 

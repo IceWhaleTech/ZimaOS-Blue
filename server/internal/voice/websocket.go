@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Security fix: Use origin checker instead of allowing all origins
@@ -108,7 +109,7 @@ func (h *WSHandler) HandleStream(c echo.Context) error {
 func (h *WSHandler) handleConnection(ctx context.Context, conn *wsConnection) {
 	// Set up ping/pong
 	conn.conn.SetPongHandler(func(string) error {
-		conn.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		conn.conn.SetReadDeadline(timeutil.NowTime().Add(60 * time.Second))
 		return nil
 	})
 

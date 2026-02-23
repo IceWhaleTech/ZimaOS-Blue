@@ -12,9 +12,12 @@ const toggleStoreKey = "proxy:feature_toggles"
 
 // ToggleState holds persisted feature toggle states.
 type ToggleState struct {
-	CacheEnabled   bool `json:"cache_enabled"`
-	PrunerEnabled  bool `json:"pruner_enabled"`
-	RoutingEnabled bool `json:"routing_enabled"`
+	PrunerEnabled      bool            `json:"pruner_enabled"`
+	RoutingEnabled     bool            `json:"routing_enabled"`
+	MaskingEnabled     bool            `json:"masking_enabled"`
+	PrunerBackend      string          `json:"pruner_backend,omitempty"`
+	RoutingRules       map[string]bool `json:"routing_rules,omitempty"`
+	PromptCacheEnabled bool            `json:"prompt_cache_enabled"`
 }
 
 // ToggleStore persists feature toggle states via kvstore.
@@ -28,14 +31,14 @@ func NewToggleStore(kv kvstore.Store) *ToggleStore {
 	return &ToggleStore{kv: kv}
 }
 
-// Load retrieves persisted toggle state. Returns zero-value state if not found.
+// Load retrieves persisted toggle state. Returns nil if no state has been saved yet.
 func (ts *ToggleStore) Load(ctx context.Context) (*ToggleState, error) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	var state ToggleState
 	if err := ts.kv.GetJSON(ctx, toggleStoreKey, &state); err != nil {
 		if err == kvstore.ErrKeyNotFound {
-			return &state, nil
+			return nil, nil // no saved state — caller should keep defaults
 		}
 		return nil, err
 	}

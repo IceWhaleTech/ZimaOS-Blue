@@ -1,36 +1,5 @@
 import api from './client'
 
-export interface CacheStats {
-  enabled: boolean
-  entries: number
-  max_entries: number
-  hits: number
-  misses: number
-  evictions?: number
-  bypasses: number
-  hit_rate: number
-  ttl_seconds?: number
-  input_tokens_saved?: number
-  output_tokens_saved?: number
-}
-
-export interface CacheConfig {
-  enabled: boolean
-  max_size: number
-  max_entry_size: number
-  ttl: number
-  skip_streaming: boolean
-  storage_type: string
-}
-
-export interface CacheConfigUpdate {
-  enabled?: boolean
-  max_size?: number
-  max_entry_size?: number
-  ttl_seconds?: number
-  skip_streaming?: boolean
-}
-
 export interface PrunerStats {
   enabled: boolean
   stats?: {
@@ -104,16 +73,8 @@ export interface RoutingStats {
   cost_saved_usd: number
 }
 
-// Proxy cache API (for /v1/* OpenAI-compatible endpoints)
-// All chat requests now route through the proxy, so this is the unified cache
+// Proxy API (pruner, routing, prompt cache)
 export const proxyCacheApi = {
-  getStats: () => api.get<CacheStats>('/proxy/cache/stats'),
-  getConfig: () => api.get<CacheConfig>('/proxy/cache/config'),
-  updateConfig: (config: CacheConfigUpdate) =>
-    api.put<{ success: boolean; config: CacheConfig }>('/proxy/cache/config', config),
-  clearCache: () => api.post<{ success: boolean; message: string }>('/proxy/cache/clear'),
-  deleteEntry: (key: string) =>
-    api.delete<{ success: boolean }>(`/proxy/cache/entry/${encodeURIComponent(key)}`),
   getPrunerStats: () => api.get<PrunerStats>('/proxy/pruner/stats'),
   getPrunerConfig: () => api.get<PrunerConfig>('/proxy/pruner/config'),
   updatePrunerConfig: (config: PrunerConfigUpdate) =>
@@ -128,4 +89,7 @@ export const proxyCacheApi = {
   updateRoutingRule: (name: string, config: { enabled: boolean }) =>
     api.put<{ success: boolean; name: string; enabled: boolean }>(`/proxy/routing/rules/${encodeURIComponent(name)}`, config),
   getRoutingStats: () => api.get<RoutingStats>('/proxy/routing/stats'),
+  getPromptCacheConfig: () => api.get<{ enabled: boolean }>('/proxy/prompt-cache/config'),
+  updatePromptCacheConfig: (config: { enabled: boolean }) =>
+    api.put<{ success: boolean; enabled: boolean }>('/proxy/prompt-cache/config', config),
 }

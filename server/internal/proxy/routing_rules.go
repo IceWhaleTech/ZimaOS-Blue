@@ -169,9 +169,10 @@ type compiledRoutingRule struct {
 
 // RuleEngine evaluates routing rules in priority order with pre-compiled regexes.
 type RuleEngine struct {
-	rules      []compiledRoutingRule
-	needsTools  bool // pre-computed: any rule uses ToolPattern
-	needsSystem bool // pre-computed: any rule uses SystemTag
+	rules        []compiledRoutingRule
+	needsTools   bool          // pre-computed: any rule uses ToolPattern
+	needsSystem  bool          // pre-computed: any rule uses SystemTag
+	tierResolver *TierResolver // dynamic tier → model resolution (optional)
 }
 
 // GetRules returns a snapshot of all rules with their enabled state.
@@ -216,7 +217,8 @@ func buildReason(cond *RouteCondition) string {
 }
 
 // NewRuleEngine creates a rule engine, sorting rules by priority (lower = higher).
-func NewRuleEngine(rules []RoutingRule) *RuleEngine {
+// The optional TierResolver is used to resolve tier-based rules (where TargetModel is empty).
+func NewRuleEngine(rules []RoutingRule, tierResolver ...*TierResolver) *RuleEngine {
 	sorted := make([]RoutingRule, len(rules))
 	copy(sorted, rules)
 	sort.Slice(sorted, func(i, j int) bool {
@@ -259,7 +261,11 @@ func NewRuleEngine(rules []RoutingRule) *RuleEngine {
 		}
 		compiled = append(compiled, cr)
 	}
-	return &RuleEngine{rules: compiled, needsTools: needsTools, needsSystem: needsSystem}
+	e := &RuleEngine{rules: compiled, needsTools: needsTools, needsSystem: needsSystem}
+	if len(tierResolver) > 0 && tierResolver[0] != nil {
+		e.tierResolver = tierResolver[0]
+	}
+	return e
 }
 
 // Evaluate returns the first matching rule's pre-built decision, or nil if none match.
@@ -301,7 +307,31 @@ func (e *RuleEngine) Evaluate(req *RouteRequest) *RouteDecision {
 				continue
 			}
 		}
-		return &cr.decision
+		return e.resolveDecision(&cr.decision)
 	}
 	return nil
+}
+
+// SetTierResolver sets or replaces the tier resolver for dynamic model resolution.
+func (e *RuleEngine) SetTierResolver(tr *TierResolver) {
+	e.tierResolver = tr
+}
+
+// resolveDecision fills in the Model field from TierResolver when the rule
+// specifies a Tier but no explicit TargetModel. Returns nil if resolution fails.
+func (e *RuleEngine) resolveDecision(d *RouteDecision) *RouteDecision {
+	if d.Model != "" {
+		return d // explicit model — use as-is
+	}
+	if d.Tier == "" || e.tierResolver == nil {
+		return d // no tier or no resolver — return as-is (caller checks Model)
+	}
+	model := e.tierResolver.BestModelForTier(d.Tier)
+	if model == "" {
+		return nil // tier has no available models — treat as no match
+	}
+	// Return a copy with the resolved model to avoid mutating the pre-built decision
+	resolved := *d
+	resolved.Model = model
+	return &resolved
 }

@@ -158,9 +158,7 @@ func (m *AutoManager) Start(ctx context.Context, cfg *Config) error {
 			m.startedAt = time.Now()
 			m.expiresAt = m.startedAt.Add(8 * time.Hour)
 			m.mu.Unlock()
-			if m.onURLChange != nil {
-				m.onURLChange(r.url)
-			}
+			// Note: onURLChange already fired by sub-manager (line 81 forwards it)
 			return nil
 
 		case err := <-errChan:

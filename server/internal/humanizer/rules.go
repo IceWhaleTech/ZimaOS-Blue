@@ -254,6 +254,7 @@ var toolNameZh = map[string]string{
 	"memory_store":    "存储记忆",
 	"memory_get":      "获取记忆",
 	"memory_stats":    "记忆统计",
+	"memory":          "记忆系统",
 }
 
 // Parameter name localization.

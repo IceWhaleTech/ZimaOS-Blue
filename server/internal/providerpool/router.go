@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // candidateSnapshot holds a precomputed candidate list for all known models.
@@ -66,6 +67,14 @@ func NewRouter(registry *Registry, discovery *ModelDiscovery, defaultStrategy Ro
 	return r
 }
 
+// hasCredentials returns true if the provider has a usable API key or connected OAuth.
+func (r *Router) hasCredentials(p *Provider) bool {
+	if key, err := r.registry.GetAPIKey(p.ID); err == nil && key != nil && key.Key != "" {
+		return true
+	}
+	return p.OAuth != nil && p.OAuth.Connected
+}
+
 // SetCooldownConfig sets the cooldown configuration
 func (r *Router) SetCooldownConfig(cfg *CooldownConfig) {
 	r.cooldownMu.Lock()
@@ -85,15 +94,13 @@ func (r *Router) RebuildCandidates() {
 	providers := r.registry.ListEnabled()
 	snap := &candidateSnapshot{
 		byModel: make(map[string][]*RouteCandidate),
-		builtAt: time.Now(),
+		builtAt: timeutil.NowTime(),
 	}
 
 	for _, provider := range providers {
-		// Skip cloud providers without a usable API key
-		if provider.Location == ProviderLocationCloud {
-			if key, err := r.registry.GetAPIKey(provider.ID); err != nil || key == nil || key.Key == "" {
-				continue
-			}
+		// Skip cloud providers without usable credentials (API key or OAuth)
+		if provider.Location == ProviderLocationCloud && !r.hasCredentials(provider) {
+			continue
 		}
 
 		models, err := r.discovery.GetModels(provider.ID)
@@ -152,6 +159,13 @@ func (r *Router) Route(req *RouteRequest) (*RouteResult, error) {
 
 	if apiKey, err := r.registry.GetAPIKey(candidates[0].Provider.ID); err == nil {
 		result.APIKey = apiKey
+	}
+
+	// Also check for OAuth config if no API key
+	if result.APIKey == nil {
+		if oauthCfg, err := r.registry.GetOAuthConfig(candidates[0].Provider.ID); err == nil {
+			result.OAuth = oauthCfg
+		}
 	}
 
 	if len(candidates) > 1 {
@@ -261,11 +275,9 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 			continue
 		}
 
-		// Skip cloud providers without a usable API key
-		if provider.Location == ProviderLocationCloud {
-			if key, err := r.registry.GetAPIKey(provider.ID); err != nil || key == nil || key.Key == "" {
-				continue
-			}
+		// Skip cloud providers without usable credentials (API key or OAuth)
+		if provider.Location == ProviderLocationCloud && !r.hasCredentials(provider) {
+			continue
 		}
 
 		// Filter by routing mode
@@ -531,7 +543,7 @@ func (r *Router) IsInCooldown(providerID string) bool {
 	if !exists {
 		return false
 	}
-	return time.Now().Before(entry.CooldownUntil)
+	return timeutil.NowNano() < entry.CooldownUntil.UnixNano()
 }
 
 // GetCooldownEntry returns the cooldown entry for a provider
@@ -560,7 +572,7 @@ func (r *Router) RecordFailure(providerID string, err error) {
 	}
 
 	entry.FailureCount++
-	entry.LastFailure = time.Now()
+	entry.LastFailure = timeutil.NowTime()
 	if err != nil {
 		entry.LastError = err.Error()
 	}
@@ -577,7 +589,7 @@ func (r *Router) RecordFailure(providerID string, err error) {
 		if cooldownDuration > r.cooldownCfg.MaxCooldown {
 			cooldownDuration = r.cooldownCfg.MaxCooldown
 		}
-		entry.CooldownUntil = time.Now().Add(cooldownDuration)
+		entry.CooldownUntil = timeutil.NowTime().Add(cooldownDuration)
 	}
 }
 
@@ -609,7 +621,7 @@ func (r *Router) ListCooldowns() []*CooldownEntry {
 	defer r.cooldownMu.RUnlock()
 
 	var result []*CooldownEntry
-	now := time.Now()
+	now := timeutil.NowTime()
 	for _, entry := range r.cooldowns {
 		if now.Before(entry.CooldownUntil) {
 			entryCopy := *entry
@@ -651,10 +663,10 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 	if r.failoverCallback != nil {
 		failoverResult = &FailoverResult{
 			RequestID: uuid.New().String(),
-			StartTime: time.Now(),
+			StartTime: timeutil.NowTime(),
 		}
 		defer func() {
-			failoverResult.EndTime = time.Now()
+			failoverResult.EndTime = timeutil.NowTime()
 			r.failoverCallback(failoverResult)
 		}()
 	}
@@ -675,9 +687,9 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		if failoverResult != nil {
 			failoverResult.TotalAttempts++
 		}
-		start := time.Now()
+		start := timeutil.NowTime()
 		err = execute(result)
-		latency := time.Since(start)
+		latency := timeutil.SinceTime(start)
 		triedProviders[result.Provider.ID] = true
 
 		if err == nil {
@@ -730,9 +742,9 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 			if failoverResult != nil {
 				failoverResult.TotalAttempts++
 			}
-			start := time.Now()
+			start := timeutil.NowTime()
 			err = execute(fallbackResult)
-			latency := time.Since(start)
+			latency := timeutil.SinceTime(start)
 			triedProviders[fallback.Provider.ID] = true
 
 			if err == nil {
@@ -815,9 +827,9 @@ blindFallback:
 		if failoverResult != nil {
 			failoverResult.TotalAttempts++
 		}
-		start := time.Now()
+		start := timeutil.NowTime()
 		err = execute(blindResult)
-		latency := time.Since(start)
+		latency := timeutil.SinceTime(start)
 
 		if err == nil {
 			r.UpdateLatency(provider.ID, latency)
@@ -868,11 +880,9 @@ func (r *Router) findBlindFallbackProviders(mode RoutingMode, exclude map[string
 		if r.IsInCooldown(p.ID) {
 			continue
 		}
-		// Cloud providers need a usable API key
-		if p.Location == ProviderLocationCloud {
-			if key, err := r.registry.GetAPIKey(p.ID); err != nil || key == nil || key.Key == "" {
-				continue
-			}
+		// Cloud providers need usable credentials (API key or OAuth)
+		if p.Location == ProviderLocationCloud && !r.hasCredentials(p) {
+			continue
 		}
 		// Filter by routing mode
 		if mode != "" && mode != RoutingModeAuto {

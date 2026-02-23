@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Page permission constants
@@ -91,7 +92,7 @@ func NewUserPermission(userID uuid.UUID, permission string, grantedBy *string) *
 		UserID:     userID,
 		Permission: permission,
 		GrantedBy:  grantedBy,
-		GrantedAt:  time.Now().UTC(),
+		GrantedAt:  timeutil.NowTime().UTC(),
 	}
 }
 

@@ -76,7 +76,7 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return fileWriteCard(content)
 	case "system_info":
 		return systemInfoCard(content)
-	case "memory_search":
+	case "memory_search", "memory":
 		return memorySearchCard(content)
 	default:
 		return GenericCard(toolName, content)
@@ -262,6 +262,34 @@ func GenericCard(toolName, content string) map[string]interface{} {
 				"message": errMsg,
 			}
 		}
+		// Extract message field if present
+		msg, _ := data["message"].(string)
+		// Build details from remaining fields, skipping internal ones
+		hiddenFields := map[string]bool{
+			"id": true, "cron": true, "trigger_at": true,
+			"status": true, "result": true, "message": true,
+			"created_at": true, "updated_at": true,
+			"owner_id": true, "user_id": true,
+		}
+		details := []map[string]interface{}{}
+		for key, v := range data {
+			if hiddenFields[key] {
+				continue
+			}
+			details = append(details, map[string]interface{}{"label": key, "value": fmt.Sprintf("%v", v)})
+		}
+		card := map[string]interface{}{
+			"type":   "result",
+			"title":  toolName,
+			"status": "success",
+		}
+		if msg != "" {
+			card["message"] = msg
+		}
+		if len(details) > 0 {
+			card["details"] = details
+		}
+		return card
 	}
 	display := content
 	if len(display) > 500 {

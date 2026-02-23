@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // LinuxExecutor provides sandboxed execution on Linux using namespaces and cgroups.
@@ -105,7 +105,7 @@ func (e *LinuxExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*Ex
 	result := &ExecutionResult{
 		ID:        req.ID,
 		Status:    StatusRunning,
-		StartTime: time.Now(),
+		StartTime: timeutil.NowTime(),
 	}
 
 	state := &executionState{
@@ -140,7 +140,7 @@ func (e *LinuxExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*Ex
 
 	// Run command
 	err := cmd.Run()
-	result.EndTime = time.Now()
+	result.EndTime = timeutil.NowTime()
 	result.Duration = result.EndTime.Sub(result.StartTime)
 	result.Stdout = truncateOutput(stdout.String(), 1024*1024) // 1MB max
 	result.Stderr = truncateOutput(stderr.String(), 1024*1024)

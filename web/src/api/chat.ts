@@ -76,6 +76,9 @@ export interface StreamChunk {
   stream_id?: string
   provider?: string
   model?: string
+  // Tool execution status (sent when backend starts executing tool calls)
+  tool_executing?: boolean
+  tool_calls?: number
   // Context pruning info (sent on first content chunk)
   pruned?: boolean
   messages_pruned?: number
@@ -150,6 +153,8 @@ export interface CardActionRequest {
   card_id: string
   action_id: string
   action_label?: string
+  card_type?: string
+  card_title?: string
   form_data?: Record<string, unknown>
 }
 

@@ -170,6 +170,19 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 			slog.Warn("bridge: malformed SSE chunk", "error", parseErr, "payload_len", len(payload))
 			continue
 		}
+		// Inject actual provider/model from proxy response headers.
+		// These are set by proxy server.go before WriteHeader, so they're
+		// available by the time we read any SSE data from the pipe.
+		if chunk.Provider == "" {
+			if v := rw.Header().Get("X-Actual-Provider"); v != "" {
+				chunk.Provider = v
+			}
+		}
+		if chunk.Model == "" {
+			if v := rw.Header().Get("X-Actual-Model"); v != "" {
+				chunk.Model = v
+			}
+		}
 		if cbErr := callback(chunk); cbErr != nil {
 			scanErr = cbErr
 			break

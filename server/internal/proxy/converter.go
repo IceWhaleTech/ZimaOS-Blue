@@ -156,7 +156,7 @@ type OpenAIStreamChunk struct {
 type AnthropicRequest struct {
 	Model         string             `json:"model"`
 	Messages      []AnthropicMessage `json:"messages"`
-	System        string             `json:"system,omitempty"`
+	System        interface{}        `json:"system,omitempty"` // string or []AnthropicSystemBlock
 	MaxTokens     int                `json:"max_tokens"`
 	Temperature   float64            `json:"temperature,omitempty"`
 	TopP          float64            `json:"top_p,omitempty"`
@@ -188,9 +188,22 @@ type AnthropicContentBlock struct {
 }
 
 type AnthropicTool struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description,omitempty"`
-	InputSchema interface{} `json:"input_schema"`
+	Name         string                  `json:"name"`
+	Description  string                  `json:"description,omitempty"`
+	InputSchema  interface{}             `json:"input_schema"`
+	CacheControl *AnthropicCacheControl  `json:"cache_control,omitempty"`
+}
+
+// AnthropicCacheControl is the cache_control block for Anthropic prompt caching.
+type AnthropicCacheControl struct {
+	Type string `json:"type"` // "ephemeral"
+}
+
+// AnthropicSystemBlock is a content block in the system prompt array (for prompt caching).
+type AnthropicSystemBlock struct {
+	Type         string                 `json:"type"`
+	Text         string                 `json:"text"`
+	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 type AnthropicResponse struct {
@@ -329,9 +342,16 @@ type GeminiModel struct {
 	SupportedGenerationMethods []string `json:"supportedGenerationMethods,omitempty"`
 }
 
+// ProviderTypeCloudCode identifies Google Cloud Code Assist API format
+const ProviderTypeCloudCode ProviderType = "cloudcode"
+
+// ProviderTypeCopilot identifies GitHub Copilot API format
+const ProviderTypeCopilot ProviderType = "copilot"
+
 // ConvertRequest converts OpenAI request to target provider format
 func (fc *FormatConverter) ConvertRequest(body []byte, targetType ProviderType) ([]byte, string, error) {
-	if targetType == ProviderTypeOpenAI {
+	if targetType == ProviderTypeOpenAI || targetType == ProviderTypeCopilot {
+		// Copilot uses OpenAI-compatible format
 		return body, "/v1/chat/completions", nil
 	}
 
@@ -352,6 +372,16 @@ func (fc *FormatConverter) ConvertRequest(body []byte, targetType ProviderType) 
 		return nil, "", fmt.Errorf("failed to marshal Anthropic request: %w", err)
 	}
 	return converted, "/v1/messages", nil
+}
+
+// InjectPromptCaching unmarshals an Anthropic request body, applies cache breakpoints, and re-marshals.
+func InjectPromptCaching(body []byte) ([]byte, error) {
+	var req AnthropicRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return body, err
+	}
+	ApplyPromptCaching(&req)
+	return json.Marshal(req)
 }
 
 // convertToGemini converts OpenAI request to Gemini format
@@ -620,6 +650,27 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 	return anthropicReq
 }
 
+// ApplyPromptCaching adds cache_control breakpoints to an Anthropic request.
+// Breakpoints are placed on: (1) the system prompt, (2) the last tool definition.
+// This enables Anthropic's prompt caching, which can save up to 90% on input token costs.
+func ApplyPromptCaching(req *AnthropicRequest) {
+	ephemeral := &AnthropicCacheControl{Type: "ephemeral"}
+
+	// Convert system string to array with cache_control
+	if s, ok := req.System.(string); ok && s != "" {
+		req.System = []AnthropicSystemBlock{{
+			Type:         "text",
+			Text:         s,
+			CacheControl: ephemeral,
+		}}
+	}
+
+	// Add cache_control to the last tool
+	if n := len(req.Tools); n > 0 {
+		req.Tools[n-1].CacheControl = ephemeral
+	}
+}
+
 // convertContentPart converts OpenAI content part to Anthropic format
 func (fc *FormatConverter) convertContentPart(part map[string]interface{}) *AnthropicContentBlock {
 	partType, _ := part["type"].(string)
@@ -679,11 +730,11 @@ func (fc *FormatConverter) convertModel(model string) string {
 
 // ConvertResponse converts provider response to OpenAI format
 func (fc *FormatConverter) ConvertResponse(body []byte, sourceType ProviderType) ([]byte, error) {
-	if sourceType == ProviderTypeOpenAI {
+	if sourceType == ProviderTypeOpenAI || sourceType == ProviderTypeCopilot {
 		return body, nil
 	}
 
-	if sourceType == ProviderTypeGemini {
+	if sourceType == ProviderTypeCloudCode || sourceType == ProviderTypeGemini {
 		return fc.convertGeminiResponse(body)
 	}
 
@@ -778,11 +829,11 @@ func (fc *FormatConverter) geminiToOpenAI(resp GeminiResponse) OpenAIChatRespons
 
 // ConvertModelsResponse converts provider models list to OpenAI format
 func (fc *FormatConverter) ConvertModelsResponse(body []byte, sourceType ProviderType) ([]byte, error) {
-	if sourceType == ProviderTypeOpenAI {
+	if sourceType == ProviderTypeOpenAI || sourceType == ProviderTypeCopilot {
 		return body, nil
 	}
 
-	if sourceType == ProviderTypeGemini {
+	if sourceType == ProviderTypeGemini || sourceType == ProviderTypeCloudCode {
 		return fc.convertGeminiModels(body)
 	}
 
@@ -883,7 +934,7 @@ func (fc *FormatConverter) anthropicToOpenAI(resp AnthropicResponse) OpenAIChatR
 
 // ConvertStreamingResponse creates a streaming response converter
 func (fc *FormatConverter) ConvertStreamingResponse(reader io.Reader, sourceType ProviderType, writer http.ResponseWriter) error {
-	if sourceType == ProviderTypeOpenAI {
+	if sourceType == ProviderTypeOpenAI || sourceType == ProviderTypeCopilot {
 		_, err := io.Copy(writer, reader)
 		return err
 	}
@@ -892,8 +943,80 @@ func (fc *FormatConverter) ConvertStreamingResponse(reader io.Reader, sourceType
 		return fc.convertGeminiStream(reader, writer)
 	}
 
+	if sourceType == ProviderTypeCloudCode {
+		return fc.convertCloudCodeStream(reader, writer)
+	}
+
 	// Anthropic streaming conversion
 	return fc.convertAnthropicStream(reader, writer)
+}
+
+// convertCloudCodeStream converts Cloud Code SSE to OpenAI SSE.
+// Cloud Code wraps Gemini-style responses in SSE format.
+func (fc *FormatConverter) convertCloudCodeStream(reader io.Reader, writer http.ResponseWriter) error {
+	flusher, ok := writer.(http.Flusher)
+	if !ok {
+		return fmt.Errorf("streaming not supported")
+	}
+
+	scanner, bufPtr := newPooledScanner(reader)
+	defer scannerBufPool.Put(bufPtr)
+	messageID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			writer.Write([]byte("data: [DONE]\n\n"))
+			flusher.Flush()
+			break
+		}
+
+		// Cloud Code returns Gemini-style candidates
+		text := gjson.Get(data, "candidates.0.content.parts.0.text").Str
+		finishReason := gjson.Get(data, "candidates.0.finishReason").Str
+
+		var wb bytes.Buffer
+		wb.Grow(256)
+		wb.WriteString(`data: {"id":"`)
+		wb.WriteString(messageID)
+		wb.WriteString(`","object":"chat.completion.chunk","choices":[{"index":0,"delta":{`)
+		if text != "" {
+			wb.WriteString(`"content":`)
+			escapedText, _ := json.Marshal(text)
+			wb.Write(escapedText)
+		}
+		wb.WriteString(`},"finish_reason":`)
+		if finishReason != "" {
+			wb.WriteByte('"')
+			switch finishReason {
+			case "STOP":
+				wb.WriteString("stop")
+			case "MAX_TOKENS":
+				wb.WriteString("length")
+			default:
+				wb.WriteString("stop")
+			}
+			wb.WriteByte('"')
+		} else {
+			wb.WriteString("null")
+		}
+		wb.WriteString(`}]}`)
+		wb.WriteString("\n\n")
+		writer.Write(wb.Bytes())
+		flusher.Flush()
+
+		if finishReason != "" {
+			writer.Write([]byte("data: [DONE]\n\n"))
+			flusher.Flush()
+			break
+		}
+	}
+	return scanner.Err()
 }
 
 // convertGeminiStream converts Gemini SSE to OpenAI SSE

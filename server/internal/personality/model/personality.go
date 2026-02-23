@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Personality represents an AI assistant personality
@@ -34,8 +35,8 @@ func NewPersonality(name, description, systemPrompt string) *Personality {
 		Description:  description,
 		SystemPrompt: systemPrompt,
 		Traits:       []PersonalityTrait{},
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		CreatedAt:    timeutil.NowTime(),
+		UpdatedAt:    timeutil.NowTime(),
 	}
 }
 
@@ -46,7 +47,7 @@ func (p *Personality) AddTrait(key, value string, weight float64) {
 		Value:  value,
 		Weight: weight,
 	})
-	p.UpdatedAt = time.Now()
+	p.UpdatedAt = timeutil.NowTime()
 }
 
 // Validate validates the personality

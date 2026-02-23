@@ -424,12 +424,12 @@ onMounted(async () => {
               <p v-if="!status?.asr?.on_device_supported && status?.asr?.on_device_only" class="text-xs text-amber-500 dark:text-amber-400 mt-0.5">{{ t('speech.macosNativeOnDeviceUnsupported') }}</p>
             </div>
             <button
-              class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-              :class="status?.asr?.on_device_only ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'"
+              class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="status?.asr?.on_device_only ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
               @click="toggleOnDevice">
               <span
-                class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="status?.asr?.on_device_only ? 'translate-x-4' : 'translate-x-0'" />
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="status?.asr?.on_device_only ? 'translate-x-5' : 'translate-x-0'" />
             </button>
           </div>
           <!-- Offline dictation languages (shown when on-device is enabled and dictation is available) -->

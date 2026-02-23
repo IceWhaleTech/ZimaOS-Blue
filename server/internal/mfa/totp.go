@@ -10,11 +10,11 @@ import (
 	"image/png"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"github.com/skip2/go-qrcode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 var (
@@ -102,7 +102,7 @@ func (t *TOTP) Validate(code, secret string) bool {
 func (t *TOTP) ValidateWithSkew(code, secret string) bool {
 	secret = strings.ToUpper(strings.TrimSpace(secret))
 
-	valid, err := totp.ValidateCustom(code, secret, time.Now().UTC(), totp.ValidateOpts{
+	valid, err := totp.ValidateCustom(code, secret, timeutil.NowTime().UTC(), totp.ValidateOpts{
 		Period:    t.config.Period,
 		Skew:      t.config.Skew,
 		Digits:    t.config.Digits,
@@ -116,7 +116,7 @@ func (t *TOTP) ValidateWithSkew(code, secret string) bool {
 func (t *TOTP) GenerateCode(secret string) (string, error) {
 	secret = strings.ToUpper(strings.TrimSpace(secret))
 
-	code, err := totp.GenerateCodeCustom(secret, time.Now().UTC(), totp.ValidateOpts{
+	code, err := totp.GenerateCodeCustom(secret, timeutil.NowTime().UTC(), totp.ValidateOpts{
 		Period:    t.config.Period,
 		Digits:    t.config.Digits,
 		Algorithm: t.config.Algorithm,

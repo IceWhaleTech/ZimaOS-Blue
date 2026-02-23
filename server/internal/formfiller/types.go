@@ -3,6 +3,7 @@ package formfiller
 
 import (
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // FieldType represents the type of a form field.
@@ -182,6 +183,6 @@ func DefaultPatterns() *FieldPatterns {
 			FieldCompany:         {"company", "organization", "org", "公司", "会社"},
 			FieldTitle:           {"title", "job_title", "position", "职位", "役職"},
 		},
-		UpdatedAt: time.Now(),
+		UpdatedAt: timeutil.NowTime(),
 	}
 }

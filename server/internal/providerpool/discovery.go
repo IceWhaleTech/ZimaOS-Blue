@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ModelDiscovery handles model discovery and caching
@@ -75,7 +77,7 @@ func (d *ModelDiscovery) FetchModels(ctx context.Context, providerID string) ([]
 	// Cache the results
 	d.mu.Lock()
 	d.cache[providerID] = models
-	d.cacheAt[providerID] = time.Now()
+	d.cacheAt[providerID] = timeutil.NowTime()
 	d.mu.Unlock()
 
 	// Save to storage
@@ -95,7 +97,7 @@ func (d *ModelDiscovery) GetModels(providerID string) ([]*Model, error) {
 	d.mu.RUnlock()
 
 	// Check if cache is valid
-	if exists && len(models) > 0 && time.Since(cacheTime) < d.cacheTTL {
+	if exists && len(models) > 0 && timeutil.SinceTime(cacheTime) < d.cacheTTL {
 		return models, nil
 	}
 
@@ -107,7 +109,7 @@ func (d *ModelDiscovery) GetModels(providerID string) ([]*Model, error) {
 
 		d.mu.Lock()
 		d.cache[providerID] = storedModels
-		d.cacheAt[providerID] = time.Now()
+		d.cacheAt[providerID] = timeutil.NowTime()
 		d.mu.Unlock()
 		return storedModels, nil
 	}
@@ -135,6 +137,11 @@ func (d *ModelDiscovery) GetFilteredModels(providerID string) ([]*Model, error) 
 	models, err := d.GetModels(providerID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Filter trial provider models to well-known models only
+	if IsTrialProvider(providerID) {
+		models = filterTrialModels(models)
 	}
 
 	// Get provider to check AllowedModels
@@ -183,6 +190,26 @@ func filterModelsByAllowed(models []*Model, allowedModels []string) []*Model {
 	return filtered
 }
 
+// filterTrialModels filters trial provider models to only include well-known models.
+func filterTrialModels(models []*Model) []*Model {
+	filtered := make([]*Model, 0, len(models))
+	for _, m := range models {
+		lower := strings.ToLower(m.ID)
+		if strings.Contains(lower, "claude") ||
+			strings.Contains(lower, "opus") ||
+			strings.Contains(lower, "haiku") ||
+			strings.Contains(lower, "sonnet") ||
+			strings.Contains(lower, "codex") ||
+			strings.Contains(lower, "glm") ||
+			strings.Contains(lower, "qwen") ||
+			strings.Contains(lower, "k2.5") ||
+			strings.Contains(lower, "m2.5") {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
+}
+
 // GetAllModels returns all models from all providers (including built-in models from disabled providers)
 func (d *ModelDiscovery) GetAllModels() []*Model {
 	var allModels []*Model
@@ -194,6 +221,10 @@ func (d *ModelDiscovery) GetAllModels() []*Model {
 		models, err := d.GetModels(provider.ID)
 		if err != nil {
 			continue
+		}
+		// Filter trial provider models to well-known models only
+		if IsTrialProvider(provider.ID) {
+			models = filterTrialModels(models)
 		}
 		allModels = append(allModels, models...)
 		seenProviders[provider.ID] = true
@@ -1100,7 +1131,7 @@ func (d *ModelDiscovery) ProbeModels(ctx context.Context, providerID string, con
 	// Update cache with probed models
 	d.mu.Lock()
 	d.cache[providerID] = models
-	d.cacheAt[providerID] = time.Now()
+	d.cacheAt[providerID] = timeutil.NowTime()
 	d.mu.Unlock()
 
 	// Persist to storage
@@ -1125,7 +1156,7 @@ func (d *ModelDiscovery) ProbeModels(ctx context.Context, providerID string, con
 // probeModel sends a minimal chat completion request to test if a model is configured.
 func (d *ModelDiscovery) probeModel(ctx context.Context, provider *Provider, apiKey *APIKey, model *Model) ProbeResult {
 	result := ProbeResult{ModelID: model.ID}
-	start := time.Now()
+	start := timeutil.NowTime()
 
 	baseURL := strings.TrimSuffix(provider.BaseURL, "/")
 	var endpoint string
@@ -1141,7 +1172,7 @@ func (d *ModelDiscovery) probeModel(ctx context.Context, provider *Provider, api
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		result.Error = err.Error()
-		result.Latency = time.Since(start)
+		result.Latency = timeutil.SinceTime(start)
 		return result
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -1152,13 +1183,13 @@ func (d *ModelDiscovery) probeModel(ctx context.Context, provider *Provider, api
 	resp, err := d.clientFor(provider).Do(req)
 	if err != nil {
 		result.Error = err.Error()
-		result.Latency = time.Since(start)
+		result.Latency = timeutil.SinceTime(start)
 		return result
 	}
 	defer resp.Body.Close()
 
 	result.StatusCode = resp.StatusCode
-	result.Latency = time.Since(start)
+	result.Latency = timeutil.SinceTime(start)
 
 	if resp.StatusCode == http.StatusOK {
 		io.Copy(io.Discard, resp.Body)

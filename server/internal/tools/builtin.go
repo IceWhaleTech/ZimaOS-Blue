@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // CalculatorTool performs basic arithmetic operations.
@@ -254,7 +255,7 @@ func (t *CurrentTimeTool) Definition() ToolDefinition {
 
 // Execute returns the current time.
 func (t *CurrentTimeTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	info := map[string]interface{}{
 		"utc":   now.UTC().Format(time.RFC3339),
@@ -528,6 +529,8 @@ func RegisterBuiltinTools(registry *Registry) {
 	registry.Register(NewFileWriteTool(nil, 0))
 	// Web search with default settings (DuckDuckGo)
 	registry.Register(NewWebSearchTool(WebSearchConfig{}))
+	// UI reviewer (browser + VLM dependencies injected later)
+	registry.Register(NewUIReviewerTool())
 }
 
 // RegisterBuiltinToolsWithConfig registers all built-in tools with custom configuration.
@@ -538,27 +541,35 @@ func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearc
 	registry.Register(NewFileReadTool(allowedPaths, maxFileSize))
 	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
 	registry.Register(NewWebSearchTool(webSearchConfig))
+	// UI reviewer (browser + VLM dependencies injected later)
+	registry.Register(NewUIReviewerTool())
 }
 
-// RegisterMemoryTools registers memory-related tools with the registry.
+// GetUIReviewerTool retrieves the UIReviewerTool from the registry for dependency injection.
+func GetUIReviewerTool(registry *Registry) *UIReviewerTool {
+	tool := registry.Get("ui_reviewer")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*UIReviewerTool); ok {
+		return t
+	}
+	return nil
+}
+
+// RegisterMemoryTools registers the unified memory tool with the registry.
 // This should be called after the memory service is initialized.
 func RegisterMemoryTools(registry *Registry, memoryService MemoryServiceInterface) {
 	if memoryService == nil {
 		return
 	}
-	registry.Register(NewMemorySearchToolWithInterface(memoryService))
-	registry.Register(NewMemoryGetToolWithInterface(memoryService))
-	registry.Register(NewMemoryStatsToolWithInterface(memoryService))
-	if progressiveSearchTool != nil {
-		registry.Register(progressiveSearchTool)
-	}
+	registry.Register(NewMemoryTool(memoryService))
 }
 
-// SetProgressiveSearchTool sets the progressive search tool for registration.
-// This is called from the memory package to avoid circular imports.
-func SetProgressiveSearchTool(tool Tool) {
-	progressiveSearchTool = tool
-}
+// SetProgressiveSearchTool is a no-op kept for backward compatibility.
+// Progressive search is now integrated into the unified memory tool.
+// Deprecated: progressive search is handled via memory tool's progressive_search action.
+func SetProgressiveSearchTool(tool Tool) {}
 
 // MemoryServiceInterface defines the interface for memory service used by tools.
 // This avoids circular imports with the memory package.
@@ -566,13 +577,10 @@ type MemoryServiceInterface interface {
 	Recall(ctx context.Context, query string, limit int) ([]MemorySearchResult, error)
 	Get(ctx context.Context, id string) (*MemoryChunkResult, error)
 	Stats(ctx context.Context) (*MemoryStatsResult, error)
+	Remember(ctx context.Context, content string, tags []string) (*MemoryChunkResult, error)
+	Forget(ctx context.Context, id string) error
 	GetActiveBackend() string
 }
-
-// ProgressiveSearchTool is an optional tool that can be registered for progressive search.
-// It implements the Tool interface directly in the memory package to avoid circular imports.
-// Use RegisterProgressiveSearchTool to register it.
-var progressiveSearchTool Tool
 
 // MemorySearchResult represents a search result from memory service.
 type MemorySearchResult struct {

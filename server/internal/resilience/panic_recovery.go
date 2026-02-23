@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // PanicInfo contains information about a recovered panic
@@ -81,7 +82,7 @@ func (m *PanicRecoveryMiddleware) Middleware() echo.MiddlewareFunc {
 
 					// Record panic info
 					info := PanicInfo{
-						Time:       time.Now(),
+						Time:       timeutil.NowTime(),
 						RequestID:  c.Response().Header().Get(echo.HeaderXRequestID),
 						Method:     c.Request().Method,
 						Path:       c.Request().URL.Path,

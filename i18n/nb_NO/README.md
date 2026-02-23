@@ -59,7 +59,7 @@ Bygget for modige utviklere som ønsker å **vibe eller håndlage sine egne agen
 Ta det videre: innebygd støtte for **20+ IM-plattformer**, **stemmedrevne** grensesnitt for naturlig, kontekstbevisst dialog, **nullkonfigurasjon modellbytte** med IDE-skanning, og SOUL-lagdelte personligheter.
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Rask og lett
@@ -95,13 +95,49 @@ Vi tror at **neste generasjons personlig databehandling** omfavner LLM-er — me
 - **Lokalt-først, ultralettevekt, på tvers av enheter** – Ingen kraftig maskinvare nødvendig. Kjører på alt som kan beregne.
 - **Sikkert og reviderbart** – Sesjonsrevisjon, sandkassing, tillatelseskontroller og en innebygd API-proxy som fungerer som en applikasjonslagsbrannmur — hver byte inn/ut er synlig.
 
+![](../../docs/assets/design_principle.png)
+
 Vi minimerer standardkode slik at du kan **fokusere på det som betyr noe**. Tro mot <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS sin designfilosofi** leverer Blue:
 - **Fra null til én med ett klikk** – Distribuer umiddelbart, ingen kompleks konfigurasjon.
 - **Rask prototyping** – Vibe eller håndlag scenariospesifikke verktøy, interaksjoner og app-pakker.
 - **Globalt klar** – **Verden er stor**, og den snakker ikke engelsk som standard. **20+ språk, innebygd**, ingen barrierer.
 - **Åpent modell-økosystem** – Ingen leverandørlåsing. Ta med dine egne modeller.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Leverandør | Modeller | Type |
+|------------|----------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Sky |
+| Anthropic | Claude 4.5, Claude 4 | Sky |
+| Google | Gemini 2.5, Gemini 2.0 | Sky |
+| Ollama | Llama, Qwen, Gemma, Phi m.fl. | Lokal |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Sky |
+| Grok | Grok-3, Grok-3-mini | Sky |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Sky |
+| GLM | GLM-4, GLM-4-Flash | Sky |
+| Moonshot | Moonshot-v1 | Sky |
+| MiniMax | abab6.5, abab5.5 | Sky |
+| Venice | Llama, Mistral (personvernfokus) | Sky |
+| AWS Bedrock | Claude, Llama, Titan | Sky |
+| Azure | OpenAI-modeller via Azure | Sky |
+| OpenRouter | 100+ aggregerte modeller | Sky |
+| AIHubMix | Flerleverandøraggregator | Sky |
+| Codex | OpenAI Codex | Sky |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Sky |
+| Egendefinert | Alle OpenAI / Anthropic / Gemini-kompatible API-er | Sky / Lokal |
+
+</details>
+
+### Støttede IDE-er
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Hurtigstart
 
@@ -129,7 +165,6 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -141,12 +176,6 @@ sh build.sh
 ```powershell
 .\build.bat
 ```
-
-> **Merk:** Windows-bygg krever:
-> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) og [CMake](https://cmake.org/) for native C-avhengigheter (espeak-ng, whisper.cpp, opus, kokoro, onnx)
-> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) for systembiblioteker (winmm, etc.)
->
-> Sørg for at `gcc`, `cmake` er i `PATH`.
 
 ## Arkitekturoversikt
 

@@ -3,7 +3,7 @@ package extauth
 import (
 	"context"
 	"sync"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MemoryStateStore is an in-memory implementation of StateStore.
@@ -53,7 +53,7 @@ func (s *MemoryStateStore) Cleanup(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	for state, authState := range s.states {
 		if now.After(authState.ExpiresAt) {
 			delete(s.states, state)

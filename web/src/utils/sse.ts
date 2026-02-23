@@ -8,6 +8,7 @@ export interface SSEClientOptions {
   onBlocked?: (message: string, threatLevel: string) => void
   onTrialExhausted?: (message: string) => void
   onContextTrimmed?: (info: { type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number }) => void
+  onToolExecuting?: (toolCount: number) => void
 }
 
 export class SSEClient {
@@ -179,6 +180,11 @@ export class SSEClient {
                 options.onError?.(new Error(chunk.error))
                 this.isConnected = false
                 break
+              }
+              // Check for tool execution event
+              if (chunk.tool_executing) {
+                options.onToolExecuting?.(chunk.tool_calls || 0)
+                continue
               }
               // Mark that we received actual content
               if (chunk.delta) {

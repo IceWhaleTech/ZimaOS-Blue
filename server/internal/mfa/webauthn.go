@@ -9,6 +9,7 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 var (
@@ -157,7 +158,7 @@ func (c *WebAuthnCredential) ToWebAuthnCredential() webauthn.Credential {
 
 // FromWebAuthnCredential creates a WebAuthnCredential from webauthn.Credential.
 func FromWebAuthnCredential(cred *webauthn.Credential, name string) *WebAuthnCredential {
-	now := time.Now().UTC()
+	now := timeutil.NowTime().UTC()
 	return &WebAuthnCredential{
 		ID:              cred.ID,
 		PublicKey:       cred.PublicKey,
@@ -207,7 +208,7 @@ func (w *WebAuthn) BeginRegistration(user *WebAuthnUser) (*protocol.CredentialCr
 	regSession := &RegistrationSession{
 		UserID:      user.ID,
 		Challenge:   session.Challenge,
-		ExpiresAt:   time.Now().Add(time.Duration(w.config.Timeout) * time.Millisecond),
+		ExpiresAt:   timeutil.NowTime().Add(time.Duration(w.config.Timeout) * time.Millisecond),
 		SessionData: sessionData,
 	}
 
@@ -244,7 +245,7 @@ func (w *WebAuthn) BeginLogin(user *WebAuthnUser) (*protocol.CredentialAssertion
 	loginSession := &LoginSession{
 		UserID:      user.ID,
 		Challenge:   session.Challenge,
-		ExpiresAt:   time.Now().Add(time.Duration(w.config.Timeout) * time.Millisecond),
+		ExpiresAt:   timeutil.NowTime().Add(time.Duration(w.config.Timeout) * time.Millisecond),
 		SessionData: sessionData,
 	}
 
@@ -267,7 +268,7 @@ func (w *WebAuthn) FinishLogin(user *WebAuthnUser, session *LoginSession, respon
 	for i, c := range user.Credentials {
 		if string(c.ID) == string(credential.ID) {
 			user.Credentials[i].SignCount = credential.Authenticator.SignCount
-			user.Credentials[i].LastUsedAt = time.Now().UTC()
+			user.Credentials[i].LastUsedAt = timeutil.NowTime().UTC()
 			return &user.Credentials[i], nil
 		}
 	}
@@ -289,7 +290,7 @@ func (w *WebAuthn) BeginDiscoverableLogin() (*protocol.CredentialAssertion, *Log
 
 	loginSession := &LoginSession{
 		Challenge:   session.Challenge,
-		ExpiresAt:   time.Now().Add(time.Duration(w.config.Timeout) * time.Millisecond),
+		ExpiresAt:   timeutil.NowTime().Add(time.Duration(w.config.Timeout) * time.Millisecond),
 		SessionData: sessionData,
 	}
 

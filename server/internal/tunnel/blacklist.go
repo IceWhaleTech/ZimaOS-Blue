@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 const (
@@ -72,7 +73,7 @@ func (bl *Blacklist) IsBlacklisted(provider Provider) bool {
 	}
 
 	// Check if expired
-	if time.Since(entry.BlacklistedAt) > BlacklistDuration {
+	if timeutil.SinceTime(entry.BlacklistedAt) > BlacklistDuration {
 		return false
 	}
 
@@ -86,7 +87,7 @@ func (bl *Blacklist) Add(provider Provider, reason string) error {
 
 	bl.entries[provider] = BlacklistEntry{
 		Provider:      provider,
-		BlacklistedAt: time.Now(),
+		BlacklistedAt: timeutil.NowTime(),
 		Reason:        reason,
 	}
 
@@ -110,7 +111,7 @@ func (bl *Blacklist) GetAll() []BlacklistEntry {
 	entries := make([]BlacklistEntry, 0, len(bl.entries))
 	for _, entry := range bl.entries {
 		// Only include non-expired entries
-		if time.Since(entry.BlacklistedAt) <= BlacklistDuration {
+		if timeutil.SinceTime(entry.BlacklistedAt) <= BlacklistDuration {
 			entries = append(entries, entry)
 		}
 	}
@@ -123,7 +124,7 @@ func (bl *Blacklist) cleanExpired() {
 	bl.mu.Lock()
 	defer bl.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	for provider, entry := range bl.entries {
 		if now.Sub(entry.BlacklistedAt) > BlacklistDuration {
 			delete(bl.entries, provider)

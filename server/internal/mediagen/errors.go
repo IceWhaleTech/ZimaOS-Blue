@@ -1,0 +1,12 @@
+package mediagen
+
+import "errors"
+
+var (
+	ErrProviderNotFound = errors.New("mediagen: no provider found for model")
+	ErrTaskNotFound     = errors.New("mediagen: task not found")
+	ErrUnsupportedType  = errors.New("mediagen: unsupported media type")
+	ErrGenerationFailed = errors.New("mediagen: generation failed")
+	ErrTimeout          = errors.New("mediagen: generation timed out")
+	ErrNoResults        = errors.New("mediagen: no results returned")
+)

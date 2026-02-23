@@ -44,6 +44,14 @@ func (a *SkillAdapter) Start(ctx context.Context) error {
 	return svc.Start(ctx)
 }
 
+func (a *SkillAdapter) Stop(ctx context.Context) error {
+	svc, err := a.get()
+	if err != nil {
+		return err
+	}
+	return svc.Stop(ctx)
+}
+
 func (a *SkillAdapter) Navigate(ctx context.Context, url string, targetID string) (builtin.BrowserNavResult, error) {
 	svc, err := a.get()
 	if err != nil {
@@ -144,6 +152,46 @@ func (a *SkillAdapter) ScreenshotTab(ctx context.Context, targetID string) (stri
 		return "", err
 	}
 	return svc.ScreenshotTab(ctx, targetID)
+}
+
+func (a *SkillAdapter) ScreenshotViewport(ctx context.Context, targetID string) (string, error) {
+	svc, err := a.get()
+	if err != nil {
+		return "", err
+	}
+	return svc.ScreenshotViewport(ctx, targetID)
+}
+
+func (a *SkillAdapter) ScreenshotViewportRaw(ctx context.Context, targetID string) ([]byte, error) {
+	svc, err := a.get()
+	if err != nil {
+		return nil, err
+	}
+	return svc.ScreenshotViewportRaw(ctx, targetID)
+}
+
+func (a *SkillAdapter) SetViewport(ctx context.Context, targetID string, width, height int) error {
+	svc, err := a.get()
+	if err != nil {
+		return err
+	}
+	return svc.SetViewport(ctx, targetID, width, height)
+}
+
+func (a *SkillAdapter) ScrollTo(ctx context.Context, targetID string, x, y int) error {
+	svc, err := a.get()
+	if err != nil {
+		return err
+	}
+	return svc.ScrollTo(ctx, targetID, x, y)
+}
+
+func (a *SkillAdapter) PageDimensions(ctx context.Context, targetID string) (int, int, error) {
+	svc, err := a.get()
+	if err != nil {
+		return 0, 0, err
+	}
+	return svc.PageDimensions(ctx, targetID)
 }
 
 func (a *SkillAdapter) CloseTab(ctx context.Context, targetID string) error {

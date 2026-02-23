@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 // Pool manages a pool of browser instances.
 type Pool struct {
 	config    *Config
-	launcher  *launcher.Launcher
 	browsers  []*browserInstance
 	available chan *browserInstance
 	mu        sync.RWMutex
@@ -24,6 +24,7 @@ type Pool struct {
 // browserInstance represents a single browser instance in the pool.
 type browserInstance struct {
 	browser   *rod.Browser
+	launcher  *launcher.Launcher // each instance owns its launcher for cleanup
 	inUse     bool
 	createdAt time.Time
 	lastUsed  time.Time
@@ -54,20 +55,6 @@ func (p *Pool) Start(ctx context.Context) error {
 		return ErrBrowserNotRunning
 	}
 
-	// Create launcher
-	l := launcher.New()
-	if p.config.Headless {
-		l = l.Headless(true)
-	}
-	if p.config.BrowserPath != "" {
-		l = l.Bin(p.config.BrowserPath)
-	}
-	if p.config.ProxyURL != "" {
-		l = l.Proxy(p.config.ProxyURL)
-	}
-
-	p.launcher = l
-
 	// Pre-create browser instances
 	for i := 0; i < p.config.PoolSize; i++ {
 		instance, err := p.createInstance(ctx)
@@ -83,25 +70,40 @@ func (p *Pool) Start(ctx context.Context) error {
 	return nil
 }
 
-// createInstance creates a new browser instance.
+// newLauncher creates a configured launcher from pool config.
+func (p *Pool) newLauncher() *launcher.Launcher {
+	l := launcher.New()
+	if p.config.Headless {
+		l = l.Headless(true)
+	}
+	if p.config.BrowserPath != "" {
+		l = l.Bin(p.config.BrowserPath)
+	}
+	if p.config.ProxyURL != "" {
+		l = l.Proxy(p.config.ProxyURL)
+	}
+	return l
+}
+
+// createInstance creates a new browser instance with its own launcher.
 func (p *Pool) createInstance(ctx context.Context) (*browserInstance, error) {
-	url, err := p.launcher.Launch()
+	l := p.newLauncher()
+
+	url, err := l.Launch()
 	if err != nil {
+		l.Cleanup()
 		return nil, err
 	}
 
 	browser := rod.New().ControlURL(url)
 	if err := browser.Connect(); err != nil {
+		l.Cleanup()
 		return nil, err
-	}
-
-	// Set default viewport
-	if p.config.DefaultViewportWidth > 0 && p.config.DefaultViewportHeight > 0 {
-		// Viewport is set per page, not per browser
 	}
 
 	return &browserInstance{
 		browser:   browser,
+		launcher:  l,
 		createdAt: time.Now(),
 		lastUsed:  time.Now(),
 	}, nil
@@ -141,13 +143,6 @@ func (p *Pool) Release(browser *rod.Browser) {
 		if instance.browser == browser {
 			instance.inUse = false
 			instance.lastUsed = time.Now()
-			// Clean up pages
-			pages, _ := browser.Pages()
-			for _, page := range pages {
-				if page != nil {
-					_ = page.Close()
-				}
-			}
 			select {
 			case p.available <- instance:
 			default:
@@ -178,11 +173,14 @@ func (p *Pool) Status() *StatusResponse {
 	}
 }
 
-// closeAllInstances closes all browser instances.
+// closeAllInstances closes all browser instances and their launchers.
 func (p *Pool) closeAllInstances() {
 	for _, instance := range p.browsers {
 		if instance.browser != nil {
 			_ = instance.browser.Close()
+		}
+		if instance.launcher != nil {
+			instance.launcher.Cleanup()
 		}
 	}
 	p.browsers = nil
@@ -201,14 +199,11 @@ func (p *Pool) Close() error {
 	close(p.available)
 	p.closeAllInstances()
 
-	if p.launcher != nil {
-		p.launcher.Cleanup()
-	}
-
 	return nil
 }
 
 // NewPage creates a new page in a browser instance.
+// If the acquired browser is dead (Chrome crashed), it replaces the instance and retries once.
 func (p *Pool) NewPage(ctx context.Context) (*rod.Page, *rod.Browser, error) {
 	browser, err := p.Acquire(ctx)
 	if err != nil {
@@ -217,8 +212,22 @@ func (p *Pool) NewPage(ctx context.Context) (*rod.Page, *rod.Browser, error) {
 
 	page, err := browser.Page(proto.TargetCreateTarget{URL: "about:blank"})
 	if err != nil {
-		p.Release(browser)
-		return nil, nil, err
+		if isConnectionClosed(err) {
+			// Browser is dead — replace the instance and retry
+			newBrowser, replaceErr := p.replaceInstance(ctx, browser)
+			if replaceErr != nil {
+				return nil, nil, fmt.Errorf("browser died and replacement failed: %w", replaceErr)
+			}
+			page, err = newBrowser.Page(proto.TargetCreateTarget{URL: "about:blank"})
+			if err != nil {
+				p.Release(newBrowser)
+				return nil, nil, err
+			}
+			browser = newBrowser
+		} else {
+			p.Release(browser)
+			return nil, nil, err
+		}
 	}
 
 	// Set viewport
@@ -247,6 +256,40 @@ func (p *Pool) NewPage(ctx context.Context) (*rod.Page, *rod.Browser, error) {
 	}
 
 	return page, browser, nil
+}
+
+// replaceInstance replaces a dead browser instance with a fresh one.
+// The old browser is closed and removed from the pool, and a new one is created.
+func (p *Pool) replaceInstance(ctx context.Context, deadBrowser *rod.Browser) (*rod.Browser, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.closed {
+		return nil, ErrBrowserNotRunning
+	}
+
+	// Find and replace the dead instance
+	for i, instance := range p.browsers {
+		if instance.browser == deadBrowser {
+			_ = instance.browser.Close()
+			if instance.launcher != nil {
+				instance.launcher.Cleanup()
+			}
+
+			newInstance, err := p.createInstance(ctx)
+			if err != nil {
+				// Remove the dead slot entirely
+				p.browsers = append(p.browsers[:i], p.browsers[i+1:]...)
+				return nil, fmt.Errorf("failed to replace browser: %w", err)
+			}
+			newInstance.inUse = true
+			newInstance.lastUsed = time.Now()
+			p.browsers[i] = newInstance
+			return newInstance.browser, nil
+		}
+	}
+
+	return nil, ErrBrowserNotAvailable
 }
 
 // ReleasePage closes a page and releases the browser back to the pool.

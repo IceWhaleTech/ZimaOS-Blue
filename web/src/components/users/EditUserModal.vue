@@ -32,9 +32,10 @@ const passwordResetLoading = ref(false)
 
 // Password policy from backend
 const policy = ref<PasswordPolicy>({
-  min_length: 8,
-  require_uppercase: true,
-  require_lowercase: true,
+  min_length: 6,
+  require_uppercase: false,
+  require_lowercase: false,
+  require_letter: true,
   require_number: true,
   require_special: true,
 })
@@ -45,8 +46,7 @@ const passwordChecks = computed(() => {
   const p = policy.value
   return {
     length: pwd.length >= p.min_length,
-    uppercase: !p.require_uppercase || /[A-Z]/.test(pwd),
-    lowercase: !p.require_lowercase || /[a-z]/.test(pwd),
+    letter: !p.require_letter || /\p{L}/u.test(pwd),
     number: !p.require_number || /[0-9]/.test(pwd),
     special: !p.require_special || /[^\p{L}\p{N}\s]/u.test(pwd),
   }
@@ -59,7 +59,7 @@ const passwordStrength = computed(() => {
 
 const allPasswordChecksPassed = computed(() => {
   const checks = passwordChecks.value
-  return checks.length && checks.uppercase && checks.lowercase && checks.number && checks.special
+  return checks.length && checks.letter && checks.number && checks.special
 })
 
 const passwordMismatch = computed(() => {
@@ -67,7 +67,10 @@ const passwordMismatch = computed(() => {
 })
 
 const isPasswordValid = computed(() => {
-  return allPasswordChecksPassed.value && newPassword.value === confirmPassword.value
+  if (!allPasswordChecksPassed.value) return false
+  // When password is visible, no need for confirm password
+  if (showPassword.value) return true
+  return newPassword.value === confirmPassword.value
 })
 
 const isAdmin = computed(() => props.user.role === 'admin')
@@ -288,30 +291,29 @@ onMounted(() => {
                   <div v-if="newPassword.length > 0" class="mt-2 space-y-2">
                     <div class="flex gap-1">
                       <div
-                        v-for="i in 5"
+                        v-for="i in 4"
                         :key="i"
                         class="h-1 flex-1 rounded-full transition-colors"
                         :class="i <= passwordStrength ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
                       />
                     </div>
                     <div class="grid grid-cols-2 gap-1 text-xs">
-                      <span :class="passwordChecks.length ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.length ? '✓' : '○' }} {{ policy.min_length }}+ chars</span>
-                      <span :class="passwordChecks.uppercase ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.uppercase ? '✓' : '○' }} Uppercase</span>
-                      <span :class="passwordChecks.lowercase ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.lowercase ? '✓' : '○' }} Lowercase</span>
-                      <span :class="passwordChecks.number ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.number ? '✓' : '○' }} Number</span>
-                      <span :class="passwordChecks.special ? 'text-green-500' : 'text-gray-400'" class="col-span-2">{{ passwordChecks.special ? '✓' : '○' }} Special char</span>
+                      <span :class="passwordChecks.length ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.length ? '✓' : '○' }} {{ t('preview.passwordCheck.length', { n: policy.min_length }) }}</span>
+                      <span :class="passwordChecks.letter ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.letter ? '✓' : '○' }} {{ t('preview.passwordCheck.letter') }}</span>
+                      <span :class="passwordChecks.number ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.number ? '✓' : '○' }} {{ t('preview.passwordCheck.number') }}</span>
+                      <span :class="passwordChecks.special ? 'text-green-500' : 'text-gray-400'">{{ passwordChecks.special ? '✓' : '○' }} {{ t('preview.passwordCheck.special') }}</span>
                     </div>
                   </div>
                 </div>
 
-                <!-- Confirm Password -->
-                <div>
+                <!-- Confirm Password (hidden when password is visible) -->
+                <div v-if="!showPassword">
                   <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     {{ t('auth.confirmPassword') }}
                   </label>
                   <input
                     v-model="confirmPassword"
-                    :type="showPassword ? 'text' : 'password'"
+                    type="password"
                     class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     :class="passwordMismatch ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
                   />

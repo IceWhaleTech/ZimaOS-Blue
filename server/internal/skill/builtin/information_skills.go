@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // NewsArticle represents a news article
@@ -417,7 +418,7 @@ func (s *Stocks) getQuote(ctx context.Context, input map[string]any) (*skill.Res
 				"change":        0.0,
 				"changePercent": 0.0,
 				"volume":        0,
-				"timestamp":     time.Now().Format(time.RFC3339),
+				"timestamp":     timeutil.NowTime().Format(time.RFC3339),
 			},
 		}), nil
 	}
@@ -607,7 +608,7 @@ func (c *Crypto) getPrice(ctx context.Context, input map[string]any) (*skill.Res
 				"change24h":     0.0,
 				"marketCap":     0,
 				"volume24h":     0,
-				"timestamp":     time.Now().Format(time.RFC3339),
+				"timestamp":     timeutil.NowTime().Format(time.RFC3339),
 			},
 		}), nil
 	}

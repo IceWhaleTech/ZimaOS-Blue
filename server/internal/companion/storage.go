@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // JSONLStorage implements the Storage interface using JSONL files.
@@ -468,7 +469,7 @@ func (s *JSONLStorage) CleanupExpired(ctx context.Context, retention *RetentionC
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	// Cleanup old session directories
 	sessionsDir := filepath.Join(s.basePath, "sessions")

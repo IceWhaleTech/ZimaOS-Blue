@@ -10,6 +10,7 @@ import (
 
 	z "github.com/IceWhaleTech/zorm"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Common errors
@@ -398,7 +399,7 @@ func (s *Store) UpdateStatus(id, status string, err error) error {
 		errStr = err.Error()
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	var data map[string]interface{}
 
 	switch status {
@@ -471,7 +472,7 @@ func (s *Store) Cleanup() (int64, error) {
 		return 0, ErrStoreClosed
 	}
 
-	cutoff := time.Now().AddDate(0, 0, -s.config.RetentionDays)
+	cutoff := timeutil.NowTime().AddDate(0, 0, -s.config.RetentionDays)
 
 	n, err := s.table().Delete(
 		z.Where(

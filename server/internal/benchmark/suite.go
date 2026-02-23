@@ -10,6 +10,7 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Result represents the result of a benchmark run.
@@ -183,7 +184,7 @@ func (b *Benchmark) Run(ctx context.Context, config Config) (*Result, error) {
 	var errors int64
 	var iterations int64
 
-	startTime := time.Now()
+	startTime := timeutil.NowTime()
 	deadline := startTime.Add(config.Duration)
 
 	if config.Iterations > 0 {
@@ -192,27 +193,27 @@ func (b *Benchmark) Run(ctx context.Context, config Config) (*Result, error) {
 		durations = make([]time.Duration, 0, iterations)
 
 		for i := int64(0); i < iterations; i++ {
-			start := time.Now()
+			start := timeutil.NowTime()
 			if err := b.Fn(ctx); err != nil {
 				errors++
 			}
-			durations = append(durations, time.Since(start))
+			durations = append(durations, timeutil.SinceTime(start))
 		}
 	} else {
 		// Time-based
 		durations = make([]time.Duration, 0, 10000)
 
-		for time.Now().Before(deadline) {
-			start := time.Now()
+		for timeutil.NowTime().Before(deadline) {
+			start := timeutil.NowTime()
 			if err := b.Fn(ctx); err != nil {
 				errors++
 			}
-			durations = append(durations, time.Since(start))
+			durations = append(durations, timeutil.SinceTime(start))
 			iterations++
 		}
 	}
 
-	endTime := time.Now()
+	endTime := timeutil.NowTime()
 	totalDuration := endTime.Sub(startTime)
 
 	if config.CollectMemStats {

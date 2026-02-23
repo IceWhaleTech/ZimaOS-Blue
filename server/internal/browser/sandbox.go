@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SandboxConfig contains sandbox configuration options.
@@ -147,7 +148,7 @@ func (s *Sandbox) CreateSession(ctx context.Context, sessionID string) (*Sandbox
 		return nil, fmt.Errorf("failed to create data dir: %w", err)
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	session := &SandboxSession{
 		ID:          sessionID,
 		ProfilePath: profilePath,
@@ -314,7 +315,7 @@ func (s *Sandbox) UpdateResourceUsage(sessionID string, usage *ResourceUsage) er
 		return fmt.Errorf("session %s not found", sessionID)
 	}
 
-	usage.LastUpdated = time.Now()
+	usage.LastUpdated = timeutil.NowTime()
 	session.ResourceUsage = usage
 	return nil
 }
@@ -339,7 +340,7 @@ func (s *Sandbox) cleanupExpiredSessions() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	for id, session := range s.sessions {
 		if now.After(session.ExpiresAt) {
 			// Clean up session directory

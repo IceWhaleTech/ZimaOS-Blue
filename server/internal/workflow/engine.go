@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Engine executes workflows.
@@ -117,7 +118,7 @@ func (e *Engine) Execute(ctx context.Context, workflow *Workflow, triggerType Tr
 		TriggerData:  triggerData,
 		Variables:    make(map[string]interface{}),
 		NodeResults:  make(map[string]*NodeResult),
-		StartedAt:    time.Now(),
+		StartedAt:    timeutil.NowTime(),
 	}
 
 	// Copy workflow variables
@@ -263,7 +264,7 @@ func (e *Engine) executeNode(state *executionState, node *Node) *NodeResult {
 		NodeID:    node.ID,
 		NodeName:  node.Name,
 		Status:    NodeStatusRunning,
-		StartedAt: time.Now(),
+		StartedAt: timeutil.NowTime(),
 	}
 
 	// Get input from previous nodes
@@ -302,7 +303,7 @@ func (e *Engine) executeNode(state *executionState, node *Node) *NodeResult {
 		err = fmt.Errorf("unknown node type: %s", node.Type)
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	result.CompletedAt = &now
 	result.Duration = now.Sub(result.StartedAt).Milliseconds()
 
@@ -598,7 +599,7 @@ func (e *Engine) isExecutionComplete(state *executionState) bool {
 
 // completeExecution marks an execution as complete.
 func (e *Engine) completeExecution(state *executionState) {
-	now := time.Now()
+	now := timeutil.NowTime()
 	state.execution.CompletedAt = &now
 	state.execution.Duration = now.Sub(state.execution.StartedAt).Milliseconds()
 

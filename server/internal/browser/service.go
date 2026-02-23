@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,6 +56,29 @@ func NewService(config *Config) (*RodService, error) {
 	}, nil
 }
 
+// isConnectionClosed checks if an error indicates a dead WebSocket/TCP connection.
+func isConnectionClosed(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "use of closed network connection") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "websocket: close") ||
+		strings.Contains(msg, "EOF")
+}
+
+// removeTab cleans up a stale tab entry.
+func (s *RodService) removeTab(tab *tabInfo) {
+	s.tabsMu.Lock()
+	delete(s.tabs, tab.targetID)
+	s.tabsMu.Unlock()
+	if tab.page != nil {
+		_ = tab.page.Close()
+	}
+}
+
 // Start starts the browser service.
 func (s *RodService) Start(ctx context.Context) error {
 	s.mu.Lock()
@@ -72,7 +96,8 @@ func (s *RodService) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops the browser service.
+// Stop stops the browser service and kills all Chromium processes.
+// The service can be restarted with Start().
 func (s *RodService) Stop(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -91,6 +116,16 @@ func (s *RodService) Stop(ctx context.Context) error {
 	s.tabs = make(map[string]*tabInfo)
 	s.tabsMu.Unlock()
 
+	// Close the pool (kills Chromium processes)
+	_ = s.pool.Close()
+
+	// Recreate pool so Start() can reinitialize
+	pool, err := NewPool(s.config)
+	if err != nil {
+		s.started = false
+		return err
+	}
+	s.pool = pool
 	s.started = false
 	return nil
 }
@@ -222,9 +257,12 @@ func (s *RodService) CloseTab(ctx context.Context, targetID string) error {
 	}
 
 	if tab.page != nil {
+		// Ignore close errors — the connection may already be dead.
 		_ = tab.page.Close()
 	}
-	s.pool.Release(tab.browser)
+	if tab.browser != nil {
+		s.pool.Release(tab.browser)
+	}
 	delete(s.tabs, targetID)
 
 	return nil
@@ -272,6 +310,20 @@ func (s *RodService) Navigate(ctx context.Context, req *NavigateRequest) (*Navig
 	timeout := GetTimeout(req.Timeout, s.config)
 	err := tab.page.Timeout(timeout).Navigate(req.URL)
 	if err != nil {
+		// Connection may be dead (Chrome crashed, WebSocket closed).
+		// Clean up the stale tab and retry with a fresh one.
+		if isConnectionClosed(err) {
+			s.removeTab(tab)
+			newTab, retryErr := s.OpenTab(ctx, req.URL)
+			if retryErr != nil {
+				return nil, retryErr
+			}
+			return &NavigateResponse{
+				URL:      newTab.URL,
+				Title:    newTab.Title,
+				TargetID: newTab.TargetID,
+			}, nil
+		}
 		return nil, err
 	}
 
@@ -968,6 +1020,10 @@ func (s *RodService) AccessibilityTree(ctx context.Context, targetID string, max
 
 	result, err := proto.AccessibilityGetFullAXTree{Depth: &depth}.Call(tab.page)
 	if err != nil {
+		if isConnectionClosed(err) {
+			s.removeTab(tab)
+			return nil, fmt.Errorf("browser connection lost (tab removed): %w", err)
+		}
 		return nil, fmt.Errorf("failed to get accessibility tree: %w", err)
 	}
 
@@ -1300,10 +1356,92 @@ func (s *RodService) ScreenshotTab(ctx context.Context, targetID string) (string
 
 	data, err := tab.page.Screenshot(true, nil)
 	if err != nil {
+		if isConnectionClosed(err) {
+			s.removeTab(tab)
+			return "", fmt.Errorf("browser connection lost (tab removed): %w", err)
+		}
 		return "", fmt.Errorf("screenshot failed: %w", err)
 	}
 
 	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+// ScreenshotViewport takes a viewport-only screenshot (no full-page scroll capture).
+func (s *RodService) ScreenshotViewport(ctx context.Context, targetID string) (string, error) {
+	data, err := s.ScreenshotViewportRaw(ctx, targetID)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
+}
+
+// ScreenshotViewportRaw takes a viewport-only screenshot and returns raw PNG bytes.
+func (s *RodService) ScreenshotViewportRaw(ctx context.Context, targetID string) ([]byte, error) {
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := tab.page.Screenshot(false, nil)
+	if err != nil {
+		if isConnectionClosed(err) {
+			s.removeTab(tab)
+			return nil, fmt.Errorf("browser connection lost (tab removed): %w", err)
+		}
+		return nil, fmt.Errorf("screenshot failed: %w", err)
+	}
+
+	return data, nil
+}
+
+// ScrollTo scrolls the page to the given absolute position.
+func (s *RodService) ScrollTo(ctx context.Context, targetID string, x, y int) error {
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return err
+	}
+	// Use behavior:'instant' to bypass smooth-scroll CSS that can cause timing issues.
+	// Verify scroll position after — some pages override or block scrollTo.
+	js := fmt.Sprintf(`() => {
+		window.scrollTo({left: %d, top: %d, behavior: 'instant'});
+		return Math.abs(window.scrollY - %d) < 50;
+	}`, x, y, y)
+	result, err := tab.page.Eval(js)
+	if err != nil {
+		return err
+	}
+	if !result.Value.Bool() {
+		// Scroll didn't reach target — page may have fixed/sticky elements or limited scroll height.
+		// Not a hard error, caller can still screenshot at current position.
+	}
+	return nil
+}
+
+// PageDimensions returns the viewport height and total scroll height of the page.
+func (s *RodService) PageDimensions(ctx context.Context, targetID string) (viewportH, scrollH int, err error) {
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return 0, 0, err
+	}
+	result, err := tab.page.Eval(`() => ({ vh: window.innerHeight, sh: document.documentElement.scrollHeight })`)
+	if err != nil {
+		return 0, 0, fmt.Errorf("page dimensions eval failed: %w", err)
+	}
+	vh := result.Value.Get("vh").Int()
+	sh := result.Value.Get("sh").Int()
+	return int(vh), int(sh), nil
+}
+
+// SetViewport changes the viewport size of an existing tab.
+func (s *RodService) SetViewport(ctx context.Context, targetID string, width, height int) error {
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return err
+	}
+	return tab.page.SetViewport(&proto.EmulationSetDeviceMetricsOverride{
+		Width:  width,
+		Height: height,
+	})
 }
 
 // InteractiveElements extracts only interactive elements from the page using JS.

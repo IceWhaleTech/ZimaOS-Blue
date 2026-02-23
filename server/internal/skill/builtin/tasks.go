@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // TaskItem represents a single task
@@ -182,7 +183,7 @@ func (t *Tasks) createTask(input map[string]any) (*skill.Result, error) {
 
 	t.counter++
 	id := fmt.Sprintf("task-%d", t.counter)
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	task := &TaskItem{
 		ID:      id,
@@ -271,7 +272,7 @@ func (t *Tasks) updateTask(input map[string]any) (*skill.Result, error) {
 			}
 		}
 	}
-	task.Updated = time.Now()
+	task.Updated = timeutil.NowTime()
 
 	return skill.NewResult(map[string]any{
 		"updated": true,
@@ -337,7 +338,7 @@ func (t *Tasks) completeTask(input map[string]any) (*skill.Result, error) {
 		}), nil
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	task.Status = "completed"
 	task.Completed = now
 	task.Updated = now
@@ -365,7 +366,7 @@ func (t *Tasks) reopenTask(input map[string]any) (*skill.Result, error) {
 
 	task.Status = "pending"
 	task.Completed = time.Time{}
-	task.Updated = time.Now()
+	task.Updated = timeutil.NowTime()
 
 	return skill.NewResult(map[string]any{
 		"reopened": true,
@@ -373,3 +374,4 @@ func (t *Tasks) reopenTask(input map[string]any) (*skill.Result, error) {
 		"message":  fmt.Sprintf("Task '%s' reopened", task.Title),
 	}), nil
 }
+

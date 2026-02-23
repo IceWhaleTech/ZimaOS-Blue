@@ -30,6 +30,10 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     providers.value.filter(p => p.type === 'builtin')
   )
 
+  const platformProviders = computed(() =>
+    providers.value.filter(p => p.type === 'platform')
+  )
+
   const customProviders = computed(() =>
     providers.value.filter(p => p.type === 'custom')
   )
@@ -40,6 +44,14 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   const trialProviders = computed(() =>
     providers.value.filter(p => p.type === 'trial')
+  )
+
+  const mediaProviders = computed(() =>
+    providers.value.filter(p => p.type === 'media')
+  )
+
+  const oauthProviders = computed(() =>
+    providers.value.filter(p => p.oauth?.connected)
   )
 
   const cloudProviders = computed(() =>
@@ -143,6 +155,63 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       // Return error instead of setting store.error to avoid blocking UI
       const errorMessage = e instanceof Error ? e.message : 'Failed to refresh models'
       return { success: false, error: errorMessage }
+    }
+  }
+
+  async function probeModels(providerId: string) {
+    try {
+      const response = await providerPoolApi.probeProviderModels(providerId)
+      // After probing, refresh the model list to reflect enabled/disabled state
+      await fetchModels(providerId)
+      return {
+        success: true,
+        total: response.data.total,
+        available: response.data.available,
+        unavailable: response.data.unavailable,
+        results: response.data.results,
+      }
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Failed to probe models'
+      return { success: false, error: errorMessage, total: 0, available: 0, unavailable: 0, results: [] }
+    }
+  }
+
+  async function fetchKeyModels(providerId: string, keyId: string) {
+    try {
+      const response = await providerPoolApi.fetchKeyModels(providerId, keyId)
+      const keyModels = response.data.models || []
+      // Update the provider's API key with its models
+      const provider = providers.value.find(p => p.id === providerId)
+      if (provider && provider.api_keys) {
+        const key = provider.api_keys.find(k => k.id === keyId)
+        if (key) {
+          key.models = keyModels
+          key.models_updated_at = new Date().toISOString()
+        }
+      }
+      return { success: true, models: keyModels }
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Failed to fetch key models'
+      return { success: false, error: errorMessage, models: [] }
+    }
+  }
+
+  async function listKeyModels(providerId: string, keyId: string) {
+    try {
+      const response = await providerPoolApi.listKeyModels(providerId, keyId)
+      const keyModels = response.data.models || []
+      // Update the provider's API key with its models
+      const provider = providers.value.find(p => p.id === providerId)
+      if (provider && provider.api_keys) {
+        const key = provider.api_keys.find(k => k.id === keyId)
+        if (key) {
+          key.models = keyModels
+        }
+      }
+      return { success: true, models: keyModels }
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Failed to list key models'
+      return { success: false, error: errorMessage, models: [] }
     }
   }
 
@@ -342,6 +411,12 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
           provider.api_keys = []
         }
         provider.api_keys.push(response.data)
+      }
+      // Backend auto-triggers model fetch for the new key.
+      // Fetch key models after a short delay to let the backend finish.
+      const keyId = response.data.id
+      if (keyId) {
+        setTimeout(() => fetchKeyModels(providerId, keyId), 2000)
       }
       return response.data
     } catch (e) {
@@ -547,9 +622,12 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     enabledProviders,
     activeProviders,
     builtinProviders,
+    platformProviders,
     customProviders,
     ideProviders,
     trialProviders,
+    mediaProviders,
+    oauthProviders,
     cloudProviders,
     localProviders,
     hasCloudProviders,
@@ -565,6 +643,9 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     fetchProviders,
     fetchModels,
     refreshModels,
+    probeModels,
+    fetchKeyModels,
+    listKeyModels,
     addProvider,
     updateProvider,
     updateProviderPriorityLocal,

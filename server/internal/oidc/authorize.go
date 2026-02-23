@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 )
 
@@ -92,7 +93,7 @@ func (s *AuthorizationCodeStore) Generate(req *AuthorizationRequest, userID, use
 		Nonce:               req.Nonce,
 		CodeChallenge:       req.CodeChallenge,
 		CodeChallengeMethod: req.CodeChallengeMethod,
-		ExpiresAt:           time.Now().Add(s.ttl),
+		ExpiresAt:           timeutil.NowTime().Add(s.ttl),
 		Used:                false,
 	}
 
@@ -114,7 +115,7 @@ func (s *AuthorizationCodeStore) Validate(code, clientID, redirectURI, codeVerif
 	}
 
 	// Check if expired
-	if time.Now().After(authCode.ExpiresAt) {
+	if timeutil.NowNano() > authCode.ExpiresAt.UnixNano() {
 		delete(s.codes, code)
 		return nil, ErrAuthorizationCodeExpired
 	}
@@ -173,7 +174,7 @@ func (s *AuthorizationCodeStore) cleanup() {
 
 	for range ticker.C {
 		s.mu.Lock()
-		now := time.Now()
+		now := timeutil.NowTime()
 		for code, authCode := range s.codes {
 			if now.After(authCode.ExpiresAt) {
 				delete(s.codes, code)
@@ -212,11 +213,12 @@ func NewAuthorizationSessionStore(ttl time.Duration) *AuthorizationSessionStore 
 
 // Create creates a new authorization session.
 func (s *AuthorizationSessionStore) Create(req *AuthorizationRequest) *AuthorizationSession {
+	now := timeutil.NowTime()
 	session := &AuthorizationSession{
 		ID:        uuid.New().String(),
 		Request:   req,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(s.ttl),
+		CreatedAt: now,
+		ExpiresAt: now.Add(s.ttl),
 	}
 
 	s.mu.Lock()
@@ -236,7 +238,7 @@ func (s *AuthorizationSessionStore) Get(id string) (*AuthorizationSession, error
 		return nil, errors.New("session not found")
 	}
 
-	if time.Now().After(session.ExpiresAt) {
+	if timeutil.NowNano() > session.ExpiresAt.UnixNano() {
 		return nil, errors.New("session expired")
 	}
 
@@ -257,7 +259,7 @@ func (s *AuthorizationSessionStore) cleanup() {
 
 	for range ticker.C {
 		s.mu.Lock()
-		now := time.Now()
+		now := timeutil.NowTime()
 		for id, session := range s.sessions {
 			if now.After(session.ExpiresAt) {
 				delete(s.sessions, id)

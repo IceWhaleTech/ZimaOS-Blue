@@ -111,7 +111,7 @@ func (cb *CircuitBreaker) beforeCall() error {
 
 	case CircuitOpen:
 		// Check if timeout has elapsed
-		if time.Since(cb.lastStateChange) >= cb.config.Timeout {
+		if timeutil.SinceTime(cb.lastStateChange) >= cb.config.Timeout {
 			cb.transitionTo(CircuitHalfOpen)
 			cb.halfOpenCalls = 1
 			return nil

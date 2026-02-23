@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Contact represents a contact entry
@@ -209,7 +210,7 @@ func (c *Contacts) createContact(input map[string]any) (*skill.Result, error) {
 
 	c.counter++
 	id := fmt.Sprintf("contact-%d", c.counter)
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	contact := &Contact{
 		ID:      id,
@@ -357,7 +358,7 @@ func (c *Contacts) updateContact(input map[string]any) (*skill.Result, error) {
 		contact.Notes = notes
 	}
 
-	contact.Updated = time.Now()
+	contact.Updated = timeutil.NowTime()
 
 	return skill.NewResult(map[string]any{
 		"updated": true,
@@ -471,3 +472,4 @@ func (c *Contacts) searchContacts(input map[string]any) (*skill.Result, error) {
 		"message":  fmt.Sprintf("Found %d contacts matching '%s'", len(results), query),
 	}), nil
 }
+

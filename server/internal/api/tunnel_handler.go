@@ -10,6 +10,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tunnel"
@@ -17,11 +18,17 @@ import (
 
 // TunnelHandler handles remote access API requests with multiple provider support.
 type TunnelHandler struct {
-	mu         sync.RWMutex
-	managers   map[tunnel.Provider]tunnel.Manager
-	active     tunnel.Manager
+	mu             sync.RWMutex
+	managers       map[tunnel.Provider]tunnel.Manager
+	active         tunnel.Manager
 	configProvider ngrok.ConfigProvider
-	serverPort int
+	serverPort     int
+	jwtService     *auth.JWTService
+}
+
+// SetJWTService sets the JWT service for generating access tokens in QR codes.
+func (h *TunnelHandler) SetJWTService(jwt *auth.JWTService) {
+	h.jwtService = jwt
 }
 
 // NewTunnelHandler creates a new tunnel handler with multiple provider support.
@@ -37,8 +44,7 @@ func NewTunnelHandler(configProvider ngrok.ConfigProvider, serverPort int) *Tunn
 	h.managers[tunnel.ProviderNgrok] = tunnel.NewNgrokManager()
 	h.managers[tunnel.ProviderCloudflare] = tunnel.NewCloudflareManager()
 
-	// Log tunnel URL when available (format: "Tunnel URL: http://bore.pub:2877")
-	// Also register the URL as an allowed CORS origin
+	// Log tunnel URL when available and register as allowed CORS origin
 	for _, m := range h.managers {
 		m.SetOnURLChange(func(url string) {
 			if url != "" {
@@ -304,6 +310,7 @@ func (h *TunnelHandler) GetTunnelStatus(c echo.Context) error {
 	}
 
 	status := active.GetStatus()
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"tunnel":  status,
@@ -331,7 +338,18 @@ func (h *TunnelHandler) GetQRCode(c echo.Context) error {
 		})
 	}
 
-	qrcode, err := ngrok.GenerateQRCode(url, 200)
+	// Build QR URL: tunnel + /chat + token (if JWT service available)
+	qrURL := url + "/chat"
+	if h.jwtService != nil {
+		if userClaims := auth.GetUserFromContext(c); userClaims != nil {
+			token, err := h.jwtService.GenerateAccessToken(userClaims)
+			if err == nil {
+				qrURL += "?access_token=" + token
+			}
+		}
+	}
+
+	qrcode, err := ngrok.GenerateQRCode(qrURL, 200)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
@@ -489,4 +507,5 @@ func (h *TunnelHandler) GetDiagnostics(c echo.Context) error {
 		"diagnostics": diagnostics,
 	})
 }
+
 

@@ -9,6 +9,7 @@ import (
 
 	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Repository handles workflow persistence.
@@ -134,7 +135,7 @@ func (r *Repository) CreateWorkflow(ctx context.Context, workflow *Workflow) err
 	if workflow.ID == "" {
 		workflow.ID = uuid.New().String()
 	}
-	now := time.Now()
+	now := timeutil.NowTime()
 	workflow.CreatedAt = now
 	workflow.UpdatedAt = now
 	workflow.Version = 1
@@ -164,7 +165,7 @@ func (r *Repository) GetWorkflow(ctx context.Context, id string) (*Workflow, err
 }
 
 func (r *Repository) UpdateWorkflow(ctx context.Context, workflow *Workflow) error {
-	workflow.UpdatedAt = time.Now()
+	workflow.UpdatedAt = timeutil.NowTime()
 	workflow.Version++
 	n, err := r.wfTable(ctx).Update(z.V{
 		"name": workflow.Name, "description": workflow.Description, "status": workflow.Status,
@@ -378,7 +379,7 @@ func (r *Repository) SaveWebhook(ctx context.Context, workflowID, path, method, 
 	_, err := r.webhookTable(ctx).ReplaceInto(map[string]interface{}{
 		"id": uuid.New().String(), "workflow_id": workflowID, "path": path,
 		"method": method, "auth_type": authType, "auth_config": marshalJSON(authConfig),
-		"created_at": time.Now(),
+		"created_at": timeutil.NowTime(),
 	})
 	return err
 }
@@ -431,7 +432,7 @@ func (r *Repository) GetStats(ctx context.Context, tenantID string) (*Stats, err
 }
 
 func (r *Repository) CleanupOldExecutions(ctx context.Context, retentionDays int) (int64, error) {
-	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+	cutoff := timeutil.NowTime().AddDate(0, 0, -retentionDays)
 
 	// Delete old logs first (subquery not supported in zorm Delete, use raw)
 	r.db.ExecContext(ctx,

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Config holds backup configuration
@@ -93,7 +94,7 @@ func (m *Manager) startProgress(operation string) {
 	m.progress = &Progress{
 		InProgress: true,
 		Operation:  operation,
-		StartedAt:  time.Now(),
+		StartedAt:  timeutil.NowTime(),
 	}
 }
 
@@ -170,7 +171,7 @@ func (m *Manager) Create(ctx context.Context, backupType BackupType) (*BackupInf
 	}()
 
 	id := uuid.New().String()
-	timestamp := time.Now()
+	timestamp := timeutil.NowTime()
 	filename := fmt.Sprintf("backup_%s_%s.tar.gz", backupType, timestamp.Format("20060102_150405"))
 	backupPath := filepath.Join(m.config.Path, filename)
 
@@ -315,7 +316,7 @@ func (m *Manager) Cleanup() (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	cutoff := time.Now().AddDate(0, 0, -m.config.RetentionDays)
+	cutoff := timeutil.NowTime().AddDate(0, 0, -m.config.RetentionDays)
 	removed := 0
 
 	for id, info := range m.backups {

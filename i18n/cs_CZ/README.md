@@ -59,7 +59,7 @@ Vytvořený pro odvážné vývojáře, kteří chtějí **tvořit vlastní agen
 Jdeme ještě dál: nativní podpora **20+ IM platforem**, **hlasové** rozhraní pro přirozený, kontextově uvědomělý dialog, **přepínání modelů bez konfigurace** se skenováním IDE a SOUL-vrstvené osobnosti.
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Rychlý, lehký
@@ -95,13 +95,49 @@ Věříme, že **osobní počítače nové generace** přijmou LLM — ale **kon
 - **Lokálně orientovaný, ultralehký, multiplatformní** – Nevyžaduje výkonný hardware. Běží na čemkoli, co umí počítat.
 - **Bezpečný a auditovatelný** – Audit relací, sandboxing, řízení oprávnění a vestavěný API proxy fungující jako aplikační firewall — každý bajt dovnitř i ven je viditelný.
 
+![](../../docs/assets/design_principle.png)
+
 Minimalizujeme šablonový kód, abyste se **soustředili na to, co je důležité**. Věrni <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **designové filozofii ZimaOS**, Blue přináší:
 - **Od nuly k jedničce jedním kliknutím** – Okamžité nasazení, žádná složitá konfigurace.
 - **Rychlé prototypování** – Tvořte intuitivně nebo ručně nástroje, interakce a balíčky aplikací pro konkrétní scénáře.
 - **Připravený pro celý svět** – **Svět je obrovský** a nepoužívá výchozí angličtinu. **20+ jazyků, nativně**, bez bariér.
 - **Otevřený ekosystém modelů** – Žádné vendor lock-in. Přineste si vlastní modely.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Poskytovatel | Modely | Typ |
+|--------------|--------|-----|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
+| Anthropic | Claude 4.5, Claude 4 | Cloud |
+| Google | Gemini 2.5, Gemini 2.0 | Cloud |
+| Ollama | Llama, Qwen, Gemma, Phi aj. | Lokální |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| Grok | Grok-3, Grok-3-mini | Cloud |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
+| GLM | GLM-4, GLM-4-Flash | Cloud |
+| Moonshot | Moonshot-v1 | Cloud |
+| MiniMax | abab6.5, abab5.5 | Cloud |
+| Venice | Llama, Mistral (zaměření na soukromí) | Cloud |
+| AWS Bedrock | Claude, Llama, Titan | Cloud |
+| Azure | Modely OpenAI přes Azure | Cloud |
+| OpenRouter | 100+ agregovaných modelů | Cloud |
+| AIHubMix | Multi-provider agregátor | Cloud |
+| Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
+| Vlastní | Jakékoli API kompatibilní s OpenAI / Anthropic / Gemini | Cloud / Lokální |
+
+</details>
+
+### Podporovaná IDE
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Rychlý start
 
@@ -129,7 +165,6 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -142,11 +177,7 @@ sh build.sh
 .\build.bat
 ```
 
-> **Note:** Windows builds require:
-> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus, kokoro, onnx)
-> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) for system libraries (winmm, etc.)
->
-> Make sure `gcc`, `cmake` are in your `PATH`.
+> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
 
 ## Přehled architektury
 

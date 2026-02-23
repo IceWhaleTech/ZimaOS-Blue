@@ -7,21 +7,38 @@ import (
 	"fmt"
 )
 
+type contextKey string
+
+const userIDKey contextKey = "skill_user_id"
+
+// WithUserID returns a context carrying the user ID for skill execution.
+func WithUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, userIDKey, userID)
+}
+
+// GetUserID extracts the user ID from the context.
+func GetUserID(ctx context.Context) string {
+	if v, ok := ctx.Value(userIDKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
 // Manifest represents a skill manifest
 type Manifest struct {
-	ID          string            `json:"id" yaml:"id"`
-	Name        string            `json:"name" yaml:"name"`
-	Version     string            `json:"version" yaml:"version"`
-	Description string            `json:"description" yaml:"description"`
-	Author      string            `json:"author,omitempty" yaml:"author,omitempty"`
-	Category    string            `json:"category,omitempty" yaml:"category,omitempty"`
-	Icon        string            `json:"icon,omitempty" yaml:"icon,omitempty"`
-	Tags        []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Inputs      []Parameter       `json:"inputs,omitempty" yaml:"inputs,omitempty"`
-	Outputs     []Parameter       `json:"outputs,omitempty" yaml:"outputs,omitempty"`
-	Permissions []string          `json:"permissions,omitempty" yaml:"permissions,omitempty"`
-	Config      map[string]any    `json:"config,omitempty" yaml:"config,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	ID           string            `json:"id" yaml:"id"`
+	Name         string            `json:"name" yaml:"name"`
+	Version      string            `json:"version" yaml:"version"`
+	Description  string            `json:"description" yaml:"description"`
+	Author       string            `json:"author,omitempty" yaml:"author,omitempty"`
+	Category     string            `json:"category,omitempty" yaml:"category,omitempty"`
+	Icon         string            `json:"icon,omitempty" yaml:"icon,omitempty"`
+	Tags         []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Inputs       []Parameter       `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	Outputs      []Parameter       `json:"outputs,omitempty" yaml:"outputs,omitempty"`
+	Permissions  []string          `json:"permissions,omitempty" yaml:"permissions,omitempty"`
+	Config       map[string]any    `json:"config,omitempty" yaml:"config,omitempty"`
+	Metadata     map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 
 // Parameter represents an input or output parameter
@@ -102,8 +119,14 @@ func NewManifestSkill(m *Manifest) *ManifestSkill {
 
 func (s *ManifestSkill) Manifest() *Manifest { return s.manifest }
 
-func (s *ManifestSkill) Execute(_ context.Context, _ map[string]any) (*Result, error) {
-	return nil, fmt.Errorf("manifest-only skill %q has no executable logic", s.manifest.ID)
+func (s *ManifestSkill) Execute(_ context.Context, input map[string]any) (*Result, error) {
+	// Declarative skills have no Go backend — the LLM handles them directly.
+	// Return the input as-is so the tool adapter can surface it.
+	return NewResult(map[string]any{
+		"skill":   s.manifest.ID,
+		"input":   input,
+		"message": fmt.Sprintf("Skill %q is declarative — handled by LLM", s.manifest.ID),
+	}), nil
 }
 
 func (s *ManifestSkill) Validate(_ map[string]any) error { return nil }

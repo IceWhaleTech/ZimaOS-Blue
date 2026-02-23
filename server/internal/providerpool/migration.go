@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // LegacyProviderConfig represents the old provider configuration format
@@ -82,9 +82,9 @@ func MigrateFromLegacy(dataDir string, pool *Pool) (*MigrationResult, error) {
 		}
 
 		// Determine provider type: custom providers should be ProviderTypeCustom
-		providerType := ProviderTypeBuiltin
-		if name == "custom" || !isBuiltinProvider(providerID) {
-			providerType = ProviderTypeCustom
+		providerType := ProviderTypeCustom
+		if isBuiltinProvider(providerID) {
+			providerType = getBuiltinProviderType(providerID)
 		}
 
 		// Create new provider
@@ -96,8 +96,8 @@ func MigrateFromLegacy(dataDir string, pool *Pool) (*MigrationResult, error) {
 			Status:    ProviderStatusInactive,
 			BaseURL:   legacyProvider.BaseURL,
 			Priority:  getDefaultPriority(providerID),
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt: timeutil.NowTime(),
+			UpdatedAt: timeutil.NowTime(),
 		}
 
 		// Set default base URL if not specified
@@ -112,7 +112,7 @@ func MigrateFromLegacy(dataDir string, pool *Pool) (*MigrationResult, error) {
 				Key:       legacyProvider.APIKey,
 				KeyHash:   hashAPIKey(legacyProvider.APIKey),
 				Label:     "Migrated from legacy",
-				CreatedAt: time.Now(),
+				CreatedAt: timeutil.NowTime(),
 				Enabled:   true,
 			}
 			provider.APIKeys = []APIKey{apiKey}
@@ -238,20 +238,22 @@ func CheckMigrationNeeded(dataDir string) bool {
 
 // isBuiltinProvider checks if a provider ID is a built-in provider
 func isBuiltinProvider(id string) bool {
-	builtinIDs := map[string]bool{
-		"openai":       true,
-		"anthropic":    true,
-		"google":       true,
-		"deepseek":     true,
-		"moonshot":     true,
-		"azure-openai": true,
-		"openrouter":   true,
-		"aihubmix":     true,
-		"ollama":       true,
-		"minimax":      true,
-		"codex":        true,
+	for _, p := range BuiltinProviders() {
+		if p.ID == id {
+			return true
+		}
 	}
-	return builtinIDs[id]
+	return false
+}
+
+// getBuiltinProviderType returns the type for a known builtin/platform provider.
+func getBuiltinProviderType(id string) ProviderType {
+	for _, p := range BuiltinProviders() {
+		if p.ID == id {
+			return p.Type
+		}
+	}
+	return ProviderTypeCustom
 }
 
 // DeduplicateResult contains the result of a deduplication operation

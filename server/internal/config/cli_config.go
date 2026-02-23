@@ -231,6 +231,12 @@ type ToolCallingConfig struct {
 	// DetectionTimeout is the timeout for capability detection
 	DetectionTimeout time.Duration `yaml:"detection_timeout" json:"detection_timeout"`
 
+	// SmartSelection enables IR-based tool selection to reduce token usage
+	SmartSelection bool `yaml:"smart_selection" json:"smart_selection"`
+
+	// SmartSelectionMaxTools limits the number of tools sent to the LLM
+	SmartSelectionMaxTools int `yaml:"smart_selection_max_tools" json:"smart_selection_max_tools"`
+
 	// Adapters holds adapter configurations
 	Adapters ToolCallingAdaptersConfig `yaml:"adapters" json:"adapters"`
 

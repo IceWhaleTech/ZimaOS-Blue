@@ -169,7 +169,7 @@ const navItems = computed(() => {
     class="glass-sidebar min-h-full flex flex-col fixed lg:relative inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out lg:transform-none"
     :class="[
       isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
-      isCollapsed ? 'w-16' : 'w-64'
+      isCollapsed ? 'w-16' : 'w-52'
     ]"
   >
     <!-- Close button for mobile -->

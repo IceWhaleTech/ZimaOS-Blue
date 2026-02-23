@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 var (
@@ -37,7 +38,7 @@ func (t *PasswordResetToken) IsValid() bool {
 	if t.UsedAt != nil {
 		return false
 	}
-	return time.Now().Before(t.ExpiresAt)
+	return timeutil.NowTime().Before(t.ExpiresAt)
 }
 
 // PasswordResetConfig holds configuration for password reset.
@@ -111,7 +112,7 @@ func (s *InMemoryPasswordResetStore) MarkUsed(ctx context.Context, id uuid.UUID)
 	defer s.mu.Unlock()
 	for _, t := range s.tokens {
 		if t.ID == id {
-			now := time.Now()
+			now := timeutil.NowTime()
 			t.UsedAt = &now
 			return nil
 		}
@@ -136,7 +137,7 @@ func (s *InMemoryPasswordResetStore) CountRecentByUser(ctx context.Context, user
 func (s *InMemoryPasswordResetStore) DeleteExpired(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	now := time.Now()
+	now := timeutil.NowTime()
 	for token, t := range s.tokens {
 		if now.After(t.ExpiresAt) {
 			delete(s.tokens, token)
@@ -165,7 +166,7 @@ func NewPasswordResetService(store PasswordResetStore, config *PasswordResetConf
 // RequestReset creates a new password reset token for a user.
 func (s *PasswordResetService) RequestReset(ctx context.Context, userID uuid.UUID) (*PasswordResetToken, error) {
 	// Check rate limit
-	since := time.Now().Add(-time.Hour)
+	since := timeutil.NowTime().Add(-time.Hour)
 	count, err := s.store.CountRecentByUser(ctx, userID, since)
 	if err != nil {
 		return nil, err
@@ -185,8 +186,8 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, userID uuid.UUI
 		ID:        uuid.New(),
 		UserID:    userID,
 		Token:     tokenStr,
-		ExpiresAt: time.Now().Add(s.config.TokenTTL),
-		CreatedAt: time.Now(),
+		ExpiresAt: timeutil.NowTime().Add(s.config.TokenTTL),
+		CreatedAt: timeutil.NowTime(),
 	}
 
 	if err := s.store.Create(ctx, token); err != nil {
@@ -207,7 +208,7 @@ func (s *PasswordResetService) ValidateToken(ctx context.Context, tokenStr strin
 		return uuid.Nil, ErrResetTokenUsed
 	}
 
-	if time.Now().After(token.ExpiresAt) {
+	if timeutil.NowTime().After(token.ExpiresAt) {
 		return uuid.Nil, ErrResetTokenExpired
 	}
 
@@ -225,7 +226,7 @@ func (s *PasswordResetService) ConsumeToken(ctx context.Context, tokenStr string
 		return ErrResetTokenUsed
 	}
 
-	if time.Now().After(token.ExpiresAt) {
+	if timeutil.NowTime().After(token.ExpiresAt) {
 		return ErrResetTokenExpired
 	}
 

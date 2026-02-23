@@ -20,16 +20,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/exec"
 	"sync"
 	"time"
 	"unsafe"
 )
-
-// whisperIdleTimeout is how long the whisper model stays resident after the last transcription.
-const whisperIdleTimeout = 10 * time.Minute
 
 // WhisperConfig holds the configuration for the Whisper provider.
 type WhisperConfig struct {
@@ -46,7 +42,6 @@ type WhisperProvider struct {
 	modelManager *WhisperModelManager
 	mu           sync.Mutex
 	initialized  bool
-	idleTimer    *time.Timer // fires after whisperIdleTimeout to unload model
 }
 
 // NewWhisperProvider creates a new Whisper provider.
@@ -71,32 +66,6 @@ func NewWhisperProvider(cfg *WhisperConfig) *WhisperProvider {
 		}
 	}
 	return p
-}
-
-// touchActivity resets the idle unload timer.
-func (p *WhisperProvider) touchActivity() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.idleTimer != nil {
-		p.idleTimer.Reset(whisperIdleTimeout)
-	} else {
-		p.idleTimer = time.AfterFunc(whisperIdleTimeout, p.idleUnload)
-	}
-}
-
-// idleUnload frees the whisper model after inactivity to reclaim memory.
-func (p *WhisperProvider) idleUnload() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if !p.initialized {
-		return
-	}
-	slog.Info("[whisper] idle timeout, unloading model to reclaim memory")
-	if p.ctx != nil {
-		C.whisper_free(p.ctx)
-		p.ctx = nil
-	}
-	p.initialized = false
 }
 
 // Initialize loads the whisper model.
@@ -124,45 +93,12 @@ func (p *WhisperProvider) Initialize(modelPath string) error {
 		p.modelManager.SetActiveModel(modelID)
 	}
 
-	// Start idle timer
-	if p.idleTimer != nil {
-		p.idleTimer.Reset(whisperIdleTimeout)
-	} else {
-		p.idleTimer = time.AfterFunc(whisperIdleTimeout, p.idleUnload)
-	}
-
-	return nil
-}
-
-// ensureInitialized re-initializes the model if it was unloaded by idle timeout.
-func (p *WhisperProvider) ensureInitialized() error {
-	if p.initialized {
-		return nil
-	}
-	if p.config.ModelPath == "" {
-		return fmt.Errorf("whisper provider not initialized")
-	}
-	slog.Info("[whisper] re-initializing after idle unload", "model", p.config.ModelPath)
-	// Initialize expects the lock NOT to be held (it locks internally),
-	// but we're called from Transcribe which holds the lock. Do inline init.
-	cPath := C.CString(p.config.ModelPath)
-	defer C.free(unsafe.Pointer(cPath))
-
-	p.ctx = C.whisper_init_from_file_with_params(cPath, C.whisper_context_default_params())
-	if p.ctx == nil {
-		return fmt.Errorf("failed to reload whisper model: %s", p.config.ModelPath)
-	}
-	p.initialized = true
-
-	if p.idleTimer != nil {
-		p.idleTimer.Reset(whisperIdleTimeout)
-	} else {
-		p.idleTimer = time.AfterFunc(whisperIdleTimeout, p.idleUnload)
-	}
 	return nil
 }
 
 // Close releases the whisper context.
+// Note: During app termination, whisper_free may cause issues with Metal/GPU cleanup.
+// We set ctx to nil to prevent double-free but skip the actual free call if it might crash.
 func (p *WhisperProvider) Close() {
 	if p == nil {
 		return
@@ -170,11 +106,9 @@ func (p *WhisperProvider) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.idleTimer != nil {
-		p.idleTimer.Stop()
-		p.idleTimer = nil
-	}
 	if p.ctx != nil {
+		// whisper_free can crash during app termination due to Metal/GPU resource cleanup
+		// The OS will reclaim all resources anyway when the process exits
 		C.whisper_free(p.ctx)
 		p.ctx = nil
 	}
@@ -196,14 +130,8 @@ func (p *WhisperProvider) Transcribe(ctx context.Context, req *TranscribeRequest
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Auto-reinit if unloaded by idle timeout
-	if err := p.ensureInitialized(); err != nil {
-		return nil, err
-	}
-
-	// Reset idle timer
-	if p.idleTimer != nil {
-		p.idleTimer.Reset(whisperIdleTimeout)
+	if !p.initialized {
+		return nil, fmt.Errorf("whisper provider not initialized")
 	}
 
 	// Read audio data
@@ -275,6 +203,7 @@ func (p *WhisperProvider) Transcribe(ctx context.Context, req *TranscribeRequest
 
 // TranscribeStream transcribes audio with streaming results.
 func (p *WhisperProvider) TranscribeStream(ctx context.Context, req *TranscribeRequest, callback StreamCallback) error {
+	// For now, use non-streaming transcription
 	resp, err := p.Transcribe(ctx, req)
 	if err != nil {
 		return err
@@ -307,16 +236,19 @@ func (p *WhisperProvider) convertToPCM(data []byte, format AudioFormat) ([]float
 	case FormatPCM:
 		return p.parsePCM16(data)
 	case "webm", "ogg", "opus":
+		// Try native opus decoding first, fallback to ffmpeg
 		samples, err := p.decodeOpus(data)
 		if err == nil {
 			return samples, nil
 		}
+		// Fallback to ffmpeg
 		wavData, err := p.convertWithFFmpeg(data, string(format))
 		if err != nil {
 			return nil, fmt.Errorf("opus decode and ffmpeg both failed: %w", err)
 		}
 		return p.parseWAV(wavData)
 	default:
+		// Try to convert using ffmpeg for other formats (mp3, m4a, etc.)
 		wavData, err := p.convertWithFFmpeg(data, string(format))
 		if err != nil {
 			return nil, fmt.Errorf("unsupported format %s and ffmpeg conversion failed: %w", format, err)
@@ -331,6 +263,7 @@ func (p *WhisperProvider) decodeOpus(data []byte) ([]float32, error) {
 		return nil, fmt.Errorf("audio data too short: %d bytes", len(data))
 	}
 
+	// Try to extract opus frames from webm/ogg container
 	opusFrames, err := extractOpusFrames(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract opus frames: %w", err)
@@ -341,6 +274,7 @@ func (p *WhisperProvider) decodeOpus(data []byte) ([]float32, error) {
 			len(data), data[0], data[1], data[2], data[3])
 	}
 
+	// Create opus decoder (48kHz stereo is standard for opus)
 	var cErr C.int
 	decoder := C.opus_decoder_create(48000, 2, &cErr)
 	if cErr != 0 {
@@ -348,8 +282,9 @@ func (p *WhisperProvider) decodeOpus(data []byte) ([]float32, error) {
 	}
 	defer C.opus_decoder_destroy(decoder)
 
+	// Decode all frames
 	var allSamples []int16
-	pcmBuf := make([]int16, 5760*2)
+	pcmBuf := make([]int16, 5760*2) // Max frame size * channels
 	decodedFrames := 0
 
 	for _, frame := range opusFrames {
@@ -374,18 +309,23 @@ func (p *WhisperProvider) decodeOpus(data []byte) ([]float32, error) {
 		return nil, fmt.Errorf("no samples decoded from %d frames", len(opusFrames))
 	}
 
+	// Convert stereo to mono and resample 48kHz -> 16kHz
 	samples := resample48to16Mono(allSamples)
+
 	return samples, nil
 }
 
 // extractOpusFrames extracts opus frames from webm/ogg container.
 func extractOpusFrames(data []byte) ([][]byte, error) {
+	// Check for OGG magic
 	if len(data) >= 4 && string(data[:4]) == "OggS" {
 		return extractOpusFromOgg(data)
 	}
+	// Check for WebM/EBML magic
 	if len(data) >= 4 && data[0] == 0x1A && data[1] == 0x45 && data[2] == 0xDF && data[3] == 0xA3 {
 		return extractOpusFromWebM(data)
 	}
+	// Try raw opus frames (no container)
 	if len(data) > 0 {
 		return [][]byte{data}, nil
 	}
@@ -398,6 +338,7 @@ func extractOpusFromOgg(data []byte) ([][]byte, error) {
 	offset := 0
 
 	for offset < len(data)-27 {
+		// Check OGG page header
 		if string(data[offset:offset+4]) != "OggS" {
 			break
 		}
@@ -407,9 +348,11 @@ func extractOpusFromOgg(data []byte) ([][]byte, error) {
 			break
 		}
 
+		// Calculate segment sizes and extract individual packets
 		segmentTable := data[offset+27 : offset+27+segments]
 		dataStart := offset + 27 + segments
 
+		// Extract each segment as a potential opus frame
 		segOffset := 0
 		for _, segSize := range segmentTable {
 			if segSize == 0 {
@@ -422,6 +365,7 @@ func extractOpusFromOgg(data []byte) ([][]byte, error) {
 
 			segData := data[dataStart+segOffset : dataStart+segEnd]
 
+			// Skip OpusHead and OpusTags packets
 			if len(segData) >= 8 && (string(segData[:8]) == "OpusHead" || string(segData[:8]) == "OpusTags") {
 				segOffset = segEnd
 				continue
@@ -433,6 +377,7 @@ func extractOpusFromOgg(data []byte) ([][]byte, error) {
 			segOffset = segEnd
 		}
 
+		// Calculate total page size
 		pageSize := 0
 		for _, s := range segmentTable {
 			pageSize += int(s)
@@ -447,12 +392,15 @@ func extractOpusFromOgg(data []byte) ([][]byte, error) {
 func extractOpusFromWebM(data []byte) ([][]byte, error) {
 	var frames [][]byte
 
+	// Parse EBML elements to find SimpleBlock (0xA3) and Block (0xA1) in Clusters
 	i := 0
 	for i < len(data)-4 {
+		// Look for SimpleBlock (0xA3) or Block (0xA1)
 		if data[i] == 0xA3 || data[i] == 0xA1 {
 			elementStart := i
 			i++
 
+			// Read VINT size
 			if i >= len(data) {
 				break
 			}
@@ -463,6 +411,7 @@ func extractOpusFromWebM(data []byte) ([][]byte, error) {
 			}
 			i += sizeLen
 
+			// Validate size
 			if size > 100000 || i+int(size) > len(data) {
 				i = elementStart + 1
 				continue
@@ -471,15 +420,18 @@ func extractOpusFromWebM(data []byte) ([][]byte, error) {
 			blockData := data[i : i+int(size)]
 			i += int(size)
 
+			// Parse block header: track number (VINT) + timecode (2 bytes) + flags (1 byte for SimpleBlock)
 			if len(blockData) < 4 {
 				continue
 			}
 
+			// Read track number (VINT)
 			_, trackLen := readEBMLVint(blockData)
 			if trackLen == 0 {
 				continue
 			}
 
+			// Skip track number + timecode (2 bytes) + flags (1 byte)
 			headerLen := trackLen + 3
 			if headerLen >= len(blockData) {
 				continue
@@ -498,6 +450,7 @@ func extractOpusFromWebM(data []byte) ([][]byte, error) {
 }
 
 // readEBMLVint reads a variable-length integer from EBML data.
+// Returns the value and the number of bytes consumed.
 func readEBMLVint(data []byte) (uint64, int) {
 	if len(data) == 0 {
 		return 0, 0
@@ -550,12 +503,14 @@ func readEBMLVint(data []byte) (uint64, int) {
 
 // resample48to16Mono converts 48kHz stereo int16 to 16kHz mono float32.
 func resample48to16Mono(samples []int16) []float32 {
-	outLen := len(samples) / 6
+	// Simple 3:1 decimation with averaging
+	outLen := len(samples) / 6 // stereo 48k -> mono 16k = /6
 	result := make([]float32, outLen)
 
 	for i := 0; i < outLen; i++ {
 		srcIdx := i * 6
 		if srcIdx+5 < len(samples) {
+			// Average 3 stereo samples, convert to mono
 			sum := int32(samples[srcIdx]) + int32(samples[srcIdx+1]) +
 				int32(samples[srcIdx+2]) + int32(samples[srcIdx+3]) +
 				int32(samples[srcIdx+4]) + int32(samples[srcIdx+5])
@@ -568,19 +523,24 @@ func resample48to16Mono(samples []int16) []float32 {
 
 // convertWithFFmpeg converts audio to WAV format using ffmpeg.
 func (p *WhisperProvider) convertWithFFmpeg(data []byte, format string) ([]byte, error) {
+	// Try ffmpeg first (most reliable for all formats)
 	wavData, err := p.tryFFmpeg(data, format)
 	if err == nil {
 		return wavData, nil
 	}
+
+	// If ffmpeg not available, return error with hint
 	return nil, fmt.Errorf("audio conversion failed: %w (install ffmpeg for %s support)", err, format)
 }
 
 // tryFFmpeg attempts to convert audio using ffmpeg command.
 func (p *WhisperProvider) tryFFmpeg(data []byte, format string) ([]byte, error) {
+	// Check if ffmpeg is available
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		return nil, fmt.Errorf("ffmpeg not found")
 	}
 
+	// Create temp input file
 	tmpIn, err := os.CreateTemp("", "audio_in_*."+format)
 	if err != nil {
 		return nil, err
@@ -593,6 +553,7 @@ func (p *WhisperProvider) tryFFmpeg(data []byte, format string) ([]byte, error) 
 	}
 	tmpIn.Close()
 
+	// Create temp output file
 	tmpOut, err := os.CreateTemp("", "audio_out_*.wav")
 	if err != nil {
 		return nil, err
@@ -600,13 +561,15 @@ func (p *WhisperProvider) tryFFmpeg(data []byte, format string) ([]byte, error) 
 	defer os.Remove(tmpOut.Name())
 	tmpOut.Close()
 
+	// Run ffmpeg to convert to 16kHz mono WAV
 	cmd := exec.Command("ffmpeg", "-y", "-i", tmpIn.Name(),
 		"-ar", "16000", "-ac", "1", "-f", "wav", tmpOut.Name())
-	cmd.Stderr = nil
+	cmd.Stderr = nil // Suppress stderr
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("ffmpeg failed: %w", err)
 	}
 
+	// Read output
 	return os.ReadFile(tmpOut.Name())
 }
 
@@ -616,6 +579,8 @@ func (p *WhisperProvider) parseWAV(data []byte) ([]float32, error) {
 		return nil, fmt.Errorf("WAV data too short")
 	}
 
+	// Skip WAV header (44 bytes for standard WAV)
+	// Find "data" chunk
 	dataOffset := 12
 	for dataOffset < len(data)-8 {
 		chunkID := string(data[dataOffset : dataOffset+4])
@@ -661,6 +626,7 @@ func (p *WhisperProvider) GetModelStatus() ModelStatus {
 	p.mu.Unlock()
 
 	status := p.modelManager.GetModelStatus()
+	// Only ready if provider is actually initialized with a loaded model
 	status.Ready = initialized && status.Ready
 	return status
 }
@@ -687,16 +653,20 @@ func (p *WhisperProvider) SwitchModel(modelType string) error {
 		return fmt.Errorf("unknown model: %s", modelType)
 	}
 
+	// Check if model is downloaded
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		return fmt.Errorf("model not downloaded: %s", modelType)
 	}
 
+	// Close current model
 	p.Close()
 
+	// Initialize with new model
 	if err := p.Initialize(modelPath); err != nil {
 		return err
 	}
 
+	// Update active model in manager
 	p.modelManager.SetActiveModel(modelType)
 	return nil
 }

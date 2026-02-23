@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // WebSocketHandler handles WebSocket connections for real-time event streaming.
@@ -101,7 +102,7 @@ func (h *WebSocketHandler) handleWebSocket(c echo.Context, sessionID string) err
 		case <-ctx.Done():
 			return nil
 		case <-pingTicker.C:
-			conn.SetWriteDeadline(time.Now().Add(h.config.WebSocket.WriteTimeout))
+			conn.SetWriteDeadline(timeutil.NowTime().Add(h.config.WebSocket.WriteTimeout))
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return nil
 			}
@@ -109,7 +110,7 @@ func (h *WebSocketHandler) handleWebSocket(c echo.Context, sessionID string) err
 			if !ok {
 				return nil
 			}
-			conn.SetWriteDeadline(time.Now().Add(h.config.WebSocket.WriteTimeout))
+			conn.SetWriteDeadline(timeutil.NowTime().Add(h.config.WebSocket.WriteTimeout))
 			data, err := json.Marshal(event)
 			if err != nil {
 				continue
@@ -127,7 +128,7 @@ func (h *WebSocketHandler) readPump(ctx context.Context, conn *websocket.Conn) {
 
 	conn.SetReadLimit(512)
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		conn.SetReadDeadline(timeutil.NowTime().Add(60 * time.Second))
 		return nil
 	})
 
@@ -157,7 +158,7 @@ func (h *WebSocketHandler) Close() {
 
 	for conn, cancel := range h.conns {
 		// Send close message with a short deadline
-		conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+		conn.SetWriteDeadline(timeutil.NowTime().Add(1 * time.Second))
 		conn.WriteMessage(websocket.CloseMessage, closeMsg)
 
 		// Cancel context and close connection

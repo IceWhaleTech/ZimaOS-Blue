@@ -7,7 +7,7 @@ import (
 	"context"
 	"os/exec"
 	"syscall"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // WindowsExecutor provides sandboxed execution on Windows using Job Objects.
@@ -69,7 +69,7 @@ func (e *WindowsExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*
 	result := &ExecutionResult{
 		ID:        req.ID,
 		Status:    StatusRunning,
-		StartTime: time.Now(),
+		StartTime: timeutil.NowTime(),
 	}
 
 	state := &executionState{
@@ -84,7 +84,7 @@ func (e *WindowsExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*
 
 	// Run command
 	err := cmd.Run()
-	result.EndTime = time.Now()
+	result.EndTime = timeutil.NowTime()
 	result.Duration = result.EndTime.Sub(result.StartTime)
 	result.Stdout = truncateOutput(stdout.String(), 1024*1024)
 	result.Stderr = truncateOutput(stderr.String(), 1024*1024)

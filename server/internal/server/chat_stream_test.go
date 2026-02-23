@@ -222,11 +222,11 @@ func TestStreamMessageWithNoProvider(t *testing.T) {
 
 	// Should return error when no provider is available
 	if err == nil {
-		// Check if error is in response body
+		// Check if error is in response body (SSE sends 200 then error in data)
 		body := rec.Body.String()
 		t.Logf("Response when no provider: %s", body)
-		if rec.Code == http.StatusOK {
-			t.Error("expected error when no provider available, but got OK status")
+		if !strings.Contains(body, "error") {
+			t.Error("expected error in response body when no provider available")
 		}
 	}
 }

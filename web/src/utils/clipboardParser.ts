@@ -193,3 +193,52 @@ export function parseClipboardData(data: string): Record<string, string> {
 
   return result
 }
+
+/**
+ * Parse clipboard data as positional fields (plain values without keys).
+ * Supports newline-separated, whitespace-separated, and mixed separators.
+ * Returns an array of non-empty trimmed tokens when no key-value pairs are detected.
+ * Used for sequential filling: field 1 → input 1, field 2 → input 2, etc.
+ */
+export function parseClipboardFields(data: string): string[] {
+  if (!data.trim()) return []
+
+  // Check if data has explicit key-value indicators (=, :, tab-separated key-value)
+  // If so, defer to parseClipboardData
+  const lines = data.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+  const hasKvIndicators = lines.some(line =>
+    /^[\w-]+\s*=\s*.+$/.test(line) ||           // key=value
+    /^[^:：]+[：:]\s*(?!\/\/).+$/.test(line)     // key: value (not URL)
+  )
+  // Tab kv: every line must have exactly one tab with a word-like key
+  const hasTabKv = lines.length > 0 && lines.every(line => /^[\w-]+\t[^\t]+$/.test(line))
+  // Also check single-line quoted key-value: key = "value"
+  const hasQuotedKv = /\w+\s*=\s*"[^"]+"/.test(data)
+
+  if (hasKvIndicators || hasQuotedKv || hasTabKv) return []
+
+  // Check URL+token two-value pattern (handled by parseClipboardData)
+  const allTokens: string[] = []
+  for (const line of lines) {
+    const parts = line.split(/\s+/)
+    for (const part of parts) {
+      if (part) allTokens.push(part)
+    }
+  }
+
+  if (allTokens.length === 2) {
+    const p0Url = getUrlProbability(allTokens[0]!)
+    const p0Tok = getTokenProbability(allTokens[0]!)
+    const p1Url = getUrlProbability(allTokens[1]!)
+    const p1Tok = getTokenProbability(allTokens[1]!)
+    const threshold = 0.4
+    if ((p0Url >= threshold && p1Tok >= threshold) || (p1Url >= threshold && p0Tok >= threshold)) {
+      return [] // URL+token pair — let parseClipboardData handle it
+    }
+  }
+
+  // Need at least 2 tokens for positional mode
+  if (allTokens.length < 2) return []
+
+  return allTokens
+}

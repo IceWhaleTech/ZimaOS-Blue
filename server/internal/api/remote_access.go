@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // RemoteAccessHandler handles remote access API requests.
@@ -159,7 +159,7 @@ func (h *RemoteAccessHandler) GetRemoteAccessStatus(c echo.Context) error {
 			}
 
 			// Calculate remaining time
-			remaining := session.ExpiresAt.Sub(time.Now())
+			remaining := session.ExpiresAt.Sub(timeutil.NowTime())
 			if remaining > 0 {
 				hours := int(remaining.Hours())
 				minutes := int(remaining.Minutes()) % 60

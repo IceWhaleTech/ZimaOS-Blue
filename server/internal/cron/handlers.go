@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // CommandResult represents the result of a command execution.
@@ -212,9 +213,9 @@ func (s *Service) commandHandler(ctx context.Context, job *Job) (interface{}, er
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	start := time.Now()
+	start := timeutil.NowTime()
 	err := cmd.Run()
-	duration := time.Since(start)
+	duration := timeutil.SinceTime(start)
 
 	// Security: Truncate output to prevent memory exhaustion
 	maxOutput := 64 * 1024 // 64KB
@@ -325,9 +326,9 @@ func (s *Service) httpHandler(ctx context.Context, job *Job) (interface{}, error
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 
-	start := time.Now()
+	start := timeutil.NowTime()
 	err := cmd.Run()
-	duration := time.Since(start)
+	duration := timeutil.SinceTime(start)
 
 	result := &HTTPResult{
 		URL:      url,

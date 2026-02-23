@@ -27,6 +27,8 @@ const (
 	IDETypeTRAE        IDEType = "trae"
 	IDETypeKiro        IDEType = "kiro"
 	IDETypeCopilot     IDEType = "copilot"
+	IDETypeCodex       IDEType = "codex"
+	IDETypeVSCode      IDEType = "vscode"
 )
 
 // IDEInfo contains information about a discovered IDE
@@ -94,10 +96,12 @@ func (d *Discovery) Scan(ctx context.Context) ([]*IDEInfo, error) {
 	var mu sync.Mutex
 
 	ideTypes := []IDEType{
-		IDETypeAntigravity,
+		IDETypeVSCode,
 		IDETypeCursor,
 		IDETypeWindsurf,
 		IDETypeClaudeCode,
+		IDETypeCodex,
+		IDETypeAntigravity,
 		IDETypeQoder,
 		IDETypeTRAE,
 		IDETypeKiro,
@@ -135,10 +139,12 @@ func (d *Discovery) ScanAll(ctx context.Context) ([]*ScanResult, error) {
 	var mu sync.Mutex
 
 	ideTypes := []IDEType{
-		IDETypeAntigravity,
+		IDETypeVSCode,
 		IDETypeCursor,
 		IDETypeWindsurf,
 		IDETypeClaudeCode,
+		IDETypeCodex,
+		IDETypeAntigravity,
 		IDETypeQoder,
 		IDETypeTRAE,
 		IDETypeKiro,
@@ -202,9 +208,11 @@ func getSearchedPaths(ideType IDEType) []string {
 		paths = getKiroPaths()
 	case IDETypeCopilot:
 		paths = getCopilotPaths()
+	case IDETypeCodex:
+		paths = getCodexPaths()
+	case IDETypeVSCode:
+		paths = getVSCodePaths()
 	}
-
-	// Expand paths for display
 	expanded := make([]string, 0, len(paths))
 	for _, p := range paths {
 		expanded = append(expanded, expandPath(p))
@@ -363,6 +371,10 @@ func getIDEName(ideType IDEType) string {
 		return "Kiro"
 	case IDETypeCopilot:
 		return "GitHub Copilot"
+	case IDETypeCodex:
+		return "Codex CLI (OpenAI)"
+	case IDETypeVSCode:
+		return "VS Code"
 	default:
 		return string(ideType)
 	}
@@ -389,6 +401,10 @@ func findConfigPath(ideType IDEType) string {
 		paths = getKiroPaths()
 	case IDETypeCopilot:
 		paths = getCopilotPaths()
+	case IDETypeCodex:
+		paths = getCodexPaths()
+	case IDETypeVSCode:
+		paths = getVSCodePaths()
 	}
 
 	for _, path := range paths {
@@ -445,6 +461,10 @@ func findProxyURL(ideType IDEType, configPath string) string {
 		return tryPorts([]int{65432, 65433})
 	case IDETypeCopilot:
 		return tryPorts([]int{9700, 9701})
+	case IDETypeCodex:
+		return "" // Codex CLI doesn't have a proxy
+	case IDETypeVSCode:
+		return tryPorts([]int{9876, 9877})
 	}
 
 	return ""
@@ -663,6 +683,30 @@ func getCopilotPaths() []string {
 	return nil
 }
 
+func getCodexPaths() []string {
+	return []string{
+		"~/.codex/auth.json",
+	}
+}
+
+func getVSCodePaths() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{
+			"~/Library/Application Support/Code/User/settings.json",
+		}
+	case "linux":
+		return []string{
+			"~/.config/Code/User/settings.json",
+		}
+	case "windows":
+		return []string{
+			"%APPDATA%/Code/User/settings.json",
+		}
+	}
+	return nil
+}
+
 // expandPath expands ~ and environment variables in a path
 func expandPath(path string) string {
 	// Expand ~
@@ -785,6 +829,10 @@ func getEnvVarsForIDE(ideType IDEType) []string {
 		return []string{"KIRO_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
 	case IDETypeCopilot:
 		return []string{"GITHUB_TOKEN", "COPILOT_TOKEN"}
+	case IDETypeCodex:
+		return []string{"OPENAI_API_KEY", "CODEX_API_KEY"}
+	case IDETypeVSCode:
+		return []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY"}
 	}
 	return nil
 }
@@ -799,12 +847,17 @@ type ImportConfig struct {
 	Provider   string   `json:"provider,omitempty"` // "anthropic", "openai", etc.
 	ConfigPath string   `json:"config_path,omitempty"`
 	EnvVar     string   `json:"env_var,omitempty"` // Which env var the key came from
-	Source          string   `json:"source"`            // "config", "env", "cc-switch", "extension"
+	Source          string   `json:"source"`            // "config", "env", "cc-switch", "extension", "oauth"
 	CanImport       bool     `json:"can_import"`        // Whether this config can be imported
 	AlreadyImported bool     `json:"already_imported"`  // Whether this key already exists in provider pool
 
 	// Claude Code extension config (from IDE settings.json claudeCode.environmentVariables)
 	ExtensionConfig *ClaudeCodeExtConfig `json:"extension_config,omitempty"`
+
+	// OAuth token fields (populated when Source == "oauth")
+	HasOAuth   bool   `json:"has_oauth,omitempty"`
+	OAuthType  string `json:"oauth_type,omitempty"`  // "antigravity", "gemini-cli", "copilot"
+	OAuthEmail string `json:"oauth_email,omitempty"`
 }
 
 // ClaudeCodeExtConfig represents Claude Code extension settings found in an IDE's settings.json
@@ -876,7 +929,7 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 	}
 
 	// Also check environment variables
-	for _, ideType := range []IDEType{IDETypeClaudeCode, IDETypeCursor, IDETypeWindsurf, IDETypeAntigravity, IDETypeQoder, IDETypeTRAE} {
+	for _, ideType := range []IDEType{IDETypeClaudeCode, IDETypeCursor, IDETypeWindsurf, IDETypeAntigravity, IDETypeQoder, IDETypeTRAE, IDETypeCodex, IDETypeVSCode} {
 		if key, envVar := GetAPIKeyFromEnv(ideType); key != "" {
 			envBaseURL := GetBaseURLFromEnv(ideType)
 			// Check if we already have this IDE from config
@@ -910,6 +963,40 @@ func (d *Discovery) GetImportableConfigs(ctx context.Context) ([]*ImportConfig, 
 					CanImport: true,
 				})
 			}
+		}
+	}
+
+	// Scan for OAuth tokens from IDEs
+	oauthResults := ScanAllOAuthTokens()
+	for _, r := range oauthResults {
+		if !r.Found {
+			continue
+		}
+		// Check if we already have this IDE in configs (merge OAuth info)
+		merged := false
+		for _, c := range configs {
+			if c.IDEType == r.IDEType {
+				c.HasOAuth = true
+				c.OAuthType = r.ProviderType
+				c.OAuthEmail = r.Email
+				if !c.CanImport {
+					c.Source = "oauth"
+					c.CanImport = true
+				}
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			configs = append(configs, &ImportConfig{
+				IDEType:    r.IDEType,
+				IDEName:    r.IDEName,
+				Source:     "oauth",
+				CanImport:  true,
+				HasOAuth:   true,
+				OAuthType:  r.ProviderType,
+				OAuthEmail: r.Email,
+			})
 		}
 	}
 
@@ -958,6 +1045,10 @@ func getProviderForIDE(ideType IDEType) string {
 		return "custom"
 	case IDETypeCopilot:
 		return "github"
+	case IDETypeCodex:
+		return "openai"
+	case IDETypeVSCode:
+		return "anthropic"
 	}
 	return "openai"
 }
@@ -1075,11 +1166,15 @@ func GetBaseURLFromEnv(ideType IDEType) string {
 func getBaseURLEnvVarsForIDE(ideType IDEType) []string {
 	switch ideType {
 	case IDETypeClaudeCode:
-		return []string{"ANTHROPIC_BASE_URL"}
+		return []string{"ANTHROPIC_BASE_URL", "OPENAI_BASE_URL"}
 	case IDETypeCursor, IDETypeWindsurf, IDETypeQoder, IDETypeKiro:
-		return []string{"OPENAI_BASE_URL"}
+		return []string{"ANTHROPIC_BASE_URL", "OPENAI_BASE_URL"}
 	case IDETypeAntigravity:
 		return []string{"GOOGLE_BASE_URL"}
+	case IDETypeCodex:
+		return []string{"OPENAI_BASE_URL"}
+	case IDETypeVSCode:
+		return []string{"ANTHROPIC_BASE_URL", "OPENAI_BASE_URL"}
 	}
 	return nil
 }
@@ -1210,7 +1305,7 @@ func maskEnvValue(name, value string) string {
 // isVSCodeFork returns true if the IDE is a VS Code fork that may have Claude Code extension
 func isVSCodeFork(ideType IDEType) bool {
 	switch ideType {
-	case IDETypeCursor, IDETypeWindsurf, IDETypeAntigravity, IDETypeQoder, IDETypeTRAE, IDETypeKiro:
+	case IDETypeCursor, IDETypeWindsurf, IDETypeAntigravity, IDETypeQoder, IDETypeTRAE, IDETypeKiro, IDETypeVSCode:
 		return true
 	}
 	return false

@@ -7,14 +7,10 @@ import (
 
 // Config holds configuration for built-in skills
 type Config struct {
-	Weather  *WeatherConfig
 	Files    *FilesConfig
 	Email    *EmailConfig
 	Calendar *CalendarConfig
 	Contacts *ContactsConfig
-	News     *NewsConfig
-	Stocks   *StocksConfig
-	Crypto   *CryptoConfig
 	Docker   *DockerConfig
 	GitHub   *GitHubConfig
 	Notion   *NotionConfig
@@ -34,14 +30,10 @@ func RegisterAll(registry *skill.Registry) error {
 
 // RegisterAllWithConfig registers all built-in skills with optional configuration
 func RegisterAllWithConfig(registry *skill.Registry, config *Config) error {
-	var weatherConfig *WeatherConfig
 	var filesBaseDir string
 	var emailConfig *EmailConfig
 	var calendarConfig *CalendarConfig
 	var contactsConfig *ContactsConfig
-	var newsConfig *NewsConfig
-	var stocksConfig *StocksConfig
-	var cryptoConfig *CryptoConfig
 	var dockerConfig *DockerConfig
 	var githubConfig *GitHubConfig
 	var notionConfig *NotionConfig
@@ -49,13 +41,9 @@ func RegisterAllWithConfig(registry *skill.Registry, config *Config) error {
 	var discordConfig *DiscordSkillConfig
 
 	if config != nil {
-		weatherConfig = config.Weather
 		emailConfig = config.Email
 		calendarConfig = config.Calendar
 		contactsConfig = config.Contacts
-		newsConfig = config.News
-		stocksConfig = config.Stocks
-		cryptoConfig = config.Crypto
 		dockerConfig = config.Docker
 		githubConfig = config.GitHub
 		notionConfig = config.Notion
@@ -67,11 +55,10 @@ func RegisterAllWithConfig(registry *skill.Registry, config *Config) error {
 	}
 
 	skills := []skill.Skill{
-		// Original skills (5)
+		// Core skills (4)
 		NewCalculator(),
 		NewSystemInfo(),
 		NewDateTime(),
-		NewWeather(weatherConfig),
 		NewSearch(),
 
 		// Productivity skills (4)
@@ -85,7 +72,7 @@ func RegisterAllWithConfig(registry *skill.Registry, config *Config) error {
 		NewNotifications(),
 		NewUnitConverter(),
 
-		// System skills (10)
+		// System skills (9)
 		NewFiles(filesBaseDir),
 		NewNetwork(),
 		NewProcesses(),
@@ -95,17 +82,11 @@ func RegisterAllWithConfig(registry *skill.Registry, config *Config) error {
 		NewAutoReply(),
 		NewSandbox(),
 		NewBrowser(),
-		NewUIReviewer(),
 
 		// Communication skills (3)
 		NewEmail(emailConfig),
 		NewCalendar(calendarConfig),
 		NewContacts(contactsConfig),
-
-		// Information skills (3)
-		NewNews(newsConfig),
-		NewStocks(stocksConfig),
-		NewCrypto(cryptoConfig),
 
 		// Integration skills (4)
 		NewGitHub(githubConfig),
@@ -125,6 +106,6 @@ func RegisterAllWithConfig(registry *skill.Registry, config *Config) error {
 
 // GetSkillCount returns the number of built-in skills
 func GetSkillCount() int {
-	return 32 // 5 + 4 + 3 + 10 + 3 + 3 + 4 = 32 skills
+	return 27 // 4 + 4 + 3 + 9 + 3 + 4
 }
 

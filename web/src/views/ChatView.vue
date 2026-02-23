@@ -16,6 +16,7 @@ import type { FileAttachment } from '@/components/ChatInput.vue'
 import PresetQuestions from '@/components/onboarding/PresetQuestions.vue'
 import VirtualScroll from '@/components/VirtualScroll.vue'
 import TalkMode from '@/components/chat/TalkMode.vue'
+import ToolApprovalDialog from '@/components/ToolApprovalDialog.vue'
 import { componentPool } from '@/utils/componentPool'
 import { clearConversationIncrementalStates } from '@/utils/typeless'
 import { THEME_STYLES, type ThemeStyle } from '@/stores/settings'
@@ -528,6 +529,9 @@ onMounted(async () => {
     providerPoolStore.fetchRoutingMode(),
     fetchClaudeCodeConfig(),
   ])
+
+  // Check for any pending tool approvals (e.g. page was refreshed while waiting)
+  chatStore.checkPendingApprovals()
 
   // If URL had conversationId, select it now that conversations are loaded
   if (_initConvId) {
@@ -1326,6 +1330,9 @@ onUnmounted(() => {
         @transcript="handleVoiceTranscript"
       />
     </main>
+
+    <!-- Tool call approval dialog -->
+    <ToolApprovalDialog />
   </div>
 </template>
 

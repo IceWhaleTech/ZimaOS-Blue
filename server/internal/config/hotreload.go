@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // HotReloadConfig holds hot reload configuration
@@ -69,7 +70,7 @@ func NewHotReloader(configPath string, initialConfig *Config, hrConfig *HotReloa
 		hrConfig:   hrConfig,
 		ctx:        ctx,
 		cancel:     cancel,
-		lastReload: time.Now(),
+		lastReload: timeutil.NowTime(),
 	}
 
 	hr.config.Store(initialConfig)
@@ -239,7 +240,7 @@ func (hr *HotReloader) reload() error {
 		hr.mu.Unlock()
 
 		hr.notifyCallbacks(ReloadEvent{
-			Time:      time.Now(),
+			Time:      timeutil.NowTime(),
 			Success:   false,
 			Error:     err,
 			OldConfig: oldConfig,
@@ -256,7 +257,7 @@ func (hr *HotReloader) reload() error {
 			hr.mu.Unlock()
 
 			hr.notifyCallbacks(ReloadEvent{
-				Time:      time.Now(),
+				Time:      timeutil.NowTime(),
 				Success:   false,
 				Error:     err,
 				OldConfig: oldConfig,
@@ -271,7 +272,7 @@ func (hr *HotReloader) reload() error {
 	hr.config.Store(newConfig)
 
 	hr.mu.Lock()
-	hr.lastReload = time.Now()
+	hr.lastReload = timeutil.NowTime()
 	hr.lastError = nil
 	hr.mu.Unlock()
 	atomic.AddInt64(&hr.reloadCount, 1)
@@ -280,7 +281,7 @@ func (hr *HotReloader) reload() error {
 		atomic.LoadInt64(&hr.reloadCount))
 
 	hr.notifyCallbacks(ReloadEvent{
-		Time:      time.Now(),
+		Time:      timeutil.NowTime(),
 		Success:   true,
 		OldConfig: oldConfig,
 		NewConfig: newConfig,

@@ -15,6 +15,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ChatFunc is a function that sends a chat request and returns a response.
@@ -43,7 +44,7 @@ type RunDeps struct {
 // RunOnce executes a single heartbeat check.
 func RunOnce(ctx context.Context, deps RunDeps) RunResult {
 	cfg := deps.Config
-	start := time.Now()
+	start := timeutil.NowTime()
 
 	emit := func(status, reason string) {
 		if !cfg.Visibility.UseIndicator {
@@ -53,7 +54,7 @@ func RunOnce(ctx context.Context, deps RunDeps) RunResult {
 			Timestamp:     start,
 			Status:        status,
 			Reason:        reason,
-			DurationMs:    time.Since(start).Milliseconds(),
+			DurationMs:    timeutil.SinceTime(start).Milliseconds(),
 			IndicatorType: ResolveIndicator(status),
 		})
 	}
@@ -62,7 +63,7 @@ func RunOnce(ctx context.Context, deps RunDeps) RunResult {
 		return RunResult{Status: "skipped", Reason: "disabled"}
 	}
 
-	if !isWithinActiveHours(cfg.ActiveHours, time.Now()) {
+	if !isWithinActiveHours(cfg.ActiveHours, timeutil.NowTime()) {
 		emit("skipped", "quiet-hours")
 		return RunResult{Status: "skipped", Reason: "quiet-hours"}
 	}
@@ -103,20 +104,20 @@ func RunOnce(ctx context.Context, deps RunDeps) RunResult {
 		reason := fmt.Sprintf("llm-error: %v", err)
 		emit("failed", reason)
 		deps.Logger.Error("heartbeat: LLM call failed", zap.Error(err))
-		return RunResult{Status: "failed", Reason: reason, DurationMs: time.Since(start).Milliseconds()}
+		return RunResult{Status: "failed", Reason: reason, DurationMs: timeutil.SinceTime(start).Milliseconds()}
 	}
 
 	replyText := strings.TrimSpace(resp.Message.Content)
 	if replyText == "" {
 		emit("ok-empty", "")
-		return RunResult{Status: "ran", DurationMs: time.Since(start).Milliseconds()}
+		return RunResult{Status: "ran", DurationMs: timeutil.SinceTime(start).Milliseconds()}
 	}
 
 	// Strip HEARTBEAT_OK token
 	stripped := StripHeartbeatToken(replyText, cfg.AckMaxChars)
 	if stripped.ShouldSkip {
 		emit("ok-token", "")
-		return RunResult{Status: "ran", DurationMs: time.Since(start).Milliseconds()}
+		return RunResult{Status: "ran", DurationMs: timeutil.SinceTime(start).Milliseconds()}
 	}
 
 	alertText := stripped.Text
@@ -124,13 +125,13 @@ func RunOnce(ctx context.Context, deps RunDeps) RunResult {
 	// Dedup check
 	if deps.Dedup != nil && deps.Dedup.IsDuplicate(alertText) {
 		emit("skipped", "duplicate")
-		return RunResult{Status: "ran", DurationMs: time.Since(start).Milliseconds()}
+		return RunResult{Status: "ran", DurationMs: timeutil.SinceTime(start).Milliseconds()}
 	}
 
 	// Visibility check
 	if !cfg.Visibility.ShowAlerts {
 		emit("skipped", "alerts-disabled")
-		return RunResult{Status: "ran", DurationMs: time.Since(start).Milliseconds()}
+		return RunResult{Status: "ran", DurationMs: timeutil.SinceTime(start).Milliseconds()}
 	}
 
 	// Deliver through channel
@@ -160,11 +161,11 @@ func RunOnce(ctx context.Context, deps RunDeps) RunResult {
 		Status:        "sent",
 		Channel:       cfg.DeliveryChannel,
 		Preview:       preview,
-		DurationMs:    time.Since(start).Milliseconds(),
+		DurationMs:    timeutil.SinceTime(start).Milliseconds(),
 		IndicatorType: IndicatorAlert,
 	})
 
-	return RunResult{Status: "ran", DurationMs: time.Since(start).Milliseconds()}
+	return RunResult{Status: "ran", DurationMs: timeutil.SinceTime(start).Milliseconds()}
 }
 
 // isWithinActiveHours checks if the current time falls within the configured window.

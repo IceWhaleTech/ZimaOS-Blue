@@ -11,6 +11,7 @@ import (
 
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // JobStatus represents the status of a cron job.
@@ -197,8 +198,8 @@ func (s *Service) Create(name, description, schedule, handler string, payload ma
 		Payload:     payload,
 		Status:      StatusActive,
 		Enabled:     true,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		CreatedAt:   timeutil.NowTime(),
+		UpdatedAt:   timeutil.NowTime(),
 		Metadata:    make(map[string]interface{}),
 	}
 
@@ -299,7 +300,7 @@ func (s *Service) Update(id, name, description, schedule string, payload map[str
 	job.Name = name
 	job.Description = description
 	job.Payload = payload
-	job.UpdatedAt = time.Now()
+	job.UpdatedAt = timeutil.NowTime()
 
 	return nil
 }
@@ -347,7 +348,7 @@ func (s *Service) Enable(id string) error {
 	job.entryID = entryID
 	job.Enabled = true
 	job.Status = StatusActive
-	job.UpdatedAt = time.Now()
+	job.UpdatedAt = timeutil.NowTime()
 
 	// Update next run time
 	entry := s.cron.Entry(entryID)
@@ -376,7 +377,7 @@ func (s *Service) Disable(id string) error {
 	job.Enabled = false
 	job.Status = StatusPaused
 	job.NextRunAt = nil
-	job.UpdatedAt = time.Now()
+	job.UpdatedAt = timeutil.NowTime()
 
 	return nil
 }
@@ -422,16 +423,16 @@ func (s *Service) executeJob(id string) {
 	}
 
 	// Create execution record
-	execID := fmt.Sprintf("exec_%d", time.Now().UnixNano())
+	execID := fmt.Sprintf("exec_%d", timeutil.NowNano())
 	exec := &JobExecution{
 		ID:        execID,
 		JobID:     id,
-		StartedAt: time.Now(),
+		StartedAt: timeutil.NowTime(),
 		Status:    "running",
 	}
 
 	job.Status = StatusRunning
-	now := time.Now()
+	now := timeutil.NowTime()
 	job.LastRunAt = &now
 	job.RunCount++
 
@@ -455,7 +456,7 @@ func (s *Service) executeJob(id string) {
 
 	// Update execution record
 	s.mu.Lock()
-	endedAt := time.Now()
+	endedAt := timeutil.NowTime()
 	exec.EndedAt = &endedAt
 	exec.Duration = endedAt.Sub(exec.StartedAt)
 

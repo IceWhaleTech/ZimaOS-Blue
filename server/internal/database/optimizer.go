@@ -228,7 +228,7 @@ func (o *Optimizer) GetIndexes(ctx context.Context, tableName string) ([]IndexIn
 
 // ExecuteWithStats executes a query and returns statistics.
 func (o *Optimizer) ExecuteWithStats(ctx context.Context, query string, args ...interface{}) (*QueryStats, error) {
-	start := time.Now()
+	start := timeutil.NowTime()
 
 	// Check cache first
 	if o.config.EnableQueryCache {
@@ -237,7 +237,7 @@ func (o *Optimizer) ExecuteWithStats(ctx context.Context, query string, args ...
 			o.recordCacheHit()
 			return &QueryStats{
 				Query:    truncateQuery(query),
-				Duration: time.Since(start),
+				Duration: timeutil.SinceTime(start),
 			}, nil
 		}
 		o.recordCacheMiss()
@@ -256,7 +256,7 @@ func (o *Optimizer) ExecuteWithStats(ctx context.Context, query string, args ...
 		rowCount++
 	}
 
-	duration := time.Since(start)
+	duration := timeutil.SinceTime(start)
 
 	// Record statistics
 	o.recordQuery(duration)

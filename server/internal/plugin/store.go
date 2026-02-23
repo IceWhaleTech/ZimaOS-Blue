@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // StoreSource represents a plugin source
@@ -278,7 +279,7 @@ func (s *Store) refreshMoltbotPlugins(ctx context.Context) error {
 	// Check cache
 	cacheKey := "moltbot_extensions"
 	if data, ok := s.cache[cacheKey]; ok {
-		if time.Since(s.cacheTimes[cacheKey]) < s.config.CacheDuration {
+		if timeutil.SinceTime(s.cacheTimes[cacheKey]) < s.config.CacheDuration {
 			return s.parseMoltbotExtensions(data)
 		}
 	}
@@ -293,7 +294,7 @@ func (s *Store) refreshMoltbotPlugins(ctx context.Context) error {
 	}
 
 	s.cache[cacheKey] = data
-	s.cacheTimes[cacheKey] = time.Now()
+	s.cacheTimes[cacheKey] = timeutil.NowTime()
 
 	return s.parseMoltbotExtensions(data)
 }
@@ -325,7 +326,7 @@ func (s *Store) parseMoltbotExtensions(data []byte) error {
 			Source:      SourceMoltbot,
 			RepoURL:     fmt.Sprintf("https://github.com/%s/tree/%s/extensions/%s", s.config.MoltbotRepo, s.config.MoltbotBranch, pluginID),
 			Tags:        inferPluginTags(pluginID),
-			UpdatedAt:   time.Now(),
+			UpdatedAt:   timeutil.NowTime(),
 		}
 	}
 

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // TriggerType represents the type of trigger.
@@ -91,7 +92,7 @@ func generateSecureRuleID() string {
 	b := make([]byte, 8)
 	if _, err := cryptorand.Read(b); err != nil {
 		// Fallback to time-based ID if crypto/rand fails (should never happen)
-		return fmt.Sprintf("rule_%d", time.Now().UnixNano())
+		return fmt.Sprintf("rule_%d", timeutil.NowNano())
 	}
 	return fmt.Sprintf("rule_%s", hex.EncodeToString(b))
 }
@@ -154,8 +155,8 @@ func (s *Service) Create(name string, triggerType TriggerType, triggerValue stri
 		Priority:      priority,
 		Enabled:       true,
 		CaseSensitive: false,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		CreatedAt:     timeutil.NowTime(),
+		UpdatedAt:     timeutil.NowTime(),
 		Metadata:      make(map[string]interface{}),
 		compiledRegex: compiledRegex,
 	}
@@ -230,7 +231,7 @@ func (s *Service) Update(id, name string, triggerType TriggerType, triggerValue 
 	rule.TriggerValue = triggerValue
 	rule.Responses = responses
 	rule.Priority = priority
-	rule.UpdatedAt = time.Now()
+	rule.UpdatedAt = timeutil.NowTime()
 	rule.compiledRegex = compiledRegex
 
 	return nil
@@ -261,7 +262,7 @@ func (s *Service) Enable(id string) error {
 	}
 
 	rule.Enabled = true
-	rule.UpdatedAt = time.Now()
+	rule.UpdatedAt = timeutil.NowTime()
 	return nil
 }
 
@@ -276,7 +277,7 @@ func (s *Service) Disable(id string) error {
 	}
 
 	rule.Enabled = false
-	rule.UpdatedAt = time.Now()
+	rule.UpdatedAt = timeutil.NowTime()
 	return nil
 }
 
@@ -291,7 +292,7 @@ func (s *Service) SetChannels(id string, channels []string) error {
 	}
 
 	rule.Channels = channels
-	rule.UpdatedAt = time.Now()
+	rule.UpdatedAt = timeutil.NowTime()
 	return nil
 }
 
@@ -305,7 +306,7 @@ func (s *Service) Match(ctx context.Context, message, channel, userID, username,
 	if s.config.DefaultCooldownSeconds > 0 {
 		s.cooldownMu.Lock()
 		if lastReply, exists := s.cooldowns[cooldownKey]; exists {
-			if time.Since(lastReply) < time.Duration(s.config.DefaultCooldownSeconds)*time.Second {
+			if timeutil.SinceTime(lastReply) < time.Duration(s.config.DefaultCooldownSeconds)*time.Second {
 				s.cooldownMu.Unlock()
 				return "", nil, nil
 			}
@@ -362,7 +363,7 @@ func (s *Service) Match(ctx context.Context, message, channel, userID, username,
 			Channel: channel,
 			ChatID:  chatID,
 			Message: message,
-			Time:    time.Now(),
+			Time:    timeutil.NowTime(),
 			Match:   groups[0],
 			Groups:  groups,
 			Custom:  make(map[string]interface{}),
@@ -383,7 +384,7 @@ func (s *Service) Match(ctx context.Context, message, channel, userID, username,
 		// Update cooldown
 		if s.config.DefaultCooldownSeconds > 0 {
 			s.cooldownMu.Lock()
-			s.cooldowns[cooldownKey] = time.Now()
+			s.cooldowns[cooldownKey] = timeutil.NowTime()
 			s.cooldownMu.Unlock()
 		}
 
@@ -523,7 +524,7 @@ func (s *Service) Test(message, channel string) (string, *Rule, error) {
 			Channel: channel,
 			ChatID:  "test_chat_id",
 			Message: message,
-			Time:    time.Now(),
+			Time:    timeutil.NowTime(),
 			Match:   groups[0],
 			Groups:  groups,
 			Custom:  make(map[string]interface{}),

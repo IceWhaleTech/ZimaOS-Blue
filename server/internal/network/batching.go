@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // BatchConfig holds configuration for request batching.
@@ -315,7 +316,7 @@ func NewRequestCoalescer[K comparable, V any](loader func(context.Context, K) (V
 func (c *RequestCoalescer[K, V]) Load(ctx context.Context, key K) (V, error) {
 	// Check cache first
 	c.cacheMu.RLock()
-	if entry, ok := c.cache[key]; ok && time.Now().Before(entry.expiresAt) {
+	if entry, ok := c.cache[key]; ok && timeutil.NowTime().Before(entry.expiresAt) {
 		c.cacheMu.RUnlock()
 		return entry.value, entry.err
 	}
@@ -325,7 +326,7 @@ func (c *RequestCoalescer[K, V]) Load(ctx context.Context, key K) (V, error) {
 	return c.group.DoWithContext(ctx, key, func(ctx context.Context) (V, error) {
 		// Double-check cache
 		c.cacheMu.RLock()
-		if entry, ok := c.cache[key]; ok && time.Now().Before(entry.expiresAt) {
+		if entry, ok := c.cache[key]; ok && timeutil.NowTime().Before(entry.expiresAt) {
 			c.cacheMu.RUnlock()
 			return entry.value, entry.err
 		}
@@ -339,7 +340,7 @@ func (c *RequestCoalescer[K, V]) Load(ctx context.Context, key K) (V, error) {
 		c.cache[key] = &coalescedEntry[V]{
 			value:     value,
 			err:       err,
-			expiresAt: time.Now().Add(c.ttl),
+			expiresAt: timeutil.NowTime().Add(c.ttl),
 		}
 		c.cacheMu.Unlock()
 

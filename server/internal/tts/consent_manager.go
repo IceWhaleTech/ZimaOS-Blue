@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ConsentManager handles user privacy consent for online TTS services
@@ -61,7 +62,7 @@ func (cm *ConsentManager) SetConsent(ctx context.Context, userID, service string
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	var consentDate *time.Time
 	if given {
 		consentDate = &now
@@ -92,7 +93,7 @@ func (cm *ConsentManager) HasConsent(ctx context.Context, userID, service string
 
 // generateID generates a unique ID
 func generateID() string {
-	return time.Now().Format("20060102150405") + "-" + randomString(8)
+	return timeutil.NowTime().Format("20060102150405") + "-" + randomString(8)
 }
 
 // randomString generates a random string of given length
@@ -100,7 +101,7 @@ func randomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0180789"
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
+		b[i] = charset[timeutil.NowNano()%int64(len(charset))]
 	}
 	return string(b)
 }

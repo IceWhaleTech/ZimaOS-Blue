@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -361,6 +362,7 @@ func (h *ChannelConfigHandler) SetFactory(factory *ChannelFactory) {
 type ChannelConfigResponse struct {
 	ID               string            `json:"id"`
 	Enabled          bool              `json:"enabled"`
+	Available        bool              `json:"available"`
 	Status           string            `json:"status"`
 	Config           map[string]string `json:"config"`
 	LastError        string            `json:"last_error,omitempty"`
@@ -379,6 +381,7 @@ func (h *ChannelConfigHandler) ListChannelConfigs(c echo.Context) error {
 		resp := &ChannelConfigResponse{
 			ID:               cfg.ID,
 			Enabled:          cfg.Enabled,
+			Available:        isChannelAvailable(cfg.ID),
 			Status:           cfg.Status,
 			Config:           cfg.Config,
 			LastError:        cfg.LastError,
@@ -450,6 +453,14 @@ func (h *ChannelConfigHandler) UpdateChannelConfig(c echo.Context) error {
 	var req UpdateChannelConfigRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	// Block enabling channels that are not available on this platform
+	if req.Enabled && !isChannelAvailable(id) {
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   id + " is not available on this platform",
+		})
 	}
 
 	// Get existing config to check previous enabled state
@@ -567,6 +578,16 @@ func (h *ChannelConfigHandler) ToggleChannel(c echo.Context) error {
 			Status: "disconnected",
 			Config: make(map[string]string),
 		}
+	}
+
+	// Block enabling channels that are not available on this platform
+	if req.Enabled && !isChannelAvailable(id) {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": false,
+			"enabled": false,
+			"status":  "unavailable",
+			"error":   id + " is not available on this platform",
+		})
 	}
 
 	wasEnabled := cfg.Enabled
@@ -712,4 +733,14 @@ func (h *ChannelConfigHandler) TestConnection(c echo.Context) error {
 		"message_key": result.MessageKey,
 		"details":     result.Details,
 	})
+}
+
+// isChannelAvailable returns whether a channel type is available on the current platform.
+func isChannelAvailable(channelID string) bool {
+	switch channelID {
+	case "imessage":
+		return runtime.GOOS == "darwin"
+	default:
+		return true
+	}
 }

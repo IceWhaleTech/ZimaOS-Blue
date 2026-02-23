@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ProviderType represents the type of provider
@@ -14,6 +16,8 @@ type ProviderType string
 const (
 	// ProviderTypeBuiltin represents built-in providers (OpenAI, Anthropic, etc.)
 	ProviderTypeBuiltin ProviderType = "builtin"
+	// ProviderTypePlatform represents platform/aggregator providers (OpenRouter, SiliconFlow, etc.)
+	ProviderTypePlatform ProviderType = "platform"
 	// ProviderTypeCustom represents user-defined OpenAI-compatible providers
 	ProviderTypeCustom ProviderType = "custom"
 	// ProviderTypeACP represents ACP (Agent Communication Protocol) providers
@@ -22,6 +26,8 @@ const (
 	ProviderTypeIDE ProviderType = "ide"
 	// ProviderTypeTrial represents trial providers with limited quota
 	ProviderTypeTrial ProviderType = "trial"
+	// ProviderTypeMedia represents media generation providers (image/video)
+	ProviderTypeMedia ProviderType = "media"
 )
 
 // ProviderLocation represents where the provider runs
@@ -58,6 +64,10 @@ const (
 	APIFormatOllama APIFormat = "ollama"
 	// APIFormatGoogle represents Google AI API format
 	APIFormatGoogle APIFormat = "google"
+	// APIFormatCloudCode represents Google Cloud Code Assist API format (used by Antigravity/Gemini CLI OAuth)
+	APIFormatCloudCode APIFormat = "cloudcode"
+	// APIFormatCopilot represents GitHub Copilot API format (OpenAI-compatible with Copilot auth)
+	APIFormatCopilot APIFormat = "copilot"
 )
 
 // Provider represents an LLM provider configuration
@@ -140,6 +150,13 @@ type OAuthConfig struct {
 	RefreshToken string    `json:"-"` // Never expose
 	TokenExpiry  time.Time `json:"token_expiry,omitempty"`
 	Scopes       []string  `json:"scopes,omitempty"`
+
+	// OAuth provider metadata
+	ProviderType string `json:"provider_type,omitempty"` // "antigravity", "gemini-cli", "copilot"
+	ProjectID    string `json:"project_id,omitempty"`    // Google Cloud Code project ID
+	Email        string `json:"email,omitempty"`         // Authenticated user email
+	Endpoint     string `json:"endpoint,omitempty"`      // API endpoint URL (e.g., cloudcode-pa.googleapis.com)
+	Connected    bool   `json:"connected"`               // Whether OAuth is currently connected
 }
 
 // RateLimitConfig represents rate limiting configuration
@@ -178,6 +195,9 @@ type Model struct {
 	OutputPrice float64 `json:"output_price,omitempty"`
 	CachePrice  float64 `json:"cache_price,omitempty"` // Cache read price
 
+	// Per-request pricing (USD) — for media generation models (image/video/audio)
+	PricePerRequest float64 `json:"price_per_request,omitempty"`
+
 	// Limits
 	ContextWindow int `json:"context_window,omitempty"`
 	MaxOutput     int `json:"max_output,omitempty"`
@@ -198,7 +218,10 @@ type ModelCapabilities struct {
 	Streaming    bool `json:"streaming"`
 	Thinking     bool `json:"thinking"`      // Extended thinking mode (Claude)
 	JSON         bool `json:"json"`          // JSON mode support
-	SystemPrompt bool `json:"system_prompt"` // System prompt support
+	SystemPrompt    bool `json:"system_prompt"`    // System prompt support
+	ImageGeneration bool `json:"image_generation"` // Image generation (text-to-image)
+	VideoGeneration bool `json:"video_generation"` // Video generation (text-to-video)
+	AudioGeneration bool `json:"audio_generation"` // Audio generation (TTS, music)
 }
 
 // UsageRecord tracks usage per provider/model
@@ -295,6 +318,7 @@ type RouteResult struct {
 	Provider  *Provider `json:"provider"`
 	Model     *Model    `json:"model"`
 	APIKey    *APIKey   `json:"api_key,omitempty"`
+	OAuth     *OAuthConfig `json:"oauth,omitempty"`
 	Fallbacks []*RouteCandidate `json:"fallbacks,omitempty"`
 }
 
@@ -383,7 +407,7 @@ func DefaultPricingConfig() *PricingConfig {
 		DefaultOutputPrice: 15.0, // $15 per 1M output tokens
 		DefaultCachePrice:  0.5,  // $0.5 per 1M cache tokens
 		CustomPricing:      make(map[string]*ModelPricing),
-		UpdatedAt:          time.Now(),
+		UpdatedAt:          timeutil.NowTime(),
 	}
 }
 

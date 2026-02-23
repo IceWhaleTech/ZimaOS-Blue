@@ -3,6 +3,8 @@ package providerpool
 import (
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // UsageTracker tracks usage across providers and models
@@ -104,7 +106,7 @@ func (t *UsageTracker) Stop() {
 // Record records a usage event
 func (t *UsageTracker) Record(record *UsageRecord) {
 	if record.Timestamp.IsZero() {
-		record.Timestamp = time.Now()
+		record.Timestamp = timeutil.NowTime()
 	}
 	if record.ID == "" {
 		record.ID = GenerateID("usage")
@@ -134,7 +136,7 @@ func (t *UsageTracker) RecordRequest(providerID, modelID string, inputTokens, ou
 	t.Record(&UsageRecord{
 		ProviderID:   providerID,
 		ModelID:      modelID,
-		Timestamp:    time.Now(),
+		Timestamp:    timeutil.NowTime(),
 		InputTokens:  inputTokens,
 		OutputTokens: outputTokens,
 		RequestCount: 1,
@@ -190,7 +192,7 @@ func (t *UsageTracker) updateAggregation(record *UsageRecord) {
 	agg.RequestCount += record.RequestCount
 	agg.TotalLatencyMs += record.LatencyMs
 	agg.EstimatedCost += record.EstimatedCost
-	agg.LastUpdated = time.Now()
+	agg.LastUpdated = timeutil.NowTime()
 
 	if record.Success {
 		agg.SuccessCount++
@@ -324,7 +326,7 @@ func (t *UsageTracker) GetSummary(providerID string, start, end time.Time) (*Usa
 
 // GetWeeklySummary returns usage summary for the past 7 days
 func (t *UsageTracker) GetWeeklySummary(providerID string) (*UsageSummary, error) {
-	end := time.Now()
+	end := timeutil.NowTime()
 	start := end.AddDate(0, 0, -7)
 	summary, err := t.GetSummary(providerID, start, end)
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ResourceLimits defines resource limits for a plugin
@@ -125,7 +126,7 @@ func (m *ResourceMonitor) GetStats() *ResourceStats {
 func (m *ResourceMonitor) recordViolation(reason string) {
 	atomic.AddInt64(&m.violations, 1)
 	m.violationMu.Lock()
-	m.lastViolation = time.Now()
+	m.lastViolation = timeutil.NowTime()
 	m.violationMu.Unlock()
 
 	logger.Warn().

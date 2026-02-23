@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardCode } from '@/types/typeless'
 import { highlightCode } from '@/utils/markdown'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardCode
@@ -58,12 +61,15 @@ const languageNames: Record<string, string> = {
 
 function getLanguageDisplay(): string {
   if (!props.card.language) return ''
-  return languageNames[props.card.language.toLowerCase()] || props.card.language
+  const lang = props.card.language.toLowerCase()
+  // tool_call is internationalized via i18n
+  if (lang === 'tool_call') return t('codeBlock.toolCall', 'Tool Call')
+  return languageNames[lang] || props.card.language
 }
 </script>
 
 <template>
-  <div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-200">
+  <div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-900">
     <!-- Header -->
     <div class="flex items-center justify-between px-3 py-1.5 bg-gray-700 border-b border-gray-700">
       <div class="flex items-center gap-2">

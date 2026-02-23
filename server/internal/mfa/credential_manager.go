@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 var (
@@ -263,7 +264,7 @@ func (m *CredentialManager) UpdateLastUsed(ctx context.Context, userID uuid.UUID
 		return err
 	}
 
-	cred.LastUsedAt = time.Now().UTC()
+	cred.LastUsedAt = timeutil.NowTime().UTC()
 	return m.store.Update(ctx, userID, cred)
 }
 

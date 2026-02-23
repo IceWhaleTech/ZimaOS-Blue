@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ConversationCache caches conversation messages to reduce database queries.
@@ -50,7 +51,7 @@ func (c *ConversationCache) Get(conversationID string) ([]memory.Message, bool) 
 	}
 
 	// Check if expired
-	if time.Since(entry.timestamp) > c.ttl {
+	if timeutil.SinceTime(entry.timestamp) > c.ttl {
 		return nil, false
 	}
 
@@ -79,7 +80,7 @@ func (c *ConversationCache) Set(conversationID string, messages []memory.Message
 
 	c.entries[conversationID] = &cacheEntry{
 		messages:  messageCopy,
-		timestamp: time.Now(),
+		timestamp: timeutil.NowTime(),
 	}
 }
 
@@ -146,7 +147,7 @@ func (c *ConversationCache) cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	for id, entry := range c.entries {
 		if now.Sub(entry.timestamp) > c.ttl {
 			delete(c.entries, id)

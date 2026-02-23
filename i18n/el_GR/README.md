@@ -59,7 +59,7 @@
 Πηγαίνοντας ακόμα πιο μακριά: παρέχει εγγενή υποστήριξη για **20+ πλατφόρμες IM**, **φωνητικά καθοδηγούμενες** διεπαφές για φυσικό, συμφραζόμενο διάλογο, **μηδενικής ρύθμισης εναλλαγή μοντέλων** με σάρωση IDE, και προσωπικότητες επιπέδου SOUL.
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Γρήγορο & Ελαφρύ
@@ -95,13 +95,49 @@
 - **Τοπικά-Προτεραιοποιημένο, Εξαιρετικά Ελαφρύ, Πολλαπλών Συσκευών** – Δεν απαιτείται υλικό υψηλών προδιαγραφών. Εκτελείται σε οτιδήποτε μπορεί να υπολογίσει.
 - **Ασφαλές & Ελέγξιμο** – Έλεγχος συνεδριών, sandboxing, έλεγχοι δικαιωμάτων και ενσωματωμένος API proxy που λειτουργεί ως τείχος προστασίας επιπέδου εφαρμογής — κάθε byte εισόδου/εξόδου είναι ορατό.
 
+![](../../docs/assets/design_principle.png)
+
 Ελαχιστοποιούμε τον επαναλαμβανόμενο κώδικα ώστε να **εστιάσετε σε αυτό που μετράει**. Πιστοί στη <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **σχεδιαστική φιλοσοφία του ZimaOS**, το Blue προσφέρει:
 - **Από το Μηδέν στο Ένα με Ένα Κλικ** – Άμεση ανάπτυξη, χωρίς πολύπλοκη ρύθμιση.
 - **Γρήγορη Πρωτοτυποποίηση** – Δημιουργήστε με έμπνευση ή χειροτεχνία εργαλεία, αλληλεπιδράσεις και πακέτα εφαρμογών για συγκεκριμένα σενάρια.
 - **Παγκοσμίως Έτοιμο** – **Ο κόσμος είναι τεράστιος**, και δεν μιλάει εξ ορισμού Αγγλικά. **20+ γλώσσες, εγγενώς**, χωρίς εμπόδια.
 - **Ανοιχτό Οικοσύστημα Μοντέλων** – Χωρίς δέσμευση σε προμηθευτή. Φέρτε τα δικά σας μοντέλα.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Πάροχος | Μοντέλα | Τύπος |
+|---------|---------|-------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
+| Anthropic | Claude 4.5, Claude 4 | Cloud |
+| Google | Gemini 2.5, Gemini 2.0 | Cloud |
+| Ollama | Llama, Qwen, Gemma, Phi κ.ά. | Τοπικό |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| Grok | Grok-3, Grok-3-mini | Cloud |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
+| GLM | GLM-4, GLM-4-Flash | Cloud |
+| Moonshot | Moonshot-v1 | Cloud |
+| MiniMax | abab6.5, abab5.5 | Cloud |
+| Venice | Llama, Mistral (προτεραιότητα απορρήτου) | Cloud |
+| AWS Bedrock | Claude, Llama, Titan | Cloud |
+| Azure | Μοντέλα OpenAI μέσω Azure | Cloud |
+| OpenRouter | 100+ συγκεντρωμένα μοντέλα | Cloud |
+| AIHubMix | Συγκεντρωτής πολλαπλών παρόχων | Cloud |
+| Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
+| Προσαρμοσμένο | Οποιοδήποτε API συμβατό με OpenAI / Anthropic / Gemini | Cloud / Τοπικό |
+
+</details>
+
+### Υποστηριζόμενα IDE
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Γρήγορη Εκκίνηση
 
@@ -129,7 +165,6 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -142,11 +177,7 @@ sh build.sh
 .\build.bat
 ```
 
-> **Note:** Windows builds require:
-> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus, kokoro, onnx)
-> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) for system libraries (winmm, etc.)
->
-> Make sure `gcc`, `cmake` are in your `PATH`.
+> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
 
 ## Επισκόπηση Αρχιτεκτονικής
 

@@ -11,6 +11,8 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool/ide"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool/oauth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Pool is the main entry point for the provider pool functionality
@@ -185,12 +187,15 @@ func (p *Pool) Stop() {
 
 // fixProviderTypes fixes providers that were incorrectly marked as builtin
 // This handles migration issues where custom providers like "claude-code" or "custom"
-// were saved with type "builtin" instead of "custom"
+// were saved with type "builtin" instead of "custom", and migrates providers
+// whose type changed (e.g., builtin → platform).
 func (p *Pool) fixProviderTypes() {
-	// Build a set of valid builtin provider IDs
+	// Build maps of valid builtin/platform provider IDs and their expected types
 	builtinIDs := make(map[string]bool)
+	expectedType := make(map[string]ProviderType)
 	for _, builtin := range BuiltinProviders() {
 		builtinIDs[builtin.ID] = true
+		expectedType[builtin.ID] = builtin.Type
 	}
 
 	// Check all existing providers
@@ -199,6 +204,12 @@ func (p *Pool) fixProviderTypes() {
 		// If provider is marked as builtin but is not in the builtin list, fix it
 		if provider.Type == ProviderTypeBuiltin && !builtinIDs[provider.ID] {
 			provider.Type = ProviderTypeCustom
+			p.Registry.Update(provider)
+			continue
+		}
+		// Migrate providers whose type changed in builtin definitions (e.g., builtin → platform)
+		if et, ok := expectedType[provider.ID]; ok && provider.Type != et && provider.Type != ProviderTypeCustom {
+			provider.Type = et
 			p.Registry.Update(provider)
 		}
 	}
@@ -311,6 +322,9 @@ type Handler struct {
 	// cache for frequently accessed data (using ecache2 generic cache)
 	modelsCache *cache.GenericCache[string]
 	ideCache    *cache.GenericCache[string]
+
+	// OAuth manager (optional)
+	oauthManager *oauth.Manager
 }
 
 // NewHandler creates a new Handler
@@ -352,6 +366,12 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.PUT("/:id/icon", h.UpdateProviderIcon)
 	g.DELETE("/:id/icon", h.DeleteProviderIcon)
 
+	// OAuth endpoints
+	g.POST("/:id/oauth/start", h.StartOAuth)
+	g.POST("/:id/oauth/disconnect", h.DisconnectOAuth)
+	g.GET("/:id/oauth/status", h.GetOAuthStatus)
+	g.POST("/:id/oauth/device-complete", h.CompleteDeviceFlow)
+
 	// Model endpoints
 	g.GET("/:id/models", h.ListProviderModels)
 	g.POST("/:id/models/fetch", h.FetchProviderModels)
@@ -382,6 +402,8 @@ func (h *Handler) RegisterIDERoutes(g *echo.Group) {
 	g.POST("/import/:type", h.ImportIDEConfig)
 	g.POST("/import-ext/:type", h.ImportExtensionConfig)
 	g.POST("/import-cc-switch", h.ImportFromCCSwitch)
+	g.POST("/import-oauth/:type", h.ImportOAuthToken)
+	g.GET("/scan-oauth", h.ScanOAuthTokens)
 	g.GET("/env-hints", h.GetEnvHints)
 }
 
@@ -410,7 +432,8 @@ type providerResponse struct {
 	BaseURL   string    `json:"base_url,omitempty"`
 	APIFormat APIFormat `json:"api_format,omitempty"`
 
-	APIKeys []APIKey `json:"api_keys,omitempty"`
+	APIKeys []APIKey     `json:"api_keys,omitempty"`
+	OAuth   *OAuthConfig `json:"oauth,omitempty"`
 
 	Priority      int      `json:"priority"`
 	AllowedModels []string `json:"allowed_models,omitempty"`
@@ -436,6 +459,8 @@ type modelResponse struct {
 	InputPrice  float64 `json:"input_price"`
 	OutputPrice float64 `json:"output_price"`
 	CachePrice  float64 `json:"cache_price"`
+
+	PricePerRequest float64 `json:"price_per_request,omitempty"`
 
 	ContextWindow int `json:"context_window,omitempty"`
 	MaxOutput     int `json:"max_output,omitempty"`
@@ -478,17 +503,18 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager) *provi
 	mr := make([]*modelResponse, len(models))
 	for i, m := range models {
 		mr[i] = &modelResponse{
-			ID:            m.ID,
-			ProviderID:    m.ProviderID,
-			Name:          m.Name,
-			DisplayName:   m.DisplayName,
-			Enabled:       m.Enabled,
-			Capabilities:  capabilitiesToStrings(m.Capabilities),
-			InputPrice:    m.InputPrice,
-			OutputPrice:   m.OutputPrice,
-			CachePrice:    m.CachePrice,
-			ContextWindow: m.ContextWindow,
-			MaxOutput:     m.MaxOutput,
+			ID:              m.ID,
+			ProviderID:      m.ProviderID,
+			Name:            m.Name,
+			DisplayName:     m.DisplayName,
+			Enabled:         m.Enabled,
+			Capabilities:    capabilitiesToStrings(m.Capabilities),
+			InputPrice:      m.InputPrice,
+			OutputPrice:     m.OutputPrice,
+			CachePrice:      m.CachePrice,
+			PricePerRequest: m.PricePerRequest,
+			ContextWindow:   m.ContextWindow,
+			MaxOutput:       m.MaxOutput,
 		}
 		// Enrich with pricing from PricingManager if model has no price set
 		if mr[i].InputPrice == 0 && mr[i].OutputPrice == 0 && pm != nil {
@@ -509,6 +535,7 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager) *provi
 		BaseURL:       p.BaseURL,
 		APIFormat:     p.APIFormat,
 		APIKeys:       p.APIKeys,
+		OAuth:         p.OAuth,
 		Priority:      p.Priority,
 		AllowedModels: p.AllowedModels,
 		Icon:          p.Icon,
@@ -862,7 +889,7 @@ func (h *Handler) UpdateModelParams(c echo.Context) error {
 	}
 
 	provider.ModelParams = &params
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 
 	if err := h.pool.Registry.Update(provider); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -894,7 +921,7 @@ func (h *Handler) UpdateAllowedModels(c echo.Context) error {
 	}
 
 	provider.AllowedModels = req.AllowedModels
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 
 	if err := h.pool.Registry.Update(provider); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -955,13 +982,13 @@ func (h *Handler) DetectCapabilities(c echo.Context) error {
 	}
 
 	// Update provider with detected capabilities
-	now := time.Now().Unix()
+	now := timeutil.Now()
 	if provider.ModelParams == nil {
 		provider.ModelParams = &ModelParams{}
 	}
 	provider.ModelParams.DetectedMaxTokens = &detectedMaxTokens
 	provider.ModelParams.DetectedAt = &now
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 
 	if err := h.pool.Registry.Update(provider); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -1008,7 +1035,7 @@ func (h *Handler) UpdateProviderIcon(c echo.Context) error {
 	}
 
 	provider.CustomIcon = req.Icon
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 
 	if err := h.pool.Registry.Update(provider); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -1033,7 +1060,7 @@ func (h *Handler) DeleteProviderIcon(c echo.Context) error {
 	}
 
 	provider.CustomIcon = ""
-	provider.UpdatedAt = time.Now()
+	provider.UpdatedAt = timeutil.NowTime()
 
 	if err := h.pool.Registry.Update(provider); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -1217,7 +1244,7 @@ func (h *Handler) GetUsageStats(c echo.Context) error {
 	}
 
 	var start, end time.Time
-	end = time.Now()
+	end = timeutil.NowTime()
 
 	switch period {
 	case "day":
@@ -1248,7 +1275,7 @@ func (h *Handler) GetProviderUsage(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	modelStats, _ := h.pool.UsageTracker.GetModelStats(id, time.Now().AddDate(0, 0, -7), time.Now())
+	modelStats, _ := h.pool.UsageTracker.GetModelStats(id, timeutil.NowTime().AddDate(0, 0, -7), timeutil.NowTime())
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"summary": summary,
@@ -1358,6 +1385,18 @@ func (h *Handler) GetImportableConfigs(c echo.Context) error {
 		}
 		keyHash := HashAPIKey(realKey)
 		if existingKeyHashes[keyHash] {
+			cfg.AlreadyImported = true
+			cfg.CanImport = false
+		}
+	}
+
+	// Auto-import OAuth tokens: if we found OAuth credentials, import them automatically
+	for _, cfg := range configs {
+		if !cfg.HasOAuth || !cfg.CanImport || cfg.AlreadyImported {
+			continue
+		}
+		providerID := h.autoImportOAuthToken(cfg.IDEType)
+		if providerID != "" {
 			cfg.AlreadyImported = true
 			cfg.CanImport = false
 		}
@@ -1835,7 +1874,7 @@ func (h *Handler) RecalculateCosts(c echo.Context) error {
 	}
 
 	var start, end time.Time
-	end = time.Now()
+	end = timeutil.NowTime()
 
 	switch period {
 	case "day":
@@ -1982,4 +2021,326 @@ func (h *Handler) GetTrialQuota(c echo.Context) error {
 
 	status := h.pool.TrialQuotaManager.GetStatus()
 	return c.JSON(http.StatusOK, status)
+}
+
+// SetOAuthManager sets the OAuth manager for the handler.
+func (h *Handler) SetOAuthManager(m *oauth.Manager) {
+	h.oauthManager = m
+}
+
+// RegisterOAuthCallbackRoute registers the OAuth callback route on a top-level group.
+// This needs to be separate because the callback URL is a fixed path (not under /providers/:id).
+func (h *Handler) RegisterOAuthCallbackRoute(e *echo.Echo) {
+	e.GET("/api/v1/providers/oauth/callback", h.HandleOAuthCallback)
+}
+
+// StartOAuth starts an OAuth flow for a provider.
+func (h *Handler) StartOAuth(c echo.Context) error {
+	if h.oauthManager == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "oauth not configured"})
+	}
+
+	providerID := c.Param("id")
+
+	var req struct {
+		ProviderType string `json:"provider_type"` // "antigravity", "gemini-cli", "copilot"
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	if req.ProviderType == "" {
+		// Try to infer from provider
+		provider, err := h.pool.Registry.Get(providerID)
+		if err == nil && provider.OAuth != nil {
+			req.ProviderType = provider.OAuth.ProviderType
+		}
+		if req.ProviderType == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "provider_type is required"})
+		}
+	}
+
+	result, err := h.oauthManager.StartAuth(c.Request().Context(), providerID, req.ProviderType)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
+// HandleOAuthCallback handles the OAuth redirect callback.
+func (h *Handler) HandleOAuthCallback(c echo.Context) error {
+	if h.oauthManager == nil {
+		return c.HTML(http.StatusServiceUnavailable, "OAuth not configured")
+	}
+
+	state := c.QueryParam("state")
+	code := c.QueryParam("code")
+	errParam := c.QueryParam("error")
+
+	if errParam != "" {
+		desc := c.QueryParam("error_description")
+		return c.HTML(http.StatusBadRequest, fmt.Sprintf("<h2>Authorization failed</h2><p>%s: %s</p>", errParam, desc))
+	}
+
+	token, err := h.oauthManager.HandleCallback(c.Request().Context(), state, code)
+	if err != nil {
+		return c.HTML(http.StatusBadRequest, fmt.Sprintf("<h2>Authorization failed</h2><p>%s</p>", err.Error()))
+	}
+
+	// Update the provider's OAuth config
+	provider, getErr := h.pool.Registry.Get(token.ProviderID)
+	if getErr == nil {
+		if provider.OAuth == nil {
+			provider.OAuth = &OAuthConfig{}
+		}
+		provider.OAuth.ProviderType = token.ProviderType
+		provider.OAuth.AccessToken = token.AccessToken
+		provider.OAuth.RefreshToken = token.RefreshToken
+		provider.OAuth.TokenExpiry = token.TokenExpiry
+		provider.OAuth.Email = token.Email
+		provider.OAuth.ProjectID = token.ProjectID
+		provider.OAuth.Endpoint = token.Endpoint
+		provider.OAuth.Connected = true
+		provider.OAuth.Scopes = token.Scopes
+		provider.Enabled = true
+		provider.Status = ProviderStatusActive
+		h.pool.Registry.Update(provider)
+	}
+
+	return c.HTML(http.StatusOK, `<!DOCTYPE html><html><body>
+<h2>Authorization successful</h2>
+<p>You can close this window and return to ZimaOS Blue.</p>
+<script>window.close()</script>
+</body></html>`)
+}
+
+// CompleteDeviceFlow completes a GitHub device code flow.
+func (h *Handler) CompleteDeviceFlow(c echo.Context) error {
+	if h.oauthManager == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "oauth not configured"})
+	}
+
+	var req struct {
+		DeviceCode string `json:"device_code"`
+		Interval   int    `json:"interval"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Minute)
+	defer cancel()
+
+	token, err := h.oauthManager.CompleteDeviceFlow(ctx, req.DeviceCode, req.Interval)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Update provider
+	provider, getErr := h.pool.Registry.Get(token.ProviderID)
+	if getErr == nil {
+		if provider.OAuth == nil {
+			provider.OAuth = &OAuthConfig{}
+		}
+		provider.OAuth.ProviderType = token.ProviderType
+		provider.OAuth.AccessToken = token.AccessToken
+		provider.OAuth.RefreshToken = token.RefreshToken
+		provider.OAuth.TokenExpiry = token.TokenExpiry
+		provider.OAuth.Email = token.Email
+		provider.OAuth.Connected = true
+		provider.Enabled = true
+		provider.Status = ProviderStatusActive
+		h.pool.Registry.Update(provider)
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"connected": true,
+		"email":     token.Email,
+	})
+}
+
+// DisconnectOAuth disconnects OAuth for a provider.
+func (h *Handler) DisconnectOAuth(c echo.Context) error {
+	if h.oauthManager == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "oauth not configured"})
+	}
+
+	providerID := c.Param("id")
+
+	if err := h.oauthManager.Disconnect(providerID); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Update provider
+	provider, err := h.pool.Registry.Get(providerID)
+	if err == nil && provider.OAuth != nil {
+		provider.OAuth.Connected = false
+		provider.OAuth.AccessToken = ""
+		provider.OAuth.RefreshToken = ""
+		provider.OAuth.Email = ""
+		h.pool.Registry.Update(provider)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"status": "disconnected"})
+}
+
+// GetOAuthStatus returns the OAuth status for a provider.
+func (h *Handler) GetOAuthStatus(c echo.Context) error {
+	providerID := c.Param("id")
+
+	provider, err := h.pool.Registry.Get(providerID)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
+	}
+
+	if provider.OAuth == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"connected":     false,
+			"provider_type": "",
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"connected":     provider.OAuth.Connected,
+		"provider_type": provider.OAuth.ProviderType,
+		"email":         provider.OAuth.Email,
+		"project_id":    provider.OAuth.ProjectID,
+		"token_expiry":  provider.OAuth.TokenExpiry,
+	})
+}
+
+// ImportOAuthToken imports an OAuth token scanned from a local IDE.
+func (h *Handler) ImportOAuthToken(c echo.Context) error {
+	if h.oauthManager == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "oauth not configured"})
+	}
+
+	ideType := ide.IDEType(c.Param("type"))
+
+	providerID := h.autoImportOAuthToken(ideType)
+	if providerID == "" {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "no OAuth token found for " + string(ideType)})
+	}
+
+	// Get email for response
+	email := ""
+	if provider, err := h.pool.Registry.Get(providerID); err == nil && provider.OAuth != nil {
+		email = provider.OAuth.Email
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message":     "OAuth token imported",
+		"provider_id": providerID,
+		"ide_type":    string(ideType),
+		"email":       email,
+	})
+}
+
+func oauthProviderIDForIDE(ideType ide.IDEType) string {
+	switch ideType {
+	case ide.IDETypeAntigravity:
+		return "google-antigravity"
+	case ide.IDETypeCopilot:
+		return "github-copilot"
+	case ide.IDETypeCodex:
+		return "openai-codex"
+	default:
+		return "google-gemini-cli"
+	}
+}
+
+// autoImportOAuthToken imports an OAuth token for the given IDE type.
+// Returns the provider ID on success, or empty string on failure.
+func (h *Handler) autoImportOAuthToken(ideType ide.IDEType) string {
+	if h.oauthManager == nil || h.pool == nil || h.pool.Registry == nil {
+		return ""
+	}
+
+	token, err := ide.ScanOAuthToken(ideType)
+	if err != nil {
+		return ""
+	}
+
+	providerID := oauthProviderIDForIDE(ideType)
+
+	provider, getErr := h.pool.Registry.Get(providerID)
+	if getErr != nil {
+		// Create the provider
+		oauthCfg := oauth.GetProviderConfig(token.ProviderType)
+		if oauthCfg == nil {
+			return ""
+		}
+
+		provider = &Provider{
+			ID:       providerID,
+			Name:     oauthCfg.Name,
+			Type:     ProviderTypeBuiltin,
+			Location: ProviderLocationCloud,
+			Enabled:  true,
+			Status:   ProviderStatusActive,
+			Priority: 50,
+			OAuth: &OAuthConfig{
+				ProviderType: token.ProviderType,
+				Connected:    true,
+				Email:        token.Email,
+				ProjectID:    token.ProjectID,
+				Endpoint:     token.Endpoint,
+				AccessToken:  token.AccessToken,
+				RefreshToken: token.RefreshToken,
+				TokenExpiry:  token.TokenExpiry,
+				Scopes:       token.Scopes,
+			},
+			CreatedAt: timeutil.NowTime(),
+			UpdatedAt: timeutil.NowTime(),
+		}
+
+		switch token.ProviderType {
+		case "antigravity", "gemini-cli":
+			provider.BaseURL = token.Endpoint
+			provider.APIFormat = APIFormatCloudCode
+		case "copilot":
+			provider.BaseURL = "https://api.githubcopilot.com"
+			provider.APIFormat = APIFormatCopilot
+		case "codex":
+			provider.BaseURL = token.Endpoint
+			provider.APIFormat = APIFormatOpenAI
+		}
+
+		if err := h.pool.Registry.Register(provider); err != nil {
+			return ""
+		}
+	} else {
+		// Update existing provider with fresh token
+		if provider.OAuth == nil {
+			provider.OAuth = &OAuthConfig{}
+		}
+		provider.OAuth.ProviderType = token.ProviderType
+		provider.OAuth.AccessToken = token.AccessToken
+		provider.OAuth.RefreshToken = token.RefreshToken
+		provider.OAuth.TokenExpiry = token.TokenExpiry
+		provider.OAuth.Email = token.Email
+		provider.OAuth.ProjectID = token.ProjectID
+		provider.OAuth.Endpoint = token.Endpoint
+		provider.OAuth.Connected = true
+		provider.OAuth.Scopes = token.Scopes
+		provider.Enabled = true
+		provider.Status = ProviderStatusActive
+		h.pool.Registry.Update(provider)
+	}
+
+	// Also save to OAuth store
+	if h.oauthManager != nil {
+		_ = h.oauthManager.ImportToken(token)
+	}
+
+	return providerID
+}
+
+// ScanOAuthTokens scans all supported IDEs for OAuth tokens.
+func (h *Handler) ScanOAuthTokens(c echo.Context) error {
+	results := ide.ScanAllOAuthTokens()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"results": results,
+	})
 }

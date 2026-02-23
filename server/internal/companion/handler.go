@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Handler handles REST API requests for the companion service.
@@ -255,7 +256,7 @@ func (h *Handler) AcknowledgeAlert(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	alert.Acknowledged = true
 	alert.AckedAt = &now
 	alert.AckedBy = userID
@@ -283,7 +284,7 @@ func (h *Handler) BulkAcknowledgeAlerts(c echo.Context) error {
 
 	// Get user ID from context (set by auth middleware)
 	userID := getContextString(c, "user_id", "anonymous")
-	now := time.Now()
+	now := timeutil.NowTime()
 	acknowledged := 0
 
 	for _, id := range req.AlertIDs {

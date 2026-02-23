@@ -396,7 +396,7 @@ func (m *Manager) Send(ctx context.Context, channelName string, msg OutgoingMess
 
 	// Humanize content for IM channels (skip if explicitly markdown)
 	if msg.Format != "markdown" && msg.Content != "" {
-		msg.Content = humanizer.Humanize(msg.Content, humanizer.ModeIM)
+		msg.Content, msg.Format = humanizer.HumanizeForChannel(msg.Content, ch.Type())
 	}
 
 	return ch.Send(ctx, msg)
@@ -415,7 +415,12 @@ func (m *Manager) Broadcast(ctx context.Context, msg OutgoingMessage) map[string
 
 	errors := make(map[string]error)
 	for _, ch := range channels {
-		if err := ch.Send(ctx, msg); err != nil {
+		outMsg := msg
+		// Per-channel formatting
+		if outMsg.Format != "markdown" && outMsg.Content != "" {
+			outMsg.Content, outMsg.Format = humanizer.HumanizeForChannel(outMsg.Content, ch.Type())
+		}
+		if err := ch.Send(ctx, outMsg); err != nil {
 			errors[ch.Name()] = err
 		}
 	}

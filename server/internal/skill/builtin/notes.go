@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // NoteItem represents a single note
@@ -168,7 +169,7 @@ func (n *Notes) createNote(input map[string]any) (*skill.Result, error) {
 
 	n.counter++
 	id := fmt.Sprintf("note-%d", n.counter)
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	note := &NoteItem{
 		ID:      id,
@@ -250,7 +251,7 @@ func (n *Notes) updateNote(input map[string]any) (*skill.Result, error) {
 			}
 		}
 	}
-	note.Updated = time.Now()
+	note.Updated = timeutil.NowTime()
 
 	return skill.NewResult(map[string]any{
 		"updated": true,
@@ -358,3 +359,4 @@ func equalIgnoreCase(a, b string) bool {
 	}
 	return true
 }
+

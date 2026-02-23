@@ -59,7 +59,7 @@ Izgrađen za odvažne programere koji žele **kreativno ili ručno izraditi vlas
 Idemo dalje: nativna podrška za **20+ IM platformi**, **glasovno upravljana** sučelja za prirodan, kontekstualno svjestan dijalog, **prebacivanje modela bez konfiguracije** s IDE skeniranjem i SOUL-slojevite osobnosti.
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Brzo i lagano
@@ -95,13 +95,49 @@ Vjerujemo da **osobno računarstvo sljedeće generacije** prihvaća LLM-ove — 
 - **Lokalno orijentirano, ultra lagano, višeuređajno** – Nije potreban vrhunski hardver. Radi na svemu što može računati.
 - **Sigurno i provjerljivo** – Revizija sesija, sandboxing, kontrole dozvola i ugrađeni API proxy koji djeluje kao vatrozid aplikacijskog sloja — svaki bajt ulaza/izlaza je vidljiv.
 
+![](../../docs/assets/design_principle.png)
+
 Smanjujemo predloške koda kako biste se **usredotočili na ono što je važno**. Vjerni <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **dizajnerskoj filozofiji ZimaOS-a**, Blue pruža:
 - **Od nule do jedan jednim klikom** – Trenutačna implementacija, bez složene konfiguracije.
 - **Brzo prototipiranje** – Kreativno ili ručno izradite alate, interakcije i pakete aplikacija specifične za scenarij.
 - **Globalno spremno** – **Svijet je velik** i ne govori zadano engleski. **20+ jezika, nativno**, bez prepreka.
 - **Otvoreni ekosustav modela** – Bez vezanosti za dobavljača. Donesite vlastite modele.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Pružatelj | Modeli | Vrsta |
+|-----------|--------|-------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
+| Anthropic | Claude 4.5, Claude 4 | Cloud |
+| Google | Gemini 2.5, Gemini 2.0 | Cloud |
+| Ollama | Llama, Qwen, Gemma, Phi itd. | Lokalno |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| Grok | Grok-3, Grok-3-mini | Cloud |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
+| GLM | GLM-4, GLM-4-Flash | Cloud |
+| Moonshot | Moonshot-v1 | Cloud |
+| MiniMax | abab6.5, abab5.5 | Cloud |
+| Venice | Llama, Mistral (privatnost na prvom mjestu) | Cloud |
+| AWS Bedrock | Claude, Llama, Titan | Cloud |
+| Azure | OpenAI modeli putem Azurea | Cloud |
+| OpenRouter | 100+ agregiranih modela | Cloud |
+| AIHubMix | Multi-provider agregator | Cloud |
+| Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
+| Prilagođeno | Bilo koji API kompatibilan s OpenAI / Anthropic / Gemini | Cloud / Lokalno |
+
+</details>
+
+### Podržana IDE okruženja
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Brzi početak
 
@@ -129,7 +165,6 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -142,11 +177,7 @@ sh build.sh
 .\build.bat
 ```
 
-> **Note:** Windows builds require:
-> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus, kokoro, onnx)
-> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) for system libraries (winmm, etc.)
->
-> Make sure `gcc`, `cmake` are in your `PATH`.
+> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
 
 ## Pregled arhitekture
 

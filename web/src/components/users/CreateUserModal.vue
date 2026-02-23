@@ -25,9 +25,10 @@ const availablePermissions = ref<PermissionInfo[]>([])
 
 // Password policy from backend
 const policy = ref<PasswordPolicy>({
-  min_length: 8,
-  require_uppercase: true,
-  require_lowercase: true,
+  min_length: 6,
+  require_uppercase: false,
+  require_lowercase: false,
+  require_letter: true,
   require_number: true,
   require_special: true,
 })
@@ -47,8 +48,7 @@ const passwordChecks = computed(() => {
   const p = policy.value
   return {
     length: pwd.length >= p.min_length,
-    uppercase: !p.require_uppercase || /[A-Z]/.test(pwd),
-    lowercase: !p.require_lowercase || /[a-z]/.test(pwd),
+    letter: !p.require_letter || /\p{L}/u.test(pwd),
     number: !p.require_number || /[0-9]/.test(pwd),
     special: !p.require_special || /[^\p{L}\p{N}\s]/u.test(pwd),
   }
@@ -61,7 +61,7 @@ const passwordStrength = computed(() => {
 
 const allPasswordChecksPassed = computed(() => {
   const checks = passwordChecks.value
-  return checks.length && checks.uppercase && checks.lowercase && checks.number && checks.special
+  return checks.length && checks.letter && checks.number && checks.special
 })
 
 const passwordMismatch = computed(() => {
@@ -69,11 +69,10 @@ const passwordMismatch = computed(() => {
 })
 
 const isValid = computed(() => {
-  return (
-    username.value.length >= 3 &&
-    allPasswordChecksPassed.value &&
-    password.value === confirmPassword.value
-  )
+  const baseValid = username.value.length >= 3 && allPasswordChecksPassed.value
+  // When password is visible, no need for confirm password
+  if (showPassword.value) return baseValid
+  return baseValid && password.value === confirmPassword.value
 })
 
 // Default permissions based on role
@@ -125,7 +124,17 @@ async function handleSubmit() {
     emit('created')
   } catch (e) {
     const axiosError = e as { response?: { data?: { message?: string } } }
-    error.value = axiosError.response?.data?.message || t('users.error.createFailed')
+    const msg = axiosError.response?.data?.message
+    // Map known backend error messages to i18n keys
+    if (msg === 'password does not meet requirements') {
+      error.value = t('users.error.passwordNotMeetRequirements')
+    } else if (msg === 'username already exists') {
+      error.value = t('users.error.usernameExists')
+    } else if (msg === 'email already exists') {
+      error.value = t('users.error.emailExists')
+    } else {
+      error.value = msg || t('users.error.createFailed')
+    }
   } finally {
     loading.value = false
   }
@@ -237,7 +246,7 @@ loadPermissions()
               <div v-if="password.length > 0" class="mt-2 space-y-2">
                 <div class="flex gap-1">
                   <div
-                    v-for="i in 5"
+                    v-for="i in 4"
                     :key="i"
                     class="h-1 flex-1 rounded-full transition-colors"
                     :class="i <= passwordStrength ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
@@ -253,19 +262,11 @@ loadPermissions()
                     </span>
                   </div>
                   <div class="flex items-center gap-1.5">
-                    <span :class="passwordChecks.uppercase ? 'text-green-500' : 'text-gray-400'">
-                      {{ passwordChecks.uppercase ? '✓' : '○' }}
+                    <span :class="passwordChecks.letter ? 'text-green-500' : 'text-gray-400'">
+                      {{ passwordChecks.letter ? '✓' : '○' }}
                     </span>
-                    <span :class="passwordChecks.uppercase ? 'text-green-600 dark:text-green-400' : 'text-gray-500'">
-                      {{ t('preview.passwordCheck.uppercase') }}
-                    </span>
-                  </div>
-                  <div class="flex items-center gap-1.5">
-                    <span :class="passwordChecks.lowercase ? 'text-green-500' : 'text-gray-400'">
-                      {{ passwordChecks.lowercase ? '✓' : '○' }}
-                    </span>
-                    <span :class="passwordChecks.lowercase ? 'text-green-600 dark:text-green-400' : 'text-gray-500'">
-                      {{ t('preview.passwordCheck.lowercase') }}
+                    <span :class="passwordChecks.letter ? 'text-green-600 dark:text-green-400' : 'text-gray-500'">
+                      {{ t('preview.passwordCheck.letter') }}
                     </span>
                   </div>
                   <div class="flex items-center gap-1.5">
@@ -276,7 +277,7 @@ loadPermissions()
                       {{ t('preview.passwordCheck.number') }}
                     </span>
                   </div>
-                  <div class="flex items-center gap-1.5 col-span-2">
+                  <div class="flex items-center gap-1.5">
                     <span :class="passwordChecks.special ? 'text-green-500' : 'text-gray-400'">
                       {{ passwordChecks.special ? '✓' : '○' }}
                     </span>
@@ -288,14 +289,14 @@ loadPermissions()
               </div>
             </div>
 
-            <!-- Confirm Password -->
-            <div>
+            <!-- Confirm Password (hidden when password is visible) -->
+            <div v-if="!showPassword">
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 {{ t('auth.confirmPassword') }} *
               </label>
               <input
                 v-model="confirmPassword"
-                :type="showPassword ? 'text' : 'password'"
+                type="password"
                 class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                 :class="passwordMismatch ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
                 required

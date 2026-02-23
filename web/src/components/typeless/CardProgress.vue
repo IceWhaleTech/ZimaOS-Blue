@@ -69,8 +69,8 @@ const progressWidth = computed(() => `${Math.min(100, Math.max(0, props.card.pro
         <span
           class="w-5 h-5 rounded-full flex items-center justify-center text-xs"
           :class="{
-            'bg-gray-700 dark:bg-gray-500 text-gray-500': step.status === 'pending',
-            'bg-gray-700 dark:bg-gray-500/30 text-gray-900 dark:text-white': step.status === 'running',
+            'bg-gray-100 dark:bg-gray-600 text-gray-500': step.status === 'pending',
+            'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400': step.status === 'running',
             'bg-green-100 dark:bg-green-900/30 text-green-500': step.status === 'completed',
             'bg-red-100 dark:bg-red-900/30 text-red-500': step.status === 'failed',
           }"

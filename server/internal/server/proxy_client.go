@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ProxyClient is a client for making requests through the local proxy
@@ -203,7 +204,7 @@ func (c *ProxyClient) ChatStreamCallback(ctx context.Context, req llm.ChatReques
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	var totalContent string
 	var usage *llm.Usage
-	lastActivity := time.Now()
+	lastActivity := timeutil.NowTime()
 	idleTimeout := 30 * time.Second // Timeout if no data for 30 seconds
 
 	for {
@@ -214,7 +215,7 @@ func (c *ProxyClient) ChatStreamCallback(ctx context.Context, req llm.ChatReques
 		}
 
 		// Check for idle timeout
-		if time.Since(lastActivity) > idleTimeout {
+		if timeutil.SinceTime(lastActivity) > idleTimeout {
 			return fmt.Errorf("stream idle timeout: no data received for %v", idleTimeout)
 		}
 
@@ -226,7 +227,7 @@ func (c *ProxyClient) ChatStreamCallback(ctx context.Context, req llm.ChatReques
 			// EOF - stream ended normally
 			return callback(llm.StreamChunk{Done: true, Usage: usage})
 		}
-		lastActivity = time.Now()
+		lastActivity = timeutil.NowTime()
 
 		lineStr := scanner.Text()
 

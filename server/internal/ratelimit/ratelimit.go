@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Config holds rate limiter configuration.
@@ -88,7 +89,7 @@ func (l *Limiter) cleanup() {
 			return
 		case <-ticker.C:
 			l.mu.Lock()
-			now := time.Now()
+			now := timeutil.NowTime()
 			for key, state := range l.clients {
 				if now.After(state.windowEnd) {
 					delete(l.clients, key)
@@ -104,7 +105,7 @@ func (l *Limiter) Allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	state, exists := l.clients[key]
 
 	if !exists || now.After(state.windowEnd) {
@@ -129,7 +130,7 @@ func (l *Limiter) Remaining(key string) int {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	state, exists := l.clients[key]
 
 	if !exists || now.After(state.windowEnd) {
@@ -150,7 +151,7 @@ func (l *Limiter) Reset(key string) time.Time {
 
 	state, exists := l.clients[key]
 	if !exists {
-		return time.Now().Add(l.config.Window)
+		return timeutil.NowTime().Add(l.config.Window)
 	}
 	return state.windowEnd
 }
@@ -349,7 +350,7 @@ func (a *AuthLimiter) AllowMFA(key string) bool {
 func (a *AuthLimiter) Block(key string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.blocked[key] = time.Now().Add(a.blockDuration)
+	a.blocked[key] = timeutil.NowTime().Add(a.blockDuration)
 }
 
 // IsBlocked checks if a key is currently blocked.
@@ -360,7 +361,7 @@ func (a *AuthLimiter) IsBlocked(key string) bool {
 	if !exists {
 		return false
 	}
-	return time.Now().Before(blockedUntil)
+	return timeutil.NowTime().Before(blockedUntil)
 }
 
 // Unblock removes a block for a key.

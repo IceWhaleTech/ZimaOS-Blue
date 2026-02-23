@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ModelChain manages a chain of models for failover.
@@ -137,7 +138,7 @@ func (m *ChainedModel) RecordSuccess(latency time.Duration) {
 	defer m.mu.Unlock()
 
 	m.successCount++
-	m.lastSuccess = time.Now()
+	m.lastSuccess = timeutil.NowTime()
 	m.healthy = true
 	m.latencySum += latency
 	m.latencyCount++
@@ -152,7 +153,7 @@ func (m *ChainedModel) RecordFailure(err error) {
 	defer m.mu.Unlock()
 
 	m.failureCount++
-	m.lastFailure = time.Now()
+	m.lastFailure = timeutil.NowTime()
 	m.lastError = err
 }
 
@@ -284,7 +285,7 @@ func (m *ModelChainManager) ExecuteWithFailover(
 
 		// Execute with retries
 		for attempt := 0; attempt <= model.MaxRetries; attempt++ {
-			start := time.Now()
+			start := timeutil.NowTime()
 
 			// Create context with timeout
 			execCtx := ctx
@@ -295,7 +296,7 @@ func (m *ModelChainManager) ExecuteWithFailover(
 			}
 
 			resp, err := provider.Chat(execCtx, req)
-			latency := time.Since(start)
+			latency := timeutil.SinceTime(start)
 
 			if err == nil {
 				model.RecordSuccess(latency)
@@ -369,7 +370,7 @@ func (m *ModelChainManager) StreamWithFailover(
 			defer cancel()
 		}
 
-		start := time.Now()
+		start := timeutil.NowTime()
 		stream, err := provider.ChatStream(execCtx, req)
 		if err == nil {
 			// Wrap stream to record success on completion
@@ -400,7 +401,7 @@ func (m *ModelChainManager) wrapStream(
 		for chunk := range in {
 			out <- chunk
 			if chunk.Done {
-				model.RecordSuccess(time.Since(start))
+				model.RecordSuccess(timeutil.SinceTime(start))
 			}
 		}
 	}()

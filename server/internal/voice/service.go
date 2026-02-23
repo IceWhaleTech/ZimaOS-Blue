@@ -19,6 +19,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/humanizer"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // service implements the Service interface.
@@ -76,8 +77,8 @@ func (s *service) CreateSession(ctx context.Context, userID string, config *Voic
 		State:        StateIdle,
 		Language:     config.Language,
 		Voice:        config.Voice,
-		CreatedAt:    time.Now(),
-		LastActivity: time.Now(),
+		CreatedAt:    timeutil.NowTime(),
+		LastActivity: timeutil.NowTime(),
 	}
 
 	s.mu.Lock()
@@ -98,7 +99,7 @@ func (s *service) GetSession(ctx context.Context, sessionID string) (*Session, e
 	}
 
 	// Check if session has expired (30 minutes of inactivity)
-	if time.Since(session.LastActivity) > 30*time.Minute {
+	if timeutil.SinceTime(session.LastActivity) > 30*time.Minute {
 		s.mu.Lock()
 		delete(s.sessions, sessionID)
 		s.mu.Unlock()
@@ -119,7 +120,7 @@ func (s *service) UpdateSessionState(ctx context.Context, sessionID string, stat
 	}
 
 	session.State = state
-	session.LastActivity = time.Now()
+	session.LastActivity = timeutil.NowTime()
 	return nil
 }
 
@@ -387,7 +388,7 @@ func (s *service) CleanupExpiredSessions() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	for id, session := range s.sessions {
 		if now.Sub(session.LastActivity) > 30*time.Minute {
 			delete(s.sessions, id)

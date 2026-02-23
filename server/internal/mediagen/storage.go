@@ -1,0 +1,160 @@
+package mediagen
+
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// MediaStorage handles downloading, caching, and serving generated media files.
+type MediaStorage struct {
+	baseDir string
+	baseURL string
+	client  *http.Client
+}
+
+// NewMediaStorage creates a new media storage.
+func NewMediaStorage(baseDir, baseURL string) *MediaStorage {
+	return &MediaStorage{
+		baseDir: baseDir,
+		baseURL: strings.TrimRight(baseURL, "/"),
+		client: &http.Client{
+			Timeout: 60 * time.Second,
+		},
+	}
+}
+
+// EnsureDirs creates the storage directories if they don't exist.
+func (s *MediaStorage) EnsureDirs() error {
+	for _, sub := range []string{"images", "videos"} {
+		if err := os.MkdirAll(filepath.Join(s.baseDir, sub), 0755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Download fetches a remote URL and stores it locally. Returns the local served URL.
+func (s *MediaStorage) Download(ctx context.Context, remoteURL string, mediaType MediaType) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, remoteURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("download failed: status %d", resp.StatusCode)
+	}
+
+	ext := extensionFromContentType(resp.Header.Get("Content-Type"), mediaType)
+	filename := uuid.New().String() + ext
+	subdir := subdirForType(mediaType)
+	localPath := filepath.Join(s.baseDir, subdir, filename)
+
+	f, err := os.Create(localPath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		os.Remove(localPath)
+		return "", err
+	}
+
+	return s.baseURL + "/" + subdir + "/" + filename, nil
+}
+
+// StoreBase64 decodes base64 data and stores it locally. Returns the local served URL.
+func (s *MediaStorage) StoreBase64(data string, contentType string, mediaType MediaType) (string, error) {
+	decoded, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return "", err
+	}
+
+	ext := extensionFromContentType(contentType, mediaType)
+	filename := uuid.New().String() + ext
+	subdir := subdirForType(mediaType)
+	localPath := filepath.Join(s.baseDir, subdir, filename)
+
+	if err := os.WriteFile(localPath, decoded, 0644); err != nil {
+		return "", err
+	}
+
+	return s.baseURL + "/" + subdir + "/" + filename, nil
+}
+
+// Cleanup removes files older than maxAge.
+func (s *MediaStorage) Cleanup(maxAge time.Duration) (int, error) {
+	cutoff := time.Now().Add(-maxAge)
+	removed := 0
+
+	for _, subdir := range []string{"images", "videos"} {
+		dir := filepath.Join(s.baseDir, subdir)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			if info.ModTime().Before(cutoff) {
+				os.Remove(filepath.Join(dir, entry.Name()))
+				removed++
+			}
+		}
+	}
+	return removed, nil
+}
+
+// ServeHTTP serves stored media files.
+func (s *MediaStorage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	http.FileServer(http.Dir(s.baseDir)).ServeHTTP(w, r)
+}
+
+func subdirForType(t MediaType) string {
+	if t == MediaTypeVideo {
+		return "videos"
+	}
+	return "images"
+}
+
+func extensionFromContentType(ct string, t MediaType) string {
+	ct = strings.ToLower(ct)
+	switch {
+	case strings.Contains(ct, "png"):
+		return ".png"
+	case strings.Contains(ct, "jpeg"), strings.Contains(ct, "jpg"):
+		return ".jpg"
+	case strings.Contains(ct, "webp"):
+		return ".webp"
+	case strings.Contains(ct, "gif"):
+		return ".gif"
+	case strings.Contains(ct, "mp4"):
+		return ".mp4"
+	case strings.Contains(ct, "webm"):
+		return ".webm"
+	default:
+		if t == MediaTypeVideo {
+			return ".mp4"
+		}
+		return ".png"
+	}
+}

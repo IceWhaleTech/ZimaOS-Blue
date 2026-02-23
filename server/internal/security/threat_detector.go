@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ThreatType represents the type of security threat.
@@ -175,7 +177,7 @@ func (td *ThreatDetector) DetectThreats(input, source, ipAddress, userID string)
 				Description: pattern.Description,
 				Details:     details,
 				Blocked:     pattern.Severity == SeverityCritical || pattern.Severity == SeverityHigh,
-				Timestamp:   time.Now(),
+				Timestamp: timeutil.NowTime(),
 			}
 			threats = append(threats, threat)
 		}
@@ -209,7 +211,7 @@ func (td *ThreatDetector) RecordBruteForce(ipAddress, userID string, attempts in
 		Description: "Brute force login attempt detected",
 		Details:     "",
 		Blocked:     attempts > 5,
-		Timestamp:   time.Now(),
+		Timestamp: timeutil.NowTime(),
 	}
 	td.recordThreat(threat)
 }
@@ -224,7 +226,7 @@ func (td *ThreatDetector) RecordRateLimitHit(ipAddress, endpoint string) {
 		IPAddress:   ipAddress,
 		Description: "Rate limit exceeded",
 		Blocked:     true,
-		Timestamp:   time.Now(),
+		Timestamp: timeutil.NowTime(),
 	}
 	td.recordThreat(threat)
 }
@@ -276,7 +278,7 @@ func (td *ThreatDetector) GetStats() *ThreatStats {
 		RiskLevel:      "safe",
 	}
 
-	cutoff := time.Now().Add(-24 * time.Hour)
+	cutoff := timeutil.NowTime().Add(-24 * time.Hour)
 
 	for _, event := range td.events {
 		if event.Timestamp.Before(cutoff) {
@@ -325,7 +327,7 @@ func (td *ThreatDetector) ClearOldEvents(maxAge time.Duration) int {
 	td.mu.Lock()
 	defer td.mu.Unlock()
 
-	cutoff := time.Now().Add(-maxAge)
+	cutoff := timeutil.NowTime().Add(-maxAge)
 	newEvents := make([]ThreatEvent, 0, len(td.events))
 
 	for _, event := range td.events {
@@ -340,14 +342,14 @@ func (td *ThreatDetector) ClearOldEvents(maxAge time.Duration) int {
 }
 
 func generateThreatID() string {
-	return time.Now().Format("20060102150405") + "-" + randomString(8)
+	return timeutil.NowTime().Format("20060102150405") + "-" + randomString(8)
 }
 
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyz0180789"
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+		b[i] = letters[timeutil.NowNano()%int64(len(letters))]
 		time.Sleep(time.Nanosecond)
 	}
 	return string(b)
@@ -390,7 +392,7 @@ func (td *ThreatDetector) GetThreatTrend(period string) *ThreatTrend {
 	td.mu.RLock()
 	defer td.mu.RUnlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	var startDate time.Time
 	var groupByHour bool
 

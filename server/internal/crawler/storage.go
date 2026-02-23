@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Storage defines the interface for storing crawl results
@@ -160,6 +161,6 @@ func (s *StreamingJSONStorage) Close() error {
 
 // GenerateFilename generates a filename with timestamp
 func GenerateFilename(prefix, extension string) string {
-	timestamp := time.Now().Format("20060102_150405")
+	timestamp := timeutil.NowTime().Format("20060102_150405")
 	return fmt.Sprintf("%s_%s.%s", prefix, timestamp, strings.TrimPrefix(extension, "."))
 }

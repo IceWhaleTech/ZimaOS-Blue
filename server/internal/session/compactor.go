@@ -9,6 +9,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	sessionctx "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SessionCompactor handles session compaction with summarization.
@@ -49,7 +50,7 @@ func (c *SessionCompactor) ShouldCompact(session *Session) bool {
 
 // Compact compacts a session by summarizing old messages.
 func (c *SessionCompactor) Compact(session *Session) (*CompactionResult, error) {
-	start := time.Now()
+	start := timeutil.NowTime()
 
 	session.SetState(SessionStateCompacting)
 	defer session.SetState(SessionStateActive)
@@ -88,7 +89,7 @@ func (c *SessionCompactor) Compact(session *Session) (*CompactionResult, error) 
 			TokensBefore:      tokensBefore,
 			TokensAfter:       tokensBefore,
 			TokensSaved:       0,
-			Duration:          time.Since(start),
+			Duration:          timeutil.SinceTime(start),
 		}, nil
 	}
 
@@ -150,7 +151,7 @@ func (c *SessionCompactor) Compact(session *Session) (*CompactionResult, error) 
 		TokensBefore:      tokensBefore,
 		TokensAfter:       tokensAfter,
 		TokensSaved:       tokensBefore - tokensAfter,
-		Duration:          time.Since(start),
+		Duration:          timeutil.SinceTime(start),
 	}, nil
 }
 

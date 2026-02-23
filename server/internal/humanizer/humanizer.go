@@ -1,5 +1,9 @@
-// Package humanizer transforms LLM Markdown output into natural text
-// suitable for IM channels and voice/TTS output.
+// Package humanizer transforms LLM Markdown output into formatted text
+// suitable for various IM channels, voice/TTS output, and web display.
+//
+// Architecture: Markdown → IR (intermediate representation) → platform-specific rendering.
+// The IR preserves style spans (bold, italic, code, etc.) and link spans,
+// enabling one parse pass with multiple render targets.
 package humanizer
 
 // Mode determines the level of text transformation.
@@ -31,34 +35,59 @@ func DefaultConfig() Config {
 }
 
 // Humanize transforms Markdown-formatted LLM output into natural text.
-// Rules are applied in a deterministic order. Safe for concurrent use.
+// Uses the IR pipeline: Parse → RenderPlain/RenderVoice.
+// Safe for concurrent use.
 func Humanize(text string, mode Mode) string {
 	if text == "" {
 		return ""
 	}
 
-	// Order matters: typeless cards first (before code fences strip their markers),
-	// then function_calls XML, then code fences, then block-level, then inline, then cleanup.
+	// Pre-process: strip non-standard elements that the IR parser doesn't handle
 	text = stripTypelessCards(text, mode)
 	text = stripFunctionCalls(text, mode)
-	text = stripCodeFences(text, mode)
-	text = stripImages(text, mode)
-	text = stripLinks(text, mode)
-	text = stripHeaders(text)
-	text = stripHorizontalRules(text)
-	text = stripBlockquotes(text)
-	text = stripBold(text)
-	text = stripItalic(text)
-	text = stripStrikethrough(text)
-	text = stripInlineCode(text)
 	text = stripHTMLTags(text)
-	text = normalizeBullets(text, mode)
 
-	if mode == ModeVoice {
-		text = stripEmojis(text)
+	ir := Parse(text, ParseOptions{
+		HeadingStyle: "none",
+		TableMode:    "off",
+	})
+
+	switch mode {
+	case ModeVoice:
+		return RenderVoice(ir)
+	default:
+		return RenderPlain(ir)
+	}
+}
+
+// HumanizeForChannel transforms Markdown for a specific channel type.
+// Returns the formatted text and the recommended format string for the channel.
+func HumanizeForChannel(text string, channelType string) (content string, format string) {
+	if text == "" {
+		return "", ""
 	}
 
-	text = normalizeWhitespace(text)
+	// Pre-process non-standard elements
+	text = stripTypelessCards(text, ModeIM)
+	text = stripFunctionCalls(text, ModeIM)
+	text = stripHTMLTags(text)
 
-	return text
+	ir := Parse(text, ParseOptions{
+		HeadingStyle:     "bold",
+		BlockquotePrefix: "",
+		TableMode:        "bullets",
+	})
+
+	switch channelType {
+	case "discord":
+		return RenderDiscord(ir), ""
+	case "telegram":
+		return RenderTelegram(ir), "html"
+	case "slack":
+		return RenderSlack(ir), ""
+	case "matrix":
+		return RenderMatrix(ir), "html"
+	default:
+		return RenderPlain(ir), ""
+	}
 }

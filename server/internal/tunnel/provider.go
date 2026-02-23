@@ -17,15 +17,14 @@ const (
 
 // Status represents the current tunnel status.
 type Status struct {
-	Active         bool      `json:"active"`
-	Connecting     bool      `json:"connecting,omitempty"`
-	URL            string    `json:"url,omitempty"`
-	StartedAt      time.Time `json:"started_at,omitempty"`
-	ExpiresAt      time.Time `json:"expires_at,omitempty"`
-	RemainingTime  string    `json:"remaining_time,omitempty"`
-	RenewedCount   int       `json:"renewed_count"`
-	Provider       Provider  `json:"provider,omitempty"`
-	TunnelPassword string    `json:"tunnel_password,omitempty"`
+	Active        bool      `json:"active"`
+	Connecting    bool      `json:"connecting,omitempty"`
+	URL           string    `json:"url,omitempty"`
+	StartedAt     time.Time `json:"started_at,omitempty"`
+	ExpiresAt     time.Time `json:"expires_at,omitempty"`
+	RemainingTime string    `json:"remaining_time,omitempty"`
+	RenewedCount  int       `json:"renewed_count"`
+	Provider      Provider  `json:"provider,omitempty"`
 }
 
 // Config represents provider-specific configuration.

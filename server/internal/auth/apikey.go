@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	z "github.com/IceWhaleTech/zorm"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -254,7 +255,7 @@ func (s *APIKeyService) CreateKey(ctx context.Context, req *CreateKeyRequest) (*
 	}
 
 	scopes := strings.Join(req.Scopes, ",")
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	var encryptedKey *string
 	if s.encryptor != nil {
@@ -315,7 +316,7 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, key string) (*APIKeyInf
 		return nil, ErrAPIKeyRevoked
 	}
 
-	if info.ExpiresAt != nil && info.ExpiresAt.Before(time.Now()) {
+	if info.ExpiresAt != nil && info.ExpiresAt.Before(timeutil.NowTime()) {
 		return nil, ErrAPIKeyExpired
 	}
 
@@ -324,7 +325,7 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, key string) (*APIKeyInf
 		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		s.table(bgCtx).Update(
-			z.V{"last_used": time.Now()},
+			z.V{"last_used": timeutil.NowTime()},
 			z.Where(z.Eq("id", info.ID)),
 		)
 	}()
@@ -413,7 +414,7 @@ func (s *APIKeyService) RotateKey(ctx context.Context, req *RotateKeyRequest) (*
 	newKey := generateAPIKey()
 	newPrefix := newKey[:8]
 	newKeyHash := hashKey(newKey)
-	now := time.Now()
+	now := timeutil.NowTime()
 	graceEnd := now.Add(gracePeriod)
 	scopesStr := strings.Join(oldInfo.Scopes, ",")
 
@@ -512,7 +513,7 @@ func (s *APIKeyService) CleanupExpiredRotations(ctx context.Context) (int64, err
 		z.Where(
 			z.IsNotNull("rotated_to"),
 			z.IsNotNull("grace_period"),
-			z.Lt("grace_period", time.Now()),
+			z.Lt("grace_period", timeutil.NowTime()),
 			z.Eq("revoked", 0),
 		),
 	)

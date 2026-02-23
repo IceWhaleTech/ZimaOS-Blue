@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Executor abstracts the process-replacement step so it can be mocked in tests.
@@ -85,7 +86,7 @@ func (a *Applier) backup() error {
 		return err
 	}
 
-	backupPath := filepath.Join(backupDir, fmt.Sprintf("echo.%d.bak", time.Now().Unix()))
+	backupPath := filepath.Join(backupDir, fmt.Sprintf("echo.%d.bak", timeutil.Now()))
 	return copyFile(a.binaryPath, backupPath)
 }
 

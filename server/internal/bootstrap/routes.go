@@ -41,13 +41,13 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/preview"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool/oauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -60,10 +60,12 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // routesStartTime records when the server started, used for uptime calculation
-var routesStartTime = time.Now()
+var routesStartTime = timeutil.NowTime()
 
 // featureDisabled returns an echo handler that responds with a standard
 // "feature not enabled" JSON payload.  This is used as a catch-all for
@@ -121,7 +123,6 @@ type RoutesDeps struct {
 	ClaudeCodeHandler  *claudecode.Handler
 	MemoryHandler      *server.MemoryHandler
 	ChannelConfigStore *server.ChannelConfigStore
-	SharedCache        *proxy.CCCache
 	HotReloader        *config.HotReloader
 	WorkspaceHandler   *workspace.Handler
 }
@@ -208,16 +209,70 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	v1 := e.Group("/api/v1")
 	api := e.Group("/api")
 
+	// Static media serving (screenshots, etc.) — no auth required
+	mediaDir := filepath.Join(dataDir, "media")
+	_ = os.MkdirAll(mediaDir, 0750)
+	v1.Static("/media", mediaDir)
+
+	// Media generation (image/video/audio) — reads from ProviderTypeMedia providers
+	{
+		mediaGenDir := filepath.Join(dataDir, "media", "generated")
+		mediaStorage := mediagen.NewMediaStorage(mediaGenDir, "/api/media/generated")
+		if err := mediaStorage.EnsureDirs(); err != nil {
+			logger.Warn("Failed to create media generation dirs", zap.Error(err))
+		}
+		mediaManager := mediagen.NewManager(mediaStorage)
+
+		// Register providers from provider pool (media-type providers)
+		if deps.ProviderPool != nil {
+			for _, p := range deps.ProviderPool.Registry.List() {
+				if p.Type != providerpool.ProviderTypeMedia || !p.Enabled {
+					continue
+				}
+				var apiKey string
+				for _, k := range p.APIKeys {
+					if k.Enabled && k.Key != "" {
+						apiKey = k.Key
+						break
+					}
+				}
+				if apiKey == "" {
+					continue
+				}
+				switch p.ID {
+				case "gemini-image":
+					mediaManager.RegisterProvider(mediagen.NewGeminiProvider(apiKey, p.BaseURL))
+				case "dashscope-image":
+					mediaManager.RegisterProvider(mediagen.NewDashScopeProvider(apiKey, p.BaseURL))
+				case "mulerouter":
+					mediaManager.RegisterProvider(mediagen.NewMuleRouterProvider(apiKey, p.BaseURL))
+				}
+				logger.Info("Registered media provider", zap.String("id", p.ID))
+			}
+		}
+
+		// Register tools
+		s.ToolRegistry.Register(mediagen.NewImageGenerateTool(mediaManager))
+		s.ToolRegistry.Register(mediagen.NewVideoGenerateTool(mediaManager))
+
+		// Register HTTP routes
+		mediaHandler := mediagen.NewHandler(mediaManager, mediaStorage)
+		mediaGroup := v1.Group("/media")
+		mediaHandler.RegisterRoutes(mediaGroup)
+		mediaHandler.RegisterStorageRoutes(e)
+		logger.Info("Media generation routes registered")
+	}
+
 	// Health endpoint (with full runtime stats)
 	v1.GET("/health", func(c echo.Context) error {
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
 
-		uptime := time.Since(routesStartTime).Truncate(time.Second)
+		uptime := timeutil.SinceTime(routesStartTime).Truncate(time.Second)
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"status":          "ok",
 			"service":         "zimaos-blue",
-			"timestamp":       time.Now(),
+			"timestamp":       timeutil.NowTime(),
 			"uptime":          uptime.String(),
 			"uptime_seconds":  uptime.Seconds(),
 			"version":         cfg.Version,
@@ -348,11 +403,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// Set metrics recorder on chat handler
 		deps.ChatHandler.SetMetricsRecorder(deps.MetricsWriter)
-
-		// Set cache provider on metrics handler for cache stats
-		if deps.SharedCache != nil {
-			detailedMetricsHandler.SetCacheProvider(deps.SharedCache)
-		}
 	}
 	if deps.MetricsCollector == nil && deps.MetricsWriter == nil {
 		stub := featureDisabled("metrics")
@@ -641,8 +691,22 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Provider pool routes (protected)
+	var oauthManager *oauth.Manager // hoisted for proxy handler wiring
 	if deps.ProviderPool != nil {
 		providerPoolHandler := providerpool.NewHandler(deps.ProviderPool)
+
+		// Initialize OAuth manager for OAuth-based providers
+		oauthDataDir := filepath.Join(dataDir, "providers")
+		oauthStore, oauthErr := oauth.NewStore(oauthDataDir)
+		if oauthErr != nil {
+			logger.Warn("Failed to initialize OAuth store", zap.Error(oauthErr))
+		} else {
+			oauthManager = oauth.NewManager(oauthStore)
+			providerPoolHandler.SetOAuthManager(oauthManager)
+			providerPoolHandler.RegisterOAuthCallbackRoute(e)
+			logger.Info("OAuth manager initialized for provider pool")
+		}
+
 		providersGroup := protected.Group("/providers")
 		providerPoolHandler.RegisterRoutes(providersGroup)
 		modelsGroup := protected.Group("/models")
@@ -677,14 +741,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		failoverGroup.Any("/*", failoverStub)
 	}
 
-	// Proxy cache config + handler (hoisted for toggle persistence sharing)
-	cacheConfig := proxy.DefaultCacheConfig()
-	var cacheHandler *proxy.CacheAPIHandler
-	if deps.SharedCache != nil {
-		cacheHandler = proxy.NewCacheAPIHandler(deps.SharedCache, cacheConfig)
-		cacheGroup := v1.Group("/proxy/cache")
-		cacheHandler.RegisterRoutes(cacheGroup)
-	} else {
+	// Proxy cache routes (deprecated — cache removed)
+	{
 		stub := featureDisabled("proxy_cache")
 		cacheGroup := v1.Group("/proxy/cache")
 		cacheGroup.GET("/stats", stub)
@@ -692,9 +750,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		cacheGroup.Any("/*", stub)
 	}
 
-	// Data masking routes
+	// Data masking (hoisted so toggle state is accessible from proxy block)
+	dataMasker := proxy.NewDataMasker(nil)
+	var maskingOnToggle func() // wired later when toggleStore is available
 	{
-		dataMasker := proxy.NewDataMasker(nil)
 		maskingGroup := v1.Group("/proxy/masking")
 		maskingGroup.GET("/stats", func(c echo.Context) error {
 			return c.JSON(200, dataMasker.Stats())
@@ -733,6 +792,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				return c.JSON(400, map[string]string{"error": "enabled field required"})
 			}
 			dataMasker.SetEnabled(*req.Enabled)
+			if maskingOnToggle != nil {
+				maskingOnToggle()
+			}
 			return c.JSON(200, dataMasker.Stats())
 		})
 	}
@@ -748,13 +810,34 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
 		proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
 
+		// Smart failover handler for metrics + intelligent error classification
+		smartFailover := proxy.NewSmartFailoverHandler(&routingConfig.Failover, proxyRouter)
+
 		// Failover API routes — share the same config pointer so API changes take effect
-		failoverAPIHandler := proxy.NewFailoverAPIHandler(nil, &routingConfig.Failover)
+		failoverAPIHandler := proxy.NewFailoverAPIHandler(smartFailover, &routingConfig.Failover)
 		failoverGroup := protected.Group("/proxy/failover")
 		failoverAPIHandler.RegisterRoutes(failoverGroup)
 
+		// Pipeline stats collector: unified async batch persistence for routing/failover
+		var pipelineStats *proxy.PipelineStatsCollector
+		if deps.DB != nil {
+			pipelineStats = proxy.NewPipelineStatsCollector(deps.DB, proxyHandler.GetRoutingStatsRef())
+			pipelineStats.Start()
+			proxyHandler.SetPipelineStats(pipelineStats)
+		}
+
 		if deps.ProviderPool != nil {
 			proxyHandler.SetProviderPool(deps.ProviderPool)
+
+			// Wire OAuth manager into proxy handler for OAuth-based provider auth
+			if oauthManager != nil {
+				proxyHandler.SetOAuthManager(oauthManager)
+			}
+
+			// Wire failover callback for pipeline stats collection
+			if deps.ProviderPool.Router != nil && pipelineStats != nil {
+				deps.ProviderPool.Router.SetFailoverCallback(pipelineStats.OnFailover)
+			}
 
 			// Wire health check latency into router for latency-based routing
 			if deps.ProviderPool.Registry != nil && deps.ProviderPool.Router != nil {
@@ -815,6 +898,24 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		prunerGroup := v1.Group("/proxy/pruner")
 		prunerHandler.RegisterRoutes(prunerGroup)
 
+		// Dynamic tier resolver: classifies models by pricing for smart routing
+		tierResolver := proxy.NewTierResolver()
+		if deps.ProviderPool != nil && deps.ProviderPool.Router != nil {
+			models := deps.ProviderPool.Router.ListAvailableModels()
+			if tierResolver.Resolve(models) {
+				slog.Info("Tier resolver initialized", "stats", tierResolver.Stats())
+			}
+			// Re-resolve tiers when providers change (async to avoid deadlock)
+			if deps.ProviderPool.Registry != nil {
+				router := deps.ProviderPool.Router
+				deps.ProviderPool.Registry.AddProviderChangeListener(func(_ *providerpool.Provider, _ string) {
+					go func() {
+						tierResolver.Resolve(router.ListAvailableModels())
+					}()
+				})
+			}
+		}
+
 		// Model router: family-based routing + background task downgrade
 		modelRouterCfg := deps.Config.Proxy.ModelRouter
 		if modelRouterCfg == nil {
@@ -828,15 +929,16 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			slog.Info("Model router loaded", "families", len(modelRouterCfg.Families), "rules", len(modelRouterCfg.RegexCustomRules), "enabled", modelRouterCfg.Enabled)
 		}
 
-		// Condition-based rule routing (economy rules)
+		// Condition-based rule routing (tier-based rules)
 		ruleRoutingCfg := deps.Config.Proxy.RuleRouting
 		if ruleRoutingCfg == nil {
 			ruleRoutingCfg = proxy.DefaultRoutingConfig()
 		}
 		if len(ruleRoutingCfg.Rules) > 0 {
-			proxyHandler.SetRuleEngine(ruleRoutingCfg.ToRuleEngine())
+			proxyHandler.SetRuleEngine(ruleRoutingCfg.ToRuleEngine(tierResolver))
 			slog.Info("Rule engine loaded", "rules", len(ruleRoutingCfg.Rules), "enabled", ruleRoutingCfg.Enabled)
 		}
+		proxyHandler.SetTierResolver(tierResolver)
 		proxyHandler.SetRoutingEnabled(ruleRoutingCfg.Enabled)
 
 		// Toggle persistence: use main blue.db for kvstore (merged from former settings.db)
@@ -847,44 +949,71 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		var toggleStore *proxy.ToggleStore
 		getToggleState := func() *proxy.ToggleState {
-			return &proxy.ToggleState{
-				CacheEnabled:   cacheConfig.Enabled,
-				PrunerEnabled:  prunerMw != nil && prunerMw.Enabled(),
-				RoutingEnabled: proxyHandler.IsRoutingEnabled(),
+			state := &proxy.ToggleState{
+				PrunerEnabled:      prunerMw != nil && prunerMw.Enabled(),
+				PrunerBackend:      prunerCfg.Backend,
+				RoutingEnabled:     proxyHandler.IsRoutingEnabled(),
+				MaskingEnabled:     dataMasker.IsEnabled(),
+				PromptCacheEnabled: proxyHandler.IsPromptCacheEnabled(),
 			}
+			// Capture individual routing rule states
+			if rules := proxyHandler.GetRoutingRules(); len(rules) > 0 {
+				state.RoutingRules = make(map[string]bool, len(rules))
+				for _, r := range rules {
+					state.RoutingRules[r.Name] = r.Enabled != nil && *r.Enabled
+				}
+			}
+			return state
 		}
 		if kvErr != nil {
 			slog.Warn("Failed to create toggle kvstore", "error", kvErr)
 		} else {
 			toggleStore = proxy.NewToggleStore(toggleKV)
 			if saved, loadErr := toggleStore.Load(context.Background()); loadErr == nil {
-				cacheConfig.Enabled = saved.CacheEnabled
 				if prunerMw != nil {
 					prunerMw.SetEnabled(saved.PrunerEnabled)
 				}
+				if saved.PrunerBackend != "" && saved.PrunerBackend != prunerCfg.Backend {
+					prunerCfg.Backend = saved.PrunerBackend
+					if b, err := pruner.NewBackend(prunerCfg); err == nil {
+						if prunerMw != nil {
+							prunerMw.SetBackend(b)
+						}
+					}
+				}
 				proxyHandler.SetRoutingEnabled(saved.RoutingEnabled)
-				slog.Info("Restored feature toggles", "cache", saved.CacheEnabled, "pruner", saved.PrunerEnabled, "routing", saved.RoutingEnabled)
+				proxyHandler.SetPromptCacheEnabled(saved.PromptCacheEnabled)
+				dataMasker.SetEnabled(saved.MaskingEnabled)
+				// Restore individual routing rule states
+				for name, enabled := range saved.RoutingRules {
+					proxyHandler.SetRoutingRuleEnabled(name, enabled)
+				}
+				slog.Info("Restored feature toggles",
+					"pruner", saved.PrunerEnabled,
+					"pruner_backend", saved.PrunerBackend,
+					"routing", saved.RoutingEnabled,
+					"masking", saved.MaskingEnabled,
+					"prompt_cache", saved.PromptCacheEnabled,
+				)
 			}
-			// Wire toggle persistence into cache and pruner handlers
-			if cacheHandler != nil {
-				cacheHandler.SetTogglePersistence(toggleStore, getToggleState)
-			}
-			prunerHandler.SetOnToggle(func(enabled bool) {
+			saveToggle := func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				toggleStore.Save(ctx, getToggleState())
-			})
+			}
+			prunerHandler.SetOnToggle(func(enabled bool) { saveToggle() })
+			prunerHandler.SetOnBackendChange(func(backend string) { saveToggle() })
+			maskingOnToggle = saveToggle
 		}
 
 		// ProxyBridge: route ChatHandler LLM calls through proxy pipeline
 		bridge := proxybridge.NewBridge(proxyHandler)
 		deps.ChatHandler.SetProxyBridge(bridge)
+		deps.ChatHandler.SetIMModel("auto") // proxy auto-selects model
 
-		// Wire bridge into UI reviewer skill for VLM calls
-		if uiSkill := s.SkillRegistry.Get("ui_reviewer"); uiSkill != nil {
-			if ur, ok := uiSkill.(*builtin.UIReviewer); ok {
-				ur.SetBridge(bridge)
-			}
+		// Wire VLM bridge into native UI reviewer tool
+		if uiTool := tools.GetUIReviewerTool(s.ToolRegistry); uiTool != nil {
+			uiTool.SetVLMBridge(tools.NewProxyBridgeVLMAdapter(bridge))
 		}
 
 		v1ProxyGroup := e.Group("/v1")
@@ -944,6 +1073,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			if !proxyHandler.SetRoutingRuleEnabled(name, *req.Enabled) {
 				return c.JSON(404, map[string]string{"error": "rule not found"})
 			}
+			if toggleStore != nil {
+				ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+				defer cancel()
+				toggleStore.Save(ctx, getToggleState())
+			}
 			return c.JSON(200, map[string]interface{}{
 				"success": true,
 				"name":    name,
@@ -952,6 +1086,42 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		})
 		routingGroup.GET("/stats", func(c echo.Context) error {
 			return c.JSON(200, proxyHandler.GetRoutingStats())
+		})
+
+		// Pipeline stats: unified cache + routing + failover stats
+		v1.GET("/proxy/pipeline/stats", func(c echo.Context) error {
+			if pipelineStats != nil {
+				return c.JSON(200, pipelineStats.Snapshot())
+			}
+			return c.JSON(200, map[string]string{"status": "not configured"})
+		})
+
+		// Prompt cache toggle API
+		promptCacheGroup := v1.Group("/proxy/prompt-cache")
+		promptCacheGroup.GET("/config", func(c echo.Context) error {
+			return c.JSON(200, map[string]interface{}{
+				"enabled": proxyHandler.IsPromptCacheEnabled(),
+			})
+		})
+		promptCacheGroup.PUT("/config", func(c echo.Context) error {
+			var req struct {
+				Enabled *bool `json:"enabled"`
+			}
+			if err := c.Bind(&req); err != nil {
+				return c.JSON(400, map[string]string{"error": "invalid request"})
+			}
+			if req.Enabled != nil {
+				proxyHandler.SetPromptCacheEnabled(*req.Enabled)
+				if toggleStore != nil {
+					ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+					defer cancel()
+					toggleStore.Save(ctx, getToggleState())
+				}
+			}
+			return c.JSON(200, map[string]interface{}{
+				"success": true,
+				"enabled": proxyHandler.IsPromptCacheEnabled(),
+			})
 		})
 
 		// Provider restriction management (blacklist/throttle clearing)
@@ -1011,16 +1181,19 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				logger.Info("Memory backend configured", zap.String("mode", backendMode))
 			}
 
+			// Register unified memory tool in tool registry
+			memAdapter := memory.NewToolsAdapter(uSvc)
+
 			// Initialize progressive searcher if local backend available
 			if localSvc := uSvc.GetLocalBackend(); localSvc != nil {
 				ps := memory.NewProgressiveSearcher(localSvc.GetSearcher())
 				deps.MemoryHandler.SetProgressiveSearcher(ps)
-
-				// Register progressive search tool for LLM
-				psTool := memory.NewMemoryProgressiveSearchTool(ps)
-				tools.SetProgressiveSearchTool(psTool)
+				memAdapter.SetProgressiveSearcher(ps)
 				logger.Info("Progressive search enabled")
 			}
+
+			tools.RegisterMemoryTools(s.ToolRegistry, memAdapter)
+			logger.Info("Unified memory tool registered")
 		}
 	} else {
 		stub := featureDisabled("memory")
@@ -1135,15 +1308,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Channel config routes
 	if deps.ChannelConfigStore != nil {
 		channelConfigHandler := server.NewChannelConfigHandler(deps.ChannelConfigStore)
+		channelConfigHandler.SetFactory(server.NewChannelFactory(deps.Logger))
 		channelConfigHandler.RegisterRoutes(api)
 	} else {
 		stub := featureDisabled("channels")
 		api.GET("/channels", stub)
-	}
-
-	// Set shared cache on chat handler
-	if deps.SharedCache != nil {
-		deps.ChatHandler.SetCache(deps.SharedCache)
 	}
 
 	// Provider settings routes (protected)
@@ -1156,6 +1325,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	settingsHandler.RegisterRoutes(protected)
 	// Also make locale available to provider settings handler
 	providerSettingsHandler.SetSettingsHandler(settingsHandler)
+	// Wire settings into chat handler for runtime smart tool selection toggle
+	deps.ChatHandler.SetSettingsHandler(settingsHandler)
 
 	// User-level routes (protected) — /api/v1/my/*
 	myGroup := protected.Group("/my")

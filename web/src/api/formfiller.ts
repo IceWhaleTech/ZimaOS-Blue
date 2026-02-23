@@ -127,10 +127,11 @@ export const siteMappingApi = {
 
 // Detection API
 export const detectApi = {
-  detect: (fields: FieldAttributes[], templateId?: string) =>
+  detect: (fields: FieldAttributes[], templateId?: string, fillData?: string) =>
     api.post<DetectResponse>('/formfiller/detect', {
       fields,
       template_id: templateId,
+      fill_data: fillData,
     }),
 }
 

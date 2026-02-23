@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Manager handles session lifecycle and event management.
@@ -47,7 +48,7 @@ func (m *Manager) CreateSession(ctx context.Context, session *Session) (*Session
 
 	// Set defaults
 	session.Status = SessionStatusActive
-	session.StartedAt = time.Now()
+	session.StartedAt = timeutil.NowTime()
 	session.ThreatLevel = ThreatLevelNone
 	session.ThreatScore = 0
 	session.EventCount = 0
@@ -113,7 +114,7 @@ func (m *Manager) EndSession(ctx context.Context, id string) error {
 	}
 
 	// Update session
-	now := time.Now()
+	now := timeutil.NowTime()
 	session.Status = SessionStatusEnded
 	session.EndedAt = &now
 	session.Duration = FromDuration(now.Sub(session.StartedAt))
@@ -150,7 +151,7 @@ func (m *Manager) EmitEvent(ctx context.Context, event *SessionEvent) error {
 		event.ID = uuid.New().String()
 	}
 	if event.Timestamp.IsZero() {
-		event.Timestamp = time.Now()
+		event.Timestamp = timeutil.NowTime()
 	}
 
 	// Get session
@@ -226,7 +227,7 @@ func (m *Manager) GetStats(ctx context.Context) (*Stats, error) {
 		SessionsByPlatform: make(map[Platform]int),
 		ThreatsByLevel:     make(map[ThreatLevel]int),
 		EventsByType:       make(map[SessionEventType]int),
-		LastUpdated:        time.Now(),
+		LastUpdated:        timeutil.NowTime(),
 	}
 
 	var totalDuration time.Duration

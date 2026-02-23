@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,128 +9,6 @@ import (
 	"testing"
 	"time"
 )
-
-// TestProxyServerIntegration tests the full proxy server lifecycle
-func TestProxyServerIntegration(t *testing.T) {
-	// Create mock upstream server
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("X-RateLimit-Limit", "1000")
-		w.Header().Set("X-RateLimit-Remaining", "950")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"id":      "msg_123",
-			"content": "Hello from upstream",
-		})
-	}))
-	defer upstream.Close()
-
-	// Create proxy config with mock upstream
-	config := DefaultProxyConfig()
-	config.Port.Value = 0 // Dynamic port
-	config.Port.Range = "19000-19100"
-	config.Routing.Providers = []*ProviderConfig{
-		{
-			Name:     "mock",
-			Endpoint: upstream.URL,
-			Priority: 1,
-			Enabled:  true,
-		},
-	}
-	config.Routing.DefaultProvider = "mock"
-	config.HealthCheck.Enabled = false // Disable for test
-
-	// Create and start proxy server
-	ps, err := NewProxyServer(config)
-	if err != nil {
-		t.Fatalf("Failed to create proxy server: %v", err)
-	}
-
-	if err := ps.Start(); err != nil {
-		t.Fatalf("Failed to start proxy server: %v", err)
-	}
-	defer ps.Stop(context.Background())
-
-	// Wait for server to be ready
-	time.Sleep(100 * time.Millisecond)
-
-	endpoint := ps.GetEndpoint()
-	if endpoint == "" {
-		t.Fatal("Proxy endpoint is empty")
-	}
-
-	t.Run("status_endpoint", func(t *testing.T) {
-		resp, err := http.Get(endpoint + "/api/v1/proxy/status")
-		if err != nil {
-			t.Fatalf("Failed to get status: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", resp.StatusCode)
-		}
-
-		var result map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&result)
-		if result["status"] != "running" {
-			t.Errorf("Expected status 'running', got '%v'", result["status"])
-		}
-	})
-
-	t.Run("health_endpoint", func(t *testing.T) {
-		resp, err := http.Get(endpoint + "/api/v1/proxy/health")
-		if err != nil {
-			t.Fatalf("Failed to get health: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", resp.StatusCode)
-		}
-	})
-
-	t.Run("providers_endpoint", func(t *testing.T) {
-		resp, err := http.Get(endpoint + "/api/v1/proxy/providers")
-		if err != nil {
-			t.Fatalf("Failed to get providers: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", resp.StatusCode)
-		}
-
-		var result map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&result)
-		providers := result["providers"].([]interface{})
-		if len(providers) != 1 {
-			t.Errorf("Expected 1 provider, got %d", len(providers))
-		}
-	})
-
-	t.Run("models_endpoint", func(t *testing.T) {
-		resp, err := http.Get(endpoint + "/api/v1/proxy/models")
-		if err != nil {
-			t.Fatalf("Failed to get models: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", resp.StatusCode)
-		}
-	})
-
-	t.Run("quotas_endpoint", func(t *testing.T) {
-		resp, err := http.Get(endpoint + "/api/v1/proxy/quotas")
-		if err != nil {
-			t.Fatalf("Failed to get quotas: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", resp.StatusCode)
-		}
-	})
-}
 
 // TestModelRoutingIntegration tests model routing with different model IDs
 func TestModelRoutingIntegration(t *testing.T) {

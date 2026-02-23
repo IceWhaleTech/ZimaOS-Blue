@@ -13,6 +13,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Config contains DingTalk channel configuration.
@@ -70,7 +71,7 @@ func (c *Channel) Start(ctx context.Context) error {
 		return fmt.Errorf("channel already started")
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
-	now := time.Now()
+	now := timeutil.NowTime()
 	c.status = channel.StatusConnected
 	c.connectedAt = &now
 	c.mu.Unlock()

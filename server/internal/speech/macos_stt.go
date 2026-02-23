@@ -18,6 +18,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 const ProviderMacOSNative stt.ProviderType = "macos-native"
@@ -486,7 +487,7 @@ func requestAuthorizationViaNSApp(sfClass objc.ID) (int, error) {
 	nsDateCls := objc.ID(objc.GetClass("NSDate"))
 	runLoop := nsRunLoopCls.Send(selCurrentRunLoop)
 
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := timeutil.NowTime().Add(30 * time.Second)
 	for {
 		select {
 		case status := <-authCh:
@@ -494,7 +495,7 @@ func requestAuthorizationViaNSApp(sfClass objc.ID) (int, error) {
 			return status, nil
 		default:
 		}
-		if time.Now().After(deadline) {
+		if timeutil.NowTime().After(deadline) {
 			block.Release()
 			return 0, fmt.Errorf("speech recognition authorization timed out")
 		}

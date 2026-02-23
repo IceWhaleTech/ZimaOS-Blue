@@ -6,6 +6,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SecurityIntegration provides integration between companion monitoring
@@ -150,7 +151,7 @@ func (si *SecurityIntegration) EmitSandboxEvent(ctx context.Context, sessionID s
 	event := &SessionEvent{
 		ID:        uuid.New().String(),
 		SessionID: sessionID,
-		Timestamp: time.Now(),
+		Timestamp: timeutil.NowTime(),
 		EventType: EventSandboxExec,
 		Platform:  session.Platform,
 		UserID:    session.UserID,
@@ -201,7 +202,7 @@ func (si *SecurityIntegration) EmitAuditEvent(ctx context.Context, sessionID str
 	event := &SessionEvent{
 		ID:        uuid.New().String(),
 		SessionID: sessionID,
-		Timestamp: time.Now(),
+		Timestamp: timeutil.NowTime(),
 		EventType: eventType,
 		Platform:  session.Platform,
 		UserID:    session.UserID,
@@ -246,7 +247,7 @@ func (si *SecurityIntegration) OnPromptGuardResult(ctx context.Context, sessionI
 	event := &SessionEvent{
 		ID:        uuid.New().String(),
 		SessionID: sessionID,
-		Timestamp: time.Now(),
+		Timestamp: timeutil.NowTime(),
 		EventType: EventSecurityThreat,
 		Platform:  session.Platform,
 		UserID:    session.UserID,

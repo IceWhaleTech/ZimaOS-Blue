@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Task represents a unit of work to be executed by the pool.
@@ -87,7 +88,7 @@ func NewOptimizedPool(ctx context.Context, config OptimizedPoolConfig) *Optimize
 		ctx:           ctx,
 		cancel:        cancel,
 		scaleCooldown: time.Second,
-		lastScale:     time.Now(),
+		lastScale:     timeutil.NowTime(),
 	}
 
 	// Start minimum number of workers
@@ -154,7 +155,7 @@ func (p *OptimizedPool) executeTask(task *Task) {
 	atomic.AddInt64(&p.activeWorkers, 1)
 	defer atomic.AddInt64(&p.activeWorkers, -1)
 
-	start := time.Now()
+	start := timeutil.NowTime()
 
 	// Create context with timeout if specified
 	ctx := p.ctx
@@ -167,7 +168,7 @@ func (p *OptimizedPool) executeTask(task *Task) {
 	// Execute the task
 	err := task.Fn(ctx)
 
-	duration := time.Since(start)
+	duration := timeutil.SinceTime(start)
 	atomic.AddInt64(&p.totalExecTime, int64(duration))
 
 	if err != nil {
@@ -195,12 +196,12 @@ func (p *OptimizedPool) Submit(task *Task) bool {
 		return false
 	}
 
-	start := time.Now()
+	start := timeutil.NowTime()
 
 	select {
 	case p.tasks <- task:
 		atomic.AddInt64(&p.tasksSubmitted, 1)
-		atomic.AddInt64(&p.totalWaitTime, int64(time.Since(start)))
+		atomic.AddInt64(&p.totalWaitTime, int64(timeutil.SinceTime(start)))
 		return true
 	case <-p.ctx.Done():
 		return false
@@ -238,7 +239,7 @@ func (p *OptimizedPool) checkScale() {
 	defer p.scaleMu.Unlock()
 
 	// Check cooldown
-	if time.Since(p.lastScale) < p.scaleCooldown {
+	if timeutil.SinceTime(p.lastScale) < p.scaleCooldown {
 		return
 	}
 
@@ -257,7 +258,7 @@ func (p *OptimizedPool) checkScale() {
 		for i := int64(0); i < workersToAdd; i++ {
 			p.startWorker()
 		}
-		p.lastScale = time.Now()
+		p.lastScale = timeutil.NowTime()
 	}
 }
 

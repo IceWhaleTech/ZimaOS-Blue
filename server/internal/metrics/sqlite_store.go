@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SQLiteStore implements MetricsStore using SQLite for persistence.
@@ -74,7 +75,7 @@ func openMetricsDB(dbPath string) (*SQLiteStore, error) {
 
 // rotateCorruptDB renames a corrupt/locked DB (and its WAL/SHM) out of the way.
 func rotateCorruptDB(dbPath string) {
-	suffix := fmt.Sprintf(".bad.%d", time.Now().Unix())
+	suffix := fmt.Sprintf(".bad.%d", timeutil.Now())
 	os.Rename(dbPath, dbPath+suffix)
 	os.Remove(dbPath + "-wal")
 	os.Remove(dbPath + "-shm")
@@ -575,7 +576,7 @@ func (s *SQLiteStore) Cleanup(ctx context.Context, retention time.Duration) erro
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	cutoff := time.Now().Add(-retention)
+	cutoff := timeutil.NowTime().Add(-retention)
 	_, err := s.db.ExecContext(ctx,
 		`DELETE FROM metrics_points WHERE timestamp < ?`,
 		cutoff,

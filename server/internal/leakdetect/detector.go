@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Detector monitors for resource leaks.
@@ -224,7 +225,7 @@ func (d *Detector) takeSnapshot() *Snapshot {
 	runtime.ReadMemStats(&memStats)
 
 	return &Snapshot{
-		Timestamp:   time.Now(),
+		Timestamp:   timeutil.NowTime(),
 		Goroutines:  runtime.NumGoroutine(),
 		OpenFiles:   getOpenFileCount(),
 		Connections: getConnectionCount(),
@@ -244,7 +245,7 @@ func (d *Detector) checkThresholds(snapshot *Snapshot) {
 			Message:   fmt.Sprintf("Goroutine count (%d) exceeds threshold (%d)", snapshot.Goroutines, d.thresholds.MaxGoroutines),
 			Current:   snapshot.Goroutines,
 			Threshold: d.thresholds.MaxGoroutines,
-			Timestamp: time.Now(),
+			Timestamp: timeutil.NowTime(),
 		})
 		atomic.AddInt64(&d.goroutineLeaks, 1)
 	}
@@ -257,7 +258,7 @@ func (d *Detector) checkThresholds(snapshot *Snapshot) {
 			Message:   fmt.Sprintf("Open file count (%d) exceeds threshold (%d)", snapshot.OpenFiles, d.thresholds.MaxOpenFiles),
 			Current:   snapshot.OpenFiles,
 			Threshold: d.thresholds.MaxOpenFiles,
-			Timestamp: time.Now(),
+			Timestamp: timeutil.NowTime(),
 		})
 		atomic.AddInt64(&d.fdLeaks, 1)
 	}
@@ -270,7 +271,7 @@ func (d *Detector) checkThresholds(snapshot *Snapshot) {
 			Message:   fmt.Sprintf("Connection count (%d) exceeds threshold (%d)", snapshot.Connections, d.thresholds.MaxConnections),
 			Current:   snapshot.Connections,
 			Threshold: d.thresholds.MaxConnections,
-			Timestamp: time.Now(),
+			Timestamp: timeutil.NowTime(),
 		})
 		atomic.AddInt64(&d.connectionLeaks, 1)
 	}
@@ -284,7 +285,7 @@ func (d *Detector) checkGrowthRates() {
 	}
 
 	// Get snapshots from last minute
-	now := time.Now()
+	now := timeutil.NowTime()
 	oneMinuteAgo := now.Add(-time.Minute)
 
 	var oldSnapshot, newSnapshot *Snapshot
@@ -318,7 +319,7 @@ func (d *Detector) checkGrowthRates() {
 			Message:    fmt.Sprintf("Goroutine growth rate (%.1f/min) exceeds threshold (%.1f/min)", goroutineGrowth, d.thresholds.GoroutineGrowthRate),
 			Current:    newSnapshot.Goroutines,
 			GrowthRate: goroutineGrowth,
-			Timestamp:  time.Now(),
+			Timestamp:  timeutil.NowTime(),
 		})
 	}
 
@@ -331,7 +332,7 @@ func (d *Detector) checkGrowthRates() {
 			Message:    fmt.Sprintf("File descriptor growth rate (%.1f/min) exceeds threshold (%.1f/min)", fdGrowth, d.thresholds.FDGrowthRate),
 			Current:    newSnapshot.OpenFiles,
 			GrowthRate: fdGrowth,
-			Timestamp:  time.Now(),
+			Timestamp:  timeutil.NowTime(),
 		})
 	}
 
@@ -344,7 +345,7 @@ func (d *Detector) checkGrowthRates() {
 			Message:    fmt.Sprintf("Connection growth rate (%.1f/min) exceeds threshold (%.1f/min)", connGrowth, d.thresholds.ConnectionGrowthRate),
 			Current:    newSnapshot.Connections,
 			GrowthRate: connGrowth,
-			Timestamp:  time.Now(),
+			Timestamp:  timeutil.NowTime(),
 		})
 	}
 }
@@ -356,7 +357,7 @@ func (d *Detector) raiseAlert(alert Alert) {
 	// Check cooldown
 	for _, existing := range d.alerts {
 		if existing.Type == alert.Type &&
-			time.Since(existing.Timestamp) < d.thresholds.AlertCooldown {
+			timeutil.SinceTime(existing.Timestamp) < d.thresholds.AlertCooldown {
 			return // Still in cooldown
 		}
 	}
@@ -431,7 +432,7 @@ func NewConnectionTracker(maxAge time.Duration) *ConnectionTracker {
 func (t *ConnectionTracker) Add(id string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.connections[id] = time.Now()
+	t.connections[id] = timeutil.NowTime()
 }
 
 // Remove removes a connection.
@@ -453,7 +454,7 @@ func (t *ConnectionTracker) GetStale() []string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	cutoff := time.Now().Add(-t.maxAge)
+	cutoff := timeutil.NowTime().Add(-t.maxAge)
 	var stale []string
 
 	for id, created := range t.connections {

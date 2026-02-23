@@ -3,7 +3,7 @@ package model
 import (
 	"os"
 	"path/filepath"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // InitializeDefaultPersonality creates the default personality from SOUL.md.
@@ -30,7 +30,7 @@ func InitializeDefaultPersonality(dataDir string, workspaceDir ...string) error 
 			updated = true
 		}
 		if updated {
-			existing.UpdatedAt = time.Now()
+			existing.UpdatedAt = timeutil.NowTime()
 			_ = storage.Update(existing)
 		}
 		return nil // Already exists
@@ -50,7 +50,7 @@ func InitializeDefaultPersonality(dataDir string, workspaceDir ...string) error 
 	}
 
 	// Create default personality
-	now := time.Now()
+	now := timeutil.NowTime()
 	defaultPersonality := &Personality{
 		ID:           "default",
 		Name:         "Blue",

@@ -25,6 +25,9 @@ import {
 const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico']
 const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'json', 'xml', 'md']
 
+// Terminal block language markers (module-level Set for O(1) lookup)
+const terminalMarkers = new Set(['terminal', 'console', 'shell-output', 'ansi', 'cli-output'])
+
 // Language display names for code blocks
 const languageAliases: Record<string, string> = {
   js: 'javascript',
@@ -35,6 +38,40 @@ const languageAliases: Record<string, string> = {
   shell: 'bash',
   yml: 'yaml',
   md: 'markdown',
+}
+
+// ============================================================================
+// Card construction helpers — reduce duplication across parse functions
+// ============================================================================
+
+/** Push a card and its placeholder into the result arrays. Returns the placeholder string. */
+function emitCard(card: TypelessCard, cards: TypelessCard[], result: string[]): void {
+  cards.push(card)
+  result.push(`[[TYPELESS_CARD:${card.id}]]`)
+}
+
+/** Build a TypelessCardCode. */
+function makeCodeCard(
+  id: string, code: string, language: string | undefined, streaming = false,
+): TypelessCardCode {
+  return {
+    type: 'code', id, code,
+    language: language || undefined,
+    showLineNumbers: true,
+    ...(streaming ? { _streaming: true } : {}),
+  } as TypelessCardCode
+}
+
+/** Build a TypelessCardTerminal from a terminal type string. */
+function makeTerminalCard(
+  id: string, content: string, terminalType: string, streaming = false,
+): TypelessCardTerminal {
+  return {
+    type: 'terminal', id, content,
+    title: terminalType === 'terminal' ? 'Terminal' : terminalType.charAt(0).toUpperCase() + terminalType.slice(1),
+    theme: 'dark',
+    ...(streaming ? { _streaming: true } : {}),
+  } as TypelessCardTerminal
 }
 
 // ============================================================================
@@ -132,6 +169,7 @@ interface IncrementalParseState {
   lastContent: string
   lastResult: ParsedContent
   lastCardIndex: number
+  hasStreaming: boolean
 }
 
 const incrementalStates = new Map<string, IncrementalParseState>()
@@ -152,6 +190,10 @@ export function parseTypelessContentIncremental(
   const cacheKey = conversationId ? `${conversationId}:${messageId}` : messageId
   const state = incrementalStates.get(cacheKey)
 
+  // Helper: check if any card has _streaming flag
+  const checkStreaming = (cards: TypelessCard[]) =>
+    cards.some((c) => (c as TypelessCard & { _streaming?: boolean })._streaming)
+
   // If no previous state or content doesn't start with previous content, do full parse
   if (!state || !content.startsWith(state.lastContent)) {
     const result = parseTypelessContentInternal(content, 0, true) // isStreaming = true
@@ -159,6 +201,7 @@ export function parseTypelessContentIncremental(
       lastContent: content,
       lastResult: result,
       lastCardIndex: result.cards.length,
+      hasStreaming: checkStreaming(result.cards),
     })
     return result
   }
@@ -168,8 +211,7 @@ export function parseTypelessContentIncremental(
 
   // If new content is small, just return cached result (debounce)
   // But if we have a streaming card, always re-parse to update it
-  const hasStreamingCard = state.lastResult.cards.some((c) => (c as TypelessCard & { _streaming?: boolean })._streaming)
-  if (newContent.length < 10 && !hasStreamingCard) {
+  if (newContent.length < 10 && !state.hasStreaming) {
     return state.lastResult
   }
 
@@ -182,7 +224,7 @@ export function parseTypelessContentIncremental(
     newContent.includes('1. ') ||
     newContent.includes('![') ||
     newContent.includes('http') ||
-    hasStreamingCard // Always re-parse if we have a streaming card
+    state.hasStreaming // Always re-parse if we have a streaming card
 
   if (!mightHaveNewCards) {
     // Just update text, no new cards
@@ -194,6 +236,7 @@ export function parseTypelessContentIncremental(
       lastContent: content,
       lastResult: updatedResult,
       lastCardIndex: state.lastCardIndex,
+      hasStreaming: state.hasStreaming,
     })
     return updatedResult
   }
@@ -204,6 +247,7 @@ export function parseTypelessContentIncremental(
     lastContent: content,
     lastResult: result,
     lastCardIndex: result.cards.length,
+    hasStreaming: checkStreaming(result.cards),
   })
   return result
 }
@@ -362,6 +406,12 @@ const toolIconMap: Record<string, string> = {
   'Memory Store': '💾',
   'Memory Get': '📖',
   'Memory Stats': '📊',
+  'scheduler': '📅',
+  'browser': '🌐',
+  'sandbox': '📦',
+  'ui_reviewer': '👁️',
+  'autoreply': '💬',
+  'workflows': '⚙️',
 }
 
 // Parameters to show as keyword-style (just the value, no label)
@@ -896,9 +946,6 @@ function parseTerminalBlocks(content: string, cards: TypelessCard[], cardIndex: 
   let terminalContent: string[] = []
   let terminalType = ''
 
-  // Terminal block markers
-  const terminalMarkers = ['terminal', 'console', 'shell-output', 'ansi', 'cli-output']
-
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (line === undefined) continue
@@ -907,7 +954,7 @@ function parseTerminalBlocks(content: string, cards: TypelessCard[], cardIndex: 
     if (line.startsWith('```')) {
       const lang = line.slice(3).trim().toLowerCase()
 
-      if (!inTerminalBlock && terminalMarkers.includes(lang)) {
+      if (!inTerminalBlock && terminalMarkers.has(lang)) {
         inTerminalBlock = true
         terminalType = lang
         terminalContent = []
@@ -916,15 +963,10 @@ function parseTerminalBlocks(content: string, cards: TypelessCard[], cardIndex: 
 
       if (inTerminalBlock && line.trim() === '```') {
         // End of terminal block - create card
-        const card: TypelessCardTerminal = {
-          type: 'terminal',
-          id: `md-terminal-${cardIndex.value++}`,
-          content: terminalContent.join('\n'),
-          title: terminalType === 'terminal' ? 'Terminal' : terminalType.charAt(0).toUpperCase() + terminalType.slice(1),
-          theme: 'dark',
-        }
-        cards.push(card)
-        result.push(`[[TYPELESS_CARD:${card.id}]]`)
+        emitCard(
+          makeTerminalCard(`md-terminal-${cardIndex.value++}`, terminalContent.join('\n'), terminalType),
+          cards, result,
+        )
         inTerminalBlock = false
         terminalType = ''
         continue
@@ -940,8 +982,10 @@ function parseTerminalBlocks(content: string, cards: TypelessCard[], cardIndex: 
 
   // Handle unclosed terminal block (streaming)
   if (inTerminalBlock && terminalContent.length > 0) {
-    result.push('```' + terminalType)
-    result.push(...terminalContent)
+    emitCard(
+      makeTerminalCard(`md-terminal-streaming-${cardIndex.value++}`, terminalContent.join('\n'), terminalType, true),
+      cards, result,
+    )
   }
 
   return result.join('\n')
@@ -970,15 +1014,7 @@ function parseMarkdownCodeBlocks(content: string, cards: TypelessCard[], cardInd
         codeBlockContent = []
       } else {
         // End of code block - create card
-        const card: TypelessCardCode = {
-          type: 'code',
-          id: `md-code-${cardIndex.value++}`,
-          code: codeBlockContent.join('\n'),
-          language: codeBlockLang || undefined,
-          showLineNumbers: true,
-        }
-        cards.push(card)
-        result.push(`[[TYPELESS_CARD:${card.id}]]`)
+        emitCard(makeCodeCard(`md-code-${cardIndex.value++}`, codeBlockContent.join('\n'), codeBlockLang), cards, result)
         inCodeBlock = false
         codeBlockLang = ''
       }
@@ -994,8 +1030,8 @@ function parseMarkdownCodeBlocks(content: string, cards: TypelessCard[], cardInd
 
   // Handle unclosed code block (streaming)
   if (inCodeBlock && codeBlockContent.length > 0) {
-    result.push('```' + codeBlockLang)
-    result.push(...codeBlockContent)
+    // Render unclosed code block as a streaming card
+    emitCard(makeCodeCard(`md-code-streaming-${cardIndex.value++}`, codeBlockContent.join('\n'), codeBlockLang, true), cards, result)
   }
 
   return result.join('\n')
@@ -1362,14 +1398,7 @@ function parseMermaidBlocks(content: string, cards: TypelessCard[], cardIndex: {
 
       if (inMermaidBlock && line.trim() === '```') {
         // End of mermaid block - create card
-        const code = mermaidContent.join('\n')
-        const card: TypelessCardMermaid = {
-          type: 'mermaid',
-          id: `md-mermaid-${cardIndex.value++}`,
-          code,
-        }
-        cards.push(card)
-        result.push(`[[TYPELESS_CARD:${card.id}]]`)
+        emitCard({ type: 'mermaid', id: `md-mermaid-${cardIndex.value++}`, code: mermaidContent.join('\n') } as TypelessCardMermaid, cards, result)
         inMermaidBlock = false
         continue
       }
@@ -1384,8 +1413,7 @@ function parseMermaidBlocks(content: string, cards: TypelessCard[], cardIndex: {
 
   // Handle unclosed mermaid block (streaming)
   if (inMermaidBlock && mermaidContent.length > 0) {
-    result.push('```mermaid')
-    result.push(...mermaidContent)
+    emitCard({ type: 'mermaid', id: `md-mermaid-streaming-${cardIndex.value++}`, code: mermaidContent.join('\n'), _streaming: true } as TypelessCardMermaid, cards, result)
   }
 
   return result.join('\n')

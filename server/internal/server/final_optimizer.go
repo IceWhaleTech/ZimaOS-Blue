@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // StreamingOptimizer optimizes real-time streaming responses
@@ -45,7 +46,7 @@ func (so *StreamingOptimizer) RecordChunk(streamID string, size int64) {
 
 	atomic.AddInt64(&metrics.ChunksProcessed, 1)
 	atomic.AddInt64(&metrics.BytesSent, size)
-	metrics.LastFlushTime = time.Now()
+	metrics.LastFlushTime = timeutil.NowTime()
 }
 
 // LoadBalancer implements dynamic load balancing across providers

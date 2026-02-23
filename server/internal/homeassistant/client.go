@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // client implements the Client interface.
@@ -195,7 +196,7 @@ func (c *client) handleEventMessage(msg map[string]interface{}) {
 	if len(callbacks) > 0 {
 		event := &Event{
 			EventType: eventType,
-			TimeFired: time.Now(),
+			TimeFired: timeutil.NowTime(),
 		}
 		if data, ok := eventData["data"].(map[string]interface{}); ok {
 			event.Data = data

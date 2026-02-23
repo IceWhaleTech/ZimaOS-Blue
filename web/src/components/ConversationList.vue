@@ -116,7 +116,7 @@ watch(searchQuery, (query) => {
 <template>
   <div class="conversation-list h-full flex flex-col bg-white dark:bg-gray-700/30">
     <!-- Header: new chat + search merged into one row -->
-    <div class="flex items-center gap-2 p-3 border-b border-gray-200 dark:border-gray-700">
+    <div class="flex items-center gap-2 p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
       <!-- Default: New Chat button / Search active: Search input -->
       <div class="flex-1 min-w-0">
         <button
@@ -225,7 +225,7 @@ watch(searchQuery, (query) => {
                   >
                     <path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z" />
                   </svg>
-                  <span class="truncate">{{ conversation.title }}</span>
+                  <span class="truncate" :title="conversation.title">{{ conversation.title }}</span>
                 </h3>
                 <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   {{ formatDate(conversation.updated_at) }}

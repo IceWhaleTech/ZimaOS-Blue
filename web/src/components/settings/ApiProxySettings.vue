@@ -3,27 +3,21 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   proxyCacheApi,
-  type CacheConfig,
-  type CacheStats,
   type PrunerConfig,
   type PrunerStats,
   type PrunerModelStatus,
   type RoutingRule,
 } from '@/api/proxyCache'
 import { proxyApi, type MaskingStats, type FailoverConfig } from '@/api/proxy'
+import { settingsApi, type ToolSelectorStats } from '@/api/settings'
 
 const emit = defineEmits<{ 'status-change': [msg: string] }>()
 const { t } = useI18n()
 
 const loading = ref(true)
-const cacheConfig = ref<CacheConfig | null>(null)
-const cacheStats = ref<CacheStats | null>(null)
 const prunerConfig = ref<PrunerConfig | null>(null)
 const prunerStats = ref<PrunerStats | null>(null)
-const clearing = ref(false)
-const togglingCache = ref(false)
 const togglingPruner = ref(false)
-const togglingStream = ref(false)
 const modelStatus = ref<PrunerModelStatus | null>(null)
 const routingEnabled = ref(false)
 const togglingRouting = ref(false)
@@ -33,21 +27,24 @@ const switchingBackend = ref(false)
 const failoverConfig = ref<FailoverConfig | null>(null)
 const maskingStats = ref<MaskingStats | null>(null)
 const togglingMasking = ref(false)
+const smartToolSelection = ref(true)
+const togglingSmartTools = ref(false)
+const toolStats = ref<ToolSelectorStats | null>(null)
+const promptCacheEnabled = ref(false)
+const togglingPromptCache = ref(false)
 
 // Scenario metadata: maps rule name to display info
 const scenarioMeta: Record<string, { labelKey: string; descKey: string; traffic: string; savings: string }> = {
   'small-body-economy': { labelKey: 'apiProxy.ruleSmallBody', descKey: 'apiProxy.ruleSmallBodyDesc', traffic: '40%', savings: '97.3%' },
-  'file-tools-economy': { labelKey: 'apiProxy.ruleFileTools', descKey: 'apiProxy.ruleFileToolsDesc', traffic: '20%', savings: '98.1%' },
-  'orchestrator-cheap': { labelKey: 'apiProxy.ruleOrchestrator', descKey: 'apiProxy.ruleOrchestratorDesc', traffic: '10%', savings: '97.1%' },
+  'simple-tools-economy': { labelKey: 'apiProxy.ruleSimpleTools', descKey: 'apiProxy.ruleSimpleToolsDesc', traffic: '20%', savings: '98.1%' },
+  'orchestrator-standard': { labelKey: 'apiProxy.ruleOrchestrator', descKey: 'apiProxy.ruleOrchestratorDesc', traffic: '10%', savings: '97.1%' },
 }
 let modelPollInterval: ReturnType<typeof setInterval> | null = null
 
 async function fetchAll() {
   loading.value = true
   try {
-    const [cfgRes, statsRes, pCfgRes, pStatsRes, modelRes, routingRes, rulesRes, failoverRes, maskingRes] = await Promise.all([
-      proxyCacheApi.getConfig().catch(() => null),
-      proxyCacheApi.getStats().catch(() => null),
+    const [pCfgRes, pStatsRes, modelRes, routingRes, rulesRes, failoverRes, maskingRes, settingsRes, toolStatsRes, promptCacheRes] = await Promise.all([
       proxyCacheApi.getPrunerConfig().catch(() => null),
       proxyCacheApi.getPrunerStats().catch(() => null),
       proxyCacheApi.getPrunerModelStatus().catch(() => null),
@@ -55,9 +52,10 @@ async function fetchAll() {
       proxyCacheApi.getRoutingRules().catch(() => null),
       proxyApi.getFailoverConfig().catch(() => null),
       proxyApi.getMaskingStats().catch(() => null),
+      settingsApi.get().catch(() => null),
+      settingsApi.getToolStats().catch(() => null),
+      proxyCacheApi.getPromptCacheConfig().catch(() => null),
     ])
-    if (cfgRes) cacheConfig.value = cfgRes.data
-    if (statsRes) cacheStats.value = statsRes.data
     if (pCfgRes) prunerConfig.value = pCfgRes.data
     if (pStatsRes) prunerStats.value = pStatsRes.data
     if (modelRes) {
@@ -68,32 +66,11 @@ async function fetchAll() {
     if (rulesRes) routingRules.value = rulesRes.data.rules
     if (failoverRes) failoverConfig.value = failoverRes.data
     if (maskingRes) maskingStats.value = maskingRes.data
+    if (settingsRes) smartToolSelection.value = settingsRes.data.smart_tool_selection !== false
+    if (toolStatsRes) toolStats.value = toolStatsRes.data
+    if (promptCacheRes) promptCacheEnabled.value = promptCacheRes.data.enabled
   } finally {
     loading.value = false
-  }
-}
-
-async function toggleCache() {
-  if (!cacheConfig.value || togglingCache.value) return
-  togglingCache.value = true
-  try {
-    const res = await proxyCacheApi.updateConfig({ enabled: !cacheConfig.value.enabled })
-    cacheConfig.value = res.data.config
-    emit('status-change', t(cacheConfig.value.enabled ? 'apiProxy.cacheEnabled' : 'apiProxy.cacheDisabled'))
-  } finally {
-    togglingCache.value = false
-  }
-}
-
-async function toggleStreamCache() {
-  if (!cacheConfig.value || togglingStream.value) return
-  togglingStream.value = true
-  try {
-    const res = await proxyCacheApi.updateConfig({ skip_streaming: !cacheConfig.value.skip_streaming })
-    cacheConfig.value = res.data.config
-    emit('status-change', t(cacheConfig.value.skip_streaming ? 'apiProxy.streamCacheOff' : 'apiProxy.streamCacheOn'))
-  } finally {
-    togglingStream.value = false
   }
 }
 
@@ -201,23 +178,25 @@ async function toggleMasking() {
   } finally { togglingMasking.value = false }
 }
 
-async function clearCache() {
-  if (clearing.value) return
-  if (!confirm(t('cache.confirmClear'))) return
-  clearing.value = true
+async function toggleSmartTools() {
+  if (togglingSmartTools.value) return
+  togglingSmartTools.value = true
   try {
-    await proxyCacheApi.clearCache()
-    await fetchAll()
-    emit('status-change', t('apiProxy.cacheCleared'))
-  } finally {
-    clearing.value = false
-  }
+    const newVal = !smartToolSelection.value
+    await settingsApi.patch({ smart_tool_selection: newVal })
+    smartToolSelection.value = newVal
+    emit('status-change', t(newVal ? 'apiProxy.smartToolsEnabled' : 'apiProxy.smartToolsDisabled'))
+  } finally { togglingSmartTools.value = false }
 }
 
-function formatTTL(seconds: number): string {
-  if (!seconds) return '-'
-  if (seconds >= 3600) return `${Math.round(seconds / 3600)}h`
-  return `${Math.round(seconds / 60)}m`
+async function togglePromptCache() {
+  if (togglingPromptCache.value) return
+  togglingPromptCache.value = true
+  try {
+    const res = await proxyCacheApi.updatePromptCacheConfig({ enabled: !promptCacheEnabled.value })
+    promptCacheEnabled.value = res.data.enabled
+    emit('status-change', t(res.data.enabled ? 'apiProxy.promptCacheEnabled' : 'apiProxy.promptCacheDisabled'))
+  } finally { togglingPromptCache.value = false }
 }
 
 function formatTokens(n: number): string {
@@ -296,83 +275,25 @@ onUnmounted(stopModelPoll)
     </div>
 
     <template v-else>
-      <!-- CC Cache Section -->
+      <!-- Prompt Cache Section (Anthropic) -->
       <div class="glass-card p-4">
-        <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.cacheTitle') }}</h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('apiProxy.cacheDesc') }}</p>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.promptCacheTitle') }}</h3>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('apiProxy.promptCacheDesc') }}</p>
           </div>
-          <div class="flex items-center gap-3">
-            <button
-              type="button"
-              :disabled="togglingCache"
-              :class="[
-                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                cacheConfig?.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
-                togglingCache ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-              ]"
-              @click="toggleCache"
-            >
-              <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', cacheConfig?.enabled ? 'translate-x-6' : 'translate-x-1']" />
-            </button>
-          </div>
-        </div>
-
-        <div v-if="cacheConfig?.enabled" class="space-y-3">
-          <!-- Stream cache toggle -->
-          <div class="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
-            <div>
-              <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('apiProxy.streamCache') }}</span>
-              <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('apiProxy.streamCacheDesc') }}</p>
-            </div>
-            <button
-              type="button"
-              :disabled="togglingStream || !cacheConfig?.enabled"
-              :class="[
-                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                cacheConfig && !cacheConfig.skip_streaming ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
-                (togglingStream || !cacheConfig?.enabled) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-              ]"
-              @click="toggleStreamCache"
-            >
-              <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', cacheConfig && !cacheConfig.skip_streaming ? 'translate-x-6' : 'translate-x-1']" />
-            </button>
-          </div>
-
-          <!-- Cache info row -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-            <div class="text-center">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('cache.entries') }}</p>
-              <p class="text-sm font-medium text-gray-900 dark:text-white flex items-center justify-center gap-1">
-                {{ cacheStats?.entries ?? 0 }} / {{ cacheStats?.max_entries ?? 0 }}
-                <button
-                  :disabled="clearing || !cacheConfig?.enabled || !(cacheStats?.entries)"
-                  class="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  :title="t('cache.clear')"
-                  @click="clearCache"
-                >
-                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </p>
-            </div>
-            <div class="text-center">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('cache.hitRate') }}</p>
-              <p class="text-sm font-medium text-gray-900 dark:text-white">
-                {{ cacheStats ? (cacheStats.hits + cacheStats.misses > 0 ? ((cacheStats.hits / (cacheStats.hits + cacheStats.misses)) * 100).toFixed(1) : '0.0') : '-' }}%
-              </p>
-            </div>
-            <div class="text-center">
-              <p class="text-xs text-gray-500 dark:text-gray-400">TTL</p>
-              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatTTL(cacheStats?.ttl_seconds ?? 0) }}</p>
-            </div>
-            <div class="text-center">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('apiProxy.storageType') }}</p>
-              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t(`apiProxy.storageTypes.${cacheConfig?.storage_type}`) ?? cacheConfig?.storage_type ?? '-' }}</p>
-            </div>
-          </div>
+          <button
+            type="button"
+            :disabled="togglingPromptCache"
+            :class="[
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              promptCacheEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
+              togglingPromptCache ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+            ]"
+            @click="togglePromptCache"
+          >
+            <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', promptCacheEnabled ? 'translate-x-6' : 'translate-x-1']" />
+          </button>
         </div>
       </div>
 
@@ -624,11 +545,47 @@ onUnmounted(stopModelPoll)
             </span>
             <button
               :disabled="togglingMasking"
-              :class="['relative inline-flex h-5 w-9 items-center rounded-full transition-colors', maskingStats.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600']"
+              :class="['relative inline-flex h-6 w-11 items-center rounded-full transition-colors', maskingStats.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600']"
               @click="toggleMasking"
             >
-              <span :class="['inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform', maskingStats.enabled ? 'translate-x-4' : 'translate-x-0.5']" />
+              <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', maskingStats.enabled ? 'translate-x-6' : 'translate-x-1']" />
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Smart Tool Selection Section -->
+      <div class="glass-card p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.smartToolsTitle') }}</h3>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('apiProxy.smartToolsDesc') }}</p>
+          </div>
+          <button
+            type="button"
+            :disabled="togglingSmartTools"
+            :class="[
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              smartToolSelection ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
+              togglingSmartTools ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+            ]"
+            @click="toggleSmartTools"
+          >
+            <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', smartToolSelection ? 'translate-x-6' : 'translate-x-1']" />
+          </button>
+        </div>
+        <div v-if="smartToolSelection && toolStats && toolStats.requests > 0" class="mt-3 grid grid-cols-3 gap-3 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06] p-3">
+          <div class="text-center py-1">
+            <p class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">{{ t('apiProxy.smartToolsRequests') }}</p>
+            <p class="text-base font-semibold text-gray-900 dark:text-white mt-0.5">{{ toolStats.requests }}</p>
+          </div>
+          <div class="text-center py-1 border-x border-gray-100 dark:border-white/[0.06]">
+            <p class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">{{ t('apiProxy.smartToolsSkipped') }}</p>
+            <p class="text-base font-semibold text-gray-900 dark:text-white mt-0.5">{{ toolStats.tools_skipped }}</p>
+          </div>
+          <div class="text-center py-1">
+            <p class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">{{ t('cache.tokensSaved') }}</p>
+            <p class="text-base font-semibold text-gray-900 dark:text-white mt-0.5">{{ formatTokens(toolStats.tokens_saved) }}</p>
           </div>
         </div>
       </div>

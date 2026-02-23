@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ErrAllProvidersFailed is returned when all providers in the fallback chain fail
@@ -198,9 +199,9 @@ func (c *LLMFallbackChain) Execute(ctx context.Context, request interface{}) (in
 				}
 			}
 
-			start := time.Now()
+			start := timeutil.NowTime()
 			result, err := c.executeWithCircuitBreaker(ctx, health, request)
-			latency := time.Since(start)
+			latency := timeutil.SinceTime(start)
 
 			if err == nil {
 				c.recordSuccess(health, latency)
@@ -251,7 +252,7 @@ func (c *LLMFallbackChain) executeWithCircuitBreaker(ctx context.Context, health
 
 func (c *LLMFallbackChain) recordSuccess(health *LLMProviderHealth, latency time.Duration) {
 	atomic.AddInt64(&health.SuccessCount, 1)
-	health.LastSuccess = time.Now()
+	health.LastSuccess = timeutil.NowTime()
 	health.Latency = latency
 
 	c.mu.Lock()
@@ -268,7 +269,7 @@ func (c *LLMFallbackChain) recordSuccess(health *LLMProviderHealth, latency time
 
 func (c *LLMFallbackChain) recordFailure(health *LLMProviderHealth) {
 	atomic.AddInt64(&health.FailureCount, 1)
-	health.LastFailure = time.Now()
+	health.LastFailure = timeutil.NowTime()
 
 	c.mu.Lock()
 	defer c.mu.Unlock()

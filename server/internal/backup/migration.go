@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Migration represents a database/config migration.
@@ -148,7 +149,7 @@ func (mm *MigrationManager) Migrate(ctx context.Context, targetVersion string) (
 			// Record failed migration
 			history.Migrations = append(history.Migrations, MigrationRecord{
 				Version:   m.Version,
-				AppliedAt: time.Now().Format(time.RFC3339),
+				AppliedAt: timeutil.NowTime().Format(time.RFC3339),
 				Success:   false,
 			})
 			mm.saveHistory(history)
@@ -159,7 +160,7 @@ func (mm *MigrationManager) Migrate(ctx context.Context, targetVersion string) (
 		// Record successful migration
 		history.Migrations = append(history.Migrations, MigrationRecord{
 			Version:   m.Version,
-			AppliedAt: time.Now().Format(time.RFC3339),
+			AppliedAt: timeutil.NowTime().Format(time.RFC3339),
 			Success:   true,
 		})
 		history.CurrentVersion = m.Version

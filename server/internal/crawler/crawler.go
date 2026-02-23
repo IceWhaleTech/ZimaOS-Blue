@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"golang.org/x/net/html"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Result represents a crawled page result
@@ -133,7 +134,7 @@ func (c *Crawler) crawlURL(ctx context.Context, targetURL string, depth int, sem
 	// Check domain restrictions
 	parsedURL, err := url.Parse(targetURL)
 	if err != nil {
-		c.results <- Result{URL: targetURL, Error: err.Error(), CrawledAt: time.Now()}
+		c.results <- Result{URL: targetURL, Error: err.Error(), CrawledAt: timeutil.NowTime()}
 		return
 	}
 
@@ -177,7 +178,7 @@ func (c *Crawler) fetchPage(ctx context.Context, targetURL string) Result {
 	result := Result{
 		URL:       targetURL,
 		Headers:   make(map[string]string),
-		CrawledAt: time.Now(),
+		CrawledAt: timeutil.NowTime(),
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
@@ -345,10 +346,10 @@ func (c *Crawler) waitForRateLimit(domain string) {
 	defer c.rateMu.Unlock()
 
 	if lastRequest, ok := c.rateLimits[domain]; ok {
-		elapsed := time.Since(lastRequest)
+		elapsed := timeutil.SinceTime(lastRequest)
 		if elapsed < c.config.RateLimit {
 			time.Sleep(c.config.RateLimit - elapsed)
 		}
 	}
-	c.rateLimits[domain] = time.Now()
+	c.rateLimits[domain] = timeutil.NowTime()
 }

@@ -27,7 +27,6 @@ type parsedRequest struct {
 	body           []byte
 	model          string
 	originalModel  string         // model before routing (for cost savings tracking)
-	cacheKey       string         // computed once if cache enabled
 	upstreamFormat ProviderType   // set when request was converted to non-OpenAI format
 	routed         *RouteDecision // non-nil if rule engine rerouted the model
 	streaming      bool
@@ -125,19 +124,22 @@ type ProxyHandler struct {
 	providerPool   *providerpool.Pool // Provider Pool for routing and API keys
 	authProber     *AuthProber        // Auth strategy probing with memory
 	providerMemory *ProviderMemory    // Provider capability memory
-	cache          *CCCache           // Response cache (cc-cache)
 	routingEnabled atomic.Bool        // Toggle for model routing
+	promptCacheEnabled atomic.Bool    // Toggle for Anthropic prompt caching
 
 	// Warm path — accessed conditionally
 	failover        *FailoverHandler   // Failover handler
 	prunerMw        *pruner.Middleware // Context pruner middleware (optional)
 	modelRouter     *ModelRouter       // Model family routing + background downgrade
 	ruleEngine      *RuleEngine        // Condition-based tier routing
+	tierResolver    *TierResolver      // Dynamic model tier classification
 
 	// Cold path — rarely accessed per-request
 	router          *Router            // Legacy router (fallback only)
 	apiKeyValidator func(key string) ([]string, error)
 	routingStats    *RoutingStats      // Routing cost savings tracker
+	pipelineStats   *PipelineStatsCollector // Unified pipeline stats collector
+	oauthManager    OAuthTokenProvider // OAuth token provider (optional)
 }
 
 // NewProxyHandler creates a new proxy handler
@@ -164,14 +166,19 @@ func (ph *ProxyHandler) SetProviderPool(pool *providerpool.Pool) {
 	}
 }
 
-// SetCache sets the response cache for the proxy handler.
-func (ph *ProxyHandler) SetCache(cache *CCCache) {
-	ph.cache = cache
-}
-
 // SetPruner sets the context pruner middleware for the proxy handler.
 func (ph *ProxyHandler) SetPruner(mw *pruner.Middleware) {
 	ph.prunerMw = mw
+}
+
+// OAuthTokenProvider provides OAuth access tokens for providers.
+type OAuthTokenProvider interface {
+	GetAccessToken(providerID string) (string, error)
+}
+
+// SetOAuthManager sets the OAuth token provider for OAuth-authenticated providers.
+func (ph *ProxyHandler) SetOAuthManager(m OAuthTokenProvider) {
+	ph.oauthManager = m
 }
 
 // SetAPIKeyValidator sets the API key validator function.
@@ -189,14 +196,21 @@ func (ph *ProxyHandler) SetRuleEngine(re *RuleEngine) {
 	ph.ruleEngine = re
 }
 
+// SetTierResolver sets the dynamic tier resolver and wires it into the
+// rule engine and model router for tier-based model resolution.
+func (ph *ProxyHandler) SetTierResolver(tr *TierResolver) {
+	ph.tierResolver = tr
+	if ph.ruleEngine != nil {
+		ph.ruleEngine.SetTierResolver(tr)
+	}
+	if ph.modelRouter != nil {
+		ph.modelRouter.SetTierResolver(tr)
+	}
+}
+
 // SetAuthProber sets the auth strategy prober.
 func (ph *ProxyHandler) SetAuthProber(ap *AuthProber) {
 	ph.authProber = ap
-}
-
-// GetCache returns the cache instance for external access.
-func (ph *ProxyHandler) GetCache() *CCCache {
-	return ph.cache
 }
 
 // GetProviderMemory returns the provider memory instance for external access.
@@ -212,6 +226,16 @@ func (ph *ProxyHandler) IsRoutingEnabled() bool {
 // SetRoutingEnabled toggles model routing on/off at runtime.
 func (ph *ProxyHandler) SetRoutingEnabled(enabled bool) {
 	ph.routingEnabled.Store(enabled)
+}
+
+// IsPromptCacheEnabled returns whether Anthropic prompt caching is enabled.
+func (ph *ProxyHandler) IsPromptCacheEnabled() bool {
+	return ph.promptCacheEnabled.Load()
+}
+
+// SetPromptCacheEnabled toggles Anthropic prompt caching on/off at runtime.
+func (ph *ProxyHandler) SetPromptCacheEnabled(enabled bool) {
+	ph.promptCacheEnabled.Store(enabled)
 }
 
 // GetRoutingRules returns the current routing rules with their enabled state.
@@ -233,6 +257,21 @@ func (ph *ProxyHandler) SetRoutingRuleEnabled(name string, enabled bool) bool {
 // GetRoutingStats returns a snapshot of routing cost savings.
 func (ph *ProxyHandler) GetRoutingStats() RoutingStatsSnapshot {
 	return ph.routingStats.Snapshot()
+}
+
+// GetRoutingStatsRef returns the RoutingStats reference for external wiring.
+func (ph *ProxyHandler) GetRoutingStatsRef() *RoutingStats {
+	return ph.routingStats
+}
+
+// SetPipelineStats sets the unified pipeline stats collector.
+func (ph *ProxyHandler) SetPipelineStats(ps *PipelineStatsCollector) {
+	ph.pipelineStats = ps
+}
+
+// GetPipelineStats returns the pipeline stats collector (may be nil).
+func (ph *ProxyHandler) GetPipelineStats() *PipelineStatsCollector {
+	return ph.pipelineStats
 }
 
 // warmAuthStrategies probes auth strategies for all enabled providers in the background.
@@ -322,7 +361,6 @@ func (ph *ProxyHandler) extractRoutingMode(r *http.Request) string {
 
 // ServeHTTP implements http.Handler.
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	requestStart := time.Now()
 
 	// Handle /v1/models specially
 	if r.URL.Path == "/v1/models" || strings.HasSuffix(r.URL.Path, "/models") {
@@ -353,60 +391,17 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		pr.streaming = gjson.Get(bodyStr, "stream").Bool()
 	}
 
+	// "auto" means "use any available model" — normalize to empty so the router
+	// picks from allCandidates and allModelsForProvider doesn't send "auto" upstream.
+	if pr.model == "auto" {
+		pr.model = ""
+	}
+
 	// Model routing: evaluate rule engine to potentially swap to a cheaper model
 	pr.originalModel = pr.model
 	ph.applyModelRouting(r, pr)
 
-	// Compute canonical cache key from post-routing body (pr.body may differ from bodyBytes after model swap)
-	if ph.cache != nil {
-		pr.cacheKey = ph.cache.GenerateCanonicalKey(pr.body)
-	}
-
-	// Try cache lookup — uses canonical key for semantic dedup
-	if ph.cache != nil && pr.cacheKey != "" {
-		if entry, ok := ph.cache.Get(pr.cacheKey); ok && entry != nil {
-			latencyMs := time.Since(requestStart).Milliseconds()
-			ph.cache.RecordLatencySaved(latencyMs)
-			w.Header().Set("X-Cache", "HIT")
-			w.Header().Set("X-Cache-Key", pr.cacheKey[:16])
-			if pr.streaming {
-				ph.writeSSEFromCache(w, entry)
-			} else {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(entry.StatusCode)
-				w.Write(entry.Body)
-			}
-			return
-		}
-
-		// Singleflight: deduplicate concurrent identical non-streaming requests
-		if !pr.streaming {
-			if sf := ph.cache.GetSingleflight(); sf != nil {
-				sfEntry, sfErr := sf.Do(r.Context(), pr.cacheKey, 30*time.Second, func() (*CCCacheEntry, error) {
-					return ph.forwardAndCache(r, pr)
-				})
-				if sfErr != nil {
-					http.Error(w, SanitizeError(sfErr), http.StatusBadGateway)
-					return
-				}
-				if sfEntry != nil {
-					w.Header().Set("X-Cache", "MISS")
-					w.Header().Set("X-Cache-Key", pr.cacheKey[:16])
-					w.Header().Set("Content-Type", "application/json")
-					for k, v := range sfEntry.Headers {
-						if k != "Content-Type" {
-							w.Header().Set(k, v)
-						}
-					}
-					w.WriteHeader(sfEntry.StatusCode)
-					w.Write(sfEntry.Body)
-					return
-				}
-			}
-		}
-	}
-
-	// Fallback: direct forward with auth probing + provider failover
+	// Forward with auth probing + provider failover
 	if ph.providerPool == nil || ph.providerPool.Router == nil {
 		http.Error(w, "no provider pool configured", http.StatusServiceUnavailable)
 		return
@@ -468,73 +463,9 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer finalResp.Body.Close()
 	slog.Debug("[proxy] upstream response", "status", finalResp.StatusCode, "streaming", pr.streaming, "content_type", finalResp.Header.Get("Content-Type"))
 
-	ph.copyResponseWithCache(w, finalResp, pr)
+	ph.copyResponse(w, finalResp, pr)
 }
 
-// forwardAndCache routes, forwards, and caches a request. Used by singleflight.
-func (ph *ProxyHandler) forwardAndCache(r *http.Request, pr *parsedRequest) (*CCCacheEntry, error) {
-	routeReq := &providerpool.RouteRequest{
-		ModelID: pr.model,
-		Mode:    providerpool.RoutingMode(ph.extractRoutingMode(r)),
-	}
-
-	var finalEntry *CCCacheEntry
-	err := ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, func(result *providerpool.RouteResult) error {
-		pid := result.Provider.ID
-		burl := result.Provider.BaseURL
-
-		// Throttle check
-		if ph.providerMemory.IsThrottled(pid, burl) {
-			return fmt.Errorf("provider %s is throttled", pid)
-		}
-
-		// Try all Format × Model combinations on this provider
-		resp, effectiveFormat, _, tryErr := ph.tryOnProvider(r, result, pr)
-		if tryErr != nil {
-			return tryErr
-		}
-		defer resp.Body.Close()
-
-		// Guard: if upstream unexpectedly returns SSE, don't buffer/cache it
-		if isStreamingResponse(resp) {
-			return fmt.Errorf("upstream returned streaming response for non-streaming request")
-		}
-
-		respBody, err := readBody(resp.Body)
-		if err != nil {
-			return err
-		}
-
-		// Convert Anthropic response to OpenAI format
-		if effectiveFormat == providerpool.APIFormatAnthropic && resp.StatusCode == http.StatusOK {
-			if converted, convErr := sharedConverter.ConvertResponse(respBody, ProviderTypeAnthropic); convErr == nil {
-				respBody = converted
-			}
-		}
-
-		if ph.cache != nil && resp.StatusCode == http.StatusOK {
-			ph.cache.Set(pr.cacheKey, respBody, resp.StatusCode, resp.Header, result.Provider.ID, pr.model)
-		}
-
-		headerMap := make(map[string]string)
-		for k, v := range resp.Header {
-			if len(v) > 0 {
-				headerMap[k] = v[0]
-			}
-		}
-		finalEntry = &CCCacheEntry{
-			Body:       respBody,
-			StatusCode: resp.StatusCode,
-			Headers:    headerMap,
-		}
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-	return finalEntry, nil
-}
 
 // routeRequest uses Provider Pool Router to select provider.
 func (ph *ProxyHandler) routeRequest(model string) (*providerpool.RouteResult, error) {
@@ -579,6 +510,12 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 		if convErr == nil {
 			body = converted
 			requestPath = newPath // "/v1/messages"
+			// Apply Anthropic prompt caching if enabled
+			if ph.promptCacheEnabled.Load() {
+				if cached, cacheErr := InjectPromptCaching(body); cacheErr == nil {
+					body = cached
+				}
+			}
 			slog.Debug("[proxy] converted OpenAI→Anthropic format", "provider", provider.ID, "path", newPath)
 		} else {
 			slog.Warn("[proxy] format conversion failed, sending as-is", "provider", provider.ID, "error", convErr)
@@ -914,7 +851,16 @@ func (ph *ProxyHandler) tryOnProvider(
 				break
 			}
 
-			// 4xx: blacklist this model on this provider, try next model/format
+			// 422: likely wrong request format (e.g. OpenAI body sent to Anthropic endpoint).
+			// Don't blacklist the model — try the next format instead.
+			if statusCode == 422 {
+				slog.Warn("[proxy] 422 format mismatch, trying next format",
+					"provider", pid, "format", format, "model", model, "body", errStr)
+				lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
+				continue
+			}
+
+			// Other 4xx: blacklist this model on this provider, try next model/format
 			slog.Warn("[proxy] 4xx, trying next combination",
 				"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
 			ph.providerMemory.BlacklistModel(pid, burl, model)
@@ -1064,6 +1010,15 @@ func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.R
 			req.Header.Set("Authorization", "Bearer "+route.APIKey.Key)
 			req.Header.Del("x-api-key")
 		}
+	} else if route.OAuth != nil && route.OAuth.Connected && ph.oauthManager != nil {
+		// OAuth authentication — get fresh access token
+		token, oauthErr := ph.oauthManager.GetAccessToken(provider.ID)
+		if oauthErr != nil {
+			slog.Warn("[proxy] oauth token error", "provider", provider.ID, "error", oauthErr)
+		} else {
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Del("x-api-key")
+		}
 	}
 
 	req.Host = targetURL.Host
@@ -1072,18 +1027,6 @@ func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.R
 		return ph.connPool.GetInsecureClient(provider.Name).Do(req)
 	}
 	return ph.connPool.GetClient(provider.Name).Do(req)
-}
-
-// copyResponse copies the response to the client
-func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response) {
-	copyHeaders(w.Header(), resp.Header)
-	w.WriteHeader(resp.StatusCode)
-
-	if isStreamingResponse(resp) {
-		ph.copyStreamingResponseWithCapture(w, resp, false)
-	} else {
-		io.Copy(w, resp.Body)
-	}
 }
 
 // handleModels handles GET /v1/models
@@ -1124,13 +1067,12 @@ func (ph *ProxyHandler) handleModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// copyResponseWithCache copies response and caches if applicable.
+// copyResponse copies response headers and body to the client.
 // Uses pre-parsed request data to avoid redundant JSON parsing.
-func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.Response, pr *parsedRequest) {
+func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response, pr *parsedRequest) {
 	copyHeaders(w.Header(), resp.Header)
 
 	if isStreamingResponse(resp) || pr.streaming {
-		w.Header().Set("X-Cache", "MISS")
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(resp.StatusCode)
 
@@ -1142,23 +1084,12 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 			return
 		}
 
-		// Stream to client while capturing for cache
-		needCapture := ph.cache != nil && resp.StatusCode == http.StatusOK
-		captured := ph.copyStreamingResponseWithCapture(w, resp, needCapture)
-		// Cache the assembled non-streaming response
-		if needCapture && len(captured) > 0 {
-			assembled := assembleNonStreamingResponse(parseSSEChunks(captured))
-			if len(assembled) > 0 {
-				// Reuse pre-computed cacheKey and model — no re-parsing needed
-				ph.cache.Set(pr.cacheKey, assembled, resp.StatusCode, resp.Header, "", pr.model)
-			}
-		}
+		ph.copyStreamingResponseWithCapture(w, resp, false)
 		return
 	}
 
 	respBody, err := readBody(resp.Body)
 	if err != nil {
-		w.Header().Set("X-Cache", "MISS")
 		w.WriteHeader(resp.StatusCode)
 		return
 	}
@@ -1170,18 +1101,6 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 		}
 	}
 
-	if ph.cache != nil && resp.StatusCode == http.StatusOK {
-		// Reuse pre-computed cacheKey and model — no re-parsing needed
-		ph.cache.Set(pr.cacheKey, respBody, resp.StatusCode, resp.Header, "", pr.model)
-		w.Header().Set("X-Cache", "MISS")
-		w.Header().Set("X-Cache-Key", pr.cacheKey[:16])
-	} else {
-		w.Header().Set("X-Cache", "BYPASS")
-		if ph.cache != nil {
-			ph.cache.RecordBypass()
-		}
-	}
-
 	// Track routing cost savings (non-streaming only — streaming has no full body here)
 	if resp.StatusCode == http.StatusOK && pr.originalModel != pr.model {
 		ph.routingStats.Record(pr.originalModel, pr.model, respBody)
@@ -1189,19 +1108,6 @@ func (ph *ProxyHandler) copyResponseWithCache(w http.ResponseWriter, resp *http.
 
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)
-}
-
-// writeSSEFromCache converts a cached non-streaming response to SSE and writes it.
-func (ph *ProxyHandler) writeSSEFromCache(w http.ResponseWriter, entry *CCCacheEntry) {
-	sseData := convertToSSE(entry.Body)
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(entry.StatusCode)
-	w.Write(sseData)
-	if flusher, ok := w.(http.Flusher); ok {
-		flusher.Flush()
-	}
 }
 
 // copyStreamingResponseWithCapture streams SSE to client while capturing raw data.

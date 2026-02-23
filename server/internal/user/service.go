@@ -7,6 +7,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/password"
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 var (
@@ -276,7 +277,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 		// Increment failed attempts
 		user.FailedLoginAttempts++
 		if user.FailedLoginAttempts >= s.config.LockoutThreshold {
-			lockUntil := time.Now().Add(s.config.LockoutDuration)
+			lockUntil := timeutil.NowTime().Add(s.config.LockoutDuration)
 			user.LockedUntil = &lockUntil
 		}
 		_ = s.repo.Update(ctx, user)
@@ -286,7 +287,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 	// Reset failed attempts on successful login
 	user.FailedLoginAttempts = 0
 	user.LockedUntil = nil
-	now := time.Now().UTC()
+	now := timeutil.NowTime().UTC()
 	user.LastLoginAt = &now
 	_ = s.repo.Update(ctx, user)
 
@@ -300,7 +301,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 
 // CreateSession creates a new session for a user.
 func (s *Service) CreateSession(ctx context.Context, userID uuid.UUID, refreshToken, userAgent, ipAddress string) (*Session, error) {
-	expiresAt := time.Now().Add(s.config.SessionDuration)
+	expiresAt := timeutil.NowTime().Add(s.config.SessionDuration)
 	session := NewSession(userID, refreshToken, userAgent, ipAddress, expiresAt)
 
 	if err := s.repo.CreateSession(ctx, session); err != nil {

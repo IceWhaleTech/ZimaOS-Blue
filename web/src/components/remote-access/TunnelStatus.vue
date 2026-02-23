@@ -85,12 +85,6 @@ function copyUrl() {
   }
 }
 
-function copyTunnelPassword() {
-  if (props.status.tunnel_password) {
-    navigator.clipboard.writeText(props.status.tunnel_password)
-  }
-}
-
 function openUrl() {
   if (props.status.url) {
     openInBrowser(props.status.url)
@@ -258,27 +252,6 @@ watch(
         </button>
       </div>
 
-      <!-- LocalTunnel (loca.lt) password: visitors need this to access the tunnel -->
-      <div v-if="status.tunnel_password" class="mt-3">
-        <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-          {{ t('remoteAccess.tunnelPassword') }}
-        </div>
-        <div class="flex items-center gap-2">
-          <code class="flex-1 text-sm bg-white dark:bg-gray-700 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
-            {{ status.tunnel_password }}
-          </code>
-          <button
-            class="p-2 text-gray-500 hover:text-gray-900 dark:text-white dark:hover:text-gray-900 dark:text-white transition-colors"
-            :title="t('common.copy')"
-            @click="copyTunnelPassword"
-          >
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
       <!-- QR Code Display (auto-show when URL available) -->
       <div v-if="status.url" class="mt-3 flex justify-center">
         <div v-if="qrCodeLoading" class="py-4">
@@ -338,7 +311,7 @@ watch(
       <button
         class="flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
         :class="showDiagnostics
-          ? 'bg-gray-700 dark:bg-gray-500/20 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white text-gray-900 dark:text-white dark:text-white'
+          ? 'bg-blue-100 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
           : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
         @click="toggleDiagnostics"
       >
@@ -350,7 +323,7 @@ watch(
       <button
         class="flex-1 px-3 py-2 text-sm rounded-lg border transition-colors flex items-center justify-center gap-2"
         :class="showLogs
-          ? 'bg-gray-700 dark:bg-gray-500/20 border-gray-900 dark:border-white dark:border-gray-900 dark:border-white text-gray-900 dark:text-white dark:text-white'
+          ? 'bg-blue-100 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
           : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
         @click="toggleLogs"
       >

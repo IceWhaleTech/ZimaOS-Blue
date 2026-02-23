@@ -4,6 +4,16 @@ import api from './client'
 export interface Settings {
   locale?: string   // User's preferred locale (e.g., "zh-CN", "en-US")
   timezone?: string // User's timezone
+  smart_tool_selection?: boolean // IR-based tool filtering (default true)
+}
+
+// Smart tool selection stats
+export interface ToolSelectorStats {
+  requests: number
+  tools_total: number
+  tools_sent: number
+  tools_skipped: number
+  tokens_saved: number
 }
 
 // Settings API
@@ -16,4 +26,7 @@ export const settingsApi = {
 
   // Patch user settings (partial update)
   patch: (updates: Partial<Settings>) => api.patch<Settings>('/settings', updates),
+
+  // Get smart tool selection stats
+  getToolStats: () => api.get<ToolSelectorStats>('/tools/stats'),
 }

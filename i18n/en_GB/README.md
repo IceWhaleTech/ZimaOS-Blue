@@ -59,7 +59,7 @@ Built for bold developers who want to **vibe or handcraft their own agents**, Bl
 Take it further: it delivers native support for **20+ IM platforms**, **voice-driven** interfaces for natural, context-aware dialogue, **zero-config model switching** with IDE scanning, and SOUL-layered personalities.
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
 </p>
 
 ### Fast, Light
@@ -95,13 +95,49 @@ We believe **next-gen personal computing** embraces LLMs — but **controllable,
 - **Local-First, Ultra-Lightweight, Cross-Device** – No high-end hardware required. Runs on anything that can compute.
 - **Secure & Auditable** – Session auditing, sandboxing, permission controls, and a built-in API proxy that acts as an application-layer firewall — every byte in/out is visible.
 
+![](../../docs/assets/design_principle.png)
+
 We minimise boilerplate so you **focus on what matters**. Staying true to <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS's design philosophy**, Blue delivers:
 - **Zero-to-One in One Click** – Deploy instantly, no complex config.
 - **Rapid Prototyping** – Vibe or handcraft scenario-specific tools, interactions, and app packages.
 - **Global-Ready** – **The world is huge**, and it doesn't default to English. **20+ languages, native**, no barriers.
 - **Open Model Ecosystem** – No vendor lock-in. Bring your own models.
 
-![](../../docs/assets/design_principle.png)
+<details>
+<summary>
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
+</summary>
+
+| Provider | Models | Type |
+|----------|--------|------|
+| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
+| Anthropic | Claude 4.5, Claude 4 | Cloud |
+| Google | Gemini 2.5, Gemini 2.0 | Cloud |
+| Ollama | Llama, Qwen, Gemma, Phi, etc. | Local |
+| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| Grok | Grok-3, Grok-3-mini | Cloud |
+| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
+| GLM | GLM-4, GLM-4-Flash | Cloud |
+| Moonshot | Moonshot-v1 | Cloud |
+| MiniMax | abab6.5, abab5.5 | Cloud |
+| Venice | Llama, Mistral (privacy-first) | Cloud |
+| AWS Bedrock | Claude, Llama, Titan | Cloud |
+| Azure | OpenAI models via Azure | Cloud |
+| OpenRouter | 100+ models aggregated | Cloud |
+| AIHubMix | Multi-provider aggregator | Cloud |
+| Codex | OpenAI Codex | Cloud |
+| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
+| Custom | Any OpenAI / Anthropic / Gemini compatible API | Cloud / Local |
+
+</details>
+
+### Supported IDEs
+
+<p align="center">
+  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+</p>
 
 ## Quick Start
 
@@ -129,7 +165,6 @@ irm https://ota.zimaos.com/blue/windows | iex
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
-git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -142,11 +177,7 @@ sh build.sh
 .\build.bat
 ```
 
-> **Note:** Windows builds require:
-> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus, kokoro, onnx)
-> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) for system libraries (winmm, etc.)
->
-> Make sure `gcc`, `cmake` are in your `PATH`.
+> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
 
 ## Architecture Overview
 

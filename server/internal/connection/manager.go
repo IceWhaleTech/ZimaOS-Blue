@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ConnectionType represents the type of connection.
@@ -89,7 +90,7 @@ func NewManager(maxConns int, idleTimeout time.Duration) *Manager {
 		idleTimeout: idleTimeout,
 		stats: ConnectionStats{
 			ConnectionsByIP: make(map[string]int),
-			LastUpdated:     time.Now(),
+			LastUpdated:     timeutil.NowTime(),
 		},
 	}
 
@@ -111,8 +112,8 @@ func (m *Manager) RegisterConnection(connType ConnectionType, clientIP, userAgen
 		UserAgent:    userAgent,
 		Path:         path,
 		Method:       method,
-		ConnectedAt:  time.Now(),
-		LastActivity: time.Now(),
+		ConnectedAt:  timeutil.NowTime(),
+		LastActivity: timeutil.NowTime(),
 		RequestCount: 1,
 		Status:       "active",
 		Metadata:     make(map[string]any),
@@ -132,7 +133,7 @@ func (m *Manager) RegisterConnection(connType ConnectionType, clientIP, userAgen
 		m.stats.ActiveSSE++
 	}
 
-	m.stats.LastUpdated = time.Now()
+	m.stats.LastUpdated = timeutil.NowTime()
 
 	return conn
 }
@@ -143,7 +144,7 @@ func (m *Manager) UpdateConnection(id string, bytesSent, bytesRecv int64) {
 	defer m.mu.Unlock()
 
 	if conn, ok := m.connections[id]; ok {
-		conn.LastActivity = time.Now()
+		conn.LastActivity = timeutil.NowTime()
 		conn.RequestCount++
 		conn.BytesSent += bytesSent
 		conn.BytesRecv += bytesRecv
@@ -152,7 +153,7 @@ func (m *Manager) UpdateConnection(id string, bytesSent, bytesRecv int64) {
 		m.stats.TotalRequests++
 		m.stats.TotalBytesSent += bytesSent
 		m.stats.TotalBytesRecv += bytesRecv
-		m.stats.LastUpdated = time.Now()
+		m.stats.LastUpdated = timeutil.NowTime()
 	}
 }
 
@@ -179,7 +180,7 @@ func (m *Manager) UnregisterConnection(id string) {
 		}
 
 		delete(m.connections, id)
-		m.stats.LastUpdated = time.Now()
+		m.stats.LastUpdated = timeutil.NowTime()
 	}
 }
 
@@ -239,7 +240,7 @@ func (m *Manager) cleanupIdleConnections() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	for id, conn := range m.connections {
 		// Only cleanup HTTP connections (WS/SSE are long-lived)
 		if conn.Type == ConnectionTypeHTTP && now.Sub(conn.LastActivity) > m.idleTimeout {

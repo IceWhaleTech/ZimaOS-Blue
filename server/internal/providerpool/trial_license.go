@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // License format: base64(json_payload) + "." + base64(ed25519_signature)
@@ -108,7 +110,7 @@ func VerifyLicense(licenseStr string) (*LicenseClaims, []byte, error) {
 	}
 
 	// Check expiry — still return claims so callers can distinguish expired vs invalid
-	if claims.ExpiresAt > 0 && time.Now().Unix() > claims.ExpiresAt {
+	if claims.ExpiresAt > 0 && timeutil.Now() > claims.ExpiresAt {
 		return &claims, sigBytes, ErrLicenseExpired
 	}
 

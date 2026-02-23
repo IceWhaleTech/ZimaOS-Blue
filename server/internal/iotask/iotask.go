@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"golang.org/x/time/rate"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Common errors
@@ -161,7 +162,7 @@ func (m *Manager) createTask(taskType TaskType, src, dst string, opts ...TaskOpt
 		Source:      src,
 		Destination: dst,
 		Status:      TaskStatusPending,
-		CreatedAt:   time.Now(),
+		CreatedAt:   timeutil.NowTime(),
 		Metadata:    make(map[string]string),
 		cancel:      taskCancel,
 	}
@@ -196,7 +197,7 @@ func (m *Manager) Cancel(taskID string) error {
 	if task.Status == TaskStatusPending || task.Status == TaskStatusRunning {
 		task.cancel()
 		task.Status = TaskStatusCancelled
-		now := time.Now()
+		now := timeutil.NowTime()
 		task.CompletedAt = &now
 	}
 
@@ -301,7 +302,7 @@ func (m *Manager) executeTask(ctx context.Context, task *Task) {
 	// Update status to running
 	task.mu.Lock()
 	task.Status = TaskStatusRunning
-	now := time.Now()
+	now := timeutil.NowTime()
 	task.StartedAt = &now
 	task.mu.Unlock()
 
@@ -317,7 +318,7 @@ func (m *Manager) executeTask(ctx context.Context, task *Task) {
 
 	// Update final status
 	task.mu.Lock()
-	completedAt := time.Now()
+	completedAt := timeutil.NowTime()
 	task.CompletedAt = &completedAt
 
 	if ctx.Err() != nil {
@@ -489,7 +490,7 @@ func (m *Manager) copyFile(ctx context.Context, task *Task, src, dst string, mod
 
 	// Copy with progress tracking
 	buf := make([]byte, m.config.BufferSize)
-	startTime := time.Now()
+	startTime := timeutil.NowTime()
 	var copied int64
 
 	for {
@@ -517,7 +518,7 @@ func (m *Manager) copyFile(ctx context.Context, task *Task, src, dst string, mod
 			// Update progress
 			task.mu.Lock()
 			task.Progress.ProcessedBytes += int64(written)
-			elapsed := time.Since(startTime).Seconds()
+			elapsed := timeutil.SinceTime(startTime).Seconds()
 			if elapsed > 0 {
 				task.Progress.BytesPerSecond = int64(float64(task.Progress.ProcessedBytes) / elapsed)
 			}

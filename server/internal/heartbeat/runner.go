@@ -9,6 +9,8 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Runner manages the periodic heartbeat loop.
@@ -26,11 +28,13 @@ type Runner struct {
 
 // RunnerDeps holds dependencies for creating a Runner.
 type RunnerDeps struct {
-	Config   *Config
-	ChatFn   ChatFunc
-	Channels *channel.Manager
-	Streamer *companion.EventStreamer
-	Logger   *zap.Logger
+	Config      *Config
+	ChatFn      ChatFunc
+	Channels    *channel.Manager
+	Streamer    *companion.EventStreamer
+	Logger      *zap.Logger
+	Tools       []llm.Tool
+	ToolExecute func(ctx context.Context, name string, argsJSON string) (string, error)
 }
 
 // NewRunner creates a new heartbeat runner.
@@ -95,7 +99,7 @@ func (r *Runner) runLoop(ctx context.Context) {
 	defer ticker.Stop()
 
 	r.mu.Lock()
-	r.nextDue = time.Now().Add(interval)
+	r.nextDue = timeutil.NowTime().Add(interval)
 	r.mu.Unlock()
 
 	r.deps.Logger.Info("heartbeat: started", zap.Duration("interval", interval))
@@ -117,7 +121,7 @@ func (r *Runner) runLoop(ctx context.Context) {
 		case <-ticker.C:
 			r.tick(ctx)
 			r.mu.Lock()
-			r.nextDue = time.Now().Add(interval)
+			r.nextDue = timeutil.NowTime().Add(interval)
 			r.mu.Unlock()
 		case reason := <-r.wakeCh:
 			r.deps.Logger.Debug("heartbeat: wake requested", zap.String("reason", reason))
@@ -131,7 +135,7 @@ func (r *Runner) runLoop(ctx context.Context) {
 			r.tick(ctx)
 			ticker.Reset(interval)
 			r.mu.Lock()
-			r.nextDue = time.Now().Add(interval)
+			r.nextDue = timeutil.NowTime().Add(interval)
 			r.mu.Unlock()
 		}
 	}
@@ -176,7 +180,7 @@ func (r *Runner) tick(ctx context.Context) {
 	result := RunOnce(ctx, deps)
 
 	evt := &HeartbeatEvent{
-		Timestamp:     time.Now(),
+		Timestamp:     timeutil.NowTime(),
 		Status:        result.Status,
 		Reason:        result.Reason,
 		DurationMs:    result.DurationMs,

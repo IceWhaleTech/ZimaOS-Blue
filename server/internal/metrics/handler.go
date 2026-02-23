@@ -11,15 +11,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
 )
 
-// CacheStatsProvider provides cache statistics
-type CacheStatsProvider interface {
-	Stats() map[string]interface{}
-}
-
 // Handler handles metrics API endpoints.
 type Handler struct {
 	writer        *MetricsWriter
-	cacheProvider CacheStatsProvider
 
 	// singleflight for deduplicating concurrent requests
 	sfGroup singleflight.Group
@@ -37,11 +31,6 @@ func NewHandler(writer *MetricsWriter) *Handler {
 			DefaultTTL: 3 * time.Second,
 		}, "metrics"),
 	}
-}
-
-// SetCacheProvider sets the cache stats provider
-func (h *Handler) SetCacheProvider(provider CacheStatsProvider) {
-	h.cacheProvider = provider
 }
 
 // GetCallStats handles GET /api/v1/metrics/calls
@@ -315,22 +304,11 @@ func (h *Handler) GetPricingForModel(c echo.Context) error {
 	return c.JSON(http.StatusOK, pricing)
 }
 
-// GetCacheStats handles GET /api/v1/metrics/cache
+// GetCacheStats handles GET /api/v1/metrics/cache (deprecated — cache removed)
 func (h *Handler) GetCacheStats(c echo.Context) error {
-	if h.cacheProvider == nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"enabled":     false,
-			"entries":     0,
-			"max_entries": 0,
-			"hits":        0,
-			"misses":      0,
-			"evictions":   0,
-			"bypasses":    0,
-			"hit_rate":    0,
-		})
-	}
-
-	return c.JSON(http.StatusOK, h.cacheProvider.Stats())
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"enabled": false,
+	})
 }
 
 // GetSummary handles GET /api/v1/metrics/summary
@@ -358,11 +336,6 @@ func (h *Handler) GetSummary(c echo.Context) error {
 
 		if systemMetrics != nil {
 			summary["system"] = systemMetrics
-		}
-
-		// Add cache stats if available
-		if h.cacheProvider != nil {
-			summary["cache"] = h.cacheProvider.Stats()
 		}
 
 		// Cache the result
@@ -469,11 +442,6 @@ func (h *Handler) GetAll(c echo.Context) error {
 		"resource_history": resourceHistoryResponse,
 		"process":          processMetrics,
 		"pricing":          pricing,
-	}
-
-	// Add cache stats if available
-	if h.cacheProvider != nil {
-		response["cache"] = h.cacheProvider.Stats()
 	}
 
 	return c.JSON(http.StatusOK, response)

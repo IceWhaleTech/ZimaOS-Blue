@@ -41,6 +41,7 @@ function handleInput(event: Event) {
 <template>
   <div class="relative">
     <input
+      ref="inputRef"
       :id="id || undefined"
       :type="inputType"
       :value="modelValue"

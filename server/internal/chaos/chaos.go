@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // DiskFullSimulator simulates disk full conditions.
@@ -328,7 +329,7 @@ func (r *RecoveryTester) TestIntegrityCheck() (*IntegrityResult, error) {
 // TestRecovery attempts to recover a corrupted database.
 func (r *RecoveryTester) TestRecovery(ctx context.Context) (*RecoveryResult, error) {
 	result := &RecoveryResult{
-		StartTime: time.Now(),
+		StartTime: timeutil.NowTime(),
 	}
 
 	// Step 1: Check if database is accessible
@@ -336,7 +337,7 @@ func (r *RecoveryTester) TestRecovery(ctx context.Context) (*RecoveryResult, err
 	if err != nil {
 		result.Success = false
 		result.Error = fmt.Sprintf("Cannot open database: %v", err)
-		result.EndTime = time.Now()
+		result.EndTime = timeutil.NowTime()
 		return result, nil
 	}
 
@@ -360,7 +361,7 @@ func (r *RecoveryTester) TestRecovery(ctx context.Context) (*RecoveryResult, err
 		if err != nil {
 			result.Error = fmt.Sprintf("Cannot create recovery database: %v", err)
 			result.Success = false
-			result.EndTime = time.Now()
+			result.EndTime = timeutil.NowTime()
 			db.Close()
 			return result, nil
 		}
@@ -380,7 +381,7 @@ func (r *RecoveryTester) TestRecovery(ctx context.Context) (*RecoveryResult, err
 
 	db.Close()
 	result.Success = integrityResult.Passed || len(result.TablesRecovered) > 0
-	result.EndTime = time.Now()
+	result.EndTime = timeutil.NowTime()
 	return result, nil
 }
 

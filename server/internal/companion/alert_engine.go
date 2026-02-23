@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // DefaultAlertEngine is the default implementation of the AlertEngine interface.
@@ -126,7 +127,7 @@ func (e *DefaultAlertEngine) Trigger(ctx context.Context, alert *Alert) error {
 
 	// Set timestamp if not set
 	if alert.Timestamp.IsZero() {
-		alert.Timestamp = time.Now()
+		alert.Timestamp = timeutil.NowTime()
 	}
 
 	// Check deduplication
@@ -176,7 +177,7 @@ func (e *DefaultAlertEngine) CheckEvent(ctx context.Context, event *SessionEvent
 			"detected_patterns": event.Security.DetectedPatterns,
 			"action":            event.Security.Action,
 		},
-		Timestamp: time.Now(),
+		Timestamp: timeutil.NowTime(),
 	}
 
 	return e.Trigger(ctx, alert)
@@ -194,7 +195,7 @@ func (e *DefaultAlertEngine) AcknowledgeAlert(ctx context.Context, alertID, user
 		return nil, err
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	alert.Acknowledged = true
 	alert.AckedAt = &now
 	alert.AckedBy = userID
@@ -233,7 +234,7 @@ func (e *DefaultAlertEngine) isDuplicate(key string) bool {
 		return false
 	}
 
-	return time.Since(lastTime) < e.config.DeduplicationWindow
+	return timeutil.SinceTime(lastTime) < e.config.DeduplicationWindow
 }
 
 // updateDedupCache updates the deduplication cache.
@@ -241,10 +242,10 @@ func (e *DefaultAlertEngine) updateDedupCache(key string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	e.dedupCache[key] = time.Now()
+	e.dedupCache[key] = timeutil.NowTime()
 
 	// Clean old entries
-	cutoff := time.Now().Add(-e.config.DeduplicationWindow * 2)
+	cutoff := timeutil.NowTime().Add(-e.config.DeduplicationWindow * 2)
 	for k, t := range e.dedupCache {
 		if t.Before(cutoff) {
 			delete(e.dedupCache, k)
@@ -311,7 +312,7 @@ func (e *DefaultAlertEngine) sendWebhookNotification(alert *Alert) {
 	payload := map[string]interface{}{
 		"type":      "companion_alert",
 		"alert":     alert,
-		"timestamp": time.Now().Format(time.RFC3339),
+		"timestamp": timeutil.NowTime().Format(time.RFC3339),
 	}
 
 	data, err := json.Marshal(payload)
@@ -341,7 +342,7 @@ func (e *DefaultAlertEngine) CleanupDedupCache() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	cutoff := time.Now().Add(-e.config.DeduplicationWindow)
+	cutoff := timeutil.NowTime().Add(-e.config.DeduplicationWindow)
 	for k, t := range e.dedupCache {
 		if t.Before(cutoff) {
 			delete(e.dedupCache, k)

@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 )
 
 func createTestProxyServer(t *testing.T) *ProxyServer {
@@ -230,6 +232,14 @@ func TestHandleModelRoute_MissingModel(t *testing.T) {
 
 func TestHandleModelRoute_Background(t *testing.T) {
 	ps := createTestProxyServer(t)
+
+	// Set up a TierResolver so background downgrade works
+	tr := NewTierResolver()
+	tr.Resolve([]*providerpool.Model{
+		{ID: "claude-3-opus", ProviderID: "anthropic", Enabled: true, InputPrice: 15.0, OutputPrice: 75.0},
+		{ID: "claude-3-haiku", ProviderID: "anthropic", Enabled: true, InputPrice: 0.25, OutputPrice: 1.25},
+	})
+	ps.modelRouter.SetTierResolver(tr)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/proxy/models/route?model=claude-3-opus&background=true", nil)
 	w := httptest.NewRecorder()

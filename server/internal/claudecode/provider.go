@@ -10,6 +10,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Provider implements the llm.Provider interface using Claude Code CLI.
@@ -139,14 +140,14 @@ func (p *Provider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResp
 
 	// Execute CLI (use sandboxed runner if available)
 	var result *RunResult
-	startTime := time.Now()
+	startTime := timeutil.NowTime()
 	useSandbox := p.sandboxedRunner != nil && p.sandboxedRunner.IsSandboxEnabled()
 	if useSandbox {
 		result, err = p.sandboxedRunner.Run(ctx, params)
 	} else {
 		result, err = p.runner.Run(ctx, params)
 	}
-	duration := time.Since(startTime)
+	duration := timeutil.SinceTime(startTime)
 
 	// Emit sandbox execution event if sandbox was used
 	if useSandbox {
@@ -269,7 +270,7 @@ func (p *Provider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, 
 
 	// Execute CLI with streaming (use sandboxed runner if available)
 	var streamCh <-chan CliStreamChunk
-	startTime := time.Now()
+	startTime := timeutil.NowTime()
 	useSandbox := p.sandboxedRunner != nil && p.sandboxedRunner.IsSandboxEnabled()
 	if useSandbox {
 		streamCh, err = p.sandboxedRunner.RunStream(ctx, params)
@@ -279,7 +280,7 @@ func (p *Provider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, 
 	if err != nil {
 		// Emit sandbox event on error
 		if useSandbox {
-			p.emitSandboxExecEvent(ctx, params.Backend.Command, []string{params.Model}, time.Since(startTime), "failed", 1, err)
+			p.emitSandboxExecEvent(ctx, params.Backend.Command, []string{params.Model}, timeutil.SinceTime(startTime), "failed", 1, err)
 		}
 		return err
 	}
@@ -343,7 +344,7 @@ func (p *Provider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, 
 		if streamErr != nil {
 			status = "failed"
 		}
-		p.emitSandboxExecEvent(ctx, params.Backend.Command, []string{params.Model}, time.Since(startTime), status, 0, streamErr)
+		p.emitSandboxExecEvent(ctx, params.Backend.Command, []string{params.Model}, timeutil.SinceTime(startTime), status, 0, streamErr)
 	}
 
 	// Update session context after stream completes
@@ -446,6 +447,16 @@ func (p *Provider) buildSystemPrompt(ctx context.Context, req llm.ChatRequest, s
 			break
 		}
 	}
+
+	// Extract last user message for scenario-based enhancement
+	var lastUserMsg string
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		if req.Messages[i].Role == llm.RoleUser {
+			lastUserMsg = req.Messages[i].Content
+			break
+		}
+	}
+	p.promptBuilder.SetLastUserMessage(lastUserMsg)
 
 	// Build complete system prompt
 	return p.promptBuilder.Build(ctx, systemMessage)

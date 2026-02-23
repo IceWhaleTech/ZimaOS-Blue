@@ -5,10 +5,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
-	"sort"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +31,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // messageSlicePool is a sync.Pool for reusing message slices to reduce GC pressure.
@@ -293,99 +293,6 @@ func (h *ChatHandler) tryProviderChatWithKeyFallback(ctx context.Context, provid
 	return nil, lastErr
 }
 
-// getDefaultProvider returns an available provider from the pool.
-// It checks if any provider is available; the actual routing is handled by the proxy.
-// Returns error if no providers are configured, prompting user to configure one.
-func (h *ChatHandler) getDefaultProvider() (llm.Provider, string, string, error) {
-	// Priority 1: Try provider pool
-	if h.providerPool != nil {
-		// Get enabled providers from pool, sorted by priority
-		poolProviders := h.providerPool.Registry.ListEnabled()
-		if len(poolProviders) > 0 {
-			// Sort by priority (higher first)
-			sort.Slice(poolProviders, func(i, j int) bool {
-				return poolProviders[i].Priority > poolProviders[j].Priority
-			})
-
-			// Use the highest priority enabled provider
-			poolProvider := poolProviders[0]
-
-			// Check if this is a trial provider and if quota is exhausted
-			if providerpool.IsTrialProvider(poolProvider.ID) {
-				if h.providerPool.TrialQuotaManager != nil && h.providerPool.TrialQuotaManager.IsExhausted() {
-					// Skip trial provider if quota is exhausted
-					// Try to find next available provider
-					for i := 1; i < len(poolProviders); i++ {
-						nextProvider := poolProviders[i]
-						if !providerpool.IsTrialProvider(nextProvider.ID) {
-							provider, err := h.getProviderFromPool(nextProvider.ID)
-							if err == nil {
-								defaultModel := ""
-								if len(nextProvider.AllowedModels) > 0 {
-									defaultModel = nextProvider.AllowedModels[0]
-								} else if h.providerPool.Discovery != nil {
-									if models, err := h.providerPool.Discovery.GetModels(nextProvider.ID); err == nil && len(models) > 0 {
-										defaultModel = models[0].ID
-									}
-								}
-								if defaultModel == "" {
-									defaultModel = "claude-opus-4-6"
-								}
-								return provider, nextProvider.ID, defaultModel, nil
-							}
-						}
-					}
-					// No other providers available, return quota exhausted error
-					return nil, "", "", providerpool.ErrTrialQuotaExhausted
-				}
-			}
-
-			// Create LLM provider from pool configuration
-			provider, err := h.getProviderFromPool(poolProvider.ID)
-			if err == nil {
-				// Get default model from provider's allowed models list
-				defaultModel := ""
-				if len(poolProvider.AllowedModels) > 0 {
-					defaultModel = poolProvider.AllowedModels[0]
-				} else if h.providerPool.Discovery != nil {
-					// Try to fetch models from discovery if not configured
-					if models, err := h.providerPool.Discovery.GetModels(poolProvider.ID); err == nil && len(models) > 0 {
-						defaultModel = models[0].ID
-					}
-				}
-				// Fallback to common default model if still empty
-				if defaultModel == "" {
-					defaultModel = "claude-opus-4-6"
-				}
-				fmt.Printf("[getDefaultProvider] using provider=%s, defaultModel=%s\n", poolProvider.ID, defaultModel)
-				return provider, poolProvider.ID, defaultModel, nil
-			}
-		}
-	}
-
-	// Priority 3: Fallback to legacy provider registry
-	providerNames := h.providers.List()
-	if len(providerNames) == 0 {
-		return nil, "", "", fmt.Errorf("no available providers")
-	}
-
-	// Use first available provider from registry
-	providerName := providerNames[0]
-	provider := h.providers.Get(providerName)
-	if provider == nil {
-		return nil, "", "", fmt.Errorf("provider not found: %s", providerName)
-	}
-
-	// Get first available model
-	models := provider.Models()
-	model := ""
-	if len(models) > 0 {
-		model = models[0]
-	}
-
-	return provider, providerName, model, nil
-}
-
 // ChatHandler handles chat-related API endpoints.
 type ChatHandler struct {
 	store             *memory.Store
@@ -399,7 +306,6 @@ type ChatHandler struct {
 	metricsRecorder   MetricsRecorder
 	companionManager  *companion.Manager
 	promptGuard       *promptguard.Detector
-	cache             *proxy.CCCache
 	convToSession     map[string]string
 	convMu            sync.RWMutex
 
@@ -429,6 +335,85 @@ type ChatHandler struct {
 
 	// Proxy bridge: routes LLM calls through proxy pipeline (cache/pruner/routing)
 	proxyBridge *proxybridge.Bridge
+
+	// Smart tool selection: IR-based filtering of tools per query
+	toolSelector    *tools.ToolSelector
+	settingsHandler *SettingsHandler
+
+	// imModel is the model to use for IM channel requests (default "auto").
+	imModel string
+}
+
+// SetToolSelector enables IR-based smart tool selection.
+func (h *ChatHandler) SetToolSelector(ts *tools.ToolSelector) {
+	h.toolSelector = ts
+}
+
+// SetSettingsHandler sets the settings handler for runtime config checks.
+func (h *ChatHandler) SetSettingsHandler(sh *SettingsHandler) {
+	h.settingsHandler = sh
+}
+
+// GetToolSelector returns the current tool selector (may be nil).
+func (h *ChatHandler) GetToolSelector() *tools.ToolSelector {
+	return h.toolSelector
+}
+
+// selectTools returns tool definitions filtered by the user's query when smart
+// selection is enabled, or all definitions otherwise.
+func (h *ChatHandler) selectTools(userMessage string) []tools.ToolDefinition {
+	allDefs := h.toolRegistry.Definitions()
+	if h.toolSelector != nil && userMessage != "" {
+		// Check runtime setting (default true)
+		if h.settingsHandler != nil && !h.settingsHandler.GetSmartToolSelection() {
+			return allDefs
+		}
+		return h.toolSelector.Select(userMessage, allDefs)
+	}
+	return allDefs
+}
+
+// ToolSelectionStats returns smart tool selection statistics.
+func (h *ChatHandler) ToolSelectionStats(c echo.Context) error {
+	if h.toolSelector == nil {
+		return c.JSON(http.StatusOK, tools.ToolSelectorStats{})
+	}
+	return c.JSON(http.StatusOK, h.toolSelector.Stats())
+}
+
+// chatOnce performs a single LLM chat call, using proxyBridge when available
+// or falling back to the first provider in the legacy registry (for tests).
+func (h *ChatHandler) chatOnce(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	if h.proxyBridge != nil {
+		return h.proxyBridge.Chat(ctx, req)
+	}
+	// Fallback: use first provider from legacy registry (test environments)
+	if h.providers != nil {
+		names := h.providers.List()
+		if len(names) > 0 {
+			p := h.providers.Get(names[0])
+			if p != nil {
+				return p.Chat(ctx, req)
+			}
+		}
+	}
+	return nil, fmt.Errorf("no proxy bridge configured")
+}
+
+// defsToLLMTools converts tool definitions to LLM tool format.
+func defsToLLMTools(defs []tools.ToolDefinition) []llm.Tool {
+	if len(defs) == 0 {
+		return nil
+	}
+	result := make([]llm.Tool, len(defs))
+	for i, def := range defs {
+		result[i] = llm.Tool{
+			Name:        def.Name,
+			Description: def.Description,
+			Parameters:  def.Parameters,
+		}
+	}
+	return result
 }
 
 // MetricsRecorder is an interface for recording API call metrics.
@@ -534,15 +519,67 @@ func (h *ChatHandler) SetProviderPool(pool *providerpool.Pool) {
 	h.providerPool = pool
 }
 
-// SetCache sets the response cache for caching non-streaming responses.
-func (h *ChatHandler) SetCache(cache *proxy.CCCache) {
-	h.cache = cache
-}
-
 // SetProxyBridge sets the proxy bridge for routing LLM calls through the proxy pipeline.
 func (h *ChatHandler) SetProxyBridge(bridge *proxybridge.Bridge) {
 	h.proxyBridge = bridge
 }
+
+// SetIMModel sets the model to use for IM channel requests (default "auto").
+func (h *ChatHandler) SetIMModel(model string) {
+	h.imModel = model
+}
+
+// checkTrialQuota returns ErrTrialQuotaExhausted if the only available provider
+// is the trial provider and its quota is exhausted. Otherwise returns nil.
+func (h *ChatHandler) checkTrialQuota() error {
+	if h.providerPool == nil || h.providerPool.TrialQuotaManager == nil {
+		return nil
+	}
+	if !h.providerPool.TrialQuotaManager.IsExhausted() {
+		return nil
+	}
+	// Trial is exhausted — check if there are other providers
+	for _, p := range h.providerPool.Registry.ListEnabled() {
+		if !providerpool.IsTrialProvider(p.ID) {
+			return nil // other providers available
+		}
+	}
+	return providerpool.ErrTrialQuotaExhausted
+}
+
+// bridgeProvider wraps proxyBridge as an llm.Provider for components that need the interface.
+type bridgeProvider struct {
+	bridge *proxybridge.Bridge
+	model  string
+}
+
+func (bp *bridgeProvider) Name() string     { return "proxy" }
+func (bp *bridgeProvider) Models() []string { return []string{bp.model} }
+func (bp *bridgeProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	if req.Model == "" {
+		req.Model = bp.model
+	}
+	return bp.bridge.Chat(ctx, req)
+}
+func (bp *bridgeProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, 64)
+	go func() {
+		defer close(ch)
+		_ = bp.bridge.ChatStream(ctx, req, func(chunk llm.StreamChunk) error {
+			ch <- chunk
+			return nil
+		})
+	}()
+	return ch, nil
+}
+func (bp *bridgeProvider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, cb llm.StreamCallback) error {
+	if req.Model == "" {
+		req.Model = bp.model
+	}
+	return bp.bridge.ChatStream(ctx, req, cb)
+}
+
+
 
 // getCompanionSessionID returns the companion session ID for a conversation.
 func (h *ChatHandler) getCompanionSessionID(convID string) string {
@@ -639,6 +676,10 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		}
 	}
 
+	// Inject channel and lang into context for tool execution
+	ctx = tools.WithChannel(ctx, msg.ChannelName)
+	ctx = tools.WithLang(ctx, string(lang))
+
 	// Validate input - allow empty content if there are attachments
 	if msg.Content == "" && len(msg.Attachments) == 0 {
 		logger.Warn().Str("channel", msg.ChannelName).Msg("empty message content")
@@ -675,6 +716,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 
 	// Add system prompt if available
 	if h.systemPromptBuilder != nil {
+		h.systemPromptBuilder.SetLastUserMessage(msg.Content)
 		systemPrompt := h.systemPromptBuilder.Build(ctx, "")
 		if systemPrompt != "" {
 			messages = append(messages, llm.Message{
@@ -821,22 +863,20 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 
 	// Apply context compaction if conversation is getting long
 	if len(messages) > 10 {
-		if compactProvider, _, _, compactErr := h.getDefaultProvider(); compactErr == nil {
-			compacted, summary, _ := h.compactMessages(ctx, messages, compactProvider)
-			if summary != "" {
-				summaryMsg := llm.Message{
-					Role:    llm.RoleSystem,
-					Content: "Previous conversation summary: " + summary,
-				}
-				compacted = append([]llm.Message{summaryMsg}, compacted...)
+		compacted, summary, _ := h.compactMessages(ctx, messages)
+		if summary != "" {
+			summaryMsg := llm.Message{
+				Role:    llm.RoleSystem,
+				Content: "Previous conversation summary: " + summary,
 			}
-			messages = compacted
-			logger.Debug().
-				Int("before", len(messages)).
-				Int("after", len(compacted)).
-				Bool("has_summary", summary != "").
-				Msg("compacted IM conversation context")
+			compacted = append([]llm.Message{summaryMsg}, compacted...)
 		}
+		messages = compacted
+		logger.Debug().
+			Int("before", len(messages)).
+			Int("after", len(compacted)).
+			Bool("has_summary", summary != "").
+			Msg("compacted IM conversation context")
 	}
 
 	// Recall relevant memories for IM context
@@ -846,260 +886,50 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 
 	var responseContent string
 
-	// Use provider pool router with failover if available
-	if h.providerPool != nil && h.providerPool.Router != nil {
-		// Set up failover callback for logging
-		h.providerPool.Router.SetFailoverCallback(func(result *providerpool.FailoverResult) {
-			if len(result.FailedAttempts) > 0 {
-				logger.Warn().
-					Str("request_id", result.RequestID).
-					Int("total_attempts", result.TotalAttempts).
-					Int("failed_count", len(result.FailedAttempts)).
-					Str("success_provider", result.SuccessProvider).
-					Str("final_error", result.FinalError).
-					Dur("duration", result.EndTime.Sub(result.StartTime)).
-					Msg("channel message routing with failover")
-
-				for i, attempt := range result.FailedAttempts {
-					logger.Debug().
-						Str("request_id", result.RequestID).
-						Int("attempt", i+1).
-						Str("provider_id", attempt.ProviderID).
-						Str("reason", string(attempt.Reason)).
-						Str("error", attempt.Error).
-						Dur("latency", attempt.Latency).
-						Msg("failover attempt details")
-				}
-			}
-		})
-
-		// Check available models
-		availableModels := h.providerPool.Router.ListAvailableModels()
-		if len(availableModels) == 0 {
-			logger.Error().Msg("no models available in provider pool")
-			return "", fmt.Errorf("no AI models available, please configure a provider")
-		}
-
-		modelID := availableModels[0].ID
-		logger.Debug().
-			Str("model_id", modelID).
-			Int("available_models", len(availableModels)).
-			Msg("selected model for channel message")
-
-		routeReq := &providerpool.RouteRequest{
-			ModelID:  modelID,
-			Strategy: providerpool.RoutingStrategyPriority,
-		}
-
-		err := h.providerPool.Router.RouteWithFallback(ctx, routeReq, func(result *providerpool.RouteResult) error {
-			logger.Debug().
-				Str("provider_id", result.Provider.ID).
-				Str("provider_name", result.Provider.Name).
-				Str("model_id", result.Model.ID).
-				Str("api_format", string(result.Provider.APIFormat)).
-				Msg("routing to provider")
-
-			// Get the LLM provider from pool (handles custom provider IDs like prov_xxx)
-			provider, err := h.getProviderFromPool(result.Provider.ID)
-			if err != nil {
-				logger.Debug().
-					Str("provider_id", result.Provider.ID).
-					Str("api_format", string(result.Provider.APIFormat)).
-					Err(err).
-					Msg("getProviderFromPool failed, trying legacy registry")
-
-				// Fallback to legacy registry lookup using mapped ID
-				mappedID := mapProviderID(result.Provider.ID)
-				provider = h.providers.Get(mappedID)
-				if provider == nil {
-					// Last resort: try using the provider's API format to create a new provider
-					apiKey := ""
-					if result.APIKey != nil {
-						apiKey = result.APIKey.Key
-					}
-					switch result.Provider.APIFormat {
-					case providerpool.APIFormatAnthropic:
-						provider = llm.NewClaudeProvider(apiKey, result.Provider.BaseURL)
-					case providerpool.APIFormatOllama:
-						provider = llm.NewOllamaProvider(result.Provider.BaseURL)
-					default:
-						provider = llm.NewCustomProvider(apiKey, result.Provider.BaseURL)
-					}
-					logger.Debug().
-						Str("provider_id", result.Provider.ID).
-						Str("api_format", string(result.Provider.APIFormat)).
-						Msg("created provider from RouteResult")
-				}
-			}
-
-			if provider == nil {
-				return fmt.Errorf("failed to get provider for %s", result.Provider.ID)
-			}
-
-			req := llm.ChatRequest{
-				Model:    result.Model.ID,
-				Messages: messages,
-			}
-
-			// Add tool definitions
-			imToolDefs := h.toolRegistry.Definitions()
-			if len(imToolDefs) > 0 {
-				req.Tools = make([]llm.Tool, len(imToolDefs))
-				for i, def := range imToolDefs {
-					req.Tools[i] = llm.Tool{
-						Name:        def.Name,
-						Description: def.Description,
-						Parameters:  def.Parameters,
-					}
-				}
-			}
-
-			logger.Debug().
-				Str("model", req.Model).
-				Int("messages", len(req.Messages)).
-				Msg("sending chat request to LLM")
-
-			// Tool execution loop for IM
-			var resp *llm.ChatResponse
-			for imRound := 0; imRound < maxToolRounds; imRound++ {
-				if h.proxyBridge != nil {
-					resp, err = h.proxyBridge.Chat(ctx, req)
-					if err != nil {
-						logger.Warn().Err(err).Msg("[chat] proxyBridge failed, falling back to direct provider with key fallback")
-						resp, err = h.tryProviderChatWithKeyFallback(ctx, result.Provider.ID, req)
-					}
-				} else {
-					resp, err = h.tryProviderChatWithKeyFallback(ctx, result.Provider.ID, req)
-				}
-				if err != nil {
-					logger.Error().
-						Err(err).
-						Str("provider_id", result.Provider.ID).
-						Str("model", req.Model).
-						Msg("LLM chat request failed")
-					return err
-				}
-				if len(resp.Message.ToolCalls) == 0 {
-					break
-				}
-				logger.Info().Int("round", imRound).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[im] executing tool calls")
-				toolResults := h.executeToolCalls(ctx, resp.Message.ToolCalls)
-				req.Messages = append(req.Messages, resp.Message)
-				req.Messages = append(req.Messages, toolResults...)
-			}
-
-			if resp.Message.Content == "" {
-				logger.Warn().
-					Str("provider_id", result.Provider.ID).
-					Str("model", req.Model).
-					Msg("LLM returned empty response")
-				return fmt.Errorf("LLM returned empty response")
-			}
-
-			responseContent = resp.Message.Content
-			logger.Debug().
-				Str("provider_id", result.Provider.ID).
-				Int("response_len", len(responseContent)).
-				Msg("LLM chat request succeeded")
-			return nil
-		})
-
-		if err != nil {
-			// Log cooldown info and provide detailed error message
-			cooldowns := h.providerPool.Router.ListCooldowns()
-			if len(cooldowns) > 0 {
-				logger.Warn().Int("providers_in_cooldown", len(cooldowns)).Msg("providers in cooldown")
-			}
-			logger.Error().Err(err).Msg("LLM chat failed with all providers")
-
-			// Provide user-friendly error message based on error type
-			if errors.Is(err, providerpool.ErrNoAvailableProvider) {
-				if len(cooldowns) > 0 {
-					return "", fmt.Errorf("%s", i18n.T(lang, i18n.MsgProvidersInCooldown, len(cooldowns)))
-				}
-				return "", fmt.Errorf("%s", i18n.T(lang, i18n.MsgNoProviderAvailable))
-			}
-			return "", fmt.Errorf("%s", i18n.T(lang, i18n.MsgServiceUnavailable))
-		}
-
-		if responseContent == "" {
-			logger.Error().Msg("LLM returned empty response after successful routing")
-			return "", fmt.Errorf("AI returned empty response")
-		}
-
-		h.persistChannelResponse(ctx, convID, responseContent)
-		return responseContent, nil
+	// Use proxyBridge for all LLM calls — it handles routing, failover, caching internally
+	if h.proxyBridge == nil && h.providers == nil {
+		return "", fmt.Errorf("no proxy bridge configured")
 	}
 
-	// Fallback: use getDefaultProvider without failover
-	logger.Debug().Msg("using fallback provider (no provider pool)")
-	fbProvider, providerName, model, err := h.getDefaultProvider()
-	if err != nil {
-		logger.Error().Err(err).Msg("failed to get default provider")
-		return "", fmt.Errorf("no AI provider available: %w", err)
-	}
-
-	// If no model from provider, try to get from provider's default
-	if model == "" {
-		// Try to get first available model from provider
-		if h.providerPool != nil {
-			if models := h.providerPool.Router.ListAvailableModels(); len(models) > 0 {
-				model = models[0].ID
-			}
-		}
-		if model == "" {
-			logger.Error().Str("provider", providerName).Msg("no model available")
-			return "", fmt.Errorf("no model available for provider %s", providerName)
-		}
+	modelID := h.imModel
+	if modelID == "" {
+		modelID = "auto"
 	}
 
 	req := llm.ChatRequest{
-		Model:    model,
+		Model:    modelID,
 		Messages: messages,
 	}
 
-	// Add tool definitions to fallback path
-	fbToolDefs := h.toolRegistry.Definitions()
-	if len(fbToolDefs) > 0 {
-		req.Tools = make([]llm.Tool, len(fbToolDefs))
-		for i, def := range fbToolDefs {
-			req.Tools[i] = llm.Tool{
-				Name:        def.Name,
-				Description: def.Description,
-				Parameters:  def.Parameters,
-			}
-		}
-	}
+	// Add tool definitions (smart selection filters by user query when enabled)
+	req.Tools = defsToLLMTools(h.selectTools(msg.Content))
 
-	logger.Debug().
-		Str("provider", providerName).
-		Str("model", model).
-		Msg("sending chat request via fallback provider")
-
-	// Tool execution loop for fallback path
+	// Tool execution loop for IM
 	var resp *llm.ChatResponse
-	for fbRound := 0; fbRound < maxToolRounds; fbRound++ {
-		resp, err = fbProvider.Chat(ctx, req)
+	var err error
+	for imRound := 0; imRound < maxToolRounds; imRound++ {
+		resp, err = h.chatOnce(ctx, req)
 		if err != nil {
-			logger.Error().Err(err).Str("provider", providerName).Msg("fallback LLM chat failed")
-			return "", fmt.Errorf("AI chat failed (%s): %w", providerName, err)
+			logger.Error().Err(err).Str("model", req.Model).Msg("LLM chat request failed")
+			return "", fmt.Errorf("%s", i18n.T(lang, i18n.MsgServiceUnavailable))
 		}
 		if len(resp.Message.ToolCalls) == 0 {
 			break
 		}
-		logger.Info().Int("round", fbRound).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[im-fallback] executing tool calls")
+		logger.Info().Int("round", imRound).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[im] executing tool calls")
 		toolResults := h.executeToolCalls(ctx, resp.Message.ToolCalls)
 		req.Messages = append(req.Messages, resp.Message)
 		req.Messages = append(req.Messages, toolResults...)
 	}
 
-	if resp.Message.Content == "" {
-		logger.Warn().Str("provider", providerName).Msg("fallback LLM returned empty response")
+	if resp == nil || resp.Message.Content == "" {
+		logger.Warn().Msg("LLM returned empty response")
 		return "", fmt.Errorf("AI returned empty response")
 	}
 
-	h.persistChannelResponse(ctx, convID, resp.Message.Content)
-	return resp.Message.Content, nil
+	responseContent = resp.Message.Content
+	h.persistChannelResponse(ctx, convID, responseContent)
+	return responseContent, nil
 }
 
 // persistChannelResponse saves the assistant response and invalidates cache for IM conversations.
@@ -1207,13 +1037,12 @@ func (h *ChatHandler) extractMemory(convID, source string) bool {
 	}
 
 	// Use LLM to extract structured facts
-	provider, _, model, err := h.getDefaultProvider()
-	if err != nil {
+	if h.proxyBridge == nil {
 		return false
 	}
 
 	req := llm.ChatRequest{
-		Model: model,
+		Model: "auto",
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: `You are a memory extraction assistant. Extract important facts from this conversation as short, structured bullet points.
 Focus on: user preferences, personal info, decisions, key facts, action items, technical choices.
@@ -1225,16 +1054,8 @@ Respond in the same language as the conversation.`},
 		MaxTokens:   300,
 		Temperature: 0.3,
 	}
-	var resp *llm.ChatResponse
-	if h.proxyBridge != nil {
-		resp, err = h.proxyBridge.Chat(ctx, req)
-		if err != nil {
-			resp, err = provider.Chat(ctx, req)
-		}
-	} else {
-		resp, err = provider.Chat(ctx, req)
-	}
-	if err != nil || resp.Message.Content == "" || strings.TrimSpace(resp.Message.Content) == "NO_MEMORY_NEEDED" {
+	resp, err := h.chatOnce(ctx, req)
+	if err != nil || resp == nil || resp.Message.Content == "" || strings.TrimSpace(resp.Message.Content) == "NO_MEMORY_NEEDED" {
 		return false
 	}
 
@@ -1254,7 +1075,7 @@ Respond in the same language as the conversation.`},
 			h.queueEvent(func() {
 				h.companionManager.EmitEvent(context.Background(), &companion.SessionEvent{
 					SessionID: sessionID,
-					Timestamp: time.Now(),
+					Timestamp: timeutil.NowTime(),
 					EventType: companion.EventMemorySaved,
 					Message: &companion.MessageEvent{
 						Direction:   "system",
@@ -1504,28 +1325,23 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		}
 	}
 
-	// Auto-select provider and model from pool
-	provider, providerID, model, err := h.getDefaultProvider()
-	if err != nil {
-		// Check if this is a trial quota exhausted error
-		if errors.Is(err, providerpool.ErrTrialQuotaExhausted) {
-			return c.JSON(http.StatusPaymentRequired, map[string]interface{}{
-				"success":           false,
-				"trial_exhausted":   true,
-				"message":           "trial_quota_exhausted",
-				"message_localized": "Trial quota has been exhausted. Please configure your own AI provider to continue.",
-			})
-		}
-		return echo.NewHTTPError(http.StatusServiceUnavailable, proxy.SanitizeError(err))
+	// Check trial quota before proceeding
+	if err := h.checkTrialQuota(); err != nil {
+		return c.JSON(http.StatusPaymentRequired, map[string]interface{}{
+			"success":           false,
+			"trial_exhausted":   true,
+			"message":           "trial_quota_exhausted",
+			"message_localized": "Trial quota has been exhausted. Please configure your own AI provider to continue.",
+		})
 	}
 
-	// Use model from request if specified
+	model := "auto"
 	if req.Model != "" {
 		model = req.Model
 	}
 
 	// Store user message
-	_, err = h.store.AddMessage(c.Request().Context(), convID, memory.Message{
+	_, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
 		Role:    "user",
 		Content: req.Message,
 	})
@@ -1567,7 +1383,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	// Apply context compaction if needed
-	compactedMessages, summary, _ := h.compactMessages(c.Request().Context(), llmMessages, provider)
+	compactedMessages, summary, _ := h.compactMessages(c.Request().Context(), llmMessages)
 	if summary != "" {
 		// Prepend summary as system context
 		summaryMsg := llm.Message{
@@ -1590,31 +1406,14 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		MaxTokens:   req.MaxTokens,
 	}
 
-	// Get tool definitions
-	toolDefs := h.toolRegistry.Definitions()
-	if len(toolDefs) > 0 {
-		chatReq.Tools = make([]llm.Tool, len(toolDefs))
-		for i, def := range toolDefs {
-			chatReq.Tools[i] = llm.Tool{
-				Name:        def.Name,
-				Description: def.Description,
-				Parameters:  def.Parameters,
-			}
-		}
-	}
+	// Get tool definitions (smart selection filters by user query when enabled)
+	chatReq.Tools = defsToLLMTools(h.selectTools(req.Message))
 
 	// Call LLM with tool execution loop
-	startTime := time.Now()
+	startTime := timeutil.NowTime()
 	var resp *llm.ChatResponse
 	for round := 0; round < maxToolRounds; round++ {
-		if h.proxyBridge != nil {
-			resp, err = h.proxyBridge.Chat(c.Request().Context(), chatReq)
-			if err != nil {
-				resp, err = provider.Chat(c.Request().Context(), chatReq)
-			}
-		} else {
-			resp, err = provider.Chat(c.Request().Context(), chatReq)
-		}
+		resp, err = h.chatOnce(c.Request().Context(), chatReq)
 		if err != nil || resp == nil {
 			break
 		}
@@ -1629,7 +1428,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		chatReq.Messages = append(chatReq.Messages, resp.Message)
 		chatReq.Messages = append(chatReq.Messages, toolResults...)
 	}
-	latencyMs := float64(time.Since(startTime).Milliseconds())
+	latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 
 	// Append typeless cards for tool results to content
 	if resp != nil && len(resp.Message.ToolCalls) == 0 {
@@ -1696,24 +1495,13 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		// Emit error event to companion (async)
 		sanitizedErr := proxy.SanitizeError(err)
 		h.emitErrorEventAsync(sessionID, sanitizedErr)
-		// For trial provider errors, return a friendly message key so the frontend
-		// can show a localized, user-friendly message instead of raw error text.
-		if providerpool.IsTrialProvider(providerID) {
-			return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
-				"success":     false,
-				"trial_error": true,
-				"message":     "trial_service_busy",
-			})
-		}
 		return echo.NewHTTPError(http.StatusInternalServerError, sanitizedErr)
 	}
 
 	// Get provider name for display
-	providerName := providerID
-	if h.providerPool != nil {
-		if poolProvider, err := h.providerPool.Registry.Get(providerID); err == nil {
-			providerName = poolProvider.Name
-		}
+	providerName := "auto"
+	if resp != nil && resp.Model != "" {
+		model = resp.Model
 	}
 
 	// Store assistant message with stats
@@ -1853,6 +1641,7 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/providers", h.ListProviders)
 	g.POST("/providers/:provider/refresh", h.RefreshProviderModels)
 	g.GET("/tools", h.ListTools)
+	g.GET("/tools/stats", h.ToolSelectionStats)
 	g.GET("/streams/active", h.ListActiveStreams)
 	g.POST("/streams/cancel-all", h.CancelAllStreams)
 	g.POST("/conversations/:id/messages/:msgid/card-action", h.HandleCardAction)
@@ -1914,11 +1703,6 @@ func (h *ChatHandler) mapCardAction(cardID, actionID, actionLabel string) string
 
 // StreamMessage sends a message and streams the response.
 func (h *ChatHandler) StreamMessage(c echo.Context) error {
-	// Record cache bypass for streaming request
-	if h.cache != nil {
-		h.cache.RecordBypass()
-	}
-
 	convID := c.Param("id")
 
 	if _, err := h.checkConversationOwnership(c, convID); err != nil {
@@ -1956,33 +1740,21 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 	}
 
-	// Auto-select provider and model from pool
-	provider, providerID, model, err := h.getDefaultProvider()
-	logger.Debug().Str("provider_id", providerID).Str("model", model).Bool("provider_ok", provider != nil).Err(err).Msg("[chat] getDefaultProvider")
-	if err != nil {
-		// Check if this is a trial quota exhausted error
-		if errors.Is(err, providerpool.ErrTrialQuotaExhausted) {
-			return c.JSON(http.StatusPaymentRequired, map[string]interface{}{
-				"success":           false,
-				"trial_exhausted":   true,
-				"message":           "trial_quota_exhausted",
-				"message_localized": "Trial quota has been exhausted. Please configure your own AI provider to continue.",
-			})
-		}
-		return echo.NewHTTPError(http.StatusServiceUnavailable, proxy.SanitizeError(err))
+	// Check trial quota before proceeding
+	if err := h.checkTrialQuota(); err != nil {
+		return c.JSON(http.StatusPaymentRequired, map[string]interface{}{
+			"success":           false,
+			"trial_exhausted":   true,
+			"message":           "trial_quota_exhausted",
+			"message_localized": "Trial quota has been exhausted. Please configure your own AI provider to continue.",
+		})
 	}
 
-	// Use model from request if specified
+	model := "auto"
 	if req.Model != "" {
 		model = req.Model
 	}
-	logger.Debug().Str("model", model).Str("provider", providerID).Msg("[chat] using provider")
-	providerName := providerID
-	if h.providerPool != nil {
-		if poolProvider, err := h.providerPool.Registry.Get(providerID); err == nil {
-			providerName = poolProvider.Name
-		}
-	}
+	providerName := "auto"
 
 	// Store user message with attachments
 	var memoryAttachments []memory.MessageAttachment
@@ -1994,7 +1766,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			Data:     att.Data,
 		})
 	}
-	_, err = h.store.AddMessage(c.Request().Context(), convID, memory.Message{
+	_, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
 		Role:        "user",
 		Content:     req.Message,
 		Attachments: memoryAttachments,
@@ -2070,7 +1842,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	// Apply context compaction if needed
 	beforeCount := len(llmMessages)
-	compactedMessages, summary, _ := h.compactMessages(c.Request().Context(), llmMessages, provider)
+	compactedMessages, summary, _ := h.compactMessages(c.Request().Context(), llmMessages)
 	compacted := summary != ""
 	if compacted {
 		// Prepend summary as system context
@@ -2140,7 +1912,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	flusher.Flush()
 
 	// Track metrics
-	startTime := time.Now()
+	startTime := timeutil.NowTime()
 	var fullContent string
 	var totalInputTokens, totalOutputTokens int
 	var firstChunkTime time.Time
@@ -2168,11 +1940,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	streamErrorHandled = false
 
 	// Use callback-based streaming to avoid channel issues
-	logger.Debug().Str("stream_id", streamID).Str("provider_type", fmt.Sprintf("%T", provider)).Int("tool_round", toolRound).Msg("[chat] starting stream")
+	logger.Debug().Str("stream_id", streamID).Int("tool_round", toolRound).Msg("[chat] starting stream")
 	streamCb := func(chunk llm.StreamChunk) error {
 		// Track first chunk time for TTFT calculation
 		if firstChunkTime.IsZero() && chunk.Delta != "" {
-			firstChunkTime = time.Now()
+			firstChunkTime = timeutil.NowTime()
 
 			// On first content chunk, send pruning/compaction info if applicable
 			if pruneStats.Pruned {
@@ -2224,12 +1996,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		if chunk.Error != "" {
 			// Record error metrics
 			if h.metricsRecorder != nil {
-				latencyMs := float64(time.Since(startTime).Milliseconds())
+				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 				h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "stream_error")
 			}
 			// For trial provider, replace raw error with friendly message key
 			chunkErr := chunk.Error
-			if providerpool.IsTrialProvider(providerID) {
+			if providerpool.IsTrialProvider(actualProvider) {
 				chunkErr = "trial_service_busy"
 			}
 			// Send error to client
@@ -2338,13 +2110,13 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			}
 
 			// Record successful completion metrics
-			latencyMs := float64(time.Since(startTime).Milliseconds())
+			latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 			if h.metricsRecorder != nil {
 				h.metricsRecorder.RecordAPICallForUser(userID, model, true, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "")
 				// Record speed metrics
 				if !firstChunkTime.IsZero() && totalOutputTokens > 0 {
 					ttftMs := float64(firstChunkTime.Sub(startTime).Milliseconds())
-					totalDuration := time.Since(startTime).Seconds()
+					totalDuration := timeutil.SinceTime(startTime).Seconds()
 					if totalDuration > 0 {
 						tokensPerSecond := float64(totalOutputTokens) / totalDuration
 						h.metricsRecorder.RecordSpeed(req.Model, tokensPerSecond, ttftMs, tokensPerSecond)
@@ -2352,8 +2124,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				}
 
 				// Record trial usage if this is a trial provider
-				if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(providerID) {
-					logger.Debug().Str("provider_id", providerID).Int("input", totalInputTokens).Int("output", totalOutputTokens).Msg("[chat] recording trial usage")
+				if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(actualProvider) {
+					logger.Debug().Str("provider_id", actualProvider).Int("input", totalInputTokens).Int("output", totalOutputTokens).Msg("[chat] recording trial usage")
 					h.providerPool.TrialQuotaManager.RecordUsage(int64(totalInputTokens), int64(totalOutputTokens), convID)
 				}
 			}
@@ -2363,7 +2135,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			var ttftMs float64
 			if !firstChunkTime.IsZero() {
 				ttftMs = float64(firstChunkTime.Sub(startTime).Milliseconds())
-				totalDuration := time.Since(startTime).Seconds()
+				totalDuration := timeutil.SinceTime(startTime).Seconds()
 				if totalDuration > 0 && totalOutputTokens > 0 {
 					tokensPerSecond = float64(totalOutputTokens) / totalDuration
 				}
@@ -2425,12 +2197,20 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 	if h.proxyBridge != nil {
 		err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
-		if err != nil {
-			logger.Warn().Err(err).Msg("[chat] proxyBridge failed, falling back to direct provider with key fallback")
-			err = h.tryProviderWithKeyFallback(ctx, providerID, chatReq, streamCb)
+	} else if h.providers != nil {
+		names := h.providers.List()
+		if len(names) > 0 {
+			p := h.providers.Get(names[0])
+			if p != nil {
+				err = p.ChatStreamCallback(ctx, chatReq, streamCb)
+			} else {
+				err = fmt.Errorf("no proxy bridge configured")
+			}
+		} else {
+			err = fmt.Errorf("no proxy bridge configured")
 		}
 	} else {
-		err = h.tryProviderWithKeyFallback(ctx, providerID, chatReq, streamCb)
+		err = fmt.Errorf("no proxy bridge configured")
 	}
 
 	// If stream had tool calls, execute them and loop back
@@ -2496,7 +2276,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		if ctx.Err() != nil {
 			// Stream was cancelled
 			if h.metricsRecorder != nil {
-				latencyMs := float64(time.Since(startTime).Milliseconds())
+				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 				h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "cancelled")
 			}
 			if fullContent != "" {
@@ -2524,11 +2304,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 		logger.Error().Err(err).Str("conv_id", convID).Str("model", model).Msg("[chat] stream error")
 		errMsg := "An error occurred while streaming the response"
-		if providerpool.IsTrialProvider(providerID) {
+		if providerpool.IsTrialProvider(actualProvider) {
 			errMsg = "trial_service_busy"
 		}
 		if h.metricsRecorder != nil {
-			latencyMs := float64(time.Since(startTime).Milliseconds())
+			latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 			h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "error")
 		}
 		// Persist partial content so the user doesn't lose what was already streamed
@@ -2572,13 +2352,13 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 		// Compute latency/TTFT if not already set
 		if finalLatencyMs == 0 {
-			finalLatencyMs = float64(time.Since(startTime).Milliseconds())
+			finalLatencyMs = float64(timeutil.SinceTime(startTime).Milliseconds())
 		}
 		if finalTTFTMs == 0 && !firstChunkTime.IsZero() {
 			finalTTFTMs = float64(firstChunkTime.Sub(startTime).Milliseconds())
 		}
 		if finalTPS == 0 && totalOutputTokens > 0 {
-			totalDuration := time.Since(startTime).Seconds()
+			totalDuration := timeutil.SinceTime(startTime).Seconds()
 			if totalDuration > 0 {
 				finalTPS = float64(totalOutputTokens) / totalDuration
 			}
@@ -2718,38 +2498,18 @@ func (h *ChatHandler) generateConversationTitle(convID, userMessage, aiResponse,
 // targetLang specifies the language for the generated title (e.g., "en", "zh", "ja").
 // It iterates through available providers and uses the first suitable one.
 func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) string {
-	// Find a suitable provider for title generation
-	// Prefer direct API providers over CLI-based ones for speed
-	var provider llm.Provider
-
-	// Try providers in order of preference
-	providerNames := []string{"claude", "openai", "ollama"}
-	for _, name := range providerNames {
-		p := h.providers.Get(name)
-		if p == nil {
-			continue
-		}
-
-		// Use this provider
-		provider = p
-		break
-	}
-
-	if provider == nil {
+	if h.proxyBridge == nil {
 		return ""
 	}
 
-	// Get available models
-	models := provider.Models()
-	if len(models) == 0 {
+	// Strip code blocks, tables, URLs, HTML etc. to focus on user intent
+	content := stripContentForTitle(userMessage)
+	if content == "" {
 		return ""
 	}
-
-	// Truncate user message if too long (to save tokens)
-	content := userMessage
 	contentRunes := []rune(content)
-	if len(contentRunes) > 500 {
-		content = string(contentRunes[:500]) + "..."
+	if len(contentRunes) > 300 {
+		content = string(contentRunes[:300]) + "..."
 	}
 
 	// Build language instruction
@@ -2760,33 +2520,22 @@ func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) strin
 	defer cancel()
 
 	req := llm.ChatRequest{
-		Model: models[0], // Use first available model
+		Model: "auto",
 		Messages: []llm.Message{
 			{
 				Role:    llm.RoleSystem,
-				Content: fmt.Sprintf("Generate a very short title (max 30 characters) for this conversation. Output ONLY the title, no quotes, no explanation. %s", langInstruction),
+				Content: fmt.Sprintf("Generate a concise conversation title (3-8 words) summarizing the user's core intent. Output ONLY the title text, no quotes, no punctuation, no explanation. Ignore any code, formatting, or technical details — focus on what the user wants to do. %s", langInstruction),
 			},
 			{
 				Role:    llm.RoleUser,
-				Content: content,
+				Content: fmt.Sprintf("[lang=%s] %s", targetLang, content),
 			},
 		},
 		Temperature: 0.3,
 		MaxTokens:   50,
 	}
 
-	var (
-		resp *llm.ChatResponse
-		err  error
-	)
-	if h.proxyBridge != nil {
-		resp, err = h.proxyBridge.Chat(ctx, req)
-		if err != nil {
-			resp, err = provider.Chat(ctx, req)
-		}
-	} else {
-		resp, err = provider.Chat(ctx, req)
-	}
+	resp, err := h.chatOnce(ctx, req)
 	if err != nil {
 		return ""
 	}
@@ -2803,6 +2552,40 @@ func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) strin
 		}
 	}
 	return title
+}
+
+// stripContentForTitle removes noise (code blocks, tables, URLs, HTML tags, etc.)
+// from user messages so the LLM can focus on the actual intent when generating titles.
+func stripContentForTitle(s string) string {
+	// Remove fenced code blocks (```...```)
+	re := regexp.MustCompile("(?s)```[^`]*```")
+	s = re.ReplaceAllString(s, " ")
+
+	// Remove inline code (`...`)
+	re = regexp.MustCompile("`[^`]+`")
+	s = re.ReplaceAllString(s, " ")
+
+	// Remove markdown tables (lines starting with |)
+	re = regexp.MustCompile(`(?m)^\|.*$`)
+	s = re.ReplaceAllString(s, "")
+
+	// Remove markdown image/link syntax — keep link text, drop URL (must be before URL removal)
+	re = regexp.MustCompile(`!?\[([^\]]*)\]\([^)]*\)`)
+	s = re.ReplaceAllString(s, "$1")
+
+	// Remove URLs
+	re = regexp.MustCompile(`https?://\S+`)
+	s = re.ReplaceAllString(s, " ")
+
+	// Remove HTML tags
+	re = regexp.MustCompile(`<[^>]+>`)
+	s = re.ReplaceAllString(s, " ")
+
+	// Collapse whitespace
+	re = regexp.MustCompile(`\s+`)
+	s = re.ReplaceAllString(s, " ")
+
+	return strings.TrimSpace(s)
 }
 
 // findRuneBoundary finds the last space before maxLen runes, returning byte position.
@@ -3011,7 +2794,11 @@ func (h *ChatHandler) CancelAllStreams(c echo.Context) error {
 }
 
 // compactMessages applies context compaction to messages if needed.
-func (h *ChatHandler) compactMessages(ctx context.Context, messages []llm.Message, provider llm.Provider) ([]llm.Message, string, error) {
+func (h *ChatHandler) compactMessages(ctx context.Context, messages []llm.Message) ([]llm.Message, string, error) {
+	if h.proxyBridge == nil {
+		return messages, "", nil
+	}
+	provider := &bridgeProvider{bridge: h.proxyBridge, model: "auto"}
 	compactor := claudecode.NewCompactor(h.compactionConfig, provider)
 	return compactor.CompactMessages(ctx, messages)
 }

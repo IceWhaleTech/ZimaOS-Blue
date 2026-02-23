@@ -10,7 +10,6 @@ export interface TunnelStatus {
   remaining_time?: string
   renewed_count?: number
   provider?: string
-  tunnel_password?: string // For LocalTunnel (loca.lt): password from mytunnelpassword
 }
 
 export interface RemoteAccessStatus {
@@ -142,3 +141,4 @@ export function getRemoteAccessLogs(limit = 50, offset = 0) {
     offset: number
   }>('/tunnel/logs', { params: { limit, offset } })
 }
+

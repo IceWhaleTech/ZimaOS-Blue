@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sys/windows/svc/debug"
 	"golang.org/x/sys/windows/svc/eventlog"
 	"golang.org/x/sys/windows/svc/mgr"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // WindowsService implements the Service interface for Windows.
@@ -361,9 +362,9 @@ func StopService(config *Config) error {
 	}
 
 	// Wait for service to stop
-	timeout := time.Now().Add(30 * time.Second)
+	timeout := timeutil.NowTime().Add(30 * time.Second)
 	for status.State != svc.Stopped {
-		if time.Now().After(timeout) {
+		if timeutil.NowTime().After(timeout) {
 			return fmt.Errorf("timeout waiting for service to stop")
 		}
 		time.Sleep(500 * time.Millisecond)

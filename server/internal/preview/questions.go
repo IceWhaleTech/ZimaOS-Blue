@@ -3,7 +3,7 @@ package preview
 import (
 	"math/rand"
 	"sync"
-	"time"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // PresetQuestionAttachment represents an attachment for a preset question.
@@ -36,7 +36,7 @@ type QuestionsService struct {
 func NewQuestionsService() *QuestionsService {
 	return &QuestionsService{
 		questions:    defaultPresetQuestions(),
-		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
+		rng:          rand.New(rand.NewSource(timeutil.NowNano())),
 		lastSelected: make([]string, 0),
 	}
 }
