@@ -77,8 +77,27 @@ func TestHumanize(t *testing.T) {
 			"mixed voice",
 			"## Welcome\n\n**Bold** and `code` here.\n\n- item 1\n- item 2\n\n---\n\n> A quote\n\n```\nsome code\n```",
 			ModeVoice,
-			"Welcome\n\nBold and code here.\n\nitem 1\nitem 2\n\nA quote\n\n(code omitted)",
+			"Welcome\n\nBold and  here.\n\nitem 1\nitem 2\n\nA quote\n\n(code omitted)",
 		},
+
+		// Inline code stripped in voice mode
+		{"inline code voice", "use `fmt.Println()` to print", ModeVoice, "use  to print"},
+
+		// LaTeX math stripped in voice mode
+		{"math inline voice", "The formula $E=mc^2$ is famous", ModeVoice, "The formula (公式) is famous"},
+		{"math block voice", "Here:\n$$\\int_0^1 x^2 dx$$\nDone", ModeVoice, "Here:\n(公式已省略)\nDone"},
+		{"math IM unchanged", "The formula $E=mc^2$ is famous", ModeIM, "The formula $E=mc^2$ is famous"},
+
+		// Bare URLs stripped in voice mode
+		{"bare url voice", "Visit https://example.com/path for info", ModeVoice, "Visit  for info"},
+		{"bare url IM unchanged", "Visit https://example.com for info", ModeIM, "Visit https://example.com for info"},
+
+		// Extended emoji ranges
+		{"emoji star voice", "Rating: ⭐⭐⭐", ModeVoice, "Rating:"},
+		{"emoji misc voice", "Check ✅ done ⏰ time", ModeVoice, "Check  done  time"},
+
+		// Table pipe separators
+		{"table pipes voice", "Name | Age | City", ModeVoice, "Name, Age, City"},
 	}
 
 	for _, tt := range tests {

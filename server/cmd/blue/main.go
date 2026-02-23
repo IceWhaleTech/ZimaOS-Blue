@@ -62,6 +62,8 @@ import (
 
 	reminderPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reminder"
 	ssePkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+
+	blueAPI "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
 )
 
 var (
@@ -609,13 +611,12 @@ func runServer() {
 			// Wire SSE event publisher
 			reminderSvc.SetEventPublisher(sseBroker)
 
-			// Wire into builtin skill
-			if reminderSkill := skillRegistry.Get("reminders"); reminderSkill != nil {
-				if rs, ok := reminderSkill.(*builtin.Reminders); ok {
-					adapter := reminderPkg.NewSkillAdapter(func() *reminderPkg.Service { return reminderSvc })
-					rs.SetReminderService(adapter)
-				}
-			}
+			// Wire native OS notifier
+			reminderSvc.SetNotifier(reminderPkg.NewNotifier(zapLogger))
+
+			// Register native reminders tool
+			remToolsAdapter := reminderPkg.NewToolsAdapter(func() *reminderPkg.Service { return reminderSvc })
+			tools.RegisterRemindersTool(toolRegistry, remToolsAdapter)
 
 			// Restore pending reminders from previous session
 			go func() {
@@ -630,32 +631,33 @@ func runServer() {
 		}
 	}
 
-	// Wire browser service into browser skill (lazy — creates rod service on first skill call)
-	if browserSkill := skillRegistry.Get("browser"); browserSkill != nil {
-		if bs, ok := browserSkill.(*builtin.Browser); ok {
-			var browserOnce sync.Once
-			var browserSvc *browser.RodService
-			lazyBrowserSvc := func() *browser.RodService {
-				browserOnce.Do(func() {
-					svc, err := browser.NewService(nil)
-					if err != nil {
-						logger.Warn().Err(err).Msg("Failed to create browser service for skill")
-						return
-					}
-					browserSvc = svc
-					logger.Info().Msg("Browser service initialized for skill")
-				})
-				return browserSvc
-			}
-			bs.SetBrowserService(browser.NewLazySkillAdapter(lazyBrowserSvc))
+	// Wire browser service — lazy init, creates rod service on first use
+	{
+		var browserOnce sync.Once
+		var browserSvc *browser.RodService
+		lazyBrowserSvc := func() *browser.RodService {
+			browserOnce.Do(func() {
+				svc, err := browser.NewService(nil)
+				if err != nil {
+					logger.Warn().Err(err).Msg("Failed to create browser service")
+					return
+				}
+				browserSvc = svc
+				logger.Info().Msg("Browser service initialized")
+			})
+			return browserSvc
+		}
 
-			// Wire native UI reviewer tool with same lazy browser service
-			if uiTool := tools.GetUIReviewerTool(toolRegistry); uiTool != nil {
-				uiTool.SetBrowser(tools.NewLazyRodBrowserAdapter(lazyBrowserSvc))
-				mediaDir := filepath.Join(dataDir, "media")
-				_ = os.MkdirAll(mediaDir, 0750)
-				uiTool.SetMediaDir(mediaDir)
-			}
+		// Register native browser tool
+		browserBackend := tools.NewLazyRodBrowserBackend(lazyBrowserSvc)
+		tools.RegisterBrowserTool(toolRegistry, browserBackend)
+
+		// Wire native UI reviewer tool with same lazy browser service
+		if uiTool := tools.GetUIReviewerTool(toolRegistry); uiTool != nil {
+			uiTool.SetBrowser(tools.NewLazyRodBrowserAdapter(lazyBrowserSvc))
+			mediaDir := filepath.Join(dataDir, "media")
+			_ = os.MkdirAll(mediaDir, 0750)
+			uiTool.SetMediaDir(mediaDir)
 		}
 	}
 
@@ -956,9 +958,11 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	// Initialize Claude Code handler
 	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
-	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{WorkspaceDir: dataDir})
+	workspaceDir := workspaceMgr.Dir() // {dataDir}/workspace/
+	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{WorkspaceDir: workspaceDir})
 	systemPromptBuilder.SetToolRegistry(toolRegistry)
 	systemPromptBuilder.SetWorkspace(workspaceMgr)
+	systemPromptBuilder.SetSkillsDir(filepath.Join(workspaceDir, ".claude", "skills"))
 	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
 
 	// Register workspace_file tool so the agent can update workspace files via conversation
@@ -1133,6 +1137,10 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// SSE event stream endpoint — register on /api/v1/events (protected)
 	sseHandler := ssePkg.NewHandler(sseBroker)
 	sseHandler.RegisterRoutes(apiProtected.Group("/v1"))
+
+	// Tool approval endpoints — /api/v1/approval/* (protected)
+	approvalHandler := blueAPI.NewApprovalHandler(sseBroker)
+	approvalHandler.RegisterRoutes(apiProtected.Group("/v1"))
 
 	channelConfigHandler := server.NewChannelConfigHandler(channelConfigStore)
 	channelManager := channel.NewManager(channel.DefaultConfig(), zapLogger)

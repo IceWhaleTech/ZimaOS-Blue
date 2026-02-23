@@ -29,7 +29,14 @@ var (
 	htmlTagRe       = regexp.MustCompile(`<[^>]+>`)
 
 	// Emoji pattern (comprehensive Unicode ranges)
-	emojiRe = regexp.MustCompile(`[\x{1F600}-\x{1F64F}]|[\x{1F300}-\x{1F5FF}]|[\x{1F680}-\x{1F6FF}]|[\x{1F1E0}-\x{1F1FF}]|[\x{2600}-\x{26FF}]|[\x{2700}-\x{27BF}]|[\x{FE00}-\x{FE0F}]|[\x{1F900}-\x{1F9FF}]|[\x{1FA00}-\x{1FA6F}]|[\x{1FA70}-\x{1FAFF}]|[\x{200D}]|[\x{20E3}]|[\x{FE0F}]`)
+	emojiRe = regexp.MustCompile(`[\x{1F600}-\x{1F64F}]|[\x{1F300}-\x{1F5FF}]|[\x{1F680}-\x{1F6FF}]|[\x{1F1E0}-\x{1F1FF}]|[\x{2600}-\x{26FF}]|[\x{2700}-\x{27BF}]|[\x{FE00}-\x{FE0F}]|[\x{1F900}-\x{1F9FF}]|[\x{1FA00}-\x{1FA6F}]|[\x{1FA70}-\x{1FAFF}]|[\x{200D}]|[\x{20E3}]|[\x{FE0F}]|[\x{2300}-\x{23FF}]|[\x{2B05}-\x{2B07}]|[\x{2B1B}-\x{2B1C}]|[\x{2B50}]|[\x{2B55}]|[\x{3030}]|[\x{303D}]|[\x{3297}]|[\x{3299}]|[\x{1F3FB}-\x{1F3FF}]|[\x{E0020}-\x{E007F}]|[\x{200B}-\x{200F}]|[\x{2028}-\x{202F}]|[\x{2060}-\x{206F}]`)
+
+	// LaTeX math blocks: $$...$$ and $...$
+	mathBlockRe  = regexp.MustCompile(`(?s)\$\$(.+?)\$\$`)
+	mathInlineRe = regexp.MustCompile(`\$([^\$\n]+?)\$`)
+
+	// Bare URLs (not inside markdown link syntax)
+	bareURLRe = regexp.MustCompile(`https?://[^\s\)>\]]+`)
 
 	// Whitespace cleanup
 	multiBlankLineRe = regexp.MustCompile(`\n{3,}`)
@@ -155,6 +162,19 @@ func stripHTMLTags(text string) string {
 // stripEmojis removes emoji characters.
 func stripEmojis(text string) string {
 	return emojiRe.ReplaceAllString(text, "")
+}
+
+// stripMathBlocks replaces LaTeX math with spoken description.
+// $$...$$ → "(公式已省略)", $...$ → "(公式)"
+func stripMathBlocks(text string) string {
+	text = mathBlockRe.ReplaceAllString(text, "(公式已省略)")
+	text = mathInlineRe.ReplaceAllString(text, "(公式)")
+	return text
+}
+
+// stripBareURLs removes bare URLs not wrapped in markdown link syntax.
+func stripBareURLs(text string) string {
+	return bareURLRe.ReplaceAllString(text, "")
 }
 
 // normalizeBullets handles bullet point markers.

@@ -229,6 +229,13 @@ Telegram/Discord/... → Gestionnaire de canaux → Vérification AutoReply
 Audio WebSocket → STT (Whisper) → Traitement LLM → TTS (eSpeak/Edge) → Audio WebSocket
 ```
 
+**Surveillance Heartbeat**
+```
+Minuteur (30 min) → Lecture HEARTBEAT.md → Évaluation LLM → Suppression token HEARTBEAT_OK
+  → Déduplication (hash FNV, TTL 24h) → Alerte canal (Telegram/Slack/...)
+  → Flux d'événements → Indicateur UI
+```
+
 ## Comment utiliser
 
 ![](../../docs/assets/handcraft.png)

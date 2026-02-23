@@ -203,6 +203,13 @@ Telegram/Discord/... → Gestor de canals → Comprovació d'autoresposta
 WebSocket àudio → STT (Whisper) → Processament LLM → TTS (eSpeak/Edge) → WebSocket àudio
 ```
 
+**Monitoratge Heartbeat**
+```
+Temporitzador (30 min) → Lectura HEARTBEAT.md → Avaluació LLM → Eliminació token HEARTBEAT_OK
+  → Deduplicació (hash FNV, TTL 24h) → Alerta de canal (Telegram/Slack/...)
+  → Flux d'esdeveniments → Indicador UI
+```
+
 ### Mapa de paquets (`server/internal/`)
 
 | Capa | Paquets |

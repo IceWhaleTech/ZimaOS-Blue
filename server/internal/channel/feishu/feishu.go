@@ -273,7 +273,7 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 			if response == "" {
 				return
 			}
-			if err := c.SendText(c.ctx, chatID, response, ""); err != nil {
+			if err := c.SendText(c.ctx, chatID, response, messageID); err != nil {
 				c.logger.Error("failed to send response", zap.Error(err))
 			} else if c.sessionManager != nil && sessionID != "" {
 				c.sessionManager.EmitMessageSent(sessionID, userID, response)

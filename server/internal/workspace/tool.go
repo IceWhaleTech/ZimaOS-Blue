@@ -22,11 +22,13 @@ func NewWorkspaceTool(mgr *Manager) *WorkspaceTool {
 func (t *WorkspaceTool) Definition() tools.ToolDefinition {
 	return tools.ToolDefinition{
 		Name: "workspace_file",
-		Description: `Read or write workspace files. Actions:
+		Description: `Read or write workspace files (MEMORY.md, USER.md, etc.). These files persist across conversations and are loaded into the system prompt. Actions:
 - "read": read a workspace file
-- "write": update a workspace file
+- "write": overwrite a workspace file (use for MEMORY.md to store long-term facts, preferences, and notes the user asks you to remember)
+- "append_daily": append a timestamped note to today's daily log (memory/YYYY-MM-DD.md) — use for conversation summaries and observations
 - "complete_bootstrap": finish first-run setup (deletes BOOTSTRAP.md)
-- "append_daily": append a note to today's daily log (memory/YYYY-MM-DD.md)`,
+
+When the user says "remember this", "don't forget", or "remind me next time": read MEMORY.md first, then write back with the new information appended.`,
 		Icon: "file-text",
 		Parameters: map[string]interface{}{
 			"type": "object",

@@ -235,6 +235,13 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**心跳監控**
+```
+定時器 (30分鐘) → 讀取 HEARTBEAT.md → LLM 評估 → 剝離 HEARTBEAT_OK 令牌
+  → 去重 (FNV 雜湊, 24小時 TTL) → 頻道告警 (Telegram/Slack/...)
+  → 事件流 → UI 指示器
+```
+
 ## 使用方式
 
 ![](../../docs/assets/handcraft.png)

@@ -46,6 +46,9 @@ func Humanize(text string, mode Mode) string {
 	text = stripTypelessCards(text, mode)
 	text = stripFunctionCalls(text, mode)
 	text = stripHTMLTags(text)
+	if mode == ModeVoice {
+		text = stripMathBlocks(text)
+	}
 
 	ir := Parse(text, ParseOptions{
 		HeadingStyle: "none",

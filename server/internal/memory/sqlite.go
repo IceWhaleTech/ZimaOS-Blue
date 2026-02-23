@@ -435,6 +435,11 @@ func (s *Store) AddMessage(ctx context.Context, conversationID string, msg Messa
 // UpdateMessageContent updates the content (and optionally stats) of an existing message.
 // Used for incremental persistence during streaming.
 func (s *Store) UpdateMessageContent(ctx context.Context, messageID, content string, stats *MessageStats) error {
+	return s.UpdateMessageContentFull(ctx, messageID, content, "", "", stats)
+}
+
+// UpdateMessageContentFull updates a message's content, stats, and optionally provider/model.
+func (s *Store) UpdateMessageContentFull(ctx context.Context, messageID, content, provider, model string, stats *MessageStats) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -443,9 +448,23 @@ func (s *Store) UpdateMessageContent(ctx context.Context, messageID, content str
 		if err != nil {
 			return fmt.Errorf("failed to marshal stats: %w", err)
 		}
-		_, err = s.db.ExecContext(ctx,
-			"UPDATE messages SET content = ?, stats = ? WHERE id = ?",
-			content, statsJSON, messageID,
+		if provider != "" || model != "" {
+			_, err = s.db.ExecContext(ctx,
+				"UPDATE messages SET content = ?, stats = ?, provider = COALESCE(NULLIF(?, ''), provider), model = COALESCE(NULLIF(?, ''), model) WHERE id = ?",
+				content, statsJSON, provider, model, messageID,
+			)
+		} else {
+			_, err = s.db.ExecContext(ctx,
+				"UPDATE messages SET content = ?, stats = ? WHERE id = ?",
+				content, statsJSON, messageID,
+			)
+		}
+		return err
+	}
+	if provider != "" || model != "" {
+		_, err := s.db.ExecContext(ctx,
+			"UPDATE messages SET content = ?, provider = COALESCE(NULLIF(?, ''), provider), model = COALESCE(NULLIF(?, ''), model) WHERE id = ?",
+			content, provider, model, messageID,
 		)
 		return err
 	}

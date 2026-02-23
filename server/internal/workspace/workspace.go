@@ -93,7 +93,7 @@ func (m *Manager) EnsureWorkspace() error {
 
 	// Write templates for files that don't exist yet (best-effort — don't abort on individual failures)
 	for name, tmpl := range ts.templateMap() {
-		path := filepath.Join(m.dir, name)
+		path := m.resolveFilePath(name)
 		if err := writeIfMissing(path, tmpl); err != nil {
 			log.Printf("workspace: write %s: %v", name, err)
 		}
@@ -120,7 +120,7 @@ func (m *Manager) LoadBootstrapFiles() []BootstrapFile {
 	files := make([]BootstrapFile, 0, len(names)+3) // +3 for bootstrap + daily logs
 
 	for _, name := range names {
-		path := filepath.Join(m.dir, name)
+		path := m.resolveFilePath(name)
 		content, err := os.ReadFile(path)
 		if err != nil {
 			files = append(files, BootstrapFile{Name: name, Missing: true})
@@ -155,7 +155,7 @@ func (m *Manager) LoadContextFiles() map[string]string {
 	ctx := make(map[string]string, len(names)+3)
 
 	for _, name := range names {
-		data, err := os.ReadFile(filepath.Join(m.dir, name))
+		data, err := os.ReadFile(m.resolveFilePath(name))
 		if err != nil {
 			continue
 		}
@@ -181,6 +181,15 @@ func (m *Manager) LoadContextFiles() map[string]string {
 	return ctx
 }
 
+// resolveFilePath returns the on-disk path for a workspace file.
+// MEMORY.md lives under memory/ subdirectory; all others live in workspace root.
+func (m *Manager) resolveFilePath(name string) string {
+	if name == FileMEMORY {
+		return filepath.Join(m.dir, "memory", FileMEMORY)
+	}
+	return filepath.Join(m.dir, name)
+}
+
 // ReadFile reads a single workspace file by name.
 // Returns an error if the file exceeds MaxFileSize.
 func (m *Manager) ReadFile(name string) (string, error) {
@@ -190,7 +199,7 @@ func (m *Manager) ReadFile(name string) (string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	path := filepath.Join(m.dir, name)
+	path := m.resolveFilePath(name)
 	info, err := os.Stat(path)
 	if err != nil {
 		return "", err
@@ -216,7 +225,7 @@ func (m *Manager) WriteFile(name, content string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return os.WriteFile(filepath.Join(m.dir, name), []byte(content), 0o644)
+	return os.WriteFile(m.resolveFilePath(name), []byte(content), 0o644)
 }
 
 // isAllowedFile checks if a filename is in the allowlist.
@@ -289,6 +298,7 @@ func (m *Manager) AppendDailyLog(content string) error {
 }
 
 // loadRecentDailyLogs reads today's and yesterday's daily logs.
+// Checks both memory/ (workspace.AppendDailyLog) and memory/daily/ (LayeredMemoryService).
 // Must be called with m.mu held (at least RLock).
 func (m *Manager) loadRecentDailyLogs() []BootstrapFile {
 	memDir := filepath.Join(m.dir, "memory")
@@ -301,19 +311,26 @@ func (m *Manager) loadRecentDailyLogs() []BootstrapFile {
 	var files []BootstrapFile
 	for _, date := range dates {
 		name := date + ".md"
-		path := filepath.Join(memDir, name)
-		content, err := os.ReadFile(path)
-		if err != nil {
-			continue // Skip missing days
+		// Check both memory/ and memory/daily/ — LayeredMemoryService writes to daily/ subdir
+		candidates := []string{
+			filepath.Join(memDir, name),
+			filepath.Join(memDir, "daily", name),
 		}
-		s := string(content)
-		if strings.TrimSpace(s) == "" {
-			continue
+		for _, path := range candidates {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			s := string(content)
+			if strings.TrimSpace(s) == "" {
+				continue
+			}
+			files = append(files, BootstrapFile{
+				Name:    "memory/" + name,
+				Content: s,
+			})
+			break // Use first found, avoid duplicates for same date
 		}
-		files = append(files, BootstrapFile{
-			Name:    "memory/" + name,
-			Content: s,
-		})
 	}
 	return files
 }

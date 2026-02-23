@@ -37,6 +37,7 @@ interface ChannelDef {
   enabled: boolean
   status: 'connected' | 'disconnected' | 'error' | 'connecting'
   lastError?: string
+  lastErrorKey?: string
   descriptionKey: string
   hintKey?: string
   docUrl?: string
@@ -53,6 +54,15 @@ const saving = ref<string | null>(null)
 const toggling = ref<string | null>(null)
 const testingConnection = ref<string | null>(null)
 const testResult = ref<{ channelId: string; success: boolean; message: string } | null>(null)
+
+// Resolve a channel error message: prefer i18n key, fallback to raw string
+function resolveChannelError(channel: ChannelDef): string {
+  if (channel.lastErrorKey) {
+    const i18nKey = `channels.errors.${channel.lastErrorKey}`
+    if (te(i18nKey)) return t(i18nKey)
+  }
+  return channel.lastError || ''
+}
 
 // Show top 6 channels by default, collapse the rest (17 channels)
 const getInitialShowMoreState = (): boolean => {
@@ -551,10 +561,11 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
       // Update status from server response
       channelDef.status = data.status || (enabled ? 'connected' : 'disconnected')
       channelDef.lastError = data.channel?.last_error
+      channelDef.lastErrorKey = data.channel?.last_error_key
       triggerRef(channelDefs)
       // Show error message if status is error
       if (channelDef.status === 'error' && channelDef.lastError) {
-        testResult.value = { channelId, success: false, message: channelDef.lastError }
+        testResult.value = { channelId, success: false, message: resolveChannelError(channelDef) }
       }
     } else {
       // Revert on error
@@ -588,6 +599,7 @@ async function loadChannelConfigs() {
           localChannel.enabled = serverChannel.enabled
           localChannel.status = serverChannel.status
           localChannel.lastError = serverChannel.last_error
+          localChannel.lastErrorKey = serverChannel.last_error_key
           // Update message statistics
           localChannel.messagesReceived = serverChannel.messages_received
           localChannel.messagesSent = serverChannel.messages_sent

@@ -199,6 +199,13 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Heartbeat Monitor**
+```
+Ticker (30min) → Read HEARTBEAT.md → LLM Eval → Strip HEARTBEAT_OK token
+  → Dedup (FNV hash, 24h TTL) → Channel Alert (Telegram/Slack/...)
+  → Event Streamer → UI Indicator
+```
+
 ## How to Use
 
 ![](./docs/assets/handcraft.png)

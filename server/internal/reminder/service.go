@@ -36,6 +36,7 @@ type Service struct {
 	cron      CronService
 	injector  MessageInjector
 	publisher EventPublisher
+	notifier  Notifier
 }
 
 // NewService creates a new reminder service.
@@ -68,6 +69,13 @@ func (s *Service) SetEventPublisher(pub EventPublisher) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.publisher = pub
+}
+
+// SetNotifier wires the native OS notifier.
+func (s *Service) SetNotifier(n Notifier) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notifier = n
 }
 
 // Add creates a new reminder with cron scheduling.
@@ -235,6 +243,7 @@ func (s *Service) fireReminder(ctx context.Context, r *Reminder) {
 	s.mu.RLock()
 	inj := s.injector
 	pub := s.publisher
+	notif := s.notifier
 	c := s.cron
 	s.mu.RUnlock()
 
@@ -259,6 +268,13 @@ func (s *Service) fireReminder(ctx context.Context, r *Reminder) {
 			pub.Publish(r.OwnerID, "conversation_updated", map[string]any{
 				"id": conversationID,
 			})
+		}
+	}
+
+	// Native OS notification (best-effort)
+	if notif != nil {
+		if err := notif.Notify(ctx, "Reminder", r.Message); err != nil {
+			s.logger.Warn("native notification failed", zap.String("id", r.ID), zap.Error(err))
 		}
 	}
 

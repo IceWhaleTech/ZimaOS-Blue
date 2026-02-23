@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 )
 
 const (
@@ -47,6 +48,10 @@ func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatRespon
 	ctx, cancel := ensureTimeout(ctx)
 	defer cancel()
 
+	// Inject ResolvedRoute into context so the proxy handler can populate it
+	var resolved proxy.ResolvedRoute
+	ctx = proxy.WithResolvedRoute(ctx, &resolved)
+
 	req.Stream = false
 	body, err := MarshalChatRequest(req)
 	if err != nil {
@@ -76,7 +81,20 @@ func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatRespon
 		return nil, fmt.Errorf("proxy response too large: %d bytes", rec.Body.Len())
 	}
 
-	return ParseChatResponse(rec.Body.Bytes())
+	resp, parseErr := ParseChatResponse(rec.Body.Bytes())
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	// Inject resolved provider/model into response
+	if resp != nil {
+		if resolved.Provider != "" {
+			resp.Provider = resolved.Provider
+		}
+		if resolved.Model != "" && resp.Model == "" {
+			resp.Model = resolved.Model
+		}
+	}
+	return resp, nil
 }
 
 // pipeResponseWriter implements http.ResponseWriter + http.Flusher over an io.Writer.
@@ -116,6 +134,10 @@ func (p *pipeResponseWriter) Flush() {
 func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback llm.StreamCallback) error {
 	ctx, cancel := ensureTimeout(ctx)
 	defer cancel()
+
+	// Inject ResolvedRoute into context so the proxy handler can populate it
+	var resolved proxy.ResolvedRoute
+	ctx = proxy.WithResolvedRoute(ctx, &resolved)
 
 	req.Stream = true
 	body, err := MarshalChatRequest(req)
@@ -170,18 +192,21 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 			slog.Warn("bridge: malformed SSE chunk", "error", parseErr, "payload_len", len(payload))
 			continue
 		}
-		// Inject actual provider/model from proxy response headers.
-		// These are set by proxy server.go before WriteHeader, so they're
-		// available by the time we read any SSE data from the pipe.
-		if chunk.Provider == "" {
-			if v := rw.Header().Get("X-Actual-Provider"); v != "" {
-				chunk.Provider = v
-			}
+		// Inject actual provider/model from the resolved route (set by proxy handler
+		// via context before any data is written to the pipe, so it's safe to read here).
+		if chunk.Provider == "" && resolved.Provider != "" {
+			chunk.Provider = resolved.Provider
 		}
-		if chunk.Model == "" {
-			if v := rw.Header().Get("X-Actual-Model"); v != "" {
-				chunk.Model = v
-			}
+		if chunk.Model == "" && resolved.Model != "" {
+			chunk.Model = resolved.Model
+		}
+		if chunkCount == 1 {
+			slog.Debug("[bridge] first chunk metadata",
+				"chunk.Provider", chunk.Provider,
+				"chunk.Model", chunk.Model,
+				"resolved.Provider", resolved.Provider,
+				"resolved.Model", resolved.Model,
+			)
 		}
 		if cbErr := callback(chunk); cbErr != nil {
 			scanErr = cbErr

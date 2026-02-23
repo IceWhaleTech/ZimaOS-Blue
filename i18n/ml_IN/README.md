@@ -206,6 +206,13 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**ഹാർട്ട്ബീറ്റ് മോണിറ്റർ**
+```
+ടൈമർ (30 മിനിറ്റ്) → HEARTBEAT.md വായിക്കുക → LLM മൂല്യനിർണ്ണയം → HEARTBEAT_OK ടോക്കൺ നീക്കം
+  → ഡീഡ്യൂപ്ലിക്കേഷൻ (FNV ഹാഷ്, 24 മണിക്കൂർ TTL) → ചാനൽ അലേർട്ട് (Telegram/Slack/...)
+  → ഇവന്റ് സ്ട്രീമർ → UI ഇൻഡിക്കേറ്റർ
+```
+
 ### പാക്കേജ് മാപ്പ് (`server/internal/`)
 
 | ലേയർ | പാക്കേജുകൾ |

@@ -215,7 +215,7 @@ func ParseSSEChunk(dataPayload string) (llm.StreamChunk, bool, error) {
 	if len(resp.Choices) > 0 {
 		c := resp.Choices[0]
 		chunk.Delta = c.Delta.Content
-		if c.FinishReason == "stop" || c.FinishReason == "end_turn" {
+		if c.FinishReason == "stop" || c.FinishReason == "end_turn" || c.FinishReason == "tool_calls" {
 			chunk.Done = true
 		}
 		if len(c.Delta.ToolCalls) > 0 {

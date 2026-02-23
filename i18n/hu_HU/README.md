@@ -203,6 +203,13 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Heartbeat figyelés**
+```
+Időzítő (30 perc) → HEARTBEAT.md olvasása → LLM kiértékelés → HEARTBEAT_OK token eltávolítása
+  → Deduplikáció (FNV hash, 24 óra TTL) → Csatorna riasztás (Telegram/Slack/...)
+  → Eseményfolyam → UI jelző
+```
+
 ### Csomagtérkép (`server/internal/`)
 
 | Réteg | Csomagok |

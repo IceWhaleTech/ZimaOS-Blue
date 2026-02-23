@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,17 +20,44 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 )
 
+// ResolvedRoute carries the actual provider/model chosen by the router.
+// Callers embed a pointer in the request context; the proxy handler populates it.
+type ResolvedRoute struct {
+	Provider string
+	Model    string
+}
+
+type resolvedRouteKeyType struct{}
+
+// WithResolvedRoute returns a context carrying a ResolvedRoute pointer.
+// After the proxy handler completes, the struct will be populated.
+func WithResolvedRoute(ctx context.Context, rr *ResolvedRoute) context.Context {
+	return context.WithValue(ctx, resolvedRouteKeyType{}, rr)
+}
+
+func getResolvedRoute(ctx context.Context) *ResolvedRoute {
+	rr, _ := ctx.Value(resolvedRouteKeyType{}).(*ResolvedRoute)
+	return rr
+}
+
+// GetResolvedRouteFromContext is the exported version of getResolvedRoute.
+func GetResolvedRouteFromContext(ctx context.Context) *ResolvedRoute {
+	return getResolvedRoute(ctx)
+}
+
 // parsedRequest holds pre-parsed request data to avoid redundant JSON parsing.
 // Created once in ServeHTTP and passed through the call chain.
 // Uses gjson for zero-alloc field extraction instead of map[string]interface{}.
 // Layout: pointer-sized fields first, then bools — minimizes padding for cache-line efficiency.
 type parsedRequest struct {
-	body           []byte
-	model          string
-	originalModel  string         // model before routing (for cost savings tracking)
-	upstreamFormat ProviderType   // set when request was converted to non-OpenAI format
-	routed         *RouteDecision // non-nil if rule engine rerouted the model
-	streaming      bool
+	body             []byte
+	model            string
+	originalModel    string         // model before routing (for cost savings tracking)
+	upstreamFormat   ProviderType   // set when request was converted to non-OpenAI format
+	routed           *RouteDecision // non-nil if rule engine rerouted the model
+	streaming        bool
+	resolvedProvider string // actual provider name after routing
+	resolvedModel    string // actual model ID after routing
 }
 
 // sseBufferPool reuses 32KB buffers for SSE streaming to reduce GC pressure.
@@ -408,7 +436,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ph.setRouteHeaders(w, pr)
 	routingMode := ph.extractRoutingMode(r)
-	slog.Debug("[proxy] routing request", "model", pr.model, "streaming", pr.streaming, "mode", routingMode)
+	slog.Debug("[proxy] routing request", "model", pr.model, "streaming", pr.streaming, "mode", routingMode, "body", string(pr.body))
 
 	routeReq := &providerpool.RouteRequest{
 		ModelID: pr.model,
@@ -435,8 +463,36 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return tryErr
 		}
 
+		// For streaming responses, peek at the first bytes to detect empty streams.
+		// Some providers return HTTP 200 with an empty body or only "[DONE]".
+		// Detecting this early allows RouteWithFallback to try the next provider.
+		if pr.streaming && resp.Body != nil {
+			peekBuf := make([]byte, 32)
+			n, peekErr := resp.Body.Read(peekBuf)
+			if n == 0 || peekErr != nil {
+				resp.Body.Close()
+				slog.Warn("[proxy] streaming response body empty", "provider", pid, "error", peekErr)
+				return fmt.Errorf("provider %s returned empty streaming response", pid)
+			}
+			// Reconstruct body: peeked bytes + rest of original body
+			resp.Body = &peekReader{prefix: peekBuf[:n], rest: resp.Body}
+		}
+
 		if format == providerpool.APIFormatAnthropic {
 			pr.upstreamFormat = ProviderTypeAnthropic
+		}
+		// Capture resolved provider/model for downstream headers
+		pr.resolvedProvider = result.Provider.Name
+		if pr.resolvedProvider == "" {
+			pr.resolvedProvider = result.Provider.ID
+		}
+		if result.Model != nil && result.Model.ID != "" {
+			pr.resolvedModel = result.Model.ID
+		}
+		// Also propagate via context for callers that can't read response headers
+		if rr := getResolvedRoute(r.Context()); rr != nil {
+			rr.Provider = pr.resolvedProvider
+			rr.Model = pr.resolvedModel
 		}
 		finalResp = resp
 		return nil
@@ -534,7 +590,10 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	}
 	upstreamURL.RawQuery = r.URL.RawQuery
 
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, upstreamURL.String(), io.NopCloser(bytes.NewReader(body)))
+	fullURL := upstreamURL.String()
+	slog.Debug("[proxy] upstream request", "url", fullURL, "method", r.Method, "format", effectiveFormat, "body_len", len(body), "body", string(body))
+
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, io.NopCloser(bytes.NewReader(body)))
 	if err != nil {
 		return nil, err
 	}
@@ -734,13 +793,15 @@ func (ph *ProxyHandler) tryOnProvider(
 	}
 
 	formatsBuf, nFormats, formatKnown := ph.allFormatsForProvider(pid, burl, result.Provider)
+	allFormats := nFormats // remember full count before truncation
 	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, pr.model, routedModel)
 
 	if nModels == 0 {
 		return nil, "", "", fmt.Errorf("all models blacklisted on provider %s", pid)
 	}
 
-	// If format is known (detected or remembered), only try that one — skip fallback formats
+	// If format is known (detected or remembered), only try that one — skip fallback formats.
+	// On format mismatch (422 / wrapped 404), nFormats is expanded back to allFormats.
 	if formatKnown {
 		nFormats = 1
 	}
@@ -770,6 +831,14 @@ func (ph *ProxyHandler) tryOnProvider(
 			ph.providerMemory.RememberFormat(pid, burl, string(format))
 			ph.persistDetectedFormat(result.Provider, format)
 			return resp, format, pr.model, nil
+		}
+		// Format mismatch on fast path — expand to all formats and fall through to general loop
+		if allFormats > 1 && isFormatMismatchError(resp.StatusCode, readErrorBody(resp.Body)) {
+			resp.Body.Close()
+			slog.Warn("[proxy] format mismatch on fast path, expanding to all formats",
+				"provider", pid, "format", format, "model", pr.model)
+			ph.providerMemory.ForgetFormat(pid, burl)
+			nFormats = allFormats
 		}
 		// Fall through to error handling in the general loop
 	}
@@ -839,6 +908,21 @@ func (ph *ProxyHandler) tryOnProvider(
 				return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
 			}
 
+			// Format mismatch: 422, or 404/400 with format-related error body.
+			// Check BEFORE isModelNotConfiguredError since both match 404/422.
+			// Don't blacklist the model — try the next format instead.
+			if isFormatMismatchError(statusCode, errBody) {
+				slog.Warn("[proxy] format mismatch, trying next format",
+					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
+				lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
+				// If we're on the last format and there are more available, expand
+				if fi == nFormats-1 && allFormats > nFormats {
+					ph.providerMemory.ForgetFormat(pid, burl)
+					nFormats = allFormats
+				}
+				continue
+			}
+
 			// Check if this is a "not configured" / "model not found" error
 			if isModelNotConfiguredError(statusCode, errBody) {
 				slog.Warn("[proxy] model not configured on provider, blacklisting and trying next",
@@ -849,15 +933,6 @@ func (ph *ProxyHandler) tryOnProvider(
 				// Skip remaining formats for this model — if model isn't configured,
 				// trying a different format won't help
 				break
-			}
-
-			// 422: likely wrong request format (e.g. OpenAI body sent to Anthropic endpoint).
-			// Don't blacklist the model — try the next format instead.
-			if statusCode == 422 {
-				slog.Warn("[proxy] 422 format mismatch, trying next format",
-					"provider", pid, "format", format, "model", model, "body", errStr)
-				lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
-				continue
 			}
 
 			// Other 4xx: blacklist this model on this provider, try next model/format
@@ -921,6 +996,37 @@ func isModelNotConfiguredError(statusCode int, body []byte) bool {
 		}
 	}
 
+	return false
+}
+
+// formatMismatchPatterns are error body patterns that indicate the request format
+// doesn't match what the provider expects (e.g. OpenAI body sent to Anthropic endpoint).
+var formatMismatchPatterns = [][]byte{
+	[]byte("unsupported request"),
+	[]byte("bad_response_status_code"),
+	[]byte("openai_error"),
+	[]byte("invalid request format"),
+	[]byte("unexpected content type"),
+}
+
+// isFormatMismatchError returns true if the error indicates a request format mismatch
+// rather than a model configuration issue. These errors should trigger format fallback,
+// not model blacklisting.
+func isFormatMismatchError(statusCode int, body []byte) bool {
+	if statusCode != 400 && statusCode != 404 && statusCode != 422 {
+		return false
+	}
+	// 422 is almost always a format mismatch
+	if statusCode == 422 {
+		return true
+	}
+	// For 400/404, check body for format-related patterns
+	lower := toLowerBytes(body)
+	for _, pattern := range formatMismatchPatterns {
+		if bytes.Contains(lower, pattern) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -1072,6 +1178,14 @@ func (ph *ProxyHandler) handleModels(w http.ResponseWriter, r *http.Request) {
 func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response, pr *parsedRequest) {
 	copyHeaders(w.Header(), resp.Header)
 
+	// Inject actual provider/model so the bridge can propagate them to chat handler
+	if pr.resolvedProvider != "" {
+		w.Header().Set("X-Actual-Provider", pr.resolvedProvider)
+	}
+	if pr.resolvedModel != "" {
+		w.Header().Set("X-Actual-Model", pr.resolvedModel)
+	}
+
 	if isStreamingResponse(resp) || pr.streaming {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(resp.StatusCode)
@@ -1151,6 +1265,27 @@ func (fw *flushWriter) Write(p []byte) (int, error) {
 	n, err := fw.w.Write(p)
 	fw.f.Flush()
 	return n, err
+}
+
+// peekReader prepends already-read bytes back onto a reader.
+// Used to reconstruct a response body after peeking at the first bytes.
+type peekReader struct {
+	prefix []byte
+	rest   io.ReadCloser
+	off    int
+}
+
+func (pr *peekReader) Read(p []byte) (int, error) {
+	if pr.off < len(pr.prefix) {
+		n := copy(p, pr.prefix[pr.off:])
+		pr.off += n
+		return n, nil
+	}
+	return pr.rest.Read(p)
+}
+
+func (pr *peekReader) Close() error {
+	return pr.rest.Close()
 }
 
 // isStreamingResponse checks if response is streaming

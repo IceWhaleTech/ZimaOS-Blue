@@ -201,6 +201,13 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Monitorizare Heartbeat**
+```
+Temporizator (30 min) → Citire HEARTBEAT.md → Evaluare LLM → Eliminare token HEARTBEAT_OK
+  → Deduplicare (hash FNV, TTL 24h) → Alertă canal (Telegram/Slack/...)
+  → Flux de evenimente → Indicator UI
+```
+
 ### Harta pachetelor (`server/internal/`)
 
 | Strat | Pachete |

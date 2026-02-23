@@ -234,6 +234,13 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**ハートビート監視**
+```
+タイマー (30分) → HEARTBEAT.md 読込 → LLM 評価 → HEARTBEAT_OK トークン除去
+  → 重複排除 (FNV ハッシュ, 24時間 TTL) → チャネル通知 (Telegram/Slack/...)
+  → イベントストリーマー → UI インジケーター
+```
+
 ## 使い方
 
 ![](../../docs/assets/handcraft.png)

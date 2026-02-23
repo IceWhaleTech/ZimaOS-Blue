@@ -21,10 +21,10 @@ func NewMemoryTool(memoryService MemoryServiceInterface) *MemoryTool {
 func (m *MemoryTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name: "memory",
-		Description: `Search, retrieve, and manage the memory system. Actions:
+		Description: `Persistent long-term memory: store, retrieve, search, and delete memories. Actions:
+- remember: Store a new memory (use when the user says "remember", "note this", "don't forget", "remind me next time")
 - search: Find relevant memories by query (returns scored results)
 - get: Retrieve a specific memory by ID (full content + metadata)
-- remember: Store a new memory with optional tags
 - forget: Delete a specific memory by ID
 - stats: Get memory system statistics (total count, size, backend)
 - progressive_search: Token-efficient multi-depth search (depth 1=index, 2=context, 3=detail)`,

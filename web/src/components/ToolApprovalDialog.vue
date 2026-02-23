@@ -8,6 +8,13 @@ const chatStore = useChatStore()
 
 const approval = computed(() => chatStore.pendingApproval)
 
+const translatedToolName = computed(() => {
+  if (!approval.value?.tool_name) return ''
+  const key = `tools.names.${approval.value.tool_name}`
+  const translated = t(key)
+  return translated === key ? approval.value.tool_name : translated
+})
+
 const argsDisplay = computed(() => {
   if (!approval.value?.arguments) return []
   return Object.entries(approval.value.arguments).map(([key, value]) => ({
@@ -56,7 +63,7 @@ function deny() {
             <div class="flex items-center gap-2">
               <span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{{ t('approval.tool', 'Tool') }}</span>
               <span class="px-2 py-0.5 text-sm font-mono font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
-                {{ approval.tool_name }}
+                {{ translatedToolName }}
               </span>
             </div>
 

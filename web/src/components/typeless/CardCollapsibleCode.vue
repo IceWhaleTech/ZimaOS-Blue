@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import type { TypelessCardCollapsibleCode } from '@/types/typeless'
 import { useFullscreen } from '@/composables/useFullscreen'
+import { renderMarkdown } from '@/utils/markdown'
 
 const props = defineProps<{
   card: TypelessCardCollapsibleCode
@@ -10,6 +11,8 @@ const props = defineProps<{
 const { openFullscreen } = useFullscreen()
 const expanded = ref(props.card.defaultExpanded ?? false)
 const copied = ref(false)
+const isMarkdown = computed(() => props.card.language?.toLowerCase() === 'markdown')
+const renderedMarkdown = computed(() => isMarkdown.value ? renderMarkdown(props.card.code) : '')
 
 function handleDoubleClick() {
   openFullscreen({
@@ -81,33 +84,36 @@ function getLanguageDisplay(): string {
 </script>
 
 <template>
-  <div class="collapsible-code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-200" @dblclick="handleDoubleClick">
+  <div class="collapsible-code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden" :class="isMarkdown ? 'bg-white dark:bg-gray-800' : 'bg-gray-200'" @dblclick="handleDoubleClick">
     <!-- Header -->
-    <div class="flex items-center justify-between px-4 py-2 bg-gray-700 border-b border-gray-700">
+    <div class="flex items-center justify-between px-4 py-2 border-b" :class="isMarkdown ? 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-700' : 'bg-gray-700 border-gray-700'">
       <div class="flex items-center gap-3">
-        <!-- Window controls -->
-        <div class="flex gap-1.5">
+        <!-- Window controls (code mode only) -->
+        <div v-if="!isMarkdown" class="flex gap-1.5">
           <div class="w-3 h-3 rounded-full bg-red-500" />
           <div class="w-3 h-3 rounded-full bg-yellow-500" />
           <div class="w-3 h-3 rounded-full bg-green-500" />
         </div>
+        <!-- Markdown icon -->
+        <span v-if="isMarkdown" class="text-base">📄</span>
         <!-- Filename or title -->
-        <span v-if="card.filename || card.title" class="text-sm text-gray-400">
+        <span v-if="card.filename || card.title" class="text-sm" :class="isMarkdown ? 'text-gray-700 dark:text-gray-300 font-medium' : 'text-gray-400'">
           {{ card.filename || card.title }}
         </span>
         <!-- Language badge -->
-        <span v-if="card.language" class="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">
+        <span v-if="card.language && !isMarkdown" class="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">
           {{ getLanguageDisplay() }}
         </span>
         <!-- Lines count -->
-        <span class="text-xs text-gray-500">{{ lines.length }} lines</span>
+        <span v-if="!isMarkdown" class="text-xs text-gray-500">{{ lines.length }} lines</span>
       </div>
       <div class="flex items-center gap-2">
         <!-- Fullscreen hint -->
         <span class="text-xs text-gray-500 hidden sm:inline" title="Double-click to fullscreen">⤢</span>
         <!-- Copy button -->
         <button
-          class="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+          class="flex items-center gap-1.5 px-2 py-1 text-xs transition-colors rounded"
+          :class="isMarkdown ? 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
           @click.stop="copyCode"
         >
           <svg v-if="!copied" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -126,8 +132,21 @@ function getLanguageDisplay(): string {
       </div>
     </div>
 
+    <!-- Markdown rendered content -->
+    <div v-if="isMarkdown" class="relative">
+      <div
+        class="overflow-y-auto px-4 py-3 prose prose-sm dark:prose-invert max-w-none"
+        :class="{ 'max-h-48': shouldCollapse && !expanded }"
+        v-html="renderedMarkdown"
+      />
+      <div
+        v-if="shouldCollapse && !expanded"
+        class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white dark:from-gray-800 to-transparent pointer-events-none"
+      />
+    </div>
+
     <!-- Code content -->
-    <div class="relative">
+    <div v-else class="relative">
       <div class="overflow-x-auto">
         <pre class="p-4 text-sm leading-relaxed"><code class="text-gray-100"><template v-for="(line, index) in displayedLines" :key="index"><span class="inline-block w-full"><span
               v-if="card.showLineNumbers !== false"
@@ -144,9 +163,10 @@ function getLanguageDisplay(): string {
     </div>
 
     <!-- Expand/Collapse button -->
-    <div v-if="shouldCollapse" class="border-t border-gray-700">
+    <div v-if="shouldCollapse" class="border-t" :class="isMarkdown ? 'border-gray-200 dark:border-gray-700' : 'border-gray-700'">
       <button
-        class="w-full px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
+        class="w-full px-4 py-2 text-sm transition-colors flex items-center justify-center gap-2"
+        :class="isMarkdown ? 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
         @click.stop="toggleExpand"
       >
         <svg

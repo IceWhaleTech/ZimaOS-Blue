@@ -173,16 +173,17 @@ func RenderPlain(ir IR) string {
 
 // RenderVoice renders IR for TTS output.
 // Code blocks are replaced with "(code omitted)".
-// Inline code keeps its text content.
+// Inline code is stripped (content removed for voice clarity).
 // Images are stripped. Bullet markers are stripped.
 // Emojis are stripped. Links show only the label text.
+// Bare URLs and table separators are stripped.
 func RenderVoice(ir IR) string {
 	text := ir.Text
 	if text == "" {
 		return ""
 	}
 
-	// Build a list of code_block regions to replace
+	// Build a list of code_block and inline_code regions to replace
 	type replacement struct {
 		start int
 		end   int
@@ -190,11 +191,22 @@ func RenderVoice(ir IR) string {
 	}
 	var replacements []replacement
 	for _, s := range ir.Styles {
-		if s.Style == StyleCodeBlock && s.End > s.Start {
+		if s.End <= s.Start {
+			continue
+		}
+		switch s.Style {
+		case StyleCodeBlock:
 			replacements = append(replacements, replacement{
 				start: s.Start,
 				end:   s.End,
 				text:  "(code omitted)",
+			})
+		case StyleCode:
+			// Strip inline code — variable names and snippets sound bad in TTS
+			replacements = append(replacements, replacement{
+				start: s.Start,
+				end:   s.End,
+				text:  "",
 			})
 		}
 	}
@@ -224,6 +236,12 @@ func RenderVoice(ir IR) string {
 
 	// Strip emojis
 	result = emojiRe.ReplaceAllString(result, "")
+
+	// Strip bare URLs
+	result = bareURLRe.ReplaceAllString(result, "")
+
+	// Strip table pipe separators
+	result = strings.ReplaceAll(result, " | ", ", ")
 
 	// Clean up whitespace
 	result = strings.TrimSpace(result)

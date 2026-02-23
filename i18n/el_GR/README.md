@@ -203,6 +203,13 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Παρακολούθηση Heartbeat**
+```
+Χρονόμετρο (30 λεπτά) → Ανάγνωση HEARTBEAT.md → Αξιολόγηση LLM → Αφαίρεση token HEARTBEAT_OK
+  → Αποδιπλασιασμός (hash FNV, TTL 24ω) → Ειδοποίηση καναλιού (Telegram/Slack/...)
+  → Ροή συμβάντων → Δείκτης UI
+```
+
 ### Χάρτης Πακέτων (`server/internal/`)
 
 | Επίπεδο | Πακέτα |

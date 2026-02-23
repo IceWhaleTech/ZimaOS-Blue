@@ -110,10 +110,12 @@ export function parseInline(text: string): string {
   // Strikethrough: ~~text~~
   result = result.replace(/~~(.+?)~~/g, '<del>$1</del>')
 
-  // Inline code: `code`
+  // Inline code: `code` — also handle unclosed backtick at end of line (streaming)
   result = result.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
+  // Unclosed trailing backtick: `code... (no closing backtick)
+  result = result.replace(/`([^`]+)$/g, '<code class="inline-code">$1</code>')
 
-  // Links: [text](url)
+  // Links: [text](url) — also handle unclosed links gracefully
   result = result.replace(
     /\[([^\]]+)\]\(([^)]+)\)/g,
     '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-gray-900 dark:text-white hover:underline">$1</a>'
@@ -332,6 +334,16 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
         }
         inCodeBlock = false
         codeBlockLang = ''
+
+        // Check for consecutive fences: ``````lang → close + open
+        const rest = line.slice(3)
+        if (rest.startsWith('```')) {
+          flushList()
+          flushTable()
+          inCodeBlock = true
+          codeBlockLang = detectLanguage(rest.slice(3).trim())
+          codeBlockContent = []
+        }
       }
       continue
     }

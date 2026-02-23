@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/humanizer"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
@@ -26,6 +27,7 @@ import (
 type service struct {
 	sttService stt.Service
 	ttsService tts.Service
+	chatFn     ChatFunc
 	sessions   map[string]*Session
 	mu         sync.RWMutex
 	// TTS disk cache — bounded LRU index, audio stored in /tmp
@@ -67,6 +69,13 @@ func (s *service) SetSTTService(svc stt.Service) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sttService = svc
+}
+
+// SetChatFunc sets the LLM chat function used by ProcessVoiceInput.
+func (s *service) SetChatFunc(fn ChatFunc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.chatFn = fn
 }
 
 // CreateSession creates a new voice session.
@@ -369,18 +378,34 @@ func (s *service) StopSpeaking() {
 }
 
 // ProcessVoiceInput processes voice input and returns a response.
-// This is a placeholder that should be integrated with the chat/LLM service.
 func (s *service) ProcessVoiceInput(ctx context.Context, sessionID string, text string) (string, error) {
-	// Update session state
 	if err := s.UpdateSessionState(ctx, sessionID, StateProcessing); err != nil {
 		return "", err
 	}
 
-	// TODO: Integrate with chat service to get LLM response
-	// For now, return a placeholder response
-	response := fmt.Sprintf("I heard you say: %s", text)
+	s.mu.RLock()
+	chatFn := s.chatFn
+	s.mu.RUnlock()
 
-	return response, nil
+	if chatFn == nil {
+		return fmt.Sprintf("I heard you say: %s", text), nil
+	}
+
+	resp, err := chatFn(ctx, llm.ChatRequest{
+		Model: "auto",
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "You are a voice assistant. Keep responses concise and conversational — they will be spoken aloud via TTS."},
+			{Role: llm.RoleUser, Content: text},
+		},
+		MaxTokens: 512,
+	})
+	if err != nil {
+		return "", fmt.Errorf("voice LLM call failed: %w", err)
+	}
+	if resp == nil || resp.Message.Content == "" {
+		return "", fmt.Errorf("voice LLM returned empty response")
+	}
+	return resp.Message.Content, nil
 }
 
 // CleanupExpiredSessions removes expired sessions.

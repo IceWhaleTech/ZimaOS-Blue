@@ -429,6 +429,27 @@ func jsonErr(msg string) string {
 	return string(b)
 }
 
+// RegisterBrowserTool registers the browser tool with the registry.
+func RegisterBrowserTool(registry *Registry, backend BrowserBackend) {
+	t := NewBrowserTool()
+	if backend != nil {
+		t.SetBackend(backend)
+	}
+	registry.Register(t)
+}
+
+// GetBrowserTool retrieves the BrowserTool from the registry for dependency injection.
+func GetBrowserTool(registry *Registry) *BrowserTool {
+	tool := registry.Get("browser")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*BrowserTool); ok {
+		return t
+	}
+	return nil
+}
+
 func browserPageMsg(title, url, tree string, count int) string {
 	n := len("Page: ") + len(title) + len(" (") + len(url) + len(")")
 	if count >= 0 {

@@ -78,6 +78,8 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return systemInfoCard(content)
 	case "memory_search", "memory":
 		return memorySearchCard(content)
+	case "workspace_file":
+		return workspaceFileCard(content)
 	default:
 		return GenericCard(toolName, content)
 	}
@@ -140,18 +142,25 @@ func currentTimeCard(content string) map[string]interface{} {
 	if json.Unmarshal([]byte(content), &data) != nil {
 		return nil
 	}
+	datetime, _ := data["datetime"].(string)
 	details := []map[string]interface{}{}
-	for _, key := range []string{"datetime", "timezone", "unix"} {
+	for _, key := range []string{"timezone", "unix"} {
 		if v, ok := data[key]; ok {
 			details = append(details, map[string]interface{}{"label": key, "value": fmt.Sprintf("%v", v)})
 		}
 	}
-	return map[string]interface{}{
-		"type":    "result",
-		"title":   "Current Time",
-		"status":  "info",
-		"details": details,
+	card := map[string]interface{}{
+		"type":   "result",
+		"title":  "Current Time",
+		"status": "info",
 	}
+	if datetime != "" {
+		card["message"] = datetime
+	}
+	if len(details) > 0 {
+		card["details"] = details
+	}
+	return card
 }
 
 func fileReadCard(content string) map[string]interface{} {
@@ -248,6 +257,58 @@ func memorySearchCard(content string) map[string]interface{} {
 		"status":  "success",
 		"message": msg,
 	}
+}
+
+func workspaceFileCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+	if errMsg, ok := data["error"].(string); ok {
+		return map[string]interface{}{
+			"type":    "result",
+			"title":   "Workspace File",
+			"status":  "error",
+			"message": errMsg,
+		}
+	}
+	// Read action: show file content as collapsible markdown
+	if fileContent, ok := data["content"].(string); ok && fileContent != "" {
+		filename, _ := data["filename"].(string)
+		return map[string]interface{}{
+			"type":     "collapsible-code",
+			"title":    "Workspace File",
+			"filename": filename,
+			"language": "markdown",
+			"code":     fileContent,
+		}
+	}
+	// Write/other actions: show result card
+	msg, _ := data["message"].(string)
+	if msg == "" {
+		if s, ok := data["status"].(string); ok && s == "ok" {
+			msg = "Done"
+		}
+	}
+	details := []map[string]interface{}{}
+	if fn, ok := data["filename"].(string); ok {
+		details = append(details, map[string]interface{}{"label": "filename", "value": fn})
+	}
+	if b, ok := data["bytes"]; ok {
+		details = append(details, map[string]interface{}{"label": "bytes", "value": fmt.Sprintf("%v", b)})
+	}
+	card := map[string]interface{}{
+		"type":   "result",
+		"title":  "Workspace File",
+		"status": "success",
+	}
+	if msg != "" {
+		card["message"] = msg
+	}
+	if len(details) > 0 {
+		card["details"] = details
+	}
+	return card
 }
 
 // GenericCard creates a result card for any unrecognized tool.

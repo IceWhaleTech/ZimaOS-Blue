@@ -322,6 +322,7 @@ type Handler struct {
 	// cache for frequently accessed data (using ecache2 generic cache)
 	modelsCache *cache.GenericCache[string]
 	ideCache    *cache.GenericCache[string]
+	quotaCache  *cache.GenericCache[string] // OAuth quota, 5-min TTL
 
 	// OAuth manager (optional)
 	oauthManager *oauth.Manager
@@ -339,6 +340,10 @@ func NewHandler(pool *Pool) *Handler {
 			MaxSize:    50,
 			DefaultTTL: 10 * time.Second,
 		}, "providerpool_ide"),
+		quotaCache: cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    20,
+			DefaultTTL: 5 * time.Minute,
+		}, "providerpool_quota"),
 	}
 }
 
@@ -371,6 +376,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/:id/oauth/disconnect", h.DisconnectOAuth)
 	g.GET("/:id/oauth/status", h.GetOAuthStatus)
 	g.POST("/:id/oauth/device-complete", h.CompleteDeviceFlow)
+	g.GET("/:id/oauth/quota", h.GetOAuthQuota)
 
 	// Model endpoints
 	g.GET("/:id/models", h.ListProviderModels)
@@ -443,6 +449,7 @@ type providerResponse struct {
 	Description string `json:"description,omitempty"`
 	Website     string `json:"website,omitempty"`
 	APIKeyURL   string `json:"api_key_url,omitempty"`
+	IsBuiltin   bool   `json:"is_builtin"`
 
 	Models []*modelResponse `json:"models"`
 }
@@ -543,6 +550,7 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager) *provi
 		Description:   p.Description,
 		Website:       p.Website,
 		APIKeyURL:     p.APIKeyURL,
+		IsBuiltin:     GetBuiltinProvider(p.ID) != nil,
 		Models:        mr,
 	}
 }
@@ -2208,6 +2216,80 @@ func (h *Handler) GetOAuthStatus(c echo.Context) error {
 		"project_id":    provider.OAuth.ProjectID,
 		"token_expiry":  provider.OAuth.TokenExpiry,
 	})
+}
+
+// GetOAuthQuota returns subscription tier and per-model quota for an OAuth provider.
+// Results are cached for 5 minutes.
+func (h *Handler) GetOAuthQuota(c echo.Context) error {
+	providerID := c.Param("id")
+
+	// Check cache first
+	if cached, ok := h.quotaCache.Get(providerID); ok {
+		return c.JSON(http.StatusOK, cached)
+	}
+
+	provider, err := h.pool.Registry.Get(providerID)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
+	}
+
+	if provider.OAuth == nil || !provider.OAuth.Connected {
+		return c.JSON(http.StatusOK, &oauth.OAuthQuotaInfo{
+			ProviderType: "",
+			Error:        "oauth_not_connected",
+			FetchedAt:    time.Now().UnixMilli(),
+		})
+	}
+
+	if h.oauthManager == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "oauth not configured"})
+	}
+
+	accessToken, err := h.oauthManager.GetAccessToken(providerID)
+	if err != nil {
+		info := &oauth.OAuthQuotaInfo{
+			ProviderType: provider.OAuth.ProviderType,
+			Error:        "token_refresh_failed",
+			FetchedAt:    time.Now().UnixMilli(),
+		}
+		h.quotaCache.Put(providerID, info)
+		return c.JSON(http.StatusOK, info)
+	}
+
+	ctx := c.Request().Context()
+	var quotaInfo *oauth.OAuthQuotaInfo
+
+	switch provider.OAuth.ProviderType {
+	case "antigravity", "gemini-cli":
+		quotaInfo, _ = oauth.FetchCloudCodeQuota(ctx, accessToken, provider.OAuth.ProjectID, provider.OAuth.ProviderType)
+
+	case "copilot":
+		tokenStr, _, skuErr := oauth.GetCopilotToken(ctx, accessToken)
+		tier, tierName := "Free", "GitHub Copilot Free"
+		if skuErr == nil && tokenStr != "" {
+			sku := oauth.ParseCopilotSKU(tokenStr)
+			tier, tierName = oauth.CopilotSKUToTier(sku)
+		}
+		quotaInfo = &oauth.OAuthQuotaInfo{
+			ProviderType: "copilot",
+			Tier:         tier,
+			TierName:     tierName,
+			FetchedAt:    time.Now().UnixMilli(),
+		}
+		if skuErr != nil {
+			quotaInfo.Error = "sku_fetch_failed"
+		}
+
+	default:
+		quotaInfo = &oauth.OAuthQuotaInfo{
+			ProviderType: provider.OAuth.ProviderType,
+			Error:        "unsupported_provider_type",
+			FetchedAt:    time.Now().UnixMilli(),
+		}
+	}
+
+	h.quotaCache.Put(providerID, quotaInfo)
+	return c.JSON(http.StatusOK, quotaInfo)
 }
 
 // ImportOAuthToken imports an OAuth token scanned from a local IDE.

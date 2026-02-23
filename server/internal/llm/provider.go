@@ -66,10 +66,11 @@ type Usage struct {
 
 // ChatResponse represents a chat completion response.
 type ChatResponse struct {
-	ID      string  `json:"id"`
-	Model   string  `json:"model"`
-	Message Message `json:"message"`
-	Usage   Usage   `json:"usage"`
+	ID       string  `json:"id"`
+	Model    string  `json:"model"`
+	Provider string  `json:"provider,omitempty"`
+	Message  Message `json:"message"`
+	Usage    Usage   `json:"usage"`
 }
 
 // StreamChunk represents a chunk of a streaming response.

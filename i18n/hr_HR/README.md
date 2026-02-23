@@ -203,6 +203,13 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Heartbeat nadzor**
+```
+Mjerač (30 min) → Čitanje HEARTBEAT.md → LLM procjena → Uklanjanje HEARTBEAT_OK tokena
+  → Deduplikacija (FNV hash, 24h TTL) → Upozorenje kanala (Telegram/Slack/...)
+  → Tok događaja → UI indikator
+```
+
 ### Mapa paketa (`server/internal/`)
 
 | Sloj | Paketi |

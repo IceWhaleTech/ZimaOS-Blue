@@ -618,3 +618,142 @@ func TestProviderMemory_FormatRememberAndForget(t *testing.T) {
 		t.Fatal("expected no format after forget")
 	}
 }
+
+// TestIsFormatMismatchError verifies detection of format mismatch errors.
+func TestIsFormatMismatchError(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   bool
+	}{
+		{"422 empty body", 422, "", true},
+		{"422 unsupported request", 422, `{"error":{"message":"Unsupported request body."}}`, true},
+		{"404 openai_error", 404, `{"error":{"message":"openai_error","type":"bad_response_status_code"}}`, true},
+		{"400 bad_response_status_code", 400, `{"error":{"type":"bad_response_status_code"}}`, true},
+		{"404 model not found", 404, `{"error":{"message":"model not found"}}`, false},
+		{"404 plain not found", 404, `not found`, false},
+		{"200 ok", 200, `ok`, false},
+		{"500 server error", 500, `internal error`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isFormatMismatchError(tt.status, []byte(tt.body))
+			if got != tt.want {
+				t.Errorf("isFormatMismatchError(%d, %q) = %v, want %v", tt.status, tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestTryOnProvider_FormatMismatch422_ExpandsFormats verifies that a 422 on the
+// remembered format triggers expansion to all formats, eventually succeeding.
+func TestTryOnProvider_FormatMismatch422_ExpandsFormats(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// OpenAI path → 422 (format mismatch)
+		if strings.Contains(r.URL.Path, "chat/completions") {
+			w.WriteHeader(422)
+			w.Write([]byte(`{"error":{"message":"Unsupported request body."}}`))
+			return
+		}
+		// Anthropic path → success
+		w.WriteHeader(200)
+		w.Write([]byte(`{"id":"msg_1","type":"message","content":[{"type":"text","text":"ok"}]}`))
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	pid := "format-mismatch-provider"
+
+	// Pre-remember openai format (wrong) so formatKnown=true, nFormats=1
+	ph.providerMemory.RememberFormat(pid, upstream.URL, "openai")
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        pid,
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"claude-sonnet-4-5-20250514","messages":[{"role":"user","content":"hi"}]}`),
+		model: "claude-sonnet-4-5-20250514",
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp, usedFormat, _, err := ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("expected success after format expansion, got error: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	if usedFormat != providerpool.APIFormatAnthropic {
+		t.Errorf("expected anthropic format after fallback, got %q", usedFormat)
+	}
+
+	// Verify the correct format is now remembered (anthropic, not openai)
+	format, ok := ph.providerMemory.RecallFormat(pid, upstream.URL)
+	if !ok {
+		t.Fatal("expected format to be remembered after successful fallback")
+	}
+	if format != string(providerpool.APIFormatAnthropic) {
+		t.Errorf("expected remembered format 'anthropic', got %q", format)
+	}
+}
+
+// TestTryOnProvider_FormatMismatch404_OpenAIError verifies that a 404 with
+// "openai_error" body is treated as format mismatch, not model blacklisting.
+func TestTryOnProvider_FormatMismatch404_OpenAIError(t *testing.T) {
+	var callCount atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := callCount.Add(1)
+		if n == 1 {
+			// First call → 404 with openai_error
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(404)
+			w.Write([]byte(`{"error":{"message":"openai_error","type":"bad_response_status_code"}}`))
+			return
+		}
+		// Second call → success
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"id":"chatcmpl-1","choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	pid := "openai-error-provider"
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        pid,
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"gpt-5.1-codex-max","messages":[{"role":"user","content":"hi"}]}`),
+		model: "gpt-5.1-codex-max",
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp, _, _, err := ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("expected success after format fallback, got error: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	// Model should NOT be blacklisted
+	if ph.providerMemory.IsModelBlacklisted(pid, upstream.URL, "gpt-5.1-codex-max") {
+		t.Error("model should not be blacklisted on format mismatch")
+	}
+}

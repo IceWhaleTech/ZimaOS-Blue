@@ -8,8 +8,12 @@ import (
 	"errors"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 )
+
+// ChatFunc is a function that sends a chat request and returns a response.
+type ChatFunc func(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error)
 
 var (
 	// ErrSessionNotFound is returned when a session is not found.
@@ -178,6 +182,8 @@ type Service interface {
 	StopSpeaking()
 	// SetSTTService replaces the STT service at runtime.
 	SetSTTService(svc stt.Service)
+	// SetChatFunc sets the LLM chat function used by ProcessVoiceInput.
+	SetChatFunc(fn ChatFunc)
 	// ProcessVoiceInput processes voice input and returns a response.
 	ProcessVoiceInput(ctx context.Context, sessionID string, text string) (string, error)
 }

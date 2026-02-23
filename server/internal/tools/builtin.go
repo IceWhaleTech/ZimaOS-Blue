@@ -256,25 +256,56 @@ func (t *CurrentTimeTool) Definition() ToolDefinition {
 // Execute returns the current time.
 func (t *CurrentTimeTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	now := timeutil.NowTime()
+	lang := GetLang(ctx)
 
-	info := map[string]interface{}{
-		"utc":   now.UTC().Format(time.RFC3339),
-		"local": now.Format(time.RFC3339),
-		"unix":  now.Unix(),
-	}
-
-	// Handle optional timezone
+	// Determine display timezone
+	loc := now.Location()
+	tzName := loc.String()
 	if tz, ok := args["timezone"].(string); ok && tz != "" {
-		loc, err := time.LoadLocation(tz)
+		parsed, err := time.LoadLocation(tz)
 		if err != nil {
 			return nil, fmt.Errorf("invalid timezone: %w", err)
 		}
-		info["requested_timezone"] = now.In(loc).Format(time.RFC3339)
-		info["timezone"] = tz
+		loc = parsed
+		tzName = tz
+	}
+
+	display := now.In(loc)
+
+	info := map[string]interface{}{
+		"datetime": formatDateTimeLocale(display, lang),
+		"timezone": tzName,
+		"unix":     strconv.FormatInt(now.Unix(), 10),
 	}
 
 	jsonResult, _ := json.Marshal(info)
 	return string(jsonResult), nil
+}
+
+// formatDateTimeLocale formats a time in a human-readable locale-appropriate string.
+func formatDateTimeLocale(t time.Time, lang string) string {
+	switch {
+	case strings.HasPrefix(strings.ToLower(lang), "zh"):
+		h := t.Hour()
+		period := "上午"
+		h12 := h
+		if h >= 12 {
+			period = "下午"
+			if h > 12 {
+				h12 = h - 12
+			}
+		}
+		if h == 0 {
+			h12 = 12
+		}
+		return fmt.Sprintf("%d年%d月%d日 %s%d:%02d", t.Year(), t.Month(), t.Day(), period, h12, t.Minute())
+	case strings.HasPrefix(strings.ToLower(lang), "ja"):
+		return fmt.Sprintf("%d年%d月%d日 %02d:%02d", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute())
+	case strings.HasPrefix(strings.ToLower(lang), "ko"):
+		return fmt.Sprintf("%d년 %d월 %d일 %02d:%02d", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute())
+	default:
+		return t.Format("January 2, 2006 3:04 PM")
+	}
 }
 
 // FileReadTool reads content from a file.

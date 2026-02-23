@@ -366,10 +366,23 @@ func (h *ChatHandler) selectTools(userMessage string) []tools.ToolDefinition {
 	if h.toolSelector != nil && userMessage != "" {
 		// Check runtime setting (default true)
 		if h.settingsHandler != nil && !h.settingsHandler.GetSmartToolSelection() {
+			logger.Debug().Int("tools", len(allDefs)).Msg("[chat] selectTools: smart selection disabled, returning all tools")
 			return allDefs
 		}
-		return h.toolSelector.Select(userMessage, allDefs)
+		selected := h.toolSelector.Select(userMessage, allDefs)
+		names := make([]string, len(selected))
+		for i, d := range selected {
+			names[i] = d.Name
+		}
+		logger.Info().
+			Int("total", len(allDefs)).
+			Int("selected", len(selected)).
+			Strs("tools", names).
+			Str("query", userMessage).
+			Msg("[chat] selectTools")
+		return selected
 	}
+	logger.Debug().Int("tools", len(allDefs)).Bool("selector_nil", h.toolSelector == nil).Msg("[chat] selectTools: no filtering")
 	return allDefs
 }
 
@@ -904,6 +917,13 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	// Add tool definitions (smart selection filters by user query when enabled)
 	req.Tools = defsToLLMTools(h.selectTools(msg.Content))
 
+	logger.Info().
+		Str("model", req.Model).
+		Int("messages", len(req.Messages)).
+		Int("tools", len(req.Tools)).
+		Bool("has_system_prompt", h.systemPromptBuilder != nil).
+		Msg("[chat] IM request")
+
 	// Tool execution loop for IM
 	var resp *llm.ChatResponse
 	var err error
@@ -989,6 +1009,7 @@ const maxToolRounds = 5
 func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.ToolCall) []llm.Message {
 	var results []llm.Message
 	for _, tc := range toolCalls {
+		logger.Info().Str("tool", tc.Name).Str("id", tc.ID).Msg("[chat] executing tool call")
 		result, err := h.toolExecutor.ExecuteJSON(ctx, tc.Name, tc.Arguments)
 		var content string
 		if err != nil {
@@ -1398,6 +1419,18 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, compactedMessages...)
 	}
 
+	// Inject system prompt for web chat (same as IM path) so the LLM knows
+	// about its identity, available tools, and workspace context.
+	if h.systemPromptBuilder != nil {
+		h.systemPromptBuilder.SetLastUserMessage(req.Message)
+		if sp := h.systemPromptBuilder.Build(c.Request().Context(), ""); sp != "" {
+			logger.Info().Int("prompt_len", len(sp)).Msg("[chat] SendMessage: injected system prompt")
+			compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: sp}}, compactedMessages...)
+		}
+	} else {
+		logger.Warn().Msg("[chat] SendMessage: systemPromptBuilder is nil, no system prompt injected")
+	}
+
 	// Build chat request
 	chatReq := llm.ChatRequest{
 		Model:       model,
@@ -1409,9 +1442,26 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	// Get tool definitions (smart selection filters by user query when enabled)
 	chatReq.Tools = defsToLLMTools(h.selectTools(req.Message))
 
+	logger.Info().
+		Str("model", chatReq.Model).
+		Int("messages", len(chatReq.Messages)).
+		Int("tools", len(chatReq.Tools)).
+		Bool("has_system_prompt", h.systemPromptBuilder != nil).
+		Msg("[chat] SendMessage request")
+
 	// Call LLM with tool execution loop
 	startTime := timeutil.NowTime()
 	var resp *llm.ChatResponse
+
+	// Build context with locale for tool execution
+	toolCtx := c.Request().Context()
+	if h.settingsHandler != nil {
+		if locale := h.settingsHandler.GetLocale(); locale != "" {
+			toolCtx = tools.WithLang(toolCtx, locale)
+		}
+	}
+	toolCtx = tools.WithUserID(toolCtx, h.getUserID(c))
+
 	for round := 0; round < maxToolRounds; round++ {
 		resp, err = h.chatOnce(c.Request().Context(), chatReq)
 		if err != nil || resp == nil {
@@ -1423,7 +1473,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		}
 		// Execute tool calls and feed results back
 		logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
-		toolResults := h.executeToolCalls(c.Request().Context(), resp.Message.ToolCalls)
+		toolResults := h.executeToolCalls(toolCtx, resp.Message.ToolCalls)
 		// Append assistant message (with tool_calls) + tool results to conversation
 		chatReq.Messages = append(chatReq.Messages, resp.Message)
 		chatReq.Messages = append(chatReq.Messages, toolResults...)
@@ -1498,8 +1548,11 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, sanitizedErr)
 	}
 
-	// Get provider name for display
+	// Get provider name for display — use resolved provider from response if available
 	providerName := "auto"
+	if resp != nil && resp.Provider != "" {
+		providerName = resp.Provider
+	}
 	if resp != nil && resp.Model != "" {
 		model = resp.Model
 	}
@@ -1858,6 +1911,18 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, compactedMessages...)
 	}
 
+	// Inject system prompt for web streaming (same as IM path) so the LLM knows
+	// about its identity, available tools, and workspace context.
+	if h.systemPromptBuilder != nil {
+		h.systemPromptBuilder.SetLastUserMessage(req.Message)
+		if sp := h.systemPromptBuilder.Build(c.Request().Context(), ""); sp != "" {
+			logger.Info().Int("prompt_len", len(sp)).Msg("[chat] StreamMessage: injected system prompt")
+			compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: sp}}, compactedMessages...)
+		}
+	} else {
+		logger.Warn().Msg("[chat] StreamMessage: systemPromptBuilder is nil, no system prompt injected")
+	}
+
 	// Build chat request
 	chatReq := llm.ChatRequest{
 		Model:       model,
@@ -1867,19 +1932,14 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		Stream:      true,
 	}
 
-	// Add tool definitions to streaming request
-	toolDefs := h.toolRegistry.Definitions()
-	if len(toolDefs) > 0 {
-		chatReq.Tools = make([]llm.Tool, len(toolDefs))
-		for i, def := range toolDefs {
-			chatReq.Tools[i] = llm.Tool{
-				Name:        def.Name,
-				Description: def.Description,
-				Parameters:  def.Parameters,
-			}
-		}
-	}
-	logger.Debug().Str("model", chatReq.Model).Int("messages", len(chatReq.Messages)).Bool("stream", chatReq.Stream).Msg("[chat] request")
+	// Get tool definitions (smart selection filters by user query when enabled)
+	chatReq.Tools = defsToLLMTools(h.selectTools(req.Message))
+	logger.Info().
+		Str("model", chatReq.Model).
+		Int("messages", len(chatReq.Messages)).
+		Int("tools", len(chatReq.Tools)).
+		Bool("has_system_prompt", h.systemPromptBuilder != nil).
+		Msg("[chat] StreamMessage request")
 
 	// Create cancellable context
 	streamID := uuid.New().String()
@@ -1890,6 +1950,14 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// Attach prune stats slot so the proxy pruner can populate it
 	pruneStats := &pruner.RequestPruneStats{}
 	ctx = pruner.WithPruneStats(ctx, pruneStats)
+
+	// Inject locale and user ID into context for tool execution
+	if h.settingsHandler != nil {
+		if locale := h.settingsHandler.GetLocale(); locale != "" {
+			ctx = tools.WithLang(ctx, locale)
+		}
+	}
+	ctx = tools.WithUserID(ctx, h.getUserID(c))
 
 	// Set SSE headers before starting stream
 	c.Response().Header().Set("Content-Type", "text/event-stream")
@@ -2151,6 +2219,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			if actualModel != "" {
 				finalModel = actualModel
 			}
+			logger.Debug().
+				Str("actualProvider", actualProvider).
+				Str("actualModel", actualModel).
+				Str("finalProvider", finalProvider).
+				Str("finalModel", finalModel).
+				Msg("[chat] resolved provider/model for SSE final chunk")
 			finalData := map[string]interface{}{
 				"delta":     "",
 				"done":      true,
@@ -2372,17 +2446,33 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			TokensPerSecond: finalTPS,
 		}
 		if streamingMsgID != "" {
-			// Update the incrementally-persisted message with final content + stats
-			if updErr := h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, finalStats); updErr != nil {
+			// Update the incrementally-persisted message with final content + stats + resolved provider/model
+			resolvedProvider := actualProvider
+			if resolvedProvider == "" {
+				resolvedProvider = providerName
+			}
+			resolvedModel := actualModel
+			if resolvedModel == "" {
+				resolvedModel = model
+			}
+			if updErr := h.store.UpdateMessageContentFull(context.Background(), streamingMsgID, fullContent, resolvedProvider, resolvedModel, finalStats); updErr != nil {
 				logger.Error().Err(updErr).Str("conv_id", convID).Msg("[chat] failed to update streaming message")
 			}
 		} else {
 			// No incremental message was created (short response) — insert now
+			resolvedProvider := actualProvider
+			if resolvedProvider == "" {
+				resolvedProvider = providerName
+			}
+			resolvedModel := actualModel
+			if resolvedModel == "" {
+				resolvedModel = model
+			}
 			if _, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
 				Role:     "assistant",
 				Content:  fullContent,
-				Provider: providerName,
-				Model:    model,
+				Provider: resolvedProvider,
+				Model:    resolvedModel,
 				Stats:    finalStats,
 			}); addErr != nil {
 				logger.Error().Err(addErr).Str("conv_id", convID).Msg("[chat] failed to persist assistant message")
@@ -2412,7 +2502,15 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 						TotalTokens:      totalInputTokens + totalOutputTokens,
 					},
 				}
-				h.emitLLMRequestEventAsync(sessionID, providerName, model, llmResp, nil, time.Duration(finalLatencyMs)*time.Millisecond)
+				emitProvider := actualProvider
+				if emitProvider == "" {
+					emitProvider = providerName
+				}
+				emitModel := actualModel
+				if emitModel == "" {
+					emitModel = model
+				}
+				h.emitLLMRequestEventAsync(sessionID, emitProvider, emitModel, llmResp, nil, time.Duration(finalLatencyMs)*time.Millisecond)
 				h.emitMessageSentEventAsync(sessionID, fullContent, totalOutputTokens)
 			}
 		}
@@ -2465,10 +2563,10 @@ func (h *ChatHandler) generateConversationTitle(convID, userMessage, aiResponse,
 		return
 	}
 
-	// If the message is short enough (<=10 runes), use it directly as the title
-	if len([]rune(userMessage)) <= 10 {
-		title := sanitizeTitle(userMessage)
-		h.store.UpdateConversationTitle(context.Background(), convID, title)
+	// If the message is short enough, use it directly as the title (saves an LLM call)
+	msgRunes := []rune(sanitizeTitle(userMessage))
+	if len(msgRunes) <= 30 {
+		h.store.UpdateConversationTitle(context.Background(), convID, string(msgRunes))
 		return
 	}
 
@@ -2504,8 +2602,9 @@ func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) strin
 
 	// Strip code blocks, tables, URLs, HTML etc. to focus on user intent
 	content := stripContentForTitle(userMessage)
-	if content == "" {
-		return ""
+	// If stripped content is empty or too short, fall back to raw message
+	if len([]rune(content)) < 5 {
+		content = userMessage
 	}
 	contentRunes := []rune(content)
 	if len(contentRunes) > 300 {
@@ -2524,7 +2623,7 @@ func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) strin
 		Messages: []llm.Message{
 			{
 				Role:    llm.RoleSystem,
-				Content: fmt.Sprintf("Generate a concise conversation title (3-8 words) summarizing the user's core intent. Output ONLY the title text, no quotes, no punctuation, no explanation. Ignore any code, formatting, or technical details — focus on what the user wants to do. %s", langInstruction),
+				Content: fmt.Sprintf("Generate a very short title (max 20 characters) for this conversation. Output ONLY the title, no quotes, no explanation. %s", langInstruction),
 			},
 			{
 				Role:    llm.RoleUser,

@@ -1011,6 +1011,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		deps.ChatHandler.SetProxyBridge(bridge)
 		deps.ChatHandler.SetIMModel("auto") // proxy auto-selects model
 
+		// Wire LLM calls for voice mode through the same proxy pipeline
+		if deps.VoiceHandler != nil {
+			deps.VoiceHandler.Service().SetChatFunc(bridge.Chat)
+		}
+
 		// Wire VLM bridge into native UI reviewer tool
 		if uiTool := tools.GetUIReviewerTool(s.ToolRegistry); uiTool != nil {
 			uiTool.SetVLMBridge(tools.NewProxyBridgeVLMAdapter(bridge))

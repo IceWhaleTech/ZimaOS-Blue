@@ -40,6 +40,7 @@ export interface Provider {
   last_error?: string
   models?: Model[]
   oauth?: OAuthConfig
+  is_builtin?: boolean
 }
 
 export interface APIKey {
@@ -185,6 +186,21 @@ export interface OAuthStartResult {
   verification_uri?: string
   expires_in?: number
   interval?: number
+}
+
+export interface ModelQuotaInfo {
+  model: string
+  remaining_percent: number
+  reset_time?: string
+}
+
+export interface OAuthQuotaInfo {
+  provider_type: string
+  tier: string
+  tier_name: string
+  model_quotas?: ModelQuotaInfo[]
+  error?: string
+  fetched_at: number
 }
 
 export interface OAuthScanResult {
@@ -470,6 +486,9 @@ export const providerPoolApi = {
 
   getOAuthStatus: (providerId: string) =>
     api.get<OAuthStatus>(`/providers/${providerId}/oauth/status`),
+
+  getOAuthQuota: (providerId: string) =>
+    api.get<OAuthQuotaInfo>(`/providers/${providerId}/oauth/quota`),
 
   importOAuthToken: (ideType: string) =>
     api.post<{ message: string; provider_id: string }>(`/ide/import-oauth/${ideType}`),

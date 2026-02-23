@@ -62,17 +62,17 @@ const ttsError = ref<string | null>(null)
 const previewAttachment = ref<{ type: string; src: string; name: string; content?: string } | null>(null)
 
 // Tool execution elapsed timer
-const toolElapsedSeconds = ref(0)
+const toolElapsedSeconds = ref('0.0')
 let toolTimerHandle: ReturnType<typeof setInterval> | null = null
 
 watch(() => chatStore.toolExecuting, (executing) => {
   if (executing) {
-    toolElapsedSeconds.value = 0
+    toolElapsedSeconds.value = '0.0'
     toolTimerHandle = setInterval(() => {
       if (chatStore.toolExecutingStartTime > 0) {
-        toolElapsedSeconds.value = Math.floor((Date.now() - chatStore.toolExecutingStartTime) / 1000)
+        toolElapsedSeconds.value = ((Date.now() - chatStore.toolExecutingStartTime) / 1000).toFixed(1)
       }
-    }, 1000)
+    }, 100)
   } else {
     if (toolTimerHandle) {
       clearInterval(toolTimerHandle)
@@ -80,6 +80,46 @@ watch(() => chatStore.toolExecuting, (executing) => {
     }
   }
 })
+
+// Waiting timer — shows elapsed time when response takes >3s with no content
+const waitingElapsed = ref('')
+const showWaitingTimer = ref(false)
+let waitingTimerHandle: ReturnType<typeof setInterval> | null = null
+let waitingStartTime = 0
+
+function startWaitingTimer() {
+  waitingStartTime = Date.now()
+  showWaitingTimer.value = false
+  waitingElapsed.value = ''
+  waitingTimerHandle = setInterval(() => {
+    const elapsed = (Date.now() - waitingStartTime) / 1000
+    if (elapsed >= 3) {
+      showWaitingTimer.value = true
+      waitingElapsed.value = elapsed.toFixed(1)
+    }
+  }, 100)
+}
+
+function stopWaitingTimer() {
+  showWaitingTimer.value = false
+  if (waitingTimerHandle) {
+    clearInterval(waitingTimerHandle)
+    waitingTimerHandle = null
+  }
+}
+
+// Start/stop waiting timer based on streaming state + empty content
+watch(
+  () => [props.isStreaming, props.message.content, chatStore.toolExecuting] as const,
+  ([streaming, content, toolExec]) => {
+    if (streaming && !content && !toolExec) {
+      if (!waitingTimerHandle) startWaitingTimer()
+    } else {
+      stopWaitingTimer()
+    }
+  },
+  { immediate: true },
+)
 
 // Helper to strip markdown heading from first line if present
 function stripFirstLineHeading(content: string): string {
@@ -271,6 +311,20 @@ async function handleCopyMessage() {
   }
 }
 
+// Export message as markdown file
+function handleExportMessage() {
+  const content = props.message.content
+  if (!content) return
+  const id = props.message.id?.slice(0, 8) || 'msg'
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `zimaos-blue-${id}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // Clean up incremental parse state when component is unmounted
 onUnmounted(() => {
   clearIncrementalState(props.message.id, props.message.conversation_id)
@@ -278,6 +332,7 @@ onUnmounted(() => {
     clearInterval(toolTimerHandle)
     toolTimerHandle = null
   }
+  stopWaitingTimer()
   // Only stop manually-triggered TTS (not auto-play streaming which survives component remount)
   // When streaming ends, the message component remounts with a new server ID —
   // we must not kill the streaming TTS manager during that transition.
@@ -740,6 +795,11 @@ async function handleMobileTTS() {
   closeMobileActions()
 }
 
+function handleMobileExport() {
+  handleExportMessage()
+  closeMobileActions()
+}
+
 function handleMobileSelect() {
   chatStore.enterMultiSelectMode(props.message.id)
   closeMobileActions()
@@ -931,6 +991,16 @@ async function handleMobileDelete() {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
               </svg>
             </button>
+            <!-- Export button -->
+            <button
+              class="export-btn p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
+              :title="t('chat.exportMessage')"
+              @click.stop="handleExportMessage"
+            >
+              <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </button>
           </div>
 
           <!-- Render with typeless cards embedded in single bubble -->
@@ -960,21 +1030,30 @@ async function handleMobileDelete() {
               v-else
               v-html="renderedContent"
             />
+            <!-- Tool execution indicator (inside bubble) -->
+            <div v-if="isStreaming && chatStore.toolExecuting" class="tool-executing-indicator">
+              <div class="tool-pill">
+                <span class="tool-dots">
+                  <span /><span /><span />
+                </span>
+                <span class="tool-label">{{ t('tools.callingProgress') }}</span>
+                <span class="tool-timer tabular-nums">{{ toolElapsedSeconds }}s</span>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- Streaming indicator -->
-        <div v-if="isStreaming && isAssistant" class="streaming-indicator mt-2">
-          <!-- Tool execution indicator -->
-          <div v-if="chatStore.toolExecuting" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
-            <svg class="w-4 h-4 text-gray-600 dark:text-gray-300 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        <div v-if="isStreaming && isAssistant && !chatStore.toolExecuting" class="streaming-indicator mt-2">
+          <!-- Waiting timer (>3s with no content) -->
+          <div v-if="showWaitingTimer" class="waiting-timer-pill">
+            <svg class="waiting-timer-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
             </svg>
-            <span class="text-sm text-gray-600 dark:text-gray-300">{{ t('tools.callingProgress') }}</span>
-            <span class="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{{ toolElapsedSeconds }}s</span>
+            <span class="waiting-timer-value tabular-nums">{{ waitingElapsed }}s</span>
           </div>
-          <!-- Regular streaming dots -->
+          <!-- Default bouncing dots -->
           <span v-else class="inline-flex gap-1">
             <span class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce" style="animation-delay: 0ms" />
             <span class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-bounce" style="animation-delay: 150ms" />
@@ -1141,6 +1220,17 @@ async function handleMobileDelete() {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
                 </svg>
                 <span class="text-base font-medium text-gray-900 dark:text-white">{{ isSpeaking ? t('chat.stopTTS') : t('chat.playTTS') }}</span>
+              </button>
+
+              <!-- Export action -->
+              <button
+                class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                @click="handleMobileExport"
+              >
+                <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('chat.exportMessage') }}</span>
               </button>
 
               <!-- Select action (enter multi-select mode) -->
@@ -1352,5 +1442,112 @@ async function handleMobileDelete() {
   background: rgba(239, 68, 68, 0.06);
   border-color: rgba(239, 68, 68, 0.2);
   color: #dc2626;
+}
+
+/* Tool execution indicator */
+.tool-executing-indicator {
+  margin-top: 0.625rem;
+}
+
+.tool-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+:root.dark .tool-pill,
+[data-theme="dark"] .tool-pill {
+  background: rgba(129, 140, 248, 0.1);
+  border-color: rgba(129, 140, 248, 0.18);
+}
+
+.tool-dots {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.tool-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #6366f1;
+  animation: tool-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.tool-dots span:nth-child(2) { animation-delay: 0.2s; }
+.tool-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+:root.dark .tool-dots span,
+[data-theme="dark"] .tool-dots span {
+  background: #818cf8;
+}
+
+.tool-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6366f1;
+}
+
+:root.dark .tool-label,
+[data-theme="dark"] .tool-label {
+  color: #a5b4fc;
+}
+
+.tool-timer {
+  font-size: 0.6875rem;
+  color: #94a3b8;
+}
+
+:root.dark .tool-timer,
+[data-theme="dark"] .tool-timer {
+  color: #64748b;
+}
+
+@keyframes tool-dot-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+/* Waiting timer pill — appears after 3s of no response */
+.waiting-timer-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 0.75rem;
+  animation: waiting-fade-in 0.3s ease;
+}
+
+:root.dark .waiting-timer-pill,
+[data-theme="dark"] .waiting-timer-pill {
+  background: #1e293b;
+  color: #94a3b8;
+}
+
+.waiting-timer-icon {
+  opacity: 0.7;
+  animation: waiting-pulse 2s ease-in-out infinite;
+}
+
+.waiting-timer-value {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes waiting-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes waiting-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
 }
 </style>

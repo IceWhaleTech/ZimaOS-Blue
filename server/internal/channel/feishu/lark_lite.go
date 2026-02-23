@@ -80,16 +80,25 @@ func (c *larkClient) sendMessage(ctx context.Context, receiveIDType, receiveID, 
 	if err != nil {
 		return err
 	}
-	payload := map[string]string{
-		"receive_id": receiveID,
-		"msg_type":   msgType,
-		"content":    content,
-	}
+	var u string
+	var body []byte
 	if replyToID != "" {
-		payload["reply_in_thread"] = replyToID
+		// Use reply endpoint to quote the original message
+		payload := map[string]string{
+			"msg_type": msgType,
+			"content":  content,
+		}
+		body, _ = json.Marshal(payload)
+		u = fmt.Sprintf("%s/im/v1/messages/%s/reply", c.baseURL, replyToID)
+	} else {
+		payload := map[string]string{
+			"receive_id": receiveID,
+			"msg_type":   msgType,
+			"content":    content,
+		}
+		body, _ = json.Marshal(payload)
+		u = fmt.Sprintf("%s/im/v1/messages?receive_id_type=%s", c.baseURL, receiveIDType)
 	}
-	body, _ := json.Marshal(payload)
-	u := fmt.Sprintf("%s/im/v1/messages?receive_id_type=%s", c.baseURL, receiveIDType)
 	req, _ := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Authorization", "Bearer "+token)

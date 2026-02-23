@@ -28,6 +28,15 @@ const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 
 // Terminal block language markers (module-level Set for O(1) lookup)
 const terminalMarkers = new Set(['terminal', 'console', 'shell-output', 'ansi', 'cli-output'])
 
+// Pre-compiled regexes for line-based parsers (avoid re-creation per call)
+const RE_CHECKBOX_ITEM = /^(\s*)[-*+]\s+\[([ xX])\]\s+(.+)$/
+const RE_UL_ITEM = /^(\s*)[-*+]\s+(.+)$/
+const RE_OL_ITEM = /^(\s*)\d+\.\s+(.+)$/
+const RE_IMAGE_INLINE = /!\[([^\]]*)\]\(([^)]+)\)/g
+const RE_STANDALONE_URL = /^(https?:\/\/[^\s]+)$/
+const RE_FILE_PATH = /^([a-zA-Z]:\\[^\s]+\.[a-zA-Z0-9]+|\/[^\s]+\.[a-zA-Z0-9]+)$/
+const RE_TABLE_SEP_CONTENT = /^[\s:-]+$/
+
 // Language display names for code blocks
 const languageAliases: Record<string, string> = {
   js: 'javascript',
@@ -307,7 +316,105 @@ export function parseTypelessContent(content: string): ParsedContent {
 }
 
 /**
+ * Normalize malformed JSON-like strings:
+ * - Convert single-quoted strings to double-quoted
+ * - Add double quotes around unquoted keys
+ * - Remove trailing commas before } or ]
+ */
+function normalizeLooseJSON(str: string): string {
+  let result = ''
+  let i = 0
+  const len = str.length
+
+  while (i < len) {
+    const ch = str[i]!
+
+    // Skip whitespace
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+      result += ch
+      i++
+      continue
+    }
+
+    // Double-quoted string — pass through as-is
+    if (ch === '"') {
+      result += '"'
+      i++
+      while (i < len) {
+        const c = str[i]!
+        result += c
+        if (c === '\\' && i + 1 < len) { result += str[i + 1]!; i += 2; continue }
+        if (c === '"') { i++; break }
+        i++
+      }
+      continue
+    }
+
+    // Single-quoted string → convert to double-quoted
+    if (ch === "'") {
+      result += '"'
+      i++
+      while (i < len) {
+        const c = str[i]!
+        if (c === '\\' && i + 1 < len) { result += '\\'; result += str[i + 1]!; i += 2; continue }
+        if (c === "'") { i++; break }
+        if (c === '"') { result += '\\"'; i++; continue } // escape inner double quotes
+        result += c
+        i++
+      }
+      result += '"'
+      continue
+    }
+
+    // Trailing comma before } or ] — skip the comma
+    if (ch === ',') {
+      // Look ahead past whitespace for } or ]
+      let j = i + 1
+      while (j < len && (str[j] === ' ' || str[j] === '\t' || str[j] === '\n' || str[j] === '\r')) j++
+      if (j >= len || str[j] === '}' || str[j] === ']') {
+        i++ // skip trailing comma
+        continue
+      }
+      result += ch
+      i++
+      continue
+    }
+
+    // Unquoted key: identifier followed by ':'
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_' || ch === '$') {
+      // Check if we're in a position where a key is expected (after { or ,)
+      const lastNonWS = result.trimEnd()
+      const lastChar = lastNonWS[lastNonWS.length - 1]
+      if (lastChar === '{' || lastChar === ',') {
+        // Collect identifier
+        let ident = ''
+        while (i < len && /[a-zA-Z0-9_$]/.test(str[i]!)) {
+          ident += str[i]!
+          i++
+        }
+        // Skip whitespace to check for colon
+        while (i < len && (str[i] === ' ' || str[i] === '\t')) i++
+        if (i < len && str[i] === ':') {
+          result += `"${ident}"`
+          continue
+        }
+        // Not a key — output as-is (could be a bare value like true/false/null)
+        result += ident
+        continue
+      }
+    }
+
+    // Everything else — pass through
+    result += ch
+    i++
+  }
+
+  return result
+}
+
+/**
  * Try to parse potentially incomplete JSON by adding missing closing brackets/braces.
+ * Also handles malformed JSON: unquoted keys, single quotes, trailing commas.
  * This is useful for streaming scenarios where JSON arrives incrementally.
  */
 function tryParseIncompleteJSON(jsonStr: string): unknown | null {
@@ -318,72 +425,47 @@ function tryParseIncompleteJSON(jsonStr: string): unknown | null {
     // Try to fix incomplete JSON
   }
 
+  // Try normalizing loose JSON first (single quotes, unquoted keys, trailing commas)
+  let normalized = normalizeLooseJSON(jsonStr)
+
   // Count opening and closing brackets/braces
-  let braceCount = 0
-  let bracketCount = 0
-  let inString = false
-  let escapeNext = false
+  const closeBrackets = (s: string): string => {
+    let braceCount = 0
+    let bracketCount = 0
+    let inString = false
+    let escapeNext = false
 
-  for (const char of jsonStr) {
-    if (escapeNext) {
-      escapeNext = false
-      continue
+    for (const char of s) {
+      if (escapeNext) { escapeNext = false; continue }
+      if (char === '\\') { escapeNext = true; continue }
+      if (char === '"') { inString = !inString; continue }
+      if (inString) continue
+      if (char === '{') braceCount++
+      else if (char === '}') braceCount--
+      else if (char === '[') bracketCount++
+      else if (char === ']') bracketCount--
     }
-    if (char === '\\') {
-      escapeNext = true
-      continue
-    }
-    if (char === '"') {
-      inString = !inString
-      continue
-    }
-    if (inString) continue
 
-    if (char === '{') braceCount++
-    else if (char === '}') braceCount--
-    else if (char === '[') bracketCount++
-    else if (char === ']') bracketCount--
+    let fixed = s
+    if (inString) fixed += '"'
+    while (bracketCount > 0) { fixed += ']'; bracketCount-- }
+    while (braceCount > 0) { fixed += '}'; braceCount-- }
+    return fixed
   }
 
-  // If we're in a string, close it
-  let fixedJson = jsonStr
-  if (inString) {
-    fixedJson += '"'
-  }
-
-  // Add missing closing brackets and braces
-  while (bracketCount > 0) {
-    fixedJson += ']'
-    bracketCount--
-  }
-  while (braceCount > 0) {
-    fixedJson += '}'
-    braceCount--
-  }
-
-  // Try to parse the fixed JSON
+  // Try normalized + closed brackets
+  const closed = closeBrackets(normalized)
   try {
-    return JSON.parse(fixedJson)
+    return JSON.parse(closed)
   } catch {
     // Still failed, try more aggressive fixes
   }
 
   // Try removing trailing incomplete property
   // e.g., {"type": "progress", "title": "Test", "pro  -> {"type": "progress", "title": "Test"}
-  const lastCommaIndex = fixedJson.lastIndexOf(',')
+  const lastCommaIndex = closed.lastIndexOf(',')
   if (lastCommaIndex > 0) {
-    const beforeComma = fixedJson.slice(0, lastCommaIndex)
-    // Count braces after removing trailing content
-    let bc = 0, bk = 0
-    for (const char of beforeComma) {
-      if (char === '{') bc++
-      else if (char === '}') bc--
-      else if (char === '[') bk++
-      else if (char === ']') bk--
-    }
-    let truncated = beforeComma
-    while (bk > 0) { truncated += ']'; bk-- }
-    while (bc > 0) { truncated += '}'; bc-- }
+    const truncated = closeBrackets(closed.slice(0, lastCommaIndex))
     try {
       return JSON.parse(truncated)
     } catch {
@@ -690,16 +772,8 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
     }
   }
 
-  // Parse markdown elements and convert to cards
-  // Order matters: terminal blocks first, then mermaid blocks, then code blocks (to avoid parsing code content), then tables, then lists, then images, then files, then links
-  text = parseTerminalBlocks(text, cards, cardIndex)
-  text = parseMermaidBlocks(text, cards, cardIndex)
-  text = parseMarkdownCodeBlocks(text, cards, cardIndex)
-  text = parseMarkdownTables(text, cards, cardIndex)
-  text = parseMarkdownLists(text, cards, cardIndex)
-  text = parseMarkdownImages(text, cards, cardIndex)
-  text = parseFilePaths(text, cards, cardIndex)
-  text = parseMarkdownLinks(text, cards, cardIndex)
+  // Parse markdown elements and convert to cards — SINGLE PASS over lines
+  text = parseMarkdownElementsSinglePass(text, cards, cardIndex)
 
   return { text, cards }
 }
@@ -851,570 +925,263 @@ function escapeRegex(str: string): string {
  * Parse a markdown table row into cells
  */
 function parseTableRow(line: string): string[] {
-  const trimmed = line.trim()
-  const withoutPipes = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed
-  const withoutEndPipe = withoutPipes.endsWith('|') ? withoutPipes.slice(0, -1) : withoutPipes
+  const withoutPipes = line.charCodeAt(0) === 124 /* | */ ? line.slice(1) : line
+  const withoutEndPipe = withoutPipes.charCodeAt(withoutPipes.length - 1) === 124 ? withoutPipes.slice(0, -1) : withoutPipes
   return withoutEndPipe.split('|').map(cell => cell.trim())
 }
 
-/**
- * Check if a line is a table separator (e.g., |---|---|)
- */
-function isTableSeparator(line: string): boolean {
-  const trimmed = line.trim()
+function isTableSeparator(trimmed: string): boolean {
   if (!trimmed.includes('|')) return false
   const content = trimmed.replace(/\|/g, '').trim()
-  return /^[\s:-]+$/.test(content) && content.includes('-')
+  return RE_TABLE_SEP_CONTENT.test(content) && content.includes('-')
 }
 
-/**
- * Check if a line looks like a table row
- */
-function isTableRow(line: string): boolean {
-  const trimmed = line.trim()
+function isTableRow(trimmed: string): boolean {
   return trimmed.includes('|') && !isTableSeparator(trimmed)
 }
 
-/**
- * Parse markdown tables and convert to CardTable
- */
-function parseMarkdownTables(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+function getDomainFromUrl(url: string): string {
+  try { return new URL(url).hostname } catch { return url }
+}
+
+// ============================================================================
+// Single-pass markdown element parser — replaces 8 separate parsers.
+// Splits content into lines ONCE, iterates ONCE, handles all element types.
+// ============================================================================
+
+type FenceKind = 'terminal' | 'mermaid' | 'code'
+
+function parseMarkdownElementsSinglePass(
+  content: string,
+  cards: TypelessCard[],
+  cardIndex: { value: number },
+): string {
   const lines = content.split('\n')
   const result: string[] = []
+  const len = lines.length
+
+  // === Fenced block state (terminal / mermaid / code) ===
+  let fenceKind: FenceKind | null = null
+  let fenceLang = ''
+  let fenceContent: string[] = []
+
+  // === Table state ===
   let inTable = false
   let tableRows: string[][] = []
   let hasTableHeader = false
 
-  const flushTable = () => {
-    if (inTable && tableRows.length > 0) {
-      const firstRow = tableRows[0]
-      const card: TypelessCardTable = {
-        type: 'table',
-        id: `md-table-${cardIndex.value++}`,
-        headers: hasTableHeader && firstRow ? firstRow : [],
-        rows: hasTableHeader ? tableRows.slice(1) : tableRows,
-        striped: true,
-      }
-      cards.push(card)
-      result.push(`[[TYPELESS_CARD:${card.id}]]`)
-    }
-    tableRows = []
-    inTable = false
-    hasTableHeader = false
-  }
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line === undefined) continue
-
-    if (isTableSeparator(line)) {
-      if (inTable && tableRows.length === 1) {
-        hasTableHeader = true
-      }
-      continue
-    }
-
-    if (isTableRow(line)) {
-      if (!inTable) {
-        inTable = true
-        tableRows = []
-      }
-      tableRows.push(parseTableRow(line))
-      continue
-    }
-
-    if (inTable) {
-      flushTable()
-    }
-
-    result.push(line)
-  }
-
-  flushTable()
-  return result.join('\n')
-}
-
-/**
- * Parse terminal/console output blocks and convert to CardTerminal
- * Supports: ```terminal, ```console, ```shell-output, ```ansi
- * These blocks preserve ANSI escape codes for colored output
- */
-function parseTerminalBlocks(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
-  const lines = content.split('\n')
-  const result: string[] = []
-  let inTerminalBlock = false
-  let terminalContent: string[] = []
-  let terminalType = ''
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line === undefined) continue
-
-    // Check for terminal block start
-    if (line.startsWith('```')) {
-      const lang = line.slice(3).trim().toLowerCase()
-
-      if (!inTerminalBlock && terminalMarkers.has(lang)) {
-        inTerminalBlock = true
-        terminalType = lang
-        terminalContent = []
-        continue
-      }
-
-      if (inTerminalBlock && line.trim() === '```') {
-        // End of terminal block - create card
-        emitCard(
-          makeTerminalCard(`md-terminal-${cardIndex.value++}`, terminalContent.join('\n'), terminalType),
-          cards, result,
-        )
-        inTerminalBlock = false
-        terminalType = ''
-        continue
-      }
-    }
-
-    if (inTerminalBlock) {
-      terminalContent.push(line)
-    } else {
-      result.push(line)
-    }
-  }
-
-  // Handle unclosed terminal block (streaming)
-  if (inTerminalBlock && terminalContent.length > 0) {
-    emitCard(
-      makeTerminalCard(`md-terminal-streaming-${cardIndex.value++}`, terminalContent.join('\n'), terminalType, true),
-      cards, result,
-    )
-  }
-
-  return result.join('\n')
-}
-
-/**
- * Parse markdown code blocks and convert to CardCode
- */
-function parseMarkdownCodeBlocks(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
-  const lines = content.split('\n')
-  const result: string[] = []
-  let inCodeBlock = false
-  let codeBlockLang = ''
-  let codeBlockContent: string[] = []
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line === undefined) continue
-
-    // Check for code block markers (but not typeless blocks)
-    if (line.startsWith('```') && !line.startsWith('```typeless')) {
-      if (!inCodeBlock) {
-        inCodeBlock = true
-        const lang = line.slice(3).trim()
-        codeBlockLang = languageAliases[lang.toLowerCase()] || lang
-        codeBlockContent = []
-      } else {
-        // End of code block - create card
-        emitCard(makeCodeCard(`md-code-${cardIndex.value++}`, codeBlockContent.join('\n'), codeBlockLang), cards, result)
-        inCodeBlock = false
-        codeBlockLang = ''
-      }
-      continue
-    }
-
-    if (inCodeBlock) {
-      codeBlockContent.push(line)
-    } else {
-      result.push(line)
-    }
-  }
-
-  // Handle unclosed code block (streaming)
-  if (inCodeBlock && codeBlockContent.length > 0) {
-    // Render unclosed code block as a streaming card
-    emitCard(makeCodeCard(`md-code-streaming-${cardIndex.value++}`, codeBlockContent.join('\n'), codeBlockLang, true), cards, result)
-  }
-
-  return result.join('\n')
-}
-
-/**
- * Parse markdown lists and convert to CardList
- */
-function parseMarkdownLists(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
-  const lines = content.split('\n')
-  const result: string[] = []
+  // === List state ===
   let inList = false
   let listItems: ListItem[] = []
-  let isOrdered = false
-  let isChecklist = false
-  let currentIndentLevel = 0
-  let parentStack: ListItem[] = []
+  let listOrdered = false
+  let listChecklist = false
+  let listIndent = 0
+  let listParentStack: ListItem[] = []
 
-  const flushList = () => {
-    if (inList && listItems.length > 0) {
-      const card: TypelessCardList = {
-        type: 'list',
-        id: `md-list-${cardIndex.value++}`,
-        items: listItems,
-        ordered: isOrdered,
-        variant: isChecklist ? 'checklist' : 'default',
-      }
-      cards.push(card)
-      result.push(`[[TYPELESS_CARD:${card.id}]]`)
+  // === Image accumulator ===
+  let pendingImages: GalleryImage[] = []
+
+  const flushTable = () => {
+    if (!inTable || tableRows.length === 0) return
+    const firstRow = tableRows[0]
+    const card: TypelessCardTable = {
+      type: 'table', id: `md-table-${cardIndex.value++}`,
+      headers: hasTableHeader && firstRow ? firstRow : [],
+      rows: hasTableHeader ? tableRows.slice(1) : tableRows,
+      striped: true,
     }
-    listItems = []
-    inList = false
-    isOrdered = false
-    isChecklist = false
-    currentIndentLevel = 0
-    parentStack = []
+    cards.push(card)
+    result.push(`[[TYPELESS_CARD:${card.id}]]`)
+    tableRows = []; inTable = false; hasTableHeader = false
   }
 
-  for (let i = 0; i < lines.length; i++) {
+  const flushList = () => {
+    if (!inList || listItems.length === 0) return
+    const card: TypelessCardList = {
+      type: 'list', id: `md-list-${cardIndex.value++}`,
+      items: listItems, ordered: listOrdered,
+      variant: listChecklist ? 'checklist' : 'default',
+    }
+    cards.push(card)
+    result.push(`[[TYPELESS_CARD:${card.id}]]`)
+    listItems = []; inList = false; listOrdered = false; listChecklist = false
+    listIndent = 0; listParentStack = []
+  }
+
+  const flushImages = () => {
+    if (pendingImages.length === 0) return
+    const card: TypelessCardGallery = {
+      type: 'gallery', id: `md-gallery-${cardIndex.value++}`,
+      images: pendingImages,
+      layout: pendingImages.length > 1 ? 'horizontal' : 'grid',
+      columns: Math.min(pendingImages.length, 4) as 2 | 3 | 4,
+    }
+    cards.push(card)
+    result.push(`[[TYPELESS_CARD:${card.id}]]`)
+    pendingImages = []
+  }
+
+  for (let i = 0; i < len; i++) {
     const line = lines[i]
     if (line === undefined) continue
 
-    // Check for checkbox list item: - [ ] or - [x] or - [X]
-    const checkboxMatch = line.match(/^(\s*)[-*+]\s+\[([ xX])\]\s+(.+)$/)
-    // Check for unordered list item (but not checkbox)
-    const ulMatch = !checkboxMatch ? line.match(/^(\s*)[-*+]\s+(.+)$/) : null
-    // Check for ordered list item
-    const olMatch = line.match(/^(\s*)\d+\.\s+(.+)$/)
-
-    if (checkboxMatch || ulMatch || olMatch) {
-      let indent: number
-      let itemContent: string
-      let itemIsOrdered = false
-      let itemIsCheckbox = false
-      let itemChecked = false
-
-      if (checkboxMatch) {
-        indent = checkboxMatch[1]?.length ?? 0
-        itemChecked = checkboxMatch[2]?.toLowerCase() === 'x'
-        itemContent = checkboxMatch[3] ?? ''
-        itemIsCheckbox = true
-      } else if (ulMatch) {
-        indent = ulMatch[1]?.length ?? 0
-        itemContent = ulMatch[2] ?? ''
-      } else if (olMatch) {
-        indent = olMatch[1]?.length ?? 0
-        itemContent = olMatch[2] ?? ''
-        itemIsOrdered = true
+    // ===== Inside a fenced block =====
+    if (fenceKind !== null) {
+      if (line.startsWith('```')) {
+        const rest = line.slice(3)
+        const blockContent = fenceContent.join('\n')
+        if (fenceKind === 'terminal') {
+          emitCard(makeTerminalCard(`md-terminal-${cardIndex.value++}`, blockContent, fenceLang), cards, result)
+        } else if (fenceKind === 'mermaid') {
+          emitCard({ type: 'mermaid', id: `md-mermaid-${cardIndex.value++}`, code: blockContent } as TypelessCardMermaid, cards, result)
+        } else {
+          emitCard(makeCodeCard(`md-code-${cardIndex.value++}`, blockContent, fenceLang), cards, result)
+        }
+        fenceKind = null; fenceLang = ''; fenceContent = []
+        // Consecutive fence: ``````lang → close + open
+        if (rest.startsWith('```') && !rest.startsWith('```typeless')) {
+          const nextLang = rest.slice(3).trim()
+          const nextLangLower = nextLang.toLowerCase()
+          if (terminalMarkers.has(nextLangLower)) { fenceKind = 'terminal'; fenceLang = nextLangLower }
+          else if (nextLangLower === 'mermaid') { fenceKind = 'mermaid'; fenceLang = nextLangLower }
+          else { fenceKind = 'code'; fenceLang = languageAliases[nextLangLower] || nextLang }
+          fenceContent = []
+        }
       } else {
-        continue
+        fenceContent.push(line)
       }
-
-      if (!inList) {
-        inList = true
-        isOrdered = itemIsOrdered
-        isChecklist = itemIsCheckbox
-        currentIndentLevel = indent
-        parentStack = []
-      }
-
-      const newItem: ListItem = {
-        content: itemContent,
-        checked: itemIsCheckbox ? itemChecked : undefined,
-      }
-
-      // Handle nested lists
-      if (indent > currentIndentLevel) {
-        // This is a sub-item
-        const parent = parentStack[parentStack.length - 1]
-        if (parent) {
-          if (!parent.subItems) {
-            parent.subItems = []
-          }
-          parent.subItems.push(newItem)
-        } else {
-          listItems.push(newItem)
-        }
-        parentStack.push(newItem)
-      } else if (indent < currentIndentLevel) {
-        // Going back up
-        while (parentStack.length > 0 && indent <= currentIndentLevel) {
-          parentStack.pop()
-          currentIndentLevel -= 2 // Assume 2-space indent
-        }
-        const parent = parentStack[parentStack.length - 1]
-        if (parent) {
-          if (!parent.subItems) {
-            parent.subItems = []
-          }
-          parent.subItems.push(newItem)
-        } else {
-          listItems.push(newItem)
-        }
-        parentStack.push(newItem)
-      } else {
-        // Same level
-        if (parentStack.length > 1) {
-          parentStack.pop()
-          const parent = parentStack[parentStack.length - 1]
-          if (parent) {
-            if (!parent.subItems) {
-              parent.subItems = []
-            }
-            parent.subItems.push(newItem)
-          }
-          parentStack.push(newItem)
-        } else {
-          parentStack = [newItem]
-          listItems.push(newItem)
-        }
-      }
-
-      currentIndentLevel = indent
       continue
     }
 
-    // Empty line might end the list
-    if (line.trim() === '' && inList) {
-      // Check if next line continues the list
-      const nextLine = lines[i + 1]
-      if (nextLine && (nextLine.match(/^(\s*)[-*+]\s+/) || nextLine.match(/^(\s*)\d+\.\s+/))) {
-        result.push(line)
-        continue
-      }
-      flushList()
+    // ===== Opening fence =====
+    if (line.startsWith('```') && !line.startsWith('```typeless')) {
+      flushTable(); flushList(); flushImages()
+      const lang = line.slice(3).trim()
+      const langLower = lang.toLowerCase()
+      if (terminalMarkers.has(langLower)) { fenceKind = 'terminal'; fenceLang = langLower }
+      else if (langLower === 'mermaid') { fenceKind = 'mermaid'; fenceLang = langLower }
+      else { fenceKind = 'code'; fenceLang = languageAliases[langLower] || lang }
+      fenceContent = []
+      continue
     }
 
-    if (inList && !line.match(/^(\s*)[-*+]\s+/) && !line.match(/^(\s*)\d+\.\s+/)) {
-      flushList()
+    // ===== Table / List / Image / URL / File =====
+    const trimmed = line.trim()
+
+    if (isTableSeparator(trimmed)) {
+      flushList(); flushImages()
+      if (inTable && tableRows.length === 1) hasTableHeader = true
+      continue
     }
 
-    result.push(line)
-  }
-
-  flushList()
-  return result.join('\n')
-}
-
-/**
- * Parse markdown images and convert to CardGallery
- * Supports: ![alt](url), base64 images, local file paths
- * Groups consecutive images into a single gallery with horizontal scroll
- */
-function parseMarkdownImages(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
-  const lines = content.split('\n')
-  const result: string[] = []
-  let pendingImages: GalleryImage[] = []
-
-  const flushImages = () => {
-    if (pendingImages.length > 0) {
-      const card: TypelessCardGallery = {
-        type: 'gallery',
-        id: `md-gallery-${cardIndex.value++}`,
-        images: pendingImages,
-        layout: pendingImages.length > 1 ? 'horizontal' : 'grid',
-        columns: Math.min(pendingImages.length, 4) as 2 | 3 | 4,
-      }
-      cards.push(card)
-      result.push(`[[TYPELESS_CARD:${card.id}]]`)
-      pendingImages = []
-    }
-  }
-
-  // Image regex: ![alt](src) or ![](src)
-  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line === undefined) continue
-
-    // Check if line contains only images (possibly multiple)
-    const trimmedLine = line.trim()
-    let hasOnlyImages = false
-    const lineImages: GalleryImage[] = []
-
-    // Find all images in the line
-    let match
-    let lastIndex = 0
-    let nonImageContent = ''
-
-    while ((match = imageRegex.exec(trimmedLine)) !== null) {
-      // Check for non-image content before this match
-      nonImageContent += trimmedLine.slice(lastIndex, match.index).trim()
-      lastIndex = match.index + match[0].length
-
-      const alt = match[1] || ''
-      const src = match[2]
-
-      // Support base64, URLs, and local paths
-      if (src && (src.startsWith('data:image/') || src.startsWith('http') || src.startsWith('/') || src.match(/^[a-zA-Z]:\\/))) {
-        lineImages.push({
-          src,
-          alt: alt || undefined,
-          // For local paths, generate thumbnail URL (backend should handle this)
-          thumbnail: src.match(/^[a-zA-Z]:\\/) || src.startsWith('/') ? `${src}?thumbnail=true` : undefined,
-        })
-      }
+    if (isTableRow(trimmed)) {
+      flushList(); flushImages()
+      if (!inTable) { inTable = true; tableRows = [] }
+      tableRows.push(parseTableRow(trimmed))
+      continue
     }
 
-    // Check remaining content after last match
-    nonImageContent += trimmedLine.slice(lastIndex).trim()
-    imageRegex.lastIndex = 0 // Reset regex
+    if (inTable) flushTable()
 
-    // If line has images and no other content, treat as image-only line
-    if (lineImages.length > 0 && nonImageContent === '') {
-      hasOnlyImages = true
-      pendingImages.push(...lineImages)
-    }
+    // List items
+    const checkboxMatch = RE_CHECKBOX_ITEM.exec(line)
+    const ulMatch = !checkboxMatch ? RE_UL_ITEM.exec(line) : null
+    const olMatch = RE_OL_ITEM.exec(line)
 
-    // If this line is not image-only, flush pending images and add line
-    if (!hasOnlyImages) {
+    if (checkboxMatch || ulMatch || olMatch) {
       flushImages()
-      result.push(line)
-    }
-  }
-
-  flushImages()
-  return result.join('\n')
-}
-
-/**
- * Parse standalone URLs and convert to CardLink
- * Only converts URLs that are on their own line (not inline links)
- */
-function parseMarkdownLinks(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
-  const lines = content.split('\n')
-  const result: string[] = []
-
-  // URL regex for standalone URLs
-  const urlRegex = /^(https?:\/\/[^\s]+)$/
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line === undefined) continue
-
-    const trimmedLine = line.trim()
-    const urlMatch = trimmedLine.match(urlRegex)
-
-    if (urlMatch && urlMatch[1]) {
-      const url = urlMatch[1]
-      // Create a link card with basic info (metadata can be fetched later)
-      const card: TypelessCardLink = {
-        type: 'link',
-        id: `md-link-${cardIndex.value++}`,
-        url,
-        title: getDomainFromUrl(url),
-        // description and image will be populated by link preview service
+      let indent: number, itemContent: string, itemIsOrdered = false, itemIsCheckbox = false, itemChecked = false
+      if (checkboxMatch) {
+        indent = checkboxMatch[1]?.length ?? 0; itemChecked = checkboxMatch[2]?.toLowerCase() === 'x'
+        itemContent = checkboxMatch[3] ?? ''; itemIsCheckbox = true
+      } else if (ulMatch) {
+        indent = ulMatch[1]?.length ?? 0; itemContent = ulMatch[2] ?? ''
+      } else {
+        indent = olMatch![1]?.length ?? 0; itemContent = olMatch![2] ?? ''; itemIsOrdered = true
       }
-      cards.push(card)
-      result.push(`[[TYPELESS_CARD:${card.id}]]`)
-    } else {
-      result.push(line)
+      if (!inList) { inList = true; listOrdered = itemIsOrdered; listChecklist = itemIsCheckbox; listIndent = indent; listParentStack = [] }
+      const newItem: ListItem = { content: itemContent, checked: itemIsCheckbox ? itemChecked : undefined }
+      if (indent > listIndent) {
+        const parent = listParentStack[listParentStack.length - 1]
+        if (parent) { if (!parent.subItems) parent.subItems = []; parent.subItems.push(newItem) }
+        else listItems.push(newItem)
+        listParentStack.push(newItem)
+      } else if (indent < listIndent) {
+        while (listParentStack.length > 0 && indent <= listIndent) { listParentStack.pop(); listIndent -= 2 }
+        const parent = listParentStack[listParentStack.length - 1]
+        if (parent) { if (!parent.subItems) parent.subItems = []; parent.subItems.push(newItem) }
+        else listItems.push(newItem)
+        listParentStack.push(newItem)
+      } else {
+        if (listParentStack.length > 1) {
+          listParentStack.pop()
+          const parent = listParentStack[listParentStack.length - 1]
+          if (parent) { if (!parent.subItems) parent.subItems = []; parent.subItems.push(newItem) }
+          listParentStack.push(newItem)
+        } else { listParentStack = [newItem]; listItems.push(newItem) }
+      }
+      listIndent = indent
+      continue
     }
-  }
 
-  return result.join('\n')
-}
+    if (trimmed === '' && inList) {
+      const nextLine = lines[i + 1]
+      if (nextLine && (RE_UL_ITEM.test(nextLine) || RE_OL_ITEM.test(nextLine))) { result.push(line); continue }
+      flushList()
+    }
+    if (inList && !RE_UL_ITEM.test(line) && !RE_OL_ITEM.test(line)) flushList()
 
-/**
- * Extract domain from URL for display
- */
-function getDomainFromUrl(url: string): string {
-  try {
-    const urlObj = new URL(url)
-    return urlObj.hostname
-  } catch {
-    return url
-  }
-}
+    // Image-only lines
+    if (trimmed.includes('![')) {
+      RE_IMAGE_INLINE.lastIndex = 0
+      let match; let lastIdx = 0; let nonImageContent = ''
+      const lineImages: GalleryImage[] = []
+      while ((match = RE_IMAGE_INLINE.exec(trimmed)) !== null) {
+        nonImageContent += trimmed.slice(lastIdx, match.index).trim()
+        lastIdx = match.index + match[0].length
+        const src = match[2]
+        if (src && (src.startsWith('data:image/') || src.startsWith('http') || src.startsWith('/') || /^[a-zA-Z]:\\/.test(src))) {
+          lineImages.push({ src, alt: match[1] || undefined, thumbnail: (/^[a-zA-Z]:\\/.test(src) || src.startsWith('/')) ? `${src}?thumbnail=true` : undefined })
+        }
+      }
+      RE_IMAGE_INLINE.lastIndex = 0
+      nonImageContent += trimmed.slice(lastIdx).trim()
+      if (lineImages.length > 0 && nonImageContent === '') { pendingImages.push(...lineImages); continue }
+    }
+    flushImages()
 
-/**
- * Parse file paths and convert to CardFile
- * Supports Windows paths (C:\...) and Unix paths (/...)
- * Only converts paths that are on their own line
- */
-function parseFilePaths(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
-  const lines = content.split('\n')
-  const result: string[] = []
+    // Standalone URL
+    const urlMatch = RE_STANDALONE_URL.exec(trimmed)
+    if (urlMatch && urlMatch[1]) {
+      const card: TypelessCardLink = { type: 'link', id: `md-link-${cardIndex.value++}`, url: urlMatch[1], title: getDomainFromUrl(urlMatch[1]) }
+      cards.push(card); result.push(`[[TYPELESS_CARD:${card.id}]]`); continue
+    }
 
-  // File path regex: Windows (C:\path\file.ext) or Unix (/path/file.ext)
-  // Must have a file extension
-  const filePathRegex = /^([a-zA-Z]:\\[^\s]+\.[a-zA-Z0-9]+|\/[^\s]+\.[a-zA-Z0-9]+)$/
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line === undefined) continue
-
-    const trimmedLine = line.trim()
-    const pathMatch = trimmedLine.match(filePathRegex)
-
+    // File path
+    const pathMatch = RE_FILE_PATH.exec(trimmed)
     if (pathMatch && pathMatch[1]) {
       const filePath = pathMatch[1]
       const filename = filePath.split(/[/\\]/).pop() || filePath
       const ext = filename.split('.').pop()?.toLowerCase() || ''
-
-      // Skip if it's an image (handled by parseMarkdownImages)
-      if (imageExtensions.includes(ext)) {
-        result.push(line)
-        continue
+      if (!imageExtensions.includes(ext)) {
+        const card: TypelessCardFile = { type: 'file', id: `md-file-${cardIndex.value++}`, filename, downloadUrl: filePath, previewUrl: documentExtensions.includes(ext) ? filePath : undefined }
+        cards.push(card); result.push(`[[TYPELESS_CARD:${card.id}]]`); continue
       }
-
-      // Determine file size display (would need backend to get actual size)
-      const card: TypelessCardFile = {
-        type: 'file',
-        id: `md-file-${cardIndex.value++}`,
-        filename,
-        downloadUrl: filePath,
-        previewUrl: documentExtensions.includes(ext) ? filePath : undefined,
-      }
-      cards.push(card)
-      result.push(`[[TYPELESS_CARD:${card.id}]]`)
-    } else {
-      result.push(line)
     }
+
+    result.push(line)
+  }
+
+  flushTable(); flushList(); flushImages()
+
+  // Handle unclosed fenced block (streaming)
+  if (fenceKind !== null && fenceContent.length > 0) {
+    const blockContent = fenceContent.join('\n')
+    if (fenceKind === 'terminal') emitCard(makeTerminalCard(`md-terminal-streaming-${cardIndex.value++}`, blockContent, fenceLang, true), cards, result)
+    else if (fenceKind === 'mermaid') emitCard({ type: 'mermaid', id: `md-mermaid-streaming-${cardIndex.value++}`, code: blockContent, _streaming: true } as TypelessCardMermaid, cards, result)
+    else emitCard(makeCodeCard(`md-code-streaming-${cardIndex.value++}`, blockContent, fenceLang, true), cards, result)
   }
 
   return result.join('\n')
 }
 
-/**
- * Parse mermaid code blocks and convert to CardMermaid
- * Supports: ```mermaid
- * Handles flowcharts, mindmaps, sequence diagrams, etc.
- */
-function parseMermaidBlocks(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
-  const lines = content.split('\n')
-  const result: string[] = []
-  let inMermaidBlock = false
-  let mermaidContent: string[] = []
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line === undefined) continue
-
-    // Check for mermaid block start
-    if (line.startsWith('```')) {
-      const lang = line.slice(3).trim().toLowerCase()
-
-      if (!inMermaidBlock && lang === 'mermaid') {
-        inMermaidBlock = true
-        mermaidContent = []
-        continue
-      }
-
-      if (inMermaidBlock && line.trim() === '```') {
-        // End of mermaid block - create card
-        emitCard({ type: 'mermaid', id: `md-mermaid-${cardIndex.value++}`, code: mermaidContent.join('\n') } as TypelessCardMermaid, cards, result)
-        inMermaidBlock = false
-        continue
-      }
-    }
-
-    if (inMermaidBlock) {
-      mermaidContent.push(line)
-    } else {
-      result.push(line)
-    }
-  }
-
-  // Handle unclosed mermaid block (streaming)
-  if (inMermaidBlock && mermaidContent.length > 0) {
-    emitCard({ type: 'mermaid', id: `md-mermaid-streaming-${cardIndex.value++}`, code: mermaidContent.join('\n'), _streaming: true } as TypelessCardMermaid, cards, result)
-  }
-
-  return result.join('\n')
-}

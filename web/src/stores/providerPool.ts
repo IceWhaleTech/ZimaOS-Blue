@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { providerPoolApi, type Provider, type Model, type UsageSummary, type IDEInfo, type PricingConfig, type ModelPricing, type ModelParams, type RoutingMode, type LocationStats, type TrialQuotaStatus } from '@/api/providerPool'
+import { providerPoolApi, type Provider, type Model, type UsageSummary, type IDEInfo, type PricingConfig, type ModelPricing, type ModelParams, type RoutingMode, type LocationStats, type TrialQuotaStatus, type OAuthQuotaInfo } from '@/api/providerPool'
 
 export const useProviderPoolStore = defineStore('providerPool', () => {
   // State
@@ -16,6 +16,8 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   const routingMode = ref<RoutingMode>('auto')
   const locationStats = ref<LocationStats | null>(null)
   const trialQuota = ref<TrialQuotaStatus | null>(null)
+  const oauthQuota = ref<Record<string, OAuthQuotaInfo>>({})
+  const loadingQuota = ref<string | null>(null)
 
   // Computed
   const enabledProviders = computed(() =>
@@ -51,7 +53,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   )
 
   const oauthProviders = computed(() =>
-    providers.value.filter(p => p.oauth?.connected)
+    providers.value.filter(p => !!p.oauth)
   )
 
   const cloudProviders = computed(() =>
@@ -118,6 +120,18 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       trialQuota.value = response.data
     } catch {
       // Ignore errors - trial quota is optional
+    }
+  }
+
+  async function fetchOAuthQuota(providerId: string) {
+    loadingQuota.value = providerId
+    try {
+      const response = await providerPoolApi.getOAuthQuota(providerId)
+      oauthQuota.value[providerId] = response.data
+    } catch {
+      // Silent fail - quota is optional info
+    } finally {
+      loadingQuota.value = null
     }
   }
 
@@ -617,6 +631,8 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     routingMode,
     locationStats,
     trialQuota,
+    oauthQuota,
+    loadingQuota,
 
     // Computed
     enabledProviders,
@@ -676,5 +692,6 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     setRoutingMode,
     fetchLocationStats,
     fetchTrialQuota,
+    fetchOAuthQuota,
   }
 })

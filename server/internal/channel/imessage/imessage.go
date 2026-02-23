@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 )
 
 // Channel implements the channel.Channel interface for iMessage.
@@ -32,6 +33,7 @@ type Channel struct {
 	status      channel.Status
 	connectedAt *time.Time
 	lastError   string
+	lastErrorKey string
 	lastErrorAt *time.Time
 	msgCount    atomic.Int64
 
@@ -95,7 +97,7 @@ func (c *Channel) Start(ctx context.Context) error {
 
 	// Check if running on macOS
 	if !isMacOS() {
-		c.setError("iMessage channel only works on macOS")
+		c.setErrorWithKey(i18n.T(i18n.DefaultLanguage, i18n.MsgIMUnavailablePlatform), i18n.MsgIMUnavailablePlatform)
 		return fmt.Errorf("iMessage channel only works on macOS")
 	}
 
@@ -117,12 +119,14 @@ func (c *Channel) Start(ctx context.Context) error {
 			c.logger.Info("iMessage not configured — Messages database not found, skipping",
 				zap.String("path", c.config.DatabasePath))
 			c.mu.Lock()
+			c.lastErrorKey = i18n.MsgIMNotSetUp
 			c.status = channel.StatusDisconnected
 			c.mu.Unlock()
 			return fmt.Errorf("iMessage not set up (Messages database not found)")
 		}
 		if os.IsPermission(err) {
-			c.setError(fmt.Sprintf("Messages database access denied: %s — grant Full Disk Access to this app in System Settings > Privacy & Security", c.config.DatabasePath))
+			appName := tccAppName()
+			c.setErrorWithKey(i18n.T(i18n.DefaultLanguage, i18n.MsgIMFullDiskAccess, appName), i18n.MsgIMFullDiskAccess)
 			return fmt.Errorf("Messages database access denied (grant Full Disk Access): %w", err)
 		}
 		c.setError(fmt.Sprintf("cannot access Messages database: %v", err))
@@ -144,8 +148,8 @@ func (c *Channel) Start(ctx context.Context) error {
 			// Try to open System Settings to the Full Disk Access panel
 			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles").Run()
 			appName := tccAppName()
-			c.setError(fmt.Sprintf("Messages database access denied by macOS — grant Full Disk Access to \"%s\" in System Settings > Privacy & Security > Full Disk Access, then restart", appName))
-			return fmt.Errorf("Messages database access denied by macOS TCC — grant Full Disk Access to \"%s\" in System Settings > Privacy & Security, then restart: %w", appName, err)
+			c.setErrorWithKey(i18n.T(i18n.DefaultLanguage, i18n.MsgIMFullDiskAccess, appName), i18n.MsgIMFullDiskAccess)
+			return fmt.Errorf("Messages database access denied by macOS TCC: %w", err)
 		}
 		c.setError(fmt.Sprintf("failed to connect to database: %v", err))
 		return fmt.Errorf("failed to connect to Messages database: %w", err)
@@ -161,6 +165,8 @@ func (c *Channel) Start(ctx context.Context) error {
 		c.db = nil
 		c.logger.Info("iMessage account not signed in — skipping channel")
 		c.mu.Lock()
+		c.lastError = i18n.T(i18n.DefaultLanguage, i18n.MsgIMNotSignedIn)
+		c.lastErrorKey = i18n.MsgIMNotSignedIn
 		c.status = channel.StatusDisconnected
 		c.mu.Unlock()
 		return fmt.Errorf("iMessage account not signed in")
@@ -448,9 +454,9 @@ end run`
 			if fbErr := c.sendViaSharingService(ctx, recipient, msg.Content); fbErr != nil {
 				c.logger.Error("NSSharingService fallback also failed", zap.Error(fbErr))
 				appName := tccAppName()
-				errMsg := fmt.Sprintf("Cannot reply to messages — grant Automation permission for Messages.app to \"%s\" in System Settings > Privacy & Security > Automation (fallback also failed: %v)", appName, fbErr)
-				c.setError(errMsg)
-				return fmt.Errorf("%s", errMsg)
+				errMsg := i18n.T(i18n.DefaultLanguage, i18n.MsgIMAutomationDenied, appName)
+				c.setErrorWithKey(errMsg, i18n.MsgIMAutomationDenied)
+				return fmt.Errorf("%s (fallback: %v)", errMsg, fbErr)
 			}
 			c.logger.Info("iMessage sent via NSSharingService fallback",
 				zap.String("recipient", recipient))
@@ -508,8 +514,9 @@ func (c *Channel) Info() channel.Info {
 		LastErrorAt:  c.lastErrorAt,
 		MessageCount: c.msgCount.Load(),
 		Metadata: map[string]interface{}{
-			"database_path": c.config.DatabasePath,
-			"last_row_id":   c.lastRowID,
+			"database_path":  c.config.DatabasePath,
+			"last_row_id":    c.lastRowID,
+			"last_error_key": c.lastErrorKey,
 		},
 	}
 
@@ -544,7 +551,8 @@ func (c *Channel) checkAutomationPermission() {
 		if strings.Contains(outStr, "not authorized") || strings.Contains(outStr, "not authorised") || strings.Contains(outStr, "-1743") {
 			appName := tccAppName()
 			c.mu.Lock()
-			c.lastError = fmt.Sprintf("Cannot reply to messages — grant Automation permission for Messages.app to \"%s\" in System Settings > Privacy & Security > Automation", appName)
+			c.lastError = i18n.T(i18n.DefaultLanguage, i18n.MsgIMAutomationDenied, appName)
+			c.lastErrorKey = i18n.MsgIMAutomationDenied
 			now := time.Now()
 			c.lastErrorAt = &now
 			c.mu.Unlock()
@@ -561,11 +569,17 @@ func (c *Channel) checkAutomationPermission() {
 	}
 }
 
-// setError sets the last error.
+// setError sets the last error with an optional i18n message key.
 func (c *Channel) setError(err string) {
+	c.setErrorWithKey(err, "")
+}
+
+// setErrorWithKey sets the last error with an i18n message key for frontend localization.
+func (c *Channel) setErrorWithKey(err, key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.lastError = err
+	c.lastErrorKey = key
 	now := time.Now()
 	c.lastErrorAt = &now
 	c.status = channel.StatusError

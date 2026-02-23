@@ -167,6 +167,7 @@ type ChannelConfig struct {
 	Status           string            `json:"status"`
 	Config           map[string]string `json:"config"`
 	LastError        string            `json:"last_error,omitempty"`
+	LastErrorKey     string            `json:"last_error_key,omitempty"`
 	// Persistent statistics
 	MessagesReceived int64   `json:"messages_received,omitempty"`
 	MessagesSent     int64   `json:"messages_sent,omitempty"`
@@ -366,6 +367,7 @@ type ChannelConfigResponse struct {
 	Status           string            `json:"status"`
 	Config           map[string]string `json:"config"`
 	LastError        string            `json:"last_error,omitempty"`
+	LastErrorKey     string            `json:"last_error_key,omitempty"`
 	MessagesReceived int64             `json:"messages_received,omitempty"`
 	MessagesSent     int64             `json:"messages_sent,omitempty"`
 	LastMessageAt    *string           `json:"last_message_at,omitempty"`
@@ -385,6 +387,7 @@ func (h *ChannelConfigHandler) ListChannelConfigs(c echo.Context) error {
 			Status:           cfg.Status,
 			Config:           cfg.Config,
 			LastError:        cfg.LastError,
+			LastErrorKey:     cfg.LastErrorKey,
 			MessagesReceived: cfg.MessagesReceived,
 			MessagesSent:     cfg.MessagesSent,
 			LastMessageAt:    cfg.LastMessageAt,
@@ -412,6 +415,12 @@ func (h *ChannelConfigHandler) ListChannelConfigs(c echo.Context) error {
 				}
 				if info.LastError != "" {
 					resp.LastError = info.LastError
+				}
+				// Extract last_error_key from channel metadata (for frontend i18n)
+				if info.Metadata != nil {
+					if key, ok := info.Metadata["last_error_key"].(string); ok && key != "" {
+						resp.LastErrorKey = key
+					}
 				}
 			}
 		}

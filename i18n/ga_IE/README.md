@@ -203,6 +203,13 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Monatóireacht Heartbeat**
+```
+Amadóir (30 nóim) → Léigh HEARTBEAT.md → Meastóireacht LLM → Bain token HEARTBEAT_OK
+  → Dí-dhúblú (hash FNV, TTL 24u) → Foláireamh cainéil (Telegram/Slack/...)
+  → Sruth imeachtaí → Táscaire UI
+```
+
 ### Mapa Pacáistí (`server/internal/`)
 
 | Ciseal | Pacáistí |

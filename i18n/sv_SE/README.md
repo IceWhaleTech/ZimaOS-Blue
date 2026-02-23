@@ -227,6 +227,13 @@ Telegram/Discord/... → Channel Manager → AutoReply check
 WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
 ```
 
+**Heartbeat-övervakning**
+```
+Timer (30 min) → Läs HEARTBEAT.md → LLM-utvärdering → Ta bort HEARTBEAT_OK-token
+  → Deduplicering (FNV-hash, 24h TTL) → Kanalvarning (Telegram/Slack/...)
+  → Händelseström → UI-indikator
+```
+
 ## Hur man använder
 
 ![](../../docs/assets/handcraft.png)

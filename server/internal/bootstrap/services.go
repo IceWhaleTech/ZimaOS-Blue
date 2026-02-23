@@ -145,7 +145,7 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	}
 
 	// Register native service-backed skills as tools (services wired later in main.go)
-	for _, id := range []string{"reminders", "scheduler", "autoreply", "sandbox", "workflows", "browser"} {
+	for _, id := range []string{"scheduler", "autoreply", "sandbox", "workflows"} {
 		if sk := s.SkillRegistry.Get(id); sk != nil {
 			tools.RegisterSkill(s.ToolRegistry, sk)
 		}

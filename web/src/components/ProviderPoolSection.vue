@@ -31,8 +31,7 @@ const activeTab = ref<ProviderTab>('all')
 const availableTabs = computed<ProviderTab[]>(() => {
   const tabs: ProviderTab[] = ['all']
   if (store.trialProviders?.length) tabs.push('trial')
-  tabs.push('builtin', 'platform', 'custom')
-  if (store.oauthProviders?.length) tabs.push('oauth')
+  tabs.push('builtin', 'oauth', 'platform', 'custom')
   if (store.mediaProviders?.length) tabs.push('media')
   return tabs
 })
@@ -102,6 +101,10 @@ watch(() => currentTabSelectedProvider.value, async (provider) => {
   if (store.selectedProviderId) {
     await store.refreshModels(store.selectedProviderId)
     fetchProviderUsage(store.selectedProviderId)
+    // Fetch OAuth quota lazily when provider is selected
+    if (provider.oauth?.connected) {
+      store.fetchOAuthQuota(store.selectedProviderId)
+    }
   }
 }, { immediate: true })
 
@@ -206,6 +209,11 @@ const currentTabSelectedProvider = computed(() => {
   if (!store.selectedProvider) return null
   if (activeTab.value === 'all') return store.selectedProvider
 
+  // OAuth tab: match by having oauth config
+  if (activeTab.value === 'oauth') {
+    return store.selectedProvider.oauth ? store.selectedProvider : null
+  }
+
   const providerType = store.selectedProvider.type
 
   // Map provider type to tab
@@ -279,6 +287,14 @@ watch(availableTabs, (tabs) => {
 // Clear selection when switching to a tab with no matching provider
 watch(activeTab, () => {
   if (store.selectedProvider && activeTab.value !== 'all') {
+    // OAuth tab: keep selection if provider has oauth config
+    if (activeTab.value === 'oauth') {
+      if (!store.selectedProvider.oauth) {
+        store.selectProvider(null)
+      }
+      return
+    }
+
     const providerType = store.selectedProvider.type
     const typeToTab: Record<string, string> = {
       'builtin': 'builtin',
@@ -540,6 +556,21 @@ async function fetchProviderUsage(providerId: string) {
   }
 }
 
+function tierBadgeClass(tier: string): string {
+  const t = tier.toUpperCase()
+  if (t === 'FREE') return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+  if (t === 'PRO' || t === 'BUSINESS') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+  if (t === 'ULTRA' || t === 'PREMIUM' || t === 'ENTERPRISE' || t === 'MAX') return 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
+  return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+}
+
+function tierListBadgeClass(tier: string): string {
+  const t = tier.toUpperCase()
+  if (t === 'PRO' || t === 'PRO+' || t === 'BUSINESS') return 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+  if (t === 'ULTRA' || t === 'PREMIUM' || t === 'ENTERPRISE' || t === 'MAX') return 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
+  return 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+}
+
 async function startOAuthConnect(providerId: string) {
   connectingOAuth.value = providerId
   try {
@@ -759,16 +790,7 @@ function handleModelDragEnd() {
   dragOverModel.value = null
 }
 
-const capabilityLabels: Record<string, string> = {
-  chat: 'Chat',
-  vision: 'Vision',
-  function_call: 'Tools',
-  thinking: 'Thinking',
-  streaming: 'Stream',
-  image_generation: 'Image',
-  video_generation: 'Video',
-  audio_generation: 'Audio',
-}
+const capabilityKeys = ['chat', 'vision', 'function_call', 'thinking', 'streaming', 'image_generation', 'video_generation', 'audio_generation']
 
 function isMediaModel(model: Model): boolean {
   const caps = model.capabilities || []
@@ -778,7 +800,7 @@ function isMediaModel(model: Model): boolean {
 function formatCapabilities(caps: Model['capabilities']) {
   if (!caps || !caps.length) return ''
   return caps
-    .map(c => capabilityLabels[c] || c)
+    .map(c => capabilityKeys.includes(c) ? t(`providerPool.capabilities.${c}`) : c)
     .filter(Boolean)
     .join(', ')
 }
@@ -1033,7 +1055,7 @@ onMounted(() => {
       >
         {{ t(`providerPool.tabs.${tab}`) }}
         <span class="ml-1 text-xs opacity-70">
-          ({{ tab === 'all' ? (store.providers?.length || 0) : tab === 'trial' ? (store.trialProviders?.length || 0) : tab === 'builtin' ? (store.builtinProviders?.length || 0) : tab === 'platform' ? (store.platformProviders?.length || 0) : tab === 'media' ? (store.mediaProviders?.length || 0) : (store.customProviders?.length || 0) }})
+          ({{ tab === 'all' ? (store.providers?.length || 0) : tab === 'trial' ? (store.trialProviders?.length || 0) : tab === 'builtin' ? (store.builtinProviders?.length || 0) : tab === 'platform' ? (store.platformProviders?.length || 0) : tab === 'media' ? (store.mediaProviders?.length || 0) : tab === 'oauth' ? (store.oauthProviders?.length || 0) : (store.customProviders?.length || 0) }})
         </span>
       </button>
     </div>
@@ -1152,10 +1174,13 @@ onMounted(() => {
             <div class="flex items-center gap-2">
               <!-- Free tier badge -->
               <span
-                v-if="provider.id === 'nvidia'"
-                class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+                v-if="provider.id === 'nvidia' || provider.id === 'github-copilot' || provider.id === 'google-antigravity' || provider.id === 'google-gemini-cli'"
+                class="text-[10px] px-1.5 py-0.5 rounded"
+                :class="store.oauthQuota[provider.id]?.tier && store.oauthQuota[provider.id].tier !== 'Free' && store.oauthQuota[provider.id].tier !== 'FREE'
+                  ? tierListBadgeClass(store.oauthQuota[provider.id].tier)
+                  : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'"
               >
-                {{ t('providerPool.freeTier') }}
+                {{ store.oauthQuota[provider.id]?.tier || t('providerPool.freeTier') }}
               </span>
               <!-- API Keys count -->
               <span
@@ -1307,7 +1332,7 @@ onMounted(() => {
             </div>
             <div class="flex gap-1">
               <button
-                v-if="currentTabSelectedProvider!.type === 'custom'"
+                v-if="!currentTabSelectedProvider!.is_builtin && currentTabSelectedProvider!.type !== 'trial'"
                 :class="[
                   'px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs transition-opacity',
                   showDeleteFor === 'provider-' + currentTabSelectedProvider!.id
@@ -1463,6 +1488,42 @@ onMounted(() => {
                 <div v-if="currentTabSelectedProvider.oauth.project_id" class="mt-1 text-xs text-gray-500">
                   {{ t('providerPool.oauth.project') }}: {{ currentTabSelectedProvider.oauth.project_id }}
                 </div>
+                <!-- Subscription Tier & Quota -->
+                <div v-if="store.loadingQuota === currentTabSelectedProvider.id" class="mt-2 text-xs text-gray-400">
+                  {{ t('providerPool.oauth.loadingQuota') }}
+                </div>
+                <template v-else-if="store.oauthQuota[currentTabSelectedProvider.id]">
+                  <div v-if="store.oauthQuota[currentTabSelectedProvider.id].tier" class="mt-2">
+                    <span
+                      class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                      :class="tierBadgeClass(store.oauthQuota[currentTabSelectedProvider.id].tier)"
+                    >
+                      {{ store.oauthQuota[currentTabSelectedProvider.id].tier_name || store.oauthQuota[currentTabSelectedProvider.id].tier }}
+                    </span>
+                  </div>
+                  <div v-if="store.oauthQuota[currentTabSelectedProvider.id].error && !store.oauthQuota[currentTabSelectedProvider.id].tier" class="mt-2 text-xs text-gray-400">
+                    {{ t('providerPool.oauth.quotaUnavailable') }}
+                  </div>
+                  <!-- Per-Model Quota Bars -->
+                  <div v-if="store.oauthQuota[currentTabSelectedProvider.id].model_quotas?.length" class="mt-2 space-y-1">
+                    <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ t('providerPool.oauth.modelQuota') }}</div>
+                    <div
+                      v-for="mq in store.oauthQuota[currentTabSelectedProvider.id].model_quotas"
+                      :key="mq.model"
+                      class="flex items-center gap-2 text-xs"
+                    >
+                      <span class="text-gray-600 dark:text-gray-400 w-36 truncate" :title="mq.model">{{ mq.model }}</span>
+                      <div class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          class="h-full rounded-full transition-all"
+                          :class="mq.remaining_percent > 20 ? 'bg-green-500' : mq.remaining_percent > 5 ? 'bg-yellow-500' : 'bg-red-500'"
+                          :style="{ width: mq.remaining_percent + '%' }"
+                        />
+                      </div>
+                      <span class="text-gray-500 w-8 text-right">{{ mq.remaining_percent }}%</span>
+                    </div>
+                  </div>
+                </template>
               </template>
               <template v-else>
                 <div class="flex items-center justify-between">
@@ -1567,6 +1628,7 @@ onMounted(() => {
           </div>
 
           <!-- Device Flow Modal -->
+          <Teleport to="body">
           <div v-if="deviceFlowState" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">{{ t('providerPool.oauth.deviceFlow') }}</h3>
@@ -1599,6 +1661,7 @@ onMounted(() => {
               </div>
             </div>
           </div>
+          </Teleport>
 
           <!-- Trial Quota Section (only for trial providers) -->
           <div v-if="currentTabSelectedProvider!.type === 'trial' && store.trialQuota" class="mb-4 p-3 bg-gray-100 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-600">
@@ -1741,6 +1804,7 @@ onMounted(() => {
     </div>
 
     <!-- Add Provider Modal -->
+    <Teleport to="body">
     <div v-if="showAddModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.addCustomProvider') }}</h2>
@@ -1844,8 +1908,10 @@ onMounted(() => {
         </form>
       </div>
     </div>
+    </Teleport>
 
     <!-- Add API Key Modal -->
+    <Teleport to="body">
     <div v-if="showKeyModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.addApiKey') }}</h2>
@@ -1887,8 +1953,10 @@ onMounted(() => {
         </form>
       </div>
     </div>
+    </Teleport>
 
     <!-- Model Pricing Modal -->
+    <Teleport to="body">
     <div v-if="showPricingModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.addModelPricing') }}</h2>
@@ -1965,8 +2033,10 @@ onMounted(() => {
         </form>
       </div>
     </div>
+    </Teleport>
 
     <!-- Model Params Modal -->
+    <Teleport to="body">
     <div v-if="showParamsModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ t('providerPool.editModelParams') }}</h2>
@@ -2032,8 +2102,10 @@ onMounted(() => {
         </form>
       </div>
     </div>
+    </Teleport>
 
     <!-- Allowed Models Modal -->
+    <Teleport to="body">
     <div v-if="showAllowedModelsModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-2">{{ t('providerPool.selectPreferredModels') }}</h2>
@@ -2114,6 +2186,7 @@ onMounted(() => {
         </div>
       </div>
     </div>
+    </Teleport>
 
     <!-- IDE Discovery Modal -->
     <Teleport to="body">

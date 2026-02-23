@@ -15,11 +15,12 @@ const config = ref<ApprovalConfig>({
 })
 const tools = ref<{ name: string; description: string }[]>([])
 const loading = ref(true)
+const overridesExpanded = ref(false)
 
-const policyOptions: { value: Policy; label: string }[] = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'ask', label: 'Ask' },
-  { value: 'deny', label: 'Deny' },
+const policyOptions: { value: Policy; labelKey: string }[] = [
+  { value: 'auto', labelKey: 'approval.policyAuto' },
+  { value: 'ask', labelKey: 'approval.policyAsk' },
+  { value: 'deny', labelKey: 'approval.policyDeny' },
 ]
 
 onMounted(async () => {
@@ -110,24 +111,35 @@ function getToolPolicy(toolName: string): Policy {
               : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
             @click="setDefaultPolicy(opt.value)"
           >
-            {{ opt.label }}
+            {{ t(opt.labelKey) }}
           </button>
         </div>
       </div>
 
-      <!-- Per-tool overrides -->
+      <!-- Per-tool overrides (collapsible) -->
       <div v-if="tools.length > 0" class="mt-3">
-        <label class="text-xs text-gray-500 dark:text-gray-400 mb-1.5 block">
+        <button
+          class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-1.5 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          @click="overridesExpanded = !overridesExpanded"
+        >
+          <svg
+            class="w-3 h-3 transition-transform"
+            :class="overridesExpanded ? 'rotate-90' : ''"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
           {{ t('approval.perTool', 'Per-Tool Overrides') }}
-        </label>
-        <div class="space-y-1 max-h-64 overflow-y-auto">
+          <span class="text-gray-400 dark:text-gray-500">({{ tools.length }})</span>
+        </button>
+        <div v-show="overridesExpanded" class="space-y-1 max-h-64 overflow-y-auto">
           <div
             v-for="tool in tools"
             :key="tool.name"
             class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50"
           >
             <div class="flex-1 min-w-0 mr-3">
-              <span class="text-sm text-gray-800 dark:text-gray-200 font-mono">{{ tool.name }}</span>
+              <span class="text-sm text-gray-800 dark:text-gray-200 truncate">{{ t(`tools.names.${tool.name}`, tool.name) }}</span>
             </div>
             <div class="flex gap-0.5 flex-shrink-0">
               <button
@@ -139,7 +151,7 @@ function getToolPolicy(toolName: string): Policy {
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'"
                 @click="setToolPolicy(tool.name, opt.value)"
               >
-                {{ opt.label }}
+                {{ t(opt.labelKey) }}
               </button>
             </div>
           </div>

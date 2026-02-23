@@ -83,7 +83,7 @@ var toolKeywords = map[string]string{
 	"weather":        "天气 气温 温度 湿度 forecast climate",
 	"datetime":       "时间 日期 日历 时区 date time timezone clock",
 	"notes":          "笔记 备忘 记录 note memo write",
-	"reminders":      "提醒 闹钟 提示 remind alarm alert notification",
+	"reminders":      "提醒 闹钟 提示 叫我 提醒我 别忘了 记得 到时候 定时 起床 remind alarm alert notification wake schedule reminder set",
 	"tasks":          "任务 待办 todo task priority status",
 	"translate":      "翻译 语言 translate language",
 	"search":         "搜索 查找 查询 search find lookup",
