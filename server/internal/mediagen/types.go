@@ -2,7 +2,8 @@ package mediagen
 
 import (
 	"context"
-	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 )
 
 // MediaType distinguishes image vs video generation.
@@ -13,14 +14,15 @@ const (
 	MediaTypeVideo MediaType = "video"
 )
 
-// TaskStatus tracks async generation lifecycle.
-type TaskStatus string
+// TaskStatus is an alias for task.Status so existing code compiles unchanged.
+type TaskStatus = task.Status
 
+// Status constants — aliases for the shared task package values.
 const (
-	TaskStatusPending    TaskStatus = "pending"
-	TaskStatusProcessing TaskStatus = "processing"
-	TaskStatusSucceeded  TaskStatus = "succeeded"
-	TaskStatusFailed     TaskStatus = "failed"
+	TaskStatusPending    = task.StatusPending
+	TaskStatusProcessing = task.StatusProcessing
+	TaskStatusSucceeded  = task.StatusSucceeded
+	TaskStatusFailed     = task.StatusFailed
 )
 
 // MediaRequest is the unified request for all providers.
@@ -60,18 +62,18 @@ type MediaResponse struct {
 }
 
 // MediaTask tracks an async generation job.
+// Embeds task.BaseTask for shared lifecycle fields (ID, Status, Error, Progress, timestamps).
 type MediaTask struct {
-	ID          string         `json:"id"`
-	Status      TaskStatus     `json:"status"`
-	Type        MediaType      `json:"type"`
-	Provider    string         `json:"provider"`
-	Model       string         `json:"model"`
-	Request     *MediaRequest  `json:"request,omitempty"`
-	Response    *MediaResponse `json:"response,omitempty"`
-	Error       string         `json:"error,omitempty"`
-	Progress    float64        `json:"progress"`
-	CreatedAt   time.Time      `json:"created_at"`
-	CompletedAt *time.Time     `json:"completed_at,omitempty"`
+	task.BaseTask
+
+	MessageID string         `json:"message_id,omitempty"`
+	Type      MediaType      `json:"type"`
+	Category  string         `json:"category,omitempty"`
+	Provider  string         `json:"provider"`
+	Model     string         `json:"model"`
+	Request   *MediaRequest  `json:"request,omitempty"`
+	Response  *MediaResponse `json:"response,omitempty"`
+	Source    string         `json:"source,omitempty"` // "web" or "channel"
 
 	// Internal: upstream task ID for async providers
 	UpstreamID string `json:"-"`
@@ -88,10 +90,11 @@ type MediaProvider interface {
 
 // MediaModelInfo describes a model's media generation capabilities.
 type MediaModelInfo struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	Type           MediaType `json:"type"`
-	Provider       string    `json:"provider"`
-	MaxResolution  string    `json:"max_resolution,omitempty"`
-	SupportedSizes []string  `json:"supported_sizes,omitempty"`
+	ID             string        `json:"id"`
+	Name           string        `json:"name"`
+	Type           MediaType     `json:"type"`
+	Category       MediaCategory `json:"category,omitempty"` // t2i, t2v, i2v, i2i, kf2v
+	Provider       string        `json:"provider"`
+	MaxResolution  string        `json:"max_resolution,omitempty"`
+	SupportedSizes []string      `json:"supported_sizes,omitempty"`
 }

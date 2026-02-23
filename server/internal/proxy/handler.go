@@ -629,6 +629,59 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err = ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, executeOnProvider)
 	}
 
+	// Retry with tools stripped: if all providers failed and the request had tools,
+	// strip the tools/tool_choice fields and retry. This handles providers that reject
+	// the request body because they don't understand tool-related fields (422).
+	if err != nil && hasTools {
+		strippedBody := pr.body
+		if b, e := sjson.DeleteBytes(strippedBody, "tools"); e == nil {
+			strippedBody = b
+		}
+		if b, e := sjson.DeleteBytes(strippedBody, "tool_choice"); e == nil {
+			strippedBody = b
+		}
+		if len(strippedBody) != len(pr.body) {
+			slog.Info("[proxy] retrying without tools after all providers failed",
+				"model", pr.model, "original_error", err)
+			pr.body = strippedBody
+			hasTools = false
+			routeReq.RequireCap = nil
+			finalResp = nil
+			if failoverDisabled {
+				result, routeErr := ph.providerPool.Router.Route(routeReq)
+				if routeErr != nil {
+					err = routeErr
+				} else {
+					err = executeOnProvider(result)
+				}
+			} else {
+				err = ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, executeOnProvider)
+			}
+		}
+	}
+
+	// Retry with images stripped: if still failing and the request has image content,
+	// strip image_url entries from messages and retry. Some providers/models don't
+	// support vision and reject multimodal content.
+	if err != nil {
+		if strippedBody, didStrip := stripImageContent(pr.body); didStrip {
+			slog.Info("[proxy] retrying without images after all providers failed",
+				"model", pr.model, "original_error", err)
+			pr.body = strippedBody
+			finalResp = nil
+			if failoverDisabled {
+				result, routeErr := ph.providerPool.Router.Route(routeReq)
+				if routeErr != nil {
+					err = routeErr
+				} else {
+					err = executeOnProvider(result)
+				}
+			} else {
+				err = ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, executeOnProvider)
+			}
+		}
+	}
+
 	if err != nil {
 		slog.Error("[proxy] all providers failed", "model", pr.model, "error", err)
 		http.Error(w, SanitizeError(err), http.StatusBadGateway)
@@ -1627,6 +1680,68 @@ func (ph *ProxyHandler) setRouteHeaders(w http.ResponseWriter, pr *parsedRequest
 			w.Header().Set("X-Route-Tier", string(pr.routed.Tier))
 		}
 	}
+}
+
+// stripImageContent removes image_url entries from messages[].content arrays.
+// Returns the modified body and true if any images were stripped.
+func stripImageContent(body []byte) ([]byte, bool) {
+	bodyStr := unsafeString(body)
+	messages := gjson.Get(bodyStr, "messages")
+	if !messages.Exists() || !messages.IsArray() {
+		return body, false
+	}
+	stripped := false
+	result := make([]byte, len(body))
+	copy(result, body)
+	// Iterate messages in reverse so index shifts don't affect earlier entries
+	msgs := messages.Array()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		content := msgs[i].Get("content")
+		if !content.IsArray() {
+			continue
+		}
+		parts := content.Array()
+		var textParts []gjson.Result
+		hasImage := false
+		for _, part := range parts {
+			if part.Get("type").Str == "image_url" {
+				hasImage = true
+			} else {
+				textParts = append(textParts, part)
+			}
+		}
+		if !hasImage {
+			continue
+		}
+		stripped = true
+		path := fmt.Sprintf("messages.%d.content", i)
+		if len(textParts) == 0 {
+			// All content was images — replace with empty text
+			if b, e := sjson.SetBytes(result, path, ""); e == nil {
+				result = b
+			}
+		} else if len(textParts) == 1 && textParts[0].Get("type").Str == "text" {
+			// Single text part remaining — simplify to plain string
+			if b, e := sjson.SetBytes(result, path, textParts[0].Get("text").Str); e == nil {
+				result = b
+			}
+		} else {
+			// Multiple non-image parts — rebuild the array as raw JSON
+			var buf bytes.Buffer
+			buf.WriteByte('[')
+			for j, tp := range textParts {
+				if j > 0 {
+					buf.WriteByte(',')
+				}
+				buf.WriteString(tp.Raw)
+			}
+			buf.WriteByte(']')
+			if b, e := sjson.SetRawBytes(result, path, buf.Bytes()); e == nil {
+				result = b
+			}
+		}
+	}
+	return result, stripped
 }
 
 // singleJoiningSlash joins two URL paths

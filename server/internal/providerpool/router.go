@@ -2,6 +2,7 @@ package providerpool
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
@@ -143,6 +144,23 @@ func (r *Router) Route(req *RouteRequest) (*RouteResult, error) {
 		candidates, err = r.findCandidates(req)
 		if err != nil {
 			return nil, err
+		}
+	}
+
+	// If RequireCap filtered out all candidates, retry without the capability
+	// filter. Many providers support tools/vision but don't declare it in
+	// metadata — better to try and let the upstream decide than to return
+	// "no provider available".
+	if len(candidates) == 0 && req.RequireCap != nil {
+		relaxed := *req
+		relaxed.RequireCap = nil
+		candidates = r.getCandidatesFromSnapshot(&relaxed)
+		if len(candidates) == 0 {
+			candidates, _ = r.findCandidates(&relaxed)
+		}
+		if len(candidates) > 0 {
+			slog.Info("[router] no providers matched required capabilities, falling back to all providers",
+				"model", req.ModelID, "required_cap", fmt.Sprintf("%+v", *req.RequireCap))
 		}
 	}
 

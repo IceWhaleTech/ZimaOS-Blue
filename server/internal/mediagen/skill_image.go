@@ -9,14 +9,14 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
-// ImageGenerateTool implements tools.Tool for LLM-driven image generation.
-type ImageGenerateTool struct {
+// ImageGenerateSkill implements tools.Tool for LLM-driven image generation.
+type ImageGenerateSkill struct {
 	manager *Manager
 }
 
 // availableImageModels returns a comma-separated list of image model IDs
 // from currently registered providers. Falls back to a static list.
-func (t *ImageGenerateTool) availableImageModels() string {
+func (t *ImageGenerateSkill) availableImageModels() string {
 	models := t.manager.Models()
 	var names []string
 	for _, m := range models {
@@ -30,13 +30,13 @@ func (t *ImageGenerateTool) availableImageModels() string {
 	return strings.Join(names, ", ")
 }
 
-// NewImageGenerateTool creates a new image generation tool.
-func NewImageGenerateTool(manager *Manager) *ImageGenerateTool {
-	return &ImageGenerateTool{manager: manager}
+// NewImageGenerateSkill creates a new image generation tool.
+func NewImageGenerateSkill(manager *Manager) *ImageGenerateSkill {
+	return &ImageGenerateSkill{manager: manager}
 }
 
 // Definition returns the tool definition for the LLM.
-func (t *ImageGenerateTool) Definition() tools.ToolDefinition {
+func (t *ImageGenerateSkill) Definition() tools.ToolDefinition {
 	return tools.ToolDefinition{
 		Name:        "image_generate",
 		Description: "Generate images from text descriptions. Default model: nano-banana-pro (recommended). IMPORTANT: Image generation takes 15-60 seconds — do NOT call this tool multiple times for the same request. If the result shows status 'processing', tell the user to wait. Returns URLs of generated images saved to the media gallery.",
@@ -87,7 +87,7 @@ func (t *ImageGenerateTool) Definition() tools.ToolDefinition {
 }
 
 // Execute generates images and blocks until done.
-func (t *ImageGenerateTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *ImageGenerateSkill) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	req := &MediaRequest{Type: MediaTypeImage}
 
 	if v, ok := args["prompt"].(string); ok {
@@ -194,4 +194,4 @@ func (t *ImageGenerateTool) Execute(ctx context.Context, args map[string]interfa
 	}, nil
 }
 
-var _ tools.Tool = (*ImageGenerateTool)(nil)
+var _ tools.Tool = (*ImageGenerateSkill)(nil)

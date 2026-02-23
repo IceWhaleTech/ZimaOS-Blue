@@ -28,6 +28,11 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/tasks/:id/stream", h.StreamTask)
 	g.GET("/models", h.ListModels)
 
+	// IR-based direct generation pipeline
+	g.POST("/classify", h.ClassifyIntent)
+	g.POST("/generate", h.DirectGenerate)
+	g.GET("/tasks/by-message/:message_id", h.GetTaskByMessage)
+
 	// Provider management
 	g.GET("/providers", h.ListProviders)
 	g.GET("/providers/:id", h.GetProvider)
@@ -200,6 +205,17 @@ func (h *Handler) ListModels(c echo.Context) error {
 		filtered := make([]MediaModelInfo, 0)
 		for _, m := range models {
 			if string(m.Type) == typeFilter {
+				filtered = append(filtered, m)
+			}
+		}
+		models = filtered
+	}
+
+	// Optional category filter
+	if catFilter := c.QueryParam("category"); catFilter != "" {
+		filtered := make([]MediaModelInfo, 0)
+		for _, m := range models {
+			if string(m.Category) == catFilter {
 				filtered = append(filtered, m)
 			}
 		}
@@ -391,4 +407,152 @@ func (h *Handler) RemoveProviderKey(c echo.Context) error {
 func (h *Handler) TestProvider(c echo.Context) error {
 	result := h.manager.TestProvider(c.Param("id"))
 	return c.JSON(http.StatusOK, result)
+}
+
+// --- IR-based direct generation pipeline ---
+
+// classifyRequest is the request body for POST /classify.
+type classifyRequest struct {
+	Message    string `json:"message"`
+	HasImages  bool   `json:"has_images"`
+	ImageCount int    `json:"image_count"`
+	Locale     string `json:"locale"`
+}
+
+// classifyResponse is the response for POST /classify.
+type classifyResponse struct {
+	Intent *MediaIntent     `json:"intent"`
+	Models []MediaModelInfo `json:"models,omitempty"`
+}
+
+// ClassifyIntent handles POST /classify — IR-based intent classification.
+func (h *Handler) ClassifyIntent(c echo.Context) error {
+	var req classifyRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request: " + err.Error()})
+	}
+
+	intent := ClassifyMediaIntent(req.Message, req.HasImages, req.ImageCount, req.Locale)
+	if intent == nil {
+		return c.JSON(http.StatusOK, classifyResponse{Intent: nil})
+	}
+
+	// Filter models by detected category
+	allModels := h.manager.Models()
+	var matched []MediaModelInfo
+	for _, m := range allModels {
+		if m.Category == intent.Category {
+			matched = append(matched, m)
+		}
+	}
+
+	return c.JSON(http.StatusOK, classifyResponse{
+		Intent: intent,
+		Models: matched,
+	})
+}
+
+// directGenerateRequest is the request body for POST /generate.
+type directGenerateRequest struct {
+	Category        MediaCategory  `json:"category"`
+	Prompt          string         `json:"prompt"`
+	Model           string         `json:"model"`
+	Params          map[string]any `json:"params"`
+	ReferenceImages []string       `json:"reference_images,omitempty"`
+	MessageID       string         `json:"message_id,omitempty"`
+	Source          string         `json:"source,omitempty"` // "web" or "channel"
+}
+
+// DirectGenerate handles POST /generate — creates a persistent media task and returns immediately.
+// The task runs asynchronously; clients poll GET /tasks/:id for status.
+func (h *Handler) DirectGenerate(c echo.Context) error {
+	var req directGenerateRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request: " + err.Error()})
+	}
+	if req.Prompt == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "prompt is required"})
+	}
+	if req.Category == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "category is required"})
+	}
+
+	// Build MediaRequest from category + params
+	mediaReq := &MediaRequest{
+		Prompt: req.Prompt,
+		Model:  req.Model,
+		Extra:  req.Params,
+	}
+
+	// Set type based on category
+	switch req.Category {
+	case CategoryT2I, CategoryI2I:
+		mediaReq.Type = MediaTypeImage
+	case CategoryT2V, CategoryI2V, CategoryKF2V:
+		mediaReq.Type = MediaTypeVideo
+	default:
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "unknown category: " + string(req.Category)})
+	}
+
+	// Extract common params
+	if req.Params != nil {
+		if v, ok := req.Params["size"].(string); ok {
+			mediaReq.Size = v
+		}
+		if v, ok := req.Params["quality"].(string); ok {
+			mediaReq.Quality = v
+		}
+		if v, ok := req.Params["style"].(string); ok {
+			mediaReq.Style = v
+		}
+		if v, ok := req.Params["negative_prompt"].(string); ok {
+			mediaReq.NegativePrompt = v
+		}
+		if v, ok := req.Params["n"].(float64); ok {
+			mediaReq.N = int(v)
+		}
+		if v, ok := req.Params["duration"].(float64); ok {
+			mediaReq.Duration = int(v)
+		}
+	}
+
+	// Handle reference images for i2v/i2i/kf2v
+	if len(req.ReferenceImages) > 0 {
+		mediaReq.ReferenceURL = req.ReferenceImages[0]
+	}
+
+	source := req.Source
+	if source == "" {
+		source = "web"
+	}
+
+	// Create persistent task and start async generation
+	task, err := h.manager.CreateTask(c.Request().Context(), mediaReq, req.MessageID, string(req.Category), source)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Return task ID immediately — client polls for status
+	return c.JSON(http.StatusAccepted, map[string]interface{}{
+		"task_id":    task.ID,
+		"message_id": task.MessageID,
+		"status":     string(task.Status),
+		"category":   task.Category,
+		"model":      task.Model,
+	})
+}
+
+// GetTaskByMessage handles GET /tasks/by-message/:message_id — returns tasks for a message.
+func (h *Handler) GetTaskByMessage(c echo.Context) error {
+	messageID := c.Param("message_id")
+	if messageID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "message_id is required"})
+	}
+	tasks, err := h.manager.GetTasksByMessage(messageID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"tasks": tasks,
+	})
 }

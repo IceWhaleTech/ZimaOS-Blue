@@ -34,6 +34,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/lifecycle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mfa"
@@ -990,7 +991,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Register workspace_file tool so the agent can update workspace files via conversation
 	toolRegistry.Register(workspace.NewWorkspaceTool(workspaceMgr))
 
-	// Initialize memory handler (markdown-only, no vector store)
+	// Initialize memory handler (markdown primary, optional dual-write with vector store)
 	var memoryHandler *server.MemoryHandler
 	memoryHandler = server.NewLazyMemoryHandler(func(h *server.MemoryHandler) error {
 		memoryDir := cfg.Memory.MarkdownDir
@@ -1005,6 +1006,18 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		unifiedService := memory.NewUnifiedMemoryService(mdBackend)
 		h.SetUnifiedService(unifiedService)
 
+		// Try to set up dual-write backend with vector store + hybrid search
+		if cfg.Memory.VectorStore.Enabled {
+			if dualBackend := initDualWriteBackend(cfg, mdBackend); dualBackend != nil {
+				unifiedService.SetBackend(dualBackend)
+				logger.Info("Memory service initialized (dual-write: markdown + vector store)")
+			} else {
+				logger.Info("Memory service initialized (markdown-only, vector store init failed)")
+			}
+		} else {
+			logger.Info("Memory service initialized (markdown backend)", zap.String("dir", memoryDir))
+		}
+
 		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
 			BaseDir:            memoryDir,
 			DailyRetentionDays: 30,
@@ -1018,7 +1031,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		toolsAdapter := memory.NewToolsAdapter(unifiedService)
 		tools.RegisterMemoryTools(toolRegistry, toolsAdapter)
 
-		logger.Info("Memory service initialized (markdown backend)", zap.String("dir", memoryDir))
 		return nil
 	})
 	// Trigger init eagerly so LayeredMemoryService is available for chat recall/extraction
@@ -1282,4 +1294,62 @@ func convertHeartbeatConfig(cfg *config.HeartbeatConfig) *heartbeat.Config {
 		}
 	}
 	return hbCfg
+}
+
+// initDualWriteBackend creates a DualWriteBackend with VectorStore + HybridSearcher.
+// Returns nil if initialization fails (caller should fall back to markdown-only).
+func initDualWriteBackend(cfg *config.Config, mdBackend *memory.PureMarkdownBackend) *memory.DualWriteBackend {
+	log := logger.Get()
+
+	// Resolve DB path
+	dbPath := cfg.Memory.VectorStore.DBPath
+	if dbPath == "" {
+		dbPath = "./data/memory.db"
+	}
+
+	dims := cfg.Memory.VectorStore.Dimensions
+
+	// Create cybertron embedding provider (lazy — model downloads on first use)
+	embCfg := cfg.Embedding
+	modelsDir := filepath.Join(filepath.Dir(dbPath), "models")
+	model := embCfg.Model
+	if model == "" {
+		model = embedding.DefaultCybertronModel
+	}
+	embProvider := embedding.NewCybertronProvider(embedding.CybertronConfig{
+		ModelsDir:  modelsDir,
+		Model:      model,
+		Dimensions: embCfg.Dimensions,
+	})
+
+	// Use configured dims or fallback; actual dims resolved lazily on first embed
+	if dims <= 0 {
+		if embCfg.Dimensions > 0 {
+			dims = embCfg.Dimensions
+		} else {
+			dims = 512 // BGE-small-zh default
+		}
+	}
+
+	log.Info().
+		Str("provider", embProvider.Name()).
+		Str("model", embProvider.Model()).
+		Msg("Embedding provider configured (lazy load)")
+
+	// Create VectorStore (after embedding provider so dims are known)
+	vs, err := memory.NewVectorStore(memory.VectorStoreConfig{
+		DBPath:       dbPath,
+		EmbeddingDim: dims,
+		MaxChunks:    10000,
+		EnableFTS:    true,
+	})
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to initialize vector store")
+		return nil
+	}
+
+	// Create HybridSearcher → MemoryService → DualWriteBackend
+	searcher := memory.NewHybridSearcher(vs, embProvider, cfg.Memory)
+	memSvc := memory.NewMemoryService(searcher)
+	return memory.NewDualWriteBackend(mdBackend, memSvc)
 }

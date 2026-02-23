@@ -550,13 +550,13 @@ func defaults() Config {
 			Cleanup:     SessionCleanupConfig{Enabled: true, ArchiveAfter: 168 * time.Hour, DeleteAfter: 720 * time.Hour, CleanupInterval: time.Hour},
 		},
 		Embedding: EmbeddingConfig{
-			Provider: "openai", Model: "text-embedding-3-small", Dimensions: 1536, BatchSize: 100, Timeout: 30 * time.Second,
+			Provider: "cybertron", Model: "BAAI/bge-small-zh-v1.5", Dimensions: 0, BatchSize: 100, Timeout: 30 * time.Second,
 			Cache:  EmbeddingCacheConfig{Enabled: true, MaxEntries: 10000, TTL: 24 * time.Hour},
 			OpenAI: OpenAIEmbeddingConfig{BaseURL: "https://api.openai.com"},
 			Ollama: OllamaEmbeddingConfig{BaseURL: "http://localhost:11434"},
 		},
 		Memory: MemoryConfig{
-			VectorStore: VectorStoreConfig{Enabled: true, DBPath: "./data/memory.db", Dimensions: 1536},
+			VectorStore: VectorStoreConfig{Enabled: true, DBPath: "./data/memory.db", Dimensions: 0},
 			Search:      MemorySearchConfig{VectorWeight: 0.7, KeywordWeight: 0.3, MinScore: 0.5, MaxResults: 10},
 		},
 

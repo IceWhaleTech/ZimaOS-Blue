@@ -57,9 +57,9 @@ type MemoryStats struct {
 	Backend        string `json:"backend"`
 }
 
-// UnifiedMemoryService provides a unified interface backed by PureMarkdownBackend.
+// UnifiedMemoryService provides a unified interface backed by any MemoryBackend.
 type UnifiedMemoryService struct {
-	backend *PureMarkdownBackend
+	backend MemoryBackend
 	mu      sync.RWMutex
 }
 
@@ -68,9 +68,21 @@ func NewUnifiedMemoryService(md *PureMarkdownBackend) *UnifiedMemoryService {
 	return &UnifiedMemoryService{backend: md}
 }
 
+// SetBackend swaps the active backend (e.g. from markdown to dual-write).
+func (s *UnifiedMemoryService) SetBackend(b MemoryBackend) {
+	s.mu.Lock()
+	s.backend = b
+	s.mu.Unlock()
+}
+
 // GetActiveBackend returns the name of the active backend.
 func (s *UnifiedMemoryService) GetActiveBackend() string {
-	return "markdown"
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.backend == nil {
+		return ""
+	}
+	return s.backend.Name()
 }
 
 // Remember stores a new memory.

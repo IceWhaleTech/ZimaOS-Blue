@@ -2,6 +2,7 @@ package mediagen
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sort"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	basetask "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 )
 
 const (
@@ -22,6 +24,7 @@ type Manager struct {
 	modelMap     map[string]string       // modelID -> provider name
 	storage      *MediaStorage
 	tasks        sync.Map // taskID -> *MediaTask
+	taskStore    *TaskStore
 	mu           sync.RWMutex
 
 	// Provider config management
@@ -335,10 +338,17 @@ func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, 
 // GetTask returns the current state of a task.
 func (m *Manager) GetTask(taskID string) (*MediaTask, error) {
 	v, ok := m.tasks.Load(taskID)
-	if !ok {
-		return nil, ErrTaskNotFound
+	if ok {
+		return v.(*MediaTask), nil
 	}
-	return v.(*MediaTask), nil
+	// Fall back to persistent store
+	if m.taskStore != nil {
+		pt, err := m.taskStore.Get(taskID)
+		if err == nil {
+			return pt.ToMediaTask(), nil
+		}
+	}
+	return nil, ErrTaskNotFound
 }
 
 // WaitForTask blocks until the task completes or context is cancelled.
@@ -447,6 +457,9 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 		updated.Type = task.Type
 		updated.CreatedAt = task.CreatedAt
 		updated.Request = task.Request
+		updated.MessageID = task.MessageID
+		updated.Category = task.Category
+		updated.Source = task.Source
 
 		m.tasks.Store(taskID, updated)
 
@@ -455,7 +468,15 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 			m.cacheResults(updated)
 			return
 		case TaskStatusFailed:
+			if m.taskStore != nil {
+				_ = m.taskStore.UpdateStatus(taskID, TaskStatusFailed, updated.Progress, updated.Error, "")
+			}
 			return
+		default:
+			// Persist progress
+			if m.taskStore != nil {
+				_ = m.taskStore.UpdateStatus(taskID, updated.Status, updated.Progress, "", "")
+			}
 		}
 
 		// Exponential backoff
@@ -514,6 +535,17 @@ func (m *Manager) cacheResults(task *MediaTask) {
 	now := time.Now()
 	task.CompletedAt = &now
 	m.tasks.Store(task.ID, task)
+
+	// Persist success to DB
+	if m.taskStore != nil {
+		respJSON := ""
+		if task.Response != nil {
+			if b, err := json.Marshal(task.Response); err == nil {
+				respJSON = string(b)
+			}
+		}
+		_ = m.taskStore.UpdateStatus(task.ID, TaskStatusSucceeded, 1.0, "", respJSON)
+	}
 }
 
 // updateTaskError marks a task as failed.
@@ -528,6 +560,148 @@ func (m *Manager) updateTaskError(taskID, errMsg string) {
 	now := time.Now()
 	task.CompletedAt = &now
 	m.tasks.Store(taskID, task)
+
+	// Persist to DB
+	if m.taskStore != nil {
+		_ = m.taskStore.UpdateStatus(taskID, TaskStatusFailed, task.Progress, errMsg, "")
+	}
+}
+
+// SetTaskStore sets the persistent task store for power-failure recovery.
+func (m *Manager) SetTaskStore(store *TaskStore) {
+	m.taskStore = store
+}
+
+// CreateTask creates a persistent media generation task and starts async execution.
+// Returns immediately with the task ID — the caller polls for status.
+func (m *Manager) CreateTask(ctx context.Context, req *MediaRequest, messageID, category, source string) (*MediaTask, error) {
+	provider, err := m.findProvider(req.Model)
+	if err != nil {
+		return nil, err
+	}
+	if !provider.SupportsType(req.Type) {
+		return nil, fmt.Errorf("%w: provider %s does not support %s", ErrUnsupportedType, provider.Name(), req.Type)
+	}
+
+	taskID := uuid.New().String()
+	now := time.Now()
+	task := &MediaTask{
+		BaseTask:  basetask.BaseTask{ID: taskID, Status: TaskStatusPending, CreatedAt: now},
+		MessageID: messageID,
+		Type:      req.Type,
+		Category:  category,
+		Provider:  provider.Name(),
+		Model:     req.Model,
+		Request:   req,
+		Source:    source,
+	}
+
+	// Persist to DB first (survives power failure)
+	if m.taskStore != nil {
+		pt := FromMediaTask(task)
+		if err := m.taskStore.Create(pt); err != nil {
+			return nil, fmt.Errorf("failed to persist task: %w", err)
+		}
+	}
+
+	// Store in memory
+	m.tasks.Store(taskID, task)
+
+	// Start async generation
+	go m.executeTask(task, provider)
+
+	return task, nil
+}
+
+// executeTask runs the actual generation and updates task state.
+func (m *Manager) executeTask(task *MediaTask, provider MediaProvider) {
+	ctx := context.Background()
+
+	upstream, err := provider.Generate(ctx, task.Request)
+	if err != nil {
+		m.updateTaskError(task.ID, err.Error())
+		return
+	}
+
+	// Update with upstream info
+	task.UpstreamID = upstream.UpstreamID
+	if m.taskStore != nil {
+		_ = m.taskStore.UpdateUpstreamID(task.ID, upstream.UpstreamID)
+	}
+
+	// If sync provider returned immediately
+	if upstream.Status == TaskStatusSucceeded {
+		task.Status = TaskStatusSucceeded
+		task.Response = upstream.Response
+		task.Progress = 1.0
+		m.tasks.Store(task.ID, task)
+		m.cacheResults(task)
+		return
+	}
+
+	// Async: update status to processing and start polling
+	task.Status = TaskStatusProcessing
+	m.tasks.Store(task.ID, task)
+	if m.taskStore != nil {
+		_ = m.taskStore.UpdateStatus(task.ID, TaskStatusProcessing, 0, "", "")
+	}
+
+	m.pollTask(task.ID, provider)
+}
+
+// GetTasksByMessage returns all tasks associated with a message ID.
+func (m *Manager) GetTasksByMessage(messageID string) ([]*MediaTask, error) {
+	if m.taskStore == nil {
+		return nil, nil
+	}
+	pts, err := m.taskStore.GetByMessageID(messageID)
+	if err != nil {
+		return nil, err
+	}
+	var tasks []*MediaTask
+	for _, pt := range pts {
+		tasks = append(tasks, pt.ToMediaTask())
+	}
+	return tasks, nil
+}
+
+// RecoverTasks resumes non-terminal tasks after a restart.
+func (m *Manager) RecoverTasks() {
+	if m.taskStore == nil {
+		return
+	}
+	pending, err := m.taskStore.ListPending()
+	if err != nil {
+		log.Printf("[mediagen] failed to load pending tasks for recovery: %v", err)
+		return
+	}
+	if len(pending) == 0 {
+		return
+	}
+	log.Printf("[mediagen] recovering %d pending media tasks", len(pending))
+
+	for _, pt := range pending {
+		task := pt.ToMediaTask()
+		m.tasks.Store(task.ID, task)
+
+		// Find the provider to resume polling
+		provider, err := m.findProvider(task.Model)
+		if err != nil {
+			log.Printf("[mediagen] recovery: provider not found for task %s model %s: %v", task.ID, task.Model, err)
+			m.updateTaskError(task.ID, "provider not available after restart")
+			continue
+		}
+
+		if task.UpstreamID != "" {
+			// Has upstream ID — resume polling
+			log.Printf("[mediagen] resuming poll for task %s (upstream: %s)", task.ID, task.UpstreamID)
+			go m.pollTask(task.ID, provider)
+		} else {
+			// No upstream ID — re-execute from scratch
+			log.Printf("[mediagen] re-executing task %s", task.ID)
+			go m.executeTask(task, provider)
+		}
+	}
 }
 
 // createProvider creates a concrete MediaProvider from config.

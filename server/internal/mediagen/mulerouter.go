@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 )
 
 // MuleRouterProvider implements MediaProvider using MuleRouter's unified API.
@@ -42,21 +43,35 @@ func (p *MuleRouterProvider) Name() string { return "mulerouter" }
 
 func (p *MuleRouterProvider) SupportedModels() []MediaModelInfo {
 	return []MediaModelInfo{
-		// Google vendor — image (default, best cost/quality ratio)
-		{ID: "nano-banana-pro", Name: "Nano Banana Pro", Type: MediaTypeImage, Provider: "mulerouter"},
-		// Alibaba vendor — image
-		{ID: "qwen-image-max", Name: "Qwen Image Max", Type: MediaTypeImage, Provider: "mulerouter"},
-		{ID: "qwen-image-edit-max", Name: "Qwen Image Edit Max", Type: MediaTypeImage, Provider: "mulerouter"},
-		// OpenAI vendor — image
-		{ID: "dall-e-3", Name: "DALL-E 3", Type: MediaTypeImage, Provider: "mulerouter"},
-		// Midjourney vendor — image
-		{ID: "midjourney", Name: "Midjourney", Type: MediaTypeImage, Provider: "mulerouter"},
-		// Alibaba vendor — video
-		{ID: "wan2.6-t2v", Name: "Wan2 Text-to-Video", Type: MediaTypeVideo, Provider: "mulerouter"},
-		{ID: "wan2.6-i2v", Name: "Wan2 Image-to-Video", Type: MediaTypeVideo, Provider: "mulerouter"},
-		{ID: "wan2-spark-t2v", Name: "Wan2 Spark Text-to-Video", Type: MediaTypeVideo, Provider: "mulerouter"},
-		// Midjourney vendor — video
-		{ID: "midjourney-video", Name: "Midjourney Video", Type: MediaTypeVideo, Provider: "mulerouter"},
+		// --- Text-to-Image (t2i) ---
+		{ID: "nano-banana-pro", Name: "Nano Banana Pro", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
+		{ID: "qwen-image-max", Name: "Qwen Image Max", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
+		{ID: "dall-e-3", Name: "DALL-E 3", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
+		{ID: "midjourney", Name: "Midjourney", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
+		{ID: "wan2.5-t2i-preview", Name: "Wan 2.5 T2I", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
+		{ID: "wan2.6-t2i", Name: "Wan 2.6 T2I", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
+		// --- Image Editing (i2i) ---
+		{ID: "qwen-image-edit-max", Name: "Qwen Image Edit", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
+		{ID: "wan2.5-i2i-preview", Name: "Wan 2.5 I2I", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
+		{ID: "wan2.6-image", Name: "Wan 2.6 Image Edit", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
+		// --- Text-to-Video (t2v) ---
+		{ID: "wan2.6-t2v", Name: "Wan 2.6 T2V", Type: MediaTypeVideo, Category: CategoryT2V, Provider: "mulerouter"},
+		{ID: "wan2.5-t2v-spark", Name: "Wan 2.5 T2V Spark", Type: MediaTypeVideo, Category: CategoryT2V, Provider: "mulerouter"},
+		{ID: "wan2.6-t2v-spark", Name: "Wan 2.6 T2V Spark", Type: MediaTypeVideo, Category: CategoryT2V, Provider: "mulerouter"},
+		{ID: "wan2.5-t2v-preview", Name: "Wan 2.5 T2V", Type: MediaTypeVideo, Category: CategoryT2V, Provider: "mulerouter"},
+		{ID: "wan2.2-t2v-plus", Name: "Wan 2.2 T2V Plus", Type: MediaTypeVideo, Category: CategoryT2V, Provider: "mulerouter"},
+		{ID: "wan2-spark-t2v", Name: "Wan2 Spark T2V", Type: MediaTypeVideo, Category: CategoryT2V, Provider: "mulerouter"},
+		// --- Image-to-Video (i2v) ---
+		{ID: "wan2.6-i2v", Name: "Wan 2.6 I2V", Type: MediaTypeVideo, Category: CategoryI2V, Provider: "mulerouter"},
+		{ID: "wan2.5-i2v-spark", Name: "Wan 2.5 I2V Spark", Type: MediaTypeVideo, Category: CategoryI2V, Provider: "mulerouter"},
+		{ID: "wan2.6-i2v-spark", Name: "Wan 2.6 I2V Spark", Type: MediaTypeVideo, Category: CategoryI2V, Provider: "mulerouter"},
+		{ID: "wan2.5-i2v-preview", Name: "Wan 2.5 I2V", Type: MediaTypeVideo, Category: CategoryI2V, Provider: "mulerouter"},
+		{ID: "wan2.2-i2v-plus", Name: "Wan 2.2 I2V Plus", Type: MediaTypeVideo, Category: CategoryI2V, Provider: "mulerouter"},
+		{ID: "wan2.2-i2v-flash", Name: "Wan 2.2 I2V Flash", Type: MediaTypeVideo, Category: CategoryI2V, Provider: "mulerouter"},
+		{ID: "midjourney-video", Name: "Midjourney Video", Type: MediaTypeVideo, Category: CategoryI2V, Provider: "mulerouter"},
+		// --- Keyframe-to-Video (kf2v) ---
+		{ID: "wan2.1-kf2v-plus", Name: "Wan 2.1 KF2V", Type: MediaTypeVideo, Category: CategoryKF2V, Provider: "mulerouter"},
+		{ID: "wan2.1-vace-plus", Name: "Wan 2.1 VACE", Type: MediaTypeVideo, Category: CategoryKF2V, Provider: "mulerouter"},
 	}
 }
 
@@ -234,14 +249,17 @@ func (p *MuleRouterProvider) generateOpenAI(ctx context.Context, req *MediaReque
 
 	now := time.Now()
 	return &MediaTask{
-		ID:       uuid.New().String(),
-		Status:   TaskStatusSucceeded,
+		BaseTask: task.BaseTask{
+			ID:          uuid.New().String(),
+			Status:      TaskStatusSucceeded,
+			Progress:    1.0,
+			CreatedAt:   now,
+			CompletedAt: &now,
+		},
 		Type:     MediaTypeImage,
 		Provider: "mulerouter",
 		Model:    model,
 		Response: &MediaResponse{Created: oaiResp.Created, Data: results},
-		CreatedAt:   now,
-		CompletedAt: &now,
 	}, nil
 }
 
@@ -321,13 +339,11 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 	p.taskMeta.Store(upstreamID, &muleRouterTaskMeta{vendor: vendor, model: model})
 
 	return &MediaTask{
-		ID:         uuid.New().String(),
-		Status:     TaskStatusProcessing,
+		BaseTask:   task.BaseTask{ID: uuid.New().String(), Status: TaskStatusProcessing, CreatedAt: time.Now()},
 		Type:       req.Type,
 		Provider:   "mulerouter",
 		Model:      model,
 		UpstreamID: upstreamID,
-		CreatedAt:  time.Now(),
 	}, nil
 }
 
@@ -340,11 +356,11 @@ func modelToVendor(model string) string {
 		return "google"
 	case "midjourney", "midjourney-video":
 		return "midjourney"
-	case "wan2-spark-t2v":
+	case "wan2-spark-t2v", "wan2.5-t2v-spark", "wan2.6-t2v-spark",
+		"wan2.5-i2v-spark", "wan2.6-i2v-spark":
 		return "mulerouter"
 	default:
-		// Alibaba covers: qwen-image-max, qwen-image-edit-max,
-		// wan2.6-t2v, wan2.6-i2v, etc.
+		// Alibaba covers: qwen-*, wan2.1-*, wan2.2-*, wan2.5-*, wan2.6-* (non-spark)
 		return "alibaba"
 	}
 }

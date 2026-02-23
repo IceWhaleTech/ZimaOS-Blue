@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 )
 
 const defaultDashScopeBaseURL = "https://dashscope.aliyuncs.com"
@@ -111,11 +112,9 @@ func (p *DashScopeProvider) Generate(ctx context.Context, req *MediaRequest) (*M
 	}
 
 	return &MediaTask{
-		ID:         uuid.New().String(),
-		Status:     TaskStatusProcessing,
+		BaseTask:   task.BaseTask{ID: uuid.New().String(), Status: TaskStatusProcessing, CreatedAt: time.Now()},
 		Type:       MediaTypeImage,
 		UpstreamID: dsResp.Output.TaskID,
-		CreatedAt:  time.Now(),
 	}, nil
 }
 

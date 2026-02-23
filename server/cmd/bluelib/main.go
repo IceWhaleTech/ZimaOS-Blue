@@ -38,6 +38,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
@@ -650,29 +651,33 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	// Initialize shared cache
 	sharedCache := proxy.NewCCCache(proxy.DefaultCacheConfig())
 
-	// Initialize memory handler with lazy init (vector_memory.db created on first request)
+	// Initialize memory handler (markdown primary, optional dual-write with vector store)
 	var memoryHandler *server.MemoryHandler
 	memoryHandler = server.NewLazyMemoryHandler(func(h *server.MemoryHandler) error {
-		vectorDbPath := filepath.Join(dataDir, "vector_memory.db")
-		vectorStore, err := memory.NewVectorStore(memory.VectorStoreConfig{
-			DBPath:       vectorDbPath,
-			EmbeddingDim: 1536,
-			MaxChunks:    10000,
-			EnableFTS:    true,
-			EnableVec:    true,
-		})
+		memoryDir := cfg.Memory.MarkdownDir
+		if memoryDir == "" {
+			memoryDir = workspaceMgr.MemoryDir()
+		}
+		mdBackend, err := memory.NewPureMarkdownBackend(memoryDir)
 		if err != nil {
-			zapLogger.Warn("Failed to initialize vector store", zap.Error(err))
+			zapLogger.Warn("Failed to initialize markdown backend", zap.Error(err))
 			return err
 		}
-		hybridSearcher := memory.NewHybridSearcher(vectorStore, nil, cfg.Memory)
-		memoryService := memory.NewMemoryService(hybridSearcher)
-		unifiedService := memory.NewUnifiedMemoryService(memoryService, cfg.Memory)
-		h.SetService(memoryService)
+		unifiedService := memory.NewUnifiedMemoryService(mdBackend)
 		h.SetUnifiedService(unifiedService)
 
-		// Initialize LayeredMemoryService for dual-layer memory architecture
-		memoryDir := workspaceMgr.MemoryDir() // Use workspace memory directory
+		// Try to set up dual-write backend with vector store + hybrid search
+		if cfg.Memory.VectorStore.Enabled {
+			if dualBackend := initDualWriteBackendLib(cfg, mdBackend); dualBackend != nil {
+				unifiedService.SetBackend(dualBackend)
+				zapLogger.Info("Memory service initialized (dual-write: markdown + vector store)")
+			} else {
+				zapLogger.Info("Memory service initialized (markdown-only, vector store init failed)")
+			}
+		} else {
+			zapLogger.Info("Memory service initialized (markdown backend)", zap.String("dir", memoryDir))
+		}
+
 		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
 			BaseDir:            memoryDir,
 			DailyRetentionDays: 30,
@@ -684,12 +689,12 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 			zapLogger.Info("Layered memory service initialized", zap.String("dir", memoryDir))
 		}
 
-		// Register memory tools for AI agent access
 		toolsAdapter := memory.NewToolsAdapter(unifiedService)
 		tools.RegisterMemoryTools(services.ToolRegistry, toolsAdapter)
-		zapLogger.Info("Vector memory store initialized lazily")
+
 		return nil
 	})
+	memoryHandler.Init()
 
 	// Create Echo server
 	e := echo.New()
@@ -797,3 +802,57 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 // Required for c-archive build mode
 func main() {}
+
+// initDualWriteBackendLib creates a DualWriteBackend with VectorStore + HybridSearcher.
+// Returns nil if initialization fails (caller should fall back to markdown-only).
+func initDualWriteBackendLib(cfg *config.Config, mdBackend *memory.PureMarkdownBackend) *memory.DualWriteBackend {
+	log := logger.Get()
+
+	dbPath := cfg.Memory.VectorStore.DBPath
+	if dbPath == "" {
+		dbPath = "./data/memory.db"
+	}
+
+	dims := cfg.Memory.VectorStore.Dimensions
+
+	// Create cybertron embedding provider (lazy — model downloads on first use)
+	embCfg := cfg.Embedding
+	modelsDir := filepath.Join(filepath.Dir(dbPath), "models")
+	model := embCfg.Model
+	if model == "" {
+		model = embedding.DefaultCybertronModel
+	}
+	embProvider := embedding.NewCybertronProvider(embedding.CybertronConfig{
+		ModelsDir:  modelsDir,
+		Model:      model,
+		Dimensions: embCfg.Dimensions,
+	})
+
+	if dims <= 0 {
+		if embCfg.Dimensions > 0 {
+			dims = embCfg.Dimensions
+		} else {
+			dims = 512 // BGE-small-zh default
+		}
+	}
+
+	log.Info().
+		Str("provider", embProvider.Name()).
+		Str("model", embProvider.Model()).
+		Msg("Embedding provider configured (lazy load)")
+
+	vs, err := memory.NewVectorStore(memory.VectorStoreConfig{
+		DBPath:       dbPath,
+		EmbeddingDim: dims,
+		MaxChunks:    10000,
+		EnableFTS:    true,
+	})
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to initialize vector store")
+		return nil
+	}
+
+	searcher := memory.NewHybridSearcher(vs, embProvider, cfg.Memory)
+	memSvc := memory.NewMemoryService(searcher)
+	return memory.NewDualWriteBackend(mdBackend, memSvc)
+}

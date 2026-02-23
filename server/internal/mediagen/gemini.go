@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 )
 
 const defaultGeminiBaseURL = "https://generativelanguage.googleapis.com"
@@ -135,8 +136,13 @@ func (p *GeminiProvider) Generate(ctx context.Context, req *MediaRequest) (*Medi
 	taskID := uuid.New().String()
 	now := time.Now()
 	task := &MediaTask{
-		ID:       taskID,
-		Status:   TaskStatusSucceeded,
+		BaseTask: task.BaseTask{
+			ID:          taskID,
+			Status:      TaskStatusSucceeded,
+			Progress:    1.0,
+			CreatedAt:   now,
+			CompletedAt: &now,
+		},
 		Type:     MediaTypeImage,
 		Provider: "gemini",
 		Model:    model,
@@ -144,8 +150,6 @@ func (p *GeminiProvider) Generate(ctx context.Context, req *MediaRequest) (*Medi
 			Created: now.Unix(),
 			Data:    results,
 		},
-		CreatedAt:   now,
-		CompletedAt: &now,
 	}
 
 	p.tasks.Store(taskID, task)

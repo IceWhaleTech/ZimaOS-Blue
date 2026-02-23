@@ -249,10 +249,18 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		mediaManager := mediagen.NewManager(mediaStorage, configStore, locale)
 		mediaManager.InitConfigs()
 
-		// Always register media tools — they check for available providers at execution time.
-		// This ensures tools appear in the tool list even if providers are added after startup.
-		s.ToolRegistry.Register(mediagen.NewImageGenerateTool(mediaManager))
-		s.ToolRegistry.Register(mediagen.NewVideoGenerateTool(mediaManager))
+		// Task persistence for power-failure recovery (shares main DB)
+		taskStore, err := mediagen.NewTaskStore(s.DB)
+		if err != nil {
+			logger.Warn("Failed to initialize media task store", zap.Error(err))
+		} else {
+			mediaManager.SetTaskStore(taskStore)
+			mediaManager.RecoverTasks()
+		}
+
+		// Always register media skills — they check for available providers at execution time.
+		s.ToolRegistry.Register(mediagen.NewImageGenerateSkill(mediaManager))
+		s.ToolRegistry.Register(mediagen.NewVideoGenerateSkill(mediaManager))
 
 		// Register HTTP routes
 		mediaHandler := mediagen.NewHandler(mediaManager, mediaStorage)

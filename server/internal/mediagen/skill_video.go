@@ -8,15 +8,15 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
-// VideoGenerateTool implements tools.Tool for LLM-driven video generation.
+// VideoGenerateSkill implements tools.Tool for LLM-driven video generation.
 // Unlike image generation, video gen returns a task ID immediately since it takes 30-60s.
-type VideoGenerateTool struct {
+type VideoGenerateSkill struct {
 	manager *Manager
 }
 
 // availableVideoModels returns a comma-separated list of video model IDs
 // from currently registered providers.
-func (t *VideoGenerateTool) availableVideoModels() string {
+func (t *VideoGenerateSkill) availableVideoModels() string {
 	models := t.manager.Models()
 	var names []string
 	for _, m := range models {
@@ -30,13 +30,13 @@ func (t *VideoGenerateTool) availableVideoModels() string {
 	return strings.Join(names, ", ")
 }
 
-// NewVideoGenerateTool creates a new video generation tool.
-func NewVideoGenerateTool(manager *Manager) *VideoGenerateTool {
-	return &VideoGenerateTool{manager: manager}
+// NewVideoGenerateSkill creates a new video generation tool.
+func NewVideoGenerateSkill(manager *Manager) *VideoGenerateSkill {
+	return &VideoGenerateSkill{manager: manager}
 }
 
 // Definition returns the tool definition for the LLM.
-func (t *VideoGenerateTool) Definition() tools.ToolDefinition {
+func (t *VideoGenerateSkill) Definition() tools.ToolDefinition {
 	return tools.ToolDefinition{
 		Name:        "video_generate",
 		Description: "Generate videos from text descriptions. Returns a task ID for tracking progress since video generation takes 30-60 seconds. The user can check status at /api/media/tasks/{task_id}.",
@@ -67,7 +67,7 @@ func (t *VideoGenerateTool) Definition() tools.ToolDefinition {
 }
 
 // Execute starts video generation and returns a task ID immediately.
-func (t *VideoGenerateTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *VideoGenerateSkill) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	req := &MediaRequest{Type: MediaTypeVideo}
 
 	if v, ok := args["prompt"].(string); ok {
@@ -108,4 +108,4 @@ func (t *VideoGenerateTool) Execute(ctx context.Context, args map[string]interfa
 	}, nil
 }
 
-var _ tools.Tool = (*VideoGenerateTool)(nil)
+var _ tools.Tool = (*VideoGenerateSkill)(nil)
