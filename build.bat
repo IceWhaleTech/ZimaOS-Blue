@@ -8,8 +8,13 @@ setlocal enabledelayedexpansion
 set "PROJECT_ROOT=%~dp0"
 set "COMMAND=%~1"
 
-:: Enable CGO for eSpeak-NG static linking
+:: Enable CGO for Windows native TTS/ASR (SAPI)
 set "CGO_ENABLED=1"
+set "CC=gcc"
+set "CXX=g++"
+set "CGO_LDFLAGS=-static-libgcc -static-libstdc++"
+set "CGO_CFLAGS=-O2"
+set "CGO_CXXFLAGS=-O2"
 
 if "%COMMAND%"=="" set "COMMAND=prd"
 
@@ -195,10 +200,11 @@ call :check_prereqs
 if errorlevel 1 exit /b 1
 
 echo [INFO] Production run: build web, copy to server/internal/web, start server...
-call npm install
+
 :: Check production dependencies for vulnerabilities
 echo [INFO] Checking production dependencies for vulnerabilities...
 cd /d "%PROJECT_ROOT%web"
+call npm install
 call npm audit --omit=dev
 if errorlevel 1 (
     echo [ERROR] Production dependencies have vulnerabilities. Please fix them before building.

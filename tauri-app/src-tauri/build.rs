@@ -13,19 +13,13 @@ fn main() {
         println!("cargo:rustc-link-lib=ntdll");
         println!("cargo:rustc-link-lib=winmm");
 
-        // Conditionally link espeak-ng (only if built)
-        let espeak_lib = std::path::Path::new("../../third_party/espeak-ng/build/src/libespeak-ng/libespeak-ng.a");
-        if espeak_lib.exists() {
-            println!("cargo:rustc-link-search=native=../../third_party/espeak-ng/build/src/libespeak-ng");
-            println!("cargo:rustc-link-search=native=../../third_party/espeak-ng/build/src/ucd-tools");
-            println!("cargo:rustc-link-search=native=../../third_party/espeak-ng/build/src/speechPlayer");
-            println!("cargo:rustc-link-lib=static=espeak-ng");
-            println!("cargo:rustc-link-lib=static=ucd");
-            println!("cargo:rustc-link-lib=static=speechPlayer");
-            // Link C++ standard library for speechPlayer (C++ code)
-            println!("cargo:rustc-link-lib=stdc++");
-            println!("cargo:rerun-if-changed=../../third_party/espeak-ng/build/src/libespeak-ng/libespeak-ng.a");
-        }
+        // Link C++ standard library for Windows TTS/ASR (speech_tts_windows.cpp in libblue.a)
+        // Note: Using dynamic linking due to C runtime conflicts with static linking
+        // The DLL will be automatically packaged by build-all.ps1
+        println!("cargo:rustc-link-lib=stdc++");
+
+        // Note: espeak-ng, kokoro, and related libraries are no longer compiled on Windows
+        // Windows uses native TTS/ASR APIs instead
 
         // Force rebuild when libblue.a changes
         println!("cargo:rerun-if-changed=lib/libblue.a");

@@ -301,7 +301,7 @@ func (h *ServiceHandler) Start(c echo.Context) error {
 
 	switch runtime.GOOS {
 	case "windows":
-		output, err = h.runCommand("sc", "start", h.serviceName)
+		output, err = h.startWindowsService()
 	case "darwin":
 		// Use "launchctl asuser <uid>" to ensure the service runs in the user's
 		// GUI launchd domain (required for TCC authorization).
@@ -341,7 +341,7 @@ func (h *ServiceHandler) Stop(c echo.Context) error {
 
 	switch runtime.GOOS {
 	case "windows":
-		output, err = h.runCommand("sc", "stop", h.serviceName)
+		output, err = h.stopWindowsService()
 	case "darwin":
 		uid := "0"
 		if u, err := user.Current(); err == nil {
@@ -380,8 +380,8 @@ func (h *ServiceHandler) Restart(c echo.Context) error {
 	switch runtime.GOOS {
 	case "windows":
 		// Windows doesn't have a native restart, so stop then start
-		h.runCommand("sc", "stop", h.serviceName)
-		output, err = h.runCommand("sc", "start", h.serviceName)
+		h.stopWindowsService()
+		output, err = h.startWindowsService()
 	case "darwin":
 		uid := "0"
 		if u, err := user.Current(); err == nil {
@@ -425,7 +425,7 @@ func (h *ServiceHandler) Enable(c echo.Context) error {
 
 	switch runtime.GOOS {
 	case "windows":
-		output, err = h.runCommand("sc", "config", h.serviceName, "start=", "auto")
+		output, err = h.enableWindowsService()
 	case "darwin":
 		output, err = h.runCommand("launchctl", "enable", h.getLaunchdDomainTarget())
 	case "linux":
@@ -459,7 +459,7 @@ func (h *ServiceHandler) Disable(c echo.Context) error {
 
 	switch runtime.GOOS {
 	case "windows":
-		output, err = h.runCommand("sc", "config", h.serviceName, "start=", "demand")
+		output, err = h.disableWindowsService()
 	case "darwin":
 		output, err = h.runCommand("launchctl", "disable", h.getLaunchdDomainTarget())
 	case "linux":
@@ -511,86 +511,7 @@ func (h *ServiceHandler) getSystemdUnit() string {
 	return "zimaos-blue.service"
 }
 
-// Windows-specific functions
-
-func (h *ServiceHandler) getWindowsServiceInfo(info *ServiceInfo) {
-	output, err := h.runCommand("sc", "query", h.serviceName)
-	if err != nil {
-		info.Installed = false
-		info.Status = "not_installed"
-		return
-	}
-
-	info.Installed = true
-	info.Status = "installed"
-
-	if strings.Contains(output, "RUNNING") {
-		info.Running = true
-		info.Status = "running"
-	} else if strings.Contains(output, "STOPPED") {
-		info.Running = false
-		info.Status = "stopped"
-	}
-
-	// Check start type
-	configOutput, _ := h.runCommand("sc", "qc", h.serviceName)
-	if strings.Contains(configOutput, "AUTO_START") {
-		info.Enabled = true
-		info.StartType = "automatic"
-	} else if strings.Contains(configOutput, "DEMAND_START") {
-		info.Enabled = false
-		info.StartType = "manual"
-	} else if strings.Contains(configOutput, "DISABLED") {
-		info.Enabled = false
-		info.StartType = "disabled"
-	}
-
-	info.InstallPath = filepath.Dir(h.execPath)
-	info.ConfigPath = filepath.Join(info.InstallPath, "config", "config.yaml")
-}
-
-func (h *ServiceHandler) getWindowsStatus() (status string, running, installed, enabled bool) {
-	output, err := h.runCommand("sc", "query", h.serviceName)
-	if err != nil {
-		return "not_installed", false, false, false
-	}
-
-	installed = true
-	if strings.Contains(output, "RUNNING") {
-		status = "running"
-		running = true
-	} else if strings.Contains(output, "STOPPED") {
-		status = "stopped"
-		running = false
-	} else {
-		status = "unknown"
-	}
-
-	configOutput, _ := h.runCommand("sc", "qc", h.serviceName)
-	enabled = strings.Contains(configOutput, "AUTO_START")
-
-	return
-}
-
-func (h *ServiceHandler) installWindowsService() (string, error) {
-	// Check if running in Tauri mode (embedded library)
-	if h.isTauriMode() {
-		return "", fmt.Errorf("service installation must be done through the GUI application's settings")
-	}
-	// Use the executable's install command
-	return h.runCommand(h.execPath, "install")
-}
-
-func (h *ServiceHandler) uninstallWindowsService() (string, error) {
-	// Check if running in Tauri mode (embedded library)
-	if h.isTauriMode() {
-		return "", fmt.Errorf("service uninstallation must be done through the GUI application's settings")
-	}
-	// Stop the service first
-	h.runCommand("sc", "stop", h.serviceName)
-	// Use the executable's uninstall command
-	return h.runCommand(h.execPath, "uninstall")
-}
+// Windows-specific functions are in service_handler_windows.go
 
 // isTauriMode checks if running as embedded library in Tauri
 func (h *ServiceHandler) isTauriMode() bool {

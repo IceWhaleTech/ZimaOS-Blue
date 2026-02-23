@@ -1,0 +1,19 @@
+# Use MinGW-w64 (GNU) toolchain on Windows with static linking
+# This avoids libstdc++ runtime dependencies by statically linking all C++ libraries
+[build]
+target = "x86_64-pc-windows-gnu"
+
+# Link-time optimization for smaller binaries
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "z"  # Optimize for size
+strip = true     # Strip symbols
+
+# Static link C++ runtime libraries to avoid external dependencies
+# Note: Full static linking of libstdc++ causes C runtime symbol conflicts
+# Instead, we use dynamic linking and package the DLL with the installer
+[target.x86_64-pc-windows-gnu]
+rustflags = [
+    "-C", "link-arg=-static-libgcc",
+]

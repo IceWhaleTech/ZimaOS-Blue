@@ -2,8 +2,6 @@ module github.com/IceWhaleTech/ZimaOS-Blue/server
 
 go 1.24.0
 
-toolchain go1.24.12
-
 require (
 	github.com/IceWhaleTech/zorm v0.0.0-20260116154824-52cb5178f97d
 	github.com/Masterminds/semver/v3 v3.4.0

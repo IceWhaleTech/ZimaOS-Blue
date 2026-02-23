@@ -2,11 +2,11 @@
 <Windows>
 <!-- 进度 -->
   <VerticalLayout >
-  
+
     <VerticalLayout width="480" height="240" roundcorner="5,5" bkimage="file='form\pic.png'">
-	
+
 	</VerticalLayout>
-	<VerticalLayout bkcolor="#FFFFFFFF" >   
+	<VerticalLayout bkcolor="#FFFFFFFF" height="160">   
 	
 	<Control height="60" />
 	<Slider name="slrUnInstProgress" padding="30,0,30,0" height="3" mouse="false" foreimage="form\fg.png" bkimage="form\bg.png" thumbsize="0,0" bkcolor="#FFD8D8D8"  />

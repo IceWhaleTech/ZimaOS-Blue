@@ -1948,6 +1948,16 @@ func (h *Handler) UpdateTLSSettings(c echo.Context) error {
 	}
 
 	tlsManager := GetGlobalTLSManager()
+
+	// Check if trying to enable HTTPS-only without a certificate
+	if req.HTTPSOnly {
+		certInfo := tlsManager.GetCertificateInfo()
+		if certInfo == nil {
+			// No certificate available, automatically disable HTTPS-only
+			req.HTTPSOnly = false
+		}
+	}
+
 	tlsManager.SetHTTPSOnly(req.HTTPSOnly)
 	if req.HTTPSPort > 0 {
 		tlsManager.SetHTTPSPort(req.HTTPSPort)

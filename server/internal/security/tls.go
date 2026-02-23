@@ -900,12 +900,20 @@ func (m *TLSManager) LoadSettings() error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Check if HTTPS-only is enabled but no certificate is available
+	if s.HTTPSOnly && m.certificate == nil {
+		// Automatically disable HTTPS-only if no certificate
+		s.HTTPSOnly = false
+	}
+
 	m.config.HTTPSOnly = s.HTTPSOnly
 	if s.HTTPSPort > 0 {
 		m.config.HTTPSPort = s.HTTPSPort
 	}
-	m.mu.Unlock()
 	return nil
 }
 

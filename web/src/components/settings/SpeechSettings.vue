@@ -395,7 +395,7 @@ onMounted(async () => {
               <!-- Warning icon when permission denied -->
               <svg v-if="status?.asr?.permission_denied" class="w-4 h-4 text-amber-600 dark:text-amber-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
               <!-- Apple icon when OK -->
-              <svg v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
+              <svg v-else class="w-4 h-4 text-blue-600 dark:text-blue-400 dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.5)]" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
             </div>
             <div>
               <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.macosNativeName') }}</span>
@@ -441,7 +441,7 @@ onMounted(async () => {
           <div class="flex items-center gap-3">
             <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-100 dark:bg-blue-900/30">
               <!-- Windows icon -->
-              <svg class="w-4 h-4 text-[#0078D4]" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
+              <svg class="w-4 h-4 text-[#0078D4] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.5)]" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
             </div>
             <div>
               <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.windowsNativeName') }}</span>
@@ -495,7 +495,7 @@ onMounted(async () => {
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-              <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
+              <svg class="w-4 h-4 text-blue-600 dark:text-blue-400 dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.5)]" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
             </div>
             <div>
               <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.windowsNativeName') }}</span>
@@ -528,9 +528,9 @@ onMounted(async () => {
                   <!-- Warning icon for permission denied -->
                   <svg v-if="model.permission_denied" class="w-4 h-4 text-amber-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
                   <!-- Apple icon for macOS native -->
-                  <svg v-else-if="model.id === 'macos-native'" class="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
+                  <svg v-else-if="model.id === 'macos-native'" class="w-4 h-4 text-blue-600 dark:text-blue-400 dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.5)]" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
                   <!-- Windows icon for Windows native -->
-                  <svg v-else-if="model.id === 'windows-native'" class="w-4 h-4 text-[#0078D4]" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
+                  <svg v-else-if="model.id === 'windows-native'" class="w-4 h-4 text-[#0078D4] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.5)]" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
                   <!-- Whisper / AI icon -->
                   <svg v-else class="w-4 h-4 text-gray-600 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
                   <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t(model.name) }}</span>
@@ -624,7 +624,7 @@ class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
             <input v-model="selectedProvider" type="radio" value="macos-native" class="sr-only" @change="saveProvider" />
             <div class="flex-1">
               <div class="flex items-center gap-2">
-                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
+                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400 dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.5)]" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 16.56 2.93 11.3 4.7 7.72C5.57 5.94 7.36 4.86 9.28 4.84C10.56 4.81 11.78 5.72 12.57 5.72C13.36 5.72 14.85 4.62 16.4 4.8C17.07 4.83 18.89 5.08 20.07 6.77C19.96 6.84 17.62 8.23 17.65 11.1C17.68 14.54 20.59 15.62 20.63 15.63C20.59 15.72 20.12 17.37 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
                 <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.macosNativeName') }}</span>
                 <span class="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">{{ t('speech.macosNativeQuality') }}</span>
               </div>
@@ -641,7 +641,7 @@ class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
             <input v-model="selectedProvider" type="radio" value="windows-native" class="sr-only" @change="saveProvider" />
             <div class="flex-1">
               <div class="flex items-center gap-2">
-                <svg class="w-4 h-4 text-[#0078D4]" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
+                <svg class="w-4 h-4 text-[#0078D4] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.5)]" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
                 <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.windowsNativeName') }}</span>
                 <span class="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">{{ t('speech.systemNative') }}</span>
               </div>
@@ -658,7 +658,7 @@ class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
             <input v-model="selectedProvider" type="radio" value="edge-tts" class="sr-only" @change="saveProvider" />
             <div class="flex-1">
               <div class="flex items-center gap-2">
-                <svg class="w-4 h-4 text-[#0078D4]" viewBox="0 0 24 24" fill="currentColor"><path d="M21.17 3.25Q21.5 3.25 21.76 3.5 22 3.74 22 4.08V19.92Q22 20.26 21.76 20.5 21.5 20.75 21.17 20.75H2.83Q2.5 20.75 2.24 20.5 2 20.26 2 19.92V4.08Q2 3.74 2.24 3.5 2.5 3.25 2.83 3.25ZM12.67 12.13Q12.67 10.41 11.78 9.5 10.89 8.58 9.33 8.58 7.78 8.58 6.89 9.5 6 10.41 6 12.13 6 13.84 6.89 14.76 7.78 15.67 9.33 15.67 10.89 15.67 11.78 14.76 12.67 13.84 12.67 12.13ZM18 8.75H14.5V9.92H18ZM18 11.42H14.5V12.58H18ZM18 14.08H14.5V15.25H18Z"/></svg>
+                <svg class="w-4 h-4 text-[#0078D4] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.5)]" viewBox="0 0 24 24" fill="currentColor"><path d="M21.17 3.25Q21.5 3.25 21.76 3.5 22 3.74 22 4.08V19.92Q22 20.26 21.76 20.5 21.5 20.75 21.17 20.75H2.83Q2.5 20.75 2.24 20.5 2 20.26 2 19.92V4.08Q2 3.74 2.24 3.5 2.5 3.25 2.83 3.25ZM12.67 12.13Q12.67 10.41 11.78 9.5 10.89 8.58 9.33 8.58 7.78 8.58 6.89 9.5 6 10.41 6 12.13 6 13.84 6.89 14.76 7.78 15.67 9.33 15.67 10.89 15.67 11.78 14.76 12.67 13.84 12.67 12.13ZM18 8.75H14.5V9.92H18ZM18 11.42H14.5V12.58H18ZM18 14.08H14.5V15.25H18Z"/></svg>
                 <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t('speech.edgeTTSName') }}</span>
                 <span class="text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">{{ t('speech.edgeTTSQuality') }}</span>
               </div>

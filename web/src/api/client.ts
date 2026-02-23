@@ -4,9 +4,50 @@ import { getErrorMessage } from '@/utils/error'
 // Detect if running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
 
+// Get server URL from Tauri (supports both HTTP and HTTPS)
+async function getServerUrl(): Promise<string> {
+  if (isTauri && (window as any).__TAURI__?.core?.invoke) {
+    try {
+      const url = await (window as any).__TAURI__.core.invoke('get_server_url')
+      return url
+    } catch (e) {
+      console.warn('Failed to get server URL from Tauri, falling back to http://localhost', e)
+    }
+  }
+  return 'http://localhost'
+}
+
+// Cache the server URL and initialization promise
+let cachedServerUrl: string | null = null
+let initPromise: Promise<void> | null = null
+
+async function initializeBaseUrl(): Promise<void> {
+  if (!isTauri) {
+    return
+  }
+  if (!cachedServerUrl) {
+    cachedServerUrl = await getServerUrl()
+    api.defaults.baseURL = `${cachedServerUrl}/api/v1`
+    console.log('API baseURL initialized to:', api.defaults.baseURL)
+  }
+}
+
+async function getBaseUrl(): Promise<string> {
+  if (!isTauri) {
+    return ''
+  }
+  // Ensure initialization is complete before returning
+  if (!initPromise) {
+    initPromise = initializeBaseUrl()
+  }
+  await initPromise
+  return cachedServerUrl || 'http://localhost'
+}
+
 async function reacquirePreviewToken(): Promise<string | null> {
   try {
-    const url = isTauri ? 'http://localhost/api/v1/preview/token' : '/api/v1/preview/token'
+    const baseUrl = await getBaseUrl()
+    const url = isTauri ? `${baseUrl}/api/v1/preview/token` : '/api/v1/preview/token'
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -27,7 +68,8 @@ async function reacquirePreviewToken(): Promise<string | null> {
 }
 
 // Use absolute URL in Tauri, relative URL in browser
-const baseURL = isTauri ? 'http://localhost/api/v1' : '/api/v1'
+// For Tauri, this will be initialized asynchronously before first request
+const baseURL = isTauri ? '' : '/api/v1'
 
 const api = axios.create({
   baseURL,
@@ -36,6 +78,11 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 })
+
+// Initialize baseURL for Tauri before any requests
+if (isTauri) {
+  initPromise = initializeBaseUrl()
+}
 
 // Token refresh state — shared across concurrent 401s
 let isRefreshing = false
@@ -86,7 +133,8 @@ export async function ensureFreshToken(): Promise<string | null> {
   }
 
   try {
-    const url = isTauri ? 'http://localhost/api/v1/auth/refresh' : '/api/v1/auth/refresh'
+    const baseUrl = await getBaseUrl()
+    const url = isTauri ? `${baseUrl}/api/v1/auth/refresh` : '/api/v1/auth/refresh'
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -111,16 +159,15 @@ export async function ensureFreshToken(): Promise<string | null> {
 
 // Request interceptor
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
+    // Ensure baseURL is initialized for Tauri before first request
+    if (isTauri && initPromise) {
+      await initPromise
+    }
+
     const token = localStorage.getItem('token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
-    }
-
-    if (isTauri && config.url) {
-      if (config.url.startsWith('https://localhost') || config.url.startsWith('https://127.0.0.1')) {
-        config.url = config.url.replace('https://', 'http://')
-      }
     }
 
     return config

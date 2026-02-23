@@ -121,6 +121,7 @@ pub struct AppState {
     pub server_port: std::sync::Mutex<u16>,
     pub server_running: std::sync::Mutex<bool>,
     pub cli_args: CliArgs,
+    pub use_https: std::sync::Mutex<bool>, // Track if server is using HTTPS
 }
 
 impl Default for AppState {
@@ -129,6 +130,7 @@ impl Default for AppState {
             server_port: std::sync::Mutex::new(80),
             server_running: std::sync::Mutex::new(false),
             cli_args: CliArgs::default(),
+            use_https: std::sync::Mutex::new(false),
         }
     }
 }
@@ -137,7 +139,9 @@ impl Default for AppState {
 #[tauri::command]
 fn get_server_url(state: tauri::State<AppState>) -> String {
     let port = state.server_port.lock().unwrap();
-    format!("http://localhost:{}", *port)
+    let use_https = state.use_https.lock().unwrap();
+    let protocol = if *use_https { "https" } else { "http" };
+    format!("{}://localhost:{}", protocol, *port)
 }
 
 /// Check if the server is running
@@ -235,9 +239,17 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
         } else {
             None
         }.unwrap_or_else(|| {
-            dirs::home_dir()
-                .map(|h| h.join(".zimaos-blue").to_string_lossy().to_string())
-                .unwrap_or_else(|| ".zimaos-blue".to_string())
+            // For Tauri app, use data directory next to executable
+            std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|p| p.join("data")))
+                .and_then(|p| p.to_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| {
+                    // Fallback to home directory if exe path fails
+                    dirs::home_dir()
+                        .map(|h| h.join(".zimaos-blue").to_string_lossy().to_string())
+                        .unwrap_or_else(|| ".zimaos-blue".to_string())
+                })
         });
 
         blue_ffi::start_server_with_args(port, Some(&data_dir), cli_args_str.as_deref())?;
@@ -247,21 +259,47 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
             *state.server_running.lock().unwrap() = true;
         }
 
-        let url = format!("http://localhost:{}/api/v1/health", port);
+        // Detect if server supports HTTPS by trying both protocols
+        let https_url = format!("https://localhost:{}/api/v1/health", port);
+        let http_url = format!("http://localhost:{}/api/v1/health", port);
         let mut delay_ms = 25u64;
         let max_delay_ms = 100u64;
         let max_attempts = 8;
+        let mut use_https = false;
+
+        // Create a client that accepts self-signed certificates for localhost
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .timeout(std::time::Duration::from_millis(500))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
 
         for i in 0..max_attempts {
             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-            if reqwest::get(&url).await.is_ok() {
-                info!("Server ready after attempt {} with args", i + 1);
-                return Ok(());
+
+            // Try HTTPS first
+            if client.get(&https_url).send().await.is_ok() {
+                info!("Server ready with HTTPS after attempt {}", i + 1);
+                use_https = true;
+                break;
             }
+
+            // Fall back to HTTP
+            if client.get(&http_url).send().await.is_ok() {
+                info!("Server ready with HTTP after attempt {}", i + 1);
+                use_https = false;
+                break;
+            }
+
             delay_ms = std::cmp::min(delay_ms * 2, max_delay_ms);
         }
 
-        info!("Server may not be fully ready, but FFI call succeeded");
+        // Update state with detected protocol
+        if let Some(state) = app.try_state::<AppState>() {
+            *state.use_https.lock().unwrap() = use_https;
+        }
+
+        info!("Server protocol detected: {}", if use_https { "HTTPS" } else { "HTTP" });
         Ok(())
     }
 
@@ -365,6 +403,7 @@ pub fn run() {
         server_port: std::sync::Mutex::new(default_port),
         server_running: std::sync::Mutex::new(false),
         cli_args,
+        use_https: std::sync::Mutex::new(false),
     };
 
     tauri::Builder::default()
@@ -468,12 +507,16 @@ pub fn run() {
                             let _ = window.set_focus();
                         } else {
                             // Window was destroyed — recreate it
-                            let port = if let Some(state) = app.try_state::<AppState>() {
-                                *state.server_port.lock().unwrap()
+                            let (port, use_https) = if let Some(state) = app.try_state::<AppState>() {
+                                (
+                                    *state.server_port.lock().unwrap(),
+                                    *state.use_https.lock().unwrap(),
+                                )
                             } else {
-                                80
+                                (80, false)
                             };
-                            let url = format!("http://localhost:{}", port);
+                            let protocol = if use_https { "https" } else { "http" };
+                            let url = format!("{}://localhost:{}", protocol, port);
                             if let Ok(window) = tauri::WebviewWindowBuilder::new(
                                 app,
                                 "main",
@@ -545,16 +588,20 @@ pub fn run() {
                     }
                 }
 
-                // Get the server port
-                let port = if let Some(state) = app_handle.try_state::<AppState>() {
-                    *state.server_port.lock().unwrap()
+                // Get the server port and protocol
+                let (port, use_https) = if let Some(state) = app_handle.try_state::<AppState>() {
+                    (
+                        *state.server_port.lock().unwrap(),
+                        *state.use_https.lock().unwrap(),
+                    )
                 } else {
-                    80
+                    (80, false)
                 };
 
                 // Navigate the main window to the Go server URL
                 if let Some(window) = app_handle_for_window.get_webview_window("main") {
-                    let url = format!("http://localhost:{}", port);
+                    let protocol = if use_https { "https" } else { "http" };
+                    let url = format!("{}://localhost:{}", protocol, port);
                     info!("Navigating to server at {}", url);
                     if let Err(e) = window.navigate(url.parse().unwrap()) {
                         error!("Failed to navigate to server: {}", e);
