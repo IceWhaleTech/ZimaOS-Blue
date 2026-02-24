@@ -9,6 +9,7 @@ import { useProviderPoolStore } from '@/stores/providerPool'
 import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments, hasTypelessCards, clearIncrementalState } from '@/utils/typeless'
 import type { TypelessCard, TypelessCardAction, TypelessCardChoice } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
+import MediaPlaceholder from '@/components/MediaPlaceholder.vue'
 import { ttsAudioManager, streamingTTSManager } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { useNotificationStore } from '@/stores/notification'
@@ -25,11 +26,14 @@ preloadHljs()
 const props = defineProps<{
   message: Message
   isStreaming?: boolean
+  isLastAssistantMessage?: boolean
 }>()
 
 const emit = defineEmits<{
   contextmenu: [event: MouseEvent, messageId: string]
   cardAction: [conversationId: string, messageId: string, cardId: string, actionId: string, actionLabel?: string]
+  continue: []
+  regenerate: []
 }>()
 
 const chatStore = useChatStore()
@@ -42,6 +46,15 @@ const isUser = computed(() => props.message.role === 'user')
 const isAssistant = computed(() => props.message.role === 'assistant')
 const isSelected = computed(() => chatStore.selectedMessageIds.has(props.message.id))
 const isMultiSelectMode = computed(() => chatStore.isMultiSelectMode)
+const hasMediaTask = computed(() => {
+  if (!isAssistant.value) return false
+  // Server-side: message content is [media_task:uuid]
+  return /^\[media_task:[a-f0-9-]+\]$/.test(props.message.content.trim())
+})
+const mediaTaskId = computed(() => {
+  const m = props.message.content.trim().match(/^\[media_task:([a-f0-9-]+)\]$/)
+  return m ? m[1] : ''
+})
 
 // Check if user message has attachments
 const hasAttachments = computed(() => isUser.value && props.message.attachments && props.message.attachments.length > 0)
@@ -182,6 +195,12 @@ const renderedContent = computed(() => {
     html += interruptedIndicatorHtml.value
   }
   return html
+})
+
+// Whether bubble content is empty (only indicators showing)
+const isContentEmpty = computed(() => {
+  if (isUser.value) return false
+  return !strippedContent.value?.trim()
 })
 
 // Parse typeless cards from assistant messages
@@ -1011,9 +1030,15 @@ async function handleMobileDelete() {
             </button>
           </div>
 
+          <!-- Media task card (replaces normal assistant content) -->
+          <div v-if="hasMediaTask" class="assistant-message chat-assistant-bubble px-4 py-3 max-w-none">
+            <MediaPlaceholder :task-id="mediaTaskId" @retry="$emit('cardAction', message.conversation_id, message.id, 'media', 'retry')" />
+          </div>
+
           <!-- Render with typeless cards embedded in single bubble -->
           <div
-            class="assistant-message chat-assistant-bubble px-4 py-3 prose prose-slate dark:prose-invert max-w-none"
+            v-else
+            :class="['assistant-message chat-assistant-bubble px-4 prose prose-slate dark:prose-invert max-w-none', isContentEmpty ? 'py-0 !border-0 !bg-transparent' : 'py-3']"
             @click="handleCopyClick"
           >
             <template v-if="hasCards && contentSegments">
@@ -1035,11 +1060,11 @@ async function handleMobileDelete() {
             </template>
             <!-- Render without typeless cards -->
             <div
-              v-else
+              v-else-if="!isContentEmpty"
               v-html="renderedContent"
             />
             <!-- Tool execution indicator (inside bubble) -->
-            <div v-if="isStreaming && chatStore.toolExecuting" class="tool-executing-indicator">
+            <div v-if="isStreaming && chatStore.toolExecuting" :class="['tool-executing-indicator', { 'mt-0': isContentEmpty }]">
               <div class="tool-pill">
                 <span class="tool-dots">
                   <span /><span /><span />
@@ -1049,7 +1074,7 @@ async function handleMobileDelete() {
               </div>
             </div>
             <!-- Waiting timer card (>3s with no content) -->
-            <div v-if="showWaitingTimer" class="waiting-card my-3 -mx-1">
+            <div v-if="showWaitingTimer" :class="['-mx-1', isContentEmpty ? 'my-0' : 'my-3']" class="waiting-card">
               <div class="waiting-card-inner">
                 <div class="waiting-card-header">
                   <svg class="waiting-card-spinner" width="20" height="20" viewBox="0 0 24 24">
@@ -1243,6 +1268,29 @@ async function handleMobileDelete() {
                 <span class="text-base font-medium text-gray-900 dark:text-white">{{ isSpeaking ? t('chat.stopTTS') : t('chat.playTTS') }}</span>
               </button>
 
+              <!-- Continue / Regenerate (only for last assistant message, not while streaming) -->
+              <template v-if="isLastAssistantMessage && !isStreaming">
+                <button
+                  class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  @click="emit('continue'); closeMobileActions()"
+                >
+                  <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('chat.continueGenerating') }}</span>
+                </button>
+                <button
+                  class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  @click="emit('regenerate'); closeMobileActions()"
+                >
+                  <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span class="text-base font-medium text-gray-900 dark:text-white">{{ t('chat.regenerate') }}</span>
+                </button>
+              </template>
+
               <!-- Export action -->
               <button
                 class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -1297,6 +1345,11 @@ async function handleMobileDelete() {
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 0.75rem;
   padding: 0.75rem 1rem;
+}
+
+.assistant-message.\!bg-transparent {
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 :root.light .assistant-message,

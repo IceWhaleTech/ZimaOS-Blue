@@ -55,19 +55,14 @@ func RegisterAllWithConfig(registry *skill.Registry, config *Config) error {
 	}
 
 	skills := []skill.Skill{
-		// Core skills (4)
-		NewCalculator(),
-		NewSystemInfo(),
-		NewDateTime(),
-		NewSearch(),
-
 		// Productivity skills (4)
 		NewTimer(),
-		NewReminders(),
+		NewPushNotification(),
 		NewNotes(),
 		NewTasks(),
 
-		// Utility skills (3)
+		// Utility skills (4)
+		NewSearch(),
 		NewTranslate(),
 		NewNotifications(),
 		NewUnitConverter(),
@@ -106,6 +101,6 @@ func RegisterAllWithConfig(registry *skill.Registry, config *Config) error {
 
 // GetSkillCount returns the number of built-in skills
 func GetSkillCount() int {
-	return 27 // 4 + 4 + 3 + 9 + 3 + 4
+	return 24 // 4 + 4 + 9 + 3 + 4
 }
 

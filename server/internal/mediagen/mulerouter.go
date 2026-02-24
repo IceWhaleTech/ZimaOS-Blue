@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -142,8 +143,19 @@ func (p *MuleRouterProvider) Poll(ctx context.Context, taskID string) (*MediaTas
 			if r.Type == "video" {
 				mt = "video/mp4"
 			}
+			// Try multiple URL field names — different vendors use different keys
+			u := r.URL
+			if u == "" {
+				u = r.ResultURL
+			}
+			if u == "" {
+				u = r.ImageURL
+			}
+			if u == "" {
+				u = r.VideoURL
+			}
 			results = append(results, MediaResult{
-				OriginalURL: r.URL,
+				OriginalURL: u,
 				ContentType: mt,
 			})
 		}
@@ -161,9 +173,44 @@ func (p *MuleRouterProvider) Poll(ctx context.Context, taskID string) (*MediaTas
 				ContentType: "video/mp4",
 			})
 		}
+		// Fallback: some Alibaba models return a single URL at output level (not in results[])
+		if len(results) == 0 || (len(results) > 0 && results[0].OriginalURL == "") {
+			outURL := taskResp.Output.ResultURL
+			if outURL == "" {
+				outURL = taskResp.Output.ImageURL
+			}
+			if outURL == "" {
+				outURL = taskResp.Output.VideoURL
+			}
+			if outURL != "" {
+				if len(results) == 0 {
+					results = append(results, MediaResult{OriginalURL: outURL, ContentType: "image/png"})
+				} else {
+					results[0].OriginalURL = outURL
+				}
+			}
+		}
 		now := time.Now()
 		task.Response = &MediaResponse{Created: now.Unix(), Data: results}
 		task.CompletedAt = &now
+		// Log if no URLs found — helps debug vendor response format issues
+		hasURL := false
+		for _, r := range results {
+			if r.OriginalURL != "" {
+				hasURL = true
+				break
+			}
+		}
+		if !hasURL {
+			// Upstream says "succeeded" but no URL yet (e.g. only content_type).
+			// Treat as still processing so the poller keeps going.
+			log.Printf("[mediagen] poll succeeded but no URLs found for task %s, keeping as processing. raw body: %s", taskID, truncate(string(respBody), 500))
+			task.Status = TaskStatusProcessing
+			task.Response = nil
+			task.CompletedAt = nil
+			task.Progress = 0.9 // signal near-completion
+			return task, nil
+		}
 		// Clean up metadata
 		p.taskMeta.Delete(taskID)
 	case "failed":
@@ -292,6 +339,20 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 		vendorReq["duration"] = req.Duration
 	}
 
+	// Pass reference images based on model category:
+	// - i2v/i2i models: "image" field (single image)
+	// - kf2v models: "first_frame_image" + optional "last_frame_image"
+	if isKF2VModel(model) {
+		if len(req.ReferenceURLs) > 0 {
+			vendorReq["first_frame_image"] = req.ReferenceURLs[0]
+		}
+		if len(req.ReferenceURLs) > 1 {
+			vendorReq["last_frame_image"] = req.ReferenceURLs[1]
+		}
+	} else if req.ReferenceURL != "" {
+		vendorReq["image"] = req.ReferenceURL
+	}
+
 	body, err := json.Marshal(vendorReq)
 	if err != nil {
 		return nil, err
@@ -375,6 +436,11 @@ func vendorEndpoint(vendor, model string) string {
 		return "tob/diffusion"
 	}
 	return model + "/generation"
+}
+
+// isKF2VModel returns true if the model is a keyframe-to-video model.
+func isKF2VModel(model string) bool {
+	return strings.Contains(model, "kf2v") || strings.Contains(model, "vace")
 }
 
 func truncate(s string, n int) string {
@@ -462,9 +528,16 @@ type muleRouterTaskResponse struct {
 	Progress float64 `json:"progress"`
 	Output   struct {
 		Results []struct {
-			URL  string `json:"url"`
-			Type string `json:"type,omitempty"`
+			URL       string `json:"url"`
+			ResultURL string `json:"result_url,omitempty"`
+			ImageURL  string `json:"image_url,omitempty"`
+			VideoURL  string `json:"video_url,omitempty"`
+			Type      string `json:"type,omitempty"`
 		} `json:"results"`
+		// Some Alibaba models return a single URL at output level
+		ResultURL string `json:"result_url,omitempty"`
+		ImageURL  string `json:"image_url,omitempty"`
+		VideoURL  string `json:"video_url,omitempty"`
 	} `json:"output"`
 	// Some models return images/videos as []string URLs directly (e.g. nano-banana-pro)
 	Images      muleRouterMediaURLs `json:"images,omitempty"`

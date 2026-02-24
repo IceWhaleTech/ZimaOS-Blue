@@ -53,6 +53,11 @@ func (h *Handler) Stream(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "streaming not supported")
 	}
 
+	// Disable the server's WriteTimeout for this long-lived SSE connection.
+	// Without this, net/http closes the connection after WriteTimeout (default 30s).
+	rc := http.NewResponseController(w)
+	rc.SetWriteDeadline(time.Time{}) // zero = no deadline
+
 	// Subscribe to events
 	ch := h.broker.Subscribe(userID)
 	defer h.broker.Unsubscribe(userID, ch)

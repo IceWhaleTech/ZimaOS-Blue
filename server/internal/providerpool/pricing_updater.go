@@ -15,7 +15,8 @@ const remotePricingURL = "https://raw.githubusercontent.com/IceWhaleTech/ZimaOS-
 
 // remotePricingJSON is the JSON schema for the remote pricing file.
 type remotePricingJSON struct {
-	Models map[string]remotePricingItem `json:"models"`
+	Models      map[string]remotePricingItem      `json:"models"`
+	MediaModels map[string]remoteMediaPricingItem  `json:"media_models"`
 }
 
 type remotePricingItem struct {
@@ -24,15 +25,25 @@ type remotePricingItem struct {
 	Cache  float64 `json:"cache"`
 }
 
+type remoteMediaPricingItem struct {
+	Output float64 `json:"output"`
+	Unit   string  `json:"unit"` // "image", "second", "video"
+}
+
+// MediaPricingApplier is a callback for applying media model pricing updates.
+// The callback receives (modelID, outputPrice, unit) for each media model.
+type MediaPricingApplier func(modelID string, outputPrice float64, unit string)
+
 // PricingUpdater periodically fetches remote pricing and merges into BuiltinModelPricing.
 // Uses HTTP ETag to avoid re-parsing unchanged content.
 type PricingUpdater struct {
-	dl       *downloader.Downloader
-	logger   *zap.Logger
-	interval time.Duration
-	stopCh   chan struct{}
-	mu       sync.Mutex
-	lastETag string // tracks whether content actually changed
+	dl                  *downloader.Downloader
+	logger              *zap.Logger
+	interval            time.Duration
+	stopCh              chan struct{}
+	mu                  sync.Mutex
+	lastETag            string // tracks whether content actually changed
+	mediaPricingApplier MediaPricingApplier
 }
 
 // NewPricingUpdater creates a new updater. Call Start() to begin background polling.
@@ -70,6 +81,13 @@ func (u *PricingUpdater) Start() {
 // Stop stops the background polling.
 func (u *PricingUpdater) Stop() {
 	close(u.stopCh)
+}
+
+// SetMediaPricingApplier sets the callback for applying media model pricing.
+func (u *PricingUpdater) SetMediaPricingApplier(applier MediaPricingApplier) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.mediaPricingApplier = applier
 }
 
 func (u *PricingUpdater) fetchAndApply() {
@@ -110,10 +128,23 @@ func (u *PricingUpdater) fetchAndApply() {
 		applied++
 	}
 
+	// Apply media model pricing via callback
+	mediaApplied := 0
+	if u.mediaPricingApplier != nil {
+		for modelID, item := range data.MediaModels {
+			if item.Unit == "" || modelID == "_comment" {
+				continue
+			}
+			u.mediaPricingApplier(modelID, item.Output, item.Unit)
+			mediaApplied++
+		}
+	}
+
 	u.lastETag = etag
 	if u.logger != nil {
 		u.logger.Info("remote pricing applied",
 			zap.String("etag", etag),
-			zap.Int("models", applied))
+			zap.Int("models", applied),
+			zap.Int("media_models", mediaApplied))
 	}
 }

@@ -3,11 +3,13 @@
 package workspace
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -387,7 +389,10 @@ func writeIfMissing(path, content string) error {
 }
 
 // ReleaseSkills writes embedded SKILL.md files to {workspace}/.claude/skills/{name}/SKILL.md.
-// Each file is overwritten on every startup to keep skills in sync with the binary.
+// Content-aware: only overwrites if the embedded content differs from the on-disk content
+// (ignoring the `enabled` field which is user-managed state).
+// Platform-aware: skips skills whose `os` field doesn't match runtime.GOOS.
+// Preserves the `enabled` field from the existing on-disk file across upgrades.
 func (m *Manager) ReleaseSkills(fsys fs.FS) error {
 	entries, err := fs.ReadDir(fsys, "skills")
 	if err != nil {
@@ -407,14 +412,224 @@ func (m *Manager) ReleaseSkills(fsys fs.FS) error {
 		if err != nil {
 			continue
 		}
+
+		embeddedMeta := parseSkillFrontmatter(data)
+
+		// Platform check — skip skills not for this OS
+		if !platformMatch(embeddedMeta.OS) {
+			// Clean up if previously released on a different platform
+			dir := filepath.Join(skillsDir, entry.Name())
+			if _, err := os.Stat(dir); err == nil {
+				os.RemoveAll(dir)
+				log.Printf("workspace: removed platform-mismatched skill %s", entry.Name())
+			}
+			continue
+		}
+
 		dir := filepath.Join(skillsDir, entry.Name())
+		mdPath := filepath.Join(dir, "SKILL.md")
+
+		// Content check — skip if embedded content matches on-disk (ignoring enabled field)
+		existingData, readErr := os.ReadFile(mdPath)
+		if readErr == nil {
+			if contentEqual(existingData, data) {
+				continue // same content — preserve user's enabled state
+			}
+			// Content changed: preserve enabled state from existing file
+			existingMeta := parseSkillFrontmatter(existingData)
+			if existingMeta.Enabled != "" {
+				data = setFrontmatterField(data, "enabled", existingMeta.Enabled)
+			}
+		}
+
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			log.Printf("workspace: mkdir %s: %v", dir, err)
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), data, 0o644); err != nil {
+		if err := os.WriteFile(mdPath, data, 0o644); err != nil {
 			log.Printf("workspace: write %s/SKILL.md: %v", entry.Name(), err)
 		}
 	}
 	return nil
+}
+
+// contentEqual compares two SKILL.md byte slices, ignoring the `enabled` field.
+// This allows the release logic to detect real content changes while treating
+// the user-managed `enabled` field as transparent.
+func contentEqual(a, b []byte) bool {
+	return string(stripFrontmatterField(a, "enabled")) == string(stripFrontmatterField(b, "enabled"))
+}
+
+// stripFrontmatterField returns a copy of data with the given field removed from frontmatter.
+func stripFrontmatterField(data []byte, key string) []byte {
+	content := string(data)
+	if !strings.HasPrefix(content, "---") {
+		return data
+	}
+	parts := strings.SplitN(content, "---", 3)
+	if len(parts) < 3 {
+		return data
+	}
+
+	var filtered []string
+	for _, line := range strings.Split(parts[1], "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, key+":") {
+			continue // skip this field
+		}
+		filtered = append(filtered, line)
+	}
+	return []byte("---" + strings.Join(filtered, "\n") + "---" + parts[2])
+}
+
+// skillMeta holds parsed frontmatter fields relevant to release decisions.
+type skillMeta struct {
+	Version string   // optional — parsed but not used for release decisions
+	OS      []string // from top-level `os:` or nested `metadata.openclaw.os`
+	Enabled string   // "true" or "false" — preserved across upgrades
+}
+
+// parseSkillFrontmatter extracts version, os, and enabled from YAML frontmatter.
+// Supports both top-level fields and nested metadata.openclaw.os JSON.
+func parseSkillFrontmatter(data []byte) skillMeta {
+	var meta skillMeta
+	content := string(data)
+	if !strings.HasPrefix(content, "---") {
+		return meta
+	}
+	parts := strings.SplitN(content, "---", 3)
+	if len(parts) < 3 {
+		return meta
+	}
+	frontmatter := parts[1]
+
+	var metadataBlock string
+	for _, line := range strings.Split(frontmatter, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		colonIdx := strings.Index(trimmed, ":")
+		if colonIdx == -1 {
+			// Could be continuation of metadata block
+			if metadataBlock != "" {
+				metadataBlock += trimmed
+			}
+			continue
+		}
+		key := strings.TrimSpace(trimmed[:colonIdx])
+		value := strings.TrimSpace(trimmed[colonIdx+1:])
+
+		switch key {
+		case "version":
+			meta.Version = strings.Trim(value, `"'`)
+		case "enabled":
+			meta.Enabled = strings.Trim(value, `"'`)
+		case "os":
+			// Top-level os: ["darwin"] or os: darwin
+			meta.OS = parseOSList(value)
+		case "metadata":
+			// Start collecting metadata block (JSON)
+			metadataBlock = value
+		}
+
+		// Continue collecting metadata lines
+		if metadataBlock != "" && key != "metadata" && !strings.HasPrefix(trimmed, " ") && !strings.HasPrefix(trimmed, "\t") {
+			// New top-level key — stop collecting
+		}
+	}
+
+	// Parse metadata.openclaw.os from JSON if no top-level os found
+	if len(meta.OS) == 0 && metadataBlock != "" {
+		meta.OS = parseMetadataOS(metadataBlock)
+	}
+
+	return meta
+}
+
+// parseOSList parses os field value: `["darwin"]`, `["darwin","linux"]`, or `darwin`
+func parseOSList(value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	// JSON array format
+	if strings.HasPrefix(value, "[") {
+		var list []string
+		if json.Unmarshal([]byte(value), &list) == nil {
+			return list
+		}
+	}
+	// Single value
+	return []string{strings.Trim(value, `"'`)}
+}
+
+// parseMetadataOS extracts os from nested metadata JSON: { "openclaw": { "os": ["darwin"] } }
+func parseMetadataOS(block string) []string {
+	block = strings.TrimSpace(block)
+	// Try to parse as JSON
+	var outer map[string]json.RawMessage
+	if json.Unmarshal([]byte(block), &outer) != nil {
+		return nil
+	}
+	ocRaw, ok := outer["openclaw"]
+	if !ok {
+		return nil
+	}
+	var oc map[string]json.RawMessage
+	if json.Unmarshal(ocRaw, &oc) != nil {
+		return nil
+	}
+	osRaw, ok := oc["os"]
+	if !ok {
+		return nil
+	}
+	var osList []string
+	if json.Unmarshal(osRaw, &osList) == nil {
+		return osList
+	}
+	return nil
+}
+
+// platformMatch returns true if the current OS matches the skill's os list.
+// Empty list means all platforms.
+func platformMatch(osList []string) bool {
+	if len(osList) == 0 {
+		return true
+	}
+	for _, os := range osList {
+		if os == runtime.GOOS {
+			return true
+		}
+	}
+	return false
+}
+
+// setFrontmatterField sets or replaces a field in YAML frontmatter.
+func setFrontmatterField(data []byte, key, value string) []byte {
+	content := string(data)
+	if !strings.HasPrefix(content, "---") {
+		return data
+	}
+	parts := strings.SplitN(content, "---", 3)
+	if len(parts) < 3 {
+		return data
+	}
+
+	lines := strings.Split(parts[1], "\n")
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, key+":") {
+			lines[i] = key + ": " + value
+			found = true
+			break
+		}
+	}
+	if !found {
+		// Add before the last empty line
+		lines = append(lines[:len(lines)-1], key+": "+value, "")
+	}
+
+	return []byte("---" + strings.Join(lines, "\n") + "---" + parts[2])
 }

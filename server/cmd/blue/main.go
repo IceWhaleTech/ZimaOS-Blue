@@ -62,8 +62,10 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 
-	reminderPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reminder"
+	injectPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/inject"
+	pushPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	ssePkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 	webpushPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/webpush"
 
 	blueAPI "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
@@ -586,14 +588,15 @@ func runServer() {
 	logger.Info().Msg("Cron service configured for lazy initialization")
 
 	// Wire cron service into scheduler skill (lazy — triggers cron init on first skill call)
+	cronAdapter := cron.NewSkillAdapter(cronHandler.GetService)
 	if schedulerSkill := skillRegistry.Get("scheduler"); schedulerSkill != nil {
 		if ss, ok := schedulerSkill.(*builtin.Scheduler); ok {
-			cronAdapter := cron.NewSkillAdapter(cronHandler.GetService)
 			ss.SetCronService(cronAdapter)
 		}
 	}
+	cronIPC := sockipc.NewCronIPCAdapter(cronAdapter)
 
-	// SSE event broker — created early so reminder service can use it as EventPublisher
+	// SSE event broker — created early so push service can use it as EventPublisher
 	sseBroker := ssePkg.NewBroker()
 
 	// Wire Web Push notification support
@@ -606,54 +609,56 @@ func runServer() {
 		wpSender = webpushPkg.NewSender(vapidPriv, vapidPub, wpStore, zapLogger)
 	}
 
-	// Wire reminder service (SQLite + cron + message injection)
+	// Wire push notification service (SQLite + cron + message injection)
+	var pushIPC sockipc.PushBackend
 	{
-		reminderStore, err := reminderPkg.NewStore(db)
+		pushStore, err := pushPkg.NewStore(db)
 		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize reminder store")
+			logger.Warn().Err(err).Msg("Failed to initialize push store")
 		} else {
-			reminderSvc := reminderPkg.NewService(reminderStore, zapLogger)
+			pushSvc := pushPkg.NewService(pushStore, zapLogger)
 
 			// Wire cron for scheduled firing
-			cronAdapter := reminderPkg.NewCronAdapter(cronHandler.GetService)
-			reminderSvc.SetCron(cronAdapter)
+			cronAdapter := pushPkg.NewCronAdapter(cronHandler.GetService)
+			pushSvc.SetCron(cronAdapter)
 
 			// Wire message injector for conversation delivery
-			reminderSvc.SetMessageInjector(reminderPkg.NewMemoryStoreInjector(memoryStore))
+			pushSvc.SetMessageInjector(injectPkg.NewMemoryStoreInjector(memoryStore))
 
 			// Wire SSE event publisher
-			reminderSvc.SetEventPublisher(sseBroker)
+			pushSvc.SetEventPublisher(sseBroker)
 
 			// Wire native OS notifier
-			reminderSvc.SetNotifier(reminderPkg.NewNotifier(zapLogger))
+			pushSvc.SetNotifier(pushPkg.NewNotifier(zapLogger))
 
 			// Wire Web Push sender
 			if wpSender != nil {
-				reminderSvc.SetWebPushSender(wpSender)
+				pushSvc.SetWebPushSender(wpSender)
 			}
 
-			// Register native reminders tool
-			remToolsAdapter := reminderPkg.NewToolsAdapter(func() *reminderPkg.Service { return reminderSvc })
-			tools.RegisterRemindersTool(toolRegistry, remToolsAdapter)
+			// Create IPC adapter for sockipc
+			pushIPC = sockipc.NewPushIPCAdapter(pushSvc)
 
-			// Restore pending reminders from previous session
+			// Restore pending push notifications from previous session
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
-				if err := reminderSvc.RestorePendingReminders(ctx); err != nil {
-					logger.Warn().Err(err).Msg("Failed to restore pending reminders")
+				if err := pushSvc.RestorePending(ctx); err != nil {
+					logger.Warn().Err(err).Msg("Failed to restore pending push notifications")
 				} else {
-					logger.Info().Msg("Pending reminders restored")
+					logger.Info().Msg("Pending push notifications restored")
 				}
 			}()
 		}
 	}
 
-	// Wire browser service — lazy init, creates rod service on first use
+	// Wire browser service — lazy init, creates rod service on first use (for IPC only)
+	var browserBackend tools.BrowserBackend
+	var lazyBrowserSvc func() *browser.RodService
 	{
 		var browserOnce sync.Once
 		var browserSvc *browser.RodService
-		lazyBrowserSvc := func() *browser.RodService {
+		lazyBrowserSvc = func() *browser.RodService {
 			browserOnce.Do(func() {
 				svc, err := browser.NewService(nil)
 				if err != nil {
@@ -666,17 +671,7 @@ func runServer() {
 			return browserSvc
 		}
 
-		// Register native browser tool
-		browserBackend := tools.NewLazyRodBrowserBackend(lazyBrowserSvc)
-		tools.RegisterBrowserTool(toolRegistry, browserBackend)
-
-		// Wire native UI reviewer tool with same lazy browser service
-		if uiTool := tools.GetUIReviewerTool(toolRegistry); uiTool != nil {
-			uiTool.SetBrowser(tools.NewLazyRodBrowserAdapter(lazyBrowserSvc))
-			mediaDir := filepath.Join(dataDir, "media")
-			_ = os.MkdirAll(mediaDir, 0750)
-			uiTool.SetMediaDir(mediaDir)
-		}
+		browserBackend = tools.NewLazyRodBrowserBackend(lazyBrowserSvc)
 	}
 
 	initPool.Go(func() {
@@ -785,7 +780,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader, sseBroker)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader, sseBroker, pushIPC, cronIPC, browserBackend, lazyBrowserSvc)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -868,7 +863,7 @@ func runServer() {
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -1069,6 +1064,25 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	// Call bootstrap.RegisterAllRoutes with all dependencies
+	routeUserRepo, _ := user.NewSQLiteRepository(db)
+
+	// Create IPC adapters for browser, UI reviewer, and push notification SKILLs
+	browserIPC := sockipc.NewToolBrowserIPCAdapter(browserBackend)
+
+	// Register BrowserTool as native tool (with streaming progress cards)
+	browserTool := tools.NewBrowserTool()
+	browserTool.SetBackend(browserBackend)
+	toolRegistry.Register(browserTool)
+
+	// Create UI reviewer for IPC and direct tool calls (streaming progress cards)
+	uiTool := &tools.UIReviewerTool{}
+	uiTool.SetBrowser(tools.NewLazyRodBrowserAdapter(lazyBrowserSvc))
+	mediaDir := filepath.Join(dataDir, "media")
+	_ = os.MkdirAll(mediaDir, 0750)
+	uiTool.SetMediaDir(mediaDir)
+	toolRegistry.Register(uiTool) // register as LLM-callable tool
+	uiReviewerIPC := sockipc.NewUIReviewIPCAdapter(uiTool)
+
 	deps := &bootstrap.RoutesDeps{
 		DB:     db,
 		Config: cfg,
@@ -1082,6 +1096,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		Services: &bootstrap.Services{
 			DB:            db,
 			UserService:   userService,
+			UserRepo:      routeUserRepo,
 			JWTService:    jwtService,
 			SkillRegistry: skillRegistry,
 			ToolRegistry:  toolRegistry,
@@ -1106,6 +1121,11 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		CronHandler:        cronHandler,
 		HAHandler:          haHandler,
 		BrowserHandler:     browserHandler,
+		BrowserIPC:         browserIPC,
+		UIReviewerIPC:      uiReviewerIPC,
+		UIReviewerTool:     uiTool,
+		PushIPC:            pushIPC,
+		CronIPC:            cronIPC,
 		WorkflowHandler:    workflowHandler,
 		VoiceHandler:       voiceHandler,
 		VoiceWSHandler:     voiceWSHandler,
@@ -1127,6 +1147,14 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	apiProtected := bootstrap.RegisterAllRoutes(e, deps)
 
+	// Register shutdown hooks for closers started during route registration (e.g., sockipc)
+	for _, c := range deps.Closers {
+		closer := c // capture for closure
+		lm.RegisterShutdownHook(func(ctx context.Context) error {
+			return closer.Close()
+		})
+	}
+
 	// SSE event stream endpoint — register on /api/v1/events (protected)
 	sseHandler := ssePkg.NewHandler(sseBroker)
 	sseHandler.RegisterRoutes(apiProtected.Group("/v1"))
@@ -1147,6 +1175,16 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	channelConfigHandler := server.NewChannelConfigHandler(channelConfigStore)
 	channelManager := channel.NewManager(channel.DefaultConfig(), zapLogger)
 	channelFactory := server.NewChannelFactory(zapLogger)
+
+	// Wire channel task watcher notifier now that channelManager is available
+	if deps.ChannelTaskWatcher != nil {
+		deps.ChannelTaskWatcher.SetNotifier(func(ctx context.Context, channelName, chatID, message string) error {
+			return channelManager.Send(ctx, channelName, channel.OutgoingMessage{
+				ChatID:  chatID,
+				Content: message,
+			})
+		})
+	}
 
 	channelManager.SetHandler(func(ctx context.Context, msg channel.Message) (*channel.OutgoingMessage, error) {
 		if autoreplyService != nil {

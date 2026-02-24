@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useNotificationStore } from '@/stores/notification'
 import ProviderIcon from '@/components/ProviderIcon.vue'
@@ -10,6 +11,7 @@ import { providerPoolApi } from '@/api/providerPool'
 import { formatTokens } from '@/utils/format'
 
 const { t } = useI18n()
+const route = useRoute()
 const store = useProviderPoolStore()
 const notification = useNotificationStore()
 
@@ -1032,6 +1034,15 @@ async function handleIconUpload(event: Event) {
 
 onMounted(() => {
   loadData()
+  // If route has section=media (e.g. from "Go to Settings" link), switch to media tab once available
+  if (route.query.section === 'media') {
+    const stop = watch(availableTabs, (tabs) => {
+      if (tabs.includes('media')) {
+        activeTab.value = 'media'
+        stop()
+      }
+    }, { immediate: true })
+  }
 })
 </script>
 
@@ -1771,14 +1782,11 @@ onMounted(() => {
                   <div class="flex items-center flex-1 min-w-0 gap-1.5">
                     <span class="text-gray-400 cursor-grab select-none" title="Drag to reorder">⠿</span>
                     <span class="text-gray-900 dark:text-white font-medium">{{ model.display_name || model.name }}</span>
-                    <span v-if="model.capabilities?.length" class="flex gap-0.5 ml-0.5">
-                      <span
-                        v-for="cap in model.capabilities"
-                        :key="cap"
-                        class="text-[10px] leading-none"
-                        :title="cap"
-                      >{{ capabilityEmoji[cap] || '•' }}</span>
-                    </span>
+                    <span
+                      v-if="model.capabilities?.length"
+                      class="text-[10px] leading-none text-gray-400 ml-0.5 cursor-default"
+                      :title="model.capabilities.map(c => (capabilityEmoji[c] || '•') + ' ' + c).join('  ')"
+                    >✦</span>
                     <span class="text-gray-500 ml-1 truncate">{{ model.id }}</span>
                   </div>
                   <div class="flex items-center gap-2 ml-2">
@@ -2185,9 +2193,11 @@ onMounted(() => {
               />
               <div class="flex-1 min-w-0">
                 <span class="text-sm text-gray-900 dark:text-white">{{ model.display_name || model.name }}</span>
-                <span v-if="model.capabilities?.length" class="inline-flex gap-0.5 ml-0.5">
-                  <span v-for="cap in model.capabilities" :key="cap" class="text-[10px]" :title="cap">{{ capabilityEmoji[cap] || '•' }}</span>
-                </span>
+                <span
+                  v-if="model.capabilities?.length"
+                  class="text-[10px] leading-none text-gray-400 ml-0.5 cursor-default"
+                  :title="model.capabilities.map(c => (capabilityEmoji[c] || '•') + ' ' + c).join('  ')"
+                >✦</span>
                 <span class="text-xs text-gray-500 ml-1">{{ model.id }}</span>
               </div>
               <span v-if="model.context_window" class="text-xs text-gray-400">

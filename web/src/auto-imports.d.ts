@@ -10,6 +10,7 @@ declare global {
   const EffectScope: typeof import('vue').EffectScope
   const THEME_STYLES: typeof import('./stores/settings').THEME_STYLES
   const acceptHMRUpdate: typeof import('pinia').acceptHMRUpdate
+  const classifyMediaIntent: typeof import('./composables/useMediaIntent').classifyMediaIntent
   const computed: typeof import('vue').computed
   const createApp: typeof import('vue').createApp
   const createPinia: typeof import('pinia').createPinia
@@ -23,6 +24,7 @@ declare global {
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
+  const getLastModel: typeof import('./composables/useMediaGenerate').getLastModel
   const h: typeof import('vue').h
   const inject: typeof import('vue').inject
   const isFullscreen: typeof import('./composables/useFullscreen').isFullscreen
@@ -100,6 +102,8 @@ declare global {
   const useLink: typeof import('vue-router').useLink
   const useLocalStorage: typeof import('@vueuse/core').useLocalStorage
   const useLocaleStore: typeof import('./stores/locale').useLocaleStore
+  const useMediaGenerate: typeof import('./composables/useMediaGenerate').useMediaGenerate
+  const useMediaTaskTracker: typeof import('./stores/mediaTaskTracker').useMediaTaskTracker
   const useMetricsStore: typeof import('./stores/metrics').useMetricsStore
   const useModel: typeof import('vue').useModel
   const useNetwork: typeof import('./composables/useNetwork').useNetwork
@@ -175,6 +179,7 @@ declare module 'vue' {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly THEME_STYLES: UnwrapRef<typeof import('./stores/settings')['THEME_STYLES']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
+    readonly classifyMediaIntent: UnwrapRef<typeof import('./composables/useMediaIntent')['classifyMediaIntent']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly createApp: UnwrapRef<typeof import('vue')['createApp']>
     readonly createPinia: UnwrapRef<typeof import('pinia')['createPinia']>
@@ -188,6 +193,7 @@ declare module 'vue' {
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly getCurrentWatcher: UnwrapRef<typeof import('vue')['getCurrentWatcher']>
+    readonly getLastModel: UnwrapRef<typeof import('./composables/useMediaGenerate')['getLastModel']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly isFullscreen: UnwrapRef<typeof import('./composables/useFullscreen')['isFullscreen']>
@@ -264,6 +270,8 @@ declare module 'vue' {
     readonly useLink: UnwrapRef<typeof import('vue-router')['useLink']>
     readonly useLocalStorage: UnwrapRef<typeof import('@vueuse/core')['useLocalStorage']>
     readonly useLocaleStore: UnwrapRef<typeof import('./stores/locale')['useLocaleStore']>
+    readonly useMediaGenerate: UnwrapRef<typeof import('./composables/useMediaGenerate')['useMediaGenerate']>
+    readonly useMediaTaskTracker: UnwrapRef<typeof import('./stores/mediaTaskTracker')['useMediaTaskTracker']>
     readonly useMetricsStore: UnwrapRef<typeof import('./stores/metrics')['useMetricsStore']>
     readonly useModel: UnwrapRef<typeof import('vue')['useModel']>
     readonly useNetwork: UnwrapRef<typeof import('./composables/useNetwork')['useNetwork']>

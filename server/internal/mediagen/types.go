@@ -23,6 +23,7 @@ const (
 	TaskStatusProcessing = task.StatusProcessing
 	TaskStatusSucceeded  = task.StatusSucceeded
 	TaskStatusFailed     = task.StatusFailed
+	TaskStatusCancelled  = task.StatusCancelled
 )
 
 // MediaRequest is the unified request for all providers.
@@ -38,6 +39,7 @@ type MediaRequest struct {
 	ResponseFormat string         `json:"response_format,omitempty"`
 	ReferenceImage []byte         `json:"-"`
 	ReferenceURL   string         `json:"reference_url,omitempty"`
+	ReferenceURLs  []string       `json:"reference_urls,omitempty"` // multiple images (i2v, kf2v, i2i)
 	Duration       int            `json:"duration,omitempty"`
 	Extra          map[string]any `json:"extra,omitempty"`
 }

@@ -149,7 +149,6 @@ func (p *DashScopeProvider) Poll(ctx context.Context, taskID string) (*MediaTask
 
 	switch dsResp.Output.TaskStatus {
 	case "SUCCEEDED":
-		task.Status = TaskStatusSucceeded
 		var results []MediaResult
 		for _, r := range dsResp.Output.Results {
 			results = append(results, MediaResult{
@@ -157,6 +156,20 @@ func (p *DashScopeProvider) Poll(ctx context.Context, taskID string) (*MediaTask
 				ContentType: "image/png",
 			})
 		}
+		// Only mark succeeded if at least one result has a URL
+		hasURL := false
+		for _, r := range results {
+			if r.OriginalURL != "" {
+				hasURL = true
+				break
+			}
+		}
+		if !hasURL {
+			task.Status = TaskStatusProcessing
+			task.Progress = 0.9
+			break
+		}
+		task.Status = TaskStatusSucceeded
 		now := time.Now()
 		task.Response = &MediaResponse{
 			Created: now.Unix(),

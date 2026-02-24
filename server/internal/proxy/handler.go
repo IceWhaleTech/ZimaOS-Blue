@@ -3,14 +3,17 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -110,6 +113,85 @@ func releaseParsedRequest(pr *parsedRequest) {
 	pr.body = nil // release reference to body bytes
 	pr.routed = nil
 	parsedRequestPool.Put(pr)
+}
+
+// isTransientNetworkError returns true if the error is a transient network error
+// that should be retried on the same provider (connection reset, EOF, timeout, etc.).
+// These are Go-level errors from client.Do(), not HTTP status codes.
+func isTransientNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// io.EOF / io.ErrUnexpectedEOF — connection dropped
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	// syscall errors: connection reset, broken pipe
+	if errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+	// net.Error with Timeout()
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	// net.OpError wrapping transient errors
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	// String-based fallback for wrapped errors
+	msg := err.Error()
+	if strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "i/o timeout") ||
+		strings.Contains(msg, "TLS handshake timeout") ||
+		strings.Contains(msg, "server closed idle connection") {
+		return true
+	}
+	return false
+}
+
+// probeWithRetry wraps AuthProber.ProbeAndForward with transparent retry for
+// transient network errors. Max 2 retries (3 total attempts) with exponential backoff.
+func (ph *ProxyHandler) probeWithRetry(
+	ctx context.Context,
+	provider *providerpool.Provider,
+	apiKey *providerpool.APIKey,
+	buildReq func() (*http.Request, error),
+	doReq func(*http.Request) (*http.Response, error),
+) (*http.Response, error) {
+	const maxRetries = 2
+	backoff := [2]time.Duration{500 * time.Millisecond, time.Second}
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			// Check context before retry
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			delay := backoff[attempt-1]
+			slog.Warn("[proxy] retrying after transient network error",
+				"provider", provider.ID, "attempt", attempt+1, "delay", delay, "error", lastErr)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		resp, err := ph.authProber.ProbeAndForward(provider, apiKey, buildReq, doReq)
+		if err == nil {
+			return resp, nil
+		}
+		if !isTransientNetworkError(err) {
+			return nil, err
+		}
+		lastErr = err
+	}
+	return nil, lastErr
 }
 
 // readBody reads an io.Reader into a []byte using a pooled buffer.
@@ -632,7 +714,8 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Retry with tools stripped: if all providers failed and the request had tools,
 	// strip the tools/tool_choice fields and retry. This handles providers that reject
 	// the request body because they don't understand tool-related fields (422).
-	if err != nil && hasTools {
+	// Skip if no providers exist at all — stripping fields won't conjure providers.
+	if err != nil && hasTools && !errors.Is(err, providerpool.ErrNoAvailableProvider) {
 		strippedBody := pr.body
 		if b, e := sjson.DeleteBytes(strippedBody, "tools"); e == nil {
 			strippedBody = b
@@ -663,7 +746,8 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Retry with images stripped: if still failing and the request has image content,
 	// strip image_url entries from messages and retry. Some providers/models don't
 	// support vision and reject multimodal content.
-	if err != nil {
+	// Skip if no providers exist at all.
+	if err != nil && !errors.Is(err, providerpool.ErrNoAvailableProvider) {
 		if strippedBody, didStrip := stripImageContent(pr.body); didStrip {
 			slog.Info("[proxy] retrying without images after all providers failed",
 				"model", pr.model, "original_error", err)
@@ -732,12 +816,11 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 
 	// Format conversion: if provider expects Anthropic format but request is OpenAI,
 	// convert body and switch path to /v1/messages.
-	if effectiveFormat == providerpool.APIFormatAnthropic && strings.Contains(requestPath, "/chat/completions") {
+	if effectiveFormat == providerpool.APIFormatAnthropic && strings.HasSuffix(requestPath, "/chat/completions") {
 		converted, newPath, convErr := sharedConverter.ConvertRequest(body, ProviderTypeAnthropic)
 		if convErr == nil {
 			body = converted
 			requestPath = newPath // "/v1/messages"
-			// Apply Anthropic prompt caching if enabled
 			if ph.promptCacheEnabled.Load() {
 				if cached, cacheErr := InjectPromptCaching(body); cacheErr == nil {
 					body = cached
@@ -758,6 +841,25 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 		}
 	} else {
 		upstreamURL.Path = requestPath
+	}
+
+	// URI-based format enforcement: the final URL path is the source of truth.
+	// Ensure the body format matches the endpoint, regardless of effectiveFormat.
+	finalPath := upstreamURL.Path
+	if strings.HasSuffix(finalPath, "/messages") && effectiveFormat != providerpool.APIFormatAnthropic {
+		// Final URL is Anthropic endpoint but body wasn't converted — fix it.
+		// This happens when base URL already contains /messages or format was misdetected.
+		converted, _, convErr := sharedConverter.ConvertRequest(body, ProviderTypeAnthropic)
+		if convErr == nil {
+			body = converted
+			if ph.promptCacheEnabled.Load() {
+				if cached, cacheErr := InjectPromptCaching(body); cacheErr == nil {
+					body = cached
+				}
+			}
+			slog.Info("[proxy] URI fixup: endpoint is /messages, converted body to Anthropic",
+				"provider", provider.ID, "final_path", finalPath)
+		}
 	}
 	upstreamURL.RawQuery = r.URL.RawQuery
 
@@ -855,13 +957,21 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 	}
 
 	// 3. Provider default
-	if !has(provider.APIFormat) {
+	if provider.APIFormat != "" && !has(provider.APIFormat) {
 		buf[n] = provider.APIFormat
 		n++
 	}
 
-	// 4. Remaining formats
-	for _, f := range [...]providerpool.APIFormat{providerpool.APIFormatOpenAI, providerpool.APIFormatAnthropic} {
+	// 4. Infer format from base URL — if the URL hints at Anthropic, prefer it
+	if strings.HasSuffix(burl, "/messages") || strings.Contains(burl, "anthropic") {
+		if !has(providerpool.APIFormatAnthropic) {
+			buf[n] = providerpool.APIFormatAnthropic
+			n++
+		}
+	}
+
+	// 5. Remaining formats — Anthropic first (better tools/vision support)
+	for _, f := range [...]providerpool.APIFormat{providerpool.APIFormatAnthropic, providerpool.APIFormatOpenAI} {
 		if !has(f) {
 			buf[n] = f
 			n++
@@ -983,6 +1093,12 @@ func (ph *ProxyHandler) tryOnProvider(
 	allFormats := nFormats // remember full count before truncation
 	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, pr.model, routedModel)
 
+	slog.Debug("[proxy] tryOnProvider setup",
+		"provider", pid, "nModels", nModels, "nFormats", nFormats,
+		"allFormats", allFormats, "formatKnown", formatKnown,
+		"format0", formatsBuf[0], "model0", modelsBuf[0],
+		"requestModel", pr.model)
+
 	if nModels == 0 {
 		return nil, "", "", fmt.Errorf("all models blacklisted on provider %s", pid)
 	}
@@ -993,6 +1109,8 @@ func (ph *ProxyHandler) tryOnProvider(
 		nFormats = 1
 	}
 
+	var lastErr error
+
 	// Fast path: single model + single format + model matches request (most common happy path).
 	// Avoids loop overhead, sjson.SetBytes, and slice iteration.
 	var fastPathTriedFormat providerpool.APIFormat // track what fast path already tried
@@ -1000,7 +1118,8 @@ func (ph *ProxyHandler) tryOnProvider(
 		format := formatsBuf[0]
 		fastPathTriedFormat = format
 		slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", pr.model)
-		resp, probeErr := ph.authProber.ProbeAndForward(
+		resp, probeErr := ph.probeWithRetry(
+			r.Context(),
 			result.Provider,
 			result.APIKey,
 			func() (*http.Request, error) {
@@ -1021,19 +1140,52 @@ func (ph *ProxyHandler) tryOnProvider(
 			ph.persistDetectedFormat(result.Provider, format)
 			return resp, format, pr.model, nil
 		}
+		// Read error body and close response before deciding what to do
+		errBody := readErrorBody(resp.Body)
+		resp.Body.Close()
+		statusCode := resp.StatusCode
+
 		// Format mismatch on fast path — expand to all formats and fall through to general loop
-		if allFormats > 1 && isFormatMismatchError(resp.StatusCode, readErrorBody(resp.Body)) {
-			resp.Body.Close()
+		if allFormats > 1 && isFormatMismatchError(statusCode, errBody) {
+			errStr := string(errBody)
+			if len(errStr) > 256 {
+				errStr = errStr[:256]
+			}
 			slog.Warn("[proxy] format mismatch on fast path, expanding to all formats",
 				"provider", pid, "format", format, "model", pr.model)
 			ph.providerMemory.ForgetFormat(pid, burl)
 			ph.clearDetectedFormat(result.Provider)
 			nFormats = allFormats
+			lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
+			// Fall through to general loop which will try remaining formats
+		} else if allFormats <= 1 {
+			// Only one format available and it failed — handle error inline
+			// since the general loop would skip this already-tried combo.
+			errStr := string(errBody)
+			if len(errStr) > 256 {
+				errStr = errStr[:256]
+			}
+			if statusCode == http.StatusTooManyRequests {
+				retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+				ph.providerMemory.RememberThrottle(pid, burl, retryAfter)
+				return nil, "", "", fmt.Errorf("provider %s throttled (429)", pid)
+			}
+			if statusCode >= 500 {
+				return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
+			}
+			if isFormatMismatchError(statusCode, errBody) {
+				return nil, "", "", fmt.Errorf("provider returned %d: %s", statusCode, errStr)
+			}
+			if isModelNotConfiguredError(statusCode, errBody) {
+				ph.providerMemory.BlacklistModel(pid, burl, pr.model)
+				return nil, "", "", fmt.Errorf("model %s not configured on provider %s: %s", pr.model, pid, errStr)
+			}
+			ph.providerMemory.BlacklistModel(pid, burl, pr.model)
+			return nil, "", "", fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 		}
-		// Fall through to error handling in the general loop
+		// else: format expanded, fall through to general loop
 	}
 
-	var lastErr error
 	for mi := 0; mi < nModels; mi++ {
 		model := modelsBuf[mi]
 		// Build body with this model
@@ -1053,7 +1205,8 @@ func (ph *ProxyHandler) tryOnProvider(
 			}
 			slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", model)
 
-			resp, probeErr := ph.authProber.ProbeAndForward(
+			resp, probeErr := ph.probeWithRetry(
+				r.Context(),
 				result.Provider,
 				result.APIKey,
 				func() (*http.Request, error) {
@@ -1328,8 +1481,8 @@ func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.R
 	// because most relay/proxy services expect Bearer auth on OpenAI endpoints.
 	slog.Info("[proxy] auth", "provider", provider.ID, "format", provider.APIFormat, "has_key", route.APIKey != nil && route.APIKey.Key != "", "path", upstreamURL.Path)
 	if route.APIKey != nil && route.APIKey.Key != "" {
-		isAnthropicEndpoint := strings.Contains(upstreamURL.Path, "/messages")
-		if provider.APIFormat == providerpool.APIFormatAnthropic && isAnthropicEndpoint {
+		isAnthropicEndpoint := strings.HasSuffix(upstreamURL.Path, "/messages")
+		if isAnthropicEndpoint {
 			req.Header.Set("x-api-key", route.APIKey.Key)
 			req.Header.Set("anthropic-version", "2023-06-01")
 			req.Header.Del("Authorization")

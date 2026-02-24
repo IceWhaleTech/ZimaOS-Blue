@@ -1,4 +1,5 @@
 import { ref, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 import { useNotificationStore } from '@/stores/notification'
 import { ensureFreshToken } from '@/api/client'
@@ -17,6 +18,9 @@ export function onSSEEvent(type: string, cb: EventCallback) {
 export function offSSEEvent(type: string, cb: EventCallback) {
   listeners.get(type)?.delete(cb)
 }
+
+// Debounce timer for streaming conversation_updated events
+let streamingFetchTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
  * useEventStream connects to the SSE event endpoint and dispatches
@@ -115,30 +119,65 @@ export function useEventStream() {
 
     const chatStore = useChatStore()
     const notificationStore = useNotificationStore()
+    const { t } = useI18n()
 
     switch (type) {
-      case 'reminder': {
-        // Show toast notification
+      case 'push': {
+        // Show toast notification with optional action to navigate to conversation
+        const toastOpts: any = { duration: 10000 }
+        if (data.conversation_id) {
+          toastOpts.action = {
+            label: t('push.viewConversation'),
+            handler: () => {
+              chatStore.selectConversation(data.conversation_id)
+            },
+          }
+        }
         notificationStore.info(
-          data.message || 'Reminder',
-          undefined,
-          { duration: 10000 },
+          t('push.title'),
+          data.message || t('push.defaultMessage'),
+          toastOpts,
         )
+
+        // Refresh conversation list so the injected message shows up
+        chatStore.fetchConversations()
+        if (data.conversation_id && chatStore.currentConversationId === data.conversation_id) {
+          chatStore.fetchMessages(data.conversation_id)
+        }
 
         // Desktop notification if page is hidden
         if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification('Reminder', { body: data.message })
+          new Notification(t('push.title'), { body: data.message })
         }
         break
       }
 
       case 'conversation_updated': {
-        // Refresh conversation list
+        // If this tab is already streaming this conversation, skip — we have real-time deltas
+        if (data.streaming && chatStore.streaming && chatStore.currentConversationId === data.id) {
+          break
+        }
+
+        // Refresh conversation list (title changes, etc.)
         chatStore.fetchConversations()
 
         // If the updated conversation is the current one, refresh messages
         if (data.id && chatStore.currentConversationId === data.id) {
-          chatStore.fetchMessages(data.id)
+          if (data.streaming) {
+            // Debounce streaming updates to avoid hammering the API
+            if (streamingFetchTimer) clearTimeout(streamingFetchTimer)
+            streamingFetchTimer = setTimeout(() => {
+              streamingFetchTimer = null
+              chatStore.fetchMessages(data.id)
+            }, 500)
+          } else {
+            // Final update — fetch immediately
+            if (streamingFetchTimer) {
+              clearTimeout(streamingFetchTimer)
+              streamingFetchTimer = null
+            }
+            chatStore.fetchMessages(data.id)
+          }
         }
         break
       }

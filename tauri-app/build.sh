@@ -138,16 +138,7 @@ fi
 
 print_step "Frontend copied to server/internal/web/dist ($(ls -1 "$EMBED_DIR" | wc -l | tr -d ' ') files)"
 
-# Step 3: Copy canonical skills to server/internal/skill/embedded/skills/ for go:embed
-print_step "Copying skills from assets/skills/ to server/internal/skill/embedded/skills/..."
-SKILLS_SRC="$PROJECT_ROOT/assets/skills"
-SKILLS_EMBED="$PROJECT_ROOT/server/internal/skill/embedded/skills"
-rm -rf "$SKILLS_EMBED"
-mkdir -p "$SKILLS_EMBED"
-cp -r "$SKILLS_SRC/"* "$SKILLS_EMBED/"
-print_step "Skills copied ($(ls -1 "$SKILLS_EMBED" | wc -l | tr -d ' ') skills)"
-
-# Step 4: Build backend (platform-specific)
+# Step 3: Build backend (platform-specific)
 if [ "$GOOS" = "darwin" ]; then
     # macOS: Build Go static library for CGO integration
     print_step "Building Go static library for macOS (CGO approach with embedded frontend)..."
@@ -293,14 +284,15 @@ if [ "$GOOS" = "darwin" ]; then
 
     # ── Copy skills into .app Resources ──
     RESOURCES_SKILLS="$RESOURCES_DIR/.claude/skills"
-    if [ -d "$PROJECT_ROOT/assets/skills" ]; then
+    SKILLS_EMBED="$PROJECT_ROOT/server/internal/skill/embedded/skills"
+    if [ -d "$SKILLS_EMBED" ]; then
         print_step "Copying skills into .app Resources..."
         rm -rf "$RESOURCES_SKILLS"
         mkdir -p "$RESOURCES_SKILLS"
-        cp -r "$PROJECT_ROOT/assets/skills/"* "$RESOURCES_SKILLS/"
+        cp -r "$SKILLS_EMBED/"* "$RESOURCES_SKILLS/"
         print_step "Skills copied to $RESOURCES_SKILLS ($(ls -1 "$RESOURCES_SKILLS" | wc -l | tr -d ' ') skills)"
     else
-        print_warning "assets/skills/ not found — .app will not have bundled skills"
+        print_warning "embedded/skills/ not found — .app will not have bundled skills"
     fi
 
     # ── macOS Code Signing ──

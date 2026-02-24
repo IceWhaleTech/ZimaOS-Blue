@@ -124,24 +124,14 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	// Skills that have a dedicated native tool in tools/ are skipped (registered in RegisterBuiltinTools).
 	// Skills backed by native services are registered explicitly below, then skipped in the loop.
 	nativeToolIDs := map[string]bool{
-		// Already have dedicated tools.Tool implementations in tools/builtin.go
-		"calculator":  true,
-		"system_info": true,
-		"datetime":    true,
-		"file_read":   true,
-		"file_write":  true,
-		"web_search":  true,
-		"ui_reviewer": true,
-		// Media generation tools — conditionally registered in routes.go based on enabled providers
-		"image_generate": true,
-		"video_generate": true,
 		// Native service-backed skills — registered explicitly below
-		"push_notification": true,
 		"scheduler": true,
 		"autoreply": true,
 		"sandbox":   true,
 		"workflows": true,
-		"browser":   true,
+		// Registered as native tools in main.go (with streaming progress cards)
+		"browser":     true,
+		"ui_reviewer": true,
 	}
 
 	// Register native service-backed skills as tools (services wired later in main.go)

@@ -9,7 +9,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
-// TestProviderToolRegistryIntegration tests that tools are properly loaded into the CC CLI provider.
+// TestProviderToolRegistryIntegration tests that tool guidance is properly included in the system prompt.
 func TestProviderToolRegistryIntegration(t *testing.T) {
 	// Create a tool registry with test tools
 	registry := tools.NewRegistry()
@@ -35,24 +35,20 @@ func TestProviderToolRegistryIntegration(t *testing.T) {
 		t.Error("expected tool registry to be set on prompt builder")
 	}
 
-	// Build system prompt and verify tools are included
+	// Build system prompt and verify tool guidance section exists
 	ctx := context.Background()
 	systemPrompt := provider.promptBuilder.Build(ctx, "")
 
-	if !strings.Contains(systemPrompt, "test_tool") {
-		t.Error("expected system prompt to contain test_tool")
+	if !strings.Contains(systemPrompt, "Tool Guidance") {
+		t.Error("expected system prompt to contain 'Tool Guidance' section")
 	}
 
-	if !strings.Contains(systemPrompt, "A test tool for integration testing") {
-		t.Error("expected system prompt to contain tool description")
-	}
-
-	if !strings.Contains(systemPrompt, "Tool availability") {
-		t.Error("expected system prompt to contain 'Tool availability' section")
+	if !strings.Contains(systemPrompt, "Tool Routing Rules") {
+		t.Error("expected system prompt to contain 'Tool Routing Rules' section")
 	}
 }
 
-// TestProviderMultipleToolsIntegration tests that multiple tools are properly loaded.
+// TestProviderMultipleToolsIntegration tests that tool guidance is present with multiple tools.
 func TestProviderMultipleToolsIntegration(t *testing.T) {
 	registry := tools.NewRegistry()
 
@@ -83,14 +79,10 @@ func TestProviderMultipleToolsIntegration(t *testing.T) {
 	ctx := context.Background()
 	systemPrompt := provider.promptBuilder.Build(ctx, "")
 
-	// Verify all tools are included
-	for _, def := range toolDefs {
-		if !strings.Contains(systemPrompt, def.name) {
-			t.Errorf("expected system prompt to contain tool '%s'", def.name)
-		}
-		if !strings.Contains(systemPrompt, def.description) {
-			t.Errorf("expected system prompt to contain description '%s'", def.description)
-		}
+	// Tool guidance section should exist (tool definitions are sent via API tools array,
+	// not duplicated in the system prompt)
+	if !strings.Contains(systemPrompt, "Tool Routing Rules") {
+		t.Error("expected system prompt to contain 'Tool Routing Rules'")
 	}
 }
 
@@ -113,9 +105,9 @@ func TestProviderSystemPromptWithToolsAndExtraPrompt(t *testing.T) {
 	extraPrompt := "You are a helpful assistant specialized in coding tasks."
 	systemPrompt := provider.promptBuilder.Build(ctx, extraPrompt)
 
-	// Verify both tools and extra prompt are included
-	if !strings.Contains(systemPrompt, "custom_tool") {
-		t.Error("expected system prompt to contain custom_tool")
+	// Tool guidance section should exist
+	if !strings.Contains(systemPrompt, "Tool Guidance") {
+		t.Error("expected system prompt to contain 'Tool Guidance'")
 	}
 
 	if !strings.Contains(systemPrompt, extraPrompt) {
@@ -209,9 +201,9 @@ func TestProviderBuildRunParams(t *testing.T) {
 		t.Errorf("expected workspace '/tmp/workspace', got '%s'", params.WorkspaceDir)
 	}
 
-	// Verify system prompt contains tools
-	if !strings.Contains(params.SystemPrompt, "test_tool") {
-		t.Error("expected system prompt to contain test_tool")
+	// Verify system prompt contains tool guidance (not full definitions — those go via API tools)
+	if !strings.Contains(params.SystemPrompt, "Tool Routing Rules") {
+		t.Error("expected system prompt to contain Tool Routing Rules")
 	}
 
 	// Verify system prompt contains user's system message
@@ -360,9 +352,9 @@ func TestProviderEmptyToolRegistry(t *testing.T) {
 	ctx := context.Background()
 	systemPrompt := provider.promptBuilder.Build(ctx, "")
 
-	// Should not contain "Available Tools" section when no tools
-	if strings.Contains(systemPrompt, "Available Tools") {
-		t.Error("expected system prompt to NOT contain 'Available Tools' when registry is empty")
+	// Should not contain "Tool Guidance" section when no tools
+	if strings.Contains(systemPrompt, "Tool Guidance") {
+		t.Error("expected system prompt to NOT contain 'Tool Guidance' when registry is empty")
 	}
 
 	// Should still contain runtime info
@@ -384,9 +376,9 @@ func TestProviderNilToolRegistry(t *testing.T) {
 	ctx := context.Background()
 	systemPrompt := provider.promptBuilder.Build(ctx, "")
 
-	// Should not contain "Available Tools" section
-	if strings.Contains(systemPrompt, "Available Tools") {
-		t.Error("expected system prompt to NOT contain 'Available Tools' when registry is nil")
+	// Should not contain "Tool Guidance" section
+	if strings.Contains(systemPrompt, "Tool Guidance") {
+		t.Error("expected system prompt to NOT contain 'Tool Guidance' when registry is nil")
 	}
 
 	// Should still contain runtime info
@@ -428,11 +420,10 @@ func TestProviderToolsIncludedInChatRequest(t *testing.T) {
 		t.Fatalf("buildRunParams() error = %v", err)
 	}
 
-	// Verify all tools are in the system prompt
-	for _, name := range toolNames {
-		if !strings.Contains(params.SystemPrompt, name) {
-			t.Errorf("expected system prompt to contain tool '%s'", name)
-		}
+	// Verify all tools are referenced in the system prompt via tool guidance
+	// (full definitions are sent via API tools array, not in system prompt)
+	if !strings.Contains(params.SystemPrompt, "Tool Routing Rules") {
+		t.Error("expected system prompt to contain 'Tool Routing Rules'")
 	}
 }
 

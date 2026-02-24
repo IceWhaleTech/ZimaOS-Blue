@@ -200,3 +200,27 @@ func TestUIReviewCard_InvalidJSON(t *testing.T) {
 		t.Errorf("expected nil card for invalid JSON, got %v", card)
 	}
 }
+
+func TestSandboxCardDispatch(t *testing.T) {
+	// Simulate sandbox tool result containing IPC response with _card hint
+	content := `{"result":{"stdout":"{\"status\":\"ok\",\"data\":{\"_card\":\"ui_reviewer\",\"result\":\"{\\\"url\\\":\\\"http://x.com\\\",\\\"overall\\\":80,\\\"pass\\\":true}\"}}","stderr":"","exit_code":0},"message":"done"}`
+	card := ToCard("sandbox", content)
+	if card == nil {
+		t.Fatal("expected non-nil card from sandbox dispatch")
+	}
+	if card["type"] != "ui-review" {
+		t.Errorf("expected type ui-review, got %v", card["type"])
+	}
+}
+
+func TestSandboxCardDispatch_NoHint(t *testing.T) {
+	// Sandbox result without _card hint → falls through to GenericCard
+	content := `{"result":{"stdout":"hello world","stderr":"","exit_code":0},"message":"done"}`
+	card := ToCard("sandbox", content)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if card["type"] != "result" {
+		t.Errorf("expected generic result type, got %v", card["type"])
+	}
+}

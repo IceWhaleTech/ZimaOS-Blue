@@ -122,8 +122,6 @@ pnpm-debug.log*
 # Claude
 .claude/
 
-# Embedded skills (build artifact, copied from assets/skills/)
-server/internal/skill/embedded/skills/
 
 app.7z
 skin.zip

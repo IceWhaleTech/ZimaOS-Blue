@@ -1,23 +1,44 @@
 package mediagen
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
 )
 
+// AddMessageFunc is a function that adds a message to a conversation and returns the message ID.
+type AddMessageFunc func(ctx context.Context, conversationID, role, content string) (messageID string, err error)
+
+// UpdateTitleFunc is a function that updates a conversation's title.
+type UpdateTitleFunc func(ctx context.Context, conversationID, title string) error
+
 // Handler provides HTTP endpoints for media generation.
 type Handler struct {
-	manager *Manager
-	storage *MediaStorage
+	manager     *Manager
+	storage     *MediaStorage
+	addMessage  AddMessageFunc
+	updateTitle UpdateTitleFunc
+	locale      string
 }
 
 // NewHandler creates a new media generation handler.
-func NewHandler(manager *Manager, storage *MediaStorage) *Handler {
-	return &Handler{manager: manager, storage: storage}
+func NewHandler(manager *Manager, storage *MediaStorage, locale string) *Handler {
+	return &Handler{manager: manager, storage: storage, locale: locale}
+}
+
+// SetAddMessage sets the function for persisting messages into conversations.
+func (h *Handler) SetAddMessage(fn AddMessageFunc) {
+	h.addMessage = fn
+}
+
+// SetUpdateTitle sets the function for updating conversation titles.
+func (h *Handler) SetUpdateTitle(fn UpdateTitleFunc) {
+	h.updateTitle = fn
 }
 
 // RegisterRoutes registers all media generation routes.
@@ -152,6 +173,10 @@ func (h *Handler) StreamTask(c echo.Context) error {
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
+	// Disable WriteTimeout for this long-lived SSE connection.
+	rc := http.NewResponseController(w)
+	rc.SetWriteDeadline(time.Time{})
+
 	ticker := time.NewTicker(800 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -240,6 +265,10 @@ func (h *Handler) streamGeneration(c echo.Context, req *MediaRequest) error {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
+
+	// Disable WriteTimeout for this long-lived SSE connection.
+	rc := http.NewResponseController(w)
+	rc.SetWriteDeadline(time.Time{})
 
 	// Send initial event
 	writeSSE(w, "started", map[string]interface{}{
@@ -459,6 +488,7 @@ type directGenerateRequest struct {
 	Model           string         `json:"model"`
 	Params          map[string]any `json:"params"`
 	ReferenceImages []string       `json:"reference_images,omitempty"`
+	ConversationID  string         `json:"conversation_id,omitempty"`
 	MessageID       string         `json:"message_id,omitempty"`
 	Source          string         `json:"source,omitempty"` // "web" or "channel"
 }
@@ -519,11 +549,28 @@ func (h *Handler) DirectGenerate(c echo.Context) error {
 	// Handle reference images for i2v/i2i/kf2v
 	if len(req.ReferenceImages) > 0 {
 		mediaReq.ReferenceURL = req.ReferenceImages[0]
+		mediaReq.ReferenceURLs = req.ReferenceImages
 	}
 
 	source := req.Source
 	if source == "" {
 		source = "web"
+	}
+
+	// Set conversation title early — before task creation so it works even if generation fails.
+	if req.ConversationID != "" && h.updateTitle != nil {
+		locale := h.locale
+		if al := c.Request().Header.Get("Accept-Language"); al != "" {
+			locale = al
+		}
+		categoryLabel := categoryDisplayName(req.Category, locale)
+		runes := []rune(req.Prompt)
+		promptSnippet := req.Prompt
+		if len(runes) > 20 {
+			promptSnippet = string(runes[:20]) + "..."
+		}
+		title := categoryLabel + ": " + promptSnippet
+		_ = h.updateTitle(c.Request().Context(), req.ConversationID, title)
 	}
 
 	// Create persistent task and start async generation
@@ -532,14 +579,82 @@ func (h *Handler) DirectGenerate(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// If conversation_id is provided and we have a message store, persist messages into the conversation.
+	// This makes media tasks visible from any device — the assistant message contains the task_id marker.
+	var userMsgID, assistantMsgID string
+	if req.ConversationID != "" && h.addMessage != nil {
+		ctx := c.Request().Context()
+
+		// Build user message: prompt + reference images (saved to local storage)
+		userContent := req.Prompt
+		if len(req.ReferenceImages) > 0 && h.storage != nil {
+			for _, dataURL := range req.ReferenceImages {
+				ct, b64 := parseDataURL(dataURL)
+				if b64 == "" {
+					continue
+				}
+				localURL, err := h.storage.StoreBase64(b64, ct, MediaTypeImage)
+				if err != nil {
+					continue
+				}
+				userContent += "\n\n![image](" + localURL + ")"
+			}
+		}
+
+		// Create user message with the prompt + images
+		uid, err := h.addMessage(ctx, req.ConversationID, "user", userContent)
+		if err == nil {
+			userMsgID = uid
+		}
+
+		// Create assistant message with media_task_id marker
+		marker := fmt.Sprintf(`[media_task:%s]`, task.ID)
+		aid, err := h.addMessage(ctx, req.ConversationID, "assistant", marker)
+		if err == nil {
+			assistantMsgID = aid
+			// Update task's message_id to point to the assistant message
+			task.MessageID = assistantMsgID
+			if h.manager.taskStore != nil {
+				h.manager.taskStore.UpdateMessageID(task.ID, assistantMsgID)
+			}
+		}
+	}
+
 	// Return task ID immediately — client polls for status
 	return c.JSON(http.StatusAccepted, map[string]interface{}{
-		"task_id":    task.ID,
-		"message_id": task.MessageID,
-		"status":     string(task.Status),
-		"category":   task.Category,
-		"model":      task.Model,
+		"task_id":          task.ID,
+		"message_id":       task.MessageID,
+		"user_message_id":  userMsgID,
+		"assistant_message_id": assistantMsgID,
+		"status":           string(task.Status),
+		"category":         task.Category,
+		"model":            task.Model,
 	})
+}
+
+// categoryDisplayName returns a human-readable label for a media category.
+func categoryDisplayName(cat MediaCategory, locale string) string {
+	cn := strings.HasPrefix(locale, "zh")
+	switch cat {
+	case CategoryT2I:
+		if cn { return "文生图" }
+		return "Text to Image"
+	case CategoryT2V:
+		if cn { return "文生视频" }
+		return "Text to Video"
+	case CategoryI2V:
+		if cn { return "图生视频" }
+		return "Image to Video"
+	case CategoryI2I:
+		if cn { return "图片编辑" }
+		return "Image Edit"
+	case CategoryKF2V:
+		if cn { return "关键帧生视频" }
+		return "Keyframe to Video"
+	default:
+		if cn { return "媒体生成" }
+		return "Media"
+	}
 }
 
 // GetTaskByMessage handles GET /tasks/by-message/:message_id — returns tasks for a message.
@@ -555,4 +670,25 @@ func (h *Handler) GetTaskByMessage(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"tasks": tasks,
 	})
+}
+
+// parseDataURL extracts content type and base64 data from a data URL.
+// Input: "data:image/png;base64,iVBOR..." → ("image/png", "iVBOR...")
+// Falls back to treating the whole string as raw base64 if not a data URL.
+func parseDataURL(dataURL string) (contentType, b64 string) {
+	if !strings.HasPrefix(dataURL, "data:") {
+		return "image/png", dataURL
+	}
+	// data:image/png;base64,iVBOR...
+	rest := dataURL[5:] // strip "data:"
+	semicolonIdx := strings.Index(rest, ";")
+	if semicolonIdx < 0 {
+		return "image/png", dataURL
+	}
+	contentType = rest[:semicolonIdx]
+	after := rest[semicolonIdx+1:]
+	if strings.HasPrefix(after, "base64,") {
+		b64 = after[7:]
+	}
+	return contentType, b64
 }

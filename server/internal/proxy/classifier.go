@@ -54,6 +54,7 @@ const (
 	ErrorTypeInvalidRequest RetryableErrorType = "invalid_request"
 	ErrorTypeAuthFailed     RetryableErrorType = "auth_failed"
 	ErrorTypeModelNotFound  RetryableErrorType = "model_not_found"
+	ErrorTypeNetworkError   RetryableErrorType = "network_error"
 	ErrorTypeUnknown        RetryableErrorType = "unknown"
 )
 

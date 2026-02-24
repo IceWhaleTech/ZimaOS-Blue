@@ -113,6 +113,13 @@ func (s *TaskStore) UpdateUpstreamID(id, upstreamID string) error {
 	return err
 }
 
+// UpdateMessageID sets the message_id for a task (used when the assistant message is created after task creation).
+func (s *TaskStore) UpdateMessageID(taskID, messageID string) error {
+	_, err := s.db.Exec(`UPDATE media_tasks SET message_id=?, updated_at=? WHERE id=?`,
+		messageID, task.TimeToSQL(time.Now()), taskID)
+	return err
+}
+
 // Get retrieves a single task by ID.
 func (s *TaskStore) Get(id string) (*PersistentTask, error) {
 	row := s.db.QueryRow(`SELECT id, message_id, status, type, category, provider, model,

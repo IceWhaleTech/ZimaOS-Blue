@@ -70,6 +70,27 @@ type UsageStats struct {
 	EstimatedCostUSD float64         `json:"estimated_cost_usd"`
 	CostByProvider   map[string]float64 `json:"cost_by_provider"`
 	CostByModel      map[string]float64 `json:"cost_by_model"`
+
+	// Media Generation
+	MediaCalls       int64              `json:"media_calls"`
+	MediaCostUSD     float64            `json:"media_cost_usd"`
+	MediaCostByModel map[string]float64 `json:"media_cost_by_model,omitempty"`
+}
+
+// MediaEvent represents a single media generation event.
+type MediaEvent struct {
+	ID          string    `json:"id"`
+	Timestamp   time.Time `json:"timestamp"`
+	Provider    string    `json:"provider"`
+	Model       string    `json:"model"`
+	Type        string    `json:"type"`     // "image" or "video"
+	Category    string    `json:"category"` // "t2i", "t2v", "i2v", etc.
+	ImageCount  int       `json:"image_count,omitempty"`
+	DurationSec float64   `json:"duration_sec,omitempty"`
+	CostUSD     float64   `json:"cost_usd"`
+	Success     bool      `json:"success"`
+	LatencyMs   int64     `json:"latency_ms,omitempty"`
+	ErrorType   string    `json:"error_type,omitempty"`
 }
 
 // StatisticsCollector collects and aggregates usage statistics.
@@ -78,6 +99,7 @@ type StatisticsCollector struct {
 	enabled     bool
 	storagePath string
 	events      []APICallEvent
+	mediaEvents []MediaEvent
 	maxEvents   int
 	pricing     map[string]ModelPricing
 	syncPersist bool // For testing: persist synchronously
@@ -102,12 +124,14 @@ func NewStatisticsCollector(storagePath string, enabled bool) *StatisticsCollect
 		enabled:     enabled,
 		storagePath: storagePath,
 		events:      make([]APICallEvent, 0),
+		mediaEvents: make([]MediaEvent, 0),
 		maxEvents:   100000, // Keep last 100k events in memory
 		pricing:     getDefaultPricing(),
 	}
 
 	// Load existing events
 	collector.loadEvents()
+	collector.loadMediaEvents()
 
 	return collector
 }
@@ -249,6 +273,7 @@ func (c *StatisticsCollector) aggregateStats(start, end time.Time) (*UsageStats,
 		ErrorsByType:     make(map[string]int64),
 		CostByProvider:   make(map[string]float64),
 		CostByModel:      make(map[string]float64),
+		MediaCostByModel: make(map[string]float64),
 		MinLatencyMs:     -1,
 	}
 
@@ -324,6 +349,25 @@ func (c *StatisticsCollector) aggregateStats(start, end time.Time) (*UsageStats,
 		stats.MinLatencyMs = 0
 	}
 
+	// Aggregate media events
+	for _, me := range c.mediaEvents {
+		if !start.IsZero() && me.Timestamp.Before(start) {
+			continue
+		}
+		if me.Timestamp.After(end) {
+			continue
+		}
+		if me.Success {
+			stats.MediaCalls++
+			stats.MediaCostUSD += me.CostUSD
+			stats.MediaCostByModel[me.Model] += me.CostUSD
+			// Include media cost in total estimated cost
+			stats.EstimatedCostUSD += me.CostUSD
+			stats.CostByProvider[me.Provider] += me.CostUSD
+			stats.CostByModel[me.Model] += me.CostUSD
+		}
+	}
+
 	return stats, nil
 }
 
@@ -360,10 +404,11 @@ func (c *StatisticsCollector) Clear() error {
 	defer c.mu.Unlock()
 
 	c.events = make([]APICallEvent, 0)
+	c.mediaEvents = make([]MediaEvent, 0)
 
 	// Remove persisted data
-	eventsFile := filepath.Join(c.storagePath, "events.jsonl")
-	os.Remove(eventsFile)
+	os.Remove(filepath.Join(c.storagePath, "events.jsonl"))
+	os.Remove(filepath.Join(c.storagePath, "media_events.jsonl"))
 
 	return nil
 }
@@ -478,4 +523,90 @@ func (c *StatisticsCollector) SetSyncPersist(sync bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.syncPersist = sync
+}
+
+// RecordMediaEvent records a media generation event.
+func (c *StatisticsCollector) RecordMediaEvent(event *MediaEvent) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.enabled {
+		return nil
+	}
+
+	if event.ID == "" {
+		event.ID = generateEventID()
+	}
+	if event.Timestamp.IsZero() {
+		event.Timestamp = timeutil.NowTime()
+	}
+
+	c.mediaEvents = append(c.mediaEvents, *event)
+
+	// Trim if exceeds max
+	if len(c.mediaEvents) > c.maxEvents {
+		c.mediaEvents = c.mediaEvents[len(c.mediaEvents)-c.maxEvents:]
+	}
+
+	if c.syncPersist {
+		c.persistMediaEvent(event)
+	} else {
+		c.wg.Add(1)
+		go func() {
+			defer c.wg.Done()
+			c.persistMediaEvent(event)
+		}()
+	}
+
+	return nil
+}
+
+// GetMediaEventCount returns the total number of media events.
+func (c *StatisticsCollector) GetMediaEventCount() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return len(c.mediaEvents)
+}
+
+// persistMediaEvent persists a media event to disk.
+func (c *StatisticsCollector) persistMediaEvent(event *MediaEvent) {
+	if err := os.MkdirAll(c.storagePath, 0755); err != nil {
+		return
+	}
+
+	f, err := os.OpenFile(filepath.Join(c.storagePath, "media_events.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+	f.Write(data)
+	f.Write([]byte("\n"))
+}
+
+// loadMediaEvents loads media events from disk.
+func (c *StatisticsCollector) loadMediaEvents() {
+	data, err := os.ReadFile(filepath.Join(c.storagePath, "media_events.jsonl"))
+	if err != nil {
+		return
+	}
+
+	for _, line := range splitLines(string(data)) {
+		if line == "" {
+			continue
+		}
+		var event MediaEvent
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		c.mediaEvents = append(c.mediaEvents, event)
+	}
+
+	if len(c.mediaEvents) > c.maxEvents {
+		c.mediaEvents = c.mediaEvents[len(c.mediaEvents)-c.maxEvents:]
+	}
 }

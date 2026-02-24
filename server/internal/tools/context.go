@@ -9,10 +9,29 @@ import (
 type toolContextKey string
 
 const (
-	langKey    toolContextKey = "tool_lang"
-	channelKey toolContextKey = "tool_channel"
-	deviceKey  toolContextKey = "tool_device"
+	langKey     toolContextKey = "tool_lang"
+	channelKey  toolContextKey = "tool_channel"
+	deviceKey   toolContextKey = "tool_device"
+	cardEmitKey toolContextKey = "tool_card_emit"
 )
+
+// CardEmitFunc is a callback that tools can use to emit streaming typeless
+// cards during execution. The card map is JSON-serialised and pushed to the
+// client's SSE stream immediately.
+type CardEmitFunc func(card map[string]interface{})
+
+// WithCardEmitter returns a context carrying a card emitter callback.
+func WithCardEmitter(ctx context.Context, fn CardEmitFunc) context.Context {
+	return context.WithValue(ctx, cardEmitKey, fn)
+}
+
+// EmitCard sends a typeless card to the client if an emitter is set.
+// Safe to call even when no emitter is present (no-op).
+func EmitCard(ctx context.Context, card map[string]interface{}) {
+	if fn, ok := ctx.Value(cardEmitKey).(CardEmitFunc); ok && fn != nil {
+		fn(card)
+	}
+}
 
 // WithUserID returns a context carrying the user ID for tool/skill execution.
 func WithUserID(ctx context.Context, userID string) context.Context {

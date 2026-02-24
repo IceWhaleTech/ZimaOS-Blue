@@ -7,6 +7,7 @@ self.addEventListener('push', (event) => {
     icon: '/logo.png',
     badge: '/logo.png',
     tag: data.tag || 'blue-notification',
+    image: data.image || undefined,
     data: { url: data.url || '/' },
   }
   event.waitUntil(self.registration.showNotification(title, options))

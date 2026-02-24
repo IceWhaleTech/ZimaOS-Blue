@@ -95,6 +95,8 @@ declare module 'vue' {
     LimitedModeBanner: typeof import('./components/limited/LimitedModeBanner.vue')['default']
     LLMRequestNode: typeof import('./components/companion/nodes/LLMRequestNode.vue')['default']
     LoadingSpinner: typeof import('./components/LoadingSpinner.vue')['default']
+    MediaParamPanel: typeof import('./components/MediaParamPanel.vue')['default']
+    MediaPlaceholder: typeof import('./components/MediaPlaceholder.vue')['default']
     MediaTaskProgress: typeof import('./components/chat/MediaTaskProgress.vue')['default']
     MemoryChartCard: typeof import('./components/dashboard/cards/MemoryChartCard.vue')['default']
     MemoryManager: typeof import('./components/MemoryManager.vue')['default']

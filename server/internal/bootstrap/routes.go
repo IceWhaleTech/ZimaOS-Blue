@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 
@@ -61,7 +63,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/webpush"
 )
 
 // routesStartTime records when the server started, used for uptime calculation
@@ -141,6 +145,20 @@ type RoutesDeps struct {
 	HotReloader        *config.HotReloader
 	WorkspaceHandler   *workspace.Handler
 	SSEBroker          *sse.Broker
+
+	// IPC backends (optional, wired from main.go)
+	BrowserIPC    sockipc.BrowserBackend
+	UIReviewerIPC sockipc.UIReviewBackend
+	UIReviewerTool *tools.UIReviewerTool // for VLM bridge wiring
+	PushIPC          sockipc.PushBackend
+	CronIPC          sockipc.CronBackend
+
+	// Closers collects io.Closers started during route registration.
+	// The caller should close them on shutdown (e.g., via lifecycle hooks).
+	Closers []interface{ Close() error }
+
+	// ChannelTaskWatcher is populated by RegisterAllRoutes for main.go to wire the notifier.
+	ChannelTaskWatcher *mediagen.ChannelTaskWatcher
 }
 
 // RegisterAllRoutes registers all API routes on the Echo instance.
@@ -231,6 +249,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	v1.Static("/media", mediaDir)
 
 	// Media generation (image/video/audio) — self-contained, no dependency on ProviderPool
+	var ipcSrv *sockipc.Server
 	{
 		mediaGenDir := filepath.Join(dataDir, "media", "generated")
 		mediaStorage := mediagen.NewMediaStorage(mediaGenDir, "/api/media/generated")
@@ -258,16 +277,170 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			mediaManager.RecoverTasks()
 		}
 
-		// Always register media skills — they check for available providers at execution time.
-		s.ToolRegistry.Register(mediagen.NewImageGenerateSkill(mediaManager))
-		s.ToolRegistry.Register(mediagen.NewVideoGenerateSkill(mediaManager))
+		// Channel task watcher: monitors channel-sourced tasks and sends results back.
+		// Notifier is set later by main.go after the channel manager is available.
+		channelWatcher := mediagen.NewChannelTaskWatcher(mediaManager, nil)
+		channelWatcher.RecoverChannelTasks()
+		deps.Closers = append(deps.Closers, channelWatcher)
+
+		// Web Push notifications for media task completion
+		wpPriv, wpPub, wpErr := webpush.GetOrCreateVAPIDKeys(dataDir)
+		if wpErr != nil {
+			logger.Warn("Failed to initialize VAPID keys", zap.Error(wpErr))
+		} else {
+			wpStore, wpStoreErr := webpush.NewStore(s.DB)
+			if wpStoreErr != nil {
+				logger.Warn("Failed to initialize webpush store", zap.Error(wpStoreErr))
+			} else {
+				wpSender := webpush.NewSender(wpPriv, wpPub, wpStore, logger)
+				wpHandler := webpush.NewHandler(wpStore, wpPub)
+				wpHandler.RegisterRoutes(v1.Group("/webpush"))
+
+				isCN := strings.HasPrefix(locale, "zh")
+				mediaManager.SetOnTaskDone(func(taskID, status, model, imageURL string) {
+					var title, body string
+					if isCN {
+						title = "媒体生成"
+						if status == "failed" {
+							body = model + " 生成失败"
+						} else {
+							body = model + " 生成完成"
+						}
+					} else {
+						title = "Media Generation"
+						if status == "failed" {
+							body = model + " failed"
+						} else {
+							body = model + " completed"
+						}
+					}
+					go wpSender.SendToAll(context.Background(), title, body, imageURL)
+				})
+			}
+		}
+
+		// Wire SSE event publisher for real-time task progress
+		if deps.SSEBroker != nil {
+			mediaManager.SetEventPublisher(deps.SSEBroker)
+		}
+
+		// Wire media interceptor to ChatHandler for channel IR classification
+		if deps.ChatHandler != nil {
+			interceptor := mediagen.NewInterceptor(mediaManager, channelWatcher)
+			deps.ChatHandler.SetMediaInterceptor(interceptor)
+		}
+
+		// Expose watcher for main.go to set the channel notifier
+		deps.ChannelTaskWatcher = channelWatcher
 
 		// Register HTTP routes
-		mediaHandler := mediagen.NewHandler(mediaManager, mediaStorage)
+		mediaHandler := mediagen.NewHandler(mediaManager, mediaStorage, locale)
+
+		// Wire addMessage so DirectGenerate can persist messages into conversations.
+		// This makes media tasks visible from any device (server-side persistence).
+		mediaHandler.SetAddMessage(func(ctx context.Context, conversationID, role, content string) (string, error) {
+			msgID := uuid.New().String()
+			now := time.Now().UTC().Format(time.RFC3339Nano)
+			_, err := deps.DB.ExecContext(ctx,
+				`INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+				msgID, conversationID, role, content, now,
+			)
+			if err != nil {
+				return "", err
+			}
+			return msgID, nil
+		})
+
+		mediaHandler.SetUpdateTitle(func(ctx context.Context, conversationID, title string) error {
+			_, err := deps.DB.ExecContext(ctx,
+				`UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?`,
+				title, time.Now().UTC().Format(time.RFC3339Nano), conversationID,
+			)
+			return err
+		})
+
 		mediaGroup := v1.Group("/media")
 		mediaHandler.RegisterRoutes(mediaGroup)
 		mediaHandler.RegisterStorageRoutes(e)
 		logger.Info("Media generation routes registered")
+
+		// Start IPC socket for LLM skills and CLI
+		// Auth: Unix socket file permissions (0600) — no token needed.
+		sockPath := "/tmp/blue.sock"
+		ipcSrv = sockipc.NewServer(sockPath, logger)
+
+		// Media generator — creates a persistent task via MediaManager
+		mediaGen := func(ctx context.Context, category, model, prompt string, params map[string]string) (string, error) {
+			req := &mediagen.MediaRequest{
+				Prompt: prompt,
+				Model:  model,
+			}
+			switch category {
+			case "t2v", "i2v", "kf2v":
+				req.Type = mediagen.MediaTypeVideo
+			default:
+				req.Type = mediagen.MediaTypeImage
+			}
+			if v, ok := params["size"]; ok {
+				req.Size = v
+			}
+			messageID := params["message_id"]
+			source := params["source"]
+			if source == "" {
+				source = "ipc"
+			}
+			task, err := mediaManager.CreateTask(ctx, req, messageID, category, source)
+			if err != nil {
+				return "", err
+			}
+			return task.ID, nil
+		}
+
+		// Status querier
+		statusQuery := func(ctx context.Context, taskID string) (map[string]string, error) {
+			task, err := mediaManager.GetTask(taskID)
+			if err != nil {
+				return nil, err
+			}
+			if task == nil {
+				return nil, nil
+			}
+			return map[string]string{
+				"task_id":     task.ID,
+				"task_status": string(task.Status),
+				"progress":    fmt.Sprintf("%.2f", task.Progress),
+				"error":       task.Error,
+			}, nil
+		}
+
+		sockipc.RegisterMediaHandlers(ipcSrv, mediaGen, statusQuery, logger)
+
+		// Register browser IPC handlers
+		if deps.BrowserIPC != nil {
+			sockipc.RegisterBrowserHandlers(ipcSrv, deps.BrowserIPC, logger)
+		}
+
+		// Register UI reviewer IPC handlers
+		if deps.UIReviewerIPC != nil {
+			sockipc.RegisterUIReviewHandlers(ipcSrv, deps.UIReviewerIPC, logger)
+		}
+
+		// Register push notification IPC handlers
+		if deps.PushIPC != nil {
+			sockipc.RegisterPushHandlers(ipcSrv, deps.PushIPC, logger)
+		}
+
+		// Register cron/scheduler IPC handlers
+		if deps.CronIPC != nil {
+			sockipc.RegisterCronHandlers(ipcSrv, deps.CronIPC, logger)
+		}
+
+		if err := ipcSrv.Start(); err != nil {
+			logger.Warn("Failed to start sockipc server", zap.Error(err))
+		} else {
+			deps.Closers = append(deps.Closers, ipcSrv)
+			logger.Info("Socket IPC server started", zap.String("path", sockPath))
+		}
 	}
 
 	// Health endpoint (with full runtime stats)
@@ -378,6 +551,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	promptGuard := promptguard.NewDetector(promptguard.DefaultDetectorConfig())
 	deps.ChatHandler.SetPromptGuard(promptGuard)
 
+	// Wire SSE broker for cross-tab conversation_updated events during streaming
+	if deps.SSEBroker != nil {
+		deps.ChatHandler.SetSSEBroker(deps.SSEBroker)
+	}
+
 	// Register chat routes
 	deps.ChatHandler.RegisterRoutes(v1)
 
@@ -485,6 +663,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	skillHandler.RegisterRoutes(v1)
+
+	// Register skill manager IPC handlers (after scanner + store are ready)
+	if ipcSrv != nil {
+		skillMgr := newSkillManagerAdapter(skillStoreDb, s.SkillRegistry, localScanner, skillsDir)
+		sockipc.RegisterSkillManagerHandlers(ipcSrv, skillMgr, logger)
+		logger.Info("Skill manager IPC handlers registered")
+	}
 
 	// Plugin routes
 	pluginHandler := server.NewPluginHandler(deps.PluginRegistry)
@@ -960,17 +1145,31 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			slog.Warn("Failed to create toggle kvstore", "error", kvErr)
 		} else {
 			toggleStore = proxy.NewToggleStore(toggleKV)
-			if saved, loadErr := toggleStore.Load(context.Background()); loadErr == nil {
-				if prunerMw != nil {
-					prunerMw.SetEnabled(saved.PrunerEnabled)
-				}
-				if saved.PrunerBackend != "" && saved.PrunerBackend != prunerCfg.Backend {
+			if saved, loadErr := toggleStore.Load(context.Background()); loadErr == nil && saved != nil {
+				// Restore pruner state — if saved as enabled but middleware wasn't
+				// created (config default is disabled), create it now.
+				if saved.PrunerBackend != "" {
 					prunerCfg.Backend = saved.PrunerBackend
-					if b, err := pruner.NewBackend(prunerCfg); err == nil {
-						if prunerMw != nil {
-							prunerMw.SetBackend(b)
+				}
+				if saved.PrunerEnabled {
+					if prunerMw == nil {
+						prunerCfg.Enabled = true
+						if b, err := pruner.NewBackend(prunerCfg); err == nil {
+							prunerMw = pruner.NewMiddleware(b, prunerCfg, pruner.NewStats())
+							proxyHandler.SetPruner(prunerMw)
+							prunerHandler.SetMiddleware(prunerMw)
+							slog.Info("Context pruner restored from saved state", "backend", prunerCfg.Backend)
+						}
+					} else {
+						prunerMw.SetEnabled(true)
+						if saved.PrunerBackend != "" && saved.PrunerBackend != prunerCfg.Backend {
+							if b, err := pruner.NewBackend(prunerCfg); err == nil {
+								prunerMw.SetBackend(b)
+							}
 						}
 					}
+				} else if prunerMw != nil {
+					prunerMw.SetEnabled(false)
 				}
 				proxyHandler.SetRoutingEnabled(saved.RoutingEnabled)
 				proxyHandler.SetPromptCacheEnabled(saved.PromptCacheEnabled)
@@ -994,6 +1193,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			}
 			prunerHandler.SetOnToggle(func(enabled bool) { saveToggle() })
 			prunerHandler.SetOnBackendChange(func(backend string) { saveToggle() })
+			prunerHandler.SetOnMiddlewareCreated(func(mw *pruner.Middleware) {
+				proxyHandler.SetPruner(mw)
+			})
 			maskingOnToggle = saveToggle
 		}
 
@@ -1007,9 +1209,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			deps.VoiceHandler.Service().SetChatFunc(bridge.Chat)
 		}
 
-		// Wire VLM bridge into native UI reviewer tool
-		if uiTool := tools.GetUIReviewerTool(s.ToolRegistry); uiTool != nil {
-			uiTool.SetVLMBridge(tools.NewProxyBridgeVLMAdapter(bridge))
+		// Wire VLM bridge into UI reviewer tool (for IPC-based SKILL)
+		if deps.UIReviewerTool != nil {
+			deps.UIReviewerTool.SetVLMBridge(tools.NewProxyBridgeVLMAdapter(bridge))
 		}
 
 		v1ProxyGroup := e.Group("/v1")

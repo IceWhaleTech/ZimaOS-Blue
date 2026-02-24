@@ -88,6 +88,27 @@ func (s *Store) ListByUser(ctx context.Context, userID string) ([]*Subscription,
 	return result, rows.Err()
 }
 
+// ListAll returns all subscriptions (for broadcast).
+func (s *Store) ListAll(ctx context.Context) ([]*Subscription, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, user_id, endpoint, key_p256dh, key_auth, created_at
+		 FROM push_subscriptions`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []*Subscription
+	for rows.Next() {
+		sub := &Subscription{}
+		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Endpoint, &sub.KeyP256dh, &sub.KeyAuth, &sub.CreatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, sub)
+	}
+	return result, rows.Err()
+}
+
 // DeleteByEndpoint removes a subscription by endpoint (for stale cleanup).
 func (s *Store) DeleteByEndpoint(ctx context.Context, endpoint string) error {
 	_, err := s.db.ExecContext(ctx,

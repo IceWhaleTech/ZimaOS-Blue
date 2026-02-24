@@ -13,6 +13,32 @@ import (
 	basetask "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 )
 
+// CostEvent contains the data needed to record a media generation cost.
+type CostEvent struct {
+	Provider    string
+	Model       string
+	Type        string  // "image" or "video"
+	Category    string  // "t2i", "t2v", etc.
+	ImageCount  int
+	DurationSec float64
+	CostUSD     float64
+	Success     bool
+	LatencyMs   int64
+}
+
+// CostRecorder is a callback for recording media generation costs.
+// Set via Manager.SetCostRecorder.
+
+// EventPublisher pushes real-time events to connected clients (e.g. SSE broker).
+type EventPublisher interface {
+	Publish(userID string, eventType string, data any)
+}
+type CostRecorder func(event CostEvent)
+
+// TaskDoneCallback is called when a media task reaches a terminal state (succeeded/failed/cancelled).
+// taskID is the task ID, status is the terminal status, model is the model name, imageURL is the first result thumbnail (empty if none).
+type TaskDoneCallback func(taskID, status, model, imageURL string)
+
 const (
 	defaultPollTimeout = 5 * time.Minute
 )
@@ -28,9 +54,12 @@ type Manager struct {
 	mu           sync.RWMutex
 
 	// Provider config management
-	configs     map[string]*MediaProviderConfig
-	configStore *ConfigStore
-	locale      string // user locale for priority ordering
+	configs      map[string]*MediaProviderConfig
+	configStore  *ConfigStore
+	locale       string // user locale for priority ordering
+	costRecorder CostRecorder
+	onTaskDone   TaskDoneCallback
+	eventPub     EventPublisher
 }
 
 // NewManager creates a new media generation manager.
@@ -471,12 +500,14 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 			if m.taskStore != nil {
 				_ = m.taskStore.UpdateStatus(taskID, TaskStatusFailed, updated.Progress, updated.Error, "")
 			}
+			m.publishTaskEvent(updated)
 			return
 		default:
 			// Persist progress
 			if m.taskStore != nil {
 				_ = m.taskStore.UpdateStatus(taskID, updated.Status, updated.Progress, "", "")
 			}
+			m.publishTaskEvent(updated)
 		}
 
 		// Exponential backoff
@@ -504,6 +535,11 @@ func (m *Manager) cacheResults(task *MediaTask) {
 				continue
 			}
 			result.URL = localURL
+		}
+
+		// If no OriginalURL and no URL, log for debugging
+		if result.OriginalURL == "" && result.URL == "" && result.B64JSON == "" {
+			log.Printf("[mediagen] result %d for task %s has no URL, OriginalURL, or B64JSON (content_type=%s)", i, task.ID, result.ContentType)
 		}
 
 		// Store base64 data
@@ -536,6 +572,9 @@ func (m *Manager) cacheResults(task *MediaTask) {
 	task.CompletedAt = &now
 	m.tasks.Store(task.ID, task)
 
+	// Record cost
+	m.recordCost(task)
+
 	// Persist success to DB
 	if m.taskStore != nil {
 		respJSON := ""
@@ -546,6 +585,21 @@ func (m *Manager) cacheResults(task *MediaTask) {
 		}
 		_ = m.taskStore.UpdateStatus(task.ID, TaskStatusSucceeded, 1.0, "", respJSON)
 	}
+
+	if m.onTaskDone != nil {
+		imageURL := ""
+		if task.Response != nil && len(task.Response.Data) > 0 {
+			d := task.Response.Data[0]
+			if d.ThumbnailURL != "" {
+				imageURL = d.ThumbnailURL
+			} else if d.URL != "" {
+				imageURL = d.URL
+			}
+		}
+		m.onTaskDone(task.ID, string(TaskStatusSucceeded), task.Model, imageURL)
+	}
+
+	m.publishTaskEvent(task)
 }
 
 // updateTaskError marks a task as failed.
@@ -565,11 +619,88 @@ func (m *Manager) updateTaskError(taskID, errMsg string) {
 	if m.taskStore != nil {
 		_ = m.taskStore.UpdateStatus(taskID, TaskStatusFailed, task.Progress, errMsg, "")
 	}
+
+	if m.onTaskDone != nil {
+		m.onTaskDone(taskID, string(TaskStatusFailed), task.Model, "")
+	}
+
+	m.publishTaskEvent(task)
+}
+
+// recordCost calculates and records the cost for a completed media task.
+func (m *Manager) recordCost(task *MediaTask) {
+	if m.costRecorder == nil {
+		return
+	}
+
+	imageCount := 0
+	var durationSec float64
+	if task.Response != nil {
+		imageCount = len(task.Response.Data)
+		for _, r := range task.Response.Data {
+			durationSec += float64(r.DurationSec)
+		}
+	}
+
+	cost := CalculateMediaCost(task.Model, imageCount, durationSec)
+
+	var latencyMs int64
+	if task.CompletedAt != nil && !task.CreatedAt.IsZero() {
+		latencyMs = task.CompletedAt.Sub(task.CreatedAt).Milliseconds()
+	}
+
+	m.costRecorder(CostEvent{
+		Provider:    task.Provider,
+		Model:       task.Model,
+		Type:        string(task.Type),
+		Category:    task.Category,
+		ImageCount:  imageCount,
+		DurationSec: durationSec,
+		CostUSD:     cost,
+		Success:     true,
+		LatencyMs:   latencyMs,
+	})
 }
 
 // SetTaskStore sets the persistent task store for power-failure recovery.
 func (m *Manager) SetTaskStore(store *TaskStore) {
 	m.taskStore = store
+}
+
+// SetCostRecorder sets the callback for recording media generation costs.
+func (m *Manager) SetCostRecorder(recorder CostRecorder) {
+	m.costRecorder = recorder
+}
+
+// SetOnTaskDone sets the callback invoked when a task reaches a terminal state.
+func (m *Manager) SetOnTaskDone(cb TaskDoneCallback) {
+	m.onTaskDone = cb
+}
+
+// SetEventPublisher sets the SSE broker for real-time task progress events.
+func (m *Manager) SetEventPublisher(pub EventPublisher) {
+	m.eventPub = pub
+}
+
+// publishTaskEvent sends a media_task_update event to all SSE clients.
+func (m *Manager) publishTaskEvent(task *MediaTask) {
+	if m.eventPub == nil {
+		return
+	}
+	evt := map[string]interface{}{
+		"id":       task.ID,
+		"status":   string(task.Status),
+		"progress": task.Progress,
+		"type":     string(task.Type),
+	}
+	if task.Error != "" {
+		evt["error"] = task.Error
+	}
+	if task.Response != nil {
+		evt["response"] = task.Response
+	}
+	// Broadcast to "default" user — ZimaOS is single-user
+	m.eventPub.Publish("default", "media_task_update", evt)
 }
 
 // CreateTask creates a persistent media generation task and starts async execution.

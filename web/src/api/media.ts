@@ -2,7 +2,8 @@ import api, { ensureFreshToken } from './client'
 
 // Types
 export type MediaType = 'image' | 'video'
-export type TaskStatus = 'pending' | 'processing' | 'succeeded' | 'failed'
+export type TaskStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled'
+export type MediaCategory = 't2i' | 't2v' | 'i2v' | 'i2i' | 'kf2v'
 
 export interface MediaRequest {
   prompt: string
@@ -34,9 +35,11 @@ export interface MediaTask {
   id: string
   status: TaskStatus
   type: MediaType
+  category?: MediaCategory
   provider: string
   model: string
   progress: number
+  message_id?: string
   response?: MediaResponse
   error?: string
   created_at: string
@@ -47,9 +50,44 @@ export interface MediaModelInfo {
   id: string
   name: string
   type: MediaType
+  category?: MediaCategory
   provider: string
   max_resolution?: string
   supported_sizes?: string[]
+}
+
+// IR-based intent classification
+export interface MediaIntent {
+  category: MediaCategory
+  confidence: number
+  prompt: string
+  has_image: boolean
+  image_count: number
+  alternative_category?: MediaCategory // e.g. kf2v when 2 images could be i2v or kf2v
+}
+
+export interface ClassifyResponse {
+  intent: MediaIntent | null
+  models?: MediaModelInfo[]
+}
+
+export interface DirectGenerateRequest {
+  category: MediaCategory
+  prompt: string
+  model?: string
+  params?: Record<string, any>
+  reference_images?: string[]
+  conversation_id?: string
+  message_id?: string
+  source?: string
+}
+
+export interface DirectGenerateResponse {
+  task_id: string
+  message_id: string
+  status: string
+  category: string
+  model: string
 }
 
 // SSE progress event
@@ -83,6 +121,28 @@ export async function listModels(type?: MediaType) {
   const params = type ? { type } : {}
   const { data } = await api.get<{ data: MediaModelInfo[] }>('/media/models', { params })
   return data.data
+}
+
+// IR-based API functions
+
+export async function classifyIntent(message: string, hasImages = false, imageCount = 0, locale = '') {
+  const { data } = await api.post<ClassifyResponse>('/media/classify', {
+    message,
+    has_images: hasImages,
+    image_count: imageCount,
+    locale,
+  })
+  return data
+}
+
+export async function directGenerate(req: DirectGenerateRequest) {
+  const { data } = await api.post<DirectGenerateResponse>('/media/generate', req)
+  return data
+}
+
+export async function getTasksByMessage(messageId: string) {
+  const { data } = await api.get<{ tasks: MediaTask[] }>(`/media/tasks/by-message/${messageId}`)
+  return data.tasks
 }
 
 /**
@@ -129,6 +189,7 @@ export function streamMediaTask(
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let receivedTerminal = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -144,7 +205,10 @@ export function streamMediaTask(
             currentEvent = line.slice(7).trim()
           } else if (line.startsWith('data: ')) {
             const raw = line.slice(6).trim()
-            if (raw === '[DONE]') return
+            if (raw === '[DONE]') {
+              receivedTerminal = true
+              return
+            }
 
             try {
               const data = JSON.parse(raw) as MediaProgressEvent
@@ -153,9 +217,11 @@ export function streamMediaTask(
                   callbacks.onProgress?.(data)
                   break
                 case 'complete':
+                  receivedTerminal = true
                   callbacks.onComplete?.(data)
                   return
                 case 'error':
+                  receivedTerminal = true
                   callbacks.onError?.(data.error || 'Generation failed')
                   return
               }
@@ -165,6 +231,11 @@ export function streamMediaTask(
             currentEvent = ''
           }
         }
+      }
+
+      // Stream ended without a terminal event — connection dropped
+      if (!receivedTerminal) {
+        callbacks.onError?.('stream_disconnected')
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return

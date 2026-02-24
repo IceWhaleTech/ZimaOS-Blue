@@ -32,6 +32,7 @@ export const useChatStore = defineStore('chat', () => {
   const toolExecuting = ref(false) // Tool execution in progress
   const toolExecutingStartTime = ref<number>(0) // Timestamp when tool execution started
   const contextTrimInfo = ref<{ type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number } | null>(null)
+  const networkRecovering = ref(false) // Auto-recovering from network interrupt
 
   // Pagination state
   const hasMoreMessages = ref(false)
@@ -425,6 +426,30 @@ export const useChatStore = defineStore('chat', () => {
         },
         onContextTrimmed: (info) => {
           contextTrimInfo.value = info
+        },
+        onNetworkInterrupt: () => {
+          // Mid-stream network interrupt — auto-recover by fetching persisted
+          // content from server and continuing generation
+          networkRecovering.value = true
+          streamError.value = null
+          setTimeout(async () => {
+            try {
+              await fetchMessages(conversationId)
+              // Remove streaming placeholder — server has the real message now
+              messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+              streaming.value = false
+              sending.value = false
+              toolExecuting.value = false
+              streamingContent.value = ''
+              // Auto-continue generation
+              await continueMessage()
+            } catch {
+              // Recovery failed — show error
+              streamError.value = 'networkRecovering'
+            } finally {
+              networkRecovering.value = false
+            }
+          }, 2000)
         },
         onComplete: (finalChunk) => {
           streaming.value = false
@@ -928,6 +953,7 @@ export const useChatStore = defineStore('chat', () => {
     toolExecuting,
     toolExecutingStartTime,
     contextTrimInfo,
+    networkRecovering,
     hasMoreMessages,
     loadingMore,
     searchQuery,

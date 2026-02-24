@@ -15,6 +15,7 @@ type APIHandler struct {
 	modelManager     *PrunerModelManager
 	onToggle         func(enabled bool)  // callback to persist toggle state
 	onBackendChange  func(backend string) // callback to persist backend change
+	onMwCreated      func(mw *Middleware) // callback when middleware is lazily created
 }
 
 // NewAPIHandler creates a new pruner API handler.
@@ -34,6 +35,17 @@ func (h *APIHandler) SetOnToggle(fn func(enabled bool)) {
 // SetOnBackendChange sets a callback invoked when the backend changes.
 func (h *APIHandler) SetOnBackendChange(fn func(backend string)) {
 	h.onBackendChange = fn
+}
+
+// SetOnMiddlewareCreated sets a callback invoked when the middleware is lazily created
+// (e.g. when the user enables pruning for the first time via API).
+func (h *APIHandler) SetOnMiddlewareCreated(fn func(mw *Middleware)) {
+	h.onMwCreated = fn
+}
+
+// SetMiddleware replaces the middleware reference (used when restoring saved state).
+func (h *APIHandler) SetMiddleware(mw *Middleware) {
+	h.middleware = mw
 }
 
 // RegisterRoutes registers pruner API routes.
@@ -116,7 +128,20 @@ func (h *APIHandler) UpdateConfig(c echo.Context) error {
 
 	if update.Enabled != nil {
 		h.config.Enabled = *update.Enabled
-		if h.middleware != nil {
+		if *update.Enabled && h.middleware == nil {
+			// Lazily create middleware on first enable
+			b, err := NewBackend(*h.config)
+			if err != nil {
+				h.config.Enabled = false
+				return c.JSON(http.StatusBadRequest, map[string]string{
+					"error": "failed to create pruner backend: " + err.Error(),
+				})
+			}
+			h.middleware = NewMiddleware(b, *h.config, NewStats())
+			if h.onMwCreated != nil {
+				h.onMwCreated(h.middleware)
+			}
+		} else if h.middleware != nil {
 			h.middleware.SetEnabled(*update.Enabled)
 		}
 		if h.onToggle != nil {

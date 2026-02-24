@@ -357,11 +357,13 @@ func (t *UIReviewerTool) reviewURL(ctx context.Context, url string, args map[str
 	}
 
 	// 2. Navigate
+	emitUIProgress(ctx, "navigate", i18n.T(lang, i18n.MsgStepPageLoad), "running", url, nil)
 	nav, err := browser.NavigateURL(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("navigation failed: %w", err)
 	}
 	steps = append(steps, UIReviewStep{ID: "navigate", Name: i18n.T(lang, i18n.MsgStepPageLoad), Status: "success"})
+	emitUIProgress(ctx, "navigate", i18n.T(lang, i18n.MsgStepPageLoad), "success", url, nil)
 
 	// 3. Set viewport based on device
 	if err := browser.SetViewport(ctx, nav.TargetID, vpWidth, vpHeight); err == nil {
@@ -374,33 +376,43 @@ func (t *UIReviewerTool) reviewURL(ctx context.Context, url string, args map[str
 	}
 
 	// 5. Functional checks
+	emitUIProgress(ctx, "functional", i18n.T(lang, i18n.MsgStepFunctional), "running", url, nil)
 	funcResult := t.runFunctionalChecks(ctx, browser, nav.TargetID, lang)
 	steps = append(steps, UIReviewStep{
 		ID: "functional", Name: i18n.T(lang, i18n.MsgStepFunctional), Status: "success",
 		Score: funcResult.Score, Issues: len(funcResult.Issues),
 	})
+	emitUIProgress(ctx, "functional", i18n.T(lang, i18n.MsgStepFunctional), "success", url, &funcResult.Score)
 
 	// 6. Accessibility checks
+	emitUIProgress(ctx, "accessibility", i18n.T(lang, i18n.MsgStepAccessibility), "running", url, nil)
 	a11y := t.runA11yChecks(ctx, browser, nav.TargetID, lang)
 	steps = append(steps, UIReviewStep{
 		ID: "accessibility", Name: i18n.T(lang, i18n.MsgStepAccessibility), Status: "success",
 		Score: a11y.Score, Issues: len(a11y.Issues),
 	})
+	emitUIProgress(ctx, "accessibility", i18n.T(lang, i18n.MsgStepAccessibility), "success", url, &a11y.Score)
 
 	// 7. Multi-page scroll + screenshots
+	emitUIProgress(ctx, "screenshot", i18n.T(lang, i18n.MsgStepScreenshot), "running", url, nil)
 	screenshots, firstScreenshot := t.captureScrollScreenshots(ctx, browser, nav.TargetID, mediaDir, &steps, lang)
+	emitUIProgress(ctx, "screenshot", i18n.T(lang, i18n.MsgStepScreenshot), "success", url, nil)
 
 	// 8. VLM visual review (or structural fallback)
 	var vlm *vlmParsedResult
 	if bridge != nil && firstScreenshot != "" {
+		emitUIProgress(ctx, "visual", i18n.T(lang, i18n.MsgStepVisualReview), "running", url, nil)
 		vlm = t.runVLMReview(ctx, bridge, firstScreenshot, url, lang)
 		if vlm != nil {
+			vlmScore := uiAvgScores(vlm.Scores)
 			steps = append(steps, UIReviewStep{
 				ID: "visual", Name: i18n.T(lang, i18n.MsgStepVisualReview), Status: "success",
-				Score: uiAvgScores(vlm.Scores), Issues: len(vlm.Issues),
+				Score: vlmScore, Issues: len(vlm.Issues),
 			})
+			emitUIProgress(ctx, "visual", i18n.T(lang, i18n.MsgStepVisualReview), "success", url, &vlmScore)
 		} else {
 			steps = append(steps, UIReviewStep{ID: "visual", Name: i18n.T(lang, i18n.MsgStepVisualReview), Status: "failed", Message: i18n.T(lang, i18n.MsgStepVLMFailed)})
+			emitUIProgress(ctx, "visual", i18n.T(lang, i18n.MsgStepVisualReview), "failed", url, nil)
 		}
 	} else if bridge == nil {
 		steps = append(steps, UIReviewStep{ID: "visual", Name: i18n.T(lang, i18n.MsgStepVisualReview), Status: "skipped", Message: i18n.T(lang, i18n.MsgStepVLMSkipped)})
@@ -960,4 +972,23 @@ func uiHasCritical(issues []UIReviewIssue) bool {
 		}
 	}
 	return false
+}
+
+// emitUIProgress pushes a streaming progress card to the client via the
+// context's card emitter. This lets the frontend show real-time step updates
+// while the review is running.
+func emitUIProgress(ctx context.Context, stepID, stepName, status, url string, score *float64) {
+	card := map[string]interface{}{
+		"type":   "ui-review-progress",
+		"step":   stepID,
+		"name":   stepName,
+		"status": status,
+	}
+	if url != "" {
+		card["url"] = url
+	}
+	if score != nil {
+		card["score"] = *score
+	}
+	EmitCard(ctx, card)
 }

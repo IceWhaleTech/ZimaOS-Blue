@@ -81,5 +81,47 @@
     "llama-3.1-405b":       {"input": 3.0,   "output": 3.0,   "cache": 0.75},
     "llama-3.1-70b":        {"input": 0.8,   "output": 0.8,   "cache": 0.2},
     "llama-3.1-8b":         {"input": 0.1,   "output": 0.1,   "cache": 0.025}
+  },
+
+  "media_models": {
+    "_comment": "output = USD per image (image models) or USD per second (video models)",
+
+    "nano-banana-pro":                          {"output": 0.15,   "unit": "image", "provider": "mulerouter", "note": "1K/2K; 4K=$0.30"},
+    "nano-banana":                              {"output": 0.039,  "unit": "image", "provider": "mulerouter"},
+    "gemini-2.0-flash-exp-image-generation":    {"output": 0.039,  "unit": "image", "provider": "gemini"},
+    "imagen-3.0-generate-002":                  {"output": 0.04,   "unit": "image", "provider": "gemini"},
+    "imagen-4.0-generate-001":                  {"output": 0.04,   "unit": "image", "provider": "gemini"},
+    "imagen-4.0-fast-generate-001":             {"output": 0.02,   "unit": "image", "provider": "gemini"},
+    "imagen-4.0-ultra-generate-001":            {"output": 0.06,   "unit": "image", "provider": "gemini"},
+
+    "dall-e-3":             {"output": 0.04,   "unit": "image", "provider": "mulerouter", "note": "std 1024x1024; HD=$0.08-$0.12"},
+    "dall-e-2":             {"output": 0.02,   "unit": "image", "provider": "mulerouter"},
+    "midjourney":           {"output": 0.085,  "unit": "image", "provider": "mulerouter", "note": "fast mode; turbo=$0.17"},
+
+    "qwen-image-max":       {"output": 0.03,   "unit": "image", "provider": "mulerouter"},
+    "qwen-image-edit-max":  {"output": 0.03,   "unit": "image", "provider": "mulerouter"},
+    "wan2.6-t2i":           {"output": 0.03,   "unit": "image", "provider": "mulerouter"},
+    "wan2.6-image":         {"output": 0.03,   "unit": "image", "provider": "mulerouter"},
+    "wan2.5-t2i-preview":   {"output": 0.03,   "unit": "image", "provider": "mulerouter"},
+    "wan2.5-i2i-preview":   {"output": 0.03,   "unit": "image", "provider": "mulerouter"},
+
+    "wanx-v1":              {"output": 0.008,  "unit": "image", "provider": "dashscope", "note": "¥0.06/image"},
+    "wanx2.1-t2i-turbo":    {"output": 0.008,  "unit": "image", "provider": "dashscope", "note": "¥0.06/image"},
+
+    "wan2.6-t2v":           {"output": 0.10,   "unit": "second", "provider": "mulerouter", "note": "720p; 1080p=$0.15/s"},
+    "wan2.6-i2v":           {"output": 0.10,   "unit": "second", "provider": "mulerouter", "note": "720p; 1080p=$0.15/s"},
+    "wan2.5-t2v-preview":   {"output": 0.05,   "unit": "second", "provider": "mulerouter", "note": "480p; 720p=$0.10/s"},
+    "wan2.5-i2v-preview":   {"output": 0.05,   "unit": "second", "provider": "mulerouter", "note": "480p; 720p=$0.10/s"},
+    "wan2.5-t2v-spark":     {"output": 0.05,   "unit": "second", "provider": "mulerouter"},
+    "wan2.6-t2v-spark":     {"output": 0.05,   "unit": "second", "provider": "mulerouter"},
+    "wan2.5-i2v-spark":     {"output": 0.05,   "unit": "second", "provider": "mulerouter"},
+    "wan2.6-i2v-spark":     {"output": 0.05,   "unit": "second", "provider": "mulerouter"},
+    "wan2.2-t2v-plus":      {"output": 0.02,   "unit": "second", "provider": "mulerouter", "note": "480p; 1080p=$0.10/s"},
+    "wan2.2-i2v-plus":      {"output": 0.02,   "unit": "second", "provider": "mulerouter", "note": "480p; 1080p=$0.10/s"},
+    "wan2.2-i2v-flash":     {"output": 0.015,  "unit": "second", "provider": "mulerouter", "note": "480p; 720p=$0.036/s"},
+    "wan2.1-kf2v-plus":     {"output": 0.10,   "unit": "second", "provider": "mulerouter"},
+    "wan2.1-vace-plus":     {"output": 0.10,   "unit": "second", "provider": "mulerouter"},
+    "wan2-spark-t2v":       {"output": 0.05,   "unit": "second", "provider": "mulerouter"},
+    "midjourney-video":     {"output": 0.51,   "unit": "video",  "provider": "mulerouter", "note": "480p fast; 720p=$1.632"}
   }
 }

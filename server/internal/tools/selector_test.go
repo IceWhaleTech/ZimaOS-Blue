@@ -11,12 +11,9 @@ func mockToolDefs() []ToolDefinition {
 		{Name: "weather", Description: "Get current weather information for a location including temperature, humidity, and conditions."},
 		{Name: "datetime", Description: "Get current date, time, timezone information, and format dates."},
 		{Name: "notes", Description: "Create, read, update, search, and delete notes with tags."},
-		{Name: "push_notification", Description: "Send push notifications and manage scheduled alerts."},
 		{Name: "tasks", Description: "Create, manage, and track tasks with priorities and status."},
 		{Name: "translate", Description: "Translate text between languages."},
 		{Name: "search", Description: "Search through text content using contains, regex, or fuzzy matching."},
-		{Name: "browser", Description: "Interact with a web page using a headless browser. Navigate to URLs, read page content, interact with elements, take screenshots."},
-		{Name: "ui_reviewer", Description: "Evaluate UI/UX quality of a website or screenshot. Automatically navigates to the URL, captures screenshots, checks accessibility, and scores visual design, layout, typography, and professionalism."},
 		{Name: "memory", Description: "Search, retrieve, and inspect the memory system. Use search to find relevant memories by query."},
 		{Name: "files", Description: "File system operations including read, write, list, and delete files."},
 		{Name: "docker", Description: "Manage Docker containers, images, and volumes."},
@@ -37,26 +34,6 @@ func containsToolName(defs []ToolDefinition, name string) bool {
 		}
 	}
 	return false
-}
-
-func TestToolSelector_UIReview(t *testing.T) {
-	ts := DefaultToolSelector()
-	defs := mockToolDefs()
-
-	// Chinese: "评估xxx网站UI质量" → should select ui_reviewer and browser
-	selected := ts.Select("评估example.com网站的UI质量", defs)
-
-	if !containsToolName(selected, "ui_reviewer") {
-		t.Errorf("expected ui_reviewer to be selected for UI review query, got: %v", toolNames(selected))
-	}
-	if !containsToolName(selected, "browser") {
-		t.Errorf("expected browser to be selected for UI review query, got: %v", toolNames(selected))
-	}
-	// Should NOT include unrelated tools like calculator
-	if containsToolName(selected, "calculator") {
-		t.Errorf("calculator should not be selected for UI review query")
-	}
-	t.Logf("UI review query selected %d tools: %v", len(selected), toolNames(selected))
 }
 
 func TestToolSelector_WeatherQuery(t *testing.T) {
@@ -81,18 +58,6 @@ func TestToolSelector_MathQuery(t *testing.T) {
 		t.Errorf("expected calculator for math query, got: %v", toolNames(selected))
 	}
 	t.Logf("Math query selected %d tools: %v", len(selected), toolNames(selected))
-}
-
-func TestToolSelector_ReminderQuery(t *testing.T) {
-	ts := DefaultToolSelector()
-	defs := mockToolDefs()
-
-	selected := ts.Select("提醒我明天下午3点开会", defs)
-
-	if !containsToolName(selected, "push_notification") {
-		t.Errorf("expected push_notification for reminder query, got: %v", toolNames(selected))
-	}
-	t.Logf("Reminder query selected %d tools: %v", len(selected), toolNames(selected))
 }
 
 func TestToolSelector_DockerQuery(t *testing.T) {

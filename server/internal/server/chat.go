@@ -293,6 +293,15 @@ func (h *ChatHandler) tryProviderChatWithKeyFallback(ctx context.Context, provid
 	return nil, lastErr
 }
 
+// MediaInterceptor classifies media intent and creates tasks for channel messages.
+// This allows the chat handler to bypass the LLM pipeline for media generation requests.
+type MediaInterceptor interface {
+	// ClassifyAndGenerate checks if the message is a media generation request.
+	// If so, it creates a task and returns (taskID, true, nil).
+	// If not a media request, returns ("", false, nil).
+	ClassifyAndGenerate(ctx context.Context, message string, hasImages bool, imageCount int, locale string, source string) (taskID string, isMedia bool, err error)
+}
+
 // ChatHandler handles chat-related API endpoints.
 type ChatHandler struct {
 	store             *memory.Store
@@ -317,6 +326,14 @@ type ChatHandler struct {
 
 	// Memory service for auto-extraction after conversations
 	layeredMemory *memory.LayeredMemoryService
+
+	// Media interceptor for IR-based media generation (channel path)
+	mediaInterceptor MediaInterceptor
+
+	// SSE broker for pushing real-time events (conversation_updated during streaming)
+	sseBroker interface {
+		Publish(userID string, eventType string, data any)
+	}
 
 	// Performance optimization: async event queue
 	eventQueue chan func()
@@ -542,6 +559,18 @@ func (h *ChatHandler) SetIMModel(model string) {
 	h.imModel = model
 }
 
+// SetMediaInterceptor sets the media interceptor for IR-based media generation.
+func (h *ChatHandler) SetMediaInterceptor(interceptor MediaInterceptor) {
+	h.mediaInterceptor = interceptor
+}
+
+// SetSSEBroker sets the SSE broker for pushing conversation_updated events during streaming.
+func (h *ChatHandler) SetSSEBroker(broker interface {
+	Publish(userID string, eventType string, data any)
+}) {
+	h.sseBroker = broker
+}
+
 // checkTrialQuota returns ErrTrialQuotaExhausted if the only available provider
 // is the trial provider and its quota is exhausted. Otherwise returns nil.
 func (h *ChatHandler) checkTrialQuota() error {
@@ -697,6 +726,28 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	if msg.Content == "" && len(msg.Attachments) == 0 {
 		logger.Warn().Str("channel", msg.ChannelName).Msg("empty message content")
 		return "", fmt.Errorf("empty message content")
+	}
+
+	// IR-based media intent interception: if the message is a media generation
+	// request, create a task directly and return a "generating..." response.
+	// The ChannelTaskWatcher will send the result when the task completes.
+	if h.mediaInterceptor != nil && msg.Content != "" {
+		hasImages := false
+		imageCount := 0
+		for _, att := range msg.Attachments {
+			if att.Type == channel.MessageTypeImage {
+				hasImages = true
+				imageCount++
+			}
+		}
+		source := "channel:" + msg.ChannelName + ":" + msg.ChatID
+		_, isMedia, err := h.mediaInterceptor.ClassifyAndGenerate(ctx, msg.Content, hasImages, imageCount, string(lang), source)
+		if err != nil {
+			logger.Warn().Err(err).Str("channel", msg.ChannelName).Msg("media interceptor error")
+		} else if isMedia {
+			logger.Info().Str("channel", msg.ChannelName).Msg("media intent detected, task created")
+			return "🎨 Generating media... I'll send the result when it's ready.", nil
+		}
 	}
 
 	// Build a stable conversation ID from channel + chat so we can persist history
@@ -948,7 +999,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			break
 		}
 		logger.Info().Int("round", imRound).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[im] executing tool calls")
-		toolResults := h.executeToolCalls(ctx, resp.Message.ToolCalls)
+		toolResults := h.executeToolCalls(context.WithoutCancel(ctx), resp.Message.ToolCalls)
 		req.Messages = append(req.Messages, resp.Message)
 		req.Messages = append(req.Messages, toolResults...)
 	}
@@ -1471,8 +1522,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	startTime := timeutil.NowTime()
 	var resp *llm.ChatResponse
 
-	// Build context with locale for tool execution
-	toolCtx := c.Request().Context()
+	// Build context with locale for tool execution.
+	// Use WithoutCancel so long-running tools (e.g. browser) survive request disconnects.
+	toolCtx := context.WithoutCancel(c.Request().Context())
 	if h.settingsHandler != nil {
 		if locale := h.settingsHandler.GetLocale(); locale != "" {
 			toolCtx = tools.WithLang(toolCtx, locale)
@@ -2003,6 +2055,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 	ctx = tools.WithUserID(ctx, h.getUserID(c))
 
+	// Detached context for tool execution — survives SSE disconnect so long-running
+	// tools (e.g. browser navigate/screenshot) don't get "context canceled".
+	toolCtx := context.WithoutCancel(ctx)
+
 	// Set SSE headers before starting stream
 	c.Response().Header().Set("Content-Type", "text/event-stream")
 	c.Response().Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -2019,9 +2075,30 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "streaming not supported")
 	}
 
+	// Disable WriteTimeout for this long-lived streaming connection.
+	rc := http.NewResponseController(c.Response())
+	rc.SetWriteDeadline(time.Time{})
+
 	// Flush headers immediately
 	c.Response().WriteHeader(http.StatusOK)
 	flusher.Flush()
+
+	// Inject card emitter so tools (e.g. ui_reviewer) can push streaming
+	// progress cards to the client during execution.
+	toolCtx = tools.WithCardEmitter(toolCtx, func(card map[string]interface{}) {
+		cardJSON, err := json.Marshal(card)
+		if err != nil {
+			return
+		}
+		block := "\n\n```typeless\n" + string(cardJSON) + "\n```"
+		data, _ := json.Marshal(map[string]interface{}{
+			"delta":     block,
+			"done":      false,
+			"stream_id": streamID,
+		})
+		c.Response().Write([]byte("data: " + string(data) + "\n\n"))
+		flusher.Flush()
+	})
 
 	// Track metrics
 	startTime := timeutil.NowTime()
@@ -2046,7 +2123,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// This ensures a page refresh mid-stream still shows partial content.
 	var streamingMsgID string
 	var lastFlushLen int
-	const flushInterval = 512 // flush to DB every N new chars
+	const flushInterval = 64 // flush to DB every N new chars (low for near-real-time cross-tab sync)
 
 	for toolRound := 0; toolRound < maxToolRounds; toolRound++ {
 	streamToolCalls = streamToolCalls[:0]
@@ -2167,6 +2244,13 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, nil)
 			}
 			lastFlushLen = len(fullContent)
+			// Notify other tabs/devices that this conversation has new content
+			if h.sseBroker != nil {
+				h.sseBroker.Publish(userID, "conversation_updated", map[string]any{
+					"id":        convID,
+					"streaming": true,
+				})
+			}
 		}
 
 		// Track token usage from chunks
@@ -2319,6 +2403,22 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 	if h.proxyBridge != nil {
 		err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
+		// Transparent retry: if the stream failed before any content was sent to the client,
+		// retry up to 2 times with backoff. This handles transient network errors silently.
+		for retryAttempt := 0; retryAttempt < 2 && err != nil && fullContent == "" && !streamErrorHandled && ctx.Err() == nil; retryAttempt++ {
+			delay := time.Duration(retryAttempt+1) * time.Second
+			logger.Warn().Err(err).Int("retry", retryAttempt+1).Dur("delay", delay).Msg("[chat] retrying stream after pre-content error")
+			select {
+			case <-ctx.Done():
+				break
+			case <-time.After(delay):
+			}
+			if ctx.Err() != nil {
+				break
+			}
+			streamErrorHandled = false
+			err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
+		}
 	} else if h.providers != nil {
 		names := h.providers.List()
 		if len(names) > 0 {
@@ -2362,8 +2462,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		c.Response().Write([]byte("data: " + string(toolStatusData) + "\n\n"))
 		flusher.Flush()
 
-		// Execute tools
-		toolResults := h.executeToolCalls(ctx, streamToolCalls)
+		// Execute tools (detached context — survives SSE disconnect)
+		toolResults := h.executeToolCalls(toolCtx, streamToolCalls)
 
 		// Build assistant message with tool calls for context
 		assistantMsg := llm.Message{
@@ -2542,6 +2642,14 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			}
 		}
 		h.conversationCache.Invalidate(convID)
+
+		// Notify other tabs/devices that streaming is done
+		if h.sseBroker != nil {
+			h.sseBroker.Publish(userID, "conversation_updated", map[string]any{
+				"id":        convID,
+				"streaming": false,
+			})
+		}
 
 		// Async memory extraction for web chat streaming
 		if h.layeredMemory != nil {

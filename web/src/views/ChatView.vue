@@ -17,16 +17,19 @@ import PresetQuestions from '@/components/onboarding/PresetQuestions.vue'
 import VirtualScroll from '@/components/VirtualScroll.vue'
 import TalkMode from '@/components/chat/TalkMode.vue'
 import ToolApprovalDialog from '@/components/ToolApprovalDialog.vue'
+import MediaParamPanel from '@/components/MediaParamPanel.vue'
+import { useMediaGenerate } from '@/composables/useMediaGenerate'
 import { componentPool } from '@/utils/componentPool'
 import { clearConversationIncrementalStates } from '@/utils/typeless'
 import { THEME_STYLES, type ThemeStyle } from '@/stores/settings'
 import { formatTokens } from '@/utils/format'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 const providerPoolStore = useProviderPoolStore()
+const mediaGen = useMediaGenerate()
 
 // Trial quota animation state
 const tokenAnimating = ref(false)
@@ -90,6 +93,15 @@ const VIRTUAL_SCROLL_THRESHOLD = 50
 
 // Whether to use virtual scrolling
 const useVirtualScroll = computed(() => chatStore.messages.length > VIRTUAL_SCROLL_THRESHOLD)
+
+// ID of the last assistant message (for Continue/Regenerate in mobile action sheet)
+const lastAssistantMessageId = computed(() => {
+  const msgs = chatStore.messages
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === 'assistant') return msgs[i].id
+  }
+  return null
+})
 
 // Context menu state
 const showContextMenu = ref(false)
@@ -302,7 +314,29 @@ function handleVisibleRangeChange(start: number, _end: number) {
 }
 
 async function handleSend(message: string, attachments?: FileAttachment[]) {
+  // Check for media generation intent before sending to chat
+  const hasImages = attachments?.some((a) => a.type.startsWith('image/')) || false
+  const imageCount = attachments?.filter((a) => a.type.startsWith('image/')).length || 0
+  const imageFiles = attachments?.filter((a) => a.type.startsWith('image/')).map((a) => a.file) || []
+  const detected = await mediaGen.classify(message, hasImages, imageCount, locale.value, imageFiles)
+  if (detected) {
+    // Media intent detected — show param panel instead of sending to chat
+    return
+  }
   await chatStore.sendMessage(message, attachments)
+}
+
+async function handleMediaGenerate() {
+  await mediaGen.generate()
+}
+
+function handleMediaDismiss() {
+  mediaGen.reset()
+  nextTick(() => chatInputRef.value?.focus?.())
+}
+
+async function handleMediaConfirm() {
+  await mediaGen.confirmAmbiguous()
 }
 
 // Handle voice transcript from TalkMode - auto send to AI
@@ -314,14 +348,6 @@ async function handleVoiceTranscript(text: string) {
 
 function handleCancel() {
   chatStore.cancelStreaming()
-}
-
-function handleContinue() {
-  chatStore.continueMessage()
-}
-
-function handleRegenerate() {
-  chatStore.regenerateMessage()
 }
 
 async function handleSelectConversation(id: string) {
@@ -473,6 +499,21 @@ function handleSelectMessage() {
   if (contextMenuMessageId.value) {
     chatStore.enterMultiSelectMode(contextMenuMessageId.value)
   }
+  showContextMenu.value = false
+}
+
+// Check if the context-menu'd message is the last assistant message (for Continue/Regenerate)
+const isContextMenuLastAssistant = computed(() => {
+  return !!contextMenuMessageId.value && contextMenuMessageId.value === lastAssistantMessageId.value
+})
+
+function handleContextContinue() {
+  chatStore.continueMessage()
+  showContextMenu.value = false
+}
+
+function handleContextRegenerate() {
+  chatStore.regenerateMessage()
   showContextMenu.value = false
 }
 
@@ -846,7 +887,10 @@ onUnmounted(() => {
                 :key="`${chatStore.messages[index]!.conversation_id}-${chatStore.messages[index]!.id}`"
                 :message="chatStore.messages[index]!"
                 :is-streaming="chatStore.streaming && index === chatStore.messages.length - 1"
+                :is-last-assistant-message="chatStore.messages[index]!.id === lastAssistantMessageId"
                 @contextmenu="handleMessageContextMenu"
+                @continue="chatStore.continueMessage()"
+                @regenerate="chatStore.regenerateMessage()"
               />
             </template>
           </VirtualScroll>
@@ -860,7 +904,10 @@ onUnmounted(() => {
               <ChatMessage
                 :message="message"
                 :is-streaming="chatStore.streaming && index === chatStore.messages.length - 1"
+                :is-last-assistant-message="message.id === lastAssistantMessageId"
                 @contextmenu="handleMessageContextMenu"
+                @continue="chatStore.continueMessage()"
+                @regenerate="chatStore.regenerateMessage()"
               />
             </div>
           </div>
@@ -885,9 +932,22 @@ onUnmounted(() => {
             </div>
           </Transition>
 
+          <!-- Network recovery indicator (shown during auto-retry) -->
+          <div
+            v-if="chatStore.networkRecovering"
+            class="flex justify-center py-4"
+          >
+            <div class="flex items-center gap-2 px-4 py-2 text-blue-400 dark:text-blue-500 text-sm animate-pulse">
+              <svg class="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>{{ t('chat.networkRecovering') }}</span>
+            </div>
+          </div>
+
           <!-- Stream error display (shown in chat area with gray text) -->
           <div
-            v-if="chatStore.streamError"
+            v-if="chatStore.streamError && !chatStore.networkRecovering"
             class="flex justify-center py-4"
           >
             <div class="flex items-center gap-2 px-4 py-2 text-gray-400 dark:text-gray-500 text-sm">
@@ -931,29 +991,7 @@ onUnmounted(() => {
               {{ t('chat.stopGenerating') }}
             </button>
 
-            <!-- Continue and Regenerate buttons (shown when not streaming and last message is from assistant) -->
-            <template v-else-if="chatStore.messages[chatStore.messages.length - 1]?.role === 'assistant'">
-              <button
-                class="flex items-center gap-2 px-4 py-2 glass-card text-gray-600 dark:text-gray-300 hover:bg-white/10 rounded-lg text-sm transition-colors cursor-pointer"
-                :disabled="chatStore.sending"
-                @click="handleContinue"
-              >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                </svg>
-                {{ t('chat.continueGenerating') }}
-              </button>
-              <button
-                class="flex items-center gap-2 px-4 py-2 glass-card text-gray-600 dark:text-gray-300 hover:bg-white/10 rounded-lg text-sm transition-colors cursor-pointer"
-                :disabled="chatStore.sending"
-                @click="handleRegenerate"
-              >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                {{ t('chat.regenerate') }}
-              </button>
-            </template>
+            <!-- Continue/Regenerate buttons removed — will be replaced by suggested follow-up prompts -->
           </div>
         </template>
       </div>
@@ -975,6 +1013,29 @@ onUnmounted(() => {
             </svg>
             {{ t('chat.selectMessage') }}
           </button>
+          <!-- Continue / Regenerate — only for last assistant message, not while streaming -->
+          <template v-if="isContextMenuLastAssistant && !chatStore.streaming">
+            <div class="border-t border-white/10 my-1" />
+            <button
+              class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+              @click="handleContextContinue"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {{ t('chat.continueGenerating') }}
+            </button>
+            <button
+              class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+              @click="handleContextRegenerate"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {{ t('chat.regenerate') }}
+            </button>
+          </template>
         </div>
 
       </Teleport>
@@ -1312,6 +1373,20 @@ onUnmounted(() => {
 
       <!-- Input area - floating at bottom (desktop), flex at bottom (mobile) -->
       <div :class="isMobile ? 'flex-shrink-0 border-t border-gray-200 dark:border-glass-border' : 'absolute bottom-0 left-0 right-0 z-10'">
+        <!-- Media generation param panel -->
+        <div v-if="mediaGen.showPanel.value" class="max-w-4xl mx-auto px-3 sm:px-4">
+          <MediaParamPanel
+            :intent="mediaGen.intent.value!"
+            :models="mediaGen.models.value"
+            :selected-model="mediaGen.selectedModel.value"
+            :generating="mediaGen.generating.value"
+            :ambiguous="mediaGen.ambiguous.value"
+            @update:selected-model="mediaGen.selectedModel.value = $event"
+            @generate="handleMediaGenerate"
+            @dismiss="handleMediaDismiss"
+            @confirm="handleMediaConfirm"
+          />
+        </div>
         <ChatInput
           ref="chatInputRef"
           :disabled="chatStore.sending"

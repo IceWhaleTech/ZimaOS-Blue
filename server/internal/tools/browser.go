@@ -80,6 +80,13 @@ func (t *BrowserTool) SetBackend(b BrowserBackend) {
 	t.backend = b
 }
 
+// Backend returns the current browser backend.
+func (t *BrowserTool) Backend() BrowserBackend {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.backend
+}
+
 func (t *BrowserTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "browser",
@@ -169,12 +176,22 @@ func (t *BrowserTool) doNavigate(ctx context.Context, b BrowserBackend, args map
 	}
 	targetID, _ := args["target_id"].(string)
 
+	emitBrowserProgress(ctx, "start", "Starting browser", "running", url)
 	_ = b.Start(ctx)
+	emitBrowserProgress(ctx, "start", "Starting browser", "success", url)
+
+	emitBrowserProgress(ctx, "navigate", "Navigating", "running", url)
 	nav, err := b.Navigate(ctx, url, targetID)
 	if err != nil {
+		emitBrowserProgress(ctx, "navigate", "Navigating", "failed", url)
 		return jsonErr(fmt.Sprintf("navigation failed: %s", err)), nil
 	}
-	return t.doAutoSnapshot(ctx, b, nav.TargetID, vision)
+	emitBrowserProgress(ctx, "navigate", "Navigating", "success", url)
+
+	emitBrowserProgress(ctx, "snapshot", "Reading page", "running", url)
+	result, rErr := t.doAutoSnapshot(ctx, b, nav.TargetID, vision)
+	emitBrowserProgress(ctx, "snapshot", "Reading page", "success", url)
+	return result, rErr
 }
 
 func (t *BrowserTool) doSnapshot(ctx context.Context, b BrowserBackend, targetID string) (interface{}, error) {
@@ -352,11 +369,14 @@ func (t *BrowserTool) doScreenshot(ctx context.Context, b BrowserBackend, args m
 	if url == "" {
 		return nil, errors.New("url is required for screenshot")
 	}
+	emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "running", url)
 	_ = b.Start(ctx)
 	data, err := b.Screenshot(ctx, url)
 	if err != nil {
+		emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "failed", url)
 		return jsonErr(err.Error()), nil
 	}
+	emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "success", url)
 	return jsonResult(map[string]interface{}{
 		"screenshot": data,
 		"message":    fmt.Sprintf("Screenshot captured for %s", url),
@@ -470,4 +490,16 @@ func browserPageMsg(title, url, tree string, count int) string {
 	buf = append(buf, "\n\n"...)
 	buf = append(buf, tree...)
 	return string(buf)
+}
+
+// emitBrowserProgress pushes a streaming progress card to the client.
+// No-op when no card emitter is set in the context.
+func emitBrowserProgress(ctx context.Context, stepID, stepName, status, url string) {
+	EmitCard(ctx, map[string]interface{}{
+		"type":   "browser-progress",
+		"step":   stepID,
+		"name":   stepName,
+		"status": status,
+		"url":    url,
+	})
 }

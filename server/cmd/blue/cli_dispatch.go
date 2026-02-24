@@ -70,10 +70,16 @@ func cliDispatch(args []string) bool {
 		logsLines = flagInt(rest, "-n", 50)
 		logsLevel = flagVal(rest, "--level", "")
 		runLogs(nil, rest)
+	case "media":
+		return false // media subcommands need cobra arg validation
 	case "gateway":
 		return false // gateway run needs runServer, let cobra handle
 	default:
-		return false // unknown command → let cobra handle (shows help/error)
+		// Unknown command → try IPC fallback (forward to main process)
+		if ipcFallback(cmd, rest) {
+			break
+		}
+		return false // server not reachable → let cobra handle
 	}
 
 	os.Exit(0)

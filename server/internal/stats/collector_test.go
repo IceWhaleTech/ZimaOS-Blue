@@ -284,3 +284,156 @@ func TestStatisticsCollector_Export(t *testing.T) {
 		t.Error("Export() returned empty data")
 	}
 }
+
+func TestStatisticsCollector_RecordMediaEvent(t *testing.T) {
+	tmpDir := t.TempDir()
+	collector := NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
+	collector.SetSyncPersist(true)
+
+	event := &MediaEvent{
+		Provider:   "mulerouter",
+		Model:      "dall-e-3",
+		Type:       "image",
+		Category:   "t2i",
+		ImageCount: 2,
+		CostUSD:    0.08,
+		Success:    true,
+		LatencyMs:  3000,
+	}
+
+	err := collector.RecordMediaEvent(event)
+	if err != nil {
+		t.Fatalf("RecordMediaEvent() error = %v", err)
+	}
+
+	if collector.GetMediaEventCount() != 1 {
+		t.Errorf("GetMediaEventCount() = %d, want 1", collector.GetMediaEventCount())
+	}
+}
+
+func TestStatisticsCollector_RecordMediaEvent_Disabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	collector := NewStatisticsCollector(tmpDir, false)
+	defer collector.Flush()
+
+	err := collector.RecordMediaEvent(&MediaEvent{
+		Provider: "mulerouter",
+		Model:    "dall-e-3",
+		CostUSD:  0.04,
+		Success:  true,
+	})
+	if err != nil {
+		t.Fatalf("RecordMediaEvent() error = %v", err)
+	}
+
+	if collector.GetMediaEventCount() != 0 {
+		t.Errorf("GetMediaEventCount() = %d, want 0 (disabled)", collector.GetMediaEventCount())
+	}
+}
+
+func TestStatisticsCollector_MediaCostAggregation(t *testing.T) {
+	tmpDir := t.TempDir()
+	collector := NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
+	collector.SetSyncPersist(true)
+
+	// Record media events
+	events := []MediaEvent{
+		{Provider: "mulerouter", Model: "dall-e-3", Type: "image", ImageCount: 1, CostUSD: 0.04, Success: true},
+		{Provider: "mulerouter", Model: "nano-banana-pro", Type: "image", ImageCount: 1, CostUSD: 0.15, Success: true},
+		{Provider: "mulerouter", Model: "wan2.6-t2v", Type: "video", DurationSec: 5, CostUSD: 0.50, Success: true},
+		{Provider: "mulerouter", Model: "dall-e-3", Type: "image", ImageCount: 1, CostUSD: 0.04, Success: false}, // failed — should not count
+	}
+
+	for _, e := range events {
+		event := e
+		collector.RecordMediaEvent(&event)
+	}
+
+	stats, err := collector.GetStats("all")
+	if err != nil {
+		t.Fatalf("GetStats() error = %v", err)
+	}
+
+	// Only successful events count
+	if stats.MediaCalls != 3 {
+		t.Errorf("MediaCalls = %d, want 3", stats.MediaCalls)
+	}
+
+	expectedMediaCost := 0.04 + 0.15 + 0.50
+	if stats.MediaCostUSD != expectedMediaCost {
+		t.Errorf("MediaCostUSD = %f, want %f", stats.MediaCostUSD, expectedMediaCost)
+	}
+
+	// Media cost should be included in total estimated cost
+	if stats.EstimatedCostUSD != expectedMediaCost {
+		t.Errorf("EstimatedCostUSD = %f, want %f (media only)", stats.EstimatedCostUSD, expectedMediaCost)
+	}
+
+	// Check per-model breakdown
+	if stats.MediaCostByModel["dall-e-3"] != 0.04 {
+		t.Errorf("MediaCostByModel[dall-e-3] = %f, want 0.04", stats.MediaCostByModel["dall-e-3"])
+	}
+	if stats.MediaCostByModel["wan2.6-t2v"] != 0.50 {
+		t.Errorf("MediaCostByModel[wan2.6-t2v] = %f, want 0.50", stats.MediaCostByModel["wan2.6-t2v"])
+	}
+}
+
+func TestStatisticsCollector_MediaEventPersistence(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create collector and record events
+	collector := NewStatisticsCollector(tmpDir, true)
+	collector.SetSyncPersist(true)
+
+	collector.RecordMediaEvent(&MediaEvent{
+		Provider:   "mulerouter",
+		Model:      "dall-e-3",
+		Type:       "image",
+		ImageCount: 1,
+		CostUSD:    0.04,
+		Success:    true,
+	})
+	collector.RecordMediaEvent(&MediaEvent{
+		Provider:    "mulerouter",
+		Model:       "wan2.6-t2v",
+		Type:        "video",
+		DurationSec: 5,
+		CostUSD:     0.50,
+		Success:     true,
+	})
+	collector.Flush()
+
+	// Create new collector from same dir — should load persisted events
+	collector2 := NewStatisticsCollector(tmpDir, true)
+	defer collector2.Flush()
+
+	if collector2.GetMediaEventCount() != 2 {
+		t.Errorf("GetMediaEventCount() after reload = %d, want 2", collector2.GetMediaEventCount())
+	}
+}
+
+func TestStatisticsCollector_ClearIncludesMedia(t *testing.T) {
+	tmpDir := t.TempDir()
+	collector := NewStatisticsCollector(tmpDir, true)
+	defer collector.Flush()
+	collector.SetSyncPersist(true)
+
+	collector.RecordMediaEvent(&MediaEvent{
+		Provider: "mulerouter",
+		Model:    "dall-e-3",
+		CostUSD:  0.04,
+		Success:  true,
+	})
+
+	if collector.GetMediaEventCount() != 1 {
+		t.Fatal("expected 1 media event before clear")
+	}
+
+	collector.Clear()
+
+	if collector.GetMediaEventCount() != 0 {
+		t.Errorf("GetMediaEventCount() after Clear() = %d, want 0", collector.GetMediaEventCount())
+	}
+}

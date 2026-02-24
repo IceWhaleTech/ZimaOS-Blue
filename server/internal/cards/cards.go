@@ -61,15 +61,20 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return fn(content)
 	}
 
+	// When the sandbox tool runs a `blue` CLI command, the IPC response
+	// may include a `_card` hint telling us which card formatter to use.
+	if toolName == "sandbox" {
+		if card := sandboxCardDispatch(content); card != nil {
+			return card
+		}
+		return GenericCard(toolName, content)
+	}
+
 	switch toolName {
 	case "web_search":
 		return webSearchCard(content)
 	case "ui_reviewer":
 		return uiReviewCard(content)
-	case "image_generate":
-		return imageGenerateCard(content)
-	case "video_generate":
-		return videoGenerateCard(content)
 	case "calculator":
 		return calculatorCard(content)
 	case "current_time":
@@ -368,6 +373,47 @@ func GenericCard(toolName, content string) map[string]interface{} {
 	}
 }
 
+// sandboxCardDispatch extracts the _card hint from a sandbox tool result.
+// When the LLM runs `blue <cmd>` via the sandbox tool, the IPC response
+// includes a `_card` field in the JSON output. We parse the sandbox result's
+// stdout to find it and delegate to the appropriate card formatter.
+func sandboxCardDispatch(content string) map[string]interface{} {
+	// Sandbox result shape: {"result":{"stdout":"...","stderr":"...","exit_code":0,...},...}
+	var outer map[string]interface{}
+	if json.Unmarshal([]byte(content), &outer) != nil {
+		return nil
+	}
+
+	// Extract stdout from the sandbox result
+	var stdout string
+	if result, ok := outer["result"]; ok {
+		switch r := result.(type) {
+		case map[string]interface{}:
+			stdout, _ = r["stdout"].(string)
+		}
+	}
+	if stdout == "" {
+		return nil
+	}
+
+	// The stdout may be the full IPC JSON response: {"status":"ok","data":{"_card":"...","result":"..."}}
+	var ipcResp struct {
+		Status string            `json:"status"`
+		Data   map[string]string `json:"data"`
+	}
+	if json.Unmarshal([]byte(stdout), &ipcResp) != nil || ipcResp.Data == nil {
+		return nil
+	}
+
+	cardType := ipcResp.Data["_card"]
+	resultJSON := ipcResp.Data["result"]
+	if cardType == "" || resultJSON == "" {
+		return nil
+	}
+
+	return ToCard(cardType, resultJSON)
+}
+
 func uiReviewCard(content string) map[string]interface{} {
 	var data map[string]interface{}
 	if json.Unmarshal([]byte(content), &data) != nil {
@@ -419,102 +465,4 @@ func uiReviewCard(content string) map[string]interface{} {
 	}
 
 	return card
-}
-
-func imageGenerateCard(content string) map[string]interface{} {
-	var data struct {
-		Images []struct {
-			URL           string `json:"url"`
-			ThumbnailURL  string `json:"thumbnail_url"`
-			RevisedPrompt string `json:"revised_prompt"`
-		} `json:"images"`
-		Error   string `json:"error"`
-		TaskID  string `json:"task_id"`
-		Status  string `json:"status"`
-		Message string `json:"message"`
-	}
-	if json.Unmarshal([]byte(content), &data) != nil {
-		return nil
-	}
-
-	if data.Error != "" || data.Status == "failed" {
-		msg := data.Error
-		if msg == "" {
-			msg = data.Message
-		}
-		return map[string]interface{}{
-			"type":       "media-generate",
-			"media_type": "image",
-			"status":     "error",
-			"message":    msg,
-		}
-	}
-
-	// Still processing — show animated placeholder
-	if data.Status == "processing" || (data.TaskID != "" && len(data.Images) == 0) {
-		return map[string]interface{}{
-			"type":       "media-generate",
-			"media_type": "image",
-			"status":     "generating",
-			"task_id":    data.TaskID,
-		}
-	}
-
-	if len(data.Images) == 0 {
-		return nil
-	}
-
-	images := make([]map[string]interface{}, 0, len(data.Images))
-	for _, img := range data.Images {
-		entry := map[string]interface{}{
-			"src": img.URL,
-		}
-		if img.ThumbnailURL != "" {
-			entry["thumbnail"] = img.ThumbnailURL
-		}
-		if img.RevisedPrompt != "" {
-			entry["caption"] = img.RevisedPrompt
-		}
-		images = append(images, entry)
-	}
-
-	return map[string]interface{}{
-		"type":       "media-generate",
-		"media_type": "image",
-		"status":     "success",
-		"images":     images,
-	}
-}
-
-func videoGenerateCard(content string) map[string]interface{} {
-	var data struct {
-		TaskID  string `json:"task_id"`
-		Status  string `json:"status"`
-		Message string `json:"message"`
-		Error   string `json:"error"`
-	}
-	if json.Unmarshal([]byte(content), &data) != nil {
-		return nil
-	}
-
-	if data.Error != "" || data.Status == "failed" {
-		msg := data.Error
-		if msg == "" {
-			msg = data.Message
-		}
-		return map[string]interface{}{
-			"type":       "media-generate",
-			"media_type": "video",
-			"status":     "error",
-			"message":    msg,
-		}
-	}
-
-	return map[string]interface{}{
-		"type":       "media-generate",
-		"media_type": "video",
-		"status":     "generating",
-		"task_id":    data.TaskID,
-		"message":    data.Message,
-	}
 }

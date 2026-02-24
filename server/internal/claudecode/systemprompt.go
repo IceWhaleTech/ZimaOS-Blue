@@ -2,7 +2,6 @@ package claudecode
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html"
 	"os"
@@ -153,14 +152,15 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 // the right tool. These are language-agnostic — they describe *intent*, not
 // keywords, so they work across all languages.
 var toolUsageHints = map[string]string{
-	"ui_reviewer":    "Evaluate UI/UX quality of a website URL or screenshot. Use when the user's intent is to assess, score, or critique visual design — NOT to look up information about the site. Accepts a URL directly and handles navigation + screenshots internally.",
-	"browser":        "Interact with a specific web page: navigate, click, fill forms, read page content via accessibility tree. Use when the user wants to *do something* on a page, not just evaluate its design.",
 	"web_search":     "Search the web for factual information, news, or general knowledge. Use when the user wants to *find information* — not evaluate a website's UI or interact with a page.",
 	"memory":         "Search and retrieve previously stored memories from the vector database. Use action='search' to find relevant memories by query. Use action='remember' to store facts into the searchable database (but note: for cross-session persistence visible in every conversation, prefer workspace_file to write MEMORY.md instead).",
 	"workspace_file": "Read or write workspace files that persist across conversations (MEMORY.md, USER.md, etc.). When the user says \"remember this\", \"don't forget\", \"remind me next time\", or \"note this down\" — use this tool: first action='read' filename='MEMORY.md', then action='write' filename='MEMORY.md' with the new information appended. This is the PRIMARY tool for cross-session memory because MEMORY.md is loaded into the system prompt every conversation.",
 }
 
-// buildToolsInfo builds information about available tools.
+// buildToolsInfo builds lightweight tool guidance for the system prompt.
+// Full tool definitions (name, description, parameters) are already sent via
+// the API tools array, so we only emit usage hints and routing rules here to
+// save prompt tokens.
 func (b *SystemPromptBuilder) buildToolsInfo() string {
 	if b.toolRegistry == nil {
 		return ""
@@ -172,37 +172,27 @@ func (b *SystemPromptBuilder) buildToolsInfo() string {
 	}
 
 	var lines []string
-	lines = append(lines, "# Available Tools")
-	lines = append(lines, "")
-	lines = append(lines, "Tool names are case-sensitive. Call tools exactly as listed below. Do NOT call tools that are not in this list (e.g., WebFetch, WebSearch, Read, Bash — these do NOT exist).")
+	lines = append(lines, "# Tool Guidance")
 	lines = append(lines, "")
 
+	// Only emit hints for tools that have them — skip tools whose API
+	// definition is self-explanatory (calculator, system_info, current_time, etc.)
+	hasHints := false
 	for _, def := range defs {
-		lines = append(lines, fmt.Sprintf("## %s", def.Name))
-		// Use the hint if available, otherwise fall back to the tool's own description
 		if hint, ok := toolUsageHints[def.Name]; ok {
-			lines = append(lines, hint)
-		} else {
-			lines = append(lines, def.Description)
+			lines = append(lines, fmt.Sprintf("- **%s**: %s", def.Name, hint))
+			hasHints = true
 		}
-		if def.Parameters != nil {
-			paramsJSON, _ := json.MarshalIndent(def.Parameters, "", "  ")
-			lines = append(lines, "Parameters:")
-			lines = append(lines, "```json")
-			lines = append(lines, string(paramsJSON))
-			lines = append(lines, "```")
-		}
+	}
+	if hasHints {
 		lines = append(lines, "")
 	}
 
 	// Tool routing rules — higher priority overrides lower
 	lines = append(lines, "## Tool Routing Rules")
 	lines = append(lines, "When a user message could match multiple tools, use these priority rules:")
-	lines = append(lines, "- URL + UI/design evaluation intent → ui_reviewer (NOT web_search or browser)")
-	lines = append(lines, "- URL + form filling/clicking/interaction → browser")
 	lines = append(lines, "- General factual query without a specific URL → web_search")
 	lines = append(lines, "- \"Remember this / don't forget / remind me next time\" (cross-session memory) → workspace_file: read MEMORY.md, then write back with new info appended")
-	lines = append(lines, "- \"Remind me in 1h / at 3pm\" (timed alert) → reminders with action='add'")
 	lines = append(lines, "")
 
 	return strings.Join(lines, "\n")

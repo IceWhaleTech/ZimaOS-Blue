@@ -51,13 +51,13 @@ func TestTimer(t *testing.T) {
 	}
 }
 
-func TestReminders(t *testing.T) {
-	reminders := NewReminders()
+func TestPushNotification(t *testing.T) {
+	push := NewPushNotification()
 
-	// Test add reminder
-	result, err := reminders.Execute(context.Background(), map[string]any{
+	// Test add notification
+	result, err := push.Execute(context.Background(), map[string]any{
 		"action":  "add",
-		"message": "Test reminder",
+		"message": "Test notification",
 		"time":    "1h",
 	})
 	if err != nil {
@@ -67,19 +67,19 @@ func TestReminders(t *testing.T) {
 		t.Error("expected success")
 	}
 
-	// Test list reminders
-	result, err = reminders.Execute(context.Background(), map[string]any{
+	// Test list notifications
+	result, err = push.Execute(context.Background(), map[string]any{
 		"action": "list",
 	})
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 	if result.Data.(map[string]any)["count"].(int) != 1 {
-		t.Errorf("expected 1 reminder, got %v", result.Data.(map[string]any)["count"])
+		t.Errorf("expected 1 notification, got %v", result.Data.(map[string]any)["count"])
 	}
 
-	// Test clear reminders
-	result, err = reminders.Execute(context.Background(), map[string]any{
+	// Test clear notifications
+	result, err = push.Execute(context.Background(), map[string]any{
 		"action": "clear",
 	})
 	if err != nil {
