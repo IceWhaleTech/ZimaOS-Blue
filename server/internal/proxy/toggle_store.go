@@ -18,6 +18,7 @@ type ToggleState struct {
 	PrunerBackend      string          `json:"pruner_backend,omitempty"`
 	RoutingRules       map[string]bool `json:"routing_rules,omitempty"`
 	PromptCacheEnabled bool            `json:"prompt_cache_enabled"`
+	Version            int             `json:"version,omitempty"` // migration marker
 }
 
 // ToggleStore persists feature toggle states via kvstore.

@@ -225,21 +225,63 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	if c.client == nil {
 		return fmt.Errorf("client not initialized")
 	}
-	content := &messageContent{MsgType: "m.text", Body: msg.Content}
-	if msg.Format == "html" {
-		content.Format = "org.matrix.custom.html"
-		content.FormattedBody = msg.Content
-	} else if msg.Format == "markdown" {
-		content.Format = "org.matrix.custom.html"
-		content.FormattedBody = markdownToHTML(msg.Content)
+
+	// Send attachments as media messages.
+	for _, att := range msg.Attachments {
+		if len(att.Data) > 0 {
+			mime := att.MimeType
+			if mime == "" { mime = "application/octet-stream" }
+			name := att.Name
+			if name == "" { name = "file" }
+			mxcURI, err := c.client.uploadMedia(ctx, name, mime, att.Data)
+			if err != nil {
+				c.logger.Warn("failed to upload media to matrix", zap.String("type", string(att.Type)), zap.Error(err))
+				continue
+			}
+			// Determine m.msgtype based on attachment type.
+			msgType := "m.file"
+			switch att.Type {
+			case channel.MessageTypeImage:
+				msgType = "m.image"
+			case channel.MessageTypeAudio:
+				msgType = "m.audio"
+			case channel.MessageTypeVideo:
+				msgType = "m.video"
+			}
+			mediaContent := map[string]interface{}{
+				"msgtype": msgType,
+				"body":    name,
+				"url":     mxcURI,
+				"info":    map[string]interface{}{"mimetype": mime, "size": len(att.Data)},
+			}
+			if msg.ReplyToID != "" {
+				mediaContent["m.relates_to"] = map[string]interface{}{
+					"m.in_reply_to": map[string]string{"event_id": msg.ReplyToID},
+				}
+			}
+			c.client.sendMessage(ctx, msg.ChatID, mediaContent)
+		}
 	}
-	if msg.ReplyToID != "" {
-		content.RelatesTo = &relatesTo{InReplyTo: &inReplyTo{EventID: msg.ReplyToID}}
+
+	// Send text if present and no attachments consumed it.
+	if msg.Content != "" {
+		content := &messageContent{MsgType: "m.text", Body: msg.Content}
+		if msg.Format == "html" {
+			content.Format = "org.matrix.custom.html"
+			content.FormattedBody = msg.Content
+		} else if msg.Format == "markdown" {
+			content.Format = "org.matrix.custom.html"
+			content.FormattedBody = markdownToHTML(msg.Content)
+		}
+		if msg.ReplyToID != "" {
+			content.RelatesTo = &relatesTo{InReplyTo: &inReplyTo{EventID: msg.ReplyToID}}
+		}
+		_, err := c.client.sendMessage(ctx, msg.ChatID, content)
+		if err != nil {
+			return fmt.Errorf("failed to send message: %w", err)
+		}
 	}
-	_, err := c.client.sendMessage(ctx, msg.ChatID, content)
-	if err != nil {
-		return fmt.Errorf("failed to send message: %w", err)
-	}
+
 	c.msgsSent.Add(1)
 	now := time.Now()
 	c.mu.Lock()
@@ -300,6 +342,14 @@ func (c *Channel) editMessage(ctx context.Context, roomID, eventID, newContent s
 	}
 	_, err := c.client.sendMessage(ctx, roomID, content)
 	return err
+}
+
+// SendTyping sends a typing indicator to the given room.
+func (c *Channel) SendTyping(ctx context.Context, chatID string) error {
+	if c.client == nil {
+		return fmt.Errorf("client not initialized")
+	}
+	return c.client.userTyping(ctx, chatID)
 }
 
 func (c *Channel) Info() channel.Info {

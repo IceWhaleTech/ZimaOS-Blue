@@ -1,4 +1,4 @@
-.PHONY: all build build-full build-bluecli build-launcher test lint clean run trim-dist bump-version
+.PHONY: all build build-full build-bluecli build-launcher test lint clean run trim-dist bump-version copy-skills
 
 # Variables
 BINARY_NAME=blue
@@ -80,8 +80,18 @@ else
 endif
 endif
 
+# Copy canonical skills from assets/skills/ for go:embed
+SKILLS_SRC := $(shell cd .. && pwd)/assets/skills
+SKILLS_EMBED := internal/skill/embedded/skills
+
+copy-skills:
+	@echo "Copying skills to $(SKILLS_EMBED)..."
+	@rm -rf $(SKILLS_EMBED)
+	@mkdir -p $(SKILLS_EMBED)
+	@cp -r $(SKILLS_SRC)/* $(SKILLS_EMBED)/
+
 # Build bluecli (the actual server binary, with CGo)
-build-bluecli:
+build-bluecli: copy-skills
 	@echo "Building $(BLUECLI_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BLUECLI_NAME) ./cmd/blue
@@ -103,7 +113,7 @@ build-launcher:
 # Build the default distribution
 # macOS: launcher (embeds bluecli + dist) — single file, self-extracting
 # Linux/Windows: bluecli + pack-dist (appended dist.tar.gz)
-build: trim-dist
+build: trim-dist copy-skills
 	@mkdir -p $(BUILD_DIR)
 ifeq ($(UNAME_S),Darwin)
 	@$(MAKE) build-bluecli
@@ -115,7 +125,7 @@ else
 endif
 
 # Build full binary (with whisper/ASR)
-build-full: trim-dist
+build-full: trim-dist copy-skills
 	@mkdir -p $(BUILD_DIR)
 ifeq ($(UNAME_S),Darwin)
 	@echo "Building $(BLUECLI_NAME) (full, with ASR)..."
@@ -148,6 +158,7 @@ lint:
 clean:
 	@echo "Cleaning..."
 	rm -rf $(BUILD_DIR)
+	rm -rf $(SKILLS_EMBED)
 	rm -f coverage.out coverage.html
 	rm -f $(LAUNCHER_DIR)/bluecli $(LAUNCHER_DIR)/dist.tar.gz
 

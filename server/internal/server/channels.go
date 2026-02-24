@@ -1,10 +1,8 @@
 package server
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
-	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -12,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 )
 
 // ChannelHandler handles channel-related API endpoints.
@@ -153,9 +152,11 @@ func (h *ChannelHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/channels/:name/test", h.TestChannel)
 }
 
+const channelsKVKey = "config:channels"
+
 // ChannelConfigStore stores channel configurations persistently.
 type ChannelConfigStore struct {
-	dataDir string
+	kv      kvstore.Store
 	mu      sync.RWMutex
 	configs map[string]*ChannelConfig
 }
@@ -176,9 +177,9 @@ type ChannelConfig struct {
 }
 
 // NewChannelConfigStore creates a new channel config store.
-func NewChannelConfigStore(dataDir string) *ChannelConfigStore {
+func NewChannelConfigStore(kv kvstore.Store) *ChannelConfigStore {
 	store := &ChannelConfigStore{
-		dataDir: dataDir,
+		kv:      kv,
 		configs: make(map[string]*ChannelConfig),
 	}
 	store.load()
@@ -214,28 +215,15 @@ func (s *ChannelConfigStore) List() []*ChannelConfig {
 }
 
 func (s *ChannelConfigStore) load() {
-	configPath := filepath.Join(s.dataDir, "channels.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return
-	}
 	var configs map[string]*ChannelConfig
-	if err := json.Unmarshal(data, &configs); err != nil {
+	if err := s.kv.GetJSON(context.Background(), channelsKVKey, &configs); err != nil {
 		return
 	}
 	s.configs = configs
 }
 
 func (s *ChannelConfigStore) save() error {
-	if err := os.MkdirAll(s.dataDir, 0755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(s.configs, "", "  ")
-	if err != nil {
-		return err
-	}
-	configPath := filepath.Join(s.dataDir, "channels.json")
-	return os.WriteFile(configPath, data, 0644)
+	return s.kv.SetJSON(context.Background(), channelsKVKey, s.configs, 0)
 }
 
 // GetEnabled returns all enabled channel configurations.

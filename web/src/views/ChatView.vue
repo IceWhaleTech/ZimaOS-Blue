@@ -68,6 +68,14 @@ let contextTrimTimer: ReturnType<typeof setTimeout> | null = null
 watch(() => chatStore.contextTrimInfo, (info) => {
   if (contextTrimTimer) { clearTimeout(contextTrimTimer); contextTrimTimer = null }
   if (info) {
+    // Skip if pruned but nothing actually saved (pruner not active)
+    if (info.type === 'pruned') {
+      const saved = (info.tokensBefore ?? 0) - (info.tokensAfter ?? 0)
+      if (saved <= 0 && (info.messagesPruned ?? 0) <= 0) {
+        showContextTrim.value = false
+        return
+      }
+    }
     // Show after 1s delay (only if still streaming)
     contextTrimTimer = setTimeout(() => {
       if (chatStore.streaming || info) showContextTrim.value = true
@@ -320,7 +328,10 @@ async function handleSend(message: string, attachments?: FileAttachment[]) {
   const imageFiles = attachments?.filter((a) => a.type.startsWith('image/')).map((a) => a.file) || []
   const detected = await mediaGen.classify(message, hasImages, imageCount, locale.value, imageFiles)
   if (detected) {
-    // Media intent detected — show param panel instead of sending to chat
+    // Media intent detected — show param panel instead of sending to chat.
+    // Invalidate warmup cache since no LLM chat request will follow.
+    chatStore.resetWarmup()
+    chatInputRef.value?.resetWarmup?.()
     return
   }
   await chatStore.sendMessage(message, attachments)
@@ -358,9 +369,13 @@ async function handleSelectConversation(id: string) {
     await router.push({ query: { conversationId: id } })
   }
   await chatStore.selectConversation(id)
+  chatStore.resetWarmup()
+  chatInputRef.value?.resetWarmup?.()
 }
 
 async function handleCreateConversation() {
+  chatStore.resetWarmup()
+  chatInputRef.value?.resetWarmup?.()
   const conv = await chatStore.createConversation(t('chat.newConversation'))
   if (isMobile.value && conv?.id) {
     mobileAnimationEnabled.value = true
@@ -562,14 +577,17 @@ onMounted(async () => {
     editBeforeSend.value = s?.asr?.edit_before_send ?? false
   }).catch(() => {})
 
-  await Promise.all([
-    chatStore.fetchConversations(),
-    settingsStore.fetchProviders(),
-    settingsStore.fetchTools(),
-    providerPoolStore.fetchProviders(),
-    providerPoolStore.fetchRoutingMode(),
-    fetchClaudeCodeConfig(),
-  ])
+  // Fetch conversations first — this drives the sidebar (first paint)
+  await chatStore.fetchConversations()
+
+  // Fire secondary data fetches in background — don't block first paint
+  providerPoolStore.fetchProviders().then(() => {
+    const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
+    settingsStore.updateFromPoolProviders(llmProviders)
+  }).catch(() => {})
+  settingsStore.fetchTools().catch(() => {})
+  providerPoolStore.fetchRoutingMode().catch(() => {})
+  fetchClaudeCodeConfig()
 
   // Check for any pending tool approvals (e.g. page was refreshed while waiting)
   chatStore.checkPendingApprovals()
@@ -918,12 +936,17 @@ onUnmounted(() => {
               v-if="showContextTrim"
               class="flex justify-center py-2"
             >
-              <div class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 bg-gray-100/50 dark:bg-gray-800/50 rounded-full">
+              <div class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400/70 dark:text-gray-500/70 bg-gray-100/30 dark:bg-gray-800/30 rounded-full">
                 <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
                 </svg>
                 <span v-if="chatStore.contextTrimInfo?.type === 'pruned'">
-                  {{ t('chat.contextPruned', { tokens: (chatStore.contextTrimInfo.tokensBefore ?? 0) - (chatStore.contextTrimInfo.tokensAfter ?? 0) }) }}
+                  <template v-if="((chatStore.contextTrimInfo.tokensBefore ?? 0) - (chatStore.contextTrimInfo.tokensAfter ?? 0)) > 0">
+                    {{ t('chat.contextPruned', { tokens: (chatStore.contextTrimInfo.tokensBefore ?? 0) - (chatStore.contextTrimInfo.tokensAfter ?? 0) }) }}
+                  </template>
+                  <template v-else>
+                    {{ t('chat.contextPrunedLight') }}
+                  </template>
                 </span>
                 <span v-else-if="chatStore.contextTrimInfo?.type === 'compacted'">
                   {{ t('chat.contextCompacted', { before: chatStore.contextTrimInfo.before ?? 0, after: chatStore.contextTrimInfo.after ?? 0 }) }}
@@ -932,22 +955,9 @@ onUnmounted(() => {
             </div>
           </Transition>
 
-          <!-- Network recovery indicator (shown during auto-retry) -->
-          <div
-            v-if="chatStore.networkRecovering"
-            class="flex justify-center py-4"
-          >
-            <div class="flex items-center gap-2 px-4 py-2 text-blue-400 dark:text-blue-500 text-sm animate-pulse">
-              <svg class="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              <span>{{ t('chat.networkRecovering') }}</span>
-            </div>
-          </div>
-
           <!-- Stream error display (shown in chat area with gray text) -->
           <div
-            v-if="chatStore.streamError && !chatStore.networkRecovering"
+            v-if="chatStore.streamError"
             class="flex justify-center py-4"
           >
             <div class="flex items-center gap-2 px-4 py-2 text-gray-400 dark:text-gray-500 text-sm">
@@ -970,6 +980,21 @@ onUnmounted(() => {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
+            </div>
+          </div>
+
+          <!-- "I'm listening" indicator (shown when pre-TTFT cancel is active) -->
+          <div
+            v-if="chatStore.preTTFTCancelActive"
+            class="flex justify-center py-3"
+          >
+            <div class="flex items-center gap-2 px-4 py-2 glass-card rounded-lg text-sm text-blue-400">
+              <span class="flex gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style="animation-delay: 0ms" />
+                <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style="animation-delay: 150ms" />
+                <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style="animation-delay: 300ms" />
+              </span>
+              {{ t('chat.stillListening') }}
             </div>
           </div>
 
@@ -1385,14 +1410,17 @@ onUnmounted(() => {
             @generate="handleMediaGenerate"
             @dismiss="handleMediaDismiss"
             @confirm="handleMediaConfirm"
+            @switch-category="mediaGen.switchCategory($event)"
           />
         </div>
         <ChatInput
           ref="chatInputRef"
-          :disabled="chatStore.sending"
+          :disabled="chatStore.sending && !chatStore.isPreTTFT"
           :streaming="chatStore.streaming"
           @send="handleSend"
           @cancel="handleCancel"
+          @cancel-pre-ttft="chatStore.cancelPreTTFT()"
+          @warmup="chatStore.warmupConversation()"
           @open-talk-mode="showTalkMode = true"
         />
       </div>

@@ -7,9 +7,11 @@ import { convertToWav } from '@/utils/audioConverter'
 import ImagePreview from '@/components/chat/ImagePreview.vue'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 import { useLocaleStore } from '@/stores/locale'
+import { useChatStore } from '@/stores/chat'
 
 const { t } = useI18n()
 const localeStore = useLocaleStore()
+const chatStore = useChatStore()
 
 export interface FileAttachment {
   id: string
@@ -31,6 +33,8 @@ const emit = defineEmits<{
   send: [message: string, attachments: FileAttachment[]]
   cancel: []
   openTalkMode: []
+  warmup: []
+  'cancel-pre-ttft': []
 }>()
 
 const message = ref('')
@@ -39,6 +43,11 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const cameraInputRef = ref<HTMLInputElement | null>(null)
 const attachments = ref<FileAttachment[]>([])
 const dragOver = ref(false)
+
+// Warmup: fire once per conversation when user starts typing
+const warmupSent = ref(false)
+// Pre-TTFT cancel: fire once per cancel cycle
+const preTTFTCancelSent = ref(false)
 
 // Compact mode state (for narrow screens, including non-mobile)
 const isCompact = ref(false)
@@ -272,6 +281,8 @@ function handleSend() {
   emit('send', message.value.trim(), [...attachments.value])
   message.value = ''
   attachments.value = []
+  warmupSent.value = false // Reset so next typing triggers warmup again
+  preTTFTCancelSent.value = false
 
   // Reset textarea height
   if (textareaRef.value) {
@@ -303,6 +314,18 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 function handleInput() {
+  // Detect typing during pre-TTFT wait → cancel and enter "listening" mode
+  if (chatStore.isPreTTFT && !preTTFTCancelSent.value && message.value.length > 0) {
+    preTTFTCancelSent.value = true
+    emit('cancel-pre-ttft')
+  }
+
+  // Trigger warmup on first input (pre-compute system prompt to reduce TTFT)
+  if (!warmupSent.value && message.value.length > 0) {
+    warmupSent.value = true
+    emit('warmup')
+  }
+
   // Auto-resize textarea
   if (textareaRef.value) {
     textareaRef.value.style.height = 'auto'
@@ -348,6 +371,12 @@ async function startRecording() {
 
   voiceError.value = null
   recorder.value = new AudioRecorder()
+
+  // Trigger warmup when voice recording starts
+  if (!warmupSent.value) {
+    warmupSent.value = true
+    emit('warmup')
+  }
 
   recorder.value.onStop = async (audioBlob: Blob) => {
     isRecording.value = false
@@ -546,7 +575,12 @@ function setInput(text: string) {
   })
 }
 
-defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop })
+function resetWarmup() {
+  warmupSent.value = false
+  preTTFTCancelSent.value = false
+}
+
+defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, resetWarmup })
 </script>
 
 <template>

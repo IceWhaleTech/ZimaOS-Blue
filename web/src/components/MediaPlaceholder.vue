@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import type { MediaTask } from '@/api/media'
-import { getTask } from '@/api/media'
+import { getTask, retryTask } from '@/api/media'
 import { useNotificationStore } from '@/stores/notification'
 import { onSSEEvent, offSSEEvent } from '@/composables/useEventStream'
 
@@ -11,21 +11,22 @@ const props = defineProps<{
   taskId: string
 }>()
 
-const emit = defineEmits<{
-  retry: []
-}>()
-
 const { t } = useI18n()
 const router = useRouter()
 const notificationStore = useNotificationStore()
 
+// activeTaskId tracks the current task — may differ from props.taskId after a retry
+const activeTaskId = ref(props.taskId)
+
 const task = ref<MediaTask | null>(null)
 const pollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const loading = ref(true)
+const retrying = ref(false)
 const elapsedSeconds = ref(0)
 let elapsedInterval: ReturnType<typeof setInterval> | null = null
 let notified = false
 let sseActive = false
+let initialFetch = true // true until first poll completes — suppresses toast for already-terminal tasks
 
 // Lightbox viewer state
 const viewerUrl = ref('')
@@ -83,14 +84,14 @@ const isProviderError = computed(() => {
 
 function calcElapsed(): number {
   if (task.value?.created_at) {
-    return Math.max(0, Math.floor((Date.now() - new Date(task.value.created_at).getTime()) / 1000))
+    return Math.max(0, (Date.now() - new Date(task.value.created_at).getTime()) / 1000)
   }
   return 0
 }
 
 function startElapsedTimer() {
   elapsedSeconds.value = calcElapsed()
-  elapsedInterval = setInterval(() => { elapsedSeconds.value = calcElapsed() }, 1000)
+  elapsedInterval = setInterval(() => { elapsedSeconds.value = calcElapsed() }, 100)
 }
 
 function stopElapsedTimer() {
@@ -116,7 +117,7 @@ function handleTerminal() {
 
 // --- SSE listener for real-time updates ---
 function onTaskUpdate(data: any) {
-  if (data.id !== props.taskId) return
+  if (data.id !== activeTaskId.value) return
   sseActive = true
   // Stop polling — SSE is delivering updates
   stopPolling()
@@ -140,9 +141,11 @@ function nextPollDelay(): number {
 }
 
 async function poll() {
-  if (!props.taskId || sseActive) return
+  if (!activeTaskId.value || sseActive) return
+  const isFirst = initialFetch
+  initialFetch = false
   try {
-    const result = await getTask(props.taskId)
+    const result = await getTask(activeTaskId.value)
     task.value = result
     loading.value = false
   } catch {
@@ -150,6 +153,9 @@ async function poll() {
   }
 
   if (isTerminal.value) {
+    // If the task was already terminal on first fetch, suppress the toast —
+    // the user is just re-entering the conversation, not witnessing a live completion.
+    if (isFirst) notified = true
     handleTerminal()
   } else if (!sseActive) {
     pollTimer.value = setTimeout(poll, nextPollDelay())
@@ -163,9 +169,26 @@ function stopPolling() {
   }
 }
 
+async function handleRetry() {
+  if (retrying.value) return
+  retrying.value = true
+  try {
+    const result = await retryTask(activeTaskId.value)
+    // Switch to tracking the new task
+    activeTaskId.value = result.task_id
+    stopTracking()
+    startTracking()
+  } catch {
+    notificationStore.error(t('media.failed'), t('media.retryFailed'))
+  } finally {
+    retrying.value = false
+  }
+}
+
 function startTracking() {
   sseActive = false
   notified = false
+  initialFetch = true
   loading.value = true
   task.value = null
   startElapsedTimer()
@@ -183,9 +206,10 @@ function stopTracking() {
 onMounted(startTracking)
 onUnmounted(stopTracking)
 
-// If taskId changes, restart tracking
+// If taskId prop changes externally, sync activeTaskId and restart tracking
 watch(() => props.taskId, (newId) => {
-  if (newId) {
+  if (newId && newId !== activeTaskId.value) {
+    activeTaskId.value = newId
     stopTracking()
     startTracking()
   }
@@ -209,7 +233,7 @@ watch(() => props.taskId, (newId) => {
             </defs>
           </svg>
           <span class="mp-card-title">{{ statusLabel }}</span>
-          <span class="mp-card-timer">{{ elapsedSeconds }}s</span>
+          <span v-if="elapsedSeconds >= 0.5" class="mp-card-timer">{{ elapsedSeconds.toFixed(1) }}s</span>
         </div>
         <div v-if="task?.model" class="mp-card-model">{{ task.model }}</div>
         <div v-if="elapsedSeconds > 10" class="mp-card-hint">{{ t('media.processingHint') }}</div>
@@ -237,7 +261,7 @@ watch(() => props.taskId, (newId) => {
           <a class="mp-error-link" @click.prevent="router.push({ path: '/settings', query: { tab: 'llm', section: 'media' } })">{{ t('media.goSettings') }}</a>
         </div>
       </div>
-      <button class="mp-retry" @click="emit('retry')" :aria-label="t('media.retry')">{{ t('media.retry') }}</button>
+      <button class="mp-retry" :disabled="retrying" @click="handleRetry" :aria-label="t('media.retry')">{{ retrying ? '...' : t('media.retry') }}</button>
     </div>
 
     <!-- Cancelled -->
@@ -495,6 +519,7 @@ watch(() => props.taskId, (newId) => {
   color: var(--color-primary, #6366f1);
   text-decoration: none;
   font-weight: 500;
+  cursor: pointer;
 }
 
 .mp-error-link:hover {

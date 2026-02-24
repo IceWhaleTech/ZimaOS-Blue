@@ -37,7 +37,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/SrCYvumF"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://discord.gg/b3AgFDxe9v"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
   <a href="https://www.facebook.com/zimaboard/"><img src="../../docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
   <a href="https://x.com/ZimaSpace"><img src="../../docs/assets/x.png" alt="X" height="128" /></a>
 </p>
@@ -276,7 +276,7 @@ Időzítő (30 perc) → HEARTBEAT.md olvasása → LLM kiértékelés → HEART
 ## Közösség és támogatás
 
 - **Hibajegyek**: [Kérjük, itt jelezze a hibákat és funkciókéréseket](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Beszélgetések**: [Discord](https://discord.gg/SrCYvumF)
+- **Beszélgetések**: [Discord](https://discord.gg/b3AgFDxe9v)
 - **Kövessen minket** a [GitHubon](https://github.com/IceWhaleTech)
 
 ## Licenc

@@ -79,6 +79,7 @@ export interface StreamChunk {
   // Tool execution status (sent when backend starts executing tool calls)
   tool_executing?: boolean
   tool_calls?: number
+  tool_names?: string[]
   // Context pruning info (sent on first content chunk)
   pruned?: boolean
   messages_pruned?: number
@@ -141,6 +142,13 @@ export const messageApi = {
   // Note: For streaming, use the SSE utility instead
   getStreamUrl: (conversationId: string) =>
     `/api/v1/conversations/${conversationId}/messages/stream`,
+}
+
+// Warmup API - Pre-compute system prompt and context to reduce TTFT
+export const warmupApi = {
+  /** Fire-and-forget warmup for a conversation. Returns 204. */
+  trigger: (conversationId: string) =>
+    api.post(`/conversations/${conversationId}/warmup`),
 }
 
 // Tool API

@@ -37,7 +37,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/SrCYvumF"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://discord.gg/b3AgFDxe9v"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
   <a href="https://www.facebook.com/zimaboard/"><img src="../../docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
   <a href="https://x.com/ZimaSpace"><img src="../../docs/assets/x.png" alt="X" height="128" /></a>
 </p>
@@ -276,7 +276,7 @@ Amadóir (30 nóim) → Léigh HEARTBEAT.md → Meastóireacht LLM → Bain toke
 ## Pobal & Tacaíocht
 
 - **Saincheisteanna**: [Cuir fabhtanna agus iarratais ar ghnéithe isteach anseo le do thoil](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Plé**: [Discord](https://discord.gg/SrCYvumF)
+- **Plé**: [Discord](https://discord.gg/b3AgFDxe9v)
 - **Lean sinn** ar [GitHub](https://github.com/IceWhaleTech)
 
 ## Ceadúnas

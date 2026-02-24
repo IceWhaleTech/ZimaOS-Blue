@@ -15,7 +15,7 @@ import (
 // WebSearchConfig holds configuration for the web search tool.
 type WebSearchConfig struct {
 	// Provider specifies the search provider to use.
-	// Supported: "duckduckgo", "searxng", "brave", "google"
+	// Supported: "duckduckgo", "searxng", "brave"
 	Provider string
 
 	// APIKey is the API key for providers that require authentication.
@@ -86,7 +86,7 @@ func NewWebSearchTool(config WebSearchConfig) *WebSearchTool {
 func (w *WebSearchTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "web_search",
-		Description: "Searches the web for information. Returns a list of relevant web pages with titles, URLs, and descriptions.",
+		Description: "Searches the web for information. Returns a list of relevant web pages with titles, URLs, and descriptions. Do NOT use this tool to evaluate or review a website's UI/UX quality — use the ui_reviewer skill instead.",
 		Icon:        "web-search",
 		Parameters: map[string]interface{}{
 			"type": "object",

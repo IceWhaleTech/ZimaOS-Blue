@@ -23,8 +23,11 @@ const (
 
 // LayeredMemoryConfig holds configuration for the layered memory system.
 type LayeredMemoryConfig struct {
-	// BaseDir is the root directory for memory files.
+	// BaseDir is the root directory for daily log files (memory/ subdirectory).
 	BaseDir string
+	// LongTermDir is the directory where MEMORY.md lives (workspace root).
+	// If empty, defaults to BaseDir for backward compatibility.
+	LongTermDir string
 	// DailyRetentionDays is how many days to keep daily logs (default: 30).
 	DailyRetentionDays int
 	// AutoPromoteThreshold is the minimum score for auto-promotion to long-term (0-1).
@@ -60,11 +63,16 @@ func NewLayeredMemoryService(baseService *UnifiedMemoryService, config LayeredMe
 		config.AutoPromoteThreshold = 0.8
 	}
 
+	longTermDir := config.LongTermDir
+	if longTermDir == "" {
+		longTermDir = config.BaseDir
+	}
+
 	svc := &LayeredMemoryService{
 		config:       config,
 		baseService:  baseService,
 		dailyLogPath: filepath.Join(config.BaseDir, "daily"),
-		longTermPath: filepath.Join(config.BaseDir, "MEMORY.md"),
+		longTermPath: filepath.Join(longTermDir, "MEMORY.md"),
 	}
 
 	// Ensure directories exist

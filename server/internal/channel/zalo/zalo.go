@@ -189,7 +189,7 @@ func (c *Channel) Stop(ctx context.Context) error {
 	return nil
 }
 
-// Send sends a message through Zalo OA.
+// Send sends a message through Zalo OA, including media attachments.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	c.mu.RLock()
 	status := c.status
@@ -199,17 +199,67 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("channel not connected")
 	}
 
-	// Build message request
-	messageReq := map[string]interface{}{
-		"recipient": map[string]string{
-			"user_id": msg.ChatID,
-		},
-		"message": map[string]string{
-			"text": msg.Content,
-		},
+	// Send media attachments first.
+	for i, att := range msg.Attachments {
+		if att.URL == "" {
+			continue
+		}
+		var messageReq map[string]interface{}
+		switch att.Type {
+		case channel.MessageTypeImage:
+			messageReq = map[string]interface{}{
+				"recipient": map[string]string{"user_id": msg.ChatID},
+				"message": map[string]interface{}{
+					"attachment": map[string]interface{}{
+						"type":    "template",
+						"payload": map[string]interface{}{
+							"template_type": "media",
+							"elements": []map[string]interface{}{
+								{"media_type": "image", "url": att.URL},
+							},
+						},
+					},
+				},
+			}
+		default:
+			// For non-image types, send as text with URL.
+			fallback := att.URL
+			if i == 0 && msg.Content != "" {
+				fallback = msg.Content + "\n" + att.URL
+				msg.Content = ""
+			}
+			messageReq = map[string]interface{}{
+				"recipient": map[string]string{"user_id": msg.ChatID},
+				"message":   map[string]string{"text": fallback},
+			}
+		}
+
+		if err := c.sendJSON(ctx, messageReq); err != nil {
+			c.logger.Warn("failed to send media via Zalo",
+				zap.String("type", string(att.Type)), zap.Error(err))
+		}
+		if i == 0 {
+			msg.Content = ""
+		}
 	}
 
-	messageJSON, err := json.Marshal(messageReq)
+	// Send remaining text.
+	if msg.Content != "" {
+		messageReq := map[string]interface{}{
+			"recipient": map[string]string{"user_id": msg.ChatID},
+			"message":   map[string]string{"text": msg.Content},
+		}
+		if err := c.sendJSON(ctx, messageReq); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// sendJSON posts a JSON payload to the Zalo OA message API.
+func (c *Channel) sendJSON(ctx context.Context, payload interface{}) error {
+	messageJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}

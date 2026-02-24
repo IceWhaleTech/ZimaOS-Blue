@@ -11,11 +11,6 @@ var (
 	trialLicense string // Ed25519-signed license injected at build time
 )
 
-const (
-	// DefaultTrialBaseURL is the default base URL for trial provider
-	DefaultTrialBaseURL = "https://paid.tribiosapi.top/"
-)
-
 // BuiltinProviders returns the list of built-in provider configurations.
 // The trial provider is only included if a trial API key was injected at build time.
 func BuiltinProviders() []*Provider {
@@ -449,9 +444,6 @@ func BuiltinProviders() []*Provider {
 	// Only include trial provider if a valid signed license was injected at build time
 	if claims := getTrialClaims(); claims != nil {
 		baseURL := claims.URL
-		if baseURL == "" {
-			baseURL = DefaultTrialBaseURL
-		}
 		apiFormat := APIFormatAnthropic
 		if claims.Format != "" {
 			apiFormat = APIFormat(claims.Format)

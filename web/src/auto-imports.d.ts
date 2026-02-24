@@ -277,7 +277,6 @@ declare module 'vue' {
     readonly useNetwork: UnwrapRef<typeof import('./composables/useNetwork')['useNetwork']>
     readonly useNotificationStore: UnwrapRef<typeof import('./stores/notification')['useNotificationStore']>
     readonly usePermissions: UnwrapRef<typeof import('./composables/usePermissions')['usePermissions']>
-    readonly usePersonalityStore: UnwrapRef<typeof import('./stores/personality')['usePersonalityStore']>
     readonly usePluginStore: UnwrapRef<typeof import('./stores/plugin')['usePluginStore']>
     readonly usePreviewStore: UnwrapRef<typeof import('./stores/preview')['usePreviewStore']>
     readonly useProviderPoolStore: UnwrapRef<typeof import('./stores/providerPool')['useProviderPoolStore']>

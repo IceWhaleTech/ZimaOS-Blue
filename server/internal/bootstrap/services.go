@@ -112,44 +112,13 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	s.LLMRegistry = llm.NewProviderRegistry()
 	registerLLMProviders(s.LLMRegistry, appCfg)
 
-	// Tool registry
+	// Tool registry (file_read, file_write, web_search + memory registered lazily)
 	s.ToolRegistry = tools.NewRegistry()
 	tools.RegisterBuiltinTools(s.ToolRegistry)
 
-	// Skill registry
+	// Skill registry (for skill list UI and IPC — NOT bridged to LLM tools)
 	s.SkillRegistry = skill.NewRegistry()
 	builtin.RegisterAll(s.SkillRegistry)
-
-	// Bridge builtin skills into the tool registry so the LLM can call them directly.
-	// Skills that have a dedicated native tool in tools/ are skipped (registered in RegisterBuiltinTools).
-	// Skills backed by native services are registered explicitly below, then skipped in the loop.
-	nativeToolIDs := map[string]bool{
-		// Native service-backed skills — registered explicitly below
-		"scheduler": true,
-		"autoreply": true,
-		"sandbox":   true,
-		"workflows": true,
-		// Registered as native tools in main.go (with streaming progress cards)
-		"browser":     true,
-		"ui_reviewer": true,
-	}
-
-	// Register native service-backed skills as tools (services wired later in main.go)
-	for _, id := range []string{"scheduler", "autoreply", "sandbox", "workflows"} {
-		if sk := s.SkillRegistry.Get(id); sk != nil {
-			tools.RegisterSkill(s.ToolRegistry, sk)
-		}
-	}
-
-	for _, info := range s.SkillRegistry.List() {
-		id := info.Manifest.ID
-		if nativeToolIDs[id] {
-			continue
-		}
-		if sk := s.SkillRegistry.Get(id); sk != nil {
-			tools.RegisterSkill(s.ToolRegistry, sk)
-		}
-	}
 
 	// Worker pool (shared by echo and echolib)
 	s.WorkerPool = worker.NewPool(context.Background(), 10)

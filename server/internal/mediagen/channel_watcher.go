@@ -3,58 +3,82 @@ package mediagen
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 )
 
 // ChannelNotifier is the callback invoked when a channel-sourced task reaches a terminal state.
-// channelName and chatID identify the target channel conversation.
-// message is the formatted result text (may include image/video URLs).
-type ChannelNotifier func(ctx context.Context, channelName, chatID, message string) error
+// channelName identifies the target channel; msg carries text + optional media attachments.
+type ChannelNotifier func(ctx context.Context, channelName string, msg channel.OutgoingMessage) error
+
+// URLResolver converts local API paths to externally-accessible URLs.
+type URLResolver interface {
+	ResolveExternalURL(localPath string) string
+}
+
+// watchEntry stores per-task metadata for the watcher.
+type watchEntry struct {
+	lang i18n.Language
+}
 
 // ChannelTaskWatcher monitors channel-sourced media tasks and sends results
 // back to the originating channel when tasks complete.
 type ChannelTaskWatcher struct {
-	manager  *Manager
-	notifier ChannelNotifier
-	interval time.Duration
+	manager     *Manager
+	notifier    ChannelNotifier
+	urlResolver URLResolver
+	defaultLang i18n.Language
+	interval    time.Duration
 
 	mu       sync.Mutex
-	watching map[string]struct{} // task IDs currently being watched
+	watching map[string]watchEntry // task IDs currently being watched
 	ctx      context.Context
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
 }
 
 // NewChannelTaskWatcher creates a watcher that polls channel tasks and notifies on completion.
-func NewChannelTaskWatcher(manager *Manager, notifier ChannelNotifier) *ChannelTaskWatcher {
+func NewChannelTaskWatcher(manager *Manager, notifier ChannelNotifier, locale string) *ChannelTaskWatcher {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ChannelTaskWatcher{
-		manager:  manager,
-		notifier: notifier,
-		interval: 3 * time.Second,
-		watching: make(map[string]struct{}),
-		ctx:      ctx,
-		cancel:   cancel,
+		manager:     manager,
+		notifier:    notifier,
+		defaultLang: i18n.ParseLanguage(locale),
+		interval:    3 * time.Second,
+		watching:    make(map[string]watchEntry),
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 }
 
 // Watch starts watching a channel task. The channelName and chatID are stored
 // in the task's metadata for notification routing.
+// lang is the user's locale for i18n (e.g. "zh-CN", "en-US").
 // This is safe to call multiple times for the same task ID (idempotent).
-func (w *ChannelTaskWatcher) Watch(taskID, channelName, chatID string) {
+func (w *ChannelTaskWatcher) Watch(taskID, channelName, chatID, lang string) {
 	w.mu.Lock()
 	if _, ok := w.watching[taskID]; ok {
 		w.mu.Unlock()
 		return
 	}
-	w.watching[taskID] = struct{}{}
+	taskLang := w.defaultLang
+	if lang != "" {
+		taskLang = i18n.ParseLanguage(lang)
+	}
+	w.watching[taskID] = watchEntry{lang: taskLang}
 	w.mu.Unlock()
 
 	w.wg.Add(1)
-	go w.pollUntilDone(taskID, channelName, chatID)
+	go w.pollUntilDone(taskID, channelName, chatID, taskLang)
 }
 
 // SetNotifier sets the channel notification callback.
@@ -62,6 +86,13 @@ func (w *ChannelTaskWatcher) Watch(taskID, channelName, chatID string) {
 func (w *ChannelTaskWatcher) SetNotifier(notifier ChannelNotifier) {
 	w.mu.Lock()
 	w.notifier = notifier
+	w.mu.Unlock()
+}
+
+// SetURLResolver sets the URL resolver for converting local paths to external URLs.
+func (w *ChannelTaskWatcher) SetURLResolver(resolver URLResolver) {
+	w.mu.Lock()
+	w.urlResolver = resolver
 	w.mu.Unlock()
 }
 
@@ -85,7 +116,8 @@ func (w *ChannelTaskWatcher) RecoverChannelTasks() {
 		if channelName == "" {
 			continue
 		}
-		w.Watch(pt.ID, channelName, chatID)
+		// Use default lang for recovered tasks (original locale not persisted)
+		w.Watch(pt.ID, channelName, chatID, "")
 		count++
 	}
 	if count > 0 {
@@ -101,7 +133,7 @@ func (w *ChannelTaskWatcher) Close() error {
 }
 
 // pollUntilDone polls a task until it reaches a terminal state, then notifies the channel.
-func (w *ChannelTaskWatcher) pollUntilDone(taskID, channelName, chatID string) {
+func (w *ChannelTaskWatcher) pollUntilDone(taskID, channelName, chatID string, lang i18n.Language) {
 	defer w.wg.Done()
 	defer func() {
 		w.mu.Lock()
@@ -125,7 +157,11 @@ func (w *ChannelTaskWatcher) pollUntilDone(taskID, channelName, chatID string) {
 			notifier := w.notifier
 			w.mu.Unlock()
 			if notifier != nil {
-				_ = notifier(w.ctx, channelName, chatID, "⏰ Media generation timed out. Please try again.")
+				msg := channel.OutgoingMessage{
+					ChatID:  chatID,
+					Content: i18n.T(lang, i18n.MsgMediaGenTimeout),
+				}
+				_ = notifier(w.ctx, channelName, msg)
 			}
 			return
 		case <-ticker.C:
@@ -137,12 +173,16 @@ func (w *ChannelTaskWatcher) pollUntilDone(taskID, channelName, chatID string) {
 				continue
 			}
 			// Task is done — format and notify
-			msg := FormatChannelResult(task)
+			w.mu.Lock()
+			resolver := w.urlResolver
+			w.mu.Unlock()
+			msg := FormatChannelResult(task, lang, w.manager.storage, resolver)
+			msg.ChatID = chatID
 			w.mu.Lock()
 			notifier := w.notifier
 			w.mu.Unlock()
 			if notifier != nil {
-				if err := notifier(w.ctx, channelName, chatID, msg); err != nil {
+				if err := notifier(w.ctx, channelName, msg); err != nil {
 					log.Printf("[channel-watcher] failed to notify channel %s: %v", channelName, err)
 				}
 			}
@@ -151,46 +191,238 @@ func (w *ChannelTaskWatcher) pollUntilDone(taskID, channelName, chatID string) {
 	}
 }
 
-// FormatChannelResult formats a completed media task for channel display.
-func FormatChannelResult(task *MediaTask) string {
+// FormatChannelResult formats a completed media task as an OutgoingMessage.
+// For succeeded tasks, image/video results are sent as attachments.
+// If storage is provided, local file data is loaded into att.Data for channels that need binary upload.
+// If resolver is provided, local URLs are converted to external URLs for text fallback.
+func FormatChannelResult(task *MediaTask, lang i18n.Language, storage *MediaStorage, resolver URLResolver) channel.OutgoingMessage {
 	if task == nil {
-		return ""
+		return channel.OutgoingMessage{}
 	}
 
 	switch task.Status {
 	case TaskStatusFailed:
-		errMsg := task.Error
-		if errMsg == "" {
-			errMsg = "unknown error"
+		reason := humanizeError(task.Error, lang)
+		return channel.OutgoingMessage{
+			Content: i18n.T(lang, i18n.MsgMediaGenFailed, reason),
 		}
-		return fmt.Sprintf("❌ Media generation failed: %s", errMsg)
 
 	case TaskStatusCancelled:
-		return "🚫 Media generation was cancelled."
+		return channel.OutgoingMessage{
+			Content: i18n.T(lang, i18n.MsgMediaGenCancelled),
+		}
 
 	case TaskStatusSucceeded:
 		if task.Response == nil || len(task.Response.Data) == 0 {
-			return "✅ Generation complete, but no output was returned."
-		}
-		var sb strings.Builder
-		categoryLabel := "Media"
-		switch MediaCategory(task.Category) {
-		case CategoryT2I, CategoryI2I:
-			categoryLabel = "Image"
-		case CategoryT2V, CategoryI2V, CategoryKF2V:
-			categoryLabel = "Video"
-		}
-		sb.WriteString(fmt.Sprintf("✅ %s generated (%s)\n", categoryLabel, task.Model))
-		for _, r := range task.Response.Data {
-			if r.URL != "" {
-				sb.WriteString(r.URL)
-				sb.WriteString("\n")
+			return channel.OutgoingMessage{
+				Content: i18n.T(lang, i18n.MsgMediaGenNoOutput),
 			}
 		}
-		return strings.TrimSpace(sb.String())
+
+		// Determine message key and attachment type from category
+		msgKey := i18n.MsgMediaGenerated
+		attType := channel.MessageTypeFile
+		switch MediaCategory(task.Category) {
+		case CategoryT2I, CategoryI2I:
+			msgKey = i18n.MsgMediaImageGenerated
+			attType = channel.MessageTypeImage
+		case CategoryT2V, CategoryI2V, CategoryKF2V:
+			msgKey = i18n.MsgMediaVideoGenerated
+			attType = channel.MessageTypeVideo
+		}
+
+		// Build content text — avoid empty parentheses when model is unknown
+		var content string
+		if task.Model != "" {
+			content = i18n.T(lang, msgKey, task.Model)
+		} else {
+			content = i18n.T(lang, msgKey, "")
+			// Strip empty "()" or "（）" left by fmt.Sprintf
+			content = strings.Replace(content, " ()", "", 1)
+			content = strings.Replace(content, "（）", "", 1)
+			content = strings.TrimSpace(content)
+		}
+		// Append generation duration
+		if task.CompletedAt != nil && !task.CreatedAt.IsZero() {
+			dur := task.CompletedAt.Sub(task.CreatedAt)
+			if dur > 0 {
+				content += "  ⏱ " + i18n.FormatDuration(lang, dur)
+			}
+		}
+
+		msg := channel.OutgoingMessage{
+			Content: content,
+		}
+		for _, r := range task.Response.Data {
+			if r.URL == "" {
+				continue
+			}
+			mime := r.ContentType
+			if mime == "" {
+				mime = guessMime(attType, r.URL)
+			}
+			// Resolve external URL for text fallback
+			externalURL := r.URL
+			if resolver != nil && strings.HasPrefix(r.URL, "/") {
+				externalURL = resolver.ResolveExternalURL(r.URL)
+			}
+			att := channel.Attachment{
+				Type:     attType,
+				URL:      externalURL,
+				MimeType: mime,
+			}
+			// For video, try to load thumbnail for cover image (needed by Feishu etc.)
+			if attType == channel.MessageTypeVideo && r.ThumbnailURL != "" {
+				if thumbData, err := downloadURL(r.ThumbnailURL); err == nil {
+					att.Thumbnail = thumbData
+				}
+			}
+			msg.Attachments = append(msg.Attachments, att)
+		}
+		// Pre-load file data from local storage so channels can upload directly
+		loadAttachmentData(msg.Attachments, storage)
+		// For video attachments without a thumbnail, extract a mid-frame via ffmpeg
+		for i := range msg.Attachments {
+			att := &msg.Attachments[i]
+			if att.Type == channel.MessageTypeVideo && len(att.Thumbnail) == 0 && len(att.Data) > 0 {
+				if thumb, err := extractVideoThumbnail(att.Data); err == nil {
+					att.Thumbnail = thumb
+				}
+			}
+		}
+		return msg
 
 	default:
-		return ""
+		return channel.OutgoingMessage{}
+	}
+}
+
+// loadAttachmentData populates att.Data for each attachment.
+// First tries local storage (for URLs starting with "/"), then falls back to HTTP download.
+func loadAttachmentData(attachments []channel.Attachment, storage *MediaStorage) {
+	for i := range attachments {
+		att := &attachments[i]
+		if len(att.Data) > 0 {
+			continue // already loaded
+		}
+		// Try local storage first
+		if storage != nil && att.URL != "" {
+			// Extract the local path portion (strip any external prefix)
+			localURL := att.URL
+			if strings.HasPrefix(localURL, "http") {
+				// External URL — check if it's our own server by looking for the storage base path
+				// Skip local loading for truly external URLs
+			} else if strings.HasPrefix(localURL, "/") {
+				localPath := storage.localPathFromURL(localURL)
+				if data, err := os.ReadFile(localPath); err == nil {
+					att.Data = data
+					att.Size = int64(len(data))
+					continue
+				} else {
+					log.Printf("[channel-watcher] failed to read local file %s: %v", localPath, err)
+				}
+			}
+		}
+		// Fallback: download from URL (works for remote URLs)
+		if len(att.Data) == 0 && att.URL != "" && strings.HasPrefix(att.URL, "http") {
+			if data, err := downloadURL(att.URL); err == nil {
+				att.Data = data
+				att.Size = int64(len(data))
+			} else {
+				log.Printf("[channel-watcher] failed to download %s: %v", att.URL, err)
+			}
+		}
+	}
+}
+
+// downloadURL fetches a URL and returns the response body.
+func downloadURL(url string) ([]byte, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// extractVideoThumbnail extracts a JPEG frame from the middle of a video using ffmpeg.
+// Returns nil, err if ffmpeg is not available or extraction fails.
+func extractVideoThumbnail(videoData []byte) ([]byte, error) {
+	// Write video to temp file
+	tmpVideo, err := os.CreateTemp("", "thumb-*.mp4")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(tmpVideo.Name())
+	if _, err := tmpVideo.Write(videoData); err != nil {
+		tmpVideo.Close()
+		return nil, err
+	}
+	tmpVideo.Close()
+
+	// Probe duration with ffprobe
+	dur := probeDuration(tmpVideo.Name())
+	seekTo := "0"
+	if dur > 0 {
+		mid := dur / 2
+		seekTo = fmt.Sprintf("%.2f", mid)
+	}
+
+	// Extract single frame at midpoint
+	tmpOut, err := os.CreateTemp("", "thumb-*.jpg")
+	if err != nil {
+		return nil, err
+	}
+	tmpOut.Close()
+	defer os.Remove(tmpOut.Name())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg",
+		"-ss", seekTo,
+		"-i", tmpVideo.Name(),
+		"-frames:v", "1",
+		"-q:v", "5",
+		"-y", tmpOut.Name(),
+	)
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("ffmpeg: %w", err)
+	}
+	return os.ReadFile(tmpOut.Name())
+}
+
+// probeDuration returns the video duration in seconds using ffprobe, or 0 on failure.
+func probeDuration(path string) float64 {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		path,
+	).Output()
+	if err != nil {
+		return 0
+	}
+	s := strings.TrimSpace(string(out))
+	var d float64
+	fmt.Sscanf(s, "%f", &d)
+	return d
+}
+
+// guessMime returns a reasonable MIME type based on attachment type and URL extension.
+func guessMime(t channel.MessageType, url string) string {
+	switch t {
+	case channel.MessageTypeImage:
+		if strings.HasSuffix(url, ".webp") {
+			return "image/webp"
+		}
+		return "image/png"
+	case channel.MessageTypeVideo:
+		return "video/mp4"
+	default:
+		return "application/octet-stream"
 	}
 }
 
@@ -216,4 +448,26 @@ func parseChannelSource(source string) (channelName, chatID string) {
 		chatID = parts[2]
 	}
 	return
+}
+
+// humanizeError maps raw upstream error strings to translated, user-friendly messages.
+func humanizeError(rawErr string, lang i18n.Language) string {
+	if rawErr == "" {
+		return i18n.T(lang, i18n.MsgErrUnknown)
+	}
+	lower := strings.ToLower(rawErr)
+	switch {
+	case strings.Contains(lower, "rate limit") || strings.Contains(lower, "throttl") || strings.Contains(lower, "too many"):
+		return i18n.T(lang, i18n.MsgErrRateLimit)
+	case strings.Contains(lower, "content") && (strings.Contains(lower, "block") || strings.Contains(lower, "filter") || strings.Contains(lower, "safety") || strings.Contains(lower, "policy")):
+		return i18n.T(lang, i18n.MsgErrContentBlock)
+	case strings.Contains(lower, "api") && strings.Contains(lower, "fail"),
+		strings.Contains(lower, "external") && strings.Contains(lower, "fail"),
+		strings.Contains(lower, "upstream"),
+		strings.Contains(lower, "unavailable"),
+		strings.Contains(lower, "502"), strings.Contains(lower, "503"), strings.Contains(lower, "504"):
+		return i18n.T(lang, i18n.MsgErrAPIFailed)
+	default:
+		return i18n.T(lang, i18n.MsgErrUnknown)
+	}
 }

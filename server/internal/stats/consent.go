@@ -1,14 +1,15 @@
 package stats
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
+	"context"
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
+
+const consentKVKey = "config:consent"
 
 // ConsentStatus represents the user's consent status for statistics collection.
 type ConsentStatus struct {
@@ -20,22 +21,17 @@ type ConsentStatus struct {
 
 // ConsentManager manages user consent for statistics collection.
 type ConsentManager struct {
-	mu          sync.RWMutex
-	storagePath string
-	status      *ConsentStatus
-	collector   *StatisticsCollector
+	mu        sync.RWMutex
+	kv        kvstore.Store
+	status    *ConsentStatus
+	collector *StatisticsCollector
 }
 
 // NewConsentManager creates a new consent manager.
-func NewConsentManager(storagePath string, collector *StatisticsCollector) *ConsentManager {
-	if storagePath == "" {
-		home, _ := os.UserHomeDir()
-		storagePath = filepath.Join(home, ".local", "share", "zimaos-blue", "stats")
-	}
-
+func NewConsentManager(kv kvstore.Store, collector *StatisticsCollector) *ConsentManager {
 	manager := &ConsentManager{
-		storagePath: storagePath,
-		collector:   collector,
+		kv:        kv,
+		collector: collector,
 		status: &ConsentStatus{
 			Consented: false,
 			Version:   "1.0",
@@ -111,35 +107,18 @@ func (m *ConsentManager) IsConsented() bool {
 	return m.status.Consented
 }
 
-// loadStatus loads consent status from disk.
+// loadStatus loads consent status from kvstore.
 func (m *ConsentManager) loadStatus() {
-	statusFile := filepath.Join(m.storagePath, "consent.json")
-	data, err := os.ReadFile(statusFile)
-	if err != nil {
-		return
-	}
-
 	var status ConsentStatus
-	if err := json.Unmarshal(data, &status); err != nil {
-		return
+	if err := m.kv.GetJSON(context.Background(), consentKVKey, &status); err != nil {
+		return // Not found or error — use defaults
 	}
-
 	m.status = &status
 }
 
-// saveStatus saves consent status to disk.
+// saveStatus saves consent status to kvstore.
 func (m *ConsentManager) saveStatus() error {
-	if err := os.MkdirAll(m.storagePath, 0755); err != nil {
-		return err
-	}
-
-	statusFile := filepath.Join(m.storagePath, "consent.json")
-	data, err := json.MarshalIndent(m.status, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(statusFile, data, 0644)
+	return m.kv.SetJSON(context.Background(), consentKVKey, m.status, 0)
 }
 
 // ConsentInfo provides information about what data is collected.

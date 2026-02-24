@@ -13,7 +13,9 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -434,30 +436,147 @@ func (c *Channel) Stop(ctx context.Context) error {
 
 // Send sends a message through WeChat Work.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
+	// Send attachments first.
+	for _, att := range msg.Attachments {
+		if err := c.sendAttachment(ctx, msg.ChatID, msg.Content, att); err != nil {
+			c.logger.Warn("failed to send attachment, falling back to text",
+				zap.String("channel", "wechat_work"), zap.String("type", string(att.Type)), zap.Error(err))
+			fallback := msg.Content
+			if att.URL != "" {
+				fallback += "\n" + att.URL
+			}
+			if err2 := c.sendText(ctx, msg.ChatID, fallback, msg.Format); err2 != nil {
+				return fmt.Errorf("wechat send fallback: %w", err2)
+			}
+		}
+		msg.Content = ""
+	}
+
+	if len(msg.Attachments) == 0 && msg.Content != "" {
+		return c.sendText(ctx, msg.ChatID, msg.Content, msg.Format)
+	}
+	return nil
+}
+
+// sendText sends a plain text or markdown message.
+func (c *Channel) sendText(ctx context.Context, chatID, content, format string) error {
 	token, err := c.getAccessToken()
 	if err != nil {
 		return fmt.Errorf("failed to get access token: %w", err)
 	}
 
-	// Build message payload
 	payload := map[string]interface{}{
-		"touser":  msg.ChatID,
-		"msgtype": "text",
+		"touser":  chatID,
 		"agentid": c.config.AgentID,
-		"text": map[string]string{
-			"content": msg.Content,
-		},
 	}
 
-	// Check for markdown format
-	if msg.Format == "markdown" {
+	if format == "markdown" {
 		payload["msgtype"] = "markdown"
-		payload["markdown"] = map[string]string{
-			"content": msg.Content,
-		}
-		delete(payload, "text")
+		payload["markdown"] = map[string]string{"content": content}
+	} else {
+		payload["msgtype"] = "text"
+		payload["text"] = map[string]string{"content": content}
 	}
 
+	return c.postSendMessage(token, payload)
+}
+
+// sendAttachment uploads media and sends it via WeChat Work API.
+func (c *Channel) sendAttachment(ctx context.Context, chatID, caption string, att channel.Attachment) error {
+	if len(att.Data) == 0 {
+		return fmt.Errorf("no binary data for attachment")
+	}
+
+	token, err := c.getAccessToken()
+	if err != nil {
+		return fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	// Map attachment type to WeChat media type.
+	var mediaType string
+	switch att.Type {
+	case channel.MessageTypeImage:
+		mediaType = "image"
+	case channel.MessageTypeAudio:
+		mediaType = "voice"
+	case channel.MessageTypeVideo:
+		mediaType = "video"
+	default:
+		mediaType = "file"
+	}
+
+	// Upload temporary media.
+	mediaID, err := c.uploadMedia(token, mediaType, att.Name, att.Data)
+	if err != nil {
+		return fmt.Errorf("upload media: %w", err)
+	}
+
+	// Build send payload.
+	payload := map[string]interface{}{
+		"touser":  chatID,
+		"msgtype": mediaType,
+		"agentid": c.config.AgentID,
+	}
+
+	switch mediaType {
+	case "image":
+		payload["image"] = map[string]string{"media_id": mediaID}
+	case "voice":
+		payload["voice"] = map[string]string{"media_id": mediaID}
+	case "video":
+		payload["video"] = map[string]interface{}{
+			"media_id":    mediaID,
+			"title":       att.Name,
+			"description": caption,
+		}
+	case "file":
+		payload["file"] = map[string]string{"media_id": mediaID}
+	}
+
+	return c.postSendMessage(token, payload)
+}
+
+// uploadMedia uploads a temporary media file to WeChat Work.
+// Returns the media_id on success.
+func (c *Channel) uploadMedia(token, mediaType, filename string, data []byte) (string, error) {
+	if filename == "" {
+		filename = "file" + extForType(mediaType)
+	}
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, err := w.CreateFormFile("media", filepath.Base(filename))
+	if err != nil {
+		return "", fmt.Errorf("create form file: %w", err)
+	}
+	if _, err := part.Write(data); err != nil {
+		return "", fmt.Errorf("write data: %w", err)
+	}
+	w.Close()
+
+	url := fmt.Sprintf("https://qyapi.weixin.qq.com/cgi-bin/media/upload?access_token=%s&type=%s", token, mediaType)
+	resp, err := http.Post(url, w.FormDataContentType(), &buf)
+	if err != nil {
+		return "", fmt.Errorf("upload request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+		MediaID string `json:"media_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+	if result.ErrCode != 0 {
+		return "", fmt.Errorf("WeChat API error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+	return result.MediaID, nil
+}
+
+// postSendMessage posts a message payload to the WeChat Work send API.
+func (c *Channel) postSendMessage(token string, payload map[string]interface{}) error {
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
@@ -487,8 +606,21 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	c.mu.Lock()
 	c.lastReplyAt = &nowSent
 	c.mu.Unlock()
-
 	return nil
+}
+
+// extForType returns a default file extension for a WeChat media type.
+func extForType(mediaType string) string {
+	switch mediaType {
+	case "image":
+		return ".png"
+	case "voice":
+		return ".amr"
+	case "video":
+		return ".mp4"
+	default:
+		return ".bin"
+	}
 }
 
 // SendStreaming sends a message with streaming support.

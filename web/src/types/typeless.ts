@@ -35,6 +35,7 @@ export type TypelessCardType =
   | 'mermaid'
   | 'search'
   | 'ui-review'
+  | 'ui-review-progress'
   | 'media-generate'
 
 export interface TypelessCardBase {
@@ -557,6 +558,27 @@ export interface TypelessCardUIReview extends TypelessCardBase {
   actions?: ActionButton[]
 }
 
+// UI Review Progress card — streaming step-by-step progress during review
+export interface UIReviewProgressStep {
+  step: string
+  name: string
+  status: string
+  url?: string
+  score?: number
+}
+
+export interface TypelessCardUIReviewProgress extends TypelessCardBase {
+  type: 'ui-review-progress'
+  // Single step (raw from backend)
+  step?: string
+  name?: string
+  status?: string
+  url?: string
+  score?: number
+  // Merged steps (after frontend consolidation)
+  steps?: UIReviewProgressStep[]
+}
+
 // Media generation card — shows placeholder during generation, image/video on completion
 export interface TypelessCardMediaGenerate extends TypelessCardBase {
   type: 'media-generate'
@@ -602,6 +624,7 @@ export type TypelessCard =
   | TypelessCardMermaid
   | TypelessCardSearch
   | TypelessCardUIReview
+  | TypelessCardUIReviewProgress
   | TypelessCardMediaGenerate
 
 // Card parsing result

@@ -1,20 +1,22 @@
 package server
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sync"
 
 	"github.com/labstack/echo/v4"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 )
+
+const settingsKVKey = "config:settings"
 
 // SettingsHandler handles user settings API endpoints
 type SettingsHandler struct {
-	mu           sync.RWMutex
-	settingsPath string
-	settings     *Settings
+	mu       sync.RWMutex
+	kv       kvstore.Store
+	settings *Settings
 }
 
 // Settings represents user preferences stored on backend
@@ -25,11 +27,10 @@ type Settings struct {
 }
 
 // NewSettingsHandler creates a new settings handler
-func NewSettingsHandler(dataDir string) *SettingsHandler {
-	settingsPath := filepath.Join(dataDir, "settings.json")
+func NewSettingsHandler(kv kvstore.Store) *SettingsHandler {
 	h := &SettingsHandler{
-		settingsPath: settingsPath,
-		settings:     &Settings{},
+		kv:       kv,
+		settings: &Settings{},
 	}
 	h.load()
 	return h
@@ -104,47 +105,28 @@ func (h *SettingsHandler) GetLocale() string {
 	return h.settings.Locale
 }
 
-// GetSmartToolSelection returns whether smart tool selection is enabled (default true).
+// GetSmartToolSelection returns whether smart tool selection is enabled (default false).
 func (h *SettingsHandler) GetSmartToolSelection() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmartToolSelection == nil {
-		return true
+		return false
 	}
 	return *h.settings.SmartToolSelection
 }
 
-// load reads settings from disk
-func (h *SettingsHandler) load() error {
+// load reads settings from kvstore
+func (h *SettingsHandler) load() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	data, err := os.ReadFile(h.settingsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// File doesn't exist yet, use defaults
-			h.settings = &Settings{}
-			return nil
-		}
-		return err
+	if err := h.kv.GetJSON(context.Background(), settingsKVKey, h.settings); err != nil {
+		// Key not found or error — use defaults
+		h.settings = &Settings{}
 	}
-
-	return json.Unmarshal(data, h.settings)
 }
 
-// save writes settings to disk
+// save writes settings to kvstore
 func (h *SettingsHandler) save() error {
-	// Ensure directory exists
-	dir := filepath.Dir(h.settingsPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(h.settings, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(h.settingsPath, data, 0644)
+	return h.kv.SetJSON(context.Background(), settingsKVKey, h.settings, 0)
 }
-

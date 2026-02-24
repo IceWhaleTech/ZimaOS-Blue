@@ -2,10 +2,12 @@
 package mattermost
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"sync"
@@ -182,6 +184,22 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("channel not connected")
 	}
 
+	// Upload attachments and collect file IDs.
+	var fileIDs []string
+	for _, att := range msg.Attachments {
+		if len(att.Data) > 0 {
+			name := att.Name
+			if name == "" { name = "file" }
+			fid, err := c.uploadFile(ctx, msg.ChatID, name, att.Data)
+			if err != nil {
+				c.logger.Warn("failed to upload file to mattermost",
+					zap.String("type", string(att.Type)), zap.Error(err))
+				continue
+			}
+			fileIDs = append(fileIDs, fid)
+		}
+	}
+
 	// Build post
 	post := map[string]interface{}{
 		"channel_id": msg.ChatID,
@@ -190,6 +208,10 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 
 	if msg.ReplyToID != "" {
 		post["root_id"] = msg.ReplyToID
+	}
+
+	if len(fileIDs) > 0 {
+		post["file_ids"] = fileIDs
 	}
 
 	postJSON, err := json.Marshal(post)
@@ -219,6 +241,51 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	}
 
 	return nil
+}
+
+// uploadFile uploads a file to Mattermost and returns the file ID.
+func (c *Channel) uploadFile(ctx context.Context, channelID, filename string, data []byte) (string, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	w.WriteField("channel_id", channelID)
+	part, err := w.CreateFormFile("files", filename)
+	if err != nil {
+		return "", fmt.Errorf("create form file: %w", err)
+	}
+	part.Write(data)
+	w.Close()
+
+	url := fmt.Sprintf("%s/api/v4/files", c.config.ServerURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+c.config.BotToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("mattermost upload error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		FileInfos []struct {
+			ID string `json:"id"`
+		} `json:"file_infos"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode upload response: %w", err)
+	}
+	if len(result.FileInfos) == 0 {
+		return "", fmt.Errorf("no file info in upload response")
+	}
+	return result.FileInfos[0].ID, nil
 }
 
 // SendStreaming sends a message with streaming support.

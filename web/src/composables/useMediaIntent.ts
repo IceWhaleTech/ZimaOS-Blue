@@ -150,8 +150,11 @@ export function classifyMediaIntent(
   let category: MediaCategory | '' = ''
   let confidence = 0
 
+  let alternativeCategory: MediaCategory | undefined
+
   if (imageCount >= 2 && (hasVideoNoun || hasAnimVerb)) {
-    category = 'kf2v'; confidence = 0.85
+    category = 'i2v'; confidence = 0.85
+    alternativeCategory = 'kf2v'
   } else if (hasImages && hasAnimVerb) {
     category = 'i2v'; confidence = 0.9
   } else if (hasImages && hasVideoNoun) {
@@ -178,5 +181,6 @@ export function classifyMediaIntent(
     prompt: message,
     has_image: hasImages,
     image_count: imageCount,
+    alternative_category: alternativeCategory,
   }
 }

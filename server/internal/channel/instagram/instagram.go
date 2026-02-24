@@ -257,16 +257,61 @@ func (c *Channel) processMessage(m webhookMessaging) {
 	}
 }
 
-// Send sends a text message via the Instagram Messaging API.
+// Send sends a message via the Instagram Messaging API, including media attachments.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
-	payload := map[string]interface{}{
-		"recipient": map[string]string{"id": msg.ChatID},
-		"message":   map[string]string{"text": msg.Content},
+	// Send media attachments first.
+	for i, att := range msg.Attachments {
+		if att.URL == "" {
+			continue
+		}
+		mediaType := "image"
+		switch att.Type {
+		case channel.MessageTypeVideo:
+			mediaType = "video"
+		case channel.MessageTypeAudio:
+			mediaType = "audio"
+		case channel.MessageTypeFile:
+			mediaType = "file"
+		}
+		payload := map[string]interface{}{
+			"recipient": map[string]string{"id": msg.ChatID},
+			"message": map[string]interface{}{
+				"attachment": map[string]interface{}{
+					"type":    mediaType,
+					"payload": map[string]string{"url": att.URL},
+				},
+			},
+		}
+		if err := c.callSendAPI(ctx, payload); err != nil {
+			c.logger.Warn("failed to send media via Instagram",
+				zap.String("type", mediaType), zap.Error(err))
+			// Fall back to text with URL.
+			fallback := att.URL
+			if i == 0 && msg.Content != "" {
+				fallback = msg.Content + "\n" + att.URL
+			}
+			_ = c.callSendAPI(ctx, map[string]interface{}{
+				"recipient": map[string]string{"id": msg.ChatID},
+				"message":   map[string]string{"text": fallback},
+			})
+		}
+		if i == 0 {
+			msg.Content = "" // Caption sent with first attachment.
+		}
 	}
-	if err := c.callSendAPI(ctx, payload); err != nil {
-		c.setError(err.Error())
-		return err
+
+	// Send remaining text.
+	if msg.Content != "" {
+		payload := map[string]interface{}{
+			"recipient": map[string]string{"id": msg.ChatID},
+			"message":   map[string]string{"text": msg.Content},
+		}
+		if err := c.callSendAPI(ctx, payload); err != nil {
+			c.setError(err.Error())
+			return err
+		}
 	}
+
 	c.msgsSent.Add(1)
 	return nil
 }
@@ -290,6 +335,11 @@ func (c *Channel) SendMedia(ctx context.Context, chatID string, imageURL string)
 	}
 	c.msgsSent.Add(1)
 	return nil
+}
+
+// SendTyping sends a typing indicator to the given Instagram chat.
+func (c *Channel) SendTyping(ctx context.Context, chatID string) error {
+	return c.sendTypingIndicator(ctx, chatID, "typing_on")
 }
 
 // SendStreaming sends a message with typing indicator and chunked text sends.

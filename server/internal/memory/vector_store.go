@@ -3,8 +3,10 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -17,6 +19,32 @@ import (
 
 func init() {
 	sqlite_vec.Auto()
+}
+
+// quantizeFloat32ToInt8 converts float32 embeddings (typically [-1,1]) to int8 [-128,127]
+// and serializes as a byte slice for sqlite-vec int8 columns.
+func quantizeFloat32ToInt8(emb []float32) []byte {
+	buf := make([]byte, len(emb))
+	for i, v := range emb {
+		// Clamp to [-1, 1] then scale to [-128, 127]
+		if v > 1 {
+			v = 1
+		} else if v < -1 {
+			v = -1
+		}
+		buf[i] = byte(int8(math.Round(float64(v) * 127)))
+	}
+	return buf
+}
+
+// serializeFloat32 serializes float32 embeddings to little-endian bytes for sqlite-vec queries.
+// sqlite-vec accepts float32 queries against int8 columns (it quantizes internally for MATCH).
+func serializeFloat32(emb []float32) []byte {
+	buf := make([]byte, len(emb)*4)
+	for i, v := range emb {
+		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(v))
+	}
+	return buf
 }
 
 // VectorStoreConfig holds configuration for the vector store.
@@ -185,13 +213,10 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 
 	// Insert into memory_vec (must be manual, vec0 doesn't support triggers)
 	if len(emb) == s.embeddingDim {
-		serialized, err := sqlite_vec.SerializeFloat32(emb)
-		if err != nil {
-			return nil, fmt.Errorf("serialize embedding: %w", err)
-		}
+		quantized := quantizeFloat32ToInt8(emb)
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO memory_vec (rowid, embedding) VALUES (?, ?)`,
-			rowID, serialized,
+			rowID, quantized,
 		); err != nil {
 			return nil, fmt.Errorf("insert vec: %w", err)
 		}
@@ -219,10 +244,7 @@ func (s *VectorStore) SearchVector(ctx context.Context, queryEmb []float32, limi
 		return nil, fmt.Errorf("query embedding dim %d != store dim %d", len(queryEmb), s.embeddingDim)
 	}
 
-	serialized, err := sqlite_vec.SerializeFloat32(queryEmb)
-	if err != nil {
-		return nil, fmt.Errorf("serialize query: %w", err)
-	}
+	serialized := serializeFloat32(queryEmb)
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.chunk_id, c.content, c.metadata, c.created_at, c.updated_at, v.distance

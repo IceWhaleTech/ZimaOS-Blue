@@ -72,6 +72,8 @@ func cliDispatch(args []string) bool {
 		runLogs(nil, rest)
 	case "media":
 		return false // media subcommands need cobra arg validation
+	case "complete-bootstrap":
+		runCompleteBootstrap()
 	case "gateway":
 		return false // gateway run needs runServer, let cobra handle
 	default:

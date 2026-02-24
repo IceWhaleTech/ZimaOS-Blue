@@ -427,6 +427,19 @@ func (h *ServiceHandler) Enable(c echo.Context) error {
 	case "windows":
 		output, err = h.enableWindowsService()
 	case "darwin":
+		// Verify plist exists before enabling — launchctl enable succeeds silently
+		// even when no plist is installed, which misleads the frontend.
+		label := h.getLaunchdLabel()
+		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", label+".plist")
+		if _, statErr := os.Stat(plistPath); os.IsNotExist(statErr) {
+			plistPath = filepath.Join("/Library/LaunchDaemons", label+".plist")
+			if _, statErr = os.Stat(plistPath); os.IsNotExist(statErr) {
+				return c.JSON(http.StatusBadRequest, ServiceResponse{
+					Success: false,
+					Message: "Service not installed — install it first",
+				})
+			}
+		}
 		output, err = h.runCommand("launchctl", "enable", h.getLaunchdDomainTarget())
 	case "linux":
 		output, err = h.runCommand("systemctl", "enable", h.getSystemdUnit())
@@ -560,9 +573,13 @@ func (h *ServiceHandler) getLaunchdServiceInfo(info *ServiceInfo) {
 		info.Status = "stopped"
 	}
 
-	// launchd services with RunAtLoad are enabled by default
-	info.Enabled = true
-	info.StartType = "automatic"
+	// Check enabled state via launchctl print
+	info.Enabled = h.isLaunchdEnabled()
+	if info.Enabled {
+		info.StartType = "automatic"
+	} else {
+		info.StartType = "manual"
+	}
 	info.InstallPath = filepath.Dir(h.execPath)
 }
 
@@ -578,28 +595,83 @@ func (h *ServiceHandler) getLaunchdStatus() (status string, running, installed, 
 	}
 
 	installed = true
-	enabled = true // launchd services are enabled by default
+	enabled = h.isLaunchdEnabled()
 
 	output, _ := h.runCommand("launchctl", "list")
 	if strings.Contains(output, label) {
-		return "running", true, true, true
+		return "running", true, true, enabled
 	}
 
-	return "stopped", false, true, true
+	return "stopped", false, true, enabled
+}
+
+// isLaunchdEnabled checks if the service is enabled in launchd.
+// A service with RunAtLoad=true is enabled unless explicitly disabled via
+// "launchctl disable". We check by looking at "launchctl print" output.
+func (h *ServiceHandler) isLaunchdEnabled() bool {
+	domainTarget := h.getLaunchdDomainTarget()
+	output, err := h.runCommand("launchctl", "print", domainTarget)
+	if err != nil {
+		// If print fails, the service may not be loaded — check plist for RunAtLoad
+		label := h.getLaunchdLabel()
+		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", label+".plist")
+		data, readErr := os.ReadFile(plistPath)
+		if readErr != nil {
+			return false
+		}
+		// Simple check: if RunAtLoad is true in plist, consider enabled
+		return strings.Contains(string(data), "<key>RunAtLoad</key>") &&
+			strings.Contains(string(data), "<true/>")
+	}
+	// "launchctl print" shows "state = disabled" when disabled
+	return !strings.Contains(output, "state = disabled")
 }
 
 func (h *ServiceHandler) installLaunchdService() (string, error) {
 	label := h.getLaunchdLabel()
-	installDir := filepath.Dir(h.execPath)
-	configPath := filepath.Join(installDir, "config", "config.yaml")
-	logPath := filepath.Join(installDir, "logs", "blue.log")
-	errLogPath := filepath.Join(installDir, "logs", "blue-error.log")
 
-	// Create logs directory
-	os.MkdirAll(filepath.Join(installDir, "logs"), 0755)
+	// Detect if running inside a .app bundle (Tauri mode)
+	// e.g. /Applications/ZimaOS Blue.app/Contents/MacOS/blue
+	execPath := h.execPath
+	appBundlePath := ""
+	if idx := strings.Index(execPath, ".app/"); idx != -1 {
+		appBundlePath = execPath[:idx+4] // e.g. "/Applications/ZimaOS Blue.app"
+	}
 
-	// Create plist content
-	plistContent := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+	var plistContent string
+	if appBundlePath != "" {
+		// Tauri .app bundle: use "open -a" to launch the app properly
+		// This ensures macOS treats it as a GUI app with correct bundle ID
+		plistContent = fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>%s</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>-a</string>
+        <string>%s</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
+`, label, appBundlePath)
+	} else {
+		// Standalone CLI binary: launch directly with config
+		installDir := filepath.Dir(execPath)
+		configPath := filepath.Join(installDir, "config", "config.yaml")
+		logPath := filepath.Join(installDir, "logs", "blue.log")
+		errLogPath := filepath.Join(installDir, "logs", "blue-error.log")
+
+		// Create logs directory
+		os.MkdirAll(filepath.Join(installDir, "logs"), 0755)
+
+		plistContent = fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -635,7 +707,8 @@ func (h *ServiceHandler) installLaunchdService() (string, error) {
     </dict>
 </dict>
 </plist>
-`, label, h.execPath, configPath, installDir, logPath, errLogPath)
+`, label, execPath, configPath, installDir, logPath, errLogPath)
+	}
 
 	// Write plist to LaunchAgents
 	plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", label+".plist")

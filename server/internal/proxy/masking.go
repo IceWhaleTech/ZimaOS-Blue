@@ -45,7 +45,7 @@ type MaskingConfig struct {
 // DefaultMaskingConfig returns default masking configuration
 func DefaultMaskingConfig() *MaskingConfig {
 	return &MaskingConfig{
-		Enabled: false,
+		Enabled: true,
 		Rules:   make([]*MaskingRule, 0),
 	}
 }

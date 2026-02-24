@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,10 +39,6 @@ type CostRecorder func(event CostEvent)
 // TaskDoneCallback is called when a media task reaches a terminal state (succeeded/failed/cancelled).
 // taskID is the task ID, status is the terminal status, model is the model name, imageURL is the first result thumbnail (empty if none).
 type TaskDoneCallback func(taskID, status, model, imageURL string)
-
-const (
-	defaultPollTimeout = 5 * time.Minute
-)
 
 // Manager orchestrates media generation across providers.
 type Manager struct {
@@ -104,10 +101,11 @@ func (m *Manager) InitConfigs() {
 
 	// Register enabled providers (order doesn't matter — rebuildProviderOrderLocked sorts by priority)
 	for _, c := range m.configs {
-		if c.Enabled && c.APIKey != "" {
-			if p := createProvider(c); p != nil {
+		// Always populate Models so pricing is visible even for disabled providers
+		if p := createProvider(c); p != nil {
+			c.Models = p.SupportedModels()
+			if c.Enabled && c.APIKey != "" {
 				m.providers[p.Name()] = p
-				c.Models = p.SupportedModels()
 				log.Printf("[mediagen] registered provider: %s (priority %d)", c.ID, c.Priority)
 			}
 		}
@@ -124,6 +122,7 @@ func (m *Manager) ListConfigs() []*MediaProviderConfig {
 
 	result := make([]*MediaProviderConfig, 0, len(m.configs))
 	for _, c := range m.configs {
+		EnrichModelPricing(c.Models)
 		result = append(result, c)
 	}
 	return result
@@ -172,7 +171,6 @@ func (m *Manager) RemoveAPIKey(id string) error {
 	c.APIKey = ""
 	c.HasAPIKey = false
 	c.KeyHash = ""
-	c.Models = nil
 	delete(m.providers, id)
 	m.rebuildProviderOrderLocked()
 	m.mu.Unlock()
@@ -210,7 +208,6 @@ func (m *Manager) Disable(id string) error {
 		return fmt.Errorf("unknown media provider: %s", id)
 	}
 	c.Enabled = false
-	c.Models = nil
 	delete(m.providers, id)
 	m.rebuildProviderOrderLocked()
 	m.mu.Unlock()
@@ -323,6 +320,7 @@ func (m *Manager) Models() []MediaModelInfo {
 			models = append(models, p.SupportedModels()...)
 		}
 	}
+	EnrichModelPricing(models)
 	return models
 }
 
@@ -355,10 +353,21 @@ func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, 
 
 	// If async (pending/processing), start background polling
 	if task.Status == TaskStatusPending || task.Status == TaskStatusProcessing {
+		m.tasks.Store(task.ID, task)
 		go m.pollTask(task.ID, provider)
 	} else if task.Status == TaskStatusSucceeded {
-		// Sync provider returned immediately — cache media
-		go m.cacheResults(task)
+		// Sync provider returned immediately — cache media in background.
+		// Store as "processing" first so the ChannelTaskWatcher doesn't see
+		// Succeeded with the original remote URL before cacheResults downloads
+		// the file and re-stores with local URLs.
+		task.Status = TaskStatusProcessing
+		m.tasks.Store(task.ID, task)
+		go func() {
+			task.Status = TaskStatusSucceeded
+			m.cacheResults(task)
+		}()
+	} else {
+		m.tasks.Store(task.ID, task)
 	}
 
 	return task, nil
@@ -447,20 +456,14 @@ func (m *Manager) findProvider(modelID string) (MediaProvider, error) {
 
 // pollTask polls an async provider until the task completes.
 // Uses exponential backoff: 2s → 4s → 8s → ... capped at 15s.
+// No timeout — polls indefinitely until the provider returns a terminal status or a fatal error.
 func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 	interval := 2 * time.Second
 	const maxInterval = 15 * time.Second
-	deadline := time.After(defaultPollTimeout)
 
 	for {
 		timer := time.NewTimer(interval)
-		select {
-		case <-deadline:
-			timer.Stop()
-			m.updateTaskError(taskID, "generation timed out")
-			return
-		case <-timer.C:
-		}
+		<-timer.C
 
 		v, ok := m.tasks.Load(taskID)
 		if !ok {
@@ -471,7 +474,13 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 		updated, err := provider.Poll(context.Background(), task.UpstreamID)
 		if err != nil {
 			log.Printf("[mediagen] poll error for task %s: %v", taskID, err)
-			// Still backoff on error
+			// Fatal errors (missing metadata, unknown task) — fail immediately, retrying won't help
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "no vendor/model metadata") || strings.Contains(errMsg, "unknown task") {
+				m.updateTaskError(taskID, errMsg)
+				return
+			}
+			// Transient errors — backoff and retry
 			interval = interval * 2
 			if interval > maxInterval {
 				interval = maxInterval
@@ -490,19 +499,23 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 		updated.Category = task.Category
 		updated.Source = task.Source
 
-		m.tasks.Store(taskID, updated)
-
 		switch updated.Status {
 		case TaskStatusSucceeded:
+			// cacheResults downloads media, stores the task with local URLs,
+			// persists to DB, and publishes the event. Do NOT store the task
+			// before cacheResults — the ChannelTaskWatcher would see Succeeded
+			// with the original remote URL and fail to load binary data.
 			m.cacheResults(updated)
 			return
 		case TaskStatusFailed:
+			m.tasks.Store(taskID, updated)
 			if m.taskStore != nil {
 				_ = m.taskStore.UpdateStatus(taskID, TaskStatusFailed, updated.Progress, updated.Error, "")
 			}
 			m.publishTaskEvent(updated)
 			return
 		default:
+			m.tasks.Store(taskID, updated)
 			// Persist progress
 			if m.taskStore != nil {
 				_ = m.taskStore.UpdateStatus(taskID, updated.Status, updated.Progress, "", "")
@@ -703,9 +716,35 @@ func (m *Manager) publishTaskEvent(task *MediaTask) {
 	m.eventPub.Publish("default", "media_task_update", evt)
 }
 
+// DefaultModelForCategory returns the first available model ID for a given category,
+// respecting provider priority order. Returns "" if no model matches.
+func (m *Manager) DefaultModelForCategory(category string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	cat := MediaCategory(category)
+	for _, name := range m.providerOrder {
+		p, ok := m.providers[name]
+		if !ok {
+			continue
+		}
+		for _, model := range p.SupportedModels() {
+			if model.Category == cat {
+				return model.ID
+			}
+		}
+	}
+	return ""
+}
+
 // CreateTask creates a persistent media generation task and starts async execution.
 // Returns immediately with the task ID — the caller polls for status.
 func (m *Manager) CreateTask(ctx context.Context, req *MediaRequest, messageID, category, source string) (*MediaTask, error) {
+	// Resolve default model when not specified (e.g. from IR classifier)
+	if req.Model == "" && category != "" {
+		req.Model = m.DefaultModelForCategory(category)
+	}
+
 	provider, err := m.findProvider(req.Model)
 	if err != nil {
 		return nil, err
@@ -824,6 +863,10 @@ func (m *Manager) RecoverTasks() {
 		}
 
 		if task.UpstreamID != "" {
+			// Restore in-memory metadata for providers that need it (e.g. MuleRouter taskMeta)
+			if restorer, ok := provider.(interface{ RestoreTaskMeta(string, string) }); ok {
+				restorer.RestoreTaskMeta(task.UpstreamID, task.Model)
+			}
 			// Has upstream ID — resume polling
 			log.Printf("[mediagen] resuming poll for task %s (upstream: %s)", task.ID, task.UpstreamID)
 			go m.pollTask(task.ID, provider)

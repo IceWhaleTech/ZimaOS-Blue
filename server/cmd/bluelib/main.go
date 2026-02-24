@@ -45,10 +45,10 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -57,6 +57,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
+
+	skillEmbed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/embedded"
+	ssePkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
 
 var (
@@ -359,6 +362,14 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		return fmt.Errorf("failed to initialize services: %w", err)
 	}
 	defer services.Close()
+
+	// Shared kvstore for all config persistence
+	sqliteKV, err := kvstore.NewSQLiteStoreWithDB(services.DB)
+	if err != nil {
+		return fmt.Errorf("failed to initialize config kvstore: %w", err)
+	}
+	configKV := kvstore.NewCachedStore(sqliteKV)
+
 	// Register cleanup for services
 	registerCleanup(func() error {
 		services.Close()
@@ -531,7 +542,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	} else if runtime.GOOS == "windows" {
 		asrProvider = "windows-native"
 	}
-	speechKV, _ := kvstore.NewSQLiteStoreWithDB(services.DB)
+	speechKV := configKV
 	speechService := speech.NewService(&speech.Config{
 		TTS: speech.TTSConfig{Provider: "edge"},
 		ASR: speech.ASRConfig{Enabled: true, Provider: asrProvider, EditBeforeSend: true},
@@ -622,7 +633,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	}
 
 	// Initialize ngrok
-	ngrokConfigStore := ngrok.NewConfigStore(dataDir)
+	ngrokConfigStore := ngrok.NewConfigStore(configKV)
 	ngrokTunnelMgr := ngrok.NewSDKTunnelManager(nil)
 
 	// Initialize workspace (SOUL.md, USER.md, IDENTITY.md, etc.)
@@ -632,7 +643,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	}
 
 	// Initialize claudecode handler
-	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
+	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir, configKV)
 
 	// Set up system prompt builder
 	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{
@@ -642,14 +653,40 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	systemPromptBuilder.SetWorkspace(workspaceMgr)
 	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
 
-	// Register workspace_file tool
-	services.ToolRegistry.Register(workspace.NewWorkspaceTool(workspaceMgr))
-
 	// Initialize channel config store
-	channelConfigStore := server.NewChannelConfigStore(dataDir)
+	channelConfigStore := server.NewChannelConfigStore(configKV)
 
-	// Initialize shared cache
-	sharedCache := proxy.NewCCCache(proxy.DefaultCacheConfig())
+	// SSE event broker
+	sseBroker := ssePkg.NewBroker()
+
+	// Lazy browser backend for browser tool + UI reviewer
+	var lazyBrowserSvc func() *browser.RodService
+	{
+		var browserOnce sync.Once
+		var browserSvc *browser.RodService
+		lazyBrowserSvc = func() *browser.RodService {
+			browserOnce.Do(func() {
+				svc, err := browser.NewService(nil)
+				if err != nil {
+					return
+				}
+				browserSvc = svc
+			})
+			return browserSvc
+		}
+	}
+	browserBackend := tools.NewLazyRodBrowserBackend(lazyBrowserSvc)
+	browserIPC := sockipc.NewToolBrowserIPCAdapter(browserBackend)
+	uiReviewerIPC := sockipc.NewUIReviewIPCAdapter(&tools.UIReviewerTool{})
+
+	// Cron IPC adapter
+	cronIPC := sockipc.NewCronIPCAdapter(cron.NewSkillAdapter(cronHandler.GetService))
+
+	// Voice WebSocket handler
+	var voiceWSHandler *voice.WSHandler
+	if voiceHandler != nil {
+		voiceWSHandler = voice.NewWSHandler(voiceHandler.Service())
+	}
 
 	// Initialize memory handler (markdown primary, optional dual-write with vector store)
 	var memoryHandler *server.MemoryHandler
@@ -680,6 +717,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
 			BaseDir:            memoryDir,
+			LongTermDir:        workspaceMgr.Dir(),
 			DailyRetentionDays: 30,
 		})
 		if err != nil {
@@ -729,6 +767,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		HAHandler:          haHandler,
 		BrowserHandler:     browserHandler,
 		VoiceHandler:       voiceHandler,
+		VoiceWSHandler:     voiceWSHandler,
 		FormfillerHandler:  formfillerHandler,
 		WorkflowHandler:    workflowHandler,
 		CompanionHandler:   companionHandler,
@@ -740,10 +779,20 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		NgrokConfigStore:   ngrokConfigStore,
 		ClaudeCodeHandler:  claudeCodeHandler,
 		ChannelConfigStore: channelConfigStore,
-		SharedCache:        sharedCache,
+		ConfigKV:           configKV,
 		MemoryHandler:      memoryHandler,
 		HotReloader:        hotReloader,
 		WorkspaceHandler:   workspace.NewHandler(workspaceMgr),
+		SSEBroker:          sseBroker,
+		BrowserIPC:         browserIPC,
+		UIReviewerIPC:      uiReviewerIPC,
+		CronIPC:            cronIPC,
+		// Consolidated init deps
+		SkillEmbedFS:        skillEmbed.SkillsFS,
+		SandboxManager:      sandboxManager,
+		SystemPromptBuilder: systemPromptBuilder,
+		LazyBrowserSvc:      lazyBrowserSvc,
+		BrowserBackend:      browserBackend,
 	})
 
 	// Start HTTP server with explicit listener (to capture actual port)

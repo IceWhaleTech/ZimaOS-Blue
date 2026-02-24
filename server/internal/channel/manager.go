@@ -24,6 +24,10 @@ type Manager struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
+	// warmupFunc is called with a conversation ID to pre-compute context.
+	// Set by the chat handler via SetWarmupFunc.
+	warmupFunc func(convID string)
+
 	// onStopHooks are called when the manager stops, to persist stats
 	onStopHooks []func()
 }
@@ -53,6 +57,13 @@ func (m *Manager) SetHandler(handler MessageHandler) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.handler = handler
+}
+
+// SetWarmupFunc sets the function called to pre-compute context when a channel message arrives.
+func (m *Manager) SetWarmupFunc(fn func(convID string)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.warmupFunc = fn
 }
 
 // Register registers a channel with the manager.
@@ -186,6 +197,7 @@ func (m *Manager) handleMessages(ch Channel) {
 func (m *Manager) processMessage(ch Channel, msg Message) {
 	m.mu.RLock()
 	handler := m.handler
+	warmupFn := m.warmupFunc
 	m.mu.RUnlock()
 
 	if handler == nil {
@@ -204,7 +216,44 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 		zap.String("user_id", msg.UserID),
 		zap.String("content", truncateString(msg.Content, 100)))
 
+	// Send typing indicator immediately so the user sees the bot is working
+	if ti, ok := ch.(TypingIndicator); ok {
+		if err := ti.SendTyping(ctx, msg.ChatID); err != nil {
+			m.logger.Debug("failed to send typing indicator",
+				zap.String("channel", ch.Name()),
+				zap.String("chat_id", msg.ChatID),
+				zap.Error(err))
+		}
+	}
+
+	// Fire warmup in background to pre-compute system prompt + history
+	if warmupFn != nil {
+		convID := channelConversationID(ch.Name(), msg.ChatID)
+		go warmupFn(convID)
+	}
+
+	// Periodically re-send typing indicator while the handler is running
+	typingDone := make(chan struct{})
+	if ti, ok := ch.(TypingIndicator); ok {
+		go func() {
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-typingDone:
+					return
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					_ = ti.SendTyping(ctx, msg.ChatID)
+				}
+			}
+		}()
+	}
+
 	response, err := handler(ctx, msg)
+	close(typingDone)
+
 	if err != nil {
 		m.logger.Error("error handling message",
 			zap.String("channel", ch.Name()),
@@ -434,4 +483,13 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// channelConversationID builds a stable conversation ID for IM channels.
+// Must match the logic in server/chat.go channelConversationID.
+func channelConversationID(channelName, chatID string) string {
+	if chatID != "" {
+		return "ch:" + channelName + ":" + chatID
+	}
+	return "ch:" + channelName
 }

@@ -114,7 +114,9 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
         name: m.name,
         display_name: m.name,
         enabled: true,
-        capabilities: [m.type],
+        capabilities: [m.type === 'video' ? 'video_generation' : m.type === 'image' ? 'image_generation' : m.type],
+        price_per_request: m.price,
+        pricing_unit: m.pricing_unit,
       }))
     }
     return provider

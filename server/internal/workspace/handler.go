@@ -20,12 +20,17 @@ func NewHandler(mgr *Manager) *Handler {
 	return &Handler{mgr: mgr}
 }
 
+// Manager returns the underlying workspace manager.
+func (h *Handler) Manager() *Manager { return h.mgr }
+
 // RegisterRoutes registers workspace API routes on the given group.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/files", h.listFiles)
 	g.GET("/files/:name", h.getFile)
 	g.PUT("/files/:name", h.putFile)
 	g.GET("/stats", h.getStats)
+	g.POST("/bootstrap/complete", h.completeBootstrap)
+	g.GET("/bootstrap/status", h.bootstrapStatus)
 }
 
 // listFiles returns all workspace files with their content.
@@ -85,10 +90,41 @@ func (h *Handler) putFile(c echo.Context) error {
 		})
 	}
 
+	// Auto-complete bootstrap when USER.md is written with non-default content
+	if name == FileUSER && h.mgr.IsBootstrapPending() {
+		_ = h.mgr.CompleteBootstrap()
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status": "ok",
 		"name":   name,
 		"bytes":  len(content),
+	})
+}
+
+// completeBootstrap removes BOOTSTRAP.md, marking the first-run guide as done.
+func (h *Handler) completeBootstrap(c echo.Context) error {
+	if !h.mgr.IsBootstrapPending() {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"status":  "already_completed",
+			"pending": false,
+		})
+	}
+	if err := h.mgr.CompleteBootstrap(); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": err.Error(),
+		})
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":  "completed",
+		"pending": false,
+	})
+}
+
+// bootstrapStatus returns whether the first-run bootstrap is still pending.
+func (h *Handler) bootstrapStatus(c echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"pending": h.mgr.IsBootstrapPending(),
 	})
 }
 
@@ -106,14 +142,15 @@ func (h *Handler) getStats(c echo.Context) error {
 	totalTokens := 0
 	totalBytes := 0
 	for name, content := range ctx {
-		tokens := pruner.EstimateTokens(content)
+		compacted := pruner.CompactMarkdown(content)
+		tokens := pruner.EstimateTokens(compacted)
 		stats = append(stats, FileTokenStat{
 			Name:   name,
-			Bytes:  len(content),
+			Bytes:  len(compacted),
 			Tokens: tokens,
 		})
 		totalTokens += tokens
-		totalBytes += len(content)
+		totalBytes += len(compacted)
 	}
 	// Sort for deterministic JSON output
 	sort.Slice(stats, func(i, j int) bool { return stats[i].Name < stats[j].Name })

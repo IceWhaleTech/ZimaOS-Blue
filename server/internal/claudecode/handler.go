@@ -1,15 +1,15 @@
 package claudecode
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/labstack/echo/v4"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // VersionResponse is the response for GET /api/v1/claudecode/version
@@ -106,11 +106,14 @@ type ClaudeCodePersistentConfig struct {
 	DirectoryWhitelist []DirectoryWhitelistEntry `json:"directory_whitelist,omitempty"`
 }
 
+const claudecodeKVKey = "config:claudecode"
+
 // Handler handles Claude Code CLI version management API endpoints.
 type Handler struct {
 	binaryManager  *BinaryManager
 	lastCheck      *time.Time
 	dataDir        string
+	kv             kvstore.Store
 	configMu       sync.RWMutex
 	config         *ClaudeCodePersistentConfig
 	healthChecker  *HealthChecker
@@ -120,17 +123,18 @@ type Handler struct {
 
 // NewHandler creates a new Handler.
 func NewHandler(binaryManager *BinaryManager) *Handler {
-	return NewHandlerWithDataDir(binaryManager, "")
+	return NewHandlerWithDataDir(binaryManager, "", nil)
 }
 
 // NewHandlerWithDataDir creates a new Handler with a data directory for persistent config.
-func NewHandlerWithDataDir(binaryManager *BinaryManager, dataDir string) *Handler {
+func NewHandlerWithDataDir(binaryManager *BinaryManager, dataDir string, kv kvstore.Store) *Handler {
 	if binaryManager == nil {
 		binaryManager = DefaultBinaryManager
 	}
 	h := &Handler{
 		binaryManager: binaryManager,
 		dataDir:       dataDir,
+		kv:            kv,
 		config: &ClaudeCodePersistentConfig{
 			Enabled:        true, // Default to enabled
 			DefaultModel:   "sonnet",
@@ -142,47 +146,35 @@ func NewHandlerWithDataDir(binaryManager *BinaryManager, dataDir string) *Handle
 		cache:          NewMemoryCache(DefaultCacheConfig()),
 	}
 	// Load existing config if available
-	if dataDir != "" {
+	if kv != nil {
 		h.loadConfig()
 	}
 	return h
 }
 
-// loadConfig loads the configuration from disk.
+// loadConfig loads the configuration from kvstore.
 func (h *Handler) loadConfig() {
-	if h.dataDir == "" {
+	if h.kv == nil {
 		return
 	}
-	configPath := filepath.Join(h.dataDir, "claudecode_config.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return // File doesn't exist or can't be read, use defaults
-	}
 	var config ClaudeCodePersistentConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return // Invalid JSON, use defaults
+	if err := h.kv.GetJSON(context.Background(), claudecodeKVKey, &config); err != nil {
+		return // Not found or error — use defaults
 	}
 	h.configMu.Lock()
 	h.config = &config
 	h.configMu.Unlock()
 }
 
-// saveConfig saves the configuration to disk.
+// saveConfig saves the configuration to kvstore.
 func (h *Handler) saveConfig() error {
-	if h.dataDir == "" {
+	if h.kv == nil {
 		return nil
 	}
-	if err := os.MkdirAll(h.dataDir, 0755); err != nil {
-		return err
-	}
 	h.configMu.RLock()
-	data, err := json.MarshalIndent(h.config, "", "  ")
+	cfg := *h.config
 	h.configMu.RUnlock()
-	if err != nil {
-		return err
-	}
-	configPath := filepath.Join(h.dataDir, "claudecode_config.json")
-	return os.WriteFile(configPath, data, 0644)
+	return h.kv.SetJSON(context.Background(), claudecodeKVKey, &cfg, 0)
 }
 
 // IsEnabled returns whether Claude Code CLI is enabled.

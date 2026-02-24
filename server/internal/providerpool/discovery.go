@@ -26,6 +26,7 @@ type ModelDiscovery struct {
 	cacheTTL       time.Duration
 	cacheAt        map[string]time.Time
 	mu             sync.RWMutex
+	fetching       map[string]bool // tracks in-flight async fetches
 }
 
 // NewModelDiscovery creates a new ModelDiscovery
@@ -45,6 +46,7 @@ func NewModelDiscovery(registry *Registry, storage Storage, cacheTTL time.Durati
 		cache:    make(map[string][]*Model),
 		cacheTTL: cacheTTL,
 		cacheAt:  make(map[string]time.Time),
+		fetching: make(map[string]bool),
 	}
 }
 
@@ -120,16 +122,36 @@ func (d *ModelDiscovery) GetModels(providerID string) ([]*Model, error) {
 		return builtinModels, nil
 	}
 
-	// No cached/stored/builtin models - try to fetch from API on demand
-	// This is important for providers like zimaos-trial that have no builtin models
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	fetchedModels, err := d.FetchModels(ctx, providerID)
-	if err == nil && len(fetchedModels) > 0 {
-		return fetchedModels, nil
-	}
+	// No cached/stored/builtin models — trigger async fetch instead of blocking.
+	// Pool.Start() also fetches in background; this covers the case where
+	// ListProviders is called before Start() finishes.
+	d.triggerAsyncFetch(providerID)
 
 	return nil, ErrModelNotFound
+}
+
+// triggerAsyncFetch starts a background goroutine to fetch models for a provider.
+// Deduplicates concurrent requests — only one fetch per provider at a time.
+func (d *ModelDiscovery) triggerAsyncFetch(providerID string) {
+	d.mu.Lock()
+	if d.fetching[providerID] {
+		d.mu.Unlock()
+		return
+	}
+	d.fetching[providerID] = true
+	d.mu.Unlock()
+
+	go func() {
+		defer func() {
+			d.mu.Lock()
+			delete(d.fetching, providerID)
+			d.mu.Unlock()
+		}()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		d.FetchModels(ctx, providerID) //nolint:errcheck // best-effort background fetch
+	}()
 }
 
 // GetFilteredModels returns models for a provider, filtered by AllowedModels if set

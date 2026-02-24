@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -237,71 +238,6 @@ func TestDailyLog(t *testing.T) {
 	}
 }
 
-func TestWorkspaceTool(t *testing.T) {
-	dir := t.TempDir()
-	mgr := NewManager(dir)
-	mgr.EnsureWorkspace()
-
-	tool := NewWorkspaceTool(mgr)
-
-	// Check definition
-	def := tool.Definition()
-	if def.Name != "workspace_file" {
-		t.Errorf("unexpected tool name: %s", def.Name)
-	}
-
-	// Write via tool
-	_, err := tool.Execute(nil, map[string]interface{}{
-		"action":   "write",
-		"filename": FileUSER,
-		"content":  "# Updated User",
-	})
-	if err != nil {
-		t.Fatalf("tool write: %v", err)
-	}
-
-	// Read via tool
-	result, err := tool.Execute(nil, map[string]interface{}{
-		"action":   "read",
-		"filename": FileUSER,
-	})
-	if err != nil {
-		t.Fatalf("tool read: %v", err)
-	}
-	if !strings.Contains(result.(string), "Updated User") {
-		t.Errorf("expected result to contain 'Updated User', got: %s", result)
-	}
-
-	// Append daily via tool
-	_, err = tool.Execute(nil, map[string]interface{}{
-		"action":  "append_daily",
-		"content": "Test daily entry",
-	})
-	if err != nil {
-		t.Fatalf("tool append_daily: %v", err)
-	}
-
-	// Complete bootstrap via tool
-	_, err = tool.Execute(nil, map[string]interface{}{
-		"action": "complete_bootstrap",
-	})
-	if err != nil {
-		t.Fatalf("tool complete_bootstrap: %v", err)
-	}
-	if mgr.IsBootstrapPending() {
-		t.Error("bootstrap should be completed after tool call")
-	}
-
-	// Invalid action
-	_, err = tool.Execute(nil, map[string]interface{}{
-		"action":   "delete",
-		"filename": FileUSER,
-	})
-	if err == nil {
-		t.Error("expected error for invalid action")
-	}
-}
-
 func TestLocaleTemplates(t *testing.T) {
 	// Chinese locale
 	dir := t.TempDir()
@@ -323,16 +259,75 @@ func TestLocaleTemplates(t *testing.T) {
 	}
 
 	// Fallback for unknown locale
-	ts := getTemplates("fr")
+	ts := getTemplates("xx-YY")
 	if !strings.Contains(ts.soul, "AI Assistant") {
 		t.Error("unknown locale should fall back to English")
 	}
 
-	// BCP-47 prefix matching
+	// French locale should use French templates
+	ts = getTemplates("fr")
+	if !strings.Contains(ts.soul, "Assistant IA") {
+		t.Error("fr should use French templates")
+	}
+
+	// BCP-47 prefix matching: zh-TW has its own template (Traditional Chinese)
 	ts = getTemplates("zh-TW")
 	if !strings.Contains(ts.soul, "AI 助手") {
-		t.Error("zh-TW should match zh templates")
+		t.Error("zh-TW should contain Chinese content")
 	}
+	if !strings.Contains(ts.soul, "個人雲端") {
+		t.Error("zh-TW should use Traditional Chinese templates")
+	}
+}
+
+func TestNormalizeAppleLanguage(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"zh-Hans-CN", "zh-CN"},
+		{"zh-Hant-TW", "zh-TW"},
+		{"zh-Hans", "zh"},
+		{"zh-Hant", "zh"},
+		{"en-GB", "en-GB"},
+		{"ja", "ja"},
+		{"en", "en"},
+		{"pt-BR", "pt-BR"},
+	}
+	for _, tt := range tests {
+		got := normalizeAppleLanguage(tt.input)
+		if got != tt.want {
+			t.Errorf("normalizeAppleLanguage(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestDetectLocale_EnvVar(t *testing.T) {
+	// Set LANG and verify it takes priority
+	t.Setenv("LANG", "ja_JP.UTF-8")
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LANGUAGE", "")
+	got := detectLocale()
+	if got != "ja-JP" {
+		t.Errorf("detectLocale() with LANG=ja_JP.UTF-8 = %q, want %q", got, "ja-JP")
+	}
+}
+
+func TestDetectLocale_DarwinFallback(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only test")
+	}
+	// Clear env vars to force OS-specific fallback
+	t.Setenv("LANG", "")
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LANGUAGE", "")
+	got := detectLocale()
+	// On macOS, should get something from system preferences, not "en" fallback
+	// (unless the system is actually English, which is also fine)
+	if len(got) < 2 {
+		t.Errorf("detectLocale() on darwin with no env = %q, expected valid locale", got)
+	}
+	t.Logf("detected macOS locale: %s", got)
 }
 
 // --- ReleaseSkills tests ---

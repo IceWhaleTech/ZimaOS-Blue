@@ -19,6 +19,9 @@ type MemoryHandler struct {
 	initOnce sync.Once
 	initFunc func()
 	initErr  error
+
+	// Callback when layered service becomes ready (e.g. wire into ChatHandler)
+	onLayeredReady func(*memory.LayeredMemoryService)
 }
 
 // NewMemoryHandler creates a new MemoryHandler.
@@ -52,9 +55,19 @@ func (h *MemoryHandler) SetUnifiedService(svc *memory.UnifiedMemoryService) {
 	h.unifiedService = svc
 }
 
+// SetOnLayeredReady registers a callback invoked when the layered service is set.
+// Used by bootstrap to wire layered memory into ChatHandler without the caller
+// having to know about the lazy init timing.
+func (h *MemoryHandler) SetOnLayeredReady(fn func(*memory.LayeredMemoryService)) {
+	h.onLayeredReady = fn
+}
+
 // SetLayeredService sets the layered memory service.
 func (h *MemoryHandler) SetLayeredService(svc *memory.LayeredMemoryService) {
 	h.layeredService = svc
+	if h.onLayeredReady != nil {
+		h.onLayeredReady(svc)
+	}
 }
 
 // GetUnifiedService returns the unified memory service.

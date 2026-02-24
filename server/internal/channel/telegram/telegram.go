@@ -635,43 +635,116 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("invalid chat ID: %w", err)
 	}
 
-	// Create message
-	tgMsg := tgbotapi.NewMessage(chatID, msg.Content)
-
-	// Set parse mode based on format
-	switch msg.Format {
-	case "markdown", "md":
-		tgMsg.ParseMode = tgbotapi.ModeMarkdown
-	case "html":
-		tgMsg.ParseMode = tgbotapi.ModeHTML
-	case "markdownv2":
-		tgMsg.ParseMode = tgbotapi.ModeMarkdownV2
-	}
-
-	// Set reply
-	if msg.ReplyToID != "" {
-		replyID, err := parseMessageID(msg.ReplyToID)
-		if err == nil {
-			tgMsg.ReplyToMessageID = replyID
+	// Send attachments first (image/video/audio/file)
+	for _, att := range msg.Attachments {
+		if err := c.sendAttachment(chatID, msg.ReplyToID, msg.Content, att); err != nil {
+			c.logger.Warn("failed to send attachment, falling back to URL",
+				zap.String("type", string(att.Type)), zap.Error(err))
+			if att.URL != "" {
+				fallback := tgbotapi.NewMessage(chatID, att.URL)
+				c.bot.Send(fallback)
+			}
 		}
 	}
 
-	_, err = c.bot.Send(tgMsg)
-	if err != nil {
-		c.logger.Error("failed to send message",
-			zap.String("chat_id", msg.ChatID),
-			zap.Error(err))
-		return fmt.Errorf("failed to send message: %w", err)
+	// Send text content (skip if already sent as caption with a single attachment)
+	if msg.Content != "" && len(msg.Attachments) == 0 {
+		tgMsg := tgbotapi.NewMessage(chatID, msg.Content)
+		switch msg.Format {
+		case "markdown", "md":
+			tgMsg.ParseMode = tgbotapi.ModeMarkdown
+		case "html":
+			tgMsg.ParseMode = tgbotapi.ModeHTML
+		case "markdownv2":
+			tgMsg.ParseMode = tgbotapi.ModeMarkdownV2
+		}
+		if msg.ReplyToID != "" {
+			if replyID, err := parseMessageID(msg.ReplyToID); err == nil {
+				tgMsg.ReplyToMessageID = replyID
+			}
+		}
+		if _, err := c.bot.Send(tgMsg); err != nil {
+			return fmt.Errorf("failed to send message: %w", err)
+		}
+	} else if msg.Content != "" && len(msg.Attachments) > 0 {
+		// Attachments were sent; send remaining text as separate message
+		tgMsg := tgbotapi.NewMessage(chatID, msg.Content)
+		c.bot.Send(tgMsg)
 	}
 
-	// Update sent message stats
 	c.msgsSent.Add(1)
 	now := time.Now()
 	c.mu.Lock()
 	c.lastReplyAt = &now
 	c.mu.Unlock()
-
 	return nil
+}
+
+// sendAttachment sends a single media attachment via Telegram Bot API.
+func (c *Channel) sendAttachment(chatID int64, replyToID string, caption string, att channel.Attachment) error {
+	if len(att.Data) == 0 && att.URL == "" {
+		return fmt.Errorf("no data or URL for attachment")
+	}
+
+	var chattable tgbotapi.Chattable
+
+	// Prefer binary upload; fall back to URL
+	file := tgbotapi.FileBytes{Name: att.Name, Bytes: att.Data}
+	if len(att.Data) == 0 {
+		// No binary data — send by URL
+		switch att.Type {
+		case channel.MessageTypeImage:
+			photo := tgbotapi.NewPhoto(chatID, tgbotapi.FileURL(att.URL))
+			photo.Caption = caption
+			chattable = photo
+		case channel.MessageTypeVideo:
+			video := tgbotapi.NewVideo(chatID, tgbotapi.FileURL(att.URL))
+			video.Caption = caption
+			chattable = video
+		case channel.MessageTypeAudio:
+			audio := tgbotapi.NewAudio(chatID, tgbotapi.FileURL(att.URL))
+			audio.Caption = caption
+			chattable = audio
+		default:
+			doc := tgbotapi.NewDocument(chatID, tgbotapi.FileURL(att.URL))
+			doc.Caption = caption
+			chattable = doc
+		}
+	} else {
+		if file.Name == "" {
+			switch att.Type {
+			case channel.MessageTypeImage:
+				file.Name = "image.png"
+			case channel.MessageTypeVideo:
+				file.Name = "video.mp4"
+			case channel.MessageTypeAudio:
+				file.Name = "audio.ogg"
+			default:
+				file.Name = "file"
+			}
+		}
+		switch att.Type {
+		case channel.MessageTypeImage:
+			photo := tgbotapi.NewPhoto(chatID, file)
+			photo.Caption = caption
+			chattable = photo
+		case channel.MessageTypeVideo:
+			video := tgbotapi.NewVideo(chatID, file)
+			video.Caption = caption
+			chattable = video
+		case channel.MessageTypeAudio:
+			audio := tgbotapi.NewAudio(chatID, file)
+			audio.Caption = caption
+			chattable = audio
+		default:
+			doc := tgbotapi.NewDocument(chatID, file)
+			doc.Caption = caption
+			chattable = doc
+		}
+	}
+
+	_, err := c.bot.Send(chattable)
+	return err
 }
 
 // SendStreaming sends a message with streaming support.
@@ -733,6 +806,20 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 			}
 		}
 	}
+}
+
+// SendTyping sends a "typing" chat action to the given Telegram chat.
+func (c *Channel) SendTyping(ctx context.Context, chatID string) error {
+	if c.bot == nil {
+		return fmt.Errorf("bot not initialized")
+	}
+	parsed, err := parseChatID(chatID)
+	if err != nil {
+		return err
+	}
+	action := tgbotapi.NewChatAction(parsed, tgbotapi.ChatTyping)
+	_, err = c.bot.Send(action)
+	return err
 }
 
 // Info returns current information about the channel.

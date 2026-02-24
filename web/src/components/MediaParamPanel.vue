@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { MediaIntent, MediaModelInfo } from '@/api/media'
+import type { MediaCategory, MediaIntent, MediaModelInfo } from '@/api/media'
 
 const props = defineProps<{
   intent: MediaIntent
@@ -16,6 +16,7 @@ const emit = defineEmits<{
   generate: []
   dismiss: []
   confirm: []
+  switchCategory: [category: MediaCategory]
 }>()
 
 const { t } = useI18n()
@@ -87,6 +88,24 @@ function onModelChange(e: Event) {
           <span class="mpp-title">{{ categoryLabel }}</span>
           <span class="mpp-subtitle">{{ t('media.mediaDetected') }}</span>
         </div>
+      </div>
+
+      <!-- Category toggle when alternative exists (e.g. i2v ↔ kf2v) -->
+      <div v-if="intent.alternative_category" class="mpp-category-toggle">
+        <button
+          class="mpp-cat-btn active"
+          :disabled="generating"
+        >
+          {{ t(`media.${intent.category}`) }}
+        </button>
+        <button
+          class="mpp-cat-btn"
+          @click="emit('switchCategory', intent.alternative_category!)"
+          :disabled="generating"
+        >
+          {{ t(`media.${intent.alternative_category}`) }}
+          <span class="mpp-cat-hint">{{ t(`media.${intent.alternative_category}Desc`) }}</span>
+        </button>
       </div>
 
       <div v-if="intent.prompt" class="mpp-prompt">
@@ -388,5 +407,60 @@ function onModelChange(e: Event) {
 @keyframes mpp-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* Category toggle */
+.mpp-category-toggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mpp-cat-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary, #6b7280);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mpp-cat-btn.active {
+  border-color: #818cf8;
+  background: rgba(129, 140, 248, 0.08);
+  color: #6366f1;
+  cursor: default;
+}
+.mpp-cat-btn:not(.active):hover:not(:disabled) {
+  border-color: #a5b4fc;
+  background: var(--color-bg-secondary, #f9fafb);
+}
+.mpp-cat-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+:root.dark .mpp-cat-btn,
+[data-theme="dark"] .mpp-cat-btn {
+  border-color: #475569;
+  color: #94a3b8;
+}
+:root.dark .mpp-cat-btn.active,
+[data-theme="dark"] .mpp-cat-btn.active {
+  border-color: #818cf8;
+  background: rgba(129, 140, 248, 0.12);
+  color: #a5b4fc;
+}
+
+.mpp-cat-hint {
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.7;
 }
 </style>

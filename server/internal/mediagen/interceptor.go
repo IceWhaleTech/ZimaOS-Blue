@@ -48,7 +48,7 @@ func (i *Interceptor) ClassifyAndGenerate(ctx context.Context, message string, h
 	// Start watching for channel notification
 	if i.watcher != nil && isChannelSource(source) {
 		channelName, chatID := parseChannelSource(source)
-		i.watcher.Watch(task.ID, channelName, chatID)
+		i.watcher.Watch(task.ID, channelName, chatID, locale)
 	}
 
 	return task.ID, true, nil

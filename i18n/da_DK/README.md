@@ -37,7 +37,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/SrCYvumF"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://discord.gg/b3AgFDxe9v"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
   <a href="https://www.facebook.com/zimaboard/"><img src="../../docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
   <a href="https://x.com/ZimaSpace"><img src="../../docs/assets/x.png" alt="X" height="128" /></a>
 </p>
@@ -286,7 +286,7 @@ Timer (30 min) → Læs HEARTBEAT.md → LLM-evaluering → Fjern HEARTBEAT_OK-t
 ## Fællesskab og support
 
 - **Fejlrapporter**: [Indsend venligst fejl og funktionsønsker her](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Diskussioner**: [Discord](https://discord.gg/SrCYvumF)
+- **Diskussioner**: [Discord](https://discord.gg/b3AgFDxe9v)
 - **Følg os** på [GitHub](https://github.com/IceWhaleTech)
 
 ## Licens

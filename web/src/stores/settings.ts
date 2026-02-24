@@ -146,48 +146,57 @@ export const useSettingsStore = defineStore('settings', () => {
       // Fetch providers from Provider Pool
       const response = await providerPoolApi.listProviders()
       const poolProviders = response.data.providers || []
-
-      // Filter enabled providers and convert to ChatProviderInfo
-      const enabledProviders = poolProviders.filter((p: Provider) => p.enabled)
-
-      // Use inlined models from provider list response (no extra requests)
-      const providerInfos: ChatProviderInfo[] = enabledProviders.map((provider: Provider) => ({
-        id: provider.id,
-        name: provider.name,
-        models: (provider.models || []).filter((m: Model) => m.enabled).map((m: Model) => ({
-          id: m.id,
-          inputPrice: m.input_price,
-          outputPrice: m.output_price,
-        })),
-      }))
-
-      providers.value = providerInfos
-
-      // Set default selection if current one is not available
-      if (providerModelOptions.value.length > 0) {
-        const currentOption = providerModelOptions.value.find(
-          (opt) => opt.value === selectedProviderModel.value
-        )
-        if (!currentOption) {
-          // Prefer anthropic provider if available
-          const anthropicOption = providerModelOptions.value.find(
-            (opt) => opt.providerId === 'anthropic'
-          )
-          if (anthropicOption) {
-            selectedProviderModel.value = anthropicOption.value
-          } else {
-            // Use first available option
-            const firstOption = providerModelOptions.value[0]
-            if (firstOption) {
-              selectedProviderModel.value = firstOption.value
-            }
-          }
-        }
-      }
+      applyPoolProviders(poolProviders)
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch providers'
     } finally {
       loading.value = false
+    }
+  }
+
+  /** Update chat provider list from already-fetched Provider Pool data (avoids duplicate API call). */
+  function updateFromPoolProviders(poolProviders: Provider[]) {
+    applyPoolProviders(poolProviders)
+  }
+
+  /** Shared logic: convert raw Provider[] → ChatProviderInfo[] and set default selection. */
+  function applyPoolProviders(poolProviders: Provider[]) {
+    // Filter enabled providers and convert to ChatProviderInfo
+    const enabledProviders = poolProviders.filter((p: Provider) => p.enabled)
+
+    // Use inlined models from provider list response (no extra requests)
+    const providerInfos: ChatProviderInfo[] = enabledProviders.map((provider: Provider) => ({
+      id: provider.id,
+      name: provider.name,
+      models: (provider.models || []).filter((m: Model) => m.enabled).map((m: Model) => ({
+        id: m.id,
+        inputPrice: m.input_price,
+        outputPrice: m.output_price,
+      })),
+    }))
+
+    providers.value = providerInfos
+
+    // Set default selection if current one is not available
+    if (providerModelOptions.value.length > 0) {
+      const currentOption = providerModelOptions.value.find(
+        (opt) => opt.value === selectedProviderModel.value
+      )
+      if (!currentOption) {
+        // Prefer anthropic provider if available
+        const anthropicOption = providerModelOptions.value.find(
+          (opt) => opt.providerId === 'anthropic'
+        )
+        if (anthropicOption) {
+          selectedProviderModel.value = anthropicOption.value
+        } else {
+          // Use first available option
+          const firstOption = providerModelOptions.value[0]
+          if (firstOption) {
+            selectedProviderModel.value = firstOption.value
+          }
+        }
+      }
     }
   }
 
@@ -357,6 +366,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // Actions
     fetchProviders,
+    updateFromPoolProviders,
     refreshProviderModels,
     fetchTools,
     setProviderModel,

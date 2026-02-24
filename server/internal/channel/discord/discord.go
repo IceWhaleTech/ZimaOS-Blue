@@ -2,6 +2,7 @@
 package discord
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -430,6 +431,21 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		}
 	}
 
+	// Attach files from attachments
+	for _, att := range msg.Attachments {
+		if len(att.Data) > 0 {
+			name := att.Name
+			if name == "" {
+				name = "file"
+			}
+			data.Files = append(data.Files, &discordgo.File{
+				Name:        name,
+				ContentType: att.MimeType,
+				Reader:      bytes.NewReader(att.Data),
+			})
+		}
+	}
+
 	_, err := c.session.ChannelMessageSendComplex(msg.ChatID, data)
 	if err != nil {
 		c.logger.Error("failed to send message",
@@ -445,6 +461,14 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	c.mu.Unlock()
 
 	return nil
+}
+
+// SendTyping sends a typing indicator to the given Discord channel.
+func (c *Channel) SendTyping(_ context.Context, chatID string) error {
+	if c.session == nil {
+		return fmt.Errorf("session not initialized")
+	}
+	return c.session.ChannelTyping(chatID)
 }
 
 // SendStreaming sends a message with streaming support.

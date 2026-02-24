@@ -1163,7 +1163,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
       <ChannelCard
         v-for="channel in primaryChannels"
         :key="channel.id"
-        v-memo="[channel.id, channel.enabled, channel.status, channel.lastError, expandedChannel === channel.id, toggling === channel.id, saving === channel.id, testingConnection === channel.id, testResult]"
+        v-memo="[channel.id, channel.enabled, channel.status, channel.lastError, expandedChannel === channel.id, toggling === channel.id, saving === channel.id, testingConnection === channel.id, testResult, ...channel.fields.map(f => f.value)]"
         :channel="channel"
         :expanded="expandedChannel === channel.id"
         :toggling="toggling === channel.id"
@@ -1194,7 +1194,7 @@ watch(() => tunnelStatus.value?.active, (active) => {
         <ChannelCard
           v-for="channel in secondaryChannels"
           :key="channel.id"
-          v-memo="[channel.id, channel.enabled, channel.status, channel.lastError, expandedChannel === channel.id, toggling === channel.id, saving === channel.id, testingConnection === channel.id, testResult]"
+          v-memo="[channel.id, channel.enabled, channel.status, channel.lastError, expandedChannel === channel.id, toggling === channel.id, saving === channel.id, testingConnection === channel.id, testResult, ...channel.fields.map(f => f.value)]"
           :channel="channel"
           :expanded="expandedChannel === channel.id"
           :toggling="toggling === channel.id"

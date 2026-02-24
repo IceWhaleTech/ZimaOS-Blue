@@ -17,6 +17,9 @@ func NewHandler(manager *Manager) *Handler {
 	return &Handler{manager: manager}
 }
 
+// Manager returns the underlying sandbox manager.
+func (h *Handler) Manager() *Manager { return h.manager }
+
 // ExecuteRequest represents a request to execute code in the sandbox.
 type ExecuteRequest struct {
 	Command     string            `json:"command" validate:"required"`

@@ -56,7 +56,12 @@ export interface PasswordPolicy {
 export const authApi = {
   login: (data: LoginRequest) => api.post<AuthTokenResponse>('/auth/login', data),
 
-  logout: () => api.post<{ success: boolean }>('/auth/logout'),
+  logout: () => {
+    const refreshToken = localStorage.getItem('refresh_token')
+    return api.post<{ success: boolean }>('/auth/logout', null, {
+      headers: refreshToken ? { 'X-Refresh-Token': refreshToken } : {},
+    })
+  },
 
   refresh: (refreshToken: string) =>
     api.post<AuthTokenResponse>('/auth/refresh', { refresh_token: refreshToken }),

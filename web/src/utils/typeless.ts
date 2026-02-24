@@ -914,7 +914,50 @@ export function splitIntoSegments(
     }
   }
 
-  return segments
+  // Merge consecutive ui-review-progress cards into a single aggregated card
+  return mergeConsecutiveProgressCards(segments)
+}
+
+/**
+ * Merge consecutive ui-review-progress card segments into a single card
+ * with a `steps` array, so the component renders them as one consolidated view.
+ */
+function mergeConsecutiveProgressCards(
+  segments: Array<{ type: 'text' | 'card'; content: string | TypelessCard }>
+): Array<{ type: 'text' | 'card'; content: string | TypelessCard }> {
+  const result: typeof segments = []
+  let pendingSteps: TypelessCard[] = []
+
+  const flushPending = () => {
+    if (pendingSteps.length === 0) return
+    // Build a merged card with all steps
+    const first = pendingSteps[0]!
+    const merged: TypelessCard = {
+      type: 'ui-review-progress',
+      id: (first as Record<string, unknown>).id as string || 'ui-progress-merged',
+      steps: pendingSteps.map(s => ({
+        step: (s as Record<string, unknown>).step,
+        name: (s as Record<string, unknown>).name,
+        status: (s as Record<string, unknown>).status,
+        url: (s as Record<string, unknown>).url,
+        score: (s as Record<string, unknown>).score,
+      })),
+      _streaming: pendingSteps.some(s => s._streaming),
+    } as TypelessCard
+    result.push({ type: 'card', content: merged })
+    pendingSteps = []
+  }
+
+  for (const seg of segments) {
+    if (seg.type === 'card' && (seg.content as TypelessCard).type === 'ui-review-progress') {
+      pendingSteps.push(seg.content as TypelessCard)
+    } else {
+      flushPending()
+      result.push(seg)
+    }
+  }
+  flushPending()
+  return result
 }
 
 function escapeRegex(str: string): string {

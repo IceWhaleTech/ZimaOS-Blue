@@ -22,6 +22,8 @@ export interface MediaModelInfo {
   provider: string
   max_resolution?: string
   supported_sizes?: string[]
+  price?: number
+  pricing_unit?: string
 }
 
 export interface MediaTestResult {

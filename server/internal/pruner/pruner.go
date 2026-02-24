@@ -87,10 +87,7 @@ func NewBackend(cfg Config) (Backend, error) {
 		return NewOnnxBackend(cfg, cfg.ModelDir)
 	case "hybrid":
 		local := NewIRPruner(cfg)
-		onnx, err := NewOnnxBackend(cfg, cfg.ModelDir)
-		if err != nil {
-			return local, nil // degrade to local-only
-		}
+		onnx, _ := NewOnnxBackend(cfg, cfg.ModelDir)
 		return NewHybridBackend(local, onnx, cfg), nil
 	default:
 		return nil, fmt.Errorf("unknown pruner backend: %s", cfg.Backend)

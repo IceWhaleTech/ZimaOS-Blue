@@ -172,3 +172,43 @@ func (c *matrixClient) sendMessage(ctx context.Context, roomID string, content i
 	json.Unmarshal(data, &r)
 	return r.EventID, nil
 }
+
+// userTyping sends a typing indicator to a room.
+func (c *matrixClient) userTyping(ctx context.Context, roomID string) error {
+	path := fmt.Sprintf("/rooms/%s/typing/%s", url.PathEscape(roomID), url.PathEscape(c.userID))
+	_, err := c.do(ctx, "PUT", path, map[string]interface{}{
+		"typing":  true,
+		"timeout": 30000,
+	})
+	return err
+}
+
+// uploadMedia uploads binary data to the Matrix content repository.
+// Returns the mxc:// URI on success.
+func (c *matrixClient) uploadMedia(ctx context.Context, filename, contentType string, data []byte) (string, error) {
+	u := c.homeserver + "/_matrix/media/v3/upload?filename=" + url.QueryEscape(filename)
+	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	req.Header.Set("Content-Type", contentType)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("matrix upload error (status %d): %s", resp.StatusCode, string(body))
+	}
+	var r struct {
+		ContentURI string `json:"content_uri"`
+	}
+	json.Unmarshal(body, &r)
+	if r.ContentURI == "" {
+		return "", fmt.Errorf("empty content_uri in upload response")
+	}
+	return r.ContentURI, nil
+}

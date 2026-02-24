@@ -153,7 +153,7 @@ function handleAction(actionId: string) {
               <span class="text-sm flex-shrink-0 w-4 text-center" :class="stepColor(step)">
                 {{ stepIcon(step) }}
               </span>
-              <span class="text-sm text-gray-700 dark:text-gray-300 flex-1">{{ step.name }}</span>
+              <span class="text-sm text-gray-700 dark:text-gray-300 flex-1">{{ t('uiReview.steps.' + step.id, step.name) }}</span>
               <div class="flex items-center gap-2 flex-shrink-0">
                 <span v-if="step.score" class="text-sm font-medium tabular-nums text-gray-600 dark:text-gray-400">
                   {{ step.score.toFixed(0) }}

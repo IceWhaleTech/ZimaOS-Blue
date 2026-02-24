@@ -196,11 +196,58 @@ func (c *Channel) processTextMessage(event webhookEvent) {
 
 // Send sends a message via LINE push API.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
+	var messages []map[string]interface{}
+
+	// Build media messages from attachments.
+	for _, att := range msg.Attachments {
+		if att.URL == "" {
+			continue
+		}
+		switch att.Type {
+		case channel.MessageTypeImage:
+			messages = append(messages, map[string]interface{}{
+				"type":               "image",
+				"originalContentUrl": att.URL,
+				"previewImageUrl":    att.URL,
+			})
+		case channel.MessageTypeVideo:
+			m := map[string]interface{}{
+				"type":               "video",
+				"originalContentUrl": att.URL,
+				"previewImageUrl":    att.URL, // LINE requires a preview; use same URL as fallback
+			}
+			messages = append(messages, m)
+		case channel.MessageTypeAudio:
+			messages = append(messages, map[string]interface{}{
+				"type":               "audio",
+				"originalContentUrl": att.URL,
+				"duration":           60000, // default 60s; LINE requires duration
+			})
+		default:
+			// Files: send as text with URL
+			text := att.Name
+			if text == "" { text = "File" }
+			text += "\n" + att.URL
+			messages = append(messages, map[string]interface{}{
+				"type": "text", "text": text,
+			})
+		}
+	}
+
+	// Add text message if present.
+	if msg.Content != "" {
+		messages = append(messages, map[string]interface{}{
+			"type": "text", "text": msg.Content,
+		})
+	}
+
+	if len(messages) == 0 {
+		return nil
+	}
+
 	payload := map[string]interface{}{
-		"to": msg.ChatID,
-		"messages": []map[string]string{
-			{"type": "text", "text": msg.Content},
-		},
+		"to":       msg.ChatID,
+		"messages": messages,
 	}
 
 	body, err := json.Marshal(payload)

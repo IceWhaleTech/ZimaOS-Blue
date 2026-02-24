@@ -124,6 +124,13 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 	return pool, nil
 }
 
+// SetMediaPricingApplier wires a callback for applying media model pricing from remote updates.
+func (p *Pool) SetMediaPricingApplier(applier MediaPricingApplier) {
+	if p.pricingUpdater != nil {
+		p.pricingUpdater.SetMediaPricingApplier(applier)
+	}
+}
+
 // Start starts background services
 func (p *Pool) Start(ctx context.Context) {
 	// Start usage tracker
@@ -313,6 +320,15 @@ func (p *Pool) initBuiltinProviders() {
 }
 
 // Handler provides HTTP handlers for the provider pool API
+// MediaPricingInfo holds per-unit pricing for a media model.
+type MediaPricingInfo struct {
+	Price float64 // USD per unit
+	Unit  string  // "image", "second", "video"
+}
+
+// MediaPricingLookup returns pricing for a media model by ID, or nil if unknown.
+type MediaPricingLookup func(modelID string) *MediaPricingInfo
+
 type Handler struct {
 	pool *Pool
 
@@ -326,6 +342,9 @@ type Handler struct {
 
 	// OAuth manager (optional)
 	oauthManager *oauth.Manager
+
+	// Media pricing lookup (set at bootstrap to avoid import cycle)
+	mediaPricingLookup MediaPricingLookup
 }
 
 // NewHandler creates a new Handler
@@ -468,6 +487,7 @@ type modelResponse struct {
 	CachePrice  float64 `json:"cache_price"`
 
 	PricePerRequest float64 `json:"price_per_request,omitempty"`
+	PricingUnit     string  `json:"pricing_unit,omitempty"` // "image", "second", "video" for media models
 
 	ContextWindow int `json:"context_window,omitempty"`
 	MaxOutput     int `json:"max_output,omitempty"`
@@ -500,13 +520,22 @@ func capabilitiesToStrings(c ModelCapabilities) []string {
 	if c.SystemPrompt {
 		caps = append(caps, "system_prompt")
 	}
+	if c.ImageGeneration {
+		caps = append(caps, "image_generation")
+	}
+	if c.VideoGeneration {
+		caps = append(caps, "video_generation")
+	}
+	if c.AudioGeneration {
+		caps = append(caps, "audio_generation")
+	}
 	if caps == nil {
 		caps = []string{}
 	}
 	return caps
 }
 
-func toProviderResponse(p *Provider, models []*Model, pm *PricingManager) *providerResponse {
+func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLookup MediaPricingLookup) *providerResponse {
 	mr := make([]*modelResponse, len(models))
 	for i, m := range models {
 		mr[i] = &modelResponse{
@@ -529,6 +558,13 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager) *provi
 				mr[i].InputPrice = pricing.InputPrice
 				mr[i].OutputPrice = pricing.OutputPrice
 				mr[i].CachePrice = pricing.CachePrice
+			}
+		}
+		// Enrich media models with per-unit pricing from mediagen
+		if mr[i].PricePerRequest == 0 && mpLookup != nil {
+			if mp := mpLookup(m.ID); mp != nil {
+				mr[i].PricePerRequest = mp.Price
+				mr[i].PricingUnit = mp.Unit
 			}
 		}
 	}
@@ -557,27 +593,36 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager) *provi
 
 // toModelResponses converts a slice of Model to modelResponse (capabilities as string array).
 // If pm is non-nil, enriches pricing from PricingManager for models with no price set.
-func toModelResponses(models []*Model, pm *PricingManager) []*modelResponse {
+// If mpLookup is non-nil, enriches media models with per-unit pricing.
+func toModelResponses(models []*Model, pm *PricingManager, mpLookup MediaPricingLookup) []*modelResponse {
 	result := make([]*modelResponse, len(models))
 	for i, m := range models {
 		result[i] = &modelResponse{
-			ID:            m.ID,
-			ProviderID:    m.ProviderID,
-			Name:          m.Name,
-			DisplayName:   m.DisplayName,
-			Enabled:       m.Enabled,
-			Capabilities:  capabilitiesToStrings(m.Capabilities),
-			InputPrice:    m.InputPrice,
-			OutputPrice:   m.OutputPrice,
-			CachePrice:    m.CachePrice,
-			ContextWindow: m.ContextWindow,
-			MaxOutput:     m.MaxOutput,
+			ID:              m.ID,
+			ProviderID:      m.ProviderID,
+			Name:            m.Name,
+			DisplayName:     m.DisplayName,
+			Enabled:         m.Enabled,
+			Capabilities:    capabilitiesToStrings(m.Capabilities),
+			InputPrice:      m.InputPrice,
+			OutputPrice:     m.OutputPrice,
+			CachePrice:      m.CachePrice,
+			PricePerRequest: m.PricePerRequest,
+			ContextWindow:   m.ContextWindow,
+			MaxOutput:       m.MaxOutput,
 		}
 		if result[i].InputPrice == 0 && result[i].OutputPrice == 0 && pm != nil {
 			if pricing := pm.GetModelPricingWithHeuristics(m.ID, m.ProviderID); pricing != nil {
 				result[i].InputPrice = pricing.InputPrice
 				result[i].OutputPrice = pricing.OutputPrice
 				result[i].CachePrice = pricing.CachePrice
+			}
+		}
+		// Enrich media models with per-unit pricing from mediagen
+		if result[i].PricePerRequest == 0 && mpLookup != nil {
+			if mp := mpLookup(m.ID); mp != nil {
+				result[i].PricePerRequest = mp.Price
+				result[i].PricingUnit = mp.Unit
 			}
 		}
 	}
@@ -595,7 +640,7 @@ func (h *Handler) ListProviders(c echo.Context) error {
 			if models == nil {
 				models = []*Model{}
 			}
-			result[i] = toProviderResponse(p, models, nil)
+			result[i] = toProviderResponse(p, models, nil, h.mediaPricingLookup)
 		}
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"providers": result,
@@ -625,7 +670,7 @@ func (h *Handler) ListProviders(c echo.Context) error {
 		if models == nil {
 			models = []*Model{}
 		}
-		result[i] = toProviderResponse(p, models, h.pool.PricingManager)
+		result[i] = toProviderResponse(p, models, h.pool.PricingManager, h.mediaPricingLookup)
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -1104,7 +1149,7 @@ func (h *Handler) ListProviderModels(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	resp := toModelResponses(models, h.pool.PricingManager)
+	resp := toModelResponses(models, h.pool.PricingManager, h.mediaPricingLookup)
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"models": resp,
 		"total":  len(resp),
@@ -1130,7 +1175,7 @@ func (h *Handler) FetchProviderModels(c echo.Context) error {
 	}
 
 	models := result.([]*Model)
-	resp := toModelResponses(models, h.pool.PricingManager)
+	resp := toModelResponses(models, h.pool.PricingManager, h.mediaPricingLookup)
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"models": resp,
 		"total":  len(resp),
@@ -1192,7 +1237,7 @@ func (h *Handler) ListAllModels(c echo.Context) error {
 			}
 		}
 
-		resp := toModelResponses(allModels, nil)
+		resp := toModelResponses(allModels, nil, h.mediaPricingLookup)
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"models": resp,
 			"total":  len(resp),
@@ -1200,7 +1245,7 @@ func (h *Handler) ListAllModels(c echo.Context) error {
 	}
 
 	models := h.pool.Discovery.GetAllModels()
-	resp := toModelResponses(models, h.pool.PricingManager)
+	resp := toModelResponses(models, h.pool.PricingManager, h.mediaPricingLookup)
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"models": resp,
 		"total":  len(resp),
@@ -2058,6 +2103,11 @@ func (h *Handler) GetTrialQuota(c echo.Context) error {
 // SetOAuthManager sets the OAuth manager for the handler.
 func (h *Handler) SetOAuthManager(m *oauth.Manager) {
 	h.oauthManager = m
+}
+
+// SetMediaPricingLookup sets the callback for looking up media model pricing.
+func (h *Handler) SetMediaPricingLookup(fn MediaPricingLookup) {
+	h.mediaPricingLookup = fn
 }
 
 // RegisterOAuthCallbackRoute registers the OAuth callback route on a top-level group.

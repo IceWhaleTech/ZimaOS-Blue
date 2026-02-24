@@ -1,15 +1,17 @@
 package server
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sync"
 
 	"github.com/labstack/echo/v4"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
+
+const providerSettingsKVKey = "config:provider_settings"
 
 // ProviderConfig holds the configuration for a single provider.
 type ProviderConfig struct {
@@ -27,17 +29,17 @@ type ProvidersConfig struct {
 // ProviderSettingsHandler handles provider settings API endpoints.
 type ProviderSettingsHandler struct {
 	registry        *llm.ProviderRegistry
-	dataDir         string
+	kv              kvstore.Store
 	mu              sync.RWMutex
 	config          *ProvidersConfig
 	settingsHandler *SettingsHandler
 }
 
 // NewProviderSettingsHandler creates a new provider settings handler.
-func NewProviderSettingsHandler(registry *llm.ProviderRegistry, dataDir string) *ProviderSettingsHandler {
+func NewProviderSettingsHandler(registry *llm.ProviderRegistry, kv kvstore.Store) *ProviderSettingsHandler {
 	h := &ProviderSettingsHandler{
 		registry: registry,
-		dataDir:  dataDir,
+		kv:       kv,
 		config: &ProvidersConfig{
 			Providers: make(map[string]ProviderConfig),
 		},
@@ -63,41 +65,23 @@ func (h *ProviderSettingsHandler) applyAllConfigs() {
 	}
 }
 
-// loadConfig loads the configuration from disk.
+// loadConfig loads the configuration from kvstore.
 func (h *ProviderSettingsHandler) loadConfig() {
-	if h.dataDir == "" {
-		return
-	}
-	configPath := filepath.Join(h.dataDir, "provider_settings.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return
-	}
 	var config ProvidersConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return
+	if err := h.kv.GetJSON(context.Background(), providerSettingsKVKey, &config); err != nil {
+		return // Not found or error — use defaults
 	}
 	h.mu.Lock()
 	h.config = &config
 	h.mu.Unlock()
 }
 
-// saveConfig saves the configuration to disk.
+// saveConfig saves the configuration to kvstore.
 func (h *ProviderSettingsHandler) saveConfig() error {
-	if h.dataDir == "" {
-		return nil
-	}
-	if err := os.MkdirAll(h.dataDir, 0755); err != nil {
-		return err
-	}
 	h.mu.RLock()
-	data, err := json.MarshalIndent(h.config, "", "  ")
+	cfg := *h.config
 	h.mu.RUnlock()
-	if err != nil {
-		return err
-	}
-	configPath := filepath.Join(h.dataDir, "provider_settings.json")
-	return os.WriteFile(configPath, data, 0600) // Restrictive permissions for API keys
+	return h.kv.SetJSON(context.Background(), providerSettingsKVKey, &cfg, 0)
 }
 
 // RegisterRoutes registers the provider settings API routes.

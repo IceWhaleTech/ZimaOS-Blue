@@ -37,7 +37,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/SrCYvumF"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://discord.gg/b3AgFDxe9v"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
   <a href="https://www.facebook.com/zimaboard/"><img src="../../docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
   <a href="https://x.com/ZimaSpace"><img src="../../docs/assets/x.png" alt="X" height="128" /></a>
 </p>
@@ -284,7 +284,7 @@ WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → W
 ## Komunita a podpora
 
 - **Issues**: [Prosím nahlasujte chyby a požiadavky na funkcie tu](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Diskusie**: [Discord](https://discord.gg/SrCYvumF)
+- **Diskusie**: [Discord](https://discord.gg/b3AgFDxe9v)
 - **Sledujte nás** na [GitHub](https://github.com/IceWhaleTech)
 
 ## Licencia

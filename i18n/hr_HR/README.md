@@ -37,7 +37,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/SrCYvumF"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://discord.gg/b3AgFDxe9v"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
   <a href="https://www.facebook.com/zimaboard/"><img src="../../docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
   <a href="https://x.com/ZimaSpace"><img src="../../docs/assets/x.png" alt="X" height="128" /></a>
 </p>
@@ -276,7 +276,7 @@ Mjerač (30 min) → Čitanje HEARTBEAT.md → LLM procjena → Uklanjanje HEART
 ## Zajednica i podrška
 
 - **Problemi**: [Molimo prijavite greške i zahtjeve za značajke ovdje](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Rasprave**: [Discord](https://discord.gg/SrCYvumF)
+- **Rasprave**: [Discord](https://discord.gg/b3AgFDxe9v)
 - **Pratite nas** na [GitHub](https://github.com/IceWhaleTech)
 
 ## Licenca

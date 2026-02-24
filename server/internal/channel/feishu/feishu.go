@@ -323,7 +323,97 @@ func (c *Channel) SendText(ctx context.Context, chatID string, text string, repl
 }
 
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
-	return c.SendText(ctx, msg.ChatID, msg.Content, msg.ReplyToID)
+	// Send attachments first (image/video/file), then text caption
+	for _, att := range msg.Attachments {
+		if err := c.sendAttachment(ctx, msg.ChatID, msg.ReplyToID, att); err != nil {
+			c.logger.Warn("failed to send attachment, falling back to text",
+				zap.String("type", string(att.Type)), zap.Error(err))
+			if att.URL != "" {
+				_ = c.SendText(ctx, msg.ChatID, att.URL, msg.ReplyToID)
+			}
+		}
+	}
+	if msg.Content != "" {
+		return c.SendText(ctx, msg.ChatID, msg.Content, msg.ReplyToID)
+	}
+	return nil
+}
+
+// sendAttachment uploads and sends a single attachment via Feishu API.
+func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID string, att channel.Attachment) error {
+	if len(att.Data) == 0 {
+		return fmt.Errorf("no binary data in attachment (URL: %s)", att.URL)
+	}
+
+	receiveIDType := "chat_id"
+	if strings.HasPrefix(chatID, "ou_") {
+		receiveIDType = "open_id"
+	} else if strings.HasPrefix(chatID, "on_") {
+		receiveIDType = "union_id"
+	}
+
+	switch att.Type {
+	case channel.MessageTypeImage:
+		imageKey, err := c.client.uploadImage(ctx, att.Data, att.MimeType)
+		if err != nil {
+			return fmt.Errorf("upload image: %w", err)
+		}
+		content, _ := json.Marshal(map[string]string{"image_key": imageKey})
+		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "image", string(content), replyToID); err != nil {
+			return err
+		}
+		c.msgsSent.Add(1)
+		return nil
+
+	case channel.MessageTypeVideo:
+		// Feishu requires "media" msg_type for video, with both file_key and image_key (cover).
+		fileKey, err := c.client.uploadFile(ctx, att.Data, videoFileName(att.Name), "mp4")
+		if err != nil {
+			return fmt.Errorf("upload video: %w", err)
+		}
+		// Upload cover image — use provided thumbnail or a minimal placeholder
+		coverData := att.Thumbnail
+		if len(coverData) == 0 {
+			coverData = minimalPNG()
+		}
+		imageKey, err := c.client.uploadImage(ctx, coverData, "image/png")
+		if err != nil {
+			return fmt.Errorf("upload video cover: %w", err)
+		}
+		content, _ := json.Marshal(map[string]string{"file_key": fileKey, "image_key": imageKey})
+		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "media", string(content), replyToID); err != nil {
+			return err
+		}
+		c.msgsSent.Add(1)
+		return nil
+
+	case channel.MessageTypeAudio, channel.MessageTypeFile:
+		fileType := "stream"
+		if att.Type == channel.MessageTypeAudio {
+			fileType = "opus"
+		}
+		fileName := att.Name
+		if fileName == "" {
+			if att.Type == channel.MessageTypeAudio {
+				fileName = "audio.opus"
+			} else {
+				fileName = "file"
+			}
+		}
+		fileKey, err := c.client.uploadFile(ctx, att.Data, fileName, fileType)
+		if err != nil {
+			return fmt.Errorf("upload file: %w", err)
+		}
+		content, _ := json.Marshal(map[string]string{"file_key": fileKey})
+		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "file", string(content), replyToID); err != nil {
+			return err
+		}
+		c.msgsSent.Add(1)
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported attachment type: %s", att.Type)
+	}
 }
 
 func (c *Channel) SendCard(ctx context.Context, chatID string, cardJSON string) error {
@@ -463,6 +553,29 @@ func (c *Channel) handleStartCommand(ctx context.Context, cmd string, args strin
 }
 
 func (c *Channel) GetClient() *larkClient { return c.client }
+
+// videoFileName returns a sensible filename for a video attachment.
+func videoFileName(name string) string {
+	if name != "" {
+		return name
+	}
+	return "video.mp4"
+}
+
+// minimalPNG returns a 1x1 black PNG image (67 bytes) for use as a placeholder cover.
+func minimalPNG() []byte {
+	return []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG signature
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1x1
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xde, // 8-bit RGB
+		0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, // IDAT chunk
+		0x08, 0xd7, 0x63, 0x60, 0x60, 0x60, 0x00, 0x00, // deflated black pixel
+		0x00, 0x04, 0x00, 0x01, 0x27, 0x34, 0x27, 0x0a,
+		0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, // IEND chunk
+		0xae, 0x42, 0x60, 0x82,
+	}
+}
 
 func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID string, content <-chan string, done chan<- struct{}) error {
 	defer close(done)

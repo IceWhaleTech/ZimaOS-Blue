@@ -261,18 +261,57 @@ func (c *Channel) processMessage(event callbackEvent) {
 	}
 }
 
-// Send sends a text message via Viber send_message API.
+// Send sends a message via Viber send_message API, including media attachments.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
-	payload := sendPayload{
-		Receiver: msg.ChatID,
-		Type:     "text",
-		Text:     msg.Content,
-		Sender:   c.senderInfo(),
+	// Send media attachments first.
+	for i, att := range msg.Attachments {
+		if att.URL == "" {
+			continue
+		}
+		viberType := "file"
+		switch att.Type {
+		case channel.MessageTypeImage:
+			viberType = "picture"
+		case channel.MessageTypeVideo:
+			viberType = "video"
+		}
+		caption := ""
+		if i == 0 {
+			caption = msg.Content
+			msg.Content = ""
+		}
+		payload := sendPayload{
+			Receiver: msg.ChatID,
+			Type:     viberType,
+			Text:     caption,
+			Media:    att.URL,
+			Sender:   c.senderInfo(),
+		}
+		if viberType == "file" {
+			payload.FileName = att.Name
+			if payload.FileName == "" {
+				payload.FileName = "file"
+			}
+			payload.FileSize = att.Size
+		}
+		if err := c.doSend(ctx, payload); err != nil {
+			c.logger.Warn("failed to send media via Viber",
+				zap.String("type", viberType), zap.Error(err))
+		}
 	}
 
-	if err := c.doSend(ctx, payload); err != nil {
-		c.setError(err.Error())
-		return err
+	// Send remaining text.
+	if msg.Content != "" {
+		payload := sendPayload{
+			Receiver: msg.ChatID,
+			Type:     "text",
+			Text:     msg.Content,
+			Sender:   c.senderInfo(),
+		}
+		if err := c.doSend(ctx, payload); err != nil {
+			c.setError(err.Error())
+			return err
+		}
 	}
 
 	c.msgsSent.Add(1)

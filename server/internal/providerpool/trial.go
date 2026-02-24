@@ -31,6 +31,15 @@ type TrialQuotaStatus struct {
 	IsExpired       bool      `json:"is_expired,omitempty"`
 }
 
+// TrialPersistHook provides optional external persistence for trial state.
+type TrialPersistHook struct {
+	Load           func(dataDir string, licenseSig []byte, claims *LicenseClaims) (*trialState, error)
+	Save           func(dataDir string, licenseSig []byte, claims *LicenseClaims, state *trialState) error
+	CheckActivated func(dataDir string, licenseSig []byte, claims *LicenseClaims) bool
+}
+
+var trialPersistHook *TrialPersistHook
+
 // TrialQuotaManager manages trial quota tracking with Ed25519 license verification
 // and HMAC-protected state persistence.
 type TrialQuotaManager struct {
@@ -114,36 +123,62 @@ func (m *TrialQuotaManager) loadFromStorage() {
 		}
 	}
 
-	state, err := LoadTrialState(m.dataDir, m.licenseSig)
-	if err != nil {
-		if errors.Is(err, ErrStateTampered) {
+	// Load from file (primary)
+	fileState, fileErr := LoadTrialState(m.dataDir, m.licenseSig)
+	if fileErr != nil && errors.Is(fileErr, ErrStateTampered) {
+		m.mu.Lock()
+		m.exhausted = true
+		m.exhaustedReason = "state_tampered"
+		m.lastUpdated = timeutil.NowTime()
+		m.mu.Unlock()
+		m.saveState()
+		fmt.Printf("[TrialQuotaManager] State file tampered, treating as exhausted\n")
+		return
+	}
+
+	// Load from external persistence hook (if available)
+	var hookState *trialState
+	if trialPersistHook != nil && trialPersistHook.Load != nil {
+		hookState, _ = trialPersistHook.Load(m.dataDir, m.licenseSig, m.claims)
+	}
+
+	// Resolve state from file + hook — recover missing sources
+	state := fileState
+	needsResync := false
+	if state == nil && hookState != nil {
+		// File was deleted but hook has data → recover from hook
+		state = hookState
+		needsResync = true
+		fmt.Printf("[TrialQuotaManager] Recovered state from external persistence\n")
+	} else if state != nil && hookState == nil && trialPersistHook != nil && trialPersistHook.Save != nil {
+		// File exists but hook has no data → will backfill via saveState
+		needsResync = true
+	}
+
+	if state == nil {
+		// Both file and hook have no data — check if trial was ever activated
+		if trialPersistHook != nil && trialPersistHook.CheckActivated != nil && trialPersistHook.CheckActivated(m.dataDir, m.licenseSig, m.claims) {
+			// Was activated before but all state deleted → tampered
 			m.mu.Lock()
 			m.exhausted = true
 			m.exhaustedReason = "state_tampered"
 			m.lastUpdated = timeutil.NowTime()
 			m.mu.Unlock()
 			m.saveState()
-			fmt.Printf("[TrialQuotaManager] State file tampered, treating as exhausted\n")
+			fmt.Printf("[TrialQuotaManager] State deleted but activation record exists, treating as tampered\n")
 			return
 		}
-		fmt.Printf("[TrialQuotaManager] Failed to load state: %v, starting fresh\n", err)
+		if fileErr != nil {
+			fmt.Printf("[TrialQuotaManager] Failed to load state: %v, starting fresh\n", fileErr)
+		} else {
+			fmt.Printf("[TrialQuotaManager] Fresh install, starting with zero usage\n")
+		}
 		m.mu.Lock()
 		m.tokensUsed = 0
 		m.exhausted = false
 		m.lastUpdated = timeutil.NowTime()
 		m.mu.Unlock()
 		m.saveState()
-		return
-	}
-
-	if state == nil {
-		m.mu.Lock()
-		m.tokensUsed = 0
-		m.exhausted = false
-		m.lastUpdated = timeutil.NowTime()
-		m.mu.Unlock()
-		m.saveState()
-		fmt.Printf("[TrialQuotaManager] Fresh install, starting with zero usage\n")
 		return
 	}
 
@@ -167,6 +202,12 @@ func (m *TrialQuotaManager) loadFromStorage() {
 	m.exhaustedReason = state.ExhaustedReason
 	m.lastUpdated = state.LastUpdated
 	m.mu.Unlock()
+
+	// Re-sync all storage locations if any source was missing
+	if needsResync {
+		m.saveState()
+	}
+
 	fmt.Printf("[TrialQuotaManager] Loaded state: tokens=%d, exhausted=%v\n",
 		state.TokensUsed, state.Exhausted)
 }
@@ -193,6 +234,10 @@ func (m *TrialQuotaManager) saveState() {
 	}
 	if licenseIAT > 0 {
 		SaveLicenseIAT(m.dataDir, licenseIAT)
+	}
+	// Persist to external storage (best-effort)
+	if trialPersistHook != nil && trialPersistHook.Save != nil {
+		trialPersistHook.Save(m.dataDir, m.licenseSig, m.claims, state)
 	}
 }
 

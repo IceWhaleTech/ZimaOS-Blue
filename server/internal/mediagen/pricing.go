@@ -97,6 +97,18 @@ func SetMediaModelPricing(modelID string, pricing *MediaModelPricing) {
 	builtinMediaPricing[modelID] = pricing
 }
 
+// EnrichModelPricing fills in Price and PricingUnit on each model from the builtin pricing map.
+func EnrichModelPricing(models []MediaModelInfo) {
+	mediaPricingMu.RLock()
+	defer mediaPricingMu.RUnlock()
+	for i := range models {
+		if p := builtinMediaPricing[models[i].ID]; p != nil {
+			models[i].Price = p.OutputPrice
+			models[i].PricingUnit = string(p.Unit)
+		}
+	}
+}
+
 // CalculateMediaCost calculates the cost for a completed media task.
 func CalculateMediaCost(modelID string, imageCount int, durationSec float64) float64 {
 	pricing := GetMediaModelPricing(modelID)

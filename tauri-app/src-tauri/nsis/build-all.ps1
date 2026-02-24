@@ -143,7 +143,7 @@ Write-Host "[OK] libblue.a built (Windows native TTS/ASR only, MSVC)"
 # Step 3: Build Tauri application
 Write-Host "[STEP 3] Building Tauri application..."
 Set-Location $tauriDir
-cargo build --release
+cargo build --release --target x86_64-pc-windows-gnu
 if ($LASTEXITCODE -ne 0) { throw "Cargo build failed" }
 Write-Host "[OK] Tauri application built"
 
@@ -226,18 +226,6 @@ if (Test-Path $distSrc) {
     Write-Host "[OK] Frontend dist copied ($(((Get-ChildItem -Recurse -File "$filesDir\dist").Count)) files)"
 } else {
     Write-Host "[WARN] Frontend dist not found at $distSrc"
-}
-
-# Copy canonical skills to FilesToInstall/.claude/skills/ for NSIS packaging
-$skillsSrc = "g:\GitHub\ZimaOS-Blue\assets\skills"
-$skillsDest = "$filesDir\.claude\skills"
-if (Test-Path $skillsSrc) {
-    if (Test-Path $skillsDest) { Remove-Item -Recurse -Force $skillsDest }
-    New-Item -ItemType Directory $skillsDest -Force | Out-Null
-    Copy-Item -Recurse -Force "$skillsSrc\*" $skillsDest
-    Write-Host "[OK] Skills copied to FilesToInstall\.claude\skills\ ($(((Get-ChildItem -Directory $skillsDest).Count)) skills)"
-} else {
-    Write-Host "[WARN] Skills not found at $skillsSrc"
 }
 
 # Clean up build artifacts from FilesToInstall

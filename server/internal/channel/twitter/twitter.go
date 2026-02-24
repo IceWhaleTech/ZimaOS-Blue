@@ -289,7 +289,7 @@ func toMessageType(twitterType string) channel.MessageType {
 	}
 }
 
-// Send sends a DM via the Twitter v2 API.
+// Send sends a DM via the Twitter v2 API, including media attachments.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	sendURL := fmt.Sprintf("%s/dm_conversations/with/%s/messages", twitterAPIBase, msg.ChatID)
 
@@ -297,12 +297,24 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		"text": msg.Content,
 	}
 
-	// Attach media if present
+	// Upload and attach media if present.
 	if len(msg.Attachments) > 0 {
 		mediaIDs := make([]map[string]string, 0, len(msg.Attachments))
 		for _, att := range msg.Attachments {
+			// Use pre-set ID if available.
 			if att.ID != "" {
 				mediaIDs = append(mediaIDs, map[string]string{"media_id": att.ID})
+				continue
+			}
+			// Upload binary data via v1.1 media/upload.
+			if len(att.Data) > 0 {
+				mid, err := c.uploadMedia(ctx, att.Data)
+				if err != nil {
+					c.logger.Warn("failed to upload media to Twitter",
+						zap.String("type", string(att.Type)), zap.Error(err))
+					continue
+				}
+				mediaIDs = append(mediaIDs, map[string]string{"media_id": mid})
 			}
 		}
 		if len(mediaIDs) > 0 {

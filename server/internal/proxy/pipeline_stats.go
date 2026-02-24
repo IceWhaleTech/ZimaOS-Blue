@@ -73,6 +73,12 @@ func (c *PipelineStatsCollector) Stop() {
 	c.wg.Wait()
 }
 
+// Close implements io.Closer for lifecycle shutdown hooks.
+func (c *PipelineStatsCollector) Close() error {
+	c.Stop()
+	return nil
+}
+
 // --- Failover callback (wired to Router.SetFailoverCallback) ---
 
 func (c *PipelineStatsCollector) OnFailover(result *providerpool.FailoverResult) {

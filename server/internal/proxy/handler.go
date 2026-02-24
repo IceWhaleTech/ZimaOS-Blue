@@ -256,6 +256,8 @@ type ProxyHandler struct {
 	// Warm path — accessed conditionally
 	failover        *FailoverHandler   // Failover handler
 	prunerMw        *pruner.Middleware // Context pruner middleware (optional)
+	prunerFactory   func() *pruner.Middleware // Lazy factory for pruner middleware
+	prunerOnce      sync.Once          // Ensures pruner is created only once
 	modelRouter     *ModelRouter       // Model family routing + background downgrade
 	ruleEngine      *RuleEngine        // Condition-based tier routing
 	tierResolver    *TierResolver      // Dynamic model tier classification
@@ -295,6 +297,26 @@ func (ph *ProxyHandler) SetProviderPool(pool *providerpool.Pool) {
 // SetPruner sets the context pruner middleware for the proxy handler.
 func (ph *ProxyHandler) SetPruner(mw *pruner.Middleware) {
 	ph.prunerMw = mw
+	ph.prunerOnce.Do(func() {}) // mark as initialized so factory won't run
+}
+
+// SetPrunerFactory sets a lazy factory that creates the pruner middleware on first use.
+// The factory is called at most once, on the first request that needs pruning.
+func (ph *ProxyHandler) SetPrunerFactory(factory func() *pruner.Middleware) {
+	ph.prunerFactory = factory
+}
+
+// ensurePruner lazily initializes the pruner middleware via factory if not yet created.
+func (ph *ProxyHandler) ensurePruner() *pruner.Middleware {
+	if ph.prunerMw != nil {
+		return ph.prunerMw
+	}
+	if ph.prunerFactory != nil {
+		ph.prunerOnce.Do(func() {
+			ph.prunerMw = ph.prunerFactory()
+		})
+	}
+	return ph.prunerMw
 }
 
 // OAuthTokenProvider provides OAuth access tokens for providers.
@@ -570,10 +592,10 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body.Close()
 
 	// Apply context pruner to reduce token usage (if enabled)
-	if ph.prunerMw != nil && ph.prunerMw.Enabled() {
+	if mw := ph.ensurePruner(); mw != nil && mw.Enabled() {
 		// Read prune stats slot from context (set by chat handler before bridge call).
 		// If present, the middleware populates it with per-request stats.
-		if pruned, err := ph.prunerMw.ProcessRequest(r.Context(), bodyBytes); err == nil {
+		if pruned, err := mw.ProcessRequest(r.Context(), bodyBytes); err == nil {
 			bodyBytes = pruned
 		}
 	}

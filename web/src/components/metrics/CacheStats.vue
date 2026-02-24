@@ -19,9 +19,7 @@ const hitRate = computed(() => {
 const tokensSaved = computed(() => prunerStats.value?.stats?.tokens_saved ?? 0)
 
 function formatTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
+  return n.toLocaleString()
 }
 
 async function fetchStats() {
@@ -120,7 +118,7 @@ defineExpose({ refresh: fetchStats })
         </div>
       </div>
       <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-        <span>{{ t('cache.prunerCompression') }}: {{ prunerStats?.stats ? Math.round((1 - prunerStats.stats.avg_compression_rate) * 100) + '%' : '-' }}</span>
+        <span>{{ t('cache.prunerCompression') }}: {{ prunerStats?.stats?.pruned_requests ? Math.round((1 - prunerStats.stats.avg_compression_rate) * 100) + '%' : '-' }}</span>
       </div>
     </div>
 

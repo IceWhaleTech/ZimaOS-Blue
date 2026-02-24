@@ -17,7 +17,8 @@ import (
 // MarkdownMemoryStore provides Markdown-based memory storage for agent queries.
 // This allows agents to search and read memories stored as human-readable Markdown files.
 type MarkdownMemoryStore struct {
-	baseDir string
+	baseDir     string
+	longTermDir string // directory where MEMORY.md lives; defaults to baseDir
 }
 
 // MarkdownSearchResult represents a search result from Markdown files.
@@ -33,7 +34,12 @@ type MarkdownSearchResult struct {
 
 // NewMarkdownMemoryStore creates a new Markdown memory store.
 func NewMarkdownMemoryStore(baseDir string) *MarkdownMemoryStore {
-	return &MarkdownMemoryStore{baseDir: baseDir}
+	return &MarkdownMemoryStore{baseDir: baseDir, longTermDir: baseDir}
+}
+
+// SetLongTermDir sets the directory where MEMORY.md lives (e.g. workspace root).
+func (s *MarkdownMemoryStore) SetLongTermDir(dir string) {
+	s.longTermDir = dir
 }
 
 // Search searches all Markdown files for the given query.
@@ -300,7 +306,7 @@ type DailyEntry struct {
 
 // GetLongTermMemory reads the MEMORY.md file.
 func (s *MarkdownMemoryStore) GetLongTermMemory(ctx context.Context) (string, error) {
-	path := filepath.Join(s.baseDir, "MEMORY.md")
+	path := filepath.Join(s.longTermDir, "MEMORY.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

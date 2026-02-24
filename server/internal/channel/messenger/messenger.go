@@ -273,18 +273,71 @@ func (c *Channel) enqueueMessage(msg channel.Message) {
 	}
 }
 
-// Send sends a text message via the Messenger Send API.
+// Send sends a message via the Messenger Send API, including media attachments.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
-	payload := sendRequest{
-		Recipient: sendUser{ID: msg.ChatID},
-		Message:   sendMessage{Text: msg.Content},
+	// Send media attachments first.
+	for i, att := range msg.Attachments {
+		if att.URL == "" {
+			continue
+		}
+		mediaType := mapOutgoingAttachmentType(att.Type)
+		payload := sendRequest{
+			Recipient: sendUser{ID: msg.ChatID},
+			Message: sendMessage{
+				Attachment: &sendAttachment{
+					Type: mediaType,
+					Payload: sendAttachmentPayload{
+						URL:        att.URL,
+						IsReusable: true,
+					},
+				},
+			},
+		}
+		if err := c.callSendAPI(ctx, payload); err != nil {
+			c.logger.Warn("failed to send media via Messenger",
+				zap.String("type", mediaType), zap.Error(err))
+			// Fall back to text with URL.
+			fallback := att.URL
+			if i == 0 && msg.Content != "" {
+				fallback = msg.Content + "\n" + att.URL
+			}
+			_ = c.callSendAPI(ctx, sendRequest{
+				Recipient: sendUser{ID: msg.ChatID},
+				Message:   sendMessage{Text: fallback},
+			})
+		}
+		if i == 0 {
+			msg.Content = "" // Caption sent with first attachment.
+		}
 	}
-	if err := c.callSendAPI(ctx, payload); err != nil {
-		c.setError(err.Error())
-		return err
+
+	// Send remaining text.
+	if msg.Content != "" {
+		payload := sendRequest{
+			Recipient: sendUser{ID: msg.ChatID},
+			Message:   sendMessage{Text: msg.Content},
+		}
+		if err := c.callSendAPI(ctx, payload); err != nil {
+			c.setError(err.Error())
+			return err
+		}
 	}
+
 	c.msgsSent.Add(1)
 	return nil
+}
+
+func mapOutgoingAttachmentType(t channel.MessageType) string {
+	switch t {
+	case channel.MessageTypeImage:
+		return "image"
+	case channel.MessageTypeVideo:
+		return "video"
+	case channel.MessageTypeAudio:
+		return "audio"
+	default:
+		return "file"
+	}
 }
 
 // SendMedia sends a media attachment (image, audio, video, file) via the Messenger Send API.
@@ -307,6 +360,11 @@ func (c *Channel) SendMedia(ctx context.Context, recipientID string, mediaType s
 	}
 	c.msgsSent.Add(1)
 	return nil
+}
+
+// SendTyping sends a typing indicator to the given Messenger chat.
+func (c *Channel) SendTyping(ctx context.Context, chatID string) error {
+	return c.sendAction(ctx, chatID, "typing_on")
 }
 
 // SendStreaming sends a streaming response with typing indicators and periodic chunked messages.

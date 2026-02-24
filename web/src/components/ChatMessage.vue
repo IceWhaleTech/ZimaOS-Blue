@@ -59,6 +59,24 @@ const mediaTaskId = computed(() => {
 // Check if user message has attachments
 const hasAttachments = computed(() => isUser.value && props.message.attachments && props.message.attachments.length > 0)
 
+// Extract inline markdown images from user message content (e.g. ![image](/api/media/...))
+const inlineImages = computed(() => {
+  if (!isUser.value) return []
+  const re = /!\[([^\]]*)\]\(([^)]+)\)/g
+  const imgs: { alt: string; url: string }[] = []
+  let match
+  while ((match = re.exec(props.message.content)) !== null) {
+    imgs.push({ alt: match[1] || 'image', url: match[2] })
+  }
+  return imgs
+})
+
+// User message text with inline image markdown stripped
+const userTextContent = computed(() => {
+  if (!isUser.value || inlineImages.value.length === 0) return props.message.content
+  return props.message.content.replace(/\n*!\[[^\]]*\]\([^)]+\)/g, '').trim()
+})
+
 // Copy button state
 const copyState = ref<'idle' | 'copied'>('idle')
 
@@ -291,10 +309,7 @@ function handleCopyClick(event: Event) {
 
 function formatTokens(num: number | undefined): string {
   if (num === undefined || num === null || num === 0) return ''
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'k'
-  }
-  return String(Math.round(num))
+  return num.toLocaleString()
 }
 
 function formatTTFT(ms: number | undefined): string {
@@ -721,6 +736,11 @@ function isPlaceholderContent(content: string): boolean {
   return false
 }
 
+// Format internal tool name (e.g. "web_search" → "Web Search")
+function formatToolName(name: string): string {
+  return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
 // Get file icon based on extension
 function getFileIcon(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
@@ -940,8 +960,18 @@ async function handleMobileDelete() {
                 </div>
               </div>
             </div>
+            <!-- Inline images extracted from message content (e.g. media generation reference images) -->
+            <div v-if="inlineImages.length > 0" class="mb-2 flex flex-wrap gap-2">
+              <img
+                v-for="(img, idx) in inlineImages"
+                :key="idx"
+                :src="img.url"
+                :alt="img.alt"
+                class="rounded-lg max-w-[200px] max-h-[150px] object-cover border border-gray-300 dark:border-white/20"
+              />
+            </div>
             <!-- Text content (hide placeholder patterns like [filename.txt], [Attachments:...]) -->
-            <span v-if="message.content && !isPlaceholderContent(message.content)">{{ message.content }}</span>
+            <span v-if="userTextContent && !isPlaceholderContent(userTextContent)">{{ userTextContent }}</span>
             <!-- Show continue icon when content is [CONTINUE] and no attachments -->
             <span v-else-if="message.content === '[CONTINUE]' && (!message.attachments || message.attachments.length === 0)" class="flex items-center gap-1 text-gray-500 dark:text-gray-400">
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1032,7 +1062,7 @@ async function handleMobileDelete() {
 
           <!-- Media task card (replaces normal assistant content) -->
           <div v-if="hasMediaTask" class="assistant-message chat-assistant-bubble px-4 py-3 max-w-none">
-            <MediaPlaceholder :task-id="mediaTaskId" @retry="$emit('cardAction', message.conversation_id, message.id, 'media', 'retry')" />
+            <MediaPlaceholder :task-id="mediaTaskId" />
           </div>
 
           <!-- Render with typeless cards embedded in single bubble -->
@@ -1071,6 +1101,9 @@ async function handleMobileDelete() {
                 </span>
                 <span class="tool-label">{{ t('tools.callingProgress') }}</span>
                 <span class="tool-timer tabular-nums">{{ toolElapsedSeconds }}s</span>
+              </div>
+              <div v-if="chatStore.toolExecutingNames.length > 0" class="tool-names">
+                <span v-for="name in chatStore.toolExecutingNames" :key="name" class="tool-name-tag">{{ formatToolName(name) }}</span>
               </div>
             </div>
             <!-- Waiting timer card (>3s with no content) -->
@@ -1585,6 +1618,31 @@ async function handleMobileDelete() {
 @keyframes tool-dot-pulse {
   0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
   40% { opacity: 1; transform: scale(1); }
+}
+
+.tool-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.375rem;
+}
+
+.tool-name-tag {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.06);
+  color: #6366f1;
+  border: 1px solid rgba(99, 102, 241, 0.12);
+}
+
+:root.dark .tool-name-tag,
+[data-theme="dark"] .tool-name-tag {
+  background: rgba(129, 140, 248, 0.08);
+  color: #a5b4fc;
+  border-color: rgba(129, 140, 248, 0.15);
 }
 
 /* Waiting timer pill — appears after 3s of no response */

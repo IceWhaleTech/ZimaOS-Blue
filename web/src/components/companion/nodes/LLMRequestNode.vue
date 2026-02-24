@@ -38,8 +38,7 @@ function formatDuration(ms?: number): string {
 
 function formatTokens(tokens?: number): string {
   if (!tokens) return '0'
-  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`
-  return tokens.toString()
+  return tokens.toLocaleString()
 }
 </script>
 

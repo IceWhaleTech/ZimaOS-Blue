@@ -27,7 +27,7 @@ const switchingBackend = ref(false)
 const failoverConfig = ref<FailoverConfig | null>(null)
 const maskingStats = ref<MaskingStats | null>(null)
 const togglingMasking = ref(false)
-const smartToolSelection = ref(true)
+const smartToolSelection = ref(false)
 const togglingSmartTools = ref(false)
 const toolStats = ref<ToolSelectorStats | null>(null)
 const promptCacheEnabled = ref(false)
@@ -66,7 +66,7 @@ async function fetchAll() {
     if (rulesRes) routingRules.value = rulesRes.data.rules
     if (failoverRes) failoverConfig.value = failoverRes.data
     if (maskingRes) maskingStats.value = maskingRes.data
-    if (settingsRes) smartToolSelection.value = settingsRes.data.smart_tool_selection !== false
+    if (settingsRes) smartToolSelection.value = settingsRes.data.smart_tool_selection === true
     if (toolStatsRes) toolStats.value = toolStatsRes.data
     if (promptCacheRes) promptCacheEnabled.value = promptCacheRes.data.enabled
   } finally {
@@ -200,9 +200,7 @@ async function togglePromptCache() {
 }
 
 function formatTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
+  return n.toLocaleString()
 }
 
 function formatBytes(bytes: number): string {
@@ -297,8 +295,8 @@ onUnmounted(stopModelPoll)
         </div>
       </div>
 
-      <!-- Context Pruner Section -->
-      <div class="glass-card p-4">
+      <!-- Context Pruner Section (hidden — default off, not exposed in settings) -->
+      <div v-if="false" class="glass-card p-4">
         <!-- Header: title + toggle -->
         <div class="flex items-start justify-between gap-3">
           <div class="flex-1 min-w-0">
@@ -333,7 +331,7 @@ onUnmounted(stopModelPoll)
             <div class="text-center py-1">
               <p class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">{{ t('cache.prunerCompression') }}</p>
               <p class="text-base font-semibold text-gray-900 dark:text-white mt-0.5">
-                {{ prunerStats?.stats ? Math.round((1 - prunerStats.stats.avg_compression_rate) * 100) + '%' : '-' }}
+                {{ prunerStats?.stats?.pruned_requests ? Math.round((1 - prunerStats.stats.avg_compression_rate) * 100) + '%' : '-' }}
               </p>
             </div>
           </div>
@@ -554,8 +552,8 @@ onUnmounted(stopModelPoll)
         </div>
       </div>
 
-      <!-- Smart Tool Selection Section -->
-      <div class="glass-card p-4">
+      <!-- Smart Tool Selection Section (hidden — default off, not exposed in settings) -->
+      <div v-if="false" class="glass-card p-4">
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.smartToolsTitle') }}</h3>

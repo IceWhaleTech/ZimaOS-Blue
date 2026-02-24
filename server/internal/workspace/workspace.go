@@ -8,11 +8,13 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
+
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -56,19 +58,106 @@ func (m *Manager) SetLocale(locale string) {
 	m.locale = locale
 }
 
-// detectLocale reads the LANG environment variable and extracts the language code.
+// detectLocale detects the system locale.
+// Checks LANG/LC_ALL/LANGUAGE env vars first, then falls back to
+// OS-specific detection (macOS defaults, Windows registry).
+// Returns BCP-47 tag like "zh-CN", "ja-JP", "en-US", falling back to "en".
 func detectLocale() string {
+	// 1. Standard env vars (Linux, explicit overrides)
 	for _, env := range []string{"LANG", "LC_ALL", "LANGUAGE"} {
 		if v := os.Getenv(env); v != "" {
-			// e.g. "zh_CN.UTF-8" → "zh"
+			// e.g. "zh_CN.UTF-8" → "zh-CN"
 			v = strings.SplitN(v, ".", 2)[0] // strip encoding
 			v = strings.ReplaceAll(v, "_", "-")
 			if len(v) >= 2 {
-				return v[:2]
+				return v
 			}
 		}
 	}
+
+	// 2. OS-specific fallback
+	switch runtime.GOOS {
+	case "darwin":
+		if loc := darwinLocale(); loc != "" {
+			return loc
+		}
+	case "windows":
+		if loc := windowsLocale(); loc != "" {
+			return loc
+		}
+	}
+
 	return "en"
+}
+
+// darwinLocale reads macOS system language from defaults.
+// Tries AppleLocale first ("zh_CN" → "zh-CN"), then AppleLanguages ("zh-Hans-CN" → "zh-CN").
+func darwinLocale() string {
+	// AppleLocale: "zh_CN", "en_US", "ja_JP"
+	if out, err := exec.Command("defaults", "read", "NSGlobalDomain", "AppleLocale").Output(); err == nil {
+		v := strings.TrimSpace(string(out))
+		v = strings.ReplaceAll(v, "_", "-")
+		if len(v) >= 2 {
+			return v
+		}
+	}
+
+	// AppleLanguages: plist array, first entry is the preferred language
+	// e.g. "zh-Hans-CN", "en-GB", "ja-JP"
+	if out, err := exec.Command("defaults", "read", "NSGlobalDomain", "AppleLanguages").Output(); err == nil {
+		for _, line := range strings.Split(string(out), "\n") {
+			line = strings.TrimSpace(line)
+			line = strings.Trim(line, `",`)
+			if len(line) < 2 || line == "(" || line == ")" {
+				continue
+			}
+			return normalizeAppleLanguage(line)
+		}
+	}
+
+	return ""
+}
+
+// windowsLocale reads the Windows display language via PowerShell.
+// Falls back to Get-WinSystemLocale if Get-WinUserLanguageList is unavailable.
+func windowsLocale() string {
+	// Try user language list first (most accurate for UI language)
+	if out, err := exec.Command("powershell", "-NoProfile", "-Command",
+		"(Get-WinUserLanguageList)[0].LanguageTag").Output(); err == nil {
+		v := strings.TrimSpace(string(out))
+		if len(v) >= 2 {
+			return v
+		}
+	}
+
+	// Fallback: system locale
+	if out, err := exec.Command("powershell", "-NoProfile", "-Command",
+		"(Get-WinSystemLocale).Name").Output(); err == nil {
+		v := strings.TrimSpace(string(out))
+		v = strings.ReplaceAll(v, "_", "-")
+		if len(v) >= 2 {
+			return v
+		}
+	}
+
+	return ""
+}
+
+// normalizeAppleLanguage converts Apple language tags to BCP-47 locale codes.
+// "zh-Hans-CN" → "zh-CN", "zh-Hans" → "zh", "en-GB" → "en-GB", "ja" → "ja".
+func normalizeAppleLanguage(tag string) string {
+	parts := strings.Split(tag, "-")
+	if len(parts) == 1 {
+		return parts[0] // "ja" → "ja"
+	}
+	// If middle part is a script tag (4 letters, e.g. "Hans", "Hant"), skip it
+	if len(parts) == 3 && len(parts[1]) == 4 {
+		return parts[0] + "-" + parts[2] // "zh-Hans-CN" → "zh-CN"
+	}
+	if len(parts) == 2 && len(parts[1]) == 4 {
+		return parts[0] // "zh-Hans" → "zh"
+	}
+	return tag // "en-GB" → "en-GB"
 }
 
 // Dir returns the workspace directory path.
@@ -86,7 +175,7 @@ func (m *Manager) EnsureWorkspace() error {
 		return fmt.Errorf("workspace: mkdir %s: %w", m.dir, err)
 	}
 
-	// Ensure memory/ subdirectory
+	// Ensure memory/ subdirectory for daily logs
 	memDir := filepath.Join(m.dir, "memory")
 	if err := os.MkdirAll(memDir, 0o755); err != nil {
 		return fmt.Errorf("workspace: mkdir %s: %w", memDir, err)
@@ -185,11 +274,8 @@ func (m *Manager) LoadContextFiles() map[string]string {
 }
 
 // resolveFilePath returns the on-disk path for a workspace file.
-// MEMORY.md lives under memory/ subdirectory; all others live in workspace root.
+// All workspace files live in the workspace root directory.
 func (m *Manager) resolveFilePath(name string) string {
-	if name == FileMEMORY {
-		return filepath.Join(m.dir, "memory", FileMEMORY)
-	}
 	return filepath.Join(m.dir, name)
 }
 
@@ -366,7 +452,8 @@ func isDefaultUserTemplate(path string) bool {
 		return true // File doesn't exist, treat as default
 	}
 	trimmed := strings.TrimSpace(string(content))
-	for _, ts := range localizedTemplates {
+	for _, locale := range availableLocales() {
+		ts := getTemplates(locale)
 		if trimmed == strings.TrimSpace(ts.user) {
 			return true
 		}

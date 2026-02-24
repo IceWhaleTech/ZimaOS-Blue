@@ -67,6 +67,7 @@ export interface Model {
   output_price?: number
   cache_price?: number
   price_per_request?: number
+  pricing_unit?: string // "image", "second", "video" for media models
   context_window?: number
   max_output?: number
   description?: string

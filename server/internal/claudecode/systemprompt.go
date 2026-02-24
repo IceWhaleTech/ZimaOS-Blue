@@ -3,9 +3,7 @@ package claudecode
 import (
 	"context"
 	"fmt"
-	"html"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -42,7 +40,7 @@ type SystemPromptBuilder struct {
 	config           *ClaudeCodeConfig
 	toolRegistry     *tools.Registry
 	workspace        *workspace.Manager
-	skillsDir        string // directory containing {name}/SKILL.md files
+
 	maxContextTokens int
 	lastContextStats atomic.Pointer[ContextStats]
 	lastUserMessage  string // set before Build() for scenario-based enhancement
@@ -61,12 +59,6 @@ func (b *SystemPromptBuilder) SetToolRegistry(registry *tools.Registry) {
 // SetWorkspace sets the workspace manager for injecting workspace files into the prompt.
 func (b *SystemPromptBuilder) SetWorkspace(mgr *workspace.Manager) {
 	b.workspace = mgr
-}
-
-// SetSkillsDir sets the directory containing bundled skills ({name}/SKILL.md).
-// The LLM reads individual SKILL.md files on demand via the file_read tool.
-func (b *SystemPromptBuilder) SetSkillsDir(dir string) {
-	b.skillsDir = dir
 }
 
 // SetMaxContextTokens sets the token budget for workspace context files.
@@ -112,18 +104,12 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 		parts = append(parts, b.buildWorkspaceInfo())
 	}
 
-	// Add available tools information
+	// Add available tools information (file_read, file_write, web_search, memory)
 	if b.toolRegistry != nil {
 		toolsInfo := b.buildToolsInfo()
 		if toolsInfo != "" {
 			parts = append(parts, toolsInfo)
 		}
-	}
-
-	// Add available skills (progressive disclosure — only name+description in prompt,
-	// LLM reads full SKILL.md on demand via file_read tool)
-	if skillsSection := b.buildSkillsSection(); skillsSection != "" {
-		parts = append(parts, skillsSection)
 	}
 
 	// Add workspace context files (SOUL.md, USER.md, IDENTITY.md, etc.)
@@ -149,18 +135,13 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 }
 
 // toolUsageHints provides intent-based descriptions that help the LLM choose
-// the right tool. These are language-agnostic — they describe *intent*, not
-// keywords, so they work across all languages.
+// the right tool. Only covers tools registered in the tool registry (not skills).
 var toolUsageHints = map[string]string{
-	"web_search":     "Search the web for factual information, news, or general knowledge. Use when the user wants to *find information* — not evaluate a website's UI or interact with a page.",
-	"memory":         "Search and retrieve previously stored memories from the vector database. Use action='search' to find relevant memories by query. Use action='remember' to store facts into the searchable database (but note: for cross-session persistence visible in every conversation, prefer workspace_file to write MEMORY.md instead).",
-	"workspace_file": "Read or write workspace files that persist across conversations (MEMORY.md, USER.md, etc.). When the user says \"remember this\", \"don't forget\", \"remind me next time\", or \"note this down\" — use this tool: first action='read' filename='MEMORY.md', then action='write' filename='MEMORY.md' with the new information appended. This is the PRIMARY tool for cross-session memory because MEMORY.md is loaded into the system prompt every conversation.",
+	"web_search":     "Search the web for factual information, news, or general knowledge. Use when the user wants to *find information* — NOT to evaluate a website's UI/UX quality (use ui_reviewer skill for that).",
+	"memory":         "Unified memory tool. Use action='search' to find relevant memories by query. Use action='remember' to store important facts, preferences, and notes the user asks you to remember. Use action='get' to retrieve a specific memory by ID. Use action='forget' to delete a memory. Use action='stats' for memory system statistics.",
 }
 
 // buildToolsInfo builds lightweight tool guidance for the system prompt.
-// Full tool definitions (name, description, parameters) are already sent via
-// the API tools array, so we only emit usage hints and routing rules here to
-// save prompt tokens.
 func (b *SystemPromptBuilder) buildToolsInfo() string {
 	if b.toolRegistry == nil {
 		return ""
@@ -175,8 +156,6 @@ func (b *SystemPromptBuilder) buildToolsInfo() string {
 	lines = append(lines, "# Tool Guidance")
 	lines = append(lines, "")
 
-	// Only emit hints for tools that have them — skip tools whose API
-	// definition is self-explanatory (calculator, system_info, current_time, etc.)
 	hasHints := false
 	for _, def := range defs {
 		if hint, ok := toolUsageHints[def.Name]; ok {
@@ -188,99 +167,13 @@ func (b *SystemPromptBuilder) buildToolsInfo() string {
 		lines = append(lines, "")
 	}
 
-	// Tool routing rules — higher priority overrides lower
 	lines = append(lines, "## Tool Routing Rules")
 	lines = append(lines, "When a user message could match multiple tools, use these priority rules:")
 	lines = append(lines, "- General factual query without a specific URL → web_search")
-	lines = append(lines, "- \"Remember this / don't forget / remind me next time\" (cross-session memory) → workspace_file: read MEMORY.md, then write back with new info appended")
+	lines = append(lines, "- \"Remember this / don't forget / remind me next time\" → memory: action='remember' with the content to store")
 	lines = append(lines, "")
 
 	return strings.Join(lines, "\n")
-}
-
-// buildSkillsSection scans the skills directory for SKILL.md files and builds
-// a clawdbot-style progressive disclosure section. Only name + description are
-// included in the prompt; the LLM reads the full SKILL.md on demand.
-func (b *SystemPromptBuilder) buildSkillsSection() string {
-	if b.skillsDir == "" {
-		return ""
-	}
-	entries, err := os.ReadDir(b.skillsDir)
-	if err != nil {
-		return ""
-	}
-
-	type skillInfo struct {
-		name, description, location string
-	}
-	var skills []skillInfo
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		skillPath := filepath.Join(b.skillsDir, entry.Name(), "SKILL.md")
-		data, err := os.ReadFile(skillPath)
-		if err != nil {
-			continue
-		}
-		desc := parseSkillDescription(data)
-		if desc == "" {
-			desc = entry.Name()
-		}
-		skills = append(skills, skillInfo{
-			name:        entry.Name(),
-			description: desc,
-			location:    skillPath,
-		})
-	}
-
-	if len(skills) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("## Skills (mandatory)\n")
-	sb.WriteString("Before replying: scan <available_skills> <description> entries.\n")
-	sb.WriteString("- If exactly one skill clearly applies: read its SKILL.md at <location> with `file_read`, then follow it.\n")
-	sb.WriteString("- If multiple could apply: choose the most specific one, then read/follow it.\n")
-	sb.WriteString("- If none clearly apply: do not read any SKILL.md.\n")
-	sb.WriteString("Constraints: never read more than one skill up front; only read after selecting.\n\n")
-	sb.WriteString("<available_skills>\n")
-	for _, s := range skills {
-		sb.WriteString("  <skill>\n")
-		sb.WriteString("    <name>" + html.EscapeString(s.name) + "</name>\n")
-		sb.WriteString("    <description>" + html.EscapeString(s.description) + "</description>\n")
-		sb.WriteString("    <location>" + html.EscapeString(s.location) + "</location>\n")
-		sb.WriteString("  </skill>\n")
-	}
-	sb.WriteString("</available_skills>")
-	return sb.String()
-}
-
-// parseSkillDescription extracts the "description:" value from SKILL.md YAML frontmatter.
-func parseSkillDescription(data []byte) string {
-	s := string(data)
-	if !strings.HasPrefix(s, "---") {
-		return ""
-	}
-	end := strings.Index(s[3:], "---")
-	if end < 0 {
-		return ""
-	}
-	fm := s[3 : 3+end]
-	for _, line := range strings.Split(fm, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "description:") {
-			desc := strings.TrimPrefix(line, "description:")
-			desc = strings.TrimSpace(desc)
-			if len(desc) >= 2 && (desc[0] == '"' || desc[0] == '\'') {
-				desc = desc[1 : len(desc)-1]
-			}
-			return desc
-		}
-	}
-	return ""
 }
 
 // buildRuntimeInfo builds runtime information for the system prompt.
@@ -471,6 +364,11 @@ func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string
 	}
 	entries := make([]fileEntry, 0, len(contextFiles))
 	for name, content := range contextFiles {
+		if content == "" {
+			continue
+		}
+		// Compact markdown: strip blank lines, HTML comments, empty sections
+		content = pruner.CompactMarkdown(content)
 		if content == "" {
 			continue
 		}

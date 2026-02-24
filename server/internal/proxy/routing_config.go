@@ -81,7 +81,7 @@ func (c *RoutingConfig) ToRuleEngine(tierResolver ...*TierResolver) *RuleEngine 
 // model list and pricing.
 func DefaultRoutingConfig() *RoutingConfig {
 	return &RoutingConfig{
-		Enabled: false,
+		Enabled: true,
 		Rules: []RoutingRule{
 			{
 				Name:      "small-body-economy",

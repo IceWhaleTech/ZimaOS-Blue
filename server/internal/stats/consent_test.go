@@ -2,12 +2,15 @@ package stats
 
 import (
 	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 )
 
 func TestConsentManager_SetConsent(t *testing.T) {
 	tmpDir := t.TempDir()
+	kv := kvstore.NewMemoryStore()
 	collector := NewStatisticsCollector(tmpDir, false)
-	manager := NewConsentManager(tmpDir, collector)
+	manager := NewConsentManager(kv, collector)
 
 	// Initially not consented
 	if manager.IsConsented() {
@@ -46,8 +49,8 @@ func TestConsentManager_SetConsent(t *testing.T) {
 }
 
 func TestConsentManager_GetStatus(t *testing.T) {
-	tmpDir := t.TempDir()
-	manager := NewConsentManager(tmpDir, nil)
+	kv := kvstore.NewMemoryStore()
+	manager := NewConsentManager(kv, nil)
 
 	status := manager.GetStatus()
 	if status == nil {
@@ -65,8 +68,9 @@ func TestConsentManager_GetStatus(t *testing.T) {
 
 func TestConsentManager_RevokeConsent(t *testing.T) {
 	tmpDir := t.TempDir()
+	kv := kvstore.NewMemoryStore()
 	collector := NewStatisticsCollector(tmpDir, true)
-	manager := NewConsentManager(tmpDir, collector)
+	manager := NewConsentManager(kv, collector)
 
 	// Set consent and record some data
 	manager.SetConsent(true)
@@ -98,14 +102,14 @@ func TestConsentManager_RevokeConsent(t *testing.T) {
 }
 
 func TestConsentManager_Persistence(t *testing.T) {
-	tmpDir := t.TempDir()
+	kv := kvstore.NewMemoryStore()
 
 	// Create manager and set consent
-	manager1 := NewConsentManager(tmpDir, nil)
+	manager1 := NewConsentManager(kv, nil)
 	manager1.SetConsent(true)
 
-	// Create new manager with same path
-	manager2 := NewConsentManager(tmpDir, nil)
+	// Create new manager with same kvstore
+	manager2 := NewConsentManager(kv, nil)
 
 	// Should load persisted consent
 	if !manager2.IsConsented() {

@@ -259,6 +259,11 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	}
 	c.mu.RUnlock()
 
+	// Route attachments to the appropriate send method.
+	if len(msg.Attachments) > 0 {
+		return c.SendWithAttachment(ctx, msg)
+	}
+
 	// Convert chat ID to JID format
 	jid := toJID(msg.ChatID)
 

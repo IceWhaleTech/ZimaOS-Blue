@@ -42,7 +42,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/SrCYvumF"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://discord.gg/b3AgFDxe9v"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
   <a href="https://www.facebook.com/zimaboard/"><img src="../../docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
   <a href="https://x.com/ZimaSpace"><img src="../../docs/assets/x.png" alt="X" height="128" /></a>&nbsp;&nbsp;
   <a href="../../docs/assets/wechat_qrcode.png"><img src="../../docs/assets/wechat.png" height="128"/></a>
@@ -261,7 +261,7 @@ WebSocket 音频 → STT (Whisper) → LLM 处理 → TTS (eSpeak/Edge) → WebS
 ## 社区与支持
 
 - **问题反馈**：[请在此提交 Bug 和功能请求](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **讨论交流**：[Discord](https://discord.gg/SrCYvumF)
+- **讨论交流**：[Discord](https://discord.gg/b3AgFDxe9v)
 - **关注我们**：[GitHub](https://github.com/IceWhaleTech)
 
 ## 许可证

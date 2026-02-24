@@ -628,32 +628,94 @@ func (c *Channel) Stop(ctx context.Context) error {
 
 // Send sends a message via QQ Bot HTTP API.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
+	// Send attachments first, then text.
+	for _, att := range msg.Attachments {
+		if err := c.sendAttachment(ctx, msg.ChatID, msg.ReplyToID, msg.Content, att); err != nil {
+			c.logger.Warn("failed to send attachment, falling back to text",
+				zap.String("channel", "qq"), zap.String("type", string(att.Type)), zap.Error(err))
+			// Fall back to URL text
+			fallback := msg.Content
+			if att.URL != "" {
+				fallback += "\n" + att.URL
+			}
+			if err2 := c.sendText(ctx, msg.ChatID, msg.ReplyToID, fallback); err2 != nil {
+				return fmt.Errorf("qq send fallback: %w", err2)
+			}
+		}
+		// Caption already sent with first attachment; clear for subsequent.
+		msg.Content = ""
+	}
+
+	// Send remaining text if no attachments or text wasn't consumed.
+	if len(msg.Attachments) == 0 && msg.Content != "" {
+		return c.sendText(ctx, msg.ChatID, msg.ReplyToID, msg.Content)
+	}
+	return nil
+}
+
+// sendText sends a plain text message.
+func (c *Channel) sendText(ctx context.Context, chatID, replyToID, content string) error {
 	token, err := c.getAccessToken(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get access token: %w", err)
 	}
 
-	payload := map[string]interface{}{
-		"content": msg.Content,
-	}
-	if msg.ReplyToID != "" {
-		payload["msg_id"] = msg.ReplyToID
+	payload := map[string]interface{}{"content": content}
+	if replyToID != "" {
+		payload["msg_id"] = replyToID
 	}
 
-	// Handle image attachment via file_image field.
-	for _, att := range msg.Attachments {
-		if att.Type == channel.MessageTypeImage && att.URL != "" {
+	return c.postMessage(ctx, token, chatID, payload)
+}
+
+// sendAttachment sends a media attachment via QQ Bot API.
+// QQ guild channel API supports file_image (URL) for images.
+// For other types, we include the URL as text.
+func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID, caption string, att channel.Attachment) error {
+	token, err := c.getAccessToken(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	payload := map[string]interface{}{}
+	if caption != "" {
+		payload["content"] = caption
+	}
+	if replyToID != "" {
+		payload["msg_id"] = replyToID
+	}
+
+	switch att.Type {
+	case channel.MessageTypeImage:
+		if att.URL != "" {
 			payload["file_image"] = att.URL
-			break
+		} else {
+			return fmt.Errorf("image attachment has no URL")
 		}
+	default:
+		// Video/audio/file: QQ guild API doesn't support direct upload.
+		// Send URL as text content.
+		text := caption
+		if att.URL != "" {
+			if text != "" {
+				text += "\n"
+			}
+			text += att.URL
+		}
+		payload["content"] = text
 	}
 
+	return c.postMessage(ctx, token, chatID, payload)
+}
+
+// postMessage posts a JSON payload to the QQ channel messages endpoint.
+func (c *Channel) postMessage(ctx context.Context, token, chatID string, payload map[string]interface{}) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	url := fmt.Sprintf("%s"+sendMessagePath, c.apiBase(), msg.ChatID)
+	url := fmt.Sprintf("%s"+sendMessagePath, c.apiBase(), chatID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

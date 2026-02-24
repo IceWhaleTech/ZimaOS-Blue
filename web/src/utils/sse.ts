@@ -8,7 +8,7 @@ export interface SSEClientOptions {
   onBlocked?: (message: string, threatLevel: string) => void
   onTrialExhausted?: (message: string) => void
   onContextTrimmed?: (info: { type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number }) => void
-  onToolExecuting?: (toolCount: number) => void
+  onToolExecuting?: (toolCount: number, toolNames?: string[]) => void
   /** Called when the stream was interrupted mid-content by a network error.
    *  The store should auto-recover (fetch persisted content + continue). */
   onNetworkInterrupt?: () => void
@@ -151,8 +151,10 @@ export class SSEClient {
             // Stream closed without [DONE] - check if we received any data
             if (!receivedData) {
               options.onError?.(new Error('STREAM_EMPTY'))
-            } else if (finalChunkData) {
-              // Stream closed after done:true but before [DONE] — still complete
+            } else {
+              // Stream closed — treat as complete even if done:true chunk was missing.
+              // This handles cases where the server closes the connection after
+              // persisting the message but before sending [DONE].
               options.onComplete?.(finalChunkData)
             }
             break
@@ -180,6 +182,9 @@ export class SSEClient {
 
               try {
                 const chunk: StreamChunk = JSON.parse(data)
+                // Normalize missing fields to defaults
+                if (chunk.delta === undefined || chunk.delta === null) chunk.delta = ''
+                if (chunk.done === undefined || chunk.done === null) chunk.done = false
                 // Check for context pruning event (sent on first content chunk)
                 if (chunk.pruned) {
                   options.onContextTrimmed?.({
@@ -207,7 +212,7 @@ export class SSEClient {
                 }
                 // Check for tool execution event
                 if (chunk.tool_executing) {
-                  options.onToolExecuting?.(chunk.tool_calls || 0)
+                  options.onToolExecuting?.(chunk.tool_calls || 0, chunk.tool_names)
                   continue
                 }
                 // Mark that we received actual content

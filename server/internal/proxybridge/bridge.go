@@ -138,7 +138,10 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	ctx, cancel := ensureTimeout(ctx)
 	defer cancel()
 
-	// Inject ResolvedRoute into context so the proxy handler can populate it
+	// Check if caller provided a ResolvedRoute to populate
+	callerRoute := proxy.GetResolvedRouteFromContext(ctx)
+
+	// Inject our own ResolvedRoute into context so the proxy handler can populate it
 	var resolved proxy.ResolvedRoute
 	ctx = proxy.WithResolvedRoute(ctx, &resolved)
 
@@ -207,7 +210,7 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 			chunk.Model = resolved.Model
 		}
 		if chunkCount == 1 {
-			slog.Debug("[bridge] first chunk metadata",
+			slog.Info("[bridge] first chunk metadata",
 				"chunk.Provider", chunk.Provider,
 				"chunk.Model", chunk.Model,
 				"resolved.Provider", resolved.Provider,
@@ -242,5 +245,19 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	if handlerErr != nil {
 		return handlerErr
 	}
+
+	// Propagate resolved route back to caller if they provided one
+	if callerRoute != nil {
+		if callerRoute.Provider == "" {
+			callerRoute.Provider = resolved.Provider
+		}
+		if callerRoute.ProviderID == "" {
+			callerRoute.ProviderID = resolved.ProviderID
+		}
+		if callerRoute.Model == "" {
+			callerRoute.Model = resolved.Model
+		}
+	}
+
 	return scanErr
 }

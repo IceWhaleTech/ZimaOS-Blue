@@ -23,12 +23,14 @@ func (e Event) MarshalData() []byte {
 type Broker struct {
 	mu      sync.RWMutex
 	clients map[string]map[chan Event]struct{} // userID → set of channels
+	done    chan struct{}
 }
 
 // NewBroker creates a new SSE broker.
 func NewBroker() *Broker {
 	return &Broker{
 		clients: make(map[string]map[chan Event]struct{}),
+		done:    make(chan struct{}),
 	}
 }
 
@@ -47,16 +49,22 @@ func (b *Broker) Subscribe(userID string) chan Event {
 	return ch
 }
 
-// Unsubscribe removes and closes a client channel.
+// Unsubscribe removes a client channel. Only closes the channel if it
+// hasn't already been closed by Close().
 func (b *Broker) Unsubscribe(userID string, ch chan Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if subs, ok := b.clients[userID]; ok {
-		delete(subs, ch)
-		if len(subs) == 0 {
-			delete(b.clients, userID)
-		}
+	subs, ok := b.clients[userID]
+	if !ok {
+		return // already removed (e.g., by Close)
+	}
+	if _, exists := subs[ch]; !exists {
+		return // already removed
+	}
+	delete(subs, ch)
+	if len(subs) == 0 {
+		delete(b.clients, userID)
 	}
 	close(ch)
 }
@@ -87,4 +95,24 @@ func (b *Broker) ClientCount(userID string) int {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return len(b.clients[userID])
+}
+
+// Done returns a channel that is closed when the broker is shut down.
+func (b *Broker) Done() <-chan struct{} {
+	return b.done
+}
+
+// Close signals all SSE handlers to exit and closes all client channels.
+func (b *Broker) Close() {
+	close(b.done)
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for userID, subs := range b.clients {
+		for ch := range subs {
+			close(ch)
+		}
+		delete(b.clients, userID)
+	}
 }

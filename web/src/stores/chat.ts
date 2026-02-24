@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef, computed } from 'vue'
+import { ref, shallowRef, computed, watch } from 'vue'
 import type { Conversation, Message, SendMessageRequest, MessageStats, MessageAttachment } from '@/api/chat'
-import { conversationApi, messageApi } from '@/api/chat'
+import { conversationApi, messageApi, warmupApi } from '@/api/chat'
 import { approvalApi } from '@/api/approval'
 import type { Decision } from '@/api/approval'
 import { SSEClient } from '@/utils/sse'
@@ -31,8 +31,17 @@ export const useChatStore = defineStore('chat', () => {
   const trialExhausted = ref(false) // Trial quota exhausted flag
   const toolExecuting = ref(false) // Tool execution in progress
   const toolExecutingStartTime = ref<number>(0) // Timestamp when tool execution started
+  const toolExecutingNames = ref<string[]>([]) // Names of tools being executed
+  watch(toolExecuting, (v) => { if (!v) toolExecutingNames.value = [] })
   const contextTrimInfo = ref<{ type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number } | null>(null)
-  const networkRecovering = ref(false) // Auto-recovering from network interrupt
+
+  // Pre-TTFT cancel state: when user starts typing before first token arrives
+  const preTTFTCancelActive = ref(false)
+  let preTTFTResumeTimer: ReturnType<typeof setTimeout> | null = null
+  const _receivedFirstChunk = ref(false)
+
+  // Computed: true when we're waiting for first token (user message sent, no content yet)
+  const isPreTTFT = computed(() => sending.value && !_receivedFirstChunk.value && !preTTFTCancelActive.value)
 
   // Pagination state
   const hasMoreMessages = ref(false)
@@ -321,6 +330,16 @@ export const useChatStore = defineStore('chat', () => {
       error.value = null
       securityBlocked.value = null
       contextTrimInfo.value = null
+      _receivedFirstChunk.value = false
+
+      // Clear any active pre-TTFT cancel state (user is sending a new message)
+      if (preTTFTCancelActive.value) {
+        preTTFTCancelActive.value = false
+        if (preTTFTResumeTimer) {
+          clearTimeout(preTTFTResumeTimer)
+          preTTFTResumeTimer = null
+        }
+      }
 
       // Add placeholder for assistant message
       const assistantMessage: Message = {
@@ -335,6 +354,7 @@ export const useChatStore = defineStore('chat', () => {
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
           if (!chunk.delta) return
+          _receivedFirstChunk.value = true
           // Clear tool executing state when new content arrives
           if (toolExecuting.value) {
             toolExecuting.value = false
@@ -358,9 +378,10 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
-        onToolExecuting: (_toolCount) => {
+        onToolExecuting: (_toolCount, toolNames) => {
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
+          toolExecutingNames.value = toolNames || []
           // Update the streaming message to show tool execution indicator
           const lastIndex = messages.value.length - 1
           if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
@@ -376,6 +397,7 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onError: (err) => {
+          const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
           // Map error codes to i18n keys for accurate error messages
           const errorMap: Record<string, string> = {
@@ -393,6 +415,15 @@ export const useChatStore = defineStore('chat', () => {
           }
           // Log error to server
           systemApi.writeLog('error', `Chat stream error: ${err.message}`, 'chat').catch(() => {})
+          // If error happened during tool execution, the server is still processing.
+          // Fetch server-persisted content instead of marking as interrupted.
+          if (wasToolExecuting) {
+            streaming.value = false
+            fetchMessages(conversationId).then(() => {
+              messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+            })
+            return
+          }
           // If streaming message has content, keep it and mark as interrupted
           // Otherwise remove the empty placeholder
           const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
@@ -428,28 +459,10 @@ export const useChatStore = defineStore('chat', () => {
           contextTrimInfo.value = info
         },
         onNetworkInterrupt: () => {
-          // Mid-stream network interrupt — auto-recover by fetching persisted
-          // content from server and continuing generation
-          networkRecovering.value = true
+          // Mid-stream network interrupt — the backend handles retries with
+          // exponential backoff. Nothing to show in UI; the stream will resume
+          // transparently when the backend reconnects.
           streamError.value = null
-          setTimeout(async () => {
-            try {
-              await fetchMessages(conversationId)
-              // Remove streaming placeholder — server has the real message now
-              messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
-              streaming.value = false
-              sending.value = false
-              toolExecuting.value = false
-              streamingContent.value = ''
-              // Auto-continue generation
-              await continueMessage()
-            } catch {
-              // Recovery failed — show error
-              streamError.value = 'networkRecovering'
-            } finally {
-              networkRecovering.value = false
-            }
-          }, 2000)
         },
         onComplete: (finalChunk) => {
           streaming.value = false
@@ -519,6 +532,133 @@ export const useChatStore = defineStore('chat', () => {
     streamingContent.value = ''
   }
 
+  // Cancel pre-TTFT: user started typing before first token arrived.
+  // Abort the stream, show "listening" indicator, re-warmup, start auto-resume timer.
+  function cancelPreTTFT() {
+    if (!sending.value || _receivedFirstChunk.value) return // Only works pre-TTFT
+
+    const convId = currentConversationId.value
+    if (!convId) return
+
+    // Abort the in-flight stream
+    sseClient.disconnect()
+    streaming.value = false
+    toolExecuting.value = false
+    streamingContent.value = ''
+    sending.value = false
+
+    // Remove empty assistant placeholder
+    messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+
+    // Enter "listening" state
+    preTTFTCancelActive.value = true
+
+    // Re-warmup for the next send
+    warmupConvId = null
+    warmupApi.trigger(convId).catch(() => {})
+
+    // Auto-resume after 10s if user doesn't send a follow-up
+    if (preTTFTResumeTimer) clearTimeout(preTTFTResumeTimer)
+    preTTFTResumeTimer = setTimeout(() => {
+      preTTFTResumeTimer = null
+      autoResume()
+    }, 10000)
+  }
+
+  // Auto-resume: re-submit the original request after pre-TTFT cancel timeout.
+  async function autoResume() {
+    if (!preTTFTCancelActive.value) return
+    preTTFTCancelActive.value = false
+
+    const convId = currentConversationId.value
+    if (!convId) return
+
+    const settingsStore = useSettingsStore()
+
+    try {
+      sending.value = true
+      streaming.value = true
+      streamingContent.value = ''
+      _receivedFirstChunk.value = false
+
+      // Add placeholder for assistant message
+      const assistantMessage: Message = {
+        id: `streaming-${Date.now()}`,
+        conversation_id: convId,
+        role: 'assistant',
+        content: '',
+        created_at: new Date().toISOString(),
+      }
+      messages.value = [...messages.value, assistantMessage]
+
+      const request: SendMessageRequest = {
+        message: '[CONTINUE_AFTER_CANCEL]',
+        temperature: settingsStore.temperature,
+        max_tokens: settingsStore.maxTokens,
+      }
+
+      await sseClient.connect(convId, request, {
+        onMessage: (chunk) => {
+          if (!chunk.delta) return
+          _receivedFirstChunk.value = true
+          if (toolExecuting.value) {
+            toolExecuting.value = false
+            streamingContent.value = ''
+          }
+          streamingContent.value += chunk.delta
+          const lastIndex = messages.value.length - 1
+          if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
+            const newMessages = [...messages.value]
+            const currentMsg = newMessages[lastIndex]
+            if (currentMsg) {
+              newMessages[lastIndex] = { ...currentMsg, content: streamingContent.value }
+              messages.value = newMessages
+            }
+          }
+        },
+        onToolExecuting: (_toolCount, toolNames) => {
+          toolExecuting.value = true
+          toolExecutingStartTime.value = Date.now()
+          toolExecutingNames.value = toolNames || []
+        },
+        onError: (err) => {
+          toolExecuting.value = false
+          streamError.value = err.message
+          messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+          streaming.value = false
+        },
+        onComplete: (finalChunk) => {
+          streaming.value = false
+          toolExecuting.value = false
+          if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
+            const lastIndex = messages.value.length - 1
+            const lastMsg = messages.value[lastIndex]
+            if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
+              const newMessages = [...messages.value]
+              newMessages[lastIndex] = {
+                ...lastMsg,
+                provider: finalChunk.provider,
+                model: finalChunk.model,
+                stats: finalChunk.stats,
+              }
+              messages.value = newMessages
+            }
+          }
+          fetchMessages(convId)
+          fetchConversations()
+          useProviderPoolStore().fetchTrialQuota()
+        },
+      })
+    } catch {
+      messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+    } finally {
+      sending.value = false
+      streaming.value = false
+      toolExecuting.value = false
+      streamingContent.value = ''
+    }
+  }
+
   // Continue generating from where it stopped
   async function continueMessage() {
     if (!currentConversationId.value || streaming.value || sending.value) return
@@ -567,9 +707,10 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
-        onToolExecuting: () => {
+        onToolExecuting: (_toolCount, toolNames) => {
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
+          toolExecutingNames.value = toolNames || []
         },
         onError: (err) => {
           error.value = err.message
@@ -693,13 +834,22 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
-        onToolExecuting: () => {
+        onToolExecuting: (_toolCount, toolNames) => {
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
+          toolExecutingNames.value = toolNames || []
         },
         onError: (err) => {
           error.value = err.message
+          const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
+          // If error happened during tool execution, fetch server-persisted content
+          if (wasToolExecuting) {
+            fetchMessages(conversationId).then(() => {
+              messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+            })
+            return
+          }
           // Keep message with content, mark as interrupted
           const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
           if (streamingMsg && streamingMsg.content.trim()) {
@@ -937,6 +1087,21 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // Warmup: pre-compute system prompt and context to reduce TTFT.
+  // Fire-and-forget — errors are silently ignored.
+  let warmupConvId: string | null = null
+  function warmupConversation() {
+    const convId = currentConversationId.value
+    if (!convId || convId === warmupConvId) return
+    warmupConvId = convId
+    warmupApi.trigger(convId).catch(() => {})
+  }
+
+  // Reset warmup tracking (call when conversation changes)
+  function resetWarmup() {
+    warmupConvId = null
+  }
+
   return {
     // State
     conversations,
@@ -952,8 +1117,9 @@ export const useChatStore = defineStore('chat', () => {
     trialExhausted,
     toolExecuting,
     toolExecutingStartTime,
+    toolExecutingNames,
     contextTrimInfo,
-    networkRecovering,
+    preTTFTCancelActive,
     hasMoreMessages,
     loadingMore,
     searchQuery,
@@ -965,6 +1131,7 @@ export const useChatStore = defineStore('chat', () => {
     // Computed
     currentConversation,
     sortedConversations,
+    isPreTTFT,
 
     // Actions
     fetchConversations,
@@ -977,6 +1144,7 @@ export const useChatStore = defineStore('chat', () => {
     loadMoreMessages,
     sendMessage,
     cancelStreaming,
+    cancelPreTTFT,
     continueMessage,
     regenerateMessage,
     searchConversations,
@@ -996,5 +1164,7 @@ export const useChatStore = defineStore('chat', () => {
     clearAllConversations,
     resolveApproval,
     checkPendingApprovals,
+    warmupConversation,
+    resetWarmup,
   }
 })

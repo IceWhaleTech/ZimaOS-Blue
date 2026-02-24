@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -113,6 +115,103 @@ func (c *larkClient) sendMessage(ctx context.Context, receiveIDType, receiveID, 
 		return fmt.Errorf("feishu send: %d %s", r.Code, r.Msg)
 	}
 	return nil
+}
+
+// uploadImage uploads an image to Feishu and returns the image_key.
+// API: POST /im/v1/images  (multipart/form-data: image_type=message, image=<binary>)
+func (c *larkClient) uploadImage(ctx context.Context, data []byte, mimeType string) (string, error) {
+	token, err := c.getToken(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("image_type", "message")
+	ext := ".png"
+	if strings.Contains(mimeType, "jpeg") || strings.Contains(mimeType, "jpg") {
+		ext = ".jpg"
+	} else if strings.Contains(mimeType, "webp") {
+		ext = ".webp"
+	} else if strings.Contains(mimeType, "gif") {
+		ext = ".gif"
+	}
+	part, err := writer.CreateFormFile("image", "image"+ext)
+	if err != nil {
+		return "", err
+	}
+	if _, err := part.Write(data); err != nil {
+		return "", err
+	}
+	writer.Close()
+
+	req, _ := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/im/v1/images", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var r struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			ImageKey string `json:"image_key"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return "", err
+	}
+	if r.Code != 0 {
+		return "", fmt.Errorf("feishu upload image: %d %s", r.Code, r.Msg)
+	}
+	return r.Data.ImageKey, nil
+}
+
+// uploadFile uploads a file to Feishu and returns the file_key.
+// API: POST /im/v1/files  (multipart/form-data: file_type=<type>, file=<binary>, file_name=<name>)
+func (c *larkClient) uploadFile(ctx context.Context, data []byte, fileName, fileType string) (string, error) {
+	token, err := c.getToken(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("file_type", fileType)
+	_ = writer.WriteField("file_name", fileName)
+	part, err := writer.CreateFormFile("file", fileName)
+	if err != nil {
+		return "", err
+	}
+	if _, err := part.Write(data); err != nil {
+		return "", err
+	}
+	writer.Close()
+
+	req, _ := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/im/v1/files", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var r struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			FileKey string `json:"file_key"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return "", err
+	}
+	if r.Code != 0 {
+		return "", fmt.Errorf("feishu upload file: %d %s", r.Code, r.Msg)
+	}
+	return r.Data.FileKey, nil
 }
 
 func (c *larkClient) getMessageResource(ctx context.Context, messageID, fileKey, resType string) ([]byte, error) {

@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type {
+  MediaCategory,
   MediaIntent,
   MediaModelInfo,
   MediaTask,
@@ -43,6 +44,7 @@ export function useMediaGenerate() {
   const { t } = useI18n()
   const intent = ref<MediaIntent | null>(null)
   const models = ref<MediaModelInfo[]>([])
+  const alternativeModels = ref<MediaModelInfo[]>([]) // models for alternative_category (e.g. kf2v)
   const selectedModel = ref('')
   const task = ref<MediaTask | null>(null)
   const generating = ref(false)
@@ -98,12 +100,19 @@ export function useMediaGenerate() {
         // Fallback: fetch all models and filter
         const all = await listModels()
         models.value = all.filter((m) => m.category === localIntent.category)
+        // Also fetch alternative category models if present
+        if (localIntent.alternative_category) {
+          alternativeModels.value = all.filter((m) => m.category === localIntent.alternative_category)
+        }
       }
     } catch {
       // Server classify failed — use local intent, try to get models
       try {
         const all = await listModels()
         models.value = all.filter((m) => m.category === localIntent.category)
+        if (localIntent.alternative_category) {
+          alternativeModels.value = all.filter((m) => m.category === localIntent.alternative_category)
+        }
       } catch {
         // No models available
       }
@@ -154,6 +163,37 @@ export function useMediaGenerate() {
       selectedModel.value = last
     } else if (models.value.length > 0) {
       selectedModel.value = models.value[0].id
+    }
+  }
+
+  /**
+   * Switch between primary and alternative category (e.g. i2v ↔ kf2v).
+   * Swaps models lists and updates intent.category.
+   */
+  function switchCategory(newCategory: MediaCategory) {
+    if (!intent.value || newCategory === intent.value.category) return
+
+    // Swap models
+    const tmp = models.value
+    models.value = alternativeModels.value
+    alternativeModels.value = tmp
+
+    // Update intent category and alternative
+    const oldCategory = intent.value.category
+    intent.value = {
+      ...intent.value,
+      category: newCategory,
+      alternative_category: oldCategory,
+    }
+
+    // Restore last-used model for the new category
+    const last = getLastModel(newCategory)
+    if (last && models.value.some((m) => m.id === last)) {
+      selectedModel.value = last
+    } else if (models.value.length > 0) {
+      selectedModel.value = models.value[0].id
+    } else {
+      selectedModel.value = ''
     }
   }
 
@@ -290,6 +330,7 @@ export function useMediaGenerate() {
     cancel()
     intent.value = null
     models.value = []
+    alternativeModels.value = []
     selectedModel.value = ''
     task.value = null
     error.value = ''
@@ -305,6 +346,7 @@ export function useMediaGenerate() {
   return {
     intent,
     models,
+    alternativeModels,
     selectedModel,
     task,
     generating,
@@ -314,6 +356,7 @@ export function useMediaGenerate() {
     isTerminal,
     classify,
     confirmAmbiguous,
+    switchCategory,
     generate,
     pollTask,
     cancel,

@@ -44,6 +44,14 @@ export default {
     username: 'Nume utilizator',
     password: 'Parolă',
     rememberMe: 'Ține-mă minte',
+    invalidCredentials: "Nume de utilizator sau parolă invalide",
+    accountLocked: "Contul este blocat",
+    accountDisabled: "Contul este dezactivat",
+    authServiceUnavailable: "Serviciul de autentificare este temporar indisponibil",
+    loginFailed: "Autentificare eșuată",
+    currentPasswordIncorrect: "Parola curentă este incorectă",
+    newPasswordRequirements: "Noua parolă nu îndeplinește cerințele",
+    changePasswordFailed: "Schimbarea parolei a eșuat",
   },
   errors: {
     ...enUS.errors,
@@ -806,6 +814,17 @@ export default {
     title: 'Pool furnizori',
     subtitle: 'Gestionați furnizori LLM și chei API',
     description: 'Gestionați furnizori LLM, chei API și rutarea modelelor',
+    capChat: 'Chat',
+    capCompletion: 'Completare',
+    capVision: 'Viziune',
+    capFunctionCall: 'Apel funcție',
+    capThinking: 'Gândire profundă',
+    capStreaming: 'Streaming',
+    capJSON: 'Mod JSON',
+    capSystemPrompt: 'Prompt de sistem',
+    capImageGeneration: 'Generare imagini',
+    capVideoGeneration: 'Generare video',
+    capAudioGeneration: 'Generare audio',
     trialQuota: {
       title: 'Cota de încercare',
       exhausted: 'Cota de încercare epuizată',
@@ -912,6 +931,7 @@ export default {
   chat: {
     ...enUS.chat,
     responseInterrupted: 'Răspuns întrerupt',
+    stillListening: 'Continuă, te ascult...',
     contextPruned: 'Context redus, {tokens} tokeni economisiți',
     contextCompacted: 'Context compactat: {before} → {after} mesaje',
     trialExhausted: 'Cota de încercare a fost epuizată. Vă rugăm să configurați propriul furnizor de IA pentru a continua.',
@@ -1089,30 +1109,6 @@ export default {
   webhook: {
     ...enUS.webhook,
     title: 'Webhook',
-  },
-  personality: {
-    ...enUS.personality,
-    title: 'Personalitate',
-    card: {
-      ...enUS.personality.card,
-      title: 'Card',
-    },
-    validation: {
-      ...enUS.personality.validation,
-      title: 'Validare',
-    },
-    templates: {
-      ...enUS.personality.templates,
-      title: 'Șabloane',
-    },
-    stats: {
-      ...enUS.personality.stats,
-      title: 'Statistici',
-    },
-    editor: {
-      ...enUS.personality.editor,
-      title: 'Editor',
-    },
   },
   companion: { ...enUS.companion },
   automation: { ...enUS.automation },

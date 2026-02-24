@@ -44,6 +44,14 @@ export default {
     username: 'ഉപയോക്തൃനാമം',
     password: 'പാസ്‌വേഡ്',
     rememberMe: 'എന്നെ ഓർക്കുക',
+    invalidCredentials: "തെറ്റായ ഉപയോക്തൃനാമം അല്ലെങ്കിൽ പാസ്‌വേഡ്",
+    accountLocked: "അക്കൗണ്ട് ലോക്ക് ചെയ്തിരിക്കുന്നു",
+    accountDisabled: "അക്കൗണ്ട് നിഷ്ക്രിയമാക്കിയിരിക്കുന്നു",
+    authServiceUnavailable: "ആധികാരികത പരിശോധന സേവനം താൽക്കാലികമായി ലഭ്യമല്ല",
+    loginFailed: "ലോഗിൻ പരാജയപ്പെട്ടു",
+    currentPasswordIncorrect: "നിലവിലെ പാസ്‌വേഡ് തെറ്റാണ്",
+    newPasswordRequirements: "പുതിയ പാസ്‌വേഡ് ആവശ്യകതകൾ പാലിക്കുന്നില്ല",
+    changePasswordFailed: "പാസ്‌വേഡ് മാറ്റം പരാജയപ്പെട്ടു",
   },
   errors: {
     ...enUS.errors,
@@ -812,6 +820,17 @@ export default {
     title: 'പ്രൊവൈഡർ പൂൾ',
     subtitle: 'LLM പ്രൊവൈഡർമാരും API കീകളും നിയന്ത്രിക്കുക',
     description: 'LLM പ്രൊവൈഡർമാർ, API കീകൾ, മോഡൽ റൗട്ടിംഗ് നിയന്ത്രിക്കുക',
+    capChat: 'ചാറ്റ്',
+    capCompletion: 'പൂർത്തിയാക്കൽ',
+    capVision: 'ദർശനം',
+    capFunctionCall: 'ഫങ്ഷൻ കോൾ',
+    capThinking: 'ആഴത്തിലുള്ള ചിന്ത',
+    capStreaming: 'സ്ട്രീമിംഗ്',
+    capJSON: 'JSON മോഡ്',
+    capSystemPrompt: 'സിസ്റ്റം പ്രോംപ്റ്റ്',
+    capImageGeneration: 'ചിത്ര നിർമ്മാണം',
+    capVideoGeneration: 'വീഡിയോ നിർമ്മാണം',
+    capAudioGeneration: 'ഓഡിയോ നിർമ്മാണം',
     trialQuota: {
       title: 'ട്രയൽ ക്വോട്ട',
       exhausted: 'ട്രയൽ ക്വോട്ട തീരുന്നു',
@@ -918,6 +937,7 @@ export default {
   chat: {
     ...enUS.chat,
     responseInterrupted: 'പ്രതികരണം തടസ്സപ്പെട്ടു',
+    stillListening: 'തുടരൂ, ഞാൻ കേൾക്കുന്നുണ്ട്...',
     contextPruned: 'സന്ദർഭം ചുരുക്കി, {tokens} ടോക്കണുകൾ ലാഭിച്ചു',
     contextCompacted: 'സന്ദർഭം കംപാക്റ്റ് ചെയ്തു: {before} → {after} സന്ദേശങ്ങൾ',
     trialExhausted: 'ട്രയൽ ക്വോട്ട ശേഷിച്ചിരിക്കുന്നില്ല. തുടരാൻ നിങ്ങളുടെ സ്വന്തം AI പ്രൊവൈഡർ കോൺഫിഗർ ചെയ്യുക.',
@@ -1095,30 +1115,6 @@ export default {
   webhook: {
     ...enUS.webhook,
     title: 'വെബ്ഹുക്ക്',
-  },
-  personality: {
-    ...enUS.personality,
-    title: 'വ്യക്തിത്വം',
-    card: {
-      ...enUS.personality.card,
-      title: 'കാർഡ്',
-    },
-    validation: {
-      ...enUS.personality.validation,
-      title: 'സാധൂകരണം',
-    },
-    templates: {
-      ...enUS.personality.templates,
-      title: 'ടെംപ്ലേറ്റുകൾ',
-    },
-    stats: {
-      ...enUS.personality.stats,
-      title: 'സ്ഥിതിവിവരക്കണക്കുകൾ',
-    },
-    editor: {
-      ...enUS.personality.editor,
-      title: 'എഡിറ്റർ',
-    },
   },
   companion: { ...enUS.companion },
   automation: { ...enUS.automation },

@@ -222,6 +222,70 @@ func (t *PersistentTask) ToMediaTask() *MediaTask {
 	return mt
 }
 
+// MediaStats holds aggregated media generation statistics.
+type MediaStats struct {
+	TotalTasks   int64              `json:"total_tasks"`
+	Succeeded    int64              `json:"succeeded"`
+	Failed       int64              `json:"failed"`
+	TotalCostUSD float64            `json:"total_cost_usd"`
+	CostByModel  map[string]float64 `json:"cost_by_model,omitempty"`
+	TasksByType  map[string]int64   `json:"tasks_by_type,omitempty"`
+}
+
+// GetStats aggregates media generation statistics from the task store.
+func (s *TaskStore) GetStats() (*MediaStats, error) {
+	stats := &MediaStats{
+		CostByModel: make(map[string]float64),
+		TasksByType: make(map[string]int64),
+	}
+
+	// Count by status
+	row := s.db.QueryRow(`SELECT COUNT(*) FROM media_tasks WHERE status='succeeded'`)
+	_ = row.Scan(&stats.Succeeded)
+	row = s.db.QueryRow(`SELECT COUNT(*) FROM media_tasks WHERE status='failed'`)
+	_ = row.Scan(&stats.Failed)
+	stats.TotalTasks = stats.Succeeded + stats.Failed
+
+	// Count by type
+	rows, err := s.db.Query(`SELECT type, COUNT(*) FROM media_tasks WHERE status='succeeded' GROUP BY type`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var t string
+			var c int64
+			if rows.Scan(&t, &c) == nil {
+				stats.TasksByType[t] = c
+			}
+		}
+	}
+
+	// Calculate cost from succeeded tasks
+	rows2, err := s.db.Query(`SELECT model, response, type FROM media_tasks WHERE status='succeeded' AND response != ''`)
+	if err == nil {
+		defer rows2.Close()
+		for rows2.Next() {
+			var model, respJSON, mediaType string
+			if rows2.Scan(&model, &respJSON, &mediaType) != nil {
+				continue
+			}
+			var resp MediaResponse
+			if json.Unmarshal([]byte(respJSON), &resp) != nil {
+				continue
+			}
+			imageCount := len(resp.Data)
+			var durationSec float64
+			for _, r := range resp.Data {
+				durationSec += float64(r.DurationSec)
+			}
+			cost := CalculateMediaCost(model, imageCount, durationSec)
+			stats.TotalCostUSD += cost
+			stats.CostByModel[model] += cost
+		}
+	}
+
+	return stats, nil
+}
+
 // FromMediaTask converts an in-memory MediaTask to a PersistentTask.
 func FromMediaTask(mt *MediaTask) *PersistentTask {
 	t := &PersistentTask{

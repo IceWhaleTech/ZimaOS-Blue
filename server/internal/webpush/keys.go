@@ -2,13 +2,15 @@
 package webpush
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	wp "github.com/SherClockHolmes/webpush-go"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 )
+
+const vapidKVKey = "config:webpush_vapid"
 
 type vapidKeys struct {
 	PrivateKey string `json:"private_key"`
@@ -16,16 +18,14 @@ type vapidKeys struct {
 }
 
 // GetOrCreateVAPIDKeys returns VAPID keys, generating and persisting them on first call.
-// Keys are stored in {dataDir}/webpush_vapid.json.
-func GetOrCreateVAPIDKeys(dataDir string) (privateKey, publicKey string, err error) {
-	path := filepath.Join(dataDir, "webpush_vapid.json")
+// Keys are stored in the kvstore under "config:webpush_vapid".
+func GetOrCreateVAPIDKeys(kv kvstore.Store) (privateKey, publicKey string, err error) {
+	ctx := context.Background()
 
 	// Try to load existing keys
-	if data, err := os.ReadFile(path); err == nil {
-		var keys vapidKeys
-		if err := json.Unmarshal(data, &keys); err == nil && keys.PrivateKey != "" && keys.PublicKey != "" {
-			return keys.PrivateKey, keys.PublicKey, nil
-		}
+	var keys vapidKeys
+	if err := kv.GetJSON(ctx, vapidKVKey, &keys); err == nil && keys.PrivateKey != "" && keys.PublicKey != "" {
+		return keys.PrivateKey, keys.PublicKey, nil
 	}
 
 	// Generate new VAPID key pair
@@ -34,14 +34,9 @@ func GetOrCreateVAPIDKeys(dataDir string) (privateKey, publicKey string, err err
 		return "", "", fmt.Errorf("generate VAPID keys: %w", err)
 	}
 
-	keys := vapidKeys{PrivateKey: priv, PublicKey: pub}
-	data, err := json.MarshalIndent(keys, "", "  ")
-	if err != nil {
-		return "", "", fmt.Errorf("marshal VAPID keys: %w", err)
-	}
-
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		return "", "", fmt.Errorf("write VAPID keys: %w", err)
+	keys = vapidKeys{PrivateKey: priv, PublicKey: pub}
+	if err := kv.SetJSON(ctx, vapidKVKey, &keys, 0); err != nil {
+		return "", "", fmt.Errorf("persist VAPID keys: %w", err)
 	}
 
 	return priv, pub, nil

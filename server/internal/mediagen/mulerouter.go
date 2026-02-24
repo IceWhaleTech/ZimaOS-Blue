@@ -128,6 +128,17 @@ func (p *MuleRouterProvider) Poll(ctx context.Context, taskID string) (*MediaTas
 
 	var taskResp muleRouterTaskResponse
 	if err := json.Unmarshal(respBody, &taskResp); err != nil {
+		// If the body indicates a terminal status but we can't parse the full
+		// response (e.g. error.code is number instead of string), extract what
+		// we can and return a failed task instead of a parse error — otherwise
+		// pollTask retries forever.
+		bodyStr := string(respBody)
+		if strings.Contains(bodyStr, `"status":"failed"`) || strings.Contains(bodyStr, `"status":"canceled"`) {
+			failedTask := &MediaTask{UpstreamID: taskID}
+			failedTask.Status = TaskStatusFailed
+			failedTask.Error = fmt.Sprintf("upstream task failed (parse error: %v, body: %s)", err, truncate(bodyStr, 300))
+			return failedTask, nil
+		}
 		return nil, fmt.Errorf("poll parse error: %w (body: %s)", err, truncate(string(respBody), 200))
 	}
 
@@ -228,6 +239,13 @@ func (p *MuleRouterProvider) Poll(ctx context.Context, taskID string) (*MediaTas
 	}
 
 	return task, nil
+}
+
+// RestoreTaskMeta re-populates the in-memory vendor/model mapping for a recovered task.
+// Called during startup recovery so that Poll() can find the correct vendor endpoint.
+func (p *MuleRouterProvider) RestoreTaskMeta(upstreamID, model string) {
+	vendor := modelToVendor(model)
+	p.taskMeta.Store(upstreamID, &muleRouterTaskMeta{vendor: vendor, model: model})
 }
 
 // generateOpenAI handles OpenAI-compatible image generation (synchronous).
@@ -520,7 +538,7 @@ type muleRouterTaskResponse struct {
 		ID     string `json:"id"`
 		Status string `json:"status"`
 		Error  *struct {
-			Code   string `json:"code,omitempty"`
+			Code   any    `json:"code,omitempty"` // string or number depending on vendor
 			Title  string `json:"title,omitempty"`
 			Detail string `json:"detail,omitempty"`
 		} `json:"error,omitempty"`

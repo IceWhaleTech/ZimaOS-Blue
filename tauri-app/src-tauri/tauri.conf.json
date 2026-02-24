@@ -20,8 +20,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../web/dist": "dist",
-      "../../assets/skills": ".claude/skills"
+      "../../web/dist": "dist"
     },
     "category": "Utility",
     "shortDescription": "AI Gateway for Local LLM Integration",

@@ -7,6 +7,12 @@ fn main() {
         println!("cargo:rustc-link-search=native={}", lib_path.display());
         println!("cargo:rustc-link-lib=static=blue");
 
+        // Link harden library (trial activation persistence)
+        let harden_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../server/internal/providerpool/harden/windows_amd64");
+        println!("cargo:rustc-link-search=native={}", harden_path.display());
+        println!("cargo:rustc-link-lib=static=harden");
+
         // Windows system libraries for Go runtime
         println!("cargo:rustc-link-lib=ws2_32");
         println!("cargo:rustc-link-lib=userenv");
@@ -32,6 +38,18 @@ fn main() {
         // Link the Go static library (libblue.a)
         println!("cargo:rustc-link-search=native=lib");
         println!("cargo:rustc-link-lib=static=blue");
+
+        // Link harden library (trial activation persistence)
+        let harden_dir = if cfg!(target_arch = "aarch64") {
+            "darwin_arm64"
+        } else {
+            "darwin_amd64"
+        };
+        let harden_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../server/internal/providerpool/harden")
+            .join(harden_dir);
+        println!("cargo:rustc-link-search=native={}", harden_path.display());
+        println!("cargo:rustc-link-lib=static=harden");
 
         // Link required system frameworks for Go runtime
         println!("cargo:rustc-link-lib=framework=CoreFoundation");

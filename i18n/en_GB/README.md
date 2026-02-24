@@ -37,7 +37,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/SrCYvumF"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
+  <a href="https://discord.gg/b3AgFDxe9v"><img src="../../docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
   <a href="https://www.facebook.com/zimaboard/"><img src="../../docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
   <a href="https://x.com/ZimaSpace"><img src="../../docs/assets/x.png" alt="X" height="128" /></a>
 </p>
@@ -276,7 +276,7 @@ Ticker (30min) → Read HEARTBEAT.md → LLM Eval → Strip HEARTBEAT_OK token
 ## Community & Support
 
 - **Issues**: [Please file bugs and feature requests here](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Discussions**: [Discord](https://discord.gg/SrCYvumF)
+- **Discussions**: [Discord](https://discord.gg/b3AgFDxe9v)
 - **Follow us** on [GitHub](https://github.com/IceWhaleTech)
 
 ## Licence

@@ -27,9 +27,17 @@ export default {
       endpointNotFound: 'Health check endpoint not found (HTTP 404)',
       unexpectedStatus: 'Unexpected response (HTTP {code})',
     },
-  },
-    personality: {
-    ...enUS.personality,
+    capChat: 'Chat',
+    capCompletion: 'Completion',
+    capVision: 'Vision',
+    capFunctionCall: 'Function Call',
+    capThinking: 'Thinking',
+    capStreaming: 'Streaming',
+    capJSON: 'JSON Mode',
+    capSystemPrompt: 'System Prompt',
+    capImageGeneration: 'Image Generation',
+    capVideoGeneration: 'Video Generation',
+    capAudioGeneration: 'Audio Generation',
   },
   tools: {
     names: {
@@ -78,6 +86,7 @@ export default {
   chat: {
     ...enUS.chat,
     responseInterrupted: 'Response interrupted',
+    stillListening: 'Go ahead, I\'m listening...',
     contextPruned: 'Context pruned, saved {tokens} tokens',
     contextCompacted: 'Context compacted: {before} → {after} messages',
     startRecording: 'Start recording',
@@ -394,6 +403,14 @@ export default {
     rememberMe: 'Remember me',
     orContinueWith: 'Or continue with',
     signInWith: 'Sign in with {provider}',
+    invalidCredentials: "Invalid username or password",
+    accountLocked: "Account is locked",
+    accountDisabled: "Account is disabled",
+    authServiceUnavailable: "Authentication service temporarily unavailable",
+    loginFailed: "Login failed",
+    currentPasswordIncorrect: "Current password is incorrect",
+    newPasswordRequirements: "New password does not meet requirements",
+    changePasswordFailed: "Failed to change password",
   },
   authProviders: {
     title: 'Authentication Providers',

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"sync"
 	"time"
@@ -96,6 +97,49 @@ func (c *slackClient) updateMessage(ctx context.Context, channelID, ts, text str
 		"channel": channelID, "ts": ts, "text": text,
 	})
 	return err
+}
+
+// uploadFile uploads a file to a Slack channel using files.upload API.
+func (c *slackClient) uploadFile(ctx context.Context, channelID, threadTS, filename string, data []byte, initialComment string) error {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	w.WriteField("channels", channelID)
+	if threadTS != "" {
+		w.WriteField("thread_ts", threadTS)
+	}
+	w.WriteField("filename", filename)
+	if initialComment != "" {
+		w.WriteField("initial_comment", initialComment)
+	}
+	part, err := w.CreateFormFile("file", filename)
+	if err != nil {
+		return fmt.Errorf("create form file: %w", err)
+	}
+	part.Write(data)
+	w.Close()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/files.upload", &buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.botToken)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	respData, _ := io.ReadAll(resp.Body)
+	var r struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error,omitempty"`
+	}
+	json.Unmarshal(respData, &r)
+	if !r.OK {
+		return fmt.Errorf("slack files.upload: %s", r.Error)
+	}
+	return nil
 }
 
 func (c *slackClient) getUserInfo(ctx context.Context, userID string) (string, error) {

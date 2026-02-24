@@ -38,8 +38,8 @@ type MediaRequest struct {
 	Style          string         `json:"style,omitempty"`
 	ResponseFormat string         `json:"response_format,omitempty"`
 	ReferenceImage []byte         `json:"-"`
-	ReferenceURL   string         `json:"reference_url,omitempty"`
-	ReferenceURLs  []string       `json:"reference_urls,omitempty"` // multiple images (i2v, kf2v, i2i)
+	ReferenceURL   string         `json:"-"`
+	ReferenceURLs  []string       `json:"-"` // multiple images (i2v, kf2v, i2i)
 	Duration       int            `json:"duration,omitempty"`
 	Extra          map[string]any `json:"extra,omitempty"`
 }
@@ -99,4 +99,6 @@ type MediaModelInfo struct {
 	Provider       string        `json:"provider"`
 	MaxResolution  string        `json:"max_resolution,omitempty"`
 	SupportedSizes []string      `json:"supported_sizes,omitempty"`
+	Price          float64       `json:"price,omitempty"`        // per-unit price (USD)
+	PricingUnit    string        `json:"pricing_unit,omitempty"` // "image", "second", "video"
 }

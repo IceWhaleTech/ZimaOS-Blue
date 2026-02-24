@@ -4,14 +4,15 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,6 +24,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
@@ -36,9 +38,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mfa"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/personality/controller"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/personality/model"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/personality/view"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/preview"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/promptguard"
@@ -49,6 +48,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
@@ -60,6 +60,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
@@ -86,16 +87,15 @@ func featureDisabled(feature string) echo.HandlerFunc {
 	}
 }
 
-// readLocaleFromSettings reads the locale from settings.json without creating a full SettingsHandler.
-func readLocaleFromSettings(dataDir string) string {
-	data, err := os.ReadFile(filepath.Join(dataDir, "settings.json"))
-	if err != nil {
+// readLocaleFromKV reads the locale from kvstore settings without creating a full SettingsHandler.
+func readLocaleFromKV(kv kvstore.Store) string {
+	if kv == nil {
 		return ""
 	}
 	var s struct {
 		Locale string `json:"locale"`
 	}
-	if json.Unmarshal(data, &s) != nil {
+	if kv.GetJSON(context.Background(), "config:settings", &s) != nil {
 		return ""
 	}
 	return s.Locale
@@ -142,6 +142,7 @@ type RoutesDeps struct {
 	ClaudeCodeHandler  *claudecode.Handler
 	MemoryHandler      *server.MemoryHandler
 	ChannelConfigStore *server.ChannelConfigStore
+	ConfigKV           kvstore.Store // shared kvstore for config persistence
 	HotReloader        *config.HotReloader
 	WorkspaceHandler   *workspace.Handler
 	SSEBroker          *sse.Broker
@@ -152,6 +153,13 @@ type RoutesDeps struct {
 	UIReviewerTool *tools.UIReviewerTool // for VLM bridge wiring
 	PushIPC          sockipc.PushBackend
 	CronIPC          sockipc.CronBackend
+
+	// Consolidated init deps (previously only in cmd/blue/main.go)
+	SkillEmbedFS        fs.FS                              // embedded SKILL.md filesystem for ReleaseSkills
+	SandboxManager      *sandbox.Manager                   // for sandbox skill wiring
+	SystemPromptBuilder *claudecode.SystemPromptBuilder
+	LazyBrowserSvc      func() *browser.RodService         // for UI reviewer lazy adapter
+	BrowserBackend      tools.BrowserBackend               // for browser tool + IPC
 
 	// Closers collects io.Closers started during route registration.
 	// The caller should close them on shutdown (e.g., via lifecycle hooks).
@@ -168,6 +176,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	cfg := deps.ServerConfig
 	logger := deps.Logger
 	dataDir := cfg.DataDir
+	kv := deps.ConfigKV // shared kvstore for settings, VAPID keys, toggles, etc.
 
 	// Initialize TLS manager with correct data directory
 	certsDir := filepath.Join(dataDir, "certs")
@@ -191,6 +200,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// HTTPS redirect middleware (must be first)
 	tlsManager := security.GetGlobalTLSManager()
 	if tlsManager != nil {
+		// Wire kvstore for TLS settings persistence
+		if deps.ConfigKV != nil {
+			tlsManager.SetKVStore(deps.ConfigKV)
+		}
 		// Load persisted TLS settings (overrides YAML defaults)
 		if err := tlsManager.LoadSettings(); err != nil {
 			logger.Warn("Failed to load persisted TLS settings", zap.Error(err))
@@ -263,7 +276,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		mediagen.MigrateFromProviderPool(filepath.Join(dataDir, "providerpool"), filepath.Join(dataDir, "media"))
 
 		// Read locale from settings for priority ordering
-		locale := readLocaleFromSettings(dataDir)
+		locale := readLocaleFromKV(kv)
 
 		mediaManager := mediagen.NewManager(mediaStorage, configStore, locale)
 		mediaManager.InitConfigs()
@@ -279,12 +292,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// Channel task watcher: monitors channel-sourced tasks and sends results back.
 		// Notifier is set later by main.go after the channel manager is available.
-		channelWatcher := mediagen.NewChannelTaskWatcher(mediaManager, nil)
+		channelWatcher := mediagen.NewChannelTaskWatcher(mediaManager, nil, locale)
 		channelWatcher.RecoverChannelTasks()
 		deps.Closers = append(deps.Closers, channelWatcher)
 
 		// Web Push notifications for media task completion
-		wpPriv, wpPub, wpErr := webpush.GetOrCreateVAPIDKeys(dataDir)
+		wpPriv, wpPub, wpErr := webpush.GetOrCreateVAPIDKeys(kv)
 		if wpErr != nil {
 			logger.Warn("Failed to initialize VAPID keys", zap.Error(wpErr))
 		} else {
@@ -551,6 +564,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	promptGuard := promptguard.NewDetector(promptguard.DefaultDetectorConfig())
 	deps.ChatHandler.SetPromptGuard(promptGuard)
 
+	// Smart tool selection
+	if deps.Config.ToolCalling.SmartSelection {
+		ts := tools.DefaultToolSelector()
+		if deps.Config.ToolCalling.SmartSelectionMaxTools > 0 {
+			ts.MaxTools = deps.Config.ToolCalling.SmartSelectionMaxTools
+		}
+		deps.ChatHandler.SetToolSelector(ts)
+	}
+
 	// Wire SSE broker for cross-tab conversation_updated events during streaming
 	if deps.SSEBroker != nil {
 		deps.ChatHandler.SetSSEBroker(deps.SSEBroker)
@@ -669,6 +691,60 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		skillMgr := newSkillManagerAdapter(skillStoreDb, s.SkillRegistry, localScanner, skillsDir)
 		sockipc.RegisterSkillManagerHandlers(ipcSrv, skillMgr, logger)
 		logger.Info("Skill manager IPC handlers registered")
+	}
+
+	// Release embedded SKILL.md files to workspace
+	if deps.SkillEmbedFS != nil && deps.WorkspaceHandler != nil {
+		if mgr := deps.WorkspaceHandler.Manager(); mgr != nil {
+			if err := mgr.ReleaseSkills(deps.SkillEmbedFS); err != nil {
+				logger.Warn("Failed to release embedded skills", zap.Error(err))
+			}
+			// Re-scan after releasing — the initial scan ran before skills were extracted
+			if err := localScanner.Scan(); err != nil {
+				logger.Warn("Post-release skill scan failed", zap.Error(err))
+			} else {
+				logger.Info("Skills re-scanned after release", zap.Int("count", localScanner.Count()))
+			}
+		}
+	}
+
+	// Wire backing services into skills
+	if deps.SandboxManager != nil {
+		if sk := s.SkillRegistry.Get("sandbox"); sk != nil {
+			if sb, ok := sk.(*builtin.Sandbox); ok {
+				sb.SetSandboxService(sandbox.NewSkillAdapter(deps.SandboxManager))
+			}
+		}
+	}
+	if deps.CronHandler != nil {
+		cronAdapter := cron.NewSkillAdapter(deps.CronHandler.GetService)
+		if sk := s.SkillRegistry.Get("scheduler"); sk != nil {
+			if ss, ok := sk.(*builtin.Scheduler); ok {
+				ss.SetCronService(cronAdapter)
+			}
+		}
+		// Register command handler for scheduler skill
+		if svc := deps.CronHandler.GetService(); svc != nil {
+			svc.RegisterCommandHandler(cron.CommandSecurityConfig{
+				Enabled:          true,
+				RequireAdminRole: true,
+			})
+		}
+	}
+	if deps.WorkflowHandler != nil {
+		if sk := s.SkillRegistry.Get("workflows"); sk != nil {
+			if ws, ok := sk.(*builtin.Workflows); ok {
+				ws.SetWorkflowService(workflow.NewSkillAdapter(deps.WorkflowHandler.GetService))
+			}
+		}
+	}
+
+	// Browser + UI reviewer are skills (not LLM tools). Wire backends for IPC use only.
+	if deps.LazyBrowserSvc != nil {
+		uiTool := &tools.UIReviewerTool{}
+		uiTool.SetBrowser(tools.NewLazyRodBrowserAdapter(deps.LazyBrowserSvc))
+		uiTool.SetMediaDir(mediaDir)
+		deps.UIReviewerTool = uiTool
 	}
 
 	// Plugin routes
@@ -870,6 +946,21 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	var oauthManager *oauth.Manager // hoisted for proxy handler wiring
 	if deps.ProviderPool != nil {
 		providerPoolHandler := providerpool.NewHandler(deps.ProviderPool)
+		providerPoolHandler.SetMediaPricingLookup(func(modelID string) *providerpool.MediaPricingInfo {
+			mp := mediagen.GetMediaModelPricing(modelID)
+			if mp == nil {
+				return nil
+			}
+			return &providerpool.MediaPricingInfo{Price: mp.OutputPrice, Unit: string(mp.Unit)}
+		})
+
+		// Wire media pricing updates from remote model_pricing.json
+		deps.ProviderPool.SetMediaPricingApplier(func(modelID string, outputPrice float64, unit string) {
+			mediagen.SetMediaModelPricing(modelID, &mediagen.MediaModelPricing{
+				OutputPrice: outputPrice,
+				Unit:        mediagen.MediaPricingUnit(unit),
+			})
+		})
 
 		// Initialize OAuth manager for OAuth-based providers
 		oauthDataDir := filepath.Join(dataDir, "providers")
@@ -896,6 +987,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// Proxy failover routes are registered below in the proxy block
 		// so they share the same FailoverConfig pointer as the actual failover handler.
+
+		// Start provider pool background tasks (health checks, model discovery, pricing)
+		server.OnServerStart(func(port int) {
+			go deps.ProviderPool.Start(context.Background())
+		})
 	} else {
 		stub := featureDisabled("providers")
 		providersGroup := protected.Group("/providers")
@@ -985,6 +1081,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		proxyConnPool := proxy.NewConnectionPool(&deps.Config.Proxy.Connection)
 		proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
 		proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
+		proxyHandler.SetPromptCacheEnabled(true) // default ON for new installs
 
 		// Smart failover handler for metrics + intelligent error classification
 		smartFailover := proxy.NewSmartFailoverHandler(&routingConfig.Failover, proxyRouter)
@@ -1000,6 +1097,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			pipelineStats = proxy.NewPipelineStatsCollector(deps.DB, proxyHandler.GetRoutingStatsRef())
 			pipelineStats.Start()
 			proxyHandler.SetPipelineStats(pipelineStats)
+			deps.Closers = append(deps.Closers, pipelineStats)
 		}
 
 		if deps.ProviderPool != nil {
@@ -1047,22 +1145,36 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			})
 		}
 
-		// Context pruner middleware (optional, disabled by default)
+		// Context pruner middleware (enabled by default with local backend, lazy-loaded on first request)
 		var prunerMw *pruner.Middleware
-		prunerCfg := pruner.Config{Enabled: false}
+		var prunerHandler *pruner.APIHandler
+		prunerCfg := pruner.DefaultConfig()
+		prunerCfg.Enabled = true
 		if deps.Config.Pruner != nil {
 			prunerCfg = *deps.Config.Pruner
 		}
-		if prunerCfg.Enabled {
+		// Lazy factory: backend + middleware created on first proxy request, not at startup
+		var prunerMu sync.Mutex
+		createPrunerMw := func() *pruner.Middleware {
+			prunerMu.Lock()
+			defer prunerMu.Unlock()
+			if prunerMw != nil {
+				return prunerMw
+			}
 			backend, err := pruner.NewBackend(prunerCfg)
 			if err != nil {
 				slog.Warn("Failed to create pruner backend", "error", err)
-			} else {
-				prunerStats := pruner.NewStats()
-				prunerMw = pruner.NewMiddleware(backend, prunerCfg, prunerStats)
-				proxyHandler.SetPruner(prunerMw)
-				slog.Info("Context pruner enabled", "backend", prunerCfg.Backend, "threshold", prunerCfg.Threshold)
+				return nil
 			}
+			prunerMw = pruner.NewMiddleware(backend, prunerCfg, pruner.NewStats())
+			if prunerHandler != nil {
+				prunerHandler.SetMiddleware(prunerMw)
+			}
+			slog.Info("Context pruner initialized (lazy)", "backend", prunerCfg.Backend, "threshold", prunerCfg.Threshold)
+			return prunerMw
+		}
+		if prunerCfg.Enabled {
+			proxyHandler.SetPrunerFactory(createPrunerMw)
 		}
 		// Pruner model manager (always available for model download)
 		prunerModelDir := filepath.Join(cfg.DataDir, "pruner-models")
@@ -1070,7 +1182,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		prunerModelMgr := pruner.NewPrunerModelManager(prunerModelDir)
 
 		// Always register pruner API routes (handler returns disabled status when pruner is off)
-		prunerHandler := pruner.NewAPIHandler(prunerMw, &prunerCfg, prunerModelMgr)
+		prunerHandler = pruner.NewAPIHandler(prunerMw, &prunerCfg, prunerModelMgr)
 		prunerGroup := v1.Group("/proxy/pruner")
 		prunerHandler.RegisterRoutes(prunerGroup)
 
@@ -1117,20 +1229,16 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		proxyHandler.SetTierResolver(tierResolver)
 		proxyHandler.SetRoutingEnabled(ruleRoutingCfg.Enabled)
 
-		// Toggle persistence: use main blue.db for kvstore (merged from former settings.db)
-		toggleKV, kvErr := kvstore.NewSQLiteStoreWithDB(deps.DB)
-		if kvErr == nil {
-			// Migrate data from legacy settings.db if it exists
-			migrateSettingsDB(filepath.Join(cfg.DataDir, "settings.db"), toggleKV)
-		}
+		// Toggle persistence: reuse shared kvstore
 		var toggleStore *proxy.ToggleStore
 		getToggleState := func() *proxy.ToggleState {
 			state := &proxy.ToggleState{
-				PrunerEnabled:      prunerMw != nil && prunerMw.Enabled(),
+				PrunerEnabled:      prunerCfg.Enabled && (prunerMw == nil || prunerMw.Enabled()),
 				PrunerBackend:      prunerCfg.Backend,
 				RoutingEnabled:     proxyHandler.IsRoutingEnabled(),
 				MaskingEnabled:     dataMasker.IsEnabled(),
 				PromptCacheEnabled: proxyHandler.IsPromptCacheEnabled(),
+				Version:            1,
 			}
 			// Capture individual routing rule states
 			if rules := proxyHandler.GetRoutingRules(); len(rules) > 0 {
@@ -1141,35 +1249,44 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			}
 			return state
 		}
-		if kvErr != nil {
-			slog.Warn("Failed to create toggle kvstore", "error", kvErr)
+		if kv == nil {
+			slog.Warn("Failed to create shared kvstore, toggles will not persist")
 		} else {
-			toggleStore = proxy.NewToggleStore(toggleKV)
+			toggleStore = proxy.NewToggleStore(kv)
 			if saved, loadErr := toggleStore.Load(context.Background()); loadErr == nil && saved != nil {
-				// Restore pruner state — if saved as enabled but middleware wasn't
-				// created (config default is disabled), create it now.
+				// Migrate v0 → v1: old installs had routing/masking/prompt_cache off by default.
+				// These should be on unless the user explicitly disabled them, but v0 has no
+				// way to distinguish "never set" from "explicitly off". Flip them on once.
+				if saved.Version < 1 {
+					saved.RoutingEnabled = true
+					saved.MaskingEnabled = true
+					saved.PromptCacheEnabled = true
+					saved.Version = 1
+					slog.Info("Migrated feature toggles to v1 (routing, masking, prompt_cache → enabled)")
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					toggleStore.Save(ctx, saved)
+					cancel()
+				}
+
+				// Restore pruner state from saved toggles.
+				// Middleware is lazy — just update config; factory will use it.
 				if saved.PrunerBackend != "" {
 					prunerCfg.Backend = saved.PrunerBackend
 				}
 				if saved.PrunerEnabled {
-					if prunerMw == nil {
-						prunerCfg.Enabled = true
-						if b, err := pruner.NewBackend(prunerCfg); err == nil {
-							prunerMw = pruner.NewMiddleware(b, prunerCfg, pruner.NewStats())
-							proxyHandler.SetPruner(prunerMw)
-							prunerHandler.SetMiddleware(prunerMw)
-							slog.Info("Context pruner restored from saved state", "backend", prunerCfg.Backend)
-						}
-					} else {
+					prunerCfg.Enabled = true
+					if prunerMw != nil {
+						// Already eagerly created (shouldn't happen with lazy, but be safe)
 						prunerMw.SetEnabled(true)
-						if saved.PrunerBackend != "" && saved.PrunerBackend != prunerCfg.Backend {
-							if b, err := pruner.NewBackend(prunerCfg); err == nil {
-								prunerMw.SetBackend(b)
-							}
-						}
+					} else {
+						// Ensure factory is set so lazy init picks up the config
+						proxyHandler.SetPrunerFactory(createPrunerMw)
 					}
-				} else if prunerMw != nil {
-					prunerMw.SetEnabled(false)
+				} else {
+					prunerCfg.Enabled = false
+					if prunerMw != nil {
+						prunerMw.SetEnabled(false)
+					}
 				}
 				proxyHandler.SetRoutingEnabled(saved.RoutingEnabled)
 				proxyHandler.SetPromptCacheEnabled(saved.PromptCacheEnabled)
@@ -1352,6 +1469,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Memory routes
 	if deps.MemoryHandler != nil {
 		deps.MemoryHandler.RegisterRoutes(v1)
+		// Wire layered memory into chat handler when lazy init completes
+		deps.MemoryHandler.SetOnLayeredReady(func(ls *memory.LayeredMemoryService) {
+			deps.ChatHandler.SetLayeredMemory(ls)
+		})
 	} else {
 		stub := featureDisabled("memory")
 		memGroup := v1.Group("/memory")
@@ -1359,26 +1480,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		memGroup.GET("/backend", stub)
 		memGroup.POST("/search", stub)
 		memGroup.Any("/*", stub)
-	}
-
-	// Personality routes (protected)
-	personalityStorage, err := model.NewFileStorage(cfg.DataDir)
-	if err != nil {
-		logger.Error("Failed to initialize personality storage", zap.Error(err))
-	} else {
-		// Initialize default personality from workspace SOUL.md
-		var wsDir string
-		if deps.WorkspaceHandler != nil {
-			wsDir = filepath.Join(cfg.DataDir, "workspace")
-		}
-		if err := model.InitializeDefaultPersonality(cfg.DataDir, wsDir); err != nil {
-			logger.Warn("Failed to initialize default personality", zap.Error(err))
-		}
-		personalityService := controller.NewService(personalityStorage)
-		personalityHandler := view.NewHandler(personalityService)
-		personalityGroup := protected.Group("/personalities")
-		personalityHandler.RegisterRoutes(personalityGroup)
-		logger.Info("Personality routes registered")
 	}
 
 	// Workspace routes (protected) — SOUL.md, USER.md, IDENTITY.md, etc.
@@ -1408,10 +1509,76 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	logger.Info("OTA update routes registered", zap.Bool("enabled", deps.Config.Update.Enabled))
 
-	// Channel config routes
+	// Channel config + channel manager
 	if deps.ChannelConfigStore != nil {
+		channelManager := channel.NewManager(channel.DefaultConfig(), logger)
+		channelFactory := server.NewChannelFactory(deps.Logger)
+
+		// Wire channel task watcher notifier (for media generation results)
+		if deps.ChannelTaskWatcher != nil {
+			deps.ChannelTaskWatcher.SetNotifier(func(ctx context.Context, channelName string, msg channel.OutgoingMessage) error {
+				return channelManager.Send(ctx, channelName, msg)
+			})
+			if deps.NgrokTunnelMgr != nil {
+				deps.ChannelTaskWatcher.SetURLResolver(&mediagen.SimpleURLResolver{
+					TunnelGetURL: deps.NgrokTunnelMgr.GetURL,
+					ServerPort:   cfg.Port,
+				})
+			}
+		}
+
+		// Wire message handler: autoreply → chat fallback
+		channelManager.SetHandler(func(ctx context.Context, msg channel.Message) (*channel.OutgoingMessage, error) {
+			if deps.AutoreplyService != nil {
+				response, rule, err := deps.AutoreplyService.Match(ctx, msg.Content, msg.ChannelName, msg.UserID, "", msg.ChatID)
+				if err == nil && response != "" && rule != nil {
+					return &channel.OutgoingMessage{ChatID: msg.ChatID, Content: response}, nil
+				}
+			}
+			if deps.ChatHandler != nil {
+				aiResponse, err := deps.ChatHandler.ProcessChannelMessage(ctx, msg)
+				if err == nil && aiResponse != "" {
+					return &channel.OutgoingMessage{ChatID: msg.ChatID, Content: aiResponse}, nil
+				}
+			}
+			return nil, nil
+		})
+
+		// Wire warmup function so channel messages trigger pre-computation
+		if deps.ChatHandler != nil {
+			channelManager.SetWarmupFunc(deps.ChatHandler.DoChannelWarmup)
+		}
+
+		// Start enabled channels in background — network I/O should not block route registration
+		enabledChannels := deps.ChannelConfigStore.GetEnabled()
+		if len(enabledChannels) > 0 {
+			cfgStore := deps.ChannelConfigStore
+			go func() {
+				for _, chCfg := range enabledChannels {
+					ch, err := channelFactory.CreateChannel(chCfg)
+					if err != nil || ch == nil {
+						continue
+					}
+					if err := channelManager.Register(ch); err != nil {
+						continue
+					}
+					if err := channelManager.StartChannel(context.Background(), chCfg.ID); err != nil {
+						chCfg.Status = "error"
+						chCfg.LastError = err.Error()
+						_ = cfgStore.Set(chCfg.ID, chCfg)
+					} else {
+						chCfg.Status = "connected"
+						chCfg.LastError = ""
+						_ = cfgStore.Set(chCfg.ID, chCfg)
+					}
+				}
+				logger.Info("Enabled channels started in background", zap.Int("count", len(enabledChannels)))
+			}()
+		}
+
 		channelConfigHandler := server.NewChannelConfigHandler(deps.ChannelConfigStore)
-		channelConfigHandler.SetFactory(server.NewChannelFactory(deps.Logger))
+		channelConfigHandler.SetManager(channelManager)
+		channelConfigHandler.SetFactory(channelFactory)
 		channelConfigHandler.RegisterRoutes(api)
 	} else {
 		stub := featureDisabled("channels")
@@ -1419,12 +1586,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Provider settings routes (protected)
-	providerSettingsHandler := server.NewProviderSettingsHandler(deps.ChatHandler.GetProviderRegistry(), cfg.DataDir)
+	providerSettingsHandler := server.NewProviderSettingsHandler(deps.ChatHandler.GetProviderRegistry(), kv)
 	providerSettingsGroup := protected.Group("/providers/settings")
 	providerSettingsHandler.RegisterRoutes(providerSettingsGroup)
 
 	// User settings routes (protected)
-	settingsHandler := server.NewSettingsHandler(cfg.DataDir)
+	settingsHandler := server.NewSettingsHandler(kv)
 	settingsHandler.RegisterRoutes(protected)
 	// Also make locale available to provider settings handler
 	providerSettingsHandler.SetSettingsHandler(settingsHandler)
@@ -1461,6 +1628,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		myGroup.GET("/usage", featureDisabled("metrics"))
 	}
 
+	// SSE event stream + tool approval endpoints
+	if deps.SSEBroker != nil {
+		sseHandler := sse.NewHandler(deps.SSEBroker)
+		sseHandler.RegisterRoutes(apiProtected.Group("/v1"))
+
+		approvalHandler := networkapi.NewApprovalHandler(deps.SSEBroker)
+		approvalHandler.RegisterRoutes(apiProtected.Group("/v1"))
+	}
+
 	// Static routes (must be last)
 	web.RegisterStaticRoutes(e)
 
@@ -1481,46 +1657,4 @@ func InitMetrics(dataDir string) (*metrics.Collector, *metrics.MetricsWriter) {
 	return metricsCollector, metricsWriter
 }
 
-// migrateSettingsDB copies data from the legacy settings.db into the main kvstore table
-// (now in blue.db) and removes the old file.
-func migrateSettingsDB(oldPath string, dest *kvstore.SQLiteStore) {
-	if _, err := os.Stat(oldPath); os.IsNotExist(err) {
-		return
-	}
 
-	old, err := kvstore.NewSQLiteStore(oldPath)
-	if err != nil {
-		slog.Warn("Failed to open legacy settings.db for migration", "error", err)
-		return
-	}
-	defer old.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	keys, err := old.Keys(ctx, "%")
-	if err != nil {
-		slog.Warn("Failed to read keys from legacy settings.db", "error", err)
-		return
-	}
-
-	for _, key := range keys {
-		val, err := old.Get(ctx, key)
-		if err != nil {
-			continue
-		}
-		if str, ok := val.(string); ok {
-			dest.Set(ctx, key, str, 0)
-		}
-	}
-
-	old.Close()
-	if err := os.Remove(oldPath); err != nil {
-		slog.Warn("Failed to remove legacy settings.db", "error", err)
-	} else {
-		slog.Info("Migrated settings.db into blue.db and removed legacy file", "keys", len(keys))
-	}
-	// Clean up WAL/SHM files
-	os.Remove(oldPath + "-wal")
-	os.Remove(oldPath + "-shm")
-}

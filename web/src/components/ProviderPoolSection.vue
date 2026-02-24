@@ -69,6 +69,9 @@ const pricingForm = ref({
   inputPrice: 0,
   outputPrice: 0,
   cachePrice: 0,
+  isMedia: false,
+  pricePerRequest: 0,
+  pricingUnit: 'image' as string,
 })
 
 // Model params form
@@ -811,17 +814,57 @@ function handleModelDragEnd() {
   dragOverModel.value = null
 }
 
-const capabilityKeys = ['chat', 'vision', 'function_call', 'thinking', 'streaming', 'image_generation', 'video_generation', 'audio_generation']
+const capabilityKeys = ['chat', 'completion', 'vision', 'function_call', 'thinking', 'streaming', 'json', 'system_prompt', 'image_generation', 'video_generation', 'audio_generation']
 
 const capabilityEmoji: Record<string, string> = {
   chat: '💬',
+  completion: '📝',
   vision: '👁',
   function_call: '🔧',
   thinking: '🧠',
   streaming: '⚡',
+  json: '📋',
+  system_prompt: '📌',
   image_generation: '🖼',
   video_generation: '🎬',
   audio_generation: '🔊',
+}
+
+const capabilityI18nKey: Record<string, string> = {
+  chat: 'providerPool.capChat',
+  completion: 'providerPool.capCompletion',
+  vision: 'providerPool.capVision',
+  function_call: 'providerPool.capFunctionCall',
+  thinking: 'providerPool.capThinking',
+  streaming: 'providerPool.capStreaming',
+  json: 'providerPool.capJSON',
+  system_prompt: 'providerPool.capSystemPrompt',
+  image_generation: 'providerPool.capImageGeneration',
+  video_generation: 'providerPool.capVideoGeneration',
+  audio_generation: 'providerPool.capAudioGeneration',
+}
+
+function capabilityTip(caps: string[]): string {
+  return caps.map(c => (capabilityEmoji[c] || '•') + ' ' + t(capabilityI18nKey[c] || c)).join('\n')
+}
+
+// Tooltip state for capability hover
+const capTipVisible = ref(false)
+const capTipText = ref('')
+const capTipStyle = ref({ top: '0px', left: '0px' })
+
+function showCapTip(ev: MouseEvent, caps: string[]) {
+  const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+  capTipText.value = capabilityTip(caps)
+  capTipStyle.value = {
+    top: `${rect.top + rect.height / 2}px`,
+    left: `${rect.right + 8}px`,
+  }
+  capTipVisible.value = true
+}
+
+function hideCapTip() {
+  capTipVisible.value = false
 }
 
 function isMediaModel(model: Model): boolean {
@@ -829,15 +872,31 @@ function isMediaModel(model: Model): boolean {
   return caps.some(c => c === 'image_generation' || c === 'video_generation' || c === 'audio_generation')
 }
 
+function mediaPricingLabel(model: Model): string {
+  const price = model.price_per_request ?? 0
+  const unit = model.pricing_unit || 'image'
+  if (price === 0) return '—'
+  const unitLabel: Record<string, string> = {
+    image: t('providerPool.perImage', '/img'),
+    second: t('providerPool.perSecond', '/sec'),
+    video: t('providerPool.perVideo', '/vid'),
+  }
+  return `$${price.toFixed(3)}${unitLabel[unit] || `/${unit}`}`
+}
+
 function openPricingModal(model?: Model) {
   if (model) {
     const customPricing = getModelCustomPricing(model.id)
+    const media = isMediaModel(model)
     pricingForm.value = {
       modelId: model.id,
       providerId: model.provider_id,
       inputPrice: customPricing?.input_price ?? model.input_price ?? 0,
       outputPrice: customPricing?.output_price ?? model.output_price ?? 0,
       cachePrice: customPricing?.cache_price ?? 0,
+      isMedia: media,
+      pricePerRequest: model.price_per_request ?? 0,
+      pricingUnit: model.pricing_unit || 'image',
     }
   } else {
     pricingForm.value = {
@@ -846,6 +905,9 @@ function openPricingModal(model?: Model) {
       inputPrice: 0,
       outputPrice: 0,
       cachePrice: 0,
+      isMedia: false,
+      pricePerRequest: 0,
+      pricingUnit: 'image',
     }
   }
   showPricingModal.value = true
@@ -1777,16 +1839,14 @@ onMounted(() => {
                 v-for="model in (selectedKeyId && currentTabSelectedProvider!.type !== 'trial' ? selectedKeyModels : selectedProviderModels)"
                 :key="model.id"
                 class="p-2 bg-white dark:bg-slate-900/50 rounded text-xs group"
+                @mouseenter="model.capabilities?.length && showCapTip($event, model.capabilities)"
+                @mouseleave="hideCapTip"
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center flex-1 min-w-0 gap-1.5">
                     <span class="text-gray-400 cursor-grab select-none" title="Drag to reorder">⠿</span>
                     <span class="text-gray-900 dark:text-white font-medium">{{ model.display_name || model.name }}</span>
-                    <span
-                      v-if="model.capabilities?.length"
-                      class="text-[10px] leading-none text-gray-400 ml-0.5 cursor-default"
-                      :title="model.capabilities.map(c => (capabilityEmoji[c] || '•') + ' ' + c).join('  ')"
-                    >✦</span>
+                    <span v-if="model.capabilities?.length" class="text-[10px] leading-none text-gray-400 ml-0.5">✦</span>
                     <span class="text-gray-500 ml-1 truncate">{{ model.id }}</span>
                   </div>
                   <div class="flex items-center gap-2 ml-2">
@@ -1800,7 +1860,7 @@ onMounted(() => {
                       @click.stop="openPricingModal(model)"
                     >
                       <template v-if="isMediaModel(model)">
-                        ${{ (model.price_per_request ?? 0).toFixed(3) }}/req
+                        {{ mediaPricingLabel(model) }}
                       </template>
                       <template v-else>
                         ${{ (getModelCustomPricing(model.id)?.input_price ?? model.input_price ?? 0).toFixed(2) }}/${{ (getModelCustomPricing(model.id)?.output_price ?? model.output_price ?? 0).toFixed(2) }}
@@ -2019,6 +2079,34 @@ onMounted(() => {
               class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
             />
           </div>
+          <template v-if="pricingForm.isMedia">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.pricePerUnit') }}</label>
+                <input
+                  v-model.number="pricingForm.pricePerRequest"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  required
+                  class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+                />
+              </div>
+              <div>
+                <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.pricingUnitLabel') }}</label>
+                <select
+                  v-model="pricingForm.pricingUnit"
+                  class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+                >
+                  <option value="image">{{ t('providerPool.unitImage') }}</option>
+                  <option value="second">{{ t('providerPool.unitSecond') }}</option>
+                  <option value="video">{{ t('providerPool.unitVideo') }}</option>
+                </select>
+              </div>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('providerPool.mediaUnitHint') }}</p>
+          </template>
+          <template v-else>
           <div class="grid grid-cols-3 gap-3">
             <div>
               <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.inputPrice') }}</label>
@@ -2054,6 +2142,7 @@ onMounted(() => {
             </div>
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('providerPool.perMillionTokens') }}</p>
+          </template>
           <div class="flex justify-end gap-3 mt-6">
             <button
               type="button"
@@ -2184,6 +2273,8 @@ onMounted(() => {
               v-for="model in allAvailableModels"
               :key="model.id"
               class="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded cursor-pointer"
+              @mouseenter="model.capabilities?.length && showCapTip($event, model.capabilities)"
+              @mouseleave="hideCapTip"
             >
               <input
                 type="checkbox"
@@ -2193,11 +2284,7 @@ onMounted(() => {
               />
               <div class="flex-1 min-w-0">
                 <span class="text-sm text-gray-900 dark:text-white">{{ model.display_name || model.name }}</span>
-                <span
-                  v-if="model.capabilities?.length"
-                  class="text-[10px] leading-none text-gray-400 ml-0.5 cursor-default"
-                  :title="model.capabilities.map(c => (capabilityEmoji[c] || '•') + ' ' + c).join('  ')"
-                >✦</span>
+                <span v-if="model.capabilities?.length" class="text-[10px] leading-none text-gray-400 ml-0.5">✦</span>
                 <span class="text-xs text-gray-500 ml-1">{{ model.id }}</span>
               </div>
               <span v-if="model.context_window" class="text-xs text-gray-400">
@@ -2259,5 +2346,31 @@ onMounted(() => {
       </div>
     </div>
     </Teleport>
+
+    <!-- Capability tooltip (teleported to body to escape overflow) -->
+    <Teleport to="body">
+      <div
+        v-if="capTipVisible"
+        class="cap-tooltip"
+        :style="capTipStyle"
+      >{{ capTipText }}</div>
+    </Teleport>
   </div>
 </template>
+
+<style scoped>
+.cap-tooltip {
+  position: fixed;
+  z-index: 99999;
+  background: #1e293b;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: pre;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+</style>

@@ -83,7 +83,7 @@ function handleSelect(selectedIds: string[], otherText?: string) {
     </div>
 
     <!-- Functional rendering for simple cards (table, code, list, info, quote, alert, terminal) -->
-    <!-- Dynamic components: progress, action, result, detection, chart, gallery, file, link, metric, comparison, steps, map, weather, profile, countdown, rating, accordion, audio, choice, collapsible-code, diff, video -->
+    <!-- Dynamic components: progress, action, result, detection, chart, gallery, file, link, metric, comparison, steps, map, weather, profile, countdown, rating, accordion, audio, choice, collapsible-code, diff, video, ui-review-progress -->
     <div v-if="isFunctional" v-html="functionalHtml" />
 
     <!-- Loading state -->

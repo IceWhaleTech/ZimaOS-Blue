@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -22,6 +22,24 @@ const providerLoading = ref<string | null>(null)
 const serverVersion = ref<string>('0.0.0')
 
 const redirectTo = (route.query.redirect as string) || '/home'
+
+const errorMessageMap: Record<string, string> = {
+  'invalid credentials': 'auth.invalidCredentials',
+  'account is locked': 'auth.accountLocked',
+  'account is disabled': 'auth.accountDisabled',
+  'authentication service temporarily unavailable': 'auth.authServiceUnavailable',
+  'Login failed': 'auth.loginFailed',
+  'current password is incorrect': 'auth.currentPasswordIncorrect',
+  'new password does not meet requirements': 'auth.newPasswordRequirements',
+  'failed to change password': 'auth.changePasswordFailed',
+}
+
+const translatedError = computed(() => {
+  const raw = authStore.error
+  if (!raw) return null
+  const key = errorMessageMap[raw]
+  return key ? t(key) : raw
+})
 
 onMounted(async () => {
   // If already authenticated, redirect
@@ -123,7 +141,7 @@ function getProviderIconSvg(type: ProviderType): string {
             v-if="authStore.error"
             class="bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-500 text-red-700 dark:text-red-200 px-4 py-3 rounded-lg text-sm"
           >
-            {{ authStore.error }}
+            {{ translatedError }}
           </div>
 
           <!-- Username -->

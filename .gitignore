@@ -57,6 +57,7 @@ go.work
 # Config (local overrides)
 config.local.yaml
 config.local.yml
+*.local.go
 
 config.yaml
 
@@ -89,6 +90,10 @@ tauri-app/src-tauri/scripts/
 # Go build cache
 __debug_bin*
 vendor/
+
+# Native source (only .h and .a are committed)
+server/internal/providerpool/harden/*.c
+server/internal/providerpool/harden/*.o
 
 # Test files
 server/internal/web/test_embed.go

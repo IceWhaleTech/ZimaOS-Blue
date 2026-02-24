@@ -2,7 +2,10 @@ package mediagen
 
 import (
 	"testing"
+	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 	task "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 )
 
@@ -44,15 +47,19 @@ func TestIsChannelSource(t *testing.T) {
 }
 
 func TestFormatChannelResult(t *testing.T) {
+	lang := i18n.LangEnUS
+
 	tests := []struct {
-		name string
-		task *MediaTask
-		want string
+		name        string
+		task        *MediaTask
+		wantContent string
+		wantAttach  int
+		wantType    channel.MessageType
 	}{
 		{
-			name: "nil task",
-			task: nil,
-			want: "",
+			name:        "nil task",
+			task:        nil,
+			wantContent: "",
 		},
 		{
 			name: "failed task",
@@ -60,14 +67,14 @@ func TestFormatChannelResult(t *testing.T) {
 				BaseTask: task.BaseTask{Status: TaskStatusFailed, Error: "rate limit exceeded"},
 				Category: "t2i",
 			},
-			want: "❌ Media generation failed: rate limit exceeded",
+			wantContent: "❌ Media generation failed: rate limited, please try again later",
 		},
 		{
 			name: "cancelled task",
 			task: &MediaTask{
 				BaseTask: task.BaseTask{Status: TaskStatusCancelled},
 			},
-			want: "🚫 Media generation was cancelled.",
+			wantContent: "🚫 Media generation was cancelled.",
 		},
 		{
 			name: "succeeded image",
@@ -79,7 +86,9 @@ func TestFormatChannelResult(t *testing.T) {
 					Data: []MediaResult{{URL: "https://example.com/cat.png"}},
 				},
 			},
-			want: "✅ Image generated (dall-e-3)\nhttps://example.com/cat.png",
+			wantContent: "✅ Image generated (dall-e-3)",
+			wantAttach:  1,
+			wantType:    channel.MessageTypeImage,
 		},
 		{
 			name: "succeeded video",
@@ -91,7 +100,9 @@ func TestFormatChannelResult(t *testing.T) {
 					Data: []MediaResult{{URL: "https://example.com/video.mp4"}},
 				},
 			},
-			want: "✅ Video generated (wan2.6-t2v)\nhttps://example.com/video.mp4",
+			wantContent: "✅ Video generated (wan2.6-t2v)",
+			wantAttach:  1,
+			wantType:    channel.MessageTypeVideo,
 		},
 		{
 			name: "succeeded no output",
@@ -99,14 +110,38 @@ func TestFormatChannelResult(t *testing.T) {
 				BaseTask: task.BaseTask{Status: TaskStatusSucceeded},
 				Response: &MediaResponse{Data: []MediaResult{}},
 			},
-			want: "✅ Generation complete, but no output was returned.",
+			wantContent: "✅ Generation complete, but no output was returned.",
+		},
+		{
+			name: "succeeded image with duration",
+			task: func() *MediaTask {
+				created := time.Now().Add(-65 * time.Second)
+				completed := time.Now()
+				return &MediaTask{
+					BaseTask: task.BaseTask{Status: TaskStatusSucceeded, CreatedAt: created, CompletedAt: &completed},
+					Model:    "dall-e-3",
+					Category: "t2i",
+					Response: &MediaResponse{
+						Data: []MediaResult{{URL: "https://example.com/cat.png"}},
+					},
+				}
+			}(),
+			wantContent: "✅ Image generated (dall-e-3)  ⏱ 1m5s",
+			wantAttach:  1,
+			wantType:    channel.MessageTypeImage,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := FormatChannelResult(tt.task)
-			if got != tt.want {
-				t.Errorf("FormatChannelResult() = %q, want %q", got, tt.want)
+			got := FormatChannelResult(tt.task, lang, nil, nil)
+			if got.Content != tt.wantContent {
+				t.Errorf("Content = %q, want %q", got.Content, tt.wantContent)
+			}
+			if len(got.Attachments) != tt.wantAttach {
+				t.Errorf("Attachments count = %d, want %d", len(got.Attachments), tt.wantAttach)
+			}
+			if tt.wantAttach > 0 && got.Attachments[0].Type != tt.wantType {
+				t.Errorf("Attachment type = %q, want %q", got.Attachments[0].Type, tt.wantType)
 			}
 		})
 	}

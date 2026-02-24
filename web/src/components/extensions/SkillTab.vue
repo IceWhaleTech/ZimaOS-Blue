@@ -297,6 +297,28 @@ function renderMarkdown(content: string): string {
 <style scoped>
 @import './extension-tab.css';
 
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.empty-state svg {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  opacity: 0.3;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 14px;
+}
+
 .stats {
   display: flex;
   gap: 16px;

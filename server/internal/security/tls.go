@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -21,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/acme"
@@ -60,6 +60,7 @@ type TLSManager struct {
 	renewalCancel  context.CancelFunc
 	challengeType  string // "http-01" or "dns-01"
 	dnsProvider    string // DNS provider name for dns-01
+	kv             kvstore.Store
 }
 
 // TLSManagerConfig holds TLS manager configuration.
@@ -857,48 +858,32 @@ type tlsPersistedSettings struct {
 	HTTPSPort int  `json:"https_port,omitempty"`
 }
 
-// SaveSettings persists user-changeable TLS settings to a JSON file next to the cert dir.
+const tlsSettingsKVKey = "config:tls_settings"
+
+// SaveSettings persists user-changeable TLS settings to kvstore.
 func (m *TLSManager) SaveSettings() error {
 	m.mu.RLock()
 	s := tlsPersistedSettings{
 		HTTPSOnly: m.config.HTTPSOnly,
 		HTTPSPort: m.config.HTTPSPort,
 	}
-	certDir := filepath.Dir(m.config.CertFile)
 	m.mu.RUnlock()
 
-	if certDir == "" || certDir == "." {
-		certDir = "./data/certs"
+	if m.kv != nil {
+		return m.kv.SetJSON(context.Background(), tlsSettingsKVKey, &s, 0)
 	}
-	if err := os.MkdirAll(certDir, 0750); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(certDir, "tls_settings.json"), data, 0644)
+	return nil
 }
 
-// LoadSettings loads persisted TLS settings from disk, overriding in-memory defaults.
+// LoadSettings loads persisted TLS settings from kvstore, overriding in-memory defaults.
 func (m *TLSManager) LoadSettings() error {
-	m.mu.RLock()
-	certDir := filepath.Dir(m.config.CertFile)
-	m.mu.RUnlock()
+	if m.kv == nil {
+		return nil
+	}
 
-	if certDir == "" || certDir == "." {
-		certDir = "./data/certs"
-	}
-	data, err := os.ReadFile(filepath.Join(certDir, "tls_settings.json"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // No persisted settings yet
-		}
-		return err
-	}
 	var s tlsPersistedSettings
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
+	if err := m.kv.GetJSON(context.Background(), tlsSettingsKVKey, &s); err != nil {
+		return nil // Not found — use defaults
 	}
 
 	m.mu.Lock()
@@ -915,6 +900,11 @@ func (m *TLSManager) LoadSettings() error {
 		m.config.HTTPSPort = s.HTTPSPort
 	}
 	return nil
+}
+
+// SetKVStore sets the kvstore for persisting TLS settings.
+func (m *TLSManager) SetKVStore(kv kvstore.Store) {
+	m.kv = kv
 }
 
 // HTTPSRedirectMiddleware returns an Echo middleware that redirects HTTP to HTTPS.

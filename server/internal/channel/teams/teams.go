@@ -267,6 +267,27 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		activity["replyToId"] = msg.ReplyToID
 	}
 
+	// Attach media as Bot Framework attachments (contentUrl-based).
+	if len(msg.Attachments) > 0 {
+		var attachments []map[string]interface{}
+		for _, att := range msg.Attachments {
+			if att.URL != "" {
+				mime := att.MimeType
+				if mime == "" { mime = "application/octet-stream" }
+				name := att.Name
+				if name == "" { name = "file" }
+				attachments = append(attachments, map[string]interface{}{
+					"contentType": mime,
+					"contentUrl":  att.URL,
+					"name":        name,
+				})
+			}
+		}
+		if len(attachments) > 0 {
+			activity["attachments"] = attachments
+		}
+	}
+
 	// Send to Bot Framework
 	apiURL := fmt.Sprintf("%s/v3/conversations/%s/activities", serviceURL, conversationID)
 

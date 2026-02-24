@@ -46,6 +46,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/images/generations", h.GenerateImage)
 	g.POST("/videos/generations", h.GenerateVideo)
 	g.GET("/tasks/:id", h.GetTask)
+	g.POST("/tasks/:id/retry", h.RetryTask)
 	g.GET("/tasks/:id/stream", h.StreamTask)
 	g.GET("/models", h.ListModels)
 
@@ -53,6 +54,9 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/classify", h.ClassifyIntent)
 	g.POST("/generate", h.DirectGenerate)
 	g.GET("/tasks/by-message/:message_id", h.GetTaskByMessage)
+
+	// Stats
+	g.GET("/stats", h.GetMediaStats)
 
 	// Provider management
 	g.GET("/providers", h.ListProviders)
@@ -344,6 +348,21 @@ func writeSSE(w *echo.Response, event string, data interface{}) {
 	}
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, payload)
 	w.Flush()
+}
+
+// GetMediaStats handles GET /stats — returns aggregated media generation statistics.
+func (h *Handler) GetMediaStats(c echo.Context) error {
+	if h.manager.taskStore == nil {
+		return c.JSON(http.StatusOK, &MediaStats{
+			CostByModel: map[string]float64{},
+			TasksByType: map[string]int64{},
+		})
+	}
+	stats, err := h.manager.taskStore.GetStats()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, stats)
 }
 
 // --- Provider management endpoints ---
@@ -669,6 +688,41 @@ func (h *Handler) GetTaskByMessage(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"tasks": tasks,
+	})
+}
+
+// RetryTask handles POST /tasks/:id/retry — re-submits a failed/cancelled task with the same parameters.
+func (h *Handler) RetryTask(c echo.Context) error {
+	taskID := c.Param("id")
+	if taskID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "task id is required"})
+	}
+
+	oldTask, err := h.manager.GetTask(taskID)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+	}
+	if oldTask.Status != TaskStatusFailed && oldTask.Status != TaskStatusCancelled {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "only failed or cancelled tasks can be retried"})
+	}
+	if oldTask.Request == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "task has no request data"})
+	}
+
+	// Ensure model is set on the request (CreateTask uses req.Model for provider lookup)
+	if oldTask.Request.Model == "" {
+		oldTask.Request.Model = oldTask.Model
+	}
+
+	newTask, err := h.manager.CreateTask(c.Request().Context(), oldTask.Request, oldTask.MessageID, oldTask.Category, oldTask.Source)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"task_id":    newTask.ID,
+		"message_id": newTask.MessageID,
+		"status":     string(newTask.Status),
 	})
 }
 

@@ -193,14 +193,64 @@ func (c *Channel) processMessage(event webhookEvent) {
 	}
 }
 
-// Send sends a message via Google Chat webhook.
+// Send sends a message via Google Chat webhook, including media as cards.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	if c.config.WebhookURL == "" {
 		return fmt.Errorf("webhook URL not configured")
 	}
 
-	payload := map[string]interface{}{
-		"text": msg.Content,
+	payload := map[string]interface{}{}
+
+	if msg.Content != "" {
+		payload["text"] = msg.Content
+	}
+
+	// Attach images as cards (Google Chat webhook supports cardsV2 with image widgets).
+	if len(msg.Attachments) > 0 {
+		var widgets []map[string]interface{}
+		for _, att := range msg.Attachments {
+			if att.URL == "" {
+				continue
+			}
+			switch att.Type {
+			case channel.MessageTypeImage:
+				widgets = append(widgets, map[string]interface{}{
+					"image": map[string]interface{}{
+						"imageUrl": att.URL,
+					},
+				})
+			default:
+				// Non-image: add as a clickable button/link.
+				name := att.Name
+				if name == "" {
+					name = "Download"
+				}
+				widgets = append(widgets, map[string]interface{}{
+					"buttonList": map[string]interface{}{
+						"buttons": []map[string]interface{}{
+							{
+								"text": name,
+								"onClick": map[string]interface{}{
+									"openLink": map[string]string{"url": att.URL},
+								},
+							},
+						},
+					},
+				})
+			}
+		}
+		if len(widgets) > 0 {
+			payload["cardsV2"] = []map[string]interface{}{
+				{
+					"cardId": "media",
+					"card": map[string]interface{}{
+						"sections": []map[string]interface{}{
+							{"widgets": widgets},
+						},
+					},
+				},
+			}
+		}
 	}
 
 	body, err := json.Marshal(payload)

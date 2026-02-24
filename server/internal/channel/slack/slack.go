@@ -341,8 +341,27 @@ func (c *Channel) sendInteractionToChannel(cb *InteractionCallback) {
 
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	if c.client == nil { return fmt.Errorf("client not initialized") }
-	_, err := c.client.postMessage(ctx, msg.ChatID, msg.Content, msg.ReplyToID)
-	if err != nil { return fmt.Errorf("failed to send message: %w", err) }
+
+	// Upload attachments as files.
+	for _, att := range msg.Attachments {
+		if len(att.Data) > 0 {
+			name := att.Name
+			if name == "" { name = "file" }
+			if err := c.client.uploadFile(ctx, msg.ChatID, msg.ReplyToID, name, att.Data, msg.Content); err != nil {
+				c.logger.Warn("failed to upload file to slack, falling back to text",
+					zap.String("type", string(att.Type)), zap.Error(err))
+				fallback := msg.Content
+				if att.URL != "" { fallback += "\n" + att.URL }
+				c.client.postMessage(ctx, msg.ChatID, fallback, msg.ReplyToID)
+			}
+			msg.Content = "" // caption consumed
+		}
+	}
+
+	if len(msg.Attachments) == 0 && msg.Content != "" {
+		_, err := c.client.postMessage(ctx, msg.ChatID, msg.Content, msg.ReplyToID)
+		if err != nil { return fmt.Errorf("failed to send message: %w", err) }
+	}
 	c.msgsSent.Add(1)
 	now := time.Now()
 	c.mu.Lock()

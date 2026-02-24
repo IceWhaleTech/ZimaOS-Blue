@@ -9,13 +9,14 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stats"
 )
 
 func TestStatsHandler_GetStats_Disabled(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, false)
-	consentManager := stats.NewConsentManager(tmpDir, collector)
+	consentManager := stats.NewConsentManager(kvstore.NewMemoryStore(), collector)
 	handler := NewStatsHandler(collector, consentManager)
 
 	e := echo.New()
@@ -45,7 +46,7 @@ func TestStatsHandler_GetStats_Enabled(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, true)
 	defer collector.Flush()
-	consentManager := stats.NewConsentManager(tmpDir, collector)
+	consentManager := stats.NewConsentManager(kvstore.NewMemoryStore(), collector)
 	// Set consent to enable collection (ConsentManager disables by default)
 	consentManager.SetConsent(true)
 	handler := NewStatsHandler(collector, consentManager)
@@ -91,7 +92,7 @@ func TestStatsHandler_GetRecentEvents(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, true)
 	defer collector.Flush()
-	consentManager := stats.NewConsentManager(tmpDir, collector)
+	consentManager := stats.NewConsentManager(kvstore.NewMemoryStore(), collector)
 	// Set consent to enable collection (ConsentManager disables by default)
 	consentManager.SetConsent(true)
 	handler := NewStatsHandler(collector, consentManager)
@@ -138,7 +139,7 @@ func TestStatsHandler_ClearStats(t *testing.T) {
 	collector := stats.NewStatisticsCollector(tmpDir, true)
 	defer collector.Flush()
 	collector.SetSyncPersist(true)
-	consentManager := stats.NewConsentManager(tmpDir, collector)
+	consentManager := stats.NewConsentManager(kvstore.NewMemoryStore(), collector)
 	// Set consent to enable collection (ConsentManager disables by default)
 	consentManager.SetConsent(true)
 	handler := NewStatsHandler(collector, consentManager)
@@ -171,7 +172,7 @@ func TestStatsHandler_ClearStats(t *testing.T) {
 func TestStatsHandler_GetConsentStatus(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, false)
-	consentManager := stats.NewConsentManager(tmpDir, collector)
+	consentManager := stats.NewConsentManager(kvstore.NewMemoryStore(), collector)
 	handler := NewStatsHandler(collector, consentManager)
 
 	e := echo.New()
@@ -200,7 +201,7 @@ func TestStatsHandler_GetConsentStatus(t *testing.T) {
 func TestStatsHandler_SetConsentStatus(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, false)
-	consentManager := stats.NewConsentManager(tmpDir, collector)
+	consentManager := stats.NewConsentManager(kvstore.NewMemoryStore(), collector)
 	handler := NewStatsHandler(collector, consentManager)
 
 	e := echo.New()
@@ -233,7 +234,7 @@ func TestStatsHandler_RevokeConsent(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, true)
 	defer collector.Flush()
-	consentManager := stats.NewConsentManager(tmpDir, collector)
+	consentManager := stats.NewConsentManager(kvstore.NewMemoryStore(), collector)
 	handler := NewStatsHandler(collector, consentManager)
 
 	// First give consent
@@ -274,7 +275,7 @@ func TestStatsHandler_RevokeConsent(t *testing.T) {
 func TestStatsHandler_GetConsentInfo(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, false)
-	consentManager := stats.NewConsentManager(tmpDir, collector)
+	consentManager := stats.NewConsentManager(kvstore.NewMemoryStore(), collector)
 	handler := NewStatsHandler(collector, consentManager)
 
 	e := echo.New()
@@ -307,7 +308,7 @@ func TestStatsHandler_ExportStats(t *testing.T) {
 	tmpDir := t.TempDir()
 	collector := stats.NewStatisticsCollector(tmpDir, true)
 	defer collector.Flush()
-	consentManager := stats.NewConsentManager(tmpDir, collector)
+	consentManager := stats.NewConsentManager(kvstore.NewMemoryStore(), collector)
 	// Set consent to enable collection (ConsentManager disables by default)
 	consentManager.SetConsent(true)
 	handler := NewStatsHandler(collector, consentManager)

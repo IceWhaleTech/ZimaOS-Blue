@@ -66,12 +66,20 @@ func (h *Handler) Stream(c echo.Context) error {
 	ticker := time.NewTicker(h.keepalive)
 	defer ticker.Stop()
 
+	done := h.broker.Done()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 
-		case evt := <-ch:
+		case <-done:
+			return nil
+
+		case evt, ok := <-ch:
+			if !ok {
+				return nil // channel closed by broker
+			}
 			data := evt.MarshalData()
 			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Type, data); err != nil {
 				return nil // client disconnected

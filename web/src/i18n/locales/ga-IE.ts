@@ -44,6 +44,14 @@ export default {
     username: 'Ainm úsáideora',
     password: 'Pasfhocal',
     rememberMe: 'Cuimhnigh orm',
+    invalidCredentials: "Ainm úsáideora nó pasfhocal neamhbhailí",
+    accountLocked: "Tá an cuntas glasáilte",
+    accountDisabled: "Tá an cuntas díchumasaithe",
+    authServiceUnavailable: "Seirbhís fíordheimhnithe gan fáil go sealadach",
+    loginFailed: "Theip ar logáil isteach",
+    currentPasswordIncorrect: "Tá an pasfhocal reatha mícheart",
+    newPasswordRequirements: "Ní chomhlíonann an pasfhocal nua na riachtanais",
+    changePasswordFailed: "Theip ar athrú an phasfhocail",
   },
   errors: {
     ...enUS.errors,
@@ -806,6 +814,17 @@ export default {
     title: 'Linn Soláthraithe',
     subtitle: 'Bainistigh soláthraithe LLM agus eochracha API',
     description: 'Bainistigh soláthraithe LLM, eochracha API agus treorú múnlacha',
+    capChat: 'Comhrá',
+    capCompletion: 'Comhlánú',
+    capVision: 'Fís',
+    capFunctionCall: 'Glao feidhme',
+    capThinking: 'Smaointeoireacht dhomhain',
+    capStreaming: 'Sruthú',
+    capJSON: 'Mód JSON',
+    capSystemPrompt: 'Leid an chórais',
+    capImageGeneration: 'Giniúint íomhánna',
+    capVideoGeneration: 'Giniúint físeán',
+    capAudioGeneration: 'Giniúint fuaime',
     trialQuota: {
       title: 'Cuóta Triail',
       exhausted: 'Cuóta triail ídithe',
@@ -912,6 +931,7 @@ export default {
   chat: {
     ...enUS.chat,
     responseInterrupted: 'Cuireadh isteach ar an bhfreagra',
+    stillListening: 'Lean ar aghaidh, tá mé ag éisteacht...',
     contextPruned: 'Comhthéacs gearrtha, {tokens} comharthaí sábháilte',
     contextCompacted: 'Comhthéacs dlúthaithe: {before} → {after} teachtaireachtaí',
     trialExhausted: 'Tá an cuóta triail ídithe. Cuir do sholáthraí AI féin i bhfeidhm le leanúint ar aghaidh.',
@@ -1232,26 +1252,6 @@ export default {
   webhook: {
     ...enUS.webhook,
     title: 'Webhooks',
-  },
-  personality: {
-    ...enUS.personality,
-    title: 'Pearsantachtaí',
-    subtitle: 'Bainistigh pearsantachtaí an chúntóra AI',
-    card: {
-      ...enUS.personality.card,
-    },
-    validation: {
-      ...enUS.personality.validation,
-    },
-    templates: {
-      ...enUS.personality.templates,
-    },
-    stats: {
-      ...enUS.personality.stats,
-    },
-    editor: {
-      ...enUS.personality.editor,
-    },
   },
   companion: { ...enUS.companion },
   automation: { ...enUS.automation },

@@ -54,6 +54,8 @@ export interface MediaModelInfo {
   provider: string
   max_resolution?: string
   supported_sizes?: string[]
+  price?: number
+  pricing_unit?: string
 }
 
 // IR-based intent classification
@@ -137,6 +139,11 @@ export async function classifyIntent(message: string, hasImages = false, imageCo
 
 export async function directGenerate(req: DirectGenerateRequest) {
   const { data } = await api.post<DirectGenerateResponse>('/media/generate', req)
+  return data
+}
+
+export async function retryTask(taskId: string) {
+  const { data } = await api.post<{ task_id: string; message_id: string; status: string }>(`/media/tasks/${taskId}/retry`)
   return data
 }
 

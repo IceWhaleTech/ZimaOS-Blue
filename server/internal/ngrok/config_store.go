@@ -3,31 +3,28 @@ package ngrok
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"sync"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
-// ConfigStore provides JSON file-based configuration storage with lazy initialization.
-// The config file is only created when configuration is first saved.
+const tunnelKVKey = "config:tunnel"
+
+// ConfigStore provides kvstore-based configuration storage with lazy initialization.
 type ConfigStore struct {
-	mu       sync.RWMutex
-	filePath string
-	config   *RemoteAccessConfig
-	loaded   bool
+	mu     sync.RWMutex
+	kv     kvstore.Store
+	config *RemoteAccessConfig
+	loaded bool
 }
 
-// NewConfigStore creates a new config store. The file is not created until Save is called.
-func NewConfigStore(dataDir string) *ConfigStore {
-	return &ConfigStore{
-		filePath: filepath.Join(dataDir, "tunnel_config.json"),
-	}
+// NewConfigStore creates a new config store backed by kvstore.
+func NewConfigStore(kv kvstore.Store) *ConfigStore {
+	return &ConfigStore{kv: kv}
 }
 
-// GetConfig returns the configuration, loading from file if needed.
+// GetConfig returns the configuration, loading from kvstore if needed.
 func (s *ConfigStore) GetConfig(ctx context.Context) (*RemoteAccessConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -43,7 +40,7 @@ func (s *ConfigStore) GetConfig(ctx context.Context) (*RemoteAccessConfig, error
 	return &cfg, nil
 }
 
-// SaveConfig saves the configuration to file, creating it if needed.
+// SaveConfig saves the configuration to kvstore.
 func (s *ConfigStore) SaveConfig(ctx context.Context, config *RemoteAccessConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -86,19 +83,18 @@ func (s *ConfigStore) EnsureTunnelSubdomain(ctx context.Context) (string, error)
 	return s.config.TunnelSubdomain, nil
 }
 
-// AddLog is a no-op for ConfigStore (logs are not persisted in JSON mode).
+// AddLog is a no-op for ConfigStore (logs are not persisted in this mode).
 // This maintains API compatibility with Repository.
 func (s *ConfigStore) AddLog(ctx context.Context, sessionID, eventType, message string, metadata map[string]interface{}) error {
-	// Logs are not persisted in simplified JSON mode
 	return nil
 }
 
-// GetLogs returns empty logs (not supported in JSON mode).
+// GetLogs returns empty logs (not supported in this mode).
 func (s *ConfigStore) GetLogs(ctx context.Context, limit, offset int) ([]*RemoteAccessLog, error) {
 	return []*RemoteAccessLog{}, nil
 }
 
-// GetErrorLogs returns empty logs (not supported in JSON mode).
+// GetErrorLogs returns empty logs (not supported in this mode).
 func (s *ConfigStore) GetErrorLogs(ctx context.Context, limit, offset int) ([]*RemoteAccessLog, error) {
 	return []*RemoteAccessLog{}, nil
 }
@@ -108,7 +104,7 @@ func (s *ConfigStore) Close() error {
 	return nil
 }
 
-// loadLocked loads config from file. Must be called with lock held.
+// loadLocked loads config from kvstore. Must be called with lock held.
 func (s *ConfigStore) loadLocked() error {
 	s.config = &RemoteAccessConfig{
 		ID:                    "default",
@@ -119,38 +115,19 @@ func (s *ConfigStore) loadLocked() error {
 		NotifyOnError:         true,
 	}
 
-	data, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// File doesn't exist yet, use defaults
-			s.loaded = true
-			return nil
-		}
-		return err
-	}
-
-	if err := json.Unmarshal(data, s.config); err != nil {
-		return err
+	if err := s.kv.GetJSON(context.Background(), tunnelKVKey, s.config); err != nil {
+		// Not found — use defaults
+		s.loaded = true
+		return nil
 	}
 
 	s.loaded = true
 	return nil
 }
 
-// saveLocked saves config to file. Must be called with lock held.
+// saveLocked saves config to kvstore. Must be called with lock held.
 func (s *ConfigStore) saveLocked() error {
-	// Ensure directory exists
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(s.config, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(s.filePath, data, 0600)
+	return s.kv.SetJSON(context.Background(), tunnelKVKey, s.config, 0)
 }
 
 // generateTunnelSubdomain generates a random subdomain like "echo-" + 8 base58 chars.

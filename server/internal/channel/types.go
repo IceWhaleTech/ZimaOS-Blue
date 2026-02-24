@@ -84,6 +84,8 @@ type Attachment struct {
 	URL string `json:"url,omitempty"`
 	// Data is the raw file data (for small files).
 	Data []byte `json:"-"`
+	// Thumbnail is the cover/thumbnail image data (for video attachments).
+	Thumbnail []byte `json:"-"`
 	// Size is the file size in bytes.
 	Size int64 `json:"size"`
 	// MimeType is the MIME type of the file.
@@ -176,6 +178,15 @@ type MessageHandler func(ctx context.Context, msg Message) (*OutgoingMessage, er
 
 // StreamingHandler is a function that handles incoming messages with streaming response.
 type StreamingHandler func(ctx context.Context, msg Message) (<-chan string, error)
+
+// TypingIndicator is an optional interface channels can implement to show typing status.
+// When a message is received, the manager will call SendTyping before invoking the handler
+// so the user sees the bot is working while the LLM processes the request.
+type TypingIndicator interface {
+	// SendTyping sends a "typing" indicator to the given chat.
+	// Best-effort: errors are logged but not propagated.
+	SendTyping(ctx context.Context, chatID string) error
+}
 
 // Config contains common configuration for all channels.
 type Config struct {

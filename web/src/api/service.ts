@@ -49,32 +49,32 @@ export const serviceApi = {
   checkInstall: () => api.get<InstallCheckResult>('/service/install/check'),
 
   install: async () => {
-    // Check if running in Tauri (Windows GUI mode)
-    if (window.__TAURI_INTERNALS__) {
+    // Windows Tauri: use elevated Rust command for Windows Service installation
+    if (window.__TAURI_INTERNALS__ && navigator.userAgent.toLowerCase().includes('win')) {
       try {
         const { invoke } = await import('@tauri-apps/api/core')
         const result = await invoke<string>('install_windows_service')
-        return { success: true, message: result }
+        return { data: { success: true, message: result } }
       } catch (error) {
-        return { success: false, message: String(error) }
+        return { data: { success: false, message: String(error) } }
       }
     }
-    // Fallback to HTTP API for standalone CLI mode
+    // macOS/Linux (and standalone CLI): use HTTP API (launchd/systemd)
     return api.post<ServiceResponse>('/service/install')
   },
 
   uninstall: async () => {
-    // Check if running in Tauri (Windows GUI mode)
-    if (window.__TAURI_INTERNALS__) {
+    // Windows Tauri: use elevated Rust command for Windows Service removal
+    if (window.__TAURI_INTERNALS__ && navigator.userAgent.toLowerCase().includes('win')) {
       try {
         const { invoke } = await import('@tauri-apps/api/core')
         const result = await invoke<string>('uninstall_windows_service')
-        return { success: true, message: result }
+        return { data: { success: true, message: result } }
       } catch (error) {
-        return { success: false, message: String(error) }
+        return { data: { success: false, message: String(error) } }
       }
     }
-    // Fallback to HTTP API for standalone CLI mode
+    // macOS/Linux (and standalone CLI): use HTTP API (launchd/systemd)
     return api.post<ServiceResponse>('/service/uninstall')
   },
 

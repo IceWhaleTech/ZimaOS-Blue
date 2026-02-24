@@ -6,7 +6,7 @@
 //	  --key <base64-DER-private-key-or-PEM-file> \
 //	  --kid 1 \
 //	  --api-key sk-xxx \
-//	  --url https://paid.tribiosapi.top/ \
+//	  --url https://xxxxx/ \
 //	  --limit 10000 \
 //	  [--exp 2026-12-31]
 package main
@@ -37,7 +37,7 @@ func main() {
 	keyFlag := flag.String("key", "", "Base64 DER private key or path to PEM file")
 	kid := flag.String("kid", "1", "Key ID (1-5)")
 	apiKey := flag.String("api-key", "", "Trial API key")
-	urlFlag := flag.String("url", "https://paid.tribiosapi.top/", "Trial base URL")
+	urlFlag := flag.String("url", "https://xxxxx/", "Trial base URL")
 	limit := flag.Int64("limit", 10000, "Token limit")
 	expFlag := flag.String("exp", "", "Expiry date (YYYY-MM-DD), empty=no expiry")
 	fmtFlag := flag.String("fmt", "anthropic", "API format")

@@ -22,14 +22,12 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/bootstrap"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/lifecycle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -54,7 +52,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
@@ -67,8 +64,6 @@ import (
 	ssePkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 	webpushPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/webpush"
-
-	blueAPI "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
 )
 
 var (
@@ -188,6 +183,13 @@ func runServer() {
 	}
 	db.Exec("PRAGMA shrink_memory") // Release unused memory after pragma changes
 
+	// Shared kvstore for all config persistence (replaces scattered JSON files)
+	sqliteKV, err := kvstore.NewSQLiteStoreWithDB(db)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to initialize config kvstore")
+	}
+	configKV := kvstore.NewCachedStore(sqliteKV)
+
 	// Initialize user repository and service
 	userRepo, err := user.NewSQLiteRepository(db)
 	if err != nil {
@@ -306,16 +308,6 @@ func runServer() {
 	// Initialize chat handler
 	chatHandler := server.NewChatHandler(memoryStore, llmRegistry, toolRegistry)
 
-	// Enable smart tool selection if configured
-	if cfg.ToolCalling.SmartSelection {
-		ts := tools.DefaultToolSelector()
-		if cfg.ToolCalling.SmartSelectionMaxTools > 0 {
-			ts.MaxTools = cfg.ToolCalling.SmartSelectionMaxTools
-		}
-		chatHandler.SetToolSelector(ts)
-		logger.Info().Int("max_tools", ts.MaxTools).Msg("Smart tool selection enabled")
-	}
-
 	// Initialize external auth service (for OAuth/OIDC providers)
 	extauthService, err := extauth.NewService(&extauth.ServiceConfig{
 		Providers:    []*extauth.ProviderConfig{}, // No providers configured by default
@@ -408,13 +400,6 @@ func runServer() {
 	autoreplyService := autoreply.NewService(autoreply.DefaultConfig(), zapLogger)
 	autoreplyHandler := autoreply.NewHandler(autoreplyService, zapLogger)
 
-	// Wire autoreply service into skill
-	if arSkill := skillRegistry.Get("autoreply"); arSkill != nil {
-		if ar, ok := arSkill.(*builtin.AutoReply); ok {
-			ar.SetAutoreplyService(autoreply.NewSkillAdapter(autoreplyService))
-		}
-	}
-
 	// Initialize independent services in parallel for faster startup
 	var (
 		metricsCollector   *metrics.Collector
@@ -443,14 +428,10 @@ func runServer() {
 	// Use conc/pool for safer parallel initialization with automatic panic recovery
 	initPool := concpool.New().WithMaxGoroutines(8)
 
-	// Use WaitGroup to coordinate critical service initialization
-	var criticalServicesWg sync.WaitGroup
-
-	// Group 1: Critical services that must be ready before server starts
-	// Initialize metrics synchronously to ensure it's ready for first request
-	criticalServicesWg.Add(1)
+	// Metrics: async init — chat handler nil-checks metricsRecorder, so first
+	// requests simply skip recording until metrics is ready.  This avoids
+	// blocking server start on metrics.db open + collector goroutine.
 	go func() {
-		defer criticalServicesWg.Done()
 		// Metrics collector (collect every 10 seconds, keep 5 minutes of history)
 		metricsCollector = metrics.NewCollector(10*time.Second, 30)
 		metricsCollector.Start()
@@ -488,8 +469,8 @@ func runServer() {
 	// Chromium is very heavy on memory, skip at startup
 	logger.Info().Msg("Browser automation will be initialized on first use")
 
-	// TTS service — pick OS-appropriate default provider
-	{
+	// TTS service — pick OS-appropriate default provider (async, not needed at startup)
+	initPool.Go(func() {
 		defaultTTSProvider := tts.ProviderEdge
 		if runtime.GOOS == "darwin" {
 			defaultTTSProvider = tts.ProviderMacOSNative
@@ -513,7 +494,7 @@ func runServer() {
 		} else {
 			logger.Info().Msgf("TTS service initialized (%s)", defaultTTSProvider)
 		}
-	}
+	})
 
 	// Critical services in parallel pool
 	initPool.Go(func() {
@@ -539,13 +520,6 @@ func runServer() {
 		return svc
 	})
 
-	// Wire workflow service into skill (lazy — triggers workflow init on first skill call)
-	if wfSkill := skillRegistry.Get("workflows"); wfSkill != nil {
-		if ws, ok := wfSkill.(*builtin.Workflows); ok {
-			ws.SetWorkflowService(workflow.NewSkillAdapter(workflowHandler.GetService))
-		}
-	}
-
 	// Async initialization for MFA handler
 	go func() {
 		mfaHandler = mfa.NewHandler(nil, nil)
@@ -561,13 +535,6 @@ func runServer() {
 		} else {
 			sandboxHandler = sandbox.NewHandler(sandboxManager)
 			logger.Info().Bool("supported", sandboxManager.IsSupported()).Msg("Sandbox handler initialized")
-
-			// Wire sandbox into skill
-			if sbSkill := skillRegistry.Get("sandbox"); sbSkill != nil {
-				if sb, ok := sbSkill.(*builtin.Sandbox); ok {
-					sb.SetSandboxService(sandbox.NewSkillAdapter(sandboxManager))
-				}
-			}
 		}
 	}
 
@@ -575,11 +542,6 @@ func runServer() {
 	cronHandler = cron.NewLazyHandler(func() *cron.Service {
 		svc := cron.NewService(cron.DefaultConfig(), zapLogger)
 		svc.RegisterBuiltinHandlers()
-		// Enable command handler for scheduler skill (whitelisted commands only)
-		svc.RegisterCommandHandler(cron.CommandSecurityConfig{
-			Enabled:          true,
-			RequireAdminRole: true,
-		})
 		if err := svc.Start(); err != nil {
 			logger.Warn().Err(err).Msg("Failed to start cron service")
 		}
@@ -587,21 +549,14 @@ func runServer() {
 	}, zapLogger)
 	logger.Info().Msg("Cron service configured for lazy initialization")
 
-	// Wire cron service into scheduler skill (lazy — triggers cron init on first skill call)
-	cronAdapter := cron.NewSkillAdapter(cronHandler.GetService)
-	if schedulerSkill := skillRegistry.Get("scheduler"); schedulerSkill != nil {
-		if ss, ok := schedulerSkill.(*builtin.Scheduler); ok {
-			ss.SetCronService(cronAdapter)
-		}
-	}
-	cronIPC := sockipc.NewCronIPCAdapter(cronAdapter)
+	cronIPC := sockipc.NewCronIPCAdapter(cron.NewSkillAdapter(cronHandler.GetService))
 
 	// SSE event broker — created early so push service can use it as EventPublisher
 	sseBroker := ssePkg.NewBroker()
 
 	// Wire Web Push notification support
 	var wpSender *webpushPkg.Sender
-	if vapidPriv, vapidPub, err := webpushPkg.GetOrCreateVAPIDKeys(dataDir); err != nil {
+	if vapidPriv, vapidPub, err := webpushPkg.GetOrCreateVAPIDKeys(configKV); err != nil {
 		logger.Warn().Err(err).Msg("Failed to initialize VAPID keys")
 	} else if wpStore, err := webpushPkg.NewStore(db); err != nil {
 		logger.Warn().Err(err).Msg("Failed to initialize webpush store")
@@ -728,10 +683,6 @@ func runServer() {
 	// Wait for all parallel initializations to complete
 	initPool.Wait()
 
-	// Wait for critical services to be ready before continuing
-	criticalServicesWg.Wait()
-	logger.Info().Msg("Critical services initialized and ready")
-
 	// Whisper ASR provider will be initialized lazily on first use
 	// This significantly speeds up startup time
 	whisperModelPath := filepath.Join(dataDir, "whisper-models")
@@ -767,8 +718,8 @@ func runServer() {
 	voiceHandler = voice.NewHandler(voiceService)
 	logger.Info().Msg("Voice handler initialized")
 
-	// Initialize ngrok config store (JSON-based, lazy initialization)
-	ngrokConfigStore = ngrok.NewConfigStore(dataDir)
+	// Initialize ngrok config store (kvstore-based, lazy initialization)
+	ngrokConfigStore = ngrok.NewConfigStore(configKV)
 	ngrokTunnelMgr = ngrok.NewSDKTunnelManager(nil)
 	logger.Info().Msg("Ngrok tunnel services initialized (lightweight)")
 
@@ -780,7 +731,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader, sseBroker, pushIPC, cronIPC, browserBackend, lazyBrowserSvc)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader, sseBroker, pushIPC, cronIPC, browserBackend, lazyBrowserSvc, configKV)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -825,6 +776,10 @@ func runServer() {
 
 	server.SetReady(false)
 
+	// Close SSE broker first — this makes all SSE handlers return,
+	// so httpServer.Shutdown() won't block waiting for long-lived connections.
+	sseBroker.Close()
+
 	if err := lm.Shutdown(shutdownCtx); err != nil {
 		logger.Error().Err(err).Msg("Shutdown error - some services may not have stopped cleanly")
 		// Don't use os.Exit here - let deferred cleanup run
@@ -863,7 +818,7 @@ func runServer() {
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, configKV kvstore.Store) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -874,7 +829,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	// Initialize speech handler
-	speechKV, _ := kvstore.NewSQLiteStoreWithDB(db)
+	speechKV := configKV
 	asrProvider := "whisper"
 	if runtime.GOOS == "darwin" {
 		asrProvider = "macos-native"
@@ -908,60 +863,62 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			}
 		}
 	}
-	// On macOS, prefer native STT (always available, no download needed)
+	// On macOS/Windows, initialize native STT in background — not needed for first request
 	logger.Info("ASR provider setup", zap.String("goos", runtime.GOOS), zap.Bool("sttServiceNil", sttService == nil))
-	if runtime.GOOS == "darwin" {
-		logger.Info("macOS detected, initializing native STT...")
-		macosSTT := speech.NewMacOSNativeSTT()
-		if err := macosSTT.Initialize(); err == nil {
-			speechService.SetASRProvider(macosSTT)
-			// Also update voice service to use macOS native STT for /voice/transcribe
-			if voiceHandler != nil {
-				voiceHandler.Service().SetSTTService(stt.NewServiceFromProvider(macosSTT))
-			}
-			logger.Info("macOS native STT initialized OK",
-				zap.String("providerType", string(macosSTT.Type())),
-				zap.String("providerName", macosSTT.Name()))
-		} else {
-			logger.Warn("macOS native STT init failed, falling back to whisper", zap.Error(err))
-			speechService.SetASRPermissionDenied(err.Error())
-			if sttService != nil {
-				if wp := sttService.GetWhisperProvider(); wp != nil && wp.IsInitialized() {
-					speechService.SetASRProvider(wp)
+	go func() {
+		if runtime.GOOS == "darwin" {
+			logger.Info("macOS detected, initializing native STT...")
+			macosSTT := speech.NewMacOSNativeSTT()
+			if err := macosSTT.Initialize(); err == nil {
+				speechService.SetASRProvider(macosSTT)
+				// Also update voice service to use macOS native STT for /voice/transcribe
+				if voiceHandler != nil {
+					voiceHandler.Service().SetSTTService(stt.NewServiceFromProvider(macosSTT))
+				}
+				logger.Info("macOS native STT initialized OK",
+					zap.String("providerType", string(macosSTT.Type())),
+					zap.String("providerName", macosSTT.Name()))
+			} else {
+				logger.Warn("macOS native STT init failed, falling back to whisper", zap.Error(err))
+				speechService.SetASRPermissionDenied(err.Error())
+				if sttService != nil {
+					if wp := sttService.GetWhisperProvider(); wp != nil && wp.IsInitialized() {
+						speechService.SetASRProvider(wp)
+					}
 				}
 			}
-		}
-	} else if runtime.GOOS == "windows" {
-		logger.Info("Windows detected, initializing native ASR...")
-		windowsASR := speech.NewWindowsNativeASR()
-		if windowsASR != nil {
-			speechService.SetASRProvider(windowsASR)
-			// Also update voice service to use Windows native ASR for /voice/transcribe
-			if voiceHandler != nil {
-				voiceHandler.Service().SetSTTService(stt.NewServiceFromProvider(windowsASR))
-			}
-			logger.Info("Windows native ASR initialized OK",
-				zap.String("providerType", string(windowsASR.Type())),
-				zap.String("providerName", windowsASR.Name()))
-		} else {
-			logger.Warn("Windows native ASR init failed, falling back to whisper")
-			if sttService != nil {
-				if wp := sttService.GetWhisperProvider(); wp != nil {
-					speechService.SetASRProvider(wp)
+		} else if runtime.GOOS == "windows" {
+			logger.Info("Windows detected, initializing native ASR...")
+			windowsASR := speech.NewWindowsNativeASR()
+			if windowsASR != nil {
+				speechService.SetASRProvider(windowsASR)
+				// Also update voice service to use Windows native ASR for /voice/transcribe
+				if voiceHandler != nil {
+					voiceHandler.Service().SetSTTService(stt.NewServiceFromProvider(windowsASR))
+				}
+				logger.Info("Windows native ASR initialized OK",
+					zap.String("providerType", string(windowsASR.Type())),
+					zap.String("providerName", windowsASR.Name()))
+			} else {
+				logger.Warn("Windows native ASR init failed, falling back to whisper")
+				if sttService != nil {
+					if wp := sttService.GetWhisperProvider(); wp != nil {
+						speechService.SetASRProvider(wp)
+					}
 				}
 			}
+		} else if sttService != nil {
+			if wp := sttService.GetWhisperProvider(); wp != nil {
+				speechService.SetASRProvider(wp)
+			}
 		}
-	} else if sttService != nil {
-		if wp := sttService.GetWhisperProvider(); wp != nil {
-			speechService.SetASRProvider(wp)
+		// Log final ASR provider state
+		if p := speechService.GetASRProvider(); p != nil {
+			logger.Info("Final ASR provider", zap.String("type", string(p.Type())), zap.String("name", p.Name()))
+		} else {
+			logger.Warn("No ASR provider configured")
 		}
-	}
-	// Log final ASR provider state
-	if p := speechService.GetASRProvider(); p != nil {
-		logger.Info("Final ASR provider", zap.String("type", string(p.Type())), zap.String("name", p.Name()))
-	} else {
-		logger.Warn("No ASR provider configured")
-	}
+	}()
 
 	// Initialize workspace (SOUL.md, USER.md, IDENTITY.md, etc.)
 	workspaceMgr := workspace.NewManager(filepath.Join(dataDir, "workspace"))
@@ -969,22 +926,13 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		logger.Warn("Failed to initialize workspace", zap.Error(err))
 	}
 
-	// Release embedded SKILL.md files to {workspace}/.claude/skills/
-	if err := workspaceMgr.ReleaseSkills(skillEmbed.SkillsFS); err != nil {
-		logger.Warn("Failed to release embedded skills", zap.Error(err))
-	}
-
 	// Initialize Claude Code handler
-	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir)
+	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir, configKV)
 	workspaceDir := workspaceMgr.Dir() // {dataDir}/workspace/
 	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{WorkspaceDir: workspaceDir})
 	systemPromptBuilder.SetToolRegistry(toolRegistry)
 	systemPromptBuilder.SetWorkspace(workspaceMgr)
-	systemPromptBuilder.SetSkillsDir(filepath.Join(workspaceDir, ".claude", "skills"))
 	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
-
-	// Register workspace_file tool so the agent can update workspace files via conversation
-	toolRegistry.Register(workspace.NewWorkspaceTool(workspaceMgr))
 
 	// Initialize memory handler (markdown primary, optional dual-write with vector store)
 	var memoryHandler *server.MemoryHandler
@@ -1015,24 +963,24 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 		layeredService, err := memory.NewLayeredMemoryService(unifiedService, memory.LayeredMemoryConfig{
 			BaseDir:            memoryDir,
+			LongTermDir:        workspaceMgr.Dir(),
 			DailyRetentionDays: 30,
 		})
 		if err != nil {
 			logger.Warn("Failed to initialize layered memory service", zap.Error(err))
 		} else {
 			h.SetLayeredService(layeredService)
-			chatHandler.SetLayeredMemory(layeredService)
 		}
 		toolsAdapter := memory.NewToolsAdapter(unifiedService)
 		tools.RegisterMemoryTools(toolRegistry, toolsAdapter)
 
 		return nil
 	})
-	// Trigger init eagerly so LayeredMemoryService is available for chat recall/extraction
-	memoryHandler.Init()
+	// Trigger init asynchronously — recall/extract gracefully skip when layeredMemory is nil
+	go memoryHandler.Init()
 
 	// Initialize channel config store
-	channelConfigStore := server.NewChannelConfigStore(dataDir)
+	channelConfigStore := server.NewChannelConfigStore(configKV)
 
 	// Initialize provider pool
 	var providerPool *providerpool.Pool
@@ -1056,11 +1004,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			}
 		}
 
-		server.OnServerStart(func(port int) {
-			go func() {
-				providerPool.Start(context.Background())
-			}()
-		})
 	}
 
 	// Call bootstrap.RegisterAllRoutes with all dependencies
@@ -1068,20 +1011,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	// Create IPC adapters for browser, UI reviewer, and push notification SKILLs
 	browserIPC := sockipc.NewToolBrowserIPCAdapter(browserBackend)
-
-	// Register BrowserTool as native tool (with streaming progress cards)
-	browserTool := tools.NewBrowserTool()
-	browserTool.SetBackend(browserBackend)
-	toolRegistry.Register(browserTool)
-
-	// Create UI reviewer for IPC and direct tool calls (streaming progress cards)
-	uiTool := &tools.UIReviewerTool{}
-	uiTool.SetBrowser(tools.NewLazyRodBrowserAdapter(lazyBrowserSvc))
-	mediaDir := filepath.Join(dataDir, "media")
-	_ = os.MkdirAll(mediaDir, 0750)
-	uiTool.SetMediaDir(mediaDir)
-	toolRegistry.Register(uiTool) // register as LLM-callable tool
-	uiReviewerIPC := sockipc.NewUIReviewIPCAdapter(uiTool)
+	uiReviewerIPC := sockipc.NewUIReviewIPCAdapter(&tools.UIReviewerTool{}) // placeholder, routes.go creates the real one
 
 	deps := &bootstrap.RoutesDeps{
 		DB:     db,
@@ -1123,7 +1053,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		BrowserHandler:     browserHandler,
 		BrowserIPC:         browserIPC,
 		UIReviewerIPC:      uiReviewerIPC,
-		UIReviewerTool:     uiTool,
 		PushIPC:            pushIPC,
 		CronIPC:            cronIPC,
 		WorkflowHandler:    workflowHandler,
@@ -1140,12 +1069,19 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		ClaudeCodeHandler:  claudeCodeHandler,
 		MemoryHandler:      memoryHandler,
 		ChannelConfigStore: channelConfigStore,
+		ConfigKV:           configKV,
 		HotReloader:        hotReloader,
 		WorkspaceHandler:   workspace.NewHandler(workspaceMgr),
 		SSEBroker:          sseBroker,
+		// Consolidated init deps
+		SkillEmbedFS:        skillEmbed.SkillsFS,
+		SandboxManager:      sandboxManager,
+		SystemPromptBuilder: systemPromptBuilder,
+		LazyBrowserSvc:      lazyBrowserSvc,
+		BrowserBackend:      browserBackend,
 	}
 
-	apiProtected := bootstrap.RegisterAllRoutes(e, deps)
+	_ = bootstrap.RegisterAllRoutes(e, deps)
 
 	// Register shutdown hooks for closers started during route registration (e.g., sockipc)
 	for _, c := range deps.Closers {
@@ -1154,124 +1090,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			return closer.Close()
 		})
 	}
-
-	// SSE event stream endpoint — register on /api/v1/events (protected)
-	sseHandler := ssePkg.NewHandler(sseBroker)
-	sseHandler.RegisterRoutes(apiProtected.Group("/v1"))
-
-	// Tool approval endpoints — /api/v1/approval/* (protected)
-	approvalHandler := blueAPI.NewApprovalHandler(sseBroker)
-	approvalHandler.RegisterRoutes(apiProtected.Group("/v1"))
-
-	// Web Push subscription endpoints — /api/v1/webpush/* (protected)
-	if vapidPriv, vapidPub, err := webpushPkg.GetOrCreateVAPIDKeys(dataDir); err == nil {
-		if wpStore, err := webpushPkg.NewStore(db); err == nil {
-			wpHandler := webpushPkg.NewHandler(wpStore, vapidPub)
-			wpHandler.RegisterRoutes(apiProtected.Group("/v1/webpush"))
-			_ = vapidPriv // used by sender in runServer
-		}
-	}
-
-	channelConfigHandler := server.NewChannelConfigHandler(channelConfigStore)
-	channelManager := channel.NewManager(channel.DefaultConfig(), zapLogger)
-	channelFactory := server.NewChannelFactory(zapLogger)
-
-	// Wire channel task watcher notifier now that channelManager is available
-	if deps.ChannelTaskWatcher != nil {
-		deps.ChannelTaskWatcher.SetNotifier(func(ctx context.Context, channelName, chatID, message string) error {
-			return channelManager.Send(ctx, channelName, channel.OutgoingMessage{
-				ChatID:  chatID,
-				Content: message,
-			})
-		})
-	}
-
-	channelManager.SetHandler(func(ctx context.Context, msg channel.Message) (*channel.OutgoingMessage, error) {
-		if autoreplyService != nil {
-			response, rule, err := autoreplyService.Match(ctx, msg.Content, msg.ChannelName, msg.UserID, "", msg.ChatID)
-			if err == nil && response != "" && rule != nil {
-				return &channel.OutgoingMessage{ChatID: msg.ChatID, Content: response}, nil
-			}
-		}
-		if chatHandler != nil {
-			aiResponse, err := chatHandler.ProcessChannelMessage(ctx, msg)
-			if err == nil && aiResponse != "" {
-				return &channel.OutgoingMessage{ChatID: msg.ChatID, Content: aiResponse}, nil
-			}
-		}
-		return nil, nil
-	})
-
-	enabledChannels := channelConfigStore.GetEnabled()
-	if len(enabledChannels) > 0 {
-		var wg sync.WaitGroup
-		for _, cfg := range enabledChannels {
-			wg.Add(1)
-			go func(cfg *server.ChannelConfig) {
-				defer wg.Done()
-				ch, err := channelFactory.CreateChannel(cfg)
-				if err != nil || ch == nil {
-					return
-				}
-				if err := channelManager.Register(ch); err != nil {
-					return
-				}
-				if err := channelManager.StartChannel(context.Background(), cfg.ID); err != nil {
-					cfg.Status = "error"
-					cfg.LastError = err.Error()
-					_ = channelConfigStore.Set(cfg.ID, cfg)
-				} else {
-					cfg.Status = "connected"
-					cfg.LastError = ""
-					_ = channelConfigStore.Set(cfg.ID, cfg)
-				}
-			}(cfg)
-		}
-		wg.Wait()
-	}
-
-	channelConfigHandler.SetManager(channelManager)
-	channelConfigHandler.SetFactory(channelFactory)
-	channelConfigHandler.RegisterRoutes(e.Group("/api"))
-
-	// Heartbeat runner + handler (needs channelManager, so created after bootstrap)
-	hbCfg := convertHeartbeatConfig(&cfg.Heartbeat)
-	hbCfg.WorkspaceDir = workspaceMgr.Dir() // Use workspace directory for HEARTBEAT.md
-	hbRunner := heartbeat.NewRunner(heartbeat.RunnerDeps{
-		Config: hbCfg,
-		ChatFn: func() heartbeat.ChatFunc {
-			pc := server.NewProxyClient(cfg.Server.Port)
-			if apiKeyService != nil {
-				if info, err := apiKeyService.CreateKey(context.Background(), &auth.CreateKeyRequest{
-					Name:   "heartbeat-internal",
-					Scopes: []string{"chat", "proxy", "route:auto"},
-				}); err == nil {
-					pc.SetAPIKey(info.Key)
-				}
-			}
-			return pc.Chat
-		}(),
-		Channels: channelManager,
-		Logger:   zapLogger,
-	})
-	hbHandler := heartbeat.NewHandler(hbRunner)
-	hbHandler.RegisterRoutes(apiProtected)
-	lm.Go(hbRunner.Run)
-	logger.Info("Heartbeat runner initialized", zap.Bool("enabled", cfg.Heartbeat.Enabled))
-
-	// OTA update checker (background, non-blocking)
-	updateCfg := &update.Config{
-		Enabled:        true,
-		StoragePath:    filepath.Join(dataDir, "updates"),
-		BackupCount:    2,
-		ReleaseChannel: "stable",
-	}
-	updateHandler := update.NewHandler(version, updateCfg)
-	otaChecker := update.NewOTAChecker(version, dataDir, "")
-	updateHandler.SetOTAChecker(otaChecker)
-	updateHandler.RegisterRoutes(apiProtected)
-	lm.Go(otaChecker.Run)
-	logger.Info("OTA update checker started")
 }
 
 // convertClaudeCodeConfig converts config.ClaudeCodeConfig to claudecode.ClaudeCodeConfig.
@@ -1304,34 +1122,6 @@ func convertClaudeCodeConfig(cfg *config.ClaudeCodeConfig, apiKey, baseURL strin
 			Serialize:         cfg.Backend.Serialize,
 		},
 	}
-}
-
-// convertHeartbeatConfig converts config.HeartbeatConfig to heartbeat.Config.
-func convertHeartbeatConfig(cfg *config.HeartbeatConfig) *heartbeat.Config {
-	hbCfg := &heartbeat.Config{
-		Enabled:         cfg.Enabled,
-		Interval:        cfg.Interval,
-		Prompt:          cfg.Prompt,
-		AckMaxChars:     cfg.AckMaxChars,
-		WorkspaceDir:    cfg.WorkspaceDir,
-		LLMProvider:     cfg.LLMProvider,
-		LLMModel:        cfg.LLMModel,
-		DeliveryChannel: cfg.DeliveryChannel,
-		DeliveryChatID:  cfg.DeliveryChatID,
-		Visibility: heartbeat.VisibilityConfig{
-			ShowOk:       cfg.Visibility.ShowOk,
-			ShowAlerts:   cfg.Visibility.ShowAlerts,
-			UseIndicator: cfg.Visibility.UseIndicator,
-		},
-	}
-	if cfg.ActiveHours != nil {
-		hbCfg.ActiveHours = &heartbeat.ActiveHours{
-			Start:    cfg.ActiveHours.Start,
-			End:      cfg.ActiveHours.End,
-			Timezone: cfg.ActiveHours.Timezone,
-		}
-	}
-	return hbCfg
 }
 
 // initDualWriteBackend creates a DualWriteBackend with VectorStore + HybridSearcher.

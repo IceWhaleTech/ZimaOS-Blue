@@ -23,13 +23,11 @@ GIT_COMMIT=$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "
 BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Trial license (Ed25519-signed, from environment)
+# Pre-build: generate XOR-encoded Go source instead of ldflags injection
 TRIAL_LICENSE="${ZIMAOS_TRIAL_LICENSE:-}"
 
 # Go ldflags — must match server/Makefile
 GO_LDFLAGS="-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT} -X main.buildTime=${BUILD_TIME}"
-if [ -n "$TRIAL_LICENSE" ]; then
-    GO_LDFLAGS="$GO_LDFLAGS -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=${TRIAL_LICENSE}"
-fi
 
 echo "=========================================="
 echo "ZimaOS Blue - Tauri Build Script"
@@ -137,6 +135,15 @@ if [ ! -f "$EMBED_DIR/index.html" ]; then
 fi
 
 print_step "Frontend copied to server/internal/web/dist ($(ls -1 "$EMBED_DIR" | wc -l | tr -d ' ') files)"
+
+# Step 2b: Copy canonical skills to server/internal/skill/embedded/skills/ for go:embed
+print_step "Copying skills from assets/skills/ to server/internal/skill/embedded/skills/..."
+SKILLS_SRC="$PROJECT_ROOT/assets/skills"
+SKILLS_EMBED="$PROJECT_ROOT/server/internal/skill/embedded/skills"
+rm -rf "$SKILLS_EMBED"
+mkdir -p "$SKILLS_EMBED"
+cp -r "$SKILLS_SRC/"* "$SKILLS_EMBED/"
+print_step "Skills copied ($(ls -1 "$SKILLS_EMBED" | wc -l | tr -d ' ') skills)"
 
 # Step 3: Build backend (platform-specific)
 if [ "$GOOS" = "darwin" ]; then
@@ -256,7 +263,12 @@ if ! npm audit --omit=dev; then
     exit 1
 fi
 
-npm run build
+# Windows needs explicit --target since .cargo/config.toml no longer hardcodes it
+if [ "$GOOS" = "windows" ]; then
+    npx tauri build --target x86_64-pc-windows-gnu
+else
+    npm run build
+fi
 
 # Step 7: Post-build processing (macOS only)
 if [ "$GOOS" = "darwin" ]; then
@@ -280,19 +292,6 @@ if [ "$GOOS" = "darwin" ]; then
         print_step "Web dist copied to $RESOURCES_DIST ($(ls -1 "$RESOURCES_DIST" | wc -l | tr -d ' ') files)"
     else
         print_warning "Embed dist not found at $EMBED_DIR — .app will not have web UI"
-    fi
-
-    # ── Copy skills into .app Resources ──
-    RESOURCES_SKILLS="$RESOURCES_DIR/.claude/skills"
-    SKILLS_EMBED="$PROJECT_ROOT/server/internal/skill/embedded/skills"
-    if [ -d "$SKILLS_EMBED" ]; then
-        print_step "Copying skills into .app Resources..."
-        rm -rf "$RESOURCES_SKILLS"
-        mkdir -p "$RESOURCES_SKILLS"
-        cp -r "$SKILLS_EMBED/"* "$RESOURCES_SKILLS/"
-        print_step "Skills copied to $RESOURCES_SKILLS ($(ls -1 "$RESOURCES_SKILLS" | wc -l | tr -d ' ') skills)"
-    else
-        print_warning "embedded/skills/ not found — .app will not have bundled skills"
     fi
 
     # ── macOS Code Signing ──

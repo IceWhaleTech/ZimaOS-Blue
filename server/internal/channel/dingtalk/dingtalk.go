@@ -2,8 +2,14 @@
 package dingtalk
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -14,6 +20,14 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+)
+
+const (
+	dtAPIBase      = "https://oapi.dingtalk.com"
+	dtNewAPIBase   = "https://api.dingtalk.com"
+	dtTokenPath    = "/v1.0/oauth2/accessToken"
+	dtUploadPath   = "/media/upload"
+	dtRobotSend    = "/v1.0/robot/oToMessages/batchSend"
 )
 
 // Config contains DingTalk channel configuration.
@@ -31,6 +45,7 @@ type Config struct {
 type Channel struct {
 	config   Config
 	logger   *zap.Logger
+	client   *http.Client
 	messages chan channel.Message
 
 	mu          sync.RWMutex
@@ -39,6 +54,12 @@ type Channel struct {
 	lastError   string
 	lastErrorAt *time.Time
 	msgCount    atomic.Int64
+	msgsSent    atomic.Int64
+
+	// Access token management
+	tokenMu     sync.RWMutex
+	accessToken string
+	tokenExpiry time.Time
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -49,13 +70,14 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	return &Channel{
 		config:   cfg,
 		logger:   logger.With(zap.String("channel", "dingtalk")),
+		client:   &http.Client{Timeout: 30 * time.Second},
 		messages: make(chan channel.Message, 100),
 		status:   channel.StatusDisconnected,
 	}
 }
 
-func (c *Channel) Name() string    { return "dingtalk" }
-func (c *Channel) Type() string    { return "dingtalk" }
+func (c *Channel) Name() string                    { return "dingtalk" }
+func (c *Channel) Type() string                    { return "dingtalk" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -91,9 +113,309 @@ func (c *Channel) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
-	c.logger.Debug("sending DingTalk message", zap.String("to", msg.ChatID))
+// refreshAccessToken obtains an access token from DingTalk new API.
+func (c *Channel) refreshAccessToken(ctx context.Context) error {
+	c.tokenMu.RLock()
+	if c.accessToken != "" && timeutil.NowTime().Before(c.tokenExpiry) {
+		c.tokenMu.RUnlock()
+		return nil
+	}
+	c.tokenMu.RUnlock()
+
+	body, _ := json.Marshal(map[string]string{
+		"appKey":    c.config.AppKey,
+		"appSecret": c.config.AppSecret,
+	})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, dtNewAPIBase+dtTokenPath, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request access token: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		AccessToken string `json:"accessToken"`
+		ExpireIn    int    `json:"expireIn"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("decode token response: %w", err)
+	}
+	if result.AccessToken == "" {
+		return fmt.Errorf("empty access token")
+	}
+
+	c.tokenMu.Lock()
+	c.accessToken = result.AccessToken
+	c.tokenExpiry = timeutil.NowTime().Add(time.Duration(result.ExpireIn-300) * time.Second)
+	c.tokenMu.Unlock()
 	return nil
+}
+
+func (c *Channel) getAccessToken(ctx context.Context) (string, error) {
+	if err := c.refreshAccessToken(ctx); err != nil {
+		return "", err
+	}
+	c.tokenMu.RLock()
+	defer c.tokenMu.RUnlock()
+	return c.accessToken, nil
+}
+
+// Send sends a message through DingTalk.
+func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
+	// Try attachments first.
+	for _, att := range msg.Attachments {
+		if err := c.sendAttachment(ctx, msg.ChatID, msg.Content, att); err != nil {
+			c.logger.Warn("failed to send attachment, falling back to text",
+				zap.String("channel", "dingtalk"), zap.String("type", string(att.Type)), zap.Error(err))
+			fallback := msg.Content
+			if att.URL != "" {
+				fallback += "\n" + att.URL
+			}
+			if err2 := c.sendText(ctx, msg.ChatID, fallback); err2 != nil {
+				return fmt.Errorf("dingtalk send fallback: %w", err2)
+			}
+		}
+		msg.Content = ""
+	}
+
+	if len(msg.Attachments) == 0 && msg.Content != "" {
+		return c.sendText(ctx, msg.ChatID, msg.Content)
+	}
+	return nil
+}
+
+// sendText sends a text message via DingTalk webhook or robot API.
+func (c *Channel) sendText(ctx context.Context, chatID, content string) error {
+	// Prefer webhook if configured.
+	if c.config.WebhookURL != "" {
+		return c.sendWebhook(ctx, map[string]interface{}{
+			"msgtype": "text",
+			"text":    map[string]string{"content": content},
+		})
+	}
+
+	// Use robot OTO API.
+	token, err := c.getAccessToken(ctx)
+	if err != nil {
+		return fmt.Errorf("get access token: %w", err)
+	}
+	return c.sendRobotOTO(ctx, token, chatID, map[string]interface{}{
+		"msgKey":  "sampleText",
+		"msgParam": fmt.Sprintf(`{"content":"%s"}`, escapeJSON(content)),
+	})
+}
+
+// sendAttachment sends a media attachment via DingTalk.
+func (c *Channel) sendAttachment(ctx context.Context, chatID, caption string, att channel.Attachment) error {
+	// DingTalk webhook supports image via picURL and link messages.
+	if c.config.WebhookURL != "" {
+		switch att.Type {
+		case channel.MessageTypeImage:
+			if att.URL != "" {
+				return c.sendWebhook(ctx, map[string]interface{}{
+					"msgtype": "link",
+					"link": map[string]string{
+						"title":      att.Name,
+						"text":       caption,
+						"picUrl":     att.URL,
+						"messageUrl": att.URL,
+					},
+				})
+			}
+		}
+		// For other types, send as markdown with URL.
+		text := caption
+		if att.URL != "" {
+			text += fmt.Sprintf("\n[%s](%s)", att.Name, att.URL)
+		}
+		return c.sendWebhook(ctx, map[string]interface{}{
+			"msgtype":  "markdown",
+			"markdown": map[string]string{"title": att.Name, "text": text},
+		})
+	}
+
+	// Robot OTO API with media upload.
+	token, err := c.getAccessToken(ctx)
+	if err != nil {
+		return fmt.Errorf("get access token: %w", err)
+	}
+
+	if len(att.Data) > 0 {
+		mediaID, err := c.uploadMedia(ctx, token, att)
+		if err != nil {
+			return fmt.Errorf("upload media: %w", err)
+		}
+
+		var msgKey, msgParam string
+		switch att.Type {
+		case channel.MessageTypeImage:
+			msgKey = "sampleImageMsg"
+			msgParam = fmt.Sprintf(`{"photoURL":"%s"}`, mediaID)
+		case channel.MessageTypeVideo:
+			msgKey = "sampleVideo"
+			msgParam = fmt.Sprintf(`{"mediaId":"%s","videoType":"mp4","duration":"0"}`, mediaID)
+		case channel.MessageTypeAudio:
+			msgKey = "sampleAudio"
+			msgParam = fmt.Sprintf(`{"mediaId":"%s","duration":"0"}`, mediaID)
+		default:
+			msgKey = "sampleFile"
+			msgParam = fmt.Sprintf(`{"mediaId":"%s","fileName":"%s"}`, mediaID, escapeJSON(att.Name))
+		}
+		return c.sendRobotOTO(ctx, token, chatID, map[string]interface{}{
+			"msgKey":   msgKey,
+			"msgParam": msgParam,
+		})
+	}
+
+	// No binary data — send URL as text.
+	text := caption
+	if att.URL != "" {
+		text += "\n" + att.URL
+	}
+	return c.sendText(ctx, chatID, text)
+}
+
+// uploadMedia uploads a file to DingTalk and returns the media_id.
+func (c *Channel) uploadMedia(ctx context.Context, token string, att channel.Attachment) (string, error) {
+	filename := att.Name
+	if filename == "" {
+		filename = "file.bin"
+	}
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+
+	// type field
+	mediaType := "file"
+	switch att.Type {
+	case channel.MessageTypeImage:
+		mediaType = "image"
+	case channel.MessageTypeAudio:
+		mediaType = "voice"
+	case channel.MessageTypeVideo:
+		mediaType = "video"
+	}
+	w.WriteField("type", mediaType)
+
+	part, err := w.CreateFormFile("media", filepath.Base(filename))
+	if err != nil {
+		return "", fmt.Errorf("create form file: %w", err)
+	}
+	if _, err := part.Write(att.Data); err != nil {
+		return "", fmt.Errorf("write data: %w", err)
+	}
+	w.Close()
+
+	url := fmt.Sprintf("%s%s?access_token=%s", dtAPIBase, dtUploadPath, token)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
+	if err != nil {
+		return "", fmt.Errorf("create upload request: %w", err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("upload request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+		MediaID string `json:"media_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode upload response: %w", err)
+	}
+	if result.ErrCode != 0 {
+		return "", fmt.Errorf("DingTalk upload error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+	return result.MediaID, nil
+}
+
+// sendWebhook sends a message via DingTalk webhook.
+func (c *Channel) sendWebhook(ctx context.Context, payload map[string]interface{}) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.WebhookURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send webhook: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+	if result.ErrCode != 0 {
+		return fmt.Errorf("DingTalk webhook error: %d - %s", result.ErrCode, result.ErrMsg)
+	}
+
+	c.msgsSent.Add(1)
+	return nil
+}
+
+// sendRobotOTO sends a one-to-one robot message via DingTalk new API.
+func (c *Channel) sendRobotOTO(ctx context.Context, token, userID string, msgBody map[string]interface{}) error {
+	payload := map[string]interface{}{
+		"robotCode":    c.config.RobotCode,
+		"userIds":      []string{userID},
+	}
+	for k, v := range msgBody {
+		payload[k] = v
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, dtNewAPIBase+dtRobotSend, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-acs-dingtalk-access-token", token)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send robot message: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("DingTalk robot API error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	c.msgsSent.Add(1)
+	return nil
+}
+
+// escapeJSON escapes a string for embedding in a JSON string literal.
+func escapeJSON(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	return s
 }
 
 func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID string, content <-chan string, done chan<- struct{}) error {
@@ -114,6 +436,7 @@ func (c *Channel) Info() channel.Info {
 	return channel.Info{
 		Name: "dingtalk", Type: "dingtalk", Status: c.status, Enabled: c.config.Enabled,
 		ConnectedAt: c.connectedAt, LastError: c.lastError, MessageCount: c.msgCount.Load(),
+		MessagesSent: c.msgsSent.Load(),
 		Metadata: map[string]interface{}{"robot_code": c.config.RobotCode},
 	}
 }

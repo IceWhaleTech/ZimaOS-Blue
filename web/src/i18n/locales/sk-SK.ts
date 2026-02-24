@@ -44,6 +44,14 @@ export default {
     username: 'Používateľské meno',
     password: 'Heslo',
     rememberMe: 'Zapamätať si ma',
+    invalidCredentials: "Neplatné používateľské meno alebo heslo",
+    accountLocked: "Účet je uzamknutý",
+    accountDisabled: "Účet je deaktivovaný",
+    authServiceUnavailable: "Overovacia služba je dočasne nedostupná",
+    loginFailed: "Prihlásenie zlyhalo",
+    currentPasswordIncorrect: "Aktuálne heslo je nesprávne",
+    newPasswordRequirements: "Nové heslo nespĺňa požiadavky",
+    changePasswordFailed: "Zmena hesla zlyhala",
   },
   errors: {
     ...enUS.errors,
@@ -806,6 +814,17 @@ export default {
     title: 'Pool poskytovateľov',
     subtitle: 'Spravujte poskytovateľov LLM a API kľúče',
     description: 'Spravujte poskytovateľov LLM, API kľúče a smerovanie modelov',
+    capChat: 'Chat',
+    capCompletion: 'Dokončovanie',
+    capVision: 'Videnie',
+    capFunctionCall: 'Volanie funkcie',
+    capThinking: 'Hlboké myslenie',
+    capStreaming: 'Streaming',
+    capJSON: 'Režim JSON',
+    capSystemPrompt: 'Systémový prompt',
+    capImageGeneration: 'Generovanie obrázkov',
+    capVideoGeneration: 'Generovanie videa',
+    capAudioGeneration: 'Generovanie zvuku',
     trialQuota: {
       title: 'Skúšobná kvóta',
       exhausted: 'Skúšobná kvóta vyčerpaná',
@@ -912,6 +931,7 @@ export default {
   chat: {
     ...enUS.chat,
     responseInterrupted: 'Odpoveď prerušená',
+    stillListening: 'Pokračuj, počúvam...',
     contextPruned: 'Kontext orezaný, ušetrených {tokens} tokenov',
     contextCompacted: 'Kontext skomprimovaný: {before} → {after} správ',
     trialExhausted: 'Skúšobná kvóta bola vyčerpaná. Prosím, nakonfigurujte svojho vlastného poskytovateľa AI, aby ste mohli pokračovať.',
@@ -1089,30 +1109,6 @@ export default {
   webhook: {
     ...enUS.webhook,
     title: 'Webhook',
-  },
-  personality: {
-    ...enUS.personality,
-    title: 'Osobnosť',
-    card: {
-      ...enUS.personality.card,
-      title: 'Karta',
-    },
-    validation: {
-      ...enUS.personality.validation,
-      title: 'Overenie',
-    },
-    templates: {
-      ...enUS.personality.templates,
-      title: 'Šablóny',
-    },
-    stats: {
-      ...enUS.personality.stats,
-      title: 'Štatistiky',
-    },
-    editor: {
-      ...enUS.personality.editor,
-      title: 'Editor',
-    },
   },
   companion: { ...enUS.companion },
   automation: { ...enUS.automation },
