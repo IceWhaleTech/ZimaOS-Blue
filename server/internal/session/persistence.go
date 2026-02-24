@@ -32,19 +32,19 @@ type SQLiteSessionStore struct {
 
 // persistenceRow represents a session row for zorm scanning.
 type persistenceRow struct {
-	ID           string  `json:"id"`
-	AgentID      string  `json:"agent_id"`
-	ChannelID    string  `json:"channel_id"`
-	PeerID       string  `json:"peer_id"`
-	ThreadID     *string `json:"thread_id"`
-	State        int     `json:"state"`
-	Metadata     string  `json:"metadata"`
-	Messages     string  `json:"messages"`
-	SystemPrompt *string `json:"system_prompt"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
-	LastActiveAt string  `json:"last_active_at"`
-	CompactedAt  *string `json:"compacted_at"`
+	ID           string  `json:"id" zorm:"id"`
+	AgentID      string  `json:"agent_id" zorm:"agent_id"`
+	ChannelID    string  `json:"channel_id" zorm:"channel_id"`
+	PeerID       string  `json:"peer_id" zorm:"peer_id"`
+	ThreadID     *string `json:"thread_id" zorm:"thread_id"`
+	State        int     `json:"state" zorm:"state"`
+	Metadata     string  `json:"metadata" zorm:"metadata"`
+	Messages     string  `json:"messages" zorm:"messages"`
+	SystemPrompt *string `json:"system_prompt" zorm:"system_prompt"`
+	CreatedAt    string  `json:"created_at" zorm:"created_at"`
+	UpdatedAt    string  `json:"updated_at" zorm:"updated_at"`
+	LastActiveAt string  `json:"last_active_at" zorm:"last_active_at"`
+	CompactedAt  *string `json:"compacted_at" zorm:"compacted_at"`
 }
 
 // messagesData represents serialized messages.

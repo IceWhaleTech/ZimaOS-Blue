@@ -29,6 +29,7 @@ type MuleRouterProvider struct {
 type muleRouterTaskMeta struct {
 	vendor string
 	model  string
+	isEdit bool
 }
 
 // NewMuleRouterProvider creates a new MuleRouter media provider.
@@ -52,6 +53,7 @@ func (p *MuleRouterProvider) SupportedModels() []MediaModelInfo {
 		{ID: "wan2.5-t2i-preview", Name: "Wan 2.5 T2I", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
 		{ID: "wan2.6-t2i", Name: "Wan 2.6 T2I", Type: MediaTypeImage, Category: CategoryT2I, Provider: "mulerouter"},
 		// --- Image Editing (i2i) ---
+		{ID: "nano-banana-pro", Name: "Nano Banana Pro Edit", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
 		{ID: "qwen-image-edit-max", Name: "Qwen Image Edit", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
 		{ID: "wan2.5-i2i-preview", Name: "Wan 2.5 I2I", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
 		{ID: "wan2.6-image", Name: "Wan 2.6 Image Edit", Type: MediaTypeImage, Category: CategoryI2I, Provider: "mulerouter"},
@@ -108,7 +110,7 @@ func (p *MuleRouterProvider) Poll(ctx context.Context, taskID string) (*MediaTas
 	}
 	meta := metaVal.(*muleRouterTaskMeta)
 
-	url := fmt.Sprintf("%s/vendors/%s/v1/%s/%s", p.baseURL, meta.vendor, vendorEndpoint(meta.vendor, meta.model), taskID)
+	url := fmt.Sprintf("%s/vendors/%s/v1/%s/%s", p.baseURL, meta.vendor, vendorEndpoint(meta.vendor, meta.model, meta.isEdit), taskID)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -243,9 +245,10 @@ func (p *MuleRouterProvider) Poll(ctx context.Context, taskID string) (*MediaTas
 
 // RestoreTaskMeta re-populates the in-memory vendor/model mapping for a recovered task.
 // Called during startup recovery so that Poll() can find the correct vendor endpoint.
-func (p *MuleRouterProvider) RestoreTaskMeta(upstreamID, model string) {
+func (p *MuleRouterProvider) RestoreTaskMeta(upstreamID, model, category string) {
 	vendor := modelToVendor(model)
-	p.taskMeta.Store(upstreamID, &muleRouterTaskMeta{vendor: vendor, model: model})
+	isEdit := category == string(CategoryI2I)
+	p.taskMeta.Store(upstreamID, &muleRouterTaskMeta{vendor: vendor, model: model, isEdit: isEdit})
 }
 
 // generateOpenAI handles OpenAI-compatible image generation (synchronous).
@@ -357,9 +360,12 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 		vendorReq["duration"] = req.Duration
 	}
 
+	isEdit := req.ReferenceURL != ""
+
 	// Pass reference images based on model category:
-	// - i2v/i2i models: "image" field (single image)
 	// - kf2v models: "first_frame_image" + optional "last_frame_image"
+	// - google edit (nano-banana-pro): "images" array
+	// - other i2v/i2i models: "image" field (single image)
 	if isKF2VModel(model) {
 		if len(req.ReferenceURLs) > 0 {
 			vendorReq["first_frame_image"] = req.ReferenceURLs[0]
@@ -368,15 +374,18 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 			vendorReq["last_frame_image"] = req.ReferenceURLs[1]
 		}
 	} else if req.ReferenceURL != "" {
-		vendorReq["image"] = req.ReferenceURL
+		if isEdit && vendor == "google" {
+			vendorReq["images"] = []string{req.ReferenceURL}
+		} else {
+			vendorReq["image"] = req.ReferenceURL
+		}
 	}
 
 	body, err := json.Marshal(vendorReq)
 	if err != nil {
 		return nil, err
 	}
-
-	url := fmt.Sprintf("%s/vendors/%s/v1/%s", p.baseURL, vendor, vendorEndpoint(vendor, model))
+	url := fmt.Sprintf("%s/vendors/%s/v1/%s", p.baseURL, vendor, vendorEndpoint(vendor, model, isEdit))
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -415,7 +424,7 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 	}
 
 	// Store vendor+model for polling
-	p.taskMeta.Store(upstreamID, &muleRouterTaskMeta{vendor: vendor, model: model})
+	p.taskMeta.Store(upstreamID, &muleRouterTaskMeta{vendor: vendor, model: model, isEdit: isEdit})
 
 	return &MediaTask{
 		BaseTask:   task.BaseTask{ID: uuid.New().String(), Status: TaskStatusProcessing, CreatedAt: time.Now()},
@@ -446,12 +455,17 @@ func modelToVendor(model string) string {
 
 // vendorEndpoint returns the API path suffix for a given vendor+model.
 // Most vendors use /{model}/generation, but Midjourney uses /tob/diffusion.
-func vendorEndpoint(vendor, model string) string {
+// When isEdit is true and the vendor supports a separate edit endpoint, use that instead.
+func vendorEndpoint(vendor, model string, isEdit bool) string {
 	if vendor == "midjourney" {
 		if model == "midjourney-video" {
 			return "tob/video-diffusion"
 		}
 		return "tob/diffusion"
+	}
+	// Google nano-banana-pro has a separate /edit endpoint for image editing
+	if isEdit && vendor == "google" && model == "nano-banana-pro" {
+		return model + "/edit"
 	}
 	return model + "/generation"
 }

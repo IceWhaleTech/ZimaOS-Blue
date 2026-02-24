@@ -8,14 +8,26 @@ import { useWebPush } from '@/composables/useWebPush'
 const { connect: connectEventStream } = useEventStream()
 const { subscribe: subscribeWebPush } = useWebPush()
 
+function dismissSplash() {
+  const splash = document.getElementById('app-splash')
+  if (splash) {
+    splash.classList.add('fade-out')
+    setTimeout(() => splash.remove(), 300)
+  }
+}
+
 // Show window after content loads (prevents startup flash on Tauri)
 onMounted(async () => {
-  if (window.__TAURI__) {
+  // Dismiss the inline splash screen now that Vue has rendered
+  dismissSplash()
+
+  // In Tauri, on_page_load already shows the window when the HTML loads.
+  // This is a backup for edge cases (e.g. window recreated from tray click).
+  if (window.__TAURI_INTERNALS__?.invoke) {
     try {
-      const { getCurrentWindow } = window.__TAURI__.window
-      await getCurrentWindow().show()
-    } catch (e) {
-      console.warn('Failed to show window:', e)
+      await window.__TAURI_INTERNALS__.invoke('plugin:window|show')
+    } catch {
+      // Ignore — window may already be visible
     }
   }
 

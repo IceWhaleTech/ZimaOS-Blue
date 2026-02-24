@@ -212,6 +212,7 @@ export class SSEClient {
                 }
                 // Check for tool execution event
                 if (chunk.tool_executing) {
+                  console.info('[SSE] tool_executing event, receivedData so far:', receivedData)
                   options.onToolExecuting?.(chunk.tool_calls || 0, chunk.tool_names)
                   continue
                 }
@@ -226,11 +227,27 @@ export class SSEClient {
                   // but do NOT fire onComplete yet — wait for [DONE] which arrives
                   // after the server has persisted the message to the database.
                   if (!receivedData && !chunk.delta) {
-                    options.onError?.(new Error('PROVIDER_RETURNED_EMPTY'))
-                    this.isConnected = false
-                    break
+                    // Server may send empty_response:true when tool execution produced
+                    // no LLM text (e.g. provider returned empty after tool round).
+                    // Treat this as a valid completion, not an error.
+                    if (chunk.empty_response) {
+                      console.warn('[SSE] empty response after tool execution, treating as complete')
+                      finalChunkData = chunk
+                    } else {
+                      console.error('[SSE] PROVIDER_RETURNED_EMPTY debug:', {
+                        receivedData,
+                        chunkDelta: chunk.delta,
+                        chunkDone: chunk.done,
+                        chunkKeys: Object.keys(chunk),
+                        chunk: JSON.stringify(chunk).slice(0, 500),
+                      })
+                      options.onError?.(new Error('PROVIDER_RETURNED_EMPTY'))
+                      this.isConnected = false
+                      break
+                    }
+                  } else {
+                    finalChunkData = chunk
                   }
-                  finalChunkData = chunk
                 }
               } catch {
                 // Ignore parse errors for non-JSON data

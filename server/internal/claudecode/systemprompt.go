@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -43,7 +44,9 @@ type SystemPromptBuilder struct {
 
 	maxContextTokens int
 	lastContextStats atomic.Pointer[ContextStats]
-	lastUserMessage  string // set before Build() for scenario-based enhancement
+	lastUserMessage  string       // set before Build() for scenario-based enhancement
+	locale           string       // user locale (e.g. "en-US", "zh-CN") — static fallback
+	localeFunc       func() string // dynamic locale getter (takes precedence over static)
 }
 
 // NewSystemPromptBuilder creates a new SystemPromptBuilder.
@@ -71,6 +74,27 @@ func (b *SystemPromptBuilder) SetMaxContextTokens(n int) {
 // enhancement detection. Call this before Build().
 func (b *SystemPromptBuilder) SetLastUserMessage(msg string) {
 	b.lastUserMessage = msg
+}
+
+// SetLocale sets the user's locale for system prompt injection (e.g. "en-US", "zh-CN").
+func (b *SystemPromptBuilder) SetLocale(locale string) {
+	b.locale = locale
+}
+
+// SetLocaleFunc sets a dynamic locale getter that is called on each Build().
+// Takes precedence over the static locale set via SetLocale.
+func (b *SystemPromptBuilder) SetLocaleFunc(fn func() string) {
+	b.localeFunc = fn
+}
+
+// getLocale returns the current locale, preferring the dynamic getter.
+func (b *SystemPromptBuilder) getLocale() string {
+	if b.localeFunc != nil {
+		if v := b.localeFunc(); v != "" {
+			return v
+		}
+	}
+	return b.locale
 }
 
 // LastContextStats returns the stats from the most recent buildProjectContext call.
@@ -112,6 +136,11 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 		}
 	}
 
+	// Add available skills (XML index — model reads SKILL.md on demand via file_read)
+	if skillsSection := b.buildSkillsSection(); skillsSection != "" {
+		parts = append(parts, skillsSection)
+	}
+
 	// Add workspace context files (SOUL.md, USER.md, IDENTITY.md, etc.)
 	if b.workspace != nil {
 		contextFiles := b.workspace.LoadContextFiles()
@@ -137,8 +166,9 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 // toolUsageHints provides intent-based descriptions that help the LLM choose
 // the right tool. Only covers tools registered in the tool registry (not skills).
 var toolUsageHints = map[string]string{
-	"web_search":     "Search the web for factual information, news, or general knowledge. Use when the user wants to *find information* — NOT to evaluate a website's UI/UX quality (use ui_reviewer skill for that).",
+	"web_search":     "Search the web for factual information, news, or general knowledge. Use ONLY for *searching* — NOT for reading page content, interacting with web pages, or evaluating UI/UX. To read or operate on a specific URL, use the browser skill instead.",
 	"memory":         "Unified memory tool. Use action='search' to find relevant memories by query. Use action='remember' to store important facts, preferences, and notes the user asks you to remember. Use action='get' to retrieve a specific memory by ID. Use action='forget' to delete a memory. Use action='stats' for memory system statistics.",
+	"exec":           "Execute shell commands on the host OS. NEVER use exec to invoke other tools — call them directly by name (e.g., call web_search, not exec with 'web_search ...'). Only use exec for actual shell/CLI commands (ls, git, curl, etc.).",
 }
 
 // buildToolsInfo builds lightweight tool guidance for the system prompt.
@@ -169,8 +199,10 @@ func (b *SystemPromptBuilder) buildToolsInfo() string {
 
 	lines = append(lines, "## Tool Routing Rules")
 	lines = append(lines, "When a user message could match multiple tools, use these priority rules:")
+	lines = append(lines, "- Read, interact with, or operate on a specific URL → browser skill (NOT web_search)")
 	lines = append(lines, "- General factual query without a specific URL → web_search")
 	lines = append(lines, "- \"Remember this / don't forget / remind me next time\" → memory: action='remember' with the content to store")
+	lines = append(lines, "- NEVER use exec to call other tools (web_search, memory, file_read, etc.) — call them directly by name")
 	lines = append(lines, "")
 
 	return strings.Join(lines, "\n")
@@ -197,6 +229,11 @@ func (b *SystemPromptBuilder) buildRuntimeInfo() string {
 	// Model (if configured)
 	if b.config.DefaultModel != "" {
 		lines = append(lines, fmt.Sprintf("- Default model: %s", b.config.DefaultModel))
+	}
+
+	// Locale
+	if locale := b.getLocale(); locale != "" {
+		lines = append(lines, fmt.Sprintf("- Locale: %s", locale))
 	}
 
 	return strings.Join(lines, "\n")
@@ -282,6 +319,33 @@ func (b *SystemPromptBuilder) buildHeartbeatGuidance() string {
 	return strings.Join(lines, "\n")
 }
 
+// buildSkillsSection scans the workspace skills directory and builds the
+// Skills section for the system prompt. Returns empty string if no skills found.
+func (b *SystemPromptBuilder) buildSkillsSection() string {
+	if b.config.WorkspaceDir == "" {
+		return ""
+	}
+
+	skillsDir := filepath.Join(b.config.WorkspaceDir, ".claude", "skills")
+	skills := ScanSkillsDir(skillsDir)
+	if len(skills) == 0 {
+		return ""
+	}
+
+	var lines []string
+	lines = append(lines, "# Skills")
+	lines = append(lines, "")
+	lines = append(lines, "Before replying: scan <available_skills> <description> entries.")
+	lines = append(lines, "- If exactly one skill clearly applies: read its SKILL.md at <location> with `file_read`, then follow it.")
+	lines = append(lines, "- If multiple could apply: choose the most specific one, then read/follow it.")
+	lines = append(lines, "- If none clearly apply: do not read any SKILL.md.")
+	lines = append(lines, "Constraints: never read more than one skill up front; only read after selecting.")
+	lines = append(lines, "")
+	lines = append(lines, FormatSkillsPrompt(skills))
+
+	return strings.Join(lines, "\n")
+}
+
 // BuildWithContext builds a system prompt with additional context.
 func (b *SystemPromptBuilder) BuildWithContext(ctx context.Context, extraPrompt string, contextFiles map[string]string) string {
 	var parts []string
@@ -306,6 +370,11 @@ func (b *SystemPromptBuilder) BuildWithContext(ctx context.Context, extraPrompt 
 	// Add workspace information
 	if b.config.WorkspaceDir != "" {
 		parts = append(parts, b.buildWorkspaceInfo())
+	}
+
+	// Add available skills (XML index — model reads SKILL.md on demand via file_read)
+	if skillsSection := b.buildSkillsSection(); skillsSection != "" {
+		parts = append(parts, skillsSection)
 	}
 
 	// Add context files

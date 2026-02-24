@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { previewApi } from '@/api/preview'
 import type { SystemMode, PreviewStatus } from '@/api/preview'
+import { getCachedPreviewMode } from '@/router'
 
 const PREVIEW_TOKEN_KEY = 'preview_token'
 
@@ -141,11 +142,27 @@ export const usePreviewStore = defineStore('preview', () => {
     error.value = null
   }
 
-  // Initialize on first use
+  // Initialize on first use — reuses the router's cached preview mode check
+  // to avoid a duplicate /api/v1/system/mode fetch.
   async function initialize() {
-    if (!initialized.value) {
-      await fetchSystemMode()
+    if (initialized.value) return
+
+    // The router guard already checked preview mode — reuse that result
+    const cached = getCachedPreviewMode()
+    if (cached.checked) {
+      systemMode.value = {
+        mode: cached.preview ? 'preview' : 'normal',
+        features: {},
+      }
+      initialized.value = true
+      if (cached.preview) {
+        await ensurePreviewToken()
+      }
+      return
     }
+
+    // Fallback: fetch if router hasn't checked yet (shouldn't happen normally)
+    await fetchSystemMode()
   }
 
   return {

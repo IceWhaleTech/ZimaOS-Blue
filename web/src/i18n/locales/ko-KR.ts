@@ -1475,6 +1475,12 @@ export default {
     missingSkills: 'Skills（코드 생성, 리팩토링 등）',
     missingToolCalling: '고급 Tool Calling 기능',
     missingFileOps: '파일 작업（읽기, 쓰기, 편집）',
+    directoryPathPlaceholderWin: '디렉토리 경로 (예: C:\\Users\\user\\projects)',
+    directoryPathPlaceholderMac: '디렉토리 경로 (예: /Users/user/projects)',
+    directoryPathPlaceholderLinux: '디렉토리 경로 (예: /home/user/projects)',
+    browseDirectories: '디렉토리 찾아보기',
+    selectDirectory: '이 디렉토리 선택',
+    noSubdirectories: '하위 디렉토리 없음',
   },
   skillStore: {
     ...enUS.skillStore,
@@ -3253,6 +3259,7 @@ export default {
       'file_write': 'File Write',
       'system_info': 'System Info',
       'memory_search': 'Memory Search',
+      'exec': '명령 실행',
     },
     labels: {
       filename: 'Filename',
@@ -3264,6 +3271,12 @@ export default {
       datetime: '날짜 및 시간',
       timezone: '시간대',
       unix: 'Unix 타임스탬프',
+      session_id: '세션',
+      exit_code: '종료 코드',
+      stdout: '출력',
+      stderr: '오류 출력',
+      duration_ms: '소요 시간',
+      ms: 'ms',
     },
   },
   sessions: {

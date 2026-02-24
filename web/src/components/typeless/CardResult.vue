@@ -56,9 +56,30 @@ const buttonClasses = {
   danger: 'bg-red-500 hover:bg-red-600 text-white',
 }
 
-async function copyValue(value: string, index: number) {
+/** Check if a value is a plain object (map) */
+function isMapValue(val: unknown): val is Record<string, unknown> {
+  return val !== null && typeof val === 'object' && !Array.isArray(val)
+}
+
+/** Try to parse a string as JSON object; returns the object or null */
+function tryParseObject(val: unknown): Record<string, unknown> | null {
+  if (isMapValue(val)) return val
+  if (typeof val === 'string' && val.startsWith('{')) {
+    try { const o = JSON.parse(val); if (isMapValue(o)) return o } catch { /* not JSON */ }
+  }
+  return null
+}
+
+/** Flatten a value to a copyable string */
+function toDisplayString(val: unknown): string {
+  if (typeof val === 'string') return val
+  if (val === null || val === undefined) return ''
+  return JSON.stringify(val, null, 2)
+}
+
+async function copyValue(value: unknown, index: number) {
   try {
-    await navigator.clipboard.writeText(value)
+    await navigator.clipboard.writeText(toDisplayString(value))
     copiedIndex.value = index
     setTimeout(() => {
       copiedIndex.value = null
@@ -112,13 +133,18 @@ const translatedMessage = computed(() => {
 // Filter out details that are redundant with the title/message
 const visibleDetails = computed(() => {
   if (!props.card.details) return []
-  return props.card.details.filter(d => {
-    // Hide status/result fields that just echo the card status
-    const lbl = d.label.toLowerCase()
-    if (lbl === 'status' || lbl === '状态') return false
-    if ((lbl === 'result' || lbl === '结果') && props.card.message) return false
-    return true
-  })
+  return props.card.details
+    .filter(d => {
+      const lbl = d.label.toLowerCase()
+      if (lbl === 'status' || lbl === '状态') return false
+      if ((lbl === 'result' || lbl === '结果') && props.card.message) return false
+      return true
+    })
+    .map(d => ({
+      ...d,
+      parsedObject: tryParseObject(d.value),
+      isMultiline: d.multiline || (typeof d.value === 'string' && d.value.includes('\n')),
+    }))
 })
 </script>
 
@@ -159,10 +185,27 @@ const visibleDetails = computed(() => {
           <div
             v-for="(detail, index) in visibleDetails"
             :key="index"
-            class="flex items-center justify-between px-3 py-2 text-sm group"
+            class="px-3.5 py-2.5 text-sm group"
+            :class="detail.parsedObject || detail.isMultiline ? 'flex flex-col gap-1.5' : 'flex items-center justify-between'"
           >
-            <span class="text-gray-400 dark:text-gray-500 text-xs">{{ tLabel(detail.label) }}</span>
-            <div class="flex items-center gap-1.5">
+            <span class="text-gray-400 dark:text-gray-500 text-xs flex-shrink-0">{{ tLabel(detail.label) }}</span>
+            <!-- Nested table for map/object values -->
+            <div v-if="detail.parsedObject" class="rounded border border-gray-200 dark:border-gray-700/60 bg-white dark:bg-gray-800/60 divide-y divide-gray-100 dark:divide-gray-700/40 overflow-hidden">
+              <div
+                v-for="(subVal, subKey) in detail.parsedObject"
+                :key="String(subKey)"
+                class="flex items-center justify-between px-3 py-1.5 text-xs"
+              >
+                <span class="text-gray-400 dark:text-gray-500">{{ subKey }}</span>
+                <span class="text-gray-700 dark:text-gray-300 font-mono text-right max-w-[70%] break-all">{{ toDisplayString(subVal) }}</span>
+              </div>
+            </div>
+            <!-- Multiline text value (e.g. stdout) -->
+            <div v-else-if="detail.isMultiline" class="rounded border border-gray-200 dark:border-gray-700/60 bg-gray-50 dark:bg-gray-900/60 overflow-hidden">
+              <pre class="px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-64 overflow-y-auto leading-relaxed">{{ detail.value }}</pre>
+            </div>
+            <!-- Simple string value -->
+            <div v-else class="flex items-center gap-1.5">
               <span class="text-gray-700 dark:text-gray-300 font-mono text-xs">{{ detail.value }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span>
               <button
                 v-if="detail.copyable"

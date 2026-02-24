@@ -100,11 +100,10 @@ export interface TrialQuotaStatus {
   tokens_used: number
   tokens_remaining: number
   token_limit: number
-  conversations_used: number
-  conversations_left: number
-  conversation_limit: number
-  exhausted: boolean
-  exhausted_by_tokens: boolean
+  is_exhausted: boolean
+  exhausted_reason?: string
+  expires_at?: number
+  is_expired?: boolean
 }
 
 export interface IDEInfo {

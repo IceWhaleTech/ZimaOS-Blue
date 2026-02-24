@@ -96,6 +96,12 @@ func NewPushNotification() *PushNotification {
 					Description: "Target conversation ID to deliver the notification to (optional, defaults to most recent)",
 					Required:    false,
 				},
+				{
+					Name:        "locale",
+					Type:        "string",
+					Description: "Language/locale code for localized responses (e.g., en-US, zh-CN)",
+					Required:    false,
+				},
 			},
 			Outputs: []skill.Parameter{
 				{

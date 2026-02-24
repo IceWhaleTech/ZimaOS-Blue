@@ -102,6 +102,8 @@ export interface StreamChunk {
     completion_tokens: number
     total_tokens: number
   }
+  // Set when server sends a synthetic done after tool execution produced no LLM text
+  empty_response?: boolean
 }
 
 // Conversation API

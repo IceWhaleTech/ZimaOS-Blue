@@ -2,6 +2,7 @@ package providerpool
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"time"
@@ -29,22 +30,56 @@ type Pool struct {
 	pricingUpdater    *PricingUpdater
 }
 
+// poolInitOpts collects options before Pool construction.
+type poolInitOpts struct {
+	db     *sql.DB
+	config *PoolConfig
+}
+
 // PoolOption configures the Pool
-type PoolOption func(*Pool)
+type PoolOption func(*poolInitOpts)
 
 // WithConfig sets the pool configuration
 func WithConfig(config *PoolConfig) PoolOption {
-	return func(p *Pool) {
-		p.Config = config
+	return func(o *poolInitOpts) {
+		o.config = config
+	}
+}
+
+// WithDB uses SQLite-backed storage instead of JSON files.
+// When set, dataPath is only used for migration from legacy JSON files.
+func WithDB(db *sql.DB) PoolOption {
+	return func(o *poolInitOpts) {
+		o.db = db
 	}
 }
 
 // NewPool creates a new Pool with all components
 func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
-	// Create storage (no encryption)
-	storage, err := NewFileStorage(dataPath)
-	if err != nil {
-		return nil, err
+	// Collect options
+	initOpts := &poolInitOpts{}
+	for _, opt := range opts {
+		opt(initOpts)
+	}
+
+	// Create storage: prefer SQLite if DB is provided
+	var storage Storage
+	if initOpts.db != nil {
+		sqliteStorage, err := NewSQLiteStorage(initOpts.db)
+		if err != nil {
+			return nil, fmt.Errorf("create sqlite storage: %w", err)
+		}
+		// Auto-migrate from legacy JSON files if they exist
+		if err := sqliteStorage.MigrateFromFiles(dataPath); err != nil {
+			fmt.Printf("[Pool] Warning: migration from JSON files failed: %v\n", err)
+		}
+		storage = sqliteStorage
+	} else {
+		var err error
+		storage, err = NewFileStorage(dataPath)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Create registry
@@ -103,8 +138,8 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 		TrialQuotaManager: NewTrialQuotaManager(registry, dataPath, GetTrialLicense()),
 	}
 
-	for _, opt := range opts {
-		opt(pool)
+	if initOpts.config != nil {
+		pool.Config = initOpts.config
 	}
 
 	// Initialize built-in providers synchronously (required for chat to work immediately)
@@ -2092,7 +2127,7 @@ func (h *Handler) GetTrialQuota(c echo.Context) error {
 			"tokens_used":      0,
 			"tokens_remaining": 0,
 			"token_limit":      0,
-			"exhausted":        true,
+			"is_exhausted":     true,
 		})
 	}
 

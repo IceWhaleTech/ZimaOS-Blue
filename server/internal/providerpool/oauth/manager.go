@@ -18,7 +18,7 @@ import (
 
 // Manager handles OAuth token lifecycle for LLM providers.
 type Manager struct {
-	store    *Store
+	store    TokenStore
 	configs  map[string]*ProviderConfig
 	pending  map[string]*pendingAuth // state -> pending auth
 	mu       sync.RWMutex
@@ -56,7 +56,7 @@ type AuthStartResult struct {
 }
 
 // NewManager creates a new OAuth manager.
-func NewManager(store *Store) *Manager {
+func NewManager(store TokenStore) *Manager {
 	return &Manager{
 		store:   store,
 		configs: AllProviderConfigs(),

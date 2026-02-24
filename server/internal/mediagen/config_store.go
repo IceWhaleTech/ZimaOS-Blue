@@ -18,6 +18,12 @@ type configOnDisk struct {
 	APIKey  string `json:"api_key,omitempty"`
 }
 
+// MediaConfigStore is the interface for media provider config persistence.
+type MediaConfigStore interface {
+	Load() (map[string]*configOnDisk, error)
+	Save(configs map[string]*MediaProviderConfig) error
+}
+
 // ConfigStore persists media provider configurations to a JSON file.
 type ConfigStore struct {
 	dir string

@@ -1548,6 +1548,12 @@ export default {
     missingSkills: 'Skills (geração de código, refatoração, etc.)',
     missingToolCalling: 'Capacidades avançadas de Tool Calling',
     missingFileOps: 'Operações de arquivo (ler, escrever, editar)',
+    directoryPathPlaceholderWin: 'Caminho do diretório (ex. C:\\Users\\user\\projects)',
+    directoryPathPlaceholderMac: 'Caminho do diretório (ex. /Users/user/projects)',
+    directoryPathPlaceholderLinux: 'Caminho do diretório (ex. /home/user/projects)',
+    browseDirectories: 'Navegar diretórios',
+    selectDirectory: 'Selecionar este diretório',
+    noSubdirectories: 'Sem subdiretórios',
   },
   providerPool: {
     title: 'Pool de provedores',
@@ -3317,6 +3323,7 @@ export default {
       'file_write': 'Escrita de arquivo',
       'system_info': 'Info do sistema',
       'memory_search': 'Busca na memória',
+      'exec': 'Execução de comando',
     },
     labels: {
       filename: 'Nome do arquivo',
@@ -3328,6 +3335,12 @@ export default {
       datetime: 'Data e hora',
       timezone: 'Fuso horário',
       unix: 'Timestamp Unix',
+      session_id: 'Sessão',
+      exit_code: 'Código de saída',
+      stdout: 'Saída',
+      stderr: 'Saída de erro',
+      duration_ms: 'Duração',
+      ms: 'ms',
     },
   },
   sandbox: {

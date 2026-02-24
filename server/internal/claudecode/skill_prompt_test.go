@@ -1,0 +1,297 @@
+package claudecode
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+)
+
+func TestScanSkillsDir_Empty(t *testing.T) {
+	dir := t.TempDir()
+	skills := ScanSkillsDir(dir)
+	if len(skills) != 0 {
+		t.Fatalf("expected 0 skills, got %d", len(skills))
+	}
+}
+
+func TestScanSkillsDir_NonExistent(t *testing.T) {
+	skills := ScanSkillsDir("/nonexistent/path")
+	if len(skills) != 0 {
+		t.Fatalf("expected 0 skills, got %d", len(skills))
+	}
+}
+
+func TestScanSkillsDir_WithFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a skill with frontmatter
+	skillDir := filepath.Join(dir, "weather")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: weather
+description: Get current weather for any location
+---
+# Weather
+
+Detailed instructions here.
+`), 0o644)
+
+	skills := ScanSkillsDir(dir)
+	if len(skills) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(skills))
+	}
+	if skills[0].Name != "weather" {
+		t.Errorf("expected name 'weather', got %q", skills[0].Name)
+	}
+	if skills[0].Description != "Get current weather for any location" {
+		t.Errorf("expected description from frontmatter, got %q", skills[0].Description)
+	}
+}
+
+func TestScanSkillsDir_WithoutFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a skill without frontmatter
+	skillDir := filepath.Join(dir, "calculator")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`# Calculator
+
+Performs basic arithmetic calculations.
+
+## Usage
+...
+`), 0o644)
+
+	skills := ScanSkillsDir(dir)
+	if len(skills) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(skills))
+	}
+	if skills[0].Name != "calculator" {
+		t.Errorf("expected name 'calculator', got %q", skills[0].Name)
+	}
+	if skills[0].Description != "Performs basic arithmetic calculations." {
+		t.Errorf("expected description from first paragraph, got %q", skills[0].Description)
+	}
+}
+
+func TestScanSkillsDir_DisabledSkill(t *testing.T) {
+	dir := t.TempDir()
+
+	skillDir := filepath.Join(dir, "disabled-skill")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: disabled-skill
+description: This skill is disabled
+enabled: false
+---
+# Disabled
+`), 0o644)
+
+	skills := ScanSkillsDir(dir)
+	if len(skills) != 0 {
+		t.Fatalf("expected 0 skills (disabled), got %d", len(skills))
+	}
+}
+
+func TestScanSkillsDir_PlatformFilter(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a skill for a different platform
+	otherOS := "windows"
+	if runtime.GOOS == "windows" {
+		otherOS = "linux"
+	}
+
+	skillDir := filepath.Join(dir, "platform-skill")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: platform-skill
+description: Only for another platform
+os: ["`+otherOS+`"]
+---
+# Platform Skill
+`), 0o644)
+
+	skills := ScanSkillsDir(dir)
+	if len(skills) != 0 {
+		t.Fatalf("expected 0 skills (wrong platform), got %d", len(skills))
+	}
+}
+
+func TestScanSkillsDir_CurrentPlatform(t *testing.T) {
+	dir := t.TempDir()
+
+	skillDir := filepath.Join(dir, "native-skill")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: native-skill
+description: For current platform
+os: ["`+runtime.GOOS+`"]
+---
+# Native
+`), 0o644)
+
+	skills := ScanSkillsDir(dir)
+	if len(skills) != 1 {
+		t.Fatalf("expected 1 skill (current platform), got %d", len(skills))
+	}
+}
+
+func TestScanSkillsDir_SortedByName(t *testing.T) {
+	dir := t.TempDir()
+
+	for _, name := range []string{"zebra", "alpha", "middle"} {
+		skillDir := filepath.Join(dir, name)
+		os.MkdirAll(skillDir, 0o755)
+		os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# "+name+"\n\nDescription of "+name+"."), 0o644)
+	}
+
+	skills := ScanSkillsDir(dir)
+	if len(skills) != 3 {
+		t.Fatalf("expected 3 skills, got %d", len(skills))
+	}
+	if skills[0].Name != "alpha" || skills[1].Name != "middle" || skills[2].Name != "zebra" {
+		t.Errorf("expected sorted order, got %s, %s, %s", skills[0].Name, skills[1].Name, skills[2].Name)
+	}
+}
+
+func TestScanSkillsDir_PrioritySort(t *testing.T) {
+	dir := t.TempDir()
+
+	// browser and web-search should sort before alphabetical skills
+	for _, name := range []string{"weather", "browser", "calculator"} {
+		skillDir := filepath.Join(dir, name)
+		os.MkdirAll(skillDir, 0o755)
+		os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# "+name+"\n\nDescription of "+name+"."), 0o644)
+	}
+
+	skills := ScanSkillsDir(dir)
+	if len(skills) != 3 {
+		t.Fatalf("expected 3 skills, got %d", len(skills))
+	}
+	// browser (priority 0) should be first, then calculator and weather (both priority 100, alphabetical)
+	if skills[0].Name != "browser" {
+		t.Errorf("expected browser first, got %q", skills[0].Name)
+	}
+	if skills[1].Name != "calculator" {
+		t.Errorf("expected calculator second, got %q", skills[1].Name)
+	}
+	if skills[2].Name != "weather" {
+		t.Errorf("expected weather third, got %q", skills[2].Name)
+	}
+}
+
+func TestFormatSkillsPrompt_Empty(t *testing.T) {
+	result := FormatSkillsPrompt(nil)
+	if result != "" {
+		t.Errorf("expected empty string, got %q", result)
+	}
+}
+
+func TestFormatSkillsPrompt_XMLOutput(t *testing.T) {
+	skills := []SkillEntry{
+		{Name: "weather", Description: "Get weather info", Location: "/path/to/weather/SKILL.md"},
+		{Name: "calc", Description: "Basic math", Location: "/path/to/calc/SKILL.md"},
+	}
+
+	result := FormatSkillsPrompt(skills)
+
+	// Check XML structure
+	if !contains(result, "<available_skills>") {
+		t.Error("missing <available_skills> tag")
+	}
+	if !contains(result, "</available_skills>") {
+		t.Error("missing </available_skills> tag")
+	}
+	if !contains(result, "<name>weather</name>") {
+		t.Error("missing weather skill name")
+	}
+	if !contains(result, "<description>Get weather info</description>") {
+		t.Error("missing weather description")
+	}
+	if !contains(result, "<location>/path/to/weather/SKILL.md</location>") {
+		t.Error("missing weather location")
+	}
+	if !contains(result, "<name>calc</name>") {
+		t.Error("missing calc skill name")
+	}
+}
+
+func TestFormatSkillsPrompt_XMLEscape(t *testing.T) {
+	skills := []SkillEntry{
+		{Name: "test & <skill>", Description: `Use "quotes"`, Location: "/path/SKILL.md"},
+	}
+
+	result := FormatSkillsPrompt(skills)
+
+	if !contains(result, "test &amp; &lt;skill&gt;") {
+		t.Errorf("XML escaping failed for name, got: %s", result)
+	}
+	if !contains(result, "Use &quot;quotes&quot;") {
+		t.Errorf("XML escaping failed for description, got: %s", result)
+	}
+}
+
+func TestExtractFirstParagraph(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		expected string
+	}{
+		{"heading then paragraph", "# Title\n\nFirst paragraph.", "First paragraph."},
+		{"no heading", "Just text.", ""},
+		{"long description", "# Title\n\n" + string(make([]byte, 250)), ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractFirstParagraph(tt.content)
+			if tt.name == "long description" {
+				if len(got) > 200 {
+					t.Errorf("expected truncated description, got length %d", len(got))
+				}
+			} else if got != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestParseSkillOSList(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{`["darwin", "linux"]`, []string{"darwin", "linux"}},
+		{`["darwin"]`, []string{"darwin"}},
+		{"darwin", []string{"darwin"}},
+		{"", nil},
+	}
+
+	for _, tt := range tests {
+		got := parseSkillOSList(tt.input)
+		if len(got) != len(tt.expected) {
+			t.Errorf("parseSkillOSList(%q): expected %v, got %v", tt.input, tt.expected, got)
+			continue
+		}
+		for i := range got {
+			if got[i] != tt.expected[i] {
+				t.Errorf("parseSkillOSList(%q)[%d]: expected %q, got %q", tt.input, i, tt.expected[i], got[i])
+			}
+		}
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
+}
+
+func containsSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

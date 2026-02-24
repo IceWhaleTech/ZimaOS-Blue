@@ -3,14 +3,20 @@ import type { RouteRecordRaw } from 'vue-router'
 import { PagePermissions } from '@/api/users'
 import { useAuthStore } from '@/stores/auth'
 
-// Detect if running in Tauri
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
+// Detect if running in Tauri (v2 injects __TAURI_INTERNALS__, v1 injects __TAURI__)
+const isTauri =
+  typeof window !== 'undefined' &&
+  ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
 
 // Get server URL from Tauri (supports both HTTP and HTTPS)
 async function getServerUrl(): Promise<string> {
-  if (isTauri && (window as any).__TAURI__?.core?.invoke) {
+  // Try Tauri v2 IPC first, then v1
+  const invoke =
+    window.__TAURI_INTERNALS__?.invoke ??
+    (window as any).__TAURI__?.core?.invoke
+  if (isTauri && invoke) {
     try {
-      const url = await (window as any).__TAURI__.core.invoke('get_server_url')
+      const url = await invoke('get_server_url')
       return url
     } catch (e) {
       console.warn('Failed to get server URL from Tauri, falling back to http://localhost', e)
@@ -40,7 +46,7 @@ let pendingCheck: Promise<{ preview: boolean; connectionError: boolean }> | null
 
 async function fetchSystemMode(): Promise<Response> {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 5000)
+  const timeoutId = setTimeout(() => controller.abort(), 2000)
   const baseUrl = await getBaseUrl()
   const url = isTauri ? `${baseUrl}/api/v1/system/mode` : '/api/v1/system/mode'
   try {
@@ -68,39 +74,54 @@ async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: 
 }
 
 async function doCheckPreviewMode(): Promise<{ preview: boolean; connectionError: boolean }> {
-  try {
-    const response = await fetchSystemMode()
+  // In Tauri, the Go server may still be starting on first launch.
+  // Retry with backoff instead of failing immediately.
+  const maxAttempts = isTauri ? 5 : 1
+  let lastError: unknown
 
-    // Treat 500+ errors as connection/server errors
-    if (response.status >= 500) {
-      previewModeChecked = true
-      isPreviewMode = false
-      connectionFailed = true
-      return { preview: false, connectionError: true }
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) {
+      // Backoff: 500ms, 1000ms, 1500ms, 2000ms
+      await new Promise((r) => setTimeout(r, attempt * 500))
     }
-    if (!response.ok) {
+
+    try {
+      const response = await fetchSystemMode()
+
+      // Treat 500+ errors as connection/server errors
+      if (response.status >= 500) {
+        lastError = new Error(`Server error: ${response.status}`)
+        continue // retry in Tauri
+      }
+      if (!response.ok) {
+        previewModeChecked = true
+        isPreviewMode = false
+        connectionFailed = false
+        return { preview: false, connectionError: false }
+      }
+      const data = await response.json()
+      isPreviewMode = data.mode === 'preview'
       previewModeChecked = true
-      isPreviewMode = false
       connectionFailed = false
-      return { preview: false, connectionError: false }
-    }
-    const data = await response.json()
-    isPreviewMode = data.mode === 'preview'
-    previewModeChecked = true
-    connectionFailed = false
 
-    // If in preview mode, fetch a token
-    if (isPreviewMode && !previewTokenFetched) {
-      await fetchPreviewToken()
-    }
+      // If in preview mode, fetch a token
+      if (isPreviewMode && !previewTokenFetched) {
+        await fetchPreviewToken()
+      }
 
-    return { preview: isPreviewMode, connectionError: false }
-  } catch {
-    previewModeChecked = true
-    isPreviewMode = false
-    connectionFailed = true
-    return { preview: false, connectionError: true }
+      return { preview: isPreviewMode, connectionError: false }
+    } catch (err) {
+      lastError = err
+      // In Tauri, retry; in browser, fail immediately
+      if (!isTauri) break
+    }
   }
+
+  // All attempts exhausted
+  previewModeChecked = true
+  isPreviewMode = false
+  connectionFailed = true
+  return { preview: false, connectionError: true }
 }
 
 async function fetchPreviewToken(): Promise<void> {
@@ -142,6 +163,21 @@ export function resetPreviewModeStatus(): void {
   previewTokenFetched = false
   localStorage.removeItem('preview_token')
 }
+
+// Expose cached preview mode result so other modules (e.g. previewStore)
+// can reuse it without making a duplicate API call.
+export function getCachedPreviewMode(): { checked: boolean; preview: boolean } {
+  return { checked: previewModeChecked, preview: isPreviewMode }
+}
+
+// Eagerly start the preview mode check when this module loads.
+// By the time the router guard fires, the result is likely cached.
+checkPreviewMode().catch(() => {})
+
+// Preload the ChatView chunk in parallel with the preview mode check.
+// This overlaps the network fetch so the chunk is ready when navigation completes.
+const chatViewPreload = () => import('@/views/ChatView.vue')
+chatViewPreload()
 
 // Clear all cached state and tokens (for debugging/cleanup)
 export function clearAllState(): void {

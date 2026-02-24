@@ -296,6 +296,8 @@ type PruneResult struct {
 }
 
 // PruneHistoryForContextShare prunes history to fit within context budget.
+// It ensures tool call/result pairs are kept together — orphaned tool_result
+// messages (whose tool_use_id has no matching assistant tool_call) are removed.
 func PruneHistoryForContextShare(messages []llm.Message, maxContextTokens int, maxHistoryShare float64, parts int) PruneResult {
 	if maxHistoryShare <= 0 {
 		maxHistoryShare = 0.5
@@ -342,6 +344,14 @@ func PruneHistoryForContextShare(messages []llm.Message, maxContextTokens int, m
 		}
 	}
 
+	// Sanitize: remove orphaned tool results whose tool_use has been pruned.
+	keptMessages, orphaned := sanitizeToolPairs(keptMessages)
+	if len(orphaned) > 0 {
+		allDroppedMessages = append(allDroppedMessages, orphaned...)
+		droppedCount += len(orphaned)
+		droppedTokens += EstimateMessagesTokens(orphaned)
+	}
+
 	return PruneResult{
 		Messages:        keptMessages,
 		DroppedMessages: allDroppedMessages,
@@ -351,6 +361,57 @@ func PruneHistoryForContextShare(messages []llm.Message, maxContextTokens int, m
 		KeptTokens:      EstimateMessagesTokens(keptMessages),
 		BudgetTokens:    budgetTokens,
 	}
+}
+
+// sanitizeToolPairs removes orphaned tool result messages whose ToolCallID
+// doesn't match any ToolCall.ID in the kept assistant messages. It also
+// removes assistant messages with ToolCalls if none of their tool results
+// are present (to avoid the API complaining about missing tool results).
+func sanitizeToolPairs(messages []llm.Message) (kept []llm.Message, dropped []llm.Message) {
+	// Build set of all tool_call IDs from assistant messages.
+	toolCallIDs := make(map[string]struct{})
+	for _, msg := range messages {
+		if msg.Role == llm.RoleAssistant {
+			for _, tc := range msg.ToolCalls {
+				toolCallIDs[tc.ID] = struct{}{}
+			}
+		}
+	}
+
+	// Build set of all tool_result IDs from tool messages.
+	toolResultIDs := make(map[string]struct{})
+	for _, msg := range messages {
+		if msg.Role == llm.RoleTool && msg.ToolCallID != "" {
+			toolResultIDs[msg.ToolCallID] = struct{}{}
+		}
+	}
+
+	kept = make([]llm.Message, 0, len(messages))
+	for _, msg := range messages {
+		if msg.Role == llm.RoleTool && msg.ToolCallID != "" {
+			// Drop tool result if its tool_use was pruned.
+			if _, ok := toolCallIDs[msg.ToolCallID]; !ok {
+				dropped = append(dropped, msg)
+				continue
+			}
+		}
+		if msg.Role == llm.RoleAssistant && len(msg.ToolCalls) > 0 {
+			// Drop assistant tool_use if ALL of its results were pruned.
+			hasAnyResult := false
+			for _, tc := range msg.ToolCalls {
+				if _, ok := toolResultIDs[tc.ID]; ok {
+					hasAnyResult = true
+					break
+				}
+			}
+			if !hasAnyResult {
+				dropped = append(dropped, msg)
+				continue
+			}
+		}
+		kept = append(kept, msg)
+	}
+	return kept, dropped
 }
 
 // Summarize generates a summary of the given messages.

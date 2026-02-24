@@ -2157,6 +2157,12 @@ export default {
   claudecode: {
     title: 'Claude Code',
     subtitle: 'Integrazione Claude Code',
+    directoryPathPlaceholderWin: 'Percorso directory (es. C:\\Users\\user\\projects)',
+    directoryPathPlaceholderMac: 'Percorso directory (es. /Users/user/projects)',
+    directoryPathPlaceholderLinux: 'Percorso directory (es. /home/user/projects)',
+    browseDirectories: 'Sfoglia directory',
+    selectDirectory: 'Seleziona questa directory',
+    noSubdirectories: 'Nessuna sottodirectory',
   },
   companion: {
     title: 'Companion',
@@ -2760,6 +2766,7 @@ export default {
       'file_write': 'Scrittura file',
       'system_info': 'Info sistema',
       'memory_search': 'Ricerca memoria',
+      'exec': 'Esecuzione comando',
     },
     labels: {
       filename: 'Nome file',
@@ -2771,6 +2778,12 @@ export default {
       datetime: 'Data e ora',
       timezone: 'Fuso orario',
       unix: 'Timestamp Unix',
+      session_id: 'Sessione',
+      exit_code: 'Codice di uscita',
+      stdout: 'Output',
+      stderr: 'Output errore',
+      duration_ms: 'Durata',
+      ms: 'ms',
     },
   },
   sandbox: {

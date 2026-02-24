@@ -3,6 +3,11 @@ package claudecode
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -203,6 +208,9 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/response-cache/stats", h.GetResponseCacheStats)
 	g.POST("/response-cache/clear", h.ClearResponseCache)
 	g.GET("/reliability/metrics", h.GetReliabilityMetrics)
+
+	// Directory browsing for whitelist picker
+	g.GET("/browse-dirs", h.BrowseDirs)
 }
 
 // GetVersion returns the current version information.
@@ -527,4 +535,89 @@ func (h *Handler) GetReliabilityMetrics(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, metrics)
+}
+
+// BrowseDirEntry represents a directory entry in the browse response.
+type BrowseDirEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// BrowseDirsResponse is the response for GET /api/v1/claudecode/browse-dirs.
+type BrowseDirsResponse struct {
+	Current string           `json:"current"`
+	Parent  string           `json:"parent,omitempty"`
+	Dirs    []BrowseDirEntry `json:"dirs"`
+	OS      string           `json:"os"` // "windows", "darwin", "linux"
+}
+
+// BrowseDirs lists subdirectories of a given path for the directory picker.
+// GET /api/v1/claudecode/browse-dirs?path=/some/dir
+func (h *Handler) BrowseDirs(c echo.Context) error {
+	reqPath := c.QueryParam("path")
+
+	// Default to home directory
+	if reqPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			reqPath = "/"
+			if runtime.GOOS == "windows" {
+				reqPath = "C:\\"
+			}
+		} else {
+			reqPath = home
+		}
+	}
+
+	// Clean and resolve the path
+	reqPath = filepath.Clean(reqPath)
+
+	// Security: prevent path traversal — resolve to absolute
+	absPath, err := filepath.Abs(reqPath)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid path"})
+	}
+	reqPath = absPath
+
+	// Read directory entries
+	entries, err := os.ReadDir(reqPath)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "cannot read directory: " + err.Error(),
+		})
+	}
+
+	dirs := make([]BrowseDirEntry, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		// Skip hidden directories
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		dirs = append(dirs, BrowseDirEntry{
+			Name: name,
+			Path: filepath.Join(reqPath, name),
+		})
+	}
+
+	sort.Slice(dirs, func(i, j int) bool {
+		return strings.ToLower(dirs[i].Name) < strings.ToLower(dirs[j].Name)
+	})
+
+	resp := BrowseDirsResponse{
+		Current: reqPath,
+		Dirs:    dirs,
+		OS:      runtime.GOOS,
+	}
+
+	// Add parent unless we're at root
+	parent := filepath.Dir(reqPath)
+	if parent != reqPath {
+		resp.Parent = parent
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }

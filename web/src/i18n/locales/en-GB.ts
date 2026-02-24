@@ -40,7 +40,9 @@ export default {
     capAudioGeneration: 'Audio Generation',
   },
   tools: {
+    ...enUS.tools,
     names: {
+      ...enUS.tools.names,
       'Web Search': 'Web Search',
       'Calculator': 'Calculator',
       'System Info': 'System Info',
@@ -120,6 +122,7 @@ export default {
     initProgress: 'Initialising Kokoro', initComplete: 'Kokoro ready',
     initStage: { loading_dictionary: 'Loading G2P dictionary...', loading_runtime: 'Loading ONNX Runtime...', loading_voice: 'Loading voice data...', loading_model: 'Loading ONNX model...' },
     langName: {
+      ...enUS.speech.langName,
       'en-US': 'English (US)',
       'en-GB': 'English (UK)',
       'ja-JP': 'Japanese',
@@ -197,6 +200,7 @@ export default {
     },
   },
   uiReview: {
+    ...enUS.uiReview,
     title: 'UI Review',
     error: 'UI Review Failed',
     visual: 'Visual',
@@ -215,6 +219,7 @@ export default {
     },
   },
   media: {
+    ...enUS.media,
     image: 'image',
     video: 'video',
     generating: 'Generating {type}...',
@@ -229,6 +234,7 @@ export default {
     },
   },
   approval: {
+    ...enUS.approval,
     title: 'Tool Call Approval',
     subtitle: 'A tool is requesting permission to execute',
     tool: 'Tool',
@@ -1075,8 +1081,14 @@ export default {
     directoryWhitelist: 'Directory Whitelist',
     directoryWhitelistDesc: 'Directories that Claude Code can access in sandbox mode',
     directoryPathPlaceholder: 'Directory path (e.g., /home/user/projects)',
+    directoryPathPlaceholderWin: 'Directory path (e.g., C:\\Users\\user\\projects)',
+    directoryPathPlaceholderMac: 'Directory path (e.g., /Users/user/projects)',
+    directoryPathPlaceholderLinux: 'Directory path (e.g., /home/user/projects)',
     directoryAliasPlaceholder: 'Alias (optional)',
     noDirectoriesWhitelisted: 'No directories whitelisted',
+    browseDirectories: 'Browse directories',
+    selectDirectory: 'Select this directory',
+    noSubdirectories: 'No subdirectories',
     directoryAdded: 'Directory added to whitelist',
     directoryRemoved: 'Directory removed from whitelist',
     directoryUpdated: 'Directory updated',
@@ -2490,6 +2502,7 @@ export default {
       'file_write': 'File Write',
       'system_info': 'System Info',
       'memory_search': 'Memory Search',
+      'exec': 'Command Execution',
     },
     labels: {
       filename: 'Filename',
@@ -2501,6 +2514,12 @@ export default {
       datetime: 'Date & Time',
       timezone: 'Timezone',
       unix: 'Unix Timestamp',
+      session_id: 'Session',
+      exit_code: 'Exit Code',
+      stdout: 'Output',
+      stderr: 'Error Output',
+      duration_ms: 'Duration',
+      ms: 'ms',
     },
   },
   retry: 'Retry',
@@ -3518,6 +3537,7 @@ export default {
   toggleSidebar: 'Toggle Sidebar',
   toggleStreaming: 'Toggle Streaming',
   tokenEconomy: {
+    ...enUS.tokenEconomy,
     title: 'Token Economy',
     costSaved: 'Cost Saved',
     tokensSaved: 'Tokens Saved',

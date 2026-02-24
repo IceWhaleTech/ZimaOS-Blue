@@ -24,11 +24,16 @@ var upgrader = websocket.Upgrader{
 // WSHandler handles WebSocket connections for voice streaming.
 type WSHandler struct {
 	service Service
+	mu      sync.Mutex
+	conns   map[*websocket.Conn]context.CancelFunc
 }
 
 // NewWSHandler creates a new WebSocket handler.
 func NewWSHandler(service Service) *WSHandler {
-	return &WSHandler{service: service}
+	return &WSHandler{
+		service: service,
+		conns:   make(map[*websocket.Conn]context.CancelFunc),
+	}
 }
 
 // RegisterRoutes registers the WebSocket routes.
@@ -68,6 +73,19 @@ func (h *WSHandler) HandleStream(c echo.Context) error {
 	}
 	defer ws.Close()
 
+	// Track connection for graceful shutdown
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	defer cancel()
+
+	h.mu.Lock()
+	h.conns[ws] = cancel
+	h.mu.Unlock()
+	defer func() {
+		h.mu.Lock()
+		delete(h.conns, ws)
+		h.mu.Unlock()
+	}()
+
 	// Create connection wrapper
 	conn := &wsConnection{
 		conn:   ws,
@@ -80,7 +98,7 @@ func (h *WSHandler) HandleStream(c echo.Context) error {
 	}
 
 	// Create session
-	session, err := h.service.CreateSession(c.Request().Context(), conn.userID, conn.config)
+	session, err := h.service.CreateSession(ctx, conn.userID, conn.config)
 	if err != nil {
 		conn.sendError("failed to create session: " + err.Error())
 		return nil
@@ -97,7 +115,7 @@ func (h *WSHandler) HandleStream(c echo.Context) error {
 	})
 
 	// Handle messages
-	h.handleConnection(c.Request().Context(), conn)
+	h.handleConnection(ctx, conn)
 
 	// Cleanup
 	h.service.CloseSession(context.Background(), conn.sessionID)
@@ -343,4 +361,19 @@ func (conn *wsConnection) sendError(errMsg string) {
 		Type:  MsgTypeError,
 		Error: errMsg,
 	})
+}
+
+// Close closes all active voice WebSocket connections gracefully.
+func (h *WSHandler) Close() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	closeMsg := websocket.FormatCloseMessage(websocket.CloseGoingAway, "Server shutting down")
+	for ws, cancel := range h.conns {
+		ws.SetWriteDeadline(timeutil.NowTime().Add(1 * time.Second))
+		ws.WriteMessage(websocket.CloseMessage, closeMsg)
+		cancel()
+		ws.Close()
+	}
+	h.conns = make(map[*websocket.Conn]context.CancelFunc)
 }

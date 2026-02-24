@@ -212,9 +212,9 @@ func (s *SQLiteStore) table(ctx context.Context) *z.ZormTable {
 }
 
 type kvRow struct {
-	Key       string  `json:"key"`
-	Value     string  `json:"value"`
-	ExpiresAt *string `json:"expires_at"`
+	Key       string  `json:"key" zorm:"key"`
+	Value     string  `json:"value" zorm:"value"`
+	ExpiresAt *string `json:"expires_at" zorm:"expires_at"`
 }
 
 func parseKVTime(s *string) *time.Time {

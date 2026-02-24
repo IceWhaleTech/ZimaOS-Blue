@@ -88,6 +88,19 @@ export interface ClaudeCodeConfigRequest {
   directory_whitelist?: DirectoryWhitelistEntry[]
 }
 
+// Browse directories response
+export interface BrowseDirEntry {
+  name: string
+  path: string
+}
+
+export interface BrowseDirsResponse {
+  current: string
+  parent?: string
+  dirs: BrowseDirEntry[]
+  os: string // "windows", "darwin", "linux"
+}
+
 // Claude Code CLI API
 export const claudeCodeApi = {
   // Get current version information
@@ -113,4 +126,8 @@ export const claudeCodeApi = {
   // Update configuration
   setConfig: (config: ClaudeCodeConfigRequest) =>
     api.put<ClaudeCodeConfigResponse>('/claudecode/config', config),
+
+  // Browse directories for whitelist picker
+  browseDirs: (path?: string) =>
+    api.get<BrowseDirsResponse>('/claudecode/browse-dirs', { params: path ? { path } : undefined }),
 }

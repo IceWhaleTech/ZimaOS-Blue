@@ -342,6 +342,17 @@ async function handleMediaGenerate() {
 }
 
 function handleMediaDismiss() {
+  // User chose "No, just chat" — send the original message to chat instead.
+  const prompt = mediaGen.intent.value?.prompt
+  mediaGen.reset()
+  if (prompt) {
+    chatStore.sendMessage(prompt)
+  }
+  nextTick(() => chatInputRef.value?.focus?.())
+}
+
+function handleMediaClose() {
+  // Close button (✕) — just dismiss the panel, do nothing else.
   mediaGen.reset()
   nextTick(() => chatInputRef.value?.focus?.())
 }
@@ -577,8 +588,20 @@ onMounted(async () => {
     editBeforeSend.value = s?.asr?.edit_before_send ?? false
   }).catch(() => {})
 
-  // Fetch conversations first — this drives the sidebar (first paint)
-  await chatStore.fetchConversations()
+  // Fetch conversations and (if URL has conversationId) messages in parallel.
+  // selectConversation only needs the ID, not the conversation list.
+  if (_initConvId) {
+    await Promise.all([
+      chatStore.fetchConversations(),
+      chatStore.selectConversation(_initConvId),
+    ])
+  } else {
+    await chatStore.fetchConversations()
+    // Auto-select first conversation if available and none selected (desktop only)
+    if (!isMobile.value && !chatStore.currentConversationId && chatStore.sortedConversations.length > 0 && chatStore.sortedConversations[0]) {
+      await chatStore.selectConversation(chatStore.sortedConversations[0].id)
+    }
+  }
 
   // Fire secondary data fetches in background — don't block first paint
   providerPoolStore.fetchProviders().then(() => {
@@ -591,15 +614,6 @@ onMounted(async () => {
 
   // Check for any pending tool approvals (e.g. page was refreshed while waiting)
   chatStore.checkPendingApprovals()
-
-  // If URL had conversationId, select it now that conversations are loaded
-  if (_initConvId) {
-    await chatStore.selectConversation(_initConvId)
-  }
-  // Auto-select first conversation if available and none selected (desktop only)
-  else if (!isMobile.value && !chatStore.currentConversationId && chatStore.sortedConversations.length > 0 && chatStore.sortedConversations[0]) {
-    await chatStore.selectConversation(chatStore.sortedConversations[0].id)
-  }
 })
 
 onUnmounted(() => {
@@ -790,10 +804,10 @@ onUnmounted(() => {
         </div>
       </header>
 
-      <!-- Trial Quota Banner (only show when not exhausted and user hasn't configured their own providers) -->
+      <!-- Trial Quota Banner (show when trial provider is active and quota not exhausted) -->
       <Transition name="slide-fade">
         <div
-          v-if="providerPoolStore.trialQuota && providerPoolStore.trialProviders?.length > 0 && !providerPoolStore.trialQuota.exhausted && !providerPoolStore.hasUserConfiguredProviders"
+          v-if="providerPoolStore.trialQuota && providerPoolStore.trialProviders?.length > 0 && !providerPoolStore.trialQuota.is_exhausted"
           class="px-4 py-2 flex items-center justify-between text-sm border-b bg-gray-100 dark:bg-gray-700/20 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-white"
           :class="{ 'trial-quota-pulse': tokenAnimating }"
         >
@@ -1409,6 +1423,7 @@ onUnmounted(() => {
             @update:selected-model="mediaGen.selectedModel.value = $event"
             @generate="handleMediaGenerate"
             @dismiss="handleMediaDismiss"
+            @close="handleMediaClose"
             @confirm="handleMediaConfirm"
             @switch-category="mediaGen.switchCategory($event)"
           />

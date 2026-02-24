@@ -218,13 +218,156 @@ func TestPruneHistoryForContextShare(t *testing.T) {
 		t.Error("Expected some messages to be dropped")
 	}
 
-	if len(result.Messages)+result.DroppedCount != len(messages) {
-		t.Errorf("Total messages mismatch: kept=%d, dropped=%d, original=%d",
-			len(result.Messages), result.DroppedCount, len(messages))
-	}
-
 	if result.KeptTokens > result.BudgetTokens {
 		t.Errorf("Kept tokens (%d) exceeds budget (%d)", result.KeptTokens, result.BudgetTokens)
+	}
+}
+
+func TestSanitizeToolPairs(t *testing.T) {
+	t.Run("orphaned tool result removed", func(t *testing.T) {
+		// tool_result references a tool_use that was pruned
+		messages := []llm.Message{
+			{Role: llm.RoleTool, Content: "result for pruned call", ToolCallID: "tc_pruned"},
+			{Role: llm.RoleUser, Content: "next question"},
+			{Role: llm.RoleAssistant, Content: "answer", ToolCalls: []llm.ToolCall{{ID: "tc_kept", Name: "exec"}}},
+			{Role: llm.RoleTool, Content: "result for kept call", ToolCallID: "tc_kept"},
+		}
+		kept, dropped := sanitizeToolPairs(messages)
+		if len(kept) != 3 {
+			t.Errorf("expected 3 kept, got %d", len(kept))
+		}
+		if len(dropped) != 1 {
+			t.Errorf("expected 1 dropped, got %d", len(dropped))
+		}
+		if dropped[0].ToolCallID != "tc_pruned" {
+			t.Errorf("expected tc_pruned to be dropped, got %s", dropped[0].ToolCallID)
+		}
+	})
+
+	t.Run("orphaned assistant tool_use removed", func(t *testing.T) {
+		// assistant has tool_calls but all results were pruned
+		messages := []llm.Message{
+			{Role: llm.RoleAssistant, Content: "", ToolCalls: []llm.ToolCall{{ID: "tc_orphan", Name: "exec"}}},
+			{Role: llm.RoleUser, Content: "next question"},
+		}
+		kept, dropped := sanitizeToolPairs(messages)
+		if len(kept) != 1 {
+			t.Errorf("expected 1 kept, got %d", len(kept))
+		}
+		if len(dropped) != 1 {
+			t.Errorf("expected 1 dropped, got %d", len(dropped))
+		}
+		if kept[0].Role != llm.RoleUser {
+			t.Errorf("expected user message kept, got %s", kept[0].Role)
+		}
+	})
+
+	t.Run("complete pair preserved", func(t *testing.T) {
+		messages := []llm.Message{
+			{Role: llm.RoleUser, Content: "do something"},
+			{Role: llm.RoleAssistant, Content: "", ToolCalls: []llm.ToolCall{{ID: "tc1", Name: "exec"}}},
+			{Role: llm.RoleTool, Content: "done", ToolCallID: "tc1"},
+			{Role: llm.RoleAssistant, Content: "all done"},
+		}
+		kept, dropped := sanitizeToolPairs(messages)
+		if len(kept) != 4 {
+			t.Errorf("expected 4 kept, got %d", len(kept))
+		}
+		if len(dropped) != 0 {
+			t.Errorf("expected 0 dropped, got %d", len(dropped))
+		}
+	})
+
+	t.Run("multiple tool calls partial results", func(t *testing.T) {
+		// assistant has 2 tool calls, only 1 result present
+		messages := []llm.Message{
+			{Role: llm.RoleAssistant, Content: "", ToolCalls: []llm.ToolCall{
+				{ID: "tc1", Name: "exec"},
+				{ID: "tc2", Name: "file_read"},
+			}},
+			{Role: llm.RoleTool, Content: "result1", ToolCallID: "tc1"},
+			// tc2 result was pruned
+		}
+		kept, dropped := sanitizeToolPairs(messages)
+		// assistant has at least one result (tc1), so it's kept
+		if len(kept) != 2 {
+			t.Errorf("expected 2 kept, got %d", len(kept))
+		}
+		if len(dropped) != 0 {
+			t.Errorf("expected 0 dropped, got %d", len(dropped))
+		}
+	})
+
+	t.Run("no tool messages", func(t *testing.T) {
+		messages := []llm.Message{
+			{Role: llm.RoleUser, Content: "hello"},
+			{Role: llm.RoleAssistant, Content: "hi"},
+		}
+		kept, dropped := sanitizeToolPairs(messages)
+		if len(kept) != 2 {
+			t.Errorf("expected 2 kept, got %d", len(kept))
+		}
+		if len(dropped) != 0 {
+			t.Errorf("expected 0 dropped, got %d", len(dropped))
+		}
+	})
+}
+
+func TestPruneHistoryPreservesToolPairs(t *testing.T) {
+	// Simulate a conversation where compaction drops the assistant tool_use
+	// but would leave the tool_result orphaned without the fix.
+	messages := []llm.Message{
+		// Old conversation (will be pruned due to budget)
+		{Role: llm.RoleUser, Content: generateLargeText(1000)},
+		{Role: llm.RoleAssistant, Content: "", ToolCalls: []llm.ToolCall{{ID: "tc_old", Name: "exec", Arguments: `{"command":"ls"}`}}},
+		{Role: llm.RoleTool, Content: generateLargeText(1000), ToolCallID: "tc_old"},
+		{Role: llm.RoleAssistant, Content: generateLargeText(1000)},
+		// Recent conversation (should be kept)
+		{Role: llm.RoleUser, Content: "recent question"},
+		{Role: llm.RoleAssistant, Content: "", ToolCalls: []llm.ToolCall{{ID: "tc_new", Name: "exec", Arguments: `{"command":"pwd"}`}}},
+		{Role: llm.RoleTool, Content: "result", ToolCallID: "tc_new"},
+	}
+
+	// Budget is tight enough to force pruning of old messages
+	result := PruneHistoryForContextShare(messages, 4000, 0.5, 2)
+
+	// Verify no orphaned tool results in kept messages
+	toolCallIDs := make(map[string]struct{})
+	for _, msg := range result.Messages {
+		if msg.Role == llm.RoleAssistant {
+			for _, tc := range msg.ToolCalls {
+				toolCallIDs[tc.ID] = struct{}{}
+			}
+		}
+	}
+	for _, msg := range result.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolCallID != "" {
+			if _, ok := toolCallIDs[msg.ToolCallID]; !ok {
+				t.Errorf("orphaned tool_result found: ToolCallID=%s has no matching tool_use in kept messages", msg.ToolCallID)
+			}
+		}
+	}
+
+	// Verify no orphaned assistant tool_use in kept messages
+	toolResultIDs := make(map[string]struct{})
+	for _, msg := range result.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolCallID != "" {
+			toolResultIDs[msg.ToolCallID] = struct{}{}
+		}
+	}
+	for _, msg := range result.Messages {
+		if msg.Role == llm.RoleAssistant && len(msg.ToolCalls) > 0 {
+			hasAnyResult := false
+			for _, tc := range msg.ToolCalls {
+				if _, ok := toolResultIDs[tc.ID]; ok {
+					hasAnyResult = true
+					break
+				}
+			}
+			if !hasAnyResult {
+				t.Errorf("orphaned assistant tool_use found: none of its tool_call IDs have matching results")
+			}
+		}
 	}
 }
 

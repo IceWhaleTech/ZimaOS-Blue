@@ -1479,6 +1479,12 @@ export default {
   },
   claudecode: {
     ...enUS.claudecode,
+    directoryPathPlaceholderWin: 'Mappad (bijv. C:\\Users\\user\\projects)',
+    directoryPathPlaceholderMac: 'Mappad (bijv. /Users/user/projects)',
+    directoryPathPlaceholderLinux: 'Mappad (bijv. /home/user/projects)',
+    browseDirectories: 'Mappen doorzoeken',
+    selectDirectory: 'Deze map selecteren',
+    noSubdirectories: 'Geen submappen',
   },
   a2ui: {
     ...enUS.a2ui,
@@ -1817,6 +1823,7 @@ export default {
       'file_write': 'Bestand schrijven',
       'system_info': 'Systeeminfo',
       'memory_search': 'Geheugen zoeken',
+      'exec': 'Opdrachtuitvoering',
     },
     labels: {
       filename: 'Bestandsnaam',
@@ -1828,6 +1835,12 @@ export default {
       datetime: 'Datum en tijd',
       timezone: 'Tijdzone',
       unix: 'Unix-tijdstempel',
+      session_id: 'Sessie',
+      exit_code: 'Exitcode',
+      stdout: 'Uitvoer',
+      stderr: 'Foutuitvoer',
+      duration_ms: 'Duur',
+      ms: 'ms',
     },
   },
 }

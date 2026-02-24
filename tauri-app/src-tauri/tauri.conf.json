@@ -109,7 +109,7 @@
         "decorations": true,
         "transparent": false,
         "visible": false,
-        "url": "about:blank"
+        "url": "data:text/html,%3C!DOCTYPE html%3E%3Chtml%3E%3Cbody style='margin:0;background:%230F172A;display:flex;align-items:center;justify-content:center;height:100vh'%3E%3Cdiv style='width:36px;height:36px;border:3px solid %2394A3B8;border-top-color:%233B82F6;border-radius:50%25;animation:s .8s linear infinite'%3E%3C/div%3E%3Cstyle%3E@keyframes s{to{transform:rotate(360deg)}}@media(prefers-color-scheme:light){body{background:%23F8FAFC !important}div{border-color:%2364748B !important;border-top-color:%233B82F6 !important}}%3C/style%3E%3C/body%3E%3C/html%3E"
       }
     ],
     "security": {

@@ -440,6 +440,7 @@ export default {
     },
     // Talk Mode
     talkMode: {
+      ...enUS.chat.talkMode,
       title: '音声通話',
       conversation: '会話モード',
       walkieTalkie: 'トランシーバーモード',
@@ -474,6 +475,7 @@ export default {
     enableClaudeCodePrompt: '{name} を有効にしてより多くの機能を使用',
     // Routing Mode
     routingMode: {
+      ...enUS.chat.routingMode,
       auto: '自動',
       cloud: 'クラウド',
       local: 'ローカル',
@@ -554,6 +556,7 @@ export default {
       network: 'ネットワーク',
     },
     cards: {
+      ...enUS.dashboard.cards,
       systemStatus: 'システムステータス',
       uptime: '稼働時間',
       memoryUsage: 'メモリ使用量',
@@ -587,6 +590,7 @@ export default {
     ...enUS.settings,
     title: '設定',
     tab: {
+      ...enUS.settings.tab,
       general: '一般',
       llm: 'LLM',
       network: 'ネットワーク',
@@ -1252,6 +1256,7 @@ export default {
       disabled: '無効',
     },
     actions: {
+      ...enUS.skillStore.actions,
       install: 'インストール',
       uninstall: 'アンインストール',
       enable: '有効化',
@@ -1723,6 +1728,7 @@ export default {
     local: 'ローカル',
     ide: 'IDE',
     tabs: {
+      ...enUS.skillStore.tabs,
       all: 'All',
       trial: 'トライアル',
       builtin: 'ビルトイン',
@@ -2001,8 +2007,14 @@ export default {
     directoryWhitelist: 'ディレクトリホワイトリスト',
     directoryWhitelistDesc: 'サンドボックスモードで Claude Code がアクセスできるディレクトリ',
     directoryPathPlaceholder: 'ディレクトリパス（例：/home/user/projects）',
+    directoryPathPlaceholderWin: 'ディレクトリパス（例：C:\\Users\\user\\projects）',
+    directoryPathPlaceholderMac: 'ディレクトリパス（例：/Users/user/projects）',
+    directoryPathPlaceholderLinux: 'ディレクトリパス（例：/home/user/projects）',
     directoryAliasPlaceholder: 'エイリアス（任意）',
     noDirectoriesWhitelisted: 'ホワイトリストに登録されたディレクトリはありません',
+    browseDirectories: 'ディレクトリを参照',
+    selectDirectory: 'このディレクトリを選択',
+    noSubdirectories: 'サブディレクトリがありません',
     directoryAdded: 'ディレクトリをホワイトリストに追加しました',
     directoryRemoved: 'ディレクトリをホワイトリストから削除しました',
     directoryUpdated: 'ディレクトリを更新しました',
@@ -2026,8 +2038,9 @@ export default {
     ...enUS.skillStore,
     title: 'スキルストア',
     subtitle: 'スキルを発見してインストールし、AIアシスタントを拡張',
-    stats: { installed: 'インストール済み', enabled: '有効', available: '利用可能' },
+    stats: { ...enUS.skillStore.stats, installed: 'インストール済み', enabled: '有効', available: '利用可能' },
     tabs: {
+      ...enUS.skillStore.tabs,
       installedWithCount: 'インストール済み（{count}）',
       storeWithCount: 'ストア（{count}）',
       featured: 'おすすめ',
@@ -2036,6 +2049,7 @@ export default {
       searchResults: '検索結果（{count}）',
     },
     search: {
+      ...enUS.skillStore.search,
       resultsTitle: '検索結果',
       resultsCount: '「{query}」の結果 {count} 件',
       sourceInstalled: 'インストール済み',
@@ -2069,6 +2083,7 @@ export default {
     clearSearch: '検索をクリア',
     allLoaded: 'すべて {count} 件のスキルを読み込みました',
     actions: {
+      ...enUS.skillStore.actions,
       refresh: '更新',
       addSource: 'ソースを追加',
       install: 'インストール',
@@ -2081,6 +2096,7 @@ export default {
       verify: 'スキルの可視性を確認',
     },
     status: {
+      ...enUS.skillStore.status,
       builtin: '組み込み',
       installed: 'インストール済み',
       featured: 'おすすめ',
@@ -2323,22 +2339,27 @@ export default {
       items: {
         ...enUS.security.scan.items,
         auth_password_length: {
+          ...enUS.security.scan.items.auth_password_length,
           name: 'パスワード最小長',
           description: 'パスワードの最小長がセキュリティ要件を満たしているか確認',
         },
         auth_password_complexity: {
+          ...enUS.security.scan.items.auth_password_complexity,
           name: 'パスワード複雑性',
           description: 'パスワード複雑性要件が有効か確認',
         },
         auth_account_lockout: {
+          ...enUS.security.scan.items.auth_account_lockout,
           name: 'アカウントロックアウトポリシー',
           description: 'アカウントロックアウトが設定されているか確認',
         },
         auth_jwt_secret: {
+          ...enUS.security.scan.items.auth_jwt_secret,
           name: 'JWT シークレット設定',
           description: 'JWT シークレットが適切に設定されているか確認',
         },
         auth_token_expiration: {
+          ...enUS.security.scan.items.auth_token_expiration,
           name: 'トークン有効期限',
           description: 'トークンの有効期限が適切に設定されているか確認',
         },
@@ -2375,10 +2396,12 @@ export default {
           description: 'パストラバーサル保護が有効か確認',
         },
         ai_prompt_injection: {
+          ...enUS.security.scan.items.ai_prompt_injection,
           name: 'プロンプトインジェクション保護',
           description: 'プロンプトインジェクション保護が有効か確認',
         },
         ai_output_validation: {
+          ...enUS.security.scan.items.ai_output_validation,
           name: 'AI 出力検証',
           description: 'AI 出力が実行前に検証されているか確認',
         },
@@ -2387,18 +2410,22 @@ export default {
           description: 'モデルアクセスが適切に制御されているか確認',
         },
         ai_data_filtering: {
+          ...enUS.security.scan.items.ai_data_filtering,
           name: '機密データフィルタリング',
           description: '機密データが AI コンテキストからフィルタリングされているか確認',
         },
         network_rate_limiting: {
+          ...enUS.security.scan.items.network_rate_limiting,
           name: 'API レート制限',
           description: 'レート制限が設定されているか確認',
         },
         network_cors: {
+          ...enUS.security.scan.items.network_cors,
           name: 'CORS 設定',
           description: 'CORS が適切に設定されているか確認',
         },
         network_tls: {
+          ...enUS.security.scan.items.network_tls,
           name: 'TLS/HTTPS 設定',
           description: 'TLS が適切に設定されているか確認',
         },
@@ -2407,6 +2434,7 @@ export default {
           description: 'IP ブロッキングが利用可能か確認',
         },
         sandbox_enabled: {
+          ...enUS.security.scan.items.sandbox_enabled,
           name: 'サンドボックス実行',
           description: 'サンドボックス実行が有効か確認',
         },
@@ -2419,6 +2447,7 @@ export default {
           description: 'サンドボックスネットワークが分離されているか確認',
         },
         sandbox_timeout: {
+          ...enUS.security.scan.items.sandbox_timeout,
           name: '実行タイムアウト',
           description: '実行タイムアウトが設定されているか確認',
         },
@@ -2471,14 +2500,17 @@ export default {
           description: 'サーバーのネットワークバインディング設定を確認',
         },
         sandbox_memory_limit: {
+          ...enUS.security.scan.items.sandbox_memory_limit,
           name: 'メモリ制限',
           description: 'サンドボックスのメモリ制限が設定されているか確認',
         },
         sandbox_network: {
+          ...enUS.security.scan.items.sandbox_network,
           name: 'ネットワーク分離',
           description: 'サンドボックスのネットワークアクセスが制限されているか確認',
         },
         data_directory_security: {
+          ...enUS.security.scan.items.data_directory_security,
           name: 'データディレクトリセキュリティ',
           description: 'データディレクトリの権限が適切か確認',
         },
@@ -2511,6 +2543,7 @@ export default {
           description: '現在のメモリ使用量を確認',
         },
         ai_model_access_control: {
+          ...enUS.security.scan.items.ai_model_access_control,
           name: 'モデルアクセス制御',
           description: 'モデルホワイトリストが設定されているか確認',
         },
@@ -2609,6 +2642,7 @@ export default {
     noAlerts: 'アラートがありません',
     acknowledge: '確認',
     alerts: {
+      ...enUS.companion.alerts,
       acknowledged: '確認済み',
       viewSession: 'セッションを表示',
     },
@@ -2625,6 +2659,7 @@ export default {
       blocked: 'ブロック',
     },
     eventType: {
+      ...enUS.companion.eventType,
       session_start: 'セッション開始',
       session_end: 'セッション終了',
       message_received: 'メッセージ受信',
@@ -2869,6 +2904,7 @@ export default {
     },
     waitingForEvents: 'イベントを待機中...',
     demo: {
+      ...enUS.companion.demo,
       title: 'データがありません',
       description: 'Companion は複数のプラットフォームで AI Agent セッションを監視します。Agent が接続されてリクエストを処理すると、リアルタイムのセッションデータ、イベント、セキュリティアラートがここに表示されます。',
       features: {
@@ -3468,6 +3504,7 @@ export default {
     permissions: '権限',
     permissionsHint: 'このユーザーがアクセスできるページを選択',
     pagePermissions: {
+      ...enUS.users.pagePermissions,
       'page.home': 'ダッシュボード',
       'page.chat': 'チャット',
       'page.channels': 'チャンネル',
@@ -3490,6 +3527,7 @@ export default {
     },
     passwordStrength: 'パスワード強度',
     passwordChecks: {
+      ...enUS.users.passwordChecks,
       length: '{n} 文字以上',
       uppercase: '大文字を 1 つ以上',
       lowercase: '小文字を 1 つ以上',
@@ -3513,6 +3551,7 @@ export default {
     unlockFailed: 'ロック解除に失敗しました',
     resetPasswordFailed: 'パスワードのリセットに失敗しました',
     error: {
+      ...enUS.users.error,
       createFailed: 'ユーザーの作成に失敗しました',
       updateFailed: 'ユーザーの更新に失敗しました',
       deleteFailed: 'ユーザーの削除に失敗しました',
@@ -3619,6 +3658,7 @@ export default {
       loading_model: 'ONNX モデルを読み込み中...',
     },
     langName: {
+      ...enUS.speech.langName,
       'en-US': '英語（米国）',
       'en-GB': '英語（英国）',
       'ja-JP': '日本語',
@@ -3804,6 +3844,7 @@ export default {
     },
     fetchError: 'ハートビートステータスの読み込みに失敗しました',
     status: {
+      ...enUS.heartbeat.status,
       ran: '実行済み',
       skipped: 'スキップ',
       failed: '失敗',
@@ -4449,6 +4490,7 @@ export default {
       'Network': 'ネットワーク',
       'Processes': 'プロセス',
       'Search': '検索',
+      'exec': 'コマンド実行',
     },
     params: {
       query: 'クエリ',
@@ -4657,6 +4699,7 @@ export default {
       'file_write': 'ファイル書き込み',
       'system_info': 'システム情報',
       'memory_search': 'メモリ検索',
+      'exec': 'コマンド実行',
     },
     labels: {
       filename: 'ファイル名',
@@ -4668,6 +4711,12 @@ export default {
       datetime: '日時',
       timezone: 'タイムゾーン',
       unix: 'Unixタイムスタンプ',
+      session_id: 'セッション',
+      exit_code: '終了コード',
+      stdout: '出力',
+      stderr: 'エラー出力',
+      duration_ms: '実行時間',
+      ms: 'ミリ秒',
     },
   },
   retry: 'リトライ',

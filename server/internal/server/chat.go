@@ -1697,7 +1697,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		h.metricsRecorder.RecordAPICallForUser(userID, model, success, latencyMs, inputTokens, outputTokens, 0, 0, errorType)
 
 		// Record trial usage if this is a trial provider
-		if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(req.Provider) {
+		if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && resp != nil && providerpool.IsTrialProvider(resp.ProviderID) {
 			h.providerPool.TrialQuotaManager.RecordUsage(inputTokens, outputTokens, convID)
 		}
 	}
@@ -2404,6 +2404,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var lastFlushLen int
 	const flushInterval = 64 // flush to DB every N new chars (low for near-real-time cross-tab sync)
 
+	var totalDeltaChars int // track total delta chars sent to client across all rounds
 	for toolRound := 0; toolRound < maxToolRounds; toolRound++ {
 	streamToolCalls = streamToolCalls[:0]
 	streamErrorHandled = false
@@ -2474,7 +2475,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			}
 			// For trial provider, replace raw error with friendly message key
 			chunkErr := chunk.Error
-			if providerpool.IsTrialProvider(actualProvider) {
+			if providerpool.IsTrialProvider(actualProviderID) {
 				chunkErr = "trial_service_busy"
 			}
 			// Send error to client
@@ -2494,8 +2495,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 					h.store.AddMessage(context.Background(), convID, memory.Message{
 						Role:     "assistant",
 						Content:  fullContent,
-						Provider: providerName,
-						Model:    model,
+						Provider: actualProvider,
+						Model:    actualModel,
 					})
 				}
 			}
@@ -2505,17 +2506,18 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 
 		fullContent += chunk.Delta
+		if chunk.Delta != "" {
+			totalDeltaChars += len(chunk.Delta)
+		}
 
 		// Incremental persistence: insert or update the message in DB periodically
 		// so a page refresh mid-stream still shows partial content.
 		if chunk.Delta != "" && len(fullContent)-lastFlushLen >= flushInterval {
 			if streamingMsgID == "" {
-				// First flush — insert placeholder
+				// First flush — insert placeholder (provider/model filled on completion)
 				if m, err := h.store.AddMessage(context.Background(), convID, memory.Message{
-					Role:     "assistant",
-					Content:  fullContent,
-					Provider: providerName,
-					Model:    model,
+					Role:    "assistant",
+					Content: fullContent,
 				}); err == nil {
 					streamingMsgID = m.ID
 					h.conversationCache.Invalidate(convID)
@@ -2573,8 +2575,20 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			// If there are pending tool calls, skip persistence and final SSE —
 			// the tool loop will reset fullContent and re-stream.
 			if len(streamToolCalls) > 0 {
+				logger.Info().
+					Int("tool_round", toolRound).
+					Int("tool_calls", len(streamToolCalls)).
+					Int("total_delta_chars", totalDeltaChars).
+					Str("fullContent_len", fmt.Sprintf("%d", len(fullContent))).
+					Msg("[chat] stream: done with pending tool calls, skipping final SSE")
 				return nil
 			}
+
+			logger.Info().
+				Int("tool_round", toolRound).
+				Int("total_delta_chars", totalDeltaChars).
+				Str("fullContent_len", fmt.Sprintf("%d", len(fullContent))).
+				Msg("[chat] stream: sending final done chunk to client")
 
 			// Use actual model from response if available, otherwise use request model
 			if actualModel != "" {
@@ -2604,8 +2618,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				}
 
 				// Record trial usage if this is a trial provider
-				if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(actualProvider) {
-					logger.Debug().Str("provider_id", actualProvider).Int("input", totalInputTokens).Int("output", totalOutputTokens).Msg("[chat] recording trial usage")
+				if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(actualProviderID) {
+					logger.Debug().Str("provider_id", actualProviderID).Int("input", totalInputTokens).Int("output", totalOutputTokens).Msg("[chat] recording trial usage")
 					h.providerPool.TrialQuotaManager.RecordUsage(int64(totalInputTokens), int64(totalOutputTokens), convID)
 				}
 			}
@@ -2621,28 +2635,29 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				}
 			}
 
+			// Fallback: if stream chunks didn't carry provider/model, read from
+			// resolvedRoute which the proxy handler populated before streaming.
+			if actualProvider == "" && resolvedRoute.Provider != "" {
+				actualProvider = resolvedRoute.Provider
+			}
+			if actualProviderID == "" && resolvedRoute.ProviderID != "" {
+				actualProviderID = resolvedRoute.ProviderID
+			}
+			if actualModel == "" && resolvedRoute.Model != "" {
+				actualModel = resolvedRoute.Model
+			}
+
 			// Send final chunk with provider/model info and stats
-			// Use actual provider/model from response if available
-			finalProvider := providerName
-			if actualProvider != "" {
-				finalProvider = actualProvider
-			}
-			finalModel := model
-			if actualModel != "" {
-				finalModel = actualModel
-			}
 			logger.Info().
 				Str("actualProvider", actualProvider).
 				Str("actualModel", actualModel).
-				Str("finalProvider", finalProvider).
-				Str("finalModel", finalModel).
 				Msg("[chat] resolved provider/model for SSE final chunk")
 			finalData := map[string]interface{}{
 				"delta":     "",
 				"done":      true,
 				"stream_id": streamID,
-				"provider":  finalProvider,
-				"model":     finalModel,
+				"provider":  actualProvider,
+				"model":     actualModel,
 				"stats": map[string]interface{}{
 					"input_tokens":      totalInputTokens,
 					"output_tokens":     totalOutputTokens,
@@ -2669,8 +2684,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			logger.Info().
 				Str("stream_id", streamID).
 				Str("conv_id", convID).
-				Str("provider", finalProvider).
-				Str("model", finalModel).
+				Str("provider", actualProvider).
+				Str("model", actualModel).
 				Int("input_tokens", totalInputTokens).
 				Int("output_tokens", totalOutputTokens).
 				Float64("latency_ms", latencyMs).
@@ -2834,8 +2849,18 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		chatReq.Messages = append(chatReq.Messages, toolResults...)
 
 		// Reset content for next round (LLM will generate new response)
+		logger.Info().
+			Int("tool_round", toolRound).
+			Int("total_delta_chars_before_reset", totalDeltaChars).
+			Str("fullContent_len", fmt.Sprintf("%d", len(fullContent))).
+			Msg("[chat] stream: resetting fullContent for next tool round")
 		fullContent = ""
 		continue
+	}
+	if err != nil {
+		logger.Warn().Err(err).Int("tool_round", toolRound).Int("total_delta_chars", totalDeltaChars).Msg("[chat] stream: tool loop ended with error")
+	} else {
+		logger.Info().Int("tool_round", toolRound).Int("total_delta_chars", totalDeltaChars).Bool("streamCompleted", streamCompleted).Msg("[chat] stream: tool loop ended normally")
 	}
 	break
 	} // end tool loop
@@ -2868,6 +2893,33 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 
 	// Handle stream completion or error
+	// Safeguard: if tool rounds executed but the final round produced no content and
+	// no done:true was sent to the client, send a synthetic done chunk so the client
+	// doesn't see PROVIDER_RETURNED_EMPTY.
+	if err == nil && !streamCompleted && fullContent == "" && totalDeltaChars == 0 {
+		logger.Warn().
+			Str("conv_id", convID).
+			Str("model", model).
+			Int("total_delta_chars", totalDeltaChars).
+			Int("messages_count", len(chatReq.Messages)).
+			Msg("[chat] stream: no content produced across all rounds, sending synthetic done")
+		// Send a minimal done chunk so the client doesn't error
+		syntheticDone, _ := json.Marshal(map[string]interface{}{
+			"delta":     "",
+			"done":      true,
+			"stream_id": streamID,
+			"provider":  actualProvider,
+			"model":     actualModel,
+			"stats": map[string]interface{}{
+				"input_tokens":  0,
+				"output_tokens": 0,
+				"total_tokens":  0,
+			},
+			"empty_response": true,
+		})
+		c.Response().Write([]byte("data: " + string(syntheticDone) + "\n\n"))
+		flusher.Flush()
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			// Stream was cancelled
@@ -2900,7 +2952,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 		logger.Error().Err(err).Str("conv_id", convID).Str("model", model).Msg("[chat] stream error")
 		errMsg := "An error occurred while streaming the response"
-		if providerpool.IsTrialProvider(actualProvider) {
+		if providerpool.IsTrialProvider(actualProviderID) {
 			errMsg = "trial_service_busy"
 		}
 		if h.metricsRecorder != nil {
@@ -2915,8 +2967,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				h.store.AddMessage(context.Background(), convID, memory.Message{
 					Role:     "assistant",
 					Content:  fullContent,
-					Provider: providerName,
-					Model:    model,
+					Provider: actualProvider,
+					Model:    actualModel,
 				})
 			}
 			h.conversationCache.Invalidate(convID)
@@ -2970,33 +3022,17 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			TokensPerSecond: finalTPS,
 		}
 		if streamingMsgID != "" {
-			// Update the incrementally-persisted message with final content + stats + resolved provider/model
-			resolvedProvider := actualProvider
-			if resolvedProvider == "" {
-				resolvedProvider = providerName
-			}
-			resolvedModel := actualModel
-			if resolvedModel == "" {
-				resolvedModel = model
-			}
-			if updErr := h.store.UpdateMessageContentFull(context.Background(), streamingMsgID, fullContent, resolvedProvider, resolvedModel, finalStats); updErr != nil {
+			// Update the incrementally-persisted message with final content + stats + actual provider/model
+			if updErr := h.store.UpdateMessageContentFull(context.Background(), streamingMsgID, fullContent, actualProvider, actualModel, finalStats); updErr != nil {
 				logger.Error().Err(updErr).Str("conv_id", convID).Msg("[chat] failed to update streaming message")
 			}
 		} else {
 			// No incremental message was created (short response) — insert now
-			resolvedProvider := actualProvider
-			if resolvedProvider == "" {
-				resolvedProvider = providerName
-			}
-			resolvedModel := actualModel
-			if resolvedModel == "" {
-				resolvedModel = model
-			}
 			if _, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
 				Role:     "assistant",
 				Content:  fullContent,
-				Provider: resolvedProvider,
-				Model:    resolvedModel,
+				Provider: actualProvider,
+				Model:    actualModel,
 				Stats:    finalStats,
 			}); addErr != nil {
 				logger.Error().Err(addErr).Str("conv_id", convID).Msg("[chat] failed to persist assistant message")

@@ -671,12 +671,10 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return tryErr
 		}
 		if resp == nil {
-			// All format/model combos failed. If request had tools, remember this
-			// provider doesn't support tool calls so we skip it on future requests.
-			if hasTools {
-				ph.providerMemory.RememberToolCap(pid, burl, ToolCapNone)
-				slog.Info("[proxy] learned: provider has no tool support", "provider", pid)
-			}
+			// All format/model combos failed. Do NOT infer ToolCapNone here —
+			// the failure may be caused by network issues, model not found, 404,
+			// etc., not by lack of tool support. Tool capability is only reliably
+			// determined by the warmToolCallSupport probe (422/400 on tool request).
 			return fmt.Errorf("provider %s returned no response", pid)
 		}
 

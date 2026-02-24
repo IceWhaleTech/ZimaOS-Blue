@@ -1421,6 +1421,12 @@ export default {
     missingSkills: 'Skills (generación de código, refactorización, etc.)',
     missingToolCalling: 'Capacidades avanzadas de Tool Calling',
     missingFileOps: 'Operaciones de archivos (leer, escribir, editar)',
+    directoryPathPlaceholderWin: 'Ruta del directorio (ej. C:\\Users\\user\\projects)',
+    directoryPathPlaceholderMac: 'Ruta del directorio (ej. /Users/user/projects)',
+    directoryPathPlaceholderLinux: 'Ruta del directorio (ej. /home/user/projects)',
+    browseDirectories: 'Explorar directorios',
+    selectDirectory: 'Seleccionar este directorio',
+    noSubdirectories: 'Sin subdirectorios',
   },
   formFiller: {
     ...enUS.formFiller,
@@ -2973,6 +2979,7 @@ export default {
       'file_write': 'Escritura de archivo',
       'system_info': 'Info del sistema',
       'memory_search': 'Búsqueda de memoria',
+      'exec': 'Ejecución de comando',
     },
     labels: {
       filename: 'Nombre de archivo',
@@ -2984,6 +2991,12 @@ export default {
       datetime: 'Fecha y hora',
       timezone: 'Zona horaria',
       unix: 'Marca de tiempo Unix',
+      session_id: 'Sesión',
+      exit_code: 'Código de salida',
+      stdout: 'Salida',
+      stderr: 'Salida de error',
+      duration_ms: 'Duración',
+      ms: 'ms',
     },
   },
   sandbox: {

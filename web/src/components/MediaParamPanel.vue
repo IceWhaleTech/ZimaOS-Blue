@@ -15,6 +15,7 @@ const emit = defineEmits<{
   'update:selectedModel': [value: string]
   generate: []
   dismiss: []
+  close: []
   confirm: []
   switchCategory: [category: MediaCategory]
 }>()
@@ -45,7 +46,7 @@ function onModelChange(e: Event) {
 <template>
   <div class="mpp" role="region" :aria-label="ambiguous ? t('media.ambiguousPrompt') : t('media.mediaDetected')">
     <!-- Close button -->
-    <button class="mpp-close" @click="emit('dismiss')" :aria-label="t('common.close')">
+    <button class="mpp-close" @click="emit('close')" :aria-label="t('common.close')">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
       </svg>

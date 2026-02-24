@@ -259,39 +259,50 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
             *state.server_running.lock().unwrap() = true;
         }
 
-        // Detect if server supports HTTPS by trying both protocols
-        let https_url = format!("https://localhost:{}/api/v1/health", port);
+        // Wait for Go server to be ready using two-phase detection:
+        // Phase 1: Poll BlueServerIsRunning() via FFI (no network, ~microseconds per check).
+        //          This tells us the Go goroutine has started and set isRunning=true.
+        // Phase 2: HTTP health check to confirm the listener is accepting connections.
+        //          With OnEarlyReady, the listener starts very early in route registration.
         let http_url = format!("http://localhost:{}/api/v1/health", port);
-        let mut delay_ms = 25u64;
-        let max_delay_ms = 100u64;
-        let max_attempts = 8;
         let mut use_https = false;
 
-        // Create a client that accepts self-signed certificates for localhost
+        // Phase 1: FFI poll — tight loop, no network overhead
+        for _ in 0..200 {
+            if blue_ffi::is_running() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+
+        // Phase 2: HTTP health check — server goroutine is running, listener may be up
         let client = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
-            .timeout(std::time::Duration::from_millis(500))
+            .timeout(std::time::Duration::from_millis(200))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
-        for i in 0..max_attempts {
-            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-
-            // Try HTTPS first
-            if client.get(&https_url).send().await.is_ok() {
-                info!("Server ready with HTTPS after attempt {}", i + 1);
-                use_https = true;
-                break;
+        let mut delay_ms = 10u64;
+        for i in 0..12 {
+            if i > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                delay_ms = std::cmp::min(delay_ms * 2, 100);
             }
 
-            // Fall back to HTTP
             if client.get(&http_url).send().await.is_ok() {
-                info!("Server ready with HTTP after attempt {}", i + 1);
-                use_https = false;
+                info!("Server ready (HTTP) after attempt {}", i + 1);
                 break;
             }
 
-            delay_ms = std::cmp::min(delay_ms * 2, max_delay_ms);
+            // Only try HTTPS after a few HTTP failures (rare case: TLS enabled)
+            if i >= 3 {
+                let https_url = format!("https://localhost:{}/api/v1/health", port);
+                if client.get(&https_url).send().await.is_ok() {
+                    info!("Server ready (HTTPS) after attempt {}", i + 1);
+                    use_https = true;
+                    break;
+                }
+            }
         }
 
         // Update state with detected protocol
@@ -436,13 +447,24 @@ pub fn run() {
             server::restart_server,
             server::get_server_status,
         ])
-        .on_page_load(|webview, _payload| {
+        .on_page_load(|webview, payload| {
+            let url = payload.url().to_string();
+
+            // Show the window as soon as any real content loads (data: splash or localhost).
+            // The data: URI splash renders a spinner immediately; the localhost page
+            // replaces it once the Go server is ready.
+            if url.starts_with("data:") || url.contains("localhost") {
+                let _ = webview.window().show();
+                let _ = webview.window().set_focus();
+            }
+
             // Inject Tauri marker into external pages (Go server at localhost)
             // so the frontend can detect it's running inside Tauri webview.
-            // Without this, __TAURI_INTERNALS__ is only available on tauri:// URLs.
-            let _ = webview.eval(
-                "if(!window.__TAURI_INTERNALS__){window.__TAURI_INTERNALS__={__desktop:true}}"
-            );
+            if url.contains("localhost") {
+                let _ = webview.eval(
+                    "if(!window.__TAURI_INTERNALS__){window.__TAURI_INTERNALS__={__desktop:true}}"
+                );
+            }
         })
         .setup(|app| {
             info!("Setting up application");
@@ -607,14 +629,16 @@ pub fn run() {
                         error!("Failed to navigate to server: {}", e);
                     }
 
-                    // Wait briefly for the page to start loading before showing window
-                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                    // on_page_load shows the window as soon as the HTML loads (splash visible).
+                    // Fallback: if frontend somehow fails, force-show after 5s.
+                    tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
+                    if !window.is_visible().unwrap_or(true) {
+                        info!("Fallback: showing window after timeout");
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
 
-                    // Now show the window after navigation has started
-                    let _ = window.show();
-                    let _ = window.set_focus();
-
-                    // On macOS, we need to activate the app to bring it to front
+                    // On macOS, activate the app to bring it to front
                     #[cfg(target_os = "macos")]
                     {
                         use std::process::Command;

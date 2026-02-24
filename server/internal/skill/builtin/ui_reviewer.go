@@ -104,6 +104,7 @@ func NewUIReviewer() *UIReviewer {
 				{Name: "viewports", Type: "array", Description: "Viewport list: desktop (1280x800), mobile (375x812). Default: [desktop]", Default: []string{"desktop"}},
 				{Name: "threshold", Type: "number", Description: "Pass threshold (0-100). Default: 75", Default: 75.0},
 				{Name: "format", Type: "string", Description: "Output format: json or human. Default: json", Default: "json"},
+			{Name: "locale", Type: "string", Description: "Language/locale code for localized responses (e.g., en-US, zh-CN)"},
 			},
 			Outputs: []skill.Parameter{
 				{Name: "result", Type: "object", Description: "ReviewResult with scores, issues, and pass/fail"},

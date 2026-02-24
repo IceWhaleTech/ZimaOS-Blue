@@ -73,7 +73,7 @@ defineExpose({ refresh: fetchStats })
 
 <template>
   <div class="space-y-4">
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <!-- Cost Saved Card (primary) -->
     <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
@@ -111,46 +111,6 @@ defineExpose({ refresh: fetchStats })
       </div>
       <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
         <span>{{ t('tokenEconomy.combined') }}</span>
-      </div>
-    </div>
-
-    <!-- Pruner Card -->
-    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('tokenEconomy.pruner') }}</p>
-          <p class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ prunerStats?.stats?.pruned_requests ? Math.round((1 - prunerStats.stats.avg_compression_rate) * 100) + '%' : '-' }}
-          </p>
-        </div>
-        <div class="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-full">
-          <svg class="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
-          </svg>
-        </div>
-      </div>
-      <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-        <span>{{ prunerStats?.enabled ? t('tokenEconomy.prunerActive') : t('tokenEconomy.prunerInactive') }}</span>
-      </div>
-    </div>
-
-    <!-- Smart Tools Card -->
-    <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('tokenEconomy.smartTools') }}</p>
-          <p class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ toolTokensSaved > 0 ? formatTokens(toolTokensSaved) : '-' }}
-          </p>
-        </div>
-        <div class="p-3 bg-cyan-100 dark:bg-cyan-900/30 rounded-full">
-          <svg class="w-6 h-6 text-cyan-600 dark:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-          </svg>
-        </div>
-      </div>
-      <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-        <span>{{ toolStats?.requests ? toolStats.requests + ' ' + t('tokenEconomy.smartToolsReqs') : t('tokenEconomy.smartToolsInactive') }}</span>
       </div>
     </div>
 

@@ -33,15 +33,15 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
-// Initialize preview store
+// Initialize user data and preview store in parallel
 onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
-  // Fetch user data if authenticated but user info not loaded
+  const tasks: Promise<void>[] = []
   if (authStore.isAuthenticated && !authStore.user) {
-    await authStore.fetchUser()
+    tasks.push(authStore.fetchUser())
   }
-  // Initialize preview mode detection
-  await previewStore.initialize()
+  tasks.push(previewStore.initialize())
+  await Promise.all(tasks)
 })
 
 onUnmounted(() => {

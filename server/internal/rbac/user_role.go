@@ -169,15 +169,15 @@ func (s *UserRoleService) RevokeRole(ctx context.Context, req *RevokeRoleRequest
 
 // assignmentRow is used for scanning assignment rows from zorm
 type assignmentRow struct {
-	ID         string  `json:"id"`
-	UserID     string  `json:"user_id"`
-	RoleName   string  `json:"role_name"`
-	AssignedBy *string `json:"assigned_by"`
-	AssignedAt string  `json:"assigned_at"`
-	ExpiresAt  *string `json:"expires_at"`
-	Revoked    int     `json:"revoked"`
-	RevokedAt  *string `json:"revoked_at"`
-	RevokedBy  *string `json:"revoked_by"`
+	ID         string  `json:"id" zorm:"id"`
+	UserID     string  `json:"user_id" zorm:"user_id"`
+	RoleName   string  `json:"role_name" zorm:"role_name"`
+	AssignedBy *string `json:"assigned_by" zorm:"assigned_by"`
+	AssignedAt string  `json:"assigned_at" zorm:"assigned_at"`
+	ExpiresAt  *string `json:"expires_at" zorm:"expires_at"`
+	Revoked    int     `json:"revoked" zorm:"revoked"`
+	RevokedAt  *string `json:"revoked_at" zorm:"revoked_at"`
+	RevokedBy  *string `json:"revoked_by" zorm:"revoked_by"`
 }
 
 func rowToAssignment(row assignmentRow) *UserRoleAssignment {

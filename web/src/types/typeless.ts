@@ -97,8 +97,10 @@ export interface TypelessCardResult extends TypelessCardBase {
 
 export interface ResultDetail {
   label: string
-  value: string
+  value: string | Record<string, unknown>
   copyable?: boolean
+  suffix?: string
+  multiline?: boolean
 }
 
 // Detection Card - Display image with object detection boxes

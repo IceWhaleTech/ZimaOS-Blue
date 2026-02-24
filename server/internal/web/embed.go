@@ -32,21 +32,22 @@ func extractDir() string {
 	return os.TempDir()
 }
 
-// ensureDistFS extracts the appended dist.tar.gz from the binary itself.
-// Layout: [ELF/Mach-O binary][dist.tar.gz][8-byte LE offset of tar.gz start]
-// Falls back to local dist/ directory if extraction fails (e.g. go run / go build without make).
+// ensureDistFS locates the frontend dist directory.
+// Checks local candidates first (fast path for Tauri/dev), then tries
+// extracting appended tar.gz (Linux pack-dist builds).
 func ensureDistFS() {
 	distOnce.Do(func() {
-		if tryExtractAppended() {
-			return
-		}
-		// Fallback: serve from local dist/ relative to executable or working directory
+		// Fast path: check local dist/ candidates first (Tauri bundle, dev layout)
 		for _, candidate := range localDistCandidates() {
 			if info, err := os.Stat(filepath.Join(candidate, "index.html")); err == nil && !info.IsDir() {
 				distFS = os.DirFS(candidate)
 				log.Printf("[web] serving dist from local: %s", candidate)
 				return
 			}
+		}
+		// Slow path: try extracting appended tar.gz (Linux/Windows pack-dist)
+		if tryExtractAppended() {
+			return
 		}
 		log.Printf("[web] no dist available (build with 'make build' to embed)")
 	})

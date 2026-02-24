@@ -71,6 +71,8 @@ func ToCard(toolName, content string) map[string]interface{} {
 	}
 
 	switch toolName {
+	case "exec":
+		return execCard(content)
 	case "web_search":
 		return webSearchCard(content)
 	case "ui_reviewer":
@@ -358,6 +360,65 @@ func sandboxCardDispatch(content string) map[string]interface{} {
 	}
 
 	return ToCard(cardType, resultJSON)
+}
+
+func execCard(content string) map[string]interface{} {
+	var data struct {
+		SessionID string   `json:"session_id"`
+		Status    string   `json:"status"`
+		ExitCode  *int     `json:"exit_code"`
+		Stdout    string   `json:"stdout"`
+		Stderr    string   `json:"stderr"`
+		Duration  int64    `json:"duration_ms"`
+		Truncated bool     `json:"truncated"`
+		Warnings  []string `json:"warnings"`
+	}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+
+	status := "success"
+	if data.Status == "failed" || (data.ExitCode != nil && *data.ExitCode != 0) {
+		status = "error"
+	}
+
+	details := []map[string]interface{}{
+		{"label": "session_id", "value": data.SessionID},
+	}
+	if data.ExitCode != nil {
+		details = append(details, map[string]interface{}{"label": "exit_code", "value": fmt.Sprintf("%d", *data.ExitCode)})
+	}
+
+	// Combine stdout/stderr for display
+	output := data.Stdout
+	if data.Stderr != "" {
+		if output != "" {
+			output += "\n"
+		}
+		output += data.Stderr
+	}
+
+	if output != "" {
+		details = append(details, map[string]interface{}{"label": "stdout", "value": output, "multiline": true})
+	}
+
+	details = append(details, map[string]interface{}{"label": "duration_ms", "value": fmt.Sprintf("%d", data.Duration), "suffix": "ms"})
+
+	card := map[string]interface{}{
+		"type":    "result",
+		"title":   "exec",
+		"status":  status,
+		"details": details,
+	}
+
+	if data.Truncated {
+		card["message"] = "Output was truncated"
+	}
+	if len(data.Warnings) > 0 {
+		card["message"] = strings.Join(data.Warnings, "; ")
+	}
+
+	return card
 }
 
 func uiReviewCard(content string) map[string]interface{} {

@@ -90,6 +90,12 @@ func NewScheduler() *Scheduler {
 					Description: "Job ID (required for delete, trigger, enable, disable)",
 					Required:    false,
 				},
+				{
+					Name:        "locale",
+					Type:        "string",
+					Description: "Language/locale code for localized responses (e.g., en-US, zh-CN)",
+					Required:    false,
+				},
 			},
 			Outputs: []skill.Parameter{
 				{

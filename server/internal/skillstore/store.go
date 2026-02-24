@@ -182,31 +182,31 @@ func (s *Store) UpsertSkillBatch(ctx context.Context, skills []*Skill) error {
 
 // skillRow is the intermediate struct for zorm scanning.
 type skillRow struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Version     string  `json:"version"`
-	Summary     string  `json:"summary"`
-	Description string  `json:"description"`
-	Author      string  `json:"author"`
-	Category    string  `json:"category"`
-	Tags        string  `json:"tags"`
-	SourceID    string  `json:"source_id"`
-	SourceName  string  `json:"source_name"`
-	Homepage    string  `json:"homepage"`
-	DownloadURL string  `json:"download_url"`
-	Stars       int     `json:"stars"`
-	Downloads   int     `json:"downloads"`
-	Reviews     int     `json:"reviews"`
-	Rating      float64 `json:"rating"`
-	Versions    int     `json:"versions"`
-	Changelog   string  `json:"changelog"`
-	Readme      *string `json:"readme"`
-	DedupKey    *string `json:"dedup_key"`
-	Installed   bool    `json:"installed"`
-	Enabled     bool    `json:"enabled"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-	SyncedAt    string  `json:"synced_at"`
+	ID          string  `json:"id" zorm:"id"`
+	Name        string  `json:"name" zorm:"name"`
+	Version     string  `json:"version" zorm:"version"`
+	Summary     string  `json:"summary" zorm:"summary"`
+	Description string  `json:"description" zorm:"description"`
+	Author      string  `json:"author" zorm:"author"`
+	Category    string  `json:"category" zorm:"category"`
+	Tags        string  `json:"tags" zorm:"tags"`
+	SourceID    string  `json:"source_id" zorm:"source_id"`
+	SourceName  string  `json:"source_name" zorm:"source_name"`
+	Homepage    string  `json:"homepage" zorm:"homepage"`
+	DownloadURL string  `json:"download_url" zorm:"download_url"`
+	Stars       int     `json:"stars" zorm:"stars"`
+	Downloads   int     `json:"downloads" zorm:"downloads"`
+	Reviews     int     `json:"reviews" zorm:"reviews"`
+	Rating      float64 `json:"rating" zorm:"rating"`
+	Versions    int     `json:"versions" zorm:"versions"`
+	Changelog   string  `json:"changelog" zorm:"changelog"`
+	Readme      *string `json:"readme" zorm:"readme"`
+	DedupKey    *string `json:"dedup_key" zorm:"dedup_key"`
+	Installed   bool    `json:"installed" zorm:"installed"`
+	Enabled     bool    `json:"enabled" zorm:"enabled"`
+	CreatedAt   string  `json:"created_at" zorm:"created_at"`
+	UpdatedAt   string  `json:"updated_at" zorm:"updated_at"`
+	SyncedAt    string  `json:"synced_at" zorm:"synced_at"`
 }
 
 var skillFields = z.Fields(
@@ -540,14 +540,14 @@ func (s *Store) UpdateSyncStatus(ctx context.Context, status *SyncStatus) error 
 
 // syncStatusRow for zorm scanning.
 type syncStatusRow struct {
-	ID           int64   `json:"id"`
-	SourceID     string  `json:"source_id"`
-	LastSyncAt   *string `json:"last_sync_at"`
-	SkillCount   int     `json:"skill_count"`
-	SyncDuration int64   `json:"sync_duration_ms"`
-	Status       string  `json:"status"`
-	ErrorMessage *string `json:"error_message"`
-	NextSyncAt   *string `json:"next_sync_at"`
+	ID           int64   `json:"id" zorm:"id"`
+	SourceID     string  `json:"source_id" zorm:"source_id"`
+	LastSyncAt   *string `json:"last_sync_at" zorm:"last_sync_at"`
+	SkillCount   int     `json:"skill_count" zorm:"skill_count"`
+	SyncDuration int64   `json:"sync_duration_ms" zorm:"sync_duration_ms"`
+	Status       string  `json:"status" zorm:"status"`
+	ErrorMessage *string `json:"error_message" zorm:"error_message"`
+	NextSyncAt   *string `json:"next_sync_at" zorm:"next_sync_at"`
 }
 
 // GetSyncStatus retrieves the sync status for a source.

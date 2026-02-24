@@ -52,7 +52,7 @@ type Manager struct {
 
 	// Provider config management
 	configs      map[string]*MediaProviderConfig
-	configStore  *ConfigStore
+	configStore  MediaConfigStore
 	locale       string // user locale for priority ordering
 	costRecorder CostRecorder
 	onTaskDone   TaskDoneCallback
@@ -60,7 +60,7 @@ type Manager struct {
 }
 
 // NewManager creates a new media generation manager.
-func NewManager(storage *MediaStorage, configStore *ConfigStore, locale string) *Manager {
+func NewManager(storage *MediaStorage, configStore MediaConfigStore, locale string) *Manager {
 	return &Manager{
 		providers:   make(map[string]MediaProvider),
 		modelMap:    make(map[string]string),
@@ -307,6 +307,13 @@ func (m *Manager) RegisterProvider(p MediaProvider) {
 	for _, model := range p.SupportedModels() {
 		m.modelMap[model.ID] = p.Name()
 	}
+}
+
+// HasActiveProviders returns true if at least one media generation provider is registered.
+func (m *Manager) HasActiveProviders() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.providers) > 0
 }
 
 // Models returns all available media models across providers, ordered by provider priority.
@@ -864,8 +871,8 @@ func (m *Manager) RecoverTasks() {
 
 		if task.UpstreamID != "" {
 			// Restore in-memory metadata for providers that need it (e.g. MuleRouter taskMeta)
-			if restorer, ok := provider.(interface{ RestoreTaskMeta(string, string) }); ok {
-				restorer.RestoreTaskMeta(task.UpstreamID, task.Model)
+			if restorer, ok := provider.(interface{ RestoreTaskMeta(string, string, string) }); ok {
+				restorer.RestoreTaskMeta(task.UpstreamID, task.Model, task.Category)
 			}
 			// Has upstream ID — resume polling
 			log.Printf("[mediagen] resuming poll for task %s (upstream: %s)", task.ID, task.UpstreamID)

@@ -66,6 +66,11 @@ func (p *Provider) SetWorkspace(mgr *workspace.Manager) {
 	p.promptBuilder.SetWorkspace(mgr)
 }
 
+// SetLocale sets the user's locale for system prompt injection.
+func (p *Provider) SetLocale(locale string) {
+	p.promptBuilder.SetLocale(locale)
+}
+
 // SetCompanionManager sets the companion manager for event tracking.
 func (p *Provider) SetCompanionManager(manager *companion.Manager, sessionID string) {
 	p.mu.Lock()

@@ -133,6 +133,31 @@ func (cb *CircuitBreaker) Reset() {
 	cb.halfOpenRequests = 0
 }
 
+// LoadState restores circuit breaker state from persisted data.
+func (cb *CircuitBreaker) LoadState(state State, failures, successes int, lastFailure, lastChange time.Time) {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	cb.state = state
+	cb.failures = failures
+	cb.successes = successes
+	cb.lastFailureTime = lastFailure
+	cb.lastStateChange = lastChange
+	cb.halfOpenRequests = 0
+}
+
+// ParseState converts a string to a State value.
+func ParseState(s string) State {
+	switch s {
+	case "open":
+		return StateOpen
+	case "half-open":
+		return StateHalfOpen
+	default:
+		return StateClosed
+	}
+}
+
 func (cb *CircuitBreaker) beforeRequest() error {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()

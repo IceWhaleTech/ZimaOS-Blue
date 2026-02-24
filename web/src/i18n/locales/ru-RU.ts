@@ -1491,6 +1491,12 @@ export default {
     missingSkills: 'Skills (генерация кода, рефакторинг и т.д.)',
     missingToolCalling: 'Расширенные возможности Tool Calling',
     missingFileOps: 'Операции с файлами (чтение, запись, редактирование)',
+    directoryPathPlaceholderWin: 'Путь к каталогу (напр. C:\\Users\\user\\projects)',
+    directoryPathPlaceholderMac: 'Путь к каталогу (напр. /Users/user/projects)',
+    directoryPathPlaceholderLinux: 'Путь к каталогу (напр. /home/user/projects)',
+    browseDirectories: 'Обзор каталогов',
+    selectDirectory: 'Выбрать этот каталог',
+    noSubdirectories: 'Нет подкаталогов',
   },
   providerPool: {
     title: 'Пул провайдеров',
@@ -3256,6 +3262,7 @@ export default {
       'file_write': 'Запись файла',
       'system_info': 'Информация о системе',
       'memory_search': 'Поиск в памяти',
+      'exec': 'Выполнение команды',
     },
     labels: {
       filename: 'Имя файла',
@@ -3267,6 +3274,12 @@ export default {
       datetime: 'Дата и время',
       timezone: 'Часовой пояс',
       unix: 'Метка времени Unix',
+      session_id: 'Сессия',
+      exit_code: 'Код выхода',
+      stdout: 'Вывод',
+      stderr: 'Вывод ошибок',
+      duration_ms: 'Длительность',
+      ms: 'мс',
     },
   },
   sandbox: {

@@ -10,6 +10,8 @@ const route = useRoute()
 const retrying = ref(false)
 const autoRetrying = ref(false)
 
+const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
+
 // Storage key for the previous route
 const PREVIOUS_ROUTE_KEY = 'connection_error_previous_route'
 
@@ -36,36 +38,45 @@ async function retry(isAutoRetry = false) {
   // Reset the cached status so it will check again
   resetPreviewModeStatus()
 
-  try {
-    const response = await fetch('/api/v1/system/mode')
-    if (response.ok || response.status < 500) {
-      // Connection restored, go to previous route
-      let previousRoute = getPreviousRoute()
-      // Avoid bouncing through /login — go straight to root
-      if (previousRoute === '/login') {
-        previousRoute = '/'
-      }
-      // Clear the stored route
-      sessionStorage.removeItem(PREVIOUS_ROUTE_KEY)
-      router.push(previousRoute)
-      return
+  // In Tauri, the server may still be booting — retry with backoff
+  const maxAttempts = isTauri ? 6 : 1
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 800))
     }
-  } catch {
-    // Still failing
+    try {
+      const response = await fetch('/api/v1/system/mode')
+      if (response.ok || response.status < 500) {
+        // Connection restored, go to previous route
+        let previousRoute = getPreviousRoute()
+        // Avoid bouncing through /login — go straight to root
+        if (previousRoute === '/login') {
+          previousRoute = '/'
+        }
+        // Clear the stored route
+        sessionStorage.removeItem(PREVIOUS_ROUTE_KEY)
+        router.push(previousRoute)
+        return
+      }
+    } catch {
+      // Still failing, retry if in Tauri
+    }
   }
 
   retrying.value = false
   autoRetrying.value = false
 }
 
-// Only auto-retry on page refresh (F5), not on first router redirect.
-// How to tell: if we arrived via router redirect, the query has `from` param.
-// If user refreshes the page, the query is gone but sessionStorage still has the route.
+// In Tauri, always auto-retry on first visit (server may still be starting).
+// In browser, only auto-retry on page refresh.
 onMounted(() => {
   const hasQueryFrom = !!route.query.from
   if (hasQueryFrom) {
-    // First visit via router redirect — just save the route and show error page
     sessionStorage.setItem(PREVIOUS_ROUTE_KEY, route.query.from as string)
+    // In Tauri, auto-retry immediately — the server is likely still booting
+    if (isTauri) {
+      retry(true)
+    }
   } else if (sessionStorage.getItem(PREVIOUS_ROUTE_KEY)) {
     // Page refresh — sessionStorage has route but no query param → auto-retry
     retry(true)

@@ -17,6 +17,12 @@ type ApprovalConfig struct {
 	ToolPolicies  map[string]string `json:"tool_policies"`
 }
 
+// ExecApprovalResolver resolves exec-specific approval requests.
+// Implemented by a wrapper around tools.ApprovalManager to avoid circular imports.
+type ExecApprovalResolver interface {
+	ResolveApproval(id string, decision string) bool
+}
+
 // PendingRequest is a tool call waiting for user approval.
 type PendingRequest struct {
 	ID         string         `json:"id"`
@@ -29,10 +35,11 @@ type PendingRequest struct {
 
 // ApprovalHandler serves the /api/v1/approval endpoints.
 type ApprovalHandler struct {
-	mu      sync.RWMutex
-	config  ApprovalConfig
-	pending map[string]*PendingRequest // id → request
-	broker  *sse.Broker
+	mu           sync.RWMutex
+	config       ApprovalConfig
+	pending      map[string]*PendingRequest // id → request
+	broker       *sse.Broker
+	execResolver ExecApprovalResolver // optional, for exec tool approvals
 }
 
 // NewApprovalHandler creates a new handler with sensible defaults.
@@ -46,6 +53,14 @@ func NewApprovalHandler(broker *sse.Broker) *ApprovalHandler {
 		pending: make(map[string]*PendingRequest),
 		broker:  broker,
 	}
+}
+
+// SetExecResolver wires the exec approval manager so that
+// POST /approval/resolve can also resolve exec tool approvals.
+func (h *ApprovalHandler) SetExecResolver(r ExecApprovalResolver) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.execResolver = r
 }
 
 // RegisterRoutes registers approval endpoints on the given group.
@@ -98,6 +113,7 @@ type resolveRequest struct {
 }
 
 // Resolve approves or denies a pending request.
+// Falls back to the exec approval resolver if the request is not found locally.
 func (h *ApprovalHandler) Resolve(c echo.Context) error {
 	var req resolveRequest
 	if err := c.Bind(&req); err != nil {
@@ -108,18 +124,26 @@ func (h *ApprovalHandler) Resolve(c echo.Context) error {
 	if ok {
 		delete(h.pending, req.RequestID)
 	}
+	resolver := h.execResolver
 	h.mu.Unlock()
-	if !ok {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "request not found"})
+
+	if ok {
+		// Resolve a generic tool approval.
+		if h.broker != nil {
+			h.broker.Publish(pr.UserID, "tool_approval_resolved", map[string]string{
+				"request_id": req.RequestID,
+				"decision":   req.Decision,
+			})
+		}
+		return c.JSON(http.StatusOK, map[string]string{"status": req.Decision})
 	}
-	// Notify via SSE so the backend tool executor can pick up the decision
-	if h.broker != nil {
-		h.broker.Publish(pr.UserID, "tool_approval_resolved", map[string]string{
-			"request_id": req.RequestID,
-			"decision":   req.Decision,
-		})
+
+	// Try exec approval resolver as fallback.
+	if resolver != nil && resolver.ResolveApproval(req.RequestID, req.Decision) {
+		return c.JSON(http.StatusOK, map[string]string{"status": req.Decision})
 	}
-	return c.JSON(http.StatusOK, map[string]string{"status": req.Decision})
+
+	return c.JSON(http.StatusNotFound, map[string]string{"error": "request not found"})
 }
 
 // Enqueue adds a new pending request and pushes an SSE event.

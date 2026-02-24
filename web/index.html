@@ -9,8 +9,47 @@
     <link rel="dns-prefetch" href="//localhost" />
     <!-- Preconnect for faster API calls -->
     <link rel="preconnect" href="//localhost" crossorigin />
+    <style>
+      /* Inline splash screen — visible before JS loads, removed by Vue on mount */
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 24px;
+        z-index: 99999;
+        transition: opacity 0.3s ease;
+      }
+      #app-splash.fade-out { opacity: 0; pointer-events: none; }
+      /* Theme-aware background: dark by default, light if .light class */
+      #app-splash { background: #0F172A; color: #94A3B8; }
+      :root.light #app-splash { background: #F8FAFC; color: #64748B; }
+      /* Spinner */
+      #app-splash .spinner {
+        width: 36px; height: 36px;
+        border: 3px solid currentColor;
+        border-top-color: #3B82F6;
+        border-radius: 50%;
+        animation: splash-spin 0.8s linear infinite;
+      }
+      @keyframes splash-spin { to { transform: rotate(360deg); } }
+      /* Apply saved theme class immediately to avoid flash */
+    </style>
+    <script>
+      // Apply theme before first paint to prevent flash
+      (function() {
+        var t = localStorage.getItem('zimaos-blue-theme') || 'system';
+        var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.add(dark ? 'dark' : 'light');
+      })();
+    </script>
   </head>
   <body>
+    <div id="app-splash" aria-label="Loading">
+      <div class="spinner"></div>
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

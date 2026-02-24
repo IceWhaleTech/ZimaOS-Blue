@@ -1,14 +1,20 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { getErrorMessage } from '@/utils/error'
 
-// Detect if running in Tauri
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
+// Detect if running in Tauri (v2 injects __TAURI_INTERNALS__, v1 injects __TAURI__)
+const isTauri =
+  typeof window !== 'undefined' &&
+  ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
 
 // Get server URL from Tauri (supports both HTTP and HTTPS)
 async function getServerUrl(): Promise<string> {
-  if (isTauri && (window as any).__TAURI__?.core?.invoke) {
+  // Try Tauri v2 IPC first, then v1
+  const invoke =
+    window.__TAURI_INTERNALS__?.invoke ??
+    (window as any).__TAURI__?.core?.invoke
+  if (isTauri && invoke) {
     try {
-      const url = await (window as any).__TAURI__.core.invoke('get_server_url')
+      const url = await invoke('get_server_url')
       return url
     } catch (e) {
       console.warn('Failed to get server URL from Tauri, falling back to http://localhost', e)

@@ -21,7 +21,7 @@ initTypelessCopyHandler()
 import { useThemeStore } from './stores/theme'
 useThemeStore(pinia)
 
-// Initialize locale (lazy load if needed) then mount
-initLocale().then(() => {
-  app.mount('#app')
-})
+// Mount immediately for fast first paint, load locale in background.
+// The minimal fallback messages in i18n/index.ts cover the brief gap.
+app.mount('#app')
+initLocale()

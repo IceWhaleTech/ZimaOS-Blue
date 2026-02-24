@@ -82,6 +82,12 @@ func NewSandbox() *Sandbox {
 					Description: "Execution ID (required for status, kill)",
 					Required:    false,
 				},
+				{
+					Name:        "locale",
+					Type:        "string",
+					Description: "Language/locale code for localized responses (e.g., en-US, zh-CN)",
+					Required:    false,
+				},
 			},
 			Outputs: []skill.Parameter{
 				{

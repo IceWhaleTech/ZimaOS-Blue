@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { claudeCodeApi } from '@/api/claudecode'
-import type { ClaudeCodeVersionResponse, CheckUpdateResponse, ClaudeCodeConfigResponse, DirectoryWhitelistEntry } from '@/api/claudecode'
+import type { ClaudeCodeVersionResponse, CheckUpdateResponse, ClaudeCodeConfigResponse, DirectoryWhitelistEntry, BrowseDirEntry } from '@/api/claudecode'
 
 const { t } = useI18n()
 
@@ -36,6 +36,15 @@ const newDirAlias = ref('')
 const editingIndex = ref<number | null>(null)
 const editPath = ref('')
 const editAlias = ref('')
+
+// Directory browser state
+const showBrowser = ref(false)
+const browserTarget = ref<'new' | 'edit'>('new')
+const browserLoading = ref(false)
+const browserCurrent = ref('')
+const browserParent = ref<string | undefined>()
+const browserDirs = ref<BrowseDirEntry[]>([])
+const serverOS = ref('') // "windows", "darwin", "linux"
 
 
 // Computed properties
@@ -77,6 +86,17 @@ const isEnabled = computed(() => {
 
 const isWhitelistEnabled = computed(() => {
   return configInfo.value?.whitelist_enabled ?? false
+})
+
+const directoryPlaceholder = computed(() => {
+  const os = serverOS.value || versionInfo.value?.platform || ''
+  if (os.startsWith('win')) {
+    return t('claudecode.directoryPathPlaceholderWin')
+  }
+  if (os.startsWith('darwin')) {
+    return t('claudecode.directoryPathPlaceholderMac')
+  }
+  return t('claudecode.directoryPathPlaceholderLinux')
 })
 
 // Computed: check if update is available
@@ -260,6 +280,40 @@ async function saveEditDirectory() {
   } finally {
     savingWhitelist.value = false
   }
+}
+
+// Directory browser functions
+async function openBrowser(target: 'new' | 'edit') {
+  browserTarget.value = target
+  showBrowser.value = true
+  await browseTo()
+}
+
+async function browseTo(path?: string) {
+  try {
+    browserLoading.value = true
+    const response = await claudeCodeApi.browseDirs(path)
+    browserCurrent.value = response.data.current
+    browserParent.value = response.data.parent
+    browserDirs.value = response.data.dirs
+    if (response.data.os) {
+      serverOS.value = response.data.os
+    }
+  } catch (_e) {
+    // If browsing fails, close the browser
+    showBrowser.value = false
+  } finally {
+    browserLoading.value = false
+  }
+}
+
+function selectBrowserDir() {
+  if (browserTarget.value === 'new') {
+    newDirPath.value = browserCurrent.value
+  } else {
+    editPath.value = browserCurrent.value
+  }
+  showBrowser.value = false
 }
 
 async function loadVersionInfo() {
@@ -634,12 +688,23 @@ function formatDate(dateStr?: string) {
                           <!-- Edit mode -->
                           <template v-else>
                             <div class="flex-1 flex flex-col sm:flex-row gap-2">
-                              <input
-                                v-model="editPath"
-                                type="text"
-                                class="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-1 focus:ring-gray-400 focus:border-gray-900 dark:border-gray-700"
-                                :placeholder="t('claudecode.directoryPathPlaceholder')"
-                              />
+                              <div class="flex-1 flex gap-1">
+                                <input
+                                  v-model="editPath"
+                                  type="text"
+                                  class="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-slate-500 rounded bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-1 focus:ring-gray-400 focus:border-gray-900 dark:border-gray-700"
+                                  :placeholder="directoryPlaceholder"
+                                />
+                                <button
+                                  class="px-1.5 py-1 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 border border-gray-300 dark:border-slate-500 rounded hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                                  :title="t('claudecode.browseDirectories')"
+                                  @click="openBrowser('edit')"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+                                  </svg>
+                                </button>
+                              </div>
                               <input
                                 v-model="editAlias"
                                 type="text"
@@ -677,13 +742,24 @@ function formatDate(dateStr?: string) {
 
                       <!-- Add new directory form -->
                       <div class="flex flex-col sm:flex-row gap-2 pt-3 border-t border-gray-200 dark:border-slate-600">
-                        <input
-                          v-model="newDirPath"
-                          type="text"
-                          class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-slate-500 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-gray-900 dark:border-gray-700"
-                          :placeholder="t('claudecode.directoryPathPlaceholder')"
-                          @keyup.enter="addDirectory"
-                        />
+                        <div class="flex-1 flex gap-1">
+                          <input
+                            v-model="newDirPath"
+                            type="text"
+                            class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-slate-500 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-gray-900 dark:border-gray-700"
+                            :placeholder="directoryPlaceholder"
+                            @keyup.enter="addDirectory"
+                          />
+                          <button
+                            class="px-2 py-2 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 border border-gray-300 dark:border-slate-500 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                            :title="t('claudecode.browseDirectories')"
+                            @click="openBrowser('new')"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+                            </svg>
+                          </button>
+                        </div>
                         <input
                           v-model="newDirAlias"
                           type="text"
@@ -807,6 +883,80 @@ function formatDate(dateStr?: string) {
         </div>
       </Transition>
     </div>
+
+    <!-- Directory Browser Modal -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showBrowser" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" @click.self="showBrowser = false">
+          <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[70vh] flex flex-col border border-gray-200 dark:border-slate-600">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-600">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('claudecode.browseDirectories') }}</h3>
+              <button class="text-gray-400 hover:text-gray-600 dark:hover:text-slate-200" @click="showBrowser = false">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <!-- Current path -->
+            <div class="px-4 py-2 bg-gray-50 dark:bg-slate-700/50 border-b border-gray-200 dark:border-slate-600">
+              <p class="text-xs text-gray-500 dark:text-slate-400 font-mono truncate" :title="browserCurrent">{{ browserCurrent }}</p>
+            </div>
+
+            <!-- Directory list -->
+            <div class="flex-1 overflow-y-auto min-h-0">
+              <div v-if="browserLoading" class="flex items-center justify-center py-8">
+                <svg class="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+              <div v-else class="divide-y divide-gray-100 dark:divide-slate-700">
+                <!-- Parent directory -->
+                <button
+                  v-if="browserParent"
+                  class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors text-left"
+                  @click="browseTo(browserParent)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+                  </svg>
+                  <span>..</span>
+                </button>
+                <!-- Subdirectories -->
+                <button
+                  v-for="dir in browserDirs"
+                  :key="dir.path"
+                  class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors text-left"
+                  @click="browseTo(dir.path)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-yellow-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  <span class="truncate">{{ dir.name }}</span>
+                </button>
+                <!-- Empty state -->
+                <div v-if="!browserDirs.length && !browserParent" class="text-center py-6 text-gray-400 dark:text-slate-500 text-sm">
+                  {{ t('claudecode.noSubdirectories') }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Footer: select current directory -->
+            <div class="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/50">
+              <span class="text-xs text-gray-500 dark:text-slate-400 truncate mr-2 font-mono">{{ browserCurrent }}</span>
+              <button
+                class="px-4 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex-shrink-0"
+                @click="selectBrowserDir"
+              >
+                {{ t('claudecode.selectDirectory') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </section>
 </template>
 
@@ -840,5 +990,16 @@ function formatDate(dateStr?: string) {
 .collapse-leave-from {
   opacity: 1;
   max-height: 2000px;
+}
+
+/* Fade transition for modal */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

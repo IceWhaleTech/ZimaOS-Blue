@@ -1421,6 +1421,12 @@ export default {
     missingSkills: 'Skills (Code-Generierung, Refactoring usw.)',
     missingToolCalling: 'Erweiterte Tool Calling-Funktionen',
     missingFileOps: 'Dateioperationen (Lesen, Schreiben, Bearbeiten)',
+    directoryPathPlaceholderWin: 'Verzeichnispfad (z.B. C:\\Users\\user\\projects)',
+    directoryPathPlaceholderMac: 'Verzeichnispfad (z.B. /Users/user/projects)',
+    directoryPathPlaceholderLinux: 'Verzeichnispfad (z.B. /home/user/projects)',
+    browseDirectories: 'Verzeichnisse durchsuchen',
+    selectDirectory: 'Dieses Verzeichnis auswählen',
+    noSubdirectories: 'Keine Unterverzeichnisse',
   },
   formFiller: {
     ...enUS.formFiller,
@@ -3145,6 +3151,7 @@ export default {
       'file_write': 'Datei schreiben',
       'system_info': 'Systeminfo',
       'memory_search': 'Gedächtnissuche',
+      'exec': 'Befehlsausführung',
     },
     labels: {
       filename: 'Dateiname',
@@ -3156,6 +3163,12 @@ export default {
       datetime: 'Datum & Uhrzeit',
       timezone: 'Zeitzone',
       unix: 'Unix-Zeitstempel',
+      session_id: 'Sitzung',
+      exit_code: 'Exit-Code',
+      stdout: 'Ausgabe',
+      stderr: 'Fehlerausgabe',
+      duration_ms: 'Dauer',
+      ms: 'ms',
     },
   },
   sandbox: {

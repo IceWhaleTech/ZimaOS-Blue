@@ -18,6 +18,12 @@ import { useChatStore } from '@/stores/chat'
 
 const MODEL_MEMORY_KEY = 'media-last-model'
 
+// Module-level cache for media provider availability.
+// Shared across all useMediaGenerate() instances.
+let _mediaAvailable: boolean | null = null
+let _mediaAvailableCheckedAt = 0
+const AVAILABILITY_CACHE_TTL = 60_000 // 60s
+
 function loadModelMemory(): Record<string, string> {
   try {
     return JSON.parse(localStorage.getItem(MODEL_MEMORY_KEY) || '{}')
@@ -69,6 +75,20 @@ export function useMediaGenerate() {
    */
   async function classify(message: string, hasImages = false, imageCount = 0, locale = '', imageFiles: File[] = []): Promise<boolean> {
     reset()
+
+    // Check if any media providers are active (cached, TTL 60s).
+    // If not, skip intent detection entirely so the message goes to chat.
+    const now = Date.now()
+    if (_mediaAvailable === null || now - _mediaAvailableCheckedAt > AVAILABILITY_CACHE_TTL) {
+      try {
+        const allModels = await listModels()
+        _mediaAvailable = allModels.length > 0
+      } catch {
+        _mediaAvailable = false
+      }
+      _mediaAvailableCheckedAt = now
+    }
+    if (!_mediaAvailable) return false
 
     // Store image files for later use in generate()
     pendingImageFiles = imageFiles

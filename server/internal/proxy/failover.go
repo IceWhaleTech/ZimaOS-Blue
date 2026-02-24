@@ -205,3 +205,55 @@ func (fh *FailoverHandler) ResetAllBreakers() {
 		breaker.Reset()
 	}
 }
+
+// BreakerSnapshot holds persisted circuit breaker state for a single provider.
+type BreakerSnapshot struct {
+	Name            string
+	State           string
+	Failures        int
+	Successes       int
+	LastFailureTime time.Time
+	LastStateChange time.Time
+}
+
+// SnapshotBreakers returns a snapshot of all circuit breaker states for persistence.
+func (fh *FailoverHandler) SnapshotBreakers() []BreakerSnapshot {
+	fh.mu.RLock()
+	defer fh.mu.RUnlock()
+
+	snaps := make([]BreakerSnapshot, 0, len(fh.breakers))
+	for name, cb := range fh.breakers {
+		stats := cb.Stats()
+		snap := BreakerSnapshot{Name: name}
+		if s, ok := stats["state"].(string); ok {
+			snap.State = s
+		}
+		if f, ok := stats["failures"].(int); ok {
+			snap.Failures = f
+		}
+		if s, ok := stats["successes"].(int); ok {
+			snap.Successes = s
+		}
+		if t, ok := stats["last_failure"].(time.Time); ok {
+			snap.LastFailureTime = t
+		}
+		if t, ok := stats["last_state_change"].(time.Time); ok {
+			snap.LastStateChange = t
+		}
+		snaps = append(snaps, snap)
+	}
+	return snaps
+}
+
+// LoadBreakerState restores a circuit breaker's state from persisted data.
+// Creates the breaker if it doesn't exist yet.
+func (fh *FailoverHandler) LoadBreakerState(snap BreakerSnapshot) {
+	breaker := fh.getBreaker(snap.Name)
+	breaker.LoadState(
+		resilience.ParseState(snap.State),
+		snap.Failures,
+		snap.Successes,
+		snap.LastFailureTime,
+		snap.LastStateChange,
+	)
+}

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 // ConfigHandler handles configuration-related API endpoints
 type ConfigHandler struct {
 	hotReloader *config.HotReloader
+	configStore *config.ConfigStore
 }
 
 // NewConfigHandler creates a new config handler
@@ -20,10 +23,17 @@ func NewConfigHandler(hr *config.HotReloader) *ConfigHandler {
 	}
 }
 
+// SetConfigStore sets the kvstore-backed config store for section-level API.
+func (h *ConfigHandler) SetConfigStore(cs *config.ConfigStore) {
+	h.configStore = cs
+}
+
 // RegisterRoutes registers config routes
 func (h *ConfigHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/config/reload", h.Reload)
 	g.GET("/config/status", h.Status)
+	g.GET("/config/sections/:name", h.GetSection)
+	g.PUT("/config/sections/:name", h.SetSection)
 }
 
 // ReloadRequest represents a reload request
@@ -125,4 +135,37 @@ func (h *ConfigHandler) Status(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, response)
+}
+
+// GetSection handles GET /api/v1/config/sections/:name
+func (h *ConfigHandler) GetSection(c echo.Context) error {
+	if h.configStore == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "config store not initialized"})
+	}
+	name := c.Param("name")
+	data, err := h.configStore.GetSection(name)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "section not found", "section": name})
+	}
+	return c.JSONBlob(http.StatusOK, data)
+}
+
+// SetSection handles PUT /api/v1/config/sections/:name
+func (h *ConfigHandler) SetSection(c echo.Context) error {
+	if h.configStore == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "config store not initialized"})
+	}
+	name := c.Param("name")
+	body, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "failed to read body"})
+	}
+	// Validate JSON
+	if !json.Valid(body) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+	}
+	if err := h.configStore.SetSection(name, body); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"success": true, "section": name})
 }

@@ -1667,6 +1667,7 @@ export default {
       'file_write': 'File Write',
       'system_info': 'System Info',
       'memory_search': 'Memory Search',
+      'exec': 'Parancs végrehajtás',
     },
     labels: {
       filename: 'Filename',
@@ -1678,6 +1679,12 @@ export default {
       datetime: 'Dátum és idő',
       timezone: 'Időzóna',
       unix: 'Unix időbélyeg',
+      session_id: 'Munkamenet',
+      exit_code: 'Kilépési kód',
+      stdout: 'Kimenet',
+      stderr: 'Hibakimenet',
+      duration_ms: 'Időtartam',
+      ms: 'ms',
     },
   },
 }

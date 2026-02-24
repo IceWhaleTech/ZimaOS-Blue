@@ -91,21 +91,21 @@ func marshalJSON(v interface{}) string {
 
 // workflowRow for zorm scanning
 type workflowRow struct {
-	ID          string `json:"id"`
-	TenantID    string `json:"tenant_id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-	Nodes       string `json:"nodes"`
-	Connections string `json:"connections"`
-	Variables   string `json:"variables"`
-	Settings    string `json:"settings"`
-	Tags        string `json:"tags"`
-	Version     int    `json:"version"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
-	CreatedBy   string `json:"created_by"`
-	UpdatedBy   string `json:"updated_by"`
+	ID          string `json:"id" zorm:"id"`
+	TenantID    string `json:"tenant_id" zorm:"tenant_id"`
+	Name        string `json:"name" zorm:"name"`
+	Description string `json:"description" zorm:"description"`
+	Status      string `json:"status" zorm:"status"`
+	Nodes       string `json:"nodes" zorm:"nodes"`
+	Connections string `json:"connections" zorm:"connections"`
+	Variables   string `json:"variables" zorm:"variables"`
+	Settings    string `json:"settings" zorm:"settings"`
+	Tags        string `json:"tags" zorm:"tags"`
+	Version     int    `json:"version" zorm:"version"`
+	CreatedAt   string `json:"created_at" zorm:"created_at"`
+	UpdatedAt   string `json:"updated_at" zorm:"updated_at"`
+	CreatedBy   string `json:"created_by" zorm:"created_by"`
+	UpdatedBy   string `json:"updated_by" zorm:"updated_by"`
 }
 
 func parseWfTime(s string) time.Time {
@@ -237,19 +237,19 @@ func (r *Repository) ListWorkflows(ctx context.Context, tenantID string, opts *L
 
 // execRow for zorm scanning
 type execRow struct {
-	ID           string  `json:"id"`
-	WorkflowID   string  `json:"workflow_id"`
-	WorkflowName string  `json:"workflow_name"`
-	TenantID     string  `json:"tenant_id"`
-	Status       string  `json:"status"`
-	TriggerType  string  `json:"trigger_type"`
-	TriggerData  string  `json:"trigger_data"`
-	Variables    string  `json:"variables"`
-	NodeResults  string  `json:"node_results"`
-	Error        string  `json:"error"`
-	StartedAt    string  `json:"started_at"`
-	CompletedAt  *string `json:"completed_at"`
-	Duration     *int64  `json:"duration"`
+	ID           string  `json:"id" zorm:"id"`
+	WorkflowID   string  `json:"workflow_id" zorm:"workflow_id"`
+	WorkflowName string  `json:"workflow_name" zorm:"workflow_name"`
+	TenantID     string  `json:"tenant_id" zorm:"tenant_id"`
+	Status       string  `json:"status" zorm:"status"`
+	TriggerType  string  `json:"trigger_type" zorm:"trigger_type"`
+	TriggerData  string  `json:"trigger_data" zorm:"trigger_data"`
+	Variables    string  `json:"variables" zorm:"variables"`
+	NodeResults  string  `json:"node_results" zorm:"node_results"`
+	Error        string  `json:"error" zorm:"error"`
+	StartedAt    string  `json:"started_at" zorm:"started_at"`
+	CompletedAt  *string `json:"completed_at" zorm:"completed_at"`
+	Duration     *int64  `json:"duration" zorm:"duration"`
 }
 
 func rowToExecution(r execRow) *Execution {
@@ -326,13 +326,13 @@ func (r *Repository) ListExecutions(ctx context.Context, workflowID string, opts
 
 // logRow for zorm scanning
 type logRow struct {
-	ID          string `json:"id"`
-	ExecutionID string `json:"execution_id"`
-	NodeID      string `json:"node_id"`
-	Level       string `json:"level"`
-	Message     string `json:"message"`
-	Data        string `json:"data"`
-	Timestamp   string `json:"timestamp"`
+	ID          string `json:"id" zorm:"id"`
+	ExecutionID string `json:"execution_id" zorm:"execution_id"`
+	NodeID      string `json:"node_id" zorm:"node_id"`
+	Level       string `json:"level" zorm:"level"`
+	Message     string `json:"message" zorm:"message"`
+	Data        string `json:"data" zorm:"data"`
+	Timestamp   string `json:"timestamp" zorm:"timestamp"`
 }
 
 func (r *Repository) SaveExecutionLog(ctx context.Context, log *ExecutionLog) error {

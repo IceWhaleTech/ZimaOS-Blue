@@ -55,6 +55,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tts"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 
@@ -302,6 +303,9 @@ func BlueServerCleanup() {
 }
 
 func runServer(ctx context.Context, port int, dataDir string, cfgFile string) error {
+	// Tune GC for lower memory usage (shared with blue CLI)
+	bootstrap.TuneGC()
+
 	// Load configuration
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
@@ -369,6 +373,12 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		return fmt.Errorf("failed to initialize config kvstore: %w", err)
 	}
 	configKV := kvstore.NewCachedStore(sqliteKV)
+
+	// Import config into kvstore (first-run: imports; subsequent: loads from DB)
+	cfgStore := config.NewConfigStore(configKV)
+	if updatedCfg, err := cfgStore.LoadOrImport(cfg); err == nil {
+		cfg = updatedCfg
+	}
 
 	// Register cleanup for services
 	registerCleanup(func() error {
@@ -447,7 +457,10 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	cronService := cron.NewService(cron.DefaultConfig(), zapLogger)
 	cronService.RegisterBuiltinHandlers()
 	cronHandler := cron.NewHandler(cronService, zapLogger)
-	cronService.Start()
+	// Defer cron start — not needed until a scheduled job fires
+	go func() {
+		cronService.Start()
+	}()
 	// Register cleanup for cron service
 	registerCleanup(func() error {
 		cronService.Stop(context.Background())
@@ -612,7 +625,8 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	var companionWSHandler *companion.WebSocketHandler
 	if companionStorage != nil {
 		companionStreamer := companion.NewEventStreamer(companionConfig)
-		companionStreamer.Start(ctx)
+		// Defer streamer start — not needed until companion WebSocket connects
+		go companionStreamer.Start(ctx)
 		companionManager := companion.NewManager(companionStorage, companionStreamer, companionConfig)
 		companionHandler = companion.NewHandler(companionManager, companionStorage)
 		companionWSHandler = companion.NewWebSocketHandler(companionStreamer, companionConfig)
@@ -624,9 +638,9 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		})
 	}
 
-	// Initialize provider pool
+	// Initialize provider pool (SQLite-backed, auto-migrates from JSON files)
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
-	providerPool, _ := providerpool.NewPool(providerPoolPath)
+	providerPool, _ := providerpool.NewPool(providerPoolPath, providerpool.WithDB(services.DB))
 	if providerPool != nil {
 		bootstrap.LoadProvidersFromPool(providerPool, services.LLMRegistry)
 		chatHandler.SetProviderPool(providerPool)
@@ -637,10 +651,13 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	ngrokTunnelMgr := ngrok.NewSDKTunnelManager(nil)
 
 	// Initialize workspace (SOUL.md, USER.md, IDENTITY.md, etc.)
+	// Defer file creation to background — not needed until chat starts
 	workspaceMgr := workspace.NewManager(filepath.Join(dataDir, "workspace"))
-	if err := workspaceMgr.EnsureWorkspace(); err != nil {
-		zapLogger.Warn("Failed to initialize workspace", zap.Error(err))
-	}
+	go func() {
+		if err := workspaceMgr.EnsureWorkspace(); err != nil {
+			zapLogger.Warn("Failed to initialize workspace", zap.Error(err))
+		}
+	}()
 
 	// Initialize claudecode handler
 	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir, configKV)
@@ -658,6 +675,23 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// SSE event broker
 	sseBroker := ssePkg.NewBroker()
+
+	// Push notification service (scheduled push, native OS notifications, web push)
+	wpSender := bootstrap.InitWebPushSender(services.DB, configKV, zapLogger)
+	pushIPC := bootstrap.InitPushService(&bootstrap.PushServiceDeps{
+		DB:          services.DB,
+		MemoryStore: services.MemoryStore,
+		CronGetSvc:  cronHandler.GetService,
+		SSEBroker:   sseBroker,
+		WPSender:    wpSender,
+		Logger:      zapLogger,
+	})
+
+	// Clean up extracted web dist from tmpfs on shutdown
+	registerCleanup(func() error {
+		web.CleanupDist()
+		return nil
+	})
 
 	// Lazy browser backend for browser tool + UI reviewer
 	var lazyBrowserSvc func() *browser.RodService
@@ -732,13 +766,38 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 		return nil
 	})
-	memoryHandler.Init()
+	// Initialize memory handler in background — it's not needed until the first
+	// memory API call or chat recall, so don't block server startup.
+	go memoryHandler.Init()
 
 	// Create Echo server
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
 	echoServer = e
+
+	// Bind the listener BEFORE route registration so we can start serving
+	// as soon as critical routes (health, system/mode) are registered.
+	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s: %w", addr, err)
+	}
+
+	// Get actual port and propagate to server/security/network packages
+	actualPort := ln.Addr().(*net.TCPAddr).Port
+	server.SetActualPort(actualPort)
+	security.SetServerPort(actualPort)
+	network.SetDynamicPort(actualPort)
+
+	httpServer = &http.Server{
+		Handler:      e,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
+	}
+
+	errCh := make(chan error, 1)
 
 	// Register all routes using bootstrap package
 	bootstrap.RegisterAllRoutes(e, &bootstrap.RoutesDeps{
@@ -780,12 +839,14 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		ClaudeCodeHandler:  claudeCodeHandler,
 		ChannelConfigStore: channelConfigStore,
 		ConfigKV:           configKV,
+		ConfigStore:        cfgStore,
 		MemoryHandler:      memoryHandler,
 		HotReloader:        hotReloader,
 		WorkspaceHandler:   workspace.NewHandler(workspaceMgr),
 		SSEBroker:          sseBroker,
 		BrowserIPC:         browserIPC,
 		UIReviewerIPC:      uiReviewerIPC,
+		PushIPC:            pushIPC,
 		CronIPC:            cronIPC,
 		// Consolidated init deps
 		SkillEmbedFS:        skillEmbed.SkillsFS,
@@ -793,37 +854,21 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		SystemPromptBuilder: systemPromptBuilder,
 		LazyBrowserSvc:      lazyBrowserSvc,
 		BrowserBackend:      browserBackend,
+		// Start serving as soon as critical routes are registered.
+		// This lets the Tauri health poll succeed while heavy subsystems
+		// (media, skills, IPC) are still initializing.
+		OnEarlyReady: func() {
+			zapLogger.Info("Critical routes ready, starting HTTP server early",
+				zap.String("addr", addr), zap.Int("actual_port", actualPort))
+			go func() {
+				if err := httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
+					errCh <- err
+				}
+			}()
+		},
 	})
 
-	// Start HTTP server with explicit listener (to capture actual port)
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", addr, err)
-	}
-
-	// Get actual port and propagate to server/security/network packages
-	actualPort := ln.Addr().(*net.TCPAddr).Port
-	server.SetActualPort(actualPort)
-	security.SetServerPort(actualPort)
-	network.SetDynamicPort(actualPort)
-
-	httpServer = &http.Server{
-		Handler:      e,
-		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
-		IdleTimeout:  cfg.Server.IdleTimeout,
-	}
-
-	zapLogger.Info("Starting HTTP server", zap.String("addr", addr), zap.Int("actual_port", actualPort))
-
-	// Start server in goroutine
-	errCh := make(chan error, 1)
-	go func() {
-		if err := httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
-			errCh <- err
-		}
-	}()
+	zapLogger.Info("All routes registered", zap.Int("actual_port", actualPort))
 
 	// Wait for context cancellation or error
 	select {

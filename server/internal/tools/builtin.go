@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
 
 // FileReadTool reads content from a file.
@@ -267,6 +269,13 @@ func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearc
 	registry.Register(NewFileReadTool(allowedPaths, maxFileSize))
 	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
 	registry.Register(NewWebSearchTool(webSearchConfig))
+}
+
+// RegisterExecTools registers the exec and process tools with custom configuration.
+func RegisterExecTools(registry *Registry, config ExecConfig, approvals *ApprovalManager, broker *sse.Broker, dirStore *DirAllowlistStore, sbx ...SandboxExecutor) {
+	sessions := NewSessionRegistry()
+	registry.Register(NewExecTool(config, sessions, approvals, broker, dirStore, sbx...))
+	registry.Register(NewProcessTool(sessions))
 }
 
 // GetUIReviewerTool retrieves the UIReviewerTool from the registry for dependency injection.

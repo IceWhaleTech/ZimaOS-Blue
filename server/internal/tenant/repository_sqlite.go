@@ -40,38 +40,38 @@ func (r *SQLiteRepository) invitations(ctx context.Context) *z.ZormTable {
 // Row structs for zorm scanning
 
 type tenantRow struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Slug        string  `json:"slug"`
-	Description *string `json:"description"`
-	Status      string  `json:"status"`
-	Settings    *string `json:"settings"`
-	Limits      *string `json:"limits"`
-	OwnerID     string  `json:"owner_id"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-	DeletedAt   *string `json:"deleted_at"`
+	ID          string  `json:"id" zorm:"id"`
+	Name        string  `json:"name" zorm:"name"`
+	Slug        string  `json:"slug" zorm:"slug"`
+	Description *string `json:"description" zorm:"description"`
+	Status      string  `json:"status" zorm:"status"`
+	Settings    *string `json:"settings" zorm:"settings"`
+	Limits      *string `json:"limits" zorm:"limits"`
+	OwnerID     string  `json:"owner_id" zorm:"owner_id"`
+	CreatedAt   string  `json:"created_at" zorm:"created_at"`
+	UpdatedAt   string  `json:"updated_at" zorm:"updated_at"`
+	DeletedAt   *string `json:"deleted_at" zorm:"deleted_at"`
 }
 
 type memberRow struct {
-	ID        string  `json:"id"`
-	TenantID  string  `json:"tenant_id"`
-	UserID    string  `json:"user_id"`
-	Role      string  `json:"role"`
-	JoinedAt  string  `json:"joined_at"`
-	InvitedBy *string `json:"invited_by"`
+	ID        string  `json:"id" zorm:"id"`
+	TenantID  string  `json:"tenant_id" zorm:"tenant_id"`
+	UserID    string  `json:"user_id" zorm:"user_id"`
+	Role      string  `json:"role" zorm:"role"`
+	JoinedAt  string  `json:"joined_at" zorm:"joined_at"`
+	InvitedBy *string `json:"invited_by" zorm:"invited_by"`
 }
 
 type invitationRow struct {
-	ID         string  `json:"id"`
-	TenantID   string  `json:"tenant_id"`
-	Email      string  `json:"email"`
-	Role       string  `json:"role"`
-	Token      string  `json:"token"`
-	InvitedBy  string  `json:"invited_by"`
-	ExpiresAt  string  `json:"expires_at"`
-	AcceptedAt *string `json:"accepted_at"`
-	CreatedAt  string  `json:"created_at"`
+	ID         string  `json:"id" zorm:"id"`
+	TenantID   string  `json:"tenant_id" zorm:"tenant_id"`
+	Email      string  `json:"email" zorm:"email"`
+	Role       string  `json:"role" zorm:"role"`
+	Token      string  `json:"token" zorm:"token"`
+	InvitedBy  string  `json:"invited_by" zorm:"invited_by"`
+	ExpiresAt  string  `json:"expires_at" zorm:"expires_at"`
+	AcceptedAt *string `json:"accepted_at" zorm:"accepted_at"`
+	CreatedAt  string  `json:"created_at" zorm:"created_at"`
 }
 
 // Converter functions

@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"time"
 )
@@ -556,6 +557,15 @@ func (w *MetricsWriter) GetResourceHistory() []ResourceHistory {
 		return nil
 	}
 	return w.systemMonitor.GetResourceHistory()
+}
+
+// GetDB returns the underlying *sql.DB for the metrics SQLite store.
+// Returns nil if no SQLite store is configured.
+func (w *MetricsWriter) GetDB() *sql.DB {
+	if w.sqliteStore == nil {
+		return nil
+	}
+	return w.sqliteStore.db
 }
 
 // GetCurrentProcessMetrics returns metrics for the current process.

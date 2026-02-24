@@ -143,6 +143,7 @@ type RoutesDeps struct {
 	MemoryHandler      *server.MemoryHandler
 	ChannelConfigStore *server.ChannelConfigStore
 	ConfigKV           kvstore.Store // shared kvstore for config persistence
+	ConfigStore        *config.ConfigStore // kvstore-backed config persistence
 	HotReloader        *config.HotReloader
 	WorkspaceHandler   *workspace.Handler
 	SSEBroker          *sse.Broker
@@ -167,6 +168,11 @@ type RoutesDeps struct {
 
 	// ChannelTaskWatcher is populated by RegisterAllRoutes for main.go to wire the notifier.
 	ChannelTaskWatcher *mediagen.ChannelTaskWatcher
+
+	// OnEarlyReady is called after critical routes (health, system/mode, auth)
+	// are registered but before heavy subsystem init. The caller can start the
+	// HTTP listener here so health checks succeed while the rest initializes.
+	OnEarlyReady func()
 }
 
 // RegisterAllRoutes registers all API routes on the Echo instance.
@@ -177,6 +183,50 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	logger := deps.Logger
 	dataDir := cfg.DataDir
 	kv := deps.ConfigKV // shared kvstore for settings, VAPID keys, toggles, etc.
+
+	// ── Fast path: register critical routes FIRST so the HTTP listener can ──
+	// ── start serving health checks while heavy subsystems initialize.     ──
+
+	// Initialize connection manager (lightweight, needed for all routes)
+	connManager := connection.NewManager(10000, 5*time.Second)
+	e.Use(connManager.Middleware())
+
+	// Preview mode routes (no auth required) — needed for /api/v1/system/mode
+	previewModeService := preview.NewModeService(s.UserService)
+	previewUpgradeService := preview.NewUpgradeService(s.UserService, s.DB)
+	previewHandler := preview.NewHandler(previewModeService, previewUpgradeService, s.JWTService, s.UserService)
+	previewHandler.SetDataDir(dataDir)
+	previewHandler.RegisterRoutes(e)
+
+	// Set mode service to user handler for preview mode support
+	deps.UserHandler.SetModeService(previewModeService)
+
+	// API groups
+	v1 := e.Group("/api/v1")
+	api := e.Group("/api")
+
+	// Lightweight health endpoint — registered FIRST so the Tauri health poll
+	// can succeed as soon as the HTTP listener starts, before heavy subsystem init.
+	v1.GET("/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"status":  "ok",
+			"service": "zimaos-blue",
+			"version": cfg.Version,
+		})
+	})
+
+	// Static media serving (screenshots, etc.) — no auth required
+	mediaDir := filepath.Join(dataDir, "media")
+	_ = os.MkdirAll(mediaDir, 0750)
+	v1.Static("/media", mediaDir)
+
+	// Signal that critical routes (health, system/mode) are ready.
+	// The caller can start the HTTP listener now while heavy subsystems init below.
+	if deps.OnEarlyReady != nil {
+		deps.OnEarlyReady()
+	}
+
+	// ── Deferred path: TLS, ACME, and heavy subsystem init ──
 
 	// Initialize TLS manager with correct data directory
 	certsDir := filepath.Join(dataDir, "certs")
@@ -197,7 +247,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		HTTPSPort:    deps.Config.Server.TLS.Port,
 	})
 
-	// HTTPS redirect middleware (must be first)
+	// HTTPS redirect middleware
 	tlsManager := security.GetGlobalTLSManager()
 	if tlsManager != nil {
 		// Wire kvstore for TLS settings persistence
@@ -237,29 +287,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		e.Use(tlsManager.HTTPSRedirectMiddleware())
 	}
 
-	// Initialize connection manager
-	connManager := connection.NewManager(10000, 5*time.Second)
-	e.Use(connManager.Middleware())
-
-	// Preview mode routes (no auth required)
-	previewModeService := preview.NewModeService(s.UserService)
-	previewUpgradeService := preview.NewUpgradeService(s.UserService, s.DB)
-	previewHandler := preview.NewHandler(previewModeService, previewUpgradeService, s.JWTService, s.UserService)
-	previewHandler.SetDataDir(dataDir)
-	previewHandler.RegisterRoutes(e)
 	logger.Info("Preview mode routes registered")
-
-	// Set mode service to user handler for preview mode support
-	deps.UserHandler.SetModeService(previewModeService)
-
-	// API groups
-	v1 := e.Group("/api/v1")
-	api := e.Group("/api")
-
-	// Static media serving (screenshots, etc.) — no auth required
-	mediaDir := filepath.Join(dataDir, "media")
-	_ = os.MkdirAll(mediaDir, 0750)
-	v1.Static("/media", mediaDir)
 
 	// Media generation (image/video/audio) — self-contained, no dependency on ProviderPool
 	var ipcSrv *sockipc.Server
@@ -270,7 +298,19 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			logger.Warn("Failed to create media generation dirs", zap.Error(err))
 		}
 
-		configStore := mediagen.NewConfigStore(filepath.Join(dataDir, "media"))
+		// Use SQLite-backed config store (auto-migrates from JSON file)
+		var mediaConfigStore mediagen.MediaConfigStore
+		sqliteMediaStore, err := mediagen.NewSQLiteConfigStore(s.DB)
+		if err != nil {
+			logger.Warn("Failed to create SQLite media config store, falling back to JSON", zap.Error(err))
+			mediaConfigStore = mediagen.NewConfigStore(filepath.Join(dataDir, "media"))
+		} else {
+			// Migrate from JSON file if exists
+			if migrateErr := sqliteMediaStore.MigrateFromJSON(filepath.Join(dataDir, "media")); migrateErr != nil {
+				logger.Warn("Failed to migrate media config from JSON", zap.Error(migrateErr))
+			}
+			mediaConfigStore = sqliteMediaStore
+		}
 
 		// One-time migration from provider pool (if media providers were configured there)
 		mediagen.MigrateFromProviderPool(filepath.Join(dataDir, "providerpool"), filepath.Join(dataDir, "media"))
@@ -278,7 +318,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		// Read locale from settings for priority ordering
 		locale := readLocaleFromKV(kv)
 
-		mediaManager := mediagen.NewManager(mediaStorage, configStore, locale)
+		mediaManager := mediagen.NewManager(mediaStorage, mediaConfigStore, locale)
 		mediaManager.InitConfigs()
 
 		// Task persistence for power-failure recovery (shares main DB)
@@ -456,8 +496,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 	}
 
-	// Health endpoint (with full runtime stats)
-	v1.GET("/health", func(c echo.Context) error {
+	// Detailed health endpoint (with runtime stats, for dashboard)
+	v1.GET("/health/stats", func(c echo.Context) error {
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
 
@@ -490,6 +530,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Public config and templates routes (no auth required)
 	configHandler := server.NewConfigHandler(deps.HotReloader)
+	if deps.ConfigStore != nil {
+		configHandler.SetConfigStore(deps.ConfigStore)
+	}
 	configHandler.RegisterRoutes(v1)
 	templatesHandler := server.NewTemplatesHandler()
 	templatesHandler.RegisterRoutes(v1)
@@ -739,12 +782,70 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 	}
 
-	// Browser + UI reviewer are skills (not LLM tools). Wire backends for IPC use only.
+	// Browser + UI reviewer: wire backends for IPC and LLM tool use.
 	if deps.LazyBrowserSvc != nil {
 		uiTool := &tools.UIReviewerTool{}
 		uiTool.SetBrowser(tools.NewLazyRodBrowserAdapter(deps.LazyBrowserSvc))
 		uiTool.SetMediaDir(mediaDir)
 		deps.UIReviewerTool = uiTool
+	}
+	// Wire browser backend into browser skill
+	if deps.BrowserBackend != nil {
+		if sk := s.SkillRegistry.Get("browser"); sk != nil {
+			if br, ok := sk.(*builtin.Browser); ok {
+				br.SetBrowserService(browser.NewLazySkillAdapter(deps.LazyBrowserSvc))
+			}
+		}
+	}
+
+	// Exec tools (shell execution + process management)
+	var execApprovals *tools.ApprovalManager
+	{
+		execConfig := tools.DefaultExecConfig()
+		execConfig.DataDir = cfg.DataDir
+		// Restrict exec workdir to the data directory (workspace) by default.
+		// Access to other directories requires user approval via SSE.
+		execConfig.AllowedDirs = []string{cfg.DataDir}
+		if deps.SSEBroker != nil {
+			execApprovals = tools.NewApprovalManager(deps.SSEBroker)
+		}
+		var dirStore *tools.DirAllowlistStore
+		if deps.DB != nil {
+			var err error
+			dirStore, err = tools.NewDirAllowlistStore(deps.DB)
+			if err != nil {
+				slog.Warn("failed to create exec dir allowlist store", "error", err)
+			}
+		}
+		// Wrap sandbox.Manager as SandboxExecutor if available.
+		var sbx tools.SandboxExecutor
+		if deps.SandboxManager != nil {
+			sbx = &sandboxExecAdapter{mgr: deps.SandboxManager}
+		}
+		tools.RegisterExecTools(s.ToolRegistry, execConfig, execApprovals, deps.SSEBroker, dirStore, sbx)
+
+		// Exec approval REST endpoint (kept for backwards compatibility;
+		// the unified /approval/resolve endpoint also handles exec approvals).
+		if execApprovals != nil {
+			execGroup := v1.Group("/exec")
+			execGroup.POST("/approvals/:id", func(c echo.Context) error {
+				id := c.Param("id")
+				var body struct {
+					Decision string `json:"decision"`
+				}
+				if err := c.Bind(&body); err != nil {
+					return c.JSON(400, map[string]string{"error": "invalid body"})
+				}
+				decision := tools.ApprovalDecision(body.Decision)
+				if decision != tools.ApprovalAllowOnce && decision != tools.ApprovalAllowAlways && decision != tools.ApprovalDeny {
+					return c.JSON(400, map[string]string{"error": "invalid decision; use allow-once, allow-always, or deny"})
+				}
+				if !execApprovals.ResolveApproval(id, decision) {
+					return c.JSON(404, map[string]string{"error": "approval not found or expired"})
+				}
+				return c.JSON(200, map[string]string{"status": string(decision)})
+			})
+		}
 	}
 
 	// Plugin routes
@@ -962,12 +1063,19 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			})
 		})
 
-		// Initialize OAuth manager for OAuth-based providers
-		oauthDataDir := filepath.Join(dataDir, "providers")
-		oauthStore, oauthErr := oauth.NewStore(oauthDataDir)
+		// Initialize OAuth manager for OAuth-based providers (SQLite-backed)
+		oauthStore, oauthErr := oauth.NewSQLiteTokenStore(deps.DB)
 		if oauthErr != nil {
 			logger.Warn("Failed to initialize OAuth store", zap.Error(oauthErr))
 		} else {
+			// Migrate legacy JSON tokens if present
+			legacyPath := filepath.Join(dataDir, "providers", "providers", "oauth_tokens.json")
+			if err := oauthStore.MigrateFromJSON(legacyPath); err != nil {
+				logger.Warn("Failed to migrate legacy OAuth tokens", zap.Error(err))
+			} else {
+				// Remove legacy file after successful migration
+				os.Remove(legacyPath)
+			}
 			oauthManager = oauth.NewManager(oauthStore)
 			providerPoolHandler.SetOAuthManager(oauthManager)
 			providerPoolHandler.RegisterOAuthCallbackRoute(e)
@@ -1092,9 +1200,29 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		failoverAPIHandler.RegisterRoutes(failoverGroup)
 
 		// Pipeline stats collector: unified async batch persistence for routing/failover
+		// Uses metrics.db (via MetricsWriter) instead of blue.db for cleaner separation
 		var pipelineStats *proxy.PipelineStatsCollector
-		if deps.DB != nil {
+		var metricsDB *sql.DB
+		if deps.MetricsWriter != nil {
+			metricsDB = deps.MetricsWriter.GetDB()
+		}
+		if metricsDB != nil {
+			pipelineStats = proxy.NewPipelineStatsCollector(metricsDB, proxyHandler.GetRoutingStatsRef())
+			// Wire smart failover metrics + circuit breaker state for persistence
+			pipelineStats.SetSmartFailoverMetrics(smartFailover.GetMetrics())
+			pipelineStats.SetFailoverHandler(smartFailover.FailoverHandler)
+			pipelineStats.LoadSmartMetrics()
+			pipelineStats.LoadBreakerState()
+			pipelineStats.Start()
+			proxyHandler.SetPipelineStats(pipelineStats)
+			deps.Closers = append(deps.Closers, pipelineStats)
+		} else if deps.DB != nil {
+			// Fallback to blue.db if metrics.db is not available
 			pipelineStats = proxy.NewPipelineStatsCollector(deps.DB, proxyHandler.GetRoutingStatsRef())
+			pipelineStats.SetSmartFailoverMetrics(smartFailover.GetMetrics())
+			pipelineStats.SetFailoverHandler(smartFailover.FailoverHandler)
+			pipelineStats.LoadSmartMetrics()
+			pipelineStats.LoadBreakerState()
 			pipelineStats.Start()
 			proxyHandler.SetPipelineStats(pipelineStats)
 			deps.Closers = append(deps.Closers, pipelineStats)
@@ -1597,6 +1725,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	providerSettingsHandler.SetSettingsHandler(settingsHandler)
 	// Wire settings into chat handler for runtime smart tool selection toggle
 	deps.ChatHandler.SetSettingsHandler(settingsHandler)
+	// Wire locale into system prompt builder so all skills see the user's locale
+	if deps.SystemPromptBuilder != nil {
+		deps.SystemPromptBuilder.SetLocaleFunc(settingsHandler.GetLocale)
+	}
 
 	// User-level routes (protected) — /api/v1/my/*
 	myGroup := protected.Group("/my")
@@ -1634,6 +1766,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		sseHandler.RegisterRoutes(apiProtected.Group("/v1"))
 
 		approvalHandler := networkapi.NewApprovalHandler(deps.SSEBroker)
+		// Wire exec approval resolver so /approval/resolve can handle exec approvals too.
+		if execApprovals != nil {
+			approvalHandler.SetExecResolver(execApprovalAdapter{execApprovals})
+		}
 		approvalHandler.RegisterRoutes(apiProtected.Group("/v1"))
 	}
 
@@ -1642,6 +1778,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	logger.Info("All routes registered")
 	return apiProtected
+}
+
+// execApprovalAdapter bridges tools.ApprovalManager to api.ExecApprovalResolver.
+type execApprovalAdapter struct {
+	mgr *tools.ApprovalManager
+}
+
+func (a execApprovalAdapter) ResolveApproval(id string, decision string) bool {
+	return a.mgr.ResolveApproval(id, tools.ApprovalDecision(decision))
 }
 
 // InitMetrics initializes metrics services
@@ -1657,4 +1802,21 @@ func InitMetrics(dataDir string) (*metrics.Collector, *metrics.MetricsWriter) {
 	return metricsCollector, metricsWriter
 }
 
+// sandboxExecAdapter wraps sandbox.Manager to implement tools.SandboxExecutor.
+type sandboxExecAdapter struct {
+	mgr *sandbox.Manager
+}
 
+func (a *sandboxExecAdapter) RunInSandbox(ctx context.Context, command, workdir string, env map[string]string, timeout time.Duration) (string, string, int, error) {
+	shell, shellArgs := tools.GetShellConfig()
+	req := sandbox.NewExecutionRequest(shell, append(shellArgs, command)...)
+	req.WorkDir = workdir
+	req.Timeout = timeout
+	req.Env = env
+
+	result, err := a.mgr.Execute(ctx, req)
+	if err != nil {
+		return "", "", -1, err
+	}
+	return result.Stdout, result.Stderr, result.ExitCode, nil
+}

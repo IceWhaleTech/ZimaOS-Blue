@@ -184,21 +184,21 @@ func (s *APIKeyService) table(ctx context.Context) *z.ZormTable {
 
 // apiKeyRow is used for scanning from zorm
 type apiKeyRow struct {
-	ID           string  `json:"id"`
-	UserID       string  `json:"user_id"`
-	Name         string  `json:"name"`
-	Prefix       string  `json:"prefix"`
-	Scopes       string  `json:"scopes"`
-	CreatedAt    string  `json:"created_at"`
-	ExpiresAt    *string `json:"expires_at"`
-	LastUsed     *string `json:"last_used"`
-	Revoked      int     `json:"revoked"`
-	RotatedFrom  *string `json:"rotated_from"`
-	RotatedTo    *string `json:"rotated_to"`
-	RotatedAt    *string `json:"rotated_at"`
-	GracePeriod  *string `json:"grace_period"`
-	EncryptedKey *string `json:"encrypted_key"`
-	KeyHash      *string `json:"key_hash"`
+	ID           string  `json:"id" zorm:"id"`
+	UserID       string  `json:"user_id" zorm:"user_id"`
+	Name         string  `json:"name" zorm:"name"`
+	Prefix       string  `json:"prefix" zorm:"prefix"`
+	Scopes       string  `json:"scopes" zorm:"scopes"`
+	CreatedAt    string  `json:"created_at" zorm:"created_at"`
+	ExpiresAt    *string `json:"expires_at" zorm:"expires_at"`
+	LastUsed     *string `json:"last_used" zorm:"last_used"`
+	Revoked      int     `json:"revoked" zorm:"revoked"`
+	RotatedFrom  *string `json:"rotated_from" zorm:"rotated_from"`
+	RotatedTo    *string `json:"rotated_to" zorm:"rotated_to"`
+	RotatedAt    *string `json:"rotated_at" zorm:"rotated_at"`
+	GracePeriod  *string `json:"grace_period" zorm:"grace_period"`
+	EncryptedKey *string `json:"encrypted_key" zorm:"encrypted_key"`
+	KeyHash      *string `json:"key_hash" zorm:"key_hash"`
 }
 
 func parseTime(s string) time.Time {

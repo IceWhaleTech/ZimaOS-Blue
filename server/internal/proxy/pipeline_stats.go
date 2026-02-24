@@ -26,6 +26,10 @@ type PipelineStatsCollector struct {
 	// References to existing stat holders
 	routingStats *RoutingStats
 
+	// Smart failover metrics (per-provider error classification)
+	smartMetrics    *FailoverMetrics
+	failoverHandler *FailoverHandler
+
 	// Failover event buffer for log persistence
 	eventMu  sync.Mutex
 	eventBuf []*failoverLogEntry
@@ -77,6 +81,16 @@ func (c *PipelineStatsCollector) Stop() {
 func (c *PipelineStatsCollector) Close() error {
 	c.Stop()
 	return nil
+}
+
+// SetSmartFailoverMetrics sets the smart failover metrics reference for persistence.
+func (c *PipelineStatsCollector) SetSmartFailoverMetrics(m *FailoverMetrics) {
+	c.smartMetrics = m
+}
+
+// SetFailoverHandler sets the failover handler reference for circuit breaker persistence.
+func (c *PipelineStatsCollector) SetFailoverHandler(fh *FailoverHandler) {
+	c.failoverHandler = fh
 }
 
 // --- Failover callback (wired to Router.SetFailoverCallback) ---
@@ -235,6 +249,40 @@ func (c *PipelineStatsCollector) initSchema() {
 			duration_ms INTEGER
 		)
 	`)
+
+	// Smart failover metrics: per-provider error classification
+	c.db.Exec(`
+		CREATE TABLE IF NOT EXISTS smart_failover_metrics (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			failover_total INTEGER DEFAULT 0,
+			failover_success INTEGER DEFAULT 0,
+			failover_failure INTEGER DEFAULT 0,
+			stream_anomalies INTEGER DEFAULT 0,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	c.db.Exec(`
+		CREATE TABLE IF NOT EXISTS smart_failover_provider_errors (
+			provider TEXT NOT NULL,
+			error_type TEXT NOT NULL,
+			error_count INTEGER DEFAULT 0,
+			failover_count INTEGER DEFAULT 0,
+			PRIMARY KEY (provider, error_type)
+		)
+	`)
+
+	// Circuit breaker state
+	c.db.Exec(`
+		CREATE TABLE IF NOT EXISTS circuit_breaker_state (
+			name TEXT PRIMARY KEY,
+			state TEXT NOT NULL DEFAULT 'closed',
+			failures INTEGER DEFAULT 0,
+			successes INTEGER DEFAULT 0,
+			last_failure_time DATETIME,
+			last_state_change DATETIME,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
 }
 
 func (c *PipelineStatsCollector) loadStats() {
@@ -283,6 +331,91 @@ func (c *PipelineStatsCollector) loadStats() {
 	// Load routing stats into the existing RoutingStats
 	if c.routingStats != nil {
 		c.routingStats.Load(rr, tr, csm)
+	}
+
+	// Load smart failover metrics (deferred — smartMetrics may not be set yet at init time)
+	// Actual loading happens in loadSmartMetrics(), called after SetSmartFailoverMetrics.
+}
+
+// LoadSmartMetrics restores smart failover metrics from DB.
+// Must be called after SetSmartFailoverMetrics.
+func (c *PipelineStatsCollector) LoadSmartMetrics() {
+	if c.db == nil || c.smartMetrics == nil {
+		return
+	}
+
+	// Load global counters
+	var ft, fs, ff, sa int64
+	err := c.db.QueryRow(`
+		SELECT COALESCE(failover_total,0), COALESCE(failover_success,0),
+		       COALESCE(failover_failure,0), COALESCE(stream_anomalies,0)
+		FROM smart_failover_metrics WHERE id = 1
+	`).Scan(&ft, &fs, &ff, &sa)
+	if err == nil {
+		c.smartMetrics.mu.Lock()
+		c.smartMetrics.FailoverTotal = ft
+		c.smartMetrics.FailoverSuccess = fs
+		c.smartMetrics.FailoverFailure = ff
+		atomic.StoreInt64(&c.smartMetrics.StreamAnomalies, sa)
+		c.smartMetrics.mu.Unlock()
+	}
+
+	// Load per-provider error/failover counts
+	rows, err := c.db.Query(`SELECT provider, error_type, error_count, failover_count FROM smart_failover_provider_errors`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	c.smartMetrics.mu.Lock()
+	defer c.smartMetrics.mu.Unlock()
+	for rows.Next() {
+		var provider, errType string
+		var errCount, foCount int64
+		if err := rows.Scan(&provider, &errType, &errCount, &foCount); err != nil {
+			continue
+		}
+		et := RetryableErrorType(errType)
+		if errCount > 0 {
+			c.smartMetrics.ErrorsByType[et] += errCount
+			if _, ok := c.smartMetrics.ProviderErrors[provider]; !ok {
+				c.smartMetrics.ProviderErrors[provider] = make(map[RetryableErrorType]int64)
+			}
+			c.smartMetrics.ProviderErrors[provider][et] += errCount
+		}
+		if foCount > 0 {
+			c.smartMetrics.ProviderFailovers[provider] += foCount
+		}
+	}
+}
+
+// LoadBreakerState restores circuit breaker state from DB.
+// Must be called after SetFailoverHandler.
+func (c *PipelineStatsCollector) LoadBreakerState() {
+	if c.db == nil || c.failoverHandler == nil {
+		return
+	}
+
+	rows, err := c.db.Query(`SELECT name, state, failures, successes, last_failure_time, last_state_change FROM circuit_breaker_state`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var snap BreakerSnapshot
+		var lastFailure, lastChange sql.NullString
+		if err := rows.Scan(&snap.Name, &snap.State, &snap.Failures, &snap.Successes, &lastFailure, &lastChange); err != nil {
+			continue
+		}
+		if lastFailure.Valid {
+			snap.LastFailureTime, _ = time.Parse(time.RFC3339, lastFailure.String)
+		}
+		if lastChange.Valid {
+			snap.LastStateChange, _ = time.Parse(time.RFC3339, lastChange.String)
+		}
+		c.failoverHandler.LoadBreakerState(snap)
+		slog.Info("[pipeline-stats] restored circuit breaker", "name", snap.Name, "state", snap.State, "failures", snap.Failures)
 	}
 }
 
@@ -393,6 +526,12 @@ func (c *PipelineStatsCollector) flush() {
 		tx.Exec(`DELETE FROM failover_log WHERE id NOT IN (SELECT id FROM failover_log ORDER BY id DESC LIMIT 1000)`)
 	}
 
+	// Flush smart failover metrics
+	c.flushSmartMetrics(tx, now)
+
+	// Flush circuit breaker state
+	c.flushBreakerState(tx, now)
+
 	if err := tx.Commit(); err != nil {
 		slog.Warn("[pipeline-stats] failed to commit", "error", err)
 	}
@@ -425,4 +564,119 @@ func (c *PipelineStatsCollector) loadRecentFailovers(limit int) []*failoverLogEn
 		result = append(result, &e)
 	}
 	return result
+}
+
+// flushSmartMetrics persists SmartFailoverHandler.FailoverMetrics to DB.
+func (c *PipelineStatsCollector) flushSmartMetrics(tx *sql.Tx, now time.Time) {
+	if c.smartMetrics == nil {
+		return
+	}
+
+	c.smartMetrics.mu.RLock()
+	ft := c.smartMetrics.FailoverTotal
+	fs := c.smartMetrics.FailoverSuccess
+	ff := c.smartMetrics.FailoverFailure
+	sa := atomic.LoadInt64(&c.smartMetrics.StreamAnomalies)
+
+	// Copy provider-level data under lock
+	type provErr struct {
+		provider string
+		errType  RetryableErrorType
+		count    int64
+	}
+	var provErrors []provErr
+	for provider, errMap := range c.smartMetrics.ProviderErrors {
+		for et, count := range errMap {
+			provErrors = append(provErrors, provErr{provider, et, count})
+		}
+	}
+	provFailovers := make(map[string]int64, len(c.smartMetrics.ProviderFailovers))
+	for k, v := range c.smartMetrics.ProviderFailovers {
+		provFailovers[k] = v
+	}
+	c.smartMetrics.mu.RUnlock()
+
+	// Upsert global counters
+	tx.Exec(`
+		INSERT INTO smart_failover_metrics (id, failover_total, failover_success, failover_failure, stream_anomalies, updated_at)
+		VALUES (1, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			failover_total = excluded.failover_total,
+			failover_success = excluded.failover_success,
+			failover_failure = excluded.failover_failure,
+			stream_anomalies = excluded.stream_anomalies,
+			updated_at = excluded.updated_at
+	`, ft, fs, ff, sa, now.Format(time.RFC3339))
+
+	// Upsert per-provider error counts
+	// Merge failover counts into the same rows
+	foByProvider := make(map[string]int64)
+	for _, pe := range provErrors {
+		foByProvider[pe.provider] = provFailovers[pe.provider]
+	}
+	// Also add providers that have failovers but no errors
+	for provider, count := range provFailovers {
+		if _, exists := foByProvider[provider]; !exists {
+			provErrors = append(provErrors, provErr{provider, "", 0})
+			foByProvider[provider] = count
+		}
+	}
+
+	if len(provErrors) > 0 {
+		stmt, err := tx.Prepare(`
+			INSERT INTO smart_failover_provider_errors (provider, error_type, error_count, failover_count)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(provider, error_type) DO UPDATE SET
+				error_count = excluded.error_count,
+				failover_count = excluded.failover_count
+		`)
+		if err == nil {
+			for _, pe := range provErrors {
+				stmt.Exec(pe.provider, string(pe.errType), pe.count, foByProvider[pe.provider])
+			}
+			stmt.Close()
+		}
+	}
+}
+
+// flushBreakerState persists circuit breaker state to DB.
+func (c *PipelineStatsCollector) flushBreakerState(tx *sql.Tx, now time.Time) {
+	if c.failoverHandler == nil {
+		return
+	}
+
+	snaps := c.failoverHandler.SnapshotBreakers()
+	if len(snaps) == 0 {
+		return
+	}
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO circuit_breaker_state (name, state, failures, successes, last_failure_time, last_state_change, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			state = excluded.state,
+			failures = excluded.failures,
+			successes = excluded.successes,
+			last_failure_time = excluded.last_failure_time,
+			last_state_change = excluded.last_state_change,
+			updated_at = excluded.updated_at
+	`)
+	if err != nil {
+		return
+	}
+	defer stmt.Close()
+
+	for _, snap := range snaps {
+		var lastFailure, lastChange *string
+		if !snap.LastFailureTime.IsZero() {
+			s := snap.LastFailureTime.Format(time.RFC3339)
+			lastFailure = &s
+		}
+		if !snap.LastStateChange.IsZero() {
+			s := snap.LastStateChange.Format(time.RFC3339)
+			lastChange = &s
+		}
+		stmt.Exec(snap.Name, snap.State, snap.Failures, snap.Successes,
+			lastFailure, lastChange, now.Format(time.RFC3339))
+	}
 }

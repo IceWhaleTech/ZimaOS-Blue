@@ -30,19 +30,27 @@ func (t *Token) Expired() bool {
 	return time.Now().After(t.TokenExpiry.Add(-60 * time.Second))
 }
 
-// Store persists OAuth tokens to disk.
-type Store struct {
+// TokenStore is the interface for OAuth token persistence.
+type TokenStore interface {
+	SaveToken(providerID string, token *Token) error
+	LoadToken(providerID string) (*Token, error)
+	DeleteToken(providerID string) error
+	ListTokens() (map[string]*Token, error)
+}
+
+// FileStore persists OAuth tokens to a JSON file on disk.
+type FileStore struct {
 	path string
 	mu   sync.RWMutex
 }
 
-// NewStore creates a new file-based OAuth token store.
-func NewStore(dataDir string) (*Store, error) {
+// NewFileStore creates a new file-based OAuth token store.
+func NewFileStore(dataDir string) (*FileStore, error) {
 	dir := filepath.Join(dataDir, "providers")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create oauth store dir: %w", err)
 	}
-	return &Store{path: filepath.Join(dir, "oauth_tokens.json")}, nil
+	return &FileStore{path: filepath.Join(dir, "oauth_tokens.json")}, nil
 }
 
 type storeData struct {
@@ -50,7 +58,7 @@ type storeData struct {
 	UpdatedAt time.Time         `json:"updated_at"`
 }
 
-func (s *Store) load() (*storeData, error) {
+func (s *FileStore) load() (*storeData, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -68,7 +76,7 @@ func (s *Store) load() (*storeData, error) {
 	return &sd, nil
 }
 
-func (s *Store) save(sd *storeData) error {
+func (s *FileStore) save(sd *storeData) error {
 	sd.UpdatedAt = time.Now()
 	data, err := json.MarshalIndent(sd, "", "  ")
 	if err != nil {
@@ -78,7 +86,7 @@ func (s *Store) save(sd *storeData) error {
 }
 
 // SaveToken persists a token for the given provider.
-func (s *Store) SaveToken(providerID string, token *Token) error {
+func (s *FileStore) SaveToken(providerID string, token *Token) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -96,7 +104,7 @@ func (s *Store) SaveToken(providerID string, token *Token) error {
 }
 
 // LoadToken retrieves a token for the given provider.
-func (s *Store) LoadToken(providerID string) (*Token, error) {
+func (s *FileStore) LoadToken(providerID string) (*Token, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -112,7 +120,7 @@ func (s *Store) LoadToken(providerID string) (*Token, error) {
 }
 
 // DeleteToken removes a token for the given provider.
-func (s *Store) DeleteToken(providerID string) error {
+func (s *FileStore) DeleteToken(providerID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -125,7 +133,7 @@ func (s *Store) DeleteToken(providerID string) error {
 }
 
 // ListTokens returns all stored tokens.
-func (s *Store) ListTokens() (map[string]*Token, error) {
+func (s *FileStore) ListTokens() (map[string]*Token, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

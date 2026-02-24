@@ -39,7 +39,7 @@ func NewImageGenerateSkill(manager *Manager) *ImageGenerateSkill {
 func (t *ImageGenerateSkill) Definition() tools.ToolDefinition {
 	return tools.ToolDefinition{
 		Name:        "image_generate",
-		Description: "Generate images from text descriptions. Default model: nano-banana-pro (recommended). IMPORTANT: Image generation takes 15-60 seconds — do NOT call this tool multiple times for the same request. If the result shows status 'processing', tell the user to wait. Returns URLs of generated images saved to the media gallery.",
+		Description: "Generate or edit images. Supports text-to-image (t2i) and image editing (i2i). For editing, provide a reference_image URL along with the prompt describing the desired changes. Default model: nano-banana-pro (recommended, supports both generation and editing). IMPORTANT: Image generation takes 15-60 seconds — do NOT call this tool multiple times for the same request. If the result shows status 'processing', tell the user to wait. Returns URLs of generated images saved to the media gallery.",
 		Icon:        "image",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -79,6 +79,10 @@ func (t *ImageGenerateSkill) Definition() tools.ToolDefinition {
 				"style": map[string]interface{}{
 					"type":        "string",
 					"description": "Style: 'natural' or 'vivid'",
+				},
+				"reference_image": map[string]interface{}{
+					"type":        "string",
+					"description": "URL of a reference image for editing (i2i). When provided, the prompt describes the desired edits (e.g., 'remove the background', 'change hair color to red'). Supports nano-banana-pro, qwen-image-edit-max, wan2.5-i2i-preview, wan2.6-image.",
 				},
 			},
 			"required": []string{"prompt"},
@@ -127,6 +131,10 @@ func (t *ImageGenerateSkill) Execute(ctx context.Context, args map[string]interf
 			req.Extra = make(map[string]any)
 		}
 		req.Extra["resolution"] = v
+	}
+	if v, ok := args["reference_image"].(string); ok && v != "" {
+		req.ReferenceURL = v
+		req.ReferenceURLs = []string{v}
 	}
 
 	start := time.Now()

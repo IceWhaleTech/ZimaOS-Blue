@@ -82,6 +82,12 @@ func NewWorkflows() *Workflows {
 					Description: "Workflow ID (required for get, delete, enable, disable, execute)",
 					Required:    false,
 				},
+				{
+					Name:        "locale",
+					Type:        "string",
+					Description: "Language/locale code for localized responses (e.g., en-US, zh-CN)",
+					Required:    false,
+				},
 			},
 			Outputs: []skill.Parameter{
 				{

@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
@@ -59,11 +58,8 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 
-	injectPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/inject"
-	pushPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	ssePkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
-	webpushPkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/webpush"
 )
 
 var (
@@ -105,9 +101,8 @@ func main() {
 
 // runServer is the main server entry point, called by cobra rootCmd
 func runServer() {
-	// Tune GC: GOGC=50 balances memory vs CPU; 128MB soft limit avoids excessive GC thrashing
-	debug.SetGCPercent(50)
-	debug.SetMemoryLimit(128 * 1024 * 1024) // 128MB soft limit
+	// Tune GC for lower memory usage (shared with bluelib)
+	bootstrap.TuneGC()
 
 	// Load configuration (cfgFile is set by cobra's --config flag)
 	cfg, err := config.Load(cfgFile)
@@ -189,6 +184,13 @@ func runServer() {
 		logger.Fatal().Err(err).Msg("Failed to initialize config kvstore")
 	}
 	configKV := kvstore.NewCachedStore(sqliteKV)
+
+	// Import config.yaml into kvstore (first-run: imports; subsequent: loads from DB)
+	configStore := config.NewConfigStore(configKV)
+	cfg, err = configStore.LoadOrImport(cfg)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to load config from DB, using YAML defaults")
+	}
 
 	// Initialize user repository and service
 	userRepo, err := user.NewSQLiteRepository(db)
@@ -554,58 +556,18 @@ func runServer() {
 	// SSE event broker — created early so push service can use it as EventPublisher
 	sseBroker := ssePkg.NewBroker()
 
-	// Wire Web Push notification support
-	var wpSender *webpushPkg.Sender
-	if vapidPriv, vapidPub, err := webpushPkg.GetOrCreateVAPIDKeys(configKV); err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize VAPID keys")
-	} else if wpStore, err := webpushPkg.NewStore(db); err != nil {
-		logger.Warn().Err(err).Msg("Failed to initialize webpush store")
-	} else {
-		wpSender = webpushPkg.NewSender(vapidPriv, vapidPub, wpStore, zapLogger)
-	}
+	// Wire Web Push notification support (shared with bluelib)
+	wpSender := bootstrap.InitWebPushSender(db, configKV, zapLogger)
 
-	// Wire push notification service (SQLite + cron + message injection)
-	var pushIPC sockipc.PushBackend
-	{
-		pushStore, err := pushPkg.NewStore(db)
-		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize push store")
-		} else {
-			pushSvc := pushPkg.NewService(pushStore, zapLogger)
-
-			// Wire cron for scheduled firing
-			cronAdapter := pushPkg.NewCronAdapter(cronHandler.GetService)
-			pushSvc.SetCron(cronAdapter)
-
-			// Wire message injector for conversation delivery
-			pushSvc.SetMessageInjector(injectPkg.NewMemoryStoreInjector(memoryStore))
-
-			// Wire SSE event publisher
-			pushSvc.SetEventPublisher(sseBroker)
-
-			// Wire native OS notifier
-			pushSvc.SetNotifier(pushPkg.NewNotifier(zapLogger))
-
-			// Wire Web Push sender
-			if wpSender != nil {
-				pushSvc.SetWebPushSender(wpSender)
-			}
-
-			// Create IPC adapter for sockipc
-			pushIPC = sockipc.NewPushIPCAdapter(pushSvc)
-
-			// Restore pending push notifications from previous session
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-				if err := pushSvc.RestorePending(ctx); err != nil {
-					logger.Warn().Err(err).Msg("Failed to restore pending push notifications")
-				} else {
-					logger.Info().Msg("Pending push notifications restored")
-				}
-			}()
-		}
-	}
+	// Wire push notification service (shared with bluelib)
+	pushIPC := bootstrap.InitPushService(&bootstrap.PushServiceDeps{
+		DB:          db,
+		MemoryStore: memoryStore,
+		CronGetSvc:  cronHandler.GetService,
+		SSEBroker:   sseBroker,
+		WPSender:    wpSender,
+		Logger:      zapLogger,
+	})
 
 	// Wire browser service — lazy init, creates rod service on first use (for IPC only)
 	var browserBackend tools.BrowserBackend
@@ -718,6 +680,12 @@ func runServer() {
 	voiceHandler = voice.NewHandler(voiceService)
 	logger.Info().Msg("Voice handler initialized")
 
+	// Initialize voice WebSocket handler (created here so shutdown can close connections)
+	var voiceWSHandler *voice.WSHandler
+	if voiceHandler != nil {
+		voiceWSHandler = voice.NewWSHandler(voiceHandler.Service())
+	}
+
 	// Initialize ngrok config store (kvstore-based, lazy initialization)
 	ngrokConfigStore = ngrok.NewConfigStore(configKV)
 	ngrokTunnelMgr = ngrok.NewSDKTunnelManager(nil)
@@ -731,7 +699,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader, sseBroker, pushIPC, cronIPC, browserBackend, lazyBrowserSvc, configKV)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader, sseBroker, pushIPC, cronIPC, browserBackend, lazyBrowserSvc, configKV, configStore)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -780,6 +748,14 @@ func runServer() {
 	// so httpServer.Shutdown() won't block waiting for long-lived connections.
 	sseBroker.Close()
 
+	// Close WebSocket connections so httpServer.Shutdown() doesn't block.
+	if companionWSHandler != nil {
+		companionWSHandler.Close()
+	}
+	if voiceWSHandler != nil {
+		voiceWSHandler.Close()
+	}
+
 	if err := lm.Shutdown(shutdownCtx); err != nil {
 		logger.Error().Err(err).Msg("Shutdown error - some services may not have stopped cleanly")
 		// Don't use os.Exit here - let deferred cleanup run
@@ -818,15 +794,9 @@ func runServer() {
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, configKV kvstore.Store) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, configKV kvstore.Store, configStore *config.ConfigStore) {
 	e := srv.Echo()
 	logger := zapLogger
-
-	// Initialize voice WebSocket handler
-	var voiceWSHandler *voice.WSHandler
-	if voiceHandler != nil {
-		voiceWSHandler = voice.NewWSHandler(voiceHandler.Service())
-	}
 
 	// Initialize speech handler
 	speechKV := configKV
@@ -982,12 +952,12 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Initialize channel config store
 	channelConfigStore := server.NewChannelConfigStore(configKV)
 
-	// Initialize provider pool
+	// Initialize provider pool (SQLite-backed, auto-migrates from JSON files)
 	var providerPool *providerpool.Pool
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
-	providerPool, err := providerpool.NewPool(providerPoolPath)
-	if err != nil {
-		logger.Warn("Failed to initialize provider pool", zap.Error(err))
+	providerPool, ppErr := providerpool.NewPool(providerPoolPath, providerpool.WithDB(db))
+	if ppErr != nil {
+		logger.Warn("Failed to initialize provider pool", zap.Error(ppErr))
 		providerPool = nil
 	}
 
@@ -1070,6 +1040,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		MemoryHandler:      memoryHandler,
 		ChannelConfigStore: channelConfigStore,
 		ConfigKV:           configKV,
+		ConfigStore:        configStore,
 		HotReloader:        hotReloader,
 		WorkspaceHandler:   workspace.NewHandler(workspaceMgr),
 		SSEBroker:          sseBroker,

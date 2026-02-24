@@ -1172,29 +1172,29 @@ onMounted(() => {
       v-if="store.trialQuota && store.trialProviders?.length > 0"
       :class="[
         'mb-4 p-3 rounded-lg border',
-        store.trialQuota.exhausted
+        store.trialQuota.is_exhausted
           ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
           : 'bg-gray-100 dark:bg-gray-700/30 border-gray-200 dark:border-gray-600'
       ]"
     >
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <span class="text-lg">{{ store.trialQuota.exhausted ? '⚠️' : '🎁' }}</span>
+          <span class="text-lg">{{ store.trialQuota.is_exhausted ? '⚠️' : '🎁' }}</span>
           <div>
-            <h4 class="font-medium text-sm" :class="store.trialQuota.exhausted ? 'text-red-700 dark:text-red-300' : 'text-gray-600 dark:text-gray-400'">
+            <h4 class="font-medium text-sm" :class="store.trialQuota.is_exhausted ? 'text-red-700 dark:text-red-300' : 'text-gray-600 dark:text-gray-400'">
               {{ t('providerPool.trialQuota.title') }}
             </h4>
-            <p class="text-xs" :class="store.trialQuota.exhausted ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'">
-              {{ store.trialQuota.exhausted ? t('providerPool.trialQuota.exhausted') : t('providerPool.trialQuota.remaining', { tokens: formatTokens(store.trialQuota.tokens_remaining) }) }}
+            <p class="text-xs" :class="store.trialQuota.is_exhausted ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'">
+              {{ store.trialQuota.is_exhausted ? t('providerPool.trialQuota.exhausted') : t('providerPool.trialQuota.remaining', { tokens: formatTokens(store.trialQuota.tokens_remaining) }) }}
             </p>
           </div>
         </div>
-        <div class="text-right text-xs" :class="store.trialQuota.exhausted ? 'text-red-500 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'">
+        <div class="text-right text-xs" :class="store.trialQuota.is_exhausted ? 'text-red-500 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'">
           <div :title="store.trialQuota.tokens_remaining.toLocaleString() + ' / ' + store.trialQuota.token_limit.toLocaleString()">{{ t('providerPool.trialQuota.tokensRemaining', { remaining: formatTokens(store.trialQuota.tokens_remaining), limit: formatTokens(store.trialQuota.token_limit) }) }}</div>
           <div class="mt-1 w-24 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
             <div
               class="h-full rounded-full transition-all"
-              :class="store.trialQuota.exhausted ? 'bg-red-500' : 'bg-gray-400 dark:bg-gray-500'"
+              :class="store.trialQuota.is_exhausted ? 'bg-red-500' : 'bg-gray-400 dark:bg-gray-500'"
               :style="{ width: `${Math.max(0, Math.min(100, (store.trialQuota.tokens_remaining / store.trialQuota.token_limit) * 100))}%` }"
             ></div>
           </div>
@@ -1774,8 +1774,8 @@ onMounted(() => {
                   </span>
                 </div>
               </div>
-              <p v-if="store.trialQuota.exhausted" class="text-xs text-red-600 dark:text-red-400 mt-2">
-                {{ store.trialQuota.exhausted_by_tokens ? t('providerPool.trial.quotaExhaustedTokens') : t('providerPool.trial.quotaExhaustedConversations') }}
+              <p v-if="store.trialQuota.is_exhausted" class="text-xs text-red-600 dark:text-red-400 mt-2">
+                {{ store.trialQuota.exhausted_reason === 'token_limit' ? t('providerPool.trial.quotaExhaustedTokens') : t('providerPool.trial.quotaExhaustedConversations') }}
               </p>
             </div>
           </div>

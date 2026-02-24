@@ -40,21 +40,21 @@ type TaskRecord struct {
 
 // taskRow represents a task row for zorm scanning.
 type taskRow struct {
-	ID           string  `json:"id"`
-	Name         string  `json:"name"`
-	Priority     int     `json:"priority"`
-	Status       string  `json:"status"`
-	ScheduledAt  string  `json:"scheduled_at"`
-	StartedAt    *string `json:"started_at"`
-	CompletedAt  *string `json:"completed_at"`
-	Error        string  `json:"error"`
-	Metadata     string  `json:"metadata"`
-	RetryCount   int     `json:"retry_count"`
-	MaxRetries   int     `json:"max_retries"`
-	Timeout      int64   `json:"timeout_ns"`
-	Dependencies string  `json:"dependencies"`
-	HandlerName  string  `json:"handler_name"`
-	HandlerData  []byte  `json:"handler_data"`
+	ID           string  `json:"id" zorm:"id"`
+	Name         string  `json:"name" zorm:"name"`
+	Priority     int     `json:"priority" zorm:"priority"`
+	Status       string  `json:"status" zorm:"status"`
+	ScheduledAt  string  `json:"scheduled_at" zorm:"scheduled_at"`
+	StartedAt    *string `json:"started_at" zorm:"started_at"`
+	CompletedAt  *string `json:"completed_at" zorm:"completed_at"`
+	Error        string  `json:"error" zorm:"error"`
+	Metadata     string  `json:"metadata" zorm:"metadata"`
+	RetryCount   int     `json:"retry_count" zorm:"retry_count"`
+	MaxRetries   int     `json:"max_retries" zorm:"max_retries"`
+	Timeout      int64   `json:"timeout_ns" zorm:"timeout_ns"`
+	Dependencies string  `json:"dependencies" zorm:"dependencies"`
+	HandlerName  string  `json:"handler_name" zorm:"handler_name"`
+	HandlerData  []byte  `json:"handler_data" zorm:"handler_data"`
 }
 
 // parseTaskTime parses time strings in multiple formats.

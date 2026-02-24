@@ -137,10 +137,9 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       loading.value = true
       error.value = null
-      const response = await authApi.me()
-      user.value = response.data
-      // Also fetch permissions
-      await fetchPermissions()
+      // Fetch user info and permissions in parallel
+      const [userResponse] = await Promise.all([authApi.me(), fetchPermissions()])
+      user.value = userResponse.data
     } catch (e) {
       // If unauthorized, clear auth
       if ((e as { response?: { status?: number } }).response?.status === 401) {

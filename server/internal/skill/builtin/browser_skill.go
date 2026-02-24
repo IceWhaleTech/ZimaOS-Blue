@@ -125,6 +125,12 @@ func NewBrowser() *Browser {
 					Description: "Whether the calling model supports vision/images (used by snapshot_auto to decide strategy)",
 					Required:    false,
 				},
+				{
+					Name:        "locale",
+					Type:        "string",
+					Description: "Language/locale code for localized responses (e.g., en-US, zh-CN)",
+					Required:    false,
+				},
 			},
 			Outputs: []skill.Parameter{
 				{
