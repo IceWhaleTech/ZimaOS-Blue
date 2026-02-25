@@ -450,10 +450,20 @@ pub fn run() {
         .on_page_load(|webview, payload| {
             let url = payload.url().to_string();
 
-            // Show the window as soon as any real content loads (data: splash or localhost).
-            // The data: URI splash renders a spinner immediately; the localhost page
-            // replaces it once the Go server is ready.
-            if url.starts_with("data:") || url.contains("localhost") {
+            // For about:blank, inject a splash spinner and show the window immediately.
+            // This gives instant visual feedback while the Go server boots.
+            if url == "about:blank" {
+                let _ = webview.eval(
+                    "document.body.style.cssText='margin:0;background:#0F172A;display:flex;align-items:center;justify-content:center;height:100vh';\
+                     document.body.innerHTML='<div style=\"width:36px;height:36px;border:3px solid #94A3B8;border-top-color:#3B82F6;border-radius:50%;animation:s .8s linear infinite\"></div>\
+                     <style>@keyframes s{to{transform:rotate(360deg)}}@media(prefers-color-scheme:light){body{background:#F8FAFC!important}div{border-color:#64748B!important;border-top-color:#3B82F6!important}}</style>';"
+                );
+                let _ = webview.window().show();
+                let _ = webview.window().set_focus();
+            }
+
+            // Show the window when the localhost page loads.
+            if url.contains("localhost") {
                 let _ = webview.window().show();
                 let _ = webview.window().set_focus();
             }
@@ -573,20 +583,24 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let app_handle_for_window = app.handle().clone();
 
-            // On macOS, request speech recognition authorization from the main thread
-            // before starting the Go server. TCC requires this to happen on thread 0
-            // where the Cocoa event loop runs.
+            // On macOS, request speech recognition authorization AFTER NSApp is fully
+            // launched. TCC requires this on thread 0 with the Cocoa event loop running.
+            // Calling it during setup (before NSApp finishes launching) causes abort().
+            // Use run_on_main_thread to defer until the run loop is active.
             #[cfg(target_os = "macos")]
             {
-                info!("Requesting macOS speech recognition authorization...");
-                let status = blue_ffi::request_stt_authorization();
-                match status {
-                    3 => info!("Speech recognition authorized"),
-                    1 => info!("Speech recognition denied by user"),
-                    2 => info!("Speech recognition restricted"),
-                    0 => info!("Speech recognition not determined"),
-                    _ => info!("Speech recognition status: {}", status),
-                }
+                let stt_app_handle = app.handle().clone();
+                let _ = stt_app_handle.run_on_main_thread(move || {
+                    info!("Requesting macOS speech recognition authorization...");
+                    let status = blue_ffi::request_stt_authorization();
+                    match status {
+                        3 => info!("Speech recognition authorized"),
+                        1 => info!("Speech recognition denied by user"),
+                        2 => info!("Speech recognition restricted"),
+                        0 => info!("Speech recognition not determined"),
+                        _ => info!("Speech recognition status: {}", status),
+                    }
+                });
             }
 
             tauri::async_runtime::spawn(async move {
