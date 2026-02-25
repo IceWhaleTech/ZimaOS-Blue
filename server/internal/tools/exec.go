@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/creack/pty"
@@ -514,7 +513,7 @@ func (t *ExecTool) runDirect(ctx context.Context, session *ProcessSession, comma
 	cmd := exec.Command(shell, append(shellArgs, command)...)
 	cmd.Dir = workdir
 	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = newSysProcAttr()
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -584,7 +583,7 @@ func (t *ExecTool) runWithPTY(ctx context.Context, session *ProcessSession, comm
 	cmd := exec.Command(shell, append(shellArgs, command)...)
 	cmd.Dir = workdir
 	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = newSysProcAttr()
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 30, Cols: 120})
 	if err != nil {

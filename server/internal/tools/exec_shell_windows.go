@@ -1,3 +1,5 @@
+//go:build windows
+
 package tools
 
 import (
@@ -5,38 +7,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"unicode"
 )
 
 // GetShellConfig returns the platform-appropriate shell and arguments for
-// executing a command string. On Unix it prefers $SHELL (falling back to
-// bash → sh), on Windows it uses PowerShell.
+// executing a command string. On Windows it uses PowerShell.
 func GetShellConfig() (shell string, args []string) {
-	if runtime.GOOS == "windows" {
-		ps := resolveWindowsPowerShell()
-		return ps, []string{"-NoProfile", "-NonInteractive", "-Command"}
-	}
-
-	envShell := strings.TrimSpace(os.Getenv("SHELL"))
-	shellName := filepath.Base(envShell)
-
-	// Fish rejects common bashisms — prefer bash when fish is detected.
-	if shellName == "fish" {
-		if bash := resolveShellFromPath("bash"); bash != "" {
-			return bash, []string{"-c"}
-		}
-		if sh := resolveShellFromPath("sh"); sh != "" {
-			return sh, []string{"-c"}
-		}
-	}
-
-	if envShell != "" {
-		return envShell, []string{"-c"}
-	}
-	return "sh", []string{"-c"}
+	ps := resolveWindowsPowerShell()
+	return ps, []string{"-NoProfile", "-NonInteractive", "-Command"}
 }
 
 func resolveWindowsPowerShell() string {
@@ -53,29 +33,12 @@ func resolveWindowsPowerShell() string {
 	return "powershell.exe"
 }
 
-func resolveShellFromPath(name string) string {
-	envPath := os.Getenv("PATH")
-	if envPath == "" {
-		return ""
-	}
-	for _, dir := range filepath.SplitList(envPath) {
-		candidate := filepath.Join(dir, name)
-		if isExecutable(candidate) {
-			return candidate
-		}
-	}
-	return ""
-}
-
 func isExecutable(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		return false
 	}
-	if runtime.GOOS == "windows" {
-		return true
-	}
-	return info.Mode()&0111 != 0
+	return true
 }
 
 // SanitizeBinaryOutput strips control characters (except tab, newline, CR)
@@ -99,23 +62,15 @@ func SanitizeBinaryOutput(s string) string {
 	return b.String()
 }
 
-// KillProcessTree kills a process and all its children.
+// KillProcessTree kills a process and all its children on Windows.
 func KillProcessTree(pid int) {
 	if pid <= 0 {
 		return
 	}
-	if runtime.GOOS == "windows" {
-		// taskkill /F /T /PID <pid>
-		cmd := exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", pid))
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-		_ = cmd.Run()
-		return
-	}
-	// Try killing the process group first (negative PID).
-	if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
-		// Fall back to killing just the process.
-		_ = syscall.Kill(pid, syscall.SIGKILL)
-	}
+	// taskkill /F /T /PID <pid>
+	cmd := exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", pid))
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	_ = cmd.Run()
 }
 
 // ResolveWorkdir validates a working directory path and returns the resolved
@@ -151,25 +106,14 @@ func ResolveWorkdir(workdir string) (string, []string) {
 // Dangerous environment variables that could alter execution flow or inject
 // code when running on the host (non-sandboxed).
 var dangerousEnvVars = map[string]struct{}{
-	"LD_PRELOAD":            {},
-	"LD_LIBRARY_PATH":       {},
-	"LD_AUDIT":              {},
-	"DYLD_INSERT_LIBRARIES": {},
-	"DYLD_LIBRARY_PATH":     {},
-	"NODE_OPTIONS":          {},
-	"NODE_PATH":             {},
-	"PYTHONPATH":            {},
-	"PYTHONHOME":            {},
-	"RUBYLIB":               {},
-	"PERL5LIB":              {},
-	"BASH_ENV":              {},
-	"ENV":                   {},
-	"GCONV_PATH":            {},
-	"IFS":                   {},
-	"SSLKEYLOGFILE":         {},
+	"NODE_OPTIONS":  {},
+	"NODE_PATH":     {},
+	"PYTHONPATH":    {},
+	"PYTHONHOME":    {},
+	"RUBYLIB":       {},
+	"PERL5LIB":      {},
+	"SSLKEYLOGFILE": {},
 }
-
-var dangerousEnvPrefixes = []string{"DYLD_", "LD_"}
 
 // ValidateHostEnv checks that no dangerous environment variables are set.
 // It also blocks custom PATH to prevent binary hijacking on the host.
@@ -180,13 +124,6 @@ func ValidateHostEnv(env map[string]string) error {
 		// Block known dangerous variables.
 		if _, ok := dangerousEnvVars[upper]; ok {
 			return fmt.Errorf("security violation: environment variable %q is forbidden during host execution", key)
-		}
-
-		// Block dangerous prefixes.
-		for _, prefix := range dangerousEnvPrefixes {
-			if strings.HasPrefix(upper, prefix) {
-				return fmt.Errorf("security violation: environment variable %q is forbidden during host execution", key)
-			}
 		}
 
 		// Block PATH modification on host.
