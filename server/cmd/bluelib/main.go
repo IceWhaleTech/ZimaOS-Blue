@@ -64,7 +64,7 @@ import (
 )
 
 var (
-	version   = "0.10.28"
+	version   = "0.10.29"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -785,6 +785,11 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	// as soon as critical routes (health, system/mode) are registered.
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	ln, err := net.Listen("tcp", addr)
+	if err != nil && cfg.Server.Port != 0 {
+		// Preferred port unavailable — fallback to OS-assigned random port
+		fmt.Fprintf(os.Stderr, "Port %d unavailable (%v), falling back to random port\n", cfg.Server.Port, err)
+		ln, err = net.Listen("tcp", ":0")
+	}
 	if err != nil {
 		return fmt.Errorf("failed to listen on %s: %w", addr, err)
 	}

@@ -1,6 +1,6 @@
 [package]
 name = "zimaos-blue"
-version = "0.10.28"
+version = "0.10.29"
 description = "ZimaOS Blue - AI Gateway Desktop Application"
 authors = ["ZimaOS Team"]
 edition = "2021"
