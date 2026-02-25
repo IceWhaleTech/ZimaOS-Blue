@@ -241,8 +241,8 @@ func TestDailyLog(t *testing.T) {
 func TestLocaleTemplates(t *testing.T) {
 	// Chinese locale
 	dir := t.TempDir()
+	t.Setenv("LANG", "zh")
 	mgr := NewManager(dir)
-	mgr.SetLocale("zh")
 	if err := mgr.EnsureWorkspace(); err != nil {
 		t.Fatalf("EnsureWorkspace (zh): %v", err)
 	}

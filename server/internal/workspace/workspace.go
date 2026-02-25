@@ -41,22 +41,15 @@ type BootstrapFile struct {
 
 // Manager manages workspace files on disk.
 type Manager struct {
-	dir    string
-	locale string // e.g. "en", "zh", "zh-CN"
-	mu     sync.RWMutex
+	dir string
+	mu  sync.RWMutex
 }
 
 // NewManager creates a workspace manager for the given directory.
-// Locale is auto-detected from the LANG environment variable.
 func NewManager(dir string) *Manager {
-	return &Manager{dir: dir, locale: detectLocale()}
+	return &Manager{dir: dir}
 }
 
-// SetLocale sets the locale for template generation.
-// Accepts BCP-47 tags like "en", "zh", "zh-CN". Falls back to "en" for unknown locales.
-func (m *Manager) SetLocale(locale string) {
-	m.locale = locale
-}
 
 // detectLocale detects the system locale.
 // Checks LANG/LC_ALL/LANGUAGE env vars first, then falls back to
@@ -122,7 +115,7 @@ func darwinLocale() string {
 // Falls back to Get-WinSystemLocale if Get-WinUserLanguageList is unavailable.
 func windowsLocale() string {
 	// Try user language list first (most accurate for UI language)
-	if out, err := exec.Command("powershell", "-NoProfile", "-Command",
+	if out, err := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
 		"(Get-WinUserLanguageList)[0].LanguageTag").Output(); err == nil {
 		v := strings.TrimSpace(string(out))
 		if len(v) >= 2 {
@@ -131,7 +124,7 @@ func windowsLocale() string {
 	}
 
 	// Fallback: system locale
-	if out, err := exec.Command("powershell", "-NoProfile", "-Command",
+	if out, err := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
 		"(Get-WinSystemLocale).Name").Output(); err == nil {
 		v := strings.TrimSpace(string(out))
 		v = strings.ReplaceAll(v, "_", "-")
@@ -181,7 +174,7 @@ func (m *Manager) EnsureWorkspace() error {
 		return fmt.Errorf("workspace: mkdir %s: %w", memDir, err)
 	}
 
-	ts := getTemplates(m.locale)
+	ts := getTemplates(detectLocale())
 
 	// Write templates for files that don't exist yet (best-effort — don't abort on individual failures)
 	for name, tmpl := range ts.templateMap() {
