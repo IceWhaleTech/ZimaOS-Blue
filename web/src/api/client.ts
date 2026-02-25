@@ -17,10 +17,12 @@ async function getServerUrl(): Promise<string> {
       const url = await invoke('get_server_url')
       return url
     } catch (e) {
-      console.warn('Failed to get server URL from Tauri, falling back to http://localhost', e)
+      console.warn('Failed to get server URL from Tauri, falling back to relative URLs', e)
     }
   }
-  return 'http://localhost'
+  // When invoke is unavailable (e.g. on_page_load stub without IPC),
+  // return empty string so fetches use relative URLs against the current origin.
+  return ''
 }
 
 // Cache the server URL and initialization promise
@@ -31,7 +33,7 @@ async function initializeBaseUrl(): Promise<void> {
   if (!isTauri) {
     return
   }
-  if (!cachedServerUrl) {
+  if (cachedServerUrl === null) {
     cachedServerUrl = await getServerUrl()
     api.defaults.baseURL = `${cachedServerUrl}/api/v1`
     console.log('API baseURL initialized to:', api.defaults.baseURL)
@@ -47,13 +49,13 @@ async function getBaseUrl(): Promise<string> {
     initPromise = initializeBaseUrl()
   }
   await initPromise
-  return cachedServerUrl || 'http://localhost'
+  return cachedServerUrl ?? ''
 }
 
 async function reacquirePreviewToken(): Promise<string | null> {
   try {
     const baseUrl = await getBaseUrl()
-    const url = isTauri ? `${baseUrl}/api/v1/preview/token` : '/api/v1/preview/token'
+    const url = `${baseUrl}/api/v1/preview/token`
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -140,7 +142,7 @@ export async function ensureFreshToken(): Promise<string | null> {
 
   try {
     const baseUrl = await getBaseUrl()
-    const url = isTauri ? `${baseUrl}/api/v1/auth/refresh` : '/api/v1/auth/refresh'
+    const url = `${baseUrl}/api/v1/auth/refresh`
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -324,7 +324,7 @@ function getScopeLabel(scope: string): string {
                     : 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400'
               "
             >
-              {{ $t(`users.role${authStore.user.role.charAt(0).toUpperCase()}${authStore.user.role.slice(1)}`) }}
+              {{ authStore.user?.role ? $t(`users.role${authStore.user.role.charAt(0).toUpperCase()}${authStore.user.role.slice(1)}`) : '' }}
             </span>
           </div>
 

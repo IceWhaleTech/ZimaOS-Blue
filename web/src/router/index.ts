@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { PagePermissions } from '@/api/users'
 import { useAuthStore } from '@/stores/auth'
+import { usePreviewStore } from '@/stores/preview'
 
 // Detect if running in Tauri (v2 injects __TAURI_INTERNALS__, v1 injects __TAURI__)
 const isTauri =
@@ -19,10 +20,12 @@ async function getServerUrl(): Promise<string> {
       const url = await invoke('get_server_url')
       return url
     } catch (e) {
-      console.warn('Failed to get server URL from Tauri, falling back to http://localhost', e)
+      console.warn('Failed to get server URL from Tauri, falling back to relative URLs', e)
     }
   }
-  return 'http://localhost'
+  // When invoke is unavailable (e.g. on_page_load stub without IPC),
+  // return empty string so fetches use relative URLs against the current origin.
+  return ''
 }
 
 // Cache the server URL
@@ -31,7 +34,7 @@ async function getBaseUrl(): Promise<string> {
   if (!isTauri) {
     return ''
   }
-  if (!cachedServerUrl) {
+  if (cachedServerUrl === null) {
     cachedServerUrl = await getServerUrl()
   }
   return cachedServerUrl
@@ -48,7 +51,7 @@ async function fetchSystemMode(): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 2000)
   const baseUrl = await getBaseUrl()
-  const url = isTauri ? `${baseUrl}/api/v1/system/mode` : '/api/v1/system/mode'
+  const url = `${baseUrl}/api/v1/system/mode`
   try {
     const response = await fetch(url, { signal: controller.signal })
     clearTimeout(timeoutId)
@@ -134,9 +137,8 @@ async function fetchPreviewToken(): Promise<void> {
   }
 
   try {
-    // Use absolute URL in Tauri, relative URL in browser
     const baseUrl = await getBaseUrl()
-    const url = isTauri ? `${baseUrl}/api/v1/preview/token` : '/api/v1/preview/token'
+    const url = `${baseUrl}/api/v1/preview/token`
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -413,8 +415,22 @@ router.beforeEach(async (to, from, next) => {
       return
     }
 
-    // In preview mode, allow access to most routes without authentication
+    // In preview mode, allow access to most routes without authentication.
+    // Clear any stale non-preview tokens so the UI correctly detects preview state.
     if (inPreviewMode) {
+      const staleToken = localStorage.getItem('token')
+      const hasPreviewToken = !!localStorage.getItem('preview_token')
+      if (staleToken && !hasPreviewToken) {
+        // Stale token from a previous normal-mode session — wipe it
+        localStorage.removeItem('token')
+        localStorage.removeItem('refresh_token')
+        // Also reset the reactive auth store so isAuthenticated becomes false
+        const authStore = useAuthStore()
+        authStore.clearAuth()
+      }
+      // Eagerly initialize preview store so sidebar/header can read isPreviewMode
+      const previewStore = usePreviewStore()
+      await previewStore.initialize()
       if (to.name === 'Login') {
         next({ name: 'Home' })
         return

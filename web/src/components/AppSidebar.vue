@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSystemStore } from '@/stores/system'
 import { useAuthStore } from '@/stores/auth'
+import { usePreviewStore } from '@/stores/preview'
 import { PagePermissions } from '@/api/users'
 import { storeToRefs } from 'pinia'
 
@@ -11,8 +12,10 @@ const { t } = useI18n()
 const route = useRoute()
 const systemStore = useSystemStore()
 const authStore = useAuthStore()
+const previewStore = usePreviewStore()
 const { health } = storeToRefs(systemStore)
 const { isAdmin } = storeToRefs(authStore)
+const { isPreviewMode } = storeToRefs(previewStore)
 
 // Mobile menu state
 const isOpen = ref(false)
@@ -144,6 +147,8 @@ const isActive = (itemPath: string) => {
 const navItems = computed(() => {
   return allNavItems
     .filter(item => {
+      // In preview mode, show all items (preview user has full access)
+      if (isPreviewMode.value) return true
       if (item.adminOnly && !isAdmin.value) {
         return false
       }

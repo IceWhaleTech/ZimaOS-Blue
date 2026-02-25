@@ -1153,6 +1153,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Data masking (hoisted so toggle state is accessible from proxy block)
 	dataMasker := proxy.NewDataMasker(nil)
+	// Load default rules (all disabled by default — users enable via API)
+	for _, rule := range proxy.GetDefaultRules() {
+		dataMasker.AddRule(rule)
+	}
 	var maskingOnToggle func() // wired later when toggleStore is available
 	{
 		maskingGroup := v1.Group("/proxy/masking")
@@ -1211,6 +1215,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
 		proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
 		proxyHandler.SetPromptCacheEnabled(true) // default ON for new installs
+		proxyHandler.SetDataMasker(dataMasker)
 
 		// Smart failover handler for metrics + intelligent error classification
 		smartFailover := proxy.NewSmartFailoverHandler(&routingConfig.Failover, proxyRouter)
@@ -1403,15 +1408,16 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		} else {
 			toggleStore = proxy.NewToggleStore(kv)
 			if saved, loadErr := toggleStore.Load(context.Background()); loadErr == nil && saved != nil {
-				// Migrate v0 → v1: old installs had routing/masking/prompt_cache off by default.
+				// Migrate v0 → v1: old installs had routing/prompt_cache off by default.
 				// These should be on unless the user explicitly disabled them, but v0 has no
 				// way to distinguish "never set" from "explicitly off". Flip them on once.
+				// Masking stays off by default — user must opt in.
 				if saved.Version < 1 {
 					saved.RoutingEnabled = true
-					saved.MaskingEnabled = true
+					saved.MaskingEnabled = false
 					saved.PromptCacheEnabled = true
 					saved.Version = 1
-					slog.Info("Migrated feature toggles to v1 (routing, masking, prompt_cache → enabled)")
+					slog.Info("Migrated feature toggles to v1 (routing, prompt_cache → enabled, masking → disabled)")
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 					toggleStore.Save(ctx, saved)
 					cancel()

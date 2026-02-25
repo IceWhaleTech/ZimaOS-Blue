@@ -263,6 +263,7 @@ type ProxyHandler struct {
 	tierResolver    *TierResolver      // Dynamic model tier classification
 
 	// Cold path — rarely accessed per-request
+	dataMasker      *DataMasker        // Data masking for request/response content
 	router          *Router            // Legacy router (fallback only)
 	apiKeyValidator func(key string) ([]string, error)
 	routingStats    *RoutingStats      // Routing cost savings tracker
@@ -359,6 +360,11 @@ func (ph *ProxyHandler) SetTierResolver(tr *TierResolver) {
 // SetAuthProber sets the auth strategy prober.
 func (ph *ProxyHandler) SetAuthProber(ap *AuthProber) {
 	ph.authProber = ap
+}
+
+// SetDataMasker sets the data masker for request/response content masking.
+func (ph *ProxyHandler) SetDataMasker(dm *DataMasker) {
+	ph.dataMasker = dm
 }
 
 // GetProviderMemory returns the provider memory instance for external access.
@@ -590,6 +596,11 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Read request body
 	bodyBytes, _ := readBody(r.Body)
 	r.Body.Close()
+
+	// Mask sensitive data in request body (if masking is enabled with rules)
+	if dm := ph.dataMasker; dm != nil && dm.IsEnabled() {
+		bodyBytes = []byte(dm.MaskRequest(string(bodyBytes)))
+	}
 
 	// Apply context pruner to reduce token usage (if enabled)
 	if mw := ph.ensurePruner(); mw != nil && mw.Enabled() {
@@ -1636,6 +1647,11 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 		if converted, convErr := sharedConverter.ConvertResponse(respBody, ProviderTypeAnthropic); convErr == nil {
 			respBody = converted
 		}
+	}
+
+	// Mask sensitive data in response body (non-streaming only)
+	if dm := ph.dataMasker; dm != nil && dm.IsEnabled() {
+		respBody = []byte(dm.MaskResponse(string(respBody)))
 	}
 
 	// Track routing cost savings (non-streaming only — streaming has no full body here)
