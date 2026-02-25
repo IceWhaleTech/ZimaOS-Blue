@@ -1552,6 +1552,7 @@ export default {
     },
     calling: 'Kaller verktøy',
     callingProgress: 'Kaller verktøy...',
+    sandboxProtected: 'Sandkassebeskyttet',
     callCount: 'Verktøykall ({count})',
   },
   thinking: {

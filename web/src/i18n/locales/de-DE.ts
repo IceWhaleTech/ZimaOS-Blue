@@ -3048,6 +3048,7 @@ export default {
     },
     calling: 'Werkzeuge aufrufen',
     callingProgress: 'Werkzeuge aufrufen...',
+    sandboxProtected: 'Sandbox-geschützt',
     callCount: 'Werkzeugaufrufe ({count})',
   },
   thinking: {

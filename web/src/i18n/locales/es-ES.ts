@@ -2876,6 +2876,7 @@ export default {
     },
     calling: 'Llamando herramientas',
     callingProgress: 'Llamando herramientas...',
+    sandboxProtected: 'Protección Sandbox',
     callCount: 'Llamadas a herramientas ({count})',
   },
   thinking: {

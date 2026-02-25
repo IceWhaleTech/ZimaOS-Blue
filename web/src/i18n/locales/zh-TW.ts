@@ -4614,6 +4614,7 @@ export default {
     },
     calling: '呼叫工具',
     callingProgress: '呼叫工具中...',
+    sandboxProtected: '沙箱保護中',
     callCount: '工具呼叫 ({count})',
   },
   thinking: {

@@ -41,6 +41,10 @@ extern "C" {
     /// Returns: A C string that must be freed with BlueServerFreeString
     fn BlueServerGetVersion() -> *mut c_char;
 
+    /// Get the actual port the server is listening on
+    /// Returns: port number (0 if not yet listening)
+    fn BlueServerGetPort() -> c_int;
+
     /// Free a string returned by the Go library
     fn BlueServerFreeString(s: *mut c_char);
 
@@ -79,6 +83,10 @@ extern "C" {
     /// Get the server version string
     /// Returns: A C string that must be freed with BlueServerFreeString
     fn BlueServerGetVersion() -> *mut c_char;
+
+    /// Get the actual port the server is listening on
+    /// Returns: port number (0 if not yet listening)
+    fn BlueServerGetPort() -> c_int;
 
     /// Free a string returned by the Go library
     fn BlueServerFreeString(s: *mut c_char);
@@ -212,6 +220,12 @@ pub fn stop_server() -> Result<(), String> {
 /// Check if the server is running
 pub fn is_running() -> bool {
     unsafe { BlueServerIsRunning() == 1 }
+}
+
+/// Get the actual port the server is listening on (0 if not yet listening)
+pub fn get_port() -> u16 {
+    let p = unsafe { BlueServerGetPort() };
+    if p > 0 { p as u16 } else { 0 }
 }
 
 /// Get the server version

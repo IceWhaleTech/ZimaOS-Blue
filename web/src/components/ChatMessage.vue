@@ -1101,6 +1101,11 @@ async function handleMobileDelete() {
                 </span>
                 <span class="tool-label">{{ t('tools.callingProgress') }}</span>
                 <span class="tool-timer tabular-nums">{{ toolElapsedSeconds }}s</span>
+                <span v-if="chatStore.toolSandboxAvailable" class="sandbox-badge" :title="t('tools.sandboxProtected')">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                  </svg>
+                </span>
               </div>
               <div v-if="chatStore.toolExecutingNames.length > 0" class="tool-names">
                 <span v-for="name in chatStore.toolExecutingNames" :key="name" class="tool-name-tag">{{ formatToolName(name) }}</span>
@@ -1564,6 +1569,18 @@ async function handleMobileDelete() {
   border-radius: 999px;
   background: rgba(99, 102, 241, 0.08);
   border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.sandbox-badge {
+  display: inline-flex;
+  align-items: center;
+  color: #16a34a;
+  margin-left: -0.125rem;
+}
+
+:root.dark .sandbox-badge,
+[data-theme="dark"] .sandbox-badge {
+  color: #4ade80;
 }
 
 :root.dark .tool-pill,

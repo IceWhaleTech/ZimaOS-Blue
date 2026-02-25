@@ -80,6 +80,7 @@ export interface StreamChunk {
   tool_executing?: boolean
   tool_calls?: number
   tool_names?: string[]
+  sandbox_available?: boolean
   // Context pruning info (sent on first content chunk)
   pruned?: boolean
   messages_pruned?: number

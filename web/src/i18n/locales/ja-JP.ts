@@ -4507,6 +4507,7 @@ export default {
     },
     calling: 'ツール呼び出し中',
     callingProgress: 'ツール呼び出し中...',
+    sandboxProtected: 'サンドボックス保護中',
     callCount: 'ツール呼び出し ({count})',
   },
   thinking: {

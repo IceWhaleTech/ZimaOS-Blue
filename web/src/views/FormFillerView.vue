@@ -32,7 +32,7 @@ async function loadTemplates() {
   error.value = null
   try {
     const response = await templateApi.list()
-    templates.value = response.data
+    templates.value = response.data ?? []
     // Select default template
     const defaultTemplate = templates.value.find(t => t.is_default)
     if (defaultTemplate) {

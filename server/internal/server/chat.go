@@ -2825,15 +2825,26 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		logger.Info().Int("round", toolRound).Int("tool_calls", len(streamToolCalls)).Msg("[chat] stream: executing tool calls")
 		// Send tool execution status to client (include tool names for UI display)
 		toolNames := make([]string, len(streamToolCalls))
+		hasExec := false
 		for i, tc := range streamToolCalls {
 			toolNames[i] = tc.Name
+			if tc.Name == "exec" {
+				hasExec = true
+			}
 		}
-		toolStatusData, _ := json.Marshal(map[string]interface{}{
+		toolStatus := map[string]interface{}{
 			"tool_executing": true,
 			"tool_calls":     len(streamToolCalls),
 			"tool_names":     toolNames,
 			"stream_id":      streamID,
-		})
+		}
+		// Signal sandbox availability so the UI can show a protection badge.
+		if hasExec {
+			if et := tools.GetExecTool(h.toolRegistry); et != nil && et.HasSandbox() {
+				toolStatus["sandbox_available"] = true
+			}
+		}
+		toolStatusData, _ := json.Marshal(toolStatus)
 		c.Response().Write([]byte("data: " + string(toolStatusData) + "\n\n"))
 		flusher.Flush()
 

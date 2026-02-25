@@ -1236,6 +1236,7 @@ export default {
     },
     calling: 'Apelare instrumente',
     callingProgress: 'Apelare instrumente...',
+    sandboxProtected: 'Protecție Sandbox',
     callCount: 'Apeluri instrumente ({count})',
   },
   thinking: {

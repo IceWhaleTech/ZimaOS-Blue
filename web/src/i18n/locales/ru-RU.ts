@@ -2495,6 +2495,7 @@ export default {
     },
     calling: 'Вызов инструментов',
     callingProgress: 'Вызов инструментов...',
+    sandboxProtected: 'Защита песочницы',
     callCount: 'Вызовы инструментов ({count})',
   },
   thinking: {

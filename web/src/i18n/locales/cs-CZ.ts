@@ -1823,6 +1823,7 @@ export default {
     },
     calling: 'Volání nástrojů',
     callingProgress: 'Volání nástrojů...',
+    sandboxProtected: 'Ochrana sandboxu',
     callCount: 'Volání nástrojů ({count})',
   },
   thinking: {

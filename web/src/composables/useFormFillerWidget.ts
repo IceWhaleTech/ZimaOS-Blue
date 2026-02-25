@@ -107,7 +107,7 @@ export function useFormFillerWidget() {
         templateApi.list(),
       ])
       globalState.config = configRes.data
-      globalState.templates = templatesRes.data
+      globalState.templates = templatesRes.data ?? []
 
       // Select default template
       const defaultTemplate = globalState.templates.find(t => t.is_default)

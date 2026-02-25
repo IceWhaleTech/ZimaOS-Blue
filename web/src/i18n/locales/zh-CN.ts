@@ -4631,6 +4631,7 @@ export default {
     },
     calling: '调用工具',
     callingProgress: '调用工具中...',
+    sandboxProtected: '沙箱保护中',
     callCount: '调用工具 ({count})',
   },
   thinking: {

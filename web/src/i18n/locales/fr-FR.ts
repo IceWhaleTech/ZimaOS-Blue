@@ -2910,6 +2910,7 @@ export default {
     },
     calling: 'Appel des outils',
     callingProgress: 'Appel des outils...',
+    sandboxProtected: 'Protection Sandbox',
     callCount: 'Appels d\'outils ({count})',
   },
   thinking: {

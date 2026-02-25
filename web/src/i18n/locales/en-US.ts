@@ -4646,6 +4646,7 @@ export default {
     },
     calling: 'Calling Tools',
     callingProgress: 'Calling Tools...',
+    sandboxProtected: 'Sandbox Protected',
     callCount: 'Tool Calls ({count})',
   },
   thinking: {

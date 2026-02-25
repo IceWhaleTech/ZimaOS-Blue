@@ -72,6 +72,10 @@ func (h *Handler) GetMyPermissions(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get permissions")
 	}
 
+	if perms == nil {
+		perms = []string{}
+	}
+
 	return c.JSON(http.StatusOK, &PermissionsResponse{
 		UserID:      userID,
 		Role:        claims.Role,

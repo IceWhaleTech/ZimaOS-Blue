@@ -292,6 +292,11 @@ func BlueServerGetVersion() *C.char {
 	return C.CString(version)
 }
 
+//export BlueServerGetPort
+func BlueServerGetPort() C.int {
+	return C.int(server.GetActualPort())
+}
+
 //export BlueServerFreeString
 func BlueServerFreeString(s *C.char) {
 	C.free(unsafe.Pointer(s))

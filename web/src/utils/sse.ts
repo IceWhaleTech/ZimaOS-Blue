@@ -8,7 +8,7 @@ export interface SSEClientOptions {
   onBlocked?: (message: string, threatLevel: string) => void
   onTrialExhausted?: (message: string) => void
   onContextTrimmed?: (info: { type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number }) => void
-  onToolExecuting?: (toolCount: number, toolNames?: string[]) => void
+  onToolExecuting?: (toolCount: number, toolNames?: string[], sandboxAvailable?: boolean) => void
   /** Called when the stream was interrupted mid-content by a network error.
    *  The store should auto-recover (fetch persisted content + continue). */
   onNetworkInterrupt?: () => void
@@ -213,7 +213,7 @@ export class SSEClient {
                 // Check for tool execution event
                 if (chunk.tool_executing) {
                   console.info('[SSE] tool_executing event, receivedData so far:', receivedData)
-                  options.onToolExecuting?.(chunk.tool_calls || 0, chunk.tool_names)
+                  options.onToolExecuting?.(chunk.tool_calls || 0, chunk.tool_names, chunk.sandbox_available)
                   continue
                 }
                 // Mark that we received actual content

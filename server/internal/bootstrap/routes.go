@@ -220,6 +220,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	_ = os.MkdirAll(mediaDir, 0750)
 	v1.Static("/media", mediaDir)
 
+	// Static routes — registered before OnEarlyReady so the frontend is
+	// servable as soon as the HTTP listener starts. Echo matches specific
+	// routes (/api/v1/*) before the wildcard (/*), so order is safe.
+	web.RegisterStaticRoutes(e)
+
 	// Signal that critical routes (health, system/mode) are ready.
 	// The caller can start the HTTP listener now while heavy subsystems init below.
 	if deps.OnEarlyReady != nil {
@@ -830,6 +835,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			sbx = &sandboxExecAdapter{mgr: deps.SandboxManager}
 		}
 		tools.RegisterExecTools(s.ToolRegistry, execConfig, execApprovals, deps.SSEBroker, dirStore, sbx)
+
+		// Wire audit store for exec commands (reuses blue.db — write volume is low: 1 row per exec).
+		if deps.DB != nil {
+			if auditStore, err := tools.NewExecAuditStore(deps.DB); err != nil {
+				slog.Warn("failed to create exec audit store", "error", err)
+			} else if et := tools.GetExecTool(s.ToolRegistry); et != nil {
+				et.SetAuditStore(auditStore)
+			}
+		}
 
 		// Exec approval REST endpoint (kept for backwards compatibility;
 		// the unified /approval/resolve endpoint also handles exec approvals).
@@ -1779,9 +1793,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		approvalHandler.RegisterRoutes(apiProtected.Group("/v1"))
 	}
-
-	// Static routes (must be last)
-	web.RegisterStaticRoutes(e)
 
 	logger.Info("All routes registered")
 	return apiProtected

@@ -1493,6 +1493,7 @@ export default {
     },
     calling: 'Ag glaoch ar uirlisí',
     callingProgress: 'Ag glaoch ar uirlisí...',
+    sandboxProtected: 'Cosanta Sandbox',
     callCount: 'Glaonna uirlisí ({count})',
   },
   thinking: {

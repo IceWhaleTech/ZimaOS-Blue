@@ -2663,6 +2663,7 @@ export default {
     },
     calling: 'Chiamata strumenti',
     callingProgress: 'Chiamata strumenti...',
+    sandboxProtected: 'Protezione Sandbox',
     callCount: 'Chiamate strumenti ({count})',
   },
   thinking: {

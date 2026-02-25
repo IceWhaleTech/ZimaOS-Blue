@@ -93,7 +93,7 @@ func NewUIReviewer() *UIReviewer {
 			ID:          "ui_reviewer",
 			Name:        "UI Reviewer",
 			Version:     "1.0.0",
-			Description: "Evaluate UI/UX quality of a website or screenshot. Use this when the user asks to review, evaluate, rate, or critique the UI/visual design of a URL or image. Automatically navigates to the URL, captures screenshots, checks accessibility, and scores visual design, layout, typography, and professionalism.",
+			Description: "Score and audit UI/UX quality of a URL or screenshot. Use only when asked to evaluate/rate/review visual design or accessibility. Not for browsing or searching.",
 			Category:    "system",
 			Icon:        "eye",
 			Tags:        []string{"ui", "review", "accessibility", "visual", "quality"},

@@ -1682,6 +1682,7 @@ export default {
     },
     calling: 'Kalder værktøjer',
     callingProgress: 'Kalder værktøjer...',
+    sandboxProtected: 'Sandbox-beskyttet',
     callCount: 'Værktøjskald ({count})',
   },
   thinking: {

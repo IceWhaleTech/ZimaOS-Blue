@@ -1930,6 +1930,7 @@ export default {
     },
     calling: 'Cridant eines',
     callingProgress: 'Cridant eines...',
+    sandboxProtected: 'Protecció Sandbox',
     callCount: 'Cridades a eines ({count})',
   },
   thinking: {

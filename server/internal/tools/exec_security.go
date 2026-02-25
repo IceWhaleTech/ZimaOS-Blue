@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -510,4 +511,89 @@ func matchGlob(pattern, target string) bool {
 		return false
 	}
 	return matched
+}
+
+// dangerousPattern pairs a compiled regex with a human-readable reason.
+type dangerousPattern struct {
+	re     *regexp.Regexp
+	reason string
+}
+
+// dangerousCommandPatterns is the list of patterns that are always blocked,
+// regardless of security mode. Patterns are checked against the raw command
+// string (case-insensitive).
+var dangerousCommandPatterns = func() []dangerousPattern {
+	raw := []struct {
+		pattern string
+		reason  string
+	}{
+		// Destructive filesystem operations on root / system paths
+		{`(?:^|\s|;|&&|\|\|)rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?(-[a-zA-Z]*r[a-zA-Z]*\s+)?/(?:\s|$)`, "destructive: rm on root directory"},
+		{`(?:^|\s|;|&&|\|\|)rm\s+.*--no-preserve-root`, "destructive: rm --no-preserve-root"},
+		{`(?:^|\s)mkfs[\s.]`, "destructive: mkfs (format filesystem)"},
+		{`(?:^|\s)dd\s+.*\bof=/dev/`, "destructive: dd writing to device"},
+		{`(?:^|\s)wipefs\s`, "destructive: wipefs (wipe filesystem signatures)"},
+		{`(?:^|\s)fdisk\s`, "destructive: fdisk (partition table modification)"},
+		{`(?:^|\s)parted\s`, "destructive: parted (partition modification)"},
+
+		// macOS disk operations
+		{`(?:^|\s)diskutil\s+(eraseDisk|partitionDisk|secureErase)`, "destructive: diskutil erase/partition"},
+
+		// Windows format
+		{`(?:^|\s)format\s+[a-zA-Z]:`, "destructive: format drive"},
+
+		// System state modification
+		{`(?:^|\s)shutdown\s`, "system modification: shutdown"},
+		{`(?:^|\s)reboot\b`, "system modification: reboot"},
+		{`(?:^|\s)halt\b`, "system modification: halt"},
+		{`(?:^|\s)init\s+[06]\b`, "system modification: init runlevel change"},
+		{`(?:^|\s)systemctl\s+(poweroff|reboot|halt)`, "system modification: systemctl power control"},
+
+		// User/permission modification
+		{`(?:^|\s)useradd\s`, "user modification: useradd"},
+		{`(?:^|\s)userdel\s`, "user modification: userdel"},
+		{`(?:^|\s)usermod\s`, "user modification: usermod"},
+		{`(?:^|\s)visudo\b`, "user modification: visudo"},
+		{`(?:^|\s)passwd\s`, "user modification: passwd"},
+
+		// Recursive permission on system dirs
+		{`(?:^|\s)chmod\s+(-[a-zA-Z]*R[a-zA-Z]*\s+)?\d+\s+/(?:$|\s)`, "destructive: chmod on root"},
+		{`(?:^|\s)chown\s+(-[a-zA-Z]*R[a-zA-Z]*\s+)?\S+\s+/(?:$|\s)`, "destructive: chown on root"},
+
+		// Pipe-to-shell (network exfiltration / RCE)
+		{`\|\s*(ba)?sh\b`, "security: pipe-to-shell pattern"},
+		{`\|\s*zsh\b`, "security: pipe-to-shell pattern"},
+		{`\|\s*python[23]?\b`, "security: pipe-to-interpreter pattern"},
+		{`\|\s*perl\b`, "security: pipe-to-interpreter pattern"},
+		{`\|\s*ruby\b`, "security: pipe-to-interpreter pattern"},
+		{`\|\s*node\b`, "security: pipe-to-interpreter pattern"},
+
+		// Windows registry modification on system hives
+		{`(?i)(?:^|\s)reg\s+(delete|add)\s+.*\\\\HKLM\\\\`, "registry modification: HKLM"},
+		{`(?i)(?:^|\s)reg\s+(delete|add)\s+.*\\\\HKEY_LOCAL_MACHINE\\\\`, "registry modification: HKEY_LOCAL_MACHINE"},
+
+		// Fork bomb patterns
+		{`:\(\)\s*\{\s*:\|:&\s*\}`, "destructive: fork bomb"},
+	}
+
+	patterns := make([]dangerousPattern, 0, len(raw))
+	for _, r := range raw {
+		patterns = append(patterns, dangerousPattern{
+			re:     regexp.MustCompile("(?i)" + r.pattern),
+			reason: r.reason,
+		})
+	}
+	return patterns
+}()
+
+// ValidateCommandSafety checks the raw command string against the dangerous
+// command blocklist. Returns an error if the command matches any pattern.
+// This check runs for ALL security modes (including "full").
+func ValidateCommandSafety(command string) error {
+	for _, dp := range dangerousCommandPatterns {
+		if dp.re.MatchString(command) {
+			return fmt.Errorf("exec blocked: %s", dp.reason)
+		}
+	}
+	return nil
 }

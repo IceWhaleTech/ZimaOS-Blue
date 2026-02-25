@@ -156,7 +156,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       const response = await permissionsApi.getMyPermissions()
-      permissions.value = response.data.permissions
+      permissions.value = response.data.permissions ?? []
       permissionsLoaded.value = true
     } catch {
       // Default to empty permissions on error, but mark as loaded

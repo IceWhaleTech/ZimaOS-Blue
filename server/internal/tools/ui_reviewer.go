@@ -177,7 +177,7 @@ func (t *UIReviewerTool) SetMediaDir(dir string) {
 func (t *UIReviewerTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "ui_reviewer",
-		Description: "Automated UI quality review. Captures screenshots, runs accessibility checks, and uses VLM for visual review. Returns structured scoring report.",
+		Description: "Score and audit UI/UX quality of a URL or screenshot. Use only when asked to evaluate/rate/review visual design or accessibility. Not for browsing or searching.",
 		Icon:        "eye",
 		Parameters: map[string]interface{}{
 			"type": "object",

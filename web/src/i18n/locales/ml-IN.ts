@@ -1242,6 +1242,7 @@ export default {
     },
     calling: 'ടൂളുകൾ വിളിക്കുന്നു',
     callingProgress: 'ടൂളുകൾ വിളിക്കുന്നു...',
+    sandboxProtected: 'സാൻഡ്ബോക്സ് സംരക്ഷിതം',
     callCount: 'ടൂൾ കോളുകൾ ({count})',
   },
   thinking: {

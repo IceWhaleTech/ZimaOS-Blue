@@ -1733,6 +1733,7 @@ export default {
     },
     calling: 'Hulpmiddelen aanroepen',
     callingProgress: 'Hulpmiddelen aanroepen...',
+    sandboxProtected: 'Sandbox-beschermd',
     callCount: 'Hulpmiddeloproepen ({count})',
   },
   thinking: {

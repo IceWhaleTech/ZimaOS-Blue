@@ -1452,6 +1452,7 @@ export default {
     },
     calling: 'Pozivanje alata',
     callingProgress: 'Pozivanje alata...',
+    sandboxProtected: 'Zaštita sandboxa',
     callCount: 'Pozivi alata ({count})',
   },
   thinking: {

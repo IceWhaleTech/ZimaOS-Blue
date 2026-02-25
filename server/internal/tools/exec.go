@@ -31,6 +31,9 @@ type ExecConfig struct {
 	DataDir        string        // for allowlist JSON persistence
 	AllowPTY       bool          // whether PTY mode is available
 	AllowedDirs    []string      // directories the exec tool may operate in; empty = unrestricted
+	Shell          string        // override shell binary (empty = auto-detect via GetShellConfig)
+	ShellArgs      []string      // override shell args (empty = auto-detect)
+	Policy         *ExecPolicy   // runtime policy (nil = default)
 }
 
 // SandboxExecutor is the interface for sandbox execution, decoupled from the
@@ -57,6 +60,7 @@ func DefaultExecConfig() ExecConfig {
 // ExecTool implements the Tool interface for shell command execution.
 type ExecTool struct {
 	config    ExecConfig
+	policy    ExecPolicy
 	sessions  *SessionRegistry
 	approvals *ApprovalManager      // may be nil
 	broker    *sse.Broker           // may be nil; used for lifecycle events
@@ -64,6 +68,8 @@ type ExecTool struct {
 	dirStore  *DirAllowlistStore    // may be nil; persistent directory allowlist
 	sandbox   SandboxExecutor       // may be nil; when set, sandbox host mode is available
 	toolNames map[string]struct{}   // known tool names; exec rejects commands that match
+	retries   *RetryTracker         // prevents same-command retry loops
+	audit     *ExecAuditStore       // may be nil; persistent audit log
 }
 
 // NewExecTool creates a new exec tool.
@@ -77,14 +83,20 @@ func NewExecTool(config ExecConfig, sessions *SessionRegistry, approvals *Approv
 	if config.MaxOutput <= 0 {
 		config.MaxOutput = 200_000
 	}
+	policy := DefaultExecPolicy()
+	if config.Policy != nil {
+		policy = *config.Policy
+	}
 	return &ExecTool{
-		config:   config,
-		sessions: sessions,
+		config:    config,
+		policy:    policy,
+		sessions:  sessions,
 		approvals: approvals,
-		broker:   broker,
-		safeBins: BuildSafeBinsSet(config.SafeBins),
-		dirStore: dirStore,
-		sandbox:  firstOrNilIface(sbx),
+		broker:    broker,
+		safeBins:  BuildSafeBinsSet(config.SafeBins),
+		dirStore:  dirStore,
+		sandbox:   firstOrNilIface(sbx),
+		retries:   NewRetryTracker(policy.MaxRetries, policy.RetryWindow),
 	}
 }
 
@@ -109,44 +121,84 @@ func (t *ExecTool) SetToolNames(names []string) {
 	t.toolNames = m
 }
 
+// getShellConfig returns the shell and args, preferring config overrides.
+func (t *ExecTool) getShellConfig() (string, []string) {
+	if t.config.Shell != "" {
+		return t.config.Shell, t.config.ShellArgs
+	}
+	return GetShellConfig()
+}
+
+// SetAuditStore sets the persistent audit log store. Call after construction
+// when the DB is available (deferred wiring pattern).
+func (t *ExecTool) SetAuditStore(store *ExecAuditStore) {
+	t.audit = store
+}
+
+// HasSandbox returns true if sandbox execution is available.
+func (t *ExecTool) HasSandbox() bool {
+	return t.sandbox != nil
+}
+
+// Policy returns the current exec policy (read-only).
+func (t *ExecTool) Policy() ExecPolicy {
+	return t.policy
+}
+
 // Definition returns the tool definition for the LLM.
 func (t *ExecTool) Definition() ToolDefinition {
+	desc := "Execute shell commands on the host. Returns stdout, stderr, exit code, and session ID. Use the 'process' tool to manage background sessions."
+	if t.sandbox != nil {
+		desc += " Sandbox mode is available for isolated execution — set host to 'sandbox' for filesystem-level isolation."
+	}
+
+	props := map[string]interface{}{
+		"command": map[string]interface{}{
+			"type":        "string",
+			"description": "Shell command to execute",
+		},
+		"workdir": map[string]interface{}{
+			"type":        "string",
+			"description": "Working directory (defaults to server cwd)",
+		},
+		"lang": map[string]interface{}{
+			"type":        "string",
+			"description": "Locale for the command execution environment (e.g. en-US, zh-CN, ja-JP). Sets LANG and LC_ALL for the process.",
+		},
+		"env": map[string]interface{}{
+			"type":        "object",
+			"description": "Additional environment variables",
+			"additionalProperties": map[string]interface{}{
+				"type": "string",
+			},
+		},
+		"timeout": map[string]interface{}{
+			"type":        "number",
+			"description": "Timeout in seconds (default 30, max 1800)",
+		},
+		"pty": map[string]interface{}{
+			"type":        "boolean",
+			"description": "Run in a pseudo-terminal (for interactive commands)",
+		},
+	}
+
+	// Only expose host parameter when sandbox is available.
+	if t.sandbox != nil {
+		props["host"] = map[string]interface{}{
+			"type":        "string",
+			"enum":        []string{"local", "sandbox"},
+			"description": "Execution environment. 'local' runs directly on host (default). 'sandbox' runs in an isolated environment with filesystem restrictions.",
+		}
+	}
+
 	return ToolDefinition{
 		Name:        "exec",
-		Description: "Execute shell commands on the host. Returns stdout, stderr, exit code, and session ID. Use the 'process' tool to manage background sessions.",
+		Description: desc,
 		Icon:        "terminal",
 		Parameters: map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"command": map[string]interface{}{
-					"type":        "string",
-					"description": "Shell command to execute",
-				},
-				"workdir": map[string]interface{}{
-					"type":        "string",
-					"description": "Working directory (defaults to server cwd)",
-				},
-				"lang": map[string]interface{}{
-					"type":        "string",
-					"description": "Locale for the command execution environment (e.g. en-US, zh-CN, ja-JP). Sets LANG and LC_ALL for the process.",
-				},
-				"env": map[string]interface{}{
-					"type":        "object",
-					"description": "Additional environment variables",
-					"additionalProperties": map[string]interface{}{
-						"type": "string",
-					},
-				},
-				"timeout": map[string]interface{}{
-					"type":        "number",
-					"description": "Timeout in seconds (default 30, max 1800)",
-				},
-				"pty": map[string]interface{}{
-					"type":        "boolean",
-					"description": "Run in a pseudo-terminal (for interactive commands)",
-				},
-			},
-			"required": []string{"command"},
+			"type":       "object",
+			"properties": props,
+			"required":   []string{"command"},
 		},
 	}
 }
@@ -161,6 +213,8 @@ type execResult struct {
 	DurationMs int64    `json:"duration_ms"`
 	Truncated  bool     `json:"truncated,omitempty"`
 	Warnings   []string `json:"warnings,omitempty"`
+	Host       string   `json:"host,omitempty"`       // "local" or "sandbox"
+	RiskLevel  string   `json:"risk_level,omitempty"` // risk assessment level
 }
 
 // Execute runs the shell command.
@@ -193,8 +247,37 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	timeoutSec := parseFloatArg(args["timeout"], t.config.DefaultTimeout.Seconds())
 	usePTY, _ := args["pty"].(bool)
 	hostArg, _ := args["host"].(string)
+	hostExplicit := hostArg != "" // user explicitly chose a host
 	if hostArg == "" {
 		hostArg = t.config.Host
+	}
+
+	// Dangerous command blocklist — always enforced regardless of security mode.
+	if err := ValidateCommandSafety(command); err != nil {
+		t.recordAudit(ctx, command, workdirArg, 100, RiskLevelCritical, "blocked", nil, 0, 0, 0, err.Error())
+		return nil, err
+	}
+
+	// Command length check.
+	if t.policy.MaxCommandLen > 0 && len(command) > t.policy.MaxCommandLen {
+		err := fmt.Errorf("exec blocked: command length %d exceeds maximum %d", len(command), t.policy.MaxCommandLen)
+		return nil, err
+	}
+
+	// Risk scoring — evaluate command risk and enforce policy threshold.
+	risk := AnalyzeRisk(command)
+	if risk.Total >= t.policy.MaxRiskThreshold {
+		err := fmt.Errorf("exec blocked: risk score %d (%s) exceeds policy threshold %d. Reasons: %s",
+			risk.Total, risk.Level, t.policy.MaxRiskThreshold, strings.Join(risk.Reasons, ", "))
+		t.recordAudit(ctx, command, workdirArg, risk.Total, risk.Level, "blocked", nil, 0, 0, 0, err.Error())
+		return nil, err
+	}
+
+	// Retry control — prevent same-command retry loops.
+	normalizedCmd := NormalizeCommand(command)
+	if err := t.retries.Check(normalizedCmd); err != nil {
+		t.recordAudit(ctx, command, workdirArg, risk.Total, risk.Level, "blocked", nil, 0, 0, 0, err.Error())
+		return nil, err
 	}
 
 	// Resolve timeout.
@@ -252,6 +335,13 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	// Build environment.
 	env := buildExecEnv(envArg)
+
+	// Auto-upgrade to sandbox for medium+ risk commands when sandbox is available
+	// and the caller didn't explicitly choose a host.
+	if !hostExplicit && t.sandbox != nil && risk.Total >= 30 {
+		warnings = append(warnings, fmt.Sprintf("auto-sandboxed: risk level %s (score %d)", risk.Level, risk.Total))
+		hostArg = "sandbox"
+	}
 
 	// Sandbox mode: delegate to sandbox.Manager for filesystem-level isolation.
 	if hostArg == "sandbox" {
@@ -325,7 +415,22 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		DurationMs: durationMs,
 		Truncated:  truncated,
 		Warnings:   warnings,
+		Host:       "local",
+		RiskLevel:  string(risk.Level),
 	}
+
+	// Track retries — record failure so repeated identical commands get blocked.
+	failed := status == ProcessFailed
+	errMsg := ""
+	if execErr != nil {
+		errMsg = execErr.Error()
+	} else if failed && len(stderr) > 0 {
+		errMsg = truncateStr(stderr, 200)
+	}
+	t.retries.Record(normalizedCmd, failed, errMsg)
+
+	// Audit log.
+	t.recordAudit(ctx, command, workdir, risk.Total, risk.Level, "allowed", exitCode, durationMs, len(stdout), len(stderr), errMsg)
 
 	data, _ := json.Marshal(result)
 	return string(data), execErr
@@ -401,7 +506,7 @@ func (t *ExecTool) checkSecurity(ctx context.Context, command, workdir string, w
 }
 
 func (t *ExecTool) runDirect(ctx context.Context, session *ProcessSession, command, workdir string, env []string, timeout time.Duration) (*int, error) {
-	shell, shellArgs := GetShellConfig()
+	shell, shellArgs := t.getShellConfig()
 
 	// Use plain exec.Command (not CommandContext) so we control the kill path.
 	// exec.CommandContext sends SIGKILL to the process only (not the group),
@@ -474,7 +579,7 @@ func (t *ExecTool) runDirect(ctx context.Context, session *ProcessSession, comma
 }
 
 func (t *ExecTool) runWithPTY(ctx context.Context, session *ProcessSession, command, workdir string, env []string, timeout time.Duration) (*int, error) {
-	shell, shellArgs := GetShellConfig()
+	shell, shellArgs := t.getShellConfig()
 
 	cmd := exec.Command(shell, append(shellArgs, command)...)
 	cmd.Dir = workdir
@@ -586,6 +691,7 @@ func (t *ExecTool) runSandbox(ctx context.Context, command, workdir string, envM
 		Stderr:     SanitizeBinaryOutput(stderr),
 		DurationMs: durationMs,
 		Warnings:   warnings,
+		Host:       "sandbox",
 	}
 	data, _ := json.Marshal(result)
 	return string(data), nil
@@ -600,6 +706,29 @@ func (t *ExecTool) publishEvent(userID, eventType string, data interface{}) {
 		userID = "default"
 	}
 	t.broker.Publish(userID, eventType, data)
+}
+
+// recordAudit writes an audit entry if the audit store is configured.
+func (t *ExecTool) recordAudit(ctx context.Context, command, workdir string, riskScore int, riskLevel RiskLevel, decision string, exitCode *int, durationMs int64, stdoutLen, stderrLen int, errMsg string) {
+	if t.audit == nil {
+		return
+	}
+	_ = t.audit.Record(ExecAuditEntry{
+		ID:         NewSessionID(),
+		Timestamp:  time.Now(),
+		UserID:     GetUserID(ctx),
+		Command:    command,
+		Workdir:    workdir,
+		RiskScore:  riskScore,
+		RiskLevel:  riskLevel,
+		PolicyMode: string(t.policy.Mode),
+		Decision:   decision,
+		ExitCode:   exitCode,
+		Duration:   time.Duration(durationMs) * time.Millisecond,
+		StdoutLen:  stdoutLen,
+		StderrLen:  stderrLen,
+		Error:      errMsg,
+	})
 }
 
 // validateWorkdir checks that the resolved workdir is within AllowedDirs or

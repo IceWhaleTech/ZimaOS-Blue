@@ -1577,6 +1577,7 @@ export default {
     },
     calling: 'Eszközök hívása',
     callingProgress: 'Eszközök hívása...',
+    sandboxProtected: 'Sandbox védelem',
     callCount: 'Eszközhívások ({count})',
   },
   thinking: {

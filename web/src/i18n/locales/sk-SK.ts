@@ -1321,6 +1321,7 @@ export default {
     },
     calling: 'Volanie nástrojov',
     callingProgress: 'Volanie nástrojov...',
+    sandboxProtected: 'Ochrana sandboxu',
     callCount: 'Volania nástrojov ({count})',
   },
   thinking: {

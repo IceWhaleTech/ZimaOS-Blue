@@ -103,6 +103,8 @@ func localDistCandidates() []string {
 			filepath.Join(wd, ".dist"),
 			filepath.Join(wd, "internal", "web", "dist"),
 			filepath.Join(wd, "server", "internal", "web", "dist"),
+			filepath.Join(wd, "web", "dist"),    // Project root: web/dist (Vite output)
+			filepath.Join(wd, "..", "web", "dist"), // Running from server/: ../web/dist
 		)
 	}
 	// Relative to executable

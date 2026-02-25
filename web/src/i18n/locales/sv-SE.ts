@@ -1784,6 +1784,7 @@ export default {
     },
     calling: 'Anropar verktyg',
     callingProgress: 'Anropar verktyg...',
+    sandboxProtected: 'Sandlådeskyddad',
     callCount: 'Verktygsanrop ({count})',
   },
   thinking: {

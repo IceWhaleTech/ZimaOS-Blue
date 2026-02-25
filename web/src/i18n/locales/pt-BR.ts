@@ -2556,6 +2556,7 @@ export default {
     },
     calling: 'Chamando ferramentas',
     callingProgress: 'Chamando ferramentas...',
+    sandboxProtected: 'Proteção Sandbox',
     callCount: 'Chamadas de ferramentas ({count})',
   },
   thinking: {

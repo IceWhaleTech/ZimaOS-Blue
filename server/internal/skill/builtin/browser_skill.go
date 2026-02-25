@@ -78,7 +78,7 @@ func NewBrowser() *Browser {
 			ID:          "browser",
 			Name:        "Browser",
 			Version:     "1.0.0",
-			Description: "Browse the web with a headless browser. Navigate to URLs, read page content via accessibility tree DSL, interact with elements using @ref references, take screenshots. Token-efficient: uses accessibility tree instead of raw HTML.",
+			Description: "Open a URL, read page content (accessibility tree), interact with elements (@ref), take screenshots. For keyword search use web_search; for UI quality scoring use ui_reviewer.",
 			Category:    "system",
 			Icon:        "browser",
 			Tags:        []string{"browser", "web", "scrape", "automate", "navigate", "accessibility"},

@@ -90,7 +90,7 @@ func (t *BrowserTool) Backend() BrowserBackend {
 func (t *BrowserTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "browser",
-		Description: "Browse the web with a headless browser. Navigate to URLs, read page content via accessibility tree DSL, interact with elements using @ref references, take screenshots. Token-efficient: uses accessibility tree instead of raw HTML.",
+		Description: "Open a URL, read page content (accessibility tree), interact with elements (@ref), take screenshots. For keyword search use web_search; for UI quality scoring use ui_reviewer.",
 		Icon:        "browser",
 		Parameters: map[string]interface{}{
 			"type": "object",

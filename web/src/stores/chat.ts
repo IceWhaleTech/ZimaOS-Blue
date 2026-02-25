@@ -32,7 +32,8 @@ export const useChatStore = defineStore('chat', () => {
   const toolExecuting = ref(false) // Tool execution in progress
   const toolExecutingStartTime = ref<number>(0) // Timestamp when tool execution started
   const toolExecutingNames = ref<string[]>([]) // Names of tools being executed
-  watch(toolExecuting, (v) => { if (!v) toolExecutingNames.value = [] })
+  const toolSandboxAvailable = ref(false) // Sandbox protection available for current exec
+  watch(toolExecuting, (v) => { if (!v) { toolExecutingNames.value = []; toolSandboxAvailable.value = false } })
   const contextTrimInfo = ref<{ type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number } | null>(null)
 
   // Pre-TTFT cancel state: when user starts typing before first token arrives
@@ -378,10 +379,11 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
-        onToolExecuting: (_toolCount, toolNames) => {
+        onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
+          toolSandboxAvailable.value = !!sandboxAvailable
           // Update the streaming message to show tool execution indicator
           const lastIndex = messages.value.length - 1
           if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
@@ -616,10 +618,11 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
-        onToolExecuting: (_toolCount, toolNames) => {
+        onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
+          toolSandboxAvailable.value = !!sandboxAvailable
         },
         onError: (err) => {
           toolExecuting.value = false
@@ -707,10 +710,11 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
-        onToolExecuting: (_toolCount, toolNames) => {
+        onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
+          toolSandboxAvailable.value = !!sandboxAvailable
         },
         onError: (err) => {
           error.value = err.message
@@ -834,10 +838,11 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
-        onToolExecuting: (_toolCount, toolNames) => {
+        onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
+          toolSandboxAvailable.value = !!sandboxAvailable
         },
         onError: (err) => {
           error.value = err.message
@@ -1118,6 +1123,7 @@ export const useChatStore = defineStore('chat', () => {
     toolExecuting,
     toolExecutingStartTime,
     toolExecutingNames,
+    toolSandboxAvailable,
     contextTrimInfo,
     preTTFTCancelActive,
     hasMoreMessages,

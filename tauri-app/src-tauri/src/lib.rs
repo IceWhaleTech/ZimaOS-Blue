@@ -255,54 +255,80 @@ async fn start_server_platform_with_args(app: &tauri::AppHandle, args: Option<St
         blue_ffi::start_server_with_args(port, Some(&data_dir), cli_args_str.as_deref())?;
 
         if let Some(state) = app.try_state::<AppState>() {
-            *state.server_port.lock().unwrap() = port;
             *state.server_running.lock().unwrap() = true;
         }
 
         // Wait for Go server to be ready using two-phase detection:
-        // Phase 1: Poll BlueServerIsRunning() via FFI (no network, ~microseconds per check).
-        //          This tells us the Go goroutine has started and set isRunning=true.
+        // Phase 1: Poll BlueServerIsRunning() + BlueServerGetPort() via FFI.
+        //          Wait until the Go goroutine has started AND bound a port.
         // Phase 2: HTTP health check to confirm the listener is accepting connections.
-        //          With OnEarlyReady, the listener starts very early in route registration.
-        let http_url = format!("http://localhost:{}/api/v1/health", port);
         let mut use_https = false;
+        let mut actual_port: u16 = port;
 
-        // Phase 1: FFI poll — tight loop, no network overhead
-        for _ in 0..200 {
+        // Phase 1: FFI poll — wait for is_running + port > 0
+        let mut phase1_ok = false;
+        for _ in 0..400 {
             if blue_ffi::is_running() {
-                break;
+                let p = blue_ffi::get_port();
+                if p > 0 {
+                    actual_port = p;
+                    phase1_ok = true;
+                    break;
+                }
             }
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
 
+        if !phase1_ok {
+            return Err("Server failed to start: timed out waiting for port binding".to_string());
+        }
+
+        info!("Server bound to port {}", actual_port);
+
+        // Update state with actual port
+        if let Some(state) = app.try_state::<AppState>() {
+            *state.server_port.lock().unwrap() = actual_port;
+        }
+
         // Phase 2: HTTP health check — server goroutine is running, listener may be up
+        let http_url = format!("http://localhost:{}/api/v1/health", actual_port);
         let client = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
-            .timeout(std::time::Duration::from_millis(200))
+            .timeout(std::time::Duration::from_millis(500))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
+        let mut server_ready = false;
         let mut delay_ms = 10u64;
-        for i in 0..12 {
+        for i in 0..20 {
             if i > 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                delay_ms = std::cmp::min(delay_ms * 2, 100);
+                delay_ms = std::cmp::min(delay_ms * 2, 200);
             }
 
             if client.get(&http_url).send().await.is_ok() {
                 info!("Server ready (HTTP) after attempt {}", i + 1);
+                server_ready = true;
                 break;
             }
 
             // Only try HTTPS after a few HTTP failures (rare case: TLS enabled)
-            if i >= 3 {
-                let https_url = format!("https://localhost:{}/api/v1/health", port);
+            if i >= 5 {
+                let https_url = format!("https://localhost:{}/api/v1/health", actual_port);
                 if client.get(&https_url).send().await.is_ok() {
                     info!("Server ready (HTTPS) after attempt {}", i + 1);
                     use_https = true;
+                    server_ready = true;
                     break;
                 }
             }
+        }
+
+        if !server_ready {
+            return Err(format!(
+                "Server started on port {} but health check failed after all retries",
+                actual_port
+            ));
         }
 
         // Update state with detected protocol
@@ -609,16 +635,22 @@ pub fn run() {
                     Ok(_) => info!("Server started successfully"),
                     Err(e) => {
                         error!("Failed to start server: {}", e);
-                        // Show error dialog to user
-                        #[cfg(not(target_os = "linux"))]
-                        {
-                            use tauri::Manager;
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.eval(&format!(
-                                    "alert('Failed to start server: {}');",
-                                    e.replace("'", "\\'")
-                                ));
-                            }
+                        // Show error page in the webview
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let escaped = e.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n");
+                            let _ = window.eval(&format!(
+                                "document.body.style.cssText='margin:0;background:#0F172A;color:#F8FAFC;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:system-ui,sans-serif';\
+                                 document.body.innerHTML='<div style=\"text-align:center;max-width:480px;padding:2rem\">\
+                                 <div style=\"font-size:48px;margin-bottom:16px\">&#9888;&#65039;</div>\
+                                 <h2 style=\"margin:0 0 12px;font-size:20px\">Server Failed to Start</h2>\
+                                 <p style=\"color:#94A3B8;font-size:14px;line-height:1.6;margin:0 0 24px\">{}</p>\
+                                 <button onclick=\"location.reload()\" style=\"background:#3B82F6;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;cursor:pointer\">Retry</button>\
+                                 </div>';\
+                                 document.querySelector(\"style\")?.remove();",
+                                escaped
+                            ));
+                            let _ = window.show();
+                            let _ = window.set_focus();
                         }
                         return;
                     }

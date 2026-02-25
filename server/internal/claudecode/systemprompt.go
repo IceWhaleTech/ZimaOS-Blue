@@ -166,9 +166,10 @@ func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) str
 // toolUsageHints provides intent-based descriptions that help the LLM choose
 // the right tool. Only covers tools registered in the tool registry (not skills).
 var toolUsageHints = map[string]string{
-	"web_search":     "Search the web for factual information, news, or general knowledge. Use ONLY for *searching* — NOT for reading page content, interacting with web pages, or evaluating UI/UX. To read or operate on a specific URL, use the browser skill instead.",
-	"memory":         "Unified memory tool. Use action='search' to find relevant memories by query. Use action='remember' to store important facts, preferences, and notes the user asks you to remember. Use action='get' to retrieve a specific memory by ID. Use action='forget' to delete a memory. Use action='stats' for memory system statistics.",
-	"exec":           "Execute shell commands on the host OS. NEVER use exec to invoke other tools — call them directly by name (e.g., call web_search, not exec with 'web_search ...'). Only use exec for actual shell/CLI commands (ls, git, curl, etc.).",
+	"web_search":  "Keyword search only. Returns result listings (title+URL+snippet). Never opens or reads any page. Not for URLs you already have.",
+	"browser":     "Open a URL, read content, interact with elements, take screenshots. Not for keyword search (→ web_search) or UI scoring (→ ui_reviewer).",
+	"ui_reviewer": "Score and audit UI/UX quality. Use only when asked to evaluate/rate/review visual design or accessibility. Not for browsing or searching.",
+	"memory": "Unified memory tool. Use action='search' to find relevant memories by query. Use action='remember' to store important facts, preferences, and notes the user asks you to remember. Use action='get' to retrieve a specific memory by ID. Use action='forget' to delete a memory. Use action='stats' for memory system statistics.",
 }
 
 // buildToolsInfo builds lightweight tool guidance for the system prompt.
@@ -197,15 +198,93 @@ func (b *SystemPromptBuilder) buildToolsInfo() string {
 		lines = append(lines, "")
 	}
 
+	// Check if exec tool is registered and add detailed guidance.
+	for _, def := range defs {
+		if def.Name == "exec" {
+			lines = append(lines, b.buildExecGuidance()...)
+			break
+		}
+	}
+
 	lines = append(lines, "## Tool Routing Rules")
-	lines = append(lines, "When a user message could match multiple tools, use these priority rules:")
-	lines = append(lines, "- Read, interact with, or operate on a specific URL → browser skill (NOT web_search)")
-	lines = append(lines, "- General factual query without a specific URL → web_search")
-	lines = append(lines, "- \"Remember this / don't forget / remind me next time\" → memory: action='remember' with the content to store")
-	lines = append(lines, "- NEVER use exec to call other tools (web_search, memory, file_read, etc.) — call them directly by name")
+	lines = append(lines, "- No URL, need to find info → web_search")
+	lines = append(lines, "- Have a URL, need to read/interact/screenshot → browser")
+	lines = append(lines, "- Need to evaluate/rate/score UI or accessibility → ui_reviewer")
+	lines = append(lines, "- After web_search, user says \"open it\" → browser")
+	lines = append(lines, "- \"How does this look?\" / \"Is this well-designed?\" → ui_reviewer")
+	lines = append(lines, "- \"What does this page say?\" / \"Read this for me\" → browser")
+	lines = append(lines, "- Just screenshot, no scoring → browser (screenshot)")
+	lines = append(lines, "- \"Remember this\" / \"don't forget\" → memory (action=remember)")
+	lines = append(lines, "- NEVER use exec to call other tools — call them directly by name")
 	lines = append(lines, "")
 
 	return strings.Join(lines, "\n")
+}
+
+// buildExecGuidance returns detailed exec tool usage and safety guidance lines.
+func (b *SystemPromptBuilder) buildExecGuidance() []string {
+	var lines []string
+
+	// Check sandbox availability.
+	hasSandbox := false
+	if et := tools.GetExecTool(b.toolRegistry); et != nil {
+		hasSandbox = et.HasSandbox()
+	}
+
+	lines = append(lines, "## Exec Tool Guidelines")
+	lines = append(lines, "")
+
+	// Purpose
+	lines = append(lines, "### Purpose")
+	lines = append(lines, "Execute shell/CLI commands on the host OS (ls, git, curl, npm, pip, make, etc.).")
+	lines = append(lines, "NEVER use exec to invoke other tools — call them directly by name.")
+	lines = append(lines, "")
+
+	// Sandbox
+	if hasSandbox {
+		lines = append(lines, "### Sandbox Protection")
+		lines = append(lines, "A sandbox environment is available for isolated command execution.")
+		lines = append(lines, "- Set `host: \"sandbox\"` to run commands in a sandboxed environment with filesystem restrictions")
+		lines = append(lines, "- Medium-risk and above commands are automatically sandboxed when no host is specified")
+		lines = append(lines, "- Sandbox prevents commands from accessing directories outside the allowed paths")
+		lines = append(lines, "- When a command runs in sandbox, the result includes `host: \"sandbox\"` — mention this to the user so they know the command was protected")
+		lines = append(lines, "")
+	}
+
+	// Security restrictions
+	lines = append(lines, "### Security Restrictions")
+	lines = append(lines, "Commands are risk-scored. High-risk commands are blocked automatically:")
+	lines = append(lines, "- Critical (blocked): rm -rf /, mkfs, dd to devices, pipe-to-shell, fork bombs")
+	lines = append(lines, "- High (may be blocked): shutdown, reboot, useradd/userdel, recursive chmod on system dirs")
+	lines = append(lines, "- Medium: sudo, recursive rm, crontab modification, netcat")
+	lines = append(lines, "- Low (allowed): ls, git, npm, curl, echo, etc.")
+	lines = append(lines, "")
+
+	// Scope
+	lines = append(lines, "### Scope")
+	lines = append(lines, "- Operate within the project/workspace directory or temp directories")
+	lines = append(lines, "- Avoid accessing system directories (/etc, /usr, /System, C:\\Windows) unless explicitly needed")
+	lines = append(lines, "- If a task requires elevated privileges (sudo), inform the user instead of attempting it")
+	lines = append(lines, "")
+
+	// Command style
+	lines = append(lines, "### Command Style")
+	lines = append(lines, "- Prefer simple, single-purpose commands")
+	lines = append(lines, "- Use && to chain dependent commands; use || for fallback")
+	lines = append(lines, "- For risky or unfamiliar commands, briefly explain what the command does before executing")
+	lines = append(lines, "- Do not start long-running servers or watch-mode processes (npm run dev, webpack --watch)")
+	lines = append(lines, "- Do not launch interactive editors (vim, nano, less)")
+	lines = append(lines, "")
+
+	// Error handling & retry
+	lines = append(lines, "### Error Handling")
+	lines = append(lines, "- If a command fails, analyze the error output before retrying")
+	lines = append(lines, "- NEVER retry the exact same failing command — the system will block repeated identical failures")
+	lines = append(lines, "- Change the command, fix the underlying issue, or try a different approach")
+	lines = append(lines, "- Report non-zero exit codes and stderr to the user")
+	lines = append(lines, "")
+
+	return lines
 }
 
 // buildRuntimeInfo builds runtime information for the system prompt.

@@ -1523,6 +1523,7 @@ export default {
     },
     calling: 'Κλήση εργαλείων',
     callingProgress: 'Κλήση εργαλείων...',
+    sandboxProtected: 'Προστασία Sandbox',
     callCount: 'Κλήσεις εργαλείων ({count})',
   },
   thinking: {

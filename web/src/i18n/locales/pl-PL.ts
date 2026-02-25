@@ -1779,6 +1779,7 @@ export default {
     },
     calling: 'Wywoływanie narzędzi',
     callingProgress: 'Wywoływanie narzędzi...',
+    sandboxProtected: 'Ochrona piaskownicy',
     callCount: 'Wywołania narzędzi ({count})',
   },
   thinking: {

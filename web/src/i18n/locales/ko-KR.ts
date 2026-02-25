@@ -3102,6 +3102,7 @@ export default {
     },
     calling: '도구 호출 중',
     callingProgress: '도구 호출 중...',
+    sandboxProtected: '샌드박스 보호 중',
     callCount: '도구 호출 ({count})',
   },
   thinking: {
