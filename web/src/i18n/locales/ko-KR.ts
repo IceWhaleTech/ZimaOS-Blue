@@ -341,8 +341,6 @@ export default {
     trialServiceBusy: '체험판 서비스가 현재 이용자가 많아 혼잡합니다. 잠시 후 다시 시도해 주세요. 이 메시지가 계속 표시되면 커뮤니티에서 도움을 받으세요.',
     configureProvider: '공급자 설정',
     // Claude Code CLI
-    poweredByClaudeCode: '{name}로 구동',
-    poweredByClaudeCodeDesc: '채팅은 {name} 기능으로 향상되었으며, 스킬, 도구 호출 및 파일 작업을 포함합니다',
     enableClaudeCodeDesc: '{name}를 활성화하여 스킬, 도구 호출, 파일 작업 등을 더 나은 경험을 제공합니다',
     enableClaudeCodePrompt: '{name}를 활성화하여 더 많은 기능 사용',
     // Routing Mode

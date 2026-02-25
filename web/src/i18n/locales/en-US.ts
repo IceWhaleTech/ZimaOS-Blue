@@ -439,8 +439,6 @@ export default {
     trialServiceBusy: 'The trial service is currently busy due to high demand. Please try again in a moment. If this keeps happening, visit our community for help.',
     configureProvider: 'Configure Provider',
     // Claude Code CLI
-    poweredByClaudeCode: 'Powered by {name}',
-    poweredByClaudeCodeDesc: 'Chat is enhanced with {name} capabilities including skills, tool calling, and file operations',
     enableClaudeCodeDesc: 'Enable {name} for a better experience with skills, tool calling, file operations and more',
     enableClaudeCodePrompt: 'Enable {name} for more features',
     // Routing Mode

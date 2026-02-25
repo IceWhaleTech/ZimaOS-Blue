@@ -254,8 +254,6 @@ export default {
     trialServiceBusy: 'Il servizio di prova è attualmente occupato a causa dell\'elevata domanda. Riprova tra un momento. Se il problema persiste, visita la nostra community per assistenza.',
     configureProvider: 'Configura provider',
     // Claude Code CLI
-    poweredByClaudeCode: 'Alimentato da {name}',
-    poweredByClaudeCodeDesc: 'La chat è migliorata con le capacità di {name} inclusi abilità, chiamate di strumenti e operazioni sui file',
     enableClaudeCodeDesc: 'Abilita {name} per un\'esperienza migliore con abilità, chiamate di strumenti, operazioni sui file e altro',
     enableClaudeCodePrompt: 'Abilita {name} per più funzionalità',
     // Routing Mode

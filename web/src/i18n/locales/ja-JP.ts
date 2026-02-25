@@ -469,8 +469,6 @@ export default {
     trialServiceBusy: '試用サービスは現在利用者が多く混雑しています。しばらくしてからもう一度お試しください。この表示が続く場合は、コミュニティでサポートを受けてください。',
     configureProvider: 'プロバイダーを設定',
     // Claude Code CLI
-    poweredByClaudeCode: '{name} によって提供',
-    poweredByClaudeCodeDesc: 'チャットは {name} の機能で強化されており、スキル、ツール呼び出し、ファイル操作が含まれます',
     enableClaudeCodeDesc: '{name} を有効にして、スキル、ツール呼び出し、ファイル操作などをより良い体験を提供します',
     enableClaudeCodePrompt: '{name} を有効にしてより多くの機能を使用',
     // Routing Mode

@@ -436,8 +436,6 @@ export default {
     trialServiceBusy: '试用服务当前使用人数较多，请稍后重试。如果持续看到此提示，请到社区寻求帮助。',
     configureProvider: '配置提供商',
     // Claude Code CLI
-    poweredByClaudeCode: 'Powered by {name}',
-    poweredByClaudeCodeDesc: '聊天已增强 {name} 功能，包括技能、工具调用和文件操作',
     enableClaudeCodeDesc: '开启 {name} 获得更好的体验，支持技能、工具调用、文件操作等高级功能',
     enableClaudeCodePrompt: '开启 {name} 体验更多功能',
     // Provider selector

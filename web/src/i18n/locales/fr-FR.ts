@@ -265,8 +265,6 @@ export default {
     trialServiceBusy: "Le service d'essai est actuellement surchargé en raison d'une forte demande. Veuillez réessayer dans un instant. Si cela persiste, visitez notre communauté pour obtenir de l'aide.",
     configureProvider: 'Configurer le fournisseur',
     // Claude Code CLI
-    poweredByClaudeCode: 'Propulsé par {name}',
-    poweredByClaudeCodeDesc: 'Le chat est amélioré avec les capacités de {name} incluant les compétences, les appels d\'outils et les opérations sur fichiers',
     enableClaudeCodeDesc: 'Activez {name} pour une meilleure expérience avec les compétences, les appels d\'outils, les opérations sur fichiers et plus encore',
     enableClaudeCodePrompt: 'Activez {name} pour plus de fonctionnalités',
     // Routing Mode

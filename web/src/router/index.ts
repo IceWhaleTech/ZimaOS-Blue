@@ -451,6 +451,28 @@ router.beforeEach(async (to, from, next) => {
       return
     }
 
+    // Ensure user info and permissions are loaded for authenticated users.
+    // On page refresh, token is restored from localStorage but user/permissions
+    // are not — fetch them before rendering so sidebar and guards work correctly.
+    if (isAuthenticated) {
+      const authStore = useAuthStore()
+      if (!authStore.user) {
+        await authStore.fetchUser()
+      }
+
+      // Check admin-only routes
+      if (requiresAdmin && !authStore.isAdmin) {
+        next({ name: 'Chat' })
+        return
+      }
+
+      // Check page-level permissions
+      if (requiredPermission && !authStore.hasPermission(requiredPermission)) {
+        next({ name: 'Chat' })
+        return
+      }
+    }
+
     next()
   } finally {
     isNavigating = false

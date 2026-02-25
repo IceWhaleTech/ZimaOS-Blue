@@ -266,8 +266,6 @@ export default {
     trialServiceBusy: 'Der Testdienst ist derzeit aufgrund hoher Nachfrage ausgelastet. Bitte versuchen Sie es in einem Moment erneut. Wenn dies weiterhin auftritt, besuchen Sie unsere Community für Hilfe.',
     configureProvider: 'Anbieter konfigurieren',
     // Claude Code CLI
-    poweredByClaudeCode: 'Angetrieben von {name}',
-    poweredByClaudeCodeDesc: 'Chat ist erweitert mit {name}-Funktionen einschließlich Fähigkeiten, Tool-Aufrufen und Dateioperationen',
     enableClaudeCodeDesc: 'Aktivieren Sie {name} für eine bessere Erfahrung mit Fähigkeiten, Tool-Aufrufen, Dateioperationen und mehr',
     enableClaudeCodePrompt: 'Aktivieren Sie {name} für mehr Funktionen',
     // Routing Mode

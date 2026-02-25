@@ -698,21 +698,9 @@ onUnmounted(() => {
           <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">
             {{ chatStore.currentConversation?.title || t('chat.newChat') }}
           </h2>
-          <!-- Powered by Claude Code CLI badge -->
-          <span
-            v-if="isClaudeCodeEnabled"
-            class="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full flex-shrink-0"
-            :class="isCompact || isMobile ? 'px-1.5 py-0.5' : 'px-2 py-0.5'"
-            :title="t('chat.poweredByClaudeCodeDesc', { name: 'Claude Code CLI' })"
-          >
-            <svg :class="isCompact || isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-            </svg>
-            <span v-if="!isCompact && !isMobile">{{ t('chat.poweredByClaudeCode', { name: 'Claude Code CLI' }) }}</span>
-          </span>
           <!-- Enable Claude Code CLI prompt -->
           <router-link
-            v-else
+            v-if="!isClaudeCodeEnabled"
             to="/settings?tab=llm#claude-code-settings"
             class="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0 transition-colors cursor-pointer"
             :class="isCompact || isMobile ? 'px-1.5 py-0.5' : 'px-2 py-0.5'"
