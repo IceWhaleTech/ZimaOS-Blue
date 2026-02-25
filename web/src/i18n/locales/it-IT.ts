@@ -253,9 +253,11 @@ export default {
     trialExhausted: 'La quota di prova è esaurita. Configura il tuo provider AI per continuare.',
     trialServiceBusy: 'Il servizio di prova è attualmente occupato a causa dell\'elevata domanda. Riprova tra un momento. Se il problema persiste, visita la nostra community per assistenza.',
     configureProvider: 'Configura provider',
-    // Claude Code CLI
-    enableClaudeCodeDesc: 'Abilita {name} per un\'esperienza migliore con abilità, chiamate di strumenti, operazioni sui file e altro',
-    enableClaudeCodePrompt: 'Abilita {name} per più funzionalità',
+    // Modalità avanzata
+    enhancedMode: 'Modalità avanzata',
+    enhancedModeDesc: 'Modalità avanzata: supporta abilità, chiamate di strumenti, operazioni sui file, esecuzione di codice e altro',
+    enableEnhancedMode: 'Attiva modalità avanzata',
+    enableEnhancedModeDesc: 'Attiva la modalità avanzata per abilità, chiamate di strumenti, operazioni sui file e altro',
     // Routing Mode
     autoSwitchDesc: 'Passa automaticamente a un altro provider se quello corrente fallisce',
     routingMode: {

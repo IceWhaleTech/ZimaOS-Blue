@@ -7,29 +7,15 @@ import type { Tool } from '@/api/tool'
 const { t, te } = useI18n()
 const toolStore = useToolStore()
 
-// Built-in tool name -> i18n key
-const toolI18nKeyMap: Record<string, string> = {
-  'Calculator': 'calculator',
-  'System Info': 'systemInfo',
-  'Current Time': 'currentTime',
-  'File Read': 'fileRead',
-  'File Write': 'fileWrite',
-  'memory_search': 'memorySearch',
-  'memory_get': 'memoryGet',
-  'memory_stats': 'memoryStats',
-}
-
 function getToolName(tool: Tool): string {
-  if (tool.builtin && toolI18nKeyMap[tool.name] && te(`tools.builtin.${toolI18nKeyMap[tool.name]}.name`)) {
-    return t(`tools.builtin.${toolI18nKeyMap[tool.name]}.name`)
-  }
+  const key = `tools.names.${tool.name}`
+  if (te(key)) return t(key)
   return tool.name
 }
 
 function getToolDescription(tool: Tool): string {
-  if (tool.builtin && toolI18nKeyMap[tool.name] && te(`tools.builtin.${toolI18nKeyMap[tool.name]}.description`)) {
-    return t(`tools.builtin.${toolI18nKeyMap[tool.name]}.description`)
-  }
+  const key = `tools.builtin.${tool.name}.description`
+  if (te(key)) return t(key)
   return tool.description || ''
 }
 

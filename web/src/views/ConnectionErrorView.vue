@@ -10,7 +10,7 @@ const route = useRoute()
 const retrying = ref(false)
 const autoRetrying = ref(false)
 
-const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
+const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
 
 // Storage key for the previous route
 const PREVIOUS_ROUTE_KEY = 'connection_error_previous_route'
@@ -39,7 +39,7 @@ async function retry(isAutoRetry = false) {
   resetPreviewModeStatus()
 
   // In Tauri, the server may still be booting — retry with backoff
-  const maxAttempts = isTauri ? 6 : 1
+  const maxAttempts = isDesktop ? 6 : 1
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) {
       await new Promise((r) => setTimeout(r, 800))
@@ -74,7 +74,7 @@ onMounted(() => {
   if (hasQueryFrom) {
     sessionStorage.setItem(PREVIOUS_ROUTE_KEY, route.query.from as string)
     // In Tauri, auto-retry immediately — the server is likely still booting
-    if (isTauri) {
+    if (isDesktop) {
       retry(true)
     }
   } else if (sessionStorage.getItem(PREVIOUS_ROUTE_KEY)) {

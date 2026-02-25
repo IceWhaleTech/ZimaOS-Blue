@@ -4,41 +4,11 @@ import { PagePermissions } from '@/api/users'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
 
-// Detect if running in Tauri (v2 injects __TAURI_INTERNALS__, v1 injects __TAURI__)
-const isTauri =
-  typeof window !== 'undefined' &&
-  ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
-
-// Get server URL from Tauri (supports both HTTP and HTTPS)
-async function getServerUrl(): Promise<string> {
-  // Try Tauri v2 IPC first, then v1
-  const invoke =
-    window.__TAURI_INTERNALS__?.invoke ??
-    (window as any).__TAURI__?.core?.invoke
-  if (isTauri && invoke) {
-    try {
-      const url = await invoke('get_server_url')
-      return url
-    } catch (e) {
-      console.warn('Failed to get server URL from Tauri, falling back to relative URLs', e)
-    }
-  }
-  // When invoke is unavailable (e.g. on_page_load stub without IPC),
-  // return empty string so fetches use relative URLs against the current origin.
-  return ''
-}
-
-// Cache the server URL
-let cachedServerUrl: string | null = null
-async function getBaseUrl(): Promise<string> {
-  if (!isTauri) {
-    return ''
-  }
-  if (cachedServerUrl === null) {
-    cachedServerUrl = await getServerUrl()
-  }
-  return cachedServerUrl
-}
+// Desktop detection: __BLUE_DESKTOP__ is injected by the Tauri on_page_load handler.
+// In desktop mode, the page is loaded from http://localhost:{port} (same-origin as the
+// Go server), so all API calls use relative URLs — no special URL construction needed.
+const isDesktop =
+  typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
 
 // Preview mode state (cached to avoid repeated API calls)
 let previewModeChecked = false
@@ -50,10 +20,8 @@ let pendingCheck: Promise<{ preview: boolean; connectionError: boolean }> | null
 async function fetchSystemMode(): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 2000)
-  const baseUrl = await getBaseUrl()
-  const url = `${baseUrl}/api/v1/system/mode`
   try {
-    const response = await fetch(url, { signal: controller.signal })
+    const response = await fetch('/api/v1/system/mode', { signal: controller.signal })
     clearTimeout(timeoutId)
     return response
   } catch (err) {
@@ -77,9 +45,9 @@ async function checkPreviewMode(): Promise<{ preview: boolean; connectionError: 
 }
 
 async function doCheckPreviewMode(): Promise<{ preview: boolean; connectionError: boolean }> {
-  // In Tauri, the Go server may still be starting on first launch.
+  // In desktop mode, the Go server may still be starting on first launch.
   // Retry with backoff instead of failing immediately.
-  const maxAttempts = isTauri ? 5 : 1
+  const maxAttempts = isDesktop ? 5 : 1
   let lastError: unknown
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -94,7 +62,7 @@ async function doCheckPreviewMode(): Promise<{ preview: boolean; connectionError
       // Treat 500+ errors as connection/server errors
       if (response.status >= 500) {
         lastError = new Error(`Server error: ${response.status}`)
-        continue // retry in Tauri
+        continue // retry in desktop mode
       }
       if (!response.ok) {
         previewModeChecked = true
@@ -115,8 +83,8 @@ async function doCheckPreviewMode(): Promise<{ preview: boolean; connectionError
       return { preview: isPreviewMode, connectionError: false }
     } catch (err) {
       lastError = err
-      // In Tauri, retry; in browser, fail immediately
-      if (!isTauri) break
+      // In desktop mode, retry; in browser, fail immediately
+      if (!isDesktop) break
     }
   }
 
@@ -137,9 +105,7 @@ async function fetchPreviewToken(): Promise<void> {
   }
 
   try {
-    const baseUrl = await getBaseUrl()
-    const url = `${baseUrl}/api/v1/preview/token`
-    const response = await fetch(url, {
+    const response = await fetch('/api/v1/preview/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{}',

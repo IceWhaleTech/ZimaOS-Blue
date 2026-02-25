@@ -340,9 +340,11 @@ export default {
     trialExhausted: '체험판 할당량이 소진되었습니다. 계속하려면 AI 공급자를 직접 설정하세요.',
     trialServiceBusy: '체험판 서비스가 현재 이용자가 많아 혼잡합니다. 잠시 후 다시 시도해 주세요. 이 메시지가 계속 표시되면 커뮤니티에서 도움을 받으세요.',
     configureProvider: '공급자 설정',
-    // Claude Code CLI
-    enableClaudeCodeDesc: '{name}를 활성화하여 스킬, 도구 호출, 파일 작업 등을 더 나은 경험을 제공합니다',
-    enableClaudeCodePrompt: '{name}를 활성화하여 더 많은 기능 사용',
+    // 향상 모드
+    enhancedMode: '향상 모드',
+    enhancedModeDesc: '향상 모드: 스킬, 도구 호출, 파일 작업, 코드 실행 등을 지원합니다',
+    enableEnhancedMode: '향상 모드 활성화',
+    enableEnhancedModeDesc: '향상 모드를 활성화하여 스킬, 도구 호출, 파일 작업 등을 이용하세요',
     // Routing Mode
     autoSwitchDesc: '현재 프로바이더가 실패하면 다른 프로바이더로 자동 전환',
     routingMode: {

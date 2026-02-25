@@ -4,6 +4,7 @@ import type { ToolDefinition } from '@/api/chat'
 import { toolApi } from '@/api/chat'
 import { providerPoolApi, type Provider, type Model } from '@/api/providerPool'
 import { settingsApi, type Settings } from '@/api/settings'
+import { claudeCodeApi } from '@/api/claudecode'
 
 const STORAGE_KEY = 'zimaos-blue-settings'
 
@@ -342,6 +343,22 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  // Claude Code CLI enhanced mode
+  const claudeCodeEnabled = ref(false)
+
+  async function fetchClaudeCodeEnabled() {
+    try {
+      const response = await claudeCodeApi.getConfig()
+      claudeCodeEnabled.value = response.data.enabled
+    } catch {
+      claudeCodeEnabled.value = false
+    }
+  }
+
+  function setClaudeCodeEnabled(enabled: boolean) {
+    claudeCodeEnabled.value = enabled
+  }
+
   return {
     // State
     providers,
@@ -356,6 +373,7 @@ export const useSettingsStore = defineStore('settings', () => {
     error,
     backendSettings,
     backendSettingsLoading,
+    claudeCodeEnabled,
 
     // Computed
     providerModelOptions,
@@ -380,5 +398,7 @@ export const useSettingsStore = defineStore('settings', () => {
     resetToDefaults,
     fetchBackendSettings,
     updateBackendSettings,
+    fetchClaudeCodeEnabled,
+    setClaudeCodeEnabled,
   }
 })

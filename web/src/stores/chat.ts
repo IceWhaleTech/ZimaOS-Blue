@@ -163,6 +163,17 @@ export const useChatStore = defineStore('chat', () => {
   async function selectConversation(id: string) {
     if (currentConversationId.value === id) return
 
+    // Cancel any active streaming before switching — prevents the old
+    // conversation's SSE callbacks from writing into the new conversation's
+    // message list.
+    if (streaming.value || sending.value) {
+      sseClient.disconnect()
+      streaming.value = false
+      sending.value = false
+      toolExecuting.value = false
+      streamingContent.value = ''
+    }
+
     currentConversationId.value = id
     // Don't clear messages immediately to avoid flash
     // Reset pagination state
@@ -214,6 +225,9 @@ export const useChatStore = defineStore('chat', () => {
         page * PAGE_SIZE
       )
       const fetchedMessages = response.data
+
+      // Guard: don't overwrite messages if user switched to a different conversation
+      if (currentConversationId.value !== conversationId) return
 
       if (page === 0) {
         // Only restore metadata if server didn't return it (for backwards compatibility)
@@ -352,8 +366,13 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.value = [...messages.value, assistantMessage]
 
+      // Capture the conversation ID at send time so callbacks can detect stale streams
+      const sendConvId = conversationId
+
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
+          // Guard: ignore chunks if user switched to a different conversation
+          if (currentConversationId.value !== sendConvId) return
           if (!chunk.delta) return
           _receivedFirstChunk.value = true
           // Clear tool executing state when new content arrives
@@ -380,6 +399,7 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
+          if (currentConversationId.value !== sendConvId) return
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
@@ -399,6 +419,8 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onError: (err) => {
+          // Guard: if user already switched away, silently ignore
+          if (currentConversationId.value !== sendConvId) return
           const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
           // Map error codes to i18n keys for accurate error messages
@@ -422,6 +444,7 @@ export const useChatStore = defineStore('chat', () => {
           if (wasToolExecuting) {
             streaming.value = false
             fetchMessages(conversationId).then(() => {
+              if (currentConversationId.value !== sendConvId) return
               messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
             })
             return
@@ -469,6 +492,8 @@ export const useChatStore = defineStore('chat', () => {
         onComplete: (finalChunk) => {
           streaming.value = false
           toolExecuting.value = false
+          // Guard: if user switched away, don't touch messages
+          if (currentConversationId.value !== sendConvId) return
           // Store metadata from final chunk directly on the message object
           // This ensures metadata persists even after fetchMessages() refreshes the list
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
@@ -601,6 +626,7 @@ export const useChatStore = defineStore('chat', () => {
 
       await sseClient.connect(convId, request, {
         onMessage: (chunk) => {
+          if (currentConversationId.value !== convId) return
           if (!chunk.delta) return
           _receivedFirstChunk.value = true
           if (toolExecuting.value) {
@@ -619,12 +645,14 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
+          if (currentConversationId.value !== convId) return
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
           toolSandboxAvailable.value = !!sandboxAvailable
         },
         onError: (err) => {
+          if (currentConversationId.value !== convId) return
           toolExecuting.value = false
           streamError.value = err.message
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
@@ -633,6 +661,7 @@ export const useChatStore = defineStore('chat', () => {
         onComplete: (finalChunk) => {
           streaming.value = false
           toolExecuting.value = false
+          if (currentConversationId.value !== convId) return
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
@@ -690,6 +719,7 @@ export const useChatStore = defineStore('chat', () => {
 
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
+          if (currentConversationId.value !== conversationId) return
           if (!chunk.delta) return
           if (toolExecuting.value) {
             toolExecuting.value = false
@@ -711,12 +741,14 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
+          if (currentConversationId.value !== conversationId) return
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
           toolSandboxAvailable.value = !!sandboxAvailable
         },
         onError: (err) => {
+          if (currentConversationId.value !== conversationId) return
           error.value = err.message
           streaming.value = false
           toolExecuting.value = false
@@ -735,6 +767,7 @@ export const useChatStore = defineStore('chat', () => {
         onComplete: (finalChunk) => {
           streaming.value = false
           toolExecuting.value = false
+          if (currentConversationId.value !== conversationId) return
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
@@ -819,6 +852,7 @@ export const useChatStore = defineStore('chat', () => {
 
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
+          if (currentConversationId.value !== conversationId) return
           if (!chunk.delta) return
           if (toolExecuting.value) {
             toolExecuting.value = false
@@ -839,18 +873,21 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
+          if (currentConversationId.value !== conversationId) return
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
           toolSandboxAvailable.value = !!sandboxAvailable
         },
         onError: (err) => {
+          if (currentConversationId.value !== conversationId) return
           error.value = err.message
           const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
           // If error happened during tool execution, fetch server-persisted content
           if (wasToolExecuting) {
             fetchMessages(conversationId).then(() => {
+              if (currentConversationId.value !== conversationId) return
               messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
             })
             return
@@ -882,6 +919,7 @@ export const useChatStore = defineStore('chat', () => {
         onComplete: (finalChunk) => {
           streaming.value = false
           toolExecuting.value = false
+          if (currentConversationId.value !== conversationId) return
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]

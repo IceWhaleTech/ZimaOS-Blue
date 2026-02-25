@@ -265,9 +265,11 @@ export default {
     trialExhausted: 'Testkontingent aufgebraucht. Bitte konfigurieren Sie Ihren eigenen KI-Anbieter, um fortzufahren.',
     trialServiceBusy: 'Der Testdienst ist derzeit aufgrund hoher Nachfrage ausgelastet. Bitte versuchen Sie es in einem Moment erneut. Wenn dies weiterhin auftritt, besuchen Sie unsere Community für Hilfe.',
     configureProvider: 'Anbieter konfigurieren',
-    // Claude Code CLI
-    enableClaudeCodeDesc: 'Aktivieren Sie {name} für eine bessere Erfahrung mit Fähigkeiten, Tool-Aufrufen, Dateioperationen und mehr',
-    enableClaudeCodePrompt: 'Aktivieren Sie {name} für mehr Funktionen',
+    // Erweiterter Modus
+    enhancedMode: 'Erweiterter Modus',
+    enhancedModeDesc: 'Erweiterter Modus: unterstützt Fähigkeiten, Tool-Aufrufe, Dateioperationen, Codeausführung und mehr',
+    enableEnhancedMode: 'Erweiterten Modus aktivieren',
+    enableEnhancedModeDesc: 'Aktivieren Sie den erweiterten Modus für Fähigkeiten, Tool-Aufrufe, Dateioperationen und mehr',
     // Routing Mode
     autoSwitchDesc: 'Automatisch zu einem anderen Anbieter wechseln, wenn der aktuelle fehlschlägt',
     routingMode: {

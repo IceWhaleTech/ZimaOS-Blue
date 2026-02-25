@@ -1,12 +1,13 @@
 import { ref, readonly, computed } from 'vue'
 
-// Declare the Tauri internals type for TypeScript
+// Declare the desktop marker type for TypeScript
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: {
       invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>
     }
     __TAURI__?: Record<string, unknown>
+    __BLUE_DESKTOP__?: boolean
   }
 }
 
@@ -141,18 +142,17 @@ export function useTauri() {
 }
 
 /**
- * Detect if running inside Tauri by checking for the injected internals object.
- * This works for Tauri v2.x.
+ * Detect if running inside the desktop app by checking for the injected marker.
+ * The __BLUE_DESKTOP__ flag is set by the Tauri on_page_load handler.
  */
 function detectTauri(): void {
-  // Check for Tauri v2 internals
-  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+  if (typeof window !== 'undefined' && (window as any).__BLUE_DESKTOP__) {
     isTauriApp.value = true
     return
   }
 
-  // Fallback: check for Tauri v1 style (for backwards compatibility)
-  if (typeof window !== 'undefined' && '__TAURI__' in window) {
+  // Fallback: check for Tauri v2/v1 internals (e.g. when loaded via asset protocol)
+  if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
     isTauriApp.value = true
     return
   }

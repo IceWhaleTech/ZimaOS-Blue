@@ -468,9 +468,11 @@ export default {
     trialExhausted: '試用枠を使い切りました。続けるには、ご自身の AI プロバイダーを設定してください。',
     trialServiceBusy: '試用サービスは現在利用者が多く混雑しています。しばらくしてからもう一度お試しください。この表示が続く場合は、コミュニティでサポートを受けてください。',
     configureProvider: 'プロバイダーを設定',
-    // Claude Code CLI
-    enableClaudeCodeDesc: '{name} を有効にして、スキル、ツール呼び出し、ファイル操作などをより良い体験を提供します',
-    enableClaudeCodePrompt: '{name} を有効にしてより多くの機能を使用',
+    // 拡張モード
+    enhancedMode: '拡張モード',
+    enhancedModeDesc: '拡張モード：スキル、ツール呼び出し、ファイル操作、コード実行などをサポート',
+    enableEnhancedMode: '拡張モードを有効化',
+    enableEnhancedModeDesc: '拡張モードを有効にして、スキル、ツール呼び出し、ファイル操作などを利用',
     // Routing Mode
     routingMode: {
       ...enUS.chat.routingMode,

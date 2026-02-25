@@ -26,6 +26,17 @@ func CompactMarkdown(s string) string {
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimRight(lines[i], " \t")
 
+		// Skip italic instruction lines (*...*) — these are user-facing edit hints,
+		// not useful content for the LLM (e.g. "*Blue maintains this file automatically.*")
+		if isItalicHint(line) {
+			continue
+		}
+
+		// Skip empty placeholder fields like "- **Name:**" (no value after colon)
+		if isEmptyField(line) {
+			continue
+		}
+
 		// Skip empty placeholder sections: a heading followed only by blank lines
 		// before the next heading at the same or higher level (or EOF).
 		if isMarkdownHeading(line) && isEmptySection(line, lines, i+1) {
@@ -52,12 +63,59 @@ func CompactMarkdown(s string) string {
 		out = out[:len(out)-1]
 	}
 
+	// If only headings remain (no actual content), return empty — the caller
+	// can skip injecting this file entirely.
+	if onlyHeadings(out) {
+		return ""
+	}
+
 	return strings.Join(out, "\n")
+}
+
+// onlyHeadings returns true if every non-blank line is a markdown heading.
+// Used to detect files where all content was stripped, leaving only skeleton headings.
+func onlyHeadings(lines []string) bool {
+	hasHeading := false
+	for _, l := range lines {
+		if l == "" {
+			continue
+		}
+		if !isMarkdownHeading(l) {
+			return false
+		}
+		hasHeading = true
+	}
+	return hasHeading
 }
 
 // isMarkdownHeading returns true if the line starts with one or more '#'.
 func isMarkdownHeading(line string) bool {
 	return len(line) > 0 && line[0] == '#'
+}
+
+// isItalicHint returns true if the line is a standalone italic hint like
+// "*Blue maintains this file automatically. You can also edit it directly.*"
+// These are user-facing instructions, not useful content for the LLM.
+func isItalicHint(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return len(trimmed) > 2 && trimmed[0] == '*' && trimmed[len(trimmed)-1] == '*' && !strings.HasPrefix(trimmed, "**")
+}
+
+// isEmptyField returns true if the line is a list item with a bold label but no value,
+// e.g. "- **Name:**" or "- **Timezone:**". These are unfilled template placeholders.
+func isEmptyField(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "- **") {
+		return false
+	}
+	// Check if it ends with ":**" or ":** " (no value after the label)
+	after := strings.TrimPrefix(trimmed, "- ")
+	// Strip the bold label: "**Label:**" or "**Label:** "
+	if idx := strings.Index(after, ":**"); idx >= 0 {
+		rest := strings.TrimSpace(after[idx+3:])
+		return rest == "" || rest == "*"
+	}
+	return false
 }
 
 // isEmptySection returns true if lines[start:] contains only blank lines

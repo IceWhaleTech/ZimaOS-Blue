@@ -3,8 +3,10 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { claudeCodeApi } from '@/api/claudecode'
 import type { ClaudeCodeVersionResponse, CheckUpdateResponse, ClaudeCodeConfigResponse, DirectoryWhitelistEntry, BrowseDirEntry } from '@/api/claudecode'
+import { useSettingsStore } from '@/stores/settings'
 
 const { t } = useI18n()
+const settingsStore = useSettingsStore()
 
 const emit = defineEmits<{
   (e: 'status-change', message: string): void
@@ -138,6 +140,7 @@ async function toggleEnabled() {
     const newEnabled = !configInfo.value.enabled
     const response = await claudeCodeApi.setConfig({ enabled: newEnabled })
     configInfo.value = response.data
+    settingsStore.setClaudeCodeEnabled(newEnabled)
     emit('status-change', newEnabled ? t('claudecode.enabled') : t('claudecode.disabled'))
   } catch (_e) {
     error.value = t('claudecode.toggleError')

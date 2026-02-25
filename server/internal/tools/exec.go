@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,6 +68,7 @@ type ExecTool struct {
 	dirStore  *DirAllowlistStore    // may be nil; persistent directory allowlist
 	sandbox   SandboxExecutor       // may be nil; when set, sandbox host mode is available
 	toolNames map[string]struct{}   // known tool names; exec rejects commands that match
+	registry  *Registry             // may be nil; when set, exec auto-forwards tool-name commands
 	retries   *RetryTracker         // prevents same-command retry loops
 	audit     *ExecAuditStore       // may be nil; persistent audit log
 }
@@ -118,6 +120,14 @@ func (t *ExecTool) SetToolNames(names []string) {
 		}
 	}
 	t.toolNames = m
+	slog.Info("[exec] SetToolNames", "count", len(m), "names", names)
+}
+
+// SetRegistry sets the tool registry so exec can auto-forward commands that
+// match a tool name (e.g. "web_search openclaw news") to the actual tool
+// instead of returning an error.
+func (t *ExecTool) SetRegistry(r *Registry) {
+	t.registry = r
 }
 
 // getShellConfig returns the shell and args, preferring config overrides.
@@ -224,20 +234,51 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return nil, errors.New("command is required")
 	}
 
-	// Reject commands that look like tool invocations.
+	// Intercept commands that look like tool invocations.
 	// The LLM sometimes tries to call tools via exec (e.g. "web_search query").
-	// Return a clear error so the LLM retries with the correct tool.
+	// If we have the registry, auto-forward to the real tool. Otherwise return error.
 	if len(t.toolNames) > 0 {
 		firstWord := command
+		restArgs := ""
 		if idx := strings.IndexAny(command, " \t\n"); idx > 0 {
 			firstWord = command[:idx]
+			restArgs = strings.TrimSpace(command[idx+1:])
 		}
 		if _, isToolName := t.toolNames[firstWord]; isToolName {
+			if t.registry != nil {
+				if tool := t.registry.Get(firstWord); tool != nil {
+					slog.Info("[exec] auto-forwarding to tool", "tool", firstWord, "args", restArgs)
+					// Build args map from the rest of the command.
+					fwdArgs := make(map[string]interface{})
+					if restArgs != "" {
+						if firstWord == "web_search" {
+							fwdArgs["query"] = restArgs
+						} else {
+							fwdArgs["input"] = restArgs
+						}
+					} else {
+						// No arguments provided — reject rather than forwarding an empty call.
+						return nil, fmt.Errorf(
+							"%s requires arguments. Call the %s tool directly with the proper parameters instead of using exec",
+							firstWord, firstWord,
+						)
+					}
+					result, err := tool.Execute(ctx, fwdArgs)
+					if err != nil {
+						return nil, err
+					}
+					return &ForwardedResult{ActualTool: firstWord, Result: result}, nil
+				}
+				slog.Warn("[exec] tool in registry returned nil", "tool", firstWord)
+			}
+			slog.Warn("[exec] tool name matched but no registry or tool not found", "tool", firstWord, "hasRegistry", t.registry != nil)
 			return nil, fmt.Errorf(
 				"%s is a tool, not a shell command. Call the %s tool directly instead of using exec",
 				firstWord, firstWord,
 			)
 		}
+	} else {
+		slog.Warn("[exec] toolNames is empty, auto-forward disabled", "command", command)
 	}
 
 	workdirArg, _ := args["workdir"].(string)

@@ -264,9 +264,11 @@ export default {
     trialExhausted: "Le quota d'essai est épuisé. Veuillez configurer votre propre fournisseur IA pour continuer.",
     trialServiceBusy: "Le service d'essai est actuellement surchargé en raison d'une forte demande. Veuillez réessayer dans un instant. Si cela persiste, visitez notre communauté pour obtenir de l'aide.",
     configureProvider: 'Configurer le fournisseur',
-    // Claude Code CLI
-    enableClaudeCodeDesc: 'Activez {name} pour une meilleure expérience avec les compétences, les appels d\'outils, les opérations sur fichiers et plus encore',
-    enableClaudeCodePrompt: 'Activez {name} pour plus de fonctionnalités',
+    // Mode amélioré
+    enhancedMode: 'Mode amélioré',
+    enhancedModeDesc: 'Mode amélioré : prend en charge les compétences, les appels d\'outils, les opérations sur fichiers, l\'exécution de code, et plus',
+    enableEnhancedMode: 'Activer le mode amélioré',
+    enableEnhancedModeDesc: 'Activez le mode amélioré pour les compétences, les appels d\'outils, les opérations sur fichiers, et plus',
     // Routing Mode
     routingMode: {
       auto: 'Automatique',

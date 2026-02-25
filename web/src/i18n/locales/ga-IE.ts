@@ -937,6 +937,11 @@ export default {
     trialExhausted: 'Tá an cuóta triail ídithe. Cuir do sholáthraí AI féin i bhfeidhm le leanúint ar aghaidh.',
     trialServiceBusy: 'Tá an tseirbhís triail gnóthach faoi láthair mar gheall ar éileamh ard. Bain triail eile as i gceann nóiméid. Má leanann sé seo, tabhair cuairt ar ár bpobal le haghaidh cabhrach.',
     configureProvider: 'Cumraigh Soláthraí',
+    // Mód feabhsaithe
+    enhancedMode: 'Feabhsaithe',
+    enhancedModeDesc: 'Mód feabhsaithe: tacaíonn le scileanna, glaonna uirlisí, oibríochtaí comhad, rith cóid agus tuilleadh',
+    enableEnhancedMode: 'Cumasaigh mód feabhsaithe',
+    enableEnhancedModeDesc: 'Cumasaigh mód feabhsaithe le haghaidh scileanna, glaonna uirlisí, oibríochtaí comhad agus tuilleadh',
     trialQuota: {
       exhausted: 'Cuóta triail ídithe',
       remaining: '{tokens} tokens fágtha',

@@ -1224,6 +1224,11 @@ export default {
     trialExhausted: 'Het proefquotum is opgebruikt. Configureer uw eigen AI-provider om door te gaan.',
     trialServiceBusy: 'De proefservice is momenteel druk bezet vanwege hoge vraag. Probeer het over een moment opnieuw. Als dit aanhoudt, bezoek onze community voor hulp.',
     configureProvider: 'Provider configureren',
+    // Verbeterde modus
+    enhancedMode: 'Verbeterd',
+    enhancedModeDesc: 'Verbeterde modus: ondersteunt vaardigheden, tool-aanroepen, bestandsbewerkingen, code-uitvoering en meer',
+    enableEnhancedMode: 'Verbeterde modus inschakelen',
+    enableEnhancedModeDesc: 'Schakel de verbeterde modus in voor vaardigheden, tool-aanroepen, bestandsbewerkingen en meer',
     trialQuota: {
       exhausted: 'Proefquotum opgebruikt',
       remaining: '{tokens} tokens resterend',

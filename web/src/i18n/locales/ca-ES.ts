@@ -1222,6 +1222,11 @@ export default {
     trialExhausted: 'La quota de prova s\'ha esgotat. Si us plau, configureu el vostre propi proveïdor d\'IA per continuar.',
     trialServiceBusy: 'El servei de prova està actualment ocupat a causa de l\'alta demanda. Si us plau, torneu-ho a provar d\'aquí a un moment. Si això continua, visiteu la nostra comunitat per obtenir ajuda.',
     configureProvider: 'Configurar proveïdor',
+    // Mode millorat
+    enhancedMode: 'Millorat',
+    enhancedModeDesc: 'Mode millorat: admet habilitats, crides d\'eines, operacions de fitxers, execució de codi i més',
+    enableEnhancedMode: 'Activar mode millorat',
+    enableEnhancedModeDesc: 'Activeu el mode millorat per a habilitats, crides d\'eines, operacions de fitxers i més',
     trialQuota: {
       exhausted: 'Quota de prova esgotada',
       remaining: '{tokens} tokens restants',

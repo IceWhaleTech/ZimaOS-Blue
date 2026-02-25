@@ -1,62 +1,15 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { getErrorMessage } from '@/utils/error'
 
-// Detect if running in Tauri (v2 injects __TAURI_INTERNALS__, v1 injects __TAURI__)
-const isTauri =
-  typeof window !== 'undefined' &&
-  ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
-
-// Get server URL from Tauri (supports both HTTP and HTTPS)
-async function getServerUrl(): Promise<string> {
-  // Try Tauri v2 IPC first, then v1
-  const invoke =
-    window.__TAURI_INTERNALS__?.invoke ??
-    (window as any).__TAURI__?.core?.invoke
-  if (isTauri && invoke) {
-    try {
-      const url = await invoke('get_server_url')
-      return url
-    } catch (e) {
-      console.warn('Failed to get server URL from Tauri, falling back to relative URLs', e)
-    }
-  }
-  // When invoke is unavailable (e.g. on_page_load stub without IPC),
-  // return empty string so fetches use relative URLs against the current origin.
-  return ''
-}
-
-// Cache the server URL and initialization promise
-let cachedServerUrl: string | null = null
-let initPromise: Promise<void> | null = null
-
-async function initializeBaseUrl(): Promise<void> {
-  if (!isTauri) {
-    return
-  }
-  if (cachedServerUrl === null) {
-    cachedServerUrl = await getServerUrl()
-    api.defaults.baseURL = `${cachedServerUrl}/api/v1`
-    console.log('API baseURL initialized to:', api.defaults.baseURL)
-  }
-}
-
-async function getBaseUrl(): Promise<string> {
-  if (!isTauri) {
-    return ''
-  }
-  // Ensure initialization is complete before returning
-  if (!initPromise) {
-    initPromise = initializeBaseUrl()
-  }
-  await initPromise
-  return cachedServerUrl ?? ''
-}
+// Desktop detection: __BLUE_DESKTOP__ is injected by the Tauri on_page_load handler.
+// In both browser and desktop modes, the page is same-origin with the Go server,
+// so all API calls use relative URLs — no special URL construction needed.
+const isDesktop =
+  typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
 
 async function reacquirePreviewToken(): Promise<string | null> {
   try {
-    const baseUrl = await getBaseUrl()
-    const url = `${baseUrl}/api/v1/preview/token`
-    const response = await fetch(url, {
+    const response = await fetch('/api/v1/preview/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
@@ -75,22 +28,13 @@ async function reacquirePreviewToken(): Promise<string | null> {
   return null
 }
 
-// Use absolute URL in Tauri, relative URL in browser
-// For Tauri, this will be initialized asynchronously before first request
-const baseURL = isTauri ? '' : '/api/v1'
-
 const api = axios.create({
-  baseURL,
+  baseURL: '/api/v1',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
 })
-
-// Initialize baseURL for Tauri before any requests
-if (isTauri) {
-  initPromise = initializeBaseUrl()
-}
 
 // Token refresh state — shared across concurrent 401s
 let isRefreshing = false
@@ -108,7 +52,7 @@ function addRefreshSubscriber(cb: (token: string) => void) {
 function clearAuthAndRedirect() {
   localStorage.removeItem('token')
   localStorage.removeItem('refresh_token')
-  if (isTauri) {
+  if (isDesktop) {
     window.dispatchEvent(new CustomEvent('auth:unauthorized'))
   } else if (!window.location.pathname.startsWith('/login')) {
     window.location.href = '/login'
@@ -141,9 +85,7 @@ export async function ensureFreshToken(): Promise<string | null> {
   }
 
   try {
-    const baseUrl = await getBaseUrl()
-    const url = `${baseUrl}/api/v1/auth/refresh`
-    const response = await fetch(url, {
+    const response = await fetch('/api/v1/auth/refresh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshTokenValue }),
@@ -168,11 +110,6 @@ export async function ensureFreshToken(): Promise<string | null> {
 // Request interceptor
 api.interceptors.request.use(
   async (config) => {
-    // Ensure baseURL is initialized for Tauri before first request
-    if (isTauri && initPromise) {
-      await initPromise
-    }
-
     const token = localStorage.getItem('token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`

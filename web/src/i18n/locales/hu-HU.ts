@@ -1481,6 +1481,11 @@ export default {
     trialExhausted: 'A próbaverzió kvótája kimerült. Konfiguráljon saját AI-szolgáltatót a folytatáshoz.',
     trialServiceBusy: 'A próbaszolgáltatás jelenleg túlterhelt a nagy kereslet miatt. Kérjük, próbálja újra egy pillanat múlva. Ha ez továbbra is fennáll, látogasson el közösségünkbe segítségért.',
     configureProvider: 'Szolgáltató konfigurálása',
+    // Bővített mód
+    enhancedMode: 'Bővített',
+    enhancedModeDesc: 'Bővített mód: támogatja a készségeket, eszközhívásokat, fájlműveleteket, kódfuttatást és egyebeket',
+    enableEnhancedMode: 'Bővített mód bekapcsolása',
+    enableEnhancedModeDesc: 'Kapcsolja be a bővített módot a készségek, eszközhívások, fájlműveletek és egyebek használatához',
     trialQuota: {
       exhausted: 'Próbaverzió kvótája kimerült',
       remaining: '{tokens} token maradt',

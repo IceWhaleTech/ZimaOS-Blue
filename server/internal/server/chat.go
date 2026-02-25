@@ -413,7 +413,11 @@ func (h *ChatHandler) selectTools(userMessage string) []tools.ToolDefinition {
 	if h.toolSelector != nil && userMessage != "" {
 		// Check runtime setting (default false)
 		if h.settingsHandler != nil && !h.settingsHandler.GetSmartToolSelection() {
-			logger.Debug().Int("tools", len(allDefs)).Msg("[chat] selectTools: smart selection disabled, returning all tools")
+			names := make([]string, len(allDefs))
+			for i, d := range allDefs {
+				names[i] = d.Name
+			}
+			logger.Info().Int("tools", len(allDefs)).Strs("names", names).Msg("[chat] selectTools: returning all tools")
 			return allDefs
 		}
 		selected := h.toolSelector.Select(userMessage, allDefs)
@@ -429,7 +433,11 @@ func (h *ChatHandler) selectTools(userMessage string) []tools.ToolDefinition {
 			Msg("[chat] selectTools")
 		return selected
 	}
-	logger.Debug().Int("tools", len(allDefs)).Bool("selector_nil", h.toolSelector == nil).Msg("[chat] selectTools: no filtering")
+	names := make([]string, len(allDefs))
+	for i, d := range allDefs {
+		names[i] = d.Name
+	}
+	logger.Info().Int("tools", len(allDefs)).Strs("names", names).Bool("selector_nil", h.toolSelector == nil).Msg("[chat] selectTools: no filtering")
 	return allDefs
 }
 
@@ -1026,6 +1034,26 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	for imRound := 0; imRound < maxToolRounds; imRound++ {
 		resp, err = h.chatOnce(ctx, req)
 		if err != nil {
+			// Graceful fallback: if a later round fails but we have tool results, use them
+			if imRound > 0 {
+				var fallbackParts []string
+				for _, m := range req.Messages {
+					if m.Role == llm.RoleTool && m.Content != "" {
+						fallbackParts = append(fallbackParts, m.Content)
+					}
+				}
+				if len(fallbackParts) > 0 {
+					logger.Warn().Err(err).Int("round", imRound).Int("tool_results", len(fallbackParts)).
+						Msg("[im] tool round failed, using fallback from previous tool results")
+					fallback := strings.Join(fallbackParts, "\n\n")
+					if len(fallback) > 4096 {
+						fallback = fallback[:4096]
+					}
+					resp = &llm.ChatResponse{Message: llm.Message{Role: llm.RoleAssistant, Content: fallback}}
+					err = nil
+					break
+				}
+			}
 			logger.Error().Err(err).Str("model", req.Model).Msg("LLM chat request failed")
 			return "", fmt.Errorf("%s", i18n.T(lang, i18n.MsgServiceUnavailable))
 		}
@@ -1144,6 +1172,10 @@ func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.Tool
 			logger.Error().Err(err).Str("tool", tc.Name).Str("id", tc.ID).Msg("[chat] tool call failed")
 			content = fmt.Sprintf(`{"error":"%s"}`, err.Error())
 		} else {
+			// Unwrap ForwardedResult from exec auto-forward.
+			if fwd, ok := result.(*tools.ForwardedResult); ok {
+				result = fwd.Result
+			}
 			switch v := result.(type) {
 			case string:
 				content = v
@@ -1606,6 +1638,25 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	for round := 0; round < maxToolRounds; round++ {
 		resp, err = h.chatOnce(llmCtx, chatReq)
 		if err != nil || resp == nil {
+			// Graceful fallback: if a later round fails but we have tool results, use them
+			if round > 0 && err != nil {
+				var fallbackParts []string
+				for _, m := range chatReq.Messages {
+					if m.Role == llm.RoleTool && m.Content != "" {
+						fallbackParts = append(fallbackParts, m.Content)
+					}
+				}
+				if len(fallbackParts) > 0 {
+					logger.Warn().Err(err).Int("round", round).Int("tool_results", len(fallbackParts)).
+						Msg("[chat] tool round failed, using fallback from previous tool results")
+					fallback := strings.Join(fallbackParts, "\n\n")
+					if len(fallback) > 4096 {
+						fallback = fallback[:4096]
+					}
+					resp = &llm.ChatResponse{Message: llm.Message{Role: llm.RoleAssistant, Content: fallback}}
+					err = nil
+				}
+			}
 			break
 		}
 
@@ -2701,7 +2752,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
 		// Transparent retry: if the stream failed before any content was sent to the client,
 		// retry up to 2 times with backoff. This handles transient network errors silently.
-		for retryAttempt := 0; retryAttempt < 2 && err != nil && fullContent == "" && !streamErrorHandled && ctx.Err() == nil; retryAttempt++ {
+		// Skip retries for client errors (4xx) — the request itself is invalid, retrying won't help.
+		isClientErr := false
+		if pe, ok := err.(*proxybridge.ProxyError); ok && pe.IsClientError() {
+			isClientErr = true
+		}
+		for retryAttempt := 0; retryAttempt < 2 && err != nil && !isClientErr && fullContent == "" && !streamErrorHandled && ctx.Err() == nil; retryAttempt++ {
 			delay := time.Duration(retryAttempt+1) * time.Second
 			logger.Warn().Err(err).Int("retry", retryAttempt+1).Dur("delay", delay).Msg("[chat] retrying stream after pre-content error")
 			select {
@@ -2870,7 +2926,39 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		continue
 	}
 	if err != nil {
-		logger.Warn().Err(err).Int("tool_round", toolRound).Int("total_delta_chars", totalDeltaChars).Msg("[chat] stream: tool loop ended with error")
+		// Graceful fallback: if a later tool round fails but we already have
+		// tool results from previous rounds, synthesize a text summary from
+		// those results so the user sees something useful instead of an error.
+		if toolRound > 0 {
+			var fallbackParts []string
+			for _, m := range chatReq.Messages {
+				if m.Role == llm.RoleTool && m.Content != "" {
+					fallbackParts = append(fallbackParts, m.Content)
+				}
+			}
+			if len(fallbackParts) > 0 {
+				logger.Warn().Err(err).Int("tool_round", toolRound).Int("tool_results", len(fallbackParts)).
+					Msg("[chat] stream: tool round failed, using fallback from previous tool results")
+				// Stream the tool results as content to the client
+				fallbackContent := strings.Join(fallbackParts, "\n\n")
+				if len(fallbackContent) > 4096 {
+					fallbackContent = fallbackContent[:4096]
+				}
+				fallbackDelta, _ := json.Marshal(map[string]interface{}{
+					"delta":     fallbackContent,
+					"done":      false,
+					"stream_id": streamID,
+				})
+				c.Response().Write([]byte("data: " + string(fallbackDelta) + "\n\n"))
+				flusher.Flush()
+				fullContent = fallbackContent
+				totalDeltaChars += len(fallbackContent)
+				err = nil // clear error — we recovered
+			}
+		}
+		if err != nil {
+			logger.Warn().Err(err).Int("tool_round", toolRound).Int("total_delta_chars", totalDeltaChars).Msg("[chat] stream: tool loop ended with error")
+		}
 	} else {
 		logger.Info().Int("tool_round", toolRound).Int("total_delta_chars", totalDeltaChars).Bool("streamCompleted", streamCompleted).Msg("[chat] stream: tool loop ended normally")
 	}

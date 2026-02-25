@@ -109,7 +109,7 @@ type ToolResponse struct {
 	Parameters  map[string]interface{}   `json:"parameters,omitempty"`
 }
 
-// ListTools returns all registered tools
+// ListTools returns all registered tools (including disabled ones)
 func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 	toolNames := h.registry.List()
 	response := make([]ToolResponse, 0, len(toolNames))
@@ -123,11 +123,30 @@ func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 		response = append(response, ToolResponse{
 			ID:          def.Name,
 			Name:        def.Name,
-			Version:     "1.0.0", // Tools don't have version in current implementation
+			Version:     "1.0.0",
 			Description: def.Description,
 			Icon:        def.Icon,
-			Enabled:     true, // All registered tools are enabled
-			Builtin:     true, // Currently all tools are builtin
+			Enabled:     true,
+			Builtin:     true,
+			Parameters:  def.Parameters,
+		})
+	}
+
+	// Also include disabled tools
+	for _, name := range h.registry.ListDisabled() {
+		tool := h.registry.Get(name)
+		if tool == nil {
+			continue
+		}
+		def := tool.Definition()
+		response = append(response, ToolResponse{
+			ID:          def.Name,
+			Name:        def.Name,
+			Version:     "1.0.0",
+			Description: def.Description,
+			Icon:        def.Icon,
+			Enabled:     false,
+			Builtin:     true,
 			Parameters:  def.Parameters,
 		})
 	}
@@ -152,7 +171,7 @@ func (h *ToolStoreHandler) GetTool(c echo.Context) error {
 		Version:     "1.0.0",
 		Description: def.Description,
 		Icon:        def.Icon,
-		Enabled:     true,
+		Enabled:     !h.registry.IsDisabled(def.Name),
 		Builtin:     true,
 		Parameters:  def.Parameters,
 	})
@@ -161,13 +180,13 @@ func (h *ToolStoreHandler) GetTool(c echo.Context) error {
 // EnableTool enables a tool
 func (h *ToolStoreHandler) EnableTool(c echo.Context) error {
 	id := c.Param("id")
-	tool := h.registry.Get(id)
-	if tool == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{
-			"error": "tool not found",
-		})
+	if !h.registry.Enable(id) {
+		// Not in disabled set — check if it exists at all
+		if h.registry.Get(id) == nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "tool not found"})
+		}
+		// Already enabled
 	}
-	// TODO: Implement tool enable/disable in registry
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "tool enabled",
@@ -177,13 +196,13 @@ func (h *ToolStoreHandler) EnableTool(c echo.Context) error {
 // DisableTool disables a tool
 func (h *ToolStoreHandler) DisableTool(c echo.Context) error {
 	id := c.Param("id")
-	tool := h.registry.Get(id)
-	if tool == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{
-			"error": "tool not found",
-		})
+	if !h.registry.Disable(id) {
+		// Not in active set — check if it exists at all
+		if h.registry.Get(id) == nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "tool not found"})
+		}
+		// Already disabled
 	}
-	// TODO: Implement tool enable/disable in registry
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "tool disabled",

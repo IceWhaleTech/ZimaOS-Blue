@@ -1143,6 +1143,11 @@ export default {
     trialExhausted: 'Zkušební kvóta byla vyčerpána. Nakonfigurujte prosím vlastního poskytovatele AI pro pokračování.',
     trialServiceBusy: 'Zkušební služba je momentálně přetížena kvůli vysoké poptávce. Zkuste to prosím za chvíli znovu. Pokud problém přetrvává, navštivte naši komunitu pro pomoc.',
     configureProvider: 'Konfigurovat poskytovatele',
+    // Rozšířený režim
+    enhancedMode: 'Rozšířený',
+    enhancedModeDesc: 'Rozšířený režim: podporuje dovednosti, volání nástrojů, souborové operace, spouštění kódu a další',
+    enableEnhancedMode: 'Aktivovat rozšířený režim',
+    enableEnhancedModeDesc: 'Aktivujte rozšířený režim pro dovednosti, volání nástrojů, souborové operace a další',
     trialQuota: {
       exhausted: 'Zkušební kvóta vyčerpána',
       remaining: 'Zbývá {tokens} tokenů',

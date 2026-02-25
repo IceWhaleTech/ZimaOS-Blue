@@ -186,6 +186,8 @@ func (b *SystemPromptBuilder) buildToolsInfo() string {
 	var lines []string
 	lines = append(lines, "# Tool Guidance")
 	lines = append(lines, "")
+	lines = append(lines, "The tools listed below are built-in API tools, NOT system commands. Call them directly via tool_use — never invoke them through exec or shell.")
+	lines = append(lines, "")
 
 	hasHints := false
 	for _, def := range defs {
@@ -206,17 +208,41 @@ func (b *SystemPromptBuilder) buildToolsInfo() string {
 		}
 	}
 
-	lines = append(lines, "## Tool Routing Rules")
-	lines = append(lines, "- No URL, need to find info → web_search")
-	lines = append(lines, "- Have a URL, need to read/interact/screenshot → browser")
-	lines = append(lines, "- Need to evaluate/rate/score UI or accessibility → ui_reviewer")
-	lines = append(lines, "- After web_search, user says \"open it\" → browser")
-	lines = append(lines, "- \"How does this look?\" / \"Is this well-designed?\" → ui_reviewer")
-	lines = append(lines, "- \"What does this page say?\" / \"Read this for me\" → browser")
-	lines = append(lines, "- Just screenshot, no scoring → browser (screenshot)")
-	lines = append(lines, "- \"Remember this\" / \"don't forget\" → memory (action=remember)")
-	lines = append(lines, "- NEVER use exec to call other tools — call them directly by name")
-	lines = append(lines, "")
+	// Build a set of registered tool names for conditional routing rules.
+	registered := make(map[string]bool, len(defs))
+	for _, def := range defs {
+		registered[def.Name] = true
+	}
+
+	// Only emit routing rules for tools that are actually registered.
+	var rules []string
+	if registered["web_search"] {
+		rules = append(rules, "- Search/query/look up information → web_search")
+	}
+	if registered["browser"] {
+		rules = append(rules, "- Have a URL, need to read/interact/screenshot → browser")
+	}
+	if registered["ui_reviewer"] {
+		rules = append(rules, "- Evaluate/rate/score UI or accessibility → ui_reviewer")
+	}
+	if registered["web_search"] && registered["browser"] {
+		rules = append(rules, "- After web_search, user says \"open it\" → browser")
+	}
+	if registered["ui_reviewer"] {
+		rules = append(rules, "- \"How does this look?\" / \"Is this well-designed?\" → ui_reviewer")
+	}
+	if registered["browser"] {
+		rules = append(rules, "- \"What does this page say?\" / \"Read this for me\" → browser")
+		rules = append(rules, "- Just screenshot, no scoring → browser (screenshot)")
+	}
+	if registered["memory"] {
+		rules = append(rules, "- \"Remember this\" / \"don't forget\" → memory (action=remember)")
+	}
+	if len(rules) > 0 {
+		lines = append(lines, "## Tool Routing Rules")
+		lines = append(lines, rules...)
+		lines = append(lines, "")
+	}
 
 	return strings.Join(lines, "\n")
 }
@@ -237,7 +263,8 @@ func (b *SystemPromptBuilder) buildExecGuidance() []string {
 	// Purpose
 	lines = append(lines, "### Purpose")
 	lines = append(lines, "Execute shell/CLI commands on the host OS (ls, git, curl, npm, pip, make, etc.).")
-	lines = append(lines, "NEVER use exec to invoke other tools — call them directly by name.")
+	lines = append(lines, "IMPORTANT: For searching the web, call the web_search tool directly — do NOT use exec for search tasks.")
+	lines = append(lines, "NEVER use exec to invoke other tools (web_search, memory, file_read, file_write) — call them directly by name.")
 	lines = append(lines, "")
 
 	// Sandbox
@@ -274,6 +301,9 @@ func (b *SystemPromptBuilder) buildExecGuidance() []string {
 	lines = append(lines, "- For risky or unfamiliar commands, briefly explain what the command does before executing")
 	lines = append(lines, "- Do not start long-running servers or watch-mode processes (npm run dev, webpack --watch)")
 	lines = append(lines, "- Do not launch interactive editors (vim, nano, less)")
+	if runtime.GOOS == "darwin" {
+		lines = append(lines, "- macOS: use `grep -E` (not `grep -P`); use `sed ''` (not `sed -i`); `date` uses BSD syntax")
+	}
 	lines = append(lines, "")
 
 	// Error handling & retry

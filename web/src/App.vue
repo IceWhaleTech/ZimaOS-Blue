@@ -16,20 +16,10 @@ function dismissSplash() {
   }
 }
 
-// Show window after content loads (prevents startup flash on Tauri)
+// Show window after content loads (prevents startup flash on desktop)
 onMounted(async () => {
   // Dismiss the inline splash screen now that Vue has rendered
   dismissSplash()
-
-  // In Tauri, on_page_load already shows the window when the HTML loads.
-  // This is a backup for edge cases (e.g. window recreated from tray click).
-  if (window.__TAURI_INTERNALS__?.invoke) {
-    try {
-      await window.__TAURI_INTERNALS__.invoke('plugin:window|show')
-    } catch {
-      // Ignore — window may already be visible
-    }
-  }
 
   // Subscribe to Web Push notifications (also requests permission)
   subscribeWebPush().catch(() => {})

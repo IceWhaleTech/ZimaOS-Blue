@@ -253,9 +253,11 @@ export default {
     trialExhausted: 'A cota de teste foi esgotada. Configure seu próprio provedor de IA para continuar.',
     trialServiceBusy: 'O serviço de teste está atualmente ocupado devido à alta demanda. Tente novamente em instantes. Se isso persistir, visite nossa comunidade para obter ajuda.',
     configureProvider: 'Configurar provedor',
-    // Claude Code CLI
-    enableClaudeCodeDesc: 'Habilite {name} para uma melhor experiência com habilidades, chamadas de ferramentas, operações de arquivos e mais',
-    enableClaudeCodePrompt: 'Habilite {name} para mais recursos',
+    // Modo aprimorado
+    enhancedMode: 'Modo aprimorado',
+    enhancedModeDesc: 'Modo aprimorado: suporta habilidades, chamadas de ferramentas, operações de arquivos, execução de código e mais',
+    enableEnhancedMode: 'Ativar modo aprimorado',
+    enableEnhancedModeDesc: 'Ative o modo aprimorado para habilidades, chamadas de ferramentas, operações de arquivos e mais',
     // Routing Mode
     autoSwitchDesc: 'Trocar automaticamente para outro provedor se o atual falhar',
     routingMode: {

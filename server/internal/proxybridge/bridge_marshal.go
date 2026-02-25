@@ -3,6 +3,7 @@ package proxybridge
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
@@ -112,13 +113,17 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 				}
 			}
 			bm.Content = parts
+		} else if len(m.ToolCalls) > 0 {
+			// When tool_calls are present, set content to empty string "".
+			// Many OpenAI→Anthropic relays (e.g. tribios) fail to convert
+			// tool_calls into Anthropic tool_use blocks when content is null,
+			// causing "tool_result has no corresponding tool_use" errors.
+			// Empty string is valid per OpenAI spec and gives relays a
+			// parseable value during format conversion.
+			bm.Content = ""
 		} else if m.Content != "" {
 			bm.Content = m.Content
 		}
-		// else: Content stays nil → serializes as "content": null
-		// This is important for assistant messages with tool_calls:
-		// OpenAI spec requires content=null (not ""), and many relays
-		// (e.g. tribios) fail to convert tool_calls when content="".
 		if len(m.ToolCalls) > 0 {
 			bm.ToolCalls = make([]bridgeToolCall, len(m.ToolCalls))
 			for j, tc := range m.ToolCalls {
@@ -154,7 +159,21 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 			}
 		}
 	}
-	return json.Marshal(br)
+	result, err := json.Marshal(br)
+	if err == nil {
+		// Log only the last assistant+tool_calls message (current round)
+		for i := len(msgs) - 1; i >= 0; i-- {
+			if len(msgs[i].ToolCalls) > 0 {
+				snippet, _ := json.Marshal(msgs[i])
+				if len(snippet) > 500 {
+					snippet = snippet[:500]
+				}
+				slog.Info("[bridge] serialized assistant+tool_calls", "json", string(snippet), "msg_index", i, "total_msgs", len(msgs))
+				break
+			}
+		}
+	}
+	return result, err
 }
 
 // ParseChatResponse parses OpenAI-format JSON into llm.ChatResponse.

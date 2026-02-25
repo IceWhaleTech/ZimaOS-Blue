@@ -10,11 +10,11 @@ Get current weather and forecast for any location.
 ## Usage
 
 ```bash
-# Current weather
-curl -s "https://api.openweathermap.org/data/2.5/weather?q=Beijing&units=metric&appid=$OPENWEATHER_API_KEY" | jq '{temp: .main.temp, feels_like: .main.feels_like, humidity: .main.humidity, description: .weather[0].description, wind: .wind.speed}'
+# Current weather (add &lang=LANG_CODE to localize description)
+curl -s "https://api.openweathermap.org/data/2.5/weather?q=Beijing&units=metric&lang=zh_cn&appid=$OPENWEATHER_API_KEY" | jq '{temp: .main.temp, feels_like: .main.feels_like, humidity: .main.humidity, description: .weather[0].description, wind: .wind.speed}'
 
 # 5-day forecast
-curl -s "https://api.openweathermap.org/data/2.5/forecast?q=Beijing&units=metric&cnt=5&appid=$OPENWEATHER_API_KEY" | jq '.list[] | {dt_txt, temp: .main.temp, description: .weather[0].description}'
+curl -s "https://api.openweathermap.org/data/2.5/forecast?q=Beijing&units=metric&cnt=5&lang=zh_cn&appid=$OPENWEATHER_API_KEY" | jq '.list[] | {dt_txt, temp: .main.temp, description: .weather[0].description}'
 ```
 
 ## Setup
@@ -26,6 +26,21 @@ curl -s "https://api.openweathermap.org/data/2.5/forecast?q=Beijing&units=metric
 
 - `location`: City name (e.g., "Beijing", "New York,US", "London,GB")
 - `units`: "metric" (Celsius) or "imperial" (Fahrenheit), default: metric
+
+## Localization
+
+Set the `lang` parameter based on the user's locale to get localized weather descriptions.
+
+Locale mapping (BCP-47 → OpenWeatherMap `lang`):
+- `zh-CN` → `zh_cn`, `zh-TW` → `zh_tw`
+- `ja-JP` → `ja`, `ko-KR` → `kr`
+- `en-US`/`en-GB` → `en`
+- `fr-FR` → `fr`, `de-DE` → `de`, `es-ES` → `es`, `it-IT` → `it`
+- `pt-BR` → `pt_br`, `ru-RU` → `ru`, `pl-PL` → `pl`, `nl-NL` → `nl`
+- `sv-SE` → `se`, `da-DK` → `da`, `nb-NO` → `no`
+- Full list: https://openweathermap.org/current#multi
+
+Always respond in the user's language.
 
 ## Notes
 

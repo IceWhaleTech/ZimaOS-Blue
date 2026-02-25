@@ -833,12 +833,11 @@ async function handleRemoteAccessStart() {
 }
 
 async function handleRemoteAccessStop() {
-  // Detect Tauri: check both __TAURI_INTERNALS__ (injected via on_page_load) and __TAURI__
-  const isTauri = typeof window !== 'undefined' &&
-    ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
-  // In non-Tauri browsers, confirm before disconnecting.
-  // Skip in Tauri — WKWebView silently returns false for confirm() on external URLs.
-  if (!isTauri) {
+  // Detect desktop app
+  const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+  // In non-desktop browsers, confirm before disconnecting.
+  // Skip in desktop — WKWebView silently returns false for confirm() on external URLs.
+  if (!isDesktop) {
     const tunnelUrl = tunnelStatus.value?.url
     let isAccessingViaTunnel = false
     if (tunnelUrl) {

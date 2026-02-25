@@ -264,9 +264,11 @@ export default {
     trialExhausted: 'La cuota de prueba se ha agotado. Configure su propio proveedor de IA para continuar.',
     trialServiceBusy: 'El servicio de prueba está actualmente ocupado debido a la alta demanda. Inténtelo de nuevo en un momento. Si esto continúa, visite nuestra comunidad para obtener ayuda.',
     configureProvider: 'Configurar proveedor',
-    // Claude Code CLI
-    enableClaudeCodeDesc: 'Habilita {name} para una mejor experiencia con habilidades, llamadas de herramientas, operaciones de archivos y más',
-    enableClaudeCodePrompt: 'Habilita {name} para más funciones',
+    // Modo mejorado
+    enhancedMode: 'Modo mejorado',
+    enhancedModeDesc: 'Modo mejorado: soporta habilidades, llamadas de herramientas, operaciones de archivos, ejecución de código y más',
+    enableEnhancedMode: 'Activar modo mejorado',
+    enableEnhancedModeDesc: 'Activa el modo mejorado para habilidades, llamadas de herramientas, operaciones de archivos y más',
     // Routing Mode
     routingMode: {
       auto: 'Automático',

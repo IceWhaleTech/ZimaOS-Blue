@@ -11,7 +11,7 @@ const props = defineProps<{
 const { openFullscreen } = useFullscreen()
 const expanded = ref(props.card.defaultExpanded ?? false)
 const copied = ref(false)
-const isMarkdown = computed(() => props.card.language?.toLowerCase() === 'markdown')
+const isMarkdown = computed(() => !props.card.language || props.card.language.toLowerCase() === 'markdown')
 const renderedMarkdown = computed(() => isMarkdown.value ? renderMarkdown(props.card.code) : '')
 
 function handleDoubleClick() {

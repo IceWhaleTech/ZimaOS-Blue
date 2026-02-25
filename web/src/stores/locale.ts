@@ -23,6 +23,11 @@ export const useLocaleStore = defineStore('locale', () => {
     }
   }
 
+  // Sync store state with the actual i18n locale (e.g. after initLocale runs)
+  function syncFromI18n() {
+    currentLocale.value = getLocale()
+  }
+
   async function toggleLocale() {
     const currentIndex = localeOptions.findIndex((o) => o.value === currentLocale.value)
     const nextIndex = (currentIndex + 1) % localeOptions.length
@@ -38,6 +43,7 @@ export const useLocaleStore = defineStore('locale', () => {
     options,
     loading,
     changeLocale,
+    syncFromI18n,
     toggleLocale,
   }
 })

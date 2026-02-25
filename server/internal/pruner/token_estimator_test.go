@@ -41,7 +41,7 @@ func TestCompactMarkdown_EmptySection(t *testing.T) {
 func TestCompactMarkdown_EmptySectionAtEOF(t *testing.T) {
 	input := "# Title\n\n## Facts\n\n"
 	got := CompactMarkdown(input)
-	want := "# Title"
+	want := ""
 	if got != want {
 		t.Errorf("empty section at EOF:\ngot:  %q\nwant: %q", got, want)
 	}
@@ -93,9 +93,31 @@ func TestCompactMarkdown_MemoryTemplate(t *testing.T) {
 ## Lessons Learned
 `
 	got := CompactMarkdown(input)
-	want := "# Long-Term Memory\n\n*Blue maintains this file automatically.*"
+	// Italic hint, empty sections, and empty fields are all stripped.
+	// Only "# Long-Term Memory" heading would remain — but onlyHeadings
+	// detects this and returns "" so the file is skipped entirely.
+	want := ""
 	if got != want {
 		t.Errorf("memory template:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+func TestCompactMarkdown_UserTemplate(t *testing.T) {
+	// USER.md template: italic hint + all empty fields → should compact to ""
+	input := `# About You
+
+*Blue will learn about you over time. You can also edit it directly.*
+
+- **Name:**
+- **What to call you:**
+- **Timezone:**
+- **Language preference:**
+- **Notes:**
+`
+	got := CompactMarkdown(input)
+	want := ""
+	if got != want {
+		t.Errorf("user template:\ngot:  %q\nwant: %q", got, want)
 	}
 }
 

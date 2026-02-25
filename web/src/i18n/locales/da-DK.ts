@@ -1146,6 +1146,11 @@ export default {
     trialExhausted: 'Prøvekvoten er opbrugt. Konfigurer venligst din egen AI-udbyder for at fortsætte.',
     trialServiceBusy: 'Prøvetjenesten er i øjeblikket optaget på grund af høj efterspørgsel. Prøv venligst igen om et øjeblik. Hvis dette fortsætter, besøg vores fællesskab for hjælp.',
     configureProvider: 'Konfigurer udbyder',
+    // Forbedret tilstand
+    enhancedMode: 'Forbedret',
+    enhancedModeDesc: 'Forbedret tilstand: understøtter færdigheder, værktøjskald, filoperationer, kodekørsel og mere',
+    enableEnhancedMode: 'Aktiver forbedret tilstand',
+    enableEnhancedModeDesc: 'Aktiver forbedret tilstand for færdigheder, værktøjskald, filoperationer og mere',
     trialQuota: {
       exhausted: 'Prøvekvote opbrugt',
       remaining: '{tokens} tokens tilbage',

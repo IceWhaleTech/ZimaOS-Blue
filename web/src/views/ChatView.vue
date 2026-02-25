@@ -6,8 +6,6 @@ import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
-import { claudeCodeApi } from '@/api/claudecode'
-import type { ClaudeCodeConfigResponse } from '@/api/claudecode'
 import { authFetch } from '@/api/client'
 import ConversationList from '@/components/ConversationList.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
@@ -56,7 +54,6 @@ const mobileAnimationEnabled = ref(false) // Only animate after user interaction
 const showRoutingMenu = ref(false)
 const routingMenuPosition = ref({ x: 0, y: 0 })
 const routingButtonRef = ref<HTMLElement | null>(null)
-const claudeCodeConfig = ref<ClaudeCodeConfigResponse | null>(null)
 
 // Theme style selector state
 const showStyleSelector = ref(false)
@@ -116,8 +113,8 @@ const showContextMenu = ref(false)
 const contextMenuPosition = ref({ x: 0, y: 0 })
 const contextMenuMessageId = ref<string | null>(null)
 
-// Check if Claude Code CLI is enabled
-const isClaudeCodeEnabled = computed(() => claudeCodeConfig.value?.enabled ?? false)
+// Check if Claude Code CLI is enabled (from store, reactive)
+const isClaudeCodeEnabled = computed(() => settingsStore.claudeCodeEnabled)
 
 // Provider status computed properties
 const hasConfiguredProviders = computed(() => providerPoolStore.enabledProviders.length > 0)
@@ -562,17 +559,6 @@ async function handlePresetQuestionSelect(text: string, attachments?: FileAttach
   await handleSend(text, attachments)
 }
 
-// Fetch Claude Code CLI config
-async function fetchClaudeCodeConfig() {
-  try {
-    const response = await claudeCodeApi.getConfig()
-    claudeCodeConfig.value = response.data
-  } catch {
-    // Silently fail - CLI might not be available
-    claudeCodeConfig.value = null
-  }
-}
-
 onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
@@ -610,7 +596,7 @@ onMounted(async () => {
   }).catch(() => {})
   settingsStore.fetchTools().catch(() => {})
   providerPoolStore.fetchRoutingMode().catch(() => {})
-  fetchClaudeCodeConfig()
+  settingsStore.fetchClaudeCodeEnabled()
 
   // Check for any pending tool approvals (e.g. page was refreshed while waiting)
   chatStore.checkPendingApprovals()
@@ -669,7 +655,7 @@ onUnmounted(() => {
       @drop.prevent="chatInputRef?.handleDrop($event)"
     >
       <!-- Chat header -->
-      <header class="flex items-center justify-between px-4 py-3 sm:p-4 border-b border-gray-200 dark:border-glass-border gap-2"
+      <header class="relative z-50 flex items-center justify-between px-4 py-3 sm:p-4 border-b border-gray-200 dark:border-glass-border gap-2"
         :class="isMobile ? 'bg-white dark:bg-gray-900' : 'glass-header'"
       >
         <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -698,18 +684,36 @@ onUnmounted(() => {
           <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">
             {{ chatStore.currentConversation?.title || t('chat.newChat') }}
           </h2>
-          <!-- Enable Claude Code CLI prompt -->
-          <router-link
-            v-if="!isClaudeCodeEnabled"
-            to="/settings?tab=llm#claude-code-settings"
-            class="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0 transition-colors cursor-pointer"
+          <!-- Enhanced Mode badge -->
+          <span
+            v-if="isClaudeCodeEnabled"
+            class="relative group hidden sm:inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full flex-shrink-0 cursor-default"
             :class="isCompact || isMobile ? 'px-1.5 py-0.5' : 'px-2 py-0.5'"
-            :title="t('chat.enableClaudeCodeDesc', { name: 'Claude Code CLI' })"
           >
             <svg :class="isCompact || isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
-            <span v-if="!isCompact && !isMobile">{{ t('chat.enableClaudeCodePrompt', { name: 'Claude Code CLI' }) }}</span>
+            <span v-if="!isCompact && !isMobile">{{ t('chat.enhancedMode') }}</span>
+            <!-- Tooltip (positioned right to avoid sidebar clipping) -->
+            <span class="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 w-max max-w-xs px-3 py-2 rounded-lg text-xs font-normal text-white bg-gray-800 dark:bg-gray-700 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50">
+              {{ t('chat.enhancedModeDesc') }}
+            </span>
+          </span>
+          <!-- Enable Enhanced Mode prompt -->
+          <router-link
+            v-else
+            to="/settings?tab=llm#claude-code-settings"
+            class="relative group hidden sm:inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full flex-shrink-0 transition-colors cursor-pointer"
+            :class="isCompact || isMobile ? 'px-1.5 py-0.5' : 'px-2 py-0.5'"
+          >
+            <svg :class="isCompact || isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            <span v-if="!isCompact && !isMobile">{{ t('chat.enableEnhancedMode') }}</span>
+            <!-- Tooltip (positioned right to avoid sidebar clipping) -->
+            <span class="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 w-max max-w-xs px-3 py-2 rounded-lg text-xs font-normal text-white bg-gray-800 dark:bg-gray-700 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50">
+              {{ t('chat.enableEnhancedModeDesc') }}
+            </span>
           </router-link>
         </div>
 

@@ -25,6 +25,25 @@ const (
 	defaultTimeout = 120 * time.Second
 )
 
+// ProxyError wraps an HTTP status code from the proxy handler so callers
+// can distinguish client errors (4xx, non-retryable) from server errors (5xx, retryable).
+type ProxyError struct {
+	StatusCode int
+	Body       string // truncated error body for diagnostics
+}
+
+func (e *ProxyError) Error() string {
+	if e.Body != "" {
+		return fmt.Sprintf("proxy returned %d: %s", e.StatusCode, e.Body)
+	}
+	return fmt.Sprintf("proxy returned %d", e.StatusCode)
+}
+
+// IsClientError returns true for 4xx status codes (request is invalid, retrying won't help).
+func (e *ProxyError) IsClientError() bool {
+	return e.StatusCode >= 400 && e.StatusCode < 500
+}
+
 // Bridge adapts llm.ChatRequest/ChatResponse to flow through an http.Handler proxy.
 type Bridge struct {
 	handler http.Handler
@@ -68,12 +87,11 @@ func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatRespon
 	b.handler.ServeHTTP(rec, httpReq)
 
 	if rec.Code >= 400 {
-		// Truncate error body to avoid huge error strings (#9)
 		errBody := rec.Body.String()
 		if len(errBody) > 512 {
 			errBody = errBody[:512] + "...(truncated)"
 		}
-		return nil, fmt.Errorf("proxy returned %d: %s", rec.Code, errBody)
+		return nil, &ProxyError{StatusCode: rec.Code, Body: errBody}
 	}
 
 	// Guard against unbounded response size (#4)
@@ -168,7 +186,7 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 		b.handler.ServeHTTP(rw, httpReq)
 		if rw.code >= 400 {
 			slog.Error("[bridge] proxy handler returned error", "code", rw.code, "model", req.Model)
-			doneCh <- fmt.Errorf("proxy returned %d", rw.code)
+			doneCh <- &ProxyError{StatusCode: rw.code}
 		} else {
 			slog.Debug("[bridge] proxy handler completed", "code", rw.code, "model", req.Model)
 			doneCh <- nil

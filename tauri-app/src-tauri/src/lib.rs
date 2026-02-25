@@ -494,11 +494,14 @@ pub fn run() {
                 let _ = webview.window().set_focus();
             }
 
-            // Inject Tauri marker into external pages (Go server at localhost)
-            // so the frontend can detect it's running inside Tauri webview.
+            // Inject desktop marker into external pages (Go server at localhost)
+            // so the frontend knows it's running inside the desktop app.
+            // NOTE: We do NOT inject __TAURI_INTERNALS__ because the page is loaded
+            // from an external origin (http://localhost) where Tauri IPC is unavailable.
+            // The frontend should use relative URLs (same-origin) for all API calls.
             if url.contains("localhost") {
                 let _ = webview.eval(
-                    "if(!window.__TAURI_INTERNALS__){window.__TAURI_INTERNALS__={__desktop:true}}"
+                    "window.__BLUE_DESKTOP__=true"
                 );
             }
         })

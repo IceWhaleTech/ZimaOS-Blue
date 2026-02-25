@@ -736,8 +736,12 @@ function isPlaceholderContent(content: string): boolean {
   return false
 }
 
-// Format internal tool name (e.g. "web_search" → "Web Search")
+// Format internal tool name via i18n (e.g. "web_search" → "网页搜索" in zh-CN)
 function formatToolName(name: string): string {
+  const key = `tools.names.${name}`
+  const translated = t(key)
+  if (translated !== key) return translated
+  // Fallback: title-case the snake_case name
   return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 

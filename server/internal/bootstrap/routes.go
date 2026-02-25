@@ -629,13 +629,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Register chat routes
 	deps.ChatHandler.RegisterRoutes(v1)
 
-	// Wire exec tool with known tool names so it can reject commands that
-	// look like tool invocations (e.g. "web_search query" instead of calling
-	// the web_search tool directly).
-	if execTool := tools.GetExecTool(s.ToolRegistry); execTool != nil {
-		execTool.SetToolNames(s.ToolRegistry.List())
-	}
-
 	// Register auto-reply routes
 	if deps.AutoreplyHandler != nil {
 		deps.AutoreplyHandler.RegisterRoutes(v1)
@@ -843,6 +836,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			} else if et := tools.GetExecTool(s.ToolRegistry); et != nil {
 				et.SetAuditStore(auditStore)
 			}
+		}
+
+		// Wire exec tool with known tool names and registry so it can auto-forward
+		// commands that look like tool invocations (e.g. "web_search query").
+		if execTool := tools.GetExecTool(s.ToolRegistry); execTool != nil {
+			execTool.SetToolNames(s.ToolRegistry.List())
+			execTool.SetRegistry(s.ToolRegistry)
 		}
 
 		// Exec approval REST endpoint (kept for backwards compatibility;

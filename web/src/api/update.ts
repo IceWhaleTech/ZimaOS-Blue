@@ -41,7 +41,7 @@ export interface ApplyResponse {
   version?: string
 }
 
-const isTauri = typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window)
+const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
 
 export const updateApi = {
   check: () => api.get<UpdateInfo>('/system/update/check'),
@@ -51,7 +51,7 @@ export const updateApi = {
   apply: () => api.post<ApplyResponse>('/system/update/apply'),
   rollback: () => api.post<{ status: string }>('/system/update/rollback'),
   history: () => api.get<any[]>('/system/update/history'),
-  ota: () => api.get<OTAStatus>('/system/update/ota', { params: isTauri ? { desktop: '1' } : undefined }),
+  ota: () => api.get<OTAStatus>('/system/update/ota', { params: isDesktop ? { desktop: '1' } : undefined }),
   releaseNotes: (url?: string) => api.get<string>('/system/update/release-notes', { params: url ? { url } : undefined, responseType: 'text' as const }),
   health: () => fetch('/api/v1/health').then(r => r.ok ? r.json() : Promise.reject(r)),
 }

@@ -1224,6 +1224,11 @@ export default {
     trialExhausted: 'Limit próbny został wyczerpany. Skonfiguruj własnego dostawcę AI, aby kontynuować.',
     trialServiceBusy: 'Usługa próbna jest obecnie przeciążona z powodu dużego zapotrzebowania. Spróbuj ponownie za chwilę. Jeśli problem się powtarza, odwiedź naszą społeczność po pomoc.',
     configureProvider: 'Skonfiguruj dostawcę',
+    // Tryb rozszerzony
+    enhancedMode: 'Rozszerzony',
+    enhancedModeDesc: 'Tryb rozszerzony: obsługuje umiejętności, wywołania narzędzi, operacje na plikach, wykonywanie kodu i więcej',
+    enableEnhancedMode: 'Włącz tryb rozszerzony',
+    enableEnhancedModeDesc: 'Włącz tryb rozszerzony dla umiejętności, wywołań narzędzi, operacji na plikach i więcej',
     trialQuota: {
       exhausted: 'Limit próbny wyczerpany',
       remaining: 'Pozostało {tokens} tokenów',

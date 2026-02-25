@@ -746,7 +746,11 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// strip the tools/tool_choice fields and retry. This handles providers that reject
 	// the request body because they don't understand tool-related fields (422).
 	// Skip if no providers exist at all — stripping fields won't conjure providers.
-	if err != nil && hasTools && !errors.Is(err, providerpool.ErrNoAvailableProvider) {
+	// Skip if messages contain tool_calls or tool role — this is a tool round where
+	// stripping tools would leave orphaned tool_calls/tool_result, causing worse errors.
+	hasToolMessages := gjson.GetBytes(pr.body, "messages.#(role==\"tool\")").Exists() ||
+		gjson.GetBytes(pr.body, "messages.#.tool_calls.0").Exists()
+	if err != nil && hasTools && !hasToolMessages && !errors.Is(err, providerpool.ErrNoAvailableProvider) {
 		strippedBody := pr.body
 		if b, e := sjson.DeleteBytes(strippedBody, "tools"); e == nil {
 			strippedBody = b
@@ -799,7 +803,13 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		slog.Error("[proxy] all providers failed", "model", pr.model, "error", err)
-		http.Error(w, SanitizeError(err), http.StatusBadGateway)
+		// Propagate original status code for client errors (4xx) so the bridge
+		// can distinguish non-retryable errors from server failures.
+		statusCode := http.StatusBadGateway
+		if strings.HasPrefix(err.Error(), "upstream 400:") {
+			statusCode = http.StatusBadRequest
+		}
+		http.Error(w, SanitizeError(err), statusCode)
 		return
 	}
 	defer finalResp.Body.Close()
@@ -895,7 +905,7 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	upstreamURL.RawQuery = r.URL.RawQuery
 
 	fullURL := upstreamURL.String()
-	slog.Debug("[proxy] upstream request", "url", fullURL, "method", r.Method, "format", effectiveFormat, "body_len", len(body), "body", string(body))
+	slog.Info("[proxy] upstream request", "url", fullURL, "method", r.Method, "format", effectiveFormat, "body_len", len(body))
 
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, io.NopCloser(bytes.NewReader(body)))
 	if err != nil {
@@ -1317,6 +1327,15 @@ func (ph *ProxyHandler) tryOnProvider(
 				// Skip remaining formats for this model — if model isn't configured,
 				// trying a different format won't help
 				break
+			}
+
+			// 400 invalid_request_error: the request body itself is malformed
+			// (e.g. orphaned tool_result, bad schema). Retrying with different
+			// auth/format/model won't help — return immediately without blacklisting.
+			if statusCode == http.StatusBadRequest && strings.Contains(errStr, "invalid_request_error") {
+				slog.Warn("[proxy] 400 invalid_request_error, not retryable",
+					"provider", pid, "format", format, "model", model, "body", errStr)
+				return nil, "", "", fmt.Errorf("upstream 400: %s", errStr)
 			}
 
 			// Other 4xx: blacklist this model on this provider, try next model/format

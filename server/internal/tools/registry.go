@@ -14,6 +14,14 @@ var (
 	ErrToolNotFound = errors.New("tool not found")
 )
 
+// ForwardedResult wraps a tool result that was auto-forwarded from exec.
+// The ActualTool field indicates which tool actually executed the request,
+// allowing the UI to display the correct tool name (e.g. "web_search" instead of "exec").
+type ForwardedResult struct {
+	ActualTool string
+	Result     interface{}
+}
+
 // ToolDefinition describes a tool that can be called by an LLM.
 type ToolDefinition struct {
 	Name        string                 `json:"name"`
@@ -33,14 +41,16 @@ type Tool interface {
 
 // Registry manages registered tools.
 type Registry struct {
-	mu    sync.RWMutex
-	tools map[string]Tool
+	mu       sync.RWMutex
+	tools    map[string]Tool
+	disabled map[string]Tool // disabled tools (still registered, but hidden from Definitions/List)
 }
 
 // NewRegistry creates a new tool registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		tools: make(map[string]Tool),
+		tools:    make(map[string]Tool),
+		disabled: make(map[string]Tool),
 	}
 }
 
@@ -48,22 +58,74 @@ func NewRegistry() *Registry {
 func (r *Registry) Register(tool Tool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.tools[tool.Definition().Name] = tool
+	name := tool.Definition().Name
+	delete(r.disabled, name)
+	r.tools[name] = tool
 }
 
-// Get retrieves a tool by name.
+// Disable moves a tool from active to disabled. Disabled tools are hidden from
+// Definitions() and List() (not sent to LLM) but still accessible via Get().
+func (r *Registry) Disable(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	tool, ok := r.tools[name]
+	if !ok {
+		return false
+	}
+	delete(r.tools, name)
+	r.disabled[name] = tool
+	return true
+}
+
+// Enable moves a tool from disabled back to active.
+func (r *Registry) Enable(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	tool, ok := r.disabled[name]
+	if !ok {
+		return false
+	}
+	delete(r.disabled, name)
+	r.tools[name] = tool
+	return true
+}
+
+// IsDisabled returns true if the tool exists but is disabled.
+func (r *Registry) IsDisabled(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, ok := r.disabled[name]
+	return ok
+}
+
+// Get retrieves a tool by name. Returns both active and disabled tools.
 func (r *Registry) Get(name string) Tool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.tools[name]
+	if t := r.tools[name]; t != nil {
+		return t
+	}
+	return r.disabled[name]
 }
 
-// List returns all registered tool names sorted alphabetically.
+// List returns all active (enabled) tool names sorted alphabetically.
 func (r *Registry) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	names := make([]string, 0, len(r.tools))
 	for name := range r.tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ListDisabled returns all disabled tool names sorted alphabetically.
+func (r *Registry) ListDisabled() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	names := make([]string, 0, len(r.disabled))
+	for name := range r.disabled {
 		names = append(names, name)
 	}
 	sort.Strings(names)

@@ -1224,6 +1224,11 @@ export default {
     trialExhausted: 'Provkvoten har förbrukats. Konfigurera din egen AI-leverantör för att fortsätta.',
     trialServiceBusy: 'Provtjänsten är för närvarande upptagen på grund av hög efterfrågan. Försök igen om en stund. Om detta fortsätter, besök vår community för hjälp.',
     configureProvider: 'Konfigurera leverantör',
+    // Förbättrat läge
+    enhancedMode: 'Förbättrat',
+    enhancedModeDesc: 'Förbättrat läge: stöder färdigheter, verktygsanrop, filoperationer, kodkörning och mer',
+    enableEnhancedMode: 'Aktivera förbättrat läge',
+    enableEnhancedModeDesc: 'Aktivera förbättrat läge för färdigheter, verktygsanrop, filoperationer och mer',
     trialQuota: {
       exhausted: 'Provkvot förbrukad',
       remaining: '{tokens} tokens kvar',

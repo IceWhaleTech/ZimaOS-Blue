@@ -1362,6 +1362,11 @@ export default {
     trialExhausted: 'Pokusna kvota je iscrpljena. Molimo konfigurujte vlastiti AI pružatelja da nastavite.',
     trialServiceBusy: 'Pokusna usluga je trenutno zauzeta zbog velike potražnje. Pokušajte ponovo za trenutak. Ako se ovo nastavi, posjetite našu zajednicu za pomoć.',
     configureProvider: 'Konfiguruj pružatelja',
+    // Poboljšani način
+    enhancedMode: 'Poboljšani',
+    enhancedModeDesc: 'Poboljšani način: podržava vještine, pozive alata, operacije s datotekama, izvršavanje koda i više',
+    enableEnhancedMode: 'Aktiviraj poboljšani način',
+    enableEnhancedModeDesc: 'Aktivirajte poboljšani način za vještine, pozive alata, operacije s datotekama i više',
     trialQuota: {
       exhausted: 'Pokusna kvota iscrpljena',
       remaining: '{tokens} tokena preostalo',
