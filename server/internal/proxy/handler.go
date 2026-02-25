@@ -1217,12 +1217,14 @@ func (ph *ProxyHandler) tryOnProvider(
 		}
 
 		allFormatsMismatch := true // tracks if every format failed with format mismatch
+		formatsTried := 0          // count of formats actually attempted (not skipped)
 		for fi := 0; fi < nFormats; fi++ {
 			format := formatsBuf[fi]
 			// Skip format already tried (and failed) on fast path for the same model
 			if fastPathTriedFormat != "" && format == fastPathTriedFormat && model == pr.model {
 				continue
 			}
+			formatsTried++
 			slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", model)
 
 			resp, probeErr := ph.probeWithRetry(
@@ -1315,7 +1317,8 @@ func (ph *ProxyHandler) tryOnProvider(
 		}
 		// If every format returned format mismatch for this model, the provider
 		// doesn't understand any of our formats — skip remaining model aliases.
-		if allFormatsMismatch {
+		// But only if we actually tried at least one format (not all skipped by fast path).
+		if allFormatsMismatch && formatsTried > 0 {
 			triedFormats := make([]string, 0, nFormats)
 			for fi := 0; fi < nFormats; fi++ {
 				triedFormats = append(triedFormats, string(formatsBuf[fi]))
@@ -1397,6 +1400,21 @@ var formatMismatchPatterns = [][]byte{
 	[]byte("unexpected content type"),
 }
 
+// formatMismatch422Patterns are body patterns that confirm a 422 is a genuine format
+// mismatch rather than a parameter validation error. Without these patterns, a 422
+// could be an unsupported parameter, missing field, or other validation failure.
+var formatMismatch422Patterns = [][]byte{
+	[]byte("unsupported request"),
+	[]byte("bad_response_status_code"),
+	[]byte("openai_error"),
+	[]byte("invalid request format"),
+	[]byte("unexpected content type"),
+	[]byte("malformed"),
+	[]byte("unknown field"),          // wrong schema fields
+	[]byte("unexpected field"),       // wrong schema fields
+	[]byte("additional properties"),  // JSON schema validation — wrong format
+}
+
 // isFormatMismatchError returns true if the error indicates a request format mismatch
 // rather than a model configuration issue. These errors should trigger format fallback,
 // not model blacklisting.
@@ -1410,12 +1428,23 @@ func isFormatMismatchError(statusCode int, body []byte) bool {
 	if isModelNotConfiguredBody(body) {
 		return false
 	}
-	// 422 without model-not-configured patterns is almost always a format mismatch
+	lower := toLowerBytes(body)
+	// For 422: require body evidence of format mismatch. A bare 422 without
+	// recognizable patterns is more likely a parameter validation error (e.g.
+	// unsupported tool format, unknown model) than a format mismatch.
 	if statusCode == 422 {
-		return true
+		if len(body) == 0 {
+			// Empty body 422 — ambiguous, treat as format mismatch for safety
+			return true
+		}
+		for _, pattern := range formatMismatch422Patterns {
+			if bytes.Contains(lower, pattern) {
+				return true
+			}
+		}
+		return false
 	}
 	// For 400/404, check body for format-related patterns
-	lower := toLowerBytes(body)
 	for _, pattern := range formatMismatchPatterns {
 		if bytes.Contains(lower, pattern) {
 			return true

@@ -1141,6 +1141,7 @@ func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.Tool
 		result, err := h.toolExecutor.ExecuteJSON(ctx, tc.Name, tc.Arguments)
 		var content string
 		if err != nil {
+			logger.Error().Err(err).Str("tool", tc.Name).Str("id", tc.ID).Msg("[chat] tool call failed")
 			content = fmt.Sprintf(`{"error":"%s"}`, err.Error())
 		} else {
 			switch v := result.(type) {

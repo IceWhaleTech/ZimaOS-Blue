@@ -290,6 +290,18 @@ func GetUIReviewerTool(registry *Registry) *UIReviewerTool {
 	return nil
 }
 
+// GetExecTool retrieves the ExecTool from the registry for dependency injection.
+func GetExecTool(registry *Registry) *ExecTool {
+	tool := registry.Get("exec")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*ExecTool); ok {
+		return t
+	}
+	return nil
+}
+
 // RegisterMemoryTools registers the unified memory tool with the registry.
 // This should be called after the memory service is initialized.
 func RegisterMemoryTools(registry *Registry, memoryService MemoryServiceInterface) {

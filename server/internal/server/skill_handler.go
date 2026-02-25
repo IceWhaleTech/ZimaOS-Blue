@@ -2286,6 +2286,9 @@ func (h *SkillHandler) parseSkillContent(content, sourceURL, overrideName, overr
 		return "", nil, fmt.Errorf("could not determine skill ID")
 	}
 
+	// Sanitize ID: use underscores instead of hyphens for tool name compatibility
+	manifest.ID = strings.ReplaceAll(manifest.ID, "-", "_")
+
 	// Store source URL in metadata
 	manifest.Metadata["source_url"] = sourceURL
 

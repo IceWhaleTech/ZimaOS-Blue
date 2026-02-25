@@ -3,9 +3,18 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
+	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
+
+// SanitizeToolName normalizes a tool name to use underscores instead of hyphens.
+// Anthropic API requires tool names to match ^[a-zA-Z0-9_-]{1,64}$ but underscores
+// are preferred for consistency and to avoid issues with some providers.
+func SanitizeToolName(name string) string {
+	return strings.ReplaceAll(name, "-", "_")
+}
 
 // SkillToolAdapter wraps a skill.Skill as a tools.Tool so the LLM can call it.
 type SkillToolAdapter struct {
@@ -20,6 +29,12 @@ func NewSkillToolAdapter(s skill.Skill) *SkillToolAdapter {
 // Definition converts the skill manifest into a ToolDefinition.
 func (a *SkillToolAdapter) Definition() ToolDefinition {
 	m := a.skill.Manifest()
+
+	// Sanitize tool name: ensure underscores, not hyphens
+	toolName := SanitizeToolName(m.ID)
+	if toolName != m.ID {
+		slog.Debug("[tools] sanitized tool name", "original", m.ID, "sanitized", toolName)
+	}
 
 	// Build JSON Schema properties from manifest inputs.
 	properties := make(map[string]interface{}, len(m.Inputs))
@@ -47,7 +62,7 @@ func (a *SkillToolAdapter) Definition() ToolDefinition {
 	}
 
 	return ToolDefinition{
-		Name:        m.ID,
+		Name:        toolName,
 		Description: m.Description,
 		Icon:        m.Icon,
 		Parameters:  params,

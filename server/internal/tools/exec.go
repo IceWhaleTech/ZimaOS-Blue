@@ -63,6 +63,7 @@ type ExecTool struct {
 	safeBins  map[string]struct{}
 	dirStore  *DirAllowlistStore    // may be nil; persistent directory allowlist
 	sandbox   SandboxExecutor       // may be nil; when set, sandbox host mode is available
+	toolNames map[string]struct{}   // known tool names; exec rejects commands that match
 }
 
 // NewExecTool creates a new exec tool.
@@ -93,6 +94,19 @@ func firstOrNilIface[T any](s []T) T {
 	}
 	var zero T
 	return zero
+}
+
+// SetToolNames sets the known tool names so exec can reject commands that
+// look like tool invocations (e.g. "web_search query" instead of calling
+// the web_search tool directly).
+func (t *ExecTool) SetToolNames(names []string) {
+	m := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		if n != "exec" && n != "process" { // don't block exec itself
+			m[n] = struct{}{}
+		}
+	}
+	t.toolNames = m
 }
 
 // Definition returns the tool definition for the LLM.
@@ -155,6 +169,22 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	command = strings.TrimSpace(command)
 	if command == "" {
 		return nil, errors.New("command is required")
+	}
+
+	// Reject commands that look like tool invocations.
+	// The LLM sometimes tries to call tools via exec (e.g. "web_search query").
+	// Return a clear error so the LLM retries with the correct tool.
+	if len(t.toolNames) > 0 {
+		firstWord := command
+		if idx := strings.IndexAny(command, " \t\n"); idx > 0 {
+			firstWord = command[:idx]
+		}
+		if _, isToolName := t.toolNames[firstWord]; isToolName {
+			return nil, fmt.Errorf(
+				"%s is a tool, not a shell command. Call the %s tool directly instead of using exec",
+				firstWord, firstWord,
+			)
+		}
 	}
 
 	workdirArg, _ := args["workdir"].(string)
