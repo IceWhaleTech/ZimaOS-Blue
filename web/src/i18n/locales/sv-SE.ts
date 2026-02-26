@@ -1849,6 +1849,7 @@ export default {
       'Workflows': 'Arbetsflöden',
       reminder: 'Påminnelse',
       mediagen: 'Mediagenerering',
+      ask: 'Fråga',
     },
     params: {
       query: 'Fråga',

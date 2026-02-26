@@ -2622,6 +2622,7 @@ export default {
       'Workflows': 'Fluxos de trabalho',
       reminder: 'Lembrete',
       mediagen: 'Geração de mídia',
+      ask: 'Perguntar',
     },
     params: {
       query: 'Consulta',

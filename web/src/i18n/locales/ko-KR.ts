@@ -3163,6 +3163,7 @@ export default {
       'Workflows': '워크플로',
       reminder: '리마인더',
       mediagen: '미디어 생성',
+      ask: '질문하기',
     },
     params: {
       query: '쿼리',

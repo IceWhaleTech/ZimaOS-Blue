@@ -4696,6 +4696,7 @@ export default {
       reminder: 'Reminders',
       analyze: 'Analysis',
       mediagen: 'Media Generation',
+      ask: 'Ask',
     },
     params: {
       query: 'Query',

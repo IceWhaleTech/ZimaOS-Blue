@@ -1621,6 +1621,7 @@ export default {
       'Workflows': 'Munkafolyamatok',
       reminder: 'Emlékeztető',
       mediagen: 'Médiagenerálás',
+      ask: 'Kérdezni',
     },
     params: {
       query: 'Lekérdezés',

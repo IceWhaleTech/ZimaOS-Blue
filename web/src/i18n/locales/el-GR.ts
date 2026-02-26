@@ -1567,6 +1567,7 @@ export default {
       'Workflows': 'Ροές εργασίας',
       reminder: 'Υπενθύμιση',
       mediagen: 'Δημιουργία μέσων',
+      ask: 'Ρωτήστε',
     },
     params: {
       query: 'Ερώτημα',

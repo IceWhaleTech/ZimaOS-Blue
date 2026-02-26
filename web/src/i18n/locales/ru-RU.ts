@@ -2567,6 +2567,7 @@ export default {
       'Workflows': 'Рабочие процессы',
       reminder: 'Напоминание',
       mediagen: 'Генерация медиа',
+      ask: 'Спросить',
     },
     params: {
       query: 'Запрос',

@@ -2942,6 +2942,7 @@ export default {
       'Workflows': 'Flujos de trabajo',
       reminder: 'Recordatorio',
       mediagen: 'Generación de medios',
+      ask: 'Preguntar',
     },
     params: {
       query: 'Consulta',

@@ -1844,6 +1844,7 @@ export default {
       'Workflows': 'Przepływy pracy',
       reminder: 'Przypomnienie',
       mediagen: 'Generowanie mediów',
+      ask: 'Zapytać',
     },
     params: {
       query: 'Zapytanie',

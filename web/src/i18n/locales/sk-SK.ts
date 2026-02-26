@@ -1365,6 +1365,7 @@ export default {
       'Workflows': 'Pracovné postupy',
       reminder: 'Pripomienka',
       mediagen: 'Generovanie médií',
+      ask: 'Opýtať sa',
     },
     params: {
       query: 'Dotaz',

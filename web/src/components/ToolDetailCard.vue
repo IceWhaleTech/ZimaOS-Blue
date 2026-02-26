@@ -45,7 +45,12 @@ const iconSrc = computed(() => {
     notifications: '/icons/tools/notifications.svg',
     ask: '/icons/tools/question.svg',
   }
-  return iconMap[props.item.name] || '/icons/tools/process.svg'
+  // Mediagen tools use the same icon
+  const name = props.item.name
+  if (name === 'image_generate' || name === 'video_generate') {
+    return '/icons/tools/mediagen.svg'
+  }
+  return iconMap[name] || '/icons/tools/process.svg'
 })
 
 // Status color

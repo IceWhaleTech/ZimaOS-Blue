@@ -3106,6 +3106,7 @@ export default {
       'Workflows': 'Workflows',
       reminder: 'Erinnerung',
       mediagen: 'Medienerzeugung',
+      ask: 'Fragen',
     },
     params: {
       query: 'Abfrage',

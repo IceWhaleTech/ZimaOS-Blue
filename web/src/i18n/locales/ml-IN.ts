@@ -1286,6 +1286,7 @@ export default {
       'Workflows': 'വർക്ക്ഫ്ലോകൾ',
       reminder: 'ഓർമ്മപ്പെടുത്തൽ',
       mediagen: 'മീഡിയ ജനറേഷൻ',
+      ask: 'ചോദിക്കുക',
     },
     params: {
       query: 'ചോദ്യം',

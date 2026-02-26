@@ -1747,6 +1747,7 @@ export default {
       'Workflows': 'Arbejdsgange',
       reminder: 'Påmindelse',
       mediagen: 'Mediegenerering',
+      ask: 'Spørge',
     },
     params: {
       query: 'Forespørgsel',

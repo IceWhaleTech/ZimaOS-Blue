@@ -1000,6 +1000,13 @@ func (r *Router) findBlindFallbackProviders(modelID string, mode RoutingMode, ex
 		// Copilot/Anthropic have fixed model sets — sending unknown models just
 		// wastes a round-trip and pollutes logs with 404s.
 		if modelID != "" && isCuratedProvider(p) {
+			// For Copilot, skip entirely in blind fallback since we know the exact model set
+			// and GetModel may have issues with caching/timing. This prevents 404 spam.
+			if p.APIFormat == APIFormatCopilot {
+				slog.Debug("[router] skipping Copilot in blind fallback for unknown model",
+					"model", modelID)
+				continue
+			}
 			if _, err := r.discovery.GetModel(p.ID, modelID); err != nil {
 				continue
 			}

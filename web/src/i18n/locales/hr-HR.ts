@@ -1496,6 +1496,7 @@ export default {
       'Workflows': 'Radni tokovi',
       reminder: 'Podsjetnik',
       mediagen: 'Generiranje medija',
+      ask: 'Pitati',
     },
     params: {
       query: 'Upit',

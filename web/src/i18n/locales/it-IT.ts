@@ -2729,6 +2729,7 @@ export default {
       'Workflows': 'Workflow',
       reminder: 'Promemoria',
       mediagen: 'Generazione media',
+      ask: 'Chiedere',
     },
     params: {
       query: 'Query',

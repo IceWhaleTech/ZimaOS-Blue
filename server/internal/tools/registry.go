@@ -212,10 +212,55 @@ func (e *Executor) ExecuteJSON(ctx context.Context, name string, argsJSON string
 					return e.Execute(ctx, name, args)
 				}
 			}
+			// Some providers (e.g., GLM) return truncated JSON strings where
+			// the arguments look like "\"{\"command\":" but are cut off.
+			// Try to detect and fix truncated JSON strings.
+			if repaired := tryRepairTruncatedJSON(argsJSON); repaired != "" {
+				if err2 := json.Unmarshal([]byte(repaired), &args); err2 == nil {
+					return e.Execute(ctx, name, args)
+				}
+			}
 			return nil, err
 		}
 	}
 	return e.Execute(ctx, name, args)
+}
+
+// tryRepairTruncatedJSON attempts to fix truncated JSON strings.
+// Some providers return incomplete JSON strings like "\"{\"command\":" without
+// a closing quote. This tries to find the closing quote and extract the inner JSON.
+func tryRepairTruncatedJSON(s string) string {
+	// Must start with quote to be a candidate for repair
+	if len(s) < 2 || s[0] != '"' {
+		return ""
+	}
+	// Find the last quote that could be the closing quote
+	// We look for an unescaped quote at the end
+	for i := len(s) - 1; i >= 1; i-- {
+		if s[i] == '"' {
+			// Check if this quote is unescaped (not preceded by backslash)
+			if i == 1 || s[i-1] != '\\' {
+				// Found potential closing quote
+				inner := s[1:i]
+				// Unescape the inner string
+				var builder strings.Builder
+				for j := 0; j < len(inner); j++ {
+					if inner[j] == '\\' && j+1 < len(inner) {
+						// Skip the backslash and take the next character as-is
+						j++
+					}
+					builder.WriteByte(inner[j])
+				}
+				repaired := builder.String()
+				// Verify it looks like valid JSON (starts with { or [)
+				if len(repaired) > 0 && (repaired[0] == '{' || repaired[0] == '[') {
+					return repaired
+				}
+				break
+			}
+		}
+	}
+	return ""
 }
 
 // buildSkillCommand builds a `blue <name> key=value ...` command string

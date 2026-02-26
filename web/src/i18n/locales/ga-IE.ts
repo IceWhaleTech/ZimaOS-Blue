@@ -1537,6 +1537,7 @@ export default {
       'Workflows': 'Sreafaí oibre',
       reminder: 'Meabhrúchán',
       mediagen: 'Giniúint meán',
+      ask: 'Fiafraí',
     },
     params: {
       query: 'Iarratas',

@@ -563,6 +563,12 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
       channelDef.lastError = data.channel?.last_error
       channelDef.lastErrorKey = data.channel?.last_error_key
       triggerRef(channelDefs)
+
+      // Start polling for status if enabling and still connecting
+      if (enabled && channelDef.status === 'connecting') {
+        pollChannelStatus(channelId)
+      }
+
       // Show error message if status is error
       if (channelDef.status === 'error' && channelDef.lastError) {
         testResult.value = { channelId, success: false, message: resolveChannelError(channelDef) }
@@ -655,6 +661,11 @@ async function saveChannel(channelId: string) {
       } else {
         testResult.value = { channelId, success: true, message: t('channels.savedSuccessfully') }
       }
+
+      // Start polling for status if channel is enabled and still connecting
+      if (channelDef.enabled && channelDef.status === 'connecting') {
+        pollChannelStatus(channelId)
+      }
     } else {
       testResult.value = { channelId, success: false, message: data.message || t('channels.saveFailed') }
     }
@@ -668,6 +679,63 @@ async function saveChannel(channelId: string) {
       }
     }, 3000)
   }
+}
+
+// Poll channel status until connected or error (for async channel startup)
+const channelPollIntervals: Map<string, ReturnType<typeof setInterval>> = new Map()
+
+async function pollChannelStatus(channelId: string) {
+  // Clear any existing polling for this channel
+  const existingInterval = channelPollIntervals.get(channelId)
+  if (existingInterval) {
+    clearInterval(existingInterval)
+  }
+
+  const maxAttempts = 30 // 30 seconds max (30 * 1s)
+  let attempts = 0
+
+  const interval = setInterval(async () => {
+    attempts++
+
+    try {
+      const response = await fetch(`/api/channels/${channelId}/status`)
+      if (!response.ok) {
+        // API error, stop polling
+        clearInterval(interval)
+        channelPollIntervals.delete(channelId)
+        return
+      }
+
+      const data = await response.json()
+      const channelDef = channelMap.value.get(channelId)
+      if (!channelDef) {
+        clearInterval(interval)
+        channelPollIntervals.delete(channelId)
+        return
+      }
+
+      // Update status
+      channelDef.status = data.status
+      if (data.last_error) {
+        channelDef.lastError = data.last_error
+      }
+      triggerRef(channelDefs)
+
+      // Stop polling if connected, error, or max attempts reached
+      if (data.status === 'connected' || data.status === 'error' || attempts >= maxAttempts) {
+        clearInterval(interval)
+        channelPollIntervals.delete(channelId)
+      }
+    } catch (e) {
+      console.error('Polling error:', e)
+      if (attempts >= maxAttempts) {
+        clearInterval(interval)
+        channelPollIntervals.delete(channelId)
+      }
+    }
+  }, 1000) // Poll every 1 second
+
+  channelPollIntervals.set(channelId, interval)
 }
 
 async function testConnection(channelId: string) {
@@ -913,6 +981,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopRemoteAccessPolling()
+  // Clean up all channel polling intervals
+  for (const interval of channelPollIntervals.values()) {
+    clearInterval(interval)
+  }
+  channelPollIntervals.clear()
 })
 
 // Watch for tunnel becoming active

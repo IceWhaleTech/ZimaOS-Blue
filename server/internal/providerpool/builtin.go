@@ -201,7 +201,7 @@ func BuiltinProviders() []*Provider {
 			Location:    ProviderLocationCloud,
 			Enabled:     false,
 			Status:      ProviderStatusInactive,
-			BaseURL:     "https://api.minimax.io/v1",
+			BaseURL:     "https://api.minimaxi.com",
 			APIVersion:  "v1",
 			APIFormat:   APIFormatOpenAI,
 			Priority:    30,
@@ -1648,16 +1648,6 @@ func BuiltinModels() map[string][]*Model {
 				InputPrice: 2.5, OutputPrice: 10.0, CachePrice: 1.25,
 			},
 			{
-				ID: "gpt-4o-2024-11-20", ProviderID: "github-copilot",
-				Name: "gpt-4o-2024-11-20", DisplayName: "GPT-4o (Nov 2024)",
-				Enabled: true,
-				Capabilities: ModelCapabilities{
-					Chat: true, Vision: true, FunctionCall: true, Streaming: true, JSON: true, SystemPrompt: true,
-				},
-				ContextWindow: 128000, MaxOutput: 16384,
-				InputPrice: 2.5, OutputPrice: 10.0, CachePrice: 1.25,
-			},
-			{
 				ID: "gpt-4o-mini", ProviderID: "github-copilot",
 				Name: "gpt-4o-mini", DisplayName: "GPT-4o mini (Copilot)",
 				Enabled: true,
@@ -1666,36 +1656,6 @@ func BuiltinModels() map[string][]*Model {
 				},
 				ContextWindow: 128000, MaxOutput: 16384,
 				InputPrice: 0.2, OutputPrice: 0.8, CachePrice: 0.1,
-			},
-			{
-				ID: "claude-sonnet-4.6", ProviderID: "github-copilot",
-				Name: "claude-sonnet-4.6", DisplayName: "Claude Sonnet 4.6 (Copilot)",
-				Enabled: true,
-				Capabilities: ModelCapabilities{
-					Chat: true, Vision: true, FunctionCall: true, Streaming: true, JSON: true, SystemPrompt: true,
-				},
-				ContextWindow: 200000, MaxOutput: 64000,
-				InputPrice: 3.0, OutputPrice: 15.0, CachePrice: 0.375,
-			},
-			{
-				ID: "claude-opus-4.6", ProviderID: "github-copilot",
-				Name: "claude-opus-4.6", DisplayName: "Claude Opus 4.6 (Copilot)",
-				Enabled: true,
-				Capabilities: ModelCapabilities{
-					Chat: true, Vision: true, FunctionCall: true, Streaming: true, JSON: true, SystemPrompt: true,
-				},
-				ContextWindow: 200000, MaxOutput: 64000,
-				InputPrice: 15.0, OutputPrice: 75.0, CachePrice: 1.875,
-			},
-			{
-				ID: "gpt-5.1", ProviderID: "github-copilot",
-				Name: "gpt-5.1", DisplayName: "GPT-5.1 (Copilot)",
-				Enabled: true,
-				Capabilities: ModelCapabilities{
-					Chat: true, Vision: true, FunctionCall: true, Streaming: true, JSON: true, SystemPrompt: true,
-				},
-				ContextWindow: 128000, MaxOutput: 16384,
-				InputPrice: 5.0, OutputPrice: 20.0, CachePrice: 2.5,
 			},
 		},
 		"openai-codex": {

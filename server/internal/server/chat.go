@@ -353,16 +353,27 @@ func (h *ChatHandler) getProviderFromPool(providerID string) (llm.Provider, erro
 
 	logger.Debug().Str("provider_id", providerID).Str("api_format", string(poolProvider.APIFormat)).Str("base_url", poolProvider.BaseURL).Bool("has_key", apiKey != "").Msg("[chat] getProviderFromPool")
 
+	// Determine base URL - MiniMax uses different endpoints based on API format
+	baseURL := poolProvider.BaseURL
+	if providerID == "minimax" {
+		switch poolProvider.APIFormat {
+		case providerpool.APIFormatAnthropic:
+			baseURL = "https://api.minimaxi.com/anthropic"
+		default:
+			baseURL = "https://api.minimaxi.com/v1"
+		}
+	}
+
 	// Create LLM provider based on API format
 	var provider llm.Provider
 	switch poolProvider.APIFormat {
 	case providerpool.APIFormatAnthropic:
-		provider = llm.NewClaudeProvider(apiKey, poolProvider.BaseURL)
+		provider = llm.NewClaudeProvider(apiKey, baseURL)
 	case providerpool.APIFormatOllama:
 		provider = llm.NewOllamaProvider(poolProvider.BaseURL)
 	default:
 		// Default to OpenAI-compatible format (covers OpenAI, Google, and custom providers)
-		provider = llm.NewCustomProvider(apiKey, poolProvider.BaseURL)
+		provider = llm.NewCustomProvider(apiKey, baseURL)
 	}
 
 	return provider, nil
@@ -390,14 +401,25 @@ func (h *ChatHandler) tryProviderWithKeyFallback(ctx context.Context, providerID
 			continue
 		}
 
+		// Determine base URL - MiniMax uses different endpoints based on API format
+		baseURL := poolProvider.BaseURL
+		if providerID == "minimax" {
+			switch poolProvider.APIFormat {
+			case providerpool.APIFormatAnthropic:
+				baseURL = "https://api.minimaxi.com/anthropic"
+			default:
+				baseURL = "https://api.minimaxi.com/v1"
+			}
+		}
+
 		var provider llm.Provider
 		switch poolProvider.APIFormat {
 		case providerpool.APIFormatAnthropic:
-			provider = llm.NewClaudeProvider(key.Key, poolProvider.BaseURL)
+			provider = llm.NewClaudeProvider(key.Key, baseURL)
 		case providerpool.APIFormatOllama:
 			provider = llm.NewOllamaProvider(poolProvider.BaseURL)
 		default:
-			provider = llm.NewCustomProvider(key.Key, poolProvider.BaseURL)
+			provider = llm.NewCustomProvider(key.Key, baseURL)
 		}
 
 		err := provider.ChatStreamCallback(ctx, chatReq, streamCb)
@@ -439,14 +461,25 @@ func (h *ChatHandler) tryProviderChatWithKeyFallback(ctx context.Context, provid
 			continue
 		}
 
+		// Determine base URL - MiniMax uses different endpoints based on API format
+		baseURL := poolProvider.BaseURL
+		if providerID == "minimax" {
+			switch poolProvider.APIFormat {
+			case providerpool.APIFormatAnthropic:
+				baseURL = "https://api.minimaxi.com/anthropic"
+			default:
+				baseURL = "https://api.minimaxi.com/v1"
+			}
+		}
+
 		var provider llm.Provider
 		switch poolProvider.APIFormat {
 		case providerpool.APIFormatAnthropic:
-			provider = llm.NewClaudeProvider(key.Key, poolProvider.BaseURL)
+			provider = llm.NewClaudeProvider(key.Key, baseURL)
 		case providerpool.APIFormatOllama:
 			provider = llm.NewOllamaProvider(poolProvider.BaseURL)
 		default:
-			provider = llm.NewCustomProvider(key.Key, poolProvider.BaseURL)
+			provider = llm.NewCustomProvider(key.Key, baseURL)
 		}
 
 		resp, err := provider.Chat(ctx, req)

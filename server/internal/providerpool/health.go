@@ -185,6 +185,9 @@ func getHealthCheckMethod(provider *Provider) (string, []string) {
 		return http.MethodGet, []string{baseURL + "/v1beta/models"}
 	case APIFormatOllama:
 		return http.MethodGet, []string{baseURL + "/api/tags"}
+	case APIFormatCloudCode:
+		// Google Cloud Code Assist (Antigravity/Gemini CLI) uses /v1internal endpoints
+		return http.MethodPost, []string{baseURL + "/v1internal:loadCodeAssist"}
 	default:
 		// OpenAI-compatible: most providers have /models endpoint
 		if strings.HasSuffix(baseURL, "/v1") || strings.HasSuffix(baseURL, "/v4") {

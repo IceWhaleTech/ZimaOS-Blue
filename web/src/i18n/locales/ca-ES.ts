@@ -1995,6 +1995,7 @@ export default {
       'Workflows': 'Fluxos de treball',
       reminder: 'Recordatori',
       mediagen: 'Generació de mitjans',
+      ask: 'Preguntar',
     },
     params: {
       query: 'Consulta',

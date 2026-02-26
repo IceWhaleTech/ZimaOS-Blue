@@ -1888,6 +1888,7 @@ export default {
       'Workflows': 'Pracovní postupy',
       reminder: 'Připomínka',
       mediagen: 'Generování médií',
+      ask: 'Zeptat se',
     },
     params: {
       query: 'Dotaz',

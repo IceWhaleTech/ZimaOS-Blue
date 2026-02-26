@@ -4681,6 +4681,7 @@ export default {
       reminder: '提醒',
       analyze: '分析',
       mediagen: '媒体生成',
+      ask: '提问',
     },
     params: {
       query: '查询',

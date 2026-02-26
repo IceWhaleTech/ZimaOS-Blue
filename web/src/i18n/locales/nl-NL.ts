@@ -1798,6 +1798,7 @@ export default {
       'Workflows': 'Workflows',
       reminder: 'Herinnering',
       mediagen: 'Mediageneratie',
+      ask: 'Vragen',
     },
     params: {
       query: 'Zoekopdracht',

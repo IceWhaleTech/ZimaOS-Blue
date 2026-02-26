@@ -577,12 +577,16 @@ type providerResponse struct {
 	Priority      int      `json:"priority"`
 	AllowedModels []string `json:"allowed_models,omitempty"`
 
-	Icon        string `json:"icon,omitempty"`
-	CustomIcon  string `json:"custom_icon,omitempty"`
-	Description string `json:"description,omitempty"`
-	Website     string `json:"website,omitempty"`
-	APIKeyURL   string `json:"api_key_url,omitempty"`
-	IsBuiltin   bool   `json:"is_builtin"`
+	Icon        string    `json:"icon,omitempty"`
+	CustomIcon  string    `json:"custom_icon,omitempty"`
+	Description string    `json:"description,omitempty"`
+	Website     string    `json:"website,omitempty"`
+	APIKeyURL   string    `json:"api_key_url,omitempty"`
+	IsBuiltin   bool      `json:"is_builtin"`
+
+	// Health check errors - returned to frontend for display
+	LastError     string    `json:"last_error,omitempty"`
+	LastErrorTime time.Time `json:"last_error_time,omitempty"`
 
 	Models []*modelResponse `json:"models"`
 }
@@ -701,6 +705,8 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLook
 		Website:       p.Website,
 		APIKeyURL:     p.APIKeyURL,
 		IsBuiltin:     GetBuiltinProvider(p.ID) != nil,
+		LastError:     p.LastError,
+		LastErrorTime: p.LastErrorTime,
 		Models:        mr,
 	}
 }
@@ -772,6 +778,28 @@ func (h *Handler) ListProviders(c echo.Context) error {
 
 	result := make([]*providerResponse, len(sanitizedProviders))
 	for i, p := range sanitizedProviders {
+		// Enrich OAuth config with runtime connection state from token store
+		if p.OAuth != nil && h.oauthManager != nil {
+			if tokens, err := h.oauthManager.GetTokens(p.ID); err == nil && len(tokens) > 0 {
+				// Create a copy to avoid mutating the cached provider
+				pCopy := *p
+				pCopy.OAuth = &OAuthConfig{
+					ClientID:     p.OAuth.ClientID,
+					Scopes:       p.OAuth.Scopes,
+					ProviderType: p.OAuth.ProviderType,
+					Endpoint:     p.OAuth.Endpoint,
+					ProjectID:    p.OAuth.ProjectID,
+				}
+				pCopy.OAuth.Connected = true
+				pCopy.OAuth.AccountCount = len(tokens)
+				if len(tokens) > 0 {
+					pCopy.OAuth.Email = tokens[0].Email
+				}
+				p = &pCopy
+				sanitizedProviders[i] = p
+			}
+		}
+
 		var models []*Model
 		if ctx.Err() == nil {
 			if m, err := h.pool.Discovery.GetFilteredModels(p.ID); err == nil {

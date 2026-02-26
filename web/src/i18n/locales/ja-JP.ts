@@ -4532,6 +4532,7 @@ export default {
       'exec': 'コマンド実行',
       reminder: 'リマインダー',
       mediagen: 'メディア生成',
+      ask: '質問する',
     },
     params: {
       query: 'クエリ',

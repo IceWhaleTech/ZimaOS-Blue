@@ -1280,6 +1280,7 @@ export default {
       'Workflows': 'Fluxuri de lucru',
       reminder: 'Memento',
       mediagen: 'Generare media',
+      ask: 'Întreabă',
     },
     params: {
       query: 'Interogare',
