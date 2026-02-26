@@ -158,6 +158,9 @@ declare global {
   export type { Platform } from './composables/useTauri'
   import('./composables/useTauri')
   // @ts-ignore
+  export type { ToolResultItem } from './stores/chat'
+  import('./stores/chat')
+  // @ts-ignore
   export type { EventState, EventStateTransition, TrackedEvent } from './stores/companion'
   import('./stores/companion')
   // @ts-ignore

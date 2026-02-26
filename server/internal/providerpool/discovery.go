@@ -20,6 +20,10 @@ import (
 type ModelDiscovery struct {
 	registry       *Registry
 	storage        Storage
+	oauthManager   interface {
+		GetCopilotAccessToken(providerID string) (string, error)
+		GetCopilotEndpoint() string
+	}
 	client         *http.Client
 	insecureClient *http.Client
 	cache          map[string][]*Model
@@ -48,6 +52,14 @@ func NewModelDiscovery(registry *Registry, storage Storage, cacheTTL time.Durati
 		cacheAt:  make(map[string]time.Time),
 		fetching: make(map[string]bool),
 	}
+}
+
+// SetOAuthManager sets the OAuth manager for Copilot token exchange
+func (d *ModelDiscovery) SetOAuthManager(m interface {
+	GetCopilotAccessToken(providerID string) (string, error)
+	GetCopilotEndpoint() string
+}) {
+	d.oauthManager = m
 }
 
 // clientFor returns the appropriate HTTP client for the provider
@@ -558,6 +570,7 @@ func (d *ModelDiscovery) tryOllamaStyleEndpoint(ctx context.Context, baseURL str
 				Enabled:     true,
 				Capabilities: ModelCapabilities{
 					Chat:         true,
+					FunctionCall: true,
 					Streaming:    true,
 					SystemPrompt: true,
 				},
@@ -642,6 +655,7 @@ func (d *ModelDiscovery) tryLiteLLMStyleEndpoint(ctx context.Context, baseURL st
 					Enabled:     true,
 					Capabilities: ModelCapabilities{
 						Chat:         true,
+						FunctionCall: true,
 						Streaming:    true,
 						SystemPrompt: true,
 					},
@@ -706,7 +720,13 @@ func (d *ModelDiscovery) tryFetchModels(ctx context.Context, url string, apiKey 
 		return nil, err
 	}
 
-	if apiKey != nil && apiKey.Key != "" {
+	// Use OAuth token for Copilot
+	if provider.APIFormat == APIFormatCopilot && d.oauthManager != nil {
+		if token, err := d.oauthManager.GetCopilotAccessToken(provider.ID); err == nil && token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Editor-Version", "vscode/1.85.0")
+		}
+	} else if apiKey != nil && apiKey.Key != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey.Key)
 	}
 
@@ -770,6 +790,7 @@ func (d *ModelDiscovery) parseOpenAIModelsResponse(body []byte, provider *Provid
 			Enabled:     true,
 			Capabilities: ModelCapabilities{
 				Chat:         true,
+				FunctionCall: true,
 				Streaming:    true,
 				SystemPrompt: true,
 			},
@@ -959,6 +980,7 @@ func (d *ModelDiscovery) fetchOllamaModels(ctx context.Context, provider *Provid
 			Enabled:     true,
 			Capabilities: ModelCapabilities{
 				Chat:         true,
+				FunctionCall: true,
 				Streaming:    true,
 				SystemPrompt: true,
 			},

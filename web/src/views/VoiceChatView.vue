@@ -177,6 +177,7 @@ async function startRecording() {
     try {
       // Convert webm to wav for whisper.cpp
       const wavBlob = await convertToWav(audio)
+      if (!wavBlob) return
       const base64 = await blobToBase64(wavBlob)
       ws?.sendAudio(base64, 'wav')
     } catch (e) {

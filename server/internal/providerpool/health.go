@@ -64,7 +64,7 @@ func (c *HTTPHealthChecker) Check(ctx context.Context, provider *Provider) *Heal
 	}
 
 	var lastErr string
-	for _, healthURL := range healthURLs {
+	for i, healthURL := range healthURLs {
 		req, err := http.NewRequestWithContext(ctx, method, healthURL, nil)
 		if err != nil {
 			lastErr = fmt.Sprintf("failed to create request: %v", err)
@@ -89,16 +89,26 @@ func (c *HTTPHealthChecker) Check(ctx context.Context, provider *Provider) *Heal
 		switch {
 		case resp.StatusCode >= 200 && resp.StatusCode < 400:
 			result.Healthy = true
+			if i > 0 {
+				// Alternate URL worked — auto-switch BaseURL for future requests
+				autoSwitchBaseURL(provider, healthURL)
+			}
 			return result
 		case resp.StatusCode == 401 || resp.StatusCode == 403:
 			// Server is reachable but API key is wrong/missing
 			result.Healthy = false
 			result.Error = fmt.Sprintf("auth_error:%d", resp.StatusCode)
+			if i > 0 {
+				autoSwitchBaseURL(provider, healthURL)
+			}
 			return result
 		case resp.StatusCode == 400 || resp.StatusCode == 405:
 			// 400: server validated the request and rejected it (e.g. missing body) — reachable
 			// 405: Method Not Allowed — server is reachable, endpoint just doesn't support this method
 			result.Healthy = true
+			if i > 0 {
+				autoSwitchBaseURL(provider, healthURL)
+			}
 			return result
 		case resp.StatusCode == 404:
 			// Try next URL
@@ -136,8 +146,23 @@ func getHealthCheckMethod(provider *Provider) (string, []string) {
 
 	// Provider-specific overrides first
 	switch provider.ID {
-	case "openai", "deepseek", "moonshot", "openrouter", "aihubmix":
+	case "openai", "deepseek", "openrouter", "aihubmix":
 		return http.MethodGet, []string{baseURL + "/models"}
+	case "moonshot":
+		// Moonshot (Kimi) has domestic (.cn) and international (.ai) domains.
+		urls := []string{baseURL + "/models"}
+		if alt := alternateRegionURL(baseURL); alt != "" {
+			urls = append(urls, alt+"/models")
+		}
+		return http.MethodGet, urls
+	case "minimax":
+		// MiniMax doesn't expose /models; POST to /chat/completions returns 400 (treated as reachable).
+		// Has domestic (.chat) and international (.io) domains.
+		urls := []string{baseURL + "/chat/completions"}
+		if alt := alternateRegionURL(baseURL); alt != "" {
+			urls = append(urls, alt+"/chat/completions")
+		}
+		return http.MethodPost, urls
 	case "google":
 		return http.MethodGet, []string{baseURL + "/v1beta/models"}
 	case "ollama":
@@ -245,5 +270,42 @@ func (c *CompositeHealthChecker) Check(ctx context.Context, provider *Provider) 
 		Healthy:    false,
 		Error:      "no health checkers configured",
 		CheckedAt:  timeutil.NowTime(),
+	}
+}
+
+// alternateRegionURL returns the alternate regional API base URL for providers
+// that have both domestic (China) and international domains.
+// Returns "" if the base URL doesn't match any known regional domain.
+func alternateRegionURL(baseURL string) string {
+	// Each pair: [domestic, international]
+	regionPairs := [][2]string{
+		{"api.minimax.chat", "api.minimax.io"},
+		{"api.moonshot.cn", "api.moonshot.ai"},
+	}
+	for _, pair := range regionPairs {
+		if strings.Contains(baseURL, pair[0]) {
+			return strings.Replace(baseURL, pair[0], pair[1], 1)
+		}
+		if strings.Contains(baseURL, pair[1]) {
+			return strings.Replace(baseURL, pair[1], pair[0], 1)
+		}
+	}
+	return ""
+}
+
+// autoSwitchBaseURL updates the provider's BaseURL when an alternate health check URL succeeded.
+// This is used for providers with regional domains (MiniMax, Moonshot).
+func autoSwitchBaseURL(provider *Provider, healthURL string) {
+	switch provider.ID {
+	case "minimax", "moonshot":
+	default:
+		return
+	}
+	// Extract the base URL portion (strip the endpoint path suffix)
+	for _, suffix := range []string{"/chat/completions", "/models"} {
+		if strings.HasSuffix(healthURL, suffix) {
+			provider.BaseURL = strings.TrimSuffix(healthURL, suffix)
+			return
+		}
 	}
 }

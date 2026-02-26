@@ -9,10 +9,11 @@ import (
 type toolContextKey string
 
 const (
-	langKey     toolContextKey = "tool_lang"
-	channelKey  toolContextKey = "tool_channel"
-	deviceKey   toolContextKey = "tool_device"
-	cardEmitKey toolContextKey = "tool_card_emit"
+	langKey       toolContextKey = "tool_lang"
+	channelKey    toolContextKey = "tool_channel"
+	deviceKey     toolContextKey = "tool_device"
+	cardEmitKey   toolContextKey = "tool_card_emit"
+	sessionIDKey  toolContextKey = "tool_session_id"
 )
 
 // CardEmitFunc is a callback that tools can use to emit streaming typeless
@@ -77,6 +78,19 @@ func WithDevice(ctx context.Context, device string) context.Context {
 // GetDevice extracts the device type from the context.
 func GetDevice(ctx context.Context) string {
 	if v, ok := ctx.Value(deviceKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// WithSessionID returns a context carrying the conversation/session ID.
+func WithSessionID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, sessionIDKey, id)
+}
+
+// GetSessionID extracts the conversation/session ID from the context.
+func GetSessionID(ctx context.Context) string {
+	if v, ok := ctx.Value(sessionIDKey).(string); ok {
 		return v
 	}
 	return ""

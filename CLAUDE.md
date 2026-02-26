@@ -91,6 +91,9 @@ Comprehensive UI/UX design intelligence with 50+ styles, 97 color palettes, 57 f
 
 **Usage:** Read `.agent/skills/ui-ux-pro-max-skill/.claude/skills/ui-ux-pro-max/SKILL.md`
 
+### Product Skills (assets/skills/)
+Built-in skills shipped with the product. Located in `assets/skills/<name>/SKILL.md`.
+
 ## How to Use Skills
 
 When working on tasks, reference the appropriate skill:
@@ -102,6 +105,7 @@ When working on tasks, reference the appropriate skill:
 5. **For Golang best practices:** Read `.agent/skills/golang-best-practices/SKILL.md`
 6. **For file-based planning:** Read `.agent/skills/planning-with-files/.agent/skills/planning-with-files/SKILL.md`
 7. **For UI/UX design:** Read `.agent/skills/ui-ux-pro-max-skill/.claude/skills/ui-ux-pro-max/SKILL.md`
+8. **For product skills:** Read `assets/skills/<name>/SKILL.md`
 
 ## Task Execution Rules
 

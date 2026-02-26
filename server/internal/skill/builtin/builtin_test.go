@@ -7,11 +7,14 @@ import (
 func TestRegisterAll(t *testing.T) {
 	// Verify the built-in skills can be created
 	skills := []interface{}{
-		NewPushNotification(),
+		NewReminder(),
 		NewScheduler(),
 		NewWorkflows(),
 		NewSandbox(),
 		NewBrowser(),
+		NewAnalyze(),
+		NewWebSearch(),
+		NewUIReviewer(),
 	}
 
 	expected := GetSkillCount()

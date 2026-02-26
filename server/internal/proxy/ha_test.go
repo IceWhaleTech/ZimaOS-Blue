@@ -637,7 +637,8 @@ func TestIsFormatMismatchError(t *testing.T) {
 		{"404 openai_error", 404, `{"error":{"message":"openai_error","type":"bad_response_status_code"}}`, true},
 		{"400 bad_response_status_code", 400, `{"error":{"type":"bad_response_status_code"}}`, true},
 		{"404 model not found", 404, `{"error":{"message":"model not found"}}`, false},
-		{"404 plain not found", 404, `not found`, false},
+		{"404 plain not found", 404, `not found`, true},
+		{"404 page not found", 404, `404 page not found`, true},
 		{"200 ok", 200, `ok`, false},
 		{"500 server error", 500, `internal error`, false},
 	}

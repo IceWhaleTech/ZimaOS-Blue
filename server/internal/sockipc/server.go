@@ -17,6 +17,7 @@ type Handler func(ctx context.Context, req *Request) *Response
 type Server struct {
 	path     string
 	handlers map[string]Handler
+	fallback Handler // called when no handler matches
 	log      *zap.Logger
 
 	mu       sync.Mutex
@@ -40,6 +41,12 @@ func NewServer(path string, log *zap.Logger) *Server {
 // Handle registers a handler for the given command name.
 func (s *Server) Handle(cmd string, h Handler) {
 	s.handlers[cmd] = h
+}
+
+// HandleFallback sets a fallback handler for unmatched commands.
+// Called when no exact handler matches the incoming cmd.
+func (s *Server) HandleFallback(h Handler) {
+	s.fallback = h
 }
 
 // Start begins listening. On Unix, it removes any stale socket file first.
@@ -116,8 +123,12 @@ func (s *Server) handleConn(conn net.Conn) {
 
 		h, ok := s.handlers[req.Cmd]
 		if !ok {
-			WriteJSON(conn, ErrResponse("unknown cmd: "+req.Cmd))
-			continue
+			if s.fallback != nil {
+				h = s.fallback
+			} else {
+				WriteJSON(conn, ErrResponse("unknown cmd: "+req.Cmd))
+				continue
+			}
 		}
 
 		resp := h(context.Background(), req)

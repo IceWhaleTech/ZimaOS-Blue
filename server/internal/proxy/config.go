@@ -56,6 +56,9 @@ type FailoverConfig struct {
 	FailureThreshold int           `json:"failure_threshold" yaml:"failure_threshold"`
 	RecoveryTimeout  time.Duration `json:"recovery_timeout" yaml:"recovery_timeout"`
 
+	// Transient error (502/503) circuit breaker overrides — shorter recovery for temporary blips
+	TransientRecoveryTimeout time.Duration `json:"transient_recovery_timeout" yaml:"transient_recovery_timeout"` // 0 = use RecoveryTimeout
+
 	// Smart failover settings
 	ErrorClassification   ErrorClassificationConfig `json:"error_classification" yaml:"error_classification"`
 	StreamingAnomaly      StreamingAnomalyConfig    `json:"streaming_anomaly" yaml:"streaming_anomaly"`
@@ -107,13 +110,14 @@ func DefaultProxyConfig() *ProxyConfig {
 			LoadBalancing:   "priority",
 			Providers:       []*ProviderConfig{},
 			Failover: FailoverConfig{
-				Enabled:            true,
-				MaxRetries:         3,
-				RetryDelay:         time.Second,
-				CircuitBreaker:     true,
-				FailureThreshold:   5,
-				RecoveryTimeout:    30 * time.Second,
-				ContextWindowCheck: true,
+				Enabled:                  true,
+				MaxRetries:               3,
+				RetryDelay:               time.Second,
+				CircuitBreaker:           true,
+				FailureThreshold:         5,
+				RecoveryTimeout:          30 * time.Second,
+				TransientRecoveryTimeout: 5 * time.Second, // 502/503 recover quickly
+				ContextWindowCheck:       true,
 				ErrorClassification: ErrorClassificationConfig{
 					Enabled: true,
 					FailoverErrors: []string{

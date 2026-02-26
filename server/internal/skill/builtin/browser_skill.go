@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
@@ -22,6 +23,8 @@ type BrowserServiceInterface interface {
 	ScreenshotTab(ctx context.Context, targetID string) (string, error)
 	CloseTab(ctx context.Context, targetID string) error
 	Tabs(ctx context.Context) ([]BrowserTabInfo, error)
+	ExecuteRecipe(ctx context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error)
+	ListRecipes(ctx context.Context) []BrowserRecipeInfo
 }
 
 // BrowserNavResult represents a navigation result.
@@ -58,6 +61,21 @@ type BrowserTabInfo struct {
 	Active   bool   `json:"active"`
 }
 
+// BrowserRecipeResult represents the result of a recipe execution.
+type BrowserRecipeResult struct {
+	Success  bool                   `json:"success"`
+	Data     map[string]interface{} `json:"data,omitempty"`
+	TargetID string                 `json:"target_id,omitempty"`
+	Message  string                 `json:"message"`
+}
+
+// BrowserRecipeInfo describes an available recipe.
+type BrowserRecipeInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	KeepTab     bool   `json:"keep_tab"`
+}
+
 // Browser is a built-in skill for browser automation.
 // It uses an accessibility tree DSL for token-efficient page understanding.
 type Browser struct {
@@ -86,7 +104,7 @@ func NewBrowser() *Browser {
 				{
 					Name:        "action",
 					Type:        "string",
-					Description: "Action: navigate (open URL + auto snapshot), snapshot (full CDP accessibility tree), snapshot_interactive (JS interactive elements only), snapshot_auto (auto-pick best strategy), act (interact with @ref element), screenshot (capture page image), tabs (list open tabs), close (close tab)",
+					Description: "Action: navigate (open URL + auto snapshot), snapshot (full CDP accessibility tree), snapshot_interactive (JS interactive elements only), snapshot_auto (auto-pick best strategy), act (interact with @ref element), screenshot (capture page image), tabs (list open tabs), close (close tab), recipe (run a predefined automation template), recipes (list available recipes)",
 					Required:    true,
 				},
 				{
@@ -131,6 +149,18 @@ func NewBrowser() *Browser {
 					Description: "Language/locale code for localized responses (e.g., en-US, zh-CN)",
 					Required:    false,
 				},
+				{
+					Name:        "recipe",
+					Type:        "string",
+					Description: "Recipe name for action=recipe (search, fill_form, extract, login)",
+					Required:    false,
+				},
+				{
+					Name:        "params",
+					Type:        "object",
+					Description: "Recipe parameters as key-value pairs (e.g., {\"query\": \"test\", \"engine\": \"google\"})",
+					Required:    false,
+				},
 			},
 			Outputs: []skill.Parameter{
 				{
@@ -172,16 +202,20 @@ func (b *Browser) cacheRefs(targetID string, a11yRefs map[int]int, interactiveRe
 func (b *Browser) Manifest() *skill.Manifest { return b.manifest }
 
 func (b *Browser) Validate(input map[string]any) error {
-	action, ok := input["action"]
-	if !ok {
-		return fmt.Errorf("action is required")
+	// Default action to "navigate" when url is provided without action.
+	if _, ok := input["action"]; !ok {
+		if _, hasURL := input["url"].(string); hasURL {
+			input["action"] = "navigate"
+		} else {
+			return fmt.Errorf("action is required")
+		}
 	}
-	actionStr, ok := action.(string)
+	actionStr, ok := input["action"].(string)
 	if !ok {
 		return fmt.Errorf("action must be a string")
 	}
 	switch actionStr {
-	case "navigate", "snapshot", "snapshot_interactive", "snapshot_auto", "act", "screenshot", "tabs", "close":
+	case "navigate", "snapshot", "snapshot_interactive", "snapshot_auto", "act", "screenshot", "tabs", "close", "recipe", "recipes":
 		// valid
 	default:
 		return fmt.Errorf("invalid action: %s", actionStr)
@@ -198,6 +232,10 @@ func (b *Browser) Validate(input map[string]any) error {
 		if _, ok := input["act_type"]; !ok {
 			return fmt.Errorf("act_type is required for act (click, type, focus, hover, scroll, select)")
 		}
+	case "recipe":
+		if _, ok := input["recipe"]; !ok {
+			return fmt.Errorf("recipe is required for action=recipe (search, fill_form, extract, login)")
+		}
 	}
 	return nil
 }
@@ -211,13 +249,19 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		return skill.NewErrorResult(fmt.Errorf("browser service not available")), nil
 	}
 
-	action := input["action"].(string)
+	action, _ := input["action"].(string)
+	if action == "" {
+		return skill.NewErrorResult(fmt.Errorf("action is required")), nil
+	}
 	targetID, _ := input["target_id"].(string)
 	vision, _ := input["vision"].(bool)
 
 	switch action {
 	case "navigate":
-		url := input["url"].(string)
+		url, _ := input["url"].(string)
+		if url == "" {
+			return skill.NewErrorResult(fmt.Errorf("url is required for navigate")), nil
+		}
 		_ = svc.Start(ctx)
 
 		nav, err := svc.Navigate(ctx, url, targetID)
@@ -258,7 +302,7 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		case int:
 			ref = r
 		}
-		actType := input["act_type"].(string)
+		actType, _ := input["act_type"].(string)
 		value, _ := input["value"].(string)
 
 		b.mu.RLock()
@@ -292,7 +336,10 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		}), nil
 
 	case "screenshot":
-		url := input["url"].(string)
+		url, _ := input["url"].(string)
+		if url == "" {
+			return skill.NewErrorResult(fmt.Errorf("url is required for screenshot")), nil
+		}
 		_ = svc.Start(ctx)
 
 		data, err := svc.Screenshot(ctx, url)
@@ -331,6 +378,34 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		return skill.NewResult(map[string]any{
 			"closed":  true,
 			"message": fmt.Sprintf("Tab %s closed", targetID),
+		}), nil
+
+	case "recipe":
+		recipeName, _ := input["recipe"].(string)
+		params := extractRecipeParams(input)
+		_ = svc.Start(ctx)
+		result, err := svc.ExecuteRecipe(ctx, recipeName, params)
+		if err != nil {
+			return skill.NewErrorResult(fmt.Errorf("recipe %s failed: %w", recipeName, err)), nil
+		}
+		data := map[string]any{
+			"success": result.Success,
+			"message": result.Message,
+		}
+		for k, v := range result.Data {
+			data[k] = v
+		}
+		if result.TargetID != "" {
+			data["target_id"] = result.TargetID
+		}
+		return skill.NewResult(data), nil
+
+	case "recipes":
+		infos := svc.ListRecipes(ctx)
+		return skill.NewResult(map[string]any{
+			"recipes": infos,
+			"count":   len(infos),
+			"message": fmt.Sprintf("%d recipes available", len(infos)),
 		}), nil
 	}
 
@@ -497,4 +572,34 @@ func (b *Browser) doScreenshotWithInteractive(ctx context.Context, svc BrowserSe
 		"strategy":   "screenshot+interactive",
 		"message":    "Page: " + interactive.Title + " (" + interactive.URL + ") — screenshot + " + strconv.Itoa(interactive.Count) + " interactive elements\n\n" + interactive.Tree,
 	}), nil
+}
+
+// extractRecipeParams extracts recipe params from the skill input.
+// Supports both params as a map[string]any and as a JSON string.
+func extractRecipeParams(input map[string]any) map[string]string {
+	params := make(map[string]string)
+
+	// Try params as map
+	if p, ok := input["params"].(map[string]any); ok {
+		for k, v := range p {
+			params[k] = fmt.Sprintf("%v", v)
+		}
+		return params
+	}
+
+	// Try params as JSON string
+	if p, ok := input["params"].(string); ok && p != "" {
+		var m map[string]string
+		if json.Unmarshal([]byte(p), &m) == nil {
+			return m
+		}
+	}
+
+	// Fall back: extract known recipe params from top-level input
+	for _, key := range []string{"query", "engine", "max_results", "url", "fields", "selectors", "multiple", "submit", "username", "password", "username_selector", "password_selector", "submit_selector"} {
+		if v, ok := input[key]; ok {
+			params[key] = fmt.Sprintf("%v", v)
+		}
+	}
+	return params
 }

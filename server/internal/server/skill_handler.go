@@ -232,12 +232,26 @@ type SkillResponse struct {
 	Outputs     []skill.Parameter `json:"outputs,omitempty"`
 }
 
+// skillsHiddenFromSkillTab lists skill IDs that are displayed in the Tools tab
+// instead of the Skills tab. Display-only change — the skills still function normally.
+var skillsHiddenFromSkillTab = map[string]bool{
+	"browser":           true,
+	"ui_reviewer":       true,
+	"analyze":           true,
+	"mediagen":          true,
+	"reminder":          true,
+	"push-notification": true, // legacy name for reminder
+}
+
 // ListSkills returns all skills from the .claude/skills/ directory.
 func (h *SkillHandler) ListSkills(c echo.Context) error {
 	response := make([]SkillResponse, 0)
 
 	if h.localScanner != nil {
 		for _, ls := range h.localScanner.GetAll() {
+			if skillsHiddenFromSkillTab[ls.ID] {
+				continue
+			}
 			response = append(response, SkillResponse{
 				ID:          ls.ID,
 				Name:        ls.Name,

@@ -15,7 +15,11 @@ import PresetQuestions from '@/components/onboarding/PresetQuestions.vue'
 import VirtualScroll from '@/components/VirtualScroll.vue'
 import TalkMode from '@/components/chat/TalkMode.vue'
 import ToolApprovalDialog from '@/components/ToolApprovalDialog.vue'
+import ExecApprovalDialog from '@/components/ExecApprovalDialog.vue'
 import MediaParamPanel from '@/components/MediaParamPanel.vue'
+import AgentTaskPanel from '@/components/AgentTaskPanel.vue'
+import { agentApi, type AgentTask, type AgentQuestionAnswer } from '@/api/chat'
+import { onSSEEvent, offSSEEvent } from '@/composables/useEventStream'
 import { useMediaGenerate } from '@/composables/useMediaGenerate'
 import { componentPool } from '@/utils/componentPool'
 import { clearConversationIncrementalStates } from '@/utils/typeless'
@@ -92,6 +96,84 @@ const styleSelectorPosition = ref({ x: 0, y: 0 })
 // Talk mode state
 const showTalkMode = ref(false)
 const editBeforeSend = ref(false)
+
+// Agent task state
+const agentTasks = ref<AgentTask[]>([])
+
+async function fetchAgentTasks() {
+  try {
+    const resp = await agentApi.listTasks()
+    agentTasks.value = resp.data || []
+  } catch {
+    // Ignore — agent API may not be available
+  }
+}
+
+async function cancelAgentTask(taskId: string) {
+  try {
+    await agentApi.cancelTask(taskId)
+    await fetchAgentTasks()
+  } catch (e) {
+    console.error('Failed to cancel agent task:', e)
+  }
+}
+
+async function deleteAgentTask(taskId: string) {
+  try {
+    await agentApi.deleteTask(taskId)
+    agentTasks.value = agentTasks.value.filter(t => t.id !== taskId)
+  } catch (e) {
+    console.error('Failed to delete agent task:', e)
+  }
+}
+
+// SSE listener for real-time agent task updates
+function onAgentEvent(data: any) {
+  if (!data?.task_id) return
+  // Update the matching task in-place, or re-fetch if not found
+  const idx = agentTasks.value.findIndex(t => t.id === data.task_id)
+  if (idx >= 0) {
+    const task = agentTasks.value[idx]!
+    if (data.progress !== undefined) task.progress = data.progress
+    if (data.event_type === 'task_completed') { task.status = 'completed'; task.result = data.message }
+    if (data.event_type === 'task_failed') { task.status = 'failed'; task.error = data.message }
+    if (data.event_type === 'task_step_completed' && task.plan?.[data.step_index]) {
+      task.plan[data.step_index]!.status = 'completed'
+      task.plan[data.step_index]!.output = data.output
+      if (data.duration_ms) task.plan[data.step_index]!.completed_at = new Date(Date.now()).toISOString()
+    }
+    if (data.event_type === 'task_progress' && data.step_index !== undefined && task.plan?.[data.step_index]) {
+      if (task.plan[data.step_index]!.status === 'pending') {
+        task.plan[data.step_index]!.status = 'running'
+        task.plan[data.step_index]!.started_at = new Date(Date.now()).toISOString()
+      }
+    }
+    if (data.event_type === 'task_user_message' && data.message) {
+      // Append user message to current step's output so it's visible in the panel
+      const stepIdx = task.current_step
+      if (task.plan?.[stepIdx]) {
+        const prev = task.plan[stepIdx]!.output || ''
+        task.plan[stepIdx]!.output = prev + (prev ? '\n' : '') + `[User]: ${data.message}`
+      }
+    }
+    if (data.event_type === 'task_question' && data.questions?.length) {
+      task.questions = data.questions
+      task.status = 'waiting_input'
+    }
+    if (data.event_type === 'task_question_answered') {
+      task.questions = undefined
+      task.status = 'executing'
+    }
+    // Clear questions when task resumes (any progress/step event after question was answered)
+    if (task.questions?.length && (data.event_type === 'task_progress' || data.event_type === 'task_step_completed')) {
+      task.questions = undefined
+    }
+  } else {
+    fetchAgentTasks()
+  }
+}
+
+const agentEventTypes = ['task_created', 'task_planning', 'task_progress', 'task_step_completed', 'task_completed', 'task_failed', 'task_user_message', 'task_question', 'task_question_answered']
 
 // Virtual scroll threshold - use virtual scroll when message count exceeds this
 const VIRTUAL_SCROLL_THRESHOLD = 50
@@ -366,7 +448,70 @@ async function handleVoiceTranscript(text: string) {
 }
 
 function handleCancel() {
+  const hadMediaGen = mediaGen.generating.value
+  const mediaType = mediaGen.task.value?.type // 'image' | 'video'
+  const runningAgents = agentTasks.value.filter(at => at.status === 'executing' || at.status === 'planning' || at.status === 'pending')
+
+  // 1. Cancel chat streaming
   chatStore.cancelStreaming()
+
+  // 2. Cancel active media generation task
+  if (hadMediaGen) {
+    mediaGen.cancel()
+  }
+
+  // 3. Cancel running agent tasks
+  for (const at of runningAgents) {
+    agentApi.cancelTask(at.id).catch(() => {})
+  }
+
+  // 4. Append a stop notification message if any async task was cancelled
+  if (hadMediaGen || runningAgents.length > 0) {
+    const parts: string[] = []
+    if (hadMediaGen) {
+      parts.push(t(mediaType === 'video' ? 'chat.videoGenStopped' : 'chat.imageGenStopped'))
+    }
+    for (const at of runningAgents) {
+      parts.push(t('chat.agentTaskStopped', { goal: at.goal }))
+    }
+
+    const cleaned = chatStore.messages.filter(m => !m.id.startsWith('streaming-'))
+    cleaned.push({
+      id: `stop-${Date.now()}`,
+      conversation_id: chatStore.currentConversationId || '',
+      role: 'assistant',
+      content: parts.join('\n'),
+      created_at: new Date().toISOString(),
+    })
+    chatStore.messages = cleaned
+
+    if (runningAgents.length > 0) {
+      fetchAgentTasks()
+    }
+  }
+}
+
+function handleInject(message: string) {
+  chatStore.injectMessage(message)
+}
+
+async function sendAgentMessage(taskId: string, message: string) {
+  try {
+    await agentApi.sendMessage(taskId, message)
+  } catch (e) {
+    console.error('Failed to send message to agent task:', e)
+  }
+}
+
+async function submitAgentAnswer(taskId: string, answers: AgentQuestionAnswer[]) {
+  try {
+    await agentApi.submitAnswers(taskId, answers)
+    // Clear questions locally after successful submit
+    const task = agentTasks.value.find(t => t.id === taskId)
+    if (task) task.questions = undefined
+  } catch (e) {
+    console.error('Failed to submit agent answers:', e)
+  }
 }
 
 async function handleSelectConversation(id: string) {
@@ -574,6 +719,10 @@ onMounted(async () => {
     editBeforeSend.value = s?.asr?.edit_before_send ?? false
   }).catch(() => {})
 
+  // Fetch agent tasks (non-blocking) + subscribe to SSE updates
+  fetchAgentTasks()
+  for (const evt of agentEventTypes) onSSEEvent(evt, onAgentEvent)
+
   // Fetch conversations and (if URL has conversationId) messages in parallel.
   // selectConversation only needs the ID, not the conversation list.
   if (_initConvId) {
@@ -589,14 +738,15 @@ onMounted(async () => {
     }
   }
 
-  // Fire secondary data fetches in background — don't block first paint
-  providerPoolStore.fetchProviders().then(() => {
-    const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
-    settingsStore.updateFromPoolProviders(llmProviders)
-  }).catch(() => {})
+  // Fire secondary data fetches in background — skip if App.vue already loaded them
+  if (providerPoolStore.providers.length === 0) {
+    providerPoolStore.fetchProviders().then(() => {
+      const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
+      settingsStore.updateFromPoolProviders(llmProviders)
+    }).catch(() => {})
+  }
   settingsStore.fetchTools().catch(() => {})
   providerPoolStore.fetchRoutingMode().catch(() => {})
-  settingsStore.fetchClaudeCodeEnabled()
 
   // Check for any pending tool approvals (e.g. page was refreshed while waiting)
   chatStore.checkPendingApprovals()
@@ -608,6 +758,7 @@ onUnmounted(() => {
   if (longPressTimer.value) {
     clearTimeout(longPressTimer.value)
   }
+  for (const evt of agentEventTypes) offSSEEvent(evt, onAgentEvent)
 })
 </script>
 
@@ -780,6 +931,47 @@ onUnmounted(() => {
             </button>
           </div>
 
+          <!-- Agent mode toggle (click: on/off, right-click: toggle auto-confirm) -->
+          <div class="relative">
+            <button
+              class="p-2 rounded-lg transition-colors"
+              :class="settingsStore.agentMode
+                ? 'text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
+                : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'"
+              :title="settingsStore.agentMode
+                ? (settingsStore.agentAutoConfirm ? t('agent.mode') + ' (Auto)' : t('agent.mode') + ' (Confirm)')
+                : t('agent.mode')"
+              @click="settingsStore.setAgentMode(!settingsStore.agentMode)"
+              @contextmenu.prevent="settingsStore.agentMode && settingsStore.setAgentAutoConfirm(!settingsStore.agentAutoConfirm)"
+            >
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </button>
+            <!-- Auto-confirm dot indicator -->
+            <span
+              v-if="settingsStore.agentMode && settingsStore.agentAutoConfirm"
+              class="absolute top-0.5 right-0.5 w-2 h-2 bg-orange-400 rounded-full pointer-events-none"
+            />
+          </div>
+
+          <!-- Tool details toggle (brain icon) -->
+          <button
+            class="p-2 rounded-lg transition-colors cursor-pointer"
+            :class="settingsStore.showToolDetails
+              ? 'text-purple-500 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30'
+              : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'"
+            :title="settingsStore.showToolDetails ? t('chat.hideToolDetails') : t('chat.showToolDetails')"
+            @click="settingsStore.setShowToolDetails(!settingsStore.showToolDetails)"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <!-- Brain shape -->
+              <path d="M12 2a5 5 0 00-4.78 3.56A3.5 3.5 0 004 9a3.5 3.5 0 00.68 2.07A3.5 3.5 0 004 13.5 3.5 3.5 0 006.5 17h.28A5 5 0 0012 20" />
+              <path d="M12 2a5 5 0 014.78 3.56A3.5 3.5 0 0120 9a3.5 3.5 0 01-.68 2.07A3.5 3.5 0 0120 13.5a3.5 3.5 0 01-2.5 3.5h-.28A5 5 0 0112 20" />
+              <path d="M12 2v18" />
+            </svg>
+          </button>
+
           <!-- Theme style selector -->
           <div class="style-selector-container relative">
             <button
@@ -936,6 +1128,19 @@ onUnmounted(() => {
             </div>
           </div>
 
+          <!-- Agent task panels -->
+          <div v-if="agentTasks.length > 0" class="px-4">
+            <AgentTaskPanel
+              v-for="task in agentTasks"
+              :key="task.id"
+              :task="task"
+              @cancel="cancelAgentTask"
+              @delete="deleteAgentTask"
+              @message="sendAgentMessage"
+              @answer="submitAgentAnswer"
+            />
+          </div>
+
           <!-- Context trim indicator (pruning/compaction) -->
           <Transition name="fade">
             <div
@@ -972,14 +1177,24 @@ onUnmounted(() => {
               </svg>
               <span class="break-all">{{
                 chatStore.streamError === 'streamEmpty' ? t('chat.streamEmpty') :
+                chatStore.streamError === 'streamError' ? t('chat.streamError') :
                 chatStore.streamError === 'providerNoResponse' ? t('chat.providerNoResponse') :
                 chatStore.streamError === 'providerReturnedEmpty' ? t('chat.providerReturnedEmpty') :
                 chatStore.streamError === 'noResponseBody' ? t('chat.noResponseBody') :
                 chatStore.streamError === 'trial_service_busy' ? t('chat.trialServiceBusy') :
-                chatStore.streamError
+                chatStore.streamError === 'provider_unavailable' ? t('chat.providerUnavailable') :
+                chatStore.streamError === 'provider_auth_error' ? t('chat.providerAuthError') :
+                chatStore.streamError === 'provider_rate_limited' ? t('chat.providerRateLimited') :
+                t('chat.genericStreamError')
               }}</span>
               <button
-                class="ml-2 text-gray-400 hover:text-gray-300 cursor-pointer"
+                class="ml-1 px-2 py-0.5 rounded text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 cursor-pointer transition-colors text-xs"
+                @click="chatStore.clearStreamError(); chatStore.regenerateMessage()"
+              >
+                {{ t('common.retry') }}
+              </button>
+              <button
+                class="text-gray-400 hover:text-gray-300 cursor-pointer"
                 @click="chatStore.clearStreamError"
               >
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1009,9 +1224,9 @@ onUnmounted(() => {
             v-if="chatStore.messages.length > 0 && !chatStore.isMultiSelectMode"
             class="flex justify-center gap-2 py-4"
           >
-            <!-- Stop button (shown during streaming) -->
+            <!-- Stop button (shown during streaming or async tasks) -->
             <button
-              v-if="chatStore.streaming"
+              v-if="chatStore.streaming || mediaGen.generating.value || agentTasks.some(at => at.status === 'executing' || at.status === 'planning')"
               class="flex items-center gap-2 px-4 py-2 glass-card text-red-400 hover:bg-red-500/10 rounded-lg text-sm transition-colors cursor-pointer"
               @click="handleCancel"
             >
@@ -1354,7 +1569,13 @@ onUnmounted(() => {
         v-if="chatStore.error"
         class="px-3 sm:px-4 py-3 bg-red-500/10 border-t border-red-500/30 text-red-400 text-xs sm:text-sm flex items-center justify-between gap-2"
       >
-        <span class="truncate">{{ chatStore.error === 'trial_service_busy' ? t('chat.trialServiceBusy') : chatStore.error }}</span>
+        <span class="truncate">{{
+          chatStore.error === 'trial_service_busy' ? t('chat.trialServiceBusy') :
+          chatStore.error === 'provider_unavailable' ? t('chat.providerUnavailable') :
+          chatStore.error === 'provider_auth_error' ? t('chat.providerAuthError') :
+          chatStore.error === 'provider_rate_limited' ? t('chat.providerRateLimited') :
+          chatStore.error
+        }}</span>
         <button
           class="text-red-400 hover:text-red-300 flex-shrink-0 px-3 py-1 rounded hover:bg-red-500/10 transition-colors cursor-pointer"
           @click="chatStore.clearError"
@@ -1425,6 +1646,7 @@ onUnmounted(() => {
           :disabled="chatStore.sending && !chatStore.isPreTTFT"
           :streaming="chatStore.streaming"
           @send="handleSend"
+          @inject="handleInject"
           @cancel="handleCancel"
           @cancel-pre-ttft="chatStore.cancelPreTTFT()"
           @warmup="chatStore.warmupConversation()"
@@ -1443,6 +1665,9 @@ onUnmounted(() => {
 
     <!-- Tool call approval dialog -->
     <ToolApprovalDialog />
+
+    <!-- Exec directory approval dialog -->
+    <ExecApprovalDialog />
   </div>
 </template>
 

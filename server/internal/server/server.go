@@ -374,9 +374,27 @@ func (s *Server) RegisterShutdownRoute() {
 	})
 }
 
-// isAddrInUse checks if the error indicates the address is already in use
-func isAddrInUse(err error) bool {
+// IsAddrInUse checks if the error indicates the address is already in use.
+func IsAddrInUse(err error) bool {
 	return strings.Contains(err.Error(), "address already in use")
+}
+
+// isAddrInUse is an internal alias kept for existing callers within this file.
+var isAddrInUse = IsAddrInUse
+
+// ListenWithFallback tries to listen on the given address. If the port is
+// already in use and fallback is true, it retries on ":0" to let the OS
+// assign a random available port. Returns the listener and actual port.
+func ListenWithFallback(addr string, port int, fallback bool) (net.Listener, int, error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil && fallback && port != 0 && IsAddrInUse(err) {
+		ln, err = net.Listen("tcp", ":0")
+	}
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to listen on %s: %w", addr, err)
+	}
+	actualP := ln.Addr().(*net.TCPAddr).Port
+	return ln, actualP, nil
 }
 
 func zerologMiddleware() echo.MiddlewareFunc {

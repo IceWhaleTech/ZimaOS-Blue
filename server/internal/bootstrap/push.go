@@ -43,9 +43,15 @@ type PushServiceDeps struct {
 	Logger      *zap.Logger
 }
 
+// PushServiceResult holds the outputs of InitPushService.
+type PushServiceResult struct {
+	IPC     sockipc.PushBackend // for IPC registration
+	Service *push.Service       // for skill/tool wiring
+}
+
 // InitPushService creates and wires the push notification service.
-// Returns a PushBackend for IPC registration, or nil if initialization fails.
-func InitPushService(deps *PushServiceDeps) sockipc.PushBackend {
+// Returns nil if initialization fails.
+func InitPushService(deps *PushServiceDeps) *PushServiceResult {
 	pushStore, err := push.NewStore(deps.DB)
 	if err != nil {
 		deps.Logger.Warn("Failed to initialize push store", zap.Error(err))
@@ -85,5 +91,8 @@ func InitPushService(deps *PushServiceDeps) sockipc.PushBackend {
 		}
 	}()
 
-	return sockipc.NewPushIPCAdapter(pushSvc)
+	return &PushServiceResult{
+		IPC:     sockipc.NewPushIPCAdapter(pushSvc),
+		Service: pushSvc,
+	}
 }

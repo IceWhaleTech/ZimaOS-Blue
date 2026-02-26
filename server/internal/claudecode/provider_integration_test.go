@@ -39,12 +39,8 @@ func TestProviderToolRegistryIntegration(t *testing.T) {
 	ctx := context.Background()
 	systemPrompt := provider.promptBuilder.Build(ctx, "")
 
-	if !strings.Contains(systemPrompt, "Tool Guidance") {
-		t.Error("expected system prompt to contain 'Tool Guidance' section")
-	}
-
-	if !strings.Contains(systemPrompt, "Tool Routing Rules") {
-		t.Error("expected system prompt to contain 'Tool Routing Rules' section")
+	if !strings.Contains(systemPrompt, "tool_guidance") {
+		t.Error("expected system prompt to contain 'tool_guidance' section")
 	}
 }
 
@@ -81,8 +77,8 @@ func TestProviderMultipleToolsIntegration(t *testing.T) {
 
 	// Tool guidance section should exist (tool definitions are sent via API tools array,
 	// not duplicated in the system prompt)
-	if !strings.Contains(systemPrompt, "Tool Routing Rules") {
-		t.Error("expected system prompt to contain 'Tool Routing Rules'")
+	if !strings.Contains(systemPrompt, "tool_guidance") {
+		t.Error("expected system prompt to contain 'tool_guidance'")
 	}
 }
 
@@ -106,7 +102,7 @@ func TestProviderSystemPromptWithToolsAndExtraPrompt(t *testing.T) {
 	systemPrompt := provider.promptBuilder.Build(ctx, extraPrompt)
 
 	// Tool guidance section should exist
-	if !strings.Contains(systemPrompt, "Tool Guidance") {
+	if !strings.Contains(systemPrompt, "tool_guidance") {
 		t.Error("expected system prompt to contain 'Tool Guidance'")
 	}
 
@@ -115,7 +111,7 @@ func TestProviderSystemPromptWithToolsAndExtraPrompt(t *testing.T) {
 	}
 
 	// Verify runtime info is included
-	if !strings.Contains(systemPrompt, "Runtime Information") {
+	if !strings.Contains(systemPrompt, "<now>") {
 		t.Error("expected system prompt to contain runtime information")
 	}
 }
@@ -202,8 +198,8 @@ func TestProviderBuildRunParams(t *testing.T) {
 	}
 
 	// Verify system prompt contains tool guidance (not full definitions — those go via API tools)
-	if !strings.Contains(params.SystemPrompt, "Tool Routing Rules") {
-		t.Error("expected system prompt to contain Tool Routing Rules")
+	if !strings.Contains(params.SystemPrompt, "tool_guidance") {
+		t.Error("expected system prompt to contain tool_guidance")
 	}
 
 	// Verify system prompt contains user's system message
@@ -352,13 +348,13 @@ func TestProviderEmptyToolRegistry(t *testing.T) {
 	ctx := context.Background()
 	systemPrompt := provider.promptBuilder.Build(ctx, "")
 
-	// Should not contain "Tool Guidance" section when no tools
-	if strings.Contains(systemPrompt, "Tool Guidance") {
+	// Should not contain "tool_guidance" section when no tools
+	if strings.Contains(systemPrompt, "tool_guidance") {
 		t.Error("expected system prompt to NOT contain 'Tool Guidance' when registry is empty")
 	}
 
 	// Should still contain runtime info
-	if !strings.Contains(systemPrompt, "Runtime Information") {
+	if !strings.Contains(systemPrompt, "<now>") {
 		t.Error("expected system prompt to contain runtime information")
 	}
 }
@@ -376,13 +372,13 @@ func TestProviderNilToolRegistry(t *testing.T) {
 	ctx := context.Background()
 	systemPrompt := provider.promptBuilder.Build(ctx, "")
 
-	// Should not contain "Tool Guidance" section
-	if strings.Contains(systemPrompt, "Tool Guidance") {
+	// Should not contain "tool_guidance" section
+	if strings.Contains(systemPrompt, "tool_guidance") {
 		t.Error("expected system prompt to NOT contain 'Tool Guidance' when registry is nil")
 	}
 
 	// Should still contain runtime info
-	if !strings.Contains(systemPrompt, "Runtime Information") {
+	if !strings.Contains(systemPrompt, "<now>") {
 		t.Error("expected system prompt to contain runtime information")
 	}
 }
@@ -422,8 +418,8 @@ func TestProviderToolsIncludedInChatRequest(t *testing.T) {
 
 	// Verify all tools are referenced in the system prompt via tool guidance
 	// (full definitions are sent via API tools array, not in system prompt)
-	if !strings.Contains(params.SystemPrompt, "Tool Routing Rules") {
-		t.Error("expected system prompt to contain 'Tool Routing Rules'")
+	if !strings.Contains(params.SystemPrompt, "tool_guidance") {
+		t.Error("expected system prompt to contain 'tool_guidance'")
 	}
 }
 

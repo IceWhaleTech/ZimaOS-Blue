@@ -1,0 +1,186 @@
+package agent
+
+import (
+	"context"
+	"database/sql"
+	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+)
+
+const createTableSQL = `
+CREATE TABLE IF NOT EXISTS agent_tasks (
+	id              TEXT PRIMARY KEY,
+	user_id         TEXT NOT NULL,
+	conversation_id TEXT DEFAULT '',
+	goal            TEXT NOT NULL,
+	plan            TEXT DEFAULT '[]',
+	status          TEXT NOT NULL DEFAULT 'pending',
+	current_step    INTEGER DEFAULT 0,
+	progress        INTEGER DEFAULT 0,
+	result          TEXT DEFAULT '',
+	error           TEXT DEFAULT '',
+	created_at      DATETIME NOT NULL,
+	updated_at      DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_tasks_user ON agent_tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status);
+`
+
+// Store persists agent tasks in SQLite.
+type Store struct {
+	db *sql.DB
+}
+
+// NewStore creates a new agent task store.
+func NewStore(db *sql.DB) (*Store, error) {
+	if _, err := db.Exec(createTableSQL); err != nil {
+		return nil, err
+	}
+	return &Store{db: db}, nil
+}
+
+// Create inserts a new task.
+func (s *Store) Create(ctx context.Context, task *Task) error {
+	now := timeutil.NowTime()
+	task.CreatedAt = now
+	task.UpdatedAt = now
+	if task.Status == "" {
+		task.Status = TaskStatusPending
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO agent_tasks (id, user_id, conversation_id, goal, plan, status, current_step, progress, result, error, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		task.ID, task.UserID, task.ConversationID, task.Goal,
+		MarshalPlan(task.Plan), string(task.Status),
+		task.CurrentStep, task.Progress, task.Result, task.Error,
+		task.CreatedAt, task.UpdatedAt,
+	)
+	return err
+}
+
+// Get retrieves a task by ID.
+func (s *Store) Get(ctx context.Context, id string) (*Task, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, user_id, conversation_id, goal, plan, status, current_step, progress, result, error, created_at, updated_at
+		 FROM agent_tasks WHERE id = ?`, id)
+	return scanTask(row)
+}
+
+// ListByUser returns tasks for a user, ordered by creation time descending.
+func (s *Store) ListByUser(ctx context.Context, userID string, limit int) ([]*Task, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, user_id, conversation_id, goal, plan, status, current_step, progress, result, error, created_at, updated_at
+		 FROM agent_tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tasks []*Task
+	for rows.Next() {
+		t, err := scanTaskRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, t)
+	}
+	return tasks, rows.Err()
+}
+
+// Update updates a task's mutable fields.
+func (s *Store) Update(ctx context.Context, task *Task) error {
+	task.UpdatedAt = timeutil.NowTime()
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE agent_tasks SET plan=?, status=?, current_step=?, progress=?, result=?, error=?, updated_at=?
+		 WHERE id=?`,
+		MarshalPlan(task.Plan), string(task.Status),
+		task.CurrentStep, task.Progress, task.Result, task.Error,
+		task.UpdatedAt, task.ID,
+	)
+	return err
+}
+
+// Delete removes a task.
+func (s *Store) Delete(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM agent_tasks WHERE id=?`, id)
+	return err
+}
+
+func scanTask(row *sql.Row) (*Task, error) {
+	var t Task
+	var planJSON, status string
+	err := row.Scan(&t.ID, &t.UserID, &t.ConversationID, &t.Goal,
+		&planJSON, &status, &t.CurrentStep, &t.Progress,
+		&t.Result, &t.Error, &t.CreatedAt, &t.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	t.Status = TaskStatus(status)
+	t.Plan = UnmarshalPlan(planJSON)
+	return &t, nil
+}
+
+type rowScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func scanTaskRows(rows *sql.Rows) (*Task, error) {
+	var t Task
+	var planJSON, status string
+	err := rows.Scan(&t.ID, &t.UserID, &t.ConversationID, &t.Goal,
+		&planJSON, &status, &t.CurrentStep, &t.Progress,
+		&t.Result, &t.Error, &t.CreatedAt, &t.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	t.Status = TaskStatus(status)
+	t.Plan = UnmarshalPlan(planJSON)
+	return &t, nil
+}
+
+// CountRunning returns the number of running tasks for a user.
+func (s *Store) CountRunning(ctx context.Context, userID string) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM agent_tasks WHERE user_id=? AND status IN ('pending','planning','executing')`,
+		userID).Scan(&count)
+	return count, err
+}
+
+// SetStatus is a convenience method to update just the status.
+func (s *Store) SetStatus(ctx context.Context, id string, status TaskStatus, errMsg string) error {
+	now := timeutil.NowTime()
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE agent_tasks SET status=?, error=?, updated_at=? WHERE id=?`,
+		string(status), errMsg, now, id)
+	return err
+}
+
+// Cleanup removes tasks older than the given duration.
+func (s *Store) Cleanup(ctx context.Context, olderThan time.Duration) (int64, error) {
+	cutoff := timeutil.NowTime().Add(-olderThan)
+	result, err := s.db.ExecContext(ctx,
+		`DELETE FROM agent_tasks WHERE created_at < ? AND status IN ('completed','failed','cancelled')`,
+		cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// RecoverStaleTasks marks any tasks stuck in running states as failed.
+// Call this on startup to clean up tasks from a previous crash.
+func (s *Store) RecoverStaleTasks(ctx context.Context) (int64, error) {
+	now := timeutil.NowTime()
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE agent_tasks SET status='failed', error='interrupted by server restart', updated_at=?
+		 WHERE status IN ('pending','planning','executing')`, now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

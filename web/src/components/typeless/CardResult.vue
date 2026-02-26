@@ -14,6 +14,10 @@ const emit = defineEmits<{
 }>()
 
 const copiedIndex = ref<number | null>(null)
+const titleCopied = ref(false)
+
+// Title is explicitly marked as copyable by the backend (e.g. exec command)
+const isTitleCopyable = computed(() => !!(props.card as any).title_copyable)
 
 const statusConfig = {
   success: {
@@ -48,7 +52,14 @@ const statusConfig = {
     iconBg: 'bg-blue-100 dark:bg-blue-900/40',
     iconColor: 'text-blue-600 dark:text-blue-400',
   },
-}
+} as const
+
+type StatusKey = keyof typeof statusConfig
+
+const cardStatus = computed<StatusKey>(() => {
+  const s = props.card.status
+  return s && s in statusConfig ? s as StatusKey : 'info'
+})
 
 const buttonClasses = {
   primary: 'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white',
@@ -86,6 +97,16 @@ async function copyValue(value: unknown, index: number) {
     }, 2000)
   } catch {
     console.error('Failed to copy to clipboard')
+  }
+}
+
+async function copyTitle() {
+  try {
+    await navigator.clipboard.writeText(props.card.title)
+    titleCopied.value = true
+    setTimeout(() => { titleCopied.value = false }, 2000)
+  } catch {
+    console.error('Failed to copy title')
   }
 }
 
@@ -144,6 +165,7 @@ const visibleDetails = computed(() => {
       ...d,
       parsedObject: tryParseObject(d.value),
       isMultiline: d.multiline || (typeof d.value === 'string' && d.value.includes('\n')),
+      isLink: typeof d.value === 'string' && (d.value.startsWith('http://') || d.value.startsWith('https://') || d.value.startsWith('/api/')),
     }))
 })
 </script>
@@ -151,22 +173,52 @@ const visibleDetails = computed(() => {
 <template>
   <div
     class="rounded-lg border overflow-hidden bg-white dark:bg-gray-800 shadow-sm"
-    :class="statusConfig[card.status].border"
+    :class="statusConfig[cardStatus].border"
   >
     <!-- Header -->
     <div
-      class="flex items-center gap-2.5 px-4 py-2.5 border-b"
-      :class="[statusConfig[card.status].headerBg, statusConfig[card.status].headerBorder]"
+      class="flex items-center gap-2.5 px-4 py-2.5 border-b group/header"
+      :class="[statusConfig[cardStatus].headerBg, statusConfig[cardStatus].headerBorder]"
     >
       <span
         class="w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0"
-        :class="[statusConfig[card.status].iconBg, statusConfig[card.status].iconColor]"
+        :class="[statusConfig[cardStatus].iconBg, statusConfig[cardStatus].iconColor]"
       >
-        {{ statusConfig[card.status].icon }}
+        {{ statusConfig[cardStatus].icon }}
       </span>
-      <span class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate flex-1">
+      <span
+        class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate flex-1"
+        :class="{ 'font-mono': isTitleCopyable }"
+      >
         {{ translatedTitle }}
       </span>
+      <button
+        v-if="isTitleCopyable"
+        class="p-1 rounded opacity-0 group-hover/header:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 transition-all flex-shrink-0"
+        :title="titleCopied ? t('resultCard.copied', 'Copied!') : t('resultCard.copy', 'Copy')"
+        @click="copyTitle"
+      >
+        <svg
+          v-if="!titleCopied"
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-3.5 w-3.5 text-gray-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+        <svg
+          v-else
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-3.5 w-3.5 text-emerald-500"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+        </svg>
+      </button>
     </div>
 
     <!-- Body -->
@@ -203,6 +255,15 @@ const visibleDetails = computed(() => {
             <!-- Multiline text value (e.g. stdout) -->
             <div v-else-if="detail.isMultiline" class="rounded border border-gray-200 dark:border-gray-700/60 bg-gray-50 dark:bg-gray-900/60 overflow-hidden">
               <pre class="px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-64 overflow-y-auto leading-relaxed">{{ detail.value }}</pre>
+            </div>
+            <!-- Link value -->
+            <div v-else-if="detail.isLink" class="flex items-center gap-1.5">
+              <a
+                :href="String(detail.value)"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+              >{{ t('resultCard.openLink', 'Open') }} ↗</a>
             </div>
             <!-- Simple string value -->
             <div v-else class="flex items-center gap-1.5">

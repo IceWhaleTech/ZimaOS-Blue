@@ -27,7 +27,7 @@ When resolving the Claude Code CLI binary, the system follows this priority:
 When using a system-installed CLI, the system performs:
 
 1. **Version check** - Execute `claude --version` to get version string
-2. **Dry run validation** - Execute `claude --help` to verify it's a real Claude Code CLI
+2. **Dry run validation** - Execute `claude help` to verify it's a real Claude Code CLI
 3. **Latest version check** (optional) - If `require_latest` is enabled, verify version matches latest
 
 This ensures only genuine Claude Code CLI binaries are used, preventing security issues from malicious binaries in PATH.

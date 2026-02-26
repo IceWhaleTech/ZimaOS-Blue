@@ -2,6 +2,7 @@ import { ref, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 import { useNotificationStore } from '@/stores/notification'
+import { useProviderPoolStore } from '@/stores/providerPool'
 import { ensureFreshToken } from '@/api/client'
 
 // Global event listeners — components can subscribe to specific event types.
@@ -83,14 +84,19 @@ export function useEventStream() {
 
         let currentEventType = ''
         for (const line of lines) {
+          console.log('[EventStream] Processing line:', line)
           if (line.startsWith('event: ')) {
             currentEventType = line.slice(7).trim()
+            console.log('[EventStream] Event type set to:', currentEventType)
           } else if (line.startsWith('data: ')) {
             const raw = line.slice(6).trim()
+            console.log('[EventStream] Raw data:', raw)
             try {
               const data = JSON.parse(raw)
+              console.log('[EventStream] Parsed data:', data)
               handleEvent(currentEventType, data)
-            } catch {
+            } catch (e) {
+              console.error('[EventStream] JSON parse error:', e)
               // ignore non-JSON
             }
             currentEventType = ''
@@ -109,6 +115,7 @@ export function useEventStream() {
   }
 
   function handleEvent(type: string, data: any) {
+    console.log('[EventStream] handleEvent called with type:', type, 'data:', data)
     // Dispatch to global listeners first
     const cbs = listeners.get(type)
     if (cbs) {
@@ -117,11 +124,20 @@ export function useEventStream() {
       }
     }
 
-    const chatStore = useChatStore()
-    const notificationStore = useNotificationStore()
-    const { t } = useI18n()
+    // Special handling for ask - no i18n needed
+    if (type === 'ask') {
+      const chatStore = useChatStore()
+      chatStore.setPendingQuestion(data)
+      return
+    }
 
-    switch (type) {
+    try {
+      const chatStore = useChatStore()
+      const notificationStore = useNotificationStore()
+      const { t } = useI18n()
+
+      console.log('[EventStream] Entering switch with type:', type)
+      switch (type) {
       case 'push': {
         // Show toast notification with optional action to navigate to conversation
         const toastOpts: any = { duration: 10000 }
@@ -181,6 +197,33 @@ export function useEventStream() {
         }
         break
       }
+
+      case 'conversation_title_updated': {
+        // Update title in-place without a full fetchConversations round-trip
+        if (data.id && data.title) {
+          const conv = chatStore.conversations.find((c: { id: string }) => c.id === data.id)
+          if (conv) {
+            conv.title = data.title
+          }
+        }
+        break
+      }
+
+      case 'provider_status_changed': {
+        const providerPoolStore = useProviderPoolStore()
+        if (data.provider_id && data.status) {
+          providerPoolStore.updateProviderStatus(data.provider_id, data.status)
+        }
+        break
+      }
+
+      case 'exec:approval-request': {
+        chatStore.setPendingExecApproval(data)
+        break
+      }
+    }
+    } catch (e) {
+      console.error('[EventStream] Error in handleEvent:', e)
     }
   }
 

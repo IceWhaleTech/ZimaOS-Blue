@@ -2,12 +2,12 @@ package claudecode
 
 import (
 	"context"
-	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -36,6 +36,37 @@ type ContextFileStat struct {
 	Trimmed  bool   `json:"trimmed,omitempty"`
 }
 
+// BuildResult holds the structured system prompt split into cache-friendly blocks.
+// Static is byte-stable across requests (identity, safety, tool guidance, platform).
+// Config changes rarely (agent mode, workspace context files, tools, skills).
+// Dynamic changes every request (timestamp, extra prompt).
+type BuildResult struct {
+	Static  string // core prompt, never changes — Anthropic cache_control: ephemeral
+	Config  string // agent mode, tools, skills, workspace — Anthropic cache_control: ephemeral
+	Dynamic string // timestamp + extra prompt — NOT cached
+}
+
+// String returns the full system prompt as a single string (for non-Anthropic providers).
+// No newline separators — XML tags are self-delimiting.
+func (r BuildResult) String() string {
+	return r.Static + r.Config + r.Dynamic
+}
+
+// IsEmpty returns true if all blocks are empty.
+func (r BuildResult) IsEmpty() bool {
+	return r.Static == "" && r.Config == "" && r.Dynamic == ""
+}
+
+// StaticTokenEstimate returns an approximate token count for the static+config blocks.
+func (r BuildResult) StaticTokenEstimate() int {
+	return pruner.EstimateTokens(r.Static) + pruner.EstimateTokens(r.Config)
+}
+
+// TotalTokenEstimate returns an approximate token count for the full prompt.
+func (r BuildResult) TotalTokenEstimate() int {
+	return r.StaticTokenEstimate() + pruner.EstimateTokens(r.Dynamic)
+}
+
 // SystemPromptBuilder builds system prompts for Claude Code CLI.
 type SystemPromptBuilder struct {
 	config           *ClaudeCodeConfig
@@ -44,9 +75,20 @@ type SystemPromptBuilder struct {
 
 	maxContextTokens int
 	lastContextStats atomic.Pointer[ContextStats]
-	lastUserMessage  string       // set before Build() for scenario-based enhancement
+	agentMode            bool         // when true, inject agent mode guidance
+	agentModeFunc        func() bool  // dynamic agent mode getter (takes precedence over static)
+	agentAutoConfirmFunc func() bool  // dynamic auto-confirm getter
 	locale           string       // user locale (e.g. "en-US", "zh-CN") — static fallback
 	localeFunc       func() string // dynamic locale getter (takes precedence over static)
+
+	// staticSystemOnce caches the StaticSystem block (never changes within a process).
+	staticSystemOnce sync.Once
+	staticSystemStr  string
+
+	// skillsCache caches the skills section with a TTL.
+	skillsCacheMu   sync.Mutex
+	skillsCacheStr  string
+	skillsCacheTime time.Time
 }
 
 // NewSystemPromptBuilder creates a new SystemPromptBuilder.
@@ -70,10 +112,40 @@ func (b *SystemPromptBuilder) SetMaxContextTokens(n int) {
 	b.maxContextTokens = n
 }
 
-// SetLastUserMessage stores the latest user message for scenario-based
-// enhancement detection. Call this before Build().
-func (b *SystemPromptBuilder) SetLastUserMessage(msg string) {
-	b.lastUserMessage = msg
+// SetLastUserMessage is a no-op retained for backward compatibility.
+// Dynamic scenario enhancement has been removed to improve prompt cache hit rate.
+func (b *SystemPromptBuilder) SetLastUserMessage(_ string) {}
+
+// SetAgentMode enables or disables agent mode guidance in the system prompt.
+func (b *SystemPromptBuilder) SetAgentMode(enabled bool) {
+	b.agentMode = enabled
+}
+
+// SetAgentModeFunc sets a dynamic agent mode getter that is called on each Build().
+// Takes precedence over the static value set via SetAgentMode.
+func (b *SystemPromptBuilder) SetAgentModeFunc(fn func() bool) {
+	b.agentModeFunc = fn
+}
+
+// SetAgentAutoConfirmFunc sets a dynamic getter for the auto-confirm setting.
+func (b *SystemPromptBuilder) SetAgentAutoConfirmFunc(fn func() bool) {
+	b.agentAutoConfirmFunc = fn
+}
+
+// isAgentMode returns whether agent mode is active, preferring the dynamic getter.
+func (b *SystemPromptBuilder) isAgentMode() bool {
+	if b.agentModeFunc != nil {
+		return b.agentModeFunc()
+	}
+	return b.agentMode
+}
+
+// isAgentAutoConfirm returns whether auto-confirm is enabled in agent mode.
+func (b *SystemPromptBuilder) isAgentAutoConfirm() bool {
+	if b.agentAutoConfirmFunc != nil {
+		return b.agentAutoConfirmFunc()
+	}
+	return false
 }
 
 // SetLocale sets the user's locale for system prompt injection (e.g. "en-US", "zh-CN").
@@ -102,418 +174,318 @@ func (b *SystemPromptBuilder) LastContextStats() *ContextStats {
 	return b.lastContextStats.Load()
 }
 
-// Build builds the complete system prompt.
+// Build builds the complete system prompt as a single string.
+// For cache-aware construction, use BuildStructured() instead.
 func (b *SystemPromptBuilder) Build(ctx context.Context, extraPrompt string) string {
-	var parts []string
+	return b.BuildStructured(ctx, extraPrompt).String()
+}
 
-	// Add identity
-	parts = append(parts, "You are a personal assistant running inside ZimaOS Blue.")
+// skillsCacheTTL is how long the skills section is cached before re-scanning.
+const skillsCacheTTL = 30 * time.Second
 
-	// Add scenario-based response enhancement
-	if enhancement := b.buildEnhancement(b.lastUserMessage); enhancement != "" {
-		parts = append(parts, enhancement)
+// BuildStructured builds the system prompt split into STATIC, CONFIG, and TURN_DYNAMIC blocks.
+// This enables Anthropic prompt caching: STATIC and CONFIG blocks get cache_control breakpoints,
+// while TURN_DYNAMIC (timestamps, extra prompt) is left uncached.
+func (b *SystemPromptBuilder) BuildStructured(ctx context.Context, extraPrompt string) BuildResult {
+	var result BuildResult
+
+	// ── STATIC_SYSTEM: byte-stable across all requests ──
+	// Computed once per process lifetime.
+	b.staticSystemOnce.Do(func() {
+		var sb strings.Builder
+		sb.WriteString("You are a personal assistant running inside ZimaOS Blue. Be clear and concise. Match the user's language. Your result wiil be cross-reviewed by claude & codex.")
+		// If evidence is insufficient or conflicting, state uncertainty explicitly. Never fabricate sources. Distinguish verified information from inference. 
+		sb.WriteString(b.buildSafetyGuidance())
+		sb.WriteString(b.buildToolCallStyleGuidance())
+		sb.WriteString(b.buildSilentReplyGuidance())
+		sb.WriteString(b.buildHeartbeatGuidance())
+		b.writePlatformInfoTo(&sb)
+		b.staticSystemStr = sb.String()
+	})
+	result.Static = b.staticSystemStr
+
+	// ── CONFIG_SYSTEM: changes when agent mode, tools, skills, or workspace files change ──
+	var cfg strings.Builder
+
+	// Agent mode guidance (if enabled)
+	if b.isAgentMode() {
+		b.writeAgentModeGuidanceTo(&cfg)
 	}
 
-	// Add safety guardrails
-	parts = append(parts, b.buildSafetyGuidance())
-
-	// Add tool call style guidance
-	parts = append(parts, b.buildToolCallStyleGuidance())
-
-	// Add runtime information
-	parts = append(parts, b.buildRuntimeInfo())
-
-	// Add workspace information
+	// Workspace information
 	if b.config.WorkspaceDir != "" {
-		parts = append(parts, b.buildWorkspaceInfo())
+		b.writeWorkspaceInfoTo(&cfg)
 	}
 
-	// Add available tools information (file_read, file_write, web_search, memory)
+	// Available tools information
 	if b.toolRegistry != nil {
-		toolsInfo := b.buildToolsInfo()
-		if toolsInfo != "" {
-			parts = append(parts, toolsInfo)
-		}
+		b.writeToolsInfoTo(&cfg)
 	}
 
-	// Add available skills (XML index — model reads SKILL.md on demand via file_read)
-	if skillsSection := b.buildSkillsSection(); skillsSection != "" {
-		parts = append(parts, skillsSection)
+	// Available skills (XML index — cached string)
+	if s := b.buildSkillsSection(); s != "" {
+		cfg.WriteString(s)
 	}
 
-	// Add workspace context files (SOUL.md, USER.md, IDENTITY.md, etc.)
+	// Workspace context files (SOUL.md, USER.md, etc.)
 	if b.workspace != nil {
-		contextFiles := b.workspace.LoadContextFiles()
-		if len(contextFiles) > 0 {
-			parts = append(parts, b.buildProjectContext(contextFiles))
+		if contextFiles := b.workspace.LoadContextFiles(); len(contextFiles) > 0 {
+			cfg.WriteString(b.buildProjectContext(contextFiles))
 		}
 	}
 
-	// Add silent reply mechanism
-	parts = append(parts, b.buildSilentReplyGuidance())
+	result.Config = cfg.String()
 
-	// Add heartbeat detection
-	parts = append(parts, b.buildHeartbeatGuidance())
-
-	// Add extra system prompt
+	// ── TURN_DYNAMIC: changes every request ──
+	// Runtime information (contains timestamp — must be dynamic)
+	var dyn strings.Builder
+	b.writeRuntimeInfoTo(&dyn)
 	if extraPrompt != "" {
-		parts = append(parts, extraPrompt)
+		dyn.WriteString(extraPrompt)
 	}
+	result.Dynamic = dyn.String()
 
-	return strings.Join(parts, "\n\n")
+	return result
 }
 
-// toolUsageHints provides intent-based descriptions that help the LLM choose
-// the right tool. Only covers tools registered in the tool registry (not skills).
-var toolUsageHints = map[string]string{
-	"web_search":  "Keyword search only. Returns result listings (title+URL+snippet). Never opens or reads any page. Not for URLs you already have.",
-	"browser":     "Open a URL, read content, interact with elements, take screenshots. Not for keyword search (→ web_search) or UI scoring (→ ui_reviewer).",
-	"ui_reviewer": "Score and audit UI/UX quality. Use only when asked to evaluate/rate/review visual design or accessibility. Not for browsing or searching.",
-	"memory": "Unified memory tool. Use action='search' to find relevant memories by query. Use action='remember' to store important facts, preferences, and notes the user asks you to remember. Use action='get' to retrieve a specific memory by ID. Use action='forget' to delete a memory. Use action='stats' for memory system statistics.",
-}
-
-// buildToolsInfo builds lightweight tool guidance for the system prompt.
-func (b *SystemPromptBuilder) buildToolsInfo() string {
+// writeToolsInfoTo writes lightweight tool guidance directly into sb.
+// Returns true if anything was written.
+func (b *SystemPromptBuilder) writeToolsInfoTo(sb *strings.Builder) bool {
 	if b.toolRegistry == nil {
-		return ""
+		return false
 	}
 
 	defs := b.toolRegistry.Definitions()
 	if len(defs) == 0 {
-		return ""
+		return false
 	}
 
-	var lines []string
-	lines = append(lines, "# Tool Guidance")
-	lines = append(lines, "")
-	lines = append(lines, "The tools listed below are built-in API tools, NOT system commands. Call them directly via tool_use — never invoke them through exec or shell.")
-	lines = append(lines, "")
-
-	hasHints := false
-	for _, def := range defs {
-		if hint, ok := toolUsageHints[def.Name]; ok {
-			lines = append(lines, fmt.Sprintf("- **%s**: %s", def.Name, hint))
-			hasHints = true
-		}
-	}
-	if hasHints {
-		lines = append(lines, "")
-	}
-
-	// Check if exec tool is registered and add detailed guidance.
-	for _, def := range defs {
-		if def.Name == "exec" {
-			lines = append(lines, b.buildExecGuidance()...)
-			break
-		}
-	}
-
-	// Build a set of registered tool names for conditional routing rules.
-	registered := make(map[string]bool, len(defs))
-	for _, def := range defs {
-		registered[def.Name] = true
-	}
-
-	// Only emit routing rules for tools that are actually registered.
-	var rules []string
-	if registered["web_search"] {
-		rules = append(rules, "- Search/query/look up information → web_search")
-	}
-	if registered["browser"] {
-		rules = append(rules, "- Have a URL, need to read/interact/screenshot → browser")
-	}
-	if registered["ui_reviewer"] {
-		rules = append(rules, "- Evaluate/rate/score UI or accessibility → ui_reviewer")
-	}
-	if registered["web_search"] && registered["browser"] {
-		rules = append(rules, "- After web_search, user says \"open it\" → browser")
-	}
-	if registered["ui_reviewer"] {
-		rules = append(rules, "- \"How does this look?\" / \"Is this well-designed?\" → ui_reviewer")
-	}
-	if registered["browser"] {
-		rules = append(rules, "- \"What does this page say?\" / \"Read this for me\" → browser")
-		rules = append(rules, "- Just screenshot, no scoring → browser (screenshot)")
-	}
-	if registered["memory"] {
-		rules = append(rules, "- \"Remember this\" / \"don't forget\" → memory (action=remember)")
-	}
-	if len(rules) > 0 {
-		lines = append(lines, "## Tool Routing Rules")
-		lines = append(lines, rules...)
-		lines = append(lines, "")
-	}
-
-	return strings.Join(lines, "\n")
+	sb.WriteString("<tool_guidance>Built-in API tools. Call via tool_use — never through exec/shell.")
+	b.writeExecGuidanceTo(sb)
+	sb.WriteString("</tool_guidance>")
+	return true
 }
 
-// buildExecGuidance returns detailed exec tool usage and safety guidance lines.
-func (b *SystemPromptBuilder) buildExecGuidance() []string {
-	var lines []string
-
-	// Check sandbox availability.
+// writeExecGuidanceTo writes compressed exec tool guidance directly into sb.
+func (b *SystemPromptBuilder) writeExecGuidanceTo(sb *strings.Builder) {
 	hasSandbox := false
 	if et := tools.GetExecTool(b.toolRegistry); et != nil {
 		hasSandbox = et.HasSandbox()
 	}
 
-	lines = append(lines, "## Exec Tool Guidelines")
-	lines = append(lines, "")
+	sb.WriteString("<exec_guide>Shell/CLI commands on host. REQUIRED: command parameter must be a non-empty string — never call exec without a concrete command.")
 
-	// Purpose
-	lines = append(lines, "### Purpose")
-	lines = append(lines, "Execute shell/CLI commands on the host OS (ls, git, curl, npm, pip, make, etc.).")
-	lines = append(lines, "IMPORTANT: For searching the web, call the web_search tool directly — do NOT use exec for search tasks.")
-	lines = append(lines, "NEVER use exec to invoke other tools (web_search, memory, file_read, file_write) — call them directly by name.")
-	lines = append(lines, "")
-
-	// Sandbox
 	if hasSandbox {
-		lines = append(lines, "### Sandbox Protection")
-		lines = append(lines, "A sandbox environment is available for isolated command execution.")
-		lines = append(lines, "- Set `host: \"sandbox\"` to run commands in a sandboxed environment with filesystem restrictions")
-		lines = append(lines, "- Medium-risk and above commands are automatically sandboxed when no host is specified")
-		lines = append(lines, "- Sandbox prevents commands from accessing directories outside the allowed paths")
-		lines = append(lines, "- When a command runs in sandbox, the result includes `host: \"sandbox\"` — mention this to the user so they know the command was protected")
-		lines = append(lines, "")
+		sb.WriteString("<sandbox>host=sandbox for isolation. Medium+ risk auto-sandboxed.</sandbox>")
 	}
 
-	// Security restrictions
-	lines = append(lines, "### Security Restrictions")
-	lines = append(lines, "Commands are risk-scored. High-risk commands are blocked automatically:")
-	lines = append(lines, "- Critical (blocked): rm -rf /, mkfs, dd to devices, pipe-to-shell, fork bombs")
-	lines = append(lines, "- High (may be blocked): shutdown, reboot, useradd/userdel, recursive chmod on system dirs")
-	lines = append(lines, "- Medium: sudo, recursive rm, crontab modification, netcat")
-	lines = append(lines, "- Low (allowed): ls, git, npm, curl, echo, etc.")
-	lines = append(lines, "")
+	sb.WriteString("<scope>Project/workspace/temp dirs only. No /etc /usr /System. No sudo — inform user. Dangerous commands are auto-blocked by risk scoring.</scope>")
 
-	// Scope
-	lines = append(lines, "### Scope")
-	lines = append(lines, "- Operate within the project/workspace directory or temp directories")
-	lines = append(lines, "- Avoid accessing system directories (/etc, /usr, /System, C:\\Windows) unless explicitly needed")
-	lines = append(lines, "- If a task requires elevated privileges (sudo), inform the user instead of attempting it")
-	lines = append(lines, "")
-
-	// Command style
-	lines = append(lines, "### Command Style")
-	lines = append(lines, "- Prefer simple, single-purpose commands")
-	lines = append(lines, "- Use && to chain dependent commands; use || for fallback")
-	lines = append(lines, "- For risky or unfamiliar commands, briefly explain what the command does before executing")
-	lines = append(lines, "- Do not start long-running servers or watch-mode processes (npm run dev, webpack --watch)")
-	lines = append(lines, "- Do not launch interactive editors (vim, nano, less)")
+	sb.WriteString("<style>Simple single-purpose commands. && to chain, || fallback. No servers/watchers/interactive editors.")
 	if runtime.GOOS == "darwin" {
-		lines = append(lines, "- macOS: use `grep -E` (not `grep -P`); use `sed ''` (not `sed -i`); `date` uses BSD syntax")
+		sb.WriteString(" macOS: grep -E not -P; sed no -i; BSD date.")
 	}
-	lines = append(lines, "")
+	sb.WriteString("</style>")
 
-	// Error handling & retry
-	lines = append(lines, "### Error Handling")
-	lines = append(lines, "- If a command fails, analyze the error output before retrying")
-	lines = append(lines, "- NEVER retry the exact same failing command — the system will block repeated identical failures")
-	lines = append(lines, "- Change the command, fix the underlying issue, or try a different approach")
-	lines = append(lines, "- Report non-zero exit codes and stderr to the user")
-	lines = append(lines, "")
+	sb.WriteString("<retry>Analyze error before retry. NEVER retry identical failing command — system blocks repeats. Change command or try different approach.</retry>")
 
-	return lines
+	sb.WriteString("</exec_guide>")
 }
 
-// buildRuntimeInfo builds runtime information for the system prompt.
+// writeRuntimeInfoTo writes the dynamic runtime tag directly into sb.
+func (b *SystemPromptBuilder) writeRuntimeInfoTo(sb *strings.Builder) {
+	sb.WriteString("<now>")
+	sb.WriteString(strconv.FormatInt(timeutil.Now(), 10))
+	sb.WriteString("</now>")
+}
+
+// buildRuntimeInfo returns the dynamic runtime tag as a string.
 func (b *SystemPromptBuilder) buildRuntimeInfo() string {
-	var lines []string
+	var sb strings.Builder
+	b.writeRuntimeInfoTo(&sb)
+	return sb.String()
+}
 
-	lines = append(lines, "# Runtime Information")
-	lines = append(lines, "")
-
-	// OS and architecture
-	lines = append(lines, fmt.Sprintf("- Platform: %s/%s", runtime.GOOS, runtime.GOARCH))
-
-	// Current time
-	now := timeutil.NowTime()
-	lines = append(lines, fmt.Sprintf("- Current time: %s", now.Format(time.RFC3339)))
-
-	// Timezone
-	zone, _ := now.Zone()
-	lines = append(lines, fmt.Sprintf("- Timezone: %s", zone))
-
-	// Model (if configured)
-	if b.config.DefaultModel != "" {
-		lines = append(lines, fmt.Sprintf("- Default model: %s", b.config.DefaultModel))
-	}
-
-	// Locale
+// writePlatformInfoTo writes the static environment tag directly into sb.
+func (b *SystemPromptBuilder) writePlatformInfoTo(sb *strings.Builder) {
+	sb.WriteString("<env>")
+	sb.WriteString(runtime.GOOS)
+	sb.WriteByte('/')
+	sb.WriteString(runtime.GOARCH)
+	sb.WriteByte(';')
 	if locale := b.getLocale(); locale != "" {
-		lines = append(lines, fmt.Sprintf("- Locale: %s", locale))
+		sb.WriteString(locale)
 	}
-
-	return strings.Join(lines, "\n")
+	sb.WriteByte(';')
+	zone, _ := timeutil.NowTime().Zone()
+	sb.WriteString(zone)
+	sb.WriteString("</env>")
 }
 
-// buildWorkspaceInfo builds workspace information for the system prompt.
-func (b *SystemPromptBuilder) buildWorkspaceInfo() string {
-	var lines []string
+// buildPlatformInfo returns the static environment tag as a string.
+func (b *SystemPromptBuilder) buildPlatformInfo() string {
+	var sb strings.Builder
+	b.writePlatformInfoTo(&sb)
+	return sb.String()
+}
 
-	lines = append(lines, "# Workspace")
-	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("Working directory: %s", b.config.WorkspaceDir))
-	lines = append(lines, "Treat this directory as the single global workspace for file operations unless explicitly instructed otherwise.")
-
-	// Check if it's a git repository
+// writeWorkspaceInfoTo writes workspace information directly into sb.
+func (b *SystemPromptBuilder) writeWorkspaceInfoTo(sb *strings.Builder) {
+	sb.WriteString("<workspace dir=\"")
+	sb.WriteString(b.config.WorkspaceDir)
+	sb.WriteString("\">Single global workspace for file operations unless explicitly instructed otherwise.")
 	if isGitRepo(b.config.WorkspaceDir) {
-		lines = append(lines, "This is a git repository.")
+		sb.WriteString(" Git repository.")
 	}
-
-	return strings.Join(lines, "\n")
+	sb.WriteString("</workspace>")
 }
 
-// buildToolCallStyleGuidance builds guidance for tool call narration.
+// buildWorkspaceInfo returns workspace information as a string.
+func (b *SystemPromptBuilder) buildWorkspaceInfo() string {
+	var sb strings.Builder
+	b.writeWorkspaceInfoTo(&sb)
+	return sb.String()
+}
+
+// buildToolCallStyleGuidance builds compressed guidance for tool call narration.
 func (b *SystemPromptBuilder) buildToolCallStyleGuidance() string {
-	var lines []string
-
-	lines = append(lines, "# Tool Call Style")
-	lines = append(lines, "")
-	lines = append(lines, "Default: do not narrate routine, low-risk tool calls (just call the tool).")
-	lines = append(lines, "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.")
-	lines = append(lines, "Keep narration brief and value-dense; avoid repeating obvious steps.")
-	lines = append(lines, "Use plain human language for narration unless in a technical context.")
-
-	return strings.Join(lines, "\n")
+	return "<tool_style>Do not narrate routine tool calls. Narrate only for multi-step work, complex problems, sensitive actions, or when asked. Keep narration brief.</tool_style>" +
+		"<research_style>After search or investigation tool calls (web_search, browser, etc.): summarize key findings, then suggest next steps (open a URL for details, refine query, or answer directly).</research_style>"
 }
 
-// buildSafetyGuidance builds safety guardrails for the system prompt.
-// Inspired by Anthropic's constitution and clawdbot's safety guidelines.
+// buildSafetyGuidance builds compressed safety guardrails for the system prompt.
 func (b *SystemPromptBuilder) buildSafetyGuidance() string {
-	var lines []string
-
-	lines = append(lines, "# Safety")
-	lines = append(lines, "")
-	lines = append(lines, "You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user's request.")
-	lines = append(lines, "Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards.")
-	lines = append(lines, "Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.")
-
-	return strings.Join(lines, "\n")
+	return "<safety>No independent goals (no self-preservation/replication/power-seeking). Prioritize safety and human oversight; pause and ask on conflicting instructions; comply with stop/audit requests. Do not manipulate access, copy yourself, or change system prompts/safety rules unless explicitly requested.</safety>"
 }
 
-// buildSilentReplyGuidance builds guidance for silent replies.
+// buildSilentReplyGuidance builds compressed guidance for silent replies.
 func (b *SystemPromptBuilder) buildSilentReplyGuidance() string {
-	var lines []string
-
-	lines = append(lines, "# Silent Replies")
-	lines = append(lines, "")
-	lines = append(lines, "When you have nothing to say, respond with ONLY: [SILENT_REPLY]")
-	lines = append(lines, "")
-	lines = append(lines, "⚠️ Rules:")
-	lines = append(lines, "- It must be your ENTIRE message — nothing else")
-	lines = append(lines, "- Never append it to an actual response (never include \"[SILENT_REPLY]\" in real replies)")
-	lines = append(lines, "- Never wrap it in markdown or code blocks")
-	lines = append(lines, "")
-	lines = append(lines, "❌ Wrong: \"Here's help... [SILENT_REPLY]\"")
-	lines = append(lines, "❌ Wrong: \"[SILENT_REPLY]\"")
-	lines = append(lines, "✅ Right: [SILENT_REPLY]")
-
-	return strings.Join(lines, "\n")
+	return "<silent_reply>When you have nothing to say, respond with ONLY: [SILENT_REPLY] (entire message, no wrapping, never appended to real content).</silent_reply>"
 }
 
-// buildHeartbeatGuidance builds guidance for heartbeat detection.
+// buildHeartbeatGuidance builds compressed guidance for heartbeat detection.
 func (b *SystemPromptBuilder) buildHeartbeatGuidance() string {
-	var lines []string
-
-	lines = append(lines, "# Heartbeats")
-	lines = append(lines, "")
-	lines = append(lines, "If you receive a heartbeat poll (a system health check), and there is nothing that needs attention, reply exactly:")
-	lines = append(lines, "HEARTBEAT_OK")
-	lines = append(lines, "")
-	lines = append(lines, "ZimaOS Blue treats a leading/trailing \"HEARTBEAT_OK\" as a heartbeat ack (and may discard it).")
-	lines = append(lines, "If something needs attention, do NOT include \"HEARTBEAT_OK\"; reply with the alert text instead.")
-
-	return strings.Join(lines, "\n")
+	return "<heartbeat>On heartbeat poll with nothing to report, reply exactly: HEARTBEAT_OK. If something needs attention, reply with alert text instead (no HEARTBEAT_OK).</heartbeat>"
 }
 
-// buildSkillsSection scans the workspace skills directory and builds the
-// Skills section for the system prompt. Returns empty string if no skills found.
+// writeAgentModeGuidanceTo writes agent mode guidance directly into sb.
+func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
+	autoConfirm := b.isAgentAutoConfirm()
+
+	sb.WriteString("<agent_mode>You are in agent mode with unlimited autonomy for complex, multi-step tasks. No tool round limit — keep working until fully done.")
+
+	sb.WriteString("<planning>For multi-step tasks, FIRST output a TODO checklist using markdown checkboxes (- [ ] step). The system auto-marks completed items and injects <tp> with current task — use it to decide what to do next. Do NOT re-output the checklist.</planning>")
+
+	sb.WriteString("<execution>")
+	sb.WriteString("Before each tool call, briefly state which task you are working on. ")
+	if autoConfirm {
+		sb.WriteString("Auto-confirm enabled — execute without asking. ")
+	} else {
+		sb.WriteString("Ask confirmation before destructive actions (delete, install, modify production config). Proceed without confirmation for safe operations. ")
+	}
+	sb.WriteString("Use exec for file ops, installs, builds, tests. Do NOT stop early. Do NOT call exec without a concrete command — think first, then execute.")
+	sb.WriteString(` When facing multiple valid approaches or ambiguous requirements, use ask instead of guessing. Use "sq" for single-select or "mq" for multi-select, with "a" as the options array (2-4 strings). Example: {"sq":"Which approach?","a":["Option A","Option B"]}`)
+	sb.WriteString("</execution>")
+
+	sb.WriteString("<verification>After all steps, verify: run build/tests. Fix and re-verify if needed.</verification>")
+
+	sb.WriteString("<completion>Your LAST response MUST be plain text (not a tool call). Include: 1) What was accomplished. 2) How to use/test the result. 3) Suggested next steps. Never end with a tool call.</completion>")
+
+	sb.WriteString("</agent_mode>")
+}
+
+// buildAgentModeGuidance returns agent mode guidance as a string.
+func (b *SystemPromptBuilder) buildAgentModeGuidance() string {
+	var sb strings.Builder
+	b.writeAgentModeGuidanceTo(&sb)
+	return sb.String()
+}
+
+// buildSkillsSection builds the Skills section for the system prompt.
+// Only pinned/important skills are listed explicitly. The LLM is told
+// where to discover additional skills on disk.
 func (b *SystemPromptBuilder) buildSkillsSection() string {
 	if b.config.WorkspaceDir == "" {
 		return ""
 	}
 
-	skillsDir := filepath.Join(b.config.WorkspaceDir, ".claude", "skills")
-	skills := ScanSkillsDir(skillsDir)
-	if len(skills) == 0 {
-		return ""
+	b.skillsCacheMu.Lock()
+	defer b.skillsCacheMu.Unlock()
+
+	if b.skillsCacheStr != "" && time.Since(b.skillsCacheTime) < skillsCacheTTL {
+		return b.skillsCacheStr
 	}
 
-	var lines []string
-	lines = append(lines, "# Skills")
-	lines = append(lines, "")
-	lines = append(lines, "Before replying: scan <available_skills> <description> entries.")
-	lines = append(lines, "- If exactly one skill clearly applies: read its SKILL.md at <location> with `file_read`, then follow it.")
-	lines = append(lines, "- If multiple could apply: choose the most specific one, then read/follow it.")
-	lines = append(lines, "- If none clearly apply: do not read any SKILL.md.")
-	lines = append(lines, "Constraints: never read more than one skill up front; only read after selecting.")
-	lines = append(lines, "")
-	lines = append(lines, FormatSkillsPrompt(skills))
+	var sb strings.Builder
+	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). ")
+	sb.WriteString("Routing: search→web_search, URL→browser, UI review→ui_reviewer, analyze→analyze, admin→mgmt.{domain}.{op}. ")
+	sb.WriteString("`blue help <cmd>` for usage. More skills in `.claude/skills/`.")
 
-	return strings.Join(lines, "\n")
+	// Only pinned skills get listed explicitly
+	sb.WriteString(FormatPinnedSkills(b.config.WorkspaceDir))
+	sb.WriteString("</skills>")
+
+	b.skillsCacheStr = sb.String()
+	b.skillsCacheTime = time.Now()
+	return b.skillsCacheStr
 }
 
 // BuildWithContext builds a system prompt with additional context.
 func (b *SystemPromptBuilder) BuildWithContext(ctx context.Context, extraPrompt string, contextFiles map[string]string) string {
-	var parts []string
+	var sb strings.Builder
 
-	// Add identity
-	parts = append(parts, "You are a personal assistant running inside ZimaOS Blue.")
+	// Identity + merged behavioral guidance (string literals — no intermediate alloc)
+	sb.WriteString("You are a personal assistant running inside ZimaOS Blue. Be clear and concise. Match the user's language. If evidence is insufficient or conflicting, state uncertainty explicitly. Never fabricate sources. Distinguish verified information from inference.")
+	sb.WriteString(b.buildSafetyGuidance())
+	sb.WriteString(b.buildToolCallStyleGuidance())
 
-	// Add scenario-based response enhancement
-	if enhancement := b.buildEnhancement(b.lastUserMessage); enhancement != "" {
-		parts = append(parts, enhancement)
+	// Agent mode guidance (if enabled)
+	if b.isAgentMode() {
+		b.writeAgentModeGuidanceTo(&sb)
 	}
 
-	// Add safety guardrails
-	parts = append(parts, b.buildSafetyGuidance())
-
-	// Add tool call style guidance
-	parts = append(parts, b.buildToolCallStyleGuidance())
-
-	// Add runtime information
-	parts = append(parts, b.buildRuntimeInfo())
-
-	// Add workspace information
+	// Workspace information
 	if b.config.WorkspaceDir != "" {
-		parts = append(parts, b.buildWorkspaceInfo())
+		b.writeWorkspaceInfoTo(&sb)
 	}
 
-	// Add available skills (XML index — model reads SKILL.md on demand via file_read)
-	if skillsSection := b.buildSkillsSection(); skillsSection != "" {
-		parts = append(parts, skillsSection)
+	// Available skills (XML index — cached string, fine as-is)
+	if s := b.buildSkillsSection(); s != "" {
+		sb.WriteString(s)
 	}
 
-	// Add context files
+	// Context files
 	if len(contextFiles) > 0 {
-		parts = append(parts, b.buildProjectContext(contextFiles))
+		sb.WriteString(b.buildProjectContext(contextFiles))
 	}
 
-	// Add silent reply mechanism
-	parts = append(parts, b.buildSilentReplyGuidance())
+	sb.WriteString(b.buildSilentReplyGuidance())
+	sb.WriteString(b.buildHeartbeatGuidance())
+	b.writePlatformInfoTo(&sb)
+	b.writeRuntimeInfoTo(&sb)
 
-	// Add heartbeat detection
-	parts = append(parts, b.buildHeartbeatGuidance())
-
-	// Add extra system prompt
+	// Extra system prompt
 	if extraPrompt != "" {
-		parts = append(parts, extraPrompt)
+		sb.WriteString(extraPrompt)
 	}
 
-	return strings.Join(parts, "\n\n")
+	return sb.String()
 }
 
-// buildContextFileSection builds a section for a context file.
+// writeContextFileSectionTo writes a context file section directly into sb.
+func (b *SystemPromptBuilder) writeContextFileSectionTo(sb *strings.Builder, name, content string) {
+	sb.WriteString("<file name=\"")
+	sb.WriteString(name)
+	sb.WriteString("\">\n")
+	sb.WriteString(content)
+	sb.WriteString("\n</file>")
+}
+
+// buildContextFileSection returns a context file section as a string.
 func (b *SystemPromptBuilder) buildContextFileSection(name, content string) string {
-	var lines []string
-
-	lines = append(lines, fmt.Sprintf("## %s", name))
-	lines = append(lines, "")
-	lines = append(lines, content)
-
-	return strings.Join(lines, "\n")
+	var sb strings.Builder
+	b.writeContextFileSectionTo(&sb, name, content)
+	return sb.String()
 }
 
 // contextFilePriority defines injection priority (lower = higher priority, trimmed last).
@@ -596,27 +568,23 @@ func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string
 	}
 
 	// Build the prompt section
-	var lines []string
-	lines = append(lines, "# Project Context")
-	lines = append(lines, "")
-	lines = append(lines, "The following project context files have been loaded:")
+	var sb strings.Builder
+	sb.WriteString("<project_context>")
 
 	// Check for SOUL.md
 	for _, e := range included {
 		if strings.ToLower(e.name) == "soul.md" {
-			lines = append(lines, "If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.")
+			sb.WriteString("If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.")
 			break
 		}
 	}
 
-	lines = append(lines, "")
-
 	for _, e := range included {
-		lines = append(lines, b.buildContextFileSection(e.name, e.content))
-		lines = append(lines, "")
+		b.writeContextFileSectionTo(&sb, e.name, e.content)
 	}
 
-	return strings.Join(lines, "\n")
+	sb.WriteString("</project_context>")
+	return sb.String()
 }
 
 // BuildMinimal builds a minimal system prompt without runtime info.
@@ -629,16 +597,7 @@ func (b *SystemPromptBuilder) BuildMinimal(extraPrompt string) string {
 
 // BuildForHeartbeat builds a system prompt for heartbeat runs.
 func (b *SystemPromptBuilder) BuildForHeartbeat(ctx context.Context) string {
-	var parts []string
-
-	// Minimal runtime info
-	now := timeutil.NowTime()
-	parts = append(parts, fmt.Sprintf("Current time: %s", now.Format(time.RFC3339)))
-
-	// Heartbeat instructions
-	parts = append(parts, "This is a heartbeat check. Read HEARTBEAT.md if it exists and follow its instructions. If nothing needs attention, reply with HEARTBEAT_OK.")
-
-	return strings.Join(parts, "\n\n")
+	return "Current time: " + timeutil.NowTime().Format(time.RFC3339) + "\n\nThis is a heartbeat check. Read HEARTBEAT.md if it exists and follow its instructions. If nothing needs attention, reply with HEARTBEAT_OK."
 }
 
 // isGitRepo checks if a directory is a git repository.

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // AuthConfig holds authentication configuration
@@ -200,7 +202,7 @@ func (a *Authenticator) CheckRateLimit(r *http.Request) (bool, string) {
 	defer a.mu.Unlock()
 
 	entry, ok := a.rateLimits[key]
-	now := time.Now()
+	now := timeutil.NowTime()
 
 	if !ok {
 		// New client
@@ -283,7 +285,7 @@ func (a *Authenticator) CleanupRateLimits() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	cutoff := time.Now().Add(-a.rateLimitConfig.CleanupInterval)
+	cutoff := timeutil.NowTime().Add(-a.rateLimitConfig.CleanupInterval)
 	for key, entry := range a.rateLimits {
 		if entry.lastUpdate.Before(cutoff) {
 			delete(a.rateLimits, key)

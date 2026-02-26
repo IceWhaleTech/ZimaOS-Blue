@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ExecSecurity defines the security mode for command execution.
@@ -209,7 +211,7 @@ func BuildSafeBinsSet(bins []string) map[string]struct{} {
 func RecordAllowlistUse(cfg *AllowlistConfig, entry *AllowlistEntry, command, resolvedPath string) {
 	for i := range cfg.Entries {
 		if cfg.Entries[i].Pattern == entry.Pattern {
-			cfg.Entries[i].LastUsedAt = time.Now()
+			cfg.Entries[i].LastUsedAt = timeutil.NowTime()
 			cfg.Entries[i].LastUsedCommand = command
 			cfg.Entries[i].LastResolvedPath = resolvedPath
 			return
@@ -231,7 +233,7 @@ func AddAllowlistEntry(cfg *AllowlistConfig, pattern string) {
 	cfg.Entries = append(cfg.Entries, AllowlistEntry{
 		ID:         uuid.New().String(),
 		Pattern:    pattern,
-		LastUsedAt: time.Now(),
+		LastUsedAt: timeutil.NowTime(),
 	})
 }
 

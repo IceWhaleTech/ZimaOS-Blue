@@ -32,7 +32,7 @@ Install
 
 Quick start
 
-- `blogwatcher --help`
+- `blogwatcher help`
 
 Common commands
 
@@ -66,4 +66,4 @@ Found 4 new article(s) total!
 
 Notes
 
-- Use `blogwatcher <command> --help` to discover flags and options.
+- Use `blogwatcher <command> help` to discover flags and options.

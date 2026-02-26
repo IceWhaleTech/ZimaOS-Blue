@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -146,7 +147,7 @@ func (cw *ConfigWatcher) checkForChanges() {
 	cw.lastModTime = info.ModTime()
 	cw.lastHash = hash
 	cw.reloadCount++
-	cw.lastReload = time.Now()
+	cw.lastReload = timeutil.NowTime()
 	cw.mu.Unlock()
 
 	// Save current as old for next comparison
@@ -230,7 +231,7 @@ func (cw *ConfigWatcher) ForceReload() error {
 	}
 	cw.lastHash = cw.hashContent(data)
 	cw.reloadCount++
-	cw.lastReload = time.Now()
+	cw.lastReload = timeutil.NowTime()
 	cw.mu.Unlock()
 
 	// Save current as old

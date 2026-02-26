@@ -16,7 +16,7 @@ Following ClawdBot's documentation and code, implement equivalent CLI parameter 
 ZimaOS-Blue current CLI functionality (`server/cmd/blue/main.go`):
 - `--config <path>` - Configuration file path
 - `--version` - Display version information
-- `--help` - Display help information
+- `help` - Display help information
 - Windows service commands: `install`, `uninstall`, `start`, `stop`, `status`
 
 ## Target State

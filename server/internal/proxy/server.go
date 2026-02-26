@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ProxyServer is the main proxy server
@@ -169,7 +170,7 @@ func (ps *ProxyServer) Start() error {
 		Handler: mux,
 	}
 
-	ps.startTime = time.Now()
+	ps.startTime = timeutil.NowTime()
 
 	// Start health checker
 	ps.healthCheck.Start()
@@ -258,7 +259,7 @@ func (ps *ProxyServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	health := map[string]interface{}{
 		"status":    "healthy",
-		"timestamp": time.Now().Format(time.RFC3339),
+		"timestamp": timeutil.NowTime().Format(time.RFC3339),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -8,10 +8,13 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Token represents a stored OAuth token with metadata.
 type Token struct {
+	ID           string    `json:"id"`
 	ProviderID   string    `json:"provider_id"`
 	ProviderType string    `json:"provider_type"` // "antigravity", "gemini-cli", "copilot"
 	AccessToken  string    `json:"access_token"`
@@ -33,8 +36,10 @@ func (t *Token) Expired() bool {
 // TokenStore is the interface for OAuth token persistence.
 type TokenStore interface {
 	SaveToken(providerID string, token *Token) error
-	LoadToken(providerID string) (*Token, error)
-	DeleteToken(providerID string) error
+	LoadToken(providerID, tokenID string) (*Token, error)
+	LoadTokenByEmail(providerID, email string) (*Token, error)
+	LoadTokens(providerID string) ([]*Token, error)
+	DeleteToken(providerID, tokenID string) error
 	ListTokens() (map[string]*Token, error)
 }
 
@@ -77,7 +82,7 @@ func (s *FileStore) load() (*storeData, error) {
 }
 
 func (s *FileStore) save(sd *storeData) error {
-	sd.UpdatedAt = time.Now()
+	sd.UpdatedAt = timeutil.NowTime()
 	data, err := json.MarshalIndent(sd, "", "  ")
 	if err != nil {
 		return err
@@ -95,16 +100,17 @@ func (s *FileStore) SaveToken(providerID string, token *Token) error {
 		return err
 	}
 	token.ProviderID = providerID
-	token.UpdatedAt = time.Now()
+	token.UpdatedAt = timeutil.NowTime()
 	if token.CreatedAt.IsZero() {
-		token.CreatedAt = time.Now()
+		token.CreatedAt = timeutil.NowTime()
 	}
-	sd.Tokens[providerID] = token
+	key := providerID + ":" + token.ID
+	sd.Tokens[key] = token
 	return s.save(sd)
 }
 
-// LoadToken retrieves a token for the given provider.
-func (s *FileStore) LoadToken(providerID string) (*Token, error) {
+// LoadToken retrieves a specific token for the given provider.
+func (s *FileStore) LoadToken(providerID, tokenID string) (*Token, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -112,15 +118,56 @@ func (s *FileStore) LoadToken(providerID string) (*Token, error) {
 	if err != nil {
 		return nil, err
 	}
-	token, ok := sd.Tokens[providerID]
+	key := providerID + ":" + tokenID
+	token, ok := sd.Tokens[key]
 	if !ok {
-		return nil, fmt.Errorf("no oauth token for provider %s", providerID)
+		// Fallback: try legacy key (providerID only)
+		token, ok = sd.Tokens[providerID]
+		if !ok {
+			return nil, fmt.Errorf("no oauth token for provider %s token %s", providerID, tokenID)
+		}
 	}
 	return token, nil
 }
 
-// DeleteToken removes a token for the given provider.
-func (s *FileStore) DeleteToken(providerID string) error {
+// LoadTokenByEmail loads an OAuth token by email address for a given provider.
+// This is used to find existing tokens when re-authenticating to avoid duplicates.
+func (s *FileStore) LoadTokenByEmail(providerID, email string) (*Token, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	sd, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	for _, token := range sd.Tokens {
+		if token.ProviderID == providerID && token.Email == email {
+			return token, nil
+		}
+	}
+	return nil, nil
+}
+
+// LoadTokens retrieves all tokens for the given provider.
+func (s *FileStore) LoadTokens(providerID string) ([]*Token, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	sd, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	var tokens []*Token
+	for _, token := range sd.Tokens {
+		if token.ProviderID == providerID {
+			tokens = append(tokens, token)
+		}
+	}
+	return tokens, nil
+}
+
+// DeleteToken removes a specific token for the given provider.
+func (s *FileStore) DeleteToken(providerID, tokenID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -128,6 +175,9 @@ func (s *FileStore) DeleteToken(providerID string) error {
 	if err != nil {
 		return err
 	}
+	key := providerID + ":" + tokenID
+	delete(sd.Tokens, key)
+	// Also try legacy key
 	delete(sd.Tokens, providerID)
 	return s.save(sd)
 }

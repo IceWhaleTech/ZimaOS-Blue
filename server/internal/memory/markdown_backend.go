@@ -13,8 +13,12 @@ import (
 
 // PureMarkdownBackend implements MemoryBackend using only Markdown files.
 // No SQLite database required - all data stored as human-readable Markdown.
+//
+// Storage layout:
+//   - daily/<date>.md  — append-only daily log (one per day, pruned after 30 days)
+//   - MEMORY.md        — curated long-term knowledge (managed by LayeredMemoryService)
 type PureMarkdownBackend struct {
-	store *MarkdownMemoryStore
+	store   *MarkdownMemoryStore
 	baseDir string
 }
 
@@ -28,11 +32,8 @@ func NewPureMarkdownBackend(baseDir string) (*PureMarkdownBackend, error) {
 		baseDir = filepath.Join(homeDir, ".zimaos-blue", "memory")
 	}
 
-	// Ensure directories exist
+	// Ensure daily directory exists
 	if err := os.MkdirAll(filepath.Join(baseDir, "daily"), 0755); err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(filepath.Join(baseDir, "memories"), 0755); err != nil {
 		return nil, err
 	}
 
@@ -46,33 +47,29 @@ func (b *PureMarkdownBackend) Name() string {
 	return "markdown"
 }
 
-// Remember stores a memory as a Markdown file.
+// Remember appends a memory entry to today's daily log.
 func (b *PureMarkdownBackend) Remember(ctx context.Context, content string, tags []string) (*MemoryChunk, error) {
 	id := fmt.Sprintf("%d", timeutil.NowNano())
 	now := timeutil.NowTime()
 
-	// Build Markdown content
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# Memory %s\n\n", id[:8]))
-	sb.WriteString(fmt.Sprintf("**Created:** %s\n\n", now.Format("2006-01-02 15:04:05")))
-	if len(tags) > 0 {
-		sb.WriteString(fmt.Sprintf("**Tags:** %s\n\n", strings.Join(tags, ", ")))
-	}
-	sb.WriteString("---\n\n")
-	sb.WriteString(content)
-	sb.WriteString("\n")
+	dailyPath := filepath.Join(b.baseDir, "daily", now.Format("2006-01-02")+".md")
 
-	// Save to memories folder
-	filename := fmt.Sprintf("%s-%s.md", now.Format("2006-01-02"), id[:8])
-	path := filepath.Join(b.baseDir, "memories", filename)
-
-	if err := os.WriteFile(path, []byte(sb.String()), 0644); err != nil {
+	f, err := os.OpenFile(dailyPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 
-	// Also append to daily log
-	dailyPath := filepath.Join(b.baseDir, "daily", now.Format("2006-01-02")+".md")
-	b.appendToDaily(dailyPath, content, tags, now)
+	info, _ := f.Stat()
+	if info.Size() == 0 {
+		f.WriteString(fmt.Sprintf("# Daily Log - %s\n\n", now.Format("2006-01-02")))
+	}
+
+	f.WriteString(fmt.Sprintf("## %s\n\n", now.Format("15:04:05")))
+	if len(tags) > 0 {
+		f.WriteString(fmt.Sprintf("**Tags:** %s\n\n", strings.Join(tags, ", ")))
+	}
+	f.WriteString(content + "\n\n---\n\n")
 
 	return &MemoryChunk{
 		ID:        id,
@@ -80,25 +77,6 @@ func (b *PureMarkdownBackend) Remember(ctx context.Context, content string, tags
 		CreatedAt: now,
 		UpdatedAt: now,
 	}, nil
-}
-
-func (b *PureMarkdownBackend) appendToDaily(path string, content string, tags []string, t time.Time) {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-
-	info, _ := f.Stat()
-	if info.Size() == 0 {
-		f.WriteString(fmt.Sprintf("# Daily Log - %s\n\n", t.Format("2006-01-02")))
-	}
-
-	f.WriteString(fmt.Sprintf("## %s\n\n", t.Format("15:04:05")))
-	if len(tags) > 0 {
-		f.WriteString(fmt.Sprintf("**Tags:** %s\n\n", strings.Join(tags, ", ")))
-	}
-	f.WriteString(content + "\n\n---\n\n")
 }
 
 // Recall searches memories using keyword matching.
@@ -123,7 +101,7 @@ func (b *PureMarkdownBackend) Recall(ctx context.Context, query string, limit in
 	return results, nil
 }
 
-// Forget removes a memory file.
+// Forget removes a daily log file by relative path.
 func (b *PureMarkdownBackend) Forget(ctx context.Context, id string) error {
 	path := filepath.Join(b.baseDir, id)
 	if !strings.HasPrefix(path, b.baseDir) {
@@ -132,13 +110,13 @@ func (b *PureMarkdownBackend) Forget(ctx context.Context, id string) error {
 	return os.Remove(path)
 }
 
-// ForgetAll removes all memory files.
+// ForgetAll removes all daily log files.
 func (b *PureMarkdownBackend) ForgetAll(ctx context.Context) error {
-	memoriesDir := filepath.Join(b.baseDir, "memories")
-	if err := os.RemoveAll(memoriesDir); err != nil {
+	dailyDir := filepath.Join(b.baseDir, "daily")
+	if err := os.RemoveAll(dailyDir); err != nil {
 		return err
 	}
-	return os.MkdirAll(memoriesDir, 0755)
+	return os.MkdirAll(dailyDir, 0755)
 }
 
 // Get reads a memory file.

@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MuleRouterProvider implements MediaProvider using MuleRouter's unified API.
@@ -203,7 +204,7 @@ func (p *MuleRouterProvider) Poll(ctx context.Context, taskID string) (*MediaTas
 				}
 			}
 		}
-		now := time.Now()
+		now := timeutil.NowTime()
 		task.Response = &MediaResponse{Created: now.Unix(), Data: results}
 		task.CompletedAt = &now
 		// Log if no URLs found — helps debug vendor response format issues
@@ -315,7 +316,7 @@ func (p *MuleRouterProvider) generateOpenAI(ctx context.Context, req *MediaReque
 		return nil, ErrNoResults
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	return &MediaTask{
 		BaseTask: task.BaseTask{
 			ID:          uuid.New().String(),
@@ -427,7 +428,7 @@ func (p *MuleRouterProvider) generateVendor(ctx context.Context, req *MediaReque
 	p.taskMeta.Store(upstreamID, &muleRouterTaskMeta{vendor: vendor, model: model, isEdit: isEdit})
 
 	return &MediaTask{
-		BaseTask:   task.BaseTask{ID: uuid.New().String(), Status: TaskStatusProcessing, CreatedAt: time.Now()},
+		BaseTask:   task.BaseTask{ID: uuid.New().String(), Status: TaskStatusProcessing, CreatedAt: timeutil.NowTime()},
 		Type:       req.Type,
 		Provider:   "mulerouter",
 		Model:      model,

@@ -14,7 +14,7 @@ const aliases: Record<string, string> = {
   'zimaos-blue-trial': '__trial__',
   'dashscope-image': 'qwen',
   'gemini-image': 'google',
-  'minimax-audio': 'minimax',
+  'minimax-media': 'minimax',
 }
 
 // Known provider icon files

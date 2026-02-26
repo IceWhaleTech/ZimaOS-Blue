@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 )
 
@@ -87,8 +88,8 @@ func (sm *SessionMonitor) StartSession(clientIP, userAgent string) *Session {
 
 	session := &Session{
 		ID:           uuid.New().String(),
-		StartTime:    time.Now(),
-		LastActivity: time.Now(),
+		StartTime:    timeutil.NowTime(),
+		LastActivity: timeutil.NowTime(),
 		Status:       SessionStatusActive,
 		ClientIP:     clientIP,
 		UserAgent:    userAgent,
@@ -112,7 +113,7 @@ func (sm *SessionMonitor) UpdateSession(id string, provider, model string, token
 		return
 	}
 
-	session.LastActivity = time.Now()
+	session.LastActivity = timeutil.NowTime()
 	session.Provider = provider
 	session.Model = model
 	session.TokensIn += tokensIn
@@ -131,7 +132,7 @@ func (sm *SessionMonitor) RecordError(id string) {
 
 	if session, ok := sm.sessions[id]; ok {
 		session.ErrorCount++
-		session.LastActivity = time.Now()
+		session.LastActivity = timeutil.NowTime()
 	}
 }
 
@@ -146,7 +147,7 @@ func (sm *SessionMonitor) CompleteSession(id string, status SessionStatus) {
 
 	if session, ok := sm.sessions[id]; ok {
 		session.Status = status
-		session.LastActivity = time.Now()
+		session.LastActivity = timeutil.NowTime()
 	}
 }
 
@@ -202,7 +203,7 @@ func (sm *SessionMonitor) CleanupIdleSessions() int {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	removed := 0
 
 	for id, session := range sm.sessions {

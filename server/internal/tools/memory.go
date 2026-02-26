@@ -5,11 +5,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 )
 
 // MemoryTool is a unified tool for memory operations: search, get, remember, forget, stats.
 type MemoryTool struct {
 	memoryService MemoryServiceInterface
+}
+
+// reThink strips <think>...</think> blocks from memory content.
+var reThink = regexp.MustCompile(`<think>[\s\S]*?</think>`)
+
+// cleanMemoryContent removes LLM artifacts (<think> blocks) from stored memory content.
+func cleanMemoryContent(s string) string {
+	s = reThink.ReplaceAllString(s, "")
+	return strings.TrimSpace(s)
 }
 
 // NewMemoryTool creates a new unified memory tool.
@@ -21,13 +32,13 @@ func NewMemoryTool(memoryService MemoryServiceInterface) *MemoryTool {
 func (m *MemoryTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name: "memory",
-		Description: `Mandatory recall step: search MEMORY.md + memory/*.md before answering questions about prior work, decisions, dates, people, preferences, or todos. Actions:
-- remember: Store a new memory (use when the user says "remember", "note this", "don't forget")
+		Description: `Search and manage the user's personal memory store. Only use when the question is about prior conversations, saved notes, personal preferences, or past decisions. Do NOT use for general knowledge questions, greetings, or casual chat. Actions:
 - search: Find relevant memories by keyword query (returns scored snippets with path + lines)
+- remember: Store a new memory (use when the user says "remember", "note this", "don't forget")
 - get: Read a specific memory file by path (use after search to pull only the needed lines)
 - forget: Delete a specific memory by ID
 - stats: Get memory system statistics`,
-		Icon: "brain",
+		Icon: "memory",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -109,9 +120,13 @@ func (m *MemoryTool) executeSearch(ctx context.Context, args map[string]interfac
 
 	filteredResults := make([]map[string]interface{}, 0, len(results))
 	for _, r := range results {
+		content := cleanMemoryContent(r.Chunk.Content)
+		if content == "" {
+			continue
+		}
 		filteredResults = append(filteredResults, map[string]interface{}{
 			"id":         r.Chunk.ID,
-			"content":    r.Chunk.Content,
+			"content":    content,
 			"score":      r.CombinedScore,
 			"match_types": r.MatchTypes,
 			"created_at": r.Chunk.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
@@ -142,7 +157,7 @@ func (m *MemoryTool) executeGet(ctx context.Context, args map[string]interface{}
 
 	response := map[string]interface{}{
 		"id":         chunk.ID,
-		"content":    chunk.Content,
+		"content":    cleanMemoryContent(chunk.Content),
 		"metadata":   chunk.Metadata,
 		"created_at": chunk.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		"updated_at": chunk.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),

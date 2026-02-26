@@ -1,16 +1,26 @@
 <script setup lang="ts">
 import type { TypelessCardTable } from '@/types/typeless'
 import { parseInline } from '@/utils/markdown'
+import { useI18n } from 'vue-i18n'
 
 defineProps<{
   card: TypelessCardTable
 }>()
 
-function renderContent(content: string | number): string {
+const { t } = useI18n()
+
+function isEmptyCell(content: string | number | null | undefined): boolean {
+  return content === null || content === undefined || content === ''
+}
+
+function renderContent(content: string | number | null | undefined): string {
+  if (isEmptyCell(content)) {
+    return `<span class="text-gray-400 dark:text-gray-500 italic">${t('common.noData')}</span>`
+  }
   if (typeof content === 'number') {
     return String(content)
   }
-  return parseInline(content)
+  return parseInline(content as string)
 }
 </script>
 

@@ -68,9 +68,9 @@ Native gecompileerd in Go — geen interpreter, geen VM, geen overhead. Draait g
 
 | Metriek | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
 |---------|-------------------|------------------------|
-| `--help` koud / warm | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `help` koud / warm | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` runtime (beste van 3) | **< 0.01 s** | 5.98 s |
-| `--help` piek RSS | **~10 MB** | ~394 MB |
+| `help` piek RSS | **~10 MB** | ~394 MB |
 | `status` piek RSS | **~15 MB** | ~1.52 GB |
 | Runtime-afhankelijkheden | **Geen** | Node.js 18+ |
 

@@ -50,6 +50,7 @@ interface StoredSettings {
   maxTokens: number
   themeStyle: ThemeStyle
   closeBehavior: CloseBehavior
+  showToolDetails: boolean
 }
 
 function loadStoredSettings(): Partial<StoredSettings> {
@@ -79,6 +80,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const maxTokens = ref(stored.maxTokens ?? 2048)
   const themeStyle = ref<ThemeStyle>(stored.themeStyle || 'default')
   const closeBehavior = ref<CloseBehavior>(stored.closeBehavior || 'quit')
+  const showToolDetails = ref(stored.showToolDetails ?? false)
   const loading = ref(false)
   const refreshing = ref(false)
   const error = ref<string | null>(null)
@@ -125,7 +127,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Watch for changes and persist
   watch(
-    [selectedProviderModel, temperature, maxTokens, themeStyle, closeBehavior],
+    [selectedProviderModel, temperature, maxTokens, themeStyle, closeBehavior, showToolDetails],
     () => {
       saveSettings({
         selectedProviderModel: selectedProviderModel.value,
@@ -133,6 +135,7 @@ export const useSettingsStore = defineStore('settings', () => {
         maxTokens: maxTokens.value,
         themeStyle: themeStyle.value,
         closeBehavior: closeBehavior.value,
+        showToolDetails: showToolDetails.value,
       })
     },
     { deep: true }
@@ -306,6 +309,10 @@ export const useSettingsStore = defineStore('settings', () => {
     closeBehavior.value = behavior
   }
 
+  function setShowToolDetails(show: boolean) {
+    showToolDetails.value = show
+  }
+
   function clearError() {
     error.value = null
   }
@@ -315,6 +322,7 @@ export const useSettingsStore = defineStore('settings', () => {
     maxTokens.value = 2048
     themeStyle.value = 'default'
     closeBehavior.value = 'quit'
+    showToolDetails.value = false
     // Clear stored settings
     localStorage.removeItem(STORAGE_KEY)
   }
@@ -359,6 +367,18 @@ export const useSettingsStore = defineStore('settings', () => {
     claudeCodeEnabled.value = enabled
   }
 
+  // Agent mode (from backend settings)
+  const agentMode = computed(() => backendSettings.value.agent_mode ?? true)
+  const agentAutoConfirm = computed(() => backendSettings.value.agent_auto_confirm ?? false)
+
+  async function setAgentMode(enabled: boolean) {
+    await updateBackendSettings({ agent_mode: enabled })
+  }
+
+  async function setAgentAutoConfirm(enabled: boolean) {
+    await updateBackendSettings({ agent_auto_confirm: enabled })
+  }
+
   return {
     // State
     providers,
@@ -374,6 +394,9 @@ export const useSettingsStore = defineStore('settings', () => {
     backendSettings,
     backendSettingsLoading,
     claudeCodeEnabled,
+    agentMode,
+    agentAutoConfirm,
+    showToolDetails,
 
     // Computed
     providerModelOptions,
@@ -400,5 +423,8 @@ export const useSettingsStore = defineStore('settings', () => {
     updateBackendSettings,
     fetchClaudeCodeEnabled,
     setClaudeCodeEnabled,
+    setAgentMode,
+    setAgentAutoConfirm,
+    setShowToolDetails,
   }
 })

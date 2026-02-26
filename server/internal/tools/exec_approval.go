@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ApprovalDecision represents the user's response to an exec approval request.
@@ -64,11 +65,11 @@ func (m *ApprovalManager) RequestApproval(ctx context.Context, req ApprovalReque
 	if req.ID == "" {
 		req.ID = uuid.New().String()
 	}
-	req.ExpiresAt = time.Now().Add(m.timeout).UnixMilli()
+	req.ExpiresAt = timeutil.NowMilli() + m.timeout.Milliseconds()
 
 	ch := make(chan ApprovalDecision, 1)
 	m.mu.Lock()
-	m.pending[req.ID] = &pendingApproval{ch: ch, created: time.Now()}
+	m.pending[req.ID] = &pendingApproval{ch: ch, created: timeutil.NowTime()}
 	m.mu.Unlock()
 
 	defer func() {

@@ -10,6 +10,8 @@ func cliDispatch(args []string) bool {
 	var positional []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "-h", "--help":
+			return false // let cobra handle help
 		case "--dev":
 			devMode = true
 		case "--no-color":
@@ -44,6 +46,8 @@ func cliDispatch(args []string) bool {
 	rest := positional[1:]
 
 	switch cmd {
+	case "help":
+		return false // let cobra handle help
 	case "status":
 		runStatus(nil, rest)
 	case "health":

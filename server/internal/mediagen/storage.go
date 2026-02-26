@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MediaStorage handles downloading, caching, and serving generated media files.
@@ -98,7 +99,7 @@ func (s *MediaStorage) StoreBase64(data string, contentType string, mediaType Me
 
 // Cleanup removes files older than maxAge.
 func (s *MediaStorage) Cleanup(maxAge time.Duration) (int, error) {
-	cutoff := time.Now().Add(-maxAge)
+	cutoff := timeutil.NowTime().Add(-maxAge)
 	removed := 0
 
 	for _, subdir := range []string{"images", "videos", "thumbnails"} {

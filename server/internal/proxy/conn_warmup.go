@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ConnWarmup pre-establishes TCP+TLS connections to provider endpoints
@@ -55,6 +57,24 @@ func (cw *ConnWarmup) WarmProviders(baseURLs []string) {
 	}
 	wg.Wait()
 	slog.Info("[conn-warmup] finished", "providers", len(baseURLs))
+}
+
+// WarmOne pre-establishes a TCP+TLS connection to a single provider base URL.
+// Safe to call from warmup paths to pre-warm a likely provider.
+func (cw *ConnWarmup) WarmOne(baseURL string) {
+	u, err := url.Parse(baseURL)
+	if err != nil || u.Host == "" {
+		return
+	}
+	host := u.Host
+	if u.Port() == "" {
+		if u.Scheme == "https" {
+			host += ":443"
+		} else {
+			host += ":80"
+		}
+	}
+	cw.warmOne(host, u.Scheme)
 }
 
 func (cw *ConnWarmup) warmOne(hostPort, scheme string) {
@@ -122,7 +142,7 @@ func NewDNSCache(ttl time.Duration, maxSize int) *DNSCache {
 // Resolve looks up a hostname, returning cached results when available.
 func (dc *DNSCache) Resolve(host string) ([]string, error) {
 	dc.mu.RLock()
-	if e, ok := dc.entries[host]; ok && time.Now().Before(e.expiresAt) {
+	if e, ok := dc.entries[host]; ok && timeutil.NowTime().Before(e.expiresAt) {
 		addrs := e.addrs
 		dc.mu.RUnlock()
 		return addrs, nil
@@ -144,7 +164,7 @@ func (dc *DNSCache) Resolve(host string) ([]string, error) {
 	}
 	dc.entries[host] = &dnsEntry{
 		addrs:     addrs,
-		expiresAt: time.Now().Add(dc.ttl),
+		expiresAt: timeutil.NowTime().Add(dc.ttl),
 	}
 	dc.mu.Unlock()
 	return addrs, nil

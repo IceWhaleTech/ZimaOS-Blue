@@ -104,6 +104,8 @@ class ComponentPool {
       'ui-review': () => import('@/components/typeless/CardUIReview.vue'),
       'ui-review-progress': () => import('@/components/typeless/CardUIReviewProgress.vue'),
       'media-generate': () => import('@/components/typeless/CardMediaGenerate.vue'),
+      'analyze-progress': () => import('@/components/typeless/CardAnalyzeProgress.vue'),
+      'exec': () => import('@/components/typeless/CardExec.vue'),
     }
 
     const loader = componentMap[cardType]

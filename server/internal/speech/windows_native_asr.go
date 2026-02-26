@@ -4,6 +4,8 @@ package speech
 
 import (
 	"context"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech/windows"
@@ -37,6 +39,13 @@ func (w *windowsNativeASR) Transcribe(ctx context.Context, req *stt.TranscribeRe
 	}
 	resp, err := w.provider.Recognize(ctx, recognizeReq)
 	if err != nil {
+		// SAPI returns code -11 when no speech is detected, and "no recognition result"
+		// when resultText is nil. Treat these as empty transcription, not errors.
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "code -11") || strings.Contains(errMsg, "no recognition result") {
+			slog.Debug("[windows-stt] no speech detected, returning empty text")
+			return &stt.TranscribeResponse{Text: "", Language: req.Language}, nil
+		}
 		return nil, err
 	}
 	return &stt.TranscribeResponse{

@@ -12,6 +12,7 @@ import {
   directGenerate,
   getTask,
   listModels,
+  cancelTask as cancelMediaTask,
 } from '@/api/media'
 import { classifyMediaIntent } from './useMediaIntent'
 import { useChatStore } from '@/stores/chat'
@@ -146,6 +147,17 @@ export function useMediaGenerate() {
       selectedModel.value = models.value[0].id
     }
 
+    // Auto-submit when there's exactly one model and no alternative category —
+    // no point making the user confirm when there's nothing to choose.
+    if (
+      models.value.length === 1 &&
+      !intent.value?.alternative_category &&
+      alternativeModels.value.length === 0
+    ) {
+      await generate()
+      return true
+    }
+
     showPanel.value = true
     return true
   }
@@ -183,6 +195,16 @@ export function useMediaGenerate() {
       selectedModel.value = last
     } else if (models.value.length > 0) {
       selectedModel.value = models.value[0].id
+    }
+
+    // Auto-submit when there's only one model — nothing to choose
+    if (
+      models.value.length === 1 &&
+      !intent.value?.alternative_category &&
+      alternativeModels.value.length === 0
+    ) {
+      await generate()
+      return
     }
   }
 
@@ -333,6 +355,10 @@ export function useMediaGenerate() {
     abortController?.abort()
     abortController = null
     generating.value = false
+    // Cancel the backend task if one is active
+    if (task.value?.id && !isTerminal.value) {
+      cancelMediaTask(task.value.id).catch(() => {})
+    }
   }
 
   /**

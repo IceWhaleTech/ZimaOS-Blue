@@ -384,6 +384,21 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     }
   }
 
+  async function clearProviderError(id: string) {
+    try {
+      await providerPoolApi.clearError(id)
+      const provider = providers.value.find(p => p.id === id)
+      if (provider) {
+        provider.status = 'active'
+        provider.last_error = ''
+        provider.last_error_time = ''
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to clear error'
+      throw e
+    }
+  }
+
   async function testProvider(id: string, keyId?: string) {
     try {
       const provider = providers.value.find(p => p.id === id)
@@ -715,6 +730,14 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     }
   }
 
+  /** Update a single provider's status in-place (called from SSE events). */
+  function updateProviderStatus(providerId: string, status: string) {
+    const provider = providers.value.find(p => p.id === providerId)
+    if (provider) {
+      provider.status = status as Provider['status']
+    }
+  }
+
   return {
     // State
     providers,
@@ -767,6 +790,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     deleteProvider,
     enableProvider,
     disableProvider,
+    clearProviderError,
     testProvider,
     updateModelParams,
     detectCapabilities,
@@ -791,5 +815,6 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     fetchLocationStats,
     fetchTrialQuota,
     fetchOAuthQuota,
+    updateProviderStatus,
   }
 })

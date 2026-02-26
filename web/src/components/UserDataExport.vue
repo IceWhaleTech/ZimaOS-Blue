@@ -7,12 +7,14 @@ import { useThemeStore } from '@/stores/theme'
 import { useChatStore } from '@/stores/chat'
 import { userDataApi, type UserSettings, type ImportPreview } from '@/api/userdata'
 import { companionSettingsApi, type RetentionConfig, type StorageInfo } from '@/api/companion'
+import { usePreviewStore } from '@/stores/preview'
 
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
 const localeStore = useLocaleStore()
 const themeStore = useThemeStore()
 const chatStore = useChatStore()
+const previewStore = usePreviewStore()
 
 const emit = defineEmits<{
   (e: 'status-change', message: string): void
@@ -60,6 +62,7 @@ const cleanupTargets = ref({
   cache: false,
 })
 const cleanupPassword = ref('')
+const cleanupConfirmText = ref('')
 const cleanupLoading = ref(false)
 const cleanupError = ref<string | null>(null)
 const cleanupPreviewData = ref<{
@@ -89,9 +92,13 @@ const hasCleanupTargets = computed(() =>
   Object.values(cleanupTargets.value).some(v => v)
 )
 
-const canConfirmCleanup = computed(() =>
-  cleanupPassword.value.length >= 6 && hasCleanupTargets.value
-)
+const canConfirmCleanup = computed(() => {
+  if (!hasCleanupTargets.value) return false
+  if (previewStore.isPreviewMode) {
+    return cleanupConfirmText.value === t('userdata.cleanup.confirmText')
+  }
+  return cleanupPassword.value.length >= 6
+})
 
 // Fetch retention settings on mount
 onMounted(async () => {
@@ -311,6 +318,7 @@ function startCleanup() {
     cache: false,
   }
   cleanupPassword.value = ''
+  cleanupConfirmText.value = ''
   cleanupError.value = null
   cleanupPreviewData.value = null
 }
@@ -342,6 +350,7 @@ async function previewCleanup() {
 function proceedToConfirm() {
   cleanupStep.value = 'confirm'
   cleanupPassword.value = ''
+  cleanupConfirmText.value = ''
 }
 
 async function executeCleanup() {
@@ -395,6 +404,7 @@ async function executeCleanup() {
       cache: false,
     }
     cleanupPassword.value = ''
+    cleanupConfirmText.value = ''
     cleanupPreviewData.value = null
   } catch (e) {
     cleanupError.value = e instanceof Error ? e.message : t('userdata.cleanupFailed')
@@ -406,6 +416,7 @@ async function executeCleanup() {
 function cancelCleanup() {
   cleanupStep.value = 'select'
   cleanupPassword.value = ''
+  cleanupConfirmText.value = ''
   cleanupError.value = null
 }
 </script>
@@ -733,10 +744,17 @@ function cancelCleanup() {
         <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
           <div class="text-sm text-red-700 dark:text-red-300">
             <p class="font-medium">{{ t('userdata.cleanup.confirmStep') }}</p>
-            <p class="mt-1 text-red-600 dark:text-red-400">{{ t('userdata.cleanup.confirmHint') }}</p>
+            <p v-if="previewStore.isPreviewMode" class="mt-1 text-red-600 dark:text-red-400">{{ t('userdata.cleanup.confirmHintPreview', { confirmText: t('userdata.cleanup.confirmText') }) }}</p>
+            <p v-else class="mt-1 text-red-600 dark:text-red-400">{{ t('userdata.cleanup.confirmHint') }}</p>
           </div>
         </div>
-        <div>
+        <!-- Preview mode: type-to-confirm -->
+        <div v-if="previewStore.isPreviewMode">
+          <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{ t('userdata.cleanup.typeToConfirm') }}</label>
+          <input v-model="cleanupConfirmText" type="text" :placeholder="t('userdata.cleanup.typeToConfirmPlaceholder', { confirmText: t('userdata.cleanup.confirmText') })" class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 border border-gray-200 dark:border-slate-600" />
+        </div>
+        <!-- Normal mode: password -->
+        <div v-else>
           <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{ t('userdata.cleanup.enterPassword') }}</label>
           <input v-model="cleanupPassword" type="password" :placeholder="t('userdata.cleanup.passwordPlaceholder')" class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 border border-gray-200 dark:border-slate-600" />
         </div>

@@ -207,7 +207,7 @@ func (c *Channel) sendText(ctx context.Context, chatID, content string) error {
 	}
 	return c.sendRobotOTO(ctx, token, chatID, map[string]interface{}{
 		"msgKey":  "sampleText",
-		"msgParam": fmt.Sprintf(`{"content":"%s"}`, escapeJSON(content)),
+		"msgParam": mustMarshalJSON(map[string]string{"content": content}),
 	})
 }
 
@@ -256,16 +256,16 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, caption string, at
 		switch att.Type {
 		case channel.MessageTypeImage:
 			msgKey = "sampleImageMsg"
-			msgParam = fmt.Sprintf(`{"photoURL":"%s"}`, mediaID)
+			msgParam = mustMarshalJSON(map[string]string{"photoURL": mediaID})
 		case channel.MessageTypeVideo:
 			msgKey = "sampleVideo"
-			msgParam = fmt.Sprintf(`{"mediaId":"%s","videoType":"mp4","duration":"0"}`, mediaID)
+			msgParam = mustMarshalJSON(map[string]string{"mediaId": mediaID, "videoType": "mp4", "duration": "0"})
 		case channel.MessageTypeAudio:
 			msgKey = "sampleAudio"
-			msgParam = fmt.Sprintf(`{"mediaId":"%s","duration":"0"}`, mediaID)
+			msgParam = mustMarshalJSON(map[string]string{"mediaId": mediaID, "duration": "0"})
 		default:
 			msgKey = "sampleFile"
-			msgParam = fmt.Sprintf(`{"mediaId":"%s","fileName":"%s"}`, mediaID, escapeJSON(att.Name))
+			msgParam = mustMarshalJSON(map[string]string{"mediaId": mediaID, "fileName": att.Name})
 		}
 		return c.sendRobotOTO(ctx, token, chatID, map[string]interface{}{
 			"msgKey":   msgKey,
@@ -410,12 +410,14 @@ func (c *Channel) sendRobotOTO(ctx context.Context, token, userID string, msgBod
 	return nil
 }
 
-// escapeJSON escapes a string for embedding in a JSON string literal.
-func escapeJSON(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	s = strings.ReplaceAll(s, "\n", `\n`)
-	return s
+// mustMarshalJSON marshals v to a JSON string. Panics on error (should never happen for simple maps).
+func mustMarshalJSON(v interface{}) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		// This should never happen for simple string maps.
+		panic(fmt.Sprintf("dingtalk: json.Marshal failed: %v", err))
+	}
+	return string(b)
 }
 
 func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID string, content <-chan string, done chan<- struct{}) error {

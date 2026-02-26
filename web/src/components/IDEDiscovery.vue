@@ -95,8 +95,13 @@ const canImportConfigs = computed(() => {
   return importableConfigs.value.filter(c => c.can_import && !c.already_imported)
 })
 
+// OAuth configs that are already imported but can be re-imported to update tokens
+const reimportableOAuthConfigs = computed(() => {
+  return importableConfigs.value.filter(c => c.already_imported && c.has_oauth)
+})
+
 const alreadyImportedConfigs = computed(() => {
-  return importableConfigs.value.filter(c => c.already_imported)
+  return importableConfigs.value.filter(c => c.already_imported && !c.has_oauth)
 })
 
 const installedOnlyConfigs = computed(() => {
@@ -418,6 +423,69 @@ function getSourceLabel(source: string): string {
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             {{ importing === config.ide_type ? t('ideDiscovery.importing') : t('ideDiscovery.import') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Re-importable OAuth Configs Section -->
+    <div v-if="reimportableOAuthConfigs.length > 0" class="border-t border-gray-200 dark:border-gray-700 pt-6">
+      <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        {{ t('ideDiscovery.reimportOAuth') }} ({{ reimportableOAuthConfigs.length }})
+      </h4>
+
+      <div class="space-y-3">
+        <div
+          v-for="config in reimportableOAuthConfigs"
+          :key="config.ide_type"
+          class="p-4 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-lg"
+        >
+          <div class="flex items-start justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 flex items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
+                <img
+                  v-if="getIDELogo(config.ide_type)"
+                  :src="getIDELogo(config.ide_type) ?? undefined"
+                  :alt="config.ide_name"
+                  class="w-6 h-6 object-contain"
+                  @error="($event.target as HTMLImageElement).style.display = 'none'"
+                />
+                <span v-else class="text-xl">{{ getIDEIcon(config.ide_type) }}</span>
+              </div>
+              <div>
+                <h5 class="font-medium text-gray-900 dark:text-white">{{ config.ide_name }}</h5>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="px-2 py-0.5 text-xs font-medium rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                    {{ t('ideDiscovery.oauth') }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-1 text-sm text-gray-500 dark:text-gray-400 mb-4">
+            <p v-if="config.oauth_email">
+              <span class="font-medium">{{ t('ideDiscovery.oauthAccount') }}:</span>
+              <span class="ml-1">{{ config.oauth_email }}</span>
+            </p>
+            <p class="text-orange-600 dark:text-orange-400">
+              {{ t('ideDiscovery.reimportHint') }}
+            </p>
+          </div>
+
+          <button
+            :disabled="importing === config.ide_type"
+            class="w-full px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            @click="importConfig(config.ide_type)"
+          >
+            <svg v-if="importing === config.ide_type" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {{ importing === config.ide_type ? t('ideDiscovery.importing') : t('ideDiscovery.reimport') }}
           </button>
         </div>
       </div>

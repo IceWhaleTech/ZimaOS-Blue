@@ -31,14 +31,15 @@ type WebPushSender interface {
 
 // Service coordinates push notification persistence, cron scheduling, and delivery.
 type Service struct {
-	store     *Store
-	logger    *zap.Logger
-	mu        sync.RWMutex
-	cron      CronService
-	injector  inject.MessageInjector
-	publisher EventPublisher
-	notifier  Notifier
-	webpush   WebPushSender
+	store      *Store
+	logger     *zap.Logger
+	mu         sync.RWMutex
+	cron       CronService
+	injector   inject.MessageInjector
+	publisher  EventPublisher
+	notifier   Notifier
+	webpush    WebPushSender
+	localeFunc func() string
 }
 
 // NewService creates a new push notification service.
@@ -85,6 +86,13 @@ func (s *Service) SetWebPushSender(wp WebPushSender) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.webpush = wp
+}
+
+// SetLocaleFunc sets a callback that returns the current locale (e.g. "en-US").
+func (s *Service) SetLocaleFunc(fn func() string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.localeFunc = fn
 }
 
 // Add creates a new push notification with cron scheduling.
@@ -255,12 +263,20 @@ func (s *Service) firePush(ctx context.Context, r *PushNotification) {
 	notif := s.notifier
 	wp := s.webpush
 	c := s.cron
+	localeFn := s.localeFunc
 	s.mu.RUnlock()
+
+	locale := "en-US"
+	if localeFn != nil {
+		if l := localeFn(); l != "" {
+			locale = l
+		}
+	}
 
 	// Inject message into conversation as a typeless alert card
 	var conversationID string
 	if inj != nil {
-		content := fmt.Sprintf("```typeless\n{\"type\":\"alert\",\"title\":\"📢\",\"message\":%q,\"variant\":\"info\"}\n```", r.Message)
+		content := fmt.Sprintf("```typeless\n{\"type\":\"alert\",\"message\":%q,\"variant\":\"info\",\"title_key\":\"push.reminder\"}\n```", r.Message)
 		var err error
 		conversationID, err = inj.InjectMessage(ctx, r.OwnerID, r.SessionID, content)
 		if err != nil {
@@ -273,6 +289,7 @@ func (s *Service) firePush(ctx context.Context, r *PushNotification) {
 		pushData := map[string]any{
 			"id":      r.ID,
 			"message": r.Message,
+			"locale":  locale,
 		}
 		if conversationID != "" {
 			pushData["conversation_id"] = conversationID

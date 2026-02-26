@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // TaskStore persists media generation tasks to SQLite for power-failure recovery.
@@ -77,7 +78,7 @@ type PersistentTask struct {
 
 // Create inserts a new task.
 func (s *TaskStore) Create(t *PersistentTask) error {
-	now := time.Now().UTC()
+	now := timeutil.NowTime().UTC()
 	t.CreatedAt = now
 	t.UpdatedAt = now
 	_, err := s.db.Exec(`
@@ -93,7 +94,7 @@ func (s *TaskStore) Create(t *PersistentTask) error {
 
 // UpdateStatus updates task status, progress, error, and response.
 func (s *TaskStore) UpdateStatus(id string, status TaskStatus, progress float64, errMsg string, response string) error {
-	now := task.TimeToSQL(time.Now())
+	now := task.TimeToSQL(timeutil.NowTime())
 	var completedAt sql.NullString
 	if status.IsTerminal() {
 		completedAt = sql.NullString{String: now, Valid: true}
@@ -109,14 +110,14 @@ func (s *TaskStore) UpdateStatus(id string, status TaskStatus, progress float64,
 // UpdateUpstreamID sets the upstream (vendor) task ID after generation starts.
 func (s *TaskStore) UpdateUpstreamID(id, upstreamID string) error {
 	_, err := s.db.Exec(`UPDATE media_tasks SET upstream_id=?, updated_at=? WHERE id=?`,
-		upstreamID, task.TimeToSQL(time.Now()), id)
+		upstreamID, task.TimeToSQL(timeutil.NowTime()), id)
 	return err
 }
 
 // UpdateMessageID sets the message_id for a task (used when the assistant message is created after task creation).
 func (s *TaskStore) UpdateMessageID(taskID, messageID string) error {
 	_, err := s.db.Exec(`UPDATE media_tasks SET message_id=?, updated_at=? WHERE id=?`,
-		messageID, task.TimeToSQL(time.Now()), taskID)
+		messageID, task.TimeToSQL(timeutil.NowTime()), taskID)
 	return err
 }
 
@@ -224,19 +225,25 @@ func (t *PersistentTask) ToMediaTask() *MediaTask {
 
 // MediaStats holds aggregated media generation statistics.
 type MediaStats struct {
-	TotalTasks   int64              `json:"total_tasks"`
-	Succeeded    int64              `json:"succeeded"`
-	Failed       int64              `json:"failed"`
-	TotalCostUSD float64            `json:"total_cost_usd"`
-	CostByModel  map[string]float64 `json:"cost_by_model,omitempty"`
-	TasksByType  map[string]int64   `json:"tasks_by_type,omitempty"`
+	TotalTasks       int64              `json:"total_tasks"`
+	Succeeded        int64              `json:"succeeded"`
+	Failed           int64              `json:"failed"`
+	TotalCostUSD     float64            `json:"total_cost_usd"`
+	CostByModel      map[string]float64 `json:"cost_by_model,omitempty"`
+	TasksByType      map[string]int64   `json:"tasks_by_type,omitempty"`
+	TasksByCategory  map[string]int64   `json:"tasks_by_category,omitempty"`
+	TasksByProvider  map[string]int64   `json:"tasks_by_provider,omitempty"`
+	CostByProvider   map[string]float64 `json:"cost_by_provider,omitempty"`
 }
 
 // GetStats aggregates media generation statistics from the task store.
 func (s *TaskStore) GetStats() (*MediaStats, error) {
 	stats := &MediaStats{
-		CostByModel: make(map[string]float64),
-		TasksByType: make(map[string]int64),
+		CostByModel:     make(map[string]float64),
+		TasksByType:     make(map[string]int64),
+		TasksByCategory: make(map[string]int64),
+		TasksByProvider: make(map[string]int64),
+		CostByProvider:  make(map[string]float64),
 	}
 
 	// Count by status
@@ -259,13 +266,39 @@ func (s *TaskStore) GetStats() (*MediaStats, error) {
 		}
 	}
 
+	// Count by category
+	rows3, err := s.db.Query(`SELECT category, COUNT(*) FROM media_tasks WHERE status='succeeded' AND category != '' GROUP BY category`)
+	if err == nil {
+		defer rows3.Close()
+		for rows3.Next() {
+			var cat string
+			var c int64
+			if rows3.Scan(&cat, &c) == nil {
+				stats.TasksByCategory[cat] = c
+			}
+		}
+	}
+
+	// Count by provider
+	rows4, err := s.db.Query(`SELECT provider, COUNT(*) FROM media_tasks WHERE status='succeeded' AND provider != '' GROUP BY provider`)
+	if err == nil {
+		defer rows4.Close()
+		for rows4.Next() {
+			var prov string
+			var c int64
+			if rows4.Scan(&prov, &c) == nil {
+				stats.TasksByProvider[prov] = c
+			}
+		}
+	}
+
 	// Calculate cost from succeeded tasks
-	rows2, err := s.db.Query(`SELECT model, response, type FROM media_tasks WHERE status='succeeded' AND response != ''`)
+	rows2, err := s.db.Query(`SELECT model, provider, response, type FROM media_tasks WHERE status='succeeded' AND response != ''`)
 	if err == nil {
 		defer rows2.Close()
 		for rows2.Next() {
-			var model, respJSON, mediaType string
-			if rows2.Scan(&model, &respJSON, &mediaType) != nil {
+			var model, provider, respJSON, mediaType string
+			if rows2.Scan(&model, &provider, &respJSON, &mediaType) != nil {
 				continue
 			}
 			var resp MediaResponse
@@ -280,6 +313,9 @@ func (s *TaskStore) GetStats() (*MediaStats, error) {
 			cost := CalculateMediaCost(model, imageCount, durationSec)
 			stats.TotalCostUSD += cost
 			stats.CostByModel[model] += cost
+			if provider != "" {
+				stats.CostByProvider[provider] += cost
+			}
 		}
 	}
 

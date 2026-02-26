@@ -8,7 +8,6 @@ import "C"
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -45,6 +44,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
@@ -683,7 +683,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Push notification service (scheduled push, native OS notifications, web push)
 	wpSender := bootstrap.InitWebPushSender(services.DB, configKV, zapLogger)
-	pushIPC := bootstrap.InitPushService(&bootstrap.PushServiceDeps{
+	pushResult := bootstrap.InitPushService(&bootstrap.PushServiceDeps{
 		DB:          services.DB,
 		MemoryStore: services.MemoryStore,
 		CronGetSvc:  cronHandler.GetService,
@@ -691,6 +691,12 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		WPSender:    wpSender,
 		Logger:      zapLogger,
 	})
+	var pushIPC sockipc.PushBackend
+	var pushSvc *push.Service
+	if pushResult != nil {
+		pushIPC = pushResult.IPC
+		pushSvc = pushResult.Service
+	}
 
 	// Clean up extracted web dist from tmpfs on shutdown
 	registerCleanup(func() error {
@@ -784,18 +790,12 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	// Bind the listener BEFORE route registration so we can start serving
 	// as soon as critical routes (health, system/mode) are registered.
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	ln, err := net.Listen("tcp", addr)
-	if err != nil && cfg.Server.Port != 0 {
-		// Preferred port unavailable — fallback to OS-assigned random port
-		fmt.Fprintf(os.Stderr, "Port %d unavailable (%v), falling back to random port\n", cfg.Server.Port, err)
-		ln, err = net.Listen("tcp", ":0")
-	}
+	ln, actualPort, err := server.ListenWithFallback(addr, cfg.Server.Port, cfg.Server.PortAutoFallback)
 	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", addr, err)
+		return err
 	}
 
-	// Get actual port and propagate to server/security/network packages
-	actualPort := ln.Addr().(*net.TCPAddr).Port
+	// Propagate actual port to server/security/network packages
 	server.SetActualPort(actualPort)
 	security.SetServerPort(actualPort)
 	network.SetDynamicPort(actualPort)
@@ -857,6 +857,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		BrowserIPC:         browserIPC,
 		UIReviewerIPC:      uiReviewerIPC,
 		PushIPC:            pushIPC,
+		PushService:        pushSvc,
 		CronIPC:            cronIPC,
 		// Consolidated init deps
 		SkillEmbedFS:        skillEmbed.SkillsFS,

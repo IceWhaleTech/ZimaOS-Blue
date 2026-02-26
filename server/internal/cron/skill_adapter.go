@@ -2,6 +2,7 @@ package cron
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 )
@@ -95,4 +96,45 @@ func (a *SkillAdapter) Disable(id string) error {
 		return err
 	}
 	return s.Disable(id)
+}
+
+func (a *SkillAdapter) Get(id string) (builtin.CronJobInfo, bool) {
+	s, err := a.svc()
+	if err != nil {
+		return builtin.CronJobInfo{}, false
+	}
+	job, found := s.Get(id)
+	if !found {
+		return builtin.CronJobInfo{}, false
+	}
+	return jobToInfo(job), true
+}
+
+func (a *SkillAdapter) GetExecutions(jobID string, limit int) ([]builtin.CronJobExecution, error) {
+	s, err := a.svc()
+	if err != nil {
+		return nil, err
+	}
+	execs, err := s.GetExecutions(jobID, limit)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]builtin.CronJobExecution, len(execs))
+	for i, e := range execs {
+		results[i] = builtin.CronJobExecution{
+			ID:        e.ID,
+			JobID:     e.JobID,
+			StartedAt: e.StartedAt.Format(time.RFC3339),
+			Status:    e.Status,
+			Error:     e.Error,
+		}
+		if e.EndedAt != nil {
+			s := e.EndedAt.Format(time.RFC3339)
+			results[i].EndedAt = &s
+		}
+		if e.Duration > 0 {
+			results[i].Duration = e.Duration.String()
+		}
+	}
+	return results, nil
 }

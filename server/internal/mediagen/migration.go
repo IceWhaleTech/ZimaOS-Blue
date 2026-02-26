@@ -36,7 +36,7 @@ func MigrateFromProviderPool(providerPoolDir, mediaDir string) {
 	// Identify media providers
 	mediaIDs := map[string]bool{
 		"dashscope-image": true, "gemini-image": true,
-		"mulerouter": true, "minimax-audio": true,
+		"mulerouter": true, "minimax-audio": true, "minimax-media": true,
 	}
 
 	type providerEntry struct {

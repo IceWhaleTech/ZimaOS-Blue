@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -38,13 +37,15 @@ func (n *darwinNotifier) Notify(ctx context.Context, title, body string) error {
 
 // createAppleReminder adds a reminder to Apple Reminders.app via AppleScript.
 func (n *darwinNotifier) createAppleReminder(ctx context.Context, body string) {
-	dueDate := time.Now().Format("January 2, 2006 3:04:05 PM")
+	// Use AppleScript's "current date" instead of a formatted date string.
+	// Formatted date strings like "January 2, 2006 3:04:05 PM" fail when the
+	// system locale is non-English (e.g. Chinese: "无效的日期与时间").
 	script := fmt.Sprintf(`tell application "Reminders"
 	set defaultList to default list
 	tell defaultList
-		make new reminder with properties {name:"%s", due date:date "%s", body:"Created by Blue"}
+		make new reminder with properties {name:"%s", due date:(current date), body:"Created by Blue"}
 	end tell
-end tell`, escapeAppleScript(body), escapeAppleScript(dueDate))
+end tell`, escapeAppleScript(body))
 
 	cmd := exec.CommandContext(ctx, "osascript", "-e", script)
 	if out, err := cmd.CombinedOutput(); err != nil {

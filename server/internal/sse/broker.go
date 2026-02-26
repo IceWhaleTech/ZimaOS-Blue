@@ -97,6 +97,23 @@ func (b *Broker) ClientCount(userID string) int {
 	return len(b.clients[userID])
 }
 
+// Broadcast sends an event to all connected clients across all users.
+func (b *Broker) Broadcast(eventType string, data any) {
+	evt := Event{Type: eventType, Data: data}
+
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	for _, subs := range b.clients {
+		for ch := range subs {
+			select {
+			case ch <- evt:
+			default:
+			}
+		}
+	}
+}
+
 // Done returns a channel that is closed when the broker is shut down.
 func (b *Broker) Done() <-chan struct{} {
 	return b.done

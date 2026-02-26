@@ -3,6 +3,7 @@ package providerpool
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -893,6 +894,89 @@ func TestRouterCooldownSkipsProvider(t *testing.T) {
 	// Should select medium priority (next available)
 	if result.Provider.ID == "provider-high" {
 		t.Error("Should not select provider in cooldown")
+	}
+}
+
+func TestRouterTransientCooldown(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	// Configure: persistent errors get long cooldown, transient (502/503) get short
+	router.SetCooldownConfig(&CooldownConfig{
+		FailureThreshold:          2,
+		InitialCooldown:           time.Hour, // persistent: very long
+		MaxCooldown:               time.Hour,
+		CooldownMultiplier:        1.0,
+		ResetAfter:                time.Hour,
+		TransientFailureThreshold: 3,                      // need more transient failures
+		TransientInitialCooldown:  50 * time.Millisecond,  // but much shorter cooldown
+		TransientMaxCooldown:      200 * time.Millisecond,
+	})
+
+	providerID := "provider-high"
+
+	// 2 transient (502) failures should NOT trigger cooldown (threshold is 3)
+	router.RecordFailure(providerID, fmt.Errorf("upstream 502: bad gateway"))
+	router.RecordFailure(providerID, fmt.Errorf("upstream 502: bad gateway"))
+	if router.IsInCooldown(providerID) {
+		t.Error("Provider should not be in cooldown after 2 transient failures (threshold=3)")
+	}
+
+	// 3rd transient failure triggers short cooldown
+	router.RecordFailure(providerID, fmt.Errorf("upstream 503: service unavailable"))
+	if !router.IsInCooldown(providerID) {
+		t.Error("Provider should be in cooldown after 3 transient failures")
+	}
+
+	// Short cooldown expires quickly
+	time.Sleep(80 * time.Millisecond)
+	if router.IsInCooldown(providerID) {
+		t.Error("Transient cooldown should have expired after 80ms (initial=50ms)")
+	}
+
+	// Verify: persistent error with same provider triggers long cooldown at threshold=2
+	// (FailureCount is already 3 from above, well past persistent threshold of 2)
+	router.RecordSuccess(providerID) // reset
+	router.RecordFailure(providerID, errors.New("auth error"))
+	router.RecordFailure(providerID, errors.New("auth error"))
+	if !router.IsInCooldown(providerID) {
+		t.Error("Provider should be in long cooldown after 2 persistent failures")
+	}
+
+	// Long cooldown should NOT expire quickly
+	time.Sleep(100 * time.Millisecond)
+	if !router.IsInCooldown(providerID) {
+		t.Error("Persistent cooldown should still be active after 100ms (initial=1h)")
+	}
+}
+
+func TestRouterTransientCooldownSuccessResets(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	router.SetCooldownConfig(&CooldownConfig{
+		FailureThreshold:          2,
+		InitialCooldown:           time.Hour,
+		MaxCooldown:               time.Hour,
+		CooldownMultiplier:        1.0,
+		ResetAfter:                time.Hour,
+		TransientFailureThreshold: 3,
+		TransientInitialCooldown:  50 * time.Millisecond,
+		TransientMaxCooldown:      200 * time.Millisecond,
+	})
+
+	providerID := "provider-high"
+
+	// Record 2 transient failures
+	router.RecordFailure(providerID, fmt.Errorf("upstream 502: bad gateway"))
+	router.RecordFailure(providerID, fmt.Errorf("upstream 503: service unavailable"))
+
+	// Success resets both counters
+	router.RecordSuccess(providerID)
+
+	entry := router.GetCooldownEntry(providerID)
+	if entry != nil && entry.TransientFailureCount != 0 {
+		t.Errorf("TransientFailureCount should be 0 after success, got %d", entry.TransientFailureCount)
 	}
 }
 

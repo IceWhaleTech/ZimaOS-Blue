@@ -43,19 +43,79 @@ type BootstrapFile struct {
 type Manager struct {
 	dir string
 	mu  sync.RWMutex
+
+	// fileCache caches file contents keyed by path, with mtime-based invalidation.
+	fileCacheMu sync.RWMutex
+	fileCache   map[string]fileCacheEntry
+}
+
+// fileCacheEntry holds a cached file read result.
+type fileCacheEntry struct {
+	content string
+	modTime int64 // UnixNano
 }
 
 // NewManager creates a workspace manager for the given directory.
 func NewManager(dir string) *Manager {
-	return &Manager{dir: dir}
+	return &Manager{dir: dir, fileCache: make(map[string]fileCacheEntry)}
+}
+
+// readFileCached reads a file with mtime-based caching.
+// Returns content and true if file exists, or "" and false if not.
+func (m *Manager) readFileCached(path string) (string, bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", false
+	}
+	mtime := info.ModTime().UnixNano()
+
+	m.fileCacheMu.RLock()
+	if e, ok := m.fileCache[path]; ok && e.modTime == mtime {
+		m.fileCacheMu.RUnlock()
+		return e.content, true
+	}
+	m.fileCacheMu.RUnlock()
+
+	// Cache miss or stale — read from disk
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	content := string(data)
+
+	m.fileCacheMu.Lock()
+	m.fileCache[path] = fileCacheEntry{content: content, modTime: mtime}
+	m.fileCacheMu.Unlock()
+
+	return content, true
+}
+
+// InvalidateFileCache clears the file cache (call after writes).
+func (m *Manager) InvalidateFileCache() {
+	m.fileCacheMu.Lock()
+	m.fileCache = make(map[string]fileCacheEntry)
+	m.fileCacheMu.Unlock()
 }
 
 
-// detectLocale detects the system locale.
+var (
+	detectedLocale     string
+	detectLocaleOnce   sync.Once
+)
+
+// DetectLocale returns the cached system locale (computed once per process).
+func DetectLocale() string {
+	detectLocaleOnce.Do(func() {
+		detectedLocale = doDetectLocale()
+	})
+	return detectedLocale
+}
+
+// doDetectLocale detects the system locale.
 // Checks LANG/LC_ALL/LANGUAGE env vars first, then falls back to
 // OS-specific detection (macOS defaults, Windows registry).
 // Returns BCP-47 tag like "zh-CN", "ja-JP", "en-US", falling back to "en".
-func detectLocale() string {
+func doDetectLocale() string {
 	// 1. Standard env vars (Linux, explicit overrides)
 	for _, env := range []string{"LANG", "LC_ALL", "LANGUAGE"} {
 		if v := os.Getenv(env); v != "" {
@@ -174,7 +234,7 @@ func (m *Manager) EnsureWorkspace() error {
 		return fmt.Errorf("workspace: mkdir %s: %w", memDir, err)
 	}
 
-	ts := getTemplates(detectLocale())
+	ts := getTemplates(DetectLocale())
 
 	// Write templates for files that don't exist yet (best-effort — don't abort on individual failures)
 	for name, tmpl := range ts.templateMap() {
@@ -197,6 +257,7 @@ func (m *Manager) EnsureWorkspace() error {
 // LoadBootstrapFiles reads all well-known workspace files and returns them.
 // Missing files are included with Missing=true and empty Content.
 // Also includes BOOTSTRAP.md if it exists (first-run only).
+// Uses mtime-based file caching to avoid redundant disk reads.
 func (m *Manager) LoadBootstrapFiles() []BootstrapFile {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -205,22 +266,20 @@ func (m *Manager) LoadBootstrapFiles() []BootstrapFile {
 	files := make([]BootstrapFile, 0, len(names)+3) // +3 for bootstrap + daily logs
 
 	for _, name := range names {
-		path := m.resolveFilePath(name)
-		content, err := os.ReadFile(path)
-		if err != nil {
+		content, ok := m.readFileCached(m.resolveFilePath(name))
+		if !ok {
 			files = append(files, BootstrapFile{Name: name, Missing: true})
 			continue
 		}
 		files = append(files, BootstrapFile{
 			Name:    name,
-			Content: string(content),
+			Content: content,
 		})
 	}
 
 	// Include BOOTSTRAP.md if it exists (first-run guide, deleted after completion)
-	bootstrapPath := filepath.Join(m.dir, FileBOOTSTRAP)
-	if content, err := os.ReadFile(bootstrapPath); err == nil {
-		files = append(files, BootstrapFile{Name: FileBOOTSTRAP, Content: string(content)})
+	if content, ok := m.readFileCached(filepath.Join(m.dir, FileBOOTSTRAP)); ok {
+		files = append(files, BootstrapFile{Name: FileBOOTSTRAP, Content: content})
 	}
 
 	// Include today's and yesterday's daily logs
@@ -232,6 +291,7 @@ func (m *Manager) LoadBootstrapFiles() []BootstrapFile {
 // LoadContextFiles returns a map of filename→content for non-empty workspace files,
 // ready to inject into SystemPromptBuilder. This is a lightweight path that avoids
 // the overhead of LoadBootstrapFiles (no Missing entries, no BootstrapFile structs).
+// Uses mtime-based file caching to avoid redundant disk reads.
 func (m *Manager) LoadContextFiles() map[string]string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -240,20 +300,16 @@ func (m *Manager) LoadContextFiles() map[string]string {
 	ctx := make(map[string]string, len(names)+3)
 
 	for _, name := range names {
-		data, err := os.ReadFile(m.resolveFilePath(name))
-		if err != nil {
-			continue
-		}
-		s := string(data)
-		if strings.TrimSpace(s) == "" {
+		s, ok := m.readFileCached(m.resolveFilePath(name))
+		if !ok || strings.TrimSpace(s) == "" {
 			continue
 		}
 		ctx[name] = s
 	}
 
 	// Include BOOTSTRAP.md if it exists
-	if data, err := os.ReadFile(filepath.Join(m.dir, FileBOOTSTRAP)); err == nil {
-		if s := string(data); strings.TrimSpace(s) != "" {
+	if s, ok := m.readFileCached(filepath.Join(m.dir, FileBOOTSTRAP)); ok {
+		if strings.TrimSpace(s) != "" {
 			ctx[FileBOOTSTRAP] = s
 		}
 	}
@@ -307,7 +363,11 @@ func (m *Manager) WriteFile(name, content string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return os.WriteFile(m.resolveFilePath(name), []byte(content), 0o644)
+	err := os.WriteFile(m.resolveFilePath(name), []byte(content), 0o644)
+	if err == nil {
+		m.InvalidateFileCache()
+	}
+	return err
 }
 
 // isAllowedFile checks if a filename is in the allowlist.
@@ -340,6 +400,9 @@ func (m *Manager) CompleteBootstrap() error {
 	err := os.Remove(path)
 	if os.IsNotExist(err) {
 		return nil
+	}
+	if err == nil {
+		m.InvalidateFileCache()
 	}
 	return err
 }
@@ -376,6 +439,9 @@ func (m *Manager) AppendDailyLog(content string) error {
 	ts := timeutil.NowTime().Format("15:04")
 	entry := fmt.Sprintf("## %s\n%s\n\n", ts, content)
 	_, err = f.WriteString(entry)
+	if err == nil {
+		m.InvalidateFileCache()
+	}
 	return err
 }
 
@@ -399,12 +465,8 @@ func (m *Manager) loadRecentDailyLogs() []BootstrapFile {
 			filepath.Join(memDir, "daily", name),
 		}
 		for _, path := range candidates {
-			content, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
-			s := string(content)
-			if strings.TrimSpace(s) == "" {
+			s, ok := m.readFileCached(path)
+			if !ok || strings.TrimSpace(s) == "" {
 				continue
 			}
 			files = append(files, BootstrapFile{

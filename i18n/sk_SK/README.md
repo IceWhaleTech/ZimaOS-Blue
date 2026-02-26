@@ -68,9 +68,9 @@ Natívne kompilovaný v Go — žiadny interpreter, žiadny VM, žiadna réžia.
 
 | Metrika | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
 |---------|-------------------|------------------------|
-| `--help` studený / teplý | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `help` studený / teplý | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` beh (najlepší z 3) | **< 0.01 s** | 5.98 s |
-| `--help` špičkové RSS | **~10 MB** | ~394 MB |
+| `help` špičkové RSS | **~10 MB** | ~394 MB |
 | `status` špičkové RSS | **~15 MB** | ~1.52 GB |
 | Závislosti za behu | **Žiadne** | Node.js 18+ |
 

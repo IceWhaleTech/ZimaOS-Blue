@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Manager handles OAuth token lifecycle for LLM providers.
@@ -22,6 +24,14 @@ type Manager struct {
 	configs  map[string]*ProviderConfig
 	pending  map[string]*pendingAuth // state -> pending auth
 	mu       sync.RWMutex
+
+	port int // Actual server port for OAuth callbacks (0 = use config default)
+
+	// Cached Copilot JWT (short-lived, ~30 min)
+	copilotToken   string
+	copilotExpiry  time.Time
+	copilotEndpoint string // API endpoint from token response (e.g., api.individual.githubcopilot.com)
+	copilotMu      sync.Mutex
 }
 
 type pendingAuth struct {
@@ -61,7 +71,13 @@ func NewManager(store TokenStore) *Manager {
 		store:   store,
 		configs: AllProviderConfigs(),
 		pending: make(map[string]*pendingAuth),
+		port:    0, // 0 means use config default
 	}
+}
+
+// SetPort sets the actual server port for OAuth callbacks.
+func (m *Manager) SetPort(port int) {
+	m.port = port
 }
 
 // StartAuth begins an OAuth flow for the given provider type.
@@ -106,14 +122,19 @@ func (m *Manager) startAuthCodeFlow(providerID string, cfg *ProviderConfig) (*Au
 		ProviderID:   providerID,
 		CodeVerifier: codeVerifier,
 		State:        state,
-		CreatedAt:    time.Now(),
+		CreatedAt:    timeutil.NowTime(),
 	}
 	m.mu.Unlock()
 
 	// Build auth URL
+	// Use manager's port if set, otherwise fall back to config default
+	redirectPort := cfg.RedirectPort
+	if m.port > 0 {
+		redirectPort = m.port
+	}
 	params := url.Values{
 		"client_id":             {cfg.ClientID},
-		"redirect_uri":         {fmt.Sprintf("http://localhost:%d%s", cfg.RedirectPort, cfg.RedirectPath)},
+		"redirect_uri":         {fmt.Sprintf("http://localhost:%d%s", redirectPort, cfg.RedirectPath)},
 		"response_type":        {"code"},
 		"scope":                {strings.Join(cfg.Scopes, " ")},
 		"state":                {state},
@@ -143,7 +164,7 @@ func (m *Manager) startDeviceCodeFlow(ctx context.Context, providerID string, cf
 		ProviderType: cfg.ID,
 		ProviderID:   providerID,
 		State:        dcResp.DeviceCode,
-		CreatedAt:    time.Now(),
+		CreatedAt:    timeutil.NowTime(),
 	}
 	m.mu.Unlock()
 
@@ -211,11 +232,12 @@ func (m *Manager) HandleCallback(ctx context.Context, state, code string) (*Toke
 		ProviderType: pending.ProviderType,
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
-		TokenExpiry:  time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
+		TokenExpiry:  timeutil.NowTime().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
 		Scopes:       cfg.Scopes,
 		Email:        email,
 		ProjectID:    projectID,
 		Endpoint:     endpoint,
+		ID:           generateTokenID(),
 	}
 
 	// Persist
@@ -262,9 +284,10 @@ func (m *Manager) CompleteDeviceFlow(ctx context.Context, deviceCode string, int
 		ProviderType: pending.ProviderType,
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
-		TokenExpiry:  time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
+		TokenExpiry:  timeutil.NowTime().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
 		Scopes:       cfg.Scopes,
 		Email:        email,
+		ID:           generateTokenID(),
 	}
 
 	if err := m.store.SaveToken(pending.ProviderID, token); err != nil {
@@ -275,17 +298,77 @@ func (m *Manager) CompleteDeviceFlow(ctx context.Context, deviceCode string, int
 }
 
 // GetAccessToken returns a valid access token for the provider, refreshing if needed.
+// It tries all tokens for the provider and returns the first valid one.
 func (m *Manager) GetAccessToken(providerID string) (string, error) {
-	token, err := m.store.LoadToken(providerID)
+	tokens, err := m.store.LoadTokens(providerID)
+	if err != nil || len(tokens) == 0 {
+		return "", fmt.Errorf("no oauth tokens for provider %s", providerID)
+	}
+
+	for _, token := range tokens {
+		accessToken, err := m.getOrRefreshToken(token)
+		if err == nil {
+			return accessToken, nil
+		}
+		slog.Warn("[oauth] token unusable, trying next", "provider", providerID, "token_id", token.ID, "error", err)
+	}
+	return "", fmt.Errorf("all oauth tokens expired for provider %s", providerID)
+}
+
+// GetCopilotAccessToken returns a Copilot-specific JWT for the provider.
+// GitHub Copilot API requires exchanging the GitHub OAuth token for a short-lived
+// Copilot JWT via https://api.github.com/copilot_internal/v2/token.
+// The JWT is cached until 5 minutes before expiry.
+func (m *Manager) GetCopilotAccessToken(providerID string) (string, error) {
+	m.copilotMu.Lock()
+	defer m.copilotMu.Unlock()
+
+	// Return cached token if still valid (with 5 min buffer)
+	if m.copilotToken != "" && timeutil.NowTime().Add(5*time.Minute).Before(m.copilotExpiry) {
+		return m.copilotToken, nil
+	}
+
+	// Get the GitHub OAuth token first
+	githubToken, err := m.GetAccessToken(providerID)
+	if err != nil {
+		return "", fmt.Errorf("get github token: %w", err)
+	}
+
+	// Exchange for Copilot JWT
+	copilotJWT, expiresAt, endpoint, err := GetCopilotToken(context.Background(), githubToken)
+	if err != nil {
+		return "", fmt.Errorf("get copilot token: %w", err)
+	}
+
+	m.copilotToken = copilotJWT
+	m.copilotExpiry = expiresAt
+	m.copilotEndpoint = endpoint
+	slog.Info("[oauth] copilot token refreshed", "provider", providerID, "expires_at", expiresAt, "endpoint", endpoint)
+	return copilotJWT, nil
+}
+
+// GetCopilotEndpoint returns the Copilot API endpoint from the token response.
+// Returns empty string if not available (will use default).
+func (m *Manager) GetCopilotEndpoint() string {
+	m.copilotMu.Lock()
+	defer m.copilotMu.Unlock()
+	return m.copilotEndpoint
+}
+
+// GetAccessTokenByID returns a valid access token for a specific token ID.
+func (m *Manager) GetAccessTokenByID(providerID, tokenID string) (string, error) {
+	token, err := m.store.LoadToken(providerID, tokenID)
 	if err != nil {
 		return "", err
 	}
+	return m.getOrRefreshToken(token)
+}
 
+func (m *Manager) getOrRefreshToken(token *Token) (string, error) {
 	if !token.Expired() {
 		return token.AccessToken, nil
 	}
 
-	// Refresh
 	if token.RefreshToken == "" {
 		return "", fmt.Errorf("token expired and no refresh token available")
 	}
@@ -300,28 +383,32 @@ func (m *Manager) GetAccessToken(providerID string) (string, error) {
 		return "", fmt.Errorf("refresh token: %w", err)
 	}
 
-	// Update stored token
 	token.AccessToken = newToken.AccessToken
-	token.TokenExpiry = time.Now().Add(time.Duration(newToken.ExpiresIn) * time.Second)
+	token.TokenExpiry = timeutil.NowTime().Add(time.Duration(newToken.ExpiresIn) * time.Second)
 	if newToken.RefreshToken != "" {
 		token.RefreshToken = newToken.RefreshToken
 	}
 
-	if err := m.store.SaveToken(providerID, token); err != nil {
+	if err := m.store.SaveToken(token.ProviderID, token); err != nil {
 		slog.Error("[oauth] failed to save refreshed token", "error", err)
 	}
 
 	return token.AccessToken, nil
 }
 
-// GetToken returns the full token for a provider.
-func (m *Manager) GetToken(providerID string) (*Token, error) {
-	return m.store.LoadToken(providerID)
+// GetToken returns the full token for a specific provider and token ID.
+func (m *Manager) GetToken(providerID, tokenID string) (*Token, error) {
+	return m.store.LoadToken(providerID, tokenID)
 }
 
-// Disconnect revokes and removes the OAuth token for a provider.
-func (m *Manager) Disconnect(providerID string) error {
-	return m.store.DeleteToken(providerID)
+// GetTokens returns all tokens for a provider.
+func (m *Manager) GetTokens(providerID string) ([]*Token, error) {
+	return m.store.LoadTokens(providerID)
+}
+
+// Disconnect revokes and removes a specific OAuth token.
+func (m *Manager) Disconnect(providerID, tokenID string) error {
+	return m.store.DeleteToken(providerID, tokenID)
 }
 
 // ImportToken imports an externally obtained token (e.g., from IDE scan).
@@ -347,10 +434,15 @@ func (m *Manager) CleanupPending() {
 }
 
 func (m *Manager) exchangeCode(ctx context.Context, cfg *ProviderConfig, code, codeVerifier string) (*tokenResponse, error) {
+	// Use manager's port if set, otherwise fall back to config default
+	redirectPort := cfg.RedirectPort
+	if m.port > 0 {
+		redirectPort = m.port
+	}
 	data := url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
-		"redirect_uri":  {fmt.Sprintf("http://localhost:%d%s", cfg.RedirectPort, cfg.RedirectPath)},
+		"redirect_uri":  {fmt.Sprintf("http://localhost:%d%s", redirectPort, cfg.RedirectPath)},
 		"client_id":     {cfg.ClientID},
 		"client_secret": {cfg.ClientSecret},
 		"code_verifier": {codeVerifier},

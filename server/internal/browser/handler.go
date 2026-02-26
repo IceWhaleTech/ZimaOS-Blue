@@ -70,6 +70,10 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Console
 	g.GET("/console", h.Console)
 
+	// Recipes
+	g.GET("/recipes", h.ListRecipes)
+	g.POST("/recipe", h.ExecuteRecipe)
+
 	// Task management (stub endpoints for frontend compatibility)
 	g.GET("/tasks", h.ListTasks)
 	g.POST("/tasks", h.CreateTask)
@@ -534,6 +538,32 @@ func (h *Handler) Console(c echo.Context) error {
 	resp, err := h.service.Console(c.Request().Context(), &req)
 	if err != nil {
 		return mapError(err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+// ListRecipes returns all available recipes.
+func (h *Handler) ListRecipes(c echo.Context) error {
+	recipes := h.service.Recipes()
+	return c.JSON(http.StatusOK, recipes.List())
+}
+
+// ExecuteRecipe runs a browser recipe.
+func (h *Handler) ExecuteRecipe(c echo.Context) error {
+	var req RecipeRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if req.Recipe == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "recipe is required")
+	}
+	if req.Params == nil {
+		req.Params = make(map[string]string)
+	}
+
+	resp, err := h.service.ExecuteRecipe(c.Request().Context(), &req)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	return c.JSON(http.StatusOK, resp)
 }

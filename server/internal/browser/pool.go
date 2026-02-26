@@ -9,6 +9,8 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Pool manages a pool of browser instances.
@@ -40,7 +42,7 @@ func NewPool(config *Config) (*Pool, error) {
 		config:    config,
 		available: make(chan *browserInstance, config.PoolSize),
 		browsers:  make([]*browserInstance, 0, config.PoolSize),
-		startTime: time.Now(),
+		startTime: timeutil.NowTime(),
 	}
 
 	return p, nil
@@ -104,8 +106,8 @@ func (p *Pool) createInstance(ctx context.Context) (*browserInstance, error) {
 	return &browserInstance{
 		browser:   browser,
 		launcher:  l,
-		createdAt: time.Now(),
-		lastUsed:  time.Now(),
+		createdAt: timeutil.NowTime(),
+		lastUsed:  timeutil.NowTime(),
 	}, nil
 }
 
@@ -122,7 +124,7 @@ func (p *Pool) Acquire(ctx context.Context) (*rod.Browser, error) {
 	case instance := <-p.available:
 		p.mu.Lock()
 		instance.inUse = true
-		instance.lastUsed = time.Now()
+		instance.lastUsed = timeutil.NowTime()
 		p.mu.Unlock()
 		return instance.browser, nil
 	case <-ctx.Done():
@@ -142,7 +144,7 @@ func (p *Pool) Release(browser *rod.Browser) {
 	for _, instance := range p.browsers {
 		if instance.browser == browser {
 			instance.inUse = false
-			instance.lastUsed = time.Now()
+			instance.lastUsed = timeutil.NowTime()
 			select {
 			case p.available <- instance:
 			default:
@@ -283,7 +285,7 @@ func (p *Pool) replaceInstance(ctx context.Context, deadBrowser *rod.Browser) (*
 				return nil, fmt.Errorf("failed to replace browser: %w", err)
 			}
 			newInstance.inUse = true
-			newInstance.lastUsed = time.Now()
+			newInstance.lastUsed = timeutil.NowTime()
 			p.browsers[i] = newInstance
 			return newInstance.browser, nil
 		}

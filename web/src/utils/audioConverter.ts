@@ -1,7 +1,13 @@
 /**
- * Convert audio blob to WAV format using Web Audio API
+ * Convert audio blob to WAV format using Web Audio API.
+ * Returns null (with console warning) if the audio cannot be decoded.
  */
-export async function convertToWav(audioBlob: Blob): Promise<Blob> {
+export async function convertToWav(audioBlob: Blob): Promise<Blob | null> {
+  if (audioBlob.size === 0) {
+    console.warn('[audio] Empty audio blob, skipping conversion')
+    return null
+  }
+
   const audioContext = new AudioContext({ sampleRate: 16000 })
 
   try {
@@ -16,9 +22,10 @@ export async function convertToWav(audioBlob: Blob): Promise<Blob> {
     source.start()
 
     const renderedBuffer = await offlineContext.startRendering()
-    const wavBlob = encodeWav(renderedBuffer)
-
-    return wavBlob
+    return encodeWav(renderedBuffer)
+  } catch (err) {
+    console.warn('[audio] Failed to decode audio data, skipping:', err)
+    return null
   } finally {
     await audioContext.close()
   }

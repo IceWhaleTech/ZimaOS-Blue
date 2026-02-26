@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 const defaultDashScopeBaseURL = "https://dashscope.aliyuncs.com"
@@ -112,7 +113,7 @@ func (p *DashScopeProvider) Generate(ctx context.Context, req *MediaRequest) (*M
 	}
 
 	return &MediaTask{
-		BaseTask:   task.BaseTask{ID: uuid.New().String(), Status: TaskStatusProcessing, CreatedAt: time.Now()},
+		BaseTask:   task.BaseTask{ID: uuid.New().String(), Status: TaskStatusProcessing, CreatedAt: timeutil.NowTime()},
 		Type:       MediaTypeImage,
 		UpstreamID: dsResp.Output.TaskID,
 	}, nil
@@ -170,7 +171,7 @@ func (p *DashScopeProvider) Poll(ctx context.Context, taskID string) (*MediaTask
 			break
 		}
 		task.Status = TaskStatusSucceeded
-		now := time.Now()
+		now := timeutil.NowTime()
 		task.Response = &MediaResponse{
 			Created: now.Unix(),
 			Data:    results,

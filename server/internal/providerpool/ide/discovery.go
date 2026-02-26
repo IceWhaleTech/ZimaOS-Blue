@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // IDEType represents the type of IDE
@@ -246,7 +248,7 @@ func (d *Discovery) scanIDE(ctx context.Context, ideType IDEType) (*IDEInfo, err
 	info := &IDEInfo{
 		Type:        ideType,
 		Name:        getIDEName(ideType),
-		LastChecked: time.Now(),
+		LastChecked: timeutil.NowTime(),
 	}
 
 	// Find config path
@@ -306,7 +308,7 @@ func (d *Discovery) Connect(ctx context.Context, ideType IDEType) (*IDEInfo, err
 	info.Connected = true
 	info.Models = models
 	info.Error = ""
-	info.LastChecked = time.Now()
+	info.LastChecked = timeutil.NowTime()
 
 	d.mu.Lock()
 	d.discovered[ideType] = info

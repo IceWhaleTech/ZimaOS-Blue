@@ -158,3 +158,37 @@ func (a *RodBrowserBackend) Tabs(ctx context.Context) ([]BrowserTabResult, error
 	}
 	return result, nil
 }
+
+func (a *RodBrowserBackend) ExecuteRecipe(ctx context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error) {
+	svc, err := a.get()
+	if err != nil {
+		return BrowserRecipeResult{}, err
+	}
+	resp, err := svc.ExecuteRecipe(ctx, &browser.RecipeRequest{Recipe: recipe, Params: params})
+	if err != nil {
+		return BrowserRecipeResult{}, err
+	}
+	return BrowserRecipeResult{
+		Success:  resp.Success,
+		Data:     resp.Data,
+		TargetID: resp.TargetID,
+		Message:  resp.Message,
+	}, nil
+}
+
+func (a *RodBrowserBackend) ListRecipes(ctx context.Context) []BrowserRecipeInfo {
+	svc, err := a.get()
+	if err != nil {
+		return nil
+	}
+	infos := svc.Recipes().List()
+	result := make([]BrowserRecipeInfo, len(infos))
+	for i, info := range infos {
+		result[i] = BrowserRecipeInfo{
+			Name:        info.Name,
+			Description: info.Description,
+			KeepTab:     info.KeepTab,
+		}
+	}
+	return result
+}

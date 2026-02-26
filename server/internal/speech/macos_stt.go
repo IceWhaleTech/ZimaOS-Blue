@@ -5,6 +5,7 @@ package speech
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -146,7 +147,9 @@ var (
 )
 
 // mainDoneCh signals RunMainRunLoop to stop.
-var mainDoneCh = make(chan struct{})
+// Buffered with capacity 1 to ensure the stop signal is not lost
+// even if RunMainRunLoop is busy pumping the NSRunLoop.
+var mainDoneCh = make(chan struct{}, 1)
 
 // GCD dispatch support — used by SubmitToMainThread to dispatch closures
 // to the main thread via dispatch_async_f. Works in both CLI mode
@@ -660,6 +663,11 @@ func (p *MacOSNativeSTT) Transcribe(ctx context.Context, req *stt.TranscribeRequ
 			if recErr == nil {
 				return &stt.TranscribeResponse{Text: text, Language: req.Language}, nil
 			}
+			// "No speech detected" is not a real error — return empty text
+			if isNoSpeechError(recErr) {
+				slog.Debug("[macos-stt] no speech detected, returning empty text")
+				return &stt.TranscribeResponse{Text: "", Language: req.Language}, nil
+			}
 			slog.Warn("[macos-stt] buffer recognition failed, falling back to file", "error", recErr)
 		}
 	}
@@ -702,6 +710,11 @@ func (p *MacOSNativeSTT) Transcribe(ctx context.Context, req *stt.TranscribeRequ
 
 	text, err := p.recognize(ctx, audioPath, locale)
 	if err != nil {
+		// "No speech detected" is not a real error — return empty text
+		if isNoSpeechError(err) {
+			slog.Debug("[macos-stt] no speech detected (file), returning empty text")
+			return &stt.TranscribeResponse{Text: "", Language: req.Language}, nil
+		}
 		return nil, err
 	}
 
@@ -1092,6 +1105,16 @@ func isOnDeviceError(desc string) bool {
 		strings.Contains(d, "not supported for this locale") ||
 		strings.Contains(d, "siri and dictation") ||
 		strings.Contains(d, "no speech detected") // on-device may silently fail with this
+}
+
+// isNoSpeechError checks if an error represents "no speech detected" — a benign
+// condition that should be treated as empty transcription, not a real error.
+func isNoSpeechError(err error) bool {
+	var se *SpeechError
+	if errors.As(err, &se) && se.Code == "no_speech" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "no speech detected")
 }
 
 // friendlySpeechError maps cryptic Apple Speech framework errors to SpeechError with error codes.

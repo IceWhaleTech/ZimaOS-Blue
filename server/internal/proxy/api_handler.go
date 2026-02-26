@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ProxyAPIHandler provides HTTP handlers for proxy management APIs
@@ -227,7 +229,7 @@ func (h *ProxyAPIHandler) handleMetricsTimeSeries(w http.ResponseWriter, r *http
 			return
 		}
 	} else {
-		start = time.Now().Add(-24 * time.Hour)
+		start = timeutil.NowTime().Add(-24 * time.Hour)
 	}
 
 	if endStr != "" {
@@ -237,7 +239,7 @@ func (h *ProxyAPIHandler) handleMetricsTimeSeries(w http.ResponseWriter, r *http
 			return
 		}
 	} else {
-		end = time.Now()
+		end = timeutil.NowTime()
 	}
 
 	buckets := h.metricsCollector.GetTimeSeries(start, end)
@@ -386,7 +388,7 @@ func (h *ProxyAPIHandler) handleConfigReload(w http.ResponseWriter, r *http.Requ
 
 	h.jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"message":     "Configuration reloaded successfully",
-		"reloaded_at": time.Now().Format(time.RFC3339),
+		"reloaded_at": timeutil.NowTime().Format(time.RFC3339),
 	})
 }
 

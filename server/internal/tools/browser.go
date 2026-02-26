@@ -22,6 +22,8 @@ type BrowserBackend interface {
 	ScreenshotTab(ctx context.Context, targetID string) (string, error)
 	CloseTab(ctx context.Context, targetID string) error
 	Tabs(ctx context.Context) ([]BrowserTabResult, error)
+	ExecuteRecipe(ctx context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error)
+	ListRecipes(ctx context.Context) []BrowserRecipeInfo
 }
 
 // BrowserNavResult represents a navigation result.
@@ -58,6 +60,21 @@ type BrowserTabResult struct {
 	Active   bool   `json:"active"`
 }
 
+// BrowserRecipeResult represents the result of a recipe execution.
+type BrowserRecipeResult struct {
+	Success  bool                   `json:"success"`
+	Data     map[string]interface{} `json:"data,omitempty"`
+	TargetID string                 `json:"target_id,omitempty"`
+	Message  string                 `json:"message"`
+}
+
+// BrowserRecipeInfo describes an available recipe.
+type BrowserRecipeInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	KeepTab     bool   `json:"keep_tab"`
+}
+
 // BrowserTool provides headless browser automation as a native tool.
 type BrowserTool struct {
 	mu                    sync.RWMutex
@@ -90,14 +107,14 @@ func (t *BrowserTool) Backend() BrowserBackend {
 func (t *BrowserTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "browser",
-		Description: "Open a URL, read page content (accessibility tree), interact with elements (@ref), take screenshots. For keyword search use web_search; for UI quality scoring use ui_reviewer.",
+		Description: "Open a URL, read page content (accessibility tree), interact with elements (@ref), take screenshots, or run recipes (search, fill_form, extract, login). For keyword search use web_search; for UI quality scoring use ui_reviewer.",
 		Icon:        "browser",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"description": "Action: navigate (open URL + auto snapshot), snapshot (full CDP accessibility tree), snapshot_interactive (JS interactive elements only), snapshot_auto (auto-pick best strategy), act (interact with @ref element), screenshot (capture page image), tabs (list open tabs), close (close tab)",
+					"description": "Action: navigate, snapshot, snapshot_interactive, snapshot_auto, act, screenshot, tabs, close, recipe (run automation template), recipes (list available templates)",
 				},
 				"url": map[string]interface{}{
 					"type":        "string",
@@ -121,7 +138,15 @@ func (t *BrowserTool) Definition() ToolDefinition {
 				},
 				"vision": map[string]interface{}{
 					"type":        "boolean",
-					"description": "Whether the calling model supports vision/images (used by snapshot_auto to decide strategy)",
+					"description": "Whether the calling model supports vision/images",
+				},
+				"recipe": map[string]interface{}{
+					"type":        "string",
+					"description": "Recipe name for action=recipe (search, fill_form, extract, login)",
+				},
+				"params": map[string]interface{}{
+					"type":        "object",
+					"description": "Recipe parameters as key-value pairs (e.g., {\"query\": \"test\", \"engine\": \"google\"})",
 				},
 			},
 			"required": []string{"action"},
@@ -162,6 +187,10 @@ func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return t.doTabs(ctx, backend)
 	case "close":
 		return t.doClose(ctx, backend, targetID)
+	case "recipe":
+		return t.doRecipe(ctx, backend, args)
+	case "recipes":
+		return t.doListRecipes(ctx, backend)
 	default:
 		return nil, fmt.Errorf("invalid action: %s", action)
 	}
@@ -190,7 +219,11 @@ func (t *BrowserTool) doNavigate(ctx context.Context, b BrowserBackend, args map
 
 	emitBrowserProgress(ctx, "snapshot", "Reading page", "running", url)
 	result, rErr := t.doAutoSnapshot(ctx, b, nav.TargetID, vision)
-	emitBrowserProgress(ctx, "snapshot", "Reading page", "success", url)
+	if rErr != nil {
+		emitBrowserProgress(ctx, "snapshot", "Reading page", "failed", url)
+	} else {
+		emitBrowserProgress(ctx, "snapshot", "Reading page", "success", url)
+	}
 	return result, rErr
 }
 
@@ -410,6 +443,50 @@ func (t *BrowserTool) doClose(ctx context.Context, b BrowserBackend, targetID st
 	return jsonResult(map[string]interface{}{
 		"closed":  true,
 		"message": fmt.Sprintf("Tab %s closed", targetID),
+	}), nil
+}
+
+func (t *BrowserTool) doRecipe(ctx context.Context, b BrowserBackend, args map[string]interface{}) (interface{}, error) {
+	recipeName, _ := args["recipe"].(string)
+	if recipeName == "" {
+		return nil, errors.New("recipe is required for action=recipe")
+	}
+
+	params := make(map[string]string)
+	if p, ok := args["params"].(map[string]interface{}); ok {
+		for k, v := range p {
+			params[k] = fmt.Sprintf("%v", v)
+		}
+	}
+
+	emitBrowserProgress(ctx, "recipe", "Running "+recipeName, "running", "")
+	_ = b.Start(ctx)
+	result, err := b.ExecuteRecipe(ctx, recipeName, params)
+	if err != nil {
+		emitBrowserProgress(ctx, "recipe", "Running "+recipeName, "failed", "")
+		return jsonErr(fmt.Sprintf("recipe %s failed: %s", recipeName, err)), nil
+	}
+	emitBrowserProgress(ctx, "recipe", "Running "+recipeName, "success", "")
+
+	data := map[string]interface{}{
+		"success": result.Success,
+		"message": result.Message,
+	}
+	for k, v := range result.Data {
+		data[k] = v
+	}
+	if result.TargetID != "" {
+		data["target_id"] = result.TargetID
+	}
+	return jsonResult(data), nil
+}
+
+func (t *BrowserTool) doListRecipes(ctx context.Context, b BrowserBackend) (interface{}, error) {
+	infos := b.ListRecipes(ctx)
+	return jsonResult(map[string]interface{}{
+		"recipes": infos,
+		"count":   len(infos),
+		"message": fmt.Sprintf("%d recipes available", len(infos)),
 	}), nil
 }
 

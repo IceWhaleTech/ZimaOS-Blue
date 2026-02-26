@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ResolvedRoute carries the actual provider/model chosen by the router.
@@ -126,7 +128,7 @@ func isTransientNetworkError(err error) bool {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return true
 	}
-	// syscall errors: connection reset, broken pipe
+	// syscall errors: connection reset, broken pipe, connection refused
 	if errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNREFUSED) {
 		return true
 	}
@@ -135,9 +137,9 @@ func isTransientNetworkError(err error) bool {
 	if errors.As(err, &netErr) && netErr.Timeout() {
 		return true
 	}
-	// net.OpError wrapping transient errors
+	// net.OpError — only retry if timeout or temporary
 	var opErr *net.OpError
-	if errors.As(err, &opErr) {
+	if errors.As(err, &opErr) && (opErr.Timeout() || opErr.Temporary()) { //nolint:staticcheck // Temporary is deprecated but still useful
 		return true
 	}
 	// String-based fallback for wrapped errors
@@ -147,14 +149,17 @@ func isTransientNetworkError(err error) bool {
 		strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "i/o timeout") ||
 		strings.Contains(msg, "TLS handshake timeout") ||
-		strings.Contains(msg, "server closed idle connection") {
+		strings.Contains(msg, "server closed idle connection") ||
+		strings.Contains(msg, "http2: timeout awaiting response headers") {
 		return true
 	}
 	return false
 }
 
 // probeWithRetry wraps AuthProber.ProbeAndForward with transparent retry for
-// transient network errors. Max 2 retries (3 total attempts) with exponential backoff.
+// transient network errors. Retries indefinitely with increasing backoff
+// (500ms → 1s → 2s → 4s → 8s → 15s cap) until the request succeeds or the
+// context is cancelled (e.g. user disconnects).
 func (ph *ProxyHandler) probeWithRetry(
 	ctx context.Context,
 	provider *providerpool.Provider,
@@ -162,23 +167,26 @@ func (ph *ProxyHandler) probeWithRetry(
 	buildReq func() (*http.Request, error),
 	doReq func(*http.Request) (*http.Response, error),
 ) (*http.Response, error) {
-	const maxRetries = 2
-	backoff := [2]time.Duration{500 * time.Millisecond, time.Second}
+	const maxDelay = 15 * time.Second
 
 	var lastErr error
-	for attempt := 0; attempt <= maxRetries; attempt++ {
+	delay := 500 * time.Millisecond
+	for attempt := 0; ; attempt++ {
 		if attempt > 0 {
-			// Check context before retry
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			delay := backoff[attempt-1]
 			slog.Warn("[proxy] retrying after transient network error",
 				"provider", provider.ID, "attempt", attempt+1, "delay", delay, "error", lastErr)
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case <-time.After(delay):
+			}
+			// Exponential backoff capped at maxDelay
+			delay = delay * 2
+			if delay > maxDelay {
+				delay = maxDelay
 			}
 		}
 
@@ -191,7 +199,6 @@ func (ph *ProxyHandler) probeWithRetry(
 		}
 		lastErr = err
 	}
-	return nil, lastErr
 }
 
 // readBody reads an io.Reader into a []byte using a pooled buffer.
@@ -323,6 +330,8 @@ func (ph *ProxyHandler) ensurePruner() *pruner.Middleware {
 // OAuthTokenProvider provides OAuth access tokens for providers.
 type OAuthTokenProvider interface {
 	GetAccessToken(providerID string) (string, error)
+	GetCopilotAccessToken(providerID string) (string, error)
+	GetCopilotEndpoint() string
 }
 
 // SetOAuthManager sets the OAuth token provider for OAuth-authenticated providers.
@@ -597,11 +606,6 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, _ := readBody(r.Body)
 	r.Body.Close()
 
-	// Mask sensitive data in request body (if masking is enabled with rules)
-	if dm := ph.dataMasker; dm != nil && dm.IsEnabled() {
-		bodyBytes = []byte(dm.MaskRequest(string(bodyBytes)))
-	}
-
 	// Apply context pruner to reduce token usage (if enabled)
 	if mw := ph.ensurePruner(); mw != nil && mw.Enabled() {
 		// Read prune stats slot from context (set by chat handler before bridge call).
@@ -638,7 +642,9 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ph.setRouteHeaders(w, pr)
 	routingMode := ph.extractRoutingMode(r)
-	slog.Debug("[proxy] routing request", "model", pr.model, "streaming", pr.streaming, "mode", routingMode, "body", string(pr.body))
+	if slog.Default().Enabled(nil, slog.LevelDebug) {
+		slog.Debug("[proxy] routing request", "model", pr.model, "streaming", pr.streaming, "mode", routingMode, "body", string(pr.body))
+	}
 
 	routeReq := &providerpool.RouteRequest{
 		ModelID:             pr.model,
@@ -803,11 +809,20 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		slog.Error("[proxy] all providers failed", "model", pr.model, "error", err)
-		// Propagate original status code for client errors (4xx) so the bridge
-		// can distinguish non-retryable errors from server failures.
+		// Propagate original status code so the bridge can distinguish
+		// non-retryable errors from transient server failures.
 		statusCode := http.StatusBadGateway
-		if strings.HasPrefix(err.Error(), "upstream 400:") {
+		errMsg := err.Error()
+		switch {
+		case errors.Is(err, providerpool.ErrNoAvailableProvider) || strings.Contains(errMsg, "no available provider"):
+			// 503 = no provider can serve this model — retrying won't help.
+			statusCode = http.StatusServiceUnavailable
+		case strings.HasPrefix(errMsg, "upstream 400:"):
 			statusCode = http.StatusBadRequest
+		case strings.Contains(errMsg, "overloaded (529)"):
+			statusCode = 529
+		case strings.Contains(errMsg, "throttled (429)"):
+			statusCode = http.StatusTooManyRequests
 		}
 		http.Error(w, SanitizeError(err), statusCode)
 		return
@@ -851,6 +866,29 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 		return nil, fmt.Errorf("invalid provider base URL: %s", provider.BaseURL)
 	}
 
+	// Copilot: use dynamic endpoint from token response if available
+	// The endpoint is returned from GetCopilotToken and cached in the OAuth manager.
+	// We must call GetCopilotAccessToken here (not just GetCopilotEndpoint) to trigger
+	// the token exchange and cache the endpoint BEFORE building the request.
+	if provider.APIFormat == providerpool.APIFormatCopilot && ph.oauthManager != nil {
+		// Try to get the Copilot access token - this will also fetch and cache the endpoint
+		copilotToken, tokenErr := ph.oauthManager.GetCopilotAccessToken(provider.ID)
+		if tokenErr != nil {
+			slog.Warn("[proxy] failed to get Copilot access token, will use default endpoint", "provider", provider.ID, "error", tokenErr)
+		} else if copilotToken != "" {
+			// Now the endpoint should be cached
+			copilotEndpoint := ph.oauthManager.GetCopilotEndpoint()
+			if copilotEndpoint != "" {
+				newURL, err := url.Parse(copilotEndpoint)
+				if err == nil {
+					targetURL.Host = newURL.Host
+					targetURL.Scheme = newURL.Scheme
+					slog.Info("[proxy] using dynamic Copilot endpoint", "provider", provider.ID, "endpoint", copilotEndpoint)
+				}
+			}
+		}
+	}
+
 	// Build upstream URL - avoid duplicate path segments
 	upstreamURL := *targetURL
 	requestPath := r.URL.Path
@@ -858,15 +896,10 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	// Format conversion: if provider expects Anthropic format but request is OpenAI,
 	// convert body and switch path to /v1/messages.
 	if effectiveFormat == providerpool.APIFormatAnthropic && strings.HasSuffix(requestPath, "/chat/completions") {
-		converted, newPath, convErr := sharedConverter.ConvertRequest(body, ProviderTypeAnthropic)
+		converted, newPath, convErr := sharedConverter.ConvertRequestWithCaching(body, ProviderTypeAnthropic, ph.promptCacheEnabled.Load())
 		if convErr == nil {
 			body = converted
 			requestPath = newPath // "/v1/messages"
-			if ph.promptCacheEnabled.Load() {
-				if cached, cacheErr := InjectPromptCaching(body); cacheErr == nil {
-					body = cached
-				}
-			}
 			slog.Debug("[proxy] converted OpenAI→Anthropic format", "provider", provider.ID, "path", newPath)
 		} else {
 			slog.Warn("[proxy] format conversion failed, sending as-is", "provider", provider.ID, "error", convErr)
@@ -876,7 +909,19 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	if targetURL.Path != "" && targetURL.Path != "/" {
 		basePath := strings.TrimSuffix(targetURL.Path, "/")
 		if strings.HasPrefix(requestPath, basePath) {
+			// Request path already includes the base path (e.g. base=/v1, req=/v1/chat/completions)
 			upstreamURL.Path = requestPath
+		} else if idx := strings.LastIndex(basePath, "/v"); idx >= 0 {
+			// Base URL ends with a version segment (e.g. /api/v1, /api/paas/v4).
+			// If request path also starts with a version prefix (/v1/, /v2/, etc.),
+			// strip it to avoid duplication like /api/v1/v1/... or /api/paas/v4/v1/...
+			// This handles both same-version (OpenRouter /api/v1 + /v1/chat/completions)
+			// and cross-version (GLM /api/paas/v4 + /v1/chat/completions) cases.
+			if trimmed := stripVersionPrefix(requestPath); trimmed != "" {
+				upstreamURL.Path = singleJoiningSlash(basePath, trimmed)
+			} else {
+				upstreamURL.Path = singleJoiningSlash(targetURL.Path, requestPath)
+			}
 		} else {
 			upstreamURL.Path = singleJoiningSlash(targetURL.Path, requestPath)
 		}
@@ -890,14 +935,9 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	if strings.HasSuffix(finalPath, "/messages") && effectiveFormat != providerpool.APIFormatAnthropic {
 		// Final URL is Anthropic endpoint but body wasn't converted — fix it.
 		// This happens when base URL already contains /messages or format was misdetected.
-		converted, _, convErr := sharedConverter.ConvertRequest(body, ProviderTypeAnthropic)
+		converted, _, convErr := sharedConverter.ConvertRequestWithCaching(body, ProviderTypeAnthropic, ph.promptCacheEnabled.Load())
 		if convErr == nil {
 			body = converted
-			if ph.promptCacheEnabled.Load() {
-				if cached, cacheErr := InjectPromptCaching(body); cacheErr == nil {
-					body = cached
-				}
-			}
 			slog.Info("[proxy] URI fixup: endpoint is /messages, converted body to Anthropic",
 				"provider", provider.ID, "final_path", finalPath)
 		}
@@ -905,9 +945,9 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	upstreamURL.RawQuery = r.URL.RawQuery
 
 	fullURL := upstreamURL.String()
-	slog.Info("[proxy] upstream request", "url", fullURL, "method", r.Method, "format", effectiveFormat, "body_len", len(body))
+	slog.Debug("[proxy] upstream request", "url", fullURL, "method", r.Method, "format", effectiveFormat, "body_len", len(body))
 
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, io.NopCloser(bytes.NewReader(body)))
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -1011,11 +1051,26 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 		}
 	}
 
-	// 5. Remaining formats — Anthropic first (better tools/vision support)
-	for _, f := range [...]providerpool.APIFormat{providerpool.APIFormatAnthropic, providerpool.APIFormatOpenAI} {
-		if !has(f) {
-			buf[n] = f
+	// 5. Remaining formats — skip cross-family fallbacks for providers that
+	// definitively only support one API family. Copilot and Ollama will never
+	// serve /v1/messages; trying Anthropic format wastes a round-trip and can
+	// cause spurious model blacklisting. Generic OpenAI providers may actually
+	// be Anthropic-compatible relays, so we still try both for them.
+	switch provider.APIFormat {
+	case providerpool.APIFormatCopilot, providerpool.APIFormatOllama:
+		// Single-family providers — only add OpenAI as fallback
+		if !has(providerpool.APIFormatOpenAI) {
+			buf[n] = providerpool.APIFormatOpenAI
 			n++
+		}
+	default:
+		// All other providers (including generic openai, anthropic, cloudcode, unknown)
+		// — try both families as fallback
+		for _, f := range [...]providerpool.APIFormat{providerpool.APIFormatAnthropic, providerpool.APIFormatOpenAI} {
+			if !has(f) {
+				buf[n] = f
+				n++
+			}
 		}
 	}
 
@@ -1029,7 +1084,7 @@ func (ph *ProxyHandler) persistDetectedFormat(provider *providerpool.Provider, f
 		return // already persisted
 	}
 	provider.DetectedFormat = format
-	provider.DetectedAt = time.Now()
+	provider.DetectedAt = timeutil.NowTime()
 	if ph.providerPool != nil && ph.providerPool.Registry != nil {
 		// Async persist — don't block the request path on DB write
 		go func(p *providerpool.Provider) {
@@ -1093,8 +1148,8 @@ func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, ro
 		}
 	}
 
-	// 3. Original model
-	if !has(originalModel) {
+	// 3. Original model (skip empty — happens when "auto" is normalized to "")
+	if originalModel != "" && !has(originalModel) {
 		if !ph.providerMemory.IsModelBlacklisted(pid, burl, originalModel) {
 			add(originalModel)
 		}
@@ -1186,8 +1241,10 @@ func (ph *ProxyHandler) tryOnProvider(
 		resp.Body.Close()
 		statusCode := resp.StatusCode
 
-		// Format mismatch on fast path — expand to all formats and fall through to general loop
-		if allFormats > 1 && isFormatMismatchError(statusCode, errBody) {
+		// Format mismatch on fast path — expand to all formats and fall through to general loop.
+		// Exception: when format is already known, a 404 is likely model-not-found (e.g. Copilot
+		// returns "page not found" for unknown models), not a format issue.
+		if allFormats > 1 && isFormatMismatchError(statusCode, errBody) && !(formatKnown && statusCode == 404) {
 			errStr := string(errBody)
 			if len(errStr) > 256 {
 				errStr = errStr[:256]
@@ -1211,15 +1268,24 @@ func (ph *ProxyHandler) tryOnProvider(
 				ph.providerMemory.RememberThrottle(pid, burl, retryAfter)
 				return nil, "", "", fmt.Errorf("provider %s throttled (429)", pid)
 			}
+			if statusCode == 529 {
+				ph.providerMemory.RememberThrottle(pid, burl, 30*time.Second)
+				return nil, "", "", fmt.Errorf("provider %s overloaded (529)", pid)
+			}
 			if statusCode >= 500 {
 				return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
 			}
-			if isFormatMismatchError(statusCode, errBody) {
+			if isFormatMismatchError(statusCode, errBody) && !(formatKnown && statusCode == 404) {
 				return nil, "", "", fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 			}
-			if isModelNotConfiguredError(statusCode, errBody) {
+			if isModelNotConfiguredError(statusCode, errBody) || (formatKnown && statusCode == 404) {
 				ph.providerMemory.BlacklistModel(pid, burl, pr.model)
 				return nil, "", "", fmt.Errorf("model %s not configured on provider %s: %s", pr.model, pid, errStr)
+			}
+			// Auth errors — don't blacklist model
+			if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden ||
+				(statusCode == http.StatusBadRequest && isAuthRelatedBody(errBody)) {
+				return nil, "", "", fmt.Errorf("provider %s auth error (%d): %s", pid, statusCode, errStr)
 			}
 			ph.providerMemory.BlacklistModel(pid, burl, pr.model)
 			return nil, "", "", fmt.Errorf("provider returned %d: %s", statusCode, errStr)
@@ -1294,6 +1360,14 @@ func (ph *ProxyHandler) tryOnProvider(
 				return nil, "", "", fmt.Errorf("provider %s throttled (429)", pid)
 			}
 
+			// 529: Anthropic "overloaded" — treat like 429, fast-fail without retry.
+			// The model/provider is temporarily at capacity; retrying wastes time.
+			if statusCode == 529 {
+				ph.providerMemory.RememberThrottle(pid, burl, 30*time.Second)
+				slog.Warn("[proxy] upstream overloaded (529), fast-fail", "provider", pid, "model", model)
+				return nil, "", "", fmt.Errorf("provider %s overloaded (529)", pid)
+			}
+
 			if statusCode >= 500 {
 				// 5xx: server error, skip entire provider
 				slog.Warn("[proxy] upstream 5xx", "provider", pid, "status", statusCode)
@@ -1303,7 +1377,12 @@ func (ph *ProxyHandler) tryOnProvider(
 			// Format mismatch: 422, or 404/400 with format-related error body.
 			// Check BEFORE isModelNotConfiguredError since both match 404/422.
 			// Don't blacklist the model — try the next format instead.
-			if isFormatMismatchError(statusCode, errBody) {
+			//
+			// Exception: when the format is already known (detected or remembered),
+			// a 404 "page not found" is NOT a format mismatch — it means the model
+			// doesn't exist on this provider (e.g. Copilot returns 404 for unknown
+			// models). Let it fall through to isModelNotConfiguredError.
+			if isFormatMismatchError(statusCode, errBody) && !(formatKnown && statusCode == 404) {
 				slog.Warn("[proxy] format mismatch, trying next format",
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
 				lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
@@ -1316,8 +1395,12 @@ func (ph *ProxyHandler) tryOnProvider(
 				continue
 			}
 
-			// Check if this is a "not configured" / "model not found" error
-			if isModelNotConfiguredError(statusCode, errBody) {
+			// Check if this is a "not configured" / "model not found" error.
+			// When the format is already known, a 404 means the model doesn't
+			// exist on this provider (e.g. Copilot returns generic "page not found"
+			// for unknown models) — treat it as model-not-configured even if the
+			// body doesn't contain model-specific keywords.
+			if isModelNotConfiguredError(statusCode, errBody) || (formatKnown && statusCode == 404) {
 				slog.Warn("[proxy] model not configured on provider, blacklisting and trying next",
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
 				// Blacklist THIS model on THIS provider (per-provider scope) so we don't retry it
@@ -1336,6 +1419,16 @@ func (ph *ProxyHandler) tryOnProvider(
 				slog.Warn("[proxy] 400 invalid_request_error, not retryable",
 					"provider", pid, "format", format, "model", model, "body", errStr)
 				return nil, "", "", fmt.Errorf("upstream 400: %s", errStr)
+			}
+
+			// Auth errors (401, 403, or 400 with auth-related body): the provider
+			// rejected our credentials. Don't blacklist the model — it's not the
+			// model's fault. Skip entire provider so failover can try another.
+			if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden ||
+				(statusCode == http.StatusBadRequest && isAuthRelatedBody(errBody)) {
+				slog.Warn("[proxy] auth error, skipping provider",
+					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
+				return nil, "", "", fmt.Errorf("provider %s auth error (%d): %s", pid, statusCode, errStr)
 			}
 
 			// Other 4xx: blacklist this model on this provider, try next model/format
@@ -1449,6 +1542,9 @@ var formatMismatch422Patterns = [][]byte{
 // rather than a model configuration issue. These errors should trigger format fallback,
 // not model blacklisting.
 // NOTE: Must be called BEFORE isModelNotConfiguredError since both match 422/404.
+// CAVEAT: Callers should also check formatKnown — when the format is already detected,
+// a 404 "page not found" is more likely a model-not-found error (e.g. GitHub Copilot
+// returns generic 404 for unknown models) than a format mismatch.
 func isFormatMismatchError(statusCode int, body []byte) bool {
 	if statusCode != 400 && statusCode != 404 && statusCode != 422 {
 		return false
@@ -1474,8 +1570,42 @@ func isFormatMismatchError(statusCode int, body []byte) bool {
 		}
 		return false
 	}
+	// For 404: a short "page not found" / "not found" body (without model-specific
+	// keywords) almost certainly means the endpoint doesn't exist — i.e. wrong API
+	// format (e.g. /v1/messages on an OpenAI-only provider like GitHub Copilot).
+	if statusCode == 404 {
+		if bytes.Contains(lower, []byte("page not found")) || bytes.Contains(lower, []byte("not found")) {
+			return true
+		}
+	}
 	// For 400/404, check body for format-related patterns
 	for _, pattern := range formatMismatchPatterns {
+		if bytes.Contains(lower, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// authRelatedPatterns are body patterns indicating an authentication/authorization
+// failure (as opposed to a model or format issue).
+var authRelatedPatterns = [][]byte{
+	[]byte("authorization"),
+	[]byte("authenticate"),
+	[]byte("unauthorized"),
+	[]byte("forbidden"),
+	[]byte("invalid.*token"),
+	[]byte("invalid api key"),
+	[]byte("invalid key"),
+	[]byte("api key"),
+	[]byte("access denied"),
+	[]byte("credentials"),
+}
+
+// isAuthRelatedBody checks if an error body indicates an auth problem.
+func isAuthRelatedBody(body []byte) bool {
+	lower := toLowerBytes(body)
+	for _, pattern := range authRelatedPatterns {
 		if bytes.Contains(lower, pattern) {
 			return true
 		}
@@ -1537,6 +1667,12 @@ func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.R
 		basePath := strings.TrimSuffix(targetURL.Path, "/")
 		if strings.HasPrefix(requestPath, basePath) {
 			upstreamURL.Path = requestPath
+		} else if idx := strings.LastIndex(basePath, "/v"); idx >= 0 {
+			if trimmed := stripVersionPrefix(requestPath); trimmed != "" {
+				upstreamURL.Path = singleJoiningSlash(basePath, trimmed)
+			} else {
+				upstreamURL.Path = singleJoiningSlash(targetURL.Path, requestPath)
+			}
 		} else {
 			upstreamURL.Path = singleJoiningSlash(targetURL.Path, requestPath)
 		}
@@ -1571,7 +1707,18 @@ func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.R
 		}
 	} else if route.OAuth != nil && route.OAuth.Connected && ph.oauthManager != nil {
 		// OAuth authentication — get fresh access token
-		token, oauthErr := ph.oauthManager.GetAccessToken(provider.ID)
+		var token string
+		var oauthErr error
+		if provider.APIFormat == providerpool.APIFormatCopilot {
+			// Copilot requires exchanging GitHub OAuth token for a Copilot-specific JWT
+			token, oauthErr = ph.oauthManager.GetCopilotAccessToken(provider.ID)
+			// Copilot API requires Editor-Version header for IDE authentication
+			if oauthErr == nil {
+				req.Header.Set("Editor-Version", "vscode/1.85.0")
+			}
+		} else {
+			token, oauthErr = ph.oauthManager.GetAccessToken(provider.ID)
+		}
 		if oauthErr != nil {
 			slog.Warn("[proxy] oauth token error", "provider", provider.ID, "error", oauthErr)
 		} else {
@@ -1655,6 +1802,16 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 		return
 	}
 
+	// Fast path: no conversion, masking, or routing stats needed — stream directly.
+	needsConversion := pr.upstreamFormat == ProviderTypeAnthropic && resp.StatusCode == http.StatusOK
+	needsMasking := ph.dataMasker != nil && ph.dataMasker.IsEnabled()
+	needsRoutingStats := resp.StatusCode == http.StatusOK && pr.originalModel != pr.model
+	if !needsConversion && !needsMasking && !needsRoutingStats {
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+		return
+	}
+
 	respBody, err := readBody(resp.Body)
 	if err != nil {
 		w.WriteHeader(resp.StatusCode)
@@ -1670,7 +1827,11 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 
 	// Mask sensitive data in response body (non-streaming only)
 	if dm := ph.dataMasker; dm != nil && dm.IsEnabled() {
-		respBody = []byte(dm.MaskResponse(string(respBody)))
+		masked := dm.MaskResponseBytes(respBody)
+		if !bytes.Equal(masked, respBody) {
+			respBody = masked
+			w.Header().Set("X-Data-Masked", "true")
+		}
 	}
 
 	// Track routing cost savings (non-streaming only — streaming has no full body here)
@@ -1992,4 +2153,22 @@ func singleJoiningSlash(a, b string) string {
 		return a + "/" + b
 	}
 	return a + b
+}
+
+// stripVersionPrefix strips a leading /v{N} prefix from a path (e.g. /v1/chat/completions → /chat/completions).
+// Returns the stripped path, or "" if the path doesn't start with a version prefix.
+func stripVersionPrefix(path string) string {
+	if len(path) < 3 || path[0] != '/' || path[1] != 'v' {
+		return ""
+	}
+	// Find end of version number: /v1, /v2, /v1beta, /v4, etc.
+	i := 2
+	for i < len(path) && path[i] != '/' {
+		i++
+	}
+	if i >= len(path) {
+		// Path is just "/v1" with no trailing content
+		return "/"
+	}
+	return path[i:] // e.g. "/chat/completions"
 }

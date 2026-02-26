@@ -180,7 +180,7 @@ func (e *LinuxExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*Ex
 // IsSupported returns true if Linux sandboxing is supported.
 func (e *LinuxExecutor) IsSupported() bool {
 	// Check if we can create namespaces
-	cmd := exec.Command("unshare", "--help")
+	cmd := exec.Command("unshare", "help")
 	return cmd.Run() == nil
 }
 

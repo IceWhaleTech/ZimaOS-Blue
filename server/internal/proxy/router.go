@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Provider represents an upstream provider
@@ -173,7 +175,7 @@ func (r *Router) UpdateHealth(name string, healthy bool, err error) {
 
 	if provider, ok := r.providers[name]; ok {
 		provider.Healthy = healthy
-		provider.LastCheck = time.Now()
+		provider.LastCheck = timeutil.NowTime()
 		provider.LastError = err
 	}
 }
@@ -185,7 +187,7 @@ func (r *Router) UpdateHealthWithLatency(name string, healthy bool, err error, l
 
 	if provider, ok := r.providers[name]; ok {
 		provider.Healthy = healthy
-		provider.LastCheck = time.Now()
+		provider.LastCheck = timeutil.NowTime()
 		provider.LastError = err
 		provider.LastLatency = latency
 	}

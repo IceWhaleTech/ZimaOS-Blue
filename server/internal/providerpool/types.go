@@ -142,7 +142,9 @@ type APIKey struct {
 	Enabled    bool      `json:"enabled"`
 }
 
-// OAuthConfig represents OAuth configuration for providers that support it
+// OAuthConfig represents OAuth template configuration for providers that support it.
+// The actual connected accounts (tokens) are stored in the oauth_tokens table.
+// This struct on Provider holds the template (provider_type, scopes, endpoint, etc.).
 type OAuthConfig struct {
 	ClientID     string    `json:"client_id"`
 	ClientSecret string    `json:"-"` // Never expose
@@ -156,7 +158,21 @@ type OAuthConfig struct {
 	ProjectID    string `json:"project_id,omitempty"`    // Google Cloud Code project ID
 	Email        string `json:"email,omitempty"`         // Authenticated user email
 	Endpoint     string `json:"endpoint,omitempty"`      // API endpoint URL (e.g., cloudcode-pa.googleapis.com)
-	Connected    bool   `json:"connected"`               // Whether OAuth is currently connected
+	Connected    bool   `json:"connected"`               // Whether OAuth is currently connected (legacy: true if any account connected)
+
+	// Multi-account: number of connected OAuth accounts (populated at runtime from oauth_tokens table)
+	AccountCount int `json:"account_count,omitempty"`
+}
+
+// OAuthAccount represents a single connected OAuth account (returned in API responses).
+type OAuthAccount struct {
+	ID           string    `json:"id"`
+	ProviderType string    `json:"provider_type"`
+	Email        string    `json:"email,omitempty"`
+	ProjectID    string    `json:"project_id,omitempty"`
+	Endpoint     string    `json:"endpoint,omitempty"`
+	TokenExpiry  time.Time `json:"token_expiry,omitempty"`
+	Connected    bool      `json:"connected"`
 }
 
 // RateLimitConfig represents rate limiting configuration
@@ -458,11 +474,12 @@ type FailoverResult struct {
 
 // CooldownEntry tracks cooldown state for a provider
 type CooldownEntry struct {
-	ProviderID     string    `json:"provider_id"`
-	CooldownUntil  time.Time `json:"cooldown_until"`
-	FailureCount   int       `json:"failure_count"`
-	LastFailure    time.Time `json:"last_failure"`
-	LastError      string    `json:"last_error"`
+	ProviderID            string    `json:"provider_id"`
+	CooldownUntil         time.Time `json:"cooldown_until"`
+	FailureCount          int       `json:"failure_count"`
+	TransientFailureCount int       `json:"transient_failure_count"` // 502/503 failures tracked separately
+	LastFailure           time.Time `json:"last_failure"`
+	LastError             string    `json:"last_error"`
 }
 
 // CooldownConfig configures the cooldown behavior
@@ -477,6 +494,11 @@ type CooldownConfig struct {
 	CooldownMultiplier float64 `json:"cooldown_multiplier"`
 	// ResetAfter resets failure count after this duration of success
 	ResetAfter time.Duration `json:"reset_after"`
+
+	// Transient error overrides (502/503) — shorter cooldown for temporary upstream issues
+	TransientFailureThreshold int           `json:"transient_failure_threshold"` // 0 = use FailureThreshold
+	TransientInitialCooldown  time.Duration `json:"transient_initial_cooldown"`  // 0 = use InitialCooldown
+	TransientMaxCooldown      time.Duration `json:"transient_max_cooldown"`      // 0 = use MaxCooldown
 }
 
 // DefaultCooldownConfig returns sensible defaults for cooldown
@@ -487,5 +509,10 @@ func DefaultCooldownConfig() *CooldownConfig {
 		MaxCooldown:        5 * time.Minute,
 		CooldownMultiplier: 2.0,
 		ResetAfter:         5 * time.Minute,
+
+		// Transient 502/503: higher threshold, much shorter cooldown
+		TransientFailureThreshold: 5,
+		TransientInitialCooldown:  5 * time.Second,
+		TransientMaxCooldown:      30 * time.Second,
 	}
 }

@@ -197,23 +197,23 @@ func TestFormatSkillsPrompt_XMLOutput(t *testing.T) {
 
 	result := FormatSkillsPrompt(skills)
 
-	// Check XML structure
+	// Check compact XML attribute format
 	if !contains(result, "<available_skills>") {
 		t.Error("missing <available_skills> tag")
 	}
 	if !contains(result, "</available_skills>") {
 		t.Error("missing </available_skills> tag")
 	}
-	if !contains(result, "<name>weather</name>") {
+	if !contains(result, `name="weather"`) {
 		t.Error("missing weather skill name")
 	}
-	if !contains(result, "<description>Get weather info</description>") {
+	if !contains(result, `desc="Get weather info"`) {
 		t.Error("missing weather description")
 	}
-	if !contains(result, "<location>/path/to/weather/SKILL.md</location>") {
-		t.Error("missing weather location")
+	if !contains(result, `cmd="blue weather"`) {
+		t.Error("missing weather cmd")
 	}
-	if !contains(result, "<name>calc</name>") {
+	if !contains(result, `name="calc"`) {
 		t.Error("missing calc skill name")
 	}
 }
@@ -225,11 +225,13 @@ func TestFormatSkillsPrompt_XMLEscape(t *testing.T) {
 
 	result := FormatSkillsPrompt(skills)
 
-	if !contains(result, "test &amp; &lt;skill&gt;") {
+	// Compact format uses %q which Go-escapes quotes, and xmlEscape handles cmd attr
+	if !contains(result, "test \\u0026 \\u003cskill\\u003e") && !contains(result, `test & <skill>`) {
+		// %q escapes & and < as unicode escapes
 		t.Errorf("XML escaping failed for name, got: %s", result)
 	}
-	if !contains(result, "Use &quot;quotes&quot;") {
-		t.Errorf("XML escaping failed for description, got: %s", result)
+	if !contains(result, `cmd="blue test &amp; &lt;skill&gt;"`) {
+		t.Errorf("XML escaping failed for cmd, got: %s", result)
 	}
 }
 

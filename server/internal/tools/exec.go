@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	"github.com/creack/pty"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ExecConfig configures the exec tool.
@@ -71,6 +73,7 @@ type ExecTool struct {
 	registry  *Registry             // may be nil; when set, exec auto-forwards tool-name commands
 	retries   *RetryTracker         // prevents same-command retry loops
 	audit     *ExecAuditStore       // may be nil; persistent audit log
+	skillExec SkillExecFunc         // may be nil; short-circuits `blue <skill>` commands
 }
 
 // NewExecTool creates a new exec tool.
@@ -128,6 +131,15 @@ func (t *ExecTool) SetToolNames(names []string) {
 // instead of returning an error.
 func (t *ExecTool) SetRegistry(r *Registry) {
 	t.registry = r
+}
+
+// SkillExecFunc executes a skill by ID with the given input.
+// Returns (map[string]string, error) matching the IPC SkillExecutor interface.
+type SkillExecFunc func(ctx context.Context, skillID string, input map[string]any) (map[string]string, error)
+
+// SetSkillExecutor sets the skill executor for short-circuiting `blue <skill>` commands.
+func (t *ExecTool) SetSkillExecutor(fn SkillExecFunc) {
+	t.skillExec = fn
 }
 
 // getShellConfig returns the shell and args, preferring config overrides.
@@ -383,6 +395,21 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		hostArg = "sandbox"
 	}
 
+	// Force `blue <subcommand>` to run on host — these are IPC calls to the
+	// main process and the sandbox doesn't have the blue binary in PATH.
+	if hostArg == "sandbox" && strings.HasPrefix(strings.TrimSpace(command), "blue ") {
+		hostArg = ""
+		warnings = append(warnings, "blue subcommand forced to host (IPC)")
+	}
+
+	// Short-circuit `blue <skill> key=value` commands: call the skill executor
+	// directly instead of spawning a subprocess + IPC round-trip.
+	if t.skillExec != nil && strings.HasPrefix(strings.TrimSpace(command), "blue ") {
+		if result, ok := t.trySkillShortCircuit(ctx, command, warnings); ok {
+			return result, nil
+		}
+	}
+
 	// Sandbox mode: delegate to sandbox.Manager for filesystem-level isolation.
 	if hostArg == "sandbox" {
 		return t.runSandbox(ctx, command, workdir, envArg, timeout, warnings)
@@ -394,7 +421,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		ID:        sessionID,
 		Command:   command,
 		Workdir:   workdir,
-		StartedAt: time.Now(),
+		StartedAt: timeutil.NowTime(),
 		Stdout:    NewOutputBuffer(t.config.MaxOutput),
 		Stderr:    NewOutputBuffer(t.config.MaxOutput),
 		Status:    ProcessRunning,
@@ -575,7 +602,7 @@ func (t *ExecTool) runDirect(ctx context.Context, session *ProcessSession, comma
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		readIntoBuffer(stdoutPipe, session.Stdout)
+		readIntoBufferWithCards(ctx, stdoutPipe, session.Stdout)
 	}()
 	go func() {
 		defer wg.Done()
@@ -685,12 +712,214 @@ func readIntoBuffer(r io.Reader, buf *OutputBuffer) {
 	}
 }
 
+const (
+	cardPrefix = "__CARD__"
+	cardSuffix = "__END__"
+)
+
+// readIntoBufferWithCards reads from r line-by-line, extracting __CARD__...__END__
+// lines and forwarding them to the CardEmitter via ctx. Non-card content is
+// appended to buf as usual. This enables streaming card emission from blue
+// subcommands running as child processes.
+func readIntoBufferWithCards(ctx context.Context, r io.Reader, buf *OutputBuffer) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024) // up to 256KB lines
+	for scanner.Scan() {
+		line := scanner.Text()
+		if card, ok := extractCardPayload(line); ok {
+			EmitCard(ctx, card)
+			continue
+		}
+		buf.Append(line + "\n")
+	}
+}
+
+// extractCardPayload checks if a line matches __CARD__{json}__END__ and returns
+// the parsed JSON map. Returns nil, false if the line is not a card.
+func extractCardPayload(line string) (map[string]interface{}, bool) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, cardPrefix) || !strings.HasSuffix(line, cardSuffix) {
+		return nil, false
+	}
+	payload := line[len(cardPrefix) : len(line)-len(cardSuffix)]
+	var card map[string]interface{}
+	if err := json.Unmarshal([]byte(payload), &card); err != nil {
+		return nil, false
+	}
+	return card, true
+}
+
+// trySkillShortCircuit attempts to execute a `blue <skill> key=value` command
+// by calling the skill executor directly, avoiding subprocess + IPC overhead.
+// Returns (result, true) on success, (nil, false) if the command doesn't match
+// a skill or the skill executor fails (fall through to normal exec).
+func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, warnings []string) (interface{}, bool) {
+	// Parse: "blue <skillName> key=value key2=value2 ..."
+	trimmed := strings.TrimSpace(command)
+	rest := strings.TrimPrefix(trimmed, "blue ")
+	if rest == trimmed {
+		return nil, false
+	}
+
+	// Extract skill name (first word)
+	parts := strings.SplitN(rest, " ", 2)
+	skillName := parts[0]
+	if skillName == "" || skillName == "help" || skillName == "version" {
+		return nil, false
+	}
+
+	// Parse key=value pairs from the rest
+	input := make(map[string]any)
+	if len(parts) > 1 {
+		parseKeyValuePairs(parts[1], input)
+	}
+
+	slog.Info("[exec] skill short-circuit", "skill", skillName, "input", input)
+
+	data, err := t.skillExec(ctx, skillName, input)
+	if err != nil {
+		// If skill not found or disabled, fall through to normal exec
+		if strings.Contains(err.Error(), "unknown skill") || strings.Contains(err.Error(), "is disabled") {
+			return nil, false
+		}
+		// Skill found but execution failed — return error as exec result
+		// instead of falling through to subprocess (which would fail the same way).
+		slog.Warn("[exec] skill short-circuit failed", "skill", skillName, "err", err)
+		exitCode := 1
+		result := execResult{
+			SessionID: NewSessionID(),
+			Status:    "failed",
+			ExitCode:  &exitCode,
+			Stderr:    err.Error(),
+			Warnings:  append(warnings, "skill short-circuit: "+skillName),
+			Host:      "local",
+		}
+		b, _ := json.Marshal(result)
+		return string(b), true
+	}
+
+	// Build exec-style result with skill output
+	var stdout strings.Builder
+	for k, v := range data {
+		if k == "success" || k == "_card" {
+			continue
+		}
+		stdout.WriteString(k)
+		stdout.WriteString(": ")
+		stdout.WriteString(v)
+		stdout.WriteByte('\n')
+	}
+
+	// Emit card if _card hint present
+	if hint, ok := data["_card"]; ok && hint != "" {
+		card := make(map[string]interface{}, len(data))
+		for k, v := range data {
+			if k == "_card" || k == "success" {
+				continue
+			}
+			// Try to recover structured data from JSON strings
+			if len(v) > 0 && (v[0] == '[' || v[0] == '{') {
+				var parsed interface{}
+				if json.Unmarshal([]byte(v), &parsed) == nil {
+					card[k] = parsed
+					continue
+				}
+			}
+			card[k] = v
+		}
+		card["type"] = hint
+		EmitCard(ctx, card)
+	}
+
+	warnings = append(warnings, "skill short-circuit: "+skillName)
+	exitCode := 0
+	result := execResult{
+		SessionID: NewSessionID(),
+		Status:    "completed",
+		ExitCode:  &exitCode,
+		Stdout:    stdout.String(),
+		Warnings:  warnings,
+		Host:      "local",
+	}
+	resultJSON, _ := json.Marshal(result)
+	return string(resultJSON), true
+}
+
+// parseKeyValuePairs parses "key=value key2=\"value with spaces\"" into a map.
+func parseKeyValuePairs(s string, out map[string]any) {
+	s = strings.TrimSpace(s)
+	for s != "" {
+		// Find key
+		eqIdx := strings.IndexByte(s, '=')
+		if eqIdx < 0 {
+			break
+		}
+		key := strings.TrimSpace(s[:eqIdx])
+		s = s[eqIdx+1:]
+
+		// Parse value (may be quoted)
+		var val string
+		if len(s) > 0 && s[0] == '"' {
+			// Find closing quote (handle escaped quotes)
+			end := 1
+			for end < len(s) {
+				if s[end] == '\\' && end+1 < len(s) {
+					end += 2
+					continue
+				}
+				if s[end] == '"' {
+					break
+				}
+				end++
+			}
+			if end < len(s) {
+				val = s[1:end]
+				s = s[end+1:]
+			} else {
+				val = s[1:]
+				s = ""
+			}
+			// Unescape
+			val = strings.ReplaceAll(val, `\"`, `"`)
+		} else {
+			// Unquoted: read until next space
+			spIdx := strings.IndexByte(s, ' ')
+			if spIdx < 0 {
+				val = s
+				s = ""
+			} else {
+				val = s[:spIdx]
+				s = s[spIdx+1:]
+			}
+		}
+		if key != "" {
+			out[key] = val
+		}
+	}
+}
+
 // runSandbox delegates execution to the SandboxExecutor for filesystem-level
 // isolation. The sandbox enforces AllowedPaths/DeniedPaths so commands cannot
 // access directories outside the sandbox even via cd or absolute paths.
 func (t *ExecTool) runSandbox(ctx context.Context, command, workdir string, envMap map[string]string, timeout time.Duration, warnings []string) (interface{}, error) {
 	if t.sandbox == nil {
 		return nil, errors.New("exec denied: sandbox mode requested but no sandbox manager configured")
+	}
+
+	// Ensure the running executable's directory is in PATH so `blue <subcommand>`
+	// works inside the sandbox (the sandbox builds its own minimal PATH).
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		if envMap == nil {
+			envMap = map[string]string{}
+		}
+		if cur, ok := envMap["PATH"]; ok {
+			if !strings.Contains(cur, exeDir) {
+				envMap["PATH"] = exeDir + string(filepath.ListSeparator) + cur
+			}
+		} else {
+			envMap["PATH"] = exeDir
+		}
 	}
 
 	userID := GetUserID(ctx)
@@ -755,7 +984,7 @@ func (t *ExecTool) recordAudit(ctx context.Context, command, workdir string, ris
 	}
 	_ = t.audit.Record(ExecAuditEntry{
 		ID:         NewSessionID(),
-		Timestamp:  time.Now(),
+		Timestamp:  timeutil.NowTime(),
 		UserID:     GetUserID(ctx),
 		Command:    command,
 		Workdir:    workdir,
@@ -860,10 +1089,8 @@ func localeFromTag(tag string) string {
 
 func buildExecEnv(extra map[string]string) []string {
 	base := os.Environ()
-	if len(extra) == 0 {
-		return base
-	}
-	// Merge: extra overrides base.
+	// Merge: extra overrides base. Also ensure the running executable's
+	// directory is in PATH so `blue <subcommand>` works regardless of install location.
 	env := make(map[string]string, len(base)+len(extra))
 	for _, kv := range base {
 		if idx := strings.IndexByte(kv, '='); idx >= 0 {
@@ -872,6 +1099,17 @@ func buildExecEnv(extra map[string]string) []string {
 	}
 	for k, v := range extra {
 		env[k] = v
+	}
+	// Prepend executable's directory to PATH.
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		if cur, ok := env["PATH"]; ok {
+			if !strings.Contains(cur, exeDir) {
+				env["PATH"] = exeDir + string(filepath.ListSeparator) + cur
+			}
+		} else {
+			env["PATH"] = exeDir
+		}
 	}
 	result := make([]string, 0, len(env))
 	for k, v := range env {
@@ -919,6 +1157,14 @@ func parseFloatArg(v interface{}, defaultVal float64) float64 {
 // to start at a word boundary or after whitespace/quotes.
 var absPathRe = regexp.MustCompile(`(?:^|[\s"'=])(/(?:[a-zA-Z0-9._~-]+/)*[a-zA-Z0-9._~-]+)`)
 
+// urlLikePathPrefixes are path prefixes that look like URL routes, not filesystem paths.
+// Paths starting with these are skipped by extractAbsolutePaths.
+var urlLikePathPrefixes = []string{
+	"/api/", "/v1/", "/v2/", "/v3/",
+	"/http", "/https",
+	"/graphql", "/webhook", "/ws/",
+}
+
 // extractAbsolutePaths returns all unique absolute paths referenced in a shell
 // command string. These are checked against the directory allowlist — the
 // prefix-based matching in isDirAllowed handles both file and directory paths.
@@ -936,12 +1182,28 @@ func extractAbsolutePaths(command string) []string {
 		if p == "/" {
 			continue
 		}
+		// Skip URL-like paths (e.g. /api/new-game, /v1/chat/completions).
+		if isURLLikePath(m[1]) {
+			continue
+		}
 		if _, ok := seen[p]; !ok {
 			seen[p] = struct{}{}
 			paths = append(paths, p)
 		}
 	}
 	return paths
+}
+
+// isURLLikePath returns true if the path looks like a URL route rather than
+// a filesystem path (e.g. /api/new-game, /v1/chat/completions).
+func isURLLikePath(path string) bool {
+	lower := strings.ToLower(path)
+	for _, prefix := range urlLikePathPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // validateCommandPaths extracts absolute paths from the command and checks

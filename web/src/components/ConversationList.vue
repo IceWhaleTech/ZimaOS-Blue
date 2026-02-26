@@ -329,15 +329,17 @@ watch(searchQuery, (query) => {
 
             <!-- Actions -->
             <div class="p-4 space-y-2">
+              <!-- Pin/Unpin action -->
               <button
                 v-for="conv in conversations.filter(c => c.id === showContextMenu)"
                 :key="conv.id"
-                class="w-full px-4 py-3 bg-yellow-500 hover:bg-yellow-600 text-white text-base font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 @click="handlePin(conv.id, conv.pinned || false); showContextMenu = null"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   class="h-5 w-5 transform rotate-45"
+                  :class="conv.pinned ? 'text-yellow-500' : 'text-gray-600 dark:text-gray-400'"
                   viewBox="0 0 24 24"
                   :fill="conv.pinned ? 'currentColor' : 'none'"
                   stroke="currentColor"
@@ -349,15 +351,18 @@ watch(searchQuery, (query) => {
                     d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"
                   />
                 </svg>
-                {{ conv.pinned ? t('chat.unpinConversation') : t('chat.pinConversation') }}
+                <span class="text-base font-medium text-gray-900 dark:text-white">
+                  {{ conv.pinned ? t('chat.unpinConversation') : t('chat.pinConversation') }}
+                </span>
               </button>
+              <!-- Delete action -->
               <button
-                class="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white text-base font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 @click="handleDelete(showContextMenu); showContextMenu = null"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  class="h-5 w-5"
+                  class="h-5 w-5 text-red-500"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -369,10 +374,13 @@ watch(searchQuery, (query) => {
                     d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                   />
                 </svg>
-                {{ t('chat.deleteConversation') }}
+                <span class="text-base font-medium text-red-500">
+                  {{ t('chat.deleteConversation') }}
+                </span>
               </button>
+              <!-- Cancel button -->
               <button
-                class="w-full px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white text-base font-medium rounded-xl transition-colors"
+                class="w-full px-4 py-3 mt-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-900 dark:text-white text-base font-medium rounded-xl transition-colors"
                 @click="showContextMenu = null"
               >
                 {{ t('common.cancel') }}

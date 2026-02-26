@@ -9,7 +9,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // OAuthQuotaInfo is the unified response for OAuth provider quota/tier queries.
@@ -63,7 +64,7 @@ type quotaInfo struct {
 func FetchCloudCodeQuota(ctx context.Context, accessToken, projectID, providerType string) (*OAuthQuotaInfo, error) {
 	info := &OAuthQuotaInfo{
 		ProviderType: providerType,
-		FetchedAt:    time.Now().UnixMilli(),
+		FetchedAt:    timeutil.NowMilli(),
 	}
 
 	// Determine ideType for the tier request

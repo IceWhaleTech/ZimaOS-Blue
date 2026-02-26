@@ -2,11 +2,16 @@
 import { onMounted } from 'vue'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import NotificationContainer from '@/components/NotificationContainer.vue'
+import AskUserQuestionDialog from '@/components/AskUserQuestionDialog.vue'
 import { useEventStream } from '@/composables/useEventStream'
 import { useWebPush } from '@/composables/useWebPush'
+import { useProviderPoolStore } from '@/stores/providerPool'
+import { useSettingsStore } from '@/stores/settings'
 
 const { connect: connectEventStream } = useEventStream()
 const { subscribe: subscribeWebPush } = useWebPush()
+const providerPoolStore = useProviderPoolStore()
+const settingsStore = useSettingsStore()
 
 function dismissSplash() {
   const splash = document.getElementById('app-splash')
@@ -26,10 +31,18 @@ onMounted(async () => {
 
   // Connect to SSE event stream for real-time updates
   connectEventStream()
+
+  // Pre-fetch provider and enhanced mode state so ChatView has data on first render
+  providerPoolStore.fetchProviders().then(() => {
+    const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
+    settingsStore.updateFromPoolProviders(llmProviders)
+  }).catch(() => {})
+  settingsStore.fetchClaudeCodeEnabled()
 })
 </script>
 
 <template>
   <DefaultLayout />
   <NotificationContainer />
+  <AskUserQuestionDialog />
 </template>

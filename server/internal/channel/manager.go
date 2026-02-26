@@ -251,8 +251,13 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 		}()
 	}
 
+	// Send periodic heartbeat messages so the user knows the bot is still alive
+	heartbeatDone := make(chan struct{})
+	go m.sendHeartbeats(ctx, ch, msg.ChatID, msg.ID, heartbeatDone)
+
 	response, err := handler(ctx, msg)
 	close(typingDone)
+	close(heartbeatDone)
 
 	if err != nil {
 		m.logger.Error("error handling message",
@@ -475,6 +480,37 @@ func (m *Manager) Broadcast(ctx context.Context, msg OutgoingMessage) map[string
 	}
 
 	return errors
+}
+
+// sendHeartbeats sends a single emoji message to the channel while the handler
+// is processing, so the user knows the bot is still alive. Stops when done is closed.
+func (m *Manager) sendHeartbeats(ctx context.Context, ch Channel, chatID, replyToID string, done <-chan struct{}) {
+	cfg := m.config.Heartbeat
+	if !cfg.Enabled || len(cfg.Emojis) == 0 {
+		return
+	}
+
+	// Wait initial delay before sending heartbeat
+	select {
+	case <-done:
+		return
+	case <-ctx.Done():
+		return
+	case <-time.After(cfg.InitialDelay):
+	}
+
+	// Send a single heartbeat message with ellipsis
+	emoji := cfg.Emojis[0] + "..."
+	if err := ch.Send(ctx, OutgoingMessage{
+		ChatID:    chatID,
+		ReplyToID: replyToID,
+		Content:   emoji,
+	}); err != nil {
+		m.logger.Debug("failed to send heartbeat message",
+			zap.String("channel", ch.Name()),
+			zap.String("chat_id", chatID),
+			zap.Error(err))
+	}
 }
 
 // truncateString truncates a string to the specified length.

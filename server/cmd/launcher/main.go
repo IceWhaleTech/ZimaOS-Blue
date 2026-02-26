@@ -27,6 +27,19 @@ import (
 )
 
 func main() {
+	// Fast path 1: handle help/status/health directly in the launcher
+	// without extracting or exec-ing .bluecli.
+	if len(os.Args) > 1 && tryFastCmd(os.Args[1:]) {
+		return
+	}
+
+	// Fast path 2: try IPC for skill/tool calls (e.g., `blue web_search "test"`)
+	// before extracting or exec-ing .bluecli. This avoids a full process spawn
+	// for the most common CLI-to-server calls.
+	if len(os.Args) > 1 && tryIPC(os.Args[1:]) {
+		return
+	}
+
 	dir, err := launcherDir()
 	if err != nil {
 		log.Fatalf("[launcher] cannot resolve path: %v", err)

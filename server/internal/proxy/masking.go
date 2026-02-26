@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"bytes"
 	"regexp"
+	"strings"
 	"sync"
 )
 
@@ -52,9 +54,10 @@ func DefaultMaskingConfig() *MaskingConfig {
 
 // DataMasker handles data masking (stub implementation)
 type DataMasker struct {
-	config   *MaskingConfig
-	compiled map[string]*regexp.Regexp
-	mu       sync.RWMutex
+	config     *MaskingConfig
+	compiled   map[string]*regexp.Regexp
+	localeFunc func() string // returns current locale (e.g. "zh-CN", "en-US")
+	mu         sync.RWMutex
 
 	// Stats
 	maskCount map[string]int64
@@ -101,6 +104,7 @@ func (dm *DataMasker) Mask(content string, direction MaskingDirection) string {
 	dm.mu.RLock()
 	defer dm.mu.RUnlock()
 
+	label := dm.maskLabel()
 	result := content
 	for _, rule := range dm.config.Rules {
 		if !rule.Enabled {
@@ -113,7 +117,8 @@ func (dm *DataMasker) Mask(content string, direction MaskingDirection) string {
 		if !ok {
 			continue
 		}
-		replaced := re.ReplaceAllString(result, rule.Replacement)
+		replacement := strings.ReplaceAll(rule.Replacement, "{MASKED}", label)
+		replaced := re.ReplaceAllString(result, replacement)
 		if replaced != result {
 			dm.maskCount[rule.ID]++
 			if dm.config.OnMask != nil {
@@ -134,6 +139,52 @@ func (dm *DataMasker) MaskRequest(content string) string {
 // MaskResponse masks sensitive data in response
 func (dm *DataMasker) MaskResponse(content string) string {
 	return dm.Mask(content, MaskingResponse)
+}
+
+// MaskBytes masks sensitive data in byte content, avoiding []byte→string→[]byte round-trips.
+// Uses regexp.ReplaceAll which operates on []byte directly.
+func (dm *DataMasker) MaskBytes(content []byte, direction MaskingDirection) []byte {
+	if !dm.config.Enabled {
+		return content
+	}
+
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+
+	label := dm.maskLabel()
+	result := content
+	for _, rule := range dm.config.Rules {
+		if !rule.Enabled {
+			continue
+		}
+		if rule.Direction != MaskingBoth && rule.Direction != direction {
+			continue
+		}
+		re, ok := dm.compiled[rule.ID]
+		if !ok {
+			continue
+		}
+		replacement := []byte(strings.ReplaceAll(rule.Replacement, "{MASKED}", label))
+		replaced := re.ReplaceAll(result, replacement)
+		if !bytes.Equal(replaced, result) {
+			dm.maskCount[rule.ID]++
+			if dm.config.OnMask != nil {
+				dm.config.OnMask(rule.ID, string(result), string(replaced))
+			}
+			result = replaced
+		}
+	}
+	return result
+}
+
+// MaskRequestBytes masks sensitive data in request body bytes.
+func (dm *DataMasker) MaskRequestBytes(content []byte) []byte {
+	return dm.MaskBytes(content, MaskingRequest)
+}
+
+// MaskResponseBytes masks sensitive data in response body bytes.
+func (dm *DataMasker) MaskResponseBytes(content []byte) []byte {
+	return dm.MaskBytes(content, MaskingResponse)
 }
 
 // AddRule adds a masking rule
@@ -219,6 +270,58 @@ func (dm *DataMasker) SetEnabled(enabled bool) {
 	dm.config.Enabled = enabled
 }
 
+// SetLocaleFunc sets the function used to resolve the current locale for i18n replacement labels.
+func (dm *DataMasker) SetLocaleFunc(f func() string) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	dm.localeFunc = f
+}
+
+// maskLabel returns the localized masking label, e.g. "🛡️数据脱敏" or "🛡️Data Masked".
+// Covers all 27 supported locales.
+var maskLabelMap = map[string]string{
+	"zh":    "🛡️数据脱敏",
+	"ja":    "🛡️データマスク",
+	"ko":    "🛡️데이터 마스킹",
+	"de":    "🛡️Daten maskiert",
+	"fr":    "🛡️Données masquées",
+	"es":    "🛡️Datos enmascarados",
+	"pt":    "🛡️Dados mascarados",
+	"it":    "🛡️Dati mascherati",
+	"nl":    "🛡️Gegevens gemaskeerd",
+	"ru":    "🛡️Данные скрыты",
+	"pl":    "🛡️Dane zamaskowane",
+	"cs":    "🛡️Data maskována",
+	"sk":    "🛡️Údaje maskované",
+	"da":    "🛡️Data maskeret",
+	"sv":    "🛡️Data maskerad",
+	"nb":    "🛡️Data maskert",
+	"hu":    "🛡️Adat maszkolva",
+	"ro":    "🛡️Date mascate",
+	"hr":    "🛡️Podaci maskirani",
+	"el":    "🛡️Δεδομένα καλυμμένα",
+	"ca":    "🛡️Dades emmascarades",
+	"ga":    "🛡️Sonraí mascaithe",
+	"ml":    "🛡️ഡാറ്റ മാസ്ക് ചെയ്തു",
+}
+
+func (dm *DataMasker) maskLabel() string {
+	locale := ""
+	if dm.localeFunc != nil {
+		locale = dm.localeFunc()
+	}
+	// Try full locale first (e.g. "zh-CN"), then language prefix (e.g. "zh")
+	if label, ok := maskLabelMap[locale]; ok {
+		return label
+	}
+	if idx := strings.IndexByte(locale, '-'); idx > 0 {
+		if label, ok := maskLabelMap[locale[:idx]]; ok {
+			return label
+		}
+	}
+	return "🛡️Data Masked"
+}
+
 // IsEnabled returns whether masking is enabled
 func (dm *DataMasker) IsEnabled() bool {
 	dm.mu.RLock()
@@ -254,7 +357,8 @@ func (dm *DataMasker) ResetStats() {
 	dm.maskCount = make(map[string]int64)
 }
 
-// GetDefaultRules returns predefined masking rules (for future use)
+// GetDefaultRules returns predefined masking rules.
+// Replacement text uses {MASKED} placeholder — resolved at runtime via DataMasker.maskLabel().
 func GetDefaultRules() []*MaskingRule {
 	return []*MaskingRule{
 		// PII Rules
@@ -263,8 +367,8 @@ func GetDefaultRules() []*MaskingRule {
 			Name:        "Email Address",
 			Category:    MaskingPII,
 			Pattern:     `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`,
-			Replacement: "[EMAIL]",
-			Direction:   MaskingBoth,
+			Replacement: "【{MASKED}】[EMAIL]",
+			Direction:   MaskingResponse,
 			Enabled:     false,
 		},
 		{
@@ -272,8 +376,8 @@ func GetDefaultRules() []*MaskingRule {
 			Name:        "Phone Number",
 			Category:    MaskingPII,
 			Pattern:     `\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`,
-			Replacement: "[PHONE]",
-			Direction:   MaskingBoth,
+			Replacement: "【{MASKED}】[PHONE]",
+			Direction:   MaskingResponse,
 			Enabled:     false,
 		},
 		{
@@ -281,19 +385,28 @@ func GetDefaultRules() []*MaskingRule {
 			Name:        "Social Security Number",
 			Category:    MaskingPII,
 			Pattern:     `\b\d{3}-\d{2}-\d{4}\b`,
-			Replacement: "[SSN]",
-			Direction:   MaskingBoth,
+			Replacement: "【{MASKED}】[SSN]",
+			Direction:   MaskingResponse,
 			Enabled:     false,
 		},
 
 		// Credential Rules
 		{
+			ID:          "api_key_format",
+			Name:        "API Key (sk-/key- prefix)",
+			Category:    MaskingCredentials,
+			Pattern:     `\b(sk-[a-zA-Z0-9_-]{20,}|key-[a-zA-Z0-9_-]{20,})`,
+			Replacement: "【{MASKED}】[API_KEY]",
+			Direction:   MaskingResponse,
+			Enabled:     false,
+		},
+		{
 			ID:          "api_key",
-			Name:        "API Key",
+			Name:        "API Key (label=value)",
 			Category:    MaskingCredentials,
 			Pattern:     `(?i)(api[_-]?key|apikey)["\s:=]+["']?([a-zA-Z0-9_-]{20,})["']?`,
-			Replacement: "[API_KEY]",
-			Direction:   MaskingBoth,
+			Replacement: "【{MASKED}】[API_KEY]",
+			Direction:   MaskingResponse,
 			Enabled:     false,
 		},
 		{
@@ -301,8 +414,8 @@ func GetDefaultRules() []*MaskingRule {
 			Name:        "Bearer Token",
 			Category:    MaskingCredentials,
 			Pattern:     `(?i)bearer\s+[a-zA-Z0-9_-]{20,}`,
-			Replacement: "Bearer [TOKEN]",
-			Direction:   MaskingBoth,
+			Replacement: "Bearer 【{MASKED}】[TOKEN]",
+			Direction:   MaskingResponse,
 			Enabled:     false,
 		},
 
@@ -312,8 +425,8 @@ func GetDefaultRules() []*MaskingRule {
 			Name:        "Credit Card Number",
 			Category:    MaskingFinancial,
 			Pattern:     `\b(?:\d{4}[-\s]?){3}\d{4}\b`,
-			Replacement: "[CARD]",
-			Direction:   MaskingBoth,
+			Replacement: "【{MASKED}】[CARD]",
+			Direction:   MaskingResponse,
 			Enabled:     false,
 		},
 	}

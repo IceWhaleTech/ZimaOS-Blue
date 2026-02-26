@@ -77,25 +77,9 @@ func estimateToolTokens(def ToolDefinition) int {
 }
 
 // toolKeywords maps tool names to additional bilingual keywords for matching.
-// This bridges the gap between Chinese queries and English tool descriptions.
+// After v0.10.31 migration, only exec remains as a native tool.
 var toolKeywords = map[string]string{
-	"calculator":     "计算 算术 数学 math calculate compute arithmetic tip percentage",
-	"weather":        "天气 气温 温度 湿度 forecast climate",
-	"datetime":       "时间 日期 日历 时区 date time timezone clock",
-	"notes":          "笔记 备忘 记录 note memo write",
-	"tasks":          "任务 待办 todo task priority status",
-	"translate":      "翻译 语言 translate language",
-	"search":         "搜索 查找 查询 search find lookup",
-	"memory":         "记忆 回忆 记住 忘记 memory recall remember forget store",
-	"files":          "文件 读取 写入 目录 file read write directory folder",
-	"docker":         "容器 镜像 docker container image volume",
-	"network":        "网络 连接 DNS ping 诊断 network connectivity diagnostics",
-	"sandbox":        "沙箱 执行 运行 sandbox execute run command",
-	"scheduler":      "定时 计划 cron 调度 schedule cron job periodic",
-	"system_info":    "系统 硬件 CPU GPU 内存 磁盘 system hardware info",
-	"notifications":  "通知 消息 notify notification message alert",
-	"unit_converter": "单位 转换 convert unit measurement length weight temperature",
-	"workflows":      "工作流 自动化 流程 workflow automation pipeline",
+	"exec": "执行 运行 命令 shell terminal command run execute script bash",
 }
 
 // toolDoc combines a tool's name, description, and bilingual keywords

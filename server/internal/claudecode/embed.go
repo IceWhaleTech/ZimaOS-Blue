@@ -479,8 +479,8 @@ func (m *BinaryManager) dryRunCLI(binaryPath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// Try --help first as it's the safest option
-	cmd := exec.CommandContext(ctx, binaryPath, "--help")
+	// Try help first as it's the safest option
+	cmd := exec.CommandContext(ctx, binaryPath, "help")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

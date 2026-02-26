@@ -78,6 +78,17 @@ var builtinMediaPricing = map[string]*MediaModelPricing{
 
 	// --- Video models (flat per video) ---
 	"midjourney-video": {OutputPrice: 0.51, Unit: PricingPerVideo},
+
+	// --- MiniMax Hailuo video models (flat per video) ---
+	"MiniMax-Hailuo-2.3":      {OutputPrice: 0.30, Unit: PricingPerVideo},
+	"MiniMax-Hailuo-2.3-Fast": {OutputPrice: 0.15, Unit: PricingPerVideo},
+	"MiniMax-Hailuo-02":       {OutputPrice: 0.25, Unit: PricingPerVideo},
+	"T2V-01":                  {OutputPrice: 0.20, Unit: PricingPerVideo},
+	"T2V-01-Director":         {OutputPrice: 0.25, Unit: PricingPerVideo},
+	"I2V-01":                  {OutputPrice: 0.20, Unit: PricingPerVideo},
+	"I2V-01-Director":         {OutputPrice: 0.25, Unit: PricingPerVideo},
+	"I2V-01-live":             {OutputPrice: 0.15, Unit: PricingPerVideo},
+	"S2V-01":                  {OutputPrice: 0.25, Unit: PricingPerVideo},
 }
 
 // mediaPricingMu protects runtime updates to the pricing map.

@@ -203,6 +203,7 @@ func skillSortPriority(name string) int {
 }
 
 // FormatSkillsPrompt generates the XML skill index for system prompt injection.
+// Uses compact attribute format to minimize token usage.
 // Returns empty string if no skills are available.
 func FormatSkillsPrompt(skills []SkillEntry) string {
 	if len(skills) == 0 {
@@ -212,15 +213,63 @@ func FormatSkillsPrompt(skills []SkillEntry) string {
 	var sb strings.Builder
 	sb.WriteString("<available_skills>\n")
 	for _, s := range skills {
-		sb.WriteString("  <skill>\n")
-		sb.WriteString(fmt.Sprintf("    <name>%s</name>\n", xmlEscape(s.Name)))
-		if s.Description != "" {
-			sb.WriteString(fmt.Sprintf("    <description>%s</description>\n", xmlEscape(s.Description)))
+		desc := s.Description
+		if desc == "" {
+			desc = s.Name
 		}
-		sb.WriteString(fmt.Sprintf("    <location>%s</location>\n", xmlEscape(s.Location)))
-		sb.WriteString("  </skill>\n")
+		sb.WriteString(fmt.Sprintf("  <skill name=%q desc=%q cmd=\"blue %s\" />\n",
+			s.Name, desc, xmlEscape(s.Name)))
 	}
 	sb.WriteString("</available_skills>")
+	return sb.String()
+}
+
+// pinnedSkills lists the skill names that are always shown in the system prompt.
+// Only these get their description injected — everything else the LLM discovers
+// by reading .claude/skills/<name>/SKILL.md on demand.
+var pinnedSkills = []string{
+	"browser",
+	"web_search",
+	"analyze",
+	"ui_reviewer",
+	"mgmt",
+	"mediagen",
+}
+
+// FormatPinnedSkills reads only the pinned skills from disk and formats them
+// as compact XML for the system prompt. Returns empty string if none found.
+func FormatPinnedSkills(workspaceDir string) string {
+	skillsDir := filepath.Join(workspaceDir, ".claude", "skills")
+
+	var found []SkillEntry
+	for _, name := range pinnedSkills {
+		mdPath := filepath.Join(skillsDir, name, "SKILL.md")
+		data, err := os.ReadFile(mdPath)
+		if err != nil {
+			continue
+		}
+		se := parseSkillEntry(name, mdPath, data)
+		if !se.Enabled || !skillPlatformMatch(se.OS) {
+			continue
+		}
+		found = append(found, se)
+	}
+
+	if len(found) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("<pinned_skills>\n")
+	for _, s := range found {
+		desc := s.Description
+		if desc == "" {
+			desc = s.Name
+		}
+		sb.WriteString(fmt.Sprintf("  <skill name=%q desc=%q cmd=\"blue %s\" />\n",
+			s.Name, desc, xmlEscape(s.Name)))
+	}
+	sb.WriteString("</pinned_skills>")
 	return sb.String()
 }
 

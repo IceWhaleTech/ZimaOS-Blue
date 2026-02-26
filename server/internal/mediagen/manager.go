@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	basetask "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // CostEvent contains the data needed to record a media generation cost.
@@ -223,7 +224,13 @@ func (m *Manager) TestProvider(id string) *TestResult {
 	if !ok {
 		return &TestResult{Error: "unknown media provider: " + id}
 	}
-	return TestMediaProvider(c)
+	oldBaseURL := c.BaseURL
+	result := TestMediaProvider(c)
+	// If probe auto-switched the BaseURL (e.g. MiniMax regional fallback), persist it
+	if c.BaseURL != oldBaseURL {
+		_ = m.saveConfigs()
+	}
+	return result
 }
 
 // HasImageProviders returns true if any registered provider supports image generation.
@@ -354,7 +361,7 @@ func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, 
 	task.Provider = provider.Name()
 	task.Model = req.Model
 	task.Type = req.Type
-	task.CreatedAt = time.Now()
+	task.CreatedAt = timeutil.NowTime()
 
 	m.tasks.Store(task.ID, task)
 
@@ -588,7 +595,7 @@ func (m *Manager) cacheResults(task *MediaTask) {
 		}
 	}
 
-	now := time.Now()
+	now := timeutil.NowTime()
 	task.CompletedAt = &now
 	m.tasks.Store(task.ID, task)
 
@@ -631,7 +638,7 @@ func (m *Manager) updateTaskError(taskID, errMsg string) {
 	task := v.(*MediaTask)
 	task.Status = TaskStatusFailed
 	task.Error = errMsg
-	now := time.Now()
+	now := timeutil.NowTime()
 	task.CompletedAt = &now
 	m.tasks.Store(taskID, task)
 
@@ -645,6 +652,33 @@ func (m *Manager) updateTaskError(taskID, errMsg string) {
 	}
 
 	m.publishTaskEvent(task)
+}
+
+// CancelTask cancels a pending or processing task. Returns true if the task was cancelled.
+func (m *Manager) CancelTask(taskID string) bool {
+	v, ok := m.tasks.Load(taskID)
+	if !ok {
+		return false
+	}
+	task := v.(*MediaTask)
+	if task.Status != TaskStatusPending && task.Status != TaskStatusProcessing {
+		return false
+	}
+	task.Status = TaskStatusCancelled
+	now := timeutil.NowTime()
+	task.CompletedAt = &now
+	m.tasks.Store(taskID, task)
+
+	if m.taskStore != nil {
+		_ = m.taskStore.UpdateStatus(taskID, TaskStatusCancelled, task.Progress, "cancelled by user", "")
+	}
+
+	if m.onTaskDone != nil {
+		m.onTaskDone(taskID, string(TaskStatusCancelled), task.Model, "")
+	}
+
+	m.publishTaskEvent(task)
+	return true
 }
 
 // recordCost calculates and records the cost for a completed media task.
@@ -761,7 +795,7 @@ func (m *Manager) CreateTask(ctx context.Context, req *MediaRequest, messageID, 
 	}
 
 	taskID := uuid.New().String()
-	now := time.Now()
+	now := timeutil.NowTime()
 	task := &MediaTask{
 		BaseTask:  basetask.BaseTask{ID: taskID, Status: TaskStatusPending, CreatedAt: now},
 		MessageID: messageID,
@@ -894,6 +928,8 @@ func createProvider(c *MediaProviderConfig) MediaProvider {
 		return NewDashScopeProvider(c.APIKey, c.BaseURL)
 	case "mulerouter":
 		return NewMuleRouterProvider(c.APIKey, c.BaseURL)
+	case "minimax-media":
+		return NewMiniMaxProvider(c.APIKey, c.BaseURL)
 	default:
 		return nil
 	}

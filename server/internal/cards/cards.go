@@ -15,6 +15,15 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
+// escapeBackticks replaces triple backticks with a Unicode alternative to prevent
+// the frontend regex from incorrectly matching inner code fences within the JSON.
+// This ensures the typeless card parser correctly identifies the outer fence boundaries.
+func escapeBackticks(s string) string {
+	// Use Unicode character U+200B (zero-width space) as escape marker
+	// This is invisible and won't affect display, but can be unescaped on the frontend
+	return strings.ReplaceAll(s, "```", "`​``")
+}
+
 // CardFunc converts tool result content into a card map. Return nil to skip.
 type CardFunc func(content string) map[string]interface{}
 
@@ -40,6 +49,15 @@ func FormatTypeless(toolCalls []llm.ToolCall, toolResults []llm.Message) string 
 			break
 		}
 		card := ToCard(tc.Name, toolResults[i].Content)
+		// Inject command into exec card from tool call arguments.
+		if card != nil && tc.Name == "exec" {
+			var args struct {
+				Command string `json:"command"`
+			}
+			if json.Unmarshal([]byte(tc.Arguments), &args) == nil && args.Command != "" {
+				card["command"] = escapeBackticks(args.Command)
+			}
+		}
 		if card != nil {
 			cardJSON, _ := json.Marshal(card)
 			sb.WriteString("\n\n```typeless\n")
@@ -89,6 +107,12 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return systemInfoCard(content)
 	case "memory_search", "memory":
 		return memorySearchCard(content)
+	case "reminder":
+		return reminderCard(content)
+	case "analyze":
+		return analyzeCard(content)
+	case "ask":
+		return askUserQuestionCard(content)
 	default:
 		return GenericCard(toolName, content)
 	}
@@ -268,6 +292,159 @@ func memorySearchCard(content string) map[string]interface{} {
 	}
 }
 
+func reminderCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+	if errMsg, ok := data["error"].(string); ok {
+		return map[string]interface{}{
+			"type":    "result",
+			"title":   "Reminder",
+			"status":  "error",
+			"message": errMsg,
+		}
+	}
+
+	msg, _ := data["message"].(string)
+	status := "success"
+	if s, ok := data["status"].(string); ok && s != "" {
+		status = s
+	}
+
+	card := map[string]interface{}{
+		"type":   "result",
+		"title":  "Reminder",
+		"status": status,
+	}
+	if msg != "" {
+		card["message"] = msg
+	}
+
+	// For add action: show reminder details
+	if r, ok := data["reminder"].(map[string]interface{}); ok {
+		details := []map[string]interface{}{}
+		if m, ok := r["message"].(string); ok && m != "" {
+			details = append(details, map[string]interface{}{"label": "Message", "value": m})
+		}
+		if fa, ok := r["fire_at"].(string); ok && fa != "" {
+			details = append(details, map[string]interface{}{"label": "Fire At", "value": fa})
+		}
+		if rec, ok := r["recurring"].(string); ok && rec != "" {
+			details = append(details, map[string]interface{}{"label": "Recurring", "value": rec})
+		}
+		if len(details) > 0 {
+			card["details"] = details
+		}
+	}
+
+	// For list action: show count
+	if count, ok := data["count"].(float64); ok {
+		card["message"] = fmt.Sprintf("%d reminders", int(count))
+	}
+
+	// For clear action: show cleared count
+	if cleared, ok := data["cleared"].(float64); ok {
+		card["message"] = fmt.Sprintf("Cleared %d reminders", int(cleared))
+	}
+
+	return card
+}
+
+func analyzeCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+	if errMsg, ok := data["error"].(string); ok {
+		return map[string]interface{}{
+			"type":    "result",
+			"title":   "analyze",
+			"status":  "error",
+			"message": errMsg,
+		}
+	}
+	topic, _ := data["topic"].(string)
+	reportURL, _ := data["report_url"].(string)
+
+	card := map[string]interface{}{
+		"type":   "result",
+		"title":  "analyze",
+		"status": "success",
+	}
+	if topic != "" {
+		card["message"] = topic
+	}
+	if reportURL != "" {
+		card["details"] = []map[string]interface{}{
+			{"label": "report_url", "value": reportURL},
+		}
+	}
+	return card
+}
+
+func askUserQuestionCard(content string) map[string]interface{} {
+	var data struct {
+		QA []struct {
+			Q string   `json:"q"`
+			O []string `json:"o"`
+			A []string `json:"a"`
+		} `json:"qa"`
+		Silent bool `json:"silent"`
+	}
+	if json.Unmarshal([]byte(content), &data) != nil || len(data.QA) == 0 {
+		return nil
+	}
+
+	details := make([]map[string]interface{}, 0, len(data.QA)*3)
+	for _, item := range data.QA {
+		details = append(details, map[string]interface{}{
+			"label": "q",
+			"value": item.Q,
+		})
+		if len(item.O) > 0 {
+			details = append(details, map[string]interface{}{
+				"label": "o",
+				"value": strings.Join(item.O, " / "),
+			})
+		}
+		details = append(details, map[string]interface{}{
+			"label": "a",
+			"value": strings.Join(item.A, ", "),
+		})
+	}
+
+	card := map[string]interface{}{
+		"type":    "result",
+		"title":   "ask",
+		"status":  "success",
+		"details": details,
+	}
+	if data.Silent {
+		card["message"] = "auto-answered (silent mode)"
+	}
+	return card
+}
+
+// formatValue converts a value to a display string.
+// For simple types, uses fmt.Sprintf; for complex types (slices, maps),
+// uses JSON serialization to avoid Go's default map[...] format.
+func formatValue(v interface{}) string {
+	switch v.(type) {
+	case string, float64, bool:
+		return fmt.Sprintf("%v", v)
+	default:
+		if v == nil {
+			return ""
+		}
+		b, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return string(b)
+	}
+}
+
 // GenericCard creates a result card for any unrecognized tool.
 func GenericCard(toolName, content string) map[string]interface{} {
 	var data map[string]interface{}
@@ -294,7 +471,7 @@ func GenericCard(toolName, content string) map[string]interface{} {
 			if hiddenFields[key] {
 				continue
 			}
-			details = append(details, map[string]interface{}{"label": key, "value": fmt.Sprintf("%v", v)})
+			details = append(details, map[string]interface{}{"label": key, "value": formatValue(v)})
 		}
 		card := map[string]interface{}{
 			"type":   "result",
@@ -372,8 +549,26 @@ func execCard(content string) map[string]interface{} {
 		Duration  int64    `json:"duration_ms"`
 		Truncated bool     `json:"truncated"`
 		Warnings  []string `json:"warnings"`
+		Host      string   `json:"host"`
+		RiskLevel string   `json:"risk_level"`
+		Command   string   `json:"command"`
 	}
 	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+
+	// If exec returned a plain error (e.g. "command is required") with no
+	// actual execution data, suppress the card entirely — it's LLM noise.
+	if data.ExitCode == nil && data.Stdout == "" && data.Stderr == "" && data.Command == "" {
+		return nil
+	}
+
+	// When a `blue` subcommand ran and produced __CARD__ lines, the card
+	// protocol already pushed a streaming result card to the client.
+	// The __CARD__ lines are stripped from stdout by readIntoBufferWithCards,
+	// so stdout is empty. Suppress the redundant exec card in this case.
+	if data.Stdout == "" && data.Stderr == "" &&
+		data.ExitCode != nil && *data.ExitCode == 0 {
 		return nil
 	}
 
@@ -382,40 +577,37 @@ func execCard(content string) map[string]interface{} {
 		status = "error"
 	}
 
-	details := []map[string]interface{}{
-		{"label": "session_id", "value": data.SessionID},
-	}
-	if data.ExitCode != nil {
-		details = append(details, map[string]interface{}{"label": "exit_code", "value": fmt.Sprintf("%d", *data.ExitCode)})
-	}
-
-	// Combine stdout/stderr for display
-	output := data.Stdout
-	if data.Stderr != "" {
-		if output != "" {
-			output += "\n"
-		}
-		output += data.Stderr
-	}
-
-	if output != "" {
-		details = append(details, map[string]interface{}{"label": "stdout", "value": output, "multiline": true})
-	}
-
-	details = append(details, map[string]interface{}{"label": "duration_ms", "value": fmt.Sprintf("%d", data.Duration), "suffix": "ms"})
-
 	card := map[string]interface{}{
-		"type":    "result",
-		"title":   "exec",
-		"status":  status,
-		"details": details,
+		"type":   "exec",
+		"status": status,
 	}
 
+	if data.ExitCode != nil {
+		card["exit_code"] = *data.ExitCode
+	}
+	if data.Stdout != "" {
+		card["stdout"] = escapeBackticks(data.Stdout)
+	}
+	if data.Stderr != "" {
+		card["stderr"] = escapeBackticks(data.Stderr)
+	}
+	if data.Duration > 0 {
+		card["duration_ms"] = data.Duration
+	}
 	if data.Truncated {
-		card["message"] = "Output was truncated"
+		card["truncated"] = true
 	}
 	if len(data.Warnings) > 0 {
-		card["message"] = strings.Join(data.Warnings, "; ")
+		card["warnings"] = data.Warnings
+	}
+	if data.Host != "" {
+		card["host"] = data.Host
+	}
+	if data.RiskLevel != "" {
+		card["risk_level"] = data.RiskLevel
+	}
+	if data.SessionID != "" {
+		card["session_id"] = data.SessionID
 	}
 
 	return card

@@ -38,6 +38,7 @@ type Services struct {
 	LLMRegistry   *llm.ProviderRegistry
 	ToolRegistry  *tools.Registry
 	SkillRegistry *skill.Registry
+	MgmtTool      *tools.MgmtTool
 	WorkerPool    *worker.Pool
 	DataDir       string
 }

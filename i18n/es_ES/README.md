@@ -68,9 +68,9 @@ Compilado nativamente en Go — sin intérprete, sin VM, sin sobrecarga. Se ejec
 
 | Métrica | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
 |---------|-------------------|------------------------|
-| `--help` frío / caliente | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `help` frío / caliente | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` tiempo de ejecución (mejor de 3) | **< 0.01 s** | 5.98 s |
-| `--help` RSS pico | **~10 MB** | ~394 MB |
+| `help` RSS pico | **~10 MB** | ~394 MB |
 | `status` RSS pico | **~15 MB** | ~1.52 GB |
 | Dependencias de ejecución | **Ninguna** | Node.js 18+ |
 

@@ -37,6 +37,8 @@ export type TypelessCardType =
   | 'ui-review'
   | 'ui-review-progress'
   | 'media-generate'
+  | 'analyze-progress'
+  | 'exec'
 
 export interface TypelessCardBase {
   type: TypelessCardType
@@ -131,7 +133,7 @@ export interface TypelessCardTable extends TypelessCardBase {
   type: 'table'
   title?: string
   headers: string[]
-  rows: (string | number)[][]
+  rows: (string | number | null)[][]
   footer?: string
   striped?: boolean
   compact?: boolean
@@ -397,6 +399,7 @@ export interface AccordionItem {
 export interface TypelessCardAlert extends TypelessCardBase {
   type: 'alert'
   title?: string
+  title_key?: string
   message: string
   variant: 'info' | 'success' | 'warning' | 'error'
   icon?: string
@@ -592,6 +595,41 @@ export interface TypelessCardMediaGenerate extends TypelessCardBase {
   images?: GalleryImage[]
 }
 
+// Analyze Progress card — streaming step-by-step progress during analysis
+export interface AnalyzeProgressStep {
+  step: string
+  name: string
+  status: string
+}
+
+export interface TypelessCardAnalyzeProgress extends TypelessCardBase {
+  type: 'analyze-progress'
+  // Single step (raw from backend)
+  step?: string
+  name?: string
+  status?: string
+  // Merged steps (after frontend consolidation)
+  steps?: AnalyzeProgressStep[]
+}
+
+// Exec Card - Display shell command execution results with terminal styling
+export interface TypelessCardExec extends TypelessCardBase {
+  type: 'exec'
+  command: string
+  status: 'success' | 'error' | 'running'
+  exit_code?: number
+  stdout?: string
+  stderr?: string
+  duration_ms?: number
+  truncated?: boolean
+  warnings?: string[]
+  host?: 'local' | 'sandbox'
+  risk_level?: 'low' | 'medium' | 'high' | 'critical'
+  session_id?: string
+  _streaming?: boolean
+  skill_name?: string
+}
+
 // Union type for all card types
 export type TypelessCard =
   | TypelessCardInfo
@@ -628,6 +666,8 @@ export type TypelessCard =
   | TypelessCardUIReview
   | TypelessCardUIReviewProgress
   | TypelessCardMediaGenerate
+  | TypelessCardAnalyzeProgress
+  | TypelessCardExec
 
 // Card parsing result
 export interface ParsedContent {

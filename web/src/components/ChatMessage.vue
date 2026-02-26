@@ -5,10 +5,12 @@ import type { Message } from '@/api/chat'
 import { cardActionApi } from '@/api/chat'
 import { renderMarkdown, copyCodeToClipboard, preloadHljs } from '@/utils/markdown'
 import { useChatStore } from '@/stores/chat'
+import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments, hasTypelessCards, clearIncrementalState } from '@/utils/typeless'
 import type { TypelessCard, TypelessCardAction, TypelessCardChoice } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
+import ToolDetailCard from '@/components/ToolDetailCard.vue'
 import MediaPlaceholder from '@/components/MediaPlaceholder.vue'
 import { ttsAudioManager, streamingTTSManager } from '@/api/voice'
 import { speechApi } from '@/api/speech'
@@ -37,6 +39,7 @@ const emit = defineEmits<{
 }>()
 
 const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
 
 // Card action state
 const cardActionLoading = ref<string | null>(null) // cardId that is loading
@@ -58,6 +61,16 @@ const mediaTaskId = computed(() => {
 
 // Check if user message has attachments
 const hasAttachments = computed(() => isUser.value && props.message.attachments && props.message.attachments.length > 0)
+
+// Check if this is a voice-only message (audio attachment, no meaningful text)
+const isVoiceMessage = computed(() => {
+  if (!isUser.value || !props.message.attachments) return false
+  const audioAttachments = props.message.attachments.filter(a => a.type === 'audio')
+  if (audioAttachments.length === 0) return false
+  // Voice-only: no text content or placeholder text
+  const text = props.message.content?.trim()
+  return !text || isPlaceholderContent(text)
+})
 
 // Extract inline markdown images from user message content (e.g. ![image](/api/media/...))
 const inlineImages = computed(() => {
@@ -92,6 +105,72 @@ const ttsError = ref<string | null>(null)
 // Attachment preview state
 const previewAttachment = ref<{ type: string; src: string; name: string; content?: string } | null>(null)
 
+// Voice message playback state
+const playingAudioId = ref<number | null>(null)
+const audioProgress = ref(0) // 0-1
+let activeAudio: HTMLAudioElement | null = null
+let audioProgressTimer: ReturnType<typeof setInterval> | null = null
+
+function playVoiceMessage(attachment: { mime_type: string; data: string; duration?: number }, index: number) {
+  // If same audio is playing, stop it
+  if (playingAudioId.value === index) {
+    stopVoiceMessage()
+    return
+  }
+  // Stop any currently playing audio
+  stopVoiceMessage()
+
+  const src = `data:${attachment.mime_type};base64,${attachment.data}`
+  activeAudio = new Audio(src)
+  playingAudioId.value = index
+  audioProgress.value = 0
+
+  activeAudio.onplay = () => {
+    audioProgressTimer = setInterval(() => {
+      if (activeAudio && activeAudio.duration) {
+        audioProgress.value = activeAudio.currentTime / activeAudio.duration
+      }
+    }, 50)
+  }
+  activeAudio.onended = () => {
+    stopVoiceMessage()
+  }
+  activeAudio.onerror = () => {
+    stopVoiceMessage()
+  }
+  activeAudio.play()
+}
+
+function stopVoiceMessage() {
+  if (activeAudio) {
+    activeAudio.pause()
+    activeAudio.src = ''
+    activeAudio = null
+  }
+  if (audioProgressTimer) {
+    clearInterval(audioProgressTimer)
+    audioProgressTimer = null
+  }
+  playingAudioId.value = null
+  audioProgress.value = 0
+}
+
+function formatVoiceDuration(seconds?: number): string {
+  if (!seconds || seconds < 1) return '1″'
+  if (seconds < 60) return `${Math.round(seconds)}″`
+  const m = Math.floor(seconds / 60)
+  const s = Math.round(seconds % 60)
+  return `${m}′${s.toString().padStart(2, '0')}″`
+}
+
+// Compute voice bubble width based on duration (WeChat style: longer = wider)
+function voiceBubbleWidth(seconds?: number): string {
+  const dur = seconds || 1
+  // Min 80px, max 240px, logarithmic scale
+  const width = Math.min(240, Math.max(80, 80 + Math.log2(dur) * 40))
+  return `${Math.round(width)}px`
+}
+
 // Tool execution elapsed timer
 const toolElapsedSeconds = ref('0.0')
 let toolTimerHandle: ReturnType<typeof setInterval> | null = null
@@ -110,6 +189,20 @@ watch(() => chatStore.toolExecuting, (executing) => {
       toolTimerHandle = null
     }
   }
+})
+
+// Derive display names for tool pill: extract skill names from "blue <subcommand>" commands
+const toolDisplayNames = computed(() => {
+  const commands = chatStore.toolExecutingCommands
+  if (commands.length > 0) {
+    // Extract skill name from "blue <subcommand> ..." pattern
+    return commands.map(cmd => {
+      const m = cmd.match(/^blue\s+(\S+)/)
+      return m ? m[1] : formatToolName('exec')
+    })
+  }
+  // Fallback to tool names
+  return chatStore.toolExecutingNames.map(formatToolName)
 })
 
 // Waiting timer — shows elapsed time when response takes >3s with no content
@@ -182,16 +275,18 @@ function stripInterruptedMarker(content: string): { content: string; interrupted
 const _segmentHtmlCache = new Map<string, string>()
 
 function renderSegmentHtml(text: string): string {
-  const cached = _segmentHtmlCache.get(text)
+  // When tool details are hidden, strip process blocks from text segments too
+  const effective = settingsStore.showToolDetails ? text : stripProcessContent(text)
+  const cached = _segmentHtmlCache.get(effective)
   if (cached !== undefined) return cached
-  const { content, interrupted } = stripInterruptedMarker(text)
+  const { content, interrupted } = stripInterruptedMarker(effective)
   let html = renderMarkdown(content)
   if (interrupted) {
     html += interruptedIndicatorHtml.value
   }
   // Keep cache bounded
   if (_segmentHtmlCache.size > 50) _segmentHtmlCache.clear()
-  _segmentHtmlCache.set(text, html)
+  _segmentHtmlCache.set(effective, html)
   return html
 }
 
@@ -203,11 +298,25 @@ const strippedContent = computed(() => {
   return content
 })
 
+// Regex to strip process content (tool results) and typeless card blocks
+const RE_PROCESS_BLOCK = /\n*<!-- process-start -->[\s\S]*?<!-- process-end -->\n*/g
+const RE_TYPELESS_BLOCK = /\n*```typeless\s*[\s\S]*?```\n*/g
+
+// Strip process content (tool results + typeless cards) from text
+function stripProcessContent(text: string): string {
+  return text.replace(RE_PROCESS_BLOCK, '\n').replace(RE_TYPELESS_BLOCK, '\n').trim()
+}
+
 const renderedContent = computed(() => {
   if (isUser.value) {
     return props.message.content
   }
-  const { content: cleaned, interrupted } = stripInterruptedMarker(strippedContent.value)
+  let text = strippedContent.value
+  // When tool details are hidden, strip process blocks and typeless card blocks
+  if (!settingsStore.showToolDetails) {
+    text = stripProcessContent(text)
+  }
+  const { content: cleaned, interrupted } = stripInterruptedMarker(text)
   let html = renderMarkdown(cleaned)
   if (interrupted) {
     html += interruptedIndicatorHtml.value
@@ -218,7 +327,19 @@ const renderedContent = computed(() => {
 // Whether bubble content is empty (only indicators showing)
 const isContentEmpty = computed(() => {
   if (isUser.value) return false
-  return !strippedContent.value?.trim()
+  // If we have result cards to show, content is not empty
+  if (effectiveHasCards.value) return false
+  let text = strippedContent.value
+  if (!settingsStore.showToolDetails) {
+    text = stripProcessContent(text)
+  }
+  return !text?.trim()
+})
+
+// Hide empty assistant messages that are not streaming (collapsed empty bubbles)
+const shouldHideMessage = computed(() => {
+  if (isUser.value || props.isStreaming) return false
+  return isContentEmpty.value && !hasMediaTask.value
 })
 
 // Parse typeless cards from assistant messages
@@ -255,10 +376,36 @@ const contentSegments = computed(() => {
 // Check if message has typeless cards
 const hasCards = computed(() => parsedContent.value !== null && parsedContent.value.cards.length > 0)
 
+// Card types that represent content or results — always visible even when tool details are hidden.
+// Only tool-invocation cards (steps, exec) are hidden when details are off.
+const RESULT_CARD_TYPES = new Set([
+  'result', 'search', 'weather', 'chart', 'gallery', 'map', 'profile',
+  'rating', 'comparison', 'metric', 'link', 'audio', 'video', 'file',
+  'media-generate', 'ui-review', 'detection',
+  'ui-review-progress', 'analyze-progress', 'browser-progress',
+  'list', 'table', 'code', 'terminal', 'mermaid', 'accordion',
+])
+
+// Effective values respecting showToolDetails toggle.
+// Result-type cards are always shown; process/progress cards are hidden when details are off.
+const effectiveContentSegments = computed(() => {
+  if (!contentSegments.value) return null
+  if (settingsStore.showToolDetails) return contentSegments.value
+  // Filter: keep text segments and result-type cards only
+  const filtered = contentSegments.value.filter(s => {
+    if (s.type !== 'card') return true
+    const card = s.content as TypelessCard
+    return RESULT_CARD_TYPES.has(card.type)
+  })
+  // If no cards survived filtering, return null to fall back to plain text
+  return filtered.some(s => s.type === 'card') ? filtered : null
+})
+const effectiveHasCards = computed(() => effectiveContentSegments.value !== null && effectiveContentSegments.value.some(s => s.type === 'card'))
+
 // Card-only: no text segments, only cards — skip assistant bubble wrapper
 const isCardOnly = computed(() => {
-  if (!hasCards.value || !contentSegments.value) return false
-  return contentSegments.value.every(s => s.type !== 'text' || !(s.content as string).trim())
+  if (!effectiveHasCards.value || !effectiveContentSegments.value) return false
+  return effectiveContentSegments.value.every(s => s.type !== 'text' || !(s.content as string).trim())
 })
 
 const formattedTime = computed(() => {
@@ -375,6 +522,7 @@ onUnmounted(() => {
     toolTimerHandle = null
   }
   stopWaitingTimer()
+  stopVoiceMessage()
   // Only stop manually-triggered TTS (not auto-play streaming which survives component remount)
   // When streaming ends, the message component remounts with a new server ID —
   // we must not kill the streaming TTS manager during that transition.
@@ -390,8 +538,12 @@ const lastPlayedLength = ref(0)
 // Strip complex card content (code blocks, mermaid, tables) from text for TTS
 function stripComplexCardsForTTS(text: string): string {
   return text
+    // Remove process blocks (<!-- process-start -->...<!-- process-end -->)
+    .replace(/<!--\s*process-start\s*-->[\s\S]*?<!--\s*process-end\s*-->/g, '')
     // Remove fenced code blocks (```...```)
     .replace(/```[\s\S]*?```/g, '')
+    // Remove HTML comments
+    .replace(/<!--[\s\S]*?-->/g, '')
     // Remove markdown tables (lines starting with |)
     .replace(/^\|.*\|$/gm, '')
     // Remove table separator lines (|---|---|)
@@ -870,6 +1022,7 @@ async function handleMobileDelete() {
 
 <template>
   <div
+    v-show="!shouldHideMessage"
     class="message group relative p-2 sm:p-4 transition-colors duration-150"
     :class="{
       'bg-gray-100 dark:bg-gray-600/10': isSelected,
@@ -916,8 +1069,8 @@ async function handleMobileDelete() {
       <div
         class="content min-w-0 max-w-[80%]"
       >
-        <!-- Provider and Model info (above chat bubble for assistant, hidden on mobile) -->
-        <div v-if="isAssistant && metadata && (metadata.provider || metadata.model)" class="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-1">
+        <!-- Provider and Model info (above chat bubble for assistant) -->
+        <div v-if="isAssistant && metadata && (metadata.provider || metadata.model)" class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-1">
           <!-- Cloud/Local icon -->
           <svg v-if="providerLocation === 'cloud'" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
@@ -937,14 +1090,50 @@ async function handleMobileDelete() {
           v-if="isUser"
           class="user-message-wrapper relative"
         >
-          <div class="user-message chat-user-bubble px-4 py-2 inline-block">
+          <!-- Voice message bubble (WeChat/WhatsApp style) -->
+          <div v-if="isVoiceMessage" class="voice-message-container">
+            <div
+              v-for="(attachment, index) in message.attachments!.filter(a => a.type === 'audio')"
+              :key="index"
+              class="voice-bubble cursor-pointer select-none"
+              :style="{ width: voiceBubbleWidth(attachment.duration) }"
+              @click="playVoiceMessage(attachment, index)"
+            >
+              <div class="voice-bubble-inner">
+                <!-- Play/Stop icon -->
+                <div class="voice-play-btn">
+                  <svg v-if="playingAudioId === index" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="4" width="4" height="16" rx="1" />
+                    <rect x="14" y="4" width="4" height="16" rx="1" />
+                  </svg>
+                  <svg v-else class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
+                <!-- Waveform visualization -->
+                <div class="voice-waveform">
+                  <div
+                    v-for="bar in 12"
+                    :key="bar"
+                    class="voice-bar"
+                    :class="{ 'voice-bar-active': playingAudioId === index && (bar - 1) / 12 <= audioProgress }"
+                    :style="{ height: `${[40,65,50,80,60,90,55,75,45,85,70,50][bar-1]}%` }"
+                  />
+                </div>
+                <!-- Duration -->
+                <span class="voice-duration">{{ formatVoiceDuration(attachment.duration) }}</span>
+              </div>
+            </div>
+          </div>
+          <!-- Normal message bubble -->
+          <div v-else class="user-message chat-user-bubble px-4 py-2 inline-block">
             <!-- Attachments display inside bubble -->
             <div v-if="hasAttachments" class="mb-2 flex flex-wrap gap-2">
               <div
                 v-for="(attachment, index) in message.attachments"
                 :key="index"
                 class="attachment-preview rounded-lg overflow-hidden border border-gray-300 dark:border-white/20 cursor-pointer hover:opacity-90 transition-opacity bg-white/90 dark:bg-white/10"
-                @click="openAttachmentPreview(attachment)"
+                @click="attachment.type === 'audio' ? playVoiceMessage(attachment, index) : openAttachmentPreview(attachment)"
               >
                 <!-- Image attachment -->
                 <img
@@ -954,6 +1143,20 @@ async function handleMobileDelete() {
                   class="max-w-[200px] max-h-[150px] object-cover"
                   :title="attachment.name"
                 />
+                <!-- Audio attachment (inline mini player) -->
+                <div
+                  v-else-if="attachment.type === 'audio'"
+                  class="flex items-center gap-2 px-3 py-2"
+                >
+                  <svg v-if="playingAudioId === index" class="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="4" width="4" height="16" rx="1" />
+                    <rect x="14" y="4" width="4" height="16" rx="1" />
+                  </svg>
+                  <svg v-else class="w-4 h-4 text-gray-600 dark:text-gray-300" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  <span class="text-sm text-gray-700 dark:text-white/90">{{ formatVoiceDuration(attachment.duration) }}</span>
+                </div>
                 <!-- File attachment with icon -->
                 <div
                   v-else
@@ -1002,11 +1205,11 @@ async function handleMobileDelete() {
 
         <!-- Card-only assistant message: render cards directly without bubble wrapper -->
         <div
-          v-else-if="isCardOnly && contentSegments"
+          v-else-if="isCardOnly && effectiveContentSegments"
           class="assistant-message-wrapper relative"
         >
           <TypelessCardComponent
-            v-for="segment in contentSegments.filter(s => s.type !== 'text')"
+            v-for="segment in effectiveContentSegments.filter(s => s.type !== 'text')"
             :key="segment.key"
             :card="segment.content as TypelessCard"
             @action="handleCardAction"
@@ -1072,11 +1275,11 @@ async function handleMobileDelete() {
           <!-- Render with typeless cards embedded in single bubble -->
           <div
             v-else
-            :class="['assistant-message chat-assistant-bubble px-4 prose prose-slate dark:prose-invert max-w-none', isContentEmpty ? 'py-0 !border-0 !bg-transparent' : 'py-3']"
+            :class="['assistant-message chat-assistant-bubble px-4 prose prose-slate dark:prose-invert max-w-none', isContentEmpty && !(isStreaming && chatStore.toolExecuting) ? 'py-0 !border-0 !bg-transparent' : 'py-3']"
             @click="handleCopyClick"
           >
-            <template v-if="hasCards && contentSegments">
-              <template v-for="segment in contentSegments" :key="segment.key">
+            <template v-if="effectiveHasCards && effectiveContentSegments">
+              <template v-for="segment in effectiveContentSegments" :key="segment.key">
                 <div
                   v-if="segment.type === 'text'"
                   class="prose-content"
@@ -1097,8 +1300,16 @@ async function handleMobileDelete() {
               v-else-if="!isContentEmpty"
               v-html="renderedContent"
             />
+            <!-- Tool detail cards (collapsible, shown when toggle is on) -->
+            <div v-if="isStreaming && chatStore.toolResults.length > 0 && settingsStore.showToolDetails" class="tool-detail-cards my-2 -mx-1">
+              <ToolDetailCard
+                v-for="item in chatStore.toolResults"
+                :key="item.id"
+                :item="item"
+              />
+            </div>
             <!-- Tool execution indicator (inside bubble) -->
-            <div v-if="isStreaming && chatStore.toolExecuting" :class="['tool-executing-indicator', { 'mt-0': isContentEmpty }]">
+            <div v-if="isStreaming && chatStore.toolExecuting && settingsStore.showToolDetails" :class="['tool-executing-indicator', { 'mt-0': isContentEmpty }]">
               <div class="tool-pill">
                 <span class="tool-dots">
                   <span /><span /><span />
@@ -1111,8 +1322,17 @@ async function handleMobileDelete() {
                   </svg>
                 </span>
               </div>
-              <div v-if="chatStore.toolExecutingNames.length > 0" class="tool-names">
-                <span v-for="name in chatStore.toolExecutingNames" :key="name" class="tool-name-tag">{{ formatToolName(name) }}</span>
+              <div v-if="toolDisplayNames.length > 0" class="tool-names">
+                <span v-for="name in toolDisplayNames" :key="name" class="tool-name-tag">{{ name }}</span>
+              </div>
+            </div>
+            <!-- Minimal thinking indicator when tool details hidden -->
+            <div v-else-if="isStreaming && chatStore.toolExecuting && !settingsStore.showToolDetails" class="tool-executing-indicator" :class="{ 'mt-0': isContentEmpty }">
+              <div class="tool-pill">
+                <span class="tool-dots">
+                  <span /><span /><span />
+                </span>
+                <span class="tool-timer tabular-nums">{{ toolElapsedSeconds }}s</span>
               </div>
             </div>
             <!-- Waiting timer card (>3s with no content) -->
@@ -1149,9 +1369,9 @@ async function handleMobileDelete() {
           </span>
         </div>
 
-        <!-- Timestamp (hidden on mobile, shown on desktop) -->
+        <!-- Timestamp -->
         <div
-          class="timestamp text-xs text-gray-400 dark:text-gray-500 mt-1 hidden sm:flex items-center gap-2 flex-wrap"
+          class="timestamp text-xs text-gray-400 dark:text-gray-500 mt-1 flex items-center gap-2 flex-wrap"
           :class="{ 'justify-end': isUser }"
         >
           <span>{{ formattedTime }}</span>
@@ -1758,5 +1978,82 @@ async function handleMobileDelete() {
 @keyframes waiting-fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Voice message bubble — WeChat/WhatsApp style */
+.voice-message-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.voice-bubble {
+  border-radius: 1rem 0.25rem 1rem 1rem;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  padding: 0.5rem 0.75rem;
+  color: white;
+  transition: all 0.15s ease;
+  min-width: 80px;
+}
+
+.voice-bubble:hover {
+  filter: brightness(1.08);
+}
+
+.voice-bubble:active {
+  transform: scale(0.98);
+}
+
+.voice-bubble-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.voice-play-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.voice-bubble:hover .voice-play-btn {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.voice-waveform {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  min-width: 0;
+}
+
+.voice-bar {
+  flex: 1;
+  min-width: 2px;
+  max-width: 4px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 1px;
+  transition: background 0.1s;
+}
+
+.voice-bar-active {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.voice-duration {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  opacity: 0.9;
+  font-variant-numeric: tabular-nums;
 }
 </style>

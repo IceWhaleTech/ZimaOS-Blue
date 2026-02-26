@@ -68,13 +68,13 @@ while [[ $# -gt 0 ]]; do
             DOWNLOAD_ALL=true
             shift
             ;;
-        --help|-h)
+        help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  --platform PLATFORM  Download specific platform (e.g., darwin-arm64)"
             echo "  --all                Download all platforms"
-            echo "  --help, -h           Show this help message"
+            echo "  help, -h           Show this help message"
             echo ""
             echo "Supported platforms:"
             for p in "${ALL_PLATFORMS[@]}"; do
@@ -86,7 +86,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Use --help for usage information"
+            echo "Use help for usage information"
             exit 1
             ;;
     esac

@@ -68,13 +68,15 @@ pack-dist:
 	echo "Appended dist ($$(du -h /tmp/zimaos-dist.tar.gz | cut -f1)) at offset $$OFFSET"
 	@rm -f /tmp/zimaos-dist.tar.gz
 
-# Code-sign macOS bluecli binary (requires APPLE_SIGNING_IDENTITY env var)
+# Code-sign macOS binary (requires APPLE_SIGNING_IDENTITY env var)
+# Usage: make codesign CODESIGN_TARGET=bluecli
+CODESIGN_TARGET?=$(BLUECLI_NAME)
 codesign:
 ifeq ($(UNAME_S),Darwin)
 ifdef APPLE_SIGNING_IDENTITY
-	@echo "Code-signing $(BUILD_DIR)/$(BLUECLI_NAME)..."
+	@echo "Code-signing $(BUILD_DIR)/$(CODESIGN_TARGET)..."
 	codesign --force --options runtime --sign "$(APPLE_SIGNING_IDENTITY)" \
-		--entitlements ../tauri-app/src-tauri/entitlements.plist $(BUILD_DIR)/$(BLUECLI_NAME)
+		--entitlements ../tauri-app/src-tauri/entitlements.plist $(BUILD_DIR)/$(CODESIGN_TARGET)
 else
 	@echo "APPLE_SIGNING_IDENTITY not set, skipping code signing"
 endif
@@ -108,6 +110,9 @@ build-launcher:
 	@echo "Building launcher..."
 	CGO_ENABLED=0 go build -ldflags "-s -w" -o $(BUILD_DIR)/$(BINARY_NAME) ./$(LAUNCHER_DIR)
 	@rm -f $(LAUNCHER_DIR)/bluecli $(LAUNCHER_DIR)/dist.tar.gz
+ifeq ($(UNAME_S),Darwin)
+	@$(MAKE) codesign CODESIGN_TARGET=$(BINARY_NAME)
+endif
 	@echo "Launcher: $(BUILD_DIR)/$(BINARY_NAME) ($$(du -h $(BUILD_DIR)/$(BINARY_NAME) | cut -f1))"
 
 # Build the default distribution

@@ -169,11 +169,24 @@ export interface OAuthConfig {
   email?: string
   endpoint?: string
   connected: boolean
+  account_count?: number
+}
+
+export interface OAuthAccount {
+  id: string
+  provider_type: string
+  email?: string
+  project_id?: string
+  endpoint?: string
+  token_expiry?: string
+  connected: boolean
 }
 
 export interface OAuthStatus {
   connected: boolean
   provider_type: string
+  account_count?: number
+  accounts?: OAuthAccount[]
   email?: string
   project_id?: string
   token_expiry?: string
@@ -336,6 +349,9 @@ export const providerPoolApi = {
   testProvider: (id: string, keyId?: string) =>
     api.post<HealthCheckResult>(`/providers/${id}/test`, keyId ? { key_id: keyId } : {}),
 
+  clearError: (id: string) =>
+    api.post<{ status: string }>(`/providers/${id}/clear-error`),
+
   updateModelParams: (id: string, params: ModelParams) =>
     api.put<{ message: string; model_params: ModelParams }>(`/providers/${id}/params`, params),
 
@@ -481,11 +497,16 @@ export const providerPoolApi = {
   completeDeviceFlow: (providerId: string, deviceCode: string) =>
     api.post<{ message: string }>(`/providers/${providerId}/oauth/device-complete`, { device_code: deviceCode }),
 
-  disconnectOAuth: (providerId: string) =>
-    api.post<{ message: string }>(`/providers/${providerId}/oauth/disconnect`),
+  disconnectOAuth: (providerId: string, accountId?: string) =>
+    accountId
+      ? api.post<{ message: string }>(`/providers/${providerId}/oauth/${accountId}/disconnect`)
+      : api.post<{ message: string }>(`/providers/${providerId}/oauth/disconnect`),
 
   getOAuthStatus: (providerId: string) =>
     api.get<OAuthStatus>(`/providers/${providerId}/oauth/status`),
+
+  getOAuthAccounts: (providerId: string) =>
+    api.get<{ accounts: OAuthAccount[]; total: number }>(`/providers/${providerId}/oauth/accounts`),
 
   getOAuthQuota: (providerId: string) =>
     api.get<OAuthQuotaInfo>(`/providers/${providerId}/oauth/quota`),

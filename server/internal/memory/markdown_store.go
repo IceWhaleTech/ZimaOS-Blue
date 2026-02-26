@@ -52,22 +52,31 @@ func (s *MarkdownMemoryStore) Search(ctx context.Context, query string, maxResul
 	queryLower := strings.ToLower(query)
 	queryWords := strings.Fields(queryLower)
 
-	// Walk through all .md files
-	err := filepath.Walk(s.baseDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".md") {
-			return nil
-		}
+	// BFS walk using os.ReadDir instead of filepath.Walk
+	queue := []string{s.baseDir}
+	for len(queue) > 0 {
+		dir := queue[0]
+		queue = queue[1:]
 
-		fileResults, err := s.searchFile(path, queryLower, queryWords)
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			return nil // Skip files with errors
+			continue
 		}
-		results = append(results, fileResults...)
-		return nil
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to search: %w", err)
+		for _, entry := range entries {
+			path := filepath.Join(dir, entry.Name())
+			if entry.IsDir() {
+				queue = append(queue, path)
+				continue
+			}
+			if !strings.HasSuffix(entry.Name(), ".md") {
+				continue
+			}
+			fileResults, err := s.searchFile(path, queryLower, queryWords)
+			if err != nil {
+				continue
+			}
+			results = append(results, fileResults...)
+		}
 	}
 
 	// Sort by score descending
@@ -212,27 +221,45 @@ func (s *MarkdownMemoryStore) ReadFile(ctx context.Context, relPath string, from
 func (s *MarkdownMemoryStore) ListFiles(ctx context.Context) ([]FileInfo, error) {
 	var files []FileInfo
 
-	err := filepath.Walk(s.baseDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".md") {
-			return nil
-		}
+	// BFS walk using os.ReadDir instead of filepath.Walk
+	queue := []string{s.baseDir}
+	for len(queue) > 0 {
+		dir := queue[0]
+		queue = queue[1:]
 
-		relPath, _ := filepath.Rel(s.baseDir, path)
-		files = append(files, FileInfo{
-			Path:       relPath,
-			Name:       info.Name(),
-			Size:       info.Size(),
-			ModifiedAt: info.ModTime(),
-		})
-		return nil
-	})
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			path := filepath.Join(dir, entry.Name())
+			if entry.IsDir() {
+				queue = append(queue, path)
+				continue
+			}
+			if !strings.HasSuffix(entry.Name(), ".md") {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			relPath, _ := filepath.Rel(s.baseDir, path)
+			files = append(files, FileInfo{
+				Path:       relPath,
+				Name:       entry.Name(),
+				Size:       info.Size(),
+				ModifiedAt: info.ModTime(),
+			})
+		}
+	}
 
 	// Sort by modification time (newest first)
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].ModifiedAt.After(files[j].ModifiedAt)
 	})
 
-	return files, err
+	return files, nil
 }
 
 // FileInfo holds information about a Markdown file.

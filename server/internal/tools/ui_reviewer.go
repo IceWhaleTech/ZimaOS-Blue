@@ -360,6 +360,7 @@ func (t *UIReviewerTool) reviewURL(ctx context.Context, url string, args map[str
 	emitUIProgress(ctx, "navigate", i18n.T(lang, i18n.MsgStepPageLoad), "running", url, nil)
 	nav, err := browser.NavigateURL(ctx, url)
 	if err != nil {
+		emitUIProgress(ctx, "navigate", i18n.T(lang, i18n.MsgStepPageLoad), "failed", url, nil)
 		return nil, fmt.Errorf("navigation failed: %w", err)
 	}
 	steps = append(steps, UIReviewStep{ID: "navigate", Name: i18n.T(lang, i18n.MsgStepPageLoad), Status: "success"})

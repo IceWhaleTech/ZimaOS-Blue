@@ -8,6 +8,30 @@ import (
 	"time"
 )
 
+// HeartbeatConfig controls periodic "still alive" messages sent to the channel
+// while the LLM handler is processing. This prevents the bot from appearing dead
+// during long responses or multi-round tool execution.
+type HeartbeatConfig struct {
+	// Enabled turns heartbeat messages on/off. Default: true.
+	Enabled bool `yaml:"enabled"`
+	// InitialDelay is the wait before the first heartbeat. Must be < 5s. Default: 3s.
+	InitialDelay time.Duration `yaml:"initial_delay"`
+	// Interval is the gap between subsequent heartbeats. Default: 8s.
+	Interval time.Duration `yaml:"interval"`
+	// Emojis is the rotating list of emojis to send. Default: ["💬","⌨️"].
+	Emojis []string `yaml:"emojis"`
+}
+
+// DefaultHeartbeatConfig returns sensible defaults.
+func DefaultHeartbeatConfig() HeartbeatConfig {
+	return HeartbeatConfig{
+		Enabled:      true,
+		InitialDelay: 3 * time.Second,
+		Interval:     8 * time.Second,
+		Emojis:       []string{"💬", "⌨️"},
+	}
+}
+
 // Status represents the current state of a channel.
 type Status string
 
@@ -196,6 +220,8 @@ type Config struct {
 	DefaultTimeoutSeconds int `yaml:"default_timeout_seconds"`
 	// MaxMessageLength is the maximum message length.
 	MaxMessageLength int `yaml:"max_message_length"`
+	// Heartbeat controls periodic "still alive" messages during long responses.
+	Heartbeat HeartbeatConfig `yaml:"heartbeat"`
 	// Telegram configuration.
 	Telegram TelegramConfig `yaml:"telegram"`
 	// Discord configuration.
@@ -355,6 +381,7 @@ func DefaultConfig() Config {
 		Enabled:               false,
 		DefaultTimeoutSeconds: 30,
 		MaxMessageLength:      4096,
+		Heartbeat:             DefaultHeartbeatConfig(),
 		Telegram: TelegramConfig{
 			Enabled: false,
 		},

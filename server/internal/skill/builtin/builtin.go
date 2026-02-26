@@ -8,11 +8,14 @@ import (
 // RegisterAll registers all built-in skills with the registry
 func RegisterAll(registry *skill.Registry) error {
 	skills := []skill.Skill{
-		NewPushNotification(),
+		NewReminder(),
 		NewScheduler(),
 		NewWorkflows(),
 		NewSandbox(),
 		NewBrowser(),
+		NewAnalyze(),
+		NewWebSearch(),
+		NewUIReviewer(),
 	}
 
 	for _, s := range skills {
@@ -26,5 +29,5 @@ func RegisterAll(registry *skill.Registry) error {
 
 // GetSkillCount returns the number of built-in skills
 func GetSkillCount() int {
-	return 5
+	return 8
 }

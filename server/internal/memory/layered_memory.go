@@ -3,8 +3,10 @@ package memory
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,6 +45,7 @@ type LayeredMemoryService struct {
 	mu             sync.RWMutex
 	dailyLogPath   string
 	longTermPath   string
+	lastEntryHash  map[string]uint64 // dedup: tag-key → content hash
 }
 
 // NewLayeredMemoryService creates a new layered memory service.
@@ -69,10 +72,11 @@ func NewLayeredMemoryService(baseService *UnifiedMemoryService, config LayeredMe
 	}
 
 	svc := &LayeredMemoryService{
-		config:       config,
-		baseService:  baseService,
-		dailyLogPath: filepath.Join(config.BaseDir, "daily"),
-		longTermPath: filepath.Join(longTermDir, "MEMORY.md"),
+		config:        config,
+		baseService:   baseService,
+		dailyLogPath:  filepath.Join(config.BaseDir, "daily"),
+		longTermPath:  filepath.Join(longTermDir, "MEMORY.md"),
+		lastEntryHash: make(map[string]uint64),
 	}
 
 	// Ensure directories exist
@@ -81,6 +85,21 @@ func NewLayeredMemoryService(baseService *UnifiedMemoryService, config LayeredMe
 	}
 
 	return svc, nil
+}
+
+// WarmIndex pre-loads the memory search index into memory so that subsequent
+// Recall() calls are faster. Safe to call concurrently; no-op if base service
+// doesn't support index warming.
+func (s *LayeredMemoryService) WarmIndex() {
+	if s.baseService == nil {
+		return
+	}
+	// Trigger a lightweight search to force index loading.
+	// The results are discarded — we only care about the side effect of
+	// loading the search index into memory.
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	_, _ = s.baseService.Recall(ctx, "", 1)
 }
 
 // getTodayLogPath returns the path to today's daily log file.
@@ -93,6 +112,27 @@ func (s *LayeredMemoryService) getTodayLogPath() string {
 func (s *LayeredMemoryService) AppendToDaily(ctx context.Context, content string, tags []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Dedup guard: skip if identical content was just written for the same tag set.
+	// This catches double-calls from async event queues or dual-write backends.
+	tagKey := strings.Join(tags, ",")
+	h := fnv.New64a()
+	h.Write([]byte(content))
+	contentHash := h.Sum64()
+	if prev, ok := s.lastEntryHash[tagKey]; ok && prev == contentHash {
+		return nil // duplicate, skip silently
+	}
+	s.lastEntryHash[tagKey] = contentHash
+
+	// Evict old entries to prevent unbounded growth (keep last 64 tag keys)
+	if len(s.lastEntryHash) > 64 {
+		for k := range s.lastEntryHash {
+			if k != tagKey {
+				delete(s.lastEntryHash, k)
+				break
+			}
+		}
+	}
 
 	logPath := s.getTodayLogPath()
 
@@ -132,18 +172,11 @@ func (s *LayeredMemoryService) AppendToDaily(ctx context.Context, content string
 		return fmt.Errorf("failed to write entry: %w", err)
 	}
 
-	// Also store in the base service for search
-	if s.baseService != nil {
-		metadata := map[string]string{
-			"layer": string(LayerDaily),
-			"date":  timeutil.NowTime().Format("2006-01-02"),
-		}
-		for i, tag := range tags {
-			metadata[fmt.Sprintf("tag_%d", i)] = tag
-		}
-		// Store but don't fail if base service fails
-		_, _ = s.baseService.Remember(ctx, content, tags)
-	}
+	// NOTE: We intentionally do NOT call s.baseService.Remember() here.
+	// PureMarkdownBackend.Remember() also appends to the daily log,
+	// which would create duplicate entries in the same file.
+	// The daily log file itself is the primary storage for daily entries;
+	// the base service is only needed for search (which reads daily logs directly).
 
 	return nil
 }

@@ -4,6 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // MetricsConfig holds metrics configuration
@@ -243,7 +245,7 @@ func (mc *MetricsCollector) updateBucket(m RequestMetrics) {
 
 // cleanupBuckets removes buckets older than retention period
 func (mc *MetricsCollector) cleanupBuckets() {
-	cutoff := time.Now().Add(-mc.config.RetentionPeriod)
+	cutoff := timeutil.NowTime().Add(-mc.config.RetentionPeriod)
 	newBuckets := make([]*MetricsBucket, 0)
 
 	for _, b := range mc.buckets {

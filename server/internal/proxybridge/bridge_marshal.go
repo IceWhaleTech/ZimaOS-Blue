@@ -56,8 +56,8 @@ type bridgeToolCall struct {
 	ID       string `json:"id"`
 	Type     string `json:"type"`
 	Function struct {
-		Name      string `json:"name"`
-		Arguments string `json:"arguments"`
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
 	} `json:"function"`
 }
 
@@ -122,14 +122,20 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 			// parseable value during format conversion.
 			bm.Content = ""
 		} else if m.Content != "" {
-			bm.Content = m.Content
+			// For tool results, if content is already valid JSON, embed it
+			// directly as json.RawMessage to avoid double-encoding.
+			if m.Role == llm.RoleTool && json.Valid([]byte(m.Content)) {
+				bm.Content = json.RawMessage(m.Content)
+			} else {
+				bm.Content = m.Content
+			}
 		}
 		if len(m.ToolCalls) > 0 {
 			bm.ToolCalls = make([]bridgeToolCall, len(m.ToolCalls))
 			for j, tc := range m.ToolCalls {
 				bm.ToolCalls[j] = bridgeToolCall{ID: tc.ID, Type: "function"}
 				bm.ToolCalls[j].Function.Name = tc.Name
-				bm.ToolCalls[j].Function.Arguments = tc.Arguments
+				bm.ToolCalls[j].Function.Arguments = toRawJSON(tc.Arguments)
 			}
 		}
 		msgs[i] = bm
@@ -164,11 +170,17 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 		// Log only the last assistant+tool_calls message (current round)
 		for i := len(msgs) - 1; i >= 0; i-- {
 			if len(msgs[i].ToolCalls) > 0 {
-				snippet, _ := json.Marshal(msgs[i])
-				if len(snippet) > 500 {
-					snippet = snippet[:500]
+				tc := msgs[i].ToolCalls[0]
+				args := string(tc.Function.Arguments)
+				if len(args) > 200 {
+					args = args[:200] + "..."
 				}
-				slog.Info("[bridge] serialized assistant+tool_calls", "json", string(snippet), "msg_index", i, "total_msgs", len(msgs))
+				slog.Info("[bridge] tool_calls in request",
+					"tool", tc.Function.Name,
+					"args", args,
+					"count", len(msgs[i].ToolCalls),
+					"msg_index", i,
+					"total_msgs", len(msgs))
 				break
 			}
 		}
@@ -211,7 +223,7 @@ func ParseChatResponse(body []byte) (*llm.ChatResponse, error) {
 				cr.Message.ToolCalls[i] = llm.ToolCall{
 					ID:        tc.ID,
 					Name:      tc.Function.Name,
-					Arguments: tc.Function.Arguments,
+					Arguments: rawToString(tc.Function.Arguments),
 				}
 			}
 		}
@@ -247,7 +259,7 @@ func ParseSSEChunk(dataPayload string) (llm.StreamChunk, bool, error) {
 				chunk.ToolCalls[i] = llm.ToolCall{
 					ID:        tc.ID,
 					Name:      tc.Function.Name,
-					Arguments: tc.Function.Arguments,
+					Arguments: rawToString(tc.Function.Arguments),
 				}
 			}
 		}
@@ -262,4 +274,33 @@ func ParseSSEChunk(dataPayload string) (llm.StreamChunk, bool, error) {
 	}
 
 	return chunk, chunk.Done, nil
+}
+
+// toRawJSON converts a string to json.RawMessage.
+// If the string is already valid JSON, it's used directly.
+// Otherwise it's JSON-encoded as a string value.
+func toRawJSON(s string) json.RawMessage {
+	if len(s) > 0 && json.Valid([]byte(s)) {
+		return json.RawMessage(s)
+	}
+	b, _ := json.Marshal(s)
+	return b
+}
+
+// rawToString extracts a Go string from json.RawMessage.
+// If the raw value is a JSON string (starts with "), it unquotes it.
+// Otherwise returns the raw bytes as-is (e.g. for streaming deltas
+// which are partial JSON fragments).
+func rawToString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	// If it's a JSON string, unquote it to get the inner value
+	if raw[0] == '"' {
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			return s
+		}
+	}
+	return string(raw)
 }

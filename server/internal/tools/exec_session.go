@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ProcessStatus represents the state of a process session.
@@ -212,7 +214,7 @@ func (r *SessionRegistry) MarkExited(id string, exitCode *int, exitSignal string
 		Command:    s.Command,
 		Workdir:    s.Workdir,
 		StartedAt:  s.StartedAt,
-		EndedAt:    time.Now(),
+		EndedAt:    timeutil.NowTime(),
 		Status:     status,
 		ExitCode:   exitCode,
 		ExitSignal: exitSignal,
@@ -275,7 +277,7 @@ func (r *SessionRegistry) sweeper() {
 }
 
 func (r *SessionRegistry) pruneFinished() {
-	cutoff := time.Now().Add(-r.ttl)
+	cutoff := timeutil.NowTime().Add(-r.ttl)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for id, s := range r.finished {

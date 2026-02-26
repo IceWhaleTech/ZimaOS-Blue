@@ -44,6 +44,17 @@ func (e *ProxyError) IsClientError() bool {
 	return e.StatusCode >= 400 && e.StatusCode < 500
 }
 
+// IsOverloaded returns true for 429 (rate limit) or 529 (overloaded) — retrying is pointless.
+func (e *ProxyError) IsOverloaded() bool {
+	return e.StatusCode == 429 || e.StatusCode == 529
+}
+
+// IsNoProvider returns true when no provider is available for the requested model.
+// Retrying won't help — the user needs to configure/enable a provider.
+func (e *ProxyError) IsNoProvider() bool {
+	return e.StatusCode == 503 && strings.Contains(e.Body, "no available provider")
+}
+
 // Bridge adapts llm.ChatRequest/ChatResponse to flow through an http.Handler proxy.
 type Bridge struct {
 	handler http.Handler
@@ -103,7 +114,9 @@ func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatRespon
 	if parseErr != nil {
 		return nil, parseErr
 	}
-	// Inject resolved provider/model into response
+	// Inject resolved provider/model into response.
+	// Always prefer resolved.Model — the upstream provider may return its own
+	// model name which differs from our routing model ID.
 	if resp != nil {
 		if resolved.Provider != "" {
 			resp.Provider = resolved.Provider
@@ -111,7 +124,7 @@ func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatRespon
 		if resolved.ProviderID != "" {
 			resp.ProviderID = resolved.ProviderID
 		}
-		if resolved.Model != "" && resp.Model == "" {
+		if resolved.Model != "" {
 			resp.Model = resolved.Model
 		}
 	}
@@ -202,10 +215,13 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
-			// Log non-SSE lines — these may contain error messages from proxy handler
-			if line != "" {
-				slog.Warn("[bridge] non-SSE line from proxy", "line", line, "model", req.Model)
+			// SSE comments (lines starting with ':') are keep-alive heartbeats — silently ignore.
+			// E.g. OpenRouter sends ": OPENROUTER PROCESSING" during model warm-up.
+			if line == "" || strings.HasPrefix(line, ":") {
+				continue
 			}
+			// Log other non-SSE lines — these may contain error messages from proxy handler
+			slog.Warn("[bridge] non-SSE line from proxy", "line", line, "model", req.Model)
 			continue
 		}
 		chunkCount++
@@ -218,13 +234,17 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 		}
 		// Inject actual provider/model from the resolved route (set by proxy handler
 		// via context before any data is written to the pipe, so it's safe to read here).
+		// IMPORTANT: Always prefer resolved.Model over chunk.Model. The upstream
+		// provider may return its own model name (e.g. "gpt-4o-2024-08-06") which
+		// differs from our routing model ID. Using the upstream name for subsequent
+		// tool rounds causes routing failures (model not in snapshot → blind fallback).
 		if chunk.Provider == "" && resolved.Provider != "" {
 			chunk.Provider = resolved.Provider
 		}
 		if chunk.ProviderID == "" && resolved.ProviderID != "" {
 			chunk.ProviderID = resolved.ProviderID
 		}
-		if chunk.Model == "" && resolved.Model != "" {
+		if resolved.Model != "" {
 			chunk.Model = resolved.Model
 		}
 		if chunkCount == 1 {

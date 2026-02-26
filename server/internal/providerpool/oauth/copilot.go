@@ -146,37 +146,50 @@ func exchangeDeviceCode(ctx context.Context, cfg *ProviderConfig, deviceCode str
 
 // GetCopilotToken exchanges a GitHub OAuth token for a Copilot-specific token.
 // GitHub Copilot requires a separate token obtained from the Copilot API.
-func GetCopilotToken(ctx context.Context, githubToken string) (string, time.Time, error) {
+// Returns: token, expiry time, API endpoint, error
+func GetCopilotToken(ctx context.Context, githubToken string) (string, time.Time, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		"https://api.github.com/copilot_internal/v2/token", nil)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, "", err
 	}
 	req.Header.Set("Authorization", "token "+githubToken)
 	req.Header.Set("Accept", "application/json")
+	// GitHub Copilot API requires a specific User-Agent to be recognized as an approved client
+	// Using VS Code's user agent as it's the most common approved editor
+	req.Header.Set("User-Agent", "GitHubCopilot/1.0 (VSCode/1.85)")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, "", err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, "", err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", time.Time{}, fmt.Errorf("copilot token request failed (%d): %s", resp.StatusCode, body)
+		return "", time.Time{}, "", fmt.Errorf("copilot token request failed (%d): %s", resp.StatusCode, body)
 	}
 
 	var result struct {
 		Token     string `json:"token"`
 		ExpiresAt int64  `json:"expires_at"`
+		Endpoints struct {
+			API string `json:"api"`
+		} `json:"endpoints"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, "", err
 	}
 
-	return result.Token, time.Unix(result.ExpiresAt, 0), nil
+	// Return endpoint if available, otherwise use default
+	endpoint := result.Endpoints.API
+	if endpoint == "" {
+		endpoint = "https://api.githubcopilot.com"
+	}
+
+	return result.Token, time.Unix(result.ExpiresAt, 0), endpoint, nil
 }

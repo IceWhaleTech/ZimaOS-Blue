@@ -59,6 +59,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 
 	ssePkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 )
 
@@ -69,19 +70,22 @@ var (
 )
 
 func main() {
-	// On macOS, request speech recognition authorization on thread 0
-	// BEFORE starting the server. runtime.LockOSThread() in macos_init.go
-	// pins this goroutine to thread 0 (required by AppKit/TCC).
-	macosRequestSTTAuthorization()
-
 	// Fast-path: CLI subcommands bypass cobra to minimize page faults and RSS.
 	// All init() functions have already run, but we avoid touching cobra's
 	// command tree, flag parsing, and the heavy code paths they pull in.
+	// This must run BEFORE macosRequestSTTAuthorization() so IPC calls
+	// (e.g. `blue web_search ...`) don't trigger CGo/Speech framework
+	// initialization, log output, or any server-side side effects.
 	if len(os.Args) > 1 {
 		if cliDispatch(os.Args[1:]) {
 			return
 		}
 	}
+
+	// On macOS, request speech recognition authorization on thread 0
+	// BEFORE starting the server. runtime.LockOSThread() in macos_init.go
+	// pins this goroutine to thread 0 (required by AppKit/TCC).
+	macosRequestSTTAuthorization()
 
 	// On macOS, the main goroutine (thread 0) must pump the Cocoa run loop
 	// for Speech framework callbacks. Run the server on a goroutine and
@@ -560,7 +564,7 @@ func runServer() {
 	wpSender := bootstrap.InitWebPushSender(db, configKV, zapLogger)
 
 	// Wire push notification service (shared with bluelib)
-	pushIPC := bootstrap.InitPushService(&bootstrap.PushServiceDeps{
+	pushResult := bootstrap.InitPushService(&bootstrap.PushServiceDeps{
 		DB:          db,
 		MemoryStore: memoryStore,
 		CronGetSvc:  cronHandler.GetService,
@@ -568,6 +572,12 @@ func runServer() {
 		WPSender:    wpSender,
 		Logger:      zapLogger,
 	})
+	var pushIPC sockipc.PushBackend
+	var pushSvc *push.Service
+	if pushResult != nil {
+		pushIPC = pushResult.IPC
+		pushSvc = pushResult.Service
+	}
 
 	// Wire browser service — lazy init, creates rod service on first use (for IPC only)
 	var browserBackend tools.BrowserBackend
@@ -699,7 +709,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader, sseBroker, pushIPC, cronIPC, browserBackend, lazyBrowserSvc, configKV, configStore)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, configKV, configStore)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -741,6 +751,13 @@ func runServer() {
 	// Graceful shutdown with timeout
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// Force-cancel on second signal — don't let the process hang
+	go func() {
+		sig := <-quit
+		logger.Warn().Str("signal", sig.String()).Msg("Received second signal, cancelling graceful shutdown")
+		cancel()
+	}()
 
 	server.SetReady(false)
 
@@ -794,7 +811,7 @@ func runServer() {
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, configKV kvstore.Store, configStore *config.ConfigStore) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, configKV kvstore.Store, configStore *config.ConfigStore) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -962,6 +979,13 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	if providerPool != nil {
+		// Stop provider pool background goroutines (health checks, usage tracker) on shutdown
+		pp := providerPool
+		lm.RegisterShutdownHook(func(ctx context.Context) error {
+			pp.Stop()
+			return nil
+		})
+
 		bootstrap.LoadProvidersFromPool(providerPool, llmRegistry)
 		chatHandler.SetProviderPool(providerPool)
 
@@ -1024,6 +1048,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		BrowserIPC:         browserIPC,
 		UIReviewerIPC:      uiReviewerIPC,
 		PushIPC:            pushIPC,
+		PushService:        pushSvc,
 		CronIPC:            cronIPC,
 		WorkflowHandler:    workflowHandler,
 		VoiceHandler:       voiceHandler,
@@ -1053,6 +1078,20 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	_ = bootstrap.RegisterAllRoutes(e, deps)
+
+	// Wire memory tool into MgmtTool after both are initialized.
+	// Memory init is async (go memoryHandler.Init), so poll until available.
+	if deps.Services.MgmtTool != nil {
+		go func() {
+			for i := 0; i < 60; i++ {
+				if mt := tools.GetMemoryTool(toolRegistry); mt != nil {
+					deps.Services.MgmtTool.SetMemory(mt)
+					return
+				}
+				time.Sleep(500 * time.Millisecond)
+			}
+		}()
+	}
 
 	// Register shutdown hooks for closers started during route registration (e.g., sockipc)
 	for _, c := range deps.Closers {

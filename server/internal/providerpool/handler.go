@@ -188,7 +188,7 @@ func (p *Pool) Start(ctx context.Context) {
 	// Refresh models for all enabled providers (especially important for trial provider)
 	// This runs in background to not block startup
 	go func() {
-		refreshCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		refreshCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
 		providers := p.Registry.ListEnabled()
@@ -225,6 +225,9 @@ func (p *Pool) Start(ctx context.Context) {
 func (p *Pool) Stop() {
 	p.Registry.StopHealthCheck()
 	p.UsageTracker.Stop()
+	if p.pricingUpdater != nil {
+		p.pricingUpdater.Stop()
+	}
 }
 
 // fixProviderTypes fixes providers that were incorrectly marked as builtin
@@ -297,10 +300,14 @@ func (p *Pool) initBuiltinProviders() {
 				needsUpdate = true
 			}
 
-			// Update base URL only if it was empty (user hasn't configured it)
-			if existingProvider.BaseURL == "" && builtin.BaseURL != "" {
-				existingProvider.BaseURL = builtin.BaseURL
-				needsUpdate = true
+			// Update base URL if the builtin default changed (e.g. domain migration).
+			// Only override when the existing URL matches a known stale value for this provider,
+			// or when it was empty. This preserves truly custom user-configured URLs.
+			if builtin.BaseURL != "" && existingProvider.BaseURL != builtin.BaseURL {
+				if existingProvider.BaseURL == "" || isStaleBuiltinURL(builtin.ID, existingProvider.BaseURL) {
+					existingProvider.BaseURL = builtin.BaseURL
+					needsUpdate = true
+				}
 			}
 
 			// Update API version if changed
@@ -347,10 +354,78 @@ func (p *Pool) initBuiltinProviders() {
 				existingProvider.UpdatedAt = builtin.UpdatedAt
 				p.Registry.Update(existingProvider)
 			}
+
+			// Sync builtin models: add any new models that don't exist yet,
+			// and remove stale models that are no longer in the builtin list.
+			syncBuiltinModels(p.Storage, builtin.ID)
 		} else {
 			// Register new builtin provider
 			p.Registry.Register(builtin)
 		}
+	}
+}
+
+// isStaleBuiltinURL returns true if the URL is a known old/deprecated default for this provider.
+// This allows automatic migration to the new URL without overwriting user-customized URLs.
+func isStaleBuiltinURL(providerID, url string) bool {
+	staleURLs := map[string][]string{
+		"minimax":    {"https://api.minimax.chat/v1"},
+		"openrouter": {"https://openrouter.ai/api/v1"},
+		"venice":     {"https://api.venice.ai/api/v1"},
+		"qwen":       {"https://dashscope.aliyuncs.com/compatible-mode/v1"},
+	}
+	for _, stale := range staleURLs[providerID] {
+		if url == stale {
+			return true
+		}
+	}
+	return false
+}
+
+// syncBuiltinModels ensures stored models for a builtin provider stay in sync
+// with the current builtin definitions. Adds new models and removes stale ones.
+func syncBuiltinModels(storage Storage, providerID string) {
+	builtinModels := GetBuiltinModels(providerID)
+	if len(builtinModels) == 0 {
+		return
+	}
+
+	storedModels, err := storage.LoadModels(providerID)
+	if err != nil || len(storedModels) == 0 {
+		// No stored models — nothing to sync (builtin fallback will be used)
+		return
+	}
+
+	builtinMap := make(map[string]*Model, len(builtinModels))
+	for _, m := range builtinModels {
+		builtinMap[m.ID] = m
+	}
+
+	// Collect all known builtin model IDs (current + stale) for this provider.
+	// A stored model is "stale builtin" if it has the same ProviderID and is NOT
+	// in the current builtin list and was NOT fetched from API (no CreatedAt).
+	// We use a simple heuristic: if the model has no Description and no CreatedAt,
+	// it was likely from a previous builtin definition.
+
+	changed := false
+	var merged []*Model
+	for _, m := range storedModels {
+		if _, isCurrent := builtinMap[m.ID]; isCurrent {
+			// Will be replaced by fresh builtin definition below
+			changed = true
+			continue
+		}
+		merged = append(merged, m)
+	}
+
+	// Add all current builtin models
+	for _, m := range builtinModels {
+		merged = append(merged, m)
+		changed = true
+	}
+
+	if changed {
+		storage.SaveModels(providerID, merged)
 	}
 }
 
@@ -419,6 +494,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/:id/enable", h.EnableProvider)
 	g.POST("/:id/disable", h.DisableProvider)
 	g.POST("/:id/test", h.TestProvider)
+	g.POST("/:id/clear-error", h.ClearError)
 	g.PUT("/:id/params", h.UpdateModelParams)
 	g.PUT("/:id/allowed-models", h.UpdateAllowedModels)
 	g.POST("/:id/detect", h.DetectCapabilities)
@@ -427,10 +503,13 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 
 	// OAuth endpoints
 	g.POST("/:id/oauth/start", h.StartOAuth)
-	g.POST("/:id/oauth/disconnect", h.DisconnectOAuth)
+	g.POST("/:id/oauth/disconnect", h.DisconnectOAuth)           // Legacy: disconnect all
+	g.POST("/:id/oauth/:accountId/disconnect", h.DisconnectOAuth) // Disconnect specific account
 	g.GET("/:id/oauth/status", h.GetOAuthStatus)
+	g.GET("/:id/oauth/accounts", h.GetOAuthAccounts)
 	g.POST("/:id/oauth/device-complete", h.CompleteDeviceFlow)
 	g.GET("/:id/oauth/quota", h.GetOAuthQuota)
+	g.GET("/:id/oauth/:accountId/quota", h.GetOAuthQuota)
 
 	// Model endpoints
 	g.GET("/:id/models", h.ListProviderModels)
@@ -946,6 +1025,12 @@ func (h *Handler) TestProvider(c echo.Context) error {
 		healthResult.KeyHash = targetKey.KeyHash
 	}
 	h.pool.Registry.SetHealth(id, healthResult)
+
+	// If health check auto-switched the BaseURL (e.g. MiniMax regional fallback), persist it
+	if testProvider.BaseURL != provider.BaseURL {
+		provider.BaseURL = testProvider.BaseURL
+		_ = h.pool.Registry.Update(provider)
+	}
 
 	return c.JSON(http.StatusOK, healthResult)
 }
@@ -2138,6 +2223,32 @@ func (h *Handler) GetTrialQuota(c echo.Context) error {
 // SetOAuthManager sets the OAuth manager for the handler.
 func (h *Handler) SetOAuthManager(m *oauth.Manager) {
 	h.oauthManager = m
+	// Also set OAuth manager on discovery for model fetching
+	if h.pool != nil && h.pool.Discovery != nil {
+		h.pool.Discovery.SetOAuthManager(m)
+	}
+	// Refresh OAuth status for all providers that have OAuth configured
+	h.refreshOAuthStatusForProviders()
+}
+
+// refreshOAuthStatusForProviders updates the OAuth.Connected field for all providers
+// based on whether tokens exist in the token store.
+func (h *Handler) refreshOAuthStatusForProviders() {
+	if h.oauthManager == nil || h.pool == nil || h.pool.Registry == nil {
+		return
+	}
+	providers := h.pool.Registry.List()
+	for _, p := range providers {
+		if p.OAuth == nil {
+			continue
+		}
+		tokens, err := h.oauthManager.GetTokens(p.ID)
+		connected := err == nil && len(tokens) > 0
+		if p.OAuth.Connected != connected {
+			p.OAuth.Connected = connected
+			h.pool.Registry.Update(p)
+		}
+	}
 }
 
 // SetMediaPricingLookup sets the callback for looking up media model pricing.
@@ -2145,10 +2256,14 @@ func (h *Handler) SetMediaPricingLookup(fn MediaPricingLookup) {
 	h.mediaPricingLookup = fn
 }
 
-// RegisterOAuthCallbackRoute registers the OAuth callback route on a top-level group.
-// This needs to be separate because the callback URL is a fixed path (not under /providers/:id).
-func (h *Handler) RegisterOAuthCallbackRoute(e *echo.Echo) {
-	e.GET("/api/v1/providers/oauth/callback", h.HandleOAuthCallback)
+// RegisterOAuthCallbackRoute registers OAuth callback routes for all provider types.
+// Each provider may have a different callback path (e.g., /oauth-callback, /oauth2callback).
+func (h *Handler) RegisterOAuthCallbackRoute(e *echo.Echo, configs map[string]*oauth.ProviderConfig) {
+	for _, cfg := range configs {
+		if cfg.RedirectPath != "" {
+			e.GET(cfg.RedirectPath, h.HandleOAuthCallback)
+		}
+	}
 }
 
 // StartOAuth starts an OAuth flow for a provider.
@@ -2205,21 +2320,24 @@ func (h *Handler) HandleOAuthCallback(c echo.Context) error {
 		return c.HTML(http.StatusBadRequest, fmt.Sprintf("<h2>Authorization failed</h2><p>%s</p>", err.Error()))
 	}
 
-	// Update the provider's OAuth config
+	// Update the provider's OAuth config — mark as connected, don't overwrite template
 	provider, getErr := h.pool.Registry.Get(token.ProviderID)
 	if getErr == nil {
 		if provider.OAuth == nil {
 			provider.OAuth = &OAuthConfig{}
 		}
 		provider.OAuth.ProviderType = token.ProviderType
-		provider.OAuth.AccessToken = token.AccessToken
-		provider.OAuth.RefreshToken = token.RefreshToken
-		provider.OAuth.TokenExpiry = token.TokenExpiry
-		provider.OAuth.Email = token.Email
-		provider.OAuth.ProjectID = token.ProjectID
 		provider.OAuth.Endpoint = token.Endpoint
 		provider.OAuth.Connected = true
 		provider.OAuth.Scopes = token.Scopes
+		// Update account count from token store
+		if tokens, err := h.oauthManager.GetTokens(token.ProviderID); err == nil {
+			provider.OAuth.AccountCount = len(tokens)
+			if len(tokens) > 0 {
+				provider.OAuth.Email = tokens[0].Email
+				provider.OAuth.ProjectID = tokens[0].ProjectID
+			}
+		}
 		provider.Enabled = true
 		provider.Status = ProviderStatusActive
 		h.pool.Registry.Update(provider)
@@ -2261,11 +2379,13 @@ func (h *Handler) CompleteDeviceFlow(c echo.Context) error {
 			provider.OAuth = &OAuthConfig{}
 		}
 		provider.OAuth.ProviderType = token.ProviderType
-		provider.OAuth.AccessToken = token.AccessToken
-		provider.OAuth.RefreshToken = token.RefreshToken
-		provider.OAuth.TokenExpiry = token.TokenExpiry
-		provider.OAuth.Email = token.Email
 		provider.OAuth.Connected = true
+		if tokens, err := h.oauthManager.GetTokens(token.ProviderID); err == nil {
+			provider.OAuth.AccountCount = len(tokens)
+			if len(tokens) > 0 {
+				provider.OAuth.Email = tokens[0].Email
+			}
+		}
 		provider.Enabled = true
 		provider.Status = ProviderStatusActive
 		h.pool.Registry.Update(provider)
@@ -2278,24 +2398,42 @@ func (h *Handler) CompleteDeviceFlow(c echo.Context) error {
 }
 
 // DisconnectOAuth disconnects OAuth for a provider.
+// Supports both /:id/oauth/disconnect (disconnect all) and /:id/oauth/:accountId/disconnect.
 func (h *Handler) DisconnectOAuth(c echo.Context) error {
 	if h.oauthManager == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "oauth not configured"})
 	}
 
 	providerID := c.Param("id")
+	accountID := c.Param("accountId")
 
-	if err := h.oauthManager.Disconnect(providerID); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	if accountID != "" {
+		// Disconnect specific account
+		if err := h.oauthManager.Disconnect(providerID, accountID); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	} else {
+		// Disconnect all accounts for this provider
+		tokens, err := h.oauthManager.GetTokens(providerID)
+		if err == nil {
+			for _, t := range tokens {
+				_ = h.oauthManager.Disconnect(providerID, t.ID)
+			}
+		}
 	}
 
-	// Update provider
+	// Update provider state based on remaining accounts
 	provider, err := h.pool.Registry.Get(providerID)
 	if err == nil && provider.OAuth != nil {
-		provider.OAuth.Connected = false
-		provider.OAuth.AccessToken = ""
-		provider.OAuth.RefreshToken = ""
-		provider.OAuth.Email = ""
+		remaining, _ := h.oauthManager.GetTokens(providerID)
+		if len(remaining) == 0 {
+			provider.OAuth.Connected = false
+			provider.OAuth.Email = ""
+			provider.OAuth.AccountCount = 0
+		} else {
+			provider.OAuth.AccountCount = len(remaining)
+			provider.OAuth.Email = remaining[0].Email
+		}
 		h.pool.Registry.Update(provider)
 	}
 
@@ -2315,16 +2453,59 @@ func (h *Handler) GetOAuthStatus(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"connected":     false,
 			"provider_type": "",
+			"accounts":      []OAuthAccount{},
 		})
 	}
 
+	// Build accounts list from token store
+	accounts := h.getOAuthAccountsList(providerID)
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"connected":     provider.OAuth.Connected,
-		"provider_type": provider.OAuth.ProviderType,
-		"email":         provider.OAuth.Email,
-		"project_id":    provider.OAuth.ProjectID,
-		"token_expiry":  provider.OAuth.TokenExpiry,
+		"connected":      len(accounts) > 0,
+		"provider_type":  provider.OAuth.ProviderType,
+		"account_count":  len(accounts),
+		"accounts":       accounts,
 	})
+}
+
+// GetOAuthAccounts returns all connected OAuth accounts for a provider.
+func (h *Handler) GetOAuthAccounts(c echo.Context) error {
+	providerID := c.Param("id")
+
+	_, err := h.pool.Registry.Get(providerID)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
+	}
+
+	accounts := h.getOAuthAccountsList(providerID)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"accounts": accounts,
+		"total":    len(accounts),
+	})
+}
+
+// getOAuthAccountsList builds the accounts list from the token store.
+func (h *Handler) getOAuthAccountsList(providerID string) []OAuthAccount {
+	if h.oauthManager == nil {
+		return nil
+	}
+	tokens, err := h.oauthManager.GetTokens(providerID)
+	if err != nil || len(tokens) == 0 {
+		return nil
+	}
+	accounts := make([]OAuthAccount, 0, len(tokens))
+	for _, t := range tokens {
+		accounts = append(accounts, OAuthAccount{
+			ID:           t.ID,
+			ProviderType: t.ProviderType,
+			Email:        t.Email,
+			ProjectID:    t.ProjectID,
+			Endpoint:     t.Endpoint,
+			TokenExpiry:  t.TokenExpiry,
+			Connected:    !t.Expired(),
+		})
+	}
+	return accounts
 }
 
 // GetOAuthQuota returns subscription tier and per-model quota for an OAuth provider.
@@ -2346,7 +2527,7 @@ func (h *Handler) GetOAuthQuota(c echo.Context) error {
 		return c.JSON(http.StatusOK, &oauth.OAuthQuotaInfo{
 			ProviderType: "",
 			Error:        "oauth_not_connected",
-			FetchedAt:    time.Now().UnixMilli(),
+			FetchedAt:    timeutil.NowMilli(),
 		})
 	}
 
@@ -2354,12 +2535,19 @@ func (h *Handler) GetOAuthQuota(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "oauth not configured"})
 	}
 
-	accessToken, err := h.oauthManager.GetAccessToken(providerID)
+	// Support per-account quota via /:id/oauth/:accountId/quota
+	accountID := c.Param("accountId")
+	var accessToken string
+	if accountID != "" {
+		accessToken, err = h.oauthManager.GetAccessTokenByID(providerID, accountID)
+	} else {
+		accessToken, err = h.oauthManager.GetAccessToken(providerID)
+	}
 	if err != nil {
 		info := &oauth.OAuthQuotaInfo{
 			ProviderType: provider.OAuth.ProviderType,
 			Error:        "token_refresh_failed",
-			FetchedAt:    time.Now().UnixMilli(),
+			FetchedAt:    timeutil.NowMilli(),
 		}
 		h.quotaCache.Put(providerID, info)
 		return c.JSON(http.StatusOK, info)
@@ -2373,7 +2561,7 @@ func (h *Handler) GetOAuthQuota(c echo.Context) error {
 		quotaInfo, _ = oauth.FetchCloudCodeQuota(ctx, accessToken, provider.OAuth.ProjectID, provider.OAuth.ProviderType)
 
 	case "copilot":
-		tokenStr, _, skuErr := oauth.GetCopilotToken(ctx, accessToken)
+		tokenStr, _, _, skuErr := oauth.GetCopilotToken(ctx, accessToken)
 		tier, tierName := "Free", "GitHub Copilot Free"
 		if skuErr == nil && tokenStr != "" {
 			sku := oauth.ParseCopilotSKU(tokenStr)
@@ -2383,7 +2571,7 @@ func (h *Handler) GetOAuthQuota(c echo.Context) error {
 			ProviderType: "copilot",
 			Tier:         tier,
 			TierName:     tierName,
-			FetchedAt:    time.Now().UnixMilli(),
+			FetchedAt:    timeutil.NowMilli(),
 		}
 		if skuErr != nil {
 			quotaInfo.Error = "sku_fetch_failed"
@@ -2393,7 +2581,7 @@ func (h *Handler) GetOAuthQuota(c echo.Context) error {
 		quotaInfo = &oauth.OAuthQuotaInfo{
 			ProviderType: provider.OAuth.ProviderType,
 			Error:        "unsupported_provider_type",
-			FetchedAt:    time.Now().UnixMilli(),
+			FetchedAt:    timeutil.NowMilli(),
 		}
 	}
 
@@ -2477,10 +2665,8 @@ func (h *Handler) autoImportOAuthToken(ideType ide.IDEType) string {
 				Email:        token.Email,
 				ProjectID:    token.ProjectID,
 				Endpoint:     token.Endpoint,
-				AccessToken:  token.AccessToken,
-				RefreshToken: token.RefreshToken,
-				TokenExpiry:  token.TokenExpiry,
 				Scopes:       token.Scopes,
+				AccountCount: 1,
 			},
 			CreatedAt: timeutil.NowTime(),
 			UpdatedAt: timeutil.NowTime(),
@@ -2502,16 +2688,11 @@ func (h *Handler) autoImportOAuthToken(ideType ide.IDEType) string {
 			return ""
 		}
 	} else {
-		// Update existing provider with fresh token
+		// Update existing provider
 		if provider.OAuth == nil {
 			provider.OAuth = &OAuthConfig{}
 		}
 		provider.OAuth.ProviderType = token.ProviderType
-		provider.OAuth.AccessToken = token.AccessToken
-		provider.OAuth.RefreshToken = token.RefreshToken
-		provider.OAuth.TokenExpiry = token.TokenExpiry
-		provider.OAuth.Email = token.Email
-		provider.OAuth.ProjectID = token.ProjectID
 		provider.OAuth.Endpoint = token.Endpoint
 		provider.OAuth.Connected = true
 		provider.OAuth.Scopes = token.Scopes
@@ -2520,9 +2701,18 @@ func (h *Handler) autoImportOAuthToken(ideType ide.IDEType) string {
 		h.pool.Registry.Update(provider)
 	}
 
-	// Also save to OAuth store
+	// Save to OAuth token store (adds as new account)
 	if h.oauthManager != nil {
 		_ = h.oauthManager.ImportToken(token)
+		// Update account count
+		if tokens, err := h.oauthManager.GetTokens(providerID); err == nil && provider.OAuth != nil {
+			provider.OAuth.AccountCount = len(tokens)
+			if len(tokens) > 0 {
+				provider.OAuth.Email = tokens[0].Email
+				provider.OAuth.ProjectID = tokens[0].ProjectID
+			}
+			h.pool.Registry.Update(provider)
+		}
 	}
 
 	return providerID
@@ -2534,4 +2724,19 @@ func (h *Handler) ScanOAuthTokens(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"results": results,
 	})
+}
+
+// ClearError clears the error status of a provider, allowing manual retry
+func (h *Handler) ClearError(c echo.Context) error {
+	id := c.Param("id")
+
+	err := h.pool.Registry.ClearError(id)
+	if err != nil {
+		if err == ErrProviderNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"status": "cleared"})
 }

@@ -5,7 +5,8 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
-	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // parseSSEChunks extracts JSON objects from SSE data lines.
@@ -108,7 +109,7 @@ func assembleNonStreamingResponse(chunks []map[string]interface{}) []byte {
 	resp := map[string]interface{}{
 		"id":      id,
 		"object":  "chat.completion",
-		"created": time.Now().Unix(),
+		"created": timeutil.Now(),
 		"model":   model,
 		"choices": outChoices,
 	}

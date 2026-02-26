@@ -307,9 +307,9 @@ func TestDetectLocale_EnvVar(t *testing.T) {
 	t.Setenv("LANG", "ja_JP.UTF-8")
 	t.Setenv("LC_ALL", "")
 	t.Setenv("LANGUAGE", "")
-	got := detectLocale()
+	got := doDetectLocale()
 	if got != "ja-JP" {
-		t.Errorf("detectLocale() with LANG=ja_JP.UTF-8 = %q, want %q", got, "ja-JP")
+		t.Errorf("doDetectLocale() with LANG=ja_JP.UTF-8 = %q, want %q", got, "ja-JP")
 	}
 }
 
@@ -321,11 +321,11 @@ func TestDetectLocale_DarwinFallback(t *testing.T) {
 	t.Setenv("LANG", "")
 	t.Setenv("LC_ALL", "")
 	t.Setenv("LANGUAGE", "")
-	got := detectLocale()
+	got := doDetectLocale()
 	// On macOS, should get something from system preferences, not "en" fallback
 	// (unless the system is actually English, which is also fine)
 	if len(got) < 2 {
-		t.Errorf("detectLocale() on darwin with no env = %q, expected valid locale", got)
+		t.Errorf("doDetectLocale() on darwin with no env = %q, expected valid locale", got)
 	}
 	t.Logf("detected macOS locale: %s", got)
 }

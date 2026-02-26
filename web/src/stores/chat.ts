@@ -1,15 +1,163 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed, watch } from 'vue'
 import type { Conversation, Message, SendMessageRequest, MessageStats, MessageAttachment } from '@/api/chat'
-import { conversationApi, messageApi, warmupApi } from '@/api/chat'
+import { conversationApi, messageApi, warmupApi, injectionApi } from '@/api/chat'
 import { approvalApi } from '@/api/approval'
-import type { Decision } from '@/api/approval'
+import type { Decision, ExecDecision } from '@/api/approval'
+import api from '@/api/client'
 import { SSEClient } from '@/utils/sse'
 import { useSettingsStore } from './settings'
 import { useProviderPoolStore } from './providerPool'
 import { systemApi } from '@/api/system'
 
 const PAGE_SIZE = 50
+
+/** Structured tool result for collapsible detail cards. */
+export interface ToolResultItem {
+  name: string
+  id: string
+  command: string       // Extracted command/query/path from args
+  args?: string         // Raw args JSON
+  icon: '✓' | '✗' | '⏳'
+  status: string        // Duration, error message, or status text
+  output: string        // Truncated stdout/result
+  exitCode?: number
+  durationMs?: number
+  host?: 'local' | 'sandbox'
+  riskLevel?: string
+  timestamp: number     // When this result was received
+}
+
+/** Format tool results into a process block for styled rendering. */
+function formatToolResultsSummary(results: Array<{ name: string; id: string; args?: string; result?: string }>): string {
+  if (!results || results.length === 0) return ''
+  const items: Array<{ cmd: string; tool: string; icon: string; status: string; output: string }> = []
+  for (const r of results) {
+    let command = ''
+    if (r.args) {
+      try {
+        const parsed = JSON.parse(r.args)
+        command = parsed.command || parsed.query || parsed.path || parsed.name || parsed.sq || parsed.mq || ''
+      } catch {
+        command = r.args.slice(0, 80)
+      }
+    }
+    let icon = '⏳'
+    let status = ''
+    let output = ''
+    if (r.result) {
+      try {
+        const res = JSON.parse(r.result)
+        // Special handling for ask_user_question tool
+        if (r.name === 'ask' && (res.qa || res.sq || res.mq)) {
+          icon = '✓'
+          const questionText = res.sq || res.mq || ''
+          const qaData = res.qa
+          if (qaData && Array.isArray(qaData) && qaData.length > 0) {
+            const q = qaData[0]
+            const question = q.q || questionText
+            const answers = q.a || []
+            output = `Q: ${question}\nA: ${answers.join(', ')}`
+          } else {
+            output = `Q: ${questionText}`
+          }
+        } else if (res.error) {
+          icon = '✗'
+          status = res.error.slice(0, 100)
+        } else if (res.exit_code !== undefined) {
+          icon = res.exit_code === 0 ? '✓' : '✗'
+          const dur = res.duration_ms ? `${res.duration_ms}ms` : ''
+          status = dur
+        } else if (res.status) {
+          icon = '✓'
+          status = res.status
+        }
+        if (res.stdout && res.stdout.trim() && r.name !== 'ask') {
+          output = res.stdout.trim()
+          if (output.length > 200) output = output.slice(0, 200) + '...'
+        }
+        if (res.stderr && res.stderr.trim()) {
+          const stderr = res.stderr.trim().slice(0, 120)
+          output = output ? `${output}\n${stderr}` : stderr
+        }
+      } catch {
+        output = r.result.slice(0, 200)
+      }
+    }
+    items.push({ cmd: command, tool: r.name, icon, status, output })
+  }
+  const json = JSON.stringify(items)
+  return `\n\n<!-- process-start -->\n\`\`\`process\n${json}\n\`\`\`\n<!-- process-end -->\n\n`
+}
+
+/** Parse raw tool results into structured ToolResultItems. */
+function parseToolResults(results: Array<{ name: string; id: string; args?: string; result?: string }>): ToolResultItem[] {
+  return results.map(r => {
+    let command = ''
+    if (r.args) {
+      try {
+        const parsed = JSON.parse(r.args)
+        command = parsed.command || parsed.query || parsed.path || parsed.name || parsed.action || parsed.sq || parsed.mq || ''
+      } catch {
+        // If args is not valid JSON, use it directly for ask_user_question
+        if (r.name === 'ask') {
+          command = r.args
+        } else {
+          command = r.args.slice(0, 80)
+        }
+      }
+    }
+    let icon: '✓' | '✗' | '⏳' = '⏳'
+    let status = ''
+    let output = ''
+    let exitCode: number | undefined
+    let durationMs: number | undefined
+    let host: 'local' | 'sandbox' | undefined
+    let riskLevel: string | undefined
+    if (r.result) {
+      try {
+        const res = JSON.parse(r.result)
+        // Special handling for ask_user_question tool
+        if (r.name === 'ask' && (res.qa || res.sq || res.mq)) {
+          icon = '✓'
+          const questionText = res.sq || res.mq || ''
+          const qaData = res.qa
+          if (qaData && Array.isArray(qaData) && qaData.length > 0) {
+            const q = qaData[0]
+            const question = q.q || questionText
+            const options = q.o || []
+            const answers = q.a || []
+            output = `**Q:** ${question}\n\n**Options:** ${options.join(', ')}\n\n**Answer:** ${answers.join(', ')}`
+          } else {
+            output = `**Q:** ${questionText}`
+          }
+        } else if (res.error) {
+          icon = '✗'; status = res.error.slice(0, 200)
+        } else if (res.exit_code !== undefined) {
+          icon = res.exit_code === 0 ? '✓' : '✗'
+          exitCode = res.exit_code
+          durationMs = res.duration_ms
+          status = res.duration_ms ? `${res.duration_ms}ms` : ''
+        } else if (res.status) {
+          icon = '✓'; status = res.status
+        } else {
+          icon = '✓'
+        }
+        if (res.stdout?.trim() && r.name !== 'ask') { output = res.stdout.trim() }
+        if (res.stderr?.trim()) {
+          const stderr = res.stderr.trim()
+          output = output ? `${output}\n${stderr}` : stderr
+        }
+        if (res.host) host = res.host
+        if (res.risk_level) riskLevel = res.risk_level
+      } catch {
+        output = r.result.slice(0, 500)
+        icon = '✓'
+      }
+    }
+    return { name: r.name, id: r.id, command, args: r.args, icon, status, output, exitCode, durationMs, host, riskLevel, timestamp: Date.now() }
+  })
+}
 
 // Store for message metadata (provider, model, stats) - keyed by message ID
 const messageMetadata = ref<Map<string, { provider?: string; model?: string; stats?: MessageStats }>>(new Map())
@@ -25,6 +173,7 @@ export const useChatStore = defineStore('chat', () => {
   const sending = ref(false)
   const streaming = ref(false)
   const streamingContent = ref('')
+  const processContentLength = ref(0) // Length of tool-result process content at the start of streamingContent
   const error = ref<string | null>(null)
   const streamError = ref<string | null>(null) // Error from stream (displayed in chat area)
   const securityBlocked = ref<{ message: string; threatLevel: string } | null>(null)
@@ -32,8 +181,10 @@ export const useChatStore = defineStore('chat', () => {
   const toolExecuting = ref(false) // Tool execution in progress
   const toolExecutingStartTime = ref<number>(0) // Timestamp when tool execution started
   const toolExecutingNames = ref<string[]>([]) // Names of tools being executed
+  const toolExecutingCommands = ref<string[]>([]) // Commands being executed (for skill name extraction)
   const toolSandboxAvailable = ref(false) // Sandbox protection available for current exec
-  watch(toolExecuting, (v) => { if (!v) { toolExecutingNames.value = []; toolSandboxAvailable.value = false } })
+  const toolResults = ref<ToolResultItem[]>([]) // Structured tool results for current streaming message
+  watch(toolExecuting, (v) => { if (!v) { toolExecutingNames.value = []; toolExecutingCommands.value = []; toolSandboxAvailable.value = false } })
   const contextTrimInfo = ref<{ type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number } | null>(null)
 
   // Pre-TTFT cancel state: when user starts typing before first token arrives
@@ -64,6 +215,32 @@ export const useChatStore = defineStore('chat', () => {
     tool_call_id: string
     arguments: Record<string, unknown>
   } | null>(null)
+
+  // Ask-user-question state
+  const pendingQuestion = ref<{
+    id: string
+    questions: Array<{
+      id: string
+      question: string
+      header: string
+      options?: Array<{ label: string; description?: string; value?: string }>
+      multi_select?: boolean
+    }>
+    expires_at: number
+  } | null>(null)
+
+  // Exec directory approval state
+  const pendingExecApproval = ref<{
+    id: string
+    type: string
+    command?: string
+    directory?: string
+    workdir?: string
+    host?: string
+    security?: string
+    expires_at: number
+  } | null>(null)
+
   const isMultiSelectMode = ref(false)
 
   // SSE client for streaming
@@ -171,7 +348,7 @@ export const useChatStore = defineStore('chat', () => {
       streaming.value = false
       sending.value = false
       toolExecuting.value = false
-      streamingContent.value = ''
+      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
 
     currentConversationId.value = id
@@ -198,6 +375,9 @@ export const useChatStore = defineStore('chat', () => {
         messages.value = []
       }
     }
+
+    // Check if there's a pending question waiting for user input
+    checkPendingQuestion()
   }
 
   async function fetchMessages(conversationId: string, page = 0) {
@@ -272,7 +452,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function sendMessage(content: string, fileAttachments?: { id: string; file: File; name: string; size: number; type: string; preview?: string }[]) {
+  async function sendMessage(content: string, fileAttachments?: { id: string; file: File; name: string; size: number; type: string; preview?: string; duration?: number }[]) {
     if (!currentConversationId.value) {
       // Use the first part of the message as the conversation title
       const title = content.length > 30 ? content.substring(0, 30) + '...' : content
@@ -306,10 +486,11 @@ export const useChatStore = defineStore('chat', () => {
 
         if (base64Data) {
           attachments.push({
-            type: attachment.type.startsWith('image/') ? 'image' : 'file',
+            type: attachment.type.startsWith('image/') ? 'image' : (attachment.type.startsWith('audio/') ? 'audio' : 'file'),
             name: attachment.name,
             mime_type: attachment.type,
             data: base64Data,
+            ...(attachment.duration ? { duration: attachment.duration } : {}),
           })
         }
       }
@@ -330,9 +511,12 @@ export const useChatStore = defineStore('chat', () => {
     }
     messages.value = [...messages.value, userMessage]
 
+    // Don't send provider/model - let backend decide based on routing mode (auto/cloud/local)
+    // This ensures the router selects the best available provider
     const request: SendMessageRequest = {
       message: content,
-      // Don't send provider/model - let backend auto-select and return actual values
+      provider: undefined,
+      model: undefined,
       temperature: settingsStore.temperature,
       max_tokens: settingsStore.maxTokens,
       attachments: attachments.length > 0 ? attachments : undefined,
@@ -341,7 +525,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
-      streamingContent.value = ''
+      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
       error.value = null
       securityBlocked.value = null
       contextTrimInfo.value = null
@@ -378,9 +562,6 @@ export const useChatStore = defineStore('chat', () => {
           // Clear tool executing state when new content arrives
           if (toolExecuting.value) {
             toolExecuting.value = false
-            // Reset streaming content — previous round's text was pre-tool,
-            // the LLM is now generating a fresh response after tool results
-            streamingContent.value = ''
           }
           streamingContent.value += chunk.delta
           // Update the last message (assistant's response) - use shallowRef properly
@@ -398,11 +579,12 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
-        onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
+        onToolExecuting: (_toolCount, toolNames, sandboxAvailable, toolCommands) => {
           if (currentConversationId.value !== sendConvId) return
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
+          toolExecutingCommands.value = toolCommands || []
           toolSandboxAvailable.value = !!sandboxAvailable
           // Update the streaming message to show tool execution indicator
           const lastIndex = messages.value.length - 1
@@ -418,6 +600,67 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
+        onToolResults: (results, _toolRound) => {
+          if (currentConversationId.value !== sendConvId) return
+          // Store structured tool results for detail cards
+          toolResults.value = [...toolResults.value, ...parseToolResults(results)]
+          // Append tool results as a visual block in the streaming content
+          const summary = formatToolResultsSummary(results)
+          if (summary) {
+            streamingContent.value += summary
+            processContentLength.value = streamingContent.value.length
+            const lastIndex = messages.value.length - 1
+            if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
+              const newMessages = [...messages.value]
+              const currentMsg = newMessages[lastIndex]
+              if (currentMsg) {
+                newMessages[lastIndex] = { ...currentMsg, content: streamingContent.value }
+                messages.value = newMessages
+              }
+            }
+          }
+        },
+        onNewMessage: () => {
+          if (currentConversationId.value !== sendConvId) return
+          // Server persisted previous round — start a new message bubble
+          streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+          toolExecuting.value = false
+          const newAssistant: Message = {
+            id: `streaming-${Date.now()}`,
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: '',
+            created_at: new Date().toISOString(),
+          }
+          messages.value = [...messages.value, newAssistant]
+        },
+        onTodoUpdated: (_messageId, content) => {
+          if (currentConversationId.value !== sendConvId) return
+          // Backend advanced a TODO item — update the message that has the checklist
+          const idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          if (idx >= 0) {
+            const newMessages = [...messages.value]
+            newMessages[idx] = { ...newMessages[idx]!, content }
+            messages.value = newMessages
+          }
+        },
+        onInjection: () => {
+          if (currentConversationId.value !== sendConvId) return
+          // Server confirmed injection — partial response is preserved in DB,
+          // new user message stored. The stream will restart server-side.
+          // Reset streaming content for the new response.
+          streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+          toolExecuting.value = false
+          // Add a new streaming placeholder for the restarted response
+          const newAssistant: Message = {
+            id: `streaming-${Date.now()}`,
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: '',
+            created_at: new Date().toISOString(),
+          }
+          messages.value = [...messages.value, newAssistant]
+        },
         onError: (err) => {
           // Guard: if user already switched away, silently ignore
           if (currentConversationId.value !== sendConvId) return
@@ -426,9 +669,52 @@ export const useChatStore = defineStore('chat', () => {
           // Map error codes to i18n keys for accurate error messages
           const errorMap: Record<string, string> = {
             'STREAM_EMPTY': 'streamEmpty',
+            'STREAM_ERROR': 'streamError',
             'PROVIDER_NO_RESPONSE': 'providerNoResponse',
             'PROVIDER_RETURNED_EMPTY': 'providerReturnedEmpty',
             'No response body': 'noResponseBody',
+            'provider_unavailable': 'providerUnavailable',
+            'provider_auth_error': 'providerAuthError',
+            'provider_rate_limited': 'providerRateLimited',
+            'trial_service_busy': 'trialServiceBusy',
+          }
+
+          // Transient empty-response errors that can be silently recovered
+          const transientErrors = new Set(['STREAM_EMPTY', 'PROVIDER_NO_RESPONSE', 'PROVIDER_RETURNED_EMPTY'])
+
+          // If error happened during tool execution, the server is still processing.
+          // Fetch server-persisted content instead of marking as interrupted.
+          if (wasToolExecuting) {
+            streaming.value = false
+            // Don't show error banner — we'll recover by fetching from server
+            fetchMessages(conversationId).then(() => {
+              if (currentConversationId.value !== sendConvId) return
+              messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+            })
+            return
+          }
+
+          // For transient empty-response errors, try fetching server-persisted content first.
+          // The backend may have persisted partial content or tool results even though
+          // the stream appeared empty to the frontend.
+          if (transientErrors.has(err.message)) {
+            streaming.value = false
+            fetchMessages(conversationId).then(() => {
+              if (currentConversationId.value !== sendConvId) return
+              const serverMessages = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+              messages.value = serverMessages
+              // Only show error if server also has no new content
+              const lastMsg = serverMessages[serverMessages.length - 1]
+              if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.content?.trim()) {
+                const errorKey = errorMap[err.message]
+                streamError.value = errorKey || err.message
+              }
+            }).catch(() => {
+              const errorKey = errorMap[err.message]
+              streamError.value = errorKey || err.message
+              messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+            })
+            return
           }
 
           const errorKey = errorMap[err.message]
@@ -439,16 +725,6 @@ export const useChatStore = defineStore('chat', () => {
           }
           // Log error to server
           systemApi.writeLog('error', `Chat stream error: ${err.message}`, 'chat').catch(() => {})
-          // If error happened during tool execution, the server is still processing.
-          // Fetch server-persisted content instead of marking as interrupted.
-          if (wasToolExecuting) {
-            streaming.value = false
-            fetchMessages(conversationId).then(() => {
-              if (currentConversationId.value !== sendConvId) return
-              messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
-            })
-            return
-          }
           // If streaming message has content, keep it and mark as interrupted
           // Otherwise remove the empty placeholder
           const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
@@ -548,7 +824,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
-      streamingContent.value = ''
+      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
   }
 
@@ -556,7 +832,35 @@ export const useChatStore = defineStore('chat', () => {
     sseClient.disconnect()
     streaming.value = false
     toolExecuting.value = false
-    streamingContent.value = ''
+    streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+  }
+
+  /** Inject a user message into an active stream. The backend cancels the current
+   *  stream, persists partial content + new user message, and restarts the LLM call. */
+  async function injectMessage(content: string) {
+    if (!currentConversationId.value || !streaming.value) return
+
+    const conversationId = currentConversationId.value
+
+    // Add user message to local state immediately
+    const userMessage: Message = {
+      id: `temp-${Date.now()}`,
+      conversation_id: conversationId,
+      role: 'user',
+      content,
+      created_at: new Date().toISOString(),
+    }
+    messages.value = [...messages.value, userMessage]
+
+    // Call injection API — this will cancel the active stream server-side
+    try {
+      await injectionApi.inject(conversationId, content)
+    } catch (err) {
+      console.error('[chat] injection failed, falling back to cancel + send:', err)
+      // Fallback: cancel stream and send normally
+      cancelStreaming()
+      await sendMessage(content)
+    }
   }
 
   // Cancel pre-TTFT: user started typing before first token arrived.
@@ -571,7 +875,7 @@ export const useChatStore = defineStore('chat', () => {
     sseClient.disconnect()
     streaming.value = false
     toolExecuting.value = false
-    streamingContent.value = ''
+    streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     sending.value = false
 
     // Remove empty assistant placeholder
@@ -605,7 +909,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
-      streamingContent.value = ''
+      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
       _receivedFirstChunk.value = false
 
       // Add placeholder for assistant message
@@ -620,6 +924,8 @@ export const useChatStore = defineStore('chat', () => {
 
       const request: SendMessageRequest = {
         message: '[CONTINUE_AFTER_CANCEL]',
+        provider: undefined,
+        model: undefined,
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
       }
@@ -631,7 +937,6 @@ export const useChatStore = defineStore('chat', () => {
           _receivedFirstChunk.value = true
           if (toolExecuting.value) {
             toolExecuting.value = false
-            streamingContent.value = ''
           }
           streamingContent.value += chunk.delta
           const lastIndex = messages.value.length - 1
@@ -644,12 +949,53 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
-        onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
+        onToolExecuting: (_toolCount, toolNames, sandboxAvailable, toolCommands) => {
           if (currentConversationId.value !== convId) return
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
+          toolExecutingCommands.value = toolCommands || []
           toolSandboxAvailable.value = !!sandboxAvailable
+        },
+        onToolResults: (results, _toolRound) => {
+          if (currentConversationId.value !== convId) return
+          toolResults.value = [...toolResults.value, ...parseToolResults(results)]
+          const summary = formatToolResultsSummary(results)
+          if (summary) {
+            streamingContent.value += summary
+            processContentLength.value = streamingContent.value.length
+            const lastIndex = messages.value.length - 1
+            if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
+              const newMessages = [...messages.value]
+              const currentMsg = newMessages[lastIndex]
+              if (currentMsg) {
+                newMessages[lastIndex] = { ...currentMsg, content: streamingContent.value }
+                messages.value = newMessages
+              }
+            }
+          }
+        },
+        onNewMessage: () => {
+          if (currentConversationId.value !== convId) return
+          streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+          toolExecuting.value = false
+          const newAssistant: Message = {
+            id: `streaming-${Date.now()}`,
+            conversation_id: convId,
+            role: 'assistant',
+            content: '',
+            created_at: new Date().toISOString(),
+          }
+          messages.value = [...messages.value, newAssistant]
+        },
+        onTodoUpdated: (_messageId, content) => {
+          if (currentConversationId.value !== convId) return
+          const idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          if (idx >= 0) {
+            const newMessages = [...messages.value]
+            newMessages[idx] = { ...newMessages[idx]!, content }
+            messages.value = newMessages
+          }
         },
         onError: (err) => {
           if (currentConversationId.value !== convId) return
@@ -687,7 +1033,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
-      streamingContent.value = ''
+      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
   }
 
@@ -712,7 +1058,8 @@ export const useChatStore = defineStore('chat', () => {
 
       const request: SendMessageRequest = {
         message: '[CONTINUE]', // Special marker for continue
-        // Don't send provider/model - let backend auto-select
+        provider: undefined,
+        model: undefined,
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
       }
@@ -723,7 +1070,6 @@ export const useChatStore = defineStore('chat', () => {
           if (!chunk.delta) return
           if (toolExecuting.value) {
             toolExecuting.value = false
-            streamingContent.value = ''
           }
           streamingContent.value += chunk.delta
           // Update the last message
@@ -740,12 +1086,53 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
-        onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
+        onToolExecuting: (_toolCount, toolNames, sandboxAvailable, toolCommands) => {
           if (currentConversationId.value !== conversationId) return
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
+          toolExecutingCommands.value = toolCommands || []
           toolSandboxAvailable.value = !!sandboxAvailable
+        },
+        onToolResults: (results, _toolRound) => {
+          if (currentConversationId.value !== conversationId) return
+          toolResults.value = [...toolResults.value, ...parseToolResults(results)]
+          const summary = formatToolResultsSummary(results)
+          if (summary) {
+            streamingContent.value += summary
+            processContentLength.value = streamingContent.value.length
+            const lastIndex = messages.value.length - 1
+            if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
+              const newMessages = [...messages.value]
+              const currentMsg = newMessages[lastIndex]
+              if (currentMsg) {
+                newMessages[lastIndex] = { ...currentMsg, content: streamingContent.value }
+                messages.value = newMessages
+              }
+            }
+          }
+        },
+        onNewMessage: () => {
+          if (currentConversationId.value !== conversationId) return
+          streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+          toolExecuting.value = false
+          const newAssistant: Message = {
+            id: `streaming-${Date.now()}`,
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: '',
+            created_at: new Date().toISOString(),
+          }
+          messages.value = [...messages.value, newAssistant]
+        },
+        onTodoUpdated: (_messageId, content) => {
+          if (currentConversationId.value !== conversationId) return
+          const idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          if (idx >= 0) {
+            const newMessages = [...messages.value]
+            newMessages[idx] = { ...newMessages[idx]!, content }
+            messages.value = newMessages
+          }
         },
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
@@ -794,7 +1181,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
-      streamingContent.value = ''
+      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
   }
 
@@ -828,7 +1215,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
-      streamingContent.value = ''
+      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
       error.value = null
 
       // Add placeholder for new assistant message
@@ -843,7 +1230,8 @@ export const useChatStore = defineStore('chat', () => {
 
       const request: SendMessageRequest = {
         message: lastUserMessage.content,
-        // Don't send provider/model - let backend auto-select
+        provider: undefined,
+        model: undefined,
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         attachments: lastUserMessage.attachments,
@@ -856,7 +1244,6 @@ export const useChatStore = defineStore('chat', () => {
           if (!chunk.delta) return
           if (toolExecuting.value) {
             toolExecuting.value = false
-            streamingContent.value = ''
           }
           streamingContent.value += chunk.delta
           const lastIndex = messages.value.length - 1
@@ -872,12 +1259,53 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
-        onToolExecuting: (_toolCount, toolNames, sandboxAvailable) => {
+        onToolExecuting: (_toolCount, toolNames, sandboxAvailable, toolCommands) => {
           if (currentConversationId.value !== conversationId) return
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
+          toolExecutingCommands.value = toolCommands || []
           toolSandboxAvailable.value = !!sandboxAvailable
+        },
+        onToolResults: (results, _toolRound) => {
+          if (currentConversationId.value !== conversationId) return
+          toolResults.value = [...toolResults.value, ...parseToolResults(results)]
+          const summary = formatToolResultsSummary(results)
+          if (summary) {
+            streamingContent.value += summary
+            processContentLength.value = streamingContent.value.length
+            const lastIndex = messages.value.length - 1
+            if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
+              const newMessages = [...messages.value]
+              const currentMsg = newMessages[lastIndex]
+              if (currentMsg) {
+                newMessages[lastIndex] = { ...currentMsg, content: streamingContent.value }
+                messages.value = newMessages
+              }
+            }
+          }
+        },
+        onNewMessage: () => {
+          if (currentConversationId.value !== conversationId) return
+          streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+          toolExecuting.value = false
+          const newAssistant: Message = {
+            id: `streaming-${Date.now()}`,
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: '',
+            created_at: new Date().toISOString(),
+          }
+          messages.value = [...messages.value, newAssistant]
+        },
+        onTodoUpdated: (_messageId, content) => {
+          if (currentConversationId.value !== conversationId) return
+          const idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          if (idx >= 0) {
+            const newMessages = [...messages.value]
+            newMessages[idx] = { ...newMessages[idx]!, content }
+            messages.value = newMessages
+          }
         },
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
@@ -956,7 +1384,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
-      streamingContent.value = ''
+      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
   }
 
@@ -1112,6 +1540,70 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // --- Ask-user-question methods ---
+  function setPendingQuestion(data: any) {
+    console.log('[ChatStore] setPendingQuestion called with:', data)
+    pendingQuestion.value = data
+    console.log('[ChatStore] pendingQuestion.value is now:', pendingQuestion.value)
+  }
+
+  async function submitQuestionAnswers(answers: Array<{ question_id: string; selected: string[]; other_text?: string }>) {
+    if (!pendingQuestion.value) return
+    const id = pendingQuestion.value.id
+    try {
+      await api.post(`/ask-user-question/${id}/answer`, { answers })
+      pendingQuestion.value = null
+    } catch (e) {
+      console.error('Failed to submit question answers:', e)
+      // Keep dialog open so the user can retry
+    }
+  }
+
+  async function dismissQuestion() {
+    if (!pendingQuestion.value) {
+      return
+    }
+    const id = pendingQuestion.value.id
+    pendingQuestion.value = null
+    // Notify backend to unblock the tool call immediately with default answers
+    try {
+      await api.post(`/ask-user-question/${id}/dismiss`)
+    } catch {
+      // Best-effort — question will timeout on backend if this fails
+    }
+  }
+
+  async function checkPendingQuestion() {
+    try {
+      const res = await api.get<{ pending: boolean; question?: any }>('/ask-user-question/pending')
+      if (res.data.pending && res.data.question) {
+        pendingQuestion.value = res.data.question
+      }
+    } catch {
+      // endpoint may not exist — ignore
+    }
+  }
+
+  // --- Exec approval methods ---
+  function setPendingExecApproval(data: any) {
+    pendingExecApproval.value = data
+  }
+
+  async function resolveExecApproval(decision: ExecDecision) {
+    if (!pendingExecApproval.value) return
+    try {
+      await approvalApi.resolve(pendingExecApproval.value.id, decision)
+    } catch (e) {
+      console.error('Failed to resolve exec approval:', e)
+    } finally {
+      pendingExecApproval.value = null
+    }
+  }
+
+  function dismissExecApproval() {
+    pendingExecApproval.value = null
+  }
+
   async function clearAllConversations() {
     try {
       // Delete all conversations one by one
@@ -1154,6 +1646,7 @@ export const useChatStore = defineStore('chat', () => {
     sending,
     streaming,
     streamingContent,
+    processContentLength,
     error,
     streamError,
     securityBlocked,
@@ -1161,7 +1654,9 @@ export const useChatStore = defineStore('chat', () => {
     toolExecuting,
     toolExecutingStartTime,
     toolExecutingNames,
+    toolExecutingCommands,
     toolSandboxAvailable,
+    toolResults,
     contextTrimInfo,
     preTTFTCancelActive,
     hasMoreMessages,
@@ -1171,6 +1666,8 @@ export const useChatStore = defineStore('chat', () => {
     selectedMessageIds,
     isMultiSelectMode,
     pendingApproval,
+    pendingQuestion,
+    pendingExecApproval,
 
     // Computed
     currentConversation,
@@ -1187,6 +1684,7 @@ export const useChatStore = defineStore('chat', () => {
     fetchMessages,
     loadMoreMessages,
     sendMessage,
+    injectMessage,
     cancelStreaming,
     cancelPreTTFT,
     continueMessage,
@@ -1208,6 +1706,13 @@ export const useChatStore = defineStore('chat', () => {
     clearAllConversations,
     resolveApproval,
     checkPendingApprovals,
+    setPendingQuestion,
+    submitQuestionAnswers,
+    dismissQuestion,
+    checkPendingQuestion,
+    setPendingExecApproval,
+    resolveExecApproval,
+    dismissExecApproval,
     warmupConversation,
     resetWarmup,
   }

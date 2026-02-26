@@ -28,7 +28,7 @@ type HealthStatus struct {
 }
 
 var (
-	startTime   = time.Now()
+	startTime   = timeutil.NowTime()
 	version     = "0.10.17"
 	readyStatus atomic.Bool
 )

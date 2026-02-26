@@ -84,13 +84,13 @@ func BuiltinMediaProviders(locale string) []*MediaProviderConfig {
 			APIKeyURL:   "https://www.mulerouter.ai/app/api-keys",
 		},
 		{
-			ID:          "minimax-audio",
-			Name:        "MiniMax Audio",
+			ID:          "minimax-media",
+			Name:        "MiniMax (Hailuo)",
 			Priority:    40,
-			BaseURL:     "https://api.minimax.chat/v1",
+			BaseURL:     "https://api.minimax.chat",
 			Icon:        "minimax",
-			Description: "MiniMax - Text-to-speech and music generation",
-			Website:     "https://www.minimax.io/audio",
+			Description: "MiniMax - Hailuo video generation and text-to-speech",
+			Website:     "https://www.minimax.io",
 			APIKeyURL:   "https://platform.minimaxi.com/user-center/basic-information/interface-key",
 		},
 	}

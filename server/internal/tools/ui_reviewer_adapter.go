@@ -153,3 +153,39 @@ func (a *ProxyBridgeVLMAdapter) ChatWithVision(ctx context.Context, prompt strin
 
 	return resp.Message.Content, nil
 }
+
+// LLMBridge defines the interface for making text-only LLM calls.
+type LLMBridge interface {
+	Chat(ctx context.Context, prompt string, maxTokens int) (string, error)
+}
+
+// ProxyBridgeLLMAdapter adapts proxybridge.Bridge to the LLMBridge interface.
+type ProxyBridgeLLMAdapter struct {
+	bridge *proxybridge.Bridge
+}
+
+// NewProxyBridgeLLMAdapter creates a new text-only LLM adapter.
+func NewProxyBridgeLLMAdapter(bridge *proxybridge.Bridge) *ProxyBridgeLLMAdapter {
+	return &ProxyBridgeLLMAdapter{bridge: bridge}
+}
+
+func (a *ProxyBridgeLLMAdapter) Chat(ctx context.Context, prompt string, maxTokens int) (string, error) {
+	if maxTokens <= 0 {
+		maxTokens = 4000
+	}
+	req := llm.ChatRequest{
+		Model: "auto",
+		Messages: []llm.Message{{
+			Role:    llm.RoleUser,
+			Content: prompt,
+		}},
+		MaxTokens: maxTokens,
+	}
+
+	resp, err := a.bridge.Chat(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Message.Content, nil
+}

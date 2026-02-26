@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap"
 
 	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agent"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
@@ -34,6 +35,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mcp"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mfa"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
@@ -62,6 +64,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
@@ -152,7 +155,9 @@ type RoutesDeps struct {
 	BrowserIPC    sockipc.BrowserBackend
 	UIReviewerIPC sockipc.UIReviewBackend
 	UIReviewerTool *tools.UIReviewerTool // for VLM bridge wiring
+	AnalyzeTool    *tools.AnalyzeTool   // for LLM bridge wiring
 	PushIPC          sockipc.PushBackend
+	PushService      *push.Service // for skill/tool wiring
 	CronIPC          sockipc.CronBackend
 
 	// Consolidated init deps (previously only in cmd/blue/main.go)
@@ -493,6 +498,23 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			sockipc.RegisterCronHandlers(ipcSrv, deps.CronIPC, logger)
 		}
 
+		// Skill fallback: forward unmatched IPC commands to the skill executor.
+		// This enables `blue <skill_name> key=value` to invoke any registered skill.
+		sockipc.RegisterSkillFallback(ipcSrv, sockipc.SkillExecutorFunc(func(ctx context.Context, skillID string, input map[string]any) (map[string]string, error) {
+			sk := s.SkillRegistry.Get(skillID)
+			if sk == nil {
+				return nil, fmt.Errorf("unknown skill: %s", skillID)
+			}
+			if !s.SkillRegistry.IsEnabled(skillID) {
+				return nil, fmt.Errorf("skill %s is disabled", skillID)
+			}
+			result, err := sk.Execute(ctx, input)
+			if err != nil {
+				return nil, err
+			}
+			return sockipc.SkillResultToMap(result.Data, result.Success, result.Error), nil
+		}), logger)
+
 		if err := ipcSrv.Start(); err != nil {
 			logger.Warn("Failed to start sockipc server", zap.Error(err))
 		} else {
@@ -802,6 +824,57 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			}
 		}
 	}
+	// Wire browser backend into ui_reviewer skill
+	if deps.LazyBrowserSvc != nil {
+		if sk := s.SkillRegistry.Get("ui_reviewer"); sk != nil {
+			if ur, ok := sk.(*builtin.UIReviewer); ok {
+				ur.SetBrowserService(browser.NewLazySkillAdapter(deps.LazyBrowserSvc))
+			}
+		}
+	}
+
+	// Wire push notification service into reminder skill
+	if deps.PushService != nil {
+		if sk := s.SkillRegistry.Get("reminder"); sk != nil {
+			if r, ok := sk.(*builtin.Reminder); ok {
+				r.SetPushService(push.NewSkillAdapter(func() *push.Service { return deps.PushService }))
+			}
+		}
+	}
+
+	// Analyze: skill-only, executed via `blue analyze`.
+	// AnalyzeTool does the heavy lifting; wired into the Analyze skill.
+	{
+		analyzeTool := tools.NewAnalyzeTool()
+		analyzeTool.SetMediaDir(mediaDir)
+		if deps.LazyBrowserSvc != nil {
+			analyzeTool.SetBrowser(tools.NewLazyRodBrowserBackend(func() *browser.RodService {
+				return deps.LazyBrowserSvc()
+			}))
+		}
+		analyzeTool.SetExecutor(tools.NewExecutor(s.ToolRegistry))
+		deps.AnalyzeTool = analyzeTool
+		// Wire into skill
+		if sk := s.SkillRegistry.Get("analyze"); sk != nil {
+			if a, ok := sk.(*builtin.Analyze); ok {
+				a.SetExecutor(analyzeTool)
+			}
+		}
+	}
+
+	// Web search: wire WebSearchTool into the web_search skill.
+	if sk := s.SkillRegistry.Get("web_search"); sk != nil {
+		if ws, ok := sk.(*builtin.WebSearch); ok {
+			ws.SetSearcher(tools.NewWebSearchTool(tools.WebSearchConfig{}))
+		}
+	}
+
+	// Ask-user-question: QuestionManager + tool registration
+	var questionMgr *tools.QuestionManager
+	if deps.SSEBroker != nil {
+		questionMgr = tools.NewQuestionManager(deps.SSEBroker, nil, 2*time.Minute)
+		tools.RegisterAskTool(s.ToolRegistry, questionMgr)
+	}
 
 	// Exec tools (shell execution + process management)
 	var execApprovals *tools.ApprovalManager
@@ -843,6 +916,25 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if execTool := tools.GetExecTool(s.ToolRegistry); execTool != nil {
 			execTool.SetToolNames(s.ToolRegistry.List())
 			execTool.SetRegistry(s.ToolRegistry)
+			// Short-circuit `blue <skill>` commands: call skill executor directly
+			// instead of spawning subprocess + IPC round-trip.
+			execTool.SetSkillExecutor(func(ctx context.Context, skillID string, input map[string]any) (map[string]string, error) {
+				sk := s.SkillRegistry.Get(skillID)
+				if sk == nil {
+					return nil, fmt.Errorf("unknown skill: %s", skillID)
+				}
+				if !s.SkillRegistry.IsEnabled(skillID) {
+					return nil, fmt.Errorf("skill %s is disabled", skillID)
+				}
+				if err := sk.Validate(input); err != nil {
+					return nil, fmt.Errorf("skill %s: %w", skillID, err)
+				}
+				result, err := sk.Execute(ctx, input)
+				if err != nil {
+					return nil, err
+				}
+				return sockipc.SkillResultToMap(result.Data, result.Success, result.Error), nil
+			})
 		}
 
 		// Exec approval REST endpoint (kept for backwards compatibility;
@@ -868,6 +960,61 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			})
 		}
 	}
+
+	// Ask-user-question REST endpoints
+	if questionMgr != nil {
+		askGroup := v1.Group("/ask-user-question")
+		askGroup.GET("/pending", func(c echo.Context) error {
+			userID := c.QueryParam("user_id")
+			if userID == "" {
+				userID = "default"
+			}
+			req := questionMgr.GetPending(userID)
+			if req == nil {
+				return c.JSON(200, map[string]interface{}{"pending": false})
+			}
+			return c.JSON(200, map[string]interface{}{"pending": true, "question": req})
+		})
+		askGroup.POST("/:id/answer", func(c echo.Context) error {
+			id := c.Param("id")
+			var body struct {
+				Answers []tools.QuestionAnswerResult `json:"answers"`
+			}
+			if err := c.Bind(&body); err != nil {
+				return c.JSON(400, map[string]string{"error": "invalid body"})
+			}
+			if !questionMgr.ResolveAnswer(id, body.Answers) {
+				return c.JSON(404, map[string]string{"error": "question not found or expired"})
+			}
+			return c.JSON(200, map[string]string{"status": "ok"})
+		})
+		askGroup.POST("/:id/dismiss", func(c echo.Context) error {
+			id := c.Param("id")
+			if !questionMgr.DismissQuestion(id) {
+				return c.JSON(404, map[string]string{"error": "question not found or expired"})
+			}
+			return c.JSON(200, map[string]string{"status": "dismissed"})
+		})
+	}
+
+	// Management tool: skill-only in v0.10.31 (tool registration removed).
+	// Service adapters are still wired for the mgmt skill/CLI subcommand.
+	mgmtTool := tools.NewMgmtTool()
+	// Wire services that are available now
+	if deps.ProviderPool != nil {
+		mgmtTool.SetProviders(&mgmtProviderAdapter{pool: deps.ProviderPool})
+	}
+	mgmtTool.SetSkills(&mgmtSkillAdapter{registry: s.SkillRegistry})
+	mgmtTool.SetTools(&mgmtToolAdapter{registry: s.ToolRegistry})
+	mgmtTool.SetSystem(&mgmtSystemAdapter{version: cfg.Version})
+	if s.UserService != nil {
+		mgmtTool.SetUsers(&mgmtUserAdapter{service: s.UserService})
+	}
+	if s.APIKeyService != nil {
+		mgmtTool.SetAPIKeys(&mgmtAPIKeyAdapter{service: s.APIKeyService})
+	}
+	s.MgmtTool = mgmtTool
+	// Settings and channels are wired later (created after this point)
 
 	// Plugin routes
 	pluginHandler := server.NewPluginHandler(deps.PluginRegistry)
@@ -1099,7 +1246,17 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			}
 			oauthManager = oauth.NewManager(oauthStore)
 			providerPoolHandler.SetOAuthManager(oauthManager)
-			providerPoolHandler.RegisterOAuthCallbackRoute(e)
+			// Register all OAuth callback paths (one for each provider type)
+			providerPoolHandler.RegisterOAuthCallbackRoute(e, oauth.AllProviderConfigs())
+
+			// Set OAuth redirect port after server starts (uses actual port, not hardcoded 51121)
+			server.OnServerStart(func(port int) {
+				if oauthManager != nil && port > 0 {
+					oauthManager.SetPort(port)
+					logger.Info("OAuth redirect port set to server port", zap.Int("port", port))
+				}
+			})
+
 			logger.Info("OAuth manager initialized for provider pool")
 		}
 
@@ -1205,6 +1362,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// OpenAI-compatible proxy routes on /v1/*
+	var agentRunnerRef *agent.Runner
 	if deps.Config.Proxy != nil && deps.Config.Proxy.Enabled {
 		routingConfig := &deps.Config.Proxy.Routing
 		if deps.Config.Proxy.Route != nil {
@@ -1273,6 +1431,17 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 					if result.Healthy && result.Latency > 0 {
 						deps.ProviderPool.Router.UpdateLatency(providerID, result.Latency)
 					}
+				})
+			}
+
+			// Push provider health status changes to all connected clients via SSE
+			if deps.ProviderPool.Registry != nil && deps.SSEBroker != nil {
+				deps.ProviderPool.Registry.SetOnStatusChange(func(providerID string, oldStatus, newStatus providerpool.ProviderStatus) {
+					deps.SSEBroker.Broadcast("provider_status_changed", map[string]string{
+						"provider_id": providerID,
+						"old_status":  string(oldStatus),
+						"status":      string(newStatus),
+					})
 				})
 			}
 
@@ -1485,6 +1654,50 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if deps.UIReviewerTool != nil {
 			deps.UIReviewerTool.SetVLMBridge(tools.NewProxyBridgeVLMAdapter(bridge))
 		}
+		// Wire VLM bridge into ui_reviewer skill (registered in skill registry)
+		if sk := s.SkillRegistry.Get("ui_reviewer"); sk != nil {
+			if ur, ok := sk.(*builtin.UIReviewer); ok {
+				ur.SetBridge(bridge)
+			}
+		}
+
+		// Wire LLM bridge into analyze tool
+		if deps.AnalyzeTool != nil {
+			deps.AnalyzeTool.SetLLMBridge(tools.NewProxyBridgeLLMAdapter(bridge))
+		}
+
+		// Agent runner: autonomous background task execution
+		if deps.DB != nil && deps.SSEBroker != nil {
+			agentStore, agentErr := agent.NewStore(deps.DB)
+			if agentErr != nil {
+				logger.Warn("Failed to initialize agent store", zap.Error(agentErr))
+			} else {
+				// Recover stale tasks from previous crash
+				if recovered, err := agentStore.RecoverStaleTasks(context.Background()); err != nil {
+					logger.Warn("Failed to recover stale agent tasks", zap.Error(err))
+				} else if recovered > 0 {
+					logger.Info("Recovered stale agent tasks", zap.Int64("count", recovered))
+				}
+				agentRunner := agent.NewRunner(agentStore, bridge, s.ToolRegistry, tools.NewExecutor(s.ToolRegistry), deps.SSEBroker, agent.RunnerConfig{})
+				agentHandler := agent.NewHandler(agentStore, agentRunner)
+				agentGroup := protected.Group("/agent")
+				agentHandler.RegisterRoutes(agentGroup)
+				agentRunnerRef = agentRunner
+				logger.Info("Agent task routes registered")
+			}
+		}
+
+		// MCP server: expose tools to external agents
+		mcpServer := mcp.NewServer(s.ToolRegistry, tools.NewExecutor(s.ToolRegistry))
+		if deps.WorkspaceHandler != nil {
+			if mgr := deps.WorkspaceHandler.Manager(); mgr != nil {
+				mcpServer.SetWorkspace(mgr)
+			}
+		}
+		mcpHandler := mcp.NewHandler(mcpServer)
+		mcpGroup := v1.Group("/mcp")
+		mcpHandler.RegisterRoutes(mcpGroup)
+		logger.Info("MCP server routes registered")
 
 		v1ProxyGroup := e.Group("/v1")
 		v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
@@ -1627,6 +1840,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		// Wire layered memory into chat handler when lazy init completes
 		deps.MemoryHandler.SetOnLayeredReady(func(ls *memory.LayeredMemoryService) {
 			deps.ChatHandler.SetLayeredMemory(ls)
+			if agentRunnerRef != nil {
+				agentRunnerRef.SetMemory(newAgentMemoryAdapter(ls))
+			}
 		})
 	} else {
 		stub := featureDisabled("memory")
@@ -1668,6 +1884,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if deps.ChannelConfigStore != nil {
 		channelManager := channel.NewManager(channel.DefaultConfig(), logger)
 		channelFactory := server.NewChannelFactory(deps.Logger)
+		// Wire channel manager into mgmt tool
+		mgmtTool.SetChannels(&mgmtChannelAdapter{mgr: channelManager})
 
 		// Wire channel task watcher notifier (for media generation results)
 		if deps.ChannelTaskWatcher != nil {
@@ -1710,6 +1928,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			cfgStore := deps.ChannelConfigStore
 			go func() {
 				for _, chCfg := range enabledChannels {
+					// Skip channels not available on this platform (e.g. iMessage on non-macOS)
+					if chCfg.ID == "imessage" && runtime.GOOS != "darwin" {
+						logger.Info("Skipping iMessage channel — not available on this platform")
+						continue
+					}
 					ch, err := channelFactory.CreateChannel(chCfg)
 					if err != nil || ch == nil {
 						continue
@@ -1755,6 +1978,19 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Wire locale into system prompt builder so all skills see the user's locale
 	if deps.SystemPromptBuilder != nil {
 		deps.SystemPromptBuilder.SetLocaleFunc(settingsHandler.GetLocale)
+		deps.SystemPromptBuilder.SetAgentModeFunc(settingsHandler.GetAgentMode)
+		deps.SystemPromptBuilder.SetAgentAutoConfirmFunc(settingsHandler.GetAgentAutoConfirm)
+	}
+	// Wire locale into push service for i18n in notifications
+	if deps.PushService != nil {
+		deps.PushService.SetLocaleFunc(settingsHandler.GetLocale)
+	}
+	dataMasker.SetLocaleFunc(settingsHandler.GetLocale)
+	// Wire settings into mgmt tool (deferred — settingsHandler created after tool registration)
+	mgmtTool.SetSettings(&mgmtSettingsAdapter{handler: settingsHandler})
+	// Wire question manager silent func to settingsHandler.GetAgentAutoConfirm
+	if questionMgr != nil {
+		questionMgr.SetSilentFunc(settingsHandler.GetAgentAutoConfirm)
 	}
 
 	// User-level routes (protected) — /api/v1/my/*
@@ -1843,4 +2079,28 @@ func (a *sandboxExecAdapter) RunInSandbox(ctx context.Context, command, workdir 
 		return "", "", -1, err
 	}
 	return result.Stdout, result.Stderr, result.ExitCode, nil
+}
+
+// agentMemoryAdapter adapts LayeredMemoryService to agent.MemoryRecaller.
+type agentMemoryAdapter struct {
+	svc *memory.LayeredMemoryService
+}
+
+func newAgentMemoryAdapter(svc *memory.LayeredMemoryService) *agentMemoryAdapter {
+	return &agentMemoryAdapter{svc: svc}
+}
+
+func (a *agentMemoryAdapter) Recall(ctx context.Context, query string, limit int) ([]agent.MemoryResult, error) {
+	results, err := a.svc.Recall(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]agent.MemoryResult, len(results))
+	for i, r := range results {
+		out[i] = agent.MemoryResult{
+			Content: r.Chunk.Content,
+			Score:   r.Score,
+		}
+	}
+	return out, nil
 }

@@ -20,7 +20,7 @@ import MetricsOverviewCard from './cards/MetricsOverviewCard.vue'
 import TokenUsageChartCard from './cards/TokenUsageChartCard.vue'
 import LatencyChartCard from './cards/LatencyChartCard.vue'
 import ModelStatsCard from './cards/ModelStatsCard.vue'
-import TokenEconomyCard from './cards/TokenEconomyCard.vue'
+import MediaGenerationCard from './cards/MediaGenerationCard.vue'
 
 defineProps<{
   metricsHistory?: Array<{
@@ -52,7 +52,7 @@ const componentMap: Record<string, Component> = {
   TokenUsageChartCard: markRaw(TokenUsageChartCard),
   LatencyChartCard: markRaw(LatencyChartCard),
   ModelStatsCard: markRaw(ModelStatsCard),
-  TokenEconomyCard: markRaw(TokenEconomyCard),
+  MediaGenerationCard: markRaw(MediaGenerationCard),
 }
 
 // Get component from config

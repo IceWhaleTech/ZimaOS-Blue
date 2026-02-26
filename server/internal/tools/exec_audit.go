@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"sync"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ExecAuditEntry is a single audit record for an exec invocation.
@@ -188,7 +190,7 @@ func (rt *RetryTracker) Record(normalizedCmd string, failed bool, errMsg string)
 
 	rec, ok := rt.records[normalizedCmd]
 	if !ok {
-		rec = &retryRecord{firstAt: time.Now()}
+		rec = &retryRecord{firstAt: timeutil.NowTime()}
 		rt.records[normalizedCmd] = rec
 	}
 	rec.count++
@@ -197,7 +199,7 @@ func (rt *RetryTracker) Record(normalizedCmd string, failed bool, errMsg string)
 
 // pruneExpired removes records outside the window. Must be called with lock held.
 func (rt *RetryTracker) pruneExpired() {
-	cutoff := time.Now().Add(-rt.window)
+	cutoff := timeutil.NowTime().Add(-rt.window)
 	for cmd, rec := range rt.records {
 		if rec.firstAt.Before(cutoff) {
 			delete(rt.records, cmd)

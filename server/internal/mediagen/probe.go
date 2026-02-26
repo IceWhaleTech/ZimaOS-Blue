@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -33,8 +34,8 @@ func TestMediaProvider(config *MediaProviderConfig) *TestResult {
 		err = probeDashScope(ctx, config)
 	case "mulerouter":
 		err = probeMuleRouter(ctx, config)
-	case "minimax-audio":
-		err = probeOpenAICompat(ctx, config)
+	case "minimax-media":
+		err = probeMiniMax(ctx, config)
 	default:
 		err = probeOpenAICompat(ctx, config)
 	}
@@ -115,6 +116,70 @@ func doProbe(req *http.Request) error {
 		return fmt.Errorf("authentication error (status %d)", resp.StatusCode)
 	}
 	return fmt.Errorf("unexpected status %d", resp.StatusCode)
+}
+
+// probeMiniMax checks MiniMax media API reachability.
+// Tries both domestic (.chat) and international (.io) domains.
+func probeMiniMax(ctx context.Context, config *MediaProviderConfig) error {
+	base := trimRight(config.BaseURL)
+	urls := []string{fmt.Sprintf("%s/api/v1/video_generation", base)}
+	if alt := minimaxMediaAlternateURL(base); alt != "" {
+		urls = append(urls, fmt.Sprintf("%s/api/v1/video_generation", alt))
+	}
+
+	var lastErr error
+	for i, url := range urls {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		req.Header.Set("Authorization", "Bearer "+config.APIKey)
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("connection failed: %w", err)
+			continue
+		}
+		resp.Body.Close()
+
+		switch {
+		case resp.StatusCode >= 200 && resp.StatusCode < 400:
+			if i > 0 {
+				config.BaseURL = trimRight(urls[i][:len(urls[i])-len("/api/v1/video_generation")])
+			}
+			return nil
+		case resp.StatusCode == 400 || resp.StatusCode == 401 || resp.StatusCode == 403:
+			// Reachable — 400 = missing body, 401/403 = auth issue
+			if i > 0 {
+				config.BaseURL = trimRight(urls[i][:len(urls[i])-len("/api/v1/video_generation")])
+			}
+			if resp.StatusCode == 401 || resp.StatusCode == 403 {
+				return fmt.Errorf("authentication error (status %d)", resp.StatusCode)
+			}
+			return nil
+		case resp.StatusCode == 404:
+			lastErr = fmt.Errorf("endpoint not found (status 404)")
+		default:
+			lastErr = fmt.Errorf("unexpected status %d", resp.StatusCode)
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("no reachable endpoint")
+}
+
+// minimaxMediaAlternateURL swaps between MiniMax domestic and international domains.
+func minimaxMediaAlternateURL(baseURL string) string {
+	switch {
+	case strings.Contains(baseURL, "api.minimax.chat"):
+		return strings.Replace(baseURL, "api.minimax.chat", "api.minimax.io", 1)
+	case strings.Contains(baseURL, "api.minimax.io"):
+		return strings.Replace(baseURL, "api.minimax.io", "api.minimax.chat", 1)
+	default:
+		return ""
+	}
 }
 
 func trimRight(s string) string {

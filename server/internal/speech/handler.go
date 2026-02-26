@@ -428,6 +428,14 @@ func (h *Handler) Transcribe(c echo.Context) error {
 			}
 			var speechErr *SpeechError
 			if errors.As(err, &speechErr) {
+				// "no_speech" is benign — return empty text, not an error
+				if speechErr.Code == "no_speech" {
+					return c.JSON(http.StatusOK, TranscriptionResult{
+						Text:     "",
+						Language: req.Language,
+						Editable: h.service.IsEditBeforeSendEnabled(),
+					})
+				}
 				return c.JSON(http.StatusUnprocessableEntity, map[string]string{
 					"error":      speechErr.Message,
 					"error_code": speechErr.Code,
@@ -457,6 +465,15 @@ func (h *Handler) Transcribe(c echo.Context) error {
 
 	resp, err := sttSvc.Transcribe(c.Request().Context(), req)
 	if err != nil {
+		// "no_speech" is benign — return empty text
+		var speechErr *SpeechError
+		if errors.As(err, &speechErr) && speechErr.Code == "no_speech" {
+			return c.JSON(http.StatusOK, TranscriptionResult{
+				Text:     "",
+				Language: req.Language,
+				Editable: h.service.IsEditBeforeSendEnabled(),
+			})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
 		})

@@ -46,6 +46,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/images/generations", h.GenerateImage)
 	g.POST("/videos/generations", h.GenerateVideo)
 	g.GET("/tasks/:id", h.GetTask)
+	g.POST("/tasks/:id/cancel", h.CancelTask)
 	g.POST("/tasks/:id/retry", h.RetryTask)
 	g.GET("/tasks/:id/stream", h.StreamTask)
 	g.GET("/models", h.ListModels)
@@ -723,6 +724,28 @@ func (h *Handler) RetryTask(c echo.Context) error {
 		"task_id":    newTask.ID,
 		"message_id": newTask.MessageID,
 		"status":     string(newTask.Status),
+	})
+}
+
+// CancelTask cancels a pending or processing media generation task.
+func (h *Handler) CancelTask(c echo.Context) error {
+	taskID := c.Param("id")
+	if taskID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "task id is required"})
+	}
+
+	if h.manager.CancelTask(taskID) {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true,
+			"task_id": taskID,
+			"status":  "cancelled",
+		})
+	}
+
+	return c.JSON(http.StatusNotFound, map[string]interface{}{
+		"success": false,
+		"task_id": taskID,
+		"error":   "task not found or already completed",
 	})
 }
 

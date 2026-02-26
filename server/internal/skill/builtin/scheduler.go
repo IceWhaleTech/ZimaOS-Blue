@@ -14,10 +14,12 @@ import (
 type CronServiceInterface interface {
 	Create(name, description, schedule, handler string, payload map[string]interface{}) (CronJobInfo, error)
 	List() []CronJobInfo
+	Get(id string) (CronJobInfo, bool)
 	Delete(id string) error
 	Trigger(id string) error
 	Enable(id string) error
 	Disable(id string) error
+	GetExecutions(jobID string, limit int) ([]CronJobExecution, error)
 }
 
 // CronJobInfo represents a cron job returned by the interface.
@@ -31,6 +33,17 @@ type CronJobInfo struct {
 	Status      string `json:"status"`
 	RunCount    int64  `json:"run_count"`
 	FailCount   int64  `json:"fail_count"`
+}
+
+// CronJobExecution represents a single job execution record.
+type CronJobExecution struct {
+	ID        string  `json:"id"`
+	JobID     string  `json:"job_id"`
+	StartedAt string  `json:"started_at"`
+	EndedAt   *string `json:"ended_at,omitempty"`
+	Duration  string  `json:"duration,omitempty"`
+	Status    string  `json:"status"`
+	Error     string  `json:"error,omitempty"`
 }
 
 // Scheduler is a built-in skill for managing scheduled/cron jobs.
@@ -57,7 +70,7 @@ func NewScheduler() *Scheduler {
 				{
 					Name:        "action",
 					Type:        "string",
-					Description: "Action to perform: create, list, delete, trigger, enable, disable",
+					Description: "Action to perform: create, list, get, delete, trigger, enable, disable, executions",
 					Required:    true,
 				},
 				{
@@ -96,6 +109,12 @@ func NewScheduler() *Scheduler {
 					Description: "Language/locale code for localized responses (e.g., en-US, zh-CN)",
 					Required:    false,
 				},
+				{
+					Name:        "limit",
+					Type:        "integer",
+					Description: "Max number of execution records to return (default 20, for executions action)",
+					Required:    false,
+				},
 			},
 			Outputs: []skill.Parameter{
 				{
@@ -106,7 +125,12 @@ func NewScheduler() *Scheduler {
 				{
 					Name:        "job",
 					Type:        "object",
-					Description: "Created/triggered job",
+					Description: "Created/triggered/retrieved job",
+				},
+				{
+					Name:        "executions",
+					Type:        "array",
+					Description: "List of job execution records",
 				},
 			},
 		},
@@ -138,11 +162,11 @@ func (s *Scheduler) Validate(input map[string]any) error {
 	}
 
 	validActions := map[string]bool{
-		"create": true, "list": true, "delete": true,
-		"trigger": true, "enable": true, "disable": true,
+		"create": true, "list": true, "get": true, "delete": true,
+		"trigger": true, "enable": true, "disable": true, "executions": true,
 	}
 	if !validActions[actionStr] {
-		return fmt.Errorf("invalid action: %s (must be create, list, delete, trigger, enable, or disable)", actionStr)
+		return fmt.Errorf("invalid action: %s (must be create, list, get, delete, trigger, enable, disable, or executions)", actionStr)
 	}
 
 	switch actionStr {
@@ -156,7 +180,7 @@ func (s *Scheduler) Validate(input map[string]any) error {
 		if _, ok := input["command"]; !ok {
 			return fmt.Errorf("command is required for create action")
 		}
-	case "delete", "trigger", "enable", "disable":
+	case "get", "delete", "trigger", "enable", "disable", "executions":
 		if _, ok := input["id"]; !ok {
 			return fmt.Errorf("id is required for %s action", actionStr)
 		}
@@ -182,6 +206,8 @@ func (s *Scheduler) Execute(ctx context.Context, input map[string]any) (*skill.R
 		return s.createJob(svc, input)
 	case "list":
 		return s.listJobs(svc)
+	case "get":
+		return s.getJob(svc, input)
 	case "delete":
 		return s.deleteJob(svc, input)
 	case "trigger":
@@ -190,6 +216,8 @@ func (s *Scheduler) Execute(ctx context.Context, input map[string]any) (*skill.R
 		return s.enableJob(svc, input)
 	case "disable":
 		return s.disableJob(svc, input)
+	case "executions":
+		return s.getExecutions(svc, input)
 	}
 
 	return skill.NewErrorResult(fmt.Errorf("unknown action: %s", action)), nil
@@ -245,7 +273,7 @@ func (s *Scheduler) listJobs(svc CronServiceInterface) (*skill.Result, error) {
 	return skill.NewResult(map[string]any{
 		"jobs":    jobs,
 		"count":   len(jobs),
-		"message": fmt.Sprintf("%d scheduled jobs:\n%s", len(jobs), strings.Join(lines, "\n")),
+		"message": fmt.Sprintf("%d scheduled jobs:\n%s\n\nView and manage in the web UI: /cron", len(jobs), strings.Join(lines, "\n")),
 	}), nil
 }
 
@@ -302,5 +330,61 @@ func (s *Scheduler) disableJob(svc CronServiceInterface, input map[string]any) (
 		"id":       id,
 		"disabled": true,
 		"message":  fmt.Sprintf("Job %s disabled", id),
+	}), nil
+}
+
+func (s *Scheduler) getJob(svc CronServiceInterface, input map[string]any) (*skill.Result, error) {
+	id := input["id"].(string)
+
+	job, found := svc.Get(id)
+	if !found {
+		return skill.NewErrorResult(fmt.Errorf("job %s not found", id)), nil
+	}
+
+	status := "enabled"
+	if !job.Enabled {
+		status = "disabled"
+	}
+
+	return skill.NewResult(map[string]any{
+		"job":     job,
+		"message": fmt.Sprintf("Job '%s' (%s): %s [%s] runs:%d fails:%d\n\nView details in the web UI: /cron", job.Name, job.ID, job.Schedule, status, job.RunCount, job.FailCount),
+	}), nil
+}
+
+func (s *Scheduler) getExecutions(svc CronServiceInterface, input map[string]any) (*skill.Result, error) {
+	id := input["id"].(string)
+
+	limit := 20
+	if l, ok := input["limit"].(float64); ok && l > 0 {
+		limit = int(l)
+	}
+
+	execs, err := svc.GetExecutions(id, limit)
+	if err != nil {
+		return skill.NewErrorResult(fmt.Errorf("failed to get executions: %w", err)), nil
+	}
+
+	if len(execs) == 0 {
+		return skill.NewResult(map[string]any{
+			"executions": []CronJobExecution{},
+			"count":      0,
+			"message":    fmt.Sprintf("No executions for job %s", id),
+		}), nil
+	}
+
+	var lines []string
+	for _, e := range execs {
+		line := fmt.Sprintf("- %s: %s (%s)", e.ID, e.Status, e.Duration)
+		if e.Error != "" {
+			line += " error: " + e.Error
+		}
+		lines = append(lines, line)
+	}
+
+	return skill.NewResult(map[string]any{
+		"executions": execs,
+		"count":      len(execs),
+		"message":    fmt.Sprintf("%d executions for job %s:\n%s\n\nView full history in the web UI: /cron", len(execs), id, strings.Join(lines, "\n")),
 	}), nil
 }

@@ -68,9 +68,9 @@ Kompilowany natywnie w Go — bez interpretera, bez maszyny wirtualnej, bez narz
 
 | Metryka | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
 |---------|-------------------|------------------------|
-| `--help` zimny / ciepły start | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `help` zimny / ciepły start | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` czas wykonania (najlepszy z 3) | **< 0.01 s** | 5.98 s |
-| `--help` szczytowe RSS | **~10 MB** | ~394 MB |
+| `help` szczytowe RSS | **~10 MB** | ~394 MB |
 | `status` szczytowe RSS | **~15 MB** | ~1.52 GB |
 | Zależności uruchomieniowe | **Brak** | Node.js 18+ |
 

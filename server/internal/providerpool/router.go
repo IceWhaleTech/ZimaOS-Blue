@@ -104,7 +104,7 @@ func (r *Router) RebuildCandidates() {
 			continue
 		}
 
-		models, err := r.discovery.GetModels(provider.ID)
+		models, err := r.discovery.GetFilteredModels(provider.ID)
 		if err != nil {
 			continue
 		}
@@ -324,8 +324,8 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 			}
 		}
 
-		// Get models for this provider
-		models, err := r.discovery.GetModels(provider.ID)
+		// Get models for this provider (respects AllowedModels filter)
+		models, err := r.discovery.GetFilteredModels(provider.ID)
 		if err != nil {
 			continue
 		}
@@ -611,20 +611,85 @@ func (r *Router) RecordFailure(providerID string, err error) {
 		entry.LastError = err.Error()
 	}
 
+	// Auth errors (401/403) indicate permanent credential issues — mark provider as error
+	// immediately so subsequent requests skip this provider without waiting for cooldown threshold.
+	// Set a very long cooldown (1 hour) for auth errors as they typically require user intervention.
+	if isAuthError(err) {
+		entry.CooldownUntil = timeutil.NowTime().Add(1 * time.Hour)
+		entry.LastError = "auth_error: " + err.Error()
+		return
+	}
+
+	// Transient errors (502/503) get shorter cooldown — these are temporary upstream blips
+	transient := isTransientError(err)
+	if transient {
+		entry.TransientFailureCount++
+	}
+
+	// Pick cooldown parameters based on error type
+	threshold := r.cooldownCfg.FailureThreshold
+	initialCD := r.cooldownCfg.InitialCooldown
+	maxCD := r.cooldownCfg.MaxCooldown
+
+	if transient && r.cooldownCfg.TransientFailureThreshold > 0 {
+		threshold = r.cooldownCfg.TransientFailureThreshold
+		if r.cooldownCfg.TransientInitialCooldown > 0 {
+			initialCD = r.cooldownCfg.TransientInitialCooldown
+		}
+		if r.cooldownCfg.TransientMaxCooldown > 0 {
+			maxCD = r.cooldownCfg.TransientMaxCooldown
+		}
+	}
+
 	// Check if we should enter cooldown
-	if entry.FailureCount >= r.cooldownCfg.FailureThreshold {
+	failCount := entry.FailureCount
+	if transient {
+		failCount = entry.TransientFailureCount
+	}
+	if failCount >= threshold {
 		// Calculate cooldown duration with exponential backoff
-		cooldownDuration := r.cooldownCfg.InitialCooldown
+		cooldownDuration := initialCD
 		multiplier := 1.0
-		for i := r.cooldownCfg.FailureThreshold; i < entry.FailureCount; i++ {
+		for i := threshold; i < failCount; i++ {
 			multiplier *= r.cooldownCfg.CooldownMultiplier
 		}
 		cooldownDuration = time.Duration(float64(cooldownDuration) * multiplier)
-		if cooldownDuration > r.cooldownCfg.MaxCooldown {
-			cooldownDuration = r.cooldownCfg.MaxCooldown
+		if cooldownDuration > maxCD {
+			cooldownDuration = maxCD
 		}
 		entry.CooldownUntil = timeutil.NowTime().Add(cooldownDuration)
 	}
+}
+
+// isTransientError returns true for temporary upstream errors (502/503) that
+// typically resolve quickly and should not trigger aggressive cooldown.
+func isTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "upstream 502") || strings.Contains(s, "upstream 503")
+}
+
+// isAuthError returns true for authentication/authorization errors (401/403) that
+// indicate permanent credential issues (expired token, invalid API key, etc.).
+// Also includes 404 errors that indicate the API endpoint doesn't exist (misconfigured provider).
+func isAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	// Match both "upstream 401", "upstream 403", "upstream 404", and proxy-level errors
+	// 404 on API endpoint usually means the provider is misconfigured or the token doesn't have access
+	return strings.Contains(s, "upstream 401") ||
+		strings.Contains(s, "upstream 403") ||
+		strings.Contains(s, "upstream 404") ||
+		strings.Contains(s, "provider returned 401") ||
+		strings.Contains(s, "provider returned 403") ||
+		strings.Contains(s, "provider returned 404") ||
+		strings.Contains(s, "unauthorized") ||
+		strings.Contains(s, "authentication") ||
+		strings.Contains(s, "page not found")
 }
 
 // RecordSuccess records a successful request and potentially resets cooldown
@@ -637,8 +702,9 @@ func (r *Router) RecordSuccess(providerID string) {
 		return
 	}
 
-	// Reset failure count on success
+	// Reset failure counts on success
 	entry.FailureCount = 0
+	entry.TransientFailureCount = 0
 	entry.CooldownUntil = time.Time{}
 }
 
@@ -817,7 +883,7 @@ blindFallback:
 	// Blind provider fallback: try any healthy provider matching the routing mode.
 	// The original model name is forwarded as-is — the upstream decides if it supports it.
 	// This handles cases where our local model list is incomplete or the model is new.
-	blindCandidates := r.findBlindFallbackProviders(req.Mode, triedProviders)
+	blindCandidates := r.findBlindFallbackProviders(req.ModelID, req.Mode, triedProviders)
 	if len(blindCandidates) == 0 {
 		if failoverResult != nil {
 			if err != nil {
@@ -899,8 +965,11 @@ blindFallback:
 }
 
 // findBlindFallbackProviders returns healthy providers matching the routing mode,
-// excluding already-tried providers. Sorted by priority (highest first).
-func (r *Router) findBlindFallbackProviders(mode RoutingMode, exclude map[string]bool) []*Provider {
+// excluding already-tried providers. Providers with a curated/fixed model list
+// (e.g. Copilot, Anthropic) are skipped if the requested model isn't in their
+// known model list — blind fallback is only useful for open-ended providers.
+// Sorted by priority (highest first).
+func (r *Router) findBlindFallbackProviders(modelID string, mode RoutingMode, exclude map[string]bool) []*Provider {
 	providers := r.registry.ListEnabled()
 	var candidates []*Provider
 
@@ -927,6 +996,14 @@ func (r *Router) findBlindFallbackProviders(mode RoutingMode, exclude map[string
 				continue
 			}
 		}
+		// Skip providers with curated model lists that don't include this model.
+		// Copilot/Anthropic have fixed model sets — sending unknown models just
+		// wastes a round-trip and pollutes logs with 404s.
+		if modelID != "" && isCuratedProvider(p) {
+			if _, err := r.discovery.GetModel(p.ID, modelID); err != nil {
+				continue
+			}
+		}
 		candidates = append(candidates, p)
 	}
 
@@ -936,6 +1013,17 @@ func (r *Router) findBlindFallbackProviders(mode RoutingMode, exclude map[string
 	})
 
 	return candidates
+}
+
+// isCuratedProvider returns true for providers with a fixed/curated model list.
+// These providers only support specific models — sending unknown model IDs
+// results in 404s. Blind fallback should skip them unless the model is known.
+func isCuratedProvider(p *Provider) bool {
+	switch p.APIFormat {
+	case APIFormatCopilot, APIFormatAnthropic:
+		return true
+	}
+	return false
 }
 
 // FindBestProvider finds the best provider for a model without executing

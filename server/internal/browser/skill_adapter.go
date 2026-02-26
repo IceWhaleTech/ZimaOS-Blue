@@ -222,3 +222,37 @@ func (a *SkillAdapter) Tabs(ctx context.Context) ([]builtin.BrowserTabInfo, erro
 	}
 	return result, nil
 }
+
+func (a *SkillAdapter) ExecuteRecipe(ctx context.Context, recipe string, params map[string]string) (builtin.BrowserRecipeResult, error) {
+	svc, err := a.get()
+	if err != nil {
+		return builtin.BrowserRecipeResult{}, err
+	}
+	resp, err := svc.ExecuteRecipe(ctx, &RecipeRequest{Recipe: recipe, Params: params})
+	if err != nil {
+		return builtin.BrowserRecipeResult{}, err
+	}
+	return builtin.BrowserRecipeResult{
+		Success:  resp.Success,
+		Data:     resp.Data,
+		TargetID: resp.TargetID,
+		Message:  resp.Message,
+	}, nil
+}
+
+func (a *SkillAdapter) ListRecipes(ctx context.Context) []builtin.BrowserRecipeInfo {
+	svc, err := a.get()
+	if err != nil {
+		return nil
+	}
+	infos := svc.Recipes().List()
+	result := make([]builtin.BrowserRecipeInfo, len(infos))
+	for i, info := range infos {
+		result[i] = builtin.BrowserRecipeInfo{
+			Name:        info.Name,
+			Description: info.Description,
+			KeepTab:     info.KeepTab,
+		}
+	}
+	return result
+}

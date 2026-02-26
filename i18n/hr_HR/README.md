@@ -68,9 +68,9 @@ Nativno kompilirano u Go — bez interpretera, bez VM-a, bez opterećenja. Tiho 
 
 | Metrika | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
 |---------|-------------------|------------------------|
-| `--help` hladno / toplo | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `help` hladno / toplo | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` vrijeme izvršavanja (najbolje od 3) | **< 0.01 s** | 5.98 s |
-| `--help` vršni RSS | **~10 MB** | ~394 MB |
+| `help` vršni RSS | **~10 MB** | ~394 MB |
 | `status` vršni RSS | **~15 MB** | ~1.52 GB |
 | Ovisnosti za pokretanje | **Nema** | Node.js 18+ |
 

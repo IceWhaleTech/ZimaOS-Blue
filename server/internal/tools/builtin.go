@@ -256,26 +256,25 @@ func (f *FileWriteTool) validatePath(path string) error {
 }
 
 // RegisterBuiltinTools registers all built-in tools with the registry.
+// After v0.10.31 migration, only exec remains as a native tool.
+// All other capabilities (file ops, web search, browser, analyze, etc.)
+// are now skills invoked via exec running `blue <subcommand>`.
 func RegisterBuiltinTools(registry *Registry) {
-	// File tools with default settings (allow all paths, 1MB max)
-	registry.Register(NewFileReadTool(nil, 0))
-	registry.Register(NewFileWriteTool(nil, 0))
-	// Web search with default settings (DuckDuckGo)
-	registry.Register(NewWebSearchTool(WebSearchConfig{}))
+	// No-op: file_read, file_write, web_search removed in v0.10.31.
+	// Use exec with cat/head/tee for file ops, blue search --web for web search.
 }
 
 // RegisterBuiltinToolsWithConfig registers all built-in tools with custom configuration.
+// Deprecated: kept for backward compatibility, but no longer registers file/search tools.
 func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearchConfig, allowedPaths []string, maxFileSize int64) {
-	registry.Register(NewFileReadTool(allowedPaths, maxFileSize))
-	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
-	registry.Register(NewWebSearchTool(webSearchConfig))
+	// No-op: tools removed in v0.10.31.
 }
 
-// RegisterExecTools registers the exec and process tools with custom configuration.
+// RegisterExecTools registers the exec tool with custom configuration.
+// Process tool removed in v0.10.31 — process management is now a skill.
 func RegisterExecTools(registry *Registry, config ExecConfig, approvals *ApprovalManager, broker *sse.Broker, dirStore *DirAllowlistStore, sbx ...SandboxExecutor) {
 	sessions := NewSessionRegistry()
 	registry.Register(NewExecTool(config, sessions, approvals, broker, dirStore, sbx...))
-	registry.Register(NewProcessTool(sessions))
 }
 
 // GetUIReviewerTool retrieves the UIReviewerTool from the registry for dependency injection.
@@ -302,13 +301,28 @@ func GetExecTool(registry *Registry) *ExecTool {
 	return nil
 }
 
-// RegisterMemoryTools registers the unified memory tool with the registry.
-// This should be called after the memory service is initialized.
+// RegisterMemoryTools creates a MemoryTool for internal use (e.g., MgmtTool).
+// As of v0.10.31, memory is no longer exposed as a native LLM tool —
+// it's invoked via `blue mgmt memory` skill instead.
+// The tool is registered as disabled so GetMemoryTool() still works.
 func RegisterMemoryTools(registry *Registry, memoryService MemoryServiceInterface) {
 	if memoryService == nil {
 		return
 	}
 	registry.Register(NewMemoryTool(memoryService))
+	registry.Disable("memory")
+}
+
+// GetMemoryTool retrieves the MemoryTool from the registry for dependency injection.
+func GetMemoryTool(registry *Registry) *MemoryTool {
+	tool := registry.Get("memory")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*MemoryTool); ok {
+		return t
+	}
+	return nil
 }
 
 // MemoryServiceInterface defines the interface for memory service used by tools.
@@ -346,4 +360,24 @@ type MemoryStatsResult struct {
 	OldestChunk    string
 	NewestChunk    string
 	Backend        string
+}
+
+// RegisterAnalyzeTool registers the analyze tool with the registry.
+func RegisterAnalyzeTool(registry *Registry, mediaDir string) *AnalyzeTool {
+	t := NewAnalyzeTool()
+	t.SetMediaDir(mediaDir)
+	registry.Register(t)
+	return t
+}
+
+// GetAnalyzeTool retrieves the AnalyzeTool from the registry for dependency injection.
+func GetAnalyzeTool(registry *Registry) *AnalyzeTool {
+	tool := registry.Get("analyze")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*AnalyzeTool); ok {
+		return t
+	}
+	return nil
 }

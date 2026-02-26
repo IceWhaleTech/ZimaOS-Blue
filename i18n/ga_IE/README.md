@@ -68,9 +68,9 @@ Tiomsaithe go dúchasach i Go — gan ateangaire, gan VM, gan forchostais. Rithe
 
 | Méadrach | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
 |--------|-------------------|------------------------|
-| `--help` fuar / te | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `help` fuar / te | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` am rite (is fearr as 3) | **< 0.01 s** | 5.98 s |
-| `--help` buaic RSS | **~10 MB** | ~394 MB |
+| `help` buaic RSS | **~10 MB** | ~394 MB |
 | `status` buaic RSS | **~15 MB** | ~1.52 GB |
 | Spleáchais am rite | **Dada** | Node.js 18+ |
 

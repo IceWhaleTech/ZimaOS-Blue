@@ -68,9 +68,9 @@ Natívan Go-ban fordítva — nincs interpreter, nincs VM, nincs többletterhel�
 
 | Metrika | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
 |---------|-------------------|------------------------|
-| `--help` hideg / meleg | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `help` hideg / meleg | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` futásidő (legjobb 3-ból) | **< 0.01 s** | 5.98 s |
-| `--help` csúcs RSS | **~10 MB** | ~394 MB |
+| `help` csúcs RSS | **~10 MB** | ~394 MB |
 | `status` csúcs RSS | **~15 MB** | ~1.52 GB |
 | Futásidejű függőségek | **Nincs** | Node.js 18+ |
 

@@ -100,6 +100,12 @@ const renderCache = new RenderCache()
 // Export for testing/debugging
 export { renderCache }
 
+// Global auto-incrementing counter for DOM element IDs.
+// Card IDs like "md-code-0" are per-message, NOT globally unique across the DOM.
+// Using card.id as a DOM id causes document.getElementById() to always find the
+// first matching element, breaking copy buttons on the 2nd/3rd/... card.
+let domIdCounter = 0
+
 // Card types that can be rendered functionally (simple, no interactivity beyond copy)
 export const FUNCTIONAL_CARD_TYPES = new Set([
   'table',
@@ -149,9 +155,15 @@ export function canRenderFunctionally(card: TypelessCard): boolean {
  * Uses LRU cache to avoid re-rendering identical cards
  */
 export function renderCardToHtml(card: TypelessCard): string {
+  // Code and terminal cards use globally unique DOM IDs for copy buttons,
+  // so they must NOT be cached (cached HTML would have stale IDs).
+  const useCache = card.type !== 'code' && card.type !== 'terminal'
+
   // Check cache first
-  const cached = renderCache.get(card)
-  if (cached) return cached
+  if (useCache) {
+    const cached = renderCache.get(card)
+    if (cached) return cached
+  }
 
   // Render and cache
   let html: string
@@ -181,7 +193,9 @@ export function renderCardToHtml(card: TypelessCard): string {
       html = `<div class="text-red-500">Unknown card type: ${card.type}</div>`
   }
 
-  renderCache.set(card, html)
+  if (useCache) {
+    renderCache.set(card, html)
+  }
   return html
 }
 
@@ -293,17 +307,18 @@ function renderCode(card: TypelessCardCode): string {
     ? `<span class="px-2 py-0.5 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">${escapeHtml(langDisplay)}</span>`
     : ''
 
-  // Generate unique ID for copy functionality
-  const codeId = `code-${card.id || Math.random().toString(36).substr(2, 9)}`
+  // Generate globally unique DOM ID for copy functionality
+  const codeId = `code-${++domIdCounter}`
 
-  // Data for fullscreen
-  const fullscreenData = JSON.stringify({
+  // Data for fullscreen — base64-encode to avoid HTML attribute escaping issues
+  // (JSON escape sequences like \n get mangled by the browser's HTML parser)
+  const fullscreenDataB64 = btoa(unescape(encodeURIComponent(JSON.stringify({
     title: titleOrFilename || langDisplay,
     language: card.language,
     content: card.code,
-  }).replace(/"/g, '&quot;')
+  }))))
 
-  return `<div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700" ondblclick="window.__typelessOpenFullscreen && window.__typelessOpenFullscreen('code', '${fullscreenData.replace(/'/g, "\\'")}')">
+  return `<div class="code-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700" ondblclick="window.__typelessOpenFullscreen && window.__typelessOpenFullscreen('code', '${fullscreenDataB64}', true)">
     <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
       <div class="flex items-center gap-2">
         <div class="flex gap-1">
@@ -711,8 +726,8 @@ function renderTerminal(card: TypelessCardTerminal): string {
   // Parse content with ANSI codes
   const parsedContent = parseAnsiToHtml(card.content)
 
-  // Generate unique ID for copy functionality
-  const terminalId = `terminal-${card.id || Math.random().toString(36).substr(2, 9)}`
+  // Generate globally unique DOM ID for copy functionality
+  const terminalId = `terminal-${++domIdCounter}`
   const plainContent = stripAnsi(card.content)
 
   // Theme classes
@@ -722,13 +737,13 @@ function renderTerminal(card: TypelessCardTerminal): string {
   // Max height style
   const maxHeightStyle = card.maxHeight ? `max-height: ${card.maxHeight}px;` : ''
 
-  // Data for fullscreen
-  const fullscreenData = JSON.stringify({
+  // Data for fullscreen — base64-encode to avoid HTML attribute escaping issues
+  const fullscreenDataB64 = btoa(unescape(encodeURIComponent(JSON.stringify({
     title: card.title || 'Terminal',
     content: plainContent,
-  }).replace(/"/g, '&quot;')
+  }))))
 
-  return `<div class="terminal-card rounded-lg border border-gray-700 overflow-hidden" ondblclick="window.__typelessOpenFullscreen && window.__typelessOpenFullscreen('terminal', '${fullscreenData.replace(/'/g, "\\'")}')">
+  return `<div class="terminal-card rounded-lg border border-gray-700 overflow-hidden" ondblclick="window.__typelessOpenFullscreen && window.__typelessOpenFullscreen('terminal', '${fullscreenDataB64}', true)">
     <div class="flex items-center justify-between px-3 py-1.5 bg-gray-700 border-b border-gray-700">
       <div class="flex items-center gap-2">
         <div class="flex gap-1">
@@ -818,10 +833,12 @@ export function initTypelessCopyHandler(): void {
   // This is called from the ondblclick handler in the rendered HTML
   // The actual fullscreen state is managed by the useFullscreen composable
   // which is imported by the FullscreenModal component
-  (window as unknown as { __typelessOpenFullscreen?: (type: string, dataJson: string) => void }).__typelessOpenFullscreen = (type: string, dataJson: string) => {
+  (window as unknown as { __typelessOpenFullscreen?: (type: string, dataJson: string, isBase64?: boolean) => void }).__typelessOpenFullscreen = (type: string, dataJson: string, isBase64?: boolean) => {
+    // Decode base64 if flagged (avoids HTML attribute escaping issues with JSON)
+    const json = isBase64 ? decodeURIComponent(escape(atob(dataJson))) : dataJson
     // Dispatch a custom event that the FullscreenModal component listens to
     const event = new CustomEvent('typeless-fullscreen', {
-      detail: { type, dataJson },
+      detail: { type, dataJson: json },
     })
     window.dispatchEvent(event)
   }

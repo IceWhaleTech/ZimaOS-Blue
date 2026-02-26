@@ -81,6 +81,12 @@ func (m *mockBrowser) Tabs(_ context.Context) (string, error) {
 	return `[{"target_id":"tab-1","title":"Test","url":"https://example.com"}]`, nil
 }
 func (m *mockBrowser) CloseTab(_ context.Context, targetID string) error { return nil }
+func (m *mockBrowser) ExecuteRecipe(_ context.Context, recipe string, params map[string]string) (map[string]interface{}, error) {
+	return map[string]interface{}{"recipe": recipe, "status": "ok"}, nil
+}
+func (m *mockBrowser) ListRecipes(_ context.Context) (string, error) {
+	return `[{"name":"test-recipe","description":"A test recipe"}]`, nil
+}
 
 type mockUIReviewer struct{}
 

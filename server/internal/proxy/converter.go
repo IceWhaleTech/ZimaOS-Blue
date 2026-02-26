@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/tidwall/gjson"
+	gojson "github.com/goccy/go-json"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // scannerBufPool reuses 64KB buffers for SSE line scanning.
@@ -19,6 +19,13 @@ var scannerBufPool = sync.Pool{
 	New: func() interface{} {
 		buf := make([]byte, 64*1024)
 		return &buf
+	},
+}
+
+// sseWriteBufPool reuses bytes.Buffer for SSE chunk assembly.
+var sseWriteBufPool = sync.Pool{
+	New: func() interface{} {
+		return bytes.NewBuffer(make([]byte, 0, 512))
 	},
 }
 
@@ -98,12 +105,37 @@ type OpenAIToolFunction struct {
 }
 
 type OpenAIToolCall struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"`
-	Function struct {
-		Name      string `json:"name"`
-		Arguments string `json:"arguments"`
-	} `json:"function"`
+	ID       string              `json:"id"`
+	Type     string              `json:"type"`
+	Function OpenAIToolCallFunc  `json:"function"`
+}
+
+// OpenAIToolCallFunc is the function part of an OpenAI tool call.
+// Arguments is normally a JSON string, but some providers send it as a JSON object.
+type OpenAIToolCallFunc struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+// UnmarshalJSON handles Arguments being either a JSON string or a JSON object.
+func (f *OpenAIToolCallFunc) UnmarshalJSON(data []byte) error {
+	// Use an alias to avoid infinite recursion.
+	type alias struct {
+		Name      string          `json:"name"`
+		Arguments gojson.RawMessage `json:"arguments"`
+	}
+	var raw alias
+	if err := gojson.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	f.Name = raw.Name
+	if len(raw.Arguments) > 0 && raw.Arguments[0] == '"' {
+		// It's a JSON string — unmarshal to get the actual string value.
+		return gojson.Unmarshal(raw.Arguments, &f.Arguments)
+	}
+	// It's a JSON object (or other non-string) — keep as raw JSON string.
+	f.Arguments = string(raw.Arguments)
+	return nil
 }
 
 type OpenAIChatResponse struct {
@@ -123,33 +155,48 @@ type OpenAIChatResponse struct {
 	} `json:"usage"`
 }
 
+// StreamChunkDelta is the delta object inside an OpenAI streaming chunk choice.
+type StreamChunkDelta struct {
+	Role      string                `json:"role,omitempty"`
+	Content   string                `json:"content,omitempty"`
+	ToolCalls []StreamChunkToolCall `json:"tool_calls,omitempty"`
+}
+
+// StreamChunkToolCall is a single tool call inside a streaming delta.
+type StreamChunkToolCall struct {
+	Index    int                     `json:"index"`
+	ID       string                  `json:"id,omitempty"`
+	Type     string                  `json:"type,omitempty"`
+	Function StreamChunkToolCallFunc `json:"function,omitempty"`
+}
+
+// StreamChunkToolCallFunc is the function part of a streaming tool call.
+type StreamChunkToolCallFunc struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+// StreamChunkChoice is a single choice in an OpenAI streaming chunk.
+type StreamChunkChoice struct {
+	Index        int              `json:"index"`
+	Delta        StreamChunkDelta `json:"delta"`
+	FinishReason *string          `json:"finish_reason"`
+}
+
+// StreamChunkUsage is the usage object in an OpenAI streaming chunk.
+type StreamChunkUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
 type OpenAIStreamChunk struct {
-	ID      string `json:"id"`
-	Object  string `json:"object"`
-	Created int64  `json:"created"`
-	Model   string `json:"model"`
-	Choices []struct {
-		Index int `json:"index"`
-		Delta struct {
-			Role      string `json:"role,omitempty"`
-			Content   string `json:"content,omitempty"`
-			ToolCalls []struct {
-				Index    int    `json:"index"`
-				ID       string `json:"id,omitempty"`
-				Type     string `json:"type,omitempty"`
-				Function struct {
-					Name      string `json:"name,omitempty"`
-					Arguments string `json:"arguments,omitempty"`
-				} `json:"function,omitempty"`
-			} `json:"tool_calls,omitempty"`
-		} `json:"delta"`
-		FinishReason string `json:"finish_reason,omitempty"`
-	} `json:"choices"`
-	Usage *struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-		TotalTokens      int `json:"total_tokens"`
-	} `json:"usage,omitempty"`
+	ID      string              `json:"id"`
+	Object  string              `json:"object"`
+	Created int64               `json:"created,omitempty"`
+	Model   string              `json:"model,omitempty"`
+	Choices []StreamChunkChoice `json:"choices"`
+	Usage   *StreamChunkUsage   `json:"usage,omitempty"`
 }
 
 // Anthropic request/response types
@@ -185,6 +232,7 @@ type AnthropicContentBlock struct {
 		MediaType string `json:"media_type"`
 		Data      string `json:"data"`
 	} `json:"source,omitempty"`
+	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 type AnthropicTool struct {
@@ -220,26 +268,35 @@ type AnthropicResponse struct {
 	} `json:"usage"`
 }
 
+// AnthropicStreamContentBlock is the content_block in a content_block_start event.
+type AnthropicStreamContentBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+// AnthropicStreamDelta is the delta in content_block_delta / message_delta events.
+type AnthropicStreamDelta struct {
+	Type        string `json:"type"`
+	Text        string `json:"text,omitempty"`
+	PartialJSON string `json:"partial_json,omitempty"`
+	StopReason  string `json:"stop_reason,omitempty"`
+}
+
+// AnthropicStreamUsage is the usage in message_start / message_delta events.
+type AnthropicStreamUsage struct {
+	InputTokens  int `json:"input_tokens,omitempty"`
+	OutputTokens int `json:"output_tokens,omitempty"`
+}
+
 type AnthropicStreamEvent struct {
-	Type         string `json:"type"`
-	Index        int    `json:"index,omitempty"`
-	ContentBlock *struct {
-		Type string `json:"type"`
-		Text string `json:"text,omitempty"`
-		ID   string `json:"id,omitempty"`
-		Name string `json:"name,omitempty"`
-	} `json:"content_block,omitempty"`
-	Delta *struct {
-		Type        string `json:"type"`
-		Text        string `json:"text,omitempty"`
-		PartialJSON string `json:"partial_json,omitempty"`
-		StopReason  string `json:"stop_reason,omitempty"`
-	} `json:"delta,omitempty"`
-	Message *AnthropicResponse `json:"message,omitempty"`
-	Usage   *struct {
-		InputTokens  int `json:"input_tokens,omitempty"`
-		OutputTokens int `json:"output_tokens,omitempty"`
-	} `json:"usage,omitempty"`
+	Type         string                       `json:"type"`
+	Index        int                          `json:"index,omitempty"`
+	ContentBlock *AnthropicStreamContentBlock `json:"content_block,omitempty"`
+	Delta        *AnthropicStreamDelta        `json:"delta,omitempty"`
+	Message      *AnthropicResponse           `json:"message,omitempty"`
+	Usage        *AnthropicStreamUsage        `json:"usage,omitempty"`
 }
 
 // Gemini request/response types
@@ -367,6 +424,38 @@ func (fc *FormatConverter) ConvertRequest(body []byte, targetType ProviderType) 
 
 	// Convert to Anthropic format
 	anthropicReq := fc.openAIToAnthropic(openaiReq)
+	converted, err := json.Marshal(anthropicReq)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to marshal Anthropic request: %w", err)
+	}
+	return converted, "/v1/messages", nil
+}
+
+// ConvertRequestWithCaching converts OpenAI request to target provider format and
+// optionally applies prompt caching in a single unmarshal/marshal pass.
+// This eliminates the double unmarshal/marshal that ConvertRequest + InjectPromptCaching does.
+func (fc *FormatConverter) ConvertRequestWithCaching(body []byte, targetType ProviderType, promptCacheEnabled bool) ([]byte, string, error) {
+	if targetType == ProviderTypeOpenAI || targetType == ProviderTypeCopilot {
+		return body, "/v1/chat/completions", nil
+	}
+
+	var openaiReq OpenAIChatRequest
+	if err := json.Unmarshal(body, &openaiReq); err != nil {
+		return nil, "", fmt.Errorf("failed to parse OpenAI request: %w", err)
+	}
+
+	if targetType == ProviderTypeGemini {
+		return fc.convertToGemini(openaiReq)
+	}
+
+	// Convert to Anthropic struct (no marshal yet)
+	anthropicReq := fc.openAIToAnthropic(openaiReq)
+
+	// Apply prompt caching on the struct directly — avoids second unmarshal/marshal
+	if promptCacheEnabled {
+		ApplyPromptCaching(&anthropicReq)
+	}
+
 	converted, err := json.Marshal(anthropicReq)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to marshal Anthropic request: %w", err)
@@ -651,23 +740,75 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 }
 
 // ApplyPromptCaching adds cache_control breakpoints to an Anthropic request.
-// Breakpoints are placed on: (1) the system prompt, (2) the last tool definition.
+// Breakpoints are placed on:
+//   (1) the system prompt static block(s) — up to 2 blocks for static+config
+//   (2) the last tool definition
+//   (3) a turn-boundary message (4th-from-last) for long conversations
 // This enables Anthropic's prompt caching, which can save up to 90% on input token costs.
+// Anthropic allows up to 4 cache breakpoints per request.
 func ApplyPromptCaching(req *AnthropicRequest) {
 	ephemeral := &AnthropicCacheControl{Type: "ephemeral"}
 
-	// Convert system string to array with cache_control
-	if s, ok := req.System.(string); ok && s != "" {
-		req.System = []AnthropicSystemBlock{{
-			Type:         "text",
-			Text:         s,
-			CacheControl: ephemeral,
-		}}
+	// Handle system prompt: convert string to array, or annotate existing array blocks.
+	switch s := req.System.(type) {
+	case string:
+		if s != "" {
+			req.System = []AnthropicSystemBlock{{
+				Type:         "text",
+				Text:         s,
+				CacheControl: ephemeral,
+			}}
+		}
+	case []AnthropicSystemBlock:
+		// Multi-block system prompt (from BuildStructured).
+		// Place cache_control on each non-dynamic block.
+		// Convention: last block is TURN_DYNAMIC (no caching), earlier blocks are static/config.
+		if len(s) == 1 {
+			s[0].CacheControl = ephemeral
+		} else if len(s) >= 2 {
+			// Cache all blocks except the last (dynamic) one.
+			// Anthropic caches the prefix up to each breakpoint.
+			for i := 0; i < len(s)-1; i++ {
+				s[i].CacheControl = ephemeral
+			}
+			// Last block (TURN_DYNAMIC) gets no cache_control.
+		}
+		req.System = s
 	}
 
-	// Add cache_control to the last tool
+	// Add cache_control to the last tool (tools are sorted alphabetically for stability)
 	if n := len(req.Tools); n > 0 {
 		req.Tools[n-1].CacheControl = ephemeral
+	}
+
+	// Turn-boundary breakpoint: cache older conversation messages.
+	// Place a breakpoint on the 4th-from-last message for conversations with 6+ messages.
+	// This caches the conversation prefix while keeping recent turns uncached.
+	if n := len(req.Messages); n >= 6 {
+		idx := n - 4
+		msg := &req.Messages[idx]
+		// Ensure content is an array so we can attach cache_control.
+		switch c := msg.Content.(type) {
+		case string:
+			if c != "" {
+				msg.Content = []AnthropicContentBlock{{
+					Type:         "text",
+					Text:         c,
+					CacheControl: ephemeral,
+				}}
+			}
+		case []AnthropicContentBlock:
+			if len(c) > 0 {
+				c[len(c)-1].CacheControl = ephemeral
+			}
+		case []interface{}:
+			// JSON-unmarshaled array — add cache_control to the last block via map.
+			if len(c) > 0 {
+				if lastBlock, ok := c[len(c)-1].(map[string]interface{}); ok {
+					lastBlock["cache_control"] = map[string]string{"type": "ephemeral"}
+				}
+			}
+		}
 	}
 }
 
@@ -760,10 +901,10 @@ func (fc *FormatConverter) convertGeminiResponse(body []byte) ([]byte, error) {
 
 func (fc *FormatConverter) geminiToOpenAI(resp GeminiResponse) OpenAIChatResponse {
 	openaiResp := OpenAIChatResponse{
-		ID:      fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano()),
+		ID:      fmt.Sprintf("chatcmpl-%d", timeutil.NowNano()),
 		Object:  "chat.completion",
 		Model:   resp.ModelVersion,
-		Created: time.Now().Unix(),
+		Created: timeutil.Now(),
 	}
 
 	if len(resp.Candidates) > 0 {
@@ -778,12 +919,9 @@ func (fc *FormatConverter) geminiToOpenAI(resp GeminiResponse) OpenAIChatRespons
 			if part.FunctionCall != nil {
 				argsJSON, _ := json.Marshal(part.FunctionCall.Args)
 				toolCalls = append(toolCalls, OpenAIToolCall{
-					ID:   fmt.Sprintf("call_%d", time.Now().UnixNano()),
+					ID:   fmt.Sprintf("call_%d", timeutil.NowNano()),
 					Type: "function",
-					Function: struct {
-						Name      string `json:"name"`
-						Arguments string `json:"arguments"`
-					}{
+					Function: OpenAIToolCallFunc{
 						Name:      part.FunctionCall.Name,
 						Arguments: string(argsJSON),
 					},
@@ -857,7 +995,7 @@ func (fc *FormatConverter) convertGeminiModels(body []byte) ([]byte, error) {
 		models = append(models, map[string]interface{}{
 			"id":       modelID,
 			"object":   "model",
-			"created":  time.Now().Unix(),
+			"created":  timeutil.Now(),
 			"owned_by": "google",
 		})
 	}
@@ -889,10 +1027,7 @@ func (fc *FormatConverter) anthropicToOpenAI(resp AnthropicResponse) OpenAIChatR
 			toolCalls = append(toolCalls, OpenAIToolCall{
 				ID:   block.ID,
 				Type: "function",
-				Function: struct {
-					Name      string `json:"name"`
-					Arguments string `json:"arguments"`
-				}{
+				Function: OpenAIToolCallFunc{
 					Name:      block.Name,
 					Arguments: string(inputJSON),
 				},
@@ -961,56 +1096,58 @@ func (fc *FormatConverter) convertCloudCodeStream(reader io.Reader, writer http.
 
 	scanner, bufPtr := newPooledScanner(reader)
 	defer scannerBufPool.Put(bufPtr)
-	messageID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+	messageID := fmt.Sprintf("chatcmpl-%d", timeutil.NowNano())
+
+	wb := sseWriteBufPool.Get().(*bytes.Buffer)
+	defer func() {
+		wb.Reset()
+		sseWriteBufPool.Put(wb)
+	}()
 
 	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" || !strings.HasPrefix(line, "data: ") {
+		line := scanner.Bytes()
+		if len(line) == 0 || !bytes.HasPrefix(line, []byte("data: ")) {
 			continue
 		}
 
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
+		data := line[6:]
+		if bytes.Equal(data, []byte("[DONE]")) {
 			writer.Write([]byte("data: [DONE]\n\n"))
 			flusher.Flush()
 			break
 		}
 
 		// Cloud Code returns Gemini-style candidates
-		text := gjson.Get(data, "candidates.0.content.parts.0.text").Str
-		finishReason := gjson.Get(data, "candidates.0.finishReason").Str
-
-		var wb bytes.Buffer
-		wb.Grow(256)
-		wb.WriteString(`data: {"id":"`)
-		wb.WriteString(messageID)
-		wb.WriteString(`","object":"chat.completion.chunk","choices":[{"index":0,"delta":{`)
-		if text != "" {
-			wb.WriteString(`"content":`)
-			escapedText, _ := json.Marshal(text)
-			wb.Write(escapedText)
-		}
-		wb.WriteString(`},"finish_reason":`)
-		if finishReason != "" {
-			wb.WriteByte('"')
-			switch finishReason {
-			case "STOP":
-				wb.WriteString("stop")
-			case "MAX_TOKENS":
-				wb.WriteString("length")
-			default:
-				wb.WriteString("stop")
+		var chunk GeminiStreamChunk
+		wasRepaired := false
+		if err := json.Unmarshal(data, &chunk); err != nil {
+			fixed := repairJSON(data)
+			if err2 := json.Unmarshal(fixed, &chunk); err2 != nil {
+				continue
 			}
-			wb.WriteByte('"')
-		} else {
-			wb.WriteString("null")
+			wasRepaired = true
 		}
-		wb.WriteString(`}]}`)
+
+		openaiChunk := fc.convertGeminiStreamChunk(chunk, messageID)
+		if openaiChunk == nil {
+			continue
+		}
+
+		chunkJSON, err := json.Marshal(openaiChunk)
+		if err != nil {
+			continue
+		}
+
+		wb.Reset()
+		wb.WriteString("data: ")
+		wb.Write(chunkJSON)
 		wb.WriteString("\n\n")
 		writer.Write(wb.Bytes())
 		flusher.Flush()
 
-		if finishReason != "" {
+		// Don't trust finishReason from repaired chunks — truncated values
+		// like "STO" would cause premature stream termination.
+		if !wasRepaired && len(chunk.Candidates) > 0 && chunk.Candidates[0].FinishReason != "" {
 			writer.Write([]byte("data: [DONE]\n\n"))
 			flusher.Flush()
 			break
@@ -1028,7 +1165,7 @@ func (fc *FormatConverter) convertGeminiStream(reader io.Reader, writer http.Res
 
 	scanner, bufPtr := newPooledScanner(reader)
 	defer scannerBufPool.Put(bufPtr)
-	messageID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+	messageID := fmt.Sprintf("chatcmpl-%d", timeutil.NowNano())
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1082,48 +1219,25 @@ func (fc *FormatConverter) convertGeminiStreamChunk(chunk GeminiStreamChunk, mes
 		}
 	}
 
+	var fr *string
+	if finishReason != "" {
+		fr = &finishReason
+	}
+
 	return &OpenAIStreamChunk{
 		ID:     messageID,
 		Object: "chat.completion.chunk",
-		Choices: []struct {
-			Index int `json:"index"`
-			Delta struct {
-				Role      string `json:"role,omitempty"`
-				Content   string `json:"content,omitempty"`
-				ToolCalls []struct {
-					Index    int    `json:"index"`
-					ID       string `json:"id,omitempty"`
-					Type     string `json:"type,omitempty"`
-					Function struct {
-						Name      string `json:"name,omitempty"`
-						Arguments string `json:"arguments,omitempty"`
-					} `json:"function,omitempty"`
-				} `json:"tool_calls,omitempty"`
-			} `json:"delta"`
-			FinishReason string `json:"finish_reason,omitempty"`
-		}{{
-			Index: 0,
-			Delta: struct {
-				Role      string `json:"role,omitempty"`
-				Content   string `json:"content,omitempty"`
-				ToolCalls []struct {
-					Index    int    `json:"index"`
-					ID       string `json:"id,omitempty"`
-					Type     string `json:"type,omitempty"`
-					Function struct {
-						Name      string `json:"name,omitempty"`
-						Arguments string `json:"arguments,omitempty"`
-					} `json:"function,omitempty"`
-				} `json:"tool_calls,omitempty"`
-			}{Content: content},
-			FinishReason: finishReason,
+		Choices: []StreamChunkChoice{{
+			Index:        0,
+			Delta:        StreamChunkDelta{Content: content},
+			FinishReason: fr,
 		}},
 	}
 }
 
 // convertAnthropicStream converts Anthropic SSE to OpenAI SSE.
-// Uses gjson for field extraction and template-based JSON output to avoid
-// json.Unmarshal + json.Marshal per chunk (the hot path for streaming).
+// Deserializes each event into AnthropicStreamEvent, converts via convertStreamEvent,
+// then serializes the OpenAI chunk. Truncated JSON is repaired before retry.
 func (fc *FormatConverter) convertAnthropicStream(reader io.Reader, writer http.ResponseWriter) error {
 	flusher, ok := writer.(http.Flusher)
 	if !ok {
@@ -1134,9 +1248,12 @@ func (fc *FormatConverter) convertAnthropicStream(reader io.Reader, writer http.
 	defer scannerBufPool.Put(bufPtr)
 
 	var messageID, model string
-	// Pre-allocate write buffer for SSE lines
-	var wb bytes.Buffer
-	wb.Grow(512)
+	// Pooled write buffer for SSE lines
+	wb := sseWriteBufPool.Get().(*bytes.Buffer)
+	defer func() {
+		wb.Reset()
+		sseWriteBufPool.Put(wb)
+	}()
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -1145,91 +1262,43 @@ func (fc *FormatConverter) convertAnthropicStream(reader io.Reader, writer http.
 		}
 
 		data := line[6:] // skip "data: "
-		eventType := gjson.GetBytes(data, "type").Str
 
-		switch eventType {
-		case "message_start":
-			messageID = gjson.GetBytes(data, "message.id").Str
-			model = gjson.GetBytes(data, "message.model").Str
-			wb.Reset()
-			wb.WriteString(`data: {"id":"`)
-			wb.WriteString(messageID)
-			wb.WriteString(`","object":"chat.completion.chunk","model":"`)
-			wb.WriteString(model)
-			wb.WriteString(`","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`)
-			wb.WriteString("\n\n")
-			writer.Write(wb.Bytes())
-			flusher.Flush()
-
-		case "content_block_delta":
-			deltaType := gjson.GetBytes(data, "delta.type").Str
-			if deltaType != "text_delta" {
+		var event AnthropicStreamEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			repaired := repairJSON(data)
+			if err2 := json.Unmarshal(repaired, &event); err2 != nil {
+				continue // unfixable, skip
+			}
+			// Repaired JSON may have truncated values — only forward safe events.
+			if !isRepairedEventSafe(&event) {
 				continue
 			}
-			text := gjson.GetBytes(data, "delta.text").Str
-			wb.Reset()
-			wb.WriteString(`data: {"id":"`)
-			wb.WriteString(messageID)
-			wb.WriteString(`","object":"chat.completion.chunk","model":"`)
-			wb.WriteString(model)
-			wb.WriteString(`","choices":[{"index":0,"delta":{"content":`)
-			// JSON-encode the text content (handles escaping)
-			escapedText, _ := json.Marshal(text)
-			wb.Write(escapedText)
-			wb.WriteString(`},"finish_reason":null}]}`)
-			wb.WriteString("\n\n")
-			writer.Write(wb.Bytes())
-			flusher.Flush()
+		}
 
-		case "message_delta":
-			stopReason := gjson.GetBytes(data, "delta.stop_reason").Str
-			finishReason := "null"
-			switch stopReason {
-			case "end_turn":
-				finishReason = `"stop"`
-			case "max_tokens":
-				finishReason = `"length"`
-			case "tool_use":
-				finishReason = `"tool_calls"`
-			}
-			wb.Reset()
-			wb.WriteString(`data: {"id":"`)
-			wb.WriteString(messageID)
-			wb.WriteString(`","object":"chat.completion.chunk","model":"`)
-			wb.WriteString(model)
-			wb.WriteString(`","choices":[{"index":0,"delta":{},"finish_reason":`)
-			wb.WriteString(finishReason)
-			wb.WriteString(`}]`)
-			// Include usage if present
-			usage := gjson.GetBytes(data, "usage")
-			if usage.Exists() {
-				inputTokens := usage.Get("input_tokens").Int()
-				outputTokens := usage.Get("output_tokens").Int()
-				wb.WriteString(`,"usage":{"prompt_tokens":`)
-				wb.Write(appendInt(nil, inputTokens))
-				wb.WriteString(`,"completion_tokens":`)
-				wb.Write(appendInt(nil, outputTokens))
-				wb.WriteString(`,"total_tokens":`)
-				wb.Write(appendInt(nil, inputTokens+outputTokens))
-				wb.WriteByte('}')
-			}
-			wb.WriteByte('}')
-			wb.WriteString("\n\n")
-			writer.Write(wb.Bytes())
-			flusher.Flush()
-
-		case "message_stop":
+		if event.Type == "message_stop" {
 			writer.Write([]byte("data: [DONE]\n\n"))
 			flusher.Flush()
 			return scanner.Err()
 		}
+
+		chunk := fc.convertStreamEvent(event, &messageID, &model)
+		if chunk == nil {
+			continue
+		}
+
+		chunkJSON, err := json.Marshal(chunk)
+		if err != nil {
+			continue
+		}
+
+		wb.Reset()
+		wb.WriteString("data: ")
+		wb.Write(chunkJSON)
+		wb.WriteString("\n\n")
+		writer.Write(wb.Bytes())
+		flusher.Flush()
 	}
 	return scanner.Err()
-}
-
-// appendInt appends an int64 as decimal to dst without fmt.Sprintf.
-func appendInt(dst []byte, v int64) []byte {
-	return strconv.AppendInt(dst, v, 10)
 }
 
 // convertStreamEvent converts Anthropic stream event to OpenAI chunk
@@ -1244,138 +1313,102 @@ func (fc *FormatConverter) convertStreamEvent(event AnthropicStreamEvent, messag
 			ID:     *messageID,
 			Object: "chat.completion.chunk",
 			Model:  *model,
-			Choices: []struct {
-				Index int `json:"index"`
-				Delta struct {
-					Role      string `json:"role,omitempty"`
-					Content   string `json:"content,omitempty"`
-					ToolCalls []struct {
-						Index    int    `json:"index"`
-						ID       string `json:"id,omitempty"`
-						Type     string `json:"type,omitempty"`
-						Function struct {
-							Name      string `json:"name,omitempty"`
-							Arguments string `json:"arguments,omitempty"`
-						} `json:"function,omitempty"`
-					} `json:"tool_calls,omitempty"`
-				} `json:"delta"`
-				FinishReason string `json:"finish_reason,omitempty"`
-			}{{
+			Choices: []StreamChunkChoice{{
 				Index: 0,
-				Delta: struct {
-					Role      string `json:"role,omitempty"`
-					Content   string `json:"content,omitempty"`
-					ToolCalls []struct {
-						Index    int    `json:"index"`
-						ID       string `json:"id,omitempty"`
-						Type     string `json:"type,omitempty"`
-						Function struct {
-							Name      string `json:"name,omitempty"`
-							Arguments string `json:"arguments,omitempty"`
-						} `json:"function,omitempty"`
-					} `json:"tool_calls,omitempty"`
-				}{
-					Role: "assistant",
-				},
+				Delta: StreamChunkDelta{Role: "assistant"},
 			}},
 		}
+
+	case "content_block_start":
+		// tool_use block: emit chunk with tool call ID, type, and function name
+		if event.ContentBlock != nil && event.ContentBlock.Type == "tool_use" {
+			return &OpenAIStreamChunk{
+				ID:     *messageID,
+				Object: "chat.completion.chunk",
+				Model:  *model,
+				Choices: []StreamChunkChoice{{
+					Index: 0,
+					Delta: StreamChunkDelta{
+						ToolCalls: []StreamChunkToolCall{{
+							Index: event.Index,
+							ID:    event.ContentBlock.ID,
+							Type:  "function",
+							Function: StreamChunkToolCallFunc{
+								Name: event.ContentBlock.Name,
+							},
+						}},
+					},
+				}},
+			}
+		}
+		return nil
 
 	case "content_block_delta":
 		if event.Delta == nil {
 			return nil
 		}
-		content := ""
-		if event.Delta.Type == "text_delta" {
-			content = event.Delta.Text
+		switch event.Delta.Type {
+		case "text_delta":
+			return &OpenAIStreamChunk{
+				ID:     *messageID,
+				Object: "chat.completion.chunk",
+				Model:  *model,
+				Choices: []StreamChunkChoice{{
+					Index: 0,
+					Delta: StreamChunkDelta{Content: event.Delta.Text},
+				}},
+			}
+		case "input_json_delta":
+			return &OpenAIStreamChunk{
+				ID:     *messageID,
+				Object: "chat.completion.chunk",
+				Model:  *model,
+				Choices: []StreamChunkChoice{{
+					Index: 0,
+					Delta: StreamChunkDelta{
+						ToolCalls: []StreamChunkToolCall{{
+							Index: event.Index,
+							Function: StreamChunkToolCallFunc{
+								Arguments: event.Delta.PartialJSON,
+							},
+						}},
+					},
+				}},
+			}
 		}
-		return &OpenAIStreamChunk{
-			ID:     *messageID,
-			Object: "chat.completion.chunk",
-			Model:  *model,
-			Choices: []struct {
-				Index int `json:"index"`
-				Delta struct {
-					Role      string `json:"role,omitempty"`
-					Content   string `json:"content,omitempty"`
-					ToolCalls []struct {
-						Index    int    `json:"index"`
-						ID       string `json:"id,omitempty"`
-						Type     string `json:"type,omitempty"`
-						Function struct {
-							Name      string `json:"name,omitempty"`
-							Arguments string `json:"arguments,omitempty"`
-						} `json:"function,omitempty"`
-					} `json:"tool_calls,omitempty"`
-				} `json:"delta"`
-				FinishReason string `json:"finish_reason,omitempty"`
-			}{{
-				Index: 0,
-				Delta: struct {
-					Role      string `json:"role,omitempty"`
-					Content   string `json:"content,omitempty"`
-					ToolCalls []struct {
-						Index    int    `json:"index"`
-						ID       string `json:"id,omitempty"`
-						Type     string `json:"type,omitempty"`
-						Function struct {
-							Name      string `json:"name,omitempty"`
-							Arguments string `json:"arguments,omitempty"`
-						} `json:"function,omitempty"`
-					} `json:"tool_calls,omitempty"`
-				}{
-					Content: content,
-				},
-			}},
-		}
+		return nil
 
 	case "message_delta":
-		finishReason := ""
+		var finishReason *string
 		if event.Delta != nil {
-			// Map stop reason — Claude sends stop_reason in delta, not type
 			stopReason := event.Delta.StopReason
 			if stopReason == "" {
 				stopReason = event.Delta.Type // fallback for older format
 			}
+			var fr string
 			switch stopReason {
 			case "end_turn":
-				finishReason = "stop"
+				fr = "stop"
 			case "max_tokens":
-				finishReason = "length"
+				fr = "length"
 			case "tool_use":
-				finishReason = "tool_calls"
+				fr = "tool_calls"
+			}
+			if fr != "" {
+				finishReason = &fr
 			}
 		}
 		chunk := &OpenAIStreamChunk{
 			ID:     *messageID,
 			Object: "chat.completion.chunk",
 			Model:  *model,
-			Choices: []struct {
-				Index int `json:"index"`
-				Delta struct {
-					Role      string `json:"role,omitempty"`
-					Content   string `json:"content,omitempty"`
-					ToolCalls []struct {
-						Index    int    `json:"index"`
-						ID       string `json:"id,omitempty"`
-						Type     string `json:"type,omitempty"`
-						Function struct {
-							Name      string `json:"name,omitempty"`
-							Arguments string `json:"arguments,omitempty"`
-						} `json:"function,omitempty"`
-					} `json:"tool_calls,omitempty"`
-				} `json:"delta"`
-				FinishReason string `json:"finish_reason,omitempty"`
-			}{{
+			Choices: []StreamChunkChoice{{
 				Index:        0,
 				FinishReason: finishReason,
 			}},
 		}
 		if event.Usage != nil {
-			chunk.Usage = &struct {
-				PromptTokens     int `json:"prompt_tokens"`
-				CompletionTokens int `json:"completion_tokens"`
-				TotalTokens      int `json:"total_tokens"`
-			}{
+			chunk.Usage = &StreamChunkUsage{
 				PromptTokens:     event.Usage.InputTokens,
 				CompletionTokens: event.Usage.OutputTokens,
 				TotalTokens:      event.Usage.InputTokens + event.Usage.OutputTokens,
@@ -1385,13 +1418,4 @@ func (fc *FormatConverter) convertStreamEvent(event AnthropicStreamEvent, messag
 	}
 
 	return nil
-}
-
-// WrapRequestBody wraps the request body with format conversion
-func (fc *FormatConverter) WrapRequestBody(body []byte, targetType ProviderType) (io.Reader, string, error) {
-	converted, path, err := fc.ConvertRequest(body, targetType)
-	if err != nil {
-		return nil, "", err
-	}
-	return bytes.NewReader(converted), path, nil
 }

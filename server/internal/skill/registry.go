@@ -12,6 +12,15 @@ type Registry struct {
 	enabled map[string]bool
 	builtin map[string]bool
 	mu      sync.RWMutex
+
+	// generation counter for cache invalidation
+	gen uint64
+
+	// cached sorted lists
+	listCache        []*SkillInfo
+	listCacheGen     uint64
+	enabledCache     []*SkillInfo
+	enabledCacheGen  uint64
 }
 
 // NewRegistry creates a new skill registry
@@ -44,6 +53,7 @@ func (r *Registry) Register(skill Skill, builtin bool) error {
 	r.skills[manifest.ID] = skill
 	r.enabled[manifest.ID] = true
 	r.builtin[manifest.ID] = builtin
+	r.gen++
 
 	return nil
 }
@@ -60,6 +70,7 @@ func (r *Registry) Unregister(id string) error {
 	delete(r.skills, id)
 	delete(r.enabled, id)
 	delete(r.builtin, id)
+	r.gen++
 
 	return nil
 }
@@ -89,10 +100,25 @@ func (r *Registry) GetInfo(id string) *SkillInfo {
 	}
 }
 
-// List returns all registered skills sorted by category then name
+// List returns all registered skills sorted by category then name.
+// Results are cached and only recomputed when the registry changes.
 func (r *Registry) List() []*SkillInfo {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
+	if r.listCacheGen == r.gen && r.listCache != nil {
+		result := r.listCache
+		r.mu.RUnlock()
+		return result
+	}
+	r.mu.RUnlock()
+
+	// Cache miss — rebuild under write lock
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if r.listCacheGen == r.gen && r.listCache != nil {
+		return r.listCache
+	}
 
 	result := make([]*SkillInfo, 0, len(r.skills))
 	for id, skill := range r.skills {
@@ -103,7 +129,6 @@ func (r *Registry) List() []*SkillInfo {
 		})
 	}
 
-	// Sort by category first, then by name for stable ordering
 	sort.Slice(result, func(i, j int) bool {
 		mi, mj := result[i].Manifest, result[j].Manifest
 		if mi.Category != mj.Category {
@@ -112,13 +137,30 @@ func (r *Registry) List() []*SkillInfo {
 		return mi.Name < mj.Name
 	})
 
+	r.listCache = result
+	r.listCacheGen = r.gen
 	return result
 }
 
-// ListEnabled returns all enabled skills sorted by category then name
+// ListEnabled returns all enabled skills sorted by category then name.
+// Results are cached and only recomputed when the registry changes.
 func (r *Registry) ListEnabled() []*SkillInfo {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
+	if r.enabledCacheGen == r.gen && r.enabledCache != nil {
+		result := r.enabledCache
+		r.mu.RUnlock()
+		return result
+	}
+	r.mu.RUnlock()
+
+	// Cache miss — rebuild under write lock
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if r.enabledCacheGen == r.gen && r.enabledCache != nil {
+		return r.enabledCache
+	}
 
 	result := make([]*SkillInfo, 0)
 	for id, skill := range r.skills {
@@ -131,7 +173,6 @@ func (r *Registry) ListEnabled() []*SkillInfo {
 		}
 	}
 
-	// Sort by category first, then by name for stable ordering
 	sort.Slice(result, func(i, j int) bool {
 		mi, mj := result[i].Manifest, result[j].Manifest
 		if mi.Category != mj.Category {
@@ -140,6 +181,8 @@ func (r *Registry) ListEnabled() []*SkillInfo {
 		return mi.Name < mj.Name
 	})
 
+	r.enabledCache = result
+	r.enabledCacheGen = r.gen
 	return result
 }
 
@@ -153,6 +196,7 @@ func (r *Registry) Enable(id string) error {
 	}
 
 	r.enabled[id] = true
+	r.gen++
 	return nil
 }
 
@@ -166,6 +210,7 @@ func (r *Registry) Disable(id string) error {
 	}
 
 	r.enabled[id] = false
+	r.gen++
 	return nil
 }
 

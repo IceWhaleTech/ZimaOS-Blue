@@ -74,7 +74,7 @@
       "exceptionDomain": "",
       "frameworks": [],
       "minimumSystemVersion": "10.15",
-      "signingIdentity": null,
+      "signingIdentity": "Developer ID Application: IceWhale Technology Limited (56349N8725)",
       "dmg": {
         "appPosition": { "x": 180, "y": 170 },
         "applicationFolderPosition": { "x": 480, "y": 170 },

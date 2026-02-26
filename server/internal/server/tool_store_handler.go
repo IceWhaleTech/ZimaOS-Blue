@@ -109,12 +109,31 @@ type ToolResponse struct {
 	Parameters  map[string]interface{}   `json:"parameters,omitempty"`
 }
 
+// toolsHiddenFromUI lists tools that should not appear on the plugins page.
+// These are internal-only tools (e.g. memory is accessed via the mgmt skill).
+var toolsHiddenFromUI = map[string]bool{
+	"memory": true,
+}
+
+// skillsShownAsTools lists skills that should appear in the Tools tab instead
+// of the Skills tab. Display-only — no logic changes.
+var skillsShownAsTools = []ToolResponse{
+	{ID: "browser", Name: "browser", Version: "1.0.0", Description: "Open a URL, read page content, interact with elements, take screenshots", Icon: "browser", Enabled: true, Builtin: true},
+	{ID: "ui_reviewer", Name: "ui_reviewer", Version: "1.0.0", Description: "Score and audit UI/UX quality of a URL or screenshot", Icon: "eye", Enabled: true, Builtin: true},
+	{ID: "analyze", Name: "analyze", Version: "1.0.0", Description: "Deep-dive analysis: gather data from URLs and web searches, generate HTML report", Icon: "analyze", Enabled: true, Builtin: true},
+	{ID: "mediagen", Name: "mediagen", Version: "1.0.0", Description: "Generate images and videos using AI models", Icon: "mediagen", Enabled: true, Builtin: true},
+	{ID: "reminder", Name: "reminder", Version: "2.0.0", Description: "Manage reminders and scheduled alerts via push notifications", Icon: "notifications", Enabled: true, Builtin: true},
+}
+
 // ListTools returns all registered tools (including disabled ones)
 func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 	toolNames := h.registry.List()
-	response := make([]ToolResponse, 0, len(toolNames))
+	response := make([]ToolResponse, 0, len(toolNames)+len(skillsShownAsTools))
 
 	for _, name := range toolNames {
+		if toolsHiddenFromUI[name] {
+			continue
+		}
 		tool := h.registry.Get(name)
 		if tool == nil {
 			continue
@@ -132,8 +151,11 @@ func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 		})
 	}
 
-	// Also include disabled tools
+	// Also include disabled tools (skip hidden ones)
 	for _, name := range h.registry.ListDisabled() {
+		if toolsHiddenFromUI[name] {
+			continue
+		}
 		tool := h.registry.Get(name)
 		if tool == nil {
 			continue
@@ -150,6 +172,9 @@ func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 			Parameters:  def.Parameters,
 		})
 	}
+
+	// Append skills that are displayed as tools in the UI
+	response = append(response, skillsShownAsTools...)
 
 	return c.JSON(http.StatusOK, response)
 }

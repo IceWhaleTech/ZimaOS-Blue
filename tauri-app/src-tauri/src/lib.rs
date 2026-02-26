@@ -405,6 +405,101 @@ async fn stop_server_platform(app: &tauri::AppHandle) -> Result<(), String> {
     }
 }
 
+/// Listen to the Go server's SSE event stream and fire native OS notifications
+/// when a `push` event arrives. Reconnects automatically on disconnect.
+/// The SSE endpoint requires auth — if unauthenticated, the server-side
+/// push.Notifier already handles native notifications as the primary channel.
+async fn listen_push_sse(app: tauri::AppHandle, port: u16, use_https: bool) {
+    use tauri_plugin_notification::NotificationExt;
+
+    let protocol = if use_https { "https" } else { "http" };
+    let url = format!("{}://localhost:{}/api/v1/events", protocol, port);
+
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .no_proxy()
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    loop {
+        info!("Connecting to SSE push stream at {}", url);
+        let resp = client.get(&url).send().await;
+        match resp {
+            Ok(resp) if resp.status().is_success() => {
+                use futures_util::StreamExt;
+
+                let mut event_type = String::new();
+                let mut data_buf = String::new();
+                let mut leftover = String::new();
+                let mut stream = resp.bytes_stream();
+
+                while let Some(chunk) = stream.next().await {
+                    let chunk = match chunk {
+                        Ok(c) => c,
+                        Err(e) => {
+                            info!("SSE stream error: {}", e);
+                            break;
+                        }
+                    };
+
+                    leftover.push_str(&String::from_utf8_lossy(&chunk));
+
+                    while let Some(pos) = leftover.find('\n') {
+                        let line = leftover[..pos].trim_end_matches('\r').to_string();
+                        leftover = leftover[pos + 1..].to_string();
+
+                        if line.is_empty() {
+                            if event_type == "push" && !data_buf.is_empty() {
+                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data_buf) {
+                                    let title = val["title"].as_str().unwrap_or("Blue");
+                                    let body = val["message"].as_str().unwrap_or("");
+                                    if !body.is_empty() {
+                                        let _ = app.notification()
+                                            .builder()
+                                            .title(title)
+                                            .body(body)
+                                            .show();
+                                    }
+                                }
+                            }
+                            event_type.clear();
+                            data_buf.clear();
+                        } else if let Some(rest) = line.strip_prefix("event:") {
+                            event_type = rest.trim().to_string();
+                        } else if let Some(rest) = line.strip_prefix("data:") {
+                            if !data_buf.is_empty() {
+                                data_buf.push('\n');
+                            }
+                            data_buf.push_str(rest.trim());
+                        }
+                    }
+                }
+            }
+            Ok(resp) => {
+                info!("SSE push stream returned {}, server-side notifier handles push instead", resp.status());
+            }
+            Err(e) => {
+                info!("SSE push connection failed: {}", e);
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    }
+}
+
+/// Send a native OS notification via tauri-plugin-notification.
+/// Called from the frontend when an SSE push event arrives.
+#[tauri::command]
+fn send_notification(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title(&title)
+        .body(&body)
+        .show()
+        .map_err(|e| e.to_string())
+}
+
 /// Main application entry point
 pub fn run() {
     // Parse CLI arguments
@@ -454,6 +549,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
@@ -468,6 +564,7 @@ pub fn run() {
             uninstall_windows_service,
             set_tray_locale,
             start_server_with_args,
+            send_notification,
             server::start_server,
             server::stop_server,
             server::restart_server,
@@ -668,6 +765,16 @@ pub fn run() {
                 } else {
                     (80, false)
                 };
+
+                // Start SSE listener for push notifications (native OS notifications)
+                {
+                    let sse_port = port;
+                    let sse_https = use_https;
+                    let sse_app = app_handle.clone();
+                    tokio::spawn(async move {
+                        listen_push_sse(sse_app, sse_port, sse_https).await;
+                    });
+                }
 
                 // Navigate the main window to the Go server URL
                 if let Some(window) = app_handle_for_window.get_webview_window("main") {

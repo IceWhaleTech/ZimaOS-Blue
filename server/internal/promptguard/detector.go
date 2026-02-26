@@ -201,15 +201,13 @@ func (d *Detector) initPatterns() {
 		})
 	}
 
-	// Data exfiltration patterns
+	// Data exfiltration patterns — audit only (ThreatLow).
+	// Credential protection is handled by DataMasker on the output side.
+	// These patterns are too fragile for blocking (language-dependent, high false-positive rate).
 	if d.config.EnableDataExfiltration {
 		d.patterns["data_exfiltration"] = d.compilePatterns([]PatternRule{
-			{Name: "system_prompt_leak", Pattern: `(?i)(reveal|show|display|print|output)\s+(me\s+)?(your\s+)?(system\s+prompt|instructions?|rules?)`, Severity: ThreatHigh, Description: "System prompt leak attempt"},
-			{Name: "repeat_prompt", Pattern: `(?i)(repeat|echo|print)\s+(the\s+)?(above|previous|system)\s+(\w+\s+)?(text|prompt|instructions?)`, Severity: ThreatHigh, Description: "Prompt repeat attempt"},
-			{Name: "training_data", Pattern: `(?i)(training\s+data|dataset|fine-?tuning)`, Severity: ThreatMedium, Description: "Training data extraction"},
-			{Name: "internal_info", Pattern: `(?i)(internal|private|confidential|secret)\s+(information|data|details?)`, Severity: ThreatMedium, Description: "Internal information extraction"},
-			{Name: "api_key_leak", Pattern: `(?i)(api\s+key|secret\s+key|access\s+token|credentials?)`, Severity: ThreatHigh, Description: "Credential extraction attempt"},
-			{Name: "repeat_prompt", Pattern: `(?i)(repeat|echo|copy)\s+(the\s+)?(above|previous|system|initial)\s+(text|prompt|message)`, Severity: ThreatHigh, Description: "Prompt repetition attack"},
+			{Name: "system_prompt_leak", Pattern: `(?i)(reveal|show|display|print|output)\s+(me\s+)?(your\s+)?(system\s+prompt|instructions?|rules?)`, Severity: ThreatLow, Description: "System prompt leak attempt"},
+			{Name: "repeat_prompt", Pattern: `(?i)(repeat|echo|print)\s+(the\s+)?(above|previous|system)\s+(\w+\s+)?(text|prompt|instructions?)`, Severity: ThreatLow, Description: "Prompt repeat attempt"},
 		})
 	}
 

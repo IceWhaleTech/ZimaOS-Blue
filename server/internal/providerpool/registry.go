@@ -24,6 +24,7 @@ type Registry struct {
 	// Callbacks
 	onProviderChange func(provider *Provider, action string)
 	onHealthResult   func(providerID string, result *HealthCheckResult) // latency feed
+	onStatusChange   func(providerID string, oldStatus, newStatus ProviderStatus) // status transition
 }
 
 // RegistryOption configures the Registry
@@ -64,6 +65,14 @@ func (r *Registry) AddProviderChangeListener(cb func(provider *Provider, action 
 func (r *Registry) SetOnHealthResult(cb func(providerID string, result *HealthCheckResult)) {
 	r.mu.Lock()
 	r.onHealthResult = cb
+	r.mu.Unlock()
+}
+
+// SetOnStatusChange sets a callback invoked when a provider's status transitions
+// (e.g. active → error or error → active).
+func (r *Registry) SetOnStatusChange(cb func(providerID string, oldStatus, newStatus ProviderStatus)) {
+	r.mu.Lock()
+	r.onStatusChange = cb
 	r.mu.Unlock()
 }
 
@@ -332,22 +341,68 @@ func (r *Registry) GetHealth(id string) (*HealthCheckResult, bool) {
 
 // SetHealth updates the health status of a provider
 func (r *Registry) SetHealth(id string, result *HealthCheckResult) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	var statusChanged bool
+	var oldStatus, newStatus ProviderStatus
 
+	r.mu.Lock()
 	r.health[id] = result
 
 	// Update provider status based on health
 	if provider, exists := r.providers[id]; exists && provider.Enabled {
+		oldStatus = provider.Status
 		if result.Healthy {
-			provider.Status = ProviderStatusActive
+			newStatus = ProviderStatusActive
 		} else {
-			provider.Status = ProviderStatusError
-			provider.LastError = result.Error
+			newStatus = ProviderStatusError
+			// Include key info in error message if available
+			if result.KeyHash != "" {
+				provider.LastError = result.Error + " (key: " + result.KeyHash + ")"
+			} else {
+				provider.LastError = result.Error
+			}
 			provider.LastErrorTime = result.CheckedAt
+		}
+		if oldStatus != newStatus {
+			provider.Status = newStatus
+			statusChanged = true
 		}
 		provider.LastHealthCheck = result.CheckedAt
 	}
+	cb := r.onStatusChange
+	r.mu.Unlock()
+
+	if statusChanged && cb != nil {
+		cb(id, oldStatus, newStatus)
+	}
+}
+
+// ClearError clears the error status of a provider, allowing manual retry
+func (r *Registry) ClearError(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	provider, exists := r.providers[id]
+	if !exists {
+		return ErrProviderNotFound
+	}
+
+	// Clear error state
+	provider.LastError = ""
+	provider.LastErrorTime = time.Time{}
+	provider.Status = ProviderStatusActive
+
+	// Also clear from health map
+	r.health[id] = &HealthCheckResult{
+		ProviderID: id,
+		Healthy:    true,
+		CheckedAt:  timeutil.NowTime(),
+	}
+
+	if err := r.storage.SaveProvider(provider); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // StartHealthCheck starts periodic health checking

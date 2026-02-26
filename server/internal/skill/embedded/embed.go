@@ -1,9 +1,11 @@
-// Package embedded previously provided go:embed access to bundled SKILL.md files.
-// Skills are now loaded from the database / skill store at runtime.
+// Package embedded provides go:embed access to bundled SKILL.md files.
+// Source of truth: assets/skills/ at project root.
+// Build-time copy: `make copy-skills` syncs assets/skills/ → skills/ here.
 package embedded
 
 import "embed"
 
-// SkillsFS is an empty filesystem kept for backward compatibility.
-// The skills/*/SKILL.md files were removed in favor of runtime-loaded skills.
+// SkillsFS embeds all skills/*/SKILL.md files for ReleaseSkills at startup.
+//
+//go:embed skills/*/SKILL.md
 var SkillsFS embed.FS

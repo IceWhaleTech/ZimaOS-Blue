@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 const defaultGeminiBaseURL = "https://generativelanguage.googleapis.com"
@@ -134,7 +135,7 @@ func (p *GeminiProvider) Generate(ctx context.Context, req *MediaRequest) (*Medi
 	}
 
 	taskID := uuid.New().String()
-	now := time.Now()
+	now := timeutil.NowTime()
 	task := &MediaTask{
 		BaseTask: task.BaseTask{
 			ID:          taskID,

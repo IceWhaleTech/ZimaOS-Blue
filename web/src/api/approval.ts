@@ -2,6 +2,7 @@ import api from './client'
 
 export type Policy = 'auto' | 'ask' | 'deny'
 export type Decision = 'approve' | 'deny'
+export type ExecDecision = 'allow-once' | 'allow-always' | 'deny'
 
 export interface ApprovalConfig {
   enabled: boolean
@@ -25,7 +26,7 @@ export const approvalApi = {
 
   listPending: () => api.get<PendingRequest[]>('/approval/pending'),
 
-  resolve: (requestId: string, decision: Decision) =>
+  resolve: (requestId: string, decision: Decision | ExecDecision) =>
     api.post<{ status: string }>('/approval/resolve', {
       request_id: requestId,
       decision,

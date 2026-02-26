@@ -484,16 +484,14 @@ const toolIconMap: Record<string, string> = {
   'Current Time': '🕐',
   'File Read': '📄',
   'File Write': '📝',
-  'Memory Search': '🧠',
-  'Memory Store': '💾',
-  'Memory Get': '📖',
-  'Memory Stats': '📊',
+  'memory': '🧠',
   'scheduler': '📅',
   'browser': '🌐',
   'sandbox': '📦',
   'ui_reviewer': '👁️',
   'autoreply': '💬',
   'workflows': '⚙️',
+  'analyze': '📊',
 }
 
 // Parameters to show as keyword-style (just the value, no label)
@@ -696,39 +694,64 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
   // First, parse special XML-like tags
   text = parseSpecialTags(text, cards, cardIndex)
 
-  // Find all complete typeless blocks first
-  const regex = new RegExp(
-    `${escapeRegex(TYPELESS_MARKER_START)}\\s*([\\s\\S]*?)\\s*${escapeRegex(TYPELESS_MARKER_END)}`,
-    'g'
-  )
+  // Find all complete typeless blocks
+  // We need a more robust approach: find all ```typeless markers, then find the LAST ``` in the content
+  // This handles cases where the JSON content contains inner code fences like ```mermaid
 
-  let match
+  const markerStart = TYPELESS_MARKER_START
+  const markerEnd = TYPELESS_MARKER_END
+
+  // Find all occurrences of ```typeless
+  const startMatches: number[] = []
+  let searchStart = 0
+  while (true) {
+    const idx = content.indexOf(markerStart, searchStart)
+    if (idx === -1) break
+    startMatches.push(idx)
+    searchStart = idx + markerStart.length
+  }
+
+  // For each start marker, find the LAST ``` in the remaining content
   const replacements: { start: number; end: number; placeholder: string }[] = []
+  for (const startIdx of startMatches) {
+    // Find the content start (after ```typeless)
+    const contentStart = startIdx + markerStart.length
+    // Find ALL ``` after this point (not just the first one)
+    const remainingContent = content.slice(contentStart)
+    let lastFenceIdx = -1
+    let fenceSearchStart = 0
+    while (true) {
+      const fenceIdx = remainingContent.indexOf(markerEnd, fenceSearchStart)
+      if (fenceIdx === -1) break
+      lastFenceIdx = fenceIdx
+      fenceSearchStart = fenceIdx + markerEnd.length
+    }
 
-  while ((match = regex.exec(content)) !== null) {
+    if (lastFenceIdx === -1) continue // No closing fence found
+
+    // The JSON is from contentStart to contentStart + lastFenceIdx
+    const jsonStr = remainingContent.slice(0, lastFenceIdx).trim()
+    const endIdx = contentStart + lastFenceIdx + markerEnd.length
+
+    if (!jsonStr) continue
+
     try {
-      const jsonStr = match[1]?.trim()
-      if (!jsonStr) continue
-      const card = JSON.parse(jsonStr) as TypelessCard
+      // Try normal parse first, then try to fix incomplete/truncated JSON
+      let card = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
 
       // Validate card has required type field
       if (card && typeof card.type === 'string' && isValidCardType(card.type)) {
         // Assign ID if not present
-        if (!card.id) {
-          card.id = `card-${cardIndex.value++}`
-        }
-        cards.push(card)
-
         // Mark for replacement with placeholder
         replacements.push({
-          start: match.index,
-          end: match.index + match[0].length,
+          start: startIdx,
+          end: endIdx,
           placeholder: `[[TYPELESS_CARD:${card.id}]]`,
         })
       }
     } catch {
       // Invalid JSON, leave as-is
-      console.warn('Failed to parse typeless card:', match[1])
+      console.warn('Failed to parse typeless card:', jsonStr.slice(0, 100))
     }
   }
 
@@ -921,20 +944,21 @@ export function splitIntoSegments(
 /**
  * Merge consecutive ui-review-progress card segments into a single card
  * with a `steps` array, so the component renders them as one consolidated view.
+ * Also merges consecutive analyze-progress cards the same way.
  */
 function mergeConsecutiveProgressCards(
   segments: Array<{ type: 'text' | 'card'; content: string | TypelessCard }>
 ): Array<{ type: 'text' | 'card'; content: string | TypelessCard }> {
   const result: typeof segments = []
   let pendingSteps: TypelessCard[] = []
+  let pendingType: 'ui-review-progress' | 'analyze-progress' | null = null
 
   const flushPending = () => {
-    if (pendingSteps.length === 0) return
-    // Build a merged card with all steps
+    if (pendingSteps.length === 0 || !pendingType) return
     const first = pendingSteps[0]!
     const merged: TypelessCard = {
-      type: 'ui-review-progress',
-      id: (first as Record<string, unknown>).id as string || 'ui-progress-merged',
+      type: pendingType,
+      id: (first as Record<string, unknown>).id as string || `${pendingType}-merged`,
       steps: pendingSteps.map(s => ({
         step: (s as Record<string, unknown>).step,
         name: (s as Record<string, unknown>).name,
@@ -946,10 +970,16 @@ function mergeConsecutiveProgressCards(
     } as TypelessCard
     result.push({ type: 'card', content: merged })
     pendingSteps = []
+    pendingType = null
   }
 
   for (const seg of segments) {
-    if (seg.type === 'card' && (seg.content as TypelessCard).type === 'ui-review-progress') {
+    const cardType = seg.type === 'card' ? (seg.content as TypelessCard).type : null
+    if (cardType === 'ui-review-progress' || cardType === 'analyze-progress') {
+      if (pendingType && pendingType !== cardType) {
+        flushPending()
+      }
+      pendingType = cardType as 'ui-review-progress' | 'analyze-progress'
       pendingSteps.push(seg.content as TypelessCard)
     } else {
       flushPending()

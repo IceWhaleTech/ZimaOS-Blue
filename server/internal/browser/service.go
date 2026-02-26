@@ -13,6 +13,8 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/proto"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // RodService implements the Service interface using Rod.
@@ -20,6 +22,7 @@ type RodService struct {
 	config   *Config
 	pool     *Pool
 	security *SecurityChecker
+	recipes  *RecipeRegistry
 	tabs     map[string]*tabInfo
 	tabsMu   sync.RWMutex
 	started  bool
@@ -52,6 +55,7 @@ func NewService(config *Config) (*RodService, error) {
 		config:   config,
 		pool:     pool,
 		security: NewSecurityChecker(config),
+		recipes:  NewRecipeRegistry(),
 		tabs:     make(map[string]*tabInfo),
 	}, nil
 }
@@ -201,7 +205,7 @@ func (s *RodService) OpenTab(ctx context.Context, url string) (*Tab, error) {
 		return nil, err
 	}
 
-	targetID := fmt.Sprintf("tab-%d", time.Now().UnixNano())
+	targetID := fmt.Sprintf("tab-%d", timeutil.NowNano())
 
 	s.tabsMu.Lock()
 	// Deactivate other tabs
@@ -1656,6 +1660,31 @@ func (b *interactiveBuilder) writeRef(ref int) {
 
 func (b *interactiveBuilder) String() string {
 	return string(b.buf)
+}
+
+// ExecuteRecipe runs a named recipe with the given params.
+func (s *RodService) ExecuteRecipe(ctx context.Context, req *RecipeRequest) (*RecipeResponse, error) {
+	if err := s.Start(ctx); err != nil {
+		return nil, err
+	}
+
+	result, err := s.recipes.Execute(ctx, s, req.Recipe, req.Params)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RecipeResponse{
+		Success:  result.Success,
+		Recipe:   req.Recipe,
+		Data:     result.Data,
+		TargetID: result.TargetID,
+		Message:  result.Message,
+	}, nil
+}
+
+// Recipes returns the recipe registry.
+func (s *RodService) Recipes() *RecipeRegistry {
+	return s.recipes
 }
 
 // Close closes the browser service.

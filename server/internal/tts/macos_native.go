@@ -81,7 +81,7 @@ func (p *MacOSNativeTTS) synthesizeToWAV(ctx context.Context, req *SynthesizeReq
 		}
 		args = append(args, "-r", strconv.Itoa(wpm))
 	}
-	args = append(args, req.Text)
+	args = append(args, "--", req.Text)
 
 	cmd := exec.CommandContext(ctx, "say", args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -185,7 +185,7 @@ func (p *MacOSNativeTTS) SpeakLocally(ctx context.Context, text string, speed fl
 		}
 		args = append(args, "-r", strconv.Itoa(wpm))
 	}
-	args = append(args, text)
+	args = append(args, "--", text)
 
 	slog.Info("[macos-tts] speak locally", "text_len", len(text), "speed", speed)
 	cmd := exec.CommandContext(cmdCtx, "say", args...)

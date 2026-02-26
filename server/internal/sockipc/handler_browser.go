@@ -2,6 +2,7 @@ package sockipc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -19,6 +20,8 @@ type BrowserBackend interface {
 	Act(ctx context.Context, targetID string, ref int, actType, value string) error
 	Tabs(ctx context.Context) (string, error) // JSON array
 	CloseTab(ctx context.Context, targetID string) error
+	ExecuteRecipe(ctx context.Context, recipe string, params map[string]string) (map[string]interface{}, error)
+	ListRecipes(ctx context.Context) (string, error) // JSON array
 }
 
 // RegisterBrowserHandlers wires up browser IPC commands.
@@ -121,6 +124,37 @@ func RegisterBrowserHandlers(srv *Server, browser BrowserBackend, log *zap.Logge
 			return ErrResponse("close failed: " + err.Error())
 		}
 		return OkResponse(map[string]string{"message": "Tab closed"})
+	})
+
+	// browser.recipe — execute a recipe
+	srv.Handle("browser.recipe", func(ctx context.Context, req *Request) *Response {
+		recipe := req.Params["recipe"]
+		if recipe == "" {
+			return ErrResponse("missing recipe")
+		}
+		// Collect all params except "recipe" itself
+		params := make(map[string]string)
+		for k, v := range req.Params {
+			if k != "recipe" {
+				params[k] = v
+			}
+		}
+		_ = browser.Start(ctx)
+		result, err := browser.ExecuteRecipe(ctx, recipe, params)
+		if err != nil {
+			return ErrResponse("recipe failed: " + err.Error())
+		}
+		resultJSON, _ := json.Marshal(result)
+		return OkResponse(map[string]string{"result": string(resultJSON)})
+	})
+
+	// browser.recipes — list available recipes
+	srv.Handle("browser.recipes", func(ctx context.Context, req *Request) *Response {
+		recipesJSON, err := browser.ListRecipes(ctx)
+		if err != nil {
+			return ErrResponse("recipes failed: " + err.Error())
+		}
+		return OkResponse(map[string]string{"recipes": recipesJSON})
 	})
 
 	_ = log // reserved for future debug logging

@@ -44,10 +44,11 @@ type Conversation struct {
 
 // MessageAttachment represents an attachment in a message.
 type MessageAttachment struct {
-	Type     string `json:"type"`      // "image" or "file"
-	Name     string `json:"name"`      // filename
-	MimeType string `json:"mime_type"` // MIME type
-	Data     string `json:"data"`      // base64 encoded data
+	Type     string  `json:"type"`               // "image", "file", or "audio"
+	Name     string  `json:"name"`               // filename
+	MimeType string  `json:"mime_type"`          // MIME type
+	Data     string  `json:"data"`               // base64 encoded data
+	Duration float64 `json:"duration,omitempty"` // audio duration in seconds
 }
 
 // Message represents a chat message.

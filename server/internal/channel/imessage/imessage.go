@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -587,7 +588,7 @@ func (c *Channel) setErrorWithKey(err, key string) {
 
 // isMacOS checks if the current OS is macOS.
 func isMacOS() bool {
-	return os.Getenv("GOOS") == "darwin" || fileExists("/System/Library/CoreServices/SystemVersion.plist")
+	return runtime.GOOS == "darwin"
 }
 
 // hasActiveIMService checks whether iMessage is signed in by querying the
@@ -626,12 +627,6 @@ func tccAppName() string {
 		return "Blue"
 	}
 	return "Terminal"
-}
-
-// fileExists checks if a file exists.
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
 
 // convertMacOSTimestamp converts macOS timestamp to time.Time.

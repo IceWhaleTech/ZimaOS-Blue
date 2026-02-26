@@ -38,8 +38,8 @@ type PushItem struct {
 	Created   time.Time `json:"created"`
 }
 
-// PushNotification is a built-in push notification skill with optional native service backing.
-type PushNotification struct {
+// Reminder is a built-in reminder/notification skill with optional native service backing.
+type Reminder struct {
 	manifest      *skill.Manifest
 	mu            sync.RWMutex
 	svc           PushServiceInterface
@@ -48,17 +48,17 @@ type PushNotification struct {
 	counter       int
 }
 
-// NewPushNotification creates a new push notification skill.
-func NewPushNotification() *PushNotification {
-	return &PushNotification{
+// NewReminder creates a new reminder skill.
+func NewReminder() *Reminder {
+	return &Reminder{
 		manifest: &skill.Manifest{
-			ID:          "push_notification",
-			Name:        "Push Notification",
+			ID:          "reminder",
+			Name:        "Reminder",
 			Version:     "2.0.0",
-			Description: "Send push notifications and manage scheduled alerts. Delivers via SSE, Web Push, and native OS notifications (macOS Notification Center, Linux notify-send, Windows toast). Supports relative times (1h, 30m) and absolute times (2026-01-04 09:00, tomorrow 9:00).",
+			Description: "Manage reminders and scheduled alerts. Delivers via SSE, Web Push, and native OS notifications (macOS Notification Center, Linux notify-send, Windows toast). Supports relative times (1h, 30m) and absolute times (2026-01-04 09:00, tomorrow 9:00).",
 			Category:    "productivity",
 			Icon:        "notifications",
-			Tags:        []string{"push", "notification", "alert", "schedule", "productivity"},
+			Tags:        []string{"reminder", "notification", "alert", "schedule", "productivity"},
 			Inputs: []skill.Parameter{
 				{
 					Name:        "action",
@@ -121,19 +121,19 @@ func NewPushNotification() *PushNotification {
 }
 
 // SetPushService injects the native push notification service.
-func (p *PushNotification) SetPushService(svc PushServiceInterface) {
+func (p *Reminder) SetPushService(svc PushServiceInterface) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.svc = svc
 }
 
 // Manifest returns the skill manifest.
-func (p *PushNotification) Manifest() *skill.Manifest {
+func (p *Reminder) Manifest() *skill.Manifest {
 	return p.manifest
 }
 
 // Validate validates the input parameters.
-func (p *PushNotification) Validate(input map[string]any) error {
+func (p *Reminder) Validate(input map[string]any) error {
 	action, ok := input["action"]
 	if !ok {
 		return fmt.Errorf("action is required")
@@ -168,7 +168,7 @@ func (p *PushNotification) Validate(input map[string]any) error {
 }
 
 // Execute executes the push notification skill.
-func (p *PushNotification) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
+func (p *Reminder) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
 	action := input["action"].(string)
 
 	p.mu.RLock()
@@ -196,7 +196,7 @@ func (p *PushNotification) Execute(ctx context.Context, input map[string]any) (*
 }
 
 // executeNative delegates to the persistent push notification service.
-func (p *PushNotification) executeNative(ctx context.Context, svc PushServiceInterface, action string, input map[string]any) (*skill.Result, error) {
+func (p *Reminder) executeNative(ctx context.Context, svc PushServiceInterface, action string, input map[string]any) (*skill.Result, error) {
 	ownerID := skill.GetUserID(ctx)
 	if ownerID == "" {
 		ownerID = "default"
@@ -216,7 +216,7 @@ func (p *PushNotification) executeNative(ctx context.Context, svc PushServiceInt
 	return skill.NewErrorResult(fmt.Errorf("unknown action: %s", action)), nil
 }
 
-func (p *PushNotification) addNative(ctx context.Context, svc PushServiceInterface, ownerID string, input map[string]any) (*skill.Result, error) {
+func (p *Reminder) addNative(ctx context.Context, svc PushServiceInterface, ownerID string, input map[string]any) (*skill.Result, error) {
 	message := input["message"].(string)
 	timeStr := input["time"].(string)
 
@@ -236,7 +236,7 @@ func (p *PushNotification) addNative(ctx context.Context, svc PushServiceInterfa
 
 	info, err := svc.Add(ctx, ownerID, message, fireAt, recurring, sessionID)
 	if err != nil {
-		return skill.NewErrorResult(fmt.Errorf("failed to add push notification: %w", err)), nil
+		return skill.NewErrorResult(fmt.Errorf("failed to add reminder: %w", err)), nil
 	}
 
 	return skill.NewResult(map[string]any{
@@ -245,7 +245,7 @@ func (p *PushNotification) addNative(ctx context.Context, svc PushServiceInterfa
 	}), nil
 }
 
-func (p *PushNotification) listNative(ctx context.Context, svc PushServiceInterface, ownerID string) (*skill.Result, error) {
+func (p *Reminder) listNative(ctx context.Context, svc PushServiceInterface, ownerID string) (*skill.Result, error) {
 	list, err := svc.List(ctx, ownerID)
 	if err != nil {
 		return skill.NewErrorResult(err), nil
@@ -257,7 +257,7 @@ func (p *PushNotification) listNative(ctx context.Context, svc PushServiceInterf
 	}), nil
 }
 
-func (p *PushNotification) deleteNative(ctx context.Context, svc PushServiceInterface, ownerID string, input map[string]any) (*skill.Result, error) {
+func (p *Reminder) deleteNative(ctx context.Context, svc PushServiceInterface, ownerID string, input map[string]any) (*skill.Result, error) {
 	id := input["id"].(string)
 
 	if err := svc.Delete(ctx, ownerID, id); err != nil {
@@ -271,7 +271,7 @@ func (p *PushNotification) deleteNative(ctx context.Context, svc PushServiceInte
 	}), nil
 }
 
-func (p *PushNotification) clearNative(ctx context.Context, svc PushServiceInterface, ownerID string) (*skill.Result, error) {
+func (p *Reminder) clearNative(ctx context.Context, svc PushServiceInterface, ownerID string) (*skill.Result, error) {
 	count, err := svc.Clear(ctx, ownerID)
 	if err != nil {
 		return skill.NewErrorResult(err), nil
@@ -305,7 +305,7 @@ func parsePushTime(s string) (time.Time, error) {
 
 // --- In-memory fallback methods (used when native service is not wired) ---
 
-func (p *PushNotification) addFallback(input map[string]any) (*skill.Result, error) {
+func (p *Reminder) addFallback(input map[string]any) (*skill.Result, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -338,7 +338,7 @@ func (p *PushNotification) addFallback(input map[string]any) (*skill.Result, err
 	}), nil
 }
 
-func (p *PushNotification) listFallback() (*skill.Result, error) {
+func (p *Reminder) listFallback() (*skill.Result, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -353,7 +353,7 @@ func (p *PushNotification) listFallback() (*skill.Result, error) {
 	}), nil
 }
 
-func (p *PushNotification) deleteFallback(input map[string]any) (*skill.Result, error) {
+func (p *Reminder) deleteFallback(input map[string]any) (*skill.Result, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -373,7 +373,7 @@ func (p *PushNotification) deleteFallback(input map[string]any) (*skill.Result, 
 	}), nil
 }
 
-func (p *PushNotification) clearFallback() (*skill.Result, error) {
+func (p *Reminder) clearFallback() (*skill.Result, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

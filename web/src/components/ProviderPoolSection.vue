@@ -110,6 +110,18 @@ watch(() => currentTabSelectedProvider.value, async (provider) => {
     if (provider.oauth?.connected) {
       store.fetchOAuthQuota(store.selectedProviderId)
     }
+    // Always fetch OAuth accounts list for OAuth-capable providers
+    if (provider.oauth) {
+      fetchOAuthAccounts(store.selectedProviderId)
+    }
+    // Auto-test all API keys when entering provider detail
+    if (provider.api_keys?.length) {
+      for (const key of provider.api_keys) {
+        if (!keyTestResults.value[key.id]) {
+          testConnection(store.selectedProviderId, key.id)
+        }
+      }
+    }
   }
 }, { immediate: true })
 
@@ -126,6 +138,8 @@ async function saveBaseUrl(providerId: string) {
   try {
     await store.updateProvider(providerId, { base_url: baseUrlDraft.value })
     editingBaseUrl.value = false
+    // Clear error when updating base URL
+    await store.clearProviderError(providerId)
   } catch (e) {
     console.error('Failed to update base URL:', e)
   }
@@ -138,9 +152,18 @@ function cancelEditBaseUrl() {
 // Translate backend health check error codes to i18n messages
 function translateHealthError(error: string): string {
   if (!error) return ''
+
+  // Extract key info if present (format: "error_message (key: xxxxxxxx)")
+  let keyInfo = ''
+  const keyMatch = error.match(/\s\(key:\s+([^)]+)\)$/)
+  if (keyMatch) {
+    keyInfo = ` (key: ${keyMatch[1]})`
+    error = error.slice(0, keyMatch.index)
+  }
+
   if (error.startsWith('auth_error:')) {
     const code = error.split(':')[1]
-    return t('providerPool.healthErrors.authError', { code })
+    return t('providerPool.healthErrors.authError', { code }) + keyInfo
   }
   if (error === 'base_url_not_configured:azure') {
     return t('providerPool.healthErrors.baseUrlNotConfiguredAzure')
@@ -151,17 +174,17 @@ function translateHealthError(error: string): string {
   if (error === 'base_url_not_configured') {
     return t('providerPool.healthErrors.baseUrlNotConfigured')
   }
-  if (error === 'network_error') return t('providerPool.healthErrors.networkError')
-  if (error === 'certificate_error') return t('providerPool.healthErrors.certificateError')
-  if (error === 'timeout_error') return t('providerPool.healthErrors.timeoutError')
-  if (error === 'connection_error') return t('providerPool.healthErrors.connectionError')
-  if (error === 'endpoint_not_found') return t('providerPool.healthErrors.endpointNotFound')
+  if (error === 'network_error') return t('providerPool.healthErrors.networkError') + keyInfo
+  if (error === 'certificate_error') return t('providerPool.healthErrors.certificateError') + keyInfo
+  if (error === 'timeout_error') return t('providerPool.healthErrors.timeoutError') + keyInfo
+  if (error === 'connection_error') return t('providerPool.healthErrors.connectionError') + keyInfo
+  if (error === 'endpoint_not_found') return t('providerPool.healthErrors.endpointNotFound') + keyInfo
   if (error.startsWith('unexpected_status:')) {
     const code = error.split(':')[1]
-    return t('providerPool.healthErrors.unexpectedStatus', { code })
+    return t('providerPool.healthErrors.unexpectedStatus', { code }) + keyInfo
   }
   // Fallback: return raw error for legacy/unknown codes
-  return error
+  return error + keyInfo
 }
 
 // Computed
@@ -376,6 +399,15 @@ async function testConnection(providerId: string, keyId?: string) {
   }
 }
 
+async function clearProviderError(providerId: string) {
+  try {
+    await store.clearProviderError(providerId)
+    notification.success(t('providerPool.errorCleared'))
+  } catch (e) {
+    console.error('Failed to clear error:', e)
+  }
+}
+
 async function refreshModels(providerId: string) {
   refreshingModels.value = providerId
   try {
@@ -511,15 +543,18 @@ async function addAPIKey() {
     )
     showKeyModal.value = false
 
-    // For builtin/platform providers: auto-test the key and probe models in background
+    // Clear error when adding new API key
+    await store.clearProviderError(providerId)
+
+    // Auto-test the newly added key for all provider types
+    const keyId = apiKey?.id
+    if (keyId) {
+      testConnection(providerId, keyId)
+    }
+
+    // For builtin/platform providers: also probe models in background
     const provider = store.providers.find(p => p.id === providerId)
     if (provider && (provider.type === 'builtin' || provider.type === 'platform')) {
-      // Auto-test the newly added key
-      const keyId = apiKey?.id
-      if (keyId) {
-        testConnection(providerId, keyId)
-      }
-      // Auto-probe models in background to discover which ones the key has access to
       store.probeModels(providerId).then(result => {
         if (result.success && result.available > 0) {
           notification.success(
@@ -528,22 +563,16 @@ async function addAPIKey() {
         }
       })
     }
-    // Auto-test media provider keys
-    if (provider && provider.type === 'media') {
-      const keyId = apiKey?.id
-      if (keyId) {
-        testConnection(providerId, keyId)
-      }
-    }
   } catch (e) {
     console.error('Failed to add API key:', e)
   }
 }
 
 async function removeAPIKey(providerId: string, keyId: string) {
-  if (!confirm(t('providerPool.confirmDeleteKey'))) return
   try {
     await store.removeAPIKey(providerId, keyId)
+    // Clear test result for removed key
+    delete keyTestResults.value[keyId]
   } catch (e) {
     console.error('Failed to remove API key:', e)
   }
@@ -552,7 +581,9 @@ async function removeAPIKey(providerId: string, keyId: string) {
 // OAuth state
 const connectingOAuth = ref<string | null>(null)
 const disconnectingOAuth = ref<string | null>(null)
+const disconnectingAccountId = ref<string | null>(null)
 const deviceFlowState = ref<{ userCode: string; verificationUri: string; deviceCode: string; providerId: string } | null>(null)
+const oauthAccounts = ref<Record<string, import('@/api/providerPool').OAuthAccount[]>>({})
 
 // Provider usage state
 interface ProviderUsageSummary {
@@ -630,6 +661,7 @@ async function completeDeviceFlow() {
     notification.success(t('providerPool.oauth.connected'))
     deviceFlowState.value = null
     await store.fetchProviders()
+    await fetchOAuthAccounts(providerId)
   } catch (e: any) {
     notification.error(e?.response?.data?.error || t('providerPool.oauth.connectFailed'))
   } finally {
@@ -637,16 +669,29 @@ async function completeDeviceFlow() {
   }
 }
 
-async function disconnectOAuth(providerId: string) {
+async function disconnectOAuth(providerId: string, accountId?: string) {
   disconnectingOAuth.value = providerId
+  disconnectingAccountId.value = accountId || null
   try {
-    await providerPoolApi.disconnectOAuth(providerId)
+    await providerPoolApi.disconnectOAuth(providerId, accountId)
     notification.success(t('providerPool.oauth.disconnected'))
     await store.fetchProviders()
+    // Refresh accounts list
+    await fetchOAuthAccounts(providerId)
   } catch (e: any) {
     notification.error(e?.response?.data?.error || t('providerPool.oauth.disconnectFailed'))
   } finally {
     disconnectingOAuth.value = null
+    disconnectingAccountId.value = null
+  }
+}
+
+async function fetchOAuthAccounts(providerId: string) {
+  try {
+    const result = await providerPoolApi.getOAuthAccounts(providerId)
+    oauthAccounts.value[providerId] = result.data.accounts || []
+  } catch {
+    oauthAccounts.value[providerId] = []
   }
 }
 
@@ -658,6 +703,7 @@ function pollOAuthStatus(providerId: string, attempts = 0) {
       if (result.data.connected) {
         notification.success(t('providerPool.oauth.connected'))
         await store.fetchProviders()
+        await fetchOAuthAccounts(providerId)
         return
       }
     } catch { /* ignore */ }
@@ -1285,13 +1331,13 @@ onMounted(() => {
               >
                 🔑 {{ provider.api_keys.length }}
               </span>
-              <!-- OAuth badge -->
+              <!-- OAuth badge — show count like API keys, hide when no accounts -->
               <span
-                v-if="provider.oauth?.connected"
+                v-if="provider.oauth?.connected && (provider.oauth?.account_count || 0) > 0"
                 class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
                 :title="t('providerPool.oauth.title')"
               >
-                🔗
+                🔗 {{ provider.oauth.account_count || 1 }}
               </span>
               <span
                 v-else-if="provider.oauth && !provider.oauth.connected"
@@ -1503,7 +1549,13 @@ onMounted(() => {
           >
             <div class="flex items-start gap-2">
               <span class="text-red-500 flex-shrink-0">⚠</span>
-              <p class="text-xs text-red-600 dark:text-red-400 break-all">{{ translateHealthError(currentTabSelectedProvider!.last_error!) }}</p>
+              <p class="text-xs text-red-600 dark:text-red-400 break-all flex-1">{{ translateHealthError(currentTabSelectedProvider!.last_error!) }}</p>
+              <button
+                class="flex-shrink-0 px-2 py-1 text-xs bg-red-100 dark:bg-red-800 hover:bg-red-200 dark:hover:bg-red-700 text-red-600 dark:text-red-300 rounded transition-colors"
+                @click="clearProviderError(currentTabSelectedProvider!.id)"
+              >
+                {{ t('providerPool.retry') }}
+              </button>
             </div>
           </div>
 
@@ -1564,72 +1616,75 @@ onMounted(() => {
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.oauth.title') }}</h3>
             </div>
-            <div class="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
-              <template v-if="currentTabSelectedProvider.oauth.connected">
+            <div class="space-y-2">
+              <!-- Account list -->
+              <div
+                v-for="account in (oauthAccounts[currentTabSelectedProvider.id] || [])"
+                :key="account.id"
+                class="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700"
+              >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-green-500"></span>
-                    <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('providerPool.oauth.connectedAs') }}</span>
-                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ currentTabSelectedProvider.oauth.email || currentTabSelectedProvider.oauth.provider_type }}</span>
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ account.email || account.provider_type }}</span>
+                    <span v-if="account.project_id" class="text-xs text-gray-500">({{ account.project_id }})</span>
                   </div>
                   <button
-                    :disabled="disconnectingOAuth === currentTabSelectedProvider.id"
+                    :disabled="disconnectingAccountId === account.id"
                     class="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs disabled:opacity-50"
-                    @click="disconnectOAuth(currentTabSelectedProvider.id)"
+                    @click="disconnectOAuth(currentTabSelectedProvider.id, account.id)"
                   >
-                    {{ disconnectingOAuth === currentTabSelectedProvider.id ? '...' : t('providerPool.oauth.disconnect') }}
+                    {{ disconnectingAccountId === account.id ? '...' : t('providerPool.oauth.disconnect') }}
                   </button>
                 </div>
-                <div v-if="currentTabSelectedProvider.oauth.project_id" class="mt-1 text-xs text-gray-500">
-                  {{ t('providerPool.oauth.project') }}: {{ currentTabSelectedProvider.oauth.project_id }}
+              </div>
+              <!-- Connect another account (always shown at bottom) -->
+              <div class="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-between">
+                <span class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ (oauthAccounts[currentTabSelectedProvider.id] || []).length ? t('providerPool.oauth.addAccount') : t('providerPool.oauth.notConnected') }}
+                </span>
+                <button
+                  :disabled="connectingOAuth === currentTabSelectedProvider.id"
+                  class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs disabled:opacity-50"
+                  @click="startOAuthConnect(currentTabSelectedProvider.id)"
+                >
+                  {{ connectingOAuth === currentTabSelectedProvider.id ? '...' : t('providerPool.oauth.connect') }}
+                </button>
+              </div>
+              <!-- Subscription Tier & Quota (shown once for the provider) -->
+              <div v-if="store.loadingQuota === currentTabSelectedProvider.id" class="text-xs text-gray-400 px-1">
+                {{ t('providerPool.oauth.loadingQuota') }}
+              </div>
+              <template v-else-if="store.oauthQuota[currentTabSelectedProvider.id]">
+                <div v-if="store.oauthQuota[currentTabSelectedProvider.id].tier" class="px-1">
+                  <span
+                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                    :class="tierBadgeClass(store.oauthQuota[currentTabSelectedProvider.id].tier)"
+                  >
+                    {{ store.oauthQuota[currentTabSelectedProvider.id].tier_name || store.oauthQuota[currentTabSelectedProvider.id].tier }}
+                  </span>
                 </div>
-                <!-- Subscription Tier & Quota -->
-                <div v-if="store.loadingQuota === currentTabSelectedProvider.id" class="mt-2 text-xs text-gray-400">
-                  {{ t('providerPool.oauth.loadingQuota') }}
+                <div v-if="store.oauthQuota[currentTabSelectedProvider.id].error && !store.oauthQuota[currentTabSelectedProvider.id].tier" class="text-xs text-gray-400 px-1">
+                  {{ t('providerPool.oauth.quotaUnavailable') }}
                 </div>
-                <template v-else-if="store.oauthQuota[currentTabSelectedProvider.id]">
-                  <div v-if="store.oauthQuota[currentTabSelectedProvider.id].tier" class="mt-2">
-                    <span
-                      class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                      :class="tierBadgeClass(store.oauthQuota[currentTabSelectedProvider.id].tier)"
-                    >
-                      {{ store.oauthQuota[currentTabSelectedProvider.id].tier_name || store.oauthQuota[currentTabSelectedProvider.id].tier }}
-                    </span>
-                  </div>
-                  <div v-if="store.oauthQuota[currentTabSelectedProvider.id].error && !store.oauthQuota[currentTabSelectedProvider.id].tier" class="mt-2 text-xs text-gray-400">
-                    {{ t('providerPool.oauth.quotaUnavailable') }}
-                  </div>
-                  <!-- Per-Model Quota Bars -->
-                  <div v-if="store.oauthQuota[currentTabSelectedProvider.id].model_quotas?.length" class="mt-2 space-y-1">
-                    <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ t('providerPool.oauth.modelQuota') }}</div>
-                    <div
-                      v-for="mq in store.oauthQuota[currentTabSelectedProvider.id].model_quotas"
-                      :key="mq.model"
-                      class="flex items-center gap-2 text-xs"
-                    >
-                      <span class="text-gray-600 dark:text-gray-400 w-36 truncate" :title="mq.model">{{ mq.model }}</span>
-                      <div class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div
-                          class="h-full rounded-full transition-all"
-                          :class="mq.remaining_percent > 20 ? 'bg-green-500' : mq.remaining_percent > 5 ? 'bg-yellow-500' : 'bg-red-500'"
-                          :style="{ width: mq.remaining_percent + '%' }"
-                        />
-                      </div>
-                      <span class="text-gray-500 w-8 text-right">{{ mq.remaining_percent }}%</span>
+                <!-- Per-Model Quota Bars -->
+                <div v-if="store.oauthQuota[currentTabSelectedProvider.id].model_quotas?.length" class="space-y-1 px-1">
+                  <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ t('providerPool.oauth.modelQuota') }}</div>
+                  <div
+                    v-for="mq in store.oauthQuota[currentTabSelectedProvider.id].model_quotas"
+                    :key="mq.model"
+                    class="flex items-center gap-2 text-xs"
+                  >
+                    <span class="text-gray-600 dark:text-gray-400 w-36 truncate" :title="mq.model">{{ mq.model }}</span>
+                    <div class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        class="h-full rounded-full transition-all"
+                        :class="mq.remaining_percent > 20 ? 'bg-green-500' : mq.remaining_percent > 5 ? 'bg-yellow-500' : 'bg-red-500'"
+                        :style="{ width: mq.remaining_percent + '%' }"
+                      />
                     </div>
+                    <span class="text-gray-500 w-8 text-right">{{ mq.remaining_percent }}%</span>
                   </div>
-                </template>
-              </template>
-              <template v-else>
-                <div class="flex items-center justify-between">
-                  <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('providerPool.oauth.notConnected') }}</span>
-                  <button
-                    :disabled="connectingOAuth === currentTabSelectedProvider.id"
-                    class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs disabled:opacity-50"
-                    @click="startOAuthConnect(currentTabSelectedProvider.id)"
-                  >
-                    {{ connectingOAuth === currentTabSelectedProvider.id ? '...' : t('providerPool.oauth.connect') }}
-                  </button>
                 </div>
               </template>
             </div>
@@ -1701,18 +1756,9 @@ onMounted(() => {
                       {{ key.usage_count }}
                     </span>
                     <!-- Test result indicator -->
-                    <span v-if="keyTestResults[key.id]?.healthy === true" class="text-green-500" title="Healthy">✓</span>
+                    <span v-if="testingKeyId === key.id" class="text-gray-400">...</span>
+                    <span v-else-if="keyTestResults[key.id]?.healthy === true" class="text-green-500" title="Healthy">✓</span>
                     <span v-else-if="keyTestResults[key.id]?.healthy === false" class="text-red-400" :title="keyTestResults[key.id]?.error || 'Failed'">✗</span>
-                    <!-- Test button (only for custom providers — builtin auto-tests on key add) -->
-                    <button
-                      v-if="currentTabSelectedProvider!.type === 'custom' || currentTabSelectedProvider!.type === 'media'"
-                      :disabled="testingKeyId === key.id"
-                      class="px-1.5 py-0.5 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded disabled:opacity-50"
-                      :title="!currentTabSelectedProvider!.base_url ? t('providerPool.baseUrlRequired') : ''"
-                      @click.stop="testConnection(currentTabSelectedProvider!.id, key.id)"
-                    >
-                      {{ testingKeyId === key.id ? '...' : t('providerPool.test') }}
-                    </button>
                   </div>
                 </div>
                 <div v-if="!currentTabSelectedProvider!.api_keys?.length" class="text-gray-500 dark:text-gray-400 text-center py-2 text-xs">

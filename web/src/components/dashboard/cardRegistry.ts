@@ -152,17 +152,6 @@ export const cardRegistry: DashboardCardConfig[] = [
     minWidth: 4,
   },
   {
-    id: 'token-economy',
-    titleKey: 'dashboard.cards.tokenEconomy',
-    icon: 'memory',
-    iconColor: 'green',
-    component: 'TokenEconomyCard',
-    category: 'metrics',
-    defaultEnabled: false,
-    defaultOrder: 14,
-    minWidth: 4,
-  },
-  {
     id: 'failover-status',
     titleKey: 'dashboard.cards.failoverStatus',
     icon: 'shield',
@@ -170,8 +159,19 @@ export const cardRegistry: DashboardCardConfig[] = [
     component: 'FailoverStatusCard',
     category: 'metrics',
     defaultEnabled: false,
-    defaultOrder: 15,
+    defaultOrder: 14,
     minWidth: 4,
+  },
+  {
+    id: 'media-generation',
+    titleKey: 'dashboard.cards.mediaGeneration',
+    icon: 'image',
+    iconColor: 'purple',
+    component: 'MediaGenerationCard',
+    category: 'metrics',
+    defaultEnabled: false,
+    defaultOrder: 15,
+    minWidth: 2,
   },
 ]
 

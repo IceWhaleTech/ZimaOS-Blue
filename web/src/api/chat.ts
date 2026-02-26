@@ -41,10 +41,11 @@ export interface Message {
 }
 
 export interface MessageAttachment {
-  type: 'image' | 'file'
+  type: 'image' | 'file' | 'audio'
   name: string
   mime_type: string
   data: string // base64 encoded
+  duration?: number // audio duration in seconds
 }
 
 export interface SendMessageRequest {
@@ -80,7 +81,11 @@ export interface StreamChunk {
   tool_executing?: boolean
   tool_calls?: number
   tool_names?: string[]
+  tool_commands?: string[]
   sandbox_available?: boolean
+  // Tool results (sent after tool execution completes)
+  tool_results?: Array<{ name: string; id: string; args?: string; result?: string }>
+  tool_round?: number
   // Context pruning info (sent on first content chunk)
   pruned?: boolean
   messages_pruned?: number
@@ -90,6 +95,9 @@ export interface StreamChunk {
   compacted?: boolean
   before?: number
   after?: number
+  // Mid-stream injection (sent when user injects a message during streaming)
+  injection?: boolean
+  user_message?: string
   stats?: {
     input_tokens: number
     output_tokens: number
@@ -105,6 +113,12 @@ export interface StreamChunk {
   }
   // Set when server sends a synthetic done after tool execution produced no LLM text
   empty_response?: boolean
+  // New message event — server persisted previous round, frontend should start new bubble
+  new_message?: boolean
+  // TODO advancement event — server updated a TODO checklist message in DB
+  todo_updated?: boolean
+  message_id?: string
+  content?: string
 }
 
 // Conversation API
@@ -154,6 +168,16 @@ export const warmupApi = {
     api.post(`/conversations/${conversationId}/warmup`),
 }
 
+// Injection API - Send a message during active streaming
+export const injectionApi = {
+  /** Inject a user message into an active stream. Cancels current stream and restarts with new context. */
+  inject: (conversationId: string, message: string) =>
+    api.post<{ success: boolean; injected: boolean; stream_id: string }>(
+      `/conversations/${conversationId}/inject`,
+      { message }
+    ),
+}
+
 // Tool API
 export const toolApi = {
   list: () => api.get<ToolDefinition[]>('/tools'),
@@ -186,4 +210,77 @@ export const cardActionApi = {
       `/conversations/${conversationId}/messages/${messageId}/card-action`,
       request
     ),
+}
+
+// Agent Task API
+export interface AgentTask {
+  id: string
+  user_id: string
+  conversation_id?: string
+  goal: string
+  plan: AgentPlanStep[]
+  status: 'pending' | 'planning' | 'executing' | 'waiting_input' | 'completed' | 'failed' | 'cancelled'
+  current_step: number
+  progress: number
+  result?: string
+  error?: string
+  questions?: AgentQuestion[] // pending questions from ask_user tool
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentPlanStep {
+  index: number
+  description: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+  output?: string
+  started_at?: string
+  completed_at?: string
+}
+
+// Agent Q&A types
+export interface AgentQuestion {
+  id: string
+  question: string
+  header: string
+  options?: AgentQuestionOption[]
+  multi_select?: boolean
+  required?: boolean
+}
+
+export interface AgentQuestionOption {
+  label: string
+  description?: string
+  value: string
+}
+
+export interface AgentQuestionAnswer {
+  question_id: string
+  values: string[]
+  other_text?: string
+}
+
+export const agentApi = {
+  createTask: (goal: string, conversationId?: string, context?: string) =>
+    api.post<AgentTask>('/agent/tasks', { goal, conversation_id: conversationId, context }),
+
+  listTasks: () =>
+    api.get<AgentTask[]>('/agent/tasks'),
+
+  getTask: (id: string) =>
+    api.get<AgentTask>(`/agent/tasks/${id}`),
+
+  cancelTask: (id: string) =>
+    api.post(`/agent/tasks/${id}/cancel`),
+
+  deleteTask: (id: string) =>
+    api.delete(`/agent/tasks/${id}`),
+
+  /** Send a message to a running agent task. Queued for injection at next natural boundary. */
+  sendMessage: (taskId: string, message: string) =>
+    api.post<{ status: string }>(`/agent/tasks/${taskId}/message`, { message }),
+
+  /** Submit answers to a pending ask_user question. */
+  submitAnswers: (taskId: string, answers: AgentQuestionAnswer[]) =>
+    api.post<{ status: string }>(`/agent/tasks/${taskId}/answer`, { answers }),
 }

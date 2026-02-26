@@ -13,6 +13,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool/oauth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ScanOAuthToken scans for an OAuth token from a locally installed IDE.
@@ -219,8 +220,8 @@ func parseAntigravityCredentials(data []byte) (*oauth.Token, error) {
 		ProjectID:    projectID,
 		Endpoint:     endpoint,
 		Scopes:       cfg.Scopes,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		CreatedAt:    timeutil.NowTime(),
+		UpdatedAt:    timeutil.NowTime(),
 	}, nil
 }
 
@@ -267,8 +268,8 @@ func parseAntigravityVscdb(dbPath string) (*oauth.Token, error) {
 		Email:        authStatus.Email,
 		Endpoint:     endpoint,
 		Scopes:       cfg.Scopes,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		CreatedAt:    timeutil.NowTime(),
+		UpdatedAt:    timeutil.NowTime(),
 	}, nil
 }
 
@@ -336,8 +337,8 @@ func parseGeminiCLICredentials(data []byte) (*oauth.Token, error) {
 		ProjectID:    creds.ProjectID,
 		Endpoint:     endpoint,
 		Scopes:       cfg.Scopes,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		CreatedAt:    timeutil.NowTime(),
+		UpdatedAt:    timeutil.NowTime(),
 	}, nil
 }
 
@@ -385,8 +386,8 @@ func parseCopilotCredentials(data []byte) (*oauth.Token, error) {
 			ProviderType: "copilot",
 			AccessToken:  oauthToken,
 			Email:        user,
-			CreatedAt:    time.Now(),
-			UpdatedAt:    time.Now(),
+			CreatedAt:    timeutil.NowTime(),
+			UpdatedAt:    timeutil.NowTime(),
 		}, nil
 	}
 
@@ -439,7 +440,7 @@ func parseCodexCredentials(data []byte) (*oauth.Token, error) {
 		Email:        creds.AccountID, // account_id is the best identifier we have
 		Endpoint:     cfg.APIEndpoint,
 		Scopes:       cfg.Scopes,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		CreatedAt:    timeutil.NowTime(),
+		UpdatedAt:    timeutil.NowTime(),
 	}, nil
 }

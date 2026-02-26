@@ -68,9 +68,9 @@ Kompilert direkte i Go — ingen tolk, ingen VM, ingen overhead. Kjører stille 
 
 | Metrikk | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
 |---------|-------------------|------------------------|
-| `--help` kald / varm | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `help` kald / varm | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` kjøretid (beste av 3) | **< 0.01 s** | 5.98 s |
-| `--help` topp-RSS | **~10 MB** | ~394 MB |
+| `help` topp-RSS | **~10 MB** | ~394 MB |
 | `status` topp-RSS | **~15 MB** | ~1.52 GB |
 | Kjøretidsavhengigheter | **Ingen** | Node.js 18+ |
 

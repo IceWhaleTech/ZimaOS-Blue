@@ -359,6 +359,12 @@ type Service interface {
 	// Console returns console messages from the page.
 	Console(ctx context.Context, req *ConsoleRequest) (*ConsoleResponse, error)
 
+	// Recipes
+	// ExecuteRecipe runs a named recipe with the given params.
+	ExecuteRecipe(ctx context.Context, req *RecipeRequest) (*RecipeResponse, error)
+	// Recipes returns the recipe registry for listing available recipes.
+	Recipes() *RecipeRegistry
+
 	// Close closes the browser service and releases resources.
 	Close() error
 }
@@ -576,4 +582,26 @@ func GetTimeout(requested int, config *Config) time.Duration {
 		return time.Duration(config.MaxTimeout) * time.Millisecond
 	}
 	return time.Duration(requested) * time.Millisecond
+}
+
+// RecipeRequest represents a request to execute a browser recipe.
+type RecipeRequest struct {
+	// Recipe is the recipe name (search, fill_form, extract, login).
+	Recipe string `json:"recipe" validate:"required"`
+	// Params are the recipe-specific parameters.
+	Params map[string]string `json:"params" validate:"required"`
+}
+
+// RecipeResponse represents the result of a recipe execution.
+type RecipeResponse struct {
+	// Success indicates if the recipe completed successfully.
+	Success bool `json:"success"`
+	// Recipe is the recipe name that was executed.
+	Recipe string `json:"recipe"`
+	// Data contains the structured result data.
+	Data map[string]interface{} `json:"data,omitempty"`
+	// TargetID is the tab ID if the recipe kept the tab open.
+	TargetID string `json:"target_id,omitempty"`
+	// Message is a human-readable summary.
+	Message string `json:"message"`
 }

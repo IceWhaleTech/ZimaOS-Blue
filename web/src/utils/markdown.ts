@@ -217,6 +217,34 @@ function isTreeLine(line: string): boolean {
   return boxDrawingChars.test(line)
 }
 
+// Render a process code block as a styled card (handles ✓, ✗, ⏳ icons)
+function renderProcessCard(code: string): string {
+  try {
+    const items = JSON.parse(code) as Array<{ cmd: string; tool: string; icon: string; status: string; output: string }>
+    const rows = items.map(item => {
+      let iconSvg: string
+      if (item.icon === '✓') {
+        iconSvg = `<svg class="text-emerald-500 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+      } else if (item.icon === '✗') {
+        iconSvg = `<svg class="text-red-400 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+      } else {
+        // ⏳ pending/executing — animated spinner
+        iconSvg = `<svg class="text-blue-400 shrink-0 animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`
+      }
+      const label = item.cmd ? escapeHtml(item.cmd) : escapeHtml(item.tool)
+      const dur = item.status ? `<span class="text-gray-400 text-xs ml-auto pl-2 tabular-nums">${escapeHtml(item.status)}</span>` : ''
+      let row = `<div class="flex items-center gap-1.5 py-0.5">${iconSvg}<code class="text-xs truncate flex-1 opacity-80">${label}</code>${dur}</div>`
+      if (item.output) {
+        row += `<pre class="text-xs opacity-50 pl-5 mt-0 mb-1 overflow-x-auto max-h-16 leading-tight">${escapeHtml(item.output)}</pre>`
+      }
+      return row
+    }).join('')
+    return `<div class="process-card my-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2">${rows}</div>`
+  } catch {
+    return `<pre class="text-xs opacity-60 my-2">${escapeHtml(code)}</pre>`
+  }
+}
+
 // Main render function
 export function renderMarkdown(markdown: string, _options: RenderOptions = {}): string {
   // Pre-process: convert XML-like error/status tags into styled blocks before line splitting
@@ -320,6 +348,9 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
               `<span>${code}</span>` +
               `</div>`
           )
+        } else if (codeBlockLang === 'process') {
+          // Render tool execution results as a compact process card
+          result.push(renderProcessCard(code))
         } else {
         const highlighted = highlightCode(code, codeBlockLang)
         result.push(
@@ -397,6 +428,11 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
       flushTree()
     }
 
+    // HTML comments — skip silently (used for process-start/end markers)
+    if (line.trim().startsWith('<!--') && line.trim().endsWith('-->')) {
+      continue
+    }
+
     // Empty line
     if (line.trim() === '') {
       flushList()
@@ -442,13 +478,25 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
       continue
     }
 
-    // Unordered list
+    // Unordered list (with optional checkbox support)
     const ulMatch = line.match(/^[-*+]\s+(.+)$/)
     if (ulMatch && ulMatch[1]) {
       flushTable()
       flushTree()
       inList = true
-      listItems.push(`<li>${parseInline(ulMatch[1])}</li>`)
+      let itemContent = ulMatch[1]
+      // GFM task list checkbox
+      const cbMatch = itemContent.match(/^\[([ xX])\]\s+(.*)$/)
+      if (cbMatch) {
+        const checked = cbMatch[1] !== ' '
+        const cbHtml = checked
+          ? '<input type="checkbox" checked disabled class="mr-1.5 accent-current opacity-60 pointer-events-none" />'
+          : '<input type="checkbox" disabled class="mr-1.5 opacity-60 pointer-events-none" />'
+        const textClass = checked ? 'line-through opacity-50' : ''
+        listItems.push(`<li class="list-none">${cbHtml}<span class="${textClass}">${parseInline(cbMatch[2])}</span></li>`)
+      } else {
+        listItems.push(`<li>${parseInline(itemContent)}</li>`)
+      }
       continue
     }
 
@@ -479,6 +527,17 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
   // Flush unclosed code block (streaming)
   if (inCodeBlock && codeBlockContent.length > 0) {
     const code = codeBlockContent.join('\n')
+    if (codeBlockLang === 'process') {
+      // Render process card even during streaming (unclosed block)
+      result.push(renderProcessCard(code))
+    } else if (codeBlockLang === 'error-block') {
+      result.push(
+        `<div class="error-block-indicator my-3 flex items-start gap-2 rounded-lg px-4 py-3 text-sm">` +
+          `<svg class="shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>` +
+          `<span>${code}</span>` +
+          `</div>`
+      )
+    } else {
     const highlighted = highlightCode(code, codeBlockLang)
     result.push(
       `<div class="code-block my-3 rounded-lg overflow-hidden bg-gray-700">` +
@@ -488,6 +547,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
         `<pre class="p-4 overflow-x-auto"><code class="text-sm font-mono text-gray-100">${highlighted}</code></pre>` +
         `</div>`
     )
+    }
   }
 
   return result.join('\n')

@@ -8,7 +8,15 @@ export interface SSEClientOptions {
   onBlocked?: (message: string, threatLevel: string) => void
   onTrialExhausted?: (message: string) => void
   onContextTrimmed?: (info: { type: 'pruned' | 'compacted'; messagesPruned?: number; tokensBefore?: number; tokensAfter?: number; before?: number; after?: number }) => void
-  onToolExecuting?: (toolCount: number, toolNames?: string[], sandboxAvailable?: boolean) => void
+  onToolExecuting?: (toolCount: number, toolNames?: string[], sandboxAvailable?: boolean, toolCommands?: string[]) => void
+  /** Called when tool execution completes with results summary. */
+  onToolResults?: (results: Array<{ name: string; id: string; args?: string; result?: string }>, toolRound: number) => void
+  /** Called when a new tool round starts — the server persisted the previous round as a separate message. */
+  onNewMessage?: (toolRound: number) => void
+  /** Called when the server advances a TODO checklist item and persists it to DB. */
+  onTodoUpdated?: (messageId: string, content: string) => void
+  /** Called when a mid-stream injection is detected — the server will restart the stream. */
+  onInjection?: (userMessage: string) => void
   /** Called when the stream was interrupted mid-content by a network error.
    *  The store should auto-recover (fetch persisted content + continue). */
   onNetworkInterrupt?: () => void
@@ -210,10 +218,34 @@ export class SSEClient {
                   this.isConnected = false
                   break
                 }
+                // Check for mid-stream injection event
+                if (chunk.injection) {
+                  console.info('[SSE] injection event:', chunk.user_message)
+                  options.onInjection?.(chunk.user_message || '')
+                  continue
+                }
                 // Check for tool execution event
                 if (chunk.tool_executing) {
                   console.info('[SSE] tool_executing event, receivedData so far:', receivedData)
-                  options.onToolExecuting?.(chunk.tool_calls || 0, chunk.tool_names, chunk.sandbox_available)
+                  options.onToolExecuting?.(chunk.tool_calls || 0, chunk.tool_names, chunk.sandbox_available, chunk.tool_commands)
+                  continue
+                }
+                // Check for tool results event
+                if (chunk.tool_results) {
+                  console.info('[SSE] tool_results event, round:', chunk.tool_round)
+                  options.onToolResults?.(chunk.tool_results, chunk.tool_round ?? 0)
+                  continue
+                }
+                // Check for new message event (tool round split)
+                if (chunk.new_message) {
+                  console.info('[SSE] new_message event, round:', chunk.tool_round)
+                  options.onNewMessage?.(chunk.tool_round ?? 0)
+                  continue
+                }
+                // Check for TODO advancement event
+                if (chunk.todo_updated && chunk.message_id && chunk.content !== undefined) {
+                  console.info('[SSE] todo_updated event, msg:', chunk.message_id)
+                  options.onTodoUpdated?.(chunk.message_id, chunk.content)
                   continue
                 }
                 // Mark that we received actual content

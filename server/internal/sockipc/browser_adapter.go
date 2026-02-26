@@ -97,3 +97,27 @@ func (a *ToolBrowserIPCAdapter) Tabs(ctx context.Context) (string, error) {
 func (a *ToolBrowserIPCAdapter) CloseTab(ctx context.Context, targetID string) error {
 	return a.backend.CloseTab(ctx, targetID)
 }
+
+func (a *ToolBrowserIPCAdapter) ExecuteRecipe(ctx context.Context, recipe string, params map[string]string) (map[string]interface{}, error) {
+	result, err := a.backend.ExecuteRecipe(ctx, recipe, params)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]interface{}{
+		"success": result.Success,
+		"message": result.Message,
+	}
+	if result.TargetID != "" {
+		out["target_id"] = result.TargetID
+	}
+	for k, v := range result.Data {
+		out[k] = v
+	}
+	return out, nil
+}
+
+func (a *ToolBrowserIPCAdapter) ListRecipes(ctx context.Context) (string, error) {
+	infos := a.backend.ListRecipes(ctx)
+	b, _ := json.Marshal(infos)
+	return string(b), nil
+}

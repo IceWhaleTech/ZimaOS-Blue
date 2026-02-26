@@ -147,6 +147,11 @@ export async function retryTask(taskId: string) {
   return data
 }
 
+export async function cancelTask(taskId: string) {
+  const { data } = await api.post<{ success: boolean; task_id: string; status: string }>(`/media/tasks/${taskId}/cancel`)
+  return data
+}
+
 export async function getTasksByMessage(messageId: string) {
   const { data } = await api.get<{ tasks: MediaTask[] }>(`/media/tasks/by-message/${messageId}`)
   return data.tasks

@@ -68,9 +68,9 @@ Compilat nativ în Go — fără interpretor, fără VM, fără overhead. Ruleaz
 
 | Metrică | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
 |---------|-------------------|------------------------|
-| `--help` la rece / la cald | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
+| `help` la rece / la cald | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` timp de execuție (cel mai bun din 3) | **< 0.01 s** | 5.98 s |
-| `--help` RSS maxim | **~10 MB** | ~394 MB |
+| `help` RSS maxim | **~10 MB** | ~394 MB |
 | `status` RSS maxim | **~15 MB** | ~1.52 GB |
 | Dependențe de rulare | **Niciuna** | Node.js 18+ |
 
