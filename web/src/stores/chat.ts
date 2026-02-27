@@ -11,6 +11,10 @@ import { useProviderPoolStore } from './providerPool'
 import { systemApi } from '@/api/system'
 
 const PAGE_SIZE = 50
+const CHAT_MODEL_PREF_KEY = 'chat.modelPreference'
+const CHAT_OFFLINE_MODE_KEY = 'chat.offlineMode'
+const CHAT_WEB_SEARCH_ENABLED_KEY = 'chat.webSearchEnabled'
+const CHAT_DEEP_SEARCH_ENABLED_KEY = 'chat.deepSearchEnabled'
 
 /** Structured tool result for collapsible detail cards. */
 export interface ToolResultItem {
@@ -26,68 +30,6 @@ export interface ToolResultItem {
   host?: 'local' | 'sandbox'
   riskLevel?: string
   timestamp: number     // When this result was received
-}
-
-/** Format tool results into a process block for styled rendering. */
-function formatToolResultsSummary(results: Array<{ name: string; id: string; args?: string; result?: string }>): string {
-  if (!results || results.length === 0) return ''
-  const items: Array<{ cmd: string; tool: string; icon: string; status: string; output: string }> = []
-  for (const r of results) {
-    let command = ''
-    if (r.args) {
-      try {
-        const parsed = JSON.parse(r.args)
-        command = parsed.command || parsed.query || parsed.path || parsed.name || parsed.sq || parsed.mq || ''
-      } catch {
-        command = r.args.slice(0, 80)
-      }
-    }
-    let icon = '⏳'
-    let status = ''
-    let output = ''
-    if (r.result) {
-      try {
-        const res = JSON.parse(r.result)
-        // Special handling for ask_user_question tool
-        if (r.name === 'ask' && (res.qa || res.sq || res.mq)) {
-          icon = '✓'
-          const questionText = res.sq || res.mq || ''
-          const qaData = res.qa
-          if (qaData && Array.isArray(qaData) && qaData.length > 0) {
-            const q = qaData[0]
-            const question = q.q || questionText
-            const answers = q.a || []
-            output = `Q: ${question}\nA: ${answers.join(', ')}`
-          } else {
-            output = `Q: ${questionText}`
-          }
-        } else if (res.error) {
-          icon = '✗'
-          status = res.error.slice(0, 100)
-        } else if (res.exit_code !== undefined) {
-          icon = res.exit_code === 0 ? '✓' : '✗'
-          const dur = res.duration_ms ? `${res.duration_ms}ms` : ''
-          status = dur
-        } else if (res.status) {
-          icon = '✓'
-          status = res.status
-        }
-        if (res.stdout && res.stdout.trim() && r.name !== 'ask') {
-          output = res.stdout.trim()
-          if (output.length > 200) output = output.slice(0, 200) + '...'
-        }
-        if (res.stderr && res.stderr.trim()) {
-          const stderr = res.stderr.trim().slice(0, 120)
-          output = output ? `${output}\n${stderr}` : stderr
-        }
-      } catch {
-        output = r.result.slice(0, 200)
-      }
-    }
-    items.push({ cmd: command, tool: r.name, icon, status, output })
-  }
-  const json = JSON.stringify(items)
-  return `\n\n<!-- process-start -->\n\`\`\`process\n${json}\n\`\`\`\n<!-- process-end -->\n\n`
 }
 
 /** Parse raw tool results into structured ToolResultItems. */
@@ -132,14 +74,16 @@ function parseToolResults(results: Array<{ name: string; id: string; args?: stri
             output = `**Q:** ${questionText}`
           }
         } else if (res.error) {
-          icon = '✗'; status = res.error.slice(0, 200)
+          icon = '✗'; status = String(res.error)
         } else if (res.exit_code !== undefined) {
           icon = res.exit_code === 0 ? '✓' : '✗'
           exitCode = res.exit_code
           durationMs = res.duration_ms
           status = res.duration_ms ? `${res.duration_ms}ms` : ''
         } else if (res.status) {
-          icon = '✓'; status = res.status
+          const statusText = String(res.status)
+          status = statusText
+          icon = /(error|fail)/i.test(statusText) ? '✗' : '✓'
         } else {
           icon = '✓'
         }
@@ -151,8 +95,14 @@ function parseToolResults(results: Array<{ name: string; id: string; args?: stri
         if (res.host) host = res.host
         if (res.risk_level) riskLevel = res.risk_level
       } catch {
-        output = r.result.slice(0, 500)
-        icon = '✓'
+        const text = r.result.slice(0, 500)
+        if (/(error|failed|unsupported|not support|invalid)/i.test(text)) {
+          icon = '✗'
+          status = text
+        } else {
+          output = text
+          icon = '✓'
+        }
       }
     }
     return { name: r.name, id: r.id, command, args: r.args, icon, status, output, exitCode, durationMs, host, riskLevel, timestamp: Date.now() }
@@ -163,6 +113,76 @@ function parseToolResults(results: Array<{ name: string; id: string; args?: stri
 const messageMetadata = ref<Map<string, { provider?: string; model?: string; stats?: MessageStats }>>(new Map())
 
 export const useChatStore = defineStore('chat', () => {
+  const loadModelPreference = (): string => {
+    try {
+      const value = localStorage.getItem(CHAT_MODEL_PREF_KEY)?.trim()
+      if (!value) return 'auto'
+      return value
+    } catch {
+      return 'auto'
+    }
+  }
+
+  const loadOfflineMode = (): boolean => {
+    try {
+      return localStorage.getItem(CHAT_OFFLINE_MODE_KEY) === '1'
+    } catch {
+      return false
+    }
+  }
+
+  const saveModelPreference = (value: string) => {
+    try {
+      localStorage.setItem(CHAT_MODEL_PREF_KEY, value)
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  const saveOfflineMode = (enabled: boolean) => {
+    try {
+      localStorage.setItem(CHAT_OFFLINE_MODE_KEY, enabled ? '1' : '0')
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  const loadWebSearchEnabled = (): boolean => {
+    try {
+      const value = localStorage.getItem(CHAT_WEB_SEARCH_ENABLED_KEY)
+      if (value === null) return true
+      return value !== '0'
+    } catch {
+      return true
+    }
+  }
+
+  const saveWebSearchEnabled = (enabled: boolean) => {
+    try {
+      localStorage.setItem(CHAT_WEB_SEARCH_ENABLED_KEY, enabled ? '1' : '0')
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  const loadDeepSearchEnabled = (): boolean => {
+    try {
+      const value = localStorage.getItem(CHAT_DEEP_SEARCH_ENABLED_KEY)
+      if (value === null) return true
+      return value !== '0'
+    } catch {
+      return true
+    }
+  }
+
+  const saveDeepSearchEnabled = (enabled: boolean) => {
+    try {
+      localStorage.setItem(CHAT_DEEP_SEARCH_ENABLED_KEY, enabled ? '1' : '0')
+    } catch {
+      // ignore storage errors
+    }
+  }
+
   // State
   const conversations = ref<Conversation[]>([])
   const currentConversationId = ref<string | null>(null)
@@ -242,6 +262,10 @@ export const useChatStore = defineStore('chat', () => {
   } | null>(null)
 
   const isMultiSelectMode = ref(false)
+  const modelPreference = ref<string>(loadModelPreference())
+  const offlineMode = ref<boolean>(loadOfflineMode())
+  const webSearchEnabled = ref<boolean>(loadWebSearchEnabled())
+  const deepSearchEnabled = ref<boolean>(loadDeepSearchEnabled())
 
   // SSE client for streaming
   const sseClient = new SSEClient()
@@ -452,6 +476,152 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function touchConversationLocal(conversationId: string) {
+    const idx = conversations.value.findIndex((c) => c.id === conversationId)
+    if (idx < 0) return
+    const now = new Date().toISOString()
+    const updated = { ...conversations.value[idx]!, updated_at: now }
+    const next = [...conversations.value]
+    next[idx] = updated
+    conversations.value = next
+  }
+
+  function appendAssistantLocalMessage(conversationId: string, content: string) {
+    const assistantMessage: Message = {
+      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      conversation_id: conversationId,
+      role: 'assistant',
+      content,
+      created_at: new Date().toISOString(),
+      provider: 'local',
+      model: offlineMode.value ? 'offline' : undefined,
+    }
+    messages.value = [...messages.value, assistantMessage]
+    touchConversationLocal(conversationId)
+  }
+
+  async function handleSlashCommand(conversationId: string, raw: string): Promise<boolean> {
+    const text = raw.trim()
+    if (!text.startsWith('/')) return false
+
+    const parts = text.slice(1).trim().split(/\s+/)
+    const cmd = (parts[0] || '').toLowerCase()
+    const args = parts.slice(1)
+
+    if (!cmd) return false
+
+    const userMessage: Message = {
+      id: `temp-${Date.now()}`,
+      conversation_id: conversationId,
+      role: 'user',
+      content: raw,
+      created_at: new Date().toISOString(),
+    }
+    messages.value = [...messages.value, userMessage]
+
+    if (cmd === 'help' || cmd === 'commands') {
+      appendAssistantLocalMessage(
+        conversationId,
+        [
+          '可用命令：',
+          '`/commands` 同 `/help`',
+          '`/status` 查看当前会话命令状态',
+          '`/model` 查看当前模型偏好',
+          '`/model auto` 使用自动路由',
+          '`/model <模型ID>` 固定模型',
+          '`/model list` 或 `/models` 列出可用模型',
+          '`/offline on|off|status` 切换或查看离线模式',
+          '`/clear` 或 `/reset` 清空当前会话消息',
+        ].join('\n')
+      )
+      return true
+    }
+
+    if (cmd === 'status') {
+      const status = [
+        '会话状态：',
+        `- model: \`${modelPreference.value}\``,
+        `- offline: \`${offlineMode.value ? 'ON' : 'OFF'}\``,
+        `- messages: \`${messages.value.length}\``,
+      ].join('\n')
+      appendAssistantLocalMessage(conversationId, status)
+      return true
+    }
+
+    if (cmd === 'model' || cmd === 'models') {
+      if (cmd === 'models' && args.length === 0) {
+        args.push('list')
+      }
+      const sub = (args[0] || '').trim()
+      if (!sub) {
+        appendAssistantLocalMessage(conversationId, `当前模型偏好：\`${modelPreference.value}\``)
+        return true
+      }
+      if (sub.toLowerCase() === 'list') {
+        const providerStore = useProviderPoolStore()
+        if (providerStore.models.length === 0) {
+          try {
+            await providerStore.fetchModels()
+          } catch {
+            // ignore
+          }
+        }
+        const all = Array.from(new Set(providerStore.models.map((m) => m.id))).sort()
+        if (all.length === 0) {
+          appendAssistantLocalMessage(conversationId, '当前没有可用模型列表，请先在 Provider 配置页完成模型拉取。')
+          return true
+        }
+        const preview = all.slice(0, 30).map((m) => `- \`${m}\``).join('\n')
+        const suffix = all.length > 30 ? `\n... 共 ${all.length} 个模型` : ''
+        appendAssistantLocalMessage(conversationId, `可用模型：\n${preview}${suffix}`)
+        return true
+      }
+
+      const nextModel = sub.toLowerCase() === 'auto' ? 'auto' : sub
+      modelPreference.value = nextModel
+      saveModelPreference(nextModel)
+      appendAssistantLocalMessage(conversationId, `模型偏好已设置为：\`${nextModel}\``)
+      return true
+    }
+
+    if (cmd === 'offline') {
+      const sub = (args[0] || 'status').toLowerCase()
+      if (sub === 'on') {
+        offlineMode.value = true
+        saveOfflineMode(true)
+        appendAssistantLocalMessage(conversationId, '离线模式已开启。后续消息不会调用模型，只返回本地离线响应。')
+        return true
+      }
+      if (sub === 'off') {
+        offlineMode.value = false
+        saveOfflineMode(false)
+        appendAssistantLocalMessage(conversationId, '离线模式已关闭。后续消息将恢复模型调用。')
+        return true
+      }
+      appendAssistantLocalMessage(conversationId, `离线模式当前为：${offlineMode.value ? 'ON' : 'OFF'}`)
+      return true
+    }
+
+    if (cmd === 'clear' || cmd === 'reset') {
+      try {
+        const idsToDelete = messages.value
+          .map(m => m.id)
+          .filter(id => !id.startsWith('temp-') && !id.startsWith('local-') && !id.startsWith('streaming-'))
+        if (idsToDelete.length > 0) {
+          await messageApi.delete(conversationId, idsToDelete)
+        }
+        messages.value = [userMessage]
+        appendAssistantLocalMessage(conversationId, `已清空当前会话（删除 ${idsToDelete.length} 条消息）。`)
+      } catch {
+        appendAssistantLocalMessage(conversationId, '清空会话失败，请稍后重试。')
+      }
+      return true
+    }
+
+    // Let backend handle commands not implemented in local fast-path.
+    return false
+  }
+
   async function sendMessage(content: string, fileAttachments?: { id: string; file: File; name: string; size: number; type: string; preview?: string; duration?: number }[]) {
     if (!currentConversationId.value) {
       // Use the first part of the message as the conversation title
@@ -461,6 +631,10 @@ export const useChatStore = defineStore('chat', () => {
 
     const conversationId = currentConversationId.value!
     const settingsStore = useSettingsStore()
+
+    if ((!fileAttachments || fileAttachments.length === 0) && await handleSlashCommand(conversationId, content)) {
+      return
+    }
 
     // Convert file attachments to MessageAttachment format (base64)
     const attachments: MessageAttachment[] = []
@@ -511,15 +685,25 @@ export const useChatStore = defineStore('chat', () => {
     }
     messages.value = [...messages.value, userMessage]
 
-    // Don't send provider/model - let backend decide based on routing mode (auto/cloud/local)
-    // This ensures the router selects the best available provider
+    if (offlineMode.value) {
+      appendAssistantLocalMessage(
+        conversationId,
+        `离线模式响应：已收到你的消息（${content.length} 字）。该模式不调用模型推理，仅做本地命令与占位回复。`
+      )
+      return
+    }
+
+    // Keep provider empty so backend router can choose provider.
+    // Model can be overridden by `/model` command; empty string means auto.
     const request: SendMessageRequest = {
       message: content,
-      provider: undefined,
-      model: undefined,
+      provider: '',
+      model: modelPreference.value === 'auto' ? '' : modelPreference.value,
       temperature: settingsStore.temperature,
       max_tokens: settingsStore.maxTokens,
       attachments: attachments.length > 0 ? attachments : undefined,
+      web_search_enabled: webSearchEnabled.value,
+      deep_search_enabled: deepSearchEnabled.value,
     }
 
     try {
@@ -604,21 +788,6 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== sendConvId) return
           // Store structured tool results for detail cards
           toolResults.value = [...toolResults.value, ...parseToolResults(results)]
-          // Append tool results as a visual block in the streaming content
-          const summary = formatToolResultsSummary(results)
-          if (summary) {
-            streamingContent.value += summary
-            processContentLength.value = streamingContent.value.length
-            const lastIndex = messages.value.length - 1
-            if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
-              const newMessages = [...messages.value]
-              const currentMsg = newMessages[lastIndex]
-              if (currentMsg) {
-                newMessages[lastIndex] = { ...currentMsg, content: streamingContent.value }
-                messages.value = newMessages
-              }
-            }
-          }
         },
         onNewMessage: () => {
           if (currentConversationId.value !== sendConvId) return
@@ -634,10 +803,16 @@ export const useChatStore = defineStore('chat', () => {
           }
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (_messageId, content) => {
+        onTodoUpdated: (messageId, content) => {
           if (currentConversationId.value !== sendConvId) return
-          // Backend advanced a TODO item — update the message that has the checklist
-          const idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          // Backend updated TODO list — prefer exact message id, fallback to first checklist bubble.
+          let idx = -1
+          if (messageId) {
+            idx = messages.value.findIndex(m => m.id === messageId)
+          }
+          if (idx < 0) {
+            idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          }
           if (idx >= 0) {
             const newMessages = [...messages.value]
             newMessages[idx] = { ...newMessages[idx]!, content }
@@ -666,17 +841,29 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== sendConvId) return
           const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
-          // Map error codes to i18n keys for accurate error messages
+          // Map error codes to i18n keys for accurate error messages.
+          // Supports exact matches and "contains" matching for enriched HTTP errors.
           const errorMap: Record<string, string> = {
             'STREAM_EMPTY': 'streamEmpty',
             'STREAM_ERROR': 'streamError',
             'PROVIDER_NO_RESPONSE': 'providerNoResponse',
             'PROVIDER_RETURNED_EMPTY': 'providerReturnedEmpty',
             'No response body': 'noResponseBody',
-            'provider_unavailable': 'providerUnavailable',
-            'provider_auth_error': 'providerAuthError',
-            'provider_rate_limited': 'providerRateLimited',
-            'trial_service_busy': 'trialServiceBusy',
+            'provider_tool_unsupported': 'provider_tool_unsupported',
+            'provider_unavailable': 'provider_unavailable',
+            'provider_auth_error': 'provider_auth_error',
+            'provider_rate_limited': 'provider_rate_limited',
+            'trial_service_busy': 'trial_service_busy',
+          }
+          const resolveErrorKey = (message: string): string | undefined => {
+            if (errorMap[message]) return errorMap[message]
+            const lower = message.toLowerCase()
+            if (lower.includes('provider_tool_unsupported')) return 'provider_tool_unsupported'
+            if (lower.includes('provider_unavailable') || lower.includes('no available provider')) return 'provider_unavailable'
+            if (lower.includes('provider_auth_error') || lower.includes('auth error')) return 'provider_auth_error'
+            if (lower.includes('provider_rate_limited') || lower.includes('429') || lower.includes('throttled')) return 'provider_rate_limited'
+            if (lower.includes('trial_service_busy')) return 'trial_service_busy'
+            return undefined
           }
 
           // Transient empty-response errors that can be silently recovered
@@ -706,18 +893,18 @@ export const useChatStore = defineStore('chat', () => {
               // Only show error if server also has no new content
               const lastMsg = serverMessages[serverMessages.length - 1]
               if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.content?.trim()) {
-                const errorKey = errorMap[err.message]
+                const errorKey = resolveErrorKey(err.message)
                 streamError.value = errorKey || err.message
               }
             }).catch(() => {
-              const errorKey = errorMap[err.message]
+              const errorKey = resolveErrorKey(err.message)
               streamError.value = errorKey || err.message
               messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
             })
             return
           }
 
-          const errorKey = errorMap[err.message]
+          const errorKey = resolveErrorKey(err.message)
           if (errorKey) {
             streamError.value = errorKey
           } else {
@@ -924,10 +1111,12 @@ export const useChatStore = defineStore('chat', () => {
 
       const request: SendMessageRequest = {
         message: '[CONTINUE_AFTER_CANCEL]',
-        provider: undefined,
-        model: undefined,
+        provider: '',
+        model: modelPreference.value === 'auto' ? '' : modelPreference.value,
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
+        web_search_enabled: webSearchEnabled.value,
+        deep_search_enabled: deepSearchEnabled.value,
       }
 
       await sseClient.connect(convId, request, {
@@ -960,20 +1149,6 @@ export const useChatStore = defineStore('chat', () => {
         onToolResults: (results, _toolRound) => {
           if (currentConversationId.value !== convId) return
           toolResults.value = [...toolResults.value, ...parseToolResults(results)]
-          const summary = formatToolResultsSummary(results)
-          if (summary) {
-            streamingContent.value += summary
-            processContentLength.value = streamingContent.value.length
-            const lastIndex = messages.value.length - 1
-            if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
-              const newMessages = [...messages.value]
-              const currentMsg = newMessages[lastIndex]
-              if (currentMsg) {
-                newMessages[lastIndex] = { ...currentMsg, content: streamingContent.value }
-                messages.value = newMessages
-              }
-            }
-          }
         },
         onNewMessage: () => {
           if (currentConversationId.value !== convId) return
@@ -988,9 +1163,15 @@ export const useChatStore = defineStore('chat', () => {
           }
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (_messageId, content) => {
+        onTodoUpdated: (messageId, content) => {
           if (currentConversationId.value !== convId) return
-          const idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          let idx = -1
+          if (messageId) {
+            idx = messages.value.findIndex(m => m.id === messageId)
+          }
+          if (idx < 0) {
+            idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          }
           if (idx >= 0) {
             const newMessages = [...messages.value]
             newMessages[idx] = { ...newMessages[idx]!, content }
@@ -1044,6 +1225,11 @@ export const useChatStore = defineStore('chat', () => {
     const conversationId = currentConversationId.value
     const settingsStore = useSettingsStore()
 
+    if (offlineMode.value) {
+      appendAssistantLocalMessage(conversationId, '离线模式下不支持继续生成，请先执行 `/offline off`。')
+      return
+    }
+
     // Get the last assistant message content to continue from
     const lastMessage = messages.value[messages.value.length - 1]
     if (!lastMessage || lastMessage.role !== 'assistant') return
@@ -1058,10 +1244,12 @@ export const useChatStore = defineStore('chat', () => {
 
       const request: SendMessageRequest = {
         message: '[CONTINUE]', // Special marker for continue
-        provider: undefined,
-        model: undefined,
+        provider: '',
+        model: modelPreference.value === 'auto' ? '' : modelPreference.value,
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
+        web_search_enabled: webSearchEnabled.value,
+        deep_search_enabled: deepSearchEnabled.value,
       }
 
       await sseClient.connect(conversationId, request, {
@@ -1097,20 +1285,6 @@ export const useChatStore = defineStore('chat', () => {
         onToolResults: (results, _toolRound) => {
           if (currentConversationId.value !== conversationId) return
           toolResults.value = [...toolResults.value, ...parseToolResults(results)]
-          const summary = formatToolResultsSummary(results)
-          if (summary) {
-            streamingContent.value += summary
-            processContentLength.value = streamingContent.value.length
-            const lastIndex = messages.value.length - 1
-            if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
-              const newMessages = [...messages.value]
-              const currentMsg = newMessages[lastIndex]
-              if (currentMsg) {
-                newMessages[lastIndex] = { ...currentMsg, content: streamingContent.value }
-                messages.value = newMessages
-              }
-            }
-          }
         },
         onNewMessage: () => {
           if (currentConversationId.value !== conversationId) return
@@ -1125,9 +1299,15 @@ export const useChatStore = defineStore('chat', () => {
           }
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (_messageId, content) => {
+        onTodoUpdated: (messageId, content) => {
           if (currentConversationId.value !== conversationId) return
-          const idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          let idx = -1
+          if (messageId) {
+            idx = messages.value.findIndex(m => m.id === messageId)
+          }
+          if (idx < 0) {
+            idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          }
           if (idx >= 0) {
             const newMessages = [...messages.value]
             newMessages[idx] = { ...newMessages[idx]!, content }
@@ -1192,6 +1372,11 @@ export const useChatStore = defineStore('chat', () => {
     const conversationId = currentConversationId.value
     const settingsStore = useSettingsStore()
 
+    if (offlineMode.value) {
+      appendAssistantLocalMessage(conversationId, '离线模式下不支持重新生成，请先执行 `/offline off`。')
+      return
+    }
+
     // Find the last user message to regenerate from
     let lastUserMessageIndex = -1
     for (let i = messages.value.length - 1; i >= 0; i--) {
@@ -1230,12 +1415,14 @@ export const useChatStore = defineStore('chat', () => {
 
       const request: SendMessageRequest = {
         message: lastUserMessage.content,
-        provider: undefined,
-        model: undefined,
+        provider: '',
+        model: modelPreference.value === 'auto' ? '' : modelPreference.value,
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         attachments: lastUserMessage.attachments,
         regenerate: true,
+        web_search_enabled: webSearchEnabled.value,
+        deep_search_enabled: deepSearchEnabled.value,
       }
 
       await sseClient.connect(conversationId, request, {
@@ -1270,20 +1457,6 @@ export const useChatStore = defineStore('chat', () => {
         onToolResults: (results, _toolRound) => {
           if (currentConversationId.value !== conversationId) return
           toolResults.value = [...toolResults.value, ...parseToolResults(results)]
-          const summary = formatToolResultsSummary(results)
-          if (summary) {
-            streamingContent.value += summary
-            processContentLength.value = streamingContent.value.length
-            const lastIndex = messages.value.length - 1
-            if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
-              const newMessages = [...messages.value]
-              const currentMsg = newMessages[lastIndex]
-              if (currentMsg) {
-                newMessages[lastIndex] = { ...currentMsg, content: streamingContent.value }
-                messages.value = newMessages
-              }
-            }
-          }
         },
         onNewMessage: () => {
           if (currentConversationId.value !== conversationId) return
@@ -1298,9 +1471,15 @@ export const useChatStore = defineStore('chat', () => {
           }
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (_messageId, content) => {
+        onTodoUpdated: (messageId, content) => {
           if (currentConversationId.value !== conversationId) return
-          const idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          let idx = -1
+          if (messageId) {
+            idx = messages.value.findIndex(m => m.id === messageId)
+          }
+          if (idx < 0) {
+            idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
+          }
           if (idx >= 0) {
             const newMessages = [...messages.value]
             newMessages[idx] = { ...newMessages[idx]!, content }
@@ -1632,6 +1811,22 @@ export const useChatStore = defineStore('chat', () => {
     warmupApi.trigger(convId).catch(() => {})
   }
 
+  function setWebSearchEnabled(enabled: boolean) {
+    webSearchEnabled.value = enabled
+    saveWebSearchEnabled(enabled)
+  }
+
+  function setModelPreference(value: string) {
+    const next = value.trim()
+    modelPreference.value = next || 'auto'
+    saveModelPreference(modelPreference.value)
+  }
+
+  function setDeepSearchEnabled(enabled: boolean) {
+    deepSearchEnabled.value = enabled
+    saveDeepSearchEnabled(enabled)
+  }
+
   // Reset warmup tracking (call when conversation changes)
   function resetWarmup() {
     warmupConvId = null
@@ -1668,6 +1863,10 @@ export const useChatStore = defineStore('chat', () => {
     pendingApproval,
     pendingQuestion,
     pendingExecApproval,
+    modelPreference,
+    offlineMode,
+    webSearchEnabled,
+    deepSearchEnabled,
 
     // Computed
     currentConversation,
@@ -1715,5 +1914,8 @@ export const useChatStore = defineStore('chat', () => {
     dismissExecApproval,
     warmupConversation,
     resetWarmup,
+    setModelPreference,
+    setWebSearchEnabled,
+    setDeepSearchEnabled,
   }
 })

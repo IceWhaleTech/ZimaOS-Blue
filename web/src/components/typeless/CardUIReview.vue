@@ -18,7 +18,6 @@ const showScreenshot = ref(false)
 
 const overall = computed(() => props.card.overall ?? 0)
 const pass = computed(() => props.card.pass ?? false)
-const threshold = computed(() => props.card.threshold ?? 75)
 const steps = computed(() => props.card.steps ?? [])
 const issues = computed(() => props.card.issues ?? [])
 const suggestions = computed(() => props.card.suggestions ?? [])

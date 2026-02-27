@@ -48,7 +48,6 @@ async function doCheckPreviewMode(): Promise<{ preview: boolean; connectionError
   // In desktop mode, the Go server may still be starting on first launch.
   // Retry with backoff instead of failing immediately.
   const maxAttempts = isDesktop ? 5 : 1
-  let lastError: unknown
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) {
@@ -61,7 +60,6 @@ async function doCheckPreviewMode(): Promise<{ preview: boolean; connectionError
 
       // Treat 500+ errors as connection/server errors
       if (response.status >= 500) {
-        lastError = new Error(`Server error: ${response.status}`)
         continue // retry in desktop mode
       }
       if (!response.ok) {
@@ -82,7 +80,6 @@ async function doCheckPreviewMode(): Promise<{ preview: boolean; connectionError
 
       return { preview: isPreviewMode, connectionError: false }
     } catch (err) {
-      lastError = err
       // In desktop mode, retry; in browser, fail immediately
       if (!isDesktop) break
     }
@@ -362,7 +359,6 @@ router.beforeEach(async (to, from, next) => {
     const requiresAuth = to.meta.requiresAuth
     const requiresAdmin = to.meta.requiresAdmin
     const requiredPermission = to.meta.permission as string | undefined
-    const isPublic = to.meta.public
 
     // Allow connection error page without checks
     if (to.name === 'ConnectionError') {

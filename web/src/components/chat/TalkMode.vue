@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { ref, onUnmounted, watch, onMounted } from 'vue'
+import { ref, onUnmounted, watch, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { playAudioFromBase64 } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { convertToWav } from '@/utils/audioConverter'
 import { EnergyVAD } from '@/utils/vad'
-import TranscriptionEditor from './TranscriptionEditor.vue'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 import { useLocaleStore } from '@/stores/locale'
 import { useChatStore } from '@/stores/chat'
@@ -17,7 +16,6 @@ const chatStore = useChatStore()
 const props = defineProps<{
   modelValue: boolean
   conversationId?: string
-  editBeforeSend?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -31,14 +29,14 @@ type ConversationState = 'idle' | 'listening' | 'transcribing' | 'processing' | 
 const conversationState = ref<ConversationState>('idle')
 const autoPlayTTS = ref(localStorage.getItem('tts-auto-play') !== 'false')
 const error = ref<string | null>(null)
-const transcript = ref('')
-const response = ref('')
 
-// Edit before send state
-const showTranscriptionEditor = ref(false)
-const pendingTranscription = ref('')
-const transcriptionLanguage = ref('')
-const transcriptionConfidence = ref(0)
+type TalkBubble = {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+}
+const conversationBubbles = ref<TalkBubble[]>([])
+const bubbleListRef = ref<HTMLElement | null>(null)
 
 // ASR model download prompt
 const showASRDownloadPrompt = ref(false)
@@ -53,13 +51,17 @@ const isMobile = ref(false)
 let vad: EnergyVAD | null = null
 
 // Derived state helpers
-const isListening = () => conversationState.value === 'listening'
 const isActive = () => conversationState.value !== 'idle'
 
 // Check mobile on mount
 onMounted(() => {
   isMobile.value = window.innerWidth < 768
+  window.addEventListener('resize', syncMobileState)
 })
+
+function syncMobileState() {
+  isMobile.value = window.innerWidth < 768
+}
 
 // Open talk mode — check permissions, then start VAD loop
 async function open() {
@@ -140,16 +142,9 @@ async function startListening() {
         const result = await speechApi.transcribe(wavBlob, 'wav', lang)
 
         if (result.text) {
-          if (props.editBeforeSend) {
-            pendingTranscription.value = result.text
-            transcriptionLanguage.value = result.language || ''
-            transcriptionConfidence.value = result.confidence || 0
-            showTranscriptionEditor.value = true
-          } else {
-            transcript.value = result.text
-            conversationState.value = 'processing'
-            emit('transcript', result.text)
-          }
+          pushBubble('user', result.text)
+          conversationState.value = 'processing'
+          emit('transcript', result.text)
         } else {
           // Empty transcription — resume
           resumeListening()
@@ -213,22 +208,6 @@ function toggleListening() {
   }
 }
 
-// Handle transcription confirmation (from edit-before-send editor)
-function handleTranscriptionConfirm(text: string) {
-  transcript.value = text
-  conversationState.value = 'processing'
-  emit('transcript', text)
-  showTranscriptionEditor.value = false
-  pendingTranscription.value = ''
-}
-
-// Handle transcription cancel
-function handleTranscriptionCancel() {
-  showTranscriptionEditor.value = false
-  pendingTranscription.value = ''
-  resumeListening()
-}
-
 // Close talk mode
 function close() {
   stopAll()
@@ -244,6 +223,7 @@ function toggleAutoPlay() {
 // Watch for modelValue changes
 watch(() => props.modelValue, (newValue) => {
   if (newValue) {
+    conversationBubbles.value = []
     open()
   } else {
     stopAll()
@@ -254,15 +234,29 @@ watch(() => props.modelValue, (newValue) => {
 watch(() => chatStore.streaming, async (streaming, wasStreaming) => {
   if (wasStreaming && !streaming && props.modelValue) {
     const messages = chatStore.messages
-    if (messages.length > 0) {
-      const lastMsg = messages[messages.length - 1]
-      if (lastMsg.role === 'assistant' && lastMsg.content) {
-        response.value = lastMsg.content
-        await playResponseTTS(lastMsg.content)
-      }
+    const lastMsg = messages.length > 0 ? messages[messages.length - 1] : undefined
+    if (lastMsg?.role === 'assistant' && lastMsg.content) {
+      pushBubble('assistant', lastMsg.content)
+      await playResponseTTS(lastMsg.content)
     }
   }
 })
+
+function pushBubble(role: 'user' | 'assistant', text: string) {
+  const value = text.trim()
+  if (!value) return
+  const prev = conversationBubbles.value[conversationBubbles.value.length - 1]
+  if (prev && prev.role === role && prev.text === value) return
+  conversationBubbles.value.push({
+    id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    text: value,
+  })
+  nextTick(() => {
+    const el = bubbleListRef.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
 
 // Play TTS for AI response
 async function playResponseTTS(text: string) {
@@ -291,6 +285,7 @@ async function playResponseTTS(text: string) {
 // Cleanup on unmount
 onUnmounted(() => {
   stopAll()
+  window.removeEventListener('resize', syncMobileState)
 })
 </script>
 
@@ -303,13 +298,13 @@ onUnmounted(() => {
         @click.self="close"
       >
         <div
-          class="talk-mode-container glass-card w-full p-6"
+          class="talk-mode-container w-full p-6"
           :class="isMobile
             ? 'mobile-fullscreen'
-            : 'max-w-md mx-4 rounded-2xl'"
+            : 'glass-card max-w-md mx-4 rounded-2xl'"
         >
           <!-- Header -->
-          <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('chat.talkMode.title') }}
             </h3>
@@ -340,8 +335,28 @@ onUnmounted(() => {
             </div>
           </div>
 
+          <!-- Transcript bubbles -->
+          <div ref="bubbleListRef" class="talk-bubble-list mb-4">
+            <div
+              v-for="bubble in conversationBubbles"
+              :key="bubble.id"
+              class="talk-bubble-row"
+              :class="bubble.role === 'user' ? 'justify-end' : 'justify-start'"
+            >
+              <div
+                class="talk-bubble"
+                :class="bubble.role === 'user' ? 'talk-bubble-user' : 'talk-bubble-assistant'"
+              >
+                {{ bubble.text }}
+              </div>
+            </div>
+            <div v-if="!conversationBubbles.length" class="text-xs text-gray-500 dark:text-gray-400 text-center py-6">
+              {{ t('chat.talkMode.conversationDesc') }}
+            </div>
+          </div>
+
           <!-- Main action button -->
-          <div class="flex flex-col items-center mb-6">
+          <div class="flex flex-col items-center">
             <button
               class="relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer"
               :class="{
@@ -400,28 +415,6 @@ onUnmounted(() => {
             </p>
           </div>
 
-          <!-- Transcript display -->
-          <div v-if="transcript || response" class="space-y-3">
-            <div v-if="transcript" class="p-3 rounded-lg bg-gray-100 dark:bg-white/5">
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('chat.talkMode.you') }}</p>
-              <p class="text-sm text-gray-900 dark:text-white">{{ transcript }}</p>
-            </div>
-            <div v-if="response" class="p-3 rounded-lg bg-gray-100 dark:bg-gray-700/30">
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('chat.talkMode.assistant') }}</p>
-              <p class="text-sm text-gray-900 dark:text-white">{{ response }}</p>
-            </div>
-          </div>
-
-          <!-- Transcription Editor (for edit-before-send) -->
-          <TranscriptionEditor
-            v-model:visible="showTranscriptionEditor"
-            :text="pendingTranscription"
-            :language="transcriptionLanguage"
-            :confidence="transcriptionConfidence"
-            @confirm="handleTranscriptionConfirm"
-            @cancel="handleTranscriptionCancel"
-          />
-
           <!-- ASR Model Download Prompt -->
           <ModelDownloadPrompt
             v-model:model-visible="showASRDownloadPrompt"
@@ -439,11 +432,6 @@ onUnmounted(() => {
             </svg>
             <span>{{ error }}</span>
           </div>
-
-          <!-- Mode description -->
-          <p class="mt-4 text-xs text-gray-500 dark:text-gray-400 text-center">
-            {{ t('chat.talkMode.conversationDesc') }}
-          </p>
         </div>
       </div>
     </Transition>
@@ -454,6 +442,9 @@ onUnmounted(() => {
 .talk-mode-container {
   max-height: 90vh;
   overflow-y: auto;
+  background: rgba(17, 24, 39, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
 }
 
 /* Mobile fullscreen */
@@ -461,13 +452,51 @@ onUnmounted(() => {
   max-width: 100% !important;
   margin: 0 !important;
   border-radius: 0 !important;
-  height: 100%;
-  max-height: 100vh;
+  min-height: 100dvh;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
   padding-top: env(safe-area-inset-top, 20px);
   padding-bottom: env(safe-area-inset-bottom, 20px);
+  padding-left: 16px;
+  padding-right: 16px;
+  background: linear-gradient(180deg, rgba(10, 13, 23, 0.96) 0%, rgba(18, 24, 38, 0.95) 100%);
+  border: none;
+}
+
+.talk-bubble-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.talk-bubble-row {
+  display: flex;
+}
+
+.talk-bubble {
+  max-width: 86%;
+  border-radius: 16px;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #fff;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.talk-bubble-user {
+  background: rgba(37, 99, 235, 0.88);
+  border-bottom-right-radius: 8px;
+}
+
+.talk-bubble-assistant {
+  background: rgba(255, 255, 255, 0.14);
+  border-bottom-left-radius: 8px;
 }
 
 /* Breathing animation for listening state */

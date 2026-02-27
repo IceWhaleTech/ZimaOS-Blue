@@ -4,10 +4,10 @@ Interact with a headless browser. Navigate to URLs, read page content via access
 
 ## How to Send
 
-Use the `blue` CLI:
+Direct call:
 
 ```bash
-blue browser.navigate url=https://example.com
+browser.navigate url=https://example.com
 ```
 
 Add `--json` for JSON output.
@@ -25,7 +25,7 @@ Open a URL and return page info.
 - `lang` — output language (default: `en-US`)
 
 ```bash
-blue browser.navigate url=https://example.com
+browser.navigate url=https://example.com
 ```
 
 ### browser.snapshot
@@ -37,7 +37,7 @@ Get the full CDP accessibility tree for a tab. Token-efficient alternative to ra
 - `max_depth` — tree depth limit (default: 10)
 
 ```bash
-blue browser.snapshot target_id=ABCDEF123456
+browser.snapshot target_id=ABCDEF123456
 ```
 
 ### browser.snapshot_interactive
@@ -47,7 +47,7 @@ Get only interactive elements (buttons, links, inputs) via JS extraction. Faster
 **Optional:** `target_id`
 
 ```bash
-blue browser.snapshot_interactive
+browser.snapshot_interactive
 ```
 
 ### browser.act
@@ -61,7 +61,7 @@ Interact with a page element by its @ref number from a previous snapshot.
 - `value` — text for `type` or option for `select`
 
 ```bash
-blue browser.act ref=5 act_type=click
+browser.act ref=5 act_type=click
 ```
 
 ### browser.screenshot
@@ -71,7 +71,7 @@ Capture a page as base64 PNG.
 **One of:** `url` (navigate and screenshot) or `target_id` (screenshot existing tab)
 
 ```bash
-blue browser.screenshot url=https://example.com
+browser.screenshot url=https://example.com
 ```
 
 ### browser.tabs
@@ -79,7 +79,7 @@ blue browser.screenshot url=https://example.com
 List all open browser tabs.
 
 ```bash
-blue browser.tabs
+browser.tabs
 ```
 
 ### browser.close
@@ -89,7 +89,7 @@ Close a browser tab.
 **Required:** `target_id`
 
 ```bash
-blue browser.close target_id=ABCDEF123456
+browser.close target_id=ABCDEF123456
 ```
 
 ## Error Response

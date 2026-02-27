@@ -19,7 +19,6 @@ const answers = ref<Record<string, { selected: string[]; otherText: string }>>({
 // Current question index (1-based for display)
 const currentIndex = computed(() => activeTab.value + 1)
 const totalQuestions = computed(() => question.value?.questions.length || 0)
-const isFirstQuestion = computed(() => activeTab.value === 0)
 const isLastQuestion = computed(() => activeTab.value >= totalQuestions.value - 1)
 
 // Check if we can use quick-submit mode: single question, single-select, short options
@@ -28,6 +27,7 @@ const isQuickMode = computed(() => {
   const q = question.value
   if (q.questions.length !== 1) return false
   const first = q.questions[0]
+  if (!first) return false
   // multi_select is true for checkbox, false or undefined for radio
   if (first.multi_select === true) return false
   if (!first.options || first.options.length === 0) return false
@@ -83,6 +83,13 @@ function isOtherSelected(qId: string): boolean {
   return answers.value[qId]?.selected.includes('__other__') ?? false
 }
 
+function getOrCreateAnswer(qId: string) {
+  if (!answers.value[qId]) {
+    answers.value[qId] = { selected: [], otherText: '' }
+  }
+  return answers.value[qId]
+}
+
 function toggleOther(qId: string, multiSelect: boolean) {
   toggleOption(qId, '__other__', multiSelect)
 }
@@ -93,11 +100,6 @@ const currentQuestionAnswered = computed(() => {
   const ans = answers.value[currentQuestion.value.id]
   if (!ans) return false
   return ans.selected.length > 0 || ans.otherText.trim() !== ''
-})
-
-// Can proceed to next question
-const canProceed = computed(() => {
-  return currentQuestionAnswered.value
 })
 
 const canSubmit = computed(() => {
@@ -145,11 +147,15 @@ function submit() {
   if (!question.value || !canSubmit.value) return
   const result = question.value.questions.map((q) => {
     const ans = answers.value[q.id] || { selected: [], otherText: '' }
-    const selected = ans.selected.filter((v) => v !== '__other__')
+    // Filter out __other__ and deduplicate (keep only one __other__ if present)
+    const otherSelected = ans.selected.includes('__other__')
+    const selected = ans.selected
+      .filter((v) => v !== '__other__')
+      .filter((v, idx, arr) => arr.indexOf(v) === idx) // deduplicate regular options
     return {
       question_id: q.id,
       selected,
-      other_text: ans.selected.includes('__other__') ? ans.otherText : '',
+      other_text: otherSelected ? ans.otherText : '',
     }
   })
   chatStore.submitQuestionAnswers(result)
@@ -234,7 +240,7 @@ function dismiss() {
                 :class="isSelected(currentQuestion.id, opt.value || opt.label)
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
                   : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
-                @click="toggleOption(currentQuestion.id, opt.value || opt.label, currentQuestion.multi_select)"
+                @click="toggleOption(currentQuestion.id, opt.value || opt.label, !!currentQuestion.multi_select)"
               >
                 <!-- Radio / Checkbox indicator -->
                 <div class="flex-shrink-0 mt-0.5">
@@ -261,7 +267,7 @@ function dismiss() {
                 :class="isOtherSelected(currentQuestion.id)
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
                   : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
-                @click="toggleOther(currentQuestion.id, currentQuestion.multi_select)"
+                @click="toggleOther(currentQuestion.id, !!currentQuestion.multi_select)"
               >
                 <div class="flex-shrink-0 mt-0.5">
                   <div v-if="!currentQuestion.multi_select" class="w-4 h-4 rounded-full border-2 flex items-center justify-center"
@@ -279,7 +285,7 @@ function dismiss() {
                   <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('askQuestion.other') }}</span>
                   <input
                     v-if="isOtherSelected(currentQuestion.id)"
-                    v-model="answers[currentQuestion.id].otherText"
+                    v-model="getOrCreateAnswer(currentQuestion.id).otherText"
                     type="text"
                     class="mt-2 w-full px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     :placeholder="t('askQuestion.otherPlaceholder')"

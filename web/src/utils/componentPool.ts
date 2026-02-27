@@ -101,6 +101,8 @@ class ComponentPool {
       video: () => import('@/components/typeless/CardVideo.vue'),
       mermaid: () => import('@/components/typeless/CardMermaid.vue'),
       search: () => import('@/components/typeless/CardSearch.vue'),
+      'deep-search': () => import('@/components/typeless/CardDeepSearch.vue'),
+      'deep-search-progress': () => import('@/components/typeless/CardDeepSearchProgress.vue'),
       'ui-review': () => import('@/components/typeless/CardUIReview.vue'),
       'ui-review-progress': () => import('@/components/typeless/CardUIReviewProgress.vue'),
       'media-generate': () => import('@/components/typeless/CardMediaGenerate.vue'),

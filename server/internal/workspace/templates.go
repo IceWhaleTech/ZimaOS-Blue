@@ -153,3 +153,50 @@ func (ts *templateSet) templateMap() map[string]string {
 		FileHEARTBEAT: ts.heartbeat,
 	}
 }
+
+// templateContentByFile returns the template content for a known workspace file.
+func templateContentByFile(ts *templateSet, name string) string {
+	if ts == nil {
+		return ""
+	}
+	switch name {
+	case FileSOUL:
+		return ts.soul
+	case FileUSER:
+		return ts.user
+	case FileIDENTITY:
+		return ts.identity
+	case FileAGENTS:
+		return ts.agents
+	case FileMEMORY:
+		return ts.memory
+	case FileHEARTBEAT:
+		return ts.heartbeat
+	case FileBOOTSTRAP:
+		return ts.bootstrap
+	default:
+		return ""
+	}
+}
+
+// NormalizeDefaultTemplateToEnglish maps locale-specific default workspace template
+// content to its English template equivalent. Non-default or unknown content is returned unchanged.
+func NormalizeDefaultTemplateToEnglish(name, content string) string {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return content
+	}
+
+	en := strings.TrimSpace(templateContentByFile(getTemplates("en"), name))
+	if en == "" {
+		return content
+	}
+
+	for _, locale := range availableLocales() {
+		ts := getTemplates(locale)
+		if strings.TrimSpace(templateContentByFile(ts, name)) == trimmed {
+			return en
+		}
+	}
+	return content
+}

@@ -28,7 +28,10 @@ func WithCardEmitter(ctx context.Context, fn CardEmitFunc) context.Context {
 
 // EmitCard sends a typeless card to the client if an emitter is set.
 // Safe to call even when no emitter is present (no-op).
+// Automatically adds "typeless": true to the card.
 func EmitCard(ctx context.Context, card map[string]interface{}) {
+	// Add typeless tag to identify this as a typeless card
+	card["typeless"] = true
 	if fn, ok := ctx.Value(cardEmitKey).(CardEmitFunc); ok && fn != nil {
 		fn(card)
 	}

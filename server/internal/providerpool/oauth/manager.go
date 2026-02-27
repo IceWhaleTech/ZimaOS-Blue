@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
+
+var ErrTokenExpiredReconnectRequired = errors.New("oauth token expired and reconnect is required")
 
 // Manager handles OAuth token lifecycle for LLM providers.
 type Manager struct {
@@ -32,6 +35,8 @@ type Manager struct {
 	copilotExpiry  time.Time
 	copilotEndpoint string // API endpoint from token response (e.g., api.individual.githubcopilot.com)
 	copilotMu      sync.Mutex
+
+	refreshLoopOnce sync.Once
 }
 
 type pendingAuth struct {
@@ -227,6 +232,8 @@ func (m *Manager) HandleCallback(ctx context.Context, state, code string) (*Toke
 		endpoint = cfg.CloudCodeEndpoints[0]
 	}
 
+	// Create token with empty ID - SaveToken will check for duplicates by email
+	// and update existing token instead of creating duplicates
 	token := &Token{
 		ProviderID:   pending.ProviderID,
 		ProviderType: pending.ProviderType,
@@ -237,7 +244,7 @@ func (m *Manager) HandleCallback(ctx context.Context, state, code string) (*Toke
 		Email:        email,
 		ProjectID:    projectID,
 		Endpoint:     endpoint,
-		ID:           generateTokenID(),
+		// ID left empty - SaveToken will generate one or reuse existing by email
 	}
 
 	// Persist
@@ -287,7 +294,7 @@ func (m *Manager) CompleteDeviceFlow(ctx context.Context, deviceCode string, int
 		TokenExpiry:  timeutil.NowTime().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
 		Scopes:       cfg.Scopes,
 		Email:        email,
-		ID:           generateTokenID(),
+		// ID left empty - SaveToken will generate one or reuse existing by email
 	}
 
 	if err := m.store.SaveToken(pending.ProviderID, token); err != nil {
@@ -305,14 +312,19 @@ func (m *Manager) GetAccessToken(providerID string) (string, error) {
 		return "", fmt.Errorf("no oauth tokens for provider %s", providerID)
 	}
 
+	var lastErr error
 	for _, token := range tokens {
 		accessToken, err := m.getOrRefreshToken(token)
 		if err == nil {
 			return accessToken, nil
 		}
+		lastErr = err
 		slog.Warn("[oauth] token unusable, trying next", "provider", providerID, "token_id", token.ID, "error", err)
 	}
-	return "", fmt.Errorf("all oauth tokens expired for provider %s", providerID)
+	if lastErr != nil {
+		return "", fmt.Errorf("all oauth tokens unusable for provider %s: %w", providerID, lastErr)
+	}
+	return "", fmt.Errorf("all oauth tokens unusable for provider %s", providerID)
 }
 
 // GetCopilotAccessToken returns a Copilot-specific JWT for the provider.
@@ -370,7 +382,8 @@ func (m *Manager) getOrRefreshToken(token *Token) (string, error) {
 	}
 
 	if token.RefreshToken == "" {
-		return "", fmt.Errorf("token expired and no refresh token available")
+		m.pruneToken(token, "expired_without_refresh")
+		return "", fmt.Errorf("%w: token_id=%s provider=%s", ErrTokenExpiredReconnectRequired, token.ID, token.ProviderID)
 	}
 
 	cfg := m.configs[token.ProviderType]
@@ -380,6 +393,10 @@ func (m *Manager) getOrRefreshToken(token *Token) (string, error) {
 
 	newToken, err := m.refreshToken(context.Background(), cfg, token.RefreshToken)
 	if err != nil {
+		if isTerminalRefreshError(err) {
+			m.pruneToken(token, "refresh_failed_terminal")
+			return "", fmt.Errorf("%w: token_id=%s provider=%s refresh_error=%v", ErrTokenExpiredReconnectRequired, token.ID, token.ProviderID, err)
+		}
 		return "", fmt.Errorf("refresh token: %w", err)
 	}
 
@@ -394,6 +411,32 @@ func (m *Manager) getOrRefreshToken(token *Token) (string, error) {
 	}
 
 	return token.AccessToken, nil
+}
+
+func isTerminalRefreshError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "invalid_grant"),
+		strings.Contains(msg, "invalid_token"),
+		strings.Contains(msg, "expired"),
+		strings.Contains(msg, "revoked"),
+		strings.Contains(msg, "unauthorized"),
+		strings.Contains(msg, "bad credentials"):
+		return true
+	default:
+		return false
+	}
+}
+
+func (m *Manager) pruneToken(token *Token, reason string) {
+	if token == nil || token.ProviderID == "" || token.ID == "" {
+		return
+	}
+	if err := m.store.DeleteToken(token.ProviderID, token.ID); err != nil {
+		slog.Warn("[oauth] failed to remove unusable token", "provider", token.ProviderID, "token_id", token.ID, "reason", reason, "error", err)
+		return
+	}
+	slog.Info("[oauth] removed unusable token", "provider", token.ProviderID, "token_id", token.ID, "reason", reason)
 }
 
 // GetToken returns the full token for a specific provider and token ID.
@@ -429,6 +472,56 @@ func (m *Manager) CleanupPending() {
 	for state, pending := range m.pending {
 		if time.Since(pending.CreatedAt) > 10*time.Minute {
 			delete(m.pending, state)
+		}
+	}
+}
+
+// StartAutoRefresh starts a background loop that periodically refreshes OAuth tokens.
+// Safe to call multiple times; only one loop will run.
+func (m *Manager) StartAutoRefresh(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+
+	m.refreshLoopOnce.Do(func() {
+		go func() {
+			m.RefreshAllTokens()
+
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ctx.Done():
+					slog.Info("[oauth] auto-refresh loop stopped", "reason", ctx.Err())
+					return
+				case <-ticker.C:
+					m.RefreshAllTokens()
+				}
+			}
+		}()
+		slog.Info("[oauth] auto-refresh loop started", "interval", interval.String())
+	})
+}
+
+// RefreshAllTokens tries to refresh all stored OAuth tokens that are expired or near expiry.
+// Invalid/unrefreshable tokens are pruned by getOrRefreshToken.
+func (m *Manager) RefreshAllTokens() {
+	all, err := m.store.ListTokens()
+	if err != nil {
+		slog.Warn("[oauth] list tokens for auto-refresh failed", "error", err)
+		return
+	}
+	if len(all) == 0 {
+		return
+	}
+
+	for _, token := range all {
+		if token == nil || token.ProviderID == "" {
+			continue
+		}
+		if _, err := m.getOrRefreshToken(token); err != nil {
+			slog.Debug("[oauth] auto-refresh skipped unusable token", "provider", token.ProviderID, "token_id", token.ID, "error", err)
 		}
 	}
 }

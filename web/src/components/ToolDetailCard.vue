@@ -16,50 +16,6 @@ function toggle() {
   expanded.value = !expanded.value
 }
 
-// Tool display name via i18n
-const displayName = computed(() => {
-  const key = `tools.names.${props.item.name}`
-  const translated = t(key)
-  if (translated !== key) return translated
-  return props.item.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-})
-
-// Tool icon path
-const iconSrc = computed(() => {
-  const iconMap: Record<string, string> = {
-    exec: '/icons/tools/terminal.svg',
-    execute_command: '/icons/tools/terminal.svg',
-    browser: '/icons/tools/browser.svg',
-    browser_navigate: '/icons/tools/browser.svg',
-    browser_click: '/icons/tools/browser.svg',
-    browser_read: '/icons/tools/browser.svg',
-    browser_screenshot: '/icons/tools/browser.svg',
-    memory: '/icons/tools/memory.svg',
-    memory_search: '/icons/tools/memory.svg',
-    web_search: '/icons/tools/web-search.svg',
-    scheduler: '/icons/tools/schedule.svg',
-    ui_reviewer: '/icons/tools/eye.svg',
-    analyze: '/icons/tools/analyze.svg',
-    sandbox: '/icons/tools/sandbox.svg',
-    workflows: '/icons/tools/workflow.svg',
-    notifications: '/icons/tools/notifications.svg',
-    ask: '/icons/tools/question.svg',
-  }
-  // Mediagen tools use the same icon
-  const name = props.item.name
-  if (name === 'image_generate' || name === 'video_generate') {
-    return '/icons/tools/mediagen.svg'
-  }
-  return iconMap[name] || '/icons/tools/process.svg'
-})
-
-// Status color
-const statusClass = computed(() => {
-  if (props.item.icon === '✓') return 'text-green-600 dark:text-green-400'
-  if (props.item.icon === '✗') return 'text-red-500 dark:text-red-400'
-  return 'text-yellow-500 dark:text-yellow-400'
-})
-
 // Truncated output for preview (max 2 lines, 120 chars)
 const previewOutput = computed(() => {
   if (!props.item.output) return ''
@@ -75,6 +31,13 @@ const isShortOutput = computed(() => {
   if (!props.item.output) return true
   return props.item.output.length <= 80 && !props.item.output.includes('\n')
 })
+const hasStatus = computed(() => !!props.item.status?.trim())
+const statusText = computed(() => props.item.status || '')
+const statusToneClass = computed(() => {
+  if (props.item.icon === '✗') return 'tool-detail-card__status--error'
+  if (props.item.icon === '⏳') return 'tool-detail-card__status--pending'
+  return 'tool-detail-card__status--success'
+})
 </script>
 
 <template>
@@ -83,253 +46,215 @@ const isShortOutput = computed(() => {
     :class="{ 'tool-detail-card--expandable': hasOutput && !isShortOutput }"
     @click="hasOutput && !isShortOutput ? toggle() : undefined"
   >
-    <!-- Header -->
-    <div class="tool-detail-card__header">
-      <div class="tool-detail-card__title">
-        <img :src="iconSrc" :alt="item.name" class="tool-detail-card__icon" />
-        <span class="tool-detail-card__name">{{ displayName }}</span>
-        <span :class="statusClass" class="tool-detail-card__status-icon">{{ item.icon }}</span>
+    <!-- Command/Input (above) -->
+    <div v-if="item.command" class="tool-detail-card__command">
+      <span class="tool-detail-card__command-label">$</span>
+      <span class="tool-detail-card__command-text">{{ item.command }}</span>
+    </div>
+
+    <!-- Status/Error -->
+    <div v-if="hasStatus" class="tool-detail-card__status" :class="statusToneClass">
+      {{ statusText }}
+    </div>
+
+    <!-- Output (below) -->
+    <div v-if="hasOutput" class="tool-detail-card__output-wrapper">
+      <!-- Short inline output -->
+      <div v-if="isShortOutput" class="tool-detail-card__output-inline">
+        {{ item.output }}
       </div>
-      <div class="tool-detail-card__meta">
-        <span v-if="item.status" class="tool-detail-card__duration">{{ item.status }}</span>
-        <span v-if="item.host === 'sandbox'" class="tool-detail-card__badge">
-          <svg class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-          </svg>
-        </span>
-        <button
-          v-if="hasOutput && !isShortOutput"
-          class="tool-detail-card__toggle"
-          :title="expanded ? t('chat.toolDetailCollapse') : t('chat.toolDetailExpand')"
-        >
-          <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-180': expanded }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+      <!-- Preview (collapsed) -->
+      <div v-else-if="!expanded" class="tool-detail-card__output-preview">
+        {{ previewOutput }}
+      </div>
+      <!-- Full output (expanded) -->
+      <div v-else class="tool-detail-card__output-full">
+        <pre>{{ item.output }}</pre>
       </div>
     </div>
 
-    <!-- Detail line (command/query) -->
-    <div v-if="item.command" class="tool-detail-card__detail">
-      {{ item.command }}
-    </div>
-
-    <!-- Short inline output -->
-    <div v-if="hasOutput && isShortOutput" class="tool-detail-card__inline">
-      {{ item.output }}
-    </div>
-
-    <!-- Preview (collapsed) -->
-    <div v-else-if="hasOutput && !expanded" class="tool-detail-card__preview">
-      {{ previewOutput }}
-    </div>
-
-    <!-- Full output (expanded) -->
-    <div v-if="hasOutput && !isShortOutput && expanded" class="tool-detail-card__output">
-      <pre>{{ item.output }}</pre>
-    </div>
-
-    <!-- No output -->
-    <div v-if="!hasOutput && item.icon === '✓'" class="tool-detail-card__empty">
-      {{ t('chat.toolDetailCompleted') }}
-    </div>
+    <!-- Toggle button -->
+    <button
+      v-if="hasOutput && !isShortOutput"
+      class="tool-detail-card__toggle"
+      :title="expanded ? t('chat.toolDetailCollapse') : t('chat.toolDetailExpand')"
+    >
+      <svg class="w-3 h-3 transition-transform" :class="{ 'rotate-180': expanded }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+      </svg>
+    </button>
   </div>
 </template>
 
 <style scoped>
 .tool-detail-card {
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: 4px;
+  padding: 8px 10px;
   margin: 4px 0;
-  background: #f9fafb;
-  transition: border-color 0.15s, background-color 0.15s;
+  background: #fff;
 }
 
 :root.dark .tool-detail-card {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.15);
+  background: transparent;
 }
 
 .tool-detail-card--expandable {
   cursor: pointer;
 }
 
-.tool-detail-card--expandable:hover {
-  border-color: #d1d5db;
-  background: #f3f4f6;
-}
-
-:root.dark .tool-detail-card--expandable:hover {
-  border-color: rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.tool-detail-card__header {
+/* Command/Input section */
+.tool-detail-card__command {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.tool-detail-card__title {
-  display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  font-weight: 500;
-  font-size: 13px;
-  color: #1f2937;
-  min-width: 0;
-}
-
-:root.dark .tool-detail-card__title {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.tool-detail-card__icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  opacity: 0.7;
-}
-
-:root.dark .tool-detail-card__icon {
-  filter: invert(0.85);
-}
-
-.tool-detail-card__name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tool-detail-card__status-icon {
-  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
   font-size: 12px;
+  line-height: 1.5;
 }
 
-.tool-detail-card__meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.tool-detail-card__duration {
-  font-size: 11px;
+.tool-detail-card__command-label {
   color: #6b7280;
-  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  user-select: none;
 }
 
-:root.dark .tool-detail-card__duration {
-  color: rgba(255, 255, 255, 0.45);
+:root.dark .tool-detail-card__command-label {
+  color: rgba(255, 255, 255, 0.5);
 }
 
-.tool-detail-card__badge {
-  color: #9ca3af;
+.tool-detail-card__command-text {
+  color: #374151;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
-.tool-detail-card__toggle {
-  padding: 2px;
+:root.dark .tool-detail-card__command-text {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Output section */
+.tool-detail-card__output-wrapper {
+  margin-top: 6px;
+}
+
+.tool-detail-card__status {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 4px 6px;
   border-radius: 4px;
-  color: #9ca3af;
-  cursor: pointer;
-  background: none;
-  border: none;
+  border: 1px solid transparent;
 }
 
-.tool-detail-card__toggle:hover {
-  color: #4b5563;
+.tool-detail-card__status--success {
+  color: #166534;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
 }
 
-:root.dark .tool-detail-card__toggle:hover {
-  color: rgba(255, 255, 255, 0.7);
+.tool-detail-card__status--error {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fecaca;
 }
 
-.tool-detail-card__detail {
+.tool-detail-card__status--pending {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+:root.dark .tool-detail-card__status--success {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+:root.dark .tool-detail-card__status--error {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.32);
+}
+
+:root.dark .tool-detail-card__status--pending {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.32);
+}
+
+.tool-detail-card__output-inline {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
   font-size: 12px;
   color: #6b7280;
-  margin-top: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
-:root.dark .tool-detail-card__detail {
-  color: rgba(255, 255, 255, 0.45);
-}
-
-.tool-detail-card__inline {
-  font-size: 12px;
-  color: #4b5563;
-  margin-top: 4px;
-  padding: 4px 8px;
-  background: #f3f4f6;
-  border-radius: 4px;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-:root.dark .tool-detail-card__inline {
-  background: rgba(255, 255, 255, 0.05);
+:root.dark .tool-detail-card__output-inline {
   color: rgba(255, 255, 255, 0.6);
 }
 
-.tool-detail-card__preview {
+.tool-detail-card__output-preview {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
   font-size: 12px;
   color: #6b7280;
-  margin-top: 4px;
-  padding: 4px 8px;
-  background: #f3f4f6;
-  border-radius: 4px;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
   max-height: 44px;
   overflow: hidden;
   white-space: pre-wrap;
   word-break: break-all;
 }
 
-:root.dark .tool-detail-card__preview {
-  background: rgba(255, 255, 255, 0.05);
+:root.dark .tool-detail-card__output-preview {
   color: rgba(255, 255, 255, 0.5);
 }
 
-.tool-detail-card__output {
-  margin-top: 4px;
-  padding: 8px;
-  background: #f3f4f6;
-  border-radius: 4px;
+.tool-detail-card__output-full {
   max-height: 300px;
   overflow: auto;
 }
 
-:root.dark .tool-detail-card__output {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.tool-detail-card__output pre {
-  font-size: 12px;
+.tool-detail-card__output-full pre {
   font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
   color: #374151;
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
 }
 
-:root.dark .tool-detail-card__output pre {
+:root.dark .tool-detail-card__output-full pre {
   color: rgba(255, 255, 255, 0.7);
 }
 
-.tool-detail-card__empty {
-  font-size: 11px;
+/* Toggle button */
+.tool-detail-card__toggle {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px;
+  border-radius: 2px;
   color: #9ca3af;
-  margin-top: 2px;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #e5e7eb;
 }
 
-:root.dark .tool-detail-card__empty {
-  color: rgba(255, 255, 255, 0.35);
+.tool-detail-card__toggle:hover {
+  color: #4b5563;
+  border-color: #d1d5db;
+}
+
+:root.dark .tool-detail-card__toggle {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+:root.dark .tool-detail-card__toggle:hover {
+  color: rgba(255, 255, 255, 0.7);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 </style>

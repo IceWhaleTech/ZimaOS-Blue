@@ -122,6 +122,33 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     return provider
   }
 
+  function mapMediaModelsToProviderModels(cfg: MediaProviderConfig): Model[] {
+    if (!cfg.models?.length) return []
+    return cfg.models.map(m => ({
+      id: m.id,
+      provider_id: cfg.id,
+      name: m.name,
+      display_name: m.name,
+      enabled: true,
+      capabilities: [m.type === 'video' ? 'video_generation' : m.type === 'image' ? 'image_generation' : m.type],
+      price_per_request: m.price,
+      pricing_unit: m.pricing_unit,
+    }))
+  }
+
+  function isMediaProvider(providerId: string): boolean {
+    return providers.value.find(p => p.id === providerId)?.type === 'media'
+  }
+
+  function syncMediaProviderModels(providerId: string, modelsForProvider: Model[]) {
+    const provider = providers.value.find(p => p.id === providerId)
+    if (provider) {
+      provider.models = modelsForProvider
+    }
+    models.value = models.value.filter(m => m.provider_id !== providerId)
+    models.value.push(...modelsForProvider)
+  }
+
   // Actions
   async function fetchProviders() {
     loading.value = true
@@ -188,6 +215,12 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     error.value = null
     try {
       if (providerId) {
+        if (isMediaProvider(providerId)) {
+          const response = await mediaProviderApi.get(providerId)
+          const mediaModels = mapMediaModelsToProviderModels(response.data)
+          syncMediaProviderModels(providerId, mediaModels)
+          return
+        }
         const response = await providerPoolApi.listProviderModels(providerId)
         // Update models for this provider
         models.value = models.value.filter(m => m.provider_id !== providerId)
@@ -208,6 +241,12 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     // Don't set loading or clear error - this is a background refresh
     // that shouldn't block the UI
     try {
+      if (isMediaProvider(providerId)) {
+        const response = await mediaProviderApi.get(providerId)
+        const mediaModels = mapMediaModelsToProviderModels(response.data)
+        syncMediaProviderModels(providerId, mediaModels)
+        return { success: true, models: mediaModels }
+      }
       const response = await providerPoolApi.fetchProviderModels(providerId)
       // Update models for this provider
       models.value = models.value.filter(m => m.provider_id !== providerId)
@@ -222,6 +261,16 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
 
   async function probeModels(providerId: string) {
     try {
+      if (isMediaProvider(providerId)) {
+        const mediaModels = models.value.filter(m => m.provider_id === providerId)
+        return {
+          success: true,
+          total: mediaModels.length,
+          available: mediaModels.length,
+          unavailable: 0,
+          results: [],
+        }
+      }
       const response = await providerPoolApi.probeProviderModels(providerId)
       // After probing, refresh the model list to reflect enabled/disabled state
       await fetchModels(providerId)
@@ -391,7 +440,6 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       if (provider) {
         provider.status = 'active'
         provider.last_error = ''
-        provider.last_error_time = ''
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to clear error'

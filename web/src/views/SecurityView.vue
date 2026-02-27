@@ -105,6 +105,34 @@ const fixPreviewVisible = ref(false)
 const fixPreviewItem = ref<ScanItem | null>(null)
 const expandedItemId = ref<string | null>(null) // ID of expanded item for details
 
+function getScanStatusPriority(status: ScanItem['status']): number {
+  switch (status) {
+    case 'failed':
+      return 0
+    case 'warning':
+      return 1
+    case 'scanning':
+      return 2
+    case 'pending':
+      return 3
+    case 'passed':
+      return 4
+    default:
+      return 5
+  }
+}
+
+const prioritizedScanResults = computed(() => {
+  return scanResults.value
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const p = getScanStatusPriority(a.item.status) - getScanStatusPriority(b.item.status)
+      if (p !== 0) return p
+      return a.index - b.index
+    })
+    .map(({ item }) => item)
+})
+
 // Logs tab state
 const logs = ref<LogEntry[]>([])
 const logsLoading = ref(false)
@@ -150,7 +178,7 @@ function isRequestLog(log: LogEntry): boolean {
 function getMethodColor(method: string | undefined): string {
   if (!method) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
   switch (method.toUpperCase()) {
-    case 'GET': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+    case 'GET': return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
     case 'POST': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
     case 'PUT': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
     case 'PATCH': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
@@ -163,7 +191,7 @@ function getStatusColor(status: number): string {
   if (status >= 500) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
   if (status >= 400) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
   if (status >= 300) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-  if (status >= 200) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+  if (status >= 200) return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
   return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
 }
 
@@ -432,7 +460,7 @@ function getItemField(item: ScanItem, field: 'risk' | 'impact' | 'remediation'):
 // Get scan item status icon and color
 function getScanStatusClass(status: string): string {
   switch (status) {
-    case 'passed': return 'text-green-700 dark:text-green-500'
+    case 'passed': return 'text-emerald-800 dark:text-emerald-400'
     case 'warning': return 'text-yellow-500'
     case 'failed': return 'text-red-500'
     case 'scanning': return 'text-gray-900 dark:text-white animate-pulse'
@@ -603,7 +631,7 @@ onUnmounted(() => {
 :class="[
         'rounded-lg p-4 flex items-center justify-between',
         securityStatus === 'passed'
-          ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+          ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800'
           : securityStatus === 'warning'
             ? 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800'
             : securityStatus === 'failed'
@@ -614,7 +642,7 @@ onUnmounted(() => {
           <div
 :class="[
             'w-10 h-10 rounded-full flex items-center justify-center',
-            securityStatus === 'passed' ? 'bg-green-600' :
+            securityStatus === 'passed' ? 'bg-emerald-700' :
             securityStatus === 'warning' ? 'bg-yellow-500' :
             securityStatus === 'failed' ? 'bg-red-500' : 'bg-gray-700 dark:bg-gray-500'
           ]">
@@ -635,7 +663,7 @@ onUnmounted(() => {
             <h2
 :class="[
               'text-lg font-semibold',
-              securityStatus === 'passed' ? 'text-green-900 dark:text-green-400' :
+              securityStatus === 'passed' ? 'text-emerald-900 dark:text-emerald-300' :
               securityStatus === 'warning' ? 'text-yellow-800 dark:text-yellow-200' :
               securityStatus === 'failed' ? 'text-red-800 dark:text-red-200' :
               'text-gray-900 dark:text-white dark:text-white'
@@ -648,7 +676,7 @@ onUnmounted(() => {
             <p
 :class="[
               'text-sm',
-              securityStatus === 'passed' ? 'text-green-700 dark:text-green-300' :
+              securityStatus === 'passed' ? 'text-emerald-800 dark:text-emerald-300' :
               securityStatus === 'warning' ? 'text-yellow-600 dark:text-yellow-400' :
               securityStatus === 'failed' ? 'text-red-600 dark:text-red-400' :
               'text-gray-900 dark:text-white dark:text-white'
@@ -674,7 +702,7 @@ onUnmounted(() => {
           <button
             v-if="fixableCount > 0 && !isScanning"
             :disabled="!!fixingItem"
-            class="px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2 bg-green-500 hover:bg-green-600 disabled:opacity-50"
+            class="px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50"
             @click="fixAllIssues"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -715,7 +743,7 @@ onUnmounted(() => {
         </div>
         <div class="h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
           <div
-            class="h-full bg-gradient-to-r from-blue-500 dark:from-blue-400 to-green-500 dark:to-green-400 transition-all duration-300 ease-out"
+            class="h-full bg-gradient-to-r from-blue-500 dark:from-blue-400 to-emerald-700 dark:to-emerald-500 transition-all duration-300 ease-out"
             :style="{ width: `${scanProgress}%` }"
           ></div>
         </div>
@@ -723,9 +751,9 @@ onUnmounted(() => {
 
       <!-- Scan Summary -->
       <div v-if="scanCompleted" class="grid grid-cols-3 gap-4 mb-4">
-        <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
-          <div class="text-2xl font-bold text-green-700 dark:text-green-400">{{ scanSummary.passed }}</div>
-          <div class="text-xs text-green-600 dark:text-green-300">{{ t('security.scan.passed') }}</div>
+        <div class="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 text-center">
+          <div class="text-2xl font-bold text-emerald-800 dark:text-emerald-300">{{ scanSummary.passed }}</div>
+          <div class="text-xs text-emerald-700 dark:text-emerald-300">{{ t('security.scan.passed') }}</div>
         </div>
         <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 text-center">
           <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{{ scanSummary.warnings }}</div>
@@ -760,10 +788,10 @@ onUnmounted(() => {
 
         <!-- Results Content -->
         <div v-show="!scanCompleted || scanResultsExpanded" class="space-y-1 max-h-96 overflow-y-auto">
-        <template v-for="(item, index) in scanResults" :key="item.id">
+        <template v-for="(item, index) in prioritizedScanResults" :key="item.id">
           <!-- Category Header -->
           <div
-            v-if="index === 0 || scanResults[index - 1]?.category !== item.category"
+            v-if="index === 0 || prioritizedScanResults[index - 1]?.category !== item.category"
             class="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider pt-3 pb-1"
           >
             {{ getCategoryLabel(item.category) }}
@@ -806,7 +834,7 @@ onUnmounted(() => {
                 <span
                   :class="[
                     'px-2 py-0.5 text-xs rounded-full font-medium',
-                    item.status === 'passed' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
+                    item.status === 'passed' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300' :
                     item.status === 'warning' ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300' :
                     item.status === 'failed' ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' :
                     'bg-gray-100 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400'
@@ -866,7 +894,7 @@ onUnmounted(() => {
                 <span class="font-medium text-red-600 dark:text-red-400">{{ t('security.scan.impact') }}:</span> {{ getItemField(item, 'impact') }}
               </div>
               <div v-if="item.remediation" class="text-xs text-gray-600 dark:text-slate-300">
-                <span class="font-medium text-green-700 dark:text-green-300">{{ t('security.scan.remediation') }}:</span> {{ getItemField(item, 'remediation') }}
+                <span class="font-medium text-emerald-800 dark:text-emerald-300">{{ t('security.scan.remediation') }}:</span> {{ getItemField(item, 'remediation') }}
               </div>
             </div>
           </div>
@@ -929,8 +957,8 @@ onUnmounted(() => {
           </div>
           <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div class="flex items-center justify-center gap-1">
-              <span class="w-2 h-2 rounded-full bg-green-400"></span>
-              <span class="text-lg font-bold text-green-400 dark:text-green-400">{{ connectionStats.active_websocket ?? 0 }}</span>
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span class="text-lg font-bold text-emerald-500 dark:text-emerald-400">{{ connectionStats.active_websocket ?? 0 }}</span>
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400">WebSocket</div>
           </div>
@@ -973,12 +1001,12 @@ onUnmounted(() => {
             >
               <div class="flex items-center justify-between mb-1">
                 <div class="flex items-center gap-2">
-                  <span :class="['w-2 h-2 rounded-full', conn.status === 'active' ? 'bg-green-400' : 'bg-gray-400']"></span>
+                  <span :class="['w-2 h-2 rounded-full', conn.status === 'active' ? 'bg-emerald-500' : 'bg-gray-400']"></span>
                   <span
 :class="[
                     'px-2 py-0.5 rounded text-xs font-medium uppercase',
                     conn.type === 'http' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' :
-                    conn.type === 'websocket' ? 'bg-green-50 dark:bg-green-900/30 text-green-200 dark:text-green-200' :
+                    conn.type === 'websocket' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300' :
                     'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
                   ]">
                     {{ conn.type }}
@@ -1022,7 +1050,7 @@ onUnmounted(() => {
         <!-- Stats Summary -->
         <div v-if="companionStats" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
           <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <div class="text-lg font-bold text-green-400 dark:text-green-400">{{ companionStats.active_sessions }}</div>
+            <div class="text-lg font-bold text-emerald-500 dark:text-emerald-400">{{ companionStats.active_sessions }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('companion.activeSessions') }}</div>
           </div>
           <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
@@ -1139,10 +1167,10 @@ onUnmounted(() => {
     <Teleport to="body">
       <div
         v-if="selectedSession"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+        class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 overflow-y-auto"
         @click.self="closeSessionDetail"
       >
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl h-[92vh] max-h-[92vh] my-auto overflow-hidden flex flex-col min-h-0">
           <SessionDetail
             :session="selectedSession"
             @close="closeSessionDetail"

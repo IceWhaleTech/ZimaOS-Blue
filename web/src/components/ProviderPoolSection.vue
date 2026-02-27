@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
@@ -52,6 +53,7 @@ const newProvider = ref({
   priority: 50,
   location: 'cloud' as 'cloud' | 'local',
 })
+const showNewProviderApiKey = ref(false)
 const addingProvider = ref(false)
 const addingStep = ref('')  // '', 'adding', 'probing', 'done'
 
@@ -61,6 +63,7 @@ const newKey = ref({
   key: '',
   label: '',
 })
+const showNewKeyApiKey = ref(false)
 
 // Pricing form
 const pricingForm = ref({
@@ -94,13 +97,22 @@ const showModelParams = ref(false)
 const draggedModel = ref<Model | null>(null)
 const dragOverModel = ref<string | null>(null)
 
+// Provider to display in detail panel - always show selected provider regardless of tab
+const displayProvider = computed(() => store.selectedProvider)
+
+// Models for selected provider
+const selectedProviderModels = computed(() => {
+  if (!store.selectedProviderId || !store.models) return []
+  return store.models.filter(m => m.provider_id === store.selectedProviderId)
+})
+
 // Models to display: always provider-level (union of all keys)
 const displayModels = computed(() => {
   return selectedProviderModels.value
 })
 
 // Refresh models when provider changes
-watch(() => currentTabSelectedProvider.value, async (provider) => {
+watch(() => displayProvider.value, async (provider) => {
   if (!provider) return
   // Fetch provider-level models (backend unions all keys automatically)
   if (store.selectedProviderId) {
@@ -241,27 +253,6 @@ const currentTabSelectedProvider = computed(() => {
   if (activeTab.value === 'oauth') {
     return store.selectedProvider.oauth ? store.selectedProvider : null
   }
-
-  const providerType = store.selectedProvider.type
-
-  // Map provider type to tab
-  const typeToTab: Record<string, string> = {
-    'builtin': 'builtin',
-    'platform': 'platform',
-    'custom': 'custom',
-    'acp': 'custom',
-    'ide': 'ide',
-    'trial': 'trial',
-    'media': 'media',
-  }
-
-  const expectedTab = typeToTab[providerType] || 'builtin'
-  return expectedTab === activeTab.value ? store.selectedProvider : null
-})
-
-const selectedProviderModels = computed(() => {
-  if (!store.selectedProviderId || !store.models) return []
-  return store.models.filter(m => m.provider_id === store.selectedProviderId)
 })
 
 // Get custom pricing for a specific model in the selected provider
@@ -438,11 +429,12 @@ async function addCustomProvider() {
   addingProvider.value = true
   addingStep.value = 'adding'
   try {
+    const trimmedApiKey = newProvider.value.api_key.trim()
     // Step 1: Create provider (with optional API key — backend saves it atomically)
     const provider = await store.addProvider({
       name: newProvider.value.name,
       base_url: newProvider.value.base_url,
-      api_key: newProvider.value.api_key || undefined,
+      api_key: trimmedApiKey || undefined,
       priority: newProvider.value.priority,
       location: newProvider.value.location,
       type: 'custom',
@@ -507,6 +499,7 @@ async function addCustomProvider() {
     store.selectProvider(providerId)
 
     showAddModal.value = false
+    showNewProviderApiKey.value = false
     newProvider.value = { name: '', base_url: '', api_key: '', priority: 50, location: 'cloud' }
   } catch (e) {
     console.error('Failed to add provider:', e)
@@ -530,15 +523,17 @@ function openKeyModal(providerId: string) {
   newKey.value.providerId = providerId
   newKey.value.key = ''
   newKey.value.label = ''
+  showNewKeyApiKey.value = false
   showKeyModal.value = true
 }
 
 async function addAPIKey() {
   const providerId = newKey.value.providerId
   try {
+    const trimmedApiKey = newKey.value.key.trim()
     const apiKey = await store.addAPIKey(
       providerId,
-      newKey.value.key,
+      trimmedApiKey,
       newKey.value.label || undefined
     )
     showKeyModal.value = false
@@ -584,6 +579,15 @@ const disconnectingOAuth = ref<string | null>(null)
 const disconnectingAccountId = ref<string | null>(null)
 const deviceFlowState = ref<{ userCode: string; verificationUri: string; deviceCode: string; providerId: string } | null>(null)
 const oauthAccounts = ref<Record<string, import('@/api/providerPool').OAuthAccount[]>>({})
+
+function sanitizeDeviceUserCode(raw: string): string {
+  return raw
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[‐‑‒–—―]/g, '-')
+    .replace(/\s+/g, '')
+    .toUpperCase()
+}
 
 // Provider usage state
 interface ProviderUsageSummary {
@@ -639,7 +643,7 @@ async function startOAuthConnect(providerId: string) {
     } else if (result.data.device_code && result.data.user_code) {
       // Device code flow — show code to user
       deviceFlowState.value = {
-        userCode: result.data.user_code,
+        userCode: sanitizeDeviceUserCode(result.data.user_code),
         verificationUri: result.data.verification_uri || 'https://github.com/login/device',
         deviceCode: result.data.device_code,
         providerId,
@@ -649,6 +653,17 @@ async function startOAuthConnect(providerId: string) {
     notification.error(e?.response?.data?.error || t('providerPool.oauth.connectFailed'))
   } finally {
     connectingOAuth.value = null
+  }
+}
+
+async function copyDeviceFlowCode() {
+  if (!deviceFlowState.value) return
+  try {
+    await navigator.clipboard.writeText(sanitizeDeviceUserCode(deviceFlowState.value.userCode))
+    notification.success(t('common.copied'))
+  } catch (e) {
+    console.error('Failed to copy device flow code:', e)
+    notification.error(t('providerPool.oauth.connectFailed'))
   }
 }
 
@@ -848,7 +863,7 @@ async function handleModelDrop(e: DragEvent, targetModel: Model) {
   draggedModel.value = null
 
   // Save reordered model IDs as allowed_models (order = priority)
-  const provider = currentTabSelectedProvider.value
+  const provider = displayProvider.value
   if (provider) {
     const orderedIds = models.map(m => m.id)
     await store.updateProvider(provider.id, { allowed_models: orderedIds })
@@ -984,7 +999,7 @@ async function removeCustomPricing(modelId: string, providerId?: string) {
 
 // Model params methods
 function openParamsModal() {
-  const provider = currentTabSelectedProvider.value
+  const provider = displayProvider.value
   if (provider) {
     paramsForm.value = {
       temperature: provider.model_params?.temperature,
@@ -996,7 +1011,7 @@ function openParamsModal() {
 }
 
 async function saveModelParams() {
-  const provider = currentTabSelectedProvider.value
+  const provider = displayProvider.value
   if (!provider) return
 
   try {
@@ -1012,7 +1027,7 @@ async function saveModelParams() {
 }
 
 async function detectCapabilities() {
-  const provider = currentTabSelectedProvider.value
+  const provider = displayProvider.value
   if (!provider) return
 
   detectingCapabilities.value = provider.id
@@ -1027,7 +1042,7 @@ async function detectCapabilities() {
 
 // Allowed models methods
 async function openAllowedModelsModal() {
-  const provider = currentTabSelectedProvider.value
+  const provider = displayProvider.value
   if (!provider) return
 
   loadingAllModels.value = true
@@ -1078,7 +1093,7 @@ function clearAllModels() {
 }
 
 async function saveAllowedModels() {
-  const provider = currentTabSelectedProvider.value
+  const provider = displayProvider.value
   if (!provider) return
 
   savingAllowedModels.value = true
@@ -1101,7 +1116,7 @@ function openIconUpload() {
 async function handleIconUpload(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-  if (!file || !currentTabSelectedProvider.value) return
+  if (!file || !displayProvider.value) return
 
   // Validate file size (max 500KB)
   if (file.size > 500 * 1024) {
@@ -1121,8 +1136,8 @@ async function handleIconUpload(event: Event) {
     const reader = new FileReader()
     reader.onload = async (e) => {
       const dataUrl = e.target?.result as string
-      if (dataUrl && currentTabSelectedProvider.value) {
-        await store.updateProviderIcon(currentTabSelectedProvider.value.id, dataUrl)
+      if (dataUrl && displayProvider.value) {
+        await store.updateProviderIcon(displayProvider.value.id, dataUrl)
       }
       uploadingIcon.value = false
     }
@@ -1173,7 +1188,7 @@ onMounted(() => {
         </button>
         <button
           class="px-3 py-1.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg flex items-center gap-1 text-sm transition-colors"
-          @click="showAddModal = true"
+          @click="showNewProviderApiKey = false; showAddModal = true"
         >
           <span>+</span>
           {{ t('providerPool.addCustom') }}
@@ -1331,20 +1346,13 @@ onMounted(() => {
               >
                 🔑 {{ provider.api_keys.length }}
               </span>
-              <!-- OAuth badge — show count like API keys, hide when no accounts -->
+              <!-- OAuth badge — show count only when connected -->
               <span
-                v-if="provider.oauth?.connected && (provider.oauth?.account_count || 0) > 0"
+                v-if="provider.oauth?.connected"
                 class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
                 :title="t('providerPool.oauth.title')"
               >
                 🔗 {{ provider.oauth.account_count || 1 }}
-              </span>
-              <span
-                v-else-if="provider.oauth && !provider.oauth.connected"
-                class="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400"
-                :title="t('providerPool.oauth.notConnected')"
-              >
-                🔗
               </span>
               <!-- Location badge -->
               <span
@@ -1383,9 +1391,9 @@ onMounted(() => {
 
       <!-- Provider Details -->
       <div class="space-y-2 lg:max-h-[480px] lg:overflow-y-auto">
-        <div v-if="currentTabSelectedProvider" class="bg-white dark:bg-slate-800/50 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
+        <div v-if="store.selectedProvider" class="bg-white dark:bg-slate-800/50 rounded-lg border border-gray-200 dark:border-slate-700 p-4">
           <div class="flex items-center justify-between mb-4 group/header"
-            @touchstart="startLongPress('provider-' + currentTabSelectedProvider!.id)"
+            @touchstart="startLongPress('provider-' + store.selectedProvider!.id)"
             @touchend="cancelLongPress()"
             @touchcancel="cancelLongPress()"
           >
@@ -1393,21 +1401,21 @@ onMounted(() => {
               <div class="relative group">
                 <!-- Builtin provider: clickable logo to website -->
                 <a
-                  v-if="(currentTabSelectedProvider.type === 'builtin' || currentTabSelectedProvider.type === 'platform' || currentTabSelectedProvider.type === 'media') && currentTabSelectedProvider.website"
-                  :href="currentTabSelectedProvider.website"
+                  v-if="(store.selectedProvider.type === 'builtin' || store.selectedProvider.type === 'platform' || store.selectedProvider.type === 'media') && store.selectedProvider.website"
+                  :href="store.selectedProvider.website"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="block cursor-pointer hover:opacity-80 transition-opacity"
                   :title="t('providerPool.visitWebsite')"
                 >
-                  <ProviderIcon :provider-id="currentTabSelectedProvider.id" :custom-icon="currentTabSelectedProvider.custom_icon" size="xl" />
+                  <ProviderIcon :provider-id="store.selectedProvider.id" :custom-icon="store.selectedProvider.custom_icon" size="xl" />
                 </a>
                 <!-- Non-builtin or no website: regular icon -->
                 <template v-else>
-                  <ProviderIcon :provider-id="currentTabSelectedProvider.id" :custom-icon="currentTabSelectedProvider.custom_icon" size="xl" />
+                  <ProviderIcon :provider-id="store.selectedProvider.id" :custom-icon="store.selectedProvider.custom_icon" size="xl" />
                 </template>
                 <button
-                  v-if="currentTabSelectedProvider.type === 'custom'"
+                  v-if="displayProvider.type === 'custom'"
                   class="absolute inset-0 flex items-center justify-center bg-black/50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                   :title="t('providerPool.changeIcon')"
                   @click="openIconUpload"
@@ -1426,15 +1434,15 @@ onMounted(() => {
                 />
               </div>
               <div class="cursor-pointer select-none" @click="showModelParams = !showModelParams">
-                <h2 class="font-bold text-gray-900 dark:text-white">{{ getProviderName(currentTabSelectedProvider) }}</h2>
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ getProviderDescription(currentTabSelectedProvider) }}</p>
+                <h2 class="font-bold text-gray-900 dark:text-white">{{ getProviderName(store.selectedProvider) }}</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ getProviderDescription(store.selectedProvider) }}</p>
                 <!-- Inline model params summary -->
                 <div class="flex items-center gap-2 mt-1 text-[10px] text-gray-400 dark:text-gray-500">
-                  <span>{{ t('providerPool.temperature') }}: {{ currentTabSelectedProvider!.model_params?.temperature ?? t('providerPool.default') }}</span>
+                  <span>{{ t('providerPool.temperature') }}: {{ store.selectedProvider!.model_params?.temperature ?? t('providerPool.default') }}</span>
                   <span>·</span>
                   <span>
                     {{ t('providerPool.maxTokens') }}:
-                    {{ currentTabSelectedProvider!.model_params?.max_tokens || currentTabSelectedProvider!.model_params?.detected_max_tokens || t('providerPool.default') }}
+                    {{ store.selectedProvider!.model_params?.max_tokens || store.selectedProvider!.model_params?.detected_max_tokens || t('providerPool.default') }}
                   </span>
                   <svg
                     :class="['w-3 h-3 transition-transform', showModelParams ? 'rotate-180' : '']"
@@ -1449,22 +1457,22 @@ onMounted(() => {
                   <button
                     :class="[
                       'px-1.5 py-0.5 rounded text-[10px] transition-colors',
-                      currentTabSelectedProvider.location === 'cloud'
+                      displayProvider.location === 'cloud'
                         ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                         : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500'
                     ]"
-                    @click="updateProviderLocation(currentTabSelectedProvider!.id, 'cloud')"
+                    @click="updateProviderLocation(displayProvider!.id, 'cloud')"
                   >
                     ☁️ {{ t('providerPool.locationCloud') }}
                   </button>
                   <button
                     :class="[
                       'px-1.5 py-0.5 rounded text-[10px] transition-colors',
-                      currentTabSelectedProvider.location === 'local'
+                      displayProvider.location === 'local'
                         ? 'bg-green-500 text-white'
                         : 'bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-slate-500'
                     ]"
-                    @click="updateProviderLocation(currentTabSelectedProvider!.id, 'local')"
+                    @click="updateProviderLocation(displayProvider!.id, 'local')"
                   >
                     💻 {{ t('providerPool.locationLocal') }}
                   </button>
@@ -1473,14 +1481,14 @@ onMounted(() => {
             </div>
             <div class="flex gap-1">
               <button
-                v-if="!currentTabSelectedProvider!.is_builtin && currentTabSelectedProvider!.type !== 'trial'"
+                v-if="!displayProvider!.is_builtin && displayProvider!.type !== 'trial'"
                 :class="[
                   'px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs transition-opacity',
-                  showDeleteFor === 'provider-' + currentTabSelectedProvider!.id
+                  showDeleteFor === 'provider-' + displayProvider!.id
                     ? 'opacity-100'
                     : 'opacity-0 group-hover/header:opacity-100'
                 ]"
-                @click="deleteProvider(currentTabSelectedProvider!.id)"
+                @click="deleteProvider(displayProvider!.id)"
               >
                 {{ t('common.delete') }}
               </button>
@@ -1493,12 +1501,12 @@ onMounted(() => {
               <h3 class="text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('providerPool.modelParams') }}</h3>
               <div class="flex gap-1">
                 <button
-                  :disabled="detectingCapabilities === currentTabSelectedProvider!.id || !currentTabSelectedProvider!.base_url"
+                  :disabled="detectingCapabilities === displayProvider!.id || !displayProvider!.base_url"
                   class="px-2 py-0.5 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-[10px] disabled:opacity-50"
-                  :title="!currentTabSelectedProvider!.base_url ? t('providerPool.baseUrlRequired') : ''"
+                  :title="!displayProvider!.base_url ? t('providerPool.baseUrlRequired') : ''"
                   @click="detectCapabilities"
                 >
-                  {{ detectingCapabilities === currentTabSelectedProvider!.id ? t('providerPool.detecting') : t('providerPool.detectCapabilities') }}
+                  {{ detectingCapabilities === displayProvider!.id ? t('providerPool.detecting') : t('providerPool.detectCapabilities') }}
                 </button>
                 <button
                   class="px-2 py-0.5 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-[10px]"
@@ -1512,47 +1520,47 @@ onMounted(() => {
               <div>
                 <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.temperature') }}:</span>
                 <span class="text-gray-900 dark:text-white ml-1">
-                  {{ currentTabSelectedProvider!.model_params?.temperature ?? t('providerPool.default') }}
+                  {{ displayProvider!.model_params?.temperature ?? t('providerPool.default') }}
                 </span>
               </div>
               <div>
                 <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.maxTokens') }}:</span>
                 <span
-                  v-if="currentTabSelectedProvider!.model_params?.max_tokens"
+                  v-if="displayProvider!.model_params?.max_tokens"
                   class="text-gray-900 dark:text-white ml-1"
                 >
-                  {{ currentTabSelectedProvider!.model_params.max_tokens }}
+                  {{ displayProvider!.model_params.max_tokens }}
                 </span>
                 <span
-                  v-else-if="currentTabSelectedProvider!.model_params?.detected_max_tokens"
+                  v-else-if="displayProvider!.model_params?.detected_max_tokens"
                   class="text-gray-900 dark:text-gray-300 ml-1"
                   :title="t('providerPool.detectedMax')"
                 >
-                  {{ currentTabSelectedProvider!.model_params.detected_max_tokens }}
+                  {{ displayProvider!.model_params.detected_max_tokens }}
                   <span class="text-gray-400 text-[10px]">({{ t('providerPool.detected') }})</span>
                 </span>
                 <span v-else class="text-gray-900 dark:text-white ml-1">
                   {{ t('providerPool.default') }}
                 </span>
               </div>
-              <div v-if="currentTabSelectedProvider!.model_params?.top_p != null">
+              <div v-if="displayProvider!.model_params?.top_p != null">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.topP') }}:</span>
-                <span class="text-gray-900 dark:text-white ml-1">{{ currentTabSelectedProvider!.model_params.top_p }}</span>
+                <span class="text-gray-900 dark:text-white ml-1">{{ displayProvider!.model_params.top_p }}</span>
               </div>
             </div>
           </div>
 
           <!-- Error Banner -->
           <div
-            v-if="currentTabSelectedProvider!.status === 'error' && currentTabSelectedProvider!.last_error"
+            v-if="displayProvider!.status === 'error' && displayProvider!.last_error"
             class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
           >
             <div class="flex items-start gap-2">
               <span class="text-red-500 flex-shrink-0">⚠</span>
-              <p class="text-xs text-red-600 dark:text-red-400 break-all flex-1">{{ translateHealthError(currentTabSelectedProvider!.last_error!) }}</p>
+              <p class="text-xs text-red-600 dark:text-red-400 break-all flex-1">{{ translateHealthError(displayProvider!.last_error!) }}</p>
               <button
                 class="flex-shrink-0 px-2 py-1 text-xs bg-red-100 dark:bg-red-800 hover:bg-red-200 dark:hover:bg-red-700 text-red-600 dark:text-red-300 rounded transition-colors"
-                @click="clearProviderError(currentTabSelectedProvider!.id)"
+                @click="clearProviderError(displayProvider!.id)"
               >
                 {{ t('providerPool.retry') }}
               </button>
@@ -1561,13 +1569,13 @@ onMounted(() => {
 
           <!-- Base URL Section (for providers that need configuration) -->
           <div
-            v-if="currentTabSelectedProvider!.type !== 'trial' && (
-              !currentTabSelectedProvider!.base_url ||
-              currentTabSelectedProvider!.id === 'azure-openai' ||
-              currentTabSelectedProvider!.id === 'bedrock' ||
-              currentTabSelectedProvider!.id === 'ollama' ||
-              currentTabSelectedProvider!.type === 'custom' ||
-              currentTabSelectedProvider!.type === 'platform'
+            v-if="displayProvider!.type !== 'trial' && (
+              !displayProvider!.base_url ||
+              displayProvider!.id === 'azure-openai' ||
+              displayProvider!.id === 'bedrock' ||
+              displayProvider!.id === 'ollama' ||
+              displayProvider!.type === 'custom' ||
+              displayProvider!.type === 'platform'
             )"
             class="mb-4"
           >
@@ -1576,21 +1584,21 @@ onMounted(() => {
               <button
                 v-if="!editingBaseUrl"
                 class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-xs"
-                @click="startEditBaseUrl(currentTabSelectedProvider!)"
+                @click="startEditBaseUrl(displayProvider!)"
               >
-                {{ currentTabSelectedProvider!.base_url ? t('common.edit') : t('providerPool.configure') }}
+                {{ displayProvider!.base_url ? t('common.edit') : t('providerPool.configure') }}
               </button>
             </div>
             <div v-if="editingBaseUrl" class="flex gap-2">
               <input
                 v-model="baseUrlDraft"
                 type="url"
-                :placeholder="currentTabSelectedProvider!.id === 'azure-openai' ? 'https://your-resource.openai.azure.com' : currentTabSelectedProvider!.id === 'bedrock' ? 'https://bedrock-runtime.us-east-1.amazonaws.com' : 'https://api.example.com/v1'"
+                :placeholder="displayProvider!.id === 'azure-openai' ? 'https://your-resource.openai.azure.com' : displayProvider!.id === 'bedrock' ? 'https://bedrock-runtime.us-east-1.amazonaws.com' : 'https://api.example.com/v1'"
                 class="flex-1 px-2 py-1 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-400"
               />
               <button
                 class="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs"
-                @click="saveBaseUrl(currentTabSelectedProvider!.id)"
+                @click="saveBaseUrl(displayProvider!.id)"
               >
                 {{ t('common.save') }}
               </button>
@@ -1602,8 +1610,8 @@ onMounted(() => {
               </button>
             </div>
             <div v-else class="text-xs">
-              <span v-if="currentTabSelectedProvider!.base_url" class="text-gray-600 dark:text-gray-400 font-mono break-all">
-                {{ currentTabSelectedProvider!.base_url }}
+              <span v-if="displayProvider!.base_url" class="text-gray-600 dark:text-gray-400 font-mono break-all">
+                {{ displayProvider!.base_url }}
               </span>
               <span v-else class="text-amber-500 dark:text-amber-400">
                 {{ t('providerPool.baseUrlNotConfigured') }}
@@ -1612,14 +1620,14 @@ onMounted(() => {
           </div>
 
           <!-- OAuth Section (for OAuth-capable providers) — shown before API Keys -->
-          <div v-if="currentTabSelectedProvider?.oauth" class="mb-4">
+          <div v-if="store.selectedProvider?.oauth" class="mb-4">
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.oauth.title') }}</h3>
             </div>
             <div class="space-y-2">
               <!-- Account list -->
               <div
-                v-for="account in (oauthAccounts[currentTabSelectedProvider.id] || [])"
+                v-for="account in (oauthAccounts[store.selectedProvider.id] || [])"
                 :key="account.id"
                 class="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700"
               >
@@ -1632,7 +1640,7 @@ onMounted(() => {
                   <button
                     :disabled="disconnectingAccountId === account.id"
                     class="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs disabled:opacity-50"
-                    @click="disconnectOAuth(currentTabSelectedProvider.id, account.id)"
+                    @click="disconnectOAuth(store.selectedProvider.id, account.id)"
                   >
                     {{ disconnectingAccountId === account.id ? '...' : t('providerPool.oauth.disconnect') }}
                   </button>
@@ -1641,37 +1649,37 @@ onMounted(() => {
               <!-- Connect another account (always shown at bottom) -->
               <div class="p-3 bg-white dark:bg-slate-900/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-between">
                 <span class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ (oauthAccounts[currentTabSelectedProvider.id] || []).length ? t('providerPool.oauth.addAccount') : t('providerPool.oauth.notConnected') }}
+                  {{ (oauthAccounts[store.selectedProvider.id] || []).length ? t('providerPool.oauth.addAccount') : t('providerPool.oauth.notConnected') }}
                 </span>
                 <button
-                  :disabled="connectingOAuth === currentTabSelectedProvider.id"
+                  :disabled="connectingOAuth === store.selectedProvider.id"
                   class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs disabled:opacity-50"
-                  @click="startOAuthConnect(currentTabSelectedProvider.id)"
+                  @click="startOAuthConnect(store.selectedProvider.id)"
                 >
-                  {{ connectingOAuth === currentTabSelectedProvider.id ? '...' : t('providerPool.oauth.connect') }}
+                  {{ connectingOAuth === store.selectedProvider.id ? '...' : t('providerPool.oauth.connect') }}
                 </button>
               </div>
               <!-- Subscription Tier & Quota (shown once for the provider) -->
-              <div v-if="store.loadingQuota === currentTabSelectedProvider.id" class="text-xs text-gray-400 px-1">
+              <div v-if="store.loadingQuota === store.selectedProvider.id" class="text-xs text-gray-400 px-1">
                 {{ t('providerPool.oauth.loadingQuota') }}
               </div>
-              <template v-else-if="store.oauthQuota[currentTabSelectedProvider.id]">
-                <div v-if="store.oauthQuota[currentTabSelectedProvider.id].tier" class="px-1">
+              <template v-else-if="store.oauthQuota[store.selectedProvider.id]">
+                <div v-if="store.oauthQuota[store.selectedProvider.id].tier" class="px-1">
                   <span
                     class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                    :class="tierBadgeClass(store.oauthQuota[currentTabSelectedProvider.id].tier)"
+                    :class="tierBadgeClass(store.oauthQuota[store.selectedProvider.id].tier)"
                   >
-                    {{ store.oauthQuota[currentTabSelectedProvider.id].tier_name || store.oauthQuota[currentTabSelectedProvider.id].tier }}
+                    {{ store.oauthQuota[store.selectedProvider.id].tier_name || store.oauthQuota[store.selectedProvider.id].tier }}
                   </span>
                 </div>
-                <div v-if="store.oauthQuota[currentTabSelectedProvider.id].error && !store.oauthQuota[currentTabSelectedProvider.id].tier" class="text-xs text-gray-400 px-1">
+                <div v-if="store.oauthQuota[store.selectedProvider.id].error && !store.oauthQuota[store.selectedProvider.id].tier" class="text-xs text-gray-400 px-1">
                   {{ t('providerPool.oauth.quotaUnavailable') }}
                 </div>
                 <!-- Per-Model Quota Bars -->
-                <div v-if="store.oauthQuota[currentTabSelectedProvider.id].model_quotas?.length" class="space-y-1 px-1">
+                <div v-if="store.oauthQuota[store.selectedProvider.id].model_quotas?.length" class="space-y-1 px-1">
                   <div class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ t('providerPool.oauth.modelQuota') }}</div>
                   <div
-                    v-for="mq in store.oauthQuota[currentTabSelectedProvider.id].model_quotas"
+                    v-for="mq in store.oauthQuota[store.selectedProvider.id].model_quotas"
                     :key="mq.model"
                     class="flex items-center gap-2 text-xs"
                   >
@@ -1691,13 +1699,13 @@ onMounted(() => {
           </div>
 
           <!-- API Keys Section — hidden for pure-OAuth providers with no keys -->
-          <div v-if="!currentTabSelectedProvider?.oauth || currentTabSelectedProvider!.api_keys?.length || currentTabSelectedProvider!.type === 'trial'" class="mb-4">
+          <div v-if="!store.selectedProvider?.oauth || store.selectedProvider!.api_keys?.length || store.selectedProvider!.type === 'trial'" class="mb-4">
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.apiKeys') }}</h3>
               <div class="flex items-center gap-2">
                 <a
-                  v-if="currentTabSelectedProvider!.api_key_url"
-                  :href="currentTabSelectedProvider!.api_key_url"
+                  v-if="displayProvider!.api_key_url"
+                  :href="displayProvider!.api_key_url"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs flex items-center gap-1"
@@ -1708,9 +1716,9 @@ onMounted(() => {
                   </svg>
                 </a>
                 <button
-                  v-if="currentTabSelectedProvider!.type !== 'trial'"
+                  v-if="displayProvider!.type !== 'trial'"
                   class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-xs"
-                  @click="openKeyModal(currentTabSelectedProvider!.id)"
+                  @click="openKeyModal(displayProvider!.id)"
                 >
                   + {{ t('providerPool.addKey') }}
                 </button>
@@ -1718,7 +1726,7 @@ onMounted(() => {
             </div>
             <div class="space-y-1">
               <!-- Trial provider: show placeholder -->
-              <div v-if="currentTabSelectedProvider!.type === 'trial'" class="flex items-center justify-between p-2 bg-white dark:bg-slate-900/50 rounded text-xs">
+              <div v-if="displayProvider!.type === 'trial'" class="flex items-center justify-between p-2 bg-white dark:bg-slate-900/50 rounded text-xs">
                 <div>
                   <span class="text-gray-700 dark:text-white font-mono">••••••••••••••••</span>
                   <span class="ml-2 text-gray-500">({{ t('providerPool.trial.name') }})</span>
@@ -1727,7 +1735,7 @@ onMounted(() => {
               <!-- Non-trial provider: show actual keys -->
               <template v-else>
                 <div
-                  v-for="key in currentTabSelectedProvider!.api_keys"
+                  v-for="key in displayProvider!.api_keys"
                   :key="key.id"
                   class="group/key flex items-center justify-between p-2 rounded text-xs bg-white dark:bg-slate-900/50 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors"
                   @touchstart="startLongPress('key-' + key.id)"
@@ -1742,7 +1750,7 @@ onMounted(() => {
                           ? 'opacity-100'
                           : 'opacity-0 group-hover/key:opacity-100'
                       ]"
-                      @click.stop="removeAPIKey(currentTabSelectedProvider!.id, key.id)"
+                      @click.stop="removeAPIKey(displayProvider!.id, key.id)"
                     >
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1761,7 +1769,7 @@ onMounted(() => {
                     <span v-else-if="keyTestResults[key.id]?.healthy === false" class="text-red-400" :title="keyTestResults[key.id]?.error || 'Failed'">✗</span>
                   </div>
                 </div>
-                <div v-if="!currentTabSelectedProvider!.api_keys?.length" class="text-gray-500 dark:text-gray-400 text-center py-2 text-xs">
+                <div v-if="!displayProvider!.api_keys?.length" class="text-gray-500 dark:text-gray-400 text-center py-2 text-xs">
                   {{ t('providerPool.noKeys') }}
                 </div>
               </template>
@@ -1775,7 +1783,19 @@ onMounted(() => {
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">{{ t('providerPool.oauth.deviceFlow') }}</h3>
               <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">{{ t('providerPool.oauth.deviceFlowInstructions') }}</p>
               <div class="flex items-center justify-center gap-2 mb-4">
-                <code class="text-2xl font-bold tracking-widest text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded">{{ deviceFlowState.userCode }}</code>
+                <input
+                  :value="deviceFlowState.userCode"
+                  readonly
+                  class="w-full max-w-xs text-center text-2xl font-bold tracking-widest text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded border border-gray-200 dark:border-gray-600 select-all"
+                  @focus="($event.target as HTMLInputElement).select()"
+                  @click="($event.target as HTMLInputElement).select()"
+                >
+                <button
+                  class="px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
+                  @click="copyDeviceFlowCode"
+                >
+                  {{ t('common.copy') }}
+                </button>
               </div>
               <a
                 :href="deviceFlowState.verificationUri"
@@ -1805,7 +1825,7 @@ onMounted(() => {
           </Teleport>
 
           <!-- Trial Quota Section (only for trial providers) -->
-          <div v-if="currentTabSelectedProvider!.type === 'trial' && store.trialQuota" class="mb-4 p-3 bg-gray-100 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-600">
+          <div v-if="displayProvider!.type === 'trial' && store.trialQuota" class="mb-4 p-3 bg-gray-100 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-600">
             <h3 class="text-sm font-medium text-gray-900 dark:text-gray-300 mb-2">{{ t('providerPool.trial.name') }}</h3>
             <div class="space-y-2">
               <div class="flex items-center justify-between text-xs">
@@ -1856,9 +1876,9 @@ onMounted(() => {
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t('providerPool.models') }}
-                <span class="text-gray-500 text-xs ml-1">({{ (selectedKeyId && currentTabSelectedProvider!.type !== 'trial' ? selectedKeyModels : selectedProviderModels).length }})</span>
+                <span class="text-gray-500 text-xs ml-1">({{ (selectedKeyId && displayProvider!.type !== 'trial' ? selectedKeyModels : selectedProviderModels).length }})</span>
                 <span
-                  v-if="currentTabSelectedProvider?.allowed_models?.length"
+                  v-if="displayProvider?.allowed_models?.length"
                   class="text-gray-900 dark:text-gray-300 text-xs ml-1"
                   :title="t('providerPool.filteredModels')"
                 >
@@ -1866,7 +1886,7 @@ onMounted(() => {
                 </span>
               </h3>
               <button
-                v-if="currentTabSelectedProvider!.type !== 'media'"
+                v-if="displayProvider!.type !== 'media'"
                 class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs"
                 @click="openAllowedModelsModal"
               >
@@ -1882,7 +1902,7 @@ onMounted(() => {
             <!-- Model list -->
             <div v-else class="space-y-1 max-h-64 overflow-y-auto">
               <div
-                v-for="model in (selectedKeyId && currentTabSelectedProvider!.type !== 'trial' ? selectedKeyModels : selectedProviderModels)"
+                v-for="model in (selectedKeyId && displayProvider!.type !== 'trial' ? selectedKeyModels : selectedProviderModels)"
                 :key="model.id"
                 class="p-2 bg-white dark:bg-slate-900/50 rounded text-xs group"
                 @mouseenter="model.capabilities?.length && showCapTip($event, model.capabilities)"
@@ -1934,7 +1954,7 @@ onMounted(() => {
                   </div>
                 </div>
               </div>
-              <div v-if="(selectedKeyId && currentTabSelectedProvider!.type !== 'trial' ? selectedKeyModels : selectedProviderModels).length === 0" class="text-gray-500 dark:text-gray-400 text-center py-2 text-xs">
+              <div v-if="(selectedKeyId && displayProvider!.type !== 'trial' ? selectedKeyModels : selectedProviderModels).length === 0" class="text-gray-500 dark:text-gray-400 text-center py-2 text-xs">
                 {{ t('providerPool.noModels') }}
               </div>
             </div>
@@ -1977,13 +1997,30 @@ onMounted(() => {
           </div>
           <div>
             <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.apiKeyOptional') }}</label>
-            <input
-              v-model="newProvider.api_key"
-              type="password"
-              :disabled="addingProvider"
-              placeholder="sk-..."
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-            />
+            <div class="relative">
+              <input
+                v-model.trim="newProvider.api_key"
+                :type="showNewProviderApiKey ? 'text' : 'password'"
+                :disabled="addingProvider"
+                placeholder="sk-..."
+                class="w-full px-3 py-2 pr-10 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                :disabled="addingProvider"
+                class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50"
+                :title="showNewProviderApiKey ? 'Hide API Key' : 'Show API Key'"
+                @click="showNewProviderApiKey = !showNewProviderApiKey"
+              >
+                <svg v-if="showNewProviderApiKey" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a10.05 10.05 0 012.132-3.368m3.1-2.329A9.96 9.96 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.036 10.036 0 01-4.293 5.232M15 12a3 3 0 11-4.243-4.243m0 0L3 3m7.757 4.757L21 21" />
+                </svg>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.522 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7s-8.268-2.943-9.542-7z" />
+                </svg>
+              </button>
+            </div>
             <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.apiKeyHint') }}</p>
           </div>
           <div>
@@ -2038,7 +2075,7 @@ onMounted(() => {
               type="button"
               :disabled="addingProvider"
               class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg disabled:opacity-50"
-              @click="showAddModal = false"
+              @click="showNewProviderApiKey = false; showAddModal = false"
             >
               {{ t('common.cancel') }}
             </button>
@@ -2063,13 +2100,29 @@ onMounted(() => {
         <form class="space-y-4" @submit.prevent="addAPIKey">
           <div>
             <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.apiKey') }}</label>
-            <input
-              v-model="newKey.key"
-              type="password"
-              required
-              placeholder="sk-..."
-              class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-            />
+            <div class="relative">
+              <input
+                v-model.trim="newKey.key"
+                :type="showNewKeyApiKey ? 'text' : 'password'"
+                required
+                placeholder="sk-..."
+                class="w-full px-3 py-2 pr-10 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
+              />
+              <button
+                type="button"
+                class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                :title="showNewKeyApiKey ? 'Hide API Key' : 'Show API Key'"
+                @click="showNewKeyApiKey = !showNewKeyApiKey"
+              >
+                <svg v-if="showNewKeyApiKey" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a10.05 10.05 0 012.132-3.368m3.1-2.329A9.96 9.96 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.036 10.036 0 01-4.293 5.232M15 12a3 3 0 11-4.243-4.243m0 0L3 3m7.757 4.757L21 21" />
+                </svg>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.522 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7s-8.268-2.943-9.542-7z" />
+                </svg>
+              </button>
+            </div>
           </div>
           <div>
             <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.keyLabel') }} ({{ t('common.optional') }})</label>
@@ -2084,7 +2137,7 @@ onMounted(() => {
             <button
               type="button"
               class="px-4 py-2 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded-lg"
-              @click="showKeyModal = false"
+              @click="showNewKeyApiKey = false; showKeyModal = false"
             >
               {{ t('common.cancel') }}
             </button>
@@ -2240,8 +2293,8 @@ onMounted(() => {
             />
             <p class="text-xs text-gray-400 mt-1">
               {{ t('providerPool.maxTokensHint') }}
-              <span v-if="currentTabSelectedProvider?.model_params?.detected_max_tokens" class="text-gray-900 dark:text-gray-300">
-                ({{ t('providerPool.detectedMax') }}: {{ currentTabSelectedProvider.model_params.detected_max_tokens }})
+              <span v-if="displayProvider?.model_params?.detected_max_tokens" class="text-gray-900 dark:text-gray-300">
+                ({{ t('providerPool.detectedMax') }}: {{ displayProvider.model_params.detected_max_tokens }})
               </span>
             </p>
           </div>

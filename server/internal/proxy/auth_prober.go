@@ -100,7 +100,8 @@ var (
 
 // Strategies returns an ordered list of auth strategies to try.
 // The cached winner (if any) is placed first for zero-latency happy path.
-func (ap *AuthProber) Strategies(provider *providerpool.Provider, apiKey *providerpool.APIKey) []AuthStrategy {
+// effectiveFormat is the API format being used for this request (may differ from provider.APIFormat).
+func (ap *AuthProber) Strategies(provider *providerpool.Provider, apiKey *providerpool.APIKey, effectiveFormat providerpool.APIFormat) []AuthStrategy {
 	hasKey := apiKey != nil && apiKey.Key != ""
 
 	// No key → only try without auth
@@ -108,9 +109,10 @@ func (ap *AuthProber) Strategies(provider *providerpool.Provider, apiKey *provid
 		return strategiesNone
 	}
 
-	// Build base order by API format
+	// Build base order by effective API format (not provider.APIFormat)
+	// This allows different endpoints to use different auth strategies
 	var base []AuthStrategy
-	switch provider.APIFormat {
+	switch effectiveFormat {
 	case providerpool.APIFormatAnthropic:
 		base = strategiesAnthropic
 	case providerpool.APIFormatOllama:
@@ -120,7 +122,9 @@ func (ap *AuthProber) Strategies(provider *providerpool.Provider, apiKey *provid
 	}
 
 	// If we have a cached winner, return a pre-built single-element slice
-	if cached, ok := ap.Recall(provider.ID, provider.BaseURL); ok {
+	// Use effective base URL + format so different endpoints/formats get separate caches
+	cacheKey := provider.EffectiveBaseURL() + "#" + string(effectiveFormat)
+	if cached, ok := ap.Recall(provider.ID, cacheKey); ok {
 		switch cached {
 		case AuthBearer:
 			return strategiesCachedBearer
@@ -136,7 +140,7 @@ func (ap *AuthProber) Strategies(provider *providerpool.Provider, apiKey *provid
 	return base
 }
 
-// Apply sets the appropriate auth headers on the request for the given strategy.
+// Apply sets the appropriate auth headers on the request for the strategy.
 func (ap *AuthProber) Apply(req *http.Request, strategy AuthStrategy, apiKey *providerpool.APIKey, provider *providerpool.Provider) {
 	// Clear any existing auth headers first
 	req.Header.Del("Authorization")
@@ -147,6 +151,8 @@ func (ap *AuthProber) Apply(req *http.Request, strategy AuthStrategy, apiKey *pr
 	if apiKey != nil {
 		key = apiKey.Key
 	}
+
+	slog.Debug("[proxy] Apply auth", "provider", provider.ID, "strategy", strategy.String(), "hasKey", key != "", "keyLen", len(key))
 
 	switch strategy {
 	case AuthBearer:
@@ -173,13 +179,15 @@ func isAuthError(statusCode int) bool {
 
 // ProbeAndForward tries auth strategies in order until one succeeds (non-401/403).
 // Returns the successful response, or an error if all strategies are exhausted.
+// effectiveFormat is the API format being used (openai, anthropic, etc.) to determine auth strategy.
 func (ap *AuthProber) ProbeAndForward(
 	provider *providerpool.Provider,
 	apiKey *providerpool.APIKey,
+	effectiveFormat providerpool.APIFormat,
 	buildRequest func() (*http.Request, error),
 	doRequest func(*http.Request) (*http.Response, error),
 ) (*http.Response, error) {
-	strategies := ap.Strategies(provider, apiKey)
+	strategies := ap.Strategies(provider, apiKey, effectiveFormat)
 
 	for i, strat := range strategies {
 		req, err := buildRequest()
@@ -198,7 +206,8 @@ func (ap *AuthProber) ProbeAndForward(
 
 		if !isAuthError(resp.StatusCode) {
 			// Success (or non-auth error like 400/500) — remember and return
-			ap.Remember(provider.ID, provider.BaseURL, strat)
+			// Use effective base URL so the auth strategy is cached per endpoint
+			ap.Remember(provider.ID, provider.EffectiveBaseURL(), strat)
 			return resp, nil
 		}
 
@@ -216,7 +225,8 @@ func (ap *AuthProber) ProbeAndForward(
 	}
 
 	// All strategies exhausted — evict stale cache entry
-	ap.Forget(provider.ID, provider.BaseURL)
+	// Use effective base URL to evict the correct endpoint's cache
+	ap.Forget(provider.ID, provider.EffectiveBaseURL())
 	return nil, &AuthExhaustedError{ProviderID: provider.ID}
 }
 

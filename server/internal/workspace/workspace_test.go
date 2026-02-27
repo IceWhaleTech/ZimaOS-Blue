@@ -280,6 +280,28 @@ func TestLocaleTemplates(t *testing.T) {
 	}
 }
 
+func TestNormalizeDefaultTemplateToEnglish(t *testing.T) {
+	zh := getTemplates("zh")
+	if zh == nil {
+		t.Fatal("expected zh templates")
+	}
+	en := getTemplates("en")
+	if en == nil {
+		t.Fatal("expected en templates")
+	}
+
+	got := NormalizeDefaultTemplateToEnglish(FileSOUL, zh.soul)
+	if strings.TrimSpace(got) != strings.TrimSpace(en.soul) {
+		t.Fatal("expected zh default SOUL.md to normalize to english template")
+	}
+
+	custom := "# Blue\n这是自定义内容"
+	got = NormalizeDefaultTemplateToEnglish(FileSOUL, custom)
+	if got != custom {
+		t.Fatal("expected custom content to remain unchanged")
+	}
+}
+
 func TestNormalizeAppleLanguage(t *testing.T) {
 	tests := []struct {
 		input string

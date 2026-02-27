@@ -56,28 +56,7 @@ func ipcRoundTrip(req *sockipc.Request) (*sockipc.Response, error) {
 // ipcFallback forwards an unrecognized CLI command as an IPC request.
 // Returns true if handled (even on error), false if server not reachable.
 func ipcFallback(cmd string, args []string) bool {
-	params := make(map[string]string)
-
-	// Parse args: collect --key value pairs, key=value pairs, and positional args
-	var positional []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		// --key value or -key value → params[key] = value
-		if strings.HasPrefix(a, "--") || strings.HasPrefix(a, "-") {
-			key := strings.TrimLeft(a, "-")
-			if key != "" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				params[key] = args[i+1]
-				i++ // consume next arg as value
-			}
-			continue
-		}
-		// key=value
-		if idx := strings.IndexByte(a, '='); idx >= 0 {
-			params[a[:idx]] = a[idx+1:]
-		} else {
-			positional = append(positional, a)
-		}
-	}
+	params, positional := parseIPCArgs(args)
 
 	// If there are positional args (not key=value), join them as "query" param.
 	// This supports `blue web_search some query` → params["query"] = "some query"
@@ -122,6 +101,76 @@ func ipcFallback(cmd string, args []string) bool {
 		}
 	}
 	return true
+}
+
+func parseIPCArgs(args []string) (map[string]string, []string) {
+	params := make(map[string]string)
+	var positional []string
+
+	// Parse args: collect --key value pairs, key=value pairs, and positional args
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		// --key value or -key value
+		if strings.HasPrefix(a, "--") || strings.HasPrefix(a, "-") {
+			key := strings.TrimLeft(a, "-")
+			if key != "" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				appendIPCParam(params, key, args[i+1])
+				i++ // consume next arg as value
+			}
+			continue
+		}
+		// key=value
+		if idx := strings.IndexByte(a, '='); idx >= 0 {
+			appendIPCParam(params, a[:idx], a[idx+1:])
+		} else {
+			positional = append(positional, a)
+		}
+	}
+	return params, positional
+}
+
+func appendIPCParam(params map[string]string, key, value string) {
+	if isListParamKey(key) {
+		params[key] = appendListParamValue(params[key], value)
+	} else {
+		params[key] = value
+	}
+}
+
+func isListParamKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "option", "options", "a":
+		return true
+	default:
+		return false
+	}
+}
+
+func appendListParamValue(existing, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return existing
+	}
+	if existing == "" {
+		return value
+	}
+
+	items := make([]string, 0, 4)
+	trimmedExisting := strings.TrimSpace(existing)
+	if strings.HasPrefix(trimmedExisting, "[") && strings.HasSuffix(trimmedExisting, "]") {
+		if err := json.Unmarshal([]byte(trimmedExisting), &items); err != nil {
+			items = []string{existing}
+		}
+	} else {
+		items = []string{existing}
+	}
+	items = append(items, value)
+
+	encoded, err := json.Marshal(items)
+	if err != nil {
+		return existing + "," + value
+	}
+	return string(encoded)
 }
 
 func isConnectionError(err error) bool {
@@ -185,4 +234,3 @@ func emitIPCCard(cmd string, resp *sockipc.Response) bool {
 	})
 	return true
 }
-

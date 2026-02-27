@@ -14,7 +14,7 @@ func TestAuthProber_Strategies_Default(t *testing.T) {
 	provider := &providerpool.Provider{ID: "p1", BaseURL: "https://api.openai.com", APIFormat: providerpool.APIFormatOpenAI}
 	key := &providerpool.APIKey{Key: "sk-test"}
 
-	strategies := ap.Strategies(provider, key)
+	strategies := ap.Strategies(provider, key, providerpool.APIFormatOpenAI)
 	if len(strategies) != 3 {
 		t.Fatalf("expected 3 strategies, got %d", len(strategies))
 	}
@@ -28,7 +28,7 @@ func TestAuthProber_Strategies_Anthropic(t *testing.T) {
 	provider := &providerpool.Provider{ID: "p1", BaseURL: "https://api.anthropic.com", APIFormat: providerpool.APIFormatAnthropic}
 	key := &providerpool.APIKey{Key: "sk-ant-test"}
 
-	strategies := ap.Strategies(provider, key)
+	strategies := ap.Strategies(provider, key, providerpool.APIFormatAnthropic)
 	if strategies[0] != AuthAnthropic {
 		t.Errorf("expected AuthAnthropic first for anthropic provider, got %s", strategies[0])
 	}
@@ -38,7 +38,7 @@ func TestAuthProber_Strategies_NoKey(t *testing.T) {
 	ap := NewAuthProber()
 	provider := &providerpool.Provider{ID: "p1", BaseURL: "https://localhost:11434", APIFormat: providerpool.APIFormatOllama}
 
-	strategies := ap.Strategies(provider, nil)
+	strategies := ap.Strategies(provider, nil, providerpool.APIFormatOllama)
 	if len(strategies) != 1 || strategies[0] != AuthNone {
 		t.Errorf("expected [AuthNone] for no-key provider, got %v", strategies)
 	}
@@ -52,7 +52,7 @@ func TestAuthProber_CachedWinnerFirst(t *testing.T) {
 	// Remember that Bearer works
 	ap.Remember("p1", "https://relay.example.com", AuthBearer)
 
-	strategies := ap.Strategies(provider, key)
+	strategies := ap.Strategies(provider, key, providerpool.APIFormatAnthropic)
 	if strategies[0] != AuthBearer {
 		t.Errorf("expected cached AuthBearer first, got %s", strategies[0])
 	}
@@ -107,7 +107,7 @@ func TestAuthProber_ProbeAndForward_FirstSuccess(t *testing.T) {
 	key := &providerpool.APIKey{Key: "sk-test"}
 
 	calls := 0
-	resp, err := ap.ProbeAndForward(provider, key,
+	resp, err := ap.ProbeAndForward(provider, key, providerpool.APIFormatOpenAI,
 		func() (*http.Request, error) {
 			return httptest.NewRequest("POST", "/v1/chat/completions", nil), nil
 		},
@@ -137,7 +137,7 @@ func TestAuthProber_ProbeAndForward_FallsThrough401(t *testing.T) {
 	key := &providerpool.APIKey{Key: "sk-test"}
 
 	calls := 0
-	resp, err := ap.ProbeAndForward(provider, key,
+	resp, err := ap.ProbeAndForward(provider, key, providerpool.APIFormatOpenAI,
 		func() (*http.Request, error) {
 			return httptest.NewRequest("POST", "/v1/chat/completions", nil), nil
 		},
@@ -166,7 +166,7 @@ func TestAuthProber_ProbeAndForward_AllExhausted(t *testing.T) {
 	provider := &providerpool.Provider{ID: "p1", BaseURL: "https://bad.example.com", APIFormat: providerpool.APIFormatOpenAI}
 	key := &providerpool.APIKey{Key: "sk-test"}
 
-	_, err := ap.ProbeAndForward(provider, key,
+	_, err := ap.ProbeAndForward(provider, key, providerpool.APIFormatOpenAI,
 		func() (*http.Request, error) {
 			return httptest.NewRequest("POST", "/v1/chat/completions", nil), nil
 		},

@@ -57,8 +57,6 @@ async function initMermaid() {
     theme: theme,
     securityLevel: 'strict',
     fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-    // Suppress errors to prevent console spam
-    suppressErrorRendering: true,
   })
 }
 

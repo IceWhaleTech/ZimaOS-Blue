@@ -77,7 +77,7 @@ type mockSystemService struct{}
 
 func (m *mockSystemService) Health(_ context.Context) (*AdminSystemInfo, error) {
 	return &AdminSystemInfo{
-		Version:    "0.10.29",
+		Version:    "0.10.31",
 		Uptime:     "1h 30m",
 		GoVersion:  "go1.22.0",
 		NumCPU:     8,
@@ -328,8 +328,8 @@ func TestMgmtTool_SystemHealth(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	m := parseResult(t, result)
-	if m["version"] != "0.10.29" {
-		t.Errorf("expected version '0.10.29', got %v", m["version"])
+	if m["version"] != "0.10.31" {
+		t.Errorf("expected version '0.10.31', got %v", m["version"])
 	}
 	if m["goroutines"] != float64(42) {
 		t.Errorf("expected goroutines=42, got %v", m["goroutines"])
@@ -343,8 +343,8 @@ func TestMgmtTool_SystemVersion(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	m := parseResult(t, result)
-	if m["version"] != "0.10.29" {
-		t.Errorf("expected version '0.10.29', got %v", m["version"])
+	if m["version"] != "0.10.31" {
+		t.Errorf("expected version '0.10.31', got %v", m["version"])
 	}
 }
 
@@ -873,8 +873,8 @@ func TestMgmtTool_SystemInfo(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	m := parseResult(t, result)
-	if m["version"] != "0.10.29" {
-		t.Errorf("expected version '0.10.29', got %v", m["version"])
+	if m["version"] != "0.10.31" {
+		t.Errorf("expected version '0.10.31', got %v", m["version"])
 	}
 }
 

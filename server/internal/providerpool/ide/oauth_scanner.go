@@ -1,12 +1,16 @@
 package ide
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -397,50 +401,198 @@ func parseCopilotCredentials(data []byte) (*oauth.Token, error) {
 // scanCodexOAuth scans for OpenAI Codex CLI's OAuth credentials.
 // Codex stores tokens at ~/.codex/auth.json
 func scanCodexOAuth() (*oauth.Token, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
+	for _, authPath := range getCodexAuthPaths() {
+		data, err := os.ReadFile(authPath)
+		if err != nil {
+			continue
+		}
+		token, err := parseCodexCredentials(data)
+		if err == nil {
+			return token, nil
+		}
 	}
 
-	authPath := filepath.Join(home, ".codex", "auth.json")
-	data, err := os.ReadFile(authPath)
-	if err != nil {
-		return nil, fmt.Errorf("no Codex auth.json found: %w", err)
+	// macOS Codex CLI may persist credentials in Keychain.
+	if runtime.GOOS == "darwin" {
+		if token, err := readCodexOAuthFromKeychain(); err == nil {
+			return token, nil
+		}
 	}
 
-	return parseCodexCredentials(data)
+	return nil, fmt.Errorf("no Codex OAuth credentials found")
+}
+
+func getCodexAuthPaths() []string {
+	paths := []string{}
+	if codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME")); codexHome != "" {
+		paths = append(paths, filepath.Join(expandPath(codexHome), "auth.json"))
+	}
+	paths = append(paths, expandPath("~/.codex/auth.json"))
+	return paths
 }
 
 func parseCodexCredentials(data []byte) (*oauth.Token, error) {
-	var creds struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresAt    int64  `json:"expires_at"` // Unix timestamp in milliseconds
-		AccountID    string `json:"account_id"`
-	}
-	if err := json.Unmarshal(data, &creds); err != nil {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
 
-	if creds.AccessToken == "" && creds.RefreshToken == "" {
+	accessToken := getString(raw, "access_token")
+	refreshToken := getString(raw, "refresh_token")
+	accountID := getString(raw, "account_id")
+	expiresAt := getInt64(raw, "expires_at")
+
+	if tokens, ok := raw["tokens"].(map[string]interface{}); ok {
+		if accessToken == "" {
+			accessToken = getString(tokens, "access_token")
+		}
+		if refreshToken == "" {
+			refreshToken = getString(tokens, "refresh_token")
+		}
+		if accountID == "" {
+			accountID = getString(tokens, "account_id")
+		}
+		if expiresAt == 0 {
+			expiresAt = getInt64(tokens, "expires_at")
+		}
+	}
+
+	if accessToken == "" && refreshToken == "" {
 		return nil, fmt.Errorf("no tokens in auth.json")
 	}
 
 	var expiry time.Time
-	if creds.ExpiresAt > 0 {
-		expiry = time.UnixMilli(creds.ExpiresAt)
+	if expiresAt > 0 {
+		// Compatible with both unix seconds and unix milliseconds.
+		if expiresAt < 1_000_000_000_000 {
+			expiry = time.Unix(expiresAt, 0)
+		} else {
+			expiry = time.UnixMilli(expiresAt)
+		}
 	}
 
 	cfg := oauth.CodexConfig()
 	return &oauth.Token{
 		ProviderType: "codex",
-		AccessToken:  creds.AccessToken,
-		RefreshToken: creds.RefreshToken,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 		TokenExpiry:  expiry,
-		Email:        creds.AccountID, // account_id is the best identifier we have
+		Email:        accountID, // account_id is the best identifier we have
 		Endpoint:     cfg.APIEndpoint,
 		Scopes:       cfg.Scopes,
 		CreatedAt:    timeutil.NowTime(),
 		UpdatedAt:    timeutil.NowTime(),
 	}, nil
+}
+
+func getString(obj map[string]interface{}, key string) string {
+	if val, ok := obj[key].(string); ok {
+		return strings.TrimSpace(val)
+	}
+	return ""
+}
+
+func getInt64(obj map[string]interface{}, key string) int64 {
+	val, ok := obj[key]
+	if !ok {
+		return 0
+	}
+	switch v := val.(type) {
+	case float64:
+		return int64(v)
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	case string:
+		if v == "" {
+			return 0
+		}
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+func readCodexOAuthFromKeychain() (*oauth.Token, error) {
+	codexHome := resolveCodexHomePath()
+	account := computeCodexKeychainAccount(codexHome)
+
+	out, err := exec.Command("security", "find-generic-password", "-s", "Codex Auth", "-a", account, "-w").Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(out))), &payload); err != nil {
+		return nil, err
+	}
+
+	tokens, _ := payload["tokens"].(map[string]interface{})
+	accessToken := ""
+	refreshToken := ""
+	accountID := ""
+	if tokens != nil {
+		accessToken = getString(tokens, "access_token")
+		refreshToken = getString(tokens, "refresh_token")
+		accountID = getString(tokens, "account_id")
+	}
+	if accessToken == "" {
+		accessToken = getString(payload, "access_token")
+	}
+	if refreshToken == "" {
+		refreshToken = getString(payload, "refresh_token")
+	}
+	if accountID == "" {
+		accountID = getString(payload, "account_id")
+	}
+	if accessToken == "" && refreshToken == "" {
+		return nil, fmt.Errorf("no tokens in keychain payload")
+	}
+
+	// Keychain payload usually stores last_refresh; estimate expiry as one hour.
+	lastRefresh := getInt64(payload, "last_refresh")
+	expiry := time.Time{}
+	if lastRefresh > 0 {
+		if lastRefresh < 1_000_000_000_000 {
+			expiry = time.Unix(lastRefresh, 0).Add(time.Hour)
+		} else {
+			expiry = time.UnixMilli(lastRefresh).Add(time.Hour)
+		}
+	}
+
+	cfg := oauth.CodexConfig()
+	return &oauth.Token{
+		ProviderType: "codex",
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		TokenExpiry:  expiry,
+		Email:        accountID,
+		Endpoint:     cfg.APIEndpoint,
+		Scopes:       cfg.Scopes,
+		CreatedAt:    timeutil.NowTime(),
+		UpdatedAt:    timeutil.NowTime(),
+	}, nil
+}
+
+func resolveCodexHomePath() string {
+	if codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME")); codexHome != "" {
+		expanded := expandPath(codexHome)
+		if real, err := filepath.EvalSymlinks(expanded); err == nil {
+			return real
+		}
+		return expanded
+	}
+	home, _ := os.UserHomeDir()
+	if home == "" {
+		return expandPath("~/.codex")
+	}
+	return filepath.Join(home, ".codex")
+}
+
+func computeCodexKeychainAccount(codexHome string) string {
+	sum := sha256.Sum256([]byte(codexHome))
+	return "cli|" + hex.EncodeToString(sum[:])[:16]
 }

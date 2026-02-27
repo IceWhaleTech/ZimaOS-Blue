@@ -13,7 +13,7 @@ const error = ref<string | null>(null)
 const initializing = ref(false)
 const searchQuery = ref('')
 const filterCategory = ref<string>('all')
-const sortBy = ref<'downloads' | 'rating' | 'updated' | 'name'>('downloads')
+const sortBy = ref<'downloads' | 'stars' | 'updated' | 'name'>('downloads')
 const categories = ref<string[]>([])
 const installing = ref<Set<string>>(new Set())
 const installProgress = ref<Map<string, number>>(new Map())
@@ -28,7 +28,6 @@ const pageSize = 20
 const total = ref(0)
 const nextCursor = ref<string | null>(null)
 const hasMore = ref(false)
-const scrollContainer = ref<HTMLElement | null>(null)
 
 async function fetchSkills(append = false) {
   if (append) {
@@ -158,12 +157,6 @@ function formatNumber(num?: number): string {
   return num.toString()
 }
 
-function _filterVersionTags(tags: string[]): string[] {
-  // Filter out version-like tags (e.g., "1.0.0", "v1.0.0", "1.0.1")
-  const versionPattern = /^v?\d+\.\d+(\.\d+)?$/
-  return tags.filter(tag => !versionPattern.test(tag))
-}
-
 function openSkillHomepage(skill: RemoteSkill) {
   const url = skill.homepage || skill.download_url
   if (url) {
@@ -283,12 +276,12 @@ onUnmounted(() => {
 
       <select v-model="sortBy" class="filter-select" @change="handleSearch">
         <option value="downloads">{{ t('skillStore.sort.downloads') }}</option>
-        <option value="rating">{{ t('skillStore.sort.rating') }}</option>
+        <option value="stars">{{ t('skillStore.sort.rating') }}</option>
         <option value="updated">{{ t('skillStore.sort.updated') }}</option>
         <option value="name">{{ t('skillStore.sort.name') }}</option>
       </select>
 
-      <button class="btn-refresh" :disabled="loading" @click="fetchSkills">
+      <button class="btn-refresh" :disabled="loading" @click="fetchSkills()">
         <svg v-if="!loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
           <path d="M3 3v5h5" />
@@ -346,7 +339,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Skills Grid with infinite scroll -->
-    <div v-else ref="scrollContainer" class="items-grid-container" @scroll="handleScroll">
+    <div v-else class="items-grid-container" @scroll="handleScroll">
       <div class="items-grid">
         <div
           v-for="skill in skills"

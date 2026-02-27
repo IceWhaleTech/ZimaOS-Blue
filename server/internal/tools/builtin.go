@@ -270,11 +270,11 @@ func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearc
 	// No-op: tools removed in v0.10.31.
 }
 
-// RegisterExecTools registers the exec tool with custom configuration.
-// Process tool removed in v0.10.31 — process management is now a skill.
+// RegisterExecTools registers exec + process tools with shared session state.
 func RegisterExecTools(registry *Registry, config ExecConfig, approvals *ApprovalManager, broker *sse.Broker, dirStore *DirAllowlistStore, sbx ...SandboxExecutor) {
 	sessions := NewSessionRegistry()
 	registry.Register(NewExecTool(config, sessions, approvals, broker, dirStore, sbx...))
+	registry.Register(NewProcessTool(sessions))
 }
 
 // GetUIReviewerTool retrieves the UIReviewerTool from the registry for dependency injection.

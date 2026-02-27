@@ -10,12 +10,12 @@ import (
 // Pre-compiled regexes for performance.
 var (
 	// Block-level patterns
-	codeFenceRe     = regexp.MustCompile("(?s)```[\\w]*\\n?(.*?)```")
-	headerRe        = regexp.MustCompile(`(?m)^#{1,6}\s+`)
-	horizontalRe    = regexp.MustCompile(`(?m)^[\s]*([-*_]){3,}\s*$`)
-	blockquoteRe    = regexp.MustCompile(`(?m)^>\s?`)
-	bulletDashRe    = regexp.MustCompile(`(?m)^(\s*)[-*+]\s`)
-	numberedListRe  = regexp.MustCompile(`(?m)^(\s*)\d+\.\s`)
+	codeFenceRe    = regexp.MustCompile("(?s)```[\\w]*\\n?(.*?)```")
+	headerRe       = regexp.MustCompile(`(?m)^#{1,6}\s+`)
+	horizontalRe   = regexp.MustCompile(`(?m)^[\s]*([-*_]){3,}\s*$`)
+	blockquoteRe   = regexp.MustCompile(`(?m)^>\s?`)
+	bulletDashRe   = regexp.MustCompile(`(?m)^(\s*)[-*+]\s`)
+	numberedListRe = regexp.MustCompile(`(?m)^(\s*)\d+\.\s`)
 
 	// Inline patterns
 	boldRe          = regexp.MustCompile(`\*\*(.+?)\*\*`)
@@ -50,10 +50,25 @@ var (
 	invokeRe        = regexp.MustCompile(`(?s)<(?:antml:)?invoke\s+name="([^"]+)">(.*?)</(?:antml:)?invoke>`)
 	paramRe         = regexp.MustCompile(`(?s)<(?:antml:)?parameter\s+name="([^"]+)">(.*?)</(?:antml:)?parameter>`)
 
+	// Process detail blocks used by tool execution timeline rendering.
+	processCommentBlockRe = regexp.MustCompile(`(?s)<!--\s*process-start\s*-->.*?<!--\s*process-end\s*-->`)
+	processFenceBlockRe   = regexp.MustCompile("(?s)```process\\n?(.*?)```")
+
 	// Italic strip patterns (used in stripItalic)
 	italicStarStripRe  = regexp.MustCompile(`(?:^|\s)\*([^*\n]+?)\*(?:\s|$|[.,!?;:])`)
 	italicUnderStripRe = regexp.MustCompile(`(?:^|\s)_([^_\n]+?)_(?:\s|$|[.,!?;:])`)
 )
+
+// CompactForIM removes verbose execution-detail blocks from assistant output so
+// IM channels default to concise, stable rendering.
+func CompactForIM(text string) string {
+	if text == "" {
+		return ""
+	}
+	text = processCommentBlockRe.ReplaceAllString(text, "")
+	text = processFenceBlockRe.ReplaceAllString(text, "")
+	return normalizeWhitespace(text)
+}
 
 // stripCodeFences handles fenced code blocks.
 // IM mode: removes fence markers, keeps content.
@@ -264,17 +279,17 @@ func formatSearchForIM(query string, results []struct {
 
 // Tool name localization for function_calls blocks.
 var toolNameZh = map[string]string{
-	"web_search":      "网页搜索",
-	"calculator":      "计算器",
-	"system_info":     "系统信息",
-	"current_time":    "当前时间",
-	"file_read":       "读取文件",
-	"file_write":      "写入文件",
-	"memory_search":   "记忆搜索",
-	"memory_store":    "存储记忆",
-	"memory_get":      "获取记忆",
-	"memory_stats":    "记忆统计",
-	"memory":          "记忆系统",
+	"web_search":    "网页搜索",
+	"calculator":    "计算器",
+	"system_info":   "系统信息",
+	"current_time":  "当前时间",
+	"file_read":     "读取文件",
+	"file_write":    "写入文件",
+	"memory_search": "记忆搜索",
+	"memory_store":  "存储记忆",
+	"memory_get":    "获取记忆",
+	"memory_stats":  "记忆统计",
+	"memory":        "记忆系统",
 }
 
 // Parameter name localization.

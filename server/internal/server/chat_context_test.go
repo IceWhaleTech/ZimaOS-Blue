@@ -1,9 +1,12 @@
 package server
 
 import (
+	"context"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 func TestClassifyContext(t *testing.T) {
@@ -88,6 +91,237 @@ func TestHasReference(t *testing.T) {
 		if hasReference(msg) {
 			t.Errorf("hasReference(%q) = true, want false", msg)
 		}
+	}
+}
+
+func TestShouldRecallMemories(t *testing.T) {
+	tests := []struct {
+		name       string
+		msg        string
+		tier       ContextTier
+		agentMode  bool
+		regenerate bool
+		wantRecall bool
+	}{
+		{
+			name:       "compressed_tier_recalls",
+			msg:        "继续这个方案",
+			tier:       TierCompressedMemory,
+			wantRecall: true,
+		},
+		{
+			name:       "no_history_without_cue_skips",
+			msg:        "今天天气怎么样",
+			tier:       TierNoHistory,
+			wantRecall: false,
+		},
+		{
+			name:       "no_history_with_memory_cue_recalls",
+			msg:        "你还记得我的偏好吗",
+			tier:       TierNoHistory,
+			wantRecall: true,
+		},
+		{
+			name:       "agent_mode_always_recalls",
+			msg:        "run tests",
+			tier:       TierNoHistory,
+			agentMode:  true,
+			wantRecall: true,
+		},
+		{
+			name:       "regenerate_skips_recall",
+			msg:        "你还记得我的偏好吗",
+			tier:       TierCompressedMemory,
+			regenerate: true,
+			wantRecall: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldRecallMemories(tt.msg, tt.tier, tt.agentMode, tt.regenerate, MemoryRecallModeBalanced)
+			if got != tt.wantRecall {
+				t.Fatalf("shouldRecallMemories(%q, %v, %v, %v) = %v, want %v",
+					tt.msg, tt.tier, tt.agentMode, tt.regenerate, got, tt.wantRecall)
+			}
+		})
+	}
+}
+
+func TestMemoryRecallDecisionReason(t *testing.T) {
+	tests := []struct {
+		name       string
+		msg        string
+		tier       ContextTier
+		agentMode  bool
+		regenerate bool
+		wantRecall bool
+		wantReason MemoryRecallReason
+	}{
+		{
+			name:       "regenerate",
+			msg:        "remember this",
+			tier:       TierCompressedMemory,
+			regenerate: true,
+			wantRecall: false,
+			wantReason: MemoryRecallReasonRegenerateSkip,
+		},
+		{
+			name:       "agent_mode",
+			msg:        "hello",
+			tier:       TierNoHistory,
+			agentMode:  true,
+			wantRecall: true,
+			wantReason: MemoryRecallReasonAgentMode,
+		},
+		{
+			name:       "compressed_tier",
+			msg:        "继续",
+			tier:       TierCompressedMemory,
+			wantRecall: true,
+			wantReason: MemoryRecallReasonCompressedTier,
+		},
+		{
+			name:       "memory_cue",
+			msg:        "你还记得我的偏好吗",
+			tier:       TierNoHistory,
+			wantRecall: true,
+			wantReason: MemoryRecallReasonMemoryCue,
+		},
+		{
+			name:       "default_skip",
+			msg:        "今天天气怎么样",
+			tier:       TierNoHistory,
+			wantRecall: false,
+			wantReason: MemoryRecallReasonDefaultSkip,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotRecall, gotReason := memoryRecallDecision(tt.msg, tt.tier, tt.agentMode, tt.regenerate, MemoryRecallModeBalanced)
+			if gotRecall != tt.wantRecall || gotReason != tt.wantReason {
+				t.Fatalf("memoryRecallDecision()=(%v,%s), want (%v,%s)",
+					gotRecall, gotReason, tt.wantRecall, tt.wantReason)
+			}
+		})
+	}
+}
+
+func TestShouldRecallMemories_Mode(t *testing.T) {
+	msg := "继续这个方案"
+	if shouldRecallMemories(msg, TierCompressedMemory, false, false, MemoryRecallModeAggressive) {
+		t.Fatalf("aggressive mode should skip compressed-tier recall without explicit memory cue")
+	}
+	if !shouldRecallMemories(msg, TierCompressedMemory, false, false, MemoryRecallModeBalanced) {
+		t.Fatalf("balanced mode should recall on compressed tier")
+	}
+	if !shouldRecallMemories("hello", TierRecentOnly, false, false, MemoryRecallModeQuality) {
+		t.Fatalf("quality mode should recall on recent tier")
+	}
+}
+
+func TestRecallLimitsForMode(t *testing.T) {
+	aggressive := recallLimitsForMode(MemoryRecallModeAggressive)
+	if aggressive.MaxResults >= 5 || aggressive.TotalRunes >= 800 {
+		t.Fatalf("aggressive limits too large: %+v", aggressive)
+	}
+
+	balanced := recallLimitsForMode(MemoryRecallModeBalanced)
+	if balanced.MaxResults != 5 || balanced.ChunkRunes != 200 || balanced.TotalRunes != 800 {
+		t.Fatalf("balanced limits unexpected: %+v", balanced)
+	}
+
+	quality := recallLimitsForMode(MemoryRecallModeQuality)
+	if quality.MaxResults <= balanced.MaxResults || quality.TotalRunes <= balanced.TotalRunes {
+		t.Fatalf("quality limits should be larger than balanced: %+v vs %+v", quality, balanced)
+	}
+}
+
+func TestRecallMinScoreForMode(t *testing.T) {
+	if got := recallMinScoreForMode(MemoryRecallModeAggressive); got <= 0.5 {
+		t.Fatalf("aggressive min score = %v, want > 0.5", got)
+	}
+	if got := recallMinScoreForMode(MemoryRecallModeBalanced); got != 0.5 {
+		t.Fatalf("balanced min score = %v, want 0.5", got)
+	}
+	if got := recallMinScoreForMode(MemoryRecallModeQuality); got >= 0.5 {
+		t.Fatalf("quality min score = %v, want < 0.5", got)
+	}
+}
+
+func TestMemoryRecallStats(t *testing.T) {
+	var stats MemoryRecallStats
+	stats.RecordWithSource(true, MemoryRecallReasonCompressedTier, MemoryRecallSourceSend)
+	stats.RecordWithSource(true, MemoryRecallReasonMemoryCue, MemoryRecallSourceSend)
+	stats.RecordWithSource(false, MemoryRecallReasonDefaultSkip, MemoryRecallSourceStream)
+	stats.RecordInjectionWithSource(120, MemoryRecallSourceSend)
+	stats.RecordInjectionWithSource(80, MemoryRecallSourceSend)
+	stats.RecordWithSource(false, MemoryRecallReasonDefaultSkip, MemoryRecallSourceIM)
+
+	s := stats.Snapshot()
+	if s.Total != 4 || s.Recalled != 2 || s.Skipped != 2 {
+		t.Fatalf("snapshot totals %+v", s)
+	}
+	if s.InjectedContexts != 2 || s.InjectedTokens != 200 {
+		t.Fatalf("injected contexts/tokens = %d/%d, want 2/200", s.InjectedContexts, s.InjectedTokens)
+	}
+	if s.AvgInjectedTokens != 100 {
+		t.Fatalf("avg injected tokens = %d, want 100", s.AvgInjectedTokens)
+	}
+	if s.EstimatedSavedTokens != 200 {
+		t.Fatalf("estimated saved tokens = %d, want 200", s.EstimatedSavedTokens)
+	}
+	if s.ReasonCounts[string(MemoryRecallReasonCompressedTier)] != 1 {
+		t.Fatalf("compressed count = %d, want 1", s.ReasonCounts[string(MemoryRecallReasonCompressedTier)])
+	}
+	if s.ReasonCounts[string(MemoryRecallReasonMemoryCue)] != 1 {
+		t.Fatalf("memory cue count = %d, want 1", s.ReasonCounts[string(MemoryRecallReasonMemoryCue)])
+	}
+	if s.ReasonCounts[string(MemoryRecallReasonDefaultSkip)] != 2 {
+		t.Fatalf("default skip count = %d, want 2", s.ReasonCounts[string(MemoryRecallReasonDefaultSkip)])
+	}
+
+	send := s.BySource[string(MemoryRecallSourceSend)]
+	if send.Total != 2 || send.Recalled != 2 || send.Skipped != 0 {
+		t.Fatalf("send source totals %+v", send)
+	}
+	if send.AvgInjectedTokens != 100 || send.EstimatedSavedTokens != 0 {
+		t.Fatalf("send source token stats %+v", send)
+	}
+	if send.ReasonCounts[string(MemoryRecallReasonCompressedTier)] != 1 ||
+		send.ReasonCounts[string(MemoryRecallReasonMemoryCue)] != 1 {
+		t.Fatalf("send source reason counts %+v", send.ReasonCounts)
+	}
+	stream := s.BySource[string(MemoryRecallSourceStream)]
+	if stream.Total != 1 || stream.Skipped != 1 || stream.EstimatedSavedTokens != 0 {
+		t.Fatalf("stream source stats %+v", stream)
+	}
+	if stream.ReasonCounts[string(MemoryRecallReasonDefaultSkip)] != 1 {
+		t.Fatalf("stream source reason counts %+v", stream.ReasonCounts)
+	}
+	im := s.BySource[string(MemoryRecallSourceIM)]
+	if im.Total != 1 || im.Skipped != 1 {
+		t.Fatalf("im source stats %+v", im)
+	}
+	if im.ReasonCounts[string(MemoryRecallReasonDefaultSkip)] != 1 {
+		t.Fatalf("im source reason counts %+v", im.ReasonCounts)
+	}
+}
+
+func TestMemoryRecallStatsReset(t *testing.T) {
+	var stats MemoryRecallStats
+	stats.RecordWithSource(true, MemoryRecallReasonMemoryCue, MemoryRecallSourceSend)
+	stats.RecordInjectionWithSource(42, MemoryRecallSourceSend)
+	stats.Reset()
+
+	s := stats.Snapshot()
+	if s.Total != 0 || s.Recalled != 0 || s.InjectedTokens != 0 {
+		t.Fatalf("snapshot after reset %+v", s)
+	}
+	send := s.BySource[string(MemoryRecallSourceSend)]
+	if send.Total != 0 || send.InjectedTokens != 0 {
+		t.Fatalf("send snapshot after reset %+v", send)
 	}
 }
 
@@ -184,6 +418,53 @@ func TestConvertToLLMMessages(t *testing.T) {
 	}
 	if result[2].ToolCallID != "t1" {
 		t.Errorf("msg[2] ToolCallID = %q, want t1", result[2].ToolCallID)
+	}
+}
+
+func TestBuildSmartContextTierNoHistoryUsesLatestTurnOnly(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "no-history")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+
+	seed := []memory.Message{
+		{Role: "user", Content: "Q1"},
+		{Role: "assistant", Content: "A1"},
+		{Role: "user", Content: "Q2"},
+		{Role: "assistant", Content: "", ToolCalls: []memory.ToolCall{
+			{ID: "tc1", Name: "exec", Arguments: `{"cmd":"pwd"}`},
+		}},
+		{Role: "tool", Content: `{"stdout":"/tmp"}`, ToolCallID: "tc1"},
+		{Role: "assistant", Content: "done"},
+		{Role: "user", Content: "What is Rust?"},
+	}
+	for _, m := range seed {
+		if _, err := store.AddMessage(context.Background(), conv.ID, m); err != nil {
+			t.Fatalf("AddMessage: %v", err)
+		}
+	}
+
+	got := h.buildSmartContext(context.Background(), smartContextParams{
+		ConvID:      conv.ID,
+		UserMessage: "What is Rust?",
+	})
+
+	if got.Tier != TierNoHistory {
+		t.Fatalf("tier = %v, want %v", got.Tier, TierNoHistory)
+	}
+	if len(got.Messages) != 1 {
+		t.Fatalf("messages len = %d, want 1", len(got.Messages))
+	}
+	if got.Messages[0].Role != llm.RoleUser || got.Messages[0].Content != "What is Rust?" {
+		t.Fatalf("latest message = %+v, want user/What is Rust?", got.Messages[0])
 	}
 }
 

@@ -87,8 +87,8 @@ export function getVoiceForLanguage(lang: string): string {
     'ru': 'ru-RU-SvetlanaNeural',
     'ar': 'ar-SA-ZariyahNeural',
   }
-
-  return voiceMap[lang] || voiceMap['en']
+  const fallback = voiceMap.en || 'en-US-AriaNeural'
+  return voiceMap[lang] ?? fallback
 }
 
 /**

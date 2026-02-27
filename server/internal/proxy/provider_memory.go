@@ -63,9 +63,9 @@ func extractHost(rawURL string) string {
 		return ""
 	}
 	rest := rawURL[idx+3:]
-	// Host ends at '/', '?', or end of string
+	// Host ends at '/', '?', '#', or end of string
 	for i := 0; i < len(rest); i++ {
-		if rest[i] == '/' || rest[i] == '?' {
+		if rest[i] == '/' || rest[i] == '?' || rest[i] == '#' {
 			return rest[:i]
 		}
 	}

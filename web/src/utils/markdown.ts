@@ -217,29 +217,26 @@ function isTreeLine(line: string): boolean {
   return boxDrawingChars.test(line)
 }
 
-// Render a process code block as a styled card (handles ✓, ✗, ⏳ icons)
+// Render a process code block as a simple wireframe card (command above, output below)
 function renderProcessCard(code: string): string {
   try {
     const items = JSON.parse(code) as Array<{ cmd: string; tool: string; icon: string; status: string; output: string }>
     const rows = items.map(item => {
-      let iconSvg: string
-      if (item.icon === '✓') {
-        iconSvg = `<svg class="text-emerald-500 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
-      } else if (item.icon === '✗') {
-        iconSvg = `<svg class="text-red-400 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
-      } else {
-        // ⏳ pending/executing — animated spinner
-        iconSvg = `<svg class="text-blue-400 shrink-0 animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`
-      }
-      const label = item.cmd ? escapeHtml(item.cmd) : escapeHtml(item.tool)
-      const dur = item.status ? `<span class="text-gray-400 text-xs ml-auto pl-2 tabular-nums">${escapeHtml(item.status)}</span>` : ''
-      let row = `<div class="flex items-center gap-1.5 py-0.5">${iconSvg}<code class="text-xs truncate flex-1 opacity-80">${label}</code>${dur}</div>`
+      // Command/Input section
+      const commandHtml = item.cmd
+        ? `<div class="process-card__command"><span class="process-card__command-label">$</span><span class="process-card__command-text">${escapeHtml(item.cmd)}</span></div>`
+        : ''
+
+      // Output section
+      let outputHtml = ''
       if (item.output) {
-        row += `<pre class="text-xs opacity-50 pl-5 mt-0 mb-1 overflow-x-auto max-h-16 leading-tight">${escapeHtml(item.output)}</pre>`
+        const outputText = escapeHtml(item.output)
+        outputHtml = `<div class="process-card__output"><pre>${outputText}</pre></div>`
       }
-      return row
+
+      return `<div class="process-card__item">${commandHtml}${outputHtml}</div>`
     }).join('')
-    return `<div class="process-card my-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2">${rows}</div>`
+    return `<div class="process-card my-2 rounded border border-gray-200 dark:border-gray-700 px-2 py-1.5">${rows}</div>`
   } catch {
     return `<pre class="text-xs opacity-60 my-2">${escapeHtml(code)}</pre>`
   }
@@ -493,7 +490,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
           ? '<input type="checkbox" checked disabled class="mr-1.5 accent-current opacity-60 pointer-events-none" />'
           : '<input type="checkbox" disabled class="mr-1.5 opacity-60 pointer-events-none" />'
         const textClass = checked ? 'line-through opacity-50' : ''
-        listItems.push(`<li class="list-none">${cbHtml}<span class="${textClass}">${parseInline(cbMatch[2])}</span></li>`)
+        listItems.push(`<li class="list-none">${cbHtml}<span class="${textClass}">${parseInline(cbMatch[2] ?? '')}</span></li>`)
       } else {
         listItems.push(`<li>${parseInline(itemContent)}</li>`)
       }
@@ -551,6 +548,29 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
   }
 
   return result.join('\n')
+}
+
+const MARKDOWN_HTML_CACHE = new Map<string, string>()
+const MARKDOWN_HTML_CACHE_MAX = 400
+const MARKDOWN_CACHEABLE_TEXT_MAX = 12000
+
+// Shared markdown render cache for high-frequency UI paths.
+// Note: we only cache when hljs is ready to avoid storing pre-highlight fallback HTML.
+export function renderMarkdownCached(markdown: string, scope = 'default'): string {
+  if (!hljsReady || markdown.length > MARKDOWN_CACHEABLE_TEXT_MAX) {
+    return renderMarkdown(markdown)
+  }
+
+  const key = `${scope}:${markdown}`
+  const cached = MARKDOWN_HTML_CACHE.get(key)
+  if (cached !== undefined) return cached
+
+  const html = renderMarkdown(markdown)
+  if (MARKDOWN_HTML_CACHE.size >= MARKDOWN_HTML_CACHE_MAX) {
+    MARKDOWN_HTML_CACHE.clear()
+  }
+  MARKDOWN_HTML_CACHE.set(key, html)
+  return html
 }
 
 // Copy code to clipboard

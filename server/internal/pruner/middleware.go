@@ -3,7 +3,7 @@ package pruner
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"log/slog"
 )
 
 // contextKey is a private type for context keys in this package.
@@ -88,6 +88,16 @@ func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, e
 		return body, nil
 	}
 
+	passthrough := true
+	defer func() {
+		if passthrough && m.stats != nil {
+			m.stats.RecordPassthrough()
+		}
+		if passthrough {
+			slog.Debug("[pruner] passthrough request")
+		}
+	}()
+
 	modified := false
 	var totalBefore, totalAfter, msgsPruned int
 	for i, msg := range messages {
@@ -126,7 +136,10 @@ func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, e
 			Threshold: m.config.Threshold,
 		})
 		if err != nil {
-			fmt.Printf("[Pruner] error pruning message %d: %v\n", i, err)
+			slog.Warn("[pruner] prune failed for message",
+				"message_index", i,
+				"role", msg.Role,
+				"error", err)
 			continue
 		}
 
@@ -148,6 +161,14 @@ func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, e
 	if !modified {
 		return body, nil
 	}
+	passthrough = false
+
+	saved := totalBefore - totalAfter
+	slog.Info("[pruner] request pruned",
+		"messages_pruned", msgsPruned,
+		"tokens_before", totalBefore,
+		"tokens_after", totalAfter,
+		"tokens_saved", saved)
 
 	// Populate per-request stats if context has a slot
 	if stats := GetPruneStats(ctx); stats != nil {

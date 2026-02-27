@@ -115,23 +115,23 @@ export function useEventStream() {
   }
 
   function handleEvent(type: string, data: any) {
-    console.log('[EventStream] handleEvent called with type:', type, 'data:', data)
-    // Dispatch to global listeners first
-    const cbs = listeners.get(type)
-    if (cbs) {
-      for (const cb of cbs) {
-        try { cb(data) } catch { /* ignore listener errors */ }
-      }
-    }
-
-    // Special handling for ask - no i18n needed
-    if (type === 'ask') {
-      const chatStore = useChatStore()
-      chatStore.setPendingQuestion(data)
-      return
-    }
-
     try {
+      console.log('[EventStream] handleEvent called with type:', type, 'data:', data)
+      // Dispatch to global listeners first
+      const cbs = listeners.get(type)
+      if (cbs) {
+        for (const cb of cbs) {
+          try { cb(data) } catch { /* ignore listener errors */ }
+        }
+      }
+
+      // Special handling for ask - no i18n needed
+      if (type === 'ask') {
+        const chatStore = useChatStore()
+        chatStore.setPendingQuestion(data)
+        return
+      }
+
       const chatStore = useChatStore()
       const notificationStore = useNotificationStore()
       const { t } = useI18n()
@@ -223,7 +223,7 @@ export function useEventStream() {
       }
     }
     } catch (e) {
-      console.error('[EventStream] Error in handleEvent:', e)
+      // Silently ignore errors in event handling to prevent stream interruption
     }
   }
 

@@ -306,23 +306,6 @@ function clearImport() {
   }
 }
 
-// Cleanup functions
-function startCleanup() {
-  cleanupStep.value = 'select'
-  cleanupTargets.value = {
-    chatHistory: false,
-    sessions: false,
-    events: false,
-    alerts: false,
-    settings: false,
-    cache: false,
-  }
-  cleanupPassword.value = ''
-  cleanupConfirmText.value = ''
-  cleanupError.value = null
-  cleanupPreviewData.value = null
-}
-
 async function previewCleanup() {
   if (!hasCleanupTargets.value) return
 

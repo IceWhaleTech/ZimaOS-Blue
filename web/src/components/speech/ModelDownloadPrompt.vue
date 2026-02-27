@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { speechApi, type ASRModel } from '@/api/speech'
+import { speechApi, type ASRModel, type TTSModel } from '@/api/speech'
 
 const { t } = useI18n()
 
@@ -15,8 +15,13 @@ const emit = defineEmits<{
   'downloaded': []
 }>()
 
-interface ModelWithStatus extends ASRModel {
-  downloaded?: boolean
+interface ModelWithStatus {
+  id: string
+  name: string
+  description: string
+  size: string
+  downloaded: boolean
+  active?: boolean
 }
 
 interface DownloadProgress {
@@ -52,10 +57,26 @@ function formatBytes(bytes: number): string {
 
 async function loadModels() {
   try {
-    const res = props.type === 'asr'
-      ? await speechApi.listASRModels()
-      : await speechApi.listTTSModels()
-    models.value = res.data?.models || []
+    const res = await speechApi.getStatus()
+    if (props.type === 'asr') {
+      models.value = (res.data.asr.models || []).map((m: ASRModel) => ({
+        id: m.id,
+        name: m.name,
+        description: m.description,
+        size: m.size,
+        downloaded: m.downloaded,
+        active: m.active,
+      }))
+      return
+    }
+    models.value = (res.data.tts.models || []).map((m: TTSModel) => ({
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      size: m.size,
+      downloaded: m.downloaded,
+      active: false,
+    }))
   } catch (e) {
     console.error('Failed to load models:', e)
   }
@@ -78,15 +99,14 @@ async function handleDownload(modelId: string) {
 
     pollInterval = setInterval(async () => {
       try {
-        const statusRes = props.type === 'asr'
-          ? await speechApi.getASRStatus()
-          : await speechApi.getTTSStatus()
+        const statusRes = await speechApi.getStatus()
+        const target = props.type === 'asr' ? statusRes.data.asr : statusRes.data.tts
 
-        if (statusRes.data?.progress) {
-          progress.value = statusRes.data.progress
+        if (target?.progress) {
+          progress.value = target.progress
         }
 
-        if (statusRes.data?.ready && !statusRes.data?.downloading) {
+        if (target?.ready && !target?.downloading) {
           clearPollInterval()
           downloadingModelId.value = null
           emit('update:modelVisible', false)

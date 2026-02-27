@@ -21,6 +21,7 @@ import TokenUsageChartCard from './cards/TokenUsageChartCard.vue'
 import LatencyChartCard from './cards/LatencyChartCard.vue'
 import ModelStatsCard from './cards/ModelStatsCard.vue'
 import MediaGenerationCard from './cards/MediaGenerationCard.vue'
+import TokenEconomyCard from './cards/TokenEconomyCard.vue'
 
 defineProps<{
   metricsHistory?: Array<{
@@ -53,6 +54,7 @@ const componentMap: Record<string, Component> = {
   LatencyChartCard: markRaw(LatencyChartCard),
   ModelStatsCard: markRaw(ModelStatsCard),
   MediaGenerationCard: markRaw(MediaGenerationCard),
+  TokenEconomyCard: markRaw(TokenEconomyCard),
 }
 
 // Get component from config
@@ -103,7 +105,7 @@ const largeCards = computed(() => {
     </div>
 
     <!-- Small Cards Grid (1-column cards) -->
-    <div v-if="smallCards.length > 0" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div v-if="smallCards.length > 0" class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <div
         v-for="card in smallCards"
         :key="card.id"
@@ -118,7 +120,7 @@ const largeCards = computed(() => {
     </div>
 
     <!-- Large Cards Grid (2+ column cards) -->
-    <div v-if="largeCards.length > 0" class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+    <div v-if="largeCards.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       <div
         v-for="card in largeCards"
         :key="card.id"

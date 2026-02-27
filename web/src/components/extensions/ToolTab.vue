@@ -67,9 +67,54 @@ async function handleToggle(tool: Tool) {
   }
 }
 
-function getToolIconUrl(icon?: string): string | null {
-  if (!icon) return null
-  return `/icons/tools/${icon}.svg`
+function getToolIconUrl(tool: Tool): string | null {
+  const iconAliases: Record<string, string> = {
+    image: 'mediagen',
+    video: 'mediagen',
+    image_generate: 'mediagen',
+    video_generate: 'mediagen',
+  }
+  const availableIcons = new Set([
+    'analyze', 'browser', 'eye', 'file-read', 'file-write', 'mediagen', 'memory',
+    'notifications', 'process', 'question', 'sandbox', 'schedule', 'terminal',
+    'web-search', 'workflow',
+  ])
+
+  // First try to use the icon field
+  if (tool.icon) {
+    const normalizedIcon = iconAliases[tool.icon] || tool.icon
+    if (availableIcons.has(normalizedIcon)) {
+      return `/icons/tools/${normalizedIcon}.svg`
+    }
+  }
+  // Fallback: map tool name to icon
+  const iconMap: Record<string, string> = {
+    exec: 'terminal',
+    execute_command: 'terminal',
+    browser: 'browser',
+    browser_navigate: 'browser',
+    browser_click: 'browser',
+    browser_read: 'browser',
+    browser_screenshot: 'browser',
+    memory: 'memory',
+    memory_search: 'memory',
+    web_search: 'web-search',
+    scheduler: 'schedule',
+    ui_reviewer: 'eye',
+    analyze: 'analyze',
+    sandbox: 'sandbox',
+    workflows: 'workflow',
+    notifications: 'notifications',
+    ask: 'question',
+    mediagen: 'mediagen',
+    image_generate: 'mediagen',
+    video_generate: 'mediagen',
+  }
+  const iconName = iconMap[tool.name]
+  if (iconName) {
+    return `/icons/tools/${iconName}.svg`
+  }
+  return null
 }
 
 function getCategoryIcon(category?: string): string {
@@ -158,7 +203,7 @@ function getCategoryIcon(category?: string): string {
         :class="['item-card', { disabled: !tool.enabled }]"
       >
         <div class="item-header">
-          <img v-if="getToolIconUrl(tool.icon)" :src="getToolIconUrl(tool.icon)!" class="item-icon-svg" :alt="getToolName(tool)" />
+          <img v-if="getToolIconUrl(tool)" :src="getToolIconUrl(tool)!" class="item-icon-svg" :alt="getToolName(tool)" />
           <span v-else class="item-icon">{{ getCategoryIcon(tool.category) }}</span>
           <div class="item-title">
             <h3 :title="getToolName(tool)">{{ getToolName(tool) }}</h3>

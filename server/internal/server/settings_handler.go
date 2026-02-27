@@ -24,9 +24,25 @@ type SettingsHandler struct {
 type Settings struct {
 	Locale             string `json:"locale,omitempty"`               // User's preferred locale (e.g., "zh-CN", "en-US")
 	Timezone           string `json:"timezone,omitempty"`             // User's timezone
+	ThemeStyle         string `json:"theme_style,omitempty"`          // Chat theme style
 	SmartToolSelection *bool  `json:"smart_tool_selection,omitempty"` // IR-based tool filtering (nil = default true)
+	MemoryRecallMode   string `json:"memory_recall_mode,omitempty"`   // Memory recall strategy: aggressive|balanced|quality
 	AgentMode          *bool  `json:"agent_mode,omitempty"`           // Autonomous agent mode (nil = default false)
 	AgentAutoConfirm   *bool  `json:"agent_auto_confirm,omitempty"`   // Skip confirmation in agent mode (nil = default false)
+}
+
+var allowedThemeStyles = map[string]struct{}{
+	"default":  {},
+	"bubble":   {},
+	"minimal":  {},
+	"gradient": {},
+	"ocean":    {},
+}
+
+var allowedMemoryRecallModes = map[string]struct{}{
+	"aggressive": {},
+	"balanced":   {},
+	"quality":    {},
 }
 
 // NewSettingsHandler creates a new settings handler
@@ -59,6 +75,16 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 	if err := c.Bind(&newSettings); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
+	if newSettings.ThemeStyle != "" {
+		if _, valid := allowedThemeStyles[newSettings.ThemeStyle]; !valid {
+			newSettings.ThemeStyle = ""
+		}
+	}
+	if newSettings.MemoryRecallMode != "" {
+		if _, valid := allowedMemoryRecallModes[newSettings.MemoryRecallMode]; !valid {
+			newSettings.MemoryRecallMode = ""
+		}
+	}
 
 	h.mu.Lock()
 	h.settings = &newSettings
@@ -88,9 +114,19 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 	if timezone, ok := updates["timezone"].(string); ok {
 		h.settings.Timezone = timezone
 	}
+	if themeStyle, ok := updates["theme_style"].(string); ok {
+		if _, valid := allowedThemeStyles[themeStyle]; valid {
+			h.settings.ThemeStyle = themeStyle
+		}
+	}
 	if v, ok := updates["smart_tool_selection"]; ok {
 		if b, isBool := v.(bool); isBool {
 			h.settings.SmartToolSelection = &b
+		}
+	}
+	if mode, ok := updates["memory_recall_mode"].(string); ok {
+		if _, valid := allowedMemoryRecallModes[mode]; valid {
+			h.settings.MemoryRecallMode = mode
 		}
 	}
 	if v, ok := updates["agent_mode"]; ok {
@@ -121,14 +157,24 @@ func (h *SettingsHandler) GetLocale() string {
 	return workspace.DetectLocale()
 }
 
-// GetSmartToolSelection returns whether smart tool selection is enabled (default false).
+// GetSmartToolSelection returns whether smart tool selection is enabled (default true).
 func (h *SettingsHandler) GetSmartToolSelection() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmartToolSelection == nil {
-		return false
+		return true
 	}
 	return *h.settings.SmartToolSelection
+}
+
+// GetMemoryRecallMode returns memory recall mode (default "balanced").
+func (h *SettingsHandler) GetMemoryRecallMode() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if _, ok := allowedMemoryRecallModes[h.settings.MemoryRecallMode]; ok {
+		return h.settings.MemoryRecallMode
+	}
+	return "balanced"
 }
 
 // GetAgentMode returns whether agent mode is enabled (default true).

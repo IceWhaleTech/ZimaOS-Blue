@@ -417,3 +417,96 @@ func TestBridgeChat_UpstreamModelPreserved(t *testing.T) {
 		t.Errorf("Expected upstream model 'gpt-4o-2024-08-06', got %q", resp.Model)
 	}
 }
+
+func TestBridgeChatStream_AcceptsSSEEventLines(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+			rr.Provider = "OpenAI"
+			rr.Model = "o3"
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		fmt.Fprint(w, "event: response.output_text.delta\n")
+		fmt.Fprint(w, `data: {"type":"response.output_text.delta","response_id":"resp_1","delta":"Hel"}`+"\n\n")
+		fmt.Fprint(w, "event: response.output_text.delta\n")
+		fmt.Fprint(w, `data: {"type":"response.output_text.delta","response_id":"resp_1","delta":"lo"}`+"\n\n")
+		fmt.Fprint(w, "event: response.completed\n")
+		fmt.Fprint(w, `data: {"type":"response.completed","response":{"id":"resp_1","model":"o3","usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}}}`+"\n\n")
+	})
+
+	bridge := NewBridge(handler)
+	var out strings.Builder
+	var done bool
+	var usage *llm.Usage
+
+	err := bridge.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	}, func(chunk llm.StreamChunk) error {
+		out.WriteString(chunk.Delta)
+		if chunk.Usage != nil {
+			usage = chunk.Usage
+		}
+		if chunk.Done {
+			done = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ChatStream failed: %v", err)
+	}
+	if got := out.String(); got != "Hello" {
+		t.Fatalf("expected merged delta 'Hello', got %q", got)
+	}
+	if !done {
+		t.Fatal("expected done chunk")
+	}
+	if usage == nil || usage.TotalTokens != 12 {
+		t.Fatalf("expected usage with total_tokens=12, got %#v", usage)
+	}
+}
+
+func TestBridgeChatStream_ZeroChunksReturnsError(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+			rr.Provider = "OpenAI"
+			rr.Model = "gpt-5"
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// Intentionally no SSE data frames.
+	})
+
+	bridge := NewBridge(handler)
+	err := bridge.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	}, func(chunk llm.StreamChunk) error { return nil })
+	if err == nil {
+		t.Fatal("expected zero-chunk stream error, got nil")
+	}
+	if !strings.Contains(err.Error(), "502") {
+		t.Fatalf("expected 502-style proxy error, got: %v", err)
+	}
+}
+
+func TestBridgeChatStream_NonSSEBodyReturnsErrorBody(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"error":"not sse"}`)
+	})
+
+	bridge := NewBridge(handler)
+	err := bridge.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	}, func(chunk llm.StreamChunk) error { return nil })
+	if err == nil {
+		t.Fatal("expected malformed stream error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not sse") {
+		t.Fatalf("expected error body to include non-SSE payload, got: %v", err)
+	}
+}

@@ -143,8 +143,9 @@ export function useMediaGenerate() {
     const last = getLastModel(localIntent.category)
     if (last && models.value.some((m) => m.id === last)) {
       selectedModel.value = last
-    } else if (models.value.length > 0) {
-      selectedModel.value = models.value[0].id
+    } else {
+      const first = models.value[0]
+      if (first) selectedModel.value = first.id
     }
 
     // Auto-submit when there's exactly one model and no alternative category —
@@ -193,8 +194,9 @@ export function useMediaGenerate() {
     const last = getLastModel(category)
     if (last && models.value.some((m) => m.id === last)) {
       selectedModel.value = last
-    } else if (models.value.length > 0) {
-      selectedModel.value = models.value[0].id
+    } else {
+      const first = models.value[0]
+      if (first) selectedModel.value = first.id
     }
 
     // Auto-submit when there's only one model — nothing to choose
@@ -232,10 +234,13 @@ export function useMediaGenerate() {
     const last = getLastModel(newCategory)
     if (last && models.value.some((m) => m.id === last)) {
       selectedModel.value = last
-    } else if (models.value.length > 0) {
-      selectedModel.value = models.value[0].id
     } else {
-      selectedModel.value = ''
+      const first = models.value[0]
+      if (first) {
+        selectedModel.value = first.id
+      } else {
+        selectedModel.value = ''
+      }
     }
   }
 

@@ -278,3 +278,12 @@ func TestStripFunctionCalls(t *testing.T) {
 		})
 	}
 }
+
+func TestCompactForIM(t *testing.T) {
+	in := "Answer first.\n\n<!-- process-start -->\n```process\n[{\"tool\":\"exec\",\"cmd\":\"pwd\"}]\n```\n<!-- process-end -->\n\nDone."
+	got := CompactForIM(in)
+	want := "Answer first.\n\nDone."
+	if got != want {
+		t.Fatalf("CompactForIM() = %q, want %q", got, want)
+	}
+}

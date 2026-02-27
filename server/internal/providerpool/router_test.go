@@ -295,10 +295,10 @@ func TestRouterCapabilityFiltering(t *testing.T) {
 	// Save model with vision capability
 	models := []*Model{
 		{
-			ID:          "vision-model",
-			ProviderID:  "vision-provider",
-			Name:        "vision-model",
-			Enabled:     true,
+			ID:         "vision-model",
+			ProviderID: "vision-provider",
+			Name:       "vision-model",
+			Enabled:    true,
 			Capabilities: ModelCapabilities{
 				Chat:   true,
 				Vision: true,
@@ -832,6 +832,58 @@ func TestRouterCooldown(t *testing.T) {
 	}
 }
 
+func TestRouterSingleProvider_NoCooldownPenalty(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-single-provider-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+	router.SetCooldownConfig(&CooldownConfig{
+		FailureThreshold:   1,
+		InitialCooldown:    time.Hour,
+		MaxCooldown:        time.Hour,
+		CooldownMultiplier: 1.0,
+		ResetAfter:         time.Hour,
+	})
+
+	provider := &Provider{
+		ID:      "provider-only",
+		Name:    "Only Provider",
+		Type:    ProviderTypeCustom,
+		Enabled: true,
+		Status:  ProviderStatusActive,
+		APIKeys: []APIKey{{ID: "k1", Key: "key1", Enabled: true}},
+	}
+	registry.Register(provider)
+	storage.SaveModels(provider.ID, []*Model{{
+		ID:          "test-model",
+		ProviderID:  provider.ID,
+		Name:        "test-model",
+		DisplayName: "Test Model",
+		Enabled:     true,
+	}})
+	router.RebuildCandidates()
+
+	// In single-provider mode, failures should not trigger cooldown self-isolation.
+	router.RecordFailure(provider.ID, errors.New("upstream 500"))
+	if router.IsInCooldown(provider.ID) {
+		t.Fatal("single provider should not enter cooldown")
+	}
+
+	result, routeErr := router.Route(&RouteRequest{ModelID: "test-model"})
+	if routeErr != nil {
+		t.Fatalf("Route failed: %v", routeErr)
+	}
+	if result.Provider.ID != provider.ID {
+		t.Fatalf("expected provider %s, got %s", provider.ID, result.Provider.ID)
+	}
+}
+
 func TestRouterCooldownReset(t *testing.T) {
 	router, cleanup := setupRouterTest(t)
 	defer cleanup()
@@ -908,8 +960,8 @@ func TestRouterTransientCooldown(t *testing.T) {
 		MaxCooldown:               time.Hour,
 		CooldownMultiplier:        1.0,
 		ResetAfter:                time.Hour,
-		TransientFailureThreshold: 3,                      // need more transient failures
-		TransientInitialCooldown:  50 * time.Millisecond,  // but much shorter cooldown
+		TransientFailureThreshold: 3,                     // need more transient failures
+		TransientInitialCooldown:  50 * time.Millisecond, // but much shorter cooldown
 		TransientMaxCooldown:      200 * time.Millisecond,
 	})
 
@@ -1534,6 +1586,84 @@ func TestRouterBlindFallback_PassthroughModel(t *testing.T) {
 	}
 	if receivedModel != "gpt-5.3-codex" {
 		t.Errorf("Expected passthrough model gpt-5.3-codex, got %s", receivedModel)
+	}
+}
+
+// TestRouterBlindFallback_RespectsAllowedModels verifies blind fallback does not
+// route to providers that disallow the requested model via AllowedModels.
+func TestRouterBlindFallback_RespectsAllowedModels(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-blind-allowlist-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	providerA := &Provider{
+		ID: "provider-a", Name: "Provider A", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 100,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k1", Key: "key-a", Enabled: true}},
+	}
+	// Higher priority than provider-c, but should be skipped in blind fallback.
+	providerB := &Provider{
+		ID: "provider-b", Name: "Provider B", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 90,
+		Location:            ProviderLocationCloud,
+		APIKeys:             []APIKey{{ID: "k2", Key: "key-b", Enabled: true}},
+		AllowedModels:       []string{"other-model"},
+		AllowlistConfigured: true,
+	}
+	providerC := &Provider{
+		ID: "provider-c", Name: "Provider C", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 80,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k3", Key: "key-c", Enabled: true}},
+	}
+	registry.Register(providerA)
+	registry.Register(providerB)
+	registry.Register(providerC)
+
+	// provider-a has the requested model; provider-b/provider-c do not.
+	storage.SaveModels("provider-a", []*Model{{
+		ID: "special-model", ProviderID: "provider-a", Name: "special-model",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true},
+	}})
+	storage.SaveModels("provider-b", []*Model{{
+		ID: "other-model", ProviderID: "provider-b", Name: "other-model",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true},
+	}})
+	storage.SaveModels("provider-c", []*Model{{
+		ID: "third-model", ProviderID: "provider-c", Name: "third-model",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true},
+	}})
+	router.RebuildCandidates()
+
+	var tried []string
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID: "special-model",
+	}, func(result *RouteResult) error {
+		tried = append(tried, result.Provider.ID)
+		if result.Provider.ID == "provider-a" {
+			return errors.New("upstream error")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Expected fallback success, got: %v", err)
+	}
+	if len(tried) != 2 {
+		t.Fatalf("Expected 2 attempts, got %d: %v", len(tried), tried)
+	}
+	if tried[0] != "provider-a" {
+		t.Errorf("First attempt should be provider-a, got %s", tried[0])
+	}
+	if tried[1] != "provider-c" {
+		t.Errorf("Second attempt should skip provider-b due allowlist and use provider-c, got %s", tried[1])
 	}
 }
 

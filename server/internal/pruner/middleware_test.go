@@ -303,3 +303,29 @@ func TestMiddleware_Enabled(t *testing.T) {
 		t.Error("expected Enabled()=false")
 	}
 }
+
+func TestMiddleware_ProcessRequest_RecordsPassthrough(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.MinLines = 5
+
+	stats := NewStats()
+	mw := NewMiddleware(&mockBackend{}, cfg, stats)
+
+	body := []byte(`{"messages":[{"role":"user","content":"hello world"}]}`)
+	_, err := mw.ProcessRequest(context.Background(), body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	snap := stats.Snapshot()
+	if snap.TotalRequests != 1 {
+		t.Fatalf("expected total_requests=1, got %d", snap.TotalRequests)
+	}
+	if snap.PassthroughRequests != 1 {
+		t.Fatalf("expected passthrough_requests=1, got %d", snap.PassthroughRequests)
+	}
+	if snap.PrunedRequests != 0 {
+		t.Fatalf("expected pruned_requests=0, got %d", snap.PrunedRequests)
+	}
+}

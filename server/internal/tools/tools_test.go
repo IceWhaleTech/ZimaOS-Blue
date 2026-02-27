@@ -8,6 +8,20 @@ import (
 	"testing"
 )
 
+type captureArgsTool struct {
+	def  ToolDefinition
+	args map[string]interface{}
+}
+
+func (t *captureArgsTool) Definition() ToolDefinition {
+	return t.def
+}
+
+func (t *captureArgsTool) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	t.args = args
+	return "ok", nil
+}
+
 // Test Tool interface
 func TestToolInterface(t *testing.T) {
 	var _ Tool = (*MockTool)(nil)
@@ -189,6 +203,265 @@ func TestExecutorExecuteWithJSONArgs(t *testing.T) {
 	}
 	if result != "executed" {
 		t.Errorf("expected result 'executed', got '%v'", result)
+	}
+}
+
+func TestExecutorExecuteJSONArgs_KeyValueFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+					"cwd":     map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "exec", `command="ls -la" cwd=/tmp`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "ls -la" {
+		t.Fatalf("command = %v, want %q", got, "ls -la")
+	}
+	if got := tool.args["cwd"]; got != "/tmp" {
+		t.Fatalf("cwd = %v, want %q", got, "/tmp")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_RawStringFallbackToRequiredField(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+					"cwd":     map[string]interface{}{"type": "string"},
+				},
+				"required": []interface{}{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "exec", `ls -la`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "ls -la" {
+		t.Fatalf("command = %v, want %q", got, "ls -la")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_JSONStringFallbackToRequiredField(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "exec", `"pwd"`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "pwd" {
+		t.Fatalf("command = %v, want %q", got, "pwd")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_LooseJSONObjectFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+					"cwd":     map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "exec", `{command:'ls -la', cwd:'/tmp',}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "ls -la" {
+		t.Fatalf("command = %v, want %q", got, "ls -la")
+	}
+	if got := tool.args["cwd"]; got != "/tmp" {
+		t.Fatalf("cwd = %v, want %q", got, "/tmp")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_IncompleteJSONObjectFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "exec", `{"command":"ls -la"`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "ls -la" {
+		t.Fatalf("command = %v, want %q", got, "ls -la")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_LooseJSONObjectInsideJSONStringFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "exec", `"{command:'pwd'}"`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "pwd" {
+		t.Fatalf("command = %v, want %q", got, "pwd")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_CodeFenceJSONFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	args := "```json\n{\"command\":\"pwd\"}\n```"
+	_, err := executor.ExecuteJSON(context.Background(), "exec", args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "pwd" {
+		t.Fatalf("command = %v, want %q", got, "pwd")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_ExtractJSONObjectFromText(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	args := `Use this payload: {"command":"ls -la"} thanks`
+	_, err := executor.ExecuteJSON(context.Background(), "exec", args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "ls -la" {
+		t.Fatalf("command = %v, want %q", got, "ls -la")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_ColonValueLinesFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+					"cwd":     map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	args := "command: ls -la\ncwd: /tmp"
+	_, err := executor.ExecuteJSON(context.Background(), "exec", args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "ls -la" {
+		t.Fatalf("command = %v, want %q", got, "ls -la")
+	}
+	if got := tool.args["cwd"]; got != "/tmp" {
+		t.Fatalf("cwd = %v, want %q", got, "/tmp")
 	}
 }
 

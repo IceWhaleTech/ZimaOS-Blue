@@ -120,8 +120,11 @@ func BuiltinProviders() []*Provider {
 			Description: "Moonshot AI (Kimi) API",
 			Website:     "https://moonshot.cn",
 			APIKeyURL:   "https://platform.moonshot.cn/console/api-keys",
-			CreatedAt:   timeutil.NowTime(),
-			UpdatedAt:   timeutil.NowTime(),
+			AlternateBaseURLs: []string{
+				"https://api.moonshot.ai/v1", // International endpoint
+			},
+			CreatedAt: timeutil.NowTime(),
+			UpdatedAt: timeutil.NowTime(),
 		},
 		{
 			ID:          "azure-openai",
@@ -201,16 +204,22 @@ func BuiltinProviders() []*Provider {
 			Location:    ProviderLocationCloud,
 			Enabled:     false,
 			Status:      ProviderStatusInactive,
-			BaseURL:     "https://api.minimaxi.com",
+			BaseURL:     "https://api.minimaxi.com/anthropic",
 			APIVersion:  "v1",
-			APIFormat:   APIFormatOpenAI,
+			APIFormat:   APIFormatAnthropic,
 			Priority:    30,
 			Icon:        "minimax",
 			Description: "MiniMax API - M2.5 series models",
 			Website:     "https://platform.minimax.io",
 			APIKeyURL:   "https://platform.minimax.io/user-center/basic-information/interface-key",
-			CreatedAt:   timeutil.NowTime(),
-			UpdatedAt:   timeutil.NowTime(),
+			AlternateBaseURLs: []string{
+				"https://api.minimaxi.com",           // China OpenAI endpoint (works with API key)
+				"https://api.minimax.io",             // International OpenAI endpoint
+				"https://api.minimaxi.com/anthropic", // China Anthropic-compatible endpoint
+				"https://api.minimax.io/anthropic",   // International Anthropic-compatible endpoint
+			},
+			CreatedAt: timeutil.NowTime(),
+			UpdatedAt: timeutil.NowTime(),
 		},
 		{
 			ID:          "codex",
@@ -425,7 +434,7 @@ func BuiltinProviders() []*Provider {
 			Enabled:     false,
 			Status:      ProviderStatusInactive,
 			BaseURL:     codexCfg.APIEndpoint,
-			APIFormat:   APIFormatOpenAI,
+			APIFormat:   APIFormatResponses,
 			Priority:    50,
 			Icon:        "openai",
 			Description: "OpenAI Codex CLI via OAuth - ChatGPT subscription models",
@@ -1716,7 +1725,7 @@ func GetBuiltinPricingConfig() *PricingConfig {
 					ProviderID:  model.ProviderID,
 					InputPrice:  model.InputPrice,
 					OutputPrice: model.OutputPrice,
-					CachePrice:  0, // Built-in models don't have cache pricing
+					CachePrice:  model.CachePrice,
 					IsCustom:    false,
 					UpdatedAt:   config.UpdatedAt,
 				}

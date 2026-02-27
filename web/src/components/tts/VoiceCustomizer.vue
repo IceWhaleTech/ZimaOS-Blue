@@ -39,8 +39,8 @@ import { ref, onMounted } from 'vue'
 import { useTTSStore } from '@/stores/tts'
 import { ttsApi } from '@/api/tts'
 
-const _ttsStore = useTTSStore()
-const voices = ref<{ id: string; name: string }[]>([])
+useTTSStore()
+const voices = ref<{ id: string; name: string; language?: string }[]>([])
 const selectedVoice = ref('')
 const rate = ref(1.0)
 const pitch = ref(0)
@@ -50,8 +50,9 @@ onMounted(async () => {
   try {
     const response = await ttsApi.listVoices()
     voices.value = response.data.voices
-    if (voices.value.length > 0) {
-      selectedVoice.value = voices.value[0].id
+    const first = voices.value[0]
+    if (first) {
+      selectedVoice.value = first.id
     }
   } catch (err) {
     console.error('Failed to load voices:', err)

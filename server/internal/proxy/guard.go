@@ -84,11 +84,11 @@ func (pg *PromptGuard) compilePatterns() {
 		`(?i)forget\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?)`,
 		`(?i)override\s+(system|previous|prior)\s+(prompt|instructions?)`,
 
-		// Role manipulation
-		`(?i)you\s+are\s+now\s+(a|an)\s+`,
-		`(?i)pretend\s+(you\s+are|to\s+be)\s+`,
-		`(?i)act\s+as\s+(if\s+you\s+are\s+)?(a|an)\s+`,
-		`(?i)roleplay\s+as\s+`,
+		// Role manipulation (narrowed to suspicious personas/intent to reduce false positives)
+		`(?i)you\s+are\s+now\s+(a|an)\s+(hacker|evil|malicious|unfiltered|unrestricted|jailbroken)\b`,
+		`(?i)pretend\s+(you\s+are|to\s+be)\s+(a|an)\s+(hacker|evil|malicious|unfiltered|unrestricted|jailbroken)\b`,
+		`(?i)act\s+as\s+(if\s+you\s+are\s+)?(a|an)\s+(hacker|evil|malicious|unfiltered|unrestricted|jailbroken)\b`,
+		`(?i)roleplay\s+as\s+(a|an)\s+(hacker|evil|malicious|unfiltered|unrestricted|jailbroken)\b`,
 
 		// System prompt extraction
 		`(?i)reveal\s+(your\s+)?(system\s+)?prompt`,
@@ -186,7 +186,7 @@ func (pg *PromptGuard) Check(prompt string) *GuardResult {
 	// Analyze results
 	if len(result.Matches) > 0 {
 		result.RiskLevel = pg.calculateRiskLevel(result.Matches)
-		result.Reason = "potential prompt injection detected"
+		result.Reason = pg.generateReason(result.Matches)
 		result.Suggestions = pg.generateSuggestions(result.Matches)
 
 		if pg.config.BlockOnDetection && result.RiskLevel == "high" {
@@ -197,6 +197,27 @@ func (pg *PromptGuard) Check(prompt string) *GuardResult {
 	}
 
 	return result
+}
+
+func (pg *PromptGuard) generateReason(matches []string) string {
+	for _, match := range matches {
+		lower := strings.ToLower(match)
+		if strings.Contains(lower, "ignore") ||
+			strings.Contains(lower, "disregard") ||
+			strings.Contains(lower, "override") ||
+			strings.Contains(lower, "forget") {
+			return "potential instruction override attempt detected"
+		}
+		if strings.Contains(lower, "system") && (strings.Contains(lower, "prompt") || strings.Contains(lower, "instruction")) {
+			return "potential system prompt extraction attempt detected"
+		}
+		if strings.Contains(lower, "jailbreak") ||
+			strings.Contains(lower, "dan mode") ||
+			strings.Contains(lower, "bypass") {
+			return "potential jailbreak attempt detected"
+		}
+	}
+	return "potential prompt injection detected"
 }
 
 // calculateRiskLevel determines risk level based on matches

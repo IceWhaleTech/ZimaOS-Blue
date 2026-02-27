@@ -53,8 +53,25 @@ function formatTokens(tokens?: number): string {
 
     <div class="flex items-start gap-3">
       <div class="p-2 rounded-full bg-white dark:bg-gray-700 text-indigo-500 dark:text-indigo-400">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24">
+          <path
+            d="M12 7.8L15.64 9.9V14.1L12 16.2L8.36 14.1V9.9L12 7.8Z"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linejoin="round"
+          />
+          <circle cx="12" cy="6.1" r="1.15" fill="currentColor"/>
+          <circle cx="17.05" cy="9.05" r="1.15" fill="currentColor"/>
+          <circle cx="17.05" cy="14.95" r="1.15" fill="currentColor"/>
+          <circle cx="12" cy="17.9" r="1.15" fill="currentColor"/>
+          <circle cx="6.95" cy="14.95" r="1.15" fill="currentColor"/>
+          <circle cx="6.95" cy="9.05" r="1.15" fill="currentColor"/>
+          <path d="M12 7.2V6.95" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M15.24 9.42L16.15 8.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M15.24 14.58L16.15 15.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M12 16.8V17.05" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M8.76 14.58L7.85 15.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M8.76 9.42L7.85 8.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
       </div>
 

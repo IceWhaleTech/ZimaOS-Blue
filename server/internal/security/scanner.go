@@ -545,7 +545,9 @@ func (s *SecurityScanner) checkNetworkSecurity() []SecurityScanItem {
 		Impact:      "Cross-site request forgery attacks could steal data or perform unauthorized actions",
 		Remediation: "Restrict CORS to specific trusted origins in production environments",
 	}
-	if s.config.CORSAllowAll {
+	allowedOrigins := GetDefaultAllowedOrigins()
+	allowAll := IsDefaultAllowAllOrigins()
+	if allowAll {
 		if s.config.Environment == "production" {
 			item.Status = "failed"
 			item.Details = "CORS allows all origins in production. This is a security risk."
@@ -555,9 +557,9 @@ func (s *SecurityScanner) checkNetworkSecurity() []SecurityScanItem {
 			item.Status = "warning"
 			item.Details = "CORS allows all origins. Acceptable for development, but restrict in production."
 		}
-	} else if len(s.config.CORSAllowedOrigins) > 0 {
+	} else if len(allowedOrigins) > 0 {
 		item.Status = "passed"
-		item.Details = "CORS is restricted to " + strconv.Itoa(len(s.config.CORSAllowedOrigins)) + " allowed origins"
+		item.Details = "CORS is restricted to " + strconv.Itoa(len(allowedOrigins)) + " allowed origins"
 	} else {
 		item.Status = "passed"
 		item.Details = "CORS is configured with no external origins allowed"
@@ -574,21 +576,21 @@ func (s *SecurityScanner) checkNetworkSecurity() []SecurityScanItem {
 		Impact:      "Sensitive data including credentials and API keys could be stolen via man-in-the-middle attacks",
 		Remediation: "Enable TLS with a valid certificate and enforce HTTPS for all connections",
 	}
-	if s.config.TLSEnabled {
+	tlsManager := GetGlobalTLSManager()
+	tlsEnabled := tlsManager != nil && tlsManager.GetCertificate() != nil
+	var tlsMinVersion uint16 = tls.VersionTLS12
+
+	if tlsEnabled {
+		if cfg := tlsManager.GetTLSConfig(); cfg != nil && cfg.MinVersion != 0 {
+			tlsMinVersion = cfg.MinVersion
+		}
 		// Check TLS version
-		if s.config.TLSMinVersion >= tls.VersionTLS12 {
+		if tlsMinVersion >= tls.VersionTLS12 {
 			item.Status = "passed"
 			item.Details = "TLS is enabled with minimum version TLS 1.2"
 		} else {
 			item.Status = "warning"
 			item.Details = "TLS is enabled but allows older versions. Recommend TLS 1.2 minimum."
-		}
-		// Verify cert files exist
-		if s.config.TLSCertPath != "" {
-			if _, err := os.Stat(s.config.TLSCertPath); os.IsNotExist(err) {
-				item.Status = "failed"
-				item.Details = "TLS certificate file not found: " + s.config.TLSCertPath
-			}
 		}
 	} else {
 		if s.config.Environment == "production" {

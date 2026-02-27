@@ -4,10 +4,10 @@ Deep-dive analysis tool. Gathers data from URLs and web searches, then generates
 
 ## How to Send
 
-Use the `blue` CLI (always use `--json` for structured output):
+Direct call (always use `--json` for structured output):
 
 ```bash
-blue analyze action=analyze topic="XXX community feedback" urls='["https://reddit.com/r/minilab/..."]' --json
+analyze topic="XXX community feedback" urls='["https://reddit.com/r/minilab/..."]' --json
 ```
 
 ## Commands
@@ -16,7 +16,7 @@ blue analyze action=analyze topic="XXX community feedback" urls='["https://reddi
 
 Full analysis pipeline. Scrapes URLs via browser, runs web searches, then uses LLM to extract structured data and generate a self-contained HTML report.
 
-**Required:** `action`, `topic`
+**Required:** `topic`
 
 **Optional:**
 - `urls` — array of URLs to scrape for content (max 5)
@@ -25,19 +25,11 @@ Full analysis pipeline. Scrapes URLs via browser, runs web searches, then uses L
 - `lang` — output language (`zh-CN`, `en-US`, default: `zh-CN`)
 
 ```bash
-blue analyze action=analyze topic="Product feedback analysis" urls='["https://example.com/reviews"]' search_queries='["product reviews 2026"]' --json
+analyze topic="Product feedback analysis" urls='["https://example.com/reviews"]' search_queries='["product reviews 2026"]' --json
 ```
 
-### analyze_text
-
-Analyze provided text directly without URL scraping or web search. Useful for analyzing pre-collected data.
-
-**Required:** `action`, `topic`, `text`
-
-**Optional:** `lang`
-
 ```bash
-blue analyze action=analyze_text topic="Survey results" text="..." lang=en-US --json
+analyze topic="Survey results" text="..." lang=en-US --json
 ```
 
 ## Pipeline
@@ -66,11 +58,9 @@ The generated HTML report includes:
 All commands return `status=error` with an `error` message on failure.
 
 Common errors:
-- `action is required` — missing `action` parameter
 - `topic is required` — missing `topic` parameter
-- `text is required for analyze_text` — missing `text` for analyze_text action
 - `LLM bridge not available` — LLM service not configured
-- `no data collected` — no URLs, search queries, or text provided for analyze action
+- `no data collected` — no URLs, search queries, or text provided
 
 ## Example Triggers
 

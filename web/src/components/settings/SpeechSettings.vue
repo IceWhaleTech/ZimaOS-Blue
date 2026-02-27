@@ -98,23 +98,6 @@ function isProviderAvailable(provider: string) {
   return availableProviders.value.includes(provider)
 }
 
-const editBeforeSend = computed({
-  get: () => status.value?.asr?.edit_before_send ?? false,
-  set: async (value: boolean) => {
-    if (status.value?.asr) {
-      status.value.asr.edit_before_send = value
-    }
-    try {
-      await speechApi.setEditBeforeSend(value)
-    } catch (e) {
-      // Revert on failure
-      if (status.value?.asr) {
-        status.value.asr.edit_before_send = !value
-      }
-    }
-  }
-})
-
 // TTS Provider selection - synced from server status
 const selectedProvider = ref(localStorage.getItem('tts-provider') || '')
 
@@ -436,7 +419,7 @@ onMounted(async () => {
           <div v-if="status?.asr?.on_device_only && status?.asr?.dictation_available && offlineLanguages.length > 0" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
 
       <!-- Windows Native STT Status -->
-      <div v-if="status?.asr?.provider === 'windows-native'" class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
+      <div v-if="String(status?.asr?.provider) === 'windows-native'" class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-100 dark:bg-blue-900/30">

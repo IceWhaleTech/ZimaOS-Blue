@@ -163,6 +163,43 @@ func (m *QuestionManager) AskQuestions(ctx context.Context, userID, sessionID st
 
 // ResolveAnswer is called by the REST endpoint when the user responds.
 func (m *QuestionManager) ResolveAnswer(id string, answers []QuestionAnswerResult) bool {
+	// Deduplicate answers: keep only unique selected values, preserve OtherText
+	for i := range answers {
+		if len(answers[i].Selected) <= 1 {
+			continue
+		}
+		otherText := answers[i].OtherText
+		hasOther := false
+		for _, v := range answers[i].Selected {
+			if v == "__other__" {
+				hasOther = true
+				break
+			}
+		}
+		// Deduplicate selected values
+		seen := make(map[string]bool)
+		uniqueSelected := make([]string, 0, len(answers[i].Selected))
+		for _, v := range answers[i].Selected {
+			if v == "__other__" {
+				// Only keep __other__ once
+				if !seen["__other__"] {
+					seen["__other__"] = true
+					uniqueSelected = append(uniqueSelected, v)
+				}
+			} else {
+				if !seen[v] {
+					seen[v] = true
+					uniqueSelected = append(uniqueSelected, v)
+				}
+			}
+		}
+		answers[i].Selected = uniqueSelected
+		// Restore OtherText if __other__ was present
+		if hasOther && otherText != "" {
+			answers[i].OtherText = otherText
+		}
+	}
+
 	m.mu.Lock()
 	p, ok := m.pending[id]
 	if ok {

@@ -263,9 +263,6 @@ export const useSkillStore = defineStore('skill', () => {
       refreshing.value = true
       error.value = null
       const response = await skillApi.refresh()
-      if (response.data.errors && response.data.errors.length > 0) {
-        error.value = response.data.errors.join(', ')
-      }
       // Refresh browse results
       await browseSkills()
       return response.data

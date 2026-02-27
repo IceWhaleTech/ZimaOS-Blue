@@ -171,7 +171,7 @@ export class EnergyVAD {
     if (!this.analyser || !this.dataArray) return
 
     // Always compute RMS for volume visualization, even when paused
-    this.analyser.getByteTimeDomainData(this.dataArray)
+    this.analyser.getByteTimeDomainData(this.dataArray as unknown as Uint8Array<ArrayBuffer>)
     const rms = this.computeRMS(this.dataArray)
 
     // Throttle volume callback to every other tick (~10fps)
@@ -229,7 +229,7 @@ export class EnergyVAD {
   private computeRMS(data: Uint8Array): number {
     let sum = 0
     for (let i = 0; i < data.length; i++) {
-      const sample = (data[i] - 128) / 128
+      const sample = ((data[i] ?? 128) - 128) / 128
       sum += sample * sample
     }
     return Math.sqrt(sum / data.length)
@@ -301,7 +301,8 @@ export class EnergyVAD {
         speechSlice = this.chunks
       } else {
         // chunk[0] = init segment, then speech region chunks
-        speechSlice = [this.chunks[0], ...this.chunks.slice(startIdx)]
+        const firstChunk = this.chunks[0]
+        speechSlice = firstChunk ? [firstChunk, ...this.chunks.slice(startIdx)] : this.chunks.slice(startIdx)
       }
 
       const blob = new Blob(speechSlice, { type: mr.mimeType || 'audio/webm' })

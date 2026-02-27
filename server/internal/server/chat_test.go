@@ -6,13 +6,68 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
 )
+
+type requestCaptureProvider struct {
+	lastReq llm.ChatRequest
+	mu      sync.Mutex
+}
+
+func (p *requestCaptureProvider) Name() string { return "capture" }
+
+func (p *requestCaptureProvider) Models() []string { return []string{"capture-model"} }
+
+func (p *requestCaptureProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	p.mu.Lock()
+	p.lastReq = req
+	p.mu.Unlock()
+	return &llm.ChatResponse{
+		ID:      "capture-resp",
+		Model:   req.Model,
+		Message: llm.Message{Role: llm.RoleAssistant, Content: "ok"},
+		Usage:   llm.Usage{PromptTokens: 10, CompletionTokens: 2, TotalTokens: 12},
+	}, nil
+}
+
+func (p *requestCaptureProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, 1)
+	close(ch)
+	return ch, nil
+}
+
+func (p *requestCaptureProvider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, callback llm.StreamCallback) error {
+	p.mu.Lock()
+	p.lastReq = req
+	p.mu.Unlock()
+	return callback(llm.StreamChunk{Delta: "ok", Done: true, Usage: &llm.Usage{PromptTokens: 10, CompletionTokens: 2, TotalTokens: 12}})
+}
+
+func (p *requestCaptureProvider) LastRequest() llm.ChatRequest {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastReq
+}
+
+func hasSystemAnchor(messages []llm.Message, title, goal string) bool {
+	for _, m := range messages {
+		if m.Role != llm.RoleSystem {
+			continue
+		}
+		if strings.Contains(m.Content, "Conversation title: "+title) && strings.Contains(m.Content, "Initial user goal: "+goal) {
+			return true
+		}
+	}
+	return false
+}
 
 // Test ChatHandler creation
 func TestNewChatHandler(t *testing.T) {
@@ -266,6 +321,99 @@ func TestChatHandlerSendMessage(t *testing.T) {
 	}
 }
 
+func TestChatHandlerSendMessageInjectsConversationAnchor(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Anchor Test Title")
+	_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "user", Content: "Initial objective: fix context continuity"})
+	_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "assistant", Content: "ack"})
+
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSystemPromptBuilder(claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{}))
+
+	e := echo.New()
+	reqBody := `{"message":"B","provider":"capture","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	lastReq := capture.LastRequest()
+	if !hasSystemAnchor(lastReq.Messages, "Anchor Test Title", "Initial objective: fix context continuity") {
+		t.Fatalf("expected conversation anchor in system messages, got %d messages", len(lastReq.Messages))
+	}
+}
+
+func TestBuildConversationAnchorPromptEdgeCases(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	registry := llm.NewProviderRegistry()
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+
+	t.Run("empty_title_uses_fallback_title", func(t *testing.T) {
+		conv, _ := store.CreateConversation(context.Background(), "")
+		_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "user", Content: "Goal A"})
+		prompt := handler.buildConversationAnchorPrompt(context.Background(), conv.ID)
+		if !strings.Contains(prompt, "Conversation title: Untitled conversation") {
+			t.Fatalf("expected fallback title, got: %q", prompt)
+		}
+		if !strings.Contains(prompt, "Initial user goal: Goal A") {
+			t.Fatalf("expected initial goal in prompt, got: %q", prompt)
+		}
+	})
+
+	t.Run("long_title_and_goal_are_truncated", func(t *testing.T) {
+		longTitle := strings.Repeat("测", 130)
+		longGoal := strings.Repeat("g", 230)
+		conv, _ := store.CreateConversation(context.Background(), longTitle)
+		_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "user", Content: longGoal})
+
+		prompt := handler.buildConversationAnchorPrompt(context.Background(), conv.ID)
+		expectedTitle := "Conversation title: " + strings.Repeat("测", 120) + "..."
+		expectedGoal := "Initial user goal: " + strings.Repeat("g", 220) + "..."
+
+		if !strings.Contains(prompt, expectedTitle) {
+			t.Fatalf("expected truncated title in prompt, got: %q", prompt)
+		}
+		if !strings.Contains(prompt, expectedGoal) {
+			t.Fatalf("expected truncated goal in prompt, got: %q", prompt)
+		}
+	})
+
+	t.Run("empty_user_content_falls_back_to_scope_only", func(t *testing.T) {
+		conv, _ := store.CreateConversation(context.Background(), "Only Scope")
+		_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "user", Content: ""})
+		_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "assistant", Content: "ack"})
+		prompt := handler.buildConversationAnchorPrompt(context.Background(), conv.ID)
+
+		if !strings.Contains(prompt, "Conversation title: Only Scope") {
+			t.Fatalf("expected title in prompt, got: %q", prompt)
+		}
+		if strings.Contains(prompt, "Initial user goal:") {
+			t.Fatalf("did not expect initial goal line for empty user content, got: %q", prompt)
+		}
+		if !strings.Contains(prompt, "Keep replies aligned with this conversation scope") {
+			t.Fatalf("expected scope fallback guidance, got: %q", prompt)
+		}
+	})
+}
+
 // Test SendMessage with invalid provider
 func TestChatHandlerSendMessageInvalidProvider(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
@@ -289,6 +437,152 @@ func TestChatHandlerSendMessageInvalidProvider(t *testing.T) {
 	err := handler.SendMessage(c)
 	if err == nil {
 		t.Error("expected error for invalid provider")
+	}
+}
+
+func TestChatHandlerSendMessageSlashCommandsAndOffline(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Test Conv")
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+	e := echo.New()
+
+	callSend := func(body string) map[string]interface{} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("id")
+		c.SetParamValues(conv.ID)
+
+		if err := handler.SendMessage(c); err != nil {
+			t.Fatalf("SendMessage error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+		}
+		var resp map[string]interface{}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		return resp
+	}
+
+	resp := callSend(`{"message":"/model test-model","provider":"","model":""}`)
+	if !strings.Contains(resp["content"].(string), "test-model") {
+		t.Fatalf("unexpected /model response: %v", resp["content"])
+	}
+
+	resp = callSend(`{"message":"/model","provider":"","model":""}`)
+	if !strings.Contains(resp["content"].(string), "test-model") {
+		t.Fatalf("unexpected /model query response: %v", resp["content"])
+	}
+
+	resp = callSend(`{"message":"/status","provider":"","model":""}`)
+	if !strings.Contains(resp["content"].(string), "test-model") {
+		t.Fatalf("unexpected /status response: %v", resp["content"])
+	}
+
+	resp = callSend(`{"message":"/ping","provider":"","model":""}`)
+	if resp["content"] != "pong" {
+		t.Fatalf("unexpected /ping response: %v", resp["content"])
+	}
+
+	resp = callSend(`{"message":"/title Renamed Conv","provider":"","model":""}`)
+	if !strings.Contains(resp["content"].(string), "Renamed Conv") {
+		t.Fatalf("unexpected /title response: %v", resp["content"])
+	}
+	updatedConv, err := store.GetConversation(context.Background(), conv.ID)
+	if err != nil {
+		t.Fatalf("failed to get conversation after /title: %v", err)
+	}
+	if updatedConv.Title != "Renamed Conv" {
+		t.Fatalf("conversation title = %q, want %q", updatedConv.Title, "Renamed Conv")
+	}
+
+	resp = callSend(`{"message":"/models","provider":"","model":""}`)
+	modelsContent := resp["content"].(string)
+	if !strings.Contains(modelsContent, "Available models") && !strings.Contains(modelsContent, "No model list") {
+		t.Fatalf("unexpected /models response: %v", resp["content"])
+	}
+
+	resp = callSend(`{"message":"/offline on","provider":"","model":""}`)
+	if !strings.Contains(strings.ToLower(resp["content"].(string)), "offline mode is now on") {
+		t.Fatalf("unexpected /offline on response: %v", resp["content"])
+	}
+
+	resp = callSend(`{"message":"hello offline","provider":"","model":""}`)
+	content := resp["content"].(string)
+	if !strings.Contains(content, "Offline mode response") {
+		t.Fatalf("expected offline response, got: %s", content)
+	}
+	if got := resp["provider"]; got != "local" {
+		t.Fatalf("provider = %v, want local", got)
+	}
+	if got := resp["model"]; got != "offline" {
+		t.Fatalf("model = %v, want offline", got)
+	}
+
+	resp = callSend(`{"message":"/clear","provider":"","model":""}`)
+	if !strings.Contains(resp["content"].(string), "Conversation cleared") {
+		t.Fatalf("unexpected /clear response: %v", resp["content"])
+	}
+
+	msgs, err := store.GetMessages(context.Background(), conv.ID, 1000, 0)
+	if err != nil {
+		t.Fatalf("failed to list messages after clear: %v", err)
+	}
+	// /clear command stores one user + one assistant confirmation after wiping old history.
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages after clear command, got %d", len(msgs))
+	}
+}
+
+func TestChatHandlerStreamMessageOfflineMode(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Test Conv")
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+	e := echo.New()
+
+	// Enable offline mode first.
+	{
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"/offline on","provider":"","model":""}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("id")
+		c.SetParamValues(conv.ID)
+		if err := handler.SendMessage(c); err != nil {
+			t.Fatalf("enable offline failed: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(`{"message":"stream hello","provider":"","model":""}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Offline mode response") {
+		t.Fatalf("expected offline stream content, got: %s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected done chunk in stream, got: %s", body)
 	}
 }
 

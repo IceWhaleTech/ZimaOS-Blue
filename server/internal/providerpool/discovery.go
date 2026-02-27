@@ -18,9 +18,9 @@ import (
 
 // ModelDiscovery handles model discovery and caching
 type ModelDiscovery struct {
-	registry       *Registry
-	storage        Storage
-	oauthManager   interface {
+	registry     *Registry
+	storage      Storage
+	oauthManager interface {
 		GetCopilotAccessToken(providerID string) (string, error)
 		GetCopilotEndpoint() string
 	}
@@ -184,11 +184,13 @@ func (d *ModelDiscovery) GetFilteredModels(providerID string) ([]*Model, error) 
 		return models, nil // Return all models if provider not found
 	}
 
-	// If AllowedModels is nil (never configured), return all models
-	// If AllowedModels is empty slice (explicitly set to none), return no models
-	if provider.AllowedModels == nil {
+	// Backward compatibility:
+	// Older persisted providers may have AllowedModels set without AllowlistConfigured.
+	allowlistConfigured := provider.AllowlistConfigured || provider.AllowedModels != nil
+	if !allowlistConfigured {
 		return models, nil
 	}
+	// Configured with an empty/nil list means block all models.
 	if len(provider.AllowedModels) == 0 {
 		return []*Model{}, nil
 	}
@@ -387,12 +389,19 @@ func (d *ModelDiscovery) fetchFromAPI(ctx context.Context, provider *Provider) (
 	var fetchErr error
 
 	switch provider.ID {
-	case "openai", "deepseek", "moonshot", "openrouter", "aihubmix", "minimax", "codex":
+	case "openai", "deepseek", "moonshot", "openrouter", "aihubmix", "codex":
 		if apiKey == nil {
 			return nil, ErrNoAPIKey
 		}
 		models, fetchErr = d.fetchOpenAIModels(ctx, provider, apiKey)
 		// Set API format for built-in OpenAI-compatible providers
+		if provider.APIFormat == "" {
+			provider.APIFormat = APIFormatOpenAI
+		}
+	case "minimax":
+		// MiniMax doesn't have a models endpoint, use built-in
+		models = GetBuiltinModels("minimax")
+		// Set API format for MiniMax
 		if provider.APIFormat == "" {
 			provider.APIFormat = APIFormatOpenAI
 		}

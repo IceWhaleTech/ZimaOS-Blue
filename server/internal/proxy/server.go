@@ -17,14 +17,14 @@ import (
 
 // ProxyServer is the main proxy server
 type ProxyServer struct {
-	config       *ProxyConfig
-	portAlloc    *PortAllocator
-	connPool     *ConnectionPool
-	router       *Router
-	failover     *FailoverHandler
-	healthCheck  *HealthChecker
-	handler      *ProxyHandler
-	httpServer   *http.Server
+	config      *ProxyConfig
+	portAlloc   *PortAllocator
+	connPool    *ConnectionPool
+	router      *Router
+	failover    *FailoverHandler
+	healthCheck *HealthChecker
+	handler     *ProxyHandler
+	httpServer  *http.Server
 
 	// v0.10.5.1+ components (Antigravity-inspired)
 	modelRouter  *ModelRouter
@@ -83,6 +83,7 @@ func NewProxyServer(config *ProxyConfig) (*ProxyServer, error) {
 	metricsCollector := NewMetricsCollector(nil)
 	promptGuard := NewPromptGuard(nil)
 	authenticator := NewAuthenticator(nil, nil)
+	handler.SetSessionMonitor(sessionMonitor)
 
 	// Initialize v0.10.5.3+ components
 	modelCompat := NewModelCompatLayer(nil)
@@ -157,13 +158,13 @@ func (ps *ProxyServer) Start() error {
 	}
 
 	// Anthropic-compatible API endpoints (for Claude Code CLI)
-	mux.HandleFunc("/v1/messages", ps.handleAnthropicMessages)
+	mux.Handle("/v1/messages", ps.wrapWithSessionTracking(http.HandlerFunc(ps.handleAnthropicMessages)))
 
 	// OpenAI-compatible API endpoints
-	mux.HandleFunc("/v1/chat/completions", ps.handler.ServeHTTP)
+	mux.Handle("/v1/chat/completions", ps.wrapWithSessionTracking(ps.handler))
 
 	// Proxy handler for all other requests
-	mux.Handle("/", ps.handler)
+	mux.Handle("/", ps.wrapWithSessionTracking(ps.handler))
 
 	ps.httpServer = &http.Server{
 		Addr:    ps.portAlloc.GetBindAddress(),
@@ -186,6 +187,53 @@ func (ps *ProxyServer) Start() error {
 
 	fmt.Printf("Proxy server started on port %d\n", port)
 	return nil
+}
+
+// wrapWithSessionTracking attaches real request-chain events to SessionMonitor.
+func (ps *ProxyServer) wrapWithSessionTracking(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ps.sessionMonitor == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		clientIP := r.RemoteAddr
+		if ps.authenticator != nil {
+			clientIP = ps.authenticator.getClientIP(r)
+		}
+		session := ps.sessionMonitor.StartSession(clientIP, r.UserAgent())
+		if session == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		w.Header().Set("X-Session-ID", session.ID)
+		reqWithSession := r.WithContext(WithSessionID(r.Context(), session.ID))
+
+		rw := &responseWriter{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK,
+		}
+		next.ServeHTTP(rw, reqWithSession)
+
+		// Some flows may not call UpdateSession (e.g. fast failures); ensure request is counted.
+		if current, ok := ps.sessionMonitor.GetSession(session.ID); ok && current.RequestCount == 0 {
+			ps.sessionMonitor.UpdateSession(
+				session.ID,
+				rw.Header().Get("X-Actual-Provider"),
+				rw.Header().Get("X-Actual-Model"),
+				0,
+				0,
+			)
+		}
+
+		status := SessionStatusCompleted
+		if rw.statusCode >= 400 {
+			status = SessionStatusFailed
+			ps.sessionMonitor.RecordError(session.ID)
+		}
+		ps.sessionMonitor.CompleteSession(session.ID, status)
+	})
 }
 
 // Stop gracefully stops the proxy server

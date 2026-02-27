@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/google/uuid"
 )
 
 // candidateSnapshot holds a precomputed candidate list for all known models.
@@ -42,8 +42,8 @@ type Router struct {
 	latencyMu sync.RWMutex
 
 	// Cooldown management
-	cooldowns  map[string]*CooldownEntry
-	cooldownMu sync.RWMutex
+	cooldowns   map[string]*CooldownEntry
+	cooldownMu  sync.RWMutex
 	cooldownCfg *CooldownConfig
 
 	// Failover callback for external logging/tracking
@@ -86,6 +86,12 @@ func (r *Router) SetCooldownConfig(cfg *CooldownConfig) {
 // SetFailoverCallback sets a callback to be called after each failover operation
 func (r *Router) SetFailoverCallback(cb func(*FailoverResult)) {
 	r.failoverCallback = cb
+}
+
+// shouldBypassPenalty returns true when only one provider is enabled.
+// In single-provider setups we should avoid cooldown-based self-isolation.
+func (r *Router) shouldBypassPenalty() bool {
+	return len(r.registry.ListEnabled()) <= 1
 }
 
 // RebuildCandidates rebuilds the static candidate snapshot from current provider/model state.
@@ -165,6 +171,21 @@ func (r *Router) Route(req *RouteRequest) (*RouteResult, error) {
 	}
 
 	if len(candidates) == 0 {
+		diagReq := *req
+		diagReq.Mode = RoutingModeAuto
+		diagReq.RequireCap = nil
+		diagReq.Exclude = nil
+		diagCandidates, _ := r.findCandidates(&diagReq)
+		slog.Warn("[router] no route candidates after filtering",
+			"model", req.ModelID,
+			"mode", req.Mode,
+			"strategy", req.Strategy,
+			"preferred_provider", req.PreferredProviderID,
+			"required_cap", fmt.Sprintf("%+v", req.RequireCap),
+			"exclude_count", len(req.Exclude),
+			"enabled_providers", len(r.registry.ListEnabled()),
+			"relaxed_candidates", len(diagCandidates),
+		)
 		return nil, ErrNoAvailableProvider
 	}
 
@@ -253,6 +274,7 @@ func (r *Router) getCandidatesFromSnapshot(req *RouteRequest) []*RouteCandidate 
 	// Copy + filter (runtime state: cooldown, exclude, routing mode, status)
 	result := make([]*RouteCandidate, 0, len(source))
 	needModeFilter := req.Mode != "" && req.Mode != RoutingModeAuto
+	skipCooldown := r.shouldBypassPenalty()
 	for _, c := range source {
 		if len(excludeSet) > 0 && excludeSet[c.Provider.ID] {
 			continue
@@ -260,7 +282,7 @@ func (r *Router) getCandidatesFromSnapshot(req *RouteRequest) []*RouteCandidate 
 		if c.Provider.Status == ProviderStatusError {
 			continue
 		}
-		if r.IsInCooldown(c.Provider.ID) {
+		if !skipCooldown && r.IsInCooldown(c.Provider.ID) {
 			continue
 		}
 		if needModeFilter {
@@ -292,6 +314,7 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 	for _, id := range req.Exclude {
 		excludeSet[id] = true
 	}
+	skipCooldown := r.shouldBypassPenalty()
 
 	for _, provider := range providers {
 		// Skip excluded providers
@@ -305,7 +328,7 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 		}
 
 		// Skip providers in cooldown
-		if r.IsInCooldown(provider.ID) {
+		if !skipCooldown && r.IsInCooldown(provider.ID) {
 			continue
 		}
 
@@ -594,6 +617,19 @@ func (r *Router) GetCooldownEntry(providerID string) *CooldownEntry {
 
 // RecordFailure records a failure for a provider and potentially puts it in cooldown
 func (r *Router) RecordFailure(providerID string, err error) {
+	// Single-provider mode: never apply cooldown penalties that would
+	// self-isolate the only available provider.
+	if r.shouldBypassPenalty() {
+		return
+	}
+
+	// Skip recording failures for "no response" errors — these indicate tool-level
+	// issues (e.g., tool returned empty/invalid data) rather than provider issues.
+	// We don't want to penalize providers for tool processing failures.
+	if isNoResponseError(err) {
+		return
+	}
+
 	r.cooldownMu.Lock()
 	defer r.cooldownMu.Unlock()
 
@@ -669,6 +705,19 @@ func isTransientError(err error) bool {
 	}
 	s := err.Error()
 	return strings.Contains(s, "upstream 502") || strings.Contains(s, "upstream 503")
+}
+
+// isNoResponseError returns true for errors indicating the provider returned
+// no response content. These are typically tool-level issues (empty tool output,
+// invalid tool response) rather than provider issues, so we don't want to
+// trigger provider cooldown.
+func isNoResponseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "returned no response") ||
+		strings.Contains(s, "returned empty streaming response")
 }
 
 // isAuthError returns true for authentication/authorization errors (401/403) that
@@ -972,6 +1021,7 @@ blindFallback:
 func (r *Router) findBlindFallbackProviders(modelID string, mode RoutingMode, exclude map[string]bool) []*Provider {
 	providers := r.registry.ListEnabled()
 	var candidates []*Provider
+	skipCooldown := r.shouldBypassPenalty()
 
 	for _, p := range providers {
 		if exclude[p.ID] {
@@ -980,7 +1030,7 @@ func (r *Router) findBlindFallbackProviders(modelID string, mode RoutingMode, ex
 		if p.Status == ProviderStatusError {
 			continue
 		}
-		if r.IsInCooldown(p.ID) {
+		if !skipCooldown && r.IsInCooldown(p.ID) {
 			continue
 		}
 		// Cloud providers need usable credentials (API key or OAuth)
@@ -995,6 +1045,10 @@ func (r *Router) findBlindFallbackProviders(modelID string, mode RoutingMode, ex
 			if mode == RoutingModeLocal && p.Location != ProviderLocationLocal {
 				continue
 			}
+		}
+		// Respect provider model allowlist during blind fallback too.
+		if !providerAllowsModel(p, modelID) {
+			continue
 		}
 		// Skip providers with curated model lists that don't include this model.
 		// Copilot/Anthropic have fixed model sets — sending unknown models just
@@ -1020,6 +1074,29 @@ func (r *Router) findBlindFallbackProviders(modelID string, mode RoutingMode, ex
 	})
 
 	return candidates
+}
+
+// providerAllowsModel checks whether a provider's allowlist allows modelID.
+// For modelID=="", allowlist filtering is bypassed (router will pick provider default).
+func providerAllowsModel(p *Provider, modelID string) bool {
+	if modelID == "" {
+		return true
+	}
+
+	// Backward compatibility: pre-flag data with non-nil AllowedModels still means configured.
+	allowlistConfigured := p.AllowlistConfigured || p.AllowedModels != nil
+	if !allowlistConfigured {
+		return true
+	}
+	if len(p.AllowedModels) == 0 {
+		return false
+	}
+	for _, allowed := range p.AllowedModels {
+		if allowed == modelID {
+			return true
+		}
+	}
+	return false
 }
 
 // isCuratedProvider returns true for providers with a fixed/curated model list.

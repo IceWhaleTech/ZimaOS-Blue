@@ -162,3 +162,28 @@ type AdminAPIKeyCreateResult struct {
 	Key    string `json:"key"` // full key, shown only once
 	Prefix string `json:"prefix"`
 }
+
+// --- Upgrade / OTA ---
+
+// AdminUpgradeInfo holds upgrade/OTA information.
+type AdminUpgradeInfo struct {
+	CurrentVersion   string   `json:"current_version"`
+	UpdateAvailable  bool     `json:"update_available"`
+	LatestVersion    string   `json:"latest_version,omitempty"`
+	DownloadURLs     []string `json:"download_urls,omitempty"`
+	ReleaseNoteURL   string   `json:"release_note_url,omitempty"`
+	Delay            int      `json:"delay,omitempty"`
+	State            string   `json:"state,omitempty"`            // idle, checking, downloading, applying, restarting, failed
+	Progress         float64  `json:"progress,omitempty"`         // 0-100
+	Error            string   `json:"error,omitempty"`            // error message if failed
+	DownloadedPath   string   `json:"downloaded_path,omitempty"` // path to downloaded update
+}
+
+// AdminUpgradeService provides upgrade/OTA management.
+type AdminUpgradeService interface {
+	GetOTAStatus(ctx context.Context) (*AdminUpgradeInfo, error)
+	CheckForUpdate(ctx context.Context) (*AdminUpgradeInfo, error)
+	GetUpdateStatus(ctx context.Context) (*AdminUpgradeInfo, error)
+	StartDownload(ctx context.Context) (*AdminUpgradeInfo, error)
+	ApplyUpdate(ctx context.Context) (*AdminUpgradeInfo, error)
+}

@@ -141,7 +141,7 @@ function onBackupDownload(_id: string) {
     <BackupManager
       :backups="backups"
       :loading="loading"
-      :restoring="restoring"
+      :restoring="restoring !== null"
       :creating="creating"
       :progress="progress"
       @create="onBackupCreate"

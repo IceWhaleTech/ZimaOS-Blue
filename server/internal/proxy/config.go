@@ -65,12 +65,25 @@ type FailoverConfig struct {
 	ContextWindowCheck    bool                      `json:"context_window_check" yaml:"context_window_check"`       // Skip providers with insufficient context window
 	QuotaCooldown         time.Duration             `json:"quota_cooldown" yaml:"quota_cooldown"`                   // Skip recently-errored providers for quota errors (0 = disabled)
 	ContextWindowOverride map[string]int            `json:"context_window_override" yaml:"context_window_override"` // Provider name -> max context tokens override
+	ProviderRace          ProviderRaceConfig        `json:"provider_race" yaml:"provider_race"`                     // Multi-provider concurrent race
+}
+
+// ProviderRaceConfig controls concurrent provider racing behavior.
+type ProviderRaceConfig struct {
+	Enabled                    bool          `json:"enabled" yaml:"enabled"`
+	MaxParallel                int           `json:"max_parallel" yaml:"max_parallel"`                                   // Max providers to race concurrently
+	MinProviders               int           `json:"min_providers" yaml:"min_providers"`                                 // Require at least N candidates to start race
+	EmptyRateMinSamples        int           `json:"empty_rate_min_samples" yaml:"empty_rate_min_samples"`               // Min attempts before applying empty-rate policy
+	EmptyRateCooldownThreshold float64       `json:"empty_rate_cooldown_threshold" yaml:"empty_rate_cooldown_threshold"` // >= threshold enters temporary cooldown
+	EmptyRateSinkThreshold     float64       `json:"empty_rate_sink_threshold" yaml:"empty_rate_sink_threshold"`         // >= threshold sinks to tail
+	EmptyRateExcludeThreshold  float64       `json:"empty_rate_exclude_threshold" yaml:"empty_rate_exclude_threshold"`   // >= threshold excluded from race
+	EmptyRateCooldown          time.Duration `json:"empty_rate_cooldown" yaml:"empty_rate_cooldown"`                     // Cooldown duration after threshold hit
 }
 
 // ErrorClassificationConfig configuration for error classification
 type ErrorClassificationConfig struct {
-	Enabled        bool     `json:"enabled" yaml:"enabled"`
-	FailoverErrors []string `json:"failover_errors" yaml:"failover_errors"` // Error types that trigger failover
+	Enabled         bool     `json:"enabled" yaml:"enabled"`
+	FailoverErrors  []string `json:"failover_errors" yaml:"failover_errors"`   // Error types that trigger failover
 	RetryableErrors []string `json:"retryable_errors" yaml:"retryable_errors"` // Error types that trigger retry
 }
 
@@ -118,6 +131,7 @@ func DefaultProxyConfig() *ProxyConfig {
 				RecoveryTimeout:          30 * time.Second,
 				TransientRecoveryTimeout: 5 * time.Second, // 502/503 recover quickly
 				ContextWindowCheck:       true,
+				ProviderRace:             DefaultProviderRaceConfig(),
 				ErrorClassification: ErrorClassificationConfig{
 					Enabled: true,
 					FailoverErrors: []string{
@@ -151,5 +165,19 @@ func DefaultProxyConfig() *ProxyConfig {
 			Interval: 30 * time.Second,
 			Timeout:  10 * time.Second,
 		},
+	}
+}
+
+// DefaultProviderRaceConfig returns default provider race configuration.
+func DefaultProviderRaceConfig() ProviderRaceConfig {
+	return ProviderRaceConfig{
+		Enabled:                    false,
+		MaxParallel:                2,
+		MinProviders:               2,
+		EmptyRateMinSamples:        10,
+		EmptyRateCooldownThreshold: 0.30,
+		EmptyRateSinkThreshold:     0.50,
+		EmptyRateExcludeThreshold:  0.80,
+		EmptyRateCooldown:          2 * time.Minute,
 	}
 }

@@ -92,7 +92,6 @@ const pendingAudioDuration = ref(0)
 
 // Model download prompt state
 const showASRDownloadPrompt = ref(false)
-const _asrModelReady = ref(true) // Assume ready until checked
 
 // Inline dictation (VAD-based tap-to-dictate)
 const isDictating = ref(false)
@@ -538,8 +537,10 @@ async function toggleVoiceMode() {
 // Touch handlers for hold-to-speak recording (mobile)
 function handleVoiceTouchStart(e: TouchEvent) {
   if (!isTouchDevice.value || props.disabled || props.streaming || isTranscribing.value) return
-  touchStartY.value = e.touches[0].clientY
-  touchStartX.value = e.touches[0].clientX
+  const touch = e.touches.item(0)
+  if (!touch) return
+  touchStartY.value = touch.clientY
+  touchStartX.value = touch.clientX
   slideCancelled.value = false
   swipeDirection.value = 'none'
   // Start recording immediately — no delay
@@ -550,8 +551,10 @@ function handleVoiceTouchStart(e: TouchEvent) {
 
 function handleVoiceTouchMove(e: TouchEvent) {
   if (!isTouchDevice.value || !isRecording.value) return
-  const dy = touchStartY.value - e.touches[0].clientY
-  const dx = e.touches[0].clientX - touchStartX.value
+  const touch = e.touches.item(0)
+  if (!touch) return
+  const dy = touchStartY.value - touch.clientY
+  const dx = touch.clientX - touchStartX.value
 
   // Vertical: slide up to cancel
   if (dy > CANCEL_SLIDE_THRESHOLD) {
@@ -997,7 +1000,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           <!-- Voice choice panel (shown after recording) -->
           <div v-if="showVoiceChoice" class="voice-choice-panel flex items-center gap-2 w-full">
             <button
-              class="flex-1 h-10 rounded-xl flex items-center justify-center gap-1.5 bg-blue-500/15 text-blue-500 border border-blue-500/30 hover:bg-blue-500/25 active:bg-blue-500/35 transition-all cursor-pointer"
+              class="voice-choice-btn voice-choice-btn--transcribe flex-1 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               @click="handleVoiceChoiceTranscribe"
             >
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -1006,7 +1009,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               <span class="text-sm font-medium">{{ t('chat.voiceToText') }}</span>
             </button>
             <button
-              class="flex-1 h-10 rounded-xl flex items-center justify-center gap-1.5 bg-green-500/15 text-green-500 border border-green-500/30 hover:bg-green-500/25 active:bg-green-500/35 transition-all cursor-pointer"
+              class="voice-choice-btn voice-choice-btn--send flex-1 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               @click="handleVoiceChoiceSend"
             >
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -1016,7 +1019,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               <span class="text-sm font-medium">{{ pendingAudioDuration }}s · {{ t('chat.sendVoice') }}</span>
             </button>
             <button
-              class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-600/50 transition-colors cursor-pointer"
+              class="voice-choice-dismiss flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer"
               @click="dismissVoiceChoice"
             >
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -1100,11 +1103,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
         <button
           v-if="isCompact && !isMobile"
           :disabled="!canSend"
-          class="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:shadow-glow"
+          class="chat-send-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          :class="{ 'chat-send-btn--ready': canSend }"
           :title="t('chat.send')"
           @click="handleSend"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" class="chat-send-btn__icon h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
           </svg>
         </button>
@@ -1366,11 +1370,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
       <button
         v-if="!isCompact && (!streaming || canSend)"
         :disabled="!canSend"
-        class="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:shadow-glow"
+        class="chat-send-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        :class="{ 'chat-send-btn--ready': canSend }"
         :title="streaming ? t('chat.sendDuringStream') : t('chat.send')"
         @click="handleSend"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg xmlns="http://www.w3.org/2000/svg" class="chat-send-btn__icon h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
         </svg>
       </button>
@@ -1405,7 +1410,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 
 <style scoped>
 .chat-input-wrapper {
-  background: linear-gradient(to top, var(--color-bg-base) 60%, transparent);
+  background: linear-gradient(to top, rgba(15, 23, 42, 0.92) 58%, rgba(15, 23, 42, 0.45) 86%, transparent);
 }
 
 /* No gradient on mobile - flush to bottom */
@@ -1417,7 +1422,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 
 :root.light .chat-input-wrapper,
 [data-theme="light"] .chat-input-wrapper {
-  background: linear-gradient(to top, rgb(249 250 251) 60%, transparent);
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.96) 55%, rgba(239, 246, 255, 0.7) 86%, transparent);
 }
 
 @media (max-width: 767px) {
@@ -1431,7 +1436,17 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 
 :root.light .chat-input-container,
 [data-theme="light"] .chat-input-container {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.chat-input-container {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  backdrop-filter: blur(14px);
+}
+
+:root.light .chat-input-container,
+[data-theme="light"] .chat-input-container {
+  border-color: rgba(186, 203, 223, 0.75);
 }
 
 textarea {
@@ -1450,6 +1465,20 @@ textarea {
   margin: 0;
   display: block;
   vertical-align: top;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.36);
+}
+
+:root.light .chat-textarea,
+[data-theme="light"] .chat-textarea {
+  background: rgba(248, 250, 252, 0.95);
+  border-color: rgba(186, 203, 223, 0.75);
+}
+
+.chat-textarea:focus {
+  border-color: rgba(14, 165, 233, 0.5);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.16);
+  outline: none;
 }
 
 textarea::-webkit-scrollbar {
@@ -1492,6 +1521,47 @@ textarea::-webkit-scrollbar-thumb:hover {
   animation: voice-choice-slide-in 0.2s ease-out;
 }
 
+.voice-choice-btn {
+  border: 1px solid transparent;
+}
+
+.voice-choice-btn--transcribe {
+  color: #38bdf8;
+  background: rgba(14, 165, 233, 0.15);
+  border-color: rgba(14, 165, 233, 0.3);
+}
+
+.voice-choice-btn--transcribe:hover {
+  background: rgba(14, 165, 233, 0.25);
+}
+
+.voice-choice-btn--transcribe:active {
+  background: rgba(14, 165, 233, 0.35);
+}
+
+.voice-choice-btn--send {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.voice-choice-btn--send:hover {
+  background: rgba(34, 197, 94, 0.25);
+}
+
+.voice-choice-btn--send:active {
+  background: rgba(34, 197, 94, 0.35);
+}
+
+.voice-choice-dismiss {
+  color: #9ca3af;
+}
+
+.voice-choice-dismiss:hover {
+  color: #4b5563;
+  background: rgba(148, 163, 184, 0.25);
+}
+
 @keyframes voice-choice-slide-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1505,5 +1575,168 @@ textarea::-webkit-scrollbar-thumb:hover {
 .dictation-glow {
   animation: dictation-pulse 1.5s ease-in-out infinite;
   border-radius: 9999px;
+}
+
+.chat-send-btn {
+  position: relative;
+  overflow: hidden;
+  color: var(--chat-send-fg, #f8fafc);
+  background: var(--chat-send-bg, linear-gradient(135deg, #0ea5e9 0%, #06b6d4 48%, #0891b2 100%));
+  box-shadow: var(--chat-send-shadow, 0 10px 24px -16px rgba(6, 182, 212, 0.75));
+  transition: transform 0.18s ease, box-shadow 0.22s ease, filter 0.18s ease;
+}
+
+.chat-send-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 22%, rgba(255, 255, 255, 0.32) 48%, transparent 74%);
+  transform: translateX(-120%);
+  transition: transform 0.48s ease;
+}
+
+.chat-send-btn:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: var(--chat-send-shadow-hover, 0 14px 30px -14px rgba(6, 182, 212, 0.95), 0 0 0 1px rgba(14, 165, 233, 0.45));
+  filter: saturate(1.08);
+}
+
+.chat-send-btn:hover:not(:disabled)::before {
+  transform: translateX(120%);
+}
+
+.chat-send-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
+.chat-send-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--chat-send-ring, rgba(56, 189, 248, 0.45)), var(--chat-send-shadow-focus, 0 12px 24px -14px rgba(6, 182, 212, 0.92));
+}
+
+.chat-send-btn:disabled {
+  filter: grayscale(0.15);
+}
+
+.chat-send-btn__icon {
+  position: relative;
+  z-index: 1;
+  transition: transform 0.2s ease;
+}
+
+.chat-send-btn:hover:not(:disabled) .chat-send-btn__icon {
+  transform: translateX(1px) translateY(-1px);
+}
+
+@keyframes send-ready-breathe {
+  0%, 100% { box-shadow: var(--chat-send-shadow, 0 10px 24px -16px rgba(6, 182, 212, 0.75)); }
+  50% { box-shadow: var(--chat-send-shadow-active, 0 14px 28px -14px rgba(6, 182, 212, 0.95)); }
+}
+
+.chat-send-btn--ready:not(:hover):not(:active):not(:disabled) {
+  animation: send-ready-breathe 1.8s ease-in-out infinite;
+}
+
+:global(.chat-view.theme-style-minimal) .chat-send-btn {
+  --chat-send-bg: linear-gradient(135deg, #475569 0%, #334155 100%);
+  --chat-send-fg: #f8fafc;
+  --chat-send-shadow: 0 10px 24px -16px rgba(15, 23, 42, 0.72);
+  --chat-send-shadow-hover: 0 14px 28px -14px rgba(15, 23, 42, 0.85), 0 0 0 1px rgba(100, 116, 139, 0.45);
+  --chat-send-shadow-focus: 0 12px 24px -14px rgba(15, 23, 42, 0.85);
+  --chat-send-shadow-active: 0 14px 28px -14px rgba(15, 23, 42, 0.9);
+  --chat-send-ring: rgba(148, 163, 184, 0.42);
+}
+
+:global(.light .chat-view.theme-style-minimal) .chat-send-btn,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .chat-send-btn {
+  --chat-send-bg: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+  --chat-send-fg: #0f172a;
+  --chat-send-shadow: 0 8px 18px -14px rgba(51, 65, 85, 0.45);
+  --chat-send-shadow-hover: 0 12px 22px -14px rgba(51, 65, 85, 0.55), 0 0 0 1px rgba(100, 116, 139, 0.36);
+  --chat-send-shadow-focus: 0 10px 20px -14px rgba(51, 65, 85, 0.5);
+  --chat-send-shadow-active: 0 11px 22px -14px rgba(51, 65, 85, 0.58);
+  --chat-send-ring: rgba(100, 116, 139, 0.35);
+}
+
+:global(.chat-view.theme-style-minimal) .voice-choice-btn--transcribe {
+  color: #f8fafc;
+  background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+  border-color: rgba(148, 163, 184, 0.42);
+}
+
+:global(.chat-view.theme-style-minimal) .voice-choice-btn--transcribe:hover {
+  background: linear-gradient(135deg, #6b7a8d 0%, #4b5a6b 100%);
+}
+
+:global(.chat-view.theme-style-minimal) .voice-choice-btn--transcribe:active {
+  background: linear-gradient(135deg, #5e6c7f 0%, #425061 100%);
+}
+
+:global(.chat-view.theme-style-minimal) .voice-choice-btn--send {
+  color: #f8fafc;
+  background: linear-gradient(135deg, #475569 0%, #334155 100%);
+  border-color: rgba(100, 116, 139, 0.45);
+}
+
+:global(.chat-view.theme-style-minimal) .voice-choice-btn--send:hover {
+  background: linear-gradient(135deg, #526175 0%, #3c4b5d 100%);
+}
+
+:global(.chat-view.theme-style-minimal) .voice-choice-btn--send:active {
+  background: linear-gradient(135deg, #435164 0%, #2f3d4f 100%);
+}
+
+:global(.chat-view.theme-style-minimal) .voice-choice-dismiss {
+  color: #94a3b8;
+}
+
+:global(.chat-view.theme-style-minimal) .voice-choice-dismiss:hover {
+  color: #cbd5e1;
+  background: rgba(71, 85, 105, 0.45);
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-choice-btn--transcribe,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-choice-btn--transcribe {
+  color: #334155;
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  border-color: rgba(148, 163, 184, 0.42);
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-choice-btn--transcribe:hover,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-choice-btn--transcribe:hover {
+  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-choice-btn--transcribe:active,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-choice-btn--transcribe:active {
+  background: linear-gradient(135deg, #dbe3ee 0%, #c2cedd 100%);
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-choice-btn--send,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-choice-btn--send {
+  color: #0f172a;
+  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+  border-color: rgba(100, 116, 139, 0.36);
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-choice-btn--send:hover,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-choice-btn--send:hover {
+  background: linear-gradient(135deg, #dbe3ee 0%, #c0ccdb 100%);
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-choice-btn--send:active,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-choice-btn--send:active {
+  background: linear-gradient(135deg, #d1dae8 0%, #b8c5d6 100%);
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-choice-dismiss,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-choice-dismiss {
+  color: #64748b;
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-choice-dismiss:hover,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-choice-dismiss:hover {
+  color: #334155;
+  background: rgba(148, 163, 184, 0.24);
 }
 </style>

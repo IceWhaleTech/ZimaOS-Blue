@@ -1,13 +1,13 @@
 # Mgmt
 
-System management tool. Manages LLM providers, settings, channels, skills, tools, users, API keys, and system info.
+System management tool. Manages LLM providers, settings, channels, skills, tools, users, API keys, memory, and system info.
 
 ## How to Send
 
-Use the `blue` CLI with `mgmt.{domain}.{action}` format:
+Direct call:
 
 ```bash
-blue mgmt.providers.list
+mgmt.providers.list
 ```
 
 Add `--json` for JSON output.
@@ -86,6 +86,26 @@ Add `--json` for JSON output.
 | `apikeys.create` | `name` | Create a new API key |
 | `apikeys.revoke` | `id` | Revoke an API key |
 
+### memory — Memory System Management
+
+| Action | Required Params | Description |
+|--------|----------------|-------------|
+| `memory.search` | `query` | Search memories by query string |
+| `memory.get` | `id` | Get a specific memory by ID |
+| `memory.remember` | `content` | Store a new memory with optional tags |
+| `memory.forget` | `id` | Delete a specific memory by ID |
+| `memory.stats` | — | Get memory system statistics (total chunks, size) |
+
+### upgrade — OTA / Upgrade Management
+
+| Action | Required Params | Description |
+|--------|----------------|-------------|
+| `upgrade.status` | — | Get OTA status: current version, latest version, update availability, download URLs |
+| `upgrade.check` | — | Check for updates from GitHub release (may trigger network request) |
+| `upgrade.progress` | — | Get download/progress status (state, progress %, error) |
+| `upgrade.download` | — | Start downloading update in background |
+| `upgrade.apply` | — | Apply downloaded update (will restart system) |
+
 ## Example Triggers
 
 - "List all providers" / "列出所有提供商"
@@ -97,3 +117,6 @@ Add `--json` for JSON output.
 - "List all users" / "列出所有用户"
 - "Create an API key" / "创建一个API密钥"
 - "What models are available?" / "有哪些可用的模型？"
+- "Show memory stats" / "显示记忆统计"
+- "Search memory for xxx" / "搜索记忆 xxx"
+- "Delete memory 123" / "删除记忆 123"

@@ -130,6 +130,13 @@ func (u *UIReviewer) SetBridge(bridge *proxybridge.Bridge) {
 func (u *UIReviewer) Manifest() *skill.Manifest { return u.manifest }
 
 func (u *UIReviewer) Validate(input map[string]any) error {
+	// Default action based on input: if url is provided without action, default to review_url
+	if _, hasAction := input["action"]; !hasAction {
+		if _, hasURL := input["url"]; hasURL {
+			input["action"] = "review_url"
+		}
+	}
+
 	action, ok := input["action"]
 	if !ok {
 		return fmt.Errorf("action is required")

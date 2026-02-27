@@ -4,19 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
 // bridgeRequest mirrors the OpenAI chat completion request format.
 type bridgeRequest struct {
-	Model         string              `json:"model"`
-	Messages      []bridgeMessage     `json:"messages"`
-	Temperature   float64             `json:"temperature,omitempty"`
-	MaxTokens     int                 `json:"max_tokens,omitempty"`
-	Tools         []bridgeTool        `json:"tools,omitempty"`
-	Stream        bool                `json:"stream,omitempty"`
-	StreamOptions *bridgeStreamOpts   `json:"stream_options,omitempty"`
+	Model         string            `json:"model"`
+	Messages      []bridgeMessage   `json:"messages"`
+	Temperature   float64           `json:"temperature,omitempty"`
+	MaxTokens     int               `json:"max_tokens,omitempty"`
+	Tools         []bridgeTool      `json:"tools,omitempty"`
+	Stream        bool              `json:"stream,omitempty"`
+	StreamOptions *bridgeStreamOpts `json:"stream_options,omitempty"`
 }
 
 type bridgeStreamOpts struct {
@@ -24,10 +25,10 @@ type bridgeStreamOpts struct {
 }
 
 type bridgeMessage struct {
-	Role       string          `json:"role"`
-	Content    interface{}     `json:"content"` // string or []bridgeContentPart
+	Role       string           `json:"role"`
+	Content    interface{}      `json:"content"` // string or []bridgeContentPart
 	ToolCalls  []bridgeToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string          `json:"tool_call_id,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
 }
 
 type bridgeContentPart struct {
@@ -70,12 +71,12 @@ type bridgeResponse struct {
 		Message struct {
 			Role      string           `json:"role"`
 			Content   string           `json:"content"`
-			ToolCalls []bridgeToolCall  `json:"tool_calls,omitempty"`
+			ToolCalls []bridgeToolCall `json:"tool_calls,omitempty"`
 		} `json:"message"`
 		Delta struct {
 			Role      string           `json:"role,omitempty"`
 			Content   string           `json:"content,omitempty"`
-			ToolCalls []bridgeToolCall  `json:"tool_calls,omitempty"`
+			ToolCalls []bridgeToolCall `json:"tool_calls,omitempty"`
 		} `json:"delta,omitempty"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -85,6 +86,51 @@ type bridgeResponse struct {
 		TotalTokens      int `json:"total_tokens"`
 	} `json:"usage"`
 	Error *struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+	} `json:"error,omitempty"`
+}
+
+type bridgeResponsesUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
+}
+
+type bridgeResponsesOutputContent struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+}
+
+type bridgeResponsesOutputItem struct {
+	ID        string                         `json:"id,omitempty"`
+	Type      string                         `json:"type"`
+	Role      string                         `json:"role,omitempty"`
+	Name      string                         `json:"name,omitempty"`
+	CallID    string                         `json:"call_id,omitempty"`
+	Arguments json.RawMessage                `json:"arguments,omitempty"`
+	Content   []bridgeResponsesOutputContent `json:"content,omitempty"`
+}
+
+type bridgeResponsesResponse struct {
+	ID     string                      `json:"id"`
+	Object string                      `json:"object"`
+	Model  string                      `json:"model"`
+	Output []bridgeResponsesOutputItem `json:"output,omitempty"`
+	Usage  bridgeResponsesUsage        `json:"usage"`
+	Error  *struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+	} `json:"error,omitempty"`
+}
+
+type bridgeResponsesEvent struct {
+	Type       string                     `json:"type"`
+	ResponseID string                     `json:"response_id,omitempty"`
+	Delta      string                     `json:"delta,omitempty"`
+	Item       *bridgeResponsesOutputItem `json:"item,omitempty"`
+	Response   *bridgeResponsesResponse   `json:"response,omitempty"`
+	Error      *struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
 	} `json:"error,omitempty"`
@@ -190,6 +236,10 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 
 // ParseChatResponse parses OpenAI-format JSON into llm.ChatResponse.
 func ParseChatResponse(body []byte) (*llm.ChatResponse, error) {
+	if resp, handled, err := parseResponsesChatResponse(body); handled {
+		return resp, err
+	}
+
 	var resp bridgeResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("parse response: %w", err)
@@ -237,6 +287,11 @@ func ParseSSEChunk(dataPayload string) (llm.StreamChunk, bool, error) {
 	if dataPayload == "[DONE]" {
 		return llm.StreamChunk{Done: true}, true, nil
 	}
+
+	if chunk, done, handled, err := parseResponsesSSEChunk(dataPayload); handled {
+		return chunk, done, err
+	}
+
 	var resp bridgeResponse
 	if err := json.Unmarshal([]byte(dataPayload), &resp); err != nil {
 		return llm.StreamChunk{}, false, err
@@ -274,6 +329,143 @@ func ParseSSEChunk(dataPayload string) (llm.StreamChunk, bool, error) {
 	}
 
 	return chunk, chunk.Done, nil
+}
+
+func parseResponsesChatResponse(body []byte) (*llm.ChatResponse, bool, error) {
+	var probe struct {
+		Object string          `json:"object"`
+		Output json.RawMessage `json:"output"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return nil, false, nil
+	}
+	if probe.Object != "response" && len(probe.Output) == 0 {
+		return nil, false, nil
+	}
+
+	var resp bridgeResponsesResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, true, fmt.Errorf("parse responses response: %w", err)
+	}
+	if resp.Error != nil {
+		errType := resp.Error.Type
+		if errType == "" {
+			errType = "unknown"
+		}
+		return nil, true, fmt.Errorf("upstream error: type=%s", errType)
+	}
+
+	cr := &llm.ChatResponse{
+		ID:    resp.ID,
+		Model: resp.Model,
+		Message: llm.Message{
+			Role: llm.RoleAssistant,
+		},
+		Usage: llm.Usage{
+			PromptTokens:     resp.Usage.InputTokens,
+			CompletionTokens: resp.Usage.OutputTokens,
+			TotalTokens:      resp.Usage.TotalTokens,
+		},
+	}
+
+	var content strings.Builder
+	for _, item := range resp.Output {
+		switch item.Type {
+		case "message":
+			if item.Role != "" {
+				cr.Message.Role = llm.Role(item.Role)
+			}
+			for _, part := range item.Content {
+				if part.Type == "output_text" || part.Type == "text" || part.Type == "input_text" {
+					content.WriteString(part.Text)
+				}
+			}
+		case "function_call":
+			callID := item.CallID
+			if callID == "" {
+				callID = item.ID
+			}
+			cr.Message.ToolCalls = append(cr.Message.ToolCalls, llm.ToolCall{
+				ID:        callID,
+				Name:      item.Name,
+				Arguments: rawToString(item.Arguments),
+			})
+		}
+	}
+	cr.Message.Content = content.String()
+	return cr, true, nil
+}
+
+func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, error) {
+	var event bridgeResponsesEvent
+	if err := json.Unmarshal([]byte(dataPayload), &event); err != nil {
+		return llm.StreamChunk{}, false, false, nil
+	}
+	if event.Type == "" {
+		return llm.StreamChunk{}, false, false, nil
+	}
+
+	chunk := llm.StreamChunk{}
+	if event.ResponseID != "" {
+		chunk.ID = event.ResponseID
+	}
+	if event.Response != nil {
+		if chunk.ID == "" {
+			chunk.ID = event.Response.ID
+		}
+		chunk.Model = event.Response.Model
+	}
+
+	switch event.Type {
+	case "response.output_text.delta":
+		chunk.Delta = event.Delta
+		return chunk, false, true, nil
+	case "response.output_item.done":
+		if event.Item != nil && event.Item.Type == "function_call" {
+			callID := event.Item.CallID
+			if callID == "" {
+				callID = event.Item.ID
+			}
+			chunk.ToolCalls = []llm.ToolCall{
+				{
+					ID:        callID,
+					Name:      event.Item.Name,
+					Arguments: rawToString(event.Item.Arguments),
+				},
+			}
+			return chunk, false, true, nil
+		}
+		return llm.StreamChunk{}, false, true, nil
+	case "response.completed":
+		chunk.Done = true
+		if event.Response != nil {
+			u := event.Response.Usage
+			if u.InputTokens > 0 || u.OutputTokens > 0 || u.TotalTokens > 0 {
+				chunk.Usage = &llm.Usage{
+					PromptTokens:     u.InputTokens,
+					CompletionTokens: u.OutputTokens,
+					TotalTokens:      u.TotalTokens,
+				}
+			}
+		}
+		return chunk, true, true, nil
+	case "response.failed":
+		chunk.Done = true
+		if event.Error != nil {
+			if event.Error.Message != "" {
+				chunk.Error = event.Error.Message
+			} else if event.Error.Type != "" {
+				chunk.Error = "upstream error: type=" + event.Error.Type
+			}
+		}
+		if chunk.Error == "" {
+			chunk.Error = "upstream response failed"
+		}
+		return chunk, true, true, nil
+	default:
+		// Other Responses events are metadata/noise for our bridge and can be ignored.
+		return llm.StreamChunk{}, false, true, nil
+	}
 }
 
 // toRawJSON converts a string to json.RawMessage.

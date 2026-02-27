@@ -96,22 +96,10 @@ func TestAnalyzeTool_Definition(t *testing.T) {
 	if !ok {
 		t.Fatal("expected properties in parameters")
 	}
-	for _, required := range []string{"action", "topic", "urls", "text", "search_queries", "lang"} {
+	for _, required := range []string{"topic", "urls", "text", "search_queries", "lang"} {
 		if _, ok := props[required]; !ok {
 			t.Errorf("missing parameter: %s", required)
 		}
-	}
-}
-
-func TestAnalyzeTool_Execute_MissingAction(t *testing.T) {
-	tool := NewAnalyzeTool()
-	tool.SetLLMBridge(&mockLLMBridge{})
-
-	_, err := tool.Execute(context.Background(), map[string]interface{}{
-		"topic": "test",
-	})
-	if err == nil || !strings.Contains(err.Error(), "action is required") {
-		t.Errorf("expected 'action is required' error, got: %v", err)
 	}
 }
 
@@ -119,9 +107,7 @@ func TestAnalyzeTool_Execute_MissingTopic(t *testing.T) {
 	tool := NewAnalyzeTool()
 	tool.SetLLMBridge(&mockLLMBridge{})
 
-	_, err := tool.Execute(context.Background(), map[string]interface{}{
-		"action": "analyze",
-	})
+	_, err := tool.Execute(context.Background(), map[string]interface{}{})
 	if err == nil || !strings.Contains(err.Error(), "topic is required") {
 		t.Errorf("expected 'topic is required' error, got: %v", err)
 	}
@@ -131,28 +117,14 @@ func TestAnalyzeTool_Execute_NoBridge(t *testing.T) {
 	tool := NewAnalyzeTool()
 
 	_, err := tool.Execute(context.Background(), map[string]interface{}{
-		"action": "analyze",
-		"topic":  "test",
+		"topic": "test",
 	})
 	if err == nil || !strings.Contains(err.Error(), "LLM bridge not available") {
 		t.Errorf("expected 'LLM bridge not available' error, got: %v", err)
 	}
 }
 
-func TestAnalyzeTool_Execute_InvalidAction(t *testing.T) {
-	tool := NewAnalyzeTool()
-	tool.SetLLMBridge(&mockLLMBridge{})
-
-	_, err := tool.Execute(context.Background(), map[string]interface{}{
-		"action": "invalid",
-		"topic":  "test",
-	})
-	if err == nil || !strings.Contains(err.Error(), "invalid action") {
-		t.Errorf("expected 'invalid action' error, got: %v", err)
-	}
-}
-
-func TestAnalyzeTool_Execute_AnalyzeText(t *testing.T) {
+func TestAnalyzeTool_Execute_AnalyzeWithText(t *testing.T) {
 	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
 	htmlBody := `<div class="hero"><h1>Test</h1></div>`
 
@@ -165,10 +137,9 @@ func TestAnalyzeTool_Execute_AnalyzeText(t *testing.T) {
 	tool.SetMediaDir(t.TempDir())
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"action": "analyze_text",
-		"topic":  "Test Topic",
-		"text":   "Some content to analyze",
-		"lang":   "en-US",
+		"topic": "Test Topic",
+		"text":  "Some content to analyze",
+		"lang":  "en-US",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -209,26 +180,12 @@ func TestAnalyzeTool_Execute_AnalyzeText(t *testing.T) {
 	}
 }
 
-func TestAnalyzeTool_Execute_AnalyzeText_MissingText(t *testing.T) {
+func TestAnalyzeTool_Execute_NoData(t *testing.T) {
 	tool := NewAnalyzeTool()
 	tool.SetLLMBridge(&mockLLMBridge{})
 
 	_, err := tool.Execute(context.Background(), map[string]interface{}{
-		"action": "analyze_text",
-		"topic":  "test",
-	})
-	if err == nil || !strings.Contains(err.Error(), "text is required") {
-		t.Errorf("expected 'text is required' error, got: %v", err)
-	}
-}
-
-func TestAnalyzeTool_Execute_FullAnalysis_NoData(t *testing.T) {
-	tool := NewAnalyzeTool()
-	tool.SetLLMBridge(&mockLLMBridge{})
-
-	_, err := tool.Execute(context.Background(), map[string]interface{}{
-		"action": "analyze",
-		"topic":  "test",
+		"topic": "test",
 	})
 	if err == nil || !strings.Contains(err.Error(), "no data collected") {
 		t.Errorf("expected 'no data collected' error, got: %v", err)
@@ -248,9 +205,8 @@ func TestAnalyzeTool_Execute_FullAnalysis_WithText(t *testing.T) {
 	tool.SetMediaDir(t.TempDir())
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"action": "analyze",
-		"topic":  "Full Test",
-		"text":   "Direct text input for analysis",
+		"topic": "Full Test",
+		"text":  "Direct text input for analysis",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -293,9 +249,8 @@ func TestAnalyzeTool_Execute_FullAnalysis_WithBrowser(t *testing.T) {
 	tool.SetMediaDir(t.TempDir())
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"action": "analyze",
-		"topic":  "Browser Test",
-		"urls":   []interface{}{"https://example.com"},
+		"topic": "Browser Test",
+		"urls":  []interface{}{"https://example.com"},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

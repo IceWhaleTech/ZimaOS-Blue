@@ -58,6 +58,8 @@ type APIFormat string
 const (
 	// APIFormatOpenAI represents OpenAI-compatible API format (default)
 	APIFormatOpenAI APIFormat = "openai"
+	// APIFormatResponses represents Responses API format (e.g. /v1/responses, /backend-api/codex/responses)
+	APIFormatResponses APIFormat = "responses"
 	// APIFormatAnthropic represents Anthropic Claude API format
 	APIFormatAnthropic APIFormat = "anthropic"
 	// APIFormatOllama represents Ollama API format
@@ -72,44 +74,57 @@ const (
 
 // Provider represents an LLM provider configuration
 type Provider struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Type        ProviderType     `json:"type"`
-	Location    ProviderLocation `json:"location"`  // cloud or local
-	Enabled     bool             `json:"enabled"`
-	Status      ProviderStatus   `json:"status"`
-	BaseURL        string           `json:"base_url,omitempty"`
-	APIVersion     string           `json:"api_version,omitempty"`     // e.g., "v1", "2024-01"
-	APIFormat      APIFormat        `json:"api_format,omitempty"`      // openai, anthropic, ollama, google (auto-detected if empty)
-	SkipTLSVerify  bool             `json:"skip_tls_verify,omitempty"` // skip TLS certificate verification for self-signed certs
+	ID            string           `json:"id"`
+	Name          string           `json:"name"`
+	Type          ProviderType     `json:"type"`
+	Location      ProviderLocation `json:"location"` // cloud or local
+	Enabled       bool             `json:"enabled"`
+	Status        ProviderStatus   `json:"status"`
+	BaseURL       string           `json:"base_url,omitempty"`
+	APIVersion    string           `json:"api_version,omitempty"`     // e.g., "v1", "2024-01"
+	APIFormat     APIFormat        `json:"api_format,omitempty"`      // openai, anthropic, ollama, google (auto-detected if empty)
+	SkipTLSVerify bool             `json:"skip_tls_verify,omitempty"` // skip TLS certificate verification for self-signed certs
 
 	// Authentication
 	APIKeys []APIKey     `json:"api_keys,omitempty"`
 	OAuth   *OAuthConfig `json:"oauth,omitempty"`
 
 	// Configuration
-	Priority    int              `json:"priority"`               // Higher = preferred
-	RateLimit   *RateLimitConfig `json:"rate_limit,omitempty"`
-	Headers     map[string]string `json:"headers,omitempty"`      // Custom headers
+	Priority  int               `json:"priority"` // Higher = preferred
+	RateLimit *RateLimitConfig  `json:"rate_limit,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"` // Custom headers
 
 	// Model Parameters (defaults for this provider)
 	ModelParams *ModelParams `json:"model_params,omitempty"`
 
-	// Allowed Models (if set, only these models are available; if empty, all models from API are available)
+	// Allowed Models holds the allowlist when AllowlistConfigured is true.
+	// Nil/empty here are interpreted by discovery using AllowlistConfigured.
 	AllowedModels []string `json:"allowed_models,omitempty"`
+	// AllowlistConfigured tracks whether model allowlist mode is enabled.
+	// This preserves "configured but empty" semantics across JSON persistence.
+	AllowlistConfigured bool `json:"allowlist_configured,omitempty"`
 
 	// Metadata
 	Icon        string    `json:"icon,omitempty"`        // Built-in icon name (e.g., "openai", "anthropic")
 	CustomIcon  string    `json:"custom_icon,omitempty"` // Custom icon: base64 data URL or relative file path
 	Description string    `json:"description,omitempty"`
-	Website     string    `json:"website,omitempty"`      // Official website URL for the provider
-	APIKeyURL   string    `json:"api_key_url,omitempty"`  // URL to obtain/manage API keys
+	Website     string    `json:"website,omitempty"`     // Official website URL for the provider
+	APIKeyURL   string    `json:"api_key_url,omitempty"` // URL to obtain/manage API keys
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
 	// Detected capabilities (persisted across restarts)
 	DetectedFormat APIFormat `json:"detected_format,omitempty"` // Probed API format that works (persisted)
 	DetectedAt     time.Time `json:"detected_at,omitempty"`     // When format was last probed
+
+	// AlternateBaseURLs is a list of alternate base URLs to try when auth fails on the primary BaseURL.
+	// The system will probe these in order when the primary endpoint returns 401/403.
+	// When an alternate URL succeeds, it's persisted as the new BaseURL via DetectedEndpoint.
+	AlternateBaseURLs []string `json:"alternate_base_urls,omitempty"`
+
+	// DetectedEndpoint remembers which endpoint worked (full base URL without path).
+	// This is persisted and survives restarts. When set, it overrides BaseURL.
+	DetectedEndpoint string `json:"detected_endpoint,omitempty"`
 
 	// Health check
 	LastHealthCheck time.Time `json:"last_health_check,omitempty"`
@@ -123,6 +138,7 @@ type Provider struct {
 
 // ParsedBaseURL returns the cached parsed URL for this provider.
 // Thread-safe, parsed once on first call. Returns nil if BaseURL is invalid.
+// Use EffectiveBaseURL() for the actual URL to use (considers DetectedEndpoint).
 func (p *Provider) ParsedBaseURL() *url.URL {
 	p.parsedURLOnce.Do(func() {
 		p.parsedURL, _ = url.Parse(p.BaseURL)
@@ -130,11 +146,35 @@ func (p *Provider) ParsedBaseURL() *url.URL {
 	return p.parsedURL
 }
 
+// EffectiveBaseURL returns the effective base URL to use, considering DetectedEndpoint.
+// If DetectedEndpoint is set, it takes precedence over BaseURL.
+func (p *Provider) EffectiveBaseURL() string {
+	if p.DetectedEndpoint != "" {
+		return p.DetectedEndpoint
+	}
+	return p.BaseURL
+}
+
+// ParsedEffectiveBaseURL returns the cached parsed effective base URL.
+// Thread-safe, parsed once on first call.
+func (p *Provider) ParsedEffectiveBaseURL() *url.URL {
+	p.parsedURLOnce.Do(func() {
+		p.parsedURL, _ = url.Parse(p.EffectiveBaseURL())
+	})
+	return p.parsedURL
+}
+
+// ResetParsedURL invalidates the cached parsed URL so it will be re-parsed on next access.
+// Call this after changing BaseURL or DetectedEndpoint.
+func (p *Provider) ResetParsedURL() {
+	p.parsedURLOnce = sync.Once{}
+}
+
 // APIKey represents a single API key with metadata
 type APIKey struct {
 	ID         string    `json:"id"`
-	Key        string    `json:"-"`         // Never expose in JSON
-	KeyHash    string    `json:"key_hash"`  // For identification (first 8 + last 4 chars)
+	Key        string    `json:"-"`        // Never expose in JSON
+	KeyHash    string    `json:"key_hash"` // For identification (first 8 + last 4 chars)
 	Label      string    `json:"label,omitempty"`
 	UsageCount int64     `json:"usage_count"`
 	LastUsed   time.Time `json:"last_used,omitempty"`
@@ -191,17 +231,17 @@ type ModelParams struct {
 	PresencePenalty  *float64 `json:"presence_penalty,omitempty"`  // -2.0 - 2.0
 
 	// Server-detected capabilities (read-only, populated by capability detection)
-	DetectedMaxTokens *int  `json:"detected_max_tokens,omitempty"` // Actual max tokens supported by server
+	DetectedMaxTokens *int   `json:"detected_max_tokens,omitempty"` // Actual max tokens supported by server
 	DetectedAt        *int64 `json:"detected_at,omitempty"`         // Unix timestamp of last detection
 }
 
 // Model represents an available model from a provider
 type Model struct {
-	ID          string            `json:"id"`
-	ProviderID  string            `json:"provider_id"`
-	Name        string            `json:"name"`
-	DisplayName string            `json:"display_name"`
-	Enabled     bool              `json:"enabled"`
+	ID          string `json:"id"`
+	ProviderID  string `json:"provider_id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Enabled     bool   `json:"enabled"`
 
 	// Capabilities
 	Capabilities ModelCapabilities `json:"capabilities"`
@@ -227,13 +267,13 @@ type Model struct {
 
 // ModelCapabilities describes what a model can do
 type ModelCapabilities struct {
-	Chat         bool `json:"chat"`
-	Completion   bool `json:"completion"`
-	Vision       bool `json:"vision"`
-	FunctionCall bool `json:"function_call"`
-	Streaming    bool `json:"streaming"`
-	Thinking     bool `json:"thinking"`      // Extended thinking mode (Claude)
-	JSON         bool `json:"json"`          // JSON mode support
+	Chat            bool `json:"chat"`
+	Completion      bool `json:"completion"`
+	Vision          bool `json:"vision"`
+	FunctionCall    bool `json:"function_call"`
+	Streaming       bool `json:"streaming"`
+	Thinking        bool `json:"thinking"`         // Extended thinking mode (Claude)
+	JSON            bool `json:"json"`             // JSON mode support
 	SystemPrompt    bool `json:"system_prompt"`    // System prompt support
 	ImageGeneration bool `json:"image_generation"` // Image generation (text-to-image)
 	VideoGeneration bool `json:"video_generation"` // Video generation (text-to-video)
@@ -332,10 +372,10 @@ type RouteRequest struct {
 
 // RouteResult represents the routing decision
 type RouteResult struct {
-	Provider  *Provider `json:"provider"`
-	Model     *Model    `json:"model"`
-	APIKey    *APIKey   `json:"api_key,omitempty"`
-	OAuth     *OAuthConfig `json:"oauth,omitempty"`
+	Provider  *Provider         `json:"provider"`
+	Model     *Model            `json:"model"`
+	APIKey    *APIKey           `json:"api_key,omitempty"`
+	OAuth     *OAuthConfig      `json:"oauth,omitempty"`
 	Fallbacks []*RouteCandidate `json:"fallbacks,omitempty"`
 }
 
@@ -359,12 +399,12 @@ type HealthCheckResult struct {
 
 // IDEProvider represents a provider discovered from a local IDE
 type IDEProvider struct {
-	IDEName     string    `json:"ide_name"`     // e.g., "antigravity", "cursor"
-	IDEVersion  string    `json:"ide_version,omitempty"`
-	ProxyURL    string    `json:"proxy_url"`    // Local proxy endpoint
-	ConfigPath  string    `json:"config_path"`  // Path to IDE config
-	Connected   bool      `json:"connected"`
-	Models      []string  `json:"models,omitempty"`
+	IDEName      string    `json:"ide_name"` // e.g., "antigravity", "cursor"
+	IDEVersion   string    `json:"ide_version,omitempty"`
+	ProxyURL     string    `json:"proxy_url"`   // Local proxy endpoint
+	ConfigPath   string    `json:"config_path"` // Path to IDE config
+	Connected    bool      `json:"connected"`
+	Models       []string  `json:"models,omitempty"`
 	DiscoveredAt time.Time `json:"discovered_at"`
 }
 
@@ -393,12 +433,12 @@ type PoolConfig struct {
 
 // ModelPricing represents custom pricing configuration for a model
 type ModelPricing struct {
-	ModelID     string    `json:"model_id"`               // Model identifier (can be pattern like "gpt-*")
-	ProviderID  string    `json:"provider_id,omitempty"`  // Optional: specific provider
-	InputPrice  float64   `json:"input_price"`            // Price per 1M input tokens (USD)
-	OutputPrice float64   `json:"output_price"`           // Price per 1M output tokens (USD)
-	CachePrice  float64   `json:"cache_price,omitempty"`  // Price per 1M cache read tokens (USD)
-	IsCustom    bool      `json:"is_custom"`              // True if user-defined, false if default
+	ModelID     string    `json:"model_id"`              // Model identifier (can be pattern like "gpt-*")
+	ProviderID  string    `json:"provider_id,omitempty"` // Optional: specific provider
+	InputPrice  float64   `json:"input_price"`           // Price per 1M input tokens (USD)
+	OutputPrice float64   `json:"output_price"`          // Price per 1M output tokens (USD)
+	CachePrice  float64   `json:"cache_price,omitempty"` // Price per 1M cache read tokens (USD)
+	IsCustom    bool      `json:"is_custom"`             // True if user-defined, false if default
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 

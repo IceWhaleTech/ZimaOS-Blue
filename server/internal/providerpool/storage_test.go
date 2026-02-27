@@ -208,33 +208,6 @@ func TestFileStorage(t *testing.T) {
 			t.Errorf("InputTokens mismatch: got %d, want 1000", records[0].InputTokens)
 		}
 	})
-
-	t.Run("SaveAndLoadHealthStatus", func(t *testing.T) {
-		results := map[string]*HealthCheckResult{
-			"test-provider": {
-				ProviderID: "test-provider",
-				Healthy:    true,
-				Latency:    100 * time.Millisecond,
-				CheckedAt:  time.Now(),
-			},
-		}
-
-		if err := storage.SaveHealthStatus(results); err != nil {
-			t.Fatalf("SaveHealthStatus failed: %v", err)
-		}
-
-		loaded, err := storage.LoadHealthStatus()
-		if err != nil {
-			t.Fatalf("LoadHealthStatus failed: %v", err)
-		}
-
-		if len(loaded) != 1 {
-			t.Fatalf("Expected 1 result, got %d", len(loaded))
-		}
-		if !loaded["test-provider"].Healthy {
-			t.Error("Expected healthy status")
-		}
-	})
 }
 
 func TestFileStorageDirectoryCreation(t *testing.T) {

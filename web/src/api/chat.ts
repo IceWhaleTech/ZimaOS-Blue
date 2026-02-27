@@ -56,12 +56,22 @@ export interface SendMessageRequest {
   max_tokens?: number
   attachments?: MessageAttachment[]
   regenerate?: boolean  // True if this is a regenerate request
+  web_search_enabled?: boolean
+  deep_search_enabled?: boolean
 }
 
 export interface SendMessageResponse {
   id: string
   role: string
   content: string
+  context_trim?: {
+    type: 'pruned' | 'compacted'
+    messages_pruned?: number
+    tokens_before?: number
+    tokens_after?: number
+    before?: number
+    after?: number
+  }
 }
 
 export interface ToolDefinition {

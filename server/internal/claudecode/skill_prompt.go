@@ -189,10 +189,11 @@ func skillPlatformMatch(osList []string) bool {
 // skillSortPriority returns sort priority for a skill name.
 // Lower = appears first. Core skills (browser, web search) are pinned to the top.
 var skillPriorityMap = map[string]int{
-	"browser":    0,
-	"web_search": 1,
-	"web-search": 1,
-	"websearch":  1,
+	"browser":     0,
+	"web_search":  1,
+	"web-search":  1,
+	"websearch":   1,
+	"deep_search": 2,
 }
 
 func skillSortPriority(name string) int {
@@ -217,7 +218,7 @@ func FormatSkillsPrompt(skills []SkillEntry) string {
 		if desc == "" {
 			desc = s.Name
 		}
-		sb.WriteString(fmt.Sprintf("  <skill name=%q desc=%q cmd=\"blue %s\" />\n",
+		sb.WriteString(fmt.Sprintf("  <skill name=%q desc=%q cmd=%q />\n",
 			s.Name, desc, xmlEscape(s.Name)))
 	}
 	sb.WriteString("</available_skills>")
@@ -228,12 +229,19 @@ func FormatSkillsPrompt(skills []SkillEntry) string {
 // Only these get their description injected — everything else the LLM discovers
 // by reading .claude/skills/<name>/SKILL.md on demand.
 var pinnedSkills = []string{
+	"ask",
 	"browser",
 	"web_search",
+	"deep_search",
 	"analyze",
 	"ui_reviewer",
 	"mgmt",
 	"mediagen",
+}
+
+// PinnedSkills returns the list of pinned skill names for short-circuit handling.
+func PinnedSkills() []string {
+	return pinnedSkills
 }
 
 // FormatPinnedSkills reads only the pinned skills from disk and formats them
@@ -266,7 +274,7 @@ func FormatPinnedSkills(workspaceDir string) string {
 		if desc == "" {
 			desc = s.Name
 		}
-		sb.WriteString(fmt.Sprintf("  <skill name=%q desc=%q cmd=\"blue %s\" />\n",
+		sb.WriteString(fmt.Sprintf("  <skill name=%q desc=%q cmd=%q />\n",
 			s.Name, desc, xmlEscape(s.Name)))
 	}
 	sb.WriteString("</pinned_skills>")

@@ -2,7 +2,12 @@
 
 ## Skills Reference
 
-This project uses the following skills from `.agent/skills/`:
+This project uses the following skills from `.agent/skills/` and `.agent/skill/`:
+
+### Mobile Toggle UX Optimization (.agent/skill)
+A focused design skill for optimizing crowded mobile toggle UI and making `Auto` mode clearly visible.
+
+**Usage:** Read `.agent/skill/mobile-toggle-ux/SKILL.md`
 
 ### Superpowers (obra/superpowers)
 A complete software development workflow with composable skills.
@@ -105,7 +110,8 @@ When working on tasks, reference the appropriate skill:
 5. **For Golang best practices:** Read `.agent/skills/golang-best-practices/SKILL.md`
 6. **For file-based planning:** Read `.agent/skills/planning-with-files/.agent/skills/planning-with-files/SKILL.md`
 7. **For UI/UX design:** Read `.agent/skills/ui-ux-pro-max-skill/.claude/skills/ui-ux-pro-max/SKILL.md`
-8. **For product skills:** Read `assets/skills/<name>/SKILL.md`
+8. **For mobile toggle optimization:** Read `.agent/skill/mobile-toggle-ux/SKILL.md`
+9. **For product skills:** Read `assets/skills/<name>/SKILL.md`
 
 ## Task Execution Rules
 

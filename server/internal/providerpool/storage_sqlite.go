@@ -49,11 +49,6 @@ func (s *SQLiteStorage) migrate() error {
 		timestamp TEXT NOT NULL
 	);
 	CREATE INDEX IF NOT EXISTS idx_pp_usage_provider_ts ON pp_usage(provider_id, timestamp);
-	CREATE TABLE IF NOT EXISTS pp_health (
-		provider_id TEXT PRIMARY KEY,
-		data TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	);
 	CREATE TABLE IF NOT EXISTS pp_pricing (
 		id TEXT PRIMARY KEY DEFAULT 'default',
 		data TEXT NOT NULL,
@@ -79,9 +74,6 @@ func (s *SQLiteStorage) models(ctx context.Context) *z.ZormTable {
 }
 func (s *SQLiteStorage) usage(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "pp_usage")
-}
-func (s *SQLiteStorage) health(ctx context.Context) *z.ZormTable {
-	return z.TableContext(ctx, s.db, "pp_health")
 }
 func (s *SQLiteStorage) pricing(ctx context.Context) *z.ZormTable {
 	return z.TableContext(ctx, s.db, "pp_pricing")
@@ -109,12 +101,6 @@ type ppUsageRow struct {
 	ProviderID string `json:"provider_id" zorm:"provider_id"`
 	Data       string `json:"data" zorm:"data"`
 	Timestamp  string `json:"timestamp" zorm:"timestamp"`
-}
-
-type ppHealthRow struct {
-	ProviderID string `json:"provider_id" zorm:"provider_id"`
-	Data       string `json:"data" zorm:"data"`
-	UpdatedAt  string `json:"updated_at" zorm:"updated_at"`
 }
 
 type ppSingleRow struct {
@@ -347,46 +333,6 @@ func (s *SQLiteStorage) LoadUsage(providerID string, start, end time.Time) ([]*U
 	return records, nil
 }
 
-// --- Health operations ---
-
-func (s *SQLiteStorage) SaveHealthStatus(results map[string]*HealthCheckResult) error {
-	ctx := context.Background()
-	now := timeutil.NowTime().Format(time.RFC3339)
-	for pid, result := range results {
-		data, err := json.Marshal(result)
-		if err != nil {
-			continue
-		}
-		s.health(ctx).Insert(map[string]interface{}{
-			"provider_id": pid,
-			"data":        string(data),
-			"updated_at":  now,
-		}, z.OnConflictDoUpdateSet(
-			[]string{"provider_id"},
-			[]string{"data", "updated_at"},
-		))
-	}
-	return nil
-}
-
-func (s *SQLiteStorage) LoadHealthStatus() (map[string]*HealthCheckResult, error) {
-	ctx := context.Background()
-	var rows []ppHealthRow
-	_, err := s.health(ctx).Select(&rows)
-	if err != nil {
-		return make(map[string]*HealthCheckResult), nil
-	}
-	results := make(map[string]*HealthCheckResult, len(rows))
-	for _, row := range rows {
-		var result HealthCheckResult
-		if err := json.Unmarshal([]byte(row.Data), &result); err != nil {
-			continue
-		}
-		results[row.ProviderID] = &result
-	}
-	return results, nil
-}
-
 // --- Pricing operations ---
 
 func (s *SQLiteStorage) SavePricingConfig(config *PricingConfig) error {
@@ -498,12 +444,6 @@ func (s *SQLiteStorage) MigrateFromFiles(basePath string) error {
 		if err == nil && len(models) > 0 {
 			s.SaveModels(p.ID, models)
 		}
-	}
-
-	// Migrate health
-	health, err := fs.LoadHealthStatus()
-	if err == nil && len(health) > 0 {
-		s.SaveHealthStatus(health)
 	}
 
 	// Migrate pricing

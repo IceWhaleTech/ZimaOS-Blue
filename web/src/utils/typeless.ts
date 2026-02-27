@@ -611,31 +611,38 @@ function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { v
   // Replace [SILENT_REPLY] with a subtle icon
   text = text.replace(/\[SILENT_REPLY\]/g, '💤')
 
-  // Parse <thinking>...</thinking> tags and convert to collapsible accordion
-  const thinkingRegex = /<thinking>([\s\S]*?)<\/thinking>/g
-  let match
+  // Parse thinking tags and convert to collapsible accordion
+  // Supports: <thinking>...</thinking>, <think_context>...</think_context>, （ohan）...（ohan）
+  const thinkingRegexes = [
+    { regex: /<thinking>([\s\S]*?)<\/thinking>/g, title: '💭 ' + t('thinking.title', 'Thinking Process'), prefix: 'thinking' },
+    { regex: /<think_context>([\s\S]*?)<\/think_context>/g, title: '💭 ' + t('thinking.context', 'Context'), prefix: 'think_context' },
+    { regex: /<think>([\s\S]*?)<\/think>/g, title: '💭 ' + t('thinking.think', 'Think'), prefix: 'think' },
+  ]
   const replacements: { start: number; end: number; placeholder: string }[] = []
 
-  while ((match = thinkingRegex.exec(text)) !== null) {
-    const thinkingContent = match[1]?.trim()
-    if (thinkingContent) {
-      const card: TypelessCardAccordion = {
-        type: 'accordion',
-        id: `thinking-${cardIndex.value++}`,
-        title: '💭 ' + t('thinking.title', 'Thinking Process'),
-        items: [{
-          title: t('thinking.expand', 'Expand'),
-          content: thinkingContent,
-          defaultOpen: false,
-        }],
-        allowMultiple: false,
+  for (const { regex, title, prefix } of thinkingRegexes) {
+    let match
+    while ((match = regex.exec(text)) !== null) {
+      const thinkingContent = match[1]?.trim()
+      if (thinkingContent) {
+        const card: TypelessCardAccordion = {
+          type: 'accordion',
+          id: `${prefix}-${cardIndex.value++}`,
+          title,
+          items: [{
+            title: t('thinking.expand', 'Expand'),
+            content: thinkingContent,
+            defaultOpen: false,
+          }],
+          allowMultiple: false,
+        }
+        cards.push(card)
+        replacements.push({
+          start: match.index,
+          end: match.index + match[0].length,
+          placeholder: `[[TYPELESS_CARD:${card.id}]]`,
+        })
       }
-      cards.push(card)
-      replacements.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        placeholder: `[[TYPELESS_CARD:${card.id}]]`,
-      })
     }
   }
 
@@ -654,26 +661,40 @@ function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { v
   // Handle incomplete/streaming <function_calls> (no closing tag yet)
   text = parseIncompleteFunctionCalls(text, cards, cardIndex)
 
-  // Handle incomplete/streaming <thinking> tags (no closing tag yet)
-  const incompleteThinkingRegex = /<thinking>([\s\S]*)$/
-  const incompleteMatch = incompleteThinkingRegex.exec(text)
-  if (incompleteMatch && incompleteMatch[1]) {
-    const thinkingContent = incompleteMatch[1].trim()
-    if (thinkingContent) {
-      const card: TypelessCardAccordion = {
-        type: 'accordion',
-        id: `thinking-streaming-${cardIndex.value++}`,
-        title: '💭 ' + t('thinking.inProgress', 'Thinking...'),
-        items: [{
-          title: t('thinking.expand', 'Expand'),
-          content: thinkingContent,
-          defaultOpen: true, // Show open while streaming
-        }],
-        allowMultiple: false,
-        _streaming: true,
+  // Handle incomplete/streaming thinking tags (no closing tag yet)
+  const incompleteThinkingRegexes = [
+    { regex: /<thinking>([\s\S]*)$/, prefix: 'thinking' },
+    { regex: /<think_context>([\s\S]*)$/, prefix: 'think_context' },
+    { regex: /<think>([\s\S]*)$/, prefix: 'think' },
+  ]
+
+  for (const { regex, prefix } of incompleteThinkingRegexes) {
+    const incompleteMatch = regex.exec(text)
+    if (incompleteMatch && incompleteMatch[1]) {
+      const thinkingContent = incompleteMatch[1].trim()
+      // If first char is '<' and total length < 10, hide everything (no card, no text)
+      // This prevents showing empty/minimal thinking UI at the start of streaming
+      if (text[0] === '<' && text.length < 10) {
+        text = text.slice(0, incompleteMatch.index)
+        break
       }
-      cards.push(card)
-      text = text.slice(0, incompleteMatch.index) + `[[TYPELESS_CARD:${card.id}]]`
+      if (thinkingContent) {
+        const card: TypelessCardAccordion = {
+          type: 'accordion',
+          id: `${prefix}-streaming-${cardIndex.value++}`,
+          title: '💭 ' + t('thinking.inProgress', 'Thinking...'),
+          items: [{
+            title: t('thinking.expand', 'Expand'),
+            content: thinkingContent,
+            defaultOpen: false,
+          }],
+          allowMultiple: false,
+          _streaming: true,
+        }
+        cards.push(card)
+        text = text.slice(0, incompleteMatch.index) + `[[TYPELESS_CARD:${card.id}]]`
+        break // Only handle the first match
+      }
     }
   }
 
@@ -737,11 +758,15 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
 
     try {
       // Try normal parse first, then try to fix incomplete/truncated JSON
-      let card = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
+      const card = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
 
       // Validate card has required type field
       if (card && typeof card.type === 'string' && isValidCardType(card.type)) {
         // Assign ID if not present
+        if (!card.id) {
+          card.id = `card-${cardIndex.value++}`
+        }
+        cards.push(card)
         // Mark for replacement with placeholder
         replacements.push({
           start: startIdx,
@@ -956,15 +981,16 @@ function mergeConsecutiveProgressCards(
   const flushPending = () => {
     if (pendingSteps.length === 0 || !pendingType) return
     const first = pendingSteps[0]!
+    const firstRecord = first as unknown as Record<string, unknown>
     const merged: TypelessCard = {
       type: pendingType,
-      id: (first as Record<string, unknown>).id as string || `${pendingType}-merged`,
+      id: (firstRecord.id as string) || `${pendingType}-merged`,
       steps: pendingSteps.map(s => ({
-        step: (s as Record<string, unknown>).step,
-        name: (s as Record<string, unknown>).name,
-        status: (s as Record<string, unknown>).status,
-        url: (s as Record<string, unknown>).url,
-        score: (s as Record<string, unknown>).score,
+        step: (s as unknown as Record<string, unknown>).step,
+        name: (s as unknown as Record<string, unknown>).name,
+        status: (s as unknown as Record<string, unknown>).status,
+        url: (s as unknown as Record<string, unknown>).url,
+        score: (s as unknown as Record<string, unknown>).score,
       })),
       _streaming: pendingSteps.some(s => s._streaming),
     } as TypelessCard
@@ -1257,4 +1283,3 @@ function parseMarkdownElementsSinglePass(
 
   return result.join('\n')
 }
-

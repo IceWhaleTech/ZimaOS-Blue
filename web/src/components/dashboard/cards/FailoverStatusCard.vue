@@ -77,6 +77,12 @@ const halfOpenBreakersCount = computed(() => {
   return Object.values(circuitBreakers.value).filter(b => b.state === 'half-open').length
 })
 
+const totalBreakers = computed(() => Object.keys(circuitBreakers.value).length)
+
+const healthyBreakersCount = computed(() => {
+  return totalBreakers.value - openBreakersCount.value - halfOpenBreakersCount.value
+})
+
 // Methods
 async function fetchData() {
   try {
@@ -109,80 +115,97 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-4 bg-white dark:bg-gray-700">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-      <!-- Left: Key Metrics -->
-      <div class="flex items-center gap-6">
-        <!-- Success Rate -->
-        <div class="flex items-center gap-2">
-          <div class="w-2.5 h-2.5 rounded-full flex-shrink-0" :class="[statusDotClass, config?.enabled ? 'animate-pulse' : '']"></div>
-          <div>
-            <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.failover.successRate', 'Success Rate') }}</p>
-            <p class="text-lg font-semibold" :class="successRateColor">{{ loading ? '-' : statusText }}</p>
-          </div>
-        </div>
+  <div class="rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 p-4 space-y-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <div class="w-2.5 h-2.5 rounded-full flex-shrink-0" :class="[statusDotClass, config?.enabled ? 'animate-pulse' : '']"></div>
+        <p class="text-sm font-semibold text-gray-900 dark:text-white">
+          {{ t('settings.failover.successRate', 'Success Rate') }}
+          <span class="ml-1" :class="successRateColor">{{ loading ? '-' : statusText }}</span>
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="inline-flex items-center rounded-full px-2 py-1 border border-gray-200 dark:border-gray-500 text-gray-700 dark:text-gray-200">
+          {{ config?.enabled ? 'ON' : 'OFF' }}
+        </span>
+        <span
+          v-if="config?.circuit_breaker"
+          class="inline-flex items-center rounded-full px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+        >
+          CB
+        </span>
+        <span
+          v-if="config?.streaming_anomaly?.enabled"
+          class="inline-flex items-center rounded-full px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+        >
+          AD
+        </span>
+      </div>
+    </div>
 
-        <!-- Divider -->
-        <div class="w-px h-10 bg-gray-700 dark:bg-gray-500"></div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.failover.totalFailovers', 'Total') }}</p>
+        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ metrics?.failover_total || 0 }}</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.failover.failedFailovers', 'Failed') }}</p>
+        <p
+          class="mt-1 text-lg font-semibold"
+          :class="(metrics?.failover_failure || 0) > 0 ? 'text-red-500' : 'text-gray-900 dark:text-white'"
+        >
+          {{ metrics?.failover_failure || 0 }}
+        </p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.failover.streamAnomalies', 'Anomalies') }}</p>
+        <p
+          class="mt-1 text-lg font-semibold"
+          :class="(metrics?.stream_anomalies || 0) > 0 ? 'text-orange-500' : 'text-gray-900 dark:text-white'"
+        >
+          {{ metrics?.stream_anomalies || 0 }}
+        </p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.failover.circuitBreakers', 'Breakers') }}</p>
+        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ totalBreakers }}</p>
+      </div>
+    </div>
 
-        <!-- Total -->
-        <div>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.failover.totalFailovers', 'Total') }}</p>
-          <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ metrics?.failover_total || 0 }}</p>
-        </div>
-
-        <!-- Anomalies -->
-        <div>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.failover.streamAnomalies', 'Anomalies') }}</p>
-          <p class="text-lg font-semibold" :class="(metrics?.stream_anomalies || 0) > 0 ? 'text-orange-500' : 'text-gray-900 dark:text-white'">
-            {{ metrics?.stream_anomalies || 0 }}
-          </p>
-        </div>
-
-        <!-- Failed -->
-        <div>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.failover.failedFailovers', 'Failed') }}</p>
-          <p class="text-lg font-semibold" :class="(metrics?.failover_failure || 0) > 0 ? 'text-red-500' : 'text-gray-900 dark:text-white'">
-            {{ metrics?.failover_failure || 0 }}
-          </p>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 p-3">
+        <p class="mb-2 text-gray-500 dark:text-gray-400">{{ t('settings.failover.circuitBreakers', 'Breakers') }}</p>
+        <div v-if="totalBreakers === 0" class="text-gray-400">-</div>
+        <div v-else class="flex flex-wrap gap-2">
+          <span class="inline-flex items-center rounded-md px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+            {{ healthyBreakersCount }} OK
+          </span>
+          <span
+            v-if="halfOpenBreakersCount > 0"
+            class="inline-flex items-center rounded-md px-2 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300"
+          >
+            {{ halfOpenBreakersCount }} Half
+          </span>
+          <span
+            v-if="openBreakersCount > 0"
+            class="inline-flex items-center rounded-md px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300"
+          >
+            {{ openBreakersCount }} Open
+          </span>
         </div>
       </div>
 
-      <!-- Right: Status Info -->
-      <div class="flex flex-wrap items-center gap-4 text-xs">
-        <!-- Circuit Breakers -->
-        <div class="flex items-center gap-1.5">
-          <span class="text-gray-500 dark:text-gray-400">{{ t('settings.failover.circuitBreakers', 'Breakers') }}:</span>
-          <span v-if="Object.keys(circuitBreakers).length === 0" class="text-gray-400">-</span>
-          <template v-else>
-            <span class="text-green-500 font-medium">{{ Object.keys(circuitBreakers).length - openBreakersCount - halfOpenBreakersCount }} OK</span>
-            <span v-if="halfOpenBreakersCount > 0" class="text-yellow-500 font-medium">{{ halfOpenBreakersCount }} Half</span>
-            <span v-if="openBreakersCount > 0" class="text-red-500 font-medium">{{ openBreakersCount }} Open</span>
-          </template>
-        </div>
-
-        <!-- Top Errors -->
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <span class="text-gray-500 dark:text-gray-400">{{ t('settings.failover.topErrors', 'Errors') }}:</span>
-          <span v-if="topErrors.length === 0" class="text-gray-400">-</span>
-          <template v-else>
-            <span
-              v-for="err in topErrors"
-              :key="err.type"
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
-            >
-              {{ err.label }} <span class="font-medium">{{ err.count }}</span>
-            </span>
-          </template>
-        </div>
-
-        <!-- Config -->
-        <div class="flex items-center gap-1.5">
-          <span :class="config?.enabled ? 'text-green-500' : 'text-gray-400'">
-            {{ config?.enabled ? 'ON' : 'OFF' }}
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 p-3">
+        <p class="mb-2 text-gray-500 dark:text-gray-400">{{ t('settings.failover.topErrors', 'Errors') }}</p>
+        <div v-if="topErrors.length === 0" class="text-gray-400">-</div>
+        <div v-else class="flex flex-wrap gap-2">
+          <span
+            v-for="err in topErrors"
+            :key="err.type"
+            class="inline-flex items-center gap-1 rounded-md px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+          >
+            {{ err.label }} <span class="font-semibold">{{ err.count }}</span>
           </span>
-          <span v-if="config?.circuit_breaker" class="text-gray-900 dark:text-white">CB</span>
-          <span v-if="config?.streaming_anomaly?.enabled" class="text-purple-500">AD</span>
         </div>
       </div>
     </div>

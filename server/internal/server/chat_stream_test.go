@@ -5,13 +5,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
 )
@@ -20,6 +25,49 @@ import (
 type StreamingMockProvider struct {
 	response    string
 	streamError error
+	lastReq     llm.ChatRequest
+}
+
+// autoContinueFailingProxyHandler simulates:
+// 1) first stream round returns a TODO checklist (triggers auto-continue)
+// 2) follow-up rounds fail before any chunks with upstream_error 502
+type autoContinueFailingProxyHandler struct {
+	callCount             int
+	requestModels         []string
+	requestPinnedProvider []string
+}
+
+func (h *autoContinueFailingProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+	h.requestPinnedProvider = append(h.requestPinnedProvider, proxy.GetPinnedProvider(r.Context()))
+
+	var body struct {
+		Model string `json:"model"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	h.requestModels = append(h.requestModels, body.Model)
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_ui_reviewer"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	// First round succeeds with TODO checklist content + stop.
+	if h.callCount == 1 {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		if f, ok := w.(http.Flusher); ok {
+			fmt.Fprintf(w, "data: %s\n\n", `{"id":"1","choices":[{"delta":{"content":"- [ ] run command"},"finish_reason":"stop"}],"model":"auto"}`)
+			f.Flush()
+			return
+		}
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"1","choices":[{"delta":{"content":"- [ ] run command"},"finish_reason":"stop"}],"model":"auto"}`)
+		return
+	}
+
+	// Next round(s) fail before any SSE chunk.
+	http.Error(w, `{"error":{"message":"Upstream request failed","type":"upstream_error"}}`, http.StatusBadGateway)
 }
 
 func NewStreamingMockProvider(response string) *StreamingMockProvider {
@@ -35,6 +83,7 @@ func (p *StreamingMockProvider) Models() []string {
 }
 
 func (p *StreamingMockProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	p.lastReq = req
 	return &llm.ChatResponse{
 		ID:      "mock-id",
 		Model:   req.Model,
@@ -70,6 +119,7 @@ func (p *StreamingMockProvider) ChatStream(ctx context.Context, req llm.ChatRequ
 }
 
 func (p *StreamingMockProvider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, callback llm.StreamCallback) error {
+	p.lastReq = req
 	if p.streamError != nil {
 		return p.streamError
 	}
@@ -187,6 +237,47 @@ func TestStreamMessageBasic(t *testing.T) {
 
 	if !gotDone {
 		t.Error("did not receive done signal")
+	}
+}
+
+func TestStreamMessageInjectsConversationAnchor(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Stream Anchor Title")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+	_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "user", Content: "Initial stream goal: keep context"})
+	_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "assistant", Content: "ack"})
+
+	registry := llm.NewProviderRegistry()
+	mockProvider := NewStreamingMockProvider("stream response")
+	registry.Register(mockProvider)
+
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSystemPromptBuilder(claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{}))
+
+	e := echo.New()
+	reqBody := `{"message":"B","provider":"streaming-mock","model":"streaming-mock-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	if !hasSystemAnchor(mockProvider.lastReq.Messages, "Stream Anchor Title", "Initial stream goal: keep context") {
+		t.Fatalf("expected conversation anchor in stream system messages, got %d messages", len(mockProvider.lastReq.Messages))
 	}
 }
 
@@ -362,5 +453,63 @@ func TestDefaultMockProviderChatStreamCallback(t *testing.T) {
 
 	if fullContent == "" {
 		t.Error("default MockProvider returned empty content")
+	}
+}
+
+func TestStreamMessageAutoContinue_PreContent502GracefulCompletion(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test Auto Continue 502")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+
+	// Enable agent mode path (`getMaxToolRounds() > maxToolRounds`) so TODO auto-continue can trigger.
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &autoContinueFailingProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"continue the task","model":"auto"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	err = handler.StreamMessage(c)
+	if err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected graceful completion without STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 4 {
+		t.Fatalf("expected exactly 4 proxy calls (initial + one continuation with 2 retries), got %d", fakeProxy.callCount)
+	}
+	if len(fakeProxy.requestModels) < 2 || len(fakeProxy.requestPinnedProvider) < 2 {
+		t.Fatalf("expected captured request metadata for at least 2 calls, models=%d providers=%d", len(fakeProxy.requestModels), len(fakeProxy.requestPinnedProvider))
+	}
+	if got := fakeProxy.requestModels[1]; got != "gpt-5.3-codex-spark" {
+		t.Fatalf("expected auto-continue to pin model from first round, got %q", got)
+	}
+	if got := fakeProxy.requestPinnedProvider[1]; got != "prov_ui_reviewer" {
+		t.Fatalf("expected auto-continue to pin provider from first round, got %q", got)
 	}
 }

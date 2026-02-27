@@ -37,6 +37,7 @@ onMounted(async () => {
     const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
     settingsStore.updateFromPoolProviders(llmProviders)
   }).catch(() => {})
+  settingsStore.fetchBackendSettings().catch(() => {})
   settingsStore.fetchClaudeCodeEnabled()
 })
 </script>

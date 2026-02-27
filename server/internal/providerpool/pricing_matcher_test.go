@@ -30,8 +30,6 @@ func (m *mockStorage) AppendUsage(record *UsageRecord) error                    
 func (m *mockStorage) LoadUsage(providerID string, start, end time.Time) ([]*UsageRecord, error) {
 	return nil, nil
 }
-func (m *mockStorage) SaveHealthStatus(results map[string]*HealthCheckResult) error   { return nil }
-func (m *mockStorage) LoadHealthStatus() (map[string]*HealthCheckResult, error)       { return nil, nil }
 func (m *mockStorage) SavePricingConfig(config *PricingConfig) error {
 	m.pricingConfig = config
 	return nil

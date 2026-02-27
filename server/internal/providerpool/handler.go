@@ -28,6 +28,10 @@ type Pool struct {
 	Config            *PoolConfig
 	TrialQuotaManager *TrialQuotaManager
 	pricingUpdater    *PricingUpdater
+
+	// readyCh is closed once the initial model refresh completes in Start().
+	// WaitReady blocks on this channel so early requests can wait for providers.
+	readyCh chan struct{}
 }
 
 // poolInitOpts collects options before Pool construction.
@@ -136,6 +140,7 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 			UsageRetentionDays:       30,
 		},
 		TrialQuotaManager: NewTrialQuotaManager(registry, dataPath, GetTrialLicense()),
+		readyCh:           make(chan struct{}),
 	}
 
 	if initOpts.config != nil {
@@ -218,7 +223,31 @@ func (p *Pool) Start(ctx context.Context) {
 
 		// Rebuild candidate list after models are refreshed
 		p.Router.RebuildCandidates()
+
+		// Signal that the pool is ready for routing
+		close(p.readyCh)
 	}()
+}
+
+// WaitReady blocks until the initial model refresh completes or the timeout expires.
+// Returns true if the pool is ready, false on timeout.
+func (p *Pool) WaitReady(timeout time.Duration) bool {
+	select {
+	case <-p.readyCh:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+// IsReady returns true if the initial model refresh has completed.
+func (p *Pool) IsReady() bool {
+	select {
+	case <-p.readyCh:
+		return true
+	default:
+		return false
+	}
 }
 
 // Stop stops background services
@@ -348,6 +377,35 @@ func (p *Pool) initBuiltinProviders() {
 			if existingProvider.APIKeyURL != builtin.APIKeyURL {
 				existingProvider.APIKeyURL = builtin.APIKeyURL
 				needsUpdate = true
+			}
+
+			// Sync OAuth config template: if builtin defines OAuth but existing provider
+			// doesn't have it (e.g. provider was created before OAuth support was added),
+			// add the OAuth template so the UI can show the connect button.
+			// Preserve existing OAuth state (connected, email, etc.) if already set.
+			if builtin.OAuth != nil && existingProvider.OAuth == nil {
+				existingProvider.OAuth = &OAuthConfig{
+					ClientID:     builtin.OAuth.ClientID,
+					Scopes:       builtin.OAuth.Scopes,
+					ProviderType: builtin.OAuth.ProviderType,
+					Endpoint:     builtin.OAuth.Endpoint,
+				}
+				needsUpdate = true
+			} else if builtin.OAuth != nil && existingProvider.OAuth != nil {
+				// Update OAuth template fields if they changed in builtin definition
+				// (e.g. new scopes, updated client ID), but preserve runtime state
+				if existingProvider.OAuth.ClientID != builtin.OAuth.ClientID {
+					existingProvider.OAuth.ClientID = builtin.OAuth.ClientID
+					needsUpdate = true
+				}
+				if existingProvider.OAuth.ProviderType == "" && builtin.OAuth.ProviderType != "" {
+					existingProvider.OAuth.ProviderType = builtin.OAuth.ProviderType
+					needsUpdate = true
+				}
+				if existingProvider.OAuth.Endpoint == "" && builtin.OAuth.Endpoint != "" {
+					existingProvider.OAuth.Endpoint = builtin.OAuth.Endpoint
+					needsUpdate = true
+				}
 			}
 
 			if needsUpdate {
@@ -503,7 +561,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 
 	// OAuth endpoints
 	g.POST("/:id/oauth/start", h.StartOAuth)
-	g.POST("/:id/oauth/disconnect", h.DisconnectOAuth)           // Legacy: disconnect all
+	g.POST("/:id/oauth/disconnect", h.DisconnectOAuth)            // Legacy: disconnect all
 	g.POST("/:id/oauth/:accountId/disconnect", h.DisconnectOAuth) // Disconnect specific account
 	g.GET("/:id/oauth/status", h.GetOAuthStatus)
 	g.GET("/:id/oauth/accounts", h.GetOAuthAccounts)
@@ -577,12 +635,12 @@ type providerResponse struct {
 	Priority      int      `json:"priority"`
 	AllowedModels []string `json:"allowed_models,omitempty"`
 
-	Icon        string    `json:"icon,omitempty"`
-	CustomIcon  string    `json:"custom_icon,omitempty"`
-	Description string    `json:"description,omitempty"`
-	Website     string    `json:"website,omitempty"`
-	APIKeyURL   string    `json:"api_key_url,omitempty"`
-	IsBuiltin   bool      `json:"is_builtin"`
+	Icon        string `json:"icon,omitempty"`
+	CustomIcon  string `json:"custom_icon,omitempty"`
+	Description string `json:"description,omitempty"`
+	Website     string `json:"website,omitempty"`
+	APIKeyURL   string `json:"api_key_url,omitempty"`
+	IsBuiltin   bool   `json:"is_builtin"`
 
 	// Health check errors - returned to frontend for display
 	LastError     string    `json:"last_error,omitempty"`
@@ -670,8 +728,9 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLook
 			ContextWindow:   m.ContextWindow,
 			MaxOutput:       m.MaxOutput,
 		}
-		// Enrich with pricing from PricingManager if model has no price set
-		if mr[i].InputPrice == 0 && mr[i].OutputPrice == 0 && pm != nil {
+		// Always prefer PricingManager pricing so runtime updates and canonical
+		// pricing data are reflected even when built-in models have stale values.
+		if pm != nil {
 			if pricing := pm.GetModelPricingWithHeuristics(m.ID, p.ID); pricing != nil {
 				mr[i].InputPrice = pricing.InputPrice
 				mr[i].OutputPrice = pricing.OutputPrice
@@ -712,7 +771,7 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLook
 }
 
 // toModelResponses converts a slice of Model to modelResponse (capabilities as string array).
-// If pm is non-nil, enriches pricing from PricingManager for models with no price set.
+// If pm is non-nil, enriches pricing from PricingManager (overrides model fields).
 // If mpLookup is non-nil, enriches media models with per-unit pricing.
 func toModelResponses(models []*Model, pm *PricingManager, mpLookup MediaPricingLookup) []*modelResponse {
 	result := make([]*modelResponse, len(models))
@@ -731,7 +790,7 @@ func toModelResponses(models []*Model, pm *PricingManager, mpLookup MediaPricing
 			ContextWindow:   m.ContextWindow,
 			MaxOutput:       m.MaxOutput,
 		}
-		if result[i].InputPrice == 0 && result[i].OutputPrice == 0 && pm != nil {
+		if pm != nil {
 			if pricing := pm.GetModelPricingWithHeuristics(m.ID, m.ProviderID); pricing != nil {
 				result[i].InputPrice = pricing.InputPrice
 				result[i].OutputPrice = pricing.OutputPrice
@@ -780,24 +839,33 @@ func (h *Handler) ListProviders(c echo.Context) error {
 	for i, p := range sanitizedProviders {
 		// Enrich OAuth config with runtime connection state from token store
 		if p.OAuth != nil && h.oauthManager != nil {
-			if tokens, err := h.oauthManager.GetTokens(p.ID); err == nil && len(tokens) > 0 {
-				// Create a copy to avoid mutating the cached provider
-				pCopy := *p
-				pCopy.OAuth = &OAuthConfig{
-					ClientID:     p.OAuth.ClientID,
-					Scopes:       p.OAuth.Scopes,
-					ProviderType: p.OAuth.ProviderType,
-					Endpoint:     p.OAuth.Endpoint,
-					ProjectID:    p.OAuth.ProjectID,
-				}
-				pCopy.OAuth.Connected = true
-				pCopy.OAuth.AccountCount = len(tokens)
-				if len(tokens) > 0 {
-					pCopy.OAuth.Email = tokens[0].Email
-				}
-				p = &pCopy
-				sanitizedProviders[i] = p
+			tokens, err := h.oauthManager.GetTokens(p.ID)
+			connected := p.OAuth.Connected
+			if err == nil {
+				connected = len(tokens) > 0
 			}
+
+			// Always create a copy to avoid mutating the cached provider
+			pCopy := *p
+			pCopy.OAuth = &OAuthConfig{
+				ClientID:     p.OAuth.ClientID,
+				Scopes:       p.OAuth.Scopes,
+				ProviderType: p.OAuth.ProviderType,
+				Endpoint:     p.OAuth.Endpoint,
+				ProjectID:    p.OAuth.ProjectID,
+				Connected:    connected,
+				AccountCount: p.OAuth.AccountCount,
+			}
+
+			if connected && len(tokens) > 0 {
+				pCopy.OAuth.AccountCount = len(tokens)
+				pCopy.OAuth.Email = tokens[0].Email
+				// Also include token expiry for UI display
+				pCopy.OAuth.TokenExpiry = tokens[0].TokenExpiry
+			}
+
+			p = &pCopy
+			sanitizedProviders[i] = p
 		}
 
 		var models []*Model
@@ -885,6 +953,15 @@ func (h *Handler) AddProvider(c echo.Context) error {
 		})
 	}
 
+	// Auto-detect best API format for third-party/custom providers.
+	detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), &provider)
+	provider.APIFormat = detectedFormat
+	provider.DetectedFormat = detectedFormat
+	provider.DetectedAt = timeutil.NowTime()
+	if detectedBaseURL != "" {
+		provider.BaseURL = detectedBaseURL
+	}
+
 	if err := h.pool.Registry.Register(&provider); err != nil {
 		if err == ErrProviderExists {
 			return c.JSON(http.StatusConflict, map[string]string{"error": "provider already exists"})
@@ -940,6 +1017,9 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 	if updates.BaseURL != "" {
 		existing.BaseURL = updates.BaseURL
 	}
+	if updates.APIFormat != "" {
+		existing.APIFormat = updates.APIFormat
+	}
 	if updates.Priority != 0 {
 		existing.Priority = updates.Priority
 	}
@@ -951,6 +1031,22 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "location must be 'cloud' or 'local'"})
 		}
 		existing.Location = updates.Location
+	}
+
+	// Non-third-party providers use a single canonical format.
+	// Third-party providers auto-detect when format is not explicitly set.
+	if !isThirdPartyProvider(existing) {
+		existing.APIFormat = canonicalAPIFormatForProvider(existing)
+		existing.DetectedFormat = existing.APIFormat
+		existing.DetectedAt = timeutil.NowTime()
+	} else if updates.APIFormat == "" && (updates.BaseURL != "" || existing.APIFormat == "") {
+		detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), existing)
+		existing.APIFormat = detectedFormat
+		existing.DetectedFormat = detectedFormat
+		existing.DetectedAt = timeutil.NowTime()
+		if detectedBaseURL != "" {
+			existing.BaseURL = detectedBaseURL
+		}
 	}
 
 	if err := h.pool.Registry.Update(existing); err != nil {
@@ -1137,7 +1233,15 @@ func (h *Handler) UpdateAllowedModels(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	provider.AllowedModels = req.AllowedModels
+	// nil => disable allowlist (all models allowed)
+	// empty/non-empty slice => enable allowlist
+	if req.AllowedModels == nil {
+		provider.AllowedModels = nil
+		provider.AllowlistConfigured = false
+	} else {
+		provider.AllowedModels = req.AllowedModels
+		provider.AllowlistConfigured = true
+	}
 	provider.UpdatedAt = timeutil.NowTime()
 
 	if err := h.pool.Registry.Update(provider); err != nil {
@@ -1678,6 +1782,13 @@ func (h *Handler) ImportIDEConfig(c echo.Context) error {
 					Icon:      getIconForIDE(ideType),
 					APIKeys:   []APIKey{*key},
 				}
+				detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), provider)
+				provider.APIFormat = detectedFormat
+				provider.DetectedFormat = detectedFormat
+				provider.DetectedAt = timeutil.NowTime()
+				if detectedBaseURL != "" {
+					provider.BaseURL = detectedBaseURL
+				}
 				if regErr := h.pool.Registry.Register(provider); regErr != nil {
 					return c.JSON(http.StatusInternalServerError, map[string]string{"error": regErr.Error()})
 				}
@@ -1783,6 +1894,13 @@ func (h *Handler) ImportExtensionConfig(c echo.Context) error {
 						Priority:  45,
 						Icon:      getIconForIDE(ideType),
 						APIKeys:   []APIKey{*key},
+					}
+					detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), provider)
+					provider.APIFormat = detectedFormat
+					provider.DetectedFormat = detectedFormat
+					provider.DetectedAt = timeutil.NowTime()
+					if detectedBaseURL != "" {
+						provider.BaseURL = detectedBaseURL
 					}
 					if regErr := h.pool.Registry.Register(provider); regErr != nil {
 						continue
@@ -1927,6 +2045,8 @@ func getAPIFormatForIDE(ideType ide.IDEType) APIFormat {
 		return APIFormatAnthropic
 	case ide.IDETypeAntigravity:
 		return APIFormatGoogle
+	case ide.IDETypeCodex:
+		return APIFormatResponses
 	default:
 		return APIFormatOpenAI
 	}
@@ -2489,10 +2609,10 @@ func (h *Handler) GetOAuthStatus(c echo.Context) error {
 	accounts := h.getOAuthAccountsList(providerID)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"connected":      len(accounts) > 0,
-		"provider_type":  provider.OAuth.ProviderType,
-		"account_count":  len(accounts),
-		"accounts":       accounts,
+		"connected":     len(accounts) > 0,
+		"provider_type": provider.OAuth.ProviderType,
+		"account_count": len(accounts),
+		"accounts":      accounts,
 	})
 }
 
@@ -2709,7 +2829,7 @@ func (h *Handler) autoImportOAuthToken(ideType ide.IDEType) string {
 			provider.APIFormat = APIFormatCopilot
 		case "codex":
 			provider.BaseURL = token.Endpoint
-			provider.APIFormat = APIFormatOpenAI
+			provider.APIFormat = APIFormatResponses
 		}
 
 		if err := h.pool.Registry.Register(provider); err != nil {
@@ -2731,6 +2851,8 @@ func (h *Handler) autoImportOAuthToken(ideType ide.IDEType) string {
 
 	// Save to OAuth token store (adds as new account)
 	if h.oauthManager != nil {
+		// Ensure token has the correct provider ID before saving
+		token.ProviderID = providerID
 		_ = h.oauthManager.ImportToken(token)
 		// Update account count
 		if tokens, err := h.oauthManager.GetTokens(providerID); err == nil && provider.OAuth != nil {

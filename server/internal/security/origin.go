@@ -241,6 +241,19 @@ func (c *OriginChecker) GetAllowedOrigins() []string {
 	return origins
 }
 
+// IsAllowAll returns true when wildcard CORS ("*") is enabled.
+func (c *OriginChecker) IsAllowAll() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	for _, origin := range c.config.AllowedOrigins {
+		if origin == "*" {
+			return true
+		}
+	}
+	return false
+}
+
 // CreateWebSocketCheckOrigin creates a CheckOrigin function for WebSocket upgraders.
 func (c *OriginChecker) CreateWebSocketCheckOrigin() func(r *http.Request) bool {
 	return c.CheckOrigin
@@ -257,6 +270,11 @@ func CheckOriginDefault(r *http.Request) bool {
 // GetDefaultAllowedOrigins returns the default allowed origins.
 func GetDefaultAllowedOrigins() []string {
 	return defaultOriginChecker.GetAllowedOrigins()
+}
+
+// IsDefaultAllowAllOrigins reports whether the default checker allows all origins.
+func IsDefaultAllowAllOrigins() bool {
+	return defaultOriginChecker.IsAllowAll()
 }
 
 // AddDynamicOriginDefault adds a dynamic origin to the default checker.

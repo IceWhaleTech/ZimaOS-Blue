@@ -34,6 +34,8 @@ export type TypelessCardType =
   | 'video'
   | 'mermaid'
   | 'search'
+  | 'deep-search'
+  | 'deep-search-progress'
   | 'ui-review'
   | 'ui-review-progress'
   | 'media-generate'
@@ -520,6 +522,34 @@ export interface TypelessCardSearch extends TypelessCardBase {
   provider?: string
 }
 
+export interface DeepSearchCitationItem {
+  evidence_id?: string
+  title?: string
+  url: string
+}
+
+export interface TypelessCardDeepSearch extends TypelessCardBase {
+  type: 'deep-search'
+  query?: string
+  mode?: 'fast' | 'standard' | 'deep'
+  answer?: string
+  confidence?: number
+  evidence_count?: number
+  citations?: DeepSearchCitationItem[]
+  open_questions?: string[]
+  status?: string
+}
+
+export interface TypelessCardDeepSearchProgress extends TypelessCardBase {
+  type: 'deep-search-progress'
+  job_id?: string
+  query?: string
+  mode?: 'fast' | 'standard' | 'deep'
+  stage?: string
+  status?: string
+  progress?: number
+}
+
 // UI Review Card - Display UI quality review results with collapsible steps
 export interface UIReviewStep {
   id: string
@@ -616,6 +646,7 @@ export interface TypelessCardAnalyzeProgress extends TypelessCardBase {
 export interface TypelessCardExec extends TypelessCardBase {
   type: 'exec'
   command: string
+  hide_command?: boolean
   status: 'success' | 'error' | 'running'
   exit_code?: number
   stdout?: string
@@ -623,7 +654,7 @@ export interface TypelessCardExec extends TypelessCardBase {
   duration_ms?: number
   truncated?: boolean
   warnings?: string[]
-  host?: 'local' | 'sandbox'
+  host?: 'local' | 'sandbox' | 'builtin'
   risk_level?: 'low' | 'medium' | 'high' | 'critical'
   session_id?: string
   _streaming?: boolean
@@ -663,6 +694,8 @@ export type TypelessCard =
   | TypelessCardVideo
   | TypelessCardMermaid
   | TypelessCardSearch
+  | TypelessCardDeepSearch
+  | TypelessCardDeepSearchProgress
   | TypelessCardUIReview
   | TypelessCardUIReviewProgress
   | TypelessCardMediaGenerate

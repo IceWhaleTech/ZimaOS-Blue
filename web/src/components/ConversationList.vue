@@ -28,7 +28,6 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const longPressId = ref<string | null>(null)
 const showContextMenu = ref<string | null>(null)
-const contextMenuPos = ref({ x: 0, y: 0 })
 
 function toggleSearch() {
   searchActive.value = !searchActive.value
@@ -86,7 +85,7 @@ function handlePin(id: string, isPinned: boolean) {
 }
 
 // Long press handling for mobile - show bottom sheet
-function startLongPress(id: string, event: MouseEvent | TouchEvent) {
+function startLongPress(id: string) {
   longPressId.value = id
   longPressTimer.value = setTimeout(() => {
     showContextMenu.value = id
@@ -114,14 +113,14 @@ watch(searchQuery, (query) => {
 </script>
 
 <template>
-  <div class="conversation-list h-full flex flex-col bg-white dark:bg-gray-700/30">
+  <div class="conversation-list h-full flex flex-col">
     <!-- Header: new chat + search merged into one row -->
-    <div class="flex items-center gap-2 p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
+    <div class="list-header sticky top-0 z-10 flex items-center gap-2 p-3 sm:p-4">
       <!-- Default: New Chat button / Search active: Search input -->
       <div class="flex-1 min-w-0">
         <button
           v-if="!searchActive"
-          class="w-full py-2 px-4 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+          class="create-btn w-full py-2.5 px-4 text-white rounded-xl flex items-center justify-center gap-2 transition-all duration-200"
           @click="handleCreate"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -129,13 +128,13 @@ watch(searchQuery, (query) => {
           </svg>
           {{ t('chat.newChat') }}
         </button>
-        <div v-else class="relative">
+        <div v-else class="search-input-wrap relative">
           <input
             ref="searchInputRef"
             v-model="searchQuery"
             type="text"
             :placeholder="t('chat.searchConversations')"
-            class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
+            class="search-input w-full text-gray-900 dark:text-white rounded-xl px-4 py-2.5 pl-10 focus:outline-none"
             @keydown.escape="toggleSearch"
           />
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -143,12 +142,15 @@ watch(searchQuery, (query) => {
           </svg>
         </div>
       </div>
+      <span
+        class="conv-count hidden sm:inline-flex"
+        :title="`${conversations.length}`"
+      >
+        {{ conversations.length }}
+      </span>
       <!-- Search / Close toggle button -->
       <button
-        class="shrink-0 p-2 rounded-lg transition-colors"
-        :class="searchActive
-          ? 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-          : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'"
+        class="search-toggle-btn shrink-0 p-2 rounded-lg transition-colors"
         :title="searchActive ? t('common.cancel') : t('chat.searchConversations')"
         @click="toggleSearch"
       >
@@ -164,7 +166,7 @@ watch(searchQuery, (query) => {
     </div>
 
     <!-- Conversation list -->
-    <div class="flex-1 overflow-y-auto">
+    <div class="convo-scroll flex-1 overflow-y-auto">
       <!-- Loading state -->
       <div v-if="loading || searching" class="p-4 text-center text-gray-500 dark:text-gray-400">
         <div class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto" />
@@ -174,7 +176,7 @@ watch(searchQuery, (query) => {
       <!-- Empty state -->
       <div
         v-else-if="conversations.length === 0"
-        class="p-4 text-center text-gray-500 dark:text-gray-400"
+        class="empty-state m-3 p-4 text-center text-gray-500 dark:text-gray-400"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -196,25 +198,26 @@ watch(searchQuery, (query) => {
       </div>
 
       <!-- Conversation items -->
-      <div v-else class="divide-y divide-gray-100 dark:divide-gray-800">
+      <div v-else class="convo-stack p-2">
         <div
-          v-for="conversation in conversations"
+          v-for="(conversation, index) in conversations"
           :key="conversation.id"
-          class="conversation-item relative group"
-          :class="{ 'bg-gray-100 dark:bg-gray-700': conversation.id === currentId }"
+          class="conversation-item relative group rounded-xl"
+          :class="{ 'convo-card-active': conversation.id === currentId }"
+          :style="{ '--item-index': String(index) }"
         >
           <button
-            class="w-full p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+            class="convo-main-btn w-full p-3.5 text-left rounded-xl transition-all duration-200"
             @click="handleSelect(conversation.id)"
-            @mousedown="startLongPress(conversation.id, $event)"
+            @mousedown="startLongPress(conversation.id)"
             @mouseup="cancelLongPress"
             @mouseleave="cancelLongPress"
-            @touchstart="startLongPress(conversation.id, $event)"
+            @touchstart="startLongPress(conversation.id)"
             @touchend="cancelLongPress"
           >
             <div class="flex items-start justify-between gap-2">
               <div class="flex-1 min-w-0">
-                <h3 class="text-gray-900 dark:text-white font-medium truncate flex items-center gap-1.5">
+                <h3 class="convo-title-row text-gray-900 dark:text-white font-medium flex items-center gap-1.5 min-w-0">
                   <!-- Pin icon inline with title -->
                   <svg
                     v-if="conversation.pinned"
@@ -225,9 +228,17 @@ watch(searchQuery, (query) => {
                   >
                     <path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z" />
                   </svg>
-                  <span class="truncate" :title="conversation.title">{{ conversation.title }}</span>
+                  <span class="convo-title-scroll" :title="conversation.title">
+                    <span class="convo-title">{{ conversation.title }}</span>
+                  </span>
+                  <span
+                    v-if="conversation.pinned"
+                    class="pin-chip hidden sm:inline-flex"
+                  >
+                    Pin
+                  </span>
                 </h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p class="convo-meta text-sm text-gray-500 dark:text-gray-400 mt-1">
                   {{ formatDate(conversation.updated_at) }}
                 </p>
               </div>
@@ -235,10 +246,10 @@ watch(searchQuery, (query) => {
           </button>
 
           <!-- Pin/Unpin and Delete buttons -->
-          <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="convo-actions absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 transition-opacity">
             <!-- Pin button -->
             <button
-              class="p-2 text-gray-400 hover:text-yellow-500 transition-colors"
+              class="action-btn p-2 text-gray-400 hover:text-yellow-500 transition-colors"
               :title="conversation.pinned ? t('chat.unpinConversation') : t('chat.pinConversation')"
               @click.stop="handlePin(conversation.id, conversation.pinned || false)"
             >
@@ -260,7 +271,7 @@ watch(searchQuery, (query) => {
             </button>
             <!-- Delete button -->
             <button
-              class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+              class="action-btn p-2 text-gray-400 hover:text-red-500 transition-colors"
               :title="t('chat.deleteConversation')"
               @click.stop="handleDelete(conversation.id)"
             >
@@ -284,7 +295,7 @@ watch(searchQuery, (query) => {
           <!-- Delete confirmation -->
           <div
             v-if="showDeleteConfirm === conversation.id"
-            class="absolute inset-0 bg-white/95 dark:bg-gray-700/30/95 flex items-center justify-center gap-2 p-2"
+            class="delete-mask absolute inset-0 flex items-center justify-center gap-2 p-2 rounded-xl"
           >
             <span class="text-sm text-gray-600 dark:text-gray-300">{{ t('chat.confirmDelete') }}</span>
             <button
@@ -397,6 +408,252 @@ watch(searchQuery, (query) => {
 </template>
 
 <style scoped>
+.conversation-list {
+  --cl-border-soft: var(--chat-sidebar-border-soft, rgba(148, 163, 184, 0.22));
+  --cl-border-strong: var(--chat-sidebar-border-strong, rgba(56, 189, 248, 0.42));
+  --cl-card-bg: var(--chat-sidebar-card-bg, rgba(15, 23, 42, 0.18));
+  --cl-card-bg-hover: var(--chat-sidebar-card-bg-hover, rgba(30, 41, 59, 0.42));
+  --cl-card-bg-active: var(--chat-sidebar-card-bg-active, linear-gradient(135deg, rgba(14, 116, 144, 0.25), rgba(15, 23, 42, 0.5)));
+  --cl-header-py: 0.85rem;
+  --cl-header-px: 0.9rem;
+  --cl-item-py: 0.8rem;
+  --cl-item-px: 0.85rem;
+  --cl-radius: 0.75rem;
+  background: var(--chat-sidebar-bg, linear-gradient(180deg, rgba(15, 23, 42, 0.32), rgba(15, 23, 42, 0.12)));
+}
+
+:global(.chat-view.ui-density-compact) .conversation-list {
+  --cl-header-py: 0.65rem;
+  --cl-header-px: 0.75rem;
+  --cl-item-py: 0.65rem;
+  --cl-item-px: 0.72rem;
+  --cl-radius: 0.65rem;
+}
+
+:global(.chat-view.ui-density-comfortable) .conversation-list {
+  --cl-header-py: 1rem;
+  --cl-header-px: 1.05rem;
+  --cl-item-py: 0.95rem;
+  --cl-item-px: 1rem;
+  --cl-radius: 0.85rem;
+}
+
+.list-header {
+  border-bottom: 1px solid var(--cl-border-soft);
+  background: var(--chat-sidebar-header-bg, linear-gradient(180deg, rgba(15, 23, 42, 0.42), rgba(15, 23, 42, 0.24)));
+  backdrop-filter: blur(10px);
+  position: relative;
+  padding: var(--cl-header-py) var(--cl-header-px);
+}
+
+.list-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.38), transparent);
+  pointer-events: none;
+}
+
+.conv-count {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: rgb(203 213 225);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.34);
+}
+
+.create-btn {
+  border-radius: var(--cl-radius);
+  background: var(--chat-sidebar-create-bg, linear-gradient(135deg, #0f172a, #334155));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.28);
+}
+
+.create-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.32);
+}
+
+.search-input-wrap {
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: var(--cl-radius);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.search-input-wrap:focus-within {
+  border-color: rgba(125, 211, 252, 0.52);
+}
+
+.search-input {
+  background: transparent;
+}
+
+.search-input:focus {
+  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.35);
+}
+
+.search-toggle-btn {
+  color: rgb(148 163 184);
+}
+
+.search-toggle-btn:hover {
+  color: rgb(226 232 240);
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.convo-stack {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.conversation-item {
+  animation: convo-fade-in 0.24s ease-out both;
+  animation-delay: calc(var(--item-index, 0) * 20ms);
+}
+
+.convo-main-btn {
+  background: var(--cl-card-bg);
+  border: 1px solid transparent;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--cl-radius);
+  padding: var(--cl-item-py) var(--cl-item-px);
+}
+
+.convo-main-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(130deg, rgba(125, 211, 252, 0.06), transparent 34%, rgba(45, 212, 191, 0.06));
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.convo-main-btn:hover {
+  background: var(--cl-card-bg-hover);
+  border-color: rgba(148, 163, 184, 0.2);
+  transform: translateX(1px);
+}
+
+.convo-main-btn:hover::before {
+  opacity: 1;
+}
+
+.convo-card-active .convo-main-btn {
+  background: var(--cl-card-bg-active);
+  border-color: var(--cl-border-strong);
+  box-shadow: 0 12px 22px rgba(2, 132, 199, 0.2);
+}
+
+.convo-card-active .convo-main-btn::after {
+  content: '';
+  position: absolute;
+  right: 0.4rem;
+  top: 0.4rem;
+  width: 0.36rem;
+  height: 0.36rem;
+  border-radius: 999px;
+  background: rgb(56 189 248);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.14);
+}
+
+.conversation-item::before {
+  content: '';
+  position: absolute;
+  left: 0.1rem;
+  top: 18%;
+  bottom: 18%;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #38bdf8, #22d3ee);
+  opacity: 0;
+  transform: scaleY(0.6);
+  transition: all 0.2s ease;
+}
+
+.convo-card-active::before {
+  opacity: 0.95;
+  transform: scaleY(1);
+}
+
+.convo-title {
+  display: inline-block;
+  min-width: max-content;
+  letter-spacing: 0.01em;
+}
+
+.convo-title-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.convo-title-scroll::-webkit-scrollbar {
+  height: 3px;
+}
+
+.convo-title-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.convo-title-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+}
+
+.convo-meta {
+  font-size: 0.76rem;
+}
+
+.pin-chip {
+  font-size: 0.62rem;
+  line-height: 1;
+  padding: 0.22rem 0.38rem;
+  border-radius: 999px;
+  color: rgb(250 204 21);
+  background: rgba(234, 179, 8, 0.16);
+  border: 1px solid rgba(234, 179, 8, 0.34);
+}
+
+.convo-actions {
+  opacity: 0;
+}
+
+.group:hover .convo-actions,
+.convo-card-active .convo-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  border-radius: 0.55rem;
+}
+
+.action-btn:hover {
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.delete-mask {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.empty-state {
+  border-radius: 0.85rem;
+  border: 1px dashed rgba(148, 163, 184, 0.34);
+  background: rgba(15, 23, 42, 0.22);
+}
+
 .conversation-list::-webkit-scrollbar {
   width: 6px;
 }
@@ -406,8 +663,79 @@ watch(searchQuery, (query) => {
 }
 
 .conversation-list::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: rgba(148, 163, 184, 0.42);
   border-radius: 3px;
+}
+
+@keyframes convo-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+:root.light .conv-count,
+[data-theme="light"] .conv-count {
+  color: rgb(71 85 105);
+  border-color: rgba(148, 163, 184, 0.34);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+:root.light .search-input-wrap,
+[data-theme="light"] .search-input-wrap {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+:root.light .search-toggle-btn,
+[data-theme="light"] .search-toggle-btn {
+  color: rgb(100 116 139);
+}
+
+:root.light .search-toggle-btn:hover,
+[data-theme="light"] .search-toggle-btn:hover {
+  color: rgb(30 41 59);
+  background: rgba(148, 163, 184, 0.16);
+}
+
+:root.light .convo-main-btn:hover,
+[data-theme="light"] .convo-main-btn:hover {
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+:root.light .pin-chip,
+[data-theme="light"] .pin-chip {
+  background: rgba(250, 204, 21, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: rgb(180 83 9);
+}
+
+:root.light .delete-mask,
+[data-theme="light"] .delete-mask {
+  background: rgba(248, 250, 252, 0.96);
+}
+
+:root.light .empty-state,
+[data-theme="light"] .empty-state {
+  border-color: rgba(148, 163, 184, 0.38);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-item {
+    animation: none !important;
+  }
+
+  .convo-main-btn,
+  .create-btn,
+  .search-toggle-btn,
+  .action-btn {
+    transition: none !important;
+  }
 }
 
 /* Bottom sheet animation */

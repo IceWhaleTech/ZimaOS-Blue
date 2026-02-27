@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -107,7 +108,7 @@ func TestAllModelsForProvider_SkipsBlacklisted(t *testing.T) {
 	// Blacklist the original model
 	ph.providerMemory.BlacklistModel(pid, burl, "claude-3-5-haiku-20241022")
 
-	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "")
+	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "", false)
 	for i := 0; i < nModels; i++ {
 		if modelsBuf[i] == "claude-3-5-haiku-20241022" {
 			t.Fatal("blacklisted model should not appear in candidates")
@@ -132,7 +133,7 @@ func TestAllModelsForProvider_AllBlacklisted(t *testing.T) {
 		ph.providerMemory.BlacklistModel(pid, burl, alias)
 	}
 
-	_, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "")
+	_, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "", false)
 	if nModels != 0 {
 		t.Fatalf("expected 0 models when all blacklisted, got %d", nModels)
 	}
@@ -147,12 +148,257 @@ func TestAllModelsForProvider_RememberedAliasFirst(t *testing.T) {
 	// Remember that "claude-haiku-4-5" worked for "claude-3-5-haiku-20241022"
 	ph.providerMemory.RememberModelAlias(pid, burl, "claude-3-5-haiku-20241022", "claude-haiku-4-5")
 
-	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "")
+	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, "claude-3-5-haiku-20241022", "", false)
 	if nModels == 0 {
 		t.Fatal("expected at least one model")
 	}
 	if modelsBuf[0] != "claude-haiku-4-5" {
 		t.Errorf("expected remembered alias first, got %q", modelsBuf[0])
+	}
+}
+
+// TestAllModelsForProvider_IgnoreBlacklist verifies single-provider mode can bypass blacklist filtering.
+func TestAllModelsForProvider_IgnoreBlacklist(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+	pid := "relay"
+	burl := "https://relay.example.com"
+	model := "claude-3-5-haiku-20241022"
+
+	ph.providerMemory.BlacklistModel(pid, burl, model)
+	for _, alias := range ModelAliases[model] {
+		ph.providerMemory.BlacklistModel(pid, burl, alias)
+	}
+
+	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, model, "", true)
+	if nModels == 0 {
+		t.Fatal("expected models when ignoreBlacklist=true")
+	}
+
+	foundOriginal := false
+	for i := 0; i < nModels; i++ {
+		if modelsBuf[i] == model {
+			foundOriginal = true
+			break
+		}
+	}
+	if !foundOriginal {
+		t.Fatalf("expected original model %q to be present when ignoreBlacklist=true", model)
+	}
+}
+
+func TestProxyHandler_IsSingleProviderMode(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "proxy-single-provider-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := providerpool.NewFileStorage(tmpDir)
+	registry, _ := providerpool.NewRegistry(storage)
+
+	cloudProvider := &providerpool.Provider{
+		ID:       "p-cloud",
+		Name:     "Cloud Provider",
+		Type:     providerpool.ProviderTypeCustom,
+		Location: providerpool.ProviderLocationCloud,
+		Enabled:  true,
+		Status:   providerpool.ProviderStatusActive,
+	}
+	registry.Register(cloudProvider)
+
+	ph := NewProxyHandler(nil, nil, nil)
+	ph.providerPool = &providerpool.Pool{Registry: registry}
+
+	if !ph.isSingleProviderMode(providerpool.RoutingModeAuto) {
+		t.Fatal("expected single-provider mode for auto with one enabled provider")
+	}
+	if !ph.isSingleProviderMode(providerpool.RoutingModeCloud) {
+		t.Fatal("expected single-provider mode for cloud with one cloud provider")
+	}
+	if ph.isSingleProviderMode(providerpool.RoutingModeLocal) {
+		t.Fatal("expected non-single-provider for local when no local provider exists")
+	}
+
+	localProvider := &providerpool.Provider{
+		ID:       "p-local",
+		Name:     "Local Provider",
+		Type:     providerpool.ProviderTypeCustom,
+		Location: providerpool.ProviderLocationLocal,
+		Enabled:  true,
+		Status:   providerpool.ProviderStatusActive,
+	}
+	registry.Register(localProvider)
+
+	if ph.isSingleProviderMode(providerpool.RoutingModeAuto) {
+		t.Fatal("expected non-single-provider mode for auto with two enabled providers")
+	}
+}
+
+func TestAllFormatsForProvider_CopilotStaysSingleFormat(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+	pid := "github-copilot"
+	burl := "https://api.githubcopilot.com"
+	provider := &providerpool.Provider{
+		ID:        pid,
+		BaseURL:   burl,
+		APIFormat: providerpool.APIFormatCopilot,
+	}
+
+	formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+	if known {
+		t.Fatal("expected known=false without detected/remembered format")
+	}
+	if n != 1 {
+		t.Fatalf("expected exactly 1 format for copilot, got %d", n)
+	}
+	if formats[0] != providerpool.APIFormatCopilot {
+		t.Fatalf("expected copilot format, got %q", formats[0])
+	}
+}
+
+func TestAllFormatsForProvider_CloudCodeStaysSingleFormat(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+	pid := "google-antigravity"
+	burl := "https://cloudcode-pa.googleapis.com"
+	provider := &providerpool.Provider{
+		ID:        pid,
+		BaseURL:   burl,
+		APIFormat: providerpool.APIFormatCloudCode,
+	}
+
+	formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+	if known {
+		t.Fatal("expected known=false without detected/remembered format")
+	}
+	if n != 1 {
+		t.Fatalf("expected exactly 1 format for cloudcode, got %d", n)
+	}
+	if formats[0] != providerpool.APIFormatCloudCode {
+		t.Fatalf("expected cloudcode format, got %q", formats[0])
+	}
+}
+
+func TestAllFormatsForProvider_OpenAIKeepsCrossFamilyFallback(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+	pid := "generic-openai"
+	burl := "https://api.example.com/v1"
+	provider := &providerpool.Provider{
+		ID:        pid,
+		BaseURL:   burl,
+		APIFormat: providerpool.APIFormatOpenAI,
+	}
+
+	formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+	if known {
+		t.Fatal("expected known=false without detected/remembered format")
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 formats for generic openai provider, got %d", n)
+	}
+	if formats[0] != providerpool.APIFormatOpenAI || formats[1] != providerpool.APIFormatAnthropic {
+		t.Fatalf("unexpected format order: [%q %q]", formats[0], formats[1])
+	}
+}
+
+func TestAllFormatsForProvider_ResponsesEndpointLocksOpenAI(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+	pid := "responses-locked"
+	burl := "https://chatgpt.com/backend-api/codex/responses"
+	provider := &providerpool.Provider{
+		ID:        pid,
+		BaseURL:   burl,
+		APIFormat: providerpool.APIFormatOpenAI,
+	}
+	// Poison remembered/detected format on purpose; endpoint should still win.
+	provider.DetectedFormat = providerpool.APIFormatAnthropic
+	ph.providerMemory.RememberFormat(pid, burl, "anthropic")
+
+	formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+	if !known {
+		t.Fatal("expected known=true for endpoint-locked format")
+	}
+	if n != 1 {
+		t.Fatalf("expected single locked format for /responses endpoint, got %d", n)
+	}
+	if formats[0] != providerpool.APIFormatResponses {
+		t.Fatalf("expected responses format for /responses endpoint, got %q", formats[0])
+	}
+}
+
+func TestAllFormatsForProvider_AnthropicEndpointLocksAnthropic(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+	pid := "anthropic-locked"
+
+	for _, burl := range []string{
+		"https://api.minimaxi.com/anthropic",
+		"https://api.anthropic.com/v1/messages",
+	} {
+		provider := &providerpool.Provider{
+			ID:        pid,
+			BaseURL:   burl,
+			APIFormat: providerpool.APIFormatOpenAI,
+		}
+		// Poison remembered/detected format on purpose; endpoint should still win.
+		provider.DetectedFormat = providerpool.APIFormatOpenAI
+		ph.providerMemory.RememberFormat(pid, burl, "openai")
+
+		formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+		if !known {
+			t.Fatalf("expected known=true for endpoint-locked format on %s", burl)
+		}
+		if n != 1 {
+			t.Fatalf("expected single locked format on %s, got %d", burl, n)
+		}
+		if formats[0] != providerpool.APIFormatAnthropic {
+			t.Fatalf("expected anthropic format on %s, got %q", burl, formats[0])
+		}
+	}
+}
+
+func TestDetectEndpointFixedFormatFromPath(t *testing.T) {
+	tests := []struct {
+		path   string
+		want   providerpool.APIFormat
+		hasFmt bool
+	}{
+		{path: "/v1/responses", want: providerpool.APIFormatResponses, hasFmt: true},
+		{path: "/backend-api/codex/responses", want: providerpool.APIFormatResponses, hasFmt: true},
+		{path: "/v1/messages", want: providerpool.APIFormatAnthropic, hasFmt: true},
+		{path: "/anthropic", want: providerpool.APIFormatAnthropic, hasFmt: true},
+		{path: "/v1/chat/completions", hasFmt: false},
+	}
+
+	for _, tc := range tests {
+		got, ok := detectEndpointFixedFormatFromPath(tc.path)
+		if ok != tc.hasFmt {
+			t.Fatalf("path %q: ok=%v, want %v", tc.path, ok, tc.hasFmt)
+		}
+		if ok && got != tc.want {
+			t.Fatalf("path %q: format=%q, want %q", tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestAllFormatsForProvider_BuiltinSingleFormat(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+	pid := "minimax"
+	burl := "https://api.minimaxi.com/anthropic"
+	provider := &providerpool.Provider{
+		ID:        pid,
+		Type:      providerpool.ProviderTypeBuiltin,
+		BaseURL:   burl,
+		APIFormat: providerpool.APIFormatAnthropic,
+	}
+
+	formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+	if known {
+		t.Fatal("expected known=false without detected/remembered format")
+	}
+	if n != 1 {
+		t.Fatalf("expected 1 format for builtin provider, got %d", n)
+	}
+	if formats[0] != providerpool.APIFormatAnthropic {
+		t.Fatalf("expected anthropic format, got %q", formats[0])
 	}
 }
 
@@ -212,6 +458,46 @@ func TestTryOnProvider_NotConfiguredSkipsToNextProvider(t *testing.T) {
 	// so future requests skip it. It can still work on other providers.
 	if !ph.providerMemory.IsModelBlacklisted("test-provider", upstream.URL, "gpt-4") {
 		t.Error("model SHOULD be blacklisted on this provider for 'not configured' errors")
+	}
+}
+
+func TestTryOnProvider_RequestResponsesEndpointForcesResponsesFormat(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"resp_1","object":"response","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`))
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "test-provider",
+			BaseURL:   upstream.URL + "/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"gpt-4.1","input":[{"role":"user","content":"hi"}],"stream":false}`),
+		model: "gpt-4.1",
+	}
+	r := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	resp, format, _, err := ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("tryOnProvider failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if format != providerpool.APIFormatResponses {
+		t.Fatalf("format = %q, want %q", format, providerpool.APIFormatResponses)
 	}
 }
 
@@ -635,10 +921,13 @@ func TestIsFormatMismatchError(t *testing.T) {
 		{"422 generic validation", 422, `{"error":{"message":"max_tokens must be positive"}}`, false},
 		{"422 additional properties", 422, `{"error":{"message":"Additional properties not allowed"}}`, true},
 		{"404 openai_error", 404, `{"error":{"message":"openai_error","type":"bad_response_status_code"}}`, true},
+		{"400 unsupported legacy protocol", 400, `{"error":{"message":"Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses.","type":"invalid_request_error"}}`, true},
+		{"400 wrapped not configured plus legacy protocol", 400, `{"error":{"message":"model gpt-5 not configured on provider p1: {\"error\":{\"message\":\"Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses.\"}}"}}`, true},
 		{"400 bad_response_status_code", 400, `{"error":{"type":"bad_response_status_code"}}`, true},
 		{"404 model not found", 404, `{"error":{"message":"model not found"}}`, false},
 		{"404 plain not found", 404, `not found`, true},
 		{"404 page not found", 404, `404 page not found`, true},
+		{"502 wrapped legacy protocol", 502, `{"error":{"message":"Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses.","type":"invalid_request_error"}}`, true},
 		{"200 ok", 200, `ok`, false},
 		{"500 server error", 500, `internal error`, false},
 	}
@@ -810,6 +1099,229 @@ func TestTryOnProvider_AllFormatsMismatch_SkipsAliases(t *testing.T) {
 	}
 }
 
+func TestProviderRace_EmptyRateCooldown(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+	ph.SetProviderRaceConfig(ProviderRaceConfig{
+		Enabled:                    true,
+		MaxParallel:                2,
+		MinProviders:               2,
+		EmptyRateMinSamples:        4,
+		EmptyRateCooldownThreshold: 0.5,
+		EmptyRateSinkThreshold:     0.5,
+		EmptyRateExcludeThreshold:  0.9,
+		EmptyRateCooldown:          1 * time.Minute,
+	})
+
+	ph.recordProviderRaceAttempt("p1", true)
+	ph.recordProviderRaceAttempt("p1", true)
+	ph.recordProviderRaceAttempt("p1", false)
+	ph.recordProviderRaceAttempt("p1", false)
+
+	stat := ph.getProviderRaceStat("p1")
+	if stat.Attempts != 4 {
+		t.Fatalf("expected 4 attempts, got %d", stat.Attempts)
+	}
+	if stat.EmptyRuns != 2 {
+		t.Fatalf("expected 2 empty runs, got %d", stat.EmptyRuns)
+	}
+	if stat.CooldownUntil.IsZero() {
+		t.Fatal("expected provider to enter race cooldown")
+	}
+	if !ph.isProviderInRaceCooldown("p1") {
+		t.Fatal("expected provider to be in race cooldown")
+	}
+}
+
+func TestProxyHandler_ProviderRaceChoosesFastest(t *testing.T) {
+	slowUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(150 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"slow","choices":[{"message":{"content":"slow"}}]}`))
+	}))
+	defer slowUpstream.Close()
+
+	fastUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(20 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"fast","choices":[{"message":{"content":"fast"}}]}`))
+	}))
+	defer fastUpstream.Close()
+
+	tmpDir, err := os.MkdirTemp("", "provider-race-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := providerpool.NewFileStorage(tmpDir)
+	registry, _ := providerpool.NewRegistry(storage)
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	router := providerpool.NewRouter(registry, discovery, providerpool.RoutingStrategyPriority)
+
+	slowProvider := &providerpool.Provider{
+		ID:        "p-slow",
+		Name:      "slow-provider",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   slowUpstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Priority:  100,
+		APIFormat: providerpool.APIFormatOpenAI,
+		APIKeys:   []providerpool.APIKey{{ID: "k-slow", Key: "slow-key", Enabled: true}},
+	}
+	fastProvider := &providerpool.Provider{
+		ID:        "p-fast",
+		Name:      "fast-provider",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   fastUpstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Priority:  10,
+		APIFormat: providerpool.APIFormatOpenAI,
+		APIKeys:   []providerpool.APIKey{{ID: "k-fast", Key: "fast-key", Enabled: true}},
+	}
+	registry.Register(slowProvider)
+	registry.Register(fastProvider)
+
+	models := []*providerpool.Model{
+		{
+			ID:           "race-model",
+			Name:         "race-model",
+			ProviderID:   "p-slow",
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, Streaming: true},
+		},
+	}
+	storage.SaveModels("p-slow", models)
+	models[0].ProviderID = "p-fast"
+	storage.SaveModels("p-fast", models)
+	router.RebuildCandidates()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	ph.SetProviderPool(&providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Router:    router,
+	})
+	ph.SetProviderRaceConfig(ProviderRaceConfig{
+		Enabled:                    true,
+		MaxParallel:                2,
+		MinProviders:               2,
+		EmptyRateMinSamples:        10,
+		EmptyRateCooldownThreshold: 0.3,
+		EmptyRateSinkThreshold:     0.5,
+		EmptyRateExcludeThreshold:  0.8,
+		EmptyRateCooldown:          2 * time.Minute,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"race-model","messages":[{"role":"user","content":"hi"}]}`))
+	rec := httptest.NewRecorder()
+
+	ph.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Actual-Provider"); got != "fast-provider" {
+		t.Fatalf("expected fastest provider selected, got %q", got)
+	}
+}
+
+// TestTryOnProvider_ResponsesEndpointBasePath verifies that when a provider BaseURL
+// already points at a /responses endpoint, the proxy does not append
+// /v1/chat/completions to it.
+func TestTryOnProvider_ResponsesEndpointBasePath(t *testing.T) {
+	pathCh := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case pathCh <- r.URL.Path:
+		default:
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"id":"chatcmpl-1","choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "responses-base-provider",
+			BaseURL:   upstream.URL + "/backend-api/codex/responses",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"gpt-5.3-codex-spark","messages":[{"role":"user","content":"hi"}]}`),
+		model: "gpt-5.3-codex-spark",
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp, _, _, err := ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	select {
+	case gotPath := <-pathCh:
+		if gotPath != "/backend-api/codex/responses" {
+			t.Fatalf("expected upstream path /backend-api/codex/responses, got %s", gotPath)
+		}
+	default:
+		t.Fatal("expected upstream request, got none")
+	}
+}
+
+func TestTryOnProvider_SingleProviderRetriesTransient5xx(t *testing.T) {
+	var requestCount int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&requestCount, 1)
+		w.Header().Set("Content-Type", "application/json")
+		if n == 1 {
+			w.WriteHeader(http.StatusBadGateway)
+			w.Write([]byte(`{"error":{"message":"Upstream request failed","type":"upstream_error"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"chatcmpl-1","choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "single-provider",
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+	pr := &parsedRequest{
+		body:           []byte(`{"model":"gpt-5.3-codex","messages":[{"role":"user","content":"hi"}]}`),
+		model:          "gpt-5.3-codex",
+		singleProvider: true,
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp, _, _, err := ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("expected success after retry, got error: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if got := atomic.LoadInt32(&requestCount); got != 2 {
+		t.Fatalf("expected 2 upstream attempts, got %d", got)
+	}
+}
+
 // TestWarmToolCallSupport_Probe422 verifies that warmToolCallSupport marks a provider
 // as ToolCapNone when the upstream returns 422 on a tool-bearing request.
 func TestWarmToolCallSupport_Probe422(t *testing.T) {
@@ -919,5 +1431,25 @@ func TestExecuteOnProvider_SkipsNoToolProvider(t *testing.T) {
 	cap, ok := ph.providerMemory.RecallToolCap(provider.ID, provider.BaseURL)
 	if !ok || cap != ToolCapNone {
 		t.Fatalf("expected ToolCapNone, got %d (ok=%v)", cap, ok)
+	}
+}
+
+func TestIsResponsesEndpointBaseURL(t *testing.T) {
+	tests := []struct {
+		url  string
+		want bool
+	}{
+		{"https://chatgpt.com/backend-api/codex/responses", true},
+		{"https://chatgpt.com/backend-api/codex/responses/", true},
+		{"https://api.openai.com/v1", false},
+		{"https://api.openai.com/v1/chat/completions", false},
+		{"not-a-url", false},
+	}
+
+	for _, tt := range tests {
+		got := isResponsesEndpointBaseURL(tt.url)
+		if got != tt.want {
+			t.Fatalf("isResponsesEndpointBaseURL(%q) = %v, want %v", tt.url, got, tt.want)
+		}
 	}
 }

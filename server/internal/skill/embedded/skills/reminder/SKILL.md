@@ -4,10 +4,10 @@ Manage reminders and scheduled alerts. When a reminder fires, it delivers throug
 
 ## How to Use
 
-Use the `blue` CLI:
+Direct call:
 
 ```bash
-blue reminder.add message="Check the build" time=30m
+reminder.add message="Check the build" time=30m
 ```
 
 Add `--json` for JSON output.
@@ -30,7 +30,7 @@ Schedule a reminder at a specific time.
 - RFC3339: `2026-01-04T09:00:00+08:00`
 
 ```bash
-blue reminder.add message="Team standup in 5 minutes" time=5m
+reminder.add message="Team standup in 5 minutes" time=5m
 ```
 
 ### reminder.list
@@ -38,7 +38,7 @@ blue reminder.add message="Team standup in 5 minutes" time=5m
 List all pending reminders.
 
 ```bash
-blue reminder.list
+reminder.list
 ```
 
 ### reminder.delete
@@ -50,7 +50,7 @@ Delete a reminder by ID.
 **Optional:** `lang`
 
 ```bash
-blue reminder.delete id=push_abc123
+reminder.delete id=push_abc123
 ```
 
 ### reminder.clear
@@ -58,7 +58,7 @@ blue reminder.delete id=push_abc123
 Delete all reminders.
 
 ```bash
-blue reminder.clear
+reminder.clear
 ```
 
 ## Error Response

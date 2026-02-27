@@ -3,7 +3,7 @@
   <assemblyIdentity
     type="win32"
     name="ZimaOS.Blue.Installer"
-    version="0.10.29.0"
+    version="0.10.31.0"
     processorArchitecture="amd64"/>
   <description>ZimaOS Blue Installer</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">

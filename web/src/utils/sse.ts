@@ -130,16 +130,30 @@ export class SSEClient {
               // Fall through to generic error
             }
           }
-          // Handle other errors with message
+          // Handle other errors with message (preserve status code for debugging).
+          const fallbackMsg = `HTTP ${response.status}`
           try {
-            const data = await response.json()
-            const message = data.error?.message || data.message || `HTTP error! status: ${response.status}`
-            throw new Error(message)
+            const raw = await response.text()
+            if (!raw) {
+              throw new Error(fallbackMsg)
+            }
+            try {
+              const data = JSON.parse(raw)
+              const message = data.error?.message || data.message
+              if (message) {
+                throw new Error(`HTTP ${response.status}: ${message}`)
+              }
+            } catch {
+              // Non-JSON body: include a short snippet for diagnostics.
+              const snippet = raw.slice(0, 256).replace(/\s+/g, ' ').trim()
+              throw new Error(snippet ? `HTTP ${response.status}: ${snippet}` : fallbackMsg)
+            }
+            throw new Error(fallbackMsg)
           } catch (e) {
-            if (e instanceof Error && e.message !== `HTTP error! status: ${response.status}`) {
+            if (e instanceof Error) {
               throw e
             }
-            throw new Error(`HTTP error! status: ${response.status}`)
+            throw new Error(fallbackMsg)
           }
         }
 

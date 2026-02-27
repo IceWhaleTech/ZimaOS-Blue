@@ -142,15 +142,15 @@ func (h *Handler) getStats(c echo.Context) error {
 	totalTokens := 0
 	totalBytes := 0
 	for name, content := range ctx {
-		compacted := pruner.CompactMarkdown(content)
-		tokens := pruner.EstimateTokens(compacted)
+		text := pruner.MarkdownToTextMinimal(content)
+		tokens := pruner.EstimateTokens(text)
 		stats = append(stats, FileTokenStat{
 			Name:   name,
-			Bytes:  len(compacted),
+			Bytes:  len(text),
 			Tokens: tokens,
 		})
 		totalTokens += tokens
-		totalBytes += len(compacted)
+		totalBytes += len(text)
 	}
 	// Sort for deterministic JSON output
 	sort.Slice(stats, func(i, j int) bool { return stats[i].Name < stats[j].Name })

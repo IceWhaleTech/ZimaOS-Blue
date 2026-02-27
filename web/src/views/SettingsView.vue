@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
+import { THEME_STYLES, type ThemeStyle, type MemoryRecallMode } from '@/stores/settings'
 import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore } from '@/stores/theme'
 import { backupApi } from '@/api/index'
@@ -16,7 +17,6 @@ import SpeechSettings from '@/components/settings/SpeechSettings.vue'
 import WorkspaceSettings from '@/components/settings/WorkspaceSettings.vue'
 import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import ApiProxySettings from '@/components/settings/ApiProxySettings.vue'
-import ToolApprovalSettings from '@/components/settings/ToolApprovalSettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
 import BackupManager from '@/components/BackupManager.vue'
 import { useTauri } from '@/composables/useTauri'
@@ -39,7 +39,7 @@ const autoStartLoading = ref(false)
 const autoStartEnabled = computed(() => serviceInfo.value?.installed && serviceInfo.value?.enabled)
 
 // Active tab - flattened structure
-type TabType = 'general' | 'llm' | 'proxy' | 'network' | 'speech' | 'userdata'
+type TabType = 'general' | 'llm' | 'proxy' | 'network' | 'speech' | 'memory' | 'userdata'
 const activeTab = ref<TabType>((route.query.tab as TabType) || 'general')
 
 
@@ -50,6 +50,7 @@ const tabIcons: Record<TabType, string> = {
   proxy: '<circle cx="12" cy="13" r="9" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" fill="none"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 13l3.5-5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4V2m4.24 3.76l1.42-1.42M20 13h2M4 13H2m3.34-7.66L3.93 3.93"/><circle cx="12" cy="13" r="1.5" stroke-width="0" fill="currentColor"/>',
   speech: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>',
   network: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/>',
+  memory: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3h6a2 2 0 012 2v14l-5-3-5 3V5a2 2 0 012-2z"/>',
   userdata: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>',
 }
 
@@ -95,6 +96,19 @@ function handleCloseBehaviorChange(behavior: 'quit' | 'minimize') {
   settingsStore.setCloseBehavior(behavior)
   setCloseBehavior(behavior)
   showSaveStatus(t('settings.closeBehaviorSaved'))
+}
+
+function handleThemeStyleChange(style: ThemeStyle) {
+  settingsStore.setThemeStyle(style)
+}
+
+async function handleMemoryRecallModeChange(mode: MemoryRecallMode) {
+  try {
+    await settingsStore.setMemoryRecallMode(mode)
+    showSaveStatus(t('settings.memoryRecallMode.saved'))
+  } catch {
+    showSaveStatus(t('settings.memoryRecallMode.saveFailed'))
+  }
 }
 
 async function fetchServiceInfo() {
@@ -221,7 +235,7 @@ onMounted(async () => {
     <!-- Main Tabs -->
     <div class="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <button
-        v-for="tab in ['general', 'llm', 'proxy', 'speech', 'network', 'userdata'] as const"
+        v-for="tab in ['general', 'llm', 'proxy', 'speech', 'network', 'memory', 'userdata'] as const"
         :key="tab"
         class="px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 flex items-center gap-1.5"
         :class="
@@ -284,6 +298,25 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- Chat Theme Style -->
+      <div class="glass-card p-4">
+        <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('theme.styles.title') }}</label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            v-for="style in THEME_STYLES"
+            :key="style.id"
+            class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors border"
+            :class="settingsStore.themeStyle === style.id
+              ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white'
+              : 'bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700/60'"
+            @click="handleThemeStyleChange(style.id)"
+          >
+            <span class="theme-style-btn-preview flex-shrink-0" :class="`theme-style-btn-${style.id}`" />
+            <span class="font-medium">{{ t(style.labelKey) }}</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Close Behavior (Tauri only) -->
       <div v-if="isTauri" class="glass-card p-4">
         <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('settings.closeBehavior') }}</label>
@@ -341,8 +374,8 @@ onMounted(async () => {
         <ProviderPoolSection />
       </div>
 
-      <!-- Tool Call Approval -->
-      <ToolApprovalSettings @status-change="showSaveStatus" />
+      <!-- Tool Call Approval (hidden for now) -->
+      <!-- <ToolApprovalSettings @status-change="showSaveStatus" /> -->
 
       <!-- Claude Code CLI Settings -->
       <ClaudeCodeSettings @status-change="showSaveStatus" />
@@ -363,6 +396,32 @@ onMounted(async () => {
       <SpeechSettings />
     </div>
 
+    <!-- Memory Tab -->
+    <div v-if="activeTab === 'memory'" class="space-y-6">
+      <!-- Memory Management -->
+      <MemoryManager @status-change="showSaveStatus" />
+
+      <!-- Memory Recall Mode -->
+      <div class="glass-card p-4">
+        <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('settings.memoryRecallMode.title') }}</label>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">{{ t('settings.memoryRecallMode.description') }}</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <button
+            v-for="mode in ['aggressive', 'balanced', 'quality'] as const"
+            :key="mode"
+            class="w-full px-3 py-2 rounded-lg text-sm transition-colors border text-left"
+            :class="settingsStore.memoryRecallMode === mode
+              ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white'
+              : 'bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700/60'"
+            @click="handleMemoryRecallModeChange(mode)"
+          >
+            <div class="font-medium">{{ t(`settings.memoryRecallMode.options.${mode}.label`) }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t(`settings.memoryRecallMode.options.${mode}.hint`) }}</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- User Data Tab -->
     <div v-if="activeTab === 'userdata'" class="space-y-6">
       <!-- Workspace Files -->
@@ -370,14 +429,11 @@ onMounted(async () => {
         <WorkspaceSettings @status-change="showSaveStatus" />
       </div>
 
-      <!-- Memory Management -->
-      <MemoryManager @status-change="showSaveStatus" />
-
       <!-- Backup -->
       <BackupManager
         :backups="backups"
         :loading="backupsLoading"
-        :restoring="backupRestoring"
+        :restoring="backupRestoring !== null"
         @create="onBackupCreate"
         @restore="restoreBackup"
         @delete="deleteBackup"
@@ -423,6 +479,13 @@ input[type='range']::-moz-range-thumb {
 :root.dark .glass-card {
   background: rgba(30, 41, 59, 0.8);
   border-color: rgb(51, 65, 85);
+}
+
+.theme-style-btn-preview {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
 }
 
 /* Notification transition */

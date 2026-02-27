@@ -95,10 +95,9 @@ func NewRegistry(storage Storage, opts ...RegistryOption) (*Registry, error) {
 		return nil, err
 	}
 
-	// Load health status
-	if healthStatus, err := storage.LoadHealthStatus(); err == nil {
-		r.health = healthStatus
-	}
+	// NOTE: Health status is NOT loaded from storage on startup.
+	// This ensures provider error cooldown does not persist across restarts.
+	// Providers will be re-checked for health on next health check cycle.
 
 	return r, nil
 }
@@ -113,7 +112,20 @@ func (r *Registry) loadProviders() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	// Get builtin providers to merge AlternateBaseURLs for existing providers
+	builtinProviders := BuiltinProviders()
+	builtinMap := make(map[string]*Provider)
+	for _, bp := range builtinProviders {
+		builtinMap[bp.ID] = bp
+	}
+
 	for _, p := range providers {
+		// Merge AlternateBaseURLs from builtin provider if missing (for old data migration)
+		if p.Type == ProviderTypeBuiltin && len(p.AlternateBaseURLs) == 0 {
+			if bp, ok := builtinMap[p.ID]; ok {
+				p.AlternateBaseURLs = bp.AlternateBaseURLs
+			}
+		}
 		r.providers[p.ID] = p
 	}
 
@@ -456,16 +468,6 @@ func (r *Registry) runHealthCheck(ctx context.Context, checker HealthChecker) {
 			r.onHealthResult(provider.ID, result)
 		}
 	}
-
-	// Save health status
-	r.mu.RLock()
-	healthCopy := make(map[string]*HealthCheckResult)
-	for k, v := range r.health {
-		healthCopy[k] = v
-	}
-	r.mu.RUnlock()
-
-	r.storage.SaveHealthStatus(healthCopy)
 }
 
 // AddAPIKey adds an API key to a provider

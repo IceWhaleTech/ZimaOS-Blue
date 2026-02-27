@@ -17,21 +17,21 @@ func NewAskTool(mgr *QuestionManager) *AskTool {
 }
 
 // Definition returns the tool definition.
-// Supports both single question (sq/mq + a) and multiple questions (questions array).
+// Supports both single question (q/mq + a) and multiple questions (questions array).
 func (t *AskTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name: "ask",
 		Description: `Ask the user one or more questions.
-For single question: use "sq" (single-select/radio) or "mq" (multi-select/checkbox), with "a" as options array.
+For single question: use "q" (single-select/radio) or "mq" (multi-select/checkbox), with "a" as options array.
 For multiple questions: use "questions" array, each with "q" (question text), "type" ("radio"/"checkbox"), and "a" (options).
 
-Example single: {"sq": "Preferred language?", "a": ["Python", "Go", "Rust"]}
+Example single: {"q": "Preferred language?", "a": ["Python", "Go", "Rust"]}
 Example multi: {"questions": [{"q": "Favorite language?", "type": "radio", "a": ["Python", "Go"]}, {"q": "Preferred IDE?", "type": "checkbox", "a": ["VS Code", "Vim"]}]}`,
 		Icon: "question",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"sq": map[string]interface{}{
+				"q": map[string]interface{}{
 					"type":        "string",
 					"description": "Single-select question text (radio buttons). Use for one question.",
 				},
@@ -114,11 +114,11 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 		}
 	}
 
-	// Fallback to single question format: sq/mq + a
+	// Fallback to single question format: q/mq + a
 	if len(questions) == 0 {
 		question, multiSelect, options := parseAskArgs(args)
 		if question == "" {
-			return nil, fmt.Errorf("sq/mq + a or questions array is required")
+			return nil, fmt.Errorf("q/mq + a or questions array is required")
 		}
 
 		header := question
@@ -184,7 +184,7 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 		if questions[0].MultiSelect {
 			result["mq"] = questions[0].Question
 		} else {
-			result["sq"] = questions[0].Question
+			result["q"] = questions[0].Question
 		}
 	}
 	if silent {
@@ -196,11 +196,11 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 }
 
 // parseAskArgs extracts question text, multi-select flag, and options from args.
-// Supports the primary sq/mq/a format and falls back to legacy "questions" format.
+// Supports the primary q/mq/a format and falls back to legacy "questions" format.
 func parseAskArgs(args map[string]interface{}) (question string, multiSelect bool, options []string) {
-	// Primary format: sq/mq + a
-	if sq, ok := args["sq"].(string); ok && sq != "" {
-		question = sq
+	// Primary format: q/mq + a
+	if q, ok := args["q"].(string); ok && q != "" {
+		question = q
 	}
 	if mq, ok := args["mq"].(string); ok && mq != "" {
 		question = mq
@@ -318,4 +318,3 @@ func GetQuestionManager(registry *Registry) *QuestionManager {
 	}
 	return nil
 }
-

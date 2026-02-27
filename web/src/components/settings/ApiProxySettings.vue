@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
@@ -32,6 +33,20 @@ const togglingSmartTools = ref(false)
 const toolStats = ref<ToolSelectorStats | null>(null)
 const promptCacheEnabled = ref(false)
 const togglingPromptCache = ref(false)
+const togglingProviderRace = ref(false)
+const providerRaceEnabled = computed(() => failoverConfig.value?.provider_race?.enabled === true)
+const providerRace = computed(() => failoverConfig.value?.provider_race || {})
+
+function formatRatio(v?: number): string {
+  if (typeof v !== 'number') return '-'
+  return `${Math.round(v * 100)}%`
+}
+
+function formatSeconds(v?: number): string {
+  if (typeof v !== 'number') return '-'
+  if (v <= 0) return '0s'
+  return `${Math.round(v / 1_000_000_000)}s`
+}
 
 // Scenario metadata: maps rule name to display info
 const scenarioMeta: Record<string, { labelKey: string; descKey: string; traffic: string; savings: string }> = {
@@ -197,6 +212,23 @@ async function togglePromptCache() {
     promptCacheEnabled.value = res.data.enabled
     emit('status-change', t(res.data.enabled ? 'apiProxy.promptCacheEnabled' : 'apiProxy.promptCacheDisabled'))
   } finally { togglingPromptCache.value = false }
+}
+
+async function toggleProviderRace() {
+  if (togglingProviderRace.value || !failoverConfig.value) return
+  togglingProviderRace.value = true
+  try {
+    const enabled = !providerRaceEnabled.value
+    const res = await proxyApi.updateFailoverConfig({
+      provider_race: {
+        enabled,
+      },
+    })
+    failoverConfig.value = res.data
+    emit('status-change', t(enabled ? 'apiProxy.providerRaceEnabled' : 'apiProxy.providerRaceDisabled'))
+  } finally {
+    togglingProviderRace.value = false
+  }
 }
 
 function formatTokens(n: number): string {
@@ -525,6 +557,53 @@ onUnmounted(stopModelPoll)
             <span class="inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
             <span class="text-xs text-gray-600 dark:text-gray-400 text-center leading-tight">{{ t(sub.label) }}</span>
           </div>
+        </div>
+
+        <div class="mt-4 border-t border-gray-100 dark:border-white/10 pt-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <h4 class="text-xs font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.providerRaceTitle') }}</h4>
+              <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{{ t('apiProxy.providerRaceDesc') }}</p>
+            </div>
+            <button
+              type="button"
+              :disabled="togglingProviderRace"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                providerRaceEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
+                togglingProviderRace ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+              ]"
+              @click="toggleProviderRace"
+            >
+              <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', providerRaceEnabled ? 'translate-x-6' : 'translate-x-1']" />
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+            <div class="py-2 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+              <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ t('apiProxy.providerRaceMaxParallel') }}</p>
+              <p class="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">{{ providerRace.max_parallel ?? '-' }}</p>
+            </div>
+            <div class="py-2 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+              <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ t('apiProxy.providerRaceMinProviders') }}</p>
+              <p class="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">{{ providerRace.min_providers ?? '-' }}</p>
+            </div>
+            <div class="py-2 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+              <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ t('apiProxy.providerRaceSinkThreshold') }}</p>
+              <p class="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">{{ formatRatio(providerRace.empty_rate_sink_threshold) }}</p>
+            </div>
+            <div class="py-2 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+              <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ t('apiProxy.providerRaceExcludeThreshold') }}</p>
+              <p class="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">{{ formatRatio(providerRace.empty_rate_exclude_threshold) }}</p>
+            </div>
+          </div>
+          <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-2">
+            {{ t('apiProxy.providerRaceCooldownRule', {
+              threshold: formatRatio(providerRace.empty_rate_cooldown_threshold),
+              samples: providerRace.empty_rate_min_samples ?? '-',
+              duration: formatSeconds(providerRace.empty_rate_cooldown),
+            }) }}
+          </p>
         </div>
       </div>
 

@@ -69,17 +69,17 @@ func (r BuildResult) TotalTokenEstimate() int {
 
 // SystemPromptBuilder builds system prompts for Claude Code CLI.
 type SystemPromptBuilder struct {
-	config           *ClaudeCodeConfig
-	toolRegistry     *tools.Registry
-	workspace        *workspace.Manager
+	config       *ClaudeCodeConfig
+	toolRegistry *tools.Registry
+	workspace    *workspace.Manager
 
-	maxContextTokens int
-	lastContextStats atomic.Pointer[ContextStats]
-	agentMode            bool         // when true, inject agent mode guidance
-	agentModeFunc        func() bool  // dynamic agent mode getter (takes precedence over static)
-	agentAutoConfirmFunc func() bool  // dynamic auto-confirm getter
-	locale           string       // user locale (e.g. "en-US", "zh-CN") — static fallback
-	localeFunc       func() string // dynamic locale getter (takes precedence over static)
+	maxContextTokens     int
+	lastContextStats     atomic.Pointer[ContextStats]
+	agentMode            bool          // when true, inject agent mode guidance
+	agentModeFunc        func() bool   // dynamic agent mode getter (takes precedence over static)
+	agentAutoConfirmFunc func() bool   // dynamic auto-confirm getter
+	locale               string        // user locale (e.g. "en-US", "zh-CN") — static fallback
+	localeFunc           func() string // dynamic locale getter (takes precedence over static)
 
 	// staticSystemOnce caches the StaticSystem block (never changes within a process).
 	staticSystemOnce sync.Once
@@ -194,7 +194,7 @@ func (b *SystemPromptBuilder) BuildStructured(ctx context.Context, extraPrompt s
 	b.staticSystemOnce.Do(func() {
 		var sb strings.Builder
 		sb.WriteString("You are a personal assistant running inside ZimaOS Blue. Be clear and concise. Match the user's language. Your result wiil be cross-reviewed by claude & codex.")
-		// If evidence is insufficient or conflicting, state uncertainty explicitly. Never fabricate sources. Distinguish verified information from inference. 
+		// If evidence is insufficient or conflicting, state uncertainty explicitly. Never fabricate sources. Distinguish verified information from inference.
 		sb.WriteString(b.buildSafetyGuidance())
 		sb.WriteString(b.buildToolCallStyleGuidance())
 		sb.WriteString(b.buildSilentReplyGuidance())
@@ -273,7 +273,7 @@ func (b *SystemPromptBuilder) writeExecGuidanceTo(sb *strings.Builder) {
 		hasSandbox = et.HasSandbox()
 	}
 
-	sb.WriteString("<exec_guide>Shell/CLI commands on host. REQUIRED: command parameter must be a non-empty string — never call exec without a concrete command.")
+	sb.WriteString("<exec_guide>Shell/CLI commands on host. REQUIRED: command parameter must be a non-empty string — never call exec without a concrete command. `lang` and `timeout` are optional (defaults apply when omitted).")
 
 	if hasSandbox {
 		sb.WriteString("<sandbox>host=sandbox for isolation. Medium+ risk auto-sandboxed.</sandbox>")
@@ -374,7 +374,7 @@ func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
 
 	sb.WriteString("<agent_mode>You are in agent mode with unlimited autonomy for complex, multi-step tasks. No tool round limit — keep working until fully done.")
 
-	sb.WriteString("<planning>For multi-step tasks, FIRST output a TODO checklist using markdown checkboxes (- [ ] step). The system auto-marks completed items and injects <tp> with current task — use it to decide what to do next. Do NOT re-output the checklist.</planning>")
+	sb.WriteString("<planning>For multi-step tasks, manage TODOs via plan IPC skills. If no plan exists, call `blue plan_create ...`. If a plan exists, NEVER recreate it. Update incrementally with `blue plan_update ...` or `blue plan_append ...`. Keep the checklist in one place; do not re-output duplicate TODO lists.</planning>")
 
 	sb.WriteString("<execution>")
 	sb.WriteString("Before each tool call, briefly state which task you are working on. ")
@@ -384,7 +384,7 @@ func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
 		sb.WriteString("Ask confirmation before destructive actions (delete, install, modify production config). Proceed without confirmation for safe operations. ")
 	}
 	sb.WriteString("Use exec for file ops, installs, builds, tests. Do NOT stop early. Do NOT call exec without a concrete command — think first, then execute.")
-	sb.WriteString(` When facing multiple valid approaches or ambiguous requirements, use ask instead of guessing. Use "sq" for single-select or "mq" for multi-select, with "a" as the options array (2-4 strings). Example: {"sq":"Which approach?","a":["Option A","Option B"]}`)
+	sb.WriteString(" When facing multiple valid approaches or ambiguous requirements, use the ask skill instead of guessing.")
 	sb.WriteString("</execution>")
 
 	sb.WriteString("<verification>After all steps, verify: run build/tests. Fix and re-verify if needed.</verification>")
@@ -418,7 +418,7 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 
 	var sb strings.Builder
 	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). ")
-	sb.WriteString("Routing: search→web_search, URL→browser, UI review→ui_reviewer, analyze→analyze, admin→mgmt.{domain}.{op}. ")
+	sb.WriteString("Routing: ask→ask, search→web_search, URL→browser, UI review→ui_reviewer, analyze→analyze, plan→plan_create/plan_update/plan_append, sandbox→sandbox, workflows→workflows, scheduler→scheduler, research→deep_search, admin→mgmt.{domain}.{op}. ")
 	sb.WriteString("`blue help <cmd>` for usage. More skills in `.claude/skills/`.")
 
 	// Only pinned skills get listed explicitly
@@ -499,6 +499,23 @@ var contextFilePriority = map[string]int{
 	"BOOTSTRAP.md": 1, // Same priority as USER during first-run
 }
 
+// Per-file soft caps keep single files from dominating prompt budget.
+// 0 means no cap.
+var contextFileTokenCap = map[string]int{
+	"SOUL.md":      1200,
+	"USER.md":      900,
+	"BOOTSTRAP.md": 900,
+	"AGENTS.md":    700,
+	"IDENTITY.md":  600,
+	"HEARTBEAT.md": 400,
+	"MEMORY.md":    700,
+}
+
+const (
+	defaultContextFileTokenCap = 300
+	minContextSliceTokens      = 48
+)
+
 // buildProjectContext builds project context from multiple files with token budgeting.
 // Files are prioritized: SOUL > USER/BOOTSTRAP > AGENTS > IDENTITY > HEARTBEAT > MEMORY > daily logs.
 // If total tokens exceed the budget, low-priority files are dropped first.
@@ -517,24 +534,36 @@ func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string
 		if content == "" {
 			continue
 		}
-		// Compact markdown: strip blank lines, HTML comments, empty sections
-		content = pruner.CompactMarkdown(content)
+		content = workspace.NormalizeDefaultTemplateToEnglish(name, content)
+		// Ultra-compact mode: normalize markdown and collapse line breaks/whitespace.
+		content = pruner.MarkdownToTextMinimal(content)
 		if content == "" {
 			continue
+		}
+		if cap := contextFileTokenSoftCap(name); cap > 0 {
+			content, _, _ = truncateToTokenBudget(content, cap)
+			if content == "" {
+				continue
+			}
 		}
 		prio, ok := contextFilePriority[name]
 		if !ok {
 			prio = 10 // Daily logs and unknown files get lowest priority
 		}
+		tokens := pruner.EstimateTokens(content)
 		entries = append(entries, fileEntry{
 			name:     name,
 			content:  content,
-			tokens:   pruner.EstimateTokens(content),
+			tokens:   tokens,
 			priority: prio,
 		})
 	}
 	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].priority < entries[j].priority
+		if entries[i].priority != entries[j].priority {
+			return entries[i].priority < entries[j].priority
+		}
+		// Keep deterministic order for same-priority files to maximize prompt-cache hits.
+		return entries[i].name < entries[j].name
 	})
 
 	// Select files within budget
@@ -546,18 +575,45 @@ func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string
 	totalTokens := 0
 
 	for _, e := range entries {
-		if budget > 0 && totalTokens+e.tokens > budget && len(included) > 0 {
-			// Over budget — skip this file
-			stats.Files = append(stats.Files, ContextFileStat{
-				Name: e.name, Tokens: e.tokens, Included: false, Trimmed: true,
-			})
-			stats.Trimmed = true
-			continue
+		entry := e
+		trimmed := false
+		if budget > 0 {
+			remaining := budget - totalTokens
+			if remaining <= 0 {
+				stats.Files = append(stats.Files, ContextFileStat{
+					Name: entry.name, Tokens: entry.tokens, Included: false, Trimmed: true,
+				})
+				stats.Trimmed = true
+				continue
+			}
+			if entry.tokens > remaining {
+				if remaining < minContextSliceTokens && len(included) > 0 {
+					// Keep at least one high-priority file and skip tiny tail slices.
+					stats.Files = append(stats.Files, ContextFileStat{
+						Name: entry.name, Tokens: entry.tokens, Included: false, Trimmed: true,
+					})
+					stats.Trimmed = true
+					continue
+				}
+				// Last-fit slicing: include a trimmed slice instead of dropping whole file.
+				sliced, slicedTokens, ok := truncateToTokenBudget(entry.content, remaining)
+				if !ok || sliced == "" || slicedTokens == 0 {
+					stats.Files = append(stats.Files, ContextFileStat{
+						Name: entry.name, Tokens: entry.tokens, Included: false, Trimmed: true,
+					})
+					stats.Trimmed = true
+					continue
+				}
+				entry.content = sliced
+				entry.tokens = slicedTokens
+				trimmed = true
+				stats.Trimmed = true
+			}
 		}
-		included = append(included, e)
-		totalTokens += e.tokens
+		included = append(included, entry)
+		totalTokens += entry.tokens
 		stats.Files = append(stats.Files, ContextFileStat{
-			Name: e.name, Tokens: e.tokens, Included: true,
+			Name: entry.name, Tokens: entry.tokens, Included: true, Trimmed: trimmed,
 		})
 	}
 	stats.TotalTokens = totalTokens
@@ -585,6 +641,61 @@ func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string
 
 	sb.WriteString("</project_context>")
 	return sb.String()
+}
+
+func contextFileTokenSoftCap(name string) int {
+	if cap, ok := contextFileTokenCap[name]; ok {
+		return cap
+	}
+	return defaultContextFileTokenCap
+}
+
+// truncateToTokenBudget truncates content to fit maxTokens and returns:
+// truncated content, estimated tokens, and whether truncation happened.
+func truncateToTokenBudget(content string, maxTokens int) (string, int, bool) {
+	if content == "" {
+		return "", 0, false
+	}
+	if maxTokens <= 0 {
+		return "", 0, true
+	}
+	tokens := pruner.EstimateTokens(content)
+	if tokens <= maxTokens {
+		return content, tokens, false
+	}
+
+	runes := []rune(content)
+	lo, hi := 0, len(runes)
+	best := 0
+	for lo <= hi {
+		mid := lo + (hi-lo)/2
+		cur := strings.TrimSpace(string(runes[:mid]))
+		curTokens := pruner.EstimateTokens(cur)
+		if curTokens <= maxTokens {
+			best = mid
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+	if best <= 0 {
+		return "", 0, true
+	}
+
+	cut := strings.TrimSpace(string(runes[:best]))
+	if idx := strings.LastIndex(cut, "\n"); idx > 0 && idx >= len(cut)/2 {
+		cut = strings.TrimSpace(cut[:idx])
+	}
+	if cut == "" {
+		return "", 0, true
+	}
+	trimmed := cut + "\n\n[Context truncated to fit token budget.]"
+	trimmedTokens := pruner.EstimateTokens(trimmed)
+	if trimmedTokens <= maxTokens {
+		return trimmed, trimmedTokens, true
+	}
+	// Suffix pushed us over budget; return raw cut.
+	return cut, pruner.EstimateTokens(cut), true
 }
 
 // BuildMinimal builds a minimal system prompt without runtime info.

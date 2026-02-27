@@ -31,7 +31,7 @@ const (
 const (
 	ProtocolVersion = "2024-11-05"
 	ServerName      = "blue-mcp"
-	ServerVersion   = "0.10.29"
+	ServerVersion   = "0.10.31"
 )
 
 // JSON-RPC types

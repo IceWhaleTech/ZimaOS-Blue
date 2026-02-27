@@ -51,7 +51,7 @@ const allLangKeywords: Record<string, LangKeywords> = {
 
 function localeToLangKey(locale: string): string {
   if (!locale) return 'en'
-  const lang = locale.toLowerCase().split('-')[0]
+  const lang = locale.toLowerCase().split('-')[0] || 'en'
   if (lang === 'ca') return 'es'
   if (lang === 'ga') return 'en'
   return allLangKeywords[lang] ? lang : 'en'
@@ -67,12 +67,12 @@ function isASCII(s: string): boolean {
 function isWordMatch(text: string, sub: string, idx: number): boolean {
   if (idx > 0) {
     const before = text[idx - 1]
-    if (/\p{L}/u.test(before)) return false
+    if (before && /\p{L}/u.test(before)) return false
   }
   const end = idx + sub.length
   if (end < text.length) {
     const after = text[end]
-    if (/\p{L}/u.test(after)) return false
+    if (after && /\p{L}/u.test(after)) return false
   }
   return true
 }
@@ -124,8 +124,8 @@ export function classifyMediaIntent(
 
   const lower = message.toLowerCase().trim()
   const langKey = localeToLangKey(locale)
-  const kw = allLangKeywords[langKey] || allLangKeywords.en
-  const kwEN = allLangKeywords.en
+  const kw = (allLangKeywords[langKey] ?? allLangKeywords.en)!
+  const kwEN = allLangKeywords.en!
 
   // Layer 0: Negation and question filters
   if (isNegated(lower, kw) || isNegated(lower, kwEN)) return null

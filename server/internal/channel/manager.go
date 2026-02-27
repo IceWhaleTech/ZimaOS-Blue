@@ -296,6 +296,17 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 		if response.ReplyToID == "" {
 			response.ReplyToID = msg.ID
 		}
+		// IM channels default to concise output. Keep markdown untouched when explicitly requested.
+		if response.Format != "markdown" && response.Content != "" {
+			if !shouldShowDetails(*response) {
+				response.Content = humanizer.CompactForIM(response.Content)
+			}
+			formatted, format := humanizer.HumanizeForChannel(response.Content, ch.Type())
+			response.Content = formatted
+			if response.Format == "" {
+				response.Format = format
+			}
+		}
 
 		// Prepare response: strip AI tags and split if too long
 		parts := PrepareResponse(response.Content, m.config.MaxMessageLength)
@@ -450,6 +461,9 @@ func (m *Manager) Send(ctx context.Context, channelName string, msg OutgoingMess
 
 	// Humanize content for IM channels (skip if explicitly markdown)
 	if msg.Format != "markdown" && msg.Content != "" {
+		if !shouldShowDetails(msg) {
+			msg.Content = humanizer.CompactForIM(msg.Content)
+		}
 		msg.Content, msg.Format = humanizer.HumanizeForChannel(msg.Content, ch.Type())
 	}
 
@@ -472,6 +486,9 @@ func (m *Manager) Broadcast(ctx context.Context, msg OutgoingMessage) map[string
 		outMsg := msg
 		// Per-channel formatting
 		if outMsg.Format != "markdown" && outMsg.Content != "" {
+			if !shouldShowDetails(outMsg) {
+				outMsg.Content = humanizer.CompactForIM(outMsg.Content)
+			}
 			outMsg.Content, outMsg.Format = humanizer.HumanizeForChannel(outMsg.Content, ch.Type())
 		}
 		if err := ch.Send(ctx, outMsg); err != nil {
@@ -528,4 +545,16 @@ func channelConversationID(channelName, chatID string) string {
 		return "ch:" + channelName + ":" + chatID
 	}
 	return "ch:" + channelName
+}
+
+func shouldShowDetails(msg OutgoingMessage) bool {
+	if msg.Metadata == nil {
+		return false
+	}
+	v, ok := msg.Metadata["show_details"]
+	if !ok {
+		return false
+	}
+	show, ok := v.(bool)
+	return ok && show
 }

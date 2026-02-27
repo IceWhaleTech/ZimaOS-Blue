@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -133,6 +134,14 @@ func (sfh *SmartFailoverHandler) ExecuteWithSmartFailover(
 		classification := sfh.classifyResponse(provider.Config.Name, resp, err)
 
 		if classification != nil {
+			// Log the error classification for debugging
+			slog.Info("[proxy] error classified",
+				"provider", provider.Config.Name,
+				"status", classification.OriginalStatusCode,
+				"type", classification.Type,
+				"category", classification.Category,
+				"message", classification.Message)
+
 			sfh.metrics.RecordError(provider.Config.Name, classification)
 
 			// Handle based on classification

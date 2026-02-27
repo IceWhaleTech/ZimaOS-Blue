@@ -7,12 +7,17 @@ import (
 func TestRegisterAll(t *testing.T) {
 	// Verify the built-in skills can be created
 	skills := []interface{}{
+		NewAsk(),
+		NewPlanCreate(),
+		NewPlanUpdate(),
+		NewPlanAppend(),
 		NewReminder(),
 		NewScheduler(),
 		NewWorkflows(),
 		NewSandbox(),
 		NewBrowser(),
 		NewAnalyze(),
+		NewDeepSearch(),
 		NewWebSearch(),
 		NewUIReviewer(),
 	}

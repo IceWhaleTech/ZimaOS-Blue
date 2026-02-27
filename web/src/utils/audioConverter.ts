@@ -62,7 +62,7 @@ function encodeWav(audioBuffer: AudioBuffer): Blob {
   // Write samples
   let offset = 44
   for (let i = 0; i < samples.length; i++) {
-    const sample = Math.max(-1, Math.min(1, samples[i]))
+    const sample = Math.max(-1, Math.min(1, samples[i] ?? 0))
     view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true)
     offset += 2
   }

@@ -24,7 +24,7 @@ const { t } = useI18n()
 
 const ttsStore = useTTSStore()
 const selectedProvider = ref('')
-const providers = ref<{ id: string; name: string }[]>([])
+const providers = ref<{ type: string; name: string }[]>([])
 
 onMounted(async () => {
   await ttsStore.loadProviders()

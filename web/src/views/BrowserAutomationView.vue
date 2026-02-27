@@ -537,6 +537,7 @@ function selectTask(task: BrowserTask) {
 }
 
 function selectSession(session: BrowserSession) {
+  void session
   // Could open a live view of the session
 }
 

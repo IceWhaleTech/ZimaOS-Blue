@@ -260,6 +260,55 @@ func TestModelCaching(t *testing.T) {
 	}
 }
 
+func TestGetFilteredModels_AllowlistConfiguredEmptyPersists(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "allowlist-persist-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+
+	provider := &Provider{
+		ID:                  "custom-provider",
+		Name:                "Custom Provider",
+		Type:                ProviderTypeCustom,
+		Enabled:             true,
+		Status:              ProviderStatusActive,
+		AllowlistConfigured: true,
+		AllowedModels:       []string{},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	if err := storage.SaveModels("custom-provider", []*Model{{
+		ID:          "gpt-4o",
+		ProviderID:  "custom-provider",
+		Name:        "gpt-4o",
+		DisplayName: "GPT-4o",
+		Enabled:     true,
+		Capabilities: ModelCapabilities{
+			Chat: true,
+		},
+	}}); err != nil {
+		t.Fatalf("SaveModels failed: %v", err)
+	}
+
+	// Simulate restart: reload registry from persisted storage.
+	reloadedRegistry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(reloadedRegistry, storage, time.Hour)
+
+	filtered, err := discovery.GetFilteredModels("custom-provider")
+	if err != nil {
+		t.Fatalf("GetFilteredModels failed: %v", err)
+	}
+	if len(filtered) != 0 {
+		t.Fatalf("Expected 0 models when allowlist configured empty, got %d", len(filtered))
+	}
+}
+
 func TestFormatModelName(t *testing.T) {
 	tests := []struct {
 		input    string

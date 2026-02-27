@@ -21,6 +21,7 @@ type MgmtTool struct {
 	users     AdminUserService
 	apiKeys   AdminAPIKeyService
 	memory    *MemoryTool
+	upgrade   AdminUpgradeService
 }
 
 // NewMgmtTool creates a new management tool. Services are injected later via Set* methods.
@@ -31,22 +32,23 @@ func NewMgmtTool() *MgmtTool {
 // --- Setters for deferred wiring ---
 
 func (t *MgmtTool) SetProviders(svc AdminProviderService) { t.providers = svc }
-func (t *MgmtTool) SetSettings(svc AdminSettingsService)   { t.settings = svc }
-func (t *MgmtTool) SetChannels(svc AdminChannelService)    { t.channels = svc }
-func (t *MgmtTool) SetSkills(svc AdminSkillService)        { t.skills = svc }
-func (t *MgmtTool) SetTools(svc AdminToolService)          { t.tools = svc }
-func (t *MgmtTool) SetSystem(svc AdminSystemService)       { t.system = svc }
-func (t *MgmtTool) SetProxy(svc AdminProxyService)         { t.proxy = svc }
-func (t *MgmtTool) SetUsers(svc AdminUserService)          { t.users = svc }
-func (t *MgmtTool) SetAPIKeys(svc AdminAPIKeyService)      { t.apiKeys = svc }
-func (t *MgmtTool) SetMemory(mem *MemoryTool)              { t.memory = mem }
+func (t *MgmtTool) SetSettings(svc AdminSettingsService)  { t.settings = svc }
+func (t *MgmtTool) SetChannels(svc AdminChannelService)   { t.channels = svc }
+func (t *MgmtTool) SetSkills(svc AdminSkillService)       { t.skills = svc }
+func (t *MgmtTool) SetTools(svc AdminToolService)         { t.tools = svc }
+func (t *MgmtTool) SetSystem(svc AdminSystemService)      { t.system = svc }
+func (t *MgmtTool) SetProxy(svc AdminProxyService)        { t.proxy = svc }
+func (t *MgmtTool) SetUsers(svc AdminUserService)         { t.users = svc }
+func (t *MgmtTool) SetAPIKeys(svc AdminAPIKeyService)     { t.apiKeys = svc }
+func (t *MgmtTool) SetMemory(mem *MemoryTool)             { t.memory = mem }
+func (t *MgmtTool) SetUpgrade(svc AdminUpgradeService)   { t.upgrade = svc }
 
 // Definition returns the tool definition.
 func (t *MgmtTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name: "mgmt",
-		Description: `System management tool. Use {domain}.{action} format. Domains: providers, settings, channels, skills, tools, system, proxy, users, apikeys. Call with action="providers.list" first to explore available operations. Common: providers.list, settings.get, system.health, tools.list, users.list.`,
-		Icon: "settings",
+		Name:        "mgmt",
+		Description: `System management tool. Use {domain}.{action} format. Domains: providers, settings, channels, skills, tools, system, proxy, users, apikeys, memory, upgrade. Call with action="providers.list" first to explore available operations. Common: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.`,
+		Icon:        "settings",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -127,6 +129,8 @@ func (t *MgmtTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return t.handleAPIKeys(ctx, op, args)
 	case "memory":
 		return t.handleMemory(ctx, op, args)
+	case "upgrade":
+		return t.handleUpgrade(ctx, op)
 	default:
 		return errJSON(fmt.Sprintf("unknown domain: %s", domain)), nil
 	}
@@ -371,6 +375,120 @@ func (t *MgmtTool) handleSystem(ctx context.Context, op string) (interface{}, er
 	default:
 		return errJSON(fmt.Sprintf("unknown system operation: %s", op)), nil
 	}
+}
+
+// --- Upgrade handlers ---
+
+func (t *MgmtTool) handleUpgrade(ctx context.Context, op string) (interface{}, error) {
+	if t.upgrade == nil {
+		return errJSON("upgrade not available"), nil
+	}
+
+	var result *AdminUpgradeInfo
+	var err error
+
+	switch op {
+	case "status":
+		result, err = t.upgrade.GetOTAStatus(ctx)
+		if err != nil {
+			return errJSON(err.Error()), nil
+		}
+		t.emitUpgradeCard(ctx, "status", result)
+		return toJSON(result)
+	case "check":
+		result, err = t.upgrade.CheckForUpdate(ctx)
+		if err != nil {
+			return errJSON(err.Error()), nil
+		}
+		t.emitUpgradeCard(ctx, "check", result)
+		return toJSON(result)
+	case "download":
+		result, err = t.upgrade.StartDownload(ctx)
+		if err != nil {
+			return errJSON(err.Error()), nil
+		}
+		t.emitUpgradeCard(ctx, "download", result)
+		return toJSON(result)
+	case "apply":
+		result, err = t.upgrade.ApplyUpdate(ctx)
+		if err != nil {
+			return errJSON(err.Error()), nil
+		}
+		t.emitUpgradeCard(ctx, "apply", result)
+		return toJSON(result)
+	case "progress":
+		result, err = t.upgrade.GetUpdateStatus(ctx)
+		if err != nil {
+			return errJSON(err.Error()), nil
+		}
+		return toJSON(result)
+	default:
+		return errJSON(fmt.Sprintf("unknown upgrade operation: %s. Available: status, check, download, apply, progress", op)), nil
+	}
+}
+
+func (t *MgmtTool) emitUpgradeCard(ctx context.Context, action string, info *AdminUpgradeInfo) {
+	var title, message string
+	var variant string
+
+	switch action {
+	case "status":
+		if info.UpdateAvailable {
+			title = "Update Available"
+			message = fmt.Sprintf("Current: %s → Latest: %s", info.CurrentVersion, info.LatestVersion)
+			variant = "info"
+		} else {
+			title = "Up to Date"
+			message = fmt.Sprintf("Current version: %s", info.CurrentVersion)
+			variant = "success"
+		}
+	case "check":
+		if info.UpdateAvailable {
+			title = "Update Found"
+			message = fmt.Sprintf("Version %s is available. Use upgrade.download to download.", info.LatestVersion)
+			variant = "info"
+		} else {
+			title = "No Update"
+			message = fmt.Sprintf("You are running the latest version: %s", info.CurrentVersion)
+			variant = "success"
+		}
+	case "download":
+		if info.Error != "" {
+			title = "Download Failed"
+			message = info.Error
+			variant = "error"
+		} else {
+			title = "Download Started"
+			message = "Update is being downloaded in the background. Use upgrade.progress to check status."
+			variant = "info"
+		}
+	case "apply":
+		if info.Error != "" {
+			title = "Apply Failed"
+			message = info.Error
+			variant = "error"
+		} else {
+			title = "Update Applied"
+			message = "Update has been applied. The system will restart shortly."
+			variant = "success"
+		}
+	default:
+		return
+	}
+
+	EmitCard(ctx, map[string]interface{}{
+		"type":    "upgrade",
+		"action":  action,
+		"title":   title,
+		"message": message,
+		"variant": variant,
+		"data": map[string]interface{}{
+			"current_version": info.CurrentVersion,
+			"latest_version":  info.LatestVersion,
+			"state":          info.State,
+			"progress":       info.Progress,
+		},
+	})
 }
 
 // --- Proxy handlers ---

@@ -86,16 +86,16 @@ type OpenAIChatRequest struct {
 }
 
 type OpenAIMessage struct {
-	Role       string        `json:"role"`
-	Content    interface{}   `json:"content"` // string or []ContentPart
-	Name       string        `json:"name,omitempty"`
+	Role       string           `json:"role"`
+	Content    interface{}      `json:"content"` // string or []ContentPart
+	Name       string           `json:"name,omitempty"`
 	ToolCalls  []OpenAIToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string        `json:"tool_call_id,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
 }
 
 type OpenAITool struct {
-	Type     string              `json:"type"`
-	Function OpenAIToolFunction  `json:"function"`
+	Type     string             `json:"type"`
+	Function OpenAIToolFunction `json:"function"`
 }
 
 type OpenAIToolFunction struct {
@@ -105,9 +105,9 @@ type OpenAIToolFunction struct {
 }
 
 type OpenAIToolCall struct {
-	ID       string              `json:"id"`
-	Type     string              `json:"type"`
-	Function OpenAIToolCallFunc  `json:"function"`
+	ID       string             `json:"id"`
+	Type     string             `json:"type"`
+	Function OpenAIToolCallFunc `json:"function"`
 }
 
 // OpenAIToolCallFunc is the function part of an OpenAI tool call.
@@ -121,7 +121,7 @@ type OpenAIToolCallFunc struct {
 func (f *OpenAIToolCallFunc) UnmarshalJSON(data []byte) error {
 	// Use an alias to avoid infinite recursion.
 	type alias struct {
-		Name      string          `json:"name"`
+		Name      string            `json:"name"`
 		Arguments gojson.RawMessage `json:"arguments"`
 	}
 	var raw alias
@@ -144,9 +144,9 @@ type OpenAIChatResponse struct {
 	Created int64  `json:"created"`
 	Model   string `json:"model"`
 	Choices []struct {
-		Index        int         `json:"index"`
+		Index        int           `json:"index"`
 		Message      OpenAIMessage `json:"message"`
-		FinishReason string      `json:"finish_reason"`
+		FinishReason string        `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
@@ -236,10 +236,10 @@ type AnthropicContentBlock struct {
 }
 
 type AnthropicTool struct {
-	Name         string                  `json:"name"`
-	Description  string                  `json:"description,omitempty"`
-	InputSchema  interface{}             `json:"input_schema"`
-	CacheControl *AnthropicCacheControl  `json:"cache_control,omitempty"`
+	Name         string                 `json:"name"`
+	Description  string                 `json:"description,omitempty"`
+	InputSchema  interface{}            `json:"input_schema"`
+	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 // AnthropicCacheControl is the cache_control block for Anthropic prompt caching.
@@ -301,11 +301,11 @@ type AnthropicStreamEvent struct {
 
 // Gemini request/response types
 type GeminiRequest struct {
-	Contents         []GeminiContent        `json:"contents"`
-	SystemInstruction *GeminiContent        `json:"systemInstruction,omitempty"`
-	GenerationConfig *GeminiGenerationConfig `json:"generationConfig,omitempty"`
-	Tools            []GeminiTool           `json:"tools,omitempty"`
-	SafetySettings   []GeminiSafetySetting  `json:"safetySettings,omitempty"`
+	Contents          []GeminiContent         `json:"contents"`
+	SystemInstruction *GeminiContent          `json:"systemInstruction,omitempty"`
+	GenerationConfig  *GeminiGenerationConfig `json:"generationConfig,omitempty"`
+	Tools             []GeminiTool            `json:"tools,omitempty"`
+	SafetySettings    []GeminiSafetySetting   `json:"safetySettings,omitempty"`
 }
 
 type GeminiContent struct {
@@ -314,9 +314,9 @@ type GeminiContent struct {
 }
 
 type GeminiPart struct {
-	Text         string            `json:"text,omitempty"`
-	InlineData   *GeminiInlineData `json:"inlineData,omitempty"`
-	FunctionCall *GeminiFunctionCall `json:"functionCall,omitempty"`
+	Text             string                  `json:"text,omitempty"`
+	InlineData       *GeminiInlineData       `json:"inlineData,omitempty"`
+	FunctionCall     *GeminiFunctionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *GeminiFunctionResponse `json:"functionResponse,omitempty"`
 }
 
@@ -359,9 +359,9 @@ type GeminiSafetySetting struct {
 }
 
 type GeminiResponse struct {
-	Candidates     []GeminiCandidate `json:"candidates"`
-	UsageMetadata  *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
-	ModelVersion   string `json:"modelVersion,omitempty"`
+	Candidates    []GeminiCandidate    `json:"candidates"`
+	UsageMetadata *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
+	ModelVersion  string               `json:"modelVersion,omitempty"`
 }
 
 type GeminiCandidate struct {
@@ -649,15 +649,36 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 	}
 
 	// Convert messages
-	var systemContent string
+	var systemBlocks []AnthropicSystemBlock
 	for _, msg := range req.Messages {
 		if msg.Role == "system" {
-			// Extract system message
-			if content, ok := msg.Content.(string); ok {
-				if systemContent != "" {
-					systemContent += "\n\n"
+			// Preserve individual system blocks to keep static/config/dynamic boundaries.
+			switch content := msg.Content.(type) {
+			case string:
+				if content != "" {
+					systemBlocks = append(systemBlocks, AnthropicSystemBlock{
+						Type: "text",
+						Text: content,
+					})
 				}
-				systemContent += content
+			case []interface{}:
+				for _, part := range content {
+					partMap, ok := part.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					if partType, _ := partMap["type"].(string); partType != "" && partType != "text" {
+						continue
+					}
+					text, _ := partMap["text"].(string)
+					if text == "" {
+						continue
+					}
+					systemBlocks = append(systemBlocks, AnthropicSystemBlock{
+						Type: "text",
+						Text: text,
+					})
+				}
 			}
 			continue
 		}
@@ -723,7 +744,9 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 		anthropicReq.Messages = append(anthropicReq.Messages, anthropicMsg)
 	}
 
-	anthropicReq.System = systemContent
+	if len(systemBlocks) > 0 {
+		anthropicReq.System = systemBlocks
+	}
 
 	// Convert tools (native Anthropic format)
 	for _, tool := range req.Tools {
@@ -741,9 +764,11 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 
 // ApplyPromptCaching adds cache_control breakpoints to an Anthropic request.
 // Breakpoints are placed on:
-//   (1) the system prompt static block(s) — up to 2 blocks for static+config
-//   (2) the last tool definition
-//   (3) a turn-boundary message (4th-from-last) for long conversations
+//
+//	(1) the system prompt static block(s) — up to 2 blocks for static+config
+//	(2) the last tool definition
+//	(3) a turn-boundary message (4th-from-last) for long conversations
+//
 // This enables Anthropic's prompt caching, which can save up to 90% on input token costs.
 // Anthropic allows up to 4 cache breakpoints per request.
 func ApplyPromptCaching(req *AnthropicRequest) {
@@ -1047,9 +1072,9 @@ func (fc *FormatConverter) anthropicToOpenAI(resp AnthropicResponse) OpenAIChatR
 	}
 
 	openaiResp.Choices = []struct {
-		Index        int         `json:"index"`
+		Index        int           `json:"index"`
 		Message      OpenAIMessage `json:"message"`
-		FinishReason string      `json:"finish_reason"`
+		FinishReason string        `json:"finish_reason"`
 	}{{
 		Index: 0,
 		Message: OpenAIMessage{

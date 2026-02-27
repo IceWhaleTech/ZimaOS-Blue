@@ -3,6 +3,7 @@ import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCompanionStore } from '@/stores/companion'
 import type { CompanionSession, ThreatLevel, SessionEvent } from '@/api/companion'
+import { sanitizeCompanionPreview } from '@/utils/companionSanitize'
 
 // Lazy load heavy component
 const SessionFlowCanvas = defineAsyncComponent(() => import('./SessionFlowCanvas.vue'))
@@ -36,6 +37,14 @@ watch(
 )
 
 const events = computed(() => companionStore.sessionEvents)
+
+const flowEvents = computed(() => ([...events.value].sort((a, b) =>
+  new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+)))
+
+function sanitizePreview(input: unknown, maxLen = 140): string {
+  return sanitizeCompanionPreview(input, maxLen, true)
+}
 const loading = computed(() => companionStore.loadingSession || companionStore.loadingEvents)
 
 // Handle node click in flow canvas
@@ -115,7 +124,7 @@ function formatDuration(ms: number): string {
 </script>
 
 <template>
-  <div class="session-detail bg-white dark:bg-slate-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-full">
+  <div class="session-detail bg-white dark:bg-slate-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-full min-h-0">
     <!-- Header -->
     <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
       <div>
@@ -223,9 +232,9 @@ function formatDuration(ms: number): string {
 
       <!-- Flow View -->
       <div v-if="viewMode === 'flow'" class="flex-1 min-h-0">
-        <div class="h-full border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
+        <div class="h-full min-h-[360px] sm:min-h-[420px] border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
           <SessionFlowCanvas
-            :events="events"
+            :events="flowEvents"
             :selected-event-id="selectedEventId"
             :auto-scroll="true"
             @node-click="handleNodeClick"
@@ -282,7 +291,7 @@ function formatDuration(ms: number): string {
                 <span class="text-xs text-gray-400">{{ event.message.contentType }}</span>
               </div>
               <div class="text-xs text-gray-500 dark:text-slate-400 truncate">
-                {{ event.message.content }}
+                {{ sanitizePreview(event.message.content, 200) }}
               </div>
             </div>
 
@@ -296,7 +305,10 @@ function formatDuration(ms: number): string {
                 <span class="text-xs text-gray-400">{{ formatDuration(event.tool_call.duration) }}</span>
               </div>
               <div v-if="event.tool_call.inputPreview" class="text-xs text-gray-500 dark:text-slate-400 truncate">
-                {{ t('companion.llmDetails.input') }}: {{ event.tool_call.inputPreview }}
+                {{ t('companion.llmDetails.input') }}: {{ sanitizePreview(event.tool_call.inputPreview, 220) }}
+              </div>
+              <div v-if="event.tool_call.outputPreview" class="text-xs text-gray-500 dark:text-slate-400 truncate">
+                Output: {{ sanitizePreview(event.tool_call.outputPreview, 220) }}
               </div>
             </div>
 

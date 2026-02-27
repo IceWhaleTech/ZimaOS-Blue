@@ -34,7 +34,6 @@ func NewAnalyze() *Analyze {
 			Icon:        "analyze",
 			Tags:        []string{"analyze", "report", "research", "insights", "data"},
 			Inputs: []skill.Parameter{
-				{Name: "action", Type: "string", Description: "Action: analyze (full pipeline with URL/search data gathering), analyze_text (analyze provided text only)", Required: true},
 				{Name: "topic", Type: "string", Description: "Analysis topic / report title", Required: true},
 				{Name: "urls", Type: "array", Description: "URLs to scrape for content (max 5)"},
 				{Name: "text", Type: "string", Description: "Direct text content to analyze"},
@@ -58,20 +57,6 @@ func (a *Analyze) SetExecutor(e AnalyzeExecutor) {
 func (a *Analyze) Manifest() *skill.Manifest { return a.manifest }
 
 func (a *Analyze) Validate(input map[string]any) error {
-	// Normalize: default action to "analyze" when not provided.
-	if _, ok := input["action"]; !ok {
-		input["action"] = "analyze"
-	}
-	actionStr, ok := input["action"].(string)
-	if !ok {
-		return fmt.Errorf("action must be a string")
-	}
-	switch actionStr {
-	case "analyze", "analyze_text":
-	default:
-		return fmt.Errorf("invalid action: %s (valid: analyze, analyze_text)", actionStr)
-	}
-
 	// Derive topic from query/url when not provided.
 	if _, ok := input["topic"]; !ok {
 		if q, ok := input["query"].(string); ok && q != "" {
@@ -97,11 +82,6 @@ func (a *Analyze) Validate(input map[string]any) error {
 		}
 	}
 
-	if actionStr == "analyze_text" {
-		if _, ok := input["text"]; !ok {
-			return fmt.Errorf("text is required for analyze_text")
-		}
-	}
 	return nil
 }
 

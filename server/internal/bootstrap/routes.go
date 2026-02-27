@@ -19,8 +19,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 
-	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agent"
+	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
@@ -31,11 +31,15 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/connection"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepsearch"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mcp"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mfa"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
@@ -46,30 +50,27 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool/oauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voice"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/web"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/webpush"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/webpush"
 )
 
 // routesStartTime records when the server started, used for uptime calculation
@@ -145,27 +146,27 @@ type RoutesDeps struct {
 	ClaudeCodeHandler  *claudecode.Handler
 	MemoryHandler      *server.MemoryHandler
 	ChannelConfigStore *server.ChannelConfigStore
-	ConfigKV           kvstore.Store // shared kvstore for config persistence
+	ConfigKV           kvstore.Store       // shared kvstore for config persistence
 	ConfigStore        *config.ConfigStore // kvstore-backed config persistence
 	HotReloader        *config.HotReloader
 	WorkspaceHandler   *workspace.Handler
 	SSEBroker          *sse.Broker
 
 	// IPC backends (optional, wired from main.go)
-	BrowserIPC    sockipc.BrowserBackend
-	UIReviewerIPC sockipc.UIReviewBackend
+	BrowserIPC     sockipc.BrowserBackend
+	UIReviewerIPC  sockipc.UIReviewBackend
 	UIReviewerTool *tools.UIReviewerTool // for VLM bridge wiring
-	AnalyzeTool    *tools.AnalyzeTool   // for LLM bridge wiring
-	PushIPC          sockipc.PushBackend
-	PushService      *push.Service // for skill/tool wiring
-	CronIPC          sockipc.CronBackend
+	AnalyzeTool    *tools.AnalyzeTool    // for LLM bridge wiring
+	PushIPC        sockipc.PushBackend
+	PushService    *push.Service // for skill/tool wiring
+	CronIPC        sockipc.CronBackend
 
 	// Consolidated init deps (previously only in cmd/blue/main.go)
-	SkillEmbedFS        fs.FS                              // embedded SKILL.md filesystem for ReleaseSkills
-	SandboxManager      *sandbox.Manager                   // for sandbox skill wiring
+	SkillEmbedFS        fs.FS            // embedded SKILL.md filesystem for ReleaseSkills
+	SandboxManager      *sandbox.Manager // for sandbox skill wiring
 	SystemPromptBuilder *claudecode.SystemPromptBuilder
-	LazyBrowserSvc      func() *browser.RodService         // for UI reviewer lazy adapter
-	BrowserBackend      tools.BrowserBackend               // for browser tool + IPC
+	LazyBrowserSvc      func() *browser.RodService // for UI reviewer lazy adapter
+	BrowserBackend      tools.BrowserBackend       // for browser tool + IPC
 
 	// Closers collects io.Closers started during route registration.
 	// The caller should close them on shutdown (e.g., via lifecycle hooks).
@@ -651,6 +652,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Register chat routes
 	deps.ChatHandler.RegisterRoutes(v1)
 
+	// Deep search service (shared by API + skill executor)
+	deepSearchService := deepsearch.NewService(nil, nil)
+
 	// Register auto-reply routes
 	if deps.AutoreplyHandler != nil {
 		deps.AutoreplyHandler.RegisterRoutes(v1)
@@ -869,11 +873,22 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 	}
 
-	// Ask-user-question: QuestionManager + tool registration
+	// Deep search: wire service-backed executor into deep_search skill.
+	if sk := s.SkillRegistry.Get("deep_search"); sk != nil {
+		if ds, ok := sk.(*builtin.DeepSearch); ok {
+			ds.SetExecutor(deepsearch.NewSkillExecutor(deepSearchService))
+		}
+	}
+
+	// Ask-user-question: QuestionManager for handling question dialogs
 	var questionMgr *tools.QuestionManager
 	if deps.SSEBroker != nil {
 		questionMgr = tools.NewQuestionManager(deps.SSEBroker, nil, 2*time.Minute)
-		tools.RegisterAskTool(s.ToolRegistry, questionMgr)
+		if sk := s.SkillRegistry.Get("ask"); sk != nil {
+			if askSkill, ok := sk.(*builtin.Ask); ok {
+				askSkill.SetQuestioner(&questionManagerAskAdapter{mgr: questionMgr})
+			}
+		}
 	}
 
 	// Exec tools (shell execution + process management)
@@ -916,6 +931,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if execTool := tools.GetExecTool(s.ToolRegistry); execTool != nil {
 			execTool.SetToolNames(s.ToolRegistry.List())
 			execTool.SetRegistry(s.ToolRegistry)
+			// Short-circuit pinned skills (e.g. "web_search query" → skill executor).
+			// This avoids registering skills as tools (which would consume extra prompt tokens).
+			execTool.SetPinnedSkills(claudecode.PinnedSkills())
 			// Short-circuit `blue <skill>` commands: call skill executor directly
 			// instead of spawning subprocess + IPC round-trip.
 			execTool.SetSkillExecutor(func(ctx context.Context, skillID string, input map[string]any) (map[string]string, error) {
@@ -1162,6 +1180,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		wfGroup.Any("/*", stub)
 	}
 
+	// Deep search routes (protected)
+	deepSearchHandler := deepsearch.NewHandler(deepSearchService)
+	deepSearchHandler.RegisterGroup(protected.Group("/deep-search"))
+	deepSearchHandler.RegisterGroup(apiProtected.Group("/deep-search"))
+	logger.Info("Deep search routes registered")
+
 	// Voice routes - /api/v1/voice/*
 	if deps.VoiceHandler != nil {
 		voiceGroup := v1.Group("/voice")
@@ -1244,6 +1268,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				// Remove legacy file after successful migration
 				os.Remove(legacyPath)
 			}
+			// Deduplicate tokens to clean up any duplicates
+			if err := oauthStore.Deduplicate(); err != nil {
+				logger.Warn("Failed to deduplicate OAuth tokens", zap.Error(err))
+			}
 			oauthManager = oauth.NewManager(oauthStore)
 			providerPoolHandler.SetOAuthManager(oauthManager)
 			// Register all OAuth callback paths (one for each provider type)
@@ -1254,6 +1282,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				if oauthManager != nil && port > 0 {
 					oauthManager.SetPort(port)
 					logger.Info("OAuth redirect port set to server port", zap.Int("port", port))
+				}
+			})
+
+			// Start periodic OAuth token refresh to keep short-lived tokens usable.
+			server.OnServerStart(func(port int) {
+				if oauthManager != nil {
+					oauthManager.StartAutoRefresh(context.Background(), 5*time.Minute)
 				}
 			})
 
@@ -1372,6 +1407,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		proxyConnPool := proxy.NewConnectionPool(&deps.Config.Proxy.Connection)
 		proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
 		proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
+		proxyHandler.SetProviderRaceConfig(routingConfig.Failover.ProviderRace)
 		proxyHandler.SetPromptCacheEnabled(true) // default ON for new installs
 		proxyHandler.SetDataMasker(dataMasker)
 
@@ -1561,6 +1597,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				RoutingEnabled:     proxyHandler.IsRoutingEnabled(),
 				MaskingEnabled:     dataMasker.IsEnabled(),
 				PromptCacheEnabled: proxyHandler.IsPromptCacheEnabled(),
+				FailoverConfig:     &routingConfig.Failover,
 				Version:            1,
 			}
 			// Capture individual routing rule states
@@ -1615,6 +1652,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				proxyHandler.SetRoutingEnabled(saved.RoutingEnabled)
 				proxyHandler.SetPromptCacheEnabled(saved.PromptCacheEnabled)
 				dataMasker.SetEnabled(saved.MaskingEnabled)
+				if saved.FailoverConfig != nil {
+					routingConfig.Failover = *saved.FailoverConfig
+				}
+				proxyHandler.SetProviderRaceConfig(routingConfig.Failover.ProviderRace)
 				// Restore individual routing rule states
 				for name, enabled := range saved.RoutingRules {
 					proxyHandler.SetRoutingRuleEnabled(name, enabled)
@@ -1639,6 +1680,17 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			})
 			maskingOnToggle = saveToggle
 		}
+		failoverAPIHandler.SetOnProviderRaceChange(func(cfg proxy.ProviderRaceConfig) {
+			proxyHandler.SetProviderRaceConfig(cfg)
+		})
+		failoverAPIHandler.SetOnConfigSave(func(_ *proxy.FailoverConfig) error {
+			if toggleStore == nil {
+				return nil
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			return toggleStore.Save(ctx, getToggleState())
+		})
 
 		// ProxyBridge: route ChatHandler LLM calls through proxy pipeline
 		bridge := proxybridge.NewBridge(proxyHandler)
@@ -1786,6 +1838,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				"enabled": proxyHandler.IsPromptCacheEnabled(),
 			})
 		})
+		promptCacheGroup.GET("/stats", func(c echo.Context) error {
+			return c.JSON(200, proxyHandler.GetPromptCacheStats())
+		})
 		promptCacheGroup.PUT("/config", func(c echo.Context) error {
 			var req struct {
 				Enabled *bool `json:"enabled"`
@@ -1879,6 +1934,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	go otaChecker.Run(deps.Ctx)
 
 	logger.Info("OTA update routes registered", zap.Bool("enabled", deps.Config.Update.Enabled))
+
+	// Wire up mgmt tool with upgrade/OTA service
+	mgmtTool.SetUpgrade(&mgmtUpgradeAdapter{
+		handler:    updateHandler,
+		otaChecker: otaChecker,
+		version:    cfg.Version,
+	})
 
 	// Channel config + channel manager
 	if deps.ChannelConfigStore != nil {

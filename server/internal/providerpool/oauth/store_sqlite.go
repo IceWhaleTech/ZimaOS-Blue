@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -219,12 +220,29 @@ func (s *SQLiteTokenStore) LoadTokenByEmail(providerID, email string) (*Token, e
 func (s *SQLiteTokenStore) LoadTokens(providerID string) ([]*Token, error) {
 	ctx := context.Background()
 	var rows []oauthTokenRow
+
+	// Also load tokens with empty provider_id that might need migration
+	// This handles tokens imported before the provider_id fix
 	_, err := s.table(ctx).Select(&rows,
-		z.Where(z.Eq("provider_id", providerID)),
+		z.Where(z.Or(z.Eq("provider_id", providerID), z.Eq("provider_id", ""))),
 	)
 	if err != nil {
 		return nil, err
 	}
+
+	// Migrate tokens with empty provider_id to correct provider_id
+	for i := range rows {
+		if rows[i].ProviderID == "" {
+			// Update the provider_id
+			_, err := s.db.Exec("UPDATE oauth_tokens SET provider_id = ? WHERE id = ? AND provider_id = ''",
+				providerID, rows[i].ID)
+			if err != nil {
+				slog.Warn("[oauth] failed to migrate token provider_id", "token_id", rows[i].ID, "error", err)
+			}
+			rows[i].ProviderID = providerID
+		}
+	}
+
 	tokens := make([]*Token, 0, len(rows))
 	for i := range rows {
 		tokens = append(tokens, rowToToken(&rows[i]))
@@ -254,6 +272,36 @@ func (s *SQLiteTokenStore) ListTokens() (map[string]*Token, error) {
 	return result, nil
 }
 
+// Deduplicate removes duplicate tokens for each provider, keeping only the most recent one per email.
+// This can be called to clean up any duplicates that may have been created due to bugs.
+func (s *SQLiteTokenStore) Deduplicate() error {
+	ctx := context.Background()
+
+	// Find duplicates: same provider_id and email (where email is not empty)
+	// Keep the one with the latest token_expiry
+	_, err := s.table(ctx).Exec(`
+		DELETE FROM oauth_tokens WHERE id NOT IN (
+			SELECT ot1.id FROM oauth_tokens ot1
+			WHERE ot1.email IS NOT NULL AND ot1.email != ''
+			AND ot1.token_expiry = (
+				SELECT MAX(ot2.token_expiry)
+				FROM oauth_tokens ot2
+				WHERE ot2.provider_id = ot1.provider_id
+				AND (ot2.email = ot1.email OR (ot2.email IS NULL AND ot1.email IS NULL))
+			)
+			AND EXISTS (
+				SELECT 1 FROM oauth_tokens ot3
+				WHERE ot3.provider_id = ot1.provider_id
+				AND (ot3.email = ot1.email OR (ot3.email IS NULL AND ot1.email IS NULL))
+				GROUP BY ot3.provider_id, ot3.email
+				HAVING COUNT(*) > 1
+			)
+		)
+		AND email IS NOT NULL AND email != ''
+	`)
+	return err
+}
+
 // MigrateFromJSON imports tokens from a legacy JSON file into this store.
 func (s *SQLiteTokenStore) MigrateFromJSON(jsonPath string) error {
 	data, err := readFileIfExists(jsonPath)
@@ -266,14 +314,45 @@ func (s *SQLiteTokenStore) MigrateFromJSON(jsonPath string) error {
 	if err := json.Unmarshal(data, &sd); err != nil {
 		return fmt.Errorf("unmarshal oauth_tokens.json: %w", err)
 	}
-	for pid, token := range sd.Tokens {
+	// Deduplicate by email during migration
+	seen := make(map[string]*Token) // email -> token
+	for key, token := range sd.Tokens {
+		// key is in format "providerID:tokenID", extract providerID
+		providerID := key
+		if idx := strings.Index(key, ":"); idx != -1 {
+			providerID = key[:idx]
+		}
+
+		// Use token's ProviderID if available, otherwise use extracted providerID
+		if token.ProviderID == "" {
+			token.ProviderID = providerID
+		}
+
 		if token.ID == "" {
 			token.ID = generateTokenID()
 		}
-		if err := s.SaveToken(pid, token); err != nil {
-			return fmt.Errorf("migrate token %s: %w", pid, err)
+
+		// Deduplicate by email: keep only the first token per email per provider
+		if token.Email != "" {
+			dedupKey := providerID + ":" + token.Email
+			if existing, ok := seen[dedupKey]; ok {
+				// Skip duplicate, but update if this one has more recent expiry
+				if token.TokenExpiry.After(existing.TokenExpiry) {
+					seen[dedupKey] = token
+				}
+				continue
+			}
+			seen[dedupKey] = token
 		}
 	}
+
+	// Save deduplicated tokens
+	for _, token := range seen {
+		if err := s.SaveToken(token.ProviderID, token); err != nil {
+			return fmt.Errorf("migrate token %s: %w", token.ProviderID+":"+token.ID, err)
+		}
+	}
+
 	return nil
 }
 

@@ -36,6 +36,8 @@ declare module 'vue' {
     CardCollapsibleCode: typeof import('./components/typeless/CardCollapsibleCode.vue')['default']
     CardComparison: typeof import('./components/typeless/CardComparison.vue')['default']
     CardCountdown: typeof import('./components/typeless/CardCountdown.vue')['default']
+    CardDeepSearch: typeof import('./components/typeless/CardDeepSearch.vue')['default']
+    CardDeepSearchProgress: typeof import('./components/typeless/CardDeepSearchProgress.vue')['default']
     CardDetection: typeof import('./components/typeless/CardDetection.vue')['default']
     CardDiff: typeof import('./components/typeless/CardDiff.vue')['default']
     CardExec: typeof import('./components/typeless/CardExec.vue')['default']

@@ -4,10 +4,10 @@ Evaluate UI/UX quality of a website or screenshot. Captures screenshots, runs ac
 
 ## How to Send
 
-Use the `blue` CLI (always use `--json` for structured output):
+Direct call (always use `--json` for structured output):
 
 ```bash
-blue ui.review_url url=https://example.com --json
+ui.review_url url=https://example.com --json
 ```
 
 ## Commands
@@ -23,7 +23,7 @@ Full UI review of a URL. Navigates to the page, captures multi-viewport screensh
 - `device` — viewport: `desktop` (1920x1080) or `mobile` (375x812)
 
 ```bash
-blue ui.review_url url=https://example.com lang=zh-CN --json
+ui.review_url url=https://example.com lang=zh-CN --json
 ```
 
 ### ui.review_image
@@ -35,7 +35,7 @@ VLM visual review of a base64-encoded screenshot. No browser needed.
 **Optional:** `lang`
 
 ```bash
-blue ui.review_image image=<base64_png_data>
+ui.review_image image=<base64_png_data>
 ```
 
 ### ui.check_accessibility
@@ -47,7 +47,7 @@ Accessibility check only (no VLM). Navigates to URL, builds accessibility tree, 
 **Optional:** `lang`
 
 ```bash
-blue ui.check_accessibility url=https://example.com
+ui.check_accessibility url=https://example.com
 ```
 
 ## Error Response

@@ -260,7 +260,7 @@ func (r *Runner) SubmitAnswers(taskID string, answers []QuestionAnswer) bool {
 }
 
 // handleAskUser parses the ask_user tool arguments, blocks for user answers, and returns the result as JSON.
-// Supports both the new sq/mq/a format and the legacy questions array format.
+// Supports both the new q/mq/a format and the legacy questions array format.
 func (r *Runner) handleAskUser(ctx context.Context, task *Task, argsJSON string) string {
 	var raw map[string]interface{}
 	if err := json.Unmarshal([]byte(argsJSON), &raw); err != nil {
@@ -269,10 +269,10 @@ func (r *Runner) handleAskUser(ctx context.Context, task *Task, argsJSON string)
 
 	var questions []AgentQuestion
 
-	// Try new sq/mq/a format first
-	sq, _ := raw["sq"].(string)
+	// Try new q/mq/a format first
+	q, _ := raw["q"].(string)
 	mq, _ := raw["mq"].(string)
-	qText := sq
+	qText := q
 	multiSelect := false
 	if mq != "" {
 		qText = mq
@@ -301,7 +301,7 @@ func (r *Runner) handleAskUser(ctx context.Context, task *Task, argsJSON string)
 			Questions []AgentQuestion `json:"questions"`
 		}
 		if err := json.Unmarshal([]byte(argsJSON), &req); err != nil || len(req.Questions) == 0 {
-			return `{"error":"invalid ask_user arguments: sq/mq or questions array required"}`
+			return `{"error":"invalid ask_user arguments: q/mq or questions array required"}`
 		}
 		questions = req.Questions
 	}
@@ -600,8 +600,8 @@ func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (s
 		{Role: llm.RoleSystem, Content: `You are an autonomous agent executing a plan step. Use available tools to complete the step. Be concise in your response — just do the work and report the result.
 
 When you encounter ambiguity, need user preferences, or face a decision with multiple valid options, use the ask tool to ask the user.
-Use "sq" for single-select or "mq" for multi-select, with "a" as the options array (2-4 strings).
-Example: {"sq": "Which approach?", "a": ["Option A", "Option B"]}
+Use "q" for single-select or "mq" for multi-select, with "a" as the options array (2-4 strings).
+Example: {"q": "Which approach?", "a": ["Option A", "Option B"]}
 
 Group related questions into a single ask call. Keep questions clear and provide good option labels.`},
 		{Role: llm.RoleUser, Content: contextMsg.String()},

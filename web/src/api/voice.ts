@@ -500,7 +500,7 @@ function preprocessForSpeech(text: string, locale: string = 'en-US'): string {
   })
 
   // Replace inline code with description
-  text = text.replace(/`([^`]+)`/g, (match, code) => {
+  text = text.replace(/`([^`]+)`/g, (_match, code) => {
     // Keep short inline code (< 15 chars), replace long ones
     if (code.length > 15) {
       return isZh ? '代码' : 'code'
@@ -643,6 +643,11 @@ class StreamingTTSManager {
     if (this.activeFetches >= StreamingTTSManager.MAX_CONCURRENT_FETCHES) return
 
     const item = this.queue[this.fetchIndex]
+    if (!item) {
+      this.fetchIndex++
+      this.fetchNext()
+      return
+    }
     if (item.fetching || item.audio || item.failed) {
       this.fetchIndex++
       this.fetchNext()
@@ -736,6 +741,10 @@ class StreamingTTSManager {
     }
 
     const item = this.queue[this.playIndex]
+    if (!item) {
+      this.onComplete?.()
+      return
+    }
 
     if (item.failed) {
       // Retry failed fetches once before skipping

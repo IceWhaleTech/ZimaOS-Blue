@@ -39,7 +39,7 @@ import { ref, onMounted } from 'vue'
 import { useTTSStore } from '@/stores/tts'
 
 const ttsStore = useTTSStore()
-const packs = ref<{ id: string; name: string; downloaded: boolean }[]>([])
+const packs = ref<{ language: string; name: string; size_kb: number; downloaded: boolean; downloading?: boolean }[]>([])
 const loading = ref(false)
 const error = ref('')
 

@@ -25,9 +25,10 @@ export function useWebPush() {
     const publicKey = await getVapidKey()
 
     // Subscribe to push
+    const applicationServerKey = urlBase64ToUint8Array(publicKey) as unknown as BufferSource
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
+      applicationServerKey,
     })
 
     // Send subscription to server

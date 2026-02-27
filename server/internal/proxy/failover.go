@@ -31,6 +31,23 @@ func (fh *FailoverHandler) Config() *FailoverConfig {
 	return fh.config
 }
 
+func (fh *FailoverHandler) isSingleProviderMode() bool {
+	if fh.router == nil {
+		return false
+	}
+	providers := fh.router.GetAllProviders()
+	enabled := 0
+	for _, p := range providers {
+		if p != nil && p.Config != nil && p.Config.Enabled {
+			enabled++
+			if enabled > 1 {
+				return false
+			}
+		}
+	}
+	return enabled == 1
+}
+
 // getBreaker returns or creates a circuit breaker for a provider
 func (fh *FailoverHandler) getBreaker(name string) *resilience.CircuitBreaker {
 	fh.mu.RLock()
@@ -67,6 +84,40 @@ func (fh *FailoverHandler) Execute(
 ) (*http.Response, error) {
 	if !fh.config.Enabled {
 		return fn(provider)
+	}
+
+	// Single-provider mode: don't short-circuit or isolate the only provider.
+	// Keep retrying the same provider to maximize recovery chance.
+	if fh.isSingleProviderMode() {
+		var lastErr error
+		var lastResp *http.Response
+		for attempt := 0; attempt <= fh.config.MaxRetries; attempt++ {
+			if attempt > 0 {
+				delay := fh.config.RetryDelay * time.Duration(1<<(attempt-1))
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(delay):
+				}
+			}
+
+			resp, err := fn(provider)
+			if err == nil && resp.StatusCode < 500 {
+				return resp, nil
+			}
+			lastErr = err
+			lastResp = resp
+			if err == nil {
+				lastErr = ErrUpstreamError
+			}
+		}
+		if lastResp != nil {
+			return lastResp, lastErr
+		}
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, ErrUpstreamError
 	}
 
 	// Get circuit breaker for provider

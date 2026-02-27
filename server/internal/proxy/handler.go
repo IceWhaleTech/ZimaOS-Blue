@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,14 +72,16 @@ func GetResolvedRouteFromContext(ctx context.Context) *ResolvedRoute {
 // Uses gjson for zero-alloc field extraction instead of map[string]interface{}.
 // Layout: pointer-sized fields first, then bools — minimizes padding for cache-line efficiency.
 type parsedRequest struct {
-	body             []byte
-	model            string
-	originalModel    string         // model before routing (for cost savings tracking)
-	upstreamFormat   ProviderType   // set when request was converted to non-OpenAI format
-	routed           *RouteDecision // non-nil if rule engine rerouted the model
-	streaming        bool
-	resolvedProvider string // actual provider name after routing
-	resolvedModel    string // actual model ID after routing
+	body               []byte
+	model              string
+	originalModel      string         // model before routing (for cost savings tracking)
+	upstreamFormat     ProviderType   // set when request was converted to non-OpenAI format
+	routed             *RouteDecision // non-nil if rule engine rerouted the model
+	streaming          bool
+	singleProvider     bool   // true when only one provider matches current routing mode
+	resolvedProvider   string // actual provider name after routing
+	resolvedProviderID string // actual provider ID after routing
+	resolvedModel      string // actual model ID after routing
 }
 
 // sseBufferPool reuses 32KB buffers for SSE streaming to reduce GC pressure.
@@ -115,6 +118,43 @@ func releaseParsedRequest(pr *parsedRequest) {
 	pr.body = nil // release reference to body bytes
 	pr.routed = nil
 	parsedRequestPool.Put(pr)
+}
+
+type providerRaceStat struct {
+	Attempts      int
+	EmptyRuns     int
+	CooldownUntil time.Time
+}
+
+type providerExecOutcome struct {
+	resp               *http.Response
+	upstreamFormat     ProviderType
+	resolvedProvider   string
+	resolvedProviderID string
+	resolvedModel      string
+}
+
+const providerRaceStatWindow = 100
+
+func (ph *ProxyHandler) isSingleProviderMode(mode providerpool.RoutingMode) bool {
+	if ph.providerPool == nil || ph.providerPool.Registry == nil {
+		return false
+	}
+	providers := ph.providerPool.Registry.ListEnabled()
+	count := 0
+	for _, p := range providers {
+		if mode == providerpool.RoutingModeCloud && p.Location != providerpool.ProviderLocationCloud {
+			continue
+		}
+		if mode == providerpool.RoutingModeLocal && p.Location != providerpool.ProviderLocationLocal {
+			continue
+		}
+		count++
+		if count > 1 {
+			return false
+		}
+	}
+	return count == 1
 }
 
 // isTransientNetworkError returns true if the error is a transient network error
@@ -164,6 +204,7 @@ func (ph *ProxyHandler) probeWithRetry(
 	ctx context.Context,
 	provider *providerpool.Provider,
 	apiKey *providerpool.APIKey,
+	effectiveFormat providerpool.APIFormat,
 	buildReq func() (*http.Request, error),
 	doReq func(*http.Request) (*http.Response, error),
 ) (*http.Response, error) {
@@ -190,7 +231,7 @@ func (ph *ProxyHandler) probeWithRetry(
 			}
 		}
 
-		resp, err := ph.authProber.ProbeAndForward(provider, apiKey, buildReq, doReq)
+		resp, err := ph.authProber.ProbeAndForward(provider, apiKey, effectiveFormat, buildReq, doReq)
 		if err == nil {
 			return resp, nil
 		}
@@ -198,6 +239,33 @@ func (ph *ProxyHandler) probeWithRetry(
 			return nil, err
 		}
 		lastErr = err
+	}
+}
+
+func shouldRetryTransientUpstream5xx(singleProvider bool, statusCode int, body []byte, attempt int) bool {
+	if !singleProvider || attempt >= 2 {
+		return false
+	}
+	switch statusCode {
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+	default:
+		return false
+	}
+	// Don't retry errors that are likely permanent/misconfiguration.
+	if isFormatMismatchError(statusCode, body) || isModelNotConfiguredError(statusCode, body) || isAuthRelatedBody(body) {
+		return false
+	}
+	return true
+}
+
+func transientUpstreamRetryDelay(attempt int) time.Duration {
+	switch attempt {
+	case 0:
+		return 200 * time.Millisecond
+	case 1:
+		return 600 * time.Millisecond
+	default:
+		return time.Second
 	}
 }
 
@@ -253,37 +321,45 @@ func readErrorBody(r io.Reader) []byte {
 // Layout: hot-path fields first (same cache line), cold fields after.
 type ProxyHandler struct {
 	// Hot path — accessed on every request (first 64-byte cache line)
-	connPool       *ConnectionPool    // HTTP connection pool
-	providerPool   *providerpool.Pool // Provider Pool for routing and API keys
-	authProber     *AuthProber        // Auth strategy probing with memory
-	providerMemory *ProviderMemory    // Provider capability memory
-	routingEnabled atomic.Bool        // Toggle for model routing
-	promptCacheEnabled atomic.Bool    // Toggle for Anthropic prompt caching
+	connPool           *ConnectionPool    // HTTP connection pool
+	providerPool       *providerpool.Pool // Provider Pool for routing and API keys
+	authProber         *AuthProber        // Auth strategy probing with memory
+	providerMemory     *ProviderMemory    // Provider capability memory
+	providerRaceConfig ProviderRaceConfig // Concurrent provider race config
+	providerRaceStats  map[string]*providerRaceStat
+	providerRaceMu     sync.Mutex
+	routingEnabled     atomic.Bool       // Toggle for model routing
+	promptCacheEnabled atomic.Bool       // Toggle for Anthropic prompt caching
+	promptCacheStats   *PromptCacheStats // Prompt cache effectiveness stats
 
 	// Warm path — accessed conditionally
-	failover        *FailoverHandler   // Failover handler
-	prunerMw        *pruner.Middleware // Context pruner middleware (optional)
-	prunerFactory   func() *pruner.Middleware // Lazy factory for pruner middleware
-	prunerOnce      sync.Once          // Ensures pruner is created only once
-	modelRouter     *ModelRouter       // Model family routing + background downgrade
-	ruleEngine      *RuleEngine        // Condition-based tier routing
-	tierResolver    *TierResolver      // Dynamic model tier classification
+	failover      *FailoverHandler          // Failover handler
+	prunerMw      *pruner.Middleware        // Context pruner middleware (optional)
+	prunerFactory func() *pruner.Middleware // Lazy factory for pruner middleware
+	prunerOnce    sync.Once                 // Ensures pruner is created only once
+	modelRouter   *ModelRouter              // Model family routing + background downgrade
+	ruleEngine    *RuleEngine               // Condition-based tier routing
+	tierResolver  *TierResolver             // Dynamic model tier classification
 
 	// Cold path — rarely accessed per-request
-	dataMasker      *DataMasker        // Data masking for request/response content
-	router          *Router            // Legacy router (fallback only)
+	dataMasker      *DataMasker // Data masking for request/response content
+	router          *Router     // Legacy router (fallback only)
 	apiKeyValidator func(key string) ([]string, error)
-	routingStats    *RoutingStats      // Routing cost savings tracker
+	routingStats    *RoutingStats           // Routing cost savings tracker
 	pipelineStats   *PipelineStatsCollector // Unified pipeline stats collector
-	oauthManager    OAuthTokenProvider // OAuth token provider (optional)
+	oauthManager    OAuthTokenProvider      // OAuth token provider (optional)
+	sessionMonitor  *SessionMonitor         // Session monitor for security tracking
 }
 
 // NewProxyHandler creates a new proxy handler
 func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *FailoverHandler) *ProxyHandler {
 	ph := &ProxyHandler{
-		router:   router,
-		connPool: connPool,
-		failover: failover,
+		router:             router,
+		connPool:           connPool,
+		failover:           failover,
+		promptCacheStats:   &PromptCacheStats{},
+		providerRaceConfig: normalizeProviderRaceConfig(DefaultProviderRaceConfig()),
+		providerRaceStats:  make(map[string]*providerRaceStat),
 	}
 	ph.routingEnabled.Store(true)
 	ph.authProber = NewAuthProber() // default prober, can be overridden
@@ -312,6 +388,110 @@ func (ph *ProxyHandler) SetPruner(mw *pruner.Middleware) {
 // The factory is called at most once, on the first request that needs pruning.
 func (ph *ProxyHandler) SetPrunerFactory(factory func() *pruner.Middleware) {
 	ph.prunerFactory = factory
+}
+
+// SetProviderRaceConfig sets concurrent provider race behavior.
+func (ph *ProxyHandler) SetProviderRaceConfig(cfg ProviderRaceConfig) {
+	ph.providerRaceMu.Lock()
+	defer ph.providerRaceMu.Unlock()
+	ph.providerRaceConfig = normalizeProviderRaceConfig(cfg)
+}
+
+func normalizeProviderRaceConfig(cfg ProviderRaceConfig) ProviderRaceConfig {
+	if cfg.MaxParallel <= 0 {
+		cfg.MaxParallel = 2
+	}
+	if cfg.MinProviders <= 0 {
+		cfg.MinProviders = 2
+	}
+	if cfg.EmptyRateMinSamples <= 0 {
+		cfg.EmptyRateMinSamples = 10
+	}
+	if cfg.EmptyRateCooldown <= 0 {
+		cfg.EmptyRateCooldown = 2 * time.Minute
+	}
+	if cfg.EmptyRateCooldownThreshold < 0 {
+		cfg.EmptyRateCooldownThreshold = 0
+	}
+	if cfg.EmptyRateSinkThreshold < 0 {
+		cfg.EmptyRateSinkThreshold = 0
+	}
+	if cfg.EmptyRateExcludeThreshold < 0 {
+		cfg.EmptyRateExcludeThreshold = 0
+	}
+	if cfg.EmptyRateCooldownThreshold > 1 {
+		cfg.EmptyRateCooldownThreshold = 1
+	}
+	if cfg.EmptyRateSinkThreshold > 1 {
+		cfg.EmptyRateSinkThreshold = 1
+	}
+	if cfg.EmptyRateExcludeThreshold > 1 {
+		cfg.EmptyRateExcludeThreshold = 1
+	}
+	return cfg
+}
+
+func (ph *ProxyHandler) getProviderRaceConfig() ProviderRaceConfig {
+	ph.providerRaceMu.Lock()
+	defer ph.providerRaceMu.Unlock()
+	return ph.providerRaceConfig
+}
+
+func (ph *ProxyHandler) getProviderRaceStat(providerID string) providerRaceStat {
+	ph.providerRaceMu.Lock()
+	defer ph.providerRaceMu.Unlock()
+	if stat, ok := ph.providerRaceStats[providerID]; ok && stat != nil {
+		return *stat
+	}
+	return providerRaceStat{}
+}
+
+func (ph *ProxyHandler) recordProviderRaceAttempt(providerID string, emptyRun bool) {
+	cfg := ph.getProviderRaceConfig()
+	if !cfg.Enabled || providerID == "" {
+		return
+	}
+
+	ph.providerRaceMu.Lock()
+	defer ph.providerRaceMu.Unlock()
+
+	stat := ph.providerRaceStats[providerID]
+	if stat == nil {
+		stat = &providerRaceStat{}
+		ph.providerRaceStats[providerID] = stat
+	}
+	stat.Attempts++
+	if emptyRun {
+		stat.EmptyRuns++
+	}
+	// Keep bounded moving history so old incidents naturally decay.
+	if stat.Attempts > providerRaceStatWindow {
+		stat.Attempts = (stat.Attempts + 1) / 2
+		stat.EmptyRuns = (stat.EmptyRuns + 1) / 2
+	}
+	if stat.Attempts >= cfg.EmptyRateMinSamples && cfg.EmptyRateCooldownThreshold > 0 {
+		emptyRate := float64(stat.EmptyRuns) / float64(stat.Attempts)
+		if emptyRate >= cfg.EmptyRateCooldownThreshold {
+			until := timeutil.NowTime().Add(cfg.EmptyRateCooldown)
+			if until.After(stat.CooldownUntil) {
+				stat.CooldownUntil = until
+			}
+		}
+	}
+}
+
+func (ph *ProxyHandler) isProviderInRaceCooldown(providerID string) bool {
+	stat := ph.getProviderRaceStat(providerID)
+	return !stat.CooldownUntil.IsZero() && timeutil.NowTime().Before(stat.CooldownUntil)
+}
+
+func isEmptyRunError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "returned no response") ||
+		strings.Contains(msg, "returned empty streaming response")
 }
 
 // ensurePruner lazily initializes the pruner middleware via factory if not yet created.
@@ -376,6 +556,11 @@ func (ph *ProxyHandler) SetDataMasker(dm *DataMasker) {
 	ph.dataMasker = dm
 }
 
+// SetSessionMonitor wires session monitoring into the real request chain.
+func (ph *ProxyHandler) SetSessionMonitor(sm *SessionMonitor) {
+	ph.sessionMonitor = sm
+}
+
 // GetProviderMemory returns the provider memory instance for external access.
 func (ph *ProxyHandler) GetProviderMemory() *ProviderMemory {
 	return ph.providerMemory
@@ -399,6 +584,14 @@ func (ph *ProxyHandler) IsPromptCacheEnabled() bool {
 // SetPromptCacheEnabled toggles Anthropic prompt caching on/off at runtime.
 func (ph *ProxyHandler) SetPromptCacheEnabled(enabled bool) {
 	ph.promptCacheEnabled.Store(enabled)
+}
+
+// GetPromptCacheStats returns prompt cache stats snapshot.
+func (ph *ProxyHandler) GetPromptCacheStats() PromptCacheSnapshot {
+	if ph.promptCacheStats == nil {
+		return PromptCacheSnapshot{}
+	}
+	return ph.promptCacheStats.Snapshot()
 }
 
 // GetRoutingRules returns the current routing rules with their enabled state.
@@ -460,7 +653,7 @@ func (ph *ProxyHandler) warmAuthStrategies() {
 		}
 
 		// Try a lightweight HEAD/GET on the models endpoint to probe auth
-		strategies := ph.authProber.Strategies(p, apiKey)
+		strategies := ph.authProber.Strategies(p, apiKey, p.APIFormat)
 		for _, strat := range strategies {
 			probeURL := strings.TrimSuffix(p.BaseURL, "/") + "/v1/models"
 			req, err := http.NewRequest(http.MethodGet, probeURL, nil)
@@ -512,8 +705,10 @@ func (ph *ProxyHandler) warmToolCallSupport(providers []*providerpool.Provider) 
 	}
 
 	for _, p := range providers {
+		burl := p.EffectiveBaseURL()
+
 		// Skip if already probed
-		if _, ok := ph.providerMemory.RecallToolCap(p.ID, p.BaseURL); ok {
+		if _, ok := ph.providerMemory.RecallToolCap(p.ID, burl); ok {
 			continue
 		}
 
@@ -523,10 +718,22 @@ func (ph *ProxyHandler) warmToolCallSupport(providers []*providerpool.Provider) 
 		}
 
 		// Recall auth strategy (just probed in phase 1)
-		authStrat, _ := ph.authProber.Recall(p.ID, p.BaseURL)
+		authStrat, _ := ph.authProber.Recall(p.ID, burl)
 
-		probeURL := strings.TrimSuffix(p.BaseURL, "/") + "/v1/chat/completions"
-		req, err := http.NewRequest(http.MethodPost, probeURL, io.NopCloser(bytes.NewReader(toolCallProbeBody)))
+		probeURL := strings.TrimSuffix(burl, "/") + "/v1/chat/completions"
+		probeBody := toolCallProbeBody
+		// Responses-based providers expose a fixed endpoint path; probing chat/completions
+		// would always fail with a protocol mismatch and poison ToolCap cache.
+		if isResponsesEndpointBaseURL(burl) {
+			probeURL = burl
+			convertedProbe, convErr := convertOpenAIChatCompletionsToResponses(toolCallProbeBody)
+			if convErr != nil {
+				slog.Warn("[proxy] tool probe skipped: failed to convert to responses format", "provider", p.ID, "error", convErr)
+				continue
+			}
+			probeBody = convertedProbe
+		}
+		req, err := http.NewRequest(http.MethodPost, probeURL, io.NopCloser(bytes.NewReader(probeBody)))
 		if err != nil {
 			continue
 		}
@@ -548,16 +755,17 @@ func (ph *ProxyHandler) warmToolCallSupport(providers []*providerpool.Provider) 
 			slog.Debug("[proxy] tool probe failed", "provider", p.ID, "error", err)
 			continue
 		}
-		io.Copy(io.Discard, resp.Body)
+		errBody := readErrorBody(resp.Body)
 		resp.Body.Close()
 
-		if isFormatMismatchError(resp.StatusCode, nil) || resp.StatusCode == 400 {
-			// 422 or 400 with tools → provider doesn't support function calling
-			ph.providerMemory.RememberToolCap(p.ID, p.BaseURL, ToolCapNone)
+		if isFormatMismatchError(resp.StatusCode, errBody) {
+			// Explicit format/tool schema mismatch means no native tool support.
+			ph.providerMemory.RememberToolCap(p.ID, burl, ToolCapNone)
 			slog.Info("[proxy] tool probe: no tool support", "provider", p.ID, "status", resp.StatusCode)
 		} else {
-			// Any other response (200, 401, 429, 500, etc.) means tools are accepted
-			ph.providerMemory.RememberToolCap(p.ID, p.BaseURL, ToolCapNative)
+			// Any other response (200, 400 validation, 401, 429, 500, etc.) doesn't
+			// prove missing tool support. Keep provider eligible for tool calls.
+			ph.providerMemory.RememberToolCap(p.ID, burl, ToolCapNative)
 			slog.Debug("[proxy] tool probe: tools supported", "provider", p.ID, "status", resp.StatusCode)
 		}
 	}
@@ -591,6 +799,265 @@ func (ph *ProxyHandler) extractRoutingMode(r *http.Request) string {
 		}
 	}
 	return "auto"
+}
+
+func (ph *ProxyHandler) executeOnRouteResult(
+	r *http.Request,
+	result *providerpool.RouteResult,
+	pr *parsedRequest,
+	hasTools bool,
+) (*providerExecOutcome, error) {
+	pid := result.Provider.ID
+	burl := result.Provider.EffectiveBaseURL()
+
+	// Tool cap check: skip providers known to not support function calling.
+	// This avoids wasting a round-trip on providers that will 422.
+	if hasTools && !pr.singleProvider {
+		if cap, ok := ph.providerMemory.RecallToolCap(pid, burl); ok && cap == ToolCapNone {
+			// Responses-based endpoints may have been mis-probed previously via
+			// /v1/chat/completions. Drop stale cache and re-try once on real traffic.
+			if isResponsesEndpointBaseURL(burl) {
+				ph.providerMemory.ForgetToolCap(pid, burl)
+				slog.Info("[proxy] cleared stale no-tool cache for responses endpoint", "provider", pid)
+			} else {
+				slog.Debug("[proxy] skipping provider (no tool support)", "provider", pid)
+				return nil, fmt.Errorf("provider %s does not support tool calls", pid)
+			}
+		}
+	}
+
+	// Throttle check: skip provider if recently 429'd
+	if !pr.singleProvider && ph.providerMemory.IsThrottled(pid, burl) {
+		slog.Debug("[proxy] skipping throttled provider", "provider", pid)
+		return nil, fmt.Errorf("provider %s is throttled", pid)
+	}
+
+	// Try all Model × Format combinations on this provider
+	resp, format, _, tryErr := ph.tryOnProvider(r, result, pr)
+	if tryErr != nil {
+		return nil, tryErr
+	}
+	if resp == nil {
+		// All format/model combos failed. Do NOT infer ToolCapNone here —
+		// the failure may be caused by network issues, model not found, 404,
+		// etc., not by lack of tool support. Tool capability is only reliably
+		// determined by the warmToolCallSupport probe (explicit format mismatch
+		// on a tool-bearing request).
+		return nil, fmt.Errorf("provider %s returned no response", pid)
+	}
+
+	// For streaming responses, peek at the first bytes to detect empty streams.
+	// Some providers return HTTP 200 with an empty body or only "[DONE]".
+	// Detecting this early allows fallback/race to try the next provider.
+	if pr.streaming && resp.Body != nil {
+		peekBuf := make([]byte, 32)
+		n, peekErr := resp.Body.Read(peekBuf)
+		if n == 0 || peekErr != nil {
+			resp.Body.Close()
+			slog.Warn("[proxy] streaming response body empty", "provider", pid, "error", peekErr)
+			return nil, fmt.Errorf("provider %s returned empty streaming response", pid)
+		}
+		// Reconstruct body: peeked bytes + rest of original body
+		resp.Body = &peekReader{prefix: peekBuf[:n], rest: resp.Body}
+	}
+
+	outcome := &providerExecOutcome{
+		resp:               resp,
+		resolvedProviderID: result.Provider.ID,
+	}
+	switch format {
+	case providerpool.APIFormatAnthropic:
+		outcome.upstreamFormat = ProviderTypeAnthropic
+	case providerpool.APIFormatCloudCode:
+		outcome.upstreamFormat = ProviderTypeCloudCode
+	}
+	// Remember tool support on success
+	if hasTools {
+		ph.providerMemory.RememberToolCap(pid, burl, ToolCapNative)
+	}
+	outcome.resolvedProvider = result.Provider.Name
+	if outcome.resolvedProvider == "" {
+		outcome.resolvedProvider = result.Provider.ID
+	}
+	if result.Model != nil && result.Model.ID != "" {
+		outcome.resolvedModel = result.Model.ID
+	}
+	return outcome, nil
+}
+
+func (ph *ProxyHandler) applyProviderExecOutcome(ctx context.Context, pr *parsedRequest, out *providerExecOutcome) {
+	if out == nil {
+		return
+	}
+	pr.upstreamFormat = out.upstreamFormat
+	pr.resolvedProvider = out.resolvedProvider
+	pr.resolvedProviderID = out.resolvedProviderID
+	pr.resolvedModel = out.resolvedModel
+	if rr := getResolvedRoute(ctx); rr != nil {
+		rr.Provider = out.resolvedProvider
+		rr.ProviderID = out.resolvedProviderID
+		rr.Model = out.resolvedModel
+	}
+}
+
+func (ph *ProxyHandler) routeResultForCandidate(c *providerpool.RouteCandidate) *providerpool.RouteResult {
+	res := &providerpool.RouteResult{
+		Provider: c.Provider,
+		Model:    c.Model,
+	}
+	if ph.providerPool == nil || ph.providerPool.Registry == nil {
+		return res
+	}
+	if apiKey, err := ph.providerPool.Registry.GetAPIKey(c.Provider.ID); err == nil {
+		res.APIKey = apiKey
+	}
+	if res.APIKey == nil {
+		if oauthCfg, err := ph.providerPool.Registry.GetOAuthConfig(c.Provider.ID); err == nil {
+			res.OAuth = oauthCfg
+		}
+	}
+	return res
+}
+
+func (ph *ProxyHandler) executeWithProviderRace(
+	r *http.Request,
+	routeReq *providerpool.RouteRequest,
+	pr *parsedRequest,
+	hasTools bool,
+) (*providerExecOutcome, error) {
+	cfg := ph.getProviderRaceConfig()
+	if !cfg.Enabled || ph.providerPool == nil || ph.providerPool.Router == nil {
+		return nil, fmt.Errorf("provider race disabled")
+	}
+
+	primary, err := ph.providerPool.Router.Route(routeReq)
+	if err != nil {
+		return nil, err
+	}
+
+	candidates := make([]*providerpool.RouteCandidate, 0, 1+len(primary.Fallbacks))
+	candidates = append(candidates, &providerpool.RouteCandidate{
+		Provider: primary.Provider,
+		Model:    primary.Model,
+		Score:    1,
+	})
+	candidates = append(candidates, primary.Fallbacks...)
+	if len(candidates) < cfg.MinProviders {
+		return nil, fmt.Errorf("not enough providers for race")
+	}
+
+	raced := make([]*providerpool.RouteCandidate, 0, len(candidates))
+	sink := make([]*providerpool.RouteCandidate, 0, len(candidates))
+	for _, c := range candidates {
+		if ph.isProviderInRaceCooldown(c.Provider.ID) {
+			continue
+		}
+		stat := ph.getProviderRaceStat(c.Provider.ID)
+		if stat.Attempts >= cfg.EmptyRateMinSamples {
+			rate := float64(stat.EmptyRuns) / float64(stat.Attempts)
+			if cfg.EmptyRateExcludeThreshold > 0 && rate >= cfg.EmptyRateExcludeThreshold {
+				continue
+			}
+			if cfg.EmptyRateSinkThreshold > 0 && rate >= cfg.EmptyRateSinkThreshold {
+				sink = append(sink, c)
+				continue
+			}
+		}
+		raced = append(raced, c)
+	}
+	raced = append(raced, sink...)
+	if len(raced) < cfg.MinProviders {
+		return nil, fmt.Errorf("not enough eligible providers for race")
+	}
+	if len(raced) > cfg.MaxParallel {
+		raced = raced[:cfg.MaxParallel]
+	}
+
+	type raceResult struct {
+		providerID string
+		outcome    *providerExecOutcome
+		err        error
+		latency    time.Duration
+	}
+
+	raceCtx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	ch := make(chan raceResult, len(raced))
+	var wg sync.WaitGroup
+	for _, candidate := range raced {
+		wg.Add(1)
+		go func(c *providerpool.RouteCandidate) {
+			defer wg.Done()
+			start := timeutil.NowTime()
+			res := ph.routeResultForCandidate(c)
+			outcome, execErr := ph.executeOnRouteResult(r.Clone(raceCtx), res, pr, hasTools)
+			ch <- raceResult{
+				providerID: c.Provider.ID,
+				outcome:    outcome,
+				err:        execErr,
+				latency:    timeutil.SinceTime(start),
+			}
+		}(candidate)
+	}
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	var winner *providerExecOutcome
+	var firstErr error
+	tried := make([]string, 0, len(raced))
+	for item := range ch {
+		tried = append(tried, item.providerID)
+		if item.err == nil && item.outcome != nil && item.outcome.resp != nil {
+			ph.providerPool.Router.UpdateLatency(item.providerID, item.latency)
+			ph.providerPool.Router.RecordSuccess(item.providerID)
+			ph.recordProviderRaceAttempt(item.providerID, false)
+			if winner == nil {
+				winner = item.outcome
+				cancel()
+			} else {
+				item.outcome.resp.Body.Close()
+			}
+			continue
+		}
+		ph.providerPool.Router.UpdateLatency(item.providerID, item.latency*2)
+		ph.providerPool.Router.RecordFailure(item.providerID, item.err)
+		ph.recordProviderRaceAttempt(item.providerID, isEmptyRunError(item.err))
+		if firstErr == nil && item.err != nil {
+			firstErr = item.err
+		}
+	}
+	if winner != nil {
+		return winner, nil
+	}
+
+	// Race failed: continue serial failover on untried providers.
+	fallbackReq := *routeReq
+	fallbackReq.Exclude = append(append([]string{}, routeReq.Exclude...), tried...)
+	var serialWinner *providerExecOutcome
+	serialErr := ph.providerPool.Router.RouteWithFallback(r.Context(), &fallbackReq, func(result *providerpool.RouteResult) error {
+		out, execErr := ph.executeOnRouteResult(r, result, pr, hasTools)
+		if execErr != nil {
+			return execErr
+		}
+		serialWinner = out
+		return nil
+	})
+	if serialErr != nil {
+		if firstErr != nil {
+			return nil, firstErr
+		}
+		return nil, serialErr
+	}
+	if serialWinner == nil {
+		if firstErr != nil {
+			return nil, firstErr
+		}
+		return nil, ErrAllProvidersFailed
+	}
+	return serialWinner, nil
 }
 
 // ServeHTTP implements http.Handler.
@@ -642,101 +1109,66 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ph.setRouteHeaders(w, pr)
 	routingMode := ph.extractRoutingMode(r)
-	if slog.Default().Enabled(nil, slog.LevelDebug) {
-		slog.Debug("[proxy] routing request", "model", pr.model, "streaming", pr.streaming, "mode", routingMode, "body", string(pr.body))
-	}
+	slog.Info("[proxy] routing request body",
+		"model", pr.model,
+		"streaming", pr.streaming,
+		"mode", routingMode,
+		"body", ph.requestBodyForLog(pr.body),
+	)
 
 	routeReq := &providerpool.RouteRequest{
 		ModelID:             pr.model,
 		Mode:                providerpool.RoutingMode(routingMode),
 		PreferredProviderID: GetPinnedProvider(r.Context()),
 	}
+	pr.singleProvider = ph.isSingleProviderMode(routeReq.Mode)
 
 	// When the request includes tools, require providers that support function calling.
 	// This prevents routing to providers/models that would reject tool_calls.
 	hasTools := gjson.GetBytes(pr.body, "tools").Exists()
+	hasToolMessages := gjson.GetBytes(pr.body, "messages.#(role==\"tool\")").Exists() ||
+		gjson.GetBytes(pr.body, "messages.#.tool_calls.0").Exists()
 	if hasTools {
 		routeReq.RequireCap = &providerpool.ModelCapabilities{FunctionCall: true}
 	}
+	slog.Info("[proxy] route request",
+		"model", pr.model,
+		"mode", routeReq.Mode,
+		"preferred_provider", routeReq.PreferredProviderID,
+		"has_tools", hasTools,
+		"has_tool_messages", hasToolMessages,
+		"single_provider_mode", pr.singleProvider,
+	)
 
 	// Failover is enabled by default; only disabled when explicitly configured off
 	failoverDisabled := ph.failover != nil && ph.failover.Config() != nil && !ph.failover.Config().Enabled
 
 	var finalResp *http.Response
+	applyOutcome := func(out *providerExecOutcome) {
+		if out == nil {
+			return
+		}
+		ph.applyProviderExecOutcome(r.Context(), pr, out)
+		finalResp = out.resp
+	}
 	executeOnProvider := func(result *providerpool.RouteResult) error {
-		pid := result.Provider.ID
-		burl := result.Provider.BaseURL
-
-		// Tool cap check: skip providers known to not support function calling.
-		// This avoids wasting a round-trip on providers that will 422.
-		if hasTools {
-			if cap, ok := ph.providerMemory.RecallToolCap(pid, burl); ok && cap == ToolCapNone {
-				slog.Debug("[proxy] skipping provider (no tool support)", "provider", pid)
-				return fmt.Errorf("provider %s does not support tool calls", pid)
-			}
+		outcome, execErr := ph.executeOnRouteResult(r, result, pr, hasTools)
+		if execErr != nil {
+			return execErr
 		}
-
-		// Throttle check: skip provider if recently 429'd
-		if ph.providerMemory.IsThrottled(pid, burl) {
-			slog.Debug("[proxy] skipping throttled provider", "provider", pid)
-			return fmt.Errorf("provider %s is throttled", pid)
-		}
-
-		// Try all Model × Format combinations on this provider
-		resp, format, _, tryErr := ph.tryOnProvider(r, result, pr)
-		if tryErr != nil {
-			return tryErr
-		}
-		if resp == nil {
-			// All format/model combos failed. Do NOT infer ToolCapNone here —
-			// the failure may be caused by network issues, model not found, 404,
-			// etc., not by lack of tool support. Tool capability is only reliably
-			// determined by the warmToolCallSupport probe (422/400 on tool request).
-			return fmt.Errorf("provider %s returned no response", pid)
-		}
-
-		// For streaming responses, peek at the first bytes to detect empty streams.
-		// Some providers return HTTP 200 with an empty body or only "[DONE]".
-		// Detecting this early allows RouteWithFallback to try the next provider.
-		if pr.streaming && resp.Body != nil {
-			peekBuf := make([]byte, 32)
-			n, peekErr := resp.Body.Read(peekBuf)
-			if n == 0 || peekErr != nil {
-				resp.Body.Close()
-				slog.Warn("[proxy] streaming response body empty", "provider", pid, "error", peekErr)
-				return fmt.Errorf("provider %s returned empty streaming response", pid)
-			}
-			// Reconstruct body: peeked bytes + rest of original body
-			resp.Body = &peekReader{prefix: peekBuf[:n], rest: resp.Body}
-		}
-
-		if format == providerpool.APIFormatAnthropic {
-			pr.upstreamFormat = ProviderTypeAnthropic
-		}
-		// Remember tool support on success
-		if hasTools {
-			ph.providerMemory.RememberToolCap(pid, burl, ToolCapNative)
-		}
-		// Capture resolved provider/model for downstream headers
-		pr.resolvedProvider = result.Provider.Name
-		if pr.resolvedProvider == "" {
-			pr.resolvedProvider = result.Provider.ID
-		}
-		if result.Model != nil && result.Model.ID != "" {
-			pr.resolvedModel = result.Model.ID
-		}
-		// Also propagate via context for callers that can't read response headers
-		if rr := getResolvedRoute(r.Context()); rr != nil {
-			rr.Provider = pr.resolvedProvider
-			rr.ProviderID = result.Provider.ID
-			rr.Model = pr.resolvedModel
-		}
-		finalResp = resp
+		applyOutcome(outcome)
 		return nil
 	}
 
 	var err error
-	if failoverDisabled {
+	raceTried := false
+	if !failoverDisabled {
+		if outcome, raceErr := ph.executeWithProviderRace(r, routeReq, pr, hasTools); raceErr == nil {
+			applyOutcome(outcome)
+			raceTried = true
+		}
+	}
+	if finalResp == nil && failoverDisabled {
 		// Failover explicitly disabled: only try the primary provider
 		result, routeErr := ph.providerPool.Router.Route(routeReq)
 		if routeErr != nil {
@@ -744,8 +1176,28 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			err = executeOnProvider(result)
 		}
-	} else {
+	} else if finalResp == nil && !raceTried {
 		err = ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, executeOnProvider)
+	}
+
+	// Startup race: if no providers are available and the pool hasn't finished its
+	// initial model refresh, wait briefly and retry. This avoids 503s for requests
+	// that arrive before Pool.Start() completes the background model fetch.
+	if finalResp == nil && errors.Is(err, providerpool.ErrNoAvailableProvider) && !ph.providerPool.IsReady() {
+		slog.Info("[proxy] no providers yet, waiting for pool readiness", "model", pr.model)
+		if ph.providerPool.WaitReady(5 * time.Second) {
+			slog.Info("[proxy] pool ready, retrying route", "model", pr.model)
+			if failoverDisabled {
+				result, routeErr := ph.providerPool.Router.Route(routeReq)
+				if routeErr != nil {
+					err = routeErr
+				} else {
+					err = executeOnProvider(result)
+				}
+			} else {
+				err = ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, executeOnProvider)
+			}
+		}
 	}
 
 	// Retry with tools stripped: if all providers failed and the request had tools,
@@ -754,8 +1206,6 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Skip if no providers exist at all — stripping fields won't conjure providers.
 	// Skip if messages contain tool_calls or tool role — this is a tool round where
 	// stripping tools would leave orphaned tool_calls/tool_result, causing worse errors.
-	hasToolMessages := gjson.GetBytes(pr.body, "messages.#(role==\"tool\")").Exists() ||
-		gjson.GetBytes(pr.body, "messages.#.tool_calls.0").Exists()
 	if err != nil && hasTools && !hasToolMessages && !errors.Is(err, providerpool.ErrNoAvailableProvider) {
 		strippedBody := pr.body
 		if b, e := sjson.DeleteBytes(strippedBody, "tools"); e == nil {
@@ -808,7 +1258,15 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		slog.Error("[proxy] all providers failed", "model", pr.model, "error", err)
+		slog.Error("[proxy] all providers failed",
+			"model", pr.model,
+			"mode", routeReq.Mode,
+			"has_tools", hasTools,
+			"has_tool_messages", hasToolMessages,
+			"single_provider_mode", pr.singleProvider,
+			"preferred_provider", routeReq.PreferredProviderID,
+			"error", err,
+		)
 		// Propagate original status code so the bridge can distinguish
 		// non-retryable errors from transient server failures.
 		statusCode := http.StatusBadGateway
@@ -817,8 +1275,19 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, providerpool.ErrNoAvailableProvider) || strings.Contains(errMsg, "no available provider"):
 			// 503 = no provider can serve this model — retrying won't help.
 			statusCode = http.StatusServiceUnavailable
+		case strings.Contains(errMsg, "not configured on provider"):
+			// Model/endpoint mismatch is not transient; surface as client error
+			// so chat layer does not retry pre-content failures.
+			statusCode = http.StatusBadRequest
 		case strings.HasPrefix(errMsg, "upstream 400:"):
 			statusCode = http.StatusBadRequest
+		case strings.HasPrefix(errMsg, "provider returned "):
+			var upstreamStatus int
+			if _, scanErr := fmt.Sscanf(errMsg, "provider returned %d:", &upstreamStatus); scanErr == nil {
+				if upstreamStatus >= 400 && upstreamStatus < 500 {
+					statusCode = upstreamStatus
+				}
+			}
 		case strings.Contains(errMsg, "overloaded (529)"):
 			statusCode = 529
 		case strings.Contains(errMsg, "throttled (429)"):
@@ -830,9 +1299,8 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer finalResp.Body.Close()
 	slog.Debug("[proxy] upstream response", "status", finalResp.StatusCode, "streaming", pr.streaming, "content_type", finalResp.Header.Get("Content-Type"))
 
-	ph.copyResponse(w, finalResp, pr)
+	ph.copyResponse(w, finalResp, pr, r)
 }
-
 
 // routeRequest uses Provider Pool Router to select provider.
 func (ph *ProxyHandler) routeRequest(model string) (*providerpool.RouteResult, error) {
@@ -861,9 +1329,11 @@ func (ph *ProxyHandler) buildUpstreamRequest(r *http.Request, route *providerpoo
 func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *providerpool.RouteResult, body []byte, effectiveFormat providerpool.APIFormat) (*http.Request, error) {
 	provider := route.Provider
 
-	targetURL := provider.ParsedBaseURL()
+	// Use effective base URL (considers DetectedEndpoint)
+	effectiveBaseURL := provider.EffectiveBaseURL()
+	targetURL := provider.ParsedEffectiveBaseURL()
 	if targetURL == nil {
-		return nil, fmt.Errorf("invalid provider base URL: %s", provider.BaseURL)
+		return nil, fmt.Errorf("invalid provider base URL: %s", effectiveBaseURL)
 	}
 
 	// Copilot: use dynamic endpoint from token response if available
@@ -893,18 +1363,19 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	upstreamURL := *targetURL
 	requestPath := r.URL.Path
 
-	// Format conversion: if provider expects Anthropic format but request is OpenAI,
-	// convert body and switch path to /v1/messages.
-	if effectiveFormat == providerpool.APIFormatAnthropic && strings.HasSuffix(requestPath, "/chat/completions") {
-		converted, newPath, convErr := sharedConverter.ConvertRequestWithCaching(body, ProviderTypeAnthropic, ph.promptCacheEnabled.Load())
-		if convErr == nil {
-			body = converted
-			requestPath = newPath // "/v1/messages"
-			slog.Debug("[proxy] converted OpenAI→Anthropic format", "provider", provider.ID, "path", newPath)
-		} else {
-			slog.Warn("[proxy] format conversion failed, sending as-is", "provider", provider.ID, "error", convErr)
-		}
+	bridgeCtx := &UpstreamRequestBridgeContext{
+		Route:              route,
+		Provider:           provider,
+		EffectiveFormat:    effectiveFormat,
+		TargetURL:          targetURL,
+		RequestPath:        requestPath,
+		Body:               body,
+		PromptCacheEnabled: ph.promptCacheEnabled.Load(),
 	}
+	ph.applyUpstreamRequestBridges(bridgeCtx)
+	effectiveFormat = bridgeCtx.EffectiveFormat
+	requestPath = bridgeCtx.RequestPath
+	body = bridgeCtx.Body
 
 	if targetURL.Path != "" && targetURL.Path != "/" {
 		basePath := strings.TrimSuffix(targetURL.Path, "/")
@@ -942,10 +1413,28 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 				"provider", provider.ID, "final_path", finalPath)
 		}
 	}
+	if strings.HasSuffix(finalPath, "/responses") &&
+		gjson.GetBytes(body, "messages").Exists() {
+		converted, convErr := convertOpenAIChatCompletionsToResponses(body)
+		if convErr == nil {
+			body = converted
+			slog.Info("[proxy] URI fixup: endpoint is /responses, converted body to Responses",
+				"provider", provider.ID, "final_path", finalPath)
+		}
+	}
+	if endpointFormat, ok := detectEndpointFixedFormatFromPath(finalPath); ok {
+		effectiveFormat = endpointFormat
+	}
 	upstreamURL.RawQuery = r.URL.RawQuery
 
 	fullURL := upstreamURL.String()
 	slog.Debug("[proxy] upstream request", "url", fullURL, "method", r.Method, "format", effectiveFormat, "body_len", len(body))
+	slog.Info("[proxy] upstream request body",
+		"url", fullURL,
+		"method", r.Method,
+		"format", effectiveFormat,
+		"body", ph.requestBodyForLog(body),
+	)
 
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(body))
 	if err != nil {
@@ -954,6 +1443,27 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 
 	copyHeaders(req.Header, r.Header)
 	req.Host = targetURL.Host
+
+	// Copilot API requires Editor-Version header for IDE authentication
+	if provider.APIFormat == providerpool.APIFormatCopilot {
+		req.Header.Set("Editor-Version", "vscode/1.85.0")
+	}
+
+	// CloudCode API requires specific headers for Google Cloud Code
+	if effectiveFormat == providerpool.APIFormatCloudCode {
+		providerType := "antigravity"
+		if route.OAuth != nil && route.OAuth.ProviderType != "" {
+			providerType = route.OAuth.ProviderType
+		}
+		switch providerType {
+		case "antigravity":
+			req.Header.Set("User-Agent", "antigravity/1.0")
+			req.Header.Set("X-Goog-Api-Client", "google-cloud-sdk vscode_cloudshelleditor/0.1")
+		case "gemini-cli":
+			req.Header.Set("User-Agent", "google-api-nodejs-client/9.15.1")
+			req.Header.Set("X-Goog-Api-Client", "gl-node/22.17.0")
+		}
+	}
 
 	return req, nil
 }
@@ -965,7 +1475,23 @@ func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.Ro
 		return nil
 	}
 	pid := result.Provider.ID
-	burl := result.Provider.BaseURL
+	burl := result.Provider.EffectiveBaseURL()
+
+	// OAuth token handling for Copilot and CloudCode providers
+	apiKeyToUse := result.APIKey
+	if ph.oauthManager != nil {
+		if result.Provider.APIFormat == providerpool.APIFormatCopilot {
+			copilotToken, tokenErr := ph.oauthManager.GetCopilotAccessToken(result.Provider.ID)
+			if tokenErr == nil && copilotToken != "" {
+				apiKeyToUse = &providerpool.APIKey{Key: copilotToken}
+			}
+		} else if result.Provider.APIFormat == providerpool.APIFormatCloudCode {
+			accessToken, tokenErr := ph.oauthManager.GetAccessToken(result.Provider.ID)
+			if tokenErr == nil && accessToken != "" {
+				apiKeyToUse = &providerpool.APIKey{Key: accessToken}
+			}
+		}
+	}
 
 	for _, alias := range aliases {
 		aliasBody, err := sjson.SetBytes(pr.body, "model", alias)
@@ -975,7 +1501,7 @@ func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.Ro
 		slog.Debug("[proxy] trying model alias", "provider", pid, "original", failedModel, "alias", alias)
 
 		resp, probeErr := ph.authProber.ProbeAndForward(
-			result.Provider, result.APIKey,
+			result.Provider, apiKeyToUse, effectiveFormat,
 			func() (*http.Request, error) {
 				return ph.buildUpstreamRequestWithFormat(r, result, aliasBody, effectiveFormat)
 			},
@@ -1020,6 +1546,15 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 		return false
 	}
 
+	// 0. Endpoint-locked format (highest priority).
+	// If the provider base URL already points to a protocol-specific endpoint,
+	// lock to that family and avoid cross-format fallback probing.
+	if endpointFormat, ok := detectEndpointFixedFormat(burl); ok {
+		buf[n] = endpointFormat
+		n++
+		return buf, n, true
+	}
+
 	// 1. Persisted detected format (highest priority — survives restarts)
 	if provider.DetectedFormat != "" {
 		buf[n] = provider.DetectedFormat
@@ -1043,6 +1578,12 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 		n++
 	}
 
+	// Non-third-party providers should use a single canonical family.
+	// Custom/third-party relays may still need cross-family fallback.
+	if isSingleFormatProvider(provider) {
+		return buf, n, known
+	}
+
 	// 4. Infer format from base URL — if the URL hints at Anthropic, prefer it
 	if strings.HasSuffix(burl, "/messages") || strings.Contains(burl, "anthropic") {
 		if !has(providerpool.APIFormatAnthropic) {
@@ -1052,17 +1593,12 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 	}
 
 	// 5. Remaining formats — skip cross-family fallbacks for providers that
-	// definitively only support one API family. Copilot and Ollama will never
-	// serve /v1/messages; trying Anthropic format wastes a round-trip and can
-	// cause spurious model blacklisting. Generic OpenAI providers may actually
-	// be Anthropic-compatible relays, so we still try both for them.
+	// definitively only support one API family. Copilot, CloudCode, and Ollama
+	// should stay single-format; probing OpenAI/Anthropic alternates just adds
+	// guaranteed 404s and noisy mismatch logs.
 	switch provider.APIFormat {
-	case providerpool.APIFormatCopilot, providerpool.APIFormatOllama:
-		// Single-family providers — only add OpenAI as fallback
-		if !has(providerpool.APIFormatOpenAI) {
-			buf[n] = providerpool.APIFormatOpenAI
-			n++
-		}
+	case providerpool.APIFormatCopilot, providerpool.APIFormatCloudCode, providerpool.APIFormatOllama, providerpool.APIFormatResponses:
+		// Single-family providers: no cross-format fallback.
 	default:
 		// All other providers (including generic openai, anthropic, cloudcode, unknown)
 		// — try both families as fallback
@@ -1075,6 +1611,49 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 	}
 
 	return buf, n, known
+}
+
+// detectEndpointFixedFormat infers API format from endpoint-specific base URLs.
+// Returns (format, true) only when the path itself implies a fixed protocol family.
+func detectEndpointFixedFormat(raw string) (providerpool.APIFormat, bool) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", false
+	}
+	return detectEndpointFixedFormatFromPath(u.Path)
+}
+
+func detectEndpointFixedFormatFromPath(path string) (providerpool.APIFormat, bool) {
+	path = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(path)), "/")
+	switch {
+	case strings.HasSuffix(path, "/responses"):
+		return providerpool.APIFormatResponses, true
+	case strings.HasSuffix(path, "/messages"), strings.HasSuffix(path, "/anthropic"):
+		return providerpool.APIFormatAnthropic, true
+	default:
+		return "", false
+	}
+}
+
+func isSingleFormatProvider(provider *providerpool.Provider) bool {
+	if provider == nil {
+		return false
+	}
+	switch provider.APIFormat {
+	case providerpool.APIFormatCopilot, providerpool.APIFormatCloudCode, providerpool.APIFormatOllama, providerpool.APIFormatResponses:
+		return true
+	}
+	// Explicitly custom providers are third-party and can need format probing/fallback.
+	if provider.Type == providerpool.ProviderTypeCustom || strings.HasPrefix(provider.ID, "custom-") {
+		return false
+	}
+	// For known non-custom provider types, keep a single format.
+	switch provider.Type {
+	case providerpool.ProviderTypeBuiltin, providerpool.ProviderTypePlatform, providerpool.ProviderTypeIDE, providerpool.ProviderTypeTrial, providerpool.ProviderTypeACP, providerpool.ProviderTypeMedia:
+		return true
+	}
+	// Unknown/empty type: keep legacy cross-family fallback behavior.
+	return false
 }
 
 // persistDetectedFormat saves the detected API format to the provider for persistence across restarts.
@@ -1090,6 +1669,25 @@ func (ph *ProxyHandler) persistDetectedFormat(provider *providerpool.Provider, f
 		go func(p *providerpool.Provider) {
 			if err := ph.providerPool.Registry.Update(p); err != nil {
 				slog.Warn("[proxy] failed to persist detected format", "provider", p.ID, "format", format, "error", err)
+			}
+		}(provider)
+	}
+}
+
+// persistDetectedEndpoint saves the detected endpoint to the provider for persistence across restarts.
+// This is called when an alternate base URL works (e.g., international endpoint instead of China).
+// Only updates if the endpoint changed, to avoid unnecessary writes.
+func (ph *ProxyHandler) persistDetectedEndpoint(provider *providerpool.Provider, endpoint string) {
+	if provider.DetectedEndpoint == endpoint {
+		return // already persisted
+	}
+	provider.DetectedEndpoint = endpoint
+	provider.ResetParsedURL() // Invalidate cached parsed URL
+	if ph.providerPool != nil && ph.providerPool.Registry != nil {
+		// Async persist — don't block the request path on DB write
+		go func(p *providerpool.Provider) {
+			if err := ph.providerPool.Registry.Update(p); err != nil {
+				slog.Warn("[proxy] failed to persist detected endpoint", "provider", p.ID, "endpoint", endpoint, "error", err)
 			}
 		}(provider)
 	}
@@ -1111,10 +1709,124 @@ func (ph *ProxyHandler) clearDetectedFormat(provider *providerpool.Provider) {
 	}
 }
 
-// allModelsForProvider returns model candidates to try for a provider.
+// tryEndpointFallback attempts to find a working endpoint by trying alternate base URLs
+// when the primary endpoint fails with auth error (401/403).
+// Returns (response, format used, model used, error).
+// If an alternate endpoint works, it persists the new endpoint.
+func (ph *ProxyHandler) tryEndpointFallback(
+	r *http.Request,
+	result *providerpool.RouteResult,
+	pr *parsedRequest,
+	formatsBuf [4]providerpool.APIFormat,
+	nFormats int,
+	modelsBuf [8]string,
+	nModels int,
+	originalErr error,
+) (*http.Response, providerpool.APIFormat, string, error) {
+	provider := result.Provider
+	pid := provider.ID
+
+	// Check if provider has alternate URLs to try
+	if len(provider.AlternateBaseURLs) == 0 {
+		slog.Info("[proxy] endpoint fallback skipped: no alternate URLs", "provider", provider.ID)
+		return nil, "", "", originalErr
+	}
+
+	// Don't retry if we've already tried an alternate (avoid infinite loop)
+	// This is indicated by DetectedEndpoint being set to a non-primary URL
+	isAlternate := false
+	for _, alt := range provider.AlternateBaseURLs {
+		if provider.EffectiveBaseURL() == alt {
+			isAlternate = true
+			break
+		}
+	}
+	if isAlternate {
+		slog.Info("[proxy] endpoint fallback skipped: already on alternate", "provider", provider.ID, "url", provider.EffectiveBaseURL())
+		return nil, "", "", originalErr
+	}
+
+	slog.Info("[proxy] endpoint auth failed, trying alternate endpoints",
+		"provider", pid, "primary", provider.EffectiveBaseURL(), "alternates", provider.AlternateBaseURLs, "error", originalErr)
+
+	// Try each alternate endpoint
+	for _, altURL := range provider.AlternateBaseURLs {
+		slog.Info("[proxy] === trying alternate endpoint ===", "provider", pid, "url", altURL, "nModels", nModels, "nFormats", nFormats)
+
+		// Temporarily set the endpoint
+		oldDetected := provider.DetectedEndpoint
+		provider.DetectedEndpoint = altURL
+		provider.ResetParsedURL()
+		slog.Info("[proxy] set DetectedEndpoint", "provider", pid, "new", altURL, "effective", provider.EffectiveBaseURL())
+
+		// Try the request with this endpoint
+		for mi := 0; mi < nModels; mi++ {
+			model := modelsBuf[mi]
+			for fi := 0; fi < nFormats; fi++ {
+				format := formatsBuf[fi]
+				slog.Info("[proxy] trying model/format combo", "provider", pid, "model", model, "format", format)
+
+				// Build body with this model
+				forwardBody := pr.body
+				if model != pr.model {
+					if newBody, err := sjson.SetBytes(pr.body, "model", model); err == nil {
+						forwardBody = newBody
+					}
+				}
+
+				apiKeyToUse := result.APIKey
+				resp, probeErr := ph.probeWithRetry(
+					r.Context(),
+					provider,
+					apiKeyToUse,
+					format,
+					func() (*http.Request, error) {
+						return ph.buildUpstreamRequestWithFormat(r, result, forwardBody, format)
+					},
+					func(req *http.Request) (*http.Response, error) {
+						if provider.SkipTLSVerify {
+							return ph.connPool.GetInsecureClient(provider.Name).Do(req)
+						}
+						return ph.connPool.GetClient(provider.Name).Do(req)
+					},
+				)
+
+				if probeErr != nil {
+					// Auth failed again, try next format/model
+					slog.Info("[proxy] alternate probe failed", "provider", pid, "model", model, "format", format, "error", probeErr)
+					continue
+				}
+
+				if resp.StatusCode < 400 {
+					// Success! Persist this endpoint
+					slog.Info("[proxy] alternate endpoint worked, persisting",
+						"provider", pid, "endpoint", altURL, "format", format, "model", model)
+					ph.persistDetectedEndpoint(provider, altURL)
+					ph.providerMemory.RememberFormat(pid, altURL, string(format))
+					ph.persistDetectedFormat(provider, format)
+					if model != pr.model {
+						ph.providerMemory.RememberModelAlias(pid, altURL, pr.model, model)
+					}
+					return resp, format, model, nil
+				}
+
+				// Non-auth error (e.g., 400, 404), try next
+				resp.Body.Close()
+			}
+		}
+
+		// This alternate failed, restore and try next
+		provider.DetectedEndpoint = oldDetected
+		provider.ResetParsedURL()
+	}
+
+	// All alternates failed, return original error
+	return nil, "", "", originalErr
+}
+
 // Remembered alias first, then original model, then ModelAliases.
 // Uses stack-allocated array for the common case (≤8 candidates).
-func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, routedModel string) ([8]string, int) {
+func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, routedModel string, ignoreBlacklist bool) ([8]string, int) {
 	var buf [8]string
 	n := 0
 
@@ -1136,21 +1848,21 @@ func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, ro
 
 	// 1. Remembered alias (highest priority)
 	if alias, ok := ph.providerMemory.RecallModelAlias(pid, burl, originalModel); ok {
-		if !ph.providerMemory.IsModelBlacklisted(pid, burl, alias) {
+		if ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, alias) {
 			add(alias)
 		}
 	}
 
 	// 2. Routed model (from provider pool)
 	if routedModel != "" && !has(routedModel) {
-		if !ph.providerMemory.IsModelBlacklisted(pid, burl, routedModel) {
+		if ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, routedModel) {
 			add(routedModel)
 		}
 	}
 
 	// 3. Original model (skip empty — happens when "auto" is normalized to "")
 	if originalModel != "" && !has(originalModel) {
-		if !ph.providerMemory.IsModelBlacklisted(pid, burl, originalModel) {
+		if ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, originalModel) {
 			add(originalModel)
 		}
 	}
@@ -1158,7 +1870,7 @@ func (ph *ProxyHandler) allModelsForProvider(pid, burl, originalModel string, ro
 	// 4. ModelAliases
 	if aliases, ok := ModelAliases[originalModel]; ok {
 		for _, alias := range aliases {
-			if !has(alias) && !ph.providerMemory.IsModelBlacklisted(pid, burl, alias) {
+			if !has(alias) && (ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, alias)) {
 				add(alias)
 			}
 		}
@@ -1178,16 +1890,49 @@ func (ph *ProxyHandler) tryOnProvider(
 	pr *parsedRequest,
 ) (*http.Response, providerpool.APIFormat, string, error) {
 	pid := result.Provider.ID
-	burl := result.Provider.BaseURL
+	burl := result.Provider.EffectiveBaseURL()
 
 	routedModel := ""
 	if result.Model != nil && result.Model.ID != pr.model {
 		routedModel = result.Model.ID
 	}
 
+	// Copilot special handling: get JWT token if provider uses OAuth
+	// The token needs to be fetched fresh for each request as it may expire
+	apiKeyToUse := result.APIKey
+
+	// OAuth token handling for Copilot and CloudCode providers
+	if ph.oauthManager != nil {
+		if result.Provider.APIFormat == providerpool.APIFormatCopilot {
+			// Copilot requires exchanging GitHub OAuth token for a Copilot-specific JWT
+			copilotToken, tokenErr := ph.oauthManager.GetCopilotAccessToken(result.Provider.ID)
+			if tokenErr == nil && copilotToken != "" {
+				apiKeyToUse = &providerpool.APIKey{Key: copilotToken}
+				slog.Debug("[proxy] using Copilot JWT token", "provider", pid)
+			} else if tokenErr != nil {
+				slog.Warn("[proxy] failed to get Copilot token, falling back to stored key", "provider", pid, "error", tokenErr)
+			}
+		} else if result.Provider.APIFormat == providerpool.APIFormatCloudCode {
+			// CloudCode (Antigravity/Gemini CLI) requires OAuth access token
+			accessToken, tokenErr := ph.oauthManager.GetAccessToken(result.Provider.ID)
+			if tokenErr == nil && accessToken != "" {
+				apiKeyToUse = &providerpool.APIKey{Key: accessToken}
+				slog.Debug("[proxy] using CloudCode OAuth token", "provider", pid)
+			} else if tokenErr != nil {
+				slog.Warn("[proxy] failed to get CloudCode token, falling back to stored key", "provider", pid, "error", tokenErr)
+			}
+		}
+	}
+
 	formatsBuf, nFormats, formatKnown := ph.allFormatsForProvider(pid, burl, result.Provider)
 	allFormats := nFormats // remember full count before truncation
-	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, pr.model, routedModel)
+	if endpointFormat, ok := detectEndpointFixedFormatFromPath(r.URL.Path); ok {
+		formatsBuf[0] = endpointFormat
+		nFormats = 1
+		allFormats = 1
+		formatKnown = true
+	}
+	modelsBuf, nModels := ph.allModelsForProvider(pid, burl, pr.model, routedModel, pr.singleProvider)
 
 	slog.Debug("[proxy] tryOnProvider setup",
 		"provider", pid, "nModels", nModels, "nFormats", nFormats,
@@ -1213,84 +1958,133 @@ func (ph *ProxyHandler) tryOnProvider(
 	if nModels == 1 && nFormats == 1 && modelsBuf[0] == pr.model {
 		format := formatsBuf[0]
 		fastPathTriedFormat = format
-		slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", pr.model)
-		resp, probeErr := ph.probeWithRetry(
-			r.Context(),
-			result.Provider,
-			result.APIKey,
-			func() (*http.Request, error) {
-				return ph.buildUpstreamRequestWithFormat(r, result, pr.body, format)
-			},
-			func(req *http.Request) (*http.Response, error) {
-				if result.Provider.SkipTLSVerify {
-					return ph.connPool.GetInsecureClient(result.Provider.Name).Do(req)
+		for upstreamAttempt := 0; ; upstreamAttempt++ {
+			slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", pr.model)
+			resp, probeErr := ph.probeWithRetry(
+				r.Context(),
+				result.Provider,
+				apiKeyToUse,
+				format,
+				func() (*http.Request, error) {
+					return ph.buildUpstreamRequestWithFormat(r, result, pr.body, format)
+				},
+				func(req *http.Request) (*http.Response, error) {
+					if result.Provider.SkipTLSVerify {
+						return ph.connPool.GetInsecureClient(result.Provider.Name).Do(req)
+					}
+					return ph.connPool.GetClient(result.Provider.Name).Do(req)
+				},
+			)
+			if probeErr != nil {
+				if errors.Is(probeErr, context.Canceled) || errors.Is(probeErr, context.DeadlineExceeded) {
+					return nil, "", "", probeErr
 				}
-				return ph.connPool.GetClient(result.Provider.Name).Do(req)
-			},
-		)
-		if probeErr != nil {
-			return nil, "", "", probeErr
-		}
-		if resp.StatusCode < 400 {
-			ph.providerMemory.RememberFormat(pid, burl, string(format))
-			ph.persistDetectedFormat(result.Provider, format)
-			return resp, format, pr.model, nil
-		}
-		// Read error body and close response before deciding what to do
-		errBody := readErrorBody(resp.Body)
-		resp.Body.Close()
-		statusCode := resp.StatusCode
+				// Try endpoint fallback when auth is exhausted
+				hasKey := result.APIKey != nil && result.APIKey.Key != ""
+				slog.Info("[proxy] fast path probe error, trying endpoint fallback",
+					"provider", pid, "model", pr.model, "format", format, "error", probeErr,
+					"baseURL", result.Provider.BaseURL, "effectiveURL", result.Provider.EffectiveBaseURL(),
+					"hasKey", hasKey, "keyLen", len(result.APIKey.Key), "alternates", result.Provider.AlternateBaseURLs)
+				if len(result.Provider.AlternateBaseURLs) > 0 {
+					resp, fmt, mdl, err := ph.tryEndpointFallback(
+						r, result, pr, formatsBuf, nFormats, modelsBuf, nModels, probeErr,
+					)
+					if err == nil {
+						slog.Info("[proxy] fast path endpoint fallback succeeded", "provider", pid)
+						return resp, fmt, mdl, nil
+					}
+					slog.Info("[proxy] fast path endpoint fallback failed", "provider", pid, "error", err)
+				}
+				return nil, "", "", probeErr
+			}
+			if resp.StatusCode < 400 {
+				ph.providerMemory.RememberFormat(pid, burl, string(format))
+				ph.persistDetectedFormat(result.Provider, format)
+				return resp, format, pr.model, nil
+			}
+			// Read error body and close response before deciding what to do
+			errBody := readErrorBody(resp.Body)
+			resp.Body.Close()
+			statusCode := resp.StatusCode
+			if shouldRetryTransientUpstream5xx(pr.singleProvider, statusCode, errBody, upstreamAttempt) {
+				delay := transientUpstreamRetryDelay(upstreamAttempt)
+				slog.Warn("[proxy] transient upstream 5xx, retrying in single-provider mode",
+					"provider", pid, "status", statusCode, "attempt", upstreamAttempt+1, "delay", delay)
+				select {
+				case <-r.Context().Done():
+					return nil, "", "", r.Context().Err()
+				case <-time.After(delay):
+				}
+				continue
+			}
 
-		// Format mismatch on fast path — expand to all formats and fall through to general loop.
-		// Exception: when format is already known, a 404 is likely model-not-found (e.g. Copilot
-		// returns "page not found" for unknown models), not a format issue.
-		if allFormats > 1 && isFormatMismatchError(statusCode, errBody) && !(formatKnown && statusCode == 404) {
-			errStr := string(errBody)
-			if len(errStr) > 256 {
-				errStr = errStr[:256]
-			}
-			slog.Warn("[proxy] format mismatch on fast path, expanding to all formats",
-				"provider", pid, "format", format, "model", pr.model)
-			ph.providerMemory.ForgetFormat(pid, burl)
-			ph.clearDetectedFormat(result.Provider)
-			nFormats = allFormats
-			lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
-			// Fall through to general loop which will try remaining formats
-		} else if allFormats <= 1 {
-			// Only one format available and it failed — handle error inline
-			// since the general loop would skip this already-tried combo.
-			errStr := string(errBody)
-			if len(errStr) > 256 {
-				errStr = errStr[:256]
-			}
-			if statusCode == http.StatusTooManyRequests {
-				retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
-				ph.providerMemory.RememberThrottle(pid, burl, retryAfter)
-				return nil, "", "", fmt.Errorf("provider %s throttled (429)", pid)
-			}
-			if statusCode == 529 {
-				ph.providerMemory.RememberThrottle(pid, burl, 30*time.Second)
-				return nil, "", "", fmt.Errorf("provider %s overloaded (529)", pid)
-			}
-			if statusCode >= 500 {
-				return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
-			}
-			if isFormatMismatchError(statusCode, errBody) && !(formatKnown && statusCode == 404) {
+			// Format mismatch on fast path — expand to all formats and fall through to general loop.
+			// Exception: when format is already known, a 404 is likely model-not-found (e.g. Copilot
+			// returns "page not found" for unknown models), not a format issue.
+			if allFormats > 1 && isFormatMismatchError(statusCode, errBody) && !(formatKnown && statusCode == 404) {
+				errStr := string(errBody)
+				if len(errStr) > 256 {
+					errStr = errStr[:256]
+				}
+				slog.Warn("[proxy] format mismatch on fast path, expanding to all formats",
+					"provider", pid, "format", format, "model", pr.model)
+				ph.providerMemory.ForgetFormat(pid, burl)
+				ph.clearDetectedFormat(result.Provider)
+				nFormats = allFormats
+				lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
+				// Fall through to general loop which will try remaining formats
+			} else if allFormats <= 1 {
+				// Only one format available and it failed — handle error inline
+				// since the general loop would skip this already-tried combo.
+				errStr := string(errBody)
+				if len(errStr) > 256 {
+					errStr = errStr[:256]
+				}
+				if statusCode == http.StatusTooManyRequests {
+					retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+					if !pr.singleProvider {
+						ph.providerMemory.RememberThrottle(pid, burl, retryAfter)
+					}
+					return nil, "", "", fmt.Errorf("provider %s throttled (429)", pid)
+				}
+				if statusCode == 529 {
+					if !pr.singleProvider {
+						ph.providerMemory.RememberThrottle(pid, burl, 30*time.Second)
+					}
+					return nil, "", "", fmt.Errorf("provider %s overloaded (529)", pid)
+				}
+				if statusCode >= 500 {
+					// 5xx: server error, skip entire provider
+					errMsg := errStr
+					if len(errMsg) > 500 {
+						errMsg = errMsg[:500]
+					}
+					slog.Warn("[proxy] upstream 5xx error",
+						"provider", pid, "status", statusCode, "error", errMsg)
+					return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
+				}
+				if isFormatMismatchError(statusCode, errBody) && !(formatKnown && statusCode == 404) {
+					return nil, "", "", fmt.Errorf("provider returned %d: %s", statusCode, errStr)
+				}
+				if isModelNotConfiguredError(statusCode, errBody) || (formatKnown && statusCode == 404) {
+					if !pr.singleProvider {
+						ph.providerMemory.BlacklistModel(pid, burl, pr.model)
+					}
+					return nil, "", "", fmt.Errorf("model %s not configured on provider %s: %s", pr.model, pid, errStr)
+				}
+				// Auth errors — don't blacklist model
+				if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden ||
+					(statusCode == http.StatusBadRequest && isAuthRelatedBody(errBody)) {
+					return nil, "", "", fmt.Errorf("provider %s auth error (%d): %s", pid, statusCode, errStr)
+				}
+				if !pr.singleProvider {
+					ph.providerMemory.BlacklistModel(pid, burl, pr.model)
+				}
 				return nil, "", "", fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 			}
-			if isModelNotConfiguredError(statusCode, errBody) || (formatKnown && statusCode == 404) {
-				ph.providerMemory.BlacklistModel(pid, burl, pr.model)
-				return nil, "", "", fmt.Errorf("model %s not configured on provider %s: %s", pr.model, pid, errStr)
-			}
-			// Auth errors — don't blacklist model
-			if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden ||
-				(statusCode == http.StatusBadRequest && isAuthRelatedBody(errBody)) {
-				return nil, "", "", fmt.Errorf("provider %s auth error (%d): %s", pid, statusCode, errStr)
-			}
-			ph.providerMemory.BlacklistModel(pid, burl, pr.model)
-			return nil, "", "", fmt.Errorf("provider returned %d: %s", statusCode, errStr)
+			// else: format expanded, fall through to general loop
+			break
 		}
-		// else: format expanded, fall through to general loop
 	}
 
 	for mi := 0; mi < nModels; mi++ {
@@ -1314,23 +2108,76 @@ func (ph *ProxyHandler) tryOnProvider(
 			formatsTried++
 			slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", model)
 
-			resp, probeErr := ph.probeWithRetry(
-				r.Context(),
-				result.Provider,
-				result.APIKey,
-				func() (*http.Request, error) {
-					return ph.buildUpstreamRequestWithFormat(r, result, forwardBody, format)
-				},
-				func(req *http.Request) (*http.Response, error) {
-					if result.Provider.SkipTLSVerify {
-						return ph.connPool.GetInsecureClient(result.Provider.Name).Do(req)
+			var resp *http.Response
+			var probeErr error
+			var preReadStatusCode int
+			var preReadErrBody []byte
+			var preReadRetryAfter string
+			for upstreamAttempt := 0; ; upstreamAttempt++ {
+				resp, probeErr = ph.probeWithRetry(
+					r.Context(),
+					result.Provider,
+					apiKeyToUse,
+					format,
+					func() (*http.Request, error) {
+						return ph.buildUpstreamRequestWithFormat(r, result, forwardBody, format)
+					},
+					func(req *http.Request) (*http.Response, error) {
+						if result.Provider.SkipTLSVerify {
+							return ph.connPool.GetInsecureClient(result.Provider.Name).Do(req)
+						}
+						return ph.connPool.GetClient(result.Provider.Name).Do(req)
+					},
+				)
+				if probeErr != nil {
+					break
+				}
+				if resp.StatusCode < 400 {
+					break
+				}
+				errBody := readErrorBody(resp.Body)
+				preReadRetryAfter = resp.Header.Get("Retry-After")
+				resp.Body.Close()
+				if shouldRetryTransientUpstream5xx(pr.singleProvider, resp.StatusCode, errBody, upstreamAttempt) {
+					delay := transientUpstreamRetryDelay(upstreamAttempt)
+					slog.Warn("[proxy] transient upstream 5xx, retrying in single-provider mode",
+						"provider", pid, "status", resp.StatusCode, "attempt", upstreamAttempt+1, "delay", delay)
+					select {
+					case <-r.Context().Done():
+						return nil, "", "", r.Context().Err()
+					case <-time.After(delay):
 					}
-					return ph.connPool.GetClient(result.Provider.Name).Do(req)
-				},
-			)
+					continue
+				}
+				preReadStatusCode = resp.StatusCode
+				preReadErrBody = errBody
+				break
+			}
 			if probeErr != nil {
 				lastErr = probeErr
 				allFormatsMismatch = false
+				if errors.Is(probeErr, context.Canceled) || errors.Is(probeErr, context.DeadlineExceeded) {
+					return nil, "", "", probeErr
+				}
+
+				// Try endpoint fallback when auth is exhausted (all auth strategies failed)
+				// This handles the case where the API key works with a different endpoint
+				hasKey := result.APIKey != nil && result.APIKey.Key != ""
+				slog.Info("[proxy] probe error, trying endpoint fallback",
+					"provider", pid, "model", model, "format", format, "error", probeErr,
+					"baseURL", result.Provider.BaseURL, "effectiveURL", result.Provider.EffectiveBaseURL(),
+					"hasKey", hasKey, "keyLen", len(result.APIKey.Key), "alternates", result.Provider.AlternateBaseURLs)
+				if len(result.Provider.AlternateBaseURLs) > 0 {
+					resp, fmt, mdl, err := ph.tryEndpointFallback(
+						r, result, pr, formatsBuf, nFormats, modelsBuf, nModels, probeErr,
+					)
+					if err == nil {
+						slog.Info("[proxy] endpoint fallback succeeded", "provider", pid)
+						return resp, fmt, mdl, nil
+					}
+					slog.Info("[proxy] endpoint fallback failed", "provider", pid, "error", err)
+				}
+
 				continue
 			}
 
@@ -1346,31 +2193,45 @@ func (ph *ProxyHandler) tryOnProvider(
 			}
 
 			// Handle error — use lightweight reader for small error bodies
-			statusCode := resp.StatusCode
-			errBody := readErrorBody(resp.Body)
-			resp.Body.Close()
+			statusCode := preReadStatusCode
+			errBody := preReadErrBody
+			if statusCode == 0 {
+				statusCode = resp.StatusCode
+				errBody = readErrorBody(resp.Body)
+				preReadRetryAfter = resp.Header.Get("Retry-After")
+				resp.Body.Close()
+			}
 			errStr := string(errBody)
 			if len(errStr) > 256 {
 				errStr = errStr[:256]
 			}
 
 			if statusCode == http.StatusTooManyRequests {
-				retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
-				ph.providerMemory.RememberThrottle(pid, burl, retryAfter)
+				retryAfter := parseRetryAfter(preReadRetryAfter)
+				if !pr.singleProvider {
+					ph.providerMemory.RememberThrottle(pid, burl, retryAfter)
+				}
 				return nil, "", "", fmt.Errorf("provider %s throttled (429)", pid)
 			}
 
 			// 529: Anthropic "overloaded" — treat like 429, fast-fail without retry.
 			// The model/provider is temporarily at capacity; retrying wastes time.
 			if statusCode == 529 {
-				ph.providerMemory.RememberThrottle(pid, burl, 30*time.Second)
+				if !pr.singleProvider {
+					ph.providerMemory.RememberThrottle(pid, burl, 30*time.Second)
+				}
 				slog.Warn("[proxy] upstream overloaded (529), fast-fail", "provider", pid, "model", model)
 				return nil, "", "", fmt.Errorf("provider %s overloaded (529)", pid)
 			}
 
 			if statusCode >= 500 {
 				// 5xx: server error, skip entire provider
-				slog.Warn("[proxy] upstream 5xx", "provider", pid, "status", statusCode)
+				errMsg := errStr
+				if len(errMsg) > 500 {
+					errMsg = errMsg[:500]
+				}
+				slog.Warn("[proxy] upstream 5xx error",
+					"provider", pid, "status", statusCode, "error", errMsg)
 				return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
 			}
 
@@ -1404,7 +2265,9 @@ func (ph *ProxyHandler) tryOnProvider(
 				slog.Warn("[proxy] model not configured on provider, blacklisting and trying next",
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
 				// Blacklist THIS model on THIS provider (per-provider scope) so we don't retry it
-				ph.providerMemory.BlacklistModel(pid, burl, model)
+				if !pr.singleProvider {
+					ph.providerMemory.BlacklistModel(pid, burl, model)
+				}
 				lastErr = fmt.Errorf("model %s not configured on provider %s: %s", model, pid, errStr)
 				allFormatsMismatch = false
 				// Skip remaining formats for this model — if model isn't configured,
@@ -1428,13 +2291,29 @@ func (ph *ProxyHandler) tryOnProvider(
 				(statusCode == http.StatusBadRequest && isAuthRelatedBody(errBody)) {
 				slog.Warn("[proxy] auth error, skipping provider",
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
+
+				// Try endpoint fallback when auth fails
+				// This will try alternate base URLs if available
+				if len(result.Provider.AlternateBaseURLs) > 0 {
+					resp, fmt, mdl, err := ph.tryEndpointFallback(
+						r, result, pr, formatsBuf, nFormats, modelsBuf, nModels,
+						fmt.Errorf("provider %s auth error (%d): %s", pid, statusCode, errStr),
+					)
+					if err == nil {
+						return resp, fmt, mdl, nil
+					}
+					// Endpoint fallback failed, continue with original error
+				}
+
 				return nil, "", "", fmt.Errorf("provider %s auth error (%d): %s", pid, statusCode, errStr)
 			}
 
 			// Other 4xx: blacklist this model on this provider, try next model/format
 			slog.Warn("[proxy] 4xx, trying next combination",
 				"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
-			ph.providerMemory.BlacklistModel(pid, burl, model)
+			if !pr.singleProvider {
+				ph.providerMemory.BlacklistModel(pid, burl, model)
+			}
 			lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 			allFormatsMismatch = false
 		}
@@ -1517,9 +2396,11 @@ func isModelNotConfiguredBody(body []byte) bool {
 // doesn't match what the provider expects (e.g. OpenAI body sent to Anthropic endpoint).
 var formatMismatchPatterns = [][]byte{
 	[]byte("unsupported request"),
+	[]byte("unsupported legacy protocol"),
 	[]byte("bad_response_status_code"),
 	[]byte("openai_error"),
 	[]byte("invalid request format"),
+	[]byte("please use /v1/responses"),
 	[]byte("unexpected content type"),
 }
 
@@ -1528,14 +2409,16 @@ var formatMismatchPatterns = [][]byte{
 // could be an unsupported parameter, missing field, or other validation failure.
 var formatMismatch422Patterns = [][]byte{
 	[]byte("unsupported request"),
+	[]byte("unsupported legacy protocol"),
 	[]byte("bad_response_status_code"),
 	[]byte("openai_error"),
 	[]byte("invalid request format"),
+	[]byte("please use /v1/responses"),
 	[]byte("unexpected content type"),
 	[]byte("malformed"),
-	[]byte("unknown field"),          // wrong schema fields
-	[]byte("unexpected field"),       // wrong schema fields
-	[]byte("additional properties"),  // JSON schema validation — wrong format
+	[]byte("unknown field"),         // wrong schema fields
+	[]byte("unexpected field"),      // wrong schema fields
+	[]byte("additional properties"), // JSON schema validation — wrong format
 }
 
 // isFormatMismatchError returns true if the error indicates a request format mismatch
@@ -1546,15 +2429,27 @@ var formatMismatch422Patterns = [][]byte{
 // a 404 "page not found" is more likely a model-not-found error (e.g. GitHub Copilot
 // returns generic 404 for unknown models) than a format mismatch.
 func isFormatMismatchError(statusCode int, body []byte) bool {
-	if statusCode != 400 && statusCode != 404 && statusCode != 422 {
-		return false
-	}
-	// If the body mentions model-not-configured, it's NOT a format mismatch —
-	// even on 422. Let isModelNotConfiguredError handle it.
-	if isModelNotConfiguredBody(body) {
+	if statusCode != 400 && statusCode != 404 && statusCode != 422 && statusCode != 502 {
 		return false
 	}
 	lower := toLowerBytes(body)
+
+	// Explicit protocol/format mismatch signals should win even when the body
+	// also includes broad "not supported"/"not configured" wording.
+	containsFormatPattern := false
+	for _, pattern := range formatMismatchPatterns {
+		if bytes.Contains(lower, pattern) {
+			containsFormatPattern = true
+			break
+		}
+	}
+
+	// Some relays normalize upstream 400/404 protocol mismatches into 502.
+	// Only treat 502 as format mismatch when the body has explicit evidence.
+	if statusCode == 502 {
+		return containsFormatPattern
+	}
+
 	// For 422: require body evidence of format mismatch. A bare 422 without
 	// recognizable patterns is more likely a parameter validation error (e.g.
 	// unsupported tool format, unknown model) than a format mismatch.
@@ -1563,11 +2458,20 @@ func isFormatMismatchError(statusCode int, body []byte) bool {
 			// Empty body 422 — ambiguous, treat as format mismatch for safety
 			return true
 		}
+		if isModelNotConfiguredBody(body) && !containsFormatPattern {
+			return false
+		}
 		for _, pattern := range formatMismatch422Patterns {
 			if bytes.Contains(lower, pattern) {
 				return true
 			}
 		}
+		return false
+	}
+
+	// If the body mentions model-not-configured and there is no explicit
+	// format mismatch marker, it's not a format mismatch.
+	if isModelNotConfiguredBody(body) && !containsFormatPattern {
 		return false
 	}
 	// For 404: a short "page not found" / "not found" body (without model-specific
@@ -1579,12 +2483,7 @@ func isFormatMismatchError(statusCode int, body []byte) bool {
 		}
 	}
 	// For 400/404, check body for format-related patterns
-	for _, pattern := range formatMismatchPatterns {
-		if bytes.Contains(lower, pattern) {
-			return true
-		}
-	}
-	return false
+	return containsFormatPattern
 }
 
 // authRelatedPatterns are body patterns indicating an authentication/authorization
@@ -1649,14 +2548,31 @@ func parseRetryAfter(val string) time.Duration {
 	return 30 * time.Second
 }
 
+// shouldLogUpstreamRequestBody enables full upstream request body logging for
+// temporary debugging. Set env ZIMA_PROXY_LOG_UPSTREAM_BODY=1 (or true/yes/on)
+// to log every upstream attempt, including retries/fallbacks.
+func (ph *ProxyHandler) shouldLogUpstreamRequestBody() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("ZIMA_PROXY_LOG_UPSTREAM_BODY")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+func (ph *ProxyHandler) requestBodyForLog(body []byte) string {
+	if ph.dataMasker != nil && ph.dataMasker.IsEnabled() {
+		return string(ph.dataMasker.MaskRequestBytes(body))
+	}
+	return string(body)
+}
+
 // forwardToProvider forwards the request to upstream provider.
 // Deprecated: use buildUpstreamRequest + AuthProber.ProbeAndForward instead.
 func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.RouteResult) (*http.Response, error) {
 	provider := route.Provider
 
-	targetURL := provider.ParsedBaseURL()
+	// Use effective base URL (considers DetectedEndpoint)
+	effectiveBaseURL := provider.EffectiveBaseURL()
+	targetURL := provider.ParsedEffectiveBaseURL()
 	if targetURL == nil {
-		return nil, fmt.Errorf("invalid provider base URL: %s", provider.BaseURL)
+		return nil, fmt.Errorf("invalid provider base URL: %s", effectiveBaseURL)
 	}
 
 	// Build upstream URL - avoid duplicate path segments
@@ -1775,8 +2691,13 @@ func (ph *ProxyHandler) handleModels(w http.ResponseWriter, r *http.Request) {
 
 // copyResponse copies response headers and body to the client.
 // Uses pre-parsed request data to avoid redundant JSON parsing.
-func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response, pr *parsedRequest) {
+func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response, pr *parsedRequest, r *http.Request) {
 	copyHeaders(w.Header(), resp.Header)
+	upstreamPath := ""
+	if resp.Request != nil && resp.Request.URL != nil {
+		upstreamPath = strings.TrimSuffix(resp.Request.URL.Path, "/")
+	}
+	isResponsesEndpoint := strings.HasSuffix(upstreamPath, "/responses")
 
 	// Inject actual provider/model so the bridge can propagate them to chat handler
 	if pr.resolvedProvider != "" {
@@ -1790,23 +2711,38 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(resp.StatusCode)
 
-		// If upstream returned Anthropic SSE, convert to OpenAI SSE
-		if pr.upstreamFormat == ProviderTypeAnthropic {
-			if err := sharedConverter.ConvertStreamingResponse(resp.Body, ProviderTypeAnthropic, w); err != nil {
-				slog.Warn("[proxy] anthropic stream conversion error", "error", err)
+		// If upstream returned non-OpenAI SSE, convert to OpenAI SSE.
+		if pr.upstreamFormat == ProviderTypeAnthropic || pr.upstreamFormat == ProviderTypeCloudCode {
+			reader := io.Reader(resp.Body)
+			var upstreamCapture bytes.Buffer
+			if pr.upstreamFormat == ProviderTypeAnthropic && resp.StatusCode == http.StatusOK {
+				reader = io.TeeReader(resp.Body, &upstreamCapture)
+			}
+			if err := sharedConverter.ConvertStreamingResponse(reader, pr.upstreamFormat, w); err != nil {
+				slog.Warn("[proxy] stream conversion error", "source", pr.upstreamFormat, "error", err)
+			}
+			if pr.upstreamFormat == ProviderTypeAnthropic && upstreamCapture.Len() > 0 {
+				ph.recordPromptCacheFromSSE(pr, upstreamCapture.Bytes())
 			}
 			return
 		}
 
-		ph.copyStreamingResponseWithCapture(w, resp, false)
+		needCapture := ph.shouldCaptureSessionUsage(r)
+		captured := ph.copyStreamingResponseWithCapture(w, resp, needCapture)
+		if needCapture {
+			tokensIn, tokensOut := parseUsageTokensFromSSE(captured)
+			ph.updateSessionUsage(r, pr, tokensIn, tokensOut, resp.StatusCode < http.StatusBadRequest)
+		}
 		return
 	}
 
 	// Fast path: no conversion, masking, or routing stats needed — stream directly.
-	needsConversion := pr.upstreamFormat == ProviderTypeAnthropic && resp.StatusCode == http.StatusOK
+	needsConversion := (pr.upstreamFormat == ProviderTypeAnthropic || pr.upstreamFormat == ProviderTypeCloudCode) && resp.StatusCode == http.StatusOK
+	needsResponsesCompat := isResponsesEndpoint && resp.StatusCode == http.StatusOK
 	needsMasking := ph.dataMasker != nil && ph.dataMasker.IsEnabled()
 	needsRoutingStats := resp.StatusCode == http.StatusOK && pr.originalModel != pr.model
-	if !needsConversion && !needsMasking && !needsRoutingStats {
+	needsSessionUsage := ph.shouldCaptureSessionUsage(r)
+	if !needsConversion && !needsResponsesCompat && !needsMasking && !needsRoutingStats && !needsSessionUsage {
 		w.WriteHeader(resp.StatusCode)
 		io.Copy(w, resp.Body)
 		return
@@ -1818,9 +2754,20 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 		return
 	}
 
-	// Convert non-streaming Anthropic response to OpenAI format
 	if pr.upstreamFormat == ProviderTypeAnthropic && resp.StatusCode == http.StatusOK {
-		if converted, convErr := sharedConverter.ConvertResponse(respBody, ProviderTypeAnthropic); convErr == nil {
+		ph.recordPromptCacheFromBody(pr, respBody)
+	}
+
+	// Convert non-streaming non-OpenAI response to OpenAI format.
+	if (pr.upstreamFormat == ProviderTypeAnthropic || pr.upstreamFormat == ProviderTypeCloudCode) && resp.StatusCode == http.StatusOK {
+		if converted, convErr := sharedConverter.ConvertResponse(respBody, pr.upstreamFormat); convErr == nil {
+			respBody = converted
+		}
+	}
+	// Convert Responses API payload to chat-completions payload when request routing
+	// went through a /responses endpoint.
+	if isResponsesEndpoint && resp.StatusCode == http.StatusOK {
+		if converted, convErr := convertResponsesToOpenAIChatCompletions(respBody); convErr == nil {
 			respBody = converted
 		}
 	}
@@ -1838,9 +2785,151 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 	if resp.StatusCode == http.StatusOK && pr.originalModel != pr.model {
 		ph.routingStats.Record(pr.originalModel, pr.model, respBody)
 	}
+	if needsSessionUsage {
+		inTokens, outTokens := parseUsageTokens(respBody)
+		ph.updateSessionUsage(r, pr, int64(inTokens), int64(outTokens), resp.StatusCode < http.StatusBadRequest)
+	}
 
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)
+}
+
+func (ph *ProxyHandler) shouldCaptureSessionUsage(r *http.Request) bool {
+	if ph.providerPool != nil && ph.providerPool.UsageTracker != nil {
+		return true
+	}
+	return ph.sessionMonitor != nil && SessionIDFromContext(r.Context()) != ""
+}
+
+func (ph *ProxyHandler) updateSessionUsage(r *http.Request, pr *parsedRequest, tokensIn, tokensOut int64, success bool) {
+	model := pr.resolvedModel
+	if model == "" {
+		model = pr.model
+	}
+
+	if ph.sessionMonitor != nil {
+		sessionID := SessionIDFromContext(r.Context())
+		if sessionID != "" {
+			provider := pr.resolvedProvider
+			ph.sessionMonitor.UpdateSession(sessionID, provider, model, tokensIn, tokensOut)
+		}
+	}
+
+	if ph.providerPool != nil && ph.providerPool.UsageTracker != nil {
+		providerID := pr.resolvedProviderID
+		if providerID == "" {
+			// Fallback for non-standard paths; provider ID is preferred for aggregation keys.
+			providerID = pr.resolvedProvider
+		}
+		if providerID != "" {
+			ph.providerPool.UsageTracker.RecordRequest(providerID, model, tokensIn, tokensOut, 0, success)
+		}
+	}
+}
+
+func parseUsageTokensFromSSE(data []byte) (int64, int64) {
+	if len(data) == 0 {
+		return 0, 0
+	}
+	chunks := parseSSEChunks(data)
+	for i := len(chunks) - 1; i >= 0; i-- {
+		usage, ok := chunks[i]["usage"]
+		if !ok || usage == nil {
+			continue
+		}
+		asMap, ok := usage.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		return usageMapTokens(asMap)
+	}
+	return 0, 0
+}
+
+func (ph *ProxyHandler) recordPromptCacheFromBody(pr *parsedRequest, body []byte) {
+	if len(body) == 0 || ph.promptCacheStats == nil {
+		return
+	}
+	usage := gjson.GetBytes(body, "usage")
+	if !usage.Exists() {
+		return
+	}
+	input := usage.Get("input_tokens").Int()
+	cacheRead := usage.Get("cache_read_input_tokens").Int()
+	cacheCreation := usage.Get("cache_creation_input_tokens").Int()
+	ph.recordPromptCache(pr, input, cacheRead, cacheCreation)
+}
+
+func (ph *ProxyHandler) recordPromptCacheFromSSE(pr *parsedRequest, data []byte) {
+	if len(data) == 0 || ph.promptCacheStats == nil {
+		return
+	}
+	chunks := parseSSEChunks(data)
+	for i := len(chunks) - 1; i >= 0; i-- {
+		usage, ok := chunks[i]["usage"]
+		if !ok || usage == nil {
+			continue
+		}
+		asMap, ok := usage.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		input := getIntField(asMap, "input_tokens")
+		cacheRead := getIntField(asMap, "cache_read_input_tokens")
+		cacheCreation := getIntField(asMap, "cache_creation_input_tokens")
+		ph.recordPromptCache(pr, input, cacheRead, cacheCreation)
+		return
+	}
+}
+
+func (ph *ProxyHandler) recordPromptCache(pr *parsedRequest, input, cacheRead, cacheCreation int64) {
+	if ph.promptCacheStats == nil {
+		return
+	}
+	if input == 0 && cacheRead == 0 && cacheCreation == 0 {
+		return
+	}
+	ph.promptCacheStats.Record(int(input), int(cacheRead), int(cacheCreation))
+
+	provider := pr.resolvedProvider
+	if provider == "" {
+		provider = pr.resolvedProviderID
+	}
+	model := pr.resolvedModel
+	if model == "" {
+		model = pr.model
+	}
+	LogTokenChurn(provider, model, int(input), int(cacheRead), int(cacheCreation))
+}
+
+func usageMapTokens(usage map[string]interface{}) (int64, int64) {
+	prompt := getIntField(usage, "prompt_tokens")
+	completion := getIntField(usage, "completion_tokens")
+	if prompt > 0 || completion > 0 {
+		return prompt, completion
+	}
+	return getIntField(usage, "input_tokens"), getIntField(usage, "output_tokens")
+}
+
+func getIntField(m map[string]interface{}, key string) int64 {
+	v, ok := m[key]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		return int64(n)
+	case float32:
+		return int64(n)
+	case int:
+		return int64(n)
+	case int64:
+		return n
+	case int32:
+		return int64(n)
+	default:
+		return 0
+	}
 }
 
 // copyStreamingResponseWithCapture streams SSE to client while capturing raw data.
@@ -2171,4 +3260,15 @@ func stripVersionPrefix(path string) string {
 		return "/"
 	}
 	return path[i:] // e.g. "/chat/completions"
+}
+
+// isResponsesEndpointBaseURL reports whether a provider base URL already targets
+// a fixed responses endpoint path (e.g. /backend-api/codex/responses).
+func isResponsesEndpointBaseURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	path := strings.TrimSuffix(u.Path, "/")
+	return path != "" && strings.HasSuffix(path, "/responses")
 }

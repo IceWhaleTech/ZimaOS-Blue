@@ -121,6 +121,42 @@ func TestCompactMarkdown_UserTemplate(t *testing.T) {
 	}
 }
 
+func TestMarkdownToText_StripsMarkdownSyntax(t *testing.T) {
+	input := `# Title
+
+## Section
+- [x] done item
+- [ ] pending item
+1. first step
+2) second step
+> quoted line
+[link text](https://example.com) and ![img alt](https://example.com/a.png)
+`
+	got := MarkdownToText(input)
+	want := "Title\n\nSection\ndone item\npending item\nfirst step\nsecond step\nquoted line\nlink text and img alt"
+	if got != want {
+		t.Errorf("markdown to text:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+func TestMarkdownToText_CollapsesBlankLinesAndFences(t *testing.T) {
+	input := "A\n\n\n```go\nfmt.Println(\"x\")\n```\n\n\nB"
+	got := MarkdownToText(input)
+	want := "A\n\nfmt.Println(\"x\")\n\nB"
+	if got != want {
+		t.Errorf("fences/blank lines:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+func TestMarkdownToTextMinimal_CollapsesAllWhitespace(t *testing.T) {
+	input := "# Title\n\n- item one\n- item two\n\n`code`\n"
+	got := MarkdownToTextMinimal(input)
+	want := "Title item one item two code"
+	if got != want {
+		t.Errorf("minimal mode:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
 func TestEstimateTokens_ASCII(t *testing.T) {
 	got := EstimateTokens("hello world test")
 	// 16 chars / 4 = 4

@@ -56,8 +56,21 @@ func TestConvertRequestToAnthropic(t *testing.T) {
 		t.Fatalf("Failed to unmarshal: %v", err)
 	}
 
-	if anthropicReq.System != "You are helpful." {
-		t.Errorf("System = %s, want 'You are helpful.'", anthropicReq.System)
+	switch s := anthropicReq.System.(type) {
+	case string:
+		if s != "You are helpful." {
+			t.Errorf("System = %q, want 'You are helpful.'", s)
+		}
+	case []interface{}:
+		if len(s) != 1 {
+			t.Fatalf("System blocks = %d, want 1", len(s))
+		}
+		block, _ := s[0].(map[string]interface{})
+		if block == nil || block["text"] != "You are helpful." {
+			t.Errorf("System block text = %v, want 'You are helpful.'", block["text"])
+		}
+	default:
+		t.Fatalf("unexpected System type: %T", anthropicReq.System)
 	}
 	if len(anthropicReq.Messages) != 1 {
 		t.Errorf("Messages count = %d, want 1", len(anthropicReq.Messages))

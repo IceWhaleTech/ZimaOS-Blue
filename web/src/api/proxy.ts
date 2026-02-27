@@ -164,6 +164,16 @@ export interface FailoverConfig {
   quota_cooldown: number
   error_classification: { enabled: boolean }
   streaming_anomaly: { enabled: boolean }
+  provider_race?: {
+    enabled?: boolean
+    max_parallel?: number
+    min_providers?: number
+    empty_rate_min_samples?: number
+    empty_rate_cooldown_threshold?: number
+    empty_rate_sink_threshold?: number
+    empty_rate_exclude_threshold?: number
+    empty_rate_cooldown?: number
+  }
 }
 
 // API functions
@@ -247,6 +257,8 @@ export const proxyApi = {
 
   // Failover
   getFailoverConfig: () => apiClient.get<FailoverConfig>('/proxy/failover/config'),
+  updateFailoverConfig: (config: Partial<FailoverConfig>) =>
+    apiClient.put<FailoverConfig>('/proxy/failover/config', config),
 
   // Security Alerts (aggregated from guard stats)
   getSecurityAlerts: async (): Promise<{ data: SecurityAlert[] }> => {

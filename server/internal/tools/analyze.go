@@ -71,10 +71,6 @@ func (t *AnalyzeTool) Definition() ToolDefinition {
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"action": map[string]interface{}{
-					"type":        "string",
-					"description": "Action: analyze (gather data from URLs/search + generate report), analyze_text (analyze provided text only)",
-				},
 				"topic": map[string]interface{}{
 					"type":        "string",
 					"description": "Analysis topic / report title. Must accurately reflect the user's request, in the user's language.",
@@ -86,7 +82,7 @@ func (t *AnalyzeTool) Definition() ToolDefinition {
 				},
 				"text": map[string]interface{}{
 					"type":        "string",
-					"description": "Direct text content to analyze (for analyze_text action)",
+					"description": "Direct text content to include in analysis",
 				},
 				"search_queries": map[string]interface{}{
 					"type":        "array",
@@ -98,17 +94,13 @@ func (t *AnalyzeTool) Definition() ToolDefinition {
 					"description": "Output language (default: zh-CN). Examples: zh-CN, en-US",
 				},
 			},
-			"required": []string{"action", "topic"},
+			"required": []string{"topic"},
 		},
 	}
 }
 
 // Execute runs the analysis pipeline.
 func (t *AnalyzeTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	action, _ := args["action"].(string)
-	if action == "" {
-		return nil, errors.New("action is required")
-	}
 	topic, _ := args["topic"].(string)
 	if topic == "" {
 		return nil, errors.New("topic is required")
@@ -129,18 +121,7 @@ func (t *AnalyzeTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return nil, errors.New("LLM bridge not available — cannot analyze")
 	}
 
-	switch action {
-	case "analyze":
-		return t.runFullAnalysis(ctx, topic, args, lang, bridge, browser, executor, mediaDir)
-	case "analyze_text":
-		text, _ := args["text"].(string)
-		if text == "" {
-			return nil, errors.New("text is required for analyze_text")
-		}
-		return t.runTextAnalysis(ctx, topic, text, lang, bridge, mediaDir)
-	default:
-		return nil, fmt.Errorf("invalid action: %s (valid: analyze, analyze_text)", action)
-	}
+	return t.runFullAnalysis(ctx, topic, args, lang, bridge, browser, executor, mediaDir)
 }
 
 // runFullAnalysis gathers data from URLs/search, then generates a report.
@@ -155,14 +136,6 @@ func (t *AnalyzeTool) runFullAnalysis(ctx context.Context, topic string, args ma
 	emitAnalyzeProgress(ctx, "data_collection", "Gathering data", "success")
 
 	return t.analyzeAndGenerate(ctx, topic, rawContent, lang, bridge, mediaDir)
-}
-
-// runTextAnalysis analyzes provided text directly.
-func (t *AnalyzeTool) runTextAnalysis(ctx context.Context, topic, text, lang string, bridge LLMBridge, mediaDir string) (interface{}, error) {
-	if len(text) > analyzeMaxTextLen {
-		text = text[:analyzeMaxTextLen]
-	}
-	return t.analyzeAndGenerate(ctx, topic, text, lang, bridge, mediaDir)
 }
 
 // analyzeAndGenerate runs the LLM analysis pipeline and generates HTML.

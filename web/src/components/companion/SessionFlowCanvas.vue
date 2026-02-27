@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SessionEvent } from '@/api/companion'
+import { sanitizeCompanionPreview } from '@/utils/companionSanitize'
 
 const { t } = useI18n()
 
@@ -29,6 +30,7 @@ const offsetY = ref(0)
 const isDragging = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
 const hoveredNode = ref<SessionEvent | null>(null)
+const resizeObserverRef = ref<ResizeObserver | null>(null)
 
 // Node dimensions
 const NODE_WIDTH = 360
@@ -85,26 +87,40 @@ const nodes = computed<CanvasNode[]>(() => {
 const canvasWidth = ref(800)
 const canvasHeight = ref(600)
 
-// Content dimensions based on nodes
-const _contentWidth = computed(() => NODE_WIDTH + NODE_MARGIN_X * 2)
-const _contentHeight = computed(() => {
-  if (nodes.value.length === 0) return 400
-  return nodes.value.length * (NODE_HEIGHT + NODE_MARGIN_Y) + NODE_MARGIN_Y
+const contentWidth = computed(() => NODE_MARGIN_X * 2 + NODE_WIDTH)
+const contentHeight = computed(() => {
+  if (nodes.value.length === 0) {
+    return 420
+  }
+  return NODE_MARGIN_Y * 2 + nodes.value.length * NODE_HEIGHT + (nodes.value.length - 1) * NODE_MARGIN_Y + 96
 })
+
+function updateCanvasSize(rect?: DOMRectReadOnly) {
+  const container = containerRef.value
+  if (!container && !rect) return
+  const containerWidth = rect?.width ?? container?.clientWidth ?? 0
+  const containerHeight = rect?.height ?? container?.clientHeight ?? 0
+  canvasWidth.value = Math.max(containerWidth, contentWidth.value, 600)
+  canvasHeight.value = Math.max(containerHeight, contentHeight.value, 420)
+}
+
+function sanitizeLabel(input: unknown, maxLen = 52): string {
+  return sanitizeCompanionPreview(input, maxLen, true)
+}
 
 // Helper functions
 function getNodeLabel(event: SessionEvent): string {
   switch (event.event_type) {
     case 'message_received':
-      return event.message?.content?.substring(0, 40) || t('companion.eventType.message_received')
+      return sanitizeLabel(event.message?.content, 52) || t('companion.eventType.message_received')
     case 'message_sent':
-      return event.message?.content?.substring(0, 40) || t('companion.eventType.message_sent')
+      return sanitizeLabel(event.message?.content, 52) || t('companion.eventType.message_sent')
     case 'tool_call':
-      return event.tool_call?.toolName || t('companion.eventType.tool_call')
+      return sanitizeLabel(event.tool_call?.toolName, 48) || t('companion.eventType.tool_call')
     case 'llm_request':
-      return `${event.llm_request?.provider || 'LLM'}: ${event.llm_request?.model || t('companion.eventType.llm_request')}`
+      return sanitizeLabel(`${event.llm_request?.provider || 'LLM'}: ${event.llm_request?.model || t('companion.eventType.llm_request')}`, 52)
     case 'security_threat':
-      return `${t('companion.eventType.security_threat')}: ${event.security?.threatTypes?.join(', ') || ''}`
+      return sanitizeLabel(`${t('companion.eventType.security_threat')}: ${event.security?.threatTypes?.join(', ') || ''}`, 52)
     case 'session_start':
       return t('companion.eventType.session_start')
     case 'session_end':
@@ -122,7 +138,10 @@ function getNodeSubtitle(event: SessionEvent): string {
     case 'message_sent':
       return t('companion.nodes.chars', { count: event.message?.content?.length || 0 })
     case 'tool_call':
-      return event.tool_call?.status || ''
+      return sanitizeLabel(
+        event.tool_call?.outputPreview || event.tool_call?.inputPreview || event.tool_call?.status || '',
+        56
+      )
     case 'llm_request':
       return t('companion.nodes.tokens', { count: event.llm_request?.totalTokens || 0 })
     case 'security_threat':
@@ -208,7 +227,7 @@ function drawNode(ctx: CanvasRenderingContext2D, node: CanvasNode, isSelected: b
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
   const label = getNodeLabel(event)
-  const truncatedLabel = label.length > 30 ? label.substring(0, 30) + '...' : label
+  const truncatedLabel = label.length > 36 ? label.substring(0, 36) + '...' : label
   ctx.fillText(truncatedLabel, x + 48, y + 14)
 
   // Subtitle
@@ -420,10 +439,7 @@ onMounted(() => {
   const canvas = canvasRef.value
   const container = containerRef.value
   if (canvas && container) {
-    // Set canvas size to fill container
-    const rect = container.getBoundingClientRect()
-    canvasWidth.value = Math.max(rect.width, 600)
-    canvasHeight.value = Math.max(rect.height, 400)
+    updateCanvasSize(container.getBoundingClientRect())
 
     canvas.addEventListener('mousedown', handleMouseDown)
     canvas.addEventListener('mousemove', handleMouseMove)
@@ -433,19 +449,21 @@ onMounted(() => {
     canvas.addEventListener('wheel', handleWheel, { passive: false })
 
     // Handle resize
-    const resizeObserver = new ResizeObserver((entries) => {
+    resizeObserverRef.value = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        canvasWidth.value = Math.max(entry.contentRect.width, 600)
-        canvasHeight.value = Math.max(entry.contentRect.height, 400)
+        updateCanvasSize(entry.contentRect)
         draw()
       }
     })
-    resizeObserver.observe(container)
+    resizeObserverRef.value.observe(container)
   }
   draw()
 })
 
 onUnmounted(() => {
+  resizeObserverRef.value?.disconnect()
+  resizeObserverRef.value = null
+
   const canvas = canvasRef.value
   if (canvas) {
     canvas.removeEventListener('mousedown', handleMouseDown)
@@ -461,6 +479,7 @@ onUnmounted(() => {
 watch([() => props.events, () => props.selectedEventId], () => {
   // Use requestAnimationFrame for smoother rendering
   requestAnimationFrame(() => {
+    updateCanvasSize()
     nextTick(draw)
   })
 })
@@ -479,11 +498,11 @@ watch(() => props.events.length, (newLen, oldLen) => {
 </script>
 
 <template>
-  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg">
+  <div ref="containerRef" class="session-flow-canvas relative w-full h-full overflow-auto bg-gray-50 dark:bg-gray-700 rounded-lg">
     <!-- Canvas fills container -->
     <canvas
       ref="canvasRef"
-      class="cursor-grab active:cursor-grabbing absolute inset-0"
+      class="cursor-grab active:cursor-grabbing block"
       :width="canvasWidth"
       :height="canvasHeight"
     />
@@ -589,7 +608,5 @@ watch(() => props.events.length, (newLen, oldLen) => {
 
 canvas {
   display: block;
-  width: 100%;
-  height: 100%;
 }
 </style>

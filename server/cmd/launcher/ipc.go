@@ -33,19 +33,10 @@ type ipcResponse struct {
 	Data   map[string]string `json:"data,omitempty"`
 }
 
-// knownLocalCmds lists commands that must run inside .bluecli (not IPC-able).
-// Note: help, status, health are handled by tryFastCmd in cli.go.
-var knownLocalCmds = map[string]bool{
-	"version": true, "doctor": true,
-	"config": true, "models": true, "plugins": true, "skills": true,
-	"sessions": true, "cron": true, "logs": true, "media": true,
-	"complete-bootstrap": true, "gateway": true, "remind": true,
-}
-
 // tryIPC attempts to handle a CLI invocation via direct IPC to the running
-// server. Returns true if the command was handled (caller should exit).
-// Returns false if IPC is not applicable (known local cmd, no args, or
-// server unreachable) — caller should fall back to exec .bluecli.
+// server. Returns true when positional command args are present, even on IPC
+// errors, to prevent launcher fallback to exec .bluecli for command invocations.
+// Returns false only when IPC is not applicable (e.g. no subcommand).
 func tryIPC(args []string) bool {
 	// Parse global flags, collect positional args (mirrors cliDispatch logic)
 	var positional []string
@@ -72,28 +63,26 @@ func tryIPC(args []string) bool {
 	}
 
 	cmd := positional[0]
-	if knownLocalCmds[cmd] {
-		return false // known local command → need exec .bluecli
-	}
-
-	// Unknown command → try IPC
 	rest := positional[1:]
 	params := parseIPCArgs(rest)
 
 	conn, err := dialSock()
 	if err != nil {
-		return false // server not running → fall back to exec
+		fmt.Fprintf(os.Stdout, "Error: cannot connect to running Blue service (IPC unavailable): %v\n", err)
+		os.Exit(1)
 	}
 	defer conn.Close()
 
 	conn.SetDeadline(time.Now().Add(25 * time.Second))
 
 	if err := writeMsg(conn, &ipcRequest{Cmd: cmd, Params: params}); err != nil {
-		return false
+		fmt.Fprintf(os.Stdout, "Error: IPC write failed: %v\n", err)
+		os.Exit(1)
 	}
 	resp, err := readMsg(conn)
 	if err != nil {
-		return false
+		fmt.Fprintf(os.Stdout, "Error: IPC read failed: %v\n", err)
+		os.Exit(1)
 	}
 
 	if resp.Status != "ok" {

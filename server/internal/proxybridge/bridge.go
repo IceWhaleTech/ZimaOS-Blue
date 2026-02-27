@@ -212,26 +212,43 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 
 	var scanErr error
 	var chunkCount int
+	var nonSSELines []string // capture non-SSE lines for error diagnostics
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "data: ") {
-			// SSE comments (lines starting with ':') are keep-alive heartbeats — silently ignore.
-			// E.g. OpenRouter sends ": OPENROUTER PROCESSING" during model warm-up.
-			if line == "" || strings.HasPrefix(line, ":") {
-				continue
-			}
-			// Log other non-SSE lines — these may contain error messages from proxy handler
-			slog.Warn("[bridge] non-SSE line from proxy", "line", line, "model", req.Model)
+		if line == "" || strings.HasPrefix(line, ":") {
+			// SSE comments/blank lines are keep-alive heartbeats or frame separators.
 			continue
 		}
-		chunkCount++
-		payload := strings.TrimPrefix(line, "data: ")
+		if strings.HasPrefix(line, "event:") || strings.HasPrefix(line, "id:") || strings.HasPrefix(line, "retry:") {
+			// Standard SSE control fields can precede data lines (e.g. Responses API emits `event:`).
+			continue
+		}
+		if !strings.HasPrefix(line, "data:") {
+			// Log truly non-SSE lines — these may contain error messages from proxy handler.
+			slog.Warn("[bridge] non-SSE line from proxy", "line", line, "model", req.Model)
+			nonSSELines = append(nonSSELines, line)
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data:")
+		if len(payload) > 0 && payload[0] == ' ' {
+			payload = payload[1:]
+		}
+		if payload == "" {
+			continue
+		}
 		chunk, done, parseErr := ParseSSEChunk(payload)
 		if parseErr != nil {
 			// Fix #7: Log malformed SSE instead of silently dropping
 			slog.Warn("bridge: malformed SSE chunk", "error", parseErr, "payload_len", len(payload))
 			continue
 		}
+		// Ignore metadata/no-op events that carry no delta, tool call, usage, or terminal state.
+		// Responses API emits many bookkeeping events (created/added/done) that should not
+		// trigger downstream callback invocations.
+		if !done && chunk.Delta == "" && chunk.Error == "" && len(chunk.ToolCalls) == 0 && chunk.Usage == nil {
+			continue
+		}
+		chunkCount++
 		// Inject actual provider/model from the resolved route (set by proxy handler
 		// via context before any data is written to the pipe, so it's safe to read here).
 		// IMPORTANT: Always prefer resolved.Model over chunk.Model. The upstream
@@ -266,7 +283,8 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	if scanErr == nil {
 		scanErr = scanner.Err()
 	}
-	if chunkCount == 0 {
+	zeroChunks := chunkCount == 0
+	if zeroChunks {
 		slog.Error("[bridge] stream ended with zero chunks", "model", req.Model, "scan_err", scanErr)
 	}
 
@@ -279,9 +297,24 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 		slog.Error("[bridge] handler error after stream", "error", handlerErr, "chunks", chunkCount, "model", req.Model)
 	}
 
-	// Prefer handler-level errors (HTTP 4xx/5xx) over scan errors
+	// Prefer handler-level errors (HTTP 4xx/5xx) over scan errors.
+	// Enrich ProxyError with non-SSE body lines captured during scanning so that
+	// callers (e.g. IsNoProvider, IsClientError) can inspect the error body.
 	if handlerErr != nil {
+		if pe, ok := handlerErr.(*ProxyError); ok && pe.Body == "" && len(nonSSELines) > 0 {
+			pe.Body = strings.Join(nonSSELines, "\n")
+		}
 		return handlerErr
+	}
+
+	// A 200 stream that never emitted a parsable SSE chunk is a protocol failure.
+	// Surface it as an error so callers can retry/fail instead of silently succeeding.
+	if zeroChunks {
+		body := strings.Join(nonSSELines, "\n")
+		if body == "" {
+			body = "stream ended with zero chunks"
+		}
+		return &ProxyError{StatusCode: http.StatusBadGateway, Body: body}
 	}
 
 	// Propagate resolved route back to caller if they provided one

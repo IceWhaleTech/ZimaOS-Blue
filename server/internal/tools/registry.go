@@ -46,7 +46,7 @@ type Registry struct {
 	mu       sync.RWMutex
 	tools    map[string]Tool
 	disabled map[string]Tool // disabled tools (still registered, but hidden from Definitions/List)
-	version  uint64         // incremented on every mutation (Register/Disable/Enable)
+	version  uint64          // incremented on every mutation (Register/Disable/Enable)
 }
 
 // NewRegistry creates a new tool registry.
@@ -200,30 +200,511 @@ func (e *Executor) Execute(ctx context.Context, name string, args map[string]int
 
 // ExecuteJSON runs a tool by name with JSON-encoded arguments.
 func (e *Executor) ExecuteJSON(ctx context.Context, name string, argsJSON string) (interface{}, error) {
-	var args map[string]interface{}
-	if argsJSON != "" {
-		if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-			// Some providers double-encode arguments as a JSON string wrapping
-			// a JSON object (e.g. "\"{\\\"command\\\":\\\"ls\\\"}\"").
-			// Try unwrapping one level of string encoding.
-			var inner string
-			if json.Unmarshal([]byte(argsJSON), &inner) == nil && len(inner) > 0 && inner[0] == '{' {
-				if err2 := json.Unmarshal([]byte(inner), &args); err2 == nil {
-					return e.Execute(ctx, name, args)
-				}
-			}
-			// Some providers (e.g., GLM) return truncated JSON strings where
-			// the arguments look like "\"{\"command\":" but are cut off.
-			// Try to detect and fix truncated JSON strings.
-			if repaired := tryRepairTruncatedJSON(argsJSON); repaired != "" {
-				if err2 := json.Unmarshal([]byte(repaired), &args); err2 == nil {
-					return e.Execute(ctx, name, args)
-				}
-			}
-			return nil, err
+	// Handle empty or whitespace-only argsJSON
+	trimmed := strings.TrimSpace(argsJSON)
+	if trimmed == "" {
+		return e.Execute(ctx, name, nil)
+	}
+
+	candidates := buildArgsCandidates(trimmed)
+	for _, candidate := range candidates {
+		if args, ok := parseJSONObjectArgs(candidate); ok {
+			return e.Execute(ctx, name, args)
 		}
 	}
-	return e.Execute(ctx, name, args)
+	for _, candidate := range candidates {
+		if args, ok := e.parseLooseArgs(name, candidate); ok {
+			return e.Execute(ctx, name, args)
+		}
+	}
+
+	return nil, fmt.Errorf("invalid tool arguments: expected JSON object or parseable loose args (raw: %q)", argsJSON)
+}
+
+// parseJSONObjectArgs tries to parse a JSON object from raw arguments.
+// It handles regular objects, nested JSON-string wrapping, and truncated
+// string-wrapped JSON emitted by some providers.
+func parseJSONObjectArgs(raw string) (map[string]interface{}, bool) {
+	var args map[string]interface{}
+
+	if json.Unmarshal([]byte(raw), &args) == nil {
+		return args, true
+	}
+	if normalized := normalizeLooseJSON(raw); normalized != raw {
+		if json.Unmarshal([]byte(normalized), &args) == nil {
+			return args, true
+		}
+		if closed := closeIncompleteJSON(normalized); closed != normalized {
+			if json.Unmarshal([]byte(closed), &args) == nil {
+				return args, true
+			}
+		}
+	}
+	if closed := closeIncompleteJSON(raw); closed != raw {
+		if json.Unmarshal([]byte(closed), &args) == nil {
+			return args, true
+		}
+	}
+
+	current := raw
+	for i := 0; i < 3; i++ {
+		var inner string
+		if json.Unmarshal([]byte(current), &inner) != nil {
+			break
+		}
+		inner = strings.TrimSpace(inner)
+		if inner == "" {
+			break
+		}
+		if json.Unmarshal([]byte(inner), &args) == nil {
+			return args, true
+		}
+		if normalized := normalizeLooseJSON(inner); normalized != inner {
+			if json.Unmarshal([]byte(normalized), &args) == nil {
+				return args, true
+			}
+			if closed := closeIncompleteJSON(normalized); closed != normalized {
+				if json.Unmarshal([]byte(closed), &args) == nil {
+					return args, true
+				}
+			}
+		}
+		if closed := closeIncompleteJSON(inner); closed != inner {
+			if json.Unmarshal([]byte(closed), &args) == nil {
+				return args, true
+			}
+		}
+		current = inner
+	}
+
+	if repaired := tryRepairTruncatedJSON(current); repaired != "" {
+		if json.Unmarshal([]byte(repaired), &args) == nil {
+			return args, true
+		}
+	}
+
+	if current != raw {
+		if repaired := tryRepairTruncatedJSON(raw); repaired != "" {
+			if json.Unmarshal([]byte(repaired), &args) == nil {
+				return args, true
+			}
+		}
+	}
+
+	return nil, false
+}
+
+// parseLooseArgs tries to recover non-JSON arguments commonly emitted by LLMs:
+// - key=value key2="value with spaces"
+// - raw string mapped into an inferred single string parameter.
+func (e *Executor) parseLooseArgs(name, raw string) (map[string]interface{}, bool) {
+	if raw == "" {
+		return nil, false
+	}
+
+	kv := make(map[string]interface{})
+	parseKeyValuePairs(raw, kv)
+	if len(kv) > 0 {
+		return kv, true
+	}
+	if parseColonValuePairs(raw, kv) {
+		return kv, true
+	}
+
+	if unquoted, ok := parseJSONString(raw); ok {
+		raw = strings.TrimSpace(unquoted)
+	}
+	if raw == "" {
+		return nil, false
+	}
+
+	key := e.inferSingleStringArgKey(name)
+	if key == "" {
+		return nil, false
+	}
+	return map[string]interface{}{key: raw}, true
+}
+
+func parseJSONString(raw string) (string, bool) {
+	var s string
+	if json.Unmarshal([]byte(raw), &s) != nil {
+		return "", false
+	}
+	return s, true
+}
+
+func (e *Executor) inferSingleStringArgKey(name string) string {
+	tool := e.registry.Get(name)
+	if tool == nil {
+		return ""
+	}
+	params := tool.Definition().Parameters
+	if len(params) == 0 {
+		return ""
+	}
+
+	propsRaw, ok := params["properties"]
+	if !ok {
+		return ""
+	}
+	props, ok := propsRaw.(map[string]interface{})
+	if !ok || len(props) == 0 {
+		return ""
+	}
+
+	required := make(map[string]struct{})
+	switch req := params["required"].(type) {
+	case []string:
+		for _, k := range req {
+			required[k] = struct{}{}
+		}
+	case []interface{}:
+		for _, v := range req {
+			if s, ok := v.(string); ok {
+				required[s] = struct{}{}
+			}
+		}
+	}
+
+	preferred := []string{"command", "query", "input", "text", "message", "prompt", "path", "url"}
+	for _, key := range preferred {
+		if _, ok := required[key]; ok && isStringProperty(props[key]) {
+			return key
+		}
+	}
+
+	if len(required) > 0 {
+		keys := make([]string, 0, len(required))
+		for k := range required {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if isStringProperty(props[key]) {
+				return key
+			}
+		}
+	}
+
+	for _, key := range preferred {
+		if isStringProperty(props[key]) {
+			return key
+		}
+	}
+
+	keys := make([]string, 0, len(props))
+	for k := range props {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if isStringProperty(props[key]) {
+			return key
+		}
+	}
+	return ""
+}
+
+func isStringProperty(prop interface{}) bool {
+	m, ok := prop.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	typ, _ := m["type"].(string)
+	return typ == "string"
+}
+
+func buildArgsCandidates(raw string) []string {
+	seen := make(map[string]struct{}, 4)
+	candidates := make([]string, 0, 4)
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		candidates = append(candidates, s)
+	}
+
+	add(raw)
+	if unfenced, ok := stripCodeFence(raw); ok {
+		add(unfenced)
+		if jsonSnippet, ok := extractFirstJSONObject(unfenced); ok {
+			add(jsonSnippet)
+		}
+	}
+	if jsonSnippet, ok := extractFirstJSONObject(raw); ok {
+		add(jsonSnippet)
+	}
+	return candidates
+}
+
+func stripCodeFence(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "```") {
+		return "", false
+	}
+	firstNL := strings.IndexByte(trimmed, '\n')
+	if firstNL < 0 {
+		return "", false
+	}
+	header := strings.TrimSpace(trimmed[:firstNL])
+	if !strings.HasPrefix(header, "```") {
+		return "", false
+	}
+	body := strings.TrimSpace(trimmed[firstNL+1:])
+	if !strings.HasSuffix(body, "```") {
+		return "", false
+	}
+	body = strings.TrimSpace(strings.TrimSuffix(body, "```"))
+	if body == "" {
+		return "", false
+	}
+	return body, true
+}
+
+func extractFirstJSONObject(raw string) (string, bool) {
+	start := strings.IndexByte(raw, '{')
+	if start < 0 {
+		return "", false
+	}
+
+	depth := 0
+	inString := false
+	escapeNext := false
+	for i := start; i < len(raw); i++ {
+		c := raw[i]
+
+		if escapeNext {
+			escapeNext = false
+			continue
+		}
+		if c == '\\' {
+			escapeNext = true
+			continue
+		}
+		if c == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+
+		switch c {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return raw[start : i+1], true
+			}
+		}
+	}
+	return "", false
+}
+
+func parseColonValuePairs(raw string, out map[string]interface{}) bool {
+	lines := strings.Split(raw, "\n")
+	found := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		colon := strings.IndexByte(line, ':')
+		if colon <= 0 {
+			continue
+		}
+
+		key := strings.TrimSpace(line[:colon])
+		if key == "" {
+			continue
+		}
+		if strings.ContainsAny(key, " \t") {
+			continue
+		}
+
+		value := strings.TrimSpace(line[colon+1:])
+		if value == "" {
+			continue
+		}
+		value = strings.Trim(value, `"'`)
+		if value == "" {
+			continue
+		}
+		out[key] = value
+		found = true
+	}
+	return found
+}
+
+func normalizeLooseJSON(raw string) string {
+	var b strings.Builder
+	b.Grow(len(raw) + 8)
+
+	lastNonWS := byte(0)
+	writeByte := func(c byte) {
+		b.WriteByte(c)
+		switch c {
+		case ' ', '\t', '\n', '\r':
+		default:
+			lastNonWS = c
+		}
+	}
+
+	isIdentStart := func(c byte) bool {
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '$'
+	}
+	isIdentChar := func(c byte) bool {
+		return isIdentStart(c) || (c >= '0' && c <= '9') || c == '-'
+	}
+
+	for i := 0; i < len(raw); {
+		ch := raw[i]
+
+		switch ch {
+		case '"':
+			writeByte(ch)
+			i++
+			for i < len(raw) {
+				c := raw[i]
+				writeByte(c)
+				i++
+				if c == '\\' && i < len(raw) {
+					writeByte(raw[i])
+					i++
+					continue
+				}
+				if c == '"' {
+					break
+				}
+			}
+		case '\'':
+			// Single-quoted string => double-quoted JSON string.
+			writeByte('"')
+			i++
+			for i < len(raw) {
+				c := raw[i]
+				i++
+				if c == '\\' && i < len(raw) {
+					writeByte('\\')
+					writeByte(raw[i])
+					i++
+					continue
+				}
+				if c == '\'' {
+					break
+				}
+				if c == '"' {
+					writeByte('\\')
+				}
+				writeByte(c)
+			}
+			writeByte('"')
+		case ',':
+			j := i + 1
+			for j < len(raw) && (raw[j] == ' ' || raw[j] == '\t' || raw[j] == '\n' || raw[j] == '\r') {
+				j++
+			}
+			if j >= len(raw) || raw[j] == '}' || raw[j] == ']' {
+				i++
+				continue
+			}
+			writeByte(ch)
+			i++
+		default:
+			if isIdentStart(ch) && (lastNonWS == '{' || lastNonWS == ',') {
+				start := i
+				for i < len(raw) && isIdentChar(raw[i]) {
+					i++
+				}
+				ident := raw[start:i]
+
+				j := i
+				for j < len(raw) && (raw[j] == ' ' || raw[j] == '\t') {
+					j++
+				}
+				if j < len(raw) && raw[j] == ':' {
+					writeByte('"')
+					b.WriteString(ident)
+					lastNonWS = ident[len(ident)-1]
+					writeByte('"')
+					for i < j {
+						writeByte(raw[i])
+						i++
+					}
+					continue
+				}
+
+				b.WriteString(ident)
+				lastNonWS = ident[len(ident)-1]
+				continue
+			}
+			writeByte(ch)
+			i++
+		}
+	}
+
+	return b.String()
+}
+
+func closeIncompleteJSON(raw string) string {
+	var b strings.Builder
+	b.Grow(len(raw) + 8)
+
+	braceCount := 0
+	bracketCount := 0
+	inString := false
+	escapeNext := false
+
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		b.WriteByte(c)
+
+		if escapeNext {
+			escapeNext = false
+			continue
+		}
+		if c == '\\' {
+			escapeNext = true
+			continue
+		}
+		if c == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+
+		switch c {
+		case '{':
+			braceCount++
+		case '}':
+			braceCount--
+		case '[':
+			bracketCount++
+		case ']':
+			bracketCount--
+		}
+	}
+
+	if inString {
+		b.WriteByte('"')
+	}
+	for bracketCount > 0 {
+		b.WriteByte(']')
+		bracketCount--
+	}
+	for braceCount > 0 {
+		b.WriteByte('}')
+		braceCount--
+	}
+	return b.String()
 }
 
 // tryRepairTruncatedJSON attempts to fix truncated JSON strings.

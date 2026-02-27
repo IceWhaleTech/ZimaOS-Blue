@@ -1,9 +1,23 @@
 package pruner
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+)
+
+var (
+	mdImageRe         = regexp.MustCompile(`!\[([^\]]*)\]\([^)]+\)`)
+	mdLinkRe          = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
+	mdAutoLinkRe      = regexp.MustCompile(`<((?:https?|mailto):[^>]+)>`)
+	mdUnorderedListRe = regexp.MustCompile(`^\s*[-*+]\s+`)
+	mdOrderedListRe   = regexp.MustCompile(`^\s*\d+[.)]\s+`)
+	mdTaskListRe      = regexp.MustCompile(`^\[(?: |x|X)\]\s+`)
+	mdHeadingRe       = regexp.MustCompile(`^\s{0,3}#{1,6}\s+`)
+	mdBlockQuoteRe    = regexp.MustCompile(`^\s*>\s*`)
+	mdRuleRe          = regexp.MustCompile(`^\s*([-*_]\s*){3,}\s*$`)
+	mdInlineCleaner   = strings.NewReplacer("**", "", "__", "", "*", "", "_", "", "~~", "", "`", "")
 )
 
 // CompactMarkdown strips noise from markdown text to reduce token usage:
@@ -70,6 +84,82 @@ func CompactMarkdown(s string) string {
 	}
 
 	return strings.Join(out, "\n")
+}
+
+// MarkdownToText converts markdown-like content into compact plain text for prompt context:
+//   - Runs CompactMarkdown first
+//   - Removes common markdown markers (headings/lists/quotes/fences/emphasis)
+//   - Converts links/images to readable text
+//   - Collapses blank lines to at most one
+func MarkdownToText(s string) string {
+	s = CompactMarkdown(s)
+	if s == "" {
+		return ""
+	}
+
+	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+	out := make([]string, 0, len(lines))
+	blanks := 0
+	inFence := false
+
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			blanks++
+			if blanks <= 1 {
+				out = append(out, "")
+			}
+			continue
+		}
+		blanks = 0
+
+		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			// Keep code text but avoid markdown wrappers.
+			line = strings.TrimSpace(line)
+		}
+
+		line = mdRuleRe.ReplaceAllString(line, "")
+		line = mdHeadingRe.ReplaceAllString(line, "")
+		line = mdBlockQuoteRe.ReplaceAllString(line, "")
+		line = mdUnorderedListRe.ReplaceAllString(line, "")
+		line = mdOrderedListRe.ReplaceAllString(line, "")
+		line = mdTaskListRe.ReplaceAllString(line, "")
+		line = mdImageRe.ReplaceAllString(line, "$1")
+		line = mdLinkRe.ReplaceAllString(line, "$1")
+		line = mdAutoLinkRe.ReplaceAllString(line, "$1")
+		line = mdInlineCleaner.Replace(line)
+		line = strings.ReplaceAll(line, "|", " ")
+		line = strings.Join(strings.Fields(line), " ")
+
+		if line == "" {
+			blanks++
+			if blanks <= 1 {
+				out = append(out, "")
+			}
+			continue
+		}
+		blanks = 0
+		out = append(out, line)
+	}
+
+	for len(out) > 0 && out[len(out)-1] == "" {
+		out = out[:len(out)-1]
+	}
+	return strings.Join(out, "\n")
+}
+
+// MarkdownToTextMinimal is an ultra-compact mode:
+// converts markdown to plain text, then collapses all whitespace/newlines into single spaces.
+func MarkdownToTextMinimal(s string) string {
+	text := MarkdownToText(s)
+	if text == "" {
+		return ""
+	}
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // onlyHeadings returns true if every non-blank line is a markdown heading.

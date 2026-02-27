@@ -53,9 +53,23 @@ func TestConvertRequest_ToolCallsWithSpecialChars(t *testing.T) {
 	}
 
 	// Verify system prompt preserved special chars
-	sysStr, ok := anthropicReq.System.(string)
-	if !ok {
-		t.Fatalf("System is not string: %T", anthropicReq.System)
+	sysStr := ""
+	switch s := anthropicReq.System.(type) {
+	case string:
+		sysStr = s
+	case []interface{}:
+		for _, b := range s {
+			if block, ok := b.(map[string]interface{}); ok {
+				if text, ok := block["text"].(string); ok {
+					if sysStr != "" {
+						sysStr += "\n"
+					}
+					sysStr += text
+				}
+			}
+		}
+	default:
+		t.Fatalf("unexpected System type: %T", anthropicReq.System)
 	}
 	if !strings.Contains(sysStr, "Don't say \"bad\" things") {
 		t.Errorf("system prompt lost quotes: %s", sysStr)
@@ -216,8 +230,8 @@ func (f *flusherRecorder) Header() http.Header {
 	return f.hdr
 }
 func (f *flusherRecorder) Write(b []byte) (int, error) { return f.buf.Write(b) }
-func (f *flusherRecorder) WriteHeader(int)              {}
-func (f *flusherRecorder) Flush()                       {}
+func (f *flusherRecorder) WriteHeader(int)             {}
+func (f *flusherRecorder) Flush()                      {}
 
 func TestConvertAnthropicStream_SpecialChars(t *testing.T) {
 	fc := NewFormatConverter()
@@ -440,9 +454,23 @@ func TestConvertRequest_MultiTurnToolConversation(t *testing.T) {
 	}
 
 	// System prompt
-	sysStr, ok := anthropicReq.System.(string)
-	if !ok {
-		t.Fatalf("System is not string: %T", anthropicReq.System)
+	sysStr := ""
+	switch s := anthropicReq.System.(type) {
+	case string:
+		sysStr = s
+	case []interface{}:
+		for _, b := range s {
+			if block, ok := b.(map[string]interface{}); ok {
+				if text, ok := block["text"].(string); ok {
+					if sysStr != "" {
+						sysStr += "\n"
+					}
+					sysStr += text
+				}
+			}
+		}
+	default:
+		t.Fatalf("unexpected System type: %T", anthropicReq.System)
 	}
 	if !strings.Contains(sysStr, "escape \"special\" chars") {
 		t.Errorf("system prompt lost quotes: %s", sysStr)
@@ -593,7 +621,7 @@ func TestConvertAnthropicStream_ToolUse(t *testing.T) {
 	msgModel := "claude-3"
 	sseInput := strings.Join([]string{
 		sseEvent(t, AnthropicStreamEvent{
-			Type: "message_start",
+			Type:    "message_start",
 			Message: &AnthropicResponse{ID: "msg_tool", Model: msgModel, Role: "assistant"},
 		}),
 		sseEvent(t, AnthropicStreamEvent{

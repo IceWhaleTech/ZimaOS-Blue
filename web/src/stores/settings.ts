@@ -35,6 +35,7 @@ export interface ProviderModelOption {
 // Theme style types
 export type ThemeStyle = 'default' | 'bubble' | 'minimal' | 'gradient' | 'ocean'
 export type CloseBehavior = 'quit' | 'minimize'
+export type MemoryRecallMode = 'aggressive' | 'balanced' | 'quality'
 
 export const THEME_STYLES: { id: ThemeStyle; labelKey: string }[] = [
   { id: 'default', labelKey: 'theme.styles.default' },
@@ -43,6 +44,12 @@ export const THEME_STYLES: { id: ThemeStyle; labelKey: string }[] = [
   { id: 'gradient', labelKey: 'theme.styles.gradient' },
   { id: 'ocean', labelKey: 'theme.styles.ocean' },
 ]
+
+const THEME_STYLE_SET = new Set<ThemeStyle>(THEME_STYLES.map(s => s.id))
+
+function isThemeStyle(value: unknown): value is ThemeStyle {
+  return typeof value === 'string' && THEME_STYLE_SET.has(value as ThemeStyle)
+}
 
 interface StoredSettings {
   selectedProviderModel: string  // Format: "providerId:modelId"
@@ -303,6 +310,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function setThemeStyle(style: ThemeStyle) {
     themeStyle.value = style
+    // Persist to backend best-effort; local state still updates immediately.
+    updateBackendSettings({ theme_style: style }).catch(() => {})
   }
 
   function setCloseBehavior(behavior: CloseBehavior) {
@@ -333,6 +342,9 @@ export const useSettingsStore = defineStore('settings', () => {
       backendSettingsLoading.value = true
       const response = await settingsApi.get()
       backendSettings.value = response.data
+      if (isThemeStyle(response.data.theme_style)) {
+        themeStyle.value = response.data.theme_style
+      }
     } catch (e) {
       console.error('Failed to fetch backend settings:', e)
     } finally {
@@ -370,6 +382,11 @@ export const useSettingsStore = defineStore('settings', () => {
   // Agent mode (from backend settings)
   const agentMode = computed(() => backendSettings.value.agent_mode ?? true)
   const agentAutoConfirm = computed(() => backendSettings.value.agent_auto_confirm ?? false)
+  const memoryRecallMode = computed<MemoryRecallMode>(() => {
+    const mode = backendSettings.value.memory_recall_mode
+    if (mode === 'aggressive' || mode === 'quality') return mode
+    return 'balanced'
+  })
 
   async function setAgentMode(enabled: boolean) {
     await updateBackendSettings({ agent_mode: enabled })
@@ -377,6 +394,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setAgentAutoConfirm(enabled: boolean) {
     await updateBackendSettings({ agent_auto_confirm: enabled })
+  }
+
+  async function setMemoryRecallMode(mode: MemoryRecallMode) {
+    await updateBackendSettings({ memory_recall_mode: mode })
   }
 
   return {
@@ -396,6 +417,7 @@ export const useSettingsStore = defineStore('settings', () => {
     claudeCodeEnabled,
     agentMode,
     agentAutoConfirm,
+    memoryRecallMode,
     showToolDetails,
 
     // Computed
@@ -425,6 +447,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setClaudeCodeEnabled,
     setAgentMode,
     setAgentAutoConfirm,
+    setMemoryRecallMode,
     setShowToolDetails,
   }
 })

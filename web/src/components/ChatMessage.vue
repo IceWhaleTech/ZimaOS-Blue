@@ -3,12 +3,12 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/api/chat'
 import { cardActionApi } from '@/api/chat'
-import { renderMarkdown, copyCodeToClipboard, preloadHljs } from '@/utils/markdown'
+import { renderMarkdownCached, copyCodeToClipboard } from '@/utils/markdown'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments, hasTypelessCards, clearIncrementalState } from '@/utils/typeless'
-import type { TypelessCard, TypelessCardAction, TypelessCardChoice } from '@/types/typeless'
+import type { TypelessCard, TypelessCardChoice } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
 import ToolDetailCard from '@/components/ToolDetailCard.vue'
 import MediaPlaceholder from '@/components/MediaPlaceholder.vue'
@@ -16,19 +16,16 @@ import { ttsAudioManager, streamingTTSManager } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { useNotificationStore } from '@/stores/notification'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const providerPoolStore = useProviderPoolStore()
-
-// Set locale for TTS human-like speech preprocessing
-streamingTTSManager.setLocale(locale.value)
-
-// Start loading highlight.js languages when chat is first rendered
-preloadHljs()
 
 const props = defineProps<{
   message: Message
   isStreaming?: boolean
   isLastAssistantMessage?: boolean
+  isMobile?: boolean
+  isSelected?: boolean
+  isMultiSelectMode?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -47,8 +44,11 @@ const cardActionError = ref<string | null>(null)
 
 const isUser = computed(() => props.message.role === 'user')
 const isAssistant = computed(() => props.message.role === 'assistant')
-const isSelected = computed(() => chatStore.selectedMessageIds.has(props.message.id))
-const isMultiSelectMode = computed(() => chatStore.isMultiSelectMode)
+const isSelected = computed(() => props.isSelected ?? chatStore.selectedMessageIds.has(props.message.id))
+const isMultiSelectMode = computed(() => props.isMultiSelectMode ?? chatStore.isMultiSelectMode)
+const isMobile = computed(() => !!props.isMobile)
+
+const trackStreamingState = computed(() => isAssistant.value && !!props.isStreaming)
 const hasMediaTask = computed(() => {
   if (!isAssistant.value) return false
   // Server-side: message content is [media_task:uuid]
@@ -56,7 +56,7 @@ const hasMediaTask = computed(() => {
 })
 const mediaTaskId = computed(() => {
   const m = props.message.content.trim().match(/^\[media_task:([a-f0-9-]+)\]$/)
-  return m ? m[1] : ''
+  return m?.[1] ?? ''
 })
 
 // Check if user message has attachments
@@ -72,22 +72,60 @@ const isVoiceMessage = computed(() => {
   return !text || isPlaceholderContent(text)
 })
 
+type InlineImageInfo = { alt: string; url: string }
+type InlineImageParseResult = { images: InlineImageInfo[]; strippedText: string }
+const INLINE_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g
+const INLINE_IMAGE_STRIP_RE = /\n*!\[[^\]]*\]\([^)]+\)/g
+const INLINE_IMAGE_CACHE_KEY = '__zima_chat_inline_image_cache_v1__'
+const INLINE_IMAGE_CACHE_MAX = 300
+
+function getInlineImageCache(): Map<string, InlineImageParseResult> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[INLINE_IMAGE_CACHE_KEY]
+  if (existing instanceof Map) {
+    return existing as Map<string, InlineImageParseResult>
+  }
+  const cache = new Map<string, InlineImageParseResult>()
+  g[INLINE_IMAGE_CACHE_KEY] = cache
+  return cache
+}
+
+function parseInlineImagesCached(content: string): InlineImageParseResult {
+  const cache = getInlineImageCache()
+  const cached = cache.get(content)
+  if (cached) return cached
+
+  const images: InlineImageInfo[] = []
+  let match: RegExpExecArray | null
+  INLINE_IMAGE_RE.lastIndex = 0
+  while ((match = INLINE_IMAGE_RE.exec(content)) !== null) {
+    images.push({ alt: match[1] ?? 'image', url: match[2] ?? '' })
+  }
+
+  const strippedText = images.length > 0
+    ? content.replace(INLINE_IMAGE_STRIP_RE, '').trim()
+    : content
+
+  const parsed = { images, strippedText }
+  if (cache.size >= INLINE_IMAGE_CACHE_MAX) cache.clear()
+  cache.set(content, parsed)
+  return parsed
+}
+
+const parsedInlineContent = computed(() => {
+  if (!isUser.value) return null
+  return parseInlineImagesCached(props.message.content)
+})
+
 // Extract inline markdown images from user message content (e.g. ![image](/api/media/...))
 const inlineImages = computed(() => {
-  if (!isUser.value) return []
-  const re = /!\[([^\]]*)\]\(([^)]+)\)/g
-  const imgs: { alt: string; url: string }[] = []
-  let match
-  while ((match = re.exec(props.message.content)) !== null) {
-    imgs.push({ alt: match[1] || 'image', url: match[2] })
-  }
-  return imgs
+  return parsedInlineContent.value?.images ?? []
 })
 
 // User message text with inline image markdown stripped
 const userTextContent = computed(() => {
-  if (!isUser.value || inlineImages.value.length === 0) return props.message.content
-  return props.message.content.replace(/\n*!\[[^\]]*\]\([^)]+\)/g, '').trim()
+  if (!isUser.value) return props.message.content
+  return parsedInlineContent.value?.strippedText ?? props.message.content
 })
 
 // Copy button state
@@ -175,24 +213,38 @@ function voiceBubbleWidth(seconds?: number): string {
 const toolElapsedSeconds = ref('0.0')
 let toolTimerHandle: ReturnType<typeof setInterval> | null = null
 
-watch(() => chatStore.toolExecuting, (executing) => {
-  if (executing) {
-    toolElapsedSeconds.value = '0.0'
-    toolTimerHandle = setInterval(() => {
-      if (chatStore.toolExecutingStartTime > 0) {
-        toolElapsedSeconds.value = ((Date.now() - chatStore.toolExecutingStartTime) / 1000).toFixed(1)
-      }
-    }, 100)
-  } else {
-    if (toolTimerHandle) {
-      clearInterval(toolTimerHandle)
-      toolTimerHandle = null
-    }
+function stopToolTimer() {
+  if (toolTimerHandle) {
+    clearInterval(toolTimerHandle)
+    toolTimerHandle = null
   }
-})
+}
+
+function startToolTimer() {
+  if (toolTimerHandle) return
+  toolElapsedSeconds.value = '0.0'
+  toolTimerHandle = setInterval(() => {
+    if (chatStore.toolExecutingStartTime > 0) {
+      toolElapsedSeconds.value = ((Date.now() - chatStore.toolExecutingStartTime) / 1000).toFixed(1)
+    }
+  }, 100)
+}
+
+watch(
+  () => [trackStreamingState.value, chatStore.toolExecuting] as const,
+  ([trackStreaming, executing]) => {
+    if (trackStreaming && executing) {
+      startToolTimer()
+      return
+    }
+    stopToolTimer()
+  },
+  { immediate: true }
+)
 
 // Derive display names for tool pill: extract skill names from "blue <subcommand>" commands
 const toolDisplayNames = computed(() => {
+  if (!trackStreamingState.value || !chatStore.toolExecuting) return []
   const commands = chatStore.toolExecutingCommands
   if (commands.length > 0) {
     // Extract skill name from "blue <subcommand> ..." pattern
@@ -234,9 +286,9 @@ function stopWaitingTimer() {
 
 // Start/stop waiting timer based on streaming state + empty content
 watch(
-  () => [props.isStreaming, props.message.content, chatStore.toolExecuting] as const,
-  ([streaming, content, toolExec]) => {
-    if (streaming && !content && !toolExec) {
+  () => [trackStreamingState.value, props.message.content, chatStore.toolExecuting] as const,
+  ([trackStreaming, content, toolExec]) => {
+    if (trackStreaming && !content && !toolExec) {
       if (!waitingTimerHandle) startWaitingTimer()
     } else {
       stopWaitingTimer()
@@ -271,22 +323,14 @@ function stripInterruptedMarker(content: string): { content: string; interrupted
 }
 
 // Render segment text with [Response interrupted] handling
-// Uses a simple cache to avoid re-running renderMarkdown on unchanged text
-const _segmentHtmlCache = new Map<string, string>()
-
 function renderSegmentHtml(text: string): string {
   // When tool details are hidden, strip process blocks from text segments too
   const effective = settingsStore.showToolDetails ? text : stripProcessContent(text)
-  const cached = _segmentHtmlCache.get(effective)
-  if (cached !== undefined) return cached
   const { content, interrupted } = stripInterruptedMarker(effective)
-  let html = renderMarkdown(content)
+  let html = renderMarkdownCached(content, 'chat-segment')
   if (interrupted) {
     html += interruptedIndicatorHtml.value
   }
-  // Keep cache bounded
-  if (_segmentHtmlCache.size > 50) _segmentHtmlCache.clear()
-  _segmentHtmlCache.set(effective, html)
   return html
 }
 
@@ -301,10 +345,30 @@ const strippedContent = computed(() => {
 // Regex to strip process content (tool results) and typeless card blocks
 const RE_PROCESS_BLOCK = /\n*<!-- process-start -->[\s\S]*?<!-- process-end -->\n*/g
 const RE_TYPELESS_BLOCK = /\n*```typeless\s*[\s\S]*?```\n*/g
+const PROCESS_STRIP_CACHE_KEY = '__zima_chat_process_strip_cache_v1__'
+const PROCESS_STRIP_CACHE_MAX = 300
+
+function getProcessStripCache(): Map<string, string> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[PROCESS_STRIP_CACHE_KEY]
+  if (existing instanceof Map) {
+    return existing as Map<string, string>
+  }
+  const cache = new Map<string, string>()
+  g[PROCESS_STRIP_CACHE_KEY] = cache
+  return cache
+}
 
 // Strip process content (tool results + typeless cards) from text
 function stripProcessContent(text: string): string {
-  return text.replace(RE_PROCESS_BLOCK, '\n').replace(RE_TYPELESS_BLOCK, '\n').trim()
+  const cache = getProcessStripCache()
+  const cached = cache.get(text)
+  if (cached !== undefined) return cached
+
+  const stripped = text.replace(RE_PROCESS_BLOCK, '\n').replace(RE_TYPELESS_BLOCK, '\n').trim()
+  if (cache.size >= PROCESS_STRIP_CACHE_MAX) cache.clear()
+  cache.set(text, stripped)
+  return stripped
 }
 
 const renderedContent = computed(() => {
@@ -317,7 +381,7 @@ const renderedContent = computed(() => {
     text = stripProcessContent(text)
   }
   const { content: cleaned, interrupted } = stripInterruptedMarker(text)
-  let html = renderMarkdown(cleaned)
+  let html = renderMarkdownCached(cleaned, 'chat-message')
   if (interrupted) {
     html += interruptedIndicatorHtml.value
   }
@@ -373,11 +437,8 @@ const contentSegments = computed(() => {
   }))
 })
 
-// Check if message has typeless cards
-const hasCards = computed(() => parsedContent.value !== null && parsedContent.value.cards.length > 0)
-
 // Card types that represent content or results — always visible even when tool details are hidden.
-// Only tool-invocation cards (steps, exec) are hidden when details are off.
+// Only tool-invocation cards (steps) are hidden when details are off.
 const RESULT_CARD_TYPES = new Set([
   'result', 'search', 'weather', 'chart', 'gallery', 'map', 'profile',
   'rating', 'comparison', 'metric', 'link', 'audio', 'video', 'file',
@@ -517,10 +578,7 @@ function handleExportMessage() {
 // Clean up incremental parse state when component is unmounted
 onUnmounted(() => {
   clearIncrementalState(props.message.id, props.message.conversation_id)
-  if (toolTimerHandle) {
-    clearInterval(toolTimerHandle)
-    toolTimerHandle = null
-  }
+  stopToolTimer()
   stopWaitingTimer()
   stopVoiceMessage()
   // Only stop manually-triggered TTS (not auto-play streaming which survives component remount)
@@ -554,7 +612,7 @@ function stripComplexCardsForTTS(text: string): string {
 
 // Watch for content changes during streaming to play incrementally
 watch(() => props.message.content, (newContent, _oldContent) => {
-  if (!props.isStreaming || !isAssistant.value) return
+  if (!trackStreamingState.value) return
 
   const autoPlayEnabled = localStorage.getItem('tts-auto-play') === 'true'
   if (!autoPlayEnabled) return
@@ -627,12 +685,8 @@ async function handleCardAction(actionId: string, cardId?: string) {
 
   // Find the action label and card metadata (actions exist on result, ui-review, alert, action cards)
   let actionLabel: string | undefined
-  let cardType: string | undefined
-  let cardTitle: string | undefined
   const card = parsedContent.value?.cards.find(c => c.id === cardId)
   if (card) {
-    cardType = card.type
-    if ('title' in card) cardTitle = (card as any).title
     if ('actions' in card && Array.isArray((card as any).actions)) {
       const action = (card as any).actions.find((a: any) => a.id === actionId)
       actionLabel = action?.label
@@ -1060,7 +1114,7 @@ async function handleMobileDelete() {
       <!-- Avatar (AI) -->
       <div
         v-if="isAssistant"
-        class="avatar flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs sm:text-sm font-bold"
+        class="avatar flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold"
       >
         AI
       </div>
@@ -1070,7 +1124,7 @@ async function handleMobileDelete() {
         class="content min-w-0 max-w-[80%]"
       >
         <!-- Provider and Model info (above chat bubble for assistant) -->
-        <div v-if="isAssistant && metadata && (metadata.provider || metadata.model)" class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-1">
+        <div v-if="!isMobile && isAssistant && metadata && (metadata.provider || metadata.model)" class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-1">
           <!-- Cloud/Local icon -->
           <svg v-if="providerLocation === 'cloud'" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
@@ -1377,7 +1431,7 @@ async function handleMobileDelete() {
           <span>{{ formattedTime }}</span>
 
           <!-- Stats for assistant messages -->
-          <template v-if="isAssistant && metadata?.stats">
+          <template v-if="!isMobile && isAssistant && metadata?.stats">
             <span class="ml-2 flex items-center gap-2">
               <span v-if="formatTokens(metadata.stats.input_tokens)" class="flex items-center gap-0.5">
                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1480,31 +1534,6 @@ async function handleMobileDelete() {
                 <div class="flex items-center justify-between">
                   <span class="text-gray-400 dark:text-gray-500">{{ formattedTimeLong }}</span>
                 </div>
-                <div v-if="isAssistant && metadata?.provider" class="flex items-center gap-1.5">
-                  <svg v-if="providerLocation === 'cloud'" class="w-3.5 h-3.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                  </svg>
-                  <svg v-else-if="providerLocation === 'local'" class="w-3.5 h-3.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                  <span class="text-gray-700 dark:text-gray-300">{{ providerPoolStore.getProviderDisplayName(metadata.provider) }}</span>
-                  <template v-if="metadata.model">
-                    <span class="text-gray-300 dark:text-gray-600">/</span>
-                    <span class="text-gray-700 dark:text-gray-300">{{ metadata.model }}</span>
-                  </template>
-                </div>
-                <div v-if="isAssistant && metadata?.stats" class="flex items-center gap-3 flex-wrap text-gray-600 dark:text-gray-300">
-                  <span v-if="formatTokens(metadata.stats.input_tokens)" class="flex items-center gap-1">
-                    <svg class="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4" /></svg>
-                    {{ formatTokens(metadata.stats.input_tokens) }}
-                  </span>
-                  <span v-if="formatTokens(metadata.stats.output_tokens)" class="flex items-center gap-1">
-                    <svg class="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8v12m0 0l-4-4m4 4l4-4" /></svg>
-                    {{ formatTokens(metadata.stats.output_tokens) }}
-                  </span>
-                  <span v-if="formatTTFT(metadata.stats.ttft_ms)">⏱️ {{ formatTTFT(metadata.stats.ttft_ms) }}</span>
-                  <span v-if="formatSpeed(metadata.stats.tokens_per_second)">{{ formatSpeed(metadata.stats.tokens_per_second) }} t/s</span>
-                </div>
               </div>
 
               <!-- Copy action -->
@@ -1603,10 +1632,12 @@ async function handleMobileDelete() {
 
 <style scoped>
 .assistant-message {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--chat-assistant-bg, rgba(15, 23, 42, 0.5));
+  border: var(--chat-assistant-border, 1px solid rgba(148, 163, 184, 0.18));
+  color: var(--chat-assistant-text, inherit);
   border-radius: 0.75rem;
   padding: 0.75rem 1rem;
+  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.18);
 }
 
 .assistant-message.\!bg-transparent {
@@ -1614,10 +1645,21 @@ async function handleMobileDelete() {
   padding-bottom: 0;
 }
 
-:root.light .assistant-message,
-[data-theme="light"] .assistant-message {
-  background: #F8FAFC;
-  border: 1px solid #E2E8F0;
+.chat-user-bubble {
+  background: var(--chat-user-bg, linear-gradient(135deg, #0284c7, #0891b2));
+  color: var(--chat-user-text, #f8fafc);
+  border: var(--chat-user-border, none);
+  border-radius: 0.95rem 0.35rem 0.95rem 0.95rem;
+  box-shadow: 0 10px 20px rgba(8, 145, 178, 0.24);
+}
+
+.chat-assistant-bubble {
+  border-radius: 0.95rem;
+}
+
+.avatar {
+  background: var(--chat-avatar-bg, linear-gradient(135deg, #0ea5e9, #14b8a6));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2), 0 8px 16px rgba(15, 23, 42, 0.2);
 }
 
 /* Fade transition for mobile action menu */
@@ -1683,12 +1725,12 @@ async function handleMobileDelete() {
 }
 
 .prose :deep(a) {
-  color: #1f2937;
+  color: #0284c7;
 }
 
 :root.dark .prose :deep(a),
 [data-theme="dark"] .prose :deep(a) {
-  color: #9ca3af;
+  color: #38bdf8;
 }
 
 .prose :deep(a:hover) {
@@ -1791,8 +1833,8 @@ async function handleMobileDelete() {
   gap: 0.5rem;
   padding: 0.3rem 0.75rem;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  background: rgba(14, 165, 233, 0.1);
+  border: 1px solid rgba(14, 165, 233, 0.2);
 }
 
 .sandbox-badge {
@@ -1809,8 +1851,8 @@ async function handleMobileDelete() {
 
 :root.dark .tool-pill,
 [data-theme="dark"] .tool-pill {
-  background: rgba(129, 140, 248, 0.1);
-  border-color: rgba(129, 140, 248, 0.18);
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.24);
 }
 
 .tool-dots {
@@ -1823,7 +1865,7 @@ async function handleMobileDelete() {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: #6366f1;
+  background: #0ea5e9;
   animation: tool-dot-pulse 1.2s ease-in-out infinite;
 }
 
@@ -1832,18 +1874,18 @@ async function handleMobileDelete() {
 
 :root.dark .tool-dots span,
 [data-theme="dark"] .tool-dots span {
-  background: #818cf8;
+  background: #38bdf8;
 }
 
 .tool-label {
   font-size: 0.75rem;
   font-weight: 500;
-  color: #6366f1;
+  color: #0284c7;
 }
 
 :root.dark .tool-label,
 [data-theme="dark"] .tool-label {
-  color: #a5b4fc;
+  color: #7dd3fc;
 }
 
 .tool-timer {
@@ -1874,16 +1916,16 @@ async function handleMobileDelete() {
   font-weight: 500;
   padding: 0.125rem 0.5rem;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.06);
-  color: #6366f1;
-  border: 1px solid rgba(99, 102, 241, 0.12);
+  background: rgba(14, 165, 233, 0.08);
+  color: #0284c7;
+  border: 1px solid rgba(14, 165, 233, 0.16);
 }
 
 :root.dark .tool-name-tag,
 [data-theme="dark"] .tool-name-tag {
-  background: rgba(129, 140, 248, 0.08);
-  color: #a5b4fc;
-  border-color: rgba(129, 140, 248, 0.15);
+  background: rgba(56, 189, 248, 0.12);
+  color: #7dd3fc;
+  border-color: rgba(56, 189, 248, 0.22);
 }
 
 /* Waiting timer pill — appears after 3s of no response */
@@ -1897,7 +1939,7 @@ async function handleMobileDelete() {
   border: 1px solid transparent;
   background:
     linear-gradient(#fff, #fff) padding-box,
-    linear-gradient(135deg, #818cf8, #c084fc, #f472b6) border-box;
+    linear-gradient(135deg, #0ea5e9, #14b8a6, #22c55e) border-box;
   padding: 0.75rem 1rem;
   box-shadow: 0 1px 3px rgba(129, 140, 248, 0.12);
 }
@@ -1906,7 +1948,7 @@ async function handleMobileDelete() {
 [data-theme="dark"] .waiting-card-inner {
   background:
     linear-gradient(#1e293b, #1e293b) padding-box,
-    linear-gradient(135deg, #818cf8, #c084fc, #f472b6) border-box;
+    linear-gradient(135deg, #0ea5e9, #14b8a6, #22c55e) border-box;
   box-shadow: 0 1px 6px rgba(129, 140, 248, 0.15);
 }
 
@@ -1918,27 +1960,27 @@ async function handleMobileDelete() {
 
 .waiting-card-spinner {
   animation: waiting-spin 1.2s linear infinite;
-  color: #818cf8;
+  color: #0ea5e9;
   flex-shrink: 0;
 }
 
 .waiting-card-title {
   font-size: 0.8125rem;
   font-weight: 500;
-  color: #6366f1;
+  color: #0284c7;
   flex: 1;
 }
 
 :root.dark .waiting-card-title,
 [data-theme="dark"] .waiting-card-title {
-  color: #a5b4fc;
+  color: #7dd3fc;
 }
 
 .waiting-card-timer {
   font-size: 0.75rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: #a78bfa;
+  color: #14b8a6;
   min-width: 2.5rem;
   text-align: right;
 }
@@ -1959,7 +2001,7 @@ async function handleMobileDelete() {
 .waiting-card-bar-fill {
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, #818cf8, #c084fc, #f472b6);
+  background: linear-gradient(90deg, #0ea5e9, #14b8a6, #22c55e);
   animation: waiting-bar-slide 2s ease-in-out infinite;
   width: 40%;
 }
@@ -1989,16 +2031,18 @@ async function handleMobileDelete() {
 }
 
 .voice-bubble {
-  border-radius: 1rem 0.25rem 1rem 1rem;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 0.95rem 0.35rem 0.95rem 0.95rem;
+  background: var(--chat-user-bg, linear-gradient(135deg, #0284c7, #0891b2));
+  border: var(--chat-user-border, none);
   padding: 0.5rem 0.75rem;
-  color: white;
+  color: var(--chat-user-text, #f8fafc);
+  box-shadow: 0 10px 20px rgba(8, 145, 178, 0.24);
   transition: all 0.15s ease;
   min-width: 80px;
 }
 
 .voice-bubble:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.05);
 }
 
 .voice-bubble:active {
@@ -2016,7 +2060,7 @@ async function handleMobileDelete() {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.24);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2024,7 +2068,7 @@ async function handleMobileDelete() {
 }
 
 .voice-bubble:hover .voice-play-btn {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.34);
 }
 
 .voice-waveform {
@@ -2040,7 +2084,7 @@ async function handleMobileDelete() {
   flex: 1;
   min-width: 2px;
   max-width: 4px;
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.45);
   border-radius: 1px;
   transition: background 0.1s;
 }
@@ -2055,5 +2099,29 @@ async function handleMobileDelete() {
   font-weight: 500;
   opacity: 0.9;
   font-variant-numeric: tabular-nums;
+}
+
+:global(.chat-view.theme-style-minimal) .voice-bubble {
+  box-shadow: none;
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-play-btn,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-play-btn {
+  background: rgba(15, 23, 42, 0.12);
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-bubble:hover .voice-play-btn,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-bubble:hover .voice-play-btn {
+  background: rgba(15, 23, 42, 0.2);
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-bar,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-bar {
+  background: rgba(15, 23, 42, 0.28);
+}
+
+:global(.light .chat-view.theme-style-minimal) .voice-bar-active,
+:global([data-theme="light"] .chat-view.theme-style-minimal) .voice-bar-active {
+  background: rgba(15, 23, 42, 0.75);
 }
 </style>

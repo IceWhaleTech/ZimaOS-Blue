@@ -103,6 +103,15 @@ proxy:
       circuit_breaker: true
       failure_threshold: 5
       recovery_timeout: "30s"
+      provider_race:
+        enabled: false
+        max_parallel: 2
+        min_providers: 2
+        empty_rate_min_samples: 10
+        empty_rate_cooldown_threshold: 0.3
+        empty_rate_sink_threshold: 0.5
+        empty_rate_exclude_threshold: 0.8
+        empty_rate_cooldown: "2m"
 
   # Connection pool configuration
   connection:

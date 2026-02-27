@@ -27,10 +27,6 @@ type Storage interface {
 	AppendUsage(record *UsageRecord) error
 	LoadUsage(providerID string, start, end time.Time) ([]*UsageRecord, error)
 
-	// Health status
-	SaveHealthStatus(results map[string]*HealthCheckResult) error
-	LoadHealthStatus() (map[string]*HealthCheckResult, error)
-
 	// Pricing configuration
 	SavePricingConfig(config *PricingConfig) error
 	LoadPricingConfig() (*PricingConfig, error)
@@ -78,11 +74,6 @@ func (s *FileStorage) modelsFile(providerID string) string {
 // usageFile returns the path to a daily usage file
 func (s *FileStorage) usageFile(date time.Time) string {
 	return filepath.Join(s.basePath, "usage", date.Format("2006-01-02")+".jsonl")
-}
-
-// healthFile returns the path to the health status file
-func (s *FileStorage) healthFile() string {
-	return filepath.Join(s.basePath, "health.json")
 }
 
 // providerStorage is the internal structure for storing providers
@@ -386,40 +377,6 @@ func (s *FileStorage) LoadUsage(providerID string, start, end time.Time) ([]*Usa
 	}
 
 	return records, nil
-}
-
-// SaveHealthStatus saves health check results
-func (s *FileStorage) SaveHealthStatus(results map[string]*HealthCheckResult) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	data, err := json.MarshalIndent(results, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(s.healthFile(), data, 0644)
-}
-
-// LoadHealthStatus loads health check results
-func (s *FileStorage) LoadHealthStatus() (map[string]*HealthCheckResult, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	data, err := os.ReadFile(s.healthFile())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return make(map[string]*HealthCheckResult), nil
-		}
-		return nil, err
-	}
-
-	var results map[string]*HealthCheckResult
-	if err := json.Unmarshal(data, &results); err != nil {
-		return nil, err
-	}
-
-	return results, nil
 }
 
 // splitLines splits data by newlines

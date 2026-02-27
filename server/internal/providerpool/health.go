@@ -95,7 +95,17 @@ func (c *HTTPHealthChecker) Check(ctx context.Context, provider *Provider) *Heal
 			}
 			return result
 		case resp.StatusCode == 401 || resp.StatusCode == 403:
-			// Server is reachable but API key is wrong/missing
+			// Cloud Code providers are OAuth-first. Health checker only has API keys,
+			// so 401/403 without an explicit key means endpoint is reachable.
+			if provider.APIFormat == APIFormatCloudCode && len(provider.APIKeys) == 0 {
+				result.Healthy = true
+				if i > 0 {
+					autoSwitchBaseURL(provider, healthURL)
+				}
+				return result
+			}
+
+			// Server is reachable but credentials are wrong/missing.
 			result.Healthy = false
 			result.Error = fmt.Sprintf("auth_error:%d", resp.StatusCode)
 			if i > 0 {
@@ -156,11 +166,11 @@ func getHealthCheckMethod(provider *Provider) (string, []string) {
 		}
 		return http.MethodGet, urls
 	case "minimax":
-		// MiniMax doesn't expose /models; POST to /chat/completions returns 400 (treated as reachable).
-		// Has domestic (.chat) and international (.io) domains.
-		urls := []string{baseURL + "/chat/completions"}
+		// MiniMax uses OpenAI-compatible /v1/chat/completions endpoint.
+		// Has domestic (.com) and international (.io) domains.
+		urls := []string{baseURL + "/v1/chat/completions"}
 		if alt := alternateRegionURL(baseURL); alt != "" {
-			urls = append(urls, alt+"/chat/completions")
+			urls = append(urls, alt+"/v1/chat/completions")
 		}
 		return http.MethodPost, urls
 	case "google":
@@ -177,6 +187,8 @@ func getHealthCheckMethod(provider *Provider) (string, []string) {
 
 	// Format-based fallback — handles trial provider, custom providers, and any new providers
 	switch provider.APIFormat {
+	case APIFormatResponses:
+		return http.MethodPost, []string{baseURL + "/v1/responses"}
 	case APIFormatAnthropic:
 		// Anthropic /v1/messages only accepts POST; use HEAD to avoid 405.
 		// Even without a body, the server returns 401/403 (auth check) which we treat as "reachable".
@@ -282,7 +294,7 @@ func (c *CompositeHealthChecker) Check(ctx context.Context, provider *Provider) 
 func alternateRegionURL(baseURL string) string {
 	// Each pair: [domestic, international]
 	regionPairs := [][2]string{
-		{"api.minimax.chat", "api.minimax.io"},
+		{"api.minimaxi.com", "api.minimax.io"},
 		{"api.moonshot.cn", "api.moonshot.ai"},
 	}
 	for _, pair := range regionPairs {
@@ -305,7 +317,7 @@ func autoSwitchBaseURL(provider *Provider, healthURL string) {
 		return
 	}
 	// Extract the base URL portion (strip the endpoint path suffix)
-	for _, suffix := range []string{"/chat/completions", "/models"} {
+	for _, suffix := range []string{"/v1/chat/completions", "/chat/completions", "/models"} {
 		if strings.HasSuffix(healthURL, suffix) {
 			provider.BaseURL = strings.TrimSuffix(healthURL, suffix)
 			return

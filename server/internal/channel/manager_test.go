@@ -2,6 +2,7 @@ package channel
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ type mockChannel struct {
 	stopErr     error
 	sendErr     error
 	msgCount    int64
+	sent        []OutgoingMessage
 }
 
 func newMockChannel(name, channelType string, enabled bool) *mockChannel {
@@ -67,6 +69,7 @@ func (m *mockChannel) Send(ctx context.Context, msg OutgoingMessage) error {
 	}
 	m.mu.Lock()
 	m.msgCount++
+	m.sent = append(m.sent, msg)
 	m.mu.Unlock()
 	return nil
 }
@@ -109,6 +112,15 @@ func (m *mockChannel) Messages() <-chan Message {
 
 func (m *mockChannel) simulateMessage(msg Message) {
 	m.messages <- msg
+}
+
+func (m *mockChannel) lastSent() (OutgoingMessage, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if len(m.sent) == 0 {
+		return OutgoingMessage{}, false
+	}
+	return m.sent[len(m.sent)-1], true
 }
 
 func TestManager_Register(t *testing.T) {
@@ -331,6 +343,75 @@ func TestManager_Send(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	mgr.Stop(ctx)
+}
+
+func TestManager_Send_DefaultHidesDetailedProcess(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("test", "mock", true)
+	mgr.Register(ch)
+
+	ctx := context.Background()
+	mgr.StartChannel(ctx, "test")
+
+	msg := OutgoingMessage{
+		ChatID: "123",
+		Content: "结论如下\n\n<!-- process-start -->\n```process\n[{\"tool\":\"exec\",\"cmd\":\"ls\"}]\n```\n" +
+			"<!-- process-end -->",
+	}
+	if err := mgr.Send(ctx, "test", msg); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	sent, ok := ch.lastSent()
+	if !ok {
+		t.Fatal("expected a sent message")
+	}
+	if sent.Content != "结论如下" {
+		t.Fatalf("sent content = %q, want %q", sent.Content, "结论如下")
+	}
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	mgr.Stop(stopCtx)
+}
+
+func TestManager_Send_ShowDetailsKeepsProcessContent(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("test", "mock", true)
+	mgr.Register(ch)
+
+	ctx := context.Background()
+	mgr.StartChannel(ctx, "test")
+
+	msg := OutgoingMessage{
+		ChatID: "123",
+		Content: "结论如下\n\n<!-- process-start -->\n```process\n[{\"tool\":\"exec\",\"cmd\":\"ls\"}]\n```\n" +
+			"<!-- process-end -->",
+		Metadata: map[string]interface{}{"show_details": true},
+	}
+	if err := mgr.Send(ctx, "test", msg); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	sent, ok := ch.lastSent()
+	if !ok {
+		t.Fatal("expected a sent message")
+	}
+	if !strings.Contains(sent.Content, `"tool":"exec"`) {
+		t.Fatalf("expected detailed process content, got %q", sent.Content)
+	}
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	mgr.Stop(stopCtx)
 }
 
 func TestManager_Broadcast(t *testing.T) {

@@ -61,19 +61,20 @@ func DefaultExecConfig() ExecConfig {
 
 // ExecTool implements the Tool interface for shell command execution.
 type ExecTool struct {
-	config    ExecConfig
-	policy    ExecPolicy
-	sessions  *SessionRegistry
-	approvals *ApprovalManager      // may be nil
-	broker    *sse.Broker           // may be nil; used for lifecycle events
-	safeBins  map[string]struct{}
-	dirStore  *DirAllowlistStore    // may be nil; persistent directory allowlist
-	sandbox   SandboxExecutor       // may be nil; when set, sandbox host mode is available
-	toolNames map[string]struct{}   // known tool names; exec rejects commands that match
-	registry  *Registry             // may be nil; when set, exec auto-forwards tool-name commands
-	retries   *RetryTracker         // prevents same-command retry loops
-	audit     *ExecAuditStore       // may be nil; persistent audit log
-	skillExec SkillExecFunc         // may be nil; short-circuits `blue <skill>` commands
+	config       ExecConfig
+	policy       ExecPolicy
+	sessions     *SessionRegistry
+	approvals    *ApprovalManager // may be nil
+	broker       *sse.Broker      // may be nil; used for lifecycle events
+	safeBins     map[string]struct{}
+	dirStore     *DirAllowlistStore  // may be nil; persistent directory allowlist
+	sandbox      SandboxExecutor     // may be nil; when set, sandbox host mode is available
+	toolNames    map[string]struct{} // known tool names; exec rejects commands that match
+	registry     *Registry           // may be nil; when set, exec auto-forwards tool-name commands
+	retries      *RetryTracker       // prevents same-command retry loops
+	audit        *ExecAuditStore     // may be nil; persistent audit log
+	skillExec    SkillExecFunc       // may be nil; short-circuits `blue <skill>` commands
+	pinnedSkills map[string]struct{} // pinned skill names for short-circuit (e.g. web_search, browser)
 }
 
 // NewExecTool creates a new exec tool.
@@ -142,6 +143,18 @@ func (t *ExecTool) SetSkillExecutor(fn SkillExecFunc) {
 	t.skillExec = fn
 }
 
+// SetPinnedSkills sets the pinned skill names for short-circuiting skill commands
+// (e.g. "web_search query" → skill executor). Unlike tool auto-forward, this avoids
+// registering skills as tools (which would consume extra prompt tokens).
+func (t *ExecTool) SetPinnedSkills(names []string) {
+	m := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		m[n] = struct{}{}
+	}
+	t.pinnedSkills = m
+	slog.Info("[exec] SetPinnedSkills", "count", len(m), "names", names)
+}
+
 // getShellConfig returns the shell and args, preferring config overrides.
 func (t *ExecTool) getShellConfig() (string, []string) {
 	if t.config.Shell != "" {
@@ -168,7 +181,7 @@ func (t *ExecTool) Policy() ExecPolicy {
 
 // Definition returns the tool definition for the LLM.
 func (t *ExecTool) Definition() ToolDefinition {
-	desc := "Execute shell commands on the host. Returns stdout, stderr, exit code, and session ID. Use the 'process' tool to manage background sessions."
+	desc := "Execute shell commands on the host. Returns stdout, stderr, exit code, and session ID. Use the 'process' tool to list/poll/log/kill background sessions."
 	if t.sandbox != nil {
 		desc += " Sandbox mode is available for isolated execution — set host to 'sandbox' for filesystem-level isolation."
 	}
@@ -184,7 +197,7 @@ func (t *ExecTool) Definition() ToolDefinition {
 		},
 		"lang": map[string]interface{}{
 			"type":        "string",
-			"description": "Locale for the command execution environment (e.g. en-US, zh-CN, ja-JP). Sets LANG and LC_ALL for the process.",
+			"description": "Optional locale for command execution (e.g. en-US, zh-CN, ja-JP). When omitted, uses the system/default environment locale.",
 		},
 		"env": map[string]interface{}{
 			"type":        "object",
@@ -195,7 +208,7 @@ func (t *ExecTool) Definition() ToolDefinition {
 		},
 		"timeout": map[string]interface{}{
 			"type":        "number",
-			"description": "Timeout in seconds (default 30, max 1800)",
+			"description": "Optional timeout in seconds (default 30, max 1800).",
 		},
 		"pty": map[string]interface{}{
 			"type":        "boolean",
@@ -226,16 +239,17 @@ func (t *ExecTool) Definition() ToolDefinition {
 
 // execResult is the JSON response returned to the LLM.
 type execResult struct {
-	SessionID  string   `json:"session_id"`
-	Status     string   `json:"status"`
-	ExitCode   *int     `json:"exit_code,omitempty"`
-	Stdout     string   `json:"stdout,omitempty"`
-	Stderr     string   `json:"stderr,omitempty"`
-	DurationMs int64    `json:"duration_ms"`
-	Truncated  bool     `json:"truncated,omitempty"`
-	Warnings   []string `json:"warnings,omitempty"`
-	Host       string   `json:"host,omitempty"`       // "local" or "sandbox"
-	RiskLevel  string   `json:"risk_level,omitempty"` // risk assessment level
+	SessionID  string            `json:"session_id"`
+	Status     string            `json:"status"`
+	ExitCode   *int              `json:"exit_code,omitempty"`
+	Stdout     string            `json:"stdout,omitempty"`
+	Stderr     string            `json:"stderr,omitempty"`
+	Data       map[string]string `json:"data,omitempty"`
+	DurationMs int64             `json:"duration_ms"`
+	Truncated  bool              `json:"truncated,omitempty"`
+	Warnings   []string          `json:"warnings,omitempty"`
+	Host       string            `json:"host,omitempty"`       // "local", "sandbox", or "builtin"
+	RiskLevel  string            `json:"risk_level,omitempty"` // risk assessment level
 }
 
 // Execute runs the shell command.
@@ -249,14 +263,28 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	// Intercept commands that look like tool invocations.
 	// The LLM sometimes tries to call tools via exec (e.g. "web_search query").
 	// If we have the registry, auto-forward to the real tool. Otherwise return error.
+	// Also check pinned skills for short-circuit.
+	firstWord := command
+	restArgs := ""
+	if idx := strings.IndexAny(command, " \t\n"); idx > 0 {
+		firstWord = command[:idx]
+		restArgs = strings.TrimSpace(command[idx+1:])
+	}
+	isBlueCommand := strings.HasPrefix(strings.TrimSpace(command), "blue ")
+	_, isPinnedSkill := t.pinnedSkills[firstWord]
+	_, isToolName := t.toolNames[firstWord]
+	slog.Info("[exec] dispatch",
+		"first_word", firstWord,
+		"is_blue_command", isBlueCommand,
+		"is_tool_name", isToolName,
+		"is_pinned_skill", isPinnedSkill,
+		"has_registry", t.registry != nil,
+		"has_skill_exec", t.skillExec != nil,
+		"has_rest_args", restArgs != "",
+	)
+
 	if len(t.toolNames) > 0 {
-		firstWord := command
-		restArgs := ""
-		if idx := strings.IndexAny(command, " \t\n"); idx > 0 {
-			firstWord = command[:idx]
-			restArgs = strings.TrimSpace(command[idx+1:])
-		}
-		if _, isToolName := t.toolNames[firstWord]; isToolName {
+		if isToolName {
 			if t.registry != nil {
 				if tool := t.registry.Get(firstWord); tool != nil {
 					slog.Info("[exec] auto-forwarding to tool", "tool", firstWord, "args", restArgs)
@@ -289,8 +317,36 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 				firstWord, firstWord,
 			)
 		}
-	} else {
-		slog.Warn("[exec] toolNames is empty, auto-forward disabled", "command", command)
+	}
+
+	// Short-circuit pinned skills (e.g. "web_search query" → skill executor).
+	// This avoids registering skills as tools (which would consume extra prompt tokens).
+	if t.skillExec != nil && len(t.pinnedSkills) > 0 {
+		if isPinnedSkill {
+			if restArgs == "" {
+				return nil, fmt.Errorf(
+					"%s requires arguments. Call with 'blue %s <args>' or use the %s skill directly",
+					firstWord, firstWord, firstWord,
+				)
+			}
+			input := map[string]any{"query": restArgs}
+			slog.Info("[exec] pinned skill short-circuit", "skill", firstWord, "input", restArgs, "source", "direct_command")
+			data, err := t.skillExec(ctx, firstWord, input)
+			if err != nil {
+				slog.Warn("[exec] pinned skill short-circuit failed",
+					"skill", firstWord,
+					"input", restArgs,
+					"error", err)
+				return nil, err
+			}
+			// Log success
+			slog.Info("[exec] pinned skill short-circuit success",
+				"skill", firstWord,
+				"input", restArgs)
+			return &ForwardedResult{ActualTool: firstWord, Result: data}, nil
+		}
+	} else if t.toolNames == nil {
+		slog.Warn("[exec] toolNames is nil, auto-forward disabled", "command", command)
 	}
 
 	workdirArg, _ := args["workdir"].(string)
@@ -397,17 +453,20 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	// Force `blue <subcommand>` to run on host — these are IPC calls to the
 	// main process and the sandbox doesn't have the blue binary in PATH.
+	// Use "builtin" as host value so UI can display a green shield (safe).
 	if hostArg == "sandbox" && strings.HasPrefix(strings.TrimSpace(command), "blue ") {
-		hostArg = ""
+		hostArg = "builtin"
 		warnings = append(warnings, "blue subcommand forced to host (IPC)")
 	}
 
 	// Short-circuit `blue <skill> key=value` commands: call the skill executor
 	// directly instead of spawning a subprocess + IPC round-trip.
-	if t.skillExec != nil && strings.HasPrefix(strings.TrimSpace(command), "blue ") {
+	if t.skillExec != nil && isBlueCommand {
+		slog.Info("[exec] trying blue skill short-circuit", "command", truncateStr(command, 200))
 		if result, ok := t.trySkillShortCircuit(ctx, command, warnings); ok {
 			return result, nil
 		}
+		slog.Info("[exec] blue skill short-circuit not taken", "command", truncateStr(command, 200))
 	}
 
 	// Sandbox mode: delegate to sandbox.Manager for filesystem-level isolation.
@@ -749,22 +808,38 @@ func extractCardPayload(line string) (map[string]interface{}, bool) {
 	return card, true
 }
 
-// trySkillShortCircuit attempts to execute a `blue <skill> key=value` command
+// trySkillShortCircuit attempts to execute a `blue <skill>` or `<skill>` command
 // by calling the skill executor directly, avoiding subprocess + IPC overhead.
 // Returns (result, true) on success, (nil, false) if the command doesn't match
 // a skill or the skill executor fails (fall through to normal exec).
 func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, warnings []string) (interface{}, bool) {
-	// Parse: "blue <skillName> key=value key2=value2 ..."
+	// Parse: "blue <skillName> key=value key2=value2 ..." or "<skillName> key=value ..."
 	trimmed := strings.TrimSpace(command)
-	rest := strings.TrimPrefix(trimmed, "blue ")
-	if rest == trimmed {
+
+	var rest string
+	var isBluePrefix bool
+	if strings.HasPrefix(trimmed, "blue ") {
+		rest = strings.TrimPrefix(trimmed, "blue ")
+		isBluePrefix = true
+	} else {
+		spaceIdx := strings.IndexAny(trimmed, " \t")
+		if spaceIdx <= 0 {
+			slog.Info("[exec] skill short-circuit skipped", "reason", "no_skill_token", "command", truncateStr(command, 200))
+			return nil, false
+		}
+		rest = strings.TrimSpace(trimmed[spaceIdx:])
+	}
+
+	if rest == "" {
+		slog.Info("[exec] skill short-circuit skipped", "reason", "empty_rest", "command", truncateStr(command, 200))
 		return nil, false
 	}
 
-	// Extract skill name (first word)
+	// Extract skill name (first word) and args
 	parts := strings.SplitN(rest, " ", 2)
 	skillName := parts[0]
 	if skillName == "" || skillName == "help" || skillName == "version" {
+		slog.Info("[exec] skill short-circuit skipped", "reason", "invalid_skill_name", "skill", skillName, "command", truncateStr(command, 200))
 		return nil, false
 	}
 
@@ -774,12 +849,20 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 		parseKeyValuePairs(parts[1], input)
 	}
 
-	slog.Info("[exec] skill short-circuit", "skill", skillName, "input", input)
-
+	// Try to execute the skill
+	slog.Info("[exec] skill short-circuit", "skill", skillName, "input", input, "source", "blue_prefix")
 	data, err := t.skillExec(ctx, skillName, input)
+
+	// If skill not found or disabled:
+	// - For direct calls (non-blue): try "blue <command>" as fallback
+	// - For blue prefix calls: fall through to normal exec
 	if err != nil {
-		// If skill not found or disabled, fall through to normal exec
 		if strings.Contains(err.Error(), "unknown skill") || strings.Contains(err.Error(), "is disabled") {
+			if !isBluePrefix {
+				// For direct calls, try to execute as "blue <original command>"
+				slog.Info("[exec] skill not found, trying blue prefix", "skill", skillName)
+				return nil, false // fall through to exec "blue <command>"
+			}
 			return nil, false
 		}
 		// Skill found but execution failed — return error as exec result
@@ -838,6 +921,7 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 		Status:    "completed",
 		ExitCode:  &exitCode,
 		Stdout:    stdout.String(),
+		Data:      data,
 		Warnings:  warnings,
 		Host:      "local",
 	}
@@ -896,6 +980,27 @@ func parseKeyValuePairs(s string, out map[string]any) {
 			out[key] = val
 		}
 	}
+}
+
+// isValidSkillName checks if a string looks like a valid skill name.
+// Skill names are lowercase alphanumeric with optional underscores/hyphens.
+func isValidSkillName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, c := range name {
+		if c == '_' || c == '-' {
+			continue
+		}
+		if c < 'a' || c > 'z' {
+			// Also allow digits but not at start
+			if c >= '0' && c <= '9' && len(name) > 1 {
+				continue
+			}
+			return false
+		}
+	}
+	return true
 }
 
 // runSandbox delegates execution to the SandboxExecutor for filesystem-level

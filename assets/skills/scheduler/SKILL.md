@@ -4,10 +4,10 @@ Create, list, delete, trigger, enable, and disable cron jobs. Jobs execute shell
 
 ## How to Send
 
-Use the `blue` CLI:
+Direct call:
 
 ```bash
-blue cron.create name=health_check schedule="*/10 * * * *" command="curl -s http://localhost:8080/health"
+cron.create name=health_check schedule="*/10 * * * *" command="mgmt system.health"
 ```
 
 Add `--json` for JSON output.
@@ -28,7 +28,7 @@ Create a new cron job.
 - `0 */2 * * *` — every 2 hours
 
 ```bash
-blue cron.create name=health_check schedule="*/10 * * * *" command="curl -s http://localhost:8080/health" description="Check service health every 10 minutes"
+cron.create name=health_check schedule="*/10 * * * *" command="mgmt system.health" description="Check service health every 10 minutes"
 ```
 
 ### cron.list
@@ -36,7 +36,7 @@ blue cron.create name=health_check schedule="*/10 * * * *" command="curl -s http
 List all cron jobs.
 
 ```bash
-blue cron.list
+cron.list
 ```
 
 ### cron.delete
@@ -46,7 +46,7 @@ Delete a cron job by ID.
 **Required:** `id`
 
 ```bash
-blue cron.delete id=cron_abc123
+cron.delete id=cron_abc123
 ```
 
 ### cron.trigger
@@ -56,7 +56,7 @@ Manually trigger a cron job immediately.
 **Required:** `id`
 
 ```bash
-blue cron.trigger id=cron_abc123
+cron.trigger id=cron_abc123
 ```
 
 ### cron.enable
@@ -66,7 +66,7 @@ Enable a disabled cron job.
 **Required:** `id`
 
 ```bash
-blue cron.enable id=cron_abc123
+cron.enable id=cron_abc123
 ```
 
 ### cron.disable
@@ -76,7 +76,7 @@ Disable a cron job without deleting it.
 **Required:** `id`
 
 ```bash
-blue cron.disable id=cron_abc123
+cron.disable id=cron_abc123
 ```
 
 ## Error Response

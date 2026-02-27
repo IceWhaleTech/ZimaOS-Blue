@@ -1,19 +1,20 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { proxyCacheApi, type CacheStats, type PrunerStats } from '@/api/proxyCache'
+import { proxyCacheApi, type PromptCacheStats, type PrunerStats } from '@/api/proxyCache'
 
 const { t } = useI18n()
 
-const stats = ref<CacheStats | null>(null)
+const stats = ref<PromptCacheStats | null>(null)
 const prunerStats = ref<PrunerStats | null>(null)
+const cacheEnabled = ref<boolean | null>(null)
 const loading = ref(false)
 
 const hitRate = computed(() => {
   if (!stats.value) return 0
-  const total = stats.value.hits + stats.value.misses
+  const total = stats.value.cache_hits + stats.value.cache_misses
   if (total === 0) return 0
-  return (stats.value.hits / total) * 100
+  return (stats.value.cache_hits / total) * 100
 })
 
 const tokensSaved = computed(() => prunerStats.value?.stats?.tokens_saved ?? 0)
@@ -25,11 +26,13 @@ function formatTokens(n: number): string {
 async function fetchStats() {
   loading.value = true
   try {
-    const [cacheRes, prunerRes] = await Promise.all([
-      proxyCacheApi.getStats(),
+    const [cacheRes, configRes, prunerRes] = await Promise.all([
+      proxyCacheApi.getPromptCacheStats(),
+      proxyCacheApi.getPromptCacheConfig().catch(() => null),
       proxyCacheApi.getPrunerStats().catch(() => null),
     ])
     stats.value = cacheRes.data
+    cacheEnabled.value = configRes?.data.enabled ?? null
     if (prunerRes) prunerStats.value = prunerRes.data
   } catch {
     // Ignore errors
@@ -64,7 +67,7 @@ defineExpose({ refresh: fetchStats })
         <div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.entries') }}</p>
           <p class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ stats?.entries ?? '-' }}
+            {{ stats?.requests ?? '-' }}
           </p>
         </div>
         <div class="p-3 bg-indigo-100 dark:bg-indigo-900/30 rounded-full">
@@ -74,7 +77,7 @@ defineExpose({ refresh: fetchStats })
         </div>
       </div>
       <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-        <span>{{ t('cache.maxEntries') }}: {{ stats?.max_entries ?? 0 }}</span>
+        <span>{{ t('cache.tokensSaved') }}: {{ formatTokens(stats?.total_cache_read_tokens ?? 0) }}</span>
       </div>
     </div>
 
@@ -94,10 +97,10 @@ defineExpose({ refresh: fetchStats })
         </div>
       </div>
       <div class="mt-2 flex items-center text-sm">
-        <span class="text-green-500">{{ stats?.hits ?? 0 }}</span>
+        <span class="text-green-500">{{ stats?.cache_hits ?? 0 }}</span>
         <span class="ml-1 text-gray-500 dark:text-gray-400">{{ t('cache.hits') }}</span>
         <span class="mx-2 text-gray-400">|</span>
-        <span class="text-orange-500">{{ stats?.misses ?? 0 }}</span>
+        <span class="text-orange-500">{{ stats?.cache_misses ?? 0 }}</span>
         <span class="ml-1 text-gray-500 dark:text-gray-400">{{ t('cache.misses') }}</span>
       </div>
     </div>
@@ -128,13 +131,13 @@ defineExpose({ refresh: fetchStats })
         <div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.status') }}</p>
           <p class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ stats?.enabled ? t('cache.enabled') : t('cache.disabled') }}
+            {{ cacheEnabled ? t('cache.enabled') : t('cache.disabled') }}
           </p>
         </div>
         <div
           :class="[
             'p-3 rounded-full',
-            stats?.enabled
+            cacheEnabled
               ? 'bg-green-100 dark:bg-green-900/30'
               : 'bg-gray-100 dark:bg-gray-700'
           ]"
@@ -142,7 +145,7 @@ defineExpose({ refresh: fetchStats })
           <svg
             :class="[
               'w-6 h-6',
-              stats?.enabled
+              cacheEnabled
                 ? 'text-green-600 dark:text-green-400'
                 : 'text-gray-400'
             ]" fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -152,7 +155,7 @@ defineExpose({ refresh: fetchStats })
         </div>
       </div>
       <div class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-        <span>TTL: {{ stats?.ttl_seconds ? Math.round(stats.ttl_seconds / 60) + 'm' : '-' }}</span>
+        <span>{{ t('cache.hitRate') }}: {{ stats ? Math.round((stats.reuse_ratio ?? 0) * 100) + '%' : '-' }}</span>
       </div>
     </div>
     </div>

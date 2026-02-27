@@ -210,7 +210,7 @@ func TestFormatSkillsPrompt_XMLOutput(t *testing.T) {
 	if !contains(result, `desc="Get weather info"`) {
 		t.Error("missing weather description")
 	}
-	if !contains(result, `cmd="blue weather"`) {
+	if !contains(result, `cmd="weather"`) {
 		t.Error("missing weather cmd")
 	}
 	if !contains(result, `name="calc"`) {
@@ -230,7 +230,7 @@ func TestFormatSkillsPrompt_XMLEscape(t *testing.T) {
 		// %q escapes & and < as unicode escapes
 		t.Errorf("XML escaping failed for name, got: %s", result)
 	}
-	if !contains(result, `cmd="blue test &amp; &lt;skill&gt;"`) {
+	if !contains(result, `cmd="test &amp; &lt;skill&gt;"`) {
 		t.Errorf("XML escaping failed for cmd, got: %s", result)
 	}
 }

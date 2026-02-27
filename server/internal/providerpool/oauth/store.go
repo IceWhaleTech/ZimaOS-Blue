@@ -30,6 +30,9 @@ type Token struct {
 
 // Expired returns true if the access token has expired (with 60s buffer).
 func (t *Token) Expired() bool {
+	if t.TokenExpiry.IsZero() {
+		return false
+	}
 	return time.Now().After(t.TokenExpiry.Add(-60 * time.Second))
 }
 

@@ -33,9 +33,9 @@ func main() {
 		return
 	}
 
-	// Fast path 2: try IPC for skill/tool calls (e.g., `blue web_search "test"`)
-	// before extracting or exec-ing .bluecli. This avoids a full process spawn
-	// for the most common CLI-to-server calls.
+	// Fast path 2: try IPC for all command invocations before extracting or
+	// exec-ing .bluecli. This keeps command handling in launcher and avoids
+	// extra process spawn/TCC edge cases.
 	if len(os.Args) > 1 && tryIPC(os.Args[1:]) {
 		return
 	}
