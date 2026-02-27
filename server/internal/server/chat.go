@@ -853,6 +853,11 @@ type ChatHandler struct {
 	// Conversation-level slash command state (/model, /offline).
 	conversationStateMu sync.RWMutex
 	conversationState   map[string]conversationSlashState
+
+	// One-shot flag: if a conversation stream was cancelled, the next outbound
+	// proxy request disables Responses continuation (drops previous_response_id).
+	cancelledResponsesContinuation map[string]struct{}
+	cancelledContinuationMu        sync.Mutex
 }
 
 type conversationSlashState struct {
@@ -962,7 +967,7 @@ func applyDeepSearchPreference(defs []tools.ToolDefinition, deepSearchEnabled *b
 	}
 	filtered := make([]tools.ToolDefinition, 0, len(defs))
 	for _, def := range defs {
-		if def.Name == "deep_search" || def.Name == "deep-search" {
+		if def.Name == "deep_research" || def.Name == "deep-research" {
 			continue
 		}
 		filtered = append(filtered, def)
@@ -982,6 +987,10 @@ func preContentRetrySkipReason(err error) string {
 	switch {
 	case pe.IsClientError():
 		return "client_error"
+	case pe.StatusCode == http.StatusBadGateway:
+		// 502 retries are handled in proxy with bounded exponential backoff.
+		// Skip chat-layer duplicate retries to avoid replaying identical payloads.
+		return "bad_gateway"
 	case pe.IsOverloaded():
 		return "overloaded"
 	case pe.IsNoProvider():
@@ -1084,22 +1093,23 @@ type MetricsRecorder interface {
 // NewChatHandler creates a new chat handler.
 func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRegistry *tools.Registry) *ChatHandler {
 	h := &ChatHandler{
-		store:             store,
-		providers:         providers,
-		toolRegistry:      toolRegistry,
-		toolExecutor:      tools.NewExecutor(toolRegistry),
-		streamController:  claudecode.NewStreamController(),
-		compactionConfig:  claudecode.DefaultCompactionConfig(),
-		convToSession:     make(map[string]string),
-		eventQueue:        make(chan func(), 100), // Buffered channel for async events
-		eventStop:         make(chan struct{}),
-		conversationCache: NewConversationCache(5*time.Minute, 100), // 5min TTL, max 100 conversations
-		summaryCache:      cache.NewGenericCache[string](cache.Config{MaxSize: 200, DefaultTTL: 30 * time.Minute}),
-		memoryRecallStats: &MemoryRecallStats{},
-		warmupCache:       make(map[string]*warmupResult),
-		injections:        make(map[string]chan string),
-		convToStream:      make(map[string]string),
-		conversationState: make(map[string]conversationSlashState),
+		store:                          store,
+		providers:                      providers,
+		toolRegistry:                   toolRegistry,
+		toolExecutor:                   tools.NewExecutor(toolRegistry),
+		streamController:               claudecode.NewStreamController(),
+		compactionConfig:               claudecode.DefaultCompactionConfig(),
+		convToSession:                  make(map[string]string),
+		eventQueue:                     make(chan func(), 100), // Buffered channel for async events
+		eventStop:                      make(chan struct{}),
+		conversationCache:              NewConversationCache(5*time.Minute, 100), // 5min TTL, max 100 conversations
+		summaryCache:                   cache.NewGenericCache[string](cache.Config{MaxSize: 200, DefaultTTL: 30 * time.Minute}),
+		memoryRecallStats:              &MemoryRecallStats{},
+		warmupCache:                    make(map[string]*warmupResult),
+		injections:                     make(map[string]chan string),
+		convToStream:                   make(map[string]string),
+		conversationState:              make(map[string]conversationSlashState),
+		cancelledResponsesContinuation: make(map[string]struct{}),
 	}
 	// Start async event processor
 	go h.processEventQueue()
@@ -2176,8 +2186,8 @@ type SendMessageRequest struct {
 	Attachments []MessageAttachment `json:"attachments,omitempty"`
 	Regenerate  bool                `json:"regenerate,omitempty"`
 	// Nil means default behavior (enabled). False removes web_search from tool list.
-	WebSearchEnabled  *bool `json:"web_search_enabled,omitempty"`
-	DeepSearchEnabled *bool `json:"deep_search_enabled,omitempty"`
+	WebSearchEnabled    *bool `json:"web_search_enabled,omitempty"`
+	DeepResearchEnabled *bool `json:"deep_research_enabled,omitempty"`
 }
 
 // SendMessageResponse represents a response from sending a message.
@@ -2349,7 +2359,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	// Get tool definitions (smart selection filters by user query when enabled)
 	selectedTools := h.selectTools(req.Message)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
-	selectedTools = applyDeepSearchPreference(selectedTools, req.DeepSearchEnabled)
+	selectedTools = applyDeepSearchPreference(selectedTools, req.DeepResearchEnabled)
 	chatReq.Tools = defsToLLMTools(selectedTools)
 
 	logger.Info().
@@ -3160,6 +3170,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
+	disableResponsesContinuation := h.consumeCancelledResponsesContinuation(convID)
 
 	// Allow empty message if attachments are provided
 	if req.Message == "" && len(req.Attachments) == 0 {
@@ -3408,7 +3419,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// Get tool definitions (smart selection filters by user query when enabled)
 	selectedTools := h.selectTools(req.Message)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
-	selectedTools = applyDeepSearchPreference(selectedTools, req.DeepSearchEnabled)
+	selectedTools = applyDeepSearchPreference(selectedTools, req.DeepResearchEnabled)
 	chatReq.Tools = defsToLLMTools(selectedTools)
 	logger.Info().
 		Str("model", chatReq.Model).
@@ -3461,6 +3472,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 	ctx = tools.WithUserID(ctx, h.getUserID(c))
 	ctx = tools.WithSessionID(ctx, convID)
+	if disableResponsesContinuation {
+		ctx = proxy.WithDisableResponsesContinuation(ctx)
+	}
 	// tools (e.g. browser navigate/screenshot) don't get "context canceled".
 	toolCtx := context.WithoutCancel(ctx)
 
@@ -4584,6 +4598,9 @@ STREAM_LOOP:
 				}
 				ctx = tools.WithUserID(ctx, userID)
 				ctx = tools.WithSessionID(ctx, convID)
+				if disableResponsesContinuation {
+					ctx = proxy.WithDisableResponsesContinuation(ctx)
+				}
 				toolCtx = context.WithoutCancel(ctx)
 				toolCtx = tools.WithCardEmitter(toolCtx, func(card map[string]interface{}) {
 					cardJSON, err := json.Marshal(card)
@@ -5221,6 +5238,7 @@ type CancelStreamRequest struct {
 
 // CancelStream cancels an active streaming response.
 func (h *ChatHandler) CancelStream(c echo.Context) error {
+	convID := c.Param("id")
 	var req CancelStreamRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
@@ -5231,6 +5249,7 @@ func (h *ChatHandler) CancelStream(c echo.Context) error {
 	}
 
 	if h.streamController.Cancel(req.StreamID) {
+		h.markConversationCancelledForResponsesContinuation(convID)
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success":   true,
 			"stream_id": req.StreamID,
@@ -5313,6 +5332,7 @@ func (h *ChatHandler) InjectMessage(c echo.Context) error {
 	}
 
 	// Cancel the active stream — StreamMessage will detect the injection
+	h.markConversationCancelledForResponsesContinuation(convID)
 	h.streamController.Cancel(streamID)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -5320,6 +5340,28 @@ func (h *ChatHandler) InjectMessage(c echo.Context) error {
 		"injected":  true,
 		"stream_id": streamID,
 	})
+}
+
+func (h *ChatHandler) markConversationCancelledForResponsesContinuation(convID string) {
+	if convID == "" {
+		return
+	}
+	h.cancelledContinuationMu.Lock()
+	h.cancelledResponsesContinuation[convID] = struct{}{}
+	h.cancelledContinuationMu.Unlock()
+}
+
+func (h *ChatHandler) consumeCancelledResponsesContinuation(convID string) bool {
+	if convID == "" {
+		return false
+	}
+	h.cancelledContinuationMu.Lock()
+	defer h.cancelledContinuationMu.Unlock()
+	if _, ok := h.cancelledResponsesContinuation[convID]; !ok {
+		return false
+	}
+	delete(h.cancelledResponsesContinuation, convID)
+	return true
 }
 
 // consumeInjection checks for and returns a pending injection message for a conversation.

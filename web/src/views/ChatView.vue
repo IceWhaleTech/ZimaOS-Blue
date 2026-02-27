@@ -883,7 +883,7 @@ onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
 
   // Preload common card components for better UX
-  componentPool.preload(['progress', 'chart', 'gallery', 'link', 'file', 'deep-search', 'deep-search-progress'])
+  componentPool.preload(['progress', 'chart', 'gallery', 'link', 'file', 'deep-research', 'deep-research-progress'])
 
   // Initialize speech services lazily (TTS/STT)
   authFetch('/api/v1/speech/init', { method: 'POST' }).catch(() => {})
@@ -1068,11 +1068,11 @@ onUnmounted(() => {
             :class="chatStore.deepSearchEnabled
               ? 'text-emerald-500 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30'
               : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'"
-            :title="t('ui.deepSearchTitle')"
+            :title="t('ui.deepResearchTitle')"
             @click="toggleDeepSearch"
           >
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.25 9V5.25A2.25 2.25 0 0 0 12 3h0a2.25 2.25 0 0 0-2.25 2.25V9m8.593 1.5-1.05 7.877a2.25 2.25 0 0 1-2.23 1.953H8.937a2.25 2.25 0 0 1-2.23-1.953L5.657 10.5m12.686 0a48.108 48.108 0 0 0-3.478-.397m-7.73 0a48.11 48.11 0 0 1 3.478-.397m0 0V8.25a1.5 1.5 0 1 1 3 0v1.456m-3 0h3" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.483 9.246 5 7.5 5S4.168 5.483 3 6.253v13C4.168 18.483 5.754 18 7.5 18s3.332.483 4.5 1.253m0-13C13.168 5.483 14.754 5 16.5 5s3.332.483 4.5 1.253v13C19.832 18.483 18.246 18 16.5 18s-3.332.483-4.5 1.253" />
             </svg>
           </button>
 
@@ -1405,9 +1405,9 @@ onUnmounted(() => {
                 >
                   <span class="flex items-center gap-3 text-sm text-gray-700 dark:text-slate-200">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.25 9V5.25A2.25 2.25 0 0 0 12 3h0a2.25 2.25 0 0 0-2.25 2.25V9m8.593 1.5-1.05 7.877a2.25 2.25 0 0 1-2.23 1.953H8.937a2.25 2.25 0 0 1-2.23-1.953L5.657 10.5m12.686 0a48.108 48.108 0 0 0-3.478-.397m-7.73 0a48.11 48.11 0 0 1 3.478-.397m0 0V8.25a1.5 1.5 0 1 1 3 0v1.456m-3 0h3" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.483 9.246 5 7.5 5S4.168 5.483 3 6.253v13C4.168 18.483 5.754 18 7.5 18s3.332.483 4.5 1.253m0-13C13.168 5.483 14.754 5 16.5 5s3.332.483 4.5 1.253v13C19.832 18.483 18.246 18 16.5 18s-3.332.483-4.5 1.253" />
                     </svg>
-                    <span>{{ t('ui.deepSearchTitle') }}</span>
+                    <span>{{ t('ui.deepResearchTitle') }}</span>
                   </span>
                   <span class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="chatStore.deepSearchEnabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'">
                     <span class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform" :class="chatStore.deepSearchEnabled ? 'translate-x-5' : 'translate-x-1'" />

@@ -39,7 +39,7 @@ func TestDeepSearchSkill_ReturnsStructuredOutput(t *testing.T) {
 		t.Fatalf("expected map data, got %T", res.Data)
 	}
 	if _, exists := data["_card"]; exists {
-		t.Fatalf("did not expect _card hint in deep_search output")
+		t.Fatalf("did not expect _card hint in deep_research output")
 	}
 	if answer, ok := data["answer"].(string); !ok || answer == "" {
 		t.Fatalf("expected non-empty answer, got %#v", data["answer"])

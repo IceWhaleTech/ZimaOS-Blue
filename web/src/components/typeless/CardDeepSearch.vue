@@ -38,11 +38,11 @@ function domainOf(url: string): string {
 </script>
 
 <template>
-  <div class="deep-search-card rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm">
+  <div class="deep-research-card rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm">
     <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
       <div class="flex items-center justify-between gap-3">
         <div class="text-sm font-semibold text-gray-800 dark:text-gray-100">
-          {{ t('chat.deepSearchTitle', 'Deep Search') }}
+          {{ t('chat.deepSearchTitle', 'Deep Research') }}
         </div>
         <div class="flex items-center gap-2 text-xs">
           <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">

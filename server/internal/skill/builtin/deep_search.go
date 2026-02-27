@@ -9,7 +9,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
 
-// DeepSearchExecutor is the interface for the deep_search backend.
+// DeepSearchExecutor is the interface for the deep_research backend.
 // Decouples skill/builtin from deepsearch package internals.
 type DeepSearchExecutor interface {
 	Execute(ctx context.Context, args map[string]interface{}) (interface{}, error)
@@ -26,13 +26,13 @@ type DeepSearch struct {
 func NewDeepSearch() *DeepSearch {
 	return &DeepSearch{
 		manifest: &skill.Manifest{
-			ID:          "deep_search",
-			Name:        "Deep Search",
+			ID:          "deep_research",
+			Name:        "Deep Research",
 			Version:     "1.0.0",
-			Description: "Run multi-step deep search with planning, evidence collection, and citation-based summary.",
+			Description: "Run multi-step deep research with planning, evidence collection, and citation-based summary.",
 			Category:    "system",
 			Icon:        "search",
-			Tags:        []string{"deep-search", "research", "evidence", "citations"},
+			Tags:        []string{"deep-research", "research", "evidence", "citations"},
 			Inputs: []skill.Parameter{
 				{Name: "query", Type: "string", Description: "Research query", Required: true},
 				{Name: "mode", Type: "string", Description: "Search depth: fast, standard, deep"},

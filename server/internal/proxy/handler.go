@@ -73,6 +73,7 @@ func GetResolvedRouteFromContext(ctx context.Context) *ResolvedRoute {
 // Layout: pointer-sized fields first, then bools — minimizes padding for cache-line efficiency.
 type parsedRequest struct {
 	body               []byte
+	requestedModel     string         // model value from request body before normalization/routing
 	model              string
 	originalModel      string         // model before routing (for cost savings tracking)
 	upstreamFormat     ProviderType   // set when request was converted to non-OpenAI format
@@ -261,11 +262,11 @@ func shouldRetryTransientUpstream5xx(singleProvider bool, statusCode int, body [
 func transientUpstreamRetryDelay(attempt int) time.Duration {
 	switch attempt {
 	case 0:
-		return 200 * time.Millisecond
+		return 500 * time.Millisecond
 	case 1:
-		return 600 * time.Millisecond
+		return 1500 * time.Millisecond
 	default:
-		return time.Second
+		return 3 * time.Second
 	}
 }
 
@@ -494,6 +495,24 @@ func isEmptyRunError(err error) bool {
 		strings.Contains(msg, "returned empty streaming response")
 }
 
+func hasToolMessagesInRequest(body []byte) bool {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.Exists() || !messages.IsArray() {
+		return false
+	}
+	for _, msg := range messages.Array() {
+		role := strings.ToLower(strings.TrimSpace(msg.Get("role").Str))
+		if role == "tool" {
+			return true
+		}
+		toolCalls := msg.Get("tool_calls")
+		if toolCalls.Exists() && toolCalls.IsArray() && len(toolCalls.Array()) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // ensurePruner lazily initializes the pruner middleware via factory if not yet created.
 func (ph *ProxyHandler) ensurePruner() *pruner.Middleware {
 	if ph.prunerMw != nil {
@@ -695,6 +714,10 @@ func (ph *ProxyHandler) warmAuthStrategies() {
 // return a very short response. We only care about the HTTP status code.
 var toolCallProbeBody = []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"noop","description":"no-op","parameters":{"type":"object","properties":{}}}}],"max_tokens":1}`)
 
+// DisableResponsesContinuationHeader tells proxy request shaping logic to strip
+// previous_response_id before forwarding to Responses endpoints.
+const DisableResponsesContinuationHeader = "X-Zima-Disable-Responses-Continuation"
+
 // warmToolCallSupport sends a minimal tool-bearing request to each provider to detect
 // whether it supports native function calling. Results are cached in ProviderMemory
 // so the routing layer can skip providers that would 422 on tool_calls.
@@ -706,6 +729,12 @@ func (ph *ProxyHandler) warmToolCallSupport(providers []*providerpool.Provider) 
 
 	for _, p := range providers {
 		burl := p.EffectiveBaseURL()
+		// Responses endpoints don't have a reliable tool-probe signal and the probe
+		// itself may cause protocol-side effects. Skip warm probing entirely.
+		if isResponsesEndpointBaseURL(burl) {
+			slog.Debug("[proxy] tool probe skipped for responses endpoint", "provider", p.ID)
+			continue
+		}
 
 		// Skip if already probed
 		if _, ok := ph.providerMemory.RecallToolCap(p.ID, burl); ok {
@@ -722,17 +751,6 @@ func (ph *ProxyHandler) warmToolCallSupport(providers []*providerpool.Provider) 
 
 		probeURL := strings.TrimSuffix(burl, "/") + "/v1/chat/completions"
 		probeBody := toolCallProbeBody
-		// Responses-based providers expose a fixed endpoint path; probing chat/completions
-		// would always fail with a protocol mismatch and poison ToolCap cache.
-		if isResponsesEndpointBaseURL(burl) {
-			probeURL = burl
-			convertedProbe, convErr := convertOpenAIChatCompletionsToResponses(toolCallProbeBody)
-			if convErr != nil {
-				slog.Warn("[proxy] tool probe skipped: failed to convert to responses format", "provider", p.ID, "error", convErr)
-				continue
-			}
-			probeBody = convertedProbe
-		}
 		req, err := http.NewRequest(http.MethodPost, probeURL, io.NopCloser(bytes.NewReader(probeBody)))
 		if err != nil {
 			continue
@@ -1089,6 +1107,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if gjson.ValidBytes(bodyBytes) {
 		bodyStr := unsafeString(bodyBytes)
 		pr.model = gjson.Get(bodyStr, "model").Str
+		pr.requestedModel = pr.model
 		pr.streaming = gjson.Get(bodyStr, "stream").Bool()
 	}
 
@@ -1110,6 +1129,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ph.setRouteHeaders(w, pr)
 	routingMode := ph.extractRoutingMode(r)
 	slog.Info("[proxy] routing request body",
+		"requested_model", pr.requestedModel,
 		"model", pr.model,
 		"streaming", pr.streaming,
 		"mode", routingMode,
@@ -1126,12 +1146,12 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// When the request includes tools, require providers that support function calling.
 	// This prevents routing to providers/models that would reject tool_calls.
 	hasTools := gjson.GetBytes(pr.body, "tools").Exists()
-	hasToolMessages := gjson.GetBytes(pr.body, "messages.#(role==\"tool\")").Exists() ||
-		gjson.GetBytes(pr.body, "messages.#.tool_calls.0").Exists()
+	hasToolMessages := hasToolMessagesInRequest(pr.body)
 	if hasTools {
 		routeReq.RequireCap = &providerpool.ModelCapabilities{FunctionCall: true}
 	}
 	slog.Info("[proxy] route request",
+		"requested_model", pr.requestedModel,
 		"model", pr.model,
 		"mode", routeReq.Mode,
 		"preferred_provider", routeReq.PreferredProviderID,
@@ -1328,6 +1348,9 @@ func (ph *ProxyHandler) buildUpstreamRequest(r *http.Request, route *providerpoo
 // buildUpstreamRequestWithFormat creates an upstream request using the given effective API format.
 func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *providerpool.RouteResult, body []byte, effectiveFormat providerpool.APIFormat) (*http.Request, error) {
 	provider := route.Provider
+	if disableResponsesContinuation(r) {
+		body = stripPreviousResponseID(body)
+	}
 
 	// Use effective base URL (considers DetectedEndpoint)
 	effectiveBaseURL := provider.EffectiveBaseURL()
@@ -1421,6 +1444,9 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 			slog.Info("[proxy] URI fixup: endpoint is /responses, converted body to Responses",
 				"provider", provider.ID, "final_path", finalPath)
 		}
+	}
+	if strings.HasSuffix(finalPath, "/responses") {
+		body = clampResponsesMaxOutputTokens(body)
 	}
 	if endpointFormat, ok := detectEndpointFixedFormatFromPath(finalPath); ok {
 		effectiveFormat = endpointFormat
@@ -2018,10 +2044,12 @@ func (ph *ProxyHandler) tryOnProvider(
 				continue
 			}
 
+			known404ModelNotConfigured := treatKnown404AsModelNotConfigured(result.Provider, formatKnown, statusCode)
+
 			// Format mismatch on fast path — expand to all formats and fall through to general loop.
-			// Exception: when format is already known, a 404 is likely model-not-found (e.g. Copilot
-			// returns "page not found" for unknown models), not a format issue.
-			if allFormats > 1 && isFormatMismatchError(statusCode, errBody) && !(formatKnown && statusCode == 404) {
+			// Exception: some curated providers return generic 404 for unknown models
+			// (e.g. Copilot). In that case, treat it as model-not-configured.
+			if allFormats > 1 && isFormatMismatchError(statusCode, errBody) && !known404ModelNotConfigured {
 				errStr := string(errBody)
 				if len(errStr) > 256 {
 					errStr = errStr[:256]
@@ -2063,10 +2091,10 @@ func (ph *ProxyHandler) tryOnProvider(
 						"provider", pid, "status", statusCode, "error", errMsg)
 					return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
 				}
-				if isFormatMismatchError(statusCode, errBody) && !(formatKnown && statusCode == 404) {
+				if isFormatMismatchError(statusCode, errBody) && !known404ModelNotConfigured {
 					return nil, "", "", fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 				}
-				if isModelNotConfiguredError(statusCode, errBody) || (formatKnown && statusCode == 404) {
+				if isModelNotConfiguredError(statusCode, errBody) || known404ModelNotConfigured {
 					if !pr.singleProvider {
 						ph.providerMemory.BlacklistModel(pid, burl, pr.model)
 					}
@@ -2235,15 +2263,16 @@ func (ph *ProxyHandler) tryOnProvider(
 				return nil, "", "", fmt.Errorf("upstream %d: %s", statusCode, errStr)
 			}
 
+			known404ModelNotConfigured := treatKnown404AsModelNotConfigured(result.Provider, formatKnown, statusCode)
+
 			// Format mismatch: 422, or 404/400 with format-related error body.
 			// Check BEFORE isModelNotConfiguredError since both match 404/422.
 			// Don't blacklist the model — try the next format instead.
 			//
 			// Exception: when the format is already known (detected or remembered),
-			// a 404 "page not found" is NOT a format mismatch — it means the model
-			// doesn't exist on this provider (e.g. Copilot returns 404 for unknown
-			// models). Let it fall through to isModelNotConfiguredError.
-			if isFormatMismatchError(statusCode, errBody) && !(formatKnown && statusCode == 404) {
+			// a 404 can be model-not-found for curated providers (e.g. Copilot).
+			// Let those fall through to isModelNotConfiguredError.
+			if isFormatMismatchError(statusCode, errBody) && !known404ModelNotConfigured {
 				slog.Warn("[proxy] format mismatch, trying next format",
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
 				lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
@@ -2261,7 +2290,7 @@ func (ph *ProxyHandler) tryOnProvider(
 			// exist on this provider (e.g. Copilot returns generic "page not found"
 			// for unknown models) — treat it as model-not-configured even if the
 			// body doesn't contain model-specific keywords.
-			if isModelNotConfiguredError(statusCode, errBody) || (formatKnown && statusCode == 404) {
+			if isModelNotConfiguredError(statusCode, errBody) || known404ModelNotConfigured {
 				slog.Warn("[proxy] model not configured on provider, blacklisting and trying next",
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
 				// Blacklist THIS model on THIS provider (per-provider scope) so we don't retry it
@@ -2390,6 +2419,23 @@ func isModelNotConfiguredBody(body []byte) bool {
 	}
 
 	return false
+}
+
+// treatKnown404AsModelNotConfigured returns true for providers where a
+// format-known 404 should be interpreted as model-not-configured instead of
+// format mismatch. This is primarily needed for curated providers (for example,
+// Copilot) that return generic 404 bodies for unknown model IDs.
+func treatKnown404AsModelNotConfigured(provider *providerpool.Provider, formatKnown bool, statusCode int) bool {
+	if !formatKnown || statusCode != http.StatusNotFound || provider == nil {
+		return false
+	}
+
+	switch provider.APIFormat {
+	case providerpool.APIFormatCopilot, providerpool.APIFormatAnthropic:
+		return true
+	default:
+		return false
+	}
 }
 
 // formatMismatchPatterns are error body patterns that indicate the request format
@@ -3271,4 +3317,23 @@ func isResponsesEndpointBaseURL(raw string) bool {
 	}
 	path := strings.TrimSuffix(u.Path, "/")
 	return path != "" && strings.HasSuffix(path, "/responses")
+}
+
+func disableResponsesContinuation(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	v := strings.ToLower(strings.TrimSpace(r.Header.Get(DisableResponsesContinuationHeader)))
+	return v == "1" || v == "true" || v == "yes"
+}
+
+func stripPreviousResponseID(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	out, err := sjson.DeleteBytes(body, "previous_response_id")
+	if err != nil {
+		return body
+	}
+	return out
 }

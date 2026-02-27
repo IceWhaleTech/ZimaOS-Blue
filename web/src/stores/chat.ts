@@ -703,7 +703,7 @@ export const useChatStore = defineStore('chat', () => {
       max_tokens: settingsStore.maxTokens,
       attachments: attachments.length > 0 ? attachments : undefined,
       web_search_enabled: webSearchEnabled.value,
-      deep_search_enabled: deepSearchEnabled.value,
+      deep_research_enabled: deepSearchEnabled.value,
     }
 
     try {
@@ -1116,7 +1116,7 @@ export const useChatStore = defineStore('chat', () => {
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         web_search_enabled: webSearchEnabled.value,
-        deep_search_enabled: deepSearchEnabled.value,
+        deep_research_enabled: deepSearchEnabled.value,
       }
 
       await sseClient.connect(convId, request, {
@@ -1249,7 +1249,7 @@ export const useChatStore = defineStore('chat', () => {
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         web_search_enabled: webSearchEnabled.value,
-        deep_search_enabled: deepSearchEnabled.value,
+        deep_research_enabled: deepSearchEnabled.value,
       }
 
       await sseClient.connect(conversationId, request, {
@@ -1422,7 +1422,7 @@ export const useChatStore = defineStore('chat', () => {
         attachments: lastUserMessage.attachments,
         regenerate: true,
         web_search_enabled: webSearchEnabled.value,
-        deep_search_enabled: deepSearchEnabled.value,
+        deep_research_enabled: deepSearchEnabled.value,
       }
 
       await sseClient.connect(conversationId, request, {

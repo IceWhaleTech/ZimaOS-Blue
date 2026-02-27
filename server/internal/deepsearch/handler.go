@@ -17,11 +17,11 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
-	g := e.Group("/api/v1/deep-search")
-	h.RegisterGroup(g)
+	g0 := e.Group("/api/v1/deep-research")
+	h.RegisterGroup(g0)
 
-	g2 := e.Group("/api/deep-search")
-	h.RegisterGroup(g2)
+	g00 := e.Group("/api/deep-research")
+	h.RegisterGroup(g00)
 }
 
 func (h *Handler) RegisterGroup(g *echo.Group) {

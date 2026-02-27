@@ -57,7 +57,7 @@ export interface SendMessageRequest {
   attachments?: MessageAttachment[]
   regenerate?: boolean  // True if this is a regenerate request
   web_search_enabled?: boolean
-  deep_search_enabled?: boolean
+  deep_research_enabled?: boolean
 }
 
 export interface SendMessageResponse {

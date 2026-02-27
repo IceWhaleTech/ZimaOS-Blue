@@ -873,8 +873,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 	}
 
-	// Deep search: wire service-backed executor into deep_search skill.
-	if sk := s.SkillRegistry.Get("deep_search"); sk != nil {
+	// Deep research: wire service-backed executor into deep_research skill.
+	if sk := s.SkillRegistry.Get("deep_research"); sk != nil {
 		if ds, ok := sk.(*builtin.DeepSearch); ok {
 			ds.SetExecutor(deepsearch.NewSkillExecutor(deepSearchService))
 		}
@@ -1180,11 +1180,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		wfGroup.Any("/*", stub)
 	}
 
-	// Deep search routes (protected)
+	// Deep research routes (protected)
 	deepSearchHandler := deepsearch.NewHandler(deepSearchService)
-	deepSearchHandler.RegisterGroup(protected.Group("/deep-search"))
-	deepSearchHandler.RegisterGroup(apiProtected.Group("/deep-search"))
-	logger.Info("Deep search routes registered")
+	deepSearchHandler.RegisterGroup(protected.Group("/deep-research"))
+	deepSearchHandler.RegisterGroup(apiProtected.Group("/deep-research"))
+	logger.Info("Deep research routes registered")
 
 	// Voice routes - /api/v1/voice/*
 	if deps.VoiceHandler != nil {

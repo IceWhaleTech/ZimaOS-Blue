@@ -5,7 +5,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
+
+const responsesMaxOutputTokensCap = 1024
 
 // openAIChatRequestForResponses captures the subset of OpenAI chat-completions
 // fields we need to map into the Responses API.
@@ -67,6 +72,7 @@ type responsesInputContentPart struct {
 	Type     string `json:"type"`
 	Text     string `json:"text,omitempty"`
 	ImageURL string `json:"image_url,omitempty"`
+	Audio    any    `json:"input_audio,omitempty"`
 }
 
 type responsesFunctionCallItem struct {
@@ -132,6 +138,9 @@ func convertOpenAIChatCompletionsToResponses(body []byte) ([]byte, error) {
 	}
 	if in.MaxTokens > 0 {
 		out.MaxOutputTokens = in.MaxTokens
+		if out.MaxOutputTokens > responsesMaxOutputTokensCap {
+			out.MaxOutputTokens = responsesMaxOutputTokensCap
+		}
 	}
 	if in.Temperature != nil {
 		out.Temperature = in.Temperature
@@ -162,9 +171,14 @@ func convertOpenAIChatCompletionsToResponses(body []byte) ([]byte, error) {
 		}
 	}
 
+	trimmedMessages := in.Messages
+	if in.PreviousResponseID != "" {
+		trimmedMessages = trimMessagesForContinuation(in.Messages)
+	}
+
 	var instructions []string
-	out.Input = make([]interface{}, 0, len(in.Messages)+2)
-	for msgIdx, m := range in.Messages {
+	out.Input = make([]interface{}, 0, len(trimmedMessages)+2)
+	for msgIdx, m := range trimmedMessages {
 		role := strings.ToLower(strings.TrimSpace(m.Role))
 		switch role {
 		case "system", "developer":
@@ -210,11 +224,54 @@ func convertOpenAIChatCompletionsToResponses(body []byte) ([]byte, error) {
 		out.Instructions = strings.Join(instructions, "\n\n")
 	}
 
+	out.Input = sanitizeResponsesInput(out.Input)
+
 	converted, err := gojson.Marshal(out)
 	if err != nil {
 		return nil, fmt.Errorf("marshal responses request: %w", err)
 	}
 	return converted, nil
+}
+
+// clampResponsesMaxOutputTokens limits max_output_tokens to reduce upstream pressure.
+func clampResponsesMaxOutputTokens(body []byte) []byte {
+	maxOutputTokens := gjson.GetBytes(body, "max_output_tokens")
+	if !maxOutputTokens.Exists() {
+		return body
+	}
+	if maxOutputTokens.Int() <= responsesMaxOutputTokensCap {
+		return body
+	}
+	out, err := sjson.SetBytes(body, "max_output_tokens", responsesMaxOutputTokensCap)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+// trimMessagesForContinuation keeps only incremental messages when previous_response_id is set.
+func trimMessagesForContinuation(messages []openAIChatMessageForResponses) []openAIChatMessageForResponses {
+	if len(messages) == 0 {
+		return messages
+	}
+
+	lastAssistant := -1
+	for i := len(messages) - 1; i >= 0; i-- {
+		if strings.EqualFold(strings.TrimSpace(messages[i].Role), "assistant") {
+			lastAssistant = i
+			break
+		}
+	}
+
+	if lastAssistant >= 0 {
+		if lastAssistant+1 >= len(messages) {
+			return nil
+		}
+		return messages[lastAssistant+1:]
+	}
+
+	// No assistant message in payload: keep only the latest turn as incremental input.
+	return messages[len(messages)-1:]
 }
 
 // convertResponsesToOpenAIChatCompletions converts an OpenAI Responses API
@@ -372,6 +429,12 @@ func convertChatContentPart(part map[string]interface{}) (responsesInputContentP
 			return responsesInputContentPart{}, false
 		}
 		return responsesInputContentPart{Type: "input_image", ImageURL: imageURL}, true
+	case "input_audio":
+		audio, ok := part["input_audio"]
+		if !ok || audio == nil {
+			return responsesInputContentPart{}, false
+		}
+		return responsesInputContentPart{Type: "input_audio", Audio: audio}, true
 	default:
 		text := anyToString(part["text"])
 		if text == "" {
@@ -438,4 +501,78 @@ func anyToString(v interface{}) string {
 	default:
 		return ""
 	}
+}
+
+func sanitizeResponsesInput(items []interface{}) []interface{} {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]interface{}, 0, len(items))
+	for _, item := range items {
+		switch v := item.(type) {
+		case responsesInputMessage:
+			msg := sanitizeResponsesInputMessage(v)
+			if len(msg.Content) == 0 {
+				continue
+			}
+			out = append(out, msg)
+		case responsesFunctionCallItem:
+			if strings.TrimSpace(v.Type) == "" {
+				v.Type = "function_call"
+			}
+			if v.Type != "function_call" || strings.TrimSpace(v.Name) == "" {
+				continue
+			}
+			out = append(out, v)
+		case responsesFunctionCallOutputItem:
+			if strings.TrimSpace(v.Type) == "" {
+				v.Type = "function_call_output"
+			}
+			if v.Type != "function_call_output" || strings.TrimSpace(v.CallID) == "" {
+				continue
+			}
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func sanitizeResponsesInputMessage(msg responsesInputMessage) responsesInputMessage {
+	msg.Role = normalizeInputRole(strings.ToLower(strings.TrimSpace(msg.Role)))
+	msg.Content = sanitizeResponsesContentParts(msg.Content)
+	return msg
+}
+
+func sanitizeResponsesContentParts(parts []responsesInputContentPart) []responsesInputContentPart {
+	if len(parts) == 0 {
+		return nil
+	}
+	out := make([]responsesInputContentPart, 0, len(parts))
+	for _, p := range parts {
+		partType := strings.TrimSpace(p.Type)
+		switch partType {
+		case "input_text":
+			if strings.TrimSpace(p.Text) == "" {
+				continue
+			}
+			out = append(out, responsesInputContentPart{Type: "input_text", Text: p.Text})
+		case "input_image":
+			if strings.TrimSpace(p.ImageURL) == "" {
+				continue
+			}
+			out = append(out, responsesInputContentPart{Type: "input_image", ImageURL: p.ImageURL})
+		case "input_audio":
+			if p.Audio == nil {
+				continue
+			}
+			out = append(out, responsesInputContentPart{Type: "input_audio", Audio: p.Audio})
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

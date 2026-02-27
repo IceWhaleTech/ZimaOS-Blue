@@ -72,7 +72,7 @@ func (e *SkillExecutor) Execute(ctx context.Context, args map[string]interface{}
 			}
 			if current.Stage != lastStage || current.Progress != lastProgress {
 				tools.EmitCard(ctx, map[string]interface{}{
-					"type":       "deep-search-progress",
+					"type":       "deep-research-progress",
 					"job_id":     current.ID,
 					"query":      current.Query,
 					"mode":       string(current.Mode),

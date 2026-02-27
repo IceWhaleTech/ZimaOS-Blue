@@ -34,8 +34,8 @@ export type TypelessCardType =
   | 'video'
   | 'mermaid'
   | 'search'
-  | 'deep-search'
-  | 'deep-search-progress'
+  | 'deep-research'
+  | 'deep-research-progress'
   | 'ui-review'
   | 'ui-review-progress'
   | 'media-generate'
@@ -529,7 +529,7 @@ export interface DeepSearchCitationItem {
 }
 
 export interface TypelessCardDeepSearch extends TypelessCardBase {
-  type: 'deep-search'
+  type: 'deep-research'
   query?: string
   mode?: 'fast' | 'standard' | 'deep'
   answer?: string
@@ -541,7 +541,7 @@ export interface TypelessCardDeepSearch extends TypelessCardBase {
 }
 
 export interface TypelessCardDeepSearchProgress extends TypelessCardBase {
-  type: 'deep-search-progress'
+  type: 'deep-research-progress'
   job_id?: string
   query?: string
   mode?: 'fast' | 'standard' | 'deep'

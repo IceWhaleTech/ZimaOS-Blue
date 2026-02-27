@@ -39,7 +39,7 @@ const stageLabel = computed(() => {
     <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
       <div class="flex items-center justify-between gap-3">
         <div class="text-sm font-semibold text-gray-800 dark:text-gray-100">
-          {{ t('chat.deepSearchProgress', 'Deep Search Running') }}
+          {{ t('chat.deepSearchProgress', 'Deep Research Running') }}
         </div>
         <span class="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
           {{ mode }}

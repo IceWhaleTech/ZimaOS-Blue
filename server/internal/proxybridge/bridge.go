@@ -22,7 +22,7 @@ const (
 	// maxResponseSize caps non-streaming response body to prevent OOM (10MB).
 	maxResponseSize = 10 << 20
 	// defaultTimeout for bridge calls when context has no deadline.
-	defaultTimeout = 120 * time.Second
+	defaultTimeout = 30 * time.Second
 )
 
 // ProxyError wraps an HTTP status code from the proxy handler so callers
@@ -93,6 +93,9 @@ func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatRespon
 		return nil, fmt.Errorf("bridge request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if proxy.DisableResponsesContinuationFromContext(ctx) {
+		httpReq.Header.Set(proxy.DisableResponsesContinuationHeader, "1")
+	}
 
 	rec := httptest.NewRecorder()
 	b.handler.ServeHTTP(rec, httpReq)
@@ -188,6 +191,9 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
+	if proxy.DisableResponsesContinuationFromContext(ctx) {
+		httpReq.Header.Set(proxy.DisableResponsesContinuationHeader, "1")
+	}
 
 	pr, pw := io.Pipe()
 	rw := newPipeResponseWriter(pw)

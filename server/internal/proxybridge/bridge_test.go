@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
@@ -20,10 +21,27 @@ type fakeProxyHandler struct {
 	chunks       []string // raw SSE "data: ..." lines
 	failFirst    int      // number of initial failures (HTTP 502) before success
 	callCount    int
+	lastHeader   string
+}
+
+func TestEnsureTimeout_DefaultIs30Seconds(t *testing.T) {
+	ctx, cancel := ensureTimeout(context.Background())
+	defer cancel()
+
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("expected deadline to be set")
+	}
+
+	remaining := time.Until(deadline)
+	if remaining > 31*time.Second || remaining < 29*time.Second {
+		t.Fatalf("unexpected timeout window: %s", remaining)
+	}
 }
 
 func (f *fakeProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.callCount++
+	f.lastHeader = r.Header.Get(proxy.DisableResponsesContinuationHeader)
 
 	if f.callCount <= f.failFirst {
 		http.Error(w, "upstream error", http.StatusBadGateway)
@@ -50,6 +68,28 @@ func (f *fakeProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func TestBridgeChatStream_PropagatesDisableResponsesContinuationHeader(t *testing.T) {
+	handler := &fakeProxyHandler{
+		providerName: "OpenAI",
+		modelID:      "gpt-4o",
+		chunks: []string{
+			`{"id":"1","choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}],"model":""}`,
+		},
+	}
+	bridge := NewBridge(handler)
+
+	ctx := proxy.WithDisableResponsesContinuation(context.Background())
+	err := bridge.ChatStream(ctx, llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	}, func(chunk llm.StreamChunk) error { return nil })
+	if err != nil {
+		t.Fatalf("ChatStream failed: %v", err)
+	}
+	if handler.lastHeader != "1" {
+		t.Fatalf("expected %s header=1, got %q", proxy.DisableResponsesContinuationHeader, handler.lastHeader)
+	}
+}
 
 // TestBridgeResolvedRoute_BasicPropagation verifies that the bridge propagates
 // provider/model from the ResolvedRoute context into StreamChunk fields.

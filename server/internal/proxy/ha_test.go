@@ -1322,6 +1322,39 @@ func TestTryOnProvider_SingleProviderRetriesTransient5xx(t *testing.T) {
 	}
 }
 
+func TestHasToolMessagesInRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "no tool messages",
+			body: `{"messages":[{"role":"system","content":"s"},{"role":"user","content":"u"}]}`,
+			want: false,
+		},
+		{
+			name: "tool role message",
+			body: `{"messages":[{"role":"tool","tool_call_id":"call_1","content":"ok"}]}`,
+			want: true,
+		},
+		{
+			name: "assistant tool_calls",
+			body: `{"messages":[{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"exec","arguments":"{}"}}]}]}`,
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := hasToolMessagesInRequest([]byte(tt.body))
+			if got != tt.want {
+				t.Fatalf("hasToolMessagesInRequest() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestWarmToolCallSupport_Probe422 verifies that warmToolCallSupport marks a provider
 // as ToolCapNone when the upstream returns 422 on a tool-bearing request.
 func TestWarmToolCallSupport_Probe422(t *testing.T) {

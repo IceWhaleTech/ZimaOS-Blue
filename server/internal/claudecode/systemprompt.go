@@ -193,7 +193,7 @@ func (b *SystemPromptBuilder) BuildStructured(ctx context.Context, extraPrompt s
 	// Computed once per process lifetime.
 	b.staticSystemOnce.Do(func() {
 		var sb strings.Builder
-		sb.WriteString("You are a personal assistant running inside ZimaOS Blue. Be clear and concise. Match the user's language. Your result wiil be cross-reviewed by claude & codex.")
+		sb.WriteString("You are a personal assistant running inside ZimaOS Blue. Be clear and concise. Match the user's language. Your result will be cross-reviewed by claude & codex.")
 		// If evidence is insufficient or conflicting, state uncertainty explicitly. Never fabricate sources. Distinguish verified information from inference.
 		sb.WriteString(b.buildSafetyGuidance())
 		sb.WriteString(b.buildToolCallStyleGuidance())
@@ -418,7 +418,7 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 
 	var sb strings.Builder
 	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). ")
-	sb.WriteString("Routing: ask→ask, search→web_search, URL→browser, UI review→ui_reviewer, analyze→analyze, plan→plan_create/plan_update/plan_append, sandbox→sandbox, workflows→workflows, scheduler→scheduler, research→deep_search, admin→mgmt.{domain}.{op}. ")
+	sb.WriteString("Routing: ask→ask, search→web_search, URL→browser, UI review→ui_reviewer, analyze→analyze, plan→plan_create/plan_update/plan_append, sandbox→sandbox, workflows→workflows, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. ")
 	sb.WriteString("`blue help <cmd>` for usage. More skills in `.claude/skills/`.")
 
 	// Only pinned skills get listed explicitly
@@ -434,40 +434,41 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 func (b *SystemPromptBuilder) BuildWithContext(ctx context.Context, extraPrompt string, contextFiles map[string]string) string {
 	var sb strings.Builder
 
-	// Identity + merged behavioral guidance (string literals — no intermediate alloc)
-	sb.WriteString("You are a personal assistant running inside ZimaOS Blue. Be clear and concise. Match the user's language. If evidence is insufficient or conflicting, state uncertainty explicitly. Never fabricate sources. Distinguish verified information from inference.")
-	sb.WriteString(b.buildSafetyGuidance())
-	sb.WriteString(b.buildToolCallStyleGuidance())
+	/*
+		// Identity + merged behavioral guidance (string literals — no intermediate alloc)
+		sb.WriteString("You are a personal assistant running inside ZimaOS Blue. Be clear and concise. Match the user's language. If evidence is insufficient or conflicting, state uncertainty explicitly. Never fabricate sources. Distinguish verified information from inference.")
+		sb.WriteString(b.buildSafetyGuidance())
+		sb.WriteString(b.buildToolCallStyleGuidance())
 
-	// Agent mode guidance (if enabled)
-	if b.isAgentMode() {
-		b.writeAgentModeGuidanceTo(&sb)
-	}
+		// Agent mode guidance (if enabled)
+		if b.isAgentMode() {
+			b.writeAgentModeGuidanceTo(&sb)
+		}
 
-	// Workspace information
-	if b.config.WorkspaceDir != "" {
-		b.writeWorkspaceInfoTo(&sb)
-	}
+		// Workspace information
+		if b.config.WorkspaceDir != "" {
+			b.writeWorkspaceInfoTo(&sb)
+		}
 
-	// Available skills (XML index — cached string, fine as-is)
-	if s := b.buildSkillsSection(); s != "" {
-		sb.WriteString(s)
-	}
+		// Available skills (XML index — cached string, fine as-is)
+		if s := b.buildSkillsSection(); s != "" {
+			sb.WriteString(s)
+		}
 
-	// Context files
-	if len(contextFiles) > 0 {
-		sb.WriteString(b.buildProjectContext(contextFiles))
-	}
+		// Context files
+		if len(contextFiles) > 0 {
+			sb.WriteString(b.buildProjectContext(contextFiles))
+		}
 
-	sb.WriteString(b.buildSilentReplyGuidance())
-	sb.WriteString(b.buildHeartbeatGuidance())
-	b.writePlatformInfoTo(&sb)
-	b.writeRuntimeInfoTo(&sb)
+		sb.WriteString(b.buildSilentReplyGuidance())
+		sb.WriteString(b.buildHeartbeatGuidance())
+		b.writePlatformInfoTo(&sb)
+		b.writeRuntimeInfoTo(&sb)
 
-	// Extra system prompt
-	if extraPrompt != "" {
-		sb.WriteString(extraPrompt)
-	}
+		// Extra system prompt
+		if extraPrompt != "" {
+			sb.WriteString(extraPrompt)
+		}*/
 
 	return sb.String()
 }

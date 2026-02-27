@@ -189,11 +189,11 @@ func skillPlatformMatch(osList []string) bool {
 // skillSortPriority returns sort priority for a skill name.
 // Lower = appears first. Core skills (browser, web search) are pinned to the top.
 var skillPriorityMap = map[string]int{
-	"browser":     0,
-	"web_search":  1,
-	"web-search":  1,
-	"websearch":   1,
-	"deep_search": 2,
+	"browser":       0,
+	"web_search":    1,
+	"web-search":    1,
+	"websearch":     1,
+	"deep_research": 2,
 }
 
 func skillSortPriority(name string) int {
@@ -232,7 +232,7 @@ var pinnedSkills = []string{
 	"ask",
 	"browser",
 	"web_search",
-	"deep_search",
+	"deep_research",
 	"analyze",
 	"ui_reviewer",
 	"mgmt",

@@ -51,20 +51,20 @@ func TestShouldSkipPreContentRetry(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "upstream error payload keeps retry",
+			name: "upstream 502 skips chat-layer retry",
 			err: &proxybridge.ProxyError{
 				StatusCode: 502,
 				Body:       `upstream 502: {"error":{"message":"Upstream request failed","type":"upstream_error"}}`,
 			},
-			want: false,
+			want: true,
 		},
 		{
-			name: "generic 502 still retries",
+			name: "generic 502 skips chat-layer retry",
 			err: &proxybridge.ProxyError{
 				StatusCode: 502,
 				Body:       "bad gateway",
 			},
-			want: false,
+			want: true,
 		},
 		{
 			name: "provider no response skips retry",
