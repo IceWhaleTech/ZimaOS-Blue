@@ -1580,9 +1580,9 @@ textarea::-webkit-scrollbar-thumb:hover {
 .chat-send-btn {
   position: relative;
   overflow: hidden;
-  color: var(--chat-send-fg, #f8fafc);
-  background: var(--chat-send-bg, linear-gradient(135deg, #0ea5e9 0%, #06b6d4 48%, #0891b2 100%));
-  box-shadow: var(--chat-send-shadow, 0 10px 24px -16px rgba(6, 182, 212, 0.75));
+  color: var(--chat-send-fg, var(--chat-user-text, #f8fafc));
+  background: var(--chat-send-bg, var(--chat-user-bg, linear-gradient(135deg, #0ea5e9 0%, #06b6d4 48%, #0891b2 100%)));
+  box-shadow: var(--chat-send-shadow, 0 10px 24px -16px rgba(15, 23, 42, 0.72));
   transition: transform 0.18s ease, box-shadow 0.22s ease, filter 0.18s ease;
 }
 
@@ -1597,7 +1597,7 @@ textarea::-webkit-scrollbar-thumb:hover {
 
 .chat-send-btn:hover:not(:disabled) {
   transform: translateY(-1px) scale(1.02);
-  box-shadow: var(--chat-send-shadow-hover, 0 14px 30px -14px rgba(6, 182, 212, 0.95), 0 0 0 1px rgba(14, 165, 233, 0.45));
+  box-shadow: var(--chat-send-shadow-hover, 0 14px 30px -14px rgba(15, 23, 42, 0.82), 0 0 0 1px rgba(148, 163, 184, 0.35));
   filter: saturate(1.08);
 }
 
@@ -1611,7 +1611,7 @@ textarea::-webkit-scrollbar-thumb:hover {
 
 .chat-send-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--chat-send-ring, rgba(56, 189, 248, 0.45)), var(--chat-send-shadow-focus, 0 12px 24px -14px rgba(6, 182, 212, 0.92));
+  box-shadow: 0 0 0 3px var(--chat-send-ring, rgba(148, 163, 184, 0.4)), var(--chat-send-shadow-focus, 0 12px 24px -14px rgba(15, 23, 42, 0.8));
 }
 
 .chat-send-btn:disabled {
@@ -1629,8 +1629,8 @@ textarea::-webkit-scrollbar-thumb:hover {
 }
 
 @keyframes send-ready-breathe {
-  0%, 100% { box-shadow: var(--chat-send-shadow, 0 10px 24px -16px rgba(6, 182, 212, 0.75)); }
-  50% { box-shadow: var(--chat-send-shadow-active, 0 14px 28px -14px rgba(6, 182, 212, 0.95)); }
+  0%, 100% { box-shadow: var(--chat-send-shadow, 0 10px 24px -16px rgba(15, 23, 42, 0.72)); }
+  50% { box-shadow: var(--chat-send-shadow-active, 0 14px 28px -14px rgba(15, 23, 42, 0.85)); }
 }
 
 .chat-send-btn--ready:not(:hover):not(:active):not(:disabled) {

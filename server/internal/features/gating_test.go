@@ -21,8 +21,9 @@ func TestFeatureGate_IsEnabled(t *testing.T) {
 		t.Error("FeatureToolCalling should be disabled without CLI")
 	}
 
-	if fg.IsEnabled(FeatureAgentMode) {
-		t.Error("FeatureAgentMode should be disabled without CLI")
+	// Agent mode is now native and should be enabled without CLI
+	if !fg.IsEnabled(FeatureAgentMode) {
+		t.Error("FeatureAgentMode should be enabled without CLI")
 	}
 
 	// Enable CLI

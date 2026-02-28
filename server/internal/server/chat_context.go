@@ -73,6 +73,11 @@ var (
 	reContinuation = regexp.MustCompile(
 		`(?i)^(继续|go on|keep going|continue|接着说|然后呢|next|more)\s*[.?!？。！]*$`)
 
+	// Chinese elliptical follow-ups are often short and omit explicit pronouns,
+	// e.g. "ZIMAOS上呢". Treat them as context-dependent questions.
+	reChineseEllipsisRef = regexp.MustCompile(
+		`(?i)^[\p{Han}A-Za-z0-9_\-\s]{1,32}(?:上|里|中)?呢[？?]?$`)
+
 	// Memory-intent hints: user explicitly asks for remembered preferences/facts.
 	reMemoryCue = regexp.MustCompile(
 		`(?i)(?:\bremember\b|\bmemory\b|\bpreference\b|\bprofile\b|\bas i said\b|` +
@@ -412,6 +417,7 @@ func classifyContext(userMessage string, messageCount int, isAgentMode, isRegene
 // hasReference checks if the message contains reference/continuity markers.
 func hasReference(msg string) bool {
 	return reChineseRef.MatchString(msg) ||
+		reChineseEllipsisRef.MatchString(msg) ||
 		reEnglishRef.MatchString(msg) ||
 		reContinuation.MatchString(msg)
 }

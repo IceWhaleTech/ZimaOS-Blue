@@ -281,6 +281,106 @@ export const useChatStore = defineStore('chat', () => {
     }
   })
 
+  function hasPendingConfirmations(): boolean {
+    return !!pendingQuestion.value || !!pendingApproval.value || !!pendingExecApproval.value
+  }
+
+  function extractInlineQuestionLabel(raw: string): string {
+    let text = raw
+      .replace(/^[-*•]\s+/, '')
+      .replace(/^\d+[.)]\s+/, '')
+      .replace(/\*\*/g, '')
+      .replace(/`/g, '')
+      .trim()
+    const colonIndex = Math.max(text.indexOf(':'), text.indexOf('：'))
+    if (colonIndex > 0) {
+      text = text.slice(0, colonIndex).trim()
+    }
+    return text
+  }
+
+  function inferInlinePendingQuestionFromAssistantMessage(): boolean {
+    if (hasPendingConfirmations()) return true
+
+    let content = ''
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      const m = messages.value[i]
+      if (m?.role === 'assistant' && m.content?.trim()) {
+        content = m.content
+        break
+      }
+    }
+    if (!content) return false
+
+    const lines = content.split('\n').map(line => line.trim()).filter(Boolean)
+    if (lines.length === 0) return false
+
+    const question = lines.find(line =>
+      /[?？]\s*$/.test(line) &&
+      !/^[-*•]\s+/.test(line) &&
+      !/^\d+[.)]\s+/.test(line),
+    )
+    if (!question) return false
+
+    const optionLines = lines.filter(line => /^[-*•]\s+/.test(line) || /^\d+[.)]\s+/.test(line))
+    if (optionLines.length < 2 || optionLines.length > 8) return false
+
+    const seen = new Set<string>()
+    const options = optionLines
+      .map(extractInlineQuestionLabel)
+      .filter(label => {
+        if (!label) return false
+        const key = label.toLowerCase()
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map(label => ({ label, value: label }))
+
+    if (options.length < 2) return false
+
+    pendingQuestion.value = {
+      id: `inline:${Date.now()}`,
+      questions: [{
+        id: 'q1',
+        question: question.replace(/\*\*/g, '').trim(),
+        header: 'Question',
+        options,
+        multi_select: false,
+      }],
+      expires_at: Date.now() + 10 * 60 * 1000,
+    }
+    awaitingConfirmation.value = true
+    return true
+  }
+
+  async function recoverPendingConfirmations(allowInlineFallback = false): Promise<void> {
+    await Promise.all([
+      checkPendingApprovals(),
+      checkPendingQuestion(),
+      checkPendingExecApproval(),
+    ])
+    if (hasPendingConfirmations()) {
+      awaitingConfirmation.value = true
+      return
+    }
+    if (allowInlineFallback && inferInlinePendingQuestionFromAssistantMessage()) {
+      return
+    }
+    if (!streaming.value) {
+      awaitingConfirmation.value = false
+    }
+  }
+
+  function markAwaitingConfirmation() {
+    const wasAwaiting = awaitingConfirmation.value
+    awaitingConfirmation.value = true
+    // If the out-of-band approval event was missed, recover pending payloads.
+    if (!wasAwaiting) {
+      void recoverPendingConfirmations(false)
+    }
+  }
+
   // Computed
   const currentConversation = computed(() =>
     conversations.value.find((c) => c.id === currentConversationId.value)
@@ -754,7 +854,7 @@ export const useChatStore = defineStore('chat', () => {
           // Guard: ignore chunks if user switched to a different conversation
           if (currentConversationId.value !== sendConvId) return
           if (chunk.awaiting_user_input) {
-            awaitingConfirmation.value = true
+            markAwaitingConfirmation()
           }
           if (!chunk.delta) return
           _receivedFirstChunk.value = true
@@ -1004,6 +1104,9 @@ export const useChatStore = defineStore('chat', () => {
           fetchConversations()
           // Refresh trial quota to update progress bar
           useProviderPoolStore().fetchTrialQuota()
+          if (awaitingConfirmation.value) {
+            void recoverPendingConfirmations(true)
+          }
         },
       })
     } catch (e) {
@@ -1035,7 +1138,7 @@ export const useChatStore = defineStore('chat', () => {
     streaming.value = false
     toolExecuting.value = false
     streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
-    if (!pendingQuestion.value) {
+    if (!hasPendingConfirmations()) {
       awaitingConfirmation.value = false
     }
   }
@@ -1142,7 +1245,7 @@ export const useChatStore = defineStore('chat', () => {
         onMessage: (chunk) => {
           if (currentConversationId.value !== convId) return
           if (chunk.awaiting_user_input) {
-            awaitingConfirmation.value = true
+            markAwaitingConfirmation()
           }
           if (!chunk.delta) return
           _receivedFirstChunk.value = true
@@ -1228,6 +1331,9 @@ export const useChatStore = defineStore('chat', () => {
           fetchMessages(convId)
           fetchConversations()
           useProviderPoolStore().fetchTrialQuota()
+          if (awaitingConfirmation.value) {
+            void recoverPendingConfirmations(true)
+          }
         },
       })
     } catch {
@@ -1279,7 +1385,7 @@ export const useChatStore = defineStore('chat', () => {
         onMessage: (chunk) => {
           if (currentConversationId.value !== conversationId) return
           if (chunk.awaiting_user_input) {
-            awaitingConfirmation.value = true
+            markAwaitingConfirmation()
           }
           if (!chunk.delta) return
           if (toolExecuting.value) {
@@ -1379,6 +1485,9 @@ export const useChatStore = defineStore('chat', () => {
           fetchMessages(conversationId)
           // Refresh trial quota to update progress bar
           useProviderPoolStore().fetchTrialQuota()
+          if (awaitingConfirmation.value) {
+            void recoverPendingConfirmations(true)
+          }
         },
       })
     } catch (e) {
@@ -1456,7 +1565,7 @@ export const useChatStore = defineStore('chat', () => {
         onMessage: (chunk) => {
           if (currentConversationId.value !== conversationId) return
           if (chunk.awaiting_user_input) {
-            awaitingConfirmation.value = true
+            markAwaitingConfirmation()
           }
           if (!chunk.delta) return
           if (toolExecuting.value) {
@@ -1574,6 +1683,9 @@ export const useChatStore = defineStore('chat', () => {
           fetchMessages(conversationId)
           // Refresh trial quota to update progress bar
           useProviderPoolStore().fetchTrialQuota()
+          if (awaitingConfirmation.value) {
+            void recoverPendingConfirmations(true)
+          }
         },
       })
     } catch (e) {
@@ -1749,6 +1861,18 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function setPendingApproval(data: any) {
+    const requestId = data?.id || data?.request_id
+    if (!requestId) return
+    pendingApproval.value = {
+      request_id: requestId,
+      tool_name: data.tool_name || '',
+      tool_call_id: data.tool_call_id || '',
+      arguments: data.arguments || {},
+    }
+    awaitingConfirmation.value = true
+  }
+
   // --- Ask-user-question methods ---
   function setPendingQuestion(data: any) {
     console.log('[ChatStore] setPendingQuestion called with:', data)
@@ -1760,6 +1884,26 @@ export const useChatStore = defineStore('chat', () => {
   async function submitQuestionAnswers(answers: Array<{ question_id: string; selected: string[]; other_text?: string }>) {
     if (!pendingQuestion.value) return
     const id = pendingQuestion.value.id
+    if (id.startsWith('inline:')) {
+      const parts: string[] = []
+      for (const ans of answers) {
+        const selected = (ans.selected || []).map(v => v.trim()).filter(Boolean)
+        if (selected.length > 0) {
+          parts.push(selected.join(', '))
+        }
+        const other = ans.other_text?.trim()
+        if (other) {
+          parts.push(other)
+        }
+      }
+      const reply = parts.join('\n').trim()
+      pendingQuestion.value = null
+      awaitingConfirmation.value = false
+      if (reply) {
+        await sendMessage(reply)
+      }
+      return
+    }
     try {
       await api.post(`/ask-user-question/${id}/answer`, { answers })
       pendingQuestion.value = null
@@ -1777,6 +1921,9 @@ export const useChatStore = defineStore('chat', () => {
     const id = pendingQuestion.value.id
     pendingQuestion.value = null
     awaitingConfirmation.value = false
+    if (id.startsWith('inline:')) {
+      return
+    }
     // Notify backend to unblock the tool call immediately with default answers
     try {
       await api.post(`/ask-user-question/${id}/dismiss`)
@@ -1799,6 +1946,19 @@ export const useChatStore = defineStore('chat', () => {
   // --- Exec approval methods ---
   function setPendingExecApproval(data: any) {
     pendingExecApproval.value = data
+    if (data) awaitingConfirmation.value = true
+  }
+
+  async function checkPendingExecApproval() {
+    try {
+      const res = await api.get<{ pending: boolean; approval?: any }>('/exec/approvals/pending')
+      if (res.data.pending && res.data.approval) {
+        pendingExecApproval.value = res.data.approval
+        awaitingConfirmation.value = true
+      }
+    } catch {
+      // endpoint may not exist — ignore
+    }
   }
 
   async function resolveExecApproval(decision: ExecDecision) {
@@ -1938,12 +2098,15 @@ export const useChatStore = defineStore('chat', () => {
     deleteSelectedMessages,
     clearAllConversations,
     resolveApproval,
+    setPendingApproval,
     checkPendingApprovals,
+    recoverPendingConfirmations,
     setPendingQuestion,
     submitQuestionAnswers,
     dismissQuestion,
     checkPendingQuestion,
     setPendingExecApproval,
+    checkPendingExecApproval,
     resolveExecApproval,
     dismissExecApproval,
     warmupConversation,

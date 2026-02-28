@@ -376,6 +376,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Подготовка подключения для загрузки...',
+      downloadFailed: 'Не удалось скачать модель ONNX',
+    },
     title: 'Настройки',
     general: 'Общие',
     appearance: 'Внешний вид',

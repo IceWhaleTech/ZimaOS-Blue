@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseTypelessContent, parseTypelessContentIncremental } from '@/utils/typeless'
+import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments } from '@/utils/typeless'
 
 describe('Typeless Card Parsing', () => {
   it('parses exec typeless blocks into exec cards', () => {
@@ -68,5 +68,40 @@ describe('Typeless Card Parsing', () => {
     expect(full.text).toContain('[[TYPELESS_CARD:card-0]]')
     expect(full.text).not.toContain('```typeless')
     expect(full.text).not.toContain('"type":"exec"')
+  })
+
+  it('parses multiple consecutive typeless blocks and keeps ui-review progress cards', () => {
+    const content = [
+      '```typeless',
+      '{"type":"ui-review-progress","step":"navigate","name":"加载页面","status":"success","url":"https://www.zimaspace.com/zimaos"}',
+      '```',
+      '',
+      '```typeless',
+      '{"type":"ui-review-progress","step":"visual","name":"视觉评审","status":"running","url":"https://www.zimaspace.com/zimaos"}',
+      '```',
+      '',
+      '```typeless',
+      '{"type":"ui-review","url":"https://www.zimaspace.com/zimaos","overall":{"score":82}}',
+      '```',
+    ].join('\n')
+
+    const result = parseTypelessContent(content)
+    const progressCards = result.cards.filter(c => c.type === 'ui-review-progress')
+    const reviewCards = result.cards.filter(c => c.type === 'ui-review')
+
+    expect(progressCards).toHaveLength(2)
+    expect(reviewCards).toHaveLength(1)
+    expect(result.text).toContain('[[TYPELESS_CARD:')
+    expect(result.text).not.toContain('```typeless')
+
+    const segments = splitIntoSegments(result.text, result.cards)
+    const cardSegments = segments.filter(s => s.type === 'card')
+    expect(cardSegments.length).toBe(2) // merged progress + ui-review
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mergedProgress = cardSegments[0]?.content as any
+    expect(mergedProgress.type).toBe('ui-review-progress')
+    expect(Array.isArray(mergedProgress.steps)).toBe(true)
+    expect(mergedProgress.steps).toHaveLength(2)
   })
 })

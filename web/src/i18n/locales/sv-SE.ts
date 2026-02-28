@@ -529,6 +529,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Förbereder nedladdningsanslutning...',
+      downloadFailed: 'Kunde inte ladda ner ONNX-modellen',
+    },
     tab: {
       general: 'Allmänt',
       llm: 'LLM',

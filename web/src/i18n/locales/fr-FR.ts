@@ -441,6 +441,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Préparation de la connexion de téléchargement...',
+      downloadFailed: 'Échec du téléchargement du modèle ONNX',
+    },
     title: 'Paramètres',
     general: 'Général',
     appearance: 'Apparence',

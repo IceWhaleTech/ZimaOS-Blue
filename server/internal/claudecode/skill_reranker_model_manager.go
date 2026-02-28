@@ -15,6 +15,35 @@ import (
 
 const defaultSkillRerankerRepo = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
+// SkillRerankerModelDownloadProgress tracks ONNX model download progress.
+type SkillRerankerModelDownloadProgress struct {
+	File       string  `json:"file"`
+	FileIndex  int     `json:"file_index"`
+	TotalFiles int     `json:"total_files"`
+	Downloaded int64   `json:"downloaded"`
+	Total      int64   `json:"total"`
+	Percentage float64 `json:"percentage"`
+	SpeedHuman string  `json:"speed_human"`
+	ETA        string  `json:"eta"`
+}
+
+// SkillRerankerFileStatus reports single file readiness for UI display.
+type SkillRerankerFileStatus struct {
+	Filename   string `json:"filename"`
+	Downloaded bool   `json:"downloaded"`
+	Size       string `json:"size"`
+}
+
+// SkillRerankerModelStatus is the API payload for model download/ready status.
+type SkillRerankerModelStatus struct {
+	Ready       bool                                `json:"ready"`
+	Downloading bool                                `json:"downloading"`
+	State       string                              `json:"state,omitempty"`
+	Error       string                              `json:"error,omitempty"`
+	Progress    *SkillRerankerModelDownloadProgress `json:"progress,omitempty"`
+	Files       []SkillRerankerFileStatus           `json:"files,omitempty"`
+}
+
 // SkillRerankerModelManager manages ONNX reranker model download and load validation.
 type SkillRerankerModelManager struct {
 	modelDir   string
@@ -38,6 +67,45 @@ func NewSkillRerankerModelManager(dataDir, repo string) *SkillRerankerModelManag
 
 func (m *SkillRerankerModelManager) ModelPath() string {
 	return filepath.Join(m.modelDir, "model.onnx")
+}
+
+// GetStatus returns current model file/download status for UI.
+func (m *SkillRerankerModelManager) GetStatus() SkillRerankerModelStatus {
+	modelFile := m.modelFile()
+	_, statErr := os.Stat(m.ModelPath())
+	downloaded := statErr == nil
+
+	state, lastError := m.downloader.GetState()
+	downloading := m.downloader.IsDownloading()
+
+	var progress *SkillRerankerModelDownloadProgress
+	if p := m.downloader.GetProgress(); p != nil {
+		progress = &SkillRerankerModelDownloadProgress{
+			File:       p.File,
+			FileIndex:  p.FileIndex,
+			TotalFiles: p.TotalFiles,
+			Downloaded: p.Downloaded,
+			Total:      p.Total,
+			Percentage: p.Percentage,
+			SpeedHuman: p.SpeedHuman,
+			ETA:        p.ETA,
+		}
+	}
+
+	return SkillRerankerModelStatus{
+		Ready:       downloaded && !downloading,
+		Downloading: downloading,
+		State:       state,
+		Error:       lastError,
+		Progress:    progress,
+		Files: []SkillRerankerFileStatus{
+			{
+				Filename:   modelFile.Filename,
+				Downloaded: downloaded,
+				Size:       modelFile.Size,
+			},
+		},
+	}
 }
 
 func (m *SkillRerankerModelManager) IsReady() bool {
@@ -67,6 +135,31 @@ func (m *SkillRerankerModelManager) ensureReadyInner(ctx context.Context, allowD
 		return fmt.Errorf("skill reranker model is not ready and auto download is disabled")
 	}
 
+	return m.downloadModelInner(ctx)
+}
+
+// Download starts downloading/validating the ONNX reranker model.
+func (m *SkillRerankerModelManager) Download(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, err := os.Stat(m.ModelPath()); err == nil {
+		if err := m.validateModelLoad(); err == nil {
+			return nil
+		}
+		// Corrupted or incompatible local model; remove and re-download.
+		_ = os.Remove(m.ModelPath())
+	}
+
+	return m.downloadModelInner(ctx)
+}
+
+// CancelDownload cancels current background download.
+func (m *SkillRerankerModelManager) CancelDownload() {
+	_ = m.downloader.Cancel()
+}
+
+func (m *SkillRerankerModelManager) downloadModelInner(ctx context.Context) error {
 	if err := os.MkdirAll(m.modelDir, 0o755); err != nil {
 		return fmt.Errorf("create skill reranker dir: %w", err)
 	}

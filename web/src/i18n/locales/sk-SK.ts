@@ -529,6 +529,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Pripravuje sa pripojenie na sťahovanie...',
+      downloadFailed: 'Nepodarilo sa stiahnuť model ONNX',
+    },
     tab: { general: 'Všeobecné', llm: 'LLM', metrics: 'Využitie', remote: 'Vzdialený prístup', config: 'Konfigurácia', backup: 'Záloha', logs: 'Protokoly', service: 'Služba', retention: 'Uchovávanie' },
     failover: {
       title: 'Stav inteligentného prepnutia',

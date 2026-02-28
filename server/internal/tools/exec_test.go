@@ -621,6 +621,90 @@ func TestExecLang(t *testing.T) {
 	}
 }
 
+func TestExecSkillShortCircuit_DottedAliasMapsAction(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	var gotSkill string
+	var gotInput map[string]any
+	tool.SetSkillExecutor(func(ctx context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		gotSkill = skillID
+		gotInput = input
+		if GetUserID(ctx) != "user-1" {
+			t.Fatalf("user_id = %q, want %q", GetUserID(ctx), "user-1")
+		}
+		if GetSessionID(ctx) != "conv-1" {
+			t.Fatalf("session_id = %q, want %q", GetSessionID(ctx), "conv-1")
+		}
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	ctx := WithUserID(context.Background(), "user-1")
+	ctx = WithSessionID(ctx, "conv-1")
+
+	_, err := tool.Execute(ctx, map[string]interface{}{
+		"command": `blue reminder.add message="drink water" time=10s`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotSkill != "reminder" {
+		t.Fatalf("skill = %q, want %q", gotSkill, "reminder")
+	}
+	if gotInput["action"] != "add" {
+		t.Fatalf("action = %v, want %q", gotInput["action"], "add")
+	}
+	if gotInput["message"] != "drink water" {
+		t.Fatalf("message = %v, want %q", gotInput["message"], "drink water")
+	}
+	if gotInput["time"] != "10s" {
+		t.Fatalf("time = %v, want %q", gotInput["time"], "10s")
+	}
+}
+
+func TestExecSkillShortCircuit_DottedAliasKeepsExplicitAction(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	var gotSkill string
+	var gotInput map[string]any
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		gotSkill = skillID
+		gotInput = input
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": `blue reminder.add action=delete id=push_1`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotSkill != "reminder" {
+		t.Fatalf("skill = %q, want %q", gotSkill, "reminder")
+	}
+	if gotInput["action"] != "delete" {
+		t.Fatalf("action = %v, want %q", gotInput["action"], "delete")
+	}
+	if gotInput["id"] != "push_1" {
+		t.Fatalf("id = %v, want %q", gotInput["id"], "push_1")
+	}
+}
+
 func TestLocaleFromTag(t *testing.T) {
 	tests := []struct {
 		tag, want string
@@ -1153,10 +1237,10 @@ func TestExecShellOverride(t *testing.T) {
 
 func TestAnalyzeRisk(t *testing.T) {
 	tests := []struct {
-		command   string
-		minScore  int
-		maxScore  int
-		level     RiskLevel
+		command  string
+		minScore int
+		maxScore int
+		level    RiskLevel
 	}{
 		{"echo hello", 0, 10, RiskLevelLow},
 		{"ls -la", 0, 10, RiskLevelLow},

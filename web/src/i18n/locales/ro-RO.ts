@@ -529,6 +529,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Se pregătește conexiunea de descărcare...',
+      downloadFailed: 'Descărcarea modelului ONNX a eșuat',
+    },
     tab: { general: 'General', llm: 'LLM', metrics: 'Utilizare', remote: 'Acces la distanță', config: 'Configurare', backup: 'Copie de rezervă', logs: 'Jurnale', service: 'Serviciu', retention: 'Păstrare' },
     failover: {
       title: 'Stare comutare inteligentă',

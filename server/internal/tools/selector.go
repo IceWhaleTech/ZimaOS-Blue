@@ -44,7 +44,7 @@ func DefaultToolSelector() *ToolSelector {
 	return &ToolSelector{
 		MinScore:      0.1,
 		MaxTools:      10,
-		AlwaysInclude: []string{"ask"},
+		AlwaysInclude: []string{"exec", "ask"},
 	}
 }
 

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 )
 
 // FailoverMetrics tracks failover statistics
@@ -66,6 +68,73 @@ func (m *FailoverMetrics) RecordFailover(fromProvider, toProvider string, succes
 		m.FailoverFailure++
 	}
 	m.ProviderFailovers[fromProvider]++
+}
+
+func mapFailoverReasonToErrorType(reason providerpool.FailoverReason) RetryableErrorType {
+	switch reason {
+	case providerpool.FailoverReasonTimeout:
+		return ErrorTypeTimeout
+	case providerpool.FailoverReasonRateLimit:
+		return ErrorTypeRateLimited
+	case providerpool.FailoverReasonAuthError:
+		return ErrorTypeAuthFailed
+	case providerpool.FailoverReasonModelNotFound:
+		return ErrorTypeModelNotFound
+	case providerpool.FailoverReasonCooldown, providerpool.FailoverReasonAPIError:
+		return ErrorTypeServiceUnavailable
+	default:
+		return ErrorTypeUnknown
+	}
+}
+
+// RecordProviderPoolResult maps ProviderPool failover callbacks into smart failover metrics.
+func (m *FailoverMetrics) RecordProviderPoolResult(result *providerpool.FailoverResult) {
+	if result == nil {
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.ErrorsByType == nil {
+		m.ErrorsByType = make(map[RetryableErrorType]int64)
+	}
+	if m.ProviderErrors == nil {
+		m.ProviderErrors = make(map[string]map[RetryableErrorType]int64)
+	}
+	if m.ProviderFailovers == nil {
+		m.ProviderFailovers = make(map[string]int64)
+	}
+
+	m.FailoverTotal++
+	if result.SuccessProvider != "" {
+		m.FailoverSuccess++
+	} else {
+		m.FailoverFailure++
+	}
+
+	for _, attempt := range result.FailedAttempts {
+		if attempt == nil {
+			continue
+		}
+
+		provider := attempt.ProviderID
+		if provider == "" {
+			provider = attempt.ProviderName
+		}
+		errType := mapFailoverReasonToErrorType(attempt.Reason)
+
+		m.ErrorsByType[errType]++
+		if provider == "" {
+			continue
+		}
+
+		if _, ok := m.ProviderErrors[provider]; !ok {
+			m.ProviderErrors[provider] = make(map[RetryableErrorType]int64)
+		}
+		m.ProviderErrors[provider][errType]++
+		m.ProviderFailovers[provider]++
+	}
 }
 
 // RecordStreamAnomaly records a streaming anomaly
@@ -336,10 +405,10 @@ func (sfh *SmartFailoverHandler) ExecuteStreamingWithAnomalyDetection(
 	if resp != nil && resp.Body != nil && isStreamingResponse(resp) {
 		streamBuffer := NewStreamBuffer(sfh.anomalyDetector)
 		resp.Body = &anomalyDetectingReader{
-			reader:       resp.Body,
-			buffer:       streamBuffer,
-			onAnomaly:    onAnomaly,
-			metrics:      sfh.metrics,
+			reader:        resp.Body,
+			buffer:        streamBuffer,
+			onAnomaly:     onAnomaly,
+			metrics:       sfh.metrics,
 			anomalyConfig: sfh.config.StreamingAnomaly,
 		}
 	}

@@ -37,6 +37,7 @@ func TestClassifyContext(t *testing.T) {
 		{"long_chinese_ref_then", "然后呢", 10, false, false, TierCompressedMemory},
 		{"long_chinese_ref_also", "还有一个问题", 10, false, false, TierCompressedMemory},
 		{"long_chinese_ref_why", "为什么会这样", 10, false, false, TierCompressedMemory},
+		{"long_chinese_ref_elliptical", "ZIMAOS上呢", 10, false, false, TierCompressedMemory},
 
 		// Long conversation, with English references
 		{"long_english_ref_this", "Can you explain this further?", 10, false, false, TierCompressedMemory},
@@ -70,6 +71,7 @@ func TestHasReference(t *testing.T) {
 	refs := []string{
 		"这个怎么用", "那个方案", "刚才说的", "之前提到的",
 		"继续", "然后呢", "接着说", "还有一个",
+		"ZIMAOS上呢", "Docker里呢？",
 		"What about this?", "That is wrong", "Can you explain it?",
 		"They should work", "As mentioned earlier",
 		"Go back to the previous one", "Continue please",

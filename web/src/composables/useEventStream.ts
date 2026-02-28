@@ -217,6 +217,11 @@ export function useEventStream() {
         break
       }
 
+      case 'tool_approval_request': {
+        chatStore.setPendingApproval(data)
+        break
+      }
+
       case 'exec:approval-request': {
         chatStore.setPendingExecApproval(data)
         break

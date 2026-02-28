@@ -514,6 +514,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: '다운로드 연결을 준비하는 중...',
+      downloadFailed: 'ONNX 모델 다운로드에 실패했습니다',
+    },
     title: '설정',
     general: '일반',
     appearance: '모양',

@@ -587,6 +587,147 @@ func TestBuildUpstreamRequestWithFormat_ContinuationUnchangedInstructionsNotRese
 	}
 }
 
+func TestBuildUpstreamRequestWithFormat_ContinuationInjectedPrevIDTrimsResponsesInput(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	seedReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	seedReq = seedReq.WithContext(WithSessionID(context.Background(), "sess-prev-trim-1"))
+	ph.setCachedResponsesPreviousIDForRoute(seedReq, result, "resp_prev_trim_1")
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-prev-trim-1"))
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"input":[
+			{"role":"user","content":[{"type":"input_text","text":"Reply with ONLY: OK"}]},
+			{"role":"assistant","content":[{"type":"input_text","text":"OK"}]},
+			{"role":"user","content":[{"type":"input_text","text":"Reply with ONLY: NEXT"}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "previous_response_id").String(); got != "resp_prev_trim_1" {
+		t.Fatalf("previous_response_id = %q, want %q", got, "resp_prev_trim_1")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
+		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "Reply with ONLY: NEXT" {
+		t.Fatalf("input.0.content.0.text = %q, want %q", got, "Reply with ONLY: NEXT")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationExistingPrevIDTrimsResponsesInput(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_existing_1",
+		"input":[
+			{"role":"user","content":[{"type":"input_text","text":"A"}]},
+			{"role":"assistant","content":[{"type":"input_text","text":"B"}]},
+			{"role":"user","content":[{"type":"input_text","text":"C"}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "previous_response_id").String(); got != "resp_existing_1" {
+		t.Fatalf("previous_response_id = %q, want %q", got, "resp_existing_1")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
+		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "C" {
+		t.Fatalf("input.0.content.0.text = %q, want %q", got, "C")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationKeepsAllToolOutputsWithoutAssistant(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_existing_tool_round",
+		"input":[
+			{"type":"function_call_output","call_id":"call_1","output":"{\"ok\":true}"},
+			{"type":"function_call_output","call_id":"call_2","output":"{\"ok\":true}"}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.call_id").String(); got != "call_1" {
+		t.Fatalf("input.0.call_id = %q, want %q", got, "call_1")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.call_id").String(); got != "call_2" {
+		t.Fatalf("input.1.call_id = %q, want %q", got, "call_2")
+	}
+}
+
 func TestBuildUpstreamRequestWithFormat_ContinuationPreviousIDScopedByProvider(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 

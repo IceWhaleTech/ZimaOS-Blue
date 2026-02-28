@@ -851,6 +851,7 @@ type ChatHandler struct {
 
 	// Smart tool selection: IR-based filtering of tools per query
 	toolSelector    *tools.ToolSelector
+	toolRouter      *tools.ToolRouter
 	skillSelector   *claudecode.SkillSelector
 	settingsHandler *SettingsHandler
 
@@ -936,6 +937,16 @@ func (h *ChatHandler) GetToolSelector() *tools.ToolSelector {
 	return h.toolSelector
 }
 
+// SetToolRouter enables rule-based tool routing and schema compression.
+func (h *ChatHandler) SetToolRouter(tr *tools.ToolRouter) {
+	h.toolRouter = tr
+}
+
+// GetToolRouter returns the current tool router (may be nil).
+func (h *ChatHandler) GetToolRouter() *tools.ToolRouter {
+	return h.toolRouter
+}
+
 // SetSkillSelector enables progressive smart skill selection.
 func (h *ChatHandler) SetSkillSelector(ss *claudecode.SkillSelector) {
 	h.skillSelector = ss
@@ -953,39 +964,41 @@ func (h *ChatHandler) getMemoryRecallMode() MemoryRecallMode {
 	return parseMemoryRecallMode(h.settingsHandler.GetMemoryRecallMode())
 }
 
-// selectTools returns tool definitions filtered by the user's query when smart
-// selection is enabled, or all definitions otherwise.
-func (h *ChatHandler) selectTools(userMessage string) []tools.ToolDefinition {
+// selectTools returns tool definitions after selector + router stages.
+func (h *ChatHandler) selectTools(userMessage, model string) []tools.ToolDefinition {
 	allDefs := h.toolRegistry.Definitions()
+	selected := allDefs
+
 	if h.toolSelector != nil && userMessage != "" {
 		// Check runtime setting (default false)
 		if h.settingsHandler != nil && !h.settingsHandler.GetSmartToolSelection() {
-			names := make([]string, len(allDefs))
-			for i, d := range allDefs {
-				names[i] = d.Name
-			}
-			logger.Info().Int("tools", len(allDefs)).Strs("names", names).Msg("[chat] selectTools: returning all tools")
-			return allDefs
+			selected = allDefs
+		} else {
+			selected = h.toolSelector.Select(userMessage, allDefs)
 		}
-		selected := h.toolSelector.Select(userMessage, allDefs)
-		names := make([]string, len(selected))
-		for i, d := range selected {
-			names[i] = d.Name
-		}
-		logger.Info().
-			Int("total", len(allDefs)).
-			Int("selected", len(selected)).
-			Strs("tools", names).
-			Str("query", userMessage).
-			Msg("[chat] selectTools")
-		return selected
 	}
-	names := make([]string, len(allDefs))
-	for i, d := range allDefs {
+
+	routed := selected
+	if h.toolRouter != nil {
+		routed = h.toolRouter.Route(userMessage, model, selected)
+	}
+
+	names := make([]string, len(routed))
+	for i, d := range routed {
 		names[i] = d.Name
 	}
-	logger.Info().Int("tools", len(allDefs)).Strs("names", names).Bool("selector_nil", h.toolSelector == nil).Msg("[chat] selectTools: no filtering")
-	return allDefs
+	logger.Info().
+		Int("total", len(allDefs)).
+		Int("selected", len(selected)).
+		Int("routed", len(routed)).
+		Strs("tools", names).
+		Str("model", model).
+		Str("query", userMessage).
+		Bool("selector_nil", h.toolSelector == nil).
+		Bool("router_nil", h.toolRouter == nil).
+		Msg("[chat] selectTools")
+
+	return routed
 }
 
 func applyWebSearchPreference(defs []tools.ToolDefinition, webSearchEnabled *bool) []tools.ToolDefinition {
@@ -1755,7 +1768,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	}
 
 	// Add tool definitions (smart selection filters by user query when enabled)
-	req.Tools = defsToLLMTools(h.selectTools(msg.Content))
+	req.Tools = defsToLLMTools(h.selectTools(msg.Content, req.Model))
 
 	logger.Info().
 		Str("model", req.Model).
@@ -2531,7 +2544,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
-	selectedTools := h.selectTools(req.Message)
+	selectedTools := h.selectTools(req.Message, chatReq.Model)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepSearchPreference(selectedTools, req.DeepResearchEnabled)
 	chatReq.Tools = defsToLLMTools(selectedTools)
@@ -2906,10 +2919,10 @@ func (h *ChatHandler) doWarmup(convID string) {
 	}
 
 	// 1c. Pre-warm tool definitions into cache.
-	// selectTools("") returns the full tool set; the conversion result is cached
+	// selectTools("", model) returns the full tool set; the conversion result is cached
 	// by the proxy's ToolCache for reuse when the real request arrives.
 	if h.toolRegistry != nil {
-		_ = h.selectTools("")
+		_ = h.selectTools("", model)
 	}
 
 	// 1d. Log provider affinity status — the actual pinning happens at request time
@@ -3619,7 +3632,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
-	selectedTools := h.selectTools(req.Message)
+	selectedTools := h.selectTools(req.Message, chatReq.Model)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepSearchPreference(selectedTools, req.DeepResearchEnabled)
 	chatReq.Tools = defsToLLMTools(selectedTools)
@@ -4871,7 +4884,7 @@ STREAM_LOOP:
 					Temperature: req.Temperature,
 					MaxTokens:   req.MaxTokens,
 					Stream:      true,
-					Tools:       defsToLLMTools(h.selectTools(injectedMsg)),
+					Tools:       defsToLLMTools(h.selectTools(injectedMsg, model)),
 				}
 				if isResponsesNativeModel(chatReq.Model) {
 					if disableResponsesContinuation {

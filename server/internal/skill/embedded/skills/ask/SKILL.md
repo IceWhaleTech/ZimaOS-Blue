@@ -9,32 +9,37 @@ Use this skill when you need explicit user input before continuing.
 Preferred single-question format:
 
 ```bash
-ask question="Choose a deploy strategy" a='["Canary","Blue-Green"]'
-```
-
-Alternative single-question format:
-
-```bash
 ask q="Choose a deploy strategy" a='["Canary","Blue-Green"]'
 ```
 
-Multi-question format:
+Alternative single-question format (legacy):
 
 ```bash
-ask questions='[{"question":"Choose a deploy strategy","options":["Canary","Blue-Green"]}]'
+ask question="Choose a deploy strategy" options='["Canary","Blue-Green"]'
+```
+
+Multi-question format (recommended):
+
+```bash
+ask questions='[
+  {"question":"How should I address you?","type":"radio","options":["Alex","A."]},
+  {"question":"Preferred language?","type":"radio","options":["zh","en"]},
+  {"question":"Timezone?","type":"radio","options":["Asia/Shanghai","UTC-8"]},
+  {"question":"Any other preferences?","type":"checkbox","options":[
+    {"label":"Free-form answer (Recommended)","description":"Reply directly in plain text","value":"free"},
+    {"label":"Template answer","value":"template"}
+  ]}
+]'
 ```
 
 ## Input Format
 
-- `question` + `a` (recommended for single question):
-- `question`: prompt text
-- `a`: JSON string array with at least 2 options
-- `q`/`mq` + `a`:
-- `q`: single-select question (default)
-- `mq`: multi-select question
-- `a`: JSON string array with at least 2 options
-- `questions`:
-- JSON array of question objects; each object can use `question/options` (preferred) or `q/a` aliases
+- Preferred: `questions`
+- Type: array
+- Item shape: `{ question, type, options }`
+- `type`: `radio` or `checkbox`
+- `options`: array of string or `{label,description?,value?}`
+- Shorthand for one question: `q` or `mq` + `a`
 
 Example:
 
@@ -42,14 +47,22 @@ Example:
 [
   {
     "question": "Which environment should we use?",
+    "type": "radio",
     "options": ["Staging", "Production"]
+  },
+  {
+    "question": "How do you want to respond?",
+    "type": "checkbox",
+    "options": [
+      {"label": "Free-form answer (Recommended)", "description": "Directly answer in plain text", "value": "free"},
+      {"label": "Template answer", "value": "template"}
+    ]
   }
 ]
 ```
 
 Compatibility note:
-- `option` and `options` are accepted aliases for `a`.
-- Repeating `option=...` is supported, but array-style (`a='[...]'`) is the canonical format.
+- Legacy aliases (`q/a` inside `questions`, `option`) may still exist in old prompts, but should not be used.
 
 ## Behavior
 

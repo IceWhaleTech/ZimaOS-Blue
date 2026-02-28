@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -44,7 +45,7 @@ func extractTasks(input map[string]any) []string {
 		case []any:
 			out := make([]string, 0, len(t))
 			for _, item := range t {
-				s := strings.TrimSpace(fmt.Sprintf("%v", item))
+				s := normalizeTaskText(fmt.Sprintf("%v", item))
 				if s != "" {
 					out = append(out, s)
 				}
@@ -53,18 +54,112 @@ func extractTasks(input map[string]any) []string {
 		case []string:
 			out := make([]string, 0, len(t))
 			for _, item := range t {
-				s := strings.TrimSpace(item)
+				s := normalizeTaskText(item)
 				if s != "" {
 					out = append(out, s)
 				}
 			}
 			return out
+		default:
+			if parsed := parseTaskListString(fmt.Sprintf("%v", t)); len(parsed) > 0 {
+				return parsed
+			}
 		}
 	}
-	if single := strings.TrimSpace(stringInput(input, "task")); single != "" {
+	if single := normalizeTaskText(stringInput(input, "task")); single != "" {
 		return []string{single}
 	}
+	if query := strings.TrimSpace(stringInput(input, "query")); query != "" {
+		if parsed := parseTaskListString(query); len(parsed) > 0 {
+			return parsed
+		}
+	}
 	return nil
+}
+
+func parseTaskListString(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	// Accept JSON array string payloads from key=value based invocations.
+	if strings.HasPrefix(raw, "[") && strings.HasSuffix(raw, "]") {
+		var arr []any
+		if err := json.Unmarshal([]byte(raw), &arr); err == nil {
+			out := make([]string, 0, len(arr))
+			for _, item := range arr {
+				s := normalizeTaskText(fmt.Sprintf("%v", item))
+				if s != "" {
+					out = append(out, s)
+				}
+			}
+			if len(out) > 0 {
+				return out
+			}
+		}
+	}
+
+	if strings.Contains(raw, "\n") {
+		lines := strings.Split(raw, "\n")
+		out := make([]string, 0, len(lines))
+		for _, line := range lines {
+			if s := normalizeTaskText(line); s != "" {
+				out = append(out, s)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+
+	if strings.ContainsAny(raw, ",;|，") {
+		fields := strings.FieldsFunc(raw, func(r rune) bool {
+			return r == ',' || r == ';' || r == '|' || r == '，'
+		})
+		out := make([]string, 0, len(fields))
+		for _, f := range fields {
+			if s := normalizeTaskText(f); s != "" {
+				out = append(out, s)
+			}
+		}
+		if len(out) > 1 {
+			return out
+		}
+	}
+
+	if one := normalizeTaskText(raw); one != "" {
+		return []string{one}
+	}
+	return nil
+}
+
+func normalizeTaskText(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+
+	for _, prefix := range []string{
+		"- [ ]", "- [x]", "- [X]",
+		"* [ ]", "* [x]", "* [X]",
+		"-", "*",
+	} {
+		if strings.HasPrefix(s, prefix) {
+			s = strings.TrimSpace(strings.TrimPrefix(s, prefix))
+			break
+		}
+	}
+
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i > 0 && i < len(s) && (s[i] == '.' || s[i] == ')') {
+		s = strings.TrimSpace(s[i+1:])
+	}
+
+	return strings.TrimSpace(s)
 }
 
 func buildChecklist(tasks []planTask) string {

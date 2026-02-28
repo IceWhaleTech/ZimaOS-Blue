@@ -529,6 +529,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Downloadverbinding voorbereiden...',
+      downloadFailed: 'Kan ONNX-model niet downloaden',
+    },
     tab: {
       general: 'Algemeen',
       llm: 'LLM',

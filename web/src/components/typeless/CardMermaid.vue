@@ -17,8 +17,29 @@ const loading = ref(true)
 const mermaidModule = shallowRef<typeof import('mermaid') | null>(null)
 // Track render count to generate unique IDs
 let renderCount = 0
+// Track latest render request to avoid stale async updates
+let renderToken = 0
 // Track whether this card is still receiving streaming content
 const isStreamingCard = computed(() => props.card._streaming === true)
+
+function isParseLikeError(message: string): boolean {
+  return /parse error|lexical error|syntax error/i.test(message)
+}
+
+function canAttemptStreamingRender(code: string): boolean {
+  if (code.length < 12) return false
+  const firstLine = code.split('\n', 1)[0]?.trim().toLowerCase() || ''
+  return /^(flowchart|graph|mindmap|sequencediagram|sequence|classdiagram|class|statediagram|state|erdiagram|er|gantt|pie|journey|gitgraph|timeline|quadrantchart|quadrant|sankey|xychart|xy)\b/.test(firstLine)
+}
+
+function scheduleRender(delay = isStreamingCard.value ? 280 : 100): void {
+  if (renderTimeout) {
+    clearTimeout(renderTimeout)
+  }
+  renderTimeout = setTimeout(() => {
+    renderDiagram()
+  }, delay)
+}
 
 // Detect diagram type from code
 const diagramType = computed(() => {
@@ -66,22 +87,27 @@ async function initMermaid() {
 async function renderDiagram() {
   if (!containerRef.value) return
 
-  // Avoid Mermaid parse spam while fenced code is still streaming/incomplete.
-  if (isStreamingCard.value) {
-    error.value = null
-    loading.value = true
-    return
-  }
-
-  if (!props.card.code?.trim()) {
+  const code = props.card.code?.trim() || ''
+  if (!code) {
     svgContent.value = ''
     error.value = null
     loading.value = false
     return
   }
 
+  if (isStreamingCard.value && !canAttemptStreamingRender(code)) {
+    error.value = null
+    loading.value = !svgContent.value
+    return
+  }
+
   error.value = null
-  loading.value = true
+  // Keep old diagram visible during re-render to avoid flicker.
+  if (!svgContent.value) {
+    loading.value = true
+  }
+
+  const token = ++renderToken
 
   try {
     await initMermaid()
@@ -99,17 +125,25 @@ async function renderDiagram() {
     })
 
     // Render the diagram
-    const { svg } = await mermaidModule.value!.default.render(id, props.card.code)
+    const { svg } = await mermaidModule.value!.default.render(id, code)
+    if (token !== renderToken) return
     svgContent.value = svg
   } catch (err) {
+    if (token !== renderToken) return
     const message = err instanceof Error ? err.message : String(err)
-    // Mermaid parse errors are expected when model output is malformed; keep UI error, silence console spam.
-    if (!/parse error|lexical error/i.test(message)) {
+    // Parse/lexical/syntax errors are expected while streaming; ignore silently and keep last valid render.
+    if (isParseLikeError(message)) {
+      error.value = null
+      return
+    }
+    if (!isParseLikeError(message)) {
       console.error('Mermaid render error:', err)
     }
     error.value = err instanceof Error ? err.message : 'Failed to render diagram'
   } finally {
-    loading.value = false
+    if (token === renderToken) {
+      loading.value = false
+    }
   }
 }
 
@@ -128,35 +162,25 @@ async function copyCode() {
 
 // Watch for theme changes
 watch(() => props.card.theme, () => {
-  if (isStreamingCard.value) return
-  renderDiagram()
+  scheduleRender(0)
 })
 
 // Watch for code changes with debounce to prevent rapid re-renders
 let renderTimeout: ReturnType<typeof setTimeout> | null = null
 watch(() => props.card.code, () => {
-  if (isStreamingCard.value) return
-  if (renderTimeout) {
-    clearTimeout(renderTimeout)
-  }
-  renderTimeout = setTimeout(() => {
-    renderDiagram()
-  }, 100)
+  scheduleRender()
 })
 
 // When streaming finishes, render once with final complete code.
 watch(isStreamingCard, (streaming, wasStreaming) => {
   if (wasStreaming && !streaming) {
-    if (renderTimeout) {
-      clearTimeout(renderTimeout)
-    }
-    renderDiagram()
+    scheduleRender(0)
   }
 })
 
 onMounted(() => {
   nextTick(() => {
-    renderDiagram()
+    scheduleRender(0)
   })
 })
 

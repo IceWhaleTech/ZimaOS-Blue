@@ -529,6 +529,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Προετοιμασία σύνδεσης λήψης...',
+      downloadFailed: 'Αποτυχία λήψης του μοντέλου ONNX',
+    },
     tab: { general: 'Γενικά', llm: 'LLM', metrics: 'Χρήση', remote: 'Απομακρυσμένη πρόσβαση', config: 'Ρυθμίσεις', backup: 'Αντίγραφα', logs: 'Καταγραφές', service: 'Υπηρεσία', retention: 'Διατήρηση' },
     failover: {
       title: 'Κατάσταση έξυπνης εναλλαγής',

@@ -692,7 +692,6 @@ func TestStreamMessageCodexResponsesSecondTurn_UsesPreviousResponseID(t *testing
 		callCount++
 		requestPaths = append(requestPaths, r.URL.Path)
 		requestPrevIDs = append(requestPrevIDs, prevID)
-		n := callCount
 		mu.Unlock()
 
 		if inputText == "first turn" {
@@ -816,6 +815,104 @@ func TestStreamMessageCodexResponsesSecondTurn_UsesPreviousResponseID(t *testing
 	}
 	if requestPrevIDs[1] == "" {
 		t.Fatalf("second turn previous_response_id should be injected, got empty (prev_ids=%v)", requestPrevIDs)
+	}
+}
+
+func TestStreamMessageCodexResponsesSecondTurn_RealProvider(t *testing.T) {
+	if strings.TrimSpace(os.Getenv("ZIMA_RUN_REAL_CODEX")) != "1" {
+		t.Skip("set ZIMA_RUN_REAL_CODEX=1 to run against real codex provider")
+	}
+
+	baseURL := strings.TrimSpace(os.Getenv("ZIMA_REAL_CODEX_BASE_URL"))
+	apiKey := strings.TrimSpace(os.Getenv("ZIMA_REAL_CODEX_API_KEY"))
+	modelID := strings.TrimSpace(os.Getenv("ZIMA_REAL_CODEX_MODEL"))
+	if modelID == "" {
+		modelID = "gpt-5.3-codex-spark"
+	}
+	if baseURL == "" || apiKey == "" {
+		t.Skip("missing ZIMA_REAL_CODEX_BASE_URL or ZIMA_REAL_CODEX_API_KEY")
+	}
+
+	tmpDir, err := os.MkdirTemp("", "chat-codex-real-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, err := providerpool.NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create provider storage: %v", err)
+	}
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("failed to create provider registry: %v", err)
+	}
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	router := providerpool.NewRouter(registry, discovery, providerpool.RoutingStrategyPriority)
+
+	provider := &providerpool.Provider{
+		ID:        "real-codex",
+		Name:      "real-codex",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   baseURL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Priority:  10,
+		APIFormat: providerpool.APIFormatOpenAI,
+		APIKeys: []providerpool.APIKey{
+			{ID: "key-real-codex", Key: apiKey, Enabled: true},
+		},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("failed to register provider: %v", err)
+	}
+	models := []*providerpool.Model{
+		{
+			ID:           modelID,
+			Name:         modelID,
+			ProviderID:   provider.ID,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, Streaming: true},
+		},
+	}
+	if err := storage.SaveModels(provider.ID, models); err != nil {
+		t.Fatalf("failed to save models: %v", err)
+	}
+	router.RebuildCandidates()
+
+	proxyHandler := proxy.NewProxyHandler(nil, proxy.NewConnectionPool(proxy.DefaultConnectionConfig()), nil)
+	proxyHandler.SetProviderPool(&providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Router:    router,
+	})
+
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create memory store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test real codex responses continuation")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProxyBridge(proxybridge.NewBridge(proxyHandler))
+
+	firstBody := runStreamTurn(t, handler, conv.ID, fmt.Sprintf(`{"message":"Reply with ONLY: OK","model":"%s"}`, modelID))
+	if strings.Contains(firstBody, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("real provider first turn failed: %s", firstBody)
+	}
+
+	secondBody := runStreamTurn(t, handler, conv.ID, fmt.Sprintf(`{"message":"Reply with ONLY: NEXT","model":"%s"}`, modelID))
+	if strings.Contains(secondBody, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("real provider second turn failed: %s", secondBody)
+	}
+
+	if !strings.Contains(secondBody, `"done":true`) {
+		t.Fatalf("real provider second turn missing done marker: %s", secondBody)
 	}
 }
 

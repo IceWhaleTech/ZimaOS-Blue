@@ -20,87 +20,67 @@ func NewAskTool(mgr *QuestionManager) *AskTool {
 // Definition returns the tool definition.
 // Supports both single question (q/mq + a) and multiple questions (questions array).
 func (t *AskTool) Definition() ToolDefinition {
+	optionItemSchema := map[string]interface{}{
+		"oneOf": []interface{}{
+			map[string]interface{}{"type": "string"},
+			map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"label":       map[string]interface{}{"type": "string"},
+					"description": map[string]interface{}{"type": "string"},
+					"value":       map[string]interface{}{"type": "string"},
+				},
+			},
+		},
+	}
+
 	return ToolDefinition{
 		Name: "ask",
 		Description: `Ask the user one or more questions.
-For single question: use "q" (single-select/radio) or "mq" (multi-select/checkbox), with "a" as options.
-For multiple questions: use "questions" array, each with "q"/"question", "type" ("radio"/"checkbox"), and "a"/"options".
-Options support either strings or objects: {"label":"...", "description":"...", "value":"..."}.
-
-Example single: {"q":"Preferred language?","a":[{"label":"Go (Recommended)","description":"Best fit for this backend","value":"go"},{"label":"Rust","value":"rust"}]}
-Example multi: {"questions":[{"q":"Favorite language?","type":"radio","a":["Python","Go"]},{"question":"Preferred IDE?","type":"checkbox","options":[{"label":"VS Code","description":"Most extensions"},{"label":"Vim","description":"Fast and keyboard-driven"}]}]}`,
+Preferred format: {"questions":[{"question":"...","type":"radio","options":[...]}]}.
+Single-question shorthand: {"q":"...","a":[...]} or {"mq":"...","a":[...]}.
+Option items can be strings or objects: {"label":"...","description":"...","value":"..."}.
+Inside questions items, use only "question"/"options"/"type".`,
 		Icon: "question",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"q": map[string]interface{}{
-					"type":        "string",
-					"description": "Single-select question text (radio buttons). Use for one question.",
-				},
-				"mq": map[string]interface{}{
-					"type":        "string",
-					"description": "Multi-select question text (checkboxes). Use for one question.",
-				},
-				"a": map[string]interface{}{
-					"type": "array",
-					"items": map[string]interface{}{
-						"oneOf": []interface{}{
-							map[string]interface{}{"type": "string"},
-							map[string]interface{}{
-								"type": "object",
-								"properties": map[string]interface{}{
-									"label":       map[string]interface{}{"type": "string"},
-									"description": map[string]interface{}{"type": "string"},
-									"value":       map[string]interface{}{"type": "string"},
-								},
-							},
-						},
-					},
-					"description": "Options for single question (2-4 items). Prefer objects when you need descriptions.",
-				},
 				"questions": map[string]interface{}{
-					"type": "array",
+					"type":        "array",
+					"description": "Preferred. Array of question objects.",
 					"items": map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
-							"q":        map[string]interface{}{"type": "string"},
-							"question": map[string]interface{}{"type": "string"},
-							"type":     map[string]interface{}{"type": "string", "enum": []string{"radio", "checkbox"}},
-							"a": map[string]interface{}{
-								"type": "array",
-								"items": map[string]interface{}{
-									"oneOf": []interface{}{
-										map[string]interface{}{"type": "string"},
-										map[string]interface{}{
-											"type": "object",
-											"properties": map[string]interface{}{
-												"label":       map[string]interface{}{"type": "string"},
-												"description": map[string]interface{}{"type": "string"},
-												"value":       map[string]interface{}{"type": "string"},
-											},
-										},
-									},
-								},
+							"question": map[string]interface{}{
+								"type":        "string",
+								"description": "Question text.",
+							},
+							"type": map[string]interface{}{
+								"type":        "string",
+								"enum":        []string{"radio", "checkbox"},
+								"description": "Selection mode.",
 							},
 							"options": map[string]interface{}{
-								"type": "array",
-								"items": map[string]interface{}{
-									"oneOf": []interface{}{
-										map[string]interface{}{"type": "string"},
-										map[string]interface{}{
-											"type": "object",
-											"properties": map[string]interface{}{
-												"label":       map[string]interface{}{"type": "string"},
-												"description": map[string]interface{}{"type": "string"},
-												"value":       map[string]interface{}{"type": "string"},
-											},
-										},
-									},
-								},
+								"type":        "array",
+								"items":       optionItemSchema,
+								"description": "Selectable options.",
 							},
 						},
+						"required": []string{"question", "options"},
 					},
-					"description": "Multiple questions array. Use this for 2+ questions.",
+				},
+				"q": map[string]interface{}{
+					"type":        "string",
+					"description": "Single-select question text (shorthand).",
+				},
+				"mq": map[string]interface{}{
+					"type":        "string",
+					"description": "Multi-select question text (shorthand).",
+				},
+				"a": map[string]interface{}{
+					"type":        "array",
+					"items":       optionItemSchema,
+					"description": "Options for q/mq shorthand.",
 				},
 			},
 		},
@@ -130,10 +110,7 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 			if !ok {
 				continue
 			}
-			qText, _ := m["q"].(string)
-			if qText == "" {
-				qText, _ = m["question"].(string)
-			}
+			qText, _ := m["question"].(string)
 			qText = strings.TrimSpace(qText)
 			if qText == "" {
 				continue
@@ -141,10 +118,7 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 			qType, _ := m["type"].(string)
 			isMulti := strings.EqualFold(qType, "checkbox") || strings.EqualFold(qType, "multi")
 
-			qOpts := parseQuestionOptions(m["a"])
-			if len(qOpts) == 0 {
-				qOpts = parseQuestionOptions(m["options"])
-			}
+			qOpts := parseQuestionOptions(m["options"])
 			if len(qOpts) == 0 {
 				continue
 			}
@@ -245,7 +219,7 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 }
 
 // parseAskArgs extracts question text, multi-select flag, and options from args.
-// Supports the primary q/mq/a format and falls back to legacy "questions" format.
+// Supports the primary q/mq/a format and falls back to top-level legacy format.
 func parseAskArgs(args map[string]interface{}) (question string, multiSelect bool, options []QuestionOption) {
 	// Primary format: q/mq + a
 	if q, ok := args["q"].(string); ok && q != "" {
@@ -263,7 +237,7 @@ func parseAskArgs(args map[string]interface{}) (question string, multiSelect boo
 		return
 	}
 
-	// Legacy fallback: "questions" array or "question"/"options" at top level
+	// Legacy fallback: "questions" array (question/options only) or "question"/"options" at top level
 	question, multiSelect, options = parseLegacyArgs(args)
 	return
 }
@@ -310,9 +284,6 @@ func parseLegacyArgs(args map[string]interface{}) (question string, multiSelect 
 	if q, ok := first["question"].(string); ok && strings.TrimSpace(q) != "" {
 		question = strings.TrimSpace(q)
 	}
-	if q, ok := first["q"].(string); ok && strings.TrimSpace(q) != "" {
-		question = strings.TrimSpace(q)
-	}
 	if ms, ok := first["multi_select"].(bool); ok {
 		multiSelect = ms
 	}
@@ -320,9 +291,6 @@ func parseLegacyArgs(args map[string]interface{}) (question string, multiSelect 
 		multiSelect = true
 	}
 	options = parseQuestionOptions(first["options"])
-	if len(options) == 0 {
-		options = parseQuestionOptions(first["a"])
-	}
 	return
 }
 

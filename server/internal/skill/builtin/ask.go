@@ -25,8 +25,9 @@ type AskQuestionItem struct {
 
 // AskQuestionOption is a single selectable option.
 type AskQuestionOption struct {
-	Label string
-	Value string
+	Label       string
+	Value       string
+	Description string
 }
 
 // AskQuestionAnswerResult is the answer payload returned by ask backend.
@@ -55,21 +56,27 @@ func NewAsk() *Ask {
 			Tags:        []string{"ask", "question", "input", "interaction"},
 			Inputs: []skill.Parameter{
 				{
-					Name:        "question",
-					Type:        "string",
-					Description: "Single question text.",
-					Required:    false,
-				},
-				{
-					Name:        "options",
-					Type:        "string",
-					Description: "Options for single question. Prefer JSON string array, e.g. [\"A\",\"B\"]. Aliases: option, a.",
-					Required:    false,
-				},
-				{
 					Name:        "questions",
+					Type:        "array",
+					Description: "Preferred. Question array. Each item: {question, type: radio|checkbox, options: [...]}",
+					Required:    false,
+				},
+				{
+					Name:        "q",
 					Type:        "string",
-					Description: "JSON array of questions: [{\"question\":\"...\",\"options\":[\"A\",\"B\"]}] (also supports q/a aliases).",
+					Description: "Single-select question text (shorthand).",
+					Required:    false,
+				},
+				{
+					Name:        "mq",
+					Type:        "string",
+					Description: "Multi-select question text (shorthand).",
+					Required:    false,
+				},
+				{
+					Name:        "a",
+					Type:        "array",
+					Description: "Options for q/mq shorthand. Supports string options or objects with label/description/value.",
 					Required:    false,
 				},
 			},
@@ -82,12 +89,8 @@ func (a *Ask) SetQuestioner(q AskQuestioner) { a.questioner = q }
 func (a *Ask) Manifest() *skill.Manifest { return a.manifest }
 
 func (a *Ask) Validate(input map[string]any) error {
-	_, hasQ := input["q"]
-	_, hasMQ := input["mq"]
-	if !hasQ && !hasMQ {
-		return fmt.Errorf("q or mq is required")
-	}
-	return nil
+	_, err := parseAskQuestions(input)
+	return err
 }
 
 func (a *Ask) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
@@ -123,47 +126,11 @@ func (a *Ask) Execute(ctx context.Context, input map[string]any) (*skill.Result,
 
 func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 	if raw, ok := input["questions"]; ok {
-		if s, ok := raw.(string); ok && strings.TrimSpace(s) != "" {
-			var payload []struct {
-				Q        string   `json:"q"`
-				Type     string   `json:"type"`
-				A        []string `json:"a"`
-				Question string   `json:"question"`
-				Options  []string `json:"options"`
-			}
-			if err := json.Unmarshal([]byte(s), &payload); err != nil {
-				return nil, fmt.Errorf("invalid questions JSON: %w", err)
-			}
-			items := make([]AskQuestionItem, 0, len(payload))
-			for i, q := range payload {
-				question := strings.TrimSpace(q.Question)
-				if question == "" {
-					question = strings.TrimSpace(q.Q)
-				}
-				if question == "" {
-					continue
-				}
-				optionsArr := q.Options
-				if len(optionsArr) == 0 {
-					optionsArr = q.A
-				}
-				options := toQuestionOptions(optionsArr)
-				if len(options) == 0 {
-					return nil, fmt.Errorf("question %d has no options", i+1)
-				}
-				header := shortHeader(question)
-				isMulti := strings.EqualFold(strings.TrimSpace(q.Type), "checkbox")
-				items = append(items, AskQuestionItem{
-					ID:          fmt.Sprintf("q%d", i),
-					Question:    question,
-					Header:      header,
-					Options:     options,
-					MultiSelect: isMulti,
-				})
-			}
-			if len(items) == 0 {
-				return nil, fmt.Errorf("questions is empty")
-			}
+		items, err := parseQuestionsInput(raw)
+		if err != nil {
+			return nil, err
+		}
+		if len(items) > 0 {
 			return items, nil
 		}
 	}
@@ -179,7 +146,7 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 				ID:          "q0",
 				Question:    question,
 				Header:      shortHeader(question),
-				Options:     toQuestionOptions(options),
+				Options:     options,
 				MultiSelect: false,
 			},
 		}, nil
@@ -195,7 +162,7 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 				ID:          "q0",
 				Question:    question,
 				Header:      shortHeader(question),
-				Options:     toQuestionOptions(options),
+				Options:     options,
 				MultiSelect: true,
 			},
 		}, nil
@@ -204,7 +171,7 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 	question, _ := input["question"].(string)
 	question = strings.TrimSpace(question)
 	if question == "" {
-		return nil, fmt.Errorf("question is required")
+		return nil, fmt.Errorf("provide questions[] or q/mq + a")
 	}
 	options := parseOptionsFromInput(input, "options")
 	if len(options) < 2 {
@@ -216,37 +183,197 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 			ID:          "q0",
 			Question:    question,
 			Header:      shortHeader(question),
-			Options:     toQuestionOptions(options),
+			Options:     options,
 			MultiSelect: false,
 		},
 	}, nil
 }
 
-func parseOptionsFromInput(input map[string]any, key string) []string {
-	raw := trimmedString(input, key)
-	if raw == "" {
-		for _, alias := range optionAliases(key) {
-			raw = trimmedString(input, alias)
-			if raw != "" {
-				break
+func parseQuestionsInput(raw any) ([]AskQuestionItem, error) {
+	parsed, err := parseJSONOrValue(raw)
+	if err != nil {
+		return nil, err
+	}
+	if parsed == nil {
+		return nil, nil
+	}
+
+	list, ok := asAnySlice(parsed)
+	if !ok {
+		return nil, fmt.Errorf("invalid questions JSON: must be an array")
+	}
+
+	items := make([]AskQuestionItem, 0, len(list))
+	for i, entry := range list {
+		obj, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		question := firstNonEmptyString(obj, "question")
+		if question == "" {
+			continue
+		}
+		options := parseOptionsFromQuestion(obj)
+		if len(options) == 0 {
+			return nil, fmt.Errorf("question %d has no options", i+1)
+		}
+		qType := firstNonEmptyString(obj, "type")
+		isMulti := strings.EqualFold(qType, "checkbox") || strings.EqualFold(qType, "multi")
+		items = append(items, AskQuestionItem{
+			ID:          fmt.Sprintf("q%d", i),
+			Question:    question,
+			Header:      shortHeader(question),
+			Options:     options,
+			MultiSelect: isMulti,
+		})
+	}
+	if len(items) == 0 {
+		return nil, fmt.Errorf("questions is empty")
+	}
+	return items, nil
+}
+
+func parseOptionsFromQuestion(q map[string]any) []AskQuestionOption {
+	raw, ok := q["options"]
+	if !ok {
+		return nil
+	}
+	if opts := parseOptionPayload(raw); len(opts) > 0 {
+		return opts
+	}
+	return nil
+}
+
+func parseOptionsFromInput(input map[string]any, key string) []AskQuestionOption {
+	for _, candidate := range append([]string{key}, optionAliases(key)...) {
+		raw, ok := input[candidate]
+		if !ok {
+			continue
+		}
+		if opts := parseOptionPayload(raw); len(opts) > 0 {
+			return opts
+		}
+	}
+	return nil
+}
+
+func parseOptionPayload(raw any) []AskQuestionOption {
+	parsed, err := parseJSONOrValue(raw)
+	if err != nil || parsed == nil {
+		return nil
+	}
+
+	switch v := parsed.(type) {
+	case string:
+		return parseCSVOptions(v)
+	case []string:
+		out := make([]AskQuestionOption, 0, len(v))
+		for _, option := range v {
+			opt := strings.TrimSpace(option)
+			if opt != "" {
+				out = append(out, AskQuestionOption{Label: opt, Value: opt})
+			}
+		}
+		return out
+	default:
+		list, ok := asAnySlice(v)
+		if !ok {
+			return nil
+		}
+		return parseOptionArray(list)
+	}
+}
+
+func parseJSONOrValue(raw any) (any, error) {
+	switch v := raw.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		s := unwrapQuotedString(strings.TrimSpace(v))
+		if s == "" {
+			return nil, nil
+		}
+		if strings.HasPrefix(s, "[") || strings.HasPrefix(s, "{") {
+			var parsed any
+			if err := json.Unmarshal([]byte(s), &parsed); err == nil {
+				return parsed, nil
+			}
+		}
+		return s, nil
+	default:
+		return raw, nil
+	}
+}
+
+func unwrapQuotedString(s string) string {
+	if len(s) >= 2 {
+		first := s[0]
+		last := s[len(s)-1]
+		if (first == '\'' && last == '\'') || (first == '"' && last == '"') {
+			return strings.TrimSpace(s[1 : len(s)-1])
+		}
+	}
+	return s
+}
+
+func asAnySlice(v any) ([]any, bool) {
+	switch t := v.(type) {
+	case []any:
+		return t, true
+	case map[string]any:
+		return []any{t}, true
+	default:
+		return nil, false
+	}
+}
+
+func parseOptionArray(items []any) []AskQuestionOption {
+	out := make([]AskQuestionOption, 0, len(items))
+	for _, item := range items {
+		switch v := item.(type) {
+		case string:
+			label := strings.TrimSpace(v)
+			if label != "" {
+				out = append(out, AskQuestionOption{Label: label, Value: label})
+			}
+		case map[string]any:
+			if opt, ok := parseOptionObject(v); ok {
+				out = append(out, opt)
 			}
 		}
 	}
-	if raw == "" {
-		return nil
-	}
-	var arr []string
-	if strings.HasPrefix(raw, "[") && strings.HasSuffix(raw, "]") {
-		if err := json.Unmarshal([]byte(raw), &arr); err == nil {
-			return normalizeOptions(arr)
-		}
-	}
-	return parseCSVOptions(raw)
+	return out
 }
 
-func trimmedString(input map[string]any, key string) string {
-	raw, _ := input[key].(string)
-	return strings.TrimSpace(raw)
+func parseOptionObject(v map[string]any) (AskQuestionOption, bool) {
+	label := firstNonEmptyString(v, "label", "text", "name", "title", "value")
+	if label == "" {
+		return AskQuestionOption{}, false
+	}
+	value := firstNonEmptyString(v, "value")
+	if value == "" {
+		value = label
+	}
+	desc := firstNonEmptyString(v, "description", "hint")
+	return AskQuestionOption{
+		Label:       label,
+		Value:       value,
+		Description: desc,
+	}, true
+}
+
+func firstNonEmptyString(m map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if raw, ok := m[key]; ok {
+			if s, ok := raw.(string); ok {
+				trimmed := strings.TrimSpace(s)
+				if trimmed != "" {
+					return trimmed
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func optionAliases(key string) []string {
@@ -262,37 +389,14 @@ func optionAliases(key string) []string {
 	}
 }
 
-func parseCSVOptions(s string) []string {
+func parseCSVOptions(s string) []AskQuestionOption {
 	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
+	out := make([]AskQuestionOption, 0, len(parts))
 	for _, p := range parts {
 		v := strings.TrimSpace(p)
 		if v != "" {
-			out = append(out, v)
+			out = append(out, AskQuestionOption{Label: v, Value: v})
 		}
-	}
-	return out
-}
-
-func normalizeOptions(values []string) []string {
-	out := make([]string, 0, len(values))
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		if v != "" {
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
-func toQuestionOptions(values []string) []AskQuestionOption {
-	out := make([]AskQuestionOption, 0, len(values))
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			continue
-		}
-		out = append(out, AskQuestionOption{Label: v, Value: v})
 	}
 	return out
 }

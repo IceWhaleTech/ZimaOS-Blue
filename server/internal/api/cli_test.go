@@ -292,4 +292,35 @@ func TestCLIHandler_GetCLIFeatureMatrix(t *testing.T) {
 	if len(matrix) == 0 {
 		t.Error("expected matrix to have entries")
 	}
+
+	agentFound := false
+	mcpFound := false
+	for _, item := range matrix {
+		row, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		feature, _ := row["feature"].(string)
+		switch feature {
+		case "Agent Mode":
+			agentFound = true
+			if got, _ := row["without_cli"].(string); got != "Full" {
+				t.Fatalf("Agent Mode without_cli = %q, want Full", got)
+			}
+			if req, _ := row["requires_cli"].(bool); req {
+				t.Fatalf("Agent Mode requires_cli = true, want false")
+			}
+		case "MCP Tools":
+			mcpFound = true
+			if got, _ := row["without_cli"].(string); got != "Full" {
+				t.Fatalf("MCP Tools without_cli = %q, want Full", got)
+			}
+		}
+	}
+	if !agentFound {
+		t.Fatal("feature matrix missing Agent Mode row")
+	}
+	if !mcpFound {
+		t.Fatal("feature matrix missing MCP Tools row")
+	}
 }

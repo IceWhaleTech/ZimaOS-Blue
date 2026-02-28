@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/remindertime"
 	"go.uber.org/zap"
 )
 
@@ -114,17 +115,5 @@ func RegisterPushHandlers(srv *Server, backend PushBackend, log *zap.Logger) {
 
 // parseTime parses a time string as duration, RFC3339, or common format.
 func parseTime(s string) (time.Time, error) {
-	if d, err := time.ParseDuration(s); err == nil {
-		return time.Now().Add(d), nil
-	}
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t, nil
-	}
-	if t, err := time.ParseInLocation("2006-01-02 15:04", s, time.Local); err == nil {
-		return t, nil
-	}
-	if t, err := time.ParseInLocation("2006-01-02 15:04:05", s, time.Local); err == nil {
-		return t, nil
-	}
-	return time.Time{}, fmt.Errorf("use duration (1h30m), RFC3339, or YYYY-MM-DD HH:MM")
+	return remindertime.Parse(s)
 }

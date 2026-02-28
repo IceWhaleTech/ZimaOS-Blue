@@ -6,8 +6,8 @@ import (
 
 // ClaudeCodeCLIConfig holds Claude Code CLI configuration (v0.10.3).
 // This is separated from LLM provider configuration.
-// When disabled, Skills, Tool Calling, File Operations, Terminal Commands,
-// MCP Integration, Agent Mode, and Project Context will be unavailable.
+// When disabled, CLI-backed features are unavailable (for example skills via
+// `blue` subcommands), while native server capabilities may still work.
 type ClaudeCodeCLIConfig struct {
 	// Enabled is the master switch for CLI integration (strongly recommended to keep enabled)
 	Enabled bool `yaml:"enabled" json:"enabled"`

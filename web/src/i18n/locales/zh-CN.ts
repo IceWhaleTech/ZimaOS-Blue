@@ -670,6 +670,21 @@ export default {
         },
       },
     },
+    skillReranker: {
+      title: 'Skill 重排器',
+      description: '控制智能 skill 选择中的重排行为。',
+      rerankEnabled: '启用二阶段重排',
+      onnxEnabled: '启用 ONNX 重排器',
+      onnxEnabledHint: '优先使用本地 ONNX Cross-Encoder；不可用时自动回退启发式重排。',
+      autoDownload: '自动下载 ONNX 模型',
+      autoDownloadHint: '当模型缺失时，允许后台从 ModelScope、HuggingFace、HF-Mirror 下载。',
+      disabledByRerank: '请先启用二阶段重排。',
+      disabledByOnnx: '请先启用 ONNX 重排器。',
+      saved: 'Skill 重排器设置已保存',
+      saveFailed: 'Skill 重排器设置保存失败',
+      modelConnecting: '正在连接下载源...',
+      downloadFailed: '下载 ONNX 模型失败',
+    },
     // LLM Provider
     // Provider names
     providers: {

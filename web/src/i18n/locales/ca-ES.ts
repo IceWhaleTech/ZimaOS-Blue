@@ -529,6 +529,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'S’està preparant la connexió de descàrrega...',
+      downloadFailed: 'No s’ha pogut descarregar el model ONNX',
+    },
     tab: { general: 'General', llm: 'LLM', metrics: 'Ús', remote: 'Accés remot', config: 'Configuració', backup: 'Còpia de seguretat', logs: 'Registres', service: 'Servei', retention: 'Retenció' },
     failover: {
       title: 'Estat de commutació intel·ligent',

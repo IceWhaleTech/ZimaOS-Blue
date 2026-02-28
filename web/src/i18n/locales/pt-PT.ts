@@ -166,6 +166,11 @@ export default {
   home: { ...ptBR.home },
   settings: {
     ...ptBR.settings,
+    skillReranker: {
+      ...ptBR.settings.skillReranker,
+      modelConnecting: 'A preparar ligação de download...',
+      downloadFailed: 'Falha ao transferir o modelo ONNX',
+    },
     title: 'Definições',
     languageSaved: 'Idioma guardado',
     timezoneSaved: 'Fuso horário guardado',

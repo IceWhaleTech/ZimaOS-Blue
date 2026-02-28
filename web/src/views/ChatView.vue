@@ -254,7 +254,12 @@ const providerStatus = computed(() => {
   return { status: 'pending', color: 'yellow', message: t('chat.providerPending') }
 })
 
-const showAwaitingConfirmation = computed(() => chatStore.awaitingConfirmation || !!chatStore.pendingQuestion)
+const showAwaitingConfirmation = computed(() =>
+  chatStore.awaitingConfirmation
+  || !!chatStore.pendingQuestion
+  || !!chatStore.pendingApproval
+  || !!chatStore.pendingExecApproval
+)
 
 // Routing mode display info
 const routingModeInfo = computed(() => {
@@ -286,6 +291,15 @@ const routingModeInfo = computed(() => {
   }
 })
 
+const cloudActiveCount = computed(() =>
+  providerPoolStore.cloudProviders.filter(p => p.status === 'active').length
+)
+const localActiveCount = computed(() =>
+  providerPoolStore.localProviders.filter(p => p.status === 'active').length
+)
+const totalActiveProviderCount = computed(() => cloudActiveCount.value + localActiveCount.value)
+const isSingleModelMode = computed(() => chatStore.modelPreference !== 'auto')
+
 const fixedModelOptions = computed(() => {
   const modelIds = new Set<string>()
   for (const provider of providerPoolStore.enabledProviders) {
@@ -304,6 +318,13 @@ const fixedModelLabel = computed(() => {
   if (chatStore.modelPreference === 'auto') return t('chat.routingMode.modelAuto')
   return chatStore.modelPreference
 })
+
+const currentThemeStyleLabel = computed(() => {
+  const current = THEME_STYLES.find(style => style.id === settingsStore.themeStyle)
+  return current ? t(current.labelKey) : settingsStore.themeStyle
+})
+
+const currentThemeStylePreviewClass = computed(() => `theme-style-btn-${settingsStore.themeStyle}`)
 
 function getMessageHeightKey(message: { conversation_id: string; id: string }) {
   return `${message.conversation_id}:${message.id}`
@@ -716,10 +737,14 @@ function toggleRoutingMenu() {
   showStyleSelector.value = false
   if (!showRoutingMenu.value && !isMobile.value && routingButtonRef.value) {
     const rect = routingButtonRef.value.getBoundingClientRect()
-    routingMenuPosition.value = {
-      x: Math.max(8, rect.right - 288),
-      y: rect.bottom + 8,
-    }
+    const menuWidth = 320 // w-80
+    const horizontalPadding = 8
+    const x = Math.min(
+      Math.max(horizontalPadding, rect.right - menuWidth),
+      window.innerWidth - menuWidth - horizontalPadding
+    )
+    const y = rect.bottom + 8
+    routingMenuPosition.value = { x, y }
   }
   showRoutingMenu.value = !showRoutingMenu.value
 }
@@ -728,17 +753,25 @@ function selectRoutingMode(mode: 'auto' | 'cloud' | 'local') {
   if (mode === 'cloud' && !providerPoolStore.hasCloudProviders) return
   if (mode === 'local' && !providerPoolStore.hasLocalProviders) return
   providerPoolStore.setRoutingMode(mode)
-  showRoutingMenu.value = false
+  if (isMobile.value) showRoutingMenu.value = false
 }
 
 function selectFixedModel(modelId: string) {
   chatStore.setModelPreference(modelId)
-  showRoutingMenu.value = false
+  if (isMobile.value) showRoutingMenu.value = false
 }
 
 function setAutoModelPreference() {
   chatStore.setModelPreference('auto')
-  showRoutingMenu.value = false
+  if (isMobile.value) showRoutingMenu.value = false
+}
+
+function enableSingleModelMode() {
+  if (chatStore.modelPreference !== 'auto') return
+  const firstModel = fixedModelOptions.value[0]?.id
+  if (firstModel) {
+    chatStore.setModelPreference(firstModel)
+  }
 }
 
 // Theme style selector functions
@@ -928,8 +961,8 @@ onMounted(async () => {
   settingsStore.fetchTools().catch(() => {})
   providerPoolStore.fetchRoutingMode().catch(() => {})
 
-  // Check for any pending tool approvals (e.g. page was refreshed while waiting)
-  chatStore.checkPendingApprovals()
+  // Restore pending confirmations after refresh or missed SSE events.
+  chatStore.recoverPendingConfirmations(false)
 })
 
 onUnmounted(() => {
@@ -1134,120 +1167,25 @@ onUnmounted(() => {
           <div class="routing-menu-container relative">
             <button
               ref="routingButtonRef"
-              class="topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white"
+              class="routing-trigger-btn topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer"
               :class="{
-                'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30': providerStatus.status === 'error',
-                'text-yellow-500 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/30': providerStatus.status === 'pending',
+                'is-error': providerStatus.status === 'error',
+                'is-pending': providerStatus.status === 'pending',
+                'is-none': providerStatus.status === 'none',
               }"
               :title="`${t('chat.routingMode.title')} · ${routingModeInfo.label} · ${fixedModelLabel}`"
               @click.stop="toggleRoutingMenu"
             >
               <svg v-if="routingModeInfo.icon === 'cloud'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
               </svg>
               <svg v-else-if="routingModeInfo.icon === 'local'" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
               <svg v-else class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
-
-            <Transition
-              enter-active-class="transition ease-out duration-150"
-              enter-from-class="opacity-0 translate-y-1"
-              enter-to-class="opacity-100 translate-y-0"
-              leave-active-class="transition ease-in duration-100"
-              leave-from-class="opacity-100 translate-y-0"
-              leave-to-class="opacity-0 translate-y-1"
-            >
-              <div
-                v-if="showRoutingMenu && !isMobile"
-                class="routing-menu-floating fixed w-72 glass-card rounded-xl shadow-xl border border-white/10 overflow-hidden z-[10000]"
-                :style="{ left: `${routingMenuPosition.x}px`, top: `${routingMenuPosition.y}px` }"
-              >
-                <div class="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-slate-400">
-                  {{ t('chat.routingMode.title') }}
-                </div>
-
-                <router-link
-                  v-if="providerStatus.status === 'none'"
-                  to="/settings?tab=llm"
-                  class="w-full px-4 py-2.5 flex items-center justify-between text-sm text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-                  @click="showRoutingMenu = false"
-                >
-                  <span>{{ t('chat.addProvider') }}</span>
-                  <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('chat.manageProviders') }}</span>
-                </router-link>
-
-                <template v-else>
-                  <button
-                    class="w-full px-4 py-2.5 flex items-center justify-between text-sm text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-                    @click="selectRoutingMode('auto')"
-                  >
-                    <span>{{ t('chat.routingMode.auto') }}</span>
-                    <svg v-if="providerPoolStore.routingMode === 'auto'" class="w-4 h-4 text-cyan-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-                  <button
-                    class="w-full px-4 py-2.5 flex items-center justify-between text-sm transition-colors"
-                    :class="providerPoolStore.hasCloudProviders
-                      ? 'text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10'
-                      : 'text-gray-400 dark:text-slate-500 cursor-not-allowed'"
-                    :disabled="!providerPoolStore.hasCloudProviders"
-                    @click="selectRoutingMode('cloud')"
-                  >
-                    <span>{{ t('chat.routingMode.cloud') }}</span>
-                    <svg v-if="providerPoolStore.routingMode === 'cloud'" class="w-4 h-4 text-cyan-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-                  <button
-                    class="w-full px-4 py-2.5 flex items-center justify-between text-sm transition-colors"
-                    :class="providerPoolStore.hasLocalProviders
-                      ? 'text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10'
-                      : 'text-gray-400 dark:text-slate-500 cursor-not-allowed'"
-                    :disabled="!providerPoolStore.hasLocalProviders"
-                    @click="selectRoutingMode('local')"
-                  >
-                    <span>{{ t('chat.routingMode.local') }}</span>
-                    <svg v-if="providerPoolStore.routingMode === 'local'" class="w-4 h-4 text-cyan-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-
-                  <div class="border-t border-gray-200/70 dark:border-white/10" />
-
-                  <div class="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-slate-400 flex items-center justify-between">
-                    <span>{{ t('chat.routingMode.fixedModel') }}</span>
-                    <span class="text-[11px] font-normal text-gray-400 dark:text-slate-500 truncate max-w-[130px]" :title="fixedModelLabel">{{ fixedModelLabel }}</span>
-                  </div>
-                  <button
-                    class="w-full px-4 py-2.5 flex items-center justify-between text-sm text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-                    @click="setAutoModelPreference"
-                  >
-                    <span>{{ t('chat.routingMode.modelAuto') }}</span>
-                    <svg v-if="chatStore.modelPreference === 'auto'" class="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-                  <div class="max-h-52 overflow-y-auto">
-                    <button
-                      v-for="option in fixedModelOptions"
-                      :key="option.id"
-                      class="w-full px-4 py-2.5 flex items-center justify-between text-sm text-left text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-                      @click="selectFixedModel(option.id)"
-                    >
-                      <span class="truncate pr-3" :title="option.id">{{ option.id }}</span>
-                      <svg v-if="chatStore.modelPreference === option.id" class="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-                      </svg>
-                    </button>
-                  </div>
-                </template>
-              </div>
-            </Transition>
           </div>
 
           <!-- Theme style selector -->
@@ -1255,13 +1193,11 @@ onUnmounted(() => {
             <button
               v-if="!shouldCollapseTopbarControls"
               ref="styleButtonRef"
-              class="topbar-icon-btn p-2 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors"
+              class="routing-trigger-btn topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer"
               :title="t('theme.styles.title')"
               @click.stop="toggleStyleSelector"
             >
-              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-              </svg>
+              <span class="theme-style-btn theme-style-preview" :class="currentThemeStylePreviewClass" />
             </button>
           </div>
 
@@ -1281,15 +1217,177 @@ onUnmounted(() => {
         </div>
       </header>
       <Teleport to="body">
+        <Transition
+          enter-active-class="transition ease-out duration-150"
+          enter-from-class="opacity-0 translate-y-1"
+          enter-to-class="opacity-100 translate-y-0"
+          leave-active-class="transition ease-in duration-100"
+          leave-from-class="opacity-100 translate-y-0"
+          leave-to-class="opacity-0 translate-y-1"
+        >
+          <div
+            v-if="showRoutingMenu && !isMobile"
+            class="routing-menu-floating fixed w-80 rounded-2xl shadow-2xl border overflow-hidden z-[20000] bg-white dark:bg-slate-900 border-gray-300 dark:border-slate-500"
+            :style="{ left: `${routingMenuPosition.x}px`, top: `${routingMenuPosition.y}px` }"
+          >
+            <div class="px-3 py-2 border-b border-gray-200 dark:border-slate-700">
+              <div class="text-xs font-medium text-gray-700 dark:text-slate-300">
+                {{ providerStatus.message }}
+              </div>
+            </div>
+
+            <router-link
+              v-if="providerStatus.status === 'none'"
+              to="/settings?tab=llm"
+              class="routing-manage-row w-full px-4 py-3 flex items-center justify-between text-sm text-gray-900 dark:text-slate-100 transition-colors"
+              @click="showRoutingMenu = false"
+            >
+              <span class="inline-flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5h2m-6 0h2m6 0h2m-5 0v2m0 10v2m0-2h2m-2 0h-2m6-10a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V9a2 2 0 012-2h10z" />
+                </svg>
+                {{ t('chat.addProvider') }}
+              </span>
+              <span class="text-xs text-gray-600 dark:text-slate-400">{{ t('chat.manageProviders') }}</span>
+            </router-link>
+
+            <template v-else>
+              <div class="p-3 space-y-1.5">
+                <button
+                  class="routing-option-row w-full"
+                  :class="{ 'is-active': providerPoolStore.routingMode === 'auto' }"
+                  @click="selectRoutingMode('auto')"
+                >
+                  <div class="routing-option-main">
+                    <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <div class="routing-option-copy">
+                      <div class="routing-option-title">{{ t('chat.routingMode.auto') }}</div>
+                      <div class="routing-option-desc">{{ t('chat.routingMode.autoDesc') }}</div>
+                    </div>
+                  </div>
+                  <div class="routing-option-side">
+                    <span class="routing-option-count">{{ totalActiveProviderCount }}</span>
+                    <span v-if="providerPoolStore.routingMode === 'auto'" class="routing-option-status-chip">
+                      {{ isSingleModelMode ? t('chat.routingMode.fixedModel') : 'HA' }}
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  class="routing-option-row w-full"
+                  :class="{
+                    'is-active': providerPoolStore.routingMode === 'cloud',
+                    'is-disabled': !providerPoolStore.hasCloudProviders,
+                  }"
+                  :disabled="!providerPoolStore.hasCloudProviders"
+                  @click="selectRoutingMode('cloud')"
+                >
+                  <div class="routing-option-main">
+                    <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                    </svg>
+                    <div class="routing-option-copy">
+                      <div class="routing-option-title">{{ t('chat.routingMode.cloud') }}</div>
+                      <div class="routing-option-desc">{{ t('chat.routingMode.cloudDesc') }}</div>
+                    </div>
+                  </div>
+                  <div class="routing-option-side">
+                    <span class="routing-option-count">{{ cloudActiveCount }}</span>
+                  </div>
+                </button>
+
+                <button
+                  class="routing-option-row w-full"
+                  :class="{
+                    'is-active': providerPoolStore.routingMode === 'local',
+                    'is-disabled': !providerPoolStore.hasLocalProviders,
+                  }"
+                  :disabled="!providerPoolStore.hasLocalProviders"
+                  @click="selectRoutingMode('local')"
+                >
+                  <div class="routing-option-main">
+                    <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    <div class="routing-option-copy">
+                      <div class="routing-option-title">{{ t('chat.routingMode.local') }}</div>
+                      <div class="routing-option-desc">{{ t('chat.routingMode.localDesc') }}</div>
+                    </div>
+                  </div>
+                  <div class="routing-option-side">
+                    <span class="routing-option-count">{{ localActiveCount }}</span>
+                  </div>
+                </button>
+              </div>
+
+              <div class="px-3 pt-1 pb-3 border-t border-gray-200 dark:border-slate-700">
+                <div class="grid grid-cols-2 gap-2">
+                  <button
+                    class="routing-strategy-chip"
+                    :class="{ 'is-active-ha': !isSingleModelMode }"
+                    @click="setAutoModelPreference"
+                  >
+                    {{ t('chat.routingMode.auto') }} HA
+                  </button>
+                  <button
+                    class="routing-strategy-chip"
+                    :class="{ 'is-active-fixed': isSingleModelMode }"
+                    :disabled="fixedModelOptions.length === 0"
+                    @click="enableSingleModelMode"
+                  >
+                    {{ t('chat.routingMode.fixedModel') }}
+                  </button>
+                </div>
+                <div v-if="!isSingleModelMode" class="mt-2 text-xs text-gray-600 dark:text-slate-400">
+                  {{ t('chat.routingMode.modelAuto') }}
+                </div>
+                <div v-else class="mt-2 max-h-40 overflow-y-auto space-y-1">
+                  <button
+                    v-for="option in fixedModelOptions"
+                    :key="option.id"
+                    class="routing-model-row w-full"
+                    :class="{ 'is-selected': chatStore.modelPreference === option.id }"
+                    @click="selectFixedModel(option.id)"
+                  >
+                    <span class="truncate pr-3" :title="option.id">{{ option.id }}</span>
+                    <svg v-if="chatStore.modelPreference === option.id" class="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="border-t border-gray-200 dark:border-slate-700" />
+              <router-link
+                to="/settings?tab=llm"
+                class="routing-manage-row w-full px-4 py-3 flex items-center justify-between text-sm text-gray-800 dark:text-slate-200 transition-colors"
+                @click="showRoutingMenu = false"
+              >
+                <span class="inline-flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.983 5.5a1.75 1.75 0 0 1 3.034 0l.25.433a1.75 1.75 0 0 0 1.514.875h.5a1.75 1.75 0 0 1 1.517 2.625l-.25.433a1.75 1.75 0 0 0 0 1.75l.25.433a1.75 1.75 0 0 1-1.517 2.625h-.5a1.75 1.75 0 0 0-1.514.875l-.25.433a1.75 1.75 0 0 1-3.034 0l-.25-.433a1.75 1.75 0 0 0-1.514-.875h-.5a1.75 1.75 0 0 1-1.517-2.625l.25-.433a1.75 1.75 0 0 0 0-1.75l-.25-.433a1.75 1.75 0 0 1 1.517-2.625h.5a1.75 1.75 0 0 0 1.514-.875l.25-.433Z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+                  </svg>
+                  {{ t('chat.manageProviders') }}
+                </span>
+                <span class="text-xs text-gray-500 dark:text-slate-500">→</span>
+              </router-link>
+            </template>
+          </div>
+        </Transition>
+      </Teleport>
+      <Teleport to="body">
         <Transition name="sheet">
           <div
             v-if="showRoutingMenu && isMobile"
             class="routing-sheet fixed inset-0 z-[9999] flex items-end"
             @click="showRoutingMenu = false"
           >
-            <div class="absolute inset-0 bg-black/50" />
+            <div class="absolute inset-0 bg-black/60" />
             <div
-              class="relative w-full bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl"
+              class="routing-sheet-panel relative w-full rounded-t-2xl shadow-2xl"
               @click.stop
             >
               <div class="flex justify-center pt-3 pb-2">
@@ -1302,63 +1400,113 @@ onUnmounted(() => {
                 <router-link
                   v-if="providerStatus.status === 'none'"
                   to="/settings?tab=llm"
-                  class="w-full px-4 py-3 flex items-center justify-between rounded-xl text-sm text-gray-700 dark:text-slate-200 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40"
+                  class="w-full px-4 py-3 flex items-center justify-between rounded-xl text-sm text-gray-800 dark:text-slate-100 border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800"
                   @click="showRoutingMenu = false"
                 >
                   <span>{{ t('chat.addProvider') }}</span>
-                  <span class="text-xs text-gray-500 dark:text-slate-400">{{ t('chat.manageProviders') }}</span>
+                  <span class="text-xs text-gray-600 dark:text-slate-300">{{ t('chat.manageProviders') }}</span>
                 </router-link>
 
                 <template v-else>
+                  <div class="text-xs text-gray-700 dark:text-slate-300 px-1 pb-1">
+                    {{ providerStatus.message }}
+                  </div>
+
                   <button
-                    class="w-full px-4 py-3 flex items-center justify-between rounded-xl text-sm text-gray-700 dark:text-slate-200 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40"
+                    class="routing-option-row w-full"
+                    :class="{ 'is-active': providerPoolStore.routingMode === 'auto' }"
                     @click="selectRoutingMode('auto')"
                   >
-                    <span>{{ t('chat.routingMode.auto') }}</span>
-                    <span class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="providerPoolStore.routingMode === 'auto' ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'">
-                      <span class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform" :class="providerPoolStore.routingMode === 'auto' ? 'translate-x-5' : 'translate-x-1'" />
-                    </span>
+                    <div class="routing-option-main">
+                      <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <div class="routing-option-copy">
+                        <div class="routing-option-title">{{ t('chat.routingMode.auto') }}</div>
+                        <div class="routing-option-desc">{{ t('chat.routingMode.autoDesc') }}</div>
+                      </div>
+                    </div>
+                    <div class="routing-option-side">
+                      <span class="routing-option-count">{{ totalActiveProviderCount }}</span>
+                      <span v-if="providerPoolStore.routingMode === 'auto'" class="routing-option-status-chip">
+                        {{ isSingleModelMode ? t('chat.routingMode.fixedModel') : 'HA' }}
+                      </span>
+                    </div>
                   </button>
+
                   <button
-                    class="w-full px-4 py-3 flex items-center justify-between rounded-xl text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40 transition-opacity"
-                    :class="providerPoolStore.hasCloudProviders ? 'text-gray-700 dark:text-slate-200' : 'text-gray-400 dark:text-slate-500 opacity-60'"
+                    class="routing-option-row w-full"
+                    :class="{
+                      'is-active': providerPoolStore.routingMode === 'cloud',
+                      'is-disabled': !providerPoolStore.hasCloudProviders,
+                    }"
                     :disabled="!providerPoolStore.hasCloudProviders"
                     @click="selectRoutingMode('cloud')"
                   >
-                    <span>{{ t('chat.routingMode.cloud') }}</span>
-                    <span class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="providerPoolStore.routingMode === 'cloud' ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'">
-                      <span class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform" :class="providerPoolStore.routingMode === 'cloud' ? 'translate-x-5' : 'translate-x-1'" />
-                    </span>
+                    <div class="routing-option-main">
+                      <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                      </svg>
+                      <div class="routing-option-copy">
+                        <div class="routing-option-title">{{ t('chat.routingMode.cloud') }}</div>
+                        <div class="routing-option-desc">{{ t('chat.routingMode.cloudDesc') }}</div>
+                      </div>
+                    </div>
+                    <div class="routing-option-side">
+                      <span class="routing-option-count">{{ cloudActiveCount }}</span>
+                    </div>
                   </button>
+
                   <button
-                    class="w-full px-4 py-3 flex items-center justify-between rounded-xl text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40 transition-opacity"
-                    :class="providerPoolStore.hasLocalProviders ? 'text-gray-700 dark:text-slate-200' : 'text-gray-400 dark:text-slate-500 opacity-60'"
+                    class="routing-option-row w-full"
+                    :class="{
+                      'is-active': providerPoolStore.routingMode === 'local',
+                      'is-disabled': !providerPoolStore.hasLocalProviders,
+                    }"
                     :disabled="!providerPoolStore.hasLocalProviders"
                     @click="selectRoutingMode('local')"
                   >
-                    <span>{{ t('chat.routingMode.local') }}</span>
-                    <span class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="providerPoolStore.routingMode === 'local' ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'">
-                      <span class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform" :class="providerPoolStore.routingMode === 'local' ? 'translate-x-5' : 'translate-x-1'" />
-                    </span>
+                    <div class="routing-option-main">
+                      <svg class="routing-option-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      <div class="routing-option-copy">
+                        <div class="routing-option-title">{{ t('chat.routingMode.local') }}</div>
+                        <div class="routing-option-desc">{{ t('chat.routingMode.localDesc') }}</div>
+                      </div>
+                    </div>
+                    <div class="routing-option-side">
+                      <span class="routing-option-count">{{ localActiveCount }}</span>
+                    </div>
                   </button>
 
-                  <div class="pt-2 px-1 text-xs font-semibold text-gray-500 dark:text-slate-400">
-                    {{ t('chat.routingMode.fixedModel') }}
+                  <div class="grid grid-cols-2 gap-2 pt-2">
+                    <button
+                      class="routing-strategy-chip"
+                      :class="{ 'is-active-ha': !isSingleModelMode }"
+                      @click="setAutoModelPreference"
+                    >
+                      {{ t('chat.routingMode.auto') }} HA
+                    </button>
+                    <button
+                      class="routing-strategy-chip"
+                      :class="{ 'is-active-fixed': isSingleModelMode }"
+                      :disabled="fixedModelOptions.length === 0"
+                      @click="enableSingleModelMode"
+                    >
+                      {{ t('chat.routingMode.fixedModel') }}
+                    </button>
                   </div>
-                  <button
-                    class="w-full px-4 py-3 flex items-center justify-between rounded-xl text-sm text-gray-700 dark:text-slate-200 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40"
-                    @click="setAutoModelPreference"
-                  >
-                    <span>{{ t('chat.routingMode.modelAuto') }}</span>
-                    <span class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="chatStore.modelPreference === 'auto' ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'">
-                      <span class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform" :class="chatStore.modelPreference === 'auto' ? 'translate-x-5' : 'translate-x-1'" />
-                    </span>
-                  </button>
-                  <div class="max-h-52 overflow-y-auto space-y-2">
+
+                  <div v-if="!isSingleModelMode" class="px-1 pt-2 text-xs text-gray-600 dark:text-slate-400">
+                    {{ t('chat.routingMode.modelAuto') }}
+                  </div>
+                  <div v-else class="max-h-44 overflow-y-auto space-y-1 pt-2">
                     <button
                       v-for="option in fixedModelOptions"
                       :key="option.id"
-                      class="w-full px-4 py-3 flex items-center justify-between rounded-xl text-sm text-left text-gray-700 dark:text-slate-200 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40"
+                      class="routing-model-row w-full"
+                      :class="{ 'is-selected': chatStore.modelPreference === option.id }"
                       @click="selectFixedModel(option.id)"
                     >
                       <span class="truncate pr-3" :title="option.id">{{ option.id }}</span>
@@ -1367,6 +1515,21 @@ onUnmounted(() => {
                       </svg>
                     </button>
                   </div>
+
+                  <router-link
+                    to="/settings?tab=llm"
+                    class="routing-manage-row w-full px-4 py-3 mt-1 flex items-center justify-between rounded-xl text-sm text-gray-800 dark:text-slate-200 border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800"
+                    @click="showRoutingMenu = false"
+                  >
+                    <span class="inline-flex items-center gap-2">
+                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.983 5.5a1.75 1.75 0 0 1 3.034 0l.25.433a1.75 1.75 0 0 0 1.514.875h.5a1.75 1.75 0 0 1 1.517 2.625l-.25.433a1.75 1.75 0 0 0 0 1.75l.25.433a1.75 1.75 0 0 1-1.517 2.625h-.5a1.75 1.75 0 0 0-1.514.875l-.25.433a1.75 1.75 0 0 1-3.034 0l-.25-.433a1.75 1.75 0 0 0-1.514-.875h-.5a1.75 1.75 0 0 1-1.517-2.625l.25-.433a1.75 1.75 0 0 0 0-1.75l-.25-.433a1.75 1.75 0 0 1 1.517-2.625h.5a1.75 1.75 0 0 0 1.514-.875l.25-.433Z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+                      </svg>
+                      {{ t('chat.manageProviders') }}
+                    </span>
+                    <span class="text-xs text-gray-500 dark:text-slate-400">→</span>
+                  </router-link>
                 </template>
               </div>
               <div class="h-[env(safe-area-inset-bottom)]" />
@@ -1392,76 +1555,92 @@ onUnmounted(() => {
               <div class="px-4 pb-2">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('chat.moreActions') }}</h3>
               </div>
-              <div class="p-4 space-y-2">
-                <button
-                  class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-left transition-colors border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40"
-                  role="switch"
-                  :aria-checked="chatStore.webSearchEnabled"
-                  @click="toggleWebSearch"
-                >
-                  <span class="flex items-center gap-3 text-sm text-gray-700 dark:text-slate-200">
-                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-4.35-4.35m0 0A7.5 7.5 0 1 0 6.04 6.04a7.5 7.5 0 0 0 10.607 10.607Z" />
-                    </svg>
-                    <span>{{ t('tools.names.web_search') }}</span>
-                  </span>
-                  <span class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="chatStore.webSearchEnabled ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'">
-                    <span class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform" :class="chatStore.webSearchEnabled ? 'translate-x-5' : 'translate-x-1'" />
-                  </span>
-                </button>
+              <div class="p-4">
+                <div class="grid grid-cols-2 gap-3">
+                  <button
+                    class="quick-action-tile"
+                    :class="{ 'is-active': chatStore.webSearchEnabled }"
+                    @click="toggleWebSearch"
+                  >
+                    <div class="flex items-center justify-between">
+                      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-4.35-4.35m0 0A7.5 7.5 0 1 0 6.04 6.04a7.5 7.5 0 0 0 10.607 10.607Z" />
+                      </svg>
+                      <span class="quick-action-pill">{{ chatStore.webSearchEnabled ? t('common.enabled') : t('common.disabled') }}</span>
+                    </div>
+                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('tools.names.web_search') }}</div>
+                  </button>
 
-                <button
-                  class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-left transition-colors border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40"
-                  role="switch"
-                  :aria-checked="chatStore.deepSearchEnabled"
-                  @click="toggleDeepSearch"
-                >
-                  <span class="flex items-center gap-3 text-sm text-gray-700 dark:text-slate-200">
-                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.483 9.246 5 7.5 5S4.168 5.483 3 6.253v13C4.168 18.483 5.754 18 7.5 18s3.332.483 4.5 1.253m0-13C13.168 5.483 14.754 5 16.5 5s3.332.483 4.5 1.253v13C19.832 18.483 18.246 18 16.5 18s-3.332.483-4.5 1.253" />
-                    </svg>
-                    <span>{{ t('ui.deepResearchTitle') }}</span>
-                  </span>
-                  <span class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="chatStore.deepSearchEnabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'">
-                    <span class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform" :class="chatStore.deepSearchEnabled ? 'translate-x-5' : 'translate-x-1'" />
-                  </span>
-                </button>
+                  <button
+                    class="quick-action-tile"
+                    :class="{ 'is-active': chatStore.deepSearchEnabled }"
+                    @click="toggleDeepSearch"
+                  >
+                    <div class="flex items-center justify-between">
+                      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.483 9.246 5 7.5 5S4.168 5.483 3 6.253v13C4.168 18.483 5.754 18 7.5 18s3.332.483 4.5 1.253m0-13C13.168 5.483 14.754 5 16.5 5s3.332.483 4.5 1.253v13C19.832 18.483 18.246 18 16.5 18s-3.332.483-4.5 1.253" />
+                      </svg>
+                      <span class="quick-action-pill">{{ chatStore.deepSearchEnabled ? t('common.enabled') : t('common.disabled') }}</span>
+                    </div>
+                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('ui.deepResearchTitle') }}</div>
+                  </button>
 
-                <button
-                  class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-left transition-colors border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40"
-                  role="switch"
-                  :aria-checked="settingsStore.agentMode"
-                  @click="toggleAgentMode"
-                >
-                  <span class="flex items-center gap-3 text-sm text-gray-700 dark:text-slate-200">
-                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    <span>{{ t('agent.mode') }}</span>
-                  </span>
-                  <span class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="settingsStore.agentMode ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'">
-                    <span class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform" :class="settingsStore.agentMode ? 'translate-x-5' : 'translate-x-1'" />
-                  </span>
-                </button>
+                  <button
+                    class="quick-action-tile"
+                    :class="{ 'is-active': settingsStore.agentMode }"
+                    @click="toggleAgentMode"
+                  >
+                    <div class="flex items-center justify-between">
+                      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <span class="quick-action-pill">{{ settingsStore.agentMode ? t('common.enabled') : t('common.disabled') }}</span>
+                    </div>
+                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('agent.mode') }}</div>
+                  </button>
 
-                <button
-                  class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-left transition-colors border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40"
-                  role="switch"
-                  :aria-checked="settingsStore.showToolDetails"
-                  @click="toggleToolDetails"
-                >
-                  <span class="flex items-center gap-3 text-sm text-gray-700 dark:text-slate-200">
-                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M12 2a5 5 0 00-4.78 3.56A3.5 3.5 0 004 9a3.5 3.5 0 00.68 2.07A3.5 3.5 0 004 13.5 3.5 3.5 0 006.5 17h.28A5 5 0 0012 20" />
-                      <path d="M12 2a5 5 0 014.78 3.56A3.5 3.5 0 0120 9a3.5 3.5 0 01-.68 2.07A3.5 3.5 0 0120 13.5a3.5 3.5 0 01-2.5 3.5h-.28A5 5 0 0112 20" />
-                      <path d="M12 2v18" />
-                    </svg>
-                    <span>{{ t('chat.showToolDetails') }}</span>
-                  </span>
-                  <span class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="settingsStore.showToolDetails ? 'bg-purple-500' : 'bg-gray-300 dark:bg-gray-600'">
-                    <span class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform" :class="settingsStore.showToolDetails ? 'translate-x-5' : 'translate-x-1'" />
-                  </span>
-                </button>
+                  <button
+                    class="quick-action-tile"
+                    :class="{ 'is-active': settingsStore.showToolDetails }"
+                    @click="toggleToolDetails"
+                  >
+                    <div class="flex items-center justify-between">
+                      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2a5 5 0 00-4.78 3.56A3.5 3.5 0 004 9a3.5 3.5 0 00.68 2.07A3.5 3.5 0 004 13.5 3.5 3.5 0 006.5 17h.28A5 5 0 0012 20" />
+                        <path d="M12 2a5 5 0 014.78 3.56A3.5 3.5 0 0120 9a3.5 3.5 0 01-.68 2.07A3.5 3.5 0 0120 13.5a3.5 3.5 0 01-2.5 3.5h-.28A5 5 0 0112 20" />
+                        <path d="M12 2v18" />
+                      </svg>
+                      <span class="quick-action-pill">{{ settingsStore.showToolDetails ? t('common.enabled') : t('common.disabled') }}</span>
+                    </div>
+                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('chat.showToolDetails') }}</div>
+                  </button>
+
+                  <button
+                    class="quick-action-tile"
+                    @click="toggleRoutingMenu"
+                  >
+                    <div class="flex items-center justify-between">
+                      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span class="quick-action-pill">{{ routingModeInfo.label }}</span>
+                    </div>
+                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('chat.routingMode.title') }}</div>
+                  </button>
+
+                  <button
+                    class="quick-action-tile"
+                    @click="toggleStyleSelector"
+                  >
+                    <div class="flex items-center justify-between">
+                      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                      </svg>
+                      <span class="quick-action-pill">{{ currentThemeStyleLabel }}</span>
+                    </div>
+                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('theme.styles.title') }}</div>
+                  </button>
+                </div>
               </div>
               <div class="h-[env(safe-area-inset-bottom)]" />
             </div>
@@ -2113,13 +2292,13 @@ header,
 }
 
 .glass-sidebar {
-  background: var(--chat-sidebar-bg, rgba(15, 23, 42, 0.55));
-  backdrop-filter: blur(14px);
+  background: var(--chat-sidebar-bg, rgba(15, 23, 42, 0.82));
+  backdrop-filter: blur(18px);
 }
 
 .glass-header {
-  background: rgba(15, 23, 42, 0.35);
-  backdrop-filter: blur(12px);
+  background: rgba(15, 23, 42, 0.74);
+  backdrop-filter: blur(14px);
 }
 
 .chat-sidebar-shell {
@@ -2127,7 +2306,7 @@ header,
 }
 
 .chat-topbar {
-  background-image: linear-gradient(180deg, rgba(15, 23, 42, 0.2), rgba(15, 23, 42, 0.08));
+  background-image: linear-gradient(180deg, rgba(15, 23, 42, 0.52), rgba(15, 23, 42, 0.28));
   box-shadow: 0 8px 22px rgba(2, 6, 23, 0.18);
   overflow: visible;
 }
@@ -2238,12 +2417,12 @@ header,
 
 :root.light .glass-sidebar,
 [data-theme="light"] .glass-sidebar {
-  background: var(--chat-sidebar-bg, rgba(255, 255, 255, 0.82));
+  background: var(--chat-sidebar-bg, rgba(255, 255, 255, 0.95));
 }
 
 :root.light .glass-header,
 [data-theme="light"] .glass-header {
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.93);
 }
 
 :root.light .chat-sidebar-shell,
@@ -2253,8 +2432,401 @@ header,
 
 :root.light .chat-topbar,
 [data-theme="light"] .chat-topbar {
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(248, 250, 252, 0.2));
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.93), rgba(248, 250, 252, 0.8));
   box-shadow: 0 8px 20px rgba(30, 41, 59, 0.08);
+}
+
+.quick-action-tile {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 0.9rem;
+  padding: 0.75rem;
+  text-align: left;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+.quick-action-tile:active {
+  transform: scale(0.98);
+}
+
+.quick-action-tile.is-active {
+  border-color: rgba(56, 189, 248, 0.58);
+  box-shadow: 0 6px 16px rgba(14, 165, 233, 0.18);
+  background: rgba(236, 253, 255, 0.95);
+}
+
+.quick-action-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 1.2rem;
+  border-radius: 999px;
+  padding: 0 0.42rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: rgb(71, 85, 105);
+  background: rgba(226, 232, 240, 0.9);
+}
+
+:root.dark .quick-action-tile,
+[data-theme="dark"] .quick-action-tile {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: rgba(100, 116, 139, 0.45);
+}
+
+:root.dark .quick-action-tile.is-active,
+[data-theme="dark"] .quick-action-tile.is-active {
+  border-color: rgba(56, 189, 248, 0.62);
+  background: rgba(15, 23, 42, 0.94);
+  box-shadow: 0 8px 18px rgba(2, 132, 199, 0.22);
+}
+
+:root.dark .quick-action-pill,
+[data-theme="dark"] .quick-action-pill {
+  color: rgb(203, 213, 225);
+  background: rgba(51, 65, 85, 0.88);
+}
+
+.routing-trigger-btn {
+  color: rgb(71, 85, 105);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.routing-trigger-btn:hover {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(241, 245, 249, 0.95);
+  color: rgb(51, 65, 85);
+}
+
+.routing-trigger-btn.is-error {
+  color: rgb(220, 38, 38);
+  border-color: rgba(248, 113, 113, 0.55);
+  background: rgba(254, 242, 242, 0.86);
+}
+
+.routing-trigger-btn.is-pending {
+  color: rgb(202, 138, 4);
+  border-color: rgba(250, 204, 21, 0.58);
+  background: rgba(254, 249, 195, 0.84);
+}
+
+.routing-trigger-btn.is-none {
+  color: rgb(71, 85, 105);
+  border-color: rgba(148, 163, 184, 0.4);
+  background: rgba(248, 250, 252, 0.86);
+}
+
+:root.dark .routing-trigger-btn,
+[data-theme="dark"] .routing-trigger-btn {
+  color: rgb(148, 163, 184);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.12), 0 1px 3px rgba(2, 6, 23, 0.45);
+}
+
+:root.dark .routing-trigger-btn:hover,
+[data-theme="dark"] .routing-trigger-btn:hover {
+  color: rgb(226, 232, 240);
+  border-color: rgba(100, 116, 139, 0.48);
+  background: rgba(30, 41, 59, 0.92);
+}
+
+:root.dark .routing-trigger-btn.is-error,
+[data-theme="dark"] .routing-trigger-btn.is-error {
+  color: rgb(252, 165, 165);
+  border-color: rgba(248, 113, 113, 0.58);
+  background: rgba(69, 10, 10, 0.42);
+}
+
+:root.dark .routing-trigger-btn.is-pending,
+[data-theme="dark"] .routing-trigger-btn.is-pending {
+  color: rgb(253, 224, 71);
+  border-color: rgba(250, 204, 21, 0.54);
+  background: rgba(113, 63, 18, 0.42);
+}
+
+:root.dark .routing-trigger-btn.is-none,
+[data-theme="dark"] .routing-trigger-btn.is-none {
+  color: rgb(203, 213, 225);
+  border-color: rgba(100, 116, 139, 0.55);
+  background: rgba(30, 41, 59, 0.92);
+}
+
+.routing-option-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 0.9rem;
+  background: #fff;
+  padding: 0.68rem 0.72rem;
+  color: rgb(31, 41, 55);
+  transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.routing-option-row:hover {
+  border-color: rgba(59, 130, 246, 0.38);
+  background: rgba(248, 250, 252, 0.95);
+}
+
+.routing-option-row:active {
+  transform: scale(0.995);
+}
+
+.routing-option-row.is-active {
+  border-color: rgba(96, 165, 250, 0.72);
+  background: rgba(219, 234, 254, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.routing-option-row.is-disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.routing-option-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.routing-option-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+  margin-top: 0.06rem;
+  color: rgb(71, 85, 105);
+}
+
+.routing-option-copy {
+  min-width: 0;
+}
+
+.routing-option-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: rgb(30, 41, 59);
+}
+
+.routing-option-desc {
+  margin-top: 0.18rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: rgb(100, 116, 139);
+}
+
+.routing-option-side {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.28rem;
+  flex-shrink: 0;
+}
+
+.routing-option-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: rgb(22, 101, 52);
+  background: rgba(220, 252, 231, 0.95);
+}
+
+.routing-option-status-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 1rem;
+  padding: 0 0.38rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: rgb(29, 78, 216);
+  background: rgba(191, 219, 254, 0.9);
+}
+
+.routing-strategy-chip {
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 0.65rem;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-align: center;
+  color: rgb(71, 85, 105);
+  background: rgba(248, 250, 252, 0.96);
+  transition: all 0.16s ease;
+}
+
+.routing-strategy-chip:hover {
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+.routing-strategy-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.routing-strategy-chip.is-active-ha {
+  color: rgb(29, 78, 216);
+  border-color: rgba(59, 130, 246, 0.6);
+  background: rgba(219, 234, 254, 0.78);
+}
+
+.routing-strategy-chip.is-active-fixed {
+  color: rgb(4, 120, 87);
+  border-color: rgba(16, 185, 129, 0.55);
+  background: rgba(209, 250, 229, 0.78);
+}
+
+.routing-model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.98);
+  padding: 0.46rem 0.6rem;
+  font-size: 0.76rem;
+  color: rgb(31, 41, 55);
+  transition: all 0.16s ease;
+}
+
+.routing-model-row:hover {
+  border-color: rgba(96, 165, 250, 0.45);
+}
+
+.routing-model-row.is-selected {
+  border-color: rgba(16, 185, 129, 0.62);
+  background: rgba(236, 253, 245, 0.95);
+}
+
+.routing-manage-row:hover {
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.routing-menu-floating {
+  background: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.52);
+  box-shadow: 0 20px 52px rgba(15, 23, 42, 0.26);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  opacity: 1 !important;
+}
+
+.routing-sheet-panel {
+  background: #ffffff;
+  border-top: 1px solid rgba(148, 163, 184, 0.4);
+  box-shadow: 0 -16px 38px rgba(15, 23, 42, 0.35);
+}
+
+:root.dark .routing-menu-floating,
+[data-theme="dark"] .routing-menu-floating {
+  background: rgb(15, 23, 42);
+  border-color: rgba(100, 116, 139, 0.72);
+  box-shadow: 0 22px 54px rgba(2, 6, 23, 0.62);
+  opacity: 1 !important;
+}
+
+:root.dark .routing-sheet-panel,
+[data-theme="dark"] .routing-sheet-panel {
+  background: rgb(15, 23, 42);
+  border-top-color: rgba(100, 116, 139, 0.5);
+  box-shadow: 0 -16px 40px rgba(2, 6, 23, 0.72);
+}
+
+:root.dark .routing-option-row,
+[data-theme="dark"] .routing-option-row {
+  border-color: rgba(71, 85, 105, 0.75);
+  background: rgba(30, 41, 59, 0.96);
+  color: rgb(226, 232, 240);
+}
+
+:root.dark .routing-option-row:hover,
+[data-theme="dark"] .routing-option-row:hover {
+  border-color: rgba(56, 189, 248, 0.42);
+  background: rgba(30, 41, 59, 1);
+}
+
+:root.dark .routing-option-row.is-active,
+[data-theme="dark"] .routing-option-row.is-active {
+  border-color: rgba(56, 189, 248, 0.66);
+  background: rgba(8, 47, 73, 0.72);
+}
+
+:root.dark .routing-option-icon,
+[data-theme="dark"] .routing-option-icon {
+  color: rgb(148, 163, 184);
+}
+
+:root.dark .routing-option-title,
+[data-theme="dark"] .routing-option-title {
+  color: rgb(241, 245, 249);
+}
+
+:root.dark .routing-option-desc,
+[data-theme="dark"] .routing-option-desc {
+  color: rgb(148, 163, 184);
+}
+
+:root.dark .routing-option-count,
+[data-theme="dark"] .routing-option-count {
+  color: rgb(134, 239, 172);
+  background: rgba(6, 78, 59, 0.78);
+}
+
+:root.dark .routing-option-status-chip,
+[data-theme="dark"] .routing-option-status-chip {
+  color: rgb(186, 230, 253);
+  background: rgba(12, 74, 110, 0.82);
+}
+
+:root.dark .routing-strategy-chip,
+[data-theme="dark"] .routing-strategy-chip {
+  border-color: rgba(71, 85, 105, 0.8);
+  color: rgb(203, 213, 225);
+  background: rgba(30, 41, 59, 0.95);
+}
+
+:root.dark .routing-strategy-chip.is-active-ha,
+[data-theme="dark"] .routing-strategy-chip.is-active-ha {
+  color: rgb(186, 230, 253);
+  border-color: rgba(56, 189, 248, 0.68);
+  background: rgba(12, 74, 110, 0.52);
+}
+
+:root.dark .routing-strategy-chip.is-active-fixed,
+[data-theme="dark"] .routing-strategy-chip.is-active-fixed {
+  color: rgb(167, 243, 208);
+  border-color: rgba(16, 185, 129, 0.66);
+  background: rgba(6, 78, 59, 0.5);
+}
+
+:root.dark .routing-model-row,
+[data-theme="dark"] .routing-model-row {
+  border-color: rgba(71, 85, 105, 0.75);
+  color: rgb(226, 232, 240);
+  background: rgba(30, 41, 59, 0.95);
+}
+
+:root.dark .routing-model-row.is-selected,
+[data-theme="dark"] .routing-model-row.is-selected {
+  border-color: rgba(16, 185, 129, 0.66);
+  background: rgba(6, 78, 59, 0.5);
+}
+
+:root.dark .routing-manage-row:hover,
+[data-theme="dark"] .routing-manage-row:hover {
+  background: rgba(30, 41, 59, 0.92);
 }
 
 :root.light .chat-title::before,
@@ -2339,6 +2911,19 @@ header,
   height: 14px;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.theme-style-preview {
+  width: 16px;
+  height: 16px;
+  border-color: rgba(148, 163, 184, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65), 0 1px 2px rgba(15, 23, 42, 0.2);
+}
+
+:root.dark .theme-style-preview,
+[data-theme="dark"] .theme-style-preview {
+  border-color: rgba(148, 163, 184, 0.65);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.92), 0 1px 2px rgba(2, 6, 23, 0.5);
 }
 
 .theme-style-btn-default {

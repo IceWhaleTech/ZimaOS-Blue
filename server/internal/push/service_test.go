@@ -10,6 +10,8 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
 )
 
 // mockPublisher captures SSE events for testing.
@@ -296,6 +298,62 @@ func TestServiceAdd(t *testing.T) {
 	}
 	if !strings.HasPrefix(r.ID, "push_") {
 		t.Errorf("ID = %q, expected push_ prefix", r.ID)
+	}
+}
+
+func TestServiceAdd_FiresAndInjectsIntoTargetSession(t *testing.T) {
+	svc, store := testService(t)
+
+	// Wire real cron service so we exercise actual scheduling path.
+	cronSvc := cron.NewService(cron.DefaultConfig(), zap.NewNop())
+	if err := cronSvc.Start(); err != nil {
+		t.Fatalf("start cron service: %v", err)
+	}
+	defer cronSvc.Stop(context.Background())
+	svc.SetCron(NewCronAdapter(func() *cron.Service { return cronSvc }))
+
+	inj := &mockInjector{}
+	svc.SetMessageInjector(inj)
+
+	ctx := context.Background()
+	fireAt := time.Now().Add(2 * time.Second)
+	r, err := svc.Add(ctx, "user-1", "10秒后喝水", fireAt, "", "conv-target")
+	if err != nil {
+		t.Fatalf("add reminder: %v", err)
+	}
+
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		msgs := inj.getMessages()
+		if len(msgs) > 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	msgs := inj.getMessages()
+	if len(msgs) == 0 {
+		t.Fatalf("expected injected message after reminder fired, got none")
+	}
+	if msgs[0].SessionID != "conv-target" {
+		t.Fatalf("injected session_id = %q, want %q", msgs[0].SessionID, "conv-target")
+	}
+	if !strings.Contains(msgs[0].Content, "push.reminder") {
+		t.Fatalf("injected content missing typeless reminder card: %s", msgs[0].Content)
+	}
+	if !strings.Contains(msgs[0].Content, "10秒后喝水") {
+		t.Fatalf("injected content missing reminder message: %s", msgs[0].Content)
+	}
+
+	stored, err := store.Get(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("get reminder from store: %v", err)
+	}
+	if stored == nil {
+		t.Fatalf("stored reminder not found: %s", r.ID)
+	}
+	if stored.Status != StatusFired {
+		t.Fatalf("stored reminder status = %q, want %q", stored.Status, StatusFired)
 	}
 }
 

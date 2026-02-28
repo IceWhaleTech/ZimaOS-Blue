@@ -529,6 +529,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Forbereder nedlastingsforbindelse...',
+      downloadFailed: 'Nedlasting av ONNX-modell mislyktes',
+    },
     tab: { general: 'Generelt', llm: 'LLM', metrics: 'Bruk', remote: 'Fjerntilgang', config: 'Konfigurasjon', backup: 'Sikkerhetskopi', logs: 'Logger', service: 'Tjeneste', retention: 'Oppbevaring' },
     failover: {
       title: 'Smart failover-status',

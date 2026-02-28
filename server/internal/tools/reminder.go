@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/remindertime"
 )
 
 // PushServiceInterface defines the interface for the push notification service.
@@ -188,19 +188,7 @@ func (t *PushTool) executeClear(ctx context.Context, userID string) (interface{}
 
 // parsePushTime parses a time string as duration, RFC3339, or common format.
 func parsePushTime(s string) (time.Time, error) {
-	if d, err := time.ParseDuration(s); err == nil {
-		return timeutil.NowTime().Add(d), nil
-	}
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t, nil
-	}
-	if t, err := time.ParseInLocation("2006-01-02 15:04", s, time.Local); err == nil {
-		return t, nil
-	}
-	if t, err := time.ParseInLocation("2006-01-02 15:04:05", s, time.Local); err == nil {
-		return t, nil
-	}
-	return time.Time{}, fmt.Errorf("invalid time format: %s (use duration like '1h30m', RFC3339, or 'YYYY-MM-DD HH:MM')", s)
+	return remindertime.Parse(s)
 }
 
 // RegisterPushTool registers the push notification tool with the registry.

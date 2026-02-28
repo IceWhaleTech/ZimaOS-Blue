@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -35,7 +36,30 @@ func RegisterSkillFallback(srv *Server, executor SkillExecutor, log *zap.Logger)
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		defer cancel()
 
-		data, err := executor.Execute(ctx, req.Cmd, input)
+		execSkillID := req.Cmd
+		execInput := input
+
+		// Support dotted command aliases (e.g. `reminder.add message=...`)
+		// by mapping to skill `reminder` with implicit `action=add`.
+		if dot := strings.Index(req.Cmd, "."); dot > 0 && dot < len(req.Cmd)-1 {
+			base := req.Cmd[:dot]
+			action := req.Cmd[dot+1:]
+			aliased := make(map[string]any, len(input)+1)
+			for k, v := range input {
+				aliased[k] = v
+			}
+			if _, hasAction := aliased["action"]; !hasAction {
+				aliased["action"] = action
+			}
+			execSkillID = base
+			execInput = aliased
+			log.Info("skill fallback alias mapped",
+				zap.String("cmd", req.Cmd),
+				zap.String("skill_id", execSkillID),
+				zap.String("action", action))
+		}
+
+		data, err := executor.Execute(ctx, execSkillID, execInput)
 		if err != nil {
 			return ErrResponse(fmt.Sprintf("skill %s: %v", req.Cmd, err))
 		}

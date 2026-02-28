@@ -643,6 +643,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: '正在準備下載連線...',
+      downloadFailed: '下載 ONNX 模型失敗',
+    },
     update: {
       title: '版本資訊',
       currentVersion: '當前版本',

@@ -329,6 +329,32 @@ func TestParsePushTime_DateTime(t *testing.T) {
 	}
 }
 
+func TestParsePushTime_NaturalEnglish(t *testing.T) {
+	before := time.Now()
+	got, err := parsePushTime("in 10 seconds")
+	after := time.Now()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := before.Add(10 * time.Second)
+	if got.Before(expected.Add(-time.Second)) || got.After(after.Add(11*time.Second)) {
+		t.Errorf("parsePushTime(english) = %v, expected ~%v", got, expected)
+	}
+}
+
+func TestParsePushTime_NaturalChineseSentence(t *testing.T) {
+	before := time.Now()
+	got, err := parsePushTime("提醒我10秒钟以后喝水")
+	after := time.Now()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := before.Add(10 * time.Second)
+	if got.Before(expected.Add(-time.Second)) || got.After(after.Add(11*time.Second)) {
+		t.Errorf("parsePushTime(chinese sentence) = %v, expected ~%v", got, expected)
+	}
+}
+
 func TestParsePushTime_Invalid(t *testing.T) {
 	_, err := parsePushTime("not-a-time")
 	if err == nil {

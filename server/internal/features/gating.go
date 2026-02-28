@@ -10,26 +10,26 @@ type Feature string
 
 const (
 	// Core features (always available)
-	FeatureBasicChat       Feature = "basic_chat"
-	FeatureProviderConfig  Feature = "provider_config"
-	FeatureModelSelection  Feature = "model_selection"
+	FeatureBasicChat      Feature = "basic_chat"
+	FeatureProviderConfig Feature = "provider_config"
+	FeatureModelSelection Feature = "model_selection"
 
 	// CLI-dependent features
-	FeatureToolCalling     Feature = "tool_calling"
-	FeatureFileOperations  Feature = "file_operations"
-	FeatureCodeExecution   Feature = "code_execution"
-	FeatureAgentMode       Feature = "agent_mode"
-	FeatureProjectContext  Feature = "project_context"
-	FeatureMCPIntegration  Feature = "mcp_integration"
+	FeatureToolCalling    Feature = "tool_calling"
+	FeatureFileOperations Feature = "file_operations"
+	FeatureCodeExecution  Feature = "code_execution"
+	FeatureAgentMode      Feature = "agent_mode"
+	FeatureProjectContext Feature = "project_context"
+	FeatureMCPIntegration Feature = "mcp_integration"
 
 	// Statistics features
-	FeatureUsageStats      Feature = "usage_stats"
-	FeatureCostTracking    Feature = "cost_tracking"
+	FeatureUsageStats   Feature = "usage_stats"
+	FeatureCostTracking Feature = "cost_tracking"
 
 	// Advanced features
-	FeatureMultiProvider   Feature = "multi_provider"
-	FeatureProviderPool    Feature = "provider_pool"
-	FeatureAutoFallback    Feature = "auto_fallback"
+	FeatureMultiProvider Feature = "multi_provider"
+	FeatureProviderPool  Feature = "provider_pool"
+	FeatureAutoFallback  Feature = "auto_fallback"
 )
 
 // FeatureInfo describes a feature.
@@ -105,8 +105,8 @@ func (fg *FeatureGate) registerFeatures() {
 	}
 	fg.features[FeatureAgentMode] = &FeatureInfo{
 		Name:        "Agent Mode",
-		Description: "Autonomous agent capabilities",
-		RequiresCLI: true,
+		Description: "Autonomous agent capabilities (native runner, no CLI required)",
+		RequiresCLI: false,
 		Category:    "cli",
 	}
 	fg.features[FeatureProjectContext] = &FeatureInfo{
@@ -117,8 +117,8 @@ func (fg *FeatureGate) registerFeatures() {
 	}
 	fg.features[FeatureMCPIntegration] = &FeatureInfo{
 		Name:        "MCP Integration",
-		Description: "Model Context Protocol server integration",
-		RequiresCLI: true,
+		Description: "Model Context Protocol server integration (native, no CLI required)",
+		RequiresCLI: false,
 		Category:    "cli",
 	}
 
@@ -317,12 +317,12 @@ func (fg *FeatureGate) GetCLIDependentFeatures() []FeatureInfo {
 
 // FeatureStatus represents the overall feature status.
 type FeatureStatus struct {
-	CLIInstalled     bool                    `json:"cli_installed"`
-	TotalFeatures    int                     `json:"total_features"`
-	EnabledCount     int                     `json:"enabled_count"`
-	DisabledCount    int                     `json:"disabled_count"`
-	Features         map[Feature]*FeatureInfo `json:"features"`
-	DisabledReasons  map[Feature]string      `json:"disabled_reasons,omitempty"`
+	CLIInstalled    bool                     `json:"cli_installed"`
+	TotalFeatures   int                      `json:"total_features"`
+	EnabledCount    int                      `json:"enabled_count"`
+	DisabledCount   int                      `json:"disabled_count"`
+	Features        map[Feature]*FeatureInfo `json:"features"`
+	DisabledReasons map[Feature]string       `json:"disabled_reasons,omitempty"`
 }
 
 // GetStatus returns the overall feature status.

@@ -735,51 +735,72 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
     searchStart = idx + markerStart.length
   }
 
-  // For each start marker, find the LAST ``` in the remaining content
+  // For each start marker, locate a closing fence that yields a valid card.
+  // Important: do NOT blindly pair with the last fence — that can swallow
+  // multiple consecutive typeless blocks into one invalid JSON payload.
   const replacements: { start: number; end: number; placeholder: string }[] = []
   for (const startIdx of startMatches) {
-    // Find the content start (after ```typeless)
     const contentStart = startIdx + markerStart.length
-    // Find ALL ``` after this point (not just the first one)
     const remainingContent = text.slice(contentStart)
-    let lastFenceIdx = -1
+
+    const fencePositions: number[] = []
     let fenceSearchStart = 0
     while (true) {
       const fenceIdx = remainingContent.indexOf(markerEnd, fenceSearchStart)
       if (fenceIdx === -1) break
-      lastFenceIdx = fenceIdx
+      fencePositions.push(fenceIdx)
       fenceSearchStart = fenceIdx + markerEnd.length
     }
+    if (fencePositions.length === 0) continue
 
-    if (lastFenceIdx === -1) continue // No closing fence found
+    let parsedCard: TypelessCard | null = null
+    let endIdx = -1
 
-    // The JSON is from contentStart to contentStart + lastFenceIdx
-    const jsonStr = remainingContent.slice(0, lastFenceIdx).trim()
-    const endIdx = contentStart + lastFenceIdx + markerEnd.length
+    // Pass 1: strict JSON parse, pick the earliest valid closing fence.
+    // This preserves multiple consecutive typeless blocks.
+    for (const fenceIdx of fencePositions) {
+      const jsonStr = remainingContent.slice(0, fenceIdx).trim()
+      if (!jsonStr) continue
 
-    if (!jsonStr) continue
-
-    try {
-      // Try normal parse first, then try to fix incomplete/truncated JSON
-      const card = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
-
-      // Validate card has required type field
-      if (card && typeof card.type === 'string' && isValidCardType(card.type)) {
-        // Assign ID if not present
-        if (!card.id) {
-          card.id = `card-${cardIndex.value++}`
+      try {
+        const candidate = JSON.parse(jsonStr) as TypelessCard
+        if (candidate && typeof candidate.type === 'string' && isValidCardType(candidate.type)) {
+          parsedCard = candidate
+          endIdx = contentStart + fenceIdx + markerEnd.length
+          break
         }
-        cards.push(card)
-        // Mark for replacement with placeholder
-        replacements.push({
-          start: startIdx,
-          end: endIdx,
-          placeholder: `[[TYPELESS_CARD:${card.id}]]`,
-        })
+      } catch {
+        // Keep scanning later fences (handles inner ``` inside JSON strings).
       }
-    } catch {
-      // Invalid JSON, leave as-is
-      console.warn('Failed to parse typeless card:', jsonStr.slice(0, 100))
+    }
+
+    // Pass 2: lenient fallback on the last fence only.
+    // We intentionally avoid lenient parsing on earlier fences, because it can
+    // mistakenly accept truncated JSON and hide subsequent cards.
+    if (!parsedCard) {
+      const lastFenceIdx = fencePositions[fencePositions.length - 1]!
+      const jsonStr = remainingContent.slice(0, lastFenceIdx).trim()
+      const lastChar = jsonStr[jsonStr.length - 1]
+      const looksComplete = lastChar === '}' || lastChar === ']'
+      if (jsonStr && looksComplete) {
+        const candidate = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
+        if (candidate && typeof candidate.type === 'string' && isValidCardType(candidate.type)) {
+          parsedCard = candidate
+          endIdx = contentStart + lastFenceIdx + markerEnd.length
+        }
+      }
+    }
+
+    if (parsedCard && endIdx > contentStart) {
+      if (!parsedCard.id) {
+        parsedCard.id = `card-${cardIndex.value++}`
+      }
+      cards.push(parsedCard)
+      replacements.push({
+        start: startIdx,
+        end: endIdx,
+        placeholder: `[[TYPELESS_CARD:${parsedCard.id}]]`,
+      })
     }
   }
 

@@ -17,7 +17,11 @@ func (a *questionManagerAskAdapter) AskQuestions(ctx context.Context, userID, se
 	for _, q := range questions {
 		opts := make([]tools.QuestionOption, 0, len(q.Options))
 		for _, o := range q.Options {
-			opts = append(opts, tools.QuestionOption{Label: o.Label, Value: o.Value})
+			opts = append(opts, tools.QuestionOption{
+				Label:       o.Label,
+				Value:       o.Value,
+				Description: o.Description,
+			})
 		}
 		items = append(items, tools.QuestionItem{
 			ID:          q.ID,

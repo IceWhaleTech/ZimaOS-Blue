@@ -527,6 +527,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Připravuje se připojení ke stahování...',
+      downloadFailed: 'Stažení modelu ONNX se nezdařilo',
+    },
     tab: {
       general: 'Obecné',
       llm: 'LLM',

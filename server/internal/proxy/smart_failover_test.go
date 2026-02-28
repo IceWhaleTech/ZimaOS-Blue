@@ -2,6 +2,8 @@ package proxy
 
 import (
 	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 )
 
 func TestAPIErrorClassifier_ClassifyError(t *testing.T) {
@@ -17,109 +19,109 @@ func TestAPIErrorClassifier_ClassifyError(t *testing.T) {
 		shouldFailover bool
 	}{
 		{
-			name:       "Anthropic context too long",
-			provider:   "anthropic",
-			statusCode: 400,
-			responseBody: `{"error":{"type":"invalid_request_error","message":"Request context size (202154 tokens) exceeds maximum allowed (200000 tokens)"}}`,
+			name:           "Anthropic context too long",
+			provider:       "anthropic",
+			statusCode:     400,
+			responseBody:   `{"error":{"type":"invalid_request_error","message":"Request context size (202154 tokens) exceeds maximum allowed (200000 tokens)"}}`,
 			expectedType:   ErrorTypeContextTooLong,
 			expectedCat:    ErrorCategoryFailover,
 			shouldFailover: true,
 		},
 		{
-			name:       "Anthropic rate limited",
-			provider:   "anthropic",
-			statusCode: 429,
-			responseBody: `{"error":{"type":"rate_limit_error","message":"Rate limit exceeded"}}`,
+			name:           "Anthropic rate limited",
+			provider:       "anthropic",
+			statusCode:     429,
+			responseBody:   `{"error":{"type":"rate_limit_error","message":"Rate limit exceeded"}}`,
 			expectedType:   ErrorTypeRateLimited,
 			expectedCat:    ErrorCategoryFailover,
 			shouldFailover: true,
 		},
 		{
-			name:       "Anthropic quota exceeded",
-			provider:   "anthropic",
-			statusCode: 400,
-			responseBody: `{"error":{"type":"invalid_request_error","message":"Your credit balance is too low"}}`,
+			name:           "Anthropic quota exceeded",
+			provider:       "anthropic",
+			statusCode:     400,
+			responseBody:   `{"error":{"type":"invalid_request_error","message":"Your credit balance is too low"}}`,
 			expectedType:   ErrorTypeQuotaExceeded,
 			expectedCat:    ErrorCategoryFailover,
 			shouldFailover: true,
 		},
 		{
-			name:       "Anthropic overloaded",
-			provider:   "anthropic",
-			statusCode: 529,
-			responseBody: `{"error":{"type":"overloaded_error","message":"Overloaded"}}`,
+			name:           "Anthropic overloaded",
+			provider:       "anthropic",
+			statusCode:     529,
+			responseBody:   `{"error":{"type":"overloaded_error","message":"Overloaded"}}`,
 			expectedType:   ErrorTypeModelOverloaded,
 			expectedCat:    ErrorCategoryFailover,
 			shouldFailover: true,
 		},
 		{
-			name:       "Anthropic auth failed",
-			provider:   "anthropic",
-			statusCode: 401,
-			responseBody: `{"error":{"type":"authentication_error","message":"Invalid API key"}}`,
+			name:           "Anthropic auth failed",
+			provider:       "anthropic",
+			statusCode:     401,
+			responseBody:   `{"error":{"type":"authentication_error","message":"Invalid API key"}}`,
 			expectedType:   ErrorTypeAuthFailed,
 			expectedCat:    ErrorCategoryNonRetryable,
 			shouldFailover: false,
 		},
 		{
-			name:       "OpenAI context too long",
-			provider:   "openai",
-			statusCode: 400,
-			responseBody: `{"error":{"message":"This model's maximum context length is 128000 tokens. However, your messages resulted in 150000 tokens.","type":"invalid_request_error","code":"context_length_exceeded"}}`,
+			name:           "OpenAI context too long",
+			provider:       "openai",
+			statusCode:     400,
+			responseBody:   `{"error":{"message":"This model's maximum context length is 128000 tokens. However, your messages resulted in 150000 tokens.","type":"invalid_request_error","code":"context_length_exceeded"}}`,
 			expectedType:   ErrorTypeContextTooLong,
 			expectedCat:    ErrorCategoryFailover,
 			shouldFailover: true,
 		},
 		{
-			name:       "OpenAI rate limited",
-			provider:   "openai",
-			statusCode: 429,
-			responseBody: `{"error":{"message":"Rate limit exceeded","type":"rate_limit_exceeded"}}`,
+			name:           "OpenAI rate limited",
+			provider:       "openai",
+			statusCode:     429,
+			responseBody:   `{"error":{"message":"Rate limit exceeded","type":"rate_limit_exceeded"}}`,
 			expectedType:   ErrorTypeRateLimited,
 			expectedCat:    ErrorCategoryFailover,
 			shouldFailover: true,
 		},
 		{
-			name:       "OpenAI quota exceeded",
-			provider:   "openai",
-			statusCode: 429,
-			responseBody: `{"error":{"message":"You exceeded your current quota","type":"insufficient_quota"}}`,
+			name:           "OpenAI quota exceeded",
+			provider:       "openai",
+			statusCode:     429,
+			responseBody:   `{"error":{"message":"You exceeded your current quota","type":"insufficient_quota"}}`,
 			expectedType:   ErrorTypeQuotaExceeded,
 			expectedCat:    ErrorCategoryFailover,
 			shouldFailover: true,
 		},
 		{
-			name:       "DeepSeek context too long",
-			provider:   "deepseek",
-			statusCode: 400,
-			responseBody: `{"error":{"message":"Context is too long, please reduce the input"}}`,
+			name:           "DeepSeek context too long",
+			provider:       "deepseek",
+			statusCode:     400,
+			responseBody:   `{"error":{"message":"Context is too long, please reduce the input"}}`,
 			expectedType:   ErrorTypeContextTooLong,
 			expectedCat:    ErrorCategoryFailover,
 			shouldFailover: true,
 		},
 		{
-			name:       "Generic 500 error",
-			provider:   "unknown",
-			statusCode: 500,
-			responseBody: `{"error":{"message":"Internal server error"}}`,
+			name:           "Generic 500 error",
+			provider:       "unknown",
+			statusCode:     500,
+			responseBody:   `{"error":{"message":"Internal server error"}}`,
 			expectedType:   ErrorTypeServiceUnavailable,
 			expectedCat:    ErrorCategoryFailover,
 			shouldFailover: true,
 		},
 		{
-			name:       "Generic 503 error",
-			provider:   "unknown",
-			statusCode: 503,
-			responseBody: `{"error":{"message":"Service temporarily unavailable"}}`,
+			name:           "Generic 503 error",
+			provider:       "unknown",
+			statusCode:     503,
+			responseBody:   `{"error":{"message":"Service temporarily unavailable"}}`,
 			expectedType:   ErrorTypeServiceUnavailable,
 			expectedCat:    ErrorCategoryFailover,
 			shouldFailover: true,
 		},
 		{
-			name:       "Generic 404 error",
-			provider:   "unknown",
-			statusCode: 404,
-			responseBody: `{"error":{"message":"Model not found"}}`,
+			name:           "Generic 404 error",
+			provider:       "unknown",
+			statusCode:     404,
+			responseBody:   `{"error":{"message":"Model not found"}}`,
 			expectedType:   ErrorTypeModelNotFound,
 			expectedCat:    ErrorCategoryFailover,
 			shouldFailover: true,
@@ -372,5 +374,45 @@ func TestFailoverMetrics(t *testing.T) {
 	}
 	if stats["stream_anomalies"].(int64) != 1 {
 		t.Errorf("expected 1 stream anomaly, got %v", stats["stream_anomalies"])
+	}
+}
+
+func TestFailoverMetrics_RecordProviderPoolResult(t *testing.T) {
+	metrics := NewFailoverMetrics()
+
+	metrics.RecordProviderPoolResult(&providerpool.FailoverResult{
+		SuccessProvider: "provider-b",
+		FailedAttempts: []*providerpool.FailoverRecord{
+			{ProviderID: "provider-a", Reason: providerpool.FailoverReasonRateLimit},
+			{ProviderID: "provider-c", Reason: providerpool.FailoverReasonAuthError},
+		},
+	})
+
+	stats := metrics.GetStats()
+
+	if stats["failover_total"].(int64) != 1 {
+		t.Errorf("expected 1 total failover, got %v", stats["failover_total"])
+	}
+	if stats["failover_success"].(int64) != 1 {
+		t.Errorf("expected 1 successful failover, got %v", stats["failover_success"])
+	}
+	if stats["failover_failure"].(int64) != 0 {
+		t.Errorf("expected 0 failed failovers, got %v", stats["failover_failure"])
+	}
+
+	byProvider := stats["provider_failovers"].(map[string]int64)
+	if byProvider["provider-a"] != 1 {
+		t.Errorf("expected provider-a failovers=1, got %v", byProvider["provider-a"])
+	}
+	if byProvider["provider-c"] != 1 {
+		t.Errorf("expected provider-c failovers=1, got %v", byProvider["provider-c"])
+	}
+
+	byType := stats["errors_by_type"].(map[RetryableErrorType]int64)
+	if byType[ErrorTypeRateLimited] != 1 {
+		t.Errorf("expected rate_limited=1, got %v", byType[ErrorTypeRateLimited])
+	}
+	if byType[ErrorTypeAuthFailed] != 1 {
+		t.Errorf("expected auth_failed=1, got %v", byType[ErrorTypeAuthFailed])
 	}
 }

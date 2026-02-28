@@ -188,3 +188,8 @@ func (r *AutoSkillReranker) WarmupAsync() {
 		r.modelManager.WarmupAsync(r.isAutoDownloadEnabled())
 	}
 }
+
+// ModelManager returns the underlying ONNX model manager.
+func (r *AutoSkillReranker) ModelManager() *SkillRerankerModelManager {
+	return r.modelManager
+}

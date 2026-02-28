@@ -88,3 +88,22 @@ func TestAskExecute_UsesQuestionOptionLabelsInQA(t *testing.T) {
 		t.Fatalf("a = %#v, want [\"stable\"]", out["a"])
 	}
 }
+
+func TestAskExecute_RejectsQAAliasesInsideQuestions(t *testing.T) {
+	mgr := NewQuestionManager(nil, func() bool { return true }, 0)
+	tool := NewAskTool(mgr)
+	args := map[string]interface{}{
+		"questions": []interface{}{
+			map[string]interface{}{
+				"q":    "How should I answer?",
+				"type": "checkbox",
+				"a":    []interface{}{"free", "template"},
+			},
+		},
+	}
+
+	_, err := tool.Execute(context.Background(), args)
+	if err == nil {
+		t.Fatalf("expected error for q/a aliases in questions")
+	}
+}

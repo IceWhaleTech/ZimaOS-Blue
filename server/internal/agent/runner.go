@@ -340,7 +340,7 @@ func (r *Runner) SubmitAnswers(taskID string, answers []QuestionAnswer) bool {
 }
 
 // handleAskUser parses the ask_user tool arguments, blocks for user answers, and returns the result as JSON.
-// Supports both the new q/mq/a format and the legacy questions array format.
+// Supports single-question shorthand (q/mq + a) and questions array format.
 func (r *Runner) handleAskUser(ctx context.Context, task *Task, argsJSON string) string {
 	var raw map[string]interface{}
 	if err := json.Unmarshal([]byte(argsJSON), &raw); err != nil {
@@ -380,7 +380,7 @@ func (r *Runner) handleAskUser(ctx context.Context, task *Task, argsJSON string)
 			Questions []AgentQuestion `json:"questions"`
 		}
 		if err := json.Unmarshal([]byte(argsJSON), &req); err != nil || len(req.Questions) == 0 {
-			return `{"error":"invalid ask_user arguments: q/mq or questions array required"}`
+			return `{"error":"invalid ask_user arguments: provide q/mq + a or questions[]"}`
 		}
 		questions = req.Questions
 	}
@@ -979,8 +979,9 @@ func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (s
 		{Role: llm.RoleSystem, Content: `You are an autonomous agent executing a plan step. Use available tools to complete the step. Be concise in your response — just do the work and report the result.
 
 When you encounter ambiguity, need user preferences, or face a decision with multiple valid options, use the ask tool to ask the user.
-Use "q" for single-select or "mq" for multi-select, with "a" as the options array (2-4 strings).
-Example: {"q": "Which approach?", "a": ["Option A", "Option B"]}
+Preferred format: {"questions":[{"question":"Which approach?","type":"radio","options":["Option A","Option B"]}]}
+Single-question shorthand: {"q":"Which approach?","a":["Option A","Option B"]} or {"mq":"...","a":[...]}
+Inside questions items, use "question"/"type"/"options".
 
 Group related questions into a single ask call. Keep questions clear and provide good option labels.`},
 		{Role: llm.RoleUser, Content: contextMsg.String()},

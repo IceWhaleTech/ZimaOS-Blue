@@ -387,6 +387,9 @@ export const useSettingsStore = defineStore('settings', () => {
     if (mode === 'aggressive' || mode === 'quality') return mode
     return 'balanced'
   })
+  const skillRerankEnabled = computed(() => backendSettings.value.skill_rerank_enabled ?? true)
+  const skillRerankONNXEnabled = computed(() => backendSettings.value.skill_rerank_onnx_enabled ?? false)
+  const skillRerankONNXAutoDownload = computed(() => backendSettings.value.skill_rerank_onnx_auto_download ?? false)
 
   async function setAgentMode(enabled: boolean) {
     await updateBackendSettings({ agent_mode: enabled })
@@ -398,6 +401,18 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setMemoryRecallMode(mode: MemoryRecallMode) {
     await updateBackendSettings({ memory_recall_mode: mode })
+  }
+
+  async function setSkillRerankEnabled(enabled: boolean) {
+    await updateBackendSettings({ skill_rerank_enabled: enabled })
+  }
+
+  async function setSkillRerankONNXEnabled(enabled: boolean) {
+    await updateBackendSettings({ skill_rerank_onnx_enabled: enabled })
+  }
+
+  async function setSkillRerankONNXAutoDownload(enabled: boolean) {
+    await updateBackendSettings({ skill_rerank_onnx_auto_download: enabled })
   }
 
   return {
@@ -418,6 +433,9 @@ export const useSettingsStore = defineStore('settings', () => {
     agentMode,
     agentAutoConfirm,
     memoryRecallMode,
+    skillRerankEnabled,
+    skillRerankONNXEnabled,
+    skillRerankONNXAutoDownload,
     showToolDetails,
 
     // Computed
@@ -448,6 +466,9 @@ export const useSettingsStore = defineStore('settings', () => {
     setAgentMode,
     setAgentAutoConfirm,
     setMemoryRecallMode,
+    setSkillRerankEnabled,
+    setSkillRerankONNXEnabled,
+    setSkillRerankONNXAutoDownload,
     setShowToolDetails,
   }
 })

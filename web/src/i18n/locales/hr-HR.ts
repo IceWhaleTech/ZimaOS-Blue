@@ -529,6 +529,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Priprema veze za preuzimanje...',
+      downloadFailed: 'Preuzimanje ONNX modela nije uspjelo',
+    },
     tab: { general: 'Opće', llm: 'LLM', metrics: 'Korištenje', remote: 'Daljinski pristup', config: 'Konfiguracija', backup: 'Sigurnosna kopija', logs: 'Zapisnici', service: 'Usluga', retention: 'Zadržavanje' },
     failover: {
       title: 'Status pametnog prebacivanja',

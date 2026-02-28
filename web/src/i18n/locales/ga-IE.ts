@@ -529,6 +529,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Ag ullmhú an naisc íoslódála...',
+      downloadFailed: 'Theip ar íoslódáil mhúnla ONNX',
+    },
     tab: { general: 'Ginearálta', llm: 'LLM', metrics: 'Úsáid', remote: 'Rochtain chianda', config: 'Cumraíocht', backup: 'Cúltaca', logs: 'Loganna', service: 'Seirbhís', retention: 'Coinneáil' },
     failover: {
       title: 'Stádas failover cliste',

@@ -7,6 +7,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
@@ -15,9 +16,10 @@ const settingsKVKey = "config:settings"
 
 // SettingsHandler handles user settings API endpoints
 type SettingsHandler struct {
-	mu       sync.RWMutex
-	kv       kvstore.Store
-	settings *Settings
+	mu                        sync.RWMutex
+	kv                        kvstore.Store
+	settings                  *Settings
+	skillRerankerModelManager *claudecode.SkillRerankerModelManager
 }
 
 // Settings represents user preferences stored on backend
@@ -69,6 +71,16 @@ func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/settings", h.Get)
 	g.PUT("/settings", h.Update)
 	g.PATCH("/settings", h.Patch)
+	g.GET("/settings/skill-reranker/model/status", h.GetSkillRerankerModelStatus)
+	g.POST("/settings/skill-reranker/model/download", h.StartSkillRerankerModelDownload)
+	g.POST("/settings/skill-reranker/model/cancel", h.CancelSkillRerankerModelDownload)
+}
+
+// SetSkillRerankerModelManager wires ONNX skill-reranker model manager for UI download APIs.
+func (h *SettingsHandler) SetSkillRerankerModelManager(mgr *claudecode.SkillRerankerModelManager) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.skillRerankerModelManager = mgr
 }
 
 // Get handles GET /api/settings
@@ -76,6 +88,51 @@ func (h *SettingsHandler) Get(c echo.Context) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return c.JSON(http.StatusOK, h.settings)
+}
+
+// StartSkillRerankerModelDownload starts downloading ONNX model in background.
+func (h *SettingsHandler) StartSkillRerankerModelDownload(c echo.Context) error {
+	h.mu.RLock()
+	mgr := h.skillRerankerModelManager
+	h.mu.RUnlock()
+	if mgr == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "skill reranker model manager not initialized"})
+	}
+
+	go func() {
+		_ = mgr.Download(context.Background())
+	}()
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "download started",
+	})
+}
+
+// CancelSkillRerankerModelDownload cancels current ONNX model download.
+func (h *SettingsHandler) CancelSkillRerankerModelDownload(c echo.Context) error {
+	h.mu.RLock()
+	mgr := h.skillRerankerModelManager
+	h.mu.RUnlock()
+	if mgr == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "skill reranker model manager not initialized"})
+	}
+
+	mgr.CancelDownload()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
+}
+
+// GetSkillRerankerModelStatus returns ONNX model file/download status.
+func (h *SettingsHandler) GetSkillRerankerModelStatus(c echo.Context) error {
+	h.mu.RLock()
+	mgr := h.skillRerankerModelManager
+	h.mu.RUnlock()
+	if mgr == nil {
+		return c.JSON(http.StatusOK, claudecode.SkillRerankerModelStatus{Ready: false})
+	}
+	return c.JSON(http.StatusOK, mgr.GetStatus())
 }
 
 // Update handles PUT /api/settings (full update)

@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
@@ -46,6 +50,49 @@ func (s *slowTool) Definition() tools.ToolDefinition {
 func (s *slowTool) Execute(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
+}
+
+type delayedTool struct {
+	name   string
+	delay  time.Duration
+	result string
+}
+
+func (d *delayedTool) Definition() tools.ToolDefinition {
+	return tools.ToolDefinition{
+		Name:        d.name,
+		Description: "delayed tool for orchestrator tests",
+		Parameters:  map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
+	}
+}
+
+func (d *delayedTool) Execute(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(d.delay):
+		return d.result, nil
+	}
+}
+
+type contextEchoTool struct {
+	name string
+}
+
+func (c *contextEchoTool) Definition() tools.ToolDefinition {
+	return tools.ToolDefinition{
+		Name:        c.name,
+		Description: "echoes orchestrator injected context for tests",
+		Parameters:  map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
+	}
+}
+
+func (c *contextEchoTool) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	v, _ := args["context"].(string)
+	if strings.TrimSpace(v) == "" {
+		return "missing_context", nil
+	}
+	return v, nil
 }
 
 type mockWorkspace struct {
@@ -91,6 +138,25 @@ func rpcCall(t *testing.T, s *Server, sessID, method string, params interface{})
 		t.Fatal(err)
 	}
 	return rpcResp
+}
+
+func parseToolCallResult(t *testing.T, resp jsonRPCResponse) toolCallResult {
+	t.Helper()
+	result, _ := json.Marshal(resp.Result)
+	var callResult toolCallResult
+	if err := json.Unmarshal(result, &callResult); err != nil {
+		t.Fatalf("failed to parse tool call result: %v", err)
+	}
+	return callResult
+}
+
+func parseToolContentJSON(t *testing.T, text string) map[string]interface{} {
+	t.Helper()
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(text), &payload); err != nil {
+		t.Fatalf("failed to parse JSON content %q: %v", text, err)
+	}
+	return payload
 }
 
 // --- Session tests ---
@@ -182,16 +248,16 @@ func TestToolsList(t *testing.T) {
 	var listResult toolsListResult
 	json.Unmarshal(result, &listResult)
 
-	if len(listResult.Tools) != 2 {
-		t.Fatalf("got %d tools, want 2", len(listResult.Tools))
+	if len(listResult.Tools) < 2 {
+		t.Fatalf("got %d tools, want at least 2", len(listResult.Tools))
 	}
 
 	names := map[string]bool{}
 	for _, tool := range listResult.Tools {
 		names[tool.Name] = true
 	}
-	if !names["exec"] || !names["memory_search"] {
-		t.Errorf("expected exec and memory_search, got %v", names)
+	if !names["exec"] || !names["memory_search"] || !names[orchestratorRunTool] || !names[workspaceReadTextTool] || !names[workspaceWriteTextTool] {
+		t.Errorf("expected exec, memory_search and workspace tools, got %v", names)
 	}
 }
 
@@ -207,9 +273,7 @@ func TestToolsCall(t *testing.T) {
 		t.Fatalf("unexpected error: %v", resp.Error)
 	}
 
-	result, _ := json.Marshal(resp.Result)
-	var callResult toolCallResult
-	json.Unmarshal(result, &callResult)
+	callResult := parseToolCallResult(t, resp)
 
 	if callResult.IsError {
 		t.Error("expected no error")
@@ -233,9 +297,7 @@ func TestToolsCall_NonexistentTool(t *testing.T) {
 		t.Fatal("expected success response with isError=true")
 	}
 
-	result, _ := json.Marshal(resp.Result)
-	var callResult toolCallResult
-	json.Unmarshal(result, &callResult)
+	callResult := parseToolCallResult(t, resp)
 
 	if !callResult.IsError {
 		t.Error("expected isError=true for nonexistent tool")
@@ -392,16 +454,16 @@ func TestPromptsList(t *testing.T) {
 	var listResult promptsListResult
 	json.Unmarshal(result, &listResult)
 
-	if len(listResult.Prompts) != 3 {
-		t.Fatalf("got %d prompts, want 3", len(listResult.Prompts))
+	if len(listResult.Prompts) != 4 {
+		t.Fatalf("got %d prompts, want 4", len(listResult.Prompts))
 	}
 
 	names := map[string]bool{}
 	for _, p := range listResult.Prompts {
 		names[p.Name] = true
 	}
-	if !names["agent_task"] || !names["code_review"] || !names["summarize"] {
-		t.Errorf("expected agent_task, code_review, summarize; got %v", names)
+	if !names["agent_task"] || !names["code_review"] || !names["summarize"] || !names["coding_task"] {
+		t.Errorf("expected agent_task, code_review, summarize, coding_task; got %v", names)
 	}
 }
 
@@ -467,9 +529,7 @@ func TestToolsCall_WithArguments(t *testing.T) {
 		t.Fatalf("unexpected error: %v", resp.Error)
 	}
 
-	result, _ := json.Marshal(resp.Result)
-	var callResult toolCallResult
-	json.Unmarshal(result, &callResult)
+	callResult := parseToolCallResult(t, resp)
 
 	if callResult.IsError {
 		t.Error("expected no error")
@@ -489,11 +549,307 @@ func TestToolsCall_MissingName(t *testing.T) {
 	if resp.Error != nil {
 		return // error response is acceptable
 	}
-	result, _ := json.Marshal(resp.Result)
-	var callResult toolCallResult
-	json.Unmarshal(result, &callResult)
+	callResult := parseToolCallResult(t, resp)
 	if !callResult.IsError {
 		t.Error("expected isError=true for empty tool name")
+	}
+}
+
+func TestWorkspaceTools_CodingFlow(t *testing.T) {
+	root := t.TempDir()
+	s := testServer(t)
+	s.SetWorkspaceRoot(root)
+	sess := s.CreateSession()
+
+	writeResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceWriteTextTool,
+		Arguments: map[string]interface{}{
+			"path":    "src/main.txt",
+			"content": "hello\nworld\nhello\n",
+		},
+	})
+	if writeResp.Error != nil {
+		t.Fatalf("write tool rpc error: %v", writeResp.Error)
+	}
+	writeResult := parseToolCallResult(t, writeResp)
+	if writeResult.IsError {
+		t.Fatalf("write tool failed: %v", writeResult.Content)
+	}
+
+	readResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceReadTextTool,
+		Arguments: map[string]interface{}{
+			"path":       "src/main.txt",
+			"start_line": 2,
+			"end_line":   2,
+		},
+	})
+	readResult := parseToolCallResult(t, readResp)
+	if readResult.IsError {
+		t.Fatalf("read tool failed: %v", readResult.Content)
+	}
+	readPayload := parseToolContentJSON(t, readResult.Content[0].Text)
+	if got := readPayload["content"]; got != "world" {
+		t.Fatalf("read content = %v, want world", got)
+	}
+
+	searchResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceSearchTextTool,
+		Arguments: map[string]interface{}{
+			"query":       "hello",
+			"path":        "src",
+			"max_results": 10,
+		},
+	})
+	searchResult := parseToolCallResult(t, searchResp)
+	if searchResult.IsError {
+		t.Fatalf("search tool failed: %v", searchResult.Content)
+	}
+	searchPayload := parseToolContentJSON(t, searchResult.Content[0].Text)
+	if int(searchPayload["count"].(float64)) < 2 {
+		t.Fatalf("expected at least 2 matches, got %v", searchPayload["count"])
+	}
+
+	replaceResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceReplaceTextTool,
+		Arguments: map[string]interface{}{
+			"path":        "src/main.txt",
+			"old_text":    "world",
+			"new_text":    "planet",
+			"replace_all": false,
+		},
+	})
+	replaceResult := parseToolCallResult(t, replaceResp)
+	if replaceResult.IsError {
+		t.Fatalf("replace tool failed: %v", replaceResult.Content)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "src", "main.txt"))
+	if err != nil {
+		t.Fatalf("failed to read file after replace: %v", err)
+	}
+	if !strings.Contains(string(data), "planet") {
+		t.Fatalf("expected replaced content, got: %q", string(data))
+	}
+
+	listResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceListFilesTool,
+		Arguments: map[string]interface{}{
+			"path":      "src",
+			"max_depth": 3,
+		},
+	})
+	listResult := parseToolCallResult(t, listResp)
+	if listResult.IsError {
+		t.Fatalf("list tool failed: %v", listResult.Content)
+	}
+	listPayload := parseToolContentJSON(t, listResult.Content[0].Text)
+	entries, ok := listPayload["entries"].([]interface{})
+	if !ok || len(entries) == 0 {
+		t.Fatalf("expected non-empty entries, got %v", listPayload["entries"])
+	}
+}
+
+func TestWorkspaceTools_RejectPathTraversal(t *testing.T) {
+	s := testServer(t)
+	s.SetWorkspaceRoot(t.TempDir())
+	sess := s.CreateSession()
+
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceReadTextTool,
+		Arguments: map[string]interface{}{
+			"path": "../etc/passwd",
+		},
+	})
+	if resp.Error != nil {
+		t.Fatalf("unexpected rpc error: %v", resp.Error)
+	}
+	callResult := parseToolCallResult(t, resp)
+	if !callResult.IsError {
+		t.Fatal("expected path traversal to be rejected")
+	}
+}
+
+func TestOrchestratorRun_ParallelDedupAndAggregate(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(&delayedTool{name: "sql_query", delay: 220 * time.Millisecond, result: "row_a"})
+	registry.Register(&delayedTool{name: "cache_lookup", delay: 220 * time.Millisecond, result: "row_a"})
+	registry.Register(&delayedTool{name: "vector_recall", delay: 220 * time.Millisecond, result: "row_b"})
+	executor := tools.NewExecutor(registry)
+	s := NewServer(registry, executor)
+	s.SetGenerativeRunner(func(_ context.Context, prompt string, _ int) (string, error) {
+		return "generated:" + truncateRunes(prompt, 60), nil
+	})
+	sess := s.CreateSession()
+
+	start := time.Now()
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: orchestratorRunTool,
+		Arguments: map[string]interface{}{
+			"goal": "build compact coding context",
+			"deterministic_tasks": []map[string]interface{}{
+				{"id": "sql", "tool": "sql_query"},
+				{"id": "cache", "tool": "cache_lookup"},
+				{"id": "vec", "tool": "vector_recall"},
+			},
+			"transformative_tasks": []map[string]interface{}{
+				{"op": "summarize", "max_items": 4, "max_chars": 300},
+			},
+			"generative_tasks": []map[string]interface{}{
+				{"id": "draft", "prompt": "Summarize findings with context={{context}}", "max_tokens": 128},
+			},
+			"max_parallel":       3,
+			"max_per_task_chars": 200,
+			"max_result_chars":   1200,
+		},
+	})
+	elapsed := time.Since(start)
+
+	if resp.Error != nil {
+		t.Fatalf("unexpected rpc error: %v", resp.Error)
+	}
+	callResult := parseToolCallResult(t, resp)
+	if callResult.IsError {
+		t.Fatalf("orchestrator failed: %v", callResult.Content)
+	}
+	payload := parseToolContentJSON(t, callResult.Content[0].Text)
+	compressed, _ := payload["compressed_result"].(string)
+	if !strings.Contains(compressed, "Deterministic Context") || !strings.Contains(compressed, "Generative Insights") {
+		t.Fatalf("compressed result missing expected sections: %q", compressed)
+	}
+	stats, ok := payload["stats"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected stats object, got: %T", payload["stats"])
+	}
+	dedupRemoved, _ := stats["dedup_removed_deterministic"].(float64)
+	if int(dedupRemoved) < 1 {
+		t.Fatalf("expected deterministic dedup to remove >=1 duplicate, got %v", stats["dedup_removed_deterministic"])
+	}
+	if elapsed >= 500*time.Millisecond {
+		t.Fatalf("expected parallel deterministic execution (<500ms), got %v", elapsed)
+	}
+}
+
+func TestOrchestratorRun_InvalidRequest(t *testing.T) {
+	s := testServer(t)
+	sess := s.CreateSession()
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name:      orchestratorRunTool,
+		Arguments: map[string]interface{}{},
+	})
+	if resp.Error != nil {
+		t.Fatalf("unexpected rpc error: %v", resp.Error)
+	}
+	callResult := parseToolCallResult(t, resp)
+	if !callResult.IsError {
+		t.Fatal("expected orchestrator invalid request to fail")
+	}
+}
+
+func TestOrchestratorRun_GenerativePromptWithoutRunner(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(&mockTool{name: "facts", desc: "deterministic facts", result: "fact_a"})
+	executor := tools.NewExecutor(registry)
+	s := NewServer(registry, executor)
+	sess := s.CreateSession()
+
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: orchestratorRunTool,
+		Arguments: map[string]interface{}{
+			"goal": "compose coding context",
+			"deterministic_tasks": []map[string]interface{}{
+				{"id": "facts", "tool": "facts"},
+			},
+			"generative_tasks": []map[string]interface{}{
+				{"id": "draft", "prompt": "summarize {{context}}"},
+			},
+		},
+	})
+	if resp.Error != nil {
+		t.Fatalf("unexpected rpc error: %v", resp.Error)
+	}
+	callResult := parseToolCallResult(t, resp)
+	if callResult.IsError {
+		t.Fatalf("orchestrator should still return aggregate output, got error: %v", callResult.Content)
+	}
+
+	payload := parseToolContentJSON(t, callResult.Content[0].Text)
+	stats, ok := payload["stats"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected stats object, got: %T", payload["stats"])
+	}
+	if int(stats["deterministic_success"].(float64)) != 1 {
+		t.Fatalf("expected deterministic_success=1, got %v", stats["deterministic_success"])
+	}
+	if int(stats["generative_success"].(float64)) != 0 {
+		t.Fatalf("expected generative_success=0 without runner, got %v", stats["generative_success"])
+	}
+}
+
+func TestOrchestratorRun_GenerativeToolGetsCompressedContext(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(&mockTool{name: "source", desc: "deterministic source", result: "important_row"})
+	registry.Register(&contextEchoTool{name: "context_echo"})
+	executor := tools.NewExecutor(registry)
+	s := NewServer(registry, executor)
+	sess := s.CreateSession()
+
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: orchestratorRunTool,
+		Arguments: map[string]interface{}{
+			"deterministic_tasks": []map[string]interface{}{
+				{"id": "seed", "tool": "source"},
+			},
+			"generative_tasks": []map[string]interface{}{
+				{"id": "ctx", "tool": "context_echo"},
+			},
+		},
+	})
+	if resp.Error != nil {
+		t.Fatalf("unexpected rpc error: %v", resp.Error)
+	}
+	callResult := parseToolCallResult(t, resp)
+	if callResult.IsError {
+		t.Fatalf("orchestrator failed: %v", callResult.Content)
+	}
+	payload := parseToolContentJSON(t, callResult.Content[0].Text)
+	compressed, _ := payload["compressed_result"].(string)
+	if strings.Contains(compressed, "missing_context") {
+		t.Fatalf("expected compressed context injection into generative tool, got: %q", compressed)
+	}
+	if !strings.Contains(compressed, "important_row") {
+		t.Fatalf("expected deterministic context to reach generative output, got: %q", compressed)
+	}
+}
+
+func TestOrchestratorRun_MaxResultCharsClamp(t *testing.T) {
+	longText := strings.Repeat("very_long_line_", 300)
+	registry := tools.NewRegistry()
+	registry.Register(&mockTool{name: "blob", desc: "long deterministic output", result: longText})
+	executor := tools.NewExecutor(registry)
+	s := NewServer(registry, executor)
+	sess := s.CreateSession()
+
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: orchestratorRunTool,
+		Arguments: map[string]interface{}{
+			"deterministic_tasks": []map[string]interface{}{
+				{"id": "blob", "tool": "blob"},
+			},
+			"max_result_chars": 800,
+		},
+	})
+	if resp.Error != nil {
+		t.Fatalf("unexpected rpc error: %v", resp.Error)
+	}
+	callResult := parseToolCallResult(t, resp)
+	if callResult.IsError {
+		t.Fatalf("orchestrator failed: %v", callResult.Content)
+	}
+	payload := parseToolContentJSON(t, callResult.Content[0].Text)
+	compressed, _ := payload["compressed_result"].(string)
+	if runes := utf8.RuneCountInString(compressed); runes > 803 {
+		t.Fatalf("expected compressed result <= 803 runes after clamp, got %d", runes)
 	}
 }
 
@@ -561,8 +917,8 @@ func TestToolsList_EmptyRegistry(t *testing.T) {
 	var listResult toolsListResult
 	json.Unmarshal(result, &listResult)
 
-	if len(listResult.Tools) != 0 {
-		t.Errorf("expected 0 tools, got %d", len(listResult.Tools))
+	if len(listResult.Tools) != len(builtinWorkspaceTools()) {
+		t.Errorf("expected %d builtin tools, got %d", len(builtinWorkspaceTools()), len(listResult.Tools))
 	}
 }
 
@@ -607,6 +963,34 @@ func TestPromptsGet_Summarize(t *testing.T) {
 
 	if len(getResult.Messages) != 1 {
 		t.Fatalf("got %d messages, want 1", len(getResult.Messages))
+	}
+}
+
+func TestPromptsGet_CodingTask(t *testing.T) {
+	s := testServer(t)
+	sess := s.CreateSession()
+	resp := rpcCall(t, s, sess.ID, "prompts/get", promptGetParams{
+		Name: "coding_task",
+		Arguments: map[string]string{
+			"goal":            "add retry logic to API client",
+			"constraints":     "keep API backward compatible",
+			"repository_path": "server",
+		},
+	})
+
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %v", resp.Error)
+	}
+
+	result, _ := json.Marshal(resp.Result)
+	var getResult promptGetResult
+	json.Unmarshal(result, &getResult)
+	if len(getResult.Messages) != 1 {
+		t.Fatalf("got %d messages, want 1", len(getResult.Messages))
+	}
+	text := getResult.Messages[0].Content.Text
+	if !strings.Contains(text, "orchestrator.run") || !strings.Contains(text, "workspace.list_files") || !strings.Contains(text, "Do not depend on `blue` CLI") {
+		t.Fatalf("coding_task guidance missing expected fallback instructions: %q", text)
 	}
 }
 
@@ -758,8 +1142,8 @@ func TestToolsList_CacheInvalidation(t *testing.T) {
 	result1, _ := json.Marshal(resp1.Result)
 	var list1 toolsListResult
 	json.Unmarshal(result1, &list1)
-	if len(list1.Tools) != 1 {
-		t.Fatalf("expected 1 tool, got %d", len(list1.Tools))
+	if len(list1.Tools) != len(builtinWorkspaceTools())+1 {
+		t.Fatalf("expected %d tools, got %d", len(builtinWorkspaceTools())+1, len(list1.Tools))
 	}
 
 	// Register a new tool — cache should be invalidated
@@ -769,8 +1153,8 @@ func TestToolsList_CacheInvalidation(t *testing.T) {
 	result2, _ := json.Marshal(resp2.Result)
 	var list2 toolsListResult
 	json.Unmarshal(result2, &list2)
-	if len(list2.Tools) != 2 {
-		t.Fatalf("expected 2 tools after cache invalidation, got %d", len(list2.Tools))
+	if len(list2.Tools) != len(builtinWorkspaceTools())+2 {
+		t.Fatalf("expected %d tools after cache invalidation, got %d", len(builtinWorkspaceTools())+2, len(list2.Tools))
 	}
 }
 
@@ -814,9 +1198,7 @@ func TestToolsCall_Timeout(t *testing.T) {
 		t.Fatalf("expected success response with isError=true, got rpc error: %v", resp.Error)
 	}
 
-	result, _ := json.Marshal(resp.Result)
-	var callResult toolCallResult
-	json.Unmarshal(result, &callResult)
+	callResult := parseToolCallResult(t, resp)
 
 	if !callResult.IsError {
 		t.Error("expected isError=true for timed-out tool")

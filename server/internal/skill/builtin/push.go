@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/remindertime"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
@@ -40,9 +41,9 @@ type PushItem struct {
 
 // Reminder is a built-in reminder/notification skill with optional native service backing.
 type Reminder struct {
-	manifest      *skill.Manifest
-	mu            sync.RWMutex
-	svc           PushServiceInterface
+	manifest *skill.Manifest
+	mu       sync.RWMutex
+	svc      PushServiceInterface
 	// In-memory fallback when svc is nil
 	notifications map[string]*PushItem
 	counter       int
@@ -285,22 +286,7 @@ func (p *Reminder) clearNative(ctx context.Context, svc PushServiceInterface, ow
 
 // parsePushTime parses a time string as either a duration or RFC3339.
 func parsePushTime(s string) (time.Time, error) {
-	// Try relative duration first
-	if d, err := time.ParseDuration(s); err == nil {
-		return timeutil.NowTime().Add(d), nil
-	}
-	// Try RFC3339
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t, nil
-	}
-	// Try common format without timezone
-	if t, err := time.ParseInLocation("2006-01-02 15:04", s, time.Local); err == nil {
-		return t, nil
-	}
-	if t, err := time.ParseInLocation("2006-01-02 15:04:05", s, time.Local); err == nil {
-		return t, nil
-	}
-	return time.Time{}, fmt.Errorf("invalid time format: %s (use duration like '1h30m', RFC3339, or 'YYYY-MM-DD HH:MM')", s)
+	return remindertime.Parse(s)
 }
 
 // --- In-memory fallback methods (used when native service is not wired) ---

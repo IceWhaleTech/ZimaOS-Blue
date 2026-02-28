@@ -431,7 +431,7 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 
 	var sb strings.Builder
 	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). ")
-	sb.WriteString("Routing: ask→ask, search→web_search, URL→browser, UI review→ui_reviewer, analyze→analyze, plan→plan_create/plan_update/plan_append, sandbox→sandbox, workflows→workflows, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. ")
+	sb.WriteString("Routing: ask→ask, search→web_search, URL→browser, UI review→ui_reviewer, analyze→analyze, reminder/notification→reminder, plan→plan_create/plan_update/plan_append, sandbox→sandbox, workflows→workflows, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. ")
 	sb.WriteString("Use progressive skill selection: prefer routed/pinned commands first, then inspect likely SKILL.md files on demand. ")
 	sb.WriteString("`blue help <cmd>` for usage. More skills in workspace `.claude/skills/` and user default `~/.claude/skills/`.")
 

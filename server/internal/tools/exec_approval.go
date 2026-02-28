@@ -26,9 +26,9 @@ const defaultApprovalTimeout = 2 * time.Minute
 // ApprovalRequest is the data sent to the frontend via SSE.
 type ApprovalRequest struct {
 	ID        string `json:"id"`
-	Type      string `json:"type"`                // "command" or "directory"
+	Type      string `json:"type"` // "command" or "directory"
 	Command   string `json:"command,omitempty"`
-	Directory string `json:"directory,omitempty"`  // for type=directory
+	Directory string `json:"directory,omitempty"` // for type=directory
 	Workdir   string `json:"workdir,omitempty"`
 	Host      string `json:"host,omitempty"`
 	Security  string `json:"security,omitempty"`
@@ -38,6 +38,7 @@ type ApprovalRequest struct {
 
 type pendingApproval struct {
 	ch      chan ApprovalDecision
+	request ApprovalRequest
 	created time.Time
 }
 
@@ -65,11 +66,20 @@ func (m *ApprovalManager) RequestApproval(ctx context.Context, req ApprovalReque
 	if req.ID == "" {
 		req.ID = uuid.New().String()
 	}
+	userID := req.UserID
+	if userID == "" {
+		userID = "default"
+	}
+	req.UserID = userID
 	req.ExpiresAt = timeutil.NowMilli() + m.timeout.Milliseconds()
 
 	ch := make(chan ApprovalDecision, 1)
 	m.mu.Lock()
-	m.pending[req.ID] = &pendingApproval{ch: ch, created: timeutil.NowTime()}
+	m.pending[req.ID] = &pendingApproval{
+		ch:      ch,
+		request: req,
+		created: timeutil.NowTime(),
+	}
 	m.mu.Unlock()
 
 	defer func() {
@@ -79,10 +89,6 @@ func (m *ApprovalManager) RequestApproval(ctx context.Context, req ApprovalReque
 	}()
 
 	// Publish SSE event to the user.
-	userID := req.UserID
-	if userID == "" {
-		userID = "default"
-	}
 	m.broker.Publish(userID, "exec:approval-request", req)
 
 	// Wait for response or timeout.
@@ -125,4 +131,21 @@ func (m *ApprovalManager) PendingCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.pending)
+}
+
+// GetPending returns the first pending approval request (if any).
+// Used by REST endpoint so frontend can restore approval dialog after refresh.
+func (m *ApprovalManager) GetPending(userID string) *ApprovalRequest {
+	if userID == "" {
+		userID = "default"
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, p := range m.pending {
+		if p.request.UserID == userID || p.request.UserID == "default" || userID == "default" {
+			req := p.request
+			return &req
+		}
+	}
+	return nil
 }

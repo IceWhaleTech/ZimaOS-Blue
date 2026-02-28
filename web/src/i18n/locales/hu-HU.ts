@@ -531,6 +531,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'Letöltési kapcsolat előkészítése...',
+      downloadFailed: 'Az ONNX modell letöltése sikertelen',
+    },
     tab: { general: 'Általános', llm: 'LLM', metrics: 'Használat', remote: 'Távoli hozzáférés', config: 'Konfiguráció', backup: 'Biztonsági mentés', logs: 'Naplók', service: 'Szolgáltatás', retention: 'Megtartás' },
     failover: {
       title: 'Intelligens feladatátvétel állapota',

@@ -775,6 +775,21 @@ export default {
         },
       },
     },
+    skillReranker: {
+      title: 'Skill Reranker',
+      description: 'Control reranker behavior for smart skill selection.',
+      rerankEnabled: 'Enable stage-2 rerank',
+      onnxEnabled: 'Enable ONNX reranker',
+      onnxEnabledHint: 'Use local ONNX Cross-Encoder when available; fallback to heuristic reranker if unavailable.',
+      autoDownload: 'Auto-download ONNX model',
+      autoDownloadHint: 'Allow background download from ModelScope, HuggingFace, and HF-Mirror when model is missing.',
+      disabledByRerank: 'Enable stage-2 rerank first.',
+      disabledByOnnx: 'Enable ONNX reranker first.',
+      saved: 'Skill reranker settings saved',
+      saveFailed: 'Failed to save skill reranker settings',
+      modelConnecting: 'Preparing download connection...',
+      downloadFailed: 'Failed to download ONNX model',
+    },
     // LLM Provider
     // Provider names
     providers: {

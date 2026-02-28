@@ -147,9 +147,9 @@ const stats = computed(() => {
 function getLineClass(type: string): string {
   switch (type) {
     case 'added':
-      return 'bg-green-100 dark:bg-green-900/30'
+      return 'bg-green-500/15'
     case 'removed':
-      return 'bg-red-100 dark:bg-red-900/30'
+      return 'bg-red-500/15'
     default:
       return ''
   }
@@ -195,11 +195,11 @@ const languageDisplay = computed(() => {
     <Transition name="fullscreen">
       <div
         v-if="isFullscreen && fullscreenContent"
-        class="fixed inset-0 z-[9999] bg-gray-200 flex flex-col"
+        class="fixed inset-0 z-[9999] bg-slate-950/95 text-slate-100 backdrop-blur-sm flex flex-col"
         @click.self="close"
       >
         <!-- Header -->
-        <div class="flex items-center justify-between px-6 py-4 bg-gray-700 border-b border-gray-700">
+        <div class="flex items-center justify-between px-6 py-4 bg-slate-900/95 border-b border-slate-700/60">
           <div class="flex items-center gap-4">
             <!-- Window controls -->
             <div class="flex gap-1.5">
@@ -212,7 +212,7 @@ const languageDisplay = computed(() => {
               {{ fullscreenContent.title }}
             </h2>
             <!-- Language badge -->
-            <span v-if="languageDisplay" class="px-2 py-1 text-xs rounded bg-gray-700 text-gray-300">
+            <span v-if="languageDisplay" class="px-2 py-1 text-xs rounded border border-slate-600/80 bg-slate-800/80 text-slate-200">
               {{ languageDisplay }}
             </span>
             <!-- Diff stats -->
@@ -224,17 +224,17 @@ const languageDisplay = computed(() => {
 
           <div class="flex items-center gap-3">
             <!-- View mode toggle for diff -->
-            <div v-if="fullscreenContent.type === 'diff'" class="flex rounded-lg border border-gray-600 overflow-hidden">
+            <div v-if="fullscreenContent.type === 'diff'" class="flex rounded-lg border border-slate-600/70 overflow-hidden">
               <button
                 class="px-3 py-1.5 text-sm font-medium transition-colors"
-                :class="viewMode === 'unified' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50'"
+                :class="viewMode === 'unified' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:bg-slate-700/40'"
                 @click="viewMode = 'unified'"
               >
                 Unified
               </button>
               <button
                 class="px-3 py-1.5 text-sm font-medium transition-colors"
-                :class="viewMode === 'split' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700/50'"
+                :class="viewMode === 'split' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:bg-slate-700/40'"
                 @click="viewMode = 'split'"
               >
                 Split
@@ -243,7 +243,7 @@ const languageDisplay = computed(() => {
 
             <!-- Copy button -->
             <button
-              class="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              class="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-200 hover:text-white hover:bg-slate-700/60 rounded-lg transition-colors"
               @click="copyContent"
             >
               <svg v-if="!copied" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -257,7 +257,7 @@ const languageDisplay = computed(() => {
 
             <!-- Close button -->
             <button
-              class="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              class="p-2 text-slate-300 hover:text-white hover:bg-slate-700/60 rounded-lg transition-colors"
               @click="close"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -268,70 +268,70 @@ const languageDisplay = computed(() => {
         </div>
 
         <!-- Labels for diff -->
-        <div v-if="fullscreenContent.type === 'diff' && (fullscreenContent.oldLabel || fullscreenContent.newLabel)" class="flex border-b border-gray-700 text-sm">
+        <div v-if="fullscreenContent.type === 'diff' && (fullscreenContent.oldLabel || fullscreenContent.newLabel)" class="flex border-b border-slate-700/60 text-sm">
           <div v-if="viewMode === 'split'" class="flex-1 px-6 py-2 bg-red-900/20 text-red-300 font-medium">
             {{ fullscreenContent.oldLabel || 'Original' }}
           </div>
-          <div v-if="viewMode === 'split'" class="flex-1 px-6 py-2 bg-green-900/20 text-green-300 font-medium border-l border-gray-700">
+          <div v-if="viewMode === 'split'" class="flex-1 px-6 py-2 bg-green-900/20 text-green-300 font-medium border-l border-slate-700/60">
             {{ fullscreenContent.newLabel || 'Modified' }}
           </div>
         </div>
 
         <!-- Content -->
-        <div class="flex-1 overflow-auto">
+        <div class="flex-1 overflow-auto bg-gradient-to-b from-slate-900/50 to-slate-950">
           <!-- Code / Terminal content -->
           <template v-if="fullscreenContent.type === 'code' || fullscreenContent.type === 'terminal'">
-            <pre class="p-6 text-sm leading-relaxed min-h-full"><code class="text-gray-100"><template v-for="(line, index) in codeLines" :key="index"><span class="inline-block w-full hover:bg-gray-700/50"><span class="inline-block w-12 text-right mr-6 text-gray-600 select-none">{{ index + 1 }}</span>{{ line }}
+            <pre class="p-6 text-sm leading-relaxed min-h-full"><code class="text-slate-100"><template v-for="(line, index) in codeLines" :key="index"><span class="inline-block w-full hover:bg-slate-700/40"><span class="inline-block w-12 text-right mr-6 text-slate-500 select-none">{{ index + 1 }}</span>{{ line }}
 </span></template></code></pre>
           </template>
 
           <!-- Diff unified view -->
           <template v-else-if="fullscreenContent.type === 'diff' && viewMode === 'unified'">
             <pre class="text-sm min-h-full"><code><template v-for="(line, index) in diffLines" :key="index"><div
-                  class="flex hover:bg-gray-700/30"
+                  class="flex hover:bg-slate-700/35"
                   :class="getLineClass(line.type)"
-                ><span class="w-16 px-4 text-right text-gray-600 select-none border-r border-gray-700 flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="w-16 px-4 text-right text-gray-600 select-none border-r border-gray-700 flex-shrink-0">{{ line.newLineNum || '' }}</span><span
+                ><span class="w-16 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="w-16 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line.newLineNum || '' }}</span><span
                     class="w-8 text-center flex-shrink-0"
                     :class="{
                       'text-green-400': line.type === 'added',
                       'text-red-400': line.type === 'removed',
-                      'text-gray-500': line.type === 'unchanged'
+                      'text-slate-500': line.type === 'unchanged'
                     }"
-                  >{{ getLinePrefix(line.type) }}</span><span class="flex-1 px-4 text-gray-100">{{ line.content }}</span></div></template></code></pre>
+                  >{{ getLinePrefix(line.type) }}</span><span class="flex-1 px-4 text-slate-100">{{ line.content }}</span></div></template></code></pre>
           </template>
 
           <!-- Diff split view -->
           <template v-else-if="fullscreenContent.type === 'diff' && viewMode === 'split'">
             <div class="flex min-h-full">
               <!-- Left (old) -->
-              <div class="flex-1 border-r border-gray-700">
+              <div class="flex-1 border-r border-slate-700/60">
                 <pre class="text-sm"><code><template v-for="(line, index) in splitDiff.left" :key="'left-' + index"><div
-                      class="flex hover:bg-gray-700/30"
-                      :class="line ? getLineClass(line.type) : 'bg-gray-700/50'"
-                    ><span class="w-14 px-4 text-right text-gray-600 select-none border-r border-gray-700 flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
+                      class="flex hover:bg-slate-700/35"
+                      :class="line ? getLineClass(line.type) : 'bg-slate-800/60'"
+                    ><span class="w-14 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
                         v-if="line"
                         class="w-8 text-center flex-shrink-0"
-                        :class="line.type === 'removed' ? 'text-red-400' : 'text-gray-500'"
-                      >{{ line.type === 'removed' ? '-' : ' ' }}</span><span v-else class="w-8 flex-shrink-0" /><span class="flex-1 px-4 text-gray-100">{{ line?.content || '' }}</span></div></template></code></pre>
+                        :class="line.type === 'removed' ? 'text-red-400' : 'text-slate-500'"
+                      >{{ line.type === 'removed' ? '-' : ' ' }}</span><span v-else class="w-8 flex-shrink-0" /><span class="flex-1 px-4 text-slate-100">{{ line?.content || '' }}</span></div></template></code></pre>
               </div>
               <!-- Right (new) -->
               <div class="flex-1">
                 <pre class="text-sm"><code><template v-for="(line, index) in splitDiff.right" :key="'right-' + index"><div
-                      class="flex hover:bg-gray-700/30"
-                      :class="line ? getLineClass(line.type) : 'bg-gray-700/50'"
-                    ><span class="w-14 px-4 text-right text-gray-600 select-none border-r border-gray-700 flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
+                      class="flex hover:bg-slate-700/35"
+                      :class="line ? getLineClass(line.type) : 'bg-slate-800/60'"
+                    ><span class="w-14 px-4 text-right text-slate-500 select-none border-r border-slate-700/60 flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
                         v-if="line"
                         class="w-8 text-center flex-shrink-0"
-                        :class="line.type === 'added' ? 'text-green-400' : 'text-gray-500'"
-                      >{{ line.type === 'added' ? '+' : ' ' }}</span><span v-else class="w-8 flex-shrink-0" /><span class="flex-1 px-4 text-gray-100">{{ line?.content || '' }}</span></div></template></code></pre>
+                        :class="line.type === 'added' ? 'text-green-400' : 'text-slate-500'"
+                      >{{ line.type === 'added' ? '+' : ' ' }}</span><span v-else class="w-8 flex-shrink-0" /><span class="flex-1 px-4 text-slate-100">{{ line?.content || '' }}</span></div></template></code></pre>
               </div>
             </div>
           </template>
         </div>
 
         <!-- Footer hint -->
-        <div class="px-6 py-2 bg-gray-700 border-t border-gray-700 text-center">
-          <span class="text-xs text-gray-500">Press <kbd class="px-1.5 py-0.5 bg-gray-700 rounded text-gray-400">Esc</kbd> or double-click to exit fullscreen</span>
+        <div class="px-6 py-2 bg-slate-900/95 border-t border-slate-700/60 text-center">
+          <span class="text-xs text-slate-300">Press <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-600 text-slate-100">Esc</kbd> or double-click to exit fullscreen</span>
         </div>
       </div>
     </Transition>

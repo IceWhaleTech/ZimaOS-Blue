@@ -873,9 +873,27 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 		parseKeyValuePairs(parts[1], input)
 	}
 
+	// Support dotted skill aliases (e.g. "reminder.add ...") by mapping to
+	// skill "reminder" with implicit action=add, preserving explicit action.
+	execSkillName := skillName
+	if dot := strings.Index(skillName, "."); dot > 0 && dot < len(skillName)-1 {
+		base := strings.TrimSpace(skillName[:dot])
+		action := strings.TrimSpace(skillName[dot+1:])
+		if base != "" && action != "" && isValidSkillName(base) {
+			execSkillName = base
+			if _, hasAction := input["action"]; !hasAction {
+				input["action"] = action
+			}
+			slog.Info("[exec] dotted skill alias mapped",
+				"raw_skill", skillName,
+				"skill", execSkillName,
+				"action", action)
+		}
+	}
+
 	// Try to execute the skill
-	slog.Info("[exec] skill short-circuit", "skill", skillName, "input", input, "source", "blue_prefix")
-	data, err := t.skillExec(ctx, skillName, input)
+	slog.Info("[exec] skill short-circuit", "skill", execSkillName, "raw_skill", skillName, "input", input, "source", "blue_prefix")
+	data, err := t.skillExec(ctx, execSkillName, input)
 
 	// If skill not found or disabled:
 	// - Try progressive selector fallback first.
@@ -935,7 +953,7 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 		return string(b), true
 	}
 
-	return t.buildSkillResult(ctx, skillName, data, warnings), true
+	return t.buildSkillResult(ctx, execSkillName, data, warnings), true
 }
 
 func (t *ExecTool) buildSkillResult(ctx context.Context, skillName string, data map[string]string, warnings []string) interface{} {

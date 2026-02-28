@@ -42,6 +42,11 @@ func (m *mockCronService) List() []CronJobInfo {
 	return out
 }
 
+func (m *mockCronService) Get(id string) (CronJobInfo, bool) {
+	job, ok := m.jobs[id]
+	return job, ok
+}
+
 func (m *mockCronService) ListByOwner(ownerID string) []CronJobInfo {
 	return m.List()
 }
@@ -83,6 +88,28 @@ func (m *mockCronService) Disable(id string) error {
 	j.Enabled = false
 	m.jobs[id] = j
 	return nil
+}
+
+func (m *mockCronService) GetExecutions(jobID string, limit int) ([]CronJobExecution, error) {
+	if _, ok := m.jobs[jobID]; !ok {
+		return nil, fmt.Errorf("job not found: %s", jobID)
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	out := []CronJobExecution{
+		{
+			ID:        "exec-1",
+			JobID:     jobID,
+			StartedAt: "2026-01-01T00:00:00Z",
+			Status:    "completed",
+			Duration:  "100ms",
+		},
+	}
+	if len(out) > limit {
+		return out[:limit], nil
+	}
+	return out, nil
 }
 
 // --- Mock WorkflowService ---
@@ -300,6 +327,25 @@ func (m *mockBrowserService) CloseTab(_ context.Context, targetID string) error 
 
 func (m *mockBrowserService) Tabs(_ context.Context) ([]BrowserTabInfo, error) {
 	return m.tabs, nil
+}
+
+func (m *mockBrowserService) ExecuteRecipe(_ context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error) {
+	return BrowserRecipeResult{
+		Success: true,
+		Data: map[string]interface{}{
+			"recipe": recipe,
+			"params": params,
+		},
+		TargetID: "tab-1",
+		Message:  "recipe executed",
+	}, nil
+}
+
+func (m *mockBrowserService) ListRecipes(_ context.Context) []BrowserRecipeInfo {
+	return []BrowserRecipeInfo{
+		{Name: "search", Description: "Search by query", KeepTab: true},
+		{Name: "extract", Description: "Extract page content", KeepTab: true},
+	}
 }
 
 // ============================================================

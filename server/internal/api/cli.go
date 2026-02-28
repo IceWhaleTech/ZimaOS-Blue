@@ -11,8 +11,8 @@ import (
 
 // CLIHandler handles CLI configuration API requests.
 type CLIHandler struct {
-	config      *config.ClaudeCodeCLIConfig
-	featureGate *features.FeatureGate
+	config         *config.ClaudeCodeCLIConfig
+	featureGate    *features.FeatureGate
 	onConfigChange func(*config.ClaudeCodeCLIConfig) error
 }
 
@@ -40,14 +40,14 @@ func (h *CLIHandler) RegisterRoutes(e *echo.Echo) {
 
 // CLIConfigResponse represents the CLI configuration response.
 type CLIConfigResponse struct {
-	Enabled  bool                       `json:"enabled"`
-	Install  config.CLIInstallConfig    `json:"install"`
-	Download config.CLIDownloadConfig   `json:"download"`
-	Features config.CLIFeaturesConfig   `json:"features"`
+	Enabled  bool                     `json:"enabled"`
+	Install  config.CLIInstallConfig  `json:"install"`
+	Download config.CLIDownloadConfig `json:"download"`
+	Features config.CLIFeaturesConfig `json:"features"`
 
 	// Additional status info
-	Installed       bool     `json:"installed"`
-	Version         string   `json:"version,omitempty"`
+	Installed        bool     `json:"installed"`
+	Version          string   `json:"version,omitempty"`
 	AffectedFeatures []string `json:"affected_features,omitempty"`
 }
 
@@ -74,10 +74,10 @@ func (h *CLIHandler) GetConfig(c echo.Context) error {
 
 // UpdateConfigRequest represents the update config request.
 type UpdateConfigRequest struct {
-	Enabled  *bool                       `json:"enabled,omitempty"`
-	Install  *config.CLIInstallConfig    `json:"install,omitempty"`
-	Download *config.CLIDownloadConfig   `json:"download,omitempty"`
-	Features *config.CLIFeaturesConfig   `json:"features,omitempty"`
+	Enabled  *bool                     `json:"enabled,omitempty"`
+	Install  *config.CLIInstallConfig  `json:"install,omitempty"`
+	Download *config.CLIDownloadConfig `json:"download,omitempty"`
+	Features *config.CLIFeaturesConfig `json:"features,omitempty"`
 }
 
 // UpdateConfig updates the CLI configuration.
@@ -250,9 +250,9 @@ func (h *CLIHandler) GetCLIFeatureMatrix(c echo.Context) error {
 		{Feature: "Tool Calling (Adapter)", WithCLI: "Full", WithoutCLI: "None", RequiresCLI: true, Notes: "CLIProxy adapter requires CLI"},
 		{Feature: "File Operations", WithCLI: "Full", WithoutCLI: "None", RequiresCLI: true, Notes: "Requires CLI"},
 		{Feature: "Terminal Commands", WithCLI: "Full", WithoutCLI: "None", RequiresCLI: true, Notes: "Requires CLI"},
-		{Feature: "MCP Tools", WithCLI: "Full", WithoutCLI: "None", RequiresCLI: true, Notes: "Requires CLI"},
+		{Feature: "MCP Tools", WithCLI: "Full", WithoutCLI: "Full", RequiresCLI: false, Notes: "Native MCP server works without CLI"},
 		{Feature: "Code Execution", WithCLI: "Full", WithoutCLI: "None", RequiresCLI: true, Notes: "Requires CLI"},
-		{Feature: "Agent Mode", WithCLI: "Full", WithoutCLI: "None", RequiresCLI: true, Notes: "Requires CLI"},
+		{Feature: "Agent Mode", WithCLI: "Full", WithoutCLI: "Full", RequiresCLI: false, Notes: "Native agent runner works without CLI"},
 		{Feature: "Project Context", WithCLI: "Full", WithoutCLI: "None", RequiresCLI: true, Notes: "Requires CLI"},
 		{Feature: "Usage Statistics", WithCLI: "Full", WithoutCLI: "Basic", RequiresCLI: false, Notes: "Basic stats still available"},
 		{Feature: "Provider Switching", WithCLI: "Full", WithoutCLI: "Full", RequiresCLI: false, Notes: "No CLI needed"},

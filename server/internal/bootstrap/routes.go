@@ -94,6 +94,50 @@ func resolveDefaultModelForCCCLI(model string, handler *claudecode.Handler) stri
 	return model
 }
 
+func resolveMCPWorkspaceRoot(dataDir string, appCfg *config.Config) string {
+	candidates := make([]string, 0, 4)
+	if appCfg != nil {
+		if v := strings.TrimSpace(appCfg.ClaudeCodeCLI.Backend.WorkspaceDir); v != "" {
+			candidates = append(candidates, v)
+		}
+		if v := strings.TrimSpace(appCfg.ClaudeCode.WorkspaceDir); v != "" {
+			candidates = append(candidates, v)
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil && strings.TrimSpace(cwd) != "" {
+		candidates = append(candidates, cwd)
+	}
+	if strings.TrimSpace(dataDir) != "" {
+		candidates = append(candidates, filepath.Join(dataDir, "workspace"))
+	}
+	if len(candidates) == 0 {
+		return "."
+	}
+
+	var fallback string
+	for _, c := range candidates {
+		normalized := strings.TrimSpace(c)
+		if normalized == "" {
+			continue
+		}
+		if !filepath.IsAbs(normalized) {
+			if abs, err := filepath.Abs(normalized); err == nil {
+				normalized = abs
+			}
+		}
+		if fallback == "" {
+			fallback = normalized
+		}
+		if st, err := os.Stat(normalized); err == nil && st.IsDir() {
+			return normalized
+		}
+	}
+	if fallback == "" {
+		return "."
+	}
+	return fallback
+}
+
 // featureDisabled returns an echo handler that responds with a standard
 // "feature not enabled" JSON payload.  This is used as a catch-all for
 // optional features whose handler was not initialised at startup so that
@@ -663,6 +707,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		deps.ChatHandler.SetToolSelector(ts)
 	}
+	// Tool router: dynamic exposure + schema compression.
+	// Keep enabled even when smart selection is off.
+	deps.ChatHandler.SetToolRouter(tools.DefaultToolRouter())
 	// Smart skill selection (progressive: rule -> IR -> optional rerank)
 	if deps.Config.ToolCalling.SmartSkillSelection {
 		workspaceDir := filepath.Join(cfg.DataDir, "workspace")
@@ -1023,6 +1070,17 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		// the unified /approval/resolve endpoint also handles exec approvals).
 		if execApprovals != nil {
 			execGroup := v1.Group("/exec")
+			execGroup.GET("/approvals/pending", func(c echo.Context) error {
+				userID := c.QueryParam("user_id")
+				if userID == "" {
+					userID = "default"
+				}
+				req := execApprovals.GetPending(userID)
+				if req == nil {
+					return c.JSON(200, map[string]interface{}{"pending": false})
+				}
+				return c.JSON(200, map[string]interface{}{"pending": true, "approval": req})
+			})
 			execGroup.POST("/approvals/:id", func(c echo.Context) error {
 				id := c.Param("id")
 				var body struct {
@@ -1524,9 +1582,14 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				proxyHandler.SetOAuthManager(oauthManager)
 			}
 
-			// Wire failover callback for pipeline stats collection
-			if deps.ProviderPool.Router != nil && pipelineStats != nil {
-				deps.ProviderPool.Router.SetFailoverCallback(pipelineStats.OnFailover)
+			// Wire failover callback for both runtime dashboard metrics and persisted pipeline stats.
+			if deps.ProviderPool.Router != nil {
+				deps.ProviderPool.Router.SetFailoverCallback(func(result *providerpool.FailoverResult) {
+					smartFailover.GetMetrics().RecordProviderPoolResult(result)
+					if pipelineStats != nil {
+						pipelineStats.OnFailover(result)
+					}
+				})
 			}
 
 			// Wire health check latency into router for latency-based routing
@@ -1812,6 +1875,21 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// MCP server: expose tools to external agents
 		mcpServer := mcp.NewServer(s.ToolRegistry, tools.NewExecutor(s.ToolRegistry))
+		mcpServer.SetWorkspaceRoot(resolveMCPWorkspaceRoot(cfg.DataDir, deps.Config))
+		mcpServer.SetGenerativeRunner(func(ctx context.Context, prompt string, maxTokens int) (string, error) {
+			pc := server.NewProxyClient(cfg.Port)
+			req := llm.ChatRequest{
+				Model:       resolveDefaultModelForCCCLI("auto", deps.ClaudeCodeHandler),
+				Messages:    []llm.Message{{Role: llm.RoleUser, Content: prompt}},
+				Temperature: 0.2,
+				MaxTokens:   maxTokens,
+			}
+			resp, err := pc.Chat(ctx, req)
+			if err != nil {
+				return "", err
+			}
+			return strings.TrimSpace(resp.Message.Content), nil
+		})
 		if deps.WorkspaceHandler != nil {
 			if mgr := deps.WorkspaceHandler.Manager(); mgr != nil {
 				mcpServer.SetWorkspace(mgr)
@@ -2109,6 +2187,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Wire settings into chat handler for runtime smart tool selection toggle
 	deps.ChatHandler.SetSettingsHandler(settingsHandler)
 	if skillAutoReranker != nil {
+		settingsHandler.SetSkillRerankerModelManager(skillAutoReranker.ModelManager())
 		skillAutoReranker.SetSwitchFuncs(
 			func() bool {
 				rerankEnabled := deps.Config.ToolCalling.SkillRerankEnabled
@@ -2128,6 +2207,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				}
 				return autoDownload
 			},
+		)
+	} else {
+		// Keep download/status endpoints usable even when smart skill selection
+		// (and thus AutoSkillReranker) is not initialized.
+		settingsHandler.SetSkillRerankerModelManager(
+			claudecode.NewSkillRerankerModelManager(cfg.DataDir, deps.Config.ToolCalling.SkillRerankModel),
 		)
 	}
 	if execTool := tools.GetExecTool(s.ToolRegistry); execTool != nil {

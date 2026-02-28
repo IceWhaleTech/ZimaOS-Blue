@@ -535,6 +535,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'ഡൗൺലോഡ് കണക്ഷൻ തയ്യാറാക്കുന്നു...',
+      downloadFailed: 'ONNX മോഡൽ ഡൗൺലോഡ് ചെയ്യാൻ കഴിഞ്ഞില്ല',
+    },
     tab: { general: 'പൊതു', llm: 'LLM', metrics: 'ഉപയോഗം', remote: 'ദൂര പ്രവേശനം', config: 'ക്രമീകരണം', backup: 'ബാക്കപ്പ്', logs: 'ലോഗുകൾ', service: 'സേവനം', retention: 'നിക്ഷേപം' },
     failover: {
       title: 'സ്മാർട്ട് ഫെയിൽഓവർ നില',

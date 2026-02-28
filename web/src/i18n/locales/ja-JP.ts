@@ -645,6 +645,11 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    skillReranker: {
+      ...enUS.settings.skillReranker,
+      modelConnecting: 'ダウンロード接続を準備中...',
+      downloadFailed: 'ONNXモデルのダウンロードに失敗しました',
+    },
     title: '設定',
     tab: {
       ...enUS.settings.tab,

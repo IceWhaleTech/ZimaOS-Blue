@@ -3646,14 +3646,89 @@ func (ph *ProxyHandler) injectCachedResponsesPreviousIDForRoute(r *http.Request,
 	if len(body) == 0 || disableResponsesContinuation(r) {
 		return body
 	}
-	if strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) != "" {
-		return body
-	}
-	prevID := ph.getCachedResponsesPreviousIDForRoute(r, route)
+	prevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
 	if prevID == "" {
+		prevID = ph.getCachedResponsesPreviousIDForRoute(r, route)
+		if prevID == "" {
+			return body
+		}
+		out, err := sjson.SetBytes(body, "previous_response_id", prevID)
+		if err != nil {
+			return body
+		}
+		body = out
+	}
+	// When continuation is active, only send incremental input after the last
+	// assistant message. This avoids re-sending full history to /responses.
+	return trimResponsesInputForContinuation(body)
+}
+
+func trimResponsesInputForContinuation(body []byte) []byte {
+	if len(body) == 0 {
 		return body
 	}
-	out, err := sjson.SetBytes(body, "previous_response_id", prevID)
+	if strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) == "" {
+		return body
+	}
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() || !input.IsArray() {
+		return body
+	}
+
+	items := input.Array()
+	if len(items) == 0 {
+		return body
+	}
+
+	lastAssistant := -1
+	hasToolInput := false
+	for i := len(items) - 1; i >= 0; i-- {
+		itemType := strings.TrimSpace(items[i].Get("type").String())
+		if itemType == "function_call_output" || itemType == "function_call" {
+			hasToolInput = true
+		}
+		if strings.EqualFold(strings.TrimSpace(items[i].Get("role").String()), "assistant") {
+			lastAssistant = i
+			break
+		}
+	}
+
+	// Tool continuation payloads are often already incremental and contain only
+	// function_call_output items (no role field). Keep them intact.
+	if lastAssistant < 0 && hasToolInput {
+		return body
+	}
+
+	start := len(items) - 1
+	if lastAssistant >= 0 {
+		if lastAssistant+1 >= len(items) {
+			out, err := sjson.DeleteBytes(body, "input")
+			if err != nil {
+				return body
+			}
+			return out
+		}
+		start = lastAssistant + 1
+	}
+
+	trimmedRaw := make([]string, 0, len(items)-start)
+	for i := start; i < len(items); i++ {
+		raw := strings.TrimSpace(items[i].Raw)
+		if raw == "" || raw == "null" {
+			continue
+		}
+		trimmedRaw = append(trimmedRaw, raw)
+	}
+	if len(trimmedRaw) == 0 {
+		out, err := sjson.DeleteBytes(body, "input")
+		if err != nil {
+			return body
+		}
+		return out
+	}
+
+	trimmedInput := "[" + strings.Join(trimmedRaw, ",") + "]"
+	out, err := sjson.SetRawBytes(body, "input", []byte(trimmedInput))
 	if err != nil {
 		return body
 	}
