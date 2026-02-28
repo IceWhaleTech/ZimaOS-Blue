@@ -37,6 +37,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mcp"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
@@ -61,6 +62,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/update"
@@ -75,6 +77,22 @@ import (
 
 // routesStartTime records when the server started, used for uptime calculation
 var routesStartTime = timeutil.NowTime()
+
+const defaultCCCLIModel = "gpt-5.3-codex-spark"
+
+func resolveDefaultModelForCCCLI(model string, handler *claudecode.Handler) string {
+	normalized := strings.TrimSpace(model)
+	if normalized == "" {
+		if handler != nil && handler.IsEnabled() {
+			return defaultCCCLIModel
+		}
+		return "auto"
+	}
+	if strings.EqualFold(normalized, "auto") && handler != nil && handler.IsEnabled() {
+		return defaultCCCLIModel
+	}
+	return model
+}
 
 // featureDisabled returns an echo handler that responds with a standard
 // "feature not enabled" JSON payload.  This is used as a catch-all for
@@ -141,6 +159,7 @@ type RoutesDeps struct {
 	ProviderPool       *providerpool.Pool
 	APIKeyService      *auth.APIKeyService
 	SpeechHandler      *speech.Handler
+	STTService         stt.Service
 	NgrokTunnelMgr     *ngrok.SDKTunnelManager
 	NgrokConfigStore   *ngrok.ConfigStore
 	ClaudeCodeHandler  *claudecode.Handler
@@ -634,6 +653,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Set prompt guard on chat handler
 	promptGuard := promptguard.NewDetector(promptguard.DefaultDetectorConfig())
 	deps.ChatHandler.SetPromptGuard(promptGuard)
+	var skillAutoReranker *claudecode.AutoSkillReranker
 
 	// Smart tool selection
 	if deps.Config.ToolCalling.SmartSelection {
@@ -642,6 +662,20 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			ts.MaxTools = deps.Config.ToolCalling.SmartSelectionMaxTools
 		}
 		deps.ChatHandler.SetToolSelector(ts)
+	}
+	// Smart skill selection (progressive: rule -> IR -> optional rerank)
+	if deps.Config.ToolCalling.SmartSkillSelection {
+		workspaceDir := filepath.Join(cfg.DataDir, "workspace")
+		reranker := claudecode.NewAutoSkillReranker(cfg.DataDir, deps.Config.ToolCalling.SkillRerankModel, claudecode.AutoSkillRerankerOptions{
+			ONNXEnabled:  deps.Config.ToolCalling.SkillRerankEnabled && deps.Config.ToolCalling.SkillRerankONNXEnabled,
+			AutoDownload: deps.Config.ToolCalling.SkillRerankONNXAutoDownload,
+		})
+		skillAutoReranker = reranker
+		if deps.Config.ToolCalling.SkillRerankEnabled {
+			reranker.WarmupAsync()
+		}
+		ss := claudecode.NewSkillSelector(workspaceDir, reranker)
+		deps.ChatHandler.SetSkillSelector(ss)
 	}
 
 	// Wire SSE broker for cross-tab conversation_updated events during streaming
@@ -953,6 +987,36 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				}
 				return sockipc.SkillResultToMap(result.Data, result.Success, result.Error), nil
 			})
+			execTool.SetSkillSelector(func(ctx context.Context, query string) tools.SkillSelectionDecision {
+				selector := deps.ChatHandler.GetSkillSelector()
+				if selector == nil {
+					return tools.SkillSelectionDecision{}
+				}
+				opts := claudecode.SelectOptions{
+					Mode:                claudecode.SkillSelectorModeHybrid,
+					EnableRerank:        true,
+					ConfidenceThreshold: 0.78,
+				}
+				if sh := deps.ChatHandler.GetSettingsHandler(); sh != nil {
+					opts.Mode = sh.GetSkillSelectorMode()
+					opts.EnableRerank = sh.GetSkillRerankEnabled()
+					opts.ConfidenceThreshold = sh.GetSkillSelectorConfidenceThreshold()
+				}
+				decision, err := selector.Select(ctx, query, opts)
+				if err != nil {
+					return tools.SkillSelectionDecision{}
+				}
+				out := tools.SkillSelectionDecision{
+					SelectedSkill: decision.SelectedSkill,
+					Confidence:    decision.Confidence,
+					NeedClarify:   decision.NeedClarify,
+					Reason:        decision.Reason,
+				}
+				for _, c := range decision.Candidates {
+					out.Candidates = append(out.Candidates, c.Name)
+				}
+				return out
+			})
 		}
 
 		// Exec approval REST endpoint (kept for backwards compatibility;
@@ -1131,7 +1195,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 						pc.SetAPIKey(info.Key)
 					}
 				}
-				return pc.Chat
+				return func(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+					req.Model = resolveDefaultModelForCCCLI(req.Model, deps.ClaudeCodeHandler)
+					return pc.Chat(ctx, req)
+				}
 			}(),
 			Logger: logger,
 		})
@@ -1407,6 +1474,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		proxyConnPool := proxy.NewConnectionPool(&deps.Config.Proxy.Connection)
 		proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
 		proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
+		proxyHandler.SetSTTService(deps.STTService)
 		proxyHandler.SetProviderRaceConfig(routingConfig.Failover.ProviderRace)
 		proxyHandler.SetPromptCacheEnabled(true) // default ON for new installs
 		proxyHandler.SetDataMasker(dataMasker)
@@ -1699,7 +1767,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// Wire LLM calls for voice mode through the same proxy pipeline
 		if deps.VoiceHandler != nil {
-			deps.VoiceHandler.Service().SetChatFunc(bridge.Chat)
+			deps.VoiceHandler.Service().SetChatFunc(func(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+				req.Model = resolveDefaultModelForCCCLI(req.Model, deps.ClaudeCodeHandler)
+				return bridge.Chat(ctx, req)
+			})
 		}
 
 		// Wire VLM bridge into UI reviewer tool (for IPC-based SKILL)
@@ -2037,6 +2108,31 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	providerSettingsHandler.SetSettingsHandler(settingsHandler)
 	// Wire settings into chat handler for runtime smart tool selection toggle
 	deps.ChatHandler.SetSettingsHandler(settingsHandler)
+	if skillAutoReranker != nil {
+		skillAutoReranker.SetSwitchFuncs(
+			func() bool {
+				rerankEnabled := deps.Config.ToolCalling.SkillRerankEnabled
+				if settingsHandler.IsSkillRerankEnabledSet() {
+					rerankEnabled = settingsHandler.GetSkillRerankEnabled()
+				}
+				onnxEnabled := deps.Config.ToolCalling.SkillRerankONNXEnabled
+				if settingsHandler.IsSkillRerankONNXEnabledSet() {
+					onnxEnabled = settingsHandler.GetSkillRerankONNXEnabled()
+				}
+				return rerankEnabled && onnxEnabled
+			},
+			func() bool {
+				autoDownload := deps.Config.ToolCalling.SkillRerankONNXAutoDownload
+				if settingsHandler.IsSkillRerankONNXAutoDownloadSet() {
+					autoDownload = settingsHandler.GetSkillRerankONNXAutoDownload()
+				}
+				return autoDownload
+			},
+		)
+	}
+	if execTool := tools.GetExecTool(s.ToolRegistry); execTool != nil {
+		execTool.SetAutoConfirmFunc(settingsHandler.GetAgentAutoConfirm)
+	}
 	// Wire locale into system prompt builder so all skills see the user's locale
 	if deps.SystemPromptBuilder != nil {
 		deps.SystemPromptBuilder.SetLocaleFunc(settingsHandler.GetLocale)
@@ -2053,6 +2149,24 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Wire question manager silent func to settingsHandler.GetAgentAutoConfirm
 	if questionMgr != nil {
 		questionMgr.SetSilentFunc(settingsHandler.GetAgentAutoConfirm)
+		questionMgr.SetTimeoutFunc(func() time.Duration {
+			seconds := settingsHandler.GetAgentAskTimeoutSeconds()
+			if seconds <= 0 {
+				seconds = 120
+			}
+			return time.Duration(seconds) * time.Second
+		})
+		questionMgr.SetTimeoutActionFunc(settingsHandler.GetAgentAskTimeoutAction)
+	}
+	if agentRunnerRef != nil {
+		agentRunnerRef.SetAskTimeoutFunc(func() time.Duration {
+			seconds := settingsHandler.GetAgentAskTimeoutSeconds()
+			if seconds <= 0 {
+				seconds = 120
+			}
+			return time.Duration(seconds) * time.Second
+		})
+		agentRunnerRef.SetAskTimeoutActionFunc(settingsHandler.GetAgentAskTimeoutAction)
 	}
 
 	// User-level routes (protected) — /api/v1/my/*

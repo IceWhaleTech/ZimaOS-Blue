@@ -2815,9 +2815,9 @@ export default {
     // LLM request details
     llmDetails: {
       input: 'Input',
-      prompt: 'Prompt',
-      completion: 'Completion',
-      total: 'Total',
+      prompt: 'Input Tokens',
+      completion: 'Output Tokens',
+      total: 'Total Tokens',
       score: 'Score',
     },
     // Message direction

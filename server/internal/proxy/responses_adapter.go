@@ -23,6 +23,7 @@ type openAIChatRequestForResponses struct {
 	Temperature        *float64                        `json:"temperature,omitempty"`
 	TopP               *float64                        `json:"top_p,omitempty"`
 	PreviousResponseID string                          `json:"previous_response_id,omitempty"`
+	Instructions       string                          `json:"instructions,omitempty"`
 }
 
 type openAIChatMessageForResponses struct {
@@ -53,13 +54,14 @@ type openAIChatToolForResponses struct {
 
 type responsesRequestForOpenAI struct {
 	Model              string          `json:"model,omitempty"`
+	Store              bool            `json:"store"`
 	Input              []interface{}   `json:"input,omitempty"`
-	Instructions       string          `json:"instructions,omitempty"`
 	Tools              []responsesTool `json:"tools,omitempty"`
 	Stream             bool            `json:"stream,omitempty"`
 	MaxOutputTokens    int             `json:"max_output_tokens,omitempty"`
 	Temperature        *float64        `json:"temperature,omitempty"`
 	TopP               *float64        `json:"top_p,omitempty"`
+	Instructions       string          `json:"instructions,omitempty"`
 	PreviousResponseID string          `json:"previous_response_id,omitempty"`
 }
 
@@ -124,9 +126,15 @@ type responsesAPIContentBlock struct {
 	Text string `json:"text,omitempty"`
 }
 
+type chatAudioTranscriber func(inputAudio any) (string, bool)
+
 // convertOpenAIChatCompletionsToResponses converts an OpenAI chat-completions
 // request body into an OpenAI Responses API request body.
 func convertOpenAIChatCompletionsToResponses(body []byte) ([]byte, error) {
+	return convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body, nil)
+}
+
+func convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body []byte, audioTranscriber chatAudioTranscriber) ([]byte, error) {
 	var in openAIChatRequestForResponses
 	if err := gojson.Unmarshal(body, &in); err != nil {
 		return nil, fmt.Errorf("parse openai chat request: %w", err)
@@ -134,6 +142,7 @@ func convertOpenAIChatCompletionsToResponses(body []byte) ([]byte, error) {
 
 	out := responsesRequestForOpenAI{
 		Model:  in.Model,
+		Store:  true,
 		Stream: in.Stream,
 	}
 	if in.MaxTokens > 0 {
@@ -150,6 +159,9 @@ func convertOpenAIChatCompletionsToResponses(body []byte) ([]byte, error) {
 	}
 	if in.PreviousResponseID != "" {
 		out.PreviousResponseID = in.PreviousResponseID
+	}
+	if strings.TrimSpace(in.Instructions) != "" {
+		out.Instructions = strings.TrimSpace(in.Instructions)
 	}
 
 	if len(in.Tools) > 0 {
@@ -176,16 +188,10 @@ func convertOpenAIChatCompletionsToResponses(body []byte) ([]byte, error) {
 		trimmedMessages = trimMessagesForContinuation(in.Messages)
 	}
 
-	var instructions []string
 	out.Input = make([]interface{}, 0, len(trimmedMessages)+2)
 	for msgIdx, m := range trimmedMessages {
 		role := strings.ToLower(strings.TrimSpace(m.Role))
 		switch role {
-		case "system", "developer":
-			text := extractTextFromChatContent(m.Content)
-			if text != "" {
-				instructions = append(instructions, text)
-			}
 		case "tool":
 			if m.ToolCallID == "" {
 				continue
@@ -196,7 +202,7 @@ func convertOpenAIChatCompletionsToResponses(body []byte) ([]byte, error) {
 				Output: contentRawToString(m.Content),
 			})
 		default:
-			parts := convertChatContentToResponsesParts(m.Content)
+			parts := convertChatContentToResponsesParts(m.Content, audioTranscriber)
 			if len(parts) > 0 {
 				out.Input = append(out.Input, responsesInputMessage{
 					Role:    normalizeInputRole(role),
@@ -220,10 +226,6 @@ func convertOpenAIChatCompletionsToResponses(body []byte) ([]byte, error) {
 		}
 	}
 
-	if len(instructions) > 0 {
-		out.Instructions = strings.Join(instructions, "\n\n")
-	}
-
 	out.Input = sanitizeResponsesInput(out.Input)
 
 	converted, err := gojson.Marshal(out)
@@ -243,6 +245,21 @@ func clampResponsesMaxOutputTokens(body []byte) []byte {
 		return body
 	}
 	out, err := sjson.SetBytes(body, "max_output_tokens", responsesMaxOutputTokensCap)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+// ensureResponsesStoreEnabled forces Responses API requests to set store=true.
+func ensureResponsesStoreEnabled(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	if gjson.GetBytes(body, "store").Bool() {
+		return body
+	}
+	out, err := sjson.SetBytes(body, "store", true)
 	if err != nil {
 		return body
 	}
@@ -361,6 +378,10 @@ func convertResponsesToOpenAIChatCompletions(body []byte) ([]byte, error) {
 
 func normalizeInputRole(role string) string {
 	switch role {
+	case "system":
+		return "system"
+	case "developer":
+		return "developer"
 	case "assistant":
 		return "assistant"
 	case "tool":
@@ -370,7 +391,7 @@ func normalizeInputRole(role string) string {
 	}
 }
 
-func convertChatContentToResponsesParts(raw gojson.RawMessage) []responsesInputContentPart {
+func convertChatContentToResponsesParts(raw gojson.RawMessage, audioTranscriber chatAudioTranscriber) []responsesInputContentPart {
 	raw = gojson.RawMessage(strings.TrimSpace(string(raw)))
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
@@ -388,7 +409,7 @@ func convertChatContentToResponsesParts(raw gojson.RawMessage) []responsesInputC
 	if err := gojson.Unmarshal(raw, &asArray); err == nil {
 		parts := make([]responsesInputContentPart, 0, len(asArray))
 		for _, part := range asArray {
-			if p, ok := convertChatContentPart(part); ok {
+			if p, ok := convertChatContentPart(part, audioTranscriber); ok {
 				parts = append(parts, p)
 			}
 		}
@@ -397,7 +418,7 @@ func convertChatContentToResponsesParts(raw gojson.RawMessage) []responsesInputC
 
 	var asObject map[string]interface{}
 	if err := gojson.Unmarshal(raw, &asObject); err == nil {
-		if p, ok := convertChatContentPart(asObject); ok {
+		if p, ok := convertChatContentPart(asObject, audioTranscriber); ok {
 			return []responsesInputContentPart{p}
 		}
 	}
@@ -405,7 +426,7 @@ func convertChatContentToResponsesParts(raw gojson.RawMessage) []responsesInputC
 	return []responsesInputContentPart{{Type: "input_text", Text: string(raw)}}
 }
 
-func convertChatContentPart(part map[string]interface{}) (responsesInputContentPart, bool) {
+func convertChatContentPart(part map[string]interface{}, audioTranscriber chatAudioTranscriber) (responsesInputContentPart, bool) {
 	partType, _ := part["type"].(string)
 	switch partType {
 	case "", "text", "input_text", "output_text":
@@ -434,6 +455,14 @@ func convertChatContentPart(part map[string]interface{}) (responsesInputContentP
 		if !ok || audio == nil {
 			return responsesInputContentPart{}, false
 		}
+		if audioTranscriber != nil {
+			if text, ok := audioTranscriber(audio); ok {
+				if strings.TrimSpace(text) == "" {
+					return responsesInputContentPart{}, false
+				}
+				return responsesInputContentPart{Type: "input_text", Text: text}, true
+			}
+		}
 		return responsesInputContentPart{Type: "input_audio", Audio: audio}, true
 	default:
 		text := anyToString(part["text"])
@@ -445,7 +474,7 @@ func convertChatContentPart(part map[string]interface{}) (responsesInputContentP
 }
 
 func extractTextFromChatContent(raw gojson.RawMessage) string {
-	parts := convertChatContentToResponsesParts(raw)
+	parts := convertChatContentToResponsesParts(raw, nil)
 	if len(parts) == 0 {
 		return ""
 	}

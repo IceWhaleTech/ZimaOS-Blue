@@ -20,8 +20,8 @@ import (
 	"unsafe"
 
 	"github.com/labstack/echo/v4"
-	"go.uber.org/zap"
 	_ "github.com/mattn/go-sqlite3"
+	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
@@ -32,17 +32,17 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
@@ -844,6 +844,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		ProviderPool:       providerPool,
 		APIKeyService:      services.APIKeyService,
 		SpeechHandler:      speechHandler,
+		STTService:         sttService,
 		NgrokTunnelMgr:     ngrokTunnelMgr,
 		NgrokConfigStore:   ngrokConfigStore,
 		ClaudeCodeHandler:  claudeCodeHandler,

@@ -285,6 +285,76 @@ func TestParseSkillOSList(t *testing.T) {
 	}
 }
 
+func TestFormatPinnedSkills_FallbackToHomeDefaultDir(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	homeSkillDir := filepath.Join(homeDir, ".claude", "skills", "browser")
+	if err := os.MkdirAll(homeSkillDir, 0o755); err != nil {
+		t.Fatalf("mkdir home skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(homeSkillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser from home default path
+---
+# browser
+`), 0o644); err != nil {
+		t.Fatalf("write home SKILL.md: %v", err)
+	}
+
+	got := FormatPinnedSkills(workspaceDir)
+	if !contains(got, `<pinned_skills>`) {
+		t.Fatalf("expected pinned_skills output, got: %q", got)
+	}
+	if !contains(got, `name="browser"`) {
+		t.Fatalf("expected browser skill from home path, got: %q", got)
+	}
+	if !contains(got, `desc="Browser from home default path"`) {
+		t.Fatalf("expected home description, got: %q", got)
+	}
+}
+
+func TestFormatPinnedSkills_WorkspaceOverridesHome(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	workspaceSkillDir := filepath.Join(workspaceDir, ".claude", "skills", "browser")
+	if err := os.MkdirAll(workspaceSkillDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceSkillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser from workspace path
+---
+# browser
+`), 0o644); err != nil {
+		t.Fatalf("write workspace SKILL.md: %v", err)
+	}
+
+	homeSkillDir := filepath.Join(homeDir, ".claude", "skills", "browser")
+	if err := os.MkdirAll(homeSkillDir, 0o755); err != nil {
+		t.Fatalf("mkdir home skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(homeSkillDir, "SKILL.md"), []byte(`---
+name: browser
+description: Browser from home path
+---
+# browser
+`), 0o644); err != nil {
+		t.Fatalf("write home SKILL.md: %v", err)
+	}
+
+	got := FormatPinnedSkills(workspaceDir)
+	if !contains(got, `desc="Browser from workspace path"`) {
+		t.Fatalf("expected workspace description to win, got: %q", got)
+	}
+	if contains(got, `desc="Browser from home path"`) {
+		t.Fatalf("did not expect home description when workspace exists, got: %q", got)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
 }

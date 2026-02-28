@@ -6,7 +6,6 @@ import { useRoute } from 'vue-router'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useNotificationStore } from '@/stores/notification'
 import ProviderIcon from '@/components/ProviderIcon.vue'
-import IDEDiscovery from '@/components/IDEDiscovery.vue'
 import type { Provider, Model } from '@/api/providerPool'
 import { providerPoolApi } from '@/api/providerPool'
 import { formatTokens } from '@/utils/format'
@@ -29,13 +28,19 @@ const keyTestResults = ref<Record<string, { healthy: boolean; error?: string }>>
 const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
 const searchQuery = ref('')
-type ProviderTab = 'all' | 'trial' | 'builtin' | 'platform' | 'custom' | 'media' | 'oauth'
+type ProviderTab = 'all' | 'trial' | 'builtin' | 'platform' | 'custom' | 'media'
 const activeTab = ref<ProviderTab>('all')
+function isOAuthProvider(provider: Provider): boolean {
+  return !!provider.oauth
+}
+function filterVisibleProviders(providers: Provider[]): Provider[] {
+  return providers.filter(p => !isOAuthProvider(p))
+}
 const availableTabs = computed<ProviderTab[]>(() => {
   const tabs: ProviderTab[] = ['all']
-  if (store.trialProviders?.length) tabs.push('trial')
-  tabs.push('builtin', 'oauth', 'platform', 'custom')
-  if (store.mediaProviders?.length) tabs.push('media')
+  if (filterVisibleProviders(store.trialProviders || []).length) tabs.push('trial')
+  tabs.push('builtin', 'platform', 'custom')
+  if (filterVisibleProviders(store.mediaProviders || []).length) tabs.push('media')
   return tabs
 })
 const iconInput = ref<HTMLInputElement | null>(null)
@@ -205,25 +210,22 @@ const filteredProviders = computed(() => {
 
   switch (activeTab.value) {
     case 'all':
-      providers = store.providers || []
+      providers = filterVisibleProviders(store.providers || [])
       break
     case 'trial':
-      providers = store.trialProviders || []
+      providers = filterVisibleProviders(store.trialProviders || [])
       break
     case 'builtin':
-      providers = store.builtinProviders || []
+      providers = filterVisibleProviders(store.builtinProviders || [])
       break
     case 'platform':
-      providers = store.platformProviders || []
+      providers = filterVisibleProviders(store.platformProviders || [])
       break
     case 'custom':
-      providers = store.customProviders || []
+      providers = filterVisibleProviders(store.customProviders || [])
       break
     case 'media':
-      providers = store.mediaProviders || []
-      break
-    case 'oauth':
-      providers = store.oauthProviders || []
+      providers = filterVisibleProviders(store.mediaProviders || [])
       break
   }
 
@@ -248,11 +250,6 @@ const filteredProviders = computed(() => {
 const currentTabSelectedProvider = computed(() => {
   if (!store.selectedProvider) return null
   if (activeTab.value === 'all') return store.selectedProvider
-
-  // OAuth tab: match by having oauth config
-  if (activeTab.value === 'oauth') {
-    return store.selectedProvider.oauth ? store.selectedProvider : null
-  }
 })
 
 // Get custom pricing for a specific model in the selected provider
@@ -306,11 +303,8 @@ watch(availableTabs, (tabs) => {
 // Clear selection when switching to a tab with no matching provider
 watch(activeTab, () => {
   if (store.selectedProvider && activeTab.value !== 'all') {
-    // OAuth tab: keep selection if provider has oauth config
-    if (activeTab.value === 'oauth') {
-      if (!store.selectedProvider.oauth) {
-        store.selectProvider(null)
-      }
+    if (isOAuthProvider(store.selectedProvider)) {
+      store.selectProvider(null)
       return
     }
 
@@ -333,6 +327,12 @@ watch(activeTab, () => {
   }
 })
 
+watch(() => store.selectedProvider, (provider) => {
+  if (provider && isOAuthProvider(provider)) {
+    store.selectProvider(null)
+  }
+}, { immediate: true })
+
 // Methods
 async function loadData() {
   try {
@@ -341,14 +341,6 @@ async function loadData() {
   } catch (e) {
     console.error('Failed to load data:', e)
   }
-}
-
-function handleIDEImportSuccess(providerId: string) {
-  // Refresh providers after successful import
-  loadData()
-  notification.success(t('ideDiscovery.importSuccess', { ide: 'IDE', provider: providerId }))
-  // Switch to the provider that was imported
-  store.selectProvider(providerId)
 }
 
 async function toggleProvider(provider: Provider) {
@@ -508,6 +500,31 @@ async function addCustomProvider() {
     addingProvider.value = false
     addingStep.value = ''
   }
+}
+
+async function handleIDEImportSuccess(providerId: string) {
+  await loadData()
+
+  if (!providerId || providerId === 'oauth-auto') {
+    return
+  }
+
+  const imported = store.providers.find(p => p.id === providerId)
+  if (!imported || isOAuthProvider(imported)) {
+    return
+  }
+
+  const typeToTab: Record<string, ProviderTab> = {
+    builtin: 'builtin',
+    platform: 'platform',
+    custom: 'custom',
+    acp: 'custom',
+    ide: 'custom',
+    trial: 'trial',
+    media: 'media',
+  }
+  activeTab.value = typeToTab[imported.type] || 'all'
+  store.selectProvider(providerId)
 }
 
 async function deleteProvider(providerId: string) {
@@ -1178,12 +1195,10 @@ onMounted(() => {
       </div>
       <div class="flex gap-2">
         <button
-          class="px-3 py-1.5 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-300 rounded-lg flex items-center gap-1 text-sm transition-colors"
+          class="px-3 py-1.5 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 rounded-lg flex items-center gap-1 text-sm transition-colors"
           @click="showIDEDiscoveryModal = true"
         >
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+          <span>⌁</span>
           {{ t('providerPool.scanIDE') }}
         </button>
         <button
@@ -1211,7 +1226,7 @@ onMounted(() => {
       >
         {{ t(`providerPool.tabs.${tab}`) }}
         <span class="ml-1 text-xs opacity-70">
-          ({{ tab === 'all' ? (store.providers?.length || 0) : tab === 'trial' ? (store.trialProviders?.length || 0) : tab === 'builtin' ? (store.builtinProviders?.length || 0) : tab === 'platform' ? (store.platformProviders?.length || 0) : tab === 'media' ? (store.mediaProviders?.length || 0) : tab === 'oauth' ? (store.oauthProviders?.length || 0) : (store.customProviders?.length || 0) }})
+          ({{ tab === 'all' ? filterVisibleProviders(store.providers || []).length : tab === 'trial' ? filterVisibleProviders(store.trialProviders || []).length : tab === 'builtin' ? filterVisibleProviders(store.builtinProviders || []).length : tab === 'platform' ? filterVisibleProviders(store.platformProviders || []).length : tab === 'media' ? filterVisibleProviders(store.mediaProviders || []).length : filterVisibleProviders(store.customProviders || []).length }})
         </span>
       </button>
     </div>
@@ -1968,6 +1983,26 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- IDE Discovery Modal -->
+    <Teleport to="body">
+    <div v-if="showIDEDiscoveryModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div class="bg-white dark:bg-slate-800 rounded-lg w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col">
+        <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-slate-700">
+          <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ t('providerPool.scanIDE') }}</h2>
+          <button
+            class="px-2 py-1 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 rounded text-sm"
+            @click="showIDEDiscoveryModal = false"
+          >
+            {{ t('common.cancel') }}
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+          <IDEDiscovery @import-success="handleIDEImportSuccess" />
+        </div>
+      </div>
+    </div>
+    </Teleport>
+
     <!-- Add Provider Modal -->
     <Teleport to="body">
     <div v-if="showAddModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -2413,34 +2448,6 @@ onMounted(() => {
           >
             {{ savingAllowedModels ? t('common.saving') : t('common.save') }}
           </button>
-        </div>
-      </div>
-    </div>
-    </Teleport>
-
-    <!-- IDE Discovery Modal -->
-    <Teleport to="body">
-    <div
-      v-if="showIDEDiscoveryModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      @click.self="showIDEDiscoveryModal = false"
-    >
-      <div class="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-        <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-600 flex-shrink-0">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ t('ideDiscovery.title') }}
-          </h2>
-          <button
-            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            @click="showIDEDiscoveryModal = false"
-          >
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div class="flex-1 overflow-y-auto">
-          <IDEDiscovery @import-success="handleIDEImportSuccess" />
         </div>
       </div>
     </div>

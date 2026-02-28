@@ -127,6 +127,7 @@ watch(searchQuery, (query) => {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
           {{ t('chat.newChat') }}
+          <span class="create-count" :title="`${conversations.length}`">{{ conversations.length }}</span>
         </button>
         <div v-else class="search-input-wrap relative">
           <input
@@ -142,12 +143,6 @@ watch(searchQuery, (query) => {
           </svg>
         </div>
       </div>
-      <span
-        class="conv-count hidden sm:inline-flex"
-        :title="`${conversations.length}`"
-      >
-        {{ conversations.length }}
-      </span>
       <!-- Search / Close toggle button -->
       <button
         class="search-toggle-btn shrink-0 p-2 rounded-lg transition-colors"
@@ -457,9 +452,16 @@ watch(searchQuery, (query) => {
   pointer-events: none;
 }
 
-.conv-count {
+.create-btn {
+  border-radius: var(--cl-radius);
+  background: var(--chat-sidebar-create-bg, linear-gradient(135deg, #0f172a, #334155));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.28);
+}
+
+.create-count {
   min-width: 1.75rem;
   height: 1.75rem;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
@@ -468,12 +470,6 @@ watch(searchQuery, (query) => {
   color: rgb(203 213 225);
   border: 1px solid rgba(148, 163, 184, 0.3);
   background: rgba(15, 23, 42, 0.34);
-}
-
-.create-btn {
-  border-radius: var(--cl-radius);
-  background: var(--chat-sidebar-create-bg, linear-gradient(135deg, #0f172a, #334155));
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.28);
 }
 
 .create-btn:hover {
@@ -511,6 +507,11 @@ watch(searchQuery, (query) => {
 .convo-stack {
   display: grid;
   gap: 0.4rem;
+  padding-right: 0.35rem;
+}
+
+.convo-scroll {
+  scrollbar-gutter: stable;
 }
 
 .conversation-item {
@@ -678,8 +679,8 @@ watch(searchQuery, (query) => {
   }
 }
 
-:root.light .conv-count,
-[data-theme="light"] .conv-count {
+:root.light .create-count,
+[data-theme="light"] .create-count {
   color: rgb(71 85 105);
   border-color: rgba(148, 163, 184, 0.34);
   background: rgba(255, 255, 255, 0.88);

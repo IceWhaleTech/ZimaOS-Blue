@@ -75,6 +75,8 @@ type ExecTool struct {
 	audit        *ExecAuditStore     // may be nil; persistent audit log
 	skillExec    SkillExecFunc       // may be nil; short-circuits `blue <skill>` commands
 	pinnedSkills map[string]struct{} // pinned skill names for short-circuit (e.g. web_search, browser)
+	skillSelect  SkillSelectFunc     // may be nil; selector fallback for unknown skills
+	autoConfirm  func() bool         // optional dynamic auto-confirm getter
 }
 
 // NewExecTool creates a new exec tool.
@@ -138,9 +140,31 @@ func (t *ExecTool) SetRegistry(r *Registry) {
 // Returns (map[string]string, error) matching the IPC SkillExecutor interface.
 type SkillExecFunc func(ctx context.Context, skillID string, input map[string]any) (map[string]string, error)
 
+// SkillSelectionDecision is the lightweight selector output consumed by exec fallback.
+type SkillSelectionDecision struct {
+	SelectedSkill string
+	Confidence    float64
+	NeedClarify   bool
+	Candidates    []string
+	Reason        string
+}
+
+// SkillSelectFunc is called when exec receives an unknown/disabled skill command.
+type SkillSelectFunc func(ctx context.Context, query string) SkillSelectionDecision
+
 // SetSkillExecutor sets the skill executor for short-circuiting `blue <skill>` commands.
 func (t *ExecTool) SetSkillExecutor(fn SkillExecFunc) {
 	t.skillExec = fn
+}
+
+// SetSkillSelector sets the progressive selector for unknown skills.
+func (t *ExecTool) SetSkillSelector(fn SkillSelectFunc) {
+	t.skillSelect = fn
+}
+
+// SetAutoConfirmFunc sets a dynamic auto-confirm getter for destructive skill gating.
+func (t *ExecTool) SetAutoConfirmFunc(fn func() bool) {
+	t.autoConfirm = fn
 }
 
 // SetPinnedSkills sets the pinned skill names for short-circuiting skill commands
@@ -854,10 +878,40 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 	data, err := t.skillExec(ctx, skillName, input)
 
 	// If skill not found or disabled:
-	// - For direct calls (non-blue): try "blue <command>" as fallback
-	// - For blue prefix calls: fall through to normal exec
+	// - Try progressive selector fallback first.
+	// - For direct calls (non-blue): fall through to "blue <command>" if selector is unavailable.
+	// - For blue prefix calls: fall through to normal exec when no fallback is available.
 	if err != nil {
 		if strings.Contains(err.Error(), "unknown skill") || strings.Contains(err.Error(), "is disabled") {
+			if t.skillSelect != nil {
+				decision := t.skillSelect(ctx, strings.TrimSpace(rest))
+				if decision.SelectedSkill != "" {
+					// For high-risk operations we force clarification unless auto-confirm is enabled
+					// and the selected skill is in the safe auto-run list.
+					forceClarify := decision.NeedClarify
+					if isDestructiveSkill(decision.SelectedSkill) {
+						autoOK := t.autoConfirm != nil && t.autoConfirm()
+						if !autoOK || !isSafeSkillAutoRun(decision.SelectedSkill) {
+							forceClarify = true
+						}
+					}
+
+					if forceClarify {
+						if askResp, askOK := t.askForSkillClarification(ctx, skillName, decision, warnings); askOK {
+							return askResp, true
+						}
+					} else {
+						slog.Info("[exec] selector fallback chose skill", "original", skillName, "selected", decision.SelectedSkill, "confidence", decision.Confidence)
+						selectedData, selErr := t.skillExec(ctx, decision.SelectedSkill, input)
+						if selErr == nil {
+							return t.buildSkillResult(ctx, decision.SelectedSkill, selectedData, warnings), true
+						}
+						slog.Warn("[exec] selector fallback execution failed", "skill", decision.SelectedSkill, "err", selErr)
+					}
+				} else if askResp, askOK := t.askForSkillClarification(ctx, skillName, decision, warnings); askOK {
+					return askResp, true
+				}
+			}
 			if !isBluePrefix {
 				// For direct calls, try to execute as "blue <original command>"
 				slog.Info("[exec] skill not found, trying blue prefix", "skill", skillName)
@@ -881,7 +935,10 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 		return string(b), true
 	}
 
-	// Build exec-style result with skill output
+	return t.buildSkillResult(ctx, skillName, data, warnings), true
+}
+
+func (t *ExecTool) buildSkillResult(ctx context.Context, skillName string, data map[string]string, warnings []string) interface{} {
 	var stdout strings.Builder
 	for k, v := range data {
 		if k == "success" || k == "_card" {
@@ -893,14 +950,13 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 		stdout.WriteByte('\n')
 	}
 
-	// Emit card if _card hint present
+	// Emit card if _card hint present.
 	if hint, ok := data["_card"]; ok && hint != "" {
 		card := make(map[string]interface{}, len(data))
 		for k, v := range data {
 			if k == "_card" || k == "success" {
 				continue
 			}
-			// Try to recover structured data from JSON strings
 			if len(v) > 0 && (v[0] == '[' || v[0] == '{') {
 				var parsed interface{}
 				if json.Unmarshal([]byte(v), &parsed) == nil {
@@ -926,7 +982,62 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 		Host:      "local",
 	}
 	resultJSON, _ := json.Marshal(result)
-	return string(resultJSON), true
+	return string(resultJSON)
+}
+
+func (t *ExecTool) askForSkillClarification(ctx context.Context, originalSkill string, d SkillSelectionDecision, warnings []string) (interface{}, bool) {
+	if t.skillExec == nil {
+		return nil, false
+	}
+	options := make([]string, 0, 3)
+	for _, c := range d.Candidates {
+		c = strings.TrimSpace(c)
+		if c != "" {
+			options = append(options, c)
+		}
+		if len(options) >= 3 {
+			break
+		}
+	}
+	if len(options) == 0 {
+		options = []string{"web_search", "browser"}
+	}
+	choicesJSON, _ := json.Marshal(options)
+	question := fmt.Sprintf("无法确定 skill `%s`，请选择要执行的技能。", originalSkill)
+	if d.SelectedSkill != "" {
+		question = fmt.Sprintf("当前建议 skill 为 `%s`（置信度 %.2f），是否确认执行？", d.SelectedSkill, d.Confidence)
+	}
+	askInput := map[string]any{
+		"q": question,
+		"a": string(choicesJSON),
+	}
+	askData, err := t.skillExec(ctx, "ask", askInput)
+	if err != nil {
+		return nil, false
+	}
+	return t.buildSkillResult(ctx, "ask", askData, append(warnings, "skill clarification required")), true
+}
+
+func isDestructiveSkill(skillName string) bool {
+	lower := strings.ToLower(strings.TrimSpace(skillName))
+	if strings.HasPrefix(lower, "mgmt") || strings.HasPrefix(lower, "admin") {
+		return true
+	}
+	for _, kw := range []string{"delete", "remove", "drop", "reset", "overwrite", "uninstall"} {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSafeSkillAutoRun(skillName string) bool {
+	switch strings.ToLower(strings.TrimSpace(skillName)) {
+	case "ask", "browser", "web_search", "deep_research", "analyze", "ui_reviewer", "plan_create", "plan_update", "plan_append":
+		return true
+	default:
+		return false
+	}
 }
 
 // parseKeyValuePairs parses "key=value key2=\"value with spaces\"" into a map.

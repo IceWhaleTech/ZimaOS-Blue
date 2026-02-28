@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"go.uber.org/zap"
 
@@ -23,11 +24,11 @@ type Channel struct {
 	logger   *zap.Logger
 	messages chan channel.Message
 
-	mu          sync.RWMutex
-	status      channel.Status
-	connectedAt *time.Time
-	lastError   string
-	lastErrorAt *time.Time
+	mu            sync.RWMutex
+	status        channel.Status
+	connectedAt   *time.Time
+	lastError     string
+	lastErrorAt   *time.Time
 	msgCount      atomic.Int64
 	msgsReceived  atomic.Int64
 	msgsSent      atomic.Int64
@@ -78,7 +79,7 @@ func New(cfg channel.FeishuConfig, logger *zap.Logger) *Channel {
 func (c *Channel) Name() string { return "feishu" }
 func (c *Channel) Type() string { return "feishu" }
 
-func (c *Channel) SetMessageHandler(handler MessageHandler) { c.messageHandler = handler }
+func (c *Channel) SetMessageHandler(handler MessageHandler)             { c.messageHandler = handler }
 func (c *Channel) SetSessionManager(manager *channel.BotSessionManager) { c.sessionManager = manager }
 
 // Start initializes and starts the Feishu bot with WebSocket long connection.
@@ -174,11 +175,15 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 
 	switch msgType {
 	case "text":
-		var tc struct{ Text string `json:"text"` }
+		var tc struct {
+			Text string `json:"text"`
+		}
 		json.Unmarshal([]byte(msg.Content), &tc)
 		content = tc.Text
 	case "image":
-		var ic struct{ ImageKey string `json:"image_key"` }
+		var ic struct {
+			ImageKey string `json:"image_key"`
+		}
 		json.Unmarshal([]byte(msg.Content), &ic)
 		content = ic.ImageKey
 		if ic.ImageKey != "" && msg.MessageID != "" {
@@ -227,9 +232,9 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 	channelMsg := channel.Message{
 		ID: messageID, ChannelName: "feishu", ChatID: chatID, UserID: userID,
 		Type: c.convertMessageType(msgType), Content: content, Timestamp: time.Now(),
-		IsGroup:  msg.ChatType == "group",
+		IsGroup:   msg.ChatType == "group",
 		ReplyToID: msg.ParentID,
-		Metadata: map[string]interface{}{"msg_type": msgType, "language": "zh-CN"},
+		Metadata:  map[string]interface{}{"msg_type": msgType, "language": "zh-CN"},
 	}
 	if attachment != nil {
 		channelMsg.Attachments = []channel.Attachment{*attachment}
@@ -417,12 +422,7 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID string, 
 }
 
 func (c *Channel) SendCard(ctx context.Context, chatID string, cardJSON string) error {
-	receiveIDType := "chat_id"
-	if strings.HasPrefix(chatID, "ou_") {
-		receiveIDType = "open_id"
-	} else if strings.HasPrefix(chatID, "on_") {
-		receiveIDType = "union_id"
-	}
+	receiveIDType := resolveReceiveIDType(chatID)
 	return c.client.sendMessage(ctx, receiveIDType, chatID, "interactive", cardJSON, "")
 }
 
@@ -579,19 +579,181 @@ func minimalPNG() []byte {
 
 func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID string, content <-chan string, done chan<- struct{}) error {
 	defer close(done)
+
+	const updateInterval = 700 * time.Millisecond
 	var fullContent strings.Builder
+	var messageID string
+	var dirty bool
+	ticker := time.NewTicker(updateInterval)
+	defer ticker.Stop()
+
+	publish := func(final bool) error {
+		if !dirty && !final {
+			return nil
+		}
+		text := fullContent.String()
+		if text == "" && !final {
+			return nil
+		}
+		cardJSON, err := buildStreamingCardJSON(text, final)
+		if err != nil {
+			return err
+		}
+		receiveIDType := resolveReceiveIDType(chatID)
+		if messageID == "" {
+			sentID, err := c.client.sendMessageWithID(ctx, receiveIDType, chatID, "interactive", cardJSON, replyToID)
+			if err != nil {
+				return err
+			}
+			messageID = sentID
+		} else {
+			if err := c.client.updateMessage(ctx, messageID, "interactive", cardJSON); err != nil {
+				return err
+			}
+		}
+		dirty = false
+		return nil
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-ticker.C:
+			if err := publish(false); err != nil {
+				return err
+			}
 		case chunk, ok := <-content:
 			if !ok {
-				if fullContent.Len() > 0 {
-					return c.SendText(ctx, chatID, fullContent.String(), "")
+				if err := publish(true); err != nil {
+					return err
 				}
 				return nil
 			}
 			fullContent.WriteString(chunk)
+			dirty = true
 		}
 	}
+}
+
+func resolveReceiveIDType(chatID string) string {
+	if strings.HasPrefix(chatID, "ou_") {
+		return "open_id"
+	}
+	if strings.HasPrefix(chatID, "on_") {
+		return "union_id"
+	}
+	return "chat_id"
+}
+
+func buildStreamingCardJSON(text string, final bool) (string, error) {
+	parts := splitMarkdownForCard(text, 1400)
+	elements := make([]map[string]string, 0, len(parts)+1)
+	if len(parts) == 0 {
+		parts = []string{" "}
+	}
+	for _, p := range parts {
+		elements = append(elements, map[string]string{
+			"tag":     "markdown",
+			"content": p,
+		})
+	}
+	if !final {
+		elements = append(elements, map[string]string{
+			"tag":     "markdown",
+			"content": "\n`...`",
+		})
+	}
+	card := map[string]interface{}{
+		"config": map[string]bool{
+			"wide_screen_mode": true,
+		},
+		"elements": elements,
+	}
+	raw, err := json.Marshal(card)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func splitMarkdownForCard(s string, limit int) []string {
+	if limit <= 0 {
+		limit = 1400
+	}
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+
+	lines := strings.SplitAfter(s, "\n")
+	chunks := make([]string, 0, len(lines)/6+1)
+
+	var cur strings.Builder
+	curRunes := 0
+	inFence := false
+	fenceHeader := "```"
+
+	flush := func() {
+		if curRunes == 0 {
+			return
+		}
+		out := cur.String()
+		if inFence {
+			out += "\n```"
+		}
+		out = strings.TrimSuffix(out, "\n")
+		if out != "" {
+			chunks = append(chunks, out)
+		}
+		cur.Reset()
+		curRunes = 0
+		if inFence {
+			cur.WriteString(fenceHeader)
+			cur.WriteString("\n")
+			curRunes = utf8.RuneCountInString(fenceHeader) + 1
+		}
+	}
+
+	var appendPiece func(string)
+	appendPiece = func(piece string) {
+		if piece == "" {
+			return
+		}
+		pieceRunes := utf8.RuneCountInString(piece)
+		if pieceRunes > limit {
+			runes := []rune(piece)
+			for len(runes) > 0 {
+				n := limit
+				if n > len(runes) {
+					n = len(runes)
+				}
+				appendPiece(string(runes[:n]))
+				runes = runes[n:]
+			}
+			return
+		}
+		if curRunes > 0 && curRunes+pieceRunes > limit {
+			flush()
+		}
+		cur.WriteString(piece)
+		curRunes += pieceRunes
+
+		trimmed := strings.TrimSpace(piece)
+		if strings.HasPrefix(trimmed, "```") {
+			if !inFence {
+				inFence = true
+				fenceHeader = trimmed
+			} else {
+				inFence = false
+				fenceHeader = "```"
+			}
+		}
+	}
+
+	for _, line := range lines {
+		appendPiece(line)
+	}
+	flush()
+	return chunks
 }

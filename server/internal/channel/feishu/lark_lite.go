@@ -78,9 +78,14 @@ type larkAPIResp struct {
 }
 
 func (c *larkClient) sendMessage(ctx context.Context, receiveIDType, receiveID, msgType, content, replyToID string) error {
+	_, err := c.sendMessageWithID(ctx, receiveIDType, receiveID, msgType, content, replyToID)
+	return err
+}
+
+func (c *larkClient) sendMessageWithID(ctx context.Context, receiveIDType, receiveID, msgType, content, replyToID string) (string, error) {
 	token, err := c.getToken(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	var u string
 	var body []byte
@@ -106,13 +111,45 @@ func (c *larkClient) sendMessage(ctx context.Context, receiveIDType, receiveID, 
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := c.http.Do(req)
 	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var r larkAPIResp
+	json.NewDecoder(resp.Body).Decode(&r)
+	if r.Code != 0 {
+		return "", fmt.Errorf("feishu send: %d %s", r.Code, r.Msg)
+	}
+	var data struct {
+		MessageID string `json:"message_id"`
+	}
+	if len(r.Data) > 0 {
+		_ = json.Unmarshal(r.Data, &data)
+	}
+	return data.MessageID, nil
+}
+
+func (c *larkClient) updateMessage(ctx context.Context, messageID, msgType, content string) error {
+	token, err := c.getToken(ctx)
+	if err != nil {
+		return err
+	}
+	body, _ := json.Marshal(map[string]string{
+		"msg_type": msgType,
+		"content":  content,
+	})
+	u := fmt.Sprintf("%s/im/v1/messages/%s", c.baseURL, url.PathEscape(messageID))
+	req, _ := http.NewRequestWithContext(ctx, "PATCH", u, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.http.Do(req)
+	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	var r larkAPIResp
 	json.NewDecoder(resp.Body).Decode(&r)
 	if r.Code != 0 {
-		return fmt.Errorf("feishu send: %d %s", r.Code, r.Msg)
+		return fmt.Errorf("feishu update: %d %s", r.Code, r.Msg)
 	}
 	return nil
 }

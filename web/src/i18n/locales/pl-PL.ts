@@ -1622,7 +1622,16 @@ export default {
     noWebhooks: 'Brak webhooków',
     confirmDelete: 'Czy na pewno chcesz usunąć ten webhook?',
   },
-  companion: { ...enUS.companion },
+  companion: {
+    ...enUS.companion,
+    llmDetails: {
+      input: 'Input',
+      prompt: 'Input Tokens',
+      completion: 'Output Tokens',
+      total: 'Total Tokens',
+      score: 'Score',
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },

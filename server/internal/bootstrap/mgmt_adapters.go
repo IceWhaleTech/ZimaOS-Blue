@@ -174,12 +174,12 @@ func (a *mgmtProviderAdapter) TestProvider(_ context.Context, id string) (map[st
 		return nil, err
 	}
 	return map[string]interface{}{
-		"id":      p.ID,
-		"name":    p.Name,
-		"enabled": p.Enabled,
-		"status":  string(p.Status),
+		"id":       p.ID,
+		"name":     p.Name,
+		"enabled":  p.Enabled,
+		"status":   string(p.Status),
 		"base_url": p.BaseURL,
-		"type":    string(p.Type),
+		"type":     string(p.Type),
 	}, nil
 }
 
@@ -214,20 +214,27 @@ type mgmtSettingsAdapter struct {
 
 func (a *mgmtSettingsAdapter) GetAll(_ context.Context) (map[string]interface{}, error) {
 	return map[string]interface{}{
-		"locale":               a.handler.GetLocale(),
-		"smart_tool_selection": a.handler.GetSmartToolSelection(),
-		"agent_mode":           a.handler.GetAgentMode(),
-		"agent_auto_confirm":   a.handler.GetAgentAutoConfirm(),
+		"locale":                              a.handler.GetLocale(),
+		"smart_tool_selection":                a.handler.GetSmartToolSelection(),
+		"smart_skill_selection":               a.handler.GetSmartSkillSelection(),
+		"skill_selector_mode":                 a.handler.GetSkillSelectorMode(),
+		"skill_rerank_enabled":                a.handler.GetSkillRerankEnabled(),
+		"skill_rerank_model":                  a.handler.GetSkillRerankModel(),
+		"skill_rerank_onnx_enabled":           a.handler.GetSkillRerankONNXEnabled(),
+		"skill_rerank_onnx_auto_download":     a.handler.GetSkillRerankONNXAutoDownload(),
+		"skill_selector_confidence_threshold": a.handler.GetSkillSelectorConfidenceThreshold(),
+		"agent_mode":                          a.handler.GetAgentMode(),
+		"agent_auto_confirm":                  a.handler.GetAgentAutoConfirm(),
 	}, nil
 }
 
 func (a *mgmtSettingsAdapter) Set(_ context.Context, key, value string) error {
 	// Delegate to the settings handler's internal logic
 	switch key {
-	case "locale", "timezone", "smart_tool_selection", "agent_mode", "agent_auto_confirm":
+	case "locale", "timezone", "smart_tool_selection", "smart_skill_selection", "skill_selector_mode", "skill_rerank_enabled", "skill_rerank_model", "skill_rerank_onnx_enabled", "skill_rerank_onnx_auto_download", "skill_selector_confidence_threshold", "agent_mode", "agent_auto_confirm":
 		// Valid keys — handled below
 	default:
-		return fmt.Errorf("unknown setting key: %s (valid: locale, timezone, smart_tool_selection, agent_mode, agent_auto_confirm)", key)
+		return fmt.Errorf("unknown setting key: %s (valid: locale, timezone, smart_tool_selection, smart_skill_selection, skill_selector_mode, skill_rerank_enabled, skill_rerank_model, skill_rerank_onnx_enabled, skill_rerank_onnx_auto_download, skill_selector_confidence_threshold, agent_mode, agent_auto_confirm)", key)
 	}
 	// We can't easily call Patch without an echo.Context, so we expose a direct setter.
 	// For now, return a helpful message.
@@ -564,7 +571,7 @@ func (a *mgmtUpgradeAdapter) GetUpdateStatus(ctx context.Context) (*tools.AdminU
 
 	status := a.handler.GetStatus()
 	info := &tools.AdminUpgradeInfo{
-		CurrentVersion:  a.version,
+		CurrentVersion: a.version,
 		State:          status.State,
 		Progress:       status.Progress,
 		Error:          status.Error,

@@ -42,8 +42,9 @@ type ToolSelector struct {
 // DefaultToolSelector returns a ToolSelector with sensible defaults.
 func DefaultToolSelector() *ToolSelector {
 	return &ToolSelector{
-		MinScore: 0.1,
-		MaxTools: 10,
+		MinScore:      0.1,
+		MaxTools:      10,
+		AlwaysInclude: []string{"ask"},
 	}
 }
 

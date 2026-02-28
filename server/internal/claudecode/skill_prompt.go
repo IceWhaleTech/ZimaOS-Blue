@@ -247,20 +247,36 @@ func PinnedSkills() []string {
 // FormatPinnedSkills reads only the pinned skills from disk and formats them
 // as compact XML for the system prompt. Returns empty string if none found.
 func FormatPinnedSkills(workspaceDir string) string {
-	skillsDir := filepath.Join(workspaceDir, ".claude", "skills")
+	skillRoots := resolveSkillRoots(workspaceDir)
+	if len(skillRoots) == 0 {
+		return ""
+	}
+
+	foundByName := make(map[string]SkillEntry, len(pinnedSkills))
+	for _, root := range skillRoots {
+		for _, name := range pinnedSkills {
+			// First hit wins: workspace skill overrides default ~/.claude/skills.
+			if _, exists := foundByName[name]; exists {
+				continue
+			}
+			mdPath := filepath.Join(root, name, "SKILL.md")
+			data, err := os.ReadFile(mdPath)
+			if err != nil {
+				continue
+			}
+			se := parseSkillEntry(name, mdPath, data)
+			if !se.Enabled || !skillPlatformMatch(se.OS) {
+				continue
+			}
+			foundByName[name] = se
+		}
+	}
 
 	var found []SkillEntry
 	for _, name := range pinnedSkills {
-		mdPath := filepath.Join(skillsDir, name, "SKILL.md")
-		data, err := os.ReadFile(mdPath)
-		if err != nil {
-			continue
+		if se, ok := foundByName[name]; ok {
+			found = append(found, se)
 		}
-		se := parseSkillEntry(name, mdPath, data)
-		if !se.Enabled || !skillPlatformMatch(se.OS) {
-			continue
-		}
-		found = append(found, se)
 	}
 
 	if len(found) == 0 {
@@ -279,6 +295,33 @@ func FormatPinnedSkills(workspaceDir string) string {
 	}
 	sb.WriteString("</pinned_skills>")
 	return sb.String()
+}
+
+// resolveSkillRoots returns skill roots in priority order:
+// 1) workspace/.claude/skills (project-level)
+// 2) ~/.claude/skills (user default)
+func resolveSkillRoots(workspaceDir string) []string {
+	var roots []string
+	seen := map[string]struct{}{}
+
+	add := func(dir string) {
+		if dir == "" {
+			return
+		}
+		if _, ok := seen[dir]; ok {
+			return
+		}
+		seen[dir] = struct{}{}
+		roots = append(roots, dir)
+	}
+
+	if workspaceDir != "" {
+		add(filepath.Join(workspaceDir, ".claude", "skills"))
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		add(filepath.Join(home, ".claude", "skills"))
+	}
+	return roots
 }
 
 // xmlEscape escapes special XML characters.

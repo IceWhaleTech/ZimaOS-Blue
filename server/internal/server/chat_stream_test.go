@@ -6,19 +6,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
+	"github.com/tidwall/gjson"
 )
 
 // StreamingMockProvider is a mock provider that properly implements streaming
@@ -35,6 +41,81 @@ type autoContinueFailingProxyHandler struct {
 	callCount             int
 	requestModels         []string
 	requestPinnedProvider []string
+}
+
+// secondTurnTimeoutProxyHandler simulates a provider that succeeds on the first
+// turn, but times out once history expands on the second turn.
+// It allows us to verify "second send fails" behavior independent of warmup.
+type secondTurnTimeoutProxyHandler struct {
+	mu                sync.Mutex
+	firstMessageCount int
+	requestMsgCounts  []int
+}
+
+func (h *secondTurnTimeoutProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Messages []json.RawMessage `json:"messages"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	msgCount := len(body.Messages)
+
+	h.mu.Lock()
+	if h.firstMessageCount == 0 {
+		h.firstMessageCount = msgCount
+	}
+	h.requestMsgCounts = append(h.requestMsgCounts, msgCount)
+	firstCount := h.firstMessageCount
+	h.mu.Unlock()
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_second_turn_timeout"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	// Simulate upstream timeout once context grows beyond first turn payload.
+	if msgCount > firstCount {
+		http.Error(w, "Request timed out. The server may be busy — please try again later.", http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "data: %s\n\n", `{"id":"1","choices":[{"delta":{"content":"first turn ok"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (h *secondTurnTimeoutProxyHandler) RequestMsgCounts() []int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]int, len(h.requestMsgCounts))
+	copy(out, h.requestMsgCounts)
+	return out
+}
+
+func warmupCachedForConversation(h *ChatHandler, convID string) bool {
+	h.warmupMu.Lock()
+	defer h.warmupMu.Unlock()
+	_, ok := h.warmupCache[convID]
+	return ok
+}
+
+func runStreamTurn(t *testing.T, h *ChatHandler, convID, reqBody string) string {
+	t.Helper()
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(convID)
+
+	if err := h.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+	return rec.Body.String()
 }
 
 func (h *autoContinueFailingProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -511,5 +592,293 @@ func TestStreamMessageAutoContinue_PreContent502GracefulCompletion(t *testing.T)
 	}
 	if got := fakeProxy.requestPinnedProvider[1]; got != "prov_ui_reviewer" {
 		t.Fatalf("expected auto-continue to pin provider from first round, got %q", got)
+	}
+}
+
+func TestStreamMessageSecondSendTimeout_NotWarmupRelated(t *testing.T) {
+	tests := []struct {
+		name       string
+		withWarmup bool
+	}{
+		{name: "without warmup", withWarmup: false},
+		{name: "with warmup", withWarmup: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			store, err := memory.NewStore(":memory:")
+			if err != nil {
+				t.Fatalf("failed to create store: %v", err)
+			}
+			defer store.Close()
+
+			conv, err := store.CreateConversation(context.Background(), "Test second send timeout")
+			if err != nil {
+				t.Fatalf("failed to create conversation: %v", err)
+			}
+
+			registry := llm.NewProviderRegistry()
+			toolRegistry := tools.NewRegistry()
+			handler := NewChatHandler(store, registry, toolRegistry)
+			fakeProxy := &secondTurnTimeoutProxyHandler{}
+			handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+			if warmupCachedForConversation(handler, conv.ID) {
+				t.Fatal("warmup cache should be empty before first turn")
+			}
+
+			firstBody := runStreamTurn(t, handler, conv.ID, `{"message":"first turn","model":"gpt-5.3-codex-spark"}`)
+			if strings.Contains(firstBody, `"error":"STREAM_ERROR"`) {
+				t.Fatalf("first turn should succeed, body=%s", firstBody)
+			}
+			if !strings.Contains(firstBody, `"done":true`) {
+				t.Fatalf("first turn should contain done marker, body=%s", firstBody)
+			}
+
+			if tc.withWarmup {
+				handler.DoChannelWarmup(conv.ID)
+				if !warmupCachedForConversation(handler, conv.ID) {
+					t.Fatal("expected warmup cache before second turn")
+				}
+			} else if warmupCachedForConversation(handler, conv.ID) {
+				t.Fatal("warmup cache should stay empty when warmup is not triggered")
+			}
+
+			secondBody := runStreamTurn(t, handler, conv.ID, `{"message":"second turn","model":"gpt-5.3-codex-spark"}`)
+			if !strings.Contains(secondBody, `"error":"STREAM_ERROR"`) {
+				t.Fatalf("expected second turn to fail with STREAM_ERROR, body=%s", secondBody)
+			}
+			if !strings.Contains(secondBody, `"done":true`) {
+				t.Fatalf("second turn should contain done marker, body=%s", secondBody)
+			}
+
+			counts := fakeProxy.RequestMsgCounts()
+			if len(counts) < 2 {
+				t.Fatalf("expected at least 2 proxy calls, got %d", len(counts))
+			}
+			if counts[1] <= counts[0] {
+				t.Fatalf("expected second turn to carry larger context (msg_count %d -> %d)", counts[0], counts[1])
+			}
+		})
+	}
+}
+
+func TestStreamMessageCodexResponsesSecondTurn_UsesPreviousResponseID(t *testing.T) {
+	var mu sync.Mutex
+	var requestPaths []string
+	var requestPrevIDs []string
+	callCount := 0
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		prevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+		inputText := strings.TrimSpace(gjson.GetBytes(body, "input.0.content.0.text").String())
+
+		if r.URL.Path != "/v1/responses" {
+			http.Error(w, "unexpected path", http.StatusBadRequest)
+			return
+		}
+
+		// Ignore non-chat probe traffic (auth/tool probes).
+		if inputText != "first turn" && inputText != "second turn" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id":"resp_probe","object":"response","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`))
+			return
+		}
+
+		mu.Lock()
+		callCount++
+		requestPaths = append(requestPaths, r.URL.Path)
+		requestPrevIDs = append(requestPrevIDs, prevID)
+		n := callCount
+		mu.Unlock()
+
+		if inputText == "first turn" {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_turn_1","choices":[{"delta":{"content":"first ok"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			return
+		}
+
+		// Simulate codex relay behavior: second turn must continue from previous_response_id.
+		if prevID == "" {
+			http.Error(w, "Request timed out. The server may be busy — please try again later.", http.StatusBadGateway)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_turn_2","choices":[{"delta":{"content":"second ok"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}))
+	defer upstream.Close()
+
+	tmpDir, err := os.MkdirTemp("", "chat-codex-responses-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, err := providerpool.NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create provider storage: %v", err)
+	}
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("failed to create provider registry: %v", err)
+	}
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	router := providerpool.NewRouter(registry, discovery, providerpool.RoutingStrategyPriority)
+
+	provider := &providerpool.Provider{
+		ID:        "codex-upstream",
+		Name:      "codex-upstream",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   upstream.URL + "/v1",
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Priority:  10,
+		APIFormat: providerpool.APIFormatOpenAI,
+		APIKeys: []providerpool.APIKey{
+			{ID: "k-codex", Key: "sk-test", Enabled: true},
+		},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("failed to register provider: %v", err)
+	}
+	models := []*providerpool.Model{
+		{
+			ID:           "gpt-5.3-codex-spark",
+			Name:         "gpt-5.3-codex-spark",
+			ProviderID:   provider.ID,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, Streaming: true},
+		},
+	}
+	if err := storage.SaveModels(provider.ID, models); err != nil {
+		t.Fatalf("failed to save models: %v", err)
+	}
+	router.RebuildCandidates()
+
+	proxyHandler := proxy.NewProxyHandler(nil, proxy.NewConnectionPool(proxy.DefaultConnectionConfig()), nil)
+	proxyHandler.SetProviderPool(&providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Router:    router,
+	})
+
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create memory store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test codex responses continuation")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProxyBridge(proxybridge.NewBridge(proxyHandler))
+
+	if warmupCachedForConversation(handler, conv.ID) {
+		t.Fatal("warmup cache should be empty before test")
+	}
+
+	firstBody := runStreamTurn(t, handler, conv.ID, `{"message":"first turn","model":"gpt-5.3-codex-spark"}`)
+	if strings.Contains(firstBody, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("first turn should succeed, body=%s", firstBody)
+	}
+
+	secondBody := runStreamTurn(t, handler, conv.ID, `{"message":"second turn","model":"gpt-5.3-codex-spark"}`)
+	if strings.Contains(secondBody, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("second turn should succeed with responses continuation, body=%s", secondBody)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(requestPaths) != 2 {
+		t.Fatalf("expected exactly 2 upstream calls, got %d (paths=%v prev_ids=%v)", len(requestPaths), requestPaths, requestPrevIDs)
+	}
+	if requestPaths[0] != "/v1/responses" || requestPaths[1] != "/v1/responses" {
+		t.Fatalf("expected codex requests to route to /v1/responses, got %v", requestPaths)
+	}
+	if requestPrevIDs[0] != "" {
+		t.Fatalf("first turn previous_response_id = %q, want empty", requestPrevIDs[0])
+	}
+	if requestPrevIDs[1] == "" {
+		t.Fatalf("second turn previous_response_id should be injected, got empty (prev_ids=%v)", requestPrevIDs)
+	}
+}
+
+func TestStreamMessageSmoke_AskGateAwaitingAndSanitizedPersistence(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test Ask Gate Smoke")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	mockProvider := NewStreamingMockProvider("Before <ask_gate>请选择执行策略 A. 快速 B. 平衡</ask_gate> <awaiting_user_input>true</awaiting_user_input> After")
+	registry.Register(mockProvider)
+
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+
+	e := echo.New()
+	reqBody := `{"message":"请继续","provider":"streaming-mock","model":"streaming-mock-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if count := strings.Count(body, `"awaiting_user_input":true`); count != 1 {
+		t.Fatalf("expected exactly one awaiting_user_input event, got %d; body=%s", count, body)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	if len(messages) == 0 {
+		t.Fatal("expected persisted messages, got empty")
+	}
+
+	var assistantContent string
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "assistant" {
+			assistantContent = messages[i].Content
+			break
+		}
+	}
+	if assistantContent == "" {
+		t.Fatalf("assistant message not found in persisted messages: %+v", messages)
+	}
+	if strings.Contains(assistantContent, "<ask_gate>") || strings.Contains(assistantContent, "<awaiting_user_input>") {
+		t.Fatalf("assistant content still contains internal marker(s): %q", assistantContent)
+	}
+	if !strings.Contains(assistantContent, "Before") || !strings.Contains(assistantContent, "After") {
+		t.Fatalf("assistant content was over-sanitized, got: %q", assistantContent)
 	}
 }

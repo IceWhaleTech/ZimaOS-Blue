@@ -1848,6 +1848,14 @@ export default {
   },
   companion: {
     ...enUS.companion,
+    llmDetails:
+    {
+      input: 'Input',
+      prompt: 'Input Tokens',
+      completion: 'Output Tokens',
+      total: 'Total Tokens',
+      score: 'Score',
+    },
     title: 'Companion',
     subtitle: "Supervision et observabilité en temps réel des Agents IA",
     connected: 'Connecté',

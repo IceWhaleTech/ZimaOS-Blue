@@ -237,6 +237,27 @@ type ToolCallingConfig struct {
 	// SmartSelectionMaxTools limits the number of tools sent to the LLM
 	SmartSelectionMaxTools int `yaml:"smart_selection_max_tools" json:"smart_selection_max_tools"`
 
+	// SmartSkillSelection enables progressive skill selection.
+	SmartSkillSelection bool `yaml:"smart_skill_selection" json:"smart_skill_selection"`
+
+	// SkillSelectorMode controls selector strategy: hybrid|ir_only|llm_only.
+	SkillSelectorMode string `yaml:"skill_selector_mode" json:"skill_selector_mode"`
+
+	// SkillRerankEnabled toggles stage-2 reranking.
+	SkillRerankEnabled bool `yaml:"skill_rerank_enabled" json:"skill_rerank_enabled"`
+
+	// SkillRerankModel is the compact reranker model hint.
+	SkillRerankModel string `yaml:"skill_rerank_model" json:"skill_rerank_model"`
+
+	// SkillRerankONNXEnabled toggles ONNX model path for reranker.
+	SkillRerankONNXEnabled bool `yaml:"skill_rerank_onnx_enabled" json:"skill_rerank_onnx_enabled"`
+
+	// SkillRerankONNXAutoDownload controls whether ONNX model can be auto-downloaded.
+	SkillRerankONNXAutoDownload bool `yaml:"skill_rerank_onnx_auto_download" json:"skill_rerank_onnx_auto_download"`
+
+	// SkillSelectorConfidenceThreshold is the confidence threshold for auto-selection.
+	SkillSelectorConfidenceThreshold float64 `yaml:"skill_selector_confidence_threshold" json:"skill_selector_confidence_threshold"`
+
 	// Adapters holds adapter configurations
 	Adapters ToolCallingAdaptersConfig `yaml:"adapters" json:"adapters"`
 
@@ -300,18 +321,18 @@ func DefaultClaudeCodeCLIConfig() *ClaudeCodeCLIConfig {
 			ProjectContext:   true,
 		},
 		Backend: CLIBackendConfig{
-			Command:      "claude",
-			WorkspaceDir: ".",
-			DefaultModel: "sonnet",
-			Timeout:      "5m",
-			SessionTTL:   "24h",
-			Args:         []string{"-p", "--output-format", "text", "--dangerously-skip-permissions"},
-			ResumeArgs:   []string{"-p", "--output-format", "text", "--dangerously-skip-permissions", "--resume", "{sessionId}"},
-			Output:       "text",
-			ResumeOutput: "text",
-			Input:        "arg",
+			Command:           "claude",
+			WorkspaceDir:      ".",
+			DefaultModel:      "sonnet",
+			Timeout:           "5m",
+			SessionTTL:        "24h",
+			Args:              []string{"-p", "--output-format", "text", "--dangerously-skip-permissions"},
+			ResumeArgs:        []string{"-p", "--output-format", "text", "--dangerously-skip-permissions", "--resume", "{sessionId}"},
+			Output:            "text",
+			ResumeOutput:      "text",
+			Input:             "arg",
 			MaxPromptArgChars: 100000,
-			ModelArg:     "--model",
+			ModelArg:          "--model",
 			ModelAliases: map[string]string{
 				"opus":   "opus",
 				"sonnet": "sonnet",
@@ -389,8 +410,17 @@ func DefaultStatisticsConfig() *StatisticsConfig {
 // DefaultToolCallingConfig returns the default tool calling configuration.
 func DefaultToolCallingConfig() *ToolCallingConfig {
 	return &ToolCallingConfig{
-		AutoDetect:       true,
-		DetectionTimeout: 5 * time.Second,
+		AutoDetect:                       true,
+		DetectionTimeout:                 5 * time.Second,
+		SmartSelection:                   true,
+		SmartSelectionMaxTools:           10,
+		SmartSkillSelection:              true,
+		SkillSelectorMode:                "hybrid",
+		SkillRerankEnabled:               true,
+		SkillRerankModel:                 "cross-encoder/ms-marco-MiniLM-L-6-v2",
+		SkillRerankONNXEnabled:           false,
+		SkillRerankONNXAutoDownload:      false,
+		SkillSelectorConfidenceThreshold: 0.78,
 		Adapters: ToolCallingAdaptersConfig{
 			CLIProxy: CLIProxyAdapterConfig{
 				Enabled:        true,

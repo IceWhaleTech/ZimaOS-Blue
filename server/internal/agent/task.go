@@ -14,6 +14,7 @@ const (
 	TaskStatusPlanning     TaskStatus = "planning"
 	TaskStatusExecuting    TaskStatus = "executing"
 	TaskStatusWaitingInput TaskStatus = "waiting_input" // blocked on ask_user
+	TaskStatusAborted      TaskStatus = "aborted"
 	TaskStatusCompleted    TaskStatus = "completed"
 	TaskStatusFailed       TaskStatus = "failed"
 	TaskStatusCancelled    TaskStatus = "cancelled"
@@ -32,18 +33,22 @@ const (
 
 // Task represents an autonomous agent task.
 type Task struct {
-	ID             string     `json:"id"`
-	UserID         string     `json:"user_id"`
-	ConversationID string     `json:"conversation_id,omitempty"`
-	Goal           string     `json:"goal"`
-	Plan           []PlanStep `json:"plan,omitempty"`
-	Status         TaskStatus `json:"status"`
-	CurrentStep    int        `json:"current_step"`
-	Progress       int        `json:"progress"` // 0-100
-	Result         string     `json:"result,omitempty"`
-	Error          string     `json:"error,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID              string              `json:"id"`
+	UserID          string              `json:"user_id"`
+	ConversationID  string              `json:"conversation_id,omitempty"`
+	Goal            string              `json:"goal"`
+	Plan            []PlanStep          `json:"plan,omitempty"`
+	Status          TaskStatus          `json:"status"`
+	RuntimeState    RuntimeState        `json:"runtime_state,omitempty"`
+	RuntimeAudit    []RuntimeAuditEvent `json:"runtime_audit,omitempty"`
+	SuccessCriteria []string            `json:"success_criteria,omitempty"`
+	FallbackPlan    []string            `json:"fallback_plan,omitempty"`
+	CurrentStep     int                 `json:"current_step"`
+	Progress        int                 `json:"progress"` // 0-100
+	Result          string              `json:"result,omitempty"`
+	Error           string              `json:"error,omitempty"`
+	CreatedAt       time.Time           `json:"created_at"`
+	UpdatedAt       time.Time           `json:"updated_at"`
 }
 
 // PlanStep represents a single step in the agent's plan.
@@ -73,13 +78,15 @@ type TaskEvent struct {
 	Output     string          `json:"output,omitempty"`
 	DurationMs int64           `json:"duration_ms,omitempty"` // step execution time in milliseconds
 	Questions  []AgentQuestion `json:"questions,omitempty"`   // for task_question events
+	FromState  RuntimeState    `json:"from_state,omitempty"`
+	ToState    RuntimeState    `json:"to_state,omitempty"`
 }
 
 // AgentQuestion is a question the agent asks the user during execution.
 type AgentQuestion struct {
 	ID          string           `json:"id"`
 	Question    string           `json:"question"`
-	Header      string           `json:"header"`                 // short tab label (max 12 chars)
+	Header      string           `json:"header"` // short tab label (max 12 chars)
 	Options     []QuestionOption `json:"options,omitempty"`
 	MultiSelect bool             `json:"multi_select,omitempty"` // true = checkboxes, false = radio
 	Required    bool             `json:"required,omitempty"`
@@ -95,7 +102,7 @@ type QuestionOption struct {
 // QuestionAnswer is the user's answer to a question.
 type QuestionAnswer struct {
 	QuestionID string   `json:"question_id"`
-	Values     []string `json:"values"`                // selected option values or free text
+	Values     []string `json:"values"` // selected option values or free text
 	OtherText  string   `json:"other_text,omitempty"`
 }
 
@@ -113,4 +120,32 @@ func UnmarshalPlan(data string) []PlanStep {
 	var steps []PlanStep
 	_ = json.Unmarshal([]byte(data), &steps)
 	return steps
+}
+
+func marshalAudit(events []RuntimeAuditEvent) string {
+	b, _ := json.Marshal(events)
+	return string(b)
+}
+
+func unmarshalAudit(data string) []RuntimeAuditEvent {
+	if data == "" {
+		return nil
+	}
+	var events []RuntimeAuditEvent
+	_ = json.Unmarshal([]byte(data), &events)
+	return events
+}
+
+func marshalStringSlice(values []string) string {
+	b, _ := json.Marshal(values)
+	return string(b)
+}
+
+func unmarshalStringSlice(data string) []string {
+	if data == "" {
+		return nil
+	}
+	var out []string
+	_ = json.Unmarshal([]byte(data), &out)
+	return out
 }

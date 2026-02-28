@@ -248,6 +248,7 @@ export const useChatStore = defineStore('chat', () => {
     }>
     expires_at: number
   } | null>(null)
+  const awaitingConfirmation = ref(false)
 
   // Exec directory approval state
   const pendingExecApproval = ref<{
@@ -269,6 +270,16 @@ export const useChatStore = defineStore('chat', () => {
 
   // SSE client for streaming
   const sseClient = new SSEClient()
+
+  watch(pendingQuestion, (q) => {
+    if (q) {
+      awaitingConfirmation.value = true
+      return
+    }
+    if (!streaming.value) {
+      awaitingConfirmation.value = false
+    }
+  })
 
   // Computed
   const currentConversation = computed(() =>
@@ -710,6 +721,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = true
       streaming.value = true
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+      awaitingConfirmation.value = false
       error.value = null
       securityBlocked.value = null
       contextTrimInfo.value = null
@@ -741,6 +753,9 @@ export const useChatStore = defineStore('chat', () => {
         onMessage: (chunk) => {
           // Guard: ignore chunks if user switched to a different conversation
           if (currentConversationId.value !== sendConvId) return
+          if (chunk.awaiting_user_input) {
+            awaitingConfirmation.value = true
+          }
           if (!chunk.delta) return
           _receivedFirstChunk.value = true
           // Clear tool executing state when new content arrives
@@ -1020,6 +1035,9 @@ export const useChatStore = defineStore('chat', () => {
     streaming.value = false
     toolExecuting.value = false
     streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+    if (!pendingQuestion.value) {
+      awaitingConfirmation.value = false
+    }
   }
 
   /** Inject a user message into an active stream. The backend cancels the current
@@ -1097,6 +1115,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = true
       streaming.value = true
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+      awaitingConfirmation.value = false
       _receivedFirstChunk.value = false
 
       // Add placeholder for assistant message
@@ -1122,6 +1141,9 @@ export const useChatStore = defineStore('chat', () => {
       await sseClient.connect(convId, request, {
         onMessage: (chunk) => {
           if (currentConversationId.value !== convId) return
+          if (chunk.awaiting_user_input) {
+            awaitingConfirmation.value = true
+          }
           if (!chunk.delta) return
           _receivedFirstChunk.value = true
           if (toolExecuting.value) {
@@ -1240,6 +1262,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = true
       streaming.value = true
       streamingContent.value = existingContent // Start with existing content
+      awaitingConfirmation.value = false
       error.value = null
 
       const request: SendMessageRequest = {
@@ -1255,6 +1278,9 @@ export const useChatStore = defineStore('chat', () => {
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
           if (currentConversationId.value !== conversationId) return
+          if (chunk.awaiting_user_input) {
+            awaitingConfirmation.value = true
+          }
           if (!chunk.delta) return
           if (toolExecuting.value) {
             toolExecuting.value = false
@@ -1401,6 +1427,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = true
       streaming.value = true
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+      awaitingConfirmation.value = false
       error.value = null
 
       // Add placeholder for new assistant message
@@ -1428,6 +1455,9 @@ export const useChatStore = defineStore('chat', () => {
       await sseClient.connect(conversationId, request, {
         onMessage: (chunk) => {
           if (currentConversationId.value !== conversationId) return
+          if (chunk.awaiting_user_input) {
+            awaitingConfirmation.value = true
+          }
           if (!chunk.delta) return
           if (toolExecuting.value) {
             toolExecuting.value = false
@@ -1723,6 +1753,7 @@ export const useChatStore = defineStore('chat', () => {
   function setPendingQuestion(data: any) {
     console.log('[ChatStore] setPendingQuestion called with:', data)
     pendingQuestion.value = data
+    awaitingConfirmation.value = !!data
     console.log('[ChatStore] pendingQuestion.value is now:', pendingQuestion.value)
   }
 
@@ -1732,6 +1763,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       await api.post(`/ask-user-question/${id}/answer`, { answers })
       pendingQuestion.value = null
+      awaitingConfirmation.value = false
     } catch (e) {
       console.error('Failed to submit question answers:', e)
       // Keep dialog open so the user can retry
@@ -1744,6 +1776,7 @@ export const useChatStore = defineStore('chat', () => {
     }
     const id = pendingQuestion.value.id
     pendingQuestion.value = null
+    awaitingConfirmation.value = false
     // Notify backend to unblock the tool call immediately with default answers
     try {
       await api.post(`/ask-user-question/${id}/dismiss`)
@@ -1862,6 +1895,7 @@ export const useChatStore = defineStore('chat', () => {
     isMultiSelectMode,
     pendingApproval,
     pendingQuestion,
+    awaitingConfirmation,
     pendingExecApproval,
     modelPreference,
     offlineMode,

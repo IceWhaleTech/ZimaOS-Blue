@@ -101,7 +101,7 @@ describe('SSE Client', () => {
       expect(onError).toHaveBeenCalledWith(expect.any(Error))
     })
 
-    it('should trigger NO_STREAM_DATA error when stream closes without data', async () => {
+    it('should trigger PROVIDER_NO_RESPONSE when stream closes with [DONE] but without data', async () => {
       // Simulate SSE stream that sends [DONE] without any actual data
       const encoder = new TextEncoder()
       let callCount = 0
@@ -135,8 +135,8 @@ describe('SSE Client', () => {
         { onMessage, onError, onComplete }
       )
 
-      // Should call onError with NO_STREAM_DATA
-      expect(onError).toHaveBeenCalledWith(new Error('NO_STREAM_DATA'))
+      // Should call onError with PROVIDER_NO_RESPONSE
+      expect(onError).toHaveBeenCalledWith(new Error('PROVIDER_NO_RESPONSE'))
       // Should NOT call onComplete when no data received
       expect(onComplete).not.toHaveBeenCalled()
     })
@@ -181,14 +181,14 @@ describe('SSE Client', () => {
         { onMessage, onError, onComplete }
       )
 
-      // Should call onMessage with the data
-      expect(onMessage).toHaveBeenCalledWith({ delta: 'Hello' })
+      // Should call onMessage with normalized defaults
+      expect(onMessage).toHaveBeenCalledWith({ delta: 'Hello', done: false })
       // Should call onComplete (not onError) when data was received
       expect(onComplete).toHaveBeenCalled()
       expect(onError).not.toHaveBeenCalled()
     })
 
-    it('should trigger NO_STREAM_DATA error when stream closes with done:true but no delta', async () => {
+    it('should trigger PROVIDER_RETURNED_EMPTY when stream closes with done:true but no delta', async () => {
       const encoder = new TextEncoder()
       let callCount = 0
       const mockReader = {
@@ -221,12 +221,12 @@ describe('SSE Client', () => {
         { onMessage, onError, onComplete }
       )
 
-      // Should call onError with NO_STREAM_DATA when done:true but no actual content
-      expect(onError).toHaveBeenCalledWith(new Error('NO_STREAM_DATA'))
+      // Should call onError with PROVIDER_RETURNED_EMPTY when done:true but no actual content
+      expect(onError).toHaveBeenCalledWith(new Error('PROVIDER_RETURNED_EMPTY'))
       expect(onComplete).not.toHaveBeenCalled()
     })
 
-    it('should trigger NO_STREAM_DATA error when stream closes abruptly without [DONE]', async () => {
+    it('should trigger STREAM_EMPTY when stream closes abruptly without [DONE]', async () => {
       // Simulate SSE stream that closes immediately without any data or [DONE]
       const mockReader = {
         read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
@@ -248,8 +248,8 @@ describe('SSE Client', () => {
         { onMessage, onError, onComplete }
       )
 
-      // Should call onError with NO_STREAM_DATA when stream closes without any data
-      expect(onError).toHaveBeenCalledWith(new Error('NO_STREAM_DATA'))
+      // Should call onError with STREAM_EMPTY when stream closes without any data
+      expect(onError).toHaveBeenCalledWith(new Error('STREAM_EMPTY'))
       expect(onComplete).not.toHaveBeenCalled()
       expect(onMessage).not.toHaveBeenCalled()
     })
@@ -375,6 +375,63 @@ describe('SSE Client', () => {
         expect.objectContaining({ done: true, provider: 'anthropic', model: 'claude' })
       )
       expect(onError).not.toHaveBeenCalled()
+    })
+
+    it('smoke: should strip ask_gate marker and set awaiting_user_input', async () => {
+      const encoder = new TextEncoder()
+      let callCount = 0
+      const mockReader = {
+        read: vi.fn().mockImplementation(() => {
+          callCount++
+          if (callCount === 1) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode(
+                'data: {"delta":"Before <ask_gate>Choose strategy A/B/C</ask_gate> after"}\n\n'
+              ),
+            })
+          }
+          if (callCount === 2) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: [DONE]\n\n'),
+            })
+          }
+          return Promise.resolve({ done: true, value: undefined })
+        }),
+      }
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: { getReader: () => mockReader },
+      })
+      global.fetch = mockFetch
+
+      const onMessage = vi.fn()
+      const onError = vi.fn()
+      const onComplete = vi.fn()
+
+      await client.connect(
+        'conv-1',
+        { message: 'test', provider: 'openai', model: 'gpt-4o-mini' },
+        { onMessage, onError, onComplete }
+      )
+
+      expect(onError).not.toHaveBeenCalled()
+      expect(onComplete).toHaveBeenCalledTimes(1)
+      expect(onMessage).toHaveBeenCalledTimes(1)
+
+      const chunk = onMessage.mock.calls[0][0]
+      expect(chunk).toEqual(
+        expect.objectContaining({
+          done: false,
+          awaiting_user_input: true,
+        })
+      )
+      expect(chunk.delta).toContain('Before')
+      expect(chunk.delta).toContain('after')
+      expect(chunk.delta).not.toContain('<ask_gate>')
+      expect(chunk.delta).not.toContain('</ask_gate>')
     })
   })
 })

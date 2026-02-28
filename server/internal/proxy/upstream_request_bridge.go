@@ -22,6 +22,7 @@ type UpstreamRequestBridgeContext struct {
 	RequestPath        string
 	Body               []byte
 	PromptCacheEnabled bool
+	AudioTranscriber   chatAudioTranscriber
 }
 
 // UpstreamRequestBridge adapts an OpenAI-edge request into a provider-specific upstream request.
@@ -74,7 +75,7 @@ func (responsesEndpointBridge) Build(ctx *UpstreamRequestBridgeContext) error {
 	basePath := strings.TrimSuffix(ctx.TargetURL.Path, "/")
 	ctx.RequestPath = basePath
 
-	converted, err := convertOpenAIChatCompletionsToResponses(ctx.Body)
+	converted, err := convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(ctx.Body, ctx.AudioTranscriber)
 	if err != nil {
 		return fmt.Errorf("convert openai->responses: %w", err)
 	}
@@ -103,7 +104,7 @@ func (codexModelResponsesBridge) Match(ctx *UpstreamRequestBridgeContext) bool {
 
 func (codexModelResponsesBridge) Build(ctx *UpstreamRequestBridgeContext) error {
 	ctx.RequestPath = "/v1/responses"
-	converted, err := convertOpenAIChatCompletionsToResponses(ctx.Body)
+	converted, err := convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(ctx.Body, ctx.AudioTranscriber)
 	if err != nil {
 		return fmt.Errorf("convert codex openai->responses: %w", err)
 	}

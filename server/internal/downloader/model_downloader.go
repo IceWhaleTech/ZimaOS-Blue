@@ -3,23 +3,24 @@ package downloader
 import (
 	"context"
 	"fmt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ModelFile describes a downloadable model file with fallback mirrors.
 type ModelFile struct {
-	Filename    string                `json:"filename"`
-	URL         string                `json:"url"`      // Primary URL (usually HuggingFace)
-	Mirrors     []string              `json:"mirrors"`  // Fallback URLs (hf-mirror, modelscope)
-	Size        string                `json:"size"`     // Human-readable size
-	PostProcess func(path string) error `json:"-"`      // Optional post-download hook (e.g. extract tgz)
+	Filename    string                  `json:"filename"`
+	URL         string                  `json:"url"`     // Primary URL (usually HuggingFace)
+	Mirrors     []string                `json:"mirrors"` // Fallback URLs (prefer modelscope, then hf-mirror)
+	Size        string                  `json:"size"`    // Human-readable size
+	PostProcess func(path string) error `json:"-"`       // Optional post-download hook (e.g. extract tgz)
 }
 
 // DownloadProgress tracks download progress for a single file.
@@ -44,7 +45,7 @@ const (
 )
 
 // ModelDownloader manages model file downloads with high availability fallback.
-// It tries ModelScope → HF-Mirror → HuggingFace in sequence.
+// It tries ModelScope → HuggingFace (hf.co) → HF-Mirror in sequence.
 type ModelDownloader struct {
 	destDir     string
 	downloading bool
@@ -87,7 +88,7 @@ func (d *ModelDownloader) GetState() (state string, err string) {
 }
 
 // Download downloads a list of model files sequentially.
-// It tries ModelScope first (fastest in China), then HF-Mirror, then HuggingFace.
+// It tries ModelScope first (fastest in China), then HuggingFace (hf.co), then HF-Mirror.
 func (d *ModelDownloader) Download(ctx context.Context, files []ModelFile) error {
 	d.mu.Lock()
 	if d.downloading {
@@ -137,7 +138,7 @@ func (d *ModelDownloader) Download(ctx context.Context, files []ModelFile) error
 		d.progress.ETA = ""
 		d.mu.Unlock()
 
-		// Try ModelScope first (fastest in China), then mirrors, then primary
+		// Try ModelScope first (fastest in China), then primary, then mirrors.
 		urls := buildURLList(f)
 		log.Printf("[ModelDownloader] Downloading %s, trying %d URLs in order:", f.Filename, len(urls))
 		for idx, u := range urls {
@@ -174,7 +175,7 @@ func (d *ModelDownloader) Download(ctx context.Context, files []ModelFile) error
 }
 
 // buildURLList builds the URL list with ModelScope first for high availability.
-// Priority: ModelScope (fastest in China) → HF-Mirror → HuggingFace
+// Priority: ModelScope (fastest in China) -> HuggingFace (hf.co) -> HF-Mirror.
 func buildURLList(f ModelFile) []string {
 	urls := make([]string, 0, len(f.Mirrors)+1)
 
@@ -185,15 +186,15 @@ func buildURLList(f ModelFile) []string {
 		}
 	}
 
-	// 2. Try HF-Mirror (backup for China)
+	// 2. Try HuggingFace primary (hf.co)
+	urls = append(urls, f.URL)
+
+	// 3. Try HF-Mirror (backup for China)
 	for _, mirror := range f.Mirrors {
 		if contains(mirror, "hf-mirror.com") {
 			urls = append(urls, mirror)
 		}
 	}
-
-	// 3. Try HuggingFace (original, may be slow in China)
-	urls = append(urls, f.URL)
 
 	// 4. Add any remaining mirrors
 	for _, mirror := range f.Mirrors {
@@ -206,18 +207,7 @@ func buildURLList(f ModelFile) []string {
 }
 
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-		 findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(s, substr)
 }
 
 func (d *ModelDownloader) downloadWithFallback(ctx context.Context, urls []string, destPath string) error {

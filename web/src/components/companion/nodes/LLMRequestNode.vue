@@ -17,6 +17,10 @@ const props = defineProps<{
   }
 }>()
 
+const hasTokenBreakdown = computed(() =>
+  props.data.promptTokens != null || props.data.completionTokens != null
+)
+
 const statusColor = computed(() => {
   switch (props.data.status) {
     case 'completed':
@@ -37,7 +41,7 @@ function formatDuration(ms?: number): string {
 }
 
 function formatTokens(tokens?: number): string {
-  if (!tokens) return '0'
+  if (tokens == null) return t('common.noData')
   return tokens.toLocaleString()
 }
 </script>
@@ -95,7 +99,7 @@ function formatTokens(tokens?: number): string {
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
             </svg>
-            <span>{{ formatTokens(data.totalTokens) }}</span>
+            <span>{{ t('companion.llmDetails.total') }}: {{ formatTokens(data.totalTokens) }}</span>
           </div>
           <div v-if="data.duration" class="flex items-center gap-1">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,7 +110,7 @@ function formatTokens(tokens?: number): string {
         </div>
 
         <!-- Token breakdown -->
-        <div v-if="data.promptTokens || data.completionTokens" class="mt-2 text-[10px] text-gray-400 dark:text-gray-500">
+        <div v-if="hasTokenBreakdown" class="mt-2 text-[10px] text-gray-400 dark:text-gray-500">
           <span>{{ t('companion.nodes.tokensIn') }}: {{ formatTokens(data.promptTokens) }}</span>
           <span class="mx-1">|</span>
           <span>{{ t('companion.nodes.tokensOut') }}: {{ formatTokens(data.completionTokens) }}</span>

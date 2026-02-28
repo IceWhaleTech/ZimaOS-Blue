@@ -18,7 +18,7 @@ const defaultQuestionTimeout = 2 * time.Minute
 type QuestionItem struct {
 	ID          string           `json:"id"`
 	Question    string           `json:"question"`
-	Header      string           `json:"header"`                  // short tab label (max 12 chars)
+	Header      string           `json:"header"` // short tab label (max 12 chars)
 	Options     []QuestionOption `json:"options,omitempty"`
 	MultiSelect bool             `json:"multi_select,omitempty"`
 }
@@ -59,6 +59,9 @@ type QuestionManager struct {
 	pending map[string]*pendingQuestion
 	timeout time.Duration
 	silent  func() bool // returns true when unattended mode is active
+	// Optional dynamic overrides (wired from settings at runtime).
+	timeoutFunc       func() time.Duration
+	timeoutActionFunc func() string // "default" | "error"
 }
 
 // NewQuestionManager creates a new question manager.
@@ -89,6 +92,54 @@ func (m *QuestionManager) SetSilentFunc(fn func() bool) {
 	if fn != nil {
 		m.silent = fn
 	}
+}
+
+// SetTimeoutFunc sets a dynamic timeout getter (takes precedence over static timeout when >0).
+func (m *QuestionManager) SetTimeoutFunc(fn func() time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.timeoutFunc = fn
+}
+
+// SetTimeoutActionFunc sets the timeout action getter.
+// Supported values:
+// - "default": return default answers on timeout (existing behavior)
+// - "error": return timeout error
+func (m *QuestionManager) SetTimeoutActionFunc(fn func() string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.timeoutActionFunc = fn
+}
+
+func (m *QuestionManager) resolveTimeout() time.Duration {
+	m.mu.Lock()
+	fn := m.timeoutFunc
+	base := m.timeout
+	m.mu.Unlock()
+	if fn != nil {
+		if d := fn(); d > 0 {
+			return d
+		}
+	}
+	if base <= 0 {
+		return defaultQuestionTimeout
+	}
+	return base
+}
+
+func (m *QuestionManager) resolveTimeoutAction() string {
+	m.mu.Lock()
+	fn := m.timeoutActionFunc
+	m.mu.Unlock()
+	if fn != nil {
+		switch fn() {
+		case "error":
+			return "error"
+		default:
+			return "default"
+		}
+	}
+	return "default"
 }
 
 // AskQuestions sends questions to the user via SSE and blocks until answers arrive.
@@ -125,12 +176,13 @@ func (m *QuestionManager) AskQuestions(ctx context.Context, userID, sessionID st
 	reqID := uuid.New().String()
 	answerCh := make(chan []QuestionAnswerResult, 1)
 
+	timeout := m.resolveTimeout()
 	req := QuestionRequest{
 		ID:        reqID,
 		Questions: questions,
 		UserID:    userID,
 		SessionID: sessionID,
-		ExpiresAt: timeutil.NowMilli() + m.timeout.Milliseconds(),
+		ExpiresAt: timeutil.NowMilli() + timeout.Milliseconds(),
 	}
 
 	m.mu.Lock()
@@ -147,13 +199,16 @@ func (m *QuestionManager) AskQuestions(ctx context.Context, userID, sessionID st
 	m.broker.Publish(userID, "ask", req)
 
 	// Wait for response or timeout
-	timer := time.NewTimer(m.timeout)
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
 	select {
 	case answers := <-answerCh:
 		return answers, false, nil
 	case <-timer.C:
+		if m.resolveTimeoutAction() == "error" {
+			return nil, false, fmt.Errorf("question timed out after %s", timeout)
+		}
 		// Timeout: return defaults
 		return m.defaultAnswers(questions), true, nil
 	case <-ctx.Done():

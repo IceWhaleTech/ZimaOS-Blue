@@ -177,6 +177,66 @@ func TestCompanion_SendMessage(t *testing.T) {
 	}
 }
 
+// TestCompanion_SendMessage_RecreatesMissingSessionMapping verifies that
+// companion session mapping can be recovered lazily for existing conversations
+// (e.g. after process restart where in-memory convToSession map is empty).
+func TestCompanion_SendMessage_RecreatesMissingSessionMapping(t *testing.T) {
+	handler, _, storage, cancel := setupCompanionTest(t)
+	defer cancel()
+	defer handler.Close()
+
+	e := echo.New()
+
+	// Create conversation first (creates an initial mapping).
+	createBody := `{"title":"Companion Recovery Test"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", bytes.NewBufferString(createBody))
+	createReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	createRec := httptest.NewRecorder()
+	cc := e.NewContext(createReq, createRec)
+	if err := handler.CreateConversation(cc); err != nil {
+		t.Fatal(err)
+	}
+
+	var conv memory.Conversation
+	if err := json.Unmarshal(createRec.Body.Bytes(), &conv); err != nil {
+		t.Fatalf("failed to decode conversation: %v", err)
+	}
+
+	// Simulate lost in-memory mapping.
+	handler.convMu.Lock()
+	delete(handler.convToSession, conv.ID)
+	handler.convMu.Unlock()
+
+	// Send message to existing conversation.
+	msgBody := `{"message":"Recover mapping","provider":"mock","model":"mock-model"}`
+	msgReq := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(msgBody))
+	msgReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	msgRec := httptest.NewRecorder()
+	mc := e.NewContext(msgReq, msgRec)
+	mc.SetParamNames("id")
+	mc.SetParamValues(conv.ID)
+	if err := handler.SendMessage(mc); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+
+	// Wait for async event queue.
+	time.Sleep(200 * time.Millisecond)
+
+	// Mapping should be recreated.
+	sessionID := handler.getCompanionSessionID(conv.ID)
+	if sessionID == "" {
+		t.Fatal("expected companion session mapping to be recreated")
+	}
+
+	events, _, err := storage.GetSessionEvents(context.Background(), sessionID, &companion.ListOptions{Limit: 50})
+	if err != nil {
+		t.Fatalf("failed to get session events: %v", err)
+	}
+	if len(events) == 0 {
+		t.Fatal("expected companion events after mapping recovery, got none")
+	}
+}
+
 // TestCompanion_NoManagerNoPanic verifies that the handler works fine
 // without a companion manager set (nil-safe).
 func TestCompanion_NoManagerNoPanic(t *testing.T) {

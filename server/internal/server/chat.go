@@ -144,8 +144,11 @@ func prependSystemMessages(messages []llm.Message, systemMessages []llm.Message)
 // reSystemReminder matches <system-reminder>...</system-reminder> blocks that LLMs sometimes echo back.
 var reSystemReminder = regexp.MustCompile(`<system-reminder>[\s\S]*?</system-reminder>`)
 var reThinkBlock = regexp.MustCompile(`<think>[\s\S]*?</think>`)
+var reAwaitingUserInputTag = regexp.MustCompile(`(?is)<awaiting_user_input>\s*true\s*</awaiting_user_input>`)
+var reAskGateBlock = regexp.MustCompile(`(?is)<ask_gate>[\s\S]*?</ask_gate>`)
 var reTodoUnchecked = regexp.MustCompile(`- \[ \] ([^\n]+)`)
 var reTodoAnyItem = regexp.MustCompile(`- \[([ x])\] (?:~~)?([^\n~]+)(?:~~)?`)
+var reAskOptionLine = regexp.MustCompile(`(?m)^[A-E][\.\)]\s+\S+`)
 
 // extractTodoProgress builds a progress hint from the TODO content.
 // Shows: done count / total, then all remaining (unchecked) items so the LLM
@@ -192,6 +195,22 @@ func isAwaitingUserInput(content string) bool {
 	if s == "" {
 		return false
 	}
+	// Protocol-first gate: explicit marker emitted by agent-mode prompt contract.
+	if strings.Contains(s, "<awaiting_user_input>true</awaiting_user_input>") {
+		return true
+	}
+	if strings.Contains(s, "<ask_gate>") || strings.Contains(s, "</ask_gate>") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(s), "awaiting user input") {
+		return true
+	}
+
+	// Structured options (A/B/C...) are likely a confirmation gate.
+	if strings.Contains(s, "请选择") && reAskOptionLine.MatchString(s) {
+		return true
+	}
+
 	if strings.Contains(s, "?") || strings.Contains(s, "？") {
 		return true
 	}
@@ -257,6 +276,8 @@ func sanitizeResponseContent(s string) string {
 	s = strings.ReplaceAll(s, "<system_placeholder />", "")
 	s = reSystemReminder.ReplaceAllString(s, "")
 	s = reThinkBlock.ReplaceAllString(s, "")
+	s = reAwaitingUserInputTag.ReplaceAllString(s, "")
+	s = reAskGateBlock.ReplaceAllString(s, "")
 	return strings.TrimSpace(s)
 }
 
@@ -830,6 +851,7 @@ type ChatHandler struct {
 
 	// Smart tool selection: IR-based filtering of tools per query
 	toolSelector    *tools.ToolSelector
+	skillSelector   *claudecode.SkillSelector
 	settingsHandler *SettingsHandler
 
 	// imModel is the model to use for IM channel requests (default "auto").
@@ -858,6 +880,10 @@ type ChatHandler struct {
 	// proxy request disables Responses continuation (drops previous_response_id).
 	cancelledResponsesContinuation map[string]struct{}
 	cancelledContinuationMu        sync.Mutex
+
+	// Conversation-level Responses continuation state (last response.id).
+	responsesPreviousID map[string]string
+	responsesPrevMu     sync.RWMutex
 }
 
 type conversationSlashState struct {
@@ -900,9 +926,24 @@ func (h *ChatHandler) SetSettingsHandler(sh *SettingsHandler) {
 	h.settingsHandler = sh
 }
 
+// GetSettingsHandler returns current settings handler (may be nil).
+func (h *ChatHandler) GetSettingsHandler() *SettingsHandler {
+	return h.settingsHandler
+}
+
 // GetToolSelector returns the current tool selector (may be nil).
 func (h *ChatHandler) GetToolSelector() *tools.ToolSelector {
 	return h.toolSelector
+}
+
+// SetSkillSelector enables progressive smart skill selection.
+func (h *ChatHandler) SetSkillSelector(ss *claudecode.SkillSelector) {
+	h.skillSelector = ss
+}
+
+// GetSkillSelector returns the current skill selector (may be nil).
+func (h *ChatHandler) GetSkillSelector() *claudecode.SkillSelector {
+	return h.skillSelector
 }
 
 func (h *ChatHandler) getMemoryRecallMode() MemoryRecallMode {
@@ -975,6 +1016,59 @@ func applyDeepSearchPreference(defs []tools.ToolDefinition, deepSearchEnabled *b
 	return filtered
 }
 
+func (h *ChatHandler) buildSkillSelectionPrompt(ctx context.Context, userMessage string) string {
+	if h.skillSelector == nil {
+		return ""
+	}
+	userMessage = strings.TrimSpace(userMessage)
+	if userMessage == "" {
+		return ""
+	}
+	if h.settingsHandler != nil && !h.settingsHandler.GetSmartSkillSelection() {
+		return ""
+	}
+
+	opts := claudecode.SelectOptions{
+		Mode:                claudecode.SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	}
+	if h.settingsHandler != nil {
+		opts.Mode = h.settingsHandler.GetSkillSelectorMode()
+		opts.EnableRerank = h.settingsHandler.GetSkillRerankEnabled()
+		opts.ConfidenceThreshold = h.settingsHandler.GetSkillSelectorConfidenceThreshold()
+	}
+
+	decision, err := h.skillSelector.Select(ctx, userMessage, opts)
+	if err != nil {
+		logger.Warn().Err(err).Msg("[chat] skill selector failed")
+		return ""
+	}
+	return decision.PromptHint(3)
+}
+
+func mergeExtraPrompt(parts ...string) string {
+	var sb strings.Builder
+	for _, p := range parts {
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		sb.WriteString(p)
+	}
+	return sb.String()
+}
+
+func withProxySession(ctx context.Context, convID string) context.Context {
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return ctx
+	}
+	if strings.TrimSpace(proxy.SessionIDFromContext(ctx)) != "" {
+		return ctx
+	}
+	return proxy.WithSessionID(ctx, convID)
+}
+
 // preContentRetrySkipReason returns a stable reason string when chat layer
 // pre-content retries should be skipped; empty means "retry is allowed".
 func preContentRetrySkipReason(err error) string {
@@ -987,10 +1081,6 @@ func preContentRetrySkipReason(err error) string {
 	switch {
 	case pe.IsClientError():
 		return "client_error"
-	case pe.StatusCode == http.StatusBadGateway:
-		// 502 retries are handled in proxy with bounded exponential backoff.
-		// Skip chat-layer duplicate retries to avoid replaying identical payloads.
-		return "bad_gateway"
 	case pe.IsOverloaded():
 		return "overloaded"
 	case pe.IsNoProvider():
@@ -1110,6 +1200,7 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		convToStream:                   make(map[string]string),
 		conversationState:              make(map[string]conversationSlashState),
 		cancelledResponsesContinuation: make(map[string]struct{}),
+		responsesPreviousID:            make(map[string]string),
 	}
 	// Start async event processor
 	go h.processEventQueue()
@@ -1203,6 +1294,36 @@ func (h *ChatHandler) SetIMModel(model string) {
 	h.imModel = model
 }
 
+const defaultCCCLIModel = "gpt-5.3-codex-spark"
+
+func (h *ChatHandler) isCCCLIEnabled() bool {
+	return h != nil && h.claudeCodeHandler != nil && h.claudeCodeHandler.IsEnabled()
+}
+
+func (h *ChatHandler) defaultModelForCCCLI(model string) string {
+	normalized := strings.TrimSpace(model)
+	if normalized == "" {
+		if h.isCCCLIEnabled() {
+			return defaultCCCLIModel
+		}
+		return "auto"
+	}
+	if strings.EqualFold(normalized, "auto") && h.isCCCLIEnabled() {
+		return defaultCCCLIModel
+	}
+	return normalized
+}
+
+func (h *ChatHandler) warmupModelForConversation(convID string) string {
+	model := "auto"
+	if convID != "" {
+		if st := h.getConversationSlashState(convID); strings.TrimSpace(st.Model) != "" {
+			model = st.Model
+		}
+	}
+	return h.defaultModelForCCCLI(model)
+}
+
 // SetMediaInterceptor sets the media interceptor for IR-based media generation.
 func (h *ChatHandler) SetMediaInterceptor(interceptor MediaInterceptor) {
 	h.mediaInterceptor = interceptor
@@ -1270,6 +1391,41 @@ func (h *ChatHandler) getCompanionSessionID(convID string) string {
 	h.convMu.RLock()
 	defer h.convMu.RUnlock()
 	return h.convToSession[convID]
+}
+
+// ensureCompanionSessionID returns an existing session ID for convID, or lazily
+// creates one when missing (e.g. legacy conversations, post-restart state).
+func (h *ChatHandler) ensureCompanionSessionID(ctx context.Context, convID, userID, clientIP string) string {
+	if h == nil || h.companionManager == nil || strings.TrimSpace(convID) == "" {
+		return ""
+	}
+	if sid := h.getCompanionSessionID(convID); sid != "" {
+		return sid
+	}
+
+	sessionUserID := strings.TrimSpace(userID)
+	if sessionUserID == "" {
+		sessionUserID = "web-user"
+	}
+	session := &companion.Session{
+		Platform: companion.PlatformWeb,
+		UserID:   sessionUserID,
+		Metadata: companion.SessionMeta{
+			ClientIP: clientIP,
+		},
+	}
+	created, err := h.companionManager.CreateSession(ctx, session)
+	if err != nil || created == nil || created.ID == "" {
+		return ""
+	}
+
+	h.convMu.Lock()
+	defer h.convMu.Unlock()
+	if existing := h.convToSession[convID]; existing != "" {
+		return existing
+	}
+	h.convToSession[convID] = created.ID
+	return created.ID
 }
 
 // getUserID returns the user ID from the request context, or empty string if not authenticated.
@@ -1394,6 +1550,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 
 	// Build a stable conversation ID from channel + chat so we can persist history
 	convID := channelConversationID(msg.ChannelName, msg.ChatID)
+	ctx = withProxySession(ctx, convID)
 
 	// Ensure conversation exists in store (create if first message)
 	if h.store != nil {
@@ -1420,7 +1577,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	// Use provider pool with system prompt
 	var messages []llm.Message
 	var preloaded []memory.Message
-	systemPromptMessages := h.buildSystemPromptMessages(ctx, "")
+	systemPromptMessages := h.buildSystemPromptMessages(ctx, h.buildSkillSelectionPrompt(ctx, msg.Content))
 	// Try to use pre-computed warmup context (reduces TTFT for channel messages)
 	if warmup := h.consumeWarmup(convID); warmup != nil {
 		logger.Info().Str("conv_id", convID).Msg("[chat] ProcessChannelMessage: using warmup cache")
@@ -1585,13 +1742,16 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	}
 
 	modelID := h.imModel
-	if modelID == "" {
-		modelID = "auto"
-	}
+	modelID = h.defaultModelForCCCLI(modelID)
 
 	req := llm.ChatRequest{
 		Model:    modelID,
 		Messages: messages,
+	}
+	if isResponsesNativeModel(req.Model) {
+		if prev := h.getPreviousResponseID(convID); prev != "" {
+			req.PreviousResponseID = prev
+		}
 	}
 
 	// Add tool definitions (smart selection filters by user query when enabled)
@@ -1649,6 +1809,10 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		if len(resp.Message.ToolCalls) == 0 {
 			break
 		}
+		if isResponsesNativeModel(req.Model) && resp.ID != "" {
+			h.setPreviousResponseID(convID, resp.ID)
+			req.PreviousResponseID = resp.ID
+		}
 		logger.Info().Int("round", imRound).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[im] executing tool calls")
 		// Persist intermediate round content as a separate message for IM channels
 		if resp.Message.Content != "" {
@@ -1662,6 +1826,9 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	if resp == nil || resp.Message.Content == "" {
 		logger.Warn().Msg("LLM returned empty response")
 		return "", fmt.Errorf("AI returned empty response")
+	}
+	if isResponsesNativeModel(req.Model) && resp.ID != "" {
+		h.setPreviousResponseID(convID, resp.ID)
 	}
 
 	responseContent = sanitizeResponseContent(resp.Message.Content)
@@ -1930,7 +2097,7 @@ func (h *ChatHandler) extractMemory(convID, source string) bool {
 	}
 
 	req := llm.ChatRequest{
-		Model: "auto",
+		Model: h.defaultModelForCCCLI("auto"),
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: `You are a memory extraction assistant. Extract important facts from this conversation as short, structured bullet points.
 Focus on: user preferences, personal info, decisions, key facts, action items, technical choices.
@@ -1972,7 +2139,7 @@ Respond in the same language as the conversation.`},
 
 	// Emit memory_saved companion event
 	if h.companionManager != nil {
-		sessionID := h.getCompanionSessionID(convID)
+		sessionID := h.ensureCompanionSessionID(ctx, convID, "", "")
 		if sessionID != "" {
 			mc := memoryContent // capture for closure
 			h.queueEvent(func() {
@@ -2267,7 +2434,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		if result.IsThreat {
 			// Record security event to companion
 			if h.companionManager != nil {
-				sessionID := h.getCompanionSessionID(convID)
+				sessionID := h.ensureCompanionSessionID(c.Request().Context(), convID, h.getUserID(c), c.RealIP())
 				if sessionID != "" {
 					h.emitSecurityEvent(c.Request().Context(), sessionID, result)
 				}
@@ -2299,6 +2466,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	} else if convState.Model != "" {
 		model = convState.Model
 	}
+	model = h.defaultModelForCCCLI(model)
 
 	// Store user message
 	_, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
@@ -2313,7 +2481,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	h.conversationCache.Invalidate(convID)
 
 	// Emit message event to companion (async)
-	sessionID := h.getCompanionSessionID(convID)
+	sessionID := h.ensureCompanionSessionID(c.Request().Context(), convID, h.getUserID(c), c.RealIP())
 	h.emitMessageEventAsync(sessionID, req.Message, "inbound", req.Regenerate)
 
 	// Smart context strategy: classify and build minimal context
@@ -2341,7 +2509,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 	// Inject cache-friendly structured system prompt blocks with conversation anchor.
 	anchorPrompt := h.buildConversationAnchorPrompt(c.Request().Context(), convID)
-	if systemPromptMessages := h.buildSystemPromptMessages(c.Request().Context(), anchorPrompt); len(systemPromptMessages) > 0 {
+	extraPrompt := mergeExtraPrompt(anchorPrompt, h.buildSkillSelectionPrompt(c.Request().Context(), req.Message))
+	if systemPromptMessages := h.buildSystemPromptMessages(c.Request().Context(), extraPrompt); len(systemPromptMessages) > 0 {
 		logger.Info().Int("system_blocks", len(systemPromptMessages)).Msg("[chat] SendMessage: injected structured system prompt")
 		compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
 	} else {
@@ -2354,6 +2523,11 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		Messages:    compactedMessages,
 		Temperature: req.Temperature,
 		MaxTokens:   req.MaxTokens,
+	}
+	if isResponsesNativeModel(chatReq.Model) {
+		if prev := h.getPreviousResponseID(convID); prev != "" {
+			chatReq.PreviousResponseID = prev
+		}
 	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
@@ -2383,7 +2557,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 	toolCtx = tools.WithUserID(toolCtx, h.getUserID(c))
 	toolCtx = tools.WithSessionID(toolCtx, convID)
-	llmCtx := c.Request().Context()
+	llmCtx := withProxySession(c.Request().Context(), convID)
 	// Attach prune stats slot so the proxy pruner can populate it (non-streaming path).
 	pruneStats := &pruner.RequestPruneStats{}
 	llmCtx = pruner.WithPruneStats(llmCtx, pruneStats)
@@ -2424,6 +2598,10 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		if len(resp.Message.ToolCalls) == 0 {
 			break
 		}
+		if isResponsesNativeModel(chatReq.Model) && resp.ID != "" {
+			h.setPreviousResponseID(convID, resp.ID)
+			chatReq.PreviousResponseID = resp.ID
+		}
 		// Execute tool calls and feed results back
 		logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
 		toolResults := h.executeToolCalls(toolCtx, resp.Message.ToolCalls)
@@ -2432,6 +2610,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		chatReq.Messages = append(chatReq.Messages, toolResults...)
 	}
 	latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
+	if isResponsesNativeModel(chatReq.Model) && resp != nil && resp.ID != "" {
+		h.setPreviousResponseID(convID, resp.ID)
+	}
 
 	// Append typeless cards for tool results to content
 	if resp != nil && len(resp.Message.ToolCalls) == 0 {
@@ -2692,6 +2873,12 @@ func (h *ChatHandler) Warmup(c echo.Context) error {
 		return err
 	}
 
+	model := h.warmupModelForConversation(convID)
+	if isResponsesNativeModel(model) {
+		logger.Info().Str("conv_id", convID).Str("model", model).Msg("[warmup] skipped: responses path does not support warmup")
+		return c.NoContent(http.StatusNoContent)
+	}
+
 	// Run pre-computation in background — return 204 immediately
 	go h.doWarmup(convID)
 
@@ -2702,6 +2889,12 @@ func (h *ChatHandler) Warmup(c echo.Context) error {
 // Enhanced to also pre-warm memory index and tool definitions.
 func (h *ChatHandler) doWarmup(convID string) {
 	ctx := context.Background()
+
+	model := h.warmupModelForConversation(convID)
+	if isResponsesNativeModel(model) {
+		logger.Info().Str("conv_id", convID).Str("model", model).Msg("[warmup] skipped in worker: responses path does not support warmup")
+		return
+	}
 
 	// 1. Build system prompt (query-independent)
 	systemPromptMessages := h.buildSystemPromptMessages(ctx, "")
@@ -3225,7 +3418,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		if result.IsThreat {
 			// Record security event to companion
 			if h.companionManager != nil {
-				sessionID := h.getCompanionSessionID(convID)
+				sessionID := h.ensureCompanionSessionID(c.Request().Context(), convID, h.getUserID(c), c.RealIP())
 				if sessionID != "" {
 					h.emitSecurityEvent(c.Request().Context(), sessionID, result)
 				}
@@ -3256,6 +3449,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	} else if convState.Model != "" {
 		model = convState.Model
 	}
+	model = h.defaultModelForCCCLI(model)
 	providerName := "auto"
 
 	// [CONTINUE_AFTER_CANCEL] is a special marker sent when the frontend auto-resumes
@@ -3290,7 +3484,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		h.conversationCache.Invalidate(convID)
 
 		// Emit message event to companion (async)
-		sessionID := h.getCompanionSessionID(convID)
+		sessionID := h.ensureCompanionSessionID(c.Request().Context(), convID, h.getUserID(c), c.RealIP())
 		h.emitMessageEventAsync(sessionID, req.Message, "inbound", req.Regenerate)
 	} else {
 		// For resume-after-cancel, invalidate cache so we get fresh history (includes original message A)
@@ -3315,7 +3509,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var beforeCount int
 	var preloaded []memory.Message
 	anchorPrompt := h.buildConversationAnchorPrompt(c.Request().Context(), convID)
-	systemPromptMessages := h.buildSystemPromptMessages(c.Request().Context(), anchorPrompt)
+	extraPrompt := mergeExtraPrompt(anchorPrompt, h.buildSkillSelectionPrompt(c.Request().Context(), req.Message))
+	systemPromptMessages := h.buildSystemPromptMessages(c.Request().Context(), extraPrompt)
 
 	if warmup := h.consumeWarmup(convID); warmup != nil {
 		// Warmup hit — reuse preloaded history/system blocks, but still run smart context.
@@ -3331,7 +3526,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 	// Ensure title/initial-goal anchor is always present even when warmup cache was built earlier.
 	if anchorPrompt != "" {
-		systemPromptMessages = h.buildSystemPromptMessages(c.Request().Context(), anchorPrompt)
+		systemPromptMessages = h.buildSystemPromptMessages(c.Request().Context(), extraPrompt)
 	}
 
 	// Warmup preloaded history was captured before this turn's user message.
@@ -3415,6 +3610,13 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		MaxTokens:   req.MaxTokens,
 		Stream:      true,
 	}
+	if isResponsesNativeModel(chatReq.Model) {
+		if disableResponsesContinuation {
+			h.clearPreviousResponseID(convID)
+		} else if prev := h.getPreviousResponseID(convID); prev != "" {
+			chatReq.PreviousResponseID = prev
+		}
+	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
 	selectedTools := h.selectTools(req.Message)
@@ -3446,6 +3648,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	// Attach prune stats slot so the proxy pruner can populate it
 	pruneStats := &pruner.RequestPruneStats{}
+	ctx = withProxySession(ctx, convID)
 	ctx = pruner.WithPruneStats(ctx, pruneStats)
 
 	// Attach ResolvedRoute slot so the bridge can populate it with actual provider/model.
@@ -3527,6 +3730,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var actualModel string      // Track actual model from response
 	var actualProvider string   // Track actual provider from response
 	var actualProviderID string // Track actual provider ID for sticky routing
+	var latestResponseID string // Track latest Responses response.id for continuation
 	userID := h.getUserID(c)
 
 	// Pre-allocate buffer for SSE writes to reduce allocations
@@ -3537,6 +3741,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var streamErrorHandled bool // true when chunk.Error already sent done+stored
 	var streamCompleted bool    // true when chunk.Done fired for final round (persistence deferred)
 	var streamDoneSent bool     // true when the done SSE chunk has been sent to the client
+	var awaitingInputSent bool  // true once awaiting_user_input SSE event has been emitted for this stream
 	var contextTrimSent bool    // true when pruning/compaction metadata SSE has been sent
 	var finalLatencyMs, finalTTFTMs, finalTPS float64
 
@@ -3644,6 +3849,9 @@ STREAM_LOOP:
 			}
 
 			// Capture actual model/provider from response if provided
+			if chunk.ID != "" {
+				latestResponseID = chunk.ID
+			}
 			if chunk.Model != "" && actualModel == "" {
 				actualModel = chunk.Model
 			}
@@ -3713,6 +3921,15 @@ STREAM_LOOP:
 			fullContent += chunk.Delta
 			if chunk.Delta != "" {
 				totalDeltaChars += len(chunk.Delta)
+			}
+			if !awaitingInputSent && (reAwaitingUserInputTag.MatchString(fullContent) || reAskGateBlock.MatchString(fullContent)) {
+				awaitingInputSent = true
+				awaitingJSON, _ := json.Marshal(map[string]interface{}{
+					"awaiting_user_input": true,
+					"stream_id":           streamID,
+				})
+				c.Response().Write([]byte("data: " + string(awaitingJSON) + "\n\n"))
+				flusher.Flush()
 			}
 
 			// Incremental persistence: insert or update the message in DB periodically
@@ -4073,6 +4290,9 @@ STREAM_LOOP:
 		}
 
 		// If stream had tool calls, execute them and loop back
+		if isResponsesNativeModel(chatReq.Model) && latestResponseID != "" {
+			chatReq.PreviousResponseID = latestResponseID
+		}
 		if err == nil && len(streamToolCalls) > 0 {
 			// Detect consecutive duplicate tool calls (same tool + same args).
 			// This prevents the LLM from getting stuck in an infinite loop calling
@@ -4303,6 +4523,7 @@ STREAM_LOOP:
 				Str("fullContent_len", fmt.Sprintf("%d", len(fullContent))).
 				Msg("[chat] stream: resetting fullContent for next tool round")
 			fullContent = ""
+			awaitingInputSent = false
 			continue
 		}
 		if err != nil {
@@ -4639,7 +4860,7 @@ STREAM_LOOP:
 						compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, compactedMessages...)
 					}
 				}
-				if systemPromptMessages := h.buildSystemPromptMessages(context.Background(), ""); len(systemPromptMessages) > 0 {
+				if systemPromptMessages := h.buildSystemPromptMessages(context.Background(), h.buildSkillSelectionPrompt(context.Background(), injectedMsg)); len(systemPromptMessages) > 0 {
 					compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
 				}
 
@@ -4651,6 +4872,13 @@ STREAM_LOOP:
 					MaxTokens:   req.MaxTokens,
 					Stream:      true,
 					Tools:       defsToLLMTools(h.selectTools(injectedMsg)),
+				}
+				if isResponsesNativeModel(chatReq.Model) {
+					if disableResponsesContinuation {
+						h.clearPreviousResponseID(convID)
+					} else if prev := h.getPreviousResponseID(convID); prev != "" {
+						chatReq.PreviousResponseID = prev
+					}
 				}
 
 				// Reset stream state for the new round
@@ -4843,7 +5071,7 @@ STREAM_LOOP:
 
 		// Emit LLM request event to companion for streaming
 		if h.companionManager != nil {
-			sessionID := h.getCompanionSessionID(convID)
+			sessionID := h.ensureCompanionSessionID(c.Request().Context(), convID, h.getUserID(c), c.RealIP())
 			if sessionID != "" {
 				llmResp := &llm.ChatResponse{
 					Usage: llm.Usage{
@@ -4864,6 +5092,9 @@ STREAM_LOOP:
 				h.emitMessageSentEventAsync(sessionID, fullContent, totalOutputTokens)
 			}
 		}
+	}
+	if isResponsesNativeModel(chatReq.Model) && latestResponseID != "" {
+		h.setPreviousResponseID(convID, latestResponseID)
 	}
 
 	// Send final DONE marker
@@ -4969,7 +5200,7 @@ func (h *ChatHandler) generateTitleWithLLM(userMessage, targetLang string) strin
 	defer cancel()
 
 	req := llm.ChatRequest{
-		Model: "auto",
+		Model: h.defaultModelForCCCLI("auto"),
 		Messages: []llm.Message{
 			{
 				Role:    llm.RoleSystem,
@@ -5362,6 +5593,40 @@ func (h *ChatHandler) consumeCancelledResponsesContinuation(convID string) bool 
 	}
 	delete(h.cancelledResponsesContinuation, convID)
 	return true
+}
+
+func isResponsesNativeModel(model string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "responses")
+}
+
+func (h *ChatHandler) getPreviousResponseID(convID string) string {
+	if convID == "" {
+		return ""
+	}
+	h.responsesPrevMu.RLock()
+	defer h.responsesPrevMu.RUnlock()
+	return strings.TrimSpace(h.responsesPreviousID[convID])
+}
+
+func (h *ChatHandler) setPreviousResponseID(convID, responseID string) {
+	convID = strings.TrimSpace(convID)
+	responseID = strings.TrimSpace(responseID)
+	if convID == "" || responseID == "" {
+		return
+	}
+	h.responsesPrevMu.Lock()
+	h.responsesPreviousID[convID] = responseID
+	h.responsesPrevMu.Unlock()
+}
+
+func (h *ChatHandler) clearPreviousResponseID(convID string) {
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return
+	}
+	h.responsesPrevMu.Lock()
+	delete(h.responsesPreviousID, convID)
+	h.responsesPrevMu.Unlock()
 }
 
 // consumeInjection checks for and returns a pending injection message for a conversation.

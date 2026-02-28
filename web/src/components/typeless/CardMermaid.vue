@@ -17,6 +17,8 @@ const loading = ref(true)
 const mermaidModule = shallowRef<typeof import('mermaid') | null>(null)
 // Track render count to generate unique IDs
 let renderCount = 0
+// Track whether this card is still receiving streaming content
+const isStreamingCard = computed(() => props.card._streaming === true)
 
 // Detect diagram type from code
 const diagramType = computed(() => {
@@ -64,6 +66,20 @@ async function initMermaid() {
 async function renderDiagram() {
   if (!containerRef.value) return
 
+  // Avoid Mermaid parse spam while fenced code is still streaming/incomplete.
+  if (isStreamingCard.value) {
+    error.value = null
+    loading.value = true
+    return
+  }
+
+  if (!props.card.code?.trim()) {
+    svgContent.value = ''
+    error.value = null
+    loading.value = false
+    return
+  }
+
   error.value = null
   loading.value = true
 
@@ -86,7 +102,11 @@ async function renderDiagram() {
     const { svg } = await mermaidModule.value!.default.render(id, props.card.code)
     svgContent.value = svg
   } catch (err) {
-    console.error('Mermaid render error:', err)
+    const message = err instanceof Error ? err.message : String(err)
+    // Mermaid parse errors are expected when model output is malformed; keep UI error, silence console spam.
+    if (!/parse error|lexical error/i.test(message)) {
+      console.error('Mermaid render error:', err)
+    }
     error.value = err instanceof Error ? err.message : 'Failed to render diagram'
   } finally {
     loading.value = false
@@ -108,18 +128,30 @@ async function copyCode() {
 
 // Watch for theme changes
 watch(() => props.card.theme, () => {
+  if (isStreamingCard.value) return
   renderDiagram()
 })
 
 // Watch for code changes with debounce to prevent rapid re-renders
 let renderTimeout: ReturnType<typeof setTimeout> | null = null
 watch(() => props.card.code, () => {
+  if (isStreamingCard.value) return
   if (renderTimeout) {
     clearTimeout(renderTimeout)
   }
   renderTimeout = setTimeout(() => {
     renderDiagram()
   }, 100)
+})
+
+// When streaming finishes, render once with final complete code.
+watch(isStreamingCard, (streaming, wasStreaming) => {
+  if (wasStreaming && !streaming) {
+    if (renderTimeout) {
+      clearTimeout(renderTimeout)
+    }
+    renderDiagram()
+  }
 })
 
 onMounted(() => {

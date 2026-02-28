@@ -1462,7 +1462,16 @@ export default {
     viewEvents: 'Προβολή συμβάντων',
     confirmDelete: 'Είστε βέβαιοι ότι θέλετε να διαγράψετε αυτό το webhook;',
   },
-  companion: { ...enUS.companion },
+  companion: {
+    ...enUS.companion,
+    llmDetails: {
+      input: 'Input',
+      prompt: 'Input Tokens',
+      completion: 'Output Tokens',
+      total: 'Total Tokens',
+      score: 'Score',
+    },
+  },
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },

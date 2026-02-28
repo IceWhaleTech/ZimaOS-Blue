@@ -2823,9 +2823,9 @@ export default {
     // 大语言模型请求详情
     llmDetails: {
       input: '输入',
-      prompt: '提示词',
-      completion: '补全',
-      total: '总计',
+      prompt: '输入令牌',
+      completion: '输出令牌',
+      total: '总令牌',
       score: '分数',
     },
     // 消息方向

@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/labstack/echo/v4"
@@ -149,13 +150,13 @@ func (h *MemoryHandler) Search(c echo.Context) error {
 	items := make([]map[string]interface{}, len(results))
 	for i, r := range results {
 		items[i] = map[string]interface{}{
-			"id":           r.Chunk.ID,
-			"content":      r.Chunk.Content,
-			"score":        r.Score,
+			"id":            r.Chunk.ID,
+			"content":       r.Chunk.Content,
+			"score":         r.Score,
 			"keyword_score": r.KeywordScore,
-			"match_types":  r.MatchTypes,
-			"metadata":     r.Chunk.Metadata,
-			"created_at":   r.Chunk.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			"match_types":   r.MatchTypes,
+			"metadata":      r.Chunk.Metadata,
+			"created_at":    r.Chunk.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		}
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -238,7 +239,58 @@ func (h *MemoryHandler) Stats(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
-	return c.JSON(http.StatusOK, stats)
+
+	resp := map[string]interface{}{
+		"total_chunks":             stats.TotalChunks,
+		"total_size_bytes":         stats.TotalSizeBytes,
+		"oldest_chunk":             stats.OldestChunk,
+		"newest_chunk":             stats.NewestChunk,
+		"backend":                  stats.Backend,
+		"total_display_count":      stats.TotalChunks,
+		"total_display_size_bytes": stats.TotalSizeBytes,
+		"daily_logs_count":         0,
+		"daily_entries_count":      0,
+		"daily_total_size_bytes":   int64(0),
+	}
+
+	// Auto-extracted memories are written to daily logs (layered memory) and are
+	// not part of unified chunk stats. Include them for UI display counters.
+	if h.layeredService != nil {
+		dates, listErr := h.layeredService.ListDailyLogs(c.Request().Context())
+		if listErr == nil {
+			dailyEntries := 0
+			dailySize := int64(0)
+			for _, d := range dates {
+				content, readErr := h.layeredService.GetDailyLog(c.Request().Context(), d)
+				if readErr != nil {
+					continue
+				}
+				dailyEntries += countDailyLogEntries(content)
+				dailySize += int64(len(content))
+			}
+			resp["daily_logs_count"] = len(dates)
+			resp["daily_entries_count"] = dailyEntries
+			resp["daily_total_size_bytes"] = dailySize
+			resp["total_display_count"] = stats.TotalChunks + dailyEntries
+			resp["total_display_size_bytes"] = stats.TotalSizeBytes + dailySize
+		}
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+func countDailyLogEntries(content string) int {
+	if content == "" {
+		return 0
+	}
+	count := 0
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "## ") && len(line) >= 11 {
+			count++
+		}
+	}
+	return count
 }
 
 // ExportMarkdown exports all memories as a Markdown file.

@@ -2254,6 +2254,13 @@ export default {
     noSubdirectories: 'Nessuna sottodirectory',
   },
   companion: {
+    llmDetails: {
+      input: 'Input',
+      prompt: 'Input Tokens',
+      completion: 'Output Tokens',
+      total: 'Total Tokens',
+      score: 'Score',
+    },
     title: 'Companion',
     subtitle: 'Assistente companion',
   },

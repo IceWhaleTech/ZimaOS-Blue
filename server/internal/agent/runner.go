@@ -23,6 +23,9 @@ const MaxConcurrentTasks = 3
 // MaxToolRoundsPerStep is the max tool rounds within a single plan step.
 const MaxToolRoundsPerStep = 50
 
+// defaultAskTimeout is used when Ask timeout is not configured.
+const defaultAskTimeout = 10 * time.Minute
+
 // LLMCaller abstracts LLM calls so the runner doesn't depend on proxybridge directly.
 type LLMCaller interface {
 	Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error)
@@ -43,6 +46,9 @@ type MemoryResult struct {
 type RunnerConfig struct {
 	MaxConcurrent int
 	TaskTimeout   time.Duration
+	AskTimeout    time.Duration
+	// AskTimeoutAction controls timeout behavior: "error" (default) | "default".
+	AskTimeoutAction string
 }
 
 // Runner executes agent tasks in the background.
@@ -55,15 +61,18 @@ type Runner struct {
 	memory   MemoryRecaller
 	config   RunnerConfig
 
-	mu       sync.Mutex
-	running  map[string]context.CancelFunc // task ID → cancel
-	wg       sync.WaitGroup               // tracks background goroutines
+	mu      sync.Mutex
+	running map[string]context.CancelFunc // task ID → cancel
+	wg      sync.WaitGroup                // tracks background goroutines
 
 	msgMu     sync.Mutex
 	msgQueues map[string][]string // task ID → queued user messages
 
 	askMu     sync.Mutex
 	askQueues map[string]chan []QuestionAnswer // task ID → pending answer channel
+
+	askTimeoutFunc       func() time.Duration
+	askTimeoutActionFunc func() string // "error" | "default"
 }
 
 // NewRunner creates a new agent runner.
@@ -73,6 +82,15 @@ func NewRunner(store *Store, llmCaller LLMCaller, registry *tools.Registry, exec
 	}
 	if config.TaskTimeout <= 0 {
 		config.TaskTimeout = 30 * time.Minute
+	}
+	if config.AskTimeout <= 0 {
+		config.AskTimeout = defaultAskTimeout
+	}
+	switch strings.ToLower(strings.TrimSpace(config.AskTimeoutAction)) {
+	case "default":
+		config.AskTimeoutAction = "default"
+	default:
+		config.AskTimeoutAction = "error"
 	}
 	return &Runner{
 		store:     store,
@@ -84,6 +102,59 @@ func NewRunner(store *Store, llmCaller LLMCaller, registry *tools.Registry, exec
 		running:   make(map[string]context.CancelFunc),
 		msgQueues: make(map[string][]string),
 		askQueues: make(map[string]chan []QuestionAnswer),
+	}
+}
+
+// SetAskTimeoutFunc sets a dynamic timeout getter (takes precedence over static timeout when >0).
+func (r *Runner) SetAskTimeoutFunc(fn func() time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.askTimeoutFunc = fn
+}
+
+// SetAskTimeoutActionFunc sets dynamic timeout action getter ("error" | "default").
+func (r *Runner) SetAskTimeoutActionFunc(fn func() string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.askTimeoutActionFunc = fn
+}
+
+func (r *Runner) resolveAskTimeout() time.Duration {
+	r.mu.Lock()
+	fn := r.askTimeoutFunc
+	base := r.config.AskTimeout
+	r.mu.Unlock()
+
+	if fn != nil {
+		if d := fn(); d > 0 {
+			return d
+		}
+	}
+	if base <= 0 {
+		return defaultAskTimeout
+	}
+	return base
+}
+
+func (r *Runner) resolveAskTimeoutAction() string {
+	r.mu.Lock()
+	fn := r.askTimeoutActionFunc
+	base := r.config.AskTimeoutAction
+	r.mu.Unlock()
+
+	if fn != nil {
+		switch strings.ToLower(strings.TrimSpace(fn())) {
+		case "default":
+			return "default"
+		default:
+			return "error"
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(base)) {
+	case "default":
+		return "default"
+	default:
+		return "error"
 	}
 }
 
@@ -219,8 +290,8 @@ func (r *Runner) AskUser(ctx context.Context, taskID string, questions []AgentQu
 		Questions: questions,
 	})
 
-	// Block with a 10-minute timeout for user response
-	askTimeout := 10 * time.Minute
+	// Block until response/timeout/cancellation.
+	askTimeout := r.resolveAskTimeout()
 	timer := time.NewTimer(askTimeout)
 	defer timer.Stop()
 
@@ -228,6 +299,15 @@ func (r *Runner) AskUser(ctx context.Context, taskID string, questions []AgentQu
 	case answers := <-ch:
 		return answers, nil
 	case <-timer.C:
+		if r.resolveAskTimeoutAction() == "default" {
+			r.publishEvent(task.UserID, TaskEvent{
+				TaskID:    taskID,
+				EventType: "task_question_timeout",
+				StepIndex: stepIndex,
+				Message:   fmt.Sprintf("No response received in %s, using default option(s).", askTimeout),
+			})
+			return defaultQuestionAnswers(questions), nil
+		}
 		return nil, fmt.Errorf("ask_user timed out after %v — no user response", askTimeout)
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -286,12 +366,11 @@ func (r *Runner) handleAskUser(ctx context.Context, task *Task, argsJSON string)
 			MultiSelect: multiSelect,
 		}
 		if aRaw, ok := raw["a"]; ok {
-			if arr, ok := aRaw.([]interface{}); ok {
-				for _, item := range arr {
-					if s, ok := item.(string); ok && s != "" {
-						q.Options = append(q.Options, QuestionOption{Label: s, Value: s})
-					}
-				}
+			q.Options = parseAgentQuestionOptions(aRaw)
+		}
+		if len(q.Options) == 0 {
+			if aRaw, ok := raw["options"]; ok {
+				q.Options = parseAgentQuestionOptions(aRaw)
 			}
 		}
 		questions = []AgentQuestion{q}
@@ -306,13 +385,12 @@ func (r *Runner) handleAskUser(ctx context.Context, task *Task, argsJSON string)
 		questions = req.Questions
 	}
 
-	// Assign IDs if missing
-	for i := range questions {
-		if questions[i].ID == "" {
-			questions[i].ID = fmt.Sprintf("q%d", i)
-		}
+	normalized, normErr := normalizeAgentQuestions(questions)
+	if normErr != nil {
+		errObj, _ := json.Marshal(map[string]string{"error": normErr.Error()})
+		return string(errObj)
 	}
-	answers, err := r.AskUser(ctx, task.ID, questions, task.CurrentStep)
+	answers, err := r.AskUser(ctx, task.ID, normalized, task.CurrentStep)
 	if err != nil {
 		errObj, _ := json.Marshal(map[string]string{"error": "user did not answer: " + err.Error()})
 		return string(errObj)
@@ -328,6 +406,132 @@ func truncateRunes(s string, n int) string {
 		return s
 	}
 	return string(runes[:n])
+}
+
+func parseAgentQuestionOptions(v interface{}) []QuestionOption {
+	switch arr := v.(type) {
+	case []interface{}:
+		out := make([]QuestionOption, 0, len(arr))
+		for _, item := range arr {
+			switch val := item.(type) {
+			case string:
+				s := strings.TrimSpace(val)
+				if s == "" {
+					continue
+				}
+				out = append(out, QuestionOption{Label: s, Value: s})
+			case map[string]interface{}:
+				label := ""
+				for _, k := range []string{"label", "text", "name", "title", "value"} {
+					if s, ok := val[k].(string); ok && strings.TrimSpace(s) != "" {
+						label = strings.TrimSpace(s)
+						break
+					}
+				}
+				if label == "" {
+					continue
+				}
+				desc := ""
+				for _, k := range []string{"description", "hint"} {
+					if s, ok := val[k].(string); ok && strings.TrimSpace(s) != "" {
+						desc = strings.TrimSpace(s)
+						break
+					}
+				}
+				value := label
+				if s, ok := val["value"].(string); ok && strings.TrimSpace(s) != "" {
+					value = strings.TrimSpace(s)
+				}
+				out = append(out, QuestionOption{Label: label, Description: desc, Value: value})
+			}
+		}
+		return out
+	case []string:
+		out := make([]QuestionOption, 0, len(arr))
+		for _, s := range arr {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			out = append(out, QuestionOption{Label: s, Value: s})
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func normalizeAgentQuestions(questions []AgentQuestion) ([]AgentQuestion, error) {
+	if len(questions) == 0 {
+		return nil, fmt.Errorf("at least one question is required")
+	}
+	out := make([]AgentQuestion, 0, len(questions))
+	for i := range questions {
+		q := questions[i]
+		q.Question = strings.TrimSpace(q.Question)
+		if q.Question == "" {
+			return nil, fmt.Errorf("question text is required")
+		}
+		if q.ID == "" {
+			q.ID = fmt.Sprintf("q%d", i)
+		}
+		if q.Header == "" {
+			q.Header = truncateRunes(q.Question, 12)
+		}
+		opts := make([]QuestionOption, 0, len(q.Options))
+		seen := make(map[string]struct{}, len(q.Options))
+		for _, opt := range q.Options {
+			label := strings.TrimSpace(opt.Label)
+			value := strings.TrimSpace(opt.Value)
+			if label == "" && value == "" {
+				continue
+			}
+			if label == "" {
+				label = value
+			}
+			if value == "" {
+				value = label
+			}
+			key := strings.ToLower(value)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			opts = append(opts, QuestionOption{
+				Label:       label,
+				Description: strings.TrimSpace(opt.Description),
+				Value:       value,
+			})
+		}
+		// Keep ask protocol deterministic: 2~5 mutually exclusive options.
+		if len(opts) < 2 {
+			return nil, fmt.Errorf("question %q must include at least 2 options", q.Question)
+		}
+		if len(opts) > 5 {
+			opts = opts[:5]
+		}
+		q.Options = opts
+		out = append(out, q)
+	}
+	return out, nil
+}
+
+func defaultQuestionAnswers(questions []AgentQuestion) []QuestionAnswer {
+	results := make([]QuestionAnswer, len(questions))
+	for i, q := range questions {
+		results[i] = QuestionAnswer{QuestionID: q.ID}
+		if len(q.Options) == 0 {
+			continue
+		}
+		val := strings.TrimSpace(q.Options[0].Value)
+		if val == "" {
+			val = strings.TrimSpace(q.Options[0].Label)
+		}
+		if val != "" {
+			results[i].Values = []string{val}
+		}
+	}
+	return results
 }
 
 // execute runs the full agent loop for a task.
@@ -352,9 +556,42 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		r.askMu.Unlock()
 	}()
 
-	// Phase 1: Planning
-	task.Status = TaskStatusPlanning
-	_ = r.store.Update(ctx, task)
+	if err := r.transitionState(ctx, task, RuntimeStateIntake, "task accepted", nil, ""); err != nil {
+		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed at intake: %v", err))
+		return
+	}
+
+	// Phase 0: Clarify (explicit gate for ambiguous goals)
+	if requiresClarification(task.Goal) {
+		if err := r.transitionState(ctx, task, RuntimeStateClarify, "goal missing critical details", nil, TaskStatusWaitingInput); err != nil {
+			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed at clarify: %v", err))
+			return
+		}
+		clarifyQs := []AgentQuestion{{
+			ID:       "goal_scope",
+			Header:   "Scope",
+			Question: "请选择任务范围",
+			Options: []QuestionOption{
+				{Label: "快速可运行", Value: "fast", Description: "优先速度，较少工程化"},
+				{Label: "平衡方案", Value: "balanced", Description: "速度与质量均衡"},
+				{Label: "工程化完善", Value: "rigorous", Description: "包含测试/文档/健壮性"},
+			},
+			Required: true,
+		}}
+		answers, askErr := r.AskUser(ctx, task.ID, clarifyQs, 0)
+		if askErr != nil {
+			r.failTask(ctx, task, fmt.Sprintf("clarify failed: %v", askErr))
+			return
+		}
+		if len(answers) > 0 && len(answers[0].Values) > 0 {
+			task.Goal = strings.TrimSpace(task.Goal + "\nExecution preference: " + answers[0].Values[0])
+		}
+	}
+
+	if err := r.transitionState(ctx, task, RuntimeStatePlan, "start planning", nil, TaskStatusPlanning); err != nil {
+		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed at planning: %v", err))
+		return
+	}
 	r.publishEvent(task.UserID, TaskEvent{
 		TaskID:    task.ID,
 		EventType: "task_planning",
@@ -364,13 +601,73 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	// Start timeout warning goroutine (warn at 80% of timeout)
 	go r.watchTimeout(ctx, task)
 
-	plan, err := r.generatePlan(ctx, task.Goal, conversationCtx)
+	planSpec, err := r.generatePlan(ctx, task.Goal, conversationCtx)
 	if err != nil {
 		r.failTask(ctx, task, fmt.Sprintf("planning failed: %v", err))
 		return
 	}
 
-	task.Plan = plan
+	task.Plan = planSpec.Steps
+	task.SuccessCriteria = planSpec.SuccessCriteria
+	task.FallbackPlan = planSpec.FallbackPlan
+	if task.Goal == "" && planSpec.Goal != "" {
+		task.Goal = planSpec.Goal
+	}
+
+	if planNeedsConfirmation(planSpec.Raw) {
+		if err := r.transitionState(ctx, task, RuntimeStateConfirmGate, "plan requires user confirmation", nil, TaskStatusWaitingInput); err != nil {
+			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed at confirm gate: %v", err))
+			return
+		}
+		answers, askErr := r.AskUser(ctx, task.ID, []AgentQuestion{{
+			ID:       "plan_gate",
+			Header:   "Plan",
+			Question: "执行计划已生成，是否继续？",
+			Options: []QuestionOption{
+				{Label: "继续执行", Value: "continue", Description: "按当前计划继续"},
+				{Label: "先调整计划", Value: "revise", Description: "返回规划阶段调整"},
+				{Label: "中止任务", Value: "abort", Description: "立即停止任务"},
+			},
+			Required: true,
+		}}, 0)
+		if askErr != nil {
+			r.failTask(ctx, task, fmt.Sprintf("confirm gate failed: %v", askErr))
+			return
+		}
+		decision := "continue"
+		if len(answers) > 0 && len(answers[0].Values) > 0 {
+			decision = answers[0].Values[0]
+		}
+		switch decision {
+		case "revise":
+			if err := r.transitionState(ctx, task, RuntimeStatePlan, "user requested plan revision", nil, TaskStatusPlanning); err != nil {
+				r.failTask(ctx, task, fmt.Sprintf("runtime transition failed when revising plan: %v", err))
+				return
+			}
+			planSpec, err = r.generatePlan(ctx, task.Goal+"\nPlease revise plan to reduce risk and improve determinism.", conversationCtx)
+			if err != nil {
+				r.failTask(ctx, task, fmt.Sprintf("replanning failed: %v", err))
+				return
+			}
+			task.Plan = planSpec.Steps
+			task.SuccessCriteria = planSpec.SuccessCriteria
+			task.FallbackPlan = planSpec.FallbackPlan
+		case "abort":
+			if err := r.transitionState(ctx, task, RuntimeStateAborted, "user aborted at confirm gate", nil, TaskStatusAborted); err != nil {
+				r.failTask(ctx, task, fmt.Sprintf("runtime transition failed when aborting at confirm gate: %v", err))
+				return
+			}
+			task.Result = "Task aborted by user at confirmation gate."
+			task.Progress = 100
+			_ = r.store.Update(ctx, task)
+			return
+		}
+	}
+
+	if err := r.transitionState(ctx, task, RuntimeStateExecute, "start execution", nil, TaskStatusExecuting); err != nil {
+		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before execution: %v", err))
+		return
+	}
 	task.Status = TaskStatusExecuting
 	_ = r.store.Update(ctx, task)
 
@@ -490,6 +787,10 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	now := timeutil.NowTime()
 	verifyStep.StartedAt = &now
 
+	if err := r.transitionState(ctx, task, RuntimeStateVerify, "verifying task result", nil, TaskStatusExecuting); err != nil {
+		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before verify: %v", err))
+		return
+	}
 	verifyOutput, verifyErr := r.executeStep(ctx, task, verifyStep)
 	if verifyErr != nil {
 		verifyStep.Status = StepStatusFailed
@@ -502,11 +803,75 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	verifyStep.CompletedAt = &completedAt
 	task.Plan = append(task.Plan, *verifyStep)
 
+	if verifyStep.Status != StepStatusCompleted {
+		if err := r.transitionState(ctx, task, RuntimeStateRecover, "verification failed", nil, TaskStatusExecuting); err != nil {
+			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before recovery: %v", err))
+			return
+		}
+		recoverStep := &PlanStep{
+			Index:       len(task.Plan),
+			Description: "Recovery: retry failed validation with safer fallback path",
+			Status:      StepStatusRunning,
+		}
+		start := timeutil.NowTime()
+		recoverStep.StartedAt = &start
+		recoverOut, recoverErr := r.executeStep(ctx, task, recoverStep)
+		end := timeutil.NowTime()
+		recoverStep.CompletedAt = &end
+		if recoverErr != nil {
+			recoverStep.Status = StepStatusFailed
+			recoverStep.Output = fmt.Sprintf("Recovery failed: %v", recoverErr)
+		} else {
+			recoverStep.Status = StepStatusCompleted
+			recoverStep.Output = truncate(recoverOut, 1200)
+		}
+		task.Plan = append(task.Plan, *recoverStep)
+		if recoverStep.Status != StepStatusCompleted {
+			r.failTask(ctx, task, fmt.Sprintf("verification failed and recovery failed: %v", recoverErr))
+			return
+		}
+
+		if err := r.transitionState(ctx, task, RuntimeStateVerify, "re-verify after recovery", nil, TaskStatusExecuting); err != nil {
+			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before re-verify: %v", err))
+			return
+		}
+		verifyRetryStep := &PlanStep{
+			Index:       len(task.Plan),
+			Description: "Verify again after recovery (bounded retry)",
+			Status:      StepStatusRunning,
+		}
+		retryStart := timeutil.NowTime()
+		verifyRetryStep.StartedAt = &retryStart
+		verifyRetryOutput, verifyRetryErr := r.executeStep(ctx, task, verifyRetryStep)
+		retryEnd := timeutil.NowTime()
+		verifyRetryStep.CompletedAt = &retryEnd
+		if verifyRetryErr != nil {
+			verifyRetryStep.Status = StepStatusFailed
+			verifyRetryStep.Output = fmt.Sprintf("Verification retry error: %v", verifyRetryErr)
+		} else {
+			verifyRetryStep.Status = StepStatusCompleted
+			verifyRetryStep.Output = verifyRetryOutput
+		}
+		task.Plan = append(task.Plan, *verifyRetryStep)
+		if verifyRetryStep.Status != StepStatusCompleted {
+			r.failTask(ctx, task, "verification did not pass after bounded recovery retry")
+			return
+		}
+	}
+
 	// Phase 4: Summarize and suggest next steps
+	if err := r.transitionState(ctx, task, RuntimeStateReport, "generating final report", nil, TaskStatusExecuting); err != nil {
+		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before report: %v", err))
+		return
+	}
 	task.Status = TaskStatusCompleted
 	task.Progress = 100
 	task.Result = r.generateSummary(ctx, task)
 	_ = r.store.Update(ctx, task)
+	if err := r.transitionState(ctx, task, RuntimeStateDone, "task completed", nil, TaskStatusCompleted); err != nil {
+		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before done: %v", err))
+		return
+	}
 
 	r.publishEvent(task.UserID, TaskEvent{
 		TaskID:    task.ID,
@@ -516,15 +881,34 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	})
 }
 
+type planResult struct {
+	Goal            string
+	Raw             runtimePlan
+	Steps           []PlanStep
+	SuccessCriteria []string
+	FallbackPlan    []string
+}
+
 // generatePlan asks the LLM to create a structured plan.
-func (r *Runner) generatePlan(ctx context.Context, goal, conversationCtx string) ([]PlanStep, error) {
+func (r *Runner) generatePlan(ctx context.Context, goal, conversationCtx string) (*planResult, error) {
 	// Recall relevant memories for context
 	memoryCtx := r.recallMemories(ctx, goal)
 
-	systemPrompt := `You are a task planner. Given a goal, create a step-by-step execution plan.
-Return ONLY a JSON array of steps, each with "description" field. Keep steps concrete and actionable.
-Example: [{"description":"Install dependencies with pip"},{"description":"Create main.py with FastAPI app"},{"description":"Add authentication middleware"}]
-Return 3-10 steps. No markdown, no explanation — just the JSON array.`
+	systemPrompt := `You are a deterministic task planner. Given a goal, return ONLY JSON in this shape:
+{
+  "goal": "<normalized goal>",
+  "subtasks": [{"description":"..."}],
+  "requires_confirmation": ["..."],
+  "success_criteria": ["..."],
+  "fallback_plan": ["..."]
+}
+
+Rules:
+- 3-10 subtasks, each concrete and actionable.
+- Include requires_confirmation only for real high-risk/ambiguous points.
+- success_criteria must be testable.
+- fallback_plan must be safe and finite (no loops).
+- No markdown, no prose outside JSON.`
 
 	if memoryCtx != "" {
 		systemPrompt += "\n\n# Relevant Context\n" + memoryCtx
@@ -548,30 +932,25 @@ Return 3-10 steps. No markdown, no explanation — just the JSON array.`
 		return nil, err
 	}
 
-	// Parse the plan from LLM response
-	content := strings.TrimSpace(resp.Message.Content)
-	// Strip markdown code fences if present
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
-
-	var rawSteps []struct {
-		Description string `json:"description"`
+	parsed, err := parseRuntimePlan(resp.Message.Content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse plan: %w (content: %s)", err, truncate(strings.TrimSpace(resp.Message.Content), 200))
 	}
-	if err := json.Unmarshal([]byte(content), &rawSteps); err != nil {
-		return nil, fmt.Errorf("failed to parse plan: %w (content: %s)", err, truncate(content, 200))
-	}
-
-	steps := make([]PlanStep, len(rawSteps))
-	for i, rs := range rawSteps {
+	steps := make([]PlanStep, len(parsed.Subtasks))
+	for i, rs := range parsed.Subtasks {
 		steps[i] = PlanStep{
 			Index:       i,
-			Description: rs.Description,
+			Description: rs,
 			Status:      StepStatusPending,
 		}
 	}
-	return steps, nil
+	return &planResult{
+		Goal:            parsed.Goal,
+		Raw:             parsed,
+		Steps:           steps,
+		SuccessCriteria: parsed.SuccessCriteria,
+		FallbackPlan:    parsed.FallbackPlan,
+	}, nil
 }
 
 // executeStep runs a single plan step using the LLM + tools.
@@ -672,6 +1051,46 @@ Group related questions into a single ask call. Keep questions clear and provide
 		// Execute tool calls
 		messages = append(messages, resp.Message)
 		for _, tc := range resp.Message.ToolCalls {
+			capability := classifyCapability(tc.Name, tc.Arguments)
+			if shouldRequireConfirm(capability, step.Description+" "+lastContent) {
+				if err := r.transitionState(ctx, task, RuntimeStateConfirmGate, "high-risk capability requires confirmation", &capability, TaskStatusWaitingInput); err != nil {
+					return lastContent, err
+				}
+				ans, askErr := r.AskUser(ctx, task.ID, []AgentQuestion{{
+					ID:       "tool_gate",
+					Header:   "Confirm",
+					Question: fmt.Sprintf("将执行高风险调用 `%s`，是否继续？", tc.Name),
+					Options: []QuestionOption{
+						{Label: "继续", Value: "continue", Description: "执行本次调用"},
+						{Label: "跳过", Value: "skip", Description: "跳过本次调用继续任务"},
+						{Label: "中止", Value: "abort", Description: "立即中止任务"},
+					},
+					Required: true,
+				}}, step.Index)
+				if askErr != nil {
+					return lastContent, askErr
+				}
+				decision := "continue"
+				if len(ans) > 0 && len(ans[0].Values) > 0 {
+					decision = ans[0].Values[0]
+				}
+				if decision == "abort" {
+					if err := r.transitionState(ctx, task, RuntimeStateAborted, "user aborted on high-risk tool call", &capability, TaskStatusAborted); err != nil {
+						return lastContent, err
+					}
+					return lastContent, fmt.Errorf("user aborted task during high-risk confirmation")
+				}
+				if decision == "skip" {
+					if err := r.transitionState(ctx, task, RuntimeStateExecute, "user skipped high-risk tool call", &capability, TaskStatusExecuting); err != nil {
+						return lastContent, err
+					}
+					continue
+				}
+				if err := r.transitionState(ctx, task, RuntimeStateExecute, "high-risk tool call approved", &capability, TaskStatusExecuting); err != nil {
+					return lastContent, err
+				}
+			}
+
 			var content string
 
 			// Intercept ask tool — use agent-specific SSE flow
@@ -693,6 +1112,11 @@ Group related questions into a single ask call. Keep questions clear and provide
 					}
 				}
 			}
+			r.appendAudit(ctx, task, RuntimeAuditEvent{
+				Timestamp:  timeutil.NowTime(),
+				Reason:     "tool_call_executed",
+				Capability: &capability,
+			})
 			// Truncate large tool results to prevent context window overflow
 			content = truncate(content, 8000)
 			messages = append(messages, llm.Message{
@@ -762,12 +1186,56 @@ Suggested next steps:
 func (r *Runner) failTask(ctx context.Context, task *Task, errMsg string) {
 	task.Status = TaskStatusFailed
 	task.Error = errMsg
+	if task.RuntimeState != RuntimeStateAborted {
+		_ = r.transitionState(ctx, task, RuntimeStateAborted, "task failed", nil, TaskStatusFailed)
+	}
 	_ = r.store.Update(ctx, task)
 	r.publishEvent(task.UserID, TaskEvent{
 		TaskID:    task.ID,
 		EventType: "task_failed",
 		Message:   errMsg,
 	})
+}
+
+func (r *Runner) transitionState(ctx context.Context, task *Task, to RuntimeState, reason string, cap *CapabilityInfo, status TaskStatus) error {
+	from := task.RuntimeState
+	if !canTransition(from, to) {
+		err := fmt.Errorf("invalid runtime transition: %s -> %s", from, to)
+		r.appendAudit(ctx, task, RuntimeAuditEvent{
+			Timestamp:  timeutil.NowTime(),
+			From:       from,
+			To:         to,
+			Reason:     reason,
+			Capability: cap,
+			Error:      err.Error(),
+		})
+		return err
+	}
+	task.RuntimeState = to
+	if status != "" {
+		task.Status = status
+	}
+	r.appendAudit(ctx, task, RuntimeAuditEvent{
+		Timestamp:  timeutil.NowTime(),
+		From:       from,
+		To:         to,
+		Reason:     reason,
+		Capability: cap,
+	})
+	_ = r.store.Update(ctx, task)
+	r.publishEvent(task.UserID, TaskEvent{
+		TaskID:    task.ID,
+		EventType: "task_state_transition",
+		FromState: from,
+		ToState:   to,
+		Message:   reason,
+	})
+	return nil
+}
+
+func (r *Runner) appendAudit(ctx context.Context, task *Task, ev RuntimeAuditEvent) {
+	task.RuntimeAudit = append(task.RuntimeAudit, ev)
+	_ = r.store.Update(ctx, task)
 }
 
 // publishEvent sends an SSE event to the user.

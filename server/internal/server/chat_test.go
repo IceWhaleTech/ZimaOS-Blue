@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -69,6 +70,34 @@ func hasSystemAnchor(messages []llm.Message, title, goal string) bool {
 	return false
 }
 
+func TestIsAwaitingUserInput_ProtocolMarker(t *testing.T) {
+	content := "Need your decision.\n<awaiting_user_input>true</awaiting_user_input>"
+	if !isAwaitingUserInput(content) {
+		t.Fatal("expected protocol marker to be detected as awaiting input")
+	}
+}
+
+func TestIsAwaitingUserInput_StructuredAskGate(t *testing.T) {
+	content := "请选择执行策略\nA. 快速方案\nB. 平衡方案\nC. 工程化方案"
+	if !isAwaitingUserInput(content) {
+		t.Fatal("expected structured options ask gate to be detected as awaiting input")
+	}
+}
+
+func TestIsAwaitingUserInput_AskGateTag(t *testing.T) {
+	content := "<ask_gate>one-line question\nA. yes\nB. no</ask_gate>"
+	if !isAwaitingUserInput(content) {
+		t.Fatal("expected ask_gate tag to be detected as awaiting input")
+	}
+}
+
+func TestShouldAutoContinueForTodo_StopsOnAwaitingInput(t *testing.T) {
+	current := "- [ ] implement feature\n<awaiting_user_input>true</awaiting_user_input>"
+	if shouldAutoContinueForTodo(current, "") {
+		t.Fatal("auto-continue should stop when awaiting user input marker is present")
+	}
+}
+
 // Test ChatHandler creation
 func TestNewChatHandler(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
@@ -80,6 +109,28 @@ func TestNewChatHandler(t *testing.T) {
 	handler := NewChatHandler(store, registry, toolRegistry)
 	if handler == nil {
 		t.Fatal("expected handler, got nil")
+	}
+}
+
+func TestDefaultModelForCCCLI(t *testing.T) {
+	h := &ChatHandler{}
+	if got := h.defaultModelForCCCLI(""); got != "auto" {
+		t.Fatalf("default model without cc cli = %q, want %q", got, "auto")
+	}
+	if got := h.defaultModelForCCCLI("auto"); got != "auto" {
+		t.Fatalf("auto model without cc cli = %q, want %q", got, "auto")
+	}
+
+	cc := claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore())
+	h.SetClaudeCodeHandler(cc)
+	if got := h.defaultModelForCCCLI(""); got != defaultCCCLIModel {
+		t.Fatalf("empty model with cc cli = %q, want %q", got, defaultCCCLIModel)
+	}
+	if got := h.defaultModelForCCCLI("auto"); got != defaultCCCLIModel {
+		t.Fatalf("auto model with cc cli = %q, want %q", got, defaultCCCLIModel)
+	}
+	if got := h.defaultModelForCCCLI("gpt-4o"); got != "gpt-4o" {
+		t.Fatalf("explicit model with cc cli = %q, want %q", got, "gpt-4o")
 	}
 }
 

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	gojson "encoding/json"
 	"io"
 	"net/http"
@@ -35,32 +36,38 @@ func TestConvertOpenAIChatCompletionsToResponses(t *testing.T) {
 		t.Fatalf("convert failed: %v", err)
 	}
 
-	if got := gjson.GetBytes(converted, "instructions").String(); got != "system prompt" {
-		t.Fatalf("instructions = %q, want %q", got, "system prompt")
+	if got := gjson.GetBytes(converted, "store").Bool(); !got {
+		t.Fatalf("store = false, want true")
 	}
-	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "user" {
-		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "system" {
+		t.Fatalf("input.0.role = %q, want %q", got, "system")
 	}
-	if got := gjson.GetBytes(converted, "input.1.type").String(); got != "function_call" {
-		t.Fatalf("input.1.type = %q, want %q", got, "function_call")
+	if got := gjson.GetBytes(converted, "input.0.content.0.text").String(); got != "system prompt" {
+		t.Fatalf("input.0.content.0.text = %q, want %q", got, "system prompt")
 	}
-	if got := gjson.GetBytes(converted, "input.1.call_id").String(); got != "call_1" {
-		t.Fatalf("input.1.call_id = %q, want %q", got, "call_1")
+	if got := gjson.GetBytes(converted, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
 	}
-	if got := gjson.GetBytes(converted, "input.1.name").String(); got != "exec" {
-		t.Fatalf("input.1.name = %q, want %q", got, "exec")
-	}
-	if got := gjson.GetBytes(converted, "input.1.arguments").String(); got != `{"cmd":"ls"}` {
-		t.Fatalf("input.1.arguments = %q, want %q", got, `{"cmd":"ls"}`)
-	}
-	if got := gjson.GetBytes(converted, "input.2.type").String(); got != "function_call_output" {
-		t.Fatalf("input.2.type = %q, want %q", got, "function_call_output")
+	if got := gjson.GetBytes(converted, "input.2.type").String(); got != "function_call" {
+		t.Fatalf("input.2.type = %q, want %q", got, "function_call")
 	}
 	if got := gjson.GetBytes(converted, "input.2.call_id").String(); got != "call_1" {
 		t.Fatalf("input.2.call_id = %q, want %q", got, "call_1")
 	}
-	if got := gjson.GetBytes(converted, "input.2.output").String(); got != `{"ok":true}` {
-		t.Fatalf("input.2.output = %q, want %q", got, `{"ok":true}`)
+	if got := gjson.GetBytes(converted, "input.2.name").String(); got != "exec" {
+		t.Fatalf("input.2.name = %q, want %q", got, "exec")
+	}
+	if got := gjson.GetBytes(converted, "input.2.arguments").String(); got != `{"cmd":"ls"}` {
+		t.Fatalf("input.2.arguments = %q, want %q", got, `{"cmd":"ls"}`)
+	}
+	if got := gjson.GetBytes(converted, "input.3.type").String(); got != "function_call_output" {
+		t.Fatalf("input.3.type = %q, want %q", got, "function_call_output")
+	}
+	if got := gjson.GetBytes(converted, "input.3.call_id").String(); got != "call_1" {
+		t.Fatalf("input.3.call_id = %q, want %q", got, "call_1")
+	}
+	if got := gjson.GetBytes(converted, "input.3.output").String(); got != `{"ok":true}` {
+		t.Fatalf("input.3.output = %q, want %q", got, `{"ok":true}`)
 	}
 	if got := gjson.GetBytes(converted, "tools.0.type").String(); got != "function" {
 		t.Fatalf("tools.0.type = %q, want %q", got, "function")
@@ -96,6 +103,9 @@ func TestConvertOpenAIChatCompletionsToResponses_ContinuationUsesIncrementalMess
 	if got := gjson.GetBytes(converted, "previous_response_id").String(); got != "resp_prev_123" {
 		t.Fatalf("previous_response_id = %q, want %q", got, "resp_prev_123")
 	}
+	if got := gjson.GetBytes(converted, "store").Bool(); !got {
+		t.Fatalf("store = false, want true")
+	}
 	if gjson.GetBytes(converted, "instructions").Exists() {
 		t.Fatalf("instructions should be omitted for continuation payload: %s", string(converted))
 	}
@@ -107,6 +117,30 @@ func TestConvertOpenAIChatCompletionsToResponses_ContinuationUsesIncrementalMess
 	}
 	if got := gjson.GetBytes(converted, "input.0.content.0.text").String(); got != "new followup" {
 		t.Fatalf("input.0.content.0.text = %q, want %q", got, "new followup")
+	}
+}
+
+func TestConvertOpenAIChatCompletionsToResponses_ContinuationKeepsExplicitInstructions(t *testing.T) {
+	body := []byte(`{
+		"model":"o3",
+		"previous_response_id":"resp_prev_123",
+		"instructions":"updated instructions",
+		"messages":[
+			{"role":"system","content":"old system should not be resent as input"},
+			{"role":"assistant","content":"old assistant"},
+			{"role":"user","content":"new followup"}
+		]
+	}`)
+
+	converted, err := convertOpenAIChatCompletionsToResponses(body)
+	if err != nil {
+		t.Fatalf("convert failed: %v", err)
+	}
+	if got := gjson.GetBytes(converted, "previous_response_id").String(); got != "resp_prev_123" {
+		t.Fatalf("previous_response_id = %q, want %q", got, "resp_prev_123")
+	}
+	if got := gjson.GetBytes(converted, "instructions").String(); got != "updated instructions" {
+		t.Fatalf("instructions = %q, want %q", got, "updated instructions")
 	}
 }
 
@@ -147,26 +181,64 @@ func TestConvertOpenAIChatCompletionsToResponses_MultimodalAndStructuredInput(t 
 		t.Fatalf("convert failed: %v", err)
 	}
 
-	if got := gjson.GetBytes(converted, "instructions").String(); got != "Follow instructions" {
-		t.Fatalf("instructions = %q, want %q", got, "Follow instructions")
+	if got := gjson.GetBytes(converted, "store").Bool(); !got {
+		t.Fatalf("store = false, want true")
 	}
-	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "user" {
-		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "system" {
+		t.Fatalf("input.0.role = %q, want %q", got, "system")
 	}
-	if got := gjson.GetBytes(converted, "input.0.content.#").Int(); got != 3 {
-		t.Fatalf("input.0.content length = %d, want 3", got)
+	if got := gjson.GetBytes(converted, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
 	}
+	if got := gjson.GetBytes(converted, "input.1.content.#").Int(); got != 3 {
+		t.Fatalf("input.1.content length = %d, want 3", got)
+	}
+	if got := gjson.GetBytes(converted, "input.1.content.0.type").String(); got != "input_text" {
+		t.Fatalf("input.1.content.0.type = %q, want %q", got, "input_text")
+	}
+	if got := gjson.GetBytes(converted, "input.1.content.1.type").String(); got != "input_image" {
+		t.Fatalf("input.1.content.1.type = %q, want %q", got, "input_image")
+	}
+	if got := gjson.GetBytes(converted, "input.1.content.2.type").String(); got != "input_audio" {
+		t.Fatalf("input.1.content.2.type = %q, want %q", got, "input_audio")
+	}
+	if got := gjson.GetBytes(converted, "input.1.content.2.input_audio.format").String(); got != "wav" {
+		t.Fatalf("input.1.content.2.input_audio.format = %q, want %q", got, "wav")
+	}
+}
+
+func TestConvertOpenAIChatCompletionsToResponses_WithAudioTranscriber(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-5",
+		"messages":[
+			{"role":"user","content":[
+				{"type":"input_audio","input_audio":{"data":"AAA","format":"wav"}}
+			]}
+		]
+	}`)
+
+	converted, err := convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body, func(inputAudio any) (string, bool) {
+		m, ok := inputAudio.(map[string]interface{})
+		if !ok {
+			t.Fatalf("inputAudio type = %T, want map[string]interface{}", inputAudio)
+		}
+		if got := anyToString(m["format"]); got != "wav" {
+			t.Fatalf("input_audio.format = %q, want %q", got, "wav")
+		}
+		return "transcribed text", true
+	})
+	if err != nil {
+		t.Fatalf("convert failed: %v", err)
+	}
+
 	if got := gjson.GetBytes(converted, "input.0.content.0.type").String(); got != "input_text" {
 		t.Fatalf("input.0.content.0.type = %q, want %q", got, "input_text")
 	}
-	if got := gjson.GetBytes(converted, "input.0.content.1.type").String(); got != "input_image" {
-		t.Fatalf("input.0.content.1.type = %q, want %q", got, "input_image")
+	if got := gjson.GetBytes(converted, "input.0.content.0.text").String(); got != "transcribed text" {
+		t.Fatalf("input.0.content.0.text = %q, want %q", got, "transcribed text")
 	}
-	if got := gjson.GetBytes(converted, "input.0.content.2.type").String(); got != "input_audio" {
-		t.Fatalf("input.0.content.2.type = %q, want %q", got, "input_audio")
-	}
-	if got := gjson.GetBytes(converted, "input.0.content.2.input_audio.format").String(); got != "wav" {
-		t.Fatalf("input.0.content.2.input_audio.format = %q, want %q", got, "wav")
+	if gjson.GetBytes(converted, "input.0.content.0.input_audio").Exists() {
+		t.Fatalf("input_audio should be removed after transcription: %s", string(converted))
 	}
 }
 
@@ -306,6 +378,9 @@ func TestBuildUpstreamRequestWithFormat_CodexModelUsesResponsesEndpoint(t *testi
 	if got := gjson.GetBytes(convertedBody, "max_output_tokens").Int(); got != 9 {
 		t.Fatalf("max_output_tokens = %d, want 9", got)
 	}
+	if got := gjson.GetBytes(convertedBody, "store").Bool(); !got {
+		t.Fatalf("store = false, want true")
+	}
 }
 
 func TestBuildUpstreamRequestWithFormat_ResponsesPathConvertsMessagesEvenWhenFormatIsResponses(t *testing.T) {
@@ -345,6 +420,9 @@ func TestBuildUpstreamRequestWithFormat_ResponsesPathConvertsMessagesEvenWhenFor
 	if got := gjson.GetBytes(convertedBody, "max_output_tokens").Int(); got != 9 {
 		t.Fatalf("max_output_tokens = %d, want 9", got)
 	}
+	if got := gjson.GetBytes(convertedBody, "store").Bool(); !got {
+		t.Fatalf("store = false, want true")
+	}
 }
 
 func TestBuildUpstreamRequestWithFormat_DisableResponsesContinuationDropsPreviousResponseID(t *testing.T) {
@@ -375,6 +453,341 @@ func TestBuildUpstreamRequestWithFormat_DisableResponsesContinuationDropsPreviou
 	if got := gjson.GetBytes(convertedBody, "previous_response_id"); got.Exists() {
 		t.Fatalf("previous_response_id should be removed when continuation is disabled, got: %s", string(convertedBody))
 	}
+	if got := gjson.GetBytes(convertedBody, "store").Bool(); !got {
+		t.Fatalf("store = false, want true")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ResponsesPathExtractsInstructionsFromMessages(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-instr-1"))
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"messages":[
+			{"role":"system","content":"You are system."},
+			{"role":"developer","content":"Follow dev rules."},
+			{"role":"user","content":"hello"}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "instructions").String(); got != "You are system.\n\nFollow dev rules." {
+		t.Fatalf("instructions = %q, want merged system+developer", got)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	}
+	if got := ph.getCachedResponsesInstructions(req); got != "You are system.\n\nFollow dev rules." {
+		t.Fatalf("cached instructions = %q, want merged system+developer", got)
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_DisableContinuationKeepsCachedInstructions(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	baseReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	baseReq = baseReq.WithContext(WithSessionID(context.Background(), "sess-instr-2"))
+	ph.setCachedResponsesInstructions(baseReq, "cached global instructions")
+	ph.setCachedResponsesPreviousID(baseReq, "resp_prev_old")
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-instr-2"))
+	req.Header.Set(DisableResponsesContinuationHeader, "1")
+	body := []byte(`{"model":"gpt-5.3-codex-spark","messages":[{"role":"user","content":"retry without continuation"}]}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "previous_response_id"); got.Exists() {
+		t.Fatalf("previous_response_id should be removed when continuation is disabled, got: %s", string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "instructions").String(); got != "cached global instructions" {
+		t.Fatalf("instructions = %q, want cached value", got)
+	}
+	if got := ph.getCachedResponsesPreviousID(req); got != "" {
+		t.Fatalf("cached previous_response_id = %q, want empty", got)
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationUnchangedInstructionsNotResent(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	baseReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	baseReq = baseReq.WithContext(WithSessionID(context.Background(), "sess-instr-3"))
+	ph.setCachedResponsesInstructions(baseReq, "stable instructions")
+	ph.setCachedResponsesPreviousIDForRoute(baseReq, result, "resp_prev_3")
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-instr-3"))
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"messages":[
+			{"role":"system","content":"stable instructions"},
+			{"role":"user","content":"continue"}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "previous_response_id").String(); got != "resp_prev_3" {
+		t.Fatalf("previous_response_id = %q, want %q", got, "resp_prev_3")
+	}
+	if got := gjson.GetBytes(convertedBody, "instructions"); got.Exists() {
+		t.Fatalf("instructions should be omitted when unchanged on continuation, got: %s", string(convertedBody))
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationPreviousIDScopedByProvider(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	routeA := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "provider-a",
+			BaseURL:   "https://relay-a.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-a"},
+	}
+	routeB := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "provider-b",
+			BaseURL:   "https://relay-b.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-b"},
+	}
+
+	seedReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	seedReq = seedReq.WithContext(WithSessionID(context.Background(), "sess-prev-scope-1"))
+	ph.setCachedResponsesPreviousIDForRoute(seedReq, routeA, "resp_from_a")
+
+	reqB := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	reqB = reqB.WithContext(WithSessionID(context.Background(), "sess-prev-scope-1"))
+	body := []byte(`{"model":"gpt-5.3-codex-spark","messages":[{"role":"user","content":"continue"}]}`)
+	upstreamReqB, err := ph.buildUpstreamRequestWithFormat(reqB, routeB, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat for provider-b failed: %v", err)
+	}
+	defer upstreamReqB.Body.Close()
+	convertedB, err := io.ReadAll(upstreamReqB.Body)
+	if err != nil {
+		t.Fatalf("read converted body for provider-b failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedB, "previous_response_id"); got.Exists() {
+		t.Fatalf("provider-b request should not inherit provider-a previous_response_id, got: %s", string(convertedB))
+	}
+
+	reqA := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	reqA = reqA.WithContext(WithSessionID(context.Background(), "sess-prev-scope-1"))
+	upstreamReqA, err := ph.buildUpstreamRequestWithFormat(reqA, routeA, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat for provider-a failed: %v", err)
+	}
+	defer upstreamReqA.Body.Close()
+	convertedA, err := io.ReadAll(upstreamReqA.Body)
+	if err != nil {
+		t.Fatalf("read converted body for provider-a failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedA, "previous_response_id").String(); got != "resp_from_a" {
+		t.Fatalf("provider-a previous_response_id = %q, want %q", got, "resp_from_a")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationChangedInstructionsResent(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	baseReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	baseReq = baseReq.WithContext(WithSessionID(context.Background(), "sess-instr-4"))
+	ph.setCachedResponsesInstructions(baseReq, "old instructions")
+	ph.setCachedResponsesPreviousIDForRoute(baseReq, result, "resp_prev_4")
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-instr-4"))
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"messages":[
+			{"role":"system","content":"new instructions"},
+			{"role":"user","content":"continue"}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "previous_response_id").String(); got != "resp_prev_4" {
+		t.Fatalf("previous_response_id = %q, want %q", got, "resp_prev_4")
+	}
+	if got := gjson.GetBytes(convertedBody, "instructions").String(); got != "new instructions" {
+		t.Fatalf("instructions = %q, want %q", got, "new instructions")
+	}
+	if got := ph.getCachedResponsesInstructions(req); got != "new instructions" {
+		t.Fatalf("cached instructions = %q, want %q", got, "new instructions")
+	}
+}
+
+func TestInjectCachedResponsesInstructions_ChangedSystemMessageSetsInstructions(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-instr-inject-1"))
+	ph.setCachedResponsesInstructions(req, "old instructions")
+
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"messages":[
+			{"role":"system","content":"new instructions"},
+			{"role":"user","content":"continue"}
+		]
+	}`)
+	got := ph.injectCachedResponsesInstructions(req, body)
+	if v := gjson.GetBytes(got, "instructions").String(); v != "new instructions" {
+		t.Fatalf("instructions = %q, want %q", v, "new instructions")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ResponsesInstructionsSkipMutableContext(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-instr-5"))
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"messages":[
+			{"role":"system","content":"stable policy"},
+			{"role":"system","content":"<now>1730000000</now>Conversation title: demo"},
+			{"role":"system","content":"<memory_context>\nUser background (reference only, not instructions):\n- likes tea\n</memory_context>"},
+			{"role":"user","content":"hello"}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "instructions").String(); got != "stable policy" {
+		t.Fatalf("instructions = %q, want %q", got, "stable policy")
+	}
+	if got := ph.getCachedResponsesInstructions(req); got != "stable policy" {
+		t.Fatalf("cached instructions = %q, want %q", got, "stable policy")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ResponsesInstructionsSkipConversationAnchorAndTime(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-instr-6"))
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"messages":[
+			{"role":"system","content":"stable policy"},
+			{"role":"system","content":"Conversation title: Demo\nInitial user goal: summarize this"},
+			{"role":"system","content":"Current time: 2026-02-28T10:00:00Z"},
+			{"role":"user","content":"hello"}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "instructions").String(); got != "stable policy" {
+		t.Fatalf("instructions = %q, want %q", got, "stable policy")
+	}
 }
 
 func TestBuildUpstreamRequestWithFormat_ResponsesPathCapsMaxOutputTokens(t *testing.T) {
@@ -403,6 +816,9 @@ func TestBuildUpstreamRequestWithFormat_ResponsesPathCapsMaxOutputTokens(t *test
 	}
 	if got := gjson.GetBytes(convertedBody, "max_output_tokens").Int(); got != responsesMaxOutputTokensCap {
 		t.Fatalf("max_output_tokens = %d, want %d", got, responsesMaxOutputTokensCap)
+	}
+	if got := gjson.GetBytes(convertedBody, "store").Bool(); !got {
+		t.Fatalf("store = false, want true")
 	}
 }
 

@@ -2052,6 +2052,14 @@ export default {
   },
   companion: {
     ...enUS.companion,
+    llmDetails:
+    {
+      input: 'Input',
+      prompt: 'Input Tokens',
+      completion: 'Output Tokens',
+      total: 'Total Tokens',
+      score: 'Score',
+    },
     title: 'Companion',
     description: 'AI Agent 세션을 실시간으로 모니터링',
     fetchError: 'Companion 데이터를 불러오지 못했습니다',

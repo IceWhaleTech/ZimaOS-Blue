@@ -1539,6 +1539,14 @@ export default {
   },
   companion: {
     ...enUS.companion,
+    llmDetails:
+    {
+      input: 'Input',
+      prompt: 'Input Tokens',
+      completion: 'Output Tokens',
+      total: 'Total Tokens',
+      score: 'Score',
+    },
   },
   automation: {
     ...enUS.automation,

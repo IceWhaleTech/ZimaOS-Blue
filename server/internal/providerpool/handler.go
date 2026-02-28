@@ -16,6 +16,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
+// Temporary switch: keep IDE import, but disable OAuth token import from IDE.
+const ideOAuthImportEnabled = false
+
 // Pool is the main entry point for the provider pool functionality
 type Pool struct {
 	Registry          *Registry
@@ -1719,15 +1722,24 @@ func (h *Handler) GetImportableConfigs(c echo.Context) error {
 		}
 	}
 
-	// Auto-import OAuth tokens: if we found OAuth credentials, import them automatically
-	for _, cfg := range configs {
-		if !cfg.HasOAuth || !cfg.CanImport || cfg.AlreadyImported {
-			continue
+	if !ideOAuthImportEnabled {
+		// Keep scan visibility, but block pure OAuth import entries.
+		for _, cfg := range configs {
+			if cfg.Source == "oauth" || (cfg.HasOAuth && cfg.APIKey == "" && cfg.ExtensionConfig == nil) {
+				cfg.CanImport = false
+			}
 		}
-		providerID := h.autoImportOAuthToken(cfg.IDEType)
-		if providerID != "" {
-			cfg.AlreadyImported = true
-			cfg.CanImport = false
+	} else {
+		// Auto-import OAuth tokens: if we found OAuth credentials, import them automatically.
+		for _, cfg := range configs {
+			if !cfg.HasOAuth || !cfg.CanImport || cfg.AlreadyImported {
+				continue
+			}
+			providerID := h.autoImportOAuthToken(cfg.IDEType)
+			if providerID != "" {
+				cfg.AlreadyImported = true
+				cfg.CanImport = false
+			}
 		}
 	}
 
@@ -2739,6 +2751,10 @@ func (h *Handler) GetOAuthQuota(c echo.Context) error {
 
 // ImportOAuthToken imports an OAuth token scanned from a local IDE.
 func (h *Handler) ImportOAuthToken(c echo.Context) error {
+	if !ideOAuthImportEnabled {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "OAuth import from IDE is temporarily disabled"})
+	}
+
 	if h.oauthManager == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "oauth not configured"})
 	}

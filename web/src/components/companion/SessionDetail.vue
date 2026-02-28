@@ -8,7 +8,7 @@ import { sanitizeCompanionPreview } from '@/utils/companionSanitize'
 // Lazy load heavy component
 const SessionFlowCanvas = defineAsyncComponent(() => import('./SessionFlowCanvas.vue'))
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const companionStore = useCompanionStore()
 
 const props = defineProps<{
@@ -120,6 +120,17 @@ function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
   return `${(ms / 60000).toFixed(1)}m`
+}
+
+function formatTokens(tokens?: number): string {
+  if (tokens == null) return t('common.noData')
+  return tokens.toLocaleString()
+}
+
+function formatStatus(status?: string): string {
+  if (!status) return ''
+  const key = `companion.nodes.status.${status}`
+  return te(key) ? t(key) : status
 }
 </script>
 
@@ -257,92 +268,111 @@ function formatDuration(ms: number): string {
           {{ t('companion.noEvents') }}
         </div>
 
-        <div v-else class="space-y-2">
+        <div v-else class="space-y-3">
           <div
             v-for="event in events"
             :key="event.id"
             :class="[
-              'p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg border-l-4',
+              'p-3 bg-gray-50 dark:bg-slate-700/40 rounded-lg border-l-4 border border-gray-200/80 dark:border-slate-600/70 hover:bg-gray-100/70 dark:hover:bg-slate-700/60 transition-colors',
               getEventColor(event.event_type)
             ]"
           >
-            <div class="flex items-center gap-2 mb-1">
+            <div class="flex items-center gap-2 flex-wrap">
               <span class="text-base">{{ getEventIcon(event.event_type) }}</span>
               <span class="font-medium text-gray-900 dark:text-white text-sm">
                 {{ t(`companion.eventType.${event.event_type}`) }}
               </span>
               <span
                 v-if="event.status"
-                :class="['px-1.5 py-0.5 rounded text-xs', getStatusColor(event.status)]"
+                :class="['px-1.5 py-0.5 rounded text-xs font-medium', getStatusColor(event.status)]"
               >
-                {{ event.status }}
+                {{ formatStatus(event.status) }}
               </span>
-              <span class="ml-auto text-xs text-gray-400 dark:text-slate-500">
+              <span class="ml-auto text-xs px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400">
                 {{ formatTime(event.timestamp) }}
               </span>
             </div>
 
             <!-- Message Event -->
-            <div v-if="event.message" class="text-sm text-gray-600 dark:text-slate-300">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-slate-600 rounded">
+            <div v-if="event.message" class="text-sm text-gray-600 dark:text-slate-300 mt-2 pl-6">
+              <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span class="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-slate-600 rounded font-medium">
                   {{ t('companion.direction.' + event.message.direction) }}
                 </span>
-                <span class="text-xs text-gray-400">{{ event.message.contentType }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400">{{ event.message.contentType }}</span>
               </div>
-              <div class="text-xs text-gray-500 dark:text-slate-400 truncate">
+              <div class="text-xs text-gray-500 dark:text-slate-400 break-words leading-5">
                 {{ sanitizePreview(event.message.content, 200) }}
               </div>
             </div>
 
             <!-- Tool Call Event -->
-            <div v-if="event.tool_call" class="text-sm text-gray-600 dark:text-slate-300">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="font-mono text-xs">{{ event.tool_call.toolName }}</span>
-                <span v-if="event.tool_call.sandboxUsed" class="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded">
+            <div v-if="event.tool_call" class="text-sm text-gray-600 dark:text-slate-300 mt-2 pl-6">
+              <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span class="font-mono text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70">{{ event.tool_call.toolName }}</span>
+                <span v-if="event.tool_call.sandboxUsed" class="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded font-medium">
                   sandbox
                 </span>
-                <span class="text-xs text-gray-400">{{ formatDuration(event.tool_call.duration) }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400">{{ formatDuration(event.tool_call.duration) }}</span>
               </div>
-              <div v-if="event.tool_call.inputPreview" class="text-xs text-gray-500 dark:text-slate-400 truncate">
-                {{ t('companion.llmDetails.input') }}: {{ sanitizePreview(event.tool_call.inputPreview, 220) }}
+              <div v-if="event.tool_call.inputPreview" class="text-xs text-gray-500 dark:text-slate-400 break-words leading-5 bg-white/70 dark:bg-slate-800/40 rounded p-2">
+                <span class="font-medium text-gray-600 dark:text-slate-300">{{ t('companion.llmDetails.input') }}:</span>
+                {{ sanitizePreview(event.tool_call.inputPreview, 220) }}
               </div>
-              <div v-if="event.tool_call.outputPreview" class="text-xs text-gray-500 dark:text-slate-400 truncate">
-                Output: {{ sanitizePreview(event.tool_call.outputPreview, 220) }}
+              <div v-if="event.tool_call.outputPreview" class="text-xs text-gray-500 dark:text-slate-400 break-words leading-5 bg-white/70 dark:bg-slate-800/40 rounded p-2 mt-1.5">
+                <span class="font-medium text-gray-600 dark:text-slate-300">{{ t('companion.nodes.tokensOut') }}:</span>
+                {{ sanitizePreview(event.tool_call.outputPreview, 220) }}
               </div>
             </div>
 
             <!-- LLM Request Event -->
-            <div v-if="event.llm_request" class="text-sm text-gray-600 dark:text-slate-300">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="font-mono text-xs">{{ event.llm_request.provider }}/{{ event.llm_request.model }}</span>
-                <span class="text-xs text-gray-400">{{ formatDuration(event.llm_request.duration) }}</span>
+            <div v-if="event.llm_request" class="text-sm text-gray-600 dark:text-slate-300 mt-2 pl-6">
+              <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span class="font-mono text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70">{{ event.llm_request.provider }}/{{ event.llm_request.model }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400">{{ formatDuration(event.llm_request.duration) }}</span>
               </div>
-              <div class="flex gap-3 text-xs text-gray-500 dark:text-slate-400">
-                <span>{{ t('companion.llmDetails.prompt') }}: {{ event.llm_request.promptTokens }}</span>
-                <span>{{ t('companion.llmDetails.completion') }}: {{ event.llm_request.completionTokens }}</span>
-                <span>{{ t('companion.llmDetails.total') }}: {{ event.llm_request.totalTokens }}</span>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div class="rounded bg-white/70 dark:bg-slate-800/40 p-2">
+                  <div class="text-gray-400 dark:text-slate-500">{{ t('companion.llmDetails.prompt') }}</div>
+                  <div class="font-medium text-gray-700 dark:text-slate-200">{{ formatTokens(event.llm_request.promptTokens) }}</div>
+                </div>
+                <div class="rounded bg-white/70 dark:bg-slate-800/40 p-2">
+                  <div class="text-gray-400 dark:text-slate-500">{{ t('companion.llmDetails.completion') }}</div>
+                  <div class="font-medium text-gray-700 dark:text-slate-200">{{ formatTokens(event.llm_request.completionTokens) }}</div>
+                </div>
+                <div class="rounded bg-white/70 dark:bg-slate-800/40 p-2">
+                  <div class="text-gray-400 dark:text-slate-500">{{ t('companion.llmDetails.total') }}</div>
+                  <div class="font-medium text-gray-700 dark:text-slate-200">{{ formatTokens(event.llm_request.totalTokens) }}</div>
+                </div>
               </div>
             </div>
 
             <!-- Security Event -->
-            <div v-if="event.security" class="text-sm">
-              <div class="flex items-center gap-2 mb-1">
-                <span :class="['px-1.5 py-0.5 rounded text-xs', getThreatColor(event.security.threatLevel)]">
+            <div v-if="event.security" class="text-sm mt-2 pl-6">
+              <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span :class="['px-1.5 py-0.5 rounded text-xs font-medium', getThreatColor(event.security.threatLevel)]">
                   {{ event.security.threatLevel }}
                 </span>
-                <span class="text-xs text-gray-400">{{ t('companion.llmDetails.score') }}: {{ event.security.threatScore }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400">
+                  {{ t('companion.llmDetails.score') }}: {{ event.security.threatScore }}
+                </span>
               </div>
-              <div class="text-xs text-gray-500 dark:text-slate-400">
-                {{ event.security.threatTypes.join(', ') }}
+              <div v-if="event.security.threatTypes.length" class="flex flex-wrap gap-1.5 text-xs text-gray-500 dark:text-slate-400">
+                <span
+                  v-for="threatType in event.security.threatTypes"
+                  :key="threatType"
+                  class="px-1.5 py-0.5 rounded bg-white/80 dark:bg-slate-800/60"
+                >
+                  {{ threatType }}
+                </span>
               </div>
-              <div v-if="event.security.details" class="text-xs text-gray-500 dark:text-slate-400 mt-1">
+              <div v-if="event.security.details" class="text-xs text-gray-500 dark:text-slate-400 mt-1.5 break-words leading-5 bg-white/70 dark:bg-slate-800/40 rounded p-2">
                 {{ event.security.details }}
               </div>
             </div>
 
             <!-- Error Event -->
-            <div v-if="event.error" class="text-sm text-red-600 dark:text-red-400">
+            <div v-if="event.error" class="text-sm text-red-600 dark:text-red-400 mt-2 pl-6 break-words">
               {{ event.error }}
             </div>
           </div>

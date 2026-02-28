@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -136,6 +137,49 @@ type bridgeResponsesEvent struct {
 	} `json:"error,omitempty"`
 }
 
+type bridgeResponsesRequest struct {
+	Model              string                `json:"model"`
+	Store              bool                  `json:"store"`
+	Input              []interface{}         `json:"input,omitempty"`
+	Tools              []bridgeResponsesTool `json:"tools,omitempty"`
+	Stream             bool                  `json:"stream,omitempty"`
+	MaxOutputTokens    int                   `json:"max_output_tokens,omitempty"`
+	Temperature        *float64              `json:"temperature,omitempty"`
+	PreviousResponseID string                `json:"previous_response_id,omitempty"`
+	Instructions       string                `json:"instructions,omitempty"`
+}
+
+type bridgeResponsesTool struct {
+	Type        string                 `json:"type"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	Parameters  map[string]interface{} `json:"parameters,omitempty"`
+}
+
+type bridgeResponsesInputMessage struct {
+	Role    string                       `json:"role"`
+	Content []bridgeResponsesContentPart `json:"content"`
+}
+
+type bridgeResponsesContentPart struct {
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	ImageURL string `json:"image_url,omitempty"`
+}
+
+type bridgeResponsesFunctionCall struct {
+	Type      string `json:"type"`
+	CallID    string `json:"call_id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+type bridgeResponsesFunctionCallOutput struct {
+	Type   string `json:"type"`
+	CallID string `json:"call_id,omitempty"`
+	Output string `json:"output,omitempty"`
+}
+
 // MarshalChatRequest converts llm.ChatRequest to OpenAI-format JSON bytes.
 func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 	msgs := make([]bridgeMessage, len(req.Messages))
@@ -232,6 +276,175 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 		}
 	}
 	return result, err
+}
+
+// MarshalResponsesRequest converts llm.ChatRequest to native OpenAI Responses API JSON bytes.
+func MarshalResponsesRequest(req llm.ChatRequest) ([]byte, error) {
+	out := bridgeResponsesRequest{
+		Model:  req.Model,
+		Store:  true,
+		Stream: req.Stream,
+	}
+	if req.Store != nil {
+		out.Store = *req.Store
+	}
+	if req.MaxTokens > 0 {
+		out.MaxOutputTokens = req.MaxTokens
+	}
+	if req.Temperature != 0 {
+		out.Temperature = &req.Temperature
+	}
+	if req.PreviousResponseID != "" {
+		out.PreviousResponseID = req.PreviousResponseID
+	}
+
+	messages := req.Messages
+	if out.PreviousResponseID != "" {
+		messages = trimMessagesForResponsesContinuation(messages)
+	}
+	if out.PreviousResponseID == "" {
+		instructions, trimmed := extractResponsesInstructions(messages)
+		if instructions != "" {
+			out.Instructions = instructions
+		}
+		messages = trimmed
+	}
+
+	input := make([]interface{}, 0, len(messages)+2)
+	for msgIdx, m := range messages {
+		role := strings.ToLower(strings.TrimSpace(string(m.Role)))
+		switch role {
+		case "tool":
+			if strings.TrimSpace(m.ToolCallID) == "" {
+				continue
+			}
+			input = append(input, bridgeResponsesFunctionCallOutput{
+				Type:   "function_call_output",
+				CallID: strings.TrimSpace(m.ToolCallID),
+				Output: m.Content,
+			})
+		default:
+			parts := make([]bridgeResponsesContentPart, 0, len(m.ContentParts)+1)
+			if m.Content != "" {
+				parts = append(parts, bridgeResponsesContentPart{
+					Type: "input_text",
+					Text: m.Content,
+				})
+			}
+			for _, p := range m.ContentParts {
+				switch p.Type {
+				case "text":
+					if p.Text == "" {
+						continue
+					}
+					parts = append(parts, bridgeResponsesContentPart{Type: "input_text", Text: p.Text})
+				case "image":
+					if p.Data == "" || p.MediaType == "" {
+						continue
+					}
+					parts = append(parts, bridgeResponsesContentPart{
+						Type:     "input_image",
+						ImageURL: "data:" + p.MediaType + ";base64," + p.Data,
+					})
+				}
+			}
+			if len(parts) > 0 {
+				input = append(input, bridgeResponsesInputMessage{
+					Role:    normalizeResponsesInputRole(role),
+					Content: parts,
+				})
+			}
+			if role == "assistant" && len(m.ToolCalls) > 0 {
+				for callIdx, tc := range m.ToolCalls {
+					callID := strings.TrimSpace(tc.ID)
+					if callID == "" {
+						callID = "call_" + strconv.Itoa(msgIdx) + "_" + strconv.Itoa(callIdx)
+					}
+					input = append(input, bridgeResponsesFunctionCall{
+						Type:      "function_call",
+						CallID:    callID,
+						Name:      tc.Name,
+						Arguments: tc.Arguments,
+					})
+				}
+			}
+		}
+	}
+	if len(input) > 0 {
+		out.Input = input
+	}
+
+	if len(req.Tools) > 0 {
+		out.Tools = make([]bridgeResponsesTool, 0, len(req.Tools))
+		for _, t := range req.Tools {
+			if strings.TrimSpace(t.Name) == "" {
+				continue
+			}
+			out.Tools = append(out.Tools, bridgeResponsesTool{
+				Type:        "function",
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.Parameters,
+			})
+		}
+	}
+
+	return json.Marshal(out)
+}
+
+func trimMessagesForResponsesContinuation(messages []llm.Message) []llm.Message {
+	if len(messages) == 0 {
+		return messages
+	}
+	lastAssistant := -1
+	for i := len(messages) - 1; i >= 0; i-- {
+		if strings.EqualFold(strings.TrimSpace(string(messages[i].Role)), "assistant") {
+			lastAssistant = i
+			break
+		}
+	}
+	if lastAssistant >= 0 {
+		if lastAssistant+1 >= len(messages) {
+			return nil
+		}
+		return messages[lastAssistant+1:]
+	}
+	return messages[len(messages)-1:]
+}
+
+func extractResponsesInstructions(messages []llm.Message) (string, []llm.Message) {
+	if len(messages) == 0 {
+		return "", messages
+	}
+	var instructions []string
+	consumeUntil := 0
+	for i, m := range messages {
+		role := strings.ToLower(strings.TrimSpace(string(m.Role)))
+		if role != "system" && role != "developer" {
+			break
+		}
+		if m.Content != "" {
+			instructions = append(instructions, m.Content)
+		}
+		consumeUntil = i + 1
+	}
+	if len(instructions) == 0 {
+		return "", messages
+	}
+	return strings.Join(instructions, "\n\n"), messages[consumeUntil:]
+}
+
+func normalizeResponsesInputRole(role string) string {
+	switch role {
+	case "system":
+		return "system"
+	case "developer":
+		return "developer"
+	case "assistant":
+		return "assistant"
+	default:
+		return "user"
+	}
 }
 
 // ParseChatResponse parses OpenAI-format JSON into llm.ChatResponse.

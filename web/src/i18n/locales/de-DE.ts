@@ -1845,6 +1845,14 @@ export default {
   },
   companion: {
     ...enUS.companion,
+    llmDetails:
+    {
+      input: 'Input',
+      prompt: 'Input Tokens',
+      completion: 'Output Tokens',
+      total: 'Total Tokens',
+      score: 'Score',
+    },
     title: 'Companion',
     subtitle: 'Echtzeit-Überwachung und Observability für KI-Agents',
     connected: 'Verbunden',

@@ -55,6 +55,10 @@ type ChatRequest struct {
 	MaxTokens   int       `json:"max_tokens,omitempty"`
 	Tools       []Tool    `json:"tools,omitempty"`
 	Stream      bool      `json:"stream,omitempty"`
+	// Responses API fields (used by native /v1/responses path).
+	PreviousResponseID string `json:"previous_response_id,omitempty"`
+	Instructions       string `json:"instructions,omitempty"`
+	Store              *bool  `json:"store,omitempty"`
 }
 
 // Usage represents token usage information.

@@ -131,13 +131,27 @@ func TestToolSelector_FewTools(t *testing.T) {
 
 func TestToolSelector_AlwaysInclude(t *testing.T) {
 	ts := DefaultToolSelector()
-	ts.AlwaysInclude = []string{"memory"}
+	ts.AlwaysInclude = []string{"memory", "ask"}
 	defs := mockToolDefs()
+	defs = append(defs, ToolDefinition{Name: "ask", Description: "Ask user preference questions."})
 
 	selected := ts.Select("Calculate 2+2", defs)
 
 	if !containsToolName(selected, "memory") {
 		t.Errorf("memory should always be included, got: %v", toolNames(selected))
+	}
+	if !containsToolName(selected, "ask") {
+		t.Errorf("ask should always be included, got: %v", toolNames(selected))
+	}
+}
+
+func TestDefaultToolSelector_AlwaysIncludesAsk(t *testing.T) {
+	ts := DefaultToolSelector()
+	defs := append(mockToolDefs(), ToolDefinition{Name: "ask", Description: "Ask user preference questions."})
+
+	selected := ts.Select("Calculate 2+2", defs)
+	if !containsToolName(selected, "ask") {
+		t.Errorf("default selector should keep ask, got: %v", toolNames(selected))
 	}
 }
 

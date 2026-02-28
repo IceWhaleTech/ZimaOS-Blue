@@ -92,3 +92,49 @@ func TestBuildProjectContext_NormalizeDefaultWorkspaceTemplateToEnglish(t *testi
 		t.Fatalf("expected non-english default template content to be normalized: %s", out)
 	}
 }
+
+func TestBuildProjectContext_CacheHitAndInvalidation(t *testing.T) {
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
+	b.SetMaxContextTokens(256)
+
+	files := map[string]string{
+		"USER.md": "user context",
+		"SOUL.md": "soul context",
+	}
+	out1 := b.buildProjectContext(files)
+	if out1 == "" {
+		t.Fatal("expected non-empty output")
+	}
+	if b.projectContextCacheHit != 0 {
+		t.Fatalf("cache hits = %d, want 0 after first build", b.projectContextCacheHit)
+	}
+
+	out2 := b.buildProjectContext(files)
+	if out2 != out1 {
+		t.Fatal("expected same output on cache hit")
+	}
+	if b.projectContextCacheHit != 1 {
+		t.Fatalf("cache hits = %d, want 1 after second build", b.projectContextCacheHit)
+	}
+
+	changed := map[string]string{
+		"USER.md": "user context changed",
+		"SOUL.md": "soul context",
+	}
+	_ = b.buildProjectContext(changed)
+	if b.projectContextCacheHit != 1 {
+		t.Fatalf("cache hits = %d, want unchanged after cache miss", b.projectContextCacheHit)
+	}
+}
+
+func TestBuildAgentModeGuidance_IncludesFSMAndAskGateProtocol(t *testing.T) {
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
+	b.SetAgentMode(true)
+	out := b.buildAgentModeGuidance()
+	if !strings.Contains(out, "<orchestrator_fsm>") {
+		t.Fatalf("agent mode guidance should include orchestrator_fsm tag: %s", out)
+	}
+	if !strings.Contains(out, "<awaiting_user_input>true</awaiting_user_input>") {
+		t.Fatalf("agent mode guidance should include awaiting_user_input marker contract: %s", out)
+	}
+}

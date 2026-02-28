@@ -31,7 +31,8 @@ const memoryFileInputRef = ref<HTMLInputElement | null>(null)
 const operationMessage = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
 const hasMemories = computed(() => (stats.value?.total_chunks ?? 0) > 0)
-const totalSizeText = computed(() => formatBytes(stats.value?.total_size_bytes ?? 0))
+const displayCount = computed(() => stats.value?.total_display_count ?? stats.value?.total_chunks ?? 0)
+const totalSizeText = computed(() => formatBytes(stats.value?.total_display_size_bytes ?? stats.value?.total_size_bytes ?? 0))
 
 let searchDebounceTimer: number | null = null
 let messageTimer: number | null = null
@@ -297,7 +298,7 @@ onBeforeUnmount(() => {
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
         <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-4 py-3">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('memory.totalMemories') }}</div>
-          <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ stats?.total_chunks ?? 0 }}</div>
+          <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ displayCount }}</div>
         </div>
         <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-4 py-3">
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('memory.totalSize') }}</div>

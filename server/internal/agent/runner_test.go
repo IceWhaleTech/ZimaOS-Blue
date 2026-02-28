@@ -254,7 +254,7 @@ func TestRunner_Submit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Status == TaskStatusCompleted || got.Status == TaskStatusFailed {
+		if got.Status == TaskStatusCompleted || got.Status == TaskStatusFailed || got.Status == TaskStatusAborted {
 			// Verify plan was populated
 			if len(got.Plan) < 2 {
 				t.Errorf("plan has %d steps, want >= 2", len(got.Plan))
@@ -580,10 +580,10 @@ func TestStore_Cleanup_KeepsRunning(t *testing.T) {
 // --- Runner: consecutive failures skip remaining steps ---
 
 type failingLLM struct {
-	planJSON      string
-	callCount     int
-	failCount     int // number of execution calls that should fail (0 = never fail)
-	failedSoFar   int
+	planJSON    string
+	callCount   int
+	failCount   int // number of execution calls that should fail (0 = never fail)
+	failedSoFar int
 }
 
 func (m *failingLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
@@ -602,6 +602,32 @@ func (m *failingLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResp
 	// Remaining calls (verify, summary) succeed
 	return &llm.ChatResponse{
 		Message: llm.Message{Role: llm.RoleAssistant, Content: "Done."},
+	}, nil
+}
+
+type scriptedLLMCall struct {
+	content string
+	err     error
+}
+
+type scriptedLLM struct {
+	calls []scriptedLLMCall
+	idx   int
+}
+
+func (m *scriptedLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	if m.idx >= len(m.calls) {
+		return &llm.ChatResponse{
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "Done."},
+		}, nil
+	}
+	call := m.calls[m.idx]
+	m.idx++
+	if call.err != nil {
+		return nil, call.err
+	}
+	return &llm.ChatResponse{
+		Message: llm.Message{Role: llm.RoleAssistant, Content: call.content},
 	}, nil
 }
 
@@ -627,7 +653,7 @@ func TestRunner_ConsecutiveFailures_SkipsRemaining(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
-		if got.Status == TaskStatusCompleted || got.Status == TaskStatusFailed {
+		if got.Status == TaskStatusCompleted || got.Status == TaskStatusFailed || got.Status == TaskStatusAborted {
 			// After 3 consecutive failures, remaining steps should be skipped
 			skipped := 0
 			failed := 0
@@ -821,7 +847,7 @@ func TestRunner_SubmitWithContext(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		got, _ := s.Get(ctx, task.ID)
-		if got != nil && (got.Status == TaskStatusCompleted || got.Status == TaskStatusFailed) {
+		if got != nil && (got.Status == TaskStatusCompleted || got.Status == TaskStatusFailed || got.Status == TaskStatusAborted) {
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -1013,6 +1039,65 @@ func TestRunner_AskUser_Timeout(t *testing.T) {
 	}
 }
 
+func TestRunner_AskUser_TimeoutDefaultAction(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	task := &Task{ID: "ask_default", UserID: "u1", Goal: "test", Status: TaskStatusExecuting}
+	if err := s.Create(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRunner(s, &mockLLM{}, nil, tools.NewExecutor(nil), nil, RunnerConfig{
+		AskTimeout:       20 * time.Millisecond,
+		AskTimeoutAction: "default",
+	})
+	questions := []AgentQuestion{{
+		ID:       "q1",
+		Question: "Pick one",
+		Header:   "Q",
+		Options: []QuestionOption{
+			{Label: "A (Recommended)", Value: "a"},
+			{Label: "B", Value: "b"},
+		},
+	}}
+	answers, err := r.AskUser(ctx, "ask_default", questions, 0)
+	if err != nil {
+		t.Fatalf("AskUser should fallback to defaults, got error: %v", err)
+	}
+	if len(answers) != 1 || len(answers[0].Values) != 1 || answers[0].Values[0] != "a" {
+		t.Fatalf("unexpected default answers: %+v", answers)
+	}
+}
+
+func TestRunner_AskUser_DynamicTimeoutOverride(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	task := &Task{ID: "ask_override", UserID: "u1", Goal: "test", Status: TaskStatusExecuting}
+	if err := s.Create(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRunner(s, &mockLLM{}, nil, tools.NewExecutor(nil), nil, RunnerConfig{
+		AskTimeout:       2 * time.Minute,
+		AskTimeoutAction: "default",
+	})
+	r.SetAskTimeoutFunc(func() time.Duration { return 25 * time.Millisecond })
+	start := time.Now()
+	_, err := r.AskUser(ctx, "ask_override", []AgentQuestion{{
+		ID:       "q1",
+		Question: "Pick one",
+		Header:   "Q",
+		Options:  []QuestionOption{{Label: "A", Value: "a"}, {Label: "B", Value: "b"}},
+	}}, 0)
+	if err != nil {
+		t.Fatalf("AskUser should fallback to defaults, got error: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 300*time.Millisecond {
+		t.Fatalf("dynamic timeout override not applied, elapsed=%s", elapsed)
+	}
+}
+
 func TestRunner_SubmitAnswers_NoPending(t *testing.T) {
 	s := testStore(t)
 	r := NewRunner(s, &mockLLM{}, nil, tools.NewExecutor(nil), nil, RunnerConfig{})
@@ -1085,6 +1170,64 @@ func TestRunner_HandleAskUser_EmptyQuestions(t *testing.T) {
 	if !strings.Contains(result, "error") {
 		t.Errorf("expected error for empty questions, got: %s", result)
 	}
+}
+
+func TestRunner_HandleAskUser_ObjectOptions(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	task := &Task{ID: "ask6", UserID: "u1", Goal: "test", Status: TaskStatusExecuting}
+	if err := s.Create(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRunner(s, &mockLLM{}, nil, tools.NewExecutor(nil), nil, RunnerConfig{
+		AskTimeout:       20 * time.Millisecond,
+		AskTimeoutAction: "default",
+	})
+
+	result := r.handleAskUser(ctx, task, `{"q":"Choose strategy","a":[{"label":"Balanced (Recommended)","description":"safe","value":"balanced"},{"label":"Fast","value":"fast"}]}`)
+	if strings.Contains(result, `"error"`) {
+		t.Fatalf("expected success for object options, got: %s", result)
+	}
+	if !strings.Contains(result, "balanced") {
+		t.Fatalf("expected default selection from first option object, got: %s", result)
+	}
+}
+
+func TestRunner_VerifyRecoveryFailure_MarksFailed(t *testing.T) {
+	s := testStore(t)
+	m := &scriptedLLM{
+		calls: []scriptedLLMCall{
+			{content: `{"goal":"build","subtasks":[{"description":"primary step"}],"success_criteria":["verify passes"],"fallback_plan":["recover once"]}`},
+			{content: "step completed"},
+			{err: fmt.Errorf("verify failed")},
+			{err: fmt.Errorf("recover failed")},
+		},
+	}
+	runner := NewRunner(s, m, nil, nil, nil, RunnerConfig{TaskTimeout: 10 * time.Second})
+	t.Cleanup(func() { runner.Shutdown() })
+
+	ctx := context.Background()
+	task, err := runner.Submit(ctx, "u1", "execute and verify", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := s.Get(ctx, task.ID)
+		if err == nil && got != nil && (got.Status == TaskStatusCompleted || got.Status == TaskStatusFailed || got.Status == TaskStatusAborted) {
+			if got.Status != TaskStatusFailed {
+				t.Fatalf("status = %q, want failed", got.Status)
+			}
+			if got.RuntimeState != RuntimeStateAborted {
+				t.Fatalf("runtime_state = %q, want ABORTED", got.RuntimeState)
+			}
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	runner.Cancel(task.ID)
+	t.Fatal("task did not reach terminal state within deadline")
 }
 
 func TestAgentQuestion_JSON(t *testing.T) {

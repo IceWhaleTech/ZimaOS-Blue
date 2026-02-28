@@ -2,6 +2,8 @@ package claudecode
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"runtime"
 	"sort"
@@ -89,6 +91,13 @@ type SystemPromptBuilder struct {
 	skillsCacheMu   sync.Mutex
 	skillsCacheStr  string
 	skillsCacheTime time.Time
+
+	// projectContextCache caches the rendered <project_context> block by file-content hash.
+	projectContextCacheMu   sync.Mutex
+	projectContextCacheKey  string
+	projectContextCacheStr  string
+	projectContextCacheStat *ContextStats
+	projectContextCacheHit  uint64
 }
 
 // NewSystemPromptBuilder creates a new SystemPromptBuilder.
@@ -373,6 +382,7 @@ func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
 	autoConfirm := b.isAgentAutoConfirm()
 
 	sb.WriteString("<agent_mode>You are in agent mode with unlimited autonomy for complex, multi-step tasks. No tool round limit — keep working until fully done.")
+	sb.WriteString("<orchestrator_fsm>State machine is mandatory and explicit: INTAKE -> CLARIFY -> PLAN -> CONFIRM_GATE -> EXECUTE -> VERIFY -> REPORT -> DONE, with RECOVER/ABORTED as controlled exits. Do not skip states. State transitions must be rule-driven, not free-form.</orchestrator_fsm>")
 
 	sb.WriteString("<planning>For multi-step tasks, manage TODOs via plan IPC skills. If no plan exists, call `blue plan_create ...`. If a plan exists, NEVER recreate it. Update incrementally with `blue plan_update ...` or `blue plan_append ...`. Keep the checklist in one place; do not re-output duplicate TODO lists.</planning>")
 
@@ -384,10 +394,13 @@ func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
 		sb.WriteString("Ask confirmation before destructive actions (delete, install, modify production config). Proceed without confirmation for safe operations. ")
 	}
 	sb.WriteString("Use exec for file ops, installs, builds, tests. Do NOT stop early. Do NOT call exec without a concrete command — think first, then execute.")
-	sb.WriteString(" When facing multiple valid approaches or ambiguous requirements, use the ask skill instead of guessing.")
+	sb.WriteString(" When facing multiple valid approaches, missing preferences, or trade-offs, call ask before proceeding (do not guess).")
+	sb.WriteString(" Ask is a hard gate (not a suggestion). Required ask triggers: missing critical parameters; high-risk actions; conflicting instructions; unclear acceptance criteria; significant strategy trade-offs.")
+	sb.WriteString(" Ask protocol: one-line question + 2-5 mutually exclusive options + consequence summary for each option. Mark pending confirmation explicitly with `<awaiting_user_input>true</awaiting_user_input>` and clear it after user response.")
+	sb.WriteString(" Ask format: prefer q/mq + a, where a contains 2-4 options. Prefer option objects {label, description, value}; put the recommended option first and append '(Recommended)' to its label.")
 	sb.WriteString("</execution>")
 
-	sb.WriteString("<verification>After all steps, verify: run build/tests. Fix and re-verify if needed.</verification>")
+	sb.WriteString("<verification>After all steps, verify: run build/tests. Fix and re-verify if needed. If verification fails, enter RECOVER with bounded retries and a clear fallback path.</verification>")
 
 	sb.WriteString("<completion>Your LAST response MUST be plain text (not a tool call). Include: 1) What was accomplished. 2) How to use/test the result. 3) Suggested next steps. Never end with a tool call.</completion>")
 
@@ -419,7 +432,8 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 	var sb strings.Builder
 	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). ")
 	sb.WriteString("Routing: ask→ask, search→web_search, URL→browser, UI review→ui_reviewer, analyze→analyze, plan→plan_create/plan_update/plan_append, sandbox→sandbox, workflows→workflows, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. ")
-	sb.WriteString("`blue help <cmd>` for usage. More skills in `.claude/skills/`.")
+	sb.WriteString("Use progressive skill selection: prefer routed/pinned commands first, then inspect likely SKILL.md files on demand. ")
+	sb.WriteString("`blue help <cmd>` for usage. More skills in workspace `.claude/skills/` and user default `~/.claude/skills/`.")
 
 	// Only pinned skills get listed explicitly
 	sb.WriteString(FormatPinnedSkills(b.config.WorkspaceDir))
@@ -522,6 +536,19 @@ const (
 // If total tokens exceed the budget, low-priority files are dropped first.
 func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string) string {
 	budget := b.maxContextTokens
+	cacheKey := buildProjectContextCacheKey(contextFiles, budget)
+
+	b.projectContextCacheMu.Lock()
+	if b.projectContextCacheKey == cacheKey {
+		cached := b.projectContextCacheStr
+		if stat := cloneContextStats(b.projectContextCacheStat); stat != nil {
+			b.lastContextStats.Store(stat)
+		}
+		b.projectContextCacheHit++
+		b.projectContextCacheMu.Unlock()
+		return cached
+	}
+	b.projectContextCacheMu.Unlock()
 
 	// Build file list with token estimates, sorted by priority
 	type fileEntry struct {
@@ -620,28 +647,37 @@ func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string
 	stats.TotalTokens = totalTokens
 	b.lastContextStats.Store(stats)
 
+	projectContext := ""
 	if len(included) == 0 {
-		return ""
-	}
+		// Keep empty cached too, to avoid repeated heavy token estimation work.
+	} else {
+		// Build the prompt section
+		var sb strings.Builder
+		sb.WriteString("<project_context>")
 
-	// Build the prompt section
-	var sb strings.Builder
-	sb.WriteString("<project_context>")
-
-	// Check for SOUL.md
-	for _, e := range included {
-		if strings.ToLower(e.name) == "soul.md" {
-			sb.WriteString("If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.")
-			break
+		// Check for SOUL.md
+		for _, e := range included {
+			if strings.ToLower(e.name) == "soul.md" {
+				sb.WriteString("If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.")
+				break
+			}
 		}
+
+		for _, e := range included {
+			b.writeContextFileSectionTo(&sb, e.name, e.content)
+		}
+
+		sb.WriteString("</project_context>")
+		projectContext = sb.String()
 	}
 
-	for _, e := range included {
-		b.writeContextFileSectionTo(&sb, e.name, e.content)
-	}
+	b.projectContextCacheMu.Lock()
+	b.projectContextCacheKey = cacheKey
+	b.projectContextCacheStr = projectContext
+	b.projectContextCacheStat = cloneContextStats(stats)
+	b.projectContextCacheMu.Unlock()
 
-	sb.WriteString("</project_context>")
-	return sb.String()
+	return projectContext
 }
 
 func contextFileTokenSoftCap(name string) int {
@@ -649,6 +685,41 @@ func contextFileTokenSoftCap(name string) int {
 		return cap
 	}
 	return defaultContextFileTokenCap
+}
+
+func buildProjectContextCacheKey(contextFiles map[string]string, budget int) string {
+	keys := make([]string, 0, len(contextFiles))
+	for name := range contextFiles {
+		keys = append(keys, name)
+	}
+	sort.Strings(keys)
+
+	h := sha256.New()
+	h.Write([]byte(strconv.Itoa(budget)))
+	h.Write([]byte{0})
+	for _, name := range keys {
+		h.Write([]byte(name))
+		h.Write([]byte{0})
+		h.Write([]byte(contextFiles[name]))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func cloneContextStats(stats *ContextStats) *ContextStats {
+	if stats == nil {
+		return nil
+	}
+	cp := &ContextStats{
+		TotalTokens:  stats.TotalTokens,
+		BudgetTokens: stats.BudgetTokens,
+		Trimmed:      stats.Trimmed,
+	}
+	if len(stats.Files) > 0 {
+		cp.Files = make([]ContextFileStat, len(stats.Files))
+		copy(cp.Files, stats.Files)
+	}
+	return cp
 }
 
 // truncateToTokenBudget truncates content to fit maxTokens and returns:

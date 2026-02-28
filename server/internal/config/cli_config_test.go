@@ -123,6 +123,15 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	if cfg.DetectionTimeout != 5*time.Second {
 		t.Errorf("expected DetectionTimeout 5s, got %v", cfg.DetectionTimeout)
 	}
+	if cfg.SkillRerankModel != "cross-encoder/ms-marco-MiniLM-L-6-v2" {
+		t.Errorf("expected SkillRerankModel cross-encoder/ms-marco-MiniLM-L-6-v2, got %q", cfg.SkillRerankModel)
+	}
+	if cfg.SkillRerankONNXEnabled {
+		t.Error("expected SkillRerankONNXEnabled to be false by default")
+	}
+	if cfg.SkillRerankONNXAutoDownload {
+		t.Error("expected SkillRerankONNXAutoDownload to be false by default")
+	}
 
 	if !cfg.Adapters.CLIProxy.Enabled {
 		t.Error("expected CLIProxy to be enabled by default")

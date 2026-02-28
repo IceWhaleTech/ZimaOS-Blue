@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	concpool "github.com/sourcegraph/conc/pool"
 	"go.uber.org/zap"
-	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
@@ -25,13 +25,14 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/lifecycle"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mfa"
@@ -40,7 +41,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
@@ -58,9 +58,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 
-	ssePkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
+	ssePkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
 
 var (
@@ -408,27 +408,27 @@ func runServer() {
 
 	// Initialize independent services in parallel for faster startup
 	var (
-		metricsCollector   *metrics.Collector
-		metricsWriter      *metrics.MetricsWriter
-		backupManager      *backup.Manager
-		backupHandler      *backup.Handler
-		threatDetector     *security.ThreatDetector
-		securityHandler    *security.Handler
-		mfaHandler         *mfa.Handler
-		sandboxManager     *sandbox.Manager
-		sandboxHandler     *sandbox.Handler
-		cronHandler        *cron.Handler
-		haService          *homeassistant.HAService
-		haHandler          *homeassistant.Handler
-		browserHandler     *browser.Handler
-		sttService         stt.Service
-		ttsService         tts.Service
-		voiceHandler       *voice.Handler
-		workflowHandler    *workflow.Handler
-		formfillerStore    *formfiller.Store
-		formfillerHandler  *formfiller.Handler
-		ngrokTunnelMgr     *ngrok.SDKTunnelManager
-		ngrokConfigStore   *ngrok.ConfigStore
+		metricsCollector  *metrics.Collector
+		metricsWriter     *metrics.MetricsWriter
+		backupManager     *backup.Manager
+		backupHandler     *backup.Handler
+		threatDetector    *security.ThreatDetector
+		securityHandler   *security.Handler
+		mfaHandler        *mfa.Handler
+		sandboxManager    *sandbox.Manager
+		sandboxHandler    *sandbox.Handler
+		cronHandler       *cron.Handler
+		haService         *homeassistant.HAService
+		haHandler         *homeassistant.Handler
+		browserHandler    *browser.Handler
+		sttService        stt.Service
+		ttsService        tts.Service
+		voiceHandler      *voice.Handler
+		workflowHandler   *workflow.Handler
+		formfillerStore   *formfiller.Store
+		formfillerHandler *formfiller.Handler
+		ngrokTunnelMgr    *ngrok.SDKTunnelManager
+		ngrokConfigStore  *ngrok.ConfigStore
 	)
 
 	// Use conc/pool for safer parallel initialization with automatic panic recovery
@@ -623,7 +623,7 @@ func runServer() {
 		logger.Info().Msg("Form filler handler initialized")
 	})
 
-	var companionHandler   *companion.Handler
+	var companionHandler *companion.Handler
 	var companionWSHandler *companion.WebSocketHandler
 
 	if cfg.Companion.Enabled {
@@ -1059,6 +1059,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		ProviderPool:       providerPool,
 		APIKeyService:      apiKeyService,
 		SpeechHandler:      speechHandler,
+		STTService:         sttService,
 		NgrokTunnelMgr:     ngrokTunnelMgr,
 		NgrokConfigStore:   ngrokConfigStore,
 		ClaudeCodeHandler:  claudeCodeHandler,

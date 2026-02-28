@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // AskTool is a first-class tool that asks the user questions.
@@ -22,11 +23,12 @@ func (t *AskTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name: "ask",
 		Description: `Ask the user one or more questions.
-For single question: use "q" (single-select/radio) or "mq" (multi-select/checkbox), with "a" as options array.
-For multiple questions: use "questions" array, each with "q" (question text), "type" ("radio"/"checkbox"), and "a" (options).
+For single question: use "q" (single-select/radio) or "mq" (multi-select/checkbox), with "a" as options.
+For multiple questions: use "questions" array, each with "q"/"question", "type" ("radio"/"checkbox"), and "a"/"options".
+Options support either strings or objects: {"label":"...", "description":"...", "value":"..."}.
 
-Example single: {"q": "Preferred language?", "a": ["Python", "Go", "Rust"]}
-Example multi: {"questions": [{"q": "Favorite language?", "type": "radio", "a": ["Python", "Go"]}, {"q": "Preferred IDE?", "type": "checkbox", "a": ["VS Code", "Vim"]}]}`,
+Example single: {"q":"Preferred language?","a":[{"label":"Go (Recommended)","description":"Best fit for this backend","value":"go"},{"label":"Rust","value":"rust"}]}
+Example multi: {"questions":[{"q":"Favorite language?","type":"radio","a":["Python","Go"]},{"question":"Preferred IDE?","type":"checkbox","options":[{"label":"VS Code","description":"Most extensions"},{"label":"Vim","description":"Fast and keyboard-driven"}]}]}`,
 		Icon: "question",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -40,18 +42,62 @@ Example multi: {"questions": [{"q": "Favorite language?", "type": "radio", "a": 
 					"description": "Multi-select question text (checkboxes). Use for one question.",
 				},
 				"a": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string"},
-					"description": "Options for single question (2-4 strings).",
+					"type": "array",
+					"items": map[string]interface{}{
+						"oneOf": []interface{}{
+							map[string]interface{}{"type": "string"},
+							map[string]interface{}{
+								"type": "object",
+								"properties": map[string]interface{}{
+									"label":       map[string]interface{}{"type": "string"},
+									"description": map[string]interface{}{"type": "string"},
+									"value":       map[string]interface{}{"type": "string"},
+								},
+							},
+						},
+					},
+					"description": "Options for single question (2-4 items). Prefer objects when you need descriptions.",
 				},
 				"questions": map[string]interface{}{
 					"type": "array",
 					"items": map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
-							"q":    map[string]interface{}{"type": "string"},
-							"type": map[string]interface{}{"type": "string", "enum": []string{"radio", "checkbox"}},
-							"a":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}},
+							"q":        map[string]interface{}{"type": "string"},
+							"question": map[string]interface{}{"type": "string"},
+							"type":     map[string]interface{}{"type": "string", "enum": []string{"radio", "checkbox"}},
+							"a": map[string]interface{}{
+								"type": "array",
+								"items": map[string]interface{}{
+									"oneOf": []interface{}{
+										map[string]interface{}{"type": "string"},
+										map[string]interface{}{
+											"type": "object",
+											"properties": map[string]interface{}{
+												"label":       map[string]interface{}{"type": "string"},
+												"description": map[string]interface{}{"type": "string"},
+												"value":       map[string]interface{}{"type": "string"},
+											},
+										},
+									},
+								},
+							},
+							"options": map[string]interface{}{
+								"type": "array",
+								"items": map[string]interface{}{
+									"oneOf": []interface{}{
+										map[string]interface{}{"type": "string"},
+										map[string]interface{}{
+											"type": "object",
+											"properties": map[string]interface{}{
+												"label":       map[string]interface{}{"type": "string"},
+												"description": map[string]interface{}{"type": "string"},
+												"value":       map[string]interface{}{"type": "string"},
+											},
+										},
+									},
+								},
+							},
 						},
 					},
 					"description": "Multiple questions array. Use this for 2+ questions.",
@@ -86,28 +132,27 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 			}
 			qText, _ := m["q"].(string)
 			if qText == "" {
+				qText, _ = m["question"].(string)
+			}
+			qText = strings.TrimSpace(qText)
+			if qText == "" {
 				continue
 			}
 			qType, _ := m["type"].(string)
-			isMulti := qType == "checkbox"
+			isMulti := strings.EqualFold(qType, "checkbox") || strings.EqualFold(qType, "multi")
 
-			opts, _ := m["a"].([]interface{})
-			qOpts := make([]QuestionOption, len(opts))
-			for j, o := range opts {
-				if s, ok := o.(string); ok {
-					qOpts[j] = QuestionOption{Label: s, Value: s}
-				}
+			qOpts := parseQuestionOptions(m["a"])
+			if len(qOpts) == 0 {
+				qOpts = parseQuestionOptions(m["options"])
 			}
-
-			header := qText
-			if len([]rune(header)) > 12 {
-				header = string([]rune(header)[:12])
+			if len(qOpts) == 0 {
+				continue
 			}
 
 			questions = append(questions, QuestionItem{
 				ID:          fmt.Sprintf("q%d", i),
 				Question:    qText,
-				Header:      header,
+				Header:      shortHeader(qText),
 				Options:     qOpts,
 				MultiSelect: isMulti,
 			})
@@ -120,21 +165,15 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 		if question == "" {
 			return nil, fmt.Errorf("q/mq + a or questions array is required")
 		}
-
-		header := question
-		if len([]rune(header)) > 12 {
-			header = string([]rune(header)[:12])
+		if len(options) == 0 {
+			return nil, fmt.Errorf("ask options are required")
 		}
 
-		qOpts := make([]QuestionOption, len(options))
-		for i, s := range options {
-			qOpts[i] = QuestionOption{Label: s, Value: s}
-		}
 		questions = []QuestionItem{{
 			ID:          "q0",
 			Question:    question,
-			Header:      header,
-			Options:     qOpts,
+			Header:      shortHeader(question),
+			Options:     options,
 			MultiSelect: multiSelect,
 		}}
 	}
@@ -159,16 +198,26 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 	// Build qa array for card renderer - need to look up question text from original questions
 	qaList := make([]map[string]interface{}, len(answers))
 	for i, ans := range answers {
-		// Find the question text by ID
-		qText := ""
+		// Find the source question by ID so we can return readable labels.
+		var qItem *QuestionItem
 		for _, q := range questions {
 			if q.ID == ans.QuestionID {
-				qText = q.Question
+				qCopy := q
+				qItem = &qCopy
 				break
 			}
 		}
-		optLabels := make([]string, len(ans.Selected))
-		copy(optLabels, ans.Selected)
+		qText := ""
+		optLabels := []string{}
+		if qItem != nil {
+			qText = qItem.Question
+			optLabels = make([]string, 0, len(qItem.Options))
+			for _, opt := range qItem.Options {
+				if opt.Label != "" {
+					optLabels = append(optLabels, opt.Label)
+				}
+			}
+		}
 		qaList[i] = map[string]interface{}{
 			"q": qText,
 			"o": optLabels,
@@ -197,7 +246,7 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 
 // parseAskArgs extracts question text, multi-select flag, and options from args.
 // Supports the primary q/mq/a format and falls back to legacy "questions" format.
-func parseAskArgs(args map[string]interface{}) (question string, multiSelect bool, options []string) {
+func parseAskArgs(args map[string]interface{}) (question string, multiSelect bool, options []QuestionOption) {
 	// Primary format: q/mq + a
 	if q, ok := args["q"].(string); ok && q != "" {
 		question = q
@@ -206,8 +255,9 @@ func parseAskArgs(args map[string]interface{}) (question string, multiSelect boo
 		question = mq
 		multiSelect = true
 	}
-	if aRaw, ok := args["a"]; ok {
-		options = toStringSlice(aRaw)
+	options = parseQuestionOptions(args["a"])
+	if len(options) == 0 {
+		options = parseQuestionOptions(args["options"])
 	}
 	if question != "" {
 		return
@@ -219,21 +269,22 @@ func parseAskArgs(args map[string]interface{}) (question string, multiSelect boo
 }
 
 // parseLegacyArgs handles the old nested "questions" format for backward compat.
-func parseLegacyArgs(args map[string]interface{}) (question string, multiSelect bool, options []string) {
+func parseLegacyArgs(args map[string]interface{}) (question string, multiSelect bool, options []QuestionOption) {
 	// Try "question" + "options" at top level
 	if q, ok := args["question"].(string); ok && q != "" {
-		question = q
+		question = strings.TrimSpace(q)
 		if ms, ok := args["multi_select"].(bool); ok {
 			multiSelect = ms
 		}
 		// "type":"checkbox" compat
 		if typ, ok := args["type"].(string); ok {
-			if typ == "checkbox" || typ == "multi" {
+			if strings.EqualFold(typ, "checkbox") || strings.EqualFold(typ, "multi") {
 				multiSelect = true
 			}
 		}
-		if aRaw, ok := args["options"]; ok {
-			options = toStringSlice(aRaw)
+		options = parseQuestionOptions(args["options"])
+		if len(options) == 0 {
+			options = parseQuestionOptions(args["a"])
 		}
 		return
 	}
@@ -256,45 +307,89 @@ func parseLegacyArgs(args map[string]interface{}) (question string, multiSelect 
 		return
 	}
 	first := items[0]
-	if q, ok := first["question"].(string); ok {
-		question = q
+	if q, ok := first["question"].(string); ok && strings.TrimSpace(q) != "" {
+		question = strings.TrimSpace(q)
+	}
+	if q, ok := first["q"].(string); ok && strings.TrimSpace(q) != "" {
+		question = strings.TrimSpace(q)
 	}
 	if ms, ok := first["multi_select"].(bool); ok {
 		multiSelect = ms
 	}
-	if typ, _ := first["type"].(string); typ == "checkbox" || typ == "multi" {
+	if typ, _ := first["type"].(string); strings.EqualFold(typ, "checkbox") || strings.EqualFold(typ, "multi") {
 		multiSelect = true
 	}
-	if aRaw, ok := first["options"]; ok {
-		options = toStringSlice(aRaw)
+	options = parseQuestionOptions(first["options"])
+	if len(options) == 0 {
+		options = parseQuestionOptions(first["a"])
 	}
 	return
 }
 
-// toStringSlice converts various option formats to []string.
-func toStringSlice(v interface{}) []string {
+func shortHeader(question string) string {
+	header := strings.TrimSpace(question)
+	if len([]rune(header)) <= 12 {
+		return header
+	}
+	return string([]rune(header)[:12])
+}
+
+// parseQuestionOptions converts option payloads to QuestionOption.
+// Supports:
+// - []string
+// - []interface{} of strings
+// - []interface{} of objects: {label,text,name,title,value,description,hint}
+func parseQuestionOptions(v interface{}) []QuestionOption {
 	switch arr := v.(type) {
 	case []interface{}:
-		out := make([]string, 0, len(arr))
+		out := make([]QuestionOption, 0, len(arr))
 		for _, item := range arr {
 			switch val := item.(type) {
 			case string:
-				if val != "" {
-					out = append(out, val)
+				s := strings.TrimSpace(val)
+				if s != "" {
+					out = append(out, QuestionOption{Label: s, Value: s})
 				}
 			case map[string]interface{}:
-				// {label: "..."} or {text: "..."} or {name: "..."}
+				// {label: "..."} or {text: "..."} or {name: "..."} with optional description/hint
+				label := ""
 				for _, k := range []string{"label", "text", "name", "title", "value"} {
-					if s, ok := val[k].(string); ok && s != "" {
-						out = append(out, s)
+					if s, ok := val[k].(string); ok && strings.TrimSpace(s) != "" {
+						label = strings.TrimSpace(s)
 						break
 					}
 				}
+				if label == "" {
+					continue
+				}
+				desc := ""
+				for _, k := range []string{"description", "hint"} {
+					if s, ok := val[k].(string); ok && strings.TrimSpace(s) != "" {
+						desc = strings.TrimSpace(s)
+						break
+					}
+				}
+				value := label
+				if s, ok := val["value"].(string); ok && strings.TrimSpace(s) != "" {
+					value = strings.TrimSpace(s)
+				}
+				out = append(out, QuestionOption{
+					Label:       label,
+					Description: desc,
+					Value:       value,
+				})
 			}
 		}
 		return out
 	case []string:
-		return arr
+		out := make([]QuestionOption, 0, len(arr))
+		for _, s := range arr {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				out = append(out, QuestionOption{Label: s, Value: s})
+			}
+		}
+		return out
 	}
 	return nil
 }

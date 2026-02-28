@@ -143,7 +143,7 @@ function getNodeSubtitle(event: SessionEvent): string {
         56
       )
     case 'llm_request':
-      return t('companion.nodes.tokens', { count: event.llm_request?.totalTokens || 0 })
+      return `${t('companion.llmDetails.total')}: ${formatTokens(event.llm_request?.totalTokens)}`
     case 'security_threat':
       return event.security?.action || ''
     default:
@@ -158,6 +158,11 @@ function formatTime(timestamp: string): string {
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(2)}s`
+}
+
+function formatTokens(tokens?: number): string {
+  if (tokens == null) return t('common.noData')
+  return tokens.toLocaleString()
 }
 
 // Draw rounded rectangle

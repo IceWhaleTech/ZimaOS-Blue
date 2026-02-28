@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -97,6 +98,39 @@ func TestCopyResponse_OpenAIResponsesEndpoint_NonStreamingConvertedToChatComplet
 	}
 	if got := gjson.GetBytes(gotBody, "usage.total_tokens").Int(); got != 10 {
 		t.Fatalf("usage.total_tokens = %d, want 10; body=%s", got, string(gotBody))
+	}
+}
+
+func TestCopyResponse_OpenAIResponsesEndpoint_SetsResponsesHeadersAndCachesPrevID(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+
+	body := `{
+		"id":"resp_cache_1",
+		"object":"response",
+		"model":"gpt-5.3-codex",
+		"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]
+	}`
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    httptest.NewRequest(http.MethodPost, "https://relay.example.com/v1/responses", nil),
+	}
+
+	rec := httptest.NewRecorder()
+	pr := &parsedRequest{}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-copy-1"))
+	ph.copyResponse(rec, resp, pr, req)
+
+	if got := rec.Header().Get(ResponsesUsedHeader); got != "1" {
+		t.Fatalf("%s = %q, want %q", ResponsesUsedHeader, got, "1")
+	}
+	if got := rec.Header().Get(ResponsesPreviousIDHeader); got != "resp_cache_1" {
+		t.Fatalf("%s = %q, want %q", ResponsesPreviousIDHeader, got, "resp_cache_1")
+	}
+	if got := ph.getCachedResponsesPreviousID(req); got != "resp_cache_1" {
+		t.Fatalf("cached previous_response_id = %q, want %q", got, "resp_cache_1")
 	}
 }
 

@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -73,7 +75,7 @@ func GetResolvedRouteFromContext(ctx context.Context) *ResolvedRoute {
 // Layout: pointer-sized fields first, then bools — minimizes padding for cache-line efficiency.
 type parsedRequest struct {
 	body               []byte
-	requestedModel     string         // model value from request body before normalization/routing
+	requestedModel     string // model value from request body before normalization/routing
 	model              string
 	originalModel      string         // model before routing (for cost savings tracking)
 	upstreamFormat     ProviderType   // set when request was converted to non-OpenAI format
@@ -195,6 +197,60 @@ func isTransientNetworkError(err error) bool {
 		return true
 	}
 	return false
+}
+
+func isContextCanceledError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context canceled") || strings.Contains(msg, "deadline exceeded")
+}
+
+var responsesContinuationErrorMarkers = [][]byte{
+	[]byte("previous_response_id"),
+	[]byte("previous response"),
+	[]byte("response_id"),
+	[]byte("response id"),
+}
+
+var responsesContinuationRejectedMarkers = [][]byte{
+	[]byte("not found"),
+	[]byte("does not exist"),
+	[]byte("invalid"),
+	[]byte("unknown"),
+	[]byte("expired"),
+	[]byte("mismatch"),
+	[]byte("belongs to"),
+	[]byte("different conversation"),
+}
+
+func isResponsesContinuationRejectedError(statusCode int, body []byte) bool {
+	if statusCode < http.StatusBadRequest || len(body) == 0 {
+		return false
+	}
+	lower := toLowerBytes(body)
+	hasContinuationMarker := false
+	for _, marker := range responsesContinuationErrorMarkers {
+		if bytes.Contains(lower, marker) {
+			hasContinuationMarker = true
+			break
+		}
+	}
+	if !hasContinuationMarker {
+		return false
+	}
+	for _, marker := range responsesContinuationRejectedMarkers {
+		if bytes.Contains(lower, marker) {
+			return true
+		}
+	}
+	// Some relays wrap upstream continuation failures as generic 5xx while still
+	// keeping a "previous_response_id"/"response id" clue in the body.
+	return statusCode >= http.StatusInternalServerError
 }
 
 // probeWithRetry wraps AuthProber.ProbeAndForward with transparent retry for
@@ -345,11 +401,15 @@ type ProxyHandler struct {
 	// Cold path — rarely accessed per-request
 	dataMasker      *DataMasker // Data masking for request/response content
 	router          *Router     // Legacy router (fallback only)
+	sttService      stt.Service
 	apiKeyValidator func(key string) ([]string, error)
 	routingStats    *RoutingStats           // Routing cost savings tracker
 	pipelineStats   *PipelineStatsCollector // Unified pipeline stats collector
 	oauthManager    OAuthTokenProvider      // OAuth token provider (optional)
 	sessionMonitor  *SessionMonitor         // Session monitor for security tracking
+	responsesPrevMu sync.RWMutex
+	responsesPrevID map[string]string // session_id -> previous_response_id
+	responsesInstr  map[string]string // session_id -> cached instructions
 }
 
 // NewProxyHandler creates a new proxy handler
@@ -361,6 +421,8 @@ func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *Failove
 		promptCacheStats:   &PromptCacheStats{},
 		providerRaceConfig: normalizeProviderRaceConfig(DefaultProviderRaceConfig()),
 		providerRaceStats:  make(map[string]*providerRaceStat),
+		responsesPrevID:    make(map[string]string),
+		responsesInstr:     make(map[string]string),
 	}
 	ph.routingEnabled.Store(true)
 	ph.authProber = NewAuthProber() // default prober, can be overridden
@@ -376,6 +438,68 @@ func (ph *ProxyHandler) SetProviderPool(pool *providerpool.Pool) {
 	ph.providerPool = pool
 	if pool != nil {
 		go ph.warmAuthStrategies()
+	}
+}
+
+// SetSTTService sets the STT service used for converting input_audio into text
+// before forwarding to /responses endpoints.
+func (ph *ProxyHandler) SetSTTService(service stt.Service) {
+	ph.sttService = service
+}
+
+func (ph *ProxyHandler) responsesAudioTranscriber(ctx context.Context) chatAudioTranscriber {
+	if ph == nil || ph.sttService == nil {
+		return nil
+	}
+	return func(inputAudio any) (string, bool) {
+		audioMap, ok := inputAudio.(map[string]interface{})
+		if !ok {
+			return "[Voice message, transcription unavailable]", true
+		}
+
+		audioDataBase64, _ := audioMap["data"].(string)
+		if strings.TrimSpace(audioDataBase64) == "" {
+			return "[Voice message, transcription unavailable]", true
+		}
+
+		audioBytes, err := base64.StdEncoding.DecodeString(audioDataBase64)
+		if err != nil {
+			slog.Warn("[proxy] failed to decode input_audio data", "error", err)
+			return "[Voice message, transcription failed]", true
+		}
+
+		audioFormat := sttAudioFormatForResponses(anyToString(audioMap["format"]))
+		resp, err := ph.sttService.Transcribe(ctx, &stt.TranscribeRequest{
+			Audio:  bytes.NewReader(audioBytes),
+			Format: audioFormat,
+		})
+		if err != nil {
+			slog.Warn("[proxy] input_audio transcription failed", "error", err, "format", audioFormat)
+			return "[Voice message, transcription failed]", true
+		}
+		if strings.TrimSpace(resp.Text) == "" {
+			return "[Voice message, no speech detected]", true
+		}
+		return resp.Text, true
+	}
+}
+
+func sttAudioFormatForResponses(format string) stt.AudioFormat {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "wav", "wave", "x-wav":
+		return stt.FormatWAV
+	case "mp3", "mpeg":
+		return stt.FormatMP3
+	case "flac":
+		return stt.FormatFLAC
+	case "pcm", "s16le":
+		return stt.FormatPCM
+	case "webm", "opus":
+		return stt.FormatOGG
+	case "ogg", "oga":
+		return stt.FormatOGG
+	default:
+		return stt.FormatOGG
 	}
 }
 
@@ -717,6 +841,14 @@ var toolCallProbeBody = []byte(`{"model":"gpt-4","messages":[{"role":"user","con
 // DisableResponsesContinuationHeader tells proxy request shaping logic to strip
 // previous_response_id before forwarding to Responses endpoints.
 const DisableResponsesContinuationHeader = "X-Zima-Disable-Responses-Continuation"
+
+// ResponsesUsedHeader tells downstream callers the proxy actually used a
+// Responses endpoint upstream for this request.
+const ResponsesUsedHeader = "X-Zima-Responses-Used"
+
+// ResponsesPreviousIDHeader exposes the latest Responses response.id observed
+// by the proxy for this session/request.
+const ResponsesPreviousIDHeader = "X-Zima-Previous-Response-ID"
 
 // warmToolCallSupport sends a minimal tool-bearing request to each provider to detect
 // whether it supports native function calling. Results are cached in ProviderMemory
@@ -1226,7 +1358,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Skip if no providers exist at all — stripping fields won't conjure providers.
 	// Skip if messages contain tool_calls or tool role — this is a tool round where
 	// stripping tools would leave orphaned tool_calls/tool_result, causing worse errors.
-	if err != nil && hasTools && !hasToolMessages && !errors.Is(err, providerpool.ErrNoAvailableProvider) {
+	if err != nil && hasTools && !hasToolMessages && !errors.Is(err, providerpool.ErrNoAvailableProvider) && !isContextCanceledError(err) {
 		strippedBody := pr.body
 		if b, e := sjson.DeleteBytes(strippedBody, "tools"); e == nil {
 			strippedBody = b
@@ -1258,7 +1390,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// strip image_url entries from messages and retry. Some providers/models don't
 	// support vision and reject multimodal content.
 	// Skip if no providers exist at all.
-	if err != nil && !errors.Is(err, providerpool.ErrNoAvailableProvider) {
+	if err != nil && !errors.Is(err, providerpool.ErrNoAvailableProvider) && !isContextCanceledError(err) {
 		if strippedBody, didStrip := stripImageContent(pr.body); didStrip {
 			slog.Info("[proxy] retrying without images after all providers failed",
 				"model", pr.model, "original_error", err)
@@ -1350,6 +1482,7 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	provider := route.Provider
 	if disableResponsesContinuation(r) {
 		body = stripPreviousResponseID(body)
+		ph.clearCachedResponsesPreviousID(r)
 	}
 
 	// Use effective base URL (considers DetectedEndpoint)
@@ -1394,6 +1527,7 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 		RequestPath:        requestPath,
 		Body:               body,
 		PromptCacheEnabled: ph.promptCacheEnabled.Load(),
+		AudioTranscriber:   ph.responsesAudioTranscriber(r.Context()),
 	}
 	ph.applyUpstreamRequestBridges(bridgeCtx)
 	effectiveFormat = bridgeCtx.EffectiveFormat
@@ -1426,6 +1560,10 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	// URI-based format enforcement: the final URL path is the source of truth.
 	// Ensure the body format matches the endpoint, regardless of effectiveFormat.
 	finalPath := upstreamURL.Path
+	if strings.HasSuffix(finalPath, "/responses") {
+		body = ph.injectCachedResponsesInstructions(r, body)
+		body = ph.injectCachedResponsesPreviousIDForRoute(r, route, body)
+	}
 	if strings.HasSuffix(finalPath, "/messages") && effectiveFormat != providerpool.APIFormatAnthropic {
 		// Final URL is Anthropic endpoint but body wasn't converted — fix it.
 		// This happens when base URL already contains /messages or format was misdetected.
@@ -1438,7 +1576,10 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	}
 	if strings.HasSuffix(finalPath, "/responses") &&
 		gjson.GetBytes(body, "messages").Exists() {
-		converted, convErr := convertOpenAIChatCompletionsToResponses(body)
+		converted, convErr := convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(
+			body,
+			ph.responsesAudioTranscriber(r.Context()),
+		)
 		if convErr == nil {
 			body = converted
 			slog.Info("[proxy] URI fixup: endpoint is /responses, converted body to Responses",
@@ -1446,6 +1587,8 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 		}
 	}
 	if strings.HasSuffix(finalPath, "/responses") {
+		body = ph.ensureCachedInstructionsForResponsesBody(r, body)
+		body = ensureResponsesStoreEnabled(body)
 		body = clampResponsesMaxOutputTokens(body)
 	}
 	if endpointFormat, ok := detectEndpointFixedFormatFromPath(finalPath); ok {
@@ -1983,6 +2126,8 @@ func (ph *ProxyHandler) tryOnProvider(
 	var fastPathTriedFormat providerpool.APIFormat // track what fast path already tried
 	if nModels == 1 && nFormats == 1 && modelsBuf[0] == pr.model {
 		format := formatsBuf[0]
+		fastPathBody := pr.body
+		continuationResetTried := false
 		fastPathTriedFormat = format
 		for upstreamAttempt := 0; ; upstreamAttempt++ {
 			slog.Debug("[proxy] trying", "provider", pid, "format", format, "model", pr.model)
@@ -1992,7 +2137,7 @@ func (ph *ProxyHandler) tryOnProvider(
 				apiKeyToUse,
 				format,
 				func() (*http.Request, error) {
-					return ph.buildUpstreamRequestWithFormat(r, result, pr.body, format)
+					return ph.buildUpstreamRequestWithFormat(r, result, fastPathBody, format)
 				},
 				func(req *http.Request) (*http.Response, error) {
 					if result.Provider.SkipTLSVerify {
@@ -2032,6 +2177,14 @@ func (ph *ProxyHandler) tryOnProvider(
 			errBody := readErrorBody(resp.Body)
 			resp.Body.Close()
 			statusCode := resp.StatusCode
+			if !continuationResetTried && isResponsesContinuationRejectedError(statusCode, errBody) {
+				continuationResetTried = true
+				ph.clearCachedResponsesPreviousID(r)
+				fastPathBody = stripPreviousResponseID(fastPathBody)
+				slog.Info("[proxy] responses continuation rejected on fast path, cleared cached previous_response_id and retrying",
+					"provider", pid, "status", statusCode, "model", pr.model)
+				continue
+			}
 			if shouldRetryTransientUpstream5xx(pr.singleProvider, statusCode, errBody, upstreamAttempt) {
 				delay := transientUpstreamRetryDelay(upstreamAttempt)
 				slog.Warn("[proxy] transient upstream 5xx, retrying in single-provider mode",
@@ -2129,6 +2282,8 @@ func (ph *ProxyHandler) tryOnProvider(
 		formatsTried := 0          // count of formats actually attempted (not skipped)
 		for fi := 0; fi < nFormats; fi++ {
 			format := formatsBuf[fi]
+			currentBody := forwardBody
+			continuationResetTried := false
 			// Skip format already tried (and failed) on fast path for the same model
 			if fastPathTriedFormat != "" && format == fastPathTriedFormat && model == pr.model {
 				continue
@@ -2148,7 +2303,7 @@ func (ph *ProxyHandler) tryOnProvider(
 					apiKeyToUse,
 					format,
 					func() (*http.Request, error) {
-						return ph.buildUpstreamRequestWithFormat(r, result, forwardBody, format)
+						return ph.buildUpstreamRequestWithFormat(r, result, currentBody, format)
 					},
 					func(req *http.Request) (*http.Response, error) {
 						if result.Provider.SkipTLSVerify {
@@ -2166,6 +2321,14 @@ func (ph *ProxyHandler) tryOnProvider(
 				errBody := readErrorBody(resp.Body)
 				preReadRetryAfter = resp.Header.Get("Retry-After")
 				resp.Body.Close()
+				if !continuationResetTried && isResponsesContinuationRejectedError(resp.StatusCode, errBody) {
+					continuationResetTried = true
+					ph.clearCachedResponsesPreviousID(r)
+					currentBody = stripPreviousResponseID(currentBody)
+					slog.Info("[proxy] responses continuation rejected, cleared cached previous_response_id and retrying",
+						"provider", pid, "status", resp.StatusCode, "model", model, "format", format)
+					continue
+				}
 				if shouldRetryTransientUpstream5xx(pr.singleProvider, resp.StatusCode, errBody, upstreamAttempt) {
 					delay := transientUpstreamRetryDelay(upstreamAttempt)
 					slog.Warn("[proxy] transient upstream 5xx, retrying in single-provider mode",
@@ -2739,11 +2902,23 @@ func (ph *ProxyHandler) handleModels(w http.ResponseWriter, r *http.Request) {
 // Uses pre-parsed request data to avoid redundant JSON parsing.
 func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response, pr *parsedRequest, r *http.Request) {
 	copyHeaders(w.Header(), resp.Header)
+	var resolvedRoute *providerpool.RouteResult
+	if pr != nil && pr.resolvedProviderID != "" {
+		resolvedRoute = &providerpool.RouteResult{
+			Provider: &providerpool.Provider{ID: pr.resolvedProviderID},
+		}
+		if pr.resolvedModel != "" {
+			resolvedRoute.Model = &providerpool.Model{ID: pr.resolvedModel}
+		}
+	}
 	upstreamPath := ""
 	if resp.Request != nil && resp.Request.URL != nil {
 		upstreamPath = strings.TrimSuffix(resp.Request.URL.Path, "/")
 	}
 	isResponsesEndpoint := strings.HasSuffix(upstreamPath, "/responses")
+	if isResponsesEndpoint {
+		w.Header().Set(ResponsesUsedHeader, "1")
+	}
 
 	// Inject actual provider/model so the bridge can propagate them to chat handler
 	if pr.resolvedProvider != "" {
@@ -2773,8 +2948,14 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 			return
 		}
 
-		needCapture := ph.shouldCaptureSessionUsage(r)
+		needCapture := ph.shouldCaptureSessionUsage(r) || (isResponsesEndpoint && ph.hasResponsesSession(r))
 		captured := ph.copyStreamingResponseWithCapture(w, resp, needCapture)
+		if isResponsesEndpoint {
+			if prevID := parseLatestResponsesIDFromSSE(captured); prevID != "" {
+				ph.setCachedResponsesPreviousIDForRoute(r, resolvedRoute, prevID)
+				w.Header().Set(ResponsesPreviousIDHeader, prevID)
+			}
+		}
 		if needCapture {
 			tokensIn, tokensOut := parseUsageTokensFromSSE(captured)
 			ph.updateSessionUsage(r, pr, tokensIn, tokensOut, resp.StatusCode < http.StatusBadRequest)
@@ -2802,6 +2983,12 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 
 	if pr.upstreamFormat == ProviderTypeAnthropic && resp.StatusCode == http.StatusOK {
 		ph.recordPromptCacheFromBody(pr, respBody)
+	}
+	if isResponsesEndpoint && resp.StatusCode == http.StatusOK {
+		if prevID := strings.TrimSpace(gjson.GetBytes(respBody, "id").String()); prevID != "" {
+			ph.setCachedResponsesPreviousIDForRoute(r, resolvedRoute, prevID)
+			w.Header().Set(ResponsesPreviousIDHeader, prevID)
+		}
 	}
 
 	// Convert non-streaming non-OpenAI response to OpenAI format.
@@ -3336,4 +3523,378 @@ func stripPreviousResponseID(body []byte) []byte {
 		return body
 	}
 	return out
+}
+
+func (ph *ProxyHandler) responsesSessionID(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	return strings.TrimSpace(SessionIDFromContext(r.Context()))
+}
+
+func (ph *ProxyHandler) hasResponsesSession(r *http.Request) bool {
+	return ph.responsesSessionID(r) != ""
+}
+
+func responsesPrevIDKey(sessionID, providerID, modelID string) string {
+	sessionID = strings.TrimSpace(sessionID)
+	providerID = strings.TrimSpace(providerID)
+	modelID = strings.TrimSpace(modelID)
+	if sessionID == "" {
+		return ""
+	}
+	if providerID == "" {
+		return sessionID
+	}
+	if modelID == "" {
+		return sessionID + "|p:" + providerID
+	}
+	return sessionID + "|p:" + providerID + "|m:" + modelID
+}
+
+func (ph *ProxyHandler) getCachedResponsesPreviousID(r *http.Request) string {
+	sid := ph.responsesSessionID(r)
+	if sid == "" {
+		return ""
+	}
+	ph.responsesPrevMu.RLock()
+	defer ph.responsesPrevMu.RUnlock()
+	return strings.TrimSpace(ph.responsesPrevID[responsesPrevIDKey(sid, "", "")])
+}
+
+func (ph *ProxyHandler) getCachedResponsesPreviousIDForRoute(r *http.Request, route *providerpool.RouteResult) string {
+	sid := ph.responsesSessionID(r)
+	if sid == "" {
+		return ""
+	}
+	providerID := ""
+	modelID := ""
+	if route != nil && route.Provider != nil {
+		providerID = strings.TrimSpace(route.Provider.ID)
+	}
+	if route != nil && route.Model != nil {
+		modelID = strings.TrimSpace(route.Model.ID)
+	}
+
+	ph.responsesPrevMu.RLock()
+	defer ph.responsesPrevMu.RUnlock()
+	if providerID != "" && modelID != "" {
+		if v := strings.TrimSpace(ph.responsesPrevID[responsesPrevIDKey(sid, providerID, modelID)]); v != "" {
+			return v
+		}
+	}
+	if providerID != "" {
+		if v := strings.TrimSpace(ph.responsesPrevID[responsesPrevIDKey(sid, providerID, "")]); v != "" {
+			return v
+		}
+		// Route is known but no provider-scoped cache exists; do not fall back to
+		// session-global previous_response_id to avoid cross-provider leakage.
+		return ""
+	}
+	return strings.TrimSpace(ph.responsesPrevID[responsesPrevIDKey(sid, "", "")])
+}
+
+func (ph *ProxyHandler) setCachedResponsesPreviousID(r *http.Request, prevID string) {
+	sid := ph.responsesSessionID(r)
+	prevID = strings.TrimSpace(prevID)
+	if sid == "" || prevID == "" {
+		return
+	}
+	ph.responsesPrevMu.Lock()
+	ph.responsesPrevID[responsesPrevIDKey(sid, "", "")] = prevID
+	ph.responsesPrevMu.Unlock()
+}
+
+func (ph *ProxyHandler) clearCachedResponsesPreviousID(r *http.Request) {
+	sid := ph.responsesSessionID(r)
+	if sid == "" {
+		return
+	}
+	ph.responsesPrevMu.Lock()
+	for key := range ph.responsesPrevID {
+		if key == sid || strings.HasPrefix(key, sid+"|") {
+			delete(ph.responsesPrevID, key)
+		}
+	}
+	ph.responsesPrevMu.Unlock()
+}
+
+func (ph *ProxyHandler) setCachedResponsesPreviousIDForRoute(r *http.Request, route *providerpool.RouteResult, prevID string) {
+	ph.setCachedResponsesPreviousID(r, prevID)
+	sid := ph.responsesSessionID(r)
+	prevID = strings.TrimSpace(prevID)
+	if sid == "" || prevID == "" || route == nil || route.Provider == nil {
+		return
+	}
+	providerID := strings.TrimSpace(route.Provider.ID)
+	modelID := ""
+	if route.Model != nil {
+		modelID = strings.TrimSpace(route.Model.ID)
+	}
+	if providerID == "" {
+		return
+	}
+	ph.responsesPrevMu.Lock()
+	ph.responsesPrevID[responsesPrevIDKey(sid, providerID, "")] = prevID
+	if modelID != "" {
+		ph.responsesPrevID[responsesPrevIDKey(sid, providerID, modelID)] = prevID
+	}
+	ph.responsesPrevMu.Unlock()
+}
+
+func (ph *ProxyHandler) injectCachedResponsesPreviousIDForRoute(r *http.Request, route *providerpool.RouteResult, body []byte) []byte {
+	if len(body) == 0 || disableResponsesContinuation(r) {
+		return body
+	}
+	if strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) != "" {
+		return body
+	}
+	prevID := ph.getCachedResponsesPreviousIDForRoute(r, route)
+	if prevID == "" {
+		return body
+	}
+	out, err := sjson.SetBytes(body, "previous_response_id", prevID)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func parseLatestResponsesIDFromSSE(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	chunks := parseSSEChunks(data)
+	for i := len(chunks) - 1; i >= 0; i-- {
+		c := chunks[i]
+		if v, ok := c["response_id"].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+		if resp, ok := c["response"].(map[string]interface{}); ok {
+			if v, ok := resp["id"].(string); ok && strings.TrimSpace(v) != "" {
+				return strings.TrimSpace(v)
+			}
+		}
+		if v, ok := c["id"].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+func (ph *ProxyHandler) getCachedResponsesInstructions(r *http.Request) string {
+	sid := ph.responsesSessionID(r)
+	if sid == "" {
+		return ""
+	}
+	ph.responsesPrevMu.RLock()
+	defer ph.responsesPrevMu.RUnlock()
+	return strings.TrimSpace(ph.responsesInstr[sid])
+}
+
+func (ph *ProxyHandler) setCachedResponsesInstructions(r *http.Request, instructions string) {
+	sid := ph.responsesSessionID(r)
+	instructions = strings.TrimSpace(instructions)
+	if sid == "" || instructions == "" {
+		return
+	}
+	ph.responsesPrevMu.Lock()
+	ph.responsesInstr[sid] = instructions
+	ph.responsesPrevMu.Unlock()
+}
+
+func extractSystemInstructionsFromChatBody(body []byte) string {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.Exists() || !messages.IsArray() {
+		return ""
+	}
+	var blocks []string
+	for _, msg := range messages.Array() {
+		role := strings.ToLower(strings.TrimSpace(msg.Get("role").String()))
+		if role != "system" && role != "developer" {
+			continue
+		}
+		content := strings.TrimSpace(msg.Get("content").String())
+		if content != "" && !isMutableContextForResponsesInstructions(content) {
+			blocks = append(blocks, content)
+		}
+	}
+	return strings.TrimSpace(strings.Join(blocks, "\n\n"))
+}
+
+func (ph *ProxyHandler) injectCachedResponsesInstructions(r *http.Request, body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	// If caller provided system/developer content, only forward as instructions
+	// when changed; unchanged instructions are omitted on continuation requests.
+	if in := extractSystemInstructionsFromChatBody(body); in != "" {
+		cached := ph.getCachedResponsesInstructions(r)
+		if in == cached {
+			if out, err := sjson.DeleteBytes(body, "instructions"); err == nil {
+				return out
+			}
+			return body
+		}
+		out, err := sjson.SetBytes(body, "instructions", in)
+		if err == nil {
+			return out
+		}
+	}
+	// Chat-completions payload has no instructions field; keep as-is and inject later
+	// after conversion if needed.
+	return body
+}
+
+func (ph *ProxyHandler) ensureCachedInstructionsForResponsesBody(r *http.Request, body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	prevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+	incoming := strings.TrimSpace(gjson.GetBytes(body, "instructions").String())
+	cached := ph.getCachedResponsesInstructions(r)
+	if incoming != "" {
+		if incoming != cached {
+			ph.setCachedResponsesInstructions(r, incoming)
+			// On first turn, move non-mutable system/developer messages out of input
+			// to avoid duplicating global instructions in both fields.
+			if prevID == "" {
+				if extracted, stripped, ok := extractInstructionsFromResponsesInput(body); ok && extracted == incoming {
+					body = stripped
+					if out, err := sjson.SetBytes(body, "instructions", incoming); err == nil {
+						body = out
+					}
+				}
+			}
+			return body
+		}
+		// Redundant resend on continuation: omit instructions.
+		if prevID != "" {
+			if out, err := sjson.DeleteBytes(body, "instructions"); err == nil {
+				return out
+			}
+		}
+		return body
+	}
+	// Continuation mode without explicit override does not resend instructions.
+	if prevID != "" {
+		return body
+	}
+	// First Responses turn: extract global instructions from input and move them
+	// to the dedicated instructions field so follow-up turns can avoid resending.
+	if extracted, stripped, ok := extractInstructionsFromResponsesInput(body); ok {
+		ph.setCachedResponsesInstructions(r, extracted)
+		out, err := sjson.SetBytes(stripped, "instructions", extracted)
+		if err == nil {
+			return out
+		}
+	}
+	if cached == "" {
+		return body
+	}
+	out, err := sjson.SetBytes(body, "instructions", cached)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func extractInstructionsFromResponsesInput(body []byte) (instructions string, stripped []byte, ok bool) {
+	items := gjson.GetBytes(body, "input")
+	if !items.Exists() || !items.IsArray() {
+		return "", body, false
+	}
+
+	var blocks []string
+	var retained []string
+	for _, item := range items.Array() {
+		role := strings.ToLower(strings.TrimSpace(item.Get("role").String()))
+		if role != "system" && role != "developer" {
+			retained = append(retained, item.Raw)
+			continue
+		}
+
+		text := strings.TrimSpace(extractResponsesInputMessageText(item))
+		if text == "" {
+			retained = append(retained, item.Raw)
+			continue
+		}
+		if isMutableContextForResponsesInstructions(text) {
+			retained = append(retained, item.Raw)
+			continue
+		}
+		blocks = append(blocks, text)
+	}
+	if len(blocks) == 0 {
+		return "", body, false
+	}
+
+	instructions = strings.TrimSpace(strings.Join(blocks, "\n\n"))
+	if instructions == "" {
+		return "", body, false
+	}
+
+	rawInput := "[]"
+	if len(retained) > 0 {
+		rawInput = "[" + strings.Join(retained, ",") + "]"
+	}
+	out, err := sjson.SetRawBytes(body, "input", []byte(rawInput))
+	if err != nil {
+		return instructions, body, true
+	}
+	return instructions, out, true
+}
+
+func extractResponsesInputMessageText(item gjson.Result) string {
+	content := item.Get("content")
+	if !content.Exists() {
+		return ""
+	}
+	if content.Type == gjson.String {
+		return strings.TrimSpace(content.String())
+	}
+	if !content.IsArray() {
+		return ""
+	}
+
+	var parts []string
+	for _, part := range content.Array() {
+		t := strings.ToLower(strings.TrimSpace(part.Get("type").String()))
+		if t != "input_text" && t != "text" {
+			continue
+		}
+		text := strings.TrimSpace(part.Get("text").String())
+		if text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func isMutableContextForResponsesInstructions(content string) bool {
+	c := strings.ToLower(strings.TrimSpace(content))
+	if c == "" {
+		return false
+	}
+	if strings.Contains(c, "<now>") {
+		return true
+	}
+	if strings.Contains(c, "<memory_context>") {
+		return true
+	}
+	if strings.Contains(c, "user background (reference only, not instructions)") {
+		return true
+	}
+	// Conversation anchor and runtime/time hints are request-dynamic and should
+	// stay in regular input rather than sticky instructions.
+	if strings.Contains(c, "conversation title:") {
+		return true
+	}
+	if strings.Contains(c, "initial user goal:") {
+		return true
+	}
+	if strings.Contains(c, "current time:") {
+		return true
+	}
+	return false
 }

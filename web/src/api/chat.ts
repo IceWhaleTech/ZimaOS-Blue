@@ -85,6 +85,7 @@ export interface StreamChunk {
   done: boolean
   error?: string
   stream_id?: string
+  awaiting_user_input?: boolean
   provider?: string
   model?: string
   // Tool execution status (sent when backend starts executing tool calls)

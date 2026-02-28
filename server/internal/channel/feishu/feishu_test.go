@@ -2,8 +2,11 @@ package feishu
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"go.uber.org/zap"
 
@@ -326,5 +329,50 @@ func TestChannel_ConcurrentSendAndStop(t *testing.T) {
 		// Success - no panic occurred
 	case <-time.After(5 * time.Second):
 		t.Error("Test timed out")
+	}
+}
+
+func TestSplitMarkdownForCard_PreservesCodeFence(t *testing.T) {
+	input := "第一段说明\n```go\nfunc main() {\n\tprintln(\"hello\")\n}\n```\n后续结论"
+	chunks := splitMarkdownForCard(input, 24)
+	if len(chunks) < 2 {
+		t.Fatalf("expected multiple chunks, got %d", len(chunks))
+	}
+	for i, ch := range chunks {
+		if utf8.RuneCountInString(ch) > 30 { // allow small overflow for close/reopen fences.
+			t.Fatalf("chunk %d too long: %d runes", i, utf8.RuneCountInString(ch))
+		}
+		if strings.Count(ch, "```")%2 != 0 {
+			t.Fatalf("chunk %d has dangling code fence: %q", i, ch)
+		}
+	}
+}
+
+func TestBuildStreamingCardJSON_Structure(t *testing.T) {
+	raw, err := buildStreamingCardJSON("hello\nworld", false)
+	if err != nil {
+		t.Fatalf("buildStreamingCardJSON failed: %v", err)
+	}
+	var card struct {
+		Config struct {
+			WideScreenMode bool `json:"wide_screen_mode"`
+		} `json:"config"`
+		Elements []struct {
+			Tag     string `json:"tag"`
+			Content string `json:"content"`
+		} `json:"elements"`
+	}
+	if err := json.Unmarshal([]byte(raw), &card); err != nil {
+		t.Fatalf("invalid card json: %v", err)
+	}
+	if !card.Config.WideScreenMode {
+		t.Fatal("wide_screen_mode should be true")
+	}
+	if len(card.Elements) == 0 {
+		t.Fatal("elements should not be empty")
+	}
+	last := card.Elements[len(card.Elements)-1]
+	if last.Tag != "markdown" || !strings.Contains(last.Content, "...") {
+		t.Fatalf("streaming suffix element missing: %+v", last)
 	}
 }

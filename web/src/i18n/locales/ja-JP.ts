@@ -2937,11 +2937,12 @@ export default {
         error: 'エラー',
       },
     },
-    llmDetails: {
+    llmDetails:
+    {
       input: '入力',
-      prompt: 'プロンプト',
-      completion: '補完',
-      total: '合計',
+      prompt: '入力トークン',
+      completion: '出力トークン',
+      total: '合計トークン',
       score: 'スコア',
     },
     replay: {

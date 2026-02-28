@@ -39,6 +39,17 @@ function isNetworkError(err: unknown): boolean {
 
 const MAX_CONNECT_RETRIES = 2
 const CONNECT_RETRY_DELAY = 2000
+const RE_AWAITING_USER_INPUT = /<awaiting_user_input>\s*true\s*<\/awaiting_user_input>/gi
+const RE_ASK_GATE_BLOCK = /<ask_gate>[\s\S]*?<\/ask_gate>/gi
+
+function stripControlMarkers(delta: string): { cleaned: string; awaiting: boolean } {
+  if (!delta) return { cleaned: '', awaiting: false }
+  const awaiting = RE_AWAITING_USER_INPUT.test(delta) || RE_ASK_GATE_BLOCK.test(delta)
+  RE_AWAITING_USER_INPUT.lastIndex = 0
+  RE_ASK_GATE_BLOCK.lastIndex = 0
+  const cleaned = delta.replace(RE_AWAITING_USER_INPUT, '').replace(RE_ASK_GATE_BLOCK, '')
+  return { cleaned, awaiting }
+}
 
 export class SSEClient {
   private abortController: AbortController | null = null
@@ -207,6 +218,11 @@ export class SSEClient {
                 // Normalize missing fields to defaults
                 if (chunk.delta === undefined || chunk.delta === null) chunk.delta = ''
                 if (chunk.done === undefined || chunk.done === null) chunk.done = false
+                const { cleaned, awaiting } = stripControlMarkers(chunk.delta)
+                chunk.delta = cleaned
+                if (awaiting) {
+                  chunk.awaiting_user_input = true
+                }
                 // Check for context pruning event (sent on first content chunk)
                 if (chunk.pruned) {
                   options.onContextTrimmed?.({

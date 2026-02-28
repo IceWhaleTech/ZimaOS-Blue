@@ -2529,9 +2529,9 @@ export default {
     },
     llmDetails: {
       input: '輸入',
-      prompt: '提示詞',
-      completion: '補全',
-      total: '總計',
+      prompt: '輸入令牌',
+      completion: '輸出令牌',
+      total: '總令牌',
       score: '分數',
     },
     eventTypes: {

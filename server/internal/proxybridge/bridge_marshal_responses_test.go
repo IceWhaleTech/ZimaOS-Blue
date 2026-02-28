@@ -1,6 +1,11 @@
 package proxybridge
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+)
 
 func TestParseSSEChunk_ResponsesOutputTextDelta(t *testing.T) {
 	payload := `{"type":"response.output_text.delta","response_id":"resp_1","delta":"Hello"}`
@@ -121,5 +126,59 @@ func TestParseChatResponse_ResponsesObject(t *testing.T) {
 	}
 	if resp.Usage.TotalTokens != 14 {
 		t.Fatalf("total_tokens = %d, want 14", resp.Usage.TotalTokens)
+	}
+}
+
+func TestMarshalResponsesRequest_UsesNativeResponsesShape(t *testing.T) {
+	req := llm.ChatRequest{
+		Model:              "gpt-5.3-codex-spark",
+		PreviousResponseID: "resp_prev_1",
+		Stream:             true,
+		MaxTokens:          128,
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "continue"},
+		},
+	}
+
+	raw, err := MarshalResponsesRequest(req)
+	if err != nil {
+		t.Fatalf("MarshalResponsesRequest failed: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if got["store"] != true {
+		t.Fatalf("store = %#v, want true", got["store"])
+	}
+	if got["previous_response_id"] != "resp_prev_1" {
+		t.Fatalf("previous_response_id = %#v, want %q", got["previous_response_id"], "resp_prev_1")
+	}
+	if _, ok := got["messages"]; ok {
+		t.Fatalf("native responses payload should not include messages: %s", string(raw))
+	}
+}
+
+func TestMarshalResponsesRequest_FirstTurnExtractsInstructions(t *testing.T) {
+	req := llm.ChatRequest{
+		Model: "gpt-5.3-codex-spark",
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "system prompt"},
+			{Role: llm.RoleUser, Content: "hello"},
+		},
+	}
+
+	raw, err := MarshalResponsesRequest(req)
+	if err != nil {
+		t.Fatalf("MarshalResponsesRequest failed: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if got["instructions"] != "system prompt" {
+		t.Fatalf("instructions = %#v, want %q", got["instructions"], "system prompt")
 	}
 }

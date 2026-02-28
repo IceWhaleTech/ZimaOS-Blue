@@ -25,6 +25,11 @@ export interface MemoryStats {
   oldest_chunk?: string
   newest_chunk?: string
   backend?: string
+  total_display_count?: number
+  total_display_size_bytes?: number
+  daily_logs_count?: number
+  daily_entries_count?: number
+  daily_total_size_bytes?: number
 }
 
 export interface StoreMemoryRequest {

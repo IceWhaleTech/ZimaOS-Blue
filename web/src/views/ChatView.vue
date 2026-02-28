@@ -71,6 +71,8 @@ const showTopbarMenu = ref(false)
 const showStyleSelector = ref(false)
 const styleButtonRef = ref<HTMLElement | null>(null)
 const showRoutingMenu = ref(false)
+const routingButtonRef = ref<HTMLElement | null>(null)
+const routingMenuPosition = ref({ x: 0, y: 0 })
 
 // Context trim indicator with 1-second delay
 const showContextTrim = ref(false)
@@ -251,6 +253,8 @@ const providerStatus = computed(() => {
   // Some providers enabled but not yet checked
   return { status: 'pending', color: 'yellow', message: t('chat.providerPending') }
 })
+
+const showAwaitingConfirmation = computed(() => chatStore.awaitingConfirmation || !!chatStore.pendingQuestion)
 
 // Routing mode display info
 const routingModeInfo = computed(() => {
@@ -710,6 +714,13 @@ function toggleSidebar() {
 function toggleRoutingMenu() {
   showTopbarMenu.value = false
   showStyleSelector.value = false
+  if (!showRoutingMenu.value && !isMobile.value && routingButtonRef.value) {
+    const rect = routingButtonRef.value.getBoundingClientRect()
+    routingMenuPosition.value = {
+      x: Math.max(8, rect.right - 288),
+      y: rect.bottom + 8,
+    }
+  }
   showRoutingMenu.value = !showRoutingMenu.value
 }
 
@@ -779,7 +790,7 @@ function handleClickOutside(event: MouseEvent) {
   if (!target.closest('.topbar-more-container') && !target.closest('.topbar-sheet')) {
     showTopbarMenu.value = false
   }
-  if (!target.closest('.routing-menu-container')) {
+  if (!target.closest('.routing-menu-container') && !target.closest('.routing-menu-floating')) {
     showRoutingMenu.value = false
   }
 
@@ -955,7 +966,7 @@ onUnmounted(() => {
       v-show="isMobile ? showListPage : showSidebar"
       class="conversation-sidebar chat-sidebar-shell flex-shrink-0 border-r border-glass-border transition-transform duration-300 glass-sidebar"
       :class="{
-        'w-80': !isMobile,
+        'w-[22rem]': !isMobile,
         'z-40': !isMobile,
         'fixed left-0 top-0 h-full': !isMobile && isNarrowScreen,
         '-translate-x-full': !isMobile && isNarrowScreen && !showSidebar,
@@ -1122,6 +1133,7 @@ onUnmounted(() => {
           <!-- Routing mode + model preference (dropdown) -->
           <div class="routing-menu-container relative">
             <button
+              ref="routingButtonRef"
               class="topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white"
               :class="{
                 'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30': providerStatus.status === 'error',
@@ -1151,7 +1163,8 @@ onUnmounted(() => {
             >
               <div
                 v-if="showRoutingMenu && !isMobile"
-                class="absolute right-0 top-full mt-2 w-72 glass-card rounded-xl shadow-xl border border-white/10 overflow-hidden z-[200]"
+                class="routing-menu-floating fixed w-72 glass-card rounded-xl shadow-xl border border-white/10 overflow-hidden z-[10000]"
+                :style="{ left: `${routingMenuPosition.x}px`, top: `${routingMenuPosition.y}px` }"
               >
                 <div class="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-slate-400">
                   {{ t('chat.routingMode.title') }}
@@ -1677,6 +1690,19 @@ onUnmounted(() => {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
+            </div>
+          </div>
+
+          <!-- Awaiting-user-input indicator -->
+          <div
+            v-if="showAwaitingConfirmation"
+            class="flex justify-center py-2"
+          >
+            <div class="flex items-center gap-2 px-3 py-1.5 text-xs text-amber-500 dark:text-amber-300 bg-amber-500/10 rounded-full">
+              <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M7 4h10l3 5v11H4V9l3-5z" />
+              </svg>
+              <span>Waiting for your confirmation to continue</span>
             </div>
           </div>
 
@@ -2436,7 +2462,7 @@ header,
 }
 
 .chat-view.theme-style-ocean {
-  background: radial-gradient(circle at 15% -20%, rgba(14, 116, 144, 0.24), transparent 38%), radial-gradient(circle at 100% 0%, rgba(14, 165, 233, 0.16), transparent 34%), #0b1626;
+  background: radial-gradient(circle at 15% -20%, rgba(56, 189, 248, 0.24), transparent 40%), radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.18), transparent 36%), #12314a;
 }
 
 :root.light .chat-view.theme-style-ocean,

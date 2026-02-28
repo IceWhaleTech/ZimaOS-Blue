@@ -722,11 +722,14 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
   const markerStart = TYPELESS_MARKER_START
   const markerEnd = TYPELESS_MARKER_END
 
-  // Find all occurrences of ```typeless
+  // Find all occurrences of ```typeless from the current working text.
+  // Important: text may already be transformed by parseSpecialTags(), so
+  // indexes must be computed against `text` (not original `content`) to avoid
+  // replacement offsets during streaming.
   const startMatches: number[] = []
   let searchStart = 0
   while (true) {
-    const idx = content.indexOf(markerStart, searchStart)
+    const idx = text.indexOf(markerStart, searchStart)
     if (idx === -1) break
     startMatches.push(idx)
     searchStart = idx + markerStart.length
@@ -738,7 +741,7 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
     // Find the content start (after ```typeless)
     const contentStart = startIdx + markerStart.length
     // Find ALL ``` after this point (not just the first one)
-    const remainingContent = content.slice(contentStart)
+    const remainingContent = text.slice(contentStart)
     let lastFenceIdx = -1
     let fenceSearchStart = 0
     while (true) {
@@ -786,7 +789,7 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
     const incompleteRegex = new RegExp(
       `${escapeRegex(TYPELESS_MARKER_START)}\\s*([\\s\\S]*)$`
     )
-    const incompleteMatch = incompleteRegex.exec(content)
+    const incompleteMatch = incompleteRegex.exec(text)
     if (incompleteMatch && incompleteMatch[1]) {
       const jsonStr = incompleteMatch[1].trim()
       // Only try to parse if it looks like JSON (starts with {)
@@ -803,7 +806,7 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
           // Mark for replacement with placeholder
           replacements.push({
             start: incompleteMatch.index,
-            end: content.length,
+            end: text.length,
             placeholder: `[[TYPELESS_CARD:${partialCard.id}]]`,
           })
         }

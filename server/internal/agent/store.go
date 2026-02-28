@@ -16,6 +16,10 @@ CREATE TABLE IF NOT EXISTS agent_tasks (
 	goal            TEXT NOT NULL,
 	plan            TEXT DEFAULT '[]',
 	status          TEXT NOT NULL DEFAULT 'pending',
+	runtime_state   TEXT DEFAULT '',
+	runtime_audit   TEXT DEFAULT '[]',
+	success_criteria TEXT DEFAULT '[]',
+	fallback_plan   TEXT DEFAULT '[]',
 	current_step    INTEGER DEFAULT 0,
 	progress        INTEGER DEFAULT 0,
 	result          TEXT DEFAULT '',
@@ -37,6 +41,9 @@ func NewStore(db *sql.DB) (*Store, error) {
 	if _, err := db.Exec(createTableSQL); err != nil {
 		return nil, err
 	}
+	if err := ensureTaskColumns(db); err != nil {
+		return nil, err
+	}
 	return &Store{db: db}, nil
 }
 
@@ -49,10 +56,11 @@ func (s *Store) Create(ctx context.Context, task *Task) error {
 		task.Status = TaskStatusPending
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO agent_tasks (id, user_id, conversation_id, goal, plan, status, current_step, progress, result, error, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO agent_tasks (id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, error, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.ID, task.UserID, task.ConversationID, task.Goal,
 		MarshalPlan(task.Plan), string(task.Status),
+		string(task.RuntimeState), marshalAudit(task.RuntimeAudit), marshalStringSlice(task.SuccessCriteria), marshalStringSlice(task.FallbackPlan),
 		task.CurrentStep, task.Progress, task.Result, task.Error,
 		task.CreatedAt, task.UpdatedAt,
 	)
@@ -62,7 +70,7 @@ func (s *Store) Create(ctx context.Context, task *Task) error {
 // Get retrieves a task by ID.
 func (s *Store) Get(ctx context.Context, id string) (*Task, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, conversation_id, goal, plan, status, current_step, progress, result, error, created_at, updated_at
+		`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, error, created_at, updated_at
 		 FROM agent_tasks WHERE id = ?`, id)
 	return scanTask(row)
 }
@@ -73,7 +81,7 @@ func (s *Store) ListByUser(ctx context.Context, userID string, limit int) ([]*Ta
 		limit = 50
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_id, conversation_id, goal, plan, status, current_step, progress, result, error, created_at, updated_at
+		`SELECT id, user_id, conversation_id, goal, plan, status, runtime_state, runtime_audit, success_criteria, fallback_plan, current_step, progress, result, error, created_at, updated_at
 		 FROM agent_tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, err
@@ -95,9 +103,10 @@ func (s *Store) ListByUser(ctx context.Context, userID string, limit int) ([]*Ta
 func (s *Store) Update(ctx context.Context, task *Task) error {
 	task.UpdatedAt = timeutil.NowTime()
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE agent_tasks SET plan=?, status=?, current_step=?, progress=?, result=?, error=?, updated_at=?
+		`UPDATE agent_tasks SET goal=?, plan=?, status=?, runtime_state=?, runtime_audit=?, success_criteria=?, fallback_plan=?, current_step=?, progress=?, result=?, error=?, updated_at=?
 		 WHERE id=?`,
-		MarshalPlan(task.Plan), string(task.Status),
+		task.Goal, MarshalPlan(task.Plan), string(task.Status),
+		string(task.RuntimeState), marshalAudit(task.RuntimeAudit), marshalStringSlice(task.SuccessCriteria), marshalStringSlice(task.FallbackPlan),
 		task.CurrentStep, task.Progress, task.Result, task.Error,
 		task.UpdatedAt, task.ID,
 	)
@@ -112,15 +121,19 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 
 func scanTask(row *sql.Row) (*Task, error) {
 	var t Task
-	var planJSON, status string
+	var planJSON, status, runtimeState, runtimeAudit, successCriteria, fallbackPlan string
 	err := row.Scan(&t.ID, &t.UserID, &t.ConversationID, &t.Goal,
-		&planJSON, &status, &t.CurrentStep, &t.Progress,
+		&planJSON, &status, &runtimeState, &runtimeAudit, &successCriteria, &fallbackPlan, &t.CurrentStep, &t.Progress,
 		&t.Result, &t.Error, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	t.Status = TaskStatus(status)
+	t.RuntimeState = RuntimeState(runtimeState)
 	t.Plan = UnmarshalPlan(planJSON)
+	t.RuntimeAudit = unmarshalAudit(runtimeAudit)
+	t.SuccessCriteria = unmarshalStringSlice(successCriteria)
+	t.FallbackPlan = unmarshalStringSlice(fallbackPlan)
 	return &t, nil
 }
 
@@ -130,15 +143,19 @@ type rowScanner interface {
 
 func scanTaskRows(rows *sql.Rows) (*Task, error) {
 	var t Task
-	var planJSON, status string
+	var planJSON, status, runtimeState, runtimeAudit, successCriteria, fallbackPlan string
 	err := rows.Scan(&t.ID, &t.UserID, &t.ConversationID, &t.Goal,
-		&planJSON, &status, &t.CurrentStep, &t.Progress,
+		&planJSON, &status, &runtimeState, &runtimeAudit, &successCriteria, &fallbackPlan, &t.CurrentStep, &t.Progress,
 		&t.Result, &t.Error, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	t.Status = TaskStatus(status)
+	t.RuntimeState = RuntimeState(runtimeState)
 	t.Plan = UnmarshalPlan(planJSON)
+	t.RuntimeAudit = unmarshalAudit(runtimeAudit)
+	t.SuccessCriteria = unmarshalStringSlice(successCriteria)
+	t.FallbackPlan = unmarshalStringSlice(fallbackPlan)
 	return &t, nil
 }
 
@@ -146,7 +163,7 @@ func scanTaskRows(rows *sql.Rows) (*Task, error) {
 func (s *Store) CountRunning(ctx context.Context, userID string) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM agent_tasks WHERE user_id=? AND status IN ('pending','planning','executing')`,
+		`SELECT COUNT(*) FROM agent_tasks WHERE user_id=? AND status IN ('pending','planning','executing','waiting_input')`,
 		userID).Scan(&count)
 	return count, err
 }
@@ -164,7 +181,7 @@ func (s *Store) SetStatus(ctx context.Context, id string, status TaskStatus, err
 func (s *Store) Cleanup(ctx context.Context, olderThan time.Duration) (int64, error) {
 	cutoff := timeutil.NowTime().Add(-olderThan)
 	result, err := s.db.ExecContext(ctx,
-		`DELETE FROM agent_tasks WHERE created_at < ? AND status IN ('completed','failed','cancelled')`,
+		`DELETE FROM agent_tasks WHERE created_at < ? AND status IN ('completed','failed','cancelled','aborted')`,
 		cutoff)
 	if err != nil {
 		return 0, err
@@ -178,9 +195,48 @@ func (s *Store) RecoverStaleTasks(ctx context.Context) (int64, error) {
 	now := timeutil.NowTime()
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE agent_tasks SET status='failed', error='interrupted by server restart', updated_at=?
-		 WHERE status IN ('pending','planning','executing')`, now)
+		 WHERE status IN ('pending','planning','executing','waiting_input')`, now)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+func ensureTaskColumns(db *sql.DB) error {
+	type colSpec struct {
+		name       string
+		definition string
+	}
+	cols := []colSpec{
+		{name: "runtime_state", definition: "TEXT DEFAULT ''"},
+		{name: "runtime_audit", definition: "TEXT DEFAULT '[]'"},
+		{name: "success_criteria", definition: "TEXT DEFAULT '[]'"},
+		{name: "fallback_plan", definition: "TEXT DEFAULT '[]'"},
+	}
+	existing := map[string]struct{}{}
+	rows, err := db.Query(`PRAGMA table_info(agent_tasks)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull int
+		var dfltValue interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			return err
+		}
+		existing[name] = struct{}{}
+	}
+	for _, c := range cols {
+		if _, ok := existing[c.name]; ok {
+			continue
+		}
+		if _, err := db.Exec(`ALTER TABLE agent_tasks ADD COLUMN ` + c.name + ` ` + c.definition); err != nil {
+			return err
+		}
+	}
+	return nil
 }

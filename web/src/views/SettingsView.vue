@@ -39,8 +39,14 @@ const autoStartLoading = ref(false)
 const autoStartEnabled = computed(() => serviceInfo.value?.installed && serviceInfo.value?.enabled)
 
 // Active tab - flattened structure
-type TabType = 'general' | 'llm' | 'proxy' | 'network' | 'speech' | 'memory' | 'userdata'
-const activeTab = ref<TabType>((route.query.tab as TabType) || 'general')
+const SETTINGS_TABS = ['general', 'llm', 'proxy', 'speech', 'network', 'memory', 'userdata'] as const
+type TabType = typeof SETTINGS_TABS[number]
+const initialTab = route.query.tab
+const activeTab = ref<TabType>(
+  typeof initialTab === 'string' && SETTINGS_TABS.includes(initialTab as TabType)
+    ? (initialTab as TabType)
+    : 'general'
+)
 
 
 // Tab icons (heroicons outline, 16x16)
@@ -211,9 +217,9 @@ onMounted(async () => {
   fetchServiceInfo()
 
   // Load data based on initial tab
-  const tab = route.query.tab as TabType
-  if (tab) {
-    switchTab(tab)
+  const tab = route.query.tab
+  if (typeof tab === 'string' && SETTINGS_TABS.includes(tab as TabType)) {
+    switchTab(tab as TabType)
   }
 })
 </script>
@@ -235,7 +241,7 @@ onMounted(async () => {
     <!-- Main Tabs -->
     <div class="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <button
-        v-for="tab in ['general', 'llm', 'proxy', 'speech', 'network', 'memory', 'userdata'] as const"
+        v-for="tab in SETTINGS_TABS"
         :key="tab"
         class="px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 flex items-center gap-1.5"
         :class="

@@ -60,13 +60,15 @@ export default {
     notFound: 'Az oldal nem található',
     goHome: 'Főoldal',
   },
-  nav: {
-    ...enUS.nav,
-    taskCenter: 'Feladatközpont',
-    channels: 'Integrációk',
-    automation: 'Automatizálás',
-    security: 'Biztonság',
-    companion: 'Companion',
+  companion: {
+    ...enUS.companion,
+    llmDetails: {
+      input: 'Input',
+      prompt: 'Input Tokens',
+      completion: 'Output Tokens',
+      total: 'Total Tokens',
+      score: 'Score',
+    },
   },
   dashboard: {
     ...enUS.dashboard,
@@ -1267,7 +1269,6 @@ export default {
     viewEvents: 'Események megtekintése',
     confirmDelete: 'Biztosan törölni szeretné ezt a webhookot?',
   },
-  companion: enUS.companion,
   automation: enUS.automation,
   workflow: enUS.workflow,
   cron: enUS.cron,

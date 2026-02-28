@@ -10,6 +10,9 @@ const emit = defineEmits<{
   (e: 'import-success', providerId: string): void
 }>()
 
+// Temporary switch: keep IDE import, but disable OAuth token import.
+const IDE_OAUTH_IMPORT_ENABLED = false
+
 // Scan state for each IDE
 interface IDEScanState {
   ide_type: string
@@ -87,25 +90,33 @@ const scanCompleted = computed(() => {
   return ideScanStates.value.every(s => s.status === 'found' || s.status === 'not_found')
 })
 
+function canImportViaIDE(config: ImportConfig): boolean {
+  if (!config.can_import || config.already_imported) return false
+  if (config.extension_config) return true
+  if (config.api_key) return true
+  return IDE_OAUTH_IMPORT_ENABLED && !!config.has_oauth
+}
+
 const hasImportableConfigs = computed(() => {
-  return importableConfigs.value.some(c => c.can_import)
+  return canImportConfigs.value.length > 0
 })
 
 const canImportConfigs = computed(() => {
-  return importableConfigs.value.filter(c => c.can_import && !c.already_imported)
+  return importableConfigs.value.filter(canImportViaIDE)
 })
 
 // OAuth configs that are already imported but can be re-imported to update tokens
 const reimportableOAuthConfigs = computed(() => {
+  if (!IDE_OAUTH_IMPORT_ENABLED) return []
   return importableConfigs.value.filter(c => c.already_imported && c.has_oauth)
 })
 
 const alreadyImportedConfigs = computed(() => {
-  return importableConfigs.value.filter(c => c.already_imported && !c.has_oauth)
+  return importableConfigs.value.filter(c => c.already_imported && (!c.has_oauth || !IDE_OAUTH_IMPORT_ENABLED))
 })
 
 const installedOnlyConfigs = computed(() => {
-  return importableConfigs.value.filter(c => !c.can_import && !c.already_imported)
+  return importableConfigs.value.filter(c => !canImportViaIDE(c) && !c.already_imported)
 })
 
 // Methods
@@ -140,10 +151,12 @@ async function startScan() {
     const scanResults: IDEScanResult[] = idesResponse.data.scan_results || []
     importableConfigs.value = configsResponse.data.configs || []
 
-    // Notify parent if any OAuth configs were auto-imported
-    const autoImported = importableConfigs.value.filter(c => c.has_oauth && c.already_imported)
-    if (autoImported.length > 0) {
-      emit('import-success', 'oauth-auto')
+    if (IDE_OAUTH_IMPORT_ENABLED) {
+      // Notify parent if any OAuth configs were auto-imported
+      const autoImported = importableConfigs.value.filter(c => c.has_oauth && c.already_imported)
+      if (autoImported.length > 0) {
+        emit('import-success', 'oauth-auto')
+      }
     }
 
     // Simulate progressive updates with small delays for better UX
@@ -182,11 +195,11 @@ async function importConfig(ideType: string) {
 
     // Check if this is an extension config import
     const config = importableConfigs.value.find(c => c.ide_type === ideType)
-    if (config?.source === 'oauth' && config.has_oauth) {
-      const response = await providerPoolApi.importOAuthToken(ideType)
-      success.value = t('ideDiscovery.importSuccess', { ide: config.ide_name, provider: response.data.provider_id })
-      emit('import-success', response.data.provider_id)
-    } else if (config?.source === 'extension' && config.extension_config) {
+    if (!config || !canImportViaIDE(config)) {
+      error.value = t('ideDiscovery.importError')
+      return
+    }
+    if (config.source === 'extension' && config.extension_config) {
       const response = await providerPoolApi.importExtensionConfig(ideType)
       success.value = t('ideDiscovery.importExtSuccess', { ide: ideType, count: response.data.providers.length })
       emit('import-success', response.data.providers[0] || '')
@@ -414,7 +427,7 @@ function getSourceLabel(source: string): string {
           </div>
 
           <button
-            :disabled="importing === config.ide_type || (!config.api_key && !config.extension_config && !config.has_oauth)"
+            :disabled="importing === config.ide_type || (!config.api_key && !config.extension_config)"
             class="w-full px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-500 rounded-lg hover:bg-gray-700 dark:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             @click="importConfig(config.ide_type)"
           >
@@ -557,7 +570,7 @@ function getSourceLabel(source: string): string {
             </div>
             <div class="flex-1">
               <h5 class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ config.ide_name }}</h5>
-              <p class="text-xs text-gray-400 dark:text-gray-500">{{ config.ide_type === 'antigravity' ? t('ideDiscovery.oauthManaged') : t('ideDiscovery.noApiKeyFound') }}</p>
+              <p class="text-xs text-gray-400 dark:text-gray-500">{{ config.has_oauth ? t('ideDiscovery.oauthManaged') : t('ideDiscovery.noApiKeyFound') }}</p>
             </div>
           </div>
         </div>
