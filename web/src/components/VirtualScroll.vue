@@ -42,6 +42,47 @@ class FenwickTree {
     }
   }
 
+  resize(newSize: number, getValue: (index: number) => number) {
+    if (newSize === this.n) return
+
+    if (newSize <= 0) {
+      this.n = 0
+      this.tree = [0]
+      return
+    }
+
+    // Shrink/reflow path: rebuild is simpler and still uncommon.
+    if (newSize < this.n) {
+      const values = new Array(newSize)
+      for (let i = 0; i < newSize; i++) {
+        values[i] = getValue(i)
+      }
+      this.build(values)
+      return
+    }
+
+    // Grow path: append only new indexes, avoid O(n) full rebuild.
+    const oldSize = this.n
+    if (oldSize === 0) {
+      const values = new Array(newSize)
+      for (let i = 0; i < newSize; i++) {
+        values[i] = getValue(i)
+      }
+      this.build(values)
+      return
+    }
+
+    this.tree.length = newSize + 1
+    for (let i = oldSize + 1; i <= newSize; i++) {
+      this.tree[i] = this.tree[i] ?? 0
+    }
+    this.n = newSize
+
+    for (let i = oldSize; i < newSize; i++) {
+      this.add(i, getValue(i))
+    }
+  }
+
   sum(endExclusive: number) {
     if (endExclusive <= 0) return 0
     const end = Math.min(endExclusive, this.n)
@@ -105,8 +146,32 @@ function rebuildHeightTree() {
 
 watch(
   () => [props.itemCount, props.estimatedItemHeight] as const,
-  () => {
-    rebuildHeightTree()
+  ([itemCount, estimatedHeight], oldValue) => {
+    const prevCount = oldValue?.[0]
+    const prevEstimated = oldValue?.[1]
+
+    if (prevCount === undefined || prevEstimated === undefined) {
+      rebuildHeightTree()
+      return
+    }
+
+    if (itemCount === prevCount && estimatedHeight === prevEstimated) return
+
+    // Item height estimate changed or count shrank: rebuild for correctness.
+    if (estimatedHeight !== prevEstimated || itemCount < prevCount) {
+      rebuildHeightTree()
+      return
+    }
+
+    // Append-only growth path.
+    if (itemHeights.value.length > itemCount) {
+      itemHeights.value.length = itemCount
+    }
+    for (let i = prevCount; i < itemCount; i++) {
+      itemHeights.value[i] = estimatedHeight
+    }
+    heightTree.resize(itemCount, (index) => itemHeights.value[index] ?? estimatedHeight)
+    layoutVersion.value++
   },
   { immediate: true },
 )
@@ -145,14 +210,7 @@ const offsetTop = computed(() => {
   return heightTree.sum(visibleRange.value.start)
 })
 
-// Visible items
-const visibleItems = computed(() => {
-  const items: number[] = []
-  for (let i = visibleRange.value.start; i < visibleRange.value.end; i++) {
-    items.push(i)
-  }
-  return items
-})
+const visibleCount = computed(() => Math.max(0, visibleRange.value.end - visibleRange.value.start))
 
 let emitRangeRafId: number | null = null
 let pendingRange: { start: number; end: number } | null = null
@@ -223,9 +281,13 @@ defineExpose({
 })
 
 // Watch for visible range changes
-watch(visibleRange, (range) => {
-  scheduleEmitVisibleRange(range.start, range.end)
-}, { immediate: true })
+watch(
+  [() => visibleRange.value.start, () => visibleRange.value.end],
+  ([start, end]) => {
+    scheduleEmitVisibleRange(start, end)
+  },
+  { immediate: true }
+)
 
 // Setup resize observer
 let resizeObserver: ResizeObserver | null = null
@@ -278,10 +340,10 @@ onUnmounted(() => {
         :style="{ transform: `translateY(${offsetTop}px)` }"
       >
         <slot
-          v-for="index in visibleItems"
-          :key="index"
-          :index="index"
-          :update-height="(height: number) => updateItemHeight(index, height)"
+          v-for="offset in visibleCount"
+          :key="visibleRange.start + offset - 1"
+          :index="visibleRange.start + offset - 1"
+          :update-height="(height: number) => updateItemHeight(visibleRange.start + offset - 1, height)"
         />
       </div>
     </div>

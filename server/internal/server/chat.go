@@ -146,9 +146,142 @@ var reSystemReminder = regexp.MustCompile(`<system-reminder>[\s\S]*?</system-rem
 var reThinkBlock = regexp.MustCompile(`<think>[\s\S]*?</think>`)
 var reAwaitingUserInputTag = regexp.MustCompile(`(?is)<awaiting_user_input>\s*true\s*</awaiting_user_input>`)
 var reAskGateBlock = regexp.MustCompile(`(?is)<ask_gate>[\s\S]*?</ask_gate>`)
-var reTodoUnchecked = regexp.MustCompile(`- \[ \] ([^\n]+)`)
-var reTodoAnyItem = regexp.MustCompile(`- \[([ x])\] (?:~~)?([^\n~]+)(?:~~)?`)
+var reTodoUnchecked = regexp.MustCompile(`(?m)^([ \t]*[-*]\s+)\[ \]\s+([^\n]+)$`)
+var reTodoAnyItem = regexp.MustCompile(`(?m)^[ \t]*[-*]\s+\[([ xX])\]\s+(?:~~)?([^\n~]+?)(?:~~)?\s*$`)
 var reAskOptionLine = regexp.MustCompile(`(?m)^[A-E][\.\)]\s+\S+`)
+var reShortAffirmativeEN = regexp.MustCompile(`(?i)^(ok|okay|yes|y|sure|go ahead|continue|sounds good|do it|please continue|let'?s go)$`)
+
+type continuationContext struct {
+	Hint      string
+	ToolQuery string
+}
+
+func normalizeAckText(s string) string {
+	trimmed := strings.TrimSpace(s)
+	trimmed = strings.Trim(trimmed, " \t\r\n.,!?;:，。！？；：、~～`'\"“”‘’()（）[]【】")
+	return strings.TrimSpace(trimmed)
+}
+
+func isAffirmativeContinuationMessage(content string) bool {
+	s := normalizeAckText(content)
+	if s == "" {
+		return false
+	}
+	if len([]rune(s)) > 24 {
+		return false
+	}
+	if reShortAffirmativeEN.MatchString(strings.ToLower(s)) {
+		return true
+	}
+
+	switch s {
+	case "好", "好的", "行", "可以", "继续", "继续吧", "继续执行", "开始吧", "去做吧", "按默认", "按默认来", "就按你说的", "嗯", "嗯嗯", "收到", "明白":
+		return true
+	}
+
+	// Compact Chinese affirmations with short intent suffixes.
+	if len([]rune(s)) <= 10 {
+		if strings.Contains(s, "按默认") || strings.Contains(s, "继续") || strings.Contains(s, "接着") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDefaultFallbackOffer(content string) bool {
+	if strings.TrimSpace(content) == "" {
+		return false
+	}
+	lower := strings.ToLower(content)
+
+	zhHints := []string{
+		"默认",
+		"推荐",
+		"不想选",
+		"你不选",
+	}
+	for _, h := range zhHints {
+		if strings.Contains(content, h) {
+			return true
+		}
+	}
+
+	enHints := []string{
+		"default",
+		"recommended",
+		"if you don't want to choose",
+		"if you prefer, i can",
+		"i can proceed with",
+	}
+	for _, h := range enHints {
+		if strings.Contains(lower, h) {
+			return true
+		}
+	}
+	return false
+}
+
+func latestAssistantContent(messages []llm.Message) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != llm.RoleAssistant {
+			continue
+		}
+		content := strings.TrimSpace(messages[i].Content)
+		if content != "" {
+			return content
+		}
+	}
+	return ""
+}
+
+func previousUserObjective(messages []llm.Message, currentUserMessage string) string {
+	currNorm := normalizeAckText(currentUserMessage)
+	skippedCurrent := false
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != llm.RoleUser {
+			continue
+		}
+		content := strings.TrimSpace(messages[i].Content)
+		if content == "" {
+			continue
+		}
+		contentNorm := normalizeAckText(content)
+		if !skippedCurrent && currNorm != "" && contentNorm == currNorm {
+			skippedCurrent = true
+			continue
+		}
+		if !isAffirmativeContinuationMessage(content) {
+			return content
+		}
+	}
+	return ""
+}
+
+// deriveContinuationContext bridges short affirmative replies ("好的"/"ok")
+// to the previous in-progress task chain so routing/tool selection keeps continuity.
+func deriveContinuationContext(userMessage string, messages []llm.Message) continuationContext {
+	if !isAffirmativeContinuationMessage(userMessage) {
+		return continuationContext{}
+	}
+	lastAssistant := latestAssistantContent(messages)
+	if lastAssistant == "" {
+		return continuationContext{}
+	}
+
+	awaiting := isAwaitingUserInput(lastAssistant)
+	pendingTodo := hasPendingTodo(lastAssistant)
+	defaultOffer := hasDefaultFallbackOffer(lastAssistant)
+	canContinue := (pendingTodo && !awaiting) || (pendingTodo && defaultOffer) || (awaiting && defaultOffer)
+	if !canContinue {
+		return continuationContext{}
+	}
+
+	ctx := continuationContext{
+		Hint: "Continuation hint: the user just sent a brief affirmative acknowledgment. Continue the existing task chain from prior context instead of resetting. If previous options included a default/recommended path, select it and execute immediately.",
+	}
+	ctx.ToolQuery = previousUserObjective(messages, userMessage)
+	return ctx
+}
 
 // extractTodoProgress builds a progress hint from the TODO content.
 // Shows: done count / total, then all remaining (unchecked) items so the LLM
@@ -161,7 +294,7 @@ func extractTodoProgress(content string) string {
 	var done int
 	var pending []string
 	for _, m := range matches {
-		if m[1] == "x" {
+		if strings.EqualFold(m[1], "x") {
 			done++
 		} else {
 			pending = append(pending, m[2])
@@ -262,6 +395,65 @@ func shouldAutoContinueForTodo(currentContent, trackedTodoContent string) bool {
 	return hasPendingTodo(currentContent) || hasPendingTodo(trackedTodoContent)
 }
 
+// shouldAutoContinueForActionPledge detects a common toolless-stop pattern:
+// the assistant says it will execute/search "now", but returns no tool calls.
+func shouldAutoContinueForActionPledge(currentContent string) bool {
+	if isAwaitingUserInput(currentContent) {
+		return false
+	}
+	s := strings.TrimSpace(currentContent)
+	if s == "" {
+		return false
+	}
+	lower := strings.ToLower(s)
+	enPhrases := []string{
+		"i'll check",
+		"i will check",
+		"let me check",
+		"let me look it up",
+		"i'll look it up",
+		"i will look it up",
+		"i'm going to check",
+		"one moment while i check",
+		"give me a few seconds",
+	}
+	for _, p := range enPhrases {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+
+	zhPhrases := []string{
+		"我现在就去查",
+		"我现在去查",
+		"我现在就查",
+		"我去查一下",
+		"我先去查",
+		"我先查一下",
+		"我来查一下",
+		"我马上去查",
+		"稍等我几秒",
+	}
+	for _, p := range zhPhrases {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldAutoContinueAfterToollessReply returns whether we should nudge the
+// model into another round after it stopped without tool calls, and why.
+func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent string, agentMode bool) (bool, string) {
+	if agentMode && shouldAutoContinueForTodo(currentContent, trackedTodoContent) {
+		return true, "pending_todo"
+	}
+	if shouldAutoContinueForActionPledge(currentContent) {
+		return true, "action_pledge"
+	}
+	return false, ""
+}
+
 // reMemoryPreamble matches LLM preamble lines that precede actual extracted facts.
 // e.g. "I'll extract the key facts from this conversation:"
 //
@@ -286,15 +478,15 @@ func sanitizeResponseContent(s string) string {
 // Note: no ~~strikethrough~~ — the markdown renderer applies line-through via CSS
 // on checked checkboxes, so adding ~~ would cause double strikethrough.
 func advanceTodoItem(content string) (string, bool) {
-	loc := reTodoUnchecked.FindStringIndex(content)
-	if loc == nil {
-		return content, false
-	}
 	match := reTodoUnchecked.FindStringSubmatch(content)
-	if len(match) < 2 {
+	if len(match) < 3 {
 		return content, false
 	}
-	replacement := "- [x] " + match[1]
+	loc := reTodoUnchecked.FindStringSubmatchIndex(content)
+	if len(loc) < 6 {
+		return content, false
+	}
+	replacement := match[1] + "[x] " + match[2]
 	updated := content[:loc[0]] + replacement + content[loc[1]:]
 	return updated, true
 }
@@ -1615,18 +1807,30 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	if ctxResult.Messages != nil {
 		messages = append(messages, ctxResult.Messages...)
 	}
+	routingMessage := msg.Content
+	if cc := deriveContinuationContext(msg.Content, messages); cc.Hint != "" {
+		messages = append([]llm.Message{{Role: llm.RoleSystem, Content: cc.Hint}}, messages...)
+		if strings.TrimSpace(cc.ToolQuery) != "" {
+			routingMessage = cc.ToolQuery
+		}
+		logger.Info().
+			Str("conv_id", convID).
+			Str("routing_message", truncateRunes(routingMessage, 120)).
+			Msg("[chat] ProcessChannelMessage: short affirmative continuation detected")
+	}
 
 	// Recall relevant memories for IM context
 	isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	recallMode := h.getMemoryRecallMode()
-	shouldRecall, recallReason := memoryRecallDecision(msg.Content, ctxResult.Tier, isAgentMode, false, recallMode)
+	shouldRecall, recallReason := memoryRecallDecision(routingMessage, ctxResult.Tier, isAgentMode, false, recallMode)
 	h.memoryRecallStats.RecordWithSource(shouldRecall, recallReason, MemoryRecallSourceIM)
 	if shouldRecall {
-		if memoryCtx := h.recallMemories(ctx, msg.Content, recallMode); memoryCtx != "" {
+		if memoryCtx := h.recallMemories(ctx, routingMessage, recallMode); memoryCtx != "" {
 			h.memoryRecallStats.RecordInjectionWithSource(estimateTokens(memoryCtx), MemoryRecallSourceIM)
 			messages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, messages...)
 		}
 	}
+	systemPromptMessages = h.buildSystemPromptMessages(ctx, h.buildSkillSelectionPrompt(ctx, routingMessage))
 	messages = prependSystemMessages(messages, systemPromptMessages)
 
 	// Build multimodal user message if attachments present (replaces text-only version from history)
@@ -1768,7 +1972,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	}
 
 	// Add tool definitions (smart selection filters by user query when enabled)
-	req.Tools = defsToLLMTools(h.selectTools(msg.Content, req.Model))
+	req.Tools = defsToLLMTools(h.selectTools(routingMessage, req.Model))
 
 	logger.Info().
 		Str("model", req.Model).
@@ -2113,7 +2317,7 @@ func (h *ChatHandler) extractMemory(convID, source string) bool {
 		Model: h.defaultModelForCCCLI("auto"),
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: `You are a memory extraction assistant. Extract important facts from this conversation as short, structured bullet points.
-Focus on: user preferences, personal info, decisions, key facts, action items, technical choices.
+Focus on: user preferences, personal info, decisions, key facts, action items, technical choices, and explicit capability/tool expectations the user wants remembered (e.g. session query capability).
 Each bullet should be a standalone fact (e.g. "- User prefers Go for backend development").
 If nothing worth remembering, respond with exactly "NO_MEMORY_NEEDED".
 Respond in the same language as the conversation.`},
@@ -2482,9 +2686,20 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	model = h.defaultModelForCCCLI(model)
 
 	// Store user message
+	var memoryAttachments []memory.MessageAttachment
+	for _, att := range req.Attachments {
+		memoryAttachments = append(memoryAttachments, memory.MessageAttachment{
+			Type:     att.Type,
+			Name:     att.Name,
+			MimeType: att.MimeType,
+			Data:     att.Data,
+			Duration: att.Duration,
+		})
+	}
 	_, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
-		Role:    "user",
-		Content: req.Message,
+		Role:        "user",
+		Content:     req.Message,
+		Attachments: memoryAttachments,
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message")
@@ -2507,14 +2722,26 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if compactedMessages == nil {
 		compactedMessages = []llm.Message{}
 	}
+	compactedMessages = h.applyRequestAttachmentsToMessages(c.Request().Context(), req, compactedMessages)
+	routingMessage := req.Message
+	if cc := deriveContinuationContext(req.Message, compactedMessages); cc.Hint != "" {
+		compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: cc.Hint}}, compactedMessages...)
+		if strings.TrimSpace(cc.ToolQuery) != "" {
+			routingMessage = cc.ToolQuery
+		}
+		logger.Info().
+			Str("conv_id", convID).
+			Str("routing_message", truncateRunes(routingMessage, 120)).
+			Msg("[chat] SendMessage: short affirmative continuation detected")
+	}
 
 	// Recall relevant memories and inject as system context (SendMessage)
 	isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	recallMode := h.getMemoryRecallMode()
-	shouldRecall, recallReason := memoryRecallDecision(req.Message, ctxResult.Tier, isAgentMode, req.Regenerate, recallMode)
+	shouldRecall, recallReason := memoryRecallDecision(routingMessage, ctxResult.Tier, isAgentMode, req.Regenerate, recallMode)
 	h.memoryRecallStats.RecordWithSource(shouldRecall, recallReason, MemoryRecallSourceSend)
 	if shouldRecall {
-		if memoryCtx := h.recallMemories(c.Request().Context(), req.Message, recallMode); memoryCtx != "" {
+		if memoryCtx := h.recallMemories(c.Request().Context(), routingMessage, recallMode); memoryCtx != "" {
 			h.memoryRecallStats.RecordInjectionWithSource(estimateTokens(memoryCtx), MemoryRecallSourceSend)
 			compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, compactedMessages...)
 		}
@@ -2522,7 +2749,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 	// Inject cache-friendly structured system prompt blocks with conversation anchor.
 	anchorPrompt := h.buildConversationAnchorPrompt(c.Request().Context(), convID)
-	extraPrompt := mergeExtraPrompt(anchorPrompt, h.buildSkillSelectionPrompt(c.Request().Context(), req.Message))
+	extraPrompt := mergeExtraPrompt(anchorPrompt, h.buildSkillSelectionPrompt(c.Request().Context(), routingMessage))
 	if systemPromptMessages := h.buildSystemPromptMessages(c.Request().Context(), extraPrompt); len(systemPromptMessages) > 0 {
 		logger.Info().Int("system_blocks", len(systemPromptMessages)).Msg("[chat] SendMessage: injected structured system prompt")
 		compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
@@ -2544,7 +2771,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
-	selectedTools := h.selectTools(req.Message, chatReq.Model)
+	selectedTools := h.selectTools(routingMessage, chatReq.Model)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepSearchPreference(selectedTools, req.DeepResearchEnabled)
 	chatReq.Tools = defsToLLMTools(selectedTools)
@@ -3561,53 +3788,32 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 	compacted = ctxResult.Summary != ""
 
-	// If smart context returned messages, check if the last one is the current user message
-	// and add attachments to it as ContentParts.
-	if len(req.Attachments) > 0 && len(compactedMessages) > 0 {
-		lastIdx := len(compactedMessages) - 1
-		if compactedMessages[lastIdx].Role == llm.RoleUser {
-			contentParts := []llm.ContentPart{}
-			if compactedMessages[lastIdx].Content != "" {
-				contentParts = append(contentParts, llm.ContentPart{
-					Type: "text",
-					Text: compactedMessages[lastIdx].Content,
-				})
-			}
-			for _, att := range req.Attachments {
-				if att.Type == "image" {
-					contentParts = append(contentParts, llm.ContentPart{
-						Type:      "image",
-						MediaType: att.MimeType,
-						Data:      att.Data,
-					})
-				} else if att.Type == "audio" {
-					transcription := h.transcribeAudioAttachment(c.Request().Context(), att)
-					contentParts = append(contentParts, llm.ContentPart{
-						Type: "text", Text: transcription,
-					})
-				} else {
-					contentParts = append(contentParts, llm.ContentPart{
-						Type: "text",
-						Text: fmt.Sprintf("\n\n[File: %s]\n%s", att.Name, decodeBase64Content(att.Data)),
-					})
-				}
-			}
-			compactedMessages[lastIdx].ContentParts = contentParts
-			compactedMessages[lastIdx].Content = ""
+	compactedMessages = h.applyRequestAttachmentsToMessages(c.Request().Context(), req, compactedMessages)
+	routingMessage := req.Message
+	if cc := deriveContinuationContext(req.Message, compactedMessages); cc.Hint != "" {
+		compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: cc.Hint}}, compactedMessages...)
+		if strings.TrimSpace(cc.ToolQuery) != "" {
+			routingMessage = cc.ToolQuery
 		}
+		logger.Info().
+			Str("conv_id", convID).
+			Str("routing_message", truncateRunes(routingMessage, 120)).
+			Msg("[chat] StreamMessage: short affirmative continuation detected")
 	}
 
 	// Recall relevant memories and inject as system context (StreamMessage)
 	isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	recallMode := h.getMemoryRecallMode()
-	shouldRecall, recallReason := memoryRecallDecision(req.Message, ctxResult.Tier, isAgentMode, req.Regenerate, recallMode)
+	shouldRecall, recallReason := memoryRecallDecision(routingMessage, ctxResult.Tier, isAgentMode, req.Regenerate, recallMode)
 	h.memoryRecallStats.RecordWithSource(shouldRecall, recallReason, MemoryRecallSourceStream)
 	if shouldRecall {
-		if memoryCtx := h.recallMemories(c.Request().Context(), req.Message, recallMode); memoryCtx != "" {
+		if memoryCtx := h.recallMemories(c.Request().Context(), routingMessage, recallMode); memoryCtx != "" {
 			h.memoryRecallStats.RecordInjectionWithSource(estimateTokens(memoryCtx), MemoryRecallSourceStream)
 			compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, compactedMessages...)
 		}
 	}
+	extraPrompt = mergeExtraPrompt(anchorPrompt, h.buildSkillSelectionPrompt(c.Request().Context(), routingMessage))
+	systemPromptMessages = h.buildSystemPromptMessages(c.Request().Context(), extraPrompt)
 	if len(systemPromptMessages) > 0 {
 		compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
 		logger.Info().Int("system_blocks", len(systemPromptMessages)).Msg("[chat] StreamMessage: injected structured system prompt")
@@ -3632,7 +3838,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
-	selectedTools := h.selectTools(req.Message, chatReq.Model)
+	selectedTools := h.selectTools(routingMessage, chatReq.Model)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepSearchPreference(selectedTools, req.DeepResearchEnabled)
 	chatReq.Tools = defsToLLMTools(selectedTools)
@@ -3777,6 +3983,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var prevToolSig string          // signature of previous round's tool calls for duplicate detection
 	var consecutiveDups int         // count of consecutive identical tool call rounds
 	var typelessCardsPersisted bool // true once tool result cards are appended to persisted content
+	agentModeAutoContinue := h.getMaxToolRounds() > maxToolRounds
 	// Keep provider/model sticky across auto-continue rounds to avoid re-routing
 	// "model=auto" to a different model/provider mid-chain.
 	pinAutoContinueRoute := func(reason string) {
@@ -4023,14 +4230,14 @@ STREAM_LOOP:
 					return nil
 				}
 
-				// Agent mode auto-continue: if LLM stopped without tool calls but
-				// there is TODO progress with unfinished items, inject a
-				// continuation prompt.
-				if h.getMaxToolRounds() > maxToolRounds && len(streamToolCalls) == 0 && fullContent != "" && autoContinueCount < maxAutoContinue {
-					if shouldAutoContinueForTodo(fullContent, todoContent) {
+				// Auto-continue: if LLM stopped without tool calls but the content
+				// indicates a pending next action, defer done and nudge another round.
+				if len(streamToolCalls) == 0 && fullContent != "" && autoContinueCount < maxAutoContinue {
+					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue); shouldContinue {
 						logger.Info().
 							Int("tool_round", toolRound).
-							Msg("[chat] stream: agent mode auto-continue — pending TODO detected, skipping done")
+							Str("reason", reason).
+							Msg("[chat] stream: auto-continue — toolless stop detected, skipping done")
 						streamCompleted = true
 						return nil
 					}
@@ -4588,13 +4795,17 @@ STREAM_LOOP:
 			logger.Info().Int("tool_round", toolRound).Int("total_delta_chars", totalDeltaChars).Bool("streamCompleted", streamCompleted).Msg("[chat] stream: tool loop ended normally")
 		}
 
-		// Agent mode auto-continue: if LLM planned TODOs but stopped without
-		// executing them, inject a continuation prompt and loop back.
-		if streamCompleted && fullContent != "" && len(streamToolCalls) == 0 && h.getMaxToolRounds() > maxToolRounds && autoContinueCount < maxAutoContinue {
-			if shouldAutoContinueForTodo(fullContent, todoContent) {
+		// Auto-continue: when LLM stopped without tool calls but the content
+		// still implies pending action, inject a continuation prompt and loop back.
+		if streamCompleted && fullContent != "" && len(streamToolCalls) == 0 && autoContinueCount < maxAutoContinue {
+			if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue); shouldContinue {
 				autoContinueCount++
-				pinAutoContinueRoute("pending_todo")
-				logger.Info().Int("tool_round", toolRound).Int("auto_continue", autoContinueCount).Msg("[chat] stream: auto-continue — injecting continuation for pending TODO")
+				pinAutoContinueRoute(reason)
+				logger.Info().
+					Int("tool_round", toolRound).
+					Int("auto_continue", autoContinueCount).
+					Str("reason", reason).
+					Msg("[chat] stream: auto-continue — injecting continuation after toolless stop")
 				// Persist current content as a separate message before continuing
 				if fullContent != "" {
 					roundContent := sanitizeResponseContent(fullContent)
@@ -5344,12 +5555,15 @@ func decodeBase64Content(data string) string {
 	return string(decoded)
 }
 
-// transcribeAudioAttachment transcribes a base64-encoded audio attachment using the STT service.
-func (h *ChatHandler) transcribeAudioAttachment(ctx context.Context, att MessageAttachment) string {
+// transcribeAudioAttachmentForLLM transcribes a base64-encoded audio attachment.
+// Returns (text, true) when text should be sent to LLM directly.
+// Returns (fallbackText, false) when transcription failed and caller should
+// fallback to passing raw audio to multimodal-capable models.
+func (h *ChatHandler) transcribeAudioAttachmentForLLM(ctx context.Context, att MessageAttachment) (string, bool) {
 	audioBytes, err := base64.StdEncoding.DecodeString(att.Data)
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to decode audio attachment")
-		return "[Voice message, decode failed]"
+		return "[Voice message, decode failed]", false
 	}
 
 	if h.sttService == nil {
@@ -5357,7 +5571,7 @@ func (h *ChatHandler) transcribeAudioAttachment(ctx context.Context, att Message
 		if att.Duration > 0 {
 			durationHint = fmt.Sprintf(" (%ds)", int(att.Duration))
 		}
-		return fmt.Sprintf("[Voice message%s, transcription unavailable]", durationHint)
+		return fmt.Sprintf("[Voice message%s, transcription unavailable]", durationHint), false
 	}
 
 	format := stt.FormatOGG
@@ -5375,12 +5589,99 @@ func (h *ChatHandler) transcribeAudioAttachment(ctx context.Context, att Message
 	})
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to transcribe audio attachment")
-		return "[Voice message, transcription failed]"
+		return "[Voice message, transcription failed]", false
 	}
 	if resp.Text == "" {
-		return "[Voice message, no speech detected]"
+		return "[Voice message, no speech detected]", true
 	}
-	return fmt.Sprintf("[Voice message]: %s", resp.Text)
+	return fmt.Sprintf("[Voice message]: %s", resp.Text), true
+}
+
+// transcribeAudioAttachment keeps backward compatibility for call sites that
+// only need a textual representation.
+func (h *ChatHandler) transcribeAudioAttachment(ctx context.Context, att MessageAttachment) string {
+	text, _ := h.transcribeAudioAttachmentForLLM(ctx, att)
+	return text
+}
+
+// applyRequestAttachmentsToMessages converts request attachments into LLM content parts.
+// Audio attachments are transcribed to text before being sent to the LLM.
+func (h *ChatHandler) applyRequestAttachmentsToMessages(ctx context.Context, req SendMessageRequest, messages []llm.Message) []llm.Message {
+	if len(req.Attachments) == 0 {
+		return messages
+	}
+
+	lastUserIdx := -1
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == llm.RoleUser {
+			lastUserIdx = i
+			break
+		}
+	}
+
+	contentParts := []llm.ContentPart{}
+	baseText := req.Message
+	if lastUserIdx >= 0 && messages[lastUserIdx].Content != "" {
+		baseText = messages[lastUserIdx].Content
+	}
+	if strings.TrimSpace(baseText) != "" {
+		contentParts = append(contentParts, llm.ContentPart{
+			Type: "text",
+			Text: baseText,
+		})
+	}
+
+	for _, att := range req.Attachments {
+		switch att.Type {
+		case "image":
+			contentParts = append(contentParts, llm.ContentPart{
+				Type:      "image",
+				MediaType: att.MimeType,
+				Data:      att.Data,
+			})
+		case "audio":
+			transcription, transcribed := h.transcribeAudioAttachmentForLLM(ctx, att)
+			if transcribed {
+				contentParts = append(contentParts, llm.ContentPart{
+					Type: "text",
+					Text: transcription,
+				})
+			} else {
+				if strings.TrimSpace(att.Data) != "" {
+					mediaType := strings.TrimSpace(att.MimeType)
+					if mediaType == "" {
+						mediaType = "audio/webm"
+					}
+					contentParts = append(contentParts, llm.ContentPart{
+						Type:      "audio",
+						MediaType: mediaType,
+						Data:      att.Data,
+					})
+				}
+				// Keep a brief textual fallback for providers that ignore audio parts.
+				contentParts = append(contentParts, llm.ContentPart{
+					Type: "text",
+					Text: transcription,
+				})
+			}
+		default:
+			contentParts = append(contentParts, llm.ContentPart{
+				Type: "text",
+				Text: fmt.Sprintf("\n\n[File: %s]\n%s", att.Name, decodeBase64Content(att.Data)),
+			})
+		}
+	}
+
+	userMsg := llm.Message{
+		Role:         llm.RoleUser,
+		Content:      "",
+		ContentParts: contentParts,
+	}
+	if lastUserIdx >= 0 {
+		messages[lastUserIdx] = userMsg
+		return messages
+	}
+	return append(messages, userMsg)
 }
 
 // sanitizeTitle removes newlines and extra whitespace from a title.
@@ -5613,12 +5914,36 @@ func isResponsesNativeModel(model string) bool {
 }
 
 func (h *ChatHandler) getPreviousResponseID(convID string) string {
+	convID = strings.TrimSpace(convID)
 	if convID == "" {
 		return ""
 	}
+
 	h.responsesPrevMu.RLock()
-	defer h.responsesPrevMu.RUnlock()
-	return strings.TrimSpace(h.responsesPreviousID[convID])
+	cached := strings.TrimSpace(h.responsesPreviousID[convID])
+	h.responsesPrevMu.RUnlock()
+	if cached != "" {
+		return cached
+	}
+
+	if h.store == nil {
+		return ""
+	}
+
+	persisted, err := h.store.GetConversationPreviousResponseID(context.Background(), convID)
+	if err != nil {
+		logger.Warn().Err(err).Str("conv_id", convID).Msg("[chat] failed to load persisted previous_response_id")
+		return ""
+	}
+	persisted = strings.TrimSpace(persisted)
+	if persisted == "" {
+		return ""
+	}
+
+	h.responsesPrevMu.Lock()
+	h.responsesPreviousID[convID] = persisted
+	h.responsesPrevMu.Unlock()
+	return persisted
 }
 
 func (h *ChatHandler) setPreviousResponseID(convID, responseID string) {
@@ -5630,6 +5955,12 @@ func (h *ChatHandler) setPreviousResponseID(convID, responseID string) {
 	h.responsesPrevMu.Lock()
 	h.responsesPreviousID[convID] = responseID
 	h.responsesPrevMu.Unlock()
+
+	if h.store != nil {
+		if err := h.store.SetConversationPreviousResponseID(context.Background(), convID, responseID); err != nil {
+			logger.Warn().Err(err).Str("conv_id", convID).Msg("[chat] failed to persist previous_response_id")
+		}
+	}
 }
 
 func (h *ChatHandler) clearPreviousResponseID(convID string) {
@@ -5640,6 +5971,12 @@ func (h *ChatHandler) clearPreviousResponseID(convID string) {
 	h.responsesPrevMu.Lock()
 	delete(h.responsesPreviousID, convID)
 	h.responsesPrevMu.Unlock()
+
+	if h.store != nil {
+		if err := h.store.ClearConversationPreviousResponseID(context.Background(), convID); err != nil {
+			logger.Warn().Err(err).Str("conv_id", convID).Msg("[chat] failed to clear persisted previous_response_id")
+		}
+	}
 }
 
 // consumeInjection checks for and returns a pending injection message for a conversation.

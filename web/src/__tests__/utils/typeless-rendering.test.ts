@@ -71,4 +71,21 @@ describe('Typeless Code Card Rendering', () => {
     expect(html).toContain('line 1')
     expect(html).toContain('line 2')
   })
+
+  it('should render expand toggle for long code blocks', () => {
+    const lines = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join('\n')
+    const card: TypelessCardCode = {
+      type: 'code',
+      id: 'test-5',
+      code: lines,
+      language: 'javascript',
+      showLineNumbers: true,
+    }
+
+    const html = renderCardToHtml(card)
+
+    expect(html).toContain('Show more 6 lines')
+    expect(html).toContain('data-code-container-id=')
+    expect(html).toContain('data-collapsed="true"')
+  })
 })

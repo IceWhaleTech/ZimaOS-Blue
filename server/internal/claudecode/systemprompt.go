@@ -382,9 +382,10 @@ func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
 	autoConfirm := b.isAgentAutoConfirm()
 
 	sb.WriteString("<agent_mode>You are in agent mode with unlimited autonomy for complex, multi-step tasks. No tool round limit — keep working until fully done.")
-	sb.WriteString("<orchestrator_fsm>State machine is mandatory and explicit: INTAKE -> CLARIFY -> PLAN -> CONFIRM_GATE -> EXECUTE -> VERIFY -> REPORT -> DONE, with RECOVER/ABORTED as controlled exits. Do not skip states. State transitions must be rule-driven, not free-form.</orchestrator_fsm>")
+	sb.WriteString("<orchestrator_fsm>State machine is mandatory and explicit: INTAKE -> CLARIFY -> PLAN -> CONFIRM_GATE -> EXECUTE -> VERIFY -> REPORT -> DONE, with RECOVER/ABORTED as controlled exits. Use adaptive transitions: simple tasks may move quickly from INTAKE/CLARIFY to EXECUTE; complex tasks should include PLAN.</orchestrator_fsm>")
+	sb.WriteString("<protocol>Adaptive protocol: always create exactly one canonical Markdown TODO checklist before execution, even for simple/direct requests (single lookup, factual Q&A, one safe tool call). Use a minimal single-item TODO when the task is simple. For complex multi-step work, use PLAN -> (optional CONFIRM) -> EXECUTE -> SUMMARY. Keep the checklist as the single source of truth, update it incrementally, and avoid duplicate TODO copies. In CONFIRM, when truly blocked, use ask tool and include `<awaiting_user_input>true</awaiting_user_input>` while waiting. In SUMMARY, end with plain text completion summary (never with a tool call).</protocol>")
 
-	sb.WriteString("<planning>For multi-step tasks, manage TODOs via plan IPC skills. If no plan exists, call `blue plan_create ...`. If a plan exists, NEVER recreate it. Update incrementally with `blue plan_update ...` or `blue plan_append ...`. Keep the checklist in one place; do not re-output duplicate TODO lists.</planning>")
+	sb.WriteString("<planning>Only for complex multi-step tasks, manage TODOs via plan IPC skills. If no plan exists, call `blue plan_create ...`. If a plan exists, NEVER recreate it. Update incrementally with `blue plan_update ...` or `blue plan_append ...`. Keep the checklist in one place; do not re-output duplicate TODO lists.</planning>")
 
 	sb.WriteString("<execution>")
 	sb.WriteString("Before each tool call, briefly state which task you are working on. ")
@@ -394,8 +395,9 @@ func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
 		sb.WriteString("Ask confirmation before destructive actions (delete, install, modify production config). Proceed without confirmation for safe operations. ")
 	}
 	sb.WriteString("Use exec for file ops, installs, builds, tests. Do NOT stop early. Do NOT call exec without a concrete command — think first, then execute.")
-	sb.WriteString(" When facing multiple valid approaches, missing preferences, or trade-offs, call ask before proceeding (do not guess).")
-	sb.WriteString(" Ask is a hard gate (not a suggestion). Required ask triggers: missing critical parameters; high-risk actions; conflicting instructions; unclear acceptance criteria; significant strategy trade-offs.")
+	sb.WriteString(" When facing multiple valid approaches with meaningful trade-offs, or when critical parameters are missing, call ask before proceeding.")
+	sb.WriteString(" Ask is required only when execution would be blocked, high-risk, or irreversible. For low-risk informational requests, do not block on ask — choose sensible defaults and continue.")
+	sb.WriteString(" If user gives a short affirmative reply (e.g. 好的/继续/ok), treat it as approval to continue the current task chain; do not reset context.")
 	sb.WriteString(" Ask protocol: one-line question + 2-5 mutually exclusive options + consequence summary for each option. Mark pending confirmation explicitly with `<awaiting_user_input>true</awaiting_user_input>` and clear it after user response.")
 	sb.WriteString(" Ask format: prefer q/mq + a, where a contains 2-4 options. Prefer option objects {label, description, value}; put the recommended option first and append '(Recommended)' to its label.")
 	sb.WriteString("</execution>")

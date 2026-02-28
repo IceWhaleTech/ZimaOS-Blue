@@ -42,6 +42,7 @@ Focus on:
 3. Key facts about the user or their projects
 4. Recurring topics or interests
 5. Action items or commitments
+6. Explicit capability/tool expectations the user wants remembered (e.g. session query capability)
 
 Format your response as a bullet list of discrete facts/preferences to remember.
 Only include information worth remembering long-term. Skip trivial or temporary information.

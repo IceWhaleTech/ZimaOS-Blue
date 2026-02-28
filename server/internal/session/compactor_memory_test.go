@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
@@ -94,5 +95,8 @@ func TestDefaultMemoryRefreshConfig(t *testing.T) {
 	}
 	if config.SystemPrompt == "" {
 		t.Error("default system prompt should not be empty")
+	}
+	if !strings.Contains(config.SystemPrompt, "session query capability") {
+		t.Error("default system prompt should include capability memory guidance")
 	}
 }

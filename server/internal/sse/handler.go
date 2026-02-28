@@ -3,6 +3,7 @@ package sse
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -31,14 +32,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 
 // Stream handles GET /api/v1/events — authenticated SSE endpoint.
 func (h *Handler) Stream(c echo.Context) error {
-	// Extract user ID from JWT claims
-	userID := ""
-	if claims, ok := c.Get("user").(*auth.Claims); ok && claims != nil {
-		userID = claims.UserID
-	}
-	if userID == "" {
-		userID = "default"
-	}
+	userID := resolveUserID(c)
 
 	// Set SSE headers
 	w := c.Response()
@@ -94,4 +88,18 @@ func (h *Handler) Stream(c echo.Context) error {
 			flusher.Flush()
 		}
 	}
+}
+
+func resolveUserID(c echo.Context) string {
+	if claims := auth.GetUserFromContext(c); claims != nil {
+		if userID := strings.TrimSpace(claims.UserID); userID != "" {
+			return userID
+		}
+	}
+	if raw := c.Get("user_id"); raw != nil {
+		if userID, ok := raw.(string); ok && strings.TrimSpace(userID) != "" {
+			return strings.TrimSpace(userID)
+		}
+	}
+	return "default"
 }

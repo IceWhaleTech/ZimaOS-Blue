@@ -407,7 +407,7 @@ func trimMessagesForResponsesContinuation(messages []llm.Message) []llm.Message 
 		if lastAssistant+1 >= len(messages) {
 			return nil
 		}
-		return messages[lastAssistant+1:]
+		return messages[lastAssistant:]
 	}
 	return messages[len(messages)-1:]
 }
@@ -605,6 +605,9 @@ func parseResponsesChatResponse(body []byte) (*llm.ChatResponse, bool, error) {
 			})
 		}
 	}
+	if content.Len() == 0 {
+		content.WriteString(extractResponsesOutputText(resp.Output))
+	}
 	cr.Message.Content = content.String()
 	return cr, true, nil
 }
@@ -652,6 +655,7 @@ func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, er
 	case "response.completed":
 		chunk.Done = true
 		if event.Response != nil {
+			chunk.Delta = extractResponsesOutputText(event.Response.Output)
 			u := event.Response.Usage
 			if u.InputTokens > 0 || u.OutputTokens > 0 || u.TotalTokens > 0 {
 				chunk.Usage = &llm.Usage{
@@ -679,6 +683,24 @@ func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, er
 		// Other Responses events are metadata/noise for our bridge and can be ignored.
 		return llm.StreamChunk{}, false, true, nil
 	}
+}
+
+func extractResponsesOutputText(output []bridgeResponsesOutputItem) string {
+	if len(output) == 0 {
+		return ""
+	}
+	var content strings.Builder
+	for _, item := range output {
+		if item.Type != "message" {
+			continue
+		}
+		for _, part := range item.Content {
+			if part.Type == "output_text" || part.Type == "text" || part.Type == "input_text" {
+				content.WriteString(part.Text)
+			}
+		}
+	}
+	return content.String()
 }
 
 // toRawJSON converts a string to json.RawMessage.

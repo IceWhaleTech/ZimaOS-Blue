@@ -22,9 +22,9 @@ func TestClassifyContext(t *testing.T) {
 		{"first_message", "你好", 0, false, false, TierNoHistory},
 		{"single_message", "Hello", 1, false, false, TierNoHistory},
 
-		// Short conversation (≤6 messages = ≤3 rounds)
-		{"short_no_ref", "What is Go?", 4, false, false, TierRecentOnly},
-		{"short_with_ref", "这个怎么用？", 4, false, false, TierRecentOnly},
+		// Short conversation
+		{"short_no_ref", "What is Go?", 4, false, false, TierNoHistory},
+		{"short_with_ref", "这个怎么用？", 4, false, false, TierCompressedMemory},
 
 		// Long conversation, no references → fresh question
 		{"long_no_ref", "What is the weather today?", 10, false, false, TierNoHistory},
@@ -48,11 +48,11 @@ func TestClassifyContext(t *testing.T) {
 		{"long_english_ref_previous", "Go back to the previous approach", 10, false, false, TierCompressedMemory},
 
 		// Agent mode
-		{"agent_short", "Run the tests", 4, true, false, TierRecentOnly},
+		{"agent_short", "Run the tests", 4, true, false, TierCompressedMemory},
 		{"agent_long", "Run the tests", 10, true, false, TierCompressedMemory},
 
 		// Regenerate
-		{"regenerate", "Regenerate", 10, false, true, TierRecentOnly},
+		{"regenerate", "Regenerate", 10, false, true, TierCompressedMemory},
 	}
 
 	for _, tt := range tests {
@@ -124,6 +124,12 @@ func TestShouldRecallMemories(t *testing.T) {
 			wantRecall: true,
 		},
 		{
+			name:       "no_history_with_session_query_capability_cue_recalls",
+			msg:        "确保会话查询能力会被记录到记忆里",
+			tier:       TierNoHistory,
+			wantRecall: true,
+		},
+		{
 			name:       "agent_mode_always_recalls",
 			msg:        "run tests",
 			tier:       TierNoHistory,
@@ -191,6 +197,13 @@ func TestMemoryRecallDecisionReason(t *testing.T) {
 			wantReason: MemoryRecallReasonMemoryCue,
 		},
 		{
+			name:       "memory_cue_session_query_capability",
+			msg:        "请把 session query capability 记录到记忆里",
+			tier:       TierNoHistory,
+			wantRecall: true,
+			wantReason: MemoryRecallReasonMemoryCue,
+		},
+		{
 			name:       "default_skip",
 			msg:        "今天天气怎么样",
 			tier:       TierNoHistory,
@@ -218,8 +231,8 @@ func TestShouldRecallMemories_Mode(t *testing.T) {
 	if !shouldRecallMemories(msg, TierCompressedMemory, false, false, MemoryRecallModeBalanced) {
 		t.Fatalf("balanced mode should recall on compressed tier")
 	}
-	if !shouldRecallMemories("hello", TierRecentOnly, false, false, MemoryRecallModeQuality) {
-		t.Fatalf("quality mode should recall on recent tier")
+	if !shouldRecallMemories("hello", TierCompressedMemory, false, false, MemoryRecallModeQuality) {
+		t.Fatalf("quality mode should recall on compressed tier")
 	}
 }
 
@@ -473,9 +486,6 @@ func TestBuildSmartContextTierNoHistoryUsesLatestTurnOnly(t *testing.T) {
 func TestContextTierString(t *testing.T) {
 	if TierNoHistory.String() != "no_history" {
 		t.Errorf("TierNoHistory.String() = %q", TierNoHistory.String())
-	}
-	if TierRecentOnly.String() != "recent_only" {
-		t.Errorf("TierRecentOnly.String() = %q", TierRecentOnly.String())
 	}
 	if TierCompressedMemory.String() != "compressed_memory" {
 		t.Errorf("TierCompressedMemory.String() = %q", TierCompressedMemory.String())

@@ -26,6 +26,7 @@ const props = defineProps<{
   isMobile?: boolean
   isSelected?: boolean
   isMultiSelectMode?: boolean
+  disableAutoTTS?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -62,11 +63,15 @@ const mediaTaskId = computed(() => {
 // Check if user message has attachments
 const hasAttachments = computed(() => isUser.value && props.message.attachments && props.message.attachments.length > 0)
 
+const audioAttachments = computed(() => {
+  if (!isUser.value || !props.message.attachments) return []
+  return props.message.attachments.filter(a => a.type === 'audio')
+})
+
 // Check if this is a voice-only message (audio attachment, no meaningful text)
 const isVoiceMessage = computed(() => {
-  if (!isUser.value || !props.message.attachments) return false
-  const audioAttachments = props.message.attachments.filter(a => a.type === 'audio')
-  if (audioAttachments.length === 0) return false
+  if (!isUser.value) return false
+  if (audioAttachments.value.length === 0) return false
   // Voice-only: no text content or placeholder text
   const text = props.message.content?.trim()
   return !text || isPlaceholderContent(text)
@@ -212,6 +217,7 @@ function voiceBubbleWidth(seconds?: number): string {
 // Tool execution elapsed timer
 const toolElapsedSeconds = ref('0.0')
 let toolTimerHandle: ReturnType<typeof setInterval> | null = null
+let stopToolExecutingWatch: (() => void) | null = null
 
 function stopToolTimer() {
   if (toolTimerHandle) {
@@ -230,14 +236,32 @@ function startToolTimer() {
   }, 100)
 }
 
+function stopToolExecutingStateWatch() {
+  if (stopToolExecutingWatch) {
+    stopToolExecutingWatch()
+    stopToolExecutingWatch = null
+  }
+}
+
 watch(
-  () => [trackStreamingState.value, chatStore.toolExecuting] as const,
-  ([trackStreaming, executing]) => {
-    if (trackStreaming && executing) {
-      startToolTimer()
-      return
-    }
+  () => trackStreamingState.value,
+  (trackStreaming) => {
     stopToolTimer()
+    stopToolExecutingStateWatch()
+
+    if (!trackStreaming) return
+
+    stopToolExecutingWatch = watch(
+      () => chatStore.toolExecuting,
+      (executing) => {
+        if (executing) {
+          startToolTimer()
+          return
+        }
+        stopToolTimer()
+      },
+      { immediate: true }
+    )
   },
   { immediate: true }
 )
@@ -262,6 +286,7 @@ const waitingElapsed = ref('')
 const showWaitingTimer = ref(false)
 let waitingTimerHandle: ReturnType<typeof setInterval> | null = null
 let waitingStartTime = 0
+let stopWaitingStateWatch: (() => void) | null = null
 
 function startWaitingTimer() {
   waitingStartTime = Date.now()
@@ -284,17 +309,35 @@ function stopWaitingTimer() {
   }
 }
 
-// Start/stop waiting timer based on streaming state + empty content
+function stopWaitingTimerStateWatch() {
+  if (stopWaitingStateWatch) {
+    stopWaitingStateWatch()
+    stopWaitingStateWatch = null
+  }
+}
+
+// Start/stop waiting timer only for the active streaming assistant message
 watch(
-  () => [trackStreamingState.value, props.message.content, chatStore.toolExecuting] as const,
-  ([trackStreaming, content, toolExec]) => {
-    if (trackStreaming && !content && !toolExec) {
-      if (!waitingTimerHandle) startWaitingTimer()
-    } else {
-      stopWaitingTimer()
-    }
+  () => trackStreamingState.value,
+  (trackStreaming) => {
+    stopWaitingTimer()
+    stopWaitingTimerStateWatch()
+
+    if (!trackStreaming) return
+
+    stopWaitingStateWatch = watch(
+      () => [props.message.content, chatStore.toolExecuting] as const,
+      ([content, toolExec]) => {
+        if (!content && !toolExec) {
+          if (!waitingTimerHandle) startWaitingTimer()
+          return
+        }
+        stopWaitingTimer()
+      },
+      { immediate: true }
+    )
   },
-  { immediate: true },
+  { immediate: true }
 )
 
 // Helper to strip markdown heading from first line if present
@@ -320,18 +363,6 @@ function stripInterruptedMarker(content: string): { content: string; interrupted
     return { content: content.replace(RE_INTERRUPTED, ''), interrupted: true }
   }
   return { content, interrupted: false }
-}
-
-// Render segment text with [Response interrupted] handling
-function renderSegmentHtml(text: string): string {
-  // When tool details are hidden, strip process blocks from text segments too
-  const effective = settingsStore.showToolDetails ? text : stripProcessContent(text)
-  const { content, interrupted } = stripInterruptedMarker(effective)
-  let html = renderMarkdownCached(content, 'chat-segment')
-  if (interrupted) {
-    html += interruptedIndicatorHtml.value
-  }
-  return html
 }
 
 // Cache stripped content to avoid double stripFirstLineHeading + SILENT_REPLY replacement
@@ -461,6 +492,30 @@ const effectiveContentSegments = computed(() => {
   // If no cards survived filtering, return null to fall back to plain text
   return filtered.some(s => s.type === 'card') ? filtered : null
 })
+
+const renderedContentSegments = computed(() => {
+  const segments = effectiveContentSegments.value
+  if (!segments) return null
+  return segments.map((segment) => {
+    if (segment.type !== 'text') return segment
+    const text = segment.content as string
+    const effective = settingsStore.showToolDetails ? text : stripProcessContent(text)
+    const { content, interrupted } = stripInterruptedMarker(effective)
+    let html = renderMarkdownCached(content, 'chat-segment')
+    if (interrupted) {
+      html += interruptedIndicatorHtml.value
+    }
+    return { ...segment, html }
+  })
+})
+
+const cardOnlySegments = computed(() => {
+  const segments = effectiveContentSegments.value
+  if (!segments) return null
+  const cardsOnly = segments.filter(segment => segment.type === 'card')
+  return cardsOnly.length > 0 ? cardsOnly : null
+})
+
 const effectiveHasCards = computed(() => effectiveContentSegments.value !== null && effectiveContentSegments.value.some(s => s.type === 'card'))
 
 // Card-only: no text segments, only cards — skip assistant bubble wrapper
@@ -577,6 +632,8 @@ function handleExportMessage() {
 
 // Clean up incremental parse state when component is unmounted
 onUnmounted(() => {
+  stopToolExecutingStateWatch()
+  stopWaitingTimerStateWatch()
   clearIncrementalState(props.message.id, props.message.conversation_id)
   stopToolTimer()
   stopWaitingTimer()
@@ -614,7 +671,7 @@ function stripComplexCardsForTTS(text: string): string {
 watch(() => props.message.content, (newContent, _oldContent) => {
   if (!trackStreamingState.value) return
 
-  const autoPlayEnabled = localStorage.getItem('tts-auto-play') === 'true'
+  const autoPlayEnabled = isAutoPlayEnabled()
   if (!autoPlayEnabled) return
 
   // Strip complex cards (code, mermaid, tables) before extracting sentences
@@ -641,7 +698,7 @@ watch(() => props.message.content, (newContent, _oldContent) => {
 // Play remaining text when streaming completes
 watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
   if (wasStreaming && !isStreaming && isAssistant.value) {
-    const autoPlayEnabled = localStorage.getItem('tts-auto-play') === 'true'
+    const autoPlayEnabled = isAutoPlayEnabled()
     if (!autoPlayEnabled) return
 
     const textContent = stripComplexCardsForTTS(props.message.content)
@@ -781,6 +838,20 @@ async function handlePlayTTS() {
 }
 
 let ttsAborted = false
+
+function isAutoPlayEnabled(): boolean {
+  if (props.disableAutoTTS) return false
+  return localStorage.getItem('tts-auto-play') === 'true'
+}
+
+watch(() => props.disableAutoTTS, (disabled) => {
+  if (!disabled) return
+  ttsAborted = true
+  streamingTTSManager.stop()
+  isSpeaking.value = false
+  hasAutoPlayed.value = false
+  lastPlayedLength.value = 0
+})
 
 // Show init progress toast when Kokoro is still loading
 async function showInitProgressToast(): Promise<void> {
@@ -1147,7 +1218,7 @@ async function handleMobileDelete() {
           <!-- Voice message bubble (WeChat/WhatsApp style) -->
           <div v-if="isVoiceMessage" class="voice-message-container">
             <div
-              v-for="(attachment, index) in message.attachments!.filter(a => a.type === 'audio')"
+              v-for="(attachment, index) in audioAttachments"
               :key="index"
               class="voice-bubble cursor-pointer select-none"
               :style="{ width: voiceBubbleWidth(attachment.duration) }"
@@ -1259,11 +1330,11 @@ async function handleMobileDelete() {
 
         <!-- Card-only assistant message: render cards directly without bubble wrapper -->
         <div
-          v-else-if="isCardOnly && effectiveContentSegments"
+          v-else-if="isCardOnly && cardOnlySegments"
           class="assistant-message-wrapper relative"
         >
           <TypelessCardComponent
-            v-for="segment in effectiveContentSegments.filter(s => s.type !== 'text')"
+            v-for="segment in cardOnlySegments"
             :key="segment.key"
             :card="segment.content as TypelessCard"
             @action="handleCardAction"
@@ -1332,12 +1403,12 @@ async function handleMobileDelete() {
             :class="['assistant-message chat-assistant-bubble px-4 prose prose-slate dark:prose-invert max-w-none', isContentEmpty && !(isStreaming && chatStore.toolExecuting) ? 'py-0 !border-0 !bg-transparent' : 'py-3']"
             @click="handleCopyClick"
           >
-            <template v-if="effectiveHasCards && effectiveContentSegments">
-              <template v-for="segment in effectiveContentSegments" :key="segment.key">
+            <template v-if="effectiveHasCards && renderedContentSegments">
+              <template v-for="segment in renderedContentSegments" :key="segment.key">
                 <div
                   v-if="segment.type === 'text'"
                   class="prose-content"
-                  v-html="renderSegmentHtml(segment.content as string)"
+                  v-html="'html' in segment ? segment.html : ''"
                 />
                 <TypelessCardComponent
                   v-else

@@ -1,24 +1,39 @@
-# Ask
+---
+name: ask
+description: "Ask the user one or more multiple-choice questions and wait for their response. Use when the user explicitly asks to be questioned (e.g. 'ask me question(s)'), when intent is ambiguous and clarification is required, or as a confirmation gate in MCP internal Plan mode."
+---
 
-Ask the user one or more multiple-choice questions and wait for their response.
+# Ask Skill
 
-## How to Send
+## Setup
 
-Use this skill when you need explicit user input before continuing.
+No external dependencies required. This skill uses the built-in `ask` capability.
 
-Preferred single-question format:
+---
+
+## Task Routing
+
+Based on user intent, choose the corresponding `ask` action:
+
+| User Intent | Action |
+|-------------|--------|
+| User explicitly asks for question flow (e.g. "ask me questions", "用 ask 技能问我问题") | Run one `ask` call immediately (prefer `questions='[...]'` for multi-question flows) |
+| Requirement is ambiguous and you must clarify before choosing a strategy | Run `ask` to collect missing constraints/preferences |
+| MCP internal Plan mode requires a confirmation/clarification gate | Run `ask` before continuing plan execution |
+| Multi-step questionnaire/interview (Q1/Q2/Q3) | Use a single `ask questions='[...]'` call whenever possible |
+| Multiple valid implementation approaches | Run `ask` to get explicit user choice before execution |
+
+---
+
+## Command Usage
+
+### Preferred Single-Question Format
 
 ```bash
 ask q="Choose a deploy strategy" a='["Canary","Blue-Green"]'
 ```
 
-Alternative single-question format (legacy):
-
-```bash
-ask question="Choose a deploy strategy" options='["Canary","Blue-Green"]'
-```
-
-Multi-question format (recommended):
+### Multi-Question Format (Recommended)
 
 ```bash
 ask questions='[
@@ -32,16 +47,22 @@ ask questions='[
 ]'
 ```
 
+Do not continue staged questionnaires via plain assistant text (e.g. "continnue second question...").
+Each follow-up must be another `ask` call.
+
+---
+
 ## Input Format
 
-- Preferred: `questions`
-- Type: array
-- Item shape: `{ question, type, options }`
-- `type`: `radio` or `checkbox`
-- `options`: array of string or `{label,description?,value?}`
-- Shorthand for one question: `q` or `mq` + `a`
+| Field | Requirement | Notes |
+|-------|-------------|-------|
+| `questions` | Preferred | Array of question objects |
+| `type` | Required per item | `radio` or `checkbox` |
+| `options` | Required per item | Array of strings or `{label,description?,value?}` |
+| `q` + `a` | Shorthand | Single-question shorthand |
+| `mq` + `a` | Shorthand | Multi-choice shorthand |
 
-Example:
+Example payload:
 
 ```json
 [
@@ -62,16 +83,32 @@ Example:
 ```
 
 Compatibility note:
-- Legacy aliases (`q/a` inside `questions`, `option`) may still exist in old prompts, but should not be used.
+- Legacy aliases (e.g. `option`, legacy `q/a` inside `questions`) may appear in old prompts, but should not be used in new calls.
+
+---
 
 ## Behavior
 
-- Sends questions to frontend and blocks until user answers or timeout.
+- Sends question payload to frontend and blocks until user answers or timeout.
+- Returns structured JSON output containing selected answers.
 - In non-interactive/silent mode, it auto-selects the first option.
-- Returns structured JSON output with selected answers.
+- For interviews/surveys, keep interaction in tool calls (`ask`) instead of plain assistant text questions.
 
-## When To Use
+---
 
-- Missing critical requirement details.
-- User decision gates the next technical step.
-- Multiple valid approaches need explicit user preference.
+## Error Handling
+
+| Error | Resolution |
+|-------|------------|
+| Missing options for a question | Add valid `options` and retry |
+| Invalid `type` value | Use only `radio` or `checkbox` |
+| Empty/invalid `questions` payload | Provide a non-empty array of valid question objects |
+| User does not answer (timeout/dismiss) | Surface status to user and ask whether to retry or continue with defaults |
+
+---
+
+## Notes
+
+- Prefer a single `ask questions='[...]'` call over fragmented multi-round questioning.
+- Ask only what is necessary to unblock execution and keep options mutually exclusive where possible.
+- In MCP internal Plan mode, use `ask` as a hard gate when user confirmation is required.

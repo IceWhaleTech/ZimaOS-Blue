@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +97,84 @@ func TestSkillSelector_LowConfidenceNeedsClarify(t *testing.T) {
 	}
 	if !decision.NeedClarify {
 		t.Fatalf("expected need_clarify=true, got false")
+	}
+}
+
+func TestBuildSkillIndex_StructuredFields(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	dir := filepath.Join(workspaceDir, ".claude", "skills", "youtube-video-analyzer")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir skill: %v", err)
+	}
+	content := `---
+name: youtube-video-analyzer
+description: Analyze YouTube videos
+tags: ["youtube","transcript"]
+category: media
+environment: ["python3"]
+os: ["` + runtime.GOOS + `"]
+---
+
+# YouTube Video Analyzer Skill
+
+## Setup
+
+No external dependencies required.
+
+## Available Scripts
+
+| Script | Purpose |
+|--------|---------|
+| scripts/fetch_transcript.py | Download transcripts |
+| scripts/fetch_comments.py | Download comments |
+
+## Task Routing
+
+| User Intent | Action |
+|-------------|--------|
+| Download subtitle file | Run scripts/fetch_transcript.py <video> |
+
+## Script Usage
+
+` + "```bash" + `
+python scripts/fetch_transcript.py <video_id_or_url> --save
+` + "```" + `
+`
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+
+	docs, err := BuildSkillIndex(workspaceDir)
+	if err != nil {
+		t.Fatalf("BuildSkillIndex error: %v", err)
+	}
+	if len(docs) != 1 {
+		t.Fatalf("expected 1 skill doc, got %d", len(docs))
+	}
+	doc := docs[0]
+	if len(doc.ScriptPaths) < 2 {
+		t.Fatalf("expected parsed script paths, got %v", doc.ScriptPaths)
+	}
+	if len(doc.TaskRoutes) != 1 {
+		t.Fatalf("expected parsed task routes, got %v", doc.TaskRoutes)
+	}
+	if len(doc.UsageSteps) != 1 {
+		t.Fatalf("expected parsed usage steps, got %v", doc.UsageSteps)
+	}
+	if doc.Example == "" {
+		t.Fatalf("expected example from usage command")
+	}
+	if len(doc.Environment) != 1 || doc.Environment[0] != "python3" {
+		t.Fatalf("expected environment parsed, got %v", doc.Environment)
+	}
+	irText := strings.ToLower(skillDocTextForIR(doc))
+	if !strings.Contains(irText, "scripts/fetch_transcript.py") {
+		t.Fatalf("expected script path in IR text, got %q", irText)
+	}
+	if !strings.Contains(irText, "download subtitle file") {
+		t.Fatalf("expected task route intent in IR text, got %q", irText)
 	}
 }

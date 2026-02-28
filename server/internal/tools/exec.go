@@ -1106,9 +1106,53 @@ func parseKeyValuePairs(s string, out map[string]any) {
 			}
 		}
 		if key != "" {
-			out[key] = val
+			appendParsedKeyValue(out, key, val)
 		}
 	}
+}
+
+func appendParsedKeyValue(out map[string]any, key, value string) {
+	if isRepeatedListKey(key) {
+		existing, _ := out[key].(string)
+		out[key] = appendRepeatedListValue(existing, value)
+		return
+	}
+	out[key] = value
+}
+
+func isRepeatedListKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "option", "options", "a":
+		return true
+	default:
+		return false
+	}
+}
+
+func appendRepeatedListValue(existing, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return existing
+	}
+	if existing == "" {
+		return value
+	}
+
+	items := make([]string, 0, 4)
+	trimmedExisting := strings.TrimSpace(existing)
+	if strings.HasPrefix(trimmedExisting, "[") && strings.HasSuffix(trimmedExisting, "]") {
+		if err := json.Unmarshal([]byte(trimmedExisting), &items); err != nil {
+			items = []string{existing}
+		}
+	} else {
+		items = []string{existing}
+	}
+	items = append(items, value)
+	b, err := json.Marshal(items)
+	if err != nil {
+		return existing
+	}
+	return string(b)
 }
 
 // isValidSkillName checks if a string looks like a valid skill name.

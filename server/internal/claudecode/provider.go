@@ -8,9 +8,10 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Provider implements the llm.Provider interface using Claude Code CLI.
@@ -381,6 +382,14 @@ func (p *Provider) buildRunParams(ctx context.Context, req llm.ChatRequest) (*Ru
 		model = p.config.DefaultModel
 	}
 
+	backend := p.config.Backend.WithDefaults()
+	if userID := strings.TrimSpace(skill.GetUserID(ctx)); userID != "" {
+		if backend.Env == nil {
+			backend.Env = make(map[string]string)
+		}
+		backend.Env["BLUE_USER_ID"] = userID
+	}
+
 	return &RunParams{
 		Prompt:         prompt,
 		Model:          model,
@@ -390,6 +399,7 @@ func (p *Provider) buildRunParams(ctx context.Context, req llm.ChatRequest) (*Ru
 		IsFirstMessage: sessionCtx.IsFirstMessage,
 		WorkspaceDir:   p.config.WorkspaceDir,
 		Timeout:        p.config.Timeout,
+		Backend:        &backend,
 	}, nil
 }
 

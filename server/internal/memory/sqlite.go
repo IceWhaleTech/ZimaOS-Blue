@@ -73,6 +73,9 @@ type Store struct {
 	ownsDB bool       // true if this Store opened the DB and should close it
 }
 
+// responsesPreviousIDTTL limits how long continuation IDs are considered valid.
+const responsesPreviousIDTTL = 24 * time.Hour
+
 // NewStore creates a new memory store.
 func NewStore(dbPath string) (*Store, error) {
 	db, err := sql.Open("sqlite3", dbPath)
@@ -152,8 +155,20 @@ func (s *Store) migrate() error {
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 	);
 
+	CREATE TABLE IF NOT EXISTS conversation_runtime_state (
+		conversation_id TEXT NOT NULL,
+		provider_id TEXT NOT NULL DEFAULT '',
+		model_id TEXT NOT NULL DEFAULT '',
+		previous_response_id TEXT NOT NULL DEFAULT '',
+		assistant_message_id TEXT NOT NULL DEFAULT '',
+		updated_at DATETIME NOT NULL,
+		PRIMARY KEY (conversation_id, provider_id, model_id),
+		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
 	CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at);
+	CREATE INDEX IF NOT EXISTS idx_conversation_runtime_state_updated_at ON conversation_runtime_state(updated_at);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -566,5 +581,90 @@ func (s *Store) DeleteMessages(ctx context.Context, conversationID string, messa
 		return fmt.Errorf("failed to delete messages: %w", err)
 	}
 
+	return nil
+}
+
+// GetConversationPreviousResponseID returns the latest persisted Responses continuation ID.
+// The ID is conversation-scoped and expires automatically after TTL.
+func (s *Store) GetConversationPreviousResponseID(ctx context.Context, conversationID string) (string, error) {
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return "", nil
+	}
+
+	cutoff := timeutil.NowTime().Add(-responsesPreviousIDTTL)
+	var prevID string
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT previous_response_id
+		FROM conversation_runtime_state
+		WHERE conversation_id = ? AND provider_id = '' AND model_id = '' AND updated_at >= ?
+		LIMIT 1`,
+		conversationID,
+		cutoff,
+	).Scan(&prevID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get conversation previous response id: %w", err)
+	}
+	return strings.TrimSpace(prevID), nil
+}
+
+// SetConversationPreviousResponseID stores the latest Responses continuation ID for a conversation.
+func (s *Store) SetConversationPreviousResponseID(ctx context.Context, conversationID, responseID string) error {
+	conversationID = strings.TrimSpace(conversationID)
+	responseID = strings.TrimSpace(responseID)
+	if conversationID == "" || responseID == "" {
+		return nil
+	}
+
+	now := timeutil.NowTime()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO conversation_runtime_state (conversation_id, provider_id, model_id, previous_response_id, assistant_message_id, updated_at)
+		VALUES (?, '', '', ?, '', ?)
+		ON CONFLICT(conversation_id, provider_id, model_id)
+		DO UPDATE SET previous_response_id = excluded.previous_response_id, updated_at = excluded.updated_at`,
+		conversationID,
+		responseID,
+		now,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to set conversation previous response id: %w", err)
+	}
+
+	// Best-effort TTL cleanup for this conversation key.
+	_, _ = s.db.ExecContext(
+		ctx,
+		`DELETE FROM conversation_runtime_state WHERE conversation_id = ? AND updated_at < ?`,
+		conversationID,
+		now.Add(-responsesPreviousIDTTL),
+	)
+	return nil
+}
+
+// ClearConversationPreviousResponseID removes persisted continuation IDs for a conversation.
+func (s *Store) ClearConversationPreviousResponseID(ctx context.Context, conversationID string) error {
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, err := s.db.ExecContext(
+		ctx,
+		`DELETE FROM conversation_runtime_state WHERE conversation_id = ?`,
+		conversationID,
+	); err != nil {
+		return fmt.Errorf("failed to clear conversation previous response id: %w", err)
+	}
 	return nil
 }

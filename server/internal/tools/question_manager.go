@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -311,11 +312,43 @@ func (m *QuestionManager) GetPending(userID string) *QuestionRequest {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	var latest *pendingQuestion
 	for _, p := range m.pending {
-		if p.request.UserID == userID || p.request.UserID == "default" || userID == "default" {
-			req := p.request
-			return &req
+		if p.request.UserID != userID {
+			continue
 		}
+		if latest == nil || p.created.After(latest.created) {
+			latest = p
+		}
+	}
+	if latest != nil {
+		req := latest.request
+		return &req
+	}
+	return nil
+}
+
+// GetPendingBySession returns the most recent pending QuestionRequest for sessionID.
+// This is a fallback path when user-scoped matching is unavailable.
+func (m *QuestionManager) GetPendingBySession(sessionID string) *QuestionRequest {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var latest *pendingQuestion
+	for _, p := range m.pending {
+		if strings.TrimSpace(p.request.SessionID) != sessionID {
+			continue
+		}
+		if latest == nil || p.created.After(latest.created) {
+			latest = p
+		}
+	}
+	if latest != nil {
+		req := latest.request
+		return &req
 	}
 	return nil
 }

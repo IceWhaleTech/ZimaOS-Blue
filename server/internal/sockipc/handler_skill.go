@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"go.uber.org/zap"
 )
 
@@ -23,6 +24,10 @@ func RegisterSkillFallback(srv *Server, executor SkillExecutor, log *zap.Logger)
 	srv.HandleFallback(func(ctx context.Context, req *Request) *Response {
 		if executor == nil {
 			return ErrResponse("unknown cmd: " + req.Cmd)
+		}
+
+		if userID := strings.TrimSpace(req.Params["__blue_user_id"]); userID != "" {
+			ctx = skill.WithUserID(ctx, userID)
 		}
 
 		// Convert params from map[string]string to map[string]any

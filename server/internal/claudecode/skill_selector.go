@@ -443,9 +443,27 @@ func buildCandidatesFromNames(names string, docs []SkillDoc) []SkillCandidate {
 }
 
 func skillDocTextForIR(d SkillDoc) string {
-	parts := []string{d.Name, d.Description, d.Category, d.Example, d.Body}
+	parts := []string{d.Name, d.Description, d.Category, d.Example, d.Setup, d.Body}
 	if len(d.Tags) > 0 {
 		parts = append(parts, strings.Join(d.Tags, " "))
+	}
+	if len(d.Environment) > 0 {
+		parts = append(parts, strings.Join(d.Environment, " "))
+	}
+	if len(d.ScriptPaths) > 0 {
+		parts = append(parts, strings.Join(d.ScriptPaths, " "))
+	}
+	if len(d.InstallSteps) > 0 {
+		parts = append(parts, strings.Join(d.InstallSteps, " "))
+	}
+	if len(d.UsageSteps) > 0 {
+		parts = append(parts, strings.Join(d.UsageSteps, " "))
+	}
+	for _, r := range d.TaskRoutes {
+		parts = append(parts, r.Intent, r.Action)
+	}
+	for _, er := range d.ErrorRules {
+		parts = append(parts, er.Error, er.Resolution)
 	}
 	return strings.Join(parts, " ")
 }

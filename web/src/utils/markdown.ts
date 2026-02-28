@@ -124,6 +124,48 @@ export function parseInline(text: string): string {
   return result
 }
 
+// Convert markdown text to plain text for voice/transcript surfaces.
+export function markdownToText(markdown: string): string {
+  if (!markdown) return ''
+
+  let text = markdown.replace(/\r\n/g, '\n')
+
+  // Fenced code blocks: keep code content, drop fences and language marker.
+  text = text.replace(/```[\t ]*([\w-]+)?\n([\s\S]*?)```/g, (_m, _lang: string, code: string) => code.trim())
+  // Inline code.
+  text = text.replace(/`([^`]+)`/g, '$1')
+
+  // Images/links: keep human-readable label.
+  text = text.replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+
+  // Block prefixes.
+  text = text.replace(/^[\t ]{0,3}#{1,6}[\t ]+/gm, '')
+  text = text.replace(/^[\t ]{0,3}>\s?/gm, '')
+  text = text.replace(/^[\t ]{0,3}(?:[-*+]|\d+[.)])\s+/gm, '')
+  text = text.replace(/^[\t ]{0,3}[-*_]{3,}\s*$/gm, '')
+
+  // Markdown table separators.
+  text = text.replace(/^[\t ]*\|?[\t :\-]+\|[\t :\-|]*$/gm, '')
+
+  // Inline emphasis.
+  text = text.replace(/\*\*(.*?)\*\*/g, '$1')
+  text = text.replace(/__(.*?)__/g, '$1')
+  text = text.replace(/\*(.*?)\*/g, '$1')
+  text = text.replace(/_(.*?)_/g, '$1')
+  text = text.replace(/~~(.*?)~~/g, '$1')
+
+  // Trim trailing space per line and collapse extra blank lines.
+  text = text
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/g, ''))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  return text
+}
+
 // Detect language from code fence
 function detectLanguage(lang: string): string {
   const aliases: Record<string, string> = {
@@ -242,6 +284,31 @@ function renderProcessCard(code: string): string {
   }
 }
 
+const RE_MARKDOWN_HR = /^[-*_]{3,}$/
+const RE_MARKDOWN_ORDERED_ITEM = /^\d+\.\s/
+
+function canUsePlainTextFastPath(markdown: string): boolean {
+  if (markdown.length === 0) return false
+  if (markdown.includes('\n')) return false
+  const trimmed = markdown.trim()
+  if (RE_MARKDOWN_HR.test(trimmed)) return false
+  if (RE_MARKDOWN_ORDERED_ITEM.test(trimmed)) return false
+
+  return !markdown.includes('`')
+    && !markdown.includes('*')
+    && !markdown.includes('_')
+    && !markdown.includes('~')
+    && !markdown.includes('[')
+    && !markdown.includes(']')
+    && !markdown.includes('#')
+    && !markdown.includes('>')
+    && !markdown.includes('|')
+    && !markdown.includes('!')
+    && !markdown.includes('<')
+    && !markdown.includes('- ')
+    && !markdown.includes('+ ')
+}
+
 // Main render function
 export function renderMarkdown(markdown: string, _options: RenderOptions = {}): string {
   // Pre-process: convert XML-like error/status tags into styled blocks before line splitting
@@ -253,6 +320,10 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
       return `\n\`\`\`error-block\n${escaped}\n\`\`\`\n`
     }
   )
+
+  if (canUsePlainTextFastPath(markdown)) {
+    return `<p class="my-1">${escapeHtml(markdown)}</p>`
+  }
 
   const lines = markdown.split('\n')
   const result: string[] = []
@@ -555,9 +626,16 @@ const MARKDOWN_HTML_CACHE_MAX = 400
 const MARKDOWN_CACHEABLE_TEXT_MAX = 12000
 
 // Shared markdown render cache for high-frequency UI paths.
-// Note: we only cache when hljs is ready to avoid storing pre-highlight fallback HTML.
+// We cache plain markdown immediately; code-fence content waits for hljs readiness.
 export function renderMarkdownCached(markdown: string, scope = 'default'): string {
-  if (!hljsReady || markdown.length > MARKDOWN_CACHEABLE_TEXT_MAX) {
+  const containsCodeFence = markdown.includes('```')
+  if (markdown.length > MARKDOWN_CACHEABLE_TEXT_MAX) {
+    return renderMarkdown(markdown)
+  }
+
+  // If code highlighting is required but hljs is not ready yet, bypass cache so
+  // the next render can pick up highlighted HTML automatically.
+  if (containsCodeFence && !hljsReady) {
     return renderMarkdown(markdown)
   }
 

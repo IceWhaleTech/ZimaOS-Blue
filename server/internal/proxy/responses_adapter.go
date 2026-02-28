@@ -284,7 +284,7 @@ func trimMessagesForContinuation(messages []openAIChatMessageForResponses) []ope
 		if lastAssistant+1 >= len(messages) {
 			return nil
 		}
-		return messages[lastAssistant+1:]
+		return messages[lastAssistant:]
 	}
 
 	// No assistant message in payload: keep only the latest turn as incremental input.

@@ -137,8 +137,8 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 
 	if q, ok := input["q"].(string); ok && strings.TrimSpace(q) != "" {
 		options := parseOptionsFromInput(input, "a")
-		if len(options) < 2 {
-			return nil, fmt.Errorf("a must include at least 2 values for q")
+		if len(options) == 0 {
+			return nil, fmt.Errorf("a must include at least 1 value for q")
 		}
 		question := strings.TrimSpace(q)
 		return []AskQuestionItem{
@@ -153,8 +153,8 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 	}
 	if mq, ok := input["mq"].(string); ok && strings.TrimSpace(mq) != "" {
 		options := parseOptionsFromInput(input, "a")
-		if len(options) < 2 {
-			return nil, fmt.Errorf("a must include at least 2 values for mq")
+		if len(options) == 0 {
+			return nil, fmt.Errorf("a must include at least 1 value for mq")
 		}
 		question := strings.TrimSpace(mq)
 		return []AskQuestionItem{
@@ -174,8 +174,8 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 		return nil, fmt.Errorf("provide questions[] or q/mq + a")
 	}
 	options := parseOptionsFromInput(input, "options")
-	if len(options) < 2 {
-		return nil, fmt.Errorf("options must include at least 2 values")
+	if len(options) == 0 {
+		return nil, fmt.Errorf("options must include at least 1 value")
 	}
 
 	return []AskQuestionItem{

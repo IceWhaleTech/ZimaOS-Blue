@@ -129,11 +129,9 @@ class ParseResultCache {
     this.cache.delete(key)
     this.cache.set(key, entry)
 
-    // Return deep clone to prevent mutation
-    return {
-      text: entry.result.text,
-      cards: entry.result.cards.map(c => ({ ...c })),
-    }
+    // Return cached object directly to avoid clone/GC overhead on hot render paths.
+    // ParsedContent is treated as immutable by consumers.
+    return entry.result
   }
 
   set(content: string, result: ParsedContent): void {
@@ -145,12 +143,8 @@ class ParseResultCache {
       if (firstKey) this.cache.delete(firstKey)
     }
 
-    // Store deep clone
     this.cache.set(key, {
-      result: {
-        text: result.text,
-        cards: result.cards.map(c => ({ ...c })),
-      },
+      result,
       timestamp: Date.now(),
     })
   }
@@ -602,6 +596,12 @@ function parseIncompleteFunctionCalls(text: string, cards: TypelessCard[], cardI
  * Handles: <thinking>...</thinking>, <system_placeholder />, etc.
  */
 function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { value: number }): string {
+  if (!content) return content
+  // Fast path: most assistant replies are plain text and contain none of these markers.
+  if (!content.includes('<') && !content.includes('[SILENT_REPLY]')) {
+    return content
+  }
+
   let text = content
 
   // Remove <system_placeholder /> and similar self-closing system tags
@@ -858,6 +858,7 @@ const RE_FILE_PATH_LINE = /^\s*([a-zA-Z]:\\[^\s]+\.[a-zA-Z0-9]+|\/[^\s]+\.[a-zA-
 const RE_SEPARATOR_LINE = /^[\s|:-]+$/
 const RE_UNORDERED_LIST = /^(\s*)[-*+]\s+/
 const RE_ORDERED_LIST = /^(\s*)\d+\.\s+/
+const RE_DIGIT_DOT = /\d+\.\s/
 
 /**
  * Check if content contains any typeless cards or markdown elements that will be converted.
@@ -893,9 +894,14 @@ export function hasTypelessCards(content: string): boolean {
   // Tables and lists require line-by-line scan — gate with cheap checks
   const hasPipe = content.includes('|')
   const hasDash = content.includes('- ') || content.includes('* ') || content.includes('+ ')
-  const hasDigitDot = /\d+\.\s/.test(content)
+  const hasDigitDot = content.includes('.') && RE_DIGIT_DOT.test(content)
 
   if (!hasPipe && !hasDash && !hasDigitDot) {
+    return false
+  }
+
+  // Multi-line structures need at least one line break.
+  if (!content.includes('\n')) {
     return false
   }
 
@@ -942,8 +948,10 @@ export function createTypelessBlock(card: TypelessCard): string {
  * Get card placeholder pattern for splitting text.
  */
 export function getCardPlaceholderPattern(): RegExp {
-  return /\[\[TYPELESS_CARD:([^\]]+)\]\]/g
+  return RE_CARD_PLACEHOLDER
 }
+
+const RE_CARD_PLACEHOLDER = /\[\[TYPELESS_CARD:([^\]]+)\]\]/g
 
 /**
  * Split parsed text into segments (text and card placeholders).
@@ -952,10 +960,18 @@ export function splitIntoSegments(
   text: string,
   cards: TypelessCard[]
 ): Array<{ type: 'text' | 'card'; content: string | TypelessCard }> {
+  const placeholderStart = '[[TYPELESS_CARD:'
+  if (!text.includes(placeholderStart)) {
+    const plainText = text.trim()
+    return plainText ? [{ type: 'text', content: plainText }] : []
+  }
+
   const segments: Array<{ type: 'text' | 'card'; content: string | TypelessCard }> = []
-  const cardMap = new Map(cards.map((c) => [c.id, c]))
+  const cardMap = cards.length > 0 ? new Map(cards.map((c) => [c.id, c])) : null
+  let hasMergeCandidate = false
 
   const pattern = getCardPlaceholderPattern()
+  pattern.lastIndex = 0
   let lastIndex = 0
   let match
 
@@ -970,8 +986,11 @@ export function splitIntoSegments(
 
     // Add the card
     const cardId = match[1]
-    const card = cardMap.get(cardId)
+    const card = cardMap?.get(cardId)
     if (card) {
+      if (card.type === 'ui-review-progress' || card.type === 'analyze-progress') {
+        hasMergeCandidate = true
+      }
       segments.push({ type: 'card', content: card })
     }
 
@@ -984,6 +1003,10 @@ export function splitIntoSegments(
     if (textContent) {
       segments.push({ type: 'text', content: textContent })
     }
+  }
+
+  if (!hasMergeCandidate) {
+    return segments
   }
 
   // Merge consecutive ui-review-progress cards into a single aggregated card
@@ -1067,6 +1090,18 @@ function getDomainFromUrl(url: string): string {
   try { return new URL(url).hostname } catch { return url }
 }
 
+function mightContainMarkdownElements(content: string): boolean {
+  if (!content) return false
+  if (content.includes('```')) return true
+  if (content.includes('|')) return true
+  if (content.includes('![')) return true
+  if (content.includes('http')) return true
+  if ((content.includes(':\\') || content.includes('/')) && RE_FILE_PATH_LINE.test(content)) return true
+  if (content.includes('- ') || content.includes('* ') || content.includes('+ ')) return true
+  if (content.includes('.') && RE_DIGIT_DOT.test(content)) return true
+  return false
+}
+
 // ============================================================================
 // Single-pass markdown element parser — replaces 8 separate parsers.
 // Splits content into lines ONCE, iterates ONCE, handles all element types.
@@ -1079,6 +1114,10 @@ function parseMarkdownElementsSinglePass(
   cards: TypelessCard[],
   cardIndex: { value: number },
 ): string {
+  if (!mightContainMarkdownElements(content)) {
+    return content
+  }
+
   const lines = content.split('\n')
   const result: string[] = []
   const len = lines.length

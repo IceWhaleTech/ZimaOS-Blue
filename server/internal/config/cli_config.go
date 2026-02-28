@@ -417,7 +417,7 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 		SmartSkillSelection:              true,
 		SkillSelectorMode:                "hybrid",
 		SkillRerankEnabled:               true,
-		SkillRerankModel:                 "cross-encoder/ms-marco-MiniLM-L-6-v2",
+		SkillRerankModel:                 "cross-encoder/ms-marco-MiniLM-L6-v2",
 		SkillRerankONNXEnabled:           false,
 		SkillRerankONNXAutoDownload:      false,
 		SkillSelectorConfidenceThreshold: 0.78,

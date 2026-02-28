@@ -1,70 +1,56 @@
-# Analyze
+---
+name: analyze
+description: "Run deep analysis on a topic by aggregating URLs, search results, and/or raw text, then generate a structured report with insights and recommendations. Use when the user asks for comprehensive analysis, trend synthesis, comparative findings, or report generation."
+---
 
-Deep-dive analysis tool. Gathers data from URLs and web searches, then generates a comprehensive HTML report with statistics, insights, and visualizations.
+# Analyze Skill
 
-## How to Send
+## Setup
 
-Direct call (always use `--json` for structured output):
+No external dependencies required. Uses built-in data collection + analysis + report generation pipeline.
 
-```bash
-analyze topic="XXX community feedback" urls='["https://reddit.com/r/minilab/..."]' --json
-```
+---
 
-## Commands
+## Task Routing
 
-### analyze
+| User Intent | Action |
+|-------------|--------|
+| Full deep-dive report on a topic | `analyze topic=...` with `urls` and/or `search_queries` |
+| Analyze only provided text | `analyze topic=... text=...` |
+| Need quick link discovery only | Use `web_search` instead of `analyze` |
 
-Full analysis pipeline. Scrapes URLs via browser, runs web searches, then uses LLM to extract structured data and generate a self-contained HTML report.
+---
 
-**Required:** `topic`
-
-**Optional:**
-- `urls` — array of URLs to scrape for content (max 5)
-- `search_queries` — array of web search queries for additional data (max 3)
-- `text` — direct text content to include in analysis
-- `lang` — output language (`zh-CN`, `en-US`, default: `zh-CN`)
+## Command Usage
 
 ```bash
 analyze topic="Product feedback analysis" urls='["https://example.com/reviews"]' search_queries='["product reviews 2026"]' --json
 ```
 
 ```bash
-analyze topic="Survey results" text="..." lang=en-US --json
+analyze topic="Survey insights" text="..." lang=en-US --json
 ```
 
-## Pipeline
+Parameters:
+- `topic` (required)
+- `urls` (optional, max 5)
+- `search_queries` (optional, max 3)
+- `text` (optional)
+- `lang` (optional)
 
-1. **Data Collection** — parallel URL scraping (browser) + web search + direct text
-2. **LLM Analysis** — extracts statistics, themes, quotes, insights, recommendations as structured JSON
-3. **Report Generation** — LLM generates HTML body using predefined CSS template
-4. **Output** — saves self-contained HTML to `{mediaDir}/analyze/{uuid}.html`, returns URL
+---
 
-## Report Sections
+## Error Handling
 
-The generated HTML report includes:
+| Error | Resolution |
+|-------|------------|
+| `topic is required` | Provide a concrete topic |
+| No data collected | Add `urls`, `search_queries`, or `text` |
+| Analysis backend unavailable | Retry later or reduce scope |
 
-| Section | Components |
-|---------|-----------|
-| Hero | Title, summary, key stats |
-| Overview | Stat boxes with color coding |
-| Themes | Tag cloud + progress bars |
-| Key Findings | Insight boxes (strength/opportunity/challenge/risk) |
-| Voices | Quote cards with sentiment coloring |
-| Recommendations | Priority-ranked cards |
-| Summary | Data table |
+---
 
-## Error Response
+## Notes
 
-All commands return `status=error` with an `error` message on failure.
-
-Common errors:
-- `topic is required` — missing `topic` parameter
-- `LLM bridge not available` — LLM service not configured
-- `no data collected` — no URLs, search queries, or text provided
-
-## Example Triggers
-
-- "Analyze Reddit feedback about ZimaBoard"
-- "帮我分析一下这个产品的用户评价"
-- "Generate a report on community discussions about ZimaOS"
-- "分析这段文本并生成报告"
+- Use `analyze` when the user expects synthesized insights, not just raw search output.
+- Output is report-oriented and heavier than simple QA responses.

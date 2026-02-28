@@ -705,6 +705,27 @@ func TestExecSkillShortCircuit_DottedAliasKeepsExplicitAction(t *testing.T) {
 	}
 }
 
+func TestParseKeyValuePairs_AggregatesRepeatedListKeys(t *testing.T) {
+	out := map[string]any{}
+	parseKeyValuePairs(`q="Pick one" a=A a=B`, out)
+
+	if got, _ := out["q"].(string); got != "Pick one" {
+		t.Fatalf("q = %q, want %q", got, "Pick one")
+	}
+	if got, _ := out["a"].(string); got != `["A","B"]` {
+		t.Fatalf("a = %q, want %q", got, `["A","B"]`)
+	}
+}
+
+func TestParseKeyValuePairs_RepeatedNonListKeyKeepsLastValue(t *testing.T) {
+	out := map[string]any{}
+	parseKeyValuePairs(`question=first question=second`, out)
+
+	if got, _ := out["question"].(string); got != "second" {
+		t.Fatalf("question = %q, want %q", got, "second")
+	}
+}
+
 func TestLocaleFromTag(t *testing.T) {
 	tests := []struct {
 		tag, want string

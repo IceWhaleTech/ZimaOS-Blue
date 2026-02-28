@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef, computed, watch } from 'vue'
+import { ref, shallowRef, computed, watch, triggerRef } from 'vue'
 import type { Conversation, Message, SendMessageRequest, MessageStats, MessageAttachment } from '@/api/chat'
 import { conversationApi, messageApi, warmupApi, injectionApi } from '@/api/chat'
 import { approvalApi } from '@/api/approval'
@@ -271,6 +271,81 @@ export const useChatStore = defineStore('chat', () => {
   // SSE client for streaming
   const sseClient = new SSEClient()
 
+  // Buffer incoming deltas and commit at most once per animation frame.
+  // This cuts down message array churn and expensive markdown/card re-parsing.
+  let pendingStreamDelta = ''
+  let pendingStreamConversationId: string | null = null
+  let streamCommitRaf: number | null = null
+  let streamCommitTimer: ReturnType<typeof setTimeout> | null = null
+
+  function cancelPendingStreamCommit() {
+    if (streamCommitRaf !== null && typeof window !== 'undefined') {
+      window.cancelAnimationFrame(streamCommitRaf)
+      streamCommitRaf = null
+    }
+    if (streamCommitTimer) {
+      clearTimeout(streamCommitTimer)
+      streamCommitTimer = null
+    }
+  }
+
+  function patchLastAssistantMessageContent(expectedConversationId?: string | null) {
+    if (expectedConversationId && currentConversationId.value !== expectedConversationId) return
+    const lastIndex = messages.value.length - 1
+    if (lastIndex < 0) return
+    const lastMsg = messages.value[lastIndex]
+    if (!lastMsg || lastMsg.role !== 'assistant') return
+    if (lastMsg.content === streamingContent.value) return
+    lastMsg.content = streamingContent.value
+    triggerRef(messages)
+  }
+
+  function flushPendingStreamDelta(expectedConversationId?: string | null) {
+    cancelPendingStreamCommit()
+    if (expectedConversationId && pendingStreamConversationId && expectedConversationId !== pendingStreamConversationId) {
+      pendingStreamDelta = ''
+      pendingStreamConversationId = null
+      return
+    }
+    const targetConversationId = expectedConversationId ?? pendingStreamConversationId
+    if (pendingStreamDelta) {
+      streamingContent.value += pendingStreamDelta
+      pendingStreamDelta = ''
+    }
+    patchLastAssistantMessageContent(targetConversationId)
+    pendingStreamConversationId = null
+  }
+
+  function schedulePendingStreamCommit() {
+    if (streamCommitRaf !== null || streamCommitTimer) return
+    const commit = () => {
+      streamCommitRaf = null
+      streamCommitTimer = null
+      flushPendingStreamDelta()
+    }
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      streamCommitRaf = window.requestAnimationFrame(commit)
+      return
+    }
+    streamCommitTimer = setTimeout(commit, 16)
+  }
+
+  function enqueueStreamDelta(conversationId: string, delta: string) {
+    if (!delta) return
+    if (pendingStreamConversationId && pendingStreamConversationId !== conversationId) {
+      flushPendingStreamDelta(pendingStreamConversationId)
+    }
+    pendingStreamConversationId = conversationId
+    pendingStreamDelta += delta
+    schedulePendingStreamCommit()
+  }
+
+  function resetPendingStreamDelta() {
+    cancelPendingStreamCommit()
+    pendingStreamDelta = ''
+    pendingStreamConversationId = null
+  }
+
   watch(pendingQuestion, (q) => {
     if (q) {
       awaitingConfirmation.value = true
@@ -411,7 +486,21 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function stopActiveStreamForConversationSwitch() {
+    if (!streaming.value && !sending.value) return
+    flushPendingStreamDelta(currentConversationId.value)
+    sseClient.disconnect()
+    streaming.value = false
+    sending.value = false
+    toolExecuting.value = false
+    resetPendingStreamDelta()
+    streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+  }
+
   async function createConversation(title?: string) {
+    // Clicking "new chat" should immediately leave any active stream and
+    // unlock the input in the new conversation.
+    stopActiveStreamForConversationSwitch()
     try {
       loading.value = true
       error.value = null
@@ -475,16 +564,9 @@ export const useChatStore = defineStore('chat', () => {
   async function selectConversation(id: string) {
     if (currentConversationId.value === id) return
 
-    // Cancel any active streaming before switching — prevents the old
-    // conversation's SSE callbacks from writing into the new conversation's
-    // message list.
-    if (streaming.value || sending.value) {
-      sseClient.disconnect()
-      streaming.value = false
-      sending.value = false
-      toolExecuting.value = false
-      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
-    }
+    // Prevent old conversation stream callbacks from writing into the newly
+    // selected conversation.
+    stopActiveStreamForConversationSwitch()
 
     currentConversationId.value = id
     // Don't clear messages immediately to avoid flash
@@ -820,6 +902,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
       awaitingConfirmation.value = false
       error.value = null
@@ -862,42 +945,16 @@ export const useChatStore = defineStore('chat', () => {
           if (toolExecuting.value) {
             toolExecuting.value = false
           }
-          streamingContent.value += chunk.delta
-          // Update the last message (assistant's response) - use shallowRef properly
-          const lastIndex = messages.value.length - 1
-          if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
-            // Create a new array to trigger shallowRef reactivity
-            const newMessages = [...messages.value]
-            const currentMsg = newMessages[lastIndex]
-            if (currentMsg) {
-              newMessages[lastIndex] = {
-                ...currentMsg,
-                content: streamingContent.value,
-              }
-              messages.value = newMessages
-            }
-          }
+          enqueueStreamDelta(sendConvId, chunk.delta)
         },
         onToolExecuting: (_toolCount, toolNames, sandboxAvailable, toolCommands) => {
           if (currentConversationId.value !== sendConvId) return
+          flushPendingStreamDelta(sendConvId)
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
           toolExecutingCommands.value = toolCommands || []
           toolSandboxAvailable.value = !!sandboxAvailable
-          // Update the streaming message to show tool execution indicator
-          const lastIndex = messages.value.length - 1
-          if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
-            const newMessages = [...messages.value]
-            const currentMsg = newMessages[lastIndex]
-            if (currentMsg) {
-              newMessages[lastIndex] = {
-                ...currentMsg,
-                content: streamingContent.value,
-              }
-              messages.value = newMessages
-            }
-          }
         },
         onToolResults: (results, _toolRound) => {
           if (currentConversationId.value !== sendConvId) return
@@ -906,6 +963,7 @@ export const useChatStore = defineStore('chat', () => {
         },
         onNewMessage: () => {
           if (currentConversationId.value !== sendConvId) return
+          flushPendingStreamDelta(sendConvId)
           // Server persisted previous round — start a new message bubble
           streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
           toolExecuting.value = false
@@ -929,13 +987,16 @@ export const useChatStore = defineStore('chat', () => {
             idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
           }
           if (idx >= 0) {
-            const newMessages = [...messages.value]
-            newMessages[idx] = { ...newMessages[idx]!, content }
-            messages.value = newMessages
+            const msg = messages.value[idx]
+            if (msg && msg.content !== content) {
+              msg.content = content
+              triggerRef(messages)
+            }
           }
         },
         onInjection: () => {
           if (currentConversationId.value !== sendConvId) return
+          flushPendingStreamDelta(sendConvId)
           // Server confirmed injection — partial response is preserved in DB,
           // new user message stored. The stream will restart server-side.
           // Reset streaming content for the new response.
@@ -954,6 +1015,7 @@ export const useChatStore = defineStore('chat', () => {
         onError: (err) => {
           // Guard: if user already switched away, silently ignore
           if (currentConversationId.value !== sendConvId) return
+          flushPendingStreamDelta(sendConvId)
           const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
           // Map error codes to i18n keys for accurate error messages.
@@ -1068,6 +1130,7 @@ export const useChatStore = defineStore('chat', () => {
           streamError.value = null
         },
         onComplete: (finalChunk) => {
+          flushPendingStreamDelta(sendConvId)
           streaming.value = false
           toolExecuting.value = false
           // Guard: if user switched away, don't touch messages
@@ -1079,18 +1142,14 @@ export const useChatStore = defineStore('chat', () => {
             const lastMsg = messages.value[lastIndex]
             if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
               // Update the message with metadata inline (this will be visible immediately)
-              const newMessages = [...messages.value]
-              newMessages[lastIndex] = {
-                ...lastMsg,
-                provider: finalChunk.provider,
-                model: finalChunk.model,
-                stats: finalChunk.stats,
-              }
-              messages.value = newMessages
+              lastMsg.provider = finalChunk.provider
+              lastMsg.model = finalChunk.model
+              lastMsg.stats = finalChunk.stats
+              triggerRef(messages)
               // Also store in metadata map using streaming ID as backup
-              const msgId = newMessages[lastIndex]?.id
+              const msgId = lastMsg.id
               if (msgId) {
-                  messageMetadata.value.set(msgId, {
+                messageMetadata.value.set(msgId, {
                   provider: finalChunk.provider,
                   model: finalChunk.model,
                   stats: finalChunk.stats,
@@ -1110,6 +1169,7 @@ export const useChatStore = defineStore('chat', () => {
         },
       })
     } catch (e) {
+      flushPendingStreamDelta(conversationId)
       error.value = e instanceof Error ? e.message : 'Failed to send message'
       // Keep streaming message with content, mark as interrupted; remove empty placeholders
       const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
@@ -1129,14 +1189,17 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
+      resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
   }
 
   function cancelStreaming() {
+    flushPendingStreamDelta(currentConversationId.value)
     sseClient.disconnect()
     streaming.value = false
     toolExecuting.value = false
+    resetPendingStreamDelta()
     streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     if (!hasPendingConfirmations()) {
       awaitingConfirmation.value = false
@@ -1183,6 +1246,7 @@ export const useChatStore = defineStore('chat', () => {
     sseClient.disconnect()
     streaming.value = false
     toolExecuting.value = false
+    resetPendingStreamDelta()
     streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     sending.value = false
 
@@ -1217,6 +1281,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
       awaitingConfirmation.value = false
       _receivedFirstChunk.value = false
@@ -1252,19 +1317,11 @@ export const useChatStore = defineStore('chat', () => {
           if (toolExecuting.value) {
             toolExecuting.value = false
           }
-          streamingContent.value += chunk.delta
-          const lastIndex = messages.value.length - 1
-          if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
-            const newMessages = [...messages.value]
-            const currentMsg = newMessages[lastIndex]
-            if (currentMsg) {
-              newMessages[lastIndex] = { ...currentMsg, content: streamingContent.value }
-              messages.value = newMessages
-            }
-          }
+          enqueueStreamDelta(convId, chunk.delta)
         },
         onToolExecuting: (_toolCount, toolNames, sandboxAvailable, toolCommands) => {
           if (currentConversationId.value !== convId) return
+          flushPendingStreamDelta(convId)
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
@@ -1277,6 +1334,7 @@ export const useChatStore = defineStore('chat', () => {
         },
         onNewMessage: () => {
           if (currentConversationId.value !== convId) return
+          flushPendingStreamDelta(convId)
           streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
           toolExecuting.value = false
           const newAssistant: Message = {
@@ -1298,19 +1356,23 @@ export const useChatStore = defineStore('chat', () => {
             idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
           }
           if (idx >= 0) {
-            const newMessages = [...messages.value]
-            newMessages[idx] = { ...newMessages[idx]!, content }
-            messages.value = newMessages
+            const msg = messages.value[idx]
+            if (msg && msg.content !== content) {
+              msg.content = content
+              triggerRef(messages)
+            }
           }
         },
         onError: (err) => {
           if (currentConversationId.value !== convId) return
+          flushPendingStreamDelta(convId)
           toolExecuting.value = false
           streamError.value = err.message
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
           streaming.value = false
         },
         onComplete: (finalChunk) => {
+          flushPendingStreamDelta(convId)
           streaming.value = false
           toolExecuting.value = false
           if (currentConversationId.value !== convId) return
@@ -1318,14 +1380,10 @@ export const useChatStore = defineStore('chat', () => {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
             if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
-              const newMessages = [...messages.value]
-              newMessages[lastIndex] = {
-                ...lastMsg,
-                provider: finalChunk.provider,
-                model: finalChunk.model,
-                stats: finalChunk.stats,
-              }
-              messages.value = newMessages
+              lastMsg.provider = finalChunk.provider
+              lastMsg.model = finalChunk.model
+              lastMsg.stats = finalChunk.stats
+              triggerRef(messages)
             }
           }
           fetchMessages(convId)
@@ -1337,11 +1395,13 @@ export const useChatStore = defineStore('chat', () => {
         },
       })
     } catch {
+      flushPendingStreamDelta(convId)
       messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
     } finally {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
+      resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
   }
@@ -1367,6 +1427,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      resetPendingStreamDelta()
       streamingContent.value = existingContent // Start with existing content
       awaitingConfirmation.value = false
       error.value = null
@@ -1391,23 +1452,11 @@ export const useChatStore = defineStore('chat', () => {
           if (toolExecuting.value) {
             toolExecuting.value = false
           }
-          streamingContent.value += chunk.delta
-          // Update the last message
-          const lastIndex = messages.value.length - 1
-          if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
-            const newMessages = [...messages.value]
-            const currentMsg = newMessages[lastIndex]
-            if (currentMsg) {
-              newMessages[lastIndex] = {
-                ...currentMsg,
-                content: streamingContent.value,
-              }
-              messages.value = newMessages
-            }
-          }
+          enqueueStreamDelta(conversationId, chunk.delta)
         },
         onToolExecuting: (_toolCount, toolNames, sandboxAvailable, toolCommands) => {
           if (currentConversationId.value !== conversationId) return
+          flushPendingStreamDelta(conversationId)
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
@@ -1420,6 +1469,7 @@ export const useChatStore = defineStore('chat', () => {
         },
         onNewMessage: () => {
           if (currentConversationId.value !== conversationId) return
+          flushPendingStreamDelta(conversationId)
           streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
           toolExecuting.value = false
           const newAssistant: Message = {
@@ -1441,13 +1491,16 @@ export const useChatStore = defineStore('chat', () => {
             idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
           }
           if (idx >= 0) {
-            const newMessages = [...messages.value]
-            newMessages[idx] = { ...newMessages[idx]!, content }
-            messages.value = newMessages
+            const msg = messages.value[idx]
+            if (msg && msg.content !== content) {
+              msg.content = content
+              triggerRef(messages)
+            }
           }
         },
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
+          flushPendingStreamDelta(conversationId)
           error.value = err.message
           streaming.value = false
           toolExecuting.value = false
@@ -1464,6 +1517,7 @@ export const useChatStore = defineStore('chat', () => {
           sending.value = false
         },
         onComplete: (finalChunk) => {
+          flushPendingStreamDelta(conversationId)
           streaming.value = false
           toolExecuting.value = false
           if (currentConversationId.value !== conversationId) return
@@ -1471,15 +1525,11 @@ export const useChatStore = defineStore('chat', () => {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
             if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
-              const newMessages = [...messages.value]
-              newMessages[lastIndex] = {
-                ...lastMsg,
-                content: streamingContent.value,
-                provider: finalChunk.provider,
-                model: finalChunk.model,
-                stats: finalChunk.stats,
-              }
-              messages.value = newMessages
+              lastMsg.content = streamingContent.value
+              lastMsg.provider = finalChunk.provider
+              lastMsg.model = finalChunk.model
+              lastMsg.stats = finalChunk.stats
+              triggerRef(messages)
             }
           }
           fetchMessages(conversationId)
@@ -1491,11 +1541,13 @@ export const useChatStore = defineStore('chat', () => {
         },
       })
     } catch (e) {
+      flushPendingStreamDelta(conversationId)
       error.value = e instanceof Error ? e.message : 'Failed to continue message'
     } finally {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
+      resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
   }
@@ -1535,6 +1587,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
       awaitingConfirmation.value = false
       error.value = null
@@ -1571,22 +1624,11 @@ export const useChatStore = defineStore('chat', () => {
           if (toolExecuting.value) {
             toolExecuting.value = false
           }
-          streamingContent.value += chunk.delta
-          const lastIndex = messages.value.length - 1
-          if (lastIndex >= 0 && messages.value[lastIndex]?.role === 'assistant') {
-            const newMessages = [...messages.value]
-            const currentMsg = newMessages[lastIndex]
-            if (currentMsg) {
-              newMessages[lastIndex] = {
-                ...currentMsg,
-                content: streamingContent.value,
-              }
-              messages.value = newMessages
-            }
-          }
+          enqueueStreamDelta(conversationId, chunk.delta)
         },
         onToolExecuting: (_toolCount, toolNames, sandboxAvailable, toolCommands) => {
           if (currentConversationId.value !== conversationId) return
+          flushPendingStreamDelta(conversationId)
           toolExecuting.value = true
           toolExecutingStartTime.value = Date.now()
           toolExecutingNames.value = toolNames || []
@@ -1599,6 +1641,7 @@ export const useChatStore = defineStore('chat', () => {
         },
         onNewMessage: () => {
           if (currentConversationId.value !== conversationId) return
+          flushPendingStreamDelta(conversationId)
           streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
           toolExecuting.value = false
           const newAssistant: Message = {
@@ -1620,13 +1663,16 @@ export const useChatStore = defineStore('chat', () => {
             idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
           }
           if (idx >= 0) {
-            const newMessages = [...messages.value]
-            newMessages[idx] = { ...newMessages[idx]!, content }
-            messages.value = newMessages
+            const msg = messages.value[idx]
+            if (msg && msg.content !== content) {
+              msg.content = content
+              triggerRef(messages)
+            }
           }
         },
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
+          flushPendingStreamDelta(conversationId)
           error.value = err.message
           const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
@@ -1663,6 +1709,7 @@ export const useChatStore = defineStore('chat', () => {
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
         },
         onComplete: (finalChunk) => {
+          flushPendingStreamDelta(conversationId)
           streaming.value = false
           toolExecuting.value = false
           if (currentConversationId.value !== conversationId) return
@@ -1670,14 +1717,10 @@ export const useChatStore = defineStore('chat', () => {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
             if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
-              const newMessages = [...messages.value]
-              newMessages[lastIndex] = {
-                ...lastMsg,
-                provider: finalChunk.provider,
-                model: finalChunk.model,
-                stats: finalChunk.stats,
-              }
-              messages.value = newMessages
+              lastMsg.provider = finalChunk.provider
+              lastMsg.model = finalChunk.model
+              lastMsg.stats = finalChunk.stats
+              triggerRef(messages)
             }
           }
           fetchMessages(conversationId)
@@ -1689,6 +1732,7 @@ export const useChatStore = defineStore('chat', () => {
         },
       })
     } catch (e) {
+      flushPendingStreamDelta(conversationId)
       error.value = e instanceof Error ? e.message : 'Failed to regenerate message'
       const streamingMsg = messages.value.find((m) => m.id.startsWith('streaming-'))
       if (streamingMsg && streamingMsg.content.trim()) {
@@ -1705,6 +1749,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
+      resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
   }
@@ -1934,7 +1979,11 @@ export const useChatStore = defineStore('chat', () => {
 
   async function checkPendingQuestion() {
     try {
-      const res = await api.get<{ pending: boolean; question?: any }>('/ask-user-question/pending')
+      const params: Record<string, string> = {}
+      if (currentConversationId.value) {
+        params.session_id = currentConversationId.value
+      }
+      const res = await api.get<{ pending: boolean; question?: any }>('/ask-user-question/pending', { params })
       if (res.data.pending && res.data.question) {
         pendingQuestion.value = res.data.question
       }

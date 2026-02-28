@@ -9,13 +9,20 @@ import (
 
 // SkillDoc is a compact, selector-friendly representation of a skill.
 type SkillDoc struct {
-	Name        string
-	Description string
-	Tags        []string
-	Category    string
-	Example     string
-	Body        string
-	SourcePath  string
+	Name         string
+	Description  string
+	Tags         []string
+	Category     string
+	Environment  []string
+	Example      string
+	Setup        string
+	ScriptPaths  []string
+	InstallSteps []string
+	UsageSteps   []string
+	TaskRoutes   []SkillRoute
+	ErrorRules   []SkillError
+	Body         string
+	SourcePath   string
 }
 
 // BuildSkillIndex scans workspace and user default skill roots and builds a
@@ -79,66 +86,38 @@ func BuildSkillIndex(workspaceDir string) ([]SkillDoc, error) {
 
 func buildSkillDoc(se SkillEntry, raw []byte) SkillDoc {
 	content := string(raw)
-	frontmatter := ""
 	body := content
 	if strings.HasPrefix(content, "---") {
 		parts := strings.SplitN(content, "---", 3)
 		if len(parts) >= 3 {
-			frontmatter = parts[1]
 			body = strings.TrimSpace(parts[2])
 		}
 	}
 
-	tags, category := parseSkillFrontmatterExtras(frontmatter)
-	example := extractSkillExample(body, se.Name)
+	example := strings.TrimSpace(se.Example)
+	if example == "" {
+		example = extractSkillExample(body, se.Name)
+	}
 	if se.Description == "" {
 		se.Description = extractFirstParagraph(body)
 	}
 
 	return SkillDoc{
-		Name:        strings.TrimSpace(se.Name),
-		Description: strings.TrimSpace(se.Description),
-		Tags:        tags,
-		Category:    category,
-		Example:     example,
-		Body:        truncateForIndex(body, 400),
-		SourcePath:  se.Location,
+		Name:         strings.TrimSpace(se.Name),
+		Description:  strings.TrimSpace(se.Description),
+		Tags:         append([]string(nil), se.Tags...),
+		Category:     strings.TrimSpace(se.Category),
+		Environment:  append([]string(nil), se.Environment...),
+		Example:      truncateForIndex(example, 180),
+		Setup:        se.Setup,
+		ScriptPaths:  append([]string(nil), se.ScriptPaths...),
+		InstallSteps: append([]string(nil), se.InstallSteps...),
+		UsageSteps:   append([]string(nil), se.UsageSteps...),
+		TaskRoutes:   append([]SkillRoute(nil), se.TaskRoutes...),
+		ErrorRules:   append([]SkillError(nil), se.ErrorRules...),
+		Body:         truncateForIndex(body, 400),
+		SourcePath:   se.Location,
 	}
-}
-
-func parseSkillFrontmatterExtras(frontmatter string) ([]string, string) {
-	if strings.TrimSpace(frontmatter) == "" {
-		return nil, ""
-	}
-	var tags []string
-	category := ""
-	for _, line := range strings.Split(frontmatter, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		idx := strings.Index(line, ":")
-		if idx <= 0 {
-			continue
-		}
-		key := strings.ToLower(strings.TrimSpace(line[:idx]))
-		value := strings.TrimSpace(line[idx+1:])
-		switch key {
-		case "tags":
-			tags = parseSkillOSList(value)
-			if len(tags) == 0 {
-				for _, t := range strings.Split(value, ",") {
-					t = strings.TrimSpace(strings.Trim(t, `"'[]`))
-					if t != "" {
-						tags = append(tags, t)
-					}
-				}
-			}
-		case "category":
-			category = strings.Trim(value, `"'`)
-		}
-	}
-	return tags, category
 }
 
 func extractSkillExample(body, skillName string) string {

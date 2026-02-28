@@ -69,3 +69,61 @@ func TestQuestionManager_DynamicTimeoutOverride(t *testing.T) {
 		t.Fatalf("dynamic timeout override not applied, elapsed=%s", elapsed)
 	}
 }
+
+func TestQuestionManager_GetPending_StrictUserMatchAndNewest(t *testing.T) {
+	mgr := NewQuestionManager(sse.NewBroker(), func() bool { return false }, 2*time.Minute)
+	now := time.Now()
+
+	mgr.pending["old"] = &pendingQuestion{
+		request: QuestionRequest{ID: "old", UserID: "u1", SessionID: "s1"},
+		created: now.Add(-2 * time.Second),
+	}
+	mgr.pending["new"] = &pendingQuestion{
+		request: QuestionRequest{ID: "new", UserID: "u1", SessionID: "s2"},
+		created: now,
+	}
+	mgr.pending["other"] = &pendingQuestion{
+		request: QuestionRequest{ID: "other", UserID: "u2", SessionID: "s3"},
+		created: now.Add(1 * time.Second),
+	}
+
+	got := mgr.GetPending("u1")
+	if got == nil {
+		t.Fatal("GetPending(u1) = nil, want non-nil")
+	}
+	if got.ID != "new" {
+		t.Fatalf("GetPending(u1).ID = %q, want %q", got.ID, "new")
+	}
+	if got := mgr.GetPending("u3"); got != nil {
+		t.Fatalf("GetPending(u3) = %+v, want nil", got)
+	}
+}
+
+func TestQuestionManager_GetPendingBySession_ReturnsNewest(t *testing.T) {
+	mgr := NewQuestionManager(sse.NewBroker(), func() bool { return false }, 2*time.Minute)
+	now := time.Now()
+
+	mgr.pending["s-old"] = &pendingQuestion{
+		request: QuestionRequest{ID: "s-old", UserID: "u1", SessionID: "conv-1"},
+		created: now.Add(-3 * time.Second),
+	}
+	mgr.pending["s-new"] = &pendingQuestion{
+		request: QuestionRequest{ID: "s-new", UserID: "u2", SessionID: "conv-1"},
+		created: now,
+	}
+	mgr.pending["other"] = &pendingQuestion{
+		request: QuestionRequest{ID: "other", UserID: "u3", SessionID: "conv-2"},
+		created: now.Add(1 * time.Second),
+	}
+
+	got := mgr.GetPendingBySession("conv-1")
+	if got == nil {
+		t.Fatal("GetPendingBySession(conv-1) = nil, want non-nil")
+	}
+	if got.ID != "s-new" {
+		t.Fatalf("GetPendingBySession(conv-1).ID = %q, want %q", got.ID, "s-new")
+	}
+	if got := mgr.GetPendingBySession("missing"); got != nil {
+		t.Fatalf("GetPendingBySession(missing) = %+v, want nil", got)
+	}
+}

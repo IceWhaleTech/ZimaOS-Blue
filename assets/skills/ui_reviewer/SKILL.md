@@ -1,81 +1,60 @@
-# UI Reviewer
+---
+name: ui_reviewer
+description: "Review UI/UX quality and accessibility for a webpage or screenshot, with structured scoring and findings. Use when the user asks for UI review, design critique, UX audit, accessibility check, or quality scoring."
+---
 
-Evaluate UI/UX quality of a website or screenshot. Captures screenshots, runs accessibility checks, and uses VLM (vision language model) for visual review. Returns structured scoring report.
+# UI Reviewer Skill
 
-## How to Send
+## Setup
 
-Direct call (always use `--json` for structured output):
+No external dependencies required. Uses built-in browser + accessibility + VLM review pipeline.
+
+---
+
+## Task Routing
+
+| User Intent | Action |
+|-------------|--------|
+| Audit a live website UI/UX | `ui.review_url` |
+| Review a provided screenshot/image only | `ui.review_image` |
+| Accessibility-focused check only | `ui.check_accessibility` |
+
+---
+
+## Command Usage
+
+### Review URL (full audit)
 
 ```bash
 ui.review_url url=https://example.com --json
+ui.review_url url=https://example.com lang=zh-CN device=mobile --json
 ```
 
-## Commands
-
-### ui.review_url
-
-Full UI review of a URL. Navigates to the page, captures multi-viewport screenshots, runs accessibility checks, and performs VLM visual analysis.
-
-**Required:** `url`
-
-**Optional:**
-- `lang` — output language (`en-US`, `zh-CN`, default: `en-US`)
-- `device` — viewport: `desktop` (1920x1080) or `mobile` (375x812)
+### Review image (visual only)
 
 ```bash
-ui.review_url url=https://example.com lang=zh-CN --json
+ui.review_image image=<base64_png_data> lang=en-US --json
 ```
 
-### ui.review_image
-
-VLM visual review of a base64-encoded screenshot. No browser needed.
-
-**Required:** `image` (base64 PNG data)
-
-**Optional:** `lang`
+### Accessibility check only
 
 ```bash
-ui.review_image image=<base64_png_data>
+ui.check_accessibility url=https://example.com --json
 ```
 
-### ui.check_accessibility
+---
 
-Accessibility check only (no VLM). Navigates to URL, builds accessibility tree, and checks for common a11y issues.
+## Error Handling
 
-**Required:** `url`
+| Error | Resolution |
+|-------|------------|
+| Missing `url` | Provide valid URL for `ui.review_url` / `ui.check_accessibility` |
+| Missing `image` | Provide base64 image for `ui.review_image` |
+| Browser/VLM review failure | Retry, then reduce scope (accessibility-only or single viewport) |
 
-**Optional:** `lang`
+---
 
-```bash
-ui.check_accessibility url=https://example.com
-```
+## Notes
 
-## Error Response
-
-All commands return `status=error` with an `error` message on failure.
-
-Common errors:
-- `missing url` — no `url` key for review_url/check_accessibility
-- `missing image` — no `image` key for review_image
-- `review failed: ...` — browser or VLM error during review
-- `check failed: ...` — accessibility check error
-
-## Scoring
-
-The review returns scores (0-10) in three categories:
-
-| Category | What it checks |
-|----------|---------------|
-| Visual | Layout, typography, color contrast, spacing, consistency |
-| Functional | Links, forms, buttons, navigation, error states |
-| Accessibility | ARIA labels, alt text, focus order, color contrast, heading hierarchy |
-
-- `overall` = weighted average of all categories
-- `pass` = `overall >= threshold` (default threshold: 6.0)
-
-## Example Triggers
-
-- "Review the UI of https://example.com"
-- "Check accessibility of this page"
-- "评审一下这个网站的UI质量"
-- "帮我检查这个页面的无障碍性"
+- Prefer `--json` for structured output.
+- Use this skill for quality evaluation, not for generic browsing/search.

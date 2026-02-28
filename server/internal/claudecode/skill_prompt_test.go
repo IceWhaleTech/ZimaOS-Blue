@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -352,6 +353,122 @@ description: Browser from home path
 	}
 	if contains(got, `desc="Browser from home path"`) {
 		t.Fatalf("did not expect home description when workspace exists, got: %q", got)
+	}
+}
+
+func TestParseSkillEntry_StructuredSections(t *testing.T) {
+	md := `---
+name: youtube-video-analyzer
+description: "Analyze YouTube videos"
+tags: ["youtube", "video", "sentiment"]
+category: "media"
+environment: ["python3"]
+---
+
+# YouTube Video Analyzer Skill
+
+## Setup
+
+No external dependencies required.
+
+## Available Scripts
+
+| Script | Purpose |
+|--------|---------|
+| scripts/fetch_transcript.py | Download transcripts |
+| scripts/fetch_comments.py | Download comments |
+| scripts/analyze_video.py | Analyze transcript + comments |
+
+## Task Routing
+
+| User Intent | Action |
+|-------------|--------|
+| Summarize / analyze video content | Run scripts/analyze_video.py <video> |
+| Download comments file | Run scripts/fetch_comments.py <video> --save |
+
+## Script Usage
+
+### scripts/analyze_video.py
+
+` + "```bash" + `
+python scripts/analyze_video.py <video_id_or_url>
+python scripts/analyze_video.py <video_id_or_url> --mode comments-only
+` + "```" + `
+
+## Error Handling
+
+| Error | Resolution |
+|-------|------------|
+| Transcript unavailable | Inform user and continue comments analysis |
+| Video unavailable | Suggest checking URL |
+`
+
+	se := parseSkillEntry("youtube-video-analyzer", "/tmp/SKILL.md", []byte(md))
+
+	if se.Name != "youtube-video-analyzer" {
+		t.Fatalf("expected parsed name, got %q", se.Name)
+	}
+	if se.Category != "media" {
+		t.Fatalf("expected category media, got %q", se.Category)
+	}
+	if len(se.Tags) != 3 {
+		t.Fatalf("expected 3 tags, got %v", se.Tags)
+	}
+	if len(se.Environment) != 1 || se.Environment[0] != "python3" {
+		t.Fatalf("expected parsed environment, got %v", se.Environment)
+	}
+	if !strings.Contains(se.Setup, "No external dependencies required") {
+		t.Fatalf("expected setup section parsed, got %q", se.Setup)
+	}
+	if len(se.ScriptPaths) < 3 {
+		t.Fatalf("expected script paths parsed, got %v", se.ScriptPaths)
+	}
+	if len(se.UsageSteps) < 2 {
+		t.Fatalf("expected usage steps parsed, got %v", se.UsageSteps)
+	}
+	if len(se.TaskRoutes) != 2 {
+		t.Fatalf("expected task routes parsed, got %v", se.TaskRoutes)
+	}
+	if len(se.ErrorRules) != 2 {
+		t.Fatalf("expected error rules parsed, got %v", se.ErrorRules)
+	}
+	if se.Example == "" {
+		t.Fatalf("expected example command inferred from usage")
+	}
+}
+
+func TestParseFrontmatterFields_MultilineLists(t *testing.T) {
+	md := `---
+name: test-skill
+os:
+  - linux
+  - darwin
+tags:
+  - ai
+  - ir
+env:
+  - local
+  - onnx
+---
+
+# Test Skill
+
+## Script Usage
+
+` + "```bash" + `
+python scripts/run.py --mode test
+` + "```" + `
+`
+
+	se := parseSkillEntry("test-skill", "/tmp/SKILL.md", []byte(md))
+	if len(se.OS) != 2 {
+		t.Fatalf("expected 2 os values, got %v", se.OS)
+	}
+	if len(se.Tags) != 2 {
+		t.Fatalf("expected 2 tags, got %v", se.Tags)
+	}
+	if len(se.Environment) != 2 {
+		t.Fatalf("expected 2 env values, got %v", se.Environment)
 	}
 }
 

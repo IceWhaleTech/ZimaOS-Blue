@@ -11,14 +11,12 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 )
 
-// ContextTier represents the 3-tier context strategy.
+// ContextTier represents the context strategy.
 type ContextTier int
 
 const (
 	// TierNoHistory: standalone question, no history needed.
 	TierNoHistory ContextTier = iota
-	// TierRecentOnly: references to recent context, last 1-2 rounds.
-	TierRecentOnly
 	// TierCompressedMemory: needs older context, inject compressed summary.
 	TierCompressedMemory
 )
@@ -27,8 +25,6 @@ func (t ContextTier) String() string {
 	switch t {
 	case TierNoHistory:
 		return "no_history"
-	case TierRecentOnly:
-		return "recent_only"
 	case TierCompressedMemory:
 		return "compressed_memory"
 	default:
@@ -80,8 +76,9 @@ var (
 
 	// Memory-intent hints: user explicitly asks for remembered preferences/facts.
 	reMemoryCue = regexp.MustCompile(
-		`(?i)(?:\bremember\b|\bmemory\b|\bpreference\b|\bprofile\b|\bas i said\b|` +
-			`记得|记住|你还记得|我喜欢|我的偏好|之前说过|个人资料|习惯)`)
+		`(?i)(?:\bremember\b|\bmemory\b|\bmemories\b|\bpreference\b|\bprofile\b|` +
+			`\bcapability\b|\bcapabilities\b|\bsession\s*query\b|\bquery\s*sessions?\b|\bas i said\b|` +
+			`记得|记住|记忆|你还记得|我喜欢|我的偏好|之前说过|个人资料|习惯|会话查询|查询能力|工具能力|能力偏好)`)
 )
 
 // MemoryRecallReason indicates why memory recall was triggered or skipped.
@@ -387,30 +384,22 @@ func classifyContext(userMessage string, messageCount int, isAgentMode, isRegene
 
 	// Agent mode always needs context for tool continuity
 	if isAgentMode {
-		if messageCount > 6 {
-			return TierCompressedMemory
-		}
-		return TierRecentOnly
+		return TierCompressedMemory
 	}
 
 	// Regenerate needs the original message context
 	if isRegenerate {
-		return TierRecentOnly
+		return TierCompressedMemory
 	}
 
 	hasRef := hasReference(userMessage)
 
-	// Short conversation (≤3 rounds): always include recent context
-	if messageCount <= 6 {
-		return TierRecentOnly
-	}
-
-	// Long conversation (> 3 rounds)
+	// Reference/continuity cues need prior context regardless of length.
 	if hasRef {
 		return TierCompressedMemory
 	}
 
-	// No references in a long conversation → fresh question
+	// No references → treat as fresh standalone question.
 	return TierNoHistory
 }
 
@@ -477,7 +466,7 @@ func memoryRecallDecision(userMessage string, tier ContextTier, isAgentMode, isR
 		}
 		return false, MemoryRecallReasonDefaultSkip
 	case MemoryRecallModeQuality:
-		if tier == TierCompressedMemory || tier == TierRecentOnly {
+		if tier == TierCompressedMemory {
 			return true, MemoryRecallReasonCompressedTier
 		}
 		if hasMemoryCue(userMessage) {
@@ -621,7 +610,7 @@ type smartContextParams struct {
 	PreloadedMessages []memory.Message
 }
 
-// buildSmartContext applies the 3-tier context strategy and returns
+// buildSmartContext applies the context strategy and returns
 // the appropriate messages to send to the LLM.
 // Does NOT inject system prompt or memory recall — those are handled by the caller.
 func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContextParams) ContextStrategyResult {
@@ -667,9 +656,6 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 		// No history context needed: include only the latest turn so stale tool
 		// traces from earlier rounds are not replayed.
 		result.Messages = extractLatestTurn(messages)
-
-	case TierRecentOnly:
-		result.Messages = extractRecentRounds(messages, 2)
 
 	case TierCompressedMemory:
 		recentMessages := extractRecentRounds(messages, 2)

@@ -43,6 +43,15 @@ type autoContinueFailingProxyHandler struct {
 	requestPinnedProvider []string
 }
 
+// autoContinuePlanThenCompleteProxyHandler simulates:
+// 1) first stream round outputs a plan checklist only
+// 2) auto-continue round receives injected execution nudge and returns final summary
+type autoContinuePlanThenCompleteProxyHandler struct {
+	callCount          int
+	sawExecutionNudge  bool
+	lastRequestMessage string
+}
+
 // secondTurnTimeoutProxyHandler simulates a provider that succeeds on the first
 // turn, but times out once history expands on the second turn.
 // It allows us to verify "second send fails" behavior independent of warmup.
@@ -149,6 +158,46 @@ func (h *autoContinueFailingProxyHandler) ServeHTTP(w http.ResponseWriter, r *ht
 
 	// Next round(s) fail before any SSE chunk.
 	http.Error(w, `{"error":{"message":"Upstream request failed","type":"upstream_error"}}`, http.StatusBadGateway)
+}
+
+func (h *autoContinuePlanThenCompleteProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+	var body struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if len(body.Messages) > 0 {
+		last := body.Messages[len(body.Messages)-1]
+		h.lastRequestMessage = last.Content
+		if last.Role == "user" && strings.Contains(last.Content, "Now actually execute by calling the tools") {
+			h.sawExecutionNudge = true
+		}
+	}
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_plan_then_complete"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+
+	if h.callCount == 1 {
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"1","choices":[{"delta":{"content":"- [ ] 创建实现计划\n- [ ] 执行计划步骤\n- [ ] 输出最终总结"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		return
+	}
+
+	fmt.Fprintf(w, "data: %s\n\n", `{"id":"2","choices":[{"delta":{"content":"已按计划完成关键步骤并验证结果。\n总结：任务已完成。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func NewStreamingMockProvider(response string) *StreamingMockProvider {
@@ -592,6 +641,142 @@ func TestStreamMessageAutoContinue_PreContent502GracefulCompletion(t *testing.T)
 	}
 	if got := fakeProxy.requestPinnedProvider[1]; got != "prov_ui_reviewer" {
 		t.Fatalf("expected auto-continue to pin provider from first round, got %q", got)
+	}
+}
+
+func TestStreamMessageAutoContinue_PlanThenExecuteThenSummary(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test Auto Continue Plan Execute Summary")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &autoContinuePlanThenCompleteProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请进入agent mode并完成任务","model":"auto"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	err = handler.StreamMessage(c)
+	if err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected exactly 3 proxy calls (plan + auto-continue execution + finalization), got %d", fakeProxy.callCount)
+	}
+	if !fakeProxy.sawExecutionNudge {
+		t.Fatalf("expected second request to include auto-continue execution nudge, last=%q", fakeProxy.lastRequestMessage)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	if len(messages) == 0 {
+		t.Fatal("expected persisted messages, got empty")
+	}
+
+	var assistantContent string
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "assistant" {
+			assistantContent = messages[i].Content
+			break
+		}
+	}
+	if assistantContent == "" {
+		t.Fatalf("assistant message not found in persisted messages: %+v", messages)
+	}
+	if !strings.Contains(assistantContent, "总结：任务已完成。") {
+		t.Fatalf("expected summary content in persisted assistant message, got=%q", assistantContent)
+	}
+}
+
+func TestStreamMessageShortAffirmative_InjectsContinuationHint(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test Short Affirmative Continuation")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:    "user",
+		Content: "你可以帮我查一下 ZimaOS 的信息吗",
+	})
+	_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:    "assistant",
+		Content: "- [ ] 产品定位与功能概览\n- [ ] 最新动态\n\n如果你不想选，我可以默认按「功能概览 + 最新动态」先查一版。",
+	})
+
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+
+	e := echo.New()
+	reqBody := `{"message":"好的","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	if !strings.Contains(rec.Body.String(), `"done":true`) {
+		t.Fatalf("expected done marker in stream body, got: %s", rec.Body.String())
+	}
+
+	lastReq := capture.LastRequest()
+	if len(lastReq.Messages) == 0 {
+		t.Fatal("expected captured request messages")
+	}
+
+	foundContinuationHint := false
+	for _, m := range lastReq.Messages {
+		if m.Role != llm.RoleSystem {
+			continue
+		}
+		if strings.Contains(m.Content, "Continuation hint: the user just sent a brief affirmative acknowledgment") {
+			foundContinuationHint = true
+			break
+		}
+	}
+	if !foundContinuationHint {
+		t.Fatalf("expected continuation hint in system messages, got: %+v", lastReq.Messages)
 	}
 }
 

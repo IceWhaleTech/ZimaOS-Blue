@@ -5,19 +5,22 @@ import (
 	"net"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"go.uber.org/zap"
 )
 
 type mockSkillFallbackExecutor struct {
 	lastSkillID string
 	lastInput   map[string]any
+	lastUserID  string
 	result      map[string]string
 	err         error
 }
 
-func (m *mockSkillFallbackExecutor) Execute(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+func (m *mockSkillFallbackExecutor) Execute(ctx context.Context, skillID string, input map[string]any) (map[string]string, error) {
 	m.lastSkillID = skillID
 	m.lastInput = input
+	m.lastUserID = skill.GetUserID(ctx)
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -113,5 +116,26 @@ func TestRegisterSkillFallback_NonDottedCommandUnchanged(t *testing.T) {
 	}
 	if got, _ := exec.lastInput["action"].(string); got != "list" {
 		t.Fatalf("action=%q, want %q", got, "list")
+	}
+}
+
+func TestRegisterSkillFallback_InheritsBlueUserIDContext(t *testing.T) {
+	exec := &mockSkillFallbackExecutor{result: map[string]string{"status": "ok"}}
+	conn, cleanup := setupSkillFallbackServer(t, exec)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{
+		Cmd: "ask",
+		Params: map[string]string{
+			"q":              "Pick one",
+			"a":              `["A","B"]`,
+			"__blue_user_id": "user-xyz",
+		},
+	})
+	if resp.Status != "ok" {
+		t.Fatalf("status=%q error=%q", resp.Status, resp.Error)
+	}
+	if exec.lastUserID != "user-xyz" {
+		t.Fatalf("user_id=%q, want %q", exec.lastUserID, "user-xyz")
 	}
 }

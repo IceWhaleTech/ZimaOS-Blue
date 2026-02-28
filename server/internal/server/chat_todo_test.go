@@ -30,4 +30,52 @@ func TestShouldAutoContinueForTodo(t *testing.T) {
 			t.Fatalf("expected auto-continue from tracked pending todo")
 		}
 	})
+
+	t.Run("continues with star checklist and uppercase X", func(t *testing.T) {
+		tracked := "* [X] step1\n* [ ] step2"
+		if !shouldAutoContinueForTodo("", tracked) {
+			t.Fatalf("expected auto-continue for star checklist with uppercase X")
+		}
+	})
+}
+
+func TestShouldAutoContinueForActionPledge(t *testing.T) {
+	t.Run("continues for chinese action pledge", func(t *testing.T) {
+		current := "我先给你结论：我这边需要联网检索一下最新动态。我现在就去查，稍等我几秒。"
+		if !shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected auto-continue for chinese action pledge")
+		}
+	})
+
+	t.Run("continues for english action pledge", func(t *testing.T) {
+		current := "I need to verify this online. Let me check and I'll get back in a few seconds."
+		if !shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected auto-continue for english action pledge")
+		}
+	})
+
+	t.Run("does not continue for clarification question", func(t *testing.T) {
+		current := "可以先告诉我你要看的时间范围吗？"
+		if shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected no auto-continue when awaiting user input")
+		}
+	})
+}
+
+func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
+	t.Run("agent mode continues on pending todo", func(t *testing.T) {
+		current := "- [ ] 查询最新新闻\n- [ ] 汇总回答"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true)
+		if !ok || reason != "pending_todo" {
+			t.Fatalf("expected pending_todo auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
+	t.Run("non-agent continues on action pledge", func(t *testing.T) {
+		current := "我现在就去查，稍等我几秒。"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false)
+		if !ok || reason != "action_pledge" {
+			t.Fatalf("expected action_pledge auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
 }

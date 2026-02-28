@@ -51,7 +51,11 @@ const messagesContainer = ref<HTMLElement | null>(null)
 const virtualScrollRef = ref<InstanceType<typeof VirtualScroll> | null>(null)
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null)
 const messageHeightCache = new Map<string, number>()
-const virtualItemObservers = new Map<string, ResizeObserver>()
+const virtualElementToMessageKey = new Map<HTMLElement, string>()
+const virtualItemElements = new Map<string, HTMLElement>()
+const virtualItemHeightUpdaters = new Map<string, (height: number) => void>()
+const virtualItemRefCallbacks = new Map<string, (el: Element | ComponentPublicInstance | null) => void>()
+let virtualResizeObserver: ResizeObserver | null = null
 const showSidebar = ref(false) // Default closed on mobile
 // Detect mobile synchronously before first render to avoid layout flash
 const _initMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(navigator.userAgent)
@@ -106,6 +110,11 @@ const styleSelectorPosition = ref({ x: 0, y: 0 })
 
 // Talk mode state
 const showTalkMode = ref(false)
+watch(showTalkMode, (open) => {
+  if (open) {
+    streamingTTSManager.stop()
+  }
+})
 
 // Agent task state
 const agentTasks = ref<AgentTask[]>([])
@@ -207,6 +216,9 @@ const streamingMessageId = computed(() => {
 })
 
 function messageMemoDeps(message: { id: string; content: string; attachments?: unknown[]; updated_at?: string; created_at: string }, isStreaming: boolean) {
+  const selectedDep = chatStore.isMultiSelectMode
+    ? chatStore.selectedMessageIds.has(message.id)
+    : false
   return [
     message.id,
     message.content,
@@ -214,9 +226,10 @@ function messageMemoDeps(message: { id: string; content: string; attachments?: u
     message.updated_at ?? message.created_at,
     isStreaming,
     message.id === lastAssistantMessageId.value,
+    showTalkMode.value,
     isMobile.value,
     chatStore.isMultiSelectMode,
-    chatStore.selectedMessageIds.has(message.id),
+    selectedDep,
   ]
 }
 
@@ -324,17 +337,54 @@ const currentThemeStyleLabel = computed(() => {
   return current ? t(current.labelKey) : settingsStore.themeStyle
 })
 
-const currentThemeStylePreviewClass = computed(() => `theme-style-btn-${settingsStore.themeStyle}`)
+const currentThemeStyleIconColor = computed(() => {
+  switch (settingsStore.themeStyle) {
+    case 'bubble':
+      return '#a855f7'
+    case 'minimal':
+      return '#64748b'
+    case 'gradient':
+      return '#f97316'
+    case 'ocean':
+      return '#0284c7'
+    case 'default':
+    default:
+      return '#0ea5e9'
+  }
+})
 
 function getMessageHeightKey(message: { conversation_id: string; id: string }) {
   return `${message.conversation_id}:${message.id}`
 }
 
+function getVirtualResizeObserver() {
+  if (virtualResizeObserver) return virtualResizeObserver
+  virtualResizeObserver = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const target = entry.target
+      if (!(target instanceof HTMLElement)) continue
+      const key = virtualElementToMessageKey.get(target)
+      if (!key) continue
+      const next = Math.ceil(entry.contentRect.height)
+      if (next <= 0) continue
+      if (messageHeightCache.get(key) !== next) {
+        messageHeightCache.set(key, next)
+      }
+      virtualItemHeightUpdaters.get(key)?.(next)
+    }
+  })
+  return virtualResizeObserver
+}
+
 function clearVirtualItemObservers() {
-  for (const observer of virtualItemObservers.values()) {
-    observer.disconnect()
+  if (virtualResizeObserver) {
+    virtualResizeObserver.disconnect()
+    virtualResizeObserver = null
   }
-  virtualItemObservers.clear()
+  virtualElementToMessageKey.clear()
+  virtualItemElements.clear()
+  virtualItemHeightUpdaters.clear()
+  virtualItemRefCallbacks.clear()
 }
 
 function bindVirtualItemHeight(
@@ -342,22 +392,49 @@ function bindVirtualItemHeight(
   updateHeight: (height: number) => void,
 ) {
   const key = getMessageHeightKey(message)
+  virtualItemHeightUpdaters.set(key, updateHeight)
 
-  return (el: Element | ComponentPublicInstance | null) => {
-    const existing = virtualItemObservers.get(key)
-    if (existing) {
-      existing.disconnect()
-      virtualItemObservers.delete(key)
+  const existingCallback = virtualItemRefCallbacks.get(key)
+  if (existingCallback) return existingCallback
+
+  const callback = (el: Element | ComponentPublicInstance | null) => {
+    const existingElement = virtualItemElements.get(key)
+    if (!el) {
+      if (existingElement) {
+        virtualResizeObserver?.unobserve(existingElement)
+        virtualElementToMessageKey.delete(existingElement)
+        virtualItemElements.delete(key)
+      }
+      virtualItemHeightUpdaters.delete(key)
+      return
     }
-    if (!el) return
 
     const maybeElement = (el as ComponentPublicInstance)?.$el ?? el
     if (!(maybeElement instanceof HTMLElement)) return
     const target = maybeElement
     const cached = messageHeightCache.get(key)
     if (cached && cached > 0) {
-      updateHeight(cached)
+      virtualItemHeightUpdaters.get(key)?.(cached)
     }
+
+    // Keep existing observer when ref callback is re-run for the same DOM node.
+    // This avoids unobserve/observe churn during parent re-renders.
+    if (existingElement === target) {
+      return
+    }
+
+    if (existingElement) {
+      virtualResizeObserver?.unobserve(existingElement)
+      virtualElementToMessageKey.delete(existingElement)
+    }
+
+    const previousKey = virtualElementToMessageKey.get(target)
+    if (previousKey && previousKey !== key) {
+      virtualItemElements.delete(previousKey)
+    }
+
+    virtualItemElements.set(key, target)
+    virtualElementToMessageKey.set(target, key)
 
     const syncHeight = () => {
       const next = Math.ceil(target.getBoundingClientRect().height)
@@ -365,16 +442,17 @@ function bindVirtualItemHeight(
       if (messageHeightCache.get(key) !== next) {
         messageHeightCache.set(key, next)
       }
-      updateHeight(next)
+      virtualItemHeightUpdaters.get(key)?.(next)
     }
 
     // Initial sync after mount
     syncHeight()
 
-    const observer = new ResizeObserver(syncHeight)
-    observer.observe(target)
-    virtualItemObservers.set(key, observer)
+    getVirtualResizeObserver().observe(target)
   }
+
+  virtualItemRefCallbacks.set(key, callback)
+  return callback
 }
 
 // Check if mobile device (UA detection)
@@ -400,6 +478,7 @@ useChatShortcuts({
 // Scroll to bottom when messages change
 let autoScrollRafId: number | null = null
 function scheduleScrollToBottom(behavior: 'auto' | 'smooth' = 'auto') {
+  if (!isUserNearBottom.value) return
   if (autoScrollRafId !== null) return
   autoScrollRafId = window.requestAnimationFrame(async () => {
     autoScrollRafId = null
@@ -1166,6 +1245,7 @@ onUnmounted(() => {
           <!-- Routing mode + model preference (dropdown) -->
           <div class="routing-menu-container relative">
             <button
+              v-if="!isMobile"
               ref="routingButtonRef"
               class="routing-trigger-btn topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer"
               :class="{
@@ -1197,7 +1277,9 @@ onUnmounted(() => {
               :title="t('theme.styles.title')"
               @click.stop="toggleStyleSelector"
             >
-              <span class="theme-style-btn theme-style-preview" :class="currentThemeStylePreviewClass" />
+              <svg class="h-5 w-5" :style="{ color: currentThemeStyleIconColor }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+              </svg>
             </button>
           </div>
 
@@ -1768,6 +1850,7 @@ onUnmounted(() => {
                   :message="chatStore.messages[index]!"
                   :is-streaming="chatStore.messages[index]!.id === streamingMessageId"
                   :is-last-assistant-message="chatStore.messages[index]!.id === lastAssistantMessageId"
+                  :disable-auto-tts="showTalkMode"
                   :is-mobile="isMobile"
                   :is-selected="chatStore.selectedMessageIds.has(chatStore.messages[index]!.id)"
                   :is-multi-select-mode="chatStore.isMultiSelectMode"
@@ -1790,6 +1873,7 @@ onUnmounted(() => {
                 :message="message"
                 :is-streaming="message.id === streamingMessageId"
                 :is-last-assistant-message="message.id === lastAssistantMessageId"
+                :disable-auto-tts="showTalkMode"
                 :is-mobile="isMobile"
                 :is-selected="chatStore.selectedMessageIds.has(message.id)"
                 :is-multi-select-mode="chatStore.isMultiSelectMode"
@@ -2911,19 +2995,6 @@ header,
   height: 14px;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.35);
-}
-
-.theme-style-preview {
-  width: 16px;
-  height: 16px;
-  border-color: rgba(148, 163, 184, 0.55);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65), 0 1px 2px rgba(15, 23, 42, 0.2);
-}
-
-:root.dark .theme-style-preview,
-[data-theme="dark"] .theme-style-preview {
-  border-color: rgba(148, 163, 184, 0.65);
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.92), 0 1px 2px rgba(2, 6, 23, 0.5);
 }
 
 .theme-style-btn-default {

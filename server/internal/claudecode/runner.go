@@ -120,9 +120,11 @@ func (r *Runner) processQueue() {
 // runDirect executes the CLI command directly.
 func (r *Runner) runDirect(ctx context.Context, params *RunParams) (*RunResult, error) {
 	startNano := timeutil.NowNano()
+	builder := NewCommandBuilder(params.Backend)
+	parser := NewOutputParser(params.Backend)
 
 	// Build command arguments
-	args := r.builder.BuildArgs(params)
+	args := builder.BuildArgs(params)
 
 	// Resolve command path - prefer embedded binary, fall back to config
 	cmdPath := params.Backend.Command
@@ -139,11 +141,11 @@ func (r *Runner) runDirect(ctx context.Context, params *RunParams) (*RunResult, 
 	}
 
 	// Set environment
-	cmd.Env = r.builder.BuildEnv(os.Environ())
+	cmd.Env = builder.BuildEnv(os.Environ())
 
 	// Set up stdin if needed
 	var stdin io.WriteCloser
-	if r.builder.ResolveInputMode(params.Prompt) == InputModeStdin {
+	if builder.ResolveInputMode(params.Prompt) == InputModeStdin {
 		var err error
 		stdin, err = cmd.StdinPipe()
 		if err != nil {
@@ -192,8 +194,8 @@ func (r *Runner) runDirect(ctx context.Context, params *RunParams) (*RunResult, 
 	}
 
 	// Parse output
-	outputFormat := r.builder.GetOutputFormat(params.IsResume)
-	output, parseErr := r.parser.Parse(stdout.String(), outputFormat)
+	outputFormat := builder.GetOutputFormat(params.IsResume)
+	output, parseErr := parser.Parse(stdout.String(), outputFormat)
 	if parseErr != nil {
 		// If parsing fails but we have stderr, include it in the error
 		if stderr.Len() > 0 {
@@ -240,7 +242,9 @@ func (r *Runner) RunStream(ctx context.Context, params *RunParams) (<-chan CliSt
 	}
 
 	// Build command arguments
-	args := r.builder.BuildArgs(params)
+	builder := NewCommandBuilder(params.Backend)
+	parser := NewOutputParser(params.Backend)
+	args := builder.BuildArgs(params)
 
 	// Resolve command path - prefer embedded binary, fall back to config
 	cmdPath := params.Backend.Command
@@ -259,11 +263,11 @@ func (r *Runner) RunStream(ctx context.Context, params *RunParams) (<-chan CliSt
 	}
 
 	// Set environment
-	cmd.Env = r.builder.BuildEnv(os.Environ())
+	cmd.Env = builder.BuildEnv(os.Environ())
 
 	// Set up stdin if needed
 	var stdin io.WriteCloser
-	if r.builder.ResolveInputMode(params.Prompt) == InputModeStdin {
+	if builder.ResolveInputMode(params.Prompt) == InputModeStdin {
 		var err error
 		stdin, err = cmd.StdinPipe()
 		if err != nil {
@@ -299,8 +303,8 @@ func (r *Runner) RunStream(ctx context.Context, params *RunParams) (<-chan CliSt
 	}
 
 	// Create output channel
-	outputFormat := r.builder.GetOutputFormat(params.IsResume)
-	streamCh := r.parser.ParseStream(stdout, outputFormat)
+	outputFormat := builder.GetOutputFormat(params.IsResume)
+	streamCh := parser.ParseStream(stdout, outputFormat)
 
 	// Create result channel that handles cleanup
 	resultCh := make(chan CliStreamChunk, 10)

@@ -15,6 +15,7 @@ import type {
   TypelessCardTerminal,
   ListItem,
 } from '@/types/typeless'
+import { i18n } from '@/i18n'
 import { parseInline, highlightCode } from './markdown'
 
 // ============================================================================
@@ -105,6 +106,8 @@ export { renderCache }
 // Using card.id as a DOM id causes document.getElementById() to always find the
 // first matching element, breaking copy buttons on the 2nd/3rd/... card.
 let domIdCounter = 0
+const DEFAULT_CODE_COLLAPSE_LINES = 24
+const CODE_LINE_HEIGHT_PX = 24
 
 // Card types that can be rendered functionally (simple, no interactivity beyond copy)
 export const FUNCTIONAL_CARD_TYPES = new Set([
@@ -211,6 +214,11 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => map[char] || char)
 }
 
+function t(key: string, fallback: string, named?: Record<string, string | number>): string {
+  const result = named ? i18n.global.t(key, named) : i18n.global.t(key)
+  return result === key ? fallback : String(result)
+}
+
 /**
  * Render table card
  */
@@ -287,6 +295,11 @@ function renderCode(card: TypelessCardCode): string {
   // Apply syntax highlighting to the entire code block
   const highlightedCode = card.language ? highlightCode(card.code, langForHighlight) : escapeHtml(card.code)
   const highlightedLines = highlightedCode.split('\n')
+  const configuredMaxCollapsedLines = (card as TypelessCardCode & { maxCollapsedLines?: number }).maxCollapsedLines
+  const maxCollapsedLines = Math.max(1, configuredMaxCollapsedLines || DEFAULT_CODE_COLLAPSE_LINES)
+  const shouldCollapse = highlightedLines.length > maxCollapsedLines
+  const hiddenLinesCount = shouldCollapse ? highlightedLines.length - maxCollapsedLines : 0
+  const collapsedMaxHeightPx = maxCollapsedLines * CODE_LINE_HEIGHT_PX
 
   const linesHtml = highlightedLines.map((line, index) => {
     const lineNum = index + 1
@@ -307,8 +320,17 @@ function renderCode(card: TypelessCardCode): string {
     ? `<span class="px-2 py-0.5 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">${escapeHtml(langDisplay)}</span>`
     : ''
 
-  // Generate globally unique DOM ID for copy functionality
-  const codeId = `code-${++domIdCounter}`
+  // Generate globally unique DOM IDs for copy/collapse functionality
+  const baseDomId = ++domIdCounter
+  const codeId = `code-${baseDomId}`
+  const codeContainerId = `code-container-${baseDomId}`
+  const codeFadeId = `code-fade-${baseDomId}`
+  const codeToggleId = `code-toggle-${baseDomId}`
+  const expandText = t('execCard.expand', 'Show more')
+  const collapseText = t('execCard.collapse', 'Show less')
+  const linesText = t('execCard.lines', 'lines', { count: hiddenLinesCount })
+  const expandLabel = `${expandText} ${hiddenLinesCount} ${linesText}`
+  const collapseLabel = collapseText
 
   // Data for fullscreen — base64-encode to avoid HTML attribute escaping issues
   // (JSON escape sequences like \n get mangled by the browser's HTML parser)
@@ -343,9 +365,29 @@ function renderCode(card: TypelessCardCode): string {
         </button>
       </div>
     </div>
-    <div class="overflow-x-auto cursor-pointer" title="Double-click to view fullscreen">
+    <div
+      id="${codeContainerId}"
+      class="overflow-x-auto cursor-pointer relative"
+      title="Double-click to view fullscreen"
+      ${shouldCollapse ? `data-collapsed="true" style="max-height: ${collapsedMaxHeightPx}px; overflow-y: hidden;"` : ''}
+    >
       <pre class="p-4 text-sm leading-relaxed" style="margin: 0; font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;"><code id="${codeId}" class="text-gray-800 dark:text-gray-100">${linesHtml}</code></pre>
+      ${shouldCollapse ? `<div id="${codeFadeId}" class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white dark:from-gray-700 to-transparent pointer-events-none"></div>` : ''}
     </div>
+    ${shouldCollapse
+      ? `<div class="border-t border-gray-200 dark:border-gray-700">
+          <button
+            id="${codeToggleId}"
+            class="w-full px-4 py-2 text-sm transition-colors flex items-center justify-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            data-code-container-id="${codeContainerId}"
+            data-code-fade-id="${codeFadeId}"
+            data-collapsed-max-height="${collapsedMaxHeightPx}"
+            data-expand-label="${escapeHtml(expandLabel)}"
+            data-collapse-label="${escapeHtml(collapseLabel)}"
+            onclick="event.stopPropagation(); window.__typelessToggleCodeCollapse && window.__typelessToggleCodeCollapse('${codeToggleId}')"
+          >${escapeHtml(expandLabel)}</button>
+        </div>`
+      : ''}
   </div>`
 }
 
@@ -801,6 +843,40 @@ export function initTypelessCopyHandler(): void {
     } catch (err) {
       console.error('Failed to copy code:', err)
     }
+  }
+
+  // Add global collapse toggle handler for long code cards
+  (window as unknown as { __typelessToggleCodeCollapse?: (toggleButtonId: string) => void }).__typelessToggleCodeCollapse = (toggleButtonId: string) => {
+    const button = document.getElementById(toggleButtonId)
+    if (!button) return
+
+    const containerId = button.getAttribute('data-code-container-id')
+    const fadeId = button.getAttribute('data-code-fade-id')
+    if (!containerId) return
+
+    const container = document.getElementById(containerId)
+    if (!container) return
+
+    const fade = fadeId ? document.getElementById(fadeId) : null
+    const expandLabel = button.getAttribute('data-expand-label') || 'Show more'
+    const collapseLabel = button.getAttribute('data-collapse-label') || 'Collapse'
+    const collapsedMaxHeight = Number(button.getAttribute('data-collapsed-max-height') || 0)
+    const isCollapsed = container.getAttribute('data-collapsed') !== 'false'
+
+    if (isCollapsed) {
+      container.style.maxHeight = 'none'
+      container.style.overflowY = 'auto'
+      container.setAttribute('data-collapsed', 'false')
+      fade?.classList.add('hidden')
+      button.textContent = collapseLabel
+      return
+    }
+
+    container.style.maxHeight = collapsedMaxHeight > 0 ? `${collapsedMaxHeight}px` : ''
+    container.style.overflowY = 'hidden'
+    container.setAttribute('data-collapsed', 'true')
+    fade?.classList.remove('hidden')
+    button.textContent = expandLabel
   }
 
   // Add global copy handler for terminal

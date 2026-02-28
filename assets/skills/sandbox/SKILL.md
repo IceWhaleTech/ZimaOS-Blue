@@ -1,71 +1,49 @@
-# Sandbox
+---
+name: sandbox
+description: "Execute commands in an isolated sandbox with limits and lifecycle controls. Use when running untrusted/high-risk commands, validating scripts safely, or when the user explicitly asks for sandboxed execution."
+---
 
-Execute commands in a sandboxed environment with limits and isolation.
+# Sandbox Skill
 
-## How to Send
+## Setup
 
-Direct call:
+No external dependencies required. Uses built-in sandbox runtime.
 
-```bash
-sandbox.execute command=echo args='["hello"]'
-```
+---
 
-Add `--json` for structured output.
+## Task Routing
 
-## Commands
+| User Intent | Action |
+|-------------|--------|
+| Run command safely in isolation | `sandbox.execute` |
+| Check running/completed sandbox job status | `sandbox.status` |
+| Stop runaway or unwanted sandbox job | `sandbox.kill` |
+| Check sandbox availability/capabilities | `sandbox.info` |
 
-### sandbox.execute
+---
 
-Run a command in sandbox.
-
-Required: `command`
-Optional: `args`, `stdin`, `timeout` (seconds, default 30, max 300)
+## Command Usage
 
 ```bash
 sandbox.execute command=sh args='["-lc","date"]' timeout=20
-```
-
-### sandbox.status
-
-Get execution status by ID.
-
-Required: `id`
-
-```bash
 sandbox.status id=exec_abc123
-```
-
-### sandbox.kill
-
-Stop a running execution.
-
-Required: `id`
-
-```bash
 sandbox.kill id=exec_abc123
-```
-
-### sandbox.info
-
-Show sandbox availability/capability info.
-
-```bash
 sandbox.info
 ```
 
-## Error Response
+---
 
-All commands return `status=error` with an `error` message on failure.
+## Error Handling
 
-Common errors:
-- `action is required`
-- `invalid action: ...`
-- `command is required for execute`
-- `id is required for status/kill`
-- `sandbox service not available`
+| Error | Resolution |
+|-------|------------|
+| Missing `command` for execute | Provide executable command |
+| Missing `id` for status/kill | Pass valid execution ID |
+| Sandbox service unavailable | Fall back to approved host execution path if allowed |
 
-## Example Triggers
+---
 
-- "Run this shell command safely in sandbox"
-- "Check sandbox execution status"
-- "停止这个沙箱任务"
+## Notes
+
+- Prefer sandbox for medium/high-risk execution paths.
+- Keep commands minimal and non-interactive.

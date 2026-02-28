@@ -218,6 +218,7 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 
 	var scanErr error
 	var chunkCount int
+	var streamedText strings.Builder
 	var nonSSELines []string // capture non-SSE lines for error diagnostics
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -255,6 +256,22 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 			continue
 		}
 		chunkCount++
+		if done && chunk.Delta != "" {
+			// Responses `response.completed` may carry a full text snapshot in
+			// addition to prior deltas. Keep only the missing suffix.
+			seen := streamedText.String()
+			if seen != "" {
+				switch {
+				case chunk.Delta == seen:
+					chunk.Delta = ""
+				case strings.HasPrefix(chunk.Delta, seen):
+					chunk.Delta = chunk.Delta[len(seen):]
+				}
+			}
+		}
+		if chunk.Delta != "" {
+			streamedText.WriteString(chunk.Delta)
+		}
 		// Inject actual provider/model from the resolved route (set by proxy handler
 		// via context before any data is written to the pipe, so it's safe to read here).
 		// IMPORTANT: Always prefer resolved.Model over chunk.Model. The upstream

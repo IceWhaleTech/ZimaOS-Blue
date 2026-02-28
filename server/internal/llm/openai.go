@@ -239,11 +239,17 @@ type openAIContentPart struct {
 	Type     string              `json:"type"` // "text" or "image_url"
 	Text     string              `json:"text,omitempty"`
 	ImageURL *openAIImageURL     `json:"image_url,omitempty"`
+	InputAudio *openAIInputAudio `json:"input_audio,omitempty"`
 }
 
 type openAIImageURL struct {
 	URL    string `json:"url"`    // data:image/jpeg;base64,... or URL
 	Detail string `json:"detail,omitempty"` // "low", "high", or "auto"
+}
+
+type openAIInputAudio struct {
+	Data   string `json:"data"`
+	Format string `json:"format,omitempty"` // wav | mp3
 }
 
 type openAITool struct {
@@ -825,6 +831,14 @@ func (p *OpenAIProvider) convertRequest(req ChatRequest) openAIRequest {
 							Detail: "auto",
 						},
 					})
+				case "audio":
+					contentParts = append(contentParts, openAIContentPart{
+						Type: "input_audio",
+						InputAudio: &openAIInputAudio{
+							Data:   part.Data,
+							Format: openAIAudioFormatFromMediaType(part.MediaType),
+						},
+					})
 				}
 			}
 			oaiMsg.Content = contentParts
@@ -878,6 +892,16 @@ func (p *OpenAIProvider) convertRequest(req ChatRequest) openAIRequest {
 	}
 
 	return openAIReq
+}
+
+func openAIAudioFormatFromMediaType(mediaType string) string {
+	mt := strings.ToLower(strings.TrimSpace(mediaType))
+	if strings.Contains(mt, "wav") {
+		return "wav"
+	}
+	// OpenAI input_audio supports wav/mp3 in chat payloads; use mp3 as fallback
+	// for non-wav formats (webm/ogg/m4a may still fail provider-side).
+	return "mp3"
 }
 
 // convertResponse converts an OpenAI response to ChatResponse.

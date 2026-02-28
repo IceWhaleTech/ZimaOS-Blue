@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
@@ -205,6 +206,41 @@ func TestProviderBuildRunParams(t *testing.T) {
 	// Verify system prompt contains user's system message
 	if !strings.Contains(params.SystemPrompt, "You are a helpful assistant.") {
 		t.Error("expected system prompt to contain user's system message")
+	}
+}
+
+func TestProviderBuildRunParams_InjectsBlueUserID(t *testing.T) {
+	config := &ClaudeCodeConfig{
+		Enabled:      true,
+		Command:      "claude",
+		DefaultModel: "sonnet",
+		Backend: CliBackendConfig{
+			Env: map[string]string{
+				"EXISTING_VAR": "keep-me",
+			},
+		},
+	}
+	provider := NewProvider(config)
+
+	ctx := skill.WithUserID(context.Background(), "user-123")
+	req := llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "hello"},
+		},
+	}
+
+	params, err := provider.buildRunParams(ctx, req)
+	if err != nil {
+		t.Fatalf("buildRunParams() error = %v", err)
+	}
+	if params.Backend == nil {
+		t.Fatal("expected backend to be set")
+	}
+	if got := params.Backend.Env["BLUE_USER_ID"]; got != "user-123" {
+		t.Fatalf("BLUE_USER_ID = %q, want %q", got, "user-123")
+	}
+	if got := params.Backend.Env["EXISTING_VAR"]; got != "keep-me" {
+		t.Fatalf("EXISTING_VAR = %q, want %q", got, "keep-me")
 	}
 }
 

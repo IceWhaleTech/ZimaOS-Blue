@@ -1071,10 +1071,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if execApprovals != nil {
 			execGroup := v1.Group("/exec")
 			execGroup.GET("/approvals/pending", func(c echo.Context) error {
-				userID := c.QueryParam("user_id")
-				if userID == "" {
-					userID = "default"
-				}
+				userID := resolveRequestUserID(c)
 				req := execApprovals.GetPending(userID)
 				if req == nil {
 					return c.JSON(200, map[string]interface{}{"pending": false})
@@ -1105,11 +1102,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if questionMgr != nil {
 		askGroup := v1.Group("/ask-user-question")
 		askGroup.GET("/pending", func(c echo.Context) error {
-			userID := c.QueryParam("user_id")
-			if userID == "" {
-				userID = "default"
-			}
+			userID := resolveRequestUserID(c)
 			req := questionMgr.GetPending(userID)
+			if req == nil {
+				if sessionID := strings.TrimSpace(c.QueryParam("session_id")); sessionID != "" {
+					req = questionMgr.GetPendingBySession(sessionID)
+				}
+			}
 			if req == nil {
 				return c.JSON(200, map[string]interface{}{"pending": false})
 			}
@@ -2299,6 +2298,18 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	logger.Info("All routes registered")
 	return apiProtected
+}
+
+func resolveRequestUserID(c echo.Context) string {
+	if claims := auth.GetUserFromContext(c); claims != nil {
+		if userID := strings.TrimSpace(claims.UserID); userID != "" {
+			return userID
+		}
+	}
+	if userID := strings.TrimSpace(c.QueryParam("user_id")); userID != "" {
+		return userID
+	}
+	return "default"
 }
 
 // execApprovalAdapter bridges tools.ApprovalManager to api.ExecApprovalResolver.

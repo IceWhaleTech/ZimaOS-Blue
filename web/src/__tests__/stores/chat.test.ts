@@ -78,6 +78,25 @@ describe('Chat Store', () => {
       expect(store.conversations).toContainEqual(mockConversation)
       expect(store.currentConversationId).toBe('new-id')
     })
+
+    it('should stop active streaming state when creating a new conversation', async () => {
+      const mockConversation = {
+        id: 'new-id',
+        title: 'New Chat',
+        created_at: '2024-01-01',
+        updated_at: '2024-01-01',
+      }
+      vi.mocked(conversationApi.create).mockResolvedValue({ data: mockConversation } as never)
+
+      const store = useChatStore()
+      store.sending = true
+      store.streaming = true
+
+      await store.createConversation('New Chat')
+
+      expect(store.sending).toBe(false)
+      expect(store.streaming).toBe(false)
+    })
   })
 
   describe('deleteConversation', () => {

@@ -538,105 +538,106 @@ onUnmounted(() => {
       <!-- Claude Code CLI Settings -->
       <ClaudeCodeSettings @status-change="showSaveStatus" />
 
-      <!-- Skill Reranker -->
-      <div class="glass-card p-4">
-        <div class="mb-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('settings.skillReranker.title') }}</h3>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('settings.skillReranker.description') }}</p>
-        </div>
-
-        <div class="space-y-3">
-          <div class="flex items-center justify-between">
-            <div>
-              <h4 class="text-sm text-gray-800 dark:text-gray-100">{{ t('settings.skillReranker.rerankEnabled') }}</h4>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              :aria-checked="settingsStore.skillRerankEnabled"
-              :disabled="skillRerankerSaving"
-              class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-              :class="settingsStore.skillRerankEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
-              @click="handleSkillRerankEnabledChange(!settingsStore.skillRerankEnabled)"
-            >
-              <span
-                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="settingsStore.skillRerankEnabled ? 'translate-x-5' : 'translate-x-0'"
-              />
-            </button>
-          </div>
-
-          <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
-            <div class="flex items-center justify-between">
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                  <h4 class="text-sm text-gray-800 dark:text-gray-100">{{ t('settings.skillReranker.onnxEnabled') }}</h4>
-                  <span v-if="!onnxModelStatus?.ready" class="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-600/50 text-gray-500 dark:text-gray-400 rounded">
-                    {{ onnxModelStatus?.files?.[0]?.size || '~90MB' }}
-                  </span>
-                </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {{ settingsStore.skillRerankEnabled ? t('settings.skillReranker.onnxEnabledHint') : t('settings.skillReranker.disabledByRerank') }}
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                :aria-checked="settingsStore.skillRerankONNXEnabled"
-                :disabled="onnxRerankerToggleDisabled"
-                class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 ml-3"
-                :class="settingsStore.skillRerankONNXEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
-                @click="handleSkillRerankONNXEnabledChange(!settingsStore.skillRerankONNXEnabled)"
-              >
-                <span
-                  class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                  :class="settingsStore.skillRerankONNXEnabled ? 'translate-x-5' : 'translate-x-0'"
-                />
-              </button>
-            </div>
-
-            <template v-if="onnxModelStatus && onnxModelDownloading">
-              <div v-if="onnxModelStatus.state === 'connecting' && onnxModelStatus.progress" class="mt-3 space-y-1.5">
-                <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                  <span>{{ onnxModelStatus.progress.file }} ({{ onnxModelStatus.progress.file_index + 1 }}/{{ onnxModelStatus.progress.total_files }})</span>
-                </div>
-                <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div class="h-full bg-blue-500/50 dark:bg-blue-400/50 rounded-full animate-pulse w-full"></div>
-                </div>
-                <div class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
-                  <span>{{ t('settings.skillReranker.modelConnecting') }}</span>
-                  <button class="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300" @click="cancelOnnxModelDownload">{{ t('common.cancel') }}</button>
-                </div>
-              </div>
-              <div v-else-if="onnxModelStatus.state === 'downloading' && onnxModelStatus.progress" class="mt-3 space-y-1.5">
-                <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                  <span>{{ onnxModelStatus.progress.file }} ({{ onnxModelStatus.progress.file_index + 1 }}/{{ onnxModelStatus.progress.total_files }})</span>
-                  <span>{{ onnxModelStatus.progress.percentage.toFixed(1) }}%</span>
-                </div>
-                <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300" :style="{ width: onnxModelStatus.progress.percentage + '%' }"></div>
-                </div>
-                <div class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
-                  <span>{{ formatBytes(onnxModelStatus.progress.downloaded) }} / {{ onnxModelStatus.progress.total > 0 ? formatBytes(onnxModelStatus.progress.total) : '...' }}</span>
-                  <span>{{ onnxModelStatus.progress.speed_human }} &middot; {{ onnxModelStatus.progress.eta || '...' }}
-                    <button class="ml-2 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300" @click="cancelOnnxModelDownload">{{ t('common.cancel') }}</button>
-                  </span>
-                </div>
-              </div>
-            </template>
-
-            <div v-if="onnxModelStatus?.state === 'error' && onnxModelStatus.error" class="mt-2.5 px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center justify-between">
-              <p class="text-xs text-red-600 dark:text-red-400">{{ onnxModelStatus.error }}</p>
-              <button class="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white ml-2 flex-shrink-0" @click="retryOnnxModelDownload">{{ t('common.retry') }}</button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- Optimization Tab -->
     <div v-if="activeTab === 'proxy'">
       <ApiProxySettings @status-change="showSaveStatus" />
+    </div>
+
+    <!-- Skill Reranker (Optimization Tab only) -->
+    <div v-if="activeTab === 'proxy'" class="glass-card p-4 mt-6">
+      <div class="mb-3">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('settings.skillReranker.title') }}</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('settings.skillReranker.description') }}</p>
+      </div>
+
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h4 class="text-sm text-gray-800 dark:text-gray-100">{{ t('settings.skillReranker.rerankEnabled') }}</h4>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="settingsStore.skillRerankEnabled"
+            :disabled="skillRerankerSaving"
+            class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+            :class="settingsStore.skillRerankEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+            @click="handleSkillRerankEnabledChange(!settingsStore.skillRerankEnabled)"
+          >
+            <span
+              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              :class="settingsStore.skillRerankEnabled ? 'translate-x-5' : 'translate-x-0'"
+            />
+          </button>
+        </div>
+
+        <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+          <div class="flex items-center justify-between">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <h4 class="text-sm text-gray-800 dark:text-gray-100">{{ t('settings.skillReranker.onnxEnabled') }}</h4>
+                <span v-if="!onnxModelStatus?.ready" class="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-600/50 text-gray-500 dark:text-gray-400 rounded">
+                  {{ onnxModelStatus?.files?.[0]?.size || '~90MB' }}
+                </span>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{ settingsStore.skillRerankEnabled ? t('settings.skillReranker.onnxEnabledHint') : t('settings.skillReranker.disabledByRerank') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="settingsStore.skillRerankONNXEnabled"
+              :disabled="onnxRerankerToggleDisabled"
+              class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 ml-3"
+              :class="settingsStore.skillRerankONNXEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+              @click="handleSkillRerankONNXEnabledChange(!settingsStore.skillRerankONNXEnabled)"
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="settingsStore.skillRerankONNXEnabled ? 'translate-x-5' : 'translate-x-0'"
+              />
+            </button>
+          </div>
+
+          <template v-if="onnxModelStatus && onnxModelDownloading">
+            <div v-if="onnxModelStatus.state === 'connecting' && onnxModelStatus.progress" class="mt-3 space-y-1.5">
+              <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <span>{{ onnxModelStatus.progress.file }} ({{ onnxModelStatus.progress.file_index + 1 }}/{{ onnxModelStatus.progress.total_files }})</span>
+              </div>
+              <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div class="h-full bg-blue-500/50 dark:bg-blue-400/50 rounded-full animate-pulse w-full"></div>
+              </div>
+              <div class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+                <span>{{ t('settings.skillReranker.modelConnecting') }}</span>
+                <button class="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300" @click="cancelOnnxModelDownload">{{ t('common.cancel') }}</button>
+              </div>
+            </div>
+            <div v-else-if="onnxModelStatus.state === 'downloading' && onnxModelStatus.progress" class="mt-3 space-y-1.5">
+              <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>{{ onnxModelStatus.progress.file }} ({{ onnxModelStatus.progress.file_index + 1 }}/{{ onnxModelStatus.progress.total_files }})</span>
+                <span>{{ onnxModelStatus.progress.percentage.toFixed(1) }}%</span>
+              </div>
+              <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300" :style="{ width: onnxModelStatus.progress.percentage + '%' }"></div>
+              </div>
+              <div class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+                <span>{{ formatBytes(onnxModelStatus.progress.downloaded) }} / {{ onnxModelStatus.progress.total > 0 ? formatBytes(onnxModelStatus.progress.total) : '...' }}</span>
+                <span>{{ onnxModelStatus.progress.speed_human }} &middot; {{ onnxModelStatus.progress.eta || '...' }}
+                  <button class="ml-2 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300" @click="cancelOnnxModelDownload">{{ t('common.cancel') }}</button>
+                </span>
+              </div>
+            </div>
+          </template>
+
+          <div v-if="onnxModelStatus?.state === 'error' && onnxModelStatus.error" class="mt-2.5 px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center justify-between">
+            <p class="text-xs text-red-600 dark:text-red-400">{{ onnxModelStatus.error }}</p>
+            <button class="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white ml-2 flex-shrink-0" @click="retryOnnxModelDownload">{{ t('common.retry') }}</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Network Tab -->

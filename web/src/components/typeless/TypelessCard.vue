@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef, watch, onMounted, type Component } from 'vue'
+import { computed, shallowRef, watch, type Component } from 'vue'
 import type { TypelessCard } from '@/types/typeless'
 import { canRenderFunctionally, renderCardToHtml } from '@/utils/typelessRenderers'
 import { componentPool } from '@/utils/componentPool'
@@ -47,21 +47,16 @@ async function loadComponent(cardType: string) {
 
 // Watch for card type changes
 watch(
-  () => props.card.type,
-  (newType) => {
-    if (!canRenderFunctionally(props.card)) {
-      loadComponent(newType)
+  () => [props.card.type, isFunctional.value] as const,
+  ([newType, functional]) => {
+    if (functional) {
+      dynamicComponent.value = null
+      return
     }
+    loadComponent(newType)
   },
   { immediate: true }
 )
-
-// Also load on mount if not functional
-onMounted(() => {
-  if (!isFunctional.value) {
-    loadComponent(props.card.type)
-  }
-})
 
 function handleAction(actionId: string, cardId?: string) {
   if (cardId) {

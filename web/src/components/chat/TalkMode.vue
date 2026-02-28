@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onUnmounted, watch, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { playAudioFromBase64 } from '@/api/voice'
+import { ttsAudioManager, voiceApi } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { convertToWav } from '@/utils/audioConverter'
 import { EnergyVAD } from '@/utils/vad'
+import { markdownToText } from '@/utils/markdown'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 import { useLocaleStore } from '@/stores/locale'
 import { useChatStore } from '@/stores/chat'
@@ -46,6 +47,7 @@ const audioLevel = ref(0)
 
 // Mobile detection
 const isMobile = ref(false)
+const lastSpokenAssistantMessageId = ref<string | null>(null)
 
 // VAD instance
 let vad: EnergyVAD | null = null
@@ -57,6 +59,8 @@ const isActive = () => conversationState.value !== 'idle'
 onMounted(() => {
   isMobile.value = window.innerWidth < 768
   window.addEventListener('resize', syncMobileState)
+  window.addEventListener('blur', handleWindowBlur)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 function syncMobileState() {
@@ -214,6 +218,21 @@ function close() {
   emit('update:modelValue', false)
 }
 
+function stopTTSPlayback() {
+  ttsAudioManager.stop()
+  voiceApi.stopSpeaking().catch(() => {})
+}
+
+function handleWindowBlur() {
+  stopTTSPlayback()
+}
+
+function handleVisibilityChange() {
+  if (document.hidden) {
+    stopTTSPlayback()
+  }
+}
+
 // Toggle mute
 function toggleAutoPlay() {
   autoPlayTTS.value = !autoPlayTTS.value
@@ -224,6 +243,7 @@ function toggleAutoPlay() {
 watch(() => props.modelValue, (newValue) => {
   if (newValue) {
     conversationBubbles.value = []
+    lastSpokenAssistantMessageId.value = null
     open()
   } else {
     stopAll()
@@ -236,8 +256,14 @@ watch(() => chatStore.streaming, async (streaming, wasStreaming) => {
     const messages = chatStore.messages
     const lastMsg = messages.length > 0 ? messages[messages.length - 1] : undefined
     if (lastMsg?.role === 'assistant' && lastMsg.content) {
-      pushBubble('assistant', lastMsg.content)
-      await playResponseTTS(lastMsg.content)
+      const plainText = markdownToText(lastMsg.content)
+      if (lastSpokenAssistantMessageId.value === lastMsg.id) {
+        resumeListening()
+        return
+      }
+      pushBubble('assistant', plainText)
+      await playResponseTTS(plainText)
+      lastSpokenAssistantMessageId.value = lastMsg.id
     }
   }
 })
@@ -272,7 +298,7 @@ async function playResponseTTS(text: string) {
   try {
     const result = await speechApi.synthesize(text)
     if (result.audio) {
-      await playAudioFromBase64(result.audio, result.content_type || 'audio/mp3')
+      await ttsAudioManager.play(result.audio, result.content_type || 'audio/mp3')
     }
   } catch (e) {
     console.error('TTS playback failed:', e)
@@ -285,7 +311,10 @@ async function playResponseTTS(text: string) {
 // Cleanup on unmount
 onUnmounted(() => {
   stopAll()
+  stopTTSPlayback()
   window.removeEventListener('resize', syncMobileState)
+  window.removeEventListener('blur', handleWindowBlur)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 

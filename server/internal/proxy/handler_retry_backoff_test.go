@@ -65,3 +65,27 @@ func TestIsResponsesContinuationRejectedError(t *testing.T) {
 		}
 	}
 }
+
+func TestShouldRetryWithoutTools(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "no response", err: errors.New("provider prov_x returned no response"), want: false},
+		{name: "upstream 502", err: errors.New("upstream 502: bad gateway"), want: false},
+		{name: "provider 502", err: errors.New("provider returned 502: bad gateway"), want: false},
+		{name: "explicit no tool support", err: errors.New("provider prov_x does not support tool calls"), want: true},
+		{name: "tool field rejected 400", err: errors.New("provider returned 400: unknown field tool_choice"), want: true},
+		{name: "function calling rejected 422", err: errors.New("provider returned 422: function calling not supported"), want: true},
+		{name: "generic 400 without tool signal", err: errors.New("upstream 400: prompt too long"), want: false},
+		{name: "generic 422 without tool signal", err: errors.New("provider returned 422: invalid parameter"), want: false},
+	}
+
+	for _, tc := range tests {
+		if got := shouldRetryWithoutTools(tc.err); got != tc.want {
+			t.Fatalf("%s: shouldRetryWithoutTools(%v) = %v, want %v", tc.name, tc.err, got, tc.want)
+		}
+	}
+}

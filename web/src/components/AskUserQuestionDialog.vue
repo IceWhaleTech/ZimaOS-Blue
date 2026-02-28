@@ -91,15 +91,38 @@ function getOrCreateAnswer(qId: string) {
 }
 
 function toggleOther(qId: string, multiSelect: boolean) {
-  toggleOption(qId, '__other__', multiSelect)
+  const ans = getOrCreateAnswer(qId)
+  if (multiSelect) {
+    const idx = ans.selected.indexOf('__other__')
+    if (idx >= 0) {
+      ans.selected.splice(idx, 1)
+      ans.otherText = ''
+    } else {
+      ans.selected.push('__other__')
+    }
+    return
+  }
+  const currentlySelected = ans.selected.includes('__other__')
+  if (currentlySelected) {
+    ans.selected = []
+    ans.otherText = ''
+    return
+  }
+  // Single-select "Other" should not auto-submit or auto-advance.
+  ans.selected = ['__other__']
+}
+
+function isAnswerComplete(ans: { selected: string[]; otherText: string } | undefined): boolean {
+  if (!ans) return false
+  const hasNormalOption = ans.selected.some(v => v !== '__other__')
+  const hasOther = ans.selected.includes('__other__') && ans.otherText.trim() !== ''
+  return hasNormalOption || hasOther
 }
 
 // Check if current question is answered
 const currentQuestionAnswered = computed(() => {
   if (!currentQuestion.value) return false
-  const ans = answers.value[currentQuestion.value.id]
-  if (!ans) return false
-  return ans.selected.length > 0 || ans.otherText.trim() !== ''
+  return isAnswerComplete(answers.value[currentQuestion.value.id])
 })
 
 const canSubmit = computed(() => {
@@ -110,16 +133,12 @@ const canSubmit = computed(() => {
   }
   // For multiple questions, all must be answered to submit
   return question.value.questions.every((q) => {
-    const ans = answers.value[q.id]
-    if (!ans) return false
-    return ans.selected.length > 0 || ans.otherText.trim() !== ''
+    return isAnswerComplete(answers.value[q.id])
   })
 })
 
 function isTabAnswered(qId: string): boolean {
-  const ans = answers.value[qId]
-  if (!ans) return false
-  return ans.selected.length > 0 || ans.otherText.trim() !== ''
+  return isAnswerComplete(answers.value[qId])
 }
 
 // Countdown timer
@@ -182,7 +201,7 @@ function dismiss() {
               </svg>
             </div>
             <div class="flex-1 min-w-0">
-              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+              <h3 class="text-xs font-semibold text-gray-900 dark:text-white">
                 {{ t('askQuestion.title') }}
               </h3>
               <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -228,15 +247,15 @@ function dismiss() {
           </div>
 
           <!-- Question body - show current question only -->
-          <div v-if="currentQuestion" class="px-5 py-4 space-y-3 max-h-80 overflow-y-auto">
-            <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ currentQuestion.question }}</p>
+          <div v-if="currentQuestion" class="px-4 py-3 space-y-2.5 max-h-[68vh] overflow-y-auto">
+            <p class="text-xs font-medium text-gray-800 dark:text-gray-200">{{ currentQuestion.question }}</p>
 
             <!-- Options -->
             <div class="space-y-2">
               <label
                 v-for="opt in currentQuestion.options"
                 :key="opt.label"
-                class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
+                class="flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors"
                 :class="isSelected(currentQuestion.id, opt.value || opt.label)
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
                   : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
@@ -256,14 +275,14 @@ function dismiss() {
                   </div>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ opt.label }}</span>
+                  <span class="text-xs font-medium text-gray-800 dark:text-gray-200">{{ opt.label }}</span>
                   <p v-if="opt.description" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ opt.description }}</p>
                 </div>
               </label>
 
               <!-- Other option -->
               <label
-                class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
+                class="flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors"
                 :class="isOtherSelected(currentQuestion.id)
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
                   : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'"
@@ -282,12 +301,12 @@ function dismiss() {
                   </div>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('askQuestion.other') }}</span>
+                  <span class="text-xs font-medium text-gray-800 dark:text-gray-200">{{ t('askQuestion.other') }}</span>
                   <input
                     v-if="isOtherSelected(currentQuestion.id)"
                     v-model="getOrCreateAnswer(currentQuestion.id).otherText"
                     type="text"
-                    class="mt-2 w-full px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    class="mt-1.5 w-full px-2.5 py-1 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     :placeholder="t('askQuestion.otherPlaceholder')"
                     @click.stop
                   />
@@ -297,23 +316,23 @@ function dismiss() {
           </div>
 
           <!-- Actions (hidden in quick mode) -->
-          <div v-if="!isQuickMode" class="flex gap-2 px-5 py-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+          <div v-if="!isQuickMode" class="flex gap-2 px-4 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
             <button
-              class="px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+              class="px-3 py-2 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
               @click="dismiss"
             >
               {{ t('askQuestion.skip') }}
             </button>
             <button
               v-if="totalQuestions > 1 && !isLastQuestion"
-              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
+              class="flex-1 px-3 py-2 text-xs font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
               @click="activeTab++"
             >
               {{ t('askQuestion.next') }}
             </button>
             <button
               v-else
-              class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors cursor-pointer"
+              class="flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-colors cursor-pointer"
               :class="canSubmit
                 ? 'bg-blue-600 hover:bg-blue-700 text-white'
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'"

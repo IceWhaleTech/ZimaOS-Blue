@@ -63,6 +63,7 @@ func ipcFallback(cmd string, args []string) bool {
 	if len(positional) > 0 && len(params) == 0 {
 		params["query"] = strings.Join(positional, " ")
 	}
+	injectIPCContextParams(params, os.Getenv)
 
 	req := &sockipc.Request{Cmd: cmd, Params: params}
 	resp, err := ipcRoundTrip(req)
@@ -101,6 +102,19 @@ func ipcFallback(cmd string, args []string) bool {
 		}
 	}
 	return true
+}
+
+func injectIPCContextParams(params map[string]string, getenv func(string) string) {
+	if params == nil || getenv == nil {
+		return
+	}
+	// Use reserved internal key to avoid colliding with skill arguments.
+	if _, exists := params["__blue_user_id"]; exists {
+		return
+	}
+	if userID := strings.TrimSpace(getenv("BLUE_USER_ID")); userID != "" {
+		params["__blue_user_id"] = userID
+	}
 }
 
 func parseIPCArgs(args []string) (map[string]string, []string) {

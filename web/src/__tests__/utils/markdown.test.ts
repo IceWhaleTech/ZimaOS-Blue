@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { renderMarkdown, copyCodeToClipboard } from '@/utils/markdown'
+import { renderMarkdown, copyCodeToClipboard, markdownToText } from '@/utils/markdown'
 
 describe('Markdown Renderer', () => {
   describe('renderMarkdown', () => {
@@ -244,6 +244,29 @@ const x = 1;
       expect(mockWriteText).toHaveBeenCalledWith('test code')
 
       vi.unstubAllGlobals()
+    })
+  })
+
+  describe('markdownToText', () => {
+    it('should strip common markdown syntax', () => {
+      const input = '# Title\n\n- **bold** item with `code`\n> quote'
+      const result = markdownToText(input)
+
+      expect(result).toBe('Title\n\nbold item with code\nquote')
+    })
+
+    it('should keep fenced code body and drop fences', () => {
+      const input = '```ts\nconst x = 1\n```\n\nAfter'
+      const result = markdownToText(input)
+
+      expect(result).toBe('const x = 1\n\nAfter')
+    })
+
+    it('should keep link and image labels', () => {
+      const input = '[OpenAI](https://openai.com) ![logo](https://example.com/a.png)'
+      const result = markdownToText(input)
+
+      expect(result).toBe('OpenAI logo')
     })
   })
 })

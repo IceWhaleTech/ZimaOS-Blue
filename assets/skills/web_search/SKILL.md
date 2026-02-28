@@ -1,44 +1,51 @@
-# Web Search
+---
+name: web_search
+description: "Run keyword web search and return ranked result listings (title, URL, snippet). Use when the user asks to find references, official docs, sources, or latest links before opening pages in detail."
+---
 
-Keyword web search that returns result listings (title, URL, snippet).
+# Web Search Skill
 
-## How to Send
+## Setup
 
-Direct call:
+No external dependencies required. Uses built-in web search capability.
+
+---
+
+## Task Routing
+
+| User Intent | Action |
+|-------------|--------|
+| Find relevant links/sources quickly | `web_search query=...` |
+| Need official docs/reference pages | `web_search` with precise query terms |
+| Need page interaction/content extraction | Search first, then switch to `browser` |
+
+---
+
+## Command Usage
 
 ```bash
 web_search query="ZimaOS Blue release notes"
+web_search query="OpenAI Responses API function calling" max_results=8
+web_search query="container sandbox security best practices" max_results=10 region=us-en
 ```
 
-Add `--json` for structured output.
+Parameters:
+- `query` (required)
+- `max_results` (optional, default 10, max 20)
+- `region` (optional, e.g. `us-en`, `wt-wt`)
 
-## Parameters
+---
 
-- `query` (required): Search query text
-- `max_results` (optional): Maximum results (default 10, max 20)
-- `region` (optional): Region code, for example `us-en`, `wt-wt`
+## Error Handling
 
-```bash
-web_search query="container sandbox security best practices" max_results=8 region=us-en
-```
+| Error | Resolution |
+|-------|------------|
+| `query is required` | Provide non-empty `query` |
+| Search backend unavailable | Retry later or reduce query complexity |
+
+---
 
 ## Notes
 
-- This skill only returns search listings.
-- It does not open pages or extract full content.
-- Use `browser` when you need to read/interact with a specific page.
-
-## Error Response
-
-Returns `status=error` when search fails.
-
-Common errors:
-- `query is required`
-- `query must be a non-empty string`
-- `web search not configured`
-
-## Example Triggers
-
-- "Search latest docs for this API"
-- "Find official references for this topic"
-- "帮我网页搜索这个关键词"
+- `web_search` returns result listings only; it does not open pages.
+- Use `browser` to read or interact with a chosen URL.

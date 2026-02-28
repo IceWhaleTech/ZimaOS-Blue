@@ -74,6 +74,21 @@ func TestParseSSEChunk_ResponsesCompleted(t *testing.T) {
 	}
 }
 
+func TestParseSSEChunk_ResponsesCompletedExtractsFinalText(t *testing.T) {
+	payload := `{"type":"response.completed","response":{"id":"resp_3b","model":"o3","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"A"}]}]}}`
+
+	chunk, done, err := ParseSSEChunk(payload)
+	if err != nil {
+		t.Fatalf("ParseSSEChunk failed: %v", err)
+	}
+	if !done || !chunk.Done {
+		t.Fatal("expected done=true on response.completed")
+	}
+	if chunk.Delta != "A" {
+		t.Fatalf("chunk.Delta = %q, want %q", chunk.Delta, "A")
+	}
+}
+
 func TestParseSSEChunk_ResponsesFailed(t *testing.T) {
 	payload := `{"type":"response.failed","response":{"id":"resp_4"},"error":{"message":"boom","type":"invalid_request_error"}}`
 
@@ -180,5 +195,39 @@ func TestMarshalResponsesRequest_FirstTurnExtractsInstructions(t *testing.T) {
 	}
 	if got["instructions"] != "system prompt" {
 		t.Fatalf("instructions = %#v, want %q", got["instructions"], "system prompt")
+	}
+}
+
+func TestMarshalResponsesRequest_ContinuationKeepsLastAssistantContext(t *testing.T) {
+	req := llm.ChatRequest{
+		Model:              "gpt-5.3-codex-spark",
+		PreviousResponseID: "resp_prev_ctx_1",
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "旧问题"},
+			{Role: llm.RoleAssistant, Content: "A) 选项1 B) 选项2"},
+			{Role: llm.RoleUser, Content: "B"},
+		},
+	}
+
+	raw, err := MarshalResponsesRequest(req)
+	if err != nil {
+		t.Fatalf("MarshalResponsesRequest failed: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	input, ok := got["input"].([]any)
+	if !ok {
+		t.Fatalf("input missing or wrong type: %#v", got["input"])
+	}
+	if len(input) != 2 {
+		t.Fatalf("input length = %d, want 2", len(input))
+	}
+
+	first, _ := input[0].(map[string]any)
+	if first["role"] != "assistant" {
+		t.Fatalf("first role = %#v, want assistant", first["role"])
 	}
 }

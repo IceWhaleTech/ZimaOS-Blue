@@ -507,6 +507,70 @@ func TestBridgeChatStream_AcceptsSSEEventLines(t *testing.T) {
 	}
 }
 
+func TestBridgeChatStream_CompletedCarriesFinalText(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+			rr.Provider = "OpenAI"
+			rr.Model = "o3"
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		fmt.Fprint(w, "event: response.completed\n")
+		fmt.Fprint(w, `data: {"type":"response.completed","response":{"id":"resp_short","model":"o3","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"A"}]}]}}`+"\n\n")
+	})
+
+	bridge := NewBridge(handler)
+	var out strings.Builder
+
+	err := bridge.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	}, func(chunk llm.StreamChunk) error {
+		out.WriteString(chunk.Delta)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ChatStream failed: %v", err)
+	}
+	if got := out.String(); got != "A" {
+		t.Fatalf("expected output %q, got %q", "A", got)
+	}
+}
+
+func TestBridgeChatStream_CompletedSnapshotDoesNotDuplicateDelta(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+			rr.Provider = "OpenAI"
+			rr.Model = "o3"
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		fmt.Fprint(w, "event: response.output_text.delta\n")
+		fmt.Fprint(w, `data: {"type":"response.output_text.delta","response_id":"resp_dup","delta":"Hel"}`+"\n\n")
+		fmt.Fprint(w, "event: response.completed\n")
+		fmt.Fprint(w, `data: {"type":"response.completed","response":{"id":"resp_dup","model":"o3","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello"}]}]}}`+"\n\n")
+	})
+
+	bridge := NewBridge(handler)
+	var out strings.Builder
+
+	err := bridge.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	}, func(chunk llm.StreamChunk) error {
+		out.WriteString(chunk.Delta)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ChatStream failed: %v", err)
+	}
+	if got := out.String(); got != "Hello" {
+		t.Fatalf("expected output %q, got %q", "Hello", got)
+	}
+}
+
 func TestBridgeChatStream_ZeroChunksReturnsError(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {

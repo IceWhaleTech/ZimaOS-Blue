@@ -31,7 +31,7 @@ type Settings struct {
 	SmartSkillSelection              *bool    `json:"smart_skill_selection,omitempty"`               // Progressive skill selector (nil = default true)
 	SkillSelectorMode                string   `json:"skill_selector_mode,omitempty"`                 // hybrid|ir_only|llm_only
 	SkillRerankEnabled               *bool    `json:"skill_rerank_enabled,omitempty"`                // Enable stage-2 rerank (nil = default true)
-	SkillRerankModel                 string   `json:"skill_rerank_model,omitempty"`                  // Reranker model repo (e.g. cross-encoder/ms-marco-MiniLM-L-6-v2)
+	SkillRerankModel                 string   `json:"skill_rerank_model,omitempty"`                  // Reranker model repo (e.g. cross-encoder/ms-marco-MiniLM-L6-v2)
 	SkillRerankONNXEnabled           *bool    `json:"skill_rerank_onnx_enabled,omitempty"`           // Enable ONNX reranker path (nil = default false)
 	SkillRerankONNXAutoDownload      *bool    `json:"skill_rerank_onnx_auto_download,omitempty"`     // Allow ONNX model auto-download (nil = default false)
 	SkillSelectorConfidenceThreshold *float64 `json:"skill_selector_confidence_threshold,omitempty"` // default 0.78
@@ -363,7 +363,7 @@ func (h *SettingsHandler) GetSkillRerankModel() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SkillRerankModel == "" {
-		return "cross-encoder/ms-marco-MiniLM-L-6-v2"
+		return "cross-encoder/ms-marco-MiniLM-L6-v2"
 	}
 	return h.settings.SkillRerankModel
 }

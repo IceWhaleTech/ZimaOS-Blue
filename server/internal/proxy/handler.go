@@ -315,6 +315,75 @@ func shouldRetryTransientUpstream5xx(singleProvider bool, statusCode int, body [
 	return true
 }
 
+var retryWithoutToolsMarkers = []string{
+	"tool",
+	"tool_choice",
+	"tool_calls",
+	"function call",
+	"function calling",
+	"unsupported function",
+	"unsupported tool",
+	"\"tools\"",
+}
+
+var retryWithoutToolsSchemaMarkers = []string{
+	"unknown field",
+	"unexpected field",
+	"additional properties",
+	"invalid request format",
+	"unsupported request",
+}
+
+func shouldRetryWithoutTools(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+
+	// Never drop tools on clearly transient/server-side failures.
+	if strings.Contains(msg, "returned no response") ||
+		strings.Contains(msg, "empty streaming response") ||
+		strings.Contains(msg, "upstream 5") ||
+		strings.Contains(msg, "provider returned 5") ||
+		strings.Contains(msg, "throttled (429)") ||
+		strings.Contains(msg, "overloaded (529)") ||
+		strings.Contains(msg, "auth error") {
+		return false
+	}
+
+	// Explicit capability signal.
+	if strings.Contains(msg, "does not support tool calls") {
+		return true
+	}
+
+	// Restrict fallback to request-validation style client errors.
+	isClientValidationErr := strings.Contains(msg, "upstream 400:") ||
+		strings.Contains(msg, "provider returned 400:") ||
+		strings.Contains(msg, "provider returned 422:")
+	if !isClientValidationErr {
+		return false
+	}
+
+	for _, marker := range retryWithoutToolsMarkers {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+
+	// Schema-like 4xx only counts when paired with tools/function hints.
+	hasSchemaMarker := false
+	for _, marker := range retryWithoutToolsSchemaMarkers {
+		if strings.Contains(msg, marker) {
+			hasSchemaMarker = true
+			break
+		}
+	}
+	if !hasSchemaMarker {
+		return false
+	}
+	return strings.Contains(msg, "tool") || strings.Contains(msg, "function")
+}
+
 func transientUpstreamRetryDelay(attempt int) time.Duration {
 	switch attempt {
 	case 0:
@@ -410,6 +479,8 @@ type ProxyHandler struct {
 	responsesPrevMu sync.RWMutex
 	responsesPrevID map[string]string // session_id -> previous_response_id
 	responsesInstr  map[string]string // session_id -> cached instructions
+	responsesAssist map[string]string // session/provider/model -> last assistant text
+	assistByRespID  map[string]string // response_id -> last assistant text
 }
 
 // NewProxyHandler creates a new proxy handler
@@ -423,6 +494,8 @@ func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *Failove
 		providerRaceStats:  make(map[string]*providerRaceStat),
 		responsesPrevID:    make(map[string]string),
 		responsesInstr:     make(map[string]string),
+		responsesAssist:    make(map[string]string),
+		assistByRespID:     make(map[string]string),
 	}
 	ph.routingEnabled.Store(true)
 	ph.authProber = NewAuthProber() // default prober, can be overridden
@@ -1352,13 +1425,14 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Retry with tools stripped: if all providers failed and the request had tools,
-	// strip the tools/tool_choice fields and retry. This handles providers that reject
-	// the request body because they don't understand tool-related fields (422).
+	// Retry with tools stripped only for likely tool-compatibility failures.
+	// This avoids silently dropping tools on transient 5xx/no-response incidents.
+	// When triggered, strip tools/tool_choice and retry routing.
 	// Skip if no providers exist at all — stripping fields won't conjure providers.
 	// Skip if messages contain tool_calls or tool role — this is a tool round where
 	// stripping tools would leave orphaned tool_calls/tool_result, causing worse errors.
-	if err != nil && hasTools && !hasToolMessages && !errors.Is(err, providerpool.ErrNoAvailableProvider) && !isContextCanceledError(err) {
+	if err != nil && hasTools && !hasToolMessages && shouldRetryWithoutTools(err) &&
+		!errors.Is(err, providerpool.ErrNoAvailableProvider) && !isContextCanceledError(err) {
 		strippedBody := pr.body
 		if b, e := sjson.DeleteBytes(strippedBody, "tools"); e == nil {
 			strippedBody = b
@@ -1588,6 +1662,7 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	}
 	if strings.HasSuffix(finalPath, "/responses") {
 		body = ph.ensureCachedInstructionsForResponsesBody(r, body)
+		body = ph.injectCachedResponsesAssistantContextForRoute(r, route, body)
 		body = ensureResponsesStoreEnabled(body)
 		body = clampResponsesMaxOutputTokens(body)
 	}
@@ -2951,9 +3026,16 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 		needCapture := ph.shouldCaptureSessionUsage(r) || (isResponsesEndpoint && ph.hasResponsesSession(r))
 		captured := ph.copyStreamingResponseWithCapture(w, resp, needCapture)
 		if isResponsesEndpoint {
-			if prevID := parseLatestResponsesIDFromSSE(captured); prevID != "" {
+			prevID := parseLatestResponsesIDFromSSE(captured)
+			if prevID != "" {
 				ph.setCachedResponsesPreviousIDForRoute(r, resolvedRoute, prevID)
 				w.Header().Set(ResponsesPreviousIDHeader, prevID)
+			}
+			if assistantText := parseLatestResponsesAssistantTextFromSSE(captured); assistantText != "" {
+				ph.setCachedResponsesAssistantForRoute(r, resolvedRoute, assistantText)
+				if prevID != "" {
+					ph.setCachedResponsesAssistantByResponseID(prevID, assistantText)
+				}
 			}
 		}
 		if needCapture {
@@ -2985,9 +3067,16 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 		ph.recordPromptCacheFromBody(pr, respBody)
 	}
 	if isResponsesEndpoint && resp.StatusCode == http.StatusOK {
-		if prevID := strings.TrimSpace(gjson.GetBytes(respBody, "id").String()); prevID != "" {
+		prevID := strings.TrimSpace(gjson.GetBytes(respBody, "id").String())
+		if prevID != "" {
 			ph.setCachedResponsesPreviousIDForRoute(r, resolvedRoute, prevID)
 			w.Header().Set(ResponsesPreviousIDHeader, prevID)
+		}
+		if assistantText := extractResponsesAssistantTextFromBody(respBody); assistantText != "" {
+			ph.setCachedResponsesAssistantForRoute(r, resolvedRoute, assistantText)
+			if prevID != "" {
+				ph.setCachedResponsesAssistantByResponseID(prevID, assistantText)
+			}
 		}
 	}
 
@@ -3616,6 +3705,11 @@ func (ph *ProxyHandler) clearCachedResponsesPreviousID(r *http.Request) {
 			delete(ph.responsesPrevID, key)
 		}
 	}
+	for key := range ph.responsesAssist {
+		if key == sid || strings.HasPrefix(key, sid+"|") {
+			delete(ph.responsesAssist, key)
+		}
+	}
 	ph.responsesPrevMu.Unlock()
 }
 
@@ -3640,6 +3734,87 @@ func (ph *ProxyHandler) setCachedResponsesPreviousIDForRoute(r *http.Request, ro
 		ph.responsesPrevID[responsesPrevIDKey(sid, providerID, modelID)] = prevID
 	}
 	ph.responsesPrevMu.Unlock()
+}
+
+func (ph *ProxyHandler) getCachedResponsesAssistantForRoute(r *http.Request, route *providerpool.RouteResult) string {
+	sid := ph.responsesSessionID(r)
+	if sid == "" {
+		return ""
+	}
+	providerID := ""
+	modelID := ""
+	if route != nil && route.Provider != nil {
+		providerID = strings.TrimSpace(route.Provider.ID)
+	}
+	if route != nil && route.Model != nil {
+		modelID = strings.TrimSpace(route.Model.ID)
+	}
+
+	ph.responsesPrevMu.RLock()
+	defer ph.responsesPrevMu.RUnlock()
+	if providerID != "" && modelID != "" {
+		if v := strings.TrimSpace(ph.responsesAssist[responsesPrevIDKey(sid, providerID, modelID)]); v != "" {
+			return v
+		}
+	}
+	if providerID != "" {
+		if v := strings.TrimSpace(ph.responsesAssist[responsesPrevIDKey(sid, providerID, "")]); v != "" {
+			return v
+		}
+		return ""
+	}
+	return strings.TrimSpace(ph.responsesAssist[responsesPrevIDKey(sid, "", "")])
+}
+
+func (ph *ProxyHandler) setCachedResponsesAssistantForRoute(r *http.Request, route *providerpool.RouteResult, text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	sid := ph.responsesSessionID(r)
+	if sid == "" {
+		return
+	}
+
+	providerID := ""
+	modelID := ""
+	if route != nil && route.Provider != nil {
+		providerID = strings.TrimSpace(route.Provider.ID)
+	}
+	if route != nil && route.Model != nil {
+		modelID = strings.TrimSpace(route.Model.ID)
+	}
+
+	ph.responsesPrevMu.Lock()
+	ph.responsesAssist[responsesPrevIDKey(sid, "", "")] = text
+	if providerID != "" {
+		ph.responsesAssist[responsesPrevIDKey(sid, providerID, "")] = text
+		if modelID != "" {
+			ph.responsesAssist[responsesPrevIDKey(sid, providerID, modelID)] = text
+		}
+	}
+	ph.responsesPrevMu.Unlock()
+}
+
+func (ph *ProxyHandler) setCachedResponsesAssistantByResponseID(responseID, text string) {
+	responseID = strings.TrimSpace(responseID)
+	text = strings.TrimSpace(text)
+	if responseID == "" || text == "" {
+		return
+	}
+	ph.responsesPrevMu.Lock()
+	ph.assistByRespID[responseID] = text
+	ph.responsesPrevMu.Unlock()
+}
+
+func (ph *ProxyHandler) getCachedResponsesAssistantByResponseID(responseID string) string {
+	responseID = strings.TrimSpace(responseID)
+	if responseID == "" {
+		return ""
+	}
+	ph.responsesPrevMu.RLock()
+	defer ph.responsesPrevMu.RUnlock()
+	return strings.TrimSpace(ph.assistByRespID[responseID])
 }
 
 func (ph *ProxyHandler) injectCachedResponsesPreviousIDForRoute(r *http.Request, route *providerpool.RouteResult, body []byte) []byte {
@@ -3708,7 +3883,7 @@ func trimResponsesInputForContinuation(body []byte) []byte {
 			}
 			return out
 		}
-		start = lastAssistant + 1
+		start = lastAssistant
 	}
 
 	trimmedRaw := make([]string, 0, len(items)-start)
@@ -3735,6 +3910,75 @@ func trimResponsesInputForContinuation(body []byte) []byte {
 	return out
 }
 
+func (ph *ProxyHandler) injectCachedResponsesAssistantContextForRoute(r *http.Request, route *providerpool.RouteResult, body []byte) []byte {
+	if len(body) == 0 || disableResponsesContinuation(r) {
+		return body
+	}
+	if strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) == "" {
+		return body
+	}
+
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() || !input.IsArray() {
+		return body
+	}
+	items := input.Array()
+	if len(items) == 0 {
+		return body
+	}
+
+	hasAssistant := false
+	hasToolPayload := false
+	hasUser := false
+	for _, item := range items {
+		itemType := strings.TrimSpace(item.Get("type").String())
+		if itemType == "function_call_output" || itemType == "function_call" {
+			hasToolPayload = true
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(item.Get("role").String()))
+		if role == "assistant" {
+			hasAssistant = true
+		}
+		if role == "user" {
+			hasUser = true
+		}
+	}
+	if hasAssistant || hasToolPayload || !hasUser {
+		return body
+	}
+
+	assistantText := ph.getCachedResponsesAssistantForRoute(r, route)
+	if assistantText == "" {
+		prevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+		assistantText = ph.getCachedResponsesAssistantByResponseID(prevID)
+	}
+	if assistantText == "" {
+		return body
+	}
+
+	escaped, err := json.Marshal(assistantText)
+	if err != nil {
+		return body
+	}
+	assistantItem := `{"role":"assistant","content":[{"type":"input_text","text":` + string(escaped) + `}]}`
+
+	trimmedRaw := make([]string, 0, len(items)+1)
+	trimmedRaw = append(trimmedRaw, assistantItem)
+	for _, item := range items {
+		raw := strings.TrimSpace(item.Raw)
+		if raw == "" || raw == "null" {
+			continue
+		}
+		trimmedRaw = append(trimmedRaw, raw)
+	}
+	out, err := sjson.SetRawBytes(body, "input", []byte("["+strings.Join(trimmedRaw, ",")+"]"))
+	if err != nil {
+		return body
+	}
+	return out
+}
+
 func parseLatestResponsesIDFromSSE(data []byte) string {
 	if len(data) == 0 {
 		return ""
@@ -3755,6 +3999,109 @@ func parseLatestResponsesIDFromSSE(data []byte) string {
 		}
 	}
 	return ""
+}
+
+func parseLatestResponsesAssistantTextFromSSE(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	chunks := parseSSEChunks(data)
+	var delta strings.Builder
+	for _, c := range chunks {
+		eventType, _ := c["type"].(string)
+		if eventType == "response.output_text.delta" {
+			if d, ok := c["delta"].(string); ok && d != "" {
+				delta.WriteString(d)
+			}
+		}
+	}
+	if strings.TrimSpace(delta.String()) != "" {
+		return strings.TrimSpace(delta.String())
+	}
+
+	for i := len(chunks) - 1; i >= 0; i-- {
+		resp, ok := chunks[i]["response"].(map[string]interface{})
+		if !ok || resp == nil {
+			continue
+		}
+		text := extractResponsesAssistantTextFromOutputValue(resp["output"])
+		if text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func extractResponsesAssistantTextFromBody(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	output := gjson.GetBytes(body, "output")
+	if !output.Exists() || !output.IsArray() {
+		return ""
+	}
+	var content strings.Builder
+	for _, item := range output.Array() {
+		itemType := strings.ToLower(strings.TrimSpace(item.Get("type").String()))
+		if itemType != "message" {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(item.Get("role").String()))
+		if role != "" && role != "assistant" {
+			continue
+		}
+		for _, part := range item.Get("content").Array() {
+			partType := strings.ToLower(strings.TrimSpace(part.Get("type").String()))
+			if partType != "output_text" && partType != "text" && partType != "input_text" {
+				continue
+			}
+			text := part.Get("text").String()
+			if text != "" {
+				content.WriteString(text)
+			}
+		}
+	}
+	return strings.TrimSpace(content.String())
+}
+
+func extractResponsesAssistantTextFromOutputValue(raw interface{}) string {
+	output, ok := raw.([]interface{})
+	if !ok || len(output) == 0 {
+		return ""
+	}
+	var content strings.Builder
+	for _, itemRaw := range output {
+		item, ok := itemRaw.(map[string]interface{})
+		if !ok || item == nil {
+			continue
+		}
+		itemType, _ := item["type"].(string)
+		if strings.ToLower(strings.TrimSpace(itemType)) != "message" {
+			continue
+		}
+		role, _ := item["role"].(string)
+		role = strings.ToLower(strings.TrimSpace(role))
+		if role != "" && role != "assistant" {
+			continue
+		}
+		contentBlocks, _ := item["content"].([]interface{})
+		for _, partRaw := range contentBlocks {
+			part, ok := partRaw.(map[string]interface{})
+			if !ok || part == nil {
+				continue
+			}
+			partType, _ := part["type"].(string)
+			partType = strings.ToLower(strings.TrimSpace(partType))
+			if partType != "output_text" && partType != "text" && partType != "input_text" {
+				continue
+			}
+			text, _ := part["text"].(string)
+			if text != "" {
+				content.WriteString(text)
+			}
+		}
+	}
+	return strings.TrimSpace(content.String())
 }
 
 func (ph *ProxyHandler) getCachedResponsesInstructions(r *http.Request) string {

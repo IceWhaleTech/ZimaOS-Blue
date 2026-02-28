@@ -38,3 +38,42 @@ func TestParseIPCArgs_OptionWithCommaIsPreservedInJSONArray(t *testing.T) {
 		t.Fatalf("option param = %q, want %q", got, `["A, with comma","B"]`)
 	}
 }
+
+func TestInjectIPCContextParams_AddsBlueUserID(t *testing.T) {
+	params := map[string]string{
+		"query": "hello",
+	}
+	getenv := func(key string) string {
+		if key == "BLUE_USER_ID" {
+			return "user-123"
+		}
+		return ""
+	}
+
+	injectIPCContextParams(params, getenv)
+
+	if got := params["__blue_user_id"]; got != "user-123" {
+		t.Fatalf("__blue_user_id = %q, want %q", got, "user-123")
+	}
+	if got := params["query"]; got != "hello" {
+		t.Fatalf("query = %q, want %q", got, "hello")
+	}
+}
+
+func TestInjectIPCContextParams_DoesNotOverrideExplicitValue(t *testing.T) {
+	params := map[string]string{
+		"__blue_user_id": "explicit",
+	}
+	getenv := func(key string) string {
+		if key == "BLUE_USER_ID" {
+			return "from-env"
+		}
+		return ""
+	}
+
+	injectIPCContextParams(params, getenv)
+
+	if got := params["__blue_user_id"]; got != "explicit" {
+		t.Fatalf("__blue_user_id = %q, want %q", got, "explicit")
+	}
+}

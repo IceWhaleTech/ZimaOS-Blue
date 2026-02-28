@@ -109,14 +109,53 @@ func TestConvertOpenAIChatCompletionsToResponses_ContinuationUsesIncrementalMess
 	if gjson.GetBytes(converted, "instructions").Exists() {
 		t.Fatalf("instructions should be omitted for continuation payload: %s", string(converted))
 	}
-	if got := gjson.GetBytes(converted, "input.#").Int(); got != 1 {
-		t.Fatalf("input length = %d, want 1", got)
+	if got := gjson.GetBytes(converted, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2", got)
 	}
-	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "user" {
-		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
 	}
-	if got := gjson.GetBytes(converted, "input.0.content.0.text").String(); got != "new followup" {
-		t.Fatalf("input.0.content.0.text = %q, want %q", got, "new followup")
+	if got := gjson.GetBytes(converted, "input.0.content.0.text").String(); got != "very long previous assistant answer" {
+		t.Fatalf("input.0.content.0.text = %q, want %q", got, "very long previous assistant answer")
+	}
+	if got := gjson.GetBytes(converted, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(converted, "input.1.content.0.text").String(); got != "new followup" {
+		t.Fatalf("input.1.content.0.text = %q, want %q", got, "new followup")
+	}
+}
+
+func TestConvertOpenAIChatCompletionsToResponses_ContinuationKeepsAssistantForShortChoiceReply(t *testing.T) {
+	body := []byte(`{
+		"model":"o3",
+		"previous_response_id":"resp_prev_choice_1",
+		"messages":[
+			{"role":"user","content":"请根据上面的选项选择一个答案"},
+			{"role":"assistant","content":"A) 方案一\nB) 方案二\nC) 方案三"},
+			{"role":"user","content":"B"}
+		]
+	}`)
+
+	converted, err := convertOpenAIChatCompletionsToResponses(body)
+	if err != nil {
+		t.Fatalf("convert failed: %v", err)
+	}
+
+	if got := gjson.GetBytes(converted, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(converted))
+	}
+	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	}
+	if got := gjson.GetBytes(converted, "input.0.content.0.text").String(); got != "A) 方案一\nB) 方案二\nC) 方案三" {
+		t.Fatalf("input.0.content.0.text = %q, want assistant choices", got)
+	}
+	if got := gjson.GetBytes(converted, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(converted, "input.1.content.0.text").String(); got != "B" {
+		t.Fatalf("input.1.content.0.text = %q, want %q", got, "B")
 	}
 }
 
@@ -628,14 +667,20 @@ func TestBuildUpstreamRequestWithFormat_ContinuationInjectedPrevIDTrimsResponses
 	if got := gjson.GetBytes(convertedBody, "previous_response_id").String(); got != "resp_prev_trim_1" {
 		t.Fatalf("previous_response_id = %q, want %q", got, "resp_prev_trim_1")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
-		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
-		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "Reply with ONLY: NEXT" {
-		t.Fatalf("input.0.content.0.text = %q, want %q", got, "Reply with ONLY: NEXT")
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "OK" {
+		t.Fatalf("input.0.content.0.text = %q, want %q", got, "OK")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.content.0.text").String(); got != "Reply with ONLY: NEXT" {
+		t.Fatalf("input.1.content.0.text = %q, want %q", got, "Reply with ONLY: NEXT")
 	}
 }
 
@@ -676,11 +721,167 @@ func TestBuildUpstreamRequestWithFormat_ContinuationExistingPrevIDTrimsResponses
 	if got := gjson.GetBytes(convertedBody, "previous_response_id").String(); got != "resp_existing_1" {
 		t.Fatalf("previous_response_id = %q, want %q", got, "resp_existing_1")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
-		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "C" {
-		t.Fatalf("input.0.content.0.text = %q, want %q", got, "C")
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "B" {
+		t.Fatalf("input.0.content.0.text = %q, want %q", got, "B")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.content.0.text").String(); got != "C" {
+		t.Fatalf("input.1.content.0.text = %q, want %q", got, "C")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationExistingPrevIDKeepsAssistantForShortChoice(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_existing_choice_1",
+		"input":[
+			{"role":"user","content":[{"type":"input_text","text":"请从选项里选一个"}]},
+			{"role":"assistant","content":[{"type":"input_text","text":"A) 苹果 B) 香蕉 C) 梨"}]},
+			{"role":"user","content":[{"type":"input_text","text":"A"}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.content.0.text").String(); got != "A" {
+		t.Fatalf("input.1.content.0.text = %q, want %q", got, "A")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationInjectsCachedAssistantWhenInputLacksContext(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	seedReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	seedReq = seedReq.WithContext(WithSessionID(context.Background(), "sess-assist-cache-1"))
+	ph.setCachedResponsesAssistantForRoute(seedReq, result, "A) 选项一 B) 选项二")
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-assist-cache-1"))
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_existing_choice_cache_1",
+		"input":[
+			{"role":"user","content":[{"type":"input_text","text":"1"}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "A) 选项一 B) 选项二" {
+		t.Fatalf("input.0.content.0.text = %q, want cached assistant text", got)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.content.0.text").String(); got != "1" {
+		t.Fatalf("input.1.content.0.text = %q, want %q", got, "1")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationInjectsAssistantFromResponseIDCache(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	ph.setCachedResponsesAssistantByResponseID("resp_cache_lookup_1", "A) 上下文选项 B) 其他")
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_cache_lookup_1",
+		"input":[
+			{"role":"user","content":[{"type":"input_text","text":"1"}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "A) 上下文选项 B) 其他" {
+		t.Fatalf("input.0.content.0.text = %q, want cached assistant text", got)
 	}
 }
 

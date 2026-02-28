@@ -98,6 +98,54 @@ func TestShouldAutoContinueForTodo_StopsOnAwaitingInput(t *testing.T) {
 	}
 }
 
+func TestDeriveContinuationContext_AffirmativeWithDefaultPlan(t *testing.T) {
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "你可以帮我查一下 ZimaOS 的信息吗"},
+		{
+			Role:    llm.RoleAssistant,
+			Content: "- [ ] 产品定位与功能概览\n- [ ] 最新动态\n\n如果你不想选，我可以默认按「功能概览 + 最新动态」先查一版。",
+		},
+		{Role: llm.RoleUser, Content: "好的"},
+	}
+
+	cc := deriveContinuationContext("好的", msgs)
+	if strings.TrimSpace(cc.Hint) == "" {
+		t.Fatal("expected continuation hint for short affirmative reply with default plan")
+	}
+	if cc.ToolQuery != "你可以帮我查一下 ZimaOS 的信息吗" {
+		t.Fatalf("unexpected tool query: %q", cc.ToolQuery)
+	}
+}
+
+func TestDeriveContinuationContext_DoesNotForceWhenAwaitingWithoutDefault(t *testing.T) {
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "查天气"},
+		{Role: llm.RoleAssistant, Content: "- [ ] 确认城市\n- [ ] 查询天气\n你要查哪个城市？"},
+		{Role: llm.RoleUser, Content: "好的"},
+	}
+
+	cc := deriveContinuationContext("好的", msgs)
+	if cc.Hint != "" || cc.ToolQuery != "" {
+		t.Fatalf("expected no continuation context, got hint=%q tool_query=%q", cc.Hint, cc.ToolQuery)
+	}
+}
+
+func TestIsAffirmativeContinuationMessage(t *testing.T) {
+	cases := map[string]bool{
+		"好的":        true,
+		"继续吧":       true,
+		"ok":        true,
+		"sure":      true,
+		"请继续执行":     true,
+		"我想换个主题聊电影": false,
+	}
+	for input, want := range cases {
+		if got := isAffirmativeContinuationMessage(input); got != want {
+			t.Fatalf("input=%q got=%v want=%v", input, got, want)
+		}
+	}
+}
+
 // Test ChatHandler creation
 func TestNewChatHandler(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")

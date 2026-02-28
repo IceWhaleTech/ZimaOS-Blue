@@ -53,6 +53,22 @@ func TestParseAskQuestions_QIsSingleSelect(t *testing.T) {
 	}
 }
 
+func TestParseAskQuestions_QAllowsSingleOption(t *testing.T) {
+	items, err := parseAskQuestions(map[string]any{
+		"q": "Pick one",
+		"a": `["OnlyOne"]`,
+	})
+	if err != nil {
+		t.Fatalf("parseAskQuestions returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1", len(items))
+	}
+	if got := len(items[0].Options); got != 1 {
+		t.Fatalf("options len = %d, want 1", got)
+	}
+}
+
 func TestParseAskQuestions_QSupportsObjectOptionsJSON(t *testing.T) {
 	items, err := parseAskQuestions(map[string]any{
 		"q": "First priority?",

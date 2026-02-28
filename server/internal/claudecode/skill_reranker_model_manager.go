@@ -13,7 +13,10 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/onnx"
 )
 
-const defaultSkillRerankerRepo = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+const (
+	defaultSkillRerankerRepo = "cross-encoder/ms-marco-MiniLM-L6-v2"
+	legacySkillRerankerRepo  = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+)
 
 // SkillRerankerModelDownloadProgress tracks ONNX model download progress.
 type SkillRerankerModelDownloadProgress struct {
@@ -54,7 +57,10 @@ type SkillRerankerModelManager struct {
 
 func NewSkillRerankerModelManager(dataDir, repo string) *SkillRerankerModelManager {
 	repo = strings.TrimSpace(repo)
-	if repo == "" {
+	switch repo {
+	case "":
+		repo = defaultSkillRerankerRepo
+	case legacySkillRerankerRepo:
 		repo = defaultSkillRerankerRepo
 	}
 	modelDir := filepath.Join(dataDir, "skill-reranker")
@@ -176,16 +182,22 @@ func (m *SkillRerankerModelManager) downloadModelInner(ctx context.Context) erro
 }
 
 func (m *SkillRerankerModelManager) modelFile() downloader.ModelFile {
-	hfURL := fmt.Sprintf("https://huggingface.co/%s/resolve/main/model.onnx", m.repo)
-	modelscopeURL := fmt.Sprintf("https://modelscope.cn/models/%s/resolve/master/model.onnx", m.repo)
-	hfMirrorURL := fmt.Sprintf("https://hf-mirror.com/%s/resolve/main/model.onnx", m.repo)
+	hfOnnxURL := fmt.Sprintf("https://huggingface.co/%s/resolve/main/onnx/model.onnx", m.repo)
+	modelscopeOnnxURL := fmt.Sprintf("https://modelscope.cn/models/%s/resolve/master/onnx/model.onnx", m.repo)
+	hfMirrorOnnxURL := fmt.Sprintf("https://hf-mirror.com/%s/resolve/main/onnx/model.onnx", m.repo)
+	hfRootURL := fmt.Sprintf("https://huggingface.co/%s/resolve/main/model.onnx", m.repo)
+	modelscopeRootURL := fmt.Sprintf("https://modelscope.cn/models/%s/resolve/master/model.onnx", m.repo)
+	hfMirrorRootURL := fmt.Sprintf("https://hf-mirror.com/%s/resolve/main/model.onnx", m.repo)
 
 	return downloader.ModelFile{
 		Filename: "model.onnx",
-		URL:      hfURL,
+		URL:      hfOnnxURL,
 		Mirrors: []string{
-			modelscopeURL,
-			hfMirrorURL,
+			modelscopeOnnxURL,
+			hfMirrorOnnxURL,
+			modelscopeRootURL,
+			hfRootURL,
+			hfMirrorRootURL,
 		},
 		Size: "~90MB",
 	}
