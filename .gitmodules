@@ -7,9 +7,6 @@
 [submodule ".agent/skills/ui-ux-pro-max-skill"]
 	path = .agent/skills/ui-ux-pro-max-skill
 	url = https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
-[submodule "third_party/clawdbot"]
-	path = third_party/clawdbot
-	url = https://github.com/clawdbot/clawdbot
 [submodule "third_party/espeak-ng"]
 	path = third_party/espeak-ng
 	url = https://github.com/espeak-ng/espeak-ng.git

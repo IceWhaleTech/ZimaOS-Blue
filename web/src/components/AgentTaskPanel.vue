@@ -274,6 +274,12 @@ function stepDuration(step: PlanStep): string {
           {{ q.question }}
           <span v-if="q.required" class="text-red-500 ml-0.5">*</span>
         </p>
+        <p
+          v-if="q.detail"
+          class="text-xs text-amber-700 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-900/30 border border-amber-300/70 dark:border-amber-700 rounded-md px-2 py-1 mb-2"
+        >
+          ❕ {{ q.detail }}
+        </p>
 
         <!-- Options -->
         <div v-if="q.options?.length" class="space-y-1.5">

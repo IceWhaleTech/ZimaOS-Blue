@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 )
 
 // mockLLMBridge is a test double for LLMBridge.
@@ -12,6 +15,58 @@ type mockLLMBridge struct {
 	responses []string // returns responses in order
 	calls     []string // records prompts
 	idx       int
+}
+
+type analyzeSmallModelMock struct {
+	respText string
+	err      error
+	calls    int
+}
+
+type analyzeStatsMock struct {
+	docAttempts  int
+	docSuccess   int
+	autoRollback int
+	latencyMs    []time.Duration
+	sceneLat     map[string][]time.Duration
+	fallbacks    []string
+}
+
+func (m *analyzeSmallModelMock) Ready() bool { return true }
+
+func (m *analyzeSmallModelMock) Generate(_ context.Context, _ smallmodel.GenerateRequest) (*smallmodel.GenerateResponse, error) {
+	m.calls++
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &smallmodel.GenerateResponse{Text: m.respText}, nil
+}
+
+func (m *analyzeStatsMock) RecordDocExtractAttempt() {
+	m.docAttempts++
+}
+
+func (m *analyzeStatsMock) RecordDocExtractSuccess() {
+	m.docSuccess++
+}
+
+func (m *analyzeStatsMock) RecordLatency(d time.Duration) {
+	m.latencyMs = append(m.latencyMs, d)
+}
+
+func (m *analyzeStatsMock) RecordLatencyWithScene(scene string, d time.Duration) {
+	if m.sceneLat == nil {
+		m.sceneLat = make(map[string][]time.Duration)
+	}
+	m.sceneLat[scene] = append(m.sceneLat[scene], d)
+}
+
+func (m *analyzeStatsMock) RecordFallback(reason string) {
+	m.fallbacks = append(m.fallbacks, reason)
+}
+
+func (m *analyzeStatsMock) RecordAutoRollback() {
+	m.autoRollback++
 }
 
 func (m *mockLLMBridge) Chat(_ context.Context, prompt string, _ int) (string, error) {
@@ -177,6 +232,146 @@ func TestAnalyzeTool_Execute_AnalyzeWithText(t *testing.T) {
 	}
 	if resultMap["report_url"] == nil {
 		t.Error("expected report_url in result")
+	}
+}
+
+func TestAnalyzeTool_Execute_UsesSmallModelDocExtractWhenEnabled(t *testing.T) {
+	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
+	htmlBody := `<div class="hero"><h1>Test</h1></div>`
+	bridge := &mockLLMBridge{
+		responses: []string{analysisJSON, htmlBody},
+	}
+	sm := &analyzeSmallModelMock{
+		respText: "Objective: summarize findings\nInputs: text\nSteps: collect -> analyze\nOutputs: report\nRisks: missing data",
+	}
+	stats := &analyzeStatsMock{}
+
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	tool.SetMediaDir(t.TempDir())
+	tool.SetSmallModelRuntime(sm)
+	tool.SetSmallModelSwitchFuncs(
+		func() bool { return true },
+		func() bool { return true },
+	)
+	tool.SetSmallModelStatsRecorder(stats)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"topic": "Doc Extract Topic",
+		"text":  strings.Repeat("content line\n", 20),
+		"lang":  "en-US",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	if len(bridge.calls) != 2 {
+		t.Fatalf("expected 2 LLM calls, got %d", len(bridge.calls))
+	}
+	if !strings.Contains(bridge.calls[0], "=== Small-model structured extraction ===") {
+		t.Fatalf("analysis prompt should include small-model extraction block, got: %s", bridge.calls[0])
+	}
+	if stats.docAttempts != 1 || stats.docSuccess != 1 {
+		t.Fatalf("unexpected doc extract stats: attempts=%d success=%d", stats.docAttempts, stats.docSuccess)
+	}
+	if got := len(stats.sceneLat["doc_extract"]); got != 1 {
+		t.Fatalf("doc_extract latency samples = %d, want 1", got)
+	}
+	if len(stats.fallbacks) != 0 {
+		t.Fatalf("fallbacks=%v, want none", stats.fallbacks)
+	}
+}
+
+func TestAnalyzeTool_Execute_DocExtractDisabledSkipsSmallModel(t *testing.T) {
+	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
+	htmlBody := `<div class="hero"><h1>Test</h1></div>`
+	bridge := &mockLLMBridge{
+		responses: []string{analysisJSON, htmlBody},
+	}
+	sm := &analyzeSmallModelMock{
+		respText: "Objective: should not appear",
+	}
+	stats := &analyzeStatsMock{}
+
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	tool.SetMediaDir(t.TempDir())
+	tool.SetSmallModelRuntime(sm)
+	tool.SetSmallModelSwitchFuncs(
+		func() bool { return true },
+		func() bool { return false },
+	)
+	tool.SetSmallModelStatsRecorder(stats)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"topic": "Doc Extract Disabled",
+		"text":  strings.Repeat("content line\n", 20),
+		"lang":  "en-US",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0 when doc extract switch disabled", sm.calls)
+	}
+	if len(bridge.calls) != 2 {
+		t.Fatalf("expected 2 LLM calls, got %d", len(bridge.calls))
+	}
+	if strings.Contains(bridge.calls[0], "=== Small-model structured extraction ===") {
+		t.Fatalf("analysis prompt should not include small-model extraction block when disabled")
+	}
+	if stats.docAttempts != 0 || stats.docSuccess != 0 || len(stats.sceneLat) != 0 || len(stats.fallbacks) != 0 {
+		t.Fatalf("unexpected doc extract stats when disabled: %+v", stats)
+	}
+}
+
+func TestAnalyzeTool_DocExtractAutoRollbackDisablesSwitchOnHighFailureRate(t *testing.T) {
+	tool := NewAnalyzeTool()
+	sm := &analyzeSmallModelMock{err: context.DeadlineExceeded}
+	stats := &analyzeStatsMock{}
+	docEnabled := true
+
+	tool.SetSmallModelRuntime(sm)
+	tool.SetSmallModelSwitchFuncs(
+		func() bool { return true },
+		func() bool { return docEnabled },
+	)
+	tool.SetSmallModelDocExtractToggle(func(enabled bool) (bool, error) {
+		if docEnabled == enabled {
+			return false, nil
+		}
+		docEnabled = enabled
+		return true, nil
+	})
+	tool.SetSmallModelStatsRecorder(stats)
+
+	raw := strings.Repeat("line content\n", 30)
+	for i := 0; i < 40; i++ {
+		got := tool.smallModelDocExtract(context.Background(), "Doc Auto Rollback", raw, "en-US")
+		if got != "" {
+			t.Fatalf("smallModelDocExtract should fallback empty on failure, got: %q", got)
+		}
+	}
+
+	if docEnabled {
+		t.Fatal("expected doc_extract switch to be auto-disabled")
+	}
+	if stats.autoRollback != 1 {
+		t.Fatalf("auto rollback count = %d, want 1", stats.autoRollback)
+	}
+	found := false
+	for _, reason := range stats.fallbacks {
+		if reason == analyzeFallbackReasonAutoRollbackDoc {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected fallback reason %q, got %v", analyzeFallbackReasonAutoRollbackDoc, stats.fallbacks)
 	}
 }
 

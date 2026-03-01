@@ -47,45 +47,45 @@ type Config struct {
 // ClaudeCodeConfig holds Claude Code CLI integration configuration (v0.10).
 // Deprecated: Use ClaudeCodeCLIConfig instead.
 type ClaudeCodeConfig struct {
-	Enabled      bool                      `yaml:"enabled"`
-	Command      string                    `yaml:"command"`
-	WorkspaceDir string                    `yaml:"workspace_dir"`
-	DefaultModel string                    `yaml:"default_model"`
-	Timeout      time.Duration             `yaml:"timeout"`
-	SessionTTL   time.Duration             `yaml:"session_ttl"`
-	APIKey       string                    `yaml:"api_key"`
-	BaseURL      string                    `yaml:"base_url"`
-	Backend      ClaudeCodeBackendConfig   `yaml:"backend"`
+	Enabled      bool                    `yaml:"enabled"`
+	Command      string                  `yaml:"command"`
+	WorkspaceDir string                  `yaml:"workspace_dir"`
+	DefaultModel string                  `yaml:"default_model"`
+	Timeout      time.Duration           `yaml:"timeout"`
+	SessionTTL   time.Duration           `yaml:"session_ttl"`
+	APIKey       string                  `yaml:"api_key"`
+	BaseURL      string                  `yaml:"base_url"`
+	Backend      ClaudeCodeBackendConfig `yaml:"backend"`
 }
 
 // ClaudeCodeBackendConfig holds CLI backend configuration.
 type ClaudeCodeBackendConfig struct {
-	Args             []string          `yaml:"args"`
-	ResumeArgs       []string          `yaml:"resume_args"`
-	Output           string            `yaml:"output"`
-	Input            string            `yaml:"input"`
-	MaxPromptArgChars int              `yaml:"max_prompt_arg_chars"`
-	Env              map[string]string `yaml:"env"`
-	ClearEnv         []string          `yaml:"clear_env"`
-	ModelArg         string            `yaml:"model_arg"`
-	ModelAliases     map[string]string `yaml:"model_aliases"`
-	SessionArg       string            `yaml:"session_arg"`
-	SessionMode      string            `yaml:"session_mode"`
-	SystemPromptArg  string            `yaml:"system_prompt_arg"`
-	SystemPromptMode string            `yaml:"system_prompt_mode"`
-	SystemPromptWhen string            `yaml:"system_prompt_when"`
-	Serialize        bool              `yaml:"serialize"`
+	Args              []string          `yaml:"args"`
+	ResumeArgs        []string          `yaml:"resume_args"`
+	Output            string            `yaml:"output"`
+	Input             string            `yaml:"input"`
+	MaxPromptArgChars int               `yaml:"max_prompt_arg_chars"`
+	Env               map[string]string `yaml:"env"`
+	ClearEnv          []string          `yaml:"clear_env"`
+	ModelArg          string            `yaml:"model_arg"`
+	ModelAliases      map[string]string `yaml:"model_aliases"`
+	SessionArg        string            `yaml:"session_arg"`
+	SessionMode       string            `yaml:"session_mode"`
+	SystemPromptArg   string            `yaml:"system_prompt_arg"`
+	SystemPromptMode  string            `yaml:"system_prompt_mode"`
+	SystemPromptWhen  string            `yaml:"system_prompt_when"`
+	Serialize         bool              `yaml:"serialize"`
 }
 
 // CompanionConfig holds Echo Companion monitoring configuration (v0.9.1).
 type CompanionConfig struct {
-	Enabled     bool                         `yaml:"enabled"`
-	Storage     CompanionStorageConfig       `yaml:"storage"`
-	WebSocket   CompanionWebSocketConfig     `yaml:"websocket"`
-	Retention   CompanionRetentionConfig     `yaml:"retention"`
-	Alerts      CompanionAlertConfig         `yaml:"alerts"`
-	Security    CompanionSecurityConfig      `yaml:"security"`
-	Performance CompanionPerformanceConfig   `yaml:"performance"`
+	Enabled     bool                       `yaml:"enabled"`
+	Storage     CompanionStorageConfig     `yaml:"storage"`
+	WebSocket   CompanionWebSocketConfig   `yaml:"websocket"`
+	Retention   CompanionRetentionConfig   `yaml:"retention"`
+	Alerts      CompanionAlertConfig       `yaml:"alerts"`
+	Security    CompanionSecurityConfig    `yaml:"security"`
+	Performance CompanionPerformanceConfig `yaml:"performance"`
 }
 
 // CompanionStorageConfig holds companion storage configuration.
@@ -248,12 +248,12 @@ type ResourcesConfig struct {
 
 // CgroupConfig holds cgroup v2 configuration.
 type CgroupConfig struct {
-	Enabled    bool              `yaml:"enabled"`
-	CgroupRoot string            `yaml:"cgroup_root"`
-	CgroupName string            `yaml:"cgroup_name"`
-	IO         CgroupIOConfig    `yaml:"io"`
-	Memory     CgroupMemConfig   `yaml:"memory"`
-	CPU        CgroupCPUConfig   `yaml:"cpu"`
+	Enabled    bool            `yaml:"enabled"`
+	CgroupRoot string          `yaml:"cgroup_root"`
+	CgroupName string          `yaml:"cgroup_name"`
+	IO         CgroupIOConfig  `yaml:"io"`
+	Memory     CgroupMemConfig `yaml:"memory"`
+	CPU        CgroupCPUConfig `yaml:"cpu"`
 }
 
 // CgroupIOConfig holds IO bandwidth limit configuration.
@@ -294,17 +294,17 @@ type UpdateConfig struct {
 
 // HeartbeatConfig holds heartbeat agent polling configuration.
 type HeartbeatConfig struct {
-	Enabled         bool                    `yaml:"enabled"`
-	Interval        time.Duration           `yaml:"interval"`
-	Prompt          string                  `yaml:"prompt"`
-	AckMaxChars     int                     `yaml:"ack_max_chars"`
-	WorkspaceDir    string                  `yaml:"workspace_dir"`
-	LLMProvider     string                  `yaml:"llm_provider"`
-	LLMModel        string                  `yaml:"llm_model"`
-	ActiveHours     *HeartbeatActiveHours   `yaml:"active_hours"`
-	Visibility      HeartbeatVisibility     `yaml:"visibility"`
-	DeliveryChannel string                  `yaml:"delivery_channel"`
-	DeliveryChatID  string                  `yaml:"delivery_chat_id"`
+	Enabled         bool                  `yaml:"enabled"`
+	Interval        time.Duration         `yaml:"interval"`
+	Prompt          string                `yaml:"prompt"`
+	AckMaxChars     int                   `yaml:"ack_max_chars"`
+	WorkspaceDir    string                `yaml:"workspace_dir"`
+	LLMProvider     string                `yaml:"llm_provider"`
+	LLMModel        string                `yaml:"llm_model"`
+	ActiveHours     *HeartbeatActiveHours `yaml:"active_hours"`
+	Visibility      HeartbeatVisibility   `yaml:"visibility"`
+	DeliveryChannel string                `yaml:"delivery_channel"`
+	DeliveryChatID  string                `yaml:"delivery_chat_id"`
 }
 
 // HeartbeatActiveHours defines the time window when heartbeat is allowed to run.
@@ -333,16 +333,16 @@ type ServerConfig struct {
 
 // TLSConfig holds TLS/HTTPS configuration.
 type TLSConfig struct {
-	Enabled     bool   `yaml:"enabled"`
-	Port        int    `yaml:"port"`         // HTTPS port, default 443
-	CertFile    string `yaml:"cert_file"`    // Path to certificate file
-	KeyFile     string `yaml:"key_file"`     // Path to private key file
-	AutoCert    bool   `yaml:"auto_cert"`    // Enable automatic certificate via ACME
-	ACMEEmail   string `yaml:"acme_email"`   // Email for ACME registration
-	ACMEDomains string `yaml:"acme_domains"` // Comma-separated domains for ACME
+	Enabled      bool   `yaml:"enabled"`
+	Port         int    `yaml:"port"`          // HTTPS port, default 443
+	CertFile     string `yaml:"cert_file"`     // Path to certificate file
+	KeyFile      string `yaml:"key_file"`      // Path to private key file
+	AutoCert     bool   `yaml:"auto_cert"`     // Enable automatic certificate via ACME
+	ACMEEmail    string `yaml:"acme_email"`    // Email for ACME registration
+	ACMEDomains  string `yaml:"acme_domains"`  // Comma-separated domains for ACME
 	ACMEProvider string `yaml:"acme_provider"` // letsencrypt, zerossl, or custom
-	ACMEDir     string `yaml:"acme_dir"`     // Directory to store ACME certificates
-	SelfSigned  bool   `yaml:"self_signed"`  // Generate self-signed certificate
+	ACMEDir      string `yaml:"acme_dir"`      // Directory to store ACME certificates
+	SelfSigned   bool   `yaml:"self_signed"`   // Generate self-signed certificate
 }
 
 type LogConfig struct {
@@ -368,16 +368,16 @@ type PerformanceConfig struct {
 
 // DatabasePerfConfig holds database performance configuration.
 type DatabasePerfConfig struct {
-	PoolSize            int           `yaml:"pool_size"`
-	MaxIdleConns        int           `yaml:"max_idle_conns"`
-	ConnMaxLifetime     time.Duration `yaml:"conn_max_lifetime"`
-	WALMode             bool          `yaml:"wal_mode"`
-	CacheSize           int           `yaml:"cache_size"`
-	PageSize            int           `yaml:"page_size"`
-	CheckpointInterval  time.Duration `yaml:"checkpoint_interval"`
-	BatchSize           int           `yaml:"batch_size"`
-	SlowQueryThreshold  time.Duration `yaml:"slow_query_threshold"`
-	EnableQueryCache    bool          `yaml:"enable_query_cache"`
+	PoolSize           int           `yaml:"pool_size"`
+	MaxIdleConns       int           `yaml:"max_idle_conns"`
+	ConnMaxLifetime    time.Duration `yaml:"conn_max_lifetime"`
+	WALMode            bool          `yaml:"wal_mode"`
+	CacheSize          int           `yaml:"cache_size"`
+	PageSize           int           `yaml:"page_size"`
+	CheckpointInterval time.Duration `yaml:"checkpoint_interval"`
+	BatchSize          int           `yaml:"batch_size"`
+	SlowQueryThreshold time.Duration `yaml:"slow_query_threshold"`
+	EnableQueryCache   bool          `yaml:"enable_query_cache"`
 }
 
 // MemoryPerfConfig holds memory performance configuration.
@@ -528,13 +528,13 @@ func defaults() Config {
 		},
 
 		Security: SecurityConfig{
-			JWT: JWTConfig{Secret: "change-me-in-production-use-a-strong-secret-key", Expiration: 24 * time.Hour, RefreshExpiration: 720 * time.Hour, Issuer: "zimaos-blue"},
-			OIDC: OIDCConfig{Enabled: true, Issuer: "http://localhost", SigningKeyPath: "./keys/oidc.key", SigningKeyRotationDays: 90, AccessTokenTTL: time.Hour, RefreshTokenTTL: 720 * time.Hour, AuthorizationCodeTTL: 10 * time.Minute},
-			Users:    UsersConfig{DefaultRole: "user"},
-			Password: PasswordConfig{MinLength: 12, RequireUppercase: true, RequireLowercase: true, RequireNumber: true, RequireSpecial: true, HistoryCount: 5, LockoutThreshold: 5, LockoutDuration: 15 * time.Minute},
-			MFA:      MFAConfig{Enabled: true, Issuer: "ZimaOS-Blue", RecoveryCodesCount: 8},
-			Audit:    AuditConfig{Enabled: true, RetentionDays: 90, ExcludedPaths: []string{"/health", "/metrics"}, CleanupInterval: 24 * time.Hour},
-			Sandbox:  SandboxConfig{Enabled: true, DefaultTimeout: 30 * time.Second, MaxTimeout: 5 * time.Minute, MemoryLimit: "256MB", CPULimit: 1.0, ProcessLimit: 10},
+			JWT:        JWTConfig{Secret: defaultJWTSecretPlaceholder, Expiration: 24 * time.Hour, RefreshExpiration: 720 * time.Hour, Issuer: "zimaos-blue"},
+			OIDC:       OIDCConfig{Enabled: true, Issuer: "http://localhost", SigningKeyPath: "./keys/oidc.key", SigningKeyRotationDays: 90, AccessTokenTTL: time.Hour, RefreshTokenTTL: 720 * time.Hour, AuthorizationCodeTTL: 10 * time.Minute},
+			Users:      UsersConfig{DefaultRole: "user"},
+			Password:   PasswordConfig{MinLength: 12, RequireUppercase: true, RequireLowercase: true, RequireNumber: true, RequireSpecial: true, HistoryCount: 5, LockoutThreshold: 5, LockoutDuration: 15 * time.Minute},
+			MFA:        MFAConfig{Enabled: true, Issuer: "ZimaOS-Blue", RecoveryCodesCount: 8},
+			Audit:      AuditConfig{Enabled: true, RetentionDays: 90, ExcludedPaths: []string{"/health", "/metrics"}, CleanupInterval: 24 * time.Hour},
+			Sandbox:    SandboxConfig{Enabled: true, DefaultTimeout: 30 * time.Second, MaxTimeout: 5 * time.Minute, MemoryLimit: "256MB", CPULimit: 1.0, ProcessLimit: 10},
 			Encryption: EncryptionConfig{KeyPath: "./keys/encryption.key", Algorithm: "aes-256-gcm"},
 		},
 
@@ -561,22 +561,22 @@ func defaults() Config {
 		},
 
 		Companion: CompanionConfig{
-			Enabled: true,
-			Storage:   CompanionStorageConfig{BasePath: "./data/companion", Format: "jsonl"},
-			WebSocket: CompanionWebSocketConfig{PingInterval: 30 * time.Second, WriteTimeout: 10 * time.Second, ReadBufferSize: 1024, WriteBufferSize: 1024},
-			Retention: CompanionRetentionConfig{EventsDays: 7, SessionsDays: 30, AlertsDays: 90},
-			Alerts:    CompanionAlertConfig{Enabled: true, ThreatThreshold: "medium"},
-			Security:  CompanionSecurityConfig{PromptGuardIntegration: true, AuditLogIntegration: true, SandboxMonitor: true},
+			Enabled:     true,
+			Storage:     CompanionStorageConfig{BasePath: "./data/companion", Format: "jsonl"},
+			WebSocket:   CompanionWebSocketConfig{PingInterval: 30 * time.Second, WriteTimeout: 10 * time.Second, ReadBufferSize: 1024, WriteBufferSize: 1024},
+			Retention:   CompanionRetentionConfig{EventsDays: 7, SessionsDays: 30, AlertsDays: 90},
+			Alerts:      CompanionAlertConfig{Enabled: true, ThreatThreshold: "medium"},
+			Security:    CompanionSecurityConfig{PromptGuardIntegration: true, AuditLogIntegration: true, SandboxMonitor: true},
 			Performance: CompanionPerformanceConfig{MaxConcurrentSessions: 1000, EventBufferSize: 10000, BatchWriteInterval: time.Second},
 		},
 		ClaudeCode: ClaudeCodeConfig{
 			Command: "claude", WorkspaceDir: ".", DefaultModel: "sonnet", Timeout: 5 * time.Minute, SessionTTL: 24 * time.Hour,
 			Backend: ClaudeCodeBackendConfig{
-				Args: []string{"-p", "--output-format", "json", "--dangerously-skip-permissions"},
+				Args:       []string{"-p", "--output-format", "json", "--dangerously-skip-permissions"},
 				ResumeArgs: []string{"-p", "--output-format", "json", "--dangerously-skip-permissions", "--resume", "{sessionId}"},
-				Output: "json", Input: "arg", MaxPromptArgChars: 100000, ModelArg: "--model",
+				Output:     "json", Input: "arg", MaxPromptArgChars: 100000, ModelArg: "--model",
 				ModelAliases: map[string]string{"opus": "opus", "sonnet": "sonnet", "haiku": "haiku"},
-				SessionArg: "--session-id", SessionMode: "always",
+				SessionArg:   "--session-id", SessionMode: "always",
 				SystemPromptArg: "--append-system-prompt", SystemPromptMode: "append", SystemPromptWhen: "first",
 				ClearEnv: []string{"ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY_OLD"}, Serialize: true,
 			},

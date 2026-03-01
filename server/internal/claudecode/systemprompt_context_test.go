@@ -134,13 +134,16 @@ func TestBuildAgentModeGuidance_IncludesFSMAndAskGateProtocol(t *testing.T) {
 	if !strings.Contains(out, "<orchestrator_fsm>") {
 		t.Fatalf("agent mode guidance should include orchestrator_fsm tag: %s", out)
 	}
-	if !strings.Contains(out, "Adaptive protocol: always create exactly one canonical Markdown TODO checklist before execution") {
-		t.Fatalf("agent mode guidance should include adaptive protocol guidance: %s", out)
+	if !strings.Contains(out, "<protocol>") {
+		t.Fatalf("agent mode guidance should include protocol tag: %s", out)
 	}
-	if !strings.Contains(out, "always create exactly one canonical Markdown TODO checklist before execution") {
-		t.Fatalf("agent mode guidance should force a canonical TODO checklist: %s", out)
+	if !strings.Contains(out, "exactly one canonical Markdown TODO checklist") {
+		t.Fatalf("agent mode guidance should force one canonical TODO checklist: %s", out)
 	}
 	if !strings.Contains(out, "<awaiting_user_input>true</awaiting_user_input>") {
 		t.Fatalf("agent mode guidance should include awaiting_user_input marker contract: %s", out)
+	}
+	if !strings.Contains(out, "next concrete improvement") || !strings.Contains(out, "explicitly asks to stop") {
+		t.Fatalf("agent mode guidance should include continuous loop stop-condition: %s", out)
 	}
 }

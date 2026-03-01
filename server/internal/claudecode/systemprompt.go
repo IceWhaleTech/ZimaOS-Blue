@@ -381,31 +381,24 @@ func (b *SystemPromptBuilder) buildHeartbeatGuidance() string {
 func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
 	autoConfirm := b.isAgentAutoConfirm()
 
-	sb.WriteString("<agent_mode>You are in agent mode with unlimited autonomy for complex, multi-step tasks. No tool round limit — keep working until fully done.")
-	sb.WriteString("<orchestrator_fsm>State machine is mandatory and explicit: INTAKE -> CLARIFY -> PLAN -> CONFIRM_GATE -> EXECUTE -> VERIFY -> REPORT -> DONE, with RECOVER/ABORTED as controlled exits. Use adaptive transitions: simple tasks may move quickly from INTAKE/CLARIFY to EXECUTE; complex tasks should include PLAN.</orchestrator_fsm>")
-	sb.WriteString("<protocol>Adaptive protocol: always create exactly one canonical Markdown TODO checklist before execution, even for simple/direct requests (single lookup, factual Q&A, one safe tool call). Use a minimal single-item TODO when the task is simple. For complex multi-step work, use PLAN -> (optional CONFIRM) -> EXECUTE -> SUMMARY. Keep the checklist as the single source of truth, update it incrementally, and avoid duplicate TODO copies. In CONFIRM, when truly blocked, use ask tool and include `<awaiting_user_input>true</awaiting_user_input>` while waiting. In SUMMARY, end with plain text completion summary (never with a tool call).</protocol>")
-
-	sb.WriteString("<planning>Only for complex multi-step tasks, manage TODOs via plan IPC skills. If no plan exists, call `blue plan_create ...`. If a plan exists, NEVER recreate it. Update incrementally with `blue plan_update ...` or `blue plan_append ...`. Keep the checklist in one place; do not re-output duplicate TODO lists.</planning>")
-
-	sb.WriteString("<execution>")
-	sb.WriteString("Before each tool call, briefly state which task you are working on. ")
+	sb.WriteString("<agent_mode>You are in agent mode. Work autonomously in a continuous multi-step loop until the task is done or the user explicitly stops.")
+	sb.WriteString("<orchestrator_fsm>INTAKE -> PLAN -> EXECUTE -> VERIFY -> REPORT -> DONE; RECOVER on failures. Use the shortest safe path for simple tasks.</orchestrator_fsm>")
+	sb.WriteString("<protocol>Keep exactly one canonical Markdown TODO checklist and update it in place. Do not output duplicate TODO blocks. If blocked/high-risk/irreversible, use ask and mark `<awaiting_user_input>true</awaiting_user_input>` while waiting.</protocol>")
+	sb.WriteString("<planning>For complex work, use plan IPC skills incrementally (`blue plan_create/plan_update/plan_append`) and never recreate an existing plan.</planning>")
+	sb.WriteString("<execution>Before each tool call, briefly state the current task. ")
 	if autoConfirm {
 		sb.WriteString("Auto-confirm enabled — execute without asking. ")
 	} else {
-		sb.WriteString("Ask confirmation before destructive actions (delete, install, modify production config). Proceed without confirmation for safe operations. ")
+		sb.WriteString("Ask confirmation for destructive actions; proceed directly for safe actions. ")
 	}
-	sb.WriteString("Use exec for file ops, installs, builds, tests. Do NOT stop early. Do NOT call exec without a concrete command — think first, then execute.")
-	sb.WriteString(" When facing multiple valid approaches with meaningful trade-offs, or when critical parameters are missing, call ask before proceeding.")
-	sb.WriteString(" Ask is required only when execution would be blocked, high-risk, or irreversible. For low-risk informational requests, do not block on ask — choose sensible defaults and continue.")
-	sb.WriteString(" If user gives a short affirmative reply (e.g. 好的/继续/ok), treat it as approval to continue the current task chain; do not reset context.")
-	sb.WriteString(" Ask protocol: one-line question + 2-5 mutually exclusive options + consequence summary for each option. Mark pending confirmation explicitly with `<awaiting_user_input>true</awaiting_user_input>` and clear it after user response.")
-	sb.WriteString(" Ask format: prefer q/mq + a, where a contains 2-4 options. Prefer option objects {label, description, value}; put the recommended option first and append '(Recommended)' to its label.")
+	sb.WriteString("Use exec for concrete file/build/test commands. Do not stop early. If user replies with short approval (e.g. 好的/继续/ok), continue the same task chain.")
 	sb.WriteString("</execution>")
 
-	sb.WriteString("<verification>After all steps, verify: run build/tests. Fix and re-verify if needed. If verification fails, enter RECOVER with bounded retries and a clear fallback path.</verification>")
+	sb.WriteString("<verification>After changes, run build/tests or equivalent checks. Fix and re-verify on failure.</verification>")
 
-	sb.WriteString("<completion>Your LAST response MUST be plain text (not a tool call). Include: 1) What was accomplished. 2) How to use/test the result. 3) Suggested next steps. Never end with a tool call.</completion>")
+	sb.WriteString("<agent_loop>After each milestone, identify the next concrete improvement and continue. Stop only when the user explicitly asks to stop/close/cancel/end.</agent_loop>")
 
+	sb.WriteString("<completion>Your LAST response in a round must be plain text (not a tool call): what was done, how to verify/use, and next step. In agent mode, do not emit terminal completion unless the user explicitly asked to stop. Never end with a tool call.</completion>")
 	sb.WriteString("</agent_mode>")
 }
 
@@ -433,7 +426,7 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 
 	var sb strings.Builder
 	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). ")
-	sb.WriteString("Routing: ask→ask, search→web_search, URL→browser, UI review→ui_reviewer, analyze→analyze, reminder/notification→reminder, plan→plan_create/plan_update/plan_append, sandbox→sandbox, workflows→workflows, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. ")
+	sb.WriteString("Routing: ask→ask, search→web_search, URL→browser, UI review→ui_reviewer, analyze→analyze, reminder/alert→reminder, plan→plan_create/plan_update/plan_append, sandbox→sandbox, workflows→workflows, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. ")
 	sb.WriteString("Use progressive skill selection: prefer routed/pinned commands first, then inspect likely SKILL.md files on demand. ")
 	sb.WriteString("`blue help <cmd>` for usage. More skills in workspace `.claude/skills/` and user default `~/.claude/skills/`.")
 

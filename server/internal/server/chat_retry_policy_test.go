@@ -67,20 +67,20 @@ func TestShouldSkipPreContentRetry(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "provider no response skips retry",
+			name: "provider no response keeps retry",
 			err: &proxybridge.ProxyError{
 				StatusCode: 502,
 				Body:       "provider prov_x returned no response",
 			},
-			want: true,
+			want: false,
 		},
 		{
-			name: "empty streaming response skips retry",
+			name: "empty streaming response keeps retry",
 			err: &proxybridge.ProxyError{
 				StatusCode: 502,
 				Body:       "provider prov_x returned empty streaming response",
 			},
-			want: true,
+			want: false,
 		},
 	}
 

@@ -12,6 +12,9 @@ type contextKey struct{}
 // pruneStatsKey is the context key for per-request pruning stats.
 var pruneStatsKey = contextKey{}
 
+// prunerDisabledKey marks requests that should bypass pruning middleware.
+var prunerDisabledKey = contextKey{}
+
 // RequestPruneStats holds per-request pruning statistics.
 type RequestPruneStats struct {
 	Pruned         bool `json:"pruned"`
@@ -31,6 +34,17 @@ func GetPruneStats(ctx context.Context) *RequestPruneStats {
 		return v
 	}
 	return nil
+}
+
+// WithPrunerDisabled marks whether pruning should be bypassed for this request.
+func WithPrunerDisabled(ctx context.Context, disabled bool) context.Context {
+	return context.WithValue(ctx, prunerDisabledKey, disabled)
+}
+
+// IsPrunerDisabled checks whether pruning is disabled for this request context.
+func IsPrunerDisabled(ctx context.Context) bool {
+	v, ok := ctx.Value(prunerDisabledKey).(bool)
+	return ok && v
 }
 
 // openaiMessage represents a message in the OpenAI chat completions format.

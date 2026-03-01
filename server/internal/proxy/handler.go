@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -384,6 +386,29 @@ func shouldRetryWithoutTools(err error) bool {
 	return strings.Contains(msg, "tool") || strings.Contains(msg, "function")
 }
 
+func shouldRetryWithoutPreviousResponseID(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "returned no response") ||
+		strings.Contains(msg, "empty streaming response") ||
+		strings.Contains(msg, "upstream 502") ||
+		strings.Contains(msg, "upstream 503") ||
+		strings.Contains(msg, "upstream 504")
+}
+
+func hasPreviousResponseContinuation(body []byte, cachedPrevID string) bool {
+	if strings.TrimSpace(cachedPrevID) != "" {
+		return true
+	}
+	if len(body) == 0 {
+		return false
+	}
+	return strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) != ""
+}
+
 func transientUpstreamRetryDelay(attempt int) time.Duration {
 	switch attempt {
 	case 0:
@@ -479,6 +504,7 @@ type ProxyHandler struct {
 	responsesPrevMu sync.RWMutex
 	responsesPrevID map[string]string // session_id -> previous_response_id
 	responsesInstr  map[string]string // session_id -> cached instructions
+	responsesTools  map[string]string // session/provider/model -> tools schema signature
 	responsesAssist map[string]string // session/provider/model -> last assistant text
 	assistByRespID  map[string]string // response_id -> last assistant text
 }
@@ -494,6 +520,7 @@ func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *Failove
 		providerRaceStats:  make(map[string]*providerRaceStat),
 		responsesPrevID:    make(map[string]string),
 		responsesInstr:     make(map[string]string),
+		responsesTools:     make(map[string]string),
 		responsesAssist:    make(map[string]string),
 		assistByRespID:     make(map[string]string),
 	}
@@ -1297,7 +1324,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body.Close()
 
 	// Apply context pruner to reduce token usage (if enabled)
-	if mw := ph.ensurePruner(); mw != nil && mw.Enabled() {
+	if mw := ph.ensurePruner(); mw != nil && mw.Enabled() && !pruner.IsPrunerDisabled(r.Context()) {
 		// Read prune stats slot from context (set by chat handler before bridge call).
 		// If present, the middleware populates it with per-request stats.
 		if pruned, err := mw.ProcessRequest(r.Context(), bodyBytes); err == nil {
@@ -1422,6 +1449,36 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			} else {
 				err = ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, executeOnProvider)
 			}
+		}
+	}
+
+	// Responses continuation fallback: some relays return generic "no response"
+	// when previous_response_id is stale or unsupported. Drop it and retry once.
+	cachedPrevID := strings.TrimSpace(ph.getCachedResponsesPreviousID(r))
+	inlinePrevID := strings.TrimSpace(gjson.GetBytes(pr.body, "previous_response_id").String())
+	if err != nil && hasPreviousResponseContinuation(pr.body, cachedPrevID) && shouldRetryWithoutPreviousResponseID(err) &&
+		!errors.Is(err, providerpool.ErrNoAvailableProvider) && !isContextCanceledError(err) {
+		strippedBody := pr.body
+		if inlinePrevID != "" {
+			strippedBody = stripPreviousResponseID(pr.body)
+		}
+		slog.Info("[proxy] retrying without previous_response_id after upstream no-response",
+			"model", pr.model,
+			"original_error", err,
+			"inline_previous_response_id", inlinePrevID != "",
+			"cached_previous_response_id", cachedPrevID != "")
+		ph.clearCachedResponsesPreviousID(r)
+		pr.body = strippedBody
+		finalResp = nil
+		if failoverDisabled {
+			result, routeErr := ph.providerPool.Router.Route(routeReq)
+			if routeErr != nil {
+				err = routeErr
+			} else {
+				err = executeOnProvider(result)
+			}
+		} else {
+			err = ph.providerPool.Router.RouteWithFallback(r.Context(), routeReq, executeOnProvider)
 		}
 	}
 
@@ -1661,7 +1718,11 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 		}
 	}
 	if strings.HasSuffix(finalPath, "/responses") {
+		// Ensure continuation trimming also applies to requests converted in the
+		// URI-fixup branch (e.g. direct /responses requests carrying messages).
+		body = trimResponsesInputForContinuation(body)
 		body = ph.ensureCachedInstructionsForResponsesBody(r, body)
+		body = ph.ensureCachedToolsForResponsesBody(r, route, body)
 		body = ph.injectCachedResponsesAssistantContextForRoute(r, route, body)
 		body = ensureResponsesStoreEnabled(body)
 		body = clampResponsesMaxOutputTokens(body)
@@ -1686,6 +1747,7 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	}
 
 	copyHeaders(req.Header, r.Header)
+	applyRequestLocaleHeader(req, r.Context())
 	req.Host = targetURL.Host
 
 	// Copilot API requires Editor-Version header for IDE authentication
@@ -2889,6 +2951,7 @@ func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.R
 
 	// Copy headers
 	copyHeaders(req.Header, r.Header)
+	applyRequestLocaleHeader(req, r.Context())
 
 	// Set authentication
 	// Use x-api-key only for Anthropic-native endpoints (/v1/messages);
@@ -3347,6 +3410,17 @@ func copyHeaders(dst, src http.Header) {
 	}
 }
 
+// applyRequestLocaleHeader injects Accept-Language from context when the inbound
+// request did not specify it explicitly.
+func applyRequestLocaleHeader(req *http.Request, ctx context.Context) {
+	if req == nil || strings.TrimSpace(req.Header.Get("Accept-Language")) != "" {
+		return
+	}
+	if locale := strings.TrimSpace(LocaleFromContext(ctx)); locale != "" {
+		req.Header.Set("Accept-Language", locale)
+	}
+}
+
 // isHopByHopHeader checks if header is a hop-by-hop header
 func isHopByHopHeader(header string) bool {
 	return hopByHopHeaders[header]
@@ -3710,6 +3784,11 @@ func (ph *ProxyHandler) clearCachedResponsesPreviousID(r *http.Request) {
 			delete(ph.responsesAssist, key)
 		}
 	}
+	for key := range ph.responsesTools {
+		if key == sid || strings.HasPrefix(key, sid+"|") {
+			delete(ph.responsesTools, key)
+		}
+	}
 	ph.responsesPrevMu.Unlock()
 }
 
@@ -3817,6 +3896,90 @@ func (ph *ProxyHandler) getCachedResponsesAssistantByResponseID(responseID strin
 	return strings.TrimSpace(ph.assistByRespID[responseID])
 }
 
+func responsesToolsSchemaSignature(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" {
+		return ""
+	}
+	var v interface{}
+	if err := json.Unmarshal([]byte(raw), &v); err == nil {
+		if normalized, err := json.Marshal(v); err == nil && len(normalized) > 0 {
+			raw = string(normalized)
+		}
+	}
+	sum := sha256.Sum256([]byte(raw))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func (ph *ProxyHandler) getCachedResponsesToolsSignatureForRoute(r *http.Request, route *providerpool.RouteResult) string {
+	sid := ph.responsesSessionID(r)
+	if sid == "" {
+		return ""
+	}
+	providerID := ""
+	modelID := ""
+	if route != nil && route.Provider != nil {
+		providerID = strings.TrimSpace(route.Provider.ID)
+	}
+	if route != nil && route.Model != nil {
+		modelID = strings.TrimSpace(route.Model.ID)
+	}
+
+	ph.responsesPrevMu.RLock()
+	defer ph.responsesPrevMu.RUnlock()
+	if providerID != "" && modelID != "" {
+		if v := strings.TrimSpace(ph.responsesTools[responsesPrevIDKey(sid, providerID, modelID)]); v != "" {
+			return v
+		}
+	}
+	if providerID != "" {
+		if v := strings.TrimSpace(ph.responsesTools[responsesPrevIDKey(sid, providerID, "")]); v != "" {
+			return v
+		}
+		// Route is known but no provider-scoped cache exists; do not fall back to
+		// session-global signature to avoid cross-provider leakage.
+		return ""
+	}
+	return strings.TrimSpace(ph.responsesTools[responsesPrevIDKey(sid, "", "")])
+}
+
+func (ph *ProxyHandler) setCachedResponsesToolsSignatureForRoute(r *http.Request, route *providerpool.RouteResult, signature string) {
+	sid := ph.responsesSessionID(r)
+	signature = strings.TrimSpace(signature)
+	if sid == "" {
+		return
+	}
+	providerID := ""
+	modelID := ""
+	if route != nil && route.Provider != nil {
+		providerID = strings.TrimSpace(route.Provider.ID)
+	}
+	if route != nil && route.Model != nil {
+		modelID = strings.TrimSpace(route.Model.ID)
+	}
+
+	setOrDelete := func(m map[string]string, key, value string) {
+		if key == "" {
+			return
+		}
+		if value == "" {
+			delete(m, key)
+			return
+		}
+		m[key] = value
+	}
+
+	ph.responsesPrevMu.Lock()
+	setOrDelete(ph.responsesTools, responsesPrevIDKey(sid, "", ""), signature)
+	if providerID != "" {
+		setOrDelete(ph.responsesTools, responsesPrevIDKey(sid, providerID, ""), signature)
+		if modelID != "" {
+			setOrDelete(ph.responsesTools, responsesPrevIDKey(sid, providerID, modelID), signature)
+		}
+	}
+	ph.responsesPrevMu.Unlock()
+}
+
 func (ph *ProxyHandler) injectCachedResponsesPreviousIDForRoute(r *http.Request, route *providerpool.RouteResult, body []byte) []byte {
 	if len(body) == 0 || disableResponsesContinuation(r) {
 		return body
@@ -3883,12 +4046,19 @@ func trimResponsesInputForContinuation(body []byte) []byte {
 			}
 			return out
 		}
-		start = lastAssistant
+		if shouldCarryAssistantContextForContinuation(items[lastAssistant+1:]) {
+			start = lastAssistant
+		} else {
+			start = lastAssistant + 1
+		}
 	}
 
 	trimmedRaw := make([]string, 0, len(items)-start)
 	for i := start; i < len(items); i++ {
 		raw := strings.TrimSpace(items[i].Raw)
+		if lastAssistant >= 0 && i == lastAssistant && start == lastAssistant {
+			raw = compactAssistantItemForContinuation(items[i], items[lastAssistant+1:])
+		}
 		if raw == "" || raw == "null" {
 			continue
 		}
@@ -3908,6 +4078,115 @@ func trimResponsesInputForContinuation(body []byte) []byte {
 		return body
 	}
 	return out
+}
+
+var reContinuationChoice = regexp.MustCompile(`(?i)^(?:[a-e](?:[\.\)])?|[1-9][0-9]?)$`)
+var reContinuationContextCue = regexp.MustCompile(`(?i)\b(above|previous|same|continue|that|this|former|latter)\b|上面|上文|刚才|之前|继续|这个|那个|同上`)
+var reContinuationOrdinalCue = regexp.MustCompile(`(?i)\b(first|second|third|fourth|fifth|option)\b|第[一二三四五六七八九十0-9]+个|选项`)
+var reAssistantOptionLine = regexp.MustCompile(`(?m)^[ \t]*(?:[A-Ea-e]|[1-9][0-9]?)[\.\)]\s+\S.*$`)
+
+func normalizeContinuationContextText(s string) string {
+	trimmed := strings.TrimSpace(s)
+	trimmed = strings.Trim(trimmed, " \t\r\n.,!?;:，。！？；：、~～`'\"“”‘’()（）[]【】")
+	return strings.TrimSpace(trimmed)
+}
+
+func isLikelyContextDependentContinuationText(text string) bool {
+	s := normalizeContinuationContextText(text)
+	if s == "" {
+		return true
+	}
+	if reContinuationChoice.MatchString(s) {
+		return true
+	}
+	if reContinuationContextCue.MatchString(s) || reContinuationOrdinalCue.MatchString(s) {
+		return true
+	}
+	// Short replies are often acknowledgements or terse follow-ups that rely on
+	// prior context; longer standalone asks should avoid carrying assistant text.
+	return len([]rune(s)) <= 22
+}
+
+func shouldCarryAssistantContextForContinuation(items []gjson.Result) bool {
+	sawUser := false
+	for _, item := range items {
+		role := strings.ToLower(strings.TrimSpace(item.Get("role").String()))
+		if role != "user" {
+			continue
+		}
+		sawUser = true
+		text := strings.TrimSpace(extractResponsesInputMessageText(item))
+		// Empty/multimodal user payload is ambiguous: keep assistant context.
+		if text == "" {
+			return true
+		}
+		if isLikelyContextDependentContinuationText(text) {
+			return true
+		}
+	}
+	return !sawUser
+}
+
+func truncateContinuationContextRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	if maxRunes <= 120 {
+		return string(r[len(r)-maxRunes:])
+	}
+	head := maxRunes / 3
+	tail := maxRunes - head - 25
+	if tail < 0 {
+		tail = 0
+	}
+	return string(r[:head]) + "\n...[context trimmed]...\n" + string(r[len(r)-tail:])
+}
+
+func compressAssistantContextForContinuation(assistantText string, userItems []gjson.Result) string {
+	assistantText = strings.TrimSpace(assistantText)
+	if assistantText == "" {
+		return ""
+	}
+
+	const maxGeneralRunes = 1600
+	const maxChoiceRunes = 700
+
+	combinedUser := ""
+	for _, item := range userItems {
+		if strings.EqualFold(strings.TrimSpace(item.Get("role").String()), "user") {
+			combinedUser += "\n" + extractResponsesInputMessageText(item)
+		}
+	}
+	combinedUser = strings.TrimSpace(combinedUser)
+
+	// For short/choice-like follow-ups, prefer concise option lines if available.
+	if isLikelyContextDependentContinuationText(combinedUser) {
+		if optionLines := strings.TrimSpace(strings.Join(reAssistantOptionLine.FindAllString(assistantText, 10), "\n")); optionLines != "" {
+			return truncateContinuationContextRunes(optionLines, maxChoiceRunes)
+		}
+		return truncateContinuationContextRunes(assistantText, maxChoiceRunes)
+	}
+	return truncateContinuationContextRunes(assistantText, maxGeneralRunes)
+}
+
+func compactAssistantItemForContinuation(item gjson.Result, userItems []gjson.Result) string {
+	text := strings.TrimSpace(extractResponsesInputMessageText(item))
+	if text == "" {
+		return strings.TrimSpace(item.Raw)
+	}
+	compressed := compressAssistantContextForContinuation(text, userItems)
+	if compressed == "" {
+		return strings.TrimSpace(item.Raw)
+	}
+	escaped, err := json.Marshal(compressed)
+	if err != nil {
+		return strings.TrimSpace(item.Raw)
+	}
+	return `{"role":"assistant","content":[{"type":"input_text","text":` + string(escaped) + `}]}`
 }
 
 func (ph *ProxyHandler) injectCachedResponsesAssistantContextForRoute(r *http.Request, route *providerpool.RouteResult, body []byte) []byte {
@@ -3947,12 +4226,19 @@ func (ph *ProxyHandler) injectCachedResponsesAssistantContextForRoute(r *http.Re
 	if hasAssistant || hasToolPayload || !hasUser {
 		return body
 	}
+	if !shouldCarryAssistantContextForContinuation(items) {
+		return body
+	}
 
 	assistantText := ph.getCachedResponsesAssistantForRoute(r, route)
 	if assistantText == "" {
 		prevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
 		assistantText = ph.getCachedResponsesAssistantByResponseID(prevID)
 	}
+	if assistantText == "" {
+		return body
+	}
+	assistantText = compressAssistantContextForContinuation(assistantText, items)
 	if assistantText == "" {
 		return body
 	}
@@ -4166,6 +4452,35 @@ func (ph *ProxyHandler) injectCachedResponsesInstructions(r *http.Request, body 
 	// Chat-completions payload has no instructions field; keep as-is and inject later
 	// after conversion if needed.
 	return body
+}
+
+func (ph *ProxyHandler) ensureCachedToolsForResponsesBody(r *http.Request, route *providerpool.RouteResult, body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.Exists() {
+		return body
+	}
+
+	incomingSig := responsesToolsSchemaSignature(tools.Raw)
+	cachedSig := ph.getCachedResponsesToolsSignatureForRoute(r, route)
+	// Explicit tools payload changed or explicitly cleared.
+	ph.setCachedResponsesToolsSignatureForRoute(r, route, incomingSig)
+
+	prevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+	if prevID == "" || incomingSig == "" {
+		return body
+	}
+	if cachedSig == "" || incomingSig != cachedSig {
+		return body
+	}
+	// Continuation with unchanged tools: omit schema resend to save tokens.
+	out, err := sjson.DeleteBytes(body, "tools")
+	if err != nil {
+		return body
+	}
+	return out
 }
 
 func (ph *ProxyHandler) ensureCachedInstructionsForResponsesBody(r *http.Request, body []byte) []byte {

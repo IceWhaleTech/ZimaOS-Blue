@@ -201,3 +201,42 @@ func TestParseAskQuestions_SQIsRejected(t *testing.T) {
 		t.Fatalf("expected error for sq input, got nil")
 	}
 }
+
+func TestParseAskQuestions_QSupportsDetail(t *testing.T) {
+	items, err := parseAskQuestions(map[string]any{
+		"q":      "Choose one",
+		"detail": "❕ 这是一条额外说明",
+		"a":      `["A","B"]`,
+	})
+	if err != nil {
+		t.Fatalf("parseAskQuestions returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1", len(items))
+	}
+	if items[0].Detail != "❕ 这是一条额外说明" {
+		t.Fatalf("detail = %q, want expected text", items[0].Detail)
+	}
+}
+
+func TestParseAskQuestions_QuestionsSupportsDetail(t *testing.T) {
+	items, err := parseAskQuestions(map[string]any{
+		"questions": []any{
+			map[string]any{
+				"question": "Choose mode",
+				"detail":   "❕ 会影响后续步骤",
+				"type":     "radio",
+				"options":  []any{"fast", "safe"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseAskQuestions returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1", len(items))
+	}
+	if items[0].Detail != "❕ 会影响后续步骤" {
+		t.Fatalf("detail = %q, want expected text", items[0].Detail)
+	}
+}

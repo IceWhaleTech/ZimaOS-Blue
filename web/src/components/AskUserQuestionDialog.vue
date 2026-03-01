@@ -249,6 +249,12 @@ function dismiss() {
           <!-- Question body - show current question only -->
           <div v-if="currentQuestion" class="px-4 py-3 space-y-2.5 max-h-[68vh] overflow-y-auto">
             <p class="text-xs font-medium text-gray-800 dark:text-gray-200">{{ currentQuestion.question }}</p>
+            <p
+              v-if="currentQuestion.detail"
+              class="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md px-2 py-1"
+            >
+              ❕ {{ currentQuestion.detail }}
+            </p>
 
             <!-- Options -->
             <div class="space-y-2">

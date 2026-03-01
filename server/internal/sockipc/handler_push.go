@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// PushBackend defines the push notification operations exposed via IPC.
+// PushBackend defines reminder operations exposed via IPC.
 type PushBackend interface {
 	Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string) (PushResult, error)
 	List(ctx context.Context, ownerID string) ([]PushResult, error)
@@ -29,7 +29,7 @@ type PushResult struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// RegisterPushHandlers wires up push notification IPC commands.
+// RegisterPushHandlers wires up reminder IPC commands.
 // Auth is handled by Unix socket file permissions (0600).
 // User identification uses session_id param (defaults to "default").
 func RegisterPushHandlers(srv *Server, backend PushBackend, log *zap.Logger) {
@@ -40,8 +40,8 @@ func RegisterPushHandlers(srv *Server, backend PushBackend, log *zap.Logger) {
 		return "default"
 	}
 
-	// push.add — schedule a push notification
-	srv.Handle("push.add", func(ctx context.Context, req *Request) *Response {
+	// reminder.add — schedule a reminder.
+	handleAdd := func(ctx context.Context, req *Request) *Response {
 		userID := ownerOf(req)
 
 		message := req.Params["message"]
@@ -63,16 +63,17 @@ func RegisterPushHandlers(srv *Server, backend PushBackend, log *zap.Logger) {
 
 		result, err := backend.Add(ctx, userID, message, fireAt, recurring, sessionID)
 		if err != nil {
-			log.Warn("sockipc push.add failed", zap.Error(err))
+			log.Warn("sockipc reminder.add failed", zap.Error(err))
 			return ErrResponse("add failed: " + err.Error())
 		}
 
 		data, _ := json.Marshal(result)
-		return OkResponse(map[string]string{"notification": string(data)})
-	})
+		return OkResponse(map[string]string{"reminder": string(data)})
+	}
+	srv.Handle("reminder.add", handleAdd)
 
-	// push.list — list all pending notifications for the user
-	srv.Handle("push.list", func(ctx context.Context, req *Request) *Response {
+	// reminder.list — list pending reminders.
+	handleList := func(ctx context.Context, req *Request) *Response {
 		userID := ownerOf(req)
 
 		list, err := backend.List(ctx, userID)
@@ -81,11 +82,12 @@ func RegisterPushHandlers(srv *Server, backend PushBackend, log *zap.Logger) {
 		}
 
 		data, _ := json.Marshal(list)
-		return OkResponse(map[string]string{"notifications": string(data), "count": fmt.Sprintf("%d", len(list))})
-	})
+		return OkResponse(map[string]string{"reminders": string(data), "count": fmt.Sprintf("%d", len(list))})
+	}
+	srv.Handle("reminder.list", handleList)
 
-	// push.delete — delete a notification by ID
-	srv.Handle("push.delete", func(ctx context.Context, req *Request) *Response {
+	// reminder.delete — delete a reminder by ID.
+	handleDelete := func(ctx context.Context, req *Request) *Response {
 		userID := ownerOf(req)
 
 		id := req.Params["id"]
@@ -98,10 +100,11 @@ func RegisterPushHandlers(srv *Server, backend PushBackend, log *zap.Logger) {
 		}
 
 		return OkResponse(map[string]string{"deleted": id})
-	})
+	}
+	srv.Handle("reminder.delete", handleDelete)
 
-	// push.clear — delete all notifications for the user
-	srv.Handle("push.clear", func(ctx context.Context, req *Request) *Response {
+	// reminder.clear — delete all reminders.
+	handleClear := func(ctx context.Context, req *Request) *Response {
 		userID := ownerOf(req)
 
 		count, err := backend.Clear(ctx, userID)
@@ -110,7 +113,8 @@ func RegisterPushHandlers(srv *Server, backend PushBackend, log *zap.Logger) {
 		}
 
 		return OkResponse(map[string]string{"cleared": fmt.Sprintf("%d", count)})
-	})
+	}
+	srv.Handle("reminder.clear", handleClear)
 }
 
 // parseTime parses a time string as duration, RFC3339, or common format.

@@ -1,0 +1,118 @@
+package bootstrap
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+)
+
+type recordingProvider struct {
+	name   string
+	models []string
+
+	calls   int
+	lastReq llm.ChatRequest
+}
+
+func (p *recordingProvider) Name() string {
+	return p.name
+}
+
+func (p *recordingProvider) Models() []string {
+	out := make([]string, len(p.models))
+	copy(out, p.models)
+	return out
+}
+
+func (p *recordingProvider) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	p.calls++
+	p.lastReq = req
+	return &llm.ChatResponse{
+		Model: req.Model,
+		Message: llm.Message{
+			Role:    llm.RoleAssistant,
+			Content: p.name,
+		},
+	}, nil
+}
+
+func (p *recordingProvider) ChatStream(_ context.Context, _ llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (p *recordingProvider) ChatStreamCallback(_ context.Context, _ llm.ChatRequest, _ llm.StreamCallback) error {
+	return errors.New("not implemented")
+}
+
+func TestProviderRegistryLLMCaller_AutoModelUsesFirstProviderModel(t *testing.T) {
+	registry := llm.NewProviderRegistry()
+	first := &recordingProvider{name: "first", models: []string{"first-model"}}
+	second := &recordingProvider{name: "second", models: []string{"second-model"}}
+	registry.Register(first)
+	registry.Register(second)
+
+	caller := newProviderRegistryLLMCaller(registry)
+	resp, err := caller.Chat(context.Background(), llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil || resp.Message.Content != "first" {
+		t.Fatalf("expected first provider response, got %+v", resp)
+	}
+	if first.calls != 1 {
+		t.Fatalf("expected first provider to be called once, got %d", first.calls)
+	}
+	if first.lastReq.Model != "first-model" {
+		t.Fatalf("expected auto model to be replaced with first-model, got %q", first.lastReq.Model)
+	}
+}
+
+func TestProviderRegistryLLMCaller_SelectsProviderByModel(t *testing.T) {
+	registry := llm.NewProviderRegistry()
+	first := &recordingProvider{name: "first", models: []string{"first-model"}}
+	second := &recordingProvider{name: "second", models: []string{"second-model"}}
+	registry.Register(first)
+	registry.Register(second)
+
+	caller := newProviderRegistryLLMCaller(registry)
+	resp, err := caller.Chat(context.Background(), llm.ChatRequest{
+		Model:    "second-model",
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil || resp.Message.Content != "second" {
+		t.Fatalf("expected second provider response, got %+v", resp)
+	}
+	if second.calls != 1 {
+		t.Fatalf("expected second provider to be called once, got %d", second.calls)
+	}
+	if first.calls != 0 {
+		t.Fatalf("expected first provider not to be called, got %d", first.calls)
+	}
+}
+
+func TestProviderRegistryLLMCaller_NoProviders(t *testing.T) {
+	caller := newProviderRegistryLLMCaller(llm.NewProviderRegistry())
+	_, err := caller.Chat(context.Background(), llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+	})
+	if err == nil {
+		t.Fatal("expected error when no providers are configured")
+	}
+}
+
+func TestProxyBridgeLLMCaller_NilBridge(t *testing.T) {
+	caller := &proxyBridgeLLMCaller{}
+	_, err := caller.Chat(context.Background(), llm.ChatRequest{Model: "auto"})
+	if err == nil {
+		t.Fatal("expected error when proxy bridge is nil")
+	}
+}

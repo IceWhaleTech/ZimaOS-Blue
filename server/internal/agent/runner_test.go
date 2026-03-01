@@ -326,6 +326,17 @@ func (m *slowMockLLM) Chat(ctx context.Context, _ llm.ChatRequest) (*llm.ChatRes
 	}, nil
 }
 
+type captureLLM struct {
+	requests []llm.ChatRequest
+}
+
+func (m *captureLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	m.requests = append(m.requests, req)
+	return &llm.ChatResponse{
+		Message: llm.Message{Role: llm.RoleAssistant, Content: "done"},
+	}, nil
+}
+
 func TestRunner_LLMTools(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.Register(&dummyTool{name: "exec", desc: "run commands"})
@@ -351,6 +362,39 @@ func TestRunner_LLMTools_NilRegistry(t *testing.T) {
 	runner := &Runner{}
 	if got := runner.llmTools(); got != nil {
 		t.Errorf("expected nil, got %v", got)
+	}
+}
+
+func TestRunner_ExecuteStep_SystemPromptAvoidsBlueCLI(t *testing.T) {
+	llmStub := &captureLLM{}
+	runner := &Runner{
+		llm: llmStub,
+	}
+
+	task := &Task{
+		ID:   "t1",
+		Goal: "implement parser improvements",
+		Plan: []PlanStep{
+			{Index: 0, Description: "update parser tests", Status: StepStatusRunning},
+		},
+	}
+	step := &task.Plan[0]
+
+	_, err := runner.executeStep(context.Background(), task, step)
+	if err != nil {
+		t.Fatalf("executeStep returned unexpected error: %v", err)
+	}
+	if len(llmStub.requests) == 0 {
+		t.Fatal("expected at least one LLM request")
+	}
+
+	req := llmStub.requests[0]
+	if len(req.Messages) < 1 || req.Messages[0].Role != llm.RoleSystem {
+		t.Fatalf("expected first message to be system prompt, got: %#v", req.Messages)
+	}
+	systemPrompt := req.Messages[0].Content
+	if !strings.Contains(systemPrompt, "Do not depend on 'blue' CLI subcommands") {
+		t.Fatalf("expected no-blue-cli guidance in system prompt, got: %q", systemPrompt)
 	}
 }
 

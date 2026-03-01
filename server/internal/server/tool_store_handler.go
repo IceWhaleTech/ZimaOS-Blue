@@ -43,11 +43,11 @@ type RemoteTool struct {
 
 // ToolStoreHandler handles tool store HTTP requests
 type ToolStoreHandler struct {
-	registry     *tools.Registry
-	sources      map[string]*ToolSource
-	remoteTools  map[string]*RemoteTool
-	mu           sync.RWMutex
-	httpClient   *http.Client
+	registry    *tools.Registry
+	sources     map[string]*ToolSource
+	remoteTools map[string]*RemoteTool
+	mu          sync.RWMutex
+	httpClient  *http.Client
 }
 
 // NewToolStoreHandler creates a new tool store handler
@@ -96,17 +96,17 @@ func (h *ToolStoreHandler) RegisterRoutes(g *echo.Group) {
 
 // ToolResponse represents a tool in API responses
 type ToolResponse struct {
-	ID          string                   `json:"id"`
-	Name        string                   `json:"name"`
-	Version     string                   `json:"version"`
-	Description string                   `json:"description"`
-	Author      string                   `json:"author,omitempty"`
-	Category    string                   `json:"category,omitempty"`
-	Icon        string                   `json:"icon,omitempty"`
-	Tags        []string                 `json:"tags,omitempty"`
-	Enabled     bool                     `json:"enabled"`
-	Builtin     bool                     `json:"builtin"`
-	Parameters  map[string]interface{}   `json:"parameters,omitempty"`
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	Version     string                 `json:"version"`
+	Description string                 `json:"description"`
+	Author      string                 `json:"author,omitempty"`
+	Category    string                 `json:"category,omitempty"`
+	Icon        string                 `json:"icon,omitempty"`
+	Tags        []string               `json:"tags,omitempty"`
+	Enabled     bool                   `json:"enabled"`
+	Builtin     bool                   `json:"builtin"`
+	Parameters  map[string]interface{} `json:"parameters,omitempty"`
 }
 
 // toolsHiddenFromUI lists tools that should not appear on the plugins page.
@@ -122,7 +122,7 @@ var skillsShownAsTools = []ToolResponse{
 	{ID: "ui_reviewer", Name: "ui_reviewer", Version: "1.0.0", Description: "Score and audit UI/UX quality of a URL or screenshot", Icon: "eye", Enabled: true, Builtin: true},
 	{ID: "analyze", Name: "analyze", Version: "1.0.0", Description: "Deep-dive analysis: gather data from URLs and web searches, generate HTML report", Icon: "analyze", Enabled: true, Builtin: true},
 	{ID: "mediagen", Name: "mediagen", Version: "1.0.0", Description: "Generate images and videos using AI models", Icon: "mediagen", Enabled: true, Builtin: true},
-	{ID: "reminder", Name: "reminder", Version: "2.0.0", Description: "Manage reminders and scheduled alerts via push notifications", Icon: "notifications", Enabled: true, Builtin: true},
+	{ID: "reminder", Name: "reminder", Version: "2.0.0", Description: "Manage reminders and scheduled alerts", Icon: "notifications", Enabled: true, Builtin: true},
 }
 
 // ListTools returns all registered tools (including disabled ones)

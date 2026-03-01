@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -489,5 +490,90 @@ func TestContextTierString(t *testing.T) {
 	}
 	if TierCompressedMemory.String() != "compressed_memory" {
 		t.Errorf("TierCompressedMemory.String() = %q", TierCompressedMemory.String())
+	}
+}
+
+func TestGenerateSummarySync_UsesSmallModelWhenEnabled(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	smallModelEnabled := true
+	summaryEnabled := true
+	settings.settings.SmallModelEnabled = &smallModelEnabled
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	h.SetSettingsHandler(settings)
+
+	sm := &smallModelRuntimeMock{respText: "Summary: Login flow fixed, pending one regression test."}
+	h.SetSmallModelRuntime(sm)
+
+	allMessages := []memory.Message{
+		{Role: "user", Content: "Login keeps failing after password reset"},
+		{Role: "assistant", Content: "I will inspect auth middleware and retry policy."},
+		{Role: "user", Content: "Now it works but add regression tests."},
+		{Role: "assistant", Content: "I fixed the middleware ordering and prepared tests."},
+	}
+	recent := []llm.Message{
+		{Role: llm.RoleUser, Content: "Now it works but add regression tests."},
+		{Role: llm.RoleAssistant, Content: "I fixed the middleware ordering and prepared tests."},
+	}
+
+	got := h.generateSummarySync(context.Background(), "conv-small-summary", allMessages, recent)
+	if got == "" {
+		t.Fatal("expected non-empty summary from small model")
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	snap := h.smallModelStats.Snapshot()
+	if snap.SummaryAttempts != 1 || snap.SummarySuccess != 1 {
+		t.Fatalf("unexpected summary stats: attempts=%d success=%d", snap.SummaryAttempts, snap.SummarySuccess)
+	}
+	if cached, ok := h.summaryCache.Get("conv-small-summary"); !ok || cached.(*ConversationSummary).Text == "" {
+		t.Fatal("expected summary cache to be populated")
+	}
+}
+
+func TestGenerateSummarySync_SmallModelSummaryDisabled(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	smallModelEnabled := true
+	summaryEnabled := false
+	settings.settings.SmallModelEnabled = &smallModelEnabled
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	h.SetSettingsHandler(settings)
+
+	sm := &smallModelRuntimeMock{respText: "should not be used"}
+	h.SetSmallModelRuntime(sm)
+
+	allMessages := []memory.Message{
+		{Role: "user", Content: "older context 1"},
+		{Role: "assistant", Content: "older context 2"},
+		{Role: "user", Content: "recent question"},
+	}
+	recent := []llm.Message{
+		{Role: llm.RoleUser, Content: "recent question"},
+	}
+
+	got := h.generateSummarySync(context.Background(), "conv-small-summary-disabled", allMessages, recent)
+	if got != "" {
+		t.Fatalf("summary = %q, want empty when small-model summary is disabled and no proxy bridge", got)
+	}
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0 when summary switch disabled", sm.calls)
+	}
+	snap := h.smallModelStats.Snapshot()
+	if snap.SummaryAttempts != 0 || snap.SummarySuccess != 0 {
+		t.Fatalf("unexpected summary stats when disabled: attempts=%d success=%d", snap.SummaryAttempts, snap.SummarySuccess)
 	}
 }

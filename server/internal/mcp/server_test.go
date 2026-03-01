@@ -786,6 +786,87 @@ func TestOrchestratorRun_GenerativePromptWithoutRunner(t *testing.T) {
 	}
 }
 
+func TestOrchestratorRun_GenerativeOnlyWithoutRunner_ProducesCompressedDiagnostics(t *testing.T) {
+	registry := tools.NewRegistry()
+	executor := tools.NewExecutor(registry)
+	s := NewServer(registry, executor)
+	sess := s.CreateSession()
+
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: orchestratorRunTool,
+		Arguments: map[string]interface{}{
+			"goal": "generate coding summary",
+			"generative_tasks": []map[string]interface{}{
+				{"id": "draft", "prompt": "summarize latest changes"},
+			},
+		},
+	})
+	if resp.Error != nil {
+		t.Fatalf("unexpected rpc error: %v", resp.Error)
+	}
+	callResult := parseToolCallResult(t, resp)
+	if callResult.IsError {
+		t.Fatalf("orchestrator should return compressed diagnostics, got error: %v", callResult.Content)
+	}
+
+	payload := parseToolContentJSON(t, callResult.Content[0].Text)
+	compressed, _ := payload["compressed_result"].(string)
+	if !strings.Contains(compressed, "Generative Insights") {
+		t.Fatalf("expected generative section in compressed result, got: %q", compressed)
+	}
+	if !strings.Contains(strings.ToLower(compressed), "generative runner is not configured") {
+		t.Fatalf("expected runner-not-configured diagnostics in compressed result, got: %q", compressed)
+	}
+	failures, ok := payload["failures"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected failures object, got: %T", payload["failures"])
+	}
+	genFailures, ok := failures["generative"].([]interface{})
+	if !ok || len(genFailures) == 0 {
+		t.Fatalf("expected non-empty generative failures, got: %#v", failures["generative"])
+	}
+}
+
+func TestOrchestratorRun_AllDeterministicFailures_ProducesCompressedDiagnostics(t *testing.T) {
+	registry := tools.NewRegistry()
+	executor := tools.NewExecutor(registry)
+	s := NewServer(registry, executor)
+	sess := s.CreateSession()
+
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: orchestratorRunTool,
+		Arguments: map[string]interface{}{
+			"deterministic_tasks": []map[string]interface{}{
+				{"id": "missing", "tool": "not_a_real_tool"},
+			},
+		},
+	})
+	if resp.Error != nil {
+		t.Fatalf("unexpected rpc error: %v", resp.Error)
+	}
+	callResult := parseToolCallResult(t, resp)
+	if callResult.IsError {
+		t.Fatalf("orchestrator should return compressed diagnostics for deterministic failures, got error: %v", callResult.Content)
+	}
+
+	payload := parseToolContentJSON(t, callResult.Content[0].Text)
+	compressed, _ := payload["compressed_result"].(string)
+	if !strings.Contains(compressed, "Deterministic Context") {
+		t.Fatalf("expected deterministic section in compressed result, got: %q", compressed)
+	}
+	if !strings.Contains(strings.ToLower(compressed), "tool not found") {
+		t.Fatalf("expected tool-not-found diagnostics in compressed result, got: %q", compressed)
+	}
+	failures, ok := payload["failures"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected failures object, got: %T", payload["failures"])
+	}
+	detFailures, ok := failures["deterministic"].([]interface{})
+	if !ok || len(detFailures) == 0 {
+		t.Fatalf("expected non-empty deterministic failures, got: %#v", failures["deterministic"])
+	}
+}
+
 func TestOrchestratorRun_GenerativeToolGetsCompressedContext(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.Register(&mockTool{name: "source", desc: "deterministic source", result: "important_row"})

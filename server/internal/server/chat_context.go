@@ -708,6 +708,16 @@ func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, al
 		return ""
 	}
 
+	if summary := h.generateConversationSummaryWithSmallModel(ctx, olderMessages); summary != "" {
+		if h.summaryCache != nil {
+			h.summaryCache.Put(convID, &ConversationSummary{
+				Text:         summary,
+				MessageCount: len(allMessages),
+			})
+		}
+		return summary
+	}
+
 	if h.proxyBridge == nil {
 		return ""
 	}
@@ -739,7 +749,10 @@ func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, al
 // refreshSummaryAsync asynchronously updates the summary cache for a conversation.
 // Called after each response in long conversations.
 func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Message) {
-	if h.summaryCache == nil || h.proxyBridge == nil || len(messages) <= 6 {
+	if h.summaryCache == nil || len(messages) <= 6 {
+		return
+	}
+	if h.proxyBridge == nil && !h.shouldUseSmallModelSummary() {
 		return
 	}
 
@@ -758,6 +771,19 @@ func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Messa
 	h.queueEvent(func() {
 		llmMessages := convertToLLMMessages(msgCopy)
 		if len(llmMessages) <= 4 {
+			return
+		}
+
+		if summary := h.generateConversationSummaryWithSmallModel(context.Background(), llmMessages); summary != "" {
+			h.summaryCache.Put(convID, &ConversationSummary{
+				Text:         summary,
+				MessageCount: len(msgCopy),
+			})
+			logger.Debug().Str("conv_id", convID).Int("messages", len(msgCopy)).Msg("[context] summary refreshed async via small model")
+			return
+		}
+
+		if h.proxyBridge == nil {
 			return
 		}
 

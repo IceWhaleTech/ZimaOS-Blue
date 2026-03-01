@@ -253,6 +253,7 @@ export interface AgentPlanStep {
 export interface AgentQuestion {
   id: string
   question: string
+  detail?: string
   header: string
   options?: AgentQuestionOption[]
   multi_select?: boolean

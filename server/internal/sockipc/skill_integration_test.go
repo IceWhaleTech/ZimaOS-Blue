@@ -291,18 +291,31 @@ func TestSkillIntegration_UICheckAccessibility(t *testing.T) {
 	}
 }
 
-// --- Push Notification SKILL ---
+// --- Reminder SKILL ---
 
 func TestSkillIntegration_PushAdd(t *testing.T) {
 	conn, cleanup := setupAllSkills(t)
 	defer cleanup()
 
-	resp := sendRecv(t, conn, &Request{Cmd: "push.add", Params: map[string]string{"message": "Remember to check the build", "time": "1h"}})
+	resp := sendRecv(t, conn, &Request{Cmd: "reminder.add", Params: map[string]string{"message": "Remember to check the build", "time": "1h"}})
 	if resp.Status != "ok" {
-		t.Fatalf("push.add: status=%q error=%q", resp.Status, resp.Error)
+		t.Fatalf("reminder.add: status=%q error=%q", resp.Status, resp.Error)
 	}
-	if !strings.Contains(resp.Data["notification"], "push-1") {
-		t.Errorf("notification = %q", resp.Data["notification"])
+	if !strings.Contains(resp.Data["reminder"], "push-1") {
+		t.Errorf("reminder = %q", resp.Data["reminder"])
+	}
+}
+
+func TestSkillIntegration_PushAdd_NaturalChineseTime(t *testing.T) {
+	conn, cleanup := setupAllSkills(t)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{Cmd: "reminder.add", Params: map[string]string{"message": "10秒后喝水", "time": "10秒钟以后"}})
+	if resp.Status != "ok" {
+		t.Fatalf("reminder.add (natural time): status=%q error=%q", resp.Status, resp.Error)
+	}
+	if !strings.Contains(resp.Data["reminder"], "10秒后喝水") {
+		t.Errorf("reminder = %q", resp.Data["reminder"])
 	}
 }
 
@@ -310,11 +323,11 @@ func TestSkillIntegration_PushList(t *testing.T) {
 	conn, cleanup := setupAllSkills(t)
 	defer cleanup()
 
-	sendRecv(t, conn, &Request{Cmd: "push.add", Params: map[string]string{"message": "test notification", "time": "30m"}})
+	sendRecv(t, conn, &Request{Cmd: "reminder.add", Params: map[string]string{"message": "test reminder", "time": "30m"}})
 
-	resp := sendRecv(t, conn, &Request{Cmd: "push.list"})
+	resp := sendRecv(t, conn, &Request{Cmd: "reminder.list"})
 	if resp.Status != "ok" {
-		t.Fatalf("push.list: status=%q error=%q", resp.Status, resp.Error)
+		t.Fatalf("reminder.list: status=%q error=%q", resp.Status, resp.Error)
 	}
 	if resp.Data["count"] != "1" {
 		t.Errorf("count = %q, want 1", resp.Data["count"])
@@ -325,11 +338,11 @@ func TestSkillIntegration_PushDelete(t *testing.T) {
 	conn, cleanup := setupAllSkills(t)
 	defer cleanup()
 
-	sendRecv(t, conn, &Request{Cmd: "push.add", Params: map[string]string{"message": "to be deleted", "time": "1h"}})
+	sendRecv(t, conn, &Request{Cmd: "reminder.add", Params: map[string]string{"message": "to be deleted", "time": "1h"}})
 
-	resp := sendRecv(t, conn, &Request{Cmd: "push.delete", Params: map[string]string{"id": "push-1"}})
+	resp := sendRecv(t, conn, &Request{Cmd: "reminder.delete", Params: map[string]string{"id": "push-1"}})
 	if resp.Status != "ok" {
-		t.Fatalf("push.delete: status=%q error=%q", resp.Status, resp.Error)
+		t.Fatalf("reminder.delete: status=%q error=%q", resp.Status, resp.Error)
 	}
 	if resp.Data["deleted"] != "push-1" {
 		t.Errorf("deleted = %q", resp.Data["deleted"])
@@ -341,12 +354,12 @@ func TestSkillIntegration_PushClear(t *testing.T) {
 	defer cleanup()
 
 	for i := 0; i < 2; i++ {
-		sendRecv(t, conn, &Request{Cmd: "push.add", Params: map[string]string{"message": fmt.Sprintf("notification %d", i), "time": "1h"}})
+		sendRecv(t, conn, &Request{Cmd: "reminder.add", Params: map[string]string{"message": fmt.Sprintf("reminder %d", i), "time": "1h"}})
 	}
 
-	resp := sendRecv(t, conn, &Request{Cmd: "push.clear"})
+	resp := sendRecv(t, conn, &Request{Cmd: "reminder.clear"})
 	if resp.Status != "ok" {
-		t.Fatalf("push.clear: status=%q error=%q", resp.Status, resp.Error)
+		t.Fatalf("reminder.clear: status=%q error=%q", resp.Status, resp.Error)
 	}
 	if resp.Data["cleared"] != "2" {
 		t.Errorf("cleared = %q, want 2", resp.Data["cleared"])
@@ -462,16 +475,16 @@ func TestSkillIntegration_FullFlowSingleConn(t *testing.T) {
 		t.Fatalf("ui.review_url result = %q", resp.Data["result"])
 	}
 
-	// 6. Push add
-	resp = sendRecv(t, conn, &Request{Cmd: "push.add", Params: map[string]string{"message": "test", "time": "1h"}})
+	// 6. Reminder add
+	resp = sendRecv(t, conn, &Request{Cmd: "reminder.add", Params: map[string]string{"message": "test", "time": "1h"}})
 	if resp.Status != "ok" {
-		t.Fatalf("push.add failed: %s", resp.Error)
+		t.Fatalf("reminder.add failed: %s", resp.Error)
 	}
 
-	// 7. Push list
-	resp = sendRecv(t, conn, &Request{Cmd: "push.list"})
+	// 7. Reminder list
+	resp = sendRecv(t, conn, &Request{Cmd: "reminder.list"})
 	if resp.Data["count"] != "1" {
-		t.Fatalf("push.list count = %q", resp.Data["count"])
+		t.Fatalf("reminder.list count = %q", resp.Data["count"])
 	}
 
 	// 8. Skill search

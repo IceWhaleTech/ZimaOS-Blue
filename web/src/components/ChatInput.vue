@@ -9,10 +9,13 @@ import ImagePreview from '@/components/chat/ImagePreview.vue'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 import { useLocaleStore } from '@/stores/locale'
 import { useChatStore } from '@/stores/chat'
+import { useSettingsStore } from '@/stores/settings'
+import { classifyFeatureIntent } from '@/composables/useFeatureIntent'
 
 const { t } = useI18n()
 const localeStore = useLocaleStore()
 const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
 
 export interface FileAttachment {
   id: string
@@ -159,6 +162,15 @@ const canSend = computed(() =>
 const placeholder = computed(() =>
   isCompact.value ? t('chat.inputPlaceholderShort') : t('chat.inputPlaceholder')
 )
+
+const featureIntent = computed(() => classifyFeatureIntent(message.value))
+const showFeatureHint = computed(() => {
+  if (props.disabled || props.streaming) return false
+  if (!message.value.trim()) return false
+  if (featureIntent.value.deepResearch && !chatStore.deepResearchEnabled) return true
+  if (featureIntent.value.agentMode && !settingsStore.agentMode) return true
+  return false
+})
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 15)
@@ -829,6 +841,18 @@ function handleMobileTalkMode() {
   emit('openTalkMode')
 }
 
+function toggleDeepResearchFromHint(event: Event) {
+  const checked = (event.target as HTMLInputElement).checked
+  chatStore.setDeepResearchEnabled(checked)
+}
+
+function toggleAgentModeFromHint(event: Event) {
+  const checked = (event.target as HTMLInputElement).checked
+  settingsStore.setAgentMode(checked).catch((err) => {
+    console.error('Failed to update agent mode from IR hint:', err)
+  })
+}
+
 onMounted(() => {
   checkMobile()
   isTouchDevice.value = 'ontouchstart' in window || navigator.maxTouchPoints > 0
@@ -972,6 +996,34 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           </svg>
         </button>
       </div>
+    </div>
+
+    <div v-if="showFeatureHint" class="mb-2 flex flex-wrap items-center gap-2 text-xs">
+      <span class="text-gray-500 dark:text-slate-400">{{ t('chat.featureHintTapToEnable') }}</span>
+      <label
+        v-if="featureIntent.deepResearch && !chatStore.deepResearchEnabled"
+        class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-emerald-200/80 dark:border-emerald-700/70 bg-emerald-50/70 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 cursor-pointer"
+      >
+        <input
+          type="checkbox"
+          class="h-3.5 w-3.5 accent-emerald-500"
+          :checked="chatStore.deepResearchEnabled"
+          @change="toggleDeepResearchFromHint"
+        >
+        <span>{{ t('ui.deepResearchTitle') }}</span>
+      </label>
+      <label
+        v-if="featureIntent.agentMode && !settingsStore.agentMode"
+        class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-blue-200/80 dark:border-blue-700/70 bg-blue-50/70 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 cursor-pointer"
+      >
+        <input
+          type="checkbox"
+          class="h-3.5 w-3.5 accent-blue-500"
+          :checked="settingsStore.agentMode"
+          @change="toggleAgentModeFromHint"
+        >
+        <span>{{ t('agent.mode') }}</span>
+      </label>
     </div>
 
     <div class="flex items-center gap-2 sm:gap-3">

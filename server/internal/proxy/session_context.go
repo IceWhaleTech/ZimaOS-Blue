@@ -4,6 +4,7 @@ import "context"
 
 type sessionIDKeyType struct{}
 type disableResponsesContinuationKeyType struct{}
+type localeKeyType struct{}
 
 // WithSessionID stores the proxy session ID in request context.
 func WithSessionID(ctx context.Context, sessionID string) context.Context {
@@ -26,4 +27,15 @@ func WithDisableResponsesContinuation(ctx context.Context) context.Context {
 func DisableResponsesContinuationFromContext(ctx context.Context) bool {
 	v, _ := ctx.Value(disableResponsesContinuationKeyType{}).(bool)
 	return v
+}
+
+// WithLocale stores the request locale in context (e.g. "en-US", "zh-CN").
+func WithLocale(ctx context.Context, locale string) context.Context {
+	return context.WithValue(ctx, localeKeyType{}, locale)
+}
+
+// LocaleFromContext returns locale from request context.
+func LocaleFromContext(ctx context.Context) string {
+	locale, _ := ctx.Value(localeKeyType{}).(string)
+	return locale
 }

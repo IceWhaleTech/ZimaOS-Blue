@@ -4,6 +4,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 interface Props {
   // Total number of items
   itemCount: number
+  // Optional source items for slot access
+  items?: any[]
   // Estimated height of each item (used for initial calculation)
   estimatedItemHeight?: number
   // Number of items to render above/below visible area
@@ -129,10 +131,44 @@ const containerRef = ref<HTMLElement | null>(null)
 const scrollTop = ref(0)
 const containerHeight = ref(0)
 const layoutVersion = ref(0)
+let layoutVersionRafId: number | null = null
 
 // Item height cache (for variable height items)
 const itemHeights = ref<number[]>([])
 const heightTree = new FenwickTree()
+const updateHeightHandlers = new Map<number, (height: number) => void>()
+
+function getUpdateHeightHandler(index: number): (height: number) => void {
+  const cached = updateHeightHandlers.get(index)
+  if (cached) return cached
+
+  const handler = (height: number) => {
+    updateItemHeight(index, height)
+  }
+  updateHeightHandlers.set(index, handler)
+  return handler
+}
+
+function pruneUpdateHeightHandlers(maxExclusive: number) {
+  if (updateHeightHandlers.size === 0) return
+  for (const index of updateHeightHandlers.keys()) {
+    if (index >= maxExclusive) {
+      updateHeightHandlers.delete(index)
+    }
+  }
+}
+
+function bumpLayoutVersion() {
+  layoutVersion.value++
+}
+
+function scheduleLayoutVersionBump() {
+  if (layoutVersionRafId !== null) return
+  layoutVersionRafId = window.requestAnimationFrame(() => {
+    layoutVersionRafId = null
+    bumpLayoutVersion()
+  })
+}
 
 function rebuildHeightTree() {
   const heights = new Array(props.itemCount)
@@ -141,7 +177,7 @@ function rebuildHeightTree() {
   }
   itemHeights.value = heights
   heightTree.build(heights)
-  layoutVersion.value++
+  bumpLayoutVersion()
 }
 
 watch(
@@ -159,6 +195,9 @@ watch(
 
     // Item height estimate changed or count shrank: rebuild for correctness.
     if (estimatedHeight !== prevEstimated || itemCount < prevCount) {
+      if (itemCount < prevCount) {
+        pruneUpdateHeightHandlers(itemCount)
+      }
       rebuildHeightTree()
       return
     }
@@ -171,7 +210,7 @@ watch(
       itemHeights.value[i] = estimatedHeight
     }
     heightTree.resize(itemCount, (index) => itemHeights.value[index] ?? estimatedHeight)
-    layoutVersion.value++
+    bumpLayoutVersion()
   },
   { immediate: true },
 )
@@ -248,7 +287,7 @@ function updateItemHeight(index: number, height: number) {
   if (prev === height) return
   itemHeights.value[index] = height
   heightTree.add(index, height - prev)
-  layoutVersion.value++
+  scheduleLayoutVersionBump()
 }
 
 // Scroll to item
@@ -307,6 +346,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (layoutVersionRafId !== null) {
+    window.cancelAnimationFrame(layoutVersionRafId)
+    layoutVersionRafId = null
+  }
   if (scrollRafId !== null) {
     window.cancelAnimationFrame(scrollRafId)
     scrollRafId = null
@@ -316,6 +359,7 @@ onUnmounted(() => {
     emitRangeRafId = null
   }
   pendingRange = null
+  updateHeightHandlers.clear()
   if (resizeObserver) {
     resizeObserver.disconnect()
   }
@@ -343,7 +387,8 @@ onUnmounted(() => {
           v-for="offset in visibleCount"
           :key="visibleRange.start + offset - 1"
           :index="visibleRange.start + offset - 1"
-          :update-height="(height: number) => updateItemHeight(visibleRange.start + offset - 1, height)"
+          :item="items ? items[visibleRange.start + offset - 1] : undefined"
+          :update-height="getUpdateHeightHandler(visibleRange.start + offset - 1)"
         />
       </div>
     </div>

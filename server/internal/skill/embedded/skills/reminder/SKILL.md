@@ -7,7 +7,7 @@ description: "Schedule and manage reminders (add/list/delete/clear) with multi-c
 
 ## Setup
 
-No external dependencies required. Uses built-in reminder scheduler and notification channels.
+No external dependencies required. Uses built-in reminder scheduler and delivery channels.
 
 ---
 
@@ -51,5 +51,5 @@ Time formats:
 
 ## Notes
 
-- Delivery may include conversation injection, SSE, web push, and native OS notifications depending on availability.
+- Delivery may include conversation injection, SSE, web push, and native OS alerts depending on availability.
 - Use `scheduler` for cron-style command automation; use `reminder` for user-facing reminder alerts.

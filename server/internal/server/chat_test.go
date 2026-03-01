@@ -4,16 +4,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
 )
@@ -21,6 +26,53 @@ import (
 type requestCaptureProvider struct {
 	lastReq llm.ChatRequest
 	mu      sync.Mutex
+}
+
+type deepResearchExecMock struct {
+	result map[string]interface{}
+	err    error
+}
+
+func (m *deepResearchExecMock) Execute(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.result, nil
+}
+
+type smallModelRuntimeMock struct {
+	respText string
+	err      error
+	calls    int
+	calledCh chan struct{}
+}
+
+type staticToolMock struct {
+	def tools.ToolDefinition
+}
+
+func (m *staticToolMock) Definition() tools.ToolDefinition {
+	return m.def
+}
+
+func (m *staticToolMock) Execute(context.Context, map[string]interface{}) (interface{}, error) {
+	return map[string]interface{}{"ok": true}, nil
+}
+
+func (m *smallModelRuntimeMock) Ready() bool { return true }
+
+func (m *smallModelRuntimeMock) Generate(_ context.Context, _ smallmodel.GenerateRequest) (*smallmodel.GenerateResponse, error) {
+	m.calls++
+	if m.calledCh != nil {
+		select {
+		case m.calledCh <- struct{}{}:
+		default:
+		}
+	}
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &smallmodel.GenerateResponse{Text: m.respText}, nil
 }
 
 func (p *requestCaptureProvider) Name() string { return "capture" }
@@ -179,6 +231,180 @@ func TestDefaultModelForCCCLI(t *testing.T) {
 	}
 	if got := h.defaultModelForCCCLI("gpt-4o"); got != "gpt-4o" {
 		t.Fatalf("explicit model with cc cli = %q, want %q", got, "gpt-4o")
+	}
+}
+
+func TestChatOnce_InjectsLocaleFromSettingsToProxyBridge(t *testing.T) {
+	var gotLocale string
+	bridge := proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotLocale = r.Header.Get("Accept-Language")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"resp_1","model":"auto","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	settingsHandler.settings.Locale = "fr-FR"
+	handler.SetSettingsHandler(settingsHandler)
+	handler.SetProxyBridge(bridge)
+
+	_, err := handler.chatOnce(context.Background(), llm.ChatRequest{
+		Model: "auto",
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "hello"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("chatOnce() error = %v", err)
+	}
+	if gotLocale != "fr-FR" {
+		t.Fatalf("Accept-Language = %q, want %q", gotLocale, "fr-FR")
+	}
+}
+
+func TestChatOnce_DoesNotOverrideContextLocale(t *testing.T) {
+	var gotLocale string
+	bridge := proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotLocale = r.Header.Get("Accept-Language")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"resp_2","model":"auto","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	settingsHandler.settings.Locale = "fr-FR"
+	handler.SetSettingsHandler(settingsHandler)
+	handler.SetProxyBridge(bridge)
+
+	ctx := proxy.WithLocale(context.Background(), "ja-JP")
+	_, err := handler.chatOnce(ctx, llm.ChatRequest{
+		Model: "auto",
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "hello"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("chatOnce() error = %v", err)
+	}
+	if gotLocale != "ja-JP" {
+		t.Fatalf("Accept-Language = %q, want %q", gotLocale, "ja-JP")
+	}
+}
+
+func TestSendMessage_PropagatesSettingsLocaleToUpstreamAcceptLanguage(t *testing.T) {
+	const (
+		modelID = "gpt-4o-mini"
+		msgText = "nonstream locale from settings"
+	)
+
+	var gotLocale string
+	upstream := newTCP4TestServerOrSkip(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		raw, _ := json.Marshal(payload)
+		if bytes.Contains(raw, []byte(msgText)) {
+			gotLocale = strings.TrimSpace(r.Header.Get("Accept-Language"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"resp_nonstream_locale","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"model":"gpt-4o-mini"}`))
+	}))
+	defer upstream.Close()
+
+	proxyHandler := newSingleModelOpenAIProxyHandler(t, upstream.URL, "nonstream-locale-settings-provider", modelID)
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Non-stream locale settings")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProxyBridge(proxybridge.NewBridge(proxyHandler))
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	settingsHandler.settings.Locale = "zh-CN"
+	handler.SetSettingsHandler(settingsHandler)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"`+msgText+`","model":"`+modelID+`"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if gotLocale != "zh-CN" {
+		t.Fatalf("Accept-Language = %q, want %q", gotLocale, "zh-CN")
+	}
+}
+
+func TestSendMessage_ContextLocaleOverridesSettingsForUpstreamAcceptLanguage(t *testing.T) {
+	const (
+		modelID = "gpt-4o-mini"
+		msgText = "nonstream locale from context"
+	)
+
+	var gotLocale string
+	upstream := newTCP4TestServerOrSkip(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		raw, _ := json.Marshal(payload)
+		if bytes.Contains(raw, []byte(msgText)) {
+			gotLocale = strings.TrimSpace(r.Header.Get("Accept-Language"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"resp_nonstream_locale_ctx","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"model":"gpt-4o-mini"}`))
+	}))
+	defer upstream.Close()
+
+	proxyHandler := newSingleModelOpenAIProxyHandler(t, upstream.URL, "nonstream-locale-context-provider", modelID)
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Non-stream locale context")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProxyBridge(proxybridge.NewBridge(proxyHandler))
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	settingsHandler.settings.Locale = "fr-FR"
+	handler.SetSettingsHandler(settingsHandler)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"`+msgText+`","model":"`+modelID+`"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req = req.WithContext(proxy.WithLocale(req.Context(), "ja-JP"))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if gotLocale != "ja-JP" {
+		t.Fatalf("Accept-Language = %q, want %q", gotLocale, "ja-JP")
 	}
 }
 
@@ -536,6 +762,1024 @@ func TestChatHandlerSendMessageInvalidProvider(t *testing.T) {
 	err := handler.SendMessage(c)
 	if err == nil {
 		t.Error("expected error for invalid provider")
+	}
+}
+
+func TestChatHandlerSendMessage_NoProviderFallsBackToDeepResearch(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Fallback Conv")
+	registry := llm.NewProviderRegistry() // intentionally empty
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	handler.deepResearchExec = &deepResearchExecMock{
+		result: map[string]interface{}{
+			"answer": "Fallback answer from deep research.",
+		},
+	}
+
+	e := echo.New()
+	reqBody := `{"message":"no provider configured","provider":"","model":""}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["provider"]; got != "deepresearch" {
+		t.Fatalf("provider = %v, want deepresearch", got)
+	}
+	if got, _ := resp["content"].(string); !strings.Contains(got, "Fallback answer from deep research.") {
+		t.Fatalf("content = %q, want fallback deep research answer", got)
+	}
+}
+
+func TestChatHandlerSendMessage_NoProviderFallsBackToIROnlyWhenDeepResearchUnavailable(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "IR fallback Conv")
+	registry := llm.NewProviderRegistry() // intentionally empty
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"no provider and no deepresearch","provider":"","model":""}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["provider"]; got != "ir" {
+		t.Fatalf("provider = %v, want ir", got)
+	}
+	if got := resp["model"]; got != "ir-only-fallback" {
+		t.Fatalf("model = %v, want ir-only-fallback", got)
+	}
+	if got, _ := resp["content"].(string); !strings.Contains(got, "IR-only fallback") {
+		t.Fatalf("content = %q, want IR-only fallback marker", got)
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.FallbackReasons[fallbackReasonDeepResearchUnavailable] != 1 {
+		t.Fatalf("fallback reason %q = %d, want 1", fallbackReasonDeepResearchUnavailable, stats.FallbackReasons[fallbackReasonDeepResearchUnavailable])
+	}
+}
+
+func TestChatHandlerSendMessage_NoProviderIROnlyUsesLayeredMemoryRecall(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "IR layered memory fallback")
+	registry := llm.NewProviderRegistry() // intentionally empty
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	memDir := t.TempDir()
+	mdBackend, err := memory.NewPureMarkdownBackend(memDir)
+	if err != nil {
+		t.Fatalf("create markdown backend: %v", err)
+	}
+	baseSvc := memory.NewUnifiedMemoryService(mdBackend)
+	layeredSvc, err := memory.NewLayeredMemoryService(baseSvc, memory.LayeredMemoryConfig{
+		BaseDir:     memDir,
+		LongTermDir: memDir,
+	})
+	if err != nil {
+		t.Fatalf("create layered memory service: %v", err)
+	}
+	handler.SetLayeredMemory(layeredSvc)
+	if _, err := baseSvc.Remember(context.Background(), "Alpha project timeline is April 2026 with two release gates.", []string{"project", "timeline"}); err != nil {
+		t.Fatalf("seed memory: %v", err)
+	}
+
+	e := echo.New()
+	reqBody := `{"message":"What is Alpha project timeline?","provider":"","model":""}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["provider"]; got != "ir" {
+		t.Fatalf("provider = %v, want ir", got)
+	}
+	if got := resp["model"]; got != "ir-only-fallback" {
+		t.Fatalf("model = %v, want ir-only-fallback", got)
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "Alpha project timeline is April 2026") {
+		t.Fatalf("content = %q, want layered memory snippet", content)
+	}
+}
+
+func TestChatHandlerSendMessage_ShortQARoutesToSmallModel(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Short QA")
+	registry := llm.NewProviderRegistry()
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{respText: "small model answer"}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{"message":"今天上海天气怎么样？","provider":"","model":""}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if sm.calls == 0 {
+		t.Fatal("expected small model runtime to be called")
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["provider"]; got != "smallmodel" {
+		t.Fatalf("provider = %v, want smallmodel", got)
+	}
+	if got := resp["content"]; got != "small model answer" {
+		t.Fatalf("content = %v, want small model answer", got)
+	}
+}
+
+func TestChatHandlerSendMessage_ShortQAFallbackIRFirst(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Short QA IR First")
+	_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:    "assistant",
+		Content: "Project X timeline is planned for Q4 delivery.",
+	})
+	registry := llm.NewProviderRegistry()
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{err: smallmodel.ErrNotReady}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{"message":"Project X timeline?","provider":"","model":""}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if sm.calls == 0 {
+		t.Fatal("expected small model runtime to be called")
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["provider"]; got != "ir" {
+		t.Fatalf("provider = %v, want ir", got)
+	}
+	if got := resp["model"]; got != "ir-first-fallback" {
+		t.Fatalf("model = %v, want ir-first-fallback", got)
+	}
+	if got, _ := resp["content"].(string); !strings.Contains(got, "Project X timeline is planned for Q4") {
+		t.Fatalf("content = %q, want local IR snippet", got)
+	}
+}
+
+func TestChatHandlerSendMessage_ShortQAFallbackIRMissGoesToLLM(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Short QA IR Miss")
+	registry := llm.NewProviderRegistry()
+	mockProvider := llm.NewMockProvider()
+	mockProvider.SetResponse(llm.ChatResponse{
+		ID:      "resp-ir-miss",
+		Model:   "mock-model",
+		Message: llm.Message{Role: llm.RoleAssistant, Content: "llm fallback answer"},
+	})
+	registry.Register(mockProvider)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{err: smallmodel.ErrNotReady}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{"message":"timeline?","provider":"","model":"mock-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["provider"]; got == "ir" {
+		t.Fatalf("provider = %v, want non-IR LLM fallback", got)
+	}
+	if got := resp["content"]; got != "llm fallback answer" {
+		t.Fatalf("content = %v, want llm fallback answer", got)
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.FallbackReasons[fallbackReasonIRNoSignal] != 1 {
+		t.Fatalf("fallback reason %q = %d, want 1", fallbackReasonIRNoSignal, stats.FallbackReasons[fallbackReasonIRNoSignal])
+	}
+}
+
+func TestChatHandlerSendMessage_ShortQACircuitBreakerFallsBackToIR(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Short QA Circuit")
+	_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:    "assistant",
+		Content: "Project Y milestone is still targeted for this quarter.",
+	})
+	registry := llm.NewProviderRegistry()
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	handler.SetSettingsHandler(settings)
+	handler.smallModelBreaker = newSmallModelCircuitBreaker(2, time.Minute)
+	sm := &smallModelRuntimeMock{err: context.DeadlineExceeded}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	send := func(msg string) map[string]interface{} {
+		reqBody := `{"message":"` + msg + `","provider":"","model":""}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("id")
+		c.SetParamValues(conv.ID)
+		if err := handler.SendMessage(c); err != nil {
+			t.Fatalf("SendMessage failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+		}
+		var resp map[string]interface{}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		return resp
+	}
+
+	_ = send("Project Y milestone?")
+	_ = send("Project Y milestone?")
+	resp3 := send("Project Y milestone?")
+	if got := resp3["provider"]; got != "ir" {
+		t.Fatalf("provider = %v, want ir", got)
+	}
+	if got := sm.calls; got != 2 {
+		t.Fatalf("small model calls = %d, want 2 (third request should be circuit-open bypass)", got)
+	}
+
+	stats := handler.smallModelStats.Snapshot()
+	if stats.FallbackReasons[smallmodel.FallbackReasonTimeout] != 2 {
+		t.Fatalf("fallback reason %q = %d, want 2", smallmodel.FallbackReasonTimeout, stats.FallbackReasons[smallmodel.FallbackReasonTimeout])
+	}
+	if stats.FallbackReasons[smallmodel.FallbackReasonCircuitOpen] != 1 {
+		t.Fatalf("fallback reason %q = %d, want 1", smallmodel.FallbackReasonCircuitOpen, stats.FallbackReasons[smallmodel.FallbackReasonCircuitOpen])
+	}
+}
+
+func TestTrySmallModelShortQA_CircuitBreakerRecoversAfterWindow(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.smallModelBreaker = newSmallModelCircuitBreaker(1, 25*time.Millisecond)
+	sm := &smallModelRuntimeMock{err: context.DeadlineExceeded, respText: "ok after recover"}
+	handler.SetSmallModelRuntime(sm)
+
+	if _, err := handler.trySmallModelShortQA(context.Background(), "Q?", 32, 0.2); err == nil {
+		t.Fatal("expected first call to fail")
+	}
+	if _, err := handler.trySmallModelShortQA(context.Background(), "Q?", 32, 0.2); !errors.Is(err, smallmodel.ErrCircuitOpen) {
+		t.Fatalf("expected circuit-open error, got %v", err)
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1 before recovery window", sm.calls)
+	}
+
+	time.Sleep(40 * time.Millisecond)
+	sm.err = nil
+	resp, err := handler.trySmallModelShortQA(context.Background(), "Q?", 32, 0.2)
+	if err != nil {
+		t.Fatalf("expected recovery success, got %v", err)
+	}
+	if resp == nil || resp.Message.Content != "ok after recover" {
+		t.Fatalf("unexpected response after recovery: %+v", resp)
+	}
+}
+
+func TestMaybeAutoRollbackShortQARoute_DisablesRouteOnHighFailureRate(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	handler.SetSettingsHandler(settings)
+
+	for i := 0; i < 40; i++ {
+		handler.smallModelStats.RecordShortQARoute(false)
+	}
+
+	handler.maybeAutoRollbackShortQARoute()
+	if settings.GetSmallModelRouteShortQAEnabled() {
+		t.Fatal("expected short-qa route to be auto-disabled")
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.AutoRollbackTotal != 1 {
+		t.Fatalf("AutoRollbackTotal = %d, want 1", stats.AutoRollbackTotal)
+	}
+	if stats.FallbackReasons[fallbackReasonAutoRollback] != 1 {
+		t.Fatalf("fallback reason %q = %d, want 1", fallbackReasonAutoRollback, stats.FallbackReasons[fallbackReasonAutoRollback])
+	}
+}
+
+func TestMaybeAutoRollbackShortQARoute_DoesNotDisableBelowThreshold(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	handler.SetSettingsHandler(settings)
+
+	for i := 0; i < 39; i++ {
+		handler.smallModelStats.RecordShortQARoute(false)
+	}
+
+	handler.maybeAutoRollbackShortQARoute()
+	if !settings.GetSmallModelRouteShortQAEnabled() {
+		t.Fatal("expected short-qa route to stay enabled below sample threshold")
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.AutoRollbackTotal != 0 {
+		t.Fatalf("AutoRollbackTotal = %d, want 0", stats.AutoRollbackTotal)
+	}
+}
+
+func TestMaybeAutoRollbackShortQARoute_UsesWindowedFailureRate(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	handler.SetSettingsHandler(settings)
+
+	// Healthy first window should not disable and should advance baseline.
+	for i := 0; i < 400; i++ {
+		handler.smallModelStats.RecordShortQARoute(true)
+	}
+	handler.maybeAutoRollbackShortQARoute()
+	if !settings.GetSmallModelRouteShortQAEnabled() {
+		t.Fatal("expected short-qa route still enabled after healthy window")
+	}
+
+	// Next window is unhealthy. Cumulative fail rate is still low (40 / 440 < 0.15),
+	// so this would fail if logic were not windowed.
+	for i := 0; i < 40; i++ {
+		handler.smallModelStats.RecordShortQARoute(false)
+	}
+	handler.maybeAutoRollbackShortQARoute()
+	if settings.GetSmallModelRouteShortQAEnabled() {
+		t.Fatal("expected short-qa route auto-disabled based on windowed failure rate")
+	}
+
+	stats := handler.smallModelStats.Snapshot()
+	if stats.AutoRollbackTotal != 1 {
+		t.Fatalf("AutoRollbackTotal = %d, want 1", stats.AutoRollbackTotal)
+	}
+}
+
+func TestChatHandlerSendMessage_ToolDispatchRoutesToSmallModel(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Tool Dispatch Route")
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "alpha_tool", Description: "alpha"}})
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "beta_tool", Description: "beta"}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	toolDispatchEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteToolDispatchEnabled = &toolDispatchEnabled
+	handler.SetSettingsHandler(settings)
+	handler.SetSmallModelRuntime(&smallModelRuntimeMock{respText: "beta_tool"})
+
+	e := echo.New()
+	reqBody := `{"message":"请帮我处理这个任务","provider":"capture","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+
+	lastReq := capture.LastRequest()
+	if got := len(lastReq.Tools); got != 1 {
+		t.Fatalf("tool count = %d, want 1", got)
+	}
+	if got := lastReq.Tools[0].Name; got != "beta_tool" {
+		t.Fatalf("selected tool = %q, want beta_tool", got)
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.ToolDispatchRouteAttempts != 1 || stats.ToolDispatchRouteSuccess != 1 {
+		t.Fatalf("unexpected tool dispatch stats: %+v", stats)
+	}
+}
+
+func TestChatHandlerSendMessage_ToolDispatchInvalidChoiceFallsBackToDefaultTools(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Tool Dispatch Fallback")
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "alpha_tool", Description: "alpha"}})
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "beta_tool", Description: "beta"}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	toolDispatchEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteToolDispatchEnabled = &toolDispatchEnabled
+	handler.SetSettingsHandler(settings)
+	handler.SetSmallModelRuntime(&smallModelRuntimeMock{respText: "unknown_tool"})
+
+	e := echo.New()
+	reqBody := `{"message":"请帮我处理这个任务","provider":"capture","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+
+	lastReq := capture.LastRequest()
+	if got := len(lastReq.Tools); got != 2 {
+		t.Fatalf("tool count = %d, want 2", got)
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.ToolDispatchRouteAttempts != 1 || stats.ToolDispatchRouteSuccess != 0 {
+		t.Fatalf("unexpected tool dispatch stats: %+v", stats)
+	}
+	if stats.FallbackReasons[smallmodel.FallbackReasonResourceGuard] != 1 {
+		t.Fatalf("fallback reason %q = %d, want 1", smallmodel.FallbackReasonResourceGuard, stats.FallbackReasons[smallmodel.FallbackReasonResourceGuard])
+	}
+}
+
+func TestChatHandlerStreamMessage_ToolDispatchRoutesToSmallModel(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Tool Dispatch Stream Route")
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "alpha_tool", Description: "alpha"}})
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "beta_tool", Description: "beta"}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	toolDispatchEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteToolDispatchEnabled = &toolDispatchEnabled
+	handler.SetSettingsHandler(settings)
+	handler.SetSmallModelRuntime(&smallModelRuntimeMock{respText: "alpha_tool"})
+
+	e := echo.New()
+	reqBody := `{"message":"请帮我处理这个任务","provider":"capture","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"done":true`) {
+		t.Fatalf("expected done marker in stream body, got: %s", rec.Body.String())
+	}
+
+	lastReq := capture.LastRequest()
+	if got := len(lastReq.Tools); got != 1 {
+		t.Fatalf("tool count = %d, want 1", got)
+	}
+	if got := lastReq.Tools[0].Name; got != "alpha_tool" {
+		t.Fatalf("selected tool = %q, want alpha_tool", got)
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.ToolDispatchRouteAttempts != 1 || stats.ToolDispatchRouteSuccess != 1 {
+		t.Fatalf("unexpected tool dispatch stats: %+v", stats)
+	}
+}
+
+func TestMaybeAutoRollbackToolDispatchRoute_DisablesRouteOnHighFailureRate(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	toolDispatchEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteToolDispatchEnabled = &toolDispatchEnabled
+	handler.SetSettingsHandler(settings)
+
+	for i := 0; i < 40; i++ {
+		handler.smallModelStats.RecordToolDispatchRoute(false)
+	}
+
+	handler.maybeAutoRollbackToolDispatchRoute()
+	if settings.GetSmallModelRouteToolDispatchEnabled() {
+		t.Fatal("expected tool-dispatch route to be auto-disabled")
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.AutoRollbackTotal != 1 {
+		t.Fatalf("AutoRollbackTotal = %d, want 1", stats.AutoRollbackTotal)
+	}
+	if stats.FallbackReasons[fallbackReasonAutoRollbackToolDispatch] != 1 {
+		t.Fatalf("fallback reason %q = %d, want 1", fallbackReasonAutoRollbackToolDispatch, stats.FallbackReasons[fallbackReasonAutoRollbackToolDispatch])
+	}
+}
+
+func TestMaybeAutoRollbackToolDispatchRoute_UsesWindowedFailureRate(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	toolDispatchEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteToolDispatchEnabled = &toolDispatchEnabled
+	handler.SetSettingsHandler(settings)
+
+	for i := 0; i < 400; i++ {
+		handler.smallModelStats.RecordToolDispatchRoute(true)
+	}
+	handler.maybeAutoRollbackToolDispatchRoute()
+	if !settings.GetSmallModelRouteToolDispatchEnabled() {
+		t.Fatal("expected tool-dispatch route still enabled after healthy window")
+	}
+
+	for i := 0; i < 40; i++ {
+		handler.smallModelStats.RecordToolDispatchRoute(false)
+	}
+	handler.maybeAutoRollbackToolDispatchRoute()
+	if settings.GetSmallModelRouteToolDispatchEnabled() {
+		t.Fatal("expected tool-dispatch route auto-disabled based on windowed failure rate")
+	}
+
+	stats := handler.smallModelStats.Snapshot()
+	if stats.AutoRollbackTotal != 1 {
+		t.Fatalf("AutoRollbackTotal = %d, want 1", stats.AutoRollbackTotal)
+	}
+}
+
+func TestMaybeAutoRollbackSummaryRoute_DisablesRouteOnHighFailureRate(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	summaryEnabled := true
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	handler.SetSettingsHandler(settings)
+
+	for i := 0; i < 40; i++ {
+		handler.smallModelStats.RecordSummaryAttempt()
+	}
+
+	handler.maybeAutoRollbackSummaryRoute()
+	if settings.GetSmallModelSummaryEnabled() {
+		t.Fatal("expected summary route to be auto-disabled")
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.AutoRollbackTotal != 1 {
+		t.Fatalf("AutoRollbackTotal = %d, want 1", stats.AutoRollbackTotal)
+	}
+	if stats.FallbackReasons[fallbackReasonAutoRollbackSummary] != 1 {
+		t.Fatalf("fallback reason %q = %d, want 1", fallbackReasonAutoRollbackSummary, stats.FallbackReasons[fallbackReasonAutoRollbackSummary])
+	}
+}
+
+func TestMaybeAutoRollbackSummaryRoute_UsesWindowedFailureRate(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	summaryEnabled := true
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	handler.SetSettingsHandler(settings)
+
+	for i := 0; i < 400; i++ {
+		handler.smallModelStats.RecordSummaryAttempt()
+		handler.smallModelStats.RecordSummarySuccess()
+	}
+	handler.maybeAutoRollbackSummaryRoute()
+	if !settings.GetSmallModelSummaryEnabled() {
+		t.Fatal("expected summary route still enabled after healthy window")
+	}
+
+	for i := 0; i < 40; i++ {
+		handler.smallModelStats.RecordSummaryAttempt()
+	}
+	handler.maybeAutoRollbackSummaryRoute()
+	if settings.GetSmallModelSummaryEnabled() {
+		t.Fatal("expected summary route auto-disabled based on windowed failure rate")
+	}
+
+	stats := handler.smallModelStats.Snapshot()
+	if stats.AutoRollbackTotal != 1 {
+		t.Fatalf("AutoRollbackTotal = %d, want 1", stats.AutoRollbackTotal)
+	}
+}
+
+func TestRunSmallModelShadow_RecordsQualityDeltaAndPersistsSample(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSmallModelRuntime(&smallModelRuntimeMock{respText: "beta_tool"})
+	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 16))
+
+	handler.runSmallModelShadow(context.Background(), "tool_dispatch_shadow", "pick tool", 32, 0.2, "alpha_tool")
+
+	stats := handler.smallModelStats.Snapshot()
+	if stats.ShadowQualitySamples != 1 {
+		t.Fatalf("ShadowQualitySamples = %d, want 1", stats.ShadowQualitySamples)
+	}
+	if stats.ShadowQualityDelta != 1 {
+		t.Fatalf("ShadowQualityDelta = %v, want 1", stats.ShadowQualityDelta)
+	}
+	if len(handler.shadowQualityStore.Snapshot()) != 1 {
+		t.Fatalf("persisted shadow samples = %d, want 1", len(handler.shadowQualityStore.Snapshot()))
+	}
+}
+
+func TestChatHandlerShouldDisableProxyPruner(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	handler.SetSettingsHandler(settings)
+
+	if handler.shouldDisableProxyPruner() {
+		t.Fatal("expected pruner enabled by default")
+	}
+
+	smallModelEnabled := true
+	contextPruneEnabled := false
+	settings.settings.SmallModelEnabled = &smallModelEnabled
+	settings.settings.SmallModelContextPruneEnabled = &contextPruneEnabled
+	if !handler.shouldDisableProxyPruner() {
+		t.Fatal("expected pruner disabled when small model enabled and context prune switch off")
+	}
+
+	contextPruneEnabled = true
+	settings.settings.SmallModelContextPruneEnabled = &contextPruneEnabled
+	if handler.shouldDisableProxyPruner() {
+		t.Fatal("expected pruner enabled when context prune switch on")
+	}
+}
+
+func TestChatHandlerSendMessage_ShortQAShadowDoesNotAffectMainPath(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Short QA Shadow")
+	registry := llm.NewProviderRegistry()
+	mockProvider := llm.NewMockProvider()
+	mockProvider.SetResponse(llm.ChatResponse{
+		ID:      "resp-shadow",
+		Model:   "mock-model",
+		Message: llm.Message{Role: llm.RoleAssistant, Content: "main path answer"},
+	})
+	registry.Register(mockProvider)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := false // shadow only
+	shadowRatio := 1.0
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	settings.settings.SmallModelShadowRatio = &shadowRatio
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{
+		respText: "shadow answer",
+		calledCh: make(chan struct{}, 1),
+	}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{"message":"这是一个短问题吗？","provider":"","model":"mock-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["content"]; got != "main path answer" {
+		t.Fatalf("content = %v, want main path answer", got)
+	}
+	select {
+	case <-sm.calledCh:
+		// expected: shadow executed
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected shadow inference call")
+	}
+}
+
+func TestShouldRunSmallModelShadow_RatioOneAlwaysTrue(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	ratio := 1.0
+	settings.settings.SmallModelShadowRatio = &ratio
+	handler.SetSettingsHandler(settings)
+
+	if !handler.shouldRunSmallModelShadow("shadow-key-1") {
+		t.Fatal("expected shadow sampling to pass when ratio=1")
+	}
+	if !handler.shouldRunSmallModelShadow("shadow-key-2") {
+		t.Fatal("expected shadow sampling to pass when ratio=1")
+	}
+}
+
+func TestShouldRunSmallModelShadow_DeterministicForSameKey(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	ratio := 0.1
+	settings.settings.SmallModelShadowRatio = &ratio
+	handler.SetSettingsHandler(settings)
+
+	got1 := handler.shouldRunSmallModelShadow("short_qa_shadow|conv-a|你好")
+	got2 := handler.shouldRunSmallModelShadow("short_qa_shadow|conv-a|你好")
+	if got1 != got2 {
+		t.Fatalf("expected deterministic shadow sampling, got %v then %v", got1, got2)
+	}
+}
+
+func TestSmallModelStatsHandlers(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.smallModelStats.RecordShortQARoute(true)
+	handler.smallModelStats.RecordToolDispatchRoute(true)
+	handler.smallModelStats.RecordShadow("short_qa_shadow", true)
+	handler.smallModelStats.RecordFallback(fallbackReasonDeepResearchUnavailable)
+	handler.smallModelStats.RecordFallback("timeout")
+	handler.smallModelStats.RecordLatencyWithScene("short_qa", 10*time.Millisecond)
+	handler.smallModelStats.RecordLatencyWithScene("tool_dispatch", 30*time.Millisecond)
+	handler.smallModelStats.RecordLatencyWithScene("summary", 20*time.Millisecond)
+	handler.smallModelStats.RecordShadowQualityDelta(0.5)
+	handler.smallModelStats.RecordAutoRollback()
+	handler.smallModelStats.RecordIRTakeover()
+
+	e := echo.New()
+
+	statsReq := httptest.NewRequest(http.MethodGet, "/api/v1/small-model/stats", nil)
+	statsRec := httptest.NewRecorder()
+	statsCtx := e.NewContext(statsReq, statsRec)
+	if err := handler.SmallModelStatsHandler(statsCtx); err != nil {
+		t.Fatalf("SmallModelStatsHandler failed: %v", err)
+	}
+	if statsRec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", statsRec.Code)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(statsRec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode stats: %v", err)
+	}
+	if got := payload["short_qa_route_attempts"]; got != float64(1) {
+		t.Fatalf("short_qa_route_attempts = %v, want 1", got)
+	}
+	if got := payload["tool_dispatch_route_attempts"]; got != float64(1) {
+		t.Fatalf("tool_dispatch_route_attempts = %v, want 1", got)
+	}
+	if got := payload["ir_takeover_total"]; got != float64(1) {
+		t.Fatalf("ir_takeover_total = %v, want 1", got)
+	}
+	if got := payload["auto_rollback_total"]; got != float64(1) {
+		t.Fatalf("auto_rollback_total = %v, want 1", got)
+	}
+	if got := payload["small_model_fallback_total"]; got != float64(2) {
+		t.Fatalf("small_model_fallback_total = %v, want 2", got)
+	}
+	if got := payload["small_model_timeout_total"]; got != float64(1) {
+		t.Fatalf("small_model_timeout_total = %v, want 1", got)
+	}
+	if got := payload["small_model_latency_samples"]; got != float64(3) {
+		t.Fatalf("small_model_latency_samples = %v, want 3", got)
+	}
+	if got := payload["small_model_latency_ms"]; got != float64(20) {
+		t.Fatalf("small_model_latency_ms = %v, want 20", got)
+	}
+	if got := payload["short_qa_latency_ms"]; got != float64(10) {
+		t.Fatalf("short_qa_latency_ms = %v, want 10", got)
+	}
+	if got := payload["tool_dispatch_latency_ms"]; got != float64(30) {
+		t.Fatalf("tool_dispatch_latency_ms = %v, want 30", got)
+	}
+	if got := payload["summary_latency_ms"]; got != float64(20) {
+		t.Fatalf("summary_latency_ms = %v, want 20", got)
+	}
+	if got := payload["shadow_quality_delta"]; got != float64(0.5) {
+		t.Fatalf("shadow_quality_delta = %v, want 0.5", got)
+	}
+	if got := payload["shadow_quality_samples"]; got != float64(1) {
+		t.Fatalf("shadow_quality_samples = %v, want 1", got)
+	}
+
+	resetReq := httptest.NewRequest(http.MethodPost, "/api/v1/small-model/stats/reset", nil)
+	resetRec := httptest.NewRecorder()
+	resetCtx := e.NewContext(resetReq, resetRec)
+	if err := handler.ResetSmallModelStatsHandler(resetCtx); err != nil {
+		t.Fatalf("ResetSmallModelStatsHandler failed: %v", err)
+	}
+	if resetRec.Code != http.StatusOK {
+		t.Fatalf("reset status = %d, want 200", resetRec.Code)
+	}
+
+	statsReq2 := httptest.NewRequest(http.MethodGet, "/api/v1/small-model/stats", nil)
+	statsRec2 := httptest.NewRecorder()
+	statsCtx2 := e.NewContext(statsReq2, statsRec2)
+	if err := handler.SmallModelStatsHandler(statsCtx2); err != nil {
+		t.Fatalf("SmallModelStatsHandler after reset failed: %v", err)
+	}
+	var payload2 map[string]interface{}
+	if err := json.Unmarshal(statsRec2.Body.Bytes(), &payload2); err != nil {
+		t.Fatalf("decode stats after reset: %v", err)
+	}
+	if got := payload2["short_qa_route_attempts"]; got != float64(0) {
+		t.Fatalf("short_qa_route_attempts = %v, want 0", got)
+	}
+	if got := payload2["tool_dispatch_route_attempts"]; got != float64(0) {
+		t.Fatalf("tool_dispatch_route_attempts = %v, want 0", got)
+	}
+	if got := payload2["ir_takeover_total"]; got != float64(0) {
+		t.Fatalf("ir_takeover_total = %v, want 0", got)
+	}
+	if got := payload2["auto_rollback_total"]; got != float64(0) {
+		t.Fatalf("auto_rollback_total = %v, want 0", got)
+	}
+	if got := payload2["small_model_fallback_total"]; got != float64(0) {
+		t.Fatalf("small_model_fallback_total = %v, want 0", got)
+	}
+	if got := payload2["small_model_timeout_total"]; got != float64(0) {
+		t.Fatalf("small_model_timeout_total = %v, want 0", got)
+	}
+	if got := payload2["small_model_latency_samples"]; got != float64(0) {
+		t.Fatalf("small_model_latency_samples = %v, want 0", got)
+	}
+	if got := payload2["short_qa_latency_samples"]; got != float64(0) {
+		t.Fatalf("short_qa_latency_samples = %v, want 0", got)
 	}
 }
 

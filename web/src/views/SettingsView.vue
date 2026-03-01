@@ -128,6 +128,31 @@ const onnxModelDownloading = computed(() => {
 const onnxRerankerToggleDisabled = computed(
   () => skillRerankerSaving.value || !settingsStore.skillRerankEnabled || onnxModelDownloading.value
 )
+const smallModelSaving = ref(false)
+let smallModelPollInterval: ReturnType<typeof setInterval> | null = null
+const smallModelDownloading = computed(() => {
+  const status = settingsStore.smallModelStatus
+  const state = status?.state
+  return status?.downloading || state === 'connecting' || state === 'downloading'
+})
+const smallModelReady = computed(() => settingsStore.smallModelStatus?.ready ?? false)
+const smallModelToggleDisabled = computed(() => smallModelSaving.value)
+const soulReviewingId = ref<string | null>(null)
+const smallModelStatsResetting = ref(false)
+const shortQASuccessRate = computed(() => {
+  const stats = settingsStore.smallModelStats
+  if (!stats || stats.short_qa_route_attempts <= 0) return 0
+  return Math.round((stats.short_qa_route_success / stats.short_qa_route_attempts) * 100)
+})
+const toolDispatchSuccessRate = computed(() => {
+  const stats = settingsStore.smallModelStats
+  if (!stats || stats.tool_dispatch_route_attempts <= 0) return 0
+  return Math.round((stats.tool_dispatch_route_success / stats.tool_dispatch_route_attempts) * 100)
+})
+const fallbackReasonEntries = computed(() => {
+  const reasons = settingsStore.smallModelStats?.fallback_reasons || {}
+  return Object.entries(reasons).sort((a, b) => b[1] - a[1])
+})
 
 async function withSkillRerankerSave(task: () => Promise<void>) {
   if (skillRerankerSaving.value) return
@@ -263,6 +288,163 @@ async function handleSkillRerankONNXEnabledChange(next: boolean) {
   }
 }
 
+async function withSmallModelSave(task: () => Promise<void>) {
+  if (smallModelSaving.value) return
+  try {
+    smallModelSaving.value = true
+    await task()
+    showSaveStatus(t('settings.saved', 'Saved'))
+  } catch {
+    showSaveStatus(t('settings.saveFailed', 'Failed to save configuration'))
+  } finally {
+    smallModelSaving.value = false
+  }
+}
+
+function stopSmallModelPoll() {
+  if (smallModelPollInterval) {
+    clearInterval(smallModelPollInterval)
+    smallModelPollInterval = null
+  }
+}
+
+function startSmallModelPoll() {
+  if (smallModelPollInterval) return
+  smallModelPollInterval = setInterval(() => {
+    void fetchSmallModelStatus()
+  }, 800)
+}
+
+async function fetchSmallModelStatus() {
+  try {
+    await settingsStore.fetchSmallModelStatus()
+    if (smallModelDownloading.value) {
+      startSmallModelPoll()
+    } else {
+      stopSmallModelPoll()
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function startSmallModelDownload() {
+  try {
+    await settingsStore.startSmallModelDownload()
+    startSmallModelPoll()
+    showSaveStatus(t('settings.smallModel.downloadStarted', 'Small model download started'))
+  } catch {
+    showSaveStatus(t('settings.smallModel.downloadFailed', 'Failed to start small model download'))
+  }
+}
+
+async function cancelSmallModelDownload() {
+  try {
+    await settingsStore.cancelSmallModelDownload()
+    await fetchSmallModelStatus()
+    showSaveStatus(t('settings.smallModel.downloadCanceled', 'Small model download canceled'))
+  } catch {
+    showSaveStatus(t('settings.smallModel.downloadFailed', 'Failed to start small model download'))
+  }
+}
+
+async function handleSmallModelEnabledChange(next: boolean) {
+  await withSmallModelSave(() => settingsStore.setSmallModelEnabled(next))
+}
+
+async function handleSmallModelSummaryEnabledChange(next: boolean) {
+  await withSmallModelSave(() => settingsStore.setSmallModelSummaryEnabled(next))
+}
+
+async function handleSmallModelDocExtractEnabledChange(next: boolean) {
+  await withSmallModelSave(() => settingsStore.setSmallModelDocExtractEnabled(next))
+}
+
+async function handleSmallModelRerankEnabledChange(next: boolean) {
+  await withSmallModelSave(() => settingsStore.setSmallModelRerankEnabled(next))
+}
+
+async function handleSmallModelContextPruneEnabledChange(next: boolean) {
+  await withSmallModelSave(() => settingsStore.setSmallModelContextPruneEnabled(next))
+}
+
+async function handleSmallModelRouteShortQAEnabledChange(next: boolean) {
+  await withSmallModelSave(() => settingsStore.setSmallModelRouteShortQAEnabled(next))
+}
+
+async function handleSmallModelRouteToolDispatchEnabledChange(next: boolean) {
+  await withSmallModelSave(() => settingsStore.setSmallModelRouteToolDispatchEnabled(next))
+}
+
+async function handleSmallModelShadowRatioChange(ratio: number) {
+  await withSmallModelSave(() => settingsStore.setSmallModelShadowRatio(ratio))
+}
+
+function formatFallbackReason(reason: string): string {
+  return reason.split('_').join(' ')
+}
+
+async function fetchSmallModelStats() {
+  try {
+    await settingsStore.fetchSmallModelStats()
+  } catch {
+    // ignore
+  }
+}
+
+async function resetSmallModelStats() {
+  if (smallModelStatsResetting.value) return
+  try {
+    smallModelStatsResetting.value = true
+    await settingsStore.resetSmallModelStats()
+    showSaveStatus(t('settings.smallModel.statsReset', 'Small-model stats reset'))
+  } catch {
+    showSaveStatus(t('settings.smallModel.statsResetFailed', 'Failed to reset small-model stats'))
+  } finally {
+    smallModelStatsResetting.value = false
+  }
+}
+
+function formatProposalTime(value: string): string {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleString()
+}
+
+async function fetchSoulProposals() {
+  try {
+    await settingsStore.fetchSoulProposals()
+  } catch {
+    // ignore
+  }
+}
+
+async function approveSoulProposal(id: string) {
+  if (soulReviewingId.value) return
+  try {
+    soulReviewingId.value = id
+    await settingsStore.approveSoulProposal(id)
+    showSaveStatus(t('settings.smallModel.soulApproved', 'SOUL proposal approved'))
+  } catch {
+    showSaveStatus(t('settings.smallModel.soulReviewFailed', 'Failed to review SOUL proposal'))
+  } finally {
+    soulReviewingId.value = null
+  }
+}
+
+async function rejectSoulProposal(id: string) {
+  if (soulReviewingId.value) return
+  try {
+    soulReviewingId.value = id
+    await settingsStore.rejectSoulProposal(id)
+    showSaveStatus(t('settings.smallModel.soulRejected', 'SOUL proposal rejected'))
+  } catch {
+    showSaveStatus(t('settings.smallModel.soulReviewFailed', 'Failed to review SOUL proposal'))
+  } finally {
+    soulReviewingId.value = null
+  }
+}
+
 async function fetchServiceInfo() {
   try {
     const res = await serviceApi.getInfo()
@@ -297,6 +479,12 @@ function switchTab(tab: TabType) {
   // Load data for specific tabs
   if (tab === 'userdata' && backups.value.length === 0) {
     fetchBackups()
+  }
+  if (tab === 'proxy' && settingsStore.smallModelStats == null) {
+    void fetchSmallModelStats()
+  }
+  if (tab === 'memory' && settingsStore.soulProposals.length === 0) {
+    void fetchSoulProposals()
   }
 }
 
@@ -362,6 +550,9 @@ onMounted(async () => {
   await settingsStore.fetchProviders()
   await settingsStore.fetchBackendSettings()
   await fetchOnnxModelStatus()
+  await fetchSmallModelStatus()
+  await fetchSmallModelStats()
+  await fetchSoulProposals()
   fetchServiceInfo()
 
   // Load data based on initial tab
@@ -373,6 +564,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopOnnxModelPoll()
+  stopSmallModelPoll()
 })
 </script>
 
@@ -640,6 +832,311 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- Small Model Control (Optimization Tab only) -->
+    <div v-if="activeTab === 'proxy'" class="glass-card p-4 mt-6">
+      <div class="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('settings.smallModel.title', 'Small Model (LFM2.5-1.2B Q4KM)') }}</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('settings.smallModel.description', 'Fixed model/runtime with IR-first fallback and DeepResearch degrade.') }}</p>
+        </div>
+        <span
+          class="text-xs px-2 py-1 rounded-full whitespace-nowrap"
+          :class="smallModelReady ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : smallModelDownloading ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700/60 dark:text-gray-300'"
+        >
+          {{ smallModelReady ? t('settings.smallModel.ready', 'Ready') : smallModelDownloading ? t('settings.smallModel.downloading', 'Downloading') : t('settings.smallModel.notReady', 'Not Ready') }}
+        </span>
+      </div>
+
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h4 class="text-sm text-gray-800 dark:text-gray-100">{{ t('settings.smallModel.enabled', 'Enable Small Model Routing') }}</h4>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('settings.smallModel.enabledHint', 'Master switch for small-model enhancement paths.') }}</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="settingsStore.smallModelEnabled"
+            :disabled="smallModelToggleDisabled"
+            class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+            :class="settingsStore.smallModelEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+            @click="handleSmallModelEnabledChange(!settingsStore.smallModelEnabled)"
+          >
+            <span
+              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              :class="settingsStore.smallModelEnabled ? 'translate-x-5' : 'translate-x-0'"
+            />
+          </button>
+        </div>
+
+        <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg space-y-1.5 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.runtime', 'Runtime') }}</span>
+            <span class="font-mono text-gray-800 dark:text-gray-100">{{ settingsStore.smallModelRuntime }}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.modelId', 'Model ID') }}</span>
+            <span class="font-mono text-gray-800 dark:text-gray-100">{{ settingsStore.smallModelID }}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.noLLMDegrade', 'No LLM Degrade') }}</span>
+            <span class="font-mono text-gray-800 dark:text-gray-100">{{ settingsStore.noLLMDegradeMode }}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.unavailablePolicy', 'Unavailable Policy') }}</span>
+            <span class="font-mono text-gray-800 dark:text-gray-100">{{ settingsStore.smallModelUnavailablePolicy }}</span>
+          </div>
+        </div>
+
+        <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+          <div class="flex items-center justify-between text-xs mb-2">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shadowRatio', 'Shadow Ratio') }}</span>
+            <span class="font-mono text-gray-800 dark:text-gray-100">{{ Math.round(settingsStore.smallModelShadowRatio * 100) }}%</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="ratio in [0.1, 0.3, 0.5, 1] as const"
+              :key="ratio"
+              :data-testid="`small-model-shadow-ratio-${Math.round(ratio * 100)}`"
+              class="px-2.5 py-1.5 rounded-md text-xs border transition-colors"
+              :class="Math.abs(settingsStore.smallModelShadowRatio - ratio) < 0.001
+                ? 'bg-gray-800 text-white border-gray-800 dark:bg-gray-200 dark:text-gray-900 dark:border-gray-200'
+                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'"
+              :disabled="smallModelSaving"
+              @click="handleSmallModelShadowRatioChange(ratio)"
+            >
+              {{ Math.round(ratio * 100) }}%
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            class="w-full px-3 py-2 rounded-lg text-sm transition-colors border text-left"
+            :class="settingsStore.smallModelSummaryEnabled ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' : 'bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300'"
+            :disabled="smallModelSaving"
+            @click="handleSmallModelSummaryEnabledChange(!settingsStore.smallModelSummaryEnabled)"
+          >
+            <div class="font-medium">{{ t('settings.smallModel.summary', 'Summary / Compression') }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ settingsStore.smallModelSummaryEnabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled') }}</div>
+          </button>
+          <button
+            class="w-full px-3 py-2 rounded-lg text-sm transition-colors border text-left"
+            :class="settingsStore.smallModelDocExtractEnabled ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' : 'bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300'"
+            :disabled="smallModelSaving"
+            @click="handleSmallModelDocExtractEnabledChange(!settingsStore.smallModelDocExtractEnabled)"
+          >
+            <div class="font-medium">{{ t('settings.smallModel.docExtract', 'Workflow Document Extraction') }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ settingsStore.smallModelDocExtractEnabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled') }}</div>
+          </button>
+          <button
+            class="w-full px-3 py-2 rounded-lg text-sm transition-colors border text-left"
+            :class="settingsStore.smallModelRerankEnabled ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' : 'bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300'"
+            :disabled="smallModelSaving"
+            @click="handleSmallModelRerankEnabledChange(!settingsStore.smallModelRerankEnabled)"
+          >
+            <div class="font-medium">{{ t('settings.smallModel.rerank', 'Skill Rerank') }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ settingsStore.smallModelRerankEnabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled') }}</div>
+          </button>
+          <button
+            class="w-full px-3 py-2 rounded-lg text-sm transition-colors border text-left"
+            :class="settingsStore.smallModelContextPruneEnabled ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' : 'bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300'"
+            :disabled="smallModelSaving"
+            @click="handleSmallModelContextPruneEnabledChange(!settingsStore.smallModelContextPruneEnabled)"
+          >
+            <div class="font-medium">{{ t('settings.smallModel.contextPrune', 'Context Pruning') }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ settingsStore.smallModelContextPruneEnabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled') }}</div>
+          </button>
+          <button
+            class="w-full px-3 py-2 rounded-lg text-sm transition-colors border text-left"
+            :class="settingsStore.smallModelRouteShortQAEnabled ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' : 'bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300'"
+            :disabled="smallModelSaving"
+            @click="handleSmallModelRouteShortQAEnabledChange(!settingsStore.smallModelRouteShortQAEnabled)"
+          >
+            <div class="font-medium">{{ t('settings.smallModel.shortQA', 'Short QA Routing') }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('settings.smallModel.shadowOnly', 'Phase1: shadow only') }}</div>
+          </button>
+          <button
+            class="w-full px-3 py-2 rounded-lg text-sm transition-colors border text-left"
+            :class="settingsStore.smallModelRouteToolDispatchEnabled ? 'bg-gray-100 dark:bg-gray-700/30 border-gray-300 dark:border-gray-500 text-gray-900 dark:text-white' : 'bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300'"
+            :disabled="smallModelSaving"
+            @click="handleSmallModelRouteToolDispatchEnabledChange(!settingsStore.smallModelRouteToolDispatchEnabled)"
+          >
+            <div class="font-medium">{{ t('settings.smallModel.toolDispatch', 'Tool Dispatch Routing') }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('settings.smallModel.shadowOnly', 'Phase1: shadow only') }}</div>
+          </button>
+        </div>
+
+        <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 class="text-sm text-gray-800 dark:text-gray-100">{{ t('settings.smallModel.statsTitle', 'Routing & Fallback Stats') }}</h4>
+            <div class="flex items-center gap-2">
+              <button
+                data-testid="small-model-stats-refresh"
+                class="px-2 py-1 rounded border border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                :disabled="settingsStore.smallModelStatsLoading"
+                @click="fetchSmallModelStats"
+              >
+                {{ t('common.refresh', 'Refresh') }}
+              </button>
+              <button
+                data-testid="small-model-stats-reset"
+                class="px-2 py-1 rounded border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                :disabled="smallModelStatsResetting"
+                @click="resetSmallModelStats"
+              >
+                {{ t('settings.smallModel.resetStats', 'Reset') }}
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shortQAAttempts', 'Short QA Attempts') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ settingsStore.smallModelStats?.short_qa_route_attempts ?? 0 }}</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shortQASuccessRate', 'Short QA Success') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ shortQASuccessRate }}%</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.toolDispatchAttempts', 'Tool Dispatch Attempts') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ settingsStore.smallModelStats?.tool_dispatch_route_attempts ?? 0 }}</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.toolDispatchSuccessRate', 'Tool Dispatch Success') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ toolDispatchSuccessRate }}%</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.deepResearchFallbacks', 'DeepResearch Fallbacks') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ settingsStore.smallModelStats?.no_provider_deepresearch_total ?? 0 }}</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.irTakeovers', 'IR Takeovers') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ settingsStore.smallModelStats?.ir_takeover_total ?? 0 }}</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.autoRollbacks', 'Auto Rollbacks') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ settingsStore.smallModelStats?.auto_rollback_total ?? 0 }}</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shortQAShadow', 'Short QA Shadow') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ settingsStore.smallModelStats?.short_qa_shadow_total ?? 0 }}</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.toolShadow', 'Tool Dispatch Shadow') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ settingsStore.smallModelStats?.tool_dispatch_shadow_total ?? 0 }}</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shadowFailures', 'Shadow Failures') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ settingsStore.smallModelStats?.shadow_failures ?? 0 }}</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.fallbackTotal', 'Fallback Total') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ settingsStore.smallModelStats?.small_model_fallback_total ?? 0 }}</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.timeoutTotal', 'Timeout Total') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ settingsStore.smallModelStats?.small_model_timeout_total ?? 0 }}</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.latencyMs', 'Small-model Latency') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ ((settingsStore.smallModelStats?.small_model_latency_ms ?? 0)).toFixed(1) }}ms</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shortQALatencyMs', 'Short QA Latency') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ ((settingsStore.smallModelStats?.short_qa_latency_ms ?? 0)).toFixed(1) }}ms</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.toolDispatchLatencyMs', 'Tool Dispatch Latency') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ ((settingsStore.smallModelStats?.tool_dispatch_latency_ms ?? 0)).toFixed(1) }}ms</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.summaryLatencyMs', 'Summary Latency') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ ((settingsStore.smallModelStats?.summary_latency_ms ?? 0)).toFixed(1) }}ms</div>
+            </div>
+            <div class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2">
+              <div class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.docExtractLatencyMs', 'Doc Extract Latency') }}</div>
+              <div class="mt-1 font-medium text-gray-900 dark:text-white">{{ ((settingsStore.smallModelStats?.doc_extract_latency_ms ?? 0)).toFixed(1) }}ms</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('settings.smallModel.fallbackReasons', 'Fallback Reasons') }}</div>
+            <div v-if="fallbackReasonEntries.length === 0" class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('settings.smallModel.noFallbackReasons', 'No fallback reasons recorded') }}
+            </div>
+            <div v-else class="space-y-1">
+              <div
+                v-for="[reason, count] in fallbackReasonEntries"
+                :key="reason"
+                class="flex items-center justify-between text-xs rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5"
+              >
+                <span class="text-gray-700 dark:text-gray-200 font-mono">{{ formatFallbackReason(reason) }}</span>
+                <span class="text-gray-900 dark:text-white font-medium">{{ count }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <template v-if="settingsStore.smallModelStatus && smallModelDownloading">
+          <div v-if="settingsStore.smallModelStatus.state === 'connecting' && settingsStore.smallModelStatus.progress" class="space-y-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+            <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+              <span>{{ settingsStore.smallModelStatus.progress.file }} ({{ settingsStore.smallModelStatus.progress.file_index + 1 }}/{{ settingsStore.smallModelStatus.progress.total_files }})</span>
+              <span>{{ t('settings.smallModel.connecting', 'Connecting') }}</span>
+            </div>
+            <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div class="h-full bg-blue-500/50 dark:bg-blue-400/50 rounded-full animate-pulse w-full"></div>
+            </div>
+          </div>
+          <div v-else-if="settingsStore.smallModelStatus.state === 'downloading' && settingsStore.smallModelStatus.progress" class="space-y-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+            <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+              <span>{{ settingsStore.smallModelStatus.progress.file }} ({{ settingsStore.smallModelStatus.progress.file_index + 1 }}/{{ settingsStore.smallModelStatus.progress.total_files }})</span>
+              <span>{{ settingsStore.smallModelStatus.progress.percentage.toFixed(1) }}%</span>
+            </div>
+            <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300" :style="{ width: settingsStore.smallModelStatus.progress.percentage + '%' }"></div>
+            </div>
+            <div class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+              <span>{{ formatBytes(settingsStore.smallModelStatus.progress.downloaded) }} / {{ settingsStore.smallModelStatus.progress.total > 0 ? formatBytes(settingsStore.smallModelStatus.progress.total) : '...' }}</span>
+              <span>{{ settingsStore.smallModelStatus.progress.speed_human }} &middot; {{ settingsStore.smallModelStatus.progress.eta || '...' }}</span>
+            </div>
+          </div>
+        </template>
+
+        <div v-if="settingsStore.smallModelStatus?.state === 'error' && settingsStore.smallModelStatus.error" class="px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center justify-between">
+          <p class="text-xs text-red-600 dark:text-red-400">{{ settingsStore.smallModelStatus.error }}</p>
+          <button class="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white ml-2 flex-shrink-0" @click="startSmallModelDownload">{{ t('common.retry') }}</button>
+        </div>
+
+        <div class="flex items-center justify-end gap-2">
+          <button
+            data-testid="small-model-status-refresh"
+            class="px-3 py-1.5 rounded-md border border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            @click="fetchSmallModelStatus"
+          >
+            {{ t('common.refresh', 'Refresh') }}
+          </button>
+          <button
+            v-if="!smallModelDownloading"
+            data-testid="small-model-download"
+            class="px-3 py-1.5 rounded-md text-xs text-white bg-gray-800 hover:bg-gray-900 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-white"
+            @click="startSmallModelDownload"
+          >
+            {{ smallModelReady ? t('settings.smallModel.redownload', 'Re-download') : t('settings.smallModel.download', 'Download Model') }}
+          </button>
+          <button
+            v-else
+            data-testid="small-model-download-cancel"
+            class="px-3 py-1.5 rounded-md text-xs text-red-600 border border-red-200 dark:text-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20"
+            @click="cancelSmallModelDownload"
+          >
+            {{ t('common.cancel') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Network Tab -->
     <div v-if="activeTab === 'network'">
       <NetworkSettings @status-change="showSaveStatus" />
@@ -672,6 +1169,73 @@ onUnmounted(() => {
             <div class="font-medium">{{ t(`settings.memoryRecallMode.options.${mode}.label`) }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t(`settings.memoryRecallMode.options.${mode}.hint`) }}</div>
           </button>
+        </div>
+      </div>
+
+      <!-- SOUL Proposal Review -->
+      <div class="glass-card p-4">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <label class="block text-sm text-gray-500 dark:text-slate-400">{{ t('settings.smallModel.soulTitle', 'SOUL Proposals (Manual Review)') }}</label>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('settings.smallModel.soulHint', 'Self-evolution writes require explicit approval before persistence.') }}</p>
+          </div>
+          <button class="px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" @click="fetchSoulProposals">
+            {{ t('common.refresh', 'Refresh') }}
+          </button>
+        </div>
+
+        <div v-if="settingsStore.soulProposalsLoading" class="text-xs text-gray-500 dark:text-gray-400 py-1">
+          {{ t('common.loading', 'Loading...') }}
+        </div>
+        <div v-else-if="settingsStore.soulProposals.length === 0" class="text-xs text-gray-500 dark:text-gray-400 py-1">
+          {{ t('settings.smallModel.soulEmpty', 'No proposals yet.') }}
+        </div>
+        <div v-else class="space-y-2">
+          <div
+            v-for="proposal in settingsStore.soulProposals"
+            :key="proposal.id"
+            class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-slate-800/30"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ proposal.title }}</h4>
+                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <span class="mr-2">{{ t('settings.smallModel.createdAt', 'Created') }}: {{ formatProposalTime(proposal.created_at) }}</span>
+                  <span v-if="proposal.source">{{ t('settings.smallModel.source', 'Source') }}: {{ proposal.source }}</span>
+                </div>
+              </div>
+              <span
+                class="text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap"
+                :class="proposal.status === 'approved'
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                  : proposal.status === 'rejected'
+                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                    : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'"
+              >
+                {{ proposal.status }}
+              </span>
+            </div>
+            <p class="text-xs text-gray-700 dark:text-gray-200 mt-2 whitespace-pre-wrap">{{ proposal.content }}</p>
+
+            <div v-if="proposal.status === 'pending'" class="mt-3 flex items-center justify-end gap-2">
+              <button
+                :data-testid="`soul-reject-${proposal.id}`"
+                class="px-2.5 py-1.5 rounded-md text-xs text-red-600 border border-red-200 dark:text-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                :disabled="soulReviewingId === proposal.id"
+                @click="rejectSoulProposal(proposal.id)"
+              >
+                {{ t('common.reject', 'Reject') }}
+              </button>
+              <button
+                :data-testid="`soul-approve-${proposal.id}`"
+                class="px-2.5 py-1.5 rounded-md text-xs text-white bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:text-white dark:hover:bg-green-400 disabled:opacity-50"
+                :disabled="soulReviewingId === proposal.id"
+                @click="approveSoulProposal(proposal.id)"
+              >
+                {{ t('common.approve', 'Approve') }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

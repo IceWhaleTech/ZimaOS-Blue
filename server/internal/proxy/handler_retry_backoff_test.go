@@ -89,3 +89,46 @@ func TestShouldRetryWithoutTools(t *testing.T) {
 		}
 	}
 }
+
+func TestShouldRetryWithoutPreviousResponseID(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil error", err: nil, want: false},
+		{name: "no response", err: errors.New("provider prov_x returned no response"), want: true},
+		{name: "empty stream", err: errors.New("provider prov_x returned empty streaming response"), want: true},
+		{name: "upstream 502", err: errors.New("upstream 502: bad gateway"), want: true},
+		{name: "auth error", err: errors.New("provider prov_x auth error (401): unauthorized"), want: false},
+	}
+
+	for _, tc := range tests {
+		if got := shouldRetryWithoutPreviousResponseID(tc.err); got != tc.want {
+			t.Fatalf("%s: shouldRetryWithoutPreviousResponseID(%v) = %v, want %v", tc.name, tc.err, got, tc.want)
+		}
+	}
+}
+
+func TestHasPreviousResponseContinuation(t *testing.T) {
+	bodyWithPrevID := []byte(`{"model":"x","previous_response_id":"resp_123","input":[{"role":"user","content":[{"type":"input_text","text":"hi"}]}]}`)
+	bodyWithoutPrevID := []byte(`{"model":"x","input":[{"role":"user","content":[{"type":"input_text","text":"hi"}]}]}`)
+
+	tests := []struct {
+		name         string
+		body         []byte
+		cachedPrevID string
+		want         bool
+	}{
+		{name: "inline previous_response_id", body: bodyWithPrevID, cachedPrevID: "", want: true},
+		{name: "cached previous_response_id", body: bodyWithoutPrevID, cachedPrevID: "resp_cached", want: true},
+		{name: "no continuation", body: bodyWithoutPrevID, cachedPrevID: "", want: false},
+		{name: "empty body but cached continuation", body: nil, cachedPrevID: "resp_cached", want: true},
+	}
+
+	for _, tc := range tests {
+		if got := hasPreviousResponseContinuation(tc.body, tc.cachedPrevID); got != tc.want {
+			t.Fatalf("%s: hasPreviousResponseContinuation(...) = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

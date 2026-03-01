@@ -93,6 +93,9 @@ func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatRespon
 		return nil, fmt.Errorf("bridge request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if locale := strings.TrimSpace(proxy.LocaleFromContext(ctx)); locale != "" {
+		httpReq.Header.Set("Accept-Language", locale)
+	}
 	if proxy.DisableResponsesContinuationFromContext(ctx) {
 		httpReq.Header.Set(proxy.DisableResponsesContinuationHeader, "1")
 	}
@@ -191,6 +194,9 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
+	if locale := strings.TrimSpace(proxy.LocaleFromContext(ctx)); locale != "" {
+		httpReq.Header.Set("Accept-Language", locale)
+	}
 	if proxy.DisableResponsesContinuationFromContext(ctx) {
 		httpReq.Header.Set(proxy.DisableResponsesContinuationHeader, "1")
 	}

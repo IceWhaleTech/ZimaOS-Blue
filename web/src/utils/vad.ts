@@ -12,6 +12,8 @@ export interface VADOptions {
   speechThreshold?: number
   /** RMS threshold to consider as silence (0-1). Default: 0.01 */
   silenceThreshold?: number
+  /** Initial ambient noise calibration duration (ms). Default: 250 */
+  noiseCalibrationDuration?: number
   /** Duration of silence before triggering speech end (ms). Default: 1500 */
   silenceDuration?: number
   /** Minimum speech duration to be considered valid (ms). Default: 300 */
@@ -28,8 +30,17 @@ export interface VADOptions {
 
 type VADState = 'idle' | 'speaking' | 'silence_pending'
 
+const TICK_INTERVAL = 50 // ms
 const MIN_SPEECH_FRAMES = 3 // ~150ms at 50ms tick interval
 const CHUNK_TIMESLICE = 100 // ms per chunk
+const NOISE_FLOOR_RISE_ALPHA = 0.22
+const NOISE_FLOOR_FALL_ALPHA = 0.08
+const SPEECH_NOISE_RATIO = 1.35
+const SPEECH_NOISE_OFFSET = 0.003
+const SILENCE_NOISE_RATIO = 1.12
+const SILENCE_NOISE_OFFSET = 0.0015
+const THRESHOLD_HYSTERESIS = 0.002
+const DEFAULT_NOISE_CALIBRATION_DURATION = 250
 
 export class EnergyVAD {
   private opts: Required<Omit<VADOptions, 'onSpeechStart' | 'onSpeechEnd' | 'onVolumeChange'>> & Pick<VADOptions, 'onSpeechStart' | 'onSpeechEnd' | 'onVolumeChange'>
@@ -45,6 +56,8 @@ export class EnergyVAD {
   private speechFrameCount = 0
   private paused = false
   private volumeTickCount = 0 // throttle volume callbacks
+  private noiseFloor = 0
+  private listeningStartTime = 0
 
   // Single recorder: all chunks share the same WebM init segment
   private recorder: MediaRecorder | null = null
@@ -63,6 +76,7 @@ export class EnergyVAD {
     this.opts = {
       speechThreshold: options?.speechThreshold ?? 0.015,
       silenceThreshold: options?.silenceThreshold ?? 0.01,
+      noiseCalibrationDuration: options?.noiseCalibrationDuration ?? DEFAULT_NOISE_CALIBRATION_DURATION,
       silenceDuration: options?.silenceDuration ?? 1500,
       minSpeechDuration: options?.minSpeechDuration ?? 300,
       preBufferDuration,
@@ -98,6 +112,8 @@ export class EnergyVAD {
     this.speechFrameCount = 0
     this.volumeTickCount = 0
     this.paused = false
+    this.noiseFloor = Math.max(0.001, this.opts.silenceThreshold * 0.8)
+    this.listeningStartTime = Date.now()
     this._isListening = true
     this._isSpeaking = false
 
@@ -105,7 +121,7 @@ export class EnergyVAD {
     this.startRecorder()
 
     // Tick at ~20fps (50ms), volume callback throttled to ~10fps
-    this.tickTimer = window.setInterval(() => this.tick(), 50)
+    this.tickTimer = window.setInterval(() => this.tick(), TICK_INTERVAL)
   }
 
   stop(): void {
@@ -165,6 +181,8 @@ export class EnergyVAD {
     this.state = 'idle'
     this._isListening = false
     this._isSpeaking = false
+    this.noiseFloor = 0
+    this.listeningStartTime = 0
   }
 
   private tick(): void {
@@ -183,14 +201,30 @@ export class EnergyVAD {
     if (this.paused) return
 
     const now = Date.now()
+    const isCalibrating = (now - this.listeningStartTime) < this.opts.noiseCalibrationDuration
+    const initialThresholds = this.computeAdaptiveThresholds()
+
+    // Keep tracking ambient floor while not actively in speaking state.
+    if (this.state !== 'speaking') {
+      // Outside calibration, cap updates at current speech gate to avoid
+      // pulling true speech into the ambient noise estimate.
+      const noiseSample = isCalibrating ? rms : Math.min(rms, initialThresholds.speech)
+      this.updateNoiseFloor(noiseSample)
+    }
+
+    if (isCalibrating) return
+
+    const thresholds = this.computeAdaptiveThresholds()
+    const speechThreshold = thresholds.speech
+    const silenceThreshold = thresholds.silence
 
     switch (this.state) {
       case 'idle':
-        if (rms > this.opts.speechThreshold) {
+        if (rms > speechThreshold) {
           this.speechFrameCount++
           if (this.speechFrameCount >= MIN_SPEECH_FRAMES) {
             this.state = 'speaking'
-            this.speechStartTime = now - (MIN_SPEECH_FRAMES * 50)
+            this.speechStartTime = now - (MIN_SPEECH_FRAMES * TICK_INTERVAL)
             this._isSpeaking = true
             this.markSpeechStart()
             this.opts.onSpeechStart?.()
@@ -201,14 +235,14 @@ export class EnergyVAD {
         break
 
       case 'speaking':
-        if (rms < this.opts.silenceThreshold) {
+        if (rms < silenceThreshold) {
           this.state = 'silence_pending'
           this.silenceStartTime = now
         }
         break
 
       case 'silence_pending':
-        if (rms > this.opts.speechThreshold) {
+        if (rms > speechThreshold) {
           this.state = 'speaking'
         } else if (now - this.silenceStartTime >= this.opts.silenceDuration) {
           const speechDuration = now - this.speechStartTime
@@ -233,6 +267,26 @@ export class EnergyVAD {
       sum += sample * sample
     }
     return Math.sqrt(sum / data.length)
+  }
+
+  private updateNoiseFloor(sample: number): void {
+    if (!Number.isFinite(sample)) return
+    const clamped = Math.max(0, sample)
+    if (this.noiseFloor <= 0) {
+      this.noiseFloor = clamped
+      return
+    }
+    const alpha = clamped > this.noiseFloor ? NOISE_FLOOR_RISE_ALPHA : NOISE_FLOOR_FALL_ALPHA
+    this.noiseFloor += (clamped - this.noiseFloor) * alpha
+  }
+
+  private computeAdaptiveThresholds(): { speech: number, silence: number } {
+    const adaptiveSpeech = (this.noiseFloor * SPEECH_NOISE_RATIO) + SPEECH_NOISE_OFFSET
+    const adaptiveSilence = (this.noiseFloor * SILENCE_NOISE_RATIO) + SILENCE_NOISE_OFFSET
+    const speech = Math.max(this.opts.speechThreshold, adaptiveSpeech)
+    const silenceUpper = Math.max(0.001, speech - THRESHOLD_HYSTERESIS)
+    const silence = Math.min(Math.max(this.opts.silenceThreshold, adaptiveSilence), silenceUpper)
+    return { speech, silence }
   }
 
   /** Create a MediaRecorder for the current stream. */

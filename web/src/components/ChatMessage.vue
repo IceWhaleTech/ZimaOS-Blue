@@ -7,8 +7,16 @@ import { renderMarkdownCached, copyCodeToClipboard } from '@/utils/markdown'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
-import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments, hasTypelessCards, clearIncrementalState } from '@/utils/typeless'
-import type { TypelessCard, TypelessCardChoice } from '@/types/typeless'
+import {
+  parseTypelessContent,
+  parseTypelessContentIncremental,
+  splitIntoSegments,
+  hasTypelessCards,
+  clearIncrementalState,
+  clearSplitSegmentsIncrementalState,
+} from '@/utils/typeless'
+import { stripFirstLineHeading } from '@/utils/chat-message-text'
+import type { TypelessCard, TypelessCardChoice, ParsedContent } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
 import ToolDetailCard from '@/components/ToolDetailCard.vue'
 import MediaPlaceholder from '@/components/MediaPlaceholder.vue'
@@ -95,6 +103,13 @@ function getInlineImageCache(): Map<string, InlineImageParseResult> {
   return cache
 }
 
+function evictOldestMapEntry<K, V>(cache: Map<K, V>): void {
+  const oldestKey = cache.keys().next().value
+  if (oldestKey !== undefined) {
+    cache.delete(oldestKey as K)
+  }
+}
+
 function parseInlineImagesCached(content: string): InlineImageParseResult {
   const cache = getInlineImageCache()
   const cached = cache.get(content)
@@ -112,7 +127,9 @@ function parseInlineImagesCached(content: string): InlineImageParseResult {
     : content
 
   const parsed = { images, strippedText }
-  if (cache.size >= INLINE_IMAGE_CACHE_MAX) cache.clear()
+  if (cache.size >= INLINE_IMAGE_CACHE_MAX && !cache.has(content)) {
+    evictOldestMapEntry(cache)
+  }
   cache.set(content, parsed)
   return parsed
 }
@@ -121,6 +138,163 @@ const parsedInlineContent = computed(() => {
   if (!isUser.value) return null
   return parseInlineImagesCached(props.message.content)
 })
+
+// Throttle streaming content updates to one render per animation frame.
+const throttledStreamingContent = ref(props.message.content)
+let streamingRenderRafId: number | null = null
+let streamingRenderFallbackTimer: ReturnType<typeof setTimeout> | null = null
+let pendingStreamingContent = props.message.content
+let lastStreamingFlushedContent = props.message.content
+let lastStreamingFlushAt = Date.now()
+
+const STREAMING_RENDER_MIN_DELTA = 12
+const STREAMING_RENDER_MAX_DEFER_MS = 72
+const RE_STREAMING_RENDER_FLUSH_HINT = /[.!?。！？\n\r`*_#\[\]|]/
+
+function hasStreamingRenderFlushHint(content: string): boolean {
+  return RE_STREAMING_RENDER_FLUSH_HINT.test(content)
+}
+
+function clearStreamingRenderFallbackTimer() {
+  if (!streamingRenderFallbackTimer) return
+  clearTimeout(streamingRenderFallbackTimer)
+  streamingRenderFallbackTimer = null
+}
+
+function flushStreamingContent(nextContent: string) {
+  throttledStreamingContent.value = nextContent
+  lastStreamingFlushedContent = nextContent
+  lastStreamingFlushAt = Date.now()
+}
+
+function syncStreamingContentNow(nextContent: string) {
+  pendingStreamingContent = nextContent
+  clearStreamingRenderFallbackTimer()
+  if (streamingRenderRafId !== null) {
+    window.cancelAnimationFrame(streamingRenderRafId)
+    streamingRenderRafId = null
+  }
+  flushStreamingContent(nextContent)
+}
+
+function scheduleStreamingContentUpdate(nextContent: string) {
+  pendingStreamingContent = nextContent
+
+  // Skip immediate frame updates for tiny plain-text appends.
+  if (nextContent.startsWith(lastStreamingFlushedContent)) {
+    const delta = nextContent.slice(lastStreamingFlushedContent.length)
+    const shouldDefer = delta.length > 0
+      && delta.length < STREAMING_RENDER_MIN_DELTA
+      && !hasStreamingRenderFlushHint(delta)
+      && (Date.now() - lastStreamingFlushAt) < STREAMING_RENDER_MAX_DEFER_MS
+
+    if (shouldDefer) {
+      if (!streamingRenderFallbackTimer) {
+        const wait = STREAMING_RENDER_MAX_DEFER_MS - (Date.now() - lastStreamingFlushAt)
+        streamingRenderFallbackTimer = setTimeout(() => {
+          streamingRenderFallbackTimer = null
+          if (streamingRenderRafId !== null) return
+          streamingRenderRafId = window.requestAnimationFrame(() => {
+            streamingRenderRafId = null
+            flushStreamingContent(pendingStreamingContent)
+          })
+        }, Math.max(8, wait))
+      }
+      return
+    }
+  }
+
+  clearStreamingRenderFallbackTimer()
+  if (streamingRenderRafId !== null) return
+  streamingRenderRafId = window.requestAnimationFrame(() => {
+    streamingRenderRafId = null
+    flushStreamingContent(pendingStreamingContent)
+  })
+}
+
+watch(
+  () => props.message.content,
+  (content) => {
+    if (trackStreamingState.value) {
+      scheduleStreamingContentUpdate(content)
+      return
+    }
+    syncStreamingContentNow(content)
+  },
+  { immediate: true }
+)
+
+watch(
+  () => trackStreamingState.value,
+  () => {
+    syncStreamingContentNow(props.message.content)
+  }
+)
+
+const renderSourceContent = computed(() => (
+  trackStreamingState.value
+    ? throttledStreamingContent.value
+    : props.message.content
+))
+
+const STREAMING_TYPELESS_HINT_TAIL = 4
+const RE_STREAMING_ORDERED_LIST_HINT = /\d+\.\s/
+const streamingTypelessHintContent = ref(renderSourceContent.value)
+const streamingMayContainTypelessCards = ref(true)
+
+function hasStreamingTypelessHints(content: string): boolean {
+  if (content.includes('```')
+    || content.includes('|')
+    || content.includes('- ')
+    || content.includes('* ')
+    || content.includes('+ ')
+    || content.includes('![')
+    || content.includes('http')) {
+    return true
+  }
+  return content.includes('.') && RE_STREAMING_ORDERED_LIST_HINT.test(content)
+}
+
+watch(
+  () => renderSourceContent.value,
+  (content) => {
+    if (!trackStreamingState.value) {
+      streamingTypelessHintContent.value = content
+      streamingMayContainTypelessCards.value = true
+      return
+    }
+
+    const prev = streamingTypelessHintContent.value
+    if (content.startsWith(prev)) {
+      if (!streamingMayContainTypelessCards.value) {
+        const appended = content.slice(prev.length)
+        const tailProbe = prev.slice(-STREAMING_TYPELESS_HINT_TAIL) + appended
+        if (hasStreamingTypelessHints(tailProbe)) {
+          streamingMayContainTypelessCards.value = true
+        }
+      }
+      streamingTypelessHintContent.value = content
+      return
+    }
+
+    // Fallback for non-append updates/replacements.
+    streamingMayContainTypelessCards.value = hasStreamingTypelessHints(content)
+    streamingTypelessHintContent.value = content
+  },
+  { immediate: true }
+)
+
+watch(
+  () => trackStreamingState.value,
+  () => {
+    const content = renderSourceContent.value
+    streamingTypelessHintContent.value = content
+    streamingMayContainTypelessCards.value = trackStreamingState.value
+      ? hasStreamingTypelessHints(content)
+      : true
+  },
+  { immediate: true }
+)
 
 // Extract inline markdown images from user message content (e.g. ![image](/api/media/...))
 const inlineImages = computed(() => {
@@ -340,36 +514,85 @@ watch(
   { immediate: true }
 )
 
-// Helper to strip markdown heading from first line if present
-function stripFirstLineHeading(content: string): string {
-  const lines = content.split('\n')
-  const firstLine = lines[0]?.trim() || ''
-  if (firstLine.startsWith('#')) {
-    // Remove the first line (markdown heading used as title)
-    return lines.slice(1).join('\n').trimStart()
-  }
-  return content
-}
-
 const interruptedIndicatorHtml = computed(() =>
   `<div class="response-interrupted-indicator"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg><span>${t('chat.responseInterrupted')}</span></div>`
 )
 
-const RE_INTERRUPTED = /\n?\n?\[Response interrupted\]\s*$/
+const INTERRUPTED_MARKER = '[Response interrupted]'
+const RE_NON_WHITESPACE = /\S/
+const RE_EDGE_WHITESPACE = /^\s|\s$/
+const INTERRUPTED_STRIP_CACHE_KEY = '__zima_chat_interrupted_strip_cache_v1__'
+const INTERRUPTED_STRIP_CACHE_MAX = 300
+
+type InterruptedStripResult = { content: string; interrupted: boolean }
+
+function getInterruptedStripCache(): Map<string, InterruptedStripResult> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[INTERRUPTED_STRIP_CACHE_KEY]
+  if (existing instanceof Map) {
+    return existing as Map<string, InterruptedStripResult>
+  }
+  const cache = new Map<string, InterruptedStripResult>()
+  g[INTERRUPTED_STRIP_CACHE_KEY] = cache
+  return cache
+}
+
+function hasNonWhitespace(text: string): boolean {
+  return RE_NON_WHITESPACE.test(text)
+}
+
+function trimIfNeeded(text: string): string {
+  return RE_EDGE_WHITESPACE.test(text) ? text.trim() : text
+}
 
 // Strip [Response interrupted] marker from content, returns { content, interrupted }
-function stripInterruptedMarker(content: string): { content: string; interrupted: boolean } {
-  if (RE_INTERRUPTED.test(content)) {
-    return { content: content.replace(RE_INTERRUPTED, ''), interrupted: true }
+function stripInterruptedMarker(content: string): InterruptedStripResult {
+  const cache = getInterruptedStripCache()
+  const cached = cache.get(content)
+  if (cached) return cached
+
+  const markerIndex = content.lastIndexOf(INTERRUPTED_MARKER)
+  if (markerIndex === -1) {
+    const result = { content, interrupted: false }
+    if (cache.size >= INTERRUPTED_STRIP_CACHE_MAX && !cache.has(content)) {
+      evictOldestMapEntry(cache)
+    }
+    cache.set(content, result)
+    return result
   }
-  return { content, interrupted: false }
+
+  const markerEnd = markerIndex + INTERRUPTED_MARKER.length
+  if (markerEnd < content.length && hasNonWhitespace(content.slice(markerEnd))) {
+    const result = { content, interrupted: false }
+    if (cache.size >= INTERRUPTED_STRIP_CACHE_MAX && !cache.has(content)) {
+      evictOldestMapEntry(cache)
+    }
+    cache.set(content, result)
+    return result
+  }
+
+  let cutStart = markerIndex
+  if (cutStart > 0 && content.charCodeAt(cutStart - 1) === 10) cutStart -= 1
+  if (cutStart > 0 && content.charCodeAt(cutStart - 1) === 10) cutStart -= 1
+
+  const result = {
+    content: content.slice(0, cutStart),
+    interrupted: true,
+  }
+  if (cache.size >= INTERRUPTED_STRIP_CACHE_MAX && !cache.has(content)) {
+    evictOldestMapEntry(cache)
+  }
+  cache.set(content, result)
+  return result
 }
 
 // Cache stripped content to avoid double stripFirstLineHeading + SILENT_REPLY replacement
 const strippedContent = computed(() => {
-  if (isUser.value) return props.message.content
-  let content = stripFirstLineHeading(props.message.content)
-  content = content.replace(/\[SILENT_REPLY\]/g, '💤')
+  if (isUser.value) return renderSourceContent.value
+  let content = stripFirstLineHeading(renderSourceContent.value)
+  if (content.includes('[SILENT_REPLY]')) {
+    content = content.replace(/\[SILENT_REPLY\]/g, '💤')
+  }
   return content
 })
 
@@ -396,40 +619,121 @@ function stripProcessContent(text: string): string {
   const cached = cache.get(text)
   if (cached !== undefined) return cached
 
-  const stripped = text.replace(RE_PROCESS_BLOCK, '\n').replace(RE_TYPELESS_BLOCK, '\n').trim()
-  if (cache.size >= PROCESS_STRIP_CACHE_MAX) cache.clear()
+  const hasProcessBlock = text.includes('<!-- process-start -->')
+  const hasTypelessBlock = text.includes('```typeless')
+  let stripped: string
+
+  if (!hasProcessBlock && !hasTypelessBlock) {
+    stripped = trimIfNeeded(text)
+  } else {
+    stripped = text
+    if (hasProcessBlock) {
+      stripped = stripped.replace(RE_PROCESS_BLOCK, '\n')
+    }
+    if (hasTypelessBlock) {
+      stripped = stripped.replace(RE_TYPELESS_BLOCK, '\n')
+    }
+    stripped = trimIfNeeded(stripped)
+  }
+
+  if (cache.size >= PROCESS_STRIP_CACHE_MAX && !cache.has(text)) {
+    evictOldestMapEntry(cache)
+  }
   cache.set(text, stripped)
   return stripped
 }
 
-const renderedContent = computed(() => {
-  if (isUser.value) {
-    return props.message.content
+type AssistantTextState = { html: string; isEmpty: boolean }
+interface AssistantTextStateCacheEntry {
+  text: string
+  showToolDetails: boolean
+  interruptedHtml: string
+  value: AssistantTextState
+}
+
+const ASSISTANT_TEXT_STATE_CACHE_KEY = '__zima_chat_assistant_text_state_cache_v1__'
+const ASSISTANT_TEXT_STATE_CACHE_MAX = 400
+
+function getAssistantTextStateCache(): Map<string, AssistantTextStateCacheEntry> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[ASSISTANT_TEXT_STATE_CACHE_KEY]
+  if (existing instanceof Map) {
+    return existing as Map<string, AssistantTextStateCacheEntry>
   }
+  const cache = new Map<string, AssistantTextStateCacheEntry>()
+  g[ASSISTANT_TEXT_STATE_CACHE_KEY] = cache
+  return cache
+}
+
+function getAssistantTextStateCacheKey(conversationId: string, messageId: string): string {
+  return `${conversationId || 'unknown'}:${messageId}`
+}
+
+const assistantTextState = computed<AssistantTextState>(() => {
+  if (isUser.value) {
+    return { html: props.message.content, isEmpty: false }
+  }
+  // Card messages are rendered via segment pipeline; skip markdown rendering here.
+  if (effectiveHasCards.value) {
+    return { html: '', isEmpty: false }
+  }
+
   let text = strippedContent.value
   // When tool details are hidden, strip process blocks and typeless card blocks
   if (!settingsStore.showToolDetails) {
     text = stripProcessContent(text)
   }
-  const { content: cleaned, interrupted } = stripInterruptedMarker(text)
-  let html = renderMarkdownCached(cleaned, 'chat-message')
-  if (interrupted) {
-    html += interruptedIndicatorHtml.value
+
+  const showToolDetails = settingsStore.showToolDetails
+  const interruptedHtml = interruptedIndicatorHtml.value
+  const useCache = !props.isStreaming
+  const cacheKey = useCache
+    ? getAssistantTextStateCacheKey(props.message.conversation_id, props.message.id)
+    : ''
+  const cache = useCache ? getAssistantTextStateCache() : null
+
+  if (cache) {
+    const cached = cache.get(cacheKey)
+    if (
+      cached
+      && cached.text === text
+      && cached.showToolDetails === showToolDetails
+      && cached.interruptedHtml === interruptedHtml
+    ) {
+      return cached.value
+    }
   }
-  return html
+
+  const saveCache = (value: AssistantTextState): AssistantTextState => {
+    if (!cache) return value
+    if (cache.size >= ASSISTANT_TEXT_STATE_CACHE_MAX && !cache.has(cacheKey)) {
+      evictOldestMapEntry(cache)
+    }
+    cache.set(cacheKey, {
+      text,
+      showToolDetails,
+      interruptedHtml,
+      value,
+    })
+    return value
+  }
+
+  if (!text || !hasNonWhitespace(text)) {
+    return saveCache({ html: '', isEmpty: true })
+  }
+
+  const { content: cleaned, interrupted } = stripInterruptedMarker(text)
+  let html = renderMarkdownCached(cleaned, `chat-message:${props.message.id}`)
+  if (interrupted) {
+    html += interruptedHtml
+  }
+  return saveCache({ html, isEmpty: false })
 })
 
+const renderedContent = computed(() => assistantTextState.value.html)
+
 // Whether bubble content is empty (only indicators showing)
-const isContentEmpty = computed(() => {
-  if (isUser.value) return false
-  // If we have result cards to show, content is not empty
-  if (effectiveHasCards.value) return false
-  let text = strippedContent.value
-  if (!settingsStore.showToolDetails) {
-    text = stripProcessContent(text)
-  }
-  return !text?.trim()
-})
+const isContentEmpty = computed(() => assistantTextState.value.isEmpty)
 
 // Hide empty assistant messages that are not streaming (collapsed empty bubbles)
 const shouldHideMessage = computed(() => {
@@ -440,33 +744,46 @@ const shouldHideMessage = computed(() => {
 // Parse typeless cards from assistant messages
 // Use incremental parsing for streaming messages, regular parsing for completed messages
 const parsedContent = computed(() => {
-  if (isUser.value || !hasTypelessCards(strippedContent.value)) {
+  const content = strippedContent.value
+  if (isUser.value) {
+    return null
+  }
+
+  // Streaming fast path: skip full typeless detection until hints appear.
+  if (props.isStreaming && !streamingMayContainTypelessCards.value) {
+    return null
+  }
+
+  if (!hasTypelessCards(content, !props.isStreaming)) {
     return null
   }
   // Use incremental parsing for streaming to avoid re-parsing entire content
   // Pass conversation_id to ensure cache key uniqueness across conversations
   if (props.isStreaming) {
-    return parseTypelessContentIncremental(strippedContent.value, props.message.id, props.message.conversation_id)
+    return parseTypelessContentIncremental(content, props.message.id, props.message.conversation_id)
   }
-  return parseTypelessContent(strippedContent.value)
+  return parseTypelessContent(content)
 })
 
-// Get content segments (text and cards interleaved) with unique keys
-const contentSegments = computed(() => {
-  if (!parsedContent.value) {
-    return null
+type ContentSegment = {
+  type: 'text' | 'card'
+  content: string | TypelessCard
+  key: string
+}
+
+function getNextTextSegmentIndex(segments: ContentSegment[]): number {
+  let maxIndex = -1
+  for (const segment of segments) {
+    if (segment.type !== 'text') continue
+    const marker = segment.key.lastIndexOf('-text-')
+    if (marker === -1) continue
+    const index = Number.parseInt(segment.key.slice(marker + 6), 10)
+    if (Number.isInteger(index) && index > maxIndex) {
+      maxIndex = index
+    }
   }
-  const segments = splitIntoSegments(parsedContent.value.text, parsedContent.value.cards)
-  // Add unique keys to each segment for proper Vue reactivity
-  // Include conversation_id to ensure uniqueness across different conversations
-  const convId = props.message.conversation_id || 'unknown'
-  return segments.map((segment, index) => ({
-    ...segment,
-    key: segment.type === 'card'
-      ? `${convId}-${props.message.id}-card-${(segment.content as TypelessCard).id || index}`
-      : `${convId}-${props.message.id}-text-${index}`
-  }))
-})
+  return maxIndex + 1
+}
 
 // Card types that represent content or results — always visible even when tool details are hidden.
 // Only tool-invocation cards (steps) are hidden when details are off.
@@ -478,51 +795,526 @@ const RESULT_CARD_TYPES = new Set([
   'list', 'table', 'code', 'terminal', 'mermaid', 'accordion',
 ])
 
-// Effective values respecting showToolDetails toggle.
-// Result-type cards are always shown; process/progress cards are hidden when details are off.
-const effectiveContentSegments = computed(() => {
-  if (!contentSegments.value) return null
-  if (settingsStore.showToolDetails) return contentSegments.value
-  // Filter: keep text segments and result-type cards only
-  const filtered = contentSegments.value.filter(s => {
-    if (s.type !== 'card') return true
-    const card = s.content as TypelessCard
-    return RESULT_CARD_TYPES.has(card.type)
-  })
-  // If no cards survived filtering, return null to fall back to plain text
-  return filtered.some(s => s.type === 'card') ? filtered : null
-})
+function buildEffectiveSegments(
+  parsed: ParsedContent | null,
+  conversationId: string,
+  messageId: string,
+  showToolDetails: boolean,
+  isStreaming: boolean,
+): ContentSegment[] | null {
+  if (!parsed || parsed.cards.length === 0) return null
 
-const renderedContentSegments = computed(() => {
-  const segments = effectiveContentSegments.value
-  if (!segments) return null
-  return segments.map((segment) => {
-    if (segment.type !== 'text') return segment
-    const text = segment.content as string
-    const effective = settingsStore.showToolDetails ? text : stripProcessContent(text)
-    const { content, interrupted } = stripInterruptedMarker(effective)
-    let html = renderMarkdownCached(content, 'chat-segment')
-    if (interrupted) {
-      html += interruptedIndicatorHtml.value
+  const convId = conversationId || 'unknown'
+  const cacheKey = `${convId}:${messageId}:${showToolDetails ? '1' : '0'}`
+  const splitIncrementalKey = isStreaming ? `${convId}:${messageId}` : undefined
+  const perParsedCache = getEffectiveSegmentsCacheForParsed(parsed)
+  if (perParsedCache.has(cacheKey)) {
+    return perParsedCache.get(cacheKey) ?? null
+  }
+  const incrementalCache = getEffectiveSegmentsIncrementalCache()
+  const incremental = incrementalCache.get(cacheKey)
+  if (
+    incremental
+    && incremental.parsedCards === parsed.cards
+    && parsed.text.startsWith(incremental.parsedText)
+  ) {
+    const delta = parsed.text.slice(incremental.parsedText.length)
+    if (!delta.includes('[[TYPELESS_CARD:')) {
+      if (incremental.value === null) {
+        setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, null)
+        setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, null)
+        return null
+      }
+
+      const previous = incremental.value
+      const lastSegment = previous[previous.length - 1]
+      if (lastSegment?.type === 'text') {
+        const nextTailText = trimIfNeeded((lastSegment.content as string) + delta)
+        if (nextTailText === lastSegment.content) {
+          setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, previous)
+          setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, previous)
+          return previous
+        }
+
+        const next = previous.slice()
+        next[next.length - 1] = {
+          ...lastSegment,
+          content: nextTailText,
+        }
+        setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, next)
+        setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, next)
+        return next
+      }
+
+      const deltaText = trimIfNeeded(delta)
+      // No trailing text segment to extend; whitespace-only append keeps content unchanged.
+      if (!deltaText) {
+        setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, previous)
+        setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, previous)
+        return previous
+      }
+
+      const next = previous.slice()
+      next.push({
+        type: 'text',
+        content: deltaText,
+        key: `${convId}-${messageId}-text-${getNextTextSegmentIndex(previous)}`,
+      })
+      setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, next)
+      setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, next)
+      return next
     }
-    return { ...segment, html }
+  }
+
+  // If tool details are hidden and no result-type cards exist, skip split/filter work.
+  if (!showToolDetails && !parsed.cards.some((card) => RESULT_CARD_TYPES.has(card.type))) {
+    setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, null)
+    setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, null)
+    return null
+  }
+
+  const segments = splitIntoSegments(parsed.text, parsed.cards, splitIncrementalKey)
+  if (segments.length === 0) {
+    setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, null)
+    setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, null)
+    return null
+  }
+
+  const effective: ContentSegment[] = []
+  let hasCards = false
+
+  for (let index = 0; index < segments.length; index++) {
+    const segment = segments[index]
+    if (!segment) continue
+
+    if (segment.type === 'card') {
+      const card = segment.content as TypelessCard
+      if (!showToolDetails && !RESULT_CARD_TYPES.has(card.type)) {
+        continue
+      }
+      hasCards = true
+      effective.push({
+        type: 'card',
+        content: card,
+        key: `${convId}-${messageId}-card-${card.id || index}`,
+      })
+      continue
+    }
+
+    effective.push({
+      type: 'text',
+      content: segment.content as string,
+      key: `${convId}-${messageId}-text-${index}`,
+    })
+  }
+
+  // If no cards survived filtering, return null to fall back to plain text rendering.
+  const result = hasCards ? effective : null
+  setEffectiveSegmentsIncrementalCache(incrementalCache, cacheKey, parsed.text, parsed.cards, result)
+  setEffectiveSegmentsCacheForParsed(parsed, perParsedCache, cacheKey, result)
+  return result
+}
+
+type RenderedContentSegment = ContentSegment | (ContentSegment & { type: 'text'; html: string })
+type SegmentRenderState = {
+  rendered: RenderedContentSegment[] | null
+  cardOnly: ContentSegment[] | null
+  hasCards: boolean
+  isCardOnly: boolean
+}
+
+const EMPTY_SEGMENT_RENDER_STATE: SegmentRenderState = {
+  rendered: null,
+  cardOnly: null,
+  hasCards: false,
+  isCardOnly: false,
+}
+
+const SEGMENT_RENDER_CACHE_KEY = '__zima_chat_segment_render_cache_v1__'
+const SEGMENT_RENDER_CACHE_MAX = 300
+const CHAT_HASH_CACHE_KEY = '__zima_chat_hash_cache_v1__'
+const CHAT_HASH_CACHE_MAX = 500
+const STREAMING_SEGMENT_HTML_CACHE_KEY = '__zima_chat_streaming_segment_html_cache_v1__'
+const STREAMING_SEGMENT_HTML_CACHE_MAX = 600
+const STREAMING_SEGMENT_RENDER_INCREMENTAL_CACHE_KEY = '__zima_chat_streaming_segment_render_incremental_cache_v1__'
+const STREAMING_SEGMENT_RENDER_INCREMENTAL_CACHE_MAX = 300
+const EFFECTIVE_SEGMENTS_CACHE_KEY = '__zima_chat_effective_segments_cache_v1__'
+const EFFECTIVE_SEGMENTS_CACHE_PER_PARSED_MAX = 8
+const EFFECTIVE_SEGMENTS_INCREMENTAL_CACHE_KEY = '__zima_chat_effective_segments_incremental_cache_v1__'
+const EFFECTIVE_SEGMENTS_INCREMENTAL_CACHE_MAX = 300
+
+interface StreamingSegmentHtmlCacheEntry {
+  sourceText: string
+  showToolDetails: boolean
+  interruptedHtml: string
+  html: string
+}
+
+type EffectiveSegmentsCacheEntry = Map<string, ContentSegment[] | null>
+type EffectiveSegmentsIncrementalCacheEntry = {
+  parsedText: string
+  parsedCards: TypelessCard[]
+  value: ContentSegment[] | null
+}
+type StreamingSegmentRenderIncrementalCacheEntry = {
+  segments: ContentSegment[]
+  showToolDetails: boolean
+  interruptedHtml: string
+  state: SegmentRenderState
+}
+
+function getSegmentRenderCache(): Map<string, SegmentRenderState> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[SEGMENT_RENDER_CACHE_KEY]
+  if (existing instanceof Map) {
+    return existing as Map<string, SegmentRenderState>
+  }
+  const cache = new Map<string, SegmentRenderState>()
+  g[SEGMENT_RENDER_CACHE_KEY] = cache
+  return cache
+}
+
+function getHashCache(): Map<string, string> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[CHAT_HASH_CACHE_KEY]
+  if (existing instanceof Map) {
+    return existing as Map<string, string>
+  }
+  const cache = new Map<string, string>()
+  g[CHAT_HASH_CACHE_KEY] = cache
+  return cache
+}
+
+function getStreamingSegmentHtmlCache(): Map<string, StreamingSegmentHtmlCacheEntry> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[STREAMING_SEGMENT_HTML_CACHE_KEY]
+  if (existing instanceof Map) {
+    return existing as Map<string, StreamingSegmentHtmlCacheEntry>
+  }
+  const cache = new Map<string, StreamingSegmentHtmlCacheEntry>()
+  g[STREAMING_SEGMENT_HTML_CACHE_KEY] = cache
+  return cache
+}
+
+function getStreamingSegmentRenderIncrementalCache(): Map<string, StreamingSegmentRenderIncrementalCacheEntry> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[STREAMING_SEGMENT_RENDER_INCREMENTAL_CACHE_KEY]
+  if (existing instanceof Map) {
+    return existing as Map<string, StreamingSegmentRenderIncrementalCacheEntry>
+  }
+  const cache = new Map<string, StreamingSegmentRenderIncrementalCacheEntry>()
+  g[STREAMING_SEGMENT_RENDER_INCREMENTAL_CACHE_KEY] = cache
+  return cache
+}
+
+function setStreamingSegmentRenderIncrementalCache(
+  cache: Map<string, StreamingSegmentRenderIncrementalCacheEntry>,
+  key: string,
+  value: StreamingSegmentRenderIncrementalCacheEntry,
+) {
+  if (cache.size >= STREAMING_SEGMENT_RENDER_INCREMENTAL_CACHE_MAX && !cache.has(key)) {
+    evictOldestMapEntry(cache)
+  }
+  cache.set(key, value)
+}
+
+function clearStreamingSegmentRenderIncrementalState(key?: string) {
+  const cache = getStreamingSegmentRenderIncrementalCache()
+  if (!key) {
+    cache.clear()
+    return
+  }
+  cache.delete(key)
+}
+
+function getEffectiveSegmentsCache(): WeakMap<ParsedContent, EffectiveSegmentsCacheEntry> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[EFFECTIVE_SEGMENTS_CACHE_KEY]
+  if (existing instanceof WeakMap) {
+    return existing as WeakMap<ParsedContent, EffectiveSegmentsCacheEntry>
+  }
+  const cache = new WeakMap<ParsedContent, EffectiveSegmentsCacheEntry>()
+  g[EFFECTIVE_SEGMENTS_CACHE_KEY] = cache
+  return cache
+}
+
+function getEffectiveSegmentsCacheForParsed(parsed: ParsedContent): EffectiveSegmentsCacheEntry {
+  const cache = getEffectiveSegmentsCache()
+  const existing = cache.get(parsed)
+  if (existing) return existing
+  const next = new Map<string, ContentSegment[] | null>()
+  cache.set(parsed, next)
+  return next
+}
+
+function getEffectiveSegmentsIncrementalCache(): Map<string, EffectiveSegmentsIncrementalCacheEntry> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[EFFECTIVE_SEGMENTS_INCREMENTAL_CACHE_KEY]
+  if (existing instanceof Map) {
+    return existing as Map<string, EffectiveSegmentsIncrementalCacheEntry>
+  }
+  const cache = new Map<string, EffectiveSegmentsIncrementalCacheEntry>()
+  g[EFFECTIVE_SEGMENTS_INCREMENTAL_CACHE_KEY] = cache
+  return cache
+}
+
+function setEffectiveSegmentsIncrementalCache(
+  cache: Map<string, EffectiveSegmentsIncrementalCacheEntry>,
+  key: string,
+  parsedText: string,
+  parsedCards: TypelessCard[],
+  value: ContentSegment[] | null,
+) {
+  if (cache.size >= EFFECTIVE_SEGMENTS_INCREMENTAL_CACHE_MAX && !cache.has(key)) {
+    evictOldestMapEntry(cache)
+  }
+  cache.set(key, {
+    parsedText,
+    parsedCards,
+    value,
   })
+}
+
+function setEffectiveSegmentsCacheForParsed(
+  parsed: ParsedContent,
+  cache: EffectiveSegmentsCacheEntry,
+  key: string,
+  value: ContentSegment[] | null,
+) {
+  if (cache.size >= EFFECTIVE_SEGMENTS_CACHE_PER_PARSED_MAX && !cache.has(key)) {
+    evictOldestMapEntry(cache)
+  }
+  cache.set(key, value)
+  const weakCache = getEffectiveSegmentsCache()
+  weakCache.set(parsed, cache)
+}
+
+function hashString(value: string): string {
+  let hash = 0
+  for (let i = 0; i < value.length; i++) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0
+  }
+  return hash.toString(36)
+}
+
+function hashStringCached(value: string): string {
+  const cache = getHashCache()
+  const cached = cache.get(value)
+  if (cached) return cached
+  const hashed = hashString(value)
+  if (cache.size >= CHAT_HASH_CACHE_MAX && !cache.has(value)) {
+    evictOldestMapEntry(cache)
+  }
+  cache.set(value, hashed)
+  return hashed
+}
+
+function setSegmentRenderCache(
+  cache: Map<string, SegmentRenderState>,
+  key: string,
+  value: SegmentRenderState,
+) {
+  if (cache.size >= SEGMENT_RENDER_CACHE_MAX && !cache.has(key)) {
+    evictOldestMapEntry(cache)
+  }
+  cache.set(key, value)
+}
+
+function getSegmentRenderCacheEntryKey(
+  conversationId: string,
+  messageId: string,
+  showToolDetails: boolean,
+  content: string,
+  interruptedHtml: string,
+): string {
+  return `${conversationId}:${messageId}:${showToolDetails ? '1' : '0'}:${hashStringCached(content)}:${hashStringCached(interruptedHtml)}`
+}
+
+const segmentRenderState = computed(() => {
+  const parsed = parsedContent.value
+  if (!parsed || parsed.cards.length === 0) {
+    return EMPTY_SEGMENT_RENDER_STATE
+  }
+
+  const isStreaming = Boolean(props.isStreaming)
+  const useCache = !isStreaming
+  const convId = props.message.conversation_id || 'unknown'
+  const streamingRenderIncrementalKey = `${convId}:${props.message.id}`
+  const streamingRenderIncrementalCache = isStreaming
+    ? getStreamingSegmentRenderIncrementalCache()
+    : null
+  const previousStreamingRender = streamingRenderIncrementalCache
+    ? streamingRenderIncrementalCache.get(streamingRenderIncrementalKey)
+    : null
+  let cache: Map<string, SegmentRenderState> | null = null
+  let cacheKey = ''
+
+  if (useCache) {
+    cacheKey = getSegmentRenderCacheEntryKey(
+      convId,
+      props.message.id,
+      settingsStore.showToolDetails,
+      strippedContent.value,
+      interruptedIndicatorHtml.value,
+    )
+    cache = getSegmentRenderCache()
+    const cached = cache.get(cacheKey)
+    if (cached) {
+      return cached
+    }
+  }
+
+  const segments = buildEffectiveSegments(
+    parsed,
+    convId,
+    props.message.id,
+    settingsStore.showToolDetails,
+    Boolean(props.isStreaming),
+  )
+  if (!segments) {
+    if (cache && cacheKey) {
+      setSegmentRenderCache(cache, cacheKey, EMPTY_SEGMENT_RENDER_STATE)
+    }
+    if (streamingRenderIncrementalCache) {
+      clearStreamingSegmentRenderIncrementalState(streamingRenderIncrementalKey)
+    }
+    return EMPTY_SEGMENT_RENDER_STATE
+  }
+
+  const showToolDetails = settingsStore.showToolDetails
+  const interruptedHtml = interruptedIndicatorHtml.value
+  const streamingSegmentHtmlCache = isStreaming ? getStreamingSegmentHtmlCache() : null
+  let rendered: RenderedContentSegment[] = []
+  let cardCandidates: ContentSegment[] = []
+  let hasCards = false
+  let hasNonEmptyText = false
+  let startIndex = 0
+
+  if (
+    previousStreamingRender
+    && previousStreamingRender.showToolDetails === showToolDetails
+    && previousStreamingRender.interruptedHtml === interruptedHtml
+  ) {
+    const previousSegments = previousStreamingRender.segments
+    const previousRendered = previousStreamingRender.state.rendered
+    if (previousSegments === segments && previousRendered) {
+      return previousStreamingRender.state
+    }
+    if (previousRendered) {
+      const maxPrefix = Math.min(previousSegments.length, segments.length)
+      while (startIndex < maxPrefix && previousSegments[startIndex] === segments[startIndex]) {
+        startIndex++
+      }
+      if (startIndex > 0) {
+        rendered = previousRendered.slice(0, startIndex)
+        for (const reused of rendered) {
+          if (reused.type !== 'text') {
+            const cardSegment = reused as ContentSegment
+            hasCards = true
+            if (!hasNonEmptyText) {
+              cardCandidates.push(cardSegment)
+            }
+            continue
+          }
+          if (!hasNonEmptyText && hasNonWhitespace(reused.content as string)) {
+            hasNonEmptyText = true
+          }
+        }
+      }
+    }
+  }
+
+  for (let index = startIndex; index < segments.length; index++) {
+    const segment = segments[index]
+    if (!segment) continue
+    if (segment.type !== 'text') {
+      const cardSegment = segment as ContentSegment
+      hasCards = true
+      if (!hasNonEmptyText) {
+        cardCandidates.push(cardSegment)
+      }
+      rendered.push(cardSegment)
+      continue
+    }
+
+    const text = segment.content as string
+    if (!hasNonEmptyText && hasNonWhitespace(text)) {
+      hasNonEmptyText = true
+    }
+
+    if (streamingSegmentHtmlCache) {
+      const cached = streamingSegmentHtmlCache.get(segment.key)
+      if (
+        cached
+        && cached.sourceText === text
+        && cached.showToolDetails === showToolDetails
+        && cached.interruptedHtml === interruptedHtml
+      ) {
+        rendered.push({ ...segment, html: cached.html })
+        continue
+      }
+    }
+
+    const effective = showToolDetails ? text : stripProcessContent(text)
+    const { content, interrupted } = stripInterruptedMarker(effective)
+    let html = renderMarkdownCached(content, `chat-segment:${segment.key}`)
+    if (interrupted) {
+      html += interruptedHtml
+    }
+
+    if (streamingSegmentHtmlCache) {
+      if (
+        streamingSegmentHtmlCache.size >= STREAMING_SEGMENT_HTML_CACHE_MAX
+        && !streamingSegmentHtmlCache.has(segment.key)
+      ) {
+        evictOldestMapEntry(streamingSegmentHtmlCache)
+      }
+      streamingSegmentHtmlCache.set(segment.key, {
+        sourceText: text,
+        showToolDetails,
+        interruptedHtml,
+        html,
+      })
+    }
+
+    rendered.push({ ...segment, html })
+  }
+
+  const isCardOnly = hasCards && !hasNonEmptyText
+  const nextState: SegmentRenderState = {
+    rendered,
+    cardOnly: isCardOnly ? cardCandidates : null,
+    hasCards,
+    isCardOnly,
+  }
+
+  if (cache && cacheKey) {
+    setSegmentRenderCache(cache, cacheKey, nextState)
+  }
+  if (streamingRenderIncrementalCache) {
+    setStreamingSegmentRenderIncrementalCache(
+      streamingRenderIncrementalCache,
+      streamingRenderIncrementalKey,
+      {
+        segments,
+        showToolDetails,
+        interruptedHtml,
+        state: nextState,
+      },
+    )
+  }
+
+  return nextState
 })
 
-const cardOnlySegments = computed(() => {
-  const segments = effectiveContentSegments.value
-  if (!segments) return null
-  const cardsOnly = segments.filter(segment => segment.type === 'card')
-  return cardsOnly.length > 0 ? cardsOnly : null
-})
+const renderedContentSegments = computed(() => segmentRenderState.value.rendered)
 
-const effectiveHasCards = computed(() => effectiveContentSegments.value !== null && effectiveContentSegments.value.some(s => s.type === 'card'))
+const cardOnlySegments = computed(() => segmentRenderState.value.cardOnly)
+
+const effectiveHasCards = computed(() => segmentRenderState.value.hasCards)
 
 // Card-only: no text segments, only cards — skip assistant bubble wrapper
-const isCardOnly = computed(() => {
-  if (!effectiveHasCards.value || !effectiveContentSegments.value) return false
-  return effectiveContentSegments.value.every(s => s.type !== 'text' || !(s.content as string).trim())
-})
+const isCardOnly = computed(() => segmentRenderState.value.isCardOnly)
 
 const formattedTime = computed(() => {
   const date = new Date(props.message.created_at)
@@ -632,9 +1424,16 @@ function handleExportMessage() {
 
 // Clean up incremental parse state when component is unmounted
 onUnmounted(() => {
+  clearStreamingRenderFallbackTimer()
+  if (streamingRenderRafId !== null) {
+    window.cancelAnimationFrame(streamingRenderRafId)
+    streamingRenderRafId = null
+  }
   stopToolExecutingStateWatch()
   stopWaitingTimerStateWatch()
   clearIncrementalState(props.message.id, props.message.conversation_id)
+  clearSplitSegmentsIncrementalState(`${props.message.conversation_id || 'unknown'}:${props.message.id}`)
+  clearStreamingSegmentRenderIncrementalState(`${props.message.conversation_id || 'unknown'}:${props.message.id}`)
   stopToolTimer()
   stopWaitingTimer()
   stopVoiceMessage()
@@ -1345,16 +2144,19 @@ async function handleMobileDelete() {
         <!-- Assistant message -->
         <div
           v-else
-          class="assistant-message-wrapper relative"
+          :class="[
+            'assistant-message-wrapper relative',
+            { 'assistant-message-with-actions': !isMobile && !isMultiSelectMode },
+          ]"
         >
           <!-- Action buttons for assistant message -->
           <div
             v-if="!isStreaming && !isMultiSelectMode"
-            class="absolute -right-8 top-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+            class="assistant-actions"
           >
             <!-- Copy button -->
             <button
-              class="copy-message-btn p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
+              class="copy-message-btn assistant-action-btn"
               :title="t('chat.copyMessage')"
               @click.stop="handleCopyMessage"
             >
@@ -1367,7 +2169,7 @@ async function handleMobileDelete() {
             </button>
             <!-- TTS Play button -->
             <button
-              class="tts-btn p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
+              class="tts-btn assistant-action-btn"
               :class="{ 'animate-pulse': isSpeaking }"
               :title="isSpeaking ? t('chat.stopTTS') : t('chat.playTTS')"
               @click.stop="handlePlayTTS"
@@ -1382,7 +2184,7 @@ async function handleMobileDelete() {
             </button>
             <!-- Export button -->
             <button
-              class="export-btn p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700"
+              class="export-btn assistant-action-btn"
               :title="t('chat.exportMessage')"
               @click.stop="handleExportMessage"
             >
@@ -1837,6 +2639,67 @@ async function handleMobileDelete() {
 /* Copy button styles */
 .copy-message-btn {
   background: transparent;
+}
+
+.assistant-message-with-actions {
+  padding-right: 2.75rem;
+}
+
+.assistant-actions {
+  position: absolute;
+  top: 0.2rem;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.message:hover .assistant-actions,
+.message:focus-within .assistant-actions {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.assistant-action-btn {
+  width: 1.85rem;
+  height: 1.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.6rem;
+  background: transparent;
+  transition: background-color 0.12s ease;
+}
+
+.assistant-action-btn:hover {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+:root.dark .assistant-actions,
+[data-theme="dark"] .assistant-actions {
+  border-color: rgba(71, 85, 105, 0.95);
+  background: rgba(30, 41, 59, 0.92);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.45);
+}
+
+:root.dark .assistant-action-btn:hover,
+[data-theme="dark"] .assistant-action-btn:hover {
+  background: rgba(100, 116, 139, 0.35);
+}
+
+@media (max-width: 639px) {
+  .assistant-message-with-actions {
+    padding-right: 0;
+  }
 }
 
 /* Metadata tooltip styles */

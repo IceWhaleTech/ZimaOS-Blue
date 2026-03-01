@@ -255,19 +255,22 @@ func (f *FileWriteTool) validatePath(path string) error {
 	return fmt.Errorf("access denied: path %s is not in allowed directories", path)
 }
 
-// RegisterBuiltinTools registers all built-in tools with the registry.
-// After v0.10.31 migration, only exec remains as a native tool.
-// All other capabilities (file ops, web search, browser, analyze, etc.)
-// are now skills invoked via exec running `blue <subcommand>`.
+// RegisterBuiltinTools registers built-in file tools with default configuration.
 func RegisterBuiltinTools(registry *Registry) {
-	// No-op: file_read, file_write, web_search removed in v0.10.31.
-	// Use exec with cat/head/tee for file ops, blue search --web for web search.
+	if registry == nil {
+		return
+	}
+	registry.Register(NewFileReadTool(nil, 0))
+	registry.Register(NewFileWriteTool(nil, 0))
 }
 
-// RegisterBuiltinToolsWithConfig registers all built-in tools with custom configuration.
-// Deprecated: kept for backward compatibility, but no longer registers file/search tools.
+// RegisterBuiltinToolsWithConfig registers built-in file tools with custom configuration.
 func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearchConfig, allowedPaths []string, maxFileSize int64) {
-	// No-op: tools removed in v0.10.31.
+	if registry == nil {
+		return
+	}
+	registry.Register(NewFileReadTool(allowedPaths, maxFileSize))
+	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
 }
 
 // RegisterExecTools registers exec + process tools with shared session state.

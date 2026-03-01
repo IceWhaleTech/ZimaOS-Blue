@@ -163,6 +163,17 @@ export const cardRegistry: DashboardCardConfig[] = [
     minWidth: 4,
   },
   {
+    id: 'small-model-stats',
+    titleKey: 'dashboard.cards.smallModelStats',
+    icon: 'chart',
+    iconColor: 'purple',
+    component: 'SmallModelStatsCard',
+    category: 'metrics',
+    defaultEnabled: false,
+    defaultOrder: 15,
+    minWidth: 4,
+  },
+  {
     id: 'media-generation',
     titleKey: 'dashboard.cards.mediaGeneration',
     icon: 'image',
@@ -170,7 +181,7 @@ export const cardRegistry: DashboardCardConfig[] = [
     component: 'MediaGenerationCard',
     category: 'metrics',
     defaultEnabled: false,
-    defaultOrder: 15,
+    defaultOrder: 16,
     minWidth: 2,
   },
 ]

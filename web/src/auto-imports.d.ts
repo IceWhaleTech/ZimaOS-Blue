@@ -10,6 +10,7 @@ declare global {
   const EffectScope: typeof import('vue').EffectScope
   const THEME_STYLES: typeof import('./stores/settings').THEME_STYLES
   const acceptHMRUpdate: typeof import('pinia').acceptHMRUpdate
+  const classifyFeatureIntent: typeof import('./composables/useFeatureIntent').classifyFeatureIntent
   const classifyMediaIntent: typeof import('./composables/useMediaIntent').classifyMediaIntent
   const computed: typeof import('vue').computed
   const createApp: typeof import('vue').createApp
@@ -143,6 +144,9 @@ declare global {
   export type { UseCompanionStreamOptions } from './composables/useCompanionStream'
   import('./composables/useCompanionStream')
   // @ts-ignore
+  export type { FeatureIntentHint } from './composables/useFeatureIntent'
+  import('./composables/useFeatureIntent')
+  // @ts-ignore
   export type { FillHistoryEntry, WidgetPosition, WidgetState } from './composables/useFormFillerWidget'
   import('./composables/useFormFillerWidget')
   // @ts-ignore
@@ -182,6 +186,7 @@ declare module 'vue' {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly THEME_STYLES: UnwrapRef<typeof import('./stores/settings')['THEME_STYLES']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
+    readonly classifyFeatureIntent: UnwrapRef<typeof import('./composables/useFeatureIntent')['classifyFeatureIntent']>
     readonly classifyMediaIntent: UnwrapRef<typeof import('./composables/useMediaIntent')['classifyMediaIntent']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly createApp: UnwrapRef<typeof import('vue')['createApp']>

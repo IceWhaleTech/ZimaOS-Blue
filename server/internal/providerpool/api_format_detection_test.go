@@ -75,6 +75,92 @@ func TestProbeThirdPartyAPIFormat_CodexFixedEndpoint(t *testing.T) {
 	}
 }
 
+func TestProbeThirdPartyAPIFormat_CodexFallsBackToV1Responses(t *testing.T) {
+	restore := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/backend-api/codex/responses":
+			return http.StatusNotFound, `{"error":"not found"}`
+		case "/v1/responses":
+			return http.StatusBadRequest, `{"error":"invalid_request"}`
+		case "/v1/chat/completions":
+			return http.StatusBadRequest, `{"error":"Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses."}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restore()
+
+	p := &Provider{
+		ID:      "custom-codex-relay",
+		Type:    ProviderTypeCustom,
+		BaseURL: "https://relay.example.com",
+	}
+	got, detectedURL := autoDetectAPIFormat(context.Background(), p)
+	if got != APIFormatResponses {
+		t.Fatalf("format = %q, want %q", got, APIFormatResponses)
+	}
+	wantURL := "https://relay.example.com"
+	if detectedURL != wantURL {
+		t.Fatalf("detectedURL = %q, want %q", detectedURL, wantURL)
+	}
+}
+
+func TestProbeThirdPartyAPIFormat_RespectsBaseV1WithoutDuplicatingPath(t *testing.T) {
+	restore := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			return http.StatusBadRequest, `{"error":"Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses."}`
+		case "/v1/responses":
+			return http.StatusBadRequest, `{"error":"invalid_request"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restore()
+
+	p := &Provider{
+		ID:      "custom-base-v1",
+		Type:    ProviderTypeCustom,
+		BaseURL: "https://relay.example.com/v1",
+	}
+	got, detectedURL := autoDetectAPIFormat(context.Background(), p)
+	if got != APIFormatResponses {
+		t.Fatalf("format = %q, want %q", got, APIFormatResponses)
+	}
+	wantURL := "https://relay.example.com/v1"
+	if detectedURL != wantURL {
+		t.Fatalf("detectedURL = %q, want %q", detectedURL, wantURL)
+	}
+}
+
+func TestProbeThirdPartyAPIFormat_CodexBackendPathOnNonOfficialHostKeepsBaseURL(t *testing.T) {
+	restore := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/backend-api/codex/responses":
+			return http.StatusBadRequest, `{"error":"invalid_request"}`
+		case "/v1/chat/completions":
+			return http.StatusBadRequest, `{"error":"Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses."}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restore()
+
+	p := &Provider{
+		ID:      "custom-codex-gateway",
+		Type:    ProviderTypeCustom,
+		BaseURL: "https://gateway.example.com",
+	}
+	got, detectedURL := autoDetectAPIFormat(context.Background(), p)
+	if got != APIFormatResponses {
+		t.Fatalf("format = %q, want %q", got, APIFormatResponses)
+	}
+	wantURL := "https://gateway.example.com"
+	if detectedURL != wantURL {
+		t.Fatalf("detectedURL = %q, want %q", detectedURL, wantURL)
+	}
+}
+
 func installProbeTransport(fn func(*http.Request) (int, string)) func() {
 	oldFactory := newProbeHTTPClient
 	newProbeHTTPClient = func(_ bool) *http.Client {

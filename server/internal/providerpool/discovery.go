@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -389,7 +390,7 @@ func (d *ModelDiscovery) fetchFromAPI(ctx context.Context, provider *Provider) (
 	var fetchErr error
 
 	switch provider.ID {
-	case "openai", "deepseek", "moonshot", "openrouter", "aihubmix", "codex":
+	case "openai", "deepseek", "moonshot", "openrouter", "openrouter-free", "aihubmix", "codex":
 		if apiKey == nil {
 			return nil, ErrNoAPIKey
 		}
@@ -771,10 +772,11 @@ func (d *ModelDiscovery) tryFetchModels(ctx context.Context, url string, apiKey 
 func (d *ModelDiscovery) parseOpenAIModelsResponse(body []byte, provider *Provider) ([]*Model, error) {
 	var result struct {
 		Data []struct {
-			ID      string `json:"id"`
-			Object  string `json:"object"`
-			Created int64  `json:"created"`
-			OwnedBy string `json:"owned_by"`
+			ID      string                 `json:"id"`
+			Object  string                 `json:"object"`
+			Created int64                  `json:"created"`
+			OwnedBy string                 `json:"owned_by"`
+			Pricing map[string]interface{} `json:"pricing"`
 		} `json:"data"`
 	}
 
@@ -790,7 +792,12 @@ func (d *ModelDiscovery) parseOpenAIModelsResponse(body []byte, provider *Provid
 	}
 
 	models := make([]*Model, 0, len(result.Data))
+	isOpenRouterFreeProfile := provider.ID == "openrouter-free"
 	for _, m := range result.Data {
+		if isOpenRouterFreeProfile && !isOpenRouterFreeModel(m.ID, m.Pricing) {
+			continue
+		}
+
 		model := &Model{
 			ID:          m.ID,
 			ProviderID:  provider.ID,
@@ -823,6 +830,61 @@ func (d *ModelDiscovery) parseOpenAIModelsResponse(body []byte, provider *Provid
 	}
 
 	return models, nil
+}
+
+func isOpenRouterFreeModel(modelID string, pricing map[string]interface{}) bool {
+	// OpenRouter generally tags free-tier models with ":free".
+	if strings.Contains(strings.ToLower(modelID), ":free") {
+		return true
+	}
+
+	// Fallback: treat models with all parsed pricing dimensions == 0 as free.
+	return openRouterPricingIsFree(pricing)
+}
+
+func openRouterPricingIsFree(pricing map[string]interface{}) bool {
+	if len(pricing) == 0 {
+		return false
+	}
+
+	hasParsedPrice := false
+	for _, raw := range pricing {
+		value, ok := parsePricingValue(raw)
+		if !ok {
+			continue
+		}
+		hasParsedPrice = true
+		if value > 0 {
+			return false
+		}
+	}
+
+	return hasParsedPrice
+}
+
+func parsePricingValue(raw interface{}) (float64, bool) {
+	switch v := raw.(type) {
+	case float64:
+		return v, true
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return 0, false
+		}
+		n, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	case json.Number:
+		n, err := v.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	default:
+		return 0, false
+	}
 }
 
 // fetchGoogleModels fetches models from Google Gemini API

@@ -1,7 +1,16 @@
-import { describe, it, expect } from 'vitest'
-import { parseTypelessContent, parseTypelessContentIncremental, splitIntoSegments } from '@/utils/typeless'
+import { describe, it, expect, beforeEach } from 'vitest'
+import {
+  parseTypelessContent,
+  parseTypelessContentIncremental,
+  splitIntoSegments,
+  clearSplitSegmentsIncrementalState,
+} from '@/utils/typeless'
 
 describe('Typeless Card Parsing', () => {
+  beforeEach(() => {
+    clearSplitSegmentsIncrementalState()
+  })
+
   it('parses exec typeless blocks into exec cards', () => {
     const content = [
       '```typeless',
@@ -70,6 +79,25 @@ describe('Typeless Card Parsing', () => {
     expect(full.text).not.toContain('"type":"exec"')
   })
 
+  it('returns cached incremental parse result when content is unchanged', () => {
+    const content = [
+      '<function_calls>',
+      '<invoke name="web_search">',
+      '<parameter name="query">OpenClaw 最新消息 2026</parameter>',
+      '</invoke>',
+      '</function_calls>',
+      '',
+      '```typeless',
+      '{"type":"exec","id":"card-0","command":"blue web_search query=\\"OpenClaw 最新消息 2026\\"","status":"running","stdout":"query: OpenClaw 最新消息 2026"}',
+      '```',
+    ].join('\n')
+
+    const first = parseTypelessContentIncremental(content, 'msg-streaming-stable', 'conv-stable')
+    const second = parseTypelessContentIncremental(content, 'msg-streaming-stable', 'conv-stable')
+
+    expect(second).toBe(first)
+  })
+
   it('parses multiple consecutive typeless blocks and keeps ui-review progress cards', () => {
     const content = [
       '```typeless',
@@ -103,5 +131,92 @@ describe('Typeless Card Parsing', () => {
     expect(mergedProgress.type).toBe('ui-review-progress')
     expect(Array.isArray(mergedProgress.steps)).toBe(true)
     expect(mergedProgress.steps).toHaveLength(2)
+  })
+
+  it('keeps malformed empty placeholders as plain text while parsing later valid placeholders', () => {
+    const text = 'prefix [[TYPELESS_CARD:]] mid [[TYPELESS_CARD:card-1]] suffix'
+    const cards = [{ type: 'result', id: 'card-1' }] as any
+
+    const segments = splitIntoSegments(text, cards)
+
+    expect(segments).toHaveLength(3)
+    expect(segments[0]).toEqual({ type: 'text', content: 'prefix [[TYPELESS_CARD:]] mid' })
+    expect(segments[1]?.type).toBe('card')
+    expect((segments[1]?.content as any).id).toBe('card-1')
+    expect(segments[2]).toEqual({ type: 'text', content: 'suffix' })
+  })
+
+  it('drops unknown placeholders and keeps surrounding text segments', () => {
+    const text = 'left [[TYPELESS_CARD:missing]] right'
+
+    const segments = splitIntoSegments(text, [])
+
+    expect(segments).toEqual([
+      { type: 'text', content: 'left' },
+      { type: 'text', content: 'right' },
+    ])
+  })
+
+  it('incrementally appends text after trailing card segment', () => {
+    const cards = [{ type: 'result', id: 'card-1' }] as any
+    const key = 'conv-1:msg-1'
+
+    const first = splitIntoSegments('[[TYPELESS_CARD:card-1]]', cards, key)
+    const second = splitIntoSegments('[[TYPELESS_CARD:card-1]] done', cards, key)
+
+    expect(first).toEqual([{ type: 'card', content: cards[0] }])
+    expect(second).toEqual([
+      { type: 'card', content: cards[0] },
+      { type: 'text', content: 'done' },
+    ])
+  })
+
+  it('incremental split falls back to full scan when delta adds card placeholder', () => {
+    const cards = [{ type: 'result', id: 'card-1' }] as any
+    const key = 'conv-1:msg-2'
+
+    const first = splitIntoSegments('prefix', cards, key)
+    const second = splitIntoSegments('prefix [[TYPELESS_CARD:card-1]] suffix', cards, key)
+
+    expect(first).toEqual([{ type: 'text', content: 'prefix' }])
+    expect(second).toEqual([
+      { type: 'text', content: 'prefix' },
+      { type: 'card', content: cards[0] },
+      { type: 'text', content: 'suffix' },
+    ])
+  })
+
+  it('resolves placeholder that was split across incremental chunks', () => {
+    const cards = [{ type: 'result', id: 'card-1' }] as any
+    const key = 'conv-1:msg-3'
+
+    const first = splitIntoSegments('prefix [[TYPELESS_CARD:card-1', cards, key)
+    const second = splitIntoSegments('prefix [[TYPELESS_CARD:card-1]] suffix', cards, key)
+
+    expect(first).toEqual([{ type: 'text', content: 'prefix [[TYPELESS_CARD:card-1' }])
+    expect(second).toEqual([
+      { type: 'text', content: 'prefix' },
+      { type: 'card', content: cards[0] },
+      { type: 'text', content: 'suffix' },
+    ])
+  })
+
+  it('merges progress cards across incremental chunk boundaries', () => {
+    const cards = [
+      { type: 'ui-review-progress', id: 'p1', step: 'first', status: 'running' },
+      { type: 'ui-review-progress', id: 'p2', step: 'second', status: 'success' },
+    ] as any
+    const key = 'conv-1:msg-4'
+
+    const first = splitIntoSegments('[[TYPELESS_CARD:p1]]', cards, key)
+    const second = splitIntoSegments('[[TYPELESS_CARD:p1]][[TYPELESS_CARD:p2]]', cards, key)
+
+    expect(first).toHaveLength(1)
+    expect(first[0]?.type).toBe('card')
+    expect(second).toHaveLength(1)
+    expect(second[0]?.type).toBe('card')
+    const merged = second[0]?.content as any
+    expect(merged.type).toBe('ui-review-progress')
+    expect(merged.steps).toHaveLength(2)
   })
 })

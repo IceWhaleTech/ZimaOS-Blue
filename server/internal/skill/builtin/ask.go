@@ -18,6 +18,7 @@ type AskQuestioner interface {
 type AskQuestionItem struct {
 	ID          string
 	Question    string
+	Detail      string
 	Header      string
 	Options     []AskQuestionOption
 	MultiSelect bool
@@ -58,13 +59,19 @@ func NewAsk() *Ask {
 				{
 					Name:        "questions",
 					Type:        "array",
-					Description: "Preferred. Question array. Each item: {question, type: radio|checkbox, options: [...]}",
+					Description: "Preferred. Question array. Each item: {question, detail?, type: radio|checkbox, options: [...]}",
 					Required:    false,
 				},
 				{
 					Name:        "q",
 					Type:        "string",
 					Description: "Single-select question text (shorthand).",
+					Required:    false,
+				},
+				{
+					Name:        "detail",
+					Type:        "string",
+					Description: "Optional extra detail for q/mq shorthand or question items.",
 					Required:    false,
 				},
 				{
@@ -141,10 +148,12 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 			return nil, fmt.Errorf("a must include at least 1 value for q")
 		}
 		question := strings.TrimSpace(q)
+		detail := extractAskQuestionDetail(input)
 		return []AskQuestionItem{
 			{
 				ID:          "q0",
 				Question:    question,
+				Detail:      detail,
 				Header:      shortHeader(question),
 				Options:     options,
 				MultiSelect: false,
@@ -157,10 +166,12 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 			return nil, fmt.Errorf("a must include at least 1 value for mq")
 		}
 		question := strings.TrimSpace(mq)
+		detail := extractAskQuestionDetail(input)
 		return []AskQuestionItem{
 			{
 				ID:          "q0",
 				Question:    question,
+				Detail:      detail,
 				Header:      shortHeader(question),
 				Options:     options,
 				MultiSelect: true,
@@ -182,6 +193,7 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 		{
 			ID:          "q0",
 			Question:    question,
+			Detail:      extractAskQuestionDetail(input),
 			Header:      shortHeader(question),
 			Options:     options,
 			MultiSelect: false,
@@ -222,6 +234,7 @@ func parseQuestionsInput(raw any) ([]AskQuestionItem, error) {
 		items = append(items, AskQuestionItem{
 			ID:          fmt.Sprintf("q%d", i),
 			Question:    question,
+			Detail:      extractAskQuestionDetail(obj),
 			Header:      shortHeader(question),
 			Options:     options,
 			MultiSelect: isMulti,
@@ -360,6 +373,10 @@ func parseOptionObject(v map[string]any) (AskQuestionOption, bool) {
 		Value:       value,
 		Description: desc,
 	}, true
+}
+
+func extractAskQuestionDetail(m map[string]any) string {
+	return firstNonEmptyString(m, "detail", "details", "extra_detail", "description", "hint")
 }
 
 func firstNonEmptyString(m map[string]any, keys ...string) string {

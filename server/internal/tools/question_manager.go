@@ -19,7 +19,8 @@ const defaultQuestionTimeout = 2 * time.Minute
 type QuestionItem struct {
 	ID          string           `json:"id"`
 	Question    string           `json:"question"`
-	Header      string           `json:"header"` // short tab label (max 12 chars)
+	Detail      string           `json:"detail,omitempty"` // optional extra detail shown with ❕ marker
+	Header      string           `json:"header"`           // short tab label (max 12 chars)
 	Options     []QuestionOption `json:"options,omitempty"`
 	MultiSelect bool             `json:"multi_select,omitempty"`
 }

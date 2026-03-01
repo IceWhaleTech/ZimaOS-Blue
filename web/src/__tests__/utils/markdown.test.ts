@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { renderMarkdown, copyCodeToClipboard, markdownToText } from '@/utils/markdown'
+import { renderMarkdown, renderMarkdownCached, copyCodeToClipboard, markdownToText } from '@/utils/markdown'
 
 describe('Markdown Renderer', () => {
   describe('renderMarkdown', () => {
@@ -7,6 +7,16 @@ describe('Markdown Renderer', () => {
       const result = renderMarkdown('Hello world')
       expect(result).toContain('Hello world')
       expect(result).toContain('<p')
+    })
+
+    it('should use plain rendering for multiline text without markdown syntax', () => {
+      const result = renderMarkdown('line one\nline two\n\nline three')
+      expect(result).toContain('<p class="my-1">line one</p>')
+      expect(result).toContain('<p class="my-1">line two</p>')
+      expect(result).toContain('<p class="my-1">line three</p>')
+      expect(result).toContain('<br>')
+      expect(result).not.toContain('<ul')
+      expect(result).not.toContain('<blockquote')
     })
 
     it('should render headers', () => {
@@ -50,6 +60,13 @@ describe('Markdown Renderer', () => {
       expect(result).toContain('<li>Item 1</li>')
       expect(result).toContain('<li>Item 2</li>')
       expect(result).toContain('<li>Item 3</li>')
+    })
+
+    it('should keep ordered lists on multiline input', () => {
+      const result = renderMarkdown('1. first\n2. second')
+      expect(result).toContain('<ul')
+      expect(result).toContain('<li>first</li>')
+      expect(result).toContain('<li>second</li>')
     })
 
     it('should render blockquotes', () => {
@@ -228,6 +245,44 @@ const x = 1;
         // First line without tree chars should be a paragraph
         expect(result).toContain('<p class="my-1">人工智能（AI）</p>')
       })
+    })
+  })
+
+  describe('renderMarkdownCached', () => {
+    it('should keep append-only plain text output identical to renderMarkdown', () => {
+      const scope = 'markdown-cached-append-plain'
+      const steps = [
+        'Hello',
+        'Hello world',
+        'Hello world and friends',
+      ]
+
+      for (const step of steps) {
+        expect(renderMarkdownCached(step, scope)).toBe(renderMarkdown(step))
+      }
+    })
+
+    it('should keep append-only multiline plain text output identical to renderMarkdown', () => {
+      const scope = 'markdown-cached-append-multiline'
+      const steps = [
+        'line one\nline two',
+        'line one\nline two more',
+        'line one\nline two more\nline three',
+        'line one\nline two more\nline three\nline four',
+      ]
+
+      for (const step of steps) {
+        expect(renderMarkdownCached(step, scope)).toBe(renderMarkdown(step))
+      }
+    })
+
+    it('should correctly fall back when appended text introduces markdown syntax', () => {
+      const scope = 'markdown-cached-fastpath-transition'
+      const plain = 'hello world'
+      const markdown = 'hello world\n- item'
+
+      expect(renderMarkdownCached(plain, scope)).toBe(renderMarkdown(plain))
+      expect(renderMarkdownCached(markdown, scope)).toBe(renderMarkdown(markdown))
     })
   })
 

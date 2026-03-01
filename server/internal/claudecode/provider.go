@@ -383,12 +383,17 @@ func (p *Provider) buildRunParams(ctx context.Context, req llm.ChatRequest) (*Ru
 	}
 
 	backend := p.config.Backend.WithDefaults()
+	if backend.Env == nil {
+		backend.Env = make(map[string]string)
+	}
+
 	if userID := strings.TrimSpace(skill.GetUserID(ctx)); userID != "" {
-		if backend.Env == nil {
-			backend.Env = make(map[string]string)
-		}
 		backend.Env["BLUE_USER_ID"] = userID
 	}
+
+	// Inject locale env on every run so direct and sandboxed execution stay consistent.
+	// This keeps language preference runtime-driven instead of relying on static env state.
+	injectRuntimeLocaleEnv(backend.Env, tools.GetLang(ctx))
 
 	return &RunParams{
 		Prompt:         prompt,
@@ -401,6 +406,46 @@ func (p *Provider) buildRunParams(ctx context.Context, req llm.ChatRequest) (*Ru
 		Timeout:        p.config.Timeout,
 		Backend:        &backend,
 	}, nil
+}
+
+// injectRuntimeLocaleEnv injects locale-related env vars for each CLI run.
+func injectRuntimeLocaleEnv(env map[string]string, localeTag string) {
+	tag := strings.TrimSpace(localeTag)
+	if tag == "" {
+		tag = "en-US"
+	}
+
+	locale := localeFromTag(tag)
+	env["BLUE_LOCALE"] = tag
+	env["LANG"] = locale
+	env["LC_ALL"] = locale
+	// Some runtimes read LANGUAGE first for i18n catalogs.
+	env["LANGUAGE"] = tag
+}
+
+// localeFromTag converts a BCP-47 tag (e.g. "en-US") to POSIX locale (e.g. "en_US.UTF-8").
+func localeFromTag(tag string) string {
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return "en_US.UTF-8"
+	}
+
+	// Already a POSIX locale.
+	if strings.Contains(tag, "_") || strings.Contains(tag, ".") {
+		if !strings.Contains(tag, ".") {
+			return tag + ".UTF-8"
+		}
+		return tag
+	}
+
+	// BCP-47: en-US -> en_US.UTF-8
+	parts := strings.SplitN(tag, "-", 2)
+	if len(parts) == 2 {
+		return parts[0] + "_" + strings.ToUpper(parts[1]) + ".UTF-8"
+	}
+
+	// Language-only: en -> en.UTF-8
+	return tag + ".UTF-8"
 }
 
 // extractUserPrompt extracts the user prompt from messages.

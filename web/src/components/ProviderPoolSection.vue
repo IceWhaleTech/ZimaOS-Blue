@@ -6,7 +6,7 @@ import { useRoute } from 'vue-router'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useNotificationStore } from '@/stores/notification'
 import ProviderIcon from '@/components/ProviderIcon.vue'
-import type { Provider, Model } from '@/api/providerPool'
+import type { Provider, Model, ProviderVerificationResult } from '@/api/providerPool'
 import { providerPoolApi } from '@/api/providerPool'
 import { formatTokens } from '@/utils/format'
 
@@ -27,6 +27,12 @@ const testingKeyId = ref<string | null>(null)
 const keyTestResults = ref<Record<string, { healthy: boolean; error?: string }>>({})
 const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
+const verifyingProvider = ref<string | null>(null)
+const applyingVerification = ref<string | null>(null)
+const verificationModel = ref('')
+const verificationKeyId = ref('')
+const verificationResult = ref<ProviderVerificationResult | null>(null)
+const verificationError = ref('')
 const searchQuery = ref('')
 type ProviderTab = 'all' | 'trial' | 'builtin' | 'platform' | 'custom' | 'media'
 const activeTab = ref<ProviderTab>('all')
@@ -114,6 +120,25 @@ const selectedProviderModels = computed(() => {
 // Models to display: always provider-level (union of all keys)
 const displayModels = computed(() => {
   return selectedProviderModels.value
+})
+
+const verificationProbeEntries = computed(() => {
+  if (!verificationResult.value?.probes) return []
+  const probes = verificationResult.value.probes
+  const preferredOrder = ['models', 'chat_completions', 'responses_v1', 'responses_plain']
+  const entries: Array<[string, { url: string; status_code?: number; reachable: boolean; error?: string }]> = []
+
+  for (const key of preferredOrder) {
+    if (probes[key]) {
+      entries.push([key, probes[key]])
+    }
+  }
+  for (const [key, probe] of Object.entries(probes)) {
+    if (!preferredOrder.includes(key)) {
+      entries.push([key, probe])
+    }
+  }
+  return entries
 })
 
 // Refresh models when provider changes
@@ -333,6 +358,13 @@ watch(() => store.selectedProvider, (provider) => {
   }
 }, { immediate: true })
 
+watch(() => displayProvider.value?.id, () => {
+  verificationResult.value = null
+  verificationError.value = ''
+  verificationKeyId.value = ''
+  verificationModel.value = ''
+})
+
 // Methods
 async function loadData() {
   try {
@@ -415,6 +447,62 @@ async function refreshModels(providerId: string) {
   } finally {
     refreshingModels.value = null
   }
+}
+
+async function runProviderVerification(apply = false) {
+  const provider = displayProvider.value
+  if (!provider) return
+  if (!provider.base_url) {
+    notification.error(t('providerPool.verifyFailed'), t('providerPool.baseUrlRequired'))
+    return
+  }
+
+  if (apply) {
+    applyingVerification.value = provider.id
+  } else {
+    verifyingProvider.value = provider.id
+  }
+  verificationError.value = ''
+
+  try {
+    const result = await store.verifyProviderRecommendation(
+      provider.id,
+      apply,
+      verificationKeyId.value || undefined,
+      verificationModel.value || undefined
+    )
+    verificationResult.value = result.verification
+
+    if (apply) {
+      if (result.applied) {
+        notification.success(t('providerPool.verifyApplied'))
+      } else {
+        notification.info(t('providerPool.verifyNoChanges'))
+      }
+    } else {
+      notification.success(t('providerPool.verifySuccess'))
+    }
+  } catch (e: any) {
+    const message = e?.response?.data?.error || (e instanceof Error ? e.message : t('providerPool.verifyFailed'))
+    verificationError.value = message
+    notification.error(t('providerPool.verifyFailed'), message)
+  } finally {
+    if (apply) {
+      applyingVerification.value = null
+    } else {
+      verifyingProvider.value = null
+    }
+  }
+}
+
+function getVerificationProbeLabel(key: string): string {
+  const labels: Record<string, string> = {
+    models: '/v1/models',
+    chat_completions: '/v1/chat/completions',
+    responses_v1: '/v1/responses',
+    responses_plain: '/responses',
+  }
+  return labels[key] || key
 }
 
 async function addCustomProvider() {
@@ -1345,7 +1433,7 @@ onMounted(() => {
             <div class="flex items-center gap-2">
               <!-- Free tier badge -->
               <span
-                v-if="provider.id === 'nvidia' || provider.id === 'github-copilot' || provider.id === 'google-antigravity' || provider.id === 'google-gemini-cli'"
+                v-if="provider.id === 'nvidia' || provider.id === 'github-copilot' || provider.id === 'google-antigravity' || provider.id === 'google-gemini-cli' || provider.id === 'openrouter-free'"
                 class="text-[10px] px-1.5 py-0.5 rounded"
                 :class="store.oauthQuota[provider.id]?.tier && store.oauthQuota[provider.id].tier !== 'Free' && store.oauthQuota[provider.id].tier !== 'FREE'
                   ? tierListBadgeClass(store.oauthQuota[provider.id].tier)
@@ -1631,6 +1719,113 @@ onMounted(() => {
               <span v-else class="text-amber-500 dark:text-amber-400">
                 {{ t('providerPool.baseUrlNotConfigured') }}
               </span>
+            </div>
+          </div>
+
+          <!-- Provider Verification & Recommendation -->
+          <div
+            v-if="displayProvider!.type !== 'trial'"
+            class="mb-4 p-3 bg-gray-50 dark:bg-slate-900/30 rounded-lg border border-gray-100 dark:border-slate-700/50"
+          >
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <div>
+                <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.verifySection') }}</h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyHint') }}</p>
+              </div>
+              <div class="flex gap-1">
+                <button
+                  :disabled="verifyingProvider === displayProvider!.id || applyingVerification === displayProvider!.id || !displayProvider!.base_url"
+                  class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs disabled:opacity-50"
+                  @click="runProviderVerification(false)"
+                >
+                  {{ verifyingProvider === displayProvider!.id ? t('providerPool.verifyRunning') : t('providerPool.verifyRun') }}
+                </button>
+                <button
+                  :disabled="verifyingProvider === displayProvider!.id || applyingVerification === displayProvider!.id || !displayProvider!.base_url"
+                  class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-xs disabled:opacity-50"
+                  @click="runProviderVerification(true)"
+                >
+                  {{ applyingVerification === displayProvider!.id ? t('providerPool.verifyApplying') : t('providerPool.verifyApply') }}
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+              <div>
+                <label class="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.verifyModelLabel') }}</label>
+                <input
+                  v-model.trim="verificationModel"
+                  type="text"
+                  :placeholder="t('providerPool.verifyModelPlaceholder')"
+                  class="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-400"
+                />
+              </div>
+              <div v-if="displayProvider!.api_keys?.length">
+                <label class="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.verifyKeyLabel') }}</label>
+                <select
+                  v-model="verificationKeyId"
+                  class="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-400"
+                >
+                  <option value="">{{ t('providerPool.verifyKeyAuto') }}</option>
+                  <option v-for="key in displayProvider!.api_keys" :key="key.id" :value="key.id">
+                    {{ key.key_hash }}{{ key.label ? ` (${formatKeyLabel(key.label)})` : '' }}
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <div v-if="verificationError" class="text-xs text-red-600 dark:text-red-400 break-all mb-2">
+              {{ verificationError }}
+            </div>
+
+            <div v-if="verificationResult" class="space-y-2">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                <div class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700">
+                  <div class="text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyDetectedFormat') }}</div>
+                  <div class="font-mono text-gray-900 dark:text-white">{{ verificationResult.detected_format || '-' }}</div>
+                </div>
+                <div class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700">
+                  <div class="text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyRecommendedFormat') }}</div>
+                  <div class="font-mono text-gray-900 dark:text-white">{{ verificationResult.recommended_api_format || '-' }}</div>
+                </div>
+                <div class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700">
+                  <div class="text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyResponsesStatus') }}</div>
+                  <div class="text-gray-900 dark:text-white break-all">{{ verificationResult.responses_status || '-' }}</div>
+                </div>
+              </div>
+
+              <div class="text-xs">
+                <div class="text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyRecommendedBaseURL') }}</div>
+                <div class="font-mono text-gray-900 dark:text-white break-all">{{ verificationResult.recommended_base_url || '-' }}</div>
+              </div>
+
+              <div v-if="verificationResult.responses_only" class="text-[11px] inline-flex px-2 py-1 rounded bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300">
+                {{ t('providerPool.verifyResponsesOnly') }}
+              </div>
+              <div v-if="verificationResult.chat_error" class="text-xs text-amber-600 dark:text-amber-400 break-all">
+                {{ t('providerPool.verifyChatError') }}: {{ verificationResult.chat_error }}
+              </div>
+
+              <div>
+                <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.verifyProbes') }}</div>
+                <div class="space-y-1">
+                  <div
+                    v-for="[probeKey, probe] in verificationProbeEntries"
+                    :key="probeKey"
+                    class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-xs"
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="font-medium text-gray-900 dark:text-white">{{ getVerificationProbeLabel(probeKey) }}</span>
+                      <span class="font-mono text-gray-500 dark:text-gray-400" v-if="probe.status_code">HTTP {{ probe.status_code }}</span>
+                    </div>
+                    <div class="font-mono text-[10px] text-gray-500 dark:text-gray-400 break-all">{{ probe.url }}</div>
+                    <div class="mt-1" :class="probe.reachable ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      {{ probe.reachable ? t('providerPool.verifyProbeReachable') : t('providerPool.verifyProbeUnreachable') }}
+                    </div>
+                    <div v-if="probe.error" class="text-red-600 dark:text-red-400 break-all">{{ probe.error }}</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 

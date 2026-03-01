@@ -120,10 +120,10 @@ watch(searchQuery, (query) => {
       <div class="flex-1 min-w-0">
         <button
           v-if="!searchActive"
-          class="create-btn w-full py-2.5 px-4 text-white rounded-xl flex items-center justify-center gap-2 transition-all duration-200"
+          class="create-btn w-full py-2 px-3.5 text-sm text-white rounded-xl flex items-center justify-center gap-1.5 transition-all duration-200"
           @click="handleCreate"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
           {{ t('chat.newChat') }}
@@ -459,13 +459,13 @@ watch(searchQuery, (query) => {
 }
 
 .create-count {
-  min-width: 1.75rem;
-  height: 1.75rem;
+  min-width: 1.5rem;
+  height: 1.5rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: rgb(203 213 225);
   border: 1px solid rgba(148, 163, 184, 0.3);

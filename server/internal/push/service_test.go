@@ -67,6 +67,38 @@ func (m *mockInjector) getMessages() []injectedMessage {
 	return cp
 }
 
+// mockWebPushSender captures web push sends.
+type mockWebPushSender struct {
+	mu    sync.Mutex
+	calls []webPushCall
+	err   error
+}
+
+type webPushCall struct {
+	UserID string
+	Title  string
+	Body   string
+}
+
+func (m *mockWebPushSender) SendToUser(_ context.Context, userID, title, body string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, webPushCall{
+		UserID: userID,
+		Title:  title,
+		Body:   body,
+	})
+	return m.err
+}
+
+func (m *mockWebPushSender) getCalls() []webPushCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := make([]webPushCall, len(m.calls))
+	copy(cp, m.calls)
+	return cp
+}
+
 func testServiceDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -274,6 +306,124 @@ func TestFirePush_ConversationIDInSSE(t *testing.T) {
 		}
 	}
 	t.Fatal("expected 'push' SSE event")
+}
+
+func TestFirePush_SendsWebPushToOwner(t *testing.T) {
+	svc, store := testService(t)
+
+	wp := &mockWebPushSender{}
+	svc.SetWebPushSender(wp)
+
+	ctx := context.Background()
+	r := &PushNotification{
+		ID:      "push-web-1",
+		OwnerID: "user-web-1",
+		Message: "Drink water now",
+		FireAt:  time.Now(),
+		Status:  StatusPending,
+	}
+	store.Create(ctx, r)
+
+	svc.firePush(ctx, r)
+
+	calls := wp.getCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 web push call, got %d", len(calls))
+	}
+	if calls[0].UserID != "user-web-1" {
+		t.Fatalf("web push userID = %q, want %q", calls[0].UserID, "user-web-1")
+	}
+	if calls[0].Title != "🔔 Reminder" {
+		t.Fatalf("web push title = %q, want %q", calls[0].Title, "🔔 Reminder")
+	}
+	if calls[0].Body != "Drink water now" {
+		t.Fatalf("web push body = %q, want %q", calls[0].Body, "Drink water now")
+	}
+}
+
+func TestFirePush_DeliversAllChannels(t *testing.T) {
+	svc, store := testService(t)
+
+	inj := &mockInjector{}
+	pub := &mockPublisher{}
+	wp := &mockWebPushSender{}
+	svc.SetMessageInjector(inj)
+	svc.SetEventPublisher(pub)
+	svc.SetWebPushSender(wp)
+	svc.SetLocaleFunc(func() string { return "zh-CN" })
+
+	ctx := context.Background()
+	r := &PushNotification{
+		ID:        "push-all-1",
+		OwnerID:   "user-all-1",
+		Message:   "10秒后喝水",
+		SessionID: "conv-all-1",
+		FireAt:    time.Now(),
+		Status:    StatusPending,
+	}
+	store.Create(ctx, r)
+
+	svc.firePush(ctx, r)
+
+	msgs := inj.getMessages()
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 injected message, got %d", len(msgs))
+	}
+	if msgs[0].SessionID != "conv-all-1" {
+		t.Fatalf("injected session_id = %q, want %q", msgs[0].SessionID, "conv-all-1")
+	}
+	if !strings.Contains(msgs[0].Content, "10秒后喝水") {
+		t.Fatalf("injected content missing reminder message: %s", msgs[0].Content)
+	}
+
+	events := pub.getEvents()
+	var pushEvt, convEvt bool
+	for _, e := range events {
+		if e.EventType == "push" {
+			data, ok := e.Data.(map[string]any)
+			if !ok {
+				t.Fatalf("push event data type = %T, want map[string]any", e.Data)
+			}
+			if data["message"] != "10秒后喝水" {
+				t.Fatalf("push event message = %v, want %q", data["message"], "10秒后喝水")
+			}
+			if data["locale"] != "zh-CN" {
+				t.Fatalf("push event locale = %v, want %q", data["locale"], "zh-CN")
+			}
+			pushEvt = true
+		}
+		if e.EventType == "conversation_updated" {
+			convEvt = true
+		}
+	}
+	if !pushEvt {
+		t.Fatal("expected push SSE event")
+	}
+	if !convEvt {
+		t.Fatal("expected conversation_updated SSE event")
+	}
+
+	calls := wp.getCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 web push call, got %d", len(calls))
+	}
+	if calls[0].UserID != "user-all-1" {
+		t.Fatalf("web push userID = %q, want %q", calls[0].UserID, "user-all-1")
+	}
+	if calls[0].Body != "10秒后喝水" {
+		t.Fatalf("web push body = %q, want %q", calls[0].Body, "10秒后喝水")
+	}
+
+	stored, err := store.Get(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("get reminder from store: %v", err)
+	}
+	if stored == nil {
+		t.Fatalf("stored reminder not found: %s", r.ID)
+	}
+	if stored.Status != StatusFired {
+		t.Fatalf("stored reminder status = %q, want %q", stored.Status, StatusFired)
+	}
 }
 
 func TestServiceAdd(t *testing.T) {

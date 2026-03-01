@@ -522,25 +522,25 @@ export interface TypelessCardSearch extends TypelessCardBase {
   provider?: string
 }
 
-export interface DeepSearchCitationItem {
+export interface DeepResearchCitationItem {
   evidence_id?: string
   title?: string
   url: string
 }
 
-export interface TypelessCardDeepSearch extends TypelessCardBase {
+export interface TypelessCardDeepResearch extends TypelessCardBase {
   type: 'deep-research'
   query?: string
   mode?: 'fast' | 'standard' | 'deep'
   answer?: string
   confidence?: number
   evidence_count?: number
-  citations?: DeepSearchCitationItem[]
+  citations?: DeepResearchCitationItem[]
   open_questions?: string[]
   status?: string
 }
 
-export interface TypelessCardDeepSearchProgress extends TypelessCardBase {
+export interface TypelessCardDeepResearchProgress extends TypelessCardBase {
   type: 'deep-research-progress'
   job_id?: string
   query?: string
@@ -694,8 +694,8 @@ export type TypelessCard =
   | TypelessCardVideo
   | TypelessCardMermaid
   | TypelessCardSearch
-  | TypelessCardDeepSearch
-  | TypelessCardDeepSearchProgress
+  | TypelessCardDeepResearch
+  | TypelessCardDeepResearchProgress
   | TypelessCardUIReview
   | TypelessCardUIReviewProgress
   | TypelessCardMediaGenerate

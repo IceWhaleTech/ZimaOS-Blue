@@ -1,0 +1,114 @@
+package config
+
+import (
+	"context"
+	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+)
+
+func TestLoadOrImport_FirstRunGeneratesJWTSecretAndPersists(t *testing.T) {
+	kv := kvstore.NewMemoryStore()
+	store := NewConfigStore(kv)
+	cfg := defaults()
+	cfg.Security.JWT.Secret = defaultJWTSecretPlaceholder
+
+	got, err := store.LoadOrImport(&cfg)
+	if err != nil {
+		t.Fatalf("LoadOrImport() error = %v", err)
+	}
+	if got.Security.JWT.Secret == "" {
+		t.Fatal("expected generated JWT secret, got empty string")
+	}
+	if got.Security.JWT.Secret == defaultJWTSecretPlaceholder {
+		t.Fatal("expected JWT secret to be replaced on first import")
+	}
+	if len(got.Security.JWT.Secret) != 64 {
+		t.Fatalf("expected 64-char hex JWT secret, got len=%d", len(got.Security.JWT.Secret))
+	}
+
+	var sec SecurityConfig
+	if err := kv.GetJSON(context.Background(), configKeyPrefix+"security", &sec); err != nil {
+		t.Fatalf("GetJSON(security) error = %v", err)
+	}
+	if sec.JWT.Secret != got.Security.JWT.Secret {
+		t.Fatalf("persisted JWT secret mismatch: got=%q persisted=%q", got.Security.JWT.Secret, sec.JWT.Secret)
+	}
+}
+
+func TestLoadOrImport_SecondLoadKeepsSameJWTSecret(t *testing.T) {
+	kv := kvstore.NewMemoryStore()
+	store := NewConfigStore(kv)
+	cfg := defaults()
+	cfg.Security.JWT.Secret = defaultJWTSecretPlaceholder
+
+	first, err := store.LoadOrImport(&cfg)
+	if err != nil {
+		t.Fatalf("first LoadOrImport() error = %v", err)
+	}
+	firstSecret := first.Security.JWT.Secret
+
+	another := defaults()
+	another.Security.JWT.Secret = defaultJWTSecretPlaceholder
+	second, err := store.LoadOrImport(&another)
+	if err != nil {
+		t.Fatalf("second LoadOrImport() error = %v", err)
+	}
+	if second.Security.JWT.Secret != firstSecret {
+		t.Fatalf("expected JWT secret to stay stable across reload, first=%q second=%q", firstSecret, second.Security.JWT.Secret)
+	}
+}
+
+func TestLoadOrImport_CustomJWTSecretIsPreserved(t *testing.T) {
+	kv := kvstore.NewMemoryStore()
+	store := NewConfigStore(kv)
+	cfg := defaults()
+	cfg.Security.JWT.Secret = "custom-jwt-secret-abcdefghijklmnopqrstuvwxyz123456"
+
+	got, err := store.LoadOrImport(&cfg)
+	if err != nil {
+		t.Fatalf("LoadOrImport() error = %v", err)
+	}
+	if got.Security.JWT.Secret != cfg.Security.JWT.Secret {
+		t.Fatalf("expected custom JWT secret preserved, got=%q want=%q", got.Security.JWT.Secret, cfg.Security.JWT.Secret)
+	}
+}
+
+func TestLoadOrImport_MigratesLegacyDefaultJWTSecretFromDB(t *testing.T) {
+	kv := kvstore.NewMemoryStore()
+	seedStore := NewConfigStore(kv)
+	legacy := defaults()
+	legacy.Security.JWT.Secret = defaultJWTSecretPlaceholder
+	if err := seedStore.Import(&legacy); err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	store := NewConfigStore(kv)
+	got, err := store.LoadOrImport(&Config{})
+	if err != nil {
+		t.Fatalf("LoadOrImport() error = %v", err)
+	}
+	if got.Security.JWT.Secret == "" {
+		t.Fatal("expected migrated JWT secret, got empty string")
+	}
+	if got.Security.JWT.Secret == defaultJWTSecretPlaceholder {
+		t.Fatal("expected legacy placeholder secret to be migrated")
+	}
+	firstSecret := got.Security.JWT.Secret
+
+	var sec SecurityConfig
+	if err := kv.GetJSON(context.Background(), configKeyPrefix+"security", &sec); err != nil {
+		t.Fatalf("GetJSON(security) error = %v", err)
+	}
+	if sec.JWT.Secret != firstSecret {
+		t.Fatalf("persisted migrated JWT secret mismatch: got=%q persisted=%q", firstSecret, sec.JWT.Secret)
+	}
+
+	got2, err := store.LoadOrImport(&Config{})
+	if err != nil {
+		t.Fatalf("second LoadOrImport() error = %v", err)
+	}
+	if got2.Security.JWT.Secret != firstSecret {
+		t.Fatalf("expected migrated secret to remain stable, first=%q second=%q", firstSecret, got2.Security.JWT.Secret)
+	}
+}

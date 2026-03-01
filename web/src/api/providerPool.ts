@@ -13,7 +13,7 @@ export interface ModelParams {
 
 export type ProviderLocation = 'cloud' | 'local'
 export type RoutingMode = 'auto' | 'cloud' | 'local'
-export type APIFormat = 'openai' | 'anthropic' | 'ollama' | 'google' | 'cloudcode' | 'copilot' | ''
+export type APIFormat = 'openai' | 'responses' | 'anthropic' | 'ollama' | 'google' | 'cloudcode' | 'copilot' | ''
 
 export interface Provider {
   id: string
@@ -81,6 +81,44 @@ export interface HealthCheckResult {
   latency: number
   error?: string
   checked_at: string
+}
+
+export interface ProviderVerificationProbe {
+  url: string
+  status_code?: number
+  reachable: boolean
+  error?: string
+}
+
+export interface ProviderVerificationResult {
+  base_url: string
+  model: string
+  detected_format: APIFormat
+  recommended_api_format: APIFormat
+  recommended_base_url: string
+  responses_only: boolean
+  chat_error?: string
+  responses_status?: string
+  probes: Record<string, ProviderVerificationProbe>
+}
+
+export interface VerifyProviderCandidateRequest {
+  base_url: string
+  api_key?: string
+  skip_tls_verify?: boolean
+  model?: string
+}
+
+export interface VerifyProviderByIDRequest {
+  apply?: boolean
+  model?: string
+  key_id?: string
+}
+
+export interface VerifyProviderByIDResponse {
+  applied: boolean
+  verification: ProviderVerificationResult
+  provider: Provider
 }
 
 export interface UsageSummary {
@@ -351,6 +389,12 @@ export const providerPoolApi = {
 
   clearError: (id: string) =>
     api.post<{ status: string }>(`/providers/${id}/clear-error`),
+
+  verifyProviderCandidate: (payload: VerifyProviderCandidateRequest) =>
+    api.post<ProviderVerificationResult>('/providers/verify', payload),
+
+  verifyProviderByID: (id: string, payload?: VerifyProviderByIDRequest) =>
+    api.post<VerifyProviderByIDResponse>(`/providers/${id}/verify`, payload || {}),
 
   updateModelParams: (id: string, params: ModelParams) =>
     api.put<{ message: string; model_params: ModelParams }>(`/providers/${id}/params`, params),

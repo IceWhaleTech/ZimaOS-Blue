@@ -244,6 +244,77 @@ func TestProviderBuildRunParams_InjectsBlueUserID(t *testing.T) {
 	}
 }
 
+func TestProviderBuildRunParams_InjectsLocaleEnvFromContext(t *testing.T) {
+	config := &ClaudeCodeConfig{
+		Enabled:      true,
+		Command:      "claude",
+		DefaultModel: "sonnet",
+	}
+	provider := NewProvider(config)
+
+	ctx := tools.WithLang(context.Background(), "zh-CN")
+	req := llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "hello"},
+		},
+	}
+
+	params, err := provider.buildRunParams(ctx, req)
+	if err != nil {
+		t.Fatalf("buildRunParams() error = %v", err)
+	}
+	if params.Backend == nil {
+		t.Fatal("expected backend to be set")
+	}
+	if got := params.Backend.Env["BLUE_LOCALE"]; got != "zh-CN" {
+		t.Fatalf("BLUE_LOCALE = %q, want %q", got, "zh-CN")
+	}
+	if got := params.Backend.Env["LANG"]; got != "zh_CN.UTF-8" {
+		t.Fatalf("LANG = %q, want %q", got, "zh_CN.UTF-8")
+	}
+	if got := params.Backend.Env["LC_ALL"]; got != "zh_CN.UTF-8" {
+		t.Fatalf("LC_ALL = %q, want %q", got, "zh_CN.UTF-8")
+	}
+	if got := params.Backend.Env["LANGUAGE"]; got != "zh-CN" {
+		t.Fatalf("LANGUAGE = %q, want %q", got, "zh-CN")
+	}
+}
+
+func TestProviderBuildRunParams_InjectsDefaultLocaleEnv(t *testing.T) {
+	config := &ClaudeCodeConfig{
+		Enabled:      true,
+		Command:      "claude",
+		DefaultModel: "sonnet",
+	}
+	provider := NewProvider(config)
+
+	req := llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "hello"},
+		},
+	}
+
+	params, err := provider.buildRunParams(context.Background(), req)
+	if err != nil {
+		t.Fatalf("buildRunParams() error = %v", err)
+	}
+	if params.Backend == nil {
+		t.Fatal("expected backend to be set")
+	}
+	if got := params.Backend.Env["BLUE_LOCALE"]; got != "en-US" {
+		t.Fatalf("BLUE_LOCALE = %q, want %q", got, "en-US")
+	}
+	if got := params.Backend.Env["LANG"]; got != "en_US.UTF-8" {
+		t.Fatalf("LANG = %q, want %q", got, "en_US.UTF-8")
+	}
+	if got := params.Backend.Env["LC_ALL"]; got != "en_US.UTF-8" {
+		t.Fatalf("LC_ALL = %q, want %q", got, "en_US.UTF-8")
+	}
+	if got := params.Backend.Env["LANGUAGE"]; got != "en-US" {
+		t.Fatalf("LANGUAGE = %q, want %q", got, "en-US")
+	}
+}
+
 // TestProviderSessionContextManagement tests session context is properly managed.
 func TestProviderSessionContextManagement(t *testing.T) {
 	config := &ClaudeCodeConfig{

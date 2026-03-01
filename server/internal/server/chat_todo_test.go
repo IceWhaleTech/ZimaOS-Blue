@@ -1,6 +1,9 @@
 package server
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestShouldAutoContinueForTodo(t *testing.T) {
 	t.Run("skips auto continue when waiting for user question", func(t *testing.T) {
@@ -86,4 +89,30 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 			t.Fatalf("expected action_pledge auto-continue, got ok=%v reason=%q", ok, reason)
 		}
 	})
+}
+
+func TestBuildAutoContinueNudges(t *testing.T) {
+	if got := buildToollessAutoContinueNudge(false); got == "" {
+		t.Fatalf("expected non-agent toolless nudge to be non-empty")
+	}
+
+	agentToolless := buildToollessAutoContinueNudge(true)
+	if !strings.Contains(agentToolless, "continuous improvement loop") || !strings.Contains(agentToolless, "next concrete improvement") {
+		t.Fatalf("expected agent toolless nudge to include loop guidance, got=%q", agentToolless)
+	}
+
+	agentPostTool := buildPostToolAutoContinueNudge(true)
+	if !strings.Contains(agentPostTool, "agent loop") || !strings.Contains(agentPostTool, "next concrete improvement") {
+		t.Fatalf("expected agent post-tool nudge to include loop guidance, got=%q", agentPostTool)
+	}
+}
+
+func TestGetMaxAutoContinueForMode(t *testing.T) {
+	h := &ChatHandler{}
+	if got := h.getMaxAutoContinueForMode(false); got != maxAutoContinueDefault {
+		t.Fatalf("non-agent max auto-continue = %d, want %d", got, maxAutoContinueDefault)
+	}
+	if got := h.getMaxAutoContinueForMode(true); got != maxAutoContinueAgent {
+		t.Fatalf("agent max auto-continue = %d, want %d", got, maxAutoContinueAgent)
+	}
 }

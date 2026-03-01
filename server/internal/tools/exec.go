@@ -870,7 +870,18 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 	// Parse key=value pairs from the rest
 	input := make(map[string]any)
 	if len(parts) > 1 {
-		parseKeyValuePairs(parts[1], input)
+		// For action-oriented skills, support positional action syntax:
+		// "blue reminder add message=... time=..."
+		restArgs := strings.TrimSpace(parts[1])
+		if supportsPositionalAction(skillName) {
+			if action, remaining := consumeLeadingBareToken(restArgs); action != "" {
+				if _, hasAction := input["action"]; !hasAction {
+					input["action"] = action
+				}
+				restArgs = remaining
+			}
+		}
+		parseKeyValuePairs(restArgs, input)
 	}
 
 	// Support dotted skill aliases (e.g. "reminder.add ...") by mapping to
@@ -1108,6 +1119,36 @@ func parseKeyValuePairs(s string, out map[string]any) {
 		if key != "" {
 			appendParsedKeyValue(out, key, val)
 		}
+	}
+}
+
+func consumeLeadingBareToken(s string) (token string, remaining string) {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return "", ""
+	}
+
+	token = trimmed
+	remaining = ""
+	if idx := strings.IndexAny(trimmed, " \t\r\n"); idx >= 0 {
+		token = trimmed[:idx]
+		remaining = strings.TrimSpace(trimmed[idx+1:])
+	}
+
+	token = strings.TrimSpace(token)
+	if token == "" || strings.Contains(token, "=") || strings.HasPrefix(token, "-") {
+		return "", trimmed
+	}
+
+	return strings.ToLower(token), remaining
+}
+
+func supportsPositionalAction(skillName string) bool {
+	switch strings.ToLower(strings.TrimSpace(skillName)) {
+	case "reminder", "scheduler", "workflows":
+		return true
+	default:
+		return false
 	}
 }
 

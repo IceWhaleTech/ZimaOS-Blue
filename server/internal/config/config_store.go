@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -51,18 +52,43 @@ func (s *ConfigStore) LoadOrImport(yamlCfg *Config) (*Config, error) {
 		if loadErr != nil {
 			return nil, loadErr
 		}
+		if migrateErr := s.migrateLegacySecretsLocked(ctx, cfg); migrateErr != nil {
+			return nil, migrateErr
+		}
 		s.config = cfg
 		s.loaded = true
 		return cfg, nil
 	}
 
 	// First run — import YAML config into DB
+	if err := ensureFirstRunSecrets(yamlCfg); err != nil {
+		return nil, err
+	}
 	if importErr := s.importLocked(ctx, yamlCfg); importErr != nil {
 		return nil, importErr
 	}
 	s.config = yamlCfg
 	s.loaded = true
 	return yamlCfg, nil
+}
+
+func (s *ConfigStore) migrateLegacySecretsLocked(ctx context.Context, cfg *Config) error {
+	if cfg == nil {
+		return nil
+	}
+	if !usesDefaultJWTSecret(cfg.Security.JWT.Secret) {
+		return nil
+	}
+
+	secret, err := generateSecretHex(32)
+	if err != nil {
+		return err
+	}
+	cfg.Security.JWT.Secret = secret
+	if err := s.kv.SetJSON(ctx, configKeyPrefix+"security", cfg.Security, 0); err != nil {
+		return fmt.Errorf("persist migrated JWT secret: %w", err)
+	}
+	return nil
 }
 
 // Config returns the current in-memory config.

@@ -537,8 +537,10 @@ func (m *Manager) exchangeCode(ctx context.Context, cfg *ProviderConfig, code, c
 		"code":          {code},
 		"redirect_uri":  {fmt.Sprintf("http://localhost:%d%s", redirectPort, cfg.RedirectPath)},
 		"client_id":     {cfg.ClientID},
-		"client_secret": {cfg.ClientSecret},
 		"code_verifier": {codeVerifier},
+	}
+	if cfg.ClientSecret != "" {
+		data.Set("client_secret", cfg.ClientSecret)
 	}
 
 	return m.doTokenRequest(ctx, cfg.TokenURL, data)
@@ -549,7 +551,9 @@ func (m *Manager) refreshToken(ctx context.Context, cfg *ProviderConfig, refresh
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {refreshToken},
 		"client_id":     {cfg.ClientID},
-		"client_secret": {cfg.ClientSecret},
+	}
+	if cfg.ClientSecret != "" {
+		data.Set("client_secret", cfg.ClientSecret)
 	}
 
 	return m.doTokenRequest(ctx, cfg.TokenURL, data)

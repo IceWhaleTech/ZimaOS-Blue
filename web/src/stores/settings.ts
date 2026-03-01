@@ -3,7 +3,17 @@ import { ref, computed, watch } from 'vue'
 import type { ToolDefinition } from '@/api/chat'
 import { toolApi } from '@/api/chat'
 import { providerPoolApi, type Provider, type Model } from '@/api/providerPool'
-import { settingsApi, type Settings } from '@/api/settings'
+import {
+  settingsApi,
+  type Settings,
+  type NoLLMDegradeMode,
+  type SmallModelID,
+  type SmallModelRuntime,
+  type SmallModelStatus,
+  type SmallModelStats,
+  type SmallModelUnavailablePolicy,
+  type SoulProposal,
+} from '@/api/settings'
 import { claudeCodeApi } from '@/api/claudecode'
 
 const STORAGE_KEY = 'zimaos-blue-settings'
@@ -95,6 +105,15 @@ export const useSettingsStore = defineStore('settings', () => {
   // Backend settings (locale, timezone)
   const backendSettings = ref<Settings>({})
   const backendSettingsLoading = ref(false)
+  const smallModelStatus = ref<SmallModelStatus | null>(null)
+  const smallModelStatusLoading = ref(false)
+  const smallModelStatusError = ref<string | null>(null)
+  const smallModelStats = ref<SmallModelStats | null>(null)
+  const smallModelStatsLoading = ref(false)
+  const smallModelStatsError = ref<string | null>(null)
+  const soulProposals = ref<SoulProposal[]>([])
+  const soulProposalsLoading = ref(false)
+  const soulProposalsError = ref<string | null>(null)
 
   // Computed: All provider-model options for dropdown
   const providerModelOptions = computed<ProviderModelOption[]>(() => {
@@ -380,7 +399,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   // Agent mode (from backend settings)
-  const agentMode = computed(() => backendSettings.value.agent_mode ?? true)
+  const agentMode = computed(() => backendSettings.value.agent_mode ?? false)
   const agentAutoConfirm = computed(() => backendSettings.value.agent_auto_confirm ?? false)
   const memoryRecallMode = computed<MemoryRecallMode>(() => {
     const mode = backendSettings.value.memory_recall_mode
@@ -390,6 +409,37 @@ export const useSettingsStore = defineStore('settings', () => {
   const skillRerankEnabled = computed(() => backendSettings.value.skill_rerank_enabled ?? true)
   const skillRerankONNXEnabled = computed(() => backendSettings.value.skill_rerank_onnx_enabled ?? false)
   const skillRerankONNXAutoDownload = computed(() => backendSettings.value.skill_rerank_onnx_auto_download ?? false)
+  const smallModelEnabled = computed(() => backendSettings.value.small_model_enabled ?? false)
+  const smallModelRuntime = computed<SmallModelRuntime>(() => {
+    const runtime = backendSettings.value.small_model_runtime
+    return runtime === 'llama_cpp_native' ? runtime : 'llama_cpp_native'
+  })
+  const smallModelID = computed<SmallModelID>(() => {
+    const id = backendSettings.value.small_model_id
+    return id === 'lfm2.5-1.2b-instruct-q4km' ? id : 'lfm2.5-1.2b-instruct-q4km'
+  })
+  const smallModelAutoDownload = computed(() => backendSettings.value.small_model_auto_download ?? true)
+  const smallModelShadowRatio = computed(() => {
+    const ratio = backendSettings.value.small_model_shadow_ratio
+    if (typeof ratio !== 'number' || ratio <= 0 || ratio > 1) return 0.1
+    return ratio
+  })
+  const smallModelSummaryEnabled = computed(() => backendSettings.value.small_model_summary_enabled ?? true)
+  const smallModelDocExtractEnabled = computed(() => backendSettings.value.small_model_doc_extract_enabled ?? true)
+  const smallModelRerankEnabled = computed(() => backendSettings.value.small_model_rerank_enabled ?? true)
+  const smallModelContextPruneEnabled = computed(() => backendSettings.value.small_model_context_prune_enabled ?? true)
+  const smallModelRouteShortQAEnabled = computed(() => backendSettings.value.small_model_route_short_qa_enabled ?? false)
+  const smallModelRouteToolDispatchEnabled = computed(() => backendSettings.value.small_model_route_tool_dispatch_enabled ?? false)
+  const noLLMDegradeMode = computed<NoLLMDegradeMode>(() => {
+    return backendSettings.value.no_llm_degrade_mode === 'deepresearch'
+      ? backendSettings.value.no_llm_degrade_mode
+      : 'deepresearch'
+  })
+  const smallModelUnavailablePolicy = computed<SmallModelUnavailablePolicy>(() => {
+    return backendSettings.value.small_model_unavailable_policy === 'ir_first'
+      ? backendSettings.value.small_model_unavailable_policy
+      : 'ir_first'
+  })
 
   async function setAgentMode(enabled: boolean) {
     await updateBackendSettings({ agent_mode: enabled })
@@ -415,6 +465,133 @@ export const useSettingsStore = defineStore('settings', () => {
     await updateBackendSettings({ skill_rerank_onnx_auto_download: enabled })
   }
 
+  async function setSmallModelEnabled(enabled: boolean) {
+    await updateBackendSettings({ small_model_enabled: enabled })
+  }
+
+  async function setSmallModelAutoDownload(enabled: boolean) {
+    await updateBackendSettings({ small_model_auto_download: enabled })
+  }
+
+  async function setSmallModelShadowRatio(ratio: number) {
+    const normalized = Math.max(0.01, Math.min(1, ratio))
+    await updateBackendSettings({ small_model_shadow_ratio: normalized })
+  }
+
+  async function setSmallModelSummaryEnabled(enabled: boolean) {
+    await updateBackendSettings({ small_model_summary_enabled: enabled })
+  }
+
+  async function setSmallModelDocExtractEnabled(enabled: boolean) {
+    await updateBackendSettings({ small_model_doc_extract_enabled: enabled })
+  }
+
+  async function setSmallModelRerankEnabled(enabled: boolean) {
+    await updateBackendSettings({ small_model_rerank_enabled: enabled })
+  }
+
+  async function setSmallModelContextPruneEnabled(enabled: boolean) {
+    await updateBackendSettings({ small_model_context_prune_enabled: enabled })
+  }
+
+  async function setSmallModelRouteShortQAEnabled(enabled: boolean) {
+    await updateBackendSettings({ small_model_route_short_qa_enabled: enabled })
+  }
+
+  async function setSmallModelRouteToolDispatchEnabled(enabled: boolean) {
+    await updateBackendSettings({ small_model_route_tool_dispatch_enabled: enabled })
+  }
+
+  async function setNoLLMDegradeMode(mode: NoLLMDegradeMode) {
+    await updateBackendSettings({ no_llm_degrade_mode: mode })
+  }
+
+  async function setSmallModelUnavailablePolicy(policy: SmallModelUnavailablePolicy) {
+    await updateBackendSettings({ small_model_unavailable_policy: policy })
+  }
+
+  async function fetchSmallModelStatus() {
+    try {
+      smallModelStatusLoading.value = true
+      smallModelStatusError.value = null
+      const response = await settingsApi.getSmallModelStatus()
+      smallModelStatus.value = response.data
+      return response.data
+    } catch (e) {
+      smallModelStatusError.value = e instanceof Error ? e.message : 'Failed to fetch small model status'
+      throw e
+    } finally {
+      smallModelStatusLoading.value = false
+    }
+  }
+
+  async function startSmallModelDownload() {
+    await settingsApi.downloadSmallModel()
+    return fetchSmallModelStatus()
+  }
+
+  async function cancelSmallModelDownload() {
+    await settingsApi.cancelSmallModelDownload()
+    return fetchSmallModelStatus()
+  }
+
+  async function fetchSoulProposals() {
+    try {
+      soulProposalsLoading.value = true
+      soulProposalsError.value = null
+      const response = await settingsApi.listSoulProposals()
+      soulProposals.value = response.data.proposals || []
+      return soulProposals.value
+    } catch (e) {
+      soulProposalsError.value = e instanceof Error ? e.message : 'Failed to fetch SOUL proposals'
+      throw e
+    } finally {
+      soulProposalsLoading.value = false
+    }
+  }
+
+  async function approveSoulProposal(id: string) {
+    const response = await settingsApi.approveSoulProposal(id)
+    const idx = soulProposals.value.findIndex((p) => p.id === response.data.id)
+    if (idx >= 0) {
+      soulProposals.value[idx] = response.data
+    } else {
+      soulProposals.value.unshift(response.data)
+    }
+    return response.data
+  }
+
+  async function rejectSoulProposal(id: string) {
+    const response = await settingsApi.rejectSoulProposal(id)
+    const idx = soulProposals.value.findIndex((p) => p.id === response.data.id)
+    if (idx >= 0) {
+      soulProposals.value[idx] = response.data
+    } else {
+      soulProposals.value.unshift(response.data)
+    }
+    return response.data
+  }
+
+  async function fetchSmallModelStats() {
+    try {
+      smallModelStatsLoading.value = true
+      smallModelStatsError.value = null
+      const response = await settingsApi.getSmallModelStats()
+      smallModelStats.value = response.data
+      return response.data
+    } catch (e) {
+      smallModelStatsError.value = e instanceof Error ? e.message : 'Failed to fetch small-model stats'
+      throw e
+    } finally {
+      smallModelStatsLoading.value = false
+    }
+  }
+
+  async function resetSmallModelStats() {
+    await settingsApi.resetSmallModelStats()
+    return fetchSmallModelStats()
+  }
+
   return {
     // State
     providers,
@@ -429,6 +606,15 @@ export const useSettingsStore = defineStore('settings', () => {
     error,
     backendSettings,
     backendSettingsLoading,
+    smallModelStatus,
+    smallModelStatusLoading,
+    smallModelStatusError,
+    smallModelStats,
+    smallModelStatsLoading,
+    smallModelStatsError,
+    soulProposals,
+    soulProposalsLoading,
+    soulProposalsError,
     claudeCodeEnabled,
     agentMode,
     agentAutoConfirm,
@@ -436,6 +622,19 @@ export const useSettingsStore = defineStore('settings', () => {
     skillRerankEnabled,
     skillRerankONNXEnabled,
     skillRerankONNXAutoDownload,
+    smallModelEnabled,
+    smallModelRuntime,
+    smallModelID,
+    smallModelAutoDownload,
+    smallModelShadowRatio,
+    smallModelSummaryEnabled,
+    smallModelDocExtractEnabled,
+    smallModelRerankEnabled,
+    smallModelContextPruneEnabled,
+    smallModelRouteShortQAEnabled,
+    smallModelRouteToolDispatchEnabled,
+    noLLMDegradeMode,
+    smallModelUnavailablePolicy,
     showToolDetails,
 
     // Computed
@@ -469,6 +668,25 @@ export const useSettingsStore = defineStore('settings', () => {
     setSkillRerankEnabled,
     setSkillRerankONNXEnabled,
     setSkillRerankONNXAutoDownload,
+    setSmallModelEnabled,
+    setSmallModelAutoDownload,
+    setSmallModelShadowRatio,
+    setSmallModelSummaryEnabled,
+    setSmallModelDocExtractEnabled,
+    setSmallModelRerankEnabled,
+    setSmallModelContextPruneEnabled,
+    setSmallModelRouteShortQAEnabled,
+    setSmallModelRouteToolDispatchEnabled,
+    setNoLLMDegradeMode,
+    setSmallModelUnavailablePolicy,
+    fetchSmallModelStatus,
+    startSmallModelDownload,
+    cancelSmallModelDownload,
+    fetchSoulProposals,
+    approveSoulProposal,
+    rejectSoulProposal,
+    fetchSmallModelStats,
+    resetSmallModelStats,
     setShowToolDetails,
   }
 })

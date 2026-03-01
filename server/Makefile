@@ -1,4 +1,4 @@
-.PHONY: all build build-full build-bluecli build-launcher test lint clean run trim-dist bump-version copy-skills
+.PHONY: all build build-full build-bluecli build-launcher test lint clean run trim-dist bump-version copy-skills verify-provider verify-provider-e2e
 
 # Variables
 BINARY_NAME=blue
@@ -212,8 +212,53 @@ help:
 	@echo "  deps         - Download and tidy dependencies"
 	@echo "  build-all    - Cross-compile for multiple platforms"
 	@echo "  docker-build - Build Docker image"
+	@echo "  verify-provider - Verify responses-only/provider compatibility"
+	@echo "  verify-provider-e2e - Verify provider pool end-to-end (requires running server)"
 	@echo "  help         - Show this help"
 	@echo "  bump-version - Sync VERSION file to all project files"
+
+# Verify provider compatibility (responses-only / chat-completions support)
+# Usage:
+#   make verify-provider BASE_URL=https://example.com API_KEY=sk-xxx [MODEL=gpt-5.3-codex]
+verify-provider:
+	@if [ -z "$(BASE_URL)" ] || [ -z "$(API_KEY)" ]; then \
+		echo "Usage: make verify-provider BASE_URL=https://example.com API_KEY=sk-xxx [MODEL=gpt-5.3-codex]"; \
+		exit 1; \
+	fi; \
+	MODEL_VALUE="$(MODEL)"; \
+	if [ -z "$$MODEL_VALUE" ]; then MODEL_VALUE="gpt-5.3-codex"; fi; \
+	./tools/verify_responses_provider.sh "$(BASE_URL)" "$(API_KEY)" "$$MODEL_VALUE"
+
+# Verify provider pool end-to-end through local Blue API + direct responses call
+# Requires Blue server running (default: http://127.0.0.1:18080).
+# Usage:
+#   make verify-provider-e2e BASE_URL=https://example.com API_KEY=sk-xxx \
+#     [SERVER_URL=http://127.0.0.1:18080] [PROVIDER_ID=codex-e2e] \
+#     [PROVIDER_NAME="Codex E2E"] [MODEL=gpt-5.3-codex-spark] [TOKEN=jwt]
+verify-provider-e2e:
+	@if [ -z "$(BASE_URL)" ] || [ -z "$(API_KEY)" ]; then \
+		echo "Usage: make verify-provider-e2e BASE_URL=https://example.com API_KEY=sk-xxx [SERVER_URL=http://127.0.0.1:18080] [PROVIDER_ID=codex-e2e] [PROVIDER_NAME='Codex E2E'] [MODEL=gpt-5.3-codex-spark] [TOKEN=jwt]"; \
+		exit 1; \
+	fi; \
+	SERVER_URL_VALUE="$(SERVER_URL)"; \
+	PROVIDER_ID_VALUE="$(PROVIDER_ID)"; \
+	PROVIDER_NAME_VALUE="$(PROVIDER_NAME)"; \
+	MODEL_VALUE="$(MODEL)"; \
+	TOKEN_VALUE="$(TOKEN)"; \
+	TOKEN_ARG=""; \
+	if [ -z "$$SERVER_URL_VALUE" ]; then SERVER_URL_VALUE="http://127.0.0.1:18080"; fi; \
+	if [ -z "$$PROVIDER_ID_VALUE" ]; then PROVIDER_ID_VALUE="codex-e2e"; fi; \
+	if [ -z "$$PROVIDER_NAME_VALUE" ]; then PROVIDER_NAME_VALUE="Codex E2E"; fi; \
+	if [ -z "$$MODEL_VALUE" ]; then MODEL_VALUE="gpt-5.3-codex-spark"; fi; \
+	if [ -n "$$TOKEN_VALUE" ]; then TOKEN_ARG="--token $$TOKEN_VALUE"; fi; \
+	./tools/verify_provider_pool_responses_e2e.sh \
+		--server-url "$$SERVER_URL_VALUE" \
+		--provider-base-url "$(BASE_URL)" \
+		--api-key "$(API_KEY)" \
+		--provider-id "$$PROVIDER_ID_VALUE" \
+		--provider-name "$$PROVIDER_NAME_VALUE" \
+		--model "$$MODEL_VALUE" \
+		$$TOKEN_ARG
 
 # Bump version: reads ../VERSION and patches all version strings across the project
 bump-version:

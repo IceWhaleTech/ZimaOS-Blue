@@ -14,7 +14,7 @@ const PAGE_SIZE = 50
 const CHAT_MODEL_PREF_KEY = 'chat.modelPreference'
 const CHAT_OFFLINE_MODE_KEY = 'chat.offlineMode'
 const CHAT_WEB_SEARCH_ENABLED_KEY = 'chat.webSearchEnabled'
-const CHAT_DEEP_SEARCH_ENABLED_KEY = 'chat.deepSearchEnabled'
+const CHAT_DEEP_RESEARCH_ENABLED_KEY = 'chat.deepResearchEnabled'
 
 /** Structured tool result for collapsible detail cards. */
 export interface ToolResultItem {
@@ -165,19 +165,19 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  const loadDeepSearchEnabled = (): boolean => {
+  const loadDeepResearchEnabled = (): boolean => {
     try {
-      const value = localStorage.getItem(CHAT_DEEP_SEARCH_ENABLED_KEY)
-      if (value === null) return true
+      const value = localStorage.getItem(CHAT_DEEP_RESEARCH_ENABLED_KEY)
+      if (value === null) return false
       return value !== '0'
     } catch {
-      return true
+      return false
     }
   }
 
-  const saveDeepSearchEnabled = (enabled: boolean) => {
+  const saveDeepResearchEnabled = (enabled: boolean) => {
     try {
-      localStorage.setItem(CHAT_DEEP_SEARCH_ENABLED_KEY, enabled ? '1' : '0')
+      localStorage.setItem(CHAT_DEEP_RESEARCH_ENABLED_KEY, enabled ? '1' : '0')
     } catch {
       // ignore storage errors
     }
@@ -242,6 +242,7 @@ export const useChatStore = defineStore('chat', () => {
     questions: Array<{
       id: string
       question: string
+      detail?: string
       header: string
       options?: Array<{ label: string; description?: string; value?: string }>
       multi_select?: boolean
@@ -266,7 +267,7 @@ export const useChatStore = defineStore('chat', () => {
   const modelPreference = ref<string>(loadModelPreference())
   const offlineMode = ref<boolean>(loadOfflineMode())
   const webSearchEnabled = ref<boolean>(loadWebSearchEnabled())
-  const deepSearchEnabled = ref<boolean>(loadDeepSearchEnabled())
+  const deepResearchEnabled = ref<boolean>(loadDeepResearchEnabled())
 
   // SSE client for streaming
   const sseClient = new SSEClient()
@@ -896,7 +897,7 @@ export const useChatStore = defineStore('chat', () => {
       max_tokens: settingsStore.maxTokens,
       attachments: attachments.length > 0 ? attachments : undefined,
       web_search_enabled: webSearchEnabled.value,
-      deep_research_enabled: deepSearchEnabled.value,
+      deep_research_enabled: deepResearchEnabled.value,
     }
 
     try {
@@ -1303,7 +1304,7 @@ export const useChatStore = defineStore('chat', () => {
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         web_search_enabled: webSearchEnabled.value,
-        deep_research_enabled: deepSearchEnabled.value,
+        deep_research_enabled: deepResearchEnabled.value,
       }
 
       await sseClient.connect(convId, request, {
@@ -1439,7 +1440,7 @@ export const useChatStore = defineStore('chat', () => {
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         web_search_enabled: webSearchEnabled.value,
-        deep_research_enabled: deepSearchEnabled.value,
+        deep_research_enabled: deepResearchEnabled.value,
       }
 
       await sseClient.connect(conversationId, request, {
@@ -1611,7 +1612,7 @@ export const useChatStore = defineStore('chat', () => {
         attachments: lastUserMessage.attachments,
         regenerate: true,
         web_search_enabled: webSearchEnabled.value,
-        deep_research_enabled: deepSearchEnabled.value,
+        deep_research_enabled: deepResearchEnabled.value,
       }
 
       await sseClient.connect(conversationId, request, {
@@ -2064,9 +2065,9 @@ export const useChatStore = defineStore('chat', () => {
     saveModelPreference(modelPreference.value)
   }
 
-  function setDeepSearchEnabled(enabled: boolean) {
-    deepSearchEnabled.value = enabled
-    saveDeepSearchEnabled(enabled)
+  function setDeepResearchEnabled(enabled: boolean) {
+    deepResearchEnabled.value = enabled
+    saveDeepResearchEnabled(enabled)
   }
 
   // Reset warmup tracking (call when conversation changes)
@@ -2109,7 +2110,7 @@ export const useChatStore = defineStore('chat', () => {
     modelPreference,
     offlineMode,
     webSearchEnabled,
-    deepSearchEnabled,
+    deepResearchEnabled,
 
     // Computed
     currentConversation,
@@ -2162,6 +2163,6 @@ export const useChatStore = defineStore('chat', () => {
     resetWarmup,
     setModelPreference,
     setWebSearchEnabled,
-    setDeepSearchEnabled,
+    setDeepResearchEnabled,
   }
 })

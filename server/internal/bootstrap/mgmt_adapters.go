@@ -214,27 +214,40 @@ type mgmtSettingsAdapter struct {
 
 func (a *mgmtSettingsAdapter) GetAll(_ context.Context) (map[string]interface{}, error) {
 	return map[string]interface{}{
-		"locale":                              a.handler.GetLocale(),
-		"smart_tool_selection":                a.handler.GetSmartToolSelection(),
-		"smart_skill_selection":               a.handler.GetSmartSkillSelection(),
-		"skill_selector_mode":                 a.handler.GetSkillSelectorMode(),
-		"skill_rerank_enabled":                a.handler.GetSkillRerankEnabled(),
-		"skill_rerank_model":                  a.handler.GetSkillRerankModel(),
-		"skill_rerank_onnx_enabled":           a.handler.GetSkillRerankONNXEnabled(),
-		"skill_rerank_onnx_auto_download":     a.handler.GetSkillRerankONNXAutoDownload(),
-		"skill_selector_confidence_threshold": a.handler.GetSkillSelectorConfidenceThreshold(),
-		"agent_mode":                          a.handler.GetAgentMode(),
-		"agent_auto_confirm":                  a.handler.GetAgentAutoConfirm(),
+		"locale":                                  a.handler.GetLocale(),
+		"smart_tool_selection":                    a.handler.GetSmartToolSelection(),
+		"smart_skill_selection":                   a.handler.GetSmartSkillSelection(),
+		"skill_selector_mode":                     a.handler.GetSkillSelectorMode(),
+		"skill_rerank_enabled":                    a.handler.GetSkillRerankEnabled(),
+		"skill_rerank_model":                      a.handler.GetSkillRerankModel(),
+		"skill_rerank_onnx_enabled":               a.handler.GetSkillRerankONNXEnabled(),
+		"skill_rerank_onnx_auto_download":         a.handler.GetSkillRerankONNXAutoDownload(),
+		"skill_selector_confidence_threshold":     a.handler.GetSkillSelectorConfidenceThreshold(),
+		"agent_mode":                              a.handler.GetAgentMode(),
+		"agent_auto_confirm":                      a.handler.GetAgentAutoConfirm(),
+		"small_model_enabled":                     a.handler.GetSmallModelEnabled(),
+		"small_model_runtime":                     a.handler.GetSmallModelRuntime(),
+		"small_model_id":                          a.handler.GetSmallModelID(),
+		"small_model_auto_download":               a.handler.GetSmallModelAutoDownload(),
+		"small_model_shadow_ratio":                a.handler.GetSmallModelShadowRatio(),
+		"small_model_summary_enabled":             a.handler.GetSmallModelSummaryEnabled(),
+		"small_model_doc_extract_enabled":         a.handler.GetSmallModelDocExtractEnabled(),
+		"small_model_rerank_enabled":              a.handler.GetSmallModelRerankEnabled(),
+		"small_model_context_prune_enabled":       a.handler.GetSmallModelContextPruneEnabled(),
+		"small_model_route_short_qa_enabled":      a.handler.GetSmallModelRouteShortQAEnabled(),
+		"small_model_route_tool_dispatch_enabled": a.handler.GetSmallModelRouteToolDispatchEnabled(),
+		"no_llm_degrade_mode":                     a.handler.GetNoLLMDegradeMode(),
+		"small_model_unavailable_policy":          a.handler.GetSmallModelUnavailablePolicy(),
 	}, nil
 }
 
 func (a *mgmtSettingsAdapter) Set(_ context.Context, key, value string) error {
 	// Delegate to the settings handler's internal logic
 	switch key {
-	case "locale", "timezone", "smart_tool_selection", "smart_skill_selection", "skill_selector_mode", "skill_rerank_enabled", "skill_rerank_model", "skill_rerank_onnx_enabled", "skill_rerank_onnx_auto_download", "skill_selector_confidence_threshold", "agent_mode", "agent_auto_confirm":
+	case "locale", "timezone", "smart_tool_selection", "smart_skill_selection", "skill_selector_mode", "skill_rerank_enabled", "skill_rerank_model", "skill_rerank_onnx_enabled", "skill_rerank_onnx_auto_download", "skill_selector_confidence_threshold", "agent_mode", "agent_auto_confirm", "small_model_enabled", "small_model_runtime", "small_model_id", "small_model_auto_download", "small_model_shadow_ratio", "small_model_summary_enabled", "small_model_doc_extract_enabled", "small_model_rerank_enabled", "small_model_context_prune_enabled", "small_model_route_short_qa_enabled", "small_model_route_tool_dispatch_enabled", "no_llm_degrade_mode", "small_model_unavailable_policy":
 		// Valid keys — handled below
 	default:
-		return fmt.Errorf("unknown setting key: %s (valid: locale, timezone, smart_tool_selection, smart_skill_selection, skill_selector_mode, skill_rerank_enabled, skill_rerank_model, skill_rerank_onnx_enabled, skill_rerank_onnx_auto_download, skill_selector_confidence_threshold, agent_mode, agent_auto_confirm)", key)
+		return fmt.Errorf("unknown setting key: %s (valid: locale, timezone, smart_tool_selection, smart_skill_selection, skill_selector_mode, skill_rerank_enabled, skill_rerank_model, skill_rerank_onnx_enabled, skill_rerank_onnx_auto_download, skill_selector_confidence_threshold, agent_mode, agent_auto_confirm, small_model_enabled, small_model_runtime, small_model_id, small_model_auto_download, small_model_shadow_ratio, small_model_summary_enabled, small_model_doc_extract_enabled, small_model_rerank_enabled, small_model_context_prune_enabled, small_model_route_short_qa_enabled, small_model_route_tool_dispatch_enabled, no_llm_degrade_mode, small_model_unavailable_policy)", key)
 	}
 	// We can't easily call Patch without an echo.Context, so we expose a direct setter.
 	// For now, return a helpful message.

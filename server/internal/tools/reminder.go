@@ -8,7 +8,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/remindertime"
 )
 
-// PushServiceInterface defines the interface for the push notification service.
+// PushServiceInterface defines the interface for the reminder delivery service.
 // This avoids circular imports with the push package.
 type PushServiceInterface interface {
 	Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string) (PushResult, error)
@@ -17,7 +17,7 @@ type PushServiceInterface interface {
 	Clear(ctx context.Context, ownerID string) (int64, error)
 }
 
-// PushResult is the data returned by the push notification service.
+// PushResult is the data returned by the reminder delivery service.
 type PushResult struct {
 	ID        string    `json:"id"`
 	Message   string    `json:"message"`
@@ -27,12 +27,12 @@ type PushResult struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// PushTool is a native tool for managing push notifications.
+// PushTool is a native tool for managing reminders.
 type PushTool struct {
 	svc PushServiceInterface
 }
 
-// NewPushTool creates a new push notification tool.
+// NewPushTool creates a new reminder tool.
 func NewPushTool(svc PushServiceInterface) *PushTool {
 	return &PushTool{svc: svc}
 }
@@ -41,7 +41,7 @@ func NewPushTool(svc PushServiceInterface) *PushTool {
 func (t *PushTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name: "reminder",
-		Description: `Manage reminders and scheduled alerts. Delivers via SSE, Web Push, and native OS notifications (macOS Notification Center, Linux notify-send, Windows toast). Actions:
+		Description: `Manage reminders and scheduled alerts. Delivers via SSE, Web Push, and native OS alerts (macOS Notification Center, Linux notify-send, Windows toast). Actions:
 - add: Schedule a reminder (requires message + time)
 - list: List all scheduled reminders
 - delete: Delete a reminder by ID
@@ -191,7 +191,7 @@ func parsePushTime(s string) (time.Time, error) {
 	return remindertime.Parse(s)
 }
 
-// RegisterPushTool registers the push notification tool with the registry.
+// RegisterPushTool registers the reminder tool with the registry.
 func RegisterPushTool(registry *Registry, svc PushServiceInterface) {
 	if svc == nil {
 		return

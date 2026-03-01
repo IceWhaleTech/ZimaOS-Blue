@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { providerPoolApi, type Provider, type Model, type UsageSummary, type IDEInfo, type PricingConfig, type ModelPricing, type ModelParams, type RoutingMode, type LocationStats, type TrialQuotaStatus, type OAuthQuotaInfo } from '@/api/providerPool'
+import { providerPoolApi, type Provider, type Model, type UsageSummary, type IDEInfo, type PricingConfig, type ModelPricing, type ModelParams, type RoutingMode, type LocationStats, type TrialQuotaStatus, type OAuthQuotaInfo, type ProviderVerificationResult, type VerifyProviderCandidateRequest } from '@/api/providerPool'
 import { mediaProviderApi, type MediaProviderConfig } from '@/api/mediaProviders'
 
 export const useProviderPoolStore = defineStore('providerPool', () => {
@@ -143,7 +143,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
   function syncMediaProviderModels(providerId: string, modelsForProvider: Model[]) {
     const provider = providers.value.find(p => p.id === providerId)
     if (provider) {
-      provider.models = modelsForProvider
+      provider.models = [...modelsForProvider]
     }
     models.value = models.value.filter(m => m.provider_id !== providerId)
     models.value.push(...modelsForProvider)
@@ -176,9 +176,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
           allModels.push(...p.models)
         }
       }
-      if (allModels.length > 0) {
-        models.value = allModels
-      }
+      models.value = allModels
       // Also fetch trial quota
       fetchTrialQuota()
     } catch (err) {
@@ -222,9 +220,14 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
           return
         }
         const response = await providerPoolApi.listProviderModels(providerId)
+        const providerModels = response.data.models || []
+        const provider = providers.value.find(p => p.id === providerId)
+        if (provider) {
+          provider.models = [...providerModels]
+        }
         // Update models for this provider
         models.value = models.value.filter(m => m.provider_id !== providerId)
-        models.value.push(...(response.data.models || []))
+        models.value.push(...providerModels)
       } else {
         const response = await providerPoolApi.listAllModels()
         models.value = response.data.models || []
@@ -443,6 +446,42 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to clear error'
+      throw e
+    }
+  }
+
+  async function verifyProviderCandidate(payload: VerifyProviderCandidateRequest): Promise<ProviderVerificationResult> {
+    try {
+      const response = await providerPoolApi.verifyProviderCandidate(payload)
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to verify provider candidate'
+      throw e
+    }
+  }
+
+  async function verifyProviderRecommendation(providerId: string, apply = false, keyId?: string, model?: string) {
+    try {
+      const response = await providerPoolApi.verifyProviderByID(providerId, {
+        apply,
+        key_id: keyId || undefined,
+        model: model?.trim() || undefined,
+      })
+
+      const updatedProvider = response.data.provider
+      if (updatedProvider) {
+        const index = providers.value.findIndex(p => p.id === providerId)
+        if (index !== -1) {
+          providers.value[index] = {
+            ...providers.value[index],
+            ...updatedProvider,
+          }
+        }
+      }
+
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to verify provider'
       throw e
     }
   }
@@ -839,6 +878,8 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     enableProvider,
     disableProvider,
     clearProviderError,
+    verifyProviderCandidate,
+    verifyProviderRecommendation,
     testProvider,
     updateModelParams,
     detectCapabilities,

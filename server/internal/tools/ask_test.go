@@ -107,3 +107,48 @@ func TestAskExecute_RejectsQAAliasesInsideQuestions(t *testing.T) {
 		t.Fatalf("expected error for q/a aliases in questions")
 	}
 }
+
+func TestParseAskArgs_ParsesTopLevelDetail(t *testing.T) {
+	question, detail, multi, options := parseAskArgs(map[string]interface{}{
+		"q":      "Choose one",
+		"detail": "❕ 这是补充说明",
+		"a":      []interface{}{"A", "B"},
+	})
+	if question != "Choose one" {
+		t.Fatalf("question = %q, want %q", question, "Choose one")
+	}
+	if detail != "❕ 这是补充说明" {
+		t.Fatalf("detail = %q, want %q", detail, "❕ 这是补充说明")
+	}
+	if multi {
+		t.Fatalf("multi = true, want false")
+	}
+	if len(options) != 2 {
+		t.Fatalf("len(options) = %d, want 2", len(options))
+	}
+}
+
+func TestParseAskArgs_ParsesQuestionsItemDetail(t *testing.T) {
+	question, detail, multi, options := parseAskArgs(map[string]interface{}{
+		"questions": []interface{}{
+			map[string]interface{}{
+				"question": "Select mode",
+				"detail":   "❕ 该选择会影响后续执行速度",
+				"type":     "checkbox",
+				"options":  []interface{}{"Fast", "Safe"},
+			},
+		},
+	})
+	if question != "Select mode" {
+		t.Fatalf("question = %q, want %q", question, "Select mode")
+	}
+	if detail != "❕ 该选择会影响后续执行速度" {
+		t.Fatalf("detail = %q, want expected text", detail)
+	}
+	if !multi {
+		t.Fatalf("multi = false, want true")
+	}
+	if len(options) != 2 {
+		t.Fatalf("len(options) = %d, want 2", len(options))
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/google/uuid"
 )
 
@@ -18,6 +19,10 @@ const (
 	analyzeMaxURLs     = 5
 	analyzeMaxSearches = 3
 	analyzeMaxTextLen  = 50000
+
+	analyzeDocExtractAutoRollbackMinAttempts = 40
+	analyzeDocExtractAutoRollbackMaxFailRate = 0.15
+	analyzeFallbackReasonAutoRollbackDoc     = "auto_rollback_doc_extract_fallback_rate"
 )
 
 // AnalyzeTool performs deep-dive content analysis and generates HTML reports.
@@ -27,6 +32,26 @@ type AnalyzeTool struct {
 	browser  BrowserBackend
 	executor *Executor
 	mediaDir string
+
+	smallModel             smallmodel.Runtime
+	smallModelEnabledFn    func() bool
+	smallModelDocExtractFn func() bool
+	smallModelSetDocFn     func(bool) (bool, error)
+	smallModelStats        SmallModelStatsRecorder
+	docExtractAttempts     int64
+	docExtractSuccess      int64
+	docExtractGateAttempts int64
+	docExtractGateSuccess  int64
+}
+
+// SmallModelStatsRecorder records small-model scene-level observability counters.
+type SmallModelStatsRecorder interface {
+	RecordDocExtractAttempt()
+	RecordDocExtractSuccess()
+	RecordLatency(time.Duration)
+	RecordLatencyWithScene(string, time.Duration)
+	RecordFallback(reason string)
+	RecordAutoRollback()
 }
 
 // NewAnalyzeTool creates a new analyze tool.
@@ -60,6 +85,35 @@ func (t *AnalyzeTool) SetMediaDir(dir string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.mediaDir = dir
+}
+
+// SetSmallModelRuntime injects optional small-model runtime used for doc extraction pre-pass.
+func (t *AnalyzeTool) SetSmallModelRuntime(rt smallmodel.Runtime) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.smallModel = rt
+}
+
+// SetSmallModelSwitchFuncs injects runtime switch readers.
+func (t *AnalyzeTool) SetSmallModelSwitchFuncs(enabledFn, docExtractFn func() bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.smallModelEnabledFn = enabledFn
+	t.smallModelDocExtractFn = docExtractFn
+}
+
+// SetSmallModelDocExtractToggle wires a persistence setter used by auto-rollback gate.
+func (t *AnalyzeTool) SetSmallModelDocExtractToggle(setter func(bool) (bool, error)) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.smallModelSetDocFn = setter
+}
+
+// SetSmallModelStatsRecorder injects cross-module small-model counters.
+func (t *AnalyzeTool) SetSmallModelStatsRecorder(recorder SmallModelStatsRecorder) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.smallModelStats = recorder
 }
 
 // Definition returns the tool's definition.
@@ -140,6 +194,10 @@ func (t *AnalyzeTool) runFullAnalysis(ctx context.Context, topic string, args ma
 
 // analyzeAndGenerate runs the LLM analysis pipeline and generates HTML.
 func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent, lang string, bridge LLMBridge, mediaDir string) (interface{}, error) {
+	if preExtracted := t.smallModelDocExtract(ctx, topic, rawContent, lang); preExtracted != "" {
+		rawContent = preExtracted
+	}
+
 	// 2. LLM analysis — extract structured data
 	emitAnalyzeProgress(ctx, "analysis", "Analyzing content", "running")
 	analysisJSON, err := t.llmExtractAndAnalyze(ctx, bridge, topic, rawContent, lang)
@@ -242,6 +300,168 @@ func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{
 	}
 
 	return strings.Join(parts, "\n\n")
+}
+
+func (t *AnalyzeTool) shouldUseSmallModelDocExtract() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	if t.smallModel == nil || t.smallModelEnabledFn == nil || t.smallModelDocExtractFn == nil {
+		return false
+	}
+	return t.smallModelEnabledFn() && t.smallModelDocExtractFn()
+}
+
+// smallModelDocExtract performs a lightweight structured extraction pre-pass.
+// It returns augmented raw content for the main analysis step, or empty when skipped.
+func (t *AnalyzeTool) smallModelDocExtract(ctx context.Context, topic, rawContent, lang string) string {
+	if !t.shouldUseSmallModelDocExtract() {
+		return ""
+	}
+	raw := strings.TrimSpace(rawContent)
+	if len(raw) < 80 {
+		return ""
+	}
+	if len(raw) > 12000 {
+		raw = raw[:12000] + "\n... (truncated)"
+	}
+
+	t.mu.RLock()
+	rt := t.smallModel
+	stats := t.smallModelStats
+	t.mu.RUnlock()
+	if rt == nil {
+		return ""
+	}
+
+	prompt := fmt.Sprintf(`Extract a concise structured workflow summary for topic "%s".
+Return plain text with exactly these sections:
+Objective:
+Inputs:
+Steps:
+Outputs:
+Risks:
+
+Language: %s
+
+Source:
+---
+%s
+---`, topic, lang, raw)
+
+	smCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	if stats != nil {
+		stats.RecordDocExtractAttempt()
+	}
+	t.mu.Lock()
+	t.docExtractAttempts++
+	t.mu.Unlock()
+	defer t.maybeAutoRollbackDocExtract()
+	started := time.Now()
+	resp, err := rt.Generate(smCtx, smallmodel.GenerateRequest{
+		Prompt:      prompt,
+		MaxTokens:   320,
+		Temperature: 0.1,
+	})
+	if stats != nil {
+		stats.RecordLatencyWithScene("doc_extract", time.Since(started))
+	}
+	if err != nil {
+		if stats != nil {
+			stats.RecordFallback(analyzeSmallModelFallbackReason(err))
+		}
+		return ""
+	}
+	if resp == nil {
+		if stats != nil {
+			stats.RecordFallback(smallmodel.FallbackReasonResourceGuard)
+		}
+		return ""
+	}
+	extracted := strings.TrimSpace(resp.Text)
+	if extracted == "" {
+		if stats != nil {
+			stats.RecordFallback(smallmodel.FallbackReasonLowConfidence)
+		}
+		return ""
+	}
+	if len(extracted) > 6000 {
+		extracted = extracted[:6000] + "\n... (truncated)"
+	}
+	if stats != nil {
+		stats.RecordDocExtractSuccess()
+	}
+	t.mu.Lock()
+	t.docExtractSuccess++
+	t.mu.Unlock()
+
+	return "=== Small-model structured extraction ===\n" + extracted + "\n\n" + rawContent
+}
+
+func (t *AnalyzeTool) maybeAutoRollbackDocExtract() {
+	t.mu.RLock()
+	docEnabledFn := t.smallModelDocExtractFn
+	setDocFn := t.smallModelSetDocFn
+	stats := t.smallModelStats
+	attempts := t.docExtractAttempts
+	success := t.docExtractSuccess
+	gateAttempts := t.docExtractGateAttempts
+	gateSuccess := t.docExtractGateSuccess
+	t.mu.RUnlock()
+
+	if docEnabledFn == nil || setDocFn == nil || !docEnabledFn() {
+		return
+	}
+	windowAttempts := attempts - gateAttempts
+	windowSuccess := success - gateSuccess
+	if windowAttempts < analyzeDocExtractAutoRollbackMinAttempts {
+		return
+	}
+	failures := windowAttempts - windowSuccess
+	if failures <= 0 {
+		t.mu.Lock()
+		t.docExtractGateAttempts = attempts
+		t.docExtractGateSuccess = success
+		t.mu.Unlock()
+		return
+	}
+	failRate := float64(failures) / float64(windowAttempts)
+	if failRate < analyzeDocExtractAutoRollbackMaxFailRate {
+		t.mu.Lock()
+		t.docExtractGateAttempts = attempts
+		t.docExtractGateSuccess = success
+		t.mu.Unlock()
+		return
+	}
+
+	changed, err := setDocFn(false)
+	if err != nil || !changed {
+		return
+	}
+	if stats != nil {
+		stats.RecordAutoRollback()
+		stats.RecordFallback(analyzeFallbackReasonAutoRollbackDoc)
+	}
+	t.mu.Lock()
+	t.docExtractGateAttempts = attempts
+	t.docExtractGateSuccess = success
+	t.mu.Unlock()
+}
+
+func analyzeSmallModelFallbackReason(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, smallmodel.ErrCircuitOpen):
+		return smallmodel.FallbackReasonCircuitOpen
+	case errors.Is(err, smallmodel.ErrNotReady):
+		return smallmodel.FallbackReasonModelUnready
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		return smallmodel.FallbackReasonTimeout
+	default:
+		return smallmodel.FallbackReasonResourceGuard
+	}
 }
 
 // scrapeURL uses the browser to navigate and extract page content.

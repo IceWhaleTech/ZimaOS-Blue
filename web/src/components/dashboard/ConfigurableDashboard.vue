@@ -15,6 +15,7 @@ import MemoryChartCard from './cards/MemoryChartCard.vue'
 import GoroutinesChartCard from './cards/GoroutinesChartCard.vue'
 import HeapChartCard from './cards/HeapChartCard.vue'
 import FailoverStatusCard from './cards/FailoverStatusCard.vue'
+import SmallModelStatsCard from './cards/SmallModelStatsCard.vue'
 // Metrics cards
 import MetricsOverviewCard from './cards/MetricsOverviewCard.vue'
 import TokenUsageChartCard from './cards/TokenUsageChartCard.vue'
@@ -47,6 +48,7 @@ const componentMap: Record<string, Component> = {
   GoroutinesChartCard: markRaw(GoroutinesChartCard),
   HeapChartCard: markRaw(HeapChartCard),
   FailoverStatusCard: markRaw(FailoverStatusCard),
+  SmallModelStatsCard: markRaw(SmallModelStatsCard),
   // Metrics cards
   MetricsOverviewCard: markRaw(MetricsOverviewCard),
   TokenUsageChartCard: markRaw(TokenUsageChartCard),

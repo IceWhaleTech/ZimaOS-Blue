@@ -160,6 +160,44 @@ func TestFetchOpenAIModels(t *testing.T) {
 	}
 }
 
+func TestFetchOpenRouterFreeModels(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "openrouter-free-test-*")
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	provider := &Provider{ID: "openrouter-free"}
+	body := []byte(`{
+		"data": [
+			{"id": "openai/gpt-oss-20b:free", "object": "model", "created": 1687882411, "owned_by": "openrouter", "pricing": {"prompt": "0", "completion": "0"}},
+			{"id": "qwen/qwen3-14b", "object": "model", "created": 1687882411, "owned_by": "openrouter", "pricing": {"prompt": "0", "completion": "0", "request": "0"}},
+			{"id": "anthropic/claude-3.5-sonnet", "object": "model", "created": 1687882411, "owned_by": "openrouter", "pricing": {"prompt": "0.000003", "completion": "0.000015"}},
+			{"id": "meta/llama-3.3-70b-instruct", "object": "model", "created": 1687882411, "owned_by": "openrouter"}
+		]
+	}`)
+
+	models, err := discovery.parseOpenAIModelsResponse(body, provider)
+	if err != nil {
+		t.Fatalf("parseOpenAIModelsResponse failed: %v", err)
+	}
+
+	if len(models) != 2 {
+		t.Fatalf("Expected 2 free models, got %d", len(models))
+	}
+
+	expected := map[string]bool{
+		"openai/gpt-oss-20b:free": true,
+		"qwen/qwen3-14b":          true,
+	}
+	for _, model := range models {
+		if !expected[model.ID] {
+			t.Errorf("Unexpected filtered model: %s", model.ID)
+		}
+	}
+}
+
 func TestFetchOllamaModels(t *testing.T) {
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

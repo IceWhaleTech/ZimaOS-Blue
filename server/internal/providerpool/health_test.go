@@ -50,3 +50,49 @@ func TestHTTPHealthChecker_NonCloudCode401IsAuthError(t *testing.T) {
 		t.Fatalf("expected auth_error:401, got %q", result.Error)
 	}
 }
+
+func TestGetHealthCheckMethod_ResponsesBaseURLVariants(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL string
+		wantURL []string
+	}{
+		{
+			name:    "fixed endpoint base",
+			baseURL: "https://chatgpt.com/backend-api/codex/responses",
+			wantURL: []string{"https://chatgpt.com/backend-api/codex/responses"},
+		},
+		{
+			name:    "base with v1 prefix",
+			baseURL: "https://relay.example.com/v1",
+			wantURL: []string{"https://relay.example.com/v1/responses"},
+		},
+		{
+			name:    "root base",
+			baseURL: "https://relay.example.com",
+			wantURL: []string{"https://relay.example.com/v1/responses", "https://relay.example.com/responses"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := &Provider{
+				ID:        "custom-responses",
+				BaseURL:   tt.baseURL,
+				APIFormat: APIFormatResponses,
+			}
+			method, urls := getHealthCheckMethod(provider)
+			if method != http.MethodPost {
+				t.Fatalf("method = %q, want %q", method, http.MethodPost)
+			}
+			if len(urls) != len(tt.wantURL) {
+				t.Fatalf("len(urls) = %d, want %d (urls=%v)", len(urls), len(tt.wantURL), urls)
+			}
+			for i := range urls {
+				if urls[i] != tt.wantURL[i] {
+					t.Fatalf("urls[%d] = %q, want %q", i, urls[i], tt.wantURL[i])
+				}
+			}
+		})
+	}
+}

@@ -86,6 +86,7 @@ type TaskEvent struct {
 type AgentQuestion struct {
 	ID          string           `json:"id"`
 	Question    string           `json:"question"`
+	Detail      string           `json:"detail,omitempty"`
 	Header      string           `json:"header"` // short tab label (max 12 chars)
 	Options     []QuestionOption `json:"options,omitempty"`
 	MultiSelect bool             `json:"multi_select,omitempty"` // true = checkboxes, false = radio

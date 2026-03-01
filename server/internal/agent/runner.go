@@ -362,6 +362,7 @@ func (r *Runner) handleAskUser(ctx context.Context, task *Task, argsJSON string)
 		q := AgentQuestion{
 			ID:          "q0",
 			Question:    qText,
+			Detail:      extractAgentQuestionDetail(raw),
 			Header:      truncateRunes(qText, 12),
 			MultiSelect: multiSelect,
 		}
@@ -461,6 +462,21 @@ func parseAgentQuestionOptions(v interface{}) []QuestionOption {
 	}
 }
 
+func extractAgentQuestionDetail(m map[string]interface{}) string {
+	for _, k := range []string{"detail", "details", "extra_detail", "description", "hint"} {
+		raw, ok := m[k]
+		if !ok {
+			continue
+		}
+		s, ok := raw.(string)
+		if !ok || strings.TrimSpace(s) == "" {
+			continue
+		}
+		return strings.TrimSpace(s)
+	}
+	return ""
+}
+
 func normalizeAgentQuestions(questions []AgentQuestion) ([]AgentQuestion, error) {
 	if len(questions) == 0 {
 		return nil, fmt.Errorf("at least one question is required")
@@ -472,6 +488,7 @@ func normalizeAgentQuestions(questions []AgentQuestion) ([]AgentQuestion, error)
 		if q.Question == "" {
 			return nil, fmt.Errorf("question text is required")
 		}
+		q.Detail = strings.TrimSpace(q.Detail)
 		if q.ID == "" {
 			q.ID = fmt.Sprintf("q%d", i)
 		}
@@ -978,10 +995,13 @@ func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (s
 	messages := []llm.Message{
 		{Role: llm.RoleSystem, Content: `You are an autonomous agent executing a plan step. Use available tools to complete the step. Be concise in your response — just do the work and report the result.
 
+Do not depend on 'blue' CLI subcommands. If CLI-specific commands are unavailable, fall back to standard shell commands and available file/workspace tools.
+
 When you encounter ambiguity, need user preferences, or face a decision with multiple valid options, use the ask tool to ask the user.
 Preferred format: {"questions":[{"question":"Which approach?","type":"radio","options":["Option A","Option B"]}]}
 Single-question shorthand: {"q":"Which approach?","a":["Option A","Option B"]} or {"mq":"...","a":[...]}
-Inside questions items, use "question"/"type"/"options".
+Optional extra detail: set "detail" and it will be shown with a ❕ marker.
+Inside questions items, use "question"/"detail"/"type"/"options".
 
 Group related questions into a single ask call. Keep questions clear and provide good option labels.`},
 		{Role: llm.RoleUser, Content: contextMsg.String()},

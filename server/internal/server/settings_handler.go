@@ -3,16 +3,21 @@ package server
 import (
 	"context"
 	"net/http"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
+	"github.com/google/uuid"
 )
 
 const settingsKVKey = "config:settings"
+const soulProposalKVKey = "config:soul_proposals"
 
 // SettingsHandler handles user settings API endpoints
 type SettingsHandler struct {
@@ -20,26 +25,51 @@ type SettingsHandler struct {
 	kv                        kvstore.Store
 	settings                  *Settings
 	skillRerankerModelManager *claudecode.SkillRerankerModelManager
+	smallModelManager         *smallmodel.Manager
+	soulProposals             map[string]*SoulProposal
 }
 
 // Settings represents user preferences stored on backend
 type Settings struct {
-	Locale                           string   `json:"locale,omitempty"`                              // User's preferred locale (e.g., "zh-CN", "en-US")
-	Timezone                         string   `json:"timezone,omitempty"`                            // User's timezone
-	ThemeStyle                       string   `json:"theme_style,omitempty"`                         // Chat theme style
-	SmartToolSelection               *bool    `json:"smart_tool_selection,omitempty"`                // IR-based tool filtering (nil = default true)
-	SmartSkillSelection              *bool    `json:"smart_skill_selection,omitempty"`               // Progressive skill selector (nil = default true)
-	SkillSelectorMode                string   `json:"skill_selector_mode,omitempty"`                 // hybrid|ir_only|llm_only
-	SkillRerankEnabled               *bool    `json:"skill_rerank_enabled,omitempty"`                // Enable stage-2 rerank (nil = default true)
-	SkillRerankModel                 string   `json:"skill_rerank_model,omitempty"`                  // Reranker model repo (e.g. cross-encoder/ms-marco-MiniLM-L6-v2)
-	SkillRerankONNXEnabled           *bool    `json:"skill_rerank_onnx_enabled,omitempty"`           // Enable ONNX reranker path (nil = default false)
-	SkillRerankONNXAutoDownload      *bool    `json:"skill_rerank_onnx_auto_download,omitempty"`     // Allow ONNX model auto-download (nil = default false)
-	SkillSelectorConfidenceThreshold *float64 `json:"skill_selector_confidence_threshold,omitempty"` // default 0.78
-	MemoryRecallMode                 string   `json:"memory_recall_mode,omitempty"`                  // Memory recall strategy: aggressive|balanced|quality
-	AgentMode                        *bool    `json:"agent_mode,omitempty"`                          // Autonomous agent mode (nil = default false)
-	AgentAutoConfirm                 *bool    `json:"agent_auto_confirm,omitempty"`                  // Skip confirmation in agent mode (nil = default false)
-	AgentAskTimeoutSeconds           *int     `json:"agent_ask_timeout_seconds,omitempty"`           // Ask timeout in seconds (default 120, range 15-1800)
-	AgentAskTimeoutAction            string   `json:"agent_ask_timeout_action,omitempty"`            // default|error
+	Locale                             string   `json:"locale,omitempty"`                                  // User's preferred locale (e.g., "zh-CN", "en-US")
+	Timezone                           string   `json:"timezone,omitempty"`                                // User's timezone
+	ThemeStyle                         string   `json:"theme_style,omitempty"`                             // Chat theme style
+	SmartToolSelection                 *bool    `json:"smart_tool_selection,omitempty"`                    // IR-based tool filtering (nil = default true)
+	SmartSkillSelection                *bool    `json:"smart_skill_selection,omitempty"`                   // Progressive skill selector (nil = default true)
+	SkillSelectorMode                  string   `json:"skill_selector_mode,omitempty"`                     // hybrid|ir_only|llm_only
+	SkillRerankEnabled                 *bool    `json:"skill_rerank_enabled,omitempty"`                    // Enable stage-2 rerank (nil = default true)
+	SkillRerankModel                   string   `json:"skill_rerank_model,omitempty"`                      // Reranker model repo (e.g. cross-encoder/ms-marco-MiniLM-L6-v2)
+	SkillRerankONNXEnabled             *bool    `json:"skill_rerank_onnx_enabled,omitempty"`               // Enable ONNX reranker path (nil = default false)
+	SkillRerankONNXAutoDownload        *bool    `json:"skill_rerank_onnx_auto_download,omitempty"`         // Allow ONNX model auto-download (nil = default false)
+	SkillSelectorConfidenceThreshold   *float64 `json:"skill_selector_confidence_threshold,omitempty"`     // default 0.78
+	MemoryRecallMode                   string   `json:"memory_recall_mode,omitempty"`                      // Memory recall strategy: aggressive|balanced|quality
+	AgentMode                          *bool    `json:"agent_mode,omitempty"`                              // Autonomous agent mode (nil = default false)
+	AgentAutoConfirm                   *bool    `json:"agent_auto_confirm,omitempty"`                      // Skip confirmation in agent mode (nil = default false)
+	AgentAskTimeoutSeconds             *int     `json:"agent_ask_timeout_seconds,omitempty"`               // Ask timeout in seconds (default 120, range 15-1800)
+	AgentAskTimeoutAction              string   `json:"agent_ask_timeout_action,omitempty"`                // default|error
+	SmallModelEnabled                  *bool    `json:"small_model_enabled,omitempty"`                     // default false
+	SmallModelRuntime                  string   `json:"small_model_runtime,omitempty"`                     // fixed: llama_cpp_native
+	SmallModelID                       string   `json:"small_model_id,omitempty"`                          // fixed: lfm2.5-1.2b-instruct-q4km
+	SmallModelAutoDownload             *bool    `json:"small_model_auto_download,omitempty"`               // default true
+	SmallModelShadowRatio              *float64 `json:"small_model_shadow_ratio,omitempty"`                // default 0.1, (0,1]
+	SmallModelSummaryEnabled           *bool    `json:"small_model_summary_enabled,omitempty"`             // default true
+	SmallModelDocExtractEnabled        *bool    `json:"small_model_doc_extract_enabled,omitempty"`         // default true
+	SmallModelRerankEnabled            *bool    `json:"small_model_rerank_enabled,omitempty"`              // default true
+	SmallModelContextPruneEnabled      *bool    `json:"small_model_context_prune_enabled,omitempty"`       // default true
+	SmallModelRouteShortQAEnabled      *bool    `json:"small_model_route_short_qa_enabled,omitempty"`      // default false
+	SmallModelRouteToolDispatchEnabled *bool    `json:"small_model_route_tool_dispatch_enabled,omitempty"` // default false
+	NoLLMDegradeMode                   string   `json:"no_llm_degrade_mode,omitempty"`                     // fixed default deepresearch
+	SmallModelUnavailablePolicy        string   `json:"small_model_unavailable_policy,omitempty"`          // default ir_first
+}
+
+type SoulProposal struct {
+	ID         string     `json:"id"`
+	Title      string     `json:"title"`
+	Content    string     `json:"content"`
+	Source     string     `json:"source,omitempty"`
+	Status     string     `json:"status"` // pending|approved|rejected
+	CreatedAt  time.Time  `json:"created_at"`
+	ReviewedAt *time.Time `json:"reviewed_at,omitempty"`
 }
 
 var allowedThemeStyles = map[string]struct{}{
@@ -59,10 +89,12 @@ var allowedMemoryRecallModes = map[string]struct{}{
 // NewSettingsHandler creates a new settings handler
 func NewSettingsHandler(kv kvstore.Store) *SettingsHandler {
 	h := &SettingsHandler{
-		kv:       kv,
-		settings: &Settings{},
+		kv:            kv,
+		settings:      &Settings{},
+		soulProposals: map[string]*SoulProposal{},
 	}
 	h.load()
+	h.loadSoulProposals()
 	return h
 }
 
@@ -74,6 +106,12 @@ func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/settings/skill-reranker/model/status", h.GetSkillRerankerModelStatus)
 	g.POST("/settings/skill-reranker/model/download", h.StartSkillRerankerModelDownload)
 	g.POST("/settings/skill-reranker/model/cancel", h.CancelSkillRerankerModelDownload)
+	g.GET("/settings/small-model/status", h.GetSmallModelStatus)
+	g.POST("/settings/small-model/download", h.StartSmallModelDownload)
+	g.POST("/settings/small-model/cancel", h.CancelSmallModelDownload)
+	g.GET("/settings/soul/proposals", h.ListSoulProposals)
+	g.POST("/settings/soul/proposals/:id/approve", h.ApproveSoulProposal)
+	g.POST("/settings/soul/proposals/:id/reject", h.RejectSoulProposal)
 }
 
 // SetSkillRerankerModelManager wires ONNX skill-reranker model manager for UI download APIs.
@@ -81,6 +119,13 @@ func (h *SettingsHandler) SetSkillRerankerModelManager(mgr *claudecode.SkillRera
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.skillRerankerModelManager = mgr
+}
+
+// SetSmallModelManager wires fixed small-model manager for runtime status/download APIs.
+func (h *SettingsHandler) SetSmallModelManager(mgr *smallmodel.Manager) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.smallModelManager = mgr
 }
 
 // Get handles GET /api/settings
@@ -135,6 +180,118 @@ func (h *SettingsHandler) GetSkillRerankerModelStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, mgr.GetStatus())
 }
 
+// StartSmallModelDownload starts downloading fixed llama.cpp small model in background.
+func (h *SettingsHandler) StartSmallModelDownload(c echo.Context) error {
+	h.mu.RLock()
+	mgr := h.smallModelManager
+	h.mu.RUnlock()
+	if mgr == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "small model manager not initialized"})
+	}
+	go func() {
+		_ = mgr.Download(context.Background())
+	}()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "download started",
+	})
+}
+
+// CancelSmallModelDownload cancels current small-model download.
+func (h *SettingsHandler) CancelSmallModelDownload(c echo.Context) error {
+	h.mu.RLock()
+	mgr := h.smallModelManager
+	h.mu.RUnlock()
+	if mgr == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "small model manager not initialized"})
+	}
+	mgr.CancelDownload()
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
+}
+
+// GetSmallModelStatus returns fixed small-model readiness/download status.
+func (h *SettingsHandler) GetSmallModelStatus(c echo.Context) error {
+	h.mu.RLock()
+	mgr := h.smallModelManager
+	h.mu.RUnlock()
+	if mgr == nil {
+		return c.JSON(http.StatusOK, smallmodel.Status{
+			Ready:   false,
+			ModelID: smallmodel.ModelID,
+			Runtime: smallmodel.RuntimeType,
+		})
+	}
+	return c.JSON(http.StatusOK, mgr.GetStatus())
+}
+
+// ListSoulProposals returns pending/handled SOUL write proposals.
+func (h *SettingsHandler) ListSoulProposals(c echo.Context) error {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	list := make([]SoulProposal, 0, len(h.soulProposals))
+	for _, p := range h.soulProposals {
+		cp := *p
+		list = append(list, cp)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].CreatedAt.After(list[j].CreatedAt)
+	})
+	return c.JSON(http.StatusOK, map[string]interface{}{"proposals": list})
+}
+
+// ApproveSoulProposal marks a pending proposal as approved.
+func (h *SettingsHandler) ApproveSoulProposal(c echo.Context) error {
+	return h.reviewSoulProposal(c, "approved")
+}
+
+// RejectSoulProposal marks a pending proposal as rejected.
+func (h *SettingsHandler) RejectSoulProposal(c echo.Context) error {
+	return h.reviewSoulProposal(c, "rejected")
+}
+
+func (h *SettingsHandler) reviewSoulProposal(c echo.Context, status string) error {
+	id := c.Param("id")
+	if id == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "proposal id is required"})
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	p, ok := h.soulProposals[id]
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "proposal not found"})
+	}
+	now := time.Now().UTC()
+	p.Status = status
+	p.ReviewedAt = &now
+	if err := h.saveSoulProposalsLocked(); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save proposal review"})
+	}
+	return c.JSON(http.StatusOK, p)
+}
+
+// AddSoulProposal enqueues a pending proposal that requires manual review.
+func (h *SettingsHandler) AddSoulProposal(title, content, source string) (*SoulProposal, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	p := &SoulProposal{
+		ID:        uuid.NewString(),
+		Title:     title,
+		Content:   content,
+		Source:    source,
+		Status:    "pending",
+		CreatedAt: time.Now().UTC(),
+	}
+	h.soulProposals[p.ID] = p
+	if err := h.saveSoulProposalsLocked(); err != nil {
+		delete(h.soulProposals, p.ID)
+		return nil, err
+	}
+	return p, nil
+}
+
 // Update handles PUT /api/settings (full update)
 func (h *SettingsHandler) Update(c echo.Context) error {
 	var newSettings Settings
@@ -175,6 +332,32 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 		case "default", "error":
 		default:
 			newSettings.AgentAskTimeoutAction = ""
+		}
+	}
+	if newSettings.SmallModelRuntime != "" && newSettings.SmallModelRuntime != smallmodel.RuntimeType {
+		newSettings.SmallModelRuntime = ""
+	}
+	if newSettings.SmallModelID != "" && newSettings.SmallModelID != smallmodel.ModelID {
+		newSettings.SmallModelID = ""
+	}
+	if newSettings.SmallModelShadowRatio != nil {
+		v := *newSettings.SmallModelShadowRatio
+		if v <= 0 || v > 1 {
+			newSettings.SmallModelShadowRatio = nil
+		}
+	}
+	if newSettings.NoLLMDegradeMode != "" {
+		switch newSettings.NoLLMDegradeMode {
+		case "deepresearch":
+		default:
+			newSettings.NoLLMDegradeMode = ""
+		}
+	}
+	if newSettings.SmallModelUnavailablePolicy != "" {
+		switch newSettings.SmallModelUnavailablePolicy {
+		case "ir_first":
+		default:
+			newSettings.SmallModelUnavailablePolicy = ""
 		}
 	}
 
@@ -291,6 +474,80 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 			}
 		}
 	}
+	if v, ok := updates["small_model_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelEnabled = &b
+		}
+	}
+	if v, ok := updates["small_model_auto_download"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelAutoDownload = &b
+		}
+	}
+	if runtimeName, ok := updates["small_model_runtime"].(string); ok {
+		if runtimeName == smallmodel.RuntimeType {
+			h.settings.SmallModelRuntime = runtimeName
+		}
+	}
+	if modelID, ok := updates["small_model_id"].(string); ok {
+		if modelID == smallmodel.ModelID {
+			h.settings.SmallModelID = modelID
+		}
+	}
+	if v, ok := updates["small_model_shadow_ratio"]; ok {
+		switch n := v.(type) {
+		case float64:
+			if n > 0 && n <= 1 {
+				h.settings.SmallModelShadowRatio = &n
+			}
+		case float32:
+			f := float64(n)
+			if f > 0 && f <= 1 {
+				h.settings.SmallModelShadowRatio = &f
+			}
+		}
+	}
+	if v, ok := updates["small_model_summary_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelSummaryEnabled = &b
+		}
+	}
+	if v, ok := updates["small_model_doc_extract_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelDocExtractEnabled = &b
+		}
+	}
+	if v, ok := updates["small_model_rerank_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelRerankEnabled = &b
+		}
+	}
+	if v, ok := updates["small_model_context_prune_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelContextPruneEnabled = &b
+		}
+	}
+	if v, ok := updates["small_model_route_short_qa_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelRouteShortQAEnabled = &b
+		}
+	}
+	if v, ok := updates["small_model_route_tool_dispatch_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelRouteToolDispatchEnabled = &b
+		}
+	}
+	if mode, ok := updates["no_llm_degrade_mode"].(string); ok {
+		if mode == "deepresearch" {
+			h.settings.NoLLMDegradeMode = mode
+		}
+	}
+	if policy, ok := updates["small_model_unavailable_policy"].(string); ok {
+		switch policy {
+		case "ir_first":
+			h.settings.SmallModelUnavailablePolicy = policy
+		}
+	}
 
 	if err := h.save(); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to save settings"})
@@ -349,6 +606,35 @@ func (h *SettingsHandler) GetSkillRerankEnabled() bool {
 		return true
 	}
 	return *h.settings.SkillRerankEnabled
+}
+
+// GetEffectiveSkillRerankEnabled returns the effective rerank switch after
+// applying the small-model rerank scene toggle.
+func (h *SettingsHandler) GetEffectiveSkillRerankEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	rerankEnabled := true
+	if h.settings.SkillRerankEnabled != nil {
+		rerankEnabled = *h.settings.SkillRerankEnabled
+	}
+	if !rerankEnabled {
+		return false
+	}
+
+	smallModelEnabled := false
+	if h.settings.SmallModelEnabled != nil {
+		smallModelEnabled = *h.settings.SmallModelEnabled
+	}
+	if !smallModelEnabled {
+		return true
+	}
+
+	smallModelRerankEnabled := true
+	if h.settings.SmallModelRerankEnabled != nil {
+		smallModelRerankEnabled = *h.settings.SmallModelRerankEnabled
+	}
+	return smallModelRerankEnabled
 }
 
 // IsSkillRerankEnabledSet returns true when user explicitly set this value.
@@ -426,12 +712,12 @@ func (h *SettingsHandler) GetMemoryRecallMode() string {
 	return "balanced"
 }
 
-// GetAgentMode returns whether agent mode is enabled (default true).
+// GetAgentMode returns whether agent mode is enabled (default false).
 func (h *SettingsHandler) GetAgentMode() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.AgentMode == nil {
-		return true
+		return false
 	}
 	return *h.settings.AgentMode
 }
@@ -475,6 +761,193 @@ func (h *SettingsHandler) GetAgentAskTimeoutAction() string {
 	}
 }
 
+// GetSmallModelEnabled returns whether small-model routing features are enabled (default false).
+func (h *SettingsHandler) GetSmallModelEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelEnabled == nil {
+		return false
+	}
+	return *h.settings.SmallModelEnabled
+}
+
+// GetSmallModelRuntime returns the runtime type (fixed llama_cpp_native).
+func (h *SettingsHandler) GetSmallModelRuntime() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelRuntime == smallmodel.RuntimeType {
+		return h.settings.SmallModelRuntime
+	}
+	return smallmodel.RuntimeType
+}
+
+// GetSmallModelID returns fixed model id.
+func (h *SettingsHandler) GetSmallModelID() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelID == smallmodel.ModelID {
+		return h.settings.SmallModelID
+	}
+	return smallmodel.ModelID
+}
+
+// GetSmallModelAutoDownload returns whether model auto-download is enabled (default true).
+func (h *SettingsHandler) GetSmallModelAutoDownload() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelAutoDownload == nil {
+		return true
+	}
+	return *h.settings.SmallModelAutoDownload
+}
+
+// GetSmallModelShadowRatio returns shadow ratio for guarded rollout (default 0.1).
+func (h *SettingsHandler) GetSmallModelShadowRatio() float64 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelShadowRatio == nil {
+		return 0.1
+	}
+	v := *h.settings.SmallModelShadowRatio
+	if v <= 0 || v > 1 {
+		return 0.1
+	}
+	return v
+}
+
+func (h *SettingsHandler) GetSmallModelSummaryEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelSummaryEnabled == nil {
+		return true
+	}
+	return *h.settings.SmallModelSummaryEnabled
+}
+
+func (h *SettingsHandler) GetSmallModelDocExtractEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelDocExtractEnabled == nil {
+		return true
+	}
+	return *h.settings.SmallModelDocExtractEnabled
+}
+
+func (h *SettingsHandler) GetSmallModelRerankEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelRerankEnabled == nil {
+		return true
+	}
+	return *h.settings.SmallModelRerankEnabled
+}
+
+func (h *SettingsHandler) GetSmallModelContextPruneEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelContextPruneEnabled == nil {
+		return true
+	}
+	return *h.settings.SmallModelContextPruneEnabled
+}
+
+func (h *SettingsHandler) GetSmallModelRouteShortQAEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelRouteShortQAEnabled == nil {
+		return false
+	}
+	return *h.settings.SmallModelRouteShortQAEnabled
+}
+
+func (h *SettingsHandler) GetSmallModelRouteToolDispatchEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelRouteToolDispatchEnabled == nil {
+		return false
+	}
+	return *h.settings.SmallModelRouteToolDispatchEnabled
+}
+
+// SetSmallModelRouteShortQAEnabled updates short-qa route switch and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetSmallModelRouteShortQAEnabled(enabled bool) (bool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.settings.SmallModelRouteShortQAEnabled != nil && *h.settings.SmallModelRouteShortQAEnabled == enabled {
+		return false, nil
+	}
+	h.settings.SmallModelRouteShortQAEnabled = &enabled
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetSmallModelRouteToolDispatchEnabled updates tool-dispatch route switch and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetSmallModelRouteToolDispatchEnabled(enabled bool) (bool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.settings.SmallModelRouteToolDispatchEnabled != nil && *h.settings.SmallModelRouteToolDispatchEnabled == enabled {
+		return false, nil
+	}
+	h.settings.SmallModelRouteToolDispatchEnabled = &enabled
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetSmallModelSummaryEnabled updates summary enhancement switch and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetSmallModelSummaryEnabled(enabled bool) (bool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.settings.SmallModelSummaryEnabled != nil && *h.settings.SmallModelSummaryEnabled == enabled {
+		return false, nil
+	}
+	h.settings.SmallModelSummaryEnabled = &enabled
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetSmallModelDocExtractEnabled updates doc-extract enhancement switch and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetSmallModelDocExtractEnabled(enabled bool) (bool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.settings.SmallModelDocExtractEnabled != nil && *h.settings.SmallModelDocExtractEnabled == enabled {
+		return false, nil
+	}
+	h.settings.SmallModelDocExtractEnabled = &enabled
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// GetNoLLMDegradeMode returns fallback mode when no provider is available (default deepresearch).
+func (h *SettingsHandler) GetNoLLMDegradeMode() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.NoLLMDegradeMode == "deepresearch" {
+		return h.settings.NoLLMDegradeMode
+	}
+	return "deepresearch"
+}
+
+// GetSmallModelUnavailablePolicy returns fallback policy when small model is unavailable.
+func (h *SettingsHandler) GetSmallModelUnavailablePolicy() string {
+	return "ir_first"
+}
+
 // load reads settings from kvstore
 func (h *SettingsHandler) load() {
 	h.mu.Lock()
@@ -484,6 +957,33 @@ func (h *SettingsHandler) load() {
 		// Key not found or error — use defaults
 		h.settings = &Settings{}
 	}
+}
+
+func (h *SettingsHandler) loadSoulProposals() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var list []SoulProposal
+	if err := h.kv.GetJSON(context.Background(), soulProposalKVKey, &list); err != nil {
+		h.soulProposals = map[string]*SoulProposal{}
+		return
+	}
+	h.soulProposals = make(map[string]*SoulProposal, len(list))
+	for i := range list {
+		p := list[i]
+		cp := p
+		h.soulProposals[p.ID] = &cp
+	}
+}
+
+func (h *SettingsHandler) saveSoulProposalsLocked() error {
+	list := make([]SoulProposal, 0, len(h.soulProposals))
+	for _, p := range h.soulProposals {
+		list = append(list, *p)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].CreatedAt.After(list[j].CreatedAt)
+	})
+	return h.kv.SetJSON(context.Background(), soulProposalKVKey, list, 0)
 }
 
 // save writes settings to kvstore

@@ -1,0 +1,215 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { settingsApi, type SmallModelStats } from '@/api/settings'
+
+const { t } = useI18n()
+
+const stats = ref<SmallModelStats | null>(null)
+const loading = ref(true)
+const refreshTimer = ref<number | null>(null)
+
+const shortQASuccessRate = computed(() => {
+  const s = stats.value
+  if (!s || s.short_qa_route_attempts <= 0) return 0
+  return Math.round((s.short_qa_route_success / s.short_qa_route_attempts) * 100)
+})
+
+const toolDispatchSuccessRate = computed(() => {
+  const s = stats.value
+  if (!s || s.tool_dispatch_route_attempts <= 0) return 0
+  return Math.round((s.tool_dispatch_route_success / s.tool_dispatch_route_attempts) * 100)
+})
+
+const summarySuccessRate = computed(() => {
+  const s = stats.value
+  if (!s || s.summary_attempts <= 0) return 0
+  return Math.round((s.summary_success / s.summary_attempts) * 100)
+})
+
+const docExtractSuccessRate = computed(() => {
+  const s = stats.value
+  if (!s || s.doc_extract_attempts <= 0) return 0
+  return Math.round((s.doc_extract_success / s.doc_extract_attempts) * 100)
+})
+
+const fallbackTop = computed(() => {
+  const reasons = stats.value?.fallback_reasons || {}
+  return Object.entries(reasons)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+})
+
+const successRateColor = computed(() => {
+  const rate = shortQASuccessRate.value
+  if (rate >= 90) return 'text-green-600 dark:text-green-400'
+  if (rate >= 70) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
+})
+
+const toolDispatchSuccessRateColor = computed(() => {
+  const rate = toolDispatchSuccessRate.value
+  if (rate >= 90) return 'text-green-600 dark:text-green-400'
+  if (rate >= 70) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
+})
+
+const summarySuccessRateColor = computed(() => {
+  const rate = summarySuccessRate.value
+  if (rate >= 90) return 'text-green-600 dark:text-green-400'
+  if (rate >= 70) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
+})
+
+const docExtractSuccessRateColor = computed(() => {
+  const rate = docExtractSuccessRate.value
+  if (rate >= 90) return 'text-green-600 dark:text-green-400'
+  if (rate >= 70) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
+})
+
+function normalizeReason(reason: string): string {
+  return reason.split('_').join(' ')
+}
+
+async function fetchStats() {
+  try {
+    const res = await settingsApi.getSmallModelStats()
+    stats.value = res.data
+  } catch (e) {
+    console.error('Failed to fetch small-model stats:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchStats()
+  refreshTimer.value = window.setInterval(fetchStats, 30000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer.value) {
+    clearInterval(refreshTimer.value)
+  }
+})
+</script>
+
+<template>
+  <div class="rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 p-4 space-y-4">
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <div class="w-2.5 h-2.5 rounded-full bg-blue-500" :class="loading ? 'animate-pulse' : ''"></div>
+        <p class="text-sm font-semibold text-gray-900 dark:text-white">
+          {{ t('settings.smallModel.statsTitle', 'Routing & Fallback Stats') }}
+        </p>
+      </div>
+      <button
+        class="px-2 py-1 rounded border border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+        :disabled="loading"
+        @click="fetchStats"
+      >
+        {{ t('common.refresh', 'Refresh') }}
+      </button>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-12 gap-3">
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shortQAAttempts', 'Short QA Attempts') }}</p>
+        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ stats?.short_qa_route_attempts || 0 }}</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shortQASuccessRate', 'Short QA Success') }}</p>
+        <p class="mt-1 text-lg font-semibold" :class="successRateColor">{{ shortQASuccessRate }}%</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.toolDispatchAttempts', 'Tool Dispatch Attempts') }}</p>
+        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ stats?.tool_dispatch_route_attempts || 0 }}</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.toolDispatchSuccessRate', 'Tool Dispatch Success') }}</p>
+        <p class="mt-1 text-lg font-semibold" :class="toolDispatchSuccessRateColor">{{ toolDispatchSuccessRate }}%</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.summarySuccessRate', 'Summary Success') }}</p>
+        <p class="mt-1 text-lg font-semibold" :class="summarySuccessRateColor">{{ summarySuccessRate }}%</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.docExtractSuccessRate', 'Doc Extract Success') }}</p>
+        <p class="mt-1 text-lg font-semibold" :class="docExtractSuccessRateColor">{{ docExtractSuccessRate }}%</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.fallbackTotal', 'Fallback Total') }}</p>
+        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ stats?.small_model_fallback_total || 0 }}</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.timeoutTotal', 'Timeout Total') }}</p>
+        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ stats?.small_model_timeout_total || 0 }}</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.latencyMs', 'Small-model Latency') }}</p>
+        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ (stats?.small_model_latency_ms || 0).toFixed(1) }}ms</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.deepResearchFallbacks', 'DeepResearch Fallbacks') }}</p>
+        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ stats?.no_provider_deepresearch_total || 0 }}</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.irTakeovers', 'IR Takeovers') }}</p>
+        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ stats?.ir_takeover_total || 0 }}</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.autoRollbacks', 'Auto Rollbacks') }}</p>
+        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ stats?.auto_rollback_total || 0 }}</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 p-3">
+        <p class="mb-2 text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shadowTraffic', 'Shadow Traffic') }}</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="inline-flex items-center rounded-md px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+            QA {{ stats?.short_qa_shadow_total || 0 }}
+          </span>
+          <span class="inline-flex items-center rounded-md px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+            Tool {{ stats?.tool_dispatch_shadow_total || 0 }}
+          </span>
+          <span class="inline-flex items-center rounded-md px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
+            Fail {{ stats?.shadow_failures || 0 }}
+          </span>
+          <span class="inline-flex items-center rounded-md px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
+            Delta {{ ((stats?.shadow_quality_delta || 0) * 100).toFixed(1) }}% / {{ stats?.shadow_quality_samples || 0 }}
+          </span>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <span class="inline-flex items-center rounded-md px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+            QA {{ (stats?.short_qa_latency_ms || 0).toFixed(1) }}ms
+          </span>
+          <span class="inline-flex items-center rounded-md px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+            Tool {{ (stats?.tool_dispatch_latency_ms || 0).toFixed(1) }}ms
+          </span>
+          <span class="inline-flex items-center rounded-md px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+            Summary {{ (stats?.summary_latency_ms || 0).toFixed(1) }}ms
+          </span>
+          <span class="inline-flex items-center rounded-md px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+            Extract {{ (stats?.doc_extract_latency_ms || 0).toFixed(1) }}ms
+          </span>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-gray-200 dark:border-gray-600 p-3">
+        <p class="mb-2 text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.fallbackReasons', 'Fallback Reasons') }}</p>
+        <div v-if="fallbackTop.length === 0" class="text-gray-400">-</div>
+        <div v-else class="flex flex-wrap gap-2">
+          <span
+            v-for="[reason, count] in fallbackTop"
+            :key="reason"
+            class="inline-flex items-center gap-1 rounded-md px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+          >
+            {{ normalizeReason(reason) }} <span class="font-semibold">{{ count }}</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>

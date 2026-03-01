@@ -1,5 +1,17 @@
 package oauth
 
+import (
+	"os"
+	"strings"
+)
+
+const (
+	// EnvAntigravityClientSecret overrides Google Antigravity OAuth client secret.
+	EnvAntigravityClientSecret = "ZIMA_OAUTH_ANTIGRAVITY_CLIENT_SECRET"
+	// EnvGeminiCLIClientSecret overrides Gemini CLI OAuth client secret.
+	EnvGeminiCLIClientSecret = "ZIMA_OAUTH_GEMINI_CLI_CLIENT_SECRET"
+)
+
 // ProviderConfig holds OAuth configuration for a specific LLM provider.
 type ProviderConfig struct {
 	ID           string   // "antigravity", "gemini-cli", "copilot"
@@ -40,7 +52,7 @@ func AntigravityConfig() *ProviderConfig {
 		Name:         "Google Cloud Code",
 		FlowType:     FlowTypeAuthCode,
 		ClientID:     "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
-		ClientSecret: "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",
+		ClientSecret: oauthEnv(EnvAntigravityClientSecret),
 		AuthURL:      "https://accounts.google.com/o/oauth2/v2/auth",
 		TokenURL:     "https://oauth2.googleapis.com/token",
 		UserInfoURL:  "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
@@ -69,7 +81,7 @@ func GeminiCLIConfig() *ProviderConfig {
 		Name:         "Google Cloud Code",
 		FlowType:     FlowTypeAuthCode,
 		ClientID:     "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com",
-		ClientSecret: "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",
+		ClientSecret: oauthEnv(EnvGeminiCLIClientSecret),
 		AuthURL:      "https://accounts.google.com/o/oauth2/v2/auth",
 		TokenURL:     "https://oauth2.googleapis.com/token",
 		UserInfoURL:  "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
@@ -133,4 +145,8 @@ func AllProviderConfigs() map[string]*ProviderConfig {
 func GetProviderConfig(providerType string) *ProviderConfig {
 	configs := AllProviderConfigs()
 	return configs[providerType]
+}
+
+func oauthEnv(key string) string {
+	return strings.TrimSpace(os.Getenv(key))
 }

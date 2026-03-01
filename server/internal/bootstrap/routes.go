@@ -24,6 +24,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/billing"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
@@ -31,7 +32,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/connection"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepsearch"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepresearch"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
@@ -59,6 +60,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
@@ -136,6 +138,164 @@ func resolveMCPWorkspaceRoot(dataDir string, appCfg *config.Config) string {
 		return "."
 	}
 	return fallback
+}
+
+type proxyBridgeLLMCaller struct {
+	bridge            *proxybridge.Bridge
+	claudeCodeHandler *claudecode.Handler
+}
+
+func (c *proxyBridgeLLMCaller) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	if c == nil || c.bridge == nil {
+		return nil, fmt.Errorf("proxy bridge is not configured")
+	}
+	req.Model = resolveDefaultModelForCCCLI(req.Model, c.claudeCodeHandler)
+	return c.bridge.Chat(ctx, req)
+}
+
+type providerRegistryLLMCaller struct {
+	registry *llm.ProviderRegistry
+}
+
+func newProviderRegistryLLMCaller(registry *llm.ProviderRegistry) *providerRegistryLLMCaller {
+	return &providerRegistryLLMCaller{registry: registry}
+}
+
+func (c *providerRegistryLLMCaller) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	if c == nil || c.registry == nil {
+		return nil, fmt.Errorf("no llm provider registry configured")
+	}
+
+	names := c.registry.List()
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no llm providers configured")
+	}
+
+	model := strings.TrimSpace(req.Model)
+	if model != "" && !strings.EqualFold(model, "auto") {
+		for _, name := range names {
+			provider := c.registry.Get(name)
+			if provider == nil {
+				continue
+			}
+			if providerSupportsModel(provider, model) {
+				return provider.Chat(ctx, req)
+			}
+		}
+	}
+
+	var provider llm.Provider
+	for _, name := range names {
+		if p := c.registry.Get(name); p != nil {
+			provider = p
+			break
+		}
+	}
+	if provider == nil {
+		return nil, fmt.Errorf("no llm providers configured")
+	}
+
+	if model == "" || strings.EqualFold(model, "auto") {
+		if models := provider.Models(); len(models) > 0 && strings.TrimSpace(models[0]) != "" {
+			req.Model = strings.TrimSpace(models[0])
+		}
+	}
+
+	return provider.Chat(ctx, req)
+}
+
+func providerSupportsModel(provider llm.Provider, model string) bool {
+	if provider == nil {
+		return false
+	}
+	target := strings.TrimSpace(model)
+	if target == "" {
+		return false
+	}
+	for _, m := range provider.Models() {
+		if strings.EqualFold(strings.TrimSpace(m), target) {
+			return true
+		}
+	}
+	return false
+}
+
+func registerAgentAndMCPRoutes(
+	protected *echo.Group,
+	v1 *echo.Group,
+	services *Services,
+	cfg *ServerConfig,
+	deps *RoutesDeps,
+	logger *zap.Logger,
+	agentLLMCaller agent.LLMCaller,
+) *agent.Runner {
+	if protected == nil || v1 == nil || services == nil || cfg == nil || deps == nil || logger == nil {
+		return nil
+	}
+
+	toolRegistry := services.ToolRegistry
+	if toolRegistry == nil {
+		toolRegistry = tools.NewRegistry()
+	}
+	executor := tools.NewExecutor(toolRegistry)
+
+	var agentRunnerRef *agent.Runner
+	if deps.DB != nil && deps.SSEBroker != nil && agentLLMCaller != nil {
+		agentStore, agentErr := agent.NewStore(deps.DB)
+		if agentErr != nil {
+			logger.Warn("Failed to initialize agent store", zap.Error(agentErr))
+			stub := featureDisabled("agent")
+			agentGroup := protected.Group("/agent")
+			agentGroup.Any("/*", stub)
+		} else {
+			// Recover stale tasks from previous crash
+			if recovered, err := agentStore.RecoverStaleTasks(context.Background()); err != nil {
+				logger.Warn("Failed to recover stale agent tasks", zap.Error(err))
+			} else if recovered > 0 {
+				logger.Info("Recovered stale agent tasks", zap.Int64("count", recovered))
+			}
+			agentRunner := agent.NewRunner(agentStore, agentLLMCaller, toolRegistry, executor, deps.SSEBroker, agent.RunnerConfig{})
+			agentHandler := agent.NewHandler(agentStore, agentRunner)
+			agentGroup := protected.Group("/agent")
+			agentHandler.RegisterRoutes(agentGroup)
+			agentRunnerRef = agentRunner
+			logger.Info("Agent task routes registered")
+		}
+	} else {
+		stub := featureDisabled("agent")
+		agentGroup := protected.Group("/agent")
+		agentGroup.Any("/*", stub)
+	}
+
+	// MCP server: expose tools to external agents (available with and without proxy mode)
+	mcpServer := mcp.NewServer(toolRegistry, executor)
+	mcpServer.SetWorkspaceRoot(resolveMCPWorkspaceRoot(cfg.DataDir, deps.Config))
+	if agentLLMCaller != nil {
+		mcpServer.SetGenerativeRunner(func(ctx context.Context, prompt string, maxTokens int) (string, error) {
+			req := llm.ChatRequest{
+				Model:       "auto",
+				Messages:    []llm.Message{{Role: llm.RoleUser, Content: prompt}},
+				Temperature: 0.2,
+				MaxTokens:   maxTokens,
+			}
+			resp, err := agentLLMCaller.Chat(ctx, req)
+			if err != nil {
+				return "", err
+			}
+			return strings.TrimSpace(resp.Message.Content), nil
+		})
+	}
+	if deps.WorkspaceHandler != nil {
+		if mgr := deps.WorkspaceHandler.Manager(); mgr != nil {
+			mcpServer.SetWorkspace(mgr)
+		}
+	}
+	mcpHandler := mcp.NewHandler(mcpServer)
+	mcpGroup := v1.Group("/mcp")
+	mcpHandler.RegisterRoutes(mcpGroup)
+	logger.Info("MCP server routes registered")
+
+	return agentRunnerRef
 }
 
 // featureDisabled returns an echo handler that responds with a standard
@@ -694,6 +854,20 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	apiKeysGroup := protected.Group("/apikeys")
 	deps.APIKeyHandler.RegisterRoutes(apiKeysGroup)
 
+	// Billing routes (admin-only checks are enforced by the billing handler)
+	billingGroup := protected.Group("/billing")
+	if deps.ProviderPool != nil && deps.ProviderPool.Storage != nil {
+		billingService := billing.NewService(deps.ProviderPool.Storage)
+		billingHandler := billing.NewHandler(billingService)
+		billingHandler.RegisterRoutes(billingGroup)
+	} else {
+		stub := featureDisabled("billing")
+		billingGroup.GET("/summary", stub)
+		billingGroup.GET("/lines", stub)
+		billingGroup.GET("/export", stub)
+		billingGroup.Any("/*", stub)
+	}
+
 	// Set prompt guard on chat handler
 	promptGuard := promptguard.NewDetector(promptguard.DefaultDetectorConfig())
 	deps.ChatHandler.SetPromptGuard(promptGuard)
@@ -733,8 +907,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Register chat routes
 	deps.ChatHandler.RegisterRoutes(v1)
 
-	// Deep search service (shared by API + skill executor)
-	deepSearchService := deepsearch.NewService(nil, nil)
+	// Deep research service (shared by API + skill executor)
+	deepResearchService := deepresearch.NewService(nil, nil)
+	deps.ChatHandler.SetDeepResearchService(deepResearchService)
 
 	// Register auto-reply routes
 	if deps.AutoreplyHandler != nil {
@@ -956,8 +1131,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Deep research: wire service-backed executor into deep_research skill.
 	if sk := s.SkillRegistry.Get("deep_research"); sk != nil {
-		if ds, ok := sk.(*builtin.DeepSearch); ok {
-			ds.SetExecutor(deepsearch.NewSkillExecutor(deepSearchService))
+		if ds, ok := sk.(*builtin.DeepResearch); ok {
+			ds.SetExecutor(deepresearch.NewSkillExecutor(deepResearchService))
 		}
 	}
 
@@ -1046,7 +1221,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				}
 				if sh := deps.ChatHandler.GetSettingsHandler(); sh != nil {
 					opts.Mode = sh.GetSkillSelectorMode()
-					opts.EnableRerank = sh.GetSkillRerankEnabled()
+					opts.EnableRerank = sh.GetEffectiveSkillRerankEnabled()
 					opts.ConfidenceThreshold = sh.GetSkillSelectorConfidenceThreshold()
 				}
 				decision, err := selector.Select(ctx, query, opts)
@@ -1305,9 +1480,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Deep research routes (protected)
-	deepSearchHandler := deepsearch.NewHandler(deepSearchService)
-	deepSearchHandler.RegisterGroup(protected.Group("/deep-research"))
-	deepSearchHandler.RegisterGroup(apiProtected.Group("/deep-research"))
+	deepResearchHandler := deepresearch.NewHandler(deepResearchService)
+	deepResearchHandler.RegisterGroup(protected.Group("/deep-research"))
+	deepResearchHandler.RegisterGroup(apiProtected.Group("/deep-research"))
 	logger.Info("Deep research routes registered")
 
 	// Voice routes - /api/v1/voice/*
@@ -1522,6 +1697,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// OpenAI-compatible proxy routes on /v1/*
 	var agentRunnerRef *agent.Runner
+	agentLLMCaller := agent.LLMCaller(newProviderRegistryLLMCaller(s.LLMRegistry))
 	if deps.Config.Proxy != nil && deps.Config.Proxy.Enabled {
 		routingConfig := &deps.Config.Proxy.Routing
 		if deps.Config.Proxy.Route != nil {
@@ -1824,6 +2000,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// ProxyBridge: route ChatHandler LLM calls through proxy pipeline
 		bridge := proxybridge.NewBridge(proxyHandler)
+		agentLLMCaller = &proxyBridgeLLMCaller{
+			bridge:            bridge,
+			claudeCodeHandler: deps.ClaudeCodeHandler,
+		}
 		deps.ChatHandler.SetProxyBridge(bridge)
 		deps.ChatHandler.SetIMModel("auto") // proxy auto-selects model
 
@@ -1850,54 +2030,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if deps.AnalyzeTool != nil {
 			deps.AnalyzeTool.SetLLMBridge(tools.NewProxyBridgeLLMAdapter(bridge))
 		}
-
-		// Agent runner: autonomous background task execution
-		if deps.DB != nil && deps.SSEBroker != nil {
-			agentStore, agentErr := agent.NewStore(deps.DB)
-			if agentErr != nil {
-				logger.Warn("Failed to initialize agent store", zap.Error(agentErr))
-			} else {
-				// Recover stale tasks from previous crash
-				if recovered, err := agentStore.RecoverStaleTasks(context.Background()); err != nil {
-					logger.Warn("Failed to recover stale agent tasks", zap.Error(err))
-				} else if recovered > 0 {
-					logger.Info("Recovered stale agent tasks", zap.Int64("count", recovered))
-				}
-				agentRunner := agent.NewRunner(agentStore, bridge, s.ToolRegistry, tools.NewExecutor(s.ToolRegistry), deps.SSEBroker, agent.RunnerConfig{})
-				agentHandler := agent.NewHandler(agentStore, agentRunner)
-				agentGroup := protected.Group("/agent")
-				agentHandler.RegisterRoutes(agentGroup)
-				agentRunnerRef = agentRunner
-				logger.Info("Agent task routes registered")
-			}
-		}
-
-		// MCP server: expose tools to external agents
-		mcpServer := mcp.NewServer(s.ToolRegistry, tools.NewExecutor(s.ToolRegistry))
-		mcpServer.SetWorkspaceRoot(resolveMCPWorkspaceRoot(cfg.DataDir, deps.Config))
-		mcpServer.SetGenerativeRunner(func(ctx context.Context, prompt string, maxTokens int) (string, error) {
-			pc := server.NewProxyClient(cfg.Port)
-			req := llm.ChatRequest{
-				Model:       resolveDefaultModelForCCCLI("auto", deps.ClaudeCodeHandler),
-				Messages:    []llm.Message{{Role: llm.RoleUser, Content: prompt}},
-				Temperature: 0.2,
-				MaxTokens:   maxTokens,
-			}
-			resp, err := pc.Chat(ctx, req)
-			if err != nil {
-				return "", err
-			}
-			return strings.TrimSpace(resp.Message.Content), nil
-		})
-		if deps.WorkspaceHandler != nil {
-			if mgr := deps.WorkspaceHandler.Manager(); mgr != nil {
-				mcpServer.SetWorkspace(mgr)
-			}
-		}
-		mcpHandler := mcp.NewHandler(mcpServer)
-		mcpGroup := v1.Group("/mcp")
-		mcpHandler.RegisterRoutes(mcpGroup)
-		logger.Info("MCP server routes registered")
 
 		v1ProxyGroup := e.Group("/v1")
 		v1ProxyGroup.Any("/chat/completions", echo.WrapHandler(proxyHandler))
@@ -2014,6 +2146,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		restrictionsHandler := proxy.NewRestrictionsHandler(proxyHandler.GetProviderMemory())
 		restrictionsHandler.RegisterRoutes(v1)
 	}
+
+	agentRunnerRef = registerAgentAndMCPRoutes(protected, v1, s, cfg, deps, logger, agentLLMCaller)
 
 	// Ngrok remote access routes
 	if deps.NgrokTunnelMgr != nil && deps.NgrokConfigStore != nil {
@@ -2180,11 +2314,25 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// User settings routes (protected)
 	settingsHandler := server.NewSettingsHandler(kv)
+	smManager := smallmodel.NewManager(cfg.DataDir)
+	settingsHandler.SetSmallModelManager(smManager)
+	smallRuntime := smallmodel.NewNativeRuntime(smManager)
+	deps.ChatHandler.SetSmallModelRuntime(smallRuntime)
+	deps.ChatHandler.SetShadowQualityStore(server.NewShadowQualityStore(kv, 512))
 	settingsHandler.RegisterRoutes(protected)
 	// Also make locale available to provider settings handler
 	providerSettingsHandler.SetSettingsHandler(settingsHandler)
 	// Wire settings into chat handler for runtime smart tool selection toggle
 	deps.ChatHandler.SetSettingsHandler(settingsHandler)
+	if deps.AnalyzeTool != nil {
+		deps.AnalyzeTool.SetSmallModelRuntime(smallRuntime)
+		deps.AnalyzeTool.SetSmallModelSwitchFuncs(
+			settingsHandler.GetSmallModelEnabled,
+			settingsHandler.GetSmallModelDocExtractEnabled,
+		)
+		deps.AnalyzeTool.SetSmallModelDocExtractToggle(settingsHandler.SetSmallModelDocExtractEnabled)
+		deps.AnalyzeTool.SetSmallModelStatsRecorder(deps.ChatHandler.GetSmallModelStats())
+	}
 	if skillAutoReranker != nil {
 		settingsHandler.SetSkillRerankerModelManager(skillAutoReranker.ModelManager())
 		skillAutoReranker.SetSwitchFuncs(
@@ -2192,6 +2340,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				rerankEnabled := deps.Config.ToolCalling.SkillRerankEnabled
 				if settingsHandler.IsSkillRerankEnabledSet() {
 					rerankEnabled = settingsHandler.GetSkillRerankEnabled()
+				}
+				if settingsHandler.GetSmallModelEnabled() && !settingsHandler.GetSmallModelRerankEnabled() {
+					rerankEnabled = false
 				}
 				onnxEnabled := deps.Config.ToolCalling.SkillRerankONNXEnabled
 				if settingsHandler.IsSkillRerankONNXEnabledSet() {

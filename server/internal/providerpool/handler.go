@@ -555,6 +555,8 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/:id/enable", h.EnableProvider)
 	g.POST("/:id/disable", h.DisableProvider)
 	g.POST("/:id/test", h.TestProvider)
+	g.POST("/verify", h.VerifyProvider)
+	g.POST("/:id/verify", h.VerifyProviderByID)
 	g.POST("/:id/clear-error", h.ClearError)
 	g.PUT("/:id/params", h.UpdateModelParams)
 	g.PUT("/:id/allowed-models", h.UpdateAllowedModels)
@@ -1160,6 +1162,87 @@ func (h *Handler) TestProvider(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, healthResult)
+}
+
+// VerifyProvider verifies a provider candidate and returns recommended API format/base URL.
+func (h *Handler) VerifyProvider(c echo.Context) error {
+	var req providerVerificationRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	result, err := verifyProviderCandidate(c.Request().Context(), req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
+// VerifyProviderByID verifies an existing provider and can optionally apply recommendations.
+func (h *Handler) VerifyProviderByID(c echo.Context) error {
+	id := c.Param("id")
+
+	provider, err := h.pool.Registry.Get(id)
+	if err != nil {
+		if err == ErrProviderNotFound {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	var body struct {
+		Apply bool   `json:"apply"`
+		Model string `json:"model"`
+		KeyID string `json:"key_id"`
+	}
+	_ = c.Bind(&body)
+
+	verifyReq := providerVerificationRequest{
+		BaseURL:       provider.BaseURL,
+		SkipTLSVerify: provider.SkipTLSVerify,
+		Model:         body.Model,
+	}
+
+	if body.KeyID != "" {
+		for i := range provider.APIKeys {
+			if provider.APIKeys[i].ID == body.KeyID {
+				verifyReq.APIKey = provider.APIKeys[i].Key
+				break
+			}
+		}
+		if verifyReq.APIKey == "" {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "api key not found"})
+		}
+	} else {
+		for i := range provider.APIKeys {
+			if provider.APIKeys[i].Enabled && provider.APIKeys[i].Key != "" {
+				verifyReq.APIKey = provider.APIKeys[i].Key
+				break
+			}
+		}
+	}
+
+	result, err := verifyProviderCandidate(c.Request().Context(), verifyReq)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	applied := false
+	if body.Apply {
+		if applyProviderVerificationRecommendation(provider, result, timeutil.NowTime()) {
+			if err := h.pool.Registry.Update(provider); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			applied = true
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"applied":      applied,
+		"verification": result,
+		"provider":     provider,
+	})
 }
 
 // UpdateModelParams updates model parameters for a provider

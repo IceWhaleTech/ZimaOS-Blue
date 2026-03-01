@@ -11,7 +11,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
-// PushServiceInterface defines the interface for the native push notification service.
+// PushServiceInterface defines the interface for the native reminder delivery service.
 type PushServiceInterface interface {
 	Add(ctx context.Context, ownerID, message string, fireAt time.Time, recurring, sessionID string) (PushInfo, error)
 	List(ctx context.Context, ownerID string) ([]PushInfo, error)
@@ -19,7 +19,7 @@ type PushServiceInterface interface {
 	Clear(ctx context.Context, ownerID string) (int64, error)
 }
 
-// PushInfo is the data returned by the push notification service interface.
+// PushInfo is the data returned by the reminder delivery service interface.
 type PushInfo struct {
 	ID        string    `json:"id"`
 	Message   string    `json:"message"`
@@ -30,7 +30,7 @@ type PushInfo struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// PushItem represents a single push notification (in-memory fallback).
+// PushItem represents a single reminder (in-memory fallback).
 type PushItem struct {
 	ID        string    `json:"id"`
 	Message   string    `json:"message"`
@@ -39,7 +39,7 @@ type PushItem struct {
 	Created   time.Time `json:"created"`
 }
 
-// Reminder is a built-in reminder/notification skill with optional native service backing.
+// Reminder is a built-in reminder skill with optional native service backing.
 type Reminder struct {
 	manifest *skill.Manifest
 	mu       sync.RWMutex
@@ -56,10 +56,10 @@ func NewReminder() *Reminder {
 			ID:          "reminder",
 			Name:        "Reminder",
 			Version:     "2.0.0",
-			Description: "Manage reminders and scheduled alerts. Delivers via SSE, Web Push, and native OS notifications (macOS Notification Center, Linux notify-send, Windows toast). Supports relative times (1h, 30m) and absolute times (2026-01-04 09:00, tomorrow 9:00).",
+			Description: "Manage reminders and scheduled alerts. Delivers via SSE, Web Push, and native OS alerts (macOS Notification Center, Linux notify-send, Windows toast). Supports relative times (1h, 30m) and absolute times (2026-01-04 09:00, tomorrow 9:00).",
 			Category:    "productivity",
 			Icon:        "notifications",
-			Tags:        []string{"reminder", "notification", "alert", "schedule", "productivity"},
+			Tags:        []string{"reminder", "alert", "schedule", "productivity"},
 			Inputs: []skill.Parameter{
 				{
 					Name:        "action",
@@ -70,19 +70,19 @@ func NewReminder() *Reminder {
 				{
 					Name:        "message",
 					Type:        "string",
-					Description: "Notification message (required for add)",
+					Description: "Reminder message (required for add)",
 					Required:    false,
 				},
 				{
 					Name:        "time",
 					Type:        "string",
-					Description: "Notification time: relative duration (e.g., '1h', '30m', '2h30m') or RFC3339 (e.g., '2026-01-04T09:00:00+08:00')",
+					Description: "Reminder time: relative duration (e.g., '1h', '30m', '2h30m') or RFC3339 (e.g., '2026-01-04T09:00:00+08:00')",
 					Required:    false,
 				},
 				{
 					Name:        "id",
 					Type:        "string",
-					Description: "Notification ID (required for delete)",
+					Description: "Reminder ID (required for delete)",
 					Required:    false,
 				},
 				{
@@ -94,7 +94,7 @@ func NewReminder() *Reminder {
 				{
 					Name:        "session_id",
 					Type:        "string",
-					Description: "Target conversation ID to deliver the notification to (optional, defaults to most recent)",
+					Description: "Target conversation ID to deliver the reminder to (optional, defaults to most recent)",
 					Required:    false,
 				},
 				{
@@ -106,14 +106,14 @@ func NewReminder() *Reminder {
 			},
 			Outputs: []skill.Parameter{
 				{
-					Name:        "notifications",
+					Name:        "reminders",
 					Type:        "array",
-					Description: "List of notifications",
+					Description: "List of reminders",
 				},
 				{
-					Name:        "notification",
+					Name:        "reminder",
 					Type:        "object",
-					Description: "Created/deleted notification",
+					Description: "Created/deleted reminder",
 				},
 			},
 		},
@@ -121,7 +121,7 @@ func NewReminder() *Reminder {
 	}
 }
 
-// SetPushService injects the native push notification service.
+// SetPushService injects the native reminder delivery service.
 func (p *Reminder) SetPushService(svc PushServiceInterface) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -168,7 +168,7 @@ func (p *Reminder) Validate(input map[string]any) error {
 	return nil
 }
 
-// Execute executes the push notification skill.
+// Execute executes the reminder skill.
 func (p *Reminder) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
 	action := input["action"].(string)
 
@@ -196,7 +196,7 @@ func (p *Reminder) Execute(ctx context.Context, input map[string]any) (*skill.Re
 	return skill.NewErrorResult(fmt.Errorf("unknown action: %s", action)), nil
 }
 
-// executeNative delegates to the persistent push notification service.
+// executeNative delegates to the persistent reminder service.
 func (p *Reminder) executeNative(ctx context.Context, svc PushServiceInterface, action string, input map[string]any) (*skill.Result, error) {
 	ownerID := skill.GetUserID(ctx)
 	if ownerID == "" {
@@ -241,8 +241,8 @@ func (p *Reminder) addNative(ctx context.Context, svc PushServiceInterface, owne
 	}
 
 	return skill.NewResult(map[string]any{
-		"notification": info,
-		"message":      fmt.Sprintf("Notification set: %s — %s", message, fireAt.Format("2006-01-02 15:04")),
+		"reminder": info,
+		"message":  fmt.Sprintf("Reminder set: %s — %s", message, fireAt.Format("2006-01-02 15:04")),
 	}), nil
 }
 
@@ -253,8 +253,8 @@ func (p *Reminder) listNative(ctx context.Context, svc PushServiceInterface, own
 	}
 
 	return skill.NewResult(map[string]any{
-		"notifications": list,
-		"count":         len(list),
+		"reminders": list,
+		"count":     len(list),
 	}), nil
 }
 
@@ -268,7 +268,7 @@ func (p *Reminder) deleteNative(ctx context.Context, svc PushServiceInterface, o
 	return skill.NewResult(map[string]any{
 		"deleted": true,
 		"id":      id,
-		"message": fmt.Sprintf("Notification '%s' deleted", id),
+		"message": fmt.Sprintf("Reminder '%s' deleted", id),
 	}), nil
 }
 
@@ -280,7 +280,7 @@ func (p *Reminder) clearNative(ctx context.Context, svc PushServiceInterface, ow
 
 	return skill.NewResult(map[string]any{
 		"cleared": count,
-		"message": fmt.Sprintf("Cleared %d notifications", count),
+		"message": fmt.Sprintf("Cleared %d reminders", count),
 	}), nil
 }
 
@@ -319,8 +319,8 @@ func (p *Reminder) addFallback(input map[string]any) (*skill.Result, error) {
 	p.notifications[id] = item
 
 	return skill.NewResult(map[string]any{
-		"notification": item,
-		"message":      fmt.Sprintf("%s — %s (in-memory only, will not persist)", message, notifTime.Format("2006-01-02 15:04")),
+		"reminder": item,
+		"message":  fmt.Sprintf("%s — %s (in-memory only, will not persist)", message, notifTime.Format("2006-01-02 15:04")),
 	}), nil
 }
 
@@ -334,8 +334,8 @@ func (p *Reminder) listFallback() (*skill.Result, error) {
 	}
 
 	return skill.NewResult(map[string]any{
-		"notifications": items,
-		"count":         len(items),
+		"reminders": items,
+		"count":     len(items),
 	}), nil
 }
 
@@ -347,15 +347,15 @@ func (p *Reminder) deleteFallback(input map[string]any) (*skill.Result, error) {
 	if item, ok := p.notifications[id]; ok {
 		delete(p.notifications, id)
 		return skill.NewResult(map[string]any{
-			"deleted":      true,
-			"notification": item,
-			"message":      fmt.Sprintf("Notification '%s' deleted", id),
+			"deleted":  true,
+			"reminder": item,
+			"message":  fmt.Sprintf("Reminder '%s' deleted", id),
 		}), nil
 	}
 
 	return skill.NewResult(map[string]any{
 		"deleted": false,
-		"message": fmt.Sprintf("Notification '%s' not found", id),
+		"message": fmt.Sprintf("Reminder '%s' not found", id),
 	}), nil
 }
 
@@ -368,6 +368,6 @@ func (p *Reminder) clearFallback() (*skill.Result, error) {
 
 	return skill.NewResult(map[string]any{
 		"cleared": count,
-		"message": fmt.Sprintf("Cleared %d notifications", count),
+		"message": fmt.Sprintf("Cleared %d reminders", count),
 	}), nil
 }

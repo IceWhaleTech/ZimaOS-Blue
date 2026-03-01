@@ -22,6 +22,7 @@ type fakeProxyHandler struct {
 	failFirst    int      // number of initial failures (HTTP 502) before success
 	callCount    int
 	lastHeader   string
+	lastLocale   string
 }
 
 func TestEnsureTimeout_DefaultIs30Seconds(t *testing.T) {
@@ -42,6 +43,7 @@ func TestEnsureTimeout_DefaultIs30Seconds(t *testing.T) {
 func (f *fakeProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.callCount++
 	f.lastHeader = r.Header.Get(proxy.DisableResponsesContinuationHeader)
+	f.lastLocale = r.Header.Get("Accept-Language")
 
 	if f.callCount <= f.failFirst {
 		http.Error(w, "upstream error", http.StatusBadGateway)
@@ -68,6 +70,29 @@ func (f *fakeProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func TestBridgeChat_PropagatesAcceptLanguageHeader(t *testing.T) {
+	var gotLocale string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotLocale = r.Header.Get("Accept-Language")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"1","model":"","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	})
+
+	bridge := NewBridge(handler)
+	ctx := proxy.WithLocale(context.Background(), "zh-CN")
+	_, err := bridge.Chat(ctx, llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat failed: %v", err)
+	}
+	if gotLocale != "zh-CN" {
+		t.Fatalf("expected Accept-Language zh-CN, got %q", gotLocale)
+	}
+}
+
 func TestBridgeChatStream_PropagatesDisableResponsesContinuationHeader(t *testing.T) {
 	handler := &fakeProxyHandler{
 		providerName: "OpenAI",
@@ -88,6 +113,29 @@ func TestBridgeChatStream_PropagatesDisableResponsesContinuationHeader(t *testin
 	}
 	if handler.lastHeader != "1" {
 		t.Fatalf("expected %s header=1, got %q", proxy.DisableResponsesContinuationHeader, handler.lastHeader)
+	}
+}
+
+func TestBridgeChatStream_PropagatesAcceptLanguageHeader(t *testing.T) {
+	handler := &fakeProxyHandler{
+		providerName: "OpenAI",
+		modelID:      "gpt-4o",
+		chunks: []string{
+			`{"id":"1","choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}],"model":""}`,
+		},
+	}
+	bridge := NewBridge(handler)
+
+	ctx := proxy.WithLocale(context.Background(), "ja-JP")
+	err := bridge.ChatStream(ctx, llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	}, func(chunk llm.StreamChunk) error { return nil })
+	if err != nil {
+		t.Fatalf("ChatStream failed: %v", err)
+	}
+	if handler.lastLocale != "ja-JP" {
+		t.Fatalf("expected Accept-Language ja-JP, got %q", handler.lastLocale)
 	}
 }
 

@@ -40,7 +40,7 @@ func (t *AskTool) Definition() ToolDefinition {
 Preferred format: {"questions":[{"question":"...","type":"radio","options":[...]}]}.
 Single-question shorthand: {"q":"...","a":[...]} or {"mq":"...","a":[...]}.
 Option items can be strings or objects: {"label":"...","description":"...","value":"..."}.
-Inside questions items, use only "question"/"options"/"type".`,
+Inside questions items, use only "question"/"detail"/"options"/"type".`,
 		Icon: "question",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -54,6 +54,10 @@ Inside questions items, use only "question"/"options"/"type".`,
 							"question": map[string]interface{}{
 								"type":        "string",
 								"description": "Question text.",
+							},
+							"detail": map[string]interface{}{
+								"type":        "string",
+								"description": "Optional extra detail shown with ❕ marker.",
 							},
 							"type": map[string]interface{}{
 								"type":        "string",
@@ -72,6 +76,10 @@ Inside questions items, use only "question"/"options"/"type".`,
 				"q": map[string]interface{}{
 					"type":        "string",
 					"description": "Single-select question text (shorthand).",
+				},
+				"detail": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional extra detail for q/mq shorthand.",
 				},
 				"mq": map[string]interface{}{
 					"type":        "string",
@@ -117,6 +125,7 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 			}
 			qType, _ := m["type"].(string)
 			isMulti := strings.EqualFold(qType, "checkbox") || strings.EqualFold(qType, "multi")
+			qDetail := extractQuestionDetail(m)
 
 			qOpts := parseQuestionOptions(m["options"])
 			if len(qOpts) == 0 {
@@ -126,6 +135,7 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 			questions = append(questions, QuestionItem{
 				ID:          fmt.Sprintf("q%d", i),
 				Question:    qText,
+				Detail:      qDetail,
 				Header:      shortHeader(qText),
 				Options:     qOpts,
 				MultiSelect: isMulti,
@@ -135,7 +145,7 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 
 	// Fallback to single question format: q/mq + a
 	if len(questions) == 0 {
-		question, multiSelect, options := parseAskArgs(args)
+		question, detail, multiSelect, options := parseAskArgs(args)
 		if question == "" {
 			return nil, fmt.Errorf("q/mq + a or questions array is required")
 		}
@@ -146,6 +156,7 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 		questions = []QuestionItem{{
 			ID:          "q0",
 			Question:    question,
+			Detail:      detail,
 			Header:      shortHeader(question),
 			Options:     options,
 			MultiSelect: multiSelect,
@@ -220,15 +231,16 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 
 // parseAskArgs extracts question text, multi-select flag, and options from args.
 // Supports the primary q/mq/a format and falls back to top-level legacy format.
-func parseAskArgs(args map[string]interface{}) (question string, multiSelect bool, options []QuestionOption) {
+func parseAskArgs(args map[string]interface{}) (question string, detail string, multiSelect bool, options []QuestionOption) {
 	// Primary format: q/mq + a
-	if q, ok := args["q"].(string); ok && q != "" {
-		question = q
+	if q, ok := args["q"].(string); ok && strings.TrimSpace(q) != "" {
+		question = strings.TrimSpace(q)
 	}
-	if mq, ok := args["mq"].(string); ok && mq != "" {
-		question = mq
+	if mq, ok := args["mq"].(string); ok && strings.TrimSpace(mq) != "" {
+		question = strings.TrimSpace(mq)
 		multiSelect = true
 	}
+	detail = extractQuestionDetail(args)
 	options = parseQuestionOptions(args["a"])
 	if len(options) == 0 {
 		options = parseQuestionOptions(args["options"])
@@ -238,15 +250,16 @@ func parseAskArgs(args map[string]interface{}) (question string, multiSelect boo
 	}
 
 	// Legacy fallback: "questions" array (question/options only) or "question"/"options" at top level
-	question, multiSelect, options = parseLegacyArgs(args)
+	question, detail, multiSelect, options = parseLegacyArgs(args)
 	return
 }
 
 // parseLegacyArgs handles the old nested "questions" format for backward compat.
-func parseLegacyArgs(args map[string]interface{}) (question string, multiSelect bool, options []QuestionOption) {
+func parseLegacyArgs(args map[string]interface{}) (question string, detail string, multiSelect bool, options []QuestionOption) {
 	// Try "question" + "options" at top level
 	if q, ok := args["question"].(string); ok && q != "" {
 		question = strings.TrimSpace(q)
+		detail = extractQuestionDetail(args)
 		if ms, ok := args["multi_select"].(bool); ok {
 			multiSelect = ms
 		}
@@ -284,6 +297,7 @@ func parseLegacyArgs(args map[string]interface{}) (question string, multiSelect 
 	if q, ok := first["question"].(string); ok && strings.TrimSpace(q) != "" {
 		question = strings.TrimSpace(q)
 	}
+	detail = extractQuestionDetail(first)
 	if ms, ok := first["multi_select"].(bool); ok {
 		multiSelect = ms
 	}
@@ -292,6 +306,17 @@ func parseLegacyArgs(args map[string]interface{}) (question string, multiSelect 
 	}
 	options = parseQuestionOptions(first["options"])
 	return
+}
+
+func extractQuestionDetail(obj map[string]interface{}) string {
+	for _, k := range []string{"detail", "details", "extra_detail", "description", "hint"} {
+		if raw, ok := obj[k]; ok {
+			if s, ok := raw.(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return ""
 }
 
 func shortHeader(question string) string {

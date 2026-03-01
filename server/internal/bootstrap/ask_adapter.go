@@ -26,6 +26,7 @@ func (a *questionManagerAskAdapter) AskQuestions(ctx context.Context, userID, se
 		items = append(items, tools.QuestionItem{
 			ID:          q.ID,
 			Question:    q.Question,
+			Detail:      q.Detail,
 			Header:      q.Header,
 			Options:     opts,
 			MultiSelect: q.MultiSelect,

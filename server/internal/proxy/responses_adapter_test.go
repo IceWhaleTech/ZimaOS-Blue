@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/tidwall/gjson"
@@ -840,6 +841,428 @@ func TestBuildUpstreamRequestWithFormat_ContinuationInjectsCachedAssistantWhenIn
 	}
 }
 
+func TestBuildUpstreamRequestWithFormat_ContinuationSkipsAssistantForSubstantiveFollowup(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_existing_long_1",
+		"input":[
+			{"role":"assistant","content":[{"type":"input_text","text":"A) 苹果 B) 香蕉 C) 梨"}]},
+			{"role":"user","content":[{"type":"input_text","text":"请给我一个详细比较，重点说明口感、甜度、储存方式和价格区间，再给出最终建议。"}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
+		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ResponsesPathChatPayloadContinuationSkipsAssistantForSubstantiveFollowup(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_existing_long_messages_1",
+		"messages":[
+			{"role":"assistant","content":"A) 苹果 B) 香蕉 C) 梨"},
+			{"role":"user","content":"请给我一个完整的独立方案，包含目标、实施步骤、风险和验收标准。"}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatOpenAI)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
+		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(convertedBody, "messages").Exists(); got {
+		t.Fatalf("messages should be converted out for /responses path, body=%s", string(convertedBody))
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationDoesNotInjectCachedAssistantForSubstantiveFollowup(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	seedReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	seedReq = seedReq.WithContext(WithSessionID(context.Background(), "sess-assist-cache-2"))
+	ph.setCachedResponsesAssistantForRoute(seedReq, result, "A) 选项一 B) 选项二")
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-assist-cache-2"))
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_existing_choice_cache_2",
+		"input":[
+			{"role":"user","content":[{"type":"input_text","text":"请写一个完整实现方案，包含目录结构、关键函数签名和测试策略。"}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
+		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationSkipsAssistantForShortStandaloneFollowup(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_existing_short_standalone_1",
+		"input":[
+			{"role":"assistant","content":[{"type":"input_text","text":"A) option one B) option two C) option three"}]},
+			{"role":"user","content":[{"type":"input_text","text":"Write a Dockerfile template"}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
+		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationDoesNotInjectCachedAssistantForShortStandaloneFollowup(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	seedReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	seedReq = seedReq.WithContext(WithSessionID(context.Background(), "sess-assist-cache-short-standalone-1"))
+	ph.setCachedResponsesAssistantForRoute(seedReq, result, "A) option one B) option two C) option three")
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-assist-cache-short-standalone-1"))
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_existing_short_standalone_cache_1",
+		"input":[
+			{"role":"user","content":[{"type":"input_text","text":"Write a Dockerfile template"}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
+		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationKeepsAssistantForOrdinalCueFollowup(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_existing_ordinal_cue_1",
+		"input":[
+			{"role":"assistant","content":[{"type":"input_text","text":"A) option one B) option two C) option three"}]},
+			{"role":"user","content":[{"type":"input_text","text":"Please explain the second option with implementation details."}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); !strings.Contains(got, "A)") || !strings.Contains(got, "B)") {
+		t.Fatalf("assistant options should be kept for ordinal cue follow-up, got: %q", got)
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationCompactsAssistantForChoiceFollowup(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	assistantText := "A) 方案一\nB) 方案二\nC) 方案三\n" + strings.Repeat("这是很长的解释段落，用来模拟超长assistant上下文。", 120)
+	bodyObj := map[string]any{
+		"model":                "gpt-5.3-codex-spark",
+		"stream":               true,
+		"previous_response_id": "resp_existing_compact_1",
+		"input": []map[string]any{
+			{
+				"role": "assistant",
+				"content": []map[string]any{
+					{"type": "input_text", "text": assistantText},
+				},
+			},
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{"type": "input_text", "text": "B"},
+				},
+			},
+		},
+	}
+	body, err := gojson.Marshal(bodyObj)
+	if err != nil {
+		t.Fatalf("marshal body failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	}
+	gotAssistant := gjson.GetBytes(convertedBody, "input.0.content.0.text").String()
+	if len([]rune(gotAssistant)) >= len([]rune(assistantText)) {
+		t.Fatalf("assistant context not compacted: got len=%d, original len=%d", len([]rune(gotAssistant)), len([]rune(assistantText)))
+	}
+	if !strings.Contains(gotAssistant, "A)") || !strings.Contains(gotAssistant, "B)") {
+		t.Fatalf("compacted assistant context should preserve options, got: %q", gotAssistant)
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ResponsesPathChatPayloadContinuationCompactsAssistantForChoiceFollowup(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	assistantText := "A) 方案一\nB) 方案二\nC) 方案三\n" + strings.Repeat("这是很长的解释段落，用来模拟超长assistant上下文。", 120)
+	bodyObj := map[string]any{
+		"model":                "gpt-5.3-codex-spark",
+		"stream":               true,
+		"previous_response_id": "resp_existing_compact_messages_1",
+		"messages": []map[string]any{
+			{"role": "assistant", "content": assistantText},
+			{"role": "user", "content": "B"},
+		},
+	}
+	body, err := gojson.Marshal(bodyObj)
+	if err != nil {
+		t.Fatalf("marshal body failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatOpenAI)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	}
+	gotAssistant := gjson.GetBytes(convertedBody, "input.0.content.0.text").String()
+	if len([]rune(gotAssistant)) >= len([]rune(assistantText)) {
+		t.Fatalf("assistant context not compacted: got len=%d, original len=%d", len([]rune(gotAssistant)), len([]rune(assistantText)))
+	}
+	if !strings.Contains(gotAssistant, "A)") || !strings.Contains(gotAssistant, "B)") {
+		t.Fatalf("compacted assistant context should preserve options, got: %q", gotAssistant)
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationCompactsInjectedCachedAssistantForChoiceFollowup(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	assistantText := "A) 选项一\nB) 选项二\nC) 选项三\n" + strings.Repeat("超长解释内容。", 220)
+	seedReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	seedReq = seedReq.WithContext(WithSessionID(context.Background(), "sess-assist-cache-compact-1"))
+	ph.setCachedResponsesAssistantForRoute(seedReq, result, assistantText)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-assist-cache-compact-1"))
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_existing_choice_cache_compact_1",
+		"input":[
+			{"role":"user","content":[{"type":"input_text","text":"1"}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	}
+	gotAssistant := gjson.GetBytes(convertedBody, "input.0.content.0.text").String()
+	if len([]rune(gotAssistant)) >= len([]rune(assistantText)) {
+		t.Fatalf("cached assistant context not compacted: got len=%d, original len=%d", len([]rune(gotAssistant)), len([]rune(assistantText)))
+	}
+	if !strings.Contains(gotAssistant, "A)") || !strings.Contains(gotAssistant, "B)") {
+		t.Fatalf("compacted cached assistant context should preserve options, got: %q", gotAssistant)
+	}
+}
+
 func TestBuildUpstreamRequestWithFormat_ContinuationInjectsAssistantFromResponseIDCache(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 
@@ -984,6 +1407,172 @@ func TestBuildUpstreamRequestWithFormat_ContinuationPreviousIDScopedByProvider(t
 	}
 	if got := gjson.GetBytes(convertedA, "previous_response_id").String(); got != "resp_from_a" {
 		t.Fatalf("provider-a previous_response_id = %q, want %q", got, "resp_from_a")
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationUnchangedToolsOmitted(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	route := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "provider-tools",
+			BaseURL:   "https://relay-tools.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-tools"},
+	}
+
+	firstReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	firstReq = firstReq.WithContext(WithSessionID(context.Background(), "sess-tools-1"))
+	firstBody := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"messages":[{"role":"user","content":"first turn"}],
+		"tools":[{"type":"function","function":{"name":"exec","parameters":{"type":"object","properties":{"cmd":{"type":"string"}}}}}]
+	}`)
+	upstreamFirst, err := ph.buildUpstreamRequestWithFormat(firstReq, route, firstBody, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("build first request failed: %v", err)
+	}
+	defer upstreamFirst.Body.Close()
+	firstConverted, err := io.ReadAll(upstreamFirst.Body)
+	if err != nil {
+		t.Fatalf("read first converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(firstConverted, "tools").Exists(); !got {
+		t.Fatalf("first request should include tools, body=%s", string(firstConverted))
+	}
+
+	secondReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	secondReq = secondReq.WithContext(WithSessionID(context.Background(), "sess-tools-1"))
+	secondBody := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"previous_response_id":"resp_tools_1",
+		"messages":[{"role":"user","content":"second turn"}],
+		"tools":[{"type":"function","function":{"name":"exec","parameters":{"type":"object","properties":{"cmd":{"type":"string"}}}}}]
+	}`)
+	upstreamSecond, err := ph.buildUpstreamRequestWithFormat(secondReq, route, secondBody, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("build second request failed: %v", err)
+	}
+	defer upstreamSecond.Body.Close()
+	secondConverted, err := io.ReadAll(upstreamSecond.Body)
+	if err != nil {
+		t.Fatalf("read second converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(secondConverted, "tools").Exists(); got {
+		t.Fatalf("continuation with unchanged tools should omit tools, body=%s", string(secondConverted))
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationChangedToolsResent(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	route := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "provider-tools",
+			BaseURL:   "https://relay-tools.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-tools"},
+	}
+
+	firstReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	firstReq = firstReq.WithContext(WithSessionID(context.Background(), "sess-tools-2"))
+	firstBody := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"messages":[{"role":"user","content":"first turn"}],
+		"tools":[{"type":"function","function":{"name":"exec","parameters":{"type":"object","properties":{"cmd":{"type":"string"}}}}}]
+	}`)
+	if _, err := ph.buildUpstreamRequestWithFormat(firstReq, route, firstBody, providerpool.APIFormatResponses); err != nil {
+		t.Fatalf("build first request failed: %v", err)
+	}
+
+	secondReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	secondReq = secondReq.WithContext(WithSessionID(context.Background(), "sess-tools-2"))
+	secondBody := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"previous_response_id":"resp_tools_2",
+		"messages":[{"role":"user","content":"second turn"}],
+		"tools":[{"type":"function","function":{"name":"read_file","parameters":{"type":"object","properties":{"path":{"type":"string"}}}}}]
+	}`)
+	upstreamSecond, err := ph.buildUpstreamRequestWithFormat(secondReq, route, secondBody, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("build second request failed: %v", err)
+	}
+	defer upstreamSecond.Body.Close()
+	secondConverted, err := io.ReadAll(upstreamSecond.Body)
+	if err != nil {
+		t.Fatalf("read second converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(secondConverted, "tools").Exists(); !got {
+		t.Fatalf("changed tools should be resent, body=%s", string(secondConverted))
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ContinuationToolsScopedByProvider(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	routeA := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "provider-a",
+			BaseURL:   "https://relay-a.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-a"},
+	}
+	routeB := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "provider-b",
+			BaseURL:   "https://relay-b.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-b"},
+	}
+	toolsBody := `[
+		{"type":"function","function":{"name":"exec","parameters":{"type":"object","properties":{"cmd":{"type":"string"}}}}}
+	]`
+
+	firstReqA := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	firstReqA = firstReqA.WithContext(WithSessionID(context.Background(), "sess-tools-scope-1"))
+	firstBodyA := []byte(`{"model":"gpt-5.3-codex-spark","messages":[{"role":"user","content":"first"}],"tools":` + toolsBody + `}`)
+	if _, err := ph.buildUpstreamRequestWithFormat(firstReqA, routeA, firstBodyA, providerpool.APIFormatResponses); err != nil {
+		t.Fatalf("build provider-a first request failed: %v", err)
+	}
+
+	reqB := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	reqB = reqB.WithContext(WithSessionID(context.Background(), "sess-tools-scope-1"))
+	bodyB := []byte(`{"model":"gpt-5.3-codex-spark","previous_response_id":"resp_tools_scope_b","messages":[{"role":"user","content":"continue"}],"tools":` + toolsBody + `}`)
+	upstreamReqB, err := ph.buildUpstreamRequestWithFormat(reqB, routeB, bodyB, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("build provider-b request failed: %v", err)
+	}
+	defer upstreamReqB.Body.Close()
+	convertedB, err := io.ReadAll(upstreamReqB.Body)
+	if err != nil {
+		t.Fatalf("read provider-b converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedB, "tools").Exists(); !got {
+		t.Fatalf("provider-b request should not inherit provider-a tools cache, body=%s", string(convertedB))
+	}
+
+	reqA := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	reqA = reqA.WithContext(WithSessionID(context.Background(), "sess-tools-scope-1"))
+	bodyA := []byte(`{"model":"gpt-5.3-codex-spark","previous_response_id":"resp_tools_scope_a","messages":[{"role":"user","content":"continue"}],"tools":` + toolsBody + `}`)
+	upstreamReqA, err := ph.buildUpstreamRequestWithFormat(reqA, routeA, bodyA, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("build provider-a continuation request failed: %v", err)
+	}
+	defer upstreamReqA.Body.Close()
+	convertedA, err := io.ReadAll(upstreamReqA.Body)
+	if err != nil {
+		t.Fatalf("read provider-a converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedA, "tools").Exists(); got {
+		t.Fatalf("provider-a continuation with unchanged tools should omit tools, body=%s", string(convertedA))
 	}
 }
 

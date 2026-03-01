@@ -48,6 +48,17 @@ func TestMiddleware_ProcessRequest_Disabled(t *testing.T) {
 	}
 }
 
+func TestWithPrunerDisabled(t *testing.T) {
+	ctx := context.Background()
+	if IsPrunerDisabled(ctx) {
+		t.Fatal("expected default context not disabled")
+	}
+	ctx = WithPrunerDisabled(ctx, true)
+	if !IsPrunerDisabled(ctx) {
+		t.Fatal("expected disabled context")
+	}
+}
+
 func TestMiddleware_ProcessRequest_SkipsNonToolMessages(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = true

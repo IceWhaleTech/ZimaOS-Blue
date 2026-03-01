@@ -311,7 +311,7 @@ func (s *Service) firePush(ctx context.Context, r *PushNotification) {
 
 	// Web Push notification (best-effort, for closed browser tabs)
 	if wp != nil {
-		if err := wp.SendToUser(ctx, r.OwnerID, "🔔 Notification", r.Message); err != nil {
+		if err := wp.SendToUser(ctx, r.OwnerID, "🔔 Reminder", r.Message); err != nil {
 			s.logger.Warn("web push failed", zap.String("id", r.ID), zap.Error(err))
 		}
 	}

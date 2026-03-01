@@ -140,6 +140,65 @@ func runStreamTurn(t *testing.T, h *ChatHandler, convID, reqBody string) string 
 	return rec.Body.String()
 }
 
+func newSingleModelOpenAIProxyHandler(t *testing.T, upstreamBaseURL, providerID, modelID string) *proxy.ProxyHandler {
+	t.Helper()
+
+	tmpDir, err := os.MkdirTemp("", "chat-stream-locale-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
+
+	storage, err := providerpool.NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create provider storage: %v", err)
+	}
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("failed to create provider registry: %v", err)
+	}
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	router := providerpool.NewRouter(registry, discovery, providerpool.RoutingStrategyPriority)
+
+	provider := &providerpool.Provider{
+		ID:        providerID,
+		Name:      providerID,
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   strings.TrimSuffix(upstreamBaseURL, "/") + "/v1",
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Priority:  10,
+		APIFormat: providerpool.APIFormatOpenAI,
+		APIKeys: []providerpool.APIKey{
+			{ID: "k-" + providerID, Key: "sk-test", Enabled: true},
+		},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("failed to register provider: %v", err)
+	}
+	models := []*providerpool.Model{
+		{
+			ID:           modelID,
+			Name:         modelID,
+			ProviderID:   provider.ID,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, Streaming: true},
+		},
+	}
+	if err := storage.SaveModels(provider.ID, models); err != nil {
+		t.Fatalf("failed to save models: %v", err)
+	}
+	router.RebuildCandidates()
+
+	proxyHandler := proxy.NewProxyHandler(nil, proxy.NewConnectionPool(proxy.DefaultConnectionConfig()), nil)
+	proxyHandler.SetProviderPool(&providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Router:    router,
+	})
+	return proxyHandler
+}
+
 func (h *autoContinueFailingProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.callCount++
 	h.requestPinnedProvider = append(h.requestPinnedProvider, proxy.GetPinnedProvider(r.Context()))
@@ -171,6 +230,162 @@ func (h *autoContinueFailingProxyHandler) ServeHTTP(w http.ResponseWriter, r *ht
 
 	// Next round(s) fail before any SSE chunk.
 	http.Error(w, `{"error":{"message":"Upstream request failed","type":"upstream_error"}}`, http.StatusBadGateway)
+}
+
+func TestStreamMessage_PropagatesSettingsLocaleToUpstreamAcceptLanguage(t *testing.T) {
+	const (
+		modelID = "gpt-4o-mini"
+		msgText = "locale stream turn"
+	)
+
+	var mu sync.Mutex
+	var capturedLocales []string
+
+	upstream := newTCP4TestServerOrSkip(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		if strings.HasSuffix(r.URL.Path, "/chat/completions") && bytes.Contains(body, []byte(msgText)) {
+			mu.Lock()
+			capturedLocales = append(capturedLocales, strings.TrimSpace(r.Header.Get("Accept-Language")))
+			mu.Unlock()
+		}
+
+		if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_locale_settings","choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}],"model":"gpt-4o-mini"}`)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"resp_locale_settings_sync","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"model":"gpt-4o-mini"}`))
+	}))
+	defer upstream.Close()
+
+	proxyHandler := newSingleModelOpenAIProxyHandler(t, upstream.URL, "locale-settings-provider", modelID)
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create memory store: %v", err)
+	}
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProxyBridge(proxybridge.NewBridge(proxyHandler))
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	settingsHandler.settings.Locale = "zh-CN"
+	handler.SetSettingsHandler(settingsHandler)
+
+	conv, err := store.CreateConversation(context.Background(), "Test stream locale from settings")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	respBody := runStreamTurn(t, handler, conv.ID, `{"message":"`+msgText+`","model":"`+modelID+`"}`)
+	if strings.Contains(respBody, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("stream should succeed, body=%s", respBody)
+	}
+	if !strings.Contains(respBody, `"done":true`) {
+		t.Fatalf("stream should contain done marker, body=%s", respBody)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(capturedLocales) == 0 {
+		t.Fatal("expected upstream to receive at least one chat request with captured locale")
+	}
+	for i, got := range capturedLocales {
+		if got != "zh-CN" {
+			t.Fatalf("captured locale #%d = %q, want %q", i, got, "zh-CN")
+		}
+	}
+}
+
+func TestStreamMessage_ContextLocaleOverridesSettingsForUpstreamAcceptLanguage(t *testing.T) {
+	const (
+		modelID = "gpt-4o-mini"
+		msgText = "context locale turn"
+	)
+
+	var mu sync.Mutex
+	var capturedLocales []string
+
+	upstream := newTCP4TestServerOrSkip(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		if strings.HasSuffix(r.URL.Path, "/chat/completions") && bytes.Contains(body, []byte(msgText)) {
+			mu.Lock()
+			capturedLocales = append(capturedLocales, strings.TrimSpace(r.Header.Get("Accept-Language")))
+			mu.Unlock()
+		}
+
+		if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_locale_context","choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}],"model":"gpt-4o-mini"}`)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"resp_locale_context_sync","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"model":"gpt-4o-mini"}`))
+	}))
+	defer upstream.Close()
+
+	proxyHandler := newSingleModelOpenAIProxyHandler(t, upstream.URL, "locale-context-provider", modelID)
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create memory store: %v", err)
+	}
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProxyBridge(proxybridge.NewBridge(proxyHandler))
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	settingsHandler.settings.Locale = "fr-FR"
+	handler.SetSettingsHandler(settingsHandler)
+
+	conv, err := store.CreateConversation(context.Background(), "Test stream locale context override")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(`{"message":"`+msgText+`","model":"`+modelID+`"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req = req.WithContext(proxy.WithLocale(req.Context(), "ja-JP"))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+	respBody := rec.Body.String()
+	if strings.Contains(respBody, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("stream should succeed, body=%s", respBody)
+	}
+	if !strings.Contains(respBody, `"done":true`) {
+		t.Fatalf("stream should contain done marker, body=%s", respBody)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(capturedLocales) == 0 {
+		t.Fatal("expected upstream to receive at least one chat request with captured locale")
+	}
+	for i, got := range capturedLocales {
+		if got != "ja-JP" {
+			t.Fatalf("captured locale #%d = %q, want %q", i, got, "ja-JP")
+		}
+	}
 }
 
 func (h *autoContinuePlanThenCompleteProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -515,7 +730,7 @@ func TestStreamMessageInjectsConversationAnchor(t *testing.T) {
 	}
 }
 
-// TestStreamMessageWithNoProvider tests streaming when no provider is available
+// TestStreamMessageWithNoProvider tests streaming no-provider fallback behavior.
 func TestStreamMessageWithNoProvider(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -543,16 +758,63 @@ func TestStreamMessageWithNoProvider(t *testing.T) {
 	c.SetParamNames("id")
 	c.SetParamValues(conv.ID)
 
-	err = handler.StreamMessage(c)
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage failed: %v", err)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"provider":"ir"`) {
+		t.Fatalf("expected ir provider fallback in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, `"model":"ir-only-fallback"`) {
+		t.Fatalf("expected ir-only-fallback model in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, "data: [DONE]") {
+		t.Fatalf("expected [DONE] marker, got: %s", body)
+	}
+}
 
-	// Should return error when no provider is available
-	if err == nil {
-		// Check if error is in response body (SSE sends 200 then error in data)
-		body := rec.Body.String()
-		t.Logf("Response when no provider: %s", body)
-		if !strings.Contains(body, "error") {
-			t.Error("expected error in response body when no provider available")
-		}
+func TestStreamMessageWithNoProvider_DeepResearchFallback(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test Conv")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry() // no provider on purpose
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	handler.deepResearchExec = &deepResearchExecMock{
+		result: map[string]interface{}{
+			"answer": "Deep research stream fallback answer.",
+		},
+	}
+
+	e := echo.New()
+	reqBody := `{"message":"no provider stream fallback"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage failed: %v", err)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Deep research stream fallback answer.") {
+		t.Fatalf("expected fallback delta in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, `"provider":"deepresearch"`) {
+		t.Fatalf("expected deepresearch provider in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, "data: [DONE]") {
+		t.Fatalf("expected [DONE] marker, got: %s", body)
 	}
 }
 
@@ -707,7 +969,10 @@ func TestStreamMessageAutoContinue_PreContent502GracefulCompletion(t *testing.T)
 	handler := NewChatHandler(store, registry, toolRegistry)
 
 	// Enable agent mode path (`getMaxToolRounds() > maxToolRounds`) so TODO auto-continue can trigger.
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
 
 	fakeProxy := &autoContinueFailingProxyHandler{}
 	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
@@ -733,6 +998,9 @@ func TestStreamMessageAutoContinue_PreContent502GracefulCompletion(t *testing.T)
 	}
 	if !strings.Contains(body, `"done":true`) {
 		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fallbackText := streamContinuationFailureText(settingsHandler.GetLocale()); fallbackText != "" && !strings.Contains(body, fallbackText) {
+		t.Fatalf("expected continuation failure fallback text in stream body, got=%s", body)
 	}
 	if fakeProxy.callCount != 4 {
 		t.Fatalf("expected exactly 4 proxy calls (initial + one continuation with 2 retries), got %d", fakeProxy.callCount)
@@ -763,7 +1031,10 @@ func TestStreamMessageAutoContinue_PlanThenExecuteThenSummary(t *testing.T) {
 	registry := llm.NewProviderRegistry()
 	toolRegistry := tools.NewRegistry()
 	handler := NewChatHandler(store, registry, toolRegistry)
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
 
 	fakeProxy := &autoContinuePlanThenCompleteProxyHandler{}
 	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))

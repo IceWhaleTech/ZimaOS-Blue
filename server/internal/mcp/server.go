@@ -783,6 +783,10 @@ func (s *Server) orchestratorRun(ctx context.Context, args map[string]interface{
 	payload := map[string]interface{}{
 		"compressed_result": final,
 		"stats":             stats,
+		"failures": map[string]interface{}{
+			"deterministic": collectTaskFailures(deterministicOut, 12),
+			"generative":    collectTaskFailures(generativeOut, 12),
+		},
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -1108,13 +1112,6 @@ func aggregateTaskOutputs(outputs []orchestratorTaskOutput, maxChars int) string
 	}
 	var sb strings.Builder
 	for _, item := range outputs {
-		if item.Err != nil {
-			continue
-		}
-		text := strings.TrimSpace(item.Text)
-		if text == "" {
-			continue
-		}
 		label := strings.TrimSpace(item.Label)
 		if label == "" {
 			label = item.Tool
@@ -1122,7 +1119,18 @@ func aggregateTaskOutputs(outputs []orchestratorTaskOutput, maxChars int) string
 		if label == "" {
 			label = item.TaskID
 		}
-		line := fmt.Sprintf("[%s] %s", label, text)
+
+		var line string
+		if item.Err != nil {
+			line = fmt.Sprintf("[%s] ERROR: %s", label, truncateRunes(strings.TrimSpace(item.Err.Error()), 240))
+		} else {
+			text := strings.TrimSpace(item.Text)
+			if text == "" {
+				continue
+			}
+			line = fmt.Sprintf("[%s] %s", label, text)
+		}
+
 		if sb.Len() > 0 {
 			sb.WriteString("\n")
 		}
@@ -1132,6 +1140,44 @@ func aggregateTaskOutputs(outputs []orchestratorTaskOutput, maxChars int) string
 		}
 	}
 	return truncateRunes(strings.TrimSpace(sb.String()), maxChars)
+}
+
+func collectTaskFailures(outputs []orchestratorTaskOutput, maxItems int) []map[string]string {
+	if len(outputs) == 0 || maxItems <= 0 {
+		return nil
+	}
+	items := make([]map[string]string, 0, maxItems)
+	for _, item := range outputs {
+		if item.Err == nil {
+			continue
+		}
+		label := strings.TrimSpace(item.Label)
+		if label == "" {
+			label = strings.TrimSpace(item.Tool)
+		}
+		if label == "" {
+			label = strings.TrimSpace(item.TaskID)
+		}
+		out := map[string]string{
+			"task_id": strings.TrimSpace(item.TaskID),
+			"type":    strings.TrimSpace(item.Type),
+			"error":   truncateRunes(strings.TrimSpace(item.Err.Error()), 240),
+		}
+		if label != "" {
+			out["label"] = label
+		}
+		if tool := strings.TrimSpace(item.Tool); tool != "" {
+			out["tool"] = tool
+		}
+		items = append(items, out)
+		if len(items) >= maxItems {
+			break
+		}
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	return items
 }
 
 func buildOrchestratorFinal(goal, deterministicSummary, generativeSummary string, detOut, genOut []orchestratorTaskOutput) (string, map[string]interface{}) {

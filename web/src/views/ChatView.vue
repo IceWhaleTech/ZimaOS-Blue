@@ -215,23 +215,145 @@ const streamingMessageId = computed(() => {
   return chatStore.messages[chatStore.messages.length - 1]?.id ?? null
 })
 
-function messageMemoDeps(message: { id: string; content: string; attachments?: unknown[]; updated_at?: string; created_at: string }, isStreaming: boolean) {
-  const selectedDep = chatStore.isMultiSelectMode
+type MessageMemoSource = {
+  conversation_id: string
+  id: string
+  content: string
+  attachments?: unknown[]
+  updated_at?: string
+  created_at: string
+}
+
+type MessageMemoDepsTuple = [
+  id: string,
+  content: string,
+  attachmentsLength: number,
+  updatedAt: string,
+  isStreaming: boolean,
+  isLastAssistant: boolean,
+  disableAutoTTS: boolean,
+  isMobile: boolean,
+  isMultiSelectMode: boolean,
+  isSelected: boolean,
+]
+
+type MessageRenderBindings = {
+  isStreaming: boolean
+  isLastAssistantMessage: boolean
+  disableAutoTTS: boolean
+  isMobile: boolean
+  isSelected: boolean
+  isMultiSelectMode: boolean
+}
+
+type MessageRenderMeta = {
+  isStreaming: boolean
+  isLastAssistant: boolean
+  isSelected: boolean
+  memoDeps: MessageMemoDepsTuple
+  bindings: MessageRenderBindings
+}
+
+function getMessageRenderMetaKey(message: MessageMemoSource): string {
+  const cachedKey = messageRenderMetaKeyCache.get(message)
+  if (cachedKey) return cachedKey
+  const key = `${message.conversation_id}:${message.id}`
+  messageRenderMetaKeyCache.set(message, key)
+  return key
+}
+
+const messageRenderMetaKeyCache = new WeakMap<MessageMemoSource, string>()
+let lastRenderMetaLookupKey = ''
+let lastRenderMetaLookupMessage: MessageMemoSource | null = null
+let lastRenderMetaLookupValue: MessageRenderMeta | null = null
+
+function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
+  if (message === lastRenderMetaLookupMessage && lastRenderMetaLookupValue) {
+    return lastRenderMetaLookupValue
+  }
+
+  const cacheKey = getMessageRenderMetaKey(message)
+  if (cacheKey === lastRenderMetaLookupKey && lastRenderMetaLookupValue) {
+    lastRenderMetaLookupMessage = message
+    return lastRenderMetaLookupValue
+  }
+
+  const isStreaming = message.id === streamingMessageId.value
+  const memoDepsUpdatedAt = message.updated_at ?? message.created_at
+  const isLastAssistant = message.id === lastAssistantMessageId.value
+  const isSelected = chatStore.isMultiSelectMode
     ? chatStore.selectedMessageIds.has(message.id)
     : false
-  return [
+
+  const cached = messageRenderMetaCache.get(cacheKey)
+  if (
+    cached
+    && cached.memoDeps[1] === message.content
+    && cached.memoDeps[2] === (message.attachments?.length ?? 0)
+    && cached.memoDeps[3] === memoDepsUpdatedAt
+    && cached.memoDeps[4] === isStreaming
+    && cached.memoDeps[5] === isLastAssistant
+    && cached.memoDeps[6] === showTalkMode.value
+    && cached.memoDeps[7] === isMobile.value
+    && cached.memoDeps[8] === chatStore.isMultiSelectMode
+    && cached.memoDeps[9] === isSelected
+  ) {
+    lastRenderMetaLookupKey = cacheKey
+    lastRenderMetaLookupMessage = message
+    lastRenderMetaLookupValue = cached
+    return cached
+  }
+
+  const deps: MessageMemoDepsTuple = [
     message.id,
     message.content,
     message.attachments?.length ?? 0,
-    message.updated_at ?? message.created_at,
+    memoDepsUpdatedAt,
     isStreaming,
-    message.id === lastAssistantMessageId.value,
+    isLastAssistant,
     showTalkMode.value,
     isMobile.value,
     chatStore.isMultiSelectMode,
-    selectedDep,
+    isSelected,
   ]
+
+  const bindings: MessageRenderBindings = {
+    isStreaming,
+    isLastAssistantMessage: isLastAssistant,
+    disableAutoTTS: showTalkMode.value,
+    isMobile: isMobile.value,
+    isSelected,
+    isMultiSelectMode: chatStore.isMultiSelectMode,
+  }
+
+  const nextMeta: MessageRenderMeta = {
+    isStreaming,
+    isLastAssistant,
+    isSelected,
+    memoDeps: deps,
+    bindings,
+  }
+
+  if (messageRenderMetaCache.size >= MESSAGE_RENDER_META_CACHE_MAX && !messageRenderMetaCache.has(cacheKey)) {
+    messageRenderMetaCache.clear()
+  }
+  messageRenderMetaCache.set(cacheKey, nextMeta)
+  lastRenderMetaLookupKey = cacheKey
+  lastRenderMetaLookupMessage = message
+  lastRenderMetaLookupValue = nextMeta
+  return nextMeta
 }
+
+function messageMemoDeps(message: MessageMemoSource) {
+  return getMessageRenderMeta(message).memoDeps
+}
+
+function messageRenderBindings(message: MessageMemoSource) {
+  return getMessageRenderMeta(message).bindings
+}
+
+const messageRenderMetaCache = new Map<string, MessageRenderMeta>()
+const MESSAGE_RENDER_META_CACHE_MAX = 1500
 
 // Context menu state
 const showContextMenu = ref(false)
@@ -314,13 +436,17 @@ const totalActiveProviderCount = computed(() => cloudActiveCount.value + localAc
 const isSingleModelMode = computed(() => chatStore.modelPreference !== 'auto')
 
 const fixedModelOptions = computed(() => {
+  const enabledProviderIds = new Set(
+    providerPoolStore.enabledProviders
+      .filter(provider => provider.type !== 'media')
+      .map(provider => provider.id)
+  )
+
   const modelIds = new Set<string>()
-  for (const provider of providerPoolStore.enabledProviders) {
-    if (provider.type === 'media') continue
-    for (const model of provider.models || []) {
-      if (!model.enabled) continue
-      modelIds.add(model.id)
-    }
+  for (const model of providerPoolStore.models) {
+    if (!model.enabled) continue
+    if (!enabledProviderIds.has(model.provider_id)) continue
+    modelIds.add(model.id)
   }
   return Array.from(modelIds)
     .sort((a, b) => a.localeCompare(b))
@@ -509,6 +635,10 @@ watch(
 watch(
   () => chatStore.currentConversationId,
   async (newId, oldId) => {
+    messageRenderMetaCache.clear()
+    lastRenderMetaLookupKey = ''
+    lastRenderMetaLookupMessage = null
+    lastRenderMetaLookupValue = null
     clearVirtualItemObservers()
     if (isMobile.value) {
       showSidebar.value = false
@@ -878,8 +1008,8 @@ function toggleWebSearch() {
   chatStore.setWebSearchEnabled(!chatStore.webSearchEnabled)
 }
 
-function toggleDeepSearch() {
-  chatStore.setDeepSearchEnabled(!chatStore.deepSearchEnabled)
+function toggleDeepResearch() {
+  chatStore.setDeepResearchEnabled(!chatStore.deepResearchEnabled)
 }
 
 function toggleAgentMode() {
@@ -957,6 +1087,14 @@ function handleContextContinue() {
 function handleContextRegenerate() {
   chatStore.regenerateMessage()
   showContextMenu.value = false
+}
+
+function handleMessageContinue() {
+  chatStore.continueMessage()
+}
+
+function handleMessageRegenerate() {
+  chatStore.regenerateMessage()
 }
 
 async function handleDeleteSelectedMessages() {
@@ -1045,6 +1183,10 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  messageRenderMetaCache.clear()
+  lastRenderMetaLookupKey = ''
+  lastRenderMetaLookupMessage = null
+  lastRenderMetaLookupValue = null
   if (normalScrollRafId !== null) {
     window.cancelAnimationFrame(normalScrollRafId)
     normalScrollRafId = null
@@ -1188,11 +1330,11 @@ onUnmounted(() => {
           <button
             v-if="!shouldCollapseTopbarControls"
             class="topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer"
-            :class="chatStore.deepSearchEnabled
+            :class="chatStore.deepResearchEnabled
               ? 'text-emerald-500 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30'
               : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'"
             :title="t('ui.deepResearchTitle')"
-            @click="toggleDeepSearch"
+            @click="toggleDeepResearch"
           >
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.483 9.246 5 7.5 5S4.168 5.483 3 6.253v13C4.168 18.483 5.754 18 7.5 18s3.332.483 4.5 1.253m0-13C13.168 5.483 14.754 5 16.5 5s3.332.483 4.5 1.253v13C19.832 18.483 18.246 18 16.5 18s-3.332.483-4.5 1.253" />
@@ -1655,14 +1797,14 @@ onUnmounted(() => {
 
                   <button
                     class="quick-action-tile"
-                    :class="{ 'is-active': chatStore.deepSearchEnabled }"
-                    @click="toggleDeepSearch"
+                    :class="{ 'is-active': chatStore.deepResearchEnabled }"
+                    @click="toggleDeepResearch"
                   >
                     <div class="flex items-center justify-between">
                       <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.483 9.246 5 7.5 5S4.168 5.483 3 6.253v13C4.168 18.483 5.754 18 7.5 18s3.332.483 4.5 1.253m0-13C13.168 5.483 14.754 5 16.5 5s3.332.483 4.5 1.253v13C19.832 18.483 18.246 18 16.5 18s-3.332.483-4.5 1.253" />
                       </svg>
-                      <span class="quick-action-pill">{{ chatStore.deepSearchEnabled ? t('common.enabled') : t('common.disabled') }}</span>
+                      <span class="quick-action-pill">{{ chatStore.deepResearchEnabled ? t('common.enabled') : t('common.disabled') }}</span>
                     </div>
                     <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('ui.deepResearchTitle') }}</div>
                   </button>
@@ -1834,29 +1976,25 @@ onUnmounted(() => {
             v-if="useVirtualScroll"
             ref="virtualScrollRef"
             :item-count="chatStore.messages.length"
+            :items="chatStore.messages"
             :estimated-item-height="120"
             :overscan="5"
             class="h-full pb-4"
             @visible-range-change="handleVisibleRangeChange"
           >
-            <template #default="{ index, updateHeight }">
+            <template #default="{ item: message, updateHeight }">
               <div
-                v-if="chatStore.messages[index]"
-                :key="`${chatStore.messages[index]!.conversation_id}-${chatStore.messages[index]!.id}`"
-                :ref="bindVirtualItemHeight(chatStore.messages[index]!, updateHeight)"
+                v-if="message"
+                :key="`${message.conversation_id}-${message.id}`"
+                :ref="bindVirtualItemHeight(message, updateHeight)"
               >
                 <ChatMessage
-                  v-memo="messageMemoDeps(chatStore.messages[index]!, chatStore.messages[index]!.id === streamingMessageId)"
-                  :message="chatStore.messages[index]!"
-                  :is-streaming="chatStore.messages[index]!.id === streamingMessageId"
-                  :is-last-assistant-message="chatStore.messages[index]!.id === lastAssistantMessageId"
-                  :disable-auto-tts="showTalkMode"
-                  :is-mobile="isMobile"
-                  :is-selected="chatStore.selectedMessageIds.has(chatStore.messages[index]!.id)"
-                  :is-multi-select-mode="chatStore.isMultiSelectMode"
+                  v-memo="messageMemoDeps(message)"
+                  :message="message"
+                  v-bind="messageRenderBindings(message)"
                   @contextmenu="handleMessageContextMenu"
-                  @continue="chatStore.continueMessage()"
-                  @regenerate="chatStore.regenerateMessage()"
+                  @continue="handleMessageContinue"
+                  @regenerate="handleMessageRegenerate"
                 />
               </div>
             </template>
@@ -1869,17 +2007,12 @@ onUnmounted(() => {
               :key="`${message.conversation_id}-${message.id}`"
             >
               <ChatMessage
-                v-memo="messageMemoDeps(message, message.id === streamingMessageId)"
+                v-memo="messageMemoDeps(message)"
                 :message="message"
-                :is-streaming="message.id === streamingMessageId"
-                :is-last-assistant-message="message.id === lastAssistantMessageId"
-                :disable-auto-tts="showTalkMode"
-                :is-mobile="isMobile"
-                :is-selected="chatStore.selectedMessageIds.has(message.id)"
-                :is-multi-select-mode="chatStore.isMultiSelectMode"
+                v-bind="messageRenderBindings(message)"
                 @contextmenu="handleMessageContextMenu"
-                @continue="chatStore.continueMessage()"
-                @regenerate="chatStore.regenerateMessage()"
+                @continue="handleMessageContinue"
+                @regenerate="handleMessageRegenerate"
               />
             </div>
           </div>

@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 import { useNotificationStore } from '@/stores/notification'
 import { useProviderPoolStore } from '@/stores/providerPool'
+import { useSettingsStore } from '@/stores/settings'
 import { ensureFreshToken } from '@/api/client'
 
 // Global event listeners — components can subscribe to specific event types.
@@ -32,6 +33,23 @@ export function useEventStream() {
   let abortController: AbortController | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   const RECONNECT_DELAY = 5000
+  const chatStore = useChatStore()
+  const notificationStore = useNotificationStore()
+  const providerPoolStore = useProviderPoolStore()
+  const settingsStore = useSettingsStore()
+  const { t } = useI18n()
+  let providerResyncTimer: ReturnType<typeof setTimeout> | null = null
+
+  function scheduleProviderResync() {
+    if (providerResyncTimer) return
+    providerResyncTimer = setTimeout(() => {
+      providerResyncTimer = null
+      providerPoolStore.fetchProviders().then(() => {
+        const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
+        settingsStore.updateFromPoolProviders(llmProviders)
+      }).catch(() => {})
+    }, 250)
+  }
 
   async function connect() {
     if (connected.value) return
@@ -127,14 +145,9 @@ export function useEventStream() {
 
       // Special handling for ask - no i18n needed
       if (type === 'ask') {
-        const chatStore = useChatStore()
         chatStore.setPendingQuestion(data)
         return
       }
-
-      const chatStore = useChatStore()
-      const notificationStore = useNotificationStore()
-      const { t } = useI18n()
 
       console.log('[EventStream] Entering switch with type:', type)
       switch (type) {
@@ -210,9 +223,12 @@ export function useEventStream() {
       }
 
       case 'provider_status_changed': {
-        const providerPoolStore = useProviderPoolStore()
         if (data.provider_id && data.status) {
+          const hasProvider = providerPoolStore.providers.some(p => p.id === data.provider_id)
           providerPoolStore.updateProviderStatus(data.provider_id, data.status)
+          if (!hasProvider || providerPoolStore.providers.length === 0) {
+            scheduleProviderResync()
+          }
         }
         break
       }
@@ -249,6 +265,10 @@ export function useEventStream() {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
+    }
+    if (providerResyncTimer) {
+      clearTimeout(providerResyncTimer)
+      providerResyncTimer = null
     }
   }
 

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -156,7 +157,7 @@ func getHealthCheckMethod(provider *Provider) (string, []string) {
 
 	// Provider-specific overrides first
 	switch provider.ID {
-	case "openai", "deepseek", "openrouter", "aihubmix":
+	case "openai", "deepseek", "openrouter", "openrouter-free", "aihubmix":
 		return http.MethodGet, []string{baseURL + "/models"}
 	case "moonshot":
 		// Moonshot (Kimi) has domestic (.cn) and international (.ai) domains.
@@ -188,7 +189,13 @@ func getHealthCheckMethod(provider *Provider) (string, []string) {
 	// Format-based fallback — handles trial provider, custom providers, and any new providers
 	switch provider.APIFormat {
 	case APIFormatResponses:
-		return http.MethodPost, []string{baseURL + "/v1/responses"}
+		if isResponsesEndpointBaseURL(baseURL) {
+			return http.MethodPost, []string{baseURL}
+		}
+		if strings.HasSuffix(baseURL, "/v1") || strings.HasSuffix(baseURL, "/v4") {
+			return http.MethodPost, []string{baseURL + "/responses"}
+		}
+		return http.MethodPost, []string{baseURL + "/v1/responses", baseURL + "/responses"}
 	case APIFormatAnthropic:
 		// Anthropic /v1/messages only accepts POST; use HEAD to avoid 405.
 		// Even without a body, the server returns 401/403 (auth check) which we treat as "reachable".
@@ -207,6 +214,16 @@ func getHealthCheckMethod(provider *Provider) (string, []string) {
 		}
 		return http.MethodGet, []string{baseURL + "/v1/models", baseURL + "/models"}
 	}
+}
+
+func isResponsesEndpointBaseURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		path := strings.TrimSuffix(raw, "/")
+		return path != "" && strings.HasSuffix(path, "/responses")
+	}
+	path := strings.TrimSuffix(u.Path, "/")
+	return path != "" && strings.HasSuffix(path, "/responses")
 }
 
 // addAuthHeader adds the appropriate authentication header for a provider.

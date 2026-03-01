@@ -134,7 +134,7 @@ func autoDetectAPIFormat(ctx context.Context, provider *Provider) (APIFormat, st
 	if best.format == "" {
 		return APIFormatOpenAI, ""
 	}
-	return best.format, best.selectedBaseURL
+	return best.format, normalizeDetectedBaseURL(provider.BaseURL, best)
 }
 
 func probeThirdPartyAPIFormat(ctx context.Context, provider *Provider) formatProbeResult {
@@ -169,6 +169,44 @@ func probeThirdPartyAPIFormat(ctx context.Context, provider *Provider) formatPro
 	return best
 }
 
+func normalizeDetectedBaseURL(originalBaseURL string, best formatProbeResult) string {
+	if best.selectedBaseURL == "" {
+		return ""
+	}
+	if best.format != APIFormatResponses {
+		return best.selectedBaseURL
+	}
+
+	base := strings.TrimSuffix(strings.TrimSpace(originalBaseURL), "/")
+	if base == "" {
+		return best.selectedBaseURL
+	}
+
+	detectedURL, err := url.Parse(best.selectedBaseURL)
+	if err != nil {
+		return best.selectedBaseURL
+	}
+	path := strings.TrimSuffix(strings.ToLower(detectedURL.Path), "/")
+
+	// Keep official ChatGPT Codex endpoint rewrite for direct ChatGPT hosts.
+	if path == "/backend-api/codex/responses" {
+		host := strings.ToLower(detectedURL.Hostname())
+		switch host {
+		case "chatgpt.com", "chat.openai.com", "openai.com":
+			return best.selectedBaseURL
+		default:
+			return base
+		}
+	}
+
+	// For generic responses relays, preserve the original base URL so model discovery
+	// can use /v1/models or /models successfully.
+	if strings.HasSuffix(path, "/responses") {
+		return base
+	}
+	return best.selectedBaseURL
+}
+
 func tieBreakPrefer(a, b formatProbeResult) bool {
 	rank := map[APIFormat]int{
 		APIFormatAnthropic: 4,
@@ -181,9 +219,6 @@ func tieBreakPrefer(a, b formatProbeResult) bool {
 
 func probeCandidate(ctx context.Context, client *http.Client, provider *Provider, baseURL string, c formatCandidate) formatProbeResult {
 	res := formatProbeResult{format: c.format}
-	if c.fixedBaseURL {
-		res.selectedBaseURL = firstURL(baseURL, c.basePaths[0])
-	}
 
 	baseHits := 0
 	for _, p := range c.basePaths {
@@ -219,14 +254,17 @@ func probeCapability(ctx context.Context, client *http.Client, provider *Provide
 		if err != nil {
 			continue
 		}
-		if supportsCapability(status, body) {
+		if supportsCapability(c, status, body) {
 			return true
 		}
 	}
 	return false
 }
 
-func supportsCapability(status int, body string) bool {
+func supportsCapability(c formatCandidate, status int, body string) bool {
+	if candidateExplicitlyRejected(c, status, body) {
+		return false
+	}
 	if status >= 200 && status < 300 {
 		return true
 	}
@@ -248,14 +286,43 @@ func supportsCapability(status int, body string) bool {
 }
 
 func endpointExists(ctx context.Context, client *http.Client, provider *Provider, c formatCandidate, fullURL string) (bool, int) {
-	status, _, err := probeWithPayload(ctx, client, provider, c, fullURL, false)
+	status, body, err := probeWithPayload(ctx, client, provider, c, fullURL, false)
 	if err != nil {
 		return false, 0
 	}
 	if status == http.StatusNotFound || status == http.StatusGone {
 		return false, status
 	}
+	if candidateExplicitlyRejected(c, status, body) {
+		return false, status
+	}
 	return true, status
+}
+
+func candidateExplicitlyRejected(c formatCandidate, status int, body string) bool {
+	switch c.format {
+	case APIFormatOpenAI:
+		return indicatesResponsesOnlyProvider(status, body)
+	default:
+		return false
+	}
+}
+
+func indicatesResponsesOnlyProvider(status int, body string) bool {
+	if status < 400 || status >= 600 {
+		return false
+	}
+	lower := strings.ToLower(body)
+	if lower == "" {
+		return false
+	}
+	if !(strings.Contains(lower, "/v1/responses") || strings.Contains(lower, "responses api")) {
+		return false
+	}
+	return strings.Contains(lower, "unsupported legacy protocol") ||
+		strings.Contains(lower, "legacy protocol") ||
+		strings.Contains(lower, "/v1/chat/completions") ||
+		strings.Contains(lower, "chat/completions")
 }
 
 func probeWithPayload(ctx context.Context, client *http.Client, provider *Provider, c formatCandidate, fullURL string, featureProbe bool) (int, string, error) {
@@ -326,6 +393,15 @@ func firstURL(baseURL, path string) string {
 	if err != nil {
 		return strings.TrimSuffix(baseURL, "/") + path
 	}
-	base.Path = strings.TrimSuffix(base.Path, "/") + path
+	basePath := strings.TrimSuffix(base.Path, "/")
+	if basePath == "" {
+		base.Path = path
+		return base.String()
+	}
+	if strings.HasPrefix(path, basePath+"/") || path == basePath {
+		base.Path = path
+		return base.String()
+	}
+	base.Path = basePath + path
 	return base.String()
 }

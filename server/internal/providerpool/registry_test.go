@@ -243,7 +243,7 @@ func TestBuiltinProviders(t *testing.T) {
 	}
 
 	// Check required providers exist
-	required := []string{"openai", "anthropic", "google", "deepseek", "ollama"}
+	required := []string{"openai", "anthropic", "google", "deepseek", "ollama", "openrouter-free"}
 	for _, id := range required {
 		found := false
 		for _, p := range providers {

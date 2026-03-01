@@ -36,6 +36,7 @@ const RE_IMAGE_INLINE = /!\[([^\]]*)\]\(([^)]+)\)/g
 const RE_STANDALONE_URL = /^(https?:\/\/[^\s]+)$/
 const RE_FILE_PATH = /^([a-zA-Z]:\\[^\s]+\.[a-zA-Z0-9]+|\/[^\s]+\.[a-zA-Z0-9]+)$/
 const RE_TABLE_SEP_CONTENT = /^[\s:-]+$/
+const RE_WINDOWS_ABS_PATH = /^[a-zA-Z]:\\/
 
 // Language display names for code blocks
 const languageAliases: Record<string, string> = {
@@ -171,11 +172,32 @@ export { parseCache }
 interface IncrementalParseState {
   lastContent: string
   lastResult: ParsedContent
-  lastCardIndex: number
   hasStreaming: boolean
 }
 
 const incrementalStates = new Map<string, IncrementalParseState>()
+const INCREMENTAL_CARD_HINT_TAIL = 4
+const INCREMENTAL_STATES_MAX = 500
+
+function setIncrementalState(cacheKey: string, state: IncrementalParseState): void {
+  if (incrementalStates.size >= INCREMENTAL_STATES_MAX && !incrementalStates.has(cacheKey)) {
+    const oldestKey = incrementalStates.keys().next().value
+    if (oldestKey !== undefined) {
+      incrementalStates.delete(oldestKey as string)
+    }
+  }
+  incrementalStates.set(cacheKey, state)
+}
+
+function mightContainIncrementalCardHints(content: string): boolean {
+  return content.includes('```')
+    || content.includes('|')
+    || content.includes('- ')
+    || content.includes('* ')
+    || content.includes('1. ')
+    || content.includes('![')
+    || content.includes('http')
+}
 
 /**
  * Parse content incrementally (for streaming messages)
@@ -200,10 +222,9 @@ export function parseTypelessContentIncremental(
   // If no previous state or content doesn't start with previous content, do full parse
   if (!state || !content.startsWith(state.lastContent)) {
     const result = parseTypelessContentInternal(content, 0, true) // isStreaming = true
-    incrementalStates.set(cacheKey, {
+    setIncrementalState(cacheKey, {
       lastContent: content,
       lastResult: result,
-      lastCardIndex: result.cards.length,
       hasStreaming: checkStreaming(result.cards),
     })
     return result
@@ -211,23 +232,20 @@ export function parseTypelessContentIncremental(
 
   // Content is an extension of previous content
   const newContent = content.slice(state.lastContent.length)
+  if (newContent.length === 0) {
+    return state.lastResult
+  }
+  const tailProbe = state.lastContent.slice(-INCREMENTAL_CARD_HINT_TAIL) + newContent
+  const hasIncrementalCardHints = mightContainIncrementalCardHints(tailProbe)
 
-  // If new content is small, just return cached result (debounce)
-  // But if we have a streaming card, always re-parse to update it
-  if (newContent.length < 10 && !state.hasStreaming) {
+  // If the new chunk is very small and has no card hints, debounce parsing.
+  // Preserve streaming-card behavior: always re-parse when a card is in-progress.
+  if (newContent.length < 24 && !state.hasStreaming && !hasIncrementalCardHints) {
     return state.lastResult
   }
 
   // Check if new content might contain new cards or update streaming cards
-  const mightHaveNewCards =
-    newContent.includes('```') ||
-    newContent.includes('|') ||
-    newContent.includes('- ') ||
-    newContent.includes('* ') ||
-    newContent.includes('1. ') ||
-    newContent.includes('![') ||
-    newContent.includes('http') ||
-    state.hasStreaming // Always re-parse if we have a streaming card
+  const mightHaveNewCards = hasIncrementalCardHints || state.hasStreaming
 
   if (!mightHaveNewCards) {
     // Just update text, no new cards
@@ -235,10 +253,9 @@ export function parseTypelessContentIncremental(
       text: state.lastResult.text + newContent,
       cards: state.lastResult.cards,
     }
-    incrementalStates.set(cacheKey, {
+    setIncrementalState(cacheKey, {
       lastContent: content,
       lastResult: updatedResult,
-      lastCardIndex: state.lastCardIndex,
       hasStreaming: state.hasStreaming,
     })
     return updatedResult
@@ -246,10 +263,9 @@ export function parseTypelessContentIncremental(
 
   // Need to re-parse (new cards might be present or streaming card updated)
   const result = parseTypelessContentInternal(content, 0, true) // isStreaming = true
-  incrementalStates.set(cacheKey, {
+  setIncrementalState(cacheKey, {
     lastContent: content,
     lastResult: result,
-    lastCardIndex: result.cards.length,
     hasStreaming: checkStreaming(result.cards),
   })
   return result
@@ -855,40 +871,143 @@ const RE_CODE_FENCE = /```[a-z]/i
 const RE_IMAGE_LINE = /^\s*!\[[^\]]*\]\([^)]+\)\s*$/m
 const RE_URL_LINE = /^\s*https?:\/\/[^\s]+\s*$/m
 const RE_FILE_PATH_LINE = /^\s*([a-zA-Z]:\\[^\s]+\.[a-zA-Z0-9]+|\/[^\s]+\.[a-zA-Z0-9]+)\s*$/m
-const RE_SEPARATOR_LINE = /^[\s|:-]+$/
-const RE_UNORDERED_LIST = /^(\s*)[-*+]\s+/
-const RE_ORDERED_LIST = /^(\s*)\d+\.\s+/
 const RE_DIGIT_DOT = /\d+\.\s/
+const HAS_TYPELESS_CACHE_MAX = 400
+const HAS_TYPELESS_CACHE_MAX_CONTENT_LENGTH = 12000
+const hasTypelessCardsCache = new Map<string, boolean>()
+
+function evictOldestMapEntry<K, V>(cache: Map<K, V>): void {
+  const oldestKey = cache.keys().next().value
+  if (oldestKey !== undefined) {
+    cache.delete(oldestKey as K)
+  }
+}
+
+function isWhitespaceCharCode(code: number): boolean {
+  return code === 32 || (code >= 9 && code <= 13)
+}
+
+function lineHasNonWhitespace(content: string, start: number, end: number): boolean {
+  for (let index = start; index < end; index++) {
+    if (!isWhitespaceCharCode(content.charCodeAt(index))) {
+      return true
+    }
+  }
+  return false
+}
+
+function lineIncludesPipe(content: string, start: number, end: number): boolean {
+  for (let index = start; index < end; index++) {
+    if (content.charCodeAt(index) === 124 /* | */) {
+      return true
+    }
+  }
+  return false
+}
+
+function isSeparatorLine(content: string, start: number, end: number): boolean {
+  let hasDash = false
+  for (let index = start; index < end; index++) {
+    const code = content.charCodeAt(index)
+    if (code === 45 /* - */) {
+      hasDash = true
+      continue
+    }
+    if (code === 124 /* | */ || code === 58 /* : */ || isWhitespaceCharCode(code)) {
+      continue
+    }
+    return false
+  }
+  return hasDash
+}
+
+function isUnorderedListItemLine(content: string, start: number, end: number): boolean {
+  let index = start
+  while (index < end && isWhitespaceCharCode(content.charCodeAt(index))) {
+    index++
+  }
+  if (index >= end) return false
+
+  const marker = content.charCodeAt(index)
+  if (marker !== 45 /* - */ && marker !== 42 /* * */ && marker !== 43 /* + */) {
+    return false
+  }
+
+  index++
+  if (index >= end) return false
+  return isWhitespaceCharCode(content.charCodeAt(index))
+}
+
+function isOrderedListItemLine(content: string, start: number, end: number): boolean {
+  let index = start
+  while (index < end && isWhitespaceCharCode(content.charCodeAt(index))) {
+    index++
+  }
+  if (index >= end) return false
+
+  let hasDigit = false
+  while (index < end) {
+    const code = content.charCodeAt(index)
+    if (code < 48 || code > 57) break
+    hasDigit = true
+    index++
+  }
+  if (!hasDigit || index >= end || content.charCodeAt(index) !== 46 /* . */) {
+    return false
+  }
+
+  index++
+  if (index >= end) return false
+  return isWhitespaceCharCode(content.charCodeAt(index))
+}
 
 /**
  * Check if content contains any typeless cards or markdown elements that will be converted.
  * Optimized with fast string checks before regex, and pre-compiled regexes.
  */
-export function hasTypelessCards(content: string): boolean {
+export function hasTypelessCards(content: string, useCache = true): boolean {
+  const shouldUseCache = useCache
+    && content.length > 0
+    && content.length <= HAS_TYPELESS_CACHE_MAX_CONTENT_LENGTH
+
+  if (shouldUseCache) {
+    const cached = hasTypelessCardsCache.get(content)
+    if (cached !== undefined) return cached
+  }
+
+  const finalize = (result: boolean): boolean => {
+    if (!shouldUseCache) return result
+    if (hasTypelessCardsCache.size >= HAS_TYPELESS_CACHE_MAX && !hasTypelessCardsCache.has(content)) {
+      evictOldestMapEntry(hasTypelessCardsCache)
+    }
+    hasTypelessCardsCache.set(content, result)
+    return result
+  }
+
   // Fast path: check for explicit typeless blocks (cheapest check)
   if (content.includes(TYPELESS_MARKER_START)) {
-    return true
+    return finalize(true)
   }
 
   // Fast path: code fences (covers terminal, mermaid, and regular code blocks)
   // Use includes('```') as a cheap gate before regex
   if (content.includes('```') && RE_CODE_FENCE.test(content)) {
-    return true
+    return finalize(true)
   }
 
   // Fast path: markdown images — gate with '!['
   if (content.includes('![') && RE_IMAGE_LINE.test(content)) {
-    return true
+    return finalize(true)
   }
 
   // Fast path: standalone URLs — gate with 'http'
   if (content.includes('http') && RE_URL_LINE.test(content)) {
-    return true
+    return finalize(true)
   }
 
   // Fast path: file paths — gate with common path separators
   if ((content.includes(':\\') || content.includes('/')) && RE_FILE_PATH_LINE.test(content)) {
-    return true
+    return finalize(true)
   }
 
   // Tables and lists require line-by-line scan — gate with cheap checks
@@ -897,44 +1016,65 @@ export function hasTypelessCards(content: string): boolean {
   const hasDigitDot = content.includes('.') && RE_DIGIT_DOT.test(content)
 
   if (!hasPipe && !hasDash && !hasDigitDot) {
-    return false
+    return finalize(false)
   }
 
   // Multi-line structures need at least one line break.
   if (!content.includes('\n')) {
-    return false
+    return finalize(false)
   }
 
-  // Single line split for both table and list detection
-  const lines = content.split('\n')
+  // Single pass line scan for both table and list detection.
+  const hasList = hasDash || hasDigitDot
+  let tableRowCount = 0
+  let listItemCount = 0
+  let lineStart = 0
 
-  // Check for markdown tables (at least 2 rows with pipes)
-  if (hasPipe) {
-    let tableRowCount = 0
-    for (const line of lines) {
-      if (line.includes('|') && !RE_SEPARATOR_LINE.test(line)) {
+  while (lineStart <= content.length) {
+    const newlineIndex = content.indexOf('\n', lineStart)
+    const lineEnd = newlineIndex === -1 ? content.length : newlineIndex
+    let lineHasContentCached: boolean | null = null
+    const hasLineContent = (): boolean => {
+      if (lineHasContentCached === null) {
+        lineHasContentCached = lineHasNonWhitespace(content, lineStart, lineEnd)
+      }
+      return lineHasContentCached
+    }
+
+    let lineIsSeparatorCached: boolean | null = null
+    const isSeparator = (): boolean => {
+      if (lineIsSeparatorCached === null) {
+        lineIsSeparatorCached = isSeparatorLine(content, lineStart, lineEnd)
+      }
+      return lineIsSeparatorCached
+    }
+
+    if (hasPipe) {
+      if (lineIncludesPipe(content, lineStart, lineEnd) && !isSeparator()) {
         tableRowCount++
-        if (tableRowCount >= 2) return true
-      } else if (tableRowCount > 0 && line.trim() !== '' && !RE_SEPARATOR_LINE.test(line)) {
+        if (tableRowCount >= 2) return finalize(true)
+      } else if (tableRowCount > 0 && hasLineContent() && !isSeparator()) {
         tableRowCount = 0
       }
     }
-  }
 
-  // Check for markdown lists (at least 2 items)
-  if (hasDash || hasDigitDot) {
-    let listItemCount = 0
-    for (const line of lines) {
-      if (RE_UNORDERED_LIST.test(line) || RE_ORDERED_LIST.test(line)) {
+    if (hasList) {
+      if (
+        isUnorderedListItemLine(content, lineStart, lineEnd)
+        || isOrderedListItemLine(content, lineStart, lineEnd)
+      ) {
         listItemCount++
-        if (listItemCount >= 2) return true
-      } else if (line.trim() !== '') {
+        if (listItemCount >= 2) return finalize(true)
+      } else if (hasLineContent()) {
         listItemCount = 0
       }
     }
+
+    if (newlineIndex === -1) break
+    lineStart = newlineIndex + 1
   }
 
-  return false
+  return finalize(false)
 }
 
 /**
@@ -952,65 +1092,276 @@ export function getCardPlaceholderPattern(): RegExp {
 }
 
 const RE_CARD_PLACEHOLDER = /\[\[TYPELESS_CARD:([^\]]+)\]\]/g
+const CARD_PLACEHOLDER_START = '[[TYPELESS_CARD:'
+const CARD_PLACEHOLDER_END = ']]'
+const RE_EDGE_WHITESPACE = /^\s|\s$/
+const CARD_LOOKUP_CACHE_KEY = '__zima_typeless_card_lookup_cache_v1__'
+const SPLIT_SEGMENTS_INCREMENTAL_CACHE_KEY = '__zima_typeless_split_segments_incremental_cache_v1__'
+const SPLIT_SEGMENTS_INCREMENTAL_CACHE_MAX = 300
+
+type SplitSegment = { type: 'text' | 'card'; content: string | TypelessCard }
+
+type CardLookupCacheEntry = {
+  size: number
+  map: Map<string, TypelessCard>
+}
+
+type SplitSegmentsIncrementalCacheEntry = {
+  text: string
+  cards: TypelessCard[]
+  segments: SplitSegment[]
+}
+
+function trimIfNeeded(text: string): string {
+  return RE_EDGE_WHITESPACE.test(text) ? text.trim() : text
+}
+
+function getCardLookupCache(): WeakMap<TypelessCard[], CardLookupCacheEntry> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[CARD_LOOKUP_CACHE_KEY]
+  if (existing instanceof WeakMap) {
+    return existing as WeakMap<TypelessCard[], CardLookupCacheEntry>
+  }
+  const cache = new WeakMap<TypelessCard[], CardLookupCacheEntry>()
+  g[CARD_LOOKUP_CACHE_KEY] = cache
+  return cache
+}
+
+function getCardLookupMap(cards: TypelessCard[]): Map<string, TypelessCard> | null {
+  if (cards.length === 0) return null
+
+  const cache = getCardLookupCache()
+  const cached = cache.get(cards)
+  if (cached && cached.size === cards.length) {
+    return cached.map
+  }
+
+  const map = new Map<string, TypelessCard>()
+  for (const card of cards) {
+    if (card.id) map.set(card.id, card)
+  }
+  cache.set(cards, {
+    size: cards.length,
+    map,
+  })
+  return map
+}
+
+function getSplitSegmentsIncrementalCache(): Map<string, SplitSegmentsIncrementalCacheEntry> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[SPLIT_SEGMENTS_INCREMENTAL_CACHE_KEY]
+  if (existing instanceof Map) {
+    return existing as Map<string, SplitSegmentsIncrementalCacheEntry>
+  }
+  const cache = new Map<string, SplitSegmentsIncrementalCacheEntry>()
+  g[SPLIT_SEGMENTS_INCREMENTAL_CACHE_KEY] = cache
+  return cache
+}
+
+function setSplitSegmentsIncrementalCache(
+  cache: Map<string, SplitSegmentsIncrementalCacheEntry>,
+  key: string,
+  text: string,
+  cards: TypelessCard[],
+  segments: SplitSegment[]
+) {
+  if (cache.size >= SPLIT_SEGMENTS_INCREMENTAL_CACHE_MAX && !cache.has(key)) {
+    evictOldestMapEntry(cache)
+  }
+  cache.set(key, {
+    text,
+    cards,
+    segments,
+  })
+}
+
+export function clearSplitSegmentsIncrementalState(incrementalKey?: string): void {
+  const cache = getSplitSegmentsIncrementalCache()
+  if (!incrementalKey) {
+    cache.clear()
+    return
+  }
+  cache.delete(incrementalKey)
+}
+
+function isProgressMergeCandidateCard(card: TypelessCard): boolean {
+  return card.type === 'ui-review-progress' || card.type === 'analyze-progress'
+}
+
+function getProgressMergeCandidateType(card: TypelessCard): 'ui-review-progress' | 'analyze-progress' | null {
+  if (card.type === 'ui-review-progress' || card.type === 'analyze-progress') {
+    return card.type
+  }
+  return null
+}
+
+function hasUnclosedCardPlaceholder(content: string): boolean {
+  const lastStart = content.lastIndexOf(CARD_PLACEHOLDER_START)
+  if (lastStart === -1) return false
+  const idStart = lastStart + CARD_PLACEHOLDER_START.length
+  return content.indexOf(CARD_PLACEHOLDER_END, idStart) === -1
+}
 
 /**
  * Split parsed text into segments (text and card placeholders).
  */
 export function splitIntoSegments(
   text: string,
-  cards: TypelessCard[]
-): Array<{ type: 'text' | 'card'; content: string | TypelessCard }> {
-  const placeholderStart = '[[TYPELESS_CARD:'
-  if (!text.includes(placeholderStart)) {
-    const plainText = text.trim()
-    return plainText ? [{ type: 'text', content: plainText }] : []
+  cards: TypelessCard[],
+  incrementalKey?: string
+): SplitSegment[] {
+  const incrementalCache = incrementalKey ? getSplitSegmentsIncrementalCache() : null
+  const finalize = (segments: SplitSegment[]): SplitSegment[] => {
+    if (incrementalCache && incrementalKey) {
+      setSplitSegmentsIncrementalCache(incrementalCache, incrementalKey, text, cards, segments)
+    }
+    return segments
   }
 
-  const segments: Array<{ type: 'text' | 'card'; content: string | TypelessCard }> = []
-  const cardMap = cards.length > 0 ? new Map(cards.map((c) => [c.id, c])) : null
+  if (incrementalCache && incrementalKey) {
+    const cached = incrementalCache.get(incrementalKey)
+    if (cached && cached.cards === cards && text.startsWith(cached.text)) {
+      const delta = text.slice(cached.text.length)
+      const previous = cached.segments
+      const hasOpenPlaceholder = hasUnclosedCardPlaceholder(cached.text)
+      if (!delta.includes(CARD_PLACEHOLDER_START)) {
+        if (hasOpenPlaceholder && delta.includes(CARD_PLACEHOLDER_END)) {
+          // A placeholder may complete across chunk boundary; re-scan full text.
+        } else {
+          const lastSegment = previous[previous.length - 1]
+          if (lastSegment?.type === 'text') {
+            const nextTail = trimIfNeeded((lastSegment.content as string) + delta)
+            if (nextTail === lastSegment.content) {
+              return finalize(previous)
+            }
+            const next = previous.slice()
+            next[next.length - 1] = { type: 'text', content: nextTail }
+            return finalize(next)
+          }
+
+          const tailText = trimIfNeeded(delta)
+          if (!tailText) {
+            return finalize(previous)
+          }
+          return finalize(previous.concat({ type: 'text', content: tailText }))
+        }
+      }
+
+      // Incrementally parse appended placeholders when the previous content
+      // does not end with an unfinished placeholder across the chunk boundary.
+      if (!hasOpenPlaceholder) {
+        const appended = splitIntoSegments(delta, cards)
+        if (appended.length === 0) {
+          return finalize(previous)
+        }
+
+        let appendStart = 0
+        const next = previous.slice()
+        const previousLast = next[next.length - 1]
+        const appendedFirst = appended[0]
+        if (previousLast?.type === 'text' && appendedFirst?.type === 'text') {
+          const merged = trimIfNeeded((previousLast.content as string) + (appendedFirst.content as string))
+          if (merged) {
+            next[next.length - 1] = { type: 'text', content: merged }
+          } else {
+            next.pop()
+          }
+          appendStart = 1
+        }
+
+        if (appendStart < appended.length) {
+          const tail = appended.slice(appendStart)
+          const boundaryPrevious = next[next.length - 1]
+          const boundaryNext = tail[0]
+          if (boundaryPrevious?.type === 'card' && boundaryNext?.type === 'card') {
+            const previousCard = boundaryPrevious.content as TypelessCard
+            const nextCard = boundaryNext.content as TypelessCard
+            const previousType = getProgressMergeCandidateType(previousCard)
+            const nextType = getProgressMergeCandidateType(nextCard)
+            if (previousType && previousType === nextType) {
+              const boundaryMerged = mergeConsecutiveProgressCards([
+                { type: 'card', content: previousCard },
+                { type: 'card', content: nextCard },
+              ])
+              if (boundaryMerged.length === 1 && boundaryMerged[0]?.type === 'card') {
+                next[next.length - 1] = boundaryMerged[0]
+                next.push(...tail.slice(1))
+                return finalize(next)
+              }
+            }
+          }
+          next.push(...tail)
+        }
+        return finalize(next)
+      }
+    }
+  }
+
+  if (!text.includes(CARD_PLACEHOLDER_START)) {
+    const plainText = trimIfNeeded(text)
+    return finalize(plainText ? [{ type: 'text', content: plainText }] : [])
+  }
+
+  const segments: SplitSegment[] = []
+  const cardMap = getCardLookupMap(cards)
   let hasMergeCandidate = false
 
-  const pattern = getCardPlaceholderPattern()
-  pattern.lastIndex = 0
   let lastIndex = 0
-  let match
+  let searchIndex = 0
+  while (searchIndex < text.length) {
+    const start = text.indexOf(CARD_PLACEHOLDER_START, searchIndex)
+    if (start === -1) {
+      break
+    }
 
-  while ((match = pattern.exec(text)) !== null) {
+    const idStart = start + CARD_PLACEHOLDER_START.length
+    const end = text.indexOf(CARD_PLACEHOLDER_END, idStart)
+    if (end === -1) {
+      break
+    }
+
+    // Invalid placeholder with empty id: keep scanning, treat as plain text.
+    if (end === idStart) {
+      searchIndex = end + CARD_PLACEHOLDER_END.length
+      continue
+    }
+
     // Add text before the placeholder
-    if (match.index > lastIndex) {
-      const textContent = text.slice(lastIndex, match.index).trim()
+    if (start > lastIndex) {
+      const textContent = trimIfNeeded(text.slice(lastIndex, start))
       if (textContent) {
         segments.push({ type: 'text', content: textContent })
       }
     }
 
     // Add the card
-    const cardId = match[1]
+    const cardId = text.slice(idStart, end)
     const card = cardMap?.get(cardId)
     if (card) {
-      if (card.type === 'ui-review-progress' || card.type === 'analyze-progress') {
+      if (isProgressMergeCandidateCard(card)) {
         hasMergeCandidate = true
       }
       segments.push({ type: 'card', content: card })
     }
 
-    lastIndex = match.index + match[0].length
+    lastIndex = end + CARD_PLACEHOLDER_END.length
+    searchIndex = lastIndex
   }
 
   // Add remaining text
   if (lastIndex < text.length) {
-    const textContent = text.slice(lastIndex).trim()
+    const textContent = trimIfNeeded(text.slice(lastIndex))
     if (textContent) {
       segments.push({ type: 'text', content: textContent })
     }
   }
 
   if (!hasMergeCandidate) {
-    return segments
+    return finalize(segments)
   }
 
   // Merge consecutive ui-review-progress cards into a single aggregated card
-  return mergeConsecutiveProgressCards(segments)
+  return finalize(mergeConsecutiveProgressCards(segments))
 }
 
 /**
@@ -1019,8 +1370,8 @@ export function splitIntoSegments(
  * Also merges consecutive analyze-progress cards the same way.
  */
 function mergeConsecutiveProgressCards(
-  segments: Array<{ type: 'text' | 'card'; content: string | TypelessCard }>
-): Array<{ type: 'text' | 'card'; content: string | TypelessCard }> {
+  segments: SplitSegment[]
+): SplitSegment[] {
   const result: typeof segments = []
   let pendingSteps: TypelessCard[] = []
   let pendingType: 'ui-review-progress' | 'analyze-progress' | null = null
@@ -1245,10 +1596,20 @@ function parseMarkdownElementsSinglePass(
 
     if (inTable) flushTable()
 
-    // List items
-    const checkboxMatch = RE_CHECKBOX_ITEM.exec(line)
-    const ulMatch = !checkboxMatch ? RE_UL_ITEM.exec(line) : null
-    const olMatch = RE_OL_ITEM.exec(line)
+    // List items (cheap first-char gate to avoid regex work on plain lines)
+    let checkboxMatch: RegExpExecArray | null = null
+    let ulMatch: RegExpExecArray | null = null
+    let olMatch: RegExpExecArray | null = null
+
+    if (trimmed !== '') {
+      const firstCode = trimmed.charCodeAt(0)
+      const isPossibleListStart = firstCode === 45 || firstCode === 42 || firstCode === 43 || (firstCode >= 48 && firstCode <= 57)
+      if (isPossibleListStart) {
+        checkboxMatch = RE_CHECKBOX_ITEM.exec(line)
+        ulMatch = !checkboxMatch ? RE_UL_ITEM.exec(line) : null
+        olMatch = RE_OL_ITEM.exec(line)
+      }
+    }
 
     if (checkboxMatch || ulMatch || olMatch) {
       flushImages()
@@ -1288,10 +1649,23 @@ function parseMarkdownElementsSinglePass(
 
     if (trimmed === '' && inList) {
       const nextLine = lines[i + 1]
-      if (nextLine && (RE_UL_ITEM.test(nextLine) || RE_OL_ITEM.test(nextLine))) { result.push(line); continue }
+      const nextTrimmed = nextLine?.trim() ?? ''
+      if (nextTrimmed !== '') {
+        const firstCode = nextTrimmed.charCodeAt(0)
+        const nextLooksLikeList = (
+          firstCode === 45
+          || firstCode === 42
+          || firstCode === 43
+          || (firstCode >= 48 && firstCode <= 57)
+        ) && (RE_UL_ITEM.test(nextLine!) || RE_OL_ITEM.test(nextLine!))
+        if (nextLooksLikeList) {
+          result.push(line)
+          continue
+        }
+      }
       flushList()
     }
-    if (inList && !RE_UL_ITEM.test(line) && !RE_OL_ITEM.test(line)) flushList()
+    if (inList) flushList()
 
     // Image-only lines
     if (trimmed.includes('![')) {
@@ -1302,8 +1676,9 @@ function parseMarkdownElementsSinglePass(
         nonImageContent += trimmed.slice(lastIdx, match.index).trim()
         lastIdx = match.index + match[0].length
         const src = match[2]
-        if (src && (src.startsWith('data:image/') || src.startsWith('http') || src.startsWith('/') || /^[a-zA-Z]:\\/.test(src))) {
-          lineImages.push({ src, alt: match[1] || undefined, thumbnail: (/^[a-zA-Z]:\\/.test(src) || src.startsWith('/')) ? `${src}?thumbnail=true` : undefined })
+        const isWindowsPath = !!src && RE_WINDOWS_ABS_PATH.test(src)
+        if (src && (src.startsWith('data:image/') || src.startsWith('http') || src.startsWith('/') || isWindowsPath)) {
+          lineImages.push({ src, alt: match[1] || undefined, thumbnail: (isWindowsPath || src.startsWith('/')) ? `${src}?thumbnail=true` : undefined })
         }
       }
       RE_IMAGE_INLINE.lastIndex = 0

@@ -83,6 +83,26 @@ export interface RenderOptions {
   sanitize?: boolean
 }
 
+const RE_INLINE_BOLD_ASTERISK = /\*\*(.+?)\*\*/g
+const RE_INLINE_BOLD_UNDERSCORE = /__(.+?)__/g
+const RE_INLINE_ITALIC_ASTERISK = /\*(.+?)\*/g
+const RE_INLINE_ITALIC_UNDERSCORE = /_(.+?)_/g
+const RE_INLINE_STRIKETHROUGH = /~~(.+?)~~/g
+const RE_INLINE_CODE = /`([^`]+)`/g
+const RE_INLINE_UNCLOSED_CODE = /`([^`]+)$/g
+const RE_INLINE_LINK = /\[([^\]]+)\]\(([^)]+)\)/g
+const RE_ERROR_BLOCK_TAG = /<(tool_use_error|error|system-error)>([\s\S]*?)<\/\1>/g
+const INLINE_PARSE_CACHE_MAX = 2000
+const INLINE_PARSE_CACHE_MAX_TEXT_LENGTH = 512
+const inlineParseCache = new Map<string, string>()
+
+function evictOldestMapEntry<K, V>(cache: Map<K, V>): void {
+  const oldestKey = cache.keys().next().value
+  if (oldestKey !== undefined) {
+    cache.delete(oldestKey as K)
+  }
+}
+
 // Escape HTML to prevent XSS
 function escapeHtml(text: string): string {
   const map: Record<string, string> = {
@@ -97,29 +117,72 @@ function escapeHtml(text: string): string {
 
 // Parse inline markdown elements
 export function parseInline(text: string): string {
+  const shouldUseCache = text.length > 0 && text.length <= INLINE_PARSE_CACHE_MAX_TEXT_LENGTH
+  if (shouldUseCache) {
+    const cached = inlineParseCache.get(text)
+    if (cached !== undefined) return cached
+  }
+
+  if (
+    !text.includes('*')
+    && !text.includes('_')
+    && !text.includes('~')
+    && !text.includes('`')
+    && !text.includes('[')
+  ) {
+    const escaped = escapeHtml(text)
+    if (shouldUseCache) {
+      if (inlineParseCache.size >= INLINE_PARSE_CACHE_MAX && !inlineParseCache.has(text)) {
+        evictOldestMapEntry(inlineParseCache)
+      }
+      inlineParseCache.set(text, escaped)
+    }
+    return escaped
+  }
+
   let result = escapeHtml(text)
 
-  // Bold: **text** or __text__
-  result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  result = result.replace(/__(.+?)__/g, '<strong>$1</strong>')
+  if (text.includes('**') || text.includes('__')) {
+    // Bold: **text** or __text__
+    result = result.replace(RE_INLINE_BOLD_ASTERISK, '<strong>$1</strong>')
+    result = result.replace(RE_INLINE_BOLD_UNDERSCORE, '<strong>$1</strong>')
+  }
 
-  // Italic: *text* or _text_
-  result = result.replace(/\*(.+?)\*/g, '<em>$1</em>')
-  result = result.replace(/_(.+?)_/g, '<em>$1</em>')
+  if (text.includes('*')) {
+    // Italic: *text*
+    result = result.replace(RE_INLINE_ITALIC_ASTERISK, '<em>$1</em>')
+  }
+  if (text.includes('_')) {
+    // Italic: _text_
+    result = result.replace(RE_INLINE_ITALIC_UNDERSCORE, '<em>$1</em>')
+  }
 
-  // Strikethrough: ~~text~~
-  result = result.replace(/~~(.+?)~~/g, '<del>$1</del>')
+  if (text.includes('~~')) {
+    // Strikethrough: ~~text~~
+    result = result.replace(RE_INLINE_STRIKETHROUGH, '<del>$1</del>')
+  }
 
-  // Inline code: `code` — also handle unclosed backtick at end of line (streaming)
-  result = result.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
-  // Unclosed trailing backtick: `code... (no closing backtick)
-  result = result.replace(/`([^`]+)$/g, '<code class="inline-code">$1</code>')
+  if (text.includes('`')) {
+    // Inline code: `code` — also handle unclosed backtick at end of line (streaming)
+    result = result.replace(RE_INLINE_CODE, '<code class="inline-code">$1</code>')
+    // Unclosed trailing backtick: `code... (no closing backtick)
+    result = result.replace(RE_INLINE_UNCLOSED_CODE, '<code class="inline-code">$1</code>')
+  }
 
-  // Links: [text](url) — also handle unclosed links gracefully
-  result = result.replace(
-    /\[([^\]]+)\]\(([^)]+)\)/g,
-    '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-gray-900 dark:text-white hover:underline">$1</a>'
-  )
+  if (text.includes('[') && text.includes('](')) {
+    // Links: [text](url) — also handle unclosed links gracefully
+    result = result.replace(
+      RE_INLINE_LINK,
+      '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-gray-900 dark:text-white hover:underline">$1</a>'
+    )
+  }
+
+  if (shouldUseCache) {
+    if (inlineParseCache.size >= INLINE_PARSE_CACHE_MAX && !inlineParseCache.has(text)) {
+      evictOldestMapEntry(inlineParseCache)
+    }
+    inlineParseCache.set(text, result)
+  }
 
   return result
 }
@@ -286,6 +349,25 @@ function renderProcessCard(code: string): string {
 
 const RE_MARKDOWN_HR = /^[-*_]{3,}$/
 const RE_MARKDOWN_ORDERED_ITEM = /^\d+\.\s/
+const RE_MARKDOWN_ORDERED_ITEM_MULTILINE = /(^|\n)\s*\d+\.\s/
+const RE_BOX_DRAWING_CHARS = /[│├└┌┐┘┬┴┼─]/
+type MarkdownFastPathMode = 'plain' | 'multiline-plain'
+
+type PlainFastPathState = {
+  mode: 'plain'
+  markdown: string
+  html: string
+}
+
+type MultilinePlainFastPathState = {
+  mode: 'multiline-plain'
+  markdown: string
+  html: string
+  lines: string[]
+  renderedLines: string[]
+}
+
+type MarkdownFastPathState = PlainFastPathState | MultilinePlainFastPathState
 
 function canUsePlainTextFastPath(markdown: string): boolean {
   if (markdown.length === 0) return false
@@ -309,20 +391,105 @@ function canUsePlainTextFastPath(markdown: string): boolean {
     && !markdown.includes('+ ')
 }
 
+function canUseMultilinePlainTextFastPath(markdown: string): boolean {
+  if (markdown.length === 0) return false
+  if (!markdown.includes('\n')) return false
+
+  // Keep this path conservative: only use when markdown punctuation/features
+  // are clearly absent from the whole text.
+  if (
+    markdown.includes('`')
+    || markdown.includes('*')
+    || markdown.includes('_')
+    || markdown.includes('~')
+    || markdown.includes('[')
+    || markdown.includes(']')
+    || markdown.includes('#')
+    || markdown.includes('>')
+    || markdown.includes('|')
+    || markdown.includes('!')
+    || markdown.includes('<')
+    || markdown.includes('- ')
+    || markdown.includes('+ ')
+  ) {
+    return false
+  }
+
+  // Preserve tree-structure rendering path.
+  if (RE_BOX_DRAWING_CHARS.test(markdown)) {
+    return false
+  }
+
+  // Ordered-list detection remains line-based.
+  if (markdown.includes('.') && RE_MARKDOWN_ORDERED_ITEM_MULTILINE.test(markdown)) {
+    return false
+  }
+
+  return true
+}
+
+function getMarkdownFastPathMode(markdown: string): MarkdownFastPathMode | null {
+  if (canUsePlainTextFastPath(markdown)) {
+    return 'plain'
+  }
+  if (canUseMultilinePlainTextFastPath(markdown)) {
+    return 'multiline-plain'
+  }
+  return null
+}
+
+function renderPlainTextLine(line: string): string {
+  if (line.trim() === '') {
+    return '<br>'
+  }
+  return `<p class="my-1">${escapeHtml(line)}</p>`
+}
+
+function renderPlainTextParagraph(markdown: string): string {
+  return `<p class="my-1">${escapeHtml(markdown)}</p>`
+}
+
+function renderMultilinePlainTextWithMeta(markdown: string): {
+  html: string
+  lines: string[]
+  renderedLines: string[]
+} {
+  const lines = markdown.split('\n')
+  const renderedLines = new Array<string>(lines.length)
+  for (let index = 0; index < lines.length; index++) {
+    renderedLines[index] = renderPlainTextLine(lines[index] || '')
+  }
+  return {
+    html: renderedLines.join('\n'),
+    lines,
+    renderedLines,
+  }
+}
+
+function renderMultilinePlainText(markdown: string): string {
+  return renderMultilinePlainTextWithMeta(markdown).html
+}
+
 // Main render function
 export function renderMarkdown(markdown: string, _options: RenderOptions = {}): string {
+  const fastPathMode = getMarkdownFastPathMode(markdown)
+  if (fastPathMode === 'plain') {
+    return renderPlainTextParagraph(markdown)
+  }
+  if (fastPathMode === 'multiline-plain') {
+    return renderMultilinePlainText(markdown)
+  }
+
   // Pre-process: convert XML-like error/status tags into styled blocks before line splitting
   // Matches <tool_use_error>...</tool_use_error> and similar tags (may span multiple lines)
-  markdown = markdown.replace(
-    /<(tool_use_error|error|system-error)>([\s\S]*?)<\/\1>/g,
-    (_match, _tag: string, body: string) => {
-      const escaped = escapeHtml(body.trim())
-      return `\n\`\`\`error-block\n${escaped}\n\`\`\`\n`
-    }
-  )
-
-  if (canUsePlainTextFastPath(markdown)) {
-    return `<p class="my-1">${escapeHtml(markdown)}</p>`
+  if (markdown.includes('<')) {
+    markdown = markdown.replace(
+      RE_ERROR_BLOCK_TAG,
+      (_match, _tag: string, body: string) => {
+        const escaped = escapeHtml(body.trim())
+        return `\n\`\`\`error-block\n${escaped}\n\`\`\`\n`
+      }
+    )
   }
 
   const lines = markdown.split('\n')
@@ -624,30 +791,150 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
 const MARKDOWN_HTML_CACHE = new Map<string, string>()
 const MARKDOWN_HTML_CACHE_MAX = 400
 const MARKDOWN_CACHEABLE_TEXT_MAX = 12000
+const MARKDOWN_SCOPE_FAST_PATH_CACHE = new Map<string, MarkdownFastPathState>()
+const MARKDOWN_SCOPE_FAST_PATH_CACHE_MAX = 64
+
+function setMarkdownScopeFastPathState(scope: string, state: MarkdownFastPathState) {
+  if (MARKDOWN_SCOPE_FAST_PATH_CACHE.size >= MARKDOWN_SCOPE_FAST_PATH_CACHE_MAX && !MARKDOWN_SCOPE_FAST_PATH_CACHE.has(scope)) {
+    evictOldestMapEntry(MARKDOWN_SCOPE_FAST_PATH_CACHE)
+  }
+  MARKDOWN_SCOPE_FAST_PATH_CACHE.set(scope, state)
+}
+
+function clearMarkdownScopeFastPathState(scope: string) {
+  MARKDOWN_SCOPE_FAST_PATH_CACHE.delete(scope)
+}
+
+function tryRenderAppendFastPath(markdown: string, scope: string, mode: MarkdownFastPathMode): MarkdownFastPathState | null {
+  const previous = MARKDOWN_SCOPE_FAST_PATH_CACHE.get(scope)
+  if (!previous || previous.mode !== mode) {
+    return null
+  }
+
+  if (markdown.length < previous.markdown.length || !markdown.startsWith(previous.markdown)) {
+    return null
+  }
+
+  if (markdown === previous.markdown) {
+    return previous
+  }
+
+  const delta = markdown.slice(previous.markdown.length)
+  if (delta.length === 0) {
+    return previous
+  }
+
+  if (mode === 'plain') {
+    const paragraphEndTag = '</p>'
+    if (!previous.html.endsWith(paragraphEndTag)) {
+      return null
+    }
+
+    const html = `${previous.html.slice(0, -paragraphEndTag.length)}${escapeHtml(delta)}${paragraphEndTag}`
+    return {
+      mode,
+      markdown,
+      html,
+    }
+  }
+
+  const previousMultiline = previous as MultilinePlainFastPathState
+  const previousLines = previousMultiline.lines
+  const previousRenderedLines = previousMultiline.renderedLines
+  if (previousLines.length === 0 || previousRenderedLines.length === 0) {
+    return null
+  }
+
+  const nextLines = previousLines.slice(0, Math.max(previousLines.length - 1, 0))
+  const lastLineBase = previousLines[previousLines.length - 1] || ''
+  const deltaLines = delta.split('\n')
+  nextLines.push(`${lastLineBase}${deltaLines[0] || ''}`)
+  for (let index = 1; index < deltaLines.length; index++) {
+    nextLines.push(deltaLines[index] || '')
+  }
+
+  // Lines before the previous last line are stable for append-only updates.
+  const stableRenderedCount = Math.max(previousRenderedLines.length - 1, 0)
+  const nextRenderedLines = stableRenderedCount > 0
+    ? previousRenderedLines.slice(0, stableRenderedCount)
+    : []
+
+  for (let index = stableRenderedCount; index < nextLines.length; index++) {
+    nextRenderedLines.push(renderPlainTextLine(nextLines[index] || ''))
+  }
+
+  return {
+    mode,
+    markdown,
+    html: nextRenderedLines.join('\n'),
+    lines: nextLines,
+    renderedLines: nextRenderedLines,
+  }
+}
+
+function buildMarkdownFastPathState(markdown: string, mode: MarkdownFastPathMode): MarkdownFastPathState {
+  if (mode === 'plain') {
+    return {
+      mode,
+      markdown,
+      html: renderPlainTextParagraph(markdown),
+    }
+  }
+
+  const rendered = renderMultilinePlainTextWithMeta(markdown)
+  return {
+    mode,
+    markdown,
+    html: rendered.html,
+    lines: rendered.lines,
+    renderedLines: rendered.renderedLines,
+  }
+}
 
 // Shared markdown render cache for high-frequency UI paths.
 // We cache plain markdown immediately; code-fence content waits for hljs readiness.
 export function renderMarkdownCached(markdown: string, scope = 'default'): string {
   const containsCodeFence = markdown.includes('```')
   if (markdown.length > MARKDOWN_CACHEABLE_TEXT_MAX) {
+    clearMarkdownScopeFastPathState(scope)
     return renderMarkdown(markdown)
   }
 
   // If code highlighting is required but hljs is not ready yet, bypass cache so
   // the next render can pick up highlighted HTML automatically.
   if (containsCodeFence && !hljsReady) {
+    clearMarkdownScopeFastPathState(scope)
     return renderMarkdown(markdown)
+  }
+
+  const fastPathMode = getMarkdownFastPathMode(markdown)
+  if (fastPathMode) {
+    const appendFastPathState = tryRenderAppendFastPath(markdown, scope, fastPathMode)
+    if (appendFastPathState) {
+      setMarkdownScopeFastPathState(scope, appendFastPathState)
+      return appendFastPathState.html
+    }
   }
 
   const key = `${scope}:${markdown}`
   const cached = MARKDOWN_HTML_CACHE.get(key)
   if (cached !== undefined) return cached
 
-  const html = renderMarkdown(markdown)
+  let fastPathState: MarkdownFastPathState | null = null
+  if (fastPathMode) {
+    fastPathState = buildMarkdownFastPathState(markdown, fastPathMode)
+  }
+
+  const html = fastPathState?.html ?? renderMarkdown(markdown)
   if (MARKDOWN_HTML_CACHE.size >= MARKDOWN_HTML_CACHE_MAX) {
-    MARKDOWN_HTML_CACHE.clear()
+    evictOldestMapEntry(MARKDOWN_HTML_CACHE)
   }
   MARKDOWN_HTML_CACHE.set(key, html)
+  if (fastPathState) {
+    setMarkdownScopeFastPathState(scope, fastPathState)
+  } else {
+    clearMarkdownScopeFastPathState(scope)
+  }
   return html
 }
 

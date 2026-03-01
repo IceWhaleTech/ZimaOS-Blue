@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"regexp"
 	"sort"
@@ -20,6 +22,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepresearch"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
@@ -29,6 +32,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -493,6 +497,20 @@ func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent str
 		return true, "action_pledge"
 	}
 	return false, ""
+}
+
+func buildToollessAutoContinueNudge(agentMode bool) string {
+	if agentMode {
+		return "You described what to do but did not call any tools. Now actually execute by calling available tools (especially exec for file creation/edit/run steps). Do not describe — act. Keep agent mode in a continuous improvement loop: after each completed action, find the next concrete improvement and execute it. Stop only if the user explicitly asks to stop."
+	}
+	return "You described what to do but did not call any tools. Now actually execute by calling available tools (especially exec for file creation/edit/run steps). Do not describe — act."
+}
+
+func buildPostToolAutoContinueNudge(agentMode bool) string {
+	if agentMode {
+		return "Continue the agent loop. The tools above have been executed successfully. Review the results, identify the next concrete improvement opportunity, execute it, and repeat. Stop only if the user explicitly asks to stop."
+	}
+	return "Continue with the task. The tools above have been executed successfully. Review the results and proceed with the next step, or provide a summary if the task is complete."
 }
 
 // reMemoryPreamble matches LLM preamble lines that precede actual extracted facts.
@@ -1070,6 +1088,12 @@ type ChatHandler struct {
 	summaryCache *cache.GenericCache[string]
 	// Memory recall decision stats (for token optimization observability).
 	memoryRecallStats *MemoryRecallStats
+	// Small-model routing/shadow/fallback counters.
+	smallModelStats *SmallModelStats
+	// Runtime circuit breaker for small-model short-QA route.
+	smallModelBreaker *smallModelCircuitBreaker
+	// Persisted shadow quality samples for rollout gate preparation.
+	shadowQualityStore *ShadowQualityStore
 
 	// Performance optimization: Object pools
 	requestPool  *RequestPool
@@ -1083,10 +1107,14 @@ type ChatHandler struct {
 	proxyBridge *proxybridge.Bridge
 
 	// Smart tool selection: IR-based filtering of tools per query
-	toolSelector    *tools.ToolSelector
-	toolRouter      *tools.ToolRouter
-	skillSelector   *claudecode.SkillSelector
-	settingsHandler *SettingsHandler
+	toolSelector     *tools.ToolSelector
+	toolRouter       *tools.ToolRouter
+	skillSelector    *claudecode.SkillSelector
+	settingsHandler  *SettingsHandler
+	smallModel       smallmodel.Runtime
+	deepResearchExec interface {
+		Execute(context.Context, map[string]interface{}) (interface{}, error)
+	}
 
 	// imModel is the model to use for IM channel requests (default "auto").
 	imModel string
@@ -1109,6 +1137,19 @@ type ChatHandler struct {
 	// Conversation-level slash command state (/model, /offline).
 	conversationStateMu sync.RWMutex
 	conversationState   map[string]conversationSlashState
+
+	// Auto-rollback gate baseline for short-qa route (windowed failure-rate check).
+	smallModelGateMu           sync.Mutex
+	smallModelGateLastAttempts int64
+	smallModelGateLastSuccess  int64
+	// Auto-rollback gate baseline for tool-dispatch route (windowed failure-rate check).
+	smallModelToolGateMu           sync.Mutex
+	smallModelToolGateLastAttempts int64
+	smallModelToolGateLastSuccess  int64
+	// Auto-rollback gate baseline for summary route (windowed failure-rate check).
+	smallModelSummaryGateMu           sync.Mutex
+	smallModelSummaryGateLastAttempts int64
+	smallModelSummaryGateLastSuccess  int64
 
 	// One-shot flag: if a conversation stream was cancelled, the next outbound
 	// proxy request disables Responses continuation (drops previous_response_id).
@@ -1163,6 +1204,33 @@ func (h *ChatHandler) SetSettingsHandler(sh *SettingsHandler) {
 // GetSettingsHandler returns current settings handler (may be nil).
 func (h *ChatHandler) GetSettingsHandler() *SettingsHandler {
 	return h.settingsHandler
+}
+
+// SetDeepResearchService wires deep-research fallback executor.
+func (h *ChatHandler) SetDeepResearchService(svc *deepresearch.Service) {
+	if svc == nil {
+		h.deepResearchExec = nil
+		return
+	}
+	h.deepResearchExec = deepresearch.NewSkillExecutor(svc)
+}
+
+// SetSmallModelRuntime wires fixed local small-model runtime.
+func (h *ChatHandler) SetSmallModelRuntime(rt smallmodel.Runtime) {
+	h.smallModel = rt
+}
+
+// SetShadowQualityStore wires persisted shadow-quality sampling store.
+func (h *ChatHandler) SetShadowQualityStore(store *ShadowQualityStore) {
+	h.shadowQualityStore = store
+}
+
+// GetSmallModelStats returns small-model counters for cross-module observability wiring.
+func (h *ChatHandler) GetSmallModelStats() *SmallModelStats {
+	if h == nil {
+		return nil
+	}
+	return h.smallModelStats
 }
 
 // GetToolSelector returns the current tool selector (may be nil).
@@ -1248,8 +1316,8 @@ func applyWebSearchPreference(defs []tools.ToolDefinition, webSearchEnabled *boo
 	return filtered
 }
 
-func applyDeepSearchPreference(defs []tools.ToolDefinition, deepSearchEnabled *bool) []tools.ToolDefinition {
-	if deepSearchEnabled == nil || *deepSearchEnabled {
+func applyDeepResearchPreference(defs []tools.ToolDefinition, deepResearchEnabled *bool) []tools.ToolDefinition {
+	if deepResearchEnabled == nil || *deepResearchEnabled {
 		return defs
 	}
 	filtered := make([]tools.ToolDefinition, 0, len(defs))
@@ -1281,7 +1349,7 @@ func (h *ChatHandler) buildSkillSelectionPrompt(ctx context.Context, userMessage
 	}
 	if h.settingsHandler != nil {
 		opts.Mode = h.settingsHandler.GetSkillSelectorMode()
-		opts.EnableRerank = h.settingsHandler.GetSkillRerankEnabled()
+		opts.EnableRerank = h.settingsHandler.GetEffectiveSkillRerankEnabled()
 		opts.ConfidenceThreshold = h.settingsHandler.GetSkillSelectorConfidenceThreshold()
 	}
 
@@ -1315,6 +1383,25 @@ func withProxySession(ctx context.Context, convID string) context.Context {
 	return proxy.WithSessionID(ctx, convID)
 }
 
+func withProxyLocale(ctx context.Context, locale string) context.Context {
+	locale = strings.TrimSpace(locale)
+	if locale == "" {
+		return ctx
+	}
+	if strings.TrimSpace(proxy.LocaleFromContext(ctx)) != "" {
+		return ctx
+	}
+	return proxy.WithLocale(ctx, locale)
+}
+
+func streamContinuationFailureText(locale string) string {
+	lang := i18n.DefaultLanguage
+	if strings.TrimSpace(locale) != "" {
+		lang = i18n.ParseLanguage(locale)
+	}
+	return i18n.T(lang, i18n.MsgServiceUnavailable)
+}
+
 // preContentRetrySkipReason returns a stable reason string when chat layer
 // pre-content retries should be skipped; empty means "retry is allowed".
 func preContentRetrySkipReason(err error) string {
@@ -1345,6 +1432,815 @@ func preContentRetrySkipReason(err error) string {
 // to help because the proxy has already exhausted useful fallback paths.
 func shouldSkipPreContentRetry(err error) bool {
 	return preContentRetrySkipReason(err) != ""
+}
+
+func isNoProviderError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if pe, ok := err.(*proxybridge.ProxyError); ok {
+		return pe.IsNoProvider()
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no available provider") || strings.Contains(msg, "no proxy bridge configured")
+}
+
+func (h *ChatHandler) shouldUseDeepResearchFallback(err error) bool {
+	if !isNoProviderError(err) {
+		return false
+	}
+	if h.settingsHandler == nil {
+		return true
+	}
+	return h.settingsHandler.GetNoLLMDegradeMode() == "deepresearch"
+}
+
+func (h *ChatHandler) runDeepResearchFallback(ctx context.Context, query string) (string, error) {
+	if h.deepResearchExec == nil {
+		return "", fmt.Errorf("deep research executor is not configured")
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		query = "Summarize the user request and provide best-effort answer."
+	}
+	res, err := h.deepResearchExec.Execute(ctx, map[string]interface{}{
+		"query": query,
+		"mode":  "standard",
+	})
+	if err != nil {
+		return "", err
+	}
+	data, ok := res.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("unexpected deep research result type: %T", res)
+	}
+	answer, _ := data["answer"].(string)
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		answer = "DeepResearch completed, but no direct answer was generated."
+	}
+	var sb strings.Builder
+	sb.WriteString(answer)
+
+	appendCitation := func(title, url string) {
+		title = strings.TrimSpace(title)
+		url = strings.TrimSpace(url)
+		if title == "" && url == "" {
+			return
+		}
+		if title == "" {
+			title = url
+		}
+		sb.WriteString("\n- ")
+		sb.WriteString(title)
+		if url != "" && url != title {
+			sb.WriteString(" - ")
+			sb.WriteString(url)
+		}
+	}
+	switch citations := data["citations"].(type) {
+	case []deepresearch.Citation:
+		if len(citations) > 0 {
+			sb.WriteString("\n\nSources:")
+		}
+		limit := len(citations)
+		if limit > 5 {
+			limit = 5
+		}
+		for i := 0; i < limit; i++ {
+			appendCitation(citations[i].Title, citations[i].URL)
+		}
+	case []interface{}:
+		if len(citations) > 0 {
+			sb.WriteString("\n\nSources:")
+		}
+		limit := len(citations)
+		if limit > 5 {
+			limit = 5
+		}
+		for i := 0; i < limit; i++ {
+			if row, ok := citations[i].(map[string]interface{}); ok {
+				title, _ := row["title"].(string)
+				url, _ := row["url"].(string)
+				appendCitation(title, url)
+			}
+		}
+	}
+
+	return sb.String(), nil
+}
+
+var errNoIRLocalSignal = errors.New("no local IR signal")
+
+const (
+	fallbackReasonDeepResearchUnavailable  = "deepresearch_unavailable"
+	fallbackReasonIRNoSignal               = "ir_no_signal"
+	fallbackReasonAutoRollback             = "auto_rollback_fallback_rate"
+	fallbackReasonAutoRollbackToolDispatch = "auto_rollback_tool_dispatch_fallback_rate"
+	fallbackReasonAutoRollbackSummary      = "auto_rollback_summary_fallback_rate"
+
+	smallModelAutoRollbackMinAttempts             = 40
+	smallModelAutoRollbackMaxFailRate             = 0.15
+	smallModelToolDispatchAutoRollbackMinAttempts = 40
+	smallModelToolDispatchAutoRollbackMaxFailRate = 0.15
+	smallModelSummaryAutoRollbackMinAttempts      = 40
+	smallModelSummaryAutoRollbackMaxFailRate      = 0.15
+)
+
+func (h *ChatHandler) shouldPreferIRFirstFallback() bool {
+	if h == nil || h.settingsHandler == nil {
+		return true
+	}
+	return h.settingsHandler.GetSmallModelUnavailablePolicy() == "ir_first"
+}
+
+func (h *ChatHandler) maybeAutoRollbackShortQARoute() {
+	if h == nil || h.settingsHandler == nil || h.smallModelStats == nil {
+		return
+	}
+	if !h.settingsHandler.GetSmallModelRouteShortQAEnabled() {
+		return
+	}
+
+	h.smallModelGateMu.Lock()
+	defer h.smallModelGateMu.Unlock()
+
+	snap := h.smallModelStats.Snapshot()
+	windowAttempts := snap.ShortQARouteAttempts - h.smallModelGateLastAttempts
+	windowSuccess := snap.ShortQARouteSuccess - h.smallModelGateLastSuccess
+	if windowAttempts < smallModelAutoRollbackMinAttempts {
+		return
+	}
+	failures := windowAttempts - windowSuccess
+	if failures <= 0 {
+		h.smallModelGateLastAttempts = snap.ShortQARouteAttempts
+		h.smallModelGateLastSuccess = snap.ShortQARouteSuccess
+		return
+	}
+	failRate := float64(failures) / float64(windowAttempts)
+	if failRate < smallModelAutoRollbackMaxFailRate {
+		h.smallModelGateLastAttempts = snap.ShortQARouteAttempts
+		h.smallModelGateLastSuccess = snap.ShortQARouteSuccess
+		return
+	}
+
+	changed, err := h.settingsHandler.SetSmallModelRouteShortQAEnabled(false)
+	if err != nil {
+		logger.Warn().Err(err).Msg("[chat] failed to auto rollback short-qa route setting")
+		return
+	}
+	if !changed {
+		return
+	}
+
+	h.smallModelStats.RecordAutoRollback()
+	h.smallModelStats.RecordFallback(fallbackReasonAutoRollback)
+	h.smallModelGateLastAttempts = snap.ShortQARouteAttempts
+	h.smallModelGateLastSuccess = snap.ShortQARouteSuccess
+	logger.Warn().
+		Int64("window_attempts", windowAttempts).
+		Int64("failures", failures).
+		Float64("failure_rate", failRate).
+		Msg("[chat] auto rollback: disabled small-model short-qa route")
+}
+
+func (h *ChatHandler) shouldRouteToolDispatch(selectedTools []tools.ToolDefinition) bool {
+	if h == nil || h.smallModel == nil || h.settingsHandler == nil {
+		return false
+	}
+	if !h.settingsHandler.GetSmallModelEnabled() || !h.settingsHandler.GetSmallModelRouteToolDispatchEnabled() {
+		return false
+	}
+	return len(selectedTools) > 1
+}
+
+func (h *ChatHandler) shouldDisableProxyPruner() bool {
+	if h == nil || h.settingsHandler == nil {
+		return false
+	}
+	if !h.settingsHandler.GetSmallModelEnabled() {
+		return false
+	}
+	return !h.settingsHandler.GetSmallModelContextPruneEnabled()
+}
+
+func (h *ChatHandler) trySmallModelToolDispatch(ctx context.Context, routingMessage string, selectedTools []tools.ToolDefinition) ([]tools.ToolDefinition, error) {
+	if h.smallModel == nil {
+		return nil, smallmodel.ErrNotReady
+	}
+	if len(selectedTools) <= 1 {
+		return selectedTools, nil
+	}
+	if h.smallModelBreaker != nil && !h.smallModelBreaker.Allow(time.Now()) {
+		return nil, smallmodel.ErrCircuitOpen
+	}
+
+	toolNames := make([]string, 0, len(selectedTools))
+	for _, tdef := range selectedTools {
+		toolNames = append(toolNames, tdef.Name)
+	}
+	prompt := "Pick the single best tool name for this user request. " +
+		"Return only one tool name with no explanation.\n\nUser request: " + strings.TrimSpace(routingMessage) +
+		"\nCandidate tools: " + strings.Join(toolNames, ", ") + "\nTool:"
+
+	started := time.Now()
+	resp, err := h.smallModel.Generate(ctx, smallmodel.GenerateRequest{
+		Prompt:      prompt,
+		MaxTokens:   32,
+		Temperature: 0.2,
+	})
+	h.smallModelStats.RecordLatencyWithScene("tool_dispatch", time.Since(started))
+	if err != nil {
+		if h.smallModelBreaker != nil && h.smallModelBreaker.RecordFailure(time.Now()) {
+			logger.Warn().Str("route", "tool_dispatch").Msg("[chat] small model circuit breaker opened")
+		}
+		return nil, err
+	}
+
+	chosen, ok := pickToolFromSmallModelOutput(resp.Text, selectedTools)
+	if !ok {
+		return nil, fmt.Errorf("small-model tool-dispatch output did not match candidates")
+	}
+	if h.smallModelBreaker != nil {
+		h.smallModelBreaker.RecordSuccess(time.Now())
+	}
+	return []tools.ToolDefinition{chosen}, nil
+}
+
+func pickToolFromSmallModelOutput(output string, selectedTools []tools.ToolDefinition) (tools.ToolDefinition, bool) {
+	if len(selectedTools) == 0 {
+		return tools.ToolDefinition{}, false
+	}
+	norm := strings.ToLower(strings.TrimSpace(output))
+	norm = strings.Trim(norm, " \t\r\n`'\"[](){}<>.,;:!?")
+	if idx := strings.IndexRune(norm, '\n'); idx >= 0 {
+		norm = strings.TrimSpace(norm[:idx])
+	}
+
+	// Fast path: exact match.
+	for _, tdef := range selectedTools {
+		if strings.EqualFold(norm, tdef.Name) {
+			return tdef, true
+		}
+	}
+
+	// Fuzzy path: if model returns short sentence, match the longest candidate contained.
+	best := -1
+	bestLen := -1
+	for i, tdef := range selectedTools {
+		nameLower := strings.ToLower(tdef.Name)
+		if strings.Contains(norm, nameLower) && len(nameLower) > bestLen {
+			best = i
+			bestLen = len(nameLower)
+		}
+	}
+	if best >= 0 {
+		return selectedTools[best], true
+	}
+	return tools.ToolDefinition{}, false
+}
+
+func (h *ChatHandler) maybeAutoRollbackToolDispatchRoute() {
+	if h == nil || h.settingsHandler == nil || h.smallModelStats == nil {
+		return
+	}
+	if !h.settingsHandler.GetSmallModelRouteToolDispatchEnabled() {
+		return
+	}
+
+	h.smallModelToolGateMu.Lock()
+	defer h.smallModelToolGateMu.Unlock()
+
+	snap := h.smallModelStats.Snapshot()
+	windowAttempts := snap.ToolDispatchRouteAttempts - h.smallModelToolGateLastAttempts
+	windowSuccess := snap.ToolDispatchRouteSuccess - h.smallModelToolGateLastSuccess
+	if windowAttempts < smallModelToolDispatchAutoRollbackMinAttempts {
+		return
+	}
+	failures := windowAttempts - windowSuccess
+	if failures <= 0 {
+		h.smallModelToolGateLastAttempts = snap.ToolDispatchRouteAttempts
+		h.smallModelToolGateLastSuccess = snap.ToolDispatchRouteSuccess
+		return
+	}
+	failRate := float64(failures) / float64(windowAttempts)
+	if failRate < smallModelToolDispatchAutoRollbackMaxFailRate {
+		h.smallModelToolGateLastAttempts = snap.ToolDispatchRouteAttempts
+		h.smallModelToolGateLastSuccess = snap.ToolDispatchRouteSuccess
+		return
+	}
+
+	changed, err := h.settingsHandler.SetSmallModelRouteToolDispatchEnabled(false)
+	if err != nil {
+		logger.Warn().Err(err).Msg("[chat] failed to auto rollback tool-dispatch route setting")
+		return
+	}
+	if !changed {
+		return
+	}
+
+	h.smallModelStats.RecordAutoRollback()
+	h.smallModelStats.RecordFallback(fallbackReasonAutoRollbackToolDispatch)
+	h.smallModelToolGateLastAttempts = snap.ToolDispatchRouteAttempts
+	h.smallModelToolGateLastSuccess = snap.ToolDispatchRouteSuccess
+	logger.Warn().
+		Int64("window_attempts", windowAttempts).
+		Int64("failures", failures).
+		Float64("failure_rate", failRate).
+		Msg("[chat] auto rollback: disabled small-model tool-dispatch route")
+}
+
+func (h *ChatHandler) maybeAutoRollbackSummaryRoute() {
+	if h == nil || h.settingsHandler == nil || h.smallModelStats == nil {
+		return
+	}
+	if !h.settingsHandler.GetSmallModelSummaryEnabled() {
+		return
+	}
+
+	h.smallModelSummaryGateMu.Lock()
+	defer h.smallModelSummaryGateMu.Unlock()
+
+	snap := h.smallModelStats.Snapshot()
+	windowAttempts := snap.SummaryAttempts - h.smallModelSummaryGateLastAttempts
+	windowSuccess := snap.SummarySuccess - h.smallModelSummaryGateLastSuccess
+	if windowAttempts < smallModelSummaryAutoRollbackMinAttempts {
+		return
+	}
+	failures := windowAttempts - windowSuccess
+	if failures <= 0 {
+		h.smallModelSummaryGateLastAttempts = snap.SummaryAttempts
+		h.smallModelSummaryGateLastSuccess = snap.SummarySuccess
+		return
+	}
+	failRate := float64(failures) / float64(windowAttempts)
+	if failRate < smallModelSummaryAutoRollbackMaxFailRate {
+		h.smallModelSummaryGateLastAttempts = snap.SummaryAttempts
+		h.smallModelSummaryGateLastSuccess = snap.SummarySuccess
+		return
+	}
+
+	changed, err := h.settingsHandler.SetSmallModelSummaryEnabled(false)
+	if err != nil {
+		logger.Warn().Err(err).Msg("[chat] failed to auto rollback summary setting")
+		return
+	}
+	if !changed {
+		return
+	}
+
+	h.smallModelStats.RecordAutoRollback()
+	h.smallModelStats.RecordFallback(fallbackReasonAutoRollbackSummary)
+	h.smallModelSummaryGateLastAttempts = snap.SummaryAttempts
+	h.smallModelSummaryGateLastSuccess = snap.SummarySuccess
+	logger.Warn().
+		Int64("window_attempts", windowAttempts).
+		Int64("failures", failures).
+		Float64("failure_rate", failRate).
+		Msg("[chat] auto rollback: disabled small-model summary route")
+}
+
+func (h *ChatHandler) runLocalIRFallback(ctx context.Context, convID, query string, allowGeneric bool) (string, error) {
+	if h == nil || h.store == nil {
+		if allowGeneric {
+			return "IR-only fallback is active. I couldn't find enough local context. Please provide more details or enable LLM/web search.", nil
+		}
+		return "", errNoIRLocalSignal
+	}
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		if allowGeneric {
+			return "IR-only fallback is active. I couldn't find enough local context. Please provide more details or enable LLM/web search.", nil
+		}
+		return "", errNoIRLocalSignal
+	}
+	msgs, err := h.store.GetMessages(ctx, convID, 24, 0)
+	if err != nil {
+		if allowGeneric {
+			return "IR-only fallback is active. Local retrieval is temporarily unavailable.", nil
+		}
+		return "", err
+	}
+
+	queryNorm := strings.ToLower(strings.TrimSpace(query))
+	snippets := make([]string, 0, 4)
+	seen := make(map[string]struct{})
+	appendSnippet := func(content string) bool {
+		content = strings.TrimSpace(sanitizeResponseContent(content))
+		if content == "" {
+			return false
+		}
+		content = strings.Join(strings.Fields(content), " ")
+		runes := []rune(content)
+		if len(runes) > 220 {
+			content = string(runes[:220]) + "..."
+		}
+		key := strings.ToLower(content)
+		if _, ok := seen[key]; ok {
+			return false
+		}
+		seen[key] = struct{}{}
+		snippets = append(snippets, content)
+		return true
+	}
+
+	// Prefer real local IR recall from layered memory when available.
+	if h.layeredMemory != nil {
+		recallQuery := strings.TrimSpace(query)
+		if recallQuery == "" {
+			recallQuery = "recent context"
+		}
+		recallCtx, cancel := context.WithTimeout(ctx, 90*time.Millisecond)
+		results, err := h.layeredMemory.Recall(recallCtx, recallQuery, 6)
+		cancel()
+		if err == nil {
+			for _, r := range results {
+				if len(snippets) >= 3 {
+					break
+				}
+				if recallQuery != "" && float64(r.Score) < 0.15 {
+					continue
+				}
+				_ = appendSnippet(r.Chunk.Content)
+			}
+		}
+	}
+
+	for i := len(msgs) - 1; i >= 0 && len(snippets) < 3; i-- {
+		m := msgs[i]
+		if m.Role != "assistant" {
+			continue
+		}
+		content := strings.TrimSpace(m.Content)
+		if content == "" {
+			continue
+		}
+		if queryNorm != "" && !hasLocalIROverlap(queryNorm, strings.ToLower(content)) {
+			continue
+		}
+		_ = appendSnippet(content)
+	}
+
+	if len(snippets) == 0 {
+		if allowGeneric {
+			return "IR-only fallback is active. I couldn't find relevant local context yet. Please provide more details or enable LLM/web search.", nil
+		}
+		return "", errNoIRLocalSignal
+	}
+
+	var sb strings.Builder
+	sb.WriteString("IR-only fallback (local context):\n")
+	for i := len(snippets) - 1; i >= 0; i-- {
+		sb.WriteString("- ")
+		sb.WriteString(snippets[i])
+		sb.WriteString("\n")
+	}
+	sb.WriteString("If you need fresher information, enable LLM or web search.")
+	return strings.TrimSpace(sb.String()), nil
+}
+
+func hasLocalIROverlap(queryLower, candidateLower string) bool {
+	queryLower = strings.TrimSpace(queryLower)
+	candidateLower = strings.TrimSpace(candidateLower)
+	if queryLower == "" || candidateLower == "" {
+		return false
+	}
+	if strings.Contains(candidateLower, queryLower) || strings.Contains(queryLower, candidateLower) {
+		return true
+	}
+	for _, token := range strings.FieldsFunc(queryLower, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+	}) {
+		if len(token) >= 3 && strings.Contains(candidateLower, token) {
+			return true
+		}
+	}
+	seenCJK := map[rune]struct{}{}
+	cjkHits := 0
+	for _, r := range queryLower {
+		if !isCJKRune(r) {
+			continue
+		}
+		if _, ok := seenCJK[r]; ok {
+			continue
+		}
+		seenCJK[r] = struct{}{}
+		if strings.ContainsRune(candidateLower, r) {
+			cjkHits++
+			if cjkHits >= 2 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isCJKRune(r rune) bool {
+	switch {
+	case r >= 0x4E00 && r <= 0x9FFF: // CJK Unified Ideographs
+		return true
+	case r >= 0x3400 && r <= 0x4DBF: // CJK Extension A
+		return true
+	case r >= 0x3040 && r <= 0x30FF: // Hiragana + Katakana
+		return true
+	case r >= 0xAC00 && r <= 0xD7AF: // Hangul syllables
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *ChatHandler) shouldRouteShortQA(req SendMessageRequest, routingMessage string) bool {
+	if h == nil || h.smallModel == nil || h.settingsHandler == nil {
+		return false
+	}
+	if !h.settingsHandler.GetSmallModelEnabled() || !h.settingsHandler.GetSmallModelRouteShortQAEnabled() {
+		return false
+	}
+	return h.isShortQAShape(req, routingMessage)
+}
+
+func (h *ChatHandler) isShortQAShape(req SendMessageRequest, routingMessage string) bool {
+	if len(req.Attachments) > 0 {
+		return false
+	}
+	if req.DeepResearchEnabled != nil && *req.DeepResearchEnabled {
+		return false
+	}
+	msg := strings.TrimSpace(routingMessage)
+	if msg == "" || strings.Contains(msg, "\n") {
+		return false
+	}
+	runes := []rune(msg)
+	if len(runes) > 120 {
+		return false
+	}
+	if strings.ContainsAny(msg, "?\uff1f") {
+		return true
+	}
+	return len(runes) <= 40
+}
+
+func (h *ChatHandler) shouldShadowShortQA(req SendMessageRequest, routingMessage, sampleKey string) bool {
+	if h == nil || h.smallModel == nil || h.settingsHandler == nil {
+		return false
+	}
+	if !h.settingsHandler.GetSmallModelEnabled() || h.settingsHandler.GetSmallModelRouteShortQAEnabled() {
+		return false
+	}
+	if !h.isShortQAShape(req, routingMessage) {
+		return false
+	}
+	return h.shouldRunSmallModelShadow(sampleKey)
+}
+
+func (h *ChatHandler) shouldRunSmallModelShadow(sampleKey string) bool {
+	if h == nil || h.settingsHandler == nil {
+		return false
+	}
+	ratio := h.settingsHandler.GetSmallModelShadowRatio()
+	if ratio >= 1 {
+		return true
+	}
+	if ratio <= 0 {
+		return false
+	}
+	if sampleKey == "" {
+		sampleKey = strconv.FormatInt(time.Now().UnixNano(), 10)
+	}
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(sampleKey))
+	bucket := float64(hasher.Sum32()%10000) / 10000.0
+	return bucket < ratio
+}
+
+func smallModelFallbackReason(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, smallmodel.ErrCircuitOpen):
+		return smallmodel.FallbackReasonCircuitOpen
+	case errors.Is(err, smallmodel.ErrNotReady):
+		return smallmodel.FallbackReasonModelUnready
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		return smallmodel.FallbackReasonTimeout
+	default:
+		return smallmodel.FallbackReasonResourceGuard
+	}
+}
+
+func (h *ChatHandler) trySmallModelShortQA(ctx context.Context, message string, maxTokens int, temperature float64) (*llm.ChatResponse, error) {
+	if h.smallModel == nil {
+		return nil, smallmodel.ErrNotReady
+	}
+	if h.smallModelBreaker != nil && !h.smallModelBreaker.Allow(time.Now()) {
+		return nil, smallmodel.ErrCircuitOpen
+	}
+	prompt := "You are a concise assistant. Answer briefly and directly. " +
+		"If uncertain, say so and avoid fabricating facts.\n\nUser: " + strings.TrimSpace(message) + "\nAssistant:"
+	started := time.Now()
+	resp, err := h.smallModel.Generate(ctx, smallmodel.GenerateRequest{
+		Prompt:      prompt,
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
+	})
+	h.smallModelStats.RecordLatencyWithScene("short_qa", time.Since(started))
+	if err != nil {
+		if h.smallModelBreaker != nil && h.smallModelBreaker.RecordFailure(time.Now()) {
+			logger.Warn().Str("route", "short_qa").Msg("[chat] small model circuit breaker opened")
+		}
+		return nil, err
+	}
+	if h.smallModelBreaker != nil {
+		h.smallModelBreaker.RecordSuccess(time.Now())
+	}
+	return &llm.ChatResponse{
+		Model:      smallmodel.ModelID,
+		Provider:   "smallmodel",
+		ProviderID: "smallmodel",
+		Message: llm.Message{
+			Role:    llm.RoleAssistant,
+			Content: strings.TrimSpace(resp.Text),
+		},
+	}, nil
+}
+
+func (h *ChatHandler) runSmallModelShadow(ctx context.Context, scene, prompt string, maxTokens int, temperature float64, baseline string) {
+	if h == nil || h.smallModel == nil {
+		return
+	}
+	started := time.Now()
+	resp, err := h.smallModel.Generate(ctx, smallmodel.GenerateRequest{
+		Prompt:      prompt,
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
+	})
+	sceneKey := ""
+	switch scene {
+	case "short_qa_shadow":
+		sceneKey = "short_qa"
+	case "tool_dispatch_shadow":
+		sceneKey = "tool_dispatch"
+	}
+	h.smallModelStats.RecordLatencyWithScene(sceneKey, time.Since(started))
+	if err != nil {
+		h.smallModelStats.RecordShadow(scene, false)
+		h.smallModelStats.RecordFallback(smallModelFallbackReason(err))
+		logger.Info().
+			Err(err).
+			Str("scene", scene).
+			Str("fallback_reason", smallModelFallbackReason(err)).
+			Msg("[chat] small model shadow failed")
+		return
+	}
+	output := strings.TrimSpace(resp.Text)
+	h.smallModelStats.RecordShadow(scene, true)
+	if delta, mainDigest, shadowDigest, ok := evaluateShadowQualityDelta(scene, baseline, output); ok {
+		h.smallModelStats.RecordShadowQualityDelta(delta)
+		if h.shadowQualityStore != nil {
+			if err := h.shadowQualityStore.Append(ShadowQualitySample{
+				Scene:        scene,
+				Delta:        delta,
+				MainDigest:   mainDigest,
+				ShadowDigest: shadowDigest,
+				CreatedAt:    time.Now().UTC(),
+			}); err != nil {
+				logger.Warn().Err(err).Str("scene", scene).Msg("[chat] failed to persist shadow quality sample")
+			}
+		}
+	}
+	logger.Info().
+		Str("scene", scene).
+		Int("output_chars", len(output)).
+		Msg("[chat] small model shadow completed")
+}
+
+func evaluateShadowQualityDelta(scene, baseline, shadowOutput string) (float64, string, string, bool) {
+	switch scene {
+	case "short_qa_shadow":
+		delta, mainDigest, shadowDigest, ok := computeShadowTextDelta(baseline, shadowOutput)
+		return delta, mainDigest, shadowDigest, ok
+	case "tool_dispatch_shadow":
+		delta, mainDigest, shadowDigest, ok := computeShadowToolDelta(baseline, shadowOutput)
+		return delta, mainDigest, shadowDigest, ok
+	default:
+		return 0, "", "", false
+	}
+}
+
+func computeShadowTextDelta(mainText, shadowText string) (float64, string, string, bool) {
+	mainNorm := normalizeShadowText(mainText)
+	shadowNorm := normalizeShadowText(shadowText)
+	if mainNorm == "" || shadowNorm == "" {
+		return 0, "", "", false
+	}
+	mainTokens := buildShadowTextTokenSet(mainNorm)
+	shadowTokens := buildShadowTextTokenSet(shadowNorm)
+	if len(mainTokens) == 0 || len(shadowTokens) == 0 {
+		return 1, shadowDigest(mainNorm), shadowDigest(shadowNorm), true
+	}
+	intersection := 0
+	for token := range mainTokens {
+		if _, ok := shadowTokens[token]; ok {
+			intersection++
+		}
+	}
+	union := len(mainTokens) + len(shadowTokens) - intersection
+	if union <= 0 {
+		return 0, shadowDigest(mainNorm), shadowDigest(shadowNorm), true
+	}
+	similarity := float64(intersection) / float64(union)
+	delta := 1 - similarity
+	if delta < 0 {
+		delta = 0
+	}
+	if delta > 1 {
+		delta = 1
+	}
+	return delta, shadowDigest(mainNorm), shadowDigest(shadowNorm), true
+}
+
+func computeShadowToolDelta(mainTool, shadowOutput string) (float64, string, string, bool) {
+	mainNorm := normalizeShadowToolName(mainTool)
+	shadowNorm := normalizeShadowToolName(shadowOutput)
+	if mainNorm == "" || shadowNorm == "" {
+		return 0, "", "", false
+	}
+	if strings.EqualFold(mainNorm, shadowNorm) || strings.Contains(strings.ToLower(shadowOutput), strings.ToLower(mainNorm)) {
+		return 0, shadowDigest(mainNorm), shadowDigest(shadowNorm), true
+	}
+	return 1, shadowDigest(mainNorm), shadowDigest(shadowNorm), true
+}
+
+func normalizeShadowText(text string) string {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	if lower == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(lower))
+	lastSpace := false
+	for _, r := range lower {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+			lastSpace = false
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastSpace = false
+		case isCJKRune(r):
+			b.WriteRune(r)
+			lastSpace = false
+		default:
+			if !lastSpace {
+				b.WriteByte(' ')
+				lastSpace = true
+			}
+		}
+	}
+	return strings.TrimSpace(strings.Join(strings.Fields(b.String()), " "))
+}
+
+func buildShadowTextTokenSet(text string) map[string]struct{} {
+	tokens := make(map[string]struct{})
+	runes := []rune(strings.ReplaceAll(text, " ", ""))
+	switch {
+	case len(runes) == 0:
+		return tokens
+	case len(runes) == 1:
+		tokens[string(runes[0])] = struct{}{}
+		return tokens
+	default:
+		for i := 0; i < len(runes)-1; i++ {
+			tokens[string(runes[i:i+2])] = struct{}{}
+		}
+		return tokens
+	}
+}
+
+func normalizeShadowToolName(text string) string {
+	line := strings.TrimSpace(text)
+	if idx := strings.IndexRune(line, '\n'); idx >= 0 {
+		line = strings.TrimSpace(line[:idx])
+	}
+	line = strings.Trim(line, " \t\r\n`'\"[](){}<>.,;:!?")
+	line = strings.ToLower(line)
+	if line == "" {
+		return ""
+	}
+	parts := strings.Fields(line)
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return line
+}
+
+func shadowDigest(text string) string {
+	norm := strings.TrimSpace(strings.Join(strings.Fields(text), " "))
+	if norm == "" {
+		return ""
+	}
+	return truncateRunes(norm, 160)
 }
 
 // ToolSelectionStats returns smart tool selection statistics.
@@ -1380,10 +2276,29 @@ func (h *ChatHandler) ResetContextStats(c echo.Context) error {
 	})
 }
 
+// SmallModelStatsHandler returns small-model routing/shadow/fallback counters.
+func (h *ChatHandler) SmallModelStatsHandler(c echo.Context) error {
+	return c.JSON(http.StatusOK, h.smallModelStats.Snapshot())
+}
+
+// ResetSmallModelStatsHandler resets small-model counters.
+func (h *ChatHandler) ResetSmallModelStatsHandler(c echo.Context) error {
+	h.smallModelStats.Reset()
+	if h.shadowQualityStore != nil {
+		_ = h.shadowQualityStore.Reset()
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
+}
+
 // chatOnce performs a single LLM chat call, using proxyBridge when available
 // or falling back to the first provider in the legacy registry (for tests).
 func (h *ChatHandler) chatOnce(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	if h.proxyBridge != nil {
+		if strings.TrimSpace(proxy.LocaleFromContext(ctx)) == "" && h.settingsHandler != nil {
+			ctx = withProxyLocale(ctx, h.settingsHandler.GetLocale())
+		}
 		return h.proxyBridge.Chat(ctx, req)
 	}
 	// Fallback: use first provider from legacy registry (test environments)
@@ -1437,6 +2352,8 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		conversationCache:              NewConversationCache(5*time.Minute, 100), // 5min TTL, max 100 conversations
 		summaryCache:                   cache.NewGenericCache[string](cache.Config{MaxSize: 200, DefaultTTL: 30 * time.Minute}),
 		memoryRecallStats:              &MemoryRecallStats{},
+		smallModelStats:                NewSmallModelStats(),
+		smallModelBreaker:              newSmallModelCircuitBreaker(defaultSmallModelCircuitFailureThreshold, defaultSmallModelCircuitOpenDuration),
 		warmupCache:                    make(map[string]*warmupResult),
 		injections:                     make(map[string]chan string),
 		convToStream:                   make(map[string]string),
@@ -1790,9 +2707,22 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		}
 	}
 
+	featureIR := classifyFeatureIntent(msg.Content)
+	channelDeepResearchEnabled := featureIR.DeepResearch
+	globalAgentModeEnabled := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
+	channelAgentModeEnabled := globalAgentModeEnabled || featureIR.AgentMode
+	if featureIR.DeepResearch || featureIR.AgentMode {
+		logger.Info().
+			Str("channel", msg.ChannelName).
+			Bool("deep_research_auto_enabled", featureIR.DeepResearch).
+			Bool("agent_mode_auto_enabled", featureIR.AgentMode).
+			Msg("[im] IR feature hint matched")
+	}
+
 	// Build a stable conversation ID from channel + chat so we can persist history
 	convID := channelConversationID(msg.ChannelName, msg.ChatID)
 	ctx = withProxySession(ctx, convID)
+	ctx = withProxyLocale(ctx, string(lang))
 
 	// Ensure conversation exists in store (create if first message)
 	if h.store != nil {
@@ -1863,7 +2793,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	}
 
 	// Recall relevant memories for IM context
-	isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
+	isAgentMode := channelAgentModeEnabled
 	recallMode := h.getMemoryRecallMode()
 	shouldRecall, recallReason := memoryRecallDecision(routingMessage, ctxResult.Tier, isAgentMode, false, recallMode)
 	if shouldSkipCompressedTierRecallForContinuation(modelID, previousResponseID, recallReason) {
@@ -1879,6 +2809,13 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	}
 	systemPromptMessages = h.buildSystemPromptMessages(ctx, h.buildSkillSelectionPrompt(ctx, routingMessage))
 	messages = prependSystemMessages(messages, systemPromptMessages)
+	if featureIR.AgentMode && !globalAgentModeEnabled {
+		messages = append([]llm.Message{{
+			Role: llm.RoleSystem,
+			Content: "Agent Mode is auto-enabled by IR for this channel message. " +
+				"Plan and execute autonomously with proactive tool use until the task is complete.",
+		}}, messages...)
+	}
 
 	// Build multimodal user message if attachments present (replaces text-only version from history)
 	var userMsg *llm.Message
@@ -2014,7 +2951,9 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	}
 
 	// Add tool definitions (smart selection filters by user query when enabled)
-	req.Tools = defsToLLMTools(h.selectTools(routingMessage, req.Model))
+	selectedTools := h.selectTools(routingMessage, req.Model)
+	selectedTools = applyDeepResearchPreference(selectedTools, &channelDeepResearchEnabled)
+	req.Tools = defsToLLMTools(selectedTools)
 
 	logger.Info().
 		Str("model", req.Model).
@@ -2031,9 +2970,49 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	// Tool execution loop for IM
 	var resp *llm.ChatResponse
 	var err error
-	for imRound := 0; imRound < h.getMaxToolRounds(); imRound++ {
+	for imRound := 0; imRound < h.getMaxToolRoundsForMode(channelAgentModeEnabled); imRound++ {
 		resp, err = h.chatOnce(ctx, req)
 		if err != nil {
+			if h.shouldUseDeepResearchFallback(err) {
+				fbCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+				fallback, fbErr := h.runDeepResearchFallback(fbCtx, routingMessage)
+				cancel()
+				if fbErr == nil {
+					h.smallModelStats.RecordDeepResearchFallback()
+					resp = &llm.ChatResponse{
+						Model:      "deepresearch-fallback",
+						Provider:   "deepresearch",
+						ProviderID: "deepresearch",
+						Message: llm.Message{
+							Role:    llm.RoleAssistant,
+							Content: fallback,
+						},
+					}
+					err = nil
+					break
+				}
+				logger.Warn().Err(fbErr).Msg("[chat] IM deep research fallback failed")
+				h.smallModelStats.RecordFallback(fallbackReasonDeepResearchUnavailable)
+				irCtx, irCancel := context.WithTimeout(ctx, 150*time.Millisecond)
+				irText, irErr := h.runLocalIRFallback(irCtx, convID, routingMessage, true)
+				irCancel()
+				if irErr == nil && strings.TrimSpace(irText) != "" {
+					h.smallModelStats.RecordIRTakeover()
+					resp = &llm.ChatResponse{
+						Model:      "ir-only-fallback",
+						Provider:   "ir",
+						ProviderID: "ir",
+						Message: llm.Message{
+							Role:    llm.RoleAssistant,
+							Content: irText,
+						},
+					}
+					err = nil
+					break
+				} else {
+					h.smallModelStats.RecordFallback(fallbackReasonIRNoSignal)
+				}
+			}
 			// Graceful fallback: if a later round fails but we have tool results, use them
 			if imRound > 0 {
 				fallback, toolResultCount := buildToolFallbackText(req.Messages, 4096)
@@ -2223,6 +3202,14 @@ const maxToolRounds = 5
 // maxToolRoundsAgent is the limit for agent mode — effectively unlimited.
 const maxToolRoundsAgent = 1000
 
+// maxAutoContinueDefault caps how many times non-agent mode can nudge the LLM
+// after a toolless stop.
+const maxAutoContinueDefault = 2
+
+// maxAutoContinueAgent is effectively unlimited in agent mode, bounded by the
+// overall tool-round limit.
+const maxAutoContinueAgent = maxToolRoundsAgent
+
 // maxConsecutiveDuplicateToolCalls is the number of consecutive identical tool
 // calls (same name + same arguments) allowed before the loop is forcibly broken.
 // This prevents the LLM from getting stuck calling the same tool repeatedly.
@@ -2248,10 +3235,21 @@ func toolCallSignature(calls []llm.ToolCall) string {
 
 // getMaxToolRounds returns the tool round limit based on agent mode setting.
 func (h *ChatHandler) getMaxToolRounds() int {
-	if h.settingsHandler != nil && h.settingsHandler.GetAgentMode() {
+	return h.getMaxToolRoundsForMode(h.settingsHandler != nil && h.settingsHandler.GetAgentMode())
+}
+
+func (h *ChatHandler) getMaxToolRoundsForMode(agentMode bool) int {
+	if agentMode {
 		return maxToolRoundsAgent
 	}
 	return maxToolRounds
+}
+
+func (h *ChatHandler) getMaxAutoContinueForMode(agentMode bool) int {
+	if agentMode {
+		return maxAutoContinueAgent
+	}
+	return maxAutoContinueDefault
 }
 
 // executeToolCalls executes tool calls and returns tool result messages.
@@ -2822,8 +3820,59 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	// Get tool definitions (smart selection filters by user query when enabled)
 	selectedTools := h.selectTools(routingMessage, chatReq.Model)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
-	selectedTools = applyDeepSearchPreference(selectedTools, req.DeepResearchEnabled)
+	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
+	if h.shouldRouteToolDispatch(selectedTools) {
+		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
+		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
+		routeCancel()
+		if routeErr == nil && len(routedTools) == 1 {
+			h.smallModelStats.RecordToolDispatchRoute(true)
+			selectedTools = routedTools
+			logger.Info().
+				Str("conv_id", convID).
+				Str("route", "tool_dispatch").
+				Str("provider", "smallmodel").
+				Str("tool", selectedTools[0].Name).
+				Msg("[chat] tool dispatch routed to small model")
+		} else {
+			h.smallModelStats.RecordToolDispatchRoute(false)
+			reason := smallModelFallbackReason(routeErr)
+			h.smallModelStats.RecordFallback(reason)
+			logger.Warn().
+				Err(routeErr).
+				Str("conv_id", convID).
+				Str("route", "tool_dispatch").
+				Str("fallback_reason", reason).
+				Msg("[chat] small model tool dispatch failed, fallback to default tool set")
+		}
+		h.maybeAutoRollbackToolDispatchRoute()
+	}
 	chatReq.Tools = defsToLLMTools(selectedTools)
+
+	shortQAShadowPrompt := ""
+	shortQAShadowEnabled := false
+	if h.shouldShadowShortQA(req, routingMessage, "short_qa_shadow|"+convID+"|"+routingMessage) {
+		shortQAShadowEnabled = true
+		shortQAShadowPrompt = "You are a concise assistant. Answer briefly and directly. " +
+			"If uncertain, say so.\n\nUser: " + strings.TrimSpace(routingMessage) + "\nAssistant:"
+	}
+	if h.smallModel != nil && h.settingsHandler != nil && h.settingsHandler.GetSmallModelEnabled() &&
+		!h.settingsHandler.GetSmallModelRouteToolDispatchEnabled() && len(selectedTools) > 0 &&
+		h.shouldRunSmallModelShadow("tool_dispatch_shadow|"+convID+"|"+routingMessage) {
+		toolNames := make([]string, 0, len(selectedTools))
+		for _, tdef := range selectedTools {
+			toolNames = append(toolNames, tdef.Name)
+		}
+		toolPrompt := "Pick the single best tool name for this user request. " +
+			"Return only one tool name with no explanation.\n\nUser request: " + strings.TrimSpace(routingMessage) +
+			"\nCandidate tools: " + strings.Join(toolNames, ", ") + "\nTool:"
+		mainTool := selectedTools[0].Name
+		go func(prompt, baseline string) {
+			shadowCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+			h.runSmallModelShadow(shadowCtx, "tool_dispatch_shadow", prompt, 32, 0.2, baseline)
+		}(toolPrompt, mainTool)
+	}
 
 	logger.Info().
 		Str("model", chatReq.Model).
@@ -2839,64 +3888,172 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	// Build context with locale for tool execution.
 	// Use WithoutCancel so long-running tools (e.g. browser) survive request disconnects.
 	toolCtx := context.WithoutCancel(c.Request().Context())
+	locale := ""
 	if h.settingsHandler != nil {
-		if locale := h.settingsHandler.GetLocale(); locale != "" {
+		locale = h.settingsHandler.GetLocale()
+		if locale != "" {
 			toolCtx = tools.WithLang(toolCtx, locale)
 		}
 	}
 	toolCtx = tools.WithUserID(toolCtx, h.getUserID(c))
 	toolCtx = tools.WithSessionID(toolCtx, convID)
 	llmCtx := withProxySession(c.Request().Context(), convID)
+	llmCtx = withProxyLocale(llmCtx, locale)
 	// Attach prune stats slot so the proxy pruner can populate it (non-streaming path).
 	pruneStats := &pruner.RequestPruneStats{}
 	llmCtx = pruner.WithPruneStats(llmCtx, pruneStats)
+	if h.shouldDisableProxyPruner() {
+		llmCtx = pruner.WithPrunerDisabled(llmCtx, true)
+	}
 
-	for round := 0; round < h.getMaxToolRounds(); round++ {
-		resp, err = h.chatOnce(llmCtx, chatReq)
-		if err != nil || resp == nil {
-			// Graceful fallback: if a later round fails but we have tool results, use them
-			if round > 0 && err != nil {
-				fallback, toolResultCount := buildToolFallbackText(chatReq.Messages, 4096)
-				if toolResultCount > 0 {
-					logger.Warn().Err(err).Int("round", round).Int("tool_results", toolResultCount).
-						Msg("[chat] tool round failed, using fallback from previous tool results")
-					resp = &llm.ChatResponse{Message: llm.Message{Role: llm.RoleAssistant, Content: fallback}}
+	if h.shouldRouteShortQA(req, routingMessage) {
+		smCtx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
+		smResp, smErr := h.trySmallModelShortQA(smCtx, routingMessage, req.MaxTokens, req.Temperature)
+		cancel()
+		if smErr == nil && smResp != nil {
+			h.smallModelStats.RecordShortQARoute(true)
+			resp = smResp
+			err = nil
+			logger.Info().
+				Str("conv_id", convID).
+				Str("route", "short_qa").
+				Str("provider", "smallmodel").
+				Msg("[chat] routed to small model")
+		} else {
+			h.smallModelStats.RecordShortQARoute(false)
+			h.smallModelStats.RecordFallback(smallModelFallbackReason(smErr))
+			logger.Warn().
+				Err(smErr).
+				Str("conv_id", convID).
+				Str("route", "short_qa").
+				Str("fallback_reason", smallModelFallbackReason(smErr)).
+				Msg("[chat] small model route failed, fallback to LLM")
+			if h.shouldPreferIRFirstFallback() {
+				irCtx, irCancel := context.WithTimeout(c.Request().Context(), 120*time.Millisecond)
+				irText, irErr := h.runLocalIRFallback(irCtx, convID, routingMessage, false)
+				irCancel()
+				if irErr == nil && strings.TrimSpace(irText) != "" {
+					h.smallModelStats.RecordIRTakeover()
+					resp = &llm.ChatResponse{
+						Model:      "ir-first-fallback",
+						Provider:   "ir",
+						ProviderID: "ir",
+						Message: llm.Message{
+							Role:    llm.RoleAssistant,
+							Content: irText,
+						},
+					}
 					err = nil
+					logger.Info().
+						Str("conv_id", convID).
+						Str("route", "short_qa").
+						Str("provider", "ir").
+						Msg("[chat] small model route failed, IR-first takeover")
+				} else {
+					h.smallModelStats.RecordFallback(fallbackReasonIRNoSignal)
 				}
 			}
-			break
 		}
+		h.maybeAutoRollbackShortQARoute()
+	}
 
-		// Pin provider after first successful round with tool calls
-		// so subsequent rounds use the same provider (sticky routing).
-		// IMPORTANT: Do NOT overwrite chatReq.Model with resp.Model.
-		// resp.Model is the upstream provider's own model name, which may not
-		// match our routing model ID. Overwriting causes subsequent tool rounds
-		// to fail routing (model not in snapshot → blind fallback → 404).
-		// Keep the original routing mode so the proxy can route correctly.
-		if round == 0 && len(resp.Message.ToolCalls) > 0 {
-			if resp.ProviderID != "" {
-				llmCtx = proxy.WithPinnedProvider(llmCtx, resp.ProviderID)
-				logger.Debug().
-					Str("pinned_provider", resp.ProviderID).
-					Msg("[chat] pinned provider for tool rounds")
+	if resp == nil {
+		for round := 0; round < h.getMaxToolRounds(); round++ {
+			resp, err = h.chatOnce(llmCtx, chatReq)
+			if err != nil || resp == nil {
+				// Graceful fallback: if a later round fails but we have tool results, use them
+				if round > 0 && err != nil {
+					fallback, toolResultCount := buildToolFallbackText(chatReq.Messages, 4096)
+					if toolResultCount > 0 {
+						logger.Warn().Err(err).Int("round", round).Int("tool_results", toolResultCount).
+							Msg("[chat] tool round failed, using fallback from previous tool results")
+						resp = &llm.ChatResponse{Message: llm.Message{Role: llm.RoleAssistant, Content: fallback}}
+						err = nil
+					}
+				}
+				break
+			}
+
+			// Pin provider after first successful round with tool calls
+			// so subsequent rounds use the same provider (sticky routing).
+			// IMPORTANT: Do NOT overwrite chatReq.Model with resp.Model.
+			// resp.Model is the upstream provider's own model name, which may not
+			// match our routing model ID. Overwriting causes subsequent tool rounds
+			// to fail routing (model not in snapshot → blind fallback → 404).
+			// Keep the original routing mode so the proxy can route correctly.
+			if round == 0 && len(resp.Message.ToolCalls) > 0 {
+				if resp.ProviderID != "" {
+					llmCtx = proxy.WithPinnedProvider(llmCtx, resp.ProviderID)
+					logger.Debug().
+						Str("pinned_provider", resp.ProviderID).
+						Msg("[chat] pinned provider for tool rounds")
+				}
+			}
+
+			// No tool calls — done
+			if len(resp.Message.ToolCalls) == 0 {
+				break
+			}
+			if supportsResponsesContinuation(chatReq.Model) && resp.ID != "" {
+				h.setPreviousResponseID(convID, resp.ID)
+				chatReq.PreviousResponseID = resp.ID
+			}
+			// Execute tool calls and feed results back
+			logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
+			toolResults := h.executeToolCalls(toolCtx, resp.Message.ToolCalls)
+			// Append assistant message (with tool_calls) + tool results to conversation
+			chatReq.Messages = append(chatReq.Messages, resp.Message)
+			chatReq.Messages = append(chatReq.Messages, toolResults...)
+		}
+	}
+	if err != nil && strings.TrimSpace(req.Provider) == "" && h.shouldUseDeepResearchFallback(err) {
+		fbCtx, cancel := context.WithTimeout(c.Request().Context(), 45*time.Second)
+		defer cancel()
+		if fbContent, fbErr := h.runDeepResearchFallback(fbCtx, routingMessage); fbErr == nil {
+			h.smallModelStats.RecordDeepResearchFallback()
+			logger.Warn().
+				Err(err).
+				Str("conv_id", convID).
+				Msg("[chat] no provider detected, downgraded to deep research fallback")
+			resp = &llm.ChatResponse{
+				Model:      "deepresearch-fallback",
+				Provider:   "deepresearch",
+				ProviderID: "deepresearch",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: fbContent,
+				},
+			}
+			err = nil
+		} else {
+			h.smallModelStats.RecordFallback(fallbackReasonDeepResearchUnavailable)
+			logger.Warn().
+				Err(fbErr).
+				Str("conv_id", convID).
+				Msg("[chat] deep research fallback failed")
+			irCtx, irCancel := context.WithTimeout(c.Request().Context(), 150*time.Millisecond)
+			irText, irErr := h.runLocalIRFallback(irCtx, convID, routingMessage, true)
+			irCancel()
+			if irErr == nil && strings.TrimSpace(irText) != "" {
+				h.smallModelStats.RecordIRTakeover()
+				resp = &llm.ChatResponse{
+					Model:      "ir-only-fallback",
+					Provider:   "ir",
+					ProviderID: "ir",
+					Message: llm.Message{
+						Role:    llm.RoleAssistant,
+						Content: irText,
+					},
+				}
+				err = nil
+				logger.Warn().
+					Err(fbErr).
+					Str("conv_id", convID).
+					Msg("[chat] deep research unavailable, downgraded to IR-only fallback")
+			} else {
+				h.smallModelStats.RecordFallback(fallbackReasonIRNoSignal)
 			}
 		}
-
-		// No tool calls — done
-		if len(resp.Message.ToolCalls) == 0 {
-			break
-		}
-		if supportsResponsesContinuation(chatReq.Model) && resp.ID != "" {
-			h.setPreviousResponseID(convID, resp.ID)
-			chatReq.PreviousResponseID = resp.ID
-		}
-		// Execute tool calls and feed results back
-		logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
-		toolResults := h.executeToolCalls(toolCtx, resp.Message.ToolCalls)
-		// Append assistant message (with tool_calls) + tool results to conversation
-		chatReq.Messages = append(chatReq.Messages, resp.Message)
-		chatReq.Messages = append(chatReq.Messages, toolResults...)
 	}
 	latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 	if supportsResponsesContinuation(chatReq.Model) && resp != nil && resp.ID != "" {
@@ -2974,6 +4131,20 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		sanitizedErr := proxy.SanitizeError(err)
 		h.emitErrorEventAsync(sessionID, sanitizedErr)
 		return echo.NewHTTPError(http.StatusInternalServerError, sanitizedErr)
+	}
+
+	if shortQAShadowEnabled && resp != nil {
+		mainOutput := strings.TrimSpace(resp.Message.Content)
+		if mainOutput != "" {
+			prompt := shortQAShadowPrompt
+			maxTokens := req.MaxTokens
+			temperature := req.Temperature
+			go func(prompt, baseline string, maxTokens int, temperature float64) {
+				shadowCtx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+				defer cancel()
+				h.runSmallModelShadow(shadowCtx, "short_qa_shadow", prompt, maxTokens, temperature, baseline)
+			}(prompt, mainOutput, maxTokens, temperature)
+		}
 	}
 
 	// Get provider name for display — use resolved provider from response if available
@@ -3147,6 +4318,8 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/tools/stats", h.ToolSelectionStats)
 	g.GET("/context/stats", h.ContextStats)
 	g.POST("/context/stats/reset", h.ResetContextStats)
+	g.GET("/small-model/stats", h.SmallModelStatsHandler)
+	g.POST("/small-model/stats/reset", h.ResetSmallModelStatsHandler)
 	g.GET("/streams/active", h.ListActiveStreams)
 	g.POST("/streams/cancel-all", h.CancelAllStreams)
 	g.POST("/conversations/:id/messages/:msgid/card-action", h.HandleCardAction)
@@ -3898,7 +5071,33 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// Get tool definitions (smart selection filters by user query when enabled)
 	selectedTools := h.selectTools(routingMessage, chatReq.Model)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
-	selectedTools = applyDeepSearchPreference(selectedTools, req.DeepResearchEnabled)
+	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
+	if h.shouldRouteToolDispatch(selectedTools) {
+		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
+		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
+		routeCancel()
+		if routeErr == nil && len(routedTools) == 1 {
+			h.smallModelStats.RecordToolDispatchRoute(true)
+			selectedTools = routedTools
+			logger.Info().
+				Str("conv_id", convID).
+				Str("route", "tool_dispatch").
+				Str("provider", "smallmodel").
+				Str("tool", selectedTools[0].Name).
+				Msg("[chat] stream tool dispatch routed to small model")
+		} else {
+			h.smallModelStats.RecordToolDispatchRoute(false)
+			reason := smallModelFallbackReason(routeErr)
+			h.smallModelStats.RecordFallback(reason)
+			logger.Warn().
+				Err(routeErr).
+				Str("conv_id", convID).
+				Str("route", "tool_dispatch").
+				Str("fallback_reason", reason).
+				Msg("[chat] stream small model tool dispatch failed, fallback to default tool set")
+		}
+		h.maybeAutoRollbackToolDispatchRoute()
+	}
 	chatReq.Tools = defsToLLMTools(selectedTools)
 	logger.Info().
 		Str("model", chatReq.Model).
@@ -3927,6 +5126,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	pruneStats := &pruner.RequestPruneStats{}
 	ctx = withProxySession(ctx, convID)
 	ctx = pruner.WithPruneStats(ctx, pruneStats)
+	if h.shouldDisableProxyPruner() {
+		ctx = pruner.WithPrunerDisabled(ctx, true)
+	}
 
 	// Attach ResolvedRoute slot so the bridge can populate it with actual provider/model.
 	// This serves as a fallback when stream chunks don't carry provider info.
@@ -3944,10 +5146,13 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		logger.Debug().Str("conv_id", convID).Str("provider_id", aff.ProviderID).Msg("[chat] stream: using provider affinity")
 	}
 
+	streamLocale := ""
 	// Inject locale and user ID into context for tool execution
 	if h.settingsHandler != nil {
-		if locale := h.settingsHandler.GetLocale(); locale != "" {
-			ctx = tools.WithLang(ctx, locale)
+		streamLocale = strings.TrimSpace(h.settingsHandler.GetLocale())
+		if streamLocale != "" {
+			ctx = tools.WithLang(ctx, streamLocale)
+			ctx = withProxyLocale(ctx, streamLocale)
 		}
 	}
 	ctx = tools.WithUserID(ctx, h.getUserID(c))
@@ -4125,12 +5330,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	var totalDeltaChars int         // track total delta chars sent to client across all rounds
 	var autoContinueCount int       // track auto-continue retries to prevent infinite loops
-	const maxAutoContinue = 2       // max times we'll nudge the LLM to actually call tools
 	var autoContinueFailed bool     // true after an auto-continue round fails before any chunk
 	var prevToolSig string          // signature of previous round's tool calls for duplicate detection
 	var consecutiveDups int         // count of consecutive identical tool call rounds
 	var typelessCardsPersisted bool // true once tool result cards are appended to persisted content
 	agentModeAutoContinue := h.getMaxToolRounds() > maxToolRounds
+	maxAutoContinueRetries := h.getMaxAutoContinueForMode(agentModeAutoContinue)
 	// Keep provider/model sticky across auto-continue rounds to avoid re-routing
 	// "model=auto" to a different model/provider mid-chain.
 	pinAutoContinueRoute := func(reason string) {
@@ -4362,7 +5567,7 @@ STREAM_LOOP:
 
 				// Auto-continue: if LLM stopped without tool calls but the content
 				// indicates a pending next action, defer done and nudge another round.
-				if len(streamToolCalls) == 0 && fullContent != "" && autoContinueCount < maxAutoContinue {
+				if len(streamToolCalls) == 0 && fullContent != "" && autoContinueCount < maxAutoContinueRetries {
 					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue); shouldContinue {
 						logger.Info().
 							Int("tool_round", toolRound).
@@ -4536,6 +5741,42 @@ STREAM_LOOP:
 					endLog = endLog.Int("proxy_status", pe.StatusCode).Str("proxy_body", pe.Body)
 				}
 				endLog.Msg("[chat] pre-content retries ended with error")
+			}
+
+			// Auto-continue resilience: if continuation failed before any chunks and
+			// we pinned a provider, retry once without pinning so routing can pick an
+			// alternative provider. Keep explicit user-selected provider untouched.
+			hasAltProviders := h.providerPool != nil && h.providerPool.Registry != nil && len(h.providerPool.Registry.ListEnabled()) > 1
+			if err != nil && fullContent == "" && !streamErrorHandled && ctx.Err() == nil &&
+				toolRound > 0 && autoContinueCount > 0 && totalDeltaChars > 0 &&
+				strings.TrimSpace(req.Provider) == "" && hasAltProviders {
+				pinnedProviderID := strings.TrimSpace(proxy.GetPinnedProvider(ctx))
+				if pinnedProviderID != "" {
+					logger.Warn().
+						Err(err).
+						Int("tool_round", toolRound).
+						Str("pinned_provider_id", pinnedProviderID).
+						Msg("[chat] auto-continue pre-content failed — retrying once without pinned provider")
+					unpinnedCtx := proxy.WithPinnedProvider(ctx, "")
+					streamErrorHandled = false
+					err = h.proxyBridge.ChatStream(unpinnedCtx, chatReq, streamCb)
+					if err == nil {
+						ctx = unpinnedCtx
+						logger.Info().
+							Int("tool_round", toolRound).
+							Str("previous_pinned_provider_id", pinnedProviderID).
+							Msg("[chat] auto-continue pre-content retry without pinned provider succeeded")
+					} else {
+						retryLog := logger.Warn().
+							Err(err).
+							Int("tool_round", toolRound).
+							Str("previous_pinned_provider_id", pinnedProviderID)
+						if pe, ok := err.(*proxybridge.ProxyError); ok {
+							retryLog = retryLog.Int("proxy_status", pe.StatusCode).Str("proxy_body", pe.Body)
+						}
+						retryLog.Msg("[chat] auto-continue pre-content retry without pinned provider failed")
+					}
+				}
 			}
 		} else if h.providers != nil {
 			names := h.providers.List()
@@ -4892,6 +6133,18 @@ STREAM_LOOP:
 					Int("auto_continue", autoContinueCount).
 					Int("total_delta_chars", totalDeltaChars).
 					Msg("[chat] stream: continuation round failed after prior content, completing stream gracefully")
+				fallback := strings.TrimSpace(streamContinuationFailureText(streamLocale))
+				if fallback != "" {
+					fallbackDelta, _ := json.Marshal(map[string]interface{}{
+						"delta":     fallback,
+						"done":      false,
+						"stream_id": streamID,
+					})
+					c.Response().Write([]byte("data: " + string(fallbackDelta) + "\n\n"))
+					flusher.Flush()
+					fullContent = fallback
+					totalDeltaChars += len(fallback)
+				}
 				autoContinueFailed = true
 				err = nil
 				streamCompleted = true
@@ -4932,7 +6185,7 @@ STREAM_LOOP:
 
 		// Auto-continue: when LLM stopped without tool calls but the content
 		// still implies pending action, inject a continuation prompt and loop back.
-		if streamCompleted && fullContent != "" && len(streamToolCalls) == 0 && autoContinueCount < maxAutoContinue {
+		if streamCompleted && fullContent != "" && len(streamToolCalls) == 0 && autoContinueCount < maxAutoContinueRetries {
 			if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue); shouldContinue {
 				autoContinueCount++
 				pinAutoContinueRoute(reason)
@@ -4975,7 +6228,7 @@ STREAM_LOOP:
 				}
 				chatReq.Messages = append(chatReq.Messages,
 					llm.Message{Role: llm.RoleAssistant, Content: fullContent},
-					llm.Message{Role: llm.RoleUser, Content: "You described what to do but did not call any tools. Now actually execute by calling available tools (especially exec for file creation/edit/run steps). Do not describe — act."},
+					llm.Message{Role: llm.RoleUser, Content: buildToollessAutoContinueNudge(agentModeAutoContinue)},
 				)
 				fullContent = ""
 				streamCompleted = false
@@ -4986,7 +6239,7 @@ STREAM_LOOP:
 		// Agent mode: if LLM returned completely empty (no content, no tool calls)
 		// after executing tools, only auto-continue when a TODO checklist still
 		// has unfinished items.
-		if streamCompleted && fullContent == "" && len(streamToolCalls) == 0 && toolRound > 0 && h.getMaxToolRounds() > maxToolRounds && autoContinueCount < maxAutoContinue {
+		if streamCompleted && fullContent == "" && len(streamToolCalls) == 0 && toolRound > 0 && h.getMaxToolRounds() > maxToolRounds && autoContinueCount < maxAutoContinueRetries {
 			if autoContinueFailed {
 				logger.Info().
 					Int("tool_round", toolRound).
@@ -5009,7 +6262,7 @@ STREAM_LOOP:
 			// instead of silently stopping.
 			chatReq.Messages = append(chatReq.Messages,
 				llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
-				llm.Message{Role: llm.RoleUser, Content: "Continue with the task. The tools above have been executed successfully. Review the results and proceed with the next step, or provide a summary if the task is complete."},
+				llm.Message{Role: llm.RoleUser, Content: buildPostToolAutoContinueNudge(agentModeAutoContinue)},
 			)
 			streamCompleted = false
 			continue
@@ -5166,6 +6419,9 @@ STREAM_LOOP:
 				// Re-attach context values
 				pruneStats = &pruner.RequestPruneStats{}
 				ctx = pruner.WithPruneStats(ctx, pruneStats)
+				if h.shouldDisableProxyPruner() {
+					ctx = pruner.WithPrunerDisabled(ctx, true)
+				}
 				resolvedRoute = proxy.ResolvedRoute{}
 				ctx = proxy.WithResolvedRoute(ctx, &resolvedRoute)
 				// Re-apply provider affinity for the restarted stream
@@ -5175,6 +6431,7 @@ STREAM_LOOP:
 				if h.settingsHandler != nil {
 					if locale := h.settingsHandler.GetLocale(); locale != "" {
 						ctx = tools.WithLang(ctx, locale)
+						ctx = withProxyLocale(ctx, locale)
 					}
 				}
 				ctx = tools.WithUserID(ctx, userID)
@@ -5300,6 +6557,113 @@ STREAM_LOOP:
 		// Other error — chunk.Error callback may have already sent done+stored
 		if streamErrorHandled {
 			return nil
+		}
+		if fullContent == "" && strings.TrimSpace(req.Provider) == "" && h.shouldUseDeepResearchFallback(err) {
+			fbCtx, cancel := context.WithTimeout(c.Request().Context(), 45*time.Second)
+			fallbackContent, fbErr := h.runDeepResearchFallback(fbCtx, req.Message)
+			cancel()
+			if fbErr == nil {
+				h.smallModelStats.RecordDeepResearchFallback()
+				fallbackContent = sanitizeResponseContent(fallbackContent)
+				usageOut := estimateTokens(fallbackContent)
+				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
+				if _, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
+					Role:     "assistant",
+					Content:  fallbackContent,
+					Provider: "deepresearch",
+					Model:    "deepresearch-fallback",
+					Stats: &memory.MessageStats{
+						InputTokens:  totalInputTokens,
+						OutputTokens: usageOut,
+						TotalTokens:  totalInputTokens + usageOut,
+						LatencyMs:    int64(latencyMs),
+					},
+				}); addErr == nil {
+					h.conversationCache.Invalidate(convID)
+				}
+				if h.metricsRecorder != nil {
+					h.metricsRecorder.RecordAPICallForUser(userID, "deepresearch-fallback", true, latencyMs, int64(totalInputTokens), int64(usageOut), 0, 0, "")
+				}
+				delta, _ := json.Marshal(map[string]interface{}{
+					"delta":     fallbackContent,
+					"done":      false,
+					"stream_id": streamID,
+					"provider":  "deepresearch",
+					"model":     "deepresearch-fallback",
+				})
+				c.Response().Write([]byte("data: " + string(delta) + "\n\n"))
+				done, _ := json.Marshal(map[string]interface{}{
+					"delta":     "",
+					"done":      true,
+					"stream_id": streamID,
+					"provider":  "deepresearch",
+					"model":     "deepresearch-fallback",
+				})
+				c.Response().Write([]byte("data: " + string(done) + "\n\n"))
+				c.Response().Write([]byte("data: [DONE]\n\n"))
+				flusher.Flush()
+				logger.Warn().
+					Err(err).
+					Str("conv_id", convID).
+					Msg("[chat] stream no provider detected, downgraded to deep research fallback")
+				return nil
+			}
+			logger.Warn().
+				Err(fbErr).
+				Str("conv_id", convID).
+				Msg("[chat] stream deep research fallback failed")
+			h.smallModelStats.RecordFallback(fallbackReasonDeepResearchUnavailable)
+			irCtx, irCancel := context.WithTimeout(c.Request().Context(), 150*time.Millisecond)
+			irContent, irErr := h.runLocalIRFallback(irCtx, convID, req.Message, true)
+			irCancel()
+			if irErr == nil && strings.TrimSpace(irContent) != "" {
+				h.smallModelStats.RecordIRTakeover()
+				irContent = sanitizeResponseContent(irContent)
+				usageOut := estimateTokens(irContent)
+				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
+				if _, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
+					Role:     "assistant",
+					Content:  irContent,
+					Provider: "ir",
+					Model:    "ir-only-fallback",
+					Stats: &memory.MessageStats{
+						InputTokens:  totalInputTokens,
+						OutputTokens: usageOut,
+						TotalTokens:  totalInputTokens + usageOut,
+						LatencyMs:    int64(latencyMs),
+					},
+				}); addErr == nil {
+					h.conversationCache.Invalidate(convID)
+				}
+				if h.metricsRecorder != nil {
+					h.metricsRecorder.RecordAPICallForUser(userID, "ir-only-fallback", true, latencyMs, int64(totalInputTokens), int64(usageOut), 0, 0, "")
+				}
+				delta, _ := json.Marshal(map[string]interface{}{
+					"delta":     irContent,
+					"done":      false,
+					"stream_id": streamID,
+					"provider":  "ir",
+					"model":     "ir-only-fallback",
+				})
+				c.Response().Write([]byte("data: " + string(delta) + "\n\n"))
+				done, _ := json.Marshal(map[string]interface{}{
+					"delta":     "",
+					"done":      true,
+					"stream_id": streamID,
+					"provider":  "ir",
+					"model":     "ir-only-fallback",
+				})
+				c.Response().Write([]byte("data: " + string(done) + "\n\n"))
+				c.Response().Write([]byte("data: [DONE]\n\n"))
+				flusher.Flush()
+				logger.Warn().
+					Err(fbErr).
+					Str("conv_id", convID).
+					Msg("[chat] stream deep research unavailable, downgraded to IR-only fallback")
+				return nil
+			} else {
+				h.smallModelStats.RecordFallback(fallbackReasonIRNoSignal)
+			}
 		}
 		logger.Error().Err(err).Str("conv_id", convID).Str("model", model).Msg("[chat] stream error")
 		errMsg := "STREAM_ERROR"
@@ -5519,6 +6883,14 @@ func (h *ChatHandler) generateConversationTitle(convID, userID, userMessage, aiR
 		return
 	}
 
+	// Prefer local small-model summary path when enabled.
+	if h.shouldUseSmallModelSummary() {
+		if title := h.generateTitleWithSmallModel(userMessage, targetLang); title != "" {
+			h.updateTitleAndNotify(convID, userID, sanitizeTitle(title))
+			return
+		}
+	}
+
 	// Try to use LLM to generate a concise title
 	title := h.generateTitleWithLLM(userMessage, targetLang)
 	if title == "" {
@@ -5527,6 +6899,140 @@ func (h *ChatHandler) generateConversationTitle(convID, userID, userMessage, aiR
 	}
 	title = sanitizeTitle(title)
 	h.updateTitleAndNotify(convID, userID, title)
+}
+
+func (h *ChatHandler) shouldUseSmallModelSummary() bool {
+	if h == nil || h.smallModel == nil || h.settingsHandler == nil {
+		return false
+	}
+	return h.settingsHandler.GetSmallModelEnabled() && h.settingsHandler.GetSmallModelSummaryEnabled()
+}
+
+func (h *ChatHandler) generateTitleWithSmallModel(userMessage, targetLang string) string {
+	content := stripContentForTitle(userMessage)
+	if len([]rune(content)) < 5 {
+		content = userMessage
+	}
+	contentRunes := []rune(content)
+	if len(contentRunes) > 240 {
+		content = string(contentRunes[:240]) + "..."
+	}
+	langInstruction := getLanguageInstruction(targetLang)
+	prompt := "Generate a very short title (max 20 characters) for this conversation. " +
+		"Output ONLY the title, no quotes, no explanation. " + langInstruction +
+		"\n\n[lang=" + targetLang + "] " + content + "\nTitle:"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	started := time.Now()
+	resp, err := h.smallModel.Generate(ctx, smallmodel.GenerateRequest{
+		Prompt:      prompt,
+		MaxTokens:   24,
+		Temperature: 0.2,
+	})
+	h.smallModelStats.RecordLatency(time.Since(started))
+	if err != nil || resp == nil {
+		if err != nil {
+			h.smallModelStats.RecordFallback(smallModelFallbackReason(err))
+			logger.Info().Err(err).Msg("[chat] small model title summary fallback")
+		}
+		return ""
+	}
+	title := sanitizeTitle(strings.TrimSpace(resp.Text))
+	if title == "" {
+		return ""
+	}
+	if idx := strings.Index(title, "\n"); idx >= 0 {
+		title = strings.TrimSpace(title[:idx])
+	}
+	return title
+}
+
+func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Context, messages []llm.Message) string {
+	if !h.shouldUseSmallModelSummary() || len(messages) == 0 {
+		return ""
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// Build a compact transcript to stay within prompt budget.
+	var transcript strings.Builder
+	total := 0
+	for _, msg := range messages {
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		runes := []rune(content)
+		if len(runes) > 220 {
+			content = string(runes[:220]) + "..."
+		}
+		prefix := "Context"
+		switch msg.Role {
+		case llm.RoleUser:
+			prefix = "User"
+		case llm.RoleAssistant:
+			prefix = "Assistant"
+		case llm.RoleSystem:
+			prefix = "System"
+		case llm.RoleTool:
+			prefix = "Tool"
+		}
+		line := prefix + ": " + content + "\n"
+		if total+len([]rune(line)) > 2800 {
+			break
+		}
+		transcript.WriteString(line)
+		total += len([]rune(line))
+	}
+	if transcript.Len() == 0 {
+		return ""
+	}
+
+	prompt := summaryCustomInstructions +
+		"\nOutput ONLY the summary text.\n\nConversation snippets:\n" + transcript.String() +
+		"\nSummary:"
+
+	smCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	h.smallModelStats.RecordSummaryAttempt()
+	defer h.maybeAutoRollbackSummaryRoute()
+	started := time.Now()
+	resp, err := h.smallModel.Generate(smCtx, smallmodel.GenerateRequest{
+		Prompt:      prompt,
+		MaxTokens:   96,
+		Temperature: 0.2,
+	})
+	h.smallModelStats.RecordLatencyWithScene("summary", time.Since(started))
+	if err != nil {
+		h.smallModelStats.RecordFallback(smallModelFallbackReason(err))
+		logger.Info().Err(err).Msg("[chat] small model context summary fallback")
+		return ""
+	}
+	if resp == nil {
+		h.smallModelStats.RecordFallback(smallmodel.FallbackReasonResourceGuard)
+		return ""
+	}
+	summary := strings.TrimSpace(resp.Text)
+	if summary == "" {
+		h.smallModelStats.RecordFallback(smallmodel.FallbackReasonLowConfidence)
+		return ""
+	}
+	if idx := strings.Index(summary, "\n"); idx >= 0 {
+		summary = strings.TrimSpace(summary[:idx])
+	}
+	if strings.HasPrefix(strings.ToLower(summary), "summary:") {
+		summary = strings.TrimSpace(summary[len("summary:"):])
+	}
+	runes := []rune(summary)
+	if len(runes) > 320 {
+		summary = string(runes[:320]) + "..."
+	}
+	h.smallModelStats.RecordSummarySuccess()
+	return summary
 }
 
 // updateTitleAndNotify updates the conversation title in DB and pushes an SSE event.

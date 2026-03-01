@@ -18,7 +18,7 @@ func RegisterAll(registry *skill.Registry) error {
 		NewSandbox(),
 		NewBrowser(),
 		NewAnalyze(),
-		NewDeepSearch(),
+		NewDeepResearch(),
 		NewWebSearch(),
 		NewUIReviewer(),
 	}
