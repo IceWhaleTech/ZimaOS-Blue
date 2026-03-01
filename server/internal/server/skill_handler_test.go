@@ -12,9 +12,16 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+func newTestSkillHandler(t *testing.T, registry *skill.Registry) *SkillHandler {
+	t.Helper()
+	handler := NewSkillHandler(registry)
+	handler.SetSkillsDir(t.TempDir())
+	return handler
+}
+
 func TestNewSkillHandler(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	if handler == nil {
 		t.Fatal("NewSkillHandler returned nil")
@@ -33,7 +40,7 @@ func TestNewSkillHandler(t *testing.T) {
 
 func TestSkillHandler_DefaultSources(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	t.Run("clawhub source has correct URL", func(t *testing.T) {
 		source := handler.sources["clawhub"]
@@ -52,7 +59,7 @@ func TestSkillHandler_DefaultSources(t *testing.T) {
 
 func TestSkillHandler_ListSources(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/skill-store/sources", nil)
@@ -81,7 +88,7 @@ func TestSkillHandler_ListSources(t *testing.T) {
 
 func TestSkillHandler_AddSource(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	e := echo.New()
 
@@ -126,7 +133,7 @@ func TestSkillHandler_AddSource(t *testing.T) {
 
 func TestSkillHandler_RemoveSource(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Add a custom source first
 	handler.sources["custom-source"] = &SkillSource{
@@ -199,7 +206,7 @@ func TestSkillHandler_RemoveSource(t *testing.T) {
 
 func TestSkillHandler_BrowseSkills(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Add some remote skills
 	handler.remoteSkills["skill1"] = &RemoteSkill{
@@ -316,7 +323,7 @@ func TestSkillHandler_BrowseSkills(t *testing.T) {
 
 func TestSkillHandler_InstallSkill(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Add a remote skill
 	handler.remoteSkills["test-skill"] = &RemoteSkill{
@@ -390,7 +397,7 @@ func TestSkillHandler_InstallSkill(t *testing.T) {
 
 func TestSkillHandler_UninstallSkill(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Register a non-builtin skill
 	testSkill := NewRemoteSkillAdapter(&skill.Manifest{
@@ -445,7 +452,7 @@ func TestSkillHandler_UninstallSkill(t *testing.T) {
 
 func TestSkillHandler_UninstallBuiltinSkill(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Register a builtin skill
 	builtinSkill := NewRemoteSkillAdapter(&skill.Manifest{
@@ -524,7 +531,7 @@ func TestRemoteSkillAdapter(t *testing.T) {
 
 func TestGetMockClawHubSkills(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	source := &SkillSource{
 		ID:   "clawhub",
@@ -580,7 +587,7 @@ func TestContainsIgnoreCase(t *testing.T) {
 
 func TestCreateManifestFromRemoteSkill(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	rs := &RemoteSkill{
 		ID:          "test-skill",
@@ -622,7 +629,7 @@ func TestCreateManifestFromRemoteSkill(t *testing.T) {
 
 func TestSkillHandler_SetUseMockData(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	t.Run("mock data disabled by default", func(t *testing.T) {
 		if handler.useMockData {
@@ -647,7 +654,7 @@ func TestSkillHandler_SetUseMockData(t *testing.T) {
 
 func TestSkillHandler_MockDataFallback(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Enable mock data for this test
 	handler.SetUseMockData(true)
@@ -681,7 +688,7 @@ func TestSkillHandler_MockDataFallback(t *testing.T) {
 
 func TestSkillHandler_GetMockGitHubSkills(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	source := &SkillSource{
 		ID:   "moltbot",
@@ -775,7 +782,7 @@ func TestClawHubAPIResponseParsing(t *testing.T) {
 
 func TestClawHubSkillConversion(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	source := &SkillSource{
 		ID:   "clawhub",
@@ -836,7 +843,7 @@ func TestClawHubSkillConversion(t *testing.T) {
 
 func TestConvertClawHubSkill(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	source := &SkillSource{
 		ID:   "clawhub",

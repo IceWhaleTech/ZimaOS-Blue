@@ -24,7 +24,7 @@ import (
 // TestSkillVisibility_AfterInstall verifies that a skill becomes visible immediately after installation
 func TestSkillVisibility_AfterInstall(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Add a remote skill to the store
 	handler.remoteSkills["visibility-test-skill"] = &RemoteSkill{
@@ -102,7 +102,7 @@ func TestSkillVisibility_AfterInstall(t *testing.T) {
 // TestSkillVisibility_AfterUninstall verifies that a skill is no longer visible after uninstallation
 func TestSkillVisibility_AfterUninstall(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Register a non-builtin skill
 	testSkill := NewRemoteSkillAdapter(&skill.Manifest{
@@ -166,7 +166,7 @@ func TestSkillVisibility_AfterUninstall(t *testing.T) {
 // TestSkillVisibility_CCCLIFormat verifies that skill API responses match CC CLI expected format
 func TestSkillVisibility_CCCLIFormat(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Register a skill with all fields
 	testSkill := NewRemoteSkillAdapter(&skill.Manifest{
@@ -232,7 +232,7 @@ func TestSkillVisibility_CCCLIFormat(t *testing.T) {
 // TestSkillVisibility_RegistrySync verifies that skill registry stays in sync with API operations
 func TestSkillVisibility_RegistrySync(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Add remote skill
 	handler.remoteSkills["sync-test-skill"] = &RemoteSkill{
@@ -302,7 +302,7 @@ func TestSkillVisibility_RegistrySync(t *testing.T) {
 // TestSkillVisibility_EnableDisable verifies that enable/disable affects skill visibility
 func TestSkillVisibility_EnableDisable(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Register a skill
 	testSkill := NewRemoteSkillAdapter(&skill.Manifest{
@@ -402,7 +402,7 @@ func TestSkillVisibility_ListEnabledOnly(t *testing.T) {
 // TestSkillVisibility_BuiltinProtection verifies that builtin skills cannot be uninstalled
 func TestSkillVisibility_BuiltinProtection(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Register a builtin skill
 	builtinSkill := NewRemoteSkillAdapter(&skill.Manifest{
@@ -493,7 +493,7 @@ This is a test skill for local discovery.
 // TestSkillSearch_MultiLanguage verifies search works with non-English characters
 func TestSkillSearch_MultiLanguage(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Add skills with different languages
 	handler.remoteSkills["chinese-skill"] = &RemoteSkill{
@@ -563,7 +563,7 @@ func TestSkillSearch_MultiLanguage(t *testing.T) {
 // TestSkillSearch_CaseInsensitive verifies search is case insensitive
 func TestSkillSearch_CaseInsensitive(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	handler.remoteSkills["case-test"] = &RemoteSkill{
 		ID:          "case-test",
@@ -689,7 +689,7 @@ func TestSkillVisibility_PersistenceAcrossRestart(t *testing.T) {
 // TestSkillInstall_Timeout verifies install handles timeout gracefully
 func TestSkillInstall_Timeout(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -708,7 +708,7 @@ func TestSkillInstall_Timeout(t *testing.T) {
 // TestSkillInstall_AlreadyInstalled verifies proper error for duplicate install
 func TestSkillInstall_AlreadyInstalled(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Add and install a skill
 	handler.remoteSkills["duplicate-test"] = &RemoteSkill{
@@ -756,7 +756,7 @@ func TestSkillInstall_AlreadyInstalled(t *testing.T) {
 // TestGetFeaturedSkills tests the featured skills endpoint
 func TestGetFeaturedSkills(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Create temp file with test featured skills
 	tempDir, err := os.MkdirTemp("", "featured-test-*")
@@ -834,7 +834,7 @@ func TestGetFeaturedSkills(t *testing.T) {
 // TestVerifySkill tests the skill verification endpoint
 func TestVerifySkill(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Register a test skill
 	testSkill := NewRemoteSkillAdapter(&skill.Manifest{
@@ -904,7 +904,7 @@ func TestVerifySkill(t *testing.T) {
 // TestListLocalSkills tests the local skills listing endpoint
 func TestListLocalSkills(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Create temp directory with test skills
 	tempDir, err := os.MkdirTemp("", "local-skills-test-*")
@@ -961,7 +961,7 @@ version: 1.0.0
 // TestScanLocalSkills tests the local skills scan endpoint
 func TestScanLocalSkills(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	// Create temp directory
 	tempDir, err := os.MkdirTemp("", "scan-test-*")
@@ -1022,7 +1022,7 @@ func TestScanLocalSkills(t *testing.T) {
 // TestParseSkillContent tests the skill content parsing
 func TestParseSkillContent(t *testing.T) {
 	registry := skill.NewRegistry()
-	handler := NewSkillHandler(registry)
+	handler := newTestSkillHandler(t, registry)
 
 	testCases := []struct {
 		name        string
@@ -1048,7 +1048,7 @@ tags: [test, example]
 Instructions here.
 `,
 			sourceURL:   "https://example.com/test-skill/SKILL.md",
-			expectID:    "test-skill",
+			expectID:    "test_skill",
 			expectName:  "test-skill",
 			expectError: false,
 		},
@@ -1060,7 +1060,7 @@ name: My Custom Skill
 ---
 `,
 			sourceURL:   "https://example.com/skill.md",
-			expectID:    "my-custom-id",
+			expectID:    "my_custom_id",
 			expectName:  "My Custom Skill",
 			expectError: false,
 		},
@@ -1068,7 +1068,7 @@ name: My Custom Skill
 			name:        "no frontmatter - ID from URL",
 			content:     "# Just a skill\n\nNo frontmatter here.",
 			sourceURL:   "https://example.com/my-skill/SKILL.md",
-			expectID:    "my-skill",
+			expectID:    "my_skill",
 			expectName:  "my-skill",
 			expectError: false,
 		},

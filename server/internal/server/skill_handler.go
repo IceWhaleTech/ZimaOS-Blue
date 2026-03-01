@@ -246,6 +246,7 @@ var skillsHiddenFromSkillTab = map[string]bool{
 // ListSkills returns all skills from the .claude/skills/ directory.
 func (h *SkillHandler) ListSkills(c echo.Context) error {
 	response := make([]SkillResponse, 0)
+	seen := make(map[string]struct{})
 
 	if h.localScanner != nil {
 		for _, ls := range h.localScanner.GetAll() {
@@ -262,7 +263,36 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 				Tags:        ls.Tags,
 				Enabled:     true,
 			})
+			seen[ls.ID] = struct{}{}
 		}
+	}
+
+	// Compatibility fallback: when local scanner is unavailable (or incomplete),
+	// expose skills from in-memory registry so installs are visible immediately.
+	for _, info := range h.registry.List() {
+		if info == nil || info.Manifest == nil {
+			continue
+		}
+		id := info.Manifest.ID
+		if id == "" || skillsHiddenFromSkillTab[id] {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		response = append(response, SkillResponse{
+			ID:          id,
+			Name:        info.Manifest.Name,
+			Version:     info.Manifest.Version,
+			Description: info.Manifest.Description,
+			Author:      info.Manifest.Author,
+			Category:    info.Manifest.Category,
+			Tags:        info.Manifest.Tags,
+			Enabled:     info.Enabled,
+			Builtin:     info.Builtin,
+			Inputs:      info.Manifest.Inputs,
+			Outputs:     info.Manifest.Outputs,
+		})
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -287,6 +317,24 @@ func (h *SkillHandler) GetSkill(c echo.Context) error {
 				})
 			}
 		}
+	}
+
+	// Compatibility fallback: return registry-backed skill details when scanner
+	// is absent or does not include this skill.
+	if info := h.registry.GetInfo(id); info != nil && info.Manifest != nil {
+		return c.JSON(http.StatusOK, SkillResponse{
+			ID:          info.Manifest.ID,
+			Name:        info.Manifest.Name,
+			Version:     info.Manifest.Version,
+			Description: info.Manifest.Description,
+			Author:      info.Manifest.Author,
+			Category:    info.Manifest.Category,
+			Tags:        info.Manifest.Tags,
+			Enabled:     info.Enabled,
+			Builtin:     info.Builtin,
+			Inputs:      info.Manifest.Inputs,
+			Outputs:     info.Manifest.Outputs,
+		})
 	}
 
 	return c.JSON(http.StatusNotFound, map[string]string{
@@ -967,9 +1015,15 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 		})
 	}
 
-	// Check if already installed (directory exists with SKILL.md)
+	// Check if already installed (directory exists with SKILL.md) or already
+	// present in registry.
 	skillDir := filepath.Join(h.skillsDir, id)
 	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err == nil {
+		return c.JSON(http.StatusConflict, map[string]string{
+			"error": "skill already installed",
+		})
+	}
+	if h.registry.Get(id) != nil {
 		return c.JSON(http.StatusConflict, map[string]string{
 			"error": "skill already installed",
 		})
@@ -1014,6 +1068,8 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 				"error": fmt.Sprintf("failed to download from GitHub: %v", err),
 			})
 		}
+		manifest := h.createManifestFromRemoteSkill(rs)
+		_ = h.registry.Register(NewRemoteSkillAdapter(manifest), false)
 		h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success": true,
@@ -1051,6 +1107,8 @@ func (h *SkillHandler) InstallSkill(c echo.Context) error {
 			"error": fmt.Sprintf("failed to write SKILL.md: %v", err),
 		})
 	}
+	manifest := h.createManifestFromRemoteSkill(rs)
+	_ = h.registry.Register(NewRemoteSkillAdapter(manifest), false)
 
 	h.publishEvent(userID, "skill.install.complete", map[string]interface{}{"id": id})
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -1070,21 +1128,31 @@ func (h *SkillHandler) UninstallSkill(c echo.Context) error {
 		})
 	}
 
+	if info := h.registry.GetInfo(id); info != nil && info.Builtin {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"error": "cannot uninstall builtin skill",
+		})
+	}
+
 	skillDir := filepath.Join(h.skillsDir, id)
-	if _, err := os.Stat(skillDir); os.IsNotExist(err) {
+	_, dirErr := os.Stat(skillDir)
+	inRegistry := h.registry.Get(id) != nil
+	if os.IsNotExist(dirErr) && !inRegistry {
 		return c.JSON(http.StatusNotFound, map[string]string{
 			"error": "skill not installed",
 		})
 	}
 
-	if err := os.RemoveAll(skillDir); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": fmt.Sprintf("failed to remove skill: %v", err),
-		})
+	if dirErr == nil {
+		if err := os.RemoveAll(skillDir); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": fmt.Sprintf("failed to remove skill: %v", err),
+			})
+		}
 	}
 
 	// Also unregister from in-memory registry if present
-	h.registry.Unregister(id)
+	_ = h.registry.Unregister(id)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
