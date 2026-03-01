@@ -746,8 +746,9 @@ func TestChatHandlerListTools(t *testing.T) {
 	var resp []map[string]interface{}
 	json.Unmarshal(rec.Body.Bytes(), &resp)
 
-	if len(resp) < 3 {
-		t.Errorf("expected at least 3 tools, got %d", len(resp))
+	expected := len(toolRegistry.Definitions())
+	if len(resp) != expected {
+		t.Errorf("expected %d tools, got %d", expected, len(resp))
 	}
 }
 

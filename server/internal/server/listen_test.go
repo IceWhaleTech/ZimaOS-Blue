@@ -1,15 +1,32 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"strings"
+	"syscall"
 	"testing"
 )
+
+func shouldSkipBindPermission(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "operation not permitted") || strings.Contains(lower, "permission denied")
+}
 
 func TestListenWithFallback_NormalBind(t *testing.T) {
 	// Port 0 lets OS pick a free port — should always succeed.
 	ln, port, err := ListenWithFallback(":0", 0, false)
 	if err != nil {
+		if shouldSkipBindPermission(err) {
+			t.Skipf("skip bind test in restricted environment: %v", err)
+		}
 		t.Fatalf("unexpected error: %v", err)
 	}
 	defer ln.Close()
@@ -23,6 +40,9 @@ func TestListenWithFallback_FallbackOnConflict(t *testing.T) {
 	// Occupy a port first.
 	blocker, err := net.Listen("tcp", ":0")
 	if err != nil {
+		if shouldSkipBindPermission(err) {
+			t.Skipf("skip bind test in restricted environment: %v", err)
+		}
 		t.Fatalf("failed to create blocker listener: %v", err)
 	}
 	defer blocker.Close()
@@ -48,6 +68,9 @@ func TestListenWithFallback_NoFallback(t *testing.T) {
 	// Occupy a port first.
 	blocker, err := net.Listen("tcp", ":0")
 	if err != nil {
+		if shouldSkipBindPermission(err) {
+			t.Skipf("skip bind test in restricted environment: %v", err)
+		}
 		t.Fatalf("failed to create blocker listener: %v", err)
 	}
 	defer blocker.Close()
@@ -66,6 +89,9 @@ func TestIsAddrInUse(t *testing.T) {
 	// Occupy a port, then try to listen again to get the real error.
 	blocker, err := net.Listen("tcp", ":0")
 	if err != nil {
+		if shouldSkipBindPermission(err) {
+			t.Skipf("skip bind test in restricted environment: %v", err)
+		}
 		t.Fatalf("failed to create blocker: %v", err)
 	}
 	defer blocker.Close()
