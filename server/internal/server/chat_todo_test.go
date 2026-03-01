@@ -31,6 +31,14 @@ func TestShouldAutoContinueForTodo(t *testing.T) {
 		}
 	})
 
+	t.Run("stops when current response is non-empty summary even if tracked todo still pending", func(t *testing.T) {
+		current := "已完成执行并给出最终总结。"
+		tracked := "- [x] step1\n- [ ] step2"
+		if shouldAutoContinueForTodo(current, tracked) {
+			t.Fatalf("expected no auto-continue when current response is non-empty and has no pending todo")
+		}
+	})
+
 	t.Run("continues with star checklist and uppercase X", func(t *testing.T) {
 		tracked := "* [X] step1\n* [ ] step2"
 		if !shouldAutoContinueForTodo("", tracked) {

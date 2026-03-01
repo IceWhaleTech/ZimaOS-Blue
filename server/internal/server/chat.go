@@ -283,6 +283,41 @@ func deriveContinuationContext(userMessage string, messages []llm.Message) conti
 	return ctx
 }
 
+// deriveContinuationContextWithFallback derives continuation hints from the
+// provided context first. If smart-context pruning removed the needed
+// assistant turn, it falls back to recent persisted conversation messages.
+func (h *ChatHandler) deriveContinuationContextWithFallback(ctx context.Context, convID, userMessage string, messages []llm.Message) continuationContext {
+	cc := deriveContinuationContext(userMessage, messages)
+	if cc.Hint != "" || !isAffirmativeContinuationMessage(userMessage) || h.store == nil || strings.TrimSpace(convID) == "" {
+		return cc
+	}
+
+	recent, err := h.store.GetMessages(ctx, convID, 20, 0)
+	if err != nil || len(recent) == 0 {
+		return cc
+	}
+
+	fallback := make([]llm.Message, 0, len(recent))
+	for _, m := range recent {
+		content := strings.TrimSpace(m.Content)
+		if content == "" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(m.Role)) {
+		case string(llm.RoleUser):
+			fallback = append(fallback, llm.Message{Role: llm.RoleUser, Content: content})
+		case string(llm.RoleAssistant):
+			fallback = append(fallback, llm.Message{Role: llm.RoleAssistant, Content: content})
+		case string(llm.RoleSystem):
+			fallback = append(fallback, llm.Message{Role: llm.RoleSystem, Content: content})
+		}
+	}
+	if len(fallback) == 0 {
+		return cc
+	}
+	return deriveContinuationContext(userMessage, fallback)
+}
+
 // extractTodoProgress builds a progress hint from the TODO content.
 // Shows: done count / total, then all remaining (unchecked) items so the LLM
 // has full context about what's left.
@@ -392,7 +427,13 @@ func shouldAutoContinueForTodo(currentContent, trackedTodoContent string) bool {
 	if isAwaitingUserInput(currentContent) {
 		return false
 	}
-	return hasPendingTodo(currentContent) || hasPendingTodo(trackedTodoContent)
+	// Prefer current round signal: when the model already produced a non-empty
+	// response without pending TODOs, treat it as a natural stop.
+	if strings.TrimSpace(currentContent) != "" {
+		return hasPendingTodo(currentContent)
+	}
+	// Fallback to tracked TODO only when current content is empty.
+	return hasPendingTodo(trackedTodoContent)
 }
 
 // shouldAutoContinueForActionPledge detects a common toolless-stop pattern:
@@ -1292,10 +1333,6 @@ func preContentRetrySkipReason(err error) string {
 		return "no_provider"
 	case strings.Contains(bodyLower, "does not support tool calls"):
 		return "tool_unsupported"
-	case strings.Contains(bodyLower, "returned no response"):
-		return "provider_returned_no_response"
-	case strings.Contains(bodyLower, "returned empty streaming response"):
-		return "provider_returned_empty_stream"
 	}
 
 	// Keep transient 5xx retryable at chat layer. In single-provider mode there
@@ -1819,10 +1856,20 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			Msg("[chat] ProcessChannelMessage: short affirmative continuation detected")
 	}
 
+	modelID := h.defaultModelForCCCLI(h.imModel)
+	previousResponseID := ""
+	if supportsResponsesContinuation(modelID) {
+		previousResponseID = h.getPreviousResponseID(convID)
+	}
+
 	// Recall relevant memories for IM context
 	isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	recallMode := h.getMemoryRecallMode()
 	shouldRecall, recallReason := memoryRecallDecision(routingMessage, ctxResult.Tier, isAgentMode, false, recallMode)
+	if shouldSkipCompressedTierRecallForContinuation(modelID, previousResponseID, recallReason) {
+		shouldRecall = false
+		recallReason = MemoryRecallReasonDefaultSkip
+	}
 	h.memoryRecallStats.RecordWithSource(shouldRecall, recallReason, MemoryRecallSourceIM)
 	if shouldRecall {
 		if memoryCtx := h.recallMemories(ctx, routingMessage, recallMode); memoryCtx != "" {
@@ -1958,17 +2005,12 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		return "", fmt.Errorf("no proxy bridge configured")
 	}
 
-	modelID := h.imModel
-	modelID = h.defaultModelForCCCLI(modelID)
-
 	req := llm.ChatRequest{
 		Model:    modelID,
 		Messages: messages,
 	}
-	if isResponsesNativeModel(req.Model) {
-		if prev := h.getPreviousResponseID(convID); prev != "" {
-			req.PreviousResponseID = prev
-		}
+	if supportsResponsesContinuation(req.Model) && previousResponseID != "" {
+		req.PreviousResponseID = previousResponseID
 	}
 
 	// Add tool definitions (smart selection filters by user query when enabled)
@@ -2026,7 +2068,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		if len(resp.Message.ToolCalls) == 0 {
 			break
 		}
-		if isResponsesNativeModel(req.Model) && resp.ID != "" {
+		if supportsResponsesContinuation(req.Model) && resp.ID != "" {
 			h.setPreviousResponseID(convID, resp.ID)
 			req.PreviousResponseID = resp.ID
 		}
@@ -2044,7 +2086,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		logger.Warn().Msg("LLM returned empty response")
 		return "", fmt.Errorf("AI returned empty response")
 	}
-	if isResponsesNativeModel(req.Model) && resp.ID != "" {
+	if supportsResponsesContinuation(req.Model) && resp.ID != "" {
 		h.setPreviousResponseID(convID, resp.ID)
 	}
 
@@ -2724,7 +2766,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 	compactedMessages = h.applyRequestAttachmentsToMessages(c.Request().Context(), req, compactedMessages)
 	routingMessage := req.Message
-	if cc := deriveContinuationContext(req.Message, compactedMessages); cc.Hint != "" {
+	if cc := h.deriveContinuationContextWithFallback(c.Request().Context(), convID, req.Message, compactedMessages); cc.Hint != "" {
 		compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: cc.Hint}}, compactedMessages...)
 		if strings.TrimSpace(cc.ToolQuery) != "" {
 			routingMessage = cc.ToolQuery
@@ -2735,10 +2777,19 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			Msg("[chat] SendMessage: short affirmative continuation detected")
 	}
 
+	previousResponseID := ""
+	if supportsResponsesContinuation(model) {
+		previousResponseID = h.getPreviousResponseID(convID)
+	}
+
 	// Recall relevant memories and inject as system context (SendMessage)
 	isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	recallMode := h.getMemoryRecallMode()
 	shouldRecall, recallReason := memoryRecallDecision(routingMessage, ctxResult.Tier, isAgentMode, req.Regenerate, recallMode)
+	if shouldSkipCompressedTierRecallForContinuation(model, previousResponseID, recallReason) {
+		shouldRecall = false
+		recallReason = MemoryRecallReasonDefaultSkip
+	}
 	h.memoryRecallStats.RecordWithSource(shouldRecall, recallReason, MemoryRecallSourceSend)
 	if shouldRecall {
 		if memoryCtx := h.recallMemories(c.Request().Context(), routingMessage, recallMode); memoryCtx != "" {
@@ -2764,10 +2815,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		Temperature: req.Temperature,
 		MaxTokens:   req.MaxTokens,
 	}
-	if isResponsesNativeModel(chatReq.Model) {
-		if prev := h.getPreviousResponseID(convID); prev != "" {
-			chatReq.PreviousResponseID = prev
-		}
+	if supportsResponsesContinuation(chatReq.Model) && previousResponseID != "" {
+		chatReq.PreviousResponseID = previousResponseID
 	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
@@ -2838,7 +2887,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		if len(resp.Message.ToolCalls) == 0 {
 			break
 		}
-		if isResponsesNativeModel(chatReq.Model) && resp.ID != "" {
+		if supportsResponsesContinuation(chatReq.Model) && resp.ID != "" {
 			h.setPreviousResponseID(convID, resp.ID)
 			chatReq.PreviousResponseID = resp.ID
 		}
@@ -2850,7 +2899,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		chatReq.Messages = append(chatReq.Messages, toolResults...)
 	}
 	latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
-	if isResponsesNativeModel(chatReq.Model) && resp != nil && resp.ID != "" {
+	if supportsResponsesContinuation(chatReq.Model) && resp != nil && resp.ID != "" {
 		h.setPreviousResponseID(convID, resp.ID)
 	}
 
@@ -3790,7 +3839,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	compactedMessages = h.applyRequestAttachmentsToMessages(c.Request().Context(), req, compactedMessages)
 	routingMessage := req.Message
-	if cc := deriveContinuationContext(req.Message, compactedMessages); cc.Hint != "" {
+	if cc := h.deriveContinuationContextWithFallback(c.Request().Context(), convID, req.Message, compactedMessages); cc.Hint != "" {
 		compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: cc.Hint}}, compactedMessages...)
 		if strings.TrimSpace(cc.ToolQuery) != "" {
 			routingMessage = cc.ToolQuery
@@ -3801,10 +3850,23 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			Msg("[chat] StreamMessage: short affirmative continuation detected")
 	}
 
+	previousResponseID := ""
+	if supportsResponsesContinuation(model) {
+		if disableResponsesContinuation {
+			h.clearPreviousResponseID(convID)
+		} else {
+			previousResponseID = h.getPreviousResponseID(convID)
+		}
+	}
+
 	// Recall relevant memories and inject as system context (StreamMessage)
 	isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	recallMode := h.getMemoryRecallMode()
 	shouldRecall, recallReason := memoryRecallDecision(routingMessage, ctxResult.Tier, isAgentMode, req.Regenerate, recallMode)
+	if shouldSkipCompressedTierRecallForContinuation(model, previousResponseID, recallReason) {
+		shouldRecall = false
+		recallReason = MemoryRecallReasonDefaultSkip
+	}
 	h.memoryRecallStats.RecordWithSource(shouldRecall, recallReason, MemoryRecallSourceStream)
 	if shouldRecall {
 		if memoryCtx := h.recallMemories(c.Request().Context(), routingMessage, recallMode); memoryCtx != "" {
@@ -3829,12 +3891,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		MaxTokens:   req.MaxTokens,
 		Stream:      true,
 	}
-	if isResponsesNativeModel(chatReq.Model) {
-		if disableResponsesContinuation {
-			h.clearPreviousResponseID(convID)
-		} else if prev := h.getPreviousResponseID(convID); prev != "" {
-			chatReq.PreviousResponseID = prev
-		}
+	if supportsResponsesContinuation(chatReq.Model) && previousResponseID != "" {
+		chatReq.PreviousResponseID = previousResponseID
 	}
 
 	// Get tool definitions (smart selection filters by user query when enabled)
@@ -3954,6 +4012,95 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 
 	// Pre-allocate buffer for SSE writes to reduce allocations
 	sseBuffer := bytes.NewBuffer(make([]byte, 0, 512))
+	// Micro-batch delta chunks to reduce flush/write frequency while keeping
+	// sub-frame latency for perceived streaming responsiveness.
+	var pendingDeltaBuffer strings.Builder
+	lastDeltaFlushAt := timeutil.NowTime()
+	lastDeltaChunkAt := time.Time{}
+	avgChunkGapMs := 18.0
+	hasSentDeltaSinceIdle := false
+	var deltaChunksReceived int
+	var deltaFlushCount int
+	var deltaFlushedBytes int
+	const forceFlushAfterIdle = 180 * time.Millisecond
+	const paceEMAAlpha = 0.2
+
+	adaptiveFlushTargets := func() (time.Duration, int) {
+		switch {
+		case avgChunkGapMs <= 8:
+			return 32 * time.Millisecond, 1024
+		case avgChunkGapMs <= 14:
+			return 24 * time.Millisecond, 768
+		case avgChunkGapMs <= 24:
+			return 16 * time.Millisecond, 512
+		default:
+			return 10 * time.Millisecond, 256
+		}
+	}
+
+	flushPendingDelta := func(force bool) bool {
+		if pendingDeltaBuffer.Len() == 0 {
+			return false
+		}
+		flushInterval, flushBytes := adaptiveFlushTargets()
+		if !force &&
+			pendingDeltaBuffer.Len() < flushBytes &&
+			timeutil.SinceTime(lastDeltaFlushAt) < flushInterval {
+			return false
+		}
+
+		sseChunk := struct {
+			Delta    string `json:"delta"`
+			Done     bool   `json:"done"`
+			StreamID string `json:"stream_id"`
+		}{
+			Delta:    pendingDeltaBuffer.String(),
+			Done:     false,
+			StreamID: streamID,
+		}
+		sseBuffer.Reset()
+		sseBuffer.WriteString("data: ")
+		chunkJSON, _ := json.Marshal(sseChunk)
+		sseBuffer.Write(chunkJSON)
+		sseBuffer.WriteString("\n\n")
+		c.Response().Write(sseBuffer.Bytes())
+		flusher.Flush()
+		deltaFlushCount++
+		deltaFlushedBytes += len(sseChunk.Delta)
+		pendingDeltaBuffer.Reset()
+		lastDeltaFlushAt = timeutil.NowTime()
+		return true
+	}
+
+	queueDelta := func(delta string) {
+		if delta == "" {
+			return
+		}
+		deltaChunksReceived++
+		now := timeutil.NowTime()
+		if !lastDeltaChunkAt.IsZero() {
+			gap := now.Sub(lastDeltaChunkAt)
+			gapMs := float64(gap.Milliseconds())
+			if gapMs < 1 {
+				gapMs = 1
+			}
+			avgChunkGapMs = avgChunkGapMs*(1-paceEMAAlpha) + gapMs*paceEMAAlpha
+		}
+		lastDeltaChunkAt = now
+		if timeutil.SinceTime(lastDeltaFlushAt) >= forceFlushAfterIdle {
+			hasSentDeltaSinceIdle = false
+		}
+		pendingDeltaBuffer.WriteString(delta)
+		if !hasSentDeltaSinceIdle {
+			if flushPendingDelta(true) {
+				hasSentDeltaSinceIdle = true
+			}
+			return
+		}
+		if flushPendingDelta(false) {
+			hasSentDeltaSinceIdle = true
+		}
+	}
 
 	// Tool execution loop for streaming — collect tool calls, execute, re-stream
 	var streamToolCalls []llm.ToolCall
@@ -4101,6 +4248,7 @@ STREAM_LOOP:
 
 			// Check for error in chunk
 			if chunk.Error != "" {
+				flushPendingDelta(true)
 				// Record error metrics
 				if h.metricsRecorder != nil {
 					latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
@@ -4141,9 +4289,11 @@ STREAM_LOOP:
 			fullContent += chunk.Delta
 			if chunk.Delta != "" {
 				totalDeltaChars += len(chunk.Delta)
+				queueDelta(chunk.Delta)
 			}
 			if !awaitingInputSent && (reAwaitingUserInputTag.MatchString(fullContent) || reAskGateBlock.MatchString(fullContent)) {
 				awaitingInputSent = true
+				flushPendingDelta(true)
 				awaitingJSON, _ := json.Marshal(map[string]interface{}{
 					"awaiting_user_input": true,
 					"stream_id":           streamID,
@@ -4183,28 +4333,8 @@ STREAM_LOOP:
 				totalOutputTokens = chunk.Usage.CompletionTokens
 			}
 
-			// Write SSE data - for non-final chunks only
-			if !chunk.Done {
-				// Use json.Marshal for correct escaping of all special characters
-				sseChunk := struct {
-					Delta    string `json:"delta"`
-					Done     bool   `json:"done"`
-					StreamID string `json:"stream_id"`
-				}{
-					Delta:    chunk.Delta,
-					Done:     false,
-					StreamID: streamID,
-				}
-				sseBuffer.Reset()
-				sseBuffer.WriteString("data: ")
-				chunkJSON, _ := json.Marshal(sseChunk)
-				sseBuffer.Write(chunkJSON)
-				sseBuffer.WriteString("\n\n")
-				c.Response().Write(sseBuffer.Bytes())
-				flusher.Flush()
-			}
-
 			if chunk.Done {
+				flushPendingDelta(true)
 				// If there are pending tool calls, skip persistence and final SSE —
 				// the tool loop will reset fullContent and re-stream.
 				if len(streamToolCalls) > 0 {
@@ -4351,6 +4481,9 @@ STREAM_LOOP:
 					Float64("latency_ms", latencyMs).
 					Float64("ttft_ms", ttftMs).
 					Float64("tokens_per_sec", tokensPerSecond).
+					Int("delta_chunks_in", deltaChunksReceived).
+					Int("delta_flushes_out", deltaFlushCount).
+					Int("delta_bytes_out", deltaFlushedBytes).
 					Msg("[chat] stream completed")
 			}
 
@@ -4439,6 +4572,7 @@ STREAM_LOOP:
 		// Uses the same provider (sticky routing) and continuation mode so the LLM
 		// picks up from where it left off without repeating content.
 		if err != nil && fullContent != "" && !streamErrorHandled && ctx.Err() == nil && h.proxyBridge != nil {
+			flushPendingDelta(true)
 			// Pin provider for sticky routing
 			if actualProviderID != "" {
 				ctx = proxy.WithPinnedProvider(ctx, actualProviderID)
@@ -4510,10 +4644,11 @@ STREAM_LOOP:
 		}
 
 		// If stream had tool calls, execute them and loop back
-		if isResponsesNativeModel(chatReq.Model) && latestResponseID != "" {
+		if supportsResponsesContinuation(model) && latestResponseID != "" {
 			chatReq.PreviousResponseID = latestResponseID
 		}
 		if err == nil && len(streamToolCalls) > 0 {
+			flushPendingDelta(true)
 			// Detect consecutive duplicate tool calls (same tool + same args).
 			// This prevents the LLM from getting stuck in an infinite loop calling
 			// the same tool repeatedly (e.g. creating duplicate reminders).
@@ -4840,7 +4975,7 @@ STREAM_LOOP:
 				}
 				chatReq.Messages = append(chatReq.Messages,
 					llm.Message{Role: llm.RoleAssistant, Content: fullContent},
-					llm.Message{Role: llm.RoleUser, Content: "You described what to do but did not call any tools. Now actually execute by calling the tools (exec, file_write, etc). Do not describe — act."},
+					llm.Message{Role: llm.RoleUser, Content: "You described what to do but did not call any tools. Now actually execute by calling available tools (especially exec for file creation/edit/run steps). Do not describe — act."},
 				)
 				fullContent = ""
 				streamCompleted = false
@@ -4882,6 +5017,7 @@ STREAM_LOOP:
 
 		break
 	} // end tool loop
+	flushPendingDelta(true)
 
 	// After tool loop: append typeless cards for the last tool round's results
 	// only when they were not already persisted during per-round execution.
@@ -5073,10 +5209,23 @@ STREAM_LOOP:
 					compactedMessages = []llm.Message{}
 				}
 
+				injectedPreviousResponseID := ""
+				if supportsResponsesContinuation(model) {
+					if disableResponsesContinuation {
+						h.clearPreviousResponseID(convID)
+					} else {
+						injectedPreviousResponseID = h.getPreviousResponseID(convID)
+					}
+				}
+
 				// Re-inject memory and system prompt
 				isAgentMode := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 				recallMode := h.getMemoryRecallMode()
 				shouldRecall, recallReason := memoryRecallDecision(injectedMsg, ctxResult.Tier, isAgentMode, false, recallMode)
+				if shouldSkipCompressedTierRecallForContinuation(model, injectedPreviousResponseID, recallReason) {
+					shouldRecall = false
+					recallReason = MemoryRecallReasonDefaultSkip
+				}
 				h.memoryRecallStats.RecordWithSource(shouldRecall, recallReason, MemoryRecallSourceStream)
 				if shouldRecall {
 					if memoryCtx := h.recallMemories(context.Background(), injectedMsg, recallMode); memoryCtx != "" {
@@ -5097,12 +5246,8 @@ STREAM_LOOP:
 					Stream:      true,
 					Tools:       defsToLLMTools(h.selectTools(injectedMsg, model)),
 				}
-				if isResponsesNativeModel(chatReq.Model) {
-					if disableResponsesContinuation {
-						h.clearPreviousResponseID(convID)
-					} else if prev := h.getPreviousResponseID(convID); prev != "" {
-						chatReq.PreviousResponseID = prev
-					}
+				if supportsResponsesContinuation(chatReq.Model) && injectedPreviousResponseID != "" {
+					chatReq.PreviousResponseID = injectedPreviousResponseID
 				}
 
 				// Reset stream state for the new round
@@ -5317,7 +5462,7 @@ STREAM_LOOP:
 			}
 		}
 	}
-	if isResponsesNativeModel(chatReq.Model) && latestResponseID != "" {
+	if supportsResponsesContinuation(model) && latestResponseID != "" {
 		h.setPreviousResponseID(convID, latestResponseID)
 	}
 
@@ -5911,6 +6056,21 @@ func (h *ChatHandler) consumeCancelledResponsesContinuation(convID string) bool 
 
 func isResponsesNativeModel(model string) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "responses")
+}
+
+func supportsResponsesContinuation(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	return strings.Contains(m, "responses") || strings.Contains(m, "codex")
+}
+
+func shouldSkipCompressedTierRecallForContinuation(model, previousResponseID string, reason MemoryRecallReason) bool {
+	if reason != MemoryRecallReasonCompressedTier {
+		return false
+	}
+	if strings.TrimSpace(previousResponseID) == "" {
+		return false
+	}
+	return supportsResponsesContinuation(model)
 }
 
 func (h *ChatHandler) getPreviousResponseID(convID string) string {
