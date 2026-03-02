@@ -534,6 +534,15 @@ export default {
       modelConnecting: 'Förbereder nedladdningsanslutning...',
       downloadFailed: 'Kunde inte ladda ner ONNX-modellen',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Shadow Gate minsta antal prover',
+      shadowGateThreshold: 'Shadow Gate tröskel',
+      shadowGateScene: 'Shadow Gate-scen',
+      shadowGateSceneAll: 'Alla',
+      shadowGateSceneQA: 'Frågor och svar',
+      shadowGateSceneTool: 'Verktyg',
+    },
     tab: {
       general: 'Allmänt',
       llm: 'LLM',
@@ -1699,7 +1708,8 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'Standardläge är aktivt (den inbyggda schemaläggaren är i Beta-version), förbättrat läge ger en bättre upplevelse.',
+    disabledWarningDesc: 'Standardläge är aktivt, förbättrat läge ger en bättre upplevelse.',
+    missingToolCalling: 'Avancerade Tool Calling-funktioner',
     directoryPathPlaceholderWin: 'Katalogsökväg (t.ex. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Katalogsökväg (t.ex. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'Katalogsökväg (t.ex. /home/user/projects)',

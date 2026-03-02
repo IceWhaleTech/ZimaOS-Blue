@@ -53,6 +53,20 @@ type autoContinuePlanThenCompleteProxyHandler struct {
 	lastRequestMessage string
 }
 
+// autoContinueScriptedProxyHandler simulates a toolless first round and checks
+// whether the second round receives the expected auto-continue nudge content.
+type autoContinueScriptedProxyHandler struct {
+	callCount          int
+	firstRoundContent  string
+	secondRoundContent string
+	roundContents      []string
+	sawExecutionNudge  bool
+	sawAgentLoopNudge  bool
+	sawPseudoToolNudge bool
+	lastRequestMessage string
+	requestModels      []string
+}
+
 // secondTurnTimeoutProxyHandler simulates a provider that succeeds on the first
 // turn, but times out once history expands on the second turn.
 // It allows us to verify "second send fails" behavior independent of warmup.
@@ -230,6 +244,61 @@ func (h *autoContinueFailingProxyHandler) ServeHTTP(w http.ResponseWriter, r *ht
 
 	// Next round(s) fail before any SSE chunk.
 	http.Error(w, `{"error":{"message":"Upstream request failed","type":"upstream_error"}}`, http.StatusBadGateway)
+}
+
+func (h *autoContinueScriptedProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	var body struct {
+		Model    string `json:"model"`
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	h.requestModels = append(h.requestModels, body.Model)
+
+	if h.callCount > 1 {
+		for i := len(body.Messages) - 1; i >= 0; i-- {
+			if body.Messages[i].Role != "user" {
+				continue
+			}
+			h.lastRequestMessage = body.Messages[i].Content
+			break
+		}
+		h.sawExecutionNudge = strings.Contains(h.lastRequestMessage, "Now actually execute by calling available tools")
+		h.sawAgentLoopNudge = strings.Contains(h.lastRequestMessage, "continuous improvement loop")
+		h.sawPseudoToolNudge = strings.Contains(h.lastRequestMessage, "fake tool-call text")
+	}
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_auto_continue_scripted"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+
+	content := h.firstRoundContent
+	if len(h.roundContents) > 0 {
+		idx := h.callCount - 1
+		if idx >= len(h.roundContents) {
+			idx = len(h.roundContents) - 1
+		}
+		content = h.roundContents[idx]
+	} else if h.callCount > 1 {
+		content = h.secondRoundContent
+	}
+	fmt.Fprintf(
+		w,
+		"data: %s\n\n",
+		fmt.Sprintf(`{"id":"%d","choices":[{"delta":{"content":%q},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`, h.callCount, content),
+	)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func TestStreamMessage_PropagatesSettingsLocaleToUpstreamAcceptLanguage(t *testing.T) {
@@ -787,12 +856,23 @@ func TestStreamMessageWithNoProvider_DeepResearchFallback(t *testing.T) {
 
 	registry := llm.NewProviderRegistry() // no provider on purpose
 	handler := NewChatHandler(store, registry, tools.NewRegistry())
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
-	handler.deepResearchExec = &deepResearchExecMock{
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	settings.settings.Locale = "zh-CN"
+	handler.SetSettingsHandler(settings)
+	execMock := &deepResearchExecMock{
 		result: map[string]interface{}{
 			"answer": "Deep research stream fallback answer.",
+			"citations": []map[string]interface{}{
+				{"title": "Doc A", "url": "https://example.com/a"},
+			},
+			"confidence":     0.82,
+			"evidence_count": 1,
+			"support_count":  2,
+			"conflict_count": 1,
+			"has_conflict":   true,
 		},
 	}
+	handler.deepResearchExec = execMock
 
 	e := echo.New()
 	reqBody := `{"message":"no provider stream fallback"}`
@@ -813,8 +893,78 @@ func TestStreamMessageWithNoProvider_DeepResearchFallback(t *testing.T) {
 	if !strings.Contains(body, `"provider":"deepresearch"`) {
 		t.Fatalf("expected deepresearch provider in stream body, got: %s", body)
 	}
+	if !strings.Contains(body, "来源:") {
+		t.Fatalf("expected localized sources label in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, "```typeless") {
+		t.Fatalf("expected typeless card block in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, "support_count") || !strings.Contains(body, "has_conflict") {
+		t.Fatalf("expected conflict/support metrics in typeless card, got: %s", body)
+	}
 	if !strings.Contains(body, "data: [DONE]") {
 		t.Fatalf("expected [DONE] marker, got: %s", body)
+	}
+	execMock.mu.Lock()
+	gotLang, _ := execMock.last["lang"].(string)
+	execMock.mu.Unlock()
+	if gotLang != "zh-CN" {
+		t.Fatalf("fallback lang = %q, want zh-CN", gotLang)
+	}
+}
+
+func TestStreamMessageWithNoProvider_DeepResearchFallbackUsesRoutingMessage(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Continuation fallback")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:    "user",
+		Content: "你可以帮我查一下 ZimaOS 的信息吗",
+	}); err != nil {
+		t.Fatalf("add user message failed: %v", err)
+	}
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:    "assistant",
+		Content: "- [ ] 产品定位与功能概览\n- [ ] 最新动态\n\n如果你不想选，我可以默认按「功能概览 + 最新动态」先查一版。",
+	}); err != nil {
+		t.Fatalf("add assistant message failed: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry() // no provider on purpose
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	execMock := &deepResearchExecMock{
+		result: map[string]interface{}{
+			"answer": "Deep research stream fallback answer.",
+		},
+	}
+	handler.deepResearchExec = execMock
+
+	e := echo.New()
+	reqBody := `{"message":"好的"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage failed: %v", err)
+	}
+
+	execMock.mu.Lock()
+	query, _ := execMock.last["query"].(string)
+	execMock.mu.Unlock()
+	if query != "你可以帮我查一下 ZimaOS 的信息吗" {
+		t.Fatalf("deep research fallback query = %q, want routed objective", query)
 	}
 }
 
@@ -1088,6 +1238,359 @@ func TestStreamMessageAutoContinue_PlanThenExecuteThenSummary(t *testing.T) {
 	}
 	if !strings.Contains(assistantContent, "总结：任务已完成。") {
 		t.Fatalf("expected summary content in persisted assistant message, got=%q", assistantContent)
+	}
+}
+
+func TestStreamMessageAutoContinue_2048Prompt_EnhancedAndNonEnhanced(t *testing.T) {
+	const userPrompt = "帮我写一个2048的web版小游戏，需要能直接跑起来的，最后给我一个地址，localhost域名的就可以了。"
+	const codexModel = "gpt-5.3-codex-spark"
+
+	tests := []struct {
+		name              string
+		agentMode         bool
+		firstRoundContent string
+		wantAgentLoopHint bool
+	}{
+		{
+			name:              "non-enhanced completes via action pledge",
+			agentMode:         false,
+			firstRoundContent: "我现在就去查并生成一个可运行版本，稍等我几秒。",
+			wantAgentLoopHint: false,
+		},
+		{
+			name:              "enhanced triggers agent loop continuation",
+			agentMode:         true,
+			firstRoundContent: "- [ ] 实现2048网页游戏\n- [ ] 本地运行并给出localhost地址",
+			wantAgentLoopHint: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store, err := memory.NewStore(":memory:")
+			if err != nil {
+				t.Fatalf("failed to create store: %v", err)
+			}
+			defer store.Close()
+
+			conv, err := store.CreateConversation(context.Background(), "Test 2048 auto continue")
+			if err != nil {
+				t.Fatalf("failed to create conversation: %v", err)
+			}
+
+			handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+			settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+			settingsHandler.settings.AgentMode = &tt.agentMode
+			handler.SetSettingsHandler(settingsHandler)
+
+			fakeProxy := &autoContinueScriptedProxyHandler{
+				firstRoundContent:  tt.firstRoundContent,
+				secondRoundContent: "已完成，游戏可直接运行，地址：http://localhost:3000",
+			}
+			handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+			e := echo.New()
+			reqBody := fmt.Sprintf(`{"message":%q,"model":%q}`, userPrompt, codexModel)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			c.SetParamNames("id")
+			c.SetParamValues(conv.ID)
+
+			if err := handler.StreamMessage(c); err != nil {
+				t.Fatalf("StreamMessage error: %v", err)
+			}
+
+			body := rec.Body.String()
+			if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+				t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+			}
+			if !strings.Contains(body, `"done":true`) {
+				t.Fatalf("expected final done chunk, body=%s", body)
+			}
+			if !strings.Contains(body, "http://localhost:3000") {
+				t.Fatalf("expected localhost address in stream body, body=%s", body)
+			}
+			if fakeProxy.callCount != 2 {
+				t.Fatalf("expected 2 proxy calls (initial + auto-continue), got %d", fakeProxy.callCount)
+			}
+			if len(fakeProxy.requestModels) != 2 {
+				t.Fatalf("expected 2 captured request models, got %d", len(fakeProxy.requestModels))
+			}
+			for i, got := range fakeProxy.requestModels {
+				if got != codexModel {
+					t.Fatalf("request model[%d] = %q, want %q", i, got, codexModel)
+				}
+			}
+			if !fakeProxy.sawExecutionNudge {
+				t.Fatalf("expected second round to include execution nudge, last=%q", fakeProxy.lastRequestMessage)
+			}
+			if fakeProxy.sawAgentLoopNudge != tt.wantAgentLoopHint {
+				t.Fatalf("agent loop hint mismatch: got=%v want=%v last=%q", fakeProxy.sawAgentLoopNudge, tt.wantAgentLoopHint, fakeProxy.lastRequestMessage)
+			}
+
+			if tt.agentMode && handler.getMaxToolRounds() <= maxToolRounds {
+				t.Fatalf("expected agent mode to use extended tool rounds, got=%d default=%d", handler.getMaxToolRounds(), maxToolRounds)
+			}
+		})
+	}
+}
+
+func TestStreamMessageAutoContinue_PseudoToolCall_DiscardsMalformedRound(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test pseudo tool call auto continue")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &autoContinueScriptedProxyHandler{
+		firstRoundContent:  "{\"cmd\":\"ls -la\"}I’ll inspect now. {\"tool\":\"exec\",\"cmd\":\"ls -la\"}\n```tool\n{\"name\":\"exec\",\"arguments\":{\"cmd\":\"ls -la\"}}\n```\n<exec>{\"cmd\":\"ls -la\"}</exec>",
+		secondRoundContent: "已切换为真实执行路径并完成修复。",
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请修复这个问题","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if !strings.Contains(body, "已切换为真实执行路径并完成修复。") {
+		t.Fatalf("expected second-round content in stream body, got=%s", body)
+	}
+	if fakeProxy.callCount != 2 {
+		t.Fatalf("expected 2 proxy calls (initial + auto-continue), got %d", fakeProxy.callCount)
+	}
+	if !fakeProxy.sawPseudoToolNudge {
+		t.Fatalf("expected pseudo-tool nudge in second request, last=%q", fakeProxy.lastRequestMessage)
+	}
+	if fakeProxy.sawExecutionNudge {
+		t.Fatalf("expected pseudo-tool nudge (not generic execution nudge), last=%q", fakeProxy.lastRequestMessage)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "{\"cmd\":\"ls -la\"}") ||
+			strings.Contains(m.Content, "```tool") ||
+			strings.Contains(strings.ToLower(m.Content), "<exec>") {
+			t.Fatalf("expected malformed pseudo tool-call text to be discarded from persisted assistant messages, got=%q", m.Content)
+		}
+	}
+}
+
+func TestStreamMessageAutoContinue_PseudoToolCall_CommandWorkdirJSON(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test pseudo command/workdir tool call auto continue")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	pseudo := "收到，开始设置提醒。\n- [ ] 创建“10秒后喝水”提醒\nWorking on task: add reminder for 10 seconds later.{\"command\":\"blue reminder.add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}{\"command\":\"blue help reminder\",...}"
+	fakeProxy := &autoContinueScriptedProxyHandler{
+		firstRoundContent:  pseudo,
+		secondRoundContent: "已切换为真实工具调用并完成提醒创建。",
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"提醒我10秒后喝水","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if !strings.Contains(body, "已切换为真实工具调用并完成提醒创建。") {
+		t.Fatalf("expected second-round content in stream body, got=%s", body)
+	}
+	if fakeProxy.callCount != 2 {
+		t.Fatalf("expected 2 proxy calls (initial + auto-continue), got %d", fakeProxy.callCount)
+	}
+	if !fakeProxy.sawPseudoToolNudge {
+		t.Fatalf("expected pseudo-tool nudge in second request, last=%q", fakeProxy.lastRequestMessage)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "{\"command\":\"blue reminder.add") ||
+			strings.Contains(m.Content, "Working on task:") {
+			t.Fatalf("expected malformed pseudo tool-call text to be discarded from persisted assistant messages, got=%q", m.Content)
+		}
+	}
+}
+
+func TestStreamMessageAutoContinue_PseudoToolCall_AgentModeCapsRetries(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test pseudo tool call retry cap")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentMode := true
+	settingsHandler.settings.AgentMode = &agentMode
+	handler.SetSettingsHandler(settingsHandler)
+
+	pseudo := "{\"cmd\":\"ls -la\"}I’ll inspect now. {\"tool\":\"exec\",\"cmd\":\"ls -la\"}\n```tool\n{\"name\":\"exec\",\"arguments\":{\"cmd\":\"ls -la\"}}\n```\n<exec>{\"cmd\":\"ls -la\"}</exec>"
+	fakeProxy := &autoContinueScriptedProxyHandler{
+		firstRoundContent:  pseudo,
+		secondRoundContent: pseudo,
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"继续修复","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if !fakeProxy.sawPseudoToolNudge {
+		t.Fatalf("expected pseudo-tool nudge to be injected before hitting retry cap")
+	}
+
+	wantCalls := maxPseudoToolCallAutoContinueAgent + 1
+	if fakeProxy.callCount != wantCalls {
+		t.Fatalf("expected call count to stop at pseudo retry cap, got=%d want=%d", fakeProxy.callCount, wantCalls)
+	}
+}
+
+func TestStreamMessageAutoContinue_PseudoToolCall_SwitchesModelAfterTwoRetries(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test pseudo tool call model switch")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	pseudo := "{\"cmd\":\"ls -la\"}I’ll inspect now. {\"tool\":\"exec\",\"cmd\":\"ls -la\"}\n```tool\n{\"name\":\"exec\",\"arguments\":{\"cmd\":\"ls -la\"}}\n```\n<exec>{\"cmd\":\"ls -la\"}</exec>"
+	fakeProxy := &autoContinueScriptedProxyHandler{
+		roundContents: []string{
+			pseudo,
+			pseudo,
+			"已切换模型并完成真实执行路径。",
+		},
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"继续修复","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if !strings.Contains(body, "已切换模型并完成真实执行路径。") {
+		t.Fatalf("expected final content in stream body, body=%s", body)
+	}
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected 3 proxy calls (pseudo + pseudo + switched model), got %d", fakeProxy.callCount)
+	}
+	if len(fakeProxy.requestModels) != 3 {
+		t.Fatalf("expected 3 captured request models, got %d", len(fakeProxy.requestModels))
+	}
+	if got := fakeProxy.requestModels[0]; got != "gpt-5.3-codex-spark" {
+		t.Fatalf("request model[0] = %q, want gpt-5.3-codex-spark", got)
+	}
+	if got := fakeProxy.requestModels[1]; got != "gpt-5.3-codex-spark" {
+		t.Fatalf("request model[1] = %q, want gpt-5.3-codex-spark", got)
+	}
+	if got := fakeProxy.requestModels[2]; got != "gpt-5.3-codex" {
+		t.Fatalf("request model[2] = %q, want gpt-5.3-codex", got)
 	}
 }
 

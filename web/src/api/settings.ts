@@ -27,6 +27,9 @@ export interface Settings {
   small_model_id?: SmallModelID // Fixed: lfm2.5-1.2b-instruct-q4km
   small_model_auto_download?: boolean // Auto download small model (default true)
   small_model_shadow_ratio?: number // Shadow sample ratio in range (0, 1], default 0.1
+  small_model_shadow_gate_min_samples?: number // Gate min samples, default 40
+  small_model_shadow_gate_threshold_delta?: number // Gate threshold delta in range (0, 1], default 0.35
+  small_model_shadow_gate_scene?: string // Optional gate scene filter, default ""
   small_model_summary_enabled?: boolean // Phase1 default true
   small_model_doc_extract_enabled?: boolean // Phase1 default true
   small_model_rerank_enabled?: boolean // Phase1 default true
@@ -143,6 +146,49 @@ export interface SmallModelStats {
   fallback_reasons: Record<string, number>
 }
 
+export interface ShadowQualitySample {
+  scene: string
+  main_digest?: string
+  shadow_digest?: string
+  delta: number
+  created_at: string
+}
+
+export interface ShadowQualityResponse {
+  samples: ShadowQualitySample[]
+  total: number
+  average_delta: number
+}
+
+export interface ShadowQualityGateSceneResult {
+  scene: string
+  samples: number
+  average_delta: number
+  pass: boolean
+  reason: string
+  threshold: number
+  min_samples: number
+}
+
+export interface ShadowQualityGateEvalResponse {
+  overall_pass: boolean
+  threshold_delta: number
+  min_samples: number
+  scene_filter: string
+  evaluated_samples: number
+  scenes: ShadowQualityGateSceneResult[]
+}
+
+export interface ShadowAutoRolloutExecuteResponse {
+  advanced: boolean
+  reason: string
+  current_ratio: number
+  next_ratio: number
+  current_percent: number
+  next_percent: number
+  gate_eval: ShadowQualityGateEvalResponse
+}
+
 // Settings API
 export const settingsApi = {
   // Get user settings
@@ -175,4 +221,11 @@ export const settingsApi = {
   // Small-model observability counters
   getSmallModelStats: () => api.get<SmallModelStats>('/small-model/stats'),
   resetSmallModelStats: () => api.post<{ success: boolean }>('/small-model/stats/reset'),
+  getSmallModelShadowQuality: (params?: { limit?: number; scene?: string }) =>
+    api.get<ShadowQualityResponse>('/small-model/shadow-quality', { params }),
+  getSmallModelShadowQualityGateEval: (params?: { scene?: string; limit?: number; min_samples?: number; threshold_delta?: number }) =>
+    api.get<ShadowQualityGateEvalResponse>('/small-model/shadow-quality/gate-eval', { params }),
+  executeSmallModelShadowAutoRollout: () =>
+    api.post<ShadowAutoRolloutExecuteResponse>('/small-model/shadow-quality/auto-rollout/execute'),
+  resetSmallModelShadowQuality: () => api.post<{ success: boolean }>('/small-model/shadow-quality/reset'),
 }

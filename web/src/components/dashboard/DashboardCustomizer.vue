@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDashboardStore } from '@/stores/dashboard'
 import { cardRegistry } from './cardRegistry'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const dashboardStore = useDashboardStore()
 
 const isOpen = ref(false)
@@ -16,6 +16,10 @@ const categories = [
   { id: 'system', labelKey: 'dashboard.categories.system' },
   { id: 'metrics', labelKey: 'dashboard.categories.metrics' },
 ] as const
+
+function tr(key: string, fallback = ''): string {
+  return te(key) ? t(key) : fallback
+}
 
 const filteredCards = computed(() => {
   const cards = cardRegistry.map((config) => {
@@ -109,7 +113,7 @@ defineExpose({ open, close })
               "
               @click="activeCategory = cat.id as typeof activeCategory"
             >
-              {{ t(cat.labelKey) }}
+              {{ tr(cat.labelKey, cat.id) }}
             </button>
           </div>
 
@@ -128,10 +132,10 @@ defineExpose({ open, close })
                   ></div>
                   <div>
                     <div class="font-medium text-gray-900 dark:text-white">
-                      {{ t(card.config.titleKey) }}
+                      {{ tr(card.config.titleKey, card.config.id) }}
                     </div>
                     <div class="text-xs text-gray-500 dark:text-gray-400">
-                      {{ t(`dashboard.categories.${card.config.category}`) }}
+                      {{ tr(`dashboard.categories.${card.config.category}`, card.config.category) }}
                     </div>
                   </div>
                 </div>

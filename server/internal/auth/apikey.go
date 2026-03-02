@@ -202,9 +202,18 @@ type apiKeyRow struct {
 }
 
 func parseTime(s string) time.Time {
-	t, _ := time.Parse(time.RFC3339, s)
+	t, _ := time.Parse(time.RFC3339Nano, s)
+	if t.IsZero() {
+		t, _ = time.Parse(time.RFC3339, s)
+	}
 	if t.IsZero() {
 		t, _ = time.Parse("2006-01-02 15:04:05", s)
+	}
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02 15:04:05-07:00", s)
+	}
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02 15:04:05.999999999-07:00", s)
 	}
 	if t.IsZero() {
 		t, _ = time.Parse("2006-01-02T15:04:05Z", s)
@@ -339,7 +348,8 @@ func (s *APIKeyService) ListKeys(ctx context.Context, userID string) ([]*APIKeyI
 	_, err := s.table(ctx).Select(&rows,
 		z.Fields("id", "user_id", "name", "prefix", "scopes", "created_at", "expires_at", "last_used", "revoked"),
 		z.Where(z.Eq("user_id", userID), z.Eq("revoked", 0)),
-		z.OrderBy("created_at DESC"),
+		// created_at can collide under coarse clocks; rowid makes ordering deterministic.
+		z.OrderBy("created_at DESC, rowid DESC"),
 	)
 	if err != nil {
 		return nil, err
@@ -508,12 +518,13 @@ func (s *APIKeyService) CompleteRotation(ctx context.Context, oldKeyID, userID s
 
 // CleanupExpiredRotations revokes old keys that have passed their grace period
 func (s *APIKeyService) CleanupExpiredRotations(ctx context.Context) (int64, error) {
+	now := time.Now()
 	n, err := s.table(ctx).Update(
 		z.V{"revoked": 1},
 		z.Where(
 			z.IsNotNull("rotated_to"),
 			z.IsNotNull("grace_period"),
-			z.Lt("grace_period", timeutil.NowTime()),
+			z.Lte("grace_period", now),
 			z.Eq("revoked", 0),
 		),
 	)

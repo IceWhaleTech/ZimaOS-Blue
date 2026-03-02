@@ -2,6 +2,8 @@ import type { StreamChunk, SendMessageRequest } from '@/api/chat'
 import { ensureFreshToken } from '@/api/client'
 
 export interface SSEClientOptions {
+  /** Called when stream ID is known (from response header or chunk payload). */
+  onStreamId?: (streamId: string) => void
   onMessage: (chunk: StreamChunk) => void
   onError?: (error: Error) => void
   onComplete?: (finalChunk?: StreamChunk) => void
@@ -168,6 +170,11 @@ export class SSEClient {
           }
         }
 
+        const streamIdFromHeader = response.headers?.get?.('X-Stream-ID')?.trim()
+        if (streamIdFromHeader) {
+          options.onStreamId?.(streamIdFromHeader)
+        }
+
         const reader = response.body?.getReader()
         if (!reader) {
           throw new Error('No response body')
@@ -215,6 +222,9 @@ export class SSEClient {
 
               try {
                 const chunk: StreamChunk = JSON.parse(data)
+                if (chunk.stream_id) {
+                  options.onStreamId?.(chunk.stream_id)
+                }
                 // Normalize missing fields to defaults
                 if (chunk.delta === undefined || chunk.delta === null) chunk.delta = ''
                 if (chunk.done === undefined || chunk.done === null) chunk.done = false

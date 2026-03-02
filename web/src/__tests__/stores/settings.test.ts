@@ -75,6 +75,9 @@ describe('settings store - small model integration', () => {
     expect(store.smallModelID).toBe('lfm2.5-1.2b-instruct-q4km')
     expect(store.smallModelAutoDownload).toBe(true)
     expect(store.smallModelShadowRatio).toBe(0.1)
+    expect(store.smallModelShadowGateMinSamples).toBe(40)
+    expect(store.smallModelShadowGateThresholdDelta).toBe(0.35)
+    expect(store.smallModelShadowGateScene).toBe('')
     expect(store.noLLMDegradeMode).toBe('deepresearch')
     expect(store.smallModelUnavailablePolicy).toBe('ir_first')
   })
@@ -90,6 +93,26 @@ describe('settings store - small model integration', () => {
     vi.mocked(settingsApi.patch).mockResolvedValue({ data: { small_model_shadow_ratio: 0.01 } } as never)
     await store.setSmallModelShadowRatio(0)
     expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_shadow_ratio: 0.01 })
+  })
+
+  it('normalizes shadow gate settings when updating backend settings', async () => {
+    const store = useSettingsStore()
+    vi.mocked(settingsApi.patch).mockResolvedValue({ data: {} } as never)
+
+    await store.setSmallModelShadowGateMinSamples(0)
+    expect(settingsApi.patch).toHaveBeenCalledWith({ small_model_shadow_gate_min_samples: 1 })
+
+    await store.setSmallModelShadowGateMinSamples(20001)
+    expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_shadow_gate_min_samples: 10000 })
+
+    await store.setSmallModelShadowGateThresholdDelta(0)
+    expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_shadow_gate_threshold_delta: 0.01 })
+
+    await store.setSmallModelShadowGateThresholdDelta(2)
+    expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_shadow_gate_threshold_delta: 1 })
+
+    await store.setSmallModelShadowGateScene(' tool_dispatch_shadow ')
+    expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_shadow_gate_scene: 'tool_dispatch_shadow' })
   })
 
   it('fetches and stores small-model status', async () => {

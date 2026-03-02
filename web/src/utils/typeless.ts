@@ -1185,11 +1185,11 @@ export function clearSplitSegmentsIncrementalState(incrementalKey?: string): voi
 }
 
 function isProgressMergeCandidateCard(card: TypelessCard): boolean {
-  return card.type === 'ui-review-progress' || card.type === 'analyze-progress'
+  return card.type === 'ui-review-progress' || card.type === 'analyze-progress' || card.type === 'browser-progress'
 }
 
-function getProgressMergeCandidateType(card: TypelessCard): 'ui-review-progress' | 'analyze-progress' | null {
-  if (card.type === 'ui-review-progress' || card.type === 'analyze-progress') {
+function getProgressMergeCandidateType(card: TypelessCard): 'ui-review-progress' | 'analyze-progress' | 'browser-progress' | null {
+  if (card.type === 'ui-review-progress' || card.type === 'analyze-progress' || card.type === 'browser-progress') {
     return card.type
   }
   return null
@@ -1374,7 +1374,7 @@ function mergeConsecutiveProgressCards(
 ): SplitSegment[] {
   const result: typeof segments = []
   let pendingSteps: TypelessCard[] = []
-  let pendingType: 'ui-review-progress' | 'analyze-progress' | null = null
+  let pendingType: 'ui-review-progress' | 'analyze-progress' | 'browser-progress' | null = null
 
   const flushPending = () => {
     if (pendingSteps.length === 0 || !pendingType) return
@@ -1399,11 +1399,11 @@ function mergeConsecutiveProgressCards(
 
   for (const seg of segments) {
     const cardType = seg.type === 'card' ? (seg.content as TypelessCard).type : null
-    if (cardType === 'ui-review-progress' || cardType === 'analyze-progress') {
+    if (cardType === 'ui-review-progress' || cardType === 'analyze-progress' || cardType === 'browser-progress') {
       if (pendingType && pendingType !== cardType) {
         flushPending()
       }
-      pendingType = cardType as 'ui-review-progress' | 'analyze-progress'
+      pendingType = cardType as 'ui-review-progress' | 'analyze-progress' | 'browser-progress'
       pendingSteps.push(seg.content as TypelessCard)
     } else {
       flushPending()

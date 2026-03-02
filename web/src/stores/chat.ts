@@ -247,6 +247,16 @@ export const useChatStore = defineStore('chat', () => {
       options?: Array<{ label: string; description?: string; value?: string }>
       multi_select?: boolean
     }>
+    context?: {
+      kind?: string
+      checkpoint_id?: string
+      required?: boolean
+      risk_level?: 'low' | 'high'
+      step?: string
+      action?: string
+      url?: string
+      screenshot?: { mime_type?: string; data?: string; url?: string }
+    }
     expires_at: number
   } | null>(null)
   const awaitingConfirmation = ref(false)
@@ -268,9 +278,26 @@ export const useChatStore = defineStore('chat', () => {
   const offlineMode = ref<boolean>(loadOfflineMode())
   const webSearchEnabled = ref<boolean>(loadWebSearchEnabled())
   const deepResearchEnabled = ref<boolean>(loadDeepResearchEnabled())
+  const activeStreamId = ref<string | null>(null)
 
   // SSE client for streaming
   const sseClient = new SSEClient()
+
+  function rememberActiveStreamId(streamId?: string | null) {
+    const next = streamId?.trim()
+    if (!next) return
+    activeStreamId.value = next
+  }
+
+  async function cancelActiveStreamOnServer(conversationId?: string | null) {
+    const streamId = activeStreamId.value
+    if (!conversationId || !streamId) return
+    try {
+      await messageApi.cancelStream(conversationId, streamId)
+    } catch {
+      // Best-effort cancellation.
+    }
+  }
 
   // Buffer incoming deltas and commit at most once per animation frame.
   // This cuts down message array churn and expensive markdown/card re-parsing.
@@ -490,10 +517,12 @@ export const useChatStore = defineStore('chat', () => {
   function stopActiveStreamForConversationSwitch() {
     if (!streaming.value && !sending.value) return
     flushPendingStreamDelta(currentConversationId.value)
+    void cancelActiveStreamOnServer(currentConversationId.value)
     sseClient.disconnect()
     streaming.value = false
     sending.value = false
     toolExecuting.value = false
+    activeStreamId.value = null
     resetPendingStreamDelta()
     streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
   }
@@ -903,6 +932,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
       awaitingConfirmation.value = false
@@ -934,6 +964,10 @@ export const useChatStore = defineStore('chat', () => {
       const sendConvId = conversationId
 
       await sseClient.connect(conversationId, request, {
+        onStreamId: (streamId) => {
+          if (currentConversationId.value !== sendConvId) return
+          rememberActiveStreamId(streamId)
+        },
         onMessage: (chunk) => {
           // Guard: ignore chunks if user switched to a different conversation
           if (currentConversationId.value !== sendConvId) return
@@ -1190,6 +1224,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
+      activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
@@ -1197,9 +1232,11 @@ export const useChatStore = defineStore('chat', () => {
 
   function cancelStreaming() {
     flushPendingStreamDelta(currentConversationId.value)
+    void cancelActiveStreamOnServer(currentConversationId.value)
     sseClient.disconnect()
     streaming.value = false
     toolExecuting.value = false
+    activeStreamId.value = null
     resetPendingStreamDelta()
     streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     if (!hasPendingConfirmations()) {
@@ -1244,9 +1281,11 @@ export const useChatStore = defineStore('chat', () => {
     if (!convId) return
 
     // Abort the in-flight stream
+    void cancelActiveStreamOnServer(convId)
     sseClient.disconnect()
     streaming.value = false
     toolExecuting.value = false
+    activeStreamId.value = null
     resetPendingStreamDelta()
     streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     sending.value = false
@@ -1282,6 +1321,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
       awaitingConfirmation.value = false
@@ -1308,6 +1348,10 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       await sseClient.connect(convId, request, {
+        onStreamId: (streamId) => {
+          if (currentConversationId.value !== convId) return
+          rememberActiveStreamId(streamId)
+        },
         onMessage: (chunk) => {
           if (currentConversationId.value !== convId) return
           if (chunk.awaiting_user_input) {
@@ -1402,6 +1446,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
+      activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
@@ -1428,6 +1473,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = existingContent // Start with existing content
       awaitingConfirmation.value = false
@@ -1444,6 +1490,10 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       await sseClient.connect(conversationId, request, {
+        onStreamId: (streamId) => {
+          if (currentConversationId.value !== conversationId) return
+          rememberActiveStreamId(streamId)
+        },
         onMessage: (chunk) => {
           if (currentConversationId.value !== conversationId) return
           if (chunk.awaiting_user_input) {
@@ -1548,6 +1598,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
+      activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }
@@ -1588,6 +1639,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
       awaitingConfirmation.value = false
@@ -1616,6 +1668,10 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       await sseClient.connect(conversationId, request, {
+        onStreamId: (streamId) => {
+          if (currentConversationId.value !== conversationId) return
+          rememberActiveStreamId(streamId)
+        },
         onMessage: (chunk) => {
           if (currentConversationId.value !== conversationId) return
           if (chunk.awaiting_user_input) {
@@ -1750,6 +1806,7 @@ export const useChatStore = defineStore('chat', () => {
       sending.value = false
       streaming.value = false
       toolExecuting.value = false
+      activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
     }

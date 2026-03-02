@@ -281,12 +281,14 @@ onBeforeUnmount(() => {
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <button
+            data-testid="memory-toggle-composer"
             class="px-4 py-2 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
             @click="showComposer = !showComposer"
           >
             {{ t('memory.add') }}
           </button>
           <button
+            data-testid="memory-open-export-import"
             class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors"
             @click="showExportImportModal = true"
           >
@@ -332,6 +334,7 @@ onBeforeUnmount(() => {
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('memory.searchHint') }}</p>
           <div class="mt-3 space-y-2">
             <button
+              data-testid="memory-prune"
               class="w-full px-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors disabled:opacity-50"
               :disabled="loading || !hasMemories"
               @click="pruneMemories"
@@ -339,6 +342,7 @@ onBeforeUnmount(() => {
               {{ t('memory.prune') }}
             </button>
             <button
+              data-testid="memory-open-clear"
               class="w-full px-3 py-2 text-sm rounded-lg bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-700 dark:text-red-300 transition-colors disabled:opacity-50"
               :disabled="loading || !hasMemories"
               @click="showClearConfirm = true"
@@ -353,6 +357,7 @@ onBeforeUnmount(() => {
           <div>
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{{ t('memory.content') }}</label>
             <textarea
+              data-testid="memory-add-content"
               v-model="addContent"
               rows="5"
               :placeholder="t('memory.contentPlaceholder')"
@@ -362,6 +367,7 @@ onBeforeUnmount(() => {
           <div>
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{{ t('memory.tags') }}</label>
             <input
+              data-testid="memory-add-tags"
               v-model="addTags"
               type="text"
               :placeholder="t('memory.tagsPlaceholder')"
@@ -369,10 +375,11 @@ onBeforeUnmount(() => {
             />
           </div>
           <div class="flex gap-2">
-            <button class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700" @click="showComposer = false">
+            <button data-testid="memory-add-cancel" class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700" @click="showComposer = false">
               {{ t('common.cancel') }}
             </button>
             <button
+              data-testid="memory-add-submit"
               class="flex-1 px-3 py-2 text-sm rounded-lg bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white disabled:opacity-50"
               :disabled="loading || !addContent.trim()"
               @click="addMemory"
@@ -386,12 +393,14 @@ onBeforeUnmount(() => {
       <section class="xl:col-span-8 p-6">
         <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
           <input
+            data-testid="memory-search-input"
             v-model="searchQuery"
             type="text"
             :placeholder="t('memory.searchPlaceholder')"
             class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
           />
           <button
+            data-testid="memory-search-submit"
             class="px-4 py-2 bg-gray-800 dark:bg-gray-500 hover:bg-gray-900 dark:hover:bg-gray-400 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
             :disabled="searching || !searchQuery.trim()"
             @click="searchMemories"
@@ -399,6 +408,7 @@ onBeforeUnmount(() => {
             {{ searching ? t('memory.searching') : t('common.search') }}
           </button>
           <button
+            data-testid="memory-search-clear"
             class="px-4 py-2 text-gray-600 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             :disabled="!searchQuery.trim()"
             @click="clearSearch"
@@ -434,6 +444,7 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                   <button
+                    :data-testid="`memory-delete-${memory.id}`"
                     class="p-1.5 text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
                     @click="deleteMemory(memory.id)"
                   >
@@ -458,8 +469,8 @@ onBeforeUnmount(() => {
           </div>
           <div class="p-6"><p class="text-gray-700 dark:text-gray-300">{{ t('memory.clearAllWarning') }}</p></div>
           <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-            <button class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" @click="showClearConfirm = false">{{ t('common.cancel') }}</button>
-            <button class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50" :disabled="loading" @click="clearAllMemories">{{ t('memory.clearAll') }}</button>
+            <button data-testid="memory-clear-cancel" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" @click="showClearConfirm = false">{{ t('common.cancel') }}</button>
+            <button data-testid="memory-clear-confirm" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50" :disabled="loading" @click="clearAllMemories">{{ t('memory.clearAll') }}</button>
           </div>
         </div>
       </div>
@@ -470,7 +481,7 @@ onBeforeUnmount(() => {
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto">
           <div class="sticky top-0 bg-white dark:bg-gray-800 px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('userdata.memory.title') }}</h3>
-            <button class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click="closeExportImportModal">
+            <button data-testid="memory-export-import-close" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" @click="closeExportImportModal">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
@@ -478,7 +489,7 @@ onBeforeUnmount(() => {
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('userdata.memory.description') }}</p>
             <div class="space-y-2">
               <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.memory.exportSection') }}</h4>
-              <button :disabled="memoryExporting" class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2" @click="handleMemoryExport">
+              <button data-testid="memory-export-button" :disabled="memoryExporting" class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2" @click="handleMemoryExport">
                 <svg v-if="memoryExporting" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                 {{ memoryExporting ? t('userdata.exporting') : t('userdata.memory.exportButton') }}
               </button>
@@ -487,18 +498,18 @@ onBeforeUnmount(() => {
             <div class="space-y-3">
               <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('userdata.memory.importSection') }}</h4>
               <div class="flex items-center gap-2">
-                <input ref="memoryFileInputRef" type="file" accept=".md,.markdown,.txt" class="hidden" @change="handleMemoryFileSelect" />
-                <button class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg text-sm" @click="memoryFileInputRef?.click()">{{ t('userdata.chooseFile') }}</button>
+                <input data-testid="memory-import-file-input" ref="memoryFileInputRef" type="file" accept=".md,.markdown,.txt" class="hidden" @change="handleMemoryFileSelect" />
+                <button data-testid="memory-import-file-picker" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg text-sm" @click="memoryFileInputRef?.click()">{{ t('userdata.chooseFile') }}</button>
                 <span v-if="memoryImportFile" class="text-sm text-gray-600 dark:text-gray-300 truncate flex-1">{{ memoryImportFile.name }}</span>
               </div>
               <div>
                 <label class="block text-sm text-gray-500 dark:text-gray-400 mb-2">{{ t('userdata.memory.importMode') }}</label>
                 <div class="flex gap-2">
-                  <button :class="['flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors', memoryImportMode === 'append' ? 'bg-gray-700 dark:bg-gray-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300']" @click="memoryImportMode = 'append'">{{ t('userdata.memory.modeAppend') }}</button>
-                  <button :class="['flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors', memoryImportMode === 'replace' ? 'bg-red-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300']" @click="memoryImportMode = 'replace'">{{ t('userdata.memory.modeReplace') }}</button>
+                  <button data-testid="memory-import-mode-append" :class="['flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors', memoryImportMode === 'append' ? 'bg-gray-700 dark:bg-gray-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300']" @click="memoryImportMode = 'append'">{{ t('userdata.memory.modeAppend') }}</button>
+                  <button data-testid="memory-import-mode-replace" :class="['flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors', memoryImportMode === 'replace' ? 'bg-red-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300']" @click="memoryImportMode = 'replace'">{{ t('userdata.memory.modeReplace') }}</button>
                 </div>
               </div>
-              <button :disabled="!memoryImportFile || memoryImporting" class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2" @click="handleMemoryImport">
+              <button data-testid="memory-import-button" :disabled="!memoryImportFile || memoryImporting" class="w-full px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2" @click="handleMemoryImport">
                 <svg v-if="memoryImporting" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                 {{ memoryImporting ? t('userdata.importing') : t('userdata.memory.importButton') }}
               </button>

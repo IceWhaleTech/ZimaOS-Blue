@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	skillEmbed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/embedded"
 )
 
 // parseCLIFlags extracts global flags from args, returns positional args and flag state.
@@ -53,7 +56,7 @@ func tryFastCmd(args []string) bool {
 	cmd := positional[0]
 	switch cmd {
 	case "help":
-		printHelp()
+		runLauncherHelp(positional[1:])
 		return true
 	case "status":
 		runLauncherStatus(flags)
@@ -99,8 +102,102 @@ Flags:
   -v, --verbose         verbose output
   -h, --help            help for blue
 
-Use "blue [command] --help" for more information about a command.
-`)
+Use "blue help <command>" for detailed command or skill manuals.
+Use "blue [command] --help" for command flags.
+	`)
+}
+
+func runLauncherHelp(args []string) {
+	if len(args) == 0 {
+		printHelp()
+		return
+	}
+
+	topic := strings.TrimSpace(args[0])
+	if topic == "" {
+		printHelp()
+		return
+	}
+
+	if manual, source, ok := findEmbeddedSkillManual(topic); ok {
+		fmt.Printf("Source: %s\n\n", source)
+		fmt.Print(manual)
+		if !strings.HasSuffix(manual, "\n") {
+			fmt.Println()
+		}
+		return
+	}
+
+	if printLauncherCommandHelp(topic) {
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "Error: unknown help topic %q\n", strings.Join(args, " "))
+	os.Exit(1)
+}
+
+func findEmbeddedSkillManual(topic string) (manual string, source string, ok bool) {
+	for _, skillID := range candidateSkillIDs(topic) {
+		embedPath := filepath.ToSlash(filepath.Join("skills", skillID, "SKILL.md"))
+		data, err := skillEmbed.SkillsFS.ReadFile(embedPath)
+		if err == nil {
+			return string(data), "embedded://" + embedPath, true
+		}
+	}
+	return "", "", false
+}
+
+func candidateSkillIDs(topic string) []string {
+	topic = strings.TrimSpace(topic)
+	if topic == "" {
+		return nil
+	}
+
+	ids := []string{topic}
+	if dot := strings.IndexByte(topic, '.'); dot > 0 {
+		ids = append(ids, topic[:dot])
+	}
+
+	out := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+func printLauncherCommandHelp(topic string) bool {
+	commandHelp := map[string]string{
+		"help":     "Show help for a command or skill.\nUsage: blue help [command|skill]",
+		"status":   "Show service health and recent activity.\nUsage: blue status [--dev] [--json]",
+		"health":   "Fetch health from running service.\nUsage: blue health [--dev] [--json]",
+		"version":  "Show version information.\nUsage: blue version",
+		"doctor":   "Diagnose common issues.\nUsage: blue doctor [--fix]",
+		"config":   "Manage configuration.\nUsage: blue config [subcommand]",
+		"models":   "Manage LLM models.\nUsage: blue models [subcommand]",
+		"plugins":  "Manage plugins.\nUsage: blue plugins [subcommand]",
+		"skills":   "Manage skills.\nUsage: blue skills [subcommand]",
+		"sessions": "Manage chat sessions.\nUsage: blue sessions [subcommand]",
+		"cron":     "Manage scheduled tasks.\nUsage: blue cron [subcommand]",
+		"logs":     "View service logs.\nUsage: blue logs [flags]",
+		"media":    "Media generation commands.\nUsage: blue media [subcommand]",
+		"gateway":  "Manage API gateway.\nUsage: blue gateway [subcommand]",
+		"remind":   "Manage reminders.\nUsage: blue remind [subcommand]",
+	}
+	doc, ok := commandHelp[topic]
+	if !ok {
+		return false
+	}
+
+	fmt.Printf("%s\n", doc)
+	return true
 }
 
 func servicePort(flags cliFlags) int {

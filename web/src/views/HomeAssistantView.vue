@@ -184,7 +184,7 @@ import { useI18n } from 'vue-i18n'
 import * as haApi from '@/api/homeassistant'
 import type { HAEntity, HAScene, HAAutomation, HACommandResult } from '@/api/homeassistant'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 // State
 const isConnected = ref(false)
@@ -380,9 +380,7 @@ function getBrightness(entity: HAEntity): number {
 
 function formatDomainName(domain: string): string {
   const key = `homeAssistant.domains.${domain}`
-  const translated = t(key)
-  // If translation exists, use it; otherwise fallback to domain name
-  return translated !== key ? translated : domain
+  return te(key) ? t(key) : domain
 }
 
 function getEntityEmoji(entity: HAEntity): string {

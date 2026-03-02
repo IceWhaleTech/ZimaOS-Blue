@@ -534,6 +534,15 @@ export default {
       modelConnecting: 'Forbereder nedlastingsforbindelse...',
       downloadFailed: 'Nedlasting av ONNX-modell mislyktes',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Shadow Gate minimumsprøver',
+      shadowGateThreshold: 'Shadow Gate terskel',
+      shadowGateScene: 'Shadow Gate scene',
+      shadowGateSceneAll: 'Alle',
+      shadowGateSceneQA: 'Spørsmål og svar',
+      shadowGateSceneTool: 'Verktøy',
+    },
     tab: { general: 'Generelt', llm: 'LLM', metrics: 'Bruk', remote: 'Fjerntilgang', config: 'Konfigurasjon', backup: 'Sikkerhetskopi', logs: 'Logger', service: 'Tjeneste', retention: 'Oppbevaring' },
     failover: {
       title: 'Smart failover-status',
@@ -1223,7 +1232,8 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'Standardmodus er aktiv (den innebygde planleggeren er i Beta-versjon), forbedret modus gir en bedre opplevelse.',
+    disabledWarningDesc: 'Standardmodus er aktiv, forbedret modus gir en bedre opplevelse.',
+    missingToolCalling: 'Avanserte Tool Calling-funksjoner',
     directoryPathPlaceholderWin: 'Mappesti (f.eks. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Mappesti (f.eks. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'Mappesti (f.eks. /home/user/projects)',

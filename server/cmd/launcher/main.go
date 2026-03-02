@@ -131,6 +131,9 @@ func writeVersion(dir string) error {
 }
 
 func extractBluecli(dst string) error {
+	if len(embeddedBluecli) == 0 {
+		return fmt.Errorf("embedded bluecli asset is missing; build via `make build-launcher`")
+	}
 	if err := os.WriteFile(dst, embeddedBluecli, 0o755); err != nil {
 		return fmt.Errorf("write bluecli: %w", err)
 	}
@@ -138,6 +141,9 @@ func extractBluecli(dst string) error {
 }
 
 func extractDist(dst string) error {
+	if len(embeddedDist) == 0 {
+		return fmt.Errorf("embedded dist asset is missing; build via `make build-launcher`")
+	}
 	os.RemoveAll(dst)
 	gr, err := gzip.NewReader(bytes.NewReader(embeddedDist))
 	if err != nil {

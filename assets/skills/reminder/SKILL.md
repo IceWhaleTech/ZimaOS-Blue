@@ -15,21 +15,21 @@ No external dependencies required. Uses built-in reminder scheduler and delivery
 
 | User Intent | Action |
 |-------------|--------|
-| Create reminder for future time | `reminder.add` |
-| View pending reminders | `reminder.list` |
-| Delete one reminder | `reminder.delete` |
-| Remove all reminders | `reminder.clear` |
+| Create reminder for future time | `blue reminder.add` |
+| View pending reminders | `blue reminder.list` |
+| Delete one reminder | `blue reminder.delete` |
+| Remove all reminders | `blue reminder.clear` |
 
 ---
 
 ## Command Usage
 
 ```bash
-reminder.add message="Check the build" time=30m
-reminder.add message="Team standup" time="2026-03-01 09:00" recurring=daily
-reminder.list
-reminder.delete id=push_abc123
-reminder.clear
+blue reminder.add message="Check the build" time=30m
+blue reminder.add message="Team standup" time="2026-03-01 09:00" recurring=daily
+blue reminder.list
+blue reminder.delete id=push_abc123
+blue reminder.clear
 ```
 
 Time formats:
@@ -45,11 +45,12 @@ Time formats:
 |-------|------------|
 | Missing `message` | Provide reminder message |
 | Missing/invalid `time` | Use supported time format |
-| Missing/unknown reminder `id` | Use `reminder.list` to find valid ID |
+| Missing/unknown reminder `id` | Use `blue reminder.list` to find valid ID |
 
 ---
 
 ## Notes
 
 - Delivery may include conversation injection, SSE, web push, and native OS alerts depending on availability.
+- Prefer `blue reminder.*` command style to avoid model/tool pre-check mismatches in some providers.
 - Use `scheduler` for cron-style command automation; use `reminder` for user-facing reminder alerts.

@@ -536,6 +536,15 @@ export default {
       modelConnecting: 'Letöltési kapcsolat előkészítése...',
       downloadFailed: 'Az ONNX modell letöltése sikertelen',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Shadow Gate minimum mintaszám',
+      shadowGateThreshold: 'Shadow Gate küszöb',
+      shadowGateScene: 'Shadow Gate jelenet',
+      shadowGateSceneAll: 'Összes',
+      shadowGateSceneQA: 'Kérdés-válasz',
+      shadowGateSceneTool: 'Eszköz',
+    },
     tab: { general: 'Általános', llm: 'LLM', metrics: 'Használat', remote: 'Távoli hozzáférés', config: 'Konfiguráció', backup: 'Biztonsági mentés', logs: 'Naplók', service: 'Szolgáltatás', retention: 'Megtartás' },
     failover: {
       title: 'Intelligens feladatátvétel állapota',
@@ -1323,7 +1332,10 @@ export default {
   footer: enUS.footer,
   service: enUS.service,
   autoReply: enUS.autoReply,
-  claudecode: enUS.claudecode,
+  claudecode: {
+    ...enUS.claudecode,
+    missingToolCalling: 'Fejlett Tool Calling képességek',
+  },
   a2ui: enUS.a2ui,
   sandbox: enUS.sandbox,
   home: enUS.home,

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { providerSettingsApi } from '@/api/providers'
 import type { ProviderConfigResponse } from '@/api/providers'
 
-const { t, locale: i18nLocale } = useI18n()
+const { t, te, locale: i18nLocale } = useI18n()
 
 const emit = defineEmits<{
   (e: 'status-change', message: string): void
@@ -69,6 +69,20 @@ const currentProvider = computed(() => {
 const currentMeta = computed(() => {
   return providerMeta[selectedProvider.value] || { requiresApiKey: true, defaultUrl: '', description: '' }
 })
+
+const PROVIDER_DISPLAY_KEY_MAP: Record<string, string> = {
+  claude: 'settings.providers.claude',
+  openai: 'settings.providers.openai',
+  ollama: 'settings.providers.ollama',
+  custom: 'settings.providers.custom',
+  grok: 'settings.providers.grok',
+  qwen: 'settings.providers.qwen',
+  siliconflow: 'settings.providers.siliconflow',
+}
+
+function tr(key: string, fallback = ''): string {
+  return te(key) ? t(key) : fallback
+}
 
 const hasChanges = computed(() => {
   if (!currentProvider.value) return false
@@ -180,9 +194,9 @@ async function testConnection() {
 }
 
 function getProviderDisplayName(name: string): string {
-  const key = `settings.providers.${name.toLowerCase()}`
-  const translated = t(key)
-  return translated === key ? name : translated
+  const key = PROVIDER_DISPLAY_KEY_MAP[name.toLowerCase()]
+  if (!key) return name
+  return tr(key, name)
 }
 
 function toggleShowApiKey() {
@@ -279,7 +293,7 @@ function clearApiKey() {
 
         <!-- Provider description -->
         <p v-if="currentMeta.description" class="text-sm text-gray-500 dark:text-slate-400">
-          {{ t(currentMeta.description) }}
+          {{ tr(currentMeta.description, '') }}
         </p>
 
         <!-- Configuration fields -->

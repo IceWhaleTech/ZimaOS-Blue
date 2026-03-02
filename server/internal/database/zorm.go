@@ -184,7 +184,7 @@ func (r *Repository[T]) UpdateByID(ctx context.Context, id interface{}, entity *
 // UpdateMap updates records using a map.
 func (r *Repository[T]) UpdateMap(ctx context.Context, data map[string]interface{}, opts ...z.ZormItem) (int64, error) {
 	t := r.db.TableContext(ctx, r.tableName)
-	n, err := t.Update(data, opts...)
+	n, err := t.Update(z.V(data), opts...)
 	return int64(n), err
 }
 

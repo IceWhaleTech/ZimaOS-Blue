@@ -80,7 +80,9 @@ func estimateToolTokens(def ToolDefinition) int {
 // toolKeywords maps tool names to additional bilingual keywords for matching.
 // After v0.10.31 migration, only exec remains as a native tool.
 var toolKeywords = map[string]string{
-	"exec": "执行 运行 命令 shell terminal command run execute script bash",
+	"exec":       "执行 运行 命令 shell terminal command run execute script bash",
+	"calculator": "calculate math arithmetic percentage percent tip sum minus plus divide multiply 计算 数学 算术",
+	"network":    "network connectivity dns ping traceroute diagnosis diagnostics 连接 网络 诊断 解析",
 }
 
 // toolDoc combines a tool's name, description, and bilingual keywords

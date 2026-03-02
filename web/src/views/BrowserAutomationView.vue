@@ -408,7 +408,7 @@ import { useI18n } from 'vue-i18n'
 import * as browserApi from '@/api/browser'
 import type { BrowserTask, BrowserSession, TaskTemplate, StepType, BrowserSecurityConfig } from '@/api/browser'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 // State
 const tasks = ref<BrowserTask[]>([])
@@ -594,6 +594,11 @@ function getTemplateIcon(category: string): string {
   return icons[category] || '📦'
 }
 
+function tr(key: string | undefined, fallback = ''): string {
+  if (!key) return fallback
+  return te(key) ? t(key) : fallback
+}
+
 // Template i18n helpers
 function getTemplateName(templateId: string): string {
   const keyMap: Record<string, string> = {
@@ -603,7 +608,7 @@ function getTemplateName(templateId: string): string {
     'login-test': 'browserAutomation.templates.loginTest.name',
   }
   const key = keyMap[templateId]
-  return key ? t(key) : templateId
+  return key ? tr(key, templateId) : templateId
 }
 
 function getTemplateDescription(templateId: string): string {
@@ -614,7 +619,7 @@ function getTemplateDescription(templateId: string): string {
     'login-test': 'browserAutomation.templates.loginTest.description',
   }
   const key = keyMap[templateId]
-  return key ? t(key) : ''
+  return key ? tr(key, '') : ''
 }
 
 function getTemplateCategory(category: string): string {
@@ -625,7 +630,7 @@ function getTemplateCategory(category: string): string {
     'Testing': 'browserAutomation.categories.testing',
   }
   const key = keyMap[category]
-  return key ? t(key) : category
+  return key ? tr(key, category) : category
 }
 
 function getStepLabel(type: StepType): string {
@@ -643,7 +648,7 @@ function getStepLabel(type: StepType): string {
     evaluate: 'browserAutomation.stepLabels.evaluate',
   }
   const key = keyMap[type]
-  return key ? t(key) : type
+  return key ? tr(key, type) : type
 }
 
 // Security methods

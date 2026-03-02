@@ -1,15 +1,31 @@
 import type { AxiosError } from 'axios'
 import { i18n } from '@/i18n'
 
+const HTTP_STATUS_KEY_MAP: Record<number, string> = {
+  400: 'errors.http400',
+  401: 'errors.http401',
+  403: 'errors.http403',
+  404: 'errors.http404',
+  408: 'errors.http408',
+  409: 'errors.http409',
+  413: 'errors.http413',
+  422: 'errors.http422',
+  429: 'errors.http429',
+  500: 'errors.http500',
+  502: 'errors.http502',
+  503: 'errors.http503',
+  504: 'errors.http504',
+}
+
 /**
  * Get translated error message from HTTP status code
  */
 export function getHttpErrorMessage(status: number): string {
   const t = i18n.global.t
-  const key = `errors.http${status}`
+  const key = HTTP_STATUS_KEY_MAP[status]
 
   // Check if we have a specific translation for this status code
-  if (i18n.global.te(key)) {
+  if (key && i18n.global.te(key)) {
     return t(key)
   }
 

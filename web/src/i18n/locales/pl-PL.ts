@@ -534,6 +534,15 @@ export default {
       modelConnecting: 'Przygotowywanie połączenia do pobierania...',
       downloadFailed: 'Nie udało się pobrać modelu ONNX',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Minimalna liczba próbek Shadow Gate',
+      shadowGateThreshold: 'Próg Shadow Gate',
+      shadowGateScene: 'Scena Shadow Gate',
+      shadowGateSceneAll: 'Wszystkie',
+      shadowGateSceneQA: 'Pytania i odpowiedzi',
+      shadowGateSceneTool: 'Narzędzie',
+    },
     tab: {
       general: 'Ogólne',
       llm: 'LLM',
@@ -1698,7 +1707,8 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'Aktywny jest tryb standardowy (wbudowany harmonogram jest w wersji Beta), tryb rozszerzony zapewnia lepsze doświadczenie.',
+    disabledWarningDesc: 'Aktywny jest tryb standardowy, tryb rozszerzony zapewnia lepsze doświadczenie.',
+    missingToolCalling: 'Zaawansowane możliwości Tool Calling',
     directoryPathPlaceholderWin: 'Ścieżka katalogu (np. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Ścieżka katalogu (np. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'Ścieżka katalogu (np. /home/user/projects)',

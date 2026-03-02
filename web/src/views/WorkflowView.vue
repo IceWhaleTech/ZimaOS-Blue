@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { workflowApi } from '@/api/workflow'
 import type { Workflow, WorkflowExecution, WorkflowStats, WorkflowTemplate, WorkflowNode, WorkflowConnection, NodeType } from '@/api/workflow'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const loading = ref(false)
 const workflows = ref<Workflow[]>([])
@@ -17,6 +17,11 @@ const showExecutionsModal = ref(false)
 const showTemplatesModal = ref(false)
 const showNodeEditorModal = ref(false)
 const showAddNodeModal = ref(false)
+
+function tr(key: string | undefined | null, fallback = ''): string {
+  if (!key) return fallback
+  return te(key) ? t(key) : fallback
+}
 
 // Create form
 const newWorkflow = ref({
@@ -756,7 +761,7 @@ function getNodeTypeColor(type: NodeType): string {
                       </svg>
                     </button>
                   </div>
-                  <div class="text-xs mt-1 opacity-75">{{ t(getNodeTypeInfo(node.type)?.labelKey ?? '') }}</div>
+                  <div class="text-xs mt-1 opacity-75">{{ tr(getNodeTypeInfo(node.type)?.labelKey, node.type) }}</div>
                 </div>
               </div>
             </div>
@@ -857,7 +862,7 @@ function getNodeTypeColor(type: NodeType): string {
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="nt.icon" />
                   </svg>
-                  <span class="text-sm text-gray-700 dark:text-gray-300">{{ t(nt.labelKey) }}</span>
+                  <span class="text-sm text-gray-700 dark:text-gray-300">{{ tr(nt.labelKey, nt.value) }}</span>
                 </button>
               </div>
             </div>

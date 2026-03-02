@@ -15,8 +15,8 @@ No external dependencies required. Uses built-in web search capability.
 
 | User Intent | Action |
 |-------------|--------|
-| Find relevant links/sources quickly | `web_search query=...` |
-| Need official docs/reference pages | `web_search` with precise query terms |
+| Find relevant links/sources quickly | `blue web_search query=...` |
+| Need official docs/reference pages | `blue web_search` with precise query terms |
 | Need page interaction/content extraction | Search first, then switch to `browser` |
 
 ---
@@ -24,9 +24,9 @@ No external dependencies required. Uses built-in web search capability.
 ## Command Usage
 
 ```bash
-web_search query="ZimaOS Blue release notes"
-web_search query="OpenAI Responses API function calling" max_results=8
-web_search query="container sandbox security best practices" max_results=10 region=us-en
+blue web_search query="ZimaOS Blue release notes"
+blue web_search query="OpenAI Responses API function calling" max_results=8
+blue web_search query="container sandbox security best practices" max_results=10 region=us-en
 ```
 
 Parameters:

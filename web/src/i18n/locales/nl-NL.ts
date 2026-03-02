@@ -534,6 +534,15 @@ export default {
       modelConnecting: 'Downloadverbinding voorbereiden...',
       downloadFailed: 'Kan ONNX-model niet downloaden',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Shadow Gate minimale samples',
+      shadowGateThreshold: 'Shadow Gate drempel',
+      shadowGateScene: 'Shadow Gate scène',
+      shadowGateSceneAll: 'Alles',
+      shadowGateSceneQA: 'Vraag en antwoord',
+      shadowGateSceneTool: 'Hulpmiddel',
+    },
     tab: {
       general: 'Algemeen',
       llm: 'LLM',
@@ -1635,7 +1644,8 @@ export default {
   },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'Standaardmodus is actief (de ingebouwde scheduler is een Beta-versie), de verbeterde modus biedt een betere ervaring.',
+    disabledWarningDesc: 'Standaardmodus is actief, de verbeterde modus biedt een betere ervaring.',
+    missingToolCalling: 'Geavanceerde Tool Calling-mogelijkheden',
     directoryPathPlaceholderWin: 'Mappad (bijv. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Mappad (bijv. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'Mappad (bijv. /home/user/projects)',

@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-AI/pkg/loader"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/loader"
 )
 
 func TestLibraryFilename(t *testing.T) {

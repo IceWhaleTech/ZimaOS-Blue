@@ -647,6 +647,10 @@ var pinnedSkills = []string{
 	"ui_reviewer",
 	"mgmt",
 	"mediagen",
+	"reminder",
+	"sandbox",
+	"workflows",
+	"scheduler",
 }
 
 // PinnedSkills returns the list of pinned skill names for short-circuit handling.

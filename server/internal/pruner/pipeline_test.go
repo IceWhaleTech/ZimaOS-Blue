@@ -150,3 +150,18 @@ func TestSelectTopK_CoverageConstraint(t *testing.T) {
 		t.Error("expected at least 1 segment selected")
 	}
 }
+
+func TestSelectTopK_SkipsOversizedSegmentAndKeepsFittingOnes(t *testing.T) {
+	scored := []ScoredSegment{
+		{Segment: Segment{StartLine: 0, EndLine: 10, Content: "A", TokenCount: 200}, Score: 0.99},
+		{Segment: Segment{StartLine: 11, EndLine: 20, Content: "B", TokenCount: 200}, Score: 0.90},
+		{Segment: Segment{StartLine: 21, EndLine: 22, Content: "C", TokenCount: 20}, Score: 0.80},
+	}
+	result := SelectTopK(scored, 230)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 segments selected, got %d", len(result))
+	}
+	if result[0].Segment.Content != "A" || result[1].Segment.Content != "C" {
+		t.Fatalf("unexpected selection order/content: %+v", result)
+	}
+}

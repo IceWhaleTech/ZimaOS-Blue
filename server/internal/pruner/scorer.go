@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 	"unicode"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // LocalBackend implements Backend using a pure-Go scoring algorithm.
@@ -60,17 +60,14 @@ var structuralKeywords = map[string]float64{
 
 // Prune scores each line and removes low-relevance lines.
 func (b *LocalBackend) Prune(ctx context.Context, req PruneRequest) (*PruneResponse, error) {
-	start := timeutil.NowTime()
+	start := time.Now()
 
 	lines := strings.Split(req.Code, "\n")
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
 		return &PruneResponse{PrunedCode: req.Code}, nil
 	}
 
-	threshold := req.Threshold
-	if threshold <= 0 {
-		threshold = b.config.Threshold
-	}
+	threshold := resolveThreshold(req.Threshold, b.config.Threshold)
 
 	// Build query terms for TF-IDF matching
 	queryTerms := tokenize(req.Query)
@@ -133,7 +130,7 @@ func (b *LocalBackend) Prune(ctx context.Context, req PruneRequest) (*PruneRespo
 		OriginalTokens:  origTokens,
 		PrunedTokens:    prunedTokens,
 		CompressionRate: compressionRate,
-		LatencyMs:       float64(timeutil.SinceTime(start).Microseconds()) / 1000.0,
+		LatencyMs:       float64(time.Since(start).Microseconds()) / 1000.0,
 	}, nil
 }
 

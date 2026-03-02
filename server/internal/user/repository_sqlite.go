@@ -392,7 +392,7 @@ func (r *SQLiteRepository) GetPasswordHistory(ctx context.Context, userID uuid.U
 	_, err := r.passwordHistoryTable(ctx).Select(&hashes,
 		z.Fields("password_hash"),
 		z.Where(z.Eq("user_id", userID.String())),
-		z.OrderBy("created_at DESC"),
+		z.OrderBy("created_at DESC, rowid DESC"),
 		z.Limit(limit),
 	)
 	if err != nil {

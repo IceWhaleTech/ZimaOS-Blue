@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { speechApi, type ASRModel, type TTSModel } from '@/api/speech'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const props = defineProps<{
   modelVisible: boolean
@@ -46,6 +46,10 @@ const title = computed(() =>
 const description = computed(() =>
   props.type === 'asr' ? t('speech.prompt.asrDescription') : t('speech.prompt.ttsDescription')
 )
+
+function trModelText(value: string): string {
+  return te(value) ? t(value) : value
+}
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -226,12 +230,12 @@ watch(() => props.modelVisible, (visible) => {
                 <!-- Model info -->
                 <div class="flex-1 min-w-0">
                   <div class="font-medium text-gray-900 dark:text-white">
-                    {{ t(model.name) }}
+                    {{ trModelText(model.name) }}
                     <span class="text-xs text-gray-400 ml-1">{{ model.size }}</span>
                     <span v-if="model.active" class="text-xs text-green-600 dark:text-green-400 ml-1">{{ t('speech.inUse') }}</span>
                   </div>
                   <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {{ t(model.description) }}
+                    {{ trModelText(model.description) }}
                   </div>
                 </div>
 

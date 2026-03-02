@@ -29,6 +29,8 @@ type Budget struct {
 
 type Job struct {
 	ID          string     `json:"id"`
+	UserID      string     `json:"user_id,omitempty"`
+	TenantID    string     `json:"tenant_id,omitempty"`
 	Query       string     `json:"query"`
 	Lang        string     `json:"lang,omitempty"`
 	Mode        Mode       `json:"mode"`
@@ -79,17 +81,23 @@ type Report struct {
 	Confidence    float64    `json:"confidence"`
 	Citations     []Citation `json:"citations"`
 	OpenQuestions []string   `json:"open_questions,omitempty"`
+	SupportCount  int        `json:"support_count,omitempty"`
+	ConflictCount int        `json:"conflict_count,omitempty"`
+	HasConflict   bool       `json:"has_conflict,omitempty"`
 }
 
 type Event struct {
+	ID        string      `json:"id,omitempty"`
 	Type      string      `json:"type"`
 	Timestamp time.Time   `json:"timestamp"`
 	Payload   interface{} `json:"payload,omitempty"`
 }
 
 type CreateJobRequest struct {
-	Query  string  `json:"query"`
-	Mode   Mode    `json:"mode,omitempty"`
-	Lang   string  `json:"lang,omitempty"`
-	Budget *Budget `json:"budget,omitempty"`
+	UserID   string  `json:"user_id,omitempty"`
+	TenantID string  `json:"tenant_id,omitempty"`
+	Query    string  `json:"query"`
+	Mode     Mode    `json:"mode,omitempty"`
+	Lang     string  `json:"lang,omitempty"`
+	Budget   *Budget `json:"budget,omitempty"`
 }

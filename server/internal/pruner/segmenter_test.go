@@ -222,3 +222,14 @@ func TestSegmenter_PreservesContent(t *testing.T) {
 		t.Error("expected segment containing 'func foo()'")
 	}
 }
+
+func TestSegmenter_OneLineBraceBlock_DoesNotSwallowNextLine(t *testing.T) {
+	code := "func a() {}\nnextLine()\n"
+	segs := Segmentize(code)
+	if len(segs) == 0 {
+		t.Fatal("expected segments")
+	}
+	if segs[0].StartLine != 0 || segs[0].EndLine != 0 {
+		t.Fatalf("expected one-line function segment [0,0], got [%d,%d]", segs[0].StartLine, segs[0].EndLine)
+	}
+}

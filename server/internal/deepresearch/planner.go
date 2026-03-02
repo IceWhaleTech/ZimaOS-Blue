@@ -6,7 +6,7 @@ import (
 )
 
 type Planner interface {
-	Plan(query string, mode Mode) []Task
+	Plan(query string, mode Mode, lang string) []Task
 }
 
 type HeuristicPlanner struct{}
@@ -15,7 +15,7 @@ func NewHeuristicPlanner() *HeuristicPlanner {
 	return &HeuristicPlanner{}
 }
 
-func (p *HeuristicPlanner) Plan(query string, mode Mode) []Task {
+func (p *HeuristicPlanner) Plan(query string, mode Mode, lang string) []Task {
 	q := strings.TrimSpace(query)
 	if q == "" {
 		return nil
@@ -29,13 +29,7 @@ func (p *HeuristicPlanner) Plan(query string, mode Mode) []Task {
 	}
 
 	tasks := make([]Task, 0, maxTasks)
-	base := []string{
-		q,
-		fmt.Sprintf("%s latest updates", q),
-		fmt.Sprintf("%s official documentation", q),
-		fmt.Sprintf("%s benchmark comparison", q),
-		fmt.Sprintf("%s best practices", q),
-	}
+	base := planQueriesForLang(q, lang)
 
 	for i := 0; i < maxTasks && i < len(base); i++ {
 		tasks = append(tasks, Task{

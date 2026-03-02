@@ -64,6 +64,10 @@ func tryIPC(args []string) bool {
 
 	cmd := positional[0]
 	rest := positional[1:]
+	if cmd == "help" {
+		// Let bluecli handle `help` so it can render full command/skill manuals.
+		return false
+	}
 	params := parseIPCArgs(rest)
 
 	conn, err := dialSock()

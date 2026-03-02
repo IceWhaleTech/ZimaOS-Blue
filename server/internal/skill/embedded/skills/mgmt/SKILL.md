@@ -15,27 +15,27 @@ No external dependencies required. Uses built-in management API bridge.
 
 | User Intent | Action |
 |-------------|--------|
-| Manage LLM providers/models/connectivity | `mgmt.providers.*` |
-| Read/update runtime settings | `mgmt.settings.*` |
-| Check channels/skills/tools status and toggle | `mgmt.channels.*` / `mgmt.skills.*` / `mgmt.tools.*` |
-| Get system health/version/proxy stats | `mgmt.system.*` / `mgmt.proxy.*` |
-| Manage user lock/unlock operations | `mgmt.users.*` |
+| Manage LLM providers/models/connectivity | `blue mgmt.providers.*` |
+| Read/update runtime settings | `blue mgmt.settings.*` |
+| Check channels/skills/tools status and toggle | `blue mgmt.channels.*` / `blue mgmt.skills.*` / `blue mgmt.tools.*` |
+| Get system health/version/proxy stats | `blue mgmt.system.*` / `blue mgmt.proxy.*` |
+| Manage user lock/unlock operations | `blue mgmt.users.*` |
 
 ---
 
 ## Command Usage
 
 ```bash
-mgmt.providers.list
-mgmt.providers.test id=provider_abc
-mgmt.settings.get
-mgmt.settings.set key=agent_mode value=true
-mgmt.channels.list
-mgmt.skills.list
-mgmt.tools.list
-mgmt.system.health
-mgmt.proxy.stats
-mgmt.users.list
+blue mgmt.providers.list
+blue mgmt.providers.test id=provider_abc
+blue mgmt.settings.get
+blue mgmt.settings.set key=agent_mode value=true
+blue mgmt.channels.list
+blue mgmt.skills.list
+blue mgmt.tools.list
+blue mgmt.system.health
+blue mgmt.proxy.stats
+blue mgmt.users.list
 ```
 
 ---
@@ -44,7 +44,7 @@ mgmt.users.list
 
 | Error | Resolution |
 |-------|------------|
-| Unknown domain/action | Use supported `mgmt.<domain>.<action>` form |
+| Unknown domain/action | Use supported `blue mgmt.<domain>.<action>` form |
 | Missing required parameter | Provide required `id/key/value/name` fields |
 | Permission denied | Use authorized account/context |
 

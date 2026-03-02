@@ -534,6 +534,15 @@ export default {
       modelConnecting: 'Προετοιμασία σύνδεσης λήψης...',
       downloadFailed: 'Αποτυχία λήψης του μοντέλου ONNX',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Ελάχιστα δείγματα Shadow Gate',
+      shadowGateThreshold: 'Κατώφλι Shadow Gate',
+      shadowGateScene: 'Σκηνή Shadow Gate',
+      shadowGateSceneAll: 'Όλα',
+      shadowGateSceneQA: 'Ερωταπαντήσεις',
+      shadowGateSceneTool: 'Εργαλείο',
+    },
     tab: { general: 'Γενικά', llm: 'LLM', metrics: 'Χρήση', remote: 'Απομακρυσμένη πρόσβαση', config: 'Ρυθμίσεις', backup: 'Αντίγραφα', logs: 'Καταγραφές', service: 'Υπηρεσία', retention: 'Διατήρηση' },
     failover: {
       title: 'Κατάσταση έξυπνης εναλλαγής',
@@ -1541,7 +1550,8 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'Η τυπική λειτουργία είναι ενεργή (ο ενσωματωμένος προγραμματιστής είναι σε έκδοση Beta), η ενισχυμένη λειτουργία προσφέρει καλύτερη εμπειρία.',
+    disabledWarningDesc: 'Η τυπική λειτουργία είναι ενεργή, η ενισχυμένη λειτουργία προσφέρει καλύτερη εμπειρία.',
+    missingToolCalling: 'Προηγμένες δυνατότητες Tool Calling',
     directoryPathPlaceholderWin: 'Διαδρομή φακέλου (π.χ. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Διαδρομή φακέλου (π.χ. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'Διαδρομή φακέλου (π.χ. /home/user/projects)',

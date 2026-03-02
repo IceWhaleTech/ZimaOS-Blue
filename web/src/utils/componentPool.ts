@@ -107,6 +107,7 @@ class ComponentPool {
       'ui-review-progress': () => import('@/components/typeless/CardUIReviewProgress.vue'),
       'media-generate': () => import('@/components/typeless/CardMediaGenerate.vue'),
       'analyze-progress': () => import('@/components/typeless/CardAnalyzeProgress.vue'),
+      'browser-progress': () => import('@/components/typeless/CardBrowserProgress.vue'),
       'exec': () => import('@/components/typeless/CardExec.vue'),
     }
 

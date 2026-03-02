@@ -12,7 +12,7 @@ func TestHashAPIKey(t *testing.T) {
 		key      string
 		expected string
 	}{
-		{"sk-1807890abcdef", "sk-12345...cdef"},
+		{"sk-1807890abcdef", "sk-18078...cdef"},
 		{"short", "*****"},
 		{"exactly12ch", "***********"},
 		{"sk-proj-1807890abcdefghijklmnop", "sk-proj-...mnop"},

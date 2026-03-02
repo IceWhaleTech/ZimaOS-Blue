@@ -69,11 +69,11 @@ export const memoryApi = {
 
   /** Get a memory by ID */
   get: (id: string) =>
-    api.get<Memory>(`/memory/${id}`),
+    api.get<Memory>(`/memory/${encodeURIComponent(id)}`),
 
   /** Delete a memory by ID */
   delete: (id: string) =>
-    api.delete(`/memory/${id}`),
+    api.delete(`/memory/${encodeURIComponent(id)}`),
 
   /** Prune old memories */
   prune: () =>

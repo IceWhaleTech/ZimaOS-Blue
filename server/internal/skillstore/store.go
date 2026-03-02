@@ -583,7 +583,7 @@ func (s *Store) GetSyncStatus(ctx context.Context, sourceID string) (*SyncStatus
 // SetInstalled marks a skill as installed or not.
 func (s *Store) SetInstalled(ctx context.Context, id string, installed bool) error {
 	_, err := s.table(ctx).Update(
-		map[string]interface{}{"installed": installed, "updated_at": timeutil.NowTime()},
+		z.V{"installed": installed, "updated_at": timeutil.NowTime()},
 		z.Where(z.Eq("id", id)),
 	)
 	return err
@@ -592,7 +592,7 @@ func (s *Store) SetInstalled(ctx context.Context, id string, installed bool) err
 // SetEnabled marks a skill as enabled or not.
 func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool) error {
 	_, err := s.table(ctx).Update(
-		map[string]interface{}{"enabled": enabled, "updated_at": timeutil.NowTime()},
+		z.V{"enabled": enabled, "updated_at": timeutil.NowTime()},
 		z.Where(z.Eq("id", id)),
 	)
 	return err
@@ -601,7 +601,7 @@ func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool) error {
 // UpdateReadme updates the readme content for a skill.
 func (s *Store) UpdateReadme(ctx context.Context, id string, readme string) error {
 	_, err := s.table(ctx).Update(
-		map[string]interface{}{"readme": readme, "updated_at": timeutil.NowTime()},
+		z.V{"readme": readme, "updated_at": timeutil.NowTime()},
 		z.Where(z.Eq("id", id)),
 	)
 	return err

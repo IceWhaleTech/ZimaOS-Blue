@@ -20,11 +20,15 @@ const emit = defineEmits<{
   switchCategory: [category: MediaCategory]
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
+
+function translateMediaCategory(category: MediaCategory): string {
+  const key = `media.${category}`
+  return te(key) ? t(key) : category
+}
 
 const categoryLabel = computed(() => {
-  const key = `media.${props.intent.category}`
-  return t(key)
+  return translateMediaCategory(props.intent.category)
 })
 
 const categoryIcon = computed(() => {
@@ -97,14 +101,14 @@ function onModelChange(e: Event) {
           class="mpp-cat-btn active"
           :disabled="generating"
         >
-          {{ t(`media.${intent.category}`) }}
+          {{ translateMediaCategory(intent.category) }}
         </button>
         <button
           class="mpp-cat-btn"
           @click="emit('switchCategory', intent.alternative_category!)"
           :disabled="generating"
         >
-          {{ t(`media.${intent.alternative_category}`) }}
+          {{ translateMediaCategory(intent.alternative_category!) }}
           <span class="mpp-cat-hint">{{ t(`media.${intent.alternative_category}Desc`) }}</span>
         </button>
       </div>

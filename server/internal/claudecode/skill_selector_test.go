@@ -178,3 +178,27 @@ python scripts/fetch_transcript.py <video_id_or_url> --save
 		t.Fatalf("expected task route intent in IR text, got %q", irText)
 	}
 }
+
+func TestStage0RuleRoute_DoesNotAutoRoutePlanForGenericTodoWords(t *testing.T) {
+	d := stage0RuleRoute("请先给一个 todo checklist，然后开始执行")
+	if d.SelectedSkill == "plan_create" {
+		t.Fatalf("expected generic todo/checklist words not to auto-route plan_create, got=%+v", d)
+	}
+
+	d = stage0RuleRoute("先做个计划再执行")
+	if d.SelectedSkill == "plan_create" {
+		t.Fatalf("expected generic planning words not to auto-route plan_create, got=%+v", d)
+	}
+}
+
+func TestStage0RuleRoute_RoutesPlanOnlyForExplicitPlanCommands(t *testing.T) {
+	d := stage0RuleRoute("请用 plan_create 初始化任务")
+	if d.SelectedSkill != "plan_create" {
+		t.Fatalf("expected explicit plan_create command to route plan_create, got=%+v", d)
+	}
+
+	d = stage0RuleRoute("用 plan_update 更新第2项状态")
+	if d.SelectedSkill != "plan_create" {
+		t.Fatalf("expected explicit plan_update command to route plan_create family, got=%+v", d)
+	}
+}

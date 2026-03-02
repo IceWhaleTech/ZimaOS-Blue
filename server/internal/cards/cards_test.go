@@ -20,6 +20,7 @@ func TestToCard(t *testing.T) {
 		{"calculator_invalid", "calculator", `not json`, "", true},
 		{"web_search", "web_search", `{"query":"go","results":[{"title":"Go"}],"total_count":1}`, "search", false},
 		{"web_search_empty", "web_search", `{"query":"go","results":[],"total_count":0}`, "", true},
+		{"deep_research", "deep_research", `{"query":"go","mode":"standard","answer":"summary","confidence":0.9,"evidence_count":2,"citations":[{"title":"A","url":"https://example.com"}]}`, "deep-research", false},
 		{"current_time", "current_time", `{"datetime":"2025-01-01","timezone":"UTC","unix":1735689600}`, "result", false},
 		{"file_read", "file_read", `{"path":"/tmp/x","content":"hello"}`, "collapsible-code", false},
 		{"file_read_empty", "file_read", `{"path":"/tmp/x","content":""}`, "", true},
@@ -86,6 +87,32 @@ func TestFormatTypeless_MoreCallsThanResults(t *testing.T) {
 	out := FormatTypeless(calls, results)
 	if strings.Count(out, "```typeless") != 1 {
 		t.Errorf("expected 1 typeless block, got %d", strings.Count(out, "```typeless"))
+	}
+}
+
+func TestDeepResearchCard_FieldsPreserved(t *testing.T) {
+	content := `{"query":"ZimaOS","mode":"deep","answer":"summary","confidence":0.87,"evidence_count":3,"citations":[{"title":"Doc","url":"https://example.com"}],"open_questions":["q1"],"support_count":2,"conflict_count":1,"has_conflict":true,"status":"completed"}`
+	card := ToCard("deep_research", content)
+	if card == nil {
+		t.Fatal("expected non-nil deep-research card")
+	}
+	if got := card["type"]; got != "deep-research" {
+		t.Fatalf("type=%v, want deep-research", got)
+	}
+	if got := card["query"]; got != "ZimaOS" {
+		t.Fatalf("query=%v, want ZimaOS", got)
+	}
+	if got := card["evidence_count"]; got != float64(3) {
+		t.Fatalf("evidence_count=%v, want 3", got)
+	}
+	if got := card["support_count"]; got != float64(2) {
+		t.Fatalf("support_count=%v, want 2", got)
+	}
+	if got := card["conflict_count"]; got != float64(1) {
+		t.Fatalf("conflict_count=%v, want 1", got)
+	}
+	if got := card["has_conflict"]; got != true {
+		t.Fatalf("has_conflict=%v, want true", got)
 	}
 }
 

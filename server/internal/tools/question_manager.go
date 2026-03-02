@@ -41,11 +41,12 @@ type QuestionAnswerResult struct {
 
 // QuestionRequest is the SSE payload sent to the frontend.
 type QuestionRequest struct {
-	ID        string         `json:"id"`
-	Questions []QuestionItem `json:"questions"`
-	UserID    string         `json:"user_id"`
-	SessionID string         `json:"session_id,omitempty"`
-	ExpiresAt int64          `json:"expires_at"` // Unix ms
+	ID        string                 `json:"id"`
+	Questions []QuestionItem         `json:"questions"`
+	UserID    string                 `json:"user_id"`
+	SessionID string                 `json:"session_id,omitempty"`
+	ExpiresAt int64                  `json:"expires_at"` // Unix ms
+	Context   map[string]interface{} `json:"context,omitempty"`
 }
 
 type pendingQuestion struct {
@@ -147,6 +148,12 @@ func (m *QuestionManager) resolveTimeoutAction() string {
 // AskQuestions sends questions to the user via SSE and blocks until answers arrive.
 // In silent mode, returns default answers immediately (first option per question).
 func (m *QuestionManager) AskQuestions(ctx context.Context, userID, sessionID string, questions []QuestionItem) ([]QuestionAnswerResult, bool, error) {
+	return m.AskQuestionsWithContext(ctx, userID, sessionID, questions, nil)
+}
+
+// AskQuestionsWithContext sends questions to the user via SSE with optional UI context payload.
+// In silent mode, returns default answers immediately (first option per question).
+func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, sessionID string, questions []QuestionItem, questionContext map[string]interface{}) ([]QuestionAnswerResult, bool, error) {
 	// Assign IDs if missing, normalize values
 	for i := range questions {
 		if questions[i].ID == "" {
@@ -185,6 +192,7 @@ func (m *QuestionManager) AskQuestions(ctx context.Context, userID, sessionID st
 		UserID:    userID,
 		SessionID: sessionID,
 		ExpiresAt: timeutil.NowMilli() + timeout.Milliseconds(),
+		Context:   questionContext,
 	}
 
 	m.mu.Lock()
@@ -305,16 +313,39 @@ func (m *QuestionManager) PendingCount() int {
 	return len(m.pending)
 }
 
+// CleanupExpired removes expired pending questions and returns removed request IDs.
+func (m *QuestionManager) CleanupExpired() []string {
+	nowMs := timeutil.NowMilli()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.pending) == 0 {
+		return nil
+	}
+	removed := make([]string, 0)
+	for id, p := range m.pending {
+		if p == nil || p.request.ExpiresAt <= nowMs {
+			removed = append(removed, id)
+			delete(m.pending, id)
+		}
+	}
+	return removed
+}
+
 // GetPending returns the first pending QuestionRequest (if any).
 // Used by the REST endpoint so the frontend can restore the dialog on page switch.
 func (m *QuestionManager) GetPending(userID string) *QuestionRequest {
 	if userID == "" {
 		userID = "default"
 	}
+	nowMs := timeutil.NowMilli()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var latest *pendingQuestion
-	for _, p := range m.pending {
+	for id, p := range m.pending {
+		if p == nil || p.request.ExpiresAt <= nowMs {
+			delete(m.pending, id)
+			continue
+		}
 		if p.request.UserID != userID {
 			continue
 		}
@@ -336,10 +367,15 @@ func (m *QuestionManager) GetPendingBySession(sessionID string) *QuestionRequest
 	if sessionID == "" {
 		return nil
 	}
+	nowMs := timeutil.NowMilli()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var latest *pendingQuestion
-	for _, p := range m.pending {
+	for id, p := range m.pending {
+		if p == nil || p.request.ExpiresAt <= nowMs {
+			delete(m.pending, id)
+			continue
+		}
 		if strings.TrimSpace(p.request.SessionID) != sessionID {
 			continue
 		}

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { workspaceApi } from '@/api/workspace'
 import type { WorkspaceFile, WorkspaceStats } from '@/api/workspace'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const emit = defineEmits<{ 'status-change': [msg: string] }>()
 
 const files = ref<WorkspaceFile[]>([])
@@ -26,6 +26,11 @@ const fileInfo: Record<string, { icon: string; labelKey: string; descKey: string
 }
 
 const editableFileNames = new Set(Object.keys(fileInfo))
+
+function tr(key?: string, fallback = ''): string {
+  if (!key) return fallback
+  return te(key) ? t(key) : fallback
+}
 
 async function fetchFiles() {
   loading.value = true
@@ -140,9 +145,9 @@ onUnmounted(() => {
             @click="startEdit(file)"
           >
             <span class="text-2xl leading-none">{{ (fileInfo[file.name] || { icon: '📄' }).icon }}</span>
-            <span class="text-xs font-medium text-gray-900 dark:text-white truncate w-full">{{ fileInfo[file.name]?.labelKey ? t(fileInfo[file.name]?.labelKey || '') : file.name.replace('.md', '') }}</span>
+            <span class="text-xs font-medium text-gray-900 dark:text-white truncate w-full">{{ fileInfo[file.name]?.labelKey ? tr(fileInfo[file.name]?.labelKey, file.name.replace('.md', '')) : file.name.replace('.md', '') }}</span>
             <span v-if="fileInfo[file.name]" class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">
-              {{ t(fileInfo[file.name]?.descKey || '') }}
+              {{ tr(fileInfo[file.name]?.descKey, '') }}
             </span>
           </button>
         </div>
@@ -158,9 +163,9 @@ onUnmounted(() => {
           <div class="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-gray-700">
             <div class="flex items-center gap-2 min-w-0">
               <span class="text-lg flex-shrink-0">{{ (fileInfo[editingFile] || { icon: '📄' }).icon }}</span>
-              <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ fileInfo[editingFile]?.labelKey ? t(fileInfo[editingFile]?.labelKey || '') : editingFile }}</span>
+              <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ fileInfo[editingFile]?.labelKey ? tr(fileInfo[editingFile]?.labelKey, editingFile || '') : editingFile }}</span>
               <span v-if="fileInfo[editingFile]" class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline flex-shrink-0">
-                {{ t(fileInfo[editingFile]?.descKey || '') }}
+                {{ tr(fileInfo[editingFile]?.descKey, '') }}
               </span>
             </div>
             <div class="flex items-center gap-1.5 flex-shrink-0">

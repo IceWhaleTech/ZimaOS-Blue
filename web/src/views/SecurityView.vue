@@ -22,6 +22,10 @@ const tabs: { id: TabId; labelKey: string; icon: string }[] = [
   { id: 'logs', labelKey: 'security.tabs.logs', icon: 'list' },
 ]
 
+function tr(key: string, fallback = ''): string {
+  return te(key) ? t(key) : fallback
+}
+
 /** Backend English details string -> security.scan.detailMessages key (for i18n). */
 const DETAIL_MESSAGE_KEYS: Record<string, string> = {
   'Threat detector is not initialized': 'threat_detector_not_initialized',
@@ -437,16 +441,13 @@ function getCategoryLabel(category: string): string {
 // Get scan item name with i18n
 function getScanItemName(item: ScanItem): string {
   const key = `security.scan.items.${item.id}.name`
-  const translated = t(key)
-  // If translation key doesn't exist, fall back to API-provided name (or id)
-  return translated === key ? (item.name || item.id) : translated
+  return tr(key, item.name || item.id)
 }
 
 // Get scan item description with i18n
 function getScanItemDescription(item: ScanItem): string {
   const key = `security.scan.items.${item.id}.description`
-  const translated = t(key)
-  return translated === key ? (item.description || '') : translated
+  return tr(key, item.description || '')
 }
 
 // Get scan item risk/impact/remediation with i18n
@@ -618,7 +619,7 @@ onUnmounted(() => {
           <svg v-else-if="tab.icon === 'list'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
           </svg>
-          {{ t(tab.labelKey) }}
+          {{ tr(tab.labelKey, tab.id) }}
         </button>
       </nav>
     </div>

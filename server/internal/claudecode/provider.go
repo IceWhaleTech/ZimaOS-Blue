@@ -508,16 +508,6 @@ func (p *Provider) buildSystemPrompt(ctx context.Context, req llm.ChatRequest, s
 		}
 	}
 
-	// Extract last user message for scenario-based enhancement
-	var lastUserMsg string
-	for i := len(req.Messages) - 1; i >= 0; i-- {
-		if req.Messages[i].Role == llm.RoleUser {
-			lastUserMsg = req.Messages[i].Content
-			break
-		}
-	}
-	p.promptBuilder.SetLastUserMessage(lastUserMsg)
-
 	// Build complete system prompt
 	return p.promptBuilder.Build(ctx, systemMessage)
 }

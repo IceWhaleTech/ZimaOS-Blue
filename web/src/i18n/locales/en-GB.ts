@@ -1174,7 +1174,7 @@ export default {
     // Disabled warning
     installFirst: 'Please install Claude Code CLI first',
     disabledWarningTitle: 'Claude Code CLI is disabled',
-    disabledWarningDesc: 'Standard mode is active (the built-in scheduler is in beta), and Enhanced mode provides a better experience.',
+    disabledWarningDesc: 'Standard mode is active, and Enhanced mode provides a better experience.',
     missingSkills: 'Skills (code generation, refactoring, etc.)',
     missingToolCalling: 'Advanced Tool Calling capabilities',
     missingFileOps: 'File operations (read, write, edit)',
@@ -3115,6 +3115,16 @@ export default {
     reset: 'Reset Sessions',
   },
   settings: {
+    ...enUS.settings,
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Shadow Gate Min Samples',
+      shadowGateThreshold: 'Shadow Gate Threshold',
+      shadowGateScene: 'Shadow Gate Scene',
+      shadowGateSceneAll: 'All',
+      shadowGateSceneQA: 'QA',
+      shadowGateSceneTool: 'Tool',
+    },
     title: 'Settings',
     // Tab names
     tab: {

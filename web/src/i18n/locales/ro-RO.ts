@@ -534,6 +534,15 @@ export default {
       modelConnecting: 'Se pregătește conexiunea de descărcare...',
       downloadFailed: 'Descărcarea modelului ONNX a eșuat',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Eșantioane minime Shadow Gate',
+      shadowGateThreshold: 'Prag Shadow Gate',
+      shadowGateScene: 'Scenă Shadow Gate',
+      shadowGateSceneAll: 'Toate',
+      shadowGateSceneQA: 'Întrebări și răspunsuri',
+      shadowGateSceneTool: 'Instrument',
+    },
     tab: { general: 'General', llm: 'LLM', metrics: 'Utilizare', remote: 'Acces la distanță', config: 'Configurare', backup: 'Copie de rezervă', logs: 'Jurnale', service: 'Serviciu', retention: 'Păstrare' },
     failover: {
       title: 'Stare comutare inteligentă',
@@ -1300,7 +1309,8 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'Modul standard este activ (planificatorul integrat este în versiune Beta), modul îmbunătățit oferă o experiență mai bună.',
+    disabledWarningDesc: 'Modul standard este activ, modul îmbunătățit oferă o experiență mai bună.',
+    missingToolCalling: 'Capabilități avansate Tool Calling',
     directoryPathPlaceholderWin: 'Calea directorului (ex. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Calea directorului (ex. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'Calea directorului (ex. /home/user/projects)',

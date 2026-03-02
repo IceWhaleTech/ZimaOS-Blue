@@ -15,10 +15,10 @@ No external dependencies required. Uses built-in headless browser commands.
 
 | User Intent | Action |
 |-------------|--------|
-| Open a URL and inspect page content | `browser.navigate` -> `browser.snapshot` or `browser.snapshot_interactive` |
-| Click/type/select on page elements | `browser.snapshot*` to get `@ref`, then `browser.act` |
-| Capture screenshot evidence | `browser.screenshot` |
-| Inspect or switch active browser tabs | `browser.tabs` |
+| Open a URL and inspect page content | `blue browser.navigate` -> `blue browser.snapshot` or `blue browser.snapshot_interactive` |
+| Click/type/select on page elements | `blue browser.snapshot*` to get `@ref`, then `blue browser.act` |
+| Capture screenshot evidence | `blue browser.screenshot` |
+| Inspect or switch active browser tabs | `blue browser.tabs` |
 
 ---
 
@@ -27,40 +27,40 @@ No external dependencies required. Uses built-in headless browser commands.
 ### browser.navigate
 
 ```bash
-browser.navigate url=https://example.com
+blue browser.navigate url=https://example.com
 ```
 
 ### browser.snapshot
 
 ```bash
-browser.snapshot target_id=ABCDEF123456
+blue browser.snapshot target_id=ABCDEF123456
 ```
 
 ### browser.snapshot_interactive
 
 ```bash
-browser.snapshot_interactive target_id=ABCDEF123456
+blue browser.snapshot_interactive target_id=ABCDEF123456
 ```
 
 ### browser.act
 
 ```bash
-browser.act ref=5 act_type=click
-browser.act ref=8 act_type=type value="hello"
-browser.act ref=12 act_type=select value="option_a"
+blue browser.act ref=5 act_type=click
+blue browser.act ref=8 act_type=type value="hello"
+blue browser.act ref=12 act_type=select value="option_a"
 ```
 
 ### browser.screenshot
 
 ```bash
-browser.screenshot url=https://example.com
-browser.screenshot target_id=ABCDEF123456
+blue browser.screenshot url=https://example.com
+blue browser.screenshot target_id=ABCDEF123456
 ```
 
 ### browser.tabs
 
 ```bash
-browser.tabs
+blue browser.tabs
 ```
 
 ---

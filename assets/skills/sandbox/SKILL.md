@@ -15,20 +15,20 @@ No external dependencies required. Uses built-in sandbox runtime.
 
 | User Intent | Action |
 |-------------|--------|
-| Run command safely in isolation | `sandbox.execute` |
-| Check running/completed sandbox job status | `sandbox.status` |
-| Stop runaway or unwanted sandbox job | `sandbox.kill` |
-| Check sandbox availability/capabilities | `sandbox.info` |
+| Run command safely in isolation | `blue sandbox.execute` |
+| Check running/completed sandbox job status | `blue sandbox.status` |
+| Stop runaway or unwanted sandbox job | `blue sandbox.kill` |
+| Check sandbox availability/capabilities | `blue sandbox.info` |
 
 ---
 
 ## Command Usage
 
 ```bash
-sandbox.execute command=sh args='["-lc","date"]' timeout=20
-sandbox.status id=exec_abc123
-sandbox.kill id=exec_abc123
-sandbox.info
+blue sandbox.execute command=sh args='["-lc","date"]' timeout=20
+blue sandbox.status id=exec_abc123
+blue sandbox.kill id=exec_abc123
+blue sandbox.info
 ```
 
 ---

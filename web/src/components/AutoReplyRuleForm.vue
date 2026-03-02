@@ -3,7 +3,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AutoReplyRule, TriggerType, CreateRuleRequest } from '@/api/autoreply'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const props = defineProps<{
   rule?: AutoReplyRule | null
@@ -131,6 +131,10 @@ function handleSubmit(): void {
 
   emit('save', data)
 }
+
+function variableTitle(descKey: string, fallback: string): string {
+  return te(descKey) ? t(descKey) : fallback
+}
 </script>
 
 <template>
@@ -223,7 +227,7 @@ function handleSubmit(): void {
             :key="variable.name"
             type="button"
             class="px-2 py-1 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-300 rounded text-xs transition-colors"
-            :title="t(variable.descKey)"
+            :title="variableTitle(variable.descKey, variable.name)"
             @click="insertVariable(variable.name, 0)"
           >
             {{ variable.name }}

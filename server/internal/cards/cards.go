@@ -93,6 +93,8 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return execCard(content)
 	case "web_search":
 		return webSearchCard(content)
+	case "deep_research", "deep-research":
+		return deepResearchCard(content)
 	case "ui_reviewer":
 		return uiReviewCard(content)
 	case "calculator":
@@ -139,6 +141,44 @@ func webSearchCard(content string) map[string]interface{} {
 		"total_count": resp.TotalCount,
 		"results":     results,
 	}
+}
+
+func deepResearchCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+	if errMsg, ok := data["error"].(string); ok && strings.TrimSpace(errMsg) != "" {
+		return map[string]interface{}{
+			"type":    "result",
+			"title":   "deep_research",
+			"status":  "error",
+			"message": errMsg,
+		}
+	}
+
+	card := map[string]interface{}{
+		"type": "deep-research",
+	}
+	for _, key := range []string{
+		"job_id",
+		"query",
+		"mode",
+		"answer",
+		"confidence",
+		"evidence_count",
+		"citations",
+		"open_questions",
+		"support_count",
+		"conflict_count",
+		"has_conflict",
+		"status",
+	} {
+		if v, ok := data[key]; ok {
+			card[key] = v
+		}
+	}
+	return card
 }
 
 func calculatorCard(content string) map[string]interface{} {

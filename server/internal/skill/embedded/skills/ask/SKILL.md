@@ -17,11 +17,11 @@ Based on user intent, choose the corresponding `ask` action:
 
 | User Intent | Action |
 |-------------|--------|
-| User explicitly asks for question flow (e.g. "ask me questions", "用 ask 技能问我问题") | Run one `ask` call immediately (prefer `questions='[...]'` for multi-question flows) |
-| Requirement is ambiguous and you must clarify before choosing a strategy | Run `ask` to collect missing constraints/preferences |
-| MCP internal Plan mode requires a confirmation/clarification gate | Run `ask` before continuing plan execution |
-| Multi-step questionnaire/interview (Q1/Q2/Q3) | Use a single `ask questions='[...]'` call whenever possible |
-| Multiple valid implementation approaches | Run `ask` to get explicit user choice before execution |
+| User explicitly asks for question flow (e.g. "ask me questions", "用 ask 技能问我问题") | Run one `blue ask` call immediately (prefer `questions='[...]'` for multi-question flows) |
+| Requirement is ambiguous and you must clarify before choosing a strategy | Run `blue ask` to collect missing constraints/preferences |
+| MCP internal Plan mode requires a confirmation/clarification gate | Run `blue ask` before continuing plan execution |
+| Multi-step questionnaire/interview (Q1/Q2/Q3) | Use a single `blue ask questions='[...]'` call whenever possible |
+| Multiple valid implementation approaches | Run `blue ask` to get explicit user choice before execution |
 
 ---
 
@@ -30,13 +30,13 @@ Based on user intent, choose the corresponding `ask` action:
 ### Preferred Single-Question Format
 
 ```bash
-ask q="Choose a deploy strategy" a='["Canary","Blue-Green"]'
+blue ask q="Choose a deploy strategy" a='["Canary","Blue-Green"]'
 ```
 
 ### Multi-Question Format (Recommended)
 
 ```bash
-ask questions='[
+blue ask questions='[
   {"question":"How should I address you?","type":"radio","options":["Alex","A."]},
   {"question":"Preferred language?","type":"radio","options":["zh","en"]},
   {"question":"Timezone?","type":"radio","options":["Asia/Shanghai","UTC-8"]},
@@ -48,7 +48,7 @@ ask questions='[
 ```
 
 Do not continue staged questionnaires via plain assistant text (e.g. "continnue second question...").
-Each follow-up must be another `ask` call.
+Each follow-up must be another `blue ask` call.
 
 ---
 
@@ -109,6 +109,6 @@ Compatibility note:
 
 ## Notes
 
-- Prefer a single `ask questions='[...]'` call over fragmented multi-round questioning.
+- Prefer a single `blue ask questions='[...]'` call over fragmented multi-round questioning.
 - Ask only what is necessary to unblock execution and keep options mutually exclusive where possible.
 - In MCP internal Plan mode, use `ask` as a hard gate when user confirmation is required.

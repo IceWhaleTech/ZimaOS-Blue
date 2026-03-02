@@ -133,7 +133,7 @@ onUnmounted(() => {
         <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
           <span class="flex items-center gap-1.5">
             <span class="inline-block w-1.5 h-1.5 rounded-full animate-pulse" :class="type === 'image' ? 'bg-blue-400' : 'bg-purple-400'" />
-            {{ t('media.generating', { type: type === 'image' ? t('media.image') : t('media.video') }) }}
+            {{ t('media.generatingWithType', { type: type === 'image' ? t('media.image') : t('media.video') }) }}
           </span>
           <span class="tabular-nums">{{ progressPercent }}%</span>
         </div>

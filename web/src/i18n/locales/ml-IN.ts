@@ -540,6 +540,15 @@ export default {
       modelConnecting: 'ഡൗൺലോഡ് കണക്ഷൻ തയ്യാറാക്കുന്നു...',
       downloadFailed: 'ONNX മോഡൽ ഡൗൺലോഡ് ചെയ്യാൻ കഴിഞ്ഞില്ല',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'ഷാഡോ ഗേറ്റ് ഏറ്റവും കുറഞ്ഞ സാമ്പിൾ എണ്ണം',
+      shadowGateThreshold: 'ഷാഡോ ഗേറ്റ് ത്രെഷോൾഡ്',
+      shadowGateScene: 'ഷാഡോ ഗേറ്റ് സീൻ',
+      shadowGateSceneAll: 'എല്ലാം',
+      shadowGateSceneQA: 'ചോദ്യോത്തരങ്ങൾ',
+      shadowGateSceneTool: 'ഉപകരണം',
+    },
     tab: { general: 'പൊതു', llm: 'LLM', metrics: 'ഉപയോഗം', remote: 'ദൂര പ്രവേശനം', config: 'ക്രമീകരണം', backup: 'ബാക്കപ്പ്', logs: 'ലോഗുകൾ', service: 'സേവനം', retention: 'നിക്ഷേപം' },
     failover: {
       title: 'സ്മാർട്ട് ഫെയിൽഓവർ നില',
@@ -1306,7 +1315,8 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'ഇപ്പോൾ സ്റ്റാൻഡേർഡ് മോഡാണ് (ഉൾനിറച്ച ഷെഡ്യൂളർ Beta പതിപ്പിലാണ്), എന്ഹാൻസ്ഡ് മോഡിൽ അനുഭവം കൂടുതൽ മികച്ചതാണ്.',
+    disabledWarningDesc: 'ഇപ്പോൾ സ്റ്റാൻഡേർഡ് മോഡാണ്, എന്ഹാൻസ്ഡ് മോഡിൽ അനുഭവം കൂടുതൽ മികച്ചതാണ്.',
+    missingToolCalling: 'ഉന്നത Tool Calling കഴിവുകൾ',
     directoryPathPlaceholderWin: 'ഡയറക്ടറി പാത്ത് (ഉദാ. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'ഡയറക്ടറി പാത്ത് (ഉദാ. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'ഡയറക്ടറി പാത്ത് (ഉദാ. /home/user/projects)',

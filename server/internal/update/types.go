@@ -1,6 +1,9 @@
 package update
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // UpdateInfo represents available update information
 type UpdateInfo struct {
@@ -23,6 +26,37 @@ type UpdateStatus struct {
 	LastChecked    time.Time `json:"last_checked"`
 	DownloadedPath string    `json:"downloaded_path,omitempty"`
 }
+
+// ApplyRequest supports optional resume context persistence before restart.
+// Clients can send contextual payload so the new process can recover unfinished work.
+type ApplyRequest struct {
+	ResumeContext      map[string]interface{} `json:"resume_context,omitempty"`
+	ResumeDelaySeconds int                    `json:"resume_delay_seconds,omitempty"`
+}
+
+// ResumeRecovery reports the latest one-time post-restart recovery execution.
+type ResumeRecovery struct {
+	TaskID         string                 `json:"task_id"`
+	Status         string                 `json:"status"` // success, failed
+	FromVersion    string                 `json:"from_version"`
+	TargetVersion  string                 `json:"target_version"`
+	CurrentVersion string                 `json:"current_version"`
+	RecoveredAt    time.Time              `json:"recovered_at"`
+	Context        map[string]interface{} `json:"context,omitempty"`
+	Error          string                 `json:"error,omitempty"`
+}
+
+// ResumeRecoverInput carries persisted OTA resume context into an external recoverer.
+type ResumeRecoverInput struct {
+	TaskID         string                 `json:"task_id"`
+	FromVersion    string                 `json:"from_version"`
+	TargetVersion  string                 `json:"target_version,omitempty"`
+	CurrentVersion string                 `json:"current_version"`
+	Context        map[string]interface{} `json:"context,omitempty"`
+}
+
+// ResumeRecoverer executes post-restart recovery using persisted resume context.
+type ResumeRecoverer func(ctx context.Context, input ResumeRecoverInput) error
 
 // UpdateHistory represents update history entry
 type UpdateHistory struct {

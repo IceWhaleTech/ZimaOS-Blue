@@ -15,9 +15,9 @@ No external dependencies required. Uses built-in browser + accessibility + VLM r
 
 | User Intent | Action |
 |-------------|--------|
-| Audit a live website UI/UX | `ui.review_url` |
-| Review a provided screenshot/image only | `ui.review_image` |
-| Accessibility-focused check only | `ui.check_accessibility` |
+| Audit a live website UI/UX | `blue ui.review_url` |
+| Review a provided screenshot/image only | `blue ui.review_image` |
+| Accessibility-focused check only | `blue ui.check_accessibility` |
 
 ---
 
@@ -26,20 +26,20 @@ No external dependencies required. Uses built-in browser + accessibility + VLM r
 ### Review URL (full audit)
 
 ```bash
-ui.review_url url=https://example.com --json
-ui.review_url url=https://example.com lang=zh-CN device=mobile --json
+blue ui.review_url url=https://example.com --json
+blue ui.review_url url=https://example.com lang=zh-CN device=mobile --json
 ```
 
 ### Review image (visual only)
 
 ```bash
-ui.review_image image=<base64_png_data> lang=en-US --json
+blue ui.review_image image=<base64_png_data> lang=en-US --json
 ```
 
 ### Accessibility check only
 
 ```bash
-ui.check_accessibility url=https://example.com --json
+blue ui.check_accessibility url=https://example.com --json
 ```
 
 ---
@@ -48,8 +48,8 @@ ui.check_accessibility url=https://example.com --json
 
 | Error | Resolution |
 |-------|------------|
-| Missing `url` | Provide valid URL for `ui.review_url` / `ui.check_accessibility` |
-| Missing `image` | Provide base64 image for `ui.review_image` |
+| Missing `url` | Provide valid URL for `blue ui.review_url` / `blue ui.check_accessibility` |
+| Missing `image` | Provide base64 image for `blue ui.review_image` |
 | Browser/VLM review failure | Retry, then reduce scope (accessibility-only or single viewport) |
 
 ---

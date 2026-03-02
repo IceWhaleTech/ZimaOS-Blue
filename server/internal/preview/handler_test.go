@@ -43,7 +43,7 @@ func setupTestHandler(t *testing.T) (*Handler, *user.Service, func()) {
 		Issuer:            "echo-test",
 	})
 
-	handler := NewHandler(modeService, upgradeService, jwtService)
+	handler := NewHandler(modeService, upgradeService, jwtService, userService)
 
 	cleanup := func() {
 		db.Close()

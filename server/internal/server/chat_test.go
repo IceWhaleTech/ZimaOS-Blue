@@ -28,12 +28,32 @@ type requestCaptureProvider struct {
 	mu      sync.Mutex
 }
 
+type scriptedChatProvider struct {
+	name      string
+	models    []string
+	responses []llm.ChatResponse
+
+	mu        sync.Mutex
+	callCount int
+	requests  []llm.ChatRequest
+}
+
 type deepResearchExecMock struct {
 	result map[string]interface{}
 	err    error
+	mu     sync.Mutex
+	calls  int
+	last   map[string]interface{}
 }
 
-func (m *deepResearchExecMock) Execute(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+func (m *deepResearchExecMock) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	m.mu.Lock()
+	m.calls++
+	m.last = make(map[string]interface{}, len(args))
+	for k, v := range args {
+		m.last[k] = v
+	}
+	m.mu.Unlock()
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -108,6 +128,106 @@ func (p *requestCaptureProvider) LastRequest() llm.ChatRequest {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.lastReq
+}
+
+func cloneChatRequestForTest(req llm.ChatRequest) llm.ChatRequest {
+	raw, err := json.Marshal(req)
+	if err != nil {
+		return req
+	}
+	var copied llm.ChatRequest
+	if err := json.Unmarshal(raw, &copied); err != nil {
+		return req
+	}
+	return copied
+}
+
+func (p *scriptedChatProvider) Name() string {
+	if strings.TrimSpace(p.name) != "" {
+		return p.name
+	}
+	return "scripted"
+}
+
+func (p *scriptedChatProvider) Models() []string {
+	if len(p.models) > 0 {
+		return p.models
+	}
+	return []string{"gpt-5.3-codex-spark", "gpt-5.3-codex"}
+}
+
+func (p *scriptedChatProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	p.mu.Lock()
+	p.callCount++
+	p.requests = append(p.requests, cloneChatRequestForTest(req))
+	idx := p.callCount - 1
+	if idx >= len(p.responses) {
+		idx = len(p.responses) - 1
+	}
+	p.mu.Unlock()
+
+	if idx < 0 {
+		return &llm.ChatResponse{
+			ID:      "scripted-default",
+			Model:   req.Model,
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "ok"},
+		}, nil
+	}
+	resp := p.responses[idx]
+	return &resp, nil
+}
+
+func (p *scriptedChatProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, 1)
+	resp, err := p.Chat(ctx, req)
+	if err != nil {
+		close(ch)
+		return nil, err
+	}
+	ch <- llm.StreamChunk{
+		ID:    resp.ID,
+		Model: resp.Model,
+		Delta: resp.Message.Content,
+		Done:  true,
+		Usage: &resp.Usage,
+	}
+	close(ch)
+	return ch, nil
+}
+
+func (p *scriptedChatProvider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, callback llm.StreamCallback) error {
+	resp, err := p.Chat(ctx, req)
+	if err != nil {
+		return err
+	}
+	return callback(llm.StreamChunk{
+		ID:    resp.ID,
+		Model: resp.Model,
+		Delta: resp.Message.Content,
+		Done:  true,
+		Usage: &resp.Usage,
+	})
+}
+
+func (p *scriptedChatProvider) CallCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.callCount
+}
+
+func (p *scriptedChatProvider) RequestAt(idx int) (llm.ChatRequest, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if idx < 0 || idx >= len(p.requests) {
+		return llm.ChatRequest{}, false
+	}
+	return p.requests[idx], true
 }
 
 func hasSystemAnchor(messages []llm.Message, title, goal string) bool {
@@ -646,6 +766,96 @@ func TestChatHandlerSendMessage(t *testing.T) {
 	}
 }
 
+func TestChatHandlerSendMessageAutoContinue_PseudoToolCallCommandWorkdirJSON(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Pseudo Tool Call SendMessage")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := "好的，我来给你设一个 10 秒后的提醒。{\"command\":\"blue reminder.add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}{\"command\":\"...\"}\n```\nLet's do that exactly.{\"command\":\"blue help reminder\",...}\n```"
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "scripted-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 50, CompletionTokens: 90, TotalTokens: 140},
+			},
+			{
+				ID:    "scripted-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "提醒已创建。",
+				},
+				Usage: llm.Usage{PromptTokens: 70, CompletionTokens: 8, TotalTokens: 78},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"提醒我10秒后喝水","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); got != "提醒已创建。" {
+		t.Fatalf("expected retried final content, got %q", got)
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected two LLM rounds (pseudo + retry), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	if len(secondReq.Messages) < 2 {
+		t.Fatalf("expected second request to include continuation messages, got %d", len(secondReq.Messages))
+	}
+	last := secondReq.Messages[len(secondReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "fake tool-call text") {
+		t.Fatalf("expected pseudo-tool nudge in second request, got role=%s content=%q", last.Role, last.Content)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to read stored messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, `{"command":"blue reminder.add`) || strings.Contains(m.Content, "Let's do that exactly") {
+			t.Fatalf("expected malformed pseudo tool-call text to be discarded from stored assistant message, got=%q", m.Content)
+		}
+	}
+}
+
 func TestChatHandlerSendMessageInjectsConversationAnchor(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -772,12 +982,23 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToDeepResearch(t *testing.T) 
 	conv, _ := store.CreateConversation(context.Background(), "Fallback Conv")
 	registry := llm.NewProviderRegistry() // intentionally empty
 	handler := NewChatHandler(store, registry, tools.NewRegistry())
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
-	handler.deepResearchExec = &deepResearchExecMock{
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	settings.settings.Locale = "ja-JP"
+	handler.SetSettingsHandler(settings)
+	execMock := &deepResearchExecMock{
 		result: map[string]interface{}{
 			"answer": "Fallback answer from deep research.",
+			"citations": []map[string]interface{}{
+				{"title": "Doc A", "url": "https://example.com/a"},
+			},
+			"confidence":     0.9,
+			"evidence_count": 1,
+			"support_count":  3,
+			"conflict_count": 1,
+			"has_conflict":   true,
 		},
 	}
+	handler.deepResearchExec = execMock
 
 	e := echo.New()
 	reqBody := `{"message":"no provider configured","provider":"","model":""}`
@@ -803,6 +1024,24 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToDeepResearch(t *testing.T) 
 	}
 	if got, _ := resp["content"].(string); !strings.Contains(got, "Fallback answer from deep research.") {
 		t.Fatalf("content = %q, want fallback deep research answer", got)
+	}
+	if got, _ := resp["content"].(string); !strings.Contains(got, "情報源:") {
+		t.Fatalf("content = %q, want localized sources label", got)
+	}
+	if got, _ := resp["content"].(string); !strings.Contains(got, "```typeless") {
+		t.Fatalf("content = %q, want typeless card block", got)
+	}
+	if got, _ := resp["content"].(string); !strings.Contains(got, "\"type\":\"deep-research\"") {
+		t.Fatalf("content = %q, want deep-research typeless card", got)
+	}
+	if got, _ := resp["content"].(string); !strings.Contains(got, "\"has_conflict\":true") {
+		t.Fatalf("content = %q, want conflict fields in typeless card", got)
+	}
+	execMock.mu.Lock()
+	gotLang, _ := execMock.last["lang"].(string)
+	execMock.mu.Unlock()
+	if gotLang != "ja-JP" {
+		t.Fatalf("fallback lang = %q, want ja-JP", gotLang)
 	}
 }
 
@@ -1780,6 +2019,292 @@ func TestSmallModelStatsHandlers(t *testing.T) {
 	}
 	if got := payload2["short_qa_latency_samples"]; got != float64(0) {
 		t.Fatalf("short_qa_latency_samples = %v, want 0", got)
+	}
+}
+
+func TestSmallModelShadowQualityHandlers(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 32))
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{
+		Scene:        "short_qa_shadow",
+		Delta:        0.2,
+		MainDigest:   "main answer A",
+		ShadowDigest: "shadow answer A",
+		CreatedAt:    time.Now().UTC(),
+	})
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{
+		Scene:        "tool_dispatch_shadow",
+		Delta:        1.0,
+		MainDigest:   "alpha_tool",
+		ShadowDigest: "beta_tool",
+		CreatedAt:    time.Now().UTC(),
+	})
+
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/small-model/shadow-quality?scene=tool_dispatch_shadow&limit=1", nil)
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	if err := handler.SmallModelShadowQualityHandler(ctx); err != nil {
+		t.Fatalf("SmallModelShadowQualityHandler failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if got := payload["total"]; got != float64(1) {
+		t.Fatalf("total = %v, want 1", got)
+	}
+	if got := payload["average_delta"]; got != float64(1) {
+		t.Fatalf("average_delta = %v, want 1", got)
+	}
+	samples, ok := payload["samples"].([]interface{})
+	if !ok || len(samples) != 1 {
+		t.Fatalf("samples = %T/%v, want one sample", payload["samples"], payload["samples"])
+	}
+	sample, ok := samples[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("sample type = %T, want object", samples[0])
+	}
+	if got := sample["scene"]; got != "tool_dispatch_shadow" {
+		t.Fatalf("scene = %v, want tool_dispatch_shadow", got)
+	}
+
+	resetReq := httptest.NewRequest(http.MethodPost, "/api/v1/small-model/shadow-quality/reset", nil)
+	resetRec := httptest.NewRecorder()
+	resetCtx := e.NewContext(resetReq, resetRec)
+	if err := handler.ResetSmallModelShadowQualityHandler(resetCtx); err != nil {
+		t.Fatalf("ResetSmallModelShadowQualityHandler failed: %v", err)
+	}
+	if resetRec.Code != http.StatusOK {
+		t.Fatalf("reset status = %d, want 200", resetRec.Code)
+	}
+	if got := len(handler.shadowQualityStore.Snapshot()); got != 0 {
+		t.Fatalf("samples after reset = %d, want 0", got)
+	}
+}
+
+func TestSmallModelShadowQualityGateEvalHandler(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 64))
+	now := time.Now().UTC()
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.2, CreatedAt: now})
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.3, CreatedAt: now.Add(time.Second)})
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "tool_dispatch_shadow", Delta: 0.9, CreatedAt: now.Add(2 * time.Second)})
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "tool_dispatch_shadow", Delta: 1.0, CreatedAt: now.Add(3 * time.Second)})
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/small-model/shadow-quality/gate-eval?min_samples=2&threshold_delta=0.4", nil)
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	if err := handler.SmallModelShadowQualityGateEvalHandler(ctx); err != nil {
+		t.Fatalf("SmallModelShadowQualityGateEvalHandler failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if got := payload["overall_pass"]; got != false {
+		t.Fatalf("overall_pass = %v, want false", got)
+	}
+	if got := payload["evaluated_samples"]; got != float64(4) {
+		t.Fatalf("evaluated_samples = %v, want 4", got)
+	}
+	scenes, ok := payload["scenes"].([]interface{})
+	if !ok || len(scenes) != 2 {
+		t.Fatalf("scenes = %T/%v, want 2 scenes", payload["scenes"], payload["scenes"])
+	}
+	foundFail := false
+	for _, row := range scenes {
+		scene, ok := row.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if scene["scene"] == "tool_dispatch_shadow" {
+			foundFail = true
+			if scene["pass"] != false {
+				t.Fatalf("tool_dispatch pass = %v, want false", scene["pass"])
+			}
+			if scene["reason"] != "delta_exceeds_threshold" {
+				t.Fatalf("tool_dispatch reason = %v, want delta_exceeds_threshold", scene["reason"])
+			}
+		}
+	}
+	if !foundFail {
+		t.Fatal("expected tool_dispatch_shadow result in scenes")
+	}
+}
+
+func TestSmallModelShadowQualityGateEvalHandler_UsesSettingsDefaults(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 64))
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	_, _ = settings.SetSmallModelShadowGateMinSamples(2)
+	_, _ = settings.SetSmallModelShadowGateThresholdDelta(0.2)
+	handler.SetSettingsHandler(settings)
+
+	now := time.Now().UTC()
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.25, CreatedAt: now})
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.25, CreatedAt: now.Add(time.Second)})
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/small-model/shadow-quality/gate-eval", nil)
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	if err := handler.SmallModelShadowQualityGateEvalHandler(ctx); err != nil {
+		t.Fatalf("SmallModelShadowQualityGateEvalHandler failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if got := payload["threshold_delta"]; got != 0.2 {
+		t.Fatalf("threshold_delta = %v, want 0.2", got)
+	}
+	if got := payload["min_samples"]; got != float64(2) {
+		t.Fatalf("min_samples = %v, want 2", got)
+	}
+	if got := payload["overall_pass"]; got != false {
+		t.Fatalf("overall_pass = %v, want false", got)
+	}
+}
+
+func TestSmallModelShadowQualityGateEvalHandler_UsesSettingsDefaultScene(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 64))
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	_, _ = settings.SetSmallModelShadowGateMinSamples(2)
+	_, _ = settings.SetSmallModelShadowGateThresholdDelta(0.4)
+	_, _ = settings.SetSmallModelShadowGateScene("tool_dispatch_shadow")
+	handler.SetSettingsHandler(settings)
+
+	now := time.Now().UTC()
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.1, CreatedAt: now})
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "tool_dispatch_shadow", Delta: 0.2, CreatedAt: now.Add(time.Second)})
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "tool_dispatch_shadow", Delta: 0.3, CreatedAt: now.Add(2 * time.Second)})
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/small-model/shadow-quality/gate-eval", nil)
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	if err := handler.SmallModelShadowQualityGateEvalHandler(ctx); err != nil {
+		t.Fatalf("SmallModelShadowQualityGateEvalHandler failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if got := payload["scene_filter"]; got != "tool_dispatch_shadow" {
+		t.Fatalf("scene_filter = %v, want tool_dispatch_shadow", got)
+	}
+	if got := payload["evaluated_samples"]; got != float64(2) {
+		t.Fatalf("evaluated_samples = %v, want 2", got)
+	}
+}
+
+func TestSmallModelShadowAutoRolloutExecuteHandler(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 64))
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	_, _ = settings.SetSmallModelShadowRatio(0.1)
+	_, _ = settings.SetSmallModelShadowGateMinSamples(2)
+	_, _ = settings.SetSmallModelShadowGateThresholdDelta(0.4)
+	_, _ = settings.SetSmallModelShadowGateScene("short_qa_shadow")
+	handler.SetSettingsHandler(settings)
+
+	now := time.Now().UTC()
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.2, CreatedAt: now})
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.3, CreatedAt: now.Add(time.Second)})
+	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "tool_dispatch_shadow", Delta: 1.0, CreatedAt: now.Add(2 * time.Second)})
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/small-model/shadow-quality/auto-rollout/execute", nil)
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(req, rec)
+	if err := handler.SmallModelShadowAutoRolloutExecuteHandler(ctx); err != nil {
+		t.Fatalf("SmallModelShadowAutoRolloutExecuteHandler failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if got := payload["advanced"]; got != true {
+		t.Fatalf("advanced = %v, want true", got)
+	}
+	if got := payload["current_ratio"]; got != 0.1 {
+		t.Fatalf("current_ratio = %v, want 0.1", got)
+	}
+	if got := payload["next_ratio"]; got != 0.3 {
+		t.Fatalf("next_ratio = %v, want 0.3", got)
+	}
+	if got := settings.GetSmallModelShadowRatio(); got != 0.3 {
+		t.Fatalf("persisted ratio = %v, want 0.3", got)
+	}
+
+	gateEval, ok := payload["gate_eval"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("gate_eval type = %T, want object", payload["gate_eval"])
+	}
+	if got := gateEval["overall_pass"]; got != true {
+		t.Fatalf("gate_eval.overall_pass = %v, want true", got)
+	}
+
+	_, _ = settings.SetSmallModelShadowGateThresholdDelta(0.1)
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/small-model/shadow-quality/auto-rollout/execute", nil)
+	rec2 := httptest.NewRecorder()
+	ctx2 := e.NewContext(req2, rec2)
+	if err := handler.SmallModelShadowAutoRolloutExecuteHandler(ctx2); err != nil {
+		t.Fatalf("SmallModelShadowAutoRolloutExecuteHandler second call failed: %v", err)
+	}
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("second status = %d, want 200", rec2.Code)
+	}
+	var payload2 map[string]interface{}
+	if err := json.Unmarshal(rec2.Body.Bytes(), &payload2); err != nil {
+		t.Fatalf("decode second payload: %v", err)
+	}
+	if got := payload2["advanced"]; got != false {
+		t.Fatalf("second advanced = %v, want false", got)
+	}
+	if got := payload2["reason"]; got != "gate_not_passed" {
+		t.Fatalf("second reason = %v, want gate_not_passed", got)
+	}
+	if got := settings.GetSmallModelShadowRatio(); got != 0.3 {
+		t.Fatalf("persisted ratio after hold = %v, want 0.3", got)
 	}
 }
 

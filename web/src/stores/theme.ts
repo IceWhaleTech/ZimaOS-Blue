@@ -5,8 +5,30 @@ const THEME_KEY = 'zimaos-blue-theme'
 
 export type Theme = 'light' | 'dark' | 'system'
 
+function getStorageTheme(): Theme {
+  try {
+    if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') {
+      return 'system'
+    }
+    return (localStorage.getItem(THEME_KEY) as Theme) || 'system'
+  } catch {
+    return 'system'
+  }
+}
+
+function setStorageTheme(theme: Theme): void {
+  try {
+    if (typeof localStorage === 'undefined' || typeof localStorage.setItem !== 'function') {
+      return
+    }
+    localStorage.setItem(THEME_KEY, theme)
+  } catch {
+    // Ignore storage failures in restricted environments.
+  }
+}
+
 export const useThemeStore = defineStore('theme', () => {
-  const theme = ref<Theme>((localStorage.getItem(THEME_KEY) as Theme) || 'system')
+  const theme = ref<Theme>(getStorageTheme())
   const systemPrefersDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
 
   // Listen for system theme changes
@@ -31,7 +53,7 @@ export const useThemeStore = defineStore('theme', () => {
 
   function setTheme(newTheme: Theme) {
     theme.value = newTheme
-    localStorage.setItem(THEME_KEY, newTheme)
+    setStorageTheme(newTheme)
     applyTheme()
   }
 

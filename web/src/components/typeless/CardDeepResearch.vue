@@ -13,6 +13,9 @@ const query = computed(() => props.card.query || '')
 const mode = computed(() => props.card.mode || 'standard')
 const answer = computed(() => props.card.answer || '')
 const evidenceCount = computed(() => props.card.evidence_count || 0)
+const supportCount = computed(() => props.card.support_count || 0)
+const conflictCount = computed(() => props.card.conflict_count || 0)
+const hasConflict = computed(() => !!props.card.has_conflict || conflictCount.value > 0)
 const citations = computed(() => (props.card.citations || []).filter(validCitation).slice(0, 8))
 const openQuestions = computed(() => props.card.open_questions || [])
 const confidenceText = computed(() => {
@@ -65,6 +68,16 @@ function domainOf(url: string): string {
 
       <div class="text-xs text-gray-500 dark:text-gray-400">
         {{ t('chat.deepResearchEvidence', 'Evidence') }}: {{ evidenceCount }}
+      </div>
+      <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <span>{{ t('chat.deepResearchSupport', 'Support') }}: {{ supportCount }}</span>
+        <span>{{ t('chat.deepResearchConflict', 'Conflict') }}: {{ conflictCount }}</span>
+        <span
+          v-if="hasConflict"
+          class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+        >
+          {{ t('chat.deepResearchHasConflict', 'Conflicting signals') }}
+        </span>
       </div>
 
       <div v-if="citations.length > 0" class="space-y-2">

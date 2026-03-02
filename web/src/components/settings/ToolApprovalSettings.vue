@@ -5,7 +5,7 @@ import { approvalApi } from '@/api/approval'
 import type { ApprovalConfig, Policy } from '@/api/approval'
 import { toolApi } from '@/api/chat'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const emit = defineEmits<{ 'status-change': [msg: string] }>()
 
 const config = ref<ApprovalConfig>({
@@ -22,6 +22,10 @@ const policyOptions: { value: Policy; labelKey: string }[] = [
   { value: 'ask', labelKey: 'approval.policyAsk' },
   { value: 'deny', labelKey: 'approval.policyDeny' },
 ]
+
+function tr(key: string, fallback = ''): string {
+  return te(key) ? t(key) : fallback
+}
 
 onMounted(async () => {
   try {
@@ -111,7 +115,7 @@ function getToolPolicy(toolName: string): Policy {
               : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
             @click="setDefaultPolicy(opt.value)"
           >
-            {{ t(opt.labelKey) }}
+            {{ tr(opt.labelKey, opt.value) }}
           </button>
         </div>
       </div>
@@ -151,7 +155,7 @@ function getToolPolicy(toolName: string): Policy {
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'"
                 @click="setToolPolicy(tool.name, opt.value)"
               >
-                {{ t(opt.labelKey) }}
+                {{ tr(opt.labelKey, opt.value) }}
               </button>
             </div>
           </div>

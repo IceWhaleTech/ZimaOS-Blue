@@ -46,3 +46,15 @@ func TestClassifyFeatureIntent_DefinitionQuestion(t *testing.T) {
 		t.Fatalf("expected definition question not to trigger feature intent")
 	}
 }
+
+func TestFeatureIntentDictionaryLoaded(t *testing.T) {
+	if len(featureIntentDict.DeepResearchExplicit) == 0 {
+		t.Fatalf("expected deep research terms to be loaded")
+	}
+	if len(featureIntentDict.AgentModeExplicit) == 0 {
+		t.Fatalf("expected agent mode terms to be loaded")
+	}
+	if len(featureIntentDict.DefinitionPrefixes) == 0 {
+		t.Fatalf("expected definition prefixes to be loaded")
+	}
+}

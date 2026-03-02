@@ -50,24 +50,29 @@ const emit = defineEmits<{
   updateField: [fieldIndex: number, value: string]
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const { openInBrowser } = useTauri()
 
 const openLink = (url: string) => {
   openInBrowser(url)
 }
 
+function tr(key: string | undefined, fallback = ''): string {
+  if (!key) return fallback
+  return te(key) ? t(key) : fallback
+}
+
 // Pre-computed translated values
 const translatedChannel = computed(() => ({
-  name: props.channel.nameKey ? t(props.channel.nameKey) : props.channel.name!,
-  description: t(props.channel.descriptionKey),
-  hint: props.channel.hintKey ? t(props.channel.hintKey) : undefined,
+  name: props.channel.nameKey ? tr(props.channel.nameKey, props.channel.name || '') : props.channel.name!,
+  description: tr(props.channel.descriptionKey, ''),
+  hint: props.channel.hintKey ? tr(props.channel.hintKey, '') : undefined,
   fields: props.channel.fields.map(f => ({
     ...f,
-    label: t(f.labelKey),
+    label: tr(f.labelKey, f.key),
     placeholder: f.key === 'encrypt_key' 
       ? t('channels.encryptKeyPlaceholder') 
-      : (f.placeholderKey ? t(f.placeholderKey) : f.placeholder || ''),
+      : (f.placeholderKey ? tr(f.placeholderKey, f.placeholder || '') : f.placeholder || ''),
   })),
 }))
 

@@ -1,7 +1,9 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -84,6 +86,7 @@ func (h *MemoryHandler) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/memory", h.Clear)
 	g.GET("/memory/stats", h.Stats)
 	g.GET("/memory/export", h.ExportMarkdown)
+	g.POST("/memory/import", h.ImportMarkdown)
 	// Param routes after specific routes
 	g.GET("/memory/:id", h.Get)
 	g.DELETE("/memory/:id", h.Delete)
@@ -175,6 +178,11 @@ func (h *MemoryHandler) Get(c echo.Context) error {
 	if id == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "id is required")
 	}
+	decodedID, err := url.PathUnescape(id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
+	}
+	id = decodedID
 	chunk, err := h.unifiedService.Get(c.Request().Context(), id)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
@@ -198,6 +206,11 @@ func (h *MemoryHandler) Delete(c echo.Context) error {
 	if id == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "id is required")
 	}
+	decodedID, err := url.PathUnescape(id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
+	}
+	id = decodedID
 	if err := h.unifiedService.Forget(c.Request().Context(), id); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -310,6 +323,101 @@ func (h *MemoryHandler) ExportMarkdown(c echo.Context) error {
 	c.Response().Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	c.Response().Header().Set("Content-Disposition", "attachment; filename=memory-export.md")
 	return c.String(http.StatusOK, md)
+}
+
+// ImportMarkdown imports memories from a Markdown payload.
+func (h *MemoryHandler) ImportMarkdown(c echo.Context) error {
+	h.ensureInit()
+	if h.unifiedService == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "memory service not configured")
+	}
+
+	var req struct {
+		Content string `json:"content"`
+		Mode    string `json:"mode,omitempty"` // append | replace
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "content is required")
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = "append"
+	}
+	if mode != "append" && mode != "replace" {
+		return echo.NewHTTPError(http.StatusBadRequest, "mode must be append or replace")
+	}
+
+	if mode == "replace" {
+		if err := h.unifiedService.ForgetAll(c.Request().Context()); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+	}
+
+	entries := parseMarkdownImportEntries(req.Content)
+	imported := 0
+	skipped := 0
+	errors := make([]string, 0)
+
+	for i, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			skipped++
+			continue
+		}
+		if _, err := h.unifiedService.Remember(c.Request().Context(), entry, nil); err != nil {
+			errors = append(errors, fmt.Sprintf("entry %d: %v", i+1, err))
+			continue
+		}
+		imported++
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"imported": imported,
+		"skipped":  skipped,
+		"errors":   errors,
+	})
+}
+
+func parseMarkdownImportEntries(content string) []string {
+	normalized := strings.ReplaceAll(content, "\r\n", "\n")
+	parts := strings.Split(normalized, "\n---")
+	entries := make([]string, 0, len(parts))
+
+	for _, raw := range parts {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+
+		lines := strings.Split(raw, "\n")
+		kept := make([]string, 0, len(lines))
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			switch {
+			case trimmed == "---":
+				continue
+			case strings.HasPrefix(trimmed, "# ZimaOS-Blue Memory Export"):
+				continue
+			case strings.HasPrefix(trimmed, "> Exported at:"):
+				continue
+			case strings.HasPrefix(trimmed, "> Backend:"):
+				continue
+			default:
+				kept = append(kept, line)
+			}
+		}
+
+		entry := strings.TrimSpace(strings.Join(kept, "\n"))
+		if entry != "" {
+			entries = append(entries, entry)
+		}
+	}
+
+	return entries
 }
 
 // === Layered Memory Handlers ===

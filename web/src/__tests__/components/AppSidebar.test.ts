@@ -1,64 +1,111 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { i18n } from '@/i18n'
+import { useAuthStore } from '@/stores/auth'
 
-const router = createRouter({
-  history: createWebHistory(),
-  routes: [
-    { path: '/', name: 'Home', component: { template: '<div>Home</div>' } },
-    { path: '/dashboard', name: 'Dashboard', component: { template: '<div>Dashboard</div>' } },
-  ],
-})
+const localStorageMock = (() => {
+  let store: Record<string, string> = {}
+  return {
+    getItem: (key: string) => (key in store ? store[key] : null),
+    setItem: (key: string, value: string) => {
+      store[key] = String(value)
+    },
+    removeItem: (key: string) => {
+      delete store[key]
+    },
+    clear: () => {
+      store = {}
+    },
+  }
+})()
+
+vi.stubGlobal('localStorage', localStorageMock)
+
+function createTestRouter() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/home', name: 'Home', component: { template: '<div>Home</div>' } },
+      { path: '/chat', name: 'Chat', component: { template: '<div>Chat</div>' } },
+      { path: '/settings', name: 'Settings', component: { template: '<div>Settings</div>' } },
+    ],
+  })
+}
 
 describe('AppSidebar', () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     setActivePinia(createPinia())
-    router.push('/')
-    await router.isReady()
+    localStorageMock.clear()
   })
 
-  it('should render navigation items', () => {
+  it('should render navigation items for admin user', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
+    const authStore = useAuthStore()
+    authStore.$patch({
+      token: 'test-token',
+      user: { username: 'admin', role: 'admin' } as never,
+    })
+    const router = createTestRouter()
+    router.push('/home')
+    await router.isReady()
     const wrapper = mount(AppSidebar, {
       global: {
         plugins: [pinia, router, i18n],
       },
     })
 
-    expect(wrapper.text()).toContain('Home')
     expect(wrapper.text()).toContain('Dashboard')
+    expect(wrapper.text()).toContain('Chat')
   })
 
   it('should highlight active route', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
+    const authStore = useAuthStore()
+    authStore.$patch({
+      token: 'test-token',
+      user: { username: 'admin', role: 'admin' } as never,
+    })
+    const router = createTestRouter()
+    router.push('/home')
+    await router.isReady()
     const wrapper = mount(AppSidebar, {
       global: {
         plugins: [pinia, router, i18n],
       },
     })
 
-    const homeLink = wrapper.find('a[href="/"]')
-    expect(homeLink.classes()).toContain('bg-accent/20')
+    const homeLink = wrapper.find('a[href="/home"]')
+    expect(homeLink.exists()).toBe(true)
+    expect(homeLink.classes()).toContain('bg-gray-100')
   })
 
-  it('should navigate to dashboard', async () => {
+  it('should highlight chat route after navigation', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
+    const authStore = useAuthStore()
+    authStore.$patch({
+      token: 'test-token',
+      user: { username: 'admin', role: 'admin' } as never,
+    })
+    const router = createTestRouter()
+    router.push('/home')
+    await router.isReady()
     const wrapper = mount(AppSidebar, {
       global: {
         plugins: [pinia, router, i18n],
       },
     })
 
-    await router.push('/dashboard')
+    await router.push('/chat')
     await wrapper.vm.$nextTick()
 
-    const dashboardLink = wrapper.find('a[href="/dashboard"]')
-    expect(dashboardLink.classes()).toContain('bg-accent/20')
+    const chatLink = wrapper.find('a[href="/chat"]')
+    expect(chatLink.exists()).toBe(true)
+    expect(chatLink.classes()).toContain('bg-gray-100')
   })
 })

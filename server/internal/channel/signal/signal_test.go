@@ -121,7 +121,7 @@ func TestChannel_isSenderAllowed(t *testing.T) {
 		{
 			name:           "allowed number with different format",
 			allowedNumbers: []string{"+1 234 567 890"},
-			sender:         "+1807890",
+			sender:         "+1234567890",
 			want:           true,
 		},
 		{
@@ -151,9 +151,9 @@ func TestNormalizePhoneNumber(t *testing.T) {
 		phone string
 		want  string
 	}{
-		{"+1 234 567 890", "+1807890"},
-		{"(123) 456-7890", "1807890"}, // Removes spaces, dashes, and parentheses
-		{"+1-234-567-890", "+1807890"},
+		{"+1 234 567 890", "+1234567890"},
+		{"(123) 456-7890", "1234567890"}, // Removes spaces, dashes, and parentheses
+		{"+1-234-567-890", "+1234567890"},
 		{"+1807890", "+1807890"},
 	}
 

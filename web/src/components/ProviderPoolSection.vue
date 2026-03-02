@@ -10,7 +10,7 @@ import type { Provider, Model, ProviderVerificationResult } from '@/api/provider
 import { providerPoolApi } from '@/api/providerPool'
 import { formatTokens } from '@/utils/format'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const route = useRoute()
 const store = useProviderPoolStore()
 const notification = useNotificationStore()
@@ -67,6 +67,10 @@ const newProvider = ref({
 const showNewProviderApiKey = ref(false)
 const addingProvider = ref(false)
 const addingStep = ref('')  // '', 'adding', 'probing', 'done'
+
+function tr(key: string, fallback = ''): string {
+  return te(key) ? t(key) : fallback
+}
 
 // New API key form
 const newKey = ref({
@@ -311,11 +315,7 @@ function formatKeyLabel(label: string): string {
 function getProviderDescription(provider: Provider): string {
   // Try to get i18n description first
   const i18nKey = `providerPool.providers.${provider.id}`
-  const translated = t(i18nKey)
-  // If translation exists and is different from the key, use it
-  if (translated && translated !== i18nKey) {
-    return translated
-  }
+  if (te(i18nKey)) return t(i18nKey)
   // Fall back to provider's description or base_url
   return provider.description || provider.base_url || ''
 }
@@ -1011,7 +1011,11 @@ const capabilityI18nKey: Record<string, string> = {
 }
 
 function capabilityTip(caps: string[]): string {
-  return caps.map(c => (capabilityEmoji[c] || '•') + ' ' + t(capabilityI18nKey[c] || c)).join('\n')
+  return caps.map(c => {
+    const key = capabilityI18nKey[c]
+    const fallback = c
+    return `${capabilityEmoji[c] || '•'} ${key ? tr(key, fallback) : fallback}`
+  }).join('\n')
 }
 
 // Tooltip state for capability hover

@@ -14,6 +14,7 @@ const (
 	deviceKey     toolContextKey = "tool_device"
 	cardEmitKey   toolContextKey = "tool_card_emit"
 	sessionIDKey  toolContextKey = "tool_session_id"
+	checkpointKey toolContextKey = "tool_browser_checkpoint"
 )
 
 // CardEmitFunc is a callback that tools can use to emit streaming typeless
@@ -21,9 +22,25 @@ const (
 // client's SSE stream immediately.
 type CardEmitFunc func(card map[string]interface{})
 
+// BrowserCheckpointFunc asks host application to resolve a browser checkpoint.
+type BrowserCheckpointFunc func(ctx context.Context, req BrowserCheckpointRequest) (BrowserCheckpointResult, error)
+
+// BrowserCheckpointResult is the host resolution for a checkpoint request.
+type BrowserCheckpointResult struct {
+	Decision     BrowserCheckpointDecision
+	CheckpointID string
+	Pending      bool
+	Message      string
+}
+
 // WithCardEmitter returns a context carrying a card emitter callback.
 func WithCardEmitter(ctx context.Context, fn CardEmitFunc) context.Context {
 	return context.WithValue(ctx, cardEmitKey, fn)
+}
+
+// WithBrowserCheckpointRequester returns a context carrying checkpoint callback.
+func WithBrowserCheckpointRequester(ctx context.Context, fn BrowserCheckpointFunc) context.Context {
+	return context.WithValue(ctx, checkpointKey, fn)
 }
 
 // EmitCard sends a typeless card to the client if an emitter is set.
@@ -35,6 +52,17 @@ func EmitCard(ctx context.Context, card map[string]interface{}) {
 	if fn, ok := ctx.Value(cardEmitKey).(CardEmitFunc); ok && fn != nil {
 		fn(card)
 	}
+}
+
+// RequestBrowserCheckpoint asks the host to resolve a browser checkpoint.
+// Returns ok=false when no requester exists in context.
+func RequestBrowserCheckpoint(ctx context.Context, req BrowserCheckpointRequest) (BrowserCheckpointResult, bool, error) {
+	fn, ok := ctx.Value(checkpointKey).(BrowserCheckpointFunc)
+	if !ok || fn == nil {
+		return BrowserCheckpointResult{}, false, nil
+	}
+	result, err := fn(ctx, req)
+	return result, true, err
 }
 
 // WithUserID returns a context carrying the user ID for tool/skill execution.

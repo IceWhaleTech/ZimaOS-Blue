@@ -159,6 +159,15 @@ export default {
       modelConnecting: 'A preparar ligação de download...',
       downloadFailed: 'Falha ao transferir o modelo ONNX',
     },
+    smallModel: {
+      ...ptBR.settings.smallModel,
+      shadowGateMinSamples: 'Amostras mínimas do Shadow Gate',
+      shadowGateThreshold: 'Limiar do Shadow Gate',
+      shadowGateScene: 'Cena do Shadow Gate',
+      shadowGateSceneAll: 'Todas',
+      shadowGateSceneQA: 'Perguntas e respostas',
+      shadowGateSceneTool: 'Ferramenta',
+    },
     title: 'Definições',
     languageSaved: 'Idioma guardado',
     timezoneSaved: 'Fuso horário guardado',
@@ -357,7 +366,8 @@ export default {
   },
   claudecode: {
     ...ptBR.claudecode,
-    disabledWarningDesc: 'O modo padrão está ativo (o agendador interno está na versão Beta), o modo melhorado oferece uma experiência melhor.',
+    disabledWarningDesc: 'O modo padrão está ativo, o modo melhorado oferece uma experiência melhor.',
+    missingToolCalling: 'Capacidades avançadas de Tool Calling',
   },
   providerPool: {
     ...ptBR.providerPool,

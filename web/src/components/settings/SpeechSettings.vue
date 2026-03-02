@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { speechApi, type SpeechStatus, type ASRModel } from '@/api/speech'
 import { useTauri } from '@/composables/useTauri'
 
-const { t, locale } = useI18n()
+const { t, te, locale } = useI18n()
 const { openInBrowser } = useTauri()
 
 // Tab state
@@ -53,9 +53,12 @@ const currentLangOfflineInstalled = computed(() => {
 const langDisplayNames = new Intl.DisplayNames([locale.value], { type: 'language' })
 function langName(code: string): string {
   const i18nKey = `speech.langName.${code}`
-  const translated = t(i18nKey)
-  if (translated !== i18nKey) return translated
+  if (te(i18nKey)) return t(i18nKey)
   try { return langDisplayNames.of(code) ?? code } catch { return code }
+}
+
+function trModelText(value: string): string {
+  return te(value) ? t(value) : value
 }
 
 // eSpeak-NG state (derived from unified status response)
@@ -516,13 +519,13 @@ onMounted(async () => {
                   <svg v-else-if="model.id === 'windows-native'" class="w-4 h-4 text-[#0078D4] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.5)]" viewBox="0 0 24 24" fill="currentColor"><path d="M0,0 L10.5,0 L10.5,10.5 L0,10.5 Z M12,0 L24,0 L24,10.5 L12,10.5 Z M0,12 L10.5,12 L10.5,24 L0,24 Z M12,12 L24,12 L24,24 L12,24 Z"/></svg>
                   <!-- Whisper / AI icon -->
                   <svg v-else class="w-4 h-4 text-gray-600 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                  <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t(model.name) }}</span>
+                  <span class="text-sm font-medium text-gray-900 dark:text-white">{{ trModelText(model.name) }}</span>
                   <span v-if="model.size" class="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-600/50 text-gray-600 dark:text-gray-300">{{ model.size }}</span>
                   <span v-if="model.recommended" class="text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">{{ t('remoteAccess.recommended') }}</span>
                   <span v-if="model.streaming" class="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">Streaming</span>
                 </div>
                 <p v-if="model.permission_denied" class="text-xs text-amber-500 dark:text-amber-400 mt-0.5">{{ t('speech.macosNativePermissionDenied') }}</p>
-                <p v-else class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t(model.description) }}</p>
+                <p v-else class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ trModelText(model.description) }}</p>
               </div>
               <!-- Checkmark for active model -->
               <span v-if="currentASRModel === model.id" class="text-gray-900 dark:text-white flex-shrink-0 ml-2">

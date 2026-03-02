@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"sync"
 	"time"
-
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // ExecAuditEntry is a single audit record for an exec invocation.
@@ -124,16 +122,16 @@ func scanAuditRows(rows *sql.Rows) ([]ExecAuditEntry, error) {
 
 // retryRecord tracks recent invocations of the same normalized command.
 type retryRecord struct {
-	count    int
-	firstAt  time.Time
-	lastErr  string
+	count   int
+	firstAt time.Time
+	lastErr string
 }
 
 // RetryTracker prevents the LLM from retrying the same failing command
 // in a tight loop. It tracks normalized command strings within a time window.
 type RetryTracker struct {
-	mu      sync.Mutex
-	records map[string]*retryRecord // key = normalized command
+	mu         sync.Mutex
+	records    map[string]*retryRecord // key = normalized command
 	maxRetries int
 	window     time.Duration
 }
@@ -167,10 +165,10 @@ func (rt *RetryTracker) Check(normalizedCmd string) error {
 	}
 	if rec.count >= rt.maxRetries {
 		return &RetryLimitError{
-			Command:  normalizedCmd,
-			Count:    rec.count,
-			Max:      rt.maxRetries,
-			LastErr:  rec.lastErr,
+			Command: normalizedCmd,
+			Count:   rec.count,
+			Max:     rt.maxRetries,
+			LastErr: rec.lastErr,
 		}
 	}
 	return nil
@@ -190,7 +188,7 @@ func (rt *RetryTracker) Record(normalizedCmd string, failed bool, errMsg string)
 
 	rec, ok := rt.records[normalizedCmd]
 	if !ok {
-		rec = &retryRecord{firstAt: timeutil.NowTime()}
+		rec = &retryRecord{firstAt: time.Now()}
 		rt.records[normalizedCmd] = rec
 	}
 	rec.count++
@@ -199,9 +197,9 @@ func (rt *RetryTracker) Record(normalizedCmd string, failed bool, errMsg string)
 
 // pruneExpired removes records outside the window. Must be called with lock held.
 func (rt *RetryTracker) pruneExpired() {
-	cutoff := timeutil.NowTime().Add(-rt.window)
+	cutoff := time.Now().Add(-rt.window)
 	for cmd, rec := range rt.records {
-		if rec.firstAt.Before(cutoff) {
+		if !rec.firstAt.After(cutoff) {
 			delete(rt.records, cmd)
 		}
 	}

@@ -22,18 +22,18 @@ func TestMaskAPIKey(t *testing.T) {
 		},
 		{
 			name:     "8 char key",
-			input:    "18078",
+			input:    "12345678",
 			expected: "********",
 		},
 		{
 			name:     "normal key",
 			input:    "sk-ant-api03-1807890abcdef",
-			expected: "sk-a*********************cdef",
+			expected: "sk-a******************cdef",
 		},
 		{
 			name:     "long key",
 			input:    "sk-ant-api03-1807890abcdefghijklmnopqrstuvwxyz",
-			expected: "sk-a*****************************************wxyz",
+			expected: "sk-a**************************************wxyz",
 		},
 	}
 

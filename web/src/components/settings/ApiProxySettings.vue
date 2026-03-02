@@ -13,7 +13,7 @@ import { proxyApi, type MaskingStats, type FailoverConfig } from '@/api/proxy'
 import { settingsApi, type ToolSelectorStats } from '@/api/settings'
 
 const emit = defineEmits<{ 'status-change': [msg: string] }>()
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const loading = ref(true)
 const prunerConfig = ref<PrunerConfig | null>(null)
@@ -53,6 +53,23 @@ const scenarioMeta: Record<string, { labelKey: string; descKey: string; traffic:
   'small-body-economy': { labelKey: 'apiProxy.ruleSmallBody', descKey: 'apiProxy.ruleSmallBodyDesc', traffic: '40%', savings: '97.3%' },
   'simple-tools-economy': { labelKey: 'apiProxy.ruleSimpleTools', descKey: 'apiProxy.ruleSimpleToolsDesc', traffic: '20%', savings: '98.1%' },
   'orchestrator-standard': { labelKey: 'apiProxy.ruleOrchestrator', descKey: 'apiProxy.ruleOrchestratorDesc', traffic: '10%', savings: '97.1%' },
+}
+
+function tr(key: string, fallback = ''): string {
+  return te(key) ? t(key) : fallback
+}
+
+function scenarioLabel(rule: RoutingRule): string {
+  const meta = scenarioMeta[rule.name]
+  if (!meta) return rule.name
+  return tr(meta.labelKey, rule.name)
+}
+
+function scenarioDescription(rule: RoutingRule): string {
+  const fallback = `→ ${rule.target_model}`
+  const meta = scenarioMeta[rule.name]
+  if (!meta) return fallback
+  return tr(meta.descKey, fallback)
 }
 let modelPollInterval: ReturnType<typeof setInterval> | null = null
 
@@ -369,7 +386,7 @@ onUnmounted(stopModelPoll)
           </div>
 
           <!-- Engine toggle rows -->
-          <div class="mt-3 space-y-2">
+          <div v-if="false" class="mt-3 space-y-2">
             <!-- Local IR row -->
             <div class="flex items-center justify-between py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
               <div class="flex-1 min-w-0">
@@ -505,7 +522,7 @@ onUnmounted(stopModelPoll)
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
                   <span class="text-sm font-medium text-gray-900 dark:text-white">
-                    {{ scenarioMeta[rule.name] ? t(scenarioMeta[rule.name].labelKey) : rule.name }}
+                    {{ scenarioLabel(rule) }}
                   </span>
                   <span v-if="scenarioMeta[rule.name]" class="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
                     {{ scenarioMeta[rule.name].traffic }}
@@ -515,7 +532,7 @@ onUnmounted(stopModelPoll)
                   </span>
                 </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
-                  {{ scenarioMeta[rule.name] ? t(scenarioMeta[rule.name].descKey) : `→ ${rule.target_model}` }}
+                  {{ scenarioDescription(rule) }}
                 </p>
               </div>
               <button
@@ -552,10 +569,10 @@ onUnmounted(stopModelPoll)
             ] as const)"
             :key="sub.key"
             class="group relative flex flex-col items-center gap-1.5 py-2.5 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg"
-            :title="t(sub.desc)"
+            :title="tr(sub.desc, sub.key)"
           >
             <span class="inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
-            <span class="text-xs text-gray-600 dark:text-gray-400 text-center leading-tight">{{ t(sub.label) }}</span>
+            <span class="text-xs text-gray-600 dark:text-gray-400 text-center leading-tight">{{ tr(sub.label, sub.key) }}</span>
           </div>
         </div>
 

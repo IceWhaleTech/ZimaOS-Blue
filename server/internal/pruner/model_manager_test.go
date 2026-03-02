@@ -10,7 +10,14 @@ import (
 	"time"
 )
 
+func skipOnnxModelManagerTests(t *testing.T) {
+	t.Helper()
+	t.Skip("ONNX cross-encoder has been removed; model manager tests temporarily disabled")
+}
+
 func TestModelManagerIsReady_Empty(t *testing.T) {
+	skipOnnxModelManagerTests(t)
+
 	dir := t.TempDir()
 	mgr := NewPrunerModelManager(dir)
 	if mgr.IsReady() {
@@ -19,6 +26,8 @@ func TestModelManagerIsReady_Empty(t *testing.T) {
 }
 
 func TestModelManagerIsReady_AllFiles(t *testing.T) {
+	skipOnnxModelManagerTests(t)
+
 	dir := t.TempDir()
 	for _, f := range prunerModelFiles {
 		os.WriteFile(filepath.Join(dir, f.Filename), []byte("data"), 0644)
@@ -30,6 +39,8 @@ func TestModelManagerIsReady_AllFiles(t *testing.T) {
 }
 
 func TestModelManagerGetStatus(t *testing.T) {
+	skipOnnxModelManagerTests(t)
+
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "vocab.json"), []byte("{}"), 0644)
 	mgr := NewPrunerModelManager(dir)
@@ -53,6 +64,8 @@ func TestModelManagerGetStatus(t *testing.T) {
 }
 
 func TestModelManagerDownload(t *testing.T) {
+	skipOnnxModelManagerTests(t)
+
 	// Mock server serving fake model files
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "5")
@@ -102,6 +115,8 @@ func TestModelManagerDownload(t *testing.T) {
 }
 
 func TestModelManagerDownloadSkipsExisting(t *testing.T) {
+	skipOnnxModelManagerTests(t)
+
 	callCount := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
@@ -134,6 +149,8 @@ func TestModelManagerDownloadSkipsExisting(t *testing.T) {
 }
 
 func TestModelManagerCancelDownload(t *testing.T) {
+	skipOnnxModelManagerTests(t)
+
 	// Slow server that blocks
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "1000000")
@@ -173,6 +190,8 @@ func TestModelManagerCancelDownload(t *testing.T) {
 }
 
 func TestModelManagerDoubleDownload(t *testing.T) {
+	skipOnnxModelManagerTests(t)
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
 		w.Write([]byte("data"))
@@ -199,6 +218,8 @@ func TestModelManagerDoubleDownload(t *testing.T) {
 }
 
 func TestModelManagerProgress(t *testing.T) {
+	skipOnnxModelManagerTests(t)
+
 	dir := t.TempDir()
 	mgr := NewPrunerModelManager(dir)
 

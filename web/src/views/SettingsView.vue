@@ -24,7 +24,7 @@ import { useTauri } from '@/composables/useTauri'
 import { serviceApi } from '@/api/service'
 import type { ServiceInfo } from '@/api/service'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const settingsStore = useSettingsStore()
@@ -33,6 +33,10 @@ const themeStore = useThemeStore()
 const { isTauri, setCloseBehavior } = useTauri()
 
 const saveStatus = ref<string | null>(null)
+
+function themeStyleLabel(style: { id: string; labelKey: string }): string {
+  return te(style.labelKey) ? t(style.labelKey) : style.id
+}
 
 // Auto-start state
 const serviceInfo = ref<ServiceInfo | null>(null)
@@ -380,6 +384,32 @@ async function handleSmallModelShadowRatioChange(ratio: number) {
   await withSmallModelSave(() => settingsStore.setSmallModelShadowRatio(ratio))
 }
 
+async function handleSmallModelShadowGateMinSamplesChange(samples: number) {
+  await withSmallModelSave(() => settingsStore.setSmallModelShadowGateMinSamples(samples))
+}
+
+async function handleSmallModelShadowGateThresholdDeltaChange(delta: number) {
+  await withSmallModelSave(() => settingsStore.setSmallModelShadowGateThresholdDelta(delta))
+}
+
+async function handleSmallModelShadowGateSceneChange(scene: string) {
+  await withSmallModelSave(() => settingsStore.setSmallModelShadowGateScene(scene))
+}
+
+function formatShadowGateSceneLabel(scene?: string): string {
+  switch (scene) {
+    case 'short_qa_shadow':
+      return t('settings.smallModel.shadowGateSceneQA', 'QA')
+    case 'tool_dispatch_shadow':
+      return t('settings.smallModel.shadowGateSceneTool', 'Tool')
+    case '':
+    case undefined:
+      return t('settings.smallModel.shadowGateSceneAll', 'All')
+    default:
+      return scene
+  }
+}
+
 function formatFallbackReason(reason: string): string {
   return reason.split('_').join(' ')
 }
@@ -662,7 +692,7 @@ onUnmounted(() => {
             @click="handleThemeStyleChange(style.id)"
           >
             <span class="theme-style-btn-preview flex-shrink-0" :class="`theme-style-btn-${style.id}`" />
-            <span class="font-medium">{{ t(style.labelKey) }}</span>
+            <span class="font-medium">{{ themeStyleLabel(style) }}</span>
           </button>
         </div>
       </div>
@@ -906,6 +936,70 @@ onUnmounted(() => {
               @click="handleSmallModelShadowRatioChange(ratio)"
             >
               {{ Math.round(ratio * 100) }}%
+            </button>
+          </div>
+        </div>
+
+        <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg space-y-3">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shadowGateMinSamples', 'Shadow Gate Min Samples') }}</span>
+            <span class="font-mono text-gray-800 dark:text-gray-100">{{ settingsStore.smallModelShadowGateMinSamples }}</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="samples in [20, 40, 80, 120] as const"
+              :key="samples"
+              :data-testid="`small-model-shadow-gate-min-samples-${samples}`"
+              class="px-2.5 py-1.5 rounded-md text-xs border transition-colors"
+              :class="settingsStore.smallModelShadowGateMinSamples === samples
+                ? 'bg-gray-800 text-white border-gray-800 dark:bg-gray-200 dark:text-gray-900 dark:border-gray-200'
+                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'"
+              :disabled="smallModelSaving"
+              @click="handleSmallModelShadowGateMinSamplesChange(samples)"
+            >
+              {{ samples }}
+            </button>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shadowGateThreshold', 'Shadow Gate Threshold') }}</span>
+            <span class="font-mono text-gray-800 dark:text-gray-100">{{ (settingsStore.smallModelShadowGateThresholdDelta * 100).toFixed(0) }}%</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="delta in [0.2, 0.35, 0.5] as const"
+              :key="delta"
+              :data-testid="`small-model-shadow-gate-threshold-${Math.round(delta * 100)}`"
+              class="px-2.5 py-1.5 rounded-md text-xs border transition-colors"
+              :class="Math.abs(settingsStore.smallModelShadowGateThresholdDelta - delta) < 0.001
+                ? 'bg-gray-800 text-white border-gray-800 dark:bg-gray-200 dark:text-gray-900 dark:border-gray-200'
+                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'"
+              :disabled="smallModelSaving"
+              @click="handleSmallModelShadowGateThresholdDeltaChange(delta)"
+            >
+              {{ Math.round(delta * 100) }}%
+            </button>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('settings.smallModel.shadowGateScene', 'Shadow Gate Scene') }}</span>
+            <span class="font-mono text-gray-800 dark:text-gray-100">{{ formatShadowGateSceneLabel(settingsStore.smallModelShadowGateScene) }}</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="scene in [
+                { value: '', label: t('settings.smallModel.shadowGateSceneAll', 'All') },
+                { value: 'short_qa_shadow', label: t('settings.smallModel.shadowGateSceneQA', 'QA') },
+                { value: 'tool_dispatch_shadow', label: t('settings.smallModel.shadowGateSceneTool', 'Tool') },
+              ]"
+              :key="scene.label"
+              :data-testid="`small-model-shadow-gate-scene-${scene.value || 'all'}`"
+              class="px-2.5 py-1.5 rounded-md text-xs border transition-colors"
+              :class="settingsStore.smallModelShadowGateScene === scene.value
+                ? 'bg-gray-800 text-white border-gray-800 dark:bg-gray-200 dark:text-gray-900 dark:border-gray-200'
+                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'"
+              :disabled="smallModelSaving"
+              @click="handleSmallModelShadowGateSceneChange(scene.value)"
+            >
+              {{ scene.label }}
             </button>
           </div>
         </div>

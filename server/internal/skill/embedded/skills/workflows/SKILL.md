@@ -15,24 +15,24 @@ No external dependencies required. Uses built-in workflow engine.
 
 | User Intent | Action |
 |-------------|--------|
-| Create new automation workflow | `workflows.create` |
-| Inspect existing workflow definitions | `workflows.list` / `workflows.get` |
-| Execute workflow now | `workflows.execute` |
-| Pause/resume workflow | `workflows.disable` / `workflows.enable` |
-| Remove obsolete workflow | `workflows.delete` |
+| Create new automation workflow | `blue workflows.create` |
+| Inspect existing workflow definitions | `blue workflows.list` / `blue workflows.get` |
+| Execute workflow now | `blue workflows.execute` |
+| Pause/resume workflow | `blue workflows.disable` / `blue workflows.enable` |
+| Remove obsolete workflow | `blue workflows.delete` |
 
 ---
 
 ## Command Usage
 
 ```bash
-workflows.create name="Daily Digest" description="Summarize important updates every morning"
-workflows.list
-workflows.get id=wf_abc123
-workflows.execute id=wf_abc123
-workflows.disable id=wf_abc123
-workflows.enable id=wf_abc123
-workflows.delete id=wf_abc123
+blue workflows.create name="Daily Digest" description="Summarize important updates every morning"
+blue workflows.list
+blue workflows.get id=wf_abc123
+blue workflows.execute id=wf_abc123
+blue workflows.disable id=wf_abc123
+blue workflows.enable id=wf_abc123
+blue workflows.delete id=wf_abc123
 ```
 
 ---
@@ -42,7 +42,7 @@ workflows.delete id=wf_abc123
 | Error | Resolution |
 |-------|------------|
 | Missing required `name` or `id` | Provide required fields per action |
-| Unknown workflow ID | Use `workflows.list` to find valid IDs |
+| Unknown workflow ID | Use `blue workflows.list` to find valid IDs |
 | Execution failed | Inspect workflow definition and retry |
 
 ---

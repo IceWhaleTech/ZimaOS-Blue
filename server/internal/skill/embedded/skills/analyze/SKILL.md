@@ -15,8 +15,8 @@ No external dependencies required. Uses built-in data collection + analysis + re
 
 | User Intent | Action |
 |-------------|--------|
-| Full deep-dive report on a topic | `analyze topic=...` with `urls` and/or `search_queries` |
-| Analyze only provided text | `analyze topic=... text=...` |
+| Full deep-dive report on a topic | `blue analyze topic=...` with `urls` and/or `search_queries` |
+| Analyze only provided text | `blue analyze topic=... text=...` |
 | Need quick link discovery only | Use `web_search` instead of `analyze` |
 
 ---
@@ -24,11 +24,11 @@ No external dependencies required. Uses built-in data collection + analysis + re
 ## Command Usage
 
 ```bash
-analyze topic="Product feedback analysis" urls='["https://example.com/reviews"]' search_queries='["product reviews 2026"]' --json
+blue analyze topic="Product feedback analysis" urls='["https://example.com/reviews"]' search_queries='["product reviews 2026"]' --json
 ```
 
 ```bash
-analyze topic="Survey insights" text="..." lang=en-US --json
+blue analyze topic="Survey insights" text="..." lang=en-US --json
 ```
 
 Parameters:

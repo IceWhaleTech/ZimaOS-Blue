@@ -60,7 +60,7 @@ func (zs *ZormStore) UpdateReadmeBatchZorm(ctx context.Context, updates []readme
 func (zs *ZormStore) UpdateReadmeZorm(ctx context.Context, id, readme, hash string) (int64, error) {
 	t := z.TableContext(ctx, zs.db, "skills")
 	n, err := t.Update(
-		map[string]interface{}{
+		z.V{
 			"readme":      readme,
 			"readme_hash": hash,
 			"updated_at":  timeutil.NowTime(),

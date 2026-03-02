@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -16,16 +17,18 @@ import (
 
 // Handler handles update API endpoints
 type Handler struct {
-	mu             sync.RWMutex
-	currentVersion string
-	config         *Config
-	github         *GitHubClient
-	downloader     *Downloader
-	applier        *Applier
-	status         *UpdateStatus
-	latestInfo     *UpdateInfo
-	history        []UpdateHistory
-	otaChecker     *OTAChecker
+	mu              sync.RWMutex
+	currentVersion  string
+	config          *Config
+	github          *GitHubClient
+	downloader      *Downloader
+	applier         *Applier
+	status          *UpdateStatus
+	latestInfo      *UpdateInfo
+	history         []UpdateHistory
+	otaChecker      *OTAChecker
+	lastResume      *ResumeRecovery
+	resumeRecoverer ResumeRecoverer
 }
 
 // Config holds update configuration
@@ -39,10 +42,25 @@ type Config struct {
 	StoragePath    string        `yaml:"storage_path"`
 }
 
+const (
+	resumeTaskFile       = "update_resume_task.json"
+	defaultResumeDelay   = 2 * time.Second
+	minResumeDelayOnBoot = 500 * time.Millisecond
+)
+
+type pendingResumeTask struct {
+	ID            string                 `json:"id"`
+	CreatedAt     time.Time              `json:"created_at"`
+	RunAt         time.Time              `json:"run_at"`
+	FromVersion   string                 `json:"from_version"`
+	TargetVersion string                 `json:"target_version,omitempty"`
+	Context       map[string]interface{} `json:"context,omitempty"`
+}
+
 // NewHandler creates a new update handler
 func NewHandler(version string, cfg *Config) *Handler {
 	binaryPath, _ := os.Executable()
-	return &Handler{
+	h := &Handler{
 		currentVersion: version,
 		config:         cfg,
 		github:         NewGitHubClient(),
@@ -50,6 +68,8 @@ func NewHandler(version string, cfg *Config) *Handler {
 		applier:        NewApplier(binaryPath, cfg.StoragePath, cfg.BackupCount),
 		status:         &UpdateStatus{State: StateIdle},
 	}
+	h.schedulePendingResumeTask()
+	return h
 }
 
 // RegisterRoutes registers update routes
@@ -68,6 +88,13 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 // SetOTAChecker attaches the background OTA checker to the handler.
 func (h *Handler) SetOTAChecker(ota *OTAChecker) {
 	h.otaChecker = ota
+}
+
+// SetResumeRecoverer sets the callback used to restore workloads after OTA restart.
+func (h *Handler) SetResumeRecoverer(recoverer ResumeRecoverer) {
+	h.mu.Lock()
+	h.resumeRecoverer = recoverer
+	h.mu.Unlock()
 }
 
 // Check checks for available updates
@@ -120,6 +147,7 @@ func (h *Handler) Info(c echo.Context) error {
 		"status":          h.status,
 		"latest":          h.latestInfo,
 		"uptime":          GetUptime().String(),
+		"resume_recovery": h.lastResume,
 	})
 }
 
@@ -212,9 +240,17 @@ func (h *Handler) downloadOTAAsync() {
 
 	h.setError(fmt.Sprintf("all download mirrors failed: %v", lastErr))
 }
+
 // The response is sent BEFORE the process is replaced, so the client
 // should start polling /api/v1/health to detect when the new version is up.
 func (h *Handler) Apply(c echo.Context) error {
+	var req ApplyRequest
+	if c.Request().ContentLength > 0 {
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		}
+	}
+
 	h.mu.Lock()
 	if h.status.DownloadedPath == "" {
 		h.mu.Unlock()
@@ -228,8 +264,20 @@ func (h *Handler) Apply(c echo.Context) error {
 	path := h.status.DownloadedPath
 	h.mu.Unlock()
 
+	// Persist resume context before replacing process image.
+	targetVersion := ""
+	if h.latestInfo != nil {
+		targetVersion = h.latestInfo.LatestVersion
+	}
+	resumeTask, err := h.persistPendingResumeTask(path, targetVersion, req.ResumeContext, req.ResumeDelaySeconds)
+	if err != nil {
+		h.setError(err.Error())
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
 	// Phase 1: backup + replace binary (synchronous — can still return error)
 	if err := h.applier.PrepareAndReplace(path); err != nil {
+		_ = h.clearPendingResumeTask()
 		h.setError(err.Error())
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -240,15 +288,11 @@ func (h *Handler) Apply(c echo.Context) error {
 	h.mu.Unlock()
 
 	// Phase 2: send response, then restart in background
-	targetVersion := ""
-	if h.latestInfo != nil {
-		targetVersion = h.latestInfo.LatestVersion
-	}
-
 	c.Response().Header().Set("Connection", "close")
 	if err := c.JSON(http.StatusOK, map[string]string{
-		"status":  "restarting",
-		"version": targetVersion,
+		"status":         "restarting",
+		"version":        targetVersion,
+		"resume_task_id": resumeTask.ID,
 	}); err != nil {
 		return err
 	}
@@ -286,6 +330,184 @@ func (h *Handler) setError(msg string) {
 	h.status.State = StateFailed
 	h.status.Error = msg
 	h.mu.Unlock()
+}
+
+func (h *Handler) schedulePendingResumeTask() {
+	task, err := h.loadPendingResumeTask()
+	if err != nil {
+		log.Printf("[update] load pending resume task failed: %v", err)
+		return
+	}
+	if task == nil {
+		return
+	}
+
+	delay := time.Until(task.RunAt)
+	if delay < 0 {
+		delay = 0
+	}
+	// Give bootstrap a short window to inject runtime recoverers after handler construction.
+	if delay < minResumeDelayOnBoot {
+		delay = minResumeDelayOnBoot
+	}
+
+	go func(t *pendingResumeTask, d time.Duration) {
+		time.Sleep(d)
+		h.executePendingResumeTask(t)
+	}(task, delay)
+}
+
+func (h *Handler) executePendingResumeTask(task *pendingResumeTask) {
+	if task == nil {
+		return
+	}
+
+	status := StatusSuccess
+	errMsg := ""
+	if task.TargetVersion != "" && task.TargetVersion != h.currentVersion {
+		status = StatusFailed
+		errMsg = fmt.Sprintf("resume task target version %s does not match current version %s", task.TargetVersion, h.currentVersion)
+	}
+
+	if status == StatusSuccess {
+		h.mu.RLock()
+		recoverer := h.resumeRecoverer
+		h.mu.RUnlock()
+		if recoverer != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			err := recoverer(ctx, ResumeRecoverInput{
+				TaskID:         task.ID,
+				FromVersion:    task.FromVersion,
+				TargetVersion:  task.TargetVersion,
+				CurrentVersion: h.currentVersion,
+				Context:        cloneResumeContext(task.Context),
+			})
+			cancel()
+			if err != nil {
+				status = StatusFailed
+				errMsg = err.Error()
+			}
+		}
+	}
+
+	now := time.Now().UTC()
+	h.mu.Lock()
+	h.lastResume = &ResumeRecovery{
+		TaskID:         task.ID,
+		Status:         status,
+		FromVersion:    task.FromVersion,
+		TargetVersion:  task.TargetVersion,
+		CurrentVersion: h.currentVersion,
+		RecoveredAt:    now,
+		Context:        task.Context,
+		Error:          errMsg,
+	}
+	h.history = append(h.history, UpdateHistory{
+		ID:          task.ID,
+		FromVersion: task.FromVersion,
+		ToVersion:   h.currentVersion,
+		Status:      status,
+		AppliedAt:   now,
+	})
+	if status == StatusSuccess {
+		h.status.State = StateIdle
+		h.status.Error = ""
+	} else {
+		h.status.State = StateFailed
+		h.status.Error = errMsg
+	}
+	h.mu.Unlock()
+
+	if err := h.clearPendingResumeTask(); err != nil {
+		log.Printf("[update] clear pending resume task failed: %v", err)
+	}
+}
+
+func cloneResumeContext(src map[string]interface{}) map[string]interface{} {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]interface{}, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func (h *Handler) pendingResumeTaskPath() string {
+	base := "."
+	if h.config != nil && h.config.StoragePath != "" {
+		base = h.config.StoragePath
+	}
+	return filepath.Join(base, resumeTaskFile)
+}
+
+func (h *Handler) persistPendingResumeTask(downloadedPath, targetVersion string, extra map[string]interface{}, delaySeconds int) (*pendingResumeTask, error) {
+	delay := defaultResumeDelay
+	if delaySeconds > 0 {
+		delay = time.Duration(delaySeconds) * time.Second
+	}
+
+	now := time.Now().UTC()
+	ctx := map[string]interface{}{
+		"downloaded_path": downloadedPath,
+		"reason":          "ota-apply-restart",
+	}
+	for k, v := range extra {
+		ctx[k] = v
+	}
+
+	task := &pendingResumeTask{
+		ID:            fmt.Sprintf("resume_%d", now.UnixNano()),
+		CreatedAt:     now,
+		RunAt:         now.Add(delay),
+		FromVersion:   h.currentVersion,
+		TargetVersion: targetVersion,
+		Context:       ctx,
+	}
+
+	path := h.pendingResumeTaskPath()
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("create resume dir: %w", err)
+		}
+	}
+	data, err := json.Marshal(task)
+	if err != nil {
+		return nil, fmt.Errorf("marshal resume task: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return nil, fmt.Errorf("write resume task: %w", err)
+	}
+	return task, nil
+}
+
+func (h *Handler) loadPendingResumeTask() (*pendingResumeTask, error) {
+	path := h.pendingResumeTaskPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var task pendingResumeTask
+	if err := json.Unmarshal(data, &task); err != nil {
+		return nil, err
+	}
+	if task.ID == "" {
+		return nil, fmt.Errorf("invalid pending resume task: empty id")
+	}
+	return &task, nil
+}
+
+func (h *Handler) clearPendingResumeTask() error {
+	path := h.pendingResumeTaskPath()
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // LoadHistory loads history from file

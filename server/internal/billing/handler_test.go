@@ -16,9 +16,13 @@ import (
 )
 
 func withUserClaims(c echo.Context, role string) {
+	withClaims(c, "u_admin", role)
+}
+
+func withClaims(c echo.Context, userID, role string) {
 	req := c.Request()
 	claims := &auth.UserClaims{
-		UserID:   "u_admin",
+		UserID:   userID,
 		Username: "admin",
 		Role:     role,
 	}
@@ -55,6 +59,18 @@ func TestHandlerGetSummaryAuthGuards(t *testing.T) {
 	httpErr, ok = err.(*echo.HTTPError)
 	if !ok || httpErr.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %#v", err)
+	}
+
+	// Preview user should be treated as admin in preview mode.
+	reqPreview := httptest.NewRequest(http.MethodGet, "/billing/summary", nil)
+	recPreview := httptest.NewRecorder()
+	cPreview := e.NewContext(reqPreview, recPreview)
+	withClaims(cPreview, "preview-user", "user")
+	if err := h.GetSummary(cPreview); err != nil {
+		t.Fatalf("preview user should be allowed, got error: %#v", err)
+	}
+	if recPreview.Code != http.StatusOK {
+		t.Fatalf("expected 200 for preview user, got %d", recPreview.Code)
 	}
 }
 

@@ -636,6 +636,15 @@ export default {
       modelConnecting: '正在準備下載連線...',
       downloadFailed: '下載 ONNX 模型失敗',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Shadow 門控最小樣本數',
+      shadowGateThreshold: 'Shadow 門控閾值',
+      shadowGateScene: 'Shadow 門控場景',
+      shadowGateSceneAll: '全部',
+      shadowGateSceneQA: '問答',
+      shadowGateSceneTool: '工具',
+    },
     update: {
       title: '版本資訊',
       currentVersion: '當前版本',
@@ -2184,7 +2193,7 @@ export default {
     // 禁用警告
     installFirst: '請先安裝 Claude Code CLI',
     disabledWarningTitle: 'Claude Code CLI 已停用',
-    disabledWarningDesc: '目前為標準模式（內建排程器為 Beta 版本），增強模式體驗更好。',
+    disabledWarningDesc: '目前為標準模式，增強模式體驗更好。',
     missingSkills: 'Skills（程式碼生成、重構等）',
     missingToolCalling: '進階 Tool Calling 能力',
     missingFileOps: '檔案操作（讀取、寫入、編輯）',

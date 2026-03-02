@@ -183,10 +183,9 @@ func TestBridgeResolvedRoute_BasicPropagation(t *testing.T) {
 	}
 }
 
-// TestBridgeResolvedRoute_UpstreamModelTakesPrecedence verifies that when the
-// upstream SSE chunk already contains a model field, it takes precedence over
-// the resolved route (the resolved route only fills empty fields).
-func TestBridgeResolvedRoute_UpstreamModelTakesPrecedence(t *testing.T) {
+// TestBridgeResolvedRoute_ResolvedModelTakesPrecedence verifies that we always
+// keep the routed model for stream consistency across tool rounds.
+func TestBridgeResolvedRoute_ResolvedModelTakesPrecedence(t *testing.T) {
 	handler := &fakeProxyHandler{
 		providerName: "Anthropic",
 		modelID:      "claude-sonnet-4-5",
@@ -210,9 +209,9 @@ func TestBridgeResolvedRoute_UpstreamModelTakesPrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ChatStream failed: %v", err)
 	}
-	// Upstream model should take precedence
-	if capturedModel != "claude-sonnet-4-5-20250514" {
-		t.Errorf("Expected upstream model 'claude-sonnet-4-5-20250514', got %q", capturedModel)
+	// Resolved route model should take precedence.
+	if capturedModel != "claude-sonnet-4-5" {
+		t.Errorf("Expected resolved model 'claude-sonnet-4-5', got %q", capturedModel)
 	}
 }
 
@@ -474,9 +473,9 @@ func TestBridgeChat_ResolvedRoute(t *testing.T) {
 	}
 }
 
-// TestBridgeChat_UpstreamModelPreserved verifies that when the upstream response
-// already contains a model field, it takes precedence over the resolved route.
-func TestBridgeChat_UpstreamModelPreserved(t *testing.T) {
+// TestBridgeChat_ResolvedModelPreserved verifies that chat responses preserve
+// resolved routing model rather than upstream model aliases/versions.
+func TestBridgeChat_ResolvedModelPreserved(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
 			rr.Provider = "OpenAI"
@@ -500,9 +499,9 @@ func TestBridgeChat_UpstreamModelPreserved(t *testing.T) {
 	if resp.Provider != "OpenAI" {
 		t.Errorf("Expected provider 'OpenAI', got %q", resp.Provider)
 	}
-	// Upstream model should be preserved (not overwritten by resolved route)
-	if resp.Model != "gpt-4o-2024-08-06" {
-		t.Errorf("Expected upstream model 'gpt-4o-2024-08-06', got %q", resp.Model)
+	// Resolved route model should be preserved for consistent routing.
+	if resp.Model != "gpt-4o" {
+		t.Errorf("Expected resolved model 'gpt-4o', got %q", resp.Model)
 	}
 }
 

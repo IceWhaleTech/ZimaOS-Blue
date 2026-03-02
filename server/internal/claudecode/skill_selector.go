@@ -343,7 +343,9 @@ func stage0RuleRoute(query string) Decision {
 	if strings.Contains(lower, "research") || strings.Contains(lower, "调研") || strings.Contains(lower, "深入") {
 		return selectSkill("deep_research", "rule_research")
 	}
-	if strings.Contains(lower, "计划") || strings.Contains(lower, "todo") || strings.Contains(lower, "checklist") || strings.Contains(lower, "plan") {
+	// Plan tools are no longer auto-routed by generic planning words.
+	// Route only when the user explicitly asks for plan skill commands.
+	if strings.Contains(lower, "plan_create") || strings.Contains(lower, "plan_update") || strings.Contains(lower, "plan_append") {
 		return selectSkill("plan_create", "rule_plan")
 	}
 	if strings.HasPrefix(lower, "mgmt") || strings.Contains(lower, "settings.") || strings.Contains(lower, "providers.") {
@@ -409,7 +411,7 @@ func skillAliasKeywordHit(query, skillName string) int {
 		"analyze":       {"analyze", "分析"},
 		"ui_reviewer":   {"ui", "review", "评审", "界面"},
 		"deep_research": {"deep", "research", "深入", "调研"},
-		"plan_create":   {"plan", "todo", "计划", "清单"},
+		"plan_create":   {"plan_create", "plan_update", "plan_append", "blue plan_", "计划工具", "plan tool"},
 		"mgmt":          {"admin", "管理", "settings", "providers"},
 	}
 	lower := strings.ToLower(query)

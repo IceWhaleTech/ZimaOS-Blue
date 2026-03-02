@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCompanionStore } from '@/stores/companion'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const companionStore = useCompanionStore()
 
 defineProps<{
@@ -36,6 +36,10 @@ const formatOptions = [
   { value: 'json', label: 'JSON', description: 'companion.export.jsonDesc' },
   { value: 'csv', label: 'CSV', description: 'companion.export.csvDesc' },
 ]
+
+function tr(key: string, fallback = ''): string {
+  return te(key) ? t(key) : fallback
+}
 
 function getDateRange(): { from?: string; to?: string } {
   const now = new Date()
@@ -152,7 +156,7 @@ function toggleSelectAll() {
               >
                 <div class="font-medium text-gray-900 dark:text-white">{{ opt.label }}</div>
                 <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {{ t(opt.description) }}
+                  {{ tr(opt.description, '') }}
                 </div>
               </button>
             </div>
@@ -168,7 +172,7 @@ function toggleSelectAll() {
               class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
             >
               <option v-for="opt in dateRangeOptions" :key="opt.value" :value="opt.value">
-                {{ t(opt.label) }}
+                {{ tr(opt.label, opt.value) }}
               </option>
             </select>
 

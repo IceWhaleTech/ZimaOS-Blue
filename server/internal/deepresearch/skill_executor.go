@@ -45,69 +45,142 @@ func (e *SkillExecutor) Execute(ctx context.Context, args map[string]interface{}
 			MaxSeconds: maxSeconds,
 		}
 	}
+	userID := strings.TrimSpace(tools.GetUserID(ctx))
 	job, err := e.service.CreateJob(ctx, CreateJobRequest{
 		Query:  query,
 		Mode:   mode,
 		Lang:   strings.TrimSpace(lang),
 		Budget: budget,
+		UserID: userID,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	ticker := time.NewTicker(120 * time.Millisecond)
-	defer ticker.Stop()
 	lastStage := ""
 	lastProgress := -1
+	lastStatus := JobStatus("")
+
+	fetchCurrent := func() (*Job, error) {
+		if userID != "" {
+			return e.service.GetJobForUser(job.ID, userID, "")
+		}
+		return e.service.GetJob(job.ID)
+	}
+
+	cancelJob := func() {
+		if userID != "" {
+			_ = e.service.CancelJobForUser(job.ID, userID, "")
+			return
+		}
+		_ = e.service.CancelJob(job.ID)
+	}
+
+	handleCurrent := func(current *Job) (interface{}, error) {
+		if current == nil {
+			return nil, fmt.Errorf("deep research job state unavailable")
+		}
+		if current.Stage != lastStage || current.Progress != lastProgress || current.Status != lastStatus {
+			tools.EmitCard(ctx, map[string]interface{}{
+				"type":       "deep-research-progress",
+				"job_id":     current.ID,
+				"query":      current.Query,
+				"mode":       string(current.Mode),
+				"stage":      current.Stage,
+				"status":     string(current.Status),
+				"progress":   current.Progress,
+				"_streaming": current.Status != JobStatusCompleted && current.Status != JobStatusFailed && current.Status != JobStatusCancelled,
+			})
+			lastStage = current.Stage
+			lastProgress = current.Progress
+			lastStatus = current.Status
+		}
+		switch current.Status {
+		case JobStatusCompleted:
+			data := map[string]interface{}{
+				"job_id":         current.ID,
+				"status":         string(current.Status),
+				"mode":           string(current.Mode),
+				"query":          current.Query,
+				"progress":       current.Progress,
+				"evidence_count": len(current.Evidence),
+			}
+			if current.Report != nil {
+				data["answer"] = current.Report.Answer
+				data["confidence"] = current.Report.Confidence
+				data["citations"] = current.Report.Citations
+				data["open_questions"] = current.Report.OpenQuestions
+				data["support_count"] = current.Report.SupportCount
+				data["conflict_count"] = current.Report.ConflictCount
+				data["has_conflict"] = current.Report.HasConflict
+			}
+			return data, nil
+		case JobStatusFailed:
+			if current.Error == "" {
+				return nil, fmt.Errorf("deep research failed")
+			}
+			return nil, fmt.Errorf("deep research failed: %s", current.Error)
+		case JobStatusCancelled:
+			return nil, fmt.Errorf("deep research cancelled")
+		default:
+			return nil, nil
+		}
+	}
+
+	events, unsubscribe, subErr := e.service.SubscribeForUser(job.ID, userID, "")
+	if subErr == nil {
+		defer unsubscribe()
+	}
+	sanityTicker := time.NewTicker(2 * time.Second)
+	defer sanityTicker.Stop()
+	pollTicker := time.NewTicker(800 * time.Millisecond)
+	defer pollTicker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			_ = e.service.CancelJob(job.ID)
+			cancelJob()
 			return nil, ctx.Err()
-		case <-ticker.C:
-			current, err := e.service.GetJob(job.ID)
+		case <-sanityTicker.C:
+			current, err := fetchCurrent()
 			if err != nil {
 				return nil, err
 			}
-			if current.Stage != lastStage || current.Progress != lastProgress {
-				tools.EmitCard(ctx, map[string]interface{}{
-					"type":       "deep-research-progress",
-					"job_id":     current.ID,
-					"query":      current.Query,
-					"mode":       string(current.Mode),
-					"stage":      current.Stage,
-					"status":     string(current.Status),
-					"progress":   current.Progress,
-					"_streaming": current.Status != JobStatusCompleted && current.Status != JobStatusFailed && current.Status != JobStatusCancelled,
-				})
-				lastStage = current.Stage
-				lastProgress = current.Progress
+			if data, doneErr := handleCurrent(current); data != nil || doneErr != nil {
+				return data, doneErr
 			}
-			switch current.Status {
-			case JobStatusCompleted:
-				data := map[string]interface{}{
-					"job_id":         current.ID,
-					"status":         string(current.Status),
-					"mode":           string(current.Mode),
-					"query":          current.Query,
-					"progress":       current.Progress,
-					"evidence_count": len(current.Evidence),
+		case <-pollTicker.C:
+			// Fallback if subscription is unavailable.
+			if subErr == nil {
+				continue
+			}
+			current, err := fetchCurrent()
+			if err != nil {
+				return nil, err
+			}
+			if data, doneErr := handleCurrent(current); data != nil || doneErr != nil {
+				return data, doneErr
+			}
+		case _, ok := <-events:
+			if subErr != nil {
+				continue
+			}
+			if !ok {
+				current, err := fetchCurrent()
+				if err != nil {
+					return nil, err
 				}
-				if current.Report != nil {
-					data["answer"] = current.Report.Answer
-					data["confidence"] = current.Report.Confidence
-					data["citations"] = current.Report.Citations
-					data["open_questions"] = current.Report.OpenQuestions
+				if data, doneErr := handleCurrent(current); data != nil || doneErr != nil {
+					return data, doneErr
 				}
-				return data, nil
-			case JobStatusFailed:
-				if current.Error == "" {
-					return nil, fmt.Errorf("deep research failed")
-				}
-				return nil, fmt.Errorf("deep research failed: %s", current.Error)
-			case JobStatusCancelled:
-				return nil, fmt.Errorf("deep research cancelled")
+				return nil, fmt.Errorf("deep research event stream closed unexpectedly")
+			}
+			current, err := fetchCurrent()
+			if err != nil {
+				return nil, err
+			}
+			if data, doneErr := handleCurrent(current); data != nil || doneErr != nil {
+				return data, doneErr
 			}
 		}
 	}

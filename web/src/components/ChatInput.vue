@@ -12,10 +12,27 @@ import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { classifyFeatureIntent } from '@/composables/useFeatureIntent'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const localeStore = useLocaleStore()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
+
+const SPEECH_ERROR_KEY_BY_CODE: Record<string, string> = {
+  timeout: 'speech.error.timeout',
+  audio_invalid: 'speech.error.audioInvalid',
+  service_unavailable: 'speech.error.serviceUnavailable',
+  rate_limit: 'speech.error.rateLimit',
+  no_asr_provider: 'speech.error.noAsrProvider',
+}
+
+function getSpeechErrorMessage(errorCodeRaw: unknown): string | null {
+  if (typeof errorCodeRaw !== 'string' || !errorCodeRaw.trim()) return null
+  const normalized = errorCodeRaw.trim().toLowerCase()
+  const key = SPEECH_ERROR_KEY_BY_CODE[normalized]
+  if (!key) return null
+  if (!te(key)) return null
+  return t(key)
+}
 
 export interface FileAttachment {
   id: string
@@ -454,11 +471,14 @@ async function startRecording() {
         voiceError.value = t('chat.voiceTranscriptionTimeout')
       } else if (errorCode === 'on_device_unavailable') {
         voiceError.value = t('speech.onDeviceUnavailableError')
-      } else if (errorCode && t(`speech.error.${errorCode}`) !== `speech.error.${errorCode}`) {
-        voiceError.value = t(`speech.error.${errorCode}`)
       } else {
-        const serverMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message
-        voiceError.value = serverMsg || t('chat.voiceTranscriptionError')
+        const mappedError = getSpeechErrorMessage(errorCode)
+        if (mappedError) {
+          voiceError.value = mappedError
+        } else {
+          const serverMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message
+          voiceError.value = serverMsg || t('chat.voiceTranscriptionError')
+        }
       }
     } finally {
       isTranscribing.value = false
@@ -678,11 +698,14 @@ async function handleVoiceChoiceTranscribe() {
       voiceError.value = t('chat.voiceTranscriptionTimeout')
     } else if (errorCode === 'on_device_unavailable') {
       voiceError.value = t('speech.onDeviceUnavailableError')
-    } else if (errorCode && t(`speech.error.${errorCode}`) !== `speech.error.${errorCode}`) {
-      voiceError.value = t(`speech.error.${errorCode}`)
     } else {
-      const serverMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message
-      voiceError.value = serverMsg || t('chat.voiceTranscriptionError')
+      const mappedError = getSpeechErrorMessage(errorCode)
+      if (mappedError) {
+        voiceError.value = mappedError
+      } else {
+        const serverMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message
+        voiceError.value = serverMsg || t('chat.voiceTranscriptionError')
+      }
     }
   } finally {
     isTranscribing.value = false

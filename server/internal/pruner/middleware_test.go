@@ -33,6 +33,28 @@ func (m *mockBackend) Health(ctx context.Context) error {
 
 func (m *mockBackend) Close() error { return nil }
 
+func decodeMessages(t *testing.T, body []byte) []map[string]json.RawMessage {
+	t.Helper()
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	var messages []map[string]json.RawMessage
+	if err := json.Unmarshal(parsed["messages"], &messages); err != nil {
+		t.Fatalf("unmarshal messages: %v", err)
+	}
+	return messages
+}
+
+func messageContent(t *testing.T, msg map[string]json.RawMessage) string {
+	t.Helper()
+	var content string
+	if err := json.Unmarshal(msg["content"], &content); err != nil {
+		t.Fatalf("unmarshal content: %v", err)
+	}
+	return content
+}
+
 func TestMiddleware_ProcessRequest_Disabled(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = false
@@ -115,13 +137,10 @@ func TestMiddleware_ProcessRequest_PrunesToolMessage(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var parsed map[string]json.RawMessage
-	json.Unmarshal(result, &parsed)
-	var messages []openaiMessage
-	json.Unmarshal(parsed["messages"], &messages)
+	messages := decodeMessages(t, result)
 
-	if messages[1].Content != "(pruned)" {
-		t.Errorf("expected pruned content, got %s", messages[1].Content)
+	if got := messageContent(t, messages[1]); got != "(pruned)" {
+		t.Errorf("expected pruned content, got %s", got)
 	}
 
 	snap := stats.Snapshot()
@@ -173,13 +192,10 @@ func TestMiddleware_ProcessRequest_UsesContentField(t *testing.T) {
 	}
 
 	// Output should use PrunedContent
-	var parsed map[string]json.RawMessage
-	json.Unmarshal(result, &parsed)
-	var messages []openaiMessage
-	json.Unmarshal(parsed["messages"], &messages)
+	messages := decodeMessages(t, result)
 
-	if messages[1].Content != "(pruned-content)" {
-		t.Errorf("expected pruned content from PrunedContent field, got %s", messages[1].Content)
+	if got := messageContent(t, messages[1]); got != "(pruned-content)" {
+		t.Errorf("expected pruned content from PrunedContent field, got %s", got)
 	}
 }
 
@@ -226,13 +242,10 @@ func TestMiddleware_ProcessRequest_PrunesLongUserMessage(t *testing.T) {
 		t.Error("expected self-query for user message")
 	}
 
-	var parsed map[string]json.RawMessage
-	json.Unmarshal(result, &parsed)
-	var messages []openaiMessage
-	json.Unmarshal(parsed["messages"], &messages)
+	messages := decodeMessages(t, result)
 
-	if messages[0].Content != "(pruned-doc)" {
-		t.Errorf("expected pruned user message, got %s", messages[0].Content)
+	if got := messageContent(t, messages[0]); got != "(pruned-doc)" {
+		t.Errorf("expected pruned user message, got %s", got)
 	}
 }
 
@@ -297,6 +310,52 @@ func TestMiddleware_ProcessRequest_SelfQueryTruncation(t *testing.T) {
 	}
 	if gotQuery == "" {
 		t.Error("expected non-empty self-query")
+	}
+}
+
+func TestMiddleware_ProcessRequest_PreservesAssistantToolCalls(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.MinLines = 1
+
+	backend := &mockBackend{
+		pruneFunc: func(ctx context.Context, req PruneRequest) (*PruneResponse, error) {
+			return &PruneResponse{
+				PrunedContent:  "(pruned)",
+				PrunedCode:     "(pruned)",
+				OriginalTokens: 200,
+				PrunedTokens:   100,
+			}, nil
+		},
+	}
+	mw := NewMiddleware(backend, cfg, NewStats())
+
+	body := []byte(`{"messages":[{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"search","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_1","content":"package main\nfunc main(){\nreturn\n}\n"}]}`)
+	result, err := mw.ProcessRequest(context.Background(), body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(result, &parsed); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	var messages []map[string]json.RawMessage
+	if err := json.Unmarshal(parsed["messages"], &messages); err != nil {
+		t.Fatalf("unmarshal messages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+	if _, ok := messages[0]["tool_calls"]; !ok {
+		t.Fatal("assistant tool_calls should be preserved after pruning")
+	}
+	var toolContent string
+	if err := json.Unmarshal(messages[1]["content"], &toolContent); err != nil {
+		t.Fatalf("unmarshal tool content: %v", err)
+	}
+	if toolContent != "(pruned)" {
+		t.Fatalf("expected pruned tool content, got %q", toolContent)
 	}
 }
 

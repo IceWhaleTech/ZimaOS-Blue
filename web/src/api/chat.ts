@@ -170,6 +170,12 @@ export const messageApi = {
   // Note: For streaming, use the SSE utility instead
   getStreamUrl: (conversationId: string) =>
     `/api/v1/conversations/${conversationId}/messages/stream`,
+
+  cancelStream: (conversationId: string, streamId: string) =>
+    api.post<{ success: boolean; stream_id: string; message: string }>(
+      `/conversations/${conversationId}/messages/cancel`,
+      { stream_id: streamId }
+    ),
 }
 
 // Warmup API - Pre-compute system prompt and context to reduce TTFT

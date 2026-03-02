@@ -1,0 +1,99 @@
+{
+  "deep_research_explicit": [
+    "deep research",
+    "深度搜索",
+    "深度研究",
+    "深入研究",
+    "深度调研",
+    "深入调研"
+  ],
+  "deep_research_actions": [
+    "deep dive",
+    "in-depth",
+    "in depth",
+    "comprehensive research",
+    "research thoroughly",
+    "详细调研",
+    "全面调研",
+    "深入分析",
+    "全面分析"
+  ],
+  "deep_research_targets": [
+    "资料",
+    "来源",
+    "引用",
+    "证据",
+    "sources",
+    "citations",
+    "evidence",
+    "references"
+  ],
+  "deep_research_negations": [
+    "no deep research",
+    "without deep research",
+    "disable deep research",
+    "不要深度搜索",
+    "不用深度搜索",
+    "关闭深度搜索"
+  ],
+  "agent_mode_explicit": [
+    "agent mode",
+    "agent loop",
+    "agent loop mode",
+    "agent mode loop",
+    "智能体模式",
+    "智能体循环",
+    "循环智能体",
+    "代理模式",
+    "自动代理",
+    "自主代理"
+  ],
+  "agent_mode_actions": [
+    "autonomous",
+    "plan and execute",
+    "multi-step",
+    "自动执行",
+    "自主执行",
+    "自己完成",
+    "自动完成",
+    "分步执行",
+    "端到端执行"
+  ],
+  "agent_mode_targets": [
+    "task",
+    "tasks",
+    "workflow",
+    "步骤",
+    "任务",
+    "流程",
+    "命令"
+  ],
+  "agent_mode_negations": [
+    "no agent mode",
+    "no agent loop",
+    "without agent mode",
+    "without agent loop",
+    "disable agent mode",
+    "disable agent loop",
+    "不要 agent mode",
+    "不要 agent loop",
+    "不要智能体模式",
+    "不要智能体循环",
+    "关闭agent loop",
+    "关闭agent mode",
+    "关闭智能体模式",
+    "不要自动执行"
+  ],
+  "definition_prefixes": [
+    "what is",
+    "what's",
+    "how to",
+    "how do i",
+    "什么是",
+    "啥是",
+    "怎么用",
+    "如何使用",
+    "介绍一下",
+    "解释一下"
+  ]
+}

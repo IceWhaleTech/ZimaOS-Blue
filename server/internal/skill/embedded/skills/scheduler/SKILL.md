@@ -15,23 +15,23 @@ No external dependencies required. Uses built-in cron scheduler.
 
 | User Intent | Action |
 |-------------|--------|
-| Create recurring timed task | `cron.create` |
-| List existing schedules | `cron.list` |
-| Run schedule immediately for testing | `cron.trigger` |
-| Temporarily stop/resume schedule | `cron.disable` / `cron.enable` |
-| Remove schedule permanently | `cron.delete` |
+| Create recurring timed task | `blue cron.create` |
+| List existing schedules | `blue cron.list` |
+| Run schedule immediately for testing | `blue cron.trigger` |
+| Temporarily stop/resume schedule | `blue cron.disable` / `blue cron.enable` |
+| Remove schedule permanently | `blue cron.delete` |
 
 ---
 
 ## Command Usage
 
 ```bash
-cron.create name=health_check schedule="*/10 * * * *" command="mgmt system.health" description="Check service health every 10 minutes"
-cron.list
-cron.trigger id=cron_abc123
-cron.disable id=cron_abc123
-cron.enable id=cron_abc123
-cron.delete id=cron_abc123
+blue cron.create name=health_check schedule="*/10 * * * *" command="mgmt system.health" description="Check service health every 10 minutes"
+blue cron.list
+blue cron.trigger id=cron_abc123
+blue cron.disable id=cron_abc123
+blue cron.enable id=cron_abc123
+blue cron.delete id=cron_abc123
 ```
 
 Cron format examples:
@@ -47,7 +47,7 @@ Cron format examples:
 |-------|------------|
 | Invalid cron expression | Validate 5-field cron syntax and retry |
 | Missing required field (`name/schedule/command`) | Provide all required fields |
-| Unknown schedule ID | Use `cron.list` to get valid IDs |
+| Unknown schedule ID | Use `blue cron.list` to get valid IDs |
 
 ---
 

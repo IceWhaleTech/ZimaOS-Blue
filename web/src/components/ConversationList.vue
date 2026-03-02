@@ -415,6 +415,7 @@ watch(searchQuery, (query) => {
   --cl-item-px: 0.85rem;
   --cl-radius: 0.75rem;
   background: var(--chat-sidebar-bg, linear-gradient(180deg, rgba(15, 23, 42, 0.32), rgba(15, 23, 42, 0.12)));
+  overflow-x: hidden;
 }
 
 :global(.chat-view.ui-density-compact) .conversation-list {
@@ -512,11 +513,13 @@ watch(searchQuery, (query) => {
 
 .convo-scroll {
   scrollbar-gutter: stable;
+  overflow-x: hidden;
 }
 
 .conversation-item {
   animation: convo-fade-in 0.24s ease-out both;
   animation-delay: calc(var(--item-index, 0) * 20ms);
+  min-width: 0;
 }
 
 .convo-main-btn {
@@ -526,6 +529,8 @@ watch(searchQuery, (query) => {
   overflow: hidden;
   border-radius: var(--cl-radius);
   padding: var(--cl-item-py) var(--cl-item-px);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .convo-main-btn::before {
@@ -586,32 +591,21 @@ watch(searchQuery, (query) => {
 }
 
 .convo-title {
-  display: inline-block;
-  min-width: max-content;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   letter-spacing: 0.01em;
 }
 
 .convo-title-scroll {
   flex: 1;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  max-width: 100%;
+  overflow: hidden;
   white-space: nowrap;
-  scrollbar-width: thin;
-  -webkit-overflow-scrolling: touch;
-}
-
-.convo-title-scroll::-webkit-scrollbar {
-  height: 3px;
-}
-
-.convo-title-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.convo-title-scroll::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.45);
-  border-radius: 999px;
 }
 
 .convo-meta {

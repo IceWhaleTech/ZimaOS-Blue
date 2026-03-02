@@ -7,7 +7,7 @@ import { extauthApi, getProviderDisplayName } from '@/api/extauth'
 import axios from 'axios'
 import type { ProviderInfo, ProviderType } from '@/api/extauth'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
@@ -38,7 +38,8 @@ const translatedError = computed(() => {
   const raw = authStore.error
   if (!raw) return null
   const key = errorMessageMap[raw]
-  return key ? t(key) : raw
+  if (!key) return raw
+  return te(key) ? t(key) : raw
 })
 
 onMounted(async () => {

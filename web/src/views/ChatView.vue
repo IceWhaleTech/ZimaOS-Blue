@@ -29,7 +29,7 @@ import { streamingTTSManager } from '@/api/voice'
 import { THEME_STYLES, type ThemeStyle } from '@/stores/settings'
 import { formatTokens } from '@/utils/format'
 
-const { t, locale } = useI18n()
+const { t, te, locale } = useI18n()
 const router = useRouter()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
@@ -460,8 +460,13 @@ const fixedModelLabel = computed(() => {
 
 const currentThemeStyleLabel = computed(() => {
   const current = THEME_STYLES.find(style => style.id === settingsStore.themeStyle)
-  return current ? t(current.labelKey) : settingsStore.themeStyle
+  if (!current) return settingsStore.themeStyle
+  return te(current.labelKey) ? t(current.labelKey) : current.id
 })
+
+function themeStyleLabel(style: { id: string; labelKey: string }): string {
+  return te(style.labelKey) ? t(style.labelKey) : style.id
+}
 
 const currentThemeStyleIconColor = computed(() => {
   switch (settingsStore.themeStyle) {
@@ -2205,7 +2210,7 @@ onUnmounted(() => {
                 class="theme-style-btn flex-shrink-0"
                 :class="`theme-style-btn-${style.id}`"
               />
-              <span>{{ t(style.labelKey) }}</span>
+              <span>{{ themeStyleLabel(style) }}</span>
             </button>
           </div>
         </div>
@@ -2248,7 +2253,7 @@ onUnmounted(() => {
                     class="theme-style-btn flex-shrink-0"
                     :class="`theme-style-btn-${style.id}`"
                   />
-                  <span class="font-medium">{{ t(style.labelKey) }}</span>
+                  <span class="font-medium">{{ themeStyleLabel(style) }}</span>
                 </button>
               </div>
 

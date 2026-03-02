@@ -327,6 +327,66 @@ func readLocaleFromKV(kv kvstore.Store) string {
 	return s.Locale
 }
 
+func updateResumeContextString(ctx map[string]interface{}, key string) string {
+	if len(ctx) == 0 || key == "" {
+		return ""
+	}
+	raw, ok := ctx[key]
+	if !ok || raw == nil {
+		return ""
+	}
+	if v, ok := raw.(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return strings.TrimSpace(fmt.Sprint(raw))
+}
+
+func normalizeUpdateResumeKind(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "none", "noop":
+		return ""
+	case "once-cron", "cron-once", "once_cron", "cron_once":
+		return "once-cron"
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+}
+
+func buildUpdateResumeRecoverer(cronHandler *cron.Handler, logger *zap.Logger) update.ResumeRecoverer {
+	return func(_ context.Context, input update.ResumeRecoverInput) error {
+		kind := normalizeUpdateResumeKind(updateResumeContextString(input.Context, "kind"))
+		if kind == "" {
+			return nil
+		}
+		switch kind {
+		case "once-cron":
+			if cronHandler == nil {
+				return fmt.Errorf("resume kind %q requires cron handler", kind)
+			}
+			jobID := updateResumeContextString(input.Context, "job_id")
+			if jobID == "" {
+				return fmt.Errorf("resume kind %q requires context.job_id", kind)
+			}
+			svc := cronHandler.GetService()
+			if svc == nil {
+				return fmt.Errorf("cron service unavailable")
+			}
+			if err := svc.Trigger(jobID); err != nil {
+				return fmt.Errorf("trigger cron job %s: %w", jobID, err)
+			}
+			if logger != nil {
+				logger.Info("OTA resume context triggered cron job",
+					zap.String("task_id", input.TaskID),
+					zap.String("job_id", jobID),
+					zap.String("kind", kind))
+			}
+			return nil
+		default:
+			return fmt.Errorf("unsupported resume context kind %q", kind)
+		}
+	}
+}
+
 // RoutesDeps holds all dependencies needed for route registration
 type RoutesDeps struct {
 	DB               *sql.DB
@@ -1146,6 +1206,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			}
 		}
 	}
+	browserCheckpointMgr := tools.NewBrowserCheckpointManager(2 * time.Minute)
+	if deps.ChatHandler != nil {
+		deps.ChatHandler.SetMediaDir(mediaDir)
+		deps.ChatHandler.SetQuestionManager(questionMgr)
+		deps.ChatHandler.SetBrowserCheckpointManager(browserCheckpointMgr)
+	}
 
 	// Exec tools (shell execution + process management)
 	var execApprovals *tools.ApprovalManager
@@ -1818,6 +1884,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if deps.Config.Pruner != nil {
 			prunerCfg = *deps.Config.Pruner
 		}
+		prunerCfg.Backend = pruner.NormalizeBackendName(prunerCfg.Backend)
 		// Lazy factory: backend + middleware created on first proxy request, not at startup
 		var prunerMu sync.Mutex
 		createPrunerMw := func() *pruner.Middleware {
@@ -1899,7 +1966,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		getToggleState := func() *proxy.ToggleState {
 			state := &proxy.ToggleState{
 				PrunerEnabled:      prunerCfg.Enabled && (prunerMw == nil || prunerMw.Enabled()),
-				PrunerBackend:      prunerCfg.Backend,
+				PrunerBackend:      pruner.NormalizeBackendName(prunerCfg.Backend),
 				RoutingEnabled:     proxyHandler.IsRoutingEnabled(),
 				MaskingEnabled:     dataMasker.IsEnabled(),
 				PromptCacheEnabled: proxyHandler.IsPromptCacheEnabled(),
@@ -1938,7 +2005,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				// Restore pruner state from saved toggles.
 				// Middleware is lazy — just update config; factory will use it.
 				if saved.PrunerBackend != "" {
-					prunerCfg.Backend = saved.PrunerBackend
+					prunerCfg.Backend = pruner.NormalizeBackendName(saved.PrunerBackend)
 				}
 				if saved.PrunerEnabled {
 					prunerCfg.Enabled = true
@@ -2208,6 +2275,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		StoragePath:    deps.Config.Update.StoragePath,
 	}
 	updateHandler := update.NewHandler(cfg.Version, updateCfg)
+	updateHandler.SetResumeRecoverer(buildUpdateResumeRecoverer(deps.CronHandler, logger))
 	updateHandler.RegisterRoutes(v1)
 
 	// Wire up OTA background checker so DownloadOTA can find packages
@@ -2228,6 +2296,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if deps.ChannelConfigStore != nil {
 		channelManager := channel.NewManager(channel.DefaultConfig(), logger)
 		channelFactory := server.NewChannelFactory(deps.Logger)
+		if deps.ChatHandler != nil {
+			deps.ChatHandler.SetChannelSender(func(ctx context.Context, channelName string, out channel.OutgoingMessage) error {
+				return channelManager.Send(ctx, channelName, out)
+			})
+		}
 		// Wire channel manager into mgmt tool
 		mgmtTool.SetChannels(&mgmtChannelAdapter{mgr: channelManager})
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // IRPruner implements Backend using BM25 scoring with unified segmentation.
@@ -31,7 +30,7 @@ func NewIRPruner(cfg Config) *IRPruner {
 
 // Prune implements Backend. It detects content type, segments, scores, and prunes.
 func (p *IRPruner) Prune(ctx context.Context, req PruneRequest) (*PruneResponse, error) {
-	start := timeutil.NowTime()
+	start := time.Now()
 
 	content := req.GetContent()
 	if strings.TrimSpace(content) == "" {
@@ -50,10 +49,7 @@ func (p *IRPruner) Prune(ctx context.Context, req PruneRequest) (*PruneResponse,
 		ct = DetectContentType(content, minLines)
 	}
 
-	threshold := req.Threshold
-	if threshold <= 0 {
-		threshold = p.config.Threshold
-	}
+	threshold := resolveThreshold(req.Threshold, p.config.Threshold)
 
 	// Check cache
 	key := CacheKey(content, req.Query)
@@ -86,7 +82,7 @@ func (p *IRPruner) Prune(ctx context.Context, req PruneRequest) (*PruneResponse,
 		}
 
 		raw := p.scorer.Score(req.Query, segments)
-		scored = BoostScoresWithQuery(raw, req.Query)
+		scored = boostScoresWithQueryInPlace(raw, req.Query)
 
 		// Add heading boost for non-code
 		if ct != ContentCode {
@@ -187,5 +183,5 @@ func boostNonCode(scored []ScoredSegment, totalLines int) []ScoredSegment {
 }
 
 func msElapsed(start time.Time) float64 {
-	return float64(timeutil.SinceTime(start).Microseconds()) / 1000.0
+	return float64(time.Since(start).Microseconds()) / 1000.0
 }

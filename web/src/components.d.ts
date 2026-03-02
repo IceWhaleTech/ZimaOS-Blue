@@ -30,6 +30,7 @@ declare module 'vue' {
     CardAlert: typeof import('./components/typeless/CardAlert.vue')['default']
     CardAnalyzeProgress: typeof import('./components/typeless/CardAnalyzeProgress.vue')['default']
     CardAudio: typeof import('./components/typeless/CardAudio.vue')['default']
+    CardBrowserProgress: typeof import('./components/typeless/CardBrowserProgress.vue')['default']
     CardChart: typeof import('./components/typeless/CardChart.vue')['default']
     CardChoice: typeof import('./components/typeless/CardChoice.vue')['default']
     CardCode: typeof import('./components/typeless/CardCode.vue')['default']

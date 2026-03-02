@@ -147,7 +147,7 @@ type RevokeRoleRequest struct {
 func (s *UserRoleService) RevokeRole(ctx context.Context, req *RevokeRoleRequest) error {
 	now := timeutil.NowTime()
 	n, err := s.table(ctx).Update(
-		map[string]interface{}{
+		z.V{
 			"revoked":    1,
 			"revoked_at": now,
 			"revoked_by": req.RevokedBy,
@@ -321,7 +321,7 @@ func (s *UserRoleService) GetUserPermissions(ctx context.Context, userID string)
 func (s *UserRoleService) CleanupExpiredAssignments(ctx context.Context) (int64, error) {
 	now := timeutil.NowTime()
 	n, err := s.table(ctx).Update(
-		map[string]interface{}{
+		z.V{
 			"revoked":    1,
 			"revoked_at": now,
 		},
@@ -402,7 +402,7 @@ func (s *UserRoleService) BulkRevokeRole(ctx context.Context, userIDs []string, 
 
 	for _, userID := range userIDs {
 		_, err := t.Update(
-			map[string]interface{}{
+			z.V{
 				"revoked":    1,
 				"revoked_at": now,
 				"revoked_by": revokedBy,

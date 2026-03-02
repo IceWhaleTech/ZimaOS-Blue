@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,6 +53,9 @@ type Settings struct {
 	SmallModelID                       string   `json:"small_model_id,omitempty"`                          // fixed: lfm2.5-1.2b-instruct-q4km
 	SmallModelAutoDownload             *bool    `json:"small_model_auto_download,omitempty"`               // default true
 	SmallModelShadowRatio              *float64 `json:"small_model_shadow_ratio,omitempty"`                // default 0.1, (0,1]
+	SmallModelShadowGateMinSamples     *int     `json:"small_model_shadow_gate_min_samples,omitempty"`     // default 40, [1,10000]
+	SmallModelShadowGateThresholdDelta *float64 `json:"small_model_shadow_gate_threshold_delta,omitempty"` // default 0.35, (0,1]
+	SmallModelShadowGateScene          string   `json:"small_model_shadow_gate_scene,omitempty"`           // default "", optional scene filter
 	SmallModelSummaryEnabled           *bool    `json:"small_model_summary_enabled,omitempty"`             // default true
 	SmallModelDocExtractEnabled        *bool    `json:"small_model_doc_extract_enabled,omitempty"`         // default true
 	SmallModelRerankEnabled            *bool    `json:"small_model_rerank_enabled,omitempty"`              // default true
@@ -346,6 +350,7 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 			newSettings.SmallModelShadowRatio = nil
 		}
 	}
+	newSettings.SmallModelShadowGateScene = normalizeSmallModelShadowGateScene(newSettings.SmallModelShadowGateScene)
 	if newSettings.NoLLMDegradeMode != "" {
 		switch newSettings.NoLLMDegradeMode {
 		case "deepresearch":
@@ -505,6 +510,38 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 			if f > 0 && f <= 1 {
 				h.settings.SmallModelShadowRatio = &f
 			}
+		}
+	}
+	if v, ok := updates["small_model_shadow_gate_min_samples"]; ok {
+		switch n := v.(type) {
+		case float64:
+			iv := int(n)
+			if iv >= 1 && iv <= 10000 {
+				h.settings.SmallModelShadowGateMinSamples = &iv
+			}
+		case int:
+			if n >= 1 && n <= 10000 {
+				iv := n
+				h.settings.SmallModelShadowGateMinSamples = &iv
+			}
+		}
+	}
+	if v, ok := updates["small_model_shadow_gate_threshold_delta"]; ok {
+		switch n := v.(type) {
+		case float64:
+			if n > 0 && n <= 1 {
+				h.settings.SmallModelShadowGateThresholdDelta = &n
+			}
+		case float32:
+			f := float64(n)
+			if f > 0 && f <= 1 {
+				h.settings.SmallModelShadowGateThresholdDelta = &f
+			}
+		}
+	}
+	if v, ok := updates["small_model_shadow_gate_scene"]; ok {
+		if s, isString := v.(string); isString {
+			h.settings.SmallModelShadowGateScene = normalizeSmallModelShadowGateScene(s)
 		}
 	}
 	if v, ok := updates["small_model_summary_enabled"]; ok {
@@ -815,6 +852,41 @@ func (h *SettingsHandler) GetSmallModelShadowRatio() float64 {
 	return v
 }
 
+// GetSmallModelShadowGateMinSamples returns gate minimum samples (default 40).
+func (h *SettingsHandler) GetSmallModelShadowGateMinSamples() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelShadowGateMinSamples == nil {
+		return 40
+	}
+	v := *h.settings.SmallModelShadowGateMinSamples
+	if v < 1 || v > 10000 {
+		return 40
+	}
+	return v
+}
+
+// GetSmallModelShadowGateThresholdDelta returns gate threshold delta (default 0.35).
+func (h *SettingsHandler) GetSmallModelShadowGateThresholdDelta() float64 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelShadowGateThresholdDelta == nil {
+		return 0.35
+	}
+	v := *h.settings.SmallModelShadowGateThresholdDelta
+	if v <= 0 || v > 1 {
+		return 0.35
+	}
+	return v
+}
+
+// GetSmallModelShadowGateScene returns optional gate scene filter (default "").
+func (h *SettingsHandler) GetSmallModelShadowGateScene() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return normalizeSmallModelShadowGateScene(h.settings.SmallModelShadowGateScene)
+}
+
 func (h *SettingsHandler) GetSmallModelSummaryEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -899,6 +971,104 @@ func (h *SettingsHandler) SetSmallModelRouteToolDispatchEnabled(enabled bool) (b
 		return false, err
 	}
 	return true, nil
+}
+
+// SetSmallModelShadowGateMinSamples updates shadow gate min-samples setting and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetSmallModelShadowGateMinSamples(samples int) (bool, error) {
+	if samples < 1 {
+		samples = 1
+	}
+	if samples > 10000 {
+		samples = 10000
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.settings.SmallModelShadowGateMinSamples != nil && *h.settings.SmallModelShadowGateMinSamples == samples {
+		return false, nil
+	}
+	h.settings.SmallModelShadowGateMinSamples = &samples
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetSmallModelShadowGateThresholdDelta updates shadow gate delta threshold and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetSmallModelShadowGateThresholdDelta(delta float64) (bool, error) {
+	if delta <= 0 {
+		delta = 0.01
+	}
+	if delta > 1 {
+		delta = 1
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.settings.SmallModelShadowGateThresholdDelta != nil && *h.settings.SmallModelShadowGateThresholdDelta == delta {
+		return false, nil
+	}
+	h.settings.SmallModelShadowGateThresholdDelta = &delta
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetSmallModelShadowGateScene updates shadow gate scene filter and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetSmallModelShadowGateScene(scene string) (bool, error) {
+	normalized := normalizeSmallModelShadowGateScene(scene)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.settings.SmallModelShadowGateScene == normalized {
+		return false, nil
+	}
+	h.settings.SmallModelShadowGateScene = normalized
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetSmallModelShadowRatio updates shadow ratio and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetSmallModelShadowRatio(ratio float64) (bool, error) {
+	if ratio <= 0 {
+		ratio = 0.01
+	}
+	if ratio > 1 {
+		ratio = 1
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.settings.SmallModelShadowRatio != nil && *h.settings.SmallModelShadowRatio == ratio {
+		return false, nil
+	}
+	h.settings.SmallModelShadowRatio = &ratio
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func normalizeSmallModelShadowGateScene(scene string) string {
+	scene = strings.TrimSpace(scene)
+	if scene == "" {
+		return ""
+	}
+	if len(scene) > 128 {
+		scene = scene[:128]
+	}
+	return strings.TrimSpace(scene)
 }
 
 // SetSmallModelSummaryEnabled updates summary enhancement switch and persists it.

@@ -14,6 +14,7 @@ vi.mock('@/api/chat', () => ({
   messageApi: {
     list: vi.fn(),
     send: vi.fn(),
+    cancelStream: vi.fn(),
   },
 }))
 

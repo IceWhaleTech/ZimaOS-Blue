@@ -24,7 +24,7 @@ import { ttsAudioManager, streamingTTSManager } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { useNotificationStore } from '@/stores/notification'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const providerPoolStore = useProviderPoolStore()
 
 const props = defineProps<{
@@ -1666,7 +1666,7 @@ async function showInitProgressToast(): Promise<void> {
     const stageKey = `speech.initStage.${stage}`
     const toastId = notification.info(
       t('speech.initProgress'),
-      t(stageKey),
+      te(stageKey) ? t(stageKey) : stage,
       { duration: 0, dismissible: true }
     )
 
@@ -1815,8 +1815,7 @@ function isPlaceholderContent(content: string): boolean {
 // Format internal tool name via i18n (e.g. "web_search" → "网页搜索" in zh-CN)
 function formatToolName(name: string): string {
   const key = `tools.names.${name}`
-  const translated = t(key)
-  if (translated !== key) return translated
+  if (te(key)) return t(key)
   // Fallback: title-case the snake_case name
   return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
@@ -2202,7 +2201,12 @@ async function handleMobileDelete() {
           <!-- Render with typeless cards embedded in single bubble -->
           <div
             v-else
-            :class="['assistant-message chat-assistant-bubble px-4 prose prose-slate dark:prose-invert max-w-none', isContentEmpty && !(isStreaming && chatStore.toolExecuting) ? 'py-0 !border-0 !bg-transparent' : 'py-3']"
+            :class="[
+              'assistant-message chat-assistant-bubble px-4 prose prose-slate dark:prose-invert max-w-none',
+              showWaitingTimer || (isContentEmpty && !(isStreaming && chatStore.toolExecuting))
+                ? 'assistant-message-indicator-only'
+                : 'py-3',
+            ]"
             @click="handleCopyClick"
           >
             <template v-if="effectiveHasCards && renderedContentSegments">
@@ -2513,9 +2517,12 @@ async function handleMobileDelete() {
   box-shadow: 0 10px 28px rgba(2, 6, 23, 0.18);
 }
 
-.assistant-message.\!bg-transparent {
+.assistant-message.assistant-message-indicator-only {
   padding-top: 0;
   padding-bottom: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .chat-user-bubble {

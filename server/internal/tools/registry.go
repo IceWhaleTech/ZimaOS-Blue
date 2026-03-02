@@ -195,7 +195,100 @@ func (e *Executor) Execute(ctx context.Context, name string, args map[string]int
 		return nil, ErrToolNotFound
 	}
 
+	args = normalizeCompatArgs(name, args)
 	return tool.Execute(ctx, args)
+}
+
+func normalizeCompatArgs(name string, args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return args
+	}
+	// Some providers emit exec arguments in non-canonical forms:
+	// {"cmd":"..."}, {"tool":"..."}, or wrapped inside {"arguments":{...}}.
+	// Normalize to the canonical schema {"command":"..."}.
+	if !strings.EqualFold(strings.TrimSpace(name), "exec") {
+		return args
+	}
+	if command, hasCommand := args["command"].(string); hasCommand && strings.TrimSpace(command) != "" {
+		return args
+	}
+
+	candidate := ""
+	if cmd, ok := args["cmd"].(string); ok && strings.TrimSpace(cmd) != "" {
+		candidate = cmd
+	}
+
+	if candidate == "" {
+		if nestedCmd := extractExecCommandFromCompatValue(args["arguments"]); nestedCmd != "" {
+			candidate = nestedCmd
+		}
+	}
+	if candidate == "" {
+		if nestedCmd := extractExecCommandFromCompatValue(args["input"]); nestedCmd != "" {
+			candidate = nestedCmd
+		}
+	}
+	if candidate == "" {
+		if nestedCmd := extractExecCommandFromCompatValue(args["params"]); nestedCmd != "" {
+			candidate = nestedCmd
+		}
+	}
+	if candidate == "" {
+		if toolVal, ok := args["tool"].(string); ok {
+			trimmed := strings.TrimSpace(toolVal)
+			// Keep wrapper marker "exec" untouched; only treat as command alias
+			// when tool carries an actual shell command.
+			if trimmed != "" && !strings.EqualFold(trimmed, "exec") {
+				candidate = trimmed
+			}
+		}
+	}
+	if strings.TrimSpace(candidate) == "" {
+		return args
+	}
+
+	normalized := make(map[string]interface{}, len(args))
+	for k, v := range args {
+		normalized[k] = v
+	}
+	normalized["command"] = candidate
+	delete(normalized, "cmd")
+	return normalized
+}
+
+func extractExecCommandFromCompatValue(v interface{}) string {
+	switch typed := v.(type) {
+	case map[string]interface{}:
+		if command, ok := typed["command"].(string); ok && strings.TrimSpace(command) != "" {
+			return command
+		}
+		if cmd, ok := typed["cmd"].(string); ok && strings.TrimSpace(cmd) != "" {
+			return cmd
+		}
+		if toolVal, ok := typed["tool"].(string); ok {
+			trimmed := strings.TrimSpace(toolVal)
+			if trimmed != "" && !strings.EqualFold(trimmed, "exec") {
+				return trimmed
+			}
+		}
+		// Handle one more nesting level: {"arguments":{"cmd":"..."}}
+		if nested := extractExecCommandFromCompatValue(typed["arguments"]); nested != "" {
+			return nested
+		}
+	case string:
+		raw := strings.TrimSpace(typed)
+		if raw == "" {
+			return ""
+		}
+		if parsed, ok := parseJSONObjectArgs(raw); ok {
+			return extractExecCommandFromCompatValue(parsed)
+		}
+		if strings.EqualFold(raw, "exec") {
+			return ""
+		}
+		return raw
+	}
+	return ""
 }
 
 // ExecuteJSON runs a tool by name with JSON-encoded arguments.

@@ -391,8 +391,8 @@ func TestAllFormatsForProvider_BuiltinSingleFormat(t *testing.T) {
 	}
 
 	formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
-	if known {
-		t.Fatal("expected known=false without detected/remembered format")
+	if !known {
+		t.Fatal("expected known=true for endpoint-locked builtin provider")
 	}
 	if n != 1 {
 		t.Fatalf("expected 1 format for builtin provider, got %d", n)
@@ -501,8 +501,9 @@ func TestTryOnProvider_RequestResponsesEndpointForcesResponsesFormat(t *testing.
 	}
 }
 
-// TestTryOnProvider_Regular4xxBlacklistsModel verifies regular 4xx errors DO blacklist the model
-func TestTryOnProvider_Regular4xxBlacklistsModel(t *testing.T) {
+// TestTryOnProvider_InvalidRequestDoesNotBlacklistModel verifies invalid_request_error
+// is treated as request-level failure and should not blacklist the model.
+func TestTryOnProvider_InvalidRequestDoesNotBlacklistModel(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -542,9 +543,9 @@ func TestTryOnProvider_Regular4xxBlacklistsModel(t *testing.T) {
 		t.Fatal("expected error for 400 response")
 	}
 
-	// Regular 4xx SHOULD blacklist the model
-	if !ph.providerMemory.IsModelBlacklisted("test-provider", upstream.URL, "gpt-4") {
-		t.Error("model SHOULD be blacklisted for regular 4xx errors")
+	// invalid_request_error is request-shape related; model should not be blacklisted.
+	if ph.providerMemory.IsModelBlacklisted("test-provider", upstream.URL, "gpt-4") {
+		t.Error("model should NOT be blacklisted for invalid_request_error")
 	}
 }
 

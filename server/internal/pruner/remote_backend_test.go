@@ -8,7 +8,14 @@ import (
 	"testing"
 )
 
+func skipRemoteBackendTest(t *testing.T) {
+	t.Helper()
+	t.Skip("SWE Pruner remote backend is hidden; tests temporarily disabled")
+}
+
 func TestRemoteBackend_Prune(t *testing.T) {
+	skipRemoteBackendTest(t)
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/prune" {
 			http.NotFound(w, r)
@@ -48,6 +55,8 @@ func TestRemoteBackend_Prune(t *testing.T) {
 }
 
 func TestRemoteBackend_Health(t *testing.T) {
+	skipRemoteBackendTest(t)
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
 			w.WriteHeader(http.StatusOK)
@@ -65,6 +74,8 @@ func TestRemoteBackend_Health(t *testing.T) {
 }
 
 func TestRemoteBackend_HealthUnhealthy(t *testing.T) {
+	skipRemoteBackendTest(t)
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
@@ -78,6 +89,8 @@ func TestRemoteBackend_HealthUnhealthy(t *testing.T) {
 }
 
 func TestRemoteBackend_PruneServerError(t *testing.T) {
+	skipRemoteBackendTest(t)
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("internal error"))

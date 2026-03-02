@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 func TestQuestionManager_TimeoutActionDefault(t *testing.T) {
@@ -73,17 +74,18 @@ func TestQuestionManager_DynamicTimeoutOverride(t *testing.T) {
 func TestQuestionManager_GetPending_StrictUserMatchAndNewest(t *testing.T) {
 	mgr := NewQuestionManager(sse.NewBroker(), func() bool { return false }, 2*time.Minute)
 	now := time.Now()
+	nowMs := timeutil.NowMilli()
 
 	mgr.pending["old"] = &pendingQuestion{
-		request: QuestionRequest{ID: "old", UserID: "u1", SessionID: "s1"},
+		request: QuestionRequest{ID: "old", UserID: "u1", SessionID: "s1", ExpiresAt: nowMs + 60_000},
 		created: now.Add(-2 * time.Second),
 	}
 	mgr.pending["new"] = &pendingQuestion{
-		request: QuestionRequest{ID: "new", UserID: "u1", SessionID: "s2"},
+		request: QuestionRequest{ID: "new", UserID: "u1", SessionID: "s2", ExpiresAt: nowMs + 60_000},
 		created: now,
 	}
 	mgr.pending["other"] = &pendingQuestion{
-		request: QuestionRequest{ID: "other", UserID: "u2", SessionID: "s3"},
+		request: QuestionRequest{ID: "other", UserID: "u2", SessionID: "s3", ExpiresAt: nowMs + 60_000},
 		created: now.Add(1 * time.Second),
 	}
 
@@ -102,17 +104,18 @@ func TestQuestionManager_GetPending_StrictUserMatchAndNewest(t *testing.T) {
 func TestQuestionManager_GetPendingBySession_ReturnsNewest(t *testing.T) {
 	mgr := NewQuestionManager(sse.NewBroker(), func() bool { return false }, 2*time.Minute)
 	now := time.Now()
+	nowMs := timeutil.NowMilli()
 
 	mgr.pending["s-old"] = &pendingQuestion{
-		request: QuestionRequest{ID: "s-old", UserID: "u1", SessionID: "conv-1"},
+		request: QuestionRequest{ID: "s-old", UserID: "u1", SessionID: "conv-1", ExpiresAt: nowMs + 60_000},
 		created: now.Add(-3 * time.Second),
 	}
 	mgr.pending["s-new"] = &pendingQuestion{
-		request: QuestionRequest{ID: "s-new", UserID: "u2", SessionID: "conv-1"},
+		request: QuestionRequest{ID: "s-new", UserID: "u2", SessionID: "conv-1", ExpiresAt: nowMs + 60_000},
 		created: now,
 	}
 	mgr.pending["other"] = &pendingQuestion{
-		request: QuestionRequest{ID: "other", UserID: "u3", SessionID: "conv-2"},
+		request: QuestionRequest{ID: "other", UserID: "u3", SessionID: "conv-2", ExpiresAt: nowMs + 60_000},
 		created: now.Add(1 * time.Second),
 	}
 
@@ -126,4 +129,111 @@ func TestQuestionManager_GetPendingBySession_ReturnsNewest(t *testing.T) {
 	if got := mgr.GetPendingBySession("missing"); got != nil {
 		t.Fatalf("GetPendingBySession(missing) = %+v, want nil", got)
 	}
+}
+
+func TestQuestionManager_CleanupExpired(t *testing.T) {
+	mgr := NewQuestionManager(sse.NewBroker(), func() bool { return false }, 2*time.Minute)
+	nowMs := timeutil.NowMilli()
+
+	mgr.pending["expired"] = &pendingQuestion{
+		request: QuestionRequest{ID: "expired", UserID: "u1", SessionID: "s1", ExpiresAt: nowMs - 1},
+		created: time.Now().Add(-2 * time.Second),
+	}
+	mgr.pending["active"] = &pendingQuestion{
+		request: QuestionRequest{ID: "active", UserID: "u1", SessionID: "s1", ExpiresAt: nowMs + 60_000},
+		created: time.Now(),
+	}
+
+	removed := mgr.CleanupExpired()
+	if len(removed) != 1 || removed[0] != "expired" {
+		t.Fatalf("CleanupExpired() removed = %+v, want [expired]", removed)
+	}
+	if got := mgr.GetPending("u1"); got == nil || got.ID != "active" {
+		t.Fatalf("GetPending(u1) after cleanup = %+v, want active", got)
+	}
+}
+
+func TestQuestionManager_GetPending_SkipsExpiredEntries(t *testing.T) {
+	mgr := NewQuestionManager(sse.NewBroker(), func() bool { return false }, 2*time.Minute)
+	nowMs := timeutil.NowMilli()
+	now := time.Now()
+
+	mgr.pending["expired-new"] = &pendingQuestion{
+		request: QuestionRequest{ID: "expired-new", UserID: "u1", SessionID: "s1", ExpiresAt: nowMs - 1},
+		created: now.Add(2 * time.Second),
+	}
+	mgr.pending["active-old"] = &pendingQuestion{
+		request: QuestionRequest{ID: "active-old", UserID: "u1", SessionID: "s1", ExpiresAt: nowMs + 60_000},
+		created: now,
+	}
+
+	got := mgr.GetPending("u1")
+	if got == nil || got.ID != "active-old" {
+		t.Fatalf("GetPending(u1) = %+v, want active-old", got)
+	}
+	if _, exists := mgr.pending["expired-new"]; exists {
+		t.Fatal("expired entry should be removed during GetPending")
+	}
+}
+
+func TestQuestionManager_GetPendingBySession_SkipsExpiredEntries(t *testing.T) {
+	mgr := NewQuestionManager(sse.NewBroker(), func() bool { return false }, 2*time.Minute)
+	nowMs := timeutil.NowMilli()
+	now := time.Now()
+
+	mgr.pending["expired-new"] = &pendingQuestion{
+		request: QuestionRequest{ID: "expired-new", UserID: "u1", SessionID: "conv-1", ExpiresAt: nowMs - 1},
+		created: now.Add(2 * time.Second),
+	}
+	mgr.pending["active-old"] = &pendingQuestion{
+		request: QuestionRequest{ID: "active-old", UserID: "u2", SessionID: "conv-1", ExpiresAt: nowMs + 60_000},
+		created: now,
+	}
+
+	got := mgr.GetPendingBySession("conv-1")
+	if got == nil || got.ID != "active-old" {
+		t.Fatalf("GetPendingBySession(conv-1) = %+v, want active-old", got)
+	}
+	if _, exists := mgr.pending["expired-new"]; exists {
+		t.Fatal("expired entry should be removed during GetPendingBySession")
+	}
+}
+
+func TestQuestionManager_AskQuestionsWithContext_PersistsContext(t *testing.T) {
+	mgr := NewQuestionManager(sse.NewBroker(), func() bool { return false }, 2*time.Minute)
+
+	ctx := context.Background()
+	questions := []QuestionItem{{
+		ID:       "q1",
+		Question: "Continue?",
+		Options:  []QuestionOption{{Label: "Continue", Value: "continue"}, {Label: "Cancel", Value: "cancel"}},
+	}}
+	contextPayload := map[string]interface{}{
+		"kind":       "browser_checkpoint",
+		"required":   true,
+		"risk_level": "high",
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _, _ = mgr.AskQuestionsWithContext(ctx, "u1", "s1", questions, contextPayload)
+	}()
+
+	// Wait briefly for pending request to be created.
+	time.Sleep(20 * time.Millisecond)
+	req := mgr.GetPending("u1")
+	if req == nil {
+		t.Fatal("expected pending question request")
+	}
+	if req.Context == nil {
+		t.Fatal("expected context payload in question request")
+	}
+	if got, _ := req.Context["kind"].(string); got != "browser_checkpoint" {
+		t.Fatalf("unexpected context kind: %q", got)
+	}
+	if !mgr.ResolveAnswer(req.ID, []QuestionAnswerResult{{QuestionID: "q1", Selected: []string{"continue"}}}) {
+		t.Fatal("expected resolve answer to succeed")
+	}
+	<-done
 }

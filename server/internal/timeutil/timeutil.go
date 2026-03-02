@@ -96,6 +96,11 @@ func SinceTime(t time.Time) time.Duration {
 	return time.Duration(NowNano() - t.UnixNano())
 }
 
+// UntilTime returns the duration until the given time.
+func UntilTime(t time.Time) time.Duration {
+	return time.Duration(t.UnixNano() - NowNano())
+}
+
 // UnixNano returns the nanosecond timestamp for a time.Time.
 // This is a convenience wrapper around t.UnixNano().
 func UnixNano(t time.Time) int64 {

@@ -532,6 +532,15 @@ export default {
       modelConnecting: 'Připravuje se připojení ke stahování...',
       downloadFailed: 'Stažení modelu ONNX se nezdařilo',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Minimální počet vzorků Shadow Gate',
+      shadowGateThreshold: 'Práh Shadow Gate',
+      shadowGateScene: 'Scéna Shadow Gate',
+      shadowGateSceneAll: 'Vše',
+      shadowGateSceneQA: 'Otázky a odpovědi',
+      shadowGateSceneTool: 'Nástroj',
+    },
     tab: {
       general: 'Obecné',
       llm: 'LLM',
@@ -1740,7 +1749,8 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'Aktivní je standardní režim (vestavěný plánovač je ve verzi Beta), rozšířený režim nabízí lepší uživatelský zážitek.',
+    disabledWarningDesc: 'Aktivní je standardní režim, rozšířený režim nabízí lepší uživatelský zážitek.',
+    missingToolCalling: 'Pokročilé možnosti Tool Calling',
     directoryPathPlaceholderWin: 'Cesta k adresáři (např. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Cesta k adresáři (např. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'Cesta k adresáři (např. /home/user/projects)',

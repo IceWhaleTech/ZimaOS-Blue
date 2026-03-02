@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/onnx"
-	ort "github.com/yalue/onnxruntime_go"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	ort "github.com/yalue/onnxruntime_go"
 )
 
 // ErrOnnxNotReady is returned when the ONNX model is still loading.
@@ -162,10 +162,7 @@ func (b *OnnxBackend) Prune(ctx context.Context, req PruneRequest) (*PruneRespon
 	origLines := strings.Split(content, "\n")
 	origTokens := EstimateTokens(content)
 
-	threshold := req.Threshold
-	if threshold <= 0 {
-		threshold = b.config.Threshold
-	}
+	threshold := resolveThreshold(req.Threshold, b.config.Threshold)
 
 	// Tokenize and build input
 	inputIDs, attentionMask, codeStart, codeEnd := b.tokenizer.BuildPrunerInput(req.Query, content, b.maxLen)

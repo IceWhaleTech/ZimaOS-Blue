@@ -534,6 +534,15 @@ export default {
       modelConnecting: 'Pripravuje sa pripojenie na sťahovanie...',
       downloadFailed: 'Nepodarilo sa stiahnuť model ONNX',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Minimálne vzorky Shadow Gate',
+      shadowGateThreshold: 'Prah Shadow Gate',
+      shadowGateScene: 'Scéna Shadow Gate',
+      shadowGateSceneAll: 'Všetko',
+      shadowGateSceneQA: 'Otázky a odpovede',
+      shadowGateSceneTool: 'Nástroj',
+    },
     tab: { general: 'Všeobecné', llm: 'LLM', metrics: 'Využitie', remote: 'Vzdialený prístup', config: 'Konfigurácia', backup: 'Záloha', logs: 'Protokoly', service: 'Služba', retention: 'Uchovávanie' },
     failover: {
       title: 'Stav inteligentného prepnutia',
@@ -1300,7 +1309,8 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'Aktívny je štandardný režim (vstavaný plánovač je vo verzii Beta), rozšírený režim ponúka lepší používateľský zážitok.',
+    disabledWarningDesc: 'Aktívny je štandardný režim, rozšírený režim ponúka lepší používateľský zážitok.',
+    missingToolCalling: 'Pokročilé možnosti Tool Calling',
     directoryPathPlaceholderWin: 'Cesta k adresáru (napr. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Cesta k adresáru (napr. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'Cesta k adresáru (napr. /home/user/projects)',

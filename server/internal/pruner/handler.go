@@ -1,7 +1,6 @@
 package pruner
 
 import (
-	"context"
 	"log"
 	"net/http"
 
@@ -10,18 +9,19 @@ import (
 
 // APIHandler provides HTTP handlers for pruner management.
 type APIHandler struct {
-	middleware       *Middleware
-	config           *Config
-	modelManager     *PrunerModelManager
-	onToggle         func(enabled bool)  // callback to persist toggle state
-	onBackendChange  func(backend string) // callback to persist backend change
-	onMwCreated      func(mw *Middleware) // callback when middleware is lazily created
+	middleware      *Middleware
+	config          *Config
+	modelManager    *PrunerModelManager
+	onToggle        func(enabled bool)   // callback to persist toggle state
+	onBackendChange func(backend string) // callback to persist backend change
+	onMwCreated     func(mw *Middleware) // callback when middleware is lazily created
 }
 
 // NewAPIHandler creates a new pruner API handler.
 func NewAPIHandler(mw *Middleware, cfg *Config, mm *PrunerModelManager) *APIHandler {
+	cfg.Backend = NormalizeBackendName(cfg.Backend)
 	return &APIHandler{
-		middleware:    mw,
+		middleware:   mw,
 		config:       cfg,
 		modelManager: mm,
 	}
@@ -79,7 +79,7 @@ func (h *APIHandler) GetStats(c echo.Context) error {
 func (h *APIHandler) GetConfig(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"enabled":    h.config.Enabled,
-		"backend":    h.config.Backend,
+		"backend":    NormalizeBackendName(h.config.Backend),
 		"threshold":  h.config.Threshold,
 		"min_lines":  h.config.MinLines,
 		"timeout_ms": h.config.TimeoutMs,
@@ -125,6 +125,7 @@ func (h *APIHandler) UpdateConfig(c echo.Context) error {
 			"error": err.Error(),
 		})
 	}
+	h.config.Backend = NormalizeBackendName(h.config.Backend)
 
 	if update.Enabled != nil {
 		h.config.Enabled = *update.Enabled
@@ -149,13 +150,21 @@ func (h *APIHandler) UpdateConfig(c echo.Context) error {
 		}
 	}
 	if update.Threshold != nil {
+		if *update.Threshold < 0 || *update.Threshold > 1 {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": "threshold must be between 0 and 1",
+			})
+		}
 		h.config.Threshold = *update.Threshold
 	}
-	if update.Backend != nil && *update.Backend != h.config.Backend {
-		if err := h.switchBackend(*update.Backend); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": err.Error(),
-			})
+	if update.Backend != nil {
+		targetBackend := NormalizeBackendName(*update.Backend)
+		if targetBackend != h.config.Backend {
+			if err := h.switchBackend(targetBackend); err != nil {
+				return c.JSON(http.StatusBadRequest, map[string]string{
+					"error": err.Error(),
+				})
+			}
 		}
 	}
 
@@ -163,7 +172,7 @@ func (h *APIHandler) UpdateConfig(c echo.Context) error {
 		"success": true,
 		"config": map[string]interface{}{
 			"enabled":    h.config.Enabled,
-			"backend":    h.config.Backend,
+			"backend":    NormalizeBackendName(h.config.Backend),
 			"threshold":  h.config.Threshold,
 			"min_lines":  h.config.MinLines,
 			"timeout_ms": h.config.TimeoutMs,
@@ -174,58 +183,37 @@ func (h *APIHandler) UpdateConfig(c echo.Context) error {
 // StartModelDownload starts downloading the ONNX pruner model.
 // POST /api/v1/proxy/pruner/model/download
 func (h *APIHandler) StartModelDownload(c echo.Context) error {
-	if h.modelManager == nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "model manager not initialized",
-		})
-	}
-
-	go func() {
-		if err := h.modelManager.Download(context.Background()); err == nil {
-			// Auto-switch: local→hybrid (keep local IR + add neural), otherwise→onnx
-			target := "onnx"
-			if h.config.Backend == "local" || h.config.Backend == "hybrid" {
-				target = "hybrid"
-			}
-			if err := h.switchBackend(target); err != nil {
-				log.Printf("[pruner] auto-switch to %s failed: %v", target, err)
-			} else {
-				log.Printf("[pruner] auto-switched to %s backend", target)
-			}
-		}
-	}()
-
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "download started",
+		"success": false,
+		"message": "neural backend is disabled; local backend only",
 	})
 }
 
 // CancelModelDownload cancels the current model download.
 // POST /api/v1/proxy/pruner/model/cancel
 func (h *APIHandler) CancelModelDownload(c echo.Context) error {
-	if h.modelManager == nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "model manager not initialized",
-		})
-	}
-	h.modelManager.CancelDownload()
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
+		"success": false,
+		"message": "neural backend is disabled; local backend only",
 	})
 }
 
 // GetModelStatus returns the model download status.
 // GET /api/v1/proxy/pruner/model/status
 func (h *APIHandler) GetModelStatus(c echo.Context) error {
-	if h.modelManager == nil {
-		return c.JSON(http.StatusOK, PrunerModelStatus{Ready: false})
-	}
-	return c.JSON(http.StatusOK, h.modelManager.GetStatus())
+	return c.JSON(http.StatusOK, PrunerModelStatus{
+		Ready:       false,
+		Downloading: false,
+		State:       "disabled",
+	})
 }
 
 // switchBackend creates a new backend and swaps it into the middleware.
 func (h *APIHandler) switchBackend(name string) error {
+	name = NormalizeBackendName(name)
+	if name == h.config.Backend {
+		return nil
+	}
 	oldBackend := h.config.Backend
 	h.config.Backend = name
 	b, err := NewBackend(*h.config)
@@ -234,7 +222,12 @@ func (h *APIHandler) switchBackend(name string) error {
 		return err
 	}
 	if h.middleware != nil {
-		h.middleware.SetBackend(b)
+		old := h.middleware.SetBackend(b)
+		if old != nil {
+			if err := old.Close(); err != nil {
+				log.Printf("[pruner] close old backend failed: %v", err)
+			}
+		}
 	}
 	if h.onBackendChange != nil {
 		h.onBackendChange(name)

@@ -48,6 +48,14 @@ func TestBuildProviderVerificationURLs(t *testing.T) {
 			wantResponsesV1:  "https://relay.example.com/v1/responses",
 			wantResponsesRaw: "https://relay.example.com/responses",
 		},
+		{
+			name:             "localhost v1 base",
+			baseURL:          "http://127.0.0.1:11434/v1",
+			wantModelsURL:    "http://127.0.0.1:11434/v1/models",
+			wantChatURL:      "http://127.0.0.1:11434/v1/chat/completions",
+			wantResponsesV1:  "http://127.0.0.1:11434/v1/responses",
+			wantResponsesRaw: "http://127.0.0.1:11434/responses",
+		},
 	}
 
 	for _, tt := range tests {
@@ -66,6 +74,77 @@ func TestBuildProviderVerificationURLs(t *testing.T) {
 				t.Fatalf("responsesRaw = %q, want %q", got.responsesRaw, tt.wantResponsesRaw)
 			}
 		})
+	}
+}
+
+func TestVerifyProviderCandidate_LocalhostBaseURLAndAPIKey(t *testing.T) {
+	var verifyAuthHeaders []string
+	var verifyHosts []string
+	var probeHosts []string
+
+	restoreVerify := installProviderVerifyTransport(func(r *http.Request) (int, string) {
+		verifyHosts = append(verifyHosts, r.URL.Host)
+		verifyAuthHeaders = append(verifyAuthHeaders, r.Header.Get("Authorization"))
+		switch r.URL.Path {
+		case "/v1/models":
+			return http.StatusOK, `{"data":[{"id":"llama3.1"}]}`
+		case "/v1/chat/completions":
+			return http.StatusOK, `{"choices":[{"message":{"content":"pong"}}]}`
+		case "/v1/responses":
+			return http.StatusNotFound, `{"error":"not found"}`
+		case "/responses":
+			return http.StatusNotFound, `{"error":"not found"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreVerify()
+
+	restoreProbe := installProbeTransport(func(r *http.Request) (int, string) {
+		probeHosts = append(probeHosts, r.URL.Host)
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			return http.StatusBadRequest, `{"error":"probe"}`
+		case "/v1/responses":
+			return http.StatusNotFound, `{"error":"not found"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreProbe()
+
+	result, err := verifyProviderCandidate(context.Background(), providerVerificationRequest{
+		BaseURL: "http://127.0.0.1:11434/v1/",
+		APIKey:  "local-dev-key",
+		Model:   "llama3.1",
+	})
+	if err != nil {
+		t.Fatalf("verifyProviderCandidate returned error: %v", err)
+	}
+
+	if result.BaseURL != "http://127.0.0.1:11434/v1" {
+		t.Fatalf("BaseURL = %q, want %q", result.BaseURL, "http://127.0.0.1:11434/v1")
+	}
+	if result.RecommendedBaseURL == "" {
+		t.Fatal("RecommendedBaseURL should not be empty")
+	}
+	if len(verifyHosts) == 0 {
+		t.Fatal("expected verification requests to be issued")
+	}
+	for _, host := range verifyHosts {
+		if host != "127.0.0.1:11434" {
+			t.Fatalf("request host = %q, want %q", host, "127.0.0.1:11434")
+		}
+	}
+	for _, host := range probeHosts {
+		if host != "127.0.0.1:11434" {
+			t.Fatalf("probe request host = %q, want %q", host, "127.0.0.1:11434")
+		}
+	}
+	for _, auth := range verifyAuthHeaders {
+		if auth != "Bearer local-dev-key" {
+			t.Fatalf("Authorization header = %q, want %q", auth, "Bearer local-dev-key")
+		}
 	}
 }
 

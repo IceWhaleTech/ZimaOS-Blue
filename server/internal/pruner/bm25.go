@@ -41,6 +41,7 @@ type Segment struct {
 	EndLine    int
 	Kind       SegmentKind
 	Name       string
+	NameTokens []string // pre-tokenized segment name
 	Content    string
 	Tokens     []string // pre-tokenized content
 	TokenCount int      // pre-computed token estimate (0 = not set)
@@ -48,11 +49,16 @@ type Segment struct {
 
 // NewSegment creates a Segment with pre-computed token count.
 func NewSegment(startLine, endLine int, kind SegmentKind, name, content string, tokens []string) Segment {
+	var nameTokens []string
+	if name != "" {
+		nameTokens = codeTokenize(name)
+	}
 	return Segment{
 		StartLine:  startLine,
 		EndLine:    endLine,
 		Kind:       kind,
 		Name:       name,
+		NameTokens: nameTokens,
 		Content:    content,
 		Tokens:     tokens,
 		TokenCount: EstimateTokens(content),

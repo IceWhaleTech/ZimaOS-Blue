@@ -286,6 +286,34 @@ func TestParseSkillOSList(t *testing.T) {
 	}
 }
 
+func TestPinnedSkills_ContainsCoreRoutedSkillSet(t *testing.T) {
+	got := PinnedSkills()
+	gotSet := make(map[string]struct{}, len(got))
+	for _, id := range got {
+		gotSet[id] = struct{}{}
+	}
+
+	required := []string{
+		"reminder",
+		"sandbox",
+		"workflows",
+		"scheduler",
+	}
+
+	for _, id := range required {
+		if _, ok := gotSet[id]; !ok {
+			t.Fatalf("PinnedSkills missing %q; got=%v", id, got)
+		}
+	}
+
+	planIDs := []string{"plan_create", "plan_update", "plan_append"}
+	for _, id := range planIDs {
+		if _, ok := gotSet[id]; ok {
+			t.Fatalf("PinnedSkills should not pin %q by default; got=%v", id, got)
+		}
+	}
+}
+
 func TestFormatPinnedSkills_FallbackToHomeDefaultDir(t *testing.T) {
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()

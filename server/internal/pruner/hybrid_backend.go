@@ -3,7 +3,6 @@ package pruner
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 )
 
@@ -30,36 +29,56 @@ func (h *HybridBackend) Prune(ctx context.Context, req PruneRequest) (*PruneResp
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("hybrid: %w", err)
+	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	var wg sync.WaitGroup
 	localCh := make(chan pruneResult, 1)
 	neuralCh := make(chan pruneResult, 1)
 
-	wg.Add(2)
 	go func() {
-		defer wg.Done()
 		resp, err := h.local.Prune(ctx, req)
 		localCh <- pruneResult{resp, err}
 	}()
 	go func() {
-		defer wg.Done()
 		resp, err := h.neural.Prune(ctx, req)
 		neuralCh <- pruneResult{resp, err}
 	}()
 
 	// Collect results
 	var localRes, neuralRes pruneResult
-	for i := 0; i < 2; i++ {
+	gotLocal := false
+	gotNeural := false
+	for !gotLocal || !gotNeural {
 		select {
 		case r := <-localCh:
 			localRes = r
+			gotLocal = true
 		case r := <-neuralCh:
 			neuralRes = r
+			gotNeural = true
 		case <-ctx.Done():
 			// Timeout — use whatever we have
-			break
+			if !gotLocal {
+				select {
+				case r := <-localCh:
+					localRes = r
+					gotLocal = true
+				default:
+				}
+			}
+			if !gotNeural {
+				select {
+				case r := <-neuralCh:
+					neuralRes = r
+					gotNeural = true
+				default:
+				}
+			}
+			gotLocal = true
+			gotNeural = true
 		}
 	}
 
@@ -83,6 +102,9 @@ func (h *HybridBackend) Prune(ctx context.Context, req PruneRequest) (*PruneResp
 	// Both failed
 	if localRes.err != nil {
 		return nil, fmt.Errorf("hybrid: both backends failed: local=%v, neural=%v", localRes.err, neuralRes.err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("hybrid: %w", err)
 	}
 	return nil, fmt.Errorf("hybrid: no results")
 }

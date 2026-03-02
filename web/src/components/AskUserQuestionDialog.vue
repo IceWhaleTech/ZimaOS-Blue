@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const chatStore = useChatStore()
 
 const question = computed(() => {
@@ -24,6 +24,7 @@ const isLastQuestion = computed(() => activeTab.value >= totalQuestions.value - 
 // Check if we can use quick-submit mode: single question, single-select, short options
 const isQuickMode = computed(() => {
   if (!question.value) return false
+  if (checkpointContext.value) return false
   const q = question.value
   if (q.questions.length !== 1) return false
   const first = q.questions[0]
@@ -54,6 +55,38 @@ watch(question, (q) => {
 })
 
 const currentQuestion = computed(() => question.value?.questions[activeTab.value])
+
+const checkpointContext = computed(() => {
+  const ctx = (question.value as any)?.context
+  if (!ctx || ctx.kind !== 'browser_checkpoint') return null
+  return ctx as {
+    required?: boolean
+    risk_level?: string
+    step?: string
+    action?: string
+    url?: string
+    screenshot?: { mime_type?: string; data?: string; url?: string }
+  }
+})
+
+const checkpointScreenshotSrc = computed(() => {
+  const shot = checkpointContext.value?.screenshot
+  if (!shot) return ''
+  if (shot.data) {
+    const mime = shot.mime_type || 'image/png'
+    return `data:${mime};base64,${shot.data}`
+  }
+  return shot.url || ''
+})
+
+const isCheckpointQuestion = computed(() => !!checkpointContext.value)
+const dismissLabel = computed(() => isCheckpointQuestion.value ? t('askQuestion.browserCheckpoint.cancel') : t('askQuestion.skip'))
+const submitLabel = computed(() => isCheckpointQuestion.value ? t('askQuestion.browserCheckpoint.continue') : t('askQuestion.submit'))
+const checkpointRiskLabel = computed(() => {
+  const risk = (checkpointContext.value?.risk_level || 'high').toLowerCase()
+  const key = `execCard.risk.${risk}`
+  return te(key) ? t(key) : risk
+})
 
 function isSelected(qId: string, value: string): boolean {
   return answers.value[qId]?.selected.includes(value) ?? false
@@ -181,6 +214,14 @@ function submit() {
 }
 
 function dismiss() {
+  if (isCheckpointQuestion.value) {
+    const q = currentQuestion.value
+    if (q) {
+      answers.value[q.id] = { selected: ['cancel'], otherText: '' }
+      submit()
+      return
+    }
+  }
   chatStore.dismissQuestion()
 }
 </script>
@@ -255,6 +296,32 @@ function dismiss() {
             >
               ❕ {{ currentQuestion.detail }}
             </p>
+            <div
+              v-if="checkpointContext"
+              class="space-y-1.5 rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50/70 dark:bg-blue-900/20 px-2.5 py-2"
+            >
+              <div class="text-xs text-blue-700 dark:text-blue-200 font-medium">
+                {{ t('askQuestion.browserCheckpoint.title') }}
+              </div>
+              <div class="text-xs text-blue-700 dark:text-blue-200">
+                {{ t('askQuestion.browserCheckpoint.riskLevel') }}: {{ checkpointRiskLabel }}
+              </div>
+              <div v-if="checkpointContext.step" class="text-xs text-blue-700 dark:text-blue-200">
+                {{ t('askQuestion.browserCheckpoint.step') }}: {{ checkpointContext.step }}
+              </div>
+              <div v-if="checkpointContext.action" class="text-xs text-blue-700 dark:text-blue-200">
+                {{ t('askQuestion.browserCheckpoint.action') }}: {{ checkpointContext.action }}
+              </div>
+              <div v-if="checkpointContext.url" class="text-xs text-blue-700 dark:text-blue-200 break-all">
+                {{ t('askQuestion.browserCheckpoint.url') }}: {{ checkpointContext.url }}
+              </div>
+              <img
+                v-if="checkpointScreenshotSrc"
+                :src="checkpointScreenshotSrc"
+                :alt="t('askQuestion.browserCheckpoint.screenshotAlt')"
+                class="mt-1.5 w-full max-h-56 object-contain rounded border border-blue-200 dark:border-blue-700 bg-white/80 dark:bg-gray-900/40"
+              />
+            </div>
 
             <!-- Options -->
             <div class="space-y-2">
@@ -288,6 +355,7 @@ function dismiss() {
 
               <!-- Other option -->
               <label
+                v-if="!isCheckpointQuestion"
                 class="flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors"
                 :class="isOtherSelected(currentQuestion.id)
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
@@ -327,7 +395,7 @@ function dismiss() {
               class="px-3 py-2 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
               @click="dismiss"
             >
-              {{ t('askQuestion.skip') }}
+              {{ dismissLabel }}
             </button>
             <button
               v-if="totalQuestions > 1 && !isLastQuestion"
@@ -345,7 +413,7 @@ function dismiss() {
               :disabled="!canSubmit"
               @click="submit"
             >
-              {{ t('askQuestion.submit') }}
+              {{ submitLabel }}
             </button>
           </div>
         </div>

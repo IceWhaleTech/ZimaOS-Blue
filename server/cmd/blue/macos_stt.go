@@ -4,6 +4,8 @@ package main
 
 import (
 	"log/slog"
+	"os"
+	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 )
@@ -11,6 +13,10 @@ import (
 // macosRequestSTTAuthorization requests speech recognition authorization
 // on thread 0 before the server starts. Must be called from main().
 func macosRequestSTTAuthorization() {
+	if v := strings.TrimSpace(os.Getenv("ZIMA_SKIP_STT_AUTH")); v == "1" || strings.EqualFold(v, "true") {
+		slog.Info("[main] skipping macOS STT authorization via ZIMA_SKIP_STT_AUTH")
+		return
+	}
 	status, err := speech.RequestSTTAuthorization()
 	if err != nil {
 		slog.Warn("[main] macOS STT authorization failed", "error", err)

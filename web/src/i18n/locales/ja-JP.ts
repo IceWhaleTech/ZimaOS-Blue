@@ -638,6 +638,15 @@ export default {
       modelConnecting: 'ダウンロード接続を準備中...',
       downloadFailed: 'ONNXモデルのダウンロードに失敗しました',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Shadow Gate 最小サンプル数',
+      shadowGateThreshold: 'Shadow Gate 閾値',
+      shadowGateScene: 'Shadow Gate シーン',
+      shadowGateSceneAll: 'すべて',
+      shadowGateSceneQA: 'QA',
+      shadowGateSceneTool: 'ツール',
+    },
     title: '設定',
     tab: {
       ...enUS.settings.tab,

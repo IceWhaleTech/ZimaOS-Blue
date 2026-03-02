@@ -281,7 +281,7 @@ func TestTOTP_Validate_NormalizeSecret(t *testing.T) {
 // Helper function to check if a string is valid base32
 func isValidBase32(s string) bool {
 	// Base32 characters
-	validChars := "ABCDEFGHIJKLMNOPQRSTUVWXYZ807"
+	validChars := "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
 	for _, c := range strings.ToUpper(s) {
 		if !strings.ContainsRune(validChars, c) && c != '=' {
 			return false

@@ -424,6 +424,21 @@ export const useSettingsStore = defineStore('settings', () => {
     if (typeof ratio !== 'number' || ratio <= 0 || ratio > 1) return 0.1
     return ratio
   })
+  const smallModelShadowGateMinSamples = computed(() => {
+    const samples = backendSettings.value.small_model_shadow_gate_min_samples
+    if (typeof samples !== 'number' || samples < 1 || samples > 10000) return 40
+    return Math.floor(samples)
+  })
+  const smallModelShadowGateThresholdDelta = computed(() => {
+    const delta = backendSettings.value.small_model_shadow_gate_threshold_delta
+    if (typeof delta !== 'number' || delta <= 0 || delta > 1) return 0.35
+    return delta
+  })
+  const smallModelShadowGateScene = computed(() => {
+    const scene = String(backendSettings.value.small_model_shadow_gate_scene || '').trim()
+    if (scene.length > 128) return scene.slice(0, 128)
+    return scene
+  })
   const smallModelSummaryEnabled = computed(() => backendSettings.value.small_model_summary_enabled ?? true)
   const smallModelDocExtractEnabled = computed(() => backendSettings.value.small_model_doc_extract_enabled ?? true)
   const smallModelRerankEnabled = computed(() => backendSettings.value.small_model_rerank_enabled ?? true)
@@ -476,6 +491,21 @@ export const useSettingsStore = defineStore('settings', () => {
   async function setSmallModelShadowRatio(ratio: number) {
     const normalized = Math.max(0.01, Math.min(1, ratio))
     await updateBackendSettings({ small_model_shadow_ratio: normalized })
+  }
+
+  async function setSmallModelShadowGateMinSamples(samples: number) {
+    const normalized = Math.max(1, Math.min(10000, Math.floor(samples)))
+    await updateBackendSettings({ small_model_shadow_gate_min_samples: normalized })
+  }
+
+  async function setSmallModelShadowGateThresholdDelta(delta: number) {
+    const normalized = Math.max(0.01, Math.min(1, delta))
+    await updateBackendSettings({ small_model_shadow_gate_threshold_delta: normalized })
+  }
+
+  async function setSmallModelShadowGateScene(scene: string) {
+    const normalized = String(scene || '').trim().slice(0, 128)
+    await updateBackendSettings({ small_model_shadow_gate_scene: normalized })
   }
 
   async function setSmallModelSummaryEnabled(enabled: boolean) {
@@ -627,6 +657,9 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelID,
     smallModelAutoDownload,
     smallModelShadowRatio,
+    smallModelShadowGateMinSamples,
+    smallModelShadowGateThresholdDelta,
+    smallModelShadowGateScene,
     smallModelSummaryEnabled,
     smallModelDocExtractEnabled,
     smallModelRerankEnabled,
@@ -671,6 +704,9 @@ export const useSettingsStore = defineStore('settings', () => {
     setSmallModelEnabled,
     setSmallModelAutoDownload,
     setSmallModelShadowRatio,
+    setSmallModelShadowGateMinSamples,
+    setSmallModelShadowGateThresholdDelta,
+    setSmallModelShadowGateScene,
     setSmallModelSummaryEnabled,
     setSmallModelDocExtractEnabled,
     setSmallModelRerankEnabled,

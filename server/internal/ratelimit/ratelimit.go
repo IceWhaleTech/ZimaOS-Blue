@@ -91,7 +91,7 @@ func (l *Limiter) cleanup() {
 			l.mu.Lock()
 			now := timeutil.NowTime()
 			for key, state := range l.clients {
-				if now.After(state.windowEnd) {
+				if !now.Before(state.windowEnd) {
 					delete(l.clients, key)
 				}
 			}
@@ -108,7 +108,7 @@ func (l *Limiter) Allow(key string) bool {
 	now := timeutil.NowTime()
 	state, exists := l.clients[key]
 
-	if !exists || now.After(state.windowEnd) {
+	if !exists || !now.Before(state.windowEnd) {
 		// New window
 		l.clients[key] = &clientState{
 			count:     1,
@@ -133,7 +133,7 @@ func (l *Limiter) Remaining(key string) int {
 	now := timeutil.NowTime()
 	state, exists := l.clients[key]
 
-	if !exists || now.After(state.windowEnd) {
+	if !exists || !now.Before(state.windowEnd) {
 		return l.config.Rate
 	}
 

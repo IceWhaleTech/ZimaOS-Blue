@@ -8,7 +8,7 @@ import { usePreviewStore } from '@/stores/preview'
 import { PagePermissions } from '@/api/users'
 import { storeToRefs } from 'pinia'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const route = useRoute()
 const systemStore = useSystemStore()
 const authStore = useAuthStore()
@@ -25,6 +25,28 @@ const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
 const isCollapsed = ref(false)
 const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0
 
+function getStorageItem(key: string): string | null {
+  try {
+    if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') {
+      return null
+    }
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function setStorageItem(key: string, value: string): void {
+  try {
+    if (typeof localStorage === 'undefined' || typeof localStorage.setItem !== 'function') {
+      return
+    }
+    localStorage.setItem(key, value)
+  } catch {
+    // Ignore storage failures in restricted environments.
+  }
+}
+
 // Keyboard shortcut handler (Cmd+B on macOS, Alt+B on others)
 function handleKeydown(e: KeyboardEvent) {
   const modifierKey = isMac ? e.metaKey : e.altKey
@@ -36,7 +58,7 @@ function handleKeydown(e: KeyboardEvent) {
 
 // Load collapsed state from localStorage and setup keyboard listener
 onMounted(() => {
-  const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+  const saved = getStorageItem(SIDEBAR_COLLAPSED_KEY)
   if (saved !== null) {
     isCollapsed.value = saved === 'true'
   }
@@ -51,7 +73,7 @@ onUnmounted(() => {
 // Toggle collapsed state
 function toggleCollapse() {
   isCollapsed.value = !isCollapsed.value
-  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isCollapsed.value))
+  setStorageItem(SIDEBAR_COLLAPSED_KEY, String(isCollapsed.value))
 }
 
 // Close menu when route changes
@@ -82,6 +104,12 @@ interface NavItem {
   icon: string
   permission: string
   adminOnly?: boolean
+}
+
+function translateNavLabel(key: string): string {
+  if (te(key)) return t(key)
+  const fallback = key.split('.').pop() || key
+  return fallback.charAt(0).toUpperCase() + fallback.slice(1)
 }
 
 // Define all nav items with their permissions
@@ -163,7 +191,7 @@ const navItems = computed(() => {
     })
     .map(item => ({
       ...item,
-      name: t(item.name),
+      name: translateNavLabel(item.name),
     }))
 })
 </script>

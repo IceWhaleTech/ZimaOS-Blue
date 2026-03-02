@@ -7,7 +7,7 @@ Run multi-step research with planning, evidence collection, and citation-based s
 Use direct skill call (prefer `--json`):
 
 ```bash
-deep_research query="ZimaOS-Blue deep research architecture" --json
+blue deep_research query="ZimaOS-Blue deep research architecture" --json
 ```
 
 ## Parameters

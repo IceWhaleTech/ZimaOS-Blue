@@ -1,6 +1,7 @@
 package claudecode
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -130,7 +131,9 @@ func TestBuildProjectContext_CacheHitAndInvalidation(t *testing.T) {
 func TestBuildAgentModeGuidance_IncludesFSMAndAskGateProtocol(t *testing.T) {
 	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
 	b.SetAgentMode(true)
-	out := b.buildAgentModeGuidance()
+	var sb strings.Builder
+	b.writeAgentModeGuidanceTo(&sb)
+	out := sb.String()
 	if !strings.Contains(out, "<orchestrator_fsm>") {
 		t.Fatalf("agent mode guidance should include orchestrator_fsm tag: %s", out)
 	}
@@ -140,10 +143,66 @@ func TestBuildAgentModeGuidance_IncludesFSMAndAskGateProtocol(t *testing.T) {
 	if !strings.Contains(out, "exactly one canonical Markdown TODO checklist") {
 		t.Fatalf("agent mode guidance should force one canonical TODO checklist: %s", out)
 	}
+	if !strings.Contains(out, "default to status-only updates") || !strings.Contains(out, "Do not re-output duplicate TODO blocks") {
+		t.Fatalf("agent mode guidance should enforce stable checklist updates without recreation: %s", out)
+	}
+	if !strings.Contains(out, "FIRST output a Markdown TODO checklist") || !strings.Contains(out, "may inject `<tp>` progress hints") {
+		t.Fatalf("agent mode guidance should enforce markdown-first TODO planning with progress hints: %s", out)
+	}
+	if strings.Contains(out, "plan_create") || strings.Contains(out, "plan_update") || strings.Contains(out, "plan_append") {
+		t.Fatalf("agent mode guidance should not mention plan IPC commands by default: %s", out)
+	}
 	if !strings.Contains(out, "<awaiting_user_input>true</awaiting_user_input>") {
 		t.Fatalf("agent mode guidance should include awaiting_user_input marker contract: %s", out)
 	}
 	if !strings.Contains(out, "next concrete improvement") || !strings.Contains(out, "explicitly asks to stop") {
 		t.Fatalf("agent mode guidance should include continuous loop stop-condition: %s", out)
+	}
+}
+
+func TestBuildStructured_LoadsWorkspaceContextWhenWorkspaceSet(t *testing.T) {
+	workspaceDir := t.TempDir()
+	mgr := workspace.NewManager(workspaceDir)
+	if err := mgr.EnsureWorkspace(); err != nil {
+		t.Fatalf("failed to ensure workspace: %v", err)
+	}
+
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{WorkspaceDir: workspaceDir})
+	b.SetWorkspace(mgr)
+	result := b.BuildStructured(context.Background(), "")
+	out := result.Config
+
+	if !strings.Contains(out, "<project_context>") {
+		t.Fatalf("expected BuildStructured config to include <project_context>, got: %s", out)
+	}
+	if !strings.Contains(out, `<file name="SOUL.md">`) {
+		t.Fatalf("expected BuildStructured config to include SOUL.md section, got: %s", out)
+	}
+}
+
+func TestBuildStructured_StaticIncludesPriorityAndGrounding(t *testing.T) {
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
+	static := b.BuildStructured(context.Background(), "").Static
+
+	required := []string{"<role>", "<instruction_priority>", "<grounding>"}
+	for _, tag := range required {
+		if !strings.Contains(static, tag) {
+			t.Fatalf("expected static prompt to contain %s, got: %s", tag, static)
+		}
+	}
+	if !strings.Contains(static, "untrusted content") {
+		t.Fatalf("expected static prompt to define untrusted content boundary, got: %s", static)
+	}
+}
+
+func TestBuild_IncludesPriorityAndGroundingGuidance(t *testing.T) {
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
+	out := b.Build(context.Background(), "")
+
+	required := []string{"<role>", "<instruction_priority>", "<grounding>"}
+	for _, tag := range required {
+		if !strings.Contains(out, tag) {
+			t.Fatalf("expected Build output to contain %s, got: %s", tag, out)
+		}
 	}
 }

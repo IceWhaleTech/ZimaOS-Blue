@@ -400,23 +400,23 @@ func (s *Store) UpdateStatus(id, status string, err error) error {
 	}
 
 	now := timeutil.NowTime()
-	var data map[string]interface{}
+	var data z.V
 
 	switch status {
 	case "running":
-		data = map[string]interface{}{
+		data = z.V{
 			"status":     status,
 			"started_at": now,
 			"error":      errStr,
 		}
 	case "completed", "failed", "cancelled":
-		data = map[string]interface{}{
+		data = z.V{
 			"status":       status,
 			"completed_at": now,
 			"error":        errStr,
 		}
 	default:
-		data = map[string]interface{}{
+		data = z.V{
 			"status": status,
 			"error":  errStr,
 		}

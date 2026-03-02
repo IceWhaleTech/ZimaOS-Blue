@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   VoiceWebSocket,
   AudioRecorder,
@@ -12,6 +13,9 @@ import { speechApi } from '@/api/speech'
 import { WakeWordDetector } from '@/utils/wakeword'
 import { convertToWav } from '@/utils/audioConverter'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
+import { useChatStore } from '@/stores/chat'
+
+const { t } = useI18n()
 
 // State
 const isConnected = ref(false)
@@ -36,25 +40,27 @@ const wakeWordSupported = ref(WakeWordDetector.isSupported())
 
 // ASR model download prompt
 const showASRDownloadPrompt = ref(false)
+const chatStore = useChatStore()
 
 // WebSocket, recorder, and wake word detector
 let ws: VoiceWebSocket | null = null
 let recorder: AudioRecorder | null = null
 let wakeWordDetector: WakeWordDetector | null = null
+let pendingQuestionTimer: ReturnType<typeof setInterval> | null = null
 
 // Computed
 const stateText = computed(() => {
   switch (sessionState.value) {
     case 'idle':
-      return 'Ready'
+      return t('voiceView.state.ready')
     case 'listening':
-      return 'Listening...'
+      return t('voiceView.state.listening')
     case 'processing':
-      return 'Processing...'
+      return t('voiceView.state.processing')
     case 'speaking':
-      return 'Speaking...'
+      return t('voiceView.state.speaking')
     default:
-      return 'Unknown'
+      return t('voiceView.state.unknown')
   }
 })
 
@@ -62,10 +68,20 @@ const canRecord = computed(() => {
   return isConnected.value && !isRecording.value && sessionState.value === 'idle'
 })
 
+const pendingCheckpointQuestion = computed(() => {
+  const q = chatStore.pendingQuestion
+  if (!q?.context || q.context.kind !== 'browser_checkpoint') return null
+  return q
+})
+
 // Lifecycle
 onMounted(async () => {
   await loadVoices()
   await checkAndConnect()
+  await chatStore.checkPendingQuestion()
+  pendingQuestionTimer = setInterval(() => {
+    chatStore.checkPendingQuestion()
+  }, 5000)
   initWakeWordDetector()
 })
 
@@ -86,6 +102,10 @@ async function checkAndConnect() {
 onUnmounted(() => {
   disconnect()
   stopWakeWordDetection()
+  if (pendingQuestionTimer) {
+    clearInterval(pendingQuestionTimer)
+    pendingQuestionTimer = null
+  }
 })
 
 // Methods
@@ -117,6 +137,7 @@ async function connectWebSocket() {
   ws.onTranscript = (text) => {
     transcript.value = text
     messages.value.push({ role: 'user', text })
+    void trySubmitCheckpointByVoice(text)
   }
 
   ws.onResponse = (text) => {
@@ -155,7 +176,7 @@ async function connectWebSocket() {
       continuous_listening: continuousListening.value,
     })
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Connection failed'
+    error.value = e instanceof Error ? e.message : t('voiceView.errors.connectionFailed')
   }
 }
 
@@ -181,7 +202,7 @@ async function startRecording() {
       const base64 = await blobToBase64(wavBlob)
       ws?.sendAudio(base64, 'wav')
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to process audio'
+      error.value = e instanceof Error ? e.message : t('voiceView.errors.processAudioFailed')
     }
   }
 
@@ -196,7 +217,7 @@ async function startRecording() {
     transcript.value = ''
     response.value = ''
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to start recording'
+    error.value = e instanceof Error ? e.message : t('voiceView.errors.startRecordingFailed')
   }
 }
 
@@ -256,7 +277,7 @@ function toggleWakeWordDetection() {
     wakeWordListening.value = started
     if (!started) {
       wakeWordEnabled.value = false
-      error.value = 'Failed to start wake word detection'
+      error.value = t('voiceView.errors.wakeWordStartFailed')
     }
   } else {
     wakeWordDetector.stop()
@@ -277,6 +298,83 @@ function updateWakeWord() {
   }
 }
 
+function parseCheckpointDecision(text: string): 'continue' | 'cancel' | '' {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/^[\s.,!?;:，。！？；：、'"`“”‘’()（）【】\[\]-]+|[\s.,!?;:，。！？；：、'"`“”‘’()（）【】\[\]-]+$/g, '')
+
+  if (!normalized) return ''
+  if ([
+    '1', 'y', 'yes', 'ok', 'okay', 'continue', 'proceed', 'confirm',
+    '好', '好的', '行', '可以', '继续', '继续吧', '确认', '繼續', '確認',
+    'oui', 'continuer', 'confirmer',
+    'ja', 'weiter', 'bestätigen', 'bestaetigen',
+    'sí', 'si', 'continuar', 'confirmar', 'continúa', 'continua',
+    'sì', 'continua', 'conferma',
+    'sim',
+    'да', 'продолжить', 'подтвердить',
+    'はい', '続行', '確認する',
+    '네', '예', '계속', '확인',
+    'ano', 'pokračovat', 'pokracovat', 'potvrdit',
+    'tak', 'kontynuuj', 'potwierdz',
+    'نعم',
+    'ναι', 'συνέχεια', 'συνεχίστε', 'συνεχισε',
+    'igen', 'folytatás', 'folytatas', 'megerősít', 'megerosit',
+    'da', 'nastavi', 'potvrdi', 'confirmă', 'confirma',
+    'fortsett', 'bekreft',
+    'fortsätt', 'fortsaett', 'bekräfta', 'bekrafta',
+    'lean ar aghaidh', 'deimhnigh',
+    'അതെ', 'തുടരുക', 'സ്ഥിരീകരിക്കുക',
+  ].includes(normalized)) {
+    return 'continue'
+  }
+  if ([
+    '2', 'n', 'no', 'cancel', 'stop', 'deny', 'reject', 'abort',
+    '取消', '拒绝', '不要', '停止', '中止', '取消吧', '拒絕',
+    'non', 'annuler', 'arrêter', 'arreter', 'refuser',
+    'nein', 'abbrechen', 'stopp', 'ablehnen',
+    'cancelar', 'detener', 'rechazar',
+    'annulla', 'ferma', 'rifiuta',
+    'não', 'nao', 'parar', 'recusar',
+    'нет', 'отмена', 'стоп', 'отклонить',
+    'いいえ', 'キャンセル', '停止', '拒否',
+    '아니요', '아니오', '취소', '중지', '거부',
+    'ne', 'zrušit', 'zrusit', 'zamítnout', 'zamitnout',
+    'nie', 'anuluj', 'odrzuć', 'odrzuc',
+    'όχι', 'ακύρωση', 'ακυρωση', 'σταμάτα', 'σταματα',
+    'nem', 'mégse', 'megse', 'elutasít', 'elutasit',
+    'otkaži', 'otkazi', 'odbij',
+    'nu', 'anulează', 'anuleaza', 'respinge',
+    'stans', 'afbryd',
+    'nei', 'avbryt',
+    'nej', 'avbryt', 'avbryt',
+    'ná', 'na', 'cealaigh', 'diúltaigh', 'diultaigh',
+    'ഇല്ല', 'റദ്ദാക്കുക', 'നിർത്തുക',
+  ].includes(normalized)) {
+    return 'cancel'
+  }
+  return ''
+}
+
+async function submitCheckpointDecision(decision: 'continue' | 'cancel') {
+  const pending = pendingCheckpointQuestion.value
+  if (!pending || pending.questions.length === 0) return
+  const first = pending.questions[0]
+  if (!first) return
+  await chatStore.submitQuestionAnswers([{
+    question_id: first.id,
+    selected: [decision],
+  }])
+}
+
+async function trySubmitCheckpointByVoice(text: string) {
+  if (!pendingCheckpointQuestion.value) return
+  const decision = parseCheckpointDecision(text)
+  if (!decision) return
+  await submitCheckpointDecision(decision)
+}
+
 // Watch for wake word toggle
 watch(wakeWordEnabled, () => {
   toggleWakeWordDetection()
@@ -286,14 +384,14 @@ watch(wakeWordEnabled, () => {
 <template>
   <div class="voice-chat-view p-6 max-w-4xl mx-auto">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-white">Voice Assistant</h1>
+      <h1 class="text-2xl font-bold text-white">{{ t('voiceView.title') }}</h1>
       <div class="flex items-center gap-2">
         <span
           class="w-3 h-3 rounded-full"
           :class="isConnected ? 'bg-green-500' : 'bg-red-500'"
         ></span>
         <span class="text-sm text-gray-400">
-          {{ isConnected ? 'Connected' : 'Disconnected' }}
+          {{ isConnected ? t('voiceView.connected') : t('voiceView.disconnected') }}
         </span>
       </div>
     </div>
@@ -313,29 +411,29 @@ watch(wakeWordEnabled, () => {
 
     <!-- Settings -->
     <div class="bg-gray-700 rounded-lg p-4 mb-6">
-      <h2 class="text-sm font-medium text-gray-400 mb-3">Settings</h2>
+      <h2 class="text-sm font-medium text-gray-400 mb-3">{{ t('voiceView.settingsTitle') }}</h2>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <!-- Language -->
         <div>
-          <label class="block text-xs text-gray-500 mb-1">Language</label>
+          <label class="block text-xs text-gray-500 mb-1">{{ t('voiceView.languageLabel') }}</label>
           <select
             v-model="selectedLanguage"
             class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
             @change="updateConfig"
           >
-            <option value="en">English</option>
-            <option value="zh">Chinese</option>
-            <option value="ja">Japanese</option>
-            <option value="ko">Korean</option>
-            <option value="de">German</option>
-            <option value="fr">French</option>
-            <option value="es">Spanish</option>
+            <option value="en">{{ t('voiceView.languages.en') }}</option>
+            <option value="zh">{{ t('voiceView.languages.zh') }}</option>
+            <option value="ja">{{ t('voiceView.languages.ja') }}</option>
+            <option value="ko">{{ t('voiceView.languages.ko') }}</option>
+            <option value="de">{{ t('voiceView.languages.de') }}</option>
+            <option value="fr">{{ t('voiceView.languages.fr') }}</option>
+            <option value="es">{{ t('voiceView.languages.es') }}</option>
           </select>
         </div>
 
         <!-- Voice -->
         <div>
-          <label class="block text-xs text-gray-500 mb-1">Voice</label>
+          <label class="block text-xs text-gray-500 mb-1">{{ t('voiceView.voiceLabel') }}</label>
           <select
             v-model="selectedVoice"
             class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
@@ -356,7 +454,7 @@ watch(wakeWordEnabled, () => {
               class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
               @change="updateConfig"
             />
-            <span class="text-sm text-gray-300">Auto-play</span>
+            <span class="text-sm text-gray-300">{{ t('voiceView.autoPlay') }}</span>
           </label>
         </div>
 
@@ -369,7 +467,7 @@ watch(wakeWordEnabled, () => {
               class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
               @change="updateConfig"
             />
-            <span class="text-sm text-gray-300">Continuous</span>
+            <span class="text-sm text-gray-300">{{ t('voiceView.continuous') }}</span>
           </label>
         </div>
       </div>
@@ -377,24 +475,24 @@ watch(wakeWordEnabled, () => {
       <!-- Wake Word Settings -->
       <div v-if="wakeWordSupported" class="border-t border-gray-700 pt-4 mt-4">
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-medium text-gray-400">Wake Word Detection</h3>
+          <h3 class="text-sm font-medium text-gray-400">{{ t('voiceView.wakeWordTitle') }}</h3>
           <label class="flex items-center gap-2 cursor-pointer">
             <input
               v-model="wakeWordEnabled"
               type="checkbox"
               class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
             />
-            <span class="text-sm text-gray-300">Enable</span>
+            <span class="text-sm text-gray-300">{{ t('voiceView.wakeWordEnable') }}</span>
           </label>
         </div>
         <div class="flex items-center gap-4">
           <div class="flex-1">
-            <label class="block text-xs text-gray-500 mb-1">Wake Word</label>
+            <label class="block text-xs text-gray-500 mb-1">{{ t('voiceView.wakeWordLabel') }}</label>
             <input
               v-model="wakeWord"
               type="text"
               class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
-              placeholder="e.g., hey echo"
+              :placeholder="t('voiceView.wakeWordPlaceholder')"
               @change="updateWakeWord"
             />
           </div>
@@ -404,10 +502,33 @@ watch(wakeWordEnabled, () => {
               :class="wakeWordListening ? 'bg-green-500 animate-pulse' : 'bg-gray-500'"
             ></span>
             <span class="text-xs text-gray-500">
-              {{ wakeWordListening ? 'Listening for wake word...' : 'Not listening' }}
+              {{ wakeWordListening ? t('voiceView.wakeWordListening') : t('voiceView.wakeWordIdle') }}
             </span>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Browser checkpoint confirmation (voice + button fallback) -->
+    <div v-if="pendingCheckpointQuestion" class="bg-blue-900/30 border border-blue-500/40 rounded-lg p-4 mb-6">
+      <div class="text-sm font-medium text-blue-200 mb-1">{{ t('voiceView.checkpoint.title') }}</div>
+      <div class="text-xs text-blue-100/90 mb-2">
+        {{ pendingCheckpointQuestion.questions[0]?.question || t('voiceView.checkpoint.fallbackQuestion') }}
+      </div>
+      <div class="text-xs text-blue-200/80 mb-3">{{ t('voiceView.checkpoint.help') }}</div>
+      <div class="flex gap-2">
+        <button
+          class="px-3 py-2 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          @click="submitCheckpointDecision('continue')"
+        >
+          {{ t('voiceView.checkpoint.continue') }}
+        </button>
+        <button
+          class="px-3 py-2 text-xs font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-white transition-colors"
+          @click="submitCheckpointDecision('cancel')"
+        >
+          {{ t('voiceView.checkpoint.cancel') }}
+        </button>
       </div>
     </div>
 
@@ -417,7 +538,7 @@ watch(wakeWordEnabled, () => {
         <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
         </svg>
-        <p>Press and hold the microphone button to speak</p>
+        <p>{{ t('voiceView.emptyHint') }}</p>
       </div>
       <div v-else class="p-4 space-y-4">
         <div
@@ -498,7 +619,7 @@ watch(wakeWordEnabled, () => {
       </button>
 
       <p class="text-sm text-gray-500">
-        {{ isRecording ? 'Release to send' : 'Hold to speak' }}
+        {{ isRecording ? t('voiceView.releaseToSend') : t('voiceView.holdToSpeak') }}
       </p>
 
       <!-- Clear Button -->
@@ -507,7 +628,7 @@ watch(wakeWordEnabled, () => {
         class="text-sm text-gray-400 hover:text-gray-300"
         @click="clearMessages"
       >
-        Clear conversation
+        {{ t('voiceView.clearConversation') }}
       </button>
     </div>
 

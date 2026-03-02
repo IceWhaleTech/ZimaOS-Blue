@@ -102,10 +102,15 @@ func ensureAdmin(c echo.Context) error {
 	if claims == nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
-	if strings.ToLower(strings.TrimSpace(claims.Role)) != "admin" {
-		return echo.NewHTTPError(http.StatusForbidden, "admin access required")
+	if strings.ToLower(strings.TrimSpace(claims.Role)) == "admin" {
+		return nil
 	}
-	return nil
+	// Preview mode uses a synthetic user with role=user in JWT claims,
+	// but is treated as full admin by the rest of the system.
+	if strings.TrimSpace(claims.UserID) == "preview-user" {
+		return nil
+	}
+	return echo.NewHTTPError(http.StatusForbidden, "admin access required")
 }
 
 func parseQueryOptions(c echo.Context) (QueryOptions, error) {

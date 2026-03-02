@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync"
 )
 
 // contextKey is a private type for context keys in this package.
@@ -47,22 +48,9 @@ func IsPrunerDisabled(ctx context.Context) bool {
 	return ok && v
 }
 
-// openaiMessage represents a message in the OpenAI chat completions format.
-type openaiMessage struct {
-	Role       string `json:"role"`
-	Content    string `json:"content,omitempty"`
-	ToolCallID string `json:"tool_call_id,omitempty"`
-	Name       string `json:"name,omitempty"`
-}
-
-// openaiRequest is a minimal representation of the chat completions request.
-type openaiRequest struct {
-	Messages []openaiMessage        `json:"messages"`
-	Extra    map[string]interface{} `json:"-"`
-}
-
 // Middleware intercepts proxy requests and prunes code content in tool messages.
 type Middleware struct {
+	mu      sync.RWMutex
 	backend Backend
 	config  Config
 	stats   *Stats
@@ -82,7 +70,15 @@ func NewMiddleware(backend Backend, cfg Config, stats *Stats) *Middleware {
 // unchanged if no pruning was applied or on any error.
 // If a *RequestPruneStats is attached to ctx via WithPruneStats, it will be populated.
 func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, error) {
-	if !m.config.Enabled || m.backend == nil {
+	m.mu.RLock()
+	enabled := m.config.Enabled
+	backend := m.backend
+	minLines := m.config.MinLines
+	threshold := m.config.Threshold
+	statsCollector := m.stats
+	m.mu.RUnlock()
+
+	if !enabled || backend == nil {
 		return body, nil
 	}
 
@@ -97,15 +93,15 @@ func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, e
 		return body, nil
 	}
 
-	var messages []openaiMessage
+	var messages []map[string]json.RawMessage
 	if err := json.Unmarshal(messagesRaw, &messages); err != nil {
 		return body, nil
 	}
 
 	passthrough := true
 	defer func() {
-		if passthrough && m.stats != nil {
-			m.stats.RecordPassthrough()
+		if passthrough && statsCollector != nil {
+			statsCollector.RecordPassthrough()
 		}
 		if passthrough {
 			slog.Debug("[pruner] passthrough request")
@@ -115,16 +111,26 @@ func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, e
 	modified := false
 	var totalBefore, totalAfter, msgsPruned int
 	for i, msg := range messages {
+		role, ok := rawMessageString(msg, "role")
+		if !ok {
+			continue
+		}
+		content, ok := rawMessageString(msg, "content")
+		if !ok {
+			// Skip non-string content (e.g. multimodal array parts).
+			continue
+		}
+
 		// Determine if this message is prunable
-		switch msg.Role {
+		switch role {
 		case "tool":
 			// Tool messages: prune if content is long enough
-			if DetectContentType(msg.Content, m.config.MinLines) == ContentUnknown {
+			if DetectContentType(content, minLines) == ContentUnknown {
 				continue
 			}
 		case "user", "system":
 			// User/system messages: prune if content is long enough
-			if DetectContentType(msg.Content, m.config.MinLines) == ContentUnknown {
+			if DetectContentType(content, minLines) == ContentUnknown {
 				continue
 			}
 		default:
@@ -134,25 +140,25 @@ func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, e
 		// Derive query: for tool messages, look at prior conversation context;
 		// for user/system messages, use the first 500 chars as self-query.
 		var query string
-		if msg.Role == "tool" {
-			query = extractQueryContext(messages, i)
+		if role == "tool" {
+			query = extractQueryContextRaw(messages, i)
 		} else {
-			query = msg.Content
+			query = content
 			if len(query) > 500 {
 				query = query[:500]
 			}
 		}
 
-		result, err := m.backend.Prune(ctx, PruneRequest{
-			Content:   msg.Content,
-			Code:      msg.Content, // backward compat
+		result, err := backend.Prune(ctx, PruneRequest{
+			Content:   content,
+			Code:      content, // backward compat
 			Query:     query,
-			Threshold: m.config.Threshold,
+			Threshold: threshold,
 		})
 		if err != nil {
 			slog.Warn("[pruner] prune failed for message",
 				"message_index", i,
-				"role", msg.Role,
+				"role", role,
 				"error", err)
 			continue
 		}
@@ -162,9 +168,13 @@ func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, e
 		if pruned == "" {
 			pruned = result.PrunedCode
 		}
-		messages[i].Content = pruned
-		if m.stats != nil {
-			m.stats.Record(result)
+		if err := setRawMessageString(messages[i], "content", pruned); err != nil {
+			slog.Warn("[pruner] failed to write pruned content", "message_index", i, "error", err)
+			continue
+		}
+
+		if statsCollector != nil {
+			statsCollector.Record(result)
 		}
 		totalBefore += result.OriginalTokens
 		totalAfter += result.PrunedTokens
@@ -202,37 +212,72 @@ func (m *Middleware) ProcessRequest(ctx context.Context, body []byte) ([]byte, e
 	return json.Marshal(raw)
 }
 
-// extractQueryContext derives a pruning hint from the conversation context.
-// It looks for the last user or assistant message before the tool message.
-func extractQueryContext(messages []openaiMessage, toolIdx int) string {
+// extractQueryContextRaw derives a pruning hint from prior string-based user/assistant messages.
+func extractQueryContextRaw(messages []map[string]json.RawMessage, toolIdx int) string {
 	for i := toolIdx - 1; i >= 0; i-- {
-		if messages[i].Role == "user" || messages[i].Role == "assistant" {
-			content := messages[i].Content
-			if len(content) > 500 {
-				content = content[:500]
-			}
-			return content
+		role, ok := rawMessageString(messages[i], "role")
+		if !ok || (role != "user" && role != "assistant") {
+			continue
 		}
+		content, ok := rawMessageString(messages[i], "content")
+		if !ok {
+			continue
+		}
+		if len(content) > 500 {
+			content = content[:500]
+		}
+		return content
 	}
 	return ""
 }
 
+func rawMessageString(msg map[string]json.RawMessage, key string) (string, bool) {
+	raw, ok := msg[key]
+	if !ok {
+		return "", false
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", false
+	}
+	return s, true
+}
+
+func setRawMessageString(msg map[string]json.RawMessage, key, value string) error {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	msg[key] = encoded
+	return nil
+}
+
 // Enabled returns whether the middleware is active.
 func (m *Middleware) Enabled() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.config.Enabled && m.backend != nil
 }
 
 // SetEnabled toggles the middleware on or off at runtime.
 func (m *Middleware) SetEnabled(enabled bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.config.Enabled = enabled
 }
 
 // SetBackend swaps the pruning backend at runtime.
-func (m *Middleware) SetBackend(b Backend) {
+func (m *Middleware) SetBackend(b Backend) Backend {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	old := m.backend
 	m.backend = b
+	return old
 }
 
 // GetStats returns the current pruning statistics.
 func (m *Middleware) GetStats() *Stats {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.stats
 }

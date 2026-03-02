@@ -262,7 +262,7 @@ func (r *SQLiteRepository) GetBySlug(ctx context.Context, slug string) (*Tenant,
 // Update updates a tenant.
 func (r *SQLiteRepository) Update(ctx context.Context, tenant *Tenant) error {
 	n, err := r.tenants(ctx).Update(
-		map[string]interface{}{
+		z.V{
 			"name":        tenant.Name,
 			"description": tenant.Description,
 			"status":      tenant.Status,
@@ -284,7 +284,7 @@ func (r *SQLiteRepository) Update(ctx context.Context, tenant *Tenant) error {
 // Delete soft-deletes a tenant.
 func (r *SQLiteRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	n, err := r.tenants(ctx).Update(
-		map[string]interface{}{
+		z.V{
 			"deleted_at": timeutil.NowTime().UTC(),
 			"status":     StatusDeleted,
 		},
@@ -490,7 +490,7 @@ func (r *SQLiteRepository) GetMember(ctx context.Context, tenantID, userID uuid.
 // UpdateMember updates a member's role.
 func (r *SQLiteRepository) UpdateMember(ctx context.Context, member *TenantMember) error {
 	n, err := r.members(ctx).Update(
-		map[string]interface{}{"role": member.Role},
+		z.V{"role": member.Role},
 		z.Where(z.Eq("tenant_id", member.TenantID.String()), z.Eq("user_id", member.UserID.String())),
 	)
 	if err != nil {
@@ -692,7 +692,7 @@ func (r *SQLiteRepository) GetPendingInvitationByEmail(ctx context.Context, tena
 // AcceptInvitation marks an invitation as accepted.
 func (r *SQLiteRepository) AcceptInvitation(ctx context.Context, id uuid.UUID) error {
 	n, err := r.invitations(ctx).Update(
-		map[string]interface{}{"accepted_at": timeutil.NowTime().UTC()},
+		z.V{"accepted_at": timeutil.NowTime().UTC()},
 		z.Where(z.Eq("id", id.String()), z.IsNull("accepted_at")),
 	)
 	if err != nil {

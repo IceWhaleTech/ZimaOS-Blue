@@ -534,6 +534,15 @@ export default {
       modelConnecting: 'Priprema veze za preuzimanje...',
       downloadFailed: 'Preuzimanje ONNX modela nije uspjelo',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Minimalni uzorci Shadow Gate',
+      shadowGateThreshold: 'Prag Shadow Gate',
+      shadowGateScene: 'Scena Shadow Gate',
+      shadowGateSceneAll: 'Sve',
+      shadowGateSceneQA: 'Pitanja i odgovori',
+      shadowGateSceneTool: 'Alat',
+    },
     tab: { general: 'Opće', llm: 'LLM', metrics: 'Korištenje', remote: 'Daljinski pristup', config: 'Konfiguracija', backup: 'Sigurnosna kopija', logs: 'Zapisnici', service: 'Usluga', retention: 'Zadržavanje' },
     failover: {
       title: 'Status pametnog prebacivanja',
@@ -1185,7 +1194,8 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'Standardni način rada je aktivan (ugrađeni planer je u Beta verziji), poboljšani način rada pruža bolje iskustvo.',
+    disabledWarningDesc: 'Standardni način rada je aktivan, poboljšani način rada pruža bolje iskustvo.',
+    missingToolCalling: 'Napredne mogućnosti Tool Calling',
     directoryPathPlaceholderWin: 'Putanja direktorija (npr. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Putanja direktorija (npr. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'Putanja direktorija (npr. /home/user/projects)',

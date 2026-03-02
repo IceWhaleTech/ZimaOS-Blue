@@ -2,8 +2,11 @@ package server
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -123,5 +126,80 @@ func TestReadinessHandler_NotReady(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("Status code = %v, want %v", rec.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func splitHostPortFromURL(t *testing.T, rawURL string) (string, int) {
+	t.Helper()
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse URL %q: %v", rawURL, err)
+	}
+	host, portStr, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		t.Fatalf("split host/port from %q: %v", u.Host, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("invalid port %q: %v", portStr, err)
+	}
+	return host, port
+}
+
+func TestCheckExistingServer(t *testing.T) {
+	t.Run("returns true for zimaos-blue health response", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v1/health" {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"ok","service":"zimaos-blue"}`))
+		}))
+		defer srv.Close()
+
+		host, port := splitHostPortFromURL(t, srv.URL)
+		if !checkExistingServer(host, port) {
+			t.Fatal("checkExistingServer returned false, want true")
+		}
+	})
+
+	t.Run("returns false for non-blue service response", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v1/health" {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"ok","service":"other-service"}`))
+		}))
+		defer srv.Close()
+
+		host, port := splitHostPortFromURL(t, srv.URL)
+		if checkExistingServer(host, port) {
+			t.Fatal("checkExistingServer returned true, want false")
+		}
+	})
+}
+
+func TestRequestGracefulShutdown(t *testing.T) {
+	var called bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/shutdown" {
+			http.NotFound(w, r)
+			return
+		}
+		called = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer srv.Close()
+
+	host, port := splitHostPortFromURL(t, srv.URL)
+	if !requestGracefulShutdown(host, port) {
+		t.Fatal("requestGracefulShutdown returned false, want true")
+	}
+	if !called {
+		t.Fatal("expected shutdown endpoint to be called")
 	}
 }

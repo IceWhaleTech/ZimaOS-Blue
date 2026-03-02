@@ -107,7 +107,7 @@ func findBlockEnd(lines []string, startLine, maxEnd int) int {
 		depth := 0
 		for i := startLine; i <= maxEnd && i < len(lines); i++ {
 			depth += strings.Count(lines[i], "{") - strings.Count(lines[i], "}")
-			if depth <= 0 && i > startLine {
+			if depth <= 0 {
 				return i
 			}
 		}

@@ -232,9 +232,15 @@ func TestDetector_Detect_DataExfiltration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := detector.Detect(tt.input)
-
-			if !result.IsThreat {
-				t.Errorf("Expected threat detection for data exfiltration: %s", tt.name)
+			found := false
+			for _, d := range result.Detections {
+				if d.Type == "data_exfiltration" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Expected data exfiltration detection: %s", tt.name)
 			}
 		})
 	}

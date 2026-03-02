@@ -107,6 +107,12 @@ async function addOrigin() {
 }
 
 async function removeOrigin(origin: string) {
+  if (!window.confirm(t('settings.network.confirmRemoveDynamicOrigin', { origin }))) {
+    return
+  }
+  if (!window.confirm(t('settings.network.confirmRemoveDynamicOriginSecond', { origin }))) {
+    return
+  }
   try {
     const response = await securityApi.updateCORSConfig({ remove_origins: [origin] })
     corsConfig.value = response.data

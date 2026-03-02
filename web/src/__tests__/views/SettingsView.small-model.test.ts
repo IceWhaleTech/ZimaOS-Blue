@@ -158,6 +158,9 @@ function primeApiMocks() {
       small_model_runtime: 'llama_cpp_native',
       small_model_id: 'lfm2.5-1.2b-instruct-q4km',
       small_model_shadow_ratio: 0.1,
+      small_model_shadow_gate_min_samples: 40,
+      small_model_shadow_gate_threshold_delta: 0.35,
+      small_model_shadow_gate_scene: '',
       no_llm_degrade_mode: 'deepresearch',
       small_model_unavailable_policy: 'ir_first',
     },
@@ -226,6 +229,9 @@ describe('SettingsView small-model controls', () => {
     const store = useSettingsStore()
 
     const ratioSpy = vi.spyOn(store, 'setSmallModelShadowRatio').mockResolvedValue()
+    const gateSamplesSpy = vi.spyOn(store, 'setSmallModelShadowGateMinSamples').mockResolvedValue()
+    const gateThresholdSpy = vi.spyOn(store, 'setSmallModelShadowGateThresholdDelta').mockResolvedValue()
+    const gateSceneSpy = vi.spyOn(store, 'setSmallModelShadowGateScene').mockResolvedValue()
     const downloadSpy = vi.spyOn(store, 'startSmallModelDownload').mockResolvedValue({} as never)
     const resetSpy = vi.spyOn(store, 'resetSmallModelStats').mockResolvedValue({} as never)
 
@@ -240,6 +246,18 @@ describe('SettingsView small-model controls', () => {
     await wrapper.get('[data-testid="small-model-shadow-ratio-30"]').trigger('click')
     await flushPromises()
     expect(ratioSpy).toHaveBeenCalledWith(0.3)
+
+    await wrapper.get('[data-testid="small-model-shadow-gate-min-samples-80"]').trigger('click')
+    await flushPromises()
+    expect(gateSamplesSpy).toHaveBeenCalledWith(80)
+
+    await wrapper.get('[data-testid="small-model-shadow-gate-threshold-50"]').trigger('click')
+    await flushPromises()
+    expect(gateThresholdSpy).toHaveBeenCalledWith(0.5)
+
+    await wrapper.get('[data-testid="small-model-shadow-gate-scene-tool_dispatch_shadow"]').trigger('click')
+    await flushPromises()
+    expect(gateSceneSpy).toHaveBeenCalledWith('tool_dispatch_shadow')
 
     await wrapper.get('[data-testid="small-model-download"]').trigger('click')
     await flushPromises()

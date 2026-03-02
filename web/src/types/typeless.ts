@@ -40,6 +40,7 @@ export type TypelessCardType =
   | 'ui-review-progress'
   | 'media-generate'
   | 'analyze-progress'
+  | 'browser-progress'
   | 'exec'
 
 export interface TypelessCardBase {
@@ -537,6 +538,9 @@ export interface TypelessCardDeepResearch extends TypelessCardBase {
   evidence_count?: number
   citations?: DeepResearchCitationItem[]
   open_questions?: string[]
+  support_count?: number
+  conflict_count?: number
+  has_conflict?: boolean
   status?: string
 }
 
@@ -642,6 +646,25 @@ export interface TypelessCardAnalyzeProgress extends TypelessCardBase {
   steps?: AnalyzeProgressStep[]
 }
 
+// Browser Progress card — streaming step-by-step progress during browser actions
+export interface BrowserProgressStep {
+  step: string
+  name: string
+  status: string
+  url?: string
+}
+
+export interface TypelessCardBrowserProgress extends TypelessCardBase {
+  type: 'browser-progress'
+  // Single step (raw from backend)
+  step?: string
+  name?: string
+  status?: string
+  url?: string
+  // Merged steps (after frontend consolidation)
+  steps?: BrowserProgressStep[]
+}
+
 // Exec Card - Display shell command execution results with terminal styling
 export interface TypelessCardExec extends TypelessCardBase {
   type: 'exec'
@@ -700,6 +723,7 @@ export type TypelessCard =
   | TypelessCardUIReviewProgress
   | TypelessCardMediaGenerate
   | TypelessCardAnalyzeProgress
+  | TypelessCardBrowserProgress
   | TypelessCardExec
 
 // Card parsing result

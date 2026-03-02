@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { heartbeatApi } from '@/api/heartbeat'
 import type { HeartbeatStatus } from '@/api/heartbeat'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const emit = defineEmits<{ 'status-change': [msg: string] }>()
 
 const status = ref<HeartbeatStatus | null>(null)
@@ -34,9 +34,7 @@ const statusLabel = computed(() => {
   const evt = status.value?.last_event
   if (!evt) return t('heartbeat.neverRun')
   const key = `heartbeat.status.${evt.status}`
-  const translated = t(key)
-  // Fallback to raw status if no translation exists
-  return translated === key ? evt.status : translated
+  return te(key) ? t(key) : evt.status
 })
 
 async function fetchStatus() {

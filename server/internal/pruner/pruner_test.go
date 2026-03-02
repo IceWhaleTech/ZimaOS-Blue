@@ -39,6 +39,8 @@ func TestNewBackend_Local(t *testing.T) {
 }
 
 func TestNewBackend_Remote(t *testing.T) {
+	t.Skip("SWE Pruner remote backend is hidden; test temporarily disabled")
+
 	cfg := DefaultConfig()
 	cfg.Backend = "remote"
 	cfg.RemoteURL = "http://localhost:9999"

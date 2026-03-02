@@ -59,7 +59,8 @@ func (e *entry) isExpired() bool {
 	if e.expiresAt.IsZero() {
 		return false
 	}
-	return timeutil.NowTime().After(e.expiresAt)
+	// Treat exact boundary as expired to avoid 100ms cached-clock edge cases.
+	return !timeutil.NowTime().Before(e.expiresAt)
 }
 
 // MemoryStore is an in-memory key-value store.
@@ -221,9 +222,18 @@ func parseKVTime(s *string) *time.Time {
 	if s == nil {
 		return nil
 	}
-	t, _ := time.Parse(time.RFC3339, *s)
+	t, _ := time.Parse(time.RFC3339Nano, *s)
+	if t.IsZero() {
+		t, _ = time.Parse(time.RFC3339, *s)
+	}
 	if t.IsZero() {
 		t, _ = time.Parse("2006-01-02 15:04:05", *s)
+	}
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02 15:04:05-07:00", *s)
+	}
+	if t.IsZero() {
+		t, _ = time.Parse("2006-01-02 15:04:05.999999999-07:00", *s)
 	}
 	if t.IsZero() {
 		t, _ = time.Parse("2006-01-02T15:04:05Z", *s)
@@ -299,28 +309,31 @@ func (s *SQLiteStore) Close() error {
 
 // Get retrieves a value by key.
 func (s *SQLiteStore) Get(ctx context.Context, key string) (interface{}, error) {
-	var rows []kvRow
-	_, err := s.table(ctx).Select(&rows,
-		z.Where(z.Eq("key", key)),
-		z.Limit(1),
-	)
+	var value string
+	var expiresAtRaw sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		"SELECT value, expires_at FROM kvstore WHERE key = ? LIMIT 1",
+		key,
+	).Scan(&value, &expiresAtRaw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrKeyNotFound
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get key: %w", err)
 	}
-	if len(rows) == 0 {
-		return nil, ErrKeyNotFound
-	}
 
-	row := rows[0]
 	// Check expiration
-	expiresAt := parseKVTime(row.ExpiresAt)
-	if expiresAt != nil && timeutil.NowTime().After(*expiresAt) {
+	var expiresAt *time.Time
+	if expiresAtRaw.Valid {
+		expiresAt = parseKVTime(&expiresAtRaw.String)
+	}
+	if expiresAt != nil && !time.Now().Before(*expiresAt) {
 		// Delete expired key
 		s.Delete(ctx, key)
 		return nil, ErrKeyNotFound
 	}
 
-	return row.Value, nil
+	return value, nil
 }
 
 // Set stores a value with optional TTL.
@@ -330,16 +343,17 @@ func (s *SQLiteStore) Set(ctx context.Context, key string, value interface{}, tt
 
 	var expiresAt interface{}
 	if ttl > 0 {
-		expiresAt = timeutil.NowTime().Add(ttl)
+		// Persist as RFC3339Nano for stable round-tripping and sub-second TTL support.
+		expiresAt = time.Now().UTC().Add(ttl).Format(time.RFC3339Nano)
 	}
 
 	valueStr := fmt.Sprintf("%v", value)
 
-	_, err := s.table(ctx).Insert(map[string]interface{}{
-		"key":        key,
-		"value":      valueStr,
-		"expires_at": expiresAt,
-	}, z.OnConflictDoUpdateSet([]string{"key"}, []string{"value", "expires_at"}))
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO kvstore (key, value, expires_at) VALUES (?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at`,
+		key, valueStr, expiresAt,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to set key: %w", err)
 	}
@@ -352,7 +366,7 @@ func (s *SQLiteStore) Delete(ctx context.Context, key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.table(ctx).Delete(z.Where(z.Eq("key", key)))
+	_, err := s.db.ExecContext(ctx, "DELETE FROM kvstore WHERE key = ?", key)
 	if err != nil {
 		return fmt.Errorf("failed to delete key: %w", err)
 	}
@@ -361,36 +375,47 @@ func (s *SQLiteStore) Delete(ctx context.Context, key string) error {
 
 // Exists checks if a key exists.
 func (s *SQLiteStore) Exists(ctx context.Context, key string) (bool, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM kvstore WHERE key = ? AND (expires_at IS NULL OR expires_at > ?)",
-		key, timeutil.NowTime(),
-	).Scan(&count)
-
-	if err != nil {
-		return false, fmt.Errorf("failed to check key: %w", err)
+	_, err := s.Get(ctx, key)
+	if err == nil {
+		return true, nil
 	}
-
-	return count > 0, nil
+	if errors.Is(err, ErrKeyNotFound) {
+		return false, nil
+	}
+	return false, fmt.Errorf("failed to check key: %w", err)
 }
 
 // Keys returns keys matching a pattern (SQL LIKE pattern: % matches any).
 func (s *SQLiteStore) Keys(ctx context.Context, pattern string) ([]string, error) {
-	var rows []kvRow
-	_, err := s.table(ctx).Select(&rows,
-		z.Fields("key"),
-		z.Where(
-			z.Like("key", pattern),
-			z.Or(z.IsNull("expires_at"), z.Gt("expires_at", timeutil.NowTime())),
-		),
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT key, expires_at FROM kvstore WHERE key LIKE ?",
+		pattern,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get keys: %w", err)
 	}
+	defer rows.Close()
 
-	keys := make([]string, len(rows))
-	for i, row := range rows {
-		keys[i] = row.Key
+	now := time.Now()
+	keys := make([]string, 0)
+	for rows.Next() {
+		var key string
+		var expiresAtRaw sql.NullString
+		if err := rows.Scan(&key, &expiresAtRaw); err != nil {
+			return nil, fmt.Errorf("failed to scan key row: %w", err)
+		}
+
+		var expiresAt *time.Time
+		if expiresAtRaw.Valid {
+			expiresAt = parseKVTime(&expiresAtRaw.String)
+		}
+		if expiresAt != nil && !now.Before(*expiresAt) {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate key rows: %w", err)
 	}
 
 	return keys, nil
@@ -401,7 +426,7 @@ func (s *SQLiteStore) Clear(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.table(ctx).Delete()
+	_, err := s.db.ExecContext(ctx, "DELETE FROM kvstore")
 	if err != nil {
 		return fmt.Errorf("failed to clear: %w", err)
 	}

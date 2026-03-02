@@ -534,6 +534,15 @@ export default {
       modelConnecting: 'Ag ullmhú an naisc íoslódála...',
       downloadFailed: 'Theip ar íoslódáil mhúnla ONNX',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Íos-shamplaí Shadow Gate',
+      shadowGateThreshold: 'Tairseach Shadow Gate',
+      shadowGateScene: 'Radharc Shadow Gate',
+      shadowGateSceneAll: 'Gach',
+      shadowGateSceneQA: 'QA',
+      shadowGateSceneTool: 'Uirlis',
+    },
     tab: { general: 'Ginearálta', llm: 'LLM', metrics: 'Úsáid', remote: 'Rochtain chianda', config: 'Cumraíocht', backup: 'Cúltaca', logs: 'Loganna', service: 'Seirbhís', retention: 'Coinneáil' },
     failover: {
       title: 'Stádas failover cliste',
@@ -1444,6 +1453,7 @@ export default {
   claudecode: {
     ...enUS.claudecode,
     disabledWarningDesc: 'Tá an gnáthmhód gníomhach (tá an sceidealóir ionsuite i leagan Béite), agus cuireann an mód feabhsaithe eispéireas níos fearr ar fáil.',
+    missingToolCalling: 'Cumais ardleibhéil Tool Calling',
     directoryPathPlaceholderWin: 'Cosán eolaire (m.sh. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Cosán eolaire (m.sh. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'Cosán eolaire (m.sh. /home/user/projects)',

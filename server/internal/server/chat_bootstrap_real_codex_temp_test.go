@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,14 +14,15 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
 
 type bootstrapCapture struct {
-	mu    sync.Mutex
-	paths []string
+	mu     sync.Mutex
+	paths  []string
 	bodies []string
 }
 
@@ -39,6 +41,31 @@ func (c *bootstrapCapture) snapshot() ([]string, []string) {
 	copy(p, c.paths)
 	copy(b, c.bodies)
 	return p, b
+}
+
+type proxyIngressCapture struct {
+	mu     sync.Mutex
+	models []string
+}
+
+func (c *proxyIngressCapture) add(model string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.models = append(c.models, model)
+}
+
+func (c *proxyIngressCapture) reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.models = nil
+}
+
+func (c *proxyIngressCapture) snapshot() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]string, len(c.models))
+	copy(out, c.models)
+	return out
 }
 
 func TestStreamMessageBootstrapInjection_RealCodex(t *testing.T) {
@@ -155,5 +182,108 @@ func TestStreamMessageBootstrapInjection_RealCodex(t *testing.T) {
 	}
 	if !seenTurn2 {
 		t.Fatalf("second conversation upstream request did not include BOOTSTRAP.md questions; new requests=%d", len(bodies2)-beforeCount)
+	}
+}
+
+func TestStreamMessageRealCodex_ModelAuto_RespectsCCCLIEnabledToggle(t *testing.T) {
+	if strings.TrimSpace(os.Getenv("ZIMA_RUN_REAL_CODEX")) != "1" {
+		t.Skip("set ZIMA_RUN_REAL_CODEX=1 to run cc-cli on/off test against real codex provider")
+	}
+
+	baseURL := strings.TrimSpace(os.Getenv("ZIMA_REAL_CODEX_BASE_URL"))
+	apiKey := strings.TrimSpace(os.Getenv("ZIMA_REAL_CODEX_API_KEY"))
+	modelID := strings.TrimSpace(os.Getenv("ZIMA_REAL_CODEX_MODEL"))
+	if modelID == "" {
+		modelID = "gpt-5.3-codex-spark"
+	}
+	if baseURL == "" || apiKey == "" {
+		t.Skip("missing ZIMA_REAL_CODEX_BASE_URL or ZIMA_REAL_CODEX_API_KEY")
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+
+	client := &http.Client{Timeout: 90 * time.Second}
+	forward := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bodyBytes, _ := io.ReadAll(r.Body)
+		targetURL := baseURL + r.URL.RequestURI()
+		req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, bytes.NewReader(bodyBytes))
+		if err != nil {
+			http.Error(w, "failed to build upstream request: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		req.Header = r.Header.Clone()
+
+		resp, err := client.Do(req)
+		if err != nil {
+			http.Error(w, "upstream request failed: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+
+		for k, vals := range resp.Header {
+			for _, v := range vals {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+	defer forward.Close()
+
+	proxyHandler := newSingleModelOpenAIProxyHandlerWithAPIKey(t, forward.URL, "real-codex-cccli-toggle", modelID, apiKey)
+	ingress := &proxyIngressCapture{}
+	bridgeHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bodyBytes, _ := io.ReadAll(r.Body)
+		var payload struct {
+			Model string `json:"model"`
+		}
+		_ = json.Unmarshal(bodyBytes, &payload)
+		ingress.add(payload.Model)
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		proxyHandler.ServeHTTP(w, r)
+	})
+
+	tests := []struct {
+		name      string
+		ccEnabled bool
+		wantModel string
+	}{
+		{name: "cccli_disabled", ccEnabled: false, wantModel: "auto"},
+		{name: "cccli_enabled", ccEnabled: true, wantModel: modelID},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ingress.reset()
+
+			fixture := newReminderE2EFixture(t, llm.NewProviderRegistry(), proxybridge.NewBridge(bridgeHandler))
+
+			ccKV := kvstore.NewMemoryStore()
+			if !tt.ccEnabled {
+				_ = ccKV.SetJSON(context.Background(), "config:claudecode", &claudecode.ClaudeCodePersistentConfig{
+					Enabled:        false,
+					DefaultModel:   "sonnet",
+					SandboxEnabled: true,
+					NetworkEnabled: true,
+				}, 0)
+			}
+			ccHandler := claudecode.NewHandlerWithDataDir(nil, "", ccKV)
+			fixture.handler.SetClaudeCodeHandler(ccHandler)
+
+			body := runStreamTurn(t, fixture.handler, fixture.convID, buildStreamRequestBody("ping", "auto", ""))
+			if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+				t.Fatalf("stream failed unexpectedly: %s", body)
+			}
+			if !strings.Contains(body, `"done":true`) {
+				t.Fatalf("expected done marker, body=%s", body)
+			}
+
+			models := ingress.snapshot()
+			if len(models) == 0 {
+				t.Fatal("no proxy ingress request captured")
+			}
+			if got := models[0]; got != tt.wantModel {
+				t.Fatalf("ingress model = %q, want %q (cc_enabled=%v)", got, tt.wantModel, tt.ccEnabled)
+			}
+		})
 	}
 }

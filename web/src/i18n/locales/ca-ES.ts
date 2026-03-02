@@ -534,6 +534,15 @@ export default {
       modelConnecting: 'S’està preparant la connexió de descàrrega...',
       downloadFailed: 'No s’ha pogut descarregar el model ONNX',
     },
+    smallModel: {
+      ...enUS.settings.smallModel,
+      shadowGateMinSamples: 'Mostres mínimes de Shadow Gate',
+      shadowGateThreshold: 'Llindar de Shadow Gate',
+      shadowGateScene: 'Escena de Shadow Gate',
+      shadowGateSceneAll: 'Totes',
+      shadowGateSceneQA: 'QA',
+      shadowGateSceneTool: 'Eina',
+    },
     tab: { general: 'General', llm: 'LLM', metrics: 'Ús', remote: 'Accés remot', config: 'Configuració', backup: 'Còpia de seguretat', logs: 'Registres', service: 'Servei', retention: 'Retenció' },
     failover: {
       title: 'Estat de commutació intel·ligent',
@@ -1932,7 +1941,8 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'El mode estàndard està actiu (el planificador integrat és una versió Beta), el mode millorat ofereix una experiència millor.',
+    disabledWarningDesc: 'El mode estàndard està actiu, el mode millorat ofereix una experiència millor.',
+    missingToolCalling: 'Capacitats avançades de Tool Calling',
     directoryPathPlaceholderWin: 'Ruta del directori (p. ex. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Ruta del directori (p. ex. /Users/user/projects)',
     directoryPathPlaceholderLinux: 'Ruta del directori (p. ex. /home/user/projects)',

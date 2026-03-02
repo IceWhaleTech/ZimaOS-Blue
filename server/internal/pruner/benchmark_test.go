@@ -43,6 +43,67 @@ func benchmarkBackend(b *testing.B, backend Backend, code, query string) {
 	}
 }
 
+func makeBoostSegments(n int, withTokens bool) []ScoredSegment {
+	segs := make([]ScoredSegment, 0, n)
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("func authenticateUser%d", i)
+		content := fmt.Sprintf("func authenticateUser%d() error { return nil }", i)
+		tokens := []string(nil)
+		if withTokens {
+			tokens = codeTokenize(content)
+		}
+		segs = append(segs, ScoredSegment{
+			Segment: NewSegment(i, i, SegmentFunction, name, content, tokens),
+			Score:   0.5,
+		})
+	}
+	return segs
+}
+
+func BenchmarkBoostScoresWithQuery_1k_PreTokenized(b *testing.B) {
+	segs := makeBoostSegments(1000, true)
+	query := "authenticate user login token"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = BoostScoresWithQuery(segs, query)
+	}
+}
+
+func BenchmarkBoostScoresWithQuery_1k_ContentScan(b *testing.B) {
+	segs := makeBoostSegments(1000, false)
+	query := "authenticate user login token"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = BoostScoresWithQuery(segs, query)
+	}
+}
+
+func BenchmarkBoostScoresWithQuery_1k_PreTokenized_Parallel(b *testing.B) {
+	segs := makeBoostSegments(1000, true)
+	query := "authenticate user login token"
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = BoostScoresWithQuery(segs, query)
+		}
+	})
+}
+
+func BenchmarkBoostScoresWithQuery_1k_ContentScan_Parallel(b *testing.B) {
+	segs := makeBoostSegments(1000, false)
+	query := "authenticate user login token"
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = BoostScoresWithQuery(segs, query)
+		}
+	})
+}
+
 // Local backend benchmarks
 func BenchmarkLocalBackend_1kLOC(b *testing.B) {
 	code := generateGoCode(1000)
@@ -282,17 +343,31 @@ func benchmarkIRPruner(b *testing.B, content, query string) {
 }
 
 // Code benchmarks
-func BenchmarkIRPruner_Code_1k(b *testing.B)  { benchmarkIRPruner(b, generateGoCode(1000), "handler request error") }
-func BenchmarkIRPruner_Code_5k(b *testing.B)  { benchmarkIRPruner(b, generateGoCode(5000), "handler request error") }
-func BenchmarkIRPruner_Code_10k(b *testing.B) { benchmarkIRPruner(b, generateGoCode(10000), "handler request error") }
+func BenchmarkIRPruner_Code_1k(b *testing.B) {
+	benchmarkIRPruner(b, generateGoCode(1000), "handler request error")
+}
+func BenchmarkIRPruner_Code_5k(b *testing.B) {
+	benchmarkIRPruner(b, generateGoCode(5000), "handler request error")
+}
+func BenchmarkIRPruner_Code_10k(b *testing.B) {
+	benchmarkIRPruner(b, generateGoCode(10000), "handler request error")
+}
 
 // Doc benchmarks
-func BenchmarkIRPruner_Doc_1k(b *testing.B)  { benchmarkIRPruner(b, generateMarkdown(1000), "section topic") }
-func BenchmarkIRPruner_Doc_5k(b *testing.B)  { benchmarkIRPruner(b, generateMarkdown(5000), "section topic") }
-func BenchmarkIRPruner_Doc_10k(b *testing.B) { benchmarkIRPruner(b, generateMarkdown(10000), "section topic") }
+func BenchmarkIRPruner_Doc_1k(b *testing.B) {
+	benchmarkIRPruner(b, generateMarkdown(1000), "section topic")
+}
+func BenchmarkIRPruner_Doc_5k(b *testing.B) {
+	benchmarkIRPruner(b, generateMarkdown(5000), "section topic")
+}
+func BenchmarkIRPruner_Doc_10k(b *testing.B) {
+	benchmarkIRPruner(b, generateMarkdown(10000), "section topic")
+}
 
 // Log benchmarks
-func BenchmarkIRPruner_Log_10k(b *testing.B) { benchmarkIRPruner(b, generateLogOutput(10000), "error database") }
+func BenchmarkIRPruner_Log_10k(b *testing.B) {
+	benchmarkIRPruner(b, generateLogOutput(10000), "error database")
+}
 
 // Memory profiling
 func BenchmarkMemory_IRPruner_Code_10k(b *testing.B) {

@@ -669,7 +669,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Set up system prompt builder
 	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{
-		WorkspaceDir: dataDir,
+		WorkspaceDir: workspaceMgr.Dir(),
 	})
 	systemPromptBuilder.SetToolRegistry(services.ToolRegistry)
 	systemPromptBuilder.SetWorkspace(workspaceMgr)

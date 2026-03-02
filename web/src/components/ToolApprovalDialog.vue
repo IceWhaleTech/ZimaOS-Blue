@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useChatStore } from '@/stores/chat'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const chatStore = useChatStore()
 
 const approval = computed(() => chatStore.pendingApproval)
@@ -11,8 +11,7 @@ const approval = computed(() => chatStore.pendingApproval)
 const translatedToolName = computed(() => {
   if (!approval.value?.tool_name) return ''
   const key = `tools.names.${approval.value.tool_name}`
-  const translated = t(key)
-  return translated === key ? approval.value.tool_name : translated
+  return te(key) ? t(key) : approval.value.tool_name
 })
 
 const argsDisplay = computed(() => {

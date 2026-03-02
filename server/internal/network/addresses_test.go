@@ -18,7 +18,7 @@ func TestAddressDetector_GetAddresses(t *testing.T) {
 		t.Error("Local address should not be empty")
 	}
 
-	expectedLocal := "http://localhost"
+	expectedLocal := "http://localhost:80"
 	if addresses.Local != expectedLocal {
 		t.Errorf("Expected local address %s, got %s", expectedLocal, addresses.Local)
 	}
@@ -155,7 +155,7 @@ func TestAddressDetector_DynamicPort(t *testing.T) {
 	}
 
 	// Verify local address uses dynamic port
-	expectedLocal := "http://localhost"
+	expectedLocal := "http://localhost:80"
 	if addresses.Local != expectedLocal {
 		t.Errorf("Expected local address %s, got %s", expectedLocal, addresses.Local)
 	}

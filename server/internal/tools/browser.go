@@ -381,6 +381,41 @@ func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[stri
 		targetID = cachedTarget
 	}
 
+	if IsBrowserActionHighRisk("act", actType, "") {
+		var screenshot *BrowserCheckpointScreenshot
+		if targetID != "" {
+			if shot, shotErr := b.ScreenshotTab(ctx, targetID); shotErr == nil && shot != "" {
+				screenshot = &BrowserCheckpointScreenshot{
+					MimeType: "image/png",
+					Data:     shot,
+				}
+			}
+		}
+		cpResult, hasRequester, cpErr := RequestBrowserCheckpoint(ctx, BrowserCheckpointRequest{
+			Required:   true,
+			RiskLevel:  "high",
+			Step:       "act",
+			Action:     actType,
+			Screenshot: screenshot,
+		})
+		if cpErr != nil {
+			return jsonErr(fmt.Sprintf("checkpoint failed: %s", cpErr)), nil
+		}
+		if hasRequester {
+			if cpResult.Pending {
+				return jsonResult(map[string]interface{}{
+					"checkpoint_pending": true,
+					"checkpoint_id":      cpResult.CheckpointID,
+					"resume_required":    true,
+					"message":            cpResult.Message,
+				}), nil
+			}
+			if cpResult.Decision != BrowserCheckpointApprove {
+				return jsonErr("browser action denied by user"), nil
+			}
+		}
+	}
+
 	var actErr error
 	if refMode == "interactive" && interactiveRefMap != nil {
 		actErr = b.ActByInteractiveRef(ctx, targetID, ref, interactiveRefMap, actType, value)
@@ -456,6 +491,31 @@ func (t *BrowserTool) doRecipe(ctx context.Context, b BrowserBackend, args map[s
 	if p, ok := args["params"].(map[string]interface{}); ok {
 		for k, v := range p {
 			params[k] = fmt.Sprintf("%v", v)
+		}
+	}
+
+	if IsBrowserActionHighRisk("recipe", "", recipeName) {
+		cpResult, hasRequester, cpErr := RequestBrowserCheckpoint(ctx, BrowserCheckpointRequest{
+			Required:  true,
+			RiskLevel: "high",
+			Step:      "recipe",
+			Action:    recipeName,
+		})
+		if cpErr != nil {
+			return jsonErr(fmt.Sprintf("checkpoint failed: %s", cpErr)), nil
+		}
+		if hasRequester {
+			if cpResult.Pending {
+				return jsonResult(map[string]interface{}{
+					"checkpoint_pending": true,
+					"checkpoint_id":      cpResult.CheckpointID,
+					"resume_required":    true,
+					"message":            cpResult.Message,
+				}), nil
+			}
+			if cpResult.Decision != BrowserCheckpointApprove {
+				return jsonErr("browser recipe denied by user"), nil
+			}
 		}
 	}
 

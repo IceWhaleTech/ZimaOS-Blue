@@ -20,6 +20,7 @@ declare global {
   const defineComponent: typeof import('vue').defineComponent
   const defineStore: typeof import('pinia').defineStore
   const effectScope: typeof import('vue').effectScope
+  const featureIntentTerms: typeof import('./composables/featureIntentTerms.generated').featureIntentTerms
   const fullscreenContent: typeof import('./composables/useFullscreen').fullscreenContent
   const getActivePinia: typeof import('pinia').getActivePinia
   const getCurrentInstance: typeof import('vue').getCurrentInstance
@@ -141,6 +142,9 @@ declare global {
   export type { Component, Slot, Slots, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, ShallowRef, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
   // @ts-ignore
+  export type { FeatureIntentTerms } from './composables/featureIntentTerms.generated'
+  import('./composables/featureIntentTerms.generated')
+  // @ts-ignore
   export type { UseCompanionStreamOptions } from './composables/useCompanionStream'
   import('./composables/useCompanionStream')
   // @ts-ignore
@@ -196,6 +200,7 @@ declare module 'vue' {
     readonly defineComponent: UnwrapRef<typeof import('vue')['defineComponent']>
     readonly defineStore: UnwrapRef<typeof import('pinia')['defineStore']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
+    readonly featureIntentTerms: UnwrapRef<typeof import('./composables/featureIntentTerms.generated')['featureIntentTerms']>
     readonly fullscreenContent: UnwrapRef<typeof import('./composables/useFullscreen')['fullscreenContent']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>

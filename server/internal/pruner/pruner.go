@@ -3,8 +3,6 @@ package pruner
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"time"
 )
 
 // Backend defines the inference backend interface for context pruning.
@@ -16,8 +14,8 @@ type Backend interface {
 
 // PruneRequest is the input to the pruning engine.
 type PruneRequest struct {
-	Code        string      `json:"code"`                   // Backward compat alias
-	Content     string      `json:"content"`                // Preferred: raw content (code or text)
+	Code        string      `json:"code"`    // Backward compat alias
+	Content     string      `json:"content"` // Preferred: raw content (code or text)
 	Query       string      `json:"query,omitempty"`
 	Threshold   float64     `json:"threshold,omitempty"`
 	ContentType ContentType `json:"content_type,omitempty"` // Hint (auto-detected if 0)
@@ -49,9 +47,9 @@ type PruneResponse struct {
 // Config holds pruner configuration.
 type Config struct {
 	Enabled       bool    `yaml:"enabled"`
-	Backend       string  `yaml:"backend"`        // "local", "bm25", "ir" (default), "code", "remote", "onnx"
-	RemoteURL     string  `yaml:"remote_url"`     // only used when backend=remote/code
-	ModelDir      string  `yaml:"model_dir"`      // directory for ONNX model files (onnx backend)
+	Backend       string  `yaml:"backend"`    // public: "local" only; internal tests may still use bm25/ir
+	RemoteURL     string  `yaml:"remote_url"` // deprecated (SWE remote backend removed)
+	ModelDir      string  `yaml:"model_dir"`  // deprecated (ONNX cross-encoder removed)
 	Threshold     float64 `yaml:"threshold"`
 	MinLines      int     `yaml:"min_lines"`
 	TimeoutMs     int     `yaml:"timeout_ms"`
@@ -70,6 +68,26 @@ func DefaultConfig() Config {
 	}
 }
 
+func resolveThreshold(requestThreshold, fallback float64) float64 {
+	threshold := requestThreshold
+	if threshold <= 0 {
+		threshold = fallback
+	}
+	if threshold < 0 {
+		return 0
+	}
+	if threshold > 1 {
+		return 1
+	}
+	return threshold
+}
+
+// NormalizeBackendName canonicalizes backend selection for public APIs.
+// Pruner backend switching is hidden; only local backend is exposed.
+func NormalizeBackendName(_ string) string {
+	return "local"
+}
+
 // NewBackend creates a Backend based on the config.
 func NewBackend(cfg Config) (Backend, error) {
 	switch cfg.Backend {
@@ -80,15 +98,9 @@ func NewBackend(cfg Config) (Backend, error) {
 	case "ir":
 		return NewIRPruner(cfg), nil
 	case "remote", "code":
-		return NewRemoteBackend(cfg.RemoteURL, &http.Client{
-			Timeout: time.Duration(cfg.TimeoutMs) * time.Millisecond,
-		}), nil
-	case "onnx":
-		return NewOnnxBackend(cfg, cfg.ModelDir)
-	case "hybrid":
-		local := NewIRPruner(cfg)
-		onnx, _ := NewOnnxBackend(cfg, cfg.ModelDir)
-		return NewHybridBackend(local, onnx, cfg), nil
+		return nil, fmt.Errorf("remote SWE pruner backend has been removed; local backend only")
+	case "onnx", "hybrid":
+		return nil, fmt.Errorf("onnx cross-encoder backend has been removed; local backend only")
 	default:
 		return nil, fmt.Errorf("unknown pruner backend: %s", cfg.Backend)
 	}
