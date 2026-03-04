@@ -8,15 +8,15 @@ import (
 
 // service implements the Service interface.
 type service struct {
-	providers         map[ProviderType]Provider
-	defaultProvider   ProviderType
-	speed             float32
-	pitch             float32
-	volume            float32
-	dataPath          string
-	vocoderManager    *VocoderModelManager
-	kokoroManager     *KokoroModelManager
-	mu                sync.RWMutex
+	providers       map[ProviderType]Provider
+	defaultProvider ProviderType
+	speed           float32
+	pitch           float32
+	volume          float32
+	dataPath        string
+	vocoderManager  *VocoderModelManager
+	kokoroManager   *KokoroModelManager
+	mu              sync.RWMutex
 }
 
 // ServiceConfig holds the configuration for the TTS service.

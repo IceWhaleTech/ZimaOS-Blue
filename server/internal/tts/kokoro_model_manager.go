@@ -37,7 +37,7 @@ type KokoroModelManager struct {
 
 // NewKokoroModelManager creates a new Kokoro model manager
 func NewKokoroModelManager(dataPath string) *KokoroModelManager {
-	destDir := filepath.Join(dataPath, "kokoro")
+	destDir := filepath.Join(dataPath, "models", "kokoro")
 	return &KokoroModelManager{
 		downloader: downloader.NewModelDownloader(destDir),
 		modelPath:  filepath.Join(destDir, "model_quantized.onnx"),

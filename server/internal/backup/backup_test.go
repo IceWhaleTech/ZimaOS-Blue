@@ -531,6 +531,88 @@ func TestBackupWithLargeFile(t *testing.T) {
 	}
 }
 
+func TestManagerCreateSkipsNoisyAndLargeArtifacts(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+
+	if err := os.MkdirAll(filepath.Join(dataDir, "logs"), 0755); err != nil {
+		t.Fatalf("failed to create logs dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "models"), 0755); err != nil {
+		t.Fatalf("failed to create models dir: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dataDir, "logs", "app.log"), []byte("log"), 0644); err != nil {
+		t.Fatalf("failed to write log file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "models", "tiny.gguf"), []byte("model"), 0644); err != nil {
+		t.Fatalf("failed to write model file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "keep.txt"), []byte("keep"), 0644); err != nil {
+		t.Fatalf("failed to write keep file: %v", err)
+	}
+
+	largeBlob := make([]byte, 11*1024*1024)
+	for i := range largeBlob {
+		largeBlob[i] = byte(i % 251)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "generated.dat"), largeBlob, 0644); err != nil {
+		t.Fatalf("failed to write large generated file: %v", err)
+	}
+	// Keep large database files even if they exceed threshold.
+	if err := os.WriteFile(filepath.Join(dataDir, "state.db"), largeBlob, 0644); err != nil {
+		t.Fatalf("failed to write large db file: %v", err)
+	}
+
+	cfg := Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          backupDir,
+	}
+
+	m, err := NewManager(cfg, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	info, err := m.Create(context.Background(), BackupTypeData)
+	if err != nil {
+		t.Fatalf("failed to create backup: %v", err)
+	}
+
+	files, err := m.ListFiles(info.ID)
+	if err != nil {
+		t.Fatalf("failed to list files: %v", err)
+	}
+
+	hasEntry := func(name string) bool {
+		for _, f := range files {
+			if filepath.ToSlash(f) == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !hasEntry("data/keep.txt") {
+		t.Fatalf("expected keep file in backup, files=%v", files)
+	}
+	if !hasEntry("data/state.db") {
+		t.Fatalf("expected large db file in backup, files=%v", files)
+	}
+	if hasEntry("data/generated.dat") {
+		t.Fatalf("expected large generated file to be excluded, files=%v", files)
+	}
+	if hasEntry("data/logs/app.log") {
+		t.Fatalf("expected log file to be excluded, files=%v", files)
+	}
+	if hasEntry("data/models/tiny.gguf") {
+		t.Fatalf("expected model file to be excluded, files=%v", files)
+	}
+}
+
 // TestBackupFileSizeConsistency tests that backup handles file size correctly
 // This is a regression test for the "archive/tar: write too long" bug
 func TestBackupFileSizeConsistency(t *testing.T) {

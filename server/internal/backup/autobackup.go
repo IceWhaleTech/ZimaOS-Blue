@@ -184,7 +184,7 @@ func (m *Manager) snapshotDigest() (string, error) {
 			}
 
 			for _, entry := range dirEntries {
-				if entry.IsDir() && excludedBackupDirs[entry.Name()] {
+				if entry.IsDir() && shouldSkipBackupDir(entry.Name()) {
 					continue
 				}
 
@@ -200,7 +200,7 @@ func (m *Manager) snapshotDigest() (string, error) {
 					continue
 				}
 				if fileInfo.Mode().IsRegular() {
-					if excludedBackupExtensions[filepath.Ext(entry.Name())] {
+					if shouldSkipBackupFile(entry.Name(), fileInfo.Size()) {
 						continue
 					}
 				}

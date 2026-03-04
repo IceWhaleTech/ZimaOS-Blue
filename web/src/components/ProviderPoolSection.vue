@@ -1589,7 +1589,7 @@ onMounted(() => {
             </div>
             <div class="flex gap-1">
               <button
-                v-if="!displayProvider!.is_builtin && displayProvider!.type !== 'trial'"
+                v-if="!displayProvider!.is_builtin && displayProvider!.type !== 'trial' && displayProvider!.type !== 'media'"
                 :class="[
                   'px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs transition-opacity',
                   showDeleteFor === 'provider-' + displayProvider!.id

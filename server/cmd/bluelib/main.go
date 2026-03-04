@@ -556,7 +556,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Initialize Whisper ASR provider
 	whisperASRProvider := stt.NewWhisperProvider(&stt.WhisperConfig{
-		ModelPath: filepath.Join(dataDir, "whisper-models"),
+		ModelPath: filepath.Join(dataDir, "models", "whisper"),
 	})
 	// Register cleanup for Whisper provider
 	if whisperASRProvider != nil {

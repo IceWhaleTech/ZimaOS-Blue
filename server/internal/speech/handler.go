@@ -22,9 +22,9 @@ const kvKeyEditBeforeSend = "speech.asr.edit_before_send"
 
 // Handler handles unified speech HTTP requests.
 type Handler struct {
-	service        Service
-	espeakManager  *EspeakManager
-	kv             kvstore.Store
+	service       Service
+	espeakManager *EspeakManager
+	kv            kvstore.Store
 }
 
 // NewHandler creates a new speech handler.

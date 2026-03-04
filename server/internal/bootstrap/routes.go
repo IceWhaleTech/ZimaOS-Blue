@@ -1944,7 +1944,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			proxyHandler.SetPrunerFactory(createPrunerMw)
 		}
 		// Pruner model manager (always available for model download)
-		prunerModelDir := filepath.Join(cfg.DataDir, "pruner-models")
+		prunerModelDir := filepath.Join(cfg.DataDir, "models")
 		prunerCfg.ModelDir = prunerModelDir // Set ModelDir for ONNX backend
 		prunerModelMgr := pruner.NewPrunerModelManager(prunerModelDir)
 

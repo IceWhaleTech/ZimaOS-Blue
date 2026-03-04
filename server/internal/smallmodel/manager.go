@@ -65,7 +65,7 @@ type Manager struct {
 }
 
 func NewManager(dataDir string) *Manager {
-	modelDir := filepath.Join(dataDir, "small-model", ModelID)
+	modelDir := filepath.Join(dataDir, "models", ModelID)
 	return &Manager{
 		modelDir:   modelDir,
 		downloader: downloader.NewModelDownloader(modelDir),

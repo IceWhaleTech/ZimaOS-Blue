@@ -385,6 +385,10 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     loading.value = true
     error.value = null
     try {
+      const provider = providers.value.find(p => p.id === id)
+      if (provider?.type === 'media') {
+        throw new Error('Media providers are not deletable')
+      }
       await providerPoolApi.deleteProvider(id)
       providers.value = providers.value.filter(p => p.id !== id)
       if (selectedProviderId.value === id) {

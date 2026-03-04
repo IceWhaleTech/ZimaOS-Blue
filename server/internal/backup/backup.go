@@ -95,15 +95,47 @@ type Manager struct {
 var (
 	excludedBackupDirs = map[string]bool{
 		"backups":     true, // Backup directory itself
-		"tts_models":  true, // TTS model files (large, can be re-downloaded)
-		"sherpa-onnx": true, // Sherpa ONNX models
+		"cache":       true, // Runtime cache
+		"log":         true, // Runtime logs
+		"logs":        true, // Runtime logs
 		"models":      true, // Generic models directory
+		"onnxruntime": true, // ONNX Runtime files (large, can be re-downloaded)
 	}
 	excludedBackupExtensions = map[string]bool{
-		".onnx": true, // ONNX model files
-		".bin":  true, // Binary model files (often large)
+		".bin":         true, // Binary model files (often large)
+		".ckpt":        true, // Model checkpoints
+		".gguf":        true, // LLM model files
+		".log":         true, // Log files
+		".onnx":        true, // ONNX model files
+		".pt":          true, // PyTorch model files
+		".pth":         true, // PyTorch model files
+		".safetensors": true, // Model weights
+	}
+	alwaysIncludeLargeBackupExtensions = map[string]bool{
+		".db":      true, // Keep core SQLite data even if large
+		".sqlite":  true, // Keep core SQLite data even if large
+		".sqlite3": true, // Keep core SQLite data even if large
+		".shm":     true, // SQLite shared memory
+		".wal":     true, // SQLite write-ahead log
 	}
 )
+
+const maxBackupFileSizeBytes int64 = 10 * 1024 * 1024 // 10 MiB
+
+func shouldSkipBackupDir(name string) bool {
+	return excludedBackupDirs[strings.ToLower(name)]
+}
+
+func shouldSkipBackupFile(name string, size int64) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	if excludedBackupExtensions[ext] {
+		return true
+	}
+	if size > maxBackupFileSizeBytes && !alwaysIncludeLargeBackupExtensions[ext] {
+		return true
+	}
+	return false
+}
 
 // Progress tracks the current backup/restore operation
 type Progress struct {
@@ -476,7 +508,7 @@ func (m *Manager) addDirectory(tw *tar.Writer, srcDir, prefix string, files *[]s
 
 		for _, entry := range entries {
 			// Skip excluded directories
-			if entry.IsDir() && excludedBackupDirs[entry.Name()] {
+			if entry.IsDir() && shouldSkipBackupDir(entry.Name()) {
 				continue
 			}
 
@@ -499,8 +531,7 @@ func (m *Manager) addDirectory(tw *tar.Writer, srcDir, prefix string, files *[]s
 
 			// Skip files with excluded extensions
 			if info.Mode().IsRegular() {
-				ext := filepath.Ext(entry.Name())
-				if excludedBackupExtensions[ext] {
+				if shouldSkipBackupFile(entry.Name(), info.Size()) {
 					continue
 				}
 			}
