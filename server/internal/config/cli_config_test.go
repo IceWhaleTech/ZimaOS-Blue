@@ -144,6 +144,22 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	if cfg.Adapters.CCNexus.SchemaMapping != "auto" {
 		t.Errorf("expected SchemaMapping 'auto', got '%s'", cfg.Adapters.CCNexus.SchemaMapping)
 	}
+
+	if cfg.WebSearch.Provider != "duckduckgo" {
+		t.Errorf("expected WebSearch.Provider 'duckduckgo', got %q", cfg.WebSearch.Provider)
+	}
+	if len(cfg.WebSearch.Providers) != 1 || cfg.WebSearch.Providers[0] != "duckduckgo" {
+		t.Errorf("expected WebSearch.Providers ['duckduckgo'], got %#v", cfg.WebSearch.Providers)
+	}
+	if cfg.WebSearch.MaxResults != 5 {
+		t.Errorf("expected WebSearch.MaxResults 5, got %d", cfg.WebSearch.MaxResults)
+	}
+	if cfg.WebSearch.Timeout != 30*time.Second {
+		t.Errorf("expected WebSearch.Timeout 30s, got %v", cfg.WebSearch.Timeout)
+	}
+	if cfg.WebSearch.Region != "wt-wt" {
+		t.Errorf("expected WebSearch.Region 'wt-wt', got %q", cfg.WebSearch.Region)
+	}
 }
 
 func TestCLIFeaturesConfig(t *testing.T) {

@@ -1,3 +1,8 @@
+---
+name: system-info
+description: Return system information including OS hardware memory CPU disk network GPU and runtime details.
+---
+
 # System Info
 
 Returns comprehensive system information including OS, hardware, network, and GPU details.

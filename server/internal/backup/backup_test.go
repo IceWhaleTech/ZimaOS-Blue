@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -597,5 +598,310 @@ func TestBackupFileSizeConsistency(t *testing.T) {
 	// Verify backup integrity
 	if err := m.Verify(info.ID); err != nil {
 		t.Errorf("backup verification failed: %v", err)
+	}
+}
+
+func TestManagerBackupAndRestoreExternalSkillsDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+	skillsDir := filepath.Join(tmpDir, "skills")
+
+	os.MkdirAll(filepath.Join(dataDir, "nested"), 0755)
+	os.MkdirAll(filepath.Join(skillsDir, "custom-skill"), 0755)
+	os.WriteFile(filepath.Join(dataDir, "nested", "test.db"), []byte("test"), 0644)
+	skillContent := []byte("name: custom-skill\n")
+	os.WriteFile(filepath.Join(skillsDir, "custom-skill", "SKILL.md"), skillContent, 0644)
+
+	cfg := Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          backupDir,
+		SkillsPath:    skillsDir,
+	}
+
+	m, err := NewManager(cfg, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	info, err := m.Create(context.Background(), BackupTypeData)
+	if err != nil {
+		t.Fatalf("failed to create backup: %v", err)
+	}
+
+	foundSkillsEntry := false
+	for _, f := range info.Files {
+		if strings.HasPrefix(filepath.ToSlash(f), "skills/") {
+			foundSkillsEntry = true
+			break
+		}
+	}
+	if !foundSkillsEntry {
+		t.Fatalf("expected backup file list to include skills entries, got %v", info.Files)
+	}
+
+	restoreDataDir := filepath.Join(tmpDir, "restore-data")
+	restoreConfigDir := filepath.Join(tmpDir, "restore-config")
+	restoreSkillsDir := filepath.Join(tmpDir, "restore-skills")
+
+	restoreCfg := cfg
+	restoreCfg.SkillsPath = restoreSkillsDir
+	m2, err := NewManager(restoreCfg, restoreDataDir, restoreConfigDir)
+	if err != nil {
+		t.Fatalf("failed to create restore manager: %v", err)
+	}
+	m2.mu.Lock()
+	m2.backups[info.ID] = info
+	m2.mu.Unlock()
+
+	result, err := m2.Restore(context.Background(), info.ID, DefaultRestoreOptions())
+	if err != nil {
+		t.Fatalf("restore failed: %v", err)
+	}
+	if !result.Success {
+		t.Fatalf("restore not successful: %v", result.Errors)
+	}
+
+	restoredSkillPath := filepath.Join(restoreSkillsDir, "custom-skill", "SKILL.md")
+	restoredSkill, err := os.ReadFile(restoredSkillPath)
+	if err != nil {
+		t.Fatalf("failed to read restored skill file: %v", err)
+	}
+	if string(restoredSkill) != string(skillContent) {
+		t.Fatalf("restored skill content mismatch: got %q want %q", string(restoredSkill), string(skillContent))
+	}
+}
+
+func TestManagerAutoBackupOnChange(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "initial.txt"), []byte("initial"), 0644); err != nil {
+		t.Fatalf("failed to write initial data: %v", err)
+	}
+
+	cfg := Config{
+		Enabled:            true,
+		RetentionDays:      7,
+		Path:               backupDir,
+		AutoBackupOnChange: true,
+		ChangePollInterval: 50 * time.Millisecond,
+		ChangeDebounce:     0,
+	}
+
+	m, err := NewManager(cfg, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m.StartAutoBackup(ctx)
+	defer m.StopAutoBackup()
+
+	// Let watcher capture the initial snapshot.
+	time.Sleep(120 * time.Millisecond)
+
+	if err := os.WriteFile(filepath.Join(dataDir, "changed.txt"), []byte("changed"), 0644); err != nil {
+		t.Fatalf("failed to write changed file: %v", err)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(m.List()) > 0 {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("expected auto-backup to create at least one backup after change")
+}
+
+func TestManagerAutoBackupKeepsOnlyLatestVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "state.txt"), []byte("v1"), 0644); err != nil {
+		t.Fatalf("failed to write state file: %v", err)
+	}
+
+	cfg := Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          backupDir,
+	}
+	m, err := NewManager(cfg, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	manual, err := m.Create(context.Background(), BackupTypeData)
+	if err != nil {
+		t.Fatalf("failed to create manual backup: %v", err)
+	}
+
+	m.runAutoBackup(context.Background())
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(filepath.Join(dataDir, "state.txt"), []byte("v2"), 0644); err != nil {
+		t.Fatalf("failed to update state file: %v", err)
+	}
+	m.runAutoBackup(context.Background())
+
+	backups := m.List()
+	autoCount := 0
+	manualCount := 0
+	for _, b := range backups {
+		switch b.CreatedBy {
+		case string(BackupSourceAuto):
+			autoCount++
+		case string(BackupSourceManual):
+			manualCount++
+		}
+	}
+
+	if autoCount != 1 {
+		t.Fatalf("expected exactly 1 auto backup, got %d", autoCount)
+	}
+	if manualCount != 1 {
+		t.Fatalf("expected manual backup to be retained, got %d", manualCount)
+	}
+
+	storedManual, err := m.Get(manual.ID)
+	if err != nil {
+		t.Fatalf("failed to get manual backup: %v", err)
+	}
+	if storedManual.CreatedBy != string(BackupSourceManual) {
+		t.Fatalf("expected manual backup created_by=%q, got %q", BackupSourceManual, storedManual.CreatedBy)
+	}
+}
+
+func TestManagerRestoreCreatesCheckpoint(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "state.txt"), []byte("v1"), 0644); err != nil {
+		t.Fatalf("failed to write v1: %v", err)
+	}
+
+	cfg := Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          backupDir,
+	}
+	m, err := NewManager(cfg, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	backupV1, err := m.Create(context.Background(), BackupTypeData)
+	if err != nil {
+		t.Fatalf("failed to create v1 backup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "state.txt"), []byte("v2"), 0644); err != nil {
+		t.Fatalf("failed to write v2: %v", err)
+	}
+
+	result, err := m.Restore(context.Background(), backupV1.ID, DefaultRestoreOptions())
+	if err != nil {
+		t.Fatalf("restore failed: %v", err)
+	}
+	if result.CheckpointID == "" {
+		t.Fatal("expected checkpoint id in restore result")
+	}
+
+	checkpointInfo, err := m.Get(result.CheckpointID)
+	if err != nil {
+		t.Fatalf("failed to load checkpoint backup info: %v", err)
+	}
+	if !checkpointInfo.IsCheckpoint {
+		t.Fatal("expected checkpoint backup to be marked as checkpoint")
+	}
+	if checkpointInfo.CheckpointReason == "" {
+		t.Fatal("expected checkpoint reason to be set")
+	}
+	if checkpointInfo.CreatedBy != string(BackupSourceCheckpoint) {
+		t.Fatalf("expected checkpoint created_by=%q, got %q", BackupSourceCheckpoint, checkpointInfo.CreatedBy)
+	}
+
+	restored, err := os.ReadFile(filepath.Join(dataDir, "state.txt"))
+	if err != nil {
+		t.Fatalf("failed to read restored file: %v", err)
+	}
+	if string(restored) != "v1" {
+		t.Fatalf("expected restored data to be v1, got %q", string(restored))
+	}
+}
+
+func TestManagerApplyPendingRestoreCreatesCheckpoint(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "state.txt"), []byte("v1"), 0644); err != nil {
+		t.Fatalf("failed to write v1: %v", err)
+	}
+
+	cfg := Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          backupDir,
+	}
+	m, err := NewManager(cfg, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	backupV1, err := m.Create(context.Background(), BackupTypeData)
+	if err != nil {
+		t.Fatalf("failed to create v1 backup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "state.txt"), []byte("v2"), 0644); err != nil {
+		t.Fatalf("failed to write v2: %v", err)
+	}
+
+	if _, err := m.StageRestore(context.Background(), backupV1.ID); err != nil {
+		t.Fatalf("failed to stage restore: %v", err)
+	}
+
+	result, err := m.ApplyPendingRestore(context.Background())
+	if err != nil {
+		t.Fatalf("apply pending restore failed: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil restore result")
+	}
+	if result.CheckpointID == "" {
+		t.Fatal("expected checkpoint id in pending restore result")
+	}
+	if m.HasPendingRestore() {
+		t.Fatal("expected pending restore marker to be cleared")
+	}
+
+	restored, err := os.ReadFile(filepath.Join(dataDir, "state.txt"))
+	if err != nil {
+		t.Fatalf("failed to read restored data: %v", err)
+	}
+	if string(restored) != "v1" {
+		t.Fatalf("expected restored data to be v1, got %q", string(restored))
 	}
 }

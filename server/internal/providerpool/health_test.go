@@ -96,3 +96,20 @@ func TestGetHealthCheckMethod_ResponsesBaseURLVariants(t *testing.T) {
 		})
 	}
 }
+
+func TestFirstUsableAPIKey_PrefersEnabledKey(t *testing.T) {
+	provider := &Provider{
+		APIKeys: []APIKey{
+			{ID: "k-disabled", Key: "sk-disabled", Enabled: false},
+			{ID: "k-enabled", Key: "sk-enabled", Enabled: true},
+		},
+	}
+
+	key := firstUsableAPIKey(provider)
+	if key == nil {
+		t.Fatal("expected key, got nil")
+	}
+	if key.ID != "k-enabled" {
+		t.Fatalf("expected k-enabled, got %s", key.ID)
+	}
+}

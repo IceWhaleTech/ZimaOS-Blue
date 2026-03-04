@@ -1,3 +1,8 @@
+---
+name: stocks
+description: Retrieve stock quotes and market data via Alpha Vantage APIs.
+---
+
 # Stocks
 
 Get stock market data and quotes.

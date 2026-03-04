@@ -1,3 +1,8 @@
+---
+name: crypto
+description: Fetch cryptocurrency prices and market data via CoinGecko APIs.
+---
+
 # Crypto
 
 Get cryptocurrency prices and market data.

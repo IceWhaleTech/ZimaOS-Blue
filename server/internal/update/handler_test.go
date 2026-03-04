@@ -600,3 +600,139 @@ func TestNewHandler_RecoversPendingResumeTask_RecovererFailure(t *testing.T) {
 		t.Fatalf("status error = %q, want contains %q", errMsg, context.DeadlineExceeded.Error())
 	}
 }
+
+func TestHandler_RunAutoUpdateCycle_AutoDownloadOnly(t *testing.T) {
+	h, dir := newTestHandler(t)
+	h.config.Enabled = true
+	h.config.AutoDownload = true
+	h.config.AutoApply = false
+
+	mock := &mockExecutor{}
+	h.applier.SetExecutor(mock)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("new-binary-content"))
+	}))
+	defer srv.Close()
+
+	ota := NewOTAChecker("0.1.0", dir, "en_US")
+	ota.mu.Lock()
+	ota.latest = &OTAResponse{
+		Version:        "0.2.0",
+		Packages:       []string{srv.URL + "/blue.tar.gz"},
+		ReleaseNoteURL: "https://example.com/blue/notes.md",
+	}
+	ota.mu.Unlock()
+	h.otaChecker = ota
+
+	if err := h.runAutoUpdateCycle(context.Background()); err != nil {
+		t.Fatalf("runAutoUpdateCycle failed: %v", err)
+	}
+
+	h.mu.RLock()
+	state := h.status.State
+	downloaded := h.status.DownloadedPath
+	h.mu.RUnlock()
+
+	if state != StateIdle {
+		t.Fatalf("state = %q, want %q", state, StateIdle)
+	}
+	if downloaded == "" {
+		t.Fatal("expected downloaded path to be set")
+	}
+	if mock.called {
+		t.Fatal("executor should not be called when auto_apply is disabled")
+	}
+}
+
+func TestHandler_RunAutoUpdateCycle_AutoApply(t *testing.T) {
+	h, dir := newTestHandler(t)
+	h.config.Enabled = true
+	h.config.AutoApply = true
+	h.config.AutoDownload = true
+
+	mock := &mockExecutor{}
+	h.applier.SetExecutor(mock)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("new-binary-content"))
+	}))
+	defer srv.Close()
+
+	ota := NewOTAChecker("0.1.0", dir, "en_US")
+	ota.mu.Lock()
+	ota.latest = &OTAResponse{
+		Version:        "0.2.0",
+		Packages:       []string{srv.URL + "/blue.tar.gz"},
+		ReleaseNoteURL: "https://example.com/blue/notes.md",
+	}
+	ota.mu.Unlock()
+	h.otaChecker = ota
+
+	if err := h.runAutoUpdateCycle(context.Background()); err != nil {
+		t.Fatalf("runAutoUpdateCycle failed: %v", err)
+	}
+
+	if !mock.called {
+		t.Fatal("expected executor to be called for auto apply")
+	}
+
+	h.mu.RLock()
+	state := h.status.State
+	downloaded := h.status.DownloadedPath
+	h.mu.RUnlock()
+
+	if state != StateRestarting {
+		t.Fatalf("state = %q, want %q", state, StateRestarting)
+	}
+	if downloaded != "" {
+		t.Fatalf("downloaded path should be cleared after auto apply, got %q", downloaded)
+	}
+
+	binaryData, err := os.ReadFile(filepath.Join(dir, "blue"))
+	if err != nil {
+		t.Fatalf("read replaced binary: %v", err)
+	}
+	if string(binaryData) != "new-binary-content" {
+		t.Fatalf("binary content = %q, want %q", string(binaryData), "new-binary-content")
+	}
+}
+
+func TestHandler_RunAutoUpdateCycle_NoUpdateAvailable(t *testing.T) {
+	h, dir := newTestHandler(t)
+	h.config.Enabled = true
+	h.config.AutoApply = true
+	h.config.AutoDownload = true
+
+	mock := &mockExecutor{}
+	h.applier.SetExecutor(mock)
+
+	ota := NewOTAChecker("0.1.0", dir, "en_US")
+	ota.mu.Lock()
+	ota.latest = &OTAResponse{
+		Version:        "0.1.0",
+		Packages:       []string{"https://example.com/blue.tar.gz"},
+		ReleaseNoteURL: "https://example.com/blue/notes.md",
+	}
+	ota.mu.Unlock()
+	h.otaChecker = ota
+
+	if err := h.runAutoUpdateCycle(context.Background()); err != nil {
+		t.Fatalf("runAutoUpdateCycle failed: %v", err)
+	}
+
+	h.mu.RLock()
+	state := h.status.State
+	downloaded := h.status.DownloadedPath
+	h.mu.RUnlock()
+
+	if state != StateIdle {
+		t.Fatalf("state = %q, want %q", state, StateIdle)
+	}
+	if downloaded != "" {
+		t.Fatalf("downloaded path = %q, want empty", downloaded)
+	}
+	if mock.called {
+		t.Fatal("executor should not be called when no update is available")
+	}
+}

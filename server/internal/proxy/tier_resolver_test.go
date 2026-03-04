@@ -16,162 +16,116 @@ func makeModel(id, providerID string, inputPrice, outputPrice float64) *provider
 	}
 }
 
-func TestTierResolver_Resolve_Percentile(t *testing.T) {
+func TestTierResolver_Resolve_BigAndBuiltinSmall(t *testing.T) {
 	tr := NewTierResolver()
-
-	// 6 models sorted by cost: [0.3, 0.5, 5.0, 7.0, 25.0, 45.0]
-	// n=6, P50=index 3=7.0, P75=index 4=25.0
-	// <7.0 → economy, ≥7.0 & <25.0 → standard, ≥25.0 → premium
 	models := []*providerpool.Model{
-		makeModel("xtest-cheap-1", "p1", 0.1, 0.2),       // total 0.3 → economy
-		makeModel("xtest-cheap-2", "p1", 0.2, 0.3),       // total 0.5 → economy
-		makeModel("xtest-mid-1", "p2", 2.0, 3.0),         // total 5.0 → economy (< P50)
-		makeModel("xtest-mid-2", "p2", 3.0, 4.0),         // total 7.0 → standard (= P50)
-		makeModel("xtest-expensive-1", "p3", 10.0, 15.0), // total 25.0 → premium (= P75)
-		makeModel("xtest-expensive-2", "p3", 15.0, 30.0), // total 45.0 → premium
+		makeModel("gpt-4o", "openai", 2.5, 10.0),                       // large
+		makeModel("gpt-4o-mini", "openai", 0.15, 0.6),                  // small (builtin allowlist)
+		makeModel("claude-opus-4-5-20251101", "anthropic", 15.0, 75.0), // large
+		makeModel("claude-3-5-haiku-20241022", "anthropic", 0.8, 4.0),  // small (builtin allowlist)
+		makeModel("gemini-1.5-pro", "google", 1.25, 5.0),               // large
+		makeModel("gemini-2.0-flash", "google", 0.1, 0.4),              // small (builtin allowlist)
 	}
 
-	ok := tr.Resolve(models)
-	if !ok {
-		t.Fatal("Resolve() returned false, want true (≥2 tiers)")
+	if ok := tr.Resolve(models); !ok {
+		t.Fatal("Resolve() = false, want true when both large and small tiers exist")
 	}
 	if !tr.IsEnabled() {
-		t.Fatal("IsEnabled() = false after successful Resolve")
+		t.Fatal("IsEnabled() = false, want true")
 	}
 
-	// Check tier assignments
-	tests := []struct {
-		modelID  string
-		wantTier ModelTier
-	}{
-		{"xtest-cheap-1", TierEconomy},
-		{"xtest-cheap-2", TierEconomy},
-		{"xtest-mid-1", TierEconomy},
-		{"xtest-mid-2", TierStandard},
-		{"xtest-expensive-1", TierPremium},
-		{"xtest-expensive-2", TierPremium},
+	if got := tr.ModelTierOf("gpt-4o"); got != TierLarge {
+		t.Errorf("ModelTierOf(gpt-4o) = %q, want %q", got, TierLarge)
 	}
-	for _, tt := range tests {
-		got := tr.ModelTierOf(tt.modelID)
-		if got != tt.wantTier {
-			t.Errorf("ModelTierOf(%q) = %q, want %q", tt.modelID, got, tt.wantTier)
-		}
+	if got := tr.ModelTierOf("gpt-4o-mini"); got != TierSmall {
+		t.Errorf("ModelTierOf(gpt-4o-mini) = %q, want %q", got, TierSmall)
 	}
 }
 
-func TestTierResolver_Resolve_AbsoluteThreshold(t *testing.T) {
+func TestTierResolver_Resolve_UnknownSmallNameNotAutoAccepted(t *testing.T) {
 	tr := NewTierResolver()
 
-	// Only 2 models — uses absolute thresholds
+	// gpt-5-nano is intentionally not in builtin small allowlist.
 	models := []*providerpool.Model{
-		makeModel("cheap", "p1", 0.5, 0.5),   // total 1.0 → economy (<$2)
-		makeModel("pricey", "p2", 8.0, 12.0), // total 20.0 → premium (>$10)
+		makeModel("gpt-5.3-codex-spark", "openai", 8.0, 32.0),
+		makeModel("gpt-5-nano", "openai", 0.2, 0.8),
 	}
 
-	ok := tr.Resolve(models)
-	if !ok {
-		t.Fatal("Resolve() returned false, want true")
-	}
-
-	if tier := tr.ModelTierOf("cheap"); tier != TierEconomy {
-		t.Errorf("cheap tier = %q, want economy", tier)
-	}
-	if tier := tr.ModelTierOf("pricey"); tier != TierPremium {
-		t.Errorf("pricey tier = %q, want premium", tier)
-	}
-}
-
-func TestTierResolver_Resolve_WithFreeModels(t *testing.T) {
-	tr := NewTierResolver()
-
-	models := []*providerpool.Model{
-		makeModel("xtest-local-mymodel", "ollama", 0, 0), // unrecognizable name → free
-		makeModel("xtest-cloud-model", "openai", 5.0, 15.0), // total 20.0
-	}
-
-	ok := tr.Resolve(models)
-	if !ok {
-		t.Fatal("Resolve() returned false, want true (free + premium = 2 tiers)")
-	}
-
-	if tier := tr.ModelTierOf("xtest-local-mymodel"); tier != TierFree {
-		t.Errorf("xtest-local-mymodel tier = %q, want free", tier)
-	}
-}
-
-func TestTierResolver_Resolve_SingleTier(t *testing.T) {
-	tr := NewTierResolver()
-
-	// All models same price range → single tier → not enabled
-	models := []*providerpool.Model{
-		makeModel("a", "p1", 0.5, 0.5),
-		makeModel("b", "p1", 0.6, 0.6),
-	}
-
-	ok := tr.Resolve(models)
-	if ok {
-		t.Fatal("Resolve() returned true, want false (all same tier)")
+	if ok := tr.Resolve(models); ok {
+		t.Fatal("Resolve() = true, want false (all should be treated as TierLarge)")
 	}
 	if tr.IsEnabled() {
-		t.Fatal("IsEnabled() = true, want false")
+		t.Fatal("IsEnabled() = true, want false when small tier is unavailable")
+	}
+
+	if got := tr.ModelTierOf("gpt-5-nano"); got != TierLarge {
+		t.Errorf("ModelTierOf(gpt-5-nano) = %q, want %q", got, TierLarge)
 	}
 }
 
-func TestTierResolver_Resolve_DisabledModels(t *testing.T) {
+func TestTierResolver_BestModelForTier_SmallPriority(t *testing.T) {
 	tr := NewTierResolver()
-
 	models := []*providerpool.Model{
-		makeModel("enabled", "p1", 0.5, 0.5),
-		{ID: "disabled", ProviderID: "p2", Enabled: false, InputPrice: 50, OutputPrice: 50},
+		makeModel("gemini-2.0-flash", "google", 0.1, 0.4),
+		makeModel("gpt-4o-mini", "openai", 0.15, 0.6),
+		makeModel("claude-3-5-haiku-20241022", "anthropic", 0.8, 4.0),
+		makeModel("gpt-4o", "openai", 2.5, 10.0),
 	}
-
 	tr.Resolve(models)
-	if tier := tr.ModelTierOf("disabled"); tier != "" {
-		t.Errorf("disabled model tier = %q, want empty", tier)
+
+	// Priority order prefers gpt-4o-mini over other small models.
+	if got := tr.BestModelForTier(TierSmall); got != "gpt-4o-mini" {
+		t.Errorf("BestModelForTier(TierSmall) = %q, want gpt-4o-mini", got)
 	}
 }
 
-func TestTierResolver_BestModelForTier(t *testing.T) {
+func TestTierResolver_BestModelForTier_DirectTiers(t *testing.T) {
 	tr := NewTierResolver()
-
 	models := []*providerpool.Model{
-		makeModel("cheap-a", "p1", 0.1, 0.1),
-		makeModel("cheap-b", "p1", 0.2, 0.2),
-		makeModel("mid", "p2", 3.0, 4.0),
-		makeModel("expensive", "p3", 15.0, 30.0),
+		makeModel("gpt-4o", "openai", 2.5, 10.0),
+		makeModel("gpt-4o-mini", "openai", 0.15, 0.6),
 	}
 	tr.Resolve(models)
 
-	// Economy should return cheapest
-	if got := tr.BestModelForTier(TierEconomy); got != "cheap-a" {
-		t.Errorf("BestModelForTier(economy) = %q, want cheap-a", got)
+	if got := tr.BestModelForTier(TierSmall); got != "gpt-4o-mini" {
+		t.Errorf("BestModelForTier(TierSmall) = %q, want gpt-4o-mini", got)
 	}
-
-	// Premium should return the premium model
-	if got := tr.BestModelForTier(TierPremium); got != "expensive" {
-		t.Errorf("BestModelForTier(premium) = %q, want expensive", got)
+	if got := tr.BestModelForTier(TierLarge); got != "gpt-4o" {
+		t.Errorf("BestModelForTier(TierLarge) = %q, want gpt-4o", got)
 	}
 }
 
 func TestTierResolver_BestModelForTier_Fallback(t *testing.T) {
 	tr := NewTierResolver()
-
-	// Only economy and premium — no standard
 	models := []*providerpool.Model{
-		makeModel("cheap", "p1", 0.1, 0.1),
-		makeModel("pricey", "p2", 15.0, 30.0),
+		makeModel("gpt-4o", "openai", 2.5, 10.0), // only large
 	}
 	tr.Resolve(models)
 
-	// Standard should fall back to economy
-	if got := tr.BestModelForTier(TierStandard); got == "" {
-		t.Error("BestModelForTier(standard) = empty, want fallback to economy or premium")
+	if got := tr.BestModelForTier(TierSmall); got != "gpt-4o" {
+		t.Errorf("BestModelForTier(TierSmall) fallback = %q, want gpt-4o", got)
+	}
+	if got := tr.BestModelForTier(TierLarge); got != "gpt-4o" {
+		t.Errorf("BestModelForTier(TierLarge) = %q, want gpt-4o", got)
+	}
+}
+
+func TestTierResolver_Resolve_DisabledModels(t *testing.T) {
+	tr := NewTierResolver()
+	models := []*providerpool.Model{
+		makeModel("gpt-4o-mini", "openai", 0.15, 0.6),
+		{ID: "gpt-4o", ProviderID: "openai", Enabled: false, InputPrice: 2.5, OutputPrice: 10.0},
+	}
+	tr.Resolve(models)
+
+	if tier := tr.ModelTierOf("gpt-4o"); tier != "" {
+		t.Errorf("disabled model tier = %q, want empty", tier)
 	}
 }
 
 func TestTierResolver_ModelTierOf_Unknown(t *testing.T) {
 	tr := NewTierResolver()
-	tr.Resolve([]*providerpool.Model{makeModel("known", "p1", 1, 1)})
+	tr.Resolve([]*providerpool.Model{makeModel("gpt-4o", "openai", 2.5, 10.0)})
 
 	if tier := tr.ModelTierOf("unknown-model"); tier != "" {
 		t.Errorf("ModelTierOf(unknown) = %q, want empty", tier)
@@ -180,20 +134,19 @@ func TestTierResolver_ModelTierOf_Unknown(t *testing.T) {
 
 func TestTierResolver_Resolve_Empty(t *testing.T) {
 	tr := NewTierResolver()
-	ok := tr.Resolve(nil)
-	if ok {
-		t.Fatal("Resolve(nil) returned true, want false")
+	if ok := tr.Resolve(nil); ok {
+		t.Fatal("Resolve(nil) = true, want false")
 	}
 	if tr.IsEnabled() {
-		t.Fatal("IsEnabled() = true after empty resolve")
+		t.Fatal("IsEnabled() = true after empty resolve, want false")
 	}
 }
 
 func TestTierResolver_Stats(t *testing.T) {
 	tr := NewTierResolver()
 	models := []*providerpool.Model{
-		makeModel("cheap", "p1", 0.1, 0.1),
-		makeModel("pricey", "p2", 15.0, 30.0),
+		makeModel("gpt-4o", "openai", 2.5, 10.0),
+		makeModel("gpt-4o-mini", "openai", 0.15, 0.6),
 	}
 	tr.Resolve(models)
 
@@ -203,25 +156,5 @@ func TestTierResolver_Stats(t *testing.T) {
 	}
 	if stats["total_models"].(int) != 2 {
 		t.Errorf("Stats().total_models = %v, want 2", stats["total_models"])
-	}
-}
-
-func TestClassifyByAbsoluteThreshold(t *testing.T) {
-	tests := []struct {
-		cost float64
-		want ModelTier
-	}{
-		{0.5, TierEconomy},
-		{1.9, TierEconomy},
-		{2.1, TierStandard},
-		{9.9, TierStandard},
-		{10.1, TierPremium},
-		{50.0, TierPremium},
-	}
-	for _, tt := range tests {
-		got := classifyByAbsoluteThreshold(tt.cost)
-		if got != tt.want {
-			t.Errorf("classifyByAbsoluteThreshold(%v) = %q, want %q", tt.cost, got, tt.want)
-		}
 	}
 }

@@ -1,3 +1,8 @@
+---
+name: calendar
+description: Manage calendar events and schedules using Google Calendar via gog CLI.
+---
+
 # Calendar
 
 Manage calendar events and schedules.

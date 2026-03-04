@@ -8,14 +8,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
-	"go.uber.org/zap"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 )
 
 // MessageType represents the type of gateway message.
@@ -151,6 +152,13 @@ func (g *Gateway) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// Create connection
 	conn := NewConnection(ws, g.config, g.logger)
+	if raw := r.Context().Value("user_id"); raw != nil {
+		if userID, ok := raw.(string); ok {
+			if userID = strings.TrimSpace(userID); userID != "" {
+				conn.SetUserID(userID)
+			}
+		}
+	}
 
 	// Register connection
 	g.mu.Lock()
@@ -231,11 +239,28 @@ func (g *Gateway) handleConnection(conn *Connection) {
 func (g *Gateway) handleMessage(conn *Connection, msg *Message) {
 	g.activeMessages.Add(1)
 	defer g.activeMessages.Add(-1)
+	conn.MessagesReceived.Add(1)
+
+	if msg.Type != TypeRequest {
+		// Frontend heartbeat may send {"type":"ping"}.
+		if strings.EqualFold(string(msg.Type), "ping") {
+			_ = conn.Send(&Message{
+				Type:      TypeResponse,
+				Timestamp: timeutil.NowMilli(),
+			})
+		}
+		return
+	}
 
 	g.logger.Debug("received message",
 		zap.String("conn_id", conn.ID),
 		zap.String("msg_id", msg.ID),
 		zap.String("method", msg.Method))
+
+	if strings.TrimSpace(msg.Method) == "" {
+		g.sendError(conn, msg.ID, 400, "method is required")
+		return
+	}
 
 	// Get handler
 	g.mu.RLock()

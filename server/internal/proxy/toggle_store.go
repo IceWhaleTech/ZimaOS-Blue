@@ -15,6 +15,7 @@ type ToggleState struct {
 	PrunerEnabled      bool            `json:"pruner_enabled"`
 	RoutingEnabled     bool            `json:"routing_enabled"`
 	MaskingEnabled     bool            `json:"masking_enabled"`
+	MaskingRules       map[string]bool `json:"masking_rules,omitempty"`
 	PrunerBackend      string          `json:"pruner_backend,omitempty"`
 	RoutingRules       map[string]bool `json:"routing_rules,omitempty"`
 	PromptCacheEnabled bool            `json:"prompt_cache_enabled"`

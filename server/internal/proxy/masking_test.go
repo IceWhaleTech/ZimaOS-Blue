@@ -287,11 +287,18 @@ func TestDataMasker_Stats(t *testing.T) {
 		ID: "stat_test", Name: "Stat", Pattern: `SECRET`,
 		Replacement: "[X]", Direction: MaskingBoth, Enabled: true,
 	})
+	_ = dm.AddRule(&MaskingRule{
+		ID: "stat_disabled", Name: "StatDisabled", Pattern: `HIDDEN`,
+		Replacement: "[Y]", Direction: MaskingBoth, Enabled: false,
+	})
 
 	dm.Mask("SECRET data", MaskingResponse)
 	dm.Mask("SECRET again", MaskingResponse)
 
 	stats := dm.Stats()
+	if stats["rule_count"] != 1 {
+		t.Errorf("expected rule_count=1 (enabled rules only), got %v", stats["rule_count"])
+	}
 	if stats["total_masks"] != int64(2) {
 		t.Errorf("expected total_masks=2, got %v", stats["total_masks"])
 	}

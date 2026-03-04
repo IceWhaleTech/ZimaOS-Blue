@@ -1,12 +1,13 @@
 package gateway
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 )
 
 // Handler provides HTTP handlers for gateway management.
@@ -66,6 +67,8 @@ func (h *Handler) WebSocket(c echo.Context) error {
 	// Store user ID in request context for the gateway to use
 	if userID != "" {
 		c.Set("user_id", userID)
+		ctx := context.WithValue(c.Request().Context(), "user_id", userID)
+		c.SetRequest(c.Request().WithContext(ctx))
 	}
 
 	h.gateway.HandleWebSocket(c.Response().Writer, c.Request())

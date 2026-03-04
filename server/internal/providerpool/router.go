@@ -802,6 +802,88 @@ func classifyError(err error) FailoverReason {
 	return FailoverReasonAPIError
 }
 
+// shouldRetryWithNextAPIKey returns true when retrying with a different API key
+// could realistically help (auth failures, per-key rate limits, exhausted quota).
+func shouldRetryWithNextAPIKey(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "all auth strategies exhausted") ||
+		strings.Contains(errStr, "auth error") ||
+		strings.Contains(errStr, "unauthorized") ||
+		strings.Contains(errStr, "401") ||
+		strings.Contains(errStr, "403") ||
+		strings.Contains(errStr, "forbidden") ||
+		strings.Contains(errStr, "invalid api key") ||
+		strings.Contains(errStr, "invalid key") ||
+		strings.Contains(errStr, "authentication") ||
+		strings.Contains(errStr, "throttled (429)") ||
+		strings.Contains(errStr, "too many requests") ||
+		strings.Contains(errStr, "rate limit") ||
+		strings.Contains(errStr, "provider returned 402") ||
+		strings.Contains(errStr, "insufficient_quota") ||
+		strings.Contains(errStr, "insufficient quota") ||
+		strings.Contains(errStr, "quota exceeded") ||
+		strings.Contains(errStr, "billing hard limit")
+}
+
+// buildAPIKeyAttempts builds an ordered API key list to try for a provider.
+// Order: preferred key first, then other enabled keys, then first key fallback.
+func buildAPIKeyAttempts(provider *Provider, preferred *APIKey) []*APIKey {
+	attempts := make([]*APIKey, 0, 2)
+	seen := make(map[string]struct{})
+
+	keyFingerprint := func(k *APIKey) string {
+		if k == nil {
+			return ""
+		}
+		if k.ID != "" {
+			return "id:" + k.ID
+		}
+		if k.KeyHash != "" {
+			return "hash:" + k.KeyHash
+		}
+		if k.Key != "" {
+			return "key:" + k.Key
+		}
+		return ""
+	}
+
+	add := func(k *APIKey) {
+		if k == nil || strings.TrimSpace(k.Key) == "" {
+			return
+		}
+		fp := keyFingerprint(k)
+		if fp != "" {
+			if _, exists := seen[fp]; exists {
+				return
+			}
+			seen[fp] = struct{}{}
+		}
+		keyCopy := *k
+		attempts = append(attempts, &keyCopy)
+	}
+
+	add(preferred)
+
+	if provider != nil {
+		for i := range provider.APIKeys {
+			key := &provider.APIKeys[i]
+			if !key.Enabled {
+				continue
+			}
+			add(key)
+		}
+		// Backward-compat: if no enabled keys exist, try the first key once.
+		if len(attempts) == 0 && len(provider.APIKeys) > 0 {
+			add(&provider.APIKeys[0])
+		}
+	}
+
+	return attempts
+}
+
 // RouteWithFallback attempts to route with automatic fallback on failure.
 // When the exact model is not found or all same-model providers fail,
 // it falls back to any healthy provider matching the routing mode (auto/cloud/local),
@@ -832,39 +914,65 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 	}
 
 	{
-		// Try primary
-		if failoverResult != nil {
-			failoverResult.TotalAttempts++
+		primaryKeyAttempts := buildAPIKeyAttempts(result.Provider, result.APIKey)
+		if len(primaryKeyAttempts) == 0 {
+			primaryKeyAttempts = []*APIKey{nil}
 		}
-		start := timeutil.NowTime()
-		err = execute(result)
-		latency := timeutil.SinceTime(start)
-		triedProviders[result.Provider.ID] = true
 
-		if err == nil {
-			r.UpdateLatency(result.Provider.ID, latency)
-			r.RecordSuccess(result.Provider.ID)
-			if failoverResult != nil {
-				failoverResult.SuccessProvider = result.Provider.ID
-				failoverResult.SuccessModel = result.Model.ID
+		// Try primary provider (with API key failover inside the same provider)
+		for keyIdx, apiKey := range primaryKeyAttempts {
+			if ctx.Err() != nil {
+				if failoverResult != nil {
+					failoverResult.FinalError = ctx.Err().Error()
+				}
+				return ctx.Err()
 			}
-			return nil
-		}
 
-		// Record failure for primary
-		r.UpdateLatency(result.Provider.ID, latency*2)
-		r.RecordFailure(result.Provider.ID, err)
+			attemptResult := &RouteResult{
+				Provider: result.Provider,
+				Model:    result.Model,
+				APIKey:   apiKey,
+				OAuth:    result.OAuth,
+			}
 
-		if failoverResult != nil {
-			failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
-				Timestamp:    start,
-				ProviderID:   result.Provider.ID,
-				ProviderName: result.Provider.Name,
-				ModelID:      result.Model.ID,
-				Reason:       classifyError(err),
-				Error:        err.Error(),
-				Latency:      latency,
-			})
+			if failoverResult != nil {
+				failoverResult.TotalAttempts++
+			}
+			start := timeutil.NowTime()
+			err = execute(attemptResult)
+			latency := timeutil.SinceTime(start)
+			triedProviders[result.Provider.ID] = true
+
+			if err == nil {
+				r.UpdateLatency(result.Provider.ID, latency)
+				r.RecordSuccess(result.Provider.ID)
+				if failoverResult != nil {
+					failoverResult.SuccessProvider = result.Provider.ID
+					failoverResult.SuccessModel = result.Model.ID
+				}
+				return nil
+			}
+
+			r.UpdateLatency(result.Provider.ID, latency*2)
+			r.RecordFailure(result.Provider.ID, err)
+
+			if failoverResult != nil {
+				failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
+					Timestamp:    start,
+					ProviderID:   result.Provider.ID,
+					ProviderName: result.Provider.Name,
+					ModelID:      result.Model.ID,
+					Reason:       classifyError(err),
+					Error:        err.Error(),
+					Latency:      latency,
+				})
+			}
+
+			// Auth-like failures may be caused by a single bad key — try next key on same provider.
+			if keyIdx+1 < len(primaryKeyAttempts) && shouldRetryWithNextAPIKey(err) {
+				continue
+			}
+			break
 		}
 
 		// Try same-model fallbacks
@@ -887,43 +995,74 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 			if apiKey, keyErr := r.registry.GetAPIKey(fallback.Provider.ID); keyErr == nil {
 				fallbackResult.APIKey = apiKey
 			}
-
-			if failoverResult != nil {
-				failoverResult.TotalAttempts++
+			if fallbackResult.APIKey == nil {
+				if oauthCfg, oauthErr := r.registry.GetOAuthConfig(fallback.Provider.ID); oauthErr == nil {
+					fallbackResult.OAuth = oauthCfg
+				}
 			}
-			start := timeutil.NowTime()
-			err = execute(fallbackResult)
-			latency := timeutil.SinceTime(start)
-			triedProviders[fallback.Provider.ID] = true
 
-			if err == nil {
-				r.UpdateLatency(fallback.Provider.ID, latency)
-				r.RecordSuccess(fallback.Provider.ID)
+			fallbackKeyAttempts := buildAPIKeyAttempts(fallback.Provider, fallbackResult.APIKey)
+			if len(fallbackKeyAttempts) == 0 {
+				fallbackKeyAttempts = []*APIKey{nil}
+			}
+
+			for keyIdx, apiKey := range fallbackKeyAttempts {
+				if ctx.Err() != nil {
+					if failoverResult != nil {
+						failoverResult.FinalError = ctx.Err().Error()
+					}
+					return ctx.Err()
+				}
+
+				attemptResult := &RouteResult{
+					Provider: fallback.Provider,
+					Model:    fallback.Model,
+					APIKey:   apiKey,
+					OAuth:    fallbackResult.OAuth,
+				}
+
 				if failoverResult != nil {
-					failoverResult.SuccessProvider = fallback.Provider.ID
-					failoverResult.SuccessModel = fallback.Model.ID
+					failoverResult.TotalAttempts++
 				}
-				return nil
-			}
+				start := timeutil.NowTime()
+				err = execute(attemptResult)
+				latency := timeutil.SinceTime(start)
+				triedProviders[fallback.Provider.ID] = true
 
-			r.UpdateLatency(fallback.Provider.ID, latency*2)
-			r.RecordFailure(fallback.Provider.ID, err)
-
-			if failoverResult != nil {
-				nextProviderID := ""
-				if i+1 < len(result.Fallbacks) {
-					nextProviderID = result.Fallbacks[i+1].Provider.ID
+				if err == nil {
+					r.UpdateLatency(fallback.Provider.ID, latency)
+					r.RecordSuccess(fallback.Provider.ID)
+					if failoverResult != nil {
+						failoverResult.SuccessProvider = fallback.Provider.ID
+						failoverResult.SuccessModel = fallback.Model.ID
+					}
+					return nil
 				}
-				failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
-					Timestamp:      start,
-					ProviderID:     fallback.Provider.ID,
-					ProviderName:   fallback.Provider.Name,
-					ModelID:        fallback.Model.ID,
-					Reason:         classifyError(err),
-					Error:          err.Error(),
-					Latency:        latency,
-					NextProviderID: nextProviderID,
-				})
+
+				r.UpdateLatency(fallback.Provider.ID, latency*2)
+				r.RecordFailure(fallback.Provider.ID, err)
+
+				if failoverResult != nil {
+					nextProviderID := ""
+					if i+1 < len(result.Fallbacks) {
+						nextProviderID = result.Fallbacks[i+1].Provider.ID
+					}
+					failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
+						Timestamp:      start,
+						ProviderID:     fallback.Provider.ID,
+						ProviderName:   fallback.Provider.Name,
+						ModelID:        fallback.Model.ID,
+						Reason:         classifyError(err),
+						Error:          err.Error(),
+						Latency:        latency,
+						NextProviderID: nextProviderID,
+					})
+				}
+
+				if keyIdx+1 < len(fallbackKeyAttempts) && shouldRetryWithNextAPIKey(err) {
+					continue
+				}
+				break
 			}
 		}
 	}
@@ -972,38 +1111,69 @@ blindFallback:
 		if apiKey, keyErr := r.registry.GetAPIKey(provider.ID); keyErr == nil {
 			blindResult.APIKey = apiKey
 		}
-
-		if failoverResult != nil {
-			failoverResult.TotalAttempts++
-		}
-		start := timeutil.NowTime()
-		err = execute(blindResult)
-		latency := timeutil.SinceTime(start)
-
-		if err == nil {
-			r.UpdateLatency(provider.ID, latency)
-			r.RecordSuccess(provider.ID)
-			if failoverResult != nil {
-				failoverResult.SuccessProvider = provider.ID
-				failoverResult.SuccessModel = req.ModelID
+		if blindResult.APIKey == nil {
+			if oauthCfg, oauthErr := r.registry.GetOAuthConfig(provider.ID); oauthErr == nil {
+				blindResult.OAuth = oauthCfg
 			}
-			slog.Info("[router] blind fallback succeeded", "provider", provider.ID, "model", req.ModelID)
-			return nil
 		}
 
-		r.UpdateLatency(provider.ID, latency*2)
-		r.RecordFailure(provider.ID, err)
+		blindKeyAttempts := buildAPIKeyAttempts(provider, blindResult.APIKey)
+		if len(blindKeyAttempts) == 0 {
+			blindKeyAttempts = []*APIKey{nil}
+		}
 
-		if failoverResult != nil {
-			failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
-				Timestamp:    start,
-				ProviderID:   provider.ID,
-				ProviderName: provider.Name,
-				ModelID:      req.ModelID,
-				Reason:       classifyError(err),
-				Error:        err.Error(),
-				Latency:      latency,
-			})
+		for keyIdx, apiKey := range blindKeyAttempts {
+			if ctx.Err() != nil {
+				if failoverResult != nil {
+					failoverResult.FinalError = ctx.Err().Error()
+				}
+				return ctx.Err()
+			}
+
+			attemptResult := &RouteResult{
+				Provider: provider,
+				Model:    passthroughModel,
+				APIKey:   apiKey,
+				OAuth:    blindResult.OAuth,
+			}
+
+			if failoverResult != nil {
+				failoverResult.TotalAttempts++
+			}
+			start := timeutil.NowTime()
+			err = execute(attemptResult)
+			latency := timeutil.SinceTime(start)
+
+			if err == nil {
+				r.UpdateLatency(provider.ID, latency)
+				r.RecordSuccess(provider.ID)
+				if failoverResult != nil {
+					failoverResult.SuccessProvider = provider.ID
+					failoverResult.SuccessModel = req.ModelID
+				}
+				slog.Info("[router] blind fallback succeeded", "provider", provider.ID, "model", req.ModelID)
+				return nil
+			}
+
+			r.UpdateLatency(provider.ID, latency*2)
+			r.RecordFailure(provider.ID, err)
+
+			if failoverResult != nil {
+				failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
+					Timestamp:    start,
+					ProviderID:   provider.ID,
+					ProviderName: provider.Name,
+					ModelID:      req.ModelID,
+					Reason:       classifyError(err),
+					Error:        err.Error(),
+					Latency:      latency,
+				})
+			}
+
+			if keyIdx+1 < len(blindKeyAttempts) && shouldRetryWithNextAPIKey(err) {
+				continue
+			}
+			break
 		}
 	}
 

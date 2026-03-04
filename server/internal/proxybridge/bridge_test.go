@@ -642,6 +642,34 @@ func TestBridgeChatStream_ZeroChunksReturnsError(t *testing.T) {
 	}
 }
 
+func TestBridgeChatStream_MetadataEventCountsAsProgressChunk(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "event: response.created\n")
+		fmt.Fprint(w, `data: {"type":"response.created","response":{"id":"resp_meta","model":"o3"}}`+"\n\n")
+	})
+
+	bridge := NewBridge(handler)
+	var got []llm.StreamChunk
+	err := bridge.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	}, func(chunk llm.StreamChunk) error {
+		got = append(got, chunk)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("expected metadata progress stream to succeed, got: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("callback chunks = %d, want 1", len(got))
+	}
+	if got[0].Progress != "response.created" {
+		t.Fatalf("progress = %q, want %q", got[0].Progress, "response.created")
+	}
+}
+
 func TestBridgeChatStream_NonSSEBodyReturnsErrorBody(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

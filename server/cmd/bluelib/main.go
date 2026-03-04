@@ -69,6 +69,23 @@ var (
 	gitCommit = "unknown"
 )
 
+func applyPendingBackupRestore(dataDir string) error {
+	mgr, err := backup.NewManager(backup.Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          filepath.Join(dataDir, "backups"),
+		SkillsPath:    filepath.Join(dataDir, "workspace", ".claude", "skills"),
+	}, dataDir, dataDir)
+	if err != nil {
+		return err
+	}
+	if !mgr.HasPendingRestore() {
+		return nil
+	}
+	_, err = mgr.ApplyPendingRestore(context.Background())
+	return err
+}
+
 // getDataDir returns the platform-specific data directory path
 func getDataDir() string {
 	if runtime.GOOS == "darwin" {
@@ -142,6 +159,51 @@ var (
 	signalListener *sync.Once = &sync.Once{}
 )
 
+// startEmbeddedServerLocked starts the embedded server.
+// Caller must hold serverMu.
+func startEmbeddedServerLocked(port int, dataDir string, cfgFile string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	serverCancel = cancel
+	serverDone = done
+
+	go func(runCtx context.Context, runPort int, runDataDir string, runCfgFile string, doneCh chan struct{}) {
+		defer close(doneCh)
+		if err := runServer(runCtx, runPort, runDataDir, runCfgFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+		}
+	}(ctx, port, dataDir, cfgFile, done)
+
+	isRunning = true
+}
+
+func triggerEmbeddedRestart(port int, dataDir string, cfgFile string, log *zap.Logger) error {
+	go func() {
+		if rc := BlueServerStop(); rc != 0 {
+			if log != nil {
+				log.Warn("Auto-restart: failed to stop embedded server before restart", zap.Int("code", int(rc)))
+			}
+			return
+		}
+
+		serverMu.Lock()
+		defer serverMu.Unlock()
+		if isRunning {
+			if log != nil {
+				log.Warn("Auto-restart aborted: server still marked as running")
+			}
+			return
+		}
+
+		setupSignalHandler()
+		startEmbeddedServerLocked(port, dataDir, cfgFile)
+		if log != nil {
+			log.Info("Embedded server restarted to apply staged backup restore")
+		}
+	}()
+	return nil
+}
+
 //export BlueServerStartWithArgs
 func BlueServerStartWithArgs(port C.int, dataDir *C.char, args *C.char) C.int {
 	serverMu.Lock()
@@ -200,18 +262,7 @@ func BlueServerStartWithArgs(port C.int, dataDir *C.char, args *C.char) C.int {
 		os.Setenv("BLUE_SERVER_PORT", fmt.Sprintf("%d", goPort))
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	serverCancel = cancel
-	serverDone = make(chan struct{})
-
-	go func() {
-		defer close(serverDone)
-		if err := runServer(ctx, goPort, goDataDir, cfgFile); err != nil {
-			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
-		}
-	}()
-
-	isRunning = true
+	startEmbeddedServerLocked(goPort, goDataDir, cfgFile)
 	return 0
 }
 
@@ -235,18 +286,7 @@ func BlueServerStart(port C.int, dataDir *C.char) C.int {
 		os.Setenv("BLUE_SERVER_PORT", fmt.Sprintf("%d", goPort))
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	serverCancel = cancel
-	serverDone = make(chan struct{})
-
-	go func() {
-		defer close(serverDone)
-		if err := runServer(ctx, goPort, goDataDir, ""); err != nil {
-			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
-		}
-	}()
-
-	isRunning = true
+	startEmbeddedServerLocked(goPort, goDataDir, "")
 	return 0
 }
 
@@ -354,6 +394,9 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		zap.Int("port", cfg.Server.Port),
 		zap.String("data_dir", dataDir),
 	)
+	if err := applyPendingBackupRestore(dataDir); err != nil {
+		zapLogger.Warn("Failed to apply pending backup restore before database initialization", zap.Error(err))
+	}
 
 	// Create server config
 	serverCfg := &bootstrap.ServerConfig{
@@ -438,13 +481,24 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Initialize backup handler
 	backupManager, _ := backup.NewManager(backup.Config{
-		Enabled:       true,
-		RetentionDays: 7,
-		Path:          filepath.Join(dataDir, "backups"),
+		Enabled:            true,
+		RetentionDays:      7,
+		Path:               filepath.Join(dataDir, "backups"),
+		SkillsPath:         filepath.Join(dataDir, "workspace", ".claude", "skills"),
+		AutoBackup:         true,
+		AutoBackupInterval: 6 * time.Hour,
+		AutoBackupOnChange: true,
+		ChangePollInterval: time.Minute,
+		ChangeDebounce:     5 * time.Minute,
 	}, dataDir, dataDir)
 	var backupHandler *backup.Handler
 	if backupManager != nil {
+		backupManager.StartAutoBackup(ctx)
 		backupHandler = backup.NewHandler(backupManager)
+		backupHandler.SetRestartFunc(func() error {
+			zapLogger.Info("Backup restore staged; triggering embedded graceful restart")
+			return triggerEmbeddedRestart(port, dataDir, cfgFile, zapLogger)
+		})
 	}
 
 	// Initialize security handler

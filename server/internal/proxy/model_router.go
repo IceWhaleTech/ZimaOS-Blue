@@ -176,12 +176,12 @@ func (mr *ModelRouter) RouteModel(requestedModel string, isBackground bool) (*Mo
 
 	// 3. TierResolver-based background downgrade
 	if isBackground && mr.tierResolver != nil && mr.tierResolver.IsEnabled() {
-		economyModel := mr.tierResolver.BestModelForTier(TierEconomy)
-		if economyModel != "" && economyModel != requestedModel {
+		smallModel := mr.tierResolver.BestModelForTier(TierSmall)
+		if smallModel != "" && smallModel != requestedModel {
 			return &ModelRoute{
 				OriginalModel: requestedModel,
-				TargetModel:   economyModel,
-				RuleApplied:   "tier-background-downgrade",
+				TargetModel:   smallModel,
+				RuleApplied:   "tier-background-small-model",
 				Downgraded:    true,
 			}, nil
 		}

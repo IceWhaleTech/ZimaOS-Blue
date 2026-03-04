@@ -248,6 +248,16 @@ tool_calling:
   auto_detect: true
   detection_timeout: "5s"
 
+  web_search:
+    provider: "duckduckgo"  # single provider (legacy)
+    providers: ["duckduckgo"]  # high availability chain, priority order
+    api_key: ""             # required for brave
+    base_url: ""            # required for searxng, e.g. https://search.example.com
+    max_results: 5
+    timeout: "30s"
+    safe_search: false
+    region: "wt-wt"
+
   adapters:
     cli_proxy:
       enabled: true  # Only works when claude_code_cli.enabled=true
@@ -263,3 +273,12 @@ tool_calling:
     custom:
       tool_calling: "auto"
 
+# OTA update
+update:
+  enabled: true
+  check_interval: "24h"
+  auto_download: false
+  auto_apply: false
+  release_channel: "stable"  # stable, beta, alpha
+  backup_count: 3
+  storage_path: "./data/updates"

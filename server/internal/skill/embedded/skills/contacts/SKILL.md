@@ -1,3 +1,8 @@
+---
+name: contacts
+description: Manage contacts with gog Google Contacts and use built in CRUD fallback when needed.
+---
+
 # Contacts
 
 Manage contacts and address book.

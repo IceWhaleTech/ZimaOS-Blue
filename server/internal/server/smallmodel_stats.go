@@ -1,14 +1,13 @@
 package server
 
 import (
-	"math"
 	"sync"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 )
 
-// SmallModelStats tracks small-model routing/shadow/fallback observability.
+// SmallModelStats tracks small-model routing/fallback observability.
 type SmallModelStats struct {
 	mu sync.Mutex
 
@@ -20,9 +19,6 @@ type SmallModelStats struct {
 	SummarySuccess             int64            `json:"summary_success"`
 	DocExtractAttempts         int64            `json:"doc_extract_attempts"`
 	DocExtractSuccess          int64            `json:"doc_extract_success"`
-	ShortQAShadowTotal         int64            `json:"short_qa_shadow_total"`
-	ToolShadowTotal            int64            `json:"tool_dispatch_shadow_total"`
-	ShadowFailures             int64            `json:"shadow_failures"`
 	FallbackTotal              int64            `json:"small_model_fallback_total"`
 	TimeoutTotal               int64            `json:"small_model_timeout_total"`
 	LatencyMs                  float64          `json:"small_model_latency_ms"`
@@ -40,9 +36,6 @@ type SmallModelStats struct {
 	DocExtractLatencyMs        float64          `json:"doc_extract_latency_ms"`
 	DocExtractLatencySamples   int64            `json:"doc_extract_latency_samples"`
 	DocExtractLatencyTotal     int64            `json:"doc_extract_latency_ms_total"`
-	ShadowQualityDelta         float64          `json:"shadow_quality_delta"`
-	ShadowQualitySamples       int64            `json:"shadow_quality_samples"`
-	ShadowQualityDeltaTotal    int64            `json:"shadow_quality_delta_total"`
 	AutoRollbackTotal          int64            `json:"auto_rollback_total"`
 	DeepResearchFallback       int64            `json:"no_provider_deepresearch_total"`
 	IRTakeover                 int64            `json:"ir_takeover_total"`
@@ -163,23 +156,6 @@ func (s *SmallModelStats) RecordLatencyWithScene(scene string, d time.Duration) 
 	}
 }
 
-func (s *SmallModelStats) RecordShadow(scene string, success bool) {
-	if s == nil {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	switch scene {
-	case "short_qa_shadow":
-		s.ShortQAShadowTotal++
-	case "tool_dispatch_shadow":
-		s.ToolShadowTotal++
-	}
-	if !success {
-		s.ShadowFailures++
-	}
-}
-
 func (s *SmallModelStats) RecordDeepResearchFallback() {
 	if s == nil {
 		return
@@ -207,26 +183,6 @@ func (s *SmallModelStats) RecordIRTakeover() {
 	s.IRTakeover++
 }
 
-func (s *SmallModelStats) RecordShadowQualityDelta(delta float64) {
-	if s == nil {
-		return
-	}
-	if math.IsNaN(delta) || math.IsInf(delta, 0) {
-		return
-	}
-	if delta < 0 {
-		delta = 0
-	}
-	if delta > 1 {
-		delta = 1
-	}
-	scaled := int64(math.Round(delta * 1000))
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ShadowQualitySamples++
-	s.ShadowQualityDeltaTotal += scaled
-}
-
 func (s *SmallModelStats) Snapshot() SmallModelStats {
 	if s == nil {
 		return SmallModelStats{FallbackReasons: map[string]int64{}}
@@ -242,9 +198,6 @@ func (s *SmallModelStats) Snapshot() SmallModelStats {
 		SummarySuccess:             s.SummarySuccess,
 		DocExtractAttempts:         s.DocExtractAttempts,
 		DocExtractSuccess:          s.DocExtractSuccess,
-		ShortQAShadowTotal:         s.ShortQAShadowTotal,
-		ToolShadowTotal:            s.ToolShadowTotal,
-		ShadowFailures:             s.ShadowFailures,
 		FallbackTotal:              s.FallbackTotal,
 		TimeoutTotal:               s.TimeoutTotal,
 		LatencySamples:             s.LatencySamples,
@@ -257,8 +210,6 @@ func (s *SmallModelStats) Snapshot() SmallModelStats {
 		SummaryLatencyTotal:        s.SummaryLatencyTotal,
 		DocExtractLatencySamples:   s.DocExtractLatencySamples,
 		DocExtractLatencyTotal:     s.DocExtractLatencyTotal,
-		ShadowQualitySamples:       s.ShadowQualitySamples,
-		ShadowQualityDeltaTotal:    s.ShadowQualityDeltaTotal,
 		AutoRollbackTotal:          s.AutoRollbackTotal,
 		DeepResearchFallback:       s.DeepResearchFallback,
 		IRTakeover:                 s.IRTakeover,
@@ -278,9 +229,6 @@ func (s *SmallModelStats) Snapshot() SmallModelStats {
 	}
 	if cp.DocExtractLatencySamples > 0 {
 		cp.DocExtractLatencyMs = float64(cp.DocExtractLatencyTotal) / float64(cp.DocExtractLatencySamples)
-	}
-	if cp.ShadowQualitySamples > 0 {
-		cp.ShadowQualityDelta = float64(cp.ShadowQualityDeltaTotal) / float64(cp.ShadowQualitySamples) / 1000.0
 	}
 	for k, v := range s.FallbackReasons {
 		cp.FallbackReasons[k] = v
@@ -302,9 +250,6 @@ func (s *SmallModelStats) Reset() {
 	s.SummarySuccess = 0
 	s.DocExtractAttempts = 0
 	s.DocExtractSuccess = 0
-	s.ShortQAShadowTotal = 0
-	s.ToolShadowTotal = 0
-	s.ShadowFailures = 0
 	s.FallbackTotal = 0
 	s.TimeoutTotal = 0
 	s.LatencyMs = 0
@@ -322,9 +267,6 @@ func (s *SmallModelStats) Reset() {
 	s.DocExtractLatencyMs = 0
 	s.DocExtractLatencySamples = 0
 	s.DocExtractLatencyTotal = 0
-	s.ShadowQualityDelta = 0
-	s.ShadowQualitySamples = 0
-	s.ShadowQualityDeltaTotal = 0
 	s.AutoRollbackTotal = 0
 	s.DeepResearchFallback = 0
 	s.IRTakeover = 0

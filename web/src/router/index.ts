@@ -222,21 +222,15 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/smart-home',
-    name: 'SmartHome',
-    component: () => import('@/views/HomeAssistantView.vue'),
-    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
+    redirect: '/cron',
   },
   {
     path: '/browser-automation',
-    name: 'BrowserAutomation',
-    component: () => import('@/views/BrowserAutomationView.vue'),
-    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
+    redirect: '/cron',
   },
   {
     path: '/auto-reply',
-    name: 'AutoReply',
-    component: () => import('@/views/AutoReplyView.vue'),
-    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
+    redirect: '/cron',
   },
   {
     path: '/channels',
@@ -246,15 +240,11 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/workflows',
-    name: 'Workflows',
-    component: () => import('@/views/WorkflowView.vue'),
-    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
+    redirect: '/cron',
   },
   {
     path: '/webhooks',
-    name: 'Webhooks',
-    component: () => import('@/views/WebhookView.vue'),
-    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
+    redirect: '/cron',
   },
   {
     path: '/cron',
@@ -264,9 +254,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/automation',
-    name: 'Automation',
-    component: () => import('@/views/AutomationView.vue'),
-    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
+    redirect: '/cron',
   },
   {
     path: '/audit',
@@ -294,9 +282,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/sandbox',
-    name: 'Sandbox',
-    component: () => import('@/views/SandboxView.vue'),
-    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
+    redirect: '/cron',
   },
   {
     path: '/tenants',

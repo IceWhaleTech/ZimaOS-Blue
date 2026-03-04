@@ -14,8 +14,6 @@ func RegisterAll(registry *skill.Registry) error {
 		NewPlanAppend(),
 		NewReminder(),
 		NewScheduler(),
-		NewWorkflows(),
-		NewSandbox(),
 		NewBrowser(),
 		NewAnalyze(),
 		NewDeepResearch(),
@@ -34,5 +32,5 @@ func RegisterAll(registry *skill.Registry) error {
 
 // GetSkillCount returns the number of built-in skills
 func GetSkillCount() int {
-	return 13
+	return 11
 }

@@ -156,6 +156,12 @@ export interface MaskingStats {
   status: string
 }
 
+export interface UpdateMaskingRuleResponse {
+  message: string
+  rule: MaskingRule
+  stats: MaskingStats
+}
+
 export interface FailoverConfig {
   enabled: boolean
   max_retries: number
@@ -248,6 +254,9 @@ export const proxyApi = {
 
   addMaskingRule: (rule: Omit<MaskingRule, 'id'>) =>
     apiClient.post<{ message: string; rule: MaskingRule }>('/proxy/masking/rules', rule),
+
+  updateMaskingRule: (id: string, patch: { enabled: boolean }) =>
+    apiClient.put<UpdateMaskingRuleResponse>(`/proxy/masking/rules/${encodeURIComponent(id)}`, patch),
 
   removeMaskingRule: (id: string) =>
     apiClient.delete<{ message: string }>(`/proxy/masking/rules?id=${encodeURIComponent(id)}`),

@@ -16,7 +16,7 @@ func TestApplyModelRouting_RuleEngineSwapsModel(t *testing.T) {
 			Priority:    1,
 			Condition:   RouteCondition{MaxBodyBytes: 1000},
 			TargetModel: "claude-3-haiku",
-			Tier:        TierEconomy,
+			Tier:        TierSmall,
 		},
 	}))
 
@@ -111,18 +111,18 @@ func TestApplyModelRouting_RuleEngineTakesPriority(t *testing.T) {
 	ph.SetModelRouter(mr)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
 		{
-			Name:        "header-economy",
+			Name:        "header-small",
 			Priority:    1,
-			Condition:   RouteCondition{Header: "X-Tier", HeaderValue: "economy"},
+			Condition:   RouteCondition{Header: "X-Tier", HeaderValue: "small"},
 			TargetModel: "claude-3-5-haiku",
-			Tier:        TierEconomy,
+			Tier:        TierSmall,
 		},
 	}))
 
 	body := []byte(`{"model":"claude-3-opus","messages":[]}`)
 	pr := &parsedRequest{body: body, model: "claude-3-opus"}
 	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	r.Header.Set("X-Tier", "economy")
+	r.Header.Set("X-Tier", "small")
 	r.Header.Set("X-Background-Task", "true") // would trigger model router too
 
 	ph.applyModelRouting(r, pr)
@@ -131,7 +131,7 @@ func TestApplyModelRouting_RuleEngineTakesPriority(t *testing.T) {
 	if pr.model != "claude-3-5-haiku" {
 		t.Errorf("expected rule engine to win with 'claude-3-5-haiku', got %q", pr.model)
 	}
-	if pr.routed == nil || pr.routed.Rule != "header-economy" {
+	if pr.routed == nil || pr.routed.Rule != "header-small" {
 		t.Error("expected routed decision from rule engine")
 	}
 }
@@ -160,7 +160,7 @@ func TestApplyModelRouting_LazyToolExtraction(t *testing.T) {
 			Priority:    1,
 			Condition:   RouteCondition{ToolPattern: "^get_weather$"},
 			TargetModel: "gpt-4o-mini",
-			Tier:        TierEconomy,
+			Tier:        TierSmall,
 		},
 	}))
 
@@ -192,7 +192,7 @@ func TestSetRouteHeaders(t *testing.T) {
 		Matched: true,
 		Model:   "haiku",
 		Rule:    "test-rule",
-		Tier:    TierEconomy,
+		Tier:    TierSmall,
 	}
 	ph.setRouteHeaders(w, pr)
 	if w.Header().Get("X-Route-Rule") != "test-rule" {
@@ -201,7 +201,7 @@ func TestSetRouteHeaders(t *testing.T) {
 	if w.Header().Get("X-Route-Model") != "haiku" {
 		t.Errorf("expected X-Route-Model 'haiku', got %q", w.Header().Get("X-Route-Model"))
 	}
-	if w.Header().Get("X-Route-Tier") != "economy" {
-		t.Errorf("expected X-Route-Tier 'economy', got %q", w.Header().Get("X-Route-Tier"))
+	if w.Header().Get("X-Route-Tier") != "small" {
+		t.Errorf("expected X-Route-Tier 'small', got %q", w.Header().Get("X-Route-Tier"))
 	}
 }

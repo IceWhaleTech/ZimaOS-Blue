@@ -783,6 +783,78 @@ func TestExecSkillShortCircuit_PositionalActionForReminderNaturalTime(t *testing
 	}
 }
 
+func TestExecSkillShortCircuit_ReminderInfersAddActionFromFields(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	var gotSkill string
+	var gotInput map[string]any
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		gotSkill = skillID
+		gotInput = input
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": `blue reminder message="drink water" time=10s`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotSkill != "reminder" {
+		t.Fatalf("skill = %q, want %q", gotSkill, "reminder")
+	}
+	if gotInput["action"] != "add" {
+		t.Fatalf("action = %v, want %q", gotInput["action"], "add")
+	}
+	if gotInput["message"] != "drink water" {
+		t.Fatalf("message = %v, want %q", gotInput["message"], "drink water")
+	}
+}
+
+func TestExecSkillShortCircuit_ReminderInfersDeleteActionFromID(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	var gotSkill string
+	var gotInput map[string]any
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		gotSkill = skillID
+		gotInput = input
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": `blue reminder id=push_1`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotSkill != "reminder" {
+		t.Fatalf("skill = %q, want %q", gotSkill, "reminder")
+	}
+	if gotInput["action"] != "delete" {
+		t.Fatalf("action = %v, want %q", gotInput["action"], "delete")
+	}
+	if gotInput["id"] != "push_1" {
+		t.Fatalf("id = %v, want %q", gotInput["id"], "push_1")
+	}
+}
+
 func TestParseKeyValuePairs_AggregatesRepeatedListKeys(t *testing.T) {
 	out := map[string]any{}
 	parseKeyValuePairs(`q="Pick one" a=A a=B`, out)

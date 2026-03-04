@@ -39,6 +39,15 @@ func TestPlanCreateAcceptsJSONEncodedTasksString(t *testing.T) {
 	if got := data["task_count"]; got != 2 {
 		t.Fatalf("task_count=%v, want 2", got)
 	}
+	if got := data["completed_count"]; got != 0 {
+		t.Fatalf("completed_count=%v, want 0", got)
+	}
+	if got := data["pending_count"]; got != 2 {
+		t.Fatalf("pending_count=%v, want 2", got)
+	}
+	if got := data["all_completed"]; got != false {
+		t.Fatalf("all_completed=%v, want false", got)
+	}
 	checklist, _ := data["checklist"].(string)
 	if !strings.Contains(checklist, "design API") || !strings.Contains(checklist, "write tests") {
 		t.Fatalf("unexpected checklist: %q", checklist)
@@ -134,6 +143,12 @@ func TestPlanAppendAndUpdateFlow(t *testing.T) {
 	if got := appendData["task_count"]; got != 2 {
 		t.Fatalf("append task_count=%v, want 2", got)
 	}
+	if got := appendData["pending_count"]; got != 2 {
+		t.Fatalf("append pending_count=%v, want 2", got)
+	}
+	if got := appendData["all_completed"]; got != false {
+		t.Fatalf("append all_completed=%v, want false", got)
+	}
 
 	updateRes, err := update.Execute(context.Background(), map[string]any{
 		"index": "2",
@@ -150,6 +165,36 @@ func TestPlanAppendAndUpdateFlow(t *testing.T) {
 	checklist, _ := updateData["checklist"].(string)
 	if !strings.Contains(checklist, "- [x] follow-up task done") {
 		t.Fatalf("unexpected updated checklist: %q", checklist)
+	}
+	if got := updateData["completed_count"]; got != 1 {
+		t.Fatalf("update completed_count=%v, want 1", got)
+	}
+	if got := updateData["pending_count"]; got != 1 {
+		t.Fatalf("update pending_count=%v, want 1", got)
+	}
+	if got := updateData["all_completed"]; got != false {
+		t.Fatalf("update all_completed=%v, want false", got)
+	}
+
+	updateAllRes, err := update.Execute(context.Background(), map[string]any{
+		"task_index": 1,
+		"checked":    true,
+	})
+	if err != nil {
+		t.Fatalf("update-all execute error: %v", err)
+	}
+	if !updateAllRes.Success {
+		t.Fatalf("update-all expected success, got error=%q", updateAllRes.Error)
+	}
+	updateAllData := mustPlanData(t, updateAllRes.Data)
+	if got := updateAllData["completed_count"]; got != 2 {
+		t.Fatalf("update-all completed_count=%v, want 2", got)
+	}
+	if got := updateAllData["pending_count"]; got != 0 {
+		t.Fatalf("update-all pending_count=%v, want 0", got)
+	}
+	if got := updateAllData["all_completed"]; got != true {
+		t.Fatalf("update-all all_completed=%v, want true", got)
 	}
 }
 

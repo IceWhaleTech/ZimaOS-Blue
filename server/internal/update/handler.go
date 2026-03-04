@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -29,6 +30,7 @@ type Handler struct {
 	otaChecker      *OTAChecker
 	lastResume      *ResumeRecovery
 	resumeRecoverer ResumeRecoverer
+	autoCancel      context.CancelFunc
 }
 
 // Config holds update configuration
@@ -46,6 +48,11 @@ const (
 	resumeTaskFile       = "update_resume_task.json"
 	defaultResumeDelay   = 2 * time.Second
 	minResumeDelayOnBoot = 500 * time.Millisecond
+)
+
+var (
+	errOTACheckerNotInitialized = errors.New("OTA checker not initialized")
+	errNoOTAPackagesAvailable   = errors.New("no OTA packages available")
 )
 
 type pendingResumeTask struct {
@@ -88,6 +95,40 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 // SetOTAChecker attaches the background OTA checker to the handler.
 func (h *Handler) SetOTAChecker(ota *OTAChecker) {
 	h.otaChecker = ota
+}
+
+// StartAutoUpdater starts background auto-update checks when enabled.
+// It is a no-op unless update.enabled and one of auto_download/auto_apply is true.
+func (h *Handler) StartAutoUpdater(parent context.Context) {
+	if h == nil || h.config == nil || !h.config.Enabled {
+		return
+	}
+	if !h.config.AutoDownload && !h.config.AutoApply {
+		return
+	}
+	if h.otaChecker == nil {
+		log.Printf("[update] auto updater not started: ota checker is nil")
+		return
+	}
+	if parent == nil {
+		parent = context.Background()
+	}
+
+	interval := h.config.CheckInterval
+	if interval <= 0 {
+		interval = checkInterval
+	}
+
+	h.mu.Lock()
+	if h.autoCancel != nil {
+		h.mu.Unlock()
+		return
+	}
+	ctx, cancel := context.WithCancel(parent)
+	h.autoCancel = cancel
+	h.mu.Unlock()
+
+	go h.runAutoUpdateLoop(ctx, interval)
 }
 
 // SetResumeRecoverer sets the callback used to restore workloads after OTA restart.
@@ -204,14 +245,134 @@ func (h *Handler) DownloadOTA(c echo.Context) error {
 }
 
 func (h *Handler) downloadOTAAsync() {
-	if h.otaChecker == nil {
-		h.setError("OTA checker not initialized")
+	latest, err := h.latestOTAForUpdate()
+	if err != nil {
+		h.setError(err.Error())
 		return
+	}
+	if _, err := h.downloadOTABlocking(context.Background(), latest); err != nil {
+		h.setError(err.Error())
+	}
+}
+
+func (h *Handler) runAutoUpdateLoop(ctx context.Context, interval time.Duration) {
+	runOnce := func() {
+		if err := h.runAutoUpdateCycle(ctx); err != nil {
+			log.Printf("[update] auto update cycle skipped: %v", err)
+		}
+	}
+
+	// Trigger one cycle on startup so enabled nodes can self-update without waiting.
+	runOnce()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			runOnce()
+		}
+	}
+}
+
+func (h *Handler) runAutoUpdateCycle(ctx context.Context) error {
+	if h == nil || h.config == nil || !h.config.Enabled {
+		return nil
+	}
+	if !h.config.AutoDownload && !h.config.AutoApply {
+		return nil
+	}
+
+	h.mu.RLock()
+	if h.status.State != StateIdle {
+		h.mu.RUnlock()
+		return nil
+	}
+	currentVersion := h.currentVersion
+	autoApply := h.config.AutoApply
+	h.mu.RUnlock()
+
+	latest, err := h.latestOTAForUpdate()
+	if err != nil {
+		if errors.Is(err, errOTACheckerNotInitialized) || errors.Is(err, errNoOTAPackagesAvailable) {
+			return nil
+		}
+		return err
+	}
+	if latest == nil || latest.Version == "" || !IsNewerVersionString(currentVersion, latest.Version) {
+		return nil
+	}
+
+	// Reuse already-downloaded package if present.
+	h.mu.RLock()
+	existingPath := h.status.DownloadedPath
+	h.mu.RUnlock()
+	if existingPath != "" {
+		if _, err := os.Stat(existingPath); err == nil {
+			if !autoApply {
+				return nil
+			}
+			if err := h.applyDownloadedForAuto(existingPath, latest.Version); err != nil {
+				h.setError(err.Error())
+				return err
+			}
+			return nil
+		}
+		// Drop stale downloaded path and continue to fresh download.
+		h.mu.Lock()
+		if h.status.DownloadedPath == existingPath {
+			h.status.DownloadedPath = ""
+		}
+		h.mu.Unlock()
+	}
+
+	// Transition to downloading only if still idle.
+	h.mu.Lock()
+	if h.status.State != StateIdle {
+		h.mu.Unlock()
+		return nil
+	}
+	h.status.State = StateDownloading
+	h.status.Progress = 0
+	h.status.Error = ""
+	h.mu.Unlock()
+
+	path, err := h.downloadOTABlocking(ctx, latest)
+	if err != nil {
+		h.setError(err.Error())
+		return err
+	}
+
+	if !autoApply {
+		return nil
+	}
+
+	if err := h.applyDownloadedForAuto(path, latest.Version); err != nil {
+		h.setError(err.Error())
+		return err
+	}
+	return nil
+}
+
+func (h *Handler) latestOTAForUpdate() (*OTAResponse, error) {
+	if h.otaChecker == nil {
+		return nil, errOTACheckerNotInitialized
 	}
 	latest := h.otaChecker.GetLatest()
 	if latest == nil || len(latest.Packages) == 0 {
-		h.setError("no OTA packages available")
-		return
+		return nil, errNoOTAPackagesAvailable
+	}
+	return latest, nil
+}
+
+func (h *Handler) downloadOTABlocking(ctx context.Context, latest *OTAResponse) (string, error) {
+	if latest == nil || len(latest.Packages) == 0 {
+		return "", fmt.Errorf("no OTA packages available")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	h.downloader.SetProgressCallback(func(p float64) {
@@ -220,10 +381,9 @@ func (h *Handler) downloadOTAAsync() {
 		h.mu.Unlock()
 	})
 
-	// Try each package URL (mirrors)
 	var lastErr error
 	for _, url := range latest.Packages {
-		path, err := h.downloader.Download(context.Background(), url, "")
+		path, err := h.downloader.Download(ctx, url, "")
 		if err != nil {
 			lastErr = err
 			log.Printf("[update] download mirror failed (%s): %v", url, err)
@@ -235,10 +395,49 @@ func (h *Handler) downloadOTAAsync() {
 		h.status.Progress = 100
 		h.mu.Unlock()
 		log.Printf("[update] download complete: %s", path)
-		return
+		return path, nil
 	}
 
-	h.setError(fmt.Sprintf("all download mirrors failed: %v", lastErr))
+	return "", fmt.Errorf("all download mirrors failed: %v", lastErr)
+}
+
+func (h *Handler) applyDownloadedForAuto(path, targetVersion string) error {
+	h.mu.Lock()
+	if h.status.State == StateApplying || h.status.State == StateRestarting {
+		h.mu.Unlock()
+		return fmt.Errorf("update already in progress")
+	}
+	if path == "" {
+		path = h.status.DownloadedPath
+	}
+	if path == "" {
+		h.mu.Unlock()
+		return fmt.Errorf("no update downloaded")
+	}
+	h.status.State = StateApplying
+	h.mu.Unlock()
+
+	if _, err := h.persistPendingResumeTask(path, targetVersion, map[string]interface{}{
+		"kind":   "auto-ota",
+		"reason": "ota-auto-apply",
+	}, 0); err != nil {
+		return err
+	}
+
+	if err := h.applier.PrepareAndReplace(path); err != nil {
+		_ = h.clearPendingResumeTask()
+		return err
+	}
+
+	h.mu.Lock()
+	h.status.State = StateRestarting
+	h.status.DownloadedPath = ""
+	h.mu.Unlock()
+
+	if err := h.applier.Restart(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // The response is sent BEFORE the process is replaced, so the client
@@ -569,23 +768,22 @@ func (h *Handler) StartDownload(ctx context.Context) error {
 
 // ApplyUpdate applies the downloaded update.
 func (h *Handler) ApplyUpdate() error {
-	h.mu.Lock()
+	h.mu.RLock()
+	targetVersion := ""
+	if h.latestInfo != nil {
+		targetVersion = h.latestInfo.LatestVersion
+	}
 	path := h.status.DownloadedPath
+	h.mu.RUnlock()
+
 	if path == "" {
-		h.mu.Unlock()
 		return fmt.Errorf("no update downloaded")
 	}
-	h.status.State = StateApplying
-	h.mu.Unlock()
 
-	if err := h.applier.Apply(path); err != nil {
+	if err := h.applyDownloadedForAuto(path, targetVersion); err != nil {
 		h.setError(err.Error())
 		return err
 	}
-
-	h.mu.Lock()
-	h.status.State = StateRestarting
-	h.mu.Unlock()
 	return nil
 }
 

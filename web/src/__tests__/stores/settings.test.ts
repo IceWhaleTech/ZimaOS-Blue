@@ -42,6 +42,9 @@ vi.mock('@/api/settings', () => ({
   },
 }))
 
+const SETTINGS_KEY = 'zimaos-blue-settings'
+const MAX_TOKENS_MIGRATION_KEY = 'zimaos-blue-max-tokens-migrated-v1'
+
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
   return {
@@ -71,48 +74,54 @@ describe('settings store - small model integration', () => {
     const store = useSettingsStore()
 
     expect(store.smallModelEnabled).toBe(false)
-    expect(store.smallModelRuntime).toBe('llama_cpp_native')
-    expect(store.smallModelID).toBe('lfm2.5-1.2b-instruct-q4km')
+    expect(store.smallModelRuntime).toBe('onnx_genai_python')
+    expect(store.smallModelID).toBe('qwen3.5-0.8b-onnx-q4')
     expect(store.smallModelAutoDownload).toBe(true)
-    expect(store.smallModelShadowRatio).toBe(0.1)
-    expect(store.smallModelShadowGateMinSamples).toBe(40)
-    expect(store.smallModelShadowGateThresholdDelta).toBe(0.35)
-    expect(store.smallModelShadowGateScene).toBe('')
+    expect(store.smallModelSummaryEnabled).toBe(true)
+    expect(store.smallModelDocExtractEnabled).toBe(true)
+    expect(store.smallModelRerankEnabled).toBe(true)
+    expect(store.smallModelRouteShortQAEnabled).toBe(true)
+    expect(store.smallModelRouteToolDispatchEnabled).toBe(true)
     expect(store.noLLMDegradeMode).toBe('deepresearch')
     expect(store.smallModelUnavailablePolicy).toBe('ir_first')
+    expect(store.offlineIRFallbackEnabled).toBe(true)
+    expect(store.featureIntentIREnabled).toBe(true)
   })
 
-  it('normalizes shadow ratio when updating backend settings', async () => {
+  it('migrates legacy maxTokens 2048 to 8192 once', () => {
+    localStorageMock.setItem(SETTINGS_KEY, JSON.stringify({ maxTokens: 2048, temperature: 0.7 }))
+
     const store = useSettingsStore()
-    vi.mocked(settingsApi.patch).mockResolvedValue({ data: { small_model_shadow_ratio: 1 } } as never)
 
-    await store.setSmallModelShadowRatio(2)
-
-    expect(settingsApi.patch).toHaveBeenCalledWith({ small_model_shadow_ratio: 1 })
-
-    vi.mocked(settingsApi.patch).mockResolvedValue({ data: { small_model_shadow_ratio: 0.01 } } as never)
-    await store.setSmallModelShadowRatio(0)
-    expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_shadow_ratio: 0.01 })
+    expect(store.maxTokens).toBe(8192)
+    expect(localStorageMock.getItem(MAX_TOKENS_MIGRATION_KEY)).toBe('1')
+    expect(JSON.parse(localStorageMock.getItem(SETTINGS_KEY) || '{}').maxTokens).toBe(8192)
   })
 
-  it('normalizes shadow gate settings when updating backend settings', async () => {
+  it('does not re-migrate when migration marker already exists', () => {
+    localStorageMock.setItem(SETTINGS_KEY, JSON.stringify({ maxTokens: 2048, temperature: 0.7 }))
+    localStorageMock.setItem(MAX_TOKENS_MIGRATION_KEY, '1')
+
+    const store = useSettingsStore()
+
+    expect(store.maxTokens).toBe(2048)
+  })
+
+  it('marks migration as done for fresh profiles', () => {
+    useSettingsStore()
+
+    expect(localStorageMock.getItem(MAX_TOKENS_MIGRATION_KEY)).toBe('1')
+  })
+
+  it('updates small-model route toggles in backend settings', async () => {
     const store = useSettingsStore()
     vi.mocked(settingsApi.patch).mockResolvedValue({ data: {} } as never)
 
-    await store.setSmallModelShadowGateMinSamples(0)
-    expect(settingsApi.patch).toHaveBeenCalledWith({ small_model_shadow_gate_min_samples: 1 })
+    await store.setSmallModelRouteShortQAEnabled(false)
+    expect(settingsApi.patch).toHaveBeenCalledWith({ small_model_route_short_qa_enabled: false })
 
-    await store.setSmallModelShadowGateMinSamples(20001)
-    expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_shadow_gate_min_samples: 10000 })
-
-    await store.setSmallModelShadowGateThresholdDelta(0)
-    expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_shadow_gate_threshold_delta: 0.01 })
-
-    await store.setSmallModelShadowGateThresholdDelta(2)
-    expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_shadow_gate_threshold_delta: 1 })
-
-    await store.setSmallModelShadowGateScene(' tool_dispatch_shadow ')
-    expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_shadow_gate_scene: 'tool_dispatch_shadow' })
+    await store.setSmallModelRouteToolDispatchEnabled(false)
+    expect(settingsApi.patch).toHaveBeenLastCalledWith({ small_model_route_tool_dispatch_enabled: false })
   })
 
   it('fetches and stores small-model status', async () => {
@@ -121,8 +130,8 @@ describe('settings store - small model integration', () => {
       data: {
         ready: true,
         downloading: false,
-        model_id: 'lfm2.5-1.2b-instruct-q4km',
-        runtime: 'llama_cpp_native',
+        model_id: 'qwen3.5-0.8b-onnx-q4',
+        runtime: 'onnx_genai_python',
         model_path: '/tmp/model.gguf',
       },
     } as never)
@@ -143,9 +152,10 @@ describe('settings store - small model integration', () => {
           short_qa_route_success: 8,
           tool_dispatch_route_attempts: 6,
           tool_dispatch_route_success: 5,
-          short_qa_shadow_total: 9,
-          tool_dispatch_shadow_total: 4,
-          shadow_failures: 1,
+          summary_attempts: 3,
+          summary_success: 2,
+          doc_extract_attempts: 4,
+          doc_extract_success: 3,
           no_provider_deepresearch_total: 2,
           ir_takeover_total: 3,
           fallback_reasons: { timeout: 2 },
@@ -157,9 +167,10 @@ describe('settings store - small model integration', () => {
           short_qa_route_success: 0,
           tool_dispatch_route_attempts: 0,
           tool_dispatch_route_success: 0,
-          short_qa_shadow_total: 0,
-          tool_dispatch_shadow_total: 0,
-          shadow_failures: 0,
+          summary_attempts: 0,
+          summary_success: 0,
+          doc_extract_attempts: 0,
+          doc_extract_success: 0,
           no_provider_deepresearch_total: 0,
           ir_takeover_total: 0,
           fallback_reasons: {},

@@ -790,8 +790,9 @@ function getNextTextSegmentIndex(segments: ContentSegment[]): number {
 const RESULT_CARD_TYPES = new Set([
   'result', 'search', 'weather', 'chart', 'gallery', 'map', 'profile',
   'rating', 'comparison', 'metric', 'link', 'audio', 'video', 'file',
-  'media-generate', 'ui-review', 'detection',
+  'media-generate', 'ui-review', 'deep-research', 'detection',
   'ui-review-progress', 'analyze-progress', 'browser-progress',
+  'deep-research-progress',
   'list', 'table', 'code', 'terminal', 'mermaid', 'accordion',
 ])
 

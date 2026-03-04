@@ -84,7 +84,9 @@ export interface StreamChunk {
   delta: string
   done: boolean
   error?: string
+  stream_progress?: string
   stream_id?: string
+  seq?: number
   awaiting_user_input?: boolean
   provider?: string
   model?: string

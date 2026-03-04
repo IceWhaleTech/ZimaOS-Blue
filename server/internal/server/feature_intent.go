@@ -143,6 +143,9 @@ func defaultFeatureIntentTerms() featureIntentTerms {
 			"深入研究",
 			"深度调研",
 			"深入调研",
+			"人物调研",
+			"查阅观点",
+			"按时期调研",
 		},
 		DeepResearchActions: []string{
 			"deep dive",
@@ -154,6 +157,9 @@ func defaultFeatureIntentTerms() featureIntentTerms {
 			"全面调研",
 			"深入分析",
 			"全面分析",
+			"逐一调研",
+			"查阅",
+			"梳理",
 		},
 		DeepResearchTargets: []string{
 			"资料",
@@ -164,6 +170,9 @@ func defaultFeatureIntentTerms() featureIntentTerms {
 			"citations",
 			"evidence",
 			"references",
+			"观点",
+			"文章",
+			"不同时期",
 		},
 		DeepResearchNegation: []string{
 			"no deep research",

@@ -1,3 +1,8 @@
+---
+name: deep_research
+description: Run multi step deep research with planning evidence collection and citation based summaries.
+---
+
 # Deep Research
 
 Run multi-step research with planning, evidence collection, and citation-based summary.
@@ -8,6 +13,7 @@ Use direct skill call (prefer `--json`):
 
 ```bash
 blue deep_research query="ZimaOS-Blue deep research architecture" --json
+blue deep_research query="ZimaOS-Blue deep research architecture" format=xml
 ```
 
 ## Parameters
@@ -15,6 +21,10 @@ blue deep_research query="ZimaOS-Blue deep research architecture" --json
 - `query` (required): Research question or topic
 - `mode` (optional): `fast`, `standard`, `deep` (default `standard`)
 - `lang` (optional): Output language (e.g. `zh-CN`, `en-US`)
+- `strict_entity` (optional): `true|false`, enable strict same-entity filtering
+- `time_windows` (optional): timeline windows labels (array)
+- `report_style` (optional): `summary` or `timeline`
+- `format` (optional): `json` or `xml` (default `json`)
 
 ## Behavior
 

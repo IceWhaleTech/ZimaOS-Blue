@@ -12,10 +12,10 @@ var modelPrices = map[string]ModelPricing{
 	"claude-3-opus":   {Input: 15.00, Output: 75.00},
 	"claude-3-sonnet": {Input: 3.00, Output: 15.00},
 	"claude-3-haiku":  {Input: 0.25, Output: 1.25},
-	"gpt-4":          {Input: 30.00, Output: 60.00},
-	"gpt-4o":         {Input: 2.50, Output: 10.00},
-	"gpt-4o-mini":    {Input: 0.15, Output: 0.60},
-	"deepseek-r1":    {Input: 0.55, Output: 2.19},
+	"gpt-4":           {Input: 30.00, Output: 60.00},
+	"gpt-4o":          {Input: 2.50, Output: 10.00},
+	"gpt-4o-mini":     {Input: 0.15, Output: 0.60},
+	"deepseek-r1":     {Input: 0.55, Output: 2.19},
 }
 
 // simulatedRequest represents a single API call in the traffic mix.
@@ -41,9 +41,9 @@ func trafficMix(rng *rand.Rand) []simulatedRequest {
 		models := []string{"claude-3-opus", "claude-3-sonnet", "gpt-4", "gpt-4o"}
 		reqs = append(reqs, simulatedRequest{
 			model:        models[rng.Intn(len(models))],
-			inputTokens:  200 + rng.Intn(800),   // 200-1000 tokens
-			outputTokens: 100 + rng.Intn(400),    // 100-500 tokens
-			bodySize:     500 + rng.Intn(2000),    // 500-2500 bytes
+			inputTokens:  200 + rng.Intn(800),  // 200-1000 tokens
+			outputTokens: 100 + rng.Intn(400),  // 100-500 tokens
+			bodySize:     500 + rng.Intn(2000), // 500-2500 bytes
 			headers:      http.Header{},
 			label:        "short-qa",
 		})
@@ -125,12 +125,12 @@ func costUSD(model string, inputTokens, outputTokens int) float64 {
 func TestCostSimulation_RealisticTraffic(t *testing.T) {
 	// Set up rule engine with realistic routing rules
 	rules := []RoutingRule{
-		// Short Q&A with small body → economy model
-		{Name: "small-body-economy", Priority: 10, Condition: RouteCondition{MaxBodyBytes: 3000}, TargetModel: "claude-3-haiku", Tier: TierEconomy},
+		// Short Q&A with small body -> small-model tier
+		{Name: "small-body-small", Priority: 10, Condition: RouteCondition{MaxBodyBytes: 3000}, TargetModel: "claude-3-haiku", Tier: TierSmall},
 		// Tool calls for file ops → smaller model
-		{Name: "file-tools-economy", Priority: 20, Condition: RouteCondition{ToolPattern: "^(list_files|file_search|grep|get_weather|calculator)$"}, TargetModel: "gpt-4o-mini", Tier: TierEconomy},
+		{Name: "file-tools-small", Priority: 20, Condition: RouteCondition{ToolPattern: "^(list_files|file_search|grep|get_weather|calculator)$"}, TargetModel: "gpt-4o-mini", Tier: TierSmall},
 		// Orchestrator tasks → deepseek (cheaper reasoning)
-		{Name: "orchestrator-cheap", Priority: 30, Condition: RouteCondition{SystemTag: "[ORCHESTRATOR]"}, TargetModel: "deepseek-r1", Tier: TierStandard},
+		{Name: "orchestrator-large", Priority: 30, Condition: RouteCondition{SystemTag: "[ORCHESTRATOR]"}, TargetModel: "deepseek-r1", Tier: TierLarge},
 	}
 	engine := NewRuleEngine(rules)
 

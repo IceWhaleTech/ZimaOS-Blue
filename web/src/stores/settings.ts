@@ -17,6 +17,9 @@ import {
 import { claudeCodeApi } from '@/api/claudecode'
 
 const STORAGE_KEY = 'zimaos-blue-settings'
+const MAX_TOKENS_MIGRATION_KEY = 'zimaos-blue-max-tokens-migrated-v1'
+const LEGACY_DEFAULT_MAX_TOKENS = 2048
+const DEFAULT_MAX_TOKENS = 8192
 
 // Provider info for Chat page (simplified view of Provider Pool data)
 export interface ChatModelInfo {
@@ -70,11 +73,45 @@ interface StoredSettings {
   showToolDetails: boolean
 }
 
+function markMaxTokensMigrationDone() {
+  localStorage.setItem(MAX_TOKENS_MIGRATION_KEY, '1')
+}
+
+function migrateLegacyMaxTokens(settings: Partial<StoredSettings>): Partial<StoredSettings> {
+  try {
+    if (localStorage.getItem(MAX_TOKENS_MIGRATION_KEY) === '1') {
+      return settings
+    }
+
+    if (settings.maxTokens === LEGACY_DEFAULT_MAX_TOKENS) {
+      const next = {
+        ...settings,
+        maxTokens: DEFAULT_MAX_TOKENS,
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      markMaxTokensMigrationDone()
+      return next
+    }
+
+    // Mark migration as completed so future manual 2048 choices are not auto-migrated.
+    markMaxTokensMigrationDone()
+  } catch {
+    // Best-effort migration only.
+  }
+  return settings
+}
+
 function loadStoredSettings(): Partial<StoredSettings> {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      return JSON.parse(stored)
+    if (!stored) {
+      // Fresh profile: mark migration done to avoid migrating user-selected 2048 later.
+      markMaxTokensMigrationDone()
+      return {}
+    }
+    const parsed = JSON.parse(stored)
+    if (parsed && typeof parsed === 'object') {
+      return migrateLegacyMaxTokens(parsed as Partial<StoredSettings>)
     }
   } catch {
     // Ignore parse errors
@@ -94,7 +131,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const tools = ref<ToolDefinition[]>([])
   const selectedProviderModel = ref(stored.selectedProviderModel || '')  // Format: "providerId:modelId"
   const temperature = ref(stored.temperature ?? 0.7)
-  const maxTokens = ref(stored.maxTokens ?? 2048)
+  const maxTokens = ref(stored.maxTokens ?? DEFAULT_MAX_TOKENS)
   const themeStyle = ref<ThemeStyle>(stored.themeStyle || 'default')
   const closeBehavior = ref<CloseBehavior>(stored.closeBehavior || 'quit')
   const showToolDetails = ref(stored.showToolDetails ?? false)
@@ -347,7 +384,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function resetToDefaults() {
     temperature.value = 0.7
-    maxTokens.value = 2048
+    maxTokens.value = DEFAULT_MAX_TOKENS
     themeStyle.value = 'default'
     closeBehavior.value = 'quit'
     showToolDetails.value = false
@@ -412,39 +449,41 @@ export const useSettingsStore = defineStore('settings', () => {
   const smallModelEnabled = computed(() => backendSettings.value.small_model_enabled ?? false)
   const smallModelRuntime = computed<SmallModelRuntime>(() => {
     const runtime = backendSettings.value.small_model_runtime
-    return runtime === 'llama_cpp_native' ? runtime : 'llama_cpp_native'
+    return runtime === 'onnx_genai_python' ? runtime : 'onnx_genai_python'
   })
   const smallModelID = computed<SmallModelID>(() => {
     const id = backendSettings.value.small_model_id
-    return id === 'lfm2.5-1.2b-instruct-q4km' ? id : 'lfm2.5-1.2b-instruct-q4km'
+    return id === 'qwen3.5-0.8b-onnx-q4' ? id : 'qwen3.5-0.8b-onnx-q4'
   })
   const smallModelAutoDownload = computed(() => backendSettings.value.small_model_auto_download ?? true)
-  const smallModelShadowRatio = computed(() => {
-    const ratio = backendSettings.value.small_model_shadow_ratio
-    if (typeof ratio !== 'number' || ratio <= 0 || ratio > 1) return 0.1
-    return ratio
-  })
-  const smallModelShadowGateMinSamples = computed(() => {
-    const samples = backendSettings.value.small_model_shadow_gate_min_samples
-    if (typeof samples !== 'number' || samples < 1 || samples > 10000) return 40
-    return Math.floor(samples)
-  })
-  const smallModelShadowGateThresholdDelta = computed(() => {
-    const delta = backendSettings.value.small_model_shadow_gate_threshold_delta
-    if (typeof delta !== 'number' || delta <= 0 || delta > 1) return 0.35
-    return delta
-  })
-  const smallModelShadowGateScene = computed(() => {
-    const scene = String(backendSettings.value.small_model_shadow_gate_scene || '').trim()
-    if (scene.length > 128) return scene.slice(0, 128)
-    return scene
-  })
   const smallModelSummaryEnabled = computed(() => backendSettings.value.small_model_summary_enabled ?? true)
   const smallModelDocExtractEnabled = computed(() => backendSettings.value.small_model_doc_extract_enabled ?? true)
   const smallModelRerankEnabled = computed(() => backendSettings.value.small_model_rerank_enabled ?? true)
+  const smartToolSelection = computed(() => backendSettings.value.smart_tool_selection ?? true)
+  const smartSkillSelection = computed(() => backendSettings.value.smart_skill_selection ?? true)
+  const skillSelectorMode = computed<'hybrid' | 'ir_only' | 'llm_only'>(() => {
+    const mode = backendSettings.value.skill_selector_mode
+    if (mode === 'ir_only' || mode === 'llm_only') return mode
+    return 'hybrid'
+  })
+  const skillSelectorConfidenceThreshold = computed(() => backendSettings.value.skill_selector_confidence_threshold ?? 0.78)
+  const promptPolicyVersion = computed(() => backendSettings.value.prompt_policy_version ?? '2026-03-04')
+  const promptPolicyProfile = computed<'default'>(() => {
+    const profile = backendSettings.value.prompt_policy_profile
+    return profile === 'default' ? profile : 'default'
+  })
+  const agentLoopPolicyMaxToolRounds = computed(() => backendSettings.value.agent_loop_policy_max_tool_rounds ?? 48)
+  const agentLoopPolicyMaxAutoContinue = computed(() => backendSettings.value.agent_loop_policy_max_auto_continue ?? 12)
+  const agentLoopPolicyPseudoToolCallBudget = computed(() => backendSettings.value.agent_loop_policy_pseudo_tool_call_budget ?? 3)
+  const agentLoopPolicyActionPledgeBudget = computed(() => backendSettings.value.agent_loop_policy_action_pledge_budget ?? 3)
+  const agentLoopPolicyMissingTodoBudget = computed(() => backendSettings.value.agent_loop_policy_missing_todo_budget ?? 3)
+  const agentLoopPolicyPendingTodoBudget = computed(() => backendSettings.value.agent_loop_policy_pending_todo_budget ?? 3)
   const smallModelContextPruneEnabled = computed(() => backendSettings.value.small_model_context_prune_enabled ?? true)
-  const smallModelRouteShortQAEnabled = computed(() => backendSettings.value.small_model_route_short_qa_enabled ?? false)
-  const smallModelRouteToolDispatchEnabled = computed(() => backendSettings.value.small_model_route_tool_dispatch_enabled ?? false)
+  const smallModelMediaIntentEnabled = computed(() => backendSettings.value.small_model_media_intent_enabled ?? true)
+  const offlineIRFallbackEnabled = computed(() => backendSettings.value.offline_ir_fallback_enabled ?? true)
+  const featureIntentIREnabled = computed(() => backendSettings.value.feature_intent_ir_enabled ?? true)
+  const smallModelRouteShortQAEnabled = computed(() => backendSettings.value.small_model_route_short_qa_enabled ?? true)
+  const smallModelRouteToolDispatchEnabled = computed(() => backendSettings.value.small_model_route_tool_dispatch_enabled ?? true)
   const noLLMDegradeMode = computed<NoLLMDegradeMode>(() => {
     return backendSettings.value.no_llm_degrade_mode === 'deepresearch'
       ? backendSettings.value.no_llm_degrade_mode
@@ -488,26 +527,6 @@ export const useSettingsStore = defineStore('settings', () => {
     await updateBackendSettings({ small_model_auto_download: enabled })
   }
 
-  async function setSmallModelShadowRatio(ratio: number) {
-    const normalized = Math.max(0.01, Math.min(1, ratio))
-    await updateBackendSettings({ small_model_shadow_ratio: normalized })
-  }
-
-  async function setSmallModelShadowGateMinSamples(samples: number) {
-    const normalized = Math.max(1, Math.min(10000, Math.floor(samples)))
-    await updateBackendSettings({ small_model_shadow_gate_min_samples: normalized })
-  }
-
-  async function setSmallModelShadowGateThresholdDelta(delta: number) {
-    const normalized = Math.max(0.01, Math.min(1, delta))
-    await updateBackendSettings({ small_model_shadow_gate_threshold_delta: normalized })
-  }
-
-  async function setSmallModelShadowGateScene(scene: string) {
-    const normalized = String(scene || '').trim().slice(0, 128)
-    await updateBackendSettings({ small_model_shadow_gate_scene: normalized })
-  }
-
   async function setSmallModelSummaryEnabled(enabled: boolean) {
     await updateBackendSettings({ small_model_summary_enabled: enabled })
   }
@@ -520,8 +539,68 @@ export const useSettingsStore = defineStore('settings', () => {
     await updateBackendSettings({ small_model_rerank_enabled: enabled })
   }
 
+  async function setSmartToolSelection(enabled: boolean) {
+    await updateBackendSettings({ smart_tool_selection: enabled })
+  }
+
+  async function setSmartSkillSelection(enabled: boolean) {
+    await updateBackendSettings({ smart_skill_selection: enabled })
+  }
+
+  async function setSkillSelectorMode(mode: 'hybrid' | 'ir_only' | 'llm_only') {
+    await updateBackendSettings({ skill_selector_mode: mode })
+  }
+
+  async function setSkillSelectorConfidenceThreshold(threshold: number) {
+    await updateBackendSettings({ skill_selector_confidence_threshold: threshold })
+  }
+
+  async function setPromptPolicyVersion(version: string) {
+    await updateBackendSettings({ prompt_policy_version: version })
+  }
+
+  async function setPromptPolicyProfile(profile: 'default') {
+    await updateBackendSettings({ prompt_policy_profile: profile })
+  }
+
+  async function setAgentLoopPolicyMaxToolRounds(value: number) {
+    await updateBackendSettings({ agent_loop_policy_max_tool_rounds: value })
+  }
+
+  async function setAgentLoopPolicyMaxAutoContinue(value: number) {
+    await updateBackendSettings({ agent_loop_policy_max_auto_continue: value })
+  }
+
+  async function setAgentLoopPolicyPseudoToolCallBudget(value: number) {
+    await updateBackendSettings({ agent_loop_policy_pseudo_tool_call_budget: value })
+  }
+
+  async function setAgentLoopPolicyActionPledgeBudget(value: number) {
+    await updateBackendSettings({ agent_loop_policy_action_pledge_budget: value })
+  }
+
+  async function setAgentLoopPolicyMissingTodoBudget(value: number) {
+    await updateBackendSettings({ agent_loop_policy_missing_todo_budget: value })
+  }
+
+  async function setAgentLoopPolicyPendingTodoBudget(value: number) {
+    await updateBackendSettings({ agent_loop_policy_pending_todo_budget: value })
+  }
+
   async function setSmallModelContextPruneEnabled(enabled: boolean) {
     await updateBackendSettings({ small_model_context_prune_enabled: enabled })
+  }
+
+  async function setSmallModelMediaIntentEnabled(enabled: boolean) {
+    await updateBackendSettings({ small_model_media_intent_enabled: enabled })
+  }
+
+  async function setOfflineIRFallbackEnabled(enabled: boolean) {
+    await updateBackendSettings({ offline_ir_fallback_enabled: enabled })
+  }
+
+  async function setFeatureIntentIREnabled(enabled: boolean) {
+    await updateBackendSettings({ feature_intent_ir_enabled: enabled })
   }
 
   async function setSmallModelRouteShortQAEnabled(enabled: boolean) {
@@ -656,14 +735,25 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelRuntime,
     smallModelID,
     smallModelAutoDownload,
-    smallModelShadowRatio,
-    smallModelShadowGateMinSamples,
-    smallModelShadowGateThresholdDelta,
-    smallModelShadowGateScene,
     smallModelSummaryEnabled,
     smallModelDocExtractEnabled,
     smallModelRerankEnabled,
+    smartToolSelection,
+    smartSkillSelection,
+    skillSelectorMode,
+    skillSelectorConfidenceThreshold,
+    promptPolicyVersion,
+    promptPolicyProfile,
+    agentLoopPolicyMaxToolRounds,
+    agentLoopPolicyMaxAutoContinue,
+    agentLoopPolicyPseudoToolCallBudget,
+    agentLoopPolicyActionPledgeBudget,
+    agentLoopPolicyMissingTodoBudget,
+    agentLoopPolicyPendingTodoBudget,
     smallModelContextPruneEnabled,
+    smallModelMediaIntentEnabled,
+    offlineIRFallbackEnabled,
+    featureIntentIREnabled,
     smallModelRouteShortQAEnabled,
     smallModelRouteToolDispatchEnabled,
     noLLMDegradeMode,
@@ -703,14 +793,25 @@ export const useSettingsStore = defineStore('settings', () => {
     setSkillRerankONNXAutoDownload,
     setSmallModelEnabled,
     setSmallModelAutoDownload,
-    setSmallModelShadowRatio,
-    setSmallModelShadowGateMinSamples,
-    setSmallModelShadowGateThresholdDelta,
-    setSmallModelShadowGateScene,
     setSmallModelSummaryEnabled,
     setSmallModelDocExtractEnabled,
     setSmallModelRerankEnabled,
+    setSmartToolSelection,
+    setSmartSkillSelection,
+    setSkillSelectorMode,
+    setSkillSelectorConfidenceThreshold,
+    setPromptPolicyVersion,
+    setPromptPolicyProfile,
+    setAgentLoopPolicyMaxToolRounds,
+    setAgentLoopPolicyMaxAutoContinue,
+    setAgentLoopPolicyPseudoToolCallBudget,
+    setAgentLoopPolicyActionPledgeBudget,
+    setAgentLoopPolicyMissingTodoBudget,
+    setAgentLoopPolicyPendingTodoBudget,
     setSmallModelContextPruneEnabled,
+    setSmallModelMediaIntentEnabled,
+    setOfflineIRFallbackEnabled,
+    setFeatureIntentIREnabled,
     setSmallModelRouteShortQAEnabled,
     setSmallModelRouteToolDispatchEnabled,
     setNoLLMDegradeMode,

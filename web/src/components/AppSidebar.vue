@@ -135,13 +135,6 @@ const allNavItems: NavItem[] = [
     adminOnly: true,
   },
   {
-    name: 'nav.billing',
-    path: '/billing',
-    icon: 'M9 17v-6m3 6V7m3 10V4m6 14a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h14a2 2 0 012 2v10z',
-    permission: PagePermissions.SETTINGS,
-    adminOnly: true,
-  },
-  {
     name: 'nav.automation',
     path: '/automation',
     icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15M9 12l2 2 4-4',

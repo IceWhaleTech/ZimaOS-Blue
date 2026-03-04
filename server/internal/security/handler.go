@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/promptguard"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/sync/singleflight"
@@ -57,12 +58,12 @@ type SecurityEvent struct {
 
 // SecurityStats represents security statistics.
 type SecurityStats struct {
-	ActiveSessions   int `json:"active_sessions"`
-	FailedLogins24h  int `json:"failed_logins_24h"`
-	BlockedIPs       int `json:"blocked_ips"`
-	MFAEnabledUsers  int `json:"mfa_enabled_users"`
-	TotalUsers       int `json:"total_users"`
-	APIKeysActive    int `json:"api_keys_active"`
+	ActiveSessions  int `json:"active_sessions"`
+	FailedLogins24h int `json:"failed_logins_24h"`
+	BlockedIPs      int `json:"blocked_ips"`
+	MFAEnabledUsers int `json:"mfa_enabled_users"`
+	TotalUsers      int `json:"total_users"`
+	APIKeysActive   int `json:"api_keys_active"`
 }
 
 // BlockedIP represents a blocked IP address.
@@ -106,15 +107,17 @@ type ScanSummary struct {
 
 // Handler handles security-related API endpoints.
 type Handler struct {
-	detector   *ThreatDetector
-	scanner    *SecurityScanner
-	storage    *Storage
-	mu         sync.RWMutex
-	sessions   map[string]*Session
-	blockedIPs map[string]*BlockedIP
-	events     []SecurityEvent
-	settings   SecuritySettings
-	dataDir    string // Data directory for system checks
+	detector    *ThreatDetector
+	scanner     *SecurityScanner
+	storage     *Storage
+	mu          sync.RWMutex
+	sessions    map[string]*Session
+	blockedIPs  map[string]*BlockedIP
+	events      []SecurityEvent
+	settings    SecuritySettings
+	dataDir     string // Data directory for system checks
+	promptGuard *promptguard.Detector
+	firewall    PromptFirewallConfig
 
 	// singleflight for deduplicating concurrent requests
 	sfGroup singleflight.Group
@@ -143,6 +146,11 @@ func NewHandler(detector *ThreatDetector) *Handler {
 			MFARequired:              false,
 			APIRateLimit:             100,
 		},
+		firewall: PromptFirewallConfig{
+			Enabled:          true,
+			Rules:            []PromptFirewallRule{},
+			BuiltinRuleState: defaultPromptFirewallBuiltinRuleState(),
+		},
 		scanCache: cache.NewGenericCacheWithStats(cache.Config{
 			MaxSize:    10,
 			DefaultTTL: 30 * time.Second, // Cache scan results for 30s
@@ -158,6 +166,8 @@ func (h *Handler) SetDataDir(dataDir string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.dataDir = dataDir
+	h.loadPromptFirewallLocked()
+	h.applyPromptFirewallLocked()
 }
 
 // SetStorage sets the storage backend for persistence.
@@ -306,12 +316,12 @@ func (h *Handler) GetStats(c echo.Context) error {
 	defer h.mu.RUnlock()
 
 	stats := SecurityStats{
-		ActiveSessions:   len(h.sessions),
-		FailedLogins24h:  0,
-		BlockedIPs:       len(h.blockedIPs),
-		MFAEnabledUsers:  0,
-		TotalUsers:       0,
-		APIKeysActive:    0,
+		ActiveSessions:  len(h.sessions),
+		FailedLogins24h: 0,
+		BlockedIPs:      len(h.blockedIPs),
+		MFAEnabledUsers: 0,
+		TotalUsers:      0,
+		APIKeysActive:   0,
 	}
 
 	// Count failed logins in last 24 hours
@@ -1607,6 +1617,13 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/scan/preview", h.PreviewScanFix)
 	g.POST("/scan/fix", h.FixScanIssue)
 
+	// Prompt Firewall
+	g.GET("/firewall", h.GetPromptFirewall)
+	g.PUT("/firewall", h.UpdatePromptFirewall)
+	g.POST("/firewall/rules", h.AddPromptFirewallRule)
+	g.PUT("/firewall/rules/:id", h.UpdatePromptFirewallRule)
+	g.DELETE("/firewall/rules/:id", h.DeletePromptFirewallRule)
+
 	// CORS Configuration
 	g.GET("/cors", h.GetCORSConfig)
 	g.PUT("/cors", h.UpdateCORSConfig)
@@ -1624,9 +1641,9 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 
 // CORSConfigResponse represents the CORS configuration response.
 type CORSConfigResponse struct {
-	AllowedOrigins  []string `json:"allowed_origins"`
-	DynamicOrigins  []string `json:"dynamic_origins"`
-	AllowLocalhost  bool     `json:"allow_localhost"`
+	AllowedOrigins []string `json:"allowed_origins"`
+	DynamicOrigins []string `json:"dynamic_origins"`
+	AllowLocalhost bool     `json:"allow_localhost"`
 }
 
 // CORSConfigRequest represents the CORS configuration update request.
@@ -1638,9 +1655,9 @@ type CORSConfigRequest struct {
 // GetCORSConfig handles GET /api/v1/security/cors
 func (h *Handler) GetCORSConfig(c echo.Context) error {
 	return c.JSON(http.StatusOK, CORSConfigResponse{
-		AllowedOrigins:  GetDefaultAllowedOrigins(),
-		DynamicOrigins:  GetDynamicOriginsDefault(),
-		AllowLocalhost:  true,
+		AllowedOrigins: GetDefaultAllowedOrigins(),
+		DynamicOrigins: GetDynamicOriginsDefault(),
+		AllowLocalhost: true,
 	})
 }
 
@@ -1666,9 +1683,9 @@ func (h *Handler) UpdateCORSConfig(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, CORSConfigResponse{
-		AllowedOrigins:  GetDefaultAllowedOrigins(),
-		DynamicOrigins:  GetDynamicOriginsDefault(),
-		AllowLocalhost:  true,
+		AllowedOrigins: GetDefaultAllowedOrigins(),
+		DynamicOrigins: GetDynamicOriginsDefault(),
+		AllowLocalhost: true,
 	})
 }
 

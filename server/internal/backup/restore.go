@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 )
@@ -30,6 +31,12 @@ type RestoreOptions struct {
 	RestoreConfig bool
 	// RestoreData restores data files
 	RestoreData bool
+	// RestoreSkills restores skills files
+	RestoreSkills bool
+	// CreateCheckpoint creates a full backup before restore.
+	CreateCheckpoint bool
+	// CheckpointReason tags the pre-restore checkpoint metadata.
+	CheckpointReason string
 	// DryRun only validates without actually restoring
 	DryRun bool
 	// SkipVerify skips checksum verification
@@ -48,6 +55,9 @@ func DefaultRestoreOptions() RestoreOptions {
 		OverwriteExisting: true,
 		RestoreConfig:     true,
 		RestoreData:       true,
+		RestoreSkills:     true,
+		CreateCheckpoint:  true,
+		CheckpointReason:  "pre_restore",
 		DryRun:            false,
 		SkipVerify:        false, // Security: Always verify by default
 	}
@@ -55,18 +65,46 @@ func DefaultRestoreOptions() RestoreOptions {
 
 // RestoreResult contains the result of a restore operation
 type RestoreResult struct {
-	Success       bool     `json:"success"`
-	FilesRestored int      `json:"files_restored"`
-	FilesSkipped  int      `json:"files_skipped"`
-	Errors        []string `json:"errors,omitempty"`
+	Success          bool     `json:"success"`
+	FilesRestored    int      `json:"files_restored"`
+	FilesSkipped     int      `json:"files_skipped"`
+	CheckpointID     string   `json:"checkpoint_id,omitempty"`
+	CheckpointAt     string   `json:"checkpoint_at,omitempty"`
+	CheckpointReason string   `json:"checkpoint_reason,omitempty"`
+	Errors           []string `json:"errors,omitempty"`
 }
 
 // Restore restores a backup
 func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (*RestoreResult, error) {
+	result := &RestoreResult{
+		Success: true,
+	}
+
+	m.mu.RLock()
+	_, exists := m.backups[id]
+	m.mu.RUnlock()
+	if !exists {
+		return nil, fmt.Errorf("backup not found: %s", id)
+	}
+
 	// Security: Log warning if verification is skipped
 	if opts.SkipVerify {
 		// Note: In production, consider rejecting this entirely or requiring admin confirmation
 		fmt.Println("[SECURITY WARNING] Backup verification skipped - this may restore tampered data")
+	}
+
+	if opts.CreateCheckpoint && !opts.DryRun {
+		reason := opts.CheckpointReason
+		if reason == "" {
+			reason = "pre_restore"
+		}
+		checkpoint, err := m.CreateCheckpoint(ctx, reason)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create restore checkpoint: %w", err)
+		}
+		result.CheckpointID = checkpoint.ID
+		result.CheckpointAt = checkpoint.CreatedAt.Format(time.RFC3339)
+		result.CheckpointReason = checkpoint.CheckpointReason
 	}
 
 	// Verify backup first (unless skipped)
@@ -96,10 +134,6 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 
 	// Create tar reader
 	tarReader := tar.NewReader(gzReader)
-
-	result := &RestoreResult{
-		Success: true,
-	}
 
 	// Extract files
 	for {
@@ -138,6 +172,14 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 			targetDir = m.dataDir
 			relPath = strings.TrimPrefix(relPath, "data/")
 			relPath = strings.TrimPrefix(relPath, "data\\")
+		} else if strings.HasPrefix(relPath, "skills/") || strings.HasPrefix(relPath, "skills\\") {
+			if !opts.RestoreSkills || m.skillsDir == "" {
+				result.FilesSkipped++
+				continue
+			}
+			targetDir = m.skillsDir
+			relPath = strings.TrimPrefix(relPath, "skills/")
+			relPath = strings.TrimPrefix(relPath, "skills\\")
 		} else {
 			result.FilesSkipped++
 			continue

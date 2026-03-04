@@ -1,23 +1,26 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { securityApi } from '@/api/security'
+import { securityApi, type PromptFirewallConfig, type PromptFirewallRule } from '@/api/security'
 import { systemApi } from '@/api/index'
 import { companionApi, type CompanionSession, type Stats as CompanionStats } from '@/api/companion'
 import { getActiveConnections, getConnectionStats, type Connection, type ConnectionStats } from '@/api/connections'
 import SessionList from '@/components/companion/SessionList.vue'
 import SessionDetail from '@/components/companion/SessionDetail.vue'
 import FixPreviewDialog from '@/components/security/FixPreviewDialog.vue'
+import DataMaskingSettings from '@/components/security/DataMaskingSettings.vue'
 import type { LogEntry } from '@/api/system'
 
 const { t, te } = useI18n()
 
 // Tab definitions
-type TabId = 'overview' | 'monitoring' | 'logs'
+type TabId = 'overview' | 'firewall' | 'masking' | 'monitoring' | 'logs'
 const activeTab = ref<TabId>('overview')
 
 const tabs: { id: TabId; labelKey: string; icon: string }[] = [
   { id: 'overview', labelKey: 'security.tabs.overview', icon: 'shield' },
+  { id: 'firewall', labelKey: 'security.tabs.firewall', icon: 'firewall' },
+  { id: 'masking', labelKey: 'security.tabs.masking', icon: 'masking' },
   { id: 'monitoring', labelKey: 'security.tabs.monitoring', icon: 'activity' },
   { id: 'logs', labelKey: 'security.tabs.logs', icon: 'list' },
 ]
@@ -108,6 +111,133 @@ const fixingItem = ref<string | null>(null) // ID of item being fixed
 const fixPreviewVisible = ref(false)
 const fixPreviewItem = ref<ScanItem | null>(null)
 const expandedItemId = ref<string | null>(null) // ID of expanded item for details
+
+// Prompt firewall state
+const firewallLoading = ref(false)
+const togglingFirewall = ref(false)
+const togglingFirewallRuleId = ref('')
+const addingFirewallRule = ref(false)
+const deletingFirewallRuleId = ref('')
+const firewallConfig = ref<PromptFirewallConfig>({
+  enabled: true,
+  rules: [],
+  rule_count: 0,
+})
+const newFirewallKeyword = ref('')
+
+const activeFirewallRuleCount = computed(() =>
+  firewallConfig.value.rules.filter(rule => rule.enabled).length
+)
+
+const firewallSummary = computed(() => {
+  if (!firewallConfig.value.enabled) return ''
+  return t('security.firewall.ruleCount', { count: activeFirewallRuleCount.value })
+})
+
+function applyPromptFirewallConfig(config: PromptFirewallConfig) {
+  const rules = [...(config.rules || [])]
+  firewallConfig.value = {
+    enabled: config.enabled,
+    rules,
+    rule_count: config.rule_count ?? rules.length,
+  }
+}
+
+const builtinFirewallRules = computed(() =>
+  firewallConfig.value.rules.filter(rule => rule.built_in || rule.type === 'builtin')
+)
+
+const customFirewallRules = computed(() => {
+  return firewallConfig.value.rules
+    .filter(rule => !rule.built_in && rule.type !== 'builtin')
+    .sort((a, b) => {
+      if (!a.created_at || !b.created_at) return 0
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+})
+
+function isBuiltinFirewallRule(rule: PromptFirewallRule): boolean {
+  return !!rule.built_in || rule.type === 'builtin'
+}
+
+function getFirewallRuleName(rule: PromptFirewallRule): string {
+  if (!isBuiltinFirewallRule(rule)) return rule.keyword
+  return tr(`security.firewall.builtin.${rule.id}.name`, rule.keyword)
+}
+
+function getFirewallRuleDescription(rule: PromptFirewallRule): string {
+  if (!isBuiltinFirewallRule(rule)) return ''
+  return tr(`security.firewall.builtin.${rule.id}.description`, rule.description || '')
+}
+
+async function loadPromptFirewall() {
+  firewallLoading.value = true
+  try {
+    const response = await securityApi.getPromptFirewall()
+    applyPromptFirewallConfig(response.data)
+  } catch (error) {
+    console.error('Failed to load prompt firewall config:', error)
+  } finally {
+    firewallLoading.value = false
+  }
+}
+
+async function togglePromptFirewall() {
+  if (togglingFirewall.value) return
+  togglingFirewall.value = true
+  try {
+    const response = await securityApi.updatePromptFirewall(!firewallConfig.value.enabled)
+    applyPromptFirewallConfig(response.data)
+  } catch (error) {
+    console.error('Failed to toggle prompt firewall:', error)
+  } finally {
+    togglingFirewall.value = false
+  }
+}
+
+async function addPromptFirewallRule() {
+  if (addingFirewallRule.value) return
+  const keyword = newFirewallKeyword.value.trim()
+  if (!keyword) return
+
+  addingFirewallRule.value = true
+  try {
+    const response = await securityApi.addPromptFirewallRule(keyword, true)
+    applyPromptFirewallConfig(response.data)
+    newFirewallKeyword.value = ''
+  } catch (error) {
+    console.error('Failed to add prompt firewall rule:', error)
+  } finally {
+    addingFirewallRule.value = false
+  }
+}
+
+async function togglePromptFirewallRule(rule: PromptFirewallRule) {
+  if (togglingFirewallRuleId.value) return
+  togglingFirewallRuleId.value = rule.id
+  try {
+    const response = await securityApi.updatePromptFirewallRule(rule.id, { enabled: !rule.enabled })
+    applyPromptFirewallConfig(response.data)
+  } catch (error) {
+    console.error('Failed to update prompt firewall rule:', error)
+  } finally {
+    togglingFirewallRuleId.value = ''
+  }
+}
+
+async function deletePromptFirewallRule(rule: PromptFirewallRule) {
+  if (deletingFirewallRuleId.value) return
+  if (isBuiltinFirewallRule(rule)) return
+  deletingFirewallRuleId.value = rule.id
+  try {
+    const response = await securityApi.deletePromptFirewallRule(rule.id)
+    applyPromptFirewallConfig(response.data)
+  } catch (error) {
+    console.error('Failed to delete prompt firewall rule:', error)
+  } finally {
+    deletingFirewallRuleId.value = ''
+  }
+}
 
 function getScanStatusPriority(status: ScanItem['status']): number {
   switch (status) {
@@ -561,6 +691,8 @@ let companionRefreshInterval: ReturnType<typeof setInterval> | null = null
 let connectionRefreshInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
+  loadPromptFirewall()
+
   // Load cached results first
   loadCachedScanResults()
 
@@ -610,6 +742,17 @@ onUnmounted(() => {
           <!-- Shield icon for Overview -->
           <svg v-if="tab.icon === 'shield'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <!-- Shield-check icon for Firewall -->
+          <svg v-else-if="tab.icon === 'firewall'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l7 4v6c0 5-3.4 9.7-7 10-3.6-.3-7-5-7-10V6l7-4zm-2.5 9l2 2 3-3" />
+          </svg>
+          <!-- Mask icon for Data Masking -->
+          <svg v-else-if="tab.icon === 'masking'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6c0 7.5 4.5 13 9 15 4.5-2 9-7.5 9-15l-9-3-9 3z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12c.6.8 1.5 1.2 3 1.2s2.4-.4 3-1.2" />
+            <circle cx="9" cy="9.5" r="1" fill="currentColor" />
+            <circle cx="15" cy="9.5" r="1" fill="currentColor" />
           </svg>
           <!-- Activity icon for Monitoring -->
           <svg v-else-if="tab.icon === 'activity'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -903,6 +1046,130 @@ onUnmounted(() => {
         </div>
       </div>
       </div>
+
+    </div>
+
+    <!-- Tab Content: Firewall -->
+    <div v-show="activeTab === 'firewall'">
+      <div class="glass-card p-6">
+        <div class="flex items-start justify-between gap-4 mb-6">
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('security.firewall.title') }}</h3>
+            <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('security.firewall.description') }}</p>
+          </div>
+          <div class="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+            <span v-if="firewallSummary">{{ firewallSummary }}</span>
+            <button
+              type="button"
+              :disabled="firewallLoading || togglingFirewall"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                firewallConfig.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
+                (firewallLoading || togglingFirewall) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+              ]"
+              @click="togglePromptFirewall"
+            >
+              <span :class="['inline-block h-4 w-4 transform rounded-full bg-white transition-transform', firewallConfig.enabled ? 'translate-x-6' : 'translate-x-1']" />
+            </button>
+          </div>
+        </div>
+
+        <div class="mb-6">
+          <h4 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">{{ t('security.firewall.builtinTitle') }}</h4>
+          <p class="text-xs text-gray-500 dark:text-slate-400 mb-3">{{ t('security.firewall.builtinDescription') }}</p>
+          <div class="space-y-2 max-h-72 overflow-y-auto">
+            <div
+              v-for="rule in builtinFirewallRules"
+              :key="rule.id"
+              class="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 p-3"
+            >
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-gray-900 dark:text-white break-all">{{ getFirewallRuleName(rule) }}</div>
+                <div v-if="getFirewallRuleDescription(rule)" class="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                  {{ getFirewallRuleDescription(rule) }}
+                </div>
+              </div>
+              <button
+                type="button"
+                :disabled="togglingFirewallRuleId === rule.id || togglingFirewall"
+                @click="togglePromptFirewallRule(rule)"
+                :class="[
+                  'shrink-0 text-[10px] px-1.5 py-0.5 rounded-full transition-colors',
+                  (togglingFirewallRuleId === rule.id || togglingFirewall) ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
+                  rule.enabled
+                    ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300'
+                    : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300'
+                ]"
+              >
+                {{ rule.enabled ? t('common.enabled') : t('common.disabled') }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h4 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">{{ t('security.firewall.customTitle') }}</h4>
+          <div class="flex gap-2 mb-4">
+            <input
+              v-model="newFirewallKeyword"
+              type="text"
+              :placeholder="t('security.firewall.keywordPlaceholder')"
+              class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
+              :disabled="addingFirewallRule"
+              @keyup.enter="addPromptFirewallRule"
+            />
+            <button
+              class="px-4 py-2 rounded-lg text-white font-medium bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 disabled:opacity-50"
+              :disabled="addingFirewallRule || !newFirewallKeyword.trim()"
+              @click="addPromptFirewallRule"
+            >
+              {{ t('security.firewall.add') }}
+            </button>
+          </div>
+
+          <div v-if="customFirewallRules.length === 0" class="text-sm text-gray-500 dark:text-slate-400 py-3 text-center">
+            {{ t('security.firewall.empty') }}
+          </div>
+          <div v-else class="space-y-2 max-h-72 overflow-y-auto">
+            <div
+              v-for="rule in customFirewallRules"
+              :key="rule.id"
+              class="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-3"
+            >
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-gray-900 dark:text-white break-all">{{ rule.keyword }}</div>
+              </div>
+              <button
+                type="button"
+                :disabled="togglingFirewallRuleId === rule.id || deletingFirewallRuleId === rule.id || togglingFirewall"
+                @click="togglePromptFirewallRule(rule)"
+                :class="[
+                  'shrink-0 text-[10px] px-1.5 py-0.5 rounded-full transition-colors',
+                  (togglingFirewallRuleId === rule.id || deletingFirewallRuleId === rule.id || togglingFirewall) ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
+                  rule.enabled
+                    ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300'
+                    : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300'
+                ]"
+              >
+                {{ rule.enabled ? t('common.enabled') : t('common.disabled') }}
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1 rounded text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50"
+                :disabled="!!deletingFirewallRuleId || togglingFirewallRuleId === rule.id || togglingFirewall"
+                @click="deletePromptFirewallRule(rule)"
+              >
+                {{ t('security.firewall.delete') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Content: Data Masking -->
+    <div v-show="activeTab === 'masking'">
+      <DataMaskingSettings />
     </div>
 
     <!-- Tab Content: Monitoring -->

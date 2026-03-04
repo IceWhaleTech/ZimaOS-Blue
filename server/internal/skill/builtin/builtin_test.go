@@ -13,8 +13,6 @@ func TestRegisterAll(t *testing.T) {
 		NewPlanAppend(),
 		NewReminder(),
 		NewScheduler(),
-		NewWorkflows(),
-		NewSandbox(),
 		NewBrowser(),
 		NewAnalyze(),
 		NewDeepResearch(),

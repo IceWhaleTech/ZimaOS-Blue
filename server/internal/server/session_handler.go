@@ -14,6 +14,14 @@ type SessionHandler struct {
 	manager *session.SessionManager
 }
 
+// Manager returns the underlying session manager.
+func (h *SessionHandler) Manager() *session.SessionManager {
+	if h == nil {
+		return nil
+	}
+	return h.manager
+}
+
 // NewSessionHandler creates a new SessionHandler.
 func NewSessionHandler(manager *session.SessionManager) *SessionHandler {
 	return &SessionHandler{manager: manager}

@@ -3,13 +3,20 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
+)
+
+const (
+	webSearchFormatJSON = "json"
+	webSearchFormatXML  = "xml"
 )
 
 // WebSearchConfig holds configuration for the web search tool.
@@ -17,6 +24,10 @@ type WebSearchConfig struct {
 	// Provider specifies the search provider to use.
 	// Supported: "duckduckgo", "searxng", "brave"
 	Provider string
+
+	// Providers specifies a prioritized provider list for fallback (high availability).
+	// If empty, Provider is used.
+	Providers []string
 
 	// APIKey is the API key for providers that require authentication.
 	APIKey string
@@ -62,13 +73,20 @@ type WebSearchResponse struct {
 // NewWebSearchTool creates a new web search tool.
 func NewWebSearchTool(config WebSearchConfig) *WebSearchTool {
 	if config.MaxResults <= 0 {
-		config.MaxResults = 10
+		config.MaxResults = 5
 	}
 	if config.Timeout <= 0 {
 		config.Timeout = 30 * time.Second
 	}
-	if config.Provider == "" {
-		config.Provider = "duckduckgo"
+	config.Provider = strings.ToLower(strings.TrimSpace(config.Provider))
+	config.Providers = normalizeProviderList(config.Providers)
+	if len(config.Providers) == 0 {
+		if config.Provider == "" {
+			config.Provider = "duckduckgo"
+		}
+		config.Providers = []string{config.Provider}
+	} else if config.Provider == "" {
+		config.Provider = config.Providers[0]
 	}
 	if config.Region == "" {
 		config.Region = "wt-wt" // Worldwide
@@ -97,11 +115,21 @@ func (w *WebSearchTool) Definition() ToolDefinition {
 				},
 				"max_results": map[string]interface{}{
 					"type":        "integer",
-					"description": "Maximum number of results to return (default: 10, max: 20)",
+					"description": "Maximum number of results to return (default: 5, max: 20)",
 				},
 				"region": map[string]interface{}{
 					"type":        "string",
 					"description": "Search region (e.g., 'us-en', 'uk-en', 'wt-wt' for worldwide)",
+				},
+				"provider": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional provider override. Supports single provider or fallback list, e.g. 'searxng,brave,duckduckgo'",
+				},
+				"format": map[string]interface{}{
+					"type":        "string",
+					"description": "Output format: xml (default) or json",
+					"enum":        []string{"xml", "json"},
+					"default":     "xml",
 				},
 			},
 			"required": []string{"query"},
@@ -116,39 +144,86 @@ func (w *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}
 		return nil, errors.New("query is required")
 	}
 
-	maxResults := w.config.MaxResults
-	if mr, ok := args["max_results"].(float64); ok && mr > 0 {
-		maxResults = int(mr)
-		if maxResults > 20 {
-			maxResults = 20
-		}
+	format, err := parseWebSearchFormat(args["format"])
+	if err != nil {
+		return nil, err
 	}
+
+	maxResults := parseWebSearchMaxResults(args["max_results"], w.config.MaxResults)
 
 	region := w.config.Region
 	if r, ok := args["region"].(string); ok && r != "" {
 		region = r
 	}
 
-	var response *WebSearchResponse
-	var err error
+	providers := w.providerChain(args["provider"])
+	var lastErr error
 
-	switch strings.ToLower(w.config.Provider) {
+	for _, provider := range providers {
+		response, err := w.searchWithProvider(ctx, provider, query, maxResults, region)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return marshalWebSearchResponse(response, format)
+	}
+
+	if len(providers) == 1 {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("all search providers failed (%s): %w", strings.Join(providers, ","), lastErr)
+}
+
+func (w *WebSearchTool) searchWithProvider(ctx context.Context, provider, query string, maxResults int, region string) (*WebSearchResponse, error) {
+	switch provider {
 	case "duckduckgo":
-		response, err = w.searchDuckDuckGo(ctx, query, maxResults, region)
+		return w.searchDuckDuckGo(ctx, query, maxResults, region)
 	case "searxng":
-		response, err = w.searchSearXNG(ctx, query, maxResults)
+		return w.searchSearXNG(ctx, query, maxResults)
 	case "brave":
-		response, err = w.searchBrave(ctx, query, maxResults)
+		return w.searchBrave(ctx, query, maxResults)
 	default:
-		return nil, fmt.Errorf("unsupported search provider: %s", w.config.Provider)
+		return nil, fmt.Errorf("unsupported search provider: %s", provider)
 	}
+}
 
-	if err != nil {
-		return nil, err
+func (w *WebSearchTool) providerChain(raw interface{}) []string {
+	chain := parseProviderChainArg(raw)
+	if len(chain) > 0 {
+		return chain
 	}
+	return append([]string(nil), w.config.Providers...)
+}
 
-	jsonResult, _ := json.Marshal(response)
-	return string(jsonResult), nil
+func parseProviderChainArg(raw interface{}) []string {
+	if raw == nil {
+		return nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return nil
+	}
+	return normalizeProviderList(strings.Split(value, ","))
+}
+
+func normalizeProviderList(providers []string) []string {
+	if len(providers) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(providers))
+	normalized := make([]string, 0, len(providers))
+	for _, p := range providers {
+		p = strings.ToLower(strings.TrimSpace(p))
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		normalized = append(normalized, p)
+	}
+	return normalized
 }
 
 // searchDuckDuckGo performs a search using DuckDuckGo's HTML interface.
@@ -428,4 +503,130 @@ func stripHTML(s string) string {
 	text = strings.TrimSpace(text)
 
 	return text
+}
+
+func parseWebSearchFormat(raw interface{}) (string, error) {
+	if raw == nil {
+		return webSearchFormatXML, nil
+	}
+
+	value, ok := raw.(string)
+	if !ok {
+		return "", errors.New("format must be a string")
+	}
+
+	normalized, err := normalizeSearchFormat(value)
+	if err != nil {
+		return "", err
+	}
+	if normalized == "" {
+		return webSearchFormatXML, nil
+	}
+	return normalized, nil
+}
+
+func normalizeSearchFormat(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.Trim(value, ",.;:!?")
+	if idx := strings.Index(value, ";"); idx >= 0 {
+		value = strings.TrimSpace(value[:idx])
+	}
+
+	switch value {
+	case "", webSearchFormatJSON, webSearchFormatXML:
+		return value, nil
+	case "md", "markdown", "text", "txt", "plain", "plaintext", "human", "jsonl", "application/json":
+		return webSearchFormatJSON, nil
+	case "application/xml", "text/xml":
+		return webSearchFormatXML, nil
+	default:
+		return "", errors.New("format must be one of: json, xml")
+	}
+}
+
+func parseWebSearchMaxResults(raw interface{}, fallback int) int {
+	maxResults := fallback
+
+	switch v := raw.(type) {
+	case float64:
+		if v > 0 {
+			maxResults = int(v)
+		}
+	case float32:
+		if v > 0 {
+			maxResults = int(v)
+		}
+	case int:
+		if v > 0 {
+			maxResults = v
+		}
+	case int32:
+		if v > 0 {
+			maxResults = int(v)
+		}
+	case int64:
+		if v > 0 {
+			maxResults = int(v)
+		}
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(v))
+		if err == nil && parsed > 0 {
+			maxResults = parsed
+		}
+	}
+
+	if maxResults > 20 {
+		return 20
+	}
+	return maxResults
+}
+
+func marshalWebSearchResponse(response *WebSearchResponse, format string) (string, error) {
+	if format == webSearchFormatXML {
+		return marshalWebSearchXML(response)
+	}
+
+	jsonResult, err := json.Marshal(response)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode search response: %w", err)
+	}
+	return string(jsonResult), nil
+}
+
+type webSearchXMLResponse struct {
+	XMLName    xml.Name             `xml:"web_search"`
+	Query      string               `xml:"query"`
+	Provider   string               `xml:"provider"`
+	TotalCount int                  `xml:"total_count"`
+	Results    []webSearchXMLResult `xml:"results>result"`
+}
+
+type webSearchXMLResult struct {
+	Title       string `xml:"title"`
+	URL         string `xml:"url"`
+	Description string `xml:"description,omitempty"`
+	Source      string `xml:"source,omitempty"`
+}
+
+func marshalWebSearchXML(response *WebSearchResponse) (string, error) {
+	payload := webSearchXMLResponse{
+		Query:      response.Query,
+		Provider:   response.Provider,
+		TotalCount: response.TotalCount,
+		Results:    make([]webSearchXMLResult, len(response.Results)),
+	}
+	for i, result := range response.Results {
+		payload.Results[i] = webSearchXMLResult{
+			Title:       result.Title,
+			URL:         result.URL,
+			Description: result.Description,
+			Source:      result.Source,
+		}
+	}
+
+	encoded, err := xml.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode search response as XML: %w", err)
+	}
+	return string(encoded), nil
 }

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useMetricsStore } from '@/stores/metrics'
+import { useAuthStore } from '@/stores/auth'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const metricsStore = useMetricsStore()
+const authStore = useAuthStore()
 
 const tokenData = computed(() => {
   const usage = metricsStore.tokenUsage?.usage
@@ -105,9 +107,18 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
 
 <template>
   <div class="bg-white dark:bg-gray-700 rounded-lg p-6 shadow">
-    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-      {{ t('metrics.tokenUsage') }}
-    </h3>
+    <div class="mb-4 flex items-center justify-between gap-2">
+      <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+        {{ t('metrics.tokenUsage') }}
+      </h3>
+      <router-link
+        v-if="authStore.isAdmin"
+        to="/billing"
+        class="inline-flex shrink-0 items-center rounded-md border border-gray-300 dark:border-gray-600 bg-white/80 dark:bg-slate-800/70 px-2 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+      >
+        {{ t('nav.billing') }}
+      </router-link>
+    </div>
 
     <div v-if="!tokenData" class="text-center py-8 text-gray-500 dark:text-gray-400">
       {{ t('metrics.noData') }}

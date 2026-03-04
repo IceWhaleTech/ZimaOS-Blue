@@ -454,9 +454,13 @@ const fixedModelOptions = computed(() => {
 })
 
 const fixedModelLabel = computed(() => {
-  if (chatStore.modelPreference === 'auto') return t('chat.routingMode.modelAuto')
+  if (chatStore.modelPreference === 'auto') return t('chat.routingMode.highAvailability')
   return chatStore.modelPreference
 })
+
+const routingStrategyLabel = computed(() =>
+  isSingleModelMode.value ? t('chat.routingMode.fixedModel') : t('chat.routingMode.highAvailability')
+)
 
 const currentThemeStyleLabel = computed(() => {
   const current = THEME_STYLES.find(style => style.id === settingsStore.themeStyle)
@@ -1499,7 +1503,7 @@ onUnmounted(() => {
                   <div class="routing-option-side">
                     <span class="routing-option-count">{{ totalActiveProviderCount }}</span>
                     <span v-if="providerPoolStore.routingMode === 'auto'" class="routing-option-status-chip">
-                      {{ isSingleModelMode ? t('chat.routingMode.fixedModel') : 'HA' }}
+                      {{ routingStrategyLabel }}
                     </span>
                   </div>
                 </button>
@@ -1524,6 +1528,9 @@ onUnmounted(() => {
                   </div>
                   <div class="routing-option-side">
                     <span class="routing-option-count">{{ cloudActiveCount }}</span>
+                    <span v-if="providerPoolStore.routingMode === 'cloud'" class="routing-option-status-chip">
+                      {{ routingStrategyLabel }}
+                    </span>
                   </div>
                 </button>
 
@@ -1547,6 +1554,9 @@ onUnmounted(() => {
                   </div>
                   <div class="routing-option-side">
                     <span class="routing-option-count">{{ localActiveCount }}</span>
+                    <span v-if="providerPoolStore.routingMode === 'local'" class="routing-option-status-chip">
+                      {{ routingStrategyLabel }}
+                    </span>
                   </div>
                 </button>
               </div>
@@ -1558,7 +1568,7 @@ onUnmounted(() => {
                     :class="{ 'is-active-ha': !isSingleModelMode }"
                     @click="setAutoModelPreference"
                   >
-                    {{ t('chat.routingMode.auto') }} HA
+                    {{ t('chat.routingMode.highAvailability') }}
                   </button>
                   <button
                     class="routing-strategy-chip"
@@ -1658,7 +1668,7 @@ onUnmounted(() => {
                     <div class="routing-option-side">
                       <span class="routing-option-count">{{ totalActiveProviderCount }}</span>
                       <span v-if="providerPoolStore.routingMode === 'auto'" class="routing-option-status-chip">
-                        {{ isSingleModelMode ? t('chat.routingMode.fixedModel') : 'HA' }}
+                        {{ routingStrategyLabel }}
                       </span>
                     </div>
                   </button>
@@ -1683,6 +1693,9 @@ onUnmounted(() => {
                     </div>
                     <div class="routing-option-side">
                       <span class="routing-option-count">{{ cloudActiveCount }}</span>
+                      <span v-if="providerPoolStore.routingMode === 'cloud'" class="routing-option-status-chip">
+                        {{ routingStrategyLabel }}
+                      </span>
                     </div>
                   </button>
 
@@ -1706,6 +1719,9 @@ onUnmounted(() => {
                     </div>
                     <div class="routing-option-side">
                       <span class="routing-option-count">{{ localActiveCount }}</span>
+                      <span v-if="providerPoolStore.routingMode === 'local'" class="routing-option-status-chip">
+                        {{ routingStrategyLabel }}
+                      </span>
                     </div>
                   </button>
 
@@ -1715,7 +1731,7 @@ onUnmounted(() => {
                       :class="{ 'is-active-ha': !isSingleModelMode }"
                       @click="setAutoModelPreference"
                     >
-                      {{ t('chat.routingMode.auto') }} HA
+                      {{ t('chat.routingMode.highAvailability') }}
                     </button>
                     <button
                       class="routing-strategy-chip"
@@ -2075,6 +2091,7 @@ onUnmounted(() => {
                 chatStore.streamError === 'provider_unavailable' ? t('chat.providerUnavailable') :
                 chatStore.streamError === 'provider_auth_error' ? t('chat.providerAuthError') :
                 chatStore.streamError === 'provider_rate_limited' ? t('chat.providerRateLimited') :
+                chatStore.streamError === 'provider_openrouter_privacy_policy' ? t('chat.providerOpenRouterPrivacyPolicy') :
                 chatStore.streamError
               }}</span>
               <button
@@ -2091,6 +2108,17 @@ onUnmounted(() => {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
+            </div>
+          </div>
+          <div
+            v-else-if="chatStore.streamProgress"
+            class="flex justify-center py-3"
+          >
+            <div class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400/80 dark:text-gray-500/80 bg-gray-100/30 dark:bg-gray-800/30 rounded-full">
+              <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12a8 8 0 018-8m8 8a8 8 0 01-8 8" />
+              </svg>
+              <span>{{ chatStore.streamProgress }}</span>
             </div>
           </div>
 
@@ -2305,6 +2333,7 @@ onUnmounted(() => {
           chatStore.error === 'provider_unavailable' ? t('chat.providerUnavailable') :
           chatStore.error === 'provider_auth_error' ? t('chat.providerAuthError') :
           chatStore.error === 'provider_rate_limited' ? t('chat.providerRateLimited') :
+          chatStore.error === 'provider_openrouter_privacy_policy' ? t('chat.providerOpenRouterPrivacyPolicy') :
           chatStore.error
         }}</span>
         <button

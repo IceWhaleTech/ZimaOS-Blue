@@ -3,6 +3,7 @@ package providerpool
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,7 +24,7 @@ type Registry struct {
 
 	// Callbacks
 	onProviderChange func(provider *Provider, action string)
-	onHealthResult   func(providerID string, result *HealthCheckResult) // latency feed
+	onHealthResult   func(providerID string, result *HealthCheckResult)           // latency feed
 	onStatusChange   func(providerID string, oldStatus, newStatus ProviderStatus) // status transition
 }
 
@@ -458,7 +459,7 @@ func (r *Registry) runHealthCheck(ctx context.Context, checker HealthChecker) {
 
 	for _, provider := range providers {
 		checkCtx, cancel := context.WithTimeout(ctx, r.healthCheckTimeout)
-		result := checker.Check(checkCtx, provider)
+		result := checkProviderHealthWithAPIKeys(checkCtx, checker, provider)
 		cancel()
 
 		r.SetHealth(provider.ID, result)
@@ -468,6 +469,81 @@ func (r *Registry) runHealthCheck(ctx context.Context, checker HealthChecker) {
 			r.onHealthResult(provider.ID, result)
 		}
 	}
+}
+
+func checkProviderHealthWithAPIKeys(ctx context.Context, checker HealthChecker, provider *Provider) *HealthCheckResult {
+	keys := enabledHealthCheckKeys(provider)
+	if len(keys) == 0 {
+		result := checker.Check(ctx, provider)
+		if result != nil {
+			result.ProviderID = provider.ID
+		}
+		return result
+	}
+
+	var lastResult *HealthCheckResult
+	for _, key := range keys {
+		if ctx.Err() != nil {
+			break
+		}
+
+		scoped := *provider
+		scoped.APIKeys = []APIKey{key}
+
+		result := checker.Check(ctx, &scoped)
+		if result == nil {
+			continue
+		}
+
+		result.ProviderID = provider.ID
+		result.KeyID = key.ID
+		result.KeyHash = key.KeyHash
+		lastResult = result
+		if result.Healthy {
+			return result
+		}
+	}
+
+	if lastResult != nil {
+		return lastResult
+	}
+
+	return &HealthCheckResult{
+		ProviderID: provider.ID,
+		Healthy:    false,
+		Error:      "health_check_failed",
+		CheckedAt:  timeutil.NowTime(),
+	}
+}
+
+func enabledHealthCheckKeys(provider *Provider) []APIKey {
+	if provider == nil || len(provider.APIKeys) == 0 {
+		return nil
+	}
+
+	keys := make([]APIKey, 0, len(provider.APIKeys))
+	for _, key := range provider.APIKeys {
+		if !key.Enabled {
+			continue
+		}
+		if strings.TrimSpace(key.Key) == "" {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	if len(keys) > 0 {
+		return keys
+	}
+
+	// Backward-compat: if all keys are disabled/missing flags, probe with first non-empty key.
+	for _, key := range provider.APIKeys {
+		if strings.TrimSpace(key.Key) == "" {
+			continue
+		}
+		return []APIKey{key}
+	}
+
+	return nil
 }
 
 // AddAPIKey adds an API key to a provider

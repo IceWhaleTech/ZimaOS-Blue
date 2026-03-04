@@ -255,10 +255,10 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 			slog.Warn("bridge: malformed SSE chunk", "error", parseErr, "payload_len", len(payload))
 			continue
 		}
-		// Ignore metadata/no-op events that carry no delta, tool call, usage, or terminal state.
+		// Ignore no-op events that carry no delta, tool call, usage, progress signal, or terminal state.
 		// Responses API emits many bookkeeping events (created/added/done) that should not
 		// trigger downstream callback invocations.
-		if !done && chunk.Delta == "" && chunk.Error == "" && len(chunk.ToolCalls) == 0 && chunk.Usage == nil {
+		if !done && chunk.Delta == "" && chunk.Error == "" && chunk.Progress == "" && len(chunk.ToolCalls) == 0 && chunk.Usage == nil {
 			continue
 		}
 		chunkCount++
@@ -313,9 +313,6 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 		scanErr = scanner.Err()
 	}
 	zeroChunks := chunkCount == 0
-	if zeroChunks {
-		slog.Error("[bridge] stream ended with zero chunks", "model", req.Model, "scan_err", scanErr)
-	}
 
 	// Fix #2: Close pipe reader to unblock handler goroutine, then wait for it
 	pr.Close()
@@ -334,6 +331,9 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 			pe.Body = strings.Join(nonSSELines, "\n")
 		}
 		return handlerErr
+	}
+	if zeroChunks {
+		slog.Error("[bridge] stream ended with zero chunks", "model", req.Model, "scan_err", scanErr)
 	}
 
 	// A 200 stream that never emitted a parsable SSE chunk is a protocol failure.

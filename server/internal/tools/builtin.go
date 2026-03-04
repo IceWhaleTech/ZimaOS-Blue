@@ -255,22 +255,24 @@ func (f *FileWriteTool) validatePath(path string) error {
 	return fmt.Errorf("access denied: path %s is not in allowed directories", path)
 }
 
-// RegisterBuiltinTools registers built-in file tools with default configuration.
+// RegisterBuiltinTools registers built-in core tools with default configuration.
 func RegisterBuiltinTools(registry *Registry) {
 	if registry == nil {
 		return
 	}
 	registry.Register(NewFileReadTool(nil, 0))
 	registry.Register(NewFileWriteTool(nil, 0))
+	registry.Register(NewWebSearchTool(WebSearchConfig{}))
 }
 
-// RegisterBuiltinToolsWithConfig registers built-in file tools with custom configuration.
+// RegisterBuiltinToolsWithConfig registers built-in core tools with custom configuration.
 func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearchConfig, allowedPaths []string, maxFileSize int64) {
 	if registry == nil {
 		return
 	}
 	registry.Register(NewFileReadTool(allowedPaths, maxFileSize))
 	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
+	registry.Register(NewWebSearchTool(webSearchConfig))
 }
 
 // RegisterExecTools registers exec + process tools with shared session state.

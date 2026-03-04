@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { securityApi, type FixPreviewResponse, type SecurityScanItem } from '@/api/security'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const props = defineProps<{
   visible: boolean
@@ -19,6 +19,68 @@ const loading = ref(false)
 const applying = ref(false)
 const preview = ref<FixPreviewResponse | null>(null)
 const error = ref('')
+
+const FIX_PREVIEW_CHANGE_KEYS: Record<string, string[]> = {
+  fix_permission: ['setPermissions', 'owner', 'group', 'others'],
+}
+
+function parseFixAction(fixAction: string): { actionType: string; actionPath?: string } {
+  const idx = fixAction.indexOf(':')
+  if (idx <= 0) return { actionType: fixAction }
+  return {
+    actionType: fixAction.slice(0, idx),
+    actionPath: fixAction.slice(idx + 1),
+  }
+}
+
+function getFixPreviewI18nParams(previewData: FixPreviewResponse): Record<string, string> {
+  const { actionPath } = parseFixAction(previewData.fix_action)
+  return actionPath ? { path: actionPath } : {}
+}
+
+function getPreviewDescription(previewData: FixPreviewResponse): string {
+  const { actionType } = parseFixAction(previewData.fix_action)
+  const key = `security.scan.fixPreviews.actions.${actionType}.description`
+  return te(key) ? t(key, getFixPreviewI18nParams(previewData)) : previewData.description
+}
+
+function getPreviewChanges(previewData: FixPreviewResponse): string[] {
+  const { actionType } = parseFixAction(previewData.fix_action)
+  const changeKeys = FIX_PREVIEW_CHANGE_KEYS[actionType]
+  if (!changeKeys) return previewData.changes
+
+  const params = getFixPreviewI18nParams(previewData)
+  const translated = changeKeys
+    .map((changeKey) => {
+      const key = `security.scan.fixPreviews.actions.${actionType}.changes.${changeKey}`
+      return te(key) ? t(key, params) : ''
+    })
+    .filter((message): message is string => message.length > 0)
+
+  return translated.length === changeKeys.length ? translated : previewData.changes
+}
+
+function getPreviewWarning(previewData: FixPreviewResponse): string | undefined {
+  if (!previewData.warning) return undefined
+  const { actionType } = parseFixAction(previewData.fix_action)
+  const key = `security.scan.fixPreviews.actions.${actionType}.warning`
+  return te(key) ? t(key, getFixPreviewI18nParams(previewData)) : previewData.warning
+}
+
+const translatedPreviewDescription = computed(() => {
+  if (!preview.value) return ''
+  return getPreviewDescription(preview.value)
+})
+
+const translatedPreviewChanges = computed(() => {
+  if (!preview.value) return []
+  return getPreviewChanges(preview.value)
+})
+
+const translatedPreviewWarning = computed(() => {
+  if (!preview.value) return undefined
+  return getPreviewWarning(preview.value)
+})
 
 watch(() => props.visible, async (visible) => {
   if (visible && props.item?.fix_action) {
@@ -122,17 +184,17 @@ async function handleApply() {
               <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 {{ t('security.scan.fixDescription') }}
               </h3>
-              <p class="text-sm text-gray-600 dark:text-gray-400">{{ preview.description }}</p>
+              <p class="text-sm text-gray-600 dark:text-gray-400">{{ translatedPreviewDescription }}</p>
             </div>
 
             <!-- Changes list -->
-            <div v-if="preview.changes.length > 0">
+            <div v-if="translatedPreviewChanges.length > 0">
               <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 {{ t('security.scan.changes') }}
               </h3>
               <ul class="space-y-2">
                 <li
-                  v-for="(change, index) in preview.changes"
+                  v-for="(change, index) in translatedPreviewChanges"
                   :key="index"
                   class="flex items-start gap-2 text-sm"
                 >
@@ -160,12 +222,12 @@ async function handleApply() {
             </div>
 
             <!-- Warning -->
-            <div v-if="preview.warning" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+            <div v-if="translatedPreviewWarning" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
               <div class="flex items-start gap-2">
                 <svg class="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                <p class="text-sm text-yellow-700 dark:text-yellow-300">{{ preview.warning }}</p>
+                <p class="text-sm text-yellow-700 dark:text-yellow-300">{{ translatedPreviewWarning }}</p>
               </div>
             </div>
           </template>

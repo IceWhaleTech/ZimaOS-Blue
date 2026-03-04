@@ -128,35 +128,83 @@ func TestBuildProjectContext_CacheHitAndInvalidation(t *testing.T) {
 	}
 }
 
-func TestBuildAgentModeGuidance_IncludesFSMAndAskGateProtocol(t *testing.T) {
+func TestBuildAgentModeGuidance_IncludesChecklistAndAskFormat(t *testing.T) {
 	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
 	b.SetAgentMode(true)
 	var sb strings.Builder
 	b.writeAgentModeGuidanceTo(&sb)
 	out := sb.String()
-	if !strings.Contains(out, "<orchestrator_fsm>") {
-		t.Fatalf("agent mode guidance should include orchestrator_fsm tag: %s", out)
+	if !strings.Contains(out, "FIRST output a TODO checklist using markdown checkboxes") {
+		t.Fatalf("agent mode guidance should require markdown TODO planning first: %s", out)
 	}
-	if !strings.Contains(out, "<protocol>") {
-		t.Fatalf("agent mode guidance should include protocol tag: %s", out)
+	if !strings.Contains(out, "injects `<tp>` with current task") || !strings.Contains(out, "Do NOT re-output the checklist") {
+		t.Fatalf("agent mode guidance should include tp progress signal and single-checklist rule: %s", out)
 	}
-	if !strings.Contains(out, "exactly one canonical Markdown TODO checklist") {
-		t.Fatalf("agent mode guidance should force one canonical TODO checklist: %s", out)
+	if !strings.Contains(out, "Prefer ask format: {\"questions\":[{\"question\":\"...\",\"type\":\"radio\",\"options\":[...]}]}.") {
+		t.Fatalf("agent mode guidance should include ask questions-format preference: %s", out)
 	}
-	if !strings.Contains(out, "default to status-only updates") || !strings.Contains(out, "Do not re-output duplicate TODO blocks") {
-		t.Fatalf("agent mode guidance should enforce stable checklist updates without recreation: %s", out)
+	if !strings.Contains(out, "Single-question shorthand: use \"q\" for single-select or \"mq\" for multi-select") || !strings.Contains(out, "\"a\" as the options array (2-4 strings)") {
+		t.Fatalf("agent mode guidance should include ask q/mq+a contract: %s", out)
 	}
-	if !strings.Contains(out, "FIRST output a Markdown TODO checklist") || !strings.Contains(out, "may inject `<tp>` progress hints") {
-		t.Fatalf("agent mode guidance should enforce markdown-first TODO planning with progress hints: %s", out)
+	if !strings.Contains(out, "Example: {\"q\":\"Which approach?\",\"a\":[\"Option A\",\"Option B\"]}") {
+		t.Fatalf("agent mode guidance should include ask example payload: %s", out)
+	}
+	if strings.Contains(out, "<orchestrator_fsm>") || strings.Contains(out, "<protocol>") {
+		t.Fatalf("agent mode guidance should not include legacy fsm/protocol sections: %s", out)
+	}
+	if strings.Contains(out, "<agent_loop>") || strings.Contains(out, "<awaiting_user_input>true</awaiting_user_input>") {
+		t.Fatalf("agent mode guidance should not include legacy loop/awaiting marker guidance: %s", out)
+	}
+	if !strings.Contains(out, "After all steps, verify: run build/tests. Fix and re-verify if needed.") {
+		t.Fatalf("agent mode guidance should include verification requirement: %s", out)
+	}
+	if !strings.Contains(out, "Your LAST response MUST be plain text") {
+		t.Fatalf("agent mode guidance should include completion format requirement: %s", out)
+	}
+	if strings.Contains(out, "next concrete improvement") || strings.Contains(out, "explicitly asks to stop") {
+		t.Fatalf("agent mode guidance should not include legacy continuous loop stop-condition: %s", out)
 	}
 	if strings.Contains(out, "plan_create") || strings.Contains(out, "plan_update") || strings.Contains(out, "plan_append") {
 		t.Fatalf("agent mode guidance should not mention plan IPC commands by default: %s", out)
 	}
-	if !strings.Contains(out, "<awaiting_user_input>true</awaiting_user_input>") {
-		t.Fatalf("agent mode guidance should include awaiting_user_input marker contract: %s", out)
+	if !strings.Contains(out, "<planning>") || !strings.Contains(out, "<execution>") || !strings.Contains(out, "<completion>") {
+		t.Fatalf("agent mode guidance should preserve planning/execution/completion tags: %s", out)
 	}
-	if !strings.Contains(out, "next concrete improvement") || !strings.Contains(out, "explicitly asks to stop") {
-		t.Fatalf("agent mode guidance should include continuous loop stop-condition: %s", out)
+	if !strings.Contains(out, "<verification>") {
+		t.Fatalf("agent mode guidance should preserve verification tag: %s", out)
+	}
+	if !strings.Contains(out, "</agent_mode>") {
+		t.Fatalf("agent mode guidance should close agent_mode tag: %s", out)
+	}
+	if !strings.Contains(out, "No tool round limit") {
+		t.Fatalf("agent mode guidance should keep unlimited autonomy preamble: %s", out)
+	}
+	if !strings.Contains(out, "Do NOT call exec without a concrete command") {
+		t.Fatalf("agent mode guidance should enforce concrete exec command requirement: %s", out)
+	}
+	if !strings.Contains(out, "Ask confirmation before destructive actions") {
+		t.Fatalf("agent mode guidance should include manual-confirm clause by default: %s", out)
+	}
+	if strings.Contains(out, "Auto-confirm enabled — execute without asking.") {
+		t.Fatalf("agent mode guidance should not include auto-confirm clause when auto-confirm is disabled: %s", out)
+	}
+}
+
+func TestBuildAgentModeGuidance_AutoConfirmClause(t *testing.T) {
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
+	b.SetAgentMode(true)
+	b.SetAgentAutoConfirmFunc(func() bool { return true })
+	var sb strings.Builder
+	b.writeAgentModeGuidanceTo(&sb)
+	out := sb.String()
+	if !strings.Contains(out, "Auto-confirm enabled — execute without asking.") {
+		t.Fatalf("agent mode guidance should include auto-confirm clause when enabled: %s", out)
+	}
+	if strings.Contains(out, "Ask confirmation before destructive actions") {
+		t.Fatalf("agent mode guidance should not include manual confirmation clause when auto-confirm is enabled: %s", out)
+	}
+	if !strings.Contains(out, "</agent_mode>") {
+		t.Fatalf("agent mode guidance should close agent_mode tag: %s", out)
 	}
 }
 

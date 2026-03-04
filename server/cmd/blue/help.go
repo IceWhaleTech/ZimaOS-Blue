@@ -12,7 +12,7 @@ import (
 )
 
 var helpCmd = &cobra.Command{
-	Use:   "help [command]",
+	Use:   "help [topic]",
 	Short: "Show help for a command or skill",
 	Long: `Show help for built-in commands.
 
@@ -35,7 +35,6 @@ func runHelp(cmd *cobra.Command, args []string) error {
 
 		fmt.Println()
 		fmt.Println("Guides:")
-		fmt.Println("  blue help <command>      Show built-in command manual")
 		fmt.Println("  blue help <skill>        Show full SKILL.md manual")
 		fmt.Println("  blue <skill> key=value   Execute a skill")
 

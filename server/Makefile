@@ -1,4 +1,4 @@
-.PHONY: all build build-full build-bluecli build-launcher test lint clean run trim-dist bump-version copy-skills verify-provider verify-provider-e2e
+.PHONY: all build build-full build-bluecli build-launcher test lint clean run trim-dist bump-version copy-skills verify-provider verify-provider-e2e verify-ota-self-update verify-deep-research-post-release verify-deep-research-smoke
 
 # Variables
 BINARY_NAME=blue
@@ -214,6 +214,9 @@ help:
 	@echo "  docker-build - Build Docker image"
 	@echo "  verify-provider - Verify responses-only/provider compatibility"
 	@echo "  verify-provider-e2e - Verify provider pool end-to-end (requires running server)"
+	@echo "  verify-ota-self-update - Verify OTA self-update smoothness and downtime"
+	@echo "  verify-deep-research-post-release - Full 27-locale deep_research post-release self-check"
+	@echo "  verify-deep-research-smoke - CI quick smoke (en-US,zh-CN,ja-JP)"
 	@echo "  help         - Show this help"
 	@echo "  bump-version - Sync VERSION file to all project files"
 
@@ -259,6 +262,48 @@ verify-provider-e2e:
 		--provider-name "$$PROVIDER_NAME_VALUE" \
 		--model "$$MODEL_VALUE" \
 		$$TOKEN_ARG
+
+# Verify OTA self-update flow end-to-end and measure downtime
+# Optional env:
+#   OTA_SMOKE_PORT=18896
+#   OTA_SMOKE_PACKAGE_PORT=18897
+#   OTA_MAX_DOWNTIME_MS=2000
+#   OTA_POLL_INTERVAL_MS=100
+verify-ota-self-update:
+	./tools/verify_ota_self_update_smoke.sh
+
+# Verify deep_research post-release across locales.
+# Usage:
+#   make verify-deep-research-post-release [SERVER_URL=http://127.0.0.1:18080] \
+#     [TOKEN=jwt] [QUERY=OpenAI] [MODE=fast] [LOCALES=en-US,zh-CN] \
+#     [JOB_TIMEOUT_SEC=120] [POLL_INTERVAL_SEC=2] [MAX_CREATE_RETRIES=4] \
+#     [STOP_ON_FAIL=1] [OUTPUT_JSON=/tmp/deep-research-selfcheck.json]
+verify-deep-research-post-release:
+	@SERVER_URL="$(SERVER_URL)" \
+	TOKEN="$(TOKEN)" \
+	QUERY="$(QUERY)" \
+	MODE="$(MODE)" \
+	LOCALES="$(LOCALES)" \
+	JOB_TIMEOUT_SEC="$(JOB_TIMEOUT_SEC)" \
+	POLL_INTERVAL_SEC="$(POLL_INTERVAL_SEC)" \
+	MAX_CREATE_RETRIES="$(MAX_CREATE_RETRIES)" \
+	OUTPUT_JSON="$(OUTPUT_JSON)" \
+	./tools/verify_deep_research_post_release.sh $(if $(filter 1,$(STOP_ON_FAIL)),--stop-on-fail,)
+
+# CI-oriented quick smoke: only 3 locales for faster signal.
+# Usage:
+#   make verify-deep-research-smoke [SERVER_URL=...] [TOKEN=...] [QUERY=...]
+verify-deep-research-smoke:
+	@SERVER_URL="$(SERVER_URL)" \
+	TOKEN="$(TOKEN)" \
+	QUERY="$(QUERY)" \
+	MODE="$(MODE)" \
+	LOCALES="$(LOCALES)" \
+	JOB_TIMEOUT_SEC="$(JOB_TIMEOUT_SEC)" \
+	POLL_INTERVAL_SEC="$(POLL_INTERVAL_SEC)" \
+	MAX_CREATE_RETRIES="$(MAX_CREATE_RETRIES)" \
+	OUTPUT_JSON="$(OUTPUT_JSON)" \
+	./tools/verify_deep_research_smoke_ci.sh
 
 # Bump version: reads ../VERSION and patches all version strings across the project
 bump-version:

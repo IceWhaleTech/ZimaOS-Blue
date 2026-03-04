@@ -155,14 +155,19 @@ function primeApiMocks() {
   vi.mocked(settingsApi.get).mockResolvedValue({
     data: {
       small_model_enabled: true,
-      small_model_runtime: 'llama_cpp_native',
-      small_model_id: 'lfm2.5-1.2b-instruct-q4km',
-      small_model_shadow_ratio: 0.1,
-      small_model_shadow_gate_min_samples: 40,
-      small_model_shadow_gate_threshold_delta: 0.35,
-      small_model_shadow_gate_scene: '',
+      small_model_runtime: 'onnx_genai_python',
+      small_model_id: 'qwen3.5-0.8b-onnx-q4',
+      small_model_summary_enabled: true,
+      small_model_doc_extract_enabled: true,
+      small_model_route_short_qa_enabled: true,
+      small_model_route_tool_dispatch_enabled: true,
       no_llm_degrade_mode: 'deepresearch',
       small_model_unavailable_policy: 'ir_first',
+      small_model_context_prune_enabled: true,
+      smart_tool_selection: false,
+      small_model_media_intent_enabled: true,
+      offline_ir_fallback_enabled: true,
+      feature_intent_ir_enabled: true,
     },
   } as never)
   vi.mocked(settingsApi.patch).mockImplementation(async (payload: unknown) => ({ data: payload }) as never)
@@ -173,9 +178,9 @@ function primeApiMocks() {
     data: {
       ready: false,
       downloading: false,
-      model_id: 'lfm2.5-1.2b-instruct-q4km',
-      runtime: 'llama_cpp_native',
-      model_path: '/tmp/model.gguf',
+      model_id: 'qwen3.5-0.8b-onnx-q4',
+      runtime: 'onnx_genai_python',
+      model_path: '/tmp/model.onnx',
       state: 'idle',
     },
   } as never)
@@ -185,9 +190,10 @@ function primeApiMocks() {
       short_qa_route_success: 10,
       tool_dispatch_route_attempts: 6,
       tool_dispatch_route_success: 5,
-      short_qa_shadow_total: 8,
-      tool_dispatch_shadow_total: 4,
-      shadow_failures: 1,
+      summary_attempts: 4,
+      summary_success: 3,
+      doc_extract_attempts: 2,
+      doc_extract_success: 1,
       no_provider_deepresearch_total: 2,
       ir_takeover_total: 3,
       fallback_reasons: { timeout: 1 },
@@ -222,16 +228,21 @@ describe('SettingsView small-model controls', () => {
     primeApiMocks()
   })
 
-  it('triggers shadow ratio update, download, and stats reset on proxy tab', async () => {
+  it('triggers IR/capability toggles, download, and stats reset on proxy tab', async () => {
     routeTab = 'proxy'
     const pinia = createPinia()
     setActivePinia(pinia)
     const store = useSettingsStore()
 
-    const ratioSpy = vi.spyOn(store, 'setSmallModelShadowRatio').mockResolvedValue()
-    const gateSamplesSpy = vi.spyOn(store, 'setSmallModelShadowGateMinSamples').mockResolvedValue()
-    const gateThresholdSpy = vi.spyOn(store, 'setSmallModelShadowGateThresholdDelta').mockResolvedValue()
-    const gateSceneSpy = vi.spyOn(store, 'setSmallModelShadowGateScene').mockResolvedValue()
+    const contextPruneSpy = vi.spyOn(store, 'setSmallModelContextPruneEnabled').mockResolvedValue()
+    const mediaIntentSpy = vi.spyOn(store, 'setSmallModelMediaIntentEnabled').mockResolvedValue()
+    const smartToolSpy = vi.spyOn(store, 'setSmartToolSelection').mockResolvedValue()
+    const offlineIRFallbackSpy = vi.spyOn(store, 'setOfflineIRFallbackEnabled').mockResolvedValue()
+    const featureIntentIRSpy = vi.spyOn(store, 'setFeatureIntentIREnabled').mockResolvedValue()
+    const summarySpy = vi.spyOn(store, 'setSmallModelSummaryEnabled').mockResolvedValue()
+    const docExtractSpy = vi.spyOn(store, 'setSmallModelDocExtractEnabled').mockResolvedValue()
+    const shortQASpy = vi.spyOn(store, 'setSmallModelRouteShortQAEnabled').mockResolvedValue()
+    const toolDispatchSpy = vi.spyOn(store, 'setSmallModelRouteToolDispatchEnabled').mockResolvedValue()
     const downloadSpy = vi.spyOn(store, 'startSmallModelDownload').mockResolvedValue({} as never)
     const resetSpy = vi.spyOn(store, 'resetSmallModelStats').mockResolvedValue({} as never)
 
@@ -243,25 +254,52 @@ describe('SettingsView small-model controls', () => {
     })
     await flushPromises()
 
-    await wrapper.get('[data-testid="small-model-shadow-ratio-30"]').trigger('click')
-    await flushPromises()
-    expect(ratioSpy).toHaveBeenCalledWith(0.3)
+    expect(wrapper.find('[data-testid="small-model-context-prune-switch"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="smart-tool-selection-switch"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="small-model-rerank-switch"]').exists()).toBe(false)
 
-    await wrapper.get('[data-testid="small-model-shadow-gate-min-samples-80"]').trigger('click')
+    await wrapper.get('[data-testid="small-model-context-prune-switch"]').trigger('click')
     await flushPromises()
-    expect(gateSamplesSpy).toHaveBeenCalledWith(80)
+    expect(contextPruneSpy).toHaveBeenCalledWith(false)
 
-    await wrapper.get('[data-testid="small-model-shadow-gate-threshold-50"]').trigger('click')
+    await wrapper.get('[data-testid="small-model-media-intent-switch"]').trigger('click')
     await flushPromises()
-    expect(gateThresholdSpy).toHaveBeenCalledWith(0.5)
+    expect(mediaIntentSpy).toHaveBeenCalledWith(false)
 
-    await wrapper.get('[data-testid="small-model-shadow-gate-scene-tool_dispatch_shadow"]').trigger('click')
+    await wrapper.get('[data-testid="smart-tool-selection-switch"]').trigger('click')
     await flushPromises()
-    expect(gateSceneSpy).toHaveBeenCalledWith('tool_dispatch_shadow')
+    expect(smartToolSpy).toHaveBeenCalledWith(true)
+
+    await wrapper.get('[data-testid="offline-ir-fallback-switch"]').trigger('click')
+    await flushPromises()
+    expect(offlineIRFallbackSpy).toHaveBeenCalledWith(false)
+
+    await wrapper.get('[data-testid="feature-intent-ir-switch"]').trigger('click')
+    await flushPromises()
+    expect(featureIntentIRSpy).toHaveBeenCalledWith(false)
+
+    await wrapper.get('[data-testid="small-model-summary-switch"]').trigger('click')
+    await flushPromises()
+    expect(summarySpy).toHaveBeenCalledWith(false)
+
+    await wrapper.get('[data-testid="small-model-doc-extract-switch"]').trigger('click')
+    await flushPromises()
+    expect(docExtractSpy).toHaveBeenCalledWith(false)
+
+    await wrapper.get('[data-testid="small-model-short-qa-switch"]').trigger('click')
+    await flushPromises()
+    expect(shortQASpy).toHaveBeenCalledWith(false)
+
+    await wrapper.get('[data-testid="small-model-tool-dispatch-switch"]').trigger('click')
+    await flushPromises()
+    expect(toolDispatchSpy).toHaveBeenCalledWith(false)
 
     await wrapper.get('[data-testid="small-model-download"]').trigger('click')
     await flushPromises()
     expect(downloadSpy).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-testid="small-model-stats-toggle"]').trigger('click')
+    await flushPromises()
 
     await wrapper.get('[data-testid="small-model-stats-reset"]').trigger('click')
     await flushPromises()

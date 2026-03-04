@@ -15,6 +15,8 @@ interface BackupDisplay {
   size: number
   type: BackupType
   status: BackupStatus
+  isCheckpoint: boolean
+  checkpointReason?: string
   description?: string
 }
 
@@ -48,6 +50,8 @@ const newBackupName = ref('')
 
 function mapToDisplay(b: BackupInfo): BackupDisplay {
   const type = (b.type === 'full' || b.type === 'config' || b.type === 'data' ? b.type : 'full') as BackupType
+  const checkpointReason = b.checkpoint_reason || 'pre_restore'
+  const isCheckpoint = !!b.is_checkpoint
   return {
     id: b.id,
     name: b.id,
@@ -55,7 +59,9 @@ function mapToDisplay(b: BackupInfo): BackupDisplay {
     size: b.size_bytes ?? 0,
     type,
     status: 'completed' as BackupStatus,
-    description: undefined,
+    isCheckpoint,
+    checkpointReason,
+    description: isCheckpoint ? t('backup.checkpointDescription', { reason: checkpointReason }) : undefined,
   }
 }
 
@@ -225,6 +231,12 @@ function confirmDelete(backup: BackupDisplay) {
                 :class="getTypeColor(backup.type)"
               >
                 {{ t('backup.types.' + backup.type) }}
+              </span>
+              <span
+                v-if="backup.isCheckpoint"
+                class="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+              >
+                {{ t('backup.checkpoint') }}
               </span>
               <svg
                 xmlns="http://www.w3.org/2000/svg"

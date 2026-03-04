@@ -177,6 +177,33 @@ func buildChecklist(tasks []planTask) string {
 	return strings.Join(lines, "\n")
 }
 
+func summarizePlan(tasks []planTask) (completedCount, pendingCount int, allCompleted bool) {
+	if len(tasks) == 0 {
+		return 0, 0, true
+	}
+	for _, t := range tasks {
+		if t.Checked {
+			completedCount++
+		} else {
+			pendingCount++
+		}
+	}
+	return completedCount, pendingCount, pendingCount == 0
+}
+
+func buildPlanResult(scope, operation string, tasks []planTask) map[string]any {
+	completedCount, pendingCount, allCompleted := summarizePlan(tasks)
+	return map[string]any{
+		"scope":           scope,
+		"operation":       operation,
+		"task_count":      len(tasks),
+		"completed_count": completedCount,
+		"pending_count":   pendingCount,
+		"all_completed":   allCompleted,
+		"checklist":       buildChecklist(tasks),
+	}
+}
+
 func stringInput(input map[string]any, key string) string {
 	if v, ok := input[key]; ok && v != nil {
 		return fmt.Sprintf("%v", v)
@@ -267,12 +294,7 @@ func (p *PlanCreate) Execute(ctx context.Context, input map[string]any) (*skill.
 	}
 	globalPlanStore.plans[key] = &planState{Tasks: tasks}
 
-	return skill.NewResult(map[string]any{
-		"scope":      key,
-		"operation":  "create",
-		"task_count": len(tasks),
-		"checklist":  buildChecklist(tasks),
-	}), nil
+	return skill.NewResult(buildPlanResult(key, "create", tasks)), nil
 }
 
 type PlanUpdate struct {
@@ -336,12 +358,7 @@ func (p *PlanUpdate) Execute(ctx context.Context, input map[string]any) (*skill.
 		st.Tasks[idx].Title = newTitle
 	}
 
-	return skill.NewResult(map[string]any{
-		"scope":      key,
-		"operation":  "update",
-		"task_count": len(st.Tasks),
-		"checklist":  buildChecklist(st.Tasks),
-	}), nil
+	return skill.NewResult(buildPlanResult(key, "update", st.Tasks)), nil
 }
 
 type PlanAppend struct {
@@ -392,10 +409,5 @@ func (p *PlanAppend) Execute(ctx context.Context, input map[string]any) (*skill.
 	}
 
 	st.Tasks = append(st.Tasks, planTask{Title: task, Checked: false})
-	return skill.NewResult(map[string]any{
-		"scope":      key,
-		"operation":  "append",
-		"task_count": len(st.Tasks),
-		"checklist":  buildChecklist(st.Tasks),
-	}), nil
+	return skill.NewResult(buildPlanResult(key, "append", st.Tasks)), nil
 }

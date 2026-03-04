@@ -340,7 +340,7 @@ func stage0RuleRoute(query string) Decision {
 	if strings.Contains(lower, "ui") || strings.Contains(lower, "界面") || strings.Contains(lower, "review") || strings.Contains(lower, "评审") {
 		return selectSkill("ui_reviewer", "rule_ui")
 	}
-	if strings.Contains(lower, "research") || strings.Contains(lower, "调研") || strings.Contains(lower, "深入") {
+	if strings.Contains(lower, "research") || strings.Contains(lower, "调研") || strings.Contains(lower, "深入") || strings.Contains(lower, "查阅") || strings.Contains(lower, "不同时期") || strings.Contains(lower, "观点") {
 		return selectSkill("deep_research", "rule_research")
 	}
 	// Plan tools are no longer auto-routed by generic planning words.
@@ -381,7 +381,7 @@ func hasActionAlignment(query, skill string) bool {
 		"browser":       {"url", "网页", "open", "navigate"},
 		"ask":           {"ask", "询问", "确认", "clarify"},
 		"ui_reviewer":   {"ui", "界面", "review", "评审"},
-		"deep_research": {"research", "调研", "深入"},
+		"deep_research": {"research", "调研", "深入", "查阅", "观点", "不同时期"},
 	}
 	if kws, ok := pairs[s]; ok {
 		for _, kw := range kws {
@@ -410,7 +410,7 @@ func skillAliasKeywordHit(query, skillName string) int {
 		"ask":           {"ask", "clarify", "确认", "询问"},
 		"analyze":       {"analyze", "分析"},
 		"ui_reviewer":   {"ui", "review", "评审", "界面"},
-		"deep_research": {"deep", "research", "深入", "调研"},
+		"deep_research": {"deep", "research", "深入", "调研", "查阅", "观点", "timeline"},
 		"plan_create":   {"plan_create", "plan_update", "plan_append", "blue plan_", "计划工具", "plan tool"},
 		"mgmt":          {"admin", "管理", "settings", "providers"},
 	}

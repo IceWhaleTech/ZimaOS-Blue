@@ -20,6 +20,9 @@ func (p *HeuristicPlanner) Plan(query string, mode Mode, lang string) []Task {
 	if q == "" {
 		return nil
 	}
+	if looksLikePersonTimelineResearch(q, lang) {
+		return planPersonResearchTasks(q, mode, lang)
+	}
 
 	maxTasks := 3
 	if mode == ModeDeep {
@@ -38,6 +41,7 @@ func (p *HeuristicPlanner) Plan(query string, mode Mode, lang string) []Task {
 			Priority: i + 1,
 			Depth:    1,
 			Status:   "pending",
+			Category: "generic_research",
 		})
 	}
 	return tasks

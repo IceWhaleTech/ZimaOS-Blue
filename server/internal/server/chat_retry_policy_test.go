@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 )
 
@@ -82,6 +83,22 @@ func TestShouldSkipPreContentRetry(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "context canceled skips retry",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       `Post "[server]": context canceled`,
+			},
+			want: true,
+		},
+		{
+			name: "deadline exceeded skips retry",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       "upstream request failed: context deadline exceeded",
+			},
+			want: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -91,5 +108,175 @@ func TestShouldSkipPreContentRetry(t *testing.T) {
 				t.Fatalf("shouldSkipPreContentRetry() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestShouldDisableResponsesContinuationForPreContentRetry(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "non proxy error",
+			err:  errors.New("temporary issue"),
+			want: false,
+		},
+		{
+			name: "client 4xx does not disable continuation",
+			err: &proxybridge.ProxyError{
+				StatusCode: 400,
+				Body:       "bad request",
+			},
+			want: false,
+		},
+		{
+			name: "zero chunks disables continuation",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       "stream ended with zero chunks",
+			},
+			want: true,
+		},
+		{
+			name: "empty streaming response disables continuation",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       "provider x returned empty streaming response",
+			},
+			want: true,
+		},
+		{
+			name: "continuation marker disables continuation",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       "previous_response_id rejected by upstream",
+			},
+			want: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := shouldDisableResponsesContinuationForPreContentRetry(tc.err)
+			if got != tc.want {
+				t.Fatalf("shouldDisableResponsesContinuationForPreContentRetry() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMapStreamErrorCode(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		providerID string
+		want       string
+	}{
+		{
+			name: "proxy no provider",
+			err: &proxybridge.ProxyError{
+				StatusCode: 503,
+				Body:       "no available provider",
+			},
+			want: "provider_unavailable",
+		},
+		{
+			name: "proxy no response",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       "stream ended with zero chunks",
+			},
+			want: "PROVIDER_NO_RESPONSE",
+		},
+		{
+			name: "plain no response",
+			err:  errors.New("provider prov_x returned no response"),
+			want: "PROVIDER_NO_RESPONSE",
+		},
+		{
+			name: "plain no provider",
+			err:  errors.New("no available provider"),
+			want: "provider_unavailable",
+		},
+		{
+			name: "plain auth",
+			err:  errors.New("upstream status 401 unauthorized"),
+			want: "provider_auth_error",
+		},
+		{
+			name: "plain rate limit",
+			err:  errors.New("HTTP 429 too many requests"),
+			want: "provider_rate_limited",
+		},
+		{
+			name:       "trial provider generic",
+			err:        errors.New("temporary upstream failure"),
+			providerID: providerpool.TrialProviderID,
+			want:       "trial_service_busy",
+		},
+		{
+			name: "unknown fallback",
+			err:  errors.New("socket closed unexpectedly"),
+			want: "STREAM_ERROR",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := mapStreamErrorCode(tc.err, tc.providerID)
+			if got != tc.want {
+				t.Fatalf("mapStreamErrorCode() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsOpenRouterFreeModelPublicationError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  *proxybridge.ProxyError
+		want bool
+	}{
+		{
+			name: "matches openrouter privacy policy 404",
+			err: &proxybridge.ProxyError{
+				StatusCode: 404,
+				Body:       `provider returned 404: {"error":{"message":"No endpoints found matching your data policy (Free model publication). Configure: [server]","code":404}}`,
+			},
+			want: true,
+		},
+		{
+			name: "does not match generic 404",
+			err: &proxybridge.ProxyError{
+				StatusCode: 404,
+				Body:       `provider returned 404: {"error":{"message":"model not found","code":404}}`,
+			},
+			want: false,
+		},
+		{
+			name: "does not match nil error",
+			err:  nil,
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isOpenRouterFreeModelPublicationError(tc.err)
+			if got != tc.want {
+				t.Fatalf("isOpenRouterFreeModelPublicationError() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMapStreamErrorCode_OpenRouterFreeModelPublication(t *testing.T) {
+	err := &proxybridge.ProxyError{
+		StatusCode: 404,
+		Body:       `provider returned 404: {"error":{"message":"No endpoints found matching your data policy (Free model publication). Configure: [server]","code":404}}`,
+	}
+	if got := mapStreamErrorCode(err, ""); got != "provider_openrouter_privacy_policy" {
+		t.Fatalf("mapStreamErrorCode() = %q, want %q", got, "provider_openrouter_privacy_policy")
 	}
 }

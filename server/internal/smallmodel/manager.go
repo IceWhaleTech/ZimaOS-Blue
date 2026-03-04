@@ -12,10 +12,10 @@ import (
 
 const (
 	// Fixed model/runtime per product decision.
-	ModelID     = "lfm2.5-1.2b-instruct-q4km"
-	RuntimeType = "llama_cpp_native"
+	ModelID     = "qwen3.5-0.8b-onnx-q4"
+	RuntimeType = "onnx_genai_python"
 
-	modelFilename = "LFM2.5-1.2B-Instruct-Q4_K_M.gguf"
+	onnxRepo = "onnx-community/Qwen3.5-0.8B-ONNX"
 )
 
 // Fallback reason codes for observability.
@@ -75,7 +75,7 @@ func NewManager(dataDir string) *Manager {
 func (m *Manager) ModelDir() string { return m.modelDir }
 
 func (m *Manager) ModelPath() string {
-	return filepath.Join(m.modelDir, modelFilename)
+	return filepath.Join(m.modelDir, "onnx", "decoder_model_merged_q4.onnx")
 }
 
 func (m *Manager) IsReady() bool {
@@ -86,7 +86,7 @@ func (m *Manager) IsReady() bool {
 func (m *Manager) EnsureReady(ctx context.Context, allowDownload bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, err := os.Stat(m.ModelPath()); err == nil {
+	if m.filesReadyLocked() {
 		return nil
 	}
 	if !allowDownload {
@@ -105,7 +105,7 @@ func (m *Manager) downloadLocked(ctx context.Context) error {
 	if err := os.MkdirAll(m.modelDir, 0o755); err != nil {
 		return fmt.Errorf("create small model dir: %w", err)
 	}
-	if err := m.downloader.Download(ctx, []downloader.ModelFile{m.modelFile()}); err != nil {
+	if err := m.downloader.Download(ctx, requiredModelFiles()); err != nil {
 		return fmt.Errorf("download small model: %w", err)
 	}
 	return nil
@@ -116,8 +116,19 @@ func (m *Manager) CancelDownload() {
 }
 
 func (m *Manager) GetStatus() Status {
-	_, statErr := os.Stat(m.ModelPath())
-	downloaded := statErr == nil
+	files := requiredModelFiles()
+	allDownloaded := true
+	fileStatuses := make([]FileStatus, 0, len(files))
+	for _, f := range files {
+		_, statErr := os.Stat(filepath.Join(m.modelDir, f.Filename))
+		downloaded := statErr == nil
+		allDownloaded = allDownloaded && downloaded
+		fileStatuses = append(fileStatuses, FileStatus{
+			Filename:   f.Filename,
+			Downloaded: downloaded,
+			Size:       f.Size,
+		})
+	}
 	state, lastError := m.downloader.GetState()
 	downloading := m.downloader.IsDownloading()
 
@@ -136,7 +147,7 @@ func (m *Manager) GetStatus() Status {
 	}
 
 	return Status{
-		Ready:       downloaded && !downloading,
+		Ready:       allDownloaded && !downloading,
 		Downloading: downloading,
 		State:       state,
 		Error:       lastError,
@@ -144,24 +155,48 @@ func (m *Manager) GetStatus() Status {
 		Runtime:     RuntimeType,
 		ModelPath:   m.ModelPath(),
 		Progress:    progress,
-		Files: []FileStatus{
-			{
-				Filename:   modelFilename,
-				Downloaded: downloaded,
-				Size:       "~0.8GB",
-			},
-		},
+		Files:       fileStatuses,
 	}
 }
 
-func (m *Manager) modelFile() downloader.ModelFile {
+func (m *Manager) filesReadyLocked() bool {
+	for _, f := range requiredModelFiles() {
+		if _, err := os.Stat(filepath.Join(m.modelDir, f.Filename)); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func requiredModelFiles() []downloader.ModelFile {
+	root := []downloader.ModelFile{
+		modelFile("chat_template.jinja", "chat_template.jinja", "4.4KB"),
+		modelFile("config.json", "config.json", "2.8KB"),
+		modelFile("generation_config.json", "generation_config.json", "223B"),
+		modelFile("preprocessor_config.json", "preprocessor_config.json", "502B"),
+		modelFile("processor_config.json", "processor_config.json", "31.6KB"),
+		modelFile("tokenizer.json", "tokenizer.json", "6.66MB"),
+		modelFile("tokenizer_config.json", "tokenizer_config.json", "5.4KB"),
+	}
+	onnx := []downloader.ModelFile{
+		modelFile("onnx/decoder_model_merged_q4.onnx", "onnx/decoder_model_merged_q4.onnx", "856KB"),
+		modelFile("onnx/decoder_model_merged_q4.onnx_data", "onnx/decoder_model_merged_q4.onnx_data", "463MB"),
+		modelFile("onnx/embed_tokens_q4.onnx", "onnx/embed_tokens_q4.onnx", "857B"),
+		modelFile("onnx/embed_tokens_q4.onnx_data", "onnx/embed_tokens_q4.onnx_data", "155MB"),
+		modelFile("onnx/vision_encoder_q4.onnx", "onnx/vision_encoder_q4.onnx", "181KB"),
+		modelFile("onnx/vision_encoder_q4.onnx_data", "onnx/vision_encoder_q4.onnx_data", "65.1MB"),
+	}
+	return append(root, onnx...)
+}
+
+func modelFile(filename, repoPath, size string) downloader.ModelFile {
 	return downloader.ModelFile{
-		Filename: modelFilename,
-		URL:      "https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF/resolve/main/LFM2.5-1.2B-Instruct-Q4_K_M.gguf",
+		Filename: filename,
+		URL:      "https://huggingface.co/" + onnxRepo + "/resolve/main/" + repoPath,
 		Mirrors: []string{
-			"https://hf-mirror.com/LiquidAI/LFM2.5-1.2B-Instruct-GGUF/resolve/main/LFM2.5-1.2B-Instruct-Q4_K_M.gguf",
-			"https://modelscope.cn/models/LiquidAI/LFM2.5-1.2B-Instruct-GGUF/resolve/master/LFM2.5-1.2B-Instruct-Q4_K_M.gguf",
+			"https://hf-mirror.com/" + onnxRepo + "/resolve/main/" + repoPath,
+			"https://modelscope.cn/models/" + onnxRepo + "/resolve/master/" + repoPath,
 		},
-		Size: "~0.8GB",
+		Size: size,
 	}
 }

@@ -648,8 +648,6 @@ var pinnedSkills = []string{
 	"mgmt",
 	"mediagen",
 	"reminder",
-	"sandbox",
-	"workflows",
 	"scheduler",
 }
 

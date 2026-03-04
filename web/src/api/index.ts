@@ -53,6 +53,42 @@ export interface BackupInfo {
   size_bytes: number
   path: string
   type: string
+  created_by?: 'manual' | 'auto' | 'checkpoint'
+  is_checkpoint?: boolean
+  checkpoint_reason?: string
+}
+
+export interface PendingRestore {
+  backup_id: string
+  backup_path: string
+  staging_dir: string
+  created_at: string
+}
+
+export interface BackupRestoreResult {
+  success: boolean
+  files_restored: number
+  files_skipped: number
+  checkpoint_id?: string
+  checkpoint_at?: string
+  checkpoint_reason?: string
+  errors?: string[]
+}
+
+export interface BackupRestoreRequest {
+  force?: boolean
+  require_restart?: boolean
+  create_checkpoint?: boolean
+  auto_restart?: boolean
+}
+
+export interface BackupRestoreResponse {
+  success: boolean
+  message: string
+  requires_restart?: boolean
+  restarting?: boolean
+  pending_restore?: PendingRestore | null
+  result?: BackupRestoreResult
 }
 
 export interface RuntimeStats {
@@ -103,7 +139,7 @@ export interface BackupProgress {
 export const backupApi = {
   list: () => api.get<BackupInfo[]>('/backup'),
   create: () => api.post<BackupInfo>('/backup', {}, { timeout: 0 }), // No timeout for backup
-  restore: (id: string) => api.post<{ success: boolean; message: string }>(`/backup/${id}/restore`, {}, { timeout: 0 }), // No timeout for restore
+  restore: (id: string, req: BackupRestoreRequest = {}) => api.post<BackupRestoreResponse>(`/backup/${id}/restore`, req, { timeout: 0 }), // No timeout for restore
   delete: (id: string) => api.delete<{ success: boolean }>(`/backup/${id}`),
   getProgress: () => api.get<BackupProgress>('/backup/progress'),
 }

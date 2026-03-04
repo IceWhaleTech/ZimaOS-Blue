@@ -19,6 +19,8 @@ export interface SSEClientOptions {
   onTodoUpdated?: (messageId: string, content: string) => void
   /** Called when a mid-stream injection is detected — the server will restart the stream. */
   onInjection?: (userMessage: string) => void
+  /** Called when backend emits upstream stream progress metadata. */
+  onStreamProgress?: (progress: string) => void
   /** Called when the stream was interrupted mid-content by a network error.
    *  The store should auto-recover (fetch persisted content + continue). */
   onNetworkInterrupt?: () => void
@@ -171,7 +173,11 @@ export class SSEClient {
         }
 
         const streamIdFromHeader = response.headers?.get?.('X-Stream-ID')?.trim()
+        let currentStreamId = ''
+        let allowStreamIdSwitch = false
+        let lastSeq = 0
         if (streamIdFromHeader) {
+          currentStreamId = streamIdFromHeader
           options.onStreamId?.(streamIdFromHeader)
         }
 
@@ -222,8 +228,36 @@ export class SSEClient {
 
               try {
                 const chunk: StreamChunk = JSON.parse(data)
-                if (chunk.stream_id) {
-                  options.onStreamId?.(chunk.stream_id)
+                const chunkStreamId = chunk.stream_id?.trim() || ''
+                if (chunk.injection) {
+                  // Server may restart stream with a new stream_id after injection.
+                  // Allow exactly one stream_id switch after this marker.
+                  allowStreamIdSwitch = true
+                }
+                if (chunkStreamId) {
+                  if (!currentStreamId) {
+                    currentStreamId = chunkStreamId
+                    options.onStreamId?.(chunkStreamId)
+                  } else if (chunkStreamId !== currentStreamId) {
+                    if (allowStreamIdSwitch) {
+                      console.info('[SSE] stream_id switched after injection:', currentStreamId, '->', chunkStreamId)
+                      currentStreamId = chunkStreamId
+                      allowStreamIdSwitch = false
+                      lastSeq = 0
+                      options.onStreamId?.(chunkStreamId)
+                    } else {
+                      // Ignore stale/interleaved chunks from a different stream id.
+                      console.warn('[SSE] stale chunk ignored due stream_id mismatch:', chunkStreamId, 'expected:', currentStreamId)
+                      continue
+                    }
+                  }
+                }
+                if (typeof chunk.seq === 'number' && Number.isFinite(chunk.seq)) {
+                  if (chunk.seq <= lastSeq) {
+                    console.warn('[SSE] stale chunk ignored due seq mismatch:', chunk.seq, 'last:', lastSeq)
+                    continue
+                  }
+                  lastSeq = chunk.seq
                 }
                 // Normalize missing fields to defaults
                 if (chunk.delta === undefined || chunk.delta === null) chunk.delta = ''
@@ -286,6 +320,10 @@ export class SSEClient {
                 if (chunk.todo_updated && chunk.message_id && chunk.content !== undefined) {
                   console.info('[SSE] todo_updated event, msg:', chunk.message_id)
                   options.onTodoUpdated?.(chunk.message_id, chunk.content)
+                  continue
+                }
+                if (chunk.stream_progress) {
+                  options.onStreamProgress?.(chunk.stream_progress)
                   continue
                 }
                 // Mark that we received actual content

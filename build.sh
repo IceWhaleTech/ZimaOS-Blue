@@ -9,8 +9,9 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 COMMAND="${1:-prd}"
 
-# Disable CGO for FFI mode
-export CGO_ENABLED=0
+# Enable CGO by default for production-capable builds.
+# Allow explicit override from environment when needed.
+export CGO_ENABLED="${CGO_ENABLED:-1}"
 
 # Add Python user bin to PATH for edge-tts
 export PATH="$PATH:$HOME/Library/Python/3.9/bin:$HOME/.local/bin"

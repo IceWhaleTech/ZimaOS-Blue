@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
@@ -129,6 +130,7 @@ type bridgeResponsesEvent struct {
 	Type       string                     `json:"type"`
 	ResponseID string                     `json:"response_id,omitempty"`
 	Delta      string                     `json:"delta,omitempty"`
+	Arguments  string                     `json:"arguments,omitempty"`
 	Item       *bridgeResponsesOutputItem `json:"item,omitempty"`
 	Response   *bridgeResponsesResponse   `json:"response,omitempty"`
 	Error      *struct {
@@ -179,6 +181,16 @@ type bridgeResponsesFunctionCallOutput struct {
 	CallID string `json:"call_id,omitempty"`
 	Output string `json:"output,omitempty"`
 }
+
+const (
+	maxResponsesRequestBytes            = 28 * 1024
+	maxResponsesInputTextBytes          = 1024
+	maxResponsesFunctionArgsBytes       = 768
+	maxResponsesFunctionOutputBytes     = 3072
+	maxResponsesFunctionOutputTight     = 1024
+	maxResponsesFunctionOutputEmergency = 384
+	maxResponsesContinuationOutputsKeep = 2
+)
 
 // MarshalChatRequest converts llm.ChatRequest to OpenAI-format JSON bytes.
 func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
@@ -389,7 +401,7 @@ func MarshalResponsesRequest(req llm.ChatRequest) ([]byte, error) {
 		}
 	}
 
-	return json.Marshal(out)
+	return marshalResponsesRequestWithSizeGuard(out)
 }
 
 func trimMessagesForResponsesContinuation(messages []llm.Message) []llm.Message {
@@ -404,12 +416,197 @@ func trimMessagesForResponsesContinuation(messages []llm.Message) []llm.Message 
 		}
 	}
 	if lastAssistant >= 0 {
+		// With previous_response_id, assistant tool_calls are already tracked by
+		// the prior response. Re-sending that assistant message is redundant and
+		// can massively inflate request bodies after large tool outputs.
+		if len(messages[lastAssistant].ToolCalls) > 0 {
+			if lastAssistant+1 >= len(messages) {
+				return nil
+			}
+			return messages[lastAssistant+1:]
+		}
 		if lastAssistant+1 >= len(messages) {
 			return nil
 		}
 		return messages[lastAssistant:]
 	}
 	return messages[len(messages)-1:]
+}
+
+func marshalResponsesRequestWithSizeGuard(out bridgeResponsesRequest) ([]byte, error) {
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		return nil, err
+	}
+	if len(encoded) <= maxResponsesRequestBytes || len(out.Input) == 0 {
+		return encoded, nil
+	}
+
+	working := out
+	working.Input = compactResponsesInputForSize(working.Input, maxResponsesInputTextBytes, maxResponsesFunctionArgsBytes, maxResponsesFunctionOutputBytes)
+	encoded, err = json.Marshal(working)
+	if err != nil {
+		return nil, err
+	}
+	if len(encoded) <= maxResponsesRequestBytes {
+		slog.Warn("[bridge] responses payload compacted for size",
+			"bytes", len(encoded),
+			"strategy", "truncate_input")
+		return encoded, nil
+	}
+
+	if strings.TrimSpace(out.PreviousResponseID) != "" {
+		working.Input = keepLatestResponsesContinuationInput(working.Input, maxResponsesContinuationOutputsKeep)
+		working.Input = compactResponsesInputForSize(working.Input, maxResponsesInputTextBytes, maxResponsesFunctionArgsBytes, maxResponsesFunctionOutputTight)
+		encoded, err = json.Marshal(working)
+		if err != nil {
+			return nil, err
+		}
+		if len(encoded) <= maxResponsesRequestBytes {
+			slog.Warn("[bridge] responses payload compacted for size",
+				"bytes", len(encoded),
+				"strategy", "keep_latest_continuation")
+			return encoded, nil
+		}
+
+		working.Input = keepLatestResponsesContinuationInput(working.Input, 1)
+		working.Input = compactResponsesInputForSize(working.Input, 320, 320, maxResponsesFunctionOutputEmergency)
+		encoded, err = json.Marshal(working)
+		if err != nil {
+			return nil, err
+		}
+		if len(encoded) <= maxResponsesRequestBytes {
+			slog.Warn("[bridge] responses payload compacted for size",
+				"bytes", len(encoded),
+				"strategy", "emergency_continuation")
+			return encoded, nil
+		}
+	}
+
+	working.Tools = stripResponsesToolDescriptions(working.Tools)
+	encoded, err = json.Marshal(working)
+	if err != nil {
+		return nil, err
+	}
+	if len(encoded) > maxResponsesRequestBytes {
+		slog.Warn("[bridge] responses payload still large after compaction",
+			"bytes", len(encoded),
+			"limit", maxResponsesRequestBytes)
+	}
+	return encoded, nil
+}
+
+func compactResponsesInputForSize(input []interface{}, textCap, argsCap, outputCap int) []interface{} {
+	if len(input) == 0 {
+		return input
+	}
+	out := make([]interface{}, 0, len(input))
+	for _, item := range input {
+		switch v := item.(type) {
+		case bridgeResponsesInputMessage:
+			parts := make([]bridgeResponsesContentPart, 0, len(v.Content))
+			for _, p := range v.Content {
+				np := p
+				if np.Type == "input_text" {
+					np.Text = truncateUTF8Bytes(np.Text, textCap)
+				}
+				parts = append(parts, np)
+			}
+			v.Content = parts
+			out = append(out, v)
+		case bridgeResponsesFunctionCall:
+			v.Arguments = truncateUTF8Bytes(v.Arguments, argsCap)
+			out = append(out, v)
+		case bridgeResponsesFunctionCallOutput:
+			v.Output = truncateUTF8Bytes(v.Output, outputCap)
+			out = append(out, v)
+		default:
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func keepLatestResponsesContinuationInput(input []interface{}, maxOutputs int) []interface{} {
+	if len(input) == 0 {
+		return input
+	}
+	if maxOutputs < 1 {
+		maxOutputs = 1
+	}
+
+	outputIdx := make([]int, 0, len(input))
+	lastMsgIdx := -1
+	for i, item := range input {
+		switch item.(type) {
+		case bridgeResponsesFunctionCallOutput:
+			outputIdx = append(outputIdx, i)
+		case bridgeResponsesInputMessage:
+			lastMsgIdx = i
+		}
+	}
+
+	keep := map[int]struct{}{}
+	if lastMsgIdx >= 0 {
+		keep[lastMsgIdx] = struct{}{}
+	}
+	start := len(outputIdx) - maxOutputs
+	if start < 0 {
+		start = 0
+	}
+	for _, idx := range outputIdx[start:] {
+		keep[idx] = struct{}{}
+	}
+
+	if len(keep) == 0 {
+		return []interface{}{input[len(input)-1]}
+	}
+
+	out := make([]interface{}, 0, len(keep))
+	for i, item := range input {
+		if _, ok := keep[i]; ok {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func stripResponsesToolDescriptions(tools []bridgeResponsesTool) []bridgeResponsesTool {
+	if len(tools) == 0 {
+		return tools
+	}
+	out := make([]bridgeResponsesTool, 0, len(tools))
+	for _, t := range tools {
+		t.Description = ""
+		out = append(out, t)
+	}
+	return out
+}
+
+func truncateUTF8Bytes(s string, maxBytes int) string {
+	if maxBytes <= 0 || len(s) <= maxBytes {
+		return s
+	}
+	const suffix = "\n[truncated]"
+	if maxBytes <= len(suffix) {
+		return suffix[:maxBytes]
+	}
+	budget := maxBytes - len(suffix)
+	cut := 0
+	for _, r := range s {
+		size := utf8.RuneLen(r)
+		if size <= 0 {
+			size = 1
+		}
+		if cut+size > budget {
+			break
+		}
+		cut += size
+	}
+	if cut <= 0 {
+		return suffix[:maxBytes]
+	}
+	return s[:cut] + suffix
 }
 
 func extractResponsesInstructions(messages []llm.Message) (string, []llm.Message) {
@@ -508,6 +705,22 @@ func ParseSSEChunk(dataPayload string) (llm.StreamChunk, bool, error) {
 	var resp bridgeResponse
 	if err := json.Unmarshal([]byte(dataPayload), &resp); err != nil {
 		return llm.StreamChunk{}, false, err
+	}
+	if resp.Error != nil {
+		msg := strings.TrimSpace(resp.Error.Message)
+		if msg == "" {
+			if typ := strings.TrimSpace(resp.Error.Type); typ != "" {
+				msg = "upstream error: type=" + typ
+			} else {
+				msg = "upstream error"
+			}
+		}
+		return llm.StreamChunk{
+			ID:    resp.ID,
+			Model: resp.Model,
+			Done:  true,
+			Error: msg,
+		}, true, nil
 	}
 
 	chunk := llm.StreamChunk{
@@ -636,6 +849,41 @@ func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, er
 	case "response.output_text.delta":
 		chunk.Delta = event.Delta
 		return chunk, false, true, nil
+	case "response.output_item.added":
+		if event.Item != nil && event.Item.Type == "function_call" {
+			callID := event.Item.CallID
+			if callID == "" {
+				callID = event.Item.ID
+			}
+			chunk.ToolCalls = []llm.ToolCall{
+				{
+					ID:        callID,
+					Name:      event.Item.Name,
+					Arguments: rawToString(event.Item.Arguments),
+				},
+			}
+			return chunk, false, true, nil
+		}
+		chunk.Progress = event.Type
+		return chunk, false, true, nil
+	case "response.function_call_arguments.delta":
+		if event.Delta != "" {
+			chunk.ToolCalls = []llm.ToolCall{{Arguments: event.Delta}}
+			return chunk, false, true, nil
+		}
+		chunk.Progress = event.Type
+		return chunk, false, true, nil
+	case "response.function_call_arguments.done":
+		args := strings.TrimSpace(event.Arguments)
+		if args == "" && event.Item != nil {
+			args = rawToString(event.Item.Arguments)
+		}
+		if args != "" {
+			chunk.ToolCalls = []llm.ToolCall{{Arguments: args}}
+			return chunk, false, true, nil
+		}
+		chunk.Progress = event.Type
+		return chunk, false, true, nil
 	case "response.output_item.done":
 		if event.Item != nil && event.Item.Type == "function_call" {
 			callID := event.Item.CallID
@@ -651,11 +899,13 @@ func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, er
 			}
 			return chunk, false, true, nil
 		}
-		return llm.StreamChunk{}, false, true, nil
+		chunk.Progress = event.Type
+		return chunk, false, true, nil
 	case "response.completed":
 		chunk.Done = true
 		if event.Response != nil {
 			chunk.Delta = extractResponsesOutputText(event.Response.Output)
+			chunk.ToolCalls = extractResponsesOutputToolCalls(event.Response.Output)
 			u := event.Response.Usage
 			if u.InputTokens > 0 || u.OutputTokens > 0 || u.TotalTokens > 0 {
 				chunk.Usage = &llm.Usage{
@@ -680,8 +930,10 @@ func parseResponsesSSEChunk(dataPayload string) (llm.StreamChunk, bool, bool, er
 		}
 		return chunk, true, true, nil
 	default:
-		// Other Responses events are metadata/noise for our bridge and can be ignored.
-		return llm.StreamChunk{}, false, true, nil
+		// Preserve metadata events as progress so downstream can surface status and
+		// avoid misclassifying metadata-only streams as "zero chunks".
+		chunk.Progress = event.Type
+		return chunk, false, true, nil
 	}
 }
 
@@ -701,6 +953,31 @@ func extractResponsesOutputText(output []bridgeResponsesOutputItem) string {
 		}
 	}
 	return content.String()
+}
+
+func extractResponsesOutputToolCalls(output []bridgeResponsesOutputItem) []llm.ToolCall {
+	if len(output) == 0 {
+		return nil
+	}
+	out := make([]llm.ToolCall, 0, 2)
+	for _, item := range output {
+		if item.Type != "function_call" {
+			continue
+		}
+		callID := item.CallID
+		if callID == "" {
+			callID = item.ID
+		}
+		if callID == "" || item.Name == "" {
+			continue
+		}
+		out = append(out, llm.ToolCall{
+			ID:        callID,
+			Name:      item.Name,
+			Arguments: rawToString(item.Arguments),
+		})
+	}
+	return out
 }
 
 // toRawJSON converts a string to json.RawMessage.

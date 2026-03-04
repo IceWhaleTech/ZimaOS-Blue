@@ -1,3 +1,8 @@
+---
+name: email
+description: Send read and manage email via built in SMTP and IMAP actions with optional gog Gmail workflow.
+---
+
 # Email
 
 Send, read, and manage emails via SMTP/IMAP.

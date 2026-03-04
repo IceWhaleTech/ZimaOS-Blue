@@ -348,12 +348,12 @@ func TestHeaderCaseInsensitive(t *testing.T) {
 		Name:     "header-test",
 		Priority: 10,
 		Condition: RouteCondition{
-			Header: "X-Model-Tier", HeaderValue: "economy",
+			Header: "X-Model-Tier", HeaderValue: "small",
 		},
 		TargetModel: "haiku",
 		Origin:      OriginCloud,
 	}
-	req := &RouteRequest{Headers: http.Header{"X-Model-Tier": {"ECONOMY"}}}
+	req := &RouteRequest{Headers: http.Header{"X-Model-Tier": {"SMALL"}}}
 	if !rule.Evaluate(req).Matched {
 		t.Fatal("header value match should be case-insensitive")
 	}
@@ -383,19 +383,19 @@ func TestToolPatternEmptyToolNames(t *testing.T) {
 
 func TestTierFieldPropagated(t *testing.T) {
 	rule := RoutingRule{
-		Name:     "economy-route",
+		Name:     "small-route",
 		Priority: 10,
 		Condition: RouteCondition{
-			Header: "X-Model-Tier", HeaderValue: "economy",
+			Header: "X-Model-Tier", HeaderValue: "small",
 		},
 		TargetModel: "haiku",
 		Origin:      OriginCloud,
-		Tier:        TierEconomy,
+		Tier:        TierSmall,
 	}
-	req := &RouteRequest{Headers: http.Header{"X-Model-Tier": {"economy"}}}
+	req := &RouteRequest{Headers: http.Header{"X-Model-Tier": {"small"}}}
 	d := rule.Evaluate(req)
-	if d.Tier != TierEconomy {
-		t.Errorf("expected tier economy, got %s", d.Tier)
+	if d.Tier != TierSmall {
+		t.Errorf("expected tier small, got %s", d.Tier)
 	}
 }
 

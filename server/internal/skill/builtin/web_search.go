@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
@@ -50,6 +51,12 @@ func NewWebSearch() *WebSearch {
 					Description: "Search region (e.g. us-en, wt-wt)",
 					Required:    false,
 				},
+				{
+					Name:        "format",
+					Type:        "string",
+					Description: "Output format: xml (default) or json",
+					Required:    false,
+				},
 			},
 		},
 	}
@@ -68,7 +75,40 @@ func (w *WebSearch) Validate(input map[string]any) error {
 	if s, ok := q.(string); !ok || s == "" {
 		return fmt.Errorf("query must be a non-empty string")
 	}
+	if rawFormat, ok := input["format"]; ok {
+		format, ok := rawFormat.(string)
+		if !ok {
+			return fmt.Errorf("format must be a string")
+		}
+		normalized, err := normalizeWebSearchSkillFormat(format)
+		if err != nil {
+			return err
+		}
+		if normalized == "" {
+			delete(input, "format")
+		} else {
+			input["format"] = normalized
+		}
+	}
 	return nil
+}
+
+func normalizeWebSearchSkillFormat(raw string) (string, error) {
+	format := strings.ToLower(strings.TrimSpace(raw))
+	format = strings.Trim(format, ",.;:!?")
+	if idx := strings.Index(format, ";"); idx >= 0 {
+		format = strings.TrimSpace(format[:idx])
+	}
+	switch format {
+	case "", "json", "xml":
+		return format, nil
+	case "md", "markdown", "text", "txt", "plain", "plaintext", "human", "jsonl", "application/json":
+		return "json", nil
+	case "application/xml", "text/xml":
+		return "xml", nil
+	default:
+		return "", fmt.Errorf("format must be one of: json, xml")
+	}
 }
 
 func (w *WebSearch) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {
@@ -86,17 +126,33 @@ func (w *WebSearch) Execute(ctx context.Context, input map[string]any) (*skill.R
 		return skill.NewErrorResult(err), nil
 	}
 
-	// WebSearchTool returns a JSON string of WebSearchResponse.
-	jsonStr, ok := result.(string)
+	// WebSearchTool returns a JSON or XML string based on format.
+	rawResult, ok := result.(string)
 	if !ok {
 		return skill.NewErrorResult(fmt.Errorf("unexpected result type")), nil
+	}
+	requestedFormat := "xml"
+	if v, ok := input["format"].(string); ok {
+		trimmed, err := normalizeWebSearchSkillFormat(v)
+		if err == nil && trimmed != "" {
+			requestedFormat = trimmed
+		}
+	}
+	if requestedFormat == "xml" {
+		return &skill.Result{
+			Success: true,
+			Data: map[string]any{
+				"format": "xml",
+				"result": rawResult,
+			},
+		}, nil
 	}
 
 	// Parse the JSON so we can emit a structured "search" card via _card hint.
 	// The frontend CardSearch.vue expects {query, results[], totalCount, provider}.
 	var parsed struct {
-		Query      string `json:"query"`
-		Results    []struct {
+		Query   string `json:"query"`
+		Results []struct {
 			Title       string `json:"title"`
 			URL         string `json:"url"`
 			Description string `json:"description"`
@@ -105,11 +161,11 @@ func (w *WebSearch) Execute(ctx context.Context, input map[string]any) (*skill.R
 		TotalCount int    `json:"total_count"`
 		Provider   string `json:"provider"`
 	}
-	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
+	if err := json.Unmarshal([]byte(rawResult), &parsed); err != nil {
 		// Fallback: return raw JSON
 		return &skill.Result{
 			Success: true,
-			Data:    map[string]any{"results": jsonStr},
+			Data:    map[string]any{"results": rawResult},
 		}, nil
 	}
 

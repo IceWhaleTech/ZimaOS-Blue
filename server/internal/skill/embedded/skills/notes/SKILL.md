@@ -1,3 +1,8 @@
+---
+name: notes
+description: Create read update search and delete notes with optional Apple Notes integration via memo.
+---
+
 # Notes
 
 Create, read, update, search, and delete notes with tags.

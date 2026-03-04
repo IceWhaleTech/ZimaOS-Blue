@@ -10,7 +10,7 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-const responsesMaxOutputTokensCap = 1024
+const responsesMaxOutputTokensCap = 8192
 
 // openAIChatRequestForResponses captures the subset of OpenAI chat-completions
 // fields we need to map into the Responses API.

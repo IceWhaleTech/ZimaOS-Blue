@@ -1,3 +1,5 @@
+//go:build cgo
+
 package memory
 
 import (
@@ -602,4 +604,3 @@ func escapeFTS5Query(query string) string {
 	}
 	return strings.Join(parts, " OR ")
 }
-

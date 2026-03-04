@@ -1,3 +1,8 @@
+---
+name: datetime
+description: Get current date time timezone information and perform time formatting or conversion.
+---
+
 # DateTime
 
 Get current date, time, timezone information, and format dates.

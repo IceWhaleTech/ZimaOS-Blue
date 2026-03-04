@@ -145,6 +145,7 @@ func NewDetector(config *DetectorConfig) *Detector {
 func (d *Detector) initPatterns() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.patterns = make(map[string][]*compiledPattern)
 
 	// Role injection patterns
 	if d.config.EnableRoleInjection {

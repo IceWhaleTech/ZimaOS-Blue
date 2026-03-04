@@ -63,12 +63,24 @@ func (m *deepResearchExecMock) Execute(_ context.Context, args map[string]interf
 type smallModelRuntimeMock struct {
 	respText string
 	err      error
+	ready    *bool
 	calls    int
 	calledCh chan struct{}
+	lastReq  smallmodel.GenerateRequest
 }
 
 type staticToolMock struct {
-	def tools.ToolDefinition
+	def    tools.ToolDefinition
+	result interface{}
+	err    error
+}
+
+type webSearchToolMock struct {
+	result interface{}
+	err    error
+	calls  int
+	last   map[string]interface{}
+	mu     sync.Mutex
 }
 
 func (m *staticToolMock) Definition() tools.ToolDefinition {
@@ -76,13 +88,48 @@ func (m *staticToolMock) Definition() tools.ToolDefinition {
 }
 
 func (m *staticToolMock) Execute(context.Context, map[string]interface{}) (interface{}, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.result != nil {
+		return m.result, nil
+	}
 	return map[string]interface{}{"ok": true}, nil
 }
 
-func (m *smallModelRuntimeMock) Ready() bool { return true }
+func (m *webSearchToolMock) Definition() tools.ToolDefinition {
+	return tools.ToolDefinition{
+		Name: "web_search",
+	}
+}
 
-func (m *smallModelRuntimeMock) Generate(_ context.Context, _ smallmodel.GenerateRequest) (*smallmodel.GenerateResponse, error) {
+func (m *webSearchToolMock) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	m.mu.Lock()
 	m.calls++
+	m.last = make(map[string]interface{}, len(args))
+	for k, v := range args {
+		m.last[k] = v
+	}
+	m.mu.Unlock()
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.result != nil {
+		return m.result, nil
+	}
+	return map[string]interface{}{}, nil
+}
+
+func (m *smallModelRuntimeMock) Ready() bool {
+	if m.ready == nil {
+		return true
+	}
+	return *m.ready
+}
+
+func (m *smallModelRuntimeMock) Generate(_ context.Context, req smallmodel.GenerateRequest) (*smallmodel.GenerateResponse, error) {
+	m.calls++
+	m.lastReq = req
 	if m.calledCh != nil {
 		select {
 		case m.calledCh <- struct{}{}:
@@ -289,6 +336,25 @@ func TestDeriveContinuationContext_AffirmativeWithDefaultPlan(t *testing.T) {
 	}
 }
 
+func TestDeriveContinuationContext_AffirmativeWithSoftConsentOffer(t *testing.T) {
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "帮我查 OpenClaw 最近动态"},
+		{
+			Role:    llm.RoleAssistant,
+			Content: "为了避免误导，我建议只看高可信来源。如果你同意，我下一步会按这个范围整理（1-2分钟）：\n1) 官方公告\n2) 主流科技媒体",
+		},
+		{Role: llm.RoleUser, Content: "继续"},
+	}
+
+	cc := deriveContinuationContext("继续", msgs)
+	if strings.TrimSpace(cc.Hint) == "" {
+		t.Fatal("expected continuation hint for short affirmative reply after soft consent offer")
+	}
+	if cc.ToolQuery != "帮我查 OpenClaw 最近动态" {
+		t.Fatalf("unexpected tool query: %q", cc.ToolQuery)
+	}
+}
+
 func TestDeriveContinuationContext_DoesNotForceWhenAwaitingWithoutDefault(t *testing.T) {
 	msgs := []llm.Message{
 		{Role: llm.RoleUser, Content: "查天气"},
@@ -309,6 +375,13 @@ func TestIsAffirmativeContinuationMessage(t *testing.T) {
 		"ok":        true,
 		"sure":      true,
 		"请继续执行":     true,
+		"sí":        true,
+		"continue":  true,
+		"ja":        true,
+		"sim":       true,
+		"да":        true,
+		"はい":        true,
+		"계속":        true,
 		"我想换个主题聊电影": false,
 	}
 	for input, want := range cases {
@@ -838,8 +911,11 @@ func TestChatHandlerSendMessageAutoContinue_PseudoToolCallCommandWorkdirJSON(t *
 		t.Fatalf("expected second request to include continuation messages, got %d", len(secondReq.Messages))
 	}
 	last := secondReq.Messages[len(secondReq.Messages)-1]
-	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "fake tool-call text") {
-		t.Fatalf("expected pseudo-tool nudge in second request, got role=%s content=%q", last.Role, last.Content)
+	if last.Role != llm.RoleUser || !(strings.Contains(last.Content, "Now actually execute by calling available tools") || strings.Contains(last.Content, "A canonical TODO checklist already exists")) {
+		t.Fatalf("expected generic execution nudge in second request, got role=%s content=%q", last.Role, last.Content)
+	}
+	if strings.Contains(last.Content, "fake tool-call text") {
+		t.Fatalf("expected pseudo-specific fake-tool wording removed from continuation prompt, got content=%q", last.Content)
 	}
 
 	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
@@ -853,6 +929,247 @@ func TestChatHandlerSendMessageAutoContinue_PseudoToolCallCommandWorkdirJSON(t *
 		if strings.Contains(m.Content, `{"command":"blue reminder.add`) || strings.Contains(m.Content, "Let's do that exactly") {
 			t.Fatalf("expected malformed pseudo tool-call text to be discarded from stored assistant message, got=%q", m.Content)
 		}
+	}
+}
+
+func TestChatHandlerSendMessageAutoContinue_TracksPlanStateAcrossToolAndToollessRounds(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Plan State Non-Stream Auto Continue")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "plan-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_plan_create_1",
+							Name:      "plan_create",
+							Arguments: `{"tasks":["实现2048网页游戏","本地运行并输出localhost地址"]}`,
+						},
+					},
+				},
+				Usage: llm.Usage{PromptTokens: 80, CompletionTokens: 20, TotalTokens: 100},
+			},
+			{
+				ID:    "plan-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "第一步已完成，我继续执行下一步并补充验证。",
+				},
+				Usage: llm.Usage{PromptTokens: 110, CompletionTokens: 30, TotalTokens: 140},
+			},
+			{
+				ID:    "plan-round-3",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已完成，游戏可直接运行，地址：http://localhost:3000",
+				},
+				Usage: llm.Usage{PromptTokens: 130, CompletionTokens: 35, TotalTokens: 165},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{
+		def: tools.ToolDefinition{
+			Name:        "plan_create",
+			Description: "plan create mock",
+		},
+		result: map[string]interface{}{
+			"operation":       "create",
+			"task_count":      2,
+			"completed_count": 0,
+			"pending_count":   2,
+			"all_completed":   false,
+			"checklist":       "- [ ] 实现2048网页游戏\n- [ ] 本地运行并输出localhost地址",
+		},
+	})
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	e := echo.New()
+	reqBody := `{"message":"帮我做完2048并给localhost地址","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM rounds (tool + toolless progress + completion), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	sawTodoProgress := false
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "<tp>") && strings.Contains(msg.Content, "Remaining:") {
+			sawTodoProgress = true
+			break
+		}
+	}
+	if !sawTodoProgress {
+		t.Fatalf("expected second request to include TODO progress context, got messages=%d", len(secondReq.Messages))
+	}
+
+	thirdReq, ok := scripted.RequestAt(2)
+	if !ok {
+		t.Fatalf("missing third request capture")
+	}
+	last := thirdReq.Messages[len(thirdReq.Messages)-1]
+	if last.Role != llm.RoleUser || !(strings.Contains(last.Content, "Now actually execute by calling available tools") || strings.Contains(last.Content, "A canonical TODO checklist already exists")) {
+		t.Fatalf("expected non-stream pending_todo continuation nudge in third request, got role=%s content=%q", last.Role, last.Content)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "http://localhost:3000") {
+		t.Fatalf("expected final completion content with localhost address, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_DeepSearchGuardForcesSecondSearchRound(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Deep Search Guard Non-Stream")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "deep-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_search_1",
+							Name:      "web_search",
+							Arguments: `{"query":"OpenClaw latest release notes"}`,
+						},
+					},
+				},
+				Usage: llm.Usage{PromptTokens: 90, CompletionTokens: 20, TotalTokens: 110},
+			},
+			{
+				ID:    "deep-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "先给你初步结论：OpenClaw 最近有更新。",
+				},
+				Usage: llm.Usage{PromptTokens: 120, CompletionTokens: 28, TotalTokens: 148},
+			},
+			{
+				ID:    "deep-round-3",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_search_2",
+							Name:      "web_search",
+							Arguments: `{"query":"OpenClaw changelog migration guide"}`,
+						},
+					},
+				},
+				Usage: llm.Usage{PromptTokens: 140, CompletionTokens: 24, TotalTokens: 164},
+			},
+			{
+				ID:    "deep-round-4",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "执行摘要：OpenClaw 近期版本更新集中在工具链与文档。\n关键发现：发布说明与文档更新一致。\n风险与不确定性：社区二手信息存在时效偏差。\n来源：https://github.com/openclaw/openclaw/releases",
+				},
+				Usage: llm.Usage{PromptTokens: 170, CompletionTokens: 48, TotalTokens: 218},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&webSearchToolMock{
+		result: map[string]interface{}{
+			"query": "OpenClaw latest release notes",
+			"results": []map[string]interface{}{
+				{
+					"title":       "OpenClaw Releases",
+					"url":         "https://github.com/openclaw/openclaw/releases",
+					"description": "official release notes",
+				},
+			},
+		},
+	})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"请深度搜索 OpenClaw 最新新闻并给我完整报告附来源","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 4 {
+		t.Fatalf("expected 4 LLM rounds (search + premature summary + forced search + final report), got %d", scripted.CallCount())
+	}
+
+	thirdReq, ok := scripted.RequestAt(2)
+	if !ok {
+		t.Fatalf("missing third request capture")
+	}
+	if len(thirdReq.Messages) < 2 {
+		t.Fatalf("expected third request to include continuation nudge, got %d messages", len(thirdReq.Messages))
+	}
+	last := thirdReq.Messages[len(thirdReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "Deep-search guard: do not finalize yet") {
+		t.Fatalf("expected deep-search guard nudge in third request, got role=%s content=%q", last.Role, last.Content)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "执行摘要") || !strings.Contains(content, "来源：") {
+		t.Fatalf("expected final report content, got %q", content)
 	}
 }
 
@@ -1045,6 +1362,136 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToDeepResearch(t *testing.T) 
 	}
 }
 
+func TestChatHandlerSendMessage_NoProviderFallsBackToDeepResearchWithV2Fields(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Fallback Conv V2")
+	registry := llm.NewProviderRegistry() // intentionally empty
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	execMock := &deepResearchExecMock{
+		result: map[string]interface{}{
+			"answer": "按时间线整理后的研究结论。",
+			"citations": []map[string]interface{}{
+				{"title": "蓝驰创投采访", "url": "https://example.com/a"},
+			},
+			"citation_coverage": 0.93,
+			"entity_disambiguation": map[string]interface{}{
+				"enabled":        true,
+				"threshold":      0.72,
+				"filtered_count": 2,
+			},
+			"timeline_sections": []map[string]interface{}{
+				{"label": "2023-2024", "summary": "中期观点"},
+				{"label": "2025-至今", "summary": "近期观点"},
+			},
+			"stage_errors": []string{"query retry exhausted: xxx"},
+		},
+	}
+	handler.deepResearchExec = execMock
+
+	e := echo.New()
+	reqBody := `{"message":"调研蓝驰付强观点演变","provider":"","model":""}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	content, _ := resp["content"].(string)
+	for _, token := range []string{
+		"citation_coverage",
+		"entity_disambiguation",
+		"timeline_sections",
+		"stage_errors",
+		"https://example.com/a",
+	} {
+		if !strings.Contains(content, token) {
+			t.Fatalf("content missing %q: %s", token, content)
+		}
+	}
+}
+
+func TestApplyDeepResearchPreference_NilKeepsTool(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "deep_research"},
+		{Name: "deep-research"},
+	}
+	got := applyDeepResearchPreference(defs, nil)
+	if len(got) != len(defs) {
+		t.Fatalf("got %d defs, want %d", len(got), len(defs))
+	}
+}
+
+func TestApplyDeepResearchPreference_FalseRemovesTool(t *testing.T) {
+	disabled := false
+	defs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "deep_research"},
+		{Name: "deep-research"},
+	}
+	got := applyDeepResearchPreference(defs, &disabled)
+	if len(got) != 1 {
+		t.Fatalf("got %d defs, want 1", len(got))
+	}
+	if got[0].Name != "web_search" {
+		t.Fatalf("got first tool %q, want web_search", got[0].Name)
+	}
+}
+
+func TestLocalizedSourcesLabelForLang_CoversAllSupportedLocales(t *testing.T) {
+	cases := []struct {
+		lang string
+		want string
+	}{
+		{lang: "en-US", want: "Sources"},
+		{lang: "en-GB", want: "Sources"},
+		{lang: "zh-CN", want: "来源"},
+		{lang: "zh-TW", want: "來源"},
+		{lang: "ja-JP", want: "情報源"},
+		{lang: "ko-KR", want: "출처"},
+		{lang: "de-DE", want: "Quellen"},
+		{lang: "fr-FR", want: "Sources"},
+		{lang: "es-ES", want: "Fuentes"},
+		{lang: "it-IT", want: "Fonti"},
+		{lang: "pt-BR", want: "Fontes"},
+		{lang: "pt-PT", want: "Fontes"},
+		{lang: "ru-RU", want: "Источники"},
+		{lang: "pl-PL", want: "Źródła"},
+		{lang: "nl-NL", want: "Bronnen"},
+		{lang: "sv-SE", want: "Källor"},
+		{lang: "da-DK", want: "Kilder"},
+		{lang: "nb-NO", want: "Kilder"},
+		{lang: "cs-CZ", want: "Zdroje"},
+		{lang: "sk-SK", want: "Zdroje"},
+		{lang: "hu-HU", want: "Források"},
+		{lang: "ro-RO", want: "Surse"},
+		{lang: "hr-HR", want: "Izvori"},
+		{lang: "el-GR", want: "Πηγές"},
+		{lang: "ca-ES", want: "Fonts"},
+		{lang: "ga-IE", want: "Foinsí"},
+		{lang: "ml-IN", want: "ഉറവിടങ്ങൾ"},
+	}
+	for _, tc := range cases {
+		if got := localizedSourcesLabelForLang(tc.lang); got != tc.want {
+			t.Fatalf("localizedSourcesLabelForLang(%q)=%q, want %q", tc.lang, got, tc.want)
+		}
+	}
+}
+
 func TestChatHandlerSendMessage_NoProviderFallsBackToIROnlyWhenDeepResearchUnavailable(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -1085,6 +1532,84 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToIROnlyWhenDeepResearchUnava
 	stats := handler.smallModelStats.Snapshot()
 	if stats.FallbackReasons[fallbackReasonDeepResearchUnavailable] != 1 {
 		t.Fatalf("fallback reason %q = %d, want 1", fallbackReasonDeepResearchUnavailable, stats.FallbackReasons[fallbackReasonDeepResearchUnavailable])
+	}
+}
+
+func TestChatHandlerSendMessage_NoProviderFallsBackToWebSearchTool(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Web search fallback Conv")
+	registry := llm.NewProviderRegistry() // intentionally empty
+	toolRegistry := tools.NewRegistry()
+	webSearchMock := &webSearchToolMock{
+		result: map[string]interface{}{
+			"query":       "zimaos release notes",
+			"provider":    "mock",
+			"total_count": 2,
+			"results": []map[string]interface{}{
+				{"title": "ZimaOS Release Notes", "url": "https://example.com/release", "description": "release summary"},
+				{"title": "ZimaOS Docs", "url": "https://example.com/docs", "description": "documentation"},
+			},
+		},
+	}
+	toolRegistry.Register(webSearchMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"zimaos release notes","provider":"","model":""}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["provider"]; got != "web_search" {
+		t.Fatalf("provider = %v, want web_search", got)
+	}
+	if got := resp["model"]; got != "web-search-fallback" {
+		t.Fatalf("model = %v, want web-search-fallback", got)
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, `Web search fallback results for "zimaos release notes":`) {
+		t.Fatalf("content = %q, want web-search fallback summary", content)
+	}
+	if !strings.Contains(content, "ZimaOS Release Notes") {
+		t.Fatalf("content = %q, want result title", content)
+	}
+	if !strings.Contains(content, "```typeless") {
+		t.Fatalf("content = %q, want typeless card block", content)
+	}
+	if !strings.Contains(content, `"type":"search"`) {
+		t.Fatalf("content = %q, want search typeless card", content)
+	}
+
+	webSearchMock.mu.Lock()
+	calls := webSearchMock.calls
+	query, _ := webSearchMock.last["query"].(string)
+	format, _ := webSearchMock.last["format"].(string)
+	webSearchMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_search calls = %d, want 1", calls)
+	}
+	if query != "zimaos release notes" {
+		t.Fatalf("web_search query = %q, want zimaos release notes", query)
+	}
+	if format != "json" {
+		t.Fatalf("web_search format = %q, want json", format)
 	}
 }
 
@@ -1189,6 +1714,127 @@ func TestChatHandlerSendMessage_ShortQARoutesToSmallModel(t *testing.T) {
 	}
 	if got := resp["content"]; got != "small model answer" {
 		t.Fatalf("content = %v, want small model answer", got)
+	}
+}
+
+func TestChatHandlerSendMessage_ShortQAWithImageAttachmentRoutesToSmallModel(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Short QA Image")
+	registry := llm.NewProviderRegistry()
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{respText: "image small model answer"}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{
+		"message":"这张图里有什么？",
+		"provider":"",
+		"model":"",
+		"attachments":[
+			{
+				"type":"image",
+				"name":"a.png",
+				"mime_type":"image/png",
+				"data":"aGVsbG8="
+			}
+		]
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if sm.calls == 0 {
+		t.Fatal("expected small model runtime to be called")
+	}
+	if len(sm.lastReq.Images) != 1 {
+		t.Fatalf("small model images = %d, want 1", len(sm.lastReq.Images))
+	}
+	if sm.lastReq.Images[0].MimeType != "image/png" {
+		t.Fatalf("image mime_type = %q, want image/png", sm.lastReq.Images[0].MimeType)
+	}
+	if sm.lastReq.Images[0].Data != "aGVsbG8=" {
+		t.Fatalf("image data mismatch")
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["provider"]; got != "smallmodel" {
+		t.Fatalf("provider = %v, want smallmodel", got)
+	}
+	if got := resp["content"]; got != "image small model answer" {
+		t.Fatalf("content = %v, want image small model answer", got)
+	}
+}
+
+func TestChatHandlerSendMessage_ShortQANotReadySkipsSmallModelRoute(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Short QA Not Ready")
+	registry := llm.NewProviderRegistry()
+	mockProvider := llm.NewMockProvider()
+	mockProvider.SetResponse(llm.ChatResponse{
+		ID:      "resp-shortqa-not-ready",
+		Model:   "mock-model",
+		Message: llm.Message{Role: llm.RoleAssistant, Content: "llm fallback answer"},
+	})
+	registry.Register(mockProvider)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	handler.SetSettingsHandler(settings)
+	ready := false
+	sm := &smallModelRuntimeMock{ready: &ready, respText: "should not be used"}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{"message":"timeline?","provider":"","model":"mock-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0 when runtime is not ready", sm.calls)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["content"]; got != "llm fallback answer" {
+		t.Fatalf("content = %v, want llm fallback answer", got)
 	}
 }
 
@@ -1500,8 +2146,10 @@ func TestChatHandlerSendMessage_ToolDispatchRoutesToSmallModel(t *testing.T) {
 	handler := NewChatHandler(store, registry, toolRegistry)
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
 	enabled := true
+	shortQAEnabled := false
 	toolDispatchEnabled := true
 	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
 	settings.settings.SmallModelRouteToolDispatchEnabled = &toolDispatchEnabled
 	handler.SetSettingsHandler(settings)
 	handler.SetSmallModelRuntime(&smallModelRuntimeMock{respText: "beta_tool"})
@@ -1535,6 +2183,61 @@ func TestChatHandlerSendMessage_ToolDispatchRoutesToSmallModel(t *testing.T) {
 	}
 }
 
+func TestChatHandlerSendMessage_ToolDispatchNotReadySkipsSmallModelRoute(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Tool Dispatch Not Ready")
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "alpha_tool", Description: "alpha"}})
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "beta_tool", Description: "beta"}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := false
+	toolDispatchEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	settings.settings.SmallModelRouteToolDispatchEnabled = &toolDispatchEnabled
+	handler.SetSettingsHandler(settings)
+	ready := false
+	sm := &smallModelRuntimeMock{ready: &ready, respText: "beta_tool"}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{"message":"请帮我处理这个任务","provider":"capture","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0 when runtime is not ready", sm.calls)
+	}
+
+	lastReq := capture.LastRequest()
+	if got := len(lastReq.Tools); got != 2 {
+		t.Fatalf("tool count = %d, want 2", got)
+	}
+	stats := handler.smallModelStats.Snapshot()
+	if stats.ToolDispatchRouteAttempts != 0 || stats.ToolDispatchRouteSuccess != 0 {
+		t.Fatalf("unexpected tool dispatch stats when runtime not ready: %+v", stats)
+	}
+}
+
 func TestChatHandlerSendMessage_ToolDispatchInvalidChoiceFallsBackToDefaultTools(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -1551,8 +2254,10 @@ func TestChatHandlerSendMessage_ToolDispatchInvalidChoiceFallsBackToDefaultTools
 	handler := NewChatHandler(store, registry, toolRegistry)
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
 	enabled := true
+	shortQAEnabled := false
 	toolDispatchEnabled := true
 	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
 	settings.settings.SmallModelRouteToolDispatchEnabled = &toolDispatchEnabled
 	handler.SetSettingsHandler(settings)
 	handler.SetSmallModelRuntime(&smallModelRuntimeMock{respText: "unknown_tool"})
@@ -1602,8 +2307,10 @@ func TestChatHandlerStreamMessage_ToolDispatchRoutesToSmallModel(t *testing.T) {
 	handler := NewChatHandler(store, registry, toolRegistry)
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
 	enabled := true
+	shortQAEnabled := false
 	toolDispatchEnabled := true
 	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
 	settings.settings.SmallModelRouteToolDispatchEnabled = &toolDispatchEnabled
 	handler.SetSettingsHandler(settings)
 	handler.SetSmallModelRuntime(&smallModelRuntimeMock{respText: "alpha_tool"})
@@ -1730,6 +2437,33 @@ func TestMaybeAutoRollbackSummaryRoute_DisablesRouteOnHighFailureRate(t *testing
 	}
 }
 
+func TestGenerateConversationSummaryWithSmallModel_NotReadySkipsRuntimeCall(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	summaryEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	handler.SetSettingsHandler(settings)
+	ready := false
+	sm := &smallModelRuntimeMock{ready: &ready, respText: "summary should not be used"}
+	handler.SetSmallModelRuntime(sm)
+
+	summary := handler.generateConversationSummaryWithSmallModel(context.Background(), []llm.Message{
+		{Role: llm.RoleUser, Content: "hello"},
+		{Role: llm.RoleAssistant, Content: "world"},
+	})
+	if summary != "" {
+		t.Fatalf("summary = %q, want empty when runtime is not ready", summary)
+	}
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0 when runtime is not ready", sm.calls)
+	}
+}
+
 func TestMaybeAutoRollbackSummaryRoute_UsesWindowedFailureRate(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -1763,28 +2497,6 @@ func TestMaybeAutoRollbackSummaryRoute_UsesWindowedFailureRate(t *testing.T) {
 	}
 }
 
-func TestRunSmallModelShadow_RecordsQualityDeltaAndPersistsSample(t *testing.T) {
-	store, _ := memory.NewStore(":memory:")
-	defer store.Close()
-
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
-	handler.SetSmallModelRuntime(&smallModelRuntimeMock{respText: "beta_tool"})
-	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 16))
-
-	handler.runSmallModelShadow(context.Background(), "tool_dispatch_shadow", "pick tool", 32, 0.2, "alpha_tool")
-
-	stats := handler.smallModelStats.Snapshot()
-	if stats.ShadowQualitySamples != 1 {
-		t.Fatalf("ShadowQualitySamples = %d, want 1", stats.ShadowQualitySamples)
-	}
-	if stats.ShadowQualityDelta != 1 {
-		t.Fatalf("ShadowQualityDelta = %v, want 1", stats.ShadowQualityDelta)
-	}
-	if len(handler.shadowQualityStore.Snapshot()) != 1 {
-		t.Fatalf("persisted shadow samples = %d, want 1", len(handler.shadowQualityStore.Snapshot()))
-	}
-}
-
 func TestChatHandlerShouldDisableProxyPruner(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -1812,98 +2524,6 @@ func TestChatHandlerShouldDisableProxyPruner(t *testing.T) {
 	}
 }
 
-func TestChatHandlerSendMessage_ShortQAShadowDoesNotAffectMainPath(t *testing.T) {
-	store, _ := memory.NewStore(":memory:")
-	defer store.Close()
-
-	conv, _ := store.CreateConversation(context.Background(), "Short QA Shadow")
-	registry := llm.NewProviderRegistry()
-	mockProvider := llm.NewMockProvider()
-	mockProvider.SetResponse(llm.ChatResponse{
-		ID:      "resp-shadow",
-		Model:   "mock-model",
-		Message: llm.Message{Role: llm.RoleAssistant, Content: "main path answer"},
-	})
-	registry.Register(mockProvider)
-
-	handler := NewChatHandler(store, registry, tools.NewRegistry())
-	settings := NewSettingsHandler(kvstore.NewMemoryStore())
-	enabled := true
-	shortQAEnabled := false // shadow only
-	shadowRatio := 1.0
-	settings.settings.SmallModelEnabled = &enabled
-	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
-	settings.settings.SmallModelShadowRatio = &shadowRatio
-	handler.SetSettingsHandler(settings)
-	sm := &smallModelRuntimeMock{
-		respText: "shadow answer",
-		calledCh: make(chan struct{}, 1),
-	}
-	handler.SetSmallModelRuntime(sm)
-
-	e := echo.New()
-	reqBody := `{"message":"这是一个短问题吗？","provider":"","model":"mock-model"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues(conv.ID)
-
-	if err := handler.SendMessage(c); err != nil {
-		t.Fatalf("SendMessage failed: %v", err)
-	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
-	}
-	var resp map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if got := resp["content"]; got != "main path answer" {
-		t.Fatalf("content = %v, want main path answer", got)
-	}
-	select {
-	case <-sm.calledCh:
-		// expected: shadow executed
-	case <-time.After(2 * time.Second):
-		t.Fatal("expected shadow inference call")
-	}
-}
-
-func TestShouldRunSmallModelShadow_RatioOneAlwaysTrue(t *testing.T) {
-	store, _ := memory.NewStore(":memory:")
-	defer store.Close()
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
-	settings := NewSettingsHandler(kvstore.NewMemoryStore())
-	ratio := 1.0
-	settings.settings.SmallModelShadowRatio = &ratio
-	handler.SetSettingsHandler(settings)
-
-	if !handler.shouldRunSmallModelShadow("shadow-key-1") {
-		t.Fatal("expected shadow sampling to pass when ratio=1")
-	}
-	if !handler.shouldRunSmallModelShadow("shadow-key-2") {
-		t.Fatal("expected shadow sampling to pass when ratio=1")
-	}
-}
-
-func TestShouldRunSmallModelShadow_DeterministicForSameKey(t *testing.T) {
-	store, _ := memory.NewStore(":memory:")
-	defer store.Close()
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
-	settings := NewSettingsHandler(kvstore.NewMemoryStore())
-	ratio := 0.1
-	settings.settings.SmallModelShadowRatio = &ratio
-	handler.SetSettingsHandler(settings)
-
-	got1 := handler.shouldRunSmallModelShadow("short_qa_shadow|conv-a|你好")
-	got2 := handler.shouldRunSmallModelShadow("short_qa_shadow|conv-a|你好")
-	if got1 != got2 {
-		t.Fatalf("expected deterministic shadow sampling, got %v then %v", got1, got2)
-	}
-}
-
 func TestSmallModelStatsHandlers(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -1911,13 +2531,11 @@ func TestSmallModelStatsHandlers(t *testing.T) {
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	handler.smallModelStats.RecordShortQARoute(true)
 	handler.smallModelStats.RecordToolDispatchRoute(true)
-	handler.smallModelStats.RecordShadow("short_qa_shadow", true)
 	handler.smallModelStats.RecordFallback(fallbackReasonDeepResearchUnavailable)
 	handler.smallModelStats.RecordFallback("timeout")
 	handler.smallModelStats.RecordLatencyWithScene("short_qa", 10*time.Millisecond)
 	handler.smallModelStats.RecordLatencyWithScene("tool_dispatch", 30*time.Millisecond)
 	handler.smallModelStats.RecordLatencyWithScene("summary", 20*time.Millisecond)
-	handler.smallModelStats.RecordShadowQualityDelta(0.5)
 	handler.smallModelStats.RecordAutoRollback()
 	handler.smallModelStats.RecordIRTakeover()
 
@@ -1969,12 +2587,6 @@ func TestSmallModelStatsHandlers(t *testing.T) {
 	if got := payload["summary_latency_ms"]; got != float64(20) {
 		t.Fatalf("summary_latency_ms = %v, want 20", got)
 	}
-	if got := payload["shadow_quality_delta"]; got != float64(0.5) {
-		t.Fatalf("shadow_quality_delta = %v, want 0.5", got)
-	}
-	if got := payload["shadow_quality_samples"]; got != float64(1) {
-		t.Fatalf("shadow_quality_samples = %v, want 1", got)
-	}
 
 	resetReq := httptest.NewRequest(http.MethodPost, "/api/v1/small-model/stats/reset", nil)
 	resetRec := httptest.NewRecorder()
@@ -2019,292 +2631,6 @@ func TestSmallModelStatsHandlers(t *testing.T) {
 	}
 	if got := payload2["short_qa_latency_samples"]; got != float64(0) {
 		t.Fatalf("short_qa_latency_samples = %v, want 0", got)
-	}
-}
-
-func TestSmallModelShadowQualityHandlers(t *testing.T) {
-	store, _ := memory.NewStore(":memory:")
-	defer store.Close()
-
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
-	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 32))
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{
-		Scene:        "short_qa_shadow",
-		Delta:        0.2,
-		MainDigest:   "main answer A",
-		ShadowDigest: "shadow answer A",
-		CreatedAt:    time.Now().UTC(),
-	})
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{
-		Scene:        "tool_dispatch_shadow",
-		Delta:        1.0,
-		MainDigest:   "alpha_tool",
-		ShadowDigest: "beta_tool",
-		CreatedAt:    time.Now().UTC(),
-	})
-
-	e := echo.New()
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/small-model/shadow-quality?scene=tool_dispatch_shadow&limit=1", nil)
-	rec := httptest.NewRecorder()
-	ctx := e.NewContext(req, rec)
-	if err := handler.SmallModelShadowQualityHandler(ctx); err != nil {
-		t.Fatalf("SmallModelShadowQualityHandler failed: %v", err)
-	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	var payload map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode payload: %v", err)
-	}
-	if got := payload["total"]; got != float64(1) {
-		t.Fatalf("total = %v, want 1", got)
-	}
-	if got := payload["average_delta"]; got != float64(1) {
-		t.Fatalf("average_delta = %v, want 1", got)
-	}
-	samples, ok := payload["samples"].([]interface{})
-	if !ok || len(samples) != 1 {
-		t.Fatalf("samples = %T/%v, want one sample", payload["samples"], payload["samples"])
-	}
-	sample, ok := samples[0].(map[string]interface{})
-	if !ok {
-		t.Fatalf("sample type = %T, want object", samples[0])
-	}
-	if got := sample["scene"]; got != "tool_dispatch_shadow" {
-		t.Fatalf("scene = %v, want tool_dispatch_shadow", got)
-	}
-
-	resetReq := httptest.NewRequest(http.MethodPost, "/api/v1/small-model/shadow-quality/reset", nil)
-	resetRec := httptest.NewRecorder()
-	resetCtx := e.NewContext(resetReq, resetRec)
-	if err := handler.ResetSmallModelShadowQualityHandler(resetCtx); err != nil {
-		t.Fatalf("ResetSmallModelShadowQualityHandler failed: %v", err)
-	}
-	if resetRec.Code != http.StatusOK {
-		t.Fatalf("reset status = %d, want 200", resetRec.Code)
-	}
-	if got := len(handler.shadowQualityStore.Snapshot()); got != 0 {
-		t.Fatalf("samples after reset = %d, want 0", got)
-	}
-}
-
-func TestSmallModelShadowQualityGateEvalHandler(t *testing.T) {
-	store, _ := memory.NewStore(":memory:")
-	defer store.Close()
-
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
-	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 64))
-	now := time.Now().UTC()
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.2, CreatedAt: now})
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.3, CreatedAt: now.Add(time.Second)})
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "tool_dispatch_shadow", Delta: 0.9, CreatedAt: now.Add(2 * time.Second)})
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "tool_dispatch_shadow", Delta: 1.0, CreatedAt: now.Add(3 * time.Second)})
-
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/small-model/shadow-quality/gate-eval?min_samples=2&threshold_delta=0.4", nil)
-	rec := httptest.NewRecorder()
-	ctx := e.NewContext(req, rec)
-	if err := handler.SmallModelShadowQualityGateEvalHandler(ctx); err != nil {
-		t.Fatalf("SmallModelShadowQualityGateEvalHandler failed: %v", err)
-	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode payload: %v", err)
-	}
-	if got := payload["overall_pass"]; got != false {
-		t.Fatalf("overall_pass = %v, want false", got)
-	}
-	if got := payload["evaluated_samples"]; got != float64(4) {
-		t.Fatalf("evaluated_samples = %v, want 4", got)
-	}
-	scenes, ok := payload["scenes"].([]interface{})
-	if !ok || len(scenes) != 2 {
-		t.Fatalf("scenes = %T/%v, want 2 scenes", payload["scenes"], payload["scenes"])
-	}
-	foundFail := false
-	for _, row := range scenes {
-		scene, ok := row.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if scene["scene"] == "tool_dispatch_shadow" {
-			foundFail = true
-			if scene["pass"] != false {
-				t.Fatalf("tool_dispatch pass = %v, want false", scene["pass"])
-			}
-			if scene["reason"] != "delta_exceeds_threshold" {
-				t.Fatalf("tool_dispatch reason = %v, want delta_exceeds_threshold", scene["reason"])
-			}
-		}
-	}
-	if !foundFail {
-		t.Fatal("expected tool_dispatch_shadow result in scenes")
-	}
-}
-
-func TestSmallModelShadowQualityGateEvalHandler_UsesSettingsDefaults(t *testing.T) {
-	store, _ := memory.NewStore(":memory:")
-	defer store.Close()
-
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
-	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 64))
-	settings := NewSettingsHandler(kvstore.NewMemoryStore())
-	_, _ = settings.SetSmallModelShadowGateMinSamples(2)
-	_, _ = settings.SetSmallModelShadowGateThresholdDelta(0.2)
-	handler.SetSettingsHandler(settings)
-
-	now := time.Now().UTC()
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.25, CreatedAt: now})
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.25, CreatedAt: now.Add(time.Second)})
-
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/small-model/shadow-quality/gate-eval", nil)
-	rec := httptest.NewRecorder()
-	ctx := e.NewContext(req, rec)
-	if err := handler.SmallModelShadowQualityGateEvalHandler(ctx); err != nil {
-		t.Fatalf("SmallModelShadowQualityGateEvalHandler failed: %v", err)
-	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode payload: %v", err)
-	}
-	if got := payload["threshold_delta"]; got != 0.2 {
-		t.Fatalf("threshold_delta = %v, want 0.2", got)
-	}
-	if got := payload["min_samples"]; got != float64(2) {
-		t.Fatalf("min_samples = %v, want 2", got)
-	}
-	if got := payload["overall_pass"]; got != false {
-		t.Fatalf("overall_pass = %v, want false", got)
-	}
-}
-
-func TestSmallModelShadowQualityGateEvalHandler_UsesSettingsDefaultScene(t *testing.T) {
-	store, _ := memory.NewStore(":memory:")
-	defer store.Close()
-
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
-	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 64))
-	settings := NewSettingsHandler(kvstore.NewMemoryStore())
-	_, _ = settings.SetSmallModelShadowGateMinSamples(2)
-	_, _ = settings.SetSmallModelShadowGateThresholdDelta(0.4)
-	_, _ = settings.SetSmallModelShadowGateScene("tool_dispatch_shadow")
-	handler.SetSettingsHandler(settings)
-
-	now := time.Now().UTC()
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.1, CreatedAt: now})
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "tool_dispatch_shadow", Delta: 0.2, CreatedAt: now.Add(time.Second)})
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "tool_dispatch_shadow", Delta: 0.3, CreatedAt: now.Add(2 * time.Second)})
-
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/small-model/shadow-quality/gate-eval", nil)
-	rec := httptest.NewRecorder()
-	ctx := e.NewContext(req, rec)
-	if err := handler.SmallModelShadowQualityGateEvalHandler(ctx); err != nil {
-		t.Fatalf("SmallModelShadowQualityGateEvalHandler failed: %v", err)
-	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode payload: %v", err)
-	}
-	if got := payload["scene_filter"]; got != "tool_dispatch_shadow" {
-		t.Fatalf("scene_filter = %v, want tool_dispatch_shadow", got)
-	}
-	if got := payload["evaluated_samples"]; got != float64(2) {
-		t.Fatalf("evaluated_samples = %v, want 2", got)
-	}
-}
-
-func TestSmallModelShadowAutoRolloutExecuteHandler(t *testing.T) {
-	store, _ := memory.NewStore(":memory:")
-	defer store.Close()
-
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
-	handler.SetShadowQualityStore(NewShadowQualityStore(kvstore.NewMemoryStore(), 64))
-	settings := NewSettingsHandler(kvstore.NewMemoryStore())
-	_, _ = settings.SetSmallModelShadowRatio(0.1)
-	_, _ = settings.SetSmallModelShadowGateMinSamples(2)
-	_, _ = settings.SetSmallModelShadowGateThresholdDelta(0.4)
-	_, _ = settings.SetSmallModelShadowGateScene("short_qa_shadow")
-	handler.SetSettingsHandler(settings)
-
-	now := time.Now().UTC()
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.2, CreatedAt: now})
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "short_qa_shadow", Delta: 0.3, CreatedAt: now.Add(time.Second)})
-	_ = handler.shadowQualityStore.Append(ShadowQualitySample{Scene: "tool_dispatch_shadow", Delta: 1.0, CreatedAt: now.Add(2 * time.Second)})
-
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/small-model/shadow-quality/auto-rollout/execute", nil)
-	rec := httptest.NewRecorder()
-	ctx := e.NewContext(req, rec)
-	if err := handler.SmallModelShadowAutoRolloutExecuteHandler(ctx); err != nil {
-		t.Fatalf("SmallModelShadowAutoRolloutExecuteHandler failed: %v", err)
-	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode payload: %v", err)
-	}
-	if got := payload["advanced"]; got != true {
-		t.Fatalf("advanced = %v, want true", got)
-	}
-	if got := payload["current_ratio"]; got != 0.1 {
-		t.Fatalf("current_ratio = %v, want 0.1", got)
-	}
-	if got := payload["next_ratio"]; got != 0.3 {
-		t.Fatalf("next_ratio = %v, want 0.3", got)
-	}
-	if got := settings.GetSmallModelShadowRatio(); got != 0.3 {
-		t.Fatalf("persisted ratio = %v, want 0.3", got)
-	}
-
-	gateEval, ok := payload["gate_eval"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("gate_eval type = %T, want object", payload["gate_eval"])
-	}
-	if got := gateEval["overall_pass"]; got != true {
-		t.Fatalf("gate_eval.overall_pass = %v, want true", got)
-	}
-
-	_, _ = settings.SetSmallModelShadowGateThresholdDelta(0.1)
-	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/small-model/shadow-quality/auto-rollout/execute", nil)
-	rec2 := httptest.NewRecorder()
-	ctx2 := e.NewContext(req2, rec2)
-	if err := handler.SmallModelShadowAutoRolloutExecuteHandler(ctx2); err != nil {
-		t.Fatalf("SmallModelShadowAutoRolloutExecuteHandler second call failed: %v", err)
-	}
-	if rec2.Code != http.StatusOK {
-		t.Fatalf("second status = %d, want 200", rec2.Code)
-	}
-	var payload2 map[string]interface{}
-	if err := json.Unmarshal(rec2.Body.Bytes(), &payload2); err != nil {
-		t.Fatalf("decode second payload: %v", err)
-	}
-	if got := payload2["advanced"]; got != false {
-		t.Fatalf("second advanced = %v, want false", got)
-	}
-	if got := payload2["reason"]; got != "gate_not_passed" {
-		t.Fatalf("second reason = %v, want gate_not_passed", got)
-	}
-	if got := settings.GetSmallModelShadowRatio(); got != 0.3 {
-		t.Fatalf("persisted ratio after hold = %v, want 0.3", got)
 	}
 }
 

@@ -102,7 +102,7 @@ Flags:
   -v, --verbose         verbose output
   -h, --help            help for blue
 
-Use "blue help <command>" for detailed command or skill manuals.
+Use "blue help <skill>" to show full SKILL.md manuals.
 Use "blue [command] --help" for command flags.
 	`)
 }
@@ -175,7 +175,7 @@ func candidateSkillIDs(topic string) []string {
 
 func printLauncherCommandHelp(topic string) bool {
 	commandHelp := map[string]string{
-		"help":     "Show help for a command or skill.\nUsage: blue help [command|skill]",
+		"help":     "Show help for a command or skill.\nUsage: blue help [topic]",
 		"status":   "Show service health and recent activity.\nUsage: blue status [--dev] [--json]",
 		"health":   "Fetch health from running service.\nUsage: blue health [--dev] [--json]",
 		"version":  "Show version information.\nUsage: blue version",

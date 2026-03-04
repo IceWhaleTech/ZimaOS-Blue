@@ -1,3 +1,8 @@
+---
+name: news
+description: Retrieve latest news headlines and article search results via NewsAPI.
+---
+
 # News
 
 Get latest news headlines and articles.

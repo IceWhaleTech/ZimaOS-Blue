@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,6 +30,16 @@ func TestWebSearchTool_Definition(t *testing.T) {
 
 	if _, ok := params["query"]; !ok {
 		t.Error("parameters should have 'query' property")
+	}
+	if _, ok := params["format"]; !ok {
+		t.Error("parameters should have 'format' property")
+	}
+	if _, ok := params["provider"]; !ok {
+		t.Error("parameters should have 'provider' property")
+	}
+	formatProp, _ := params["format"].(map[string]interface{})
+	if enumVals, ok := formatProp["enum"].([]string); !ok || len(enumVals) != 2 || enumVals[0] != "xml" || enumVals[1] != "json" {
+		t.Errorf("format enum = %#v, want [xml json]", formatProp["enum"])
 	}
 }
 
@@ -91,7 +102,8 @@ func TestWebSearchTool_SearXNG(t *testing.T) {
 	})
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"query": "test query",
+		"query":  "test query",
+		"format": "json",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -174,6 +186,49 @@ func TestWebSearchTool_UnsupportedProvider(t *testing.T) {
 	}
 }
 
+func TestWebSearchTool_ProviderFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := map[string]interface{}{
+			"results": []map[string]interface{}{
+				{
+					"title":   "Fallback OK",
+					"url":     "https://example.com/fallback",
+					"content": "fallback",
+					"engine":  "searxng",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider:  "unsupported",
+		Providers: []string{"unsupported", "searxng"},
+		BaseURL:   server.URL,
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query":  "test query",
+		"format": "json",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var response WebSearchResponse
+	if err := json.Unmarshal([]byte(result.(string)), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if response.Provider != "searxng" {
+		t.Fatalf("provider = %q, want %q", response.Provider, "searxng")
+	}
+	if len(response.Results) != 1 || response.Results[0].Title != "Fallback OK" {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
 func TestWebSearchTool_MaxResults(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Return many results
@@ -202,7 +257,8 @@ func TestWebSearchTool_MaxResults(t *testing.T) {
 	})
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"query": "test",
+		"query":  "test",
+		"format": "json",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -219,6 +275,7 @@ func TestWebSearchTool_MaxResults(t *testing.T) {
 	result, err = tool.Execute(context.Background(), map[string]interface{}{
 		"query":       "test",
 		"max_results": float64(3),
+		"format":      "json",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -233,6 +290,7 @@ func TestWebSearchTool_MaxResults(t *testing.T) {
 	result, err = tool.Execute(context.Background(), map[string]interface{}{
 		"query":       "test",
 		"max_results": float64(100),
+		"format":      "json",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -241,6 +299,161 @@ func TestWebSearchTool_MaxResults(t *testing.T) {
 	json.Unmarshal([]byte(result.(string)), &response)
 	if len(response.Results) > 20 {
 		t.Errorf("expected max 20 results (cap), got %d", len(response.Results))
+	}
+
+	// Test IPC-style string max_results
+	result, err = tool.Execute(context.Background(), map[string]interface{}{
+		"query":       "test",
+		"max_results": "4",
+		"format":      "json",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	json.Unmarshal([]byte(result.(string)), &response)
+	if len(response.Results) > 4 {
+		t.Errorf("expected max 4 results from string max_results, got %d", len(response.Results))
+	}
+}
+
+func TestWebSearchTool_DefaultFormatXML(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := map[string]interface{}{
+			"results": []map[string]interface{}{
+				{
+					"title":   "Test Result 1",
+					"url":     "https://example.com/1",
+					"content": "Description 1",
+					"engine":  "google",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider: "searxng",
+		BaseURL:  server.URL,
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query": "test query",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	xmlResult, ok := result.(string)
+	if !ok {
+		t.Fatalf("result type = %T, want string", result)
+	}
+	var parsed struct {
+		XMLName    xml.Name `xml:"web_search"`
+		Query      string   `xml:"query"`
+		Provider   string   `xml:"provider"`
+		TotalCount int      `xml:"total_count"`
+		Results    []struct {
+			Title string `xml:"title"`
+		} `xml:"results>result"`
+	}
+	if err := xml.Unmarshal([]byte(xmlResult), &parsed); err != nil {
+		t.Fatalf("failed to parse xml: %v", err)
+	}
+	if parsed.Query != "test query" {
+		t.Fatalf("query = %q, want %q", parsed.Query, "test query")
+	}
+	if parsed.Provider != "searxng" {
+		t.Fatalf("provider = %q, want %q", parsed.Provider, "searxng")
+	}
+	if parsed.TotalCount != 1 {
+		t.Fatalf("total_count = %d, want 1", parsed.TotalCount)
+	}
+	if len(parsed.Results) != 1 || parsed.Results[0].Title != "Test Result 1" {
+		t.Fatalf("unexpected results payload: %+v", parsed.Results)
+	}
+}
+
+func TestWebSearchTool_InvalidFormat(t *testing.T) {
+	tool := NewWebSearchTool(WebSearchConfig{Provider: "unsupported"})
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query":  "test",
+		"format": "yaml",
+	})
+	if err == nil {
+		t.Fatalf("expected invalid format error")
+	}
+	if !strings.Contains(err.Error(), "format must be one of: json, xml") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestWebSearchTool_FormatAliases(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := map[string]interface{}{
+			"results": []map[string]interface{}{
+				{
+					"title":   "Alias Result",
+					"url":     "https://example.com/alias",
+					"content": "Description",
+					"engine":  "searxng",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider: "searxng",
+		BaseURL:  server.URL,
+	})
+
+	cases := []struct {
+		name          string
+		format        string
+		wantXMLResult bool
+	}{
+		{name: "markdown maps to json", format: "markdown", wantXMLResult: false},
+		{name: "text maps to json", format: "text", wantXMLResult: false},
+		{name: "json with punctuation", format: "json,", wantXMLResult: false},
+		{name: "xml with punctuation", format: "xml.", wantXMLResult: true},
+		{name: "mime json", format: "application/json; charset=utf-8", wantXMLResult: false},
+		{name: "mime xml", format: "text/xml", wantXMLResult: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := tool.Execute(context.Background(), map[string]interface{}{
+				"query":  "format alias test",
+				"format": tc.format,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error for format %q: %v", tc.format, err)
+			}
+
+			raw := result.(string)
+			if tc.wantXMLResult {
+				var parsed struct {
+					XMLName xml.Name `xml:"web_search"`
+					Query   string   `xml:"query"`
+				}
+				if err := xml.Unmarshal([]byte(raw), &parsed); err != nil {
+					t.Fatalf("expected xml output for format %q: %v", tc.format, err)
+				}
+				return
+			}
+
+			var parsed WebSearchResponse
+			if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+				t.Fatalf("expected json output for format %q: %v", tc.format, err)
+			}
+			if parsed.Query != "format alias test" {
+				t.Fatalf("query = %q, want %q", parsed.Query, "format alias test")
+			}
+		})
 	}
 }
 
@@ -313,8 +526,8 @@ func TestStripHTML(t *testing.T) {
 func TestWebSearchConfig_Defaults(t *testing.T) {
 	tool := NewWebSearchTool(WebSearchConfig{})
 
-	if tool.config.MaxResults != 10 {
-		t.Errorf("expected default MaxResults 10, got %d", tool.config.MaxResults)
+	if tool.config.MaxResults != 5 {
+		t.Errorf("expected default MaxResults 5, got %d", tool.config.MaxResults)
 	}
 
 	if tool.config.Timeout != 30*time.Second {
@@ -323,6 +536,9 @@ func TestWebSearchConfig_Defaults(t *testing.T) {
 
 	if tool.config.Provider != "duckduckgo" {
 		t.Errorf("expected default Provider 'duckduckgo', got '%s'", tool.config.Provider)
+	}
+	if len(tool.config.Providers) != 1 || tool.config.Providers[0] != "duckduckgo" {
+		t.Errorf("expected default Providers ['duckduckgo'], got %#v", tool.config.Providers)
 	}
 
 	if tool.config.Region != "wt-wt" {

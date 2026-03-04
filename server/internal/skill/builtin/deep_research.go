@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
@@ -39,6 +40,10 @@ func NewDeepResearch() *DeepResearch {
 				{Name: "lang", Type: "string", Description: "Output language (default follows system locale)"},
 				{Name: "max_sources", Type: "number", Description: "Optional source cap override"},
 				{Name: "max_seconds", Type: "number", Description: "Optional time budget in seconds"},
+				{Name: "strict_entity", Type: "boolean", Description: "Enable strict same-entity filtering"},
+				{Name: "time_windows", Type: "array", Description: "Optional timeline windows labels"},
+				{Name: "report_style", Type: "string", Description: "summary|timeline"},
+				{Name: "format", Type: "string", Description: "Output format: json (default) or xml"},
 			},
 			Outputs: []skill.Parameter{
 				{Name: "answer", Type: "string", Description: "Citation-backed answer"},
@@ -76,7 +81,63 @@ func (d *DeepResearch) Validate(input map[string]any) error {
 			return fmt.Errorf("mode must be one of: fast, standard, deep")
 		}
 	}
+	if rawFormat, ok := input["format"]; ok {
+		format, ok := rawFormat.(string)
+		if !ok {
+			return fmt.Errorf("format must be a string")
+		}
+		normalized, err := normalizeDeepResearchSkillFormat(format)
+		if err != nil {
+			return err
+		}
+		if normalized == "" {
+			delete(input, "format")
+		} else {
+			input["format"] = normalized
+		}
+	}
+	if rawStrict, ok := input["strict_entity"]; ok {
+		if _, ok := rawStrict.(bool); !ok {
+			return fmt.Errorf("strict_entity must be a boolean")
+		}
+	}
+	if rawWindows, ok := input["time_windows"]; ok {
+		switch rawWindows.(type) {
+		case []interface{}, []string:
+		default:
+			return fmt.Errorf("time_windows must be an array of strings")
+		}
+	}
+	if rawStyle, ok := input["report_style"]; ok {
+		style, ok := rawStyle.(string)
+		if !ok {
+			return fmt.Errorf("report_style must be a string")
+		}
+		switch strings.ToLower(strings.TrimSpace(style)) {
+		case "", "summary", "timeline":
+		default:
+			return fmt.Errorf("report_style must be one of: summary, timeline")
+		}
+	}
 	return nil
+}
+
+func normalizeDeepResearchSkillFormat(raw string) (string, error) {
+	format := strings.ToLower(strings.TrimSpace(raw))
+	format = strings.Trim(format, ",.;:!?")
+	if idx := strings.Index(format, ";"); idx >= 0 {
+		format = strings.TrimSpace(format[:idx])
+	}
+	switch format {
+	case "", "json", "xml":
+		return format, nil
+	case "md", "markdown", "text", "txt", "plain", "plaintext", "human", "jsonl", "application/json":
+		return "json", nil
+	case "application/xml", "text/xml":
+		return "xml", nil
+	default:
+		return "", fmt.Errorf("format must be one of: json, xml")
+	}
 }
 
 func (d *DeepResearch) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {

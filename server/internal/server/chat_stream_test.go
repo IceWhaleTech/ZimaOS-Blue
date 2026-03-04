@@ -42,6 +42,19 @@ type autoContinueFailingProxyHandler struct {
 	callCount             int
 	requestModels         []string
 	requestPinnedProvider []string
+	requestDisableCont    []bool
+}
+
+// continuationRetryThenContinueProxyHandler simulates:
+// 1) first round emits a TODO checklist (toolless, triggers auto-continue)
+// 2) second request fails pre-content with a continuation-related 502
+// 3) retry succeeds with another pending checklist
+// 4) next round should NOT inherit disable-continuation flag from retry
+type continuationRetryThenContinueProxyHandler struct {
+	callCount                int
+	requestDisableCont       []bool
+	effectiveUpstreamPrevIDs []string
+	cachedPreviousResponseID string
 }
 
 // autoContinuePlanThenCompleteProxyHandler simulates:
@@ -65,6 +78,33 @@ type autoContinueScriptedProxyHandler struct {
 	sawPseudoToolNudge bool
 	lastRequestMessage string
 	requestModels      []string
+}
+
+// toolCallThenTextProxyHandler simulates a round that emits text, then tool_call,
+// then more text in the same round. The post-tool-call text should be suppressed
+// from user-visible SSE deltas.
+type toolCallThenTextProxyHandler struct {
+	callCount int
+}
+
+// actionPledgeThenToolCallProxyHandler simulates:
+// 1) first round returns an action-pledge placeholder (toolless)
+// 2) auto-continue round emits a structured tool_call
+// 3) post-tool round returns a final summary
+type actionPledgeThenToolCallProxyHandler struct {
+	callCount          int
+	sawExecutionNudge  bool
+	lastRequestMessage string
+}
+
+// missingTodoAfterToolRoundProxyHandler simulates:
+// 1) first round executes a tool call but emits no TODO checklist
+// 2) second round returns an intermediate toolless reply (still no TODO)
+// 3) auto-continue should inject missing_todo nudge and trigger a final round
+type missingTodoAfterToolRoundProxyHandler struct {
+	callCount           int
+	sawMissingTodoNudge bool
+	lastRequestMessage  string
 }
 
 // secondTurnTimeoutProxyHandler simulates a provider that succeeds on the first
@@ -154,6 +194,31 @@ func runStreamTurn(t *testing.T, h *ChatHandler, convID, reqBody string) string 
 	return rec.Body.String()
 }
 
+func extractJSONSSEEvents(t *testing.T, body string) []map[string]interface{} {
+	t.Helper()
+	events := make([]map[string]interface{}, 0)
+	scanner := bufio.NewScanner(strings.NewReader(body))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		var event map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+		events = append(events, event)
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("failed to scan SSE body: %v", err)
+	}
+	return events
+}
+
 func newSingleModelOpenAIProxyHandler(t *testing.T, upstreamBaseURL, providerID, modelID string) *proxy.ProxyHandler {
 	t.Helper()
 
@@ -216,6 +281,7 @@ func newSingleModelOpenAIProxyHandler(t *testing.T, upstreamBaseURL, providerID,
 func (h *autoContinueFailingProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.callCount++
 	h.requestPinnedProvider = append(h.requestPinnedProvider, proxy.GetPinnedProvider(r.Context()))
+	h.requestDisableCont = append(h.requestDisableCont, strings.TrimSpace(r.Header.Get(proxy.DisableResponsesContinuationHeader)) == "1")
 
 	var body struct {
 		Model string `json:"model"`
@@ -246,6 +312,55 @@ func (h *autoContinueFailingProxyHandler) ServeHTTP(w http.ResponseWriter, r *ht
 	http.Error(w, `{"error":{"message":"Upstream request failed","type":"upstream_error"}}`, http.StatusBadGateway)
 }
 
+func (h *continuationRetryThenContinueProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+	disableCont := strings.TrimSpace(r.Header.Get(proxy.DisableResponsesContinuationHeader)) == "1"
+	h.requestDisableCont = append(h.requestDisableCont, disableCont)
+	effectivePrevID := ""
+	if !disableCont {
+		effectivePrevID = h.cachedPreviousResponseID
+	}
+	h.effectiveUpstreamPrevIDs = append(h.effectiveUpstreamPrevIDs, effectivePrevID)
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_cont_retry"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	switch h.callCount {
+	case 1:
+		h.cachedPreviousResponseID = "resp_round_1"
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_round_1","choices":[{"delta":{"content":"- [ ] run command"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		return
+	case 2:
+		http.Error(w, `{"error":{"message":"previous_response_id stale","type":"upstream_error"}}`, http.StatusBadGateway)
+		return
+	case 3:
+		h.cachedPreviousResponseID = "resp_round_2"
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_round_2","choices":[{"delta":{"content":"- [ ] still pending"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		return
+	default:
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_round_3","choices":[{"delta":{"content":"任务已完成。完成内容：已执行。使用方法：已验证。下一步建议：无。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		return
+	}
+}
+
 func (h *autoContinueScriptedProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.callCount++
 
@@ -267,8 +382,10 @@ func (h *autoContinueScriptedProxyHandler) ServeHTTP(w http.ResponseWriter, r *h
 			h.lastRequestMessage = body.Messages[i].Content
 			break
 		}
-		h.sawExecutionNudge = strings.Contains(h.lastRequestMessage, "Now actually execute by calling available tools")
-		h.sawAgentLoopNudge = strings.Contains(h.lastRequestMessage, "continuous improvement loop")
+		h.sawExecutionNudge = strings.Contains(h.lastRequestMessage, "Now actually execute by calling available tools") ||
+			strings.Contains(h.lastRequestMessage, "A canonical TODO checklist already exists")
+		h.sawAgentLoopNudge = strings.Contains(h.lastRequestMessage, "continuous improvement loop") ||
+			strings.Contains(h.lastRequestMessage, "A canonical TODO checklist already exists")
 		h.sawPseudoToolNudge = strings.Contains(h.lastRequestMessage, "fake tool-call text")
 	}
 
@@ -298,6 +415,136 @@ func (h *autoContinueScriptedProxyHandler) ServeHTTP(w http.ResponseWriter, r *h
 	)
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
+	}
+}
+
+func (h *toolCallThenTextProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_tool_call_then_text"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	if h.callCount == 1 {
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_1","choices":[{"delta":{"content":"前置说明：开始执行。"},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"noop_tool","arguments":"{\"foo\":\"bar\"}"}}]},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_1","choices":[{"delta":{"content":"LEAK_AFTER_TOOL_CALL"},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_1","choices":[{"delta":{},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		return
+	}
+
+	fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_2","choices":[{"delta":{"content":"最终结果已返回。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+	flush()
+}
+
+func (h *actionPledgeThenToolCallProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	if h.callCount == 2 {
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		for i := len(body.Messages) - 1; i >= 0; i-- {
+			if body.Messages[i].Role != "user" {
+				continue
+			}
+			h.lastRequestMessage = body.Messages[i].Content
+			break
+		}
+		h.sawExecutionNudge = strings.Contains(h.lastRequestMessage, "Now actually execute by calling available tools") ||
+			strings.Contains(h.lastRequestMessage, "A canonical TODO checklist already exists")
+	}
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_action_pledge_tool_round"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	switch h.callCount {
+	case 1:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"action_round_1","choices":[{"delta":{"content":"我先帮你快速查一下 OpenClaw 的最新相关新闻与动态。请稍等，我整理成要点给你。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	case 2:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"action_round_2","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_action_1","type":"function","function":{"name":"noop_tool","arguments":"{\"query\":\"openclaw news\"}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	default:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"action_round_3","choices":[{"delta":{"content":"已完成查询并整理：这是 OpenClaw 的最新动态摘要。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	}
+}
+
+func (h *missingTodoAfterToolRoundProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	if h.callCount > 1 {
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		for i := len(body.Messages) - 1; i >= 0; i-- {
+			if body.Messages[i].Role != "user" {
+				continue
+			}
+			h.lastRequestMessage = body.Messages[i].Content
+			break
+		}
+		h.sawMissingTodoNudge = strings.Contains(h.lastRequestMessage, "checklist bootstrap required")
+	}
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_missing_todo_tool_round"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	switch h.callCount {
+	case 1:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"missing_todo_round_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_missing_todo_1","type":"function","function":{"name":"noop_tool","arguments":"{\"task\":\"bootstrap\"}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	case 2:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"missing_todo_round_2","choices":[{"delta":{"content":"已执行第一步，接下来继续优化实现。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	default:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"missing_todo_round_3","choices":[{"delta":{"content":"任务已完成。最终总结：实现可用并已验证。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
 	}
 }
 
@@ -469,7 +716,8 @@ func (h *autoContinuePlanThenCompleteProxyHandler) ServeHTTP(w http.ResponseWrit
 	if len(body.Messages) > 0 {
 		last := body.Messages[len(body.Messages)-1]
 		h.lastRequestMessage = last.Content
-		if last.Role == "user" && strings.Contains(last.Content, "Now actually execute by calling available tools") {
+		if last.Role == "user" && (strings.Contains(last.Content, "Now actually execute by calling available tools") ||
+			strings.Contains(last.Content, "A canonical TODO checklist already exists")) {
 			h.sawExecutionNudge = true
 		}
 	}
@@ -484,7 +732,7 @@ func (h *autoContinuePlanThenCompleteProxyHandler) ServeHTTP(w http.ResponseWrit
 	w.WriteHeader(http.StatusOK)
 
 	if h.callCount == 1 {
-		fmt.Fprintf(w, "data: %s\n\n", `{"id":"1","choices":[{"delta":{"content":"- [ ] 创建实现计划\n- [ ] 执行计划步骤\n- [ ] 输出最终总结"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"1","choices":[{"delta":{"content":"- [ ] 创建实现计划\n- [ ] 执行计划步骤\n- [ ] 输出结果说明"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
@@ -842,6 +1090,83 @@ func TestStreamMessageWithNoProvider(t *testing.T) {
 	}
 }
 
+func TestStreamMessageWithNoProvider_AutonomousWebSearchFallback(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test Conv")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry() // no provider on purpose
+	toolRegistry := tools.NewRegistry()
+	webSearchMock := &webSearchToolMock{
+		result: map[string]interface{}{
+			"query":       "zimaos release notes",
+			"provider":    "mock",
+			"total_count": 2,
+			"results": []map[string]interface{}{
+				{"title": "ZimaOS Release Notes", "url": "https://example.com/release", "description": "release summary"},
+				{"title": "ZimaOS Docs", "url": "https://example.com/docs", "description": "documentation"},
+			},
+		},
+	}
+	toolRegistry.Register(webSearchMock)
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"zimaos release notes"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage failed: %v", err)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"provider":"web_search"`) {
+		t.Fatalf("expected web_search provider fallback in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, `"model":"web-search-fallback"`) {
+		t.Fatalf("expected web-search-fallback model in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, "ZimaOS Release Notes") {
+		t.Fatalf("expected web-search title in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, "```typeless") {
+		t.Fatalf("expected typeless card block in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, `\"type\":\"search\"`) {
+		t.Fatalf("expected search typeless card in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, "data: [DONE]") {
+		t.Fatalf("expected [DONE] marker, got: %s", body)
+	}
+
+	webSearchMock.mu.Lock()
+	calls := webSearchMock.calls
+	query, _ := webSearchMock.last["query"].(string)
+	format, _ := webSearchMock.last["format"].(string)
+	webSearchMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_search calls = %d, want 1", calls)
+	}
+	if query != "zimaos release notes" {
+		t.Fatalf("web_search query = %q, want zimaos release notes", query)
+	}
+	if format != "json" {
+		t.Fatalf("web_search format = %q, want json", format)
+	}
+}
+
 func TestStreamMessageWithNoProvider_DeepResearchFallback(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -910,6 +1235,64 @@ func TestStreamMessageWithNoProvider_DeepResearchFallback(t *testing.T) {
 	execMock.mu.Unlock()
 	if gotLang != "zh-CN" {
 		t.Fatalf("fallback lang = %q, want zh-CN", gotLang)
+	}
+}
+
+func TestStreamMessageWithNoProvider_DeepResearchFallbackIncludesV2Fields(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test Conv V2")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry() // no provider on purpose
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	execMock := &deepResearchExecMock{
+		result: map[string]interface{}{
+			"answer":                "时间线报告完成。",
+			"citation_coverage":     0.91,
+			"stage_errors":          []string{"retry failed: q2"},
+			"entity_disambiguation": map[string]interface{}{"enabled": true, "filtered_count": 1},
+			"timeline_sections": []map[string]interface{}{
+				{"label": "早期", "summary": "物流观点形成"},
+				{"label": "近期", "summary": "AI 观点强化"},
+			},
+			"citations": []map[string]interface{}{
+				{"title": "来源A", "url": "https://example.com/a"},
+			},
+		},
+	}
+	handler.deepResearchExec = execMock
+
+	e := echo.New()
+	reqBody := `{"message":"请调研蓝驰付强观点时间线"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage failed: %v", err)
+	}
+	body := rec.Body.String()
+	for _, token := range []string{
+		"citation_coverage",
+		"entity_disambiguation",
+		"timeline_sections",
+		"stage_errors",
+		"https://example.com/a",
+	} {
+		if !strings.Contains(body, token) {
+			t.Fatalf("stream body missing %q: %s", token, body)
+		}
 	}
 }
 
@@ -1152,8 +1535,8 @@ func TestStreamMessageAutoContinue_PreContent502GracefulCompletion(t *testing.T)
 	if fallbackText := streamContinuationFailureText(settingsHandler.GetLocale()); fallbackText != "" && !strings.Contains(body, fallbackText) {
 		t.Fatalf("expected continuation failure fallback text in stream body, got=%s", body)
 	}
-	if fakeProxy.callCount != 4 {
-		t.Fatalf("expected exactly 4 proxy calls (initial + one continuation with 2 retries), got %d", fakeProxy.callCount)
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected exactly 3 proxy calls (initial + failed continuation + silent recovery), got %d", fakeProxy.callCount)
 	}
 	if len(fakeProxy.requestModels) < 2 || len(fakeProxy.requestPinnedProvider) < 2 {
 		t.Fatalf("expected captured request metadata for at least 2 calls, models=%d providers=%d", len(fakeProxy.requestModels), len(fakeProxy.requestPinnedProvider))
@@ -1163,6 +1546,97 @@ func TestStreamMessageAutoContinue_PreContent502GracefulCompletion(t *testing.T)
 	}
 	if got := fakeProxy.requestPinnedProvider[1]; got != "prov_ui_reviewer" {
 		t.Fatalf("expected auto-continue to pin provider from first round, got %q", got)
+	}
+	last := len(fakeProxy.requestPinnedProvider) - 1
+	if last < 0 || fakeProxy.requestPinnedProvider[last] != "" {
+		t.Fatalf("expected silent recovery request to unpin provider, got %q", fakeProxy.requestPinnedProvider[last])
+	}
+	if len(fakeProxy.requestDisableCont) <= last || !fakeProxy.requestDisableCont[last] {
+		t.Fatalf("expected silent recovery request to disable continuation, got %v", fakeProxy.requestDisableCont)
+	}
+}
+
+func TestStreamMessageAutoContinue_PreContentRetryDisableContinuationScopedToRetryOnly(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test Continuation Disable Scope")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	fakeProxy := &continuationRetryThenContinueProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"continue the task","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	err = handler.StreamMessage(c)
+	if err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected graceful completion without STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+
+	if fakeProxy.callCount < 4 {
+		t.Fatalf("expected at least 4 proxy calls, got %d", fakeProxy.callCount)
+	}
+	if len(fakeProxy.requestDisableCont) < 4 {
+		t.Fatalf("expected disable-continuation markers for at least 4 calls, got %v", fakeProxy.requestDisableCont)
+	}
+	if len(fakeProxy.effectiveUpstreamPrevIDs) < 4 {
+		t.Fatalf("expected effective upstream previous_response_id capture for at least 4 calls, got %v", fakeProxy.effectiveUpstreamPrevIDs)
+	}
+
+	if fakeProxy.requestDisableCont[0] {
+		t.Fatalf("call 1 should not disable continuation, flags=%v", fakeProxy.requestDisableCont)
+	}
+	if fakeProxy.requestDisableCont[1] {
+		t.Fatalf("call 2 should not disable continuation before retry, flags=%v", fakeProxy.requestDisableCont)
+	}
+	if !fakeProxy.requestDisableCont[2] {
+		t.Fatalf("call 3 (retry) should disable continuation, flags=%v", fakeProxy.requestDisableCont)
+	}
+	if fakeProxy.requestDisableCont[3] {
+		t.Fatalf("call 4 should restore normal continuation mode, flags=%v", fakeProxy.requestDisableCont)
+	}
+
+	if fakeProxy.effectiveUpstreamPrevIDs[0] != "" {
+		t.Fatalf("call 1 effective previous_response_id = %q, want empty", fakeProxy.effectiveUpstreamPrevIDs[0])
+	}
+	if fakeProxy.effectiveUpstreamPrevIDs[1] == "" {
+		t.Fatalf("call 2 should include previous_response_id from round 1, got empty (prev_ids=%v)", fakeProxy.effectiveUpstreamPrevIDs)
+	}
+	if fakeProxy.effectiveUpstreamPrevIDs[2] != "" {
+		t.Fatalf("call 3 retry should drop previous_response_id, got %q", fakeProxy.effectiveUpstreamPrevIDs[2])
+	}
+	if fakeProxy.effectiveUpstreamPrevIDs[3] == "" {
+		t.Fatalf("call 4 should include previous_response_id from retry-success round, got empty (prev_ids=%v)", fakeProxy.effectiveUpstreamPrevIDs)
 	}
 }
 
@@ -1238,6 +1712,65 @@ func TestStreamMessageAutoContinue_PlanThenExecuteThenSummary(t *testing.T) {
 	}
 	if !strings.Contains(assistantContent, "总结：任务已完成。") {
 		t.Fatalf("expected summary content in persisted assistant message, got=%q", assistantContent)
+	}
+}
+
+func TestStreamMessageAutoContinue_ChecklistRoundsCollapsedIntoSingleMessage(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test checklist collapse")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	fakeProxy := &autoContinueScriptedProxyHandler{
+		roundContents: []string{
+			"- [ ] 收集官方资料\n- [ ] 对比收益数据\n- [ ] 输出报告",
+			"- [ ] 收集官方资料\n- [ ] 对比收益数据\n- [ ] 输出报告\n\nWorking on task 1: 搜索 llama.cpp 关于 MTP 的 issue/PR。",
+			"任务已完成。最终总结：已完成调研并给出对比建议。",
+		},
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请进入agent模式并深度检索 llama.cpp 的 MTP 支持情况","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected 3 proxy calls (checklist + checklist update + final), got %d", fakeProxy.callCount)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 50, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	checklistMsgs := 0
+	for _, m := range messages {
+		if m.Role == "assistant" && strings.Contains(m.Content, "- [ ]") {
+			checklistMsgs++
+		}
+	}
+	if checklistMsgs > 1 {
+		t.Fatalf("expected checklist rounds to collapse into at most one assistant message, got %d messages", checklistMsgs)
 	}
 }
 
@@ -1337,6 +1870,277 @@ func TestStreamMessageAutoContinue_2048Prompt_EnhancedAndNonEnhanced(t *testing.
 	}
 }
 
+func TestStreamMessageAutoContinue_ActionPledge_ExecutesToolRoundThenSummary(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test action pledge auto continue tool round")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &actionPledgeThenToolCallProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我查询一下openclaw的新闻","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if !strings.Contains(body, `"tool_executing":true`) {
+		t.Fatalf("expected tool execution event in stream body, body=%s", body)
+	}
+	if !strings.Contains(body, "已完成查询并整理：这是 OpenClaw 的最新动态摘要。") {
+		t.Fatalf("expected final summary content in stream body, got=%s", body)
+	}
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected 3 proxy calls (action pledge + tool round + summary), got %d", fakeProxy.callCount)
+	}
+	if !fakeProxy.sawExecutionNudge {
+		t.Fatalf("expected second request to include auto-continue execution nudge, last=%q", fakeProxy.lastRequestMessage)
+	}
+}
+
+func TestStreamMessageAutoContinue_AgentMode_MissingTodoAfterToolRound(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test missing todo bootstrap")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	fakeProxy := &missingTodoAfterToolRoundProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"继续完善这个实现直到完成","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected 3 proxy calls (tool round + missing todo bootstrap + completion), got %d", fakeProxy.callCount)
+	}
+	if !fakeProxy.sawMissingTodoNudge {
+		t.Fatalf("expected third request to include missing_todo checklist bootstrap nudge, last=%q", fakeProxy.lastRequestMessage)
+	}
+}
+
+func TestStreamMessageAutoContinue_ActionPledge_DuplicateDebounceStopsLoop(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test action pledge duplicate debounce")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	duplicateActionPledge := "我先帮你快速查一下 OpenClaw 的最新相关新闻与动态。请稍等，我整理成要点给你。"
+	fakeProxy := &autoContinueScriptedProxyHandler{
+		roundContents: []string{
+			duplicateActionPledge,
+			duplicateActionPledge,
+			duplicateActionPledge,
+		},
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我查询一下openclaw的新闻","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 2 {
+		t.Fatalf("expected duplicate action_pledge to stop at 2 proxy calls, got %d", fakeProxy.callCount)
+	}
+	if !fakeProxy.sawExecutionNudge {
+		t.Fatalf("expected second request to include auto-continue execution nudge, last=%q", fakeProxy.lastRequestMessage)
+	}
+}
+
+func TestStreamMessage_ToolCallRound_SuppressesPostToolCallDelta(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test tool-call round delta suppression")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &toolCallThenTextProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请执行并返回结果","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if !strings.Contains(body, "前置说明：开始执行。") {
+		t.Fatalf("expected pre-tool-call text to remain visible, body=%s", body)
+	}
+	if strings.Contains(body, "LEAK_AFTER_TOOL_CALL") {
+		t.Fatalf("expected post-tool-call delta to be suppressed from stream body, got=%s", body)
+	}
+	if !strings.Contains(body, "最终结果已返回。") {
+		t.Fatalf("expected second-round final content in stream body, got=%s", body)
+	}
+	if !strings.Contains(body, `"tool_executing":true`) {
+		t.Fatalf("expected tool_executing event in stream body, got=%s", body)
+	}
+	if fakeProxy.callCount != 2 {
+		t.Fatalf("expected 2 proxy calls (tool round + final round), got %d", fakeProxy.callCount)
+	}
+}
+
+func TestStreamMessage_SSEEvents_HaveStrictlyIncreasingSeq(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test SSE seq ordering")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &toolCallThenTextProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请执行并返回结果","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	events := extractJSONSSEEvents(t, rec.Body.String())
+	if len(events) == 0 {
+		t.Fatalf("expected at least one JSON SSE event, body=%s", rec.Body.String())
+	}
+
+	lastSeq := int64(0)
+	for i, event := range events {
+		rawSeq, ok := event["seq"]
+		if !ok {
+			t.Fatalf("event[%d] missing seq: %+v", i, event)
+		}
+		seqFloat, ok := rawSeq.(float64)
+		if !ok {
+			t.Fatalf("event[%d] seq is not numeric: %#v", i, rawSeq)
+		}
+		seq := int64(seqFloat)
+		if seq <= lastSeq {
+			t.Fatalf("event[%d] seq not strictly increasing: current=%d last=%d event=%+v", i, seq, lastSeq, event)
+		}
+		lastSeq = seq
+
+		rawStreamID, ok := event["stream_id"]
+		if !ok {
+			t.Fatalf("event[%d] missing stream_id: %+v", i, event)
+		}
+		if strings.TrimSpace(fmt.Sprintf("%v", rawStreamID)) == "" {
+			t.Fatalf("event[%d] empty stream_id: %+v", i, event)
+		}
+	}
+}
+
 func TestStreamMessageAutoContinue_PseudoToolCall_DiscardsMalformedRound(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -1375,6 +2179,12 @@ func TestStreamMessageAutoContinue_PseudoToolCall_DiscardsMalformedRound(t *test
 	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
 		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
 	}
+	if strings.Contains(body, "{\"cmd\":\"ls -la\"}") ||
+		strings.Contains(body, "```tool") ||
+		strings.Contains(strings.ToLower(body), "<exec>") ||
+		strings.Contains(body, "to=functions.exec") {
+		t.Fatalf("expected pseudo tool-call leakage to be suppressed from streamed body, got=%s", body)
+	}
 	if !strings.Contains(body, `"done":true`) {
 		t.Fatalf("expected final done chunk, body=%s", body)
 	}
@@ -1384,11 +2194,78 @@ func TestStreamMessageAutoContinue_PseudoToolCall_DiscardsMalformedRound(t *test
 	if fakeProxy.callCount != 2 {
 		t.Fatalf("expected 2 proxy calls (initial + auto-continue), got %d", fakeProxy.callCount)
 	}
-	if !fakeProxy.sawPseudoToolNudge {
-		t.Fatalf("expected pseudo-tool nudge in second request, last=%q", fakeProxy.lastRequestMessage)
+	if !fakeProxy.sawExecutionNudge {
+		t.Fatalf("expected generic execution nudge in second request, last=%q", fakeProxy.lastRequestMessage)
 	}
-	if fakeProxy.sawExecutionNudge {
-		t.Fatalf("expected pseudo-tool nudge (not generic execution nudge), last=%q", fakeProxy.lastRequestMessage)
+	if fakeProxy.sawPseudoToolNudge {
+		t.Fatalf("expected pseudo-specific fake-tool wording removed from continuation prompt, last=%q", fakeProxy.lastRequestMessage)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "{\"cmd\":\"ls -la\"}") ||
+			strings.Contains(m.Content, "```tool") ||
+			strings.Contains(strings.ToLower(m.Content), "<exec>") {
+			t.Fatalf("expected malformed pseudo tool-call text to be discarded from persisted assistant messages, got=%q", m.Content)
+		}
+	}
+}
+
+func TestStreamMessageAutoContinue_PseudoToolCall_EmptySecondRound_NoLeakage(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test pseudo tool call empty second round")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &autoContinueScriptedProxyHandler{
+		firstRoundContent:  "{\"cmd\":\"ls -la\"}I’ll inspect now. {\"tool\":\"exec\",\"cmd\":\"ls -la\"}\n```tool\n{\"name\":\"exec\",\"arguments\":{\"cmd\":\"ls -la\"}}\n```\n<exec>{\"cmd\":\"ls -la\"}</exec>",
+		secondRoundContent: "",
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请继续并执行","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if strings.Contains(body, "{\"cmd\":\"ls -la\"}") ||
+		strings.Contains(body, "```tool") ||
+		strings.Contains(strings.ToLower(body), "<exec>") ||
+		strings.Contains(body, "to=functions.exec") {
+		t.Fatalf("expected pseudo tool-call leakage to be suppressed from streamed body, got=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 2 {
+		t.Fatalf("expected 2 proxy calls (initial + auto-continue), got %d", fakeProxy.callCount)
 	}
 
 	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
@@ -1446,6 +2323,11 @@ func TestStreamMessageAutoContinue_PseudoToolCall_CommandWorkdirJSON(t *testing.
 	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
 		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
 	}
+	if strings.Contains(body, "{\"command\":\"blue reminder.add") ||
+		strings.Contains(body, "Working on task:") ||
+		strings.Contains(body, "\"workdir\"") {
+		t.Fatalf("expected command/workdir pseudo tool-call leakage to be suppressed from streamed body, got=%s", body)
+	}
 	if !strings.Contains(body, `"done":true`) {
 		t.Fatalf("expected final done chunk, body=%s", body)
 	}
@@ -1455,8 +2337,11 @@ func TestStreamMessageAutoContinue_PseudoToolCall_CommandWorkdirJSON(t *testing.
 	if fakeProxy.callCount != 2 {
 		t.Fatalf("expected 2 proxy calls (initial + auto-continue), got %d", fakeProxy.callCount)
 	}
-	if !fakeProxy.sawPseudoToolNudge {
-		t.Fatalf("expected pseudo-tool nudge in second request, last=%q", fakeProxy.lastRequestMessage)
+	if !fakeProxy.sawExecutionNudge {
+		t.Fatalf("expected generic execution nudge in second request, last=%q", fakeProxy.lastRequestMessage)
+	}
+	if fakeProxy.sawPseudoToolNudge {
+		t.Fatalf("expected pseudo-specific fake-tool wording removed from continuation prompt, last=%q", fakeProxy.lastRequestMessage)
 	}
 
 	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
@@ -1471,6 +2356,64 @@ func TestStreamMessageAutoContinue_PseudoToolCall_CommandWorkdirJSON(t *testing.
 			strings.Contains(m.Content, "Working on task:") {
 			t.Fatalf("expected malformed pseudo tool-call text to be discarded from persisted assistant messages, got=%q", m.Content)
 		}
+	}
+}
+
+func TestStreamMessage_SanitizesLeakedCommandWorkdirPrefixOnFinalPersist(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test sanitize leaked command/workdir prefix on final persist")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	leaked := "{\"command\":\"blue web_search query=\\\"OpenClaw GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 OpenClaw 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
+	fakeProxy := &autoContinueScriptedProxyHandler{
+		firstRoundContent: leaked,
+	}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我查询一下openclaw的新闻","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	var assistantContent string
+	for _, m := range messages {
+		if m.Role == "assistant" {
+			assistantContent = m.Content
+		}
+	}
+	if assistantContent == "" {
+		t.Fatal("expected persisted assistant content")
+	}
+	if strings.Contains(assistantContent, `"command":"blue web_search`) {
+		t.Fatalf("expected leaked command json removed from persisted content, got=%q", assistantContent)
+	}
+	if strings.Contains(assistantContent, `"workdir":`) {
+		t.Fatalf("expected leaked workdir removed from persisted content, got=%q", assistantContent)
+	}
+	if !strings.Contains(assistantContent, "我先帮你搜到一批 OpenClaw 相关最新结果") {
+		t.Fatalf("expected user-facing answer retained in persisted content, got=%q", assistantContent)
 	}
 }
 
@@ -1519,8 +2462,11 @@ func TestStreamMessageAutoContinue_PseudoToolCall_AgentModeCapsRetries(t *testin
 	if !strings.Contains(body, `"done":true`) {
 		t.Fatalf("expected final done chunk, body=%s", body)
 	}
-	if !fakeProxy.sawPseudoToolNudge {
-		t.Fatalf("expected pseudo-tool nudge to be injected before hitting retry cap")
+	if !fakeProxy.sawExecutionNudge {
+		t.Fatalf("expected generic execution nudge to be injected before hitting retry cap")
+	}
+	if fakeProxy.sawPseudoToolNudge {
+		t.Fatalf("expected pseudo-specific fake-tool wording removed from continuation prompt")
 	}
 
 	wantCalls := maxPseudoToolCallAutoContinueAgent + 1

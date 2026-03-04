@@ -76,30 +76,30 @@ func (c *RoutingConfig) ToRuleEngine(tierResolver ...*TierResolver) *RuleEngine 
 }
 
 // DefaultRoutingConfig returns a RoutingConfig with built-in tier-based rules.
-// Rules reference abstract tiers (economy/standard) instead of specific model names.
+// Rules reference abstract large/small tiers instead of specific model names.
 // The TierResolver dynamically maps tiers to actual models based on user's available
-// model list and pricing.
+// model list and built-in small-model allowlist.
 func DefaultRoutingConfig() *RoutingConfig {
 	return &RoutingConfig{
 		Enabled: true,
 		Rules: []RoutingRule{
 			{
-				Name:      "small-body-economy",
+				Name:      "small-body-small",
 				Priority:  10,
 				Condition: RouteCondition{MaxBodyBytes: 3000},
-				Tier:      TierEconomy,
+				Tier:      TierSmall,
 			},
 			{
-				Name:      "simple-tools-economy",
+				Name:      "simple-tools-small",
 				Priority:  20,
 				Condition: RouteCondition{ToolPattern: `^(list_files|file_search|grep|get_weather|calculator)$`},
-				Tier:      TierEconomy,
+				Tier:      TierSmall,
 			},
 			{
-				Name:      "orchestrator-standard",
+				Name:      "orchestrator-large",
 				Priority:  30,
 				Condition: RouteCondition{SystemTag: "[ORCHESTRATOR]"},
-				Tier:      TierStandard,
+				Tier:      TierLarge,
 			},
 		},
 	}

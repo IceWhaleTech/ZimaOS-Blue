@@ -18,6 +18,7 @@ import (
 
 	"github.com/creack/pty"
 
+	cardconv "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cards"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
@@ -367,6 +368,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 			slog.Info("[exec] pinned skill short-circuit success",
 				"skill", firstWord,
 				"input", restArgs)
+			emitSkillResultCardFromData(ctx, firstWord, data)
 			return &ForwardedResult{ActualTool: firstWord, Result: data}, nil
 		}
 	} else if t.toolNames == nil {
@@ -901,6 +903,7 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 				"action", action)
 		}
 	}
+	inferImplicitSkillAction(execSkillName, input)
 
 	// Try to execute the skill
 	slog.Info("[exec] skill short-circuit", "skill", execSkillName, "raw_skill", skillName, "input", input, "source", "blue_prefix")
@@ -979,25 +982,7 @@ func (t *ExecTool) buildSkillResult(ctx context.Context, skillName string, data 
 		stdout.WriteByte('\n')
 	}
 
-	// Emit card if _card hint present.
-	if hint, ok := data["_card"]; ok && hint != "" {
-		card := make(map[string]interface{}, len(data))
-		for k, v := range data {
-			if k == "_card" || k == "success" {
-				continue
-			}
-			if len(v) > 0 && (v[0] == '[' || v[0] == '{') {
-				var parsed interface{}
-				if json.Unmarshal([]byte(v), &parsed) == nil {
-					card[k] = parsed
-					continue
-				}
-			}
-			card[k] = v
-		}
-		card["type"] = hint
-		EmitCard(ctx, card)
-	}
+	emitSkillResultCardFromData(ctx, skillName, data)
 
 	warnings = append(warnings, "skill short-circuit: "+skillName)
 	exitCode := 0
@@ -1012,6 +997,77 @@ func (t *ExecTool) buildSkillResult(ctx context.Context, skillName string, data 
 	}
 	resultJSON, _ := json.Marshal(result)
 	return string(resultJSON)
+}
+
+// emitSkillResultCardFromData converts skill short-circuit output to a typeless
+// card and emits it to the streaming channel when possible.
+func emitSkillResultCardFromData(ctx context.Context, skillName string, data map[string]string) {
+	if len(data) == 0 {
+		return
+	}
+
+	payload := parseSkillResultPayload(data)
+	if len(payload) == 0 {
+		return
+	}
+
+	// Prefer explicit card hint when provided by the skill output.
+	if hint := strings.TrimSpace(data["_card"]); hint != "" {
+		if shouldConvertSkillCardHint(hint) {
+			// Legacy IPC shape: {"_card":"ui_reviewer","result":"{...json...}"}
+			if raw := strings.TrimSpace(data["result"]); raw != "" {
+				if card := cardconv.ToCard(hint, raw); card != nil {
+					EmitCard(ctx, card)
+					return
+				}
+			}
+
+			if b, err := json.Marshal(payload); err == nil {
+				if card := cardconv.ToCard(hint, string(b)); card != nil {
+					EmitCard(ctx, card)
+					return
+				}
+			}
+		}
+
+		// Fallback: emit hinted card as-is for frontend-native types like "search".
+		payload["type"] = hint
+		EmitCard(ctx, payload)
+		return
+	}
+
+	// No hint: infer by skill name (e.g. deep_research/analyze/ui_reviewer).
+	if b, err := json.Marshal(payload); err == nil {
+		if card := cardconv.ToCard(skillName, string(b)); card != nil {
+			EmitCard(ctx, card)
+		}
+	}
+}
+
+func parseSkillResultPayload(data map[string]string) map[string]interface{} {
+	payload := make(map[string]interface{}, len(data))
+	for k, v := range data {
+		if k == "_card" || k == "success" {
+			continue
+		}
+
+		var parsed interface{}
+		if err := json.Unmarshal([]byte(v), &parsed); err == nil {
+			payload[k] = parsed
+			continue
+		}
+		payload[k] = v
+	}
+	return payload
+}
+
+func shouldConvertSkillCardHint(hint string) bool {
+	switch strings.TrimSpace(hint) {
+	case "ui_reviewer", "deep_research", "deep-research", "analyze":
+		return true
+	default:
+		return false
+	}
 }
 
 func (t *ExecTool) askForSkillClarification(ctx context.Context, originalSkill string, d SkillSelectionDecision, warnings []string) (interface{}, bool) {
@@ -1150,6 +1206,39 @@ func supportsPositionalAction(skillName string) bool {
 	default:
 		return false
 	}
+}
+
+func inferImplicitSkillAction(skillName string, input map[string]any) {
+	if input == nil {
+		return
+	}
+	if _, hasAction := input["action"]; hasAction {
+		return
+	}
+
+	switch strings.ToLower(strings.TrimSpace(skillName)) {
+	case "reminder":
+		if hasNonEmptyInputKey(input, "message", "time", "recurring") {
+			input["action"] = "add"
+			return
+		}
+		if hasNonEmptyInputKey(input, "id") {
+			input["action"] = "delete"
+		}
+	}
+}
+
+func hasNonEmptyInputKey(input map[string]any, keys ...string) bool {
+	for _, key := range keys {
+		v, ok := input[key]
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(fmt.Sprint(v)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func appendParsedKeyValue(out map[string]any, key, value string) {

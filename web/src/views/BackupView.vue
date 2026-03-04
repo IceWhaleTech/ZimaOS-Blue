@@ -86,12 +86,19 @@ async function restoreBackup(id: string) {
     restoring.value = id
     // Start progress polling for restore
     progressInterval = setInterval(checkProgress, 1000)
-    await backupApi.restore(id)
+    const response = await backupApi.restore(id, {
+      require_restart: true,
+      auto_restart: true,
+      create_checkpoint: true,
+    })
     // Restore completed - reload backups and show success
     await loadBackups()
-    alert(t('backup.restoreSuccess'))
-  } catch {
-    alert(t('backup.restoreFailed'))
+    const checkpoint = response.data?.result?.checkpoint_at
+      ? `\ncheckpoint: ${formatBackupDate(response.data.result.checkpoint_at)}`
+      : ''
+    alert((response.data?.message || t('backup.restoreSuccess')) + checkpoint)
+  } catch (e) {
+    alert(e instanceof Error ? e.message : t('backup.restoreFailed'))
   } finally {
     restoring.value = null
     if (progressInterval) {

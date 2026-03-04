@@ -2,6 +2,7 @@ package proxybridge
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -50,6 +51,64 @@ func TestParseSSEChunk_ResponsesFunctionCallDone(t *testing.T) {
 	}
 }
 
+func TestParseSSEChunk_ResponsesFunctionCallAdded(t *testing.T) {
+	payload := `{"type":"response.output_item.added","response_id":"resp_added","item":{"type":"function_call","id":"fc_1","call_id":"call_added_1","name":"exec","arguments":""}}`
+
+	chunk, done, err := ParseSSEChunk(payload)
+	if err != nil {
+		t.Fatalf("ParseSSEChunk failed: %v", err)
+	}
+	if done {
+		t.Fatal("done = true, want false")
+	}
+	if len(chunk.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %d, want 1", len(chunk.ToolCalls))
+	}
+	tc := chunk.ToolCalls[0]
+	if tc.ID != "call_added_1" {
+		t.Fatalf("tool call id = %q, want %q", tc.ID, "call_added_1")
+	}
+	if tc.Name != "exec" {
+		t.Fatalf("tool call name = %q, want %q", tc.Name, "exec")
+	}
+}
+
+func TestParseSSEChunk_ResponsesFunctionCallArgumentsDelta(t *testing.T) {
+	payload := `{"type":"response.function_call_arguments.delta","response_id":"resp_args_1","delta":"{\"cmd\":\"pw"}`
+
+	chunk, done, err := ParseSSEChunk(payload)
+	if err != nil {
+		t.Fatalf("ParseSSEChunk failed: %v", err)
+	}
+	if done {
+		t.Fatal("done = true, want false")
+	}
+	if len(chunk.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %d, want 1", len(chunk.ToolCalls))
+	}
+	if chunk.ToolCalls[0].Arguments != `{"cmd":"pw` {
+		t.Fatalf("tool call arguments = %q, want %q", chunk.ToolCalls[0].Arguments, `{"cmd":"pw`)
+	}
+}
+
+func TestParseSSEChunk_ResponsesFunctionCallArgumentsDone(t *testing.T) {
+	payload := `{"type":"response.function_call_arguments.done","response_id":"resp_args_done_1","arguments":"{\"cmd\":\"pwd\"}"}`
+
+	chunk, done, err := ParseSSEChunk(payload)
+	if err != nil {
+		t.Fatalf("ParseSSEChunk failed: %v", err)
+	}
+	if done {
+		t.Fatal("done = true, want false")
+	}
+	if len(chunk.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %d, want 1", len(chunk.ToolCalls))
+	}
+	if chunk.ToolCalls[0].Arguments != `{"cmd":"pwd"}` {
+		t.Fatalf("tool call arguments = %q, want %q", chunk.ToolCalls[0].Arguments, `{"cmd":"pwd"}`)
+	}
+}
+
 func TestParseSSEChunk_ResponsesCompleted(t *testing.T) {
 	payload := `{"type":"response.completed","response":{"id":"resp_3","model":"o3","usage":{"input_tokens":10,"output_tokens":4,"total_tokens":14}}}`
 
@@ -89,6 +148,31 @@ func TestParseSSEChunk_ResponsesCompletedExtractsFinalText(t *testing.T) {
 	}
 }
 
+func TestParseSSEChunk_ResponsesCompletedExtractsFunctionCallFallback(t *testing.T) {
+	payload := `{"type":"response.completed","response":{"id":"resp_fc_done","model":"o3","output":[{"type":"function_call","id":"fc_9","call_id":"call_fc_done","name":"exec","arguments":"{\"cmd\":\"pwd\"}"}]}}`
+
+	chunk, done, err := ParseSSEChunk(payload)
+	if err != nil {
+		t.Fatalf("ParseSSEChunk failed: %v", err)
+	}
+	if !done || !chunk.Done {
+		t.Fatal("expected done=true on response.completed")
+	}
+	if len(chunk.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %d, want 1", len(chunk.ToolCalls))
+	}
+	tc := chunk.ToolCalls[0]
+	if tc.ID != "call_fc_done" {
+		t.Fatalf("tool call id = %q, want %q", tc.ID, "call_fc_done")
+	}
+	if tc.Name != "exec" {
+		t.Fatalf("tool call name = %q, want %q", tc.Name, "exec")
+	}
+	if tc.Arguments != `{"cmd":"pwd"}` {
+		t.Fatalf("tool call arguments = %q, want %q", tc.Arguments, `{"cmd":"pwd"}`)
+	}
+}
+
 func TestParseSSEChunk_ResponsesFailed(t *testing.T) {
 	payload := `{"type":"response.failed","response":{"id":"resp_4"},"error":{"message":"boom","type":"invalid_request_error"}}`
 
@@ -101,6 +185,39 @@ func TestParseSSEChunk_ResponsesFailed(t *testing.T) {
 	}
 	if chunk.Error != "boom" {
 		t.Fatalf("chunk.Error = %q, want %q", chunk.Error, "boom")
+	}
+}
+
+func TestParseSSEChunk_ResponsesMetadataEventAsProgress(t *testing.T) {
+	payload := `{"type":"response.created","response":{"id":"resp_meta","model":"o3"}}`
+
+	chunk, done, err := ParseSSEChunk(payload)
+	if err != nil {
+		t.Fatalf("ParseSSEChunk failed: %v", err)
+	}
+	if done {
+		t.Fatal("done = true, want false")
+	}
+	if chunk.Progress != "response.created" {
+		t.Fatalf("chunk.Progress = %q, want %q", chunk.Progress, "response.created")
+	}
+	if chunk.ID != "resp_meta" {
+		t.Fatalf("chunk.ID = %q, want %q", chunk.ID, "resp_meta")
+	}
+}
+
+func TestParseSSEChunk_OpenAIErrorPayload(t *testing.T) {
+	payload := `{"error":{"message":"upstream request failed","type":"upstream_error"}}`
+
+	chunk, done, err := ParseSSEChunk(payload)
+	if err != nil {
+		t.Fatalf("ParseSSEChunk failed: %v", err)
+	}
+	if !done || !chunk.Done {
+		t.Fatal("expected done=true on top-level error payload")
+	}
+	if chunk.Error != "upstream request failed" {
+		t.Fatalf("chunk.Error = %q, want %q", chunk.Error, "upstream request failed")
 	}
 }
 
@@ -229,5 +346,105 @@ func TestMarshalResponsesRequest_ContinuationKeepsLastAssistantContext(t *testin
 	first, _ := input[0].(map[string]any)
 	if first["role"] != "assistant" {
 		t.Fatalf("first role = %#v, want assistant", first["role"])
+	}
+}
+
+func TestMarshalResponsesRequest_ContinuationSkipsAssistantToolCallEcho(t *testing.T) {
+	req := llm.ChatRequest{
+		Model:              "gpt-5.3-codex-spark",
+		PreviousResponseID: "resp_prev_tool_1",
+		Messages: []llm.Message{
+			{
+				Role:    llm.RoleAssistant,
+				Content: "tool call summary",
+				ToolCalls: []llm.ToolCall{
+					{ID: "call_1", Name: "exec", Arguments: `{"command":"blue web_search query=\"OpenClaw latest news\""}`},
+				},
+			},
+			{Role: llm.RoleTool, ToolCallID: "call_1", Content: `{"status":"completed","stdout":"ok"}`},
+		},
+	}
+
+	raw, err := MarshalResponsesRequest(req)
+	if err != nil {
+		t.Fatalf("MarshalResponsesRequest failed: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	input, ok := got["input"].([]any)
+	if !ok {
+		t.Fatalf("input missing or wrong type: %#v", got["input"])
+	}
+	if len(input) != 1 {
+		t.Fatalf("input length = %d, want 1", len(input))
+	}
+	first, _ := input[0].(map[string]any)
+	if first["type"] != "function_call_output" {
+		t.Fatalf("first type = %#v, want function_call_output", first["type"])
+	}
+	if first["call_id"] != "call_1" {
+		t.Fatalf("call_id = %#v, want call_1", first["call_id"])
+	}
+}
+
+func TestMarshalResponsesRequest_ContinuationSizeGuard(t *testing.T) {
+	huge := `{"status":"completed","stdout":"` + strings.Repeat("x", 24000) + `"}`
+	req := llm.ChatRequest{
+		Model:              "gpt-5.3-codex-spark",
+		PreviousResponseID: "resp_prev_size_1",
+		Messages: []llm.Message{
+			{
+				Role: llm.RoleAssistant,
+				ToolCalls: []llm.ToolCall{
+					{ID: "call_1", Name: "exec", Arguments: `{"command":"blue web_search query=\"a\""}`},
+					{ID: "call_2", Name: "exec", Arguments: `{"command":"blue web_search query=\"b\""}`},
+					{ID: "call_3", Name: "exec", Arguments: `{"command":"blue web_search query=\"c\""}`},
+				},
+			},
+			{Role: llm.RoleTool, ToolCallID: "call_1", Content: huge},
+			{Role: llm.RoleTool, ToolCallID: "call_2", Content: huge},
+			{Role: llm.RoleTool, ToolCallID: "call_3", Content: huge},
+			{Role: llm.RoleUser, Content: strings.Repeat("progress ", 2000)},
+		},
+		Tools: []llm.Tool{
+			{Name: "exec", Description: strings.Repeat("desc ", 1000)},
+		},
+	}
+
+	raw, err := MarshalResponsesRequest(req)
+	if err != nil {
+		t.Fatalf("MarshalResponsesRequest failed: %v", err)
+	}
+	if len(raw) > maxResponsesRequestBytes {
+		t.Fatalf("payload size = %d, want <= %d", len(raw), maxResponsesRequestBytes)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	input, ok := got["input"].([]any)
+	if !ok {
+		t.Fatalf("input missing or wrong type: %#v", got["input"])
+	}
+	if len(input) == 0 {
+		t.Fatal("input should not be empty after size guard")
+	}
+
+	foundLatestCall := false
+	for _, item := range input {
+		m, _ := item.(map[string]any)
+		if m["type"] == "function_call_output" && m["call_id"] == "call_3" {
+			foundLatestCall = true
+			if output, _ := m["output"].(string); !strings.Contains(output, "[truncated]") {
+				t.Fatalf("latest tool output should be truncated, got: %q", output)
+			}
+		}
+	}
+	if !foundLatestCall {
+		t.Fatal("latest function_call_output (call_3) should be preserved")
 	}
 }

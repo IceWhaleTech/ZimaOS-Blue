@@ -6,6 +6,7 @@ import { approvalApi } from '@/api/approval'
 import type { Decision, ExecDecision } from '@/api/approval'
 import api from '@/api/client'
 import { SSEClient } from '@/utils/sse'
+import { i18n } from '@/i18n'
 import { useSettingsStore } from './settings'
 import { useProviderPoolStore } from './providerPool'
 import { systemApi } from '@/api/system'
@@ -109,6 +110,32 @@ function parseToolResults(results: Array<{ name: string; id: string; args?: stri
   })
 }
 
+function formatStreamProgress(stage: string): string {
+  const t = i18n.global.t
+  const te = i18n.global.te
+  const resolve = (key: string, fallback: string): string => {
+    return te(key) ? t(key) : fallback
+  }
+
+  switch (stage) {
+    case 'response.created':
+      return resolve('chat.streamProgress.requestAccepted', 'Request received, preparing response...')
+    case 'response.in_progress':
+      return resolve('chat.streamProgress.generating', 'Generating response...')
+    case 'response.output_text.delta':
+      return resolve('chat.streamProgress.writing', 'Writing response...')
+    case 'response.output_item.added':
+    case 'response.output_item.done':
+    case 'response.function_call_arguments.delta':
+    case 'response.function_call_arguments.done':
+      return resolve('chat.streamProgress.processingTools', 'Processing request...')
+    case 'response.completed':
+      return resolve('chat.streamProgress.completed', 'Done')
+    default:
+      return resolve('chat.streamProgress.processing', 'Processing...')
+  }
+}
+
 // Store for message metadata (provider, model, stats) - keyed by message ID
 const messageMetadata = ref<Map<string, { provider?: string; model?: string; stats?: MessageStats }>>(new Map())
 
@@ -196,6 +223,7 @@ export const useChatStore = defineStore('chat', () => {
   const processContentLength = ref(0) // Length of tool-result process content at the start of streamingContent
   const error = ref<string | null>(null)
   const streamError = ref<string | null>(null) // Error from stream (displayed in chat area)
+  const streamProgress = ref<string | null>(null) // Upstream metadata progress before first visible delta
   const securityBlocked = ref<{ message: string; threatLevel: string } | null>(null)
   const trialExhausted = ref(false) // Trial quota exhausted flag
   const toolExecuting = ref(false) // Tool execution in progress
@@ -517,7 +545,8 @@ export const useChatStore = defineStore('chat', () => {
   function stopActiveStreamForConversationSwitch() {
     if (!streaming.value && !sending.value) return
     flushPendingStreamDelta(currentConversationId.value)
-    void cancelActiveStreamOnServer(currentConversationId.value)
+    // Conversation switch should only detach local streaming UI.
+    // Do not cancel server-side generation; let it finish in background.
     sseClient.disconnect()
     streaming.value = false
     sending.value = false
@@ -932,6 +961,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      streamProgress.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
@@ -968,6 +998,12 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== sendConvId) return
           rememberActiveStreamId(streamId)
         },
+        onStreamProgress: (progress) => {
+          if (currentConversationId.value !== sendConvId) return
+          if (!_receivedFirstChunk.value) {
+            streamProgress.value = formatStreamProgress(progress)
+          }
+        },
         onMessage: (chunk) => {
           // Guard: ignore chunks if user switched to a different conversation
           if (currentConversationId.value !== sendConvId) return
@@ -976,6 +1012,7 @@ export const useChatStore = defineStore('chat', () => {
           }
           if (!chunk.delta) return
           _receivedFirstChunk.value = true
+          streamProgress.value = null
           // Clear tool executing state when new content arrives
           if (toolExecuting.value) {
             toolExecuting.value = false
@@ -1051,6 +1088,7 @@ export const useChatStore = defineStore('chat', () => {
           // Guard: if user already switched away, silently ignore
           if (currentConversationId.value !== sendConvId) return
           flushPendingStreamDelta(sendConvId)
+          streamProgress.value = null
           const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
           // Map error codes to i18n keys for accurate error messages.
@@ -1065,11 +1103,14 @@ export const useChatStore = defineStore('chat', () => {
             'provider_unavailable': 'provider_unavailable',
             'provider_auth_error': 'provider_auth_error',
             'provider_rate_limited': 'provider_rate_limited',
+            'provider_openrouter_privacy_policy': 'provider_openrouter_privacy_policy',
             'trial_service_busy': 'trial_service_busy',
           }
           const resolveErrorKey = (message: string): string | undefined => {
             if (errorMap[message]) return errorMap[message]
             const lower = message.toLowerCase()
+            if (lower.includes('provider_openrouter_privacy_policy')) return 'provider_openrouter_privacy_policy'
+            if (lower.includes('no endpoints found matching your data policy') && lower.includes('free model publication')) return 'provider_openrouter_privacy_policy'
             if (lower.includes('provider_tool_unsupported')) return 'provider_tool_unsupported'
             if (lower.includes('provider_unavailable') || lower.includes('no available provider')) return 'provider_unavailable'
             if (lower.includes('provider_auth_error') || lower.includes('auth error')) return 'provider_auth_error'
@@ -1167,6 +1208,7 @@ export const useChatStore = defineStore('chat', () => {
         onComplete: (finalChunk) => {
           flushPendingStreamDelta(sendConvId)
           streaming.value = false
+          streamProgress.value = null
           toolExecuting.value = false
           // Guard: if user switched away, don't touch messages
           if (currentConversationId.value !== sendConvId) return
@@ -1321,6 +1363,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      streamProgress.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
@@ -1352,6 +1395,12 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== convId) return
           rememberActiveStreamId(streamId)
         },
+        onStreamProgress: (progress) => {
+          if (currentConversationId.value !== convId) return
+          if (!_receivedFirstChunk.value) {
+            streamProgress.value = formatStreamProgress(progress)
+          }
+        },
         onMessage: (chunk) => {
           if (currentConversationId.value !== convId) return
           if (chunk.awaiting_user_input) {
@@ -1359,6 +1408,7 @@ export const useChatStore = defineStore('chat', () => {
           }
           if (!chunk.delta) return
           _receivedFirstChunk.value = true
+          streamProgress.value = null
           if (toolExecuting.value) {
             toolExecuting.value = false
           }
@@ -1411,6 +1461,7 @@ export const useChatStore = defineStore('chat', () => {
         onError: (err) => {
           if (currentConversationId.value !== convId) return
           flushPendingStreamDelta(convId)
+          streamProgress.value = null
           toolExecuting.value = false
           streamError.value = err.message
           messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
@@ -1419,6 +1470,7 @@ export const useChatStore = defineStore('chat', () => {
         onComplete: (finalChunk) => {
           flushPendingStreamDelta(convId)
           streaming.value = false
+          streamProgress.value = null
           toolExecuting.value = false
           if (currentConversationId.value !== convId) return
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
@@ -1473,6 +1525,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      streamProgress.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = existingContent // Start with existing content
@@ -1494,12 +1547,19 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== conversationId) return
           rememberActiveStreamId(streamId)
         },
+        onStreamProgress: (progress) => {
+          if (currentConversationId.value !== conversationId) return
+          if (!_receivedFirstChunk.value) {
+            streamProgress.value = formatStreamProgress(progress)
+          }
+        },
         onMessage: (chunk) => {
           if (currentConversationId.value !== conversationId) return
           if (chunk.awaiting_user_input) {
             markAwaitingConfirmation()
           }
           if (!chunk.delta) return
+          streamProgress.value = null
           if (toolExecuting.value) {
             toolExecuting.value = false
           }
@@ -1552,6 +1612,7 @@ export const useChatStore = defineStore('chat', () => {
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
           flushPendingStreamDelta(conversationId)
+          streamProgress.value = null
           error.value = err.message
           streaming.value = false
           toolExecuting.value = false
@@ -1570,6 +1631,7 @@ export const useChatStore = defineStore('chat', () => {
         onComplete: (finalChunk) => {
           flushPendingStreamDelta(conversationId)
           streaming.value = false
+          streamProgress.value = null
           toolExecuting.value = false
           if (currentConversationId.value !== conversationId) return
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
@@ -1639,6 +1701,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       sending.value = true
       streaming.value = true
+      streamProgress.value = null
       activeStreamId.value = null
       resetPendingStreamDelta()
       streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
@@ -1672,12 +1735,19 @@ export const useChatStore = defineStore('chat', () => {
           if (currentConversationId.value !== conversationId) return
           rememberActiveStreamId(streamId)
         },
+        onStreamProgress: (progress) => {
+          if (currentConversationId.value !== conversationId) return
+          if (!_receivedFirstChunk.value) {
+            streamProgress.value = formatStreamProgress(progress)
+          }
+        },
         onMessage: (chunk) => {
           if (currentConversationId.value !== conversationId) return
           if (chunk.awaiting_user_input) {
             markAwaitingConfirmation()
           }
           if (!chunk.delta) return
+          streamProgress.value = null
           if (toolExecuting.value) {
             toolExecuting.value = false
           }
@@ -1730,6 +1800,7 @@ export const useChatStore = defineStore('chat', () => {
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
           flushPendingStreamDelta(conversationId)
+          streamProgress.value = null
           error.value = err.message
           const wasToolExecuting = toolExecuting.value
           toolExecuting.value = false
@@ -1768,6 +1839,7 @@ export const useChatStore = defineStore('chat', () => {
         onComplete: (finalChunk) => {
           flushPendingStreamDelta(conversationId)
           streaming.value = false
+          streamProgress.value = null
           toolExecuting.value = false
           if (currentConversationId.value !== conversationId) return
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
@@ -1852,6 +1924,7 @@ export const useChatStore = defineStore('chat', () => {
 
   function clearStreamError() {
     streamError.value = null
+    streamProgress.value = null
   }
 
   function clearSecurityBlocked() {
@@ -2144,6 +2217,7 @@ export const useChatStore = defineStore('chat', () => {
     processContentLength,
     error,
     streamError,
+    streamProgress,
     securityBlocked,
     trialExhausted,
     toolExecuting,

@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
@@ -152,10 +154,58 @@ var reSystemReminder = regexp.MustCompile(`<system-reminder>[\s\S]*?</system-rem
 var reThinkBlock = regexp.MustCompile(`<think>[\s\S]*?</think>`)
 var reAwaitingUserInputTag = regexp.MustCompile(`(?is)<awaiting_user_input>\s*true\s*</awaiting_user_input>`)
 var reAskGateBlock = regexp.MustCompile(`(?is)<ask_gate>[\s\S]*?</ask_gate>`)
+var rePseudoDirectiveRecipientFunctions = regexp.MustCompile(`(?i)["']recipient_name["']\s*:\s*["']functions\.`)
+var rePseudoDirectiveCommandWorkdir = regexp.MustCompile(`(?i)\{"command"\s*:\s*"(?:blue [^"]*|\.{3}|…[^"]*)"[^}]*"workdir"\s*:`)
+var rePseudoDirectiveCommandPlaceholder = regexp.MustCompile(`(?i)\{"command"\s*:\s*"(?:\.{3}|…[^"]*)"`)
+var rePseudoDirectivePayloadJSON = regexp.MustCompile(`(?i)^\s*\{"(?:command|parameters|tool_uses)"\s*:`)
+var rePseudoInlineTokenFunctions = regexp.MustCompile(`(?i)to\s*=\s*functions\.[a-z0-9_.-]+`)
+var rePseudoInlineTokenParallel = regexp.MustCompile(`(?i)to\s*=\s*multi_tool_use\.parallel`)
+var rePseudoInlineTokenRecipient = regexp.MustCompile(`(?i)\brecipient_?name\b|\bwith\s+recipient\b`)
+var rePseudoInlineTokenToolUses = regexp.MustCompile(`(?i)\btool_?uses\b`)
+var rePseudoInlineTokenJSONWord = regexp.MustCompile(`(?i)\b[\p{L}\p{N}_-]*json\b`)
+var rePseudoInlineTokenLetsDo = regexp.MustCompile(`(?i)\blet'?s do (?:that|it)(?: again| correctly)?\.?`)
+var reExecWebSearchQuery = regexp.MustCompile(`(?i)\bquery=(?:"([^"]+)"|'([^']+)'|([^\s]+))`)
 var reTodoUnchecked = regexp.MustCompile(`(?m)^([ \t]*[-*]\s+)\[ \]\s+([^\n]+)$`)
 var reTodoAnyItem = regexp.MustCompile(`(?m)^[ \t]*[-*]\s+\[([ xX])\]\s+(?:~~)?([^\n~]+?)(?:~~)?\s*$`)
 var reAskOptionLine = regexp.MustCompile(`(?m)^[A-E][\.\)]\s+\S+`)
 var reShortAffirmativeEN = regexp.MustCompile(`(?i)^(ok|okay|yes|y|sure|go ahead|continue|sounds good|do it|please continue|let'?s go)$`)
+var reShortAffirmativeIntl = regexp.MustCompile(`(?i)^(继续|继续吧|继续执行|接着|接着做|好的|好|可以|行|嗯|收到|明白|` +
+	`sí|vale|de acuerdo|continúa|continuar|` +
+	`oui|d'accord|continue|` +
+	`ja|weiter|einverstanden|` +
+	`sim|continuar|continue|` +
+	`да|хорошо|продолжай|продолжить|` +
+	`はい|続けて|続行|` +
+	`네|예|계속|계속해)$`)
+
+type responseSanitizeProfile string
+
+const (
+	responseSanitizeProfileMinimal  responseSanitizeProfile = "minimal"
+	responseSanitizeProfileBalanced responseSanitizeProfile = "balanced"
+	responseSanitizeProfileStrict   responseSanitizeProfile = "strict_tool_leak"
+)
+
+var responseSanitizeProviderProfiles = map[string]responseSanitizeProfile{
+	"deepresearch": responseSanitizeProfileMinimal,
+	"ir":           responseSanitizeProfileMinimal,
+	"openai":       responseSanitizeProfileBalanced,
+	"azure":        responseSanitizeProfileBalanced,
+	"anthropic":    responseSanitizeProfileBalanced,
+	"claude":       responseSanitizeProfileBalanced,
+	"gemini":       responseSanitizeProfileBalanced,
+	"grok":         responseSanitizeProfileBalanced,
+	"qwen":         responseSanitizeProfileBalanced,
+	"deepseek":     responseSanitizeProfileBalanced,
+	"glm":          responseSanitizeProfileBalanced,
+	"minimax":      responseSanitizeProfileBalanced,
+	"venice":       responseSanitizeProfileBalanced,
+	"openrouter":   responseSanitizeProfileBalanced,
+	"siliconflow":  responseSanitizeProfileBalanced,
+	"bedrock":      responseSanitizeProfileBalanced,
+	"ollama":       responseSanitizeProfileBalanced,
+	"aihubmix":     responseSanitizeProfileBalanced,
+}
 
 type continuationContext struct {
 	Hint      string
@@ -177,6 +227,9 @@ func isAffirmativeContinuationMessage(content string) bool {
 		return false
 	}
 	if reShortAffirmativeEN.MatchString(strings.ToLower(s)) {
+		return true
+	}
+	if reShortAffirmativeIntl.MatchString(strings.ToLower(s)) {
 		return true
 	}
 
@@ -224,7 +277,719 @@ func hasDefaultFallbackOffer(content string) bool {
 			return true
 		}
 	}
+	if hasSoftConsentContinuationOffer(content) {
+		return true
+	}
 	return false
+}
+
+// shouldPreferDeepSearchReport returns true for requests that should run
+// multi-round search and produce a complete research report instead of a
+// one-shot short answer.
+func shouldPreferDeepSearchReport(message string) bool {
+	lower := strings.ToLower(strings.TrimSpace(message))
+	if lower == "" {
+		return false
+	}
+
+	negations := []string{
+		"no deep research",
+		"without deep research",
+		"disable deep research",
+		"不要深度搜索",
+		"不用深度搜索",
+		"关闭深度搜索",
+		"不要联网",
+		"不要搜索",
+		"只要一句话",
+		"只给结论",
+		"不用展开",
+	}
+	for _, ng := range negations {
+		if strings.Contains(lower, ng) {
+			return false
+		}
+	}
+
+	cues := []string{
+		"deep research",
+		"in-depth",
+		"in depth",
+		"comprehensive research",
+		"multi-source",
+		"research report",
+		"latest",
+		"news",
+		"update",
+		"updates",
+		"release note",
+		"changelog",
+		"what's new",
+		"what is new",
+		"sources",
+		"citations",
+		"references",
+		"evidence",
+		"web search",
+		"search the web",
+		"look up",
+		"深度搜索",
+		"深度研究",
+		"深入研究",
+		"深度调研",
+		"深入调研",
+		"全面调研",
+		"最新",
+		"新闻",
+		"动态",
+		"进展",
+		"发布",
+		"更新",
+		"公告",
+		"报道",
+		"消息",
+		"资料",
+		"来源",
+		"引用",
+		"证据",
+		"检索",
+		"搜索",
+		"查一下",
+		"查一查",
+		"汇总",
+		"报告",
+	}
+	for _, cue := range cues {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildDeepSearchExecutionHint(userMessage string) string {
+	if !shouldPreferDeepSearchReport(userMessage) {
+		return ""
+	}
+	return "<deep_search_mode>When the user asks for latest/news/deep research/report, do multi-round retrieval before concluding: run at least 2 diverse web_search rounds (official releases/docs/blog + reputable secondary coverage), then refine queries as needed. If critical claims need confirmation, open key URLs to verify. End with one complete report containing: (1) executive summary, (2) key findings, (3) timeline/version facts when relevant, (4) risks/uncertainties, (5) source URLs. Do not stop after a single link list or only suggest next steps unless the user explicitly asks for that format.</deep_search_mode>"
+}
+
+func shouldEnforceDeepSearchMinRounds(message string) bool {
+	lower := strings.ToLower(strings.TrimSpace(message))
+	if lower == "" {
+		return false
+	}
+	if !shouldPreferDeepSearchReport(lower) {
+		return false
+	}
+
+	strongCues := []string{
+		"deep research",
+		"in-depth",
+		"in depth",
+		"comprehensive research",
+		"research report",
+		"with sources",
+		"with citations",
+		"full report",
+		"complete report",
+		"深度搜索",
+		"深度研究",
+		"深入研究",
+		"深度调研",
+		"深入调研",
+		"完整报告",
+		"详细报告",
+		"附来源",
+		"附引用",
+		"多轮检索",
+	}
+	for _, cue := range strongCues {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+
+	freshnessCues := []string{
+		"latest",
+		"news",
+		"update",
+		"updates",
+		"release",
+		"changelog",
+		"最新",
+		"新闻",
+		"动态",
+		"进展",
+		"更新",
+		"发布",
+	}
+	analysisCues := []string{
+		"report",
+		"summary",
+		"sources",
+		"citations",
+		"references",
+		"evidence",
+		"汇总",
+		"总结",
+		"报告",
+		"来源",
+		"引用",
+		"证据",
+	}
+	hasFreshness := false
+	for _, cue := range freshnessCues {
+		if strings.Contains(lower, cue) {
+			hasFreshness = true
+			break
+		}
+	}
+	if !hasFreshness {
+		return false
+	}
+	for _, cue := range analysisCues {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+const (
+	deepSearchMinRoundsRequired       = 2
+	deepSearchMaxRoundsAllowed        = 4
+	deepSearchForceContinueMaxRetries = 2
+	deepSearchNoProgressFailOpenAfter = 1
+	deepSearchErrorFailOpenAfter      = 1
+)
+
+type deepSearchLoopState struct {
+	enabled bool
+
+	minRounds int
+	maxRounds int
+
+	searchRounds           int
+	forcedContinuations    int
+	consecutiveNoProgress  int
+	consecutiveSearchError int
+
+	seenQueries map[string]struct{}
+	seenHosts   map[string]struct{}
+}
+
+func newDeepSearchLoopState(userMessage string, selectedTools []tools.ToolDefinition) *deepSearchLoopState {
+	enabled := shouldEnforceDeepSearchMinRounds(userMessage) && hasSearchCapabilityInToolDefs(selectedTools)
+	return &deepSearchLoopState{
+		enabled:     enabled,
+		minRounds:   deepSearchMinRoundsRequired,
+		maxRounds:   deepSearchMaxRoundsAllowed,
+		seenQueries: make(map[string]struct{}, 8),
+		seenHosts:   make(map[string]struct{}, 8),
+	}
+}
+
+func hasSearchCapabilityInToolDefs(defs []tools.ToolDefinition) bool {
+	for _, def := range defs {
+		name := strings.ToLower(strings.TrimSpace(def.Name))
+		if name == "web_search" || name == "exec" {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *deepSearchLoopState) shouldForceAnotherSearch(round, maxToolRounds int) (bool, string) {
+	if s == nil || !s.enabled {
+		return false, "disabled"
+	}
+	if s.searchRounds >= s.minRounds {
+		return false, "min_met"
+	}
+	if round+1 >= maxToolRounds {
+		return false, "tool_round_budget"
+	}
+	if s.searchRounds >= s.maxRounds {
+		return false, "search_round_budget"
+	}
+	if s.forcedContinuations >= deepSearchForceContinueMaxRetries {
+		return false, "force_budget"
+	}
+	if s.searchRounds > 0 && s.consecutiveSearchError >= deepSearchErrorFailOpenAfter {
+		return false, "search_error"
+	}
+	if s.searchRounds > 0 && s.consecutiveNoProgress >= deepSearchNoProgressFailOpenAfter {
+		return false, "no_progress"
+	}
+	return true, "min_rounds_not_met"
+}
+
+func (s *deepSearchLoopState) markForcedContinuation() {
+	if s == nil {
+		return
+	}
+	s.forcedContinuations++
+}
+
+func buildDeepSearchMinRoundsNudge(state *deepSearchLoopState) string {
+	completed := 0
+	target := deepSearchMinRoundsRequired
+	if state != nil {
+		completed = state.searchRounds
+		if state.minRounds > 0 {
+			target = state.minRounds
+		}
+	}
+	return fmt.Sprintf(
+		"Deep-search guard: do not finalize yet. Search rounds completed: %d/%d. Run at least one more web_search round with a different query angle and preferably new sources. After that, provide one complete report with: executive summary, key findings, timeline/version facts (if relevant), risks/uncertainties, and source URLs. If the next search still yields no new evidence or returns tool errors, finish with a best-effort report and explicitly state evidence limitations.",
+		completed,
+		target,
+	)
+}
+
+func (s *deepSearchLoopState) observeToolRound(toolCalls []llm.ToolCall, toolResults []llm.Message) {
+	if s == nil || !s.enabled || len(toolCalls) == 0 {
+		return
+	}
+
+	resultByID := make(map[string]llm.Message, len(toolResults))
+	for _, tr := range toolResults {
+		if id := strings.TrimSpace(tr.ToolCallID); id != "" {
+			resultByID[id] = tr
+		}
+	}
+
+	searchCalls := 0
+	madeProgress := false
+	hadError := false
+
+	for i, tc := range toolCalls {
+		if !isSearchLikeToolCallForLLM(tc) {
+			continue
+		}
+		searchCalls++
+		if s.markQuery(extractSearchQueryFromToolCall(tc)) {
+			madeProgress = true
+		}
+
+		var tr llm.Message
+		found := false
+		if id := strings.TrimSpace(tc.ID); id != "" {
+			if matched, ok := resultByID[id]; ok {
+				tr = matched
+				found = true
+			}
+		}
+		if !found && i < len(toolResults) {
+			tr = toolResults[i]
+			found = true
+		}
+		if !found {
+			continue
+		}
+
+		progressFromResult, resultHasError := s.observeSearchToolResult(tc.Name, tr.Content)
+		if progressFromResult {
+			madeProgress = true
+		}
+		if resultHasError {
+			hadError = true
+		}
+	}
+
+	if searchCalls == 0 {
+		return
+	}
+	s.searchRounds++
+	if madeProgress {
+		s.consecutiveNoProgress = 0
+	} else {
+		s.consecutiveNoProgress++
+	}
+	if hadError {
+		s.consecutiveSearchError++
+	} else {
+		s.consecutiveSearchError = 0
+	}
+}
+
+func (s *deepSearchLoopState) observeSearchToolResult(toolName, content string) (progress bool, hasError bool) {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return false, false
+	}
+
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(trimmed), &payload) != nil {
+		lower := strings.ToLower(trimmed)
+		if strings.Contains(lower, "\"error\"") || strings.Contains(lower, "error:") {
+			return false, true
+		}
+		return false, false
+	}
+
+	query, _, _, errMsg := extractSearchMetadataForLLM(toolName, payload)
+	if s.markQuery(query) {
+		progress = true
+	}
+	if strings.TrimSpace(errMsg) != "" {
+		hasError = true
+	}
+	if results, ok := extractSearchResultsForLLM(toolName, payload); ok {
+		for _, item := range results {
+			if s.markHost(item.URL) {
+				progress = true
+			}
+		}
+	}
+	return progress, hasError
+}
+
+func (s *deepSearchLoopState) markQuery(query string) bool {
+	if s == nil {
+		return false
+	}
+	key := normalizeDeepSearchQueryKey(query)
+	if key == "" {
+		return false
+	}
+	if _, exists := s.seenQueries[key]; exists {
+		return false
+	}
+	s.seenQueries[key] = struct{}{}
+	return true
+}
+
+func (s *deepSearchLoopState) markHost(rawURL string) bool {
+	if s == nil {
+		return false
+	}
+	key := hostKeyForLLM(rawURL)
+	if key == "" {
+		return false
+	}
+	if _, exists := s.seenHosts[key]; exists {
+		return false
+	}
+	s.seenHosts[key] = struct{}{}
+	return true
+}
+
+func normalizeDeepSearchQueryKey(query string) string {
+	key := strings.ToLower(strings.TrimSpace(query))
+	if key == "" {
+		return ""
+	}
+	key = strings.Trim(key, "\"'`")
+	key = strings.Join(strings.Fields(key), " ")
+	return truncateUTF8Bytes(key, 256)
+}
+
+func extractSearchQueryFromToolCall(tc llm.ToolCall) string {
+	name := strings.ToLower(strings.TrimSpace(tc.Name))
+	args := strings.TrimSpace(tc.Arguments)
+	if args == "" {
+		return ""
+	}
+	switch name {
+	case "web_search":
+		var payload map[string]interface{}
+		if json.Unmarshal([]byte(args), &payload) == nil {
+			if q := anyToStringForLLM(payload["query"]); q != "" {
+				return q
+			}
+			if q := anyToStringForLLM(payload["q"]); q != "" {
+				return q
+			}
+		}
+	case "exec":
+		var payload struct {
+			Command string `json:"command"`
+		}
+		if json.Unmarshal([]byte(args), &payload) == nil {
+			return extractSearchQueryFromExecCommand(payload.Command)
+		}
+	}
+	return ""
+}
+
+func extractSearchQueryFromExecCommand(command string) string {
+	cmd := strings.TrimSpace(command)
+	if cmd == "" {
+		return ""
+	}
+	if !strings.Contains(strings.ToLower(cmd), "web_search") {
+		return ""
+	}
+	if parts := reExecWebSearchQuery.FindStringSubmatch(cmd); len(parts) > 1 {
+		for i := 1; i < len(parts); i++ {
+			if q := strings.TrimSpace(parts[i]); q != "" {
+				return q
+			}
+		}
+	}
+	return cmd
+}
+
+// hasSoftConsentContinuationOffer detects assistant replies that ask for a
+// lightweight "go-ahead" while already committing to a concrete next action.
+// Example: "如果你同意，我下一步会按这个范围整理……"
+func hasSoftConsentContinuationOffer(content string) bool {
+	s := strings.TrimSpace(content)
+	if s == "" {
+		return false
+	}
+	lower := strings.ToLower(s)
+
+	hasConsentCue := false
+	zhConsentCues := []string{
+		"如果你同意",
+		"若你同意",
+		"你同意的话",
+		"如果你愿意",
+	}
+	for _, cue := range zhConsentCues {
+		if strings.Contains(s, cue) {
+			hasConsentCue = true
+			break
+		}
+	}
+	if !hasConsentCue {
+		enConsentCues := []string{
+			"if you agree",
+			"if you'd like",
+			"if you would like",
+			"if that works for you",
+			"if you're okay with that",
+			"if you are okay with that",
+		}
+		for _, cue := range enConsentCues {
+			if strings.Contains(lower, cue) {
+				hasConsentCue = true
+				break
+			}
+		}
+	}
+	if !hasConsentCue {
+		intlConsentCues := []string{
+			// ES
+			"si estás de acuerdo",
+			"si te parece bien",
+			"si quieres",
+			// FR
+			"si vous êtes d'accord",
+			"si tu es d'accord",
+			"si ça te va",
+			"si cela vous convient",
+			// DE
+			"wenn du einverstanden bist",
+			"wenn sie einverstanden sind",
+			"wenn das für dich passt",
+			// PT
+			"se você concordar",
+			"se estiver de acordo",
+			"se você quiser",
+			// RU
+			"если вы согласны",
+			"если ты согласен",
+			"если вы не против",
+			// JA
+			"もしよければ",
+			"問題なければ",
+			"同意いただければ",
+			// KO
+			"괜찮으시면",
+			"동의하시면",
+			"괜찮다면",
+		}
+		for _, cue := range intlConsentCues {
+			if strings.Contains(lower, cue) || strings.Contains(s, cue) {
+				hasConsentCue = true
+				break
+			}
+		}
+	}
+	if !hasConsentCue {
+		return false
+	}
+
+	hasProceedCue := false
+	zhProceedCues := []string{
+		"我下一步会",
+		"我会按这个范围",
+		"我会继续",
+		"我再帮你",
+		"我就按这个",
+		"我先按这个",
+	}
+	for _, cue := range zhProceedCues {
+		if strings.Contains(s, cue) {
+			hasProceedCue = true
+			break
+		}
+	}
+	if !hasProceedCue {
+		enProceedCues := []string{
+			"i'll proceed",
+			"i will proceed",
+			"i can proceed",
+			"i'll continue",
+			"i will continue",
+			"i can continue",
+			"i'll compile",
+			"i will compile",
+			"i'll summarize",
+			"i will summarize",
+			"i'll put together",
+			"i will put together",
+		}
+		for _, cue := range enProceedCues {
+			if strings.Contains(lower, cue) {
+				hasProceedCue = true
+				break
+			}
+		}
+	}
+	if !hasProceedCue {
+		intlProceedCues := []string{
+			// ES
+			"a continuación",
+			"voy a",
+			"puedo",
+			"continuaré",
+			"resumiré",
+			"investigaré",
+			// FR
+			"ensuite",
+			"je vais",
+			"je peux",
+			"je continuerai",
+			"je vais résumer",
+			"je vais vérifier",
+			// DE
+			"als nächstes",
+			"ich werde",
+			"ich kann",
+			"ich mache weiter",
+			"ich fasse zusammen",
+			"ich prüfe",
+			// PT
+			"em seguida",
+			"vou",
+			"posso",
+			"continuarei",
+			"resumirei",
+			"vou verificar",
+			// RU
+			"дальше",
+			"я продолжу",
+			"я могу",
+			"я проверю",
+			"я соберу",
+			"я суммирую",
+			// JA
+			"次に",
+			"進めます",
+			"まとめます",
+			"調べます",
+			"整理します",
+			"続けます",
+			// KO
+			"다음으로",
+			"진행하겠습니다",
+			"정리하겠습니다",
+			"찾아보겠습니다",
+			"계속하겠습니다",
+		}
+		for _, cue := range intlProceedCues {
+			if strings.Contains(lower, cue) || strings.Contains(s, cue) {
+				hasProceedCue = true
+				break
+			}
+		}
+	}
+	if !hasProceedCue {
+		return false
+	}
+
+	// Exclude explicit "missing parameter" asks; those should still wait.
+	if strings.Contains(s, "请选择") && reAskOptionLine.MatchString(s) {
+		return false
+	}
+	zhNeedInfo := []string{
+		"请提供",
+		"请补充",
+		"请告知",
+		"请告诉我",
+		"哪个城市",
+		"哪个地区",
+		"哪座城市",
+		"哪一个城市",
+	}
+	for _, cue := range zhNeedInfo {
+		if strings.Contains(s, cue) {
+			return false
+		}
+	}
+	enNeedInfo := []string{
+		"please provide",
+		"please share",
+		"please confirm",
+		"please specify",
+		"which city",
+		"what city",
+		"which location",
+		"what location",
+	}
+	for _, cue := range enNeedInfo {
+		if strings.Contains(lower, cue) {
+			return false
+		}
+	}
+	intlNeedInfo := []string{
+		// ES
+		"por favor proporciona",
+		"por favor confirma",
+		"qué ciudad",
+		"qué ubicación",
+		// FR
+		"veuillez fournir",
+		"veuillez confirmer",
+		"quelle ville",
+		"quel lieu",
+		// DE
+		"bitte gib",
+		"bitte bestätigen",
+		"welche stadt",
+		"welcher ort",
+		// PT
+		"por favor informe",
+		"por favor confirme",
+		"qual cidade",
+		"qual local",
+		// RU
+		"пожалуйста, укажите",
+		"пожалуйста, подтвердите",
+		"какой город",
+		"какое место",
+		// JA
+		"教えてください",
+		"確認してください",
+		"どの都市",
+		"どの地域",
+		// KO
+		"알려주세요",
+		"확인해 주세요",
+		"어느 도시",
+		"어느 지역",
+	}
+	for _, cue := range intlNeedInfo {
+		if strings.Contains(lower, cue) || strings.Contains(s, cue) {
+			return false
+		}
+	}
+	return true
 }
 
 func latestAssistantContent(messages []llm.Message) string {
@@ -277,7 +1042,8 @@ func deriveContinuationContext(userMessage string, messages []llm.Message) conti
 	awaiting := isAwaitingUserInput(lastAssistant)
 	pendingTodo := hasPendingTodo(lastAssistant)
 	defaultOffer := hasDefaultFallbackOffer(lastAssistant)
-	canContinue := (pendingTodo && !awaiting) || (pendingTodo && defaultOffer) || (awaiting && defaultOffer)
+	softConsent := hasSoftConsentContinuationOffer(lastAssistant)
+	canContinue := softConsent || (pendingTodo && !awaiting) || (pendingTodo && defaultOffer) || (awaiting && defaultOffer)
 	if !canContinue {
 		return continuationContext{}
 	}
@@ -427,7 +1193,14 @@ func isAwaitingUserInput(content string) bool {
 
 // shouldAutoContinueForTodo gates auto-continue by TODO progress:
 // auto-continue only when there is a TODO checklist and unfinished items.
-func shouldAutoContinueForTodo(currentContent, trackedTodoContent string) bool {
+func shouldAutoContinueForTodo(currentContent, trackedTodoContent string, knownPlanCompleted ...bool) bool {
+	planCompleted := false
+	if len(knownPlanCompleted) > 0 {
+		planCompleted = knownPlanCompleted[0]
+	}
+	if planCompleted {
+		return false
+	}
 	// If the latest assistant reply is explicitly waiting for user input,
 	// do not force an agent auto-continue tool round.
 	if isAwaitingUserInput(currentContent) {
@@ -436,15 +1209,300 @@ func shouldAutoContinueForTodo(currentContent, trackedTodoContent string) bool {
 	// Prefer current round signal: when the model already produced a non-empty
 	// response without pending TODOs, treat it as a natural stop.
 	if strings.TrimSpace(currentContent) != "" {
-		return hasPendingTodo(currentContent)
+		if hasPendingTodo(currentContent) {
+			// Checklist text can linger in final answers; explicit completion signals
+			// should win over stale unchecked items.
+			if isLikelyTaskCompletionResponse(currentContent) {
+				return false
+			}
+			return true
+		}
+		// Plan-tool mode: the model may not echo checklist text every round.
+		// If tracked checklist still has pending items and current text is not a
+		// completion response, keep the loop running.
+		if hasPendingTodo(trackedTodoContent) && !isLikelyTaskCompletionResponse(currentContent) {
+			return true
+		}
+		return false
 	}
 	// Fallback to tracked TODO only when current content is empty.
 	return hasPendingTodo(trackedTodoContent)
 }
 
+func extractPlanPayloadMaps(resultContent string) []map[string]any {
+	if strings.TrimSpace(resultContent) == "" {
+		return nil
+	}
+	var root map[string]any
+	if err := json.Unmarshal([]byte(resultContent), &root); err != nil {
+		return nil
+	}
+	payloads := make([]map[string]any, 0, 3)
+	if len(root) > 0 {
+		payloads = append(payloads, root)
+	}
+	if dataVal, ok := root["data"]; ok && dataVal != nil {
+		switch data := dataVal.(type) {
+		case map[string]any:
+			if len(data) > 0 {
+				payloads = append(payloads, data)
+			}
+		case string:
+			trimmed := strings.TrimSpace(data)
+			if trimmed != "" {
+				var nested map[string]any
+				if err := json.Unmarshal([]byte(trimmed), &nested); err == nil && len(nested) > 0 {
+					payloads = append(payloads, nested)
+				}
+			}
+		}
+	}
+	return payloads
+}
+
+func extractPlanChecklistFromToolRound(toolCalls []llm.ToolCall, toolResults []llm.Message) (string, bool) {
+	latest := ""
+	for i, tc := range toolCalls {
+		if i >= len(toolResults) {
+			break
+		}
+		checklist := extractPlanChecklistFromToolCall(tc, toolResults[i].Content)
+		if strings.TrimSpace(checklist) == "" {
+			continue
+		}
+		latest = strings.TrimSpace(checklist)
+	}
+	if latest == "" {
+		return "", false
+	}
+	return latest, true
+}
+
+func extractPlanChecklistFromToolCall(tc llm.ToolCall, resultContent string) string {
+	switch tc.Name {
+	case "plan_create", "plan_update", "plan_append":
+		if checklist, ok := extractChecklistFromJSONResult(resultContent); ok {
+			return checklist
+		}
+	case "exec":
+		if !isPlanExecToolCall(tc.Arguments) {
+			return ""
+		}
+		if checklist, ok := extractChecklistFromJSONResult(resultContent); ok {
+			return checklist
+		}
+	}
+	return ""
+}
+
+func extractPlanCompletionFromToolRound(toolCalls []llm.ToolCall, toolResults []llm.Message) (bool, bool) {
+	latestDone := false
+	found := false
+	for i, tc := range toolCalls {
+		if i >= len(toolResults) {
+			break
+		}
+		done, ok := extractPlanCompletionFromToolCall(tc, toolResults[i].Content)
+		if !ok {
+			continue
+		}
+		latestDone = done
+		found = true
+	}
+	return latestDone, found
+}
+
+func extractPlanCompletionFromToolCall(tc llm.ToolCall, resultContent string) (bool, bool) {
+	switch tc.Name {
+	case "plan_create", "plan_update", "plan_append":
+		return extractPlanCompletionFromJSONResult(resultContent)
+	case "exec":
+		if !isPlanExecToolCall(tc.Arguments) {
+			return false, false
+		}
+		return extractPlanCompletionFromJSONResult(resultContent)
+	}
+	return false, false
+}
+
+func parseFlexibleBool(v any) (bool, bool) {
+	switch tv := v.(type) {
+	case bool:
+		return tv, true
+	case string:
+		switch strings.TrimSpace(strings.ToLower(tv)) {
+		case "true", "1", "yes", "y", "done", "completed":
+			return true, true
+		case "false", "0", "no", "n":
+			return false, true
+		}
+	case float64:
+		if tv == 1 {
+			return true, true
+		}
+		if tv == 0 {
+			return false, true
+		}
+	case int:
+		if tv == 1 {
+			return true, true
+		}
+		if tv == 0 {
+			return false, true
+		}
+	case int64:
+		if tv == 1 {
+			return true, true
+		}
+		if tv == 0 {
+			return false, true
+		}
+	case json.Number:
+		if n, err := tv.Int64(); err == nil {
+			if n == 1 {
+				return true, true
+			}
+			if n == 0 {
+				return false, true
+			}
+		}
+	}
+	return false, false
+}
+
+func parseFlexibleInt(v any) (int, bool) {
+	switch tv := v.(type) {
+	case int:
+		return tv, true
+	case int64:
+		return int(tv), true
+	case float64:
+		return int(tv), true
+	case string:
+		s := strings.TrimSpace(tv)
+		if s == "" {
+			return 0, false
+		}
+		if n, err := strconv.Atoi(s); err == nil {
+			return n, true
+		}
+	case json.Number:
+		if n, err := tv.Int64(); err == nil {
+			return int(n), true
+		}
+	}
+	return 0, false
+}
+
+func isLikelyPlanPayload(payload map[string]any) bool {
+	if payload == nil {
+		return false
+	}
+	for _, key := range []string{"checklist", "task_count", "completed_count", "pending_count", "all_completed", "all_done", "plan_completed"} {
+		if _, ok := payload[key]; ok {
+			return true
+		}
+	}
+	if op, ok := payload["operation"]; ok {
+		switch strings.TrimSpace(strings.ToLower(fmt.Sprintf("%v", op))) {
+		case "create", "update", "append":
+			return true
+		}
+	}
+	return false
+}
+
+func extractPlanCompletionFromJSONResult(resultContent string) (bool, bool) {
+	payloads := extractPlanPayloadMaps(resultContent)
+	if len(payloads) == 0 {
+		return false, false
+	}
+
+	for _, payload := range payloads {
+		if !isLikelyPlanPayload(payload) {
+			continue
+		}
+		for _, key := range []string{"all_completed", "all_done", "plan_completed", "completed"} {
+			if raw, ok := payload[key]; ok {
+				if done, parsed := parseFlexibleBool(raw); parsed {
+					return done, true
+				}
+			}
+		}
+
+		if pendingRaw, ok := payload["pending_count"]; ok {
+			if pending, parsed := parseFlexibleInt(pendingRaw); parsed {
+				return pending == 0, true
+			}
+		}
+
+		total, hasTotal := parseFlexibleInt(payload["task_count"])
+		completed, hasCompleted := parseFlexibleInt(payload["completed_count"])
+		if hasTotal && hasCompleted {
+			if total <= 0 {
+				return true, true
+			}
+			return completed >= total, true
+		}
+
+		if checklist := strings.TrimSpace(fmt.Sprintf("%v", payload["checklist"])); checklist != "" && checklist != "<nil>" {
+			return !hasPendingTodo(checklist), true
+		}
+	}
+
+	return false, false
+}
+
+func isPlanExecToolCall(args string) bool {
+	if strings.TrimSpace(args) == "" {
+		return false
+	}
+	var input map[string]any
+	if err := json.Unmarshal([]byte(args), &input); err != nil {
+		return false
+	}
+	raw := strings.TrimSpace(fmt.Sprintf("%v", input["command"]))
+	if raw == "" {
+		raw = strings.TrimSpace(fmt.Sprintf("%v", input["cmd"]))
+	}
+	if raw == "" {
+		return false
+	}
+	cmd := raw
+	if strings.HasPrefix(cmd, "blue ") {
+		cmd = strings.TrimSpace(strings.TrimPrefix(cmd, "blue "))
+	}
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 {
+		return false
+	}
+	switch strings.TrimSpace(parts[0]) {
+	case "plan_create", "plan_update", "plan_append":
+		return true
+	default:
+		return false
+	}
+}
+
+func extractChecklistFromJSONResult(resultContent string) (string, bool) {
+	payloads := extractPlanPayloadMaps(resultContent)
+	for _, payload := range payloads {
+		checklist := strings.TrimSpace(fmt.Sprintf("%v", payload["checklist"]))
+		if checklist == "" || checklist == "<nil>" {
+			continue
+		}
+		return checklist, true
+	}
+
+	return "", false
+}
+
 // shouldAutoContinueForActionPledge detects a common toolless-stop pattern:
 // the assistant says it will execute/search "now", but returns no tool calls.
 func shouldAutoContinueForActionPledge(currentContent string) bool {
+	if hasSoftConsentContinuationOffer(currentContent) {
+		return true
+	}
 	if isAwaitingUserInput(currentContent) {
 		return false
 	}
@@ -469,6 +1527,41 @@ func shouldAutoContinueForActionPledge(currentContent string) bool {
 			return true
 		}
 	}
+	intlPhrases := []string{
+		// ES
+		"lo revisaré",
+		"voy a revisar",
+		"dame unos segundos",
+		// FR
+		"je vais vérifier",
+		"je vérifie",
+		"donnez-moi quelques secondes",
+		// DE
+		"ich prüfe das",
+		"ich schaue nach",
+		"einen moment",
+		// PT
+		"vou verificar",
+		"deixe-me verificar",
+		"me dê alguns segundos",
+		// RU
+		"я проверю",
+		"сейчас проверю",
+		"дайте мне пару секунд",
+		// JA
+		"今確認します",
+		"少しお待ちください",
+		"調べます",
+		// KO
+		"지금 확인해볼게요",
+		"잠시만요",
+		"확인하겠습니다",
+	}
+	for _, p := range intlPhrases {
+		if strings.Contains(lower, p) || strings.Contains(s, p) {
+			return true
+		}
+	}
 
 	zhPhrases := []string{
 		"我现在就去查",
@@ -486,7 +1579,215 @@ func shouldAutoContinueForActionPledge(currentContent string) bool {
 			return true
 		}
 	}
+	containsAny := func(text string, cues []string) bool {
+		for _, cue := range cues {
+			if strings.Contains(text, cue) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Wider Chinese toolless-stop heuristic for common placeholders like:
+	// "我先帮你快速查一下……请稍等，我整理成要点给你。"
+	zhLeadCues := []string{"我先", "我现在", "我马上", "我这就"}
+	zhActionCues := []string{
+		"查一下", "查一查", "查询", "检索", "搜索", "搜一下", "查看", "核实", "确认",
+	}
+	zhWaitOrWrapCues := []string{
+		"请稍等", "稍等", "稍候", "稍后", "等我", "马上给你", "稍后给你", "我整理",
+		"整理成要点", "整理后给你", "汇总给你", "总结给你",
+	}
+	zhCompletionCues := []string{
+		"我已经", "已帮你", "已经帮你", "帮你搜到", "帮你查到", "检索到", "查好了", "结果如下",
+		"下面是结果", "已完成查询", "已整理好",
+	}
+	hasCompletionCue := containsAny(s, zhCompletionCues)
+	if !hasCompletionCue && containsAny(s, zhLeadCues) && containsAny(s, zhActionCues) {
+		return true
+	}
+	if !hasCompletionCue && containsAny(s, zhWaitOrWrapCues) && (containsAny(s, zhActionCues) || strings.Contains(s, "整理")) {
+		return true
+	}
 	return false
+}
+
+func pseudoDirectiveStartIndex(delta string) int {
+	if strings.TrimSpace(delta) == "" {
+		return -1
+	}
+	lower := strings.ToLower(delta)
+	minIndex := -1
+	mark := func(idx int) {
+		if idx < 0 {
+			return
+		}
+		if minIndex < 0 || idx < minIndex {
+			minIndex = idx
+		}
+	}
+
+	mark(strings.Index(lower, "to=functions."))
+	mark(strings.Index(lower, "to=multi_tool_use.parallel"))
+	mark(strings.Index(lower, "```tool"))
+	mark(strings.Index(lower, "<exec>"))
+	if loc := rePseudoDirectiveRecipientFunctions.FindStringIndex(delta); len(loc) == 2 {
+		start := loc[0]
+		if start > 0 && delta[start-1] == '{' {
+			start--
+		}
+		mark(start)
+	}
+	if loc := rePseudoDirectiveCommandWorkdir.FindStringIndex(delta); len(loc) == 2 {
+		mark(loc[0])
+	}
+	if loc := rePseudoDirectiveCommandPlaceholder.FindStringIndex(delta); len(loc) == 2 {
+		mark(loc[0])
+	}
+	if loc := rePseudoDirectivePayloadJSON.FindStringIndex(delta); len(loc) == 2 {
+		mark(loc[0])
+	}
+	mark(strings.Index(lower, `{"tool_uses":`))
+	mark(strings.Index(lower, `{"tooluses":`))
+	if looksLikeLeakedToolExecEnvelope(lower) {
+		if idx := strings.Index(lower, `{"data":`); idx >= 0 {
+			mark(idx)
+		} else if idx := strings.Index(lower, `"session_id":`); idx >= 0 {
+			start := idx
+			if start > 0 && lower[start-1] == '{' {
+				start--
+			}
+			mark(start)
+		} else if idx := strings.Index(lower, `"exit_code":`); idx >= 0 {
+			start := idx
+			if start > 0 && lower[start-1] == '{' {
+				start--
+			}
+			mark(start)
+		}
+	}
+	if cmdIdx := strings.Index(lower, `{"cmd":"`); cmdIdx >= 0 {
+		if strings.Contains(lower, `"tool":"exec"`) ||
+			strings.Contains(lower, `"tool": "exec"`) ||
+			strings.Contains(lower, "```tool") ||
+			strings.Contains(lower, "<exec>") {
+			mark(cmdIdx)
+		}
+	}
+	if taskIdx := strings.Index(lower, "working on task:"); taskIdx >= 0 {
+		if rePseudoDirectiveCommandWorkdir.MatchString(delta) ||
+			rePseudoDirectiveCommandPlaceholder.MatchString(delta) ||
+			strings.Contains(lower, `{"command":"`) ||
+			strings.Contains(lower, `{"command": "`) {
+			mark(taskIdx)
+		}
+	}
+	return minIndex
+}
+
+func looksLikeLeakedToolExecEnvelope(lower string) bool {
+	score := 0
+	if strings.Contains(lower, `"session_id":`) {
+		score++
+	}
+	if strings.Contains(lower, `"exit_code":`) {
+		score++
+	}
+	if strings.Contains(lower, `"duration_ms":`) {
+		score++
+	}
+	if strings.Contains(lower, `"stdout":"`) {
+		score++
+	}
+	if strings.Contains(lower, `"status":"completed"`) {
+		score++
+	}
+	if strings.Contains(lower, `"data":{"format":"xml"`) {
+		score++
+	}
+	if strings.Contains(lower, `<web_search>`) {
+		score++
+	}
+	if strings.Contains(lower, "format: xml") {
+		score++
+	}
+	return score >= 3
+}
+
+func isPseudoDirectiveNoiseChunk(delta string) bool {
+	s := strings.TrimSpace(delta)
+	if s == "" {
+		return false
+	}
+	lower := strings.ToLower(s)
+	hasRecipientToken := strings.Contains(lower, "recipient_name") || strings.Contains(lower, "recipientname")
+	hasRecipientWord := strings.Contains(lower, "recipient ")
+	hasParallelToken := strings.Contains(lower, "multi_tool_use.parallel")
+	hasToolUsesToken := strings.Contains(lower, "tool_uses") || strings.Contains(lower, "tooluses")
+	if strings.HasPrefix(s, "```") {
+		return true
+	}
+	if strings.Contains(lower, "to=functions.") ||
+		strings.Contains(lower, "to=multi_tool_use.parallel") ||
+		strings.Contains(lower, "```tool") ||
+		strings.Contains(lower, "<exec>") ||
+		strings.Contains(lower, "tool_uses") ||
+		strings.Contains(lower, "tooluses") ||
+		strings.Contains(lower, "session_id") ||
+		strings.Contains(lower, "workdir") ||
+		strings.Contains(lower, "working on task:") ||
+		strings.Contains(lower, "channel commentary") ||
+		strings.Contains(lower, "need correct invocation") ||
+		strings.Contains(lower, "i'll emulate") {
+		return true
+	}
+	if looksLikeLeakedToolExecEnvelope(lower) {
+		return true
+	}
+	if hasRecipientToken && (strings.Contains(lower, "functions.") || strings.Contains(lower, "parameters") || hasParallelToken || hasToolUsesToken) {
+		return true
+	}
+	if hasParallelToken && (hasRecipientToken || hasRecipientWord || hasToolUsesToken || strings.Contains(lower, "parameters")) {
+		return true
+	}
+	if rePseudoDirectiveRecipientFunctions.MatchString(s) {
+		return true
+	}
+	if rePseudoDirectiveCommandWorkdir.MatchString(s) || rePseudoDirectiveCommandPlaceholder.MatchString(s) {
+		return true
+	}
+	if rePseudoDirectivePayloadJSON.MatchString(s) {
+		return true
+	}
+	return false
+}
+
+func filterPseudoDirectiveDeltaForStreaming(delta string, suppressing *bool, suppressedChunks *int) string {
+	if delta == "" {
+		return ""
+	}
+	visible := delta
+	hasStart := false
+	if start := pseudoDirectiveStartIndex(delta); start >= 0 {
+		visible = delta[:start]
+		*suppressing = true
+		*suppressedChunks = 0
+		hasStart = true
+	}
+	if !*suppressing {
+		return visible
+	}
+	*suppressedChunks++
+	// Sticky suppression for the rest of this round once pseudo directive
+	// leakage starts. This prevents mixed chunks where tool-call scaffolding
+	// and normal prose interleave, which can still leak fragments to users.
+	if *suppressedChunks > 1024 {
+		*suppressedChunks = 512
+	}
+	if hasStart {
+		return visible
+	}
+	return ""
 }
 
 // shouldAutoContinueForPseudoToolCall detects malformed "fake tool call"
@@ -551,22 +1852,189 @@ func shouldAutoContinueForPseudoToolCall(currentContent string) bool {
 	if hasExecWrapper && cmdJSONCount >= 1 {
 		return true
 	}
+
+	// Codex-style tool directive leakage (text like `to=functions.exec ...`)
+	// should be treated as pseudo tool-calls and retried.
+	codexDirectiveCount := strings.Count(lower, "to=functions.") +
+		strings.Count(lower, "to=multi_tool_use.parallel")
+	hasRecipientFunctions := strings.Contains(lower, `"recipient_name":"functions.`) ||
+		strings.Contains(lower, `"recipient_name": "functions.`)
+	hasRecipientToken := strings.Contains(lower, "recipient_name") || strings.Contains(lower, "recipientname")
+	hasRecipientWord := strings.Contains(lower, "recipient ")
+	hasParallelToken := strings.Contains(lower, "multi_tool_use.parallel")
+	hasToolUsesToken := strings.Contains(lower, "tool_uses") || strings.Contains(lower, "tooluses")
+	hasToolPayloadJSON := strings.Contains(lower, `{"command":"`) ||
+		strings.Contains(lower, `{"command": "`) ||
+		strings.Contains(lower, `{"parameters":`) ||
+		strings.Contains(lower, `"command":"blue `) ||
+		strings.Contains(lower, `"command": "blue `)
+	if codexDirectiveCount >= 2 {
+		return true
+	}
+	if (codexDirectiveCount >= 1 || hasRecipientFunctions) && hasToolPayloadJSON {
+		return true
+	}
+	// Plain-text scaffold leakage variants:
+	// `{"tool_uses":[...]}`, `with recipient_name and parameters to multi_tool_use.parallel`, etc.
+	if hasToolUsesToken && (hasRecipientToken || hasParallelToken || hasToolPayloadJSON) {
+		return true
+	}
+	if (hasRecipientToken || hasRecipientWord) && hasParallelToken && (hasToolPayloadJSON || strings.Contains(lower, "parameters")) {
+		return true
+	}
+	if looksLikeLeakedToolExecEnvelope(lower) && (hasToolUsesToken || hasParallelToken || strings.Contains(lower, "to=functions.") || strings.Contains(lower, "blue web_search query=")) {
+		return true
+	}
 	return false
 }
 
 // shouldAutoContinueAfterToollessReply returns whether we should nudge the
 // model into another round after it stopped without tool calls, and why.
-func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent string, agentMode bool) (bool, string) {
-	if agentMode && shouldAutoContinueForTodo(currentContent, trackedTodoContent) {
-		return true, "pending_todo"
+func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent string, agentMode bool, options ...bool) (bool, string) {
+	allowMissingTodo := false
+	planCompletedByTool := false
+	if len(options) > 0 {
+		allowMissingTodo = options[0]
+	}
+	if len(options) > 1 {
+		planCompletedByTool = options[1]
 	}
 	if shouldAutoContinueForPseudoToolCall(currentContent) {
 		return true, "pseudo_tool_call"
+	}
+	if agentMode && shouldAutoContinueForTodo(currentContent, trackedTodoContent, planCompletedByTool) {
+		return true, "pending_todo"
+	}
+	if shouldAutoContinueForMissingTodo(currentContent, trackedTodoContent, agentMode, allowMissingTodo, planCompletedByTool) {
+		return true, "missing_todo"
 	}
 	if shouldAutoContinueForActionPledge(currentContent) {
 		return true, "action_pledge"
 	}
 	return false, ""
+}
+
+func shouldAutoContinueForMissingTodo(currentContent, trackedTodoContent string, agentMode, allowMissingTodoBootstrap, planCompletedByTool bool) bool {
+	if !agentMode || !allowMissingTodoBootstrap {
+		return false
+	}
+	if planCompletedByTool {
+		return false
+	}
+	if strings.TrimSpace(trackedTodoContent) != "" {
+		return false
+	}
+	if strings.TrimSpace(currentContent) == "" {
+		return false
+	}
+	if isAwaitingUserInput(currentContent) {
+		return false
+	}
+	if isLikelyTaskCompletionResponse(currentContent) {
+		return false
+	}
+	return true
+}
+
+func isLikelyTaskCompletionResponse(content string) bool {
+	s := strings.TrimSpace(content)
+	if s == "" {
+		return false
+	}
+	lower := strings.ToLower(s)
+
+	strongENCues := []string{
+		"task complete",
+		"task completed",
+		"completed successfully",
+		"all done",
+		"final summary",
+		"summary:",
+	}
+	for _, cue := range strongENCues {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+
+	strongZHCues := []string{
+		"任务已完成",
+		"任务完成",
+		"总结：任务已完成",
+		"最终总结",
+		"全部完成",
+	}
+	for _, cue := range strongZHCues {
+		if strings.Contains(s, cue) {
+			return true
+		}
+	}
+
+	// Generic "completed" wording should only count when paired with delivery signals,
+	// so intermediate progress updates like "第一步已完成" do not prematurely stop loops.
+	if strings.Contains(s, "已完成") || strings.Contains(s, "已经完成") {
+		zhDeliveryCues := []string{
+			"地址",
+			"链接",
+			"localhost",
+			"http://",
+			"https://",
+			"可直接运行",
+			"可以直接运行",
+			"运行地址",
+		}
+		for _, cue := range zhDeliveryCues {
+			if strings.Contains(s, cue) {
+				return true
+			}
+		}
+	}
+	if strings.Contains(lower, "completed") || strings.Contains(lower, "done") {
+		enDeliveryCues := []string{
+			"localhost",
+			"http://",
+			"https://",
+			"url",
+			"link",
+			"ready to run",
+			"run at",
+		}
+		for _, cue := range enDeliveryCues {
+			if strings.Contains(lower, cue) {
+				return true
+			}
+		}
+	}
+
+	enSectionCues := []string{
+		"what was accomplished",
+		"how to use",
+		"how to test",
+		"next steps",
+	}
+	enMatches := 0
+	for _, cue := range enSectionCues {
+		if strings.Contains(lower, cue) {
+			enMatches++
+		}
+	}
+	if enMatches >= 2 {
+		return true
+	}
+
+	zhSectionCues := []string{
+		"完成内容",
+		"使用方法",
+		"测试方法",
+		"下一步建议",
+	}
+	zhMatches := 0
+	for _, cue := range zhSectionCues {
+		if strings.Contains(s, cue) {
+			zhMatches++
+		}
+	}
+	return zhMatches >= 2
 }
 
 func buildToollessAutoContinueNudge(agentMode bool) string {
@@ -577,35 +2045,277 @@ func shouldPersistToollessRoundContent(reason string) bool {
 	return reason != "pseudo_tool_call"
 }
 
+func shouldCollapseToollessAutoContinueRound(reason, content string) bool {
+	switch reason {
+	case "pending_todo", "missing_todo", "deep_search_min_rounds":
+		return true
+	case "action_pledge":
+		trimmed := strings.TrimSpace(content)
+		return reTodoUnchecked.MatchString(trimmed) || reTodoAnyItem.MatchString(trimmed)
+	default:
+		return false
+	}
+}
+
 func buildToollessAutoContinueAssistantContent(currentContent, reason string) string {
 	if reason == "pseudo_tool_call" {
-		return "Previous assistant reply emitted fake tool-call text and was discarded for retry."
+		return "Previous assistant reply was discarded for retry."
 	}
 	return currentContent
 }
 
 func buildToolGuidanceConstraints() string {
-	return "Tool guidance constraints: (1) Never print tool-call syntax as plain text (no {\"cmd\":...}, {\"command\":...}, ```tool, <exec>). (2) When using tools, emit structured tool_calls only, with valid JSON arguments. (3) Prefer one high-confidence tool call per round, then wait for results before the next call. (4) For exec, arguments must contain a concrete non-empty command without placeholders. (5) If tools are unavailable or unnecessary, provide direct executable steps instead of fake calls."
+	return buildToolGuidanceConstraintsWithPolicy(resolvePromptPolicy("", ""))
 }
 
 func buildToollessAutoContinueNudgeForReason(agentMode bool, reason string) string {
-	if reason == "pseudo_tool_call" {
-		if agentMode {
-			return "Your last reply emitted fake tool-call text instead of real tool calls (for example: {\"cmd\":...}, {\"command\":...}, ```tool, <exec>). Do not output tool-call syntax as plain text. Either call real tools via tool_calls, or if tool calling is unavailable, continue with a direct answer and concrete executable steps. " + buildToolGuidanceConstraints() + " Keep agent mode in a continuous improvement loop: after each completed action, find the next concrete improvement and execute it while continuing from the existing canonical TODO checklist. Update checklist status first, and avoid rewriting the full checklist unless scope changed. Stop only if the user explicitly asks to stop."
-		}
-		return "Your last reply emitted fake tool-call text instead of real tool calls (for example: {\"cmd\":...}, {\"command\":...}, ```tool, <exec>). Do not output tool-call syntax as plain text. Either call real tools via tool_calls, or if tool calling is unavailable, continue with a direct answer and concrete executable steps. " + buildToolGuidanceConstraints()
-	}
-	if agentMode {
-		return "You described what to do but did not call any tools. Now actually execute by calling available tools (especially exec for file creation/edit/run steps). Do not describe — act. " + buildToolGuidanceConstraints() + " Keep agent mode in a continuous improvement loop: after each completed action, find the next concrete improvement and execute it while continuing from the existing canonical TODO checklist. Update checklist status first, and avoid rewriting the full checklist unless scope changed. Stop only if the user explicitly asks to stop."
-	}
-	return "You described what to do but did not call any tools. Now actually execute by calling available tools (especially exec for file creation/edit/run steps). Do not describe — act. " + buildToolGuidanceConstraints()
+	return buildToollessAutoContinueNudgeForReasonWithPolicy(resolvePromptPolicy("", ""), agentMode, reason)
 }
 
 func buildPostToolAutoContinueNudge(agentMode bool) string {
-	if agentMode {
-		return "Continue the agent loop using the existing canonical TODO checklist. The tools above have been executed successfully. Review the results, mark completed items, identify the next concrete improvement opportunity for the next unchecked TODO, execute it, and repeat. Avoid rewriting the full checklist unless scope changed. Stop only if the user explicitly asks to stop."
+	return buildPostToolAutoContinueNudgeWithPolicy(resolvePromptPolicy("", ""), agentMode)
+}
+
+func buildToolGuidanceConstraintsWithPolicy(policy PromptPolicy) string {
+	return policy.ToolGuidanceConstraints()
+}
+
+func buildToollessAutoContinueNudgeForReasonWithPolicy(policy PromptPolicy, agentMode bool, reason string) string {
+	return policy.ToollessAutoContinueNudge(agentMode, reason)
+}
+
+func buildPostToolAutoContinueNudgeWithPolicy(policy PromptPolicy, agentMode bool) string {
+	return policy.PostToolAutoContinueNudge(agentMode)
+}
+
+func stripMarkedJSONObjectFragments(s string) string {
+	if s == "" {
+		return s
 	}
-	return "Continue with the task. The tools above have been executed successfully. Review the results and proceed with the next step, or provide a summary if the task is complete."
+	markers := []string{
+		`"command":`,
+		`"tool_uses":`,
+		`"tooluses":`,
+		`"recipient_name":`,
+		`"recipientname":`,
+		`"session_id":`,
+		`"exit_code":`,
+		`"duration_ms":`,
+		`"stdout":`,
+		`"workdir":`,
+	}
+	var out strings.Builder
+	out.Grow(len(s))
+
+	for i := 0; i < len(s); {
+		if s[i] != '{' {
+			out.WriteByte(s[i])
+			i++
+			continue
+		}
+
+		start := i
+		depth := 0
+		inString := false
+		escaped := false
+		j := i
+		ok := false
+		for ; j < len(s); j++ {
+			ch := s[j]
+			if inString {
+				if escaped {
+					escaped = false
+					continue
+				}
+				if ch == '\\' {
+					escaped = true
+					continue
+				}
+				if ch == '"' {
+					inString = false
+				}
+				continue
+			}
+			if ch == '"' {
+				inString = true
+				continue
+			}
+			if ch == '{' {
+				depth++
+				continue
+			}
+			if ch == '}' {
+				depth--
+				if depth == 0 {
+					j++
+					ok = true
+					break
+				}
+			}
+		}
+
+		if !ok {
+			// Fallback for malformed JSON-like tool leakage (e.g. broken quotes):
+			// if we can find a closing brace and the fragment contains marked
+			// internal fields, strip it as a best-effort recovery.
+			if end := strings.IndexByte(s[start:], '}'); end >= 0 {
+				candidate := s[start : start+end+1]
+				lowerCandidate := strings.ToLower(candidate)
+				marked := false
+				for _, marker := range markers {
+					if strings.Contains(lowerCandidate, marker) {
+						marked = true
+						break
+					}
+				}
+				if marked {
+					out.WriteByte(' ')
+					i = start + end + 1
+					continue
+				}
+			}
+			out.WriteByte(s[i])
+			i++
+			continue
+		}
+
+		frag := s[start:j]
+		lowerFrag := strings.ToLower(frag)
+		marked := false
+		for _, marker := range markers {
+			if strings.Contains(lowerFrag, marker) {
+				marked = true
+				break
+			}
+		}
+		if marked {
+			out.WriteByte(' ')
+		} else {
+			out.WriteString(frag)
+		}
+		i = j
+	}
+	return out.String()
+}
+
+func resolveResponseSanitizeProfile(provider, providerID, model string) responseSanitizeProfile {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	providerID = strings.ToLower(strings.TrimSpace(providerID))
+	model = strings.ToLower(strings.TrimSpace(model))
+
+	// Codex-style models/providers are more prone to leaking tool directive text
+	// into assistant content; force strict cleanup for deterministic persistence.
+	if strings.Contains(model, "codex") ||
+		strings.Contains(provider, "codex") ||
+		strings.Contains(providerID, "codex") ||
+		strings.Contains(provider, "claudecode") ||
+		strings.Contains(providerID, "claudecode") {
+		return responseSanitizeProfileStrict
+	}
+
+	if profile, ok := responseSanitizeProviderProfiles[providerID]; ok {
+		return profile
+	}
+	if profile, ok := responseSanitizeProviderProfiles[provider]; ok {
+		return profile
+	}
+	return responseSanitizeProfileBalanced
+}
+
+func shouldStripPseudoDirectiveArtifacts(trimmed string, profile responseSanitizeProfile) bool {
+	if strings.TrimSpace(trimmed) == "" {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	hasDirectiveScaffold := strings.Contains(lower, "to=functions.") ||
+		strings.Contains(lower, "to=multi_tool_use.parallel") ||
+		strings.Contains(lower, `"tool_uses"`) ||
+		strings.Contains(lower, `"tooluses"`) ||
+		strings.Contains(lower, `"recipient_name"`) ||
+		strings.Contains(lower, `"recipientname"`) ||
+		rePseudoDirectiveRecipientFunctions.MatchString(trimmed)
+	hasPayloadPrefix := rePseudoDirectivePayloadJSON.MatchString(trimmed)
+	hasLeakedCommandWorkdir := rePseudoDirectiveCommandWorkdir.MatchString(trimmed) ||
+		((strings.Contains(lower, `{"command":"blue `) || strings.Contains(lower, `{"command": "blue `)) &&
+			(strings.Contains(lower, `"workdir":"`) || strings.Contains(lower, `"workdir": "`)))
+	hasPlaceholderCommand := rePseudoDirectiveCommandPlaceholder.MatchString(trimmed)
+	hasExecWrapper := strings.Contains(lower, "```tool") ||
+		strings.Contains(lower, "<exec>") ||
+		strings.Contains(lower, "</exec>")
+	hasExecEnvelope := looksLikeLeakedToolExecEnvelope(lower)
+	hasCommandJSON := strings.Contains(lower, `{"command":"`) || strings.Contains(lower, `{"command": "`)
+	hasBlueCommandJSON := strings.Contains(lower, `{"command":"blue `) || strings.Contains(lower, `{"command": "blue `)
+	hasWorkdirField := strings.Contains(lower, `"workdir":"`) || strings.Contains(lower, `"workdir": "`)
+	hasParametersJSON := strings.Contains(lower, `{"parameters":`) || strings.Contains(lower, `"parameters":`)
+	hasCmdWithExecWrapper := (strings.Contains(lower, `{"cmd":"`) || strings.Contains(lower, `{"cmd": "`)) &&
+		(strings.Contains(lower, `"tool":"exec"`) || strings.Contains(lower, `"tool": "exec"`) || hasExecWrapper)
+
+	switch profile {
+	case responseSanitizeProfileMinimal:
+		return hasDirectiveScaffold || hasLeakedCommandWorkdir || hasExecEnvelope
+	case responseSanitizeProfileStrict:
+		return hasDirectiveScaffold ||
+			hasPayloadPrefix ||
+			hasLeakedCommandWorkdir ||
+			hasPlaceholderCommand ||
+			hasExecWrapper ||
+			hasExecEnvelope ||
+			hasCmdWithExecWrapper ||
+			(hasCommandJSON && (hasBlueCommandJSON || hasWorkdirField || hasParametersJSON))
+	default:
+		return hasDirectiveScaffold ||
+			hasLeakedCommandWorkdir ||
+			hasPlaceholderCommand ||
+			hasExecWrapper ||
+			hasExecEnvelope ||
+			hasCmdWithExecWrapper ||
+			(hasCommandJSON && hasWorkdirField)
+	}
+}
+
+func stripPseudoDirectiveArtifactsWithProfile(s string, profile responseSanitizeProfile) string {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return ""
+	}
+	if !shouldStripPseudoDirectiveArtifacts(trimmed, profile) {
+		return trimmed
+	}
+
+	cleaned := stripMarkedJSONObjectFragments(trimmed)
+	cleaned = rePseudoInlineTokenFunctions.ReplaceAllString(cleaned, " ")
+	cleaned = rePseudoInlineTokenParallel.ReplaceAllString(cleaned, " ")
+	cleaned = rePseudoInlineTokenRecipient.ReplaceAllString(cleaned, " ")
+	cleaned = rePseudoInlineTokenToolUses.ReplaceAllString(cleaned, " ")
+	cleaned = rePseudoInlineTokenJSONWord.ReplaceAllString(cleaned, " ")
+	cleaned = rePseudoInlineTokenLetsDo.ReplaceAllString(cleaned, " ")
+
+	lines := strings.Split(cleaned, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "```") {
+			continue
+		}
+		if isPseudoDirectiveNoiseChunk(line) {
+			continue
+		}
+		line = strings.Join(strings.Fields(line), " ")
+		if line != "" {
+			kept = append(kept, line)
+		}
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(strings.Join(kept, "\n"))
+}
+
+func stripPseudoDirectiveArtifacts(s string) string {
+	return stripPseudoDirectiveArtifactsWithProfile(s, responseSanitizeProfileBalanced)
 }
 
 // reMemoryPreamble matches LLM preamble lines that precede actual extracted facts.
@@ -617,14 +2327,27 @@ var reMemoryPreamble = regexp.MustCompile(`(?im)^(I'll extract|Based on this|Her
 // sanitizeResponseContent strips internal control markers from LLM output
 // before sending to web/IM clients. This prevents prompt-engineering artifacts
 // from leaking into the user-visible response.
-func sanitizeResponseContent(s string) string {
+func sanitizeResponseContentWithProvider(s, provider, providerID, model string) string {
 	s = strings.ReplaceAll(s, "[SILENT_REPLY]", "")
 	s = strings.ReplaceAll(s, "<system_placeholder />", "")
 	s = reSystemReminder.ReplaceAllString(s, "")
 	s = reThinkBlock.ReplaceAllString(s, "")
 	s = reAwaitingUserInputTag.ReplaceAllString(s, "")
 	s = reAskGateBlock.ReplaceAllString(s, "")
+	profile := resolveResponseSanitizeProfile(provider, providerID, model)
+	s = stripPseudoDirectiveArtifactsWithProfile(s, profile)
 	return strings.TrimSpace(s)
+}
+
+func sanitizeResponseContent(s string) string {
+	return sanitizeResponseContentWithProvider(s, "", "", "")
+}
+
+func sanitizeModelHint(actualModel, requestedModel string) string {
+	if strings.TrimSpace(actualModel) != "" {
+		return actualModel
+	}
+	return requestedModel
 }
 
 // advanceTodoItem replaces the first unchecked `- [ ] text` with `- [x] text`.
@@ -643,6 +2366,14 @@ func advanceTodoItem(content string) (string, bool) {
 	replacement := match[1] + "[x] " + match[2]
 	updated := content[:loc[0]] + replacement + content[loc[1]:]
 	return updated, true
+}
+
+func completeAllTodoItems(content string) (string, bool) {
+	if !reTodoUnchecked.MatchString(content) {
+		return content, false
+	}
+	updated := reTodoUnchecked.ReplaceAllString(content, "$1[x] $2")
+	return updated, updated != content
 }
 
 // allToolResultsOK returns true if none of the tool results contain errors.
@@ -1134,8 +2865,6 @@ type ChatHandler struct {
 	smallModelStats *SmallModelStats
 	// Runtime circuit breaker for small-model short-QA route.
 	smallModelBreaker *smallModelCircuitBreaker
-	// Persisted shadow quality samples for rollout gate preparation.
-	shadowQualityStore *ShadowQualityStore
 
 	// Performance optimization: Object pools
 	requestPool  *RequestPool
@@ -1201,6 +2930,10 @@ type ChatHandler struct {
 	// Conversation-level Responses continuation state (last response.id).
 	responsesPreviousID map[string]string
 	responsesPrevMu     sync.RWMutex
+	// Continuation degradation window counter for backend-only alerting.
+	continuationDegradeMu          sync.Mutex
+	continuationDegradeWindowStart time.Time
+	continuationDegradeCount       int
 
 	// IM pending checkpoint continuation state, keyed by conversation ID.
 	imCheckpointMu    sync.Mutex
@@ -1285,11 +3018,6 @@ func (h *ChatHandler) SetSmallModelRuntime(rt smallmodel.Runtime) {
 	h.smallModel = rt
 }
 
-// SetShadowQualityStore wires persisted shadow-quality sampling store.
-func (h *ChatHandler) SetShadowQualityStore(store *ShadowQualityStore) {
-	h.shadowQualityStore = store
-}
-
 // GetSmallModelStats returns small-model counters for cross-module observability wiring.
 func (h *ChatHandler) GetSmallModelStats() *SmallModelStats {
 	if h == nil {
@@ -1328,6 +3056,16 @@ func (h *ChatHandler) getMemoryRecallMode() MemoryRecallMode {
 		return MemoryRecallModeBalanced
 	}
 	return parseMemoryRecallMode(h.settingsHandler.GetMemoryRecallMode())
+}
+
+func (h *ChatHandler) resolvePromptPolicy() PromptPolicy {
+	if h == nil || h.settingsHandler == nil {
+		return resolvePromptPolicy("", "")
+	}
+	return resolvePromptPolicy(
+		h.settingsHandler.GetPromptPolicyVersion(),
+		h.settingsHandler.GetPromptPolicyProfile(),
+	)
 }
 
 // selectTools returns tool definitions after selector + router stages.
@@ -1481,6 +3219,10 @@ func preContentRetrySkipReason(err error) string {
 		return "overloaded"
 	case pe.IsNoProvider():
 		return "no_provider"
+	case strings.Contains(bodyLower, "context canceled"),
+		strings.Contains(bodyLower, "context cancelled"),
+		strings.Contains(bodyLower, "deadline exceeded"):
+		return "context_canceled"
 	case strings.Contains(bodyLower, "does not support tool calls"):
 		return "tool_unsupported"
 	}
@@ -1491,10 +3233,100 @@ func preContentRetrySkipReason(err error) string {
 	return ""
 }
 
+func mapStreamErrorCode(err error, actualProviderID string) string {
+	if err == nil {
+		return ""
+	}
+
+	if pe, ok := err.(*proxybridge.ProxyError); ok {
+		bodyLower := strings.ToLower(pe.Body)
+		switch {
+		case isOpenRouterFreeModelPublicationError(pe):
+			return "provider_openrouter_privacy_policy"
+		case strings.Contains(bodyLower, "does not support tool calls"):
+			return "provider_tool_unsupported"
+		case strings.Contains(bodyLower, "stream ended with zero chunks"),
+			strings.Contains(bodyLower, "empty streaming response"),
+			strings.Contains(bodyLower, "returned no response"):
+			return "PROVIDER_NO_RESPONSE"
+		case pe.IsNoProvider():
+			return "provider_unavailable"
+		case pe.IsOverloaded():
+			return "provider_rate_limited"
+		case pe.IsClientError() && (pe.StatusCode == 401 || pe.StatusCode == 403):
+			return "provider_auth_error"
+		case providerpool.IsTrialProvider(actualProviderID):
+			return "trial_service_busy"
+		}
+	}
+
+	errLower := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errLower, "no endpoints found matching your data policy") &&
+		strings.Contains(errLower, "free model publication"):
+		return "provider_openrouter_privacy_policy"
+	case strings.Contains(errLower, "does not support tool calls"):
+		return "provider_tool_unsupported"
+	case strings.Contains(errLower, "stream ended with zero chunks"),
+		strings.Contains(errLower, "empty streaming response"),
+		strings.Contains(errLower, "returned no response"),
+		strings.Contains(errLower, "no response body"):
+		return "PROVIDER_NO_RESPONSE"
+	case strings.Contains(errLower, "no available provider"),
+		strings.Contains(errLower, "no proxy bridge configured"):
+		return "provider_unavailable"
+	case strings.Contains(errLower, "status 401"),
+		strings.Contains(errLower, "status 403"),
+		strings.Contains(errLower, "unauthorized"),
+		strings.Contains(errLower, "forbidden"),
+		strings.Contains(errLower, "invalid api key"):
+		return "provider_auth_error"
+	case strings.Contains(errLower, "status 429"),
+		strings.Contains(errLower, "rate limit"),
+		strings.Contains(errLower, "too many requests"),
+		strings.Contains(errLower, "throttled"),
+		strings.Contains(errLower, "overloaded"):
+		return "provider_rate_limited"
+	case providerpool.IsTrialProvider(actualProviderID):
+		return "trial_service_busy"
+	default:
+		return "STREAM_ERROR"
+	}
+}
+
+// shouldDisableResponsesContinuationForPreContentRetry decides whether a
+// pre-content retry should explicitly drop Responses continuation state.
+// This helps recover from stale/unsupported continuation on relays that may
+// otherwise emit only metadata and end with zero user-visible chunks.
+func shouldDisableResponsesContinuationForPreContentRetry(err error) bool {
+	pe, ok := err.(*proxybridge.ProxyError)
+	if !ok {
+		return false
+	}
+	if pe.StatusCode < 500 {
+		return false
+	}
+	bodyLower := strings.ToLower(pe.Body)
+	return strings.Contains(bodyLower, "stream ended with zero chunks") ||
+		strings.Contains(bodyLower, "empty streaming response") ||
+		strings.Contains(bodyLower, "returned no response") ||
+		strings.Contains(bodyLower, "previous_response_id") ||
+		strings.Contains(bodyLower, "continuation")
+}
+
 // shouldSkipPreContentRetry returns true when chat layer retries are unlikely
 // to help because the proxy has already exhausted useful fallback paths.
 func shouldSkipPreContentRetry(err error) bool {
 	return preContentRetrySkipReason(err) != ""
+}
+
+func isOpenRouterFreeModelPublicationError(pe *proxybridge.ProxyError) bool {
+	if pe == nil {
+		return false
+	}
+	bodyLower := strings.ToLower(pe.Body)
+	return strings.Contains(bodyLower, "no endpoints found matching your data policy") &&
+		strings.Contains(bodyLower, "free model publication")
 }
 
 func isNoProviderError(err error) bool {
@@ -1522,6 +3354,9 @@ func (h *ChatHandler) runDeepResearchFallback(ctx context.Context, query, lang s
 	if h.deepResearchExec == nil {
 		return "", fmt.Errorf("deep research executor is not configured")
 	}
+	if toggler, ok := h.deepResearchExec.(interface{ SetV2Enabled(bool) }); ok && h.settingsHandler != nil {
+		toggler.SetV2Enabled(h.settingsHandler.GetDeepResearchV2Enabled())
+	}
 	query = strings.TrimSpace(query)
 	if query == "" {
 		query = "Summarize the user request and provide best-effort answer."
@@ -1544,7 +3379,7 @@ func (h *ChatHandler) runDeepResearchFallback(ctx context.Context, query, lang s
 	answer, _ := data["answer"].(string)
 	answer = strings.TrimSpace(answer)
 	if answer == "" {
-		answer = "DeepResearch completed, but no direct answer was generated."
+		answer = localizedDeepResearchNoAnswerText(lang)
 	}
 	mode, _ := data["mode"].(string)
 	mode = strings.TrimSpace(mode)
@@ -1561,9 +3396,13 @@ func (h *ChatHandler) runDeepResearchFallback(ctx context.Context, query, lang s
 	supportCount, hasSupportCount := deepResearchFallbackInt(data["support_count"])
 	conflictCount, hasConflictCount := deepResearchFallbackInt(data["conflict_count"])
 	hasConflict, hasHasConflict := deepResearchFallbackBool(data["has_conflict"])
+	citationCoverage, hasCitationCoverage := deepResearchFallbackFloat(data["citation_coverage"])
 
 	citations := normalizeDeepResearchCitations(data["citations"])
 	openQuestions := normalizeDeepResearchOpenQuestions(data["open_questions"])
+	stageErrors := normalizeDeepResearchOpenQuestions(data["stage_errors"])
+	timelineSections := normalizeDeepResearchTimelineSections(data["timeline_sections"])
+	entityDisambiguation := normalizeDeepResearchObjectMap(data["entity_disambiguation"])
 	if !hasEvidenceCount {
 		evidenceCount = len(citations)
 	}
@@ -1630,6 +3469,18 @@ func (h *ChatHandler) runDeepResearchFallback(ctx context.Context, query, lang s
 	if hasHasConflict {
 		card["has_conflict"] = hasConflict
 	}
+	if hasCitationCoverage {
+		card["citation_coverage"] = citationCoverage
+	}
+	if len(stageErrors) > 0 {
+		card["stage_errors"] = stageErrors
+	}
+	if len(timelineSections) > 0 {
+		card["timeline_sections"] = timelineSections
+	}
+	if len(entityDisambiguation) > 0 {
+		card["entity_disambiguation"] = entityDisambiguation
+	}
 
 	cardRaw, err := json.Marshal(card)
 	if err == nil && len(cardRaw) > 0 {
@@ -1642,16 +3493,68 @@ func (h *ChatHandler) runDeepResearchFallback(ctx context.Context, query, lang s
 }
 
 func localizedSourcesLabelForLang(lang string) string {
-	raw := strings.ToLower(strings.TrimSpace(lang))
-	switch {
-	case strings.HasPrefix(raw, "zh"):
+	switch i18n.ParseLanguage(lang) {
+	case i18n.LangZhCN:
 		return "来源"
-	case strings.HasPrefix(raw, "ja"):
+	case i18n.LangZhTW:
+		return "來源"
+	case i18n.LangJaJP:
 		return "情報源"
-	case strings.HasPrefix(raw, "ko"):
+	case i18n.LangKoKR:
 		return "출처"
+	case i18n.LangDeDE:
+		return "Quellen"
+	case i18n.LangFrFR:
+		return "Sources"
+	case i18n.LangEsES:
+		return "Fuentes"
+	case i18n.LangItIT:
+		return "Fonti"
+	case i18n.LangPtBR, i18n.LangPtPT:
+		return "Fontes"
+	case i18n.LangRuRU:
+		return "Источники"
+	case i18n.LangPlPL:
+		return "Źródła"
+	case i18n.LangNlNL:
+		return "Bronnen"
+	case i18n.LangSvSE:
+		return "Källor"
+	case i18n.LangDaDK, i18n.LangNbNO:
+		return "Kilder"
+	case i18n.LangCsCZ, i18n.LangSkSK:
+		return "Zdroje"
+	case i18n.LangHuHU:
+		return "Források"
+	case i18n.LangRoRO:
+		return "Surse"
+	case i18n.LangHrHR:
+		return "Izvori"
+	case i18n.LangElGR:
+		return "Πηγές"
+	case i18n.LangCaES:
+		return "Fonts"
+	case i18n.LangGaIE:
+		return "Foinsí"
+	case i18n.LangMlIN:
+		return "ഉറവിടങ്ങൾ"
 	default:
 		return "Sources"
+	}
+}
+
+func localizedDeepResearchNoAnswerText(lang string) string {
+	switch i18n.ParseLanguage(lang) {
+	case i18n.LangZhCN:
+		return "DeepResearch 已完成，但未生成可直接回答的结论。"
+	case i18n.LangZhTW:
+		return "DeepResearch 已完成，但未產生可直接回答的結論。"
+	case i18n.LangJaJP:
+		return "DeepResearch は完了しましたが、直接回答できる結論は生成されませんでした。"
+	case i18n.LangKoKR:
+		return "DeepResearch는 완료되었지만 직접 답변할 결론이 생성되지 않았습니다."
+	default:
+		return "DeepResearch completed, but no direct answer was generated."
 	}
 }
 
@@ -1739,6 +3642,52 @@ func normalizeDeepResearchOpenQuestions(raw interface{}) []string {
 	}
 }
 
+func normalizeDeepResearchObjectMap(raw interface{}) map[string]interface{} {
+	row, ok := raw.(map[string]interface{})
+	if !ok || len(row) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(row))
+	for k, v := range row {
+		key := strings.TrimSpace(k)
+		if key == "" {
+			continue
+		}
+		out[key] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeDeepResearchTimelineSections(raw interface{}) []map[string]interface{} {
+	rows, ok := raw.([]interface{})
+	if !ok {
+		if typed, ok2 := raw.([]map[string]interface{}); ok2 {
+			out := make([]map[string]interface{}, 0, len(typed))
+			for _, row := range typed {
+				if normalized := normalizeDeepResearchObjectMap(row); len(normalized) > 0 {
+					out = append(out, normalized)
+				}
+			}
+			return out
+		}
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(rows))
+	for _, row := range rows {
+		m, ok := row.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if normalized := normalizeDeepResearchObjectMap(m); len(normalized) > 0 {
+			out = append(out, normalized)
+		}
+	}
+	return out
+}
+
 func normalizeDeepResearchCitations(raw interface{}) []map[string]interface{} {
 	toCitation := func(title, url, evidenceID string) map[string]interface{} {
 		title = strings.TrimSpace(title)
@@ -1814,11 +3763,12 @@ const (
 	smallModelSummaryAutoRollbackMaxFailRate      = 0.15
 )
 
-var smallModelShadowRolloutStages = []float64{0.1, 0.3, 0.5, 1.0}
-
 func (h *ChatHandler) shouldPreferIRFirstFallback() bool {
 	if h == nil || h.settingsHandler == nil {
 		return true
+	}
+	if !h.settingsHandler.GetOfflineIRFallbackEnabled() {
+		return false
 	}
 	return h.settingsHandler.GetSmallModelUnavailablePolicy() == "ir_first"
 }
@@ -1874,7 +3824,7 @@ func (h *ChatHandler) maybeAutoRollbackShortQARoute() {
 }
 
 func (h *ChatHandler) shouldRouteToolDispatch(selectedTools []tools.ToolDefinition) bool {
-	if h == nil || h.smallModel == nil || h.settingsHandler == nil {
+	if h == nil || h.settingsHandler == nil || !h.isSmallModelReady() {
 		return false
 	}
 	if !h.settingsHandler.GetSmallModelEnabled() || !h.settingsHandler.GetSmallModelRouteToolDispatchEnabled() {
@@ -2070,6 +4020,9 @@ func (h *ChatHandler) maybeAutoRollbackSummaryRoute() {
 }
 
 func (h *ChatHandler) runLocalIRFallback(ctx context.Context, convID, query string, allowGeneric bool) (string, error) {
+	if h != nil && h.settingsHandler != nil && !h.settingsHandler.GetOfflineIRFallbackEnabled() {
+		return "", errNoIRLocalSignal
+	}
 	if h == nil || h.store == nil {
 		if allowGeneric {
 			return "IR-only fallback is active. I couldn't find enough local context. Please provide more details or enable LLM/web search.", nil
@@ -2168,6 +4121,273 @@ func (h *ChatHandler) runLocalIRFallback(ctx context.Context, convID, query stri
 	return strings.TrimSpace(sb.String()), nil
 }
 
+type autonomousToolFallbackResult struct {
+	Provider   string
+	ProviderID string
+	Model      string
+	Content    string
+}
+
+func isFallbackToolEnabled(v *bool) bool {
+	return v == nil || *v
+}
+
+// runAutonomousResearchFallback tries direct tool execution when LLM and deep-research
+// fallbacks are unavailable, then returns a user-facing summary plus typeless cards.
+func (h *ChatHandler) runAutonomousResearchFallback(ctx context.Context, query, lang string, webSearchEnabled, deepResearchEnabled *bool) (*autonomousToolFallbackResult, error) {
+	if h == nil || h.toolExecutor == nil {
+		return nil, fmt.Errorf("tool executor is not available")
+	}
+
+	query = strings.TrimSpace(query)
+	if query == "" {
+		query = "recent updates"
+	}
+	lang = strings.TrimSpace(lang)
+
+	type toolAttempt struct {
+		Name       string
+		Provider   string
+		ProviderID string
+		Model      string
+		Timeout    time.Duration
+		Args       map[string]interface{}
+	}
+
+	attempts := make([]toolAttempt, 0, 2)
+	if isFallbackToolEnabled(deepResearchEnabled) {
+		args := map[string]interface{}{
+			"query": query,
+			"mode":  "standard",
+		}
+		if lang != "" {
+			args["lang"] = lang
+		}
+		attempts = append(attempts, toolAttempt{
+			Name:       "deep_research",
+			Provider:   "deepresearch",
+			ProviderID: "deepresearch",
+			Model:      "deepresearch-tool-fallback",
+			Timeout:    45 * time.Second,
+			Args:       args,
+		})
+	}
+	if isFallbackToolEnabled(webSearchEnabled) {
+		attempts = append(attempts, toolAttempt{
+			Name:       "web_search",
+			Provider:   "web_search",
+			ProviderID: "web_search",
+			Model:      "web-search-fallback",
+			Timeout:    20 * time.Second,
+			Args: map[string]interface{}{
+				"query":       query,
+				"format":      "json",
+				"max_results": 5,
+			},
+		})
+	}
+	if len(attempts) == 0 {
+		return nil, fmt.Errorf("autonomous fallback tools are disabled")
+	}
+
+	var lastErr error
+	for _, attempt := range attempts {
+		if h.toolRegistry != nil && h.toolRegistry.IsDisabled(attempt.Name) {
+			lastErr = fmt.Errorf("%s is disabled", attempt.Name)
+			continue
+		}
+
+		argsRaw, err := json.Marshal(attempt.Args)
+		if err != nil {
+			lastErr = fmt.Errorf("%s args encode failed: %w", attempt.Name, err)
+			continue
+		}
+
+		tc := llm.ToolCall{
+			ID:        "fallback_" + uuid.NewString(),
+			Name:      attempt.Name,
+			Arguments: string(argsRaw),
+		}
+
+		runCtx := ctx
+		cancel := func() {}
+		if attempt.Timeout > 0 {
+			runCtx, cancel = context.WithTimeout(ctx, attempt.Timeout)
+		}
+		results := h.executeToolCalls(runCtx, []llm.ToolCall{tc})
+		cancel()
+
+		if len(results) == 0 {
+			lastErr = fmt.Errorf("%s returned no tool result", attempt.Name)
+			continue
+		}
+		if !allToolResultsOK(results) {
+			lastErr = fmt.Errorf("%s returned an error payload", attempt.Name)
+			continue
+		}
+
+		content := buildAutonomousResearchFallbackContent(tc, results[0])
+		if strings.TrimSpace(content) == "" {
+			lastErr = fmt.Errorf("%s returned empty content", attempt.Name)
+			continue
+		}
+
+		return &autonomousToolFallbackResult{
+			Provider:   attempt.Provider,
+			ProviderID: attempt.ProviderID,
+			Model:      attempt.Model,
+			Content:    content,
+		}, nil
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no autonomous fallback tool succeeded")
+	}
+	return nil, lastErr
+}
+
+func buildAutonomousResearchFallbackContent(toolCall llm.ToolCall, toolResult llm.Message) string {
+	summary := strings.TrimSpace(summarizeAutonomousResearchFallback(toolCall.Name, toolResult.Content))
+	if summary == "" {
+		summary, _ = buildToolFallbackText([]llm.Message{toolResult}, 4096)
+		summary = strings.TrimSpace(summary)
+	}
+	if summary == "" {
+		summary = "Tool fallback completed. Please review the structured results below."
+	}
+	if cardBlocks := cards.FormatTypeless([]llm.ToolCall{toolCall}, []llm.Message{toolResult}); cardBlocks != "" && !strings.Contains(summary, "```typeless") {
+		summary += cardBlocks
+	}
+	return strings.TrimSpace(summary)
+}
+
+func summarizeAutonomousResearchFallback(toolName, content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &payload); err != nil {
+		return ""
+	}
+
+	name := strings.ToLower(strings.TrimSpace(toolName))
+	switch name {
+	case "deep_research", "deep-research":
+		if text := summarizeDeepResearchPayloadForFallback(payload); text != "" {
+			return text
+		}
+	case "web_search":
+		if text := summarizeWebSearchPayloadForFallback(payload); text != "" {
+			return text
+		}
+	}
+
+	// Some executions wrap effective payload under data (e.g. forwarded exec calls).
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		if text := summarizeDeepResearchPayloadForFallback(data); text != "" {
+			return text
+		}
+		if text := summarizeWebSearchPayloadForFallback(data); text != "" {
+			return text
+		}
+	}
+
+	return ""
+}
+
+func summarizeDeepResearchPayloadForFallback(payload map[string]interface{}) string {
+	answer := strings.TrimSpace(anyToStringForLLM(payload["answer"]))
+	if answer == "" {
+		return ""
+	}
+
+	citations := normalizeDeepResearchCitations(payload["citations"])
+	if len(citations) == 0 {
+		return answer
+	}
+
+	var sb strings.Builder
+	sb.WriteString(answer)
+	sb.WriteString("\n\nSources:")
+	limit := len(citations)
+	if limit > 4 {
+		limit = 4
+	}
+	for i := 0; i < limit; i++ {
+		row := citations[i]
+		title, _ := row["title"].(string)
+		url, _ := row["url"].(string)
+		title = strings.TrimSpace(title)
+		url = strings.TrimSpace(url)
+		if title == "" && url == "" {
+			continue
+		}
+		if title == "" {
+			title = url
+		}
+		sb.WriteString("\n- ")
+		sb.WriteString(title)
+		if url != "" && !strings.EqualFold(url, title) {
+			sb.WriteString(" - ")
+			sb.WriteString(url)
+		}
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func summarizeWebSearchPayloadForFallback(payload map[string]interface{}) string {
+	query := strings.TrimSpace(anyToStringForLLM(payload["query"]))
+	results, ok := parseSearchResultsForLLM(payload["results"])
+	if !ok || len(results) == 0 {
+		return ""
+	}
+
+	top := results
+	if query != "" {
+		top = rerankSearchResultsForLLM(query, results, 4)
+	}
+	if len(top) == 0 {
+		top = results
+	}
+	if len(top) > 4 {
+		top = top[:4]
+	}
+
+	var sb strings.Builder
+	if query != "" {
+		sb.WriteString(`Web search fallback results for "`)
+		sb.WriteString(query)
+		sb.WriteString(`":`)
+	} else {
+		sb.WriteString("Web search fallback results:")
+	}
+
+	count := 0
+	for _, row := range top {
+		title := strings.TrimSpace(row.Title)
+		url := strings.TrimSpace(row.URL)
+		if title == "" && url == "" {
+			continue
+		}
+		if title == "" {
+			title = url
+		}
+		sb.WriteString("\n- ")
+		sb.WriteString(title)
+		if url != "" && !strings.EqualFold(url, title) {
+			sb.WriteString(" - ")
+			sb.WriteString(url)
+		}
+		count++
+	}
+	if count == 0 {
+		return ""
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
 func hasLocalIROverlap(queryLower, candidateLower string) bool {
 	queryLower = strings.TrimSpace(queryLower)
 	candidateLower = strings.TrimSpace(candidateLower)
@@ -2220,7 +4440,7 @@ func isCJKRune(r rune) bool {
 }
 
 func (h *ChatHandler) shouldRouteShortQA(req SendMessageRequest, routingMessage string) bool {
-	if h == nil || h.smallModel == nil || h.settingsHandler == nil {
+	if h == nil || h.settingsHandler == nil || !h.isSmallModelReady() {
 		return false
 	}
 	if !h.settingsHandler.GetSmallModelEnabled() || !h.settingsHandler.GetSmallModelRouteShortQAEnabled() {
@@ -2230,7 +4450,11 @@ func (h *ChatHandler) shouldRouteShortQA(req SendMessageRequest, routingMessage 
 }
 
 func (h *ChatHandler) isShortQAShape(req SendMessageRequest, routingMessage string) bool {
-	if len(req.Attachments) > 0 {
+	images, ok := collectSmallModelImages(req.Attachments)
+	if !ok {
+		return false
+	}
+	if len(images) > 4 {
 		return false
 	}
 	if req.DeepResearchEnabled != nil && *req.DeepResearchEnabled {
@@ -2238,6 +4462,9 @@ func (h *ChatHandler) isShortQAShape(req SendMessageRequest, routingMessage stri
 	}
 	msg := strings.TrimSpace(routingMessage)
 	if msg == "" || strings.Contains(msg, "\n") {
+		return false
+	}
+	if shouldPreferDeepSearchReport(msg) {
 		return false
 	}
 	runes := []rune(msg)
@@ -2248,39 +4475,6 @@ func (h *ChatHandler) isShortQAShape(req SendMessageRequest, routingMessage stri
 		return true
 	}
 	return len(runes) <= 40
-}
-
-func (h *ChatHandler) shouldShadowShortQA(req SendMessageRequest, routingMessage, sampleKey string) bool {
-	if h == nil || h.smallModel == nil || h.settingsHandler == nil {
-		return false
-	}
-	if !h.settingsHandler.GetSmallModelEnabled() || h.settingsHandler.GetSmallModelRouteShortQAEnabled() {
-		return false
-	}
-	if !h.isShortQAShape(req, routingMessage) {
-		return false
-	}
-	return h.shouldRunSmallModelShadow(sampleKey)
-}
-
-func (h *ChatHandler) shouldRunSmallModelShadow(sampleKey string) bool {
-	if h == nil || h.settingsHandler == nil {
-		return false
-	}
-	ratio := h.settingsHandler.GetSmallModelShadowRatio()
-	if ratio >= 1 {
-		return true
-	}
-	if ratio <= 0 {
-		return false
-	}
-	if sampleKey == "" {
-		sampleKey = strconv.FormatInt(time.Now().UnixNano(), 10)
-	}
-	hasher := fnv.New32a()
-	_, _ = hasher.Write([]byte(sampleKey))
-	bucket := float64(hasher.Sum32()%10000) / 10000.0
-	return bucket < ratio
 }
 
 func smallModelFallbackReason(err error) string {
@@ -2298,7 +4492,7 @@ func smallModelFallbackReason(err error) string {
 	}
 }
 
-func (h *ChatHandler) trySmallModelShortQA(ctx context.Context, message string, maxTokens int, temperature float64) (*llm.ChatResponse, error) {
+func (h *ChatHandler) trySmallModelShortQA(ctx context.Context, message string, maxTokens int, temperature float64, images ...smallmodel.ImageInput) (*llm.ChatResponse, error) {
 	if h.smallModel == nil {
 		return nil, smallmodel.ErrNotReady
 	}
@@ -2312,6 +4506,7 @@ func (h *ChatHandler) trySmallModelShortQA(ctx context.Context, message string, 
 		Prompt:      prompt,
 		MaxTokens:   maxTokens,
 		Temperature: temperature,
+		Images:      images,
 	})
 	h.smallModelStats.RecordLatencyWithScene("short_qa", time.Since(started))
 	if err != nil {
@@ -2334,182 +4529,29 @@ func (h *ChatHandler) trySmallModelShortQA(ctx context.Context, message string, 
 	}, nil
 }
 
-func (h *ChatHandler) runSmallModelShadow(ctx context.Context, scene, prompt string, maxTokens int, temperature float64, baseline string) {
-	if h == nil || h.smallModel == nil {
-		return
+func collectSmallModelImages(attachments []MessageAttachment) ([]smallmodel.ImageInput, bool) {
+	if len(attachments) == 0 {
+		return nil, true
 	}
-	started := time.Now()
-	resp, err := h.smallModel.Generate(ctx, smallmodel.GenerateRequest{
-		Prompt:      prompt,
-		MaxTokens:   maxTokens,
-		Temperature: temperature,
-	})
-	sceneKey := ""
-	switch scene {
-	case "short_qa_shadow":
-		sceneKey = "short_qa"
-	case "tool_dispatch_shadow":
-		sceneKey = "tool_dispatch"
-	}
-	h.smallModelStats.RecordLatencyWithScene(sceneKey, time.Since(started))
-	if err != nil {
-		h.smallModelStats.RecordShadow(scene, false)
-		h.smallModelStats.RecordFallback(smallModelFallbackReason(err))
-		logger.Info().
-			Err(err).
-			Str("scene", scene).
-			Str("fallback_reason", smallModelFallbackReason(err)).
-			Msg("[chat] small model shadow failed")
-		return
-	}
-	output := strings.TrimSpace(resp.Text)
-	h.smallModelStats.RecordShadow(scene, true)
-	if delta, mainDigest, shadowDigest, ok := evaluateShadowQualityDelta(scene, baseline, output); ok {
-		h.smallModelStats.RecordShadowQualityDelta(delta)
-		if h.shadowQualityStore != nil {
-			if err := h.shadowQualityStore.Append(ShadowQualitySample{
-				Scene:        scene,
-				Delta:        delta,
-				MainDigest:   mainDigest,
-				ShadowDigest: shadowDigest,
-				CreatedAt:    time.Now().UTC(),
-			}); err != nil {
-				logger.Warn().Err(err).Str("scene", scene).Msg("[chat] failed to persist shadow quality sample")
-			}
+	images := make([]smallmodel.ImageInput, 0, len(attachments))
+	for _, att := range attachments {
+		if att.Type != "image" {
+			return nil, false
 		}
-	}
-	logger.Info().
-		Str("scene", scene).
-		Int("output_chars", len(output)).
-		Msg("[chat] small model shadow completed")
-}
-
-func evaluateShadowQualityDelta(scene, baseline, shadowOutput string) (float64, string, string, bool) {
-	switch scene {
-	case "short_qa_shadow":
-		delta, mainDigest, shadowDigest, ok := computeShadowTextDelta(baseline, shadowOutput)
-		return delta, mainDigest, shadowDigest, ok
-	case "tool_dispatch_shadow":
-		delta, mainDigest, shadowDigest, ok := computeShadowToolDelta(baseline, shadowOutput)
-		return delta, mainDigest, shadowDigest, ok
-	default:
-		return 0, "", "", false
-	}
-}
-
-func computeShadowTextDelta(mainText, shadowText string) (float64, string, string, bool) {
-	mainNorm := normalizeShadowText(mainText)
-	shadowNorm := normalizeShadowText(shadowText)
-	if mainNorm == "" || shadowNorm == "" {
-		return 0, "", "", false
-	}
-	mainTokens := buildShadowTextTokenSet(mainNorm)
-	shadowTokens := buildShadowTextTokenSet(shadowNorm)
-	if len(mainTokens) == 0 || len(shadowTokens) == 0 {
-		return 1, shadowDigest(mainNorm), shadowDigest(shadowNorm), true
-	}
-	intersection := 0
-	for token := range mainTokens {
-		if _, ok := shadowTokens[token]; ok {
-			intersection++
+		data := strings.TrimSpace(att.Data)
+		if data == "" {
+			return nil, false
 		}
-	}
-	union := len(mainTokens) + len(shadowTokens) - intersection
-	if union <= 0 {
-		return 0, shadowDigest(mainNorm), shadowDigest(shadowNorm), true
-	}
-	similarity := float64(intersection) / float64(union)
-	delta := 1 - similarity
-	if delta < 0 {
-		delta = 0
-	}
-	if delta > 1 {
-		delta = 1
-	}
-	return delta, shadowDigest(mainNorm), shadowDigest(shadowNorm), true
-}
-
-func computeShadowToolDelta(mainTool, shadowOutput string) (float64, string, string, bool) {
-	mainNorm := normalizeShadowToolName(mainTool)
-	shadowNorm := normalizeShadowToolName(shadowOutput)
-	if mainNorm == "" || shadowNorm == "" {
-		return 0, "", "", false
-	}
-	if strings.EqualFold(mainNorm, shadowNorm) || strings.Contains(strings.ToLower(shadowOutput), strings.ToLower(mainNorm)) {
-		return 0, shadowDigest(mainNorm), shadowDigest(shadowNorm), true
-	}
-	return 1, shadowDigest(mainNorm), shadowDigest(shadowNorm), true
-}
-
-func normalizeShadowText(text string) string {
-	lower := strings.ToLower(strings.TrimSpace(text))
-	if lower == "" {
-		return ""
-	}
-	var b strings.Builder
-	b.Grow(len(lower))
-	lastSpace := false
-	for _, r := range lower {
-		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-			lastSpace = false
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-			lastSpace = false
-		case isCJKRune(r):
-			b.WriteRune(r)
-			lastSpace = false
-		default:
-			if !lastSpace {
-				b.WriteByte(' ')
-				lastSpace = true
-			}
+		mimeType := strings.TrimSpace(att.MimeType)
+		if mimeType == "" {
+			mimeType = "image/png"
 		}
+		images = append(images, smallmodel.ImageInput{
+			MimeType: mimeType,
+			Data:     data,
+		})
 	}
-	return strings.TrimSpace(strings.Join(strings.Fields(b.String()), " "))
-}
-
-func buildShadowTextTokenSet(text string) map[string]struct{} {
-	tokens := make(map[string]struct{})
-	runes := []rune(strings.ReplaceAll(text, " ", ""))
-	switch {
-	case len(runes) == 0:
-		return tokens
-	case len(runes) == 1:
-		tokens[string(runes[0])] = struct{}{}
-		return tokens
-	default:
-		for i := 0; i < len(runes)-1; i++ {
-			tokens[string(runes[i:i+2])] = struct{}{}
-		}
-		return tokens
-	}
-}
-
-func normalizeShadowToolName(text string) string {
-	line := strings.TrimSpace(text)
-	if idx := strings.IndexRune(line, '\n'); idx >= 0 {
-		line = strings.TrimSpace(line[:idx])
-	}
-	line = strings.Trim(line, " \t\r\n`'\"[](){}<>.,;:!?")
-	line = strings.ToLower(line)
-	if line == "" {
-		return ""
-	}
-	parts := strings.Fields(line)
-	if len(parts) > 0 {
-		return parts[0]
-	}
-	return line
-}
-
-func shadowDigest(text string) string {
-	norm := strings.TrimSpace(strings.Join(strings.Fields(text), " "))
-	if norm == "" {
-		return ""
-	}
-	return truncateRunes(norm, 160)
+	return images, true
 }
 
 // ToolSelectionStats returns smart tool selection statistics.
@@ -2550,282 +4592,9 @@ func (h *ChatHandler) SmallModelStatsHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, h.smallModelStats.Snapshot())
 }
 
-// SmallModelShadowQualityHandler returns persisted shadow-quality samples.
-func (h *ChatHandler) SmallModelShadowQualityHandler(c echo.Context) error {
-	limit := 100
-	if raw := strings.TrimSpace(c.QueryParam("limit")); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			if n > 1000 {
-				n = 1000
-			}
-			limit = n
-		}
-	}
-	sceneFilter := strings.TrimSpace(c.QueryParam("scene"))
-	if h.shadowQualityStore == nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"samples":       []ShadowQualitySample{},
-			"total":         0,
-			"average_delta": 0.0,
-		})
-	}
-
-	all := h.shadowQualityStore.Snapshot()
-	if len(all) == 0 {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"samples":       []ShadowQualitySample{},
-			"total":         0,
-			"average_delta": 0.0,
-		})
-	}
-
-	filtered := make([]ShadowQualitySample, 0, len(all))
-	for _, sample := range all {
-		if sceneFilter != "" && !strings.EqualFold(sample.Scene, sceneFilter) {
-			continue
-		}
-		filtered = append(filtered, sample)
-	}
-	if len(filtered) > limit {
-		filtered = filtered[len(filtered)-limit:]
-	}
-
-	total := len(filtered)
-	sum := 0.0
-	for _, sample := range filtered {
-		sum += sample.Delta
-	}
-	avg := 0.0
-	if total > 0 {
-		avg = sum / float64(total)
-	}
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"samples":       filtered,
-		"total":         total,
-		"average_delta": avg,
-	})
-}
-
-type shadowQualityGateSceneResult struct {
-	Scene        string  `json:"scene"`
-	Samples      int     `json:"samples"`
-	AverageDelta float64 `json:"average_delta"`
-	Pass         bool    `json:"pass"`
-	Reason       string  `json:"reason"`
-	Threshold    float64 `json:"threshold"`
-	MinSamples   int     `json:"min_samples"`
-}
-
-type shadowQualityGateEvalResult struct {
-	OverallPass      bool                           `json:"overall_pass"`
-	ThresholdDelta   float64                        `json:"threshold_delta"`
-	MinSamples       int                            `json:"min_samples"`
-	SceneFilter      string                         `json:"scene_filter"`
-	EvaluatedSamples int                            `json:"evaluated_samples"`
-	Scenes           []shadowQualityGateSceneResult `json:"scenes"`
-}
-
-// SmallModelShadowQualityGateEvalHandler evaluates rollout gate readiness by scene.
-func (h *ChatHandler) SmallModelShadowQualityGateEvalHandler(c echo.Context) error {
-	threshold := 0.35
-	if h.settingsHandler != nil {
-		threshold = h.settingsHandler.GetSmallModelShadowGateThresholdDelta()
-	}
-	if raw := strings.TrimSpace(c.QueryParam("threshold_delta")); raw != "" {
-		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 && v <= 1 {
-			threshold = v
-		}
-	}
-	minSamples := 40
-	if h.settingsHandler != nil {
-		minSamples = h.settingsHandler.GetSmallModelShadowGateMinSamples()
-	}
-	if raw := strings.TrimSpace(c.QueryParam("min_samples")); raw != "" {
-		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
-			minSamples = v
-		}
-	}
-	sceneFilter := strings.TrimSpace(c.QueryParam("scene"))
-	if sceneFilter == "" && h.settingsHandler != nil {
-		sceneFilter = h.settingsHandler.GetSmallModelShadowGateScene()
-	}
-	sceneLimit := 200
-	if raw := strings.TrimSpace(c.QueryParam("limit")); raw != "" {
-		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
-			if v > 1000 {
-				v = 1000
-			}
-			sceneLimit = v
-		}
-	}
-	eval := h.evaluateSmallModelShadowQualityGate(threshold, minSamples, sceneFilter, sceneLimit)
-	return c.JSON(http.StatusOK, eval)
-}
-
-// SmallModelShadowAutoRolloutExecuteHandler advances shadow ratio in 10->30->50->100 stages
-// only when gate eval passes under current settings.
-func (h *ChatHandler) SmallModelShadowAutoRolloutExecuteHandler(c echo.Context) error {
-	if h == nil || h.settingsHandler == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
-			"error": "settings handler not initialized",
-		})
-	}
-	threshold := h.settingsHandler.GetSmallModelShadowGateThresholdDelta()
-	minSamples := h.settingsHandler.GetSmallModelShadowGateMinSamples()
-	sceneFilter := h.settingsHandler.GetSmallModelShadowGateScene()
-	eval := h.evaluateSmallModelShadowQualityGate(threshold, minSamples, sceneFilter, 200)
-
-	currentRatio := h.settingsHandler.GetSmallModelShadowRatio()
-	nextRatio := currentRatio
-	advanced := false
-	reason := "gate_not_passed"
-
-	if eval.OverallPass {
-		candidate := nextSmallModelShadowRolloutRatio(currentRatio)
-		nextRatio = candidate
-		if candidate > currentRatio {
-			changed, err := h.settingsHandler.SetSmallModelShadowRatio(candidate)
-			if err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
-					"error": "failed to persist shadow ratio",
-				})
-			}
-			advanced = changed
-			if advanced {
-				reason = "advanced"
-			} else {
-				reason = "no_change"
-			}
-		} else {
-			reason = "already_at_max"
-		}
-	}
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"advanced":        advanced,
-		"reason":          reason,
-		"current_ratio":   currentRatio,
-		"next_ratio":      nextRatio,
-		"current_percent": int(currentRatio * 100),
-		"next_percent":    int(nextRatio * 100),
-		"gate_eval":       eval,
-	})
-}
-
-func (h *ChatHandler) evaluateSmallModelShadowQualityGate(threshold float64, minSamples int, sceneFilter string, sceneLimit int) shadowQualityGateEvalResult {
-	result := shadowQualityGateEvalResult{
-		OverallPass:      false,
-		ThresholdDelta:   threshold,
-		MinSamples:       minSamples,
-		SceneFilter:      sceneFilter,
-		EvaluatedSamples: 0,
-		Scenes:           []shadowQualityGateSceneResult{},
-	}
-	if h == nil || h.shadowQualityStore == nil {
-		return result
-	}
-
-	all := h.shadowQualityStore.Snapshot()
-	filtered := make([]ShadowQualitySample, 0, len(all))
-	for _, sample := range all {
-		if sceneFilter != "" && !strings.EqualFold(sceneFilter, sample.Scene) {
-			continue
-		}
-		filtered = append(filtered, sample)
-	}
-	if len(filtered) == 0 {
-		return result
-	}
-
-	grouped := map[string][]ShadowQualitySample{}
-	for _, sample := range filtered {
-		grouped[sample.Scene] = append(grouped[sample.Scene], sample)
-	}
-	sceneNames := make([]string, 0, len(grouped))
-	for scene := range grouped {
-		sceneNames = append(sceneNames, scene)
-	}
-	sort.Strings(sceneNames)
-
-	overallPass := true
-	sceneResults := make([]shadowQualityGateSceneResult, 0, len(sceneNames))
-	totalSamples := 0
-	for _, scene := range sceneNames {
-		sceneSamples := grouped[scene]
-		if len(sceneSamples) > sceneLimit {
-			sceneSamples = sceneSamples[len(sceneSamples)-sceneLimit:]
-		}
-		sum := 0.0
-		for _, sample := range sceneSamples {
-			sum += sample.Delta
-		}
-		avg := 0.0
-		if len(sceneSamples) > 0 {
-			avg = sum / float64(len(sceneSamples))
-		}
-		pass := true
-		reason := ""
-		if len(sceneSamples) < minSamples {
-			pass = false
-			reason = "insufficient_samples"
-		} else if avg > threshold {
-			pass = false
-			reason = "delta_exceeds_threshold"
-		}
-		if !pass {
-			overallPass = false
-		}
-		totalSamples += len(sceneSamples)
-		sceneResults = append(sceneResults, shadowQualityGateSceneResult{
-			Scene:        scene,
-			Samples:      len(sceneSamples),
-			AverageDelta: avg,
-			Pass:         pass,
-			Reason:       reason,
-			Threshold:    threshold,
-			MinSamples:   minSamples,
-		})
-	}
-
-	result.OverallPass = overallPass
-	result.EvaluatedSamples = totalSamples
-	result.Scenes = sceneResults
-	return result
-}
-
-func nextSmallModelShadowRolloutRatio(current float64) float64 {
-	if current <= 0 {
-		return smallModelShadowRolloutStages[0]
-	}
-	if current >= 1 {
-		return 1
-	}
-	for _, stage := range smallModelShadowRolloutStages {
-		if current < stage {
-			return stage
-		}
-	}
-	return 1
-}
-
-// ResetSmallModelShadowQualityHandler clears persisted shadow-quality samples.
-func (h *ChatHandler) ResetSmallModelShadowQualityHandler(c echo.Context) error {
-	if h.shadowQualityStore != nil {
-		if err := h.shadowQualityStore.Reset(); err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to reset shadow quality samples")
-		}
-	}
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-	})
-}
-
 // ResetSmallModelStatsHandler resets small-model counters.
 func (h *ChatHandler) ResetSmallModelStatsHandler(c echo.Context) error {
 	h.smallModelStats.Reset()
-	if h.shadowQualityStore != nil {
-		_ = h.shadowQualityStore.Reset()
-	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success": true,
 	})
@@ -3120,6 +4889,45 @@ func (h *ChatHandler) runCheckpointJanitor(mgr *tools.BrowserCheckpointManager) 
 // SetChannelSender sets callback used for IM intermediate push.
 func (h *ChatHandler) SetChannelSender(sender func(ctx context.Context, channelName string, out channel.OutgoingMessage) error) {
 	h.channelSender = sender
+}
+
+// GatewaySend handles a gateway "chat.send" request using the existing channel pipeline.
+// It keeps gateway traffic isolated under channel "gateway".
+func (h *ChatHandler) GatewaySend(ctx context.Context, conversationID, content, userID string) (string, error) {
+	conversationID = strings.TrimSpace(conversationID)
+	content = strings.TrimSpace(content)
+	if conversationID == "" {
+		return "", fmt.Errorf("conversation_id is required")
+	}
+	if content == "" {
+		return "", fmt.Errorf("content is required")
+	}
+	return h.ProcessChannelMessage(ctx, channel.Message{
+		ChannelName: "gateway",
+		ChatID:      conversationID,
+		UserID:      userID,
+		Username:    userID,
+		Content:     content,
+	})
+}
+
+// CancelConversationStream cancels the active stream (if any) for a conversation.
+func (h *ChatHandler) CancelConversationStream(conversationID string) (string, bool) {
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return "", false
+	}
+	h.convStreamMu.RLock()
+	streamID := h.convToStream[conversationID]
+	h.convStreamMu.RUnlock()
+	if strings.TrimSpace(streamID) == "" {
+		return "", false
+	}
+	cancelled := h.streamController.Cancel(streamID)
+	if cancelled {
+		h.markConversationCancelledForResponsesContinuation(conversationID)
+	}
+	return streamID, cancelled
 }
 
 // SetSSEBroker sets the SSE broker for pushing conversation_updated events during streaming.
@@ -3809,7 +5617,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				req.PreviousResponseID = resp.ID
 			}
 			if resp.Message.Content != "" {
-				h.persistChannelResponse(ctx, convID, sanitizeResponseContent(resp.Message.Content))
+				h.persistChannelResponse(ctx, convID, sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, resp.Model))
 			}
 			completed, pendingCall, stillRemaining, checkpointID, pendingMsg := h.executeIMToolCallsUntilCheckpoint(checkpointToolCtx, resp.Message.ToolCalls)
 			if pendingCall != nil {
@@ -3848,7 +5656,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		if supportsResponsesContinuation(req.Model) && resp.ID != "" {
 			h.setPreviousResponseID(convID, resp.ID)
 		}
-		responseContent := sanitizeResponseContent(resp.Message.Content)
+		responseContent := sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, resp.Model)
 		h.persistChannelResponse(ctx, convID, responseContent)
 		if resp.ProviderID != "" {
 			baseURL := ""
@@ -3865,7 +5673,8 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	// IR-based media intent interception: if the message is a media generation
 	// request, create a task directly and return a "generating..." response.
 	// The ChannelTaskWatcher will send the result when the task completes.
-	if h.mediaInterceptor != nil && msg.Content != "" {
+	mediaIntentEnabled := h.settingsHandler == nil || h.settingsHandler.GetSmallModelMediaIntentEnabled()
+	if h.mediaInterceptor != nil && mediaIntentEnabled && msg.Content != "" {
 		hasImages := false
 		imageCount := 0
 		for _, att := range msg.Attachments {
@@ -3884,8 +5693,15 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		}
 	}
 
-	featureIR := classifyFeatureIntent(msg.Content)
-	channelDeepResearchEnabled := featureIR.DeepResearch
+	featureIR := featureIntent{}
+	if h.settingsHandler == nil || h.settingsHandler.GetFeatureIntentIREnabled() {
+		featureIR = classifyFeatureIntent(msg.Content)
+	}
+	var channelDeepResearchEnabled *bool
+	if featureIR.DeepResearch {
+		enabled := true
+		channelDeepResearchEnabled = &enabled
+	}
 	globalAgentModeEnabled := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	channelAgentModeEnabled := globalAgentModeEnabled || featureIR.AgentMode
 	if featureIR.DeepResearch || featureIR.AgentMode {
@@ -3902,7 +5718,10 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	// Use provider pool with system prompt
 	var messages []llm.Message
 	var preloaded []memory.Message
-	systemPromptMessages := h.buildSystemPromptMessages(ctx, h.buildSkillSelectionPrompt(ctx, msg.Content))
+	systemPromptMessages := h.buildSystemPromptMessages(ctx, mergeExtraPrompt(
+		h.buildSkillSelectionPrompt(ctx, msg.Content),
+		buildDeepSearchExecutionHint(msg.Content),
+	))
 	// Try to use pre-computed warmup context (reduces TTFT for channel messages)
 	if warmup := h.consumeWarmup(convID); warmup != nil {
 		logger.Info().Str("conv_id", convID).Msg("[chat] ProcessChannelMessage: using warmup cache")
@@ -3960,7 +5779,10 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			messages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, messages...)
 		}
 	}
-	systemPromptMessages = h.buildSystemPromptMessages(ctx, h.buildSkillSelectionPrompt(ctx, routingMessage))
+	systemPromptMessages = h.buildSystemPromptMessages(ctx, mergeExtraPrompt(
+		h.buildSkillSelectionPrompt(ctx, routingMessage),
+		buildDeepSearchExecutionHint(routingMessage),
+	))
 	messages = prependSystemMessages(messages, systemPromptMessages)
 	if featureIR.AgentMode && !globalAgentModeEnabled {
 		messages = append([]llm.Message{{
@@ -4105,13 +5927,14 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 
 	// Add tool definitions (smart selection filters by user query when enabled)
 	selectedTools := h.selectTools(routingMessage, req.Model)
-	selectedTools = applyDeepResearchPreference(selectedTools, &channelDeepResearchEnabled)
+	selectedTools = applyDeepResearchPreference(selectedTools, channelDeepResearchEnabled)
 	req.Tools = defsToLLMTools(selectedTools)
 
 	logger.Info().
 		Str("model", req.Model).
 		Int("messages", len(req.Messages)).
 		Int("tools", len(req.Tools)).
+		Str("prompt_policy_hash", h.resolvePromptPolicy().Hash).
 		Bool("has_system_prompt", h.systemPromptBuilder != nil).
 		Msg("[chat] IM request")
 
@@ -4147,6 +5970,21 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				}
 				logger.Warn().Err(fbErr).Msg("[chat] IM deep research fallback failed")
 				h.smallModelStats.RecordFallback(fallbackReasonDeepResearchUnavailable)
+				if toolFallback, toolErr := h.runAutonomousResearchFallback(toolCtx, routingMessage, string(lang), nil, nil); toolErr == nil {
+					resp = &llm.ChatResponse{
+						Model:      toolFallback.Model,
+						Provider:   toolFallback.Provider,
+						ProviderID: toolFallback.ProviderID,
+						Message: llm.Message{
+							Role:    llm.RoleAssistant,
+							Content: toolFallback.Content,
+						},
+					}
+					err = nil
+					break
+				} else {
+					logger.Warn().Err(toolErr).Msg("[chat] IM autonomous research fallback failed")
+				}
 				irCtx, irCancel := context.WithTimeout(ctx, 150*time.Millisecond)
 				irText, irErr := h.runLocalIRFallback(irCtx, convID, routingMessage, true)
 				irCancel()
@@ -4208,7 +6046,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		logger.Info().Int("round", imRound).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[im] executing tool calls")
 		// Persist intermediate round content as a separate message for IM channels
 		if resp.Message.Content != "" {
-			h.persistChannelResponse(ctx, convID, sanitizeResponseContent(resp.Message.Content))
+			h.persistChannelResponse(ctx, convID, sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, resp.Model))
 		}
 		completed, pendingCall, remainingCalls, checkpointID, pendingMessage := h.executeIMToolCallsUntilCheckpoint(toolCtx, resp.Message.ToolCalls)
 		if pendingCall != nil {
@@ -4249,7 +6087,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		h.setPreviousResponseID(convID, resp.ID)
 	}
 
-	responseContent = sanitizeResponseContent(resp.Message.Content)
+	responseContent = sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, resp.Model)
 	h.persistChannelResponse(ctx, convID, responseContent)
 
 	// Update provider affinity for prompt cache stickiness (IM path)
@@ -4398,14 +6236,49 @@ const maxPseudoToolCallAutoContinueDefault = maxAutoContinueDefault
 // fake tool-call text in agent mode to avoid runaway loops.
 const maxPseudoToolCallAutoContinueAgent = 3
 
+// maxActionPledgeAutoContinueDefault caps retries for toolless action-pledge
+// placeholders in non-agent mode.
+const maxActionPledgeAutoContinueDefault = maxAutoContinueDefault
+
+// maxActionPledgeAutoContinueAgent caps retries for toolless action-pledge
+// placeholders in agent mode to prevent runaway "I'll check now" loops.
+const maxActionPledgeAutoContinueAgent = 3
+
+// maxMissingTodoAutoContinueDefault keeps non-agent mode unchanged.
+const maxMissingTodoAutoContinueDefault = 0
+
+// maxMissingTodoAutoContinueAgent caps checklist-bootstrap retries when agent
+// mode skipped the canonical TODO output.
+const maxMissingTodoAutoContinueAgent = 3
+
+// maxPendingTodoAutoContinueDefault keeps non-agent mode unchanged.
+const maxPendingTodoAutoContinueDefault = 0
+
+// maxPendingTodoAutoContinueAgent caps toolless retries when the model keeps
+// repeating TODOs without executing tools.
+const maxPendingTodoAutoContinueAgent = 3
+
 // pseudoToolCallModelSwitchThreshold controls after how many consecutive
 // pseudo_tool_call rounds we switch to a fallback model.
 const pseudoToolCallModelSwitchThreshold = 2
+
+// maxConsecutiveDuplicateActionPledgeAutoContinue is the number of consecutive
+// identical action_pledge contents allowed before forcing stop.
+// This mirrors queue-style debounce behavior to avoid repeated placeholder loops.
+const maxConsecutiveDuplicateActionPledgeAutoContinue = 1
 
 // maxConsecutiveDuplicateToolCalls is the number of consecutive identical tool
 // calls (same name + same arguments) allowed before the loop is forcibly broken.
 // This prevents the LLM from getting stuck calling the same tool repeatedly.
 const maxConsecutiveDuplicateToolCalls = 3
+
+// continuationDegradeAlertWindow is the rolling window for continuation degrade
+// event counting. Alerts are emitted only in backend logs.
+const continuationDegradeAlertWindow = 10 * time.Minute
+
+// continuationDegradeAlertThreshold is the number of continuation degrade
+// events within the rolling window that triggers an ops alert log.
+const continuationDegradeAlertThreshold = 5
 
 // toolCallSignature returns a string key for deduplication of tool calls.
 func toolCallSignature(calls []llm.ToolCall) string {
@@ -4430,36 +6303,164 @@ func (h *ChatHandler) getMaxToolRounds() int {
 	return h.getMaxToolRoundsForMode(h.settingsHandler != nil && h.settingsHandler.GetAgentMode())
 }
 
-func (h *ChatHandler) getMaxToolRoundsForMode(agentMode bool) int {
-	if agentMode {
-		return maxToolRoundsAgent
+func (h *ChatHandler) loopPolicyForMode(agentMode bool) AgentLoopPolicy {
+	policy := AgentLoopPolicy{
+		MaxToolRounds:        maxToolRounds,
+		MaxAutoContinue:      maxAutoContinueDefault,
+		PseudoToolCallBudget: maxPseudoToolCallAutoContinueDefault,
+		ActionPledgeBudget:   maxActionPledgeAutoContinueDefault,
+		MissingTodoBudget:    maxMissingTodoAutoContinueDefault,
+		PendingTodoBudget:    maxPendingTodoAutoContinueDefault,
 	}
-	return maxToolRounds
+	if agentMode {
+		policy.MaxToolRounds = maxToolRoundsAgent
+		policy.MaxAutoContinue = maxAutoContinueAgent
+		policy.PseudoToolCallBudget = maxPseudoToolCallAutoContinueAgent
+		policy.ActionPledgeBudget = maxActionPledgeAutoContinueAgent
+		policy.MissingTodoBudget = maxMissingTodoAutoContinueAgent
+		policy.PendingTodoBudget = maxPendingTodoAutoContinueAgent
+	}
+	if h == nil || h.settingsHandler == nil || !agentMode {
+		return policy
+	}
+
+	if v := h.settingsHandler.GetAgentLoopPolicyMaxToolRounds(); v > 0 {
+		policy.MaxToolRounds = v
+	}
+	if v := h.settingsHandler.GetAgentLoopPolicyMaxAutoContinue(); v >= 0 {
+		policy.MaxAutoContinue = v
+	}
+	if v := h.settingsHandler.GetAgentLoopPolicyPseudoToolCallBudget(); v >= 0 {
+		policy.PseudoToolCallBudget = v
+	}
+	if v := h.settingsHandler.GetAgentLoopPolicyActionPledgeBudget(); v >= 0 {
+		policy.ActionPledgeBudget = v
+	}
+	if v := h.settingsHandler.GetAgentLoopPolicyMissingTodoBudget(); v >= 0 {
+		policy.MissingTodoBudget = v
+	}
+	if v := h.settingsHandler.GetAgentLoopPolicyPendingTodoBudget(); v >= 0 {
+		policy.PendingTodoBudget = v
+	}
+	return policy
+}
+
+func (h *ChatHandler) getMaxToolRoundsForMode(agentMode bool) int {
+	return h.loopPolicyForMode(agentMode).MaxToolRounds
 }
 
 func (h *ChatHandler) getMaxAutoContinueForMode(agentMode bool) int {
-	if agentMode {
-		return maxAutoContinueAgent
-	}
-	return maxAutoContinueDefault
+	return h.loopPolicyForMode(agentMode).MaxAutoContinue
 }
 
-func getMaxPseudoToolCallAutoContinueForMode(agentMode bool) int {
-	if agentMode {
-		return maxPseudoToolCallAutoContinueAgent
-	}
-	return maxPseudoToolCallAutoContinueDefault
+func (h *ChatHandler) getMaxPseudoToolCallAutoContinueForMode(agentMode bool) int {
+	return h.loopPolicyForMode(agentMode).PseudoToolCallBudget
 }
 
-func shouldAutoContinueForReasonWithinBudget(reason string, agentMode bool, pseudoToolCallAutoContinueCount int) bool {
-	if reason != "pseudo_tool_call" {
+func (h *ChatHandler) getMaxActionPledgeAutoContinueForMode(agentMode bool) int {
+	return h.loopPolicyForMode(agentMode).ActionPledgeBudget
+}
+
+func (h *ChatHandler) getMaxMissingTodoAutoContinueForMode(agentMode bool) int {
+	return h.loopPolicyForMode(agentMode).MissingTodoBudget
+}
+
+func (h *ChatHandler) getMaxPendingTodoAutoContinueForMode(agentMode bool) int {
+	return h.loopPolicyForMode(agentMode).PendingTodoBudget
+}
+
+// shouldAutoContinueForReasonWithinBudget keeps backward compatibility for
+// existing callers/tests while delegating to the loop policy aware method.
+func shouldAutoContinueForReasonWithinBudget(reason string, agentMode bool, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount int) bool {
+	var h *ChatHandler
+	return h.shouldAutoContinueForReasonWithinBudget(
+		reason,
+		agentMode,
+		pseudoToolCallAutoContinueCount,
+		actionPledgeAutoContinueCount,
+		missingTodoAutoContinueCount,
+		pendingTodoAutoContinueCount,
+	)
+}
+
+func (h *ChatHandler) shouldAutoContinueForReasonWithinBudget(reason string, agentMode bool, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount int) bool {
+	switch reason {
+	case "pseudo_tool_call":
+		return pseudoToolCallAutoContinueCount < h.getMaxPseudoToolCallAutoContinueForMode(agentMode)
+	case "action_pledge":
+		return actionPledgeAutoContinueCount < h.getMaxActionPledgeAutoContinueForMode(agentMode)
+	case "missing_todo":
+		return missingTodoAutoContinueCount < h.getMaxMissingTodoAutoContinueForMode(agentMode)
+	case "pending_todo":
+		return pendingTodoAutoContinueCount < h.getMaxPendingTodoAutoContinueForMode(agentMode)
+	default:
 		return true
 	}
-	return pseudoToolCallAutoContinueCount < getMaxPseudoToolCallAutoContinueForMode(agentMode)
+}
+
+func toollessAutoContinueSignature(reason, content string) string {
+	normalized := strings.ToLower(strings.TrimSpace(content))
+	normalized = strings.Join(strings.Fields(normalized), " ")
+	if len(normalized) > 256 {
+		normalized = normalized[:256]
+	}
+	return reason + "|" + normalized
+}
+
+func shouldStopForDuplicateActionPledge(reason string, consecutiveDups int) bool {
+	return reason == "action_pledge" && consecutiveDups > maxConsecutiveDuplicateActionPledgeAutoContinue
 }
 
 func shouldSwitchModelAfterPseudoToolCall(pseudoToolCallAutoContinueCount int) bool {
 	return pseudoToolCallAutoContinueCount >= pseudoToolCallModelSwitchThreshold
+}
+
+func (h *ChatHandler) bumpContinuationDegradation(now time.Time) (int, bool) {
+	if h == nil {
+		return 0, false
+	}
+	if now.IsZero() {
+		now = timeutil.NowTime()
+	}
+
+	h.continuationDegradeMu.Lock()
+	defer h.continuationDegradeMu.Unlock()
+
+	if h.continuationDegradeWindowStart.IsZero() || now.Sub(h.continuationDegradeWindowStart) >= continuationDegradeAlertWindow {
+		h.continuationDegradeWindowStart = now
+		h.continuationDegradeCount = 0
+	}
+	h.continuationDegradeCount++
+	count := h.continuationDegradeCount
+	return count, count == continuationDegradeAlertThreshold
+}
+
+func (h *ChatHandler) recordContinuationDegradation(convID string, toolRound int, recovered bool, err error) {
+	count, alert := h.bumpContinuationDegradation(timeutil.NowTime())
+	event := logger.Warn().
+		Str("conv_id", convID).
+		Int("tool_round", toolRound).
+		Bool("recovered", recovered).
+		Int("window_count", count).
+		Dur("window", continuationDegradeAlertWindow)
+	if err != nil {
+		event = event.Err(err)
+	}
+	event.Msg("[chat] continuation degradation recorded")
+
+	if !alert {
+		return
+	}
+
+	alertEvent := logger.Error().
+		Str("conv_id", convID).
+		Int("window_count", count).
+		Int("threshold", continuationDegradeAlertThreshold).
+		Dur("window", continuationDegradeAlertWindow)
+	if err != nil {
+		alertEvent = alertEvent.Err(err)
+	}
+	alertEvent.Msg("[ops] continuation degradation threshold reached")
 }
 
 func cloneJSONValue(v interface{}) interface{} {
@@ -4492,7 +6493,7 @@ func cloneJSONObject(src map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-func choosePseudoToolCallPrimaryToolIndex(tools []llm.Tool) int {
+func choosePseudoToolCallPrimaryToolIndex(tools []llm.Tool, preferReminder bool) int {
 	if len(tools) == 0 {
 		return -1
 	}
@@ -4513,6 +6514,14 @@ func choosePseudoToolCallPrimaryToolIndex(tools []llm.Tool) int {
 			indexByName[name] = i
 		}
 	}
+	if preferReminder {
+		if idx, ok := indexByName["reminder"]; ok {
+			return idx
+		}
+		if idx, ok := indexByName["push-notification"]; ok {
+			return idx
+		}
+	}
 	for _, name := range priority {
 		if idx, ok := indexByName[name]; ok {
 			return idx
@@ -4524,6 +6533,68 @@ func choosePseudoToolCallPrimaryToolIndex(tools []llm.Tool) int {
 		}
 	}
 	return 0
+}
+
+func shouldPreferReminderToolForRetry(messages []llm.Message, tools []llm.Tool) bool {
+	if len(messages) == 0 || len(tools) == 0 {
+		return false
+	}
+
+	hasReminderTool := false
+	for _, tool := range tools {
+		name := strings.ToLower(strings.TrimSpace(tool.Name))
+		if name == "reminder" || name == "push-notification" {
+			hasReminderTool = true
+			break
+		}
+	}
+	if !hasReminderTool {
+		return false
+	}
+
+	englishSignals := []string{
+		"remind",
+		"reminder",
+		"set reminder",
+		"set a reminder",
+		"notify me",
+		"alert me",
+		"drink water",
+		"hydrate",
+	}
+	cjkSignals := []string{
+		"提醒",
+		"提醒我",
+		"闹钟",
+		"通知我",
+		"喝水",
+		"记得",
+	}
+
+	checkedUsers := 0
+	for i := len(messages) - 1; i >= 0 && checkedUsers < 8; i-- {
+		msg := messages[i]
+		if msg.Role != llm.RoleUser {
+			continue
+		}
+		checkedUsers++
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		lower := strings.ToLower(content)
+		for _, signal := range englishSignals {
+			if strings.Contains(lower, signal) {
+				return true
+			}
+		}
+		for _, signal := range cjkSignals {
+			if strings.Contains(content, signal) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func hardenPseudoToolCallRetryRequest(chatReq *llm.ChatRequest) []string {
@@ -4541,8 +6612,9 @@ func hardenPseudoToolCallRetryRequest(chatReq *llm.ChatRequest) []string {
 		actions = append(actions, "clear_previous_response_id")
 	}
 
+	preferReminderTool := shouldPreferReminderToolForRetry(chatReq.Messages, chatReq.Tools)
 	if len(chatReq.Tools) > 1 {
-		if idx := choosePseudoToolCallPrimaryToolIndex(chatReq.Tools); idx >= 0 {
+		if idx := choosePseudoToolCallPrimaryToolIndex(chatReq.Tools, preferReminderTool); idx >= 0 {
 			primary := chatReq.Tools[idx]
 			chatReq.Tools = []llm.Tool{primary}
 			actions = append(actions, "single_tool="+strings.TrimSpace(primary.Name))
@@ -4697,6 +6769,772 @@ func sanitizeToolOutput(s string) string {
 	s = strings.ToValidUTF8(s, "\uFFFD")
 	s = stripANSI(s)
 	return s
+}
+
+const (
+	maxLLMToolOutputBytes       = 8 * 1024
+	maxLLMToolOutputsTotalBytes = 12 * 1024
+	minLLMToolOutputBytes       = 320
+	maxLLMToolStdoutBytes       = 1800
+	maxLLMToolStderrBytes       = 1200
+	maxLLMSearchRoundsKeepFull  = 3
+	maxLLMSearchSummaryBytes    = 1400
+	maxLLMAdditionalSearchItems = 2
+	maxLLMSearchResults         = 4
+	maxLLMSearchTitle           = 180
+	maxLLMSearchURL             = 320
+	maxLLMSearchDesc            = 260
+)
+
+type searchResultForLLM struct {
+	Title       string
+	URL         string
+	Description string
+}
+
+func compactToolResultsForLLM(toolCalls []llm.ToolCall, toolResults []llm.Message) []llm.Message {
+	if len(toolResults) == 0 {
+		return nil
+	}
+
+	callByID := make(map[string]llm.ToolCall, len(toolCalls))
+	for _, tc := range toolCalls {
+		if id := strings.TrimSpace(tc.ID); id != "" {
+			callByID[id] = tc
+		}
+	}
+
+	out := make([]llm.Message, len(toolResults))
+	searchLikeCount := 0
+	for i, tr := range toolResults {
+		toolName := ""
+		var tc llm.ToolCall
+		hasToolCall := false
+		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
+			tc = toolCalls[i]
+			toolName = tc.Name
+			hasToolCall = true
+		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			tc = matched
+			toolName = tc.Name
+			hasToolCall = true
+		}
+
+		searchLike := hasToolCall && isSearchLikeToolCallForLLM(tc)
+		if searchLike {
+			searchLikeCount++
+			if searchLikeCount > maxLLMSearchRoundsKeepFull {
+				tr.Content = compactAdditionalSearchToolResultForLLM(toolName, tr.Content)
+				out[i] = tr
+				continue
+			}
+		}
+		tr.Content = compactToolResultContentForLLM(toolName, tr.Content)
+		out[i] = tr
+	}
+	out = applyToolResultsTotalBudgetForLLM(out, maxLLMToolOutputsTotalBytes)
+	return out
+}
+
+func isSearchLikeToolCallForLLM(tc llm.ToolCall) bool {
+	name := strings.ToLower(strings.TrimSpace(tc.Name))
+	if name == "web_search" {
+		return true
+	}
+	if name != "exec" {
+		return false
+	}
+	if strings.TrimSpace(tc.Arguments) == "" {
+		return false
+	}
+	var args struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal([]byte(tc.Arguments), &args) != nil {
+		return false
+	}
+	cmd := strings.ToLower(strings.TrimSpace(args.Command))
+	if cmd == "" {
+		return false
+	}
+	return strings.Contains(cmd, " web_search ") ||
+		strings.HasPrefix(cmd, "web_search ") ||
+		strings.HasPrefix(cmd, "blue web_search ")
+}
+
+func compactAdditionalSearchToolResultForLLM(toolName, content string) string {
+	summary := map[string]interface{}{
+		"status":                   "compacted",
+		"omitted_from_llm_context": true, // full raw payload omitted; compact evidence retained below
+		"reason":                   "additional search outputs compacted to preserve multi-round evidence",
+		"tool":                     strings.ToLower(strings.TrimSpace(toolName)),
+	}
+
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(content), &payload) == nil {
+		query, provider, totalCount, errMsg := extractSearchMetadataForLLM(toolName, payload)
+		if query != "" {
+			summary["query"] = truncateUTF8Bytes(query, 192)
+		}
+		if provider != "" {
+			summary["provider"] = truncateUTF8Bytes(provider, 64)
+		}
+		if totalCount > 0 {
+			summary["total_count"] = totalCount
+		}
+		if errMsg != "" {
+			summary["error"] = truncateUTF8Bytes(errMsg, 192)
+		}
+
+		if results, ok := extractSearchResultsForLLM(toolName, payload); ok && len(results) > 0 {
+			preview := results
+			if query != "" {
+				preview = rerankSearchResultsForLLM(query, results, maxLLMAdditionalSearchItems)
+			}
+			if len(preview) == 0 {
+				preview = results
+			}
+			if len(preview) > maxLLMAdditionalSearchItems {
+				preview = preview[:maxLLMAdditionalSearchItems]
+			}
+			summary["results"] = searchResultsToInterfacesForLLM(preview)
+			if totalCount <= 0 {
+				totalCount = len(results)
+				summary["total_count"] = totalCount
+			}
+			if omitted := len(results) - len(preview); omitted > 0 {
+				summary["omitted_results"] = omitted
+			}
+		}
+	}
+
+	encoded, err := json.Marshal(summary)
+	if err != nil {
+		return `{"status":"compacted","omitted_from_llm_context":true}`
+	}
+	return truncateUTF8Bytes(string(encoded), maxLLMSearchSummaryBytes)
+}
+
+func extractSearchResultsForLLM(toolName string, payload map[string]interface{}) ([]searchResultForLLM, bool) {
+	lowerName := strings.ToLower(strings.TrimSpace(toolName))
+	switch lowerName {
+	case "web_search":
+		return parseSearchResultsForLLM(payload["results"])
+	case "exec":
+		if data, ok := payload["data"].(map[string]interface{}); ok {
+			return parseSearchResultsForLLM(data["results"])
+		}
+		return nil, false
+	default:
+		return nil, false
+	}
+}
+
+func extractSearchMetadataForLLM(toolName string, payload map[string]interface{}) (query string, provider string, totalCount int, errMsg string) {
+	lowerName := strings.ToLower(strings.TrimSpace(toolName))
+	switch lowerName {
+	case "web_search":
+		query = anyToStringForLLM(payload["query"])
+		provider = anyToStringForLLM(payload["provider"])
+		totalCount = anyToIntForLLM(payload["total_count"])
+		if totalCount <= 0 {
+			totalCount = anyToIntForLLM(payload["totalCount"])
+		}
+		if totalCount <= 0 {
+			if results, ok := parseSearchResultsForLLM(payload["results"]); ok {
+				totalCount = len(results)
+			}
+		}
+		errMsg = anyToStringForLLM(payload["error"])
+		return
+	case "exec":
+		errMsg = anyToStringForLLM(payload["error"])
+		if data, ok := payload["data"].(map[string]interface{}); ok {
+			query = anyToStringForLLM(data["query"])
+			provider = anyToStringForLLM(data["provider"])
+			totalCount = anyToIntForLLM(data["total_count"])
+			if totalCount <= 0 {
+				totalCount = anyToIntForLLM(data["totalCount"])
+			}
+			if totalCount <= 0 {
+				if results, ok := parseSearchResultsForLLM(data["results"]); ok {
+					totalCount = len(results)
+				}
+			}
+			if errMsg == "" {
+				errMsg = anyToStringForLLM(data["error"])
+			}
+		}
+		return
+	default:
+		return
+	}
+}
+
+func compactToolResultContentForLLM(toolName, content string) string {
+	sanitized := sanitizeToolOutput(content)
+	if strings.TrimSpace(sanitized) == "" {
+		return sanitized
+	}
+
+	var payload interface{}
+	if json.Unmarshal([]byte(sanitized), &payload) != nil {
+		return truncateUTF8Bytes(sanitized, maxLLMToolOutputBytes)
+	}
+
+	switch strings.ToLower(strings.TrimSpace(toolName)) {
+	case "exec":
+		if m, ok := payload.(map[string]interface{}); ok {
+			payload = compactExecPayloadForLLM(m)
+		} else {
+			payload = compactJSONValueForLLM(payload, 0)
+		}
+	case "web_search":
+		if m, ok := payload.(map[string]interface{}); ok {
+			payload = compactWebSearchPayloadForLLM(m)
+		} else {
+			payload = compactJSONValueForLLM(payload, 0)
+		}
+	default:
+		payload = compactJSONValueForLLM(payload, 0)
+	}
+
+	compactedBytes, err := json.Marshal(payload)
+	if err != nil {
+		return truncateUTF8Bytes(sanitized, maxLLMToolOutputBytes)
+	}
+	return truncateUTF8Bytes(string(compactedBytes), maxLLMToolOutputBytes)
+}
+
+func compactExecPayloadForLLM(payload map[string]interface{}) map[string]interface{} {
+	if len(payload) == 0 {
+		return map[string]interface{}{}
+	}
+
+	out := make(map[string]interface{}, 12)
+	for _, k := range []string{
+		"session_id", "status", "exit_code", "duration_ms", "truncated",
+		"warnings", "host", "risk_level", "command", "error",
+	} {
+		if v, ok := payload[k]; ok {
+			out[k] = compactJSONValueForLLM(v, 1)
+		}
+	}
+
+	if stdout := anyToStringForLLM(payload["stdout"]); stdout != "" {
+		out["stdout"] = truncateUTF8Bytes(stdout, maxLLMToolStdoutBytes)
+	}
+	if stderr := anyToStringForLLM(payload["stderr"]); stderr != "" {
+		out["stderr"] = truncateUTF8Bytes(stderr, maxLLMToolStderrBytes)
+	}
+
+	if rawData, ok := payload["data"]; ok {
+		if dataMap, ok := rawData.(map[string]interface{}); ok {
+			data := compactExecDataForLLM(dataMap)
+			if len(data) > 0 {
+				out["data"] = data
+				if _, hasResults := data["results"]; hasResults {
+					delete(out, "stdout")
+				}
+			}
+		} else {
+			out["data"] = compactJSONValueForLLM(rawData, 1)
+		}
+	}
+
+	return out
+}
+
+func compactExecDataForLLM(data map[string]interface{}) map[string]interface{} {
+	if len(data) == 0 {
+		return map[string]interface{}{}
+	}
+
+	out := make(map[string]interface{}, 8)
+	handled := map[string]struct{}{}
+	for _, k := range []string{
+		"_card", "provider", "query", "status", "success", "message",
+		"total_count", "totalCount", "error",
+	} {
+		if v, ok := data[k]; ok {
+			out[k] = compactJSONValueForLLM(v, 2)
+			handled[k] = struct{}{}
+		}
+	}
+
+	results, ok := parseSearchResultsForLLM(data["results"])
+	if ok {
+		handled["results"] = struct{}{}
+		query := anyToStringForLLM(data["query"])
+		ranked := rerankSearchResultsForLLM(query, results, maxLLMSearchResults)
+		out["results"] = searchResultsToInterfacesForLLM(ranked)
+
+		totalCount := anyToIntForLLM(data["total_count"])
+		if totalCount <= 0 {
+			totalCount = anyToIntForLLM(data["totalCount"])
+		}
+		if totalCount <= 0 {
+			totalCount = len(results)
+		}
+		out["total_count"] = totalCount
+		if omitted := len(results) - len(ranked); omitted > 0 {
+			out["omitted_results"] = omitted
+		}
+	}
+
+	keys := make([]string, 0, len(data))
+	for k := range data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if _, exists := handled[k]; exists {
+			continue
+		}
+		if len(out) >= 16 {
+			out["truncated"] = true
+			break
+		}
+		out[k] = compactJSONValueForLLM(data[k], 2)
+	}
+
+	return out
+}
+
+func compactWebSearchPayloadForLLM(payload map[string]interface{}) map[string]interface{} {
+	if len(payload) == 0 {
+		return map[string]interface{}{}
+	}
+
+	out := make(map[string]interface{}, 6)
+	query := anyToStringForLLM(payload["query"])
+	if query != "" {
+		out["query"] = truncateUTF8Bytes(query, 256)
+	}
+	if provider := anyToStringForLLM(payload["provider"]); provider != "" {
+		out["provider"] = truncateUTF8Bytes(provider, 64)
+	}
+
+	results, ok := parseSearchResultsForLLM(payload["results"])
+	if ok {
+		ranked := rerankSearchResultsForLLM(query, results, maxLLMSearchResults)
+		out["results"] = searchResultsToInterfacesForLLM(ranked)
+
+		totalCount := anyToIntForLLM(payload["total_count"])
+		if totalCount <= 0 {
+			totalCount = anyToIntForLLM(payload["totalCount"])
+		}
+		if totalCount <= 0 {
+			totalCount = len(results)
+		}
+		out["total_count"] = totalCount
+		if omitted := len(results) - len(ranked); omitted > 0 {
+			out["omitted_results"] = omitted
+		}
+	}
+
+	for _, k := range []string{"error", "status"} {
+		if v, ok := payload[k]; ok {
+			out[k] = compactJSONValueForLLM(v, 1)
+		}
+	}
+	return out
+}
+
+func parseSearchResultsForLLM(v interface{}) ([]searchResultForLLM, bool) {
+	switch t := v.(type) {
+	case []interface{}:
+		results := make([]searchResultForLLM, 0, len(t))
+		for _, item := range t {
+			if r, ok := normalizeSearchResultForLLM(item); ok {
+				results = append(results, r)
+			}
+		}
+		return results, true
+	case string:
+		raw := strings.TrimSpace(t)
+		if raw == "" {
+			return nil, false
+		}
+		var arr []interface{}
+		if json.Unmarshal([]byte(raw), &arr) != nil {
+			return nil, false
+		}
+		results := make([]searchResultForLLM, 0, len(arr))
+		for _, item := range arr {
+			if r, ok := normalizeSearchResultForLLM(item); ok {
+				results = append(results, r)
+			}
+		}
+		return results, true
+	default:
+		return nil, false
+	}
+}
+
+func normalizeSearchResultForLLM(v interface{}) (searchResultForLLM, bool) {
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return searchResultForLLM{}, false
+	}
+	title := truncateUTF8Bytes(anyToStringForLLM(m["title"]), maxLLMSearchTitle)
+	rawURL := truncateUTF8Bytes(anyToStringForLLM(m["url"]), maxLLMSearchURL)
+	desc := truncateUTF8Bytes(anyToStringForLLM(m["description"]), maxLLMSearchDesc)
+	if title == "" && rawURL == "" && desc == "" {
+		return searchResultForLLM{}, false
+	}
+	return searchResultForLLM{
+		Title:       title,
+		URL:         rawURL,
+		Description: desc,
+	}, true
+}
+
+func rerankSearchResultsForLLM(query string, results []searchResultForLLM, limit int) []searchResultForLLM {
+	if len(results) == 0 || limit <= 0 {
+		return nil
+	}
+	if limit > len(results) {
+		limit = len(results)
+	}
+
+	tokens := tokenizeSearchQueryForLLM(query)
+	type scored struct {
+		item  searchResultForLLM
+		score int
+		idx   int
+		host  string
+	}
+
+	scoredResults := make([]scored, 0, len(results))
+	for i, item := range results {
+		host := hostKeyForLLM(item.URL)
+		scoredResults = append(scoredResults, scored{
+			item:  item,
+			score: searchResultScoreForLLM(tokens, item),
+			idx:   i,
+			host:  host,
+		})
+	}
+
+	sort.SliceStable(scoredResults, func(i, j int) bool {
+		if scoredResults[i].score == scoredResults[j].score {
+			return scoredResults[i].idx < scoredResults[j].idx
+		}
+		return scoredResults[i].score > scoredResults[j].score
+	})
+
+	selected := make([]searchResultForLLM, 0, limit)
+	selectedURL := make(map[string]struct{}, limit)
+	seenHost := make(map[string]struct{}, limit)
+	appendResult := func(it scored) {
+		if len(selected) >= limit {
+			return
+		}
+		urlKey := strings.ToLower(strings.TrimSpace(it.item.URL))
+		if urlKey != "" {
+			if _, exists := selectedURL[urlKey]; exists {
+				return
+			}
+		}
+		if it.host != "" {
+			if _, exists := seenHost[it.host]; exists {
+				return
+			}
+			seenHost[it.host] = struct{}{}
+		}
+		if urlKey != "" {
+			selectedURL[urlKey] = struct{}{}
+		}
+		selected = append(selected, it.item)
+	}
+
+	for _, it := range scoredResults {
+		appendResult(it)
+	}
+	if len(selected) < limit {
+		for _, it := range scoredResults {
+			if len(selected) >= limit {
+				break
+			}
+			urlKey := strings.ToLower(strings.TrimSpace(it.item.URL))
+			if urlKey != "" {
+				if _, exists := selectedURL[urlKey]; exists {
+					continue
+				}
+				selectedURL[urlKey] = struct{}{}
+			}
+			selected = append(selected, it.item)
+		}
+	}
+
+	return selected
+}
+
+func searchResultScoreForLLM(queryTokens []string, item searchResultForLLM) int {
+	title := strings.ToLower(item.Title)
+	rawURL := strings.ToLower(item.URL)
+	desc := strings.ToLower(item.Description)
+
+	score := 0
+	for _, tk := range queryTokens {
+		if tk == "" {
+			continue
+		}
+		if strings.Contains(title, tk) {
+			score += 6
+		}
+		if strings.Contains(rawURL, tk) {
+			score += 4
+		}
+		if strings.Contains(desc, tk) {
+			score += 2
+		}
+	}
+
+	if strings.Contains(rawURL, "github.com") {
+		score += 1
+	}
+	return score
+}
+
+func tokenizeSearchQueryForLLM(query string) []string {
+	lower := strings.ToLower(strings.TrimSpace(query))
+	if lower == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(lower, func(r rune) bool {
+		return !(unicode.IsLetter(r) || unicode.IsDigit(r))
+	})
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if len([]rune(p)) == 1 {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+		if len(out) >= 10 {
+			break
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, lower)
+	}
+	return out
+}
+
+func hostKeyForLLM(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil || u.Host == "" {
+		u, err = url.Parse("https://" + trimmed)
+		if err != nil {
+			return ""
+		}
+	}
+	host := strings.ToLower(strings.TrimSpace(u.Host))
+	host = strings.TrimPrefix(host, "www.")
+	if colon := strings.Index(host, ":"); colon > 0 {
+		host = host[:colon]
+	}
+	return host
+}
+
+func searchResultsToInterfacesForLLM(results []searchResultForLLM) []interface{} {
+	if len(results) == 0 {
+		return []interface{}{}
+	}
+	out := make([]interface{}, 0, len(results))
+	for _, r := range results {
+		out = append(out, map[string]interface{}{
+			"title":       r.Title,
+			"url":         r.URL,
+			"description": r.Description,
+		})
+	}
+	return out
+}
+
+func compactJSONValueForLLM(v interface{}, depth int) interface{} {
+	if depth > 4 {
+		return nil
+	}
+	switch t := v.(type) {
+	case string:
+		return truncateUTF8Bytes(strings.TrimSpace(t), 512)
+	case []interface{}:
+		limit := len(t)
+		if limit > 8 {
+			limit = 8
+		}
+		out := make([]interface{}, 0, limit+1)
+		for i := 0; i < limit; i++ {
+			out = append(out, compactJSONValueForLLM(t[i], depth+1))
+		}
+		if len(t) > limit {
+			out = append(out, fmt.Sprintf("... %d more items", len(t)-limit))
+		}
+		return out
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(t))
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for i, k := range keys {
+			if i >= 24 {
+				out["truncated"] = true
+				break
+			}
+			out[k] = compactJSONValueForLLM(t[k], depth+1)
+		}
+		return out
+	default:
+		return t
+	}
+}
+
+func anyToStringForLLM(v interface{}) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(t)
+	case json.RawMessage:
+		return strings.TrimSpace(string(t))
+	default:
+		return strings.TrimSpace(fmt.Sprint(t))
+	}
+}
+
+func anyToIntForLLM(v interface{}) int {
+	switch t := v.(type) {
+	case nil:
+		return 0
+	case int:
+		return t
+	case int64:
+		return int(t)
+	case float64:
+		return int(t)
+	case json.Number:
+		n, _ := t.Int64()
+		return int(n)
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(t))
+		if err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+func truncateUTF8Bytes(s string, maxBytes int) string {
+	if maxBytes <= 0 || len(s) <= maxBytes {
+		return s
+	}
+	const suffix = "\n[truncated]"
+	if maxBytes <= len(suffix) {
+		return suffix[:maxBytes]
+	}
+	budget := maxBytes - len(suffix)
+	cut := 0
+	for _, r := range s {
+		size := utf8.RuneLen(r)
+		if size <= 0 {
+			size = 1
+		}
+		if cut+size > budget {
+			break
+		}
+		cut += size
+	}
+	if cut <= 0 {
+		return suffix[:maxBytes]
+	}
+	return s[:cut] + suffix
+}
+
+func applyToolResultsTotalBudgetForLLM(results []llm.Message, totalBudget int) []llm.Message {
+	if len(results) == 0 || totalBudget <= 0 {
+		return results
+	}
+
+	total := 0
+	for _, r := range results {
+		total += len(r.Content)
+	}
+	if total <= totalBudget {
+		return results
+	}
+
+	remainingBudget := totalBudget
+	for i := range results {
+		left := len(results) - i
+		reserved := (left - 1) * minLLMToolOutputBytes
+		allow := remainingBudget - reserved
+		if allow < minLLMToolOutputBytes {
+			allow = minLLMToolOutputBytes
+		}
+		if len(results[i].Content) > allow {
+			results[i].Content = truncateUTF8Bytes(results[i].Content, allow)
+		}
+		remainingBudget -= len(results[i].Content)
+		if remainingBudget < 0 {
+			remainingBudget = 0
+		}
+	}
+
+	total = 0
+	for _, r := range results {
+		total += len(r.Content)
+	}
+	if total <= totalBudget {
+		return results
+	}
+
+	perMessage := totalBudget / len(results)
+	if perMessage < 128 {
+		perMessage = 128
+	}
+	for i := range results {
+		results[i].Content = truncateUTF8Bytes(results[i].Content, perMessage)
+	}
+
+	total = 0
+	for _, r := range results {
+		total += len(r.Content)
+	}
+	if total <= totalBudget {
+		return results
+	}
+	for i := len(results) - 1; i >= 0 && total > totalBudget; i-- {
+		if len(results[i].Content) <= 64 {
+			continue
+		}
+		newLen := len(results[i].Content) - (total - totalBudget)
+		if newLen < 64 {
+			newLen = 64
+		}
+		results[i].Content = truncateUTF8Bytes(results[i].Content, newLen)
+		total = 0
+		for _, r := range results {
+			total += len(r.Content)
+		}
+	}
+	return results
 }
 
 // ansiPattern matches ANSI escape sequences (CSI, OSC, simple escapes).
@@ -5185,7 +8023,11 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 	// Inject cache-friendly structured system prompt blocks with conversation anchor.
 	anchorPrompt := h.buildConversationAnchorPrompt(c.Request().Context(), convID)
-	extraPrompt := mergeExtraPrompt(anchorPrompt, h.buildSkillSelectionPrompt(c.Request().Context(), routingMessage))
+	extraPrompt := mergeExtraPrompt(
+		anchorPrompt,
+		h.buildSkillSelectionPrompt(c.Request().Context(), routingMessage),
+		buildDeepSearchExecutionHint(routingMessage),
+	)
 	if systemPromptMessages := h.buildSystemPromptMessages(c.Request().Context(), extraPrompt); len(systemPromptMessages) > 0 {
 		logger.Info().Int("system_blocks", len(systemPromptMessages)).Msg("[chat] SendMessage: injected structured system prompt")
 		compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
@@ -5208,7 +8050,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	selectedTools := h.selectTools(routingMessage, chatReq.Model)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
-	if h.shouldRouteToolDispatch(selectedTools) {
+	if h.shouldRouteToolDispatch(selectedTools) && !shouldPreferDeepSearchReport(routingMessage) {
 		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
 		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
 		routeCancel()
@@ -5235,36 +8077,13 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		h.maybeAutoRollbackToolDispatchRoute()
 	}
 	chatReq.Tools = defsToLLMTools(selectedTools)
-
-	shortQAShadowPrompt := ""
-	shortQAShadowEnabled := false
-	if h.shouldShadowShortQA(req, routingMessage, "short_qa_shadow|"+convID+"|"+routingMessage) {
-		shortQAShadowEnabled = true
-		shortQAShadowPrompt = "You are a concise assistant. Answer briefly and directly. " +
-			"If uncertain, say so.\n\nUser: " + strings.TrimSpace(routingMessage) + "\nAssistant:"
-	}
-	if h.smallModel != nil && h.settingsHandler != nil && h.settingsHandler.GetSmallModelEnabled() &&
-		!h.settingsHandler.GetSmallModelRouteToolDispatchEnabled() && len(selectedTools) > 0 &&
-		h.shouldRunSmallModelShadow("tool_dispatch_shadow|"+convID+"|"+routingMessage) {
-		toolNames := make([]string, 0, len(selectedTools))
-		for _, tdef := range selectedTools {
-			toolNames = append(toolNames, tdef.Name)
-		}
-		toolPrompt := "Pick the single best tool name for this user request. " +
-			"Return only one tool name with no explanation.\n\nUser request: " + strings.TrimSpace(routingMessage) +
-			"\nCandidate tools: " + strings.Join(toolNames, ", ") + "\nTool:"
-		mainTool := selectedTools[0].Name
-		go func(prompt, baseline string) {
-			shadowCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-			defer cancel()
-			h.runSmallModelShadow(shadowCtx, "tool_dispatch_shadow", prompt, 32, 0.2, baseline)
-		}(toolPrompt, mainTool)
-	}
+	deepSearchState := newDeepSearchLoopState(routingMessage, selectedTools)
 
 	logger.Info().
 		Str("model", chatReq.Model).
 		Int("messages", len(chatReq.Messages)).
 		Int("tools", len(chatReq.Tools)).
+		Str("prompt_policy_hash", h.resolvePromptPolicy().Hash).
 		Bool("has_system_prompt", h.systemPromptBuilder != nil).
 		Msg("[chat] SendMessage request")
 
@@ -5300,9 +8119,13 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		llmCtx = pruner.WithPrunerDisabled(llmCtx, true)
 	}
 
+	smImages, smImagesOK := collectSmallModelImages(req.Attachments)
 	if h.shouldRouteShortQA(req, routingMessage) {
 		smCtx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
-		smResp, smErr := h.trySmallModelShortQA(smCtx, routingMessage, req.MaxTokens, req.Temperature)
+		if !smImagesOK {
+			smImages = nil
+		}
+		smResp, smErr := h.trySmallModelShortQA(smCtx, routingMessage, req.MaxTokens, req.Temperature, smImages...)
 		cancel()
 		if smErr == nil && smResp != nil {
 			h.smallModelStats.RecordShortQARoute(true)
@@ -5354,6 +8177,13 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if resp == nil {
 		autoContinueCount := 0
 		pseudoToolCallAutoContinueCount := 0
+		actionPledgeAutoContinueCount := 0
+		missingTodoAutoContinueCount := 0
+		pendingTodoAutoContinueCount := 0
+		todoContent := ""
+		planCompletedByTool := false
+		prevToollessAutoContinueSig := ""
+		consecutiveToollessAutoContinueDups := 0
 		agentModeAutoContinue := h.getMaxToolRounds() > maxToolRounds
 		maxAutoContinueRetries := h.getMaxAutoContinueForMode(agentModeAutoContinue)
 
@@ -5391,12 +8221,66 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 			// No tool calls — done
 			if len(resp.Message.ToolCalls) == 0 {
+				if shouldForce, reason := deepSearchState.shouldForceAnotherSearch(round, h.getMaxToolRounds()); shouldForce {
+					deepSearchState.markForcedContinuation()
+					chatReq.Messages = append(chatReq.Messages,
+						llm.Message{Role: llm.RoleAssistant, Content: resp.Message.Content},
+						llm.Message{Role: llm.RoleUser, Content: buildDeepSearchMinRoundsNudge(deepSearchState)},
+					)
+					logger.Info().
+						Int("round", round).
+						Int("search_rounds", deepSearchState.searchRounds).
+						Int("min_search_rounds", deepSearchState.minRounds).
+						Int("forced_continuations", deepSearchState.forcedContinuations).
+						Msg("[chat] deep-search guard: forcing another search round before finalize")
+					continue
+				} else if deepSearchState != nil && deepSearchState.enabled && deepSearchState.searchRounds < deepSearchState.minRounds &&
+					reason != "disabled" && reason != "min_met" {
+					logger.Warn().
+						Int("round", round).
+						Str("reason", reason).
+						Int("search_rounds", deepSearchState.searchRounds).
+						Int("min_search_rounds", deepSearchState.minRounds).
+						Msg("[chat] deep-search guard fail-open: allowing finalize before min rounds")
+				}
+
+				if checklist, ok := extractChecklistFromJSONResult(resp.Message.Content); ok && strings.TrimSpace(checklist) != "" {
+					todoContent = checklist
+					planCompletedByTool = !hasPendingTodo(checklist)
+				} else if reTodoUnchecked.MatchString(resp.Message.Content) {
+					todoContent = resp.Message.Content
+					planCompletedByTool = !hasPendingTodo(todoContent)
+				}
+
 				if autoContinueCount < maxAutoContinueRetries {
-					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(resp.Message.Content, "", agentModeAutoContinue); shouldContinue {
-						if shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount) {
+					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(resp.Message.Content, todoContent, agentModeAutoContinue, round > 0, planCompletedByTool); shouldContinue {
+						if h.shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
+							sig := toollessAutoContinueSignature(reason, resp.Message.Content)
+							if sig == prevToollessAutoContinueSig {
+								consecutiveToollessAutoContinueDups++
+							} else {
+								prevToollessAutoContinueSig = sig
+								consecutiveToollessAutoContinueDups = 1
+							}
+							if shouldStopForDuplicateActionPledge(reason, consecutiveToollessAutoContinueDups) {
+								logger.Warn().
+									Int("round", round).
+									Str("reason", reason).
+									Int("consecutive_action_pledge_dups", consecutiveToollessAutoContinueDups).
+									Msg("[chat] action_pledge duplicate auto-continue detected; finishing current round")
+								break
+							}
 							autoContinueCount++
-							if reason == "pseudo_tool_call" {
+							if reason == "missing_todo" {
+								missingTodoAutoContinueCount++
+								pseudoToolCallAutoContinueCount = 0
+								actionPledgeAutoContinueCount = 0
+								pendingTodoAutoContinueCount = 0
+							} else if reason == "pseudo_tool_call" {
 								pseudoToolCallAutoContinueCount++
+								actionPledgeAutoContinueCount = 0
+								missingTodoAutoContinueCount = 0
+								pendingTodoAutoContinueCount = 0
 								if actions := hardenPseudoToolCallRetryRequest(&chatReq); len(actions) > 0 {
 									logger.Warn().
 										Int("round", round).
@@ -5416,14 +8300,28 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 											Msg("[chat] switched model after repeated pseudo_tool_call")
 									}
 								}
+							} else if reason == "action_pledge" {
+								actionPledgeAutoContinueCount++
+								pseudoToolCallAutoContinueCount = 0
+								missingTodoAutoContinueCount = 0
+								pendingTodoAutoContinueCount = 0
+							} else if reason == "pending_todo" {
+								pendingTodoAutoContinueCount++
+								pseudoToolCallAutoContinueCount = 0
+								actionPledgeAutoContinueCount = 0
+								missingTodoAutoContinueCount = 0
 							} else {
 								pseudoToolCallAutoContinueCount = 0
+								actionPledgeAutoContinueCount = 0
+								missingTodoAutoContinueCount = 0
+								pendingTodoAutoContinueCount = 0
 							}
 
 							assistantFollowUpContent := buildToollessAutoContinueAssistantContent(resp.Message.Content, reason)
+							promptPolicy := h.resolvePromptPolicy()
 							chatReq.Messages = append(chatReq.Messages,
 								llm.Message{Role: llm.RoleAssistant, Content: assistantFollowUpContent},
-								llm.Message{Role: llm.RoleUser, Content: buildToollessAutoContinueNudgeForReason(agentModeAutoContinue, reason)},
+								llm.Message{Role: llm.RoleUser, Content: buildToollessAutoContinueNudgeForReasonWithPolicy(promptPolicy, agentModeAutoContinue, reason)},
 							)
 							logger.Info().
 								Int("round", round).
@@ -5436,8 +8334,14 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 							Int("round", round).
 							Str("reason", reason).
 							Int("pseudo_auto_continue", pseudoToolCallAutoContinueCount).
-							Int("pseudo_auto_continue_limit", getMaxPseudoToolCallAutoContinueForMode(agentModeAutoContinue)).
-							Msg("[chat] pseudo_tool_call auto-continue budget exhausted; finishing current round")
+							Int("pseudo_auto_continue_limit", h.getMaxPseudoToolCallAutoContinueForMode(agentModeAutoContinue)).
+							Int("action_pledge_auto_continue", actionPledgeAutoContinueCount).
+							Int("action_pledge_auto_continue_limit", h.getMaxActionPledgeAutoContinueForMode(agentModeAutoContinue)).
+							Int("missing_todo_auto_continue", missingTodoAutoContinueCount).
+							Int("missing_todo_auto_continue_limit", h.getMaxMissingTodoAutoContinueForMode(agentModeAutoContinue)).
+							Int("pending_todo_auto_continue", pendingTodoAutoContinueCount).
+							Int("pending_todo_auto_continue_limit", h.getMaxPendingTodoAutoContinueForMode(agentModeAutoContinue)).
+							Msg("[chat] toolless auto-continue budget exhausted; finishing current round")
 					}
 				}
 				break
@@ -5448,12 +8352,41 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			}
 			autoContinueCount = 0
 			pseudoToolCallAutoContinueCount = 0
+			actionPledgeAutoContinueCount = 0
+			missingTodoAutoContinueCount = 0
+			pendingTodoAutoContinueCount = 0
+			prevToollessAutoContinueSig = ""
+			consecutiveToollessAutoContinueDups = 0
 			// Execute tool calls and feed results back
 			logger.Info().Int("round", round).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[chat] executing tool calls")
 			toolResults := h.executeToolCalls(toolCtx, resp.Message.ToolCalls)
+			deepSearchState.observeToolRound(resp.Message.ToolCalls, toolResults)
+			planChecklist, planChecklistUpdated := extractPlanChecklistFromToolRound(resp.Message.ToolCalls, toolResults)
+			if planChecklistUpdated {
+				todoContent = planChecklist
+			}
+			if planDone, ok := extractPlanCompletionFromToolRound(resp.Message.ToolCalls, toolResults); ok {
+				planCompletedByTool = planDone
+			} else if planChecklistUpdated {
+				planCompletedByTool = !hasPendingTodo(planChecklist)
+			}
+			if planCompletedByTool && todoContent != "" {
+				if updated, ok := completeAllTodoItems(todoContent); ok {
+					todoContent = updated
+				}
+			}
+			toolResultsForLLM := compactToolResultsForLLM(resp.Message.ToolCalls, toolResults)
 			// Append assistant message (with tool_calls) + tool results to conversation
 			chatReq.Messages = append(chatReq.Messages, resp.Message)
-			chatReq.Messages = append(chatReq.Messages, toolResults...)
+			chatReq.Messages = append(chatReq.Messages, toolResultsForLLM...)
+			if todoContent != "" {
+				if progress := extractTodoProgress(todoContent); progress != "" {
+					chatReq.Messages = append(chatReq.Messages, llm.Message{
+						Role:    llm.RoleUser,
+						Content: progress,
+					})
+				}
+			}
 		}
 	}
 	if err != nil && strings.TrimSpace(req.Provider) == "" && h.shouldUseDeepResearchFallback(err) {
@@ -5481,27 +8414,51 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				Err(fbErr).
 				Str("conv_id", convID).
 				Msg("[chat] deep research fallback failed")
-			irCtx, irCancel := context.WithTimeout(c.Request().Context(), 150*time.Millisecond)
-			irText, irErr := h.runLocalIRFallback(irCtx, convID, routingMessage, true)
-			irCancel()
-			if irErr == nil && strings.TrimSpace(irText) != "" {
-				h.smallModelStats.RecordIRTakeover()
+			if toolFallback, toolErr := h.runAutonomousResearchFallback(toolCtx, routingMessage, locale, req.WebSearchEnabled, req.DeepResearchEnabled); toolErr == nil {
 				resp = &llm.ChatResponse{
-					Model:      "ir-only-fallback",
-					Provider:   "ir",
-					ProviderID: "ir",
+					Model:      toolFallback.Model,
+					Provider:   toolFallback.Provider,
+					ProviderID: toolFallback.ProviderID,
 					Message: llm.Message{
 						Role:    llm.RoleAssistant,
-						Content: irText,
+						Content: toolFallback.Content,
 					},
 				}
 				err = nil
 				logger.Warn().
 					Err(fbErr).
 					Str("conv_id", convID).
-					Msg("[chat] deep research unavailable, downgraded to IR-only fallback")
+					Str("fallback_provider", toolFallback.ProviderID).
+					Msg("[chat] deep research unavailable, downgraded to autonomous tool fallback")
 			} else {
-				h.smallModelStats.RecordFallback(fallbackReasonIRNoSignal)
+				logger.Warn().
+					Err(toolErr).
+					Str("conv_id", convID).
+					Msg("[chat] autonomous tool fallback failed")
+			}
+			if err != nil {
+				irCtx, irCancel := context.WithTimeout(c.Request().Context(), 150*time.Millisecond)
+				irText, irErr := h.runLocalIRFallback(irCtx, convID, routingMessage, true)
+				irCancel()
+				if irErr == nil && strings.TrimSpace(irText) != "" {
+					h.smallModelStats.RecordIRTakeover()
+					resp = &llm.ChatResponse{
+						Model:      "ir-only-fallback",
+						Provider:   "ir",
+						ProviderID: "ir",
+						Message: llm.Message{
+							Role:    llm.RoleAssistant,
+							Content: irText,
+						},
+					}
+					err = nil
+					logger.Warn().
+						Err(fbErr).
+						Str("conv_id", convID).
+						Msg("[chat] deep research unavailable, downgraded to IR-only fallback")
+				} else {
+					h.smallModelStats.RecordFallback(fallbackReasonIRNoSignal)
+				}
 			}
 		}
 	}
@@ -5532,7 +8489,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 	// Sanitize response content — strip internal markers before sending to client
 	if resp != nil {
-		resp.Message.Content = sanitizeResponseContent(resp.Message.Content)
+		resp.Message.Content = sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, resp.Model)
 	}
 
 	// Use actual model from response if available
@@ -5581,20 +8538,6 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		sanitizedErr := proxy.SanitizeError(err)
 		h.emitErrorEventAsync(sessionID, sanitizedErr)
 		return echo.NewHTTPError(http.StatusInternalServerError, sanitizedErr)
-	}
-
-	if shortQAShadowEnabled && resp != nil {
-		mainOutput := strings.TrimSpace(resp.Message.Content)
-		if mainOutput != "" {
-			prompt := shortQAShadowPrompt
-			maxTokens := req.MaxTokens
-			temperature := req.Temperature
-			go func(prompt, baseline string, maxTokens int, temperature float64) {
-				shadowCtx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-				defer cancel()
-				h.runSmallModelShadow(shadowCtx, "short_qa_shadow", prompt, maxTokens, temperature, baseline)
-			}(prompt, mainOutput, maxTokens, temperature)
-		}
 	}
 
 	// Get provider name for display — use resolved provider from response if available
@@ -5738,6 +8681,8 @@ func (h *ChatHandler) DeleteMessages(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
+	// Message history changed; reset Responses continuation to avoid stale carry-over.
+	h.clearPreviousResponseID(convID)
 	h.conversationCache.Invalidate(convID)
 	h.summaryCache.Del(convID)
 
@@ -5770,10 +8715,6 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/context/stats/reset", h.ResetContextStats)
 	g.GET("/small-model/stats", h.SmallModelStatsHandler)
 	g.POST("/small-model/stats/reset", h.ResetSmallModelStatsHandler)
-	g.GET("/small-model/shadow-quality", h.SmallModelShadowQualityHandler)
-	g.GET("/small-model/shadow-quality/gate-eval", h.SmallModelShadowQualityGateEvalHandler)
-	g.POST("/small-model/shadow-quality/auto-rollout/execute", h.SmallModelShadowAutoRolloutExecuteHandler)
-	g.POST("/small-model/shadow-quality/reset", h.ResetSmallModelShadowQualityHandler)
 	g.GET("/streams/active", h.ListActiveStreams)
 	g.POST("/streams/cancel-all", h.CancelAllStreams)
 	g.POST("/conversations/:id/messages/:msgid/card-action", h.HandleCardAction)
@@ -6115,6 +9056,7 @@ func (h *ChatHandler) executeSlashCommand(ctx context.Context, convID, message s
 			return "Failed to read conversation messages for clear.", true
 		}
 		if len(msgs) == 0 {
+			h.clearPreviousResponseID(convID)
 			return "Conversation is already empty.", true
 		}
 		ids := make([]string, 0, len(msgs))
@@ -6124,6 +9066,7 @@ func (h *ChatHandler) executeSlashCommand(ctx context.Context, convID, message s
 		if err := h.store.DeleteMessages(ctx, convID, ids); err != nil {
 			return "Failed to clear conversation messages.", true
 		}
+		h.clearPreviousResponseID(convID)
 		h.conversationCache.Invalidate(convID)
 		h.summaryCache.Del(convID)
 		h.invalidateWarmup(convID)
@@ -6425,7 +9368,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var beforeCount int
 	var preloaded []memory.Message
 	anchorPrompt := h.buildConversationAnchorPrompt(c.Request().Context(), convID)
-	extraPrompt := mergeExtraPrompt(anchorPrompt, h.buildSkillSelectionPrompt(c.Request().Context(), req.Message))
+	extraPrompt := mergeExtraPrompt(
+		anchorPrompt,
+		h.buildSkillSelectionPrompt(c.Request().Context(), req.Message),
+		buildDeepSearchExecutionHint(req.Message),
+	)
 	systemPromptMessages := h.buildSystemPromptMessages(c.Request().Context(), extraPrompt)
 
 	if warmup := h.consumeWarmup(convID); warmup != nil {
@@ -6501,7 +9448,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			compactedMessages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, compactedMessages...)
 		}
 	}
-	extraPrompt = mergeExtraPrompt(anchorPrompt, h.buildSkillSelectionPrompt(c.Request().Context(), routingMessage))
+	extraPrompt = mergeExtraPrompt(
+		anchorPrompt,
+		h.buildSkillSelectionPrompt(c.Request().Context(), routingMessage),
+		buildDeepSearchExecutionHint(routingMessage),
+	)
 	systemPromptMessages = h.buildSystemPromptMessages(c.Request().Context(), extraPrompt)
 	if len(systemPromptMessages) > 0 {
 		compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
@@ -6526,7 +9477,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	selectedTools := h.selectTools(routingMessage, chatReq.Model)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
-	if h.shouldRouteToolDispatch(selectedTools) {
+	if h.shouldRouteToolDispatch(selectedTools) && !shouldPreferDeepSearchReport(routingMessage) {
 		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
 		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
 		routeCancel()
@@ -6553,10 +9504,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		h.maybeAutoRollbackToolDispatchRoute()
 	}
 	chatReq.Tools = defsToLLMTools(selectedTools)
+	deepSearchState := newDeepSearchLoopState(routingMessage, selectedTools)
 	logger.Info().
 		Str("model", chatReq.Model).
 		Int("messages", len(chatReq.Messages)).
 		Int("tools", len(chatReq.Tools)).
+		Str("prompt_policy_hash", h.resolvePromptPolicy().Hash).
 		Bool("has_system_prompt", h.systemPromptBuilder != nil).
 		Msg("[chat] StreamMessage request")
 
@@ -6648,6 +9601,30 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	c.Response().WriteHeader(http.StatusOK)
 	flusher.Flush()
 
+	// Pre-allocate buffer for SSE writes to reduce allocations.
+	sseBuffer := bytes.NewBuffer(make([]byte, 0, 512))
+	streamSeq := int64(0)
+	emitSSE := func(payload map[string]interface{}) {
+		if payload == nil {
+			return
+		}
+		if raw, ok := payload["stream_id"]; !ok || strings.TrimSpace(fmt.Sprintf("%v", raw)) == "" {
+			payload["stream_id"] = streamID
+		}
+		streamSeq++
+		payload["seq"] = streamSeq
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return
+		}
+		sseBuffer.Reset()
+		sseBuffer.WriteString("data: ")
+		sseBuffer.Write(encoded)
+		sseBuffer.WriteString("\n\n")
+		_, _ = c.Response().Write(sseBuffer.Bytes())
+		flusher.Flush()
+	}
+
 	// Inject card emitter so tools (e.g. ui_reviewer) can push streaming
 	// progress cards to the client during execution.
 	toolCtx = tools.WithCardEmitter(toolCtx, func(card map[string]interface{}) {
@@ -6656,13 +9633,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			return
 		}
 		block := "\n\n```typeless\n" + string(cardJSON) + "\n```"
-		data, _ := json.Marshal(map[string]interface{}{
+		emitSSE(map[string]interface{}{
 			"delta":     block,
 			"done":      false,
 			"stream_id": streamID,
 		})
-		c.Response().Write([]byte("data: " + string(data) + "\n\n"))
-		flusher.Flush()
 	})
 	if requester := h.buildBrowserCheckpointRequester(c.Request().Context(), "web", streamUserID, convID, "", "", streamLang); requester != nil {
 		toolCtx = tools.WithBrowserCheckpointRequester(toolCtx, requester)
@@ -6679,8 +9654,6 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var latestResponseID string // Track latest Responses response.id for continuation
 	userID := h.getUserID(c)
 
-	// Pre-allocate buffer for SSE writes to reduce allocations
-	sseBuffer := bytes.NewBuffer(make([]byte, 0, 512))
 	// Micro-batch delta chunks to reduce flush/write frequency while keeping
 	// sub-frame latency for perceived streaming responsiveness.
 	var pendingDeltaBuffer strings.Builder
@@ -6718,24 +9691,14 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			return false
 		}
 
-		sseChunk := struct {
-			Delta    string `json:"delta"`
-			Done     bool   `json:"done"`
-			StreamID string `json:"stream_id"`
-		}{
-			Delta:    pendingDeltaBuffer.String(),
-			Done:     false,
-			StreamID: streamID,
-		}
-		sseBuffer.Reset()
-		sseBuffer.WriteString("data: ")
-		chunkJSON, _ := json.Marshal(sseChunk)
-		sseBuffer.Write(chunkJSON)
-		sseBuffer.WriteString("\n\n")
-		c.Response().Write(sseBuffer.Bytes())
-		flusher.Flush()
+		delta := pendingDeltaBuffer.String()
+		emitSSE(map[string]interface{}{
+			"delta":     delta,
+			"done":      false,
+			"stream_id": streamID,
+		})
 		deltaFlushCount++
-		deltaFlushedBytes += len(sseChunk.Delta)
+		deltaFlushedBytes += len(delta)
 		pendingDeltaBuffer.Reset()
 		lastDeltaFlushAt = timeutil.NowTime()
 		return true
@@ -6779,6 +9742,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var awaitingInputSent bool  // true once awaiting_user_input SSE event has been emitted for this stream
 	var contextTrimSent bool    // true when pruning/compaction metadata SSE has been sent
 	var finalLatencyMs, finalTTFTMs, finalTPS float64
+	var lastStreamProgress string
 
 	// Incremental persistence: insert placeholder message before streaming starts.
 	// This ensures a page refresh mid-stream still shows partial content.
@@ -6791,16 +9755,37 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// successful tool round and persist the update to DB.
 	var todoMsgID string
 	var todoContent string
+	var planCompletedByTool bool
 
 	var totalDeltaChars int                 // track total delta chars sent to client across all rounds
 	var autoContinueCount int               // track auto-continue retries to prevent infinite loops
 	var autoContinueFailed bool             // true after an auto-continue round fails before any chunk
 	var pseudoToolCallAutoContinueCount int // track consecutive pseudo_tool_call retries
-	var prevToolSig string                  // signature of previous round's tool calls for duplicate detection
-	var consecutiveDups int                 // count of consecutive identical tool call rounds
-	var typelessCardsPersisted bool         // true once tool result cards are appended to persisted content
+	var actionPledgeAutoContinueCount int   // track consecutive action_pledge retries
+	var missingTodoAutoContinueCount int    // track checklist-bootstrap retries when TODO list is missing
+	var pendingTodoAutoContinueCount int    // track retries when model repeats pending TODO without execution
+	var prevToollessAutoContinueSig string  // signature of previous toolless auto-continue round
+	var consecutiveToollessAutoContinueDups int
+	var deepSearchForcePending bool
+	var deepSearchForceReason string
+	var prevToolSig string          // signature of previous round's tool calls for duplicate detection
+	var consecutiveDups int         // count of consecutive identical tool call rounds
+	var typelessCardsPersisted bool // true once tool result cards are appended to persisted content
 	agentModeAutoContinue := h.getMaxToolRounds() > maxToolRounds
 	maxAutoContinueRetries := h.getMaxAutoContinueForMode(agentModeAutoContinue)
+	dropPendingVisibleDelta := func() int {
+		dropped := pendingDeltaBuffer.Len()
+		if dropped == 0 {
+			return 0
+		}
+		pendingDeltaBuffer.Reset()
+		if totalDeltaChars >= dropped {
+			totalDeltaChars -= dropped
+		} else {
+			totalDeltaChars = 0
+		}
+		return dropped
+	}
 	// Keep provider/model sticky across auto-continue rounds to avoid re-routing
 	// "model=auto" to a different model/provider mid-chain.
 	pinAutoContinueRoute := func(reason string) {
@@ -6836,6 +9821,11 @@ STREAM_LOOP:
 	for toolRound := 0; toolRound < h.getMaxToolRounds(); toolRound++ {
 		streamToolCalls = streamToolCalls[:0]
 		streamErrorHandled = false
+		deepSearchForcePending = false
+		deepSearchForceReason = ""
+		suppressPseudoDirectiveDelta := false
+		suppressedPseudoDirectiveChunks := 0
+		suppressUserDeltaAfterToolCall := false
 
 		// Use callback-based streaming to avoid channel issues
 		logger.Debug().Str("stream_id", streamID).Int("tool_round", toolRound).Msg("[chat] starting stream")
@@ -6852,14 +9842,13 @@ STREAM_LOOP:
 						Int("tokens_after", pruneStats.TokensAfter).
 						Int("tokens_saved", pruneStats.TokensBefore-pruneStats.TokensAfter).
 						Msg("[chat] stream context pruned")
-					pruneJSON := fmt.Sprintf(`{"pruned":true,"messages_pruned":%d,"tokens_before":%d,"tokens_after":%d}`,
-						pruneStats.MessagesPruned, pruneStats.TokensBefore, pruneStats.TokensAfter)
-					sseBuffer.Reset()
-					sseBuffer.WriteString("data: ")
-					sseBuffer.WriteString(pruneJSON)
-					sseBuffer.WriteString("\n\n")
-					c.Response().Write(sseBuffer.Bytes())
-					flusher.Flush()
+					emitSSE(map[string]interface{}{
+						"pruned":          true,
+						"messages_pruned": pruneStats.MessagesPruned,
+						"tokens_before":   pruneStats.TokensBefore,
+						"tokens_after":    pruneStats.TokensAfter,
+						"stream_id":       streamID,
+					})
 					contextTrimSent = true
 				}
 				if compacted {
@@ -6869,13 +9858,12 @@ STREAM_LOOP:
 						Int("before", beforeCount).
 						Int("after", len(compactedMessages)).
 						Msg("[chat] stream context compacted")
-					compactJSON := fmt.Sprintf(`{"compacted":true,"before":%d,"after":%d}`, beforeCount, len(compactedMessages))
-					sseBuffer.Reset()
-					sseBuffer.WriteString("data: ")
-					sseBuffer.WriteString(compactJSON)
-					sseBuffer.WriteString("\n\n")
-					c.Response().Write(sseBuffer.Bytes())
-					flusher.Flush()
+					emitSSE(map[string]interface{}{
+						"compacted": true,
+						"before":    beforeCount,
+						"after":     len(compactedMessages),
+						"stream_id": streamID,
+					})
 					contextTrimSent = true
 				}
 			}
@@ -6899,26 +9887,77 @@ STREAM_LOOP:
 			if chunk.ProviderID != "" && actualProviderID == "" {
 				actualProviderID = chunk.ProviderID
 			}
+			if chunk.Progress != "" && chunk.Progress != lastStreamProgress {
+				emitSSE(map[string]interface{}{
+					"stream_progress": chunk.Progress,
+					"stream_id":       streamID,
+				})
+				lastStreamProgress = chunk.Progress
+			}
 
 			// Collect tool calls from stream chunks (merge partial arguments)
 			if len(chunk.ToolCalls) > 0 {
 				for _, tc := range chunk.ToolCalls {
 					if tc.ID != "" && tc.Name != "" {
-						// New tool call — strip bogus initial arguments from some providers
+						// New tool call — strip bogus initial arguments from some providers.
 						if tc.Arguments == "null" || tc.Arguments == "undefined" {
 							tc.Arguments = ""
 						}
-						streamToolCalls = append(streamToolCalls, tc)
+						// Deduplicate by (id,name): some responses streams emit the same
+						// function_call across added/done/completed events.
+						found := -1
+						for i := len(streamToolCalls) - 1; i >= 0; i-- {
+							if streamToolCalls[i].ID == tc.ID && streamToolCalls[i].Name == tc.Name {
+								found = i
+								break
+							}
+						}
+						if found >= 0 {
+							if tc.Arguments != "" {
+								current := strings.TrimSpace(streamToolCalls[found].Arguments)
+								next := strings.TrimSpace(tc.Arguments)
+								if current == "" ||
+									((strings.HasPrefix(next, "{") && strings.HasSuffix(next, "}")) ||
+										(strings.HasPrefix(next, "[") && strings.HasSuffix(next, "]"))) {
+									streamToolCalls[found].Arguments = tc.Arguments
+								} else if !strings.HasSuffix(streamToolCalls[found].Arguments, tc.Arguments) {
+									streamToolCalls[found].Arguments += tc.Arguments
+								}
+							}
+						} else {
+							streamToolCalls = append(streamToolCalls, tc)
+						}
 					} else if len(streamToolCalls) > 0 && tc.Arguments != "" {
-						// Partial argument delta — append to last tool call
-						streamToolCalls[len(streamToolCalls)-1].Arguments += tc.Arguments
+						// Partial argument delta — append to last tool call.
+						// If it already looks like a complete JSON payload, replace it.
+						last := len(streamToolCalls) - 1
+						next := strings.TrimSpace(tc.Arguments)
+						if (strings.HasPrefix(next, "{") && strings.HasSuffix(next, "}")) ||
+							(strings.HasPrefix(next, "[") && strings.HasSuffix(next, "]")) {
+							streamToolCalls[last].Arguments = tc.Arguments
+						} else {
+							streamToolCalls[last].Arguments += tc.Arguments
+						}
 					}
+				}
+				if !suppressUserDeltaAfterToolCall && len(streamToolCalls) > 0 {
+					suppressUserDeltaAfterToolCall = true
+					dropped := dropPendingVisibleDelta()
+					logger.Info().
+						Int("tool_round", toolRound).
+						Int("tool_calls", len(streamToolCalls)).
+						Int("dropped_pending_delta_chars", dropped).
+						Msg("[chat] stream: detected tool calls, suppressing subsequent assistant delta for this round")
 				}
 			}
 
 			// Check for error in chunk
 			if chunk.Error != "" {
-				flushPendingDelta(true)
+				if suppressUserDeltaAfterToolCall {
+					dropPendingVisibleDelta()
+				} else {
+					flushPendingDelta(true)
+				}
 				// Record error metrics
 				if h.metricsRecorder != nil {
 					latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
@@ -6930,14 +9969,11 @@ STREAM_LOOP:
 					chunkErr = "trial_service_busy"
 				}
 				// Send error to client
-				data := map[string]interface{}{
+				emitSSE(map[string]interface{}{
 					"error":     chunkErr,
 					"done":      true,
 					"stream_id": streamID,
-				}
-				jsonData, _ := json.Marshal(data)
-				c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
-				flusher.Flush()
+				})
 				// Persist partial content if any was streamed before the error
 				if fullContent != "" {
 					if streamingMsgID != "" {
@@ -6958,18 +9994,33 @@ STREAM_LOOP:
 
 			fullContent += chunk.Delta
 			if chunk.Delta != "" {
-				totalDeltaChars += len(chunk.Delta)
-				queueDelta(chunk.Delta)
+				visibleDelta := chunk.Delta
+				if suppressUserDeltaAfterToolCall {
+					visibleDelta = ""
+				} else {
+					// Suppress leaked pseudo tool-directive text from live SSE output.
+					// Keep raw content in fullContent so auto-continue heuristics can still
+					// detect malformed rounds and trigger retry logic.
+					if len(streamToolCalls) == 0 {
+						visibleDelta = filterPseudoDirectiveDeltaForStreaming(
+							visibleDelta,
+							&suppressPseudoDirectiveDelta,
+							&suppressedPseudoDirectiveChunks,
+						)
+					}
+				}
+				if visibleDelta != "" {
+					totalDeltaChars += len(visibleDelta)
+					queueDelta(visibleDelta)
+				}
 			}
 			if !awaitingInputSent && (reAwaitingUserInputTag.MatchString(fullContent) || reAskGateBlock.MatchString(fullContent)) {
 				awaitingInputSent = true
 				flushPendingDelta(true)
-				awaitingJSON, _ := json.Marshal(map[string]interface{}{
+				emitSSE(map[string]interface{}{
 					"awaiting_user_input": true,
 					"stream_id":           streamID,
 				})
-				c.Response().Write([]byte("data: " + string(awaitingJSON) + "\n\n"))
-				flusher.Flush()
 			}
 
 			// Incremental persistence: insert or update the message in DB periodically
@@ -7004,18 +10055,20 @@ STREAM_LOOP:
 			}
 
 			if chunk.Done {
-				flushPendingDelta(true)
 				// If there are pending tool calls, skip persistence and final SSE —
 				// the tool loop will reset fullContent and re-stream.
 				if len(streamToolCalls) > 0 {
+					dropped := dropPendingVisibleDelta()
 					logger.Info().
 						Int("tool_round", toolRound).
 						Int("tool_calls", len(streamToolCalls)).
+						Int("dropped_pending_delta_chars", dropped).
 						Int("total_delta_chars", totalDeltaChars).
 						Str("fullContent_len", fmt.Sprintf("%d", len(fullContent))).
 						Msg("[chat] stream: done with pending tool calls, skipping final SSE")
 					return nil
 				}
+				flushPendingDelta(true)
 
 				// If tool rounds executed but produced no text content, defer the done
 				// chunk so the post-loop fallback can inject tool results first.
@@ -7029,12 +10082,34 @@ STREAM_LOOP:
 					streamCompleted = true
 					return nil
 				}
+				if len(streamToolCalls) == 0 && fullContent != "" {
+					if shouldForce, reason := deepSearchState.shouldForceAnotherSearch(toolRound, h.getMaxToolRounds()); shouldForce {
+						deepSearchForcePending = true
+						deepSearchForceReason = reason
+						logger.Info().
+							Int("tool_round", toolRound).
+							Str("reason", reason).
+							Int("search_rounds", deepSearchState.searchRounds).
+							Int("min_search_rounds", deepSearchState.minRounds).
+							Msg("[chat] stream: deep-search guard requested another search round before finalize")
+						streamCompleted = true
+						return nil
+					} else if deepSearchState != nil && deepSearchState.enabled && deepSearchState.searchRounds < deepSearchState.minRounds &&
+						reason != "disabled" && reason != "min_met" {
+						logger.Warn().
+							Int("tool_round", toolRound).
+							Str("reason", reason).
+							Int("search_rounds", deepSearchState.searchRounds).
+							Int("min_search_rounds", deepSearchState.minRounds).
+							Msg("[chat] stream: deep-search guard fail-open before min rounds")
+					}
+				}
 
 				// Auto-continue: if LLM stopped without tool calls but the content
 				// indicates a pending next action, defer done and nudge another round.
 				if len(streamToolCalls) == 0 && fullContent != "" && autoContinueCount < maxAutoContinueRetries {
-					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue); shouldContinue {
-						if shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount) {
+					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool); shouldContinue {
+						if h.shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
 							logger.Info().
 								Int("tool_round", toolRound).
 								Str("reason", reason).
@@ -7046,8 +10121,14 @@ STREAM_LOOP:
 							Int("tool_round", toolRound).
 							Str("reason", reason).
 							Int("pseudo_auto_continue", pseudoToolCallAutoContinueCount).
-							Int("pseudo_auto_continue_limit", getMaxPseudoToolCallAutoContinueForMode(agentModeAutoContinue)).
-							Msg("[chat] stream: pseudo_tool_call auto-continue budget exhausted; finishing current round")
+							Int("pseudo_auto_continue_limit", h.getMaxPseudoToolCallAutoContinueForMode(agentModeAutoContinue)).
+							Int("action_pledge_auto_continue", actionPledgeAutoContinueCount).
+							Int("action_pledge_auto_continue_limit", h.getMaxActionPledgeAutoContinueForMode(agentModeAutoContinue)).
+							Int("missing_todo_auto_continue", missingTodoAutoContinueCount).
+							Int("missing_todo_auto_continue_limit", h.getMaxMissingTodoAutoContinueForMode(agentModeAutoContinue)).
+							Int("pending_todo_auto_continue", pendingTodoAutoContinueCount).
+							Int("pending_todo_auto_continue_limit", h.getMaxPendingTodoAutoContinueForMode(agentModeAutoContinue)).
+							Msg("[chat] stream: toolless auto-continue budget exhausted; finishing current round")
 					}
 				}
 
@@ -7137,9 +10218,7 @@ STREAM_LOOP:
 				if chunk.Usage != nil {
 					finalData["usage"] = chunk.Usage
 				}
-				finalJSON, _ := json.Marshal(finalData)
-				c.Response().Write([]byte("data: " + string(finalJSON) + "\n\n"))
-				flusher.Flush()
+				emitSSE(finalData)
 				streamDoneSent = true
 
 				// Defer persistence until after typeless cards are appended (outside callback)
@@ -7173,8 +10252,18 @@ STREAM_LOOP:
 			// retry up to 2 times with backoff. This handles transient network errors silently.
 			// Skip retries for client errors (4xx), overloaded (429/529), and no-provider (503)
 			// — retrying won't help for any of these.
+			isAutoContinueFollowUpRound := toolRound > 0 && autoContinueCount > 0 && totalDeltaChars > 0
 			skipReason := preContentRetrySkipReason(err)
 			skipRetry := skipReason != ""
+			// Continuation follow-up rounds have already produced user-visible content.
+			// For generic transient 5xx, skip chat-layer pre-content retries and fail-fast
+			// into graceful degradation (with a single silent recovery later), avoiding
+			// multiplicative retry loops. Keep continuation-specific retries enabled.
+			if err != nil && !skipRetry && isAutoContinueFollowUpRound &&
+				!shouldDisableResponsesContinuationForPreContentRetry(err) {
+				skipRetry = true
+				skipReason = "auto_continue_followup"
+			}
 			if err != nil {
 				decisionLog := logger.Info().
 					Err(err).
@@ -7186,7 +10275,16 @@ STREAM_LOOP:
 				}
 				decisionLog.Msg("[chat] pre-content error: retry decision")
 			}
+			continuationDisabledForRetry := false
 			for retryAttempt := 0; retryAttempt < 2 && err != nil && !skipRetry && fullContent == "" && !streamErrorHandled && ctx.Err() == nil; retryAttempt++ {
+				if !continuationDisabledForRetry && shouldDisableResponsesContinuationForPreContentRetry(err) &&
+					(!proxy.DisableResponsesContinuationFromContext(ctx) || strings.TrimSpace(chatReq.PreviousResponseID) != "") {
+					continuationDisabledForRetry = true
+					logger.Warn().
+						Err(err).
+						Int("tool_round", toolRound).
+						Msg("[chat] pre-content retry: disabled responses continuation after upstream metadata/no-chunk failure")
+				}
 				delay := time.Duration(retryAttempt+1) * time.Second
 				retryLog := logger.Warn().Err(err).Int("retry", retryAttempt+1).Dur("delay", delay)
 				if pe, ok := err.(*proxybridge.ProxyError); ok {
@@ -7202,7 +10300,13 @@ STREAM_LOOP:
 					break
 				}
 				streamErrorHandled = false
-				err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
+				retryCtx := ctx
+				retryReq := chatReq
+				if continuationDisabledForRetry {
+					retryCtx = proxy.WithDisableResponsesContinuation(retryCtx)
+					retryReq.PreviousResponseID = ""
+				}
+				err = h.proxyBridge.ChatStream(retryCtx, retryReq, streamCb)
 			}
 			if err != nil && fullContent == "" && !streamErrorHandled {
 				endLog := logger.Info().
@@ -7231,10 +10335,15 @@ STREAM_LOOP:
 						Str("pinned_provider_id", pinnedProviderID).
 						Msg("[chat] auto-continue pre-content failed — retrying once without pinned provider")
 					unpinnedCtx := proxy.WithPinnedProvider(ctx, "")
+					unpinnedReq := chatReq
+					if continuationDisabledForRetry {
+						unpinnedCtx = proxy.WithDisableResponsesContinuation(unpinnedCtx)
+						unpinnedReq.PreviousResponseID = ""
+					}
 					streamErrorHandled = false
-					err = h.proxyBridge.ChatStream(unpinnedCtx, chatReq, streamCb)
+					err = h.proxyBridge.ChatStream(unpinnedCtx, unpinnedReq, streamCb)
 					if err == nil {
-						ctx = unpinnedCtx
+						ctx = proxy.WithPinnedProvider(ctx, "")
 						logger.Info().
 							Int("tool_round", toolRound).
 							Str("previous_pinned_provider_id", pinnedProviderID).
@@ -7362,7 +10471,11 @@ STREAM_LOOP:
 			chatReq.PreviousResponseID = latestResponseID
 		}
 		if err == nil && len(streamToolCalls) > 0 {
-			flushPendingDelta(true)
+			if suppressUserDeltaAfterToolCall {
+				dropPendingVisibleDelta()
+			} else {
+				flushPendingDelta(true)
+			}
 			// Detect consecutive duplicate tool calls (same tool + same args).
 			// This prevents the LLM from getting stuck in an infinite loop calling
 			// the same tool repeatedly (e.g. creating duplicate reminders).
@@ -7381,13 +10494,11 @@ STREAM_LOOP:
 					Msg("[chat] stream: breaking loop — LLM is repeating the same tool call")
 				// Inject a short message so the user sees something
 				dupMsg := "I noticed I was repeating the same action. Let me stop here to avoid duplicates."
-				dupDelta, _ := json.Marshal(map[string]interface{}{
+				emitSSE(map[string]interface{}{
 					"delta":     dupMsg,
 					"done":      false,
 					"stream_id": streamID,
 				})
-				c.Response().Write([]byte("data: " + string(dupDelta) + "\n\n"))
-				flusher.Flush()
 				fullContent += dupMsg
 				totalDeltaChars += len(dupMsg)
 				break STREAM_LOOP
@@ -7426,12 +10537,20 @@ STREAM_LOOP:
 					toolStatus["sandbox_available"] = true
 				}
 			}
-			toolStatusData, _ := json.Marshal(toolStatus)
-			c.Response().Write([]byte("data: " + string(toolStatusData) + "\n\n"))
-			flusher.Flush()
+			emitSSE(toolStatus)
 
 			// Execute tools (detached context — survives SSE disconnect)
 			toolResults := h.executeToolCalls(toolCtx, streamToolCalls)
+			deepSearchState.observeToolRound(streamToolCalls, toolResults)
+			planChecklist, planChecklistUpdated := extractPlanChecklistFromToolRound(streamToolCalls, toolResults)
+			if planChecklistUpdated {
+				todoContent = planChecklist
+			}
+			if planDone, ok := extractPlanCompletionFromToolRound(streamToolCalls, toolResults); ok {
+				planCompletedByTool = planDone
+			} else if planChecklistUpdated {
+				planCompletedByTool = !hasPendingTodo(planChecklist)
+			}
 
 			// Send tool_results SSE event so the frontend can display what each tool did.
 			toolResultsSummary := make([]map[string]interface{}, 0, len(streamToolCalls))
@@ -7457,44 +10576,71 @@ STREAM_LOOP:
 				"tool_round":   toolRound,
 				"stream_id":    streamID,
 			}
-			toolResultsData, _ := json.Marshal(toolResultsEvent)
-			c.Response().Write([]byte("data: " + string(toolResultsData) + "\n\n"))
-			flusher.Flush()
+			emitSSE(toolResultsEvent)
 
 			// Persist tool execution details as typeless cards (full-fidelity),
 			// so re-opening the conversation shows the exact execution trail.
 			if cardBlocks := cards.FormatTypeless(streamToolCalls, toolResults); cardBlocks != "" {
 				typelessCardsPersisted = true
 				fullContent += cardBlocks
-				cardData, _ := json.Marshal(map[string]interface{}{
+				emitSSE(map[string]interface{}{
 					"delta":     cardBlocks,
 					"done":      false,
 					"stream_id": streamID,
 				})
-				c.Response().Write([]byte("data: " + string(cardData) + "\n\n"))
-				flusher.Flush()
 			} else if processBlock := formatProcessBlock(toolResultsSummary); processBlock != "" {
 				// Fallback for tools without dedicated card formatters.
 				fullContent += processBlock
+			}
+			// Plan tools may update checklist state without emitting markdown in the
+			// assistant narrative. Ensure the checklist is visible at least once so
+			// frontend has a stable TODO source for in-place updates.
+			if planChecklistUpdated && todoMsgID == "" && strings.TrimSpace(planChecklist) != "" && !strings.Contains(fullContent, planChecklist) {
+				checklistBlock := "\n\n" + planChecklist
+				fullContent += checklistBlock
+				emitSSE(map[string]interface{}{
+					"delta":     checklistBlock,
+					"done":      false,
+					"stream_id": streamID,
+				})
 			}
 
 			// Advance TODO checklist: if all tools in this round succeeded and we
 			// have a tracked TODO message, mark the next unchecked item as done
 			// and persist the update to DB so page refreshes show correct state.
-			if todoMsgID != "" && allToolResultsOK(toolResults) {
-				if updated, ok := advanceTodoItem(todoContent); ok {
+			if todoMsgID != "" && planChecklistUpdated {
+				h.store.UpdateMessageContent(context.Background(), todoMsgID, todoContent, nil)
+				h.conversationCache.Invalidate(convID)
+				emitSSE(map[string]interface{}{
+					"todo_updated": true,
+					"message_id":   todoMsgID,
+					"content":      todoContent,
+					"stream_id":    streamID,
+				})
+			} else if todoMsgID != "" && planCompletedByTool {
+				if updated, ok := completeAllTodoItems(todoContent); ok {
 					todoContent = updated
 					h.store.UpdateMessageContent(context.Background(), todoMsgID, todoContent, nil)
 					h.conversationCache.Invalidate(convID)
-					// Send todo_updated SSE event so frontend updates the message in-place
-					todoEvent, _ := json.Marshal(map[string]interface{}{
+					emitSSE(map[string]interface{}{
 						"todo_updated": true,
 						"message_id":   todoMsgID,
 						"content":      todoContent,
 						"stream_id":    streamID,
 					})
-					c.Response().Write([]byte("data: " + string(todoEvent) + "\n\n"))
-					flusher.Flush()
+				}
+			} else if todoMsgID != "" && allToolResultsOK(toolResults) {
+				if updated, ok := advanceTodoItem(todoContent); ok {
+					todoContent = updated
+					h.store.UpdateMessageContent(context.Background(), todoMsgID, todoContent, nil)
+					h.conversationCache.Invalidate(convID)
+					// Send todo_updated SSE event so frontend updates the message in-place
+					emitSSE(map[string]interface{}{
+						"todo_updated": true,
+						"message_id":   todoMsgID,
+						"content":      todoContent,
+						"stream_id":    streamID,
+					})
 				}
 			}
 
@@ -7504,8 +10650,9 @@ STREAM_LOOP:
 				Content:   fullContent,
 				ToolCalls: streamToolCalls,
 			}
+			toolResultsForLLM := compactToolResultsForLLM(streamToolCalls, toolResults)
 			chatReq.Messages = append(chatReq.Messages, assistantMsg)
-			chatReq.Messages = append(chatReq.Messages, toolResults...)
+			chatReq.Messages = append(chatReq.Messages, toolResultsForLLM...)
 
 			// Inject TODO progress so the LLM knows which task to work on next.
 			// This uses the latest todoContent (already advanced above if tools succeeded).
@@ -7522,7 +10669,7 @@ STREAM_LOOP:
 			// Each tool round becomes its own assistant message for cleaner display,
 			// especially important for IM channels where one giant message is bad UX.
 			if fullContent != "" {
-				roundContent := sanitizeResponseContent(fullContent)
+				roundContent := sanitizeResponseContentWithProvider(fullContent, actualProvider, actualProviderID, sanitizeModelHint(actualModel, chatReq.Model))
 				if streamingMsgID != "" {
 					h.store.UpdateMessageContent(context.Background(), streamingMsgID, roundContent, nil)
 				} else {
@@ -7543,13 +10690,11 @@ STREAM_LOOP:
 				}
 
 				// Send new_message SSE event so frontend starts a new message bubble
-				newMsgEvent, _ := json.Marshal(map[string]interface{}{
+				emitSSE(map[string]interface{}{
 					"new_message": true,
 					"stream_id":   streamID,
 					"tool_round":  toolRound,
 				})
-				c.Response().Write([]byte("data: " + string(newMsgEvent) + "\n\n"))
-				flusher.Flush()
 			}
 
 			// Reset for next round — new message will be created
@@ -7564,6 +10709,11 @@ STREAM_LOOP:
 				Msg("[chat] stream: resetting fullContent for next tool round")
 			fullContent = ""
 			pseudoToolCallAutoContinueCount = 0
+			actionPledgeAutoContinueCount = 0
+			missingTodoAutoContinueCount = 0
+			pendingTodoAutoContinueCount = 0
+			prevToollessAutoContinueSig = ""
+			consecutiveToollessAutoContinueDups = 0
 			awaitingInputSent = false
 			continue
 		}
@@ -7572,24 +10722,54 @@ STREAM_LOOP:
 			// follow-up continuation round fails before producing any chunks, end
 			// gracefully instead of replacing a partial success with STREAM_ERROR.
 			if toolRound > 0 && autoContinueCount > 0 && totalDeltaChars > 0 && fullContent == "" && len(streamToolCalls) == 0 {
+				continuationErr := err
 				logger.Warn().
 					Err(err).
 					Int("tool_round", toolRound).
 					Int("auto_continue", autoContinueCount).
 					Int("total_delta_chars", totalDeltaChars).
 					Msg("[chat] stream: continuation round failed after prior content, completing stream gracefully")
+				// Silent shadow recovery: retry once without pinned provider and without
+				// Responses continuation so users don't perceive transient continuation failures.
+				if h.proxyBridge != nil && ctx.Err() == nil {
+					recoveryCtx := proxy.WithPinnedProvider(ctx, "")
+					recoveryCtx = proxy.WithDisableResponsesContinuation(recoveryCtx)
+					recoveryReq := chatReq
+					recoveryReq.PreviousResponseID = ""
+					logger.Warn().
+						Err(continuationErr).
+						Int("tool_round", toolRound).
+						Msg("[chat] stream: attempting silent continuation recovery without pin/continuation")
+					if recoveryErr := h.proxyBridge.ChatStream(recoveryCtx, recoveryReq, streamCb); recoveryErr == nil {
+						// Keep route unpinned after successful recovery so follow-up rounds
+						// are not forced back to the previously failing provider.
+						ctx = proxy.WithPinnedProvider(ctx, "")
+						h.recordContinuationDegradation(convID, toolRound, true, continuationErr)
+						err = nil
+						logger.Info().
+							Int("tool_round", toolRound).
+							Msg("[chat] stream: silent continuation recovery succeeded")
+					} else {
+						err = recoveryErr
+						logger.Warn().
+							Err(recoveryErr).
+							Int("tool_round", toolRound).
+							Msg("[chat] stream: silent continuation recovery failed")
+					}
+				}
+			}
+			if err != nil && toolRound > 0 && autoContinueCount > 0 && totalDeltaChars > 0 && fullContent == "" && len(streamToolCalls) == 0 {
 				fallback := strings.TrimSpace(streamContinuationFailureText(streamLocale))
 				if fallback != "" {
-					fallbackDelta, _ := json.Marshal(map[string]interface{}{
+					emitSSE(map[string]interface{}{
 						"delta":     fallback,
 						"done":      false,
 						"stream_id": streamID,
 					})
-					c.Response().Write([]byte("data: " + string(fallbackDelta) + "\n\n"))
-					flusher.Flush()
 					fullContent = fallback
 					totalDeltaChars += len(fallback)
 				}
+				h.recordContinuationDegradation(convID, toolRound, false, err)
 				autoContinueFailed = true
 				err = nil
 				streamCompleted = true
@@ -7602,20 +10782,18 @@ STREAM_LOOP:
 				if toolResultCount > 0 {
 					logger.Warn().Err(err).Int("tool_round", toolRound).Int("tool_results", toolResultCount).
 						Msg("[chat] stream: tool round failed, using fallback from previous tool results")
-					// Tool cards were already emitted; avoid adding a noisy generic
-					// fallback bubble that duplicates existing execution details.
+						// Tool cards were already emitted; avoid adding a noisy generic
+						// fallback bubble that duplicates existing execution details.
 					if typelessCardsPersisted {
 						streamCompleted = true
 						err = nil // clear error — recovered by prior tool cards
 						break
 					}
-					fallbackDelta, _ := json.Marshal(map[string]interface{}{
+					emitSSE(map[string]interface{}{
 						"delta":     fallbackContent,
 						"done":      false,
 						"stream_id": streamID,
 					})
-					c.Response().Write([]byte("data: " + string(fallbackDelta) + "\n\n"))
-					flusher.Flush()
 					fullContent = fallbackContent
 					totalDeltaChars += len(fallbackContent)
 					err = nil // clear error — we recovered
@@ -7628,22 +10806,117 @@ STREAM_LOOP:
 			logger.Info().Int("tool_round", toolRound).Int("total_delta_chars", totalDeltaChars).Bool("streamCompleted", streamCompleted).Msg("[chat] stream: tool loop ended normally")
 		}
 
+		if deepSearchForcePending && streamCompleted && fullContent != "" && len(streamToolCalls) == 0 {
+			deepSearchState.markForcedContinuation()
+			pinAutoContinueRoute("deep_search_min_rounds")
+			logger.Info().
+				Int("tool_round", toolRound).
+				Str("reason", deepSearchForceReason).
+				Int("search_rounds", deepSearchState.searchRounds).
+				Int("min_search_rounds", deepSearchState.minRounds).
+				Int("forced_continuations", deepSearchState.forcedContinuations).
+				Msg("[chat] stream: deep-search guard injecting continuation nudge")
+
+			collapseRound := shouldCollapseToollessAutoContinueRound("deep_search_min_rounds", fullContent)
+			roundContent := sanitizeResponseContentWithProvider(fullContent, actualProvider, actualProviderID, sanitizeModelHint(actualModel, chatReq.Model))
+			persistedMsgID := ""
+			if streamingMsgID != "" {
+				h.store.UpdateMessageContent(context.Background(), streamingMsgID, roundContent, nil)
+				persistedMsgID = streamingMsgID
+			} else if collapseRound && todoMsgID != "" {
+				h.store.UpdateMessageContent(context.Background(), todoMsgID, roundContent, nil)
+				persistedMsgID = todoMsgID
+			} else {
+				if m, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
+					Role:    "assistant",
+					Content: roundContent,
+				}); addErr == nil {
+					streamingMsgID = m.ID
+					persistedMsgID = m.ID
+				}
+			}
+			if persistedMsgID != "" {
+				h.conversationCache.Invalidate(convID)
+			}
+			if todoMsgID == "" && persistedMsgID != "" && reTodoUnchecked.MatchString(roundContent) {
+				todoMsgID = persistedMsgID
+				todoContent = roundContent
+			}
+			if todoMsgID != "" && persistedMsgID == todoMsgID {
+				todoContent = roundContent
+				emitSSE(map[string]interface{}{
+					"todo_updated": true,
+					"message_id":   todoMsgID,
+					"content":      todoContent,
+					"stream_id":    streamID,
+				})
+			}
+			if !collapseRound {
+				emitSSE(map[string]interface{}{
+					"new_message": true,
+					"stream_id":   streamID,
+					"tool_round":  toolRound,
+				})
+				streamingMsgID = ""
+			}
+			lastFlushLen = 0
+			chatReq.Messages = append(chatReq.Messages,
+				llm.Message{Role: llm.RoleAssistant, Content: buildToollessAutoContinueAssistantContent(fullContent, "deep_search_min_rounds")},
+				llm.Message{Role: llm.RoleUser, Content: buildDeepSearchMinRoundsNudge(deepSearchState)},
+			)
+			fullContent = ""
+			streamCompleted = false
+			awaitingInputSent = false
+			prevToollessAutoContinueSig = ""
+			consecutiveToollessAutoContinueDups = 0
+			continue
+		}
+
 		// Auto-continue: when LLM stopped without tool calls but the content
 		// still implies pending action, inject a continuation prompt and loop back.
 		if streamCompleted && fullContent != "" && len(streamToolCalls) == 0 && autoContinueCount < maxAutoContinueRetries {
-			if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue); shouldContinue {
-				if !shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount) {
+			if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool); shouldContinue {
+				if !h.shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
 					logger.Warn().
 						Int("tool_round", toolRound).
 						Str("reason", reason).
 						Int("pseudo_auto_continue", pseudoToolCallAutoContinueCount).
-						Int("pseudo_auto_continue_limit", getMaxPseudoToolCallAutoContinueForMode(agentModeAutoContinue)).
-						Msg("[chat] stream: pseudo_tool_call auto-continue budget exhausted; skipping continuation injection")
+						Int("pseudo_auto_continue_limit", h.getMaxPseudoToolCallAutoContinueForMode(agentModeAutoContinue)).
+						Int("action_pledge_auto_continue", actionPledgeAutoContinueCount).
+						Int("action_pledge_auto_continue_limit", h.getMaxActionPledgeAutoContinueForMode(agentModeAutoContinue)).
+						Int("missing_todo_auto_continue", missingTodoAutoContinueCount).
+						Int("missing_todo_auto_continue_limit", h.getMaxMissingTodoAutoContinueForMode(agentModeAutoContinue)).
+						Int("pending_todo_auto_continue", pendingTodoAutoContinueCount).
+						Int("pending_todo_auto_continue_limit", h.getMaxPendingTodoAutoContinueForMode(agentModeAutoContinue)).
+						Msg("[chat] stream: toolless auto-continue budget exhausted; skipping continuation injection")
+					break
+				}
+				sig := toollessAutoContinueSignature(reason, fullContent)
+				if sig == prevToollessAutoContinueSig {
+					consecutiveToollessAutoContinueDups++
+				} else {
+					prevToollessAutoContinueSig = sig
+					consecutiveToollessAutoContinueDups = 1
+				}
+				if shouldStopForDuplicateActionPledge(reason, consecutiveToollessAutoContinueDups) {
+					logger.Warn().
+						Int("tool_round", toolRound).
+						Str("reason", reason).
+						Int("consecutive_action_pledge_dups", consecutiveToollessAutoContinueDups).
+						Msg("[chat] stream: action_pledge duplicate auto-continue detected; skipping continuation injection")
 					break
 				}
 				autoContinueCount++
-				if reason == "pseudo_tool_call" {
+				if reason == "missing_todo" {
+					missingTodoAutoContinueCount++
+					pseudoToolCallAutoContinueCount = 0
+					actionPledgeAutoContinueCount = 0
+					pendingTodoAutoContinueCount = 0
+				} else if reason == "pseudo_tool_call" {
 					pseudoToolCallAutoContinueCount++
+					actionPledgeAutoContinueCount = 0
+					missingTodoAutoContinueCount = 0
+					pendingTodoAutoContinueCount = 0
 					if actions := hardenPseudoToolCallRetryRequest(&chatReq); len(actions) > 0 {
 						logger.Warn().
 							Int("tool_round", toolRound).
@@ -7663,8 +10936,21 @@ STREAM_LOOP:
 								Msg("[chat] stream: switched model after repeated pseudo_tool_call")
 						}
 					}
+				} else if reason == "action_pledge" {
+					actionPledgeAutoContinueCount++
+					pseudoToolCallAutoContinueCount = 0
+					missingTodoAutoContinueCount = 0
+					pendingTodoAutoContinueCount = 0
+				} else if reason == "pending_todo" {
+					pendingTodoAutoContinueCount++
+					pseudoToolCallAutoContinueCount = 0
+					actionPledgeAutoContinueCount = 0
+					missingTodoAutoContinueCount = 0
 				} else {
 					pseudoToolCallAutoContinueCount = 0
+					actionPledgeAutoContinueCount = 0
+					missingTodoAutoContinueCount = 0
+					pendingTodoAutoContinueCount = 0
 				}
 				pinAutoContinueRoute(reason)
 				logger.Info().
@@ -7676,40 +10962,67 @@ STREAM_LOOP:
 				// Persist current content as a separate message before continuing.
 				// For pseudo_tool_call rounds, skip persistence to avoid leaking malformed
 				// fake tool-call text into chat history.
-				if fullContent != "" && shouldPersistToollessRoundContent(reason) {
-					roundContent := sanitizeResponseContent(fullContent)
+				shouldPersistRound := shouldPersistToollessRoundContent(reason)
+				if fullContent != "" && shouldPersistRound {
+					collapseRound := shouldCollapseToollessAutoContinueRound(reason, fullContent)
+					roundContent := sanitizeResponseContentWithProvider(fullContent, actualProvider, actualProviderID, sanitizeModelHint(actualModel, chatReq.Model))
+					persistedMsgID := ""
 					if streamingMsgID != "" {
 						h.store.UpdateMessageContent(context.Background(), streamingMsgID, roundContent, nil)
+						persistedMsgID = streamingMsgID
+					} else if collapseRound && todoMsgID != "" {
+						h.store.UpdateMessageContent(context.Background(), todoMsgID, roundContent, nil)
+						persistedMsgID = todoMsgID
 					} else {
 						if m, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
 							Role:    "assistant",
 							Content: roundContent,
 						}); addErr == nil {
 							streamingMsgID = m.ID
+							persistedMsgID = m.ID
 						}
 					}
-					h.conversationCache.Invalidate(convID)
+					if persistedMsgID != "" {
+						h.conversationCache.Invalidate(convID)
+					}
 
 					// Capture TODO message (auto-continue is the most common path
 					// where the LLM first outputs a checklist plan).
-					if todoMsgID == "" && streamingMsgID != "" && reTodoUnchecked.MatchString(roundContent) {
-						todoMsgID = streamingMsgID
+					if todoMsgID == "" && persistedMsgID != "" && reTodoUnchecked.MatchString(roundContent) {
+						todoMsgID = persistedMsgID
 						todoContent = roundContent
 					}
+					if todoMsgID != "" && persistedMsgID == todoMsgID {
+						todoContent = roundContent
+						emitSSE(map[string]interface{}{
+							"todo_updated": true,
+							"message_id":   todoMsgID,
+							"content":      todoContent,
+							"stream_id":    streamID,
+						})
+					}
 
-					newMsgEvent, _ := json.Marshal(map[string]interface{}{
-						"new_message": true,
-						"stream_id":   streamID,
-						"tool_round":  toolRound,
-					})
-					c.Response().Write([]byte("data: " + string(newMsgEvent) + "\n\n"))
-					flusher.Flush()
-					streamingMsgID = ""
+					if !collapseRound {
+						emitSSE(map[string]interface{}{
+							"new_message": true,
+							"stream_id":   streamID,
+							"tool_round":  toolRound,
+						})
+						streamingMsgID = ""
+					}
+					lastFlushLen = 0
+				} else if fullContent != "" && !shouldPersistRound && streamingMsgID != "" {
+					// A pseudo_tool_call round may have already created an incremental
+					// placeholder. Scrub it immediately so malformed content cannot leak
+					// when subsequent continuation rounds return empty.
+					h.store.UpdateMessageContent(context.Background(), streamingMsgID, "", nil)
+					h.conversationCache.Invalidate(convID)
 					lastFlushLen = 0
 				}
+				promptPolicy := h.resolvePromptPolicy()
 				chatReq.Messages = append(chatReq.Messages,
 					llm.Message{Role: llm.RoleAssistant, Content: assistantFollowUpContent},
-					llm.Message{Role: llm.RoleUser, Content: buildToollessAutoContinueNudgeForReason(agentModeAutoContinue, reason)},
+					llm.Message{Role: llm.RoleUser, Content: buildToollessAutoContinueNudgeForReasonWithPolicy(promptPolicy, agentModeAutoContinue, reason)},
 				)
 				fullContent = ""
 				streamCompleted = false
@@ -7728,23 +11041,62 @@ STREAM_LOOP:
 					Msg("[chat] stream: auto-continue disabled after failed continuation round")
 				break
 			}
-			if !shouldAutoContinueForTodo(fullContent, todoContent) {
+			reason := "pending_todo"
+			if !shouldAutoContinueForTodo(fullContent, todoContent, planCompletedByTool) {
+				if strings.TrimSpace(todoContent) == "" {
+					reason = "missing_todo"
+				} else {
+					break
+				}
+			}
+			if !h.shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
+				logger.Warn().
+					Int("tool_round", toolRound).
+					Str("reason", reason).
+					Int("pseudo_auto_continue", pseudoToolCallAutoContinueCount).
+					Int("pseudo_auto_continue_limit", h.getMaxPseudoToolCallAutoContinueForMode(agentModeAutoContinue)).
+					Int("action_pledge_auto_continue", actionPledgeAutoContinueCount).
+					Int("action_pledge_auto_continue_limit", h.getMaxActionPledgeAutoContinueForMode(agentModeAutoContinue)).
+					Int("missing_todo_auto_continue", missingTodoAutoContinueCount).
+					Int("missing_todo_auto_continue_limit", h.getMaxMissingTodoAutoContinueForMode(agentModeAutoContinue)).
+					Int("pending_todo_auto_continue", pendingTodoAutoContinueCount).
+					Int("pending_todo_auto_continue_limit", h.getMaxPendingTodoAutoContinueForMode(agentModeAutoContinue)).
+					Msg("[chat] stream: empty-round auto-continue budget exhausted; skipping continuation injection")
 				break
 			}
 			autoContinueCount++
 			pseudoToolCallAutoContinueCount = 0
-			pinAutoContinueRoute("empty_after_tool_rounds")
+			actionPledgeAutoContinueCount = 0
+			if reason == "missing_todo" {
+				missingTodoAutoContinueCount++
+				pendingTodoAutoContinueCount = 0
+			} else if reason == "pending_todo" {
+				pendingTodoAutoContinueCount++
+				missingTodoAutoContinueCount = 0
+			} else {
+				missingTodoAutoContinueCount = 0
+				pendingTodoAutoContinueCount = 0
+			}
+			prevToollessAutoContinueSig = ""
+			consecutiveToollessAutoContinueDups = 0
+			pinAutoContinueRoute("empty_after_tool_rounds_" + reason)
 			logger.Info().
 				Int("tool_round", toolRound).
 				Int("auto_continue", autoContinueCount).
+				Str("reason", reason).
 				Int("total_delta_chars", totalDeltaChars).
 				Msg("[chat] stream: auto-continue — LLM returned empty after tool rounds, nudging to continue")
-			// The last messages are [assistant+tool_calls, tool_results] from the
-			// previous round. Inject a user nudge so the LLM continues the task
-			// instead of silently stopping.
+				// The last messages are [assistant+tool_calls, tool_results] from the
+				// previous round. Inject a user nudge so the LLM continues the task
+				// instead of silently stopping.
+			promptPolicy := h.resolvePromptPolicy()
+			nudge := buildPostToolAutoContinueNudgeWithPolicy(promptPolicy, agentModeAutoContinue)
+			if reason == "missing_todo" {
+				nudge = buildToollessAutoContinueNudgeForReasonWithPolicy(promptPolicy, agentModeAutoContinue, reason)
+			}
 			chatReq.Messages = append(chatReq.Messages,
 				llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
-				llm.Message{Role: llm.RoleUser, Content: buildPostToolAutoContinueNudge(agentModeAutoContinue)},
+				llm.Message{Role: llm.RoleUser, Content: nudge},
 			)
 			streamCompleted = false
 			continue
@@ -7769,13 +11121,11 @@ STREAM_LOOP:
 				if cardBlocks != "" {
 					fullContent += cardBlocks
 					// Stream the typeless card to client
-					cardData, _ := json.Marshal(map[string]interface{}{
+					emitSSE(map[string]interface{}{
 						"delta":     cardBlocks,
 						"done":      false,
 						"stream_id": streamID,
 					})
-					c.Response().Write([]byte("data: " + string(cardData) + "\n\n"))
-					flusher.Flush()
 				}
 				break
 			}
@@ -7816,13 +11166,11 @@ STREAM_LOOP:
 				}
 			}
 			if strings.TrimSpace(fallbackContent) != "" {
-				fallbackDelta, _ := json.Marshal(map[string]interface{}{
+				emitSSE(map[string]interface{}{
 					"delta":     fallbackContent,
 					"done":      false,
 					"stream_id": streamID,
 				})
-				c.Response().Write([]byte("data: " + string(fallbackDelta) + "\n\n"))
-				flusher.Flush()
 				fullContent = fallbackContent
 				totalDeltaChars += len(fallbackContent)
 			}
@@ -7847,9 +11195,7 @@ STREAM_LOOP:
 		if fullContent == "" {
 			donePayload["empty_response"] = true
 		}
-		doneJSON, _ := json.Marshal(donePayload)
-		c.Response().Write([]byte("data: " + string(doneJSON) + "\n\n"))
-		flusher.Flush()
+		emitSSE(donePayload)
 	}
 	if err != nil {
 		if ctx.Err() != nil {
@@ -7879,17 +11225,16 @@ STREAM_LOOP:
 				h.conversationCache.Invalidate(convID)
 
 				// Send injection SSE event to client
-				injEvent, _ := json.Marshal(map[string]interface{}{
+				emitSSE(map[string]interface{}{
 					"injection":    true,
 					"user_message": injectedMsg,
 					"stream_id":    streamID,
 				})
-				c.Response().Write([]byte("data: " + string(injEvent) + "\n\n"))
-				flusher.Flush()
 
 				// Create new cancellable context for the restarted stream
 				h.streamController.Unregister(streamID)
 				streamID = uuid.New().String()
+				streamSeq = 0
 				ctx, cancel = context.WithCancel(context.WithoutCancel(c.Request().Context()))
 				h.streamController.Register(streamID, cancel)
 
@@ -7930,13 +11275,11 @@ STREAM_LOOP:
 						return
 					}
 					block := "\n\n```typeless\n" + string(cardJSON) + "\n```"
-					data, _ := json.Marshal(map[string]interface{}{
+					emitSSE(map[string]interface{}{
 						"delta":     block,
 						"done":      false,
 						"stream_id": streamID,
 					})
-					c.Response().Write([]byte("data: " + string(data) + "\n\n"))
-					flusher.Flush()
 				})
 				if requester := h.buildBrowserCheckpointRequester(c.Request().Context(), "web", userID, convID, "", "", streamLang); requester != nil {
 					toolCtx = tools.WithBrowserCheckpointRequester(toolCtx, requester)
@@ -7981,6 +11324,10 @@ STREAM_LOOP:
 					compactedMessages = prependSystemMessages(compactedMessages, systemPromptMessages)
 				}
 
+				injectedTools := h.selectTools(injectedMsg, model)
+				injectedTools = applyWebSearchPreference(injectedTools, req.WebSearchEnabled)
+				injectedTools = applyDeepResearchPreference(injectedTools, req.DeepResearchEnabled)
+
 				// Rebuild chat request
 				chatReq = llm.ChatRequest{
 					Model:       model,
@@ -7988,8 +11335,9 @@ STREAM_LOOP:
 					Temperature: req.Temperature,
 					MaxTokens:   req.MaxTokens,
 					Stream:      true,
-					Tools:       defsToLLMTools(h.selectTools(injectedMsg, model)),
+					Tools:       defsToLLMTools(injectedTools),
 				}
+				deepSearchState = newDeepSearchLoopState(injectedMsg, injectedTools)
 				if supportsResponsesContinuation(chatReq.Model) && injectedPreviousResponseID != "" {
 					chatReq.PreviousResponseID = injectedPreviousResponseID
 				}
@@ -8036,9 +11384,7 @@ STREAM_LOOP:
 				"cancelled": true,
 				"done":      true,
 			}
-			jsonData, _ := json.Marshal(data)
-			c.Response().Write([]byte("data: " + string(jsonData) + "\n\n"))
-			flusher.Flush()
+			emitSSE(data)
 			return nil
 		}
 		// Other error — chunk.Error callback may have already sent done+stored
@@ -8051,7 +11397,7 @@ STREAM_LOOP:
 			cancel()
 			if fbErr == nil {
 				h.smallModelStats.RecordDeepResearchFallback()
-				fallbackContent = sanitizeResponseContent(fallbackContent)
+				fallbackContent = sanitizeResponseContentWithProvider(fallbackContent, "deepresearch", "deepresearch", "deepresearch-fallback")
 				usageOut := estimateTokens(fallbackContent)
 				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 				if _, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
@@ -8071,22 +11417,20 @@ STREAM_LOOP:
 				if h.metricsRecorder != nil {
 					h.metricsRecorder.RecordAPICallForUser(userID, "deepresearch-fallback", true, latencyMs, int64(totalInputTokens), int64(usageOut), 0, 0, "")
 				}
-				delta, _ := json.Marshal(map[string]interface{}{
+				emitSSE(map[string]interface{}{
 					"delta":     fallbackContent,
 					"done":      false,
 					"stream_id": streamID,
 					"provider":  "deepresearch",
 					"model":     "deepresearch-fallback",
 				})
-				c.Response().Write([]byte("data: " + string(delta) + "\n\n"))
-				done, _ := json.Marshal(map[string]interface{}{
+				emitSSE(map[string]interface{}{
 					"delta":     "",
 					"done":      true,
 					"stream_id": streamID,
 					"provider":  "deepresearch",
 					"model":     "deepresearch-fallback",
 				})
-				c.Response().Write([]byte("data: " + string(done) + "\n\n"))
 				c.Response().Write([]byte("data: [DONE]\n\n"))
 				flusher.Flush()
 				logger.Warn().
@@ -8100,12 +11444,61 @@ STREAM_LOOP:
 				Str("conv_id", convID).
 				Msg("[chat] stream deep research fallback failed")
 			h.smallModelStats.RecordFallback(fallbackReasonDeepResearchUnavailable)
+			if toolFallback, toolErr := h.runAutonomousResearchFallback(toolCtx, routingMessage, streamLocale, req.WebSearchEnabled, req.DeepResearchEnabled); toolErr == nil {
+				toolContent := sanitizeResponseContentWithProvider(toolFallback.Content, toolFallback.Provider, toolFallback.ProviderID, toolFallback.Model)
+				usageOut := estimateTokens(toolContent)
+				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
+				if _, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
+					Role:     "assistant",
+					Content:  toolContent,
+					Provider: toolFallback.Provider,
+					Model:    toolFallback.Model,
+					Stats: &memory.MessageStats{
+						InputTokens:  totalInputTokens,
+						OutputTokens: usageOut,
+						TotalTokens:  totalInputTokens + usageOut,
+						LatencyMs:    int64(latencyMs),
+					},
+				}); addErr == nil {
+					h.conversationCache.Invalidate(convID)
+				}
+				if h.metricsRecorder != nil {
+					h.metricsRecorder.RecordAPICallForUser(userID, toolFallback.Model, true, latencyMs, int64(totalInputTokens), int64(usageOut), 0, 0, "")
+				}
+				emitSSE(map[string]interface{}{
+					"delta":     toolContent,
+					"done":      false,
+					"stream_id": streamID,
+					"provider":  toolFallback.Provider,
+					"model":     toolFallback.Model,
+				})
+				emitSSE(map[string]interface{}{
+					"delta":     "",
+					"done":      true,
+					"stream_id": streamID,
+					"provider":  toolFallback.Provider,
+					"model":     toolFallback.Model,
+				})
+				c.Response().Write([]byte("data: [DONE]\n\n"))
+				flusher.Flush()
+				logger.Warn().
+					Err(fbErr).
+					Str("conv_id", convID).
+					Str("fallback_provider", toolFallback.ProviderID).
+					Msg("[chat] stream deep research unavailable, downgraded to autonomous tool fallback")
+				return nil
+			} else {
+				logger.Warn().
+					Err(toolErr).
+					Str("conv_id", convID).
+					Msg("[chat] stream autonomous tool fallback failed")
+			}
 			irCtx, irCancel := context.WithTimeout(c.Request().Context(), 150*time.Millisecond)
 			irContent, irErr := h.runLocalIRFallback(irCtx, convID, routingMessage, true)
 			irCancel()
 			if irErr == nil && strings.TrimSpace(irContent) != "" {
 				h.smallModelStats.RecordIRTakeover()
-				irContent = sanitizeResponseContent(irContent)
+				irContent = sanitizeResponseContentWithProvider(irContent, "ir", "ir", "ir-only-fallback")
 				usageOut := estimateTokens(irContent)
 				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 				if _, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
@@ -8125,22 +11518,20 @@ STREAM_LOOP:
 				if h.metricsRecorder != nil {
 					h.metricsRecorder.RecordAPICallForUser(userID, "ir-only-fallback", true, latencyMs, int64(totalInputTokens), int64(usageOut), 0, 0, "")
 				}
-				delta, _ := json.Marshal(map[string]interface{}{
+				emitSSE(map[string]interface{}{
 					"delta":     irContent,
 					"done":      false,
 					"stream_id": streamID,
 					"provider":  "ir",
 					"model":     "ir-only-fallback",
 				})
-				c.Response().Write([]byte("data: " + string(delta) + "\n\n"))
-				done, _ := json.Marshal(map[string]interface{}{
+				emitSSE(map[string]interface{}{
 					"delta":     "",
 					"done":      true,
 					"stream_id": streamID,
 					"provider":  "ir",
 					"model":     "ir-only-fallback",
 				})
-				c.Response().Write([]byte("data: " + string(done) + "\n\n"))
 				c.Response().Write([]byte("data: [DONE]\n\n"))
 				flusher.Flush()
 				logger.Warn().
@@ -8153,50 +11544,35 @@ STREAM_LOOP:
 			}
 		}
 		logger.Error().Err(err).Str("conv_id", convID).Str("model", model).Msg("[chat] stream error")
-		errMsg := "STREAM_ERROR"
-		// Map proxy errors to user-friendly error codes
-		if pe, ok := err.(*proxybridge.ProxyError); ok {
-			bodyLower := strings.ToLower(pe.Body)
-			switch {
-			case strings.Contains(bodyLower, "does not support tool calls"):
-				errMsg = "provider_tool_unsupported"
-			case pe.IsNoProvider():
-				errMsg = "provider_unavailable"
-			case pe.IsOverloaded():
-				errMsg = "provider_rate_limited"
-			case pe.IsClientError() && (pe.StatusCode == 401 || pe.StatusCode == 403):
-				errMsg = "provider_auth_error"
-			case providerpool.IsTrialProvider(actualProviderID):
-				errMsg = "trial_service_busy"
-			}
-		}
+		errMsg := mapStreamErrorCode(err, actualProviderID)
 		if h.metricsRecorder != nil {
 			latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 			h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "error")
 		}
-		// Persist partial content so the user doesn't lose what was already streamed
+		// Persist partial content so the user doesn't lose what was already streamed.
+		// Keep sanitization consistent with the normal completion path.
 		if fullContent != "" {
+			safeContent := sanitizeResponseContentWithProvider(fullContent, actualProvider, actualProviderID, sanitizeModelHint(actualModel, chatReq.Model))
 			if streamingMsgID != "" {
-				h.store.UpdateMessageContent(context.Background(), streamingMsgID, fullContent, nil)
+				h.store.UpdateMessageContent(context.Background(), streamingMsgID, safeContent, nil)
 			} else {
 				h.store.AddMessage(context.Background(), convID, memory.Message{
 					Role:     "assistant",
-					Content:  fullContent,
+					Content:  safeContent,
 					Provider: actualProvider,
 					Model:    actualModel,
 				})
 			}
 			h.conversationCache.Invalidate(convID)
 		}
-		errData, _ := json.Marshal(map[string]interface{}{
-			"error":    errMsg,
-			"done":     true,
-			"delta":    "",
-			"provider": actualProvider, // Help frontend identify which provider failed
-			"model":    actualModel,
+		emitSSE(map[string]interface{}{
+			"error":     errMsg,
+			"done":      true,
+			"delta":     "",
+			"provider":  actualProvider, // Help frontend identify which provider failed
+			"model":     actualModel,
+			"stream_id": streamID,
 		})
-		c.Response().Write([]byte("data: " + string(errData) + "\n\n"))
-		flusher.Flush()
 		return nil
 	}
 
@@ -8204,7 +11580,7 @@ STREAM_LOOP:
 	// Each tool round was already persisted as a separate message above,
 	// so only persist the final round's content here.
 	// Sanitize internal markers before persisting/displaying.
-	fullContent = sanitizeResponseContent(fullContent)
+	fullContent = sanitizeResponseContentWithProvider(fullContent, actualProvider, actualProviderID, sanitizeModelHint(actualModel, chatReq.Model))
 	// Safety net: also persist if fullContent is non-empty even when streamCompleted
 	// wasn't explicitly set (e.g., missing finish_reason from provider, bridge error).
 	if fullContent != "" && (streamCompleted || err == nil) {
@@ -8287,7 +11663,8 @@ STREAM_LOOP:
 		}
 
 		// Generate title for new conversations (only updates once — skips if already LLM-titled)
-		go h.generateConversationTitle(convID, userID, req.Message, fullContent, "en")
+		titleLang := parseAcceptLanguage(c.Request().Header.Get("Accept-Language"))
+		go h.generateConversationTitle(convID, userID, req.Message, fullContent, titleLang)
 
 		// Emit LLM request event to companion for streaming
 		if h.companionManager != nil {
@@ -8376,6 +11753,25 @@ func (h *ChatHandler) generateConversationTitle(convID, userID, userMessage, aiR
 			h.updateTitleAndNotify(convID, userID, sanitizeTitle(title))
 			return
 		}
+		logger.Info().
+			Str("route", "title").
+			Msg("[chat] small model title summary returned empty, fallback to llm")
+	} else {
+		smallModelEnabled := false
+		smallModelSummaryEnabled := false
+		if h != nil && h.settingsHandler != nil {
+			smallModelEnabled = h.settingsHandler.GetSmallModelEnabled()
+			smallModelSummaryEnabled = h.settingsHandler.GetSmallModelSummaryEnabled()
+		}
+		smallModelReady, smallModelReadyReason, smallModelReadyDetail := h.smallModelReadinessState()
+		logger.Info().
+			Str("route", "title").
+			Bool("small_model_enabled", smallModelEnabled).
+			Bool("small_model_summary_enabled", smallModelSummaryEnabled).
+			Bool("small_model_ready", smallModelReady).
+			Str("small_model_ready_reason", smallModelReadyReason).
+			Str("small_model_ready_detail", smallModelReadyDetail).
+			Msg("[chat] small model title summary skipped, fallback to llm")
 	}
 
 	// Try to use LLM to generate a concise title
@@ -8389,10 +11785,44 @@ func (h *ChatHandler) generateConversationTitle(convID, userID, userMessage, aiR
 }
 
 func (h *ChatHandler) shouldUseSmallModelSummary() bool {
-	if h == nil || h.smallModel == nil || h.settingsHandler == nil {
+	if h == nil || h.settingsHandler == nil || !h.isSmallModelReady() {
 		return false
 	}
 	return h.settingsHandler.GetSmallModelEnabled() && h.settingsHandler.GetSmallModelSummaryEnabled()
+}
+
+func (h *ChatHandler) isSmallModelReady() bool {
+	ready, _, _ := h.smallModelReadinessState()
+	return ready
+}
+
+type smallModelReadinessReporter interface {
+	ReadinessReason() string
+	ReadinessDetail() string
+}
+
+func (h *ChatHandler) smallModelReadinessState() (bool, string, string) {
+	if h == nil {
+		return false, "handler_nil", "chat handler is nil"
+	}
+	if h.smallModel == nil {
+		return false, "runtime_nil", "small model runtime is nil"
+	}
+	ready := h.smallModel.Ready()
+	reason := ""
+	detail := ""
+	if reporter, ok := h.smallModel.(smallModelReadinessReporter); ok {
+		reason = strings.TrimSpace(reporter.ReadinessReason())
+		detail = strings.TrimSpace(reporter.ReadinessDetail())
+	}
+	if reason == "" {
+		if ready {
+			reason = "ready"
+		} else {
+			reason = "runtime_not_ready"
+		}
+	}
+	return ready, reason, truncateUTF8Bytes(detail, 768)
 }
 
 func (h *ChatHandler) generateTitleWithSmallModel(userMessage, targetLang string) string {

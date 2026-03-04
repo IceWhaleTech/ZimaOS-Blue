@@ -79,11 +79,11 @@ func BenchmarkOriginResolution_Miss(b *testing.B) {
 func BenchmarkApplyModelRouting_HeaderOnly(b *testing.B) {
 	ph := NewProxyHandler(nil, nil, nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
-		{Name: "economy", Priority: 1, Condition: RouteCondition{Header: "X-Tier", HeaderValue: "economy"}, TargetModel: "haiku", Tier: TierEconomy},
+		{Name: "small", Priority: 1, Condition: RouteCondition{Header: "X-Tier", HeaderValue: "small"}, TargetModel: "haiku", Tier: TierSmall},
 	}))
 	body := []byte(`{"model":"claude-3-opus","messages":[{"role":"user","content":"hi"}]}`)
 	r, _ := http.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	r.Header.Set("X-Tier", "economy")
+	r.Header.Set("X-Tier", "small")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -95,7 +95,7 @@ func BenchmarkApplyModelRouting_HeaderOnly(b *testing.B) {
 func BenchmarkApplyModelRouting_NoMatch(b *testing.B) {
 	ph := NewProxyHandler(nil, nil, nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
-		{Name: "r1", Priority: 1, Condition: RouteCondition{Header: "X-Tier", HeaderValue: "economy"}, TargetModel: "haiku"},
+		{Name: "r1", Priority: 1, Condition: RouteCondition{Header: "X-Tier", HeaderValue: "small"}, TargetModel: "haiku"},
 		{Name: "r2", Priority: 2, Condition: RouteCondition{MaxBodyBytes: 50}, TargetModel: "mini"},
 	}))
 	body := []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"hello world, this is a longer message"}]}`)

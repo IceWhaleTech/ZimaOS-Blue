@@ -1,3 +1,8 @@
+---
+name: notifications
+description: Send list clear and count system notifications.
+---
+
 # Notifications
 
 Send, list, and manage system notifications.

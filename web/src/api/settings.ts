@@ -1,7 +1,7 @@
 import api from './client'
 
-export type SmallModelRuntime = 'llama_cpp_native'
-export type SmallModelID = 'lfm2.5-1.2b-instruct-q4km'
+export type SmallModelRuntime = 'onnx_genai_python'
+export type SmallModelID = 'qwen3.5-0.8b-onnx-q4'
 export type NoLLMDegradeMode = 'deepresearch'
 export type SmallModelUnavailablePolicy = 'ir_first'
 export type SoulProposalStatus = 'pending' | 'approved' | 'rejected'
@@ -19,23 +19,30 @@ export interface Settings {
   skill_rerank_onnx_enabled?: boolean // Enable ONNX reranker path (default false)
   skill_rerank_onnx_auto_download?: boolean // Allow ONNX model auto-download (default false)
   skill_selector_confidence_threshold?: number // Confidence threshold for auto skill selection
+  prompt_policy_version?: string // Prompt policy version marker
+  prompt_policy_profile?: 'default' // Prompt policy profile
   agent_mode?: boolean // Autonomous agent mode (default false)
   agent_auto_confirm?: boolean // Skip confirmation in agent mode (default false)
+  agent_loop_policy_max_tool_rounds?: number // Agent loop max tool rounds
+  agent_loop_policy_max_auto_continue?: number // Agent loop max auto-continue retries
+  agent_loop_policy_pseudo_tool_call_budget?: number // Agent loop pseudo tool-call budget
+  agent_loop_policy_action_pledge_budget?: number // Agent loop action-pledge budget
+  agent_loop_policy_missing_todo_budget?: number // Agent loop missing-todo budget
+  agent_loop_policy_pending_todo_budget?: number // Agent loop pending-todo budget
   memory_recall_mode?: 'aggressive' | 'balanced' | 'quality' // Memory recall strategy (default balanced)
   small_model_enabled?: boolean // Enable small-model routing features (default false)
-  small_model_runtime?: SmallModelRuntime // Fixed: llama_cpp_native
-  small_model_id?: SmallModelID // Fixed: lfm2.5-1.2b-instruct-q4km
+  small_model_runtime?: SmallModelRuntime // Fixed: onnx_genai_python
+  small_model_id?: SmallModelID // Fixed: qwen3.5-0.8b-onnx-q4
   small_model_auto_download?: boolean // Auto download small model (default true)
-  small_model_shadow_ratio?: number // Shadow sample ratio in range (0, 1], default 0.1
-  small_model_shadow_gate_min_samples?: number // Gate min samples, default 40
-  small_model_shadow_gate_threshold_delta?: number // Gate threshold delta in range (0, 1], default 0.35
-  small_model_shadow_gate_scene?: string // Optional gate scene filter, default ""
   small_model_summary_enabled?: boolean // Phase1 default true
   small_model_doc_extract_enabled?: boolean // Phase1 default true
   small_model_rerank_enabled?: boolean // Phase1 default true
   small_model_context_prune_enabled?: boolean // Phase1 default true
-  small_model_route_short_qa_enabled?: boolean // Phase1 default false (shadow only)
-  small_model_route_tool_dispatch_enabled?: boolean // Phase1 default false (shadow only)
+  small_model_media_intent_enabled?: boolean // Phase1 default true
+  offline_ir_fallback_enabled?: boolean // Offline IR fallback (default true)
+  feature_intent_ir_enabled?: boolean // Channel feature-intent IR hints (default true)
+  small_model_route_short_qa_enabled?: boolean // default true
+  small_model_route_tool_dispatch_enabled?: boolean // default true
   no_llm_degrade_mode?: NoLLMDegradeMode // Fixed deepresearch
   small_model_unavailable_policy?: SmallModelUnavailablePolicy // Fixed ir_first
 }
@@ -123,9 +130,6 @@ export interface SmallModelStats {
   summary_success: number
   doc_extract_attempts: number
   doc_extract_success: number
-  short_qa_shadow_total: number
-  tool_dispatch_shadow_total: number
-  shadow_failures: number
   small_model_fallback_total?: number
   small_model_timeout_total?: number
   small_model_latency_ms?: number
@@ -138,55 +142,35 @@ export interface SmallModelStats {
   summary_latency_samples?: number
   doc_extract_latency_ms?: number
   doc_extract_latency_samples?: number
-  shadow_quality_delta?: number
-  shadow_quality_samples?: number
   auto_rollback_total?: number
   no_provider_deepresearch_total: number
   ir_takeover_total: number
   fallback_reasons: Record<string, number>
 }
 
-export interface ShadowQualitySample {
-  scene: string
-  main_digest?: string
-  shadow_digest?: string
-  delta: number
-  created_at: string
+export interface PromptPolicyStatus {
+  prompt_policy_version: string
+  prompt_policy_profile: string
+  prompt_policy_hash: string
+  agent_loop_policy: {
+    max_tool_rounds: number
+    max_auto_continue: number
+    pseudo_tool_call_budget: number
+    action_pledge_budget: number
+    missing_todo_budget: number
+    pending_todo_budget: number
+  }
 }
 
-export interface ShadowQualityResponse {
-  samples: ShadowQualitySample[]
-  total: number
-  average_delta: number
-}
-
-export interface ShadowQualityGateSceneResult {
-  scene: string
-  samples: number
-  average_delta: number
-  pass: boolean
-  reason: string
-  threshold: number
-  min_samples: number
-}
-
-export interface ShadowQualityGateEvalResponse {
-  overall_pass: boolean
-  threshold_delta: number
-  min_samples: number
-  scene_filter: string
-  evaluated_samples: number
-  scenes: ShadowQualityGateSceneResult[]
-}
-
-export interface ShadowAutoRolloutExecuteResponse {
-  advanced: boolean
-  reason: string
-  current_ratio: number
-  next_ratio: number
-  current_percent: number
-  next_percent: number
-  gate_eval: ShadowQualityGateEvalResponse
+export interface SelectorDryRunResponse {
+  query: string
+  model: string
+  smart_tool_selection: boolean
+  smart_skill_selection: boolean
+  selected_tools: string[]
+  skill_decision?: unknown
+  skill_prompt_hint?: string
+  skill_selector_error?: string
 }
 
 // Settings API
@@ -221,11 +205,9 @@ export const settingsApi = {
   // Small-model observability counters
   getSmallModelStats: () => api.get<SmallModelStats>('/small-model/stats'),
   resetSmallModelStats: () => api.post<{ success: boolean }>('/small-model/stats/reset'),
-  getSmallModelShadowQuality: (params?: { limit?: number; scene?: string }) =>
-    api.get<ShadowQualityResponse>('/small-model/shadow-quality', { params }),
-  getSmallModelShadowQualityGateEval: (params?: { scene?: string; limit?: number; min_samples?: number; threshold_delta?: number }) =>
-    api.get<ShadowQualityGateEvalResponse>('/small-model/shadow-quality/gate-eval', { params }),
-  executeSmallModelShadowAutoRollout: () =>
-    api.post<ShadowAutoRolloutExecuteResponse>('/small-model/shadow-quality/auto-rollout/execute'),
-  resetSmallModelShadowQuality: () => api.post<{ success: boolean }>('/small-model/shadow-quality/reset'),
+
+  // Prompt/selector policy observability
+  getPromptPolicyStatus: () => api.get<PromptPolicyStatus>('/settings/prompt-policy'),
+  selectorDryRun: (query: string, model?: string) =>
+    api.post<SelectorDryRunResponse>('/settings/selector/dry-run', { query, model }),
 }

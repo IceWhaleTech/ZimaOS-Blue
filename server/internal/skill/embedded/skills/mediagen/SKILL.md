@@ -1,3 +1,8 @@
+---
+name: mediagen
+description: Generate images and videos through media pipeline categories including t2i t2v i2v and i2i.
+---
+
 # Media Generation
 
 Generate images and videos using AI models via the IR pipeline.

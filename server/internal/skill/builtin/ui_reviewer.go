@@ -11,6 +11,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // UIReviewer is a built-in skill for automated UI quality review.
@@ -208,50 +209,65 @@ func (u *UIReviewer) reviewURL(ctx context.Context, input map[string]any, thresh
 		return skill.NewErrorResult(fmt.Errorf("browser start failed: %w", err)), nil
 	}
 
+	emitUIReviewProgress(ctx, "navigate", "Page Load", "running", url, nil)
 	nav, err := browser.Navigate(ctx, url, "")
 	if err != nil {
 		steps = append(steps, ReviewStep{ID: "navigate", Name: "Page Load", Status: "failed", Message: err.Error()})
+		emitUIReviewProgress(ctx, "navigate", "Page Load", "failed", url, nil)
 		return skill.NewErrorResult(fmt.Errorf("navigation failed: %w", err)), nil
 	}
 	steps = append(steps, ReviewStep{ID: "navigate", Name: "Page Load", Status: "success"})
+	emitUIReviewProgress(ctx, "navigate", "Page Load", "success", url, nil)
 
 	// 2. Functional checks (page loaded, JS errors, etc.)
+	emitUIReviewProgress(ctx, "functional", "Functional Check", "running", url, nil)
 	funcResult := u.runFunctionalChecks(ctx, browser, nav.TargetID, url)
 	steps = append(steps, ReviewStep{
 		ID: "functional", Name: "Functional Check", Status: "success",
 		Score: funcResult.Score, Issues: len(funcResult.Issues),
 	})
+	emitUIReviewProgress(ctx, "functional", "Functional Check", "success", url, &funcResult.Score)
 
 	// 3. Accessibility checks
+	emitUIReviewProgress(ctx, "accessibility", "Accessibility Check", "running", url, nil)
 	a11yResult := u.runA11yChecks(ctx, browser, nav.TargetID)
 	steps = append(steps, ReviewStep{
 		ID: "accessibility", Name: "Accessibility Check", Status: "success",
 		Score: a11yResult.Score, Issues: len(a11yResult.Issues),
 	})
+	emitUIReviewProgress(ctx, "accessibility", "Accessibility Check", "success", url, &a11yResult.Score)
 
 	// 4. Screenshot for VLM
+	emitUIReviewProgress(ctx, "screenshot", "Screenshot", "running", url, nil)
 	screenshot, err := browser.ScreenshotTab(ctx, nav.TargetID)
 	if err != nil {
 		screenshot = ""
 		steps = append(steps, ReviewStep{ID: "screenshot", Name: "Screenshot", Status: "failed", Message: err.Error()})
+		emitUIReviewProgress(ctx, "screenshot", "Screenshot", "failed", url, nil)
 	} else {
 		steps = append(steps, ReviewStep{ID: "screenshot", Name: "Screenshot", Status: "success"})
+		emitUIReviewProgress(ctx, "screenshot", "Screenshot", "success", url, nil)
 	}
 
 	// 5. VLM visual review (if bridge available and screenshot captured)
 	var vlmResult *VLMReviewResult
 	if bridge != nil && screenshot != "" {
+		emitUIReviewProgress(ctx, "visual", "Visual Review (VLM)", "running", url, nil)
 		vlmResult = u.runVLMReview(ctx, bridge, screenshot, url)
 		if vlmResult != nil {
+			vlmScore := avgScores(vlmResult.Scores)
 			steps = append(steps, ReviewStep{
 				ID: "visual", Name: "Visual Review (VLM)", Status: "success",
-				Score: avgScores(vlmResult.Scores), Issues: len(vlmResult.Issues),
+				Score: vlmScore, Issues: len(vlmResult.Issues),
 			})
+			emitUIReviewProgress(ctx, "visual", "Visual Review (VLM)", "success", url, &vlmScore)
 		} else {
 			steps = append(steps, ReviewStep{ID: "visual", Name: "Visual Review (VLM)", Status: "failed", Message: "VLM returned no result"})
+			emitUIReviewProgress(ctx, "visual", "Visual Review (VLM)", "failed", url, nil)
 		}
 	} else if bridge == nil {
 		steps = append(steps, ReviewStep{ID: "visual", Name: "Visual Review (VLM)", Status: "skipped", Message: "No LLM provider configured"})
+		emitUIReviewProgress(ctx, "visual", "Visual Review (VLM)", "skipped", url, nil)
 	}
 
 	// 6. Compute scores
@@ -774,4 +790,20 @@ func hasCriticalIssue(issues []UIIssue) bool {
 		}
 	}
 	return false
+}
+
+func emitUIReviewProgress(ctx context.Context, stepID, stepName, status, url string, score *float64) {
+	card := map[string]interface{}{
+		"type":   "ui-review-progress",
+		"step":   stepID,
+		"name":   stepName,
+		"status": status,
+	}
+	if url != "" {
+		card["url"] = url
+	}
+	if score != nil {
+		card["score"] = *score
+	}
+	tools.EmitCard(ctx, card)
 }

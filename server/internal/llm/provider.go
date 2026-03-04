@@ -86,6 +86,7 @@ type StreamChunk struct {
 	ProviderID string     `json:"provider_id,omitempty"` // internal ID for sticky routing
 	Delta      string     `json:"delta"`
 	Done       bool       `json:"done"`
+	Progress   string     `json:"progress,omitempty"` // upstream progress/metadata signal (no user-visible delta)
 	Usage      *Usage     `json:"usage,omitempty"`
 	Error      string     `json:"error,omitempty"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`

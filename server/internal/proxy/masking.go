@@ -280,29 +280,29 @@ func (dm *DataMasker) SetLocaleFunc(f func() string) {
 // maskLabel returns the localized masking label, e.g. "🛡️数据脱敏" or "🛡️Data Masked".
 // Covers all 27 supported locales.
 var maskLabelMap = map[string]string{
-	"zh":    "🛡️数据脱敏",
-	"ja":    "🛡️データマスク",
-	"ko":    "🛡️데이터 마스킹",
-	"de":    "🛡️Daten maskiert",
-	"fr":    "🛡️Données masquées",
-	"es":    "🛡️Datos enmascarados",
-	"pt":    "🛡️Dados mascarados",
-	"it":    "🛡️Dati mascherati",
-	"nl":    "🛡️Gegevens gemaskeerd",
-	"ru":    "🛡️Данные скрыты",
-	"pl":    "🛡️Dane zamaskowane",
-	"cs":    "🛡️Data maskována",
-	"sk":    "🛡️Údaje maskované",
-	"da":    "🛡️Data maskeret",
-	"sv":    "🛡️Data maskerad",
-	"nb":    "🛡️Data maskert",
-	"hu":    "🛡️Adat maszkolva",
-	"ro":    "🛡️Date mascate",
-	"hr":    "🛡️Podaci maskirani",
-	"el":    "🛡️Δεδομένα καλυμμένα",
-	"ca":    "🛡️Dades emmascarades",
-	"ga":    "🛡️Sonraí mascaithe",
-	"ml":    "🛡️ഡാറ്റ മാസ്ക് ചെയ്തു",
+	"zh": "🛡️数据脱敏",
+	"ja": "🛡️データマスク",
+	"ko": "🛡️데이터 마스킹",
+	"de": "🛡️Daten maskiert",
+	"fr": "🛡️Données masquées",
+	"es": "🛡️Datos enmascarados",
+	"pt": "🛡️Dados mascarados",
+	"it": "🛡️Dati mascherati",
+	"nl": "🛡️Gegevens gemaskeerd",
+	"ru": "🛡️Данные скрыты",
+	"pl": "🛡️Dane zamaskowane",
+	"cs": "🛡️Data maskována",
+	"sk": "🛡️Údaje maskované",
+	"da": "🛡️Data maskeret",
+	"sv": "🛡️Data maskerad",
+	"nb": "🛡️Data maskert",
+	"hu": "🛡️Adat maszkolva",
+	"ro": "🛡️Date mascate",
+	"hr": "🛡️Podaci maskirani",
+	"el": "🛡️Δεδομένα καλυμμένα",
+	"ca": "🛡️Dades emmascarades",
+	"ga": "🛡️Sonraí mascaithe",
+	"ml": "🛡️ഡാറ്റ മാസ്ക് ചെയ്തു",
 }
 
 func (dm *DataMasker) maskLabel() string {
@@ -336,13 +336,19 @@ func (dm *DataMasker) Stats() map[string]interface{} {
 	defer dm.mu.RUnlock()
 
 	totalMasks := int64(0)
+	enabledRuleCount := 0
+	for _, rule := range dm.config.Rules {
+		if rule != nil && rule.Enabled {
+			enabledRuleCount++
+		}
+	}
 	for _, count := range dm.maskCount {
 		totalMasks += count
 	}
 
 	return map[string]interface{}{
 		"enabled":     dm.config.Enabled,
-		"rule_count":  len(dm.config.Rules),
+		"rule_count":  enabledRuleCount,
 		"total_masks": totalMasks,
 		"mask_counts": dm.maskCount,
 		"status":      "active",
@@ -369,7 +375,7 @@ func GetDefaultRules() []*MaskingRule {
 			Pattern:     `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`,
 			Replacement: "【{MASKED}】[EMAIL]",
 			Direction:   MaskingResponse,
-			Enabled:     false,
+			Enabled:     true,
 		},
 		{
 			ID:          "phone",
@@ -378,7 +384,7 @@ func GetDefaultRules() []*MaskingRule {
 			Pattern:     `\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`,
 			Replacement: "【{MASKED}】[PHONE]",
 			Direction:   MaskingResponse,
-			Enabled:     false,
+			Enabled:     true,
 		},
 		{
 			ID:          "ssn",
@@ -387,7 +393,7 @@ func GetDefaultRules() []*MaskingRule {
 			Pattern:     `\b\d{3}-\d{2}-\d{4}\b`,
 			Replacement: "【{MASKED}】[SSN]",
 			Direction:   MaskingResponse,
-			Enabled:     false,
+			Enabled:     true,
 		},
 
 		// Credential Rules
@@ -398,7 +404,7 @@ func GetDefaultRules() []*MaskingRule {
 			Pattern:     `\b(sk-[a-zA-Z0-9_-]{20,}|key-[a-zA-Z0-9_-]{20,})`,
 			Replacement: "【{MASKED}】[API_KEY]",
 			Direction:   MaskingResponse,
-			Enabled:     false,
+			Enabled:     true,
 		},
 		{
 			ID:          "api_key",
@@ -407,7 +413,7 @@ func GetDefaultRules() []*MaskingRule {
 			Pattern:     `(?i)(api[_-]?key|apikey)["\s:=]+["']?([a-zA-Z0-9_-]{20,})["']?`,
 			Replacement: "【{MASKED}】[API_KEY]",
 			Direction:   MaskingResponse,
-			Enabled:     false,
+			Enabled:     true,
 		},
 		{
 			ID:          "bearer_token",
@@ -416,7 +422,7 @@ func GetDefaultRules() []*MaskingRule {
 			Pattern:     `(?i)bearer\s+[a-zA-Z0-9_-]{20,}`,
 			Replacement: "Bearer 【{MASKED}】[TOKEN]",
 			Direction:   MaskingResponse,
-			Enabled:     false,
+			Enabled:     true,
 		},
 
 		// Financial Rules
@@ -427,7 +433,7 @@ func GetDefaultRules() []*MaskingRule {
 			Pattern:     `\b(?:\d{4}[-\s]?){3}\d{4}\b`,
 			Replacement: "【{MASKED}】[CARD]",
 			Direction:   MaskingResponse,
-			Enabled:     false,
+			Enabled:     true,
 		},
 	}
 }

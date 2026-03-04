@@ -36,10 +36,7 @@ const TOOL_DESCRIPTION_KEY_MAP: Record<string, string> = {
   discord: 'skills.builtin.discord-skill.description',
   scheduler: 'skills.builtin.scheduler.description',
   browser: 'skills.builtin.browser.description',
-  sandbox: 'skills.builtin.sandbox.description',
   ui_reviewer: 'skills.builtin.ui-reviewer.description',
-  autoreply: 'skills.builtin.autoreply.description',
-  workflows: 'skills.builtin.workflows.description',
 }
 
 function getToolName(tool: Tool): string {

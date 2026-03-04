@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
+	"io"
+	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,9 +21,10 @@ import (
 )
 
 type Service struct {
-	planner  Planner
-	searcher Searcher
-	summary  SummarySynthesizer
+	planner   Planner
+	searcher  Searcher
+	summary   SummarySynthesizer
+	v2Enabled bool
 
 	mu           sync.RWMutex
 	jobs         map[string]*Job
@@ -43,6 +48,8 @@ type Service struct {
 	searchPerf      [deepResearchSearchPerfWindow]searchPerfSample
 	searchPerfIdx   int
 	searchPerfCount int
+	entityThreshold float64
+	httpClient      *http.Client
 }
 
 const (
@@ -58,6 +65,10 @@ const (
 	deepResearchMaxConcurrentPerUser = 3
 	deepResearchMaxCreatesPerWindow  = 8
 	deepResearchCreateRateWindow     = time.Minute
+	deepResearchSearchRetryAttempts  = 3
+	deepResearchSearchRetryBaseDelay = 200 * time.Millisecond
+	deepResearchExtractTopK          = 2
+	deepResearchExtractTimeout       = 8 * time.Second
 )
 
 var (
@@ -109,6 +120,7 @@ func NewService(planner Planner, searcher Searcher) *Service {
 	return &Service{
 		planner:               planner,
 		searcher:              searcher,
+		v2Enabled:             false,
 		jobs:                  make(map[string]*Job),
 		cancelFuncs:           make(map[string]context.CancelFunc),
 		subscribers:           make(map[string]map[chan Event]struct{}),
@@ -122,11 +134,27 @@ func NewService(planner Planner, searcher Searcher) *Service {
 		searchInFlight:        make(map[string]*inflightSearchCall),
 		searchCacheTTL:        deepResearchSearchCacheTTL,
 		searchCacheMaxEntries: deepResearchSearchCacheMax,
+		entityThreshold:       defaultEntityThreshold,
+		httpClient: &http.Client{
+			Timeout: deepResearchExtractTimeout,
+		},
 	}
 }
 
 func (s *Service) SetSummarySynthesizer(synth SummarySynthesizer) {
 	s.summary = synth
+}
+
+func (s *Service) SetV2Enabled(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.v2Enabled = enabled
+}
+
+func (s *Service) IsV2Enabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.v2Enabled
 }
 
 func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, error) {
@@ -140,6 +168,22 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 	mode := req.Mode
 	if mode == "" {
 		mode = ModeStandard
+	}
+	lang := strings.TrimSpace(req.Lang)
+	strictEntity := false
+	if req.StrictEntity != nil {
+		strictEntity = *req.StrictEntity
+	} else if looksLikePersonTimelineResearch(query, lang) {
+		strictEntity = true
+	}
+	timeWindows := normalizeTimeWindows(req.TimeWindows)
+	reportStyle := strings.TrimSpace(req.ReportStyle)
+	if reportStyle == "" {
+		if looksLikePersonTimelineResearch(query, lang) {
+			reportStyle = "timeline"
+		} else {
+			reportStyle = "summary"
+		}
 	}
 	budget := defaultBudget(mode)
 	if req.Budget != nil {
@@ -157,17 +201,20 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 
 	now := timeutil.NowTime()
 	job := &Job{
-		ID:        uuid.NewString(),
-		UserID:    userID,
-		TenantID:  tenantID,
-		Query:     query,
-		Lang:      strings.TrimSpace(req.Lang),
-		Mode:      mode,
-		Status:    JobStatusPending,
-		Budget:    budget,
-		CreatedAt: now,
-		UpdatedAt: now,
-		Stage:     "intake",
+		ID:           uuid.NewString(),
+		UserID:       userID,
+		TenantID:     tenantID,
+		Query:        query,
+		Lang:         lang,
+		Mode:         mode,
+		StrictEntity: strictEntity,
+		TimeWindows:  append([]string(nil), timeWindows...),
+		ReportStyle:  reportStyle,
+		Status:       JobStatusPending,
+		Budget:       budget,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		Stage:        "intake",
 	}
 
 	timeout := time.Duration(maxInt(1, budget.MaxSeconds)) * time.Second
@@ -323,11 +370,17 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 	if !ok {
 		return
 	}
+	useV2 := s.IsV2Enabled()
 
 	tasks := s.planner.Plan(job.Query, job.Mode, job.Lang)
+	tasks = dedupeTaskQueries(tasks)
 	retrieveStepBudget := maxInt(1, job.Budget.MaxSteps-2) // reserve steps for plan + synthesize
 	if len(tasks) > retrieveStepBudget {
 		tasks = tasks[:retrieveStepBudget]
+	}
+	taskByID := make(map[string]Task, len(tasks))
+	for _, task := range tasks {
+		taskByID[task.ID] = task
 	}
 	s.updateJob(jobID, func(j *Job) {
 		j.Tasks = tasks
@@ -359,7 +412,7 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 		go func() {
 			defer wg.Done()
 			for task := range tasksCh {
-				hits, err := s.searchWithCache(searchCtx, task.Question, searchResultsPerTask(job.Mode), job.Lang)
+				hits, err := s.searchWithRetry(searchCtx, jobID, task.Question, searchResultsPerTask(job.Mode), job.Lang)
 				results <- taskEvidence{taskID: task.ID, query: task.Question, hits: hits, err: err}
 			}
 		}()
@@ -385,6 +438,8 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 	seenURLs := make(map[string]struct{})
 	evidence := make([]Evidence, 0)
 	taskErrors := 0
+	stageErrors := make([]string, 0)
+	failedQueries := make([]string, 0)
 	maxSourcesReached := false
 
 	for {
@@ -405,6 +460,13 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 					continue
 				}
 				taskErrors++
+				failedQueries = append(failedQueries, r.query)
+				stageErrors = append(stageErrors, fmt.Sprintf("search failed: %s (%v)", r.query, r.err))
+				s.broadcast(jobID, "stage_warning", map[string]interface{}{
+					"stage": "retrieve",
+					"query": r.query,
+					"error": r.err.Error(),
+				})
 				continue
 			}
 			if maxSourcesReached {
@@ -439,6 +501,10 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 					CredibilityScore: scoreByDomain(domain),
 					NoveltyScore:     0.5,
 				}
+				ev.ClaimKey = buildClaimKey(ev.Title, ev.Snippet)
+				if useV2 && idx < deepResearchExtractTopK {
+					s.enrichEvidenceMetadata(searchCtx, &ev)
+				}
 				evidence = append(evidence, ev)
 				s.broadcast(jobID, "evidence_added", ev)
 				if len(evidence) >= job.Budget.MaxSources {
@@ -459,6 +525,43 @@ done:
 		return
 	}
 
+	entityStats := EntityDisambiguation{
+		Enabled:   false,
+		Threshold: s.entityThreshold,
+	}
+	if useV2 {
+		original := append([]Evidence(nil), evidence...)
+		evidence, entityStats = applyEntityDisambiguation(job.Query, job.StrictEntity, s.entityThreshold, evidence, taskByID)
+		kept := make(map[string]struct{}, len(evidence))
+		for _, ev := range evidence {
+			kept[ev.ID] = struct{}{}
+		}
+		for _, ev := range original {
+			if _, ok := kept[ev.ID]; ok {
+				continue
+			}
+			s.broadcast(jobID, "entity_filtered", map[string]interface{}{
+				"evidence_id":  ev.ID,
+				"title":        ev.Title,
+				"url":          ev.URL,
+				"entity_score": ev.EntityScore,
+				"threshold":    entityStats.Threshold,
+			})
+		}
+		if job.StrictEntity && len(evidence) == 0 {
+			stageErrors = append(stageErrors, "all evidence filtered by strict entity disambiguation")
+			s.broadcast(jobID, "stage_warning", map[string]interface{}{
+				"stage":   "verify",
+				"message": "all evidence filtered by strict entity disambiguation",
+			})
+		}
+	}
+
+	if len(failedQueries) > 0 {
+		stageErrors = append(stageErrors, fmt.Sprintf("failed_queries=%d", len(failedQueries)))
+	}
+	stageErrors = dedupeStrings(stageErrors)
+
 	s.updateJob(jobID, func(j *Job) {
 		j.Status = JobStatusSynthesizing
 		j.Stage = "synthesize"
@@ -466,7 +569,26 @@ done:
 		j.Evidence = evidence
 	})
 
-	report := s.synthesizeReport(ctx, job.Query, job.Lang, evidence)
+	report := s.synthesizeReport(ctx, job.Query, job.Lang, evidence, reportBuildOptions{
+		StrictEntity:         job.StrictEntity,
+		TimeWindows:          append([]string(nil), job.TimeWindows...),
+		ReportStyle:          job.ReportStyle,
+		StageErrors:          stageErrors,
+		EntityDisambiguation: &entityStats,
+		UseTimelineStyle:     useV2,
+	})
+	s.broadcast(jobID, "citation_coverage_updated", map[string]interface{}{
+		"citation_coverage": report.CitationCoverage,
+		"evidence_count":    len(evidence),
+	})
+	if report.CitationCoverage < 0.8 {
+		s.broadcast(jobID, "stage_warning", map[string]interface{}{
+			"stage":             "synthesize",
+			"message":           "citation coverage below threshold",
+			"citation_coverage": report.CitationCoverage,
+		})
+	}
+
 	s.updateJob(jobID, func(j *Job) {
 		j.Status = JobStatusCompleted
 		j.Stage = "completed"
@@ -475,7 +597,11 @@ done:
 		now := timeutil.NowTime()
 		j.CompletedAt = &now
 	})
-	s.broadcast(jobID, "job_completed", map[string]interface{}{"evidence_count": len(evidence), "confidence": report.Confidence})
+	s.broadcast(jobID, "job_completed", map[string]interface{}{
+		"evidence_count":    len(evidence),
+		"confidence":        report.Confidence,
+		"citation_coverage": report.CitationCoverage,
+	})
 }
 
 func (s *Service) failJob(jobID, msg string) {
@@ -557,8 +683,21 @@ func (s *Service) broadcast(jobID, eventType string, payload interface{}) {
 	}
 }
 
-func (s *Service) synthesizeReport(ctx context.Context, query, lang string, evidence []Evidence) Report {
-	report := synthesizeReport(query, lang, evidence)
+type reportBuildOptions struct {
+	StrictEntity         bool
+	TimeWindows          []string
+	ReportStyle          string
+	StageErrors          []string
+	EntityDisambiguation *EntityDisambiguation
+	UseTimelineStyle     bool
+}
+
+func (s *Service) synthesizeReport(ctx context.Context, query, lang string, evidence []Evidence, opts ...reportBuildOptions) Report {
+	buildOpts := reportBuildOptions{}
+	if len(opts) > 0 {
+		buildOpts = opts[0]
+	}
+	report := synthesizeReportWithOptions(query, lang, evidence, buildOpts)
 	if s.summary == nil {
 		return report
 	}
@@ -577,6 +716,38 @@ func (s *Service) synthesizeReport(ctx context.Context, query, lang string, evid
 		report.Answer = answer
 	}
 	return report
+}
+
+func (s *Service) searchWithRetry(ctx context.Context, jobID, query string, maxResults int, lang string) ([]SearchHit, error) {
+	var lastErr error
+	for attempt := 1; attempt <= deepResearchSearchRetryAttempts; attempt++ {
+		hits, err := s.searchWithCache(ctx, query, maxResults, lang)
+		if err == nil {
+			return hits, nil
+		}
+		lastErr = err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		if attempt >= deepResearchSearchRetryAttempts {
+			break
+		}
+		backoff := deepResearchSearchRetryBaseDelay * time.Duration(1<<(attempt-1))
+		s.broadcast(jobID, "search_retry", map[string]interface{}{
+			"query":   query,
+			"attempt": attempt + 1,
+			"delayMs": backoff.Milliseconds(),
+			"error":   err.Error(),
+		})
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil, lastErr
 }
 
 func (s *Service) searchWithCache(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
@@ -992,14 +1163,19 @@ func scoreByDomain(domain string) float64 {
 }
 
 func synthesizeReport(query, lang string, evidence []Evidence) Report {
+	return synthesizeReportWithOptions(query, lang, evidence, reportBuildOptions{})
+}
+
+func synthesizeReportWithOptions(query, lang string, evidence []Evidence, opts reportBuildOptions) Report {
 	if len(evidence) == 0 {
 		return Report{
-			Answer:     localizedNoEvidence(lang, query),
-			Confidence: 0.0,
+			Answer:      localizedNoEvidence(lang, query),
+			Confidence:  0.0,
+			StageErrors: append([]string(nil), opts.StageErrors...),
 		}
 	}
 
-	supportCount, conflictCount, hasConflict := analyzeEvidenceConsistency(evidence)
+	supportCount, conflictCount, hasConflict := analyzeEvidenceConsistencyByClaim(evidence)
 
 	sort.SliceStable(evidence, func(i, j int) bool {
 		if evidence[i].RelevanceScore == evidence[j].RelevanceScore {
@@ -1012,19 +1188,39 @@ func synthesizeReport(query, lang string, evidence []Evidence) Report {
 	lines := make([]string, 0, len(evidence)+2)
 	lines = append(lines, localizedSummaryTitle(query, lang))
 	lines = append(lines, "")
+	indexByEvidenceID := make(map[string]int, len(evidence))
 	for i, ev := range evidence {
 		citations = append(citations, Citation{
 			EvidenceID: ev.ID,
 			Title:      ev.Title,
 			URL:        ev.URL,
 		})
+		indexByEvidenceID[ev.ID] = i + 1
 		label := ev.Title
 		if label == "" {
 			label = ev.URL
 		}
-		lines = append(lines, fmt.Sprintf("%d. %s (%s)", i+1, label, ev.Domain))
+		lines = append(lines, fmt.Sprintf("%d. %s (%s) [%s#%d]", i+1, label, ev.Domain, localizedSourceLabel(lang, query), i+1))
 		if ev.Snippet != "" {
 			lines = append(lines, fmt.Sprintf("   - %s", ev.Snippet))
+		}
+		if ev.Quote != "" {
+			lines = append(lines, fmt.Sprintf("   - %s: %s", localizedQuoteLabel(lang, query), ev.Quote))
+		}
+	}
+
+	timelineSections := buildTimelineSections(evidence, opts.TimeWindows, lang, indexByEvidenceID)
+	if opts.UseTimelineStyle || strings.EqualFold(strings.TrimSpace(opts.ReportStyle), "timeline") {
+		lines = append(lines, "")
+		lines = append(lines, localizedTimelineHeading(lang, query))
+		for _, section := range timelineSections {
+			if len(section.Highlights) == 0 {
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("### %s", section.Label))
+			for _, hl := range section.Highlights {
+				lines = append(lines, "- "+hl)
+			}
 		}
 	}
 
@@ -1035,44 +1231,153 @@ func synthesizeReport(query, lang string, evidence []Evidence) Report {
 	if hasConflict {
 		openQuestions = append(openQuestions, localizedConflictOpenQuestion(lang, query))
 	}
+	if len(opts.StageErrors) > 0 {
+		openQuestions = append(openQuestions, localizedStageErrorHint(lang, query))
+	}
+	answer := strings.Join(lines, "\n")
+	coverage := computeCitationCoverage(answer, len(citations))
+	if coverage < 0.8 {
+		answer = localizedCautiousConclusionPrefix(lang, query) + "\n\n" + answer
+	}
+
+	var entityInfo *EntityDisambiguation
+	if opts.EntityDisambiguation != nil {
+		cp := *opts.EntityDisambiguation
+		entityInfo = &cp
+	}
+
 	return Report{
-		Answer:        strings.Join(lines, "\n"),
-		Confidence:    conf,
-		Citations:     citations,
-		OpenQuestions: openQuestions,
-		SupportCount:  supportCount,
-		ConflictCount: conflictCount,
-		HasConflict:   hasConflict,
+		Answer:               answer,
+		Confidence:           conf,
+		Citations:            citations,
+		OpenQuestions:        openQuestions,
+		SupportCount:         supportCount,
+		ConflictCount:        conflictCount,
+		HasConflict:          hasConflict,
+		CitationCoverage:     coverage,
+		EntityDisambiguation: entityInfo,
+		StageErrors:          append([]string(nil), opts.StageErrors...),
+		TimelineSections:     timelineSections,
 	}
 }
 
 func analyzeEvidenceConsistency(evidence []Evidence) (supportCount, conflictCount int, hasConflict bool) {
-	conflictMarkers := []string{
-		"not", "no", "deny", "denied", "dispute", "conflict", "uncertain", "unconfirmed", "rumor",
-		"并非", "不是", "否认", "争议", "矛盾", "未证实", "传闻",
+	return analyzeEvidenceConsistencyByClaim(evidence)
+}
+
+func buildTimelineSections(evidence []Evidence, timeWindows []string, lang string, citationIdx map[string]int) []TimelineSection {
+	labels := normalizedTimelineLabels(timeWindows, lang)
+	sections := make([]TimelineSection, 0, len(labels))
+	for _, label := range labels {
+		sections = append(sections, TimelineSection{Label: label})
+	}
+	if len(sections) == 0 {
+		return nil
 	}
 
-	for _, ev := range evidence {
-		text := strings.ToLower(strings.TrimSpace(ev.Title + " " + ev.Snippet))
-		if text == "" {
+	for i, ev := range evidence {
+		idx := timelineIndexForEvidence(ev, labels)
+		if idx < 0 || idx >= len(sections) {
+			idx = i % len(sections)
+		}
+		name := strings.TrimSpace(ev.Title)
+		if name == "" {
+			name = strings.TrimSpace(ev.URL)
+		}
+		if name == "" {
 			continue
 		}
-		isConflict := false
-		for _, marker := range conflictMarkers {
-			if strings.Contains(text, marker) {
-				isConflict = true
-				break
+		refIdx := citationIdx[ev.ID]
+		highlight := name
+		if refIdx > 0 {
+			highlight = fmt.Sprintf("%s [来源#%d]", highlight, refIdx)
+		}
+		sections[idx].Highlights = append(sections[idx].Highlights, highlight)
+		sections[idx].EvidenceIDs = append(sections[idx].EvidenceIDs, ev.ID)
+	}
+
+	out := make([]TimelineSection, 0, len(sections))
+	for _, sec := range sections {
+		if len(sec.Highlights) == 0 {
+			continue
+		}
+		if len(sec.Highlights) > 6 {
+			sec.Highlights = sec.Highlights[:6]
+		}
+		out = append(out, sec)
+	}
+	return out
+}
+
+func timelineIndexForEvidence(ev Evidence, labels []string) int {
+	year := extractEvidenceYear(ev)
+	if year == 0 || len(labels) == 0 {
+		return -1
+	}
+	// Default bucket: <=2018 / 2019-2022 / >=2023.
+	switch {
+	case year <= 2018:
+		return 0
+	case year <= 2022:
+		if len(labels) >= 2 {
+			return 1
+		}
+		return 0
+	default:
+		if len(labels) >= 3 {
+			return 2
+		}
+		return len(labels) - 1
+	}
+}
+
+func normalizedTimelineLabels(timeWindows []string, lang string) []string {
+	if len(timeWindows) > 0 {
+		out := make([]string, 0, len(timeWindows))
+		for _, tw := range timeWindows {
+			tw = strings.TrimSpace(tw)
+			if tw != "" {
+				out = append(out, tw)
 			}
 		}
-		if isConflict {
-			conflictCount++
+		if len(out) > 0 {
+			if len(out) > 6 {
+				return out[:6]
+			}
+			return out
+		}
+	}
+	return localizedTimelineDefaultLabels(lang)
+}
+
+func computeCitationCoverage(answer string, citationCount int) float64 {
+	trimmed := strings.TrimSpace(answer)
+	if trimmed == "" {
+		return 0
+	}
+	lines := strings.Split(trimmed, "\n")
+	statementCount := 0
+	citedCount := 0
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
-
-		supportCount++
+		if !(strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "1.") || strings.HasPrefix(line, "2.") || strings.HasPrefix(line, "3.") || strings.HasPrefix(line, "4.") || strings.HasPrefix(line, "5.") || strings.HasPrefix(line, "6.") || strings.HasPrefix(line, "7.") || strings.HasPrefix(line, "8.") || strings.HasPrefix(line, "9.")) {
+			continue
+		}
+		statementCount++
+		if strings.Contains(line, "来源#") || strings.Contains(strings.ToLower(line), "source#") || strings.Contains(line, "http://") || strings.Contains(line, "https://") {
+			citedCount++
+		}
 	}
-	hasConflict = supportCount > 0 && conflictCount > 0
-	return supportCount, conflictCount, hasConflict
+	if statementCount == 0 {
+		if citationCount > 0 {
+			return 1
+		}
+		return 0
+	}
+	return float64(citedCount) / float64(statementCount)
 }
 
 func isAllowedActor(job *Job, userID, tenantID string) bool {
@@ -1134,13 +1439,250 @@ func confidenceScore(evidence []Evidence) float64 {
 	return score
 }
 
+var (
+	reMetaTagPattern = regexp.MustCompile(`(?is)<meta[^>]+>`)
+	reMetaAttrKV     = regexp.MustCompile(`(?is)([a-zA-Z0-9:_-]+)\s*=\s*["']([^"']+)["']`)
+	reParagraph      = regexp.MustCompile(`(?is)<p[^>]*>(.*?)</p>`)
+	reTagStrip       = regexp.MustCompile(`(?is)<[^>]+>`)
+	reWhitespace     = regexp.MustCompile(`\s+`)
+)
+
+func (s *Service) enrichEvidenceMetadata(ctx context.Context, ev *Evidence) {
+	if ev == nil || strings.TrimSpace(ev.URL) == "" {
+		return
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, deepResearchExtractTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, ev.URL, nil)
+	if err != nil {
+		ev.CredibilityScore = maxFloat(0.0, ev.CredibilityScore-0.05)
+		return
+	}
+	req.Header.Set("User-Agent", "ZimaOS-Blue/1.0 (+deepresearch)")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		ev.CredibilityScore = maxFloat(0.0, ev.CredibilityScore-0.05)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		ev.CredibilityScore = maxFloat(0.0, ev.CredibilityScore-0.05)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
+	if err != nil {
+		ev.CredibilityScore = maxFloat(0.0, ev.CredibilityScore-0.05)
+		return
+	}
+	htmlText := string(body)
+
+	if author := firstNonEmpty(
+		extractMetaContent(htmlText, "author"),
+		extractMetaContent(htmlText, "article:author"),
+		extractMetaContent(htmlText, "og:article:author"),
+	); author != "" {
+		ev.Author = author
+	}
+
+	if publishedRaw := firstNonEmpty(
+		extractMetaContent(htmlText, "article:published_time"),
+		extractMetaContent(htmlText, "og:published_time"),
+		extractMetaContent(htmlText, "publishdate"),
+		extractMetaContent(htmlText, "pubdate"),
+		extractMetaContent(htmlText, "date"),
+	); publishedRaw != "" {
+		if ts := parsePublishedTime(publishedRaw); ts != nil {
+			ev.PublishedAt = ts
+			ev.CredibilityScore = minFloat(0.99, ev.CredibilityScore+0.03)
+		}
+	}
+
+	if quote := extractBestQuote(htmlText); quote != "" {
+		ev.Quote = quote
+	}
+	if ev.ClaimKey == "" {
+		ev.ClaimKey = buildClaimKey(ev.Title, firstNonEmpty(ev.Quote, ev.Snippet))
+	}
+	if year := extractEvidenceYear(*ev); year > 0 {
+		ev.TimeLabel = strconv.Itoa(year)
+	}
+}
+
+func extractMetaContent(rawHTML, targetKey string) string {
+	target := strings.ToLower(strings.TrimSpace(targetKey))
+	if target == "" {
+		return ""
+	}
+	tags := reMetaTagPattern.FindAllString(rawHTML, -1)
+	for _, tag := range tags {
+		attrs := map[string]string{}
+		matches := reMetaAttrKV.FindAllStringSubmatch(tag, -1)
+		for _, m := range matches {
+			if len(m) != 3 {
+				continue
+			}
+			attrs[strings.ToLower(strings.TrimSpace(m[1]))] = strings.TrimSpace(html.UnescapeString(m[2]))
+		}
+		key := strings.ToLower(firstNonEmpty(attrs["name"], attrs["property"], attrs["itemprop"]))
+		if key == target {
+			return strings.TrimSpace(attrs["content"])
+		}
+	}
+	return ""
+}
+
+func parsePublishedTime(raw string) *time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	layouts := []string{
+		time.RFC3339,
+		"2006-01-02",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006/01/02",
+		"2006/01/02 15:04:05",
+	}
+	for _, layout := range layouts {
+		ts, err := time.Parse(layout, raw)
+		if err == nil {
+			return &ts
+		}
+	}
+	return nil
+}
+
+func extractBestQuote(rawHTML string) string {
+	paras := reParagraph.FindAllStringSubmatch(rawHTML, 5)
+	for _, p := range paras {
+		if len(p) < 2 {
+			continue
+		}
+		clean := sanitizeHTMLText(p[1])
+		if len(clean) < 40 {
+			continue
+		}
+		if len(clean) > 320 {
+			clean = clean[:320] + "..."
+		}
+		return clean
+	}
+	return ""
+}
+
+func sanitizeHTMLText(raw string) string {
+	raw = reTagStrip.ReplaceAllString(raw, " ")
+	raw = html.UnescapeString(raw)
+	raw = reWhitespace.ReplaceAllString(raw, " ")
+	return strings.TrimSpace(raw)
+}
+
+func normalizeTimeWindows(windows []string) []string {
+	if len(windows) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(windows))
+	out := make([]string, 0, len(windows))
+	for _, item := range windows {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		key := strings.ToLower(item)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	if len(out) > 6 {
+		out = out[:6]
+	}
+	return out
+}
+
+func dedupeTaskQueries(tasks []Task) []Task {
+	if len(tasks) <= 1 {
+		return tasks
+	}
+	seen := make(map[string]struct{}, len(tasks))
+	out := make([]Task, 0, len(tasks))
+	for _, task := range tasks {
+		key := strings.ToLower(strings.TrimSpace(task.Question))
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, task)
+	}
+	return out
+}
+
+func dedupeStrings(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, item := range in {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	return out
+}
+
+func firstNonEmpty(items ...string) string {
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			return item
+		}
+	}
+	return ""
+}
+
+func minFloat(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func cloneJob(j *Job) *Job {
 	cp := *j
+	if j.TimeWindows != nil {
+		cp.TimeWindows = append([]string(nil), j.TimeWindows...)
+	}
 	if j.Tasks != nil {
 		cp.Tasks = append([]Task(nil), j.Tasks...)
 	}
 	if j.Evidence != nil {
 		cp.Evidence = append([]Evidence(nil), j.Evidence...)
+		for i := range cp.Evidence {
+			if j.Evidence[i].PublishedAt != nil {
+				ts := *j.Evidence[i].PublishedAt
+				cp.Evidence[i].PublishedAt = &ts
+			}
+		}
 	}
 	if j.Report != nil {
 		r := *j.Report
@@ -1149,6 +1691,16 @@ func cloneJob(j *Job) *Job {
 		}
 		if j.Report.OpenQuestions != nil {
 			r.OpenQuestions = append([]string(nil), j.Report.OpenQuestions...)
+		}
+		if j.Report.StageErrors != nil {
+			r.StageErrors = append([]string(nil), j.Report.StageErrors...)
+		}
+		if j.Report.TimelineSections != nil {
+			r.TimelineSections = append([]TimelineSection(nil), j.Report.TimelineSections...)
+		}
+		if j.Report.EntityDisambiguation != nil {
+			ed := *j.Report.EntityDisambiguation
+			r.EntityDisambiguation = &ed
 		}
 		cp.Report = &r
 	}

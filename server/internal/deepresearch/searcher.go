@@ -26,15 +26,19 @@ type ToolWebSearcher struct {
 	tool *tools.WebSearchTool
 }
 
-func NewToolWebSearcher() *ToolWebSearcher {
+func NewToolWebSearcherWithConfig(cfg tools.WebSearchConfig) *ToolWebSearcher {
 	return &ToolWebSearcher{
-		tool: tools.NewWebSearchTool(tools.WebSearchConfig{
-			Provider:   "duckduckgo",
-			MaxResults: 8,
-			Timeout:    15 * time.Second,
-			Region:     "wt-wt",
-		}),
+		tool: tools.NewWebSearchTool(cfg),
 	}
+}
+
+func NewToolWebSearcher() *ToolWebSearcher {
+	return NewToolWebSearcherWithConfig(tools.WebSearchConfig{
+		Provider:   "duckduckgo",
+		MaxResults: 8,
+		Timeout:    15 * time.Second,
+		Region:     "wt-wt",
+	})
 }
 
 func (s *ToolWebSearcher) Search(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
@@ -43,6 +47,7 @@ func (s *ToolWebSearcher) Search(ctx context.Context, query string, maxResults i
 		"query":       query,
 		"max_results": float64(maxResults),
 		"region":      region,
+		"format":      "json",
 	})
 	if err != nil {
 		return nil, err

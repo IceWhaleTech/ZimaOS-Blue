@@ -243,7 +243,7 @@ func TestBuiltinProviders(t *testing.T) {
 	}
 
 	// Check required providers exist
-	required := []string{"openai", "anthropic", "google", "deepseek", "ollama", "openrouter-free"}
+	required := []string{"openai", "anthropic", "qwen", "minimax", "openrouter"}
 	for _, id := range required {
 		found := false
 		for _, p := range providers {
@@ -393,4 +393,86 @@ func TestRegistryHealthCheck(t *testing.T) {
 	}
 
 	registry.StopHealthCheck()
+}
+
+type mockKeyHealthChecker struct {
+	results map[string]*HealthCheckResult
+	calls   []string
+}
+
+func (m *mockKeyHealthChecker) Check(_ context.Context, provider *Provider) *HealthCheckResult {
+	keyID := ""
+	if len(provider.APIKeys) > 0 {
+		keyID = provider.APIKeys[0].ID
+	}
+	m.calls = append(m.calls, keyID)
+
+	if res, ok := m.results[keyID]; ok {
+		copy := *res
+		return &copy
+	}
+
+	return &HealthCheckResult{
+		ProviderID: provider.ID,
+		Healthy:    false,
+		Error:      "unknown_key",
+		CheckedAt:  time.Now(),
+	}
+}
+
+func TestRegistryRunHealthCheck_TriesAPIKeysUntilHealthy(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "registry-health-keys-test-*")
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+
+	provider := &Provider{
+		ID:      "test",
+		Name:    "Test",
+		Type:    ProviderTypeCustom,
+		Enabled: true,
+		APIKeys: []APIKey{
+			{ID: "k1", Key: "sk-bad", Enabled: true},
+			{ID: "k2", Key: "sk-good", Enabled: true},
+		},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider failed: %v", err)
+	}
+
+	checker := &mockKeyHealthChecker{
+		results: map[string]*HealthCheckResult{
+			"k1": {Healthy: false, Error: "auth_error:401", CheckedAt: time.Now()},
+			"k2": {Healthy: true, CheckedAt: time.Now()},
+		},
+	}
+
+	registry.runHealthCheck(context.Background(), checker)
+
+	if len(checker.calls) != 2 {
+		t.Fatalf("expected 2 health checks, got %d (%v)", len(checker.calls), checker.calls)
+	}
+	if checker.calls[0] != "k1" || checker.calls[1] != "k2" {
+		t.Fatalf("expected check order [k1 k2], got %v", checker.calls)
+	}
+
+	result, ok := registry.GetHealth("test")
+	if !ok || result == nil {
+		t.Fatal("missing health result")
+	}
+	if !result.Healthy {
+		t.Fatalf("expected healthy result, got unhealthy: %+v", result)
+	}
+	if result.KeyID != "k2" {
+		t.Fatalf("expected healthy key k2, got %q", result.KeyID)
+	}
+
+	updatedProvider, err := registry.Get("test")
+	if err != nil {
+		t.Fatalf("get provider failed: %v", err)
+	}
+	if updatedProvider.Status != ProviderStatusActive {
+		t.Fatalf("expected provider status active, got %s", updatedProvider.Status)
+	}
 }

@@ -101,7 +101,7 @@ func TestValidateRoutingConfig_CloudNoFallbackOK(t *testing.T) {
 			{
 				Name:        "cloud-rule",
 				Priority:    10,
-				Condition:   RouteCondition{Header: "X-Tier", HeaderValue: "premium"},
+				Condition:   RouteCondition{Header: "X-Tier", HeaderValue: "large"},
 				TargetModel: "claude-sonnet",
 				Origin:      OriginCloud,
 				// No fallback needed for cloud

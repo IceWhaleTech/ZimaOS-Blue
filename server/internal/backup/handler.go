@@ -2,14 +2,17 @@ package backup
 
 import (
 	"context"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
 
 // Handler handles backup-related API endpoints
 type Handler struct {
-	manager *Manager
+	manager    *Manager
+	restartFn  func() error
 }
 
 // NewHandler creates a new backup handler
@@ -17,6 +20,11 @@ func NewHandler(manager *Manager) *Handler {
 	return &Handler{
 		manager: manager,
 	}
+}
+
+// SetRestartFunc sets the restart callback used for auto-restart after staged restore.
+func (h *Handler) SetRestartFunc(fn func() error) {
+	h.restartFn = fn
 }
 
 // RegisterRoutes registers backup routes on the given group
@@ -117,7 +125,10 @@ func (h *Handler) Delete(c echo.Context) error {
 
 // RestoreRequest represents a restore request
 type RestoreRequest struct {
-	Force bool `json:"force"` // Skip checksum verification
+	Force            bool  `json:"force"`                       // Skip checksum verification
+	RequireRestart   *bool `json:"require_restart,omitempty"`   // Default true for DB-safe restore
+	CreateCheckpoint *bool `json:"create_checkpoint,omitempty"` // Default true
+	AutoRestart      *bool `json:"auto_restart,omitempty"`      // Default true when require_restart=true
 }
 
 // Restore restores from a backup
@@ -134,6 +145,15 @@ func (h *Handler) Restore(c echo.Context) error {
 	var req RestoreRequest
 	c.Bind(&req) // Ignore error, use defaults if not provided
 
+	requireRestart := true
+	if req.RequireRestart != nil {
+		requireRestart = *req.RequireRestart
+	}
+	autoRestart := true
+	if req.AutoRestart != nil {
+		autoRestart = *req.AutoRestart
+	}
+
 	// Verify backup exists
 	if _, err := h.manager.Get(id); err != nil {
 		return c.JSON(http.StatusNotFound, map[string]interface{}{
@@ -146,6 +166,47 @@ func (h *Handler) Restore(c echo.Context) error {
 	// Perform restore with options
 	opts := DefaultRestoreOptions()
 	opts.SkipVerify = req.Force
+	if req.CreateCheckpoint != nil {
+		opts.CreateCheckpoint = *req.CreateCheckpoint
+	}
+
+	if requireRestart {
+		pending, err := h.manager.StageRestore(context.Background(), id)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+				"success": false,
+				"message": "Failed to stage restore",
+				"error":   err.Error(),
+			})
+		}
+		response := map[string]interface{}{
+			"success":          true,
+			"requires_restart": true,
+			"pending_restore":  pending,
+		}
+
+		if autoRestart && h.restartFn != nil {
+			response["restarting"] = true
+			response["message"] = "Restore staged successfully. Service will restart automatically to apply safely."
+			c.Response().Header().Set("Connection", "close")
+			if err := c.JSON(http.StatusOK, response); err != nil {
+				return err
+			}
+			c.Response().Flush()
+
+			go func() {
+				time.Sleep(250 * time.Millisecond)
+				if err := h.restartFn(); err != nil {
+					log.Printf("[backup] auto restart failed: %v", err)
+				}
+			}()
+			return nil
+		}
+
+		response["restarting"] = false
+		response["message"] = "Restore staged successfully. Restart service to apply safely (DB files will be replaced while offline)."
+		return c.JSON(http.StatusOK, response)
+	}
 
 	result, err := h.manager.Restore(context.Background(), id, opts)
 	if err != nil {
@@ -240,9 +301,9 @@ func (h *Handler) StageRestore(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success":         true,
-		"message":         "Restore staged successfully. Please restart the service to apply.",
-		"pending_restore": pending,
+		"success":          true,
+		"message":          "Restore staged successfully. Please restart the service to apply.",
+		"pending_restore":  pending,
 		"requires_restart": true,
 	})
 }

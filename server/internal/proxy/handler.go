@@ -2324,8 +2324,12 @@ func (ph *ProxyHandler) tryOnProvider(
 			}
 			if shouldRetryTransientUpstream5xx(pr.singleProvider, statusCode, errBody, upstreamAttempt) {
 				delay := transientUpstreamRetryDelay(upstreamAttempt)
+				errMsg := string(errBody)
+				if len(errMsg) > 500 {
+					errMsg = errMsg[:500]
+				}
 				slog.Warn("[proxy] transient upstream 5xx, retrying in single-provider mode",
-					"provider", pid, "status", statusCode, "attempt", upstreamAttempt+1, "delay", delay)
+					"provider", pid, "status", statusCode, "attempt", upstreamAttempt+1, "delay", delay, "error", errMsg)
 				select {
 				case <-r.Context().Done():
 					return nil, "", "", r.Context().Err()
@@ -2468,8 +2472,12 @@ func (ph *ProxyHandler) tryOnProvider(
 				}
 				if shouldRetryTransientUpstream5xx(pr.singleProvider, resp.StatusCode, errBody, upstreamAttempt) {
 					delay := transientUpstreamRetryDelay(upstreamAttempt)
+					errMsg := string(errBody)
+					if len(errMsg) > 500 {
+						errMsg = errMsg[:500]
+					}
 					slog.Warn("[proxy] transient upstream 5xx, retrying in single-provider mode",
-						"provider", pid, "status", resp.StatusCode, "attempt", upstreamAttempt+1, "delay", delay)
+						"provider", pid, "status", resp.StatusCode, "attempt", upstreamAttempt+1, "delay", delay, "error", errMsg)
 					select {
 					case <-r.Context().Done():
 						return nil, "", "", r.Context().Err()

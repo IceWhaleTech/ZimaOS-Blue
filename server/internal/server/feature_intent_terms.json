@@ -5,7 +5,10 @@
     "深度研究",
     "深入研究",
     "深度调研",
-    "深入调研"
+    "深入调研",
+    "人物调研",
+    "查阅观点",
+    "按时期调研"
   ],
   "deep_research_actions": [
     "deep dive",
@@ -16,7 +19,10 @@
     "详细调研",
     "全面调研",
     "深入分析",
-    "全面分析"
+    "全面分析",
+    "逐一调研",
+    "查阅",
+    "梳理"
   ],
   "deep_research_targets": [
     "资料",
@@ -26,7 +32,10 @@
     "sources",
     "citations",
     "evidence",
-    "references"
+    "references",
+    "观点",
+    "文章",
+    "不同时期"
   ],
   "deep_research_negations": [
     "no deep research",

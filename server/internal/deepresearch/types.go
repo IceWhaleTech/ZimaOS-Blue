@@ -34,6 +34,9 @@ type Job struct {
 	Query       string     `json:"query"`
 	Lang        string     `json:"lang,omitempty"`
 	Mode        Mode       `json:"mode"`
+	StrictEntity bool      `json:"strict_entity,omitempty"`
+	TimeWindows []string   `json:"time_windows,omitempty"`
+	ReportStyle string     `json:"report_style,omitempty"`
 	Status      JobStatus  `json:"status"`
 	Budget      Budget     `json:"budget"`
 	Progress    int        `json:"progress"`
@@ -48,11 +51,14 @@ type Job struct {
 }
 
 type Task struct {
-	ID       string `json:"id"`
-	Question string `json:"question"`
-	Priority int    `json:"priority"`
-	Depth    int    `json:"depth"`
-	Status   string `json:"status"`
+	ID          string   `json:"id"`
+	Question    string   `json:"question"`
+	Priority    int      `json:"priority"`
+	Depth       int      `json:"depth"`
+	Status      string   `json:"status"`
+	Category    string   `json:"category,omitempty"`
+	TimeWindow  string   `json:"time_window,omitempty"`
+	NegKeywords []string `json:"neg_keywords,omitempty"`
 }
 
 type Evidence struct {
@@ -65,9 +71,15 @@ type Evidence struct {
 	Source           string    `json:"source,omitempty"`
 	Domain           string    `json:"domain,omitempty"`
 	FetchedAt        time.Time `json:"fetched_at"`
+	PublishedAt      *time.Time `json:"published_at,omitempty"`
+	Author           string    `json:"author,omitempty"`
+	Quote            string    `json:"quote,omitempty"`
 	RelevanceScore   float64   `json:"relevance_score"`
 	CredibilityScore float64   `json:"credibility_score"`
 	NoveltyScore     float64   `json:"novelty_score"`
+	EntityScore      float64   `json:"entity_score,omitempty"`
+	ClaimKey         string    `json:"claim_key,omitempty"`
+	TimeLabel        string    `json:"time_label,omitempty"`
 }
 
 type Citation struct {
@@ -84,6 +96,23 @@ type Report struct {
 	SupportCount  int        `json:"support_count,omitempty"`
 	ConflictCount int        `json:"conflict_count,omitempty"`
 	HasConflict   bool       `json:"has_conflict,omitempty"`
+	CitationCoverage    float64              `json:"citation_coverage,omitempty"`
+	EntityDisambiguation *EntityDisambiguation `json:"entity_disambiguation,omitempty"`
+	StageErrors         []string             `json:"stage_errors,omitempty"`
+	TimelineSections    []TimelineSection    `json:"timeline_sections,omitempty"`
+}
+
+type EntityDisambiguation struct {
+	Enabled        bool    `json:"enabled"`
+	Threshold      float64 `json:"threshold"`
+	FilteredCount  int     `json:"filtered_count,omitempty"`
+	AmbiguousCount int     `json:"ambiguous_count,omitempty"`
+}
+
+type TimelineSection struct {
+	Label      string   `json:"label"`
+	Highlights []string `json:"highlights,omitempty"`
+	EvidenceIDs []string `json:"evidence_ids,omitempty"`
 }
 
 type Event struct {
@@ -100,4 +129,7 @@ type CreateJobRequest struct {
 	Mode     Mode    `json:"mode,omitempty"`
 	Lang     string  `json:"lang,omitempty"`
 	Budget   *Budget `json:"budget,omitempty"`
+	StrictEntity *bool    `json:"strict_entity,omitempty"`
+	TimeWindows  []string `json:"time_windows,omitempty"`
+	ReportStyle  string   `json:"report_style,omitempty"`
 }

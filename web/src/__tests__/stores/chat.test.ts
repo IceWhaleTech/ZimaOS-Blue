@@ -23,7 +23,7 @@ vi.mock('@/stores/settings', () => ({
     selectedProvider: 'openai',
     selectedModel: 'gpt-4o-mini',
     temperature: 0.7,
-    maxTokens: 2048,
+    maxTokens: 8192,
   }),
 }))
 

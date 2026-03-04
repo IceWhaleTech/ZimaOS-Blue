@@ -8,6 +8,9 @@ import (
 type mockDeepResearchExecutor struct{}
 
 func (m *mockDeepResearchExecutor) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	if args["format"] == "xml" {
+		return `<deep_research><query>test deep research</query><answer>test answer</answer></deep_research>`, nil
+	}
 	return map[string]any{
 		"query":          args["query"],
 		"mode":           "standard",
@@ -43,5 +46,55 @@ func TestDeepResearchSkill_ReturnsStructuredOutput(t *testing.T) {
 	}
 	if answer, ok := data["answer"].(string); !ok || answer == "" {
 		t.Fatalf("expected non-empty answer, got %#v", data["answer"])
+	}
+}
+
+func TestDeepResearchSkill_XMLOutputPassThrough(t *testing.T) {
+	s := NewDeepResearch()
+	s.SetExecutor(&mockDeepResearchExecutor{})
+
+	res, err := s.Execute(context.Background(), map[string]any{
+		"query":  "test deep research",
+		"format": "xml",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got error=%s", res.Error)
+	}
+
+	data, ok := res.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map data, got %T", res.Data)
+	}
+	raw, ok := data["result"].(string)
+	if !ok || raw == "" {
+		t.Fatalf("expected xml string result, got %#v", data["result"])
+	}
+}
+
+func TestDeepResearchSkill_ValidateRejectsInvalidFormat(t *testing.T) {
+	s := NewDeepResearch()
+	err := s.Validate(map[string]any{
+		"query":  "test deep research",
+		"format": "yaml",
+	})
+	if err == nil {
+		t.Fatalf("expected invalid format validation error")
+	}
+}
+
+func TestDeepResearchSkill_ValidateAcceptsFormatAliases(t *testing.T) {
+	s := NewDeepResearch()
+	input := map[string]any{
+		"query":  "test deep research",
+		"format": "text/xml;",
+	}
+	if err := s.Validate(input); err != nil {
+		t.Fatalf("expected alias format to pass validation: %v", err)
+	}
+	if got, _ := input["format"].(string); got != "xml" {
+		t.Fatalf("format = %q, want %q", got, "xml")
 	}
 }

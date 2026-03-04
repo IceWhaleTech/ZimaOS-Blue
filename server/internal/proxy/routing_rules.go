@@ -18,15 +18,26 @@ const (
 	OriginLocal ModelOrigin = "local"
 )
 
-// ModelTier indicates the cost tier of a model.
+// ModelTier indicates the routing tier of a model.
 type ModelTier string
 
 const (
-	TierPremium  ModelTier = "premium"  // e.g., Opus, GPT-4
-	TierStandard ModelTier = "standard" // e.g., Sonnet, GPT-4o
-	TierEconomy  ModelTier = "economy"  // e.g., Haiku, GPT-4o-mini
-	TierFree     ModelTier = "free"     // e.g., local Ollama models
+	// Current tiers
+	TierLarge ModelTier = "large" // primary LLM tier
+	TierSmall ModelTier = "small" // built-in small-model tier
 )
+
+// normalizeModelTier maps case-insensitive tier names to canonical large/small tiers.
+func normalizeModelTier(tier ModelTier) ModelTier {
+	switch strings.ToLower(strings.TrimSpace(string(tier))) {
+	case string(TierLarge):
+		return TierLarge
+	case string(TierSmall):
+		return TierSmall
+	default:
+		return tier
+	}
+}
 
 // RoutingRule defines a single condition-based routing rule.
 // Routes requests to cheaper/smaller models based on task complexity.
@@ -155,10 +166,10 @@ func evaluateCondition(cond *RouteCondition, toolRe *regexp.Regexp, req *RouteRe
 // compiledRoutingRule holds a rule with pre-compiled regex and pre-built decision.
 // Condition fields are flattened to avoid pointer chasing through rule.Condition on the hot path.
 type compiledRoutingRule struct {
-	rule      RoutingRule
-	toolRe    *regexp.Regexp
-	decision  RouteDecision  // pre-built at init time, returned by pointer on match (zero allocs)
-	disabled  *atomic.Bool   // runtime toggle (default false = enabled); pointer avoids copy-lock
+	rule     RoutingRule
+	toolRe   *regexp.Regexp
+	decision RouteDecision // pre-built at init time, returned by pointer on match (zero allocs)
+	disabled *atomic.Bool  // runtime toggle (default false = enabled); pointer avoids copy-lock
 	// Flattened condition fields — avoid indirection through rule.Condition on hot path
 	hasHeader bool
 	headerKey string

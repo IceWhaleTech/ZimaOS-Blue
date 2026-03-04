@@ -657,7 +657,7 @@ func TestServiceSearchCacheDoesNotCacheErrors(t *testing.T) {
 		},
 	}, &mockSearcher{
 		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
-			if atomic.AddInt32(&calls, 1) == 1 {
+			if atomic.AddInt32(&calls, 1) <= 3 {
 				return nil, errors.New("temporary upstream error")
 			}
 			return []SearchHit{
@@ -689,8 +689,8 @@ func TestServiceSearchCacheDoesNotCacheErrors(t *testing.T) {
 	if second.Status != JobStatusCompleted {
 		t.Fatalf("expected second job completed status, got %s (err=%s)", second.Status, second.Error)
 	}
-	if got := atomic.LoadInt32(&calls); got != 2 {
-		t.Fatalf("underlying search calls = %d, want 2 (error should not be cached)", got)
+	if got := atomic.LoadInt32(&calls); got != 4 {
+		t.Fatalf("underlying search calls = %d, want 4 (all failed attempts should not be cached)", got)
 	}
 }
 
@@ -894,6 +894,7 @@ func TestSynthesizeReport_ConflictMetrics(t *testing.T) {
 			Domain:           "example.com",
 			RelevanceScore:   0.9,
 			CredibilityScore: 0.8,
+			ClaimKey:         "feature|rollout",
 		},
 		{
 			ID:               "ev2",
@@ -902,6 +903,7 @@ func TestSynthesizeReport_ConflictMetrics(t *testing.T) {
 			Domain:           "example.com",
 			RelevanceScore:   0.8,
 			CredibilityScore: 0.7,
+			ClaimKey:         "feature|rollout",
 		},
 	})
 	if !report.HasConflict {
@@ -959,5 +961,101 @@ func TestClampBudget(t *testing.T) {
 	}
 	if fast.MaxSeconds != fastDef.MaxSeconds*2 {
 		t.Fatalf("fast MaxSeconds clamp = %d, want %d", fast.MaxSeconds, fastDef.MaxSeconds*2)
+	}
+}
+
+func TestSearchWithRetryEventuallySucceeds(t *testing.T) {
+	var calls int32
+	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			if atomic.AddInt32(&calls, 1) < 3 {
+				return nil, errors.New("temporary")
+			}
+			return []SearchHit{{Title: "ok", URL: "https://example.com", Description: "ok"}}, nil
+		},
+	})
+	hits, err := svc.searchWithRetry(context.Background(), "job-1", "retry test", 5, "en-US")
+	if err != nil {
+		t.Fatalf("searchWithRetry failed: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatalf("expected non-empty hits")
+	}
+	if got := atomic.LoadInt32(&calls); got != 3 {
+		t.Fatalf("calls = %d, want 3", got)
+	}
+}
+
+func TestSynthesizeReportWithOptions_TimelineAndCoverage(t *testing.T) {
+	ts := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+	report := synthesizeReportWithOptions("付强 观点调研", "zh-CN", []Evidence{
+		{
+			ID:               "ev1",
+			Title:            "2024 访谈观点",
+			URL:              "https://example.com/1",
+			Snippet:          "观点一",
+			PublishedAt:      &ts,
+			RelevanceScore:   0.9,
+			CredibilityScore: 0.8,
+		},
+	}, reportBuildOptions{
+		ReportStyle:      "timeline",
+		UseTimelineStyle: true,
+		StageErrors:      []string{"search failed: test"},
+	})
+	if len(report.TimelineSections) == 0 {
+		t.Fatalf("expected timeline sections")
+	}
+	if report.CitationCoverage <= 0 {
+		t.Fatalf("expected citation coverage > 0")
+	}
+	if len(report.StageErrors) == 0 {
+		t.Fatalf("expected stage errors to be preserved")
+	}
+}
+
+func TestServiceRunJob_V2StrictEntityFiltersNoise(t *testing.T) {
+	svc := NewService(&mockPlanner{
+		plan: func(query string, mode Mode, lang string) []Task {
+			return []Task{{
+				ID:          "task_1",
+				Question:    "付强 蓝驰 观点",
+				Priority:    1,
+				Depth:       1,
+				Status:      "pending",
+				NegKeywords: []string{"汽车", "无关"},
+			}}
+		},
+	}, &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			return []SearchHit{
+				{Title: "蓝驰创投付强观点", URL: "https://example.com/ok", Description: "付强 蓝驰 合伙人"},
+				{Title: "某汽车公司付强", URL: "https://example.com/noise", Description: "与蓝驰无关 汽车"},
+			}, nil
+		},
+	})
+	svc.SetV2Enabled(true)
+	strict := true
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:        "蓝驰创投 付强 合伙人 观点",
+		Mode:         ModeStandard,
+		StrictEntity: &strict,
+	})
+	if err != nil {
+		t.Fatalf("create job failed: %v", err)
+	}
+	current := waitForTerminalJob(t, svc, job.ID, 3*time.Second)
+	if current.Status != JobStatusCompleted {
+		t.Fatalf("expected completed status, got %s", current.Status)
+	}
+	if len(current.Evidence) != 1 {
+		t.Fatalf("expected 1 evidence after strict filtering, got %d", len(current.Evidence))
+	}
+	if current.Report == nil || current.Report.EntityDisambiguation == nil {
+		t.Fatalf("expected entity disambiguation report section")
+	}
+	if current.Report.EntityDisambiguation.FilteredCount == 0 {
+		t.Fatalf("expected filtered_count > 0")
 	}
 }

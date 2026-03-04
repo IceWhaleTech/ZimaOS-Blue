@@ -143,6 +143,22 @@ export interface FixScanIssueResponse {
   details?: string
 }
 
+export interface PromptFirewallRule {
+  id: string
+  keyword: string
+  enabled: boolean
+  created_at?: string
+  type?: 'builtin' | 'custom'
+  built_in?: boolean
+  description?: string
+}
+
+export interface PromptFirewallConfig {
+  enabled: boolean
+  rules: PromptFirewallRule[]
+  rule_count: number
+}
+
 // CORS configuration types
 export interface CORSConfig {
   allowed_origins: string[]
@@ -243,6 +259,22 @@ export const securityApi = {
 
   fixScanIssue: (fixAction: string) =>
     api.post<FixScanIssueResponse>('/security/scan/fix', { fix_action: fixAction }),
+
+  // Prompt firewall
+  getPromptFirewall: () =>
+    api.get<PromptFirewallConfig>('/security/firewall'),
+
+  updatePromptFirewall: (enabled: boolean) =>
+    api.put<PromptFirewallConfig>('/security/firewall', { enabled }),
+
+  addPromptFirewallRule: (keyword: string, enabled = true) =>
+    api.post<PromptFirewallConfig>('/security/firewall/rules', { keyword, enabled }),
+
+  updatePromptFirewallRule: (id: string, patch: { keyword?: string; enabled?: boolean }) =>
+    api.put<PromptFirewallConfig>(`/security/firewall/rules/${encodeURIComponent(id)}`, patch),
+
+  deletePromptFirewallRule: (id: string) =>
+    api.delete<PromptFirewallConfig>(`/security/firewall/rules/${encodeURIComponent(id)}`),
 
   // CORS configuration
   getCORSConfig: () =>

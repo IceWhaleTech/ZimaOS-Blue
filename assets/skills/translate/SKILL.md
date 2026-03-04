@@ -1,3 +1,8 @@
+---
+name: translate
+description: Translate text between languages with optional source language autodetection.
+---
+
 # Translate
 
 Translate text between languages.

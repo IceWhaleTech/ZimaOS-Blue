@@ -80,6 +80,7 @@ declare module 'vue' {
     CreateUserModal: typeof import('./components/users/CreateUserModal.vue')['default']
     DashboardCard: typeof import('./components/dashboard/DashboardCard.vue')['default']
     DashboardCustomizer: typeof import('./components/dashboard/DashboardCustomizer.vue')['default']
+    DataMaskingSettings: typeof import('./components/security/DataMaskingSettings.vue')['default']
     DonutChart: typeof import('./components/DonutChart.vue')['default']
     DownloadProgress: typeof import('./components/cli/DownloadProgress.vue')['default']
     EditUserModal: typeof import('./components/users/EditUserModal.vue')['default']

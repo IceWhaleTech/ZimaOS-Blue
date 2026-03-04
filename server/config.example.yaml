@@ -188,3 +188,27 @@ proxy:
     critical_threshold: 5.0    # Critical when below 5%
     track_tokens: true
     track_requests: true
+
+# OTA update
+update:
+  enabled: true
+  check_interval: "24h"
+  auto_download: false
+  auto_apply: false
+  release_channel: "stable"  # stable, beta, alpha
+  backup_count: 3
+  storage_path: "./data/updates"
+
+# Tool calling adapters + web search runtime
+tool_calling:
+  auto_detect: true
+  detection_timeout: "5s"
+  web_search:
+    provider: "duckduckgo"  # single provider (legacy)
+    providers: ["duckduckgo"]  # high availability chain, priority order
+    api_key: ""             # required for brave
+    base_url: ""            # required for searxng
+    max_results: 5
+    timeout: "30s"
+    safe_search: false
+    region: "wt-wt"

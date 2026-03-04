@@ -4,6 +4,7 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -35,6 +36,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepresearch"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/gateway"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/heartbeat"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
@@ -58,6 +60,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
@@ -398,6 +401,7 @@ type RoutesDeps struct {
 	MetricsWriter    *metrics.MetricsWriter
 	MetricsCollector *metrics.Collector
 	ChatHandler      *server.ChatHandler
+	SessionHandler   *server.SessionHandler
 	PluginRegistry   *plugin.Registry
 	PluginStore      *plugin.Store
 	ExtauthService   extauth.Service
@@ -434,6 +438,8 @@ type RoutesDeps struct {
 	HotReloader        *config.HotReloader
 	WorkspaceHandler   *workspace.Handler
 	SSEBroker          *sse.Broker
+	Gateway            *gateway.Gateway
+	GatewayHandler     *gateway.Handler
 
 	// IPC backends (optional, wired from main.go)
 	BrowserIPC     sockipc.BrowserBackend
@@ -874,6 +880,18 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	protected := v1.Group("")
 	protected.Use(deps.AuthMiddleware.Authenticate())
 
+	// Session control plane routes (protected)
+	if deps.SessionHandler != nil {
+		deps.SessionHandler.RegisterRoutes(protected)
+	}
+
+	// Gateway REST + WS routes
+	if deps.Gateway != nil && deps.GatewayHandler != nil {
+		registerGatewayMethods(deps.Gateway, deps)
+		deps.GatewayHandler.RegisterRoutes(e, protected)
+		deps.Closers = append(deps.Closers, gatewayStopper{gateway: deps.Gateway})
+	}
+
 	// Protected external auth routes
 	if deps.ExtauthHandler != nil {
 		protectedAuthGroup := protected.Group("/auth")
@@ -931,6 +949,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Set prompt guard on chat handler
 	promptGuard := promptguard.NewDetector(promptguard.DefaultDetectorConfig())
 	deps.ChatHandler.SetPromptGuard(promptGuard)
+	if deps.SecurityHandler != nil {
+		deps.SecurityHandler.SetPromptGuard(promptGuard)
+	}
 	var skillAutoReranker *claudecode.AutoSkillReranker
 
 	// Smart tool selection
@@ -967,8 +988,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Register chat routes
 	deps.ChatHandler.RegisterRoutes(v1)
 
+	webSearchConfig := buildWebSearchConfig(deps.Config)
+
 	// Deep research service (shared by API + skill executor)
-	deepResearchService := deepresearch.NewService(nil, nil)
+	deepResearchService := deepresearch.NewService(nil, deepresearch.NewToolWebSearcherWithConfig(webSearchConfig))
 	deps.ChatHandler.SetDeepResearchService(deepResearchService)
 
 	// Register auto-reply routes
@@ -1099,13 +1122,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Wire backing services into skills
-	if deps.SandboxManager != nil {
-		if sk := s.SkillRegistry.Get("sandbox"); sk != nil {
-			if sb, ok := sk.(*builtin.Sandbox); ok {
-				sb.SetSandboxService(sandbox.NewSkillAdapter(deps.SandboxManager))
-			}
-		}
-	}
 	if deps.CronHandler != nil {
 		cronAdapter := cron.NewSkillAdapter(deps.CronHandler.GetService)
 		if sk := s.SkillRegistry.Get("scheduler"); sk != nil {
@@ -1121,14 +1137,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			})
 		}
 	}
-	if deps.WorkflowHandler != nil {
-		if sk := s.SkillRegistry.Get("workflows"); sk != nil {
-			if ws, ok := sk.(*builtin.Workflows); ok {
-				ws.SetWorkflowService(workflow.NewSkillAdapter(deps.WorkflowHandler.GetService))
-			}
-		}
-	}
-
 	// Browser + UI reviewer: wire backends for IPC and LLM tool use.
 	if deps.LazyBrowserSvc != nil {
 		uiTool := &tools.UIReviewerTool{}
@@ -1140,7 +1148,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if deps.BrowserBackend != nil {
 		if sk := s.SkillRegistry.Get("browser"); sk != nil {
 			if br, ok := sk.(*builtin.Browser); ok {
-				br.SetBrowserService(browser.NewLazySkillAdapter(deps.LazyBrowserSvc))
+				br.SetBrowserService(newLazyBrowserSkillAdapter(deps.LazyBrowserSvc))
 			}
 		}
 	}
@@ -1148,7 +1156,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	if deps.LazyBrowserSvc != nil {
 		if sk := s.SkillRegistry.Get("ui_reviewer"); sk != nil {
 			if ur, ok := sk.(*builtin.UIReviewer); ok {
-				ur.SetBrowserService(browser.NewLazySkillAdapter(deps.LazyBrowserSvc))
+				ur.SetBrowserService(newLazyBrowserSkillAdapter(deps.LazyBrowserSvc))
 			}
 		}
 	}
@@ -1185,7 +1193,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// Web search: wire WebSearchTool into the web_search skill.
 	if sk := s.SkillRegistry.Get("web_search"); sk != nil {
 		if ws, ok := sk.(*builtin.WebSearch); ok {
-			ws.SetSearcher(tools.NewWebSearchTool(tools.WebSearchConfig{}))
+			ws.SetSearcher(tools.NewWebSearchTool(webSearchConfig))
 		}
 	}
 
@@ -1420,6 +1428,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Security routes (protected)
 	if deps.SecurityHandler != nil {
+		deps.SecurityHandler.SetDataDir(cfg.DataDir)
 		securityGroup := protected.Group("/security")
 		deps.SecurityHandler.RegisterRoutes(securityGroup)
 	} else {
@@ -1710,7 +1719,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Data masking (hoisted so toggle state is accessible from proxy block)
 	dataMasker := proxy.NewDataMasker(nil)
-	// Load default rules (all disabled by default — users enable via API)
+	// Load built-in default rules (enabled by default when masking is turned on)
 	for _, rule := range proxy.GetDefaultRules() {
 		dataMasker.AddRule(rule)
 	}
@@ -1735,6 +1744,32 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				return c.JSON(400, map[string]string{"error": err.Error()})
 			}
 			return c.JSON(201, map[string]interface{}{"message": "rule added", "rule": rule})
+		})
+		maskingGroup.PUT("/rules/:id", func(c echo.Context) error {
+			id := strings.TrimSpace(c.Param("id"))
+			if id == "" {
+				return c.JSON(400, map[string]string{"error": "id required"})
+			}
+
+			var req struct {
+				Enabled *bool `json:"enabled"`
+			}
+			if err := c.Bind(&req); err != nil || req.Enabled == nil {
+				return c.JSON(400, map[string]string{"error": "enabled field required"})
+			}
+
+			if !dataMasker.SetRuleEnabled(id, *req.Enabled) {
+				return c.JSON(404, map[string]string{"error": "rule not found"})
+			}
+			if maskingOnToggle != nil {
+				maskingOnToggle()
+			}
+			rule, _ := dataMasker.GetRule(id)
+			return c.JSON(200, map[string]interface{}{
+				"message": "rule updated",
+				"rule":    rule,
+				"stats":   dataMasker.Stats(),
+			})
 		})
 		maskingGroup.DELETE("/rules", func(c echo.Context) error {
 			id := c.QueryParam("id")
@@ -1973,6 +2008,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				FailoverConfig:     &routingConfig.Failover,
 				Version:            1,
 			}
+			if rules := dataMasker.ListRules(); len(rules) > 0 {
+				state.MaskingRules = make(map[string]bool, len(rules))
+				for _, r := range rules {
+					if r == nil || strings.TrimSpace(r.ID) == "" {
+						continue
+					}
+					state.MaskingRules[r.ID] = r.Enabled
+				}
+			}
 			// Capture individual routing rule states
 			if rules := proxyHandler.GetRoutingRules(); len(rules) > 0 {
 				state.RoutingRules = make(map[string]bool, len(rules))
@@ -2025,6 +2069,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				proxyHandler.SetRoutingEnabled(saved.RoutingEnabled)
 				proxyHandler.SetPromptCacheEnabled(saved.PromptCacheEnabled)
 				dataMasker.SetEnabled(saved.MaskingEnabled)
+				for id, enabled := range saved.MaskingRules {
+					dataMasker.SetRuleEnabled(id, enabled)
+				}
 				if saved.FailoverConfig != nil {
 					routingConfig.Failover = *saved.FailoverConfig
 				}
@@ -2282,6 +2329,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	otaChecker := update.NewOTAChecker(cfg.Version, cfg.DataDir, "")
 	updateHandler.SetOTAChecker(otaChecker)
 	go otaChecker.Run(deps.Ctx)
+	updateHandler.StartAutoUpdater(deps.Ctx)
 
 	logger.Info("OTA update routes registered", zap.Bool("enabled", deps.Config.Update.Enabled))
 
@@ -2387,16 +2435,17 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// User settings routes (protected)
 	settingsHandler := server.NewSettingsHandler(kv)
+	settingsHandler.SetChatHandler(deps.ChatHandler)
 	smManager := smallmodel.NewManager(cfg.DataDir)
 	settingsHandler.SetSmallModelManager(smManager)
 	smallRuntime := smallmodel.NewNativeRuntime(smManager)
 	deps.ChatHandler.SetSmallModelRuntime(smallRuntime)
-	deps.ChatHandler.SetShadowQualityStore(server.NewShadowQualityStore(kv, 512))
 	settingsHandler.RegisterRoutes(protected)
 	// Also make locale available to provider settings handler
 	providerSettingsHandler.SetSettingsHandler(settingsHandler)
 	// Wire settings into chat handler for runtime smart tool selection toggle
 	deps.ChatHandler.SetSettingsHandler(settingsHandler)
+	deepResearchService.SetV2Enabled(settingsHandler.GetDeepResearchV2Enabled())
 	if deps.AnalyzeTool != nil {
 		deps.AnalyzeTool.SetSmallModelRuntime(smallRuntime)
 		deps.AnalyzeTool.SetSmallModelSwitchFuncs(
@@ -2475,6 +2524,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			return time.Duration(seconds) * time.Second
 		})
 		agentRunnerRef.SetAskTimeoutActionFunc(settingsHandler.GetAgentAskTimeoutAction)
+		agentRunnerRef.SetMaxToolRoundsPerStepFunc(settingsHandler.GetAgentLoopPolicyMaxToolRounds)
 	}
 
 	// User-level routes (protected) — /api/v1/my/*
@@ -2543,6 +2593,189 @@ type execApprovalAdapter struct {
 
 func (a execApprovalAdapter) ResolveApproval(id string, decision string) bool {
 	return a.mgr.ResolveApproval(id, tools.ApprovalDecision(decision))
+}
+
+type gatewayStopper struct {
+	gateway *gateway.Gateway
+}
+
+func (g gatewayStopper) Close() error {
+	if g.gateway != nil {
+		g.gateway.Stop()
+	}
+	return nil
+}
+
+func registerGatewayMethods(gw *gateway.Gateway, deps *RoutesDeps) {
+	if gw == nil || deps == nil {
+		return
+	}
+	browserGatewayTool := tools.NewBrowserTool()
+	if deps.BrowserBackend != nil {
+		browserGatewayTool.SetBackend(deps.BrowserBackend)
+	}
+
+	gw.RegisterHandler("chat.send", func(ctx context.Context, conn *gateway.Connection, msg *gateway.Message) (*gateway.Message, error) {
+		if deps.ChatHandler == nil {
+			return nil, fmt.Errorf("chat handler not configured")
+		}
+		var req struct {
+			ConversationID string `json:"conversation_id"`
+			Content        string `json:"content"`
+		}
+		if err := decodeGatewayPayload(msg, &req); err != nil {
+			return nil, err
+		}
+		respContent, err := deps.ChatHandler.GatewaySend(ctx, req.ConversationID, req.Content, conn.UserID)
+		if err != nil {
+			return nil, err
+		}
+		return gatewayMessageWithPayload(map[string]interface{}{
+			"conversation_id": req.ConversationID,
+			"content":         respContent,
+		})
+	})
+
+	gw.RegisterHandler("chat.abort", func(_ context.Context, _ *gateway.Connection, msg *gateway.Message) (*gateway.Message, error) {
+		if deps.ChatHandler == nil {
+			return nil, fmt.Errorf("chat handler not configured")
+		}
+		var req struct {
+			ConversationID string `json:"conversation_id"`
+		}
+		if err := decodeGatewayPayload(msg, &req); err != nil {
+			return nil, err
+		}
+		streamID, cancelled := deps.ChatHandler.CancelConversationStream(req.ConversationID)
+		return gatewayMessageWithPayload(map[string]interface{}{
+			"conversation_id": req.ConversationID,
+			"stream_id":       streamID,
+			"cancelled":       cancelled,
+		})
+	})
+
+	gw.RegisterHandler("sessions.list", func(_ context.Context, _ *gateway.Connection, _ *gateway.Message) (*gateway.Message, error) {
+		if deps.SessionHandler == nil || deps.SessionHandler.Manager() == nil {
+			return nil, fmt.Errorf("session manager not configured")
+		}
+		items, err := deps.SessionHandler.Manager().List(session.SessionFilter{
+			Limit:  200,
+			Offset: 0,
+		})
+		if err != nil {
+			return nil, err
+		}
+		infos := make([]session.SessionInfo, len(items))
+		for i, s := range items {
+			infos[i] = s.Info()
+		}
+		return gatewayMessageWithPayload(map[string]interface{}{
+			"sessions": infos,
+			"total":    len(infos),
+		})
+	})
+
+	gw.RegisterHandler("sessions.reset", func(_ context.Context, _ *gateway.Connection, msg *gateway.Message) (*gateway.Message, error) {
+		if deps.SessionHandler == nil || deps.SessionHandler.Manager() == nil {
+			return nil, fmt.Errorf("session manager not configured")
+		}
+		var req struct {
+			SessionID string `json:"session_id"`
+		}
+		if err := decodeGatewayPayload(msg, &req); err != nil {
+			return nil, err
+		}
+		parsed, err := session.ParseSessionID(req.SessionID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid session_id: %w", err)
+		}
+		if err := deps.SessionHandler.Manager().Reset(parsed); err != nil {
+			return nil, err
+		}
+		return gatewayMessageWithPayload(map[string]interface{}{
+			"session_id": req.SessionID,
+			"reset":      true,
+		})
+	})
+
+	gw.RegisterHandler("browser.request", func(ctx context.Context, _ *gateway.Connection, msg *gateway.Message) (*gateway.Message, error) {
+		if deps.BrowserBackend == nil {
+			return nil, fmt.Errorf("browser backend not configured")
+		}
+		var req struct {
+			Action string                 `json:"action"`
+			Params map[string]interface{} `json:"params"`
+		}
+		if err := decodeGatewayPayload(msg, &req); err != nil {
+			return nil, err
+		}
+		action := strings.TrimSpace(req.Action)
+		if action == "" {
+			return nil, fmt.Errorf("action is required")
+		}
+
+		args := make(map[string]interface{}, len(req.Params)+1)
+		args["action"] = action
+		for k, v := range req.Params {
+			args[k] = v
+		}
+
+		result, err := browserGatewayTool.Execute(ctx, args)
+		if err != nil {
+			return nil, err
+		}
+		return gatewayMessageWithPayload(map[string]interface{}{
+			"action": strings.ToLower(action),
+			"result": result,
+		})
+	})
+
+	gw.RegisterHandler("hooks.wake", func(ctx context.Context, _ *gateway.Connection, msg *gateway.Message) (*gateway.Message, error) {
+		if deps.PluginRegistry == nil {
+			return nil, fmt.Errorf("plugin registry not configured")
+		}
+		var req struct {
+			HookID  string      `json:"hook_id"`
+			Payload interface{} `json:"payload"`
+		}
+		if err := decodeGatewayPayload(msg, &req); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(req.HookID) == "" {
+			return nil, fmt.Errorf("hook_id is required")
+		}
+		if err := deps.PluginRegistry.TriggerHook(ctx, req.HookID, req.Payload); err != nil {
+			return nil, err
+		}
+		return gatewayMessageWithPayload(map[string]interface{}{
+			"hook_id": req.HookID,
+			"woke":    true,
+		})
+	})
+}
+
+func decodeGatewayPayload(msg *gateway.Message, out interface{}) error {
+	if msg == nil {
+		return fmt.Errorf("nil message")
+	}
+	if out == nil {
+		return fmt.Errorf("nil payload target")
+	}
+	if len(msg.Payload) == 0 {
+		return fmt.Errorf("payload is required")
+	}
+	if err := json.Unmarshal(msg.Payload, out); err != nil {
+		return fmt.Errorf("invalid payload: %w", err)
+	}
+	return nil
+}
+
+func gatewayMessageWithPayload(payload interface{}) (*gateway.Message, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	return &gateway.Message{Payload: raw}, nil
 }
 
 // InitMetrics initializes metrics services

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cardproto"
+	cardconv "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cards"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 )
 
@@ -203,48 +204,84 @@ func emitIPCCard(cmd string, resp *sockipc.Response) bool {
 		return false
 	}
 
+	payload := parseIPCResponsePayload(resp.Data)
+	if len(payload) == 0 {
+		return false
+	}
+
 	// If the handler set a _card hint, use it as the card type and pass
 	// the data through (e.g. ui_reviewer returns _card=ui_reviewer).
 	if hint, ok := resp.Data["_card"]; ok && hint != "" {
-		card := make(map[string]interface{}, len(resp.Data))
-		for k, v := range resp.Data {
-			if k == "_card" || k == "success" {
-				continue
-			}
-			// Try to recover structured data that was JSON-serialized
-			// through the map[string]string IPC transport.
-			if len(v) > 0 && (v[0] == '[' || v[0] == '{') {
-				var parsed interface{}
-				if json.Unmarshal([]byte(v), &parsed) == nil {
-					card[k] = parsed
-					continue
+		if shouldConvertIPCCardHint(hint) {
+			// Legacy IPC shape: {"_card":"ui_reviewer","result":"{...json...}"}
+			if raw := strings.TrimSpace(resp.Data["result"]); raw != "" {
+				if card := cardconv.ToCard(hint, raw); card != nil {
+					cardproto.Emit(card)
+					return true
 				}
 			}
-			card[k] = v
+
+			if b, err := json.Marshal(payload); err == nil {
+				if card := cardconv.ToCard(hint, string(b)); card != nil {
+					cardproto.Emit(card)
+					return true
+				}
+			}
 		}
-		card["type"] = hint
-		cardproto.Emit(card)
+
+		// Fallback: keep explicit card hint unchanged (e.g. search).
+		payload["type"] = hint
+		cardproto.Emit(payload)
 		return true
 	}
 
-	// Build a generic result card from the IPC response.
-	details := make([]map[string]interface{}, 0, len(resp.Data))
-	for k, v := range resp.Data {
+	// No explicit hint: infer card by command name if possible.
+	if b, err := json.Marshal(payload); err == nil {
+		if card := cardconv.ToCard(cmd, string(b)); card != nil {
+			cardproto.Emit(card)
+			return true
+		}
+	}
+
+	// Generic result fallback.
+	details := make([]map[string]interface{}, 0, len(payload))
+	for k, v := range payload {
 		details = append(details, map[string]interface{}{
 			"label": k,
 			"value": v,
 		})
 	}
-
-	// Use the IPC command name (e.g. "browser.navigate") as the title,
-	// replacing dots with spaces for readability.
-	title := strings.ReplaceAll(cmd, ".", " ")
-
 	cardproto.Emit(map[string]interface{}{
 		"type":    "result",
 		"status":  "success",
-		"title":   title,
+		"title":   strings.ReplaceAll(cmd, ".", " "),
 		"details": details,
 	})
 	return true
+}
+
+func parseIPCResponsePayload(data map[string]string) map[string]interface{} {
+	payload := make(map[string]interface{}, len(data))
+	for k, v := range data {
+		if k == "_card" || k == "success" {
+			continue
+		}
+
+		var parsed interface{}
+		if err := json.Unmarshal([]byte(v), &parsed); err == nil {
+			payload[k] = parsed
+			continue
+		}
+		payload[k] = v
+	}
+	return payload
+}
+
+func shouldConvertIPCCardHint(hint string) bool {
+	switch strings.TrimSpace(hint) {
+	case "ui_reviewer", "deep_research", "deep-research", "analyze":
+		return true
+	default:
+		return false
+	}
 }

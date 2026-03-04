@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,32 +205,104 @@ func TestGetSmallModelDefaults(t *testing.T) {
 	if h.GetSmallModelEnabled() {
 		t.Fatal("GetSmallModelEnabled() = true, want false")
 	}
-	if got := h.GetSmallModelRuntime(); got != "llama_cpp_native" {
-		t.Fatalf("GetSmallModelRuntime() = %q, want llama_cpp_native", got)
+	if got := h.GetSmallModelRuntime(); got != "onnx_genai_python" {
+		t.Fatalf("GetSmallModelRuntime() = %q, want onnx_genai_python", got)
 	}
-	if got := h.GetSmallModelID(); got != "lfm2.5-1.2b-instruct-q4km" {
-		t.Fatalf("GetSmallModelID() = %q, want lfm2.5-1.2b-instruct-q4km", got)
+	if got := h.GetSmallModelID(); got != "qwen3.5-0.8b-onnx-q4" {
+		t.Fatalf("GetSmallModelID() = %q, want qwen3.5-0.8b-onnx-q4", got)
 	}
 	if !h.GetSmallModelAutoDownload() {
 		t.Fatal("GetSmallModelAutoDownload() = false, want true")
 	}
-	if got := h.GetSmallModelShadowRatio(); got != 0.1 {
-		t.Fatalf("GetSmallModelShadowRatio() = %v, want 0.1", got)
-	}
-	if got := h.GetSmallModelShadowGateMinSamples(); got != 40 {
-		t.Fatalf("GetSmallModelShadowGateMinSamples() = %v, want 40", got)
-	}
-	if got := h.GetSmallModelShadowGateThresholdDelta(); got != 0.35 {
-		t.Fatalf("GetSmallModelShadowGateThresholdDelta() = %v, want 0.35", got)
-	}
-	if got := h.GetSmallModelShadowGateScene(); got != "" {
-		t.Fatalf("GetSmallModelShadowGateScene() = %q, want empty", got)
-	}
 	if !h.GetSmallModelSummaryEnabled() || !h.GetSmallModelDocExtractEnabled() || !h.GetSmallModelRerankEnabled() || !h.GetSmallModelContextPruneEnabled() {
 		t.Fatal("expected phase1 enhancement switches default true")
 	}
-	if h.GetSmallModelRouteShortQAEnabled() || h.GetSmallModelRouteToolDispatchEnabled() {
-		t.Fatal("expected short-qa/tool-dispatch route switches default false")
+	if !h.GetSmallModelMediaIntentEnabled() {
+		t.Fatal("expected media intent switch default true")
+	}
+	if !h.GetSmallModelRouteShortQAEnabled() || !h.GetSmallModelRouteToolDispatchEnabled() {
+		t.Fatal("expected short-qa/tool-dispatch route switches default true")
+	}
+	if !h.GetDeepResearchV2Enabled() {
+		t.Fatal("expected deep research v2 switch default true")
+	}
+}
+
+func TestPatchDeepResearchV2Enabled_Persisted(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"deep_research_v2_enabled":true}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Patch(c); err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !h.GetDeepResearchV2Enabled() {
+		t.Fatal("expected deep research v2 switch enabled after patch")
+	}
+
+	h2 := NewSettingsHandler(store)
+	if !h2.GetDeepResearchV2Enabled() {
+		t.Fatal("expected persisted deep research v2 switch enabled")
+	}
+}
+
+func TestPatchDeepResearchV2Disabled_Persisted(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"deep_research_v2_enabled":false}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Patch(c); err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if h.GetDeepResearchV2Enabled() {
+		t.Fatal("expected deep research v2 switch disabled after patch")
+	}
+
+	h2 := NewSettingsHandler(store)
+	if h2.GetDeepResearchV2Enabled() {
+		t.Fatal("expected persisted deep research v2 switch disabled")
+	}
+}
+
+func TestPatchSmallModelMediaIntentEnabled_Persisted(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"small_model_media_intent_enabled":false}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Patch(c); err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if h.GetSmallModelMediaIntentEnabled() {
+		t.Fatal("expected media intent switch disabled after patch")
+	}
+
+	h2 := NewSettingsHandler(store)
+	if h2.GetSmallModelMediaIntentEnabled() {
+		t.Fatal("expected persisted media intent switch disabled")
 	}
 }
 
@@ -285,122 +358,6 @@ func TestSetSmallModelRouteToolDispatchEnabled_Persisted(t *testing.T) {
 	changed, err = h2.SetSmallModelRouteToolDispatchEnabled(true)
 	if err != nil {
 		t.Fatalf("SetSmallModelRouteToolDispatchEnabled(true) second call failed: %v", err)
-	}
-	if changed {
-		t.Fatal("expected changed=false when setting unchanged")
-	}
-}
-
-func TestSetSmallModelShadowGateMinSamples_Persisted(t *testing.T) {
-	store := kvstore.NewMemoryStore()
-	h := NewSettingsHandler(store)
-
-	changed, err := h.SetSmallModelShadowGateMinSamples(60)
-	if err != nil {
-		t.Fatalf("SetSmallModelShadowGateMinSamples(60) failed: %v", err)
-	}
-	if !changed {
-		t.Fatal("expected changed=true on first update")
-	}
-	if got := h.GetSmallModelShadowGateMinSamples(); got != 60 {
-		t.Fatalf("GetSmallModelShadowGateMinSamples() = %d, want 60", got)
-	}
-
-	h2 := NewSettingsHandler(store)
-	if got := h2.GetSmallModelShadowGateMinSamples(); got != 60 {
-		t.Fatalf("persisted min samples = %d, want 60", got)
-	}
-
-	changed, err = h2.SetSmallModelShadowGateMinSamples(60)
-	if err != nil {
-		t.Fatalf("SetSmallModelShadowGateMinSamples(60) second call failed: %v", err)
-	}
-	if changed {
-		t.Fatal("expected changed=false when setting unchanged")
-	}
-}
-
-func TestSetSmallModelShadowGateThresholdDelta_Persisted(t *testing.T) {
-	store := kvstore.NewMemoryStore()
-	h := NewSettingsHandler(store)
-
-	changed, err := h.SetSmallModelShadowGateThresholdDelta(0.25)
-	if err != nil {
-		t.Fatalf("SetSmallModelShadowGateThresholdDelta(0.25) failed: %v", err)
-	}
-	if !changed {
-		t.Fatal("expected changed=true on first update")
-	}
-	if got := h.GetSmallModelShadowGateThresholdDelta(); got != 0.25 {
-		t.Fatalf("GetSmallModelShadowGateThresholdDelta() = %v, want 0.25", got)
-	}
-
-	h2 := NewSettingsHandler(store)
-	if got := h2.GetSmallModelShadowGateThresholdDelta(); got != 0.25 {
-		t.Fatalf("persisted threshold delta = %v, want 0.25", got)
-	}
-
-	changed, err = h2.SetSmallModelShadowGateThresholdDelta(0.25)
-	if err != nil {
-		t.Fatalf("SetSmallModelShadowGateThresholdDelta(0.25) second call failed: %v", err)
-	}
-	if changed {
-		t.Fatal("expected changed=false when setting unchanged")
-	}
-}
-
-func TestSetSmallModelShadowGateScene_Persisted(t *testing.T) {
-	store := kvstore.NewMemoryStore()
-	h := NewSettingsHandler(store)
-
-	changed, err := h.SetSmallModelShadowGateScene("short_qa_shadow")
-	if err != nil {
-		t.Fatalf("SetSmallModelShadowGateScene(short_qa_shadow) failed: %v", err)
-	}
-	if !changed {
-		t.Fatal("expected changed=true on first update")
-	}
-	if got := h.GetSmallModelShadowGateScene(); got != "short_qa_shadow" {
-		t.Fatalf("GetSmallModelShadowGateScene() = %q, want short_qa_shadow", got)
-	}
-
-	h2 := NewSettingsHandler(store)
-	if got := h2.GetSmallModelShadowGateScene(); got != "short_qa_shadow" {
-		t.Fatalf("persisted scene filter = %q, want short_qa_shadow", got)
-	}
-
-	changed, err = h2.SetSmallModelShadowGateScene("short_qa_shadow")
-	if err != nil {
-		t.Fatalf("SetSmallModelShadowGateScene(short_qa_shadow) second call failed: %v", err)
-	}
-	if changed {
-		t.Fatal("expected changed=false when setting unchanged")
-	}
-}
-
-func TestSetSmallModelShadowRatio_Persisted(t *testing.T) {
-	store := kvstore.NewMemoryStore()
-	h := NewSettingsHandler(store)
-
-	changed, err := h.SetSmallModelShadowRatio(0.3)
-	if err != nil {
-		t.Fatalf("SetSmallModelShadowRatio(0.3) failed: %v", err)
-	}
-	if !changed {
-		t.Fatal("expected changed=true on first update")
-	}
-	if got := h.GetSmallModelShadowRatio(); got != 0.3 {
-		t.Fatalf("GetSmallModelShadowRatio() = %v, want 0.3", got)
-	}
-
-	h2 := NewSettingsHandler(store)
-	if got := h2.GetSmallModelShadowRatio(); got != 0.3 {
-		t.Fatalf("persisted shadow ratio = %v, want 0.3", got)
-	}
-
-	changed, err = h2.SetSmallModelShadowRatio(0.3)
-	if err != nil {
-		t.Fatalf("SetSmallModelShadowRatio(0.3) second call failed: %v", err)
 	}
 	if changed {
 		t.Fatal("expected changed=false when setting unchanged")

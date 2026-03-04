@@ -433,5 +433,274 @@ describe('SSE Client', () => {
       expect(chunk.delta).not.toContain('<ask_gate>')
       expect(chunk.delta).not.toContain('</ask_gate>')
     })
+
+    it('should ignore stale chunks with mismatched stream_id when no injection switch is announced', async () => {
+      const encoder = new TextEncoder()
+      let callCount = 0
+      const mockReader = {
+        read: vi.fn().mockImplementation(() => {
+          callCount++
+          if (callCount === 1) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s1","delta":"A"}\n\n'),
+            })
+          }
+          if (callCount === 2) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s2","delta":"SHOULD_IGNORE"}\n\n'),
+            })
+          }
+          if (callCount === 3) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s1","delta":"B"}\n\n'),
+            })
+          }
+          if (callCount === 4) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: [DONE]\n\n'),
+            })
+          }
+          return Promise.resolve({ done: true, value: undefined })
+        }),
+      }
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: { getReader: () => mockReader },
+      })
+      global.fetch = mockFetch
+
+      const onMessage = vi.fn()
+      const onComplete = vi.fn()
+      const onError = vi.fn()
+      const onStreamId = vi.fn()
+
+      await client.connect(
+        'conv-1',
+        { message: 'test', provider: 'openai', model: 'gpt-4o-mini' },
+        { onMessage, onComplete, onError, onStreamId }
+      )
+
+      expect(onError).not.toHaveBeenCalled()
+      expect(onComplete).toHaveBeenCalledTimes(1)
+      expect(onMessage).toHaveBeenCalledTimes(2)
+      expect(onMessage.mock.calls[0][0]).toEqual(expect.objectContaining({ delta: 'A', stream_id: 's1' }))
+      expect(onMessage.mock.calls[1][0]).toEqual(expect.objectContaining({ delta: 'B', stream_id: 's1' }))
+      expect(onStreamId).toHaveBeenCalledTimes(1)
+      expect(onStreamId).toHaveBeenCalledWith('s1')
+    })
+
+    it('should allow one stream_id switch after injection event', async () => {
+      const encoder = new TextEncoder()
+      let callCount = 0
+      const mockReader = {
+        read: vi.fn().mockImplementation(() => {
+          callCount++
+          if (callCount === 1) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s1","delta":"A"}\n\n'),
+            })
+          }
+          if (callCount === 2) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s1","injection":true,"user_message":"继续"}\n\n'),
+            })
+          }
+          if (callCount === 3) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s2","delta":"B"}\n\n'),
+            })
+          }
+          if (callCount === 4) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: [DONE]\n\n'),
+            })
+          }
+          return Promise.resolve({ done: true, value: undefined })
+        }),
+      }
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: { getReader: () => mockReader },
+      })
+      global.fetch = mockFetch
+
+      const onMessage = vi.fn()
+      const onInjection = vi.fn()
+      const onComplete = vi.fn()
+      const onError = vi.fn()
+      const onStreamId = vi.fn()
+
+      await client.connect(
+        'conv-1',
+        { message: 'test', provider: 'openai', model: 'gpt-4o-mini' },
+        { onMessage, onInjection, onComplete, onError, onStreamId }
+      )
+
+      expect(onError).not.toHaveBeenCalled()
+      expect(onComplete).toHaveBeenCalledTimes(1)
+      expect(onInjection).toHaveBeenCalledTimes(1)
+      expect(onMessage).toHaveBeenCalledTimes(2)
+      expect(onMessage.mock.calls[0][0]).toEqual(expect.objectContaining({ delta: 'A', stream_id: 's1' }))
+      expect(onMessage.mock.calls[1][0]).toEqual(expect.objectContaining({ delta: 'B', stream_id: 's2' }))
+      expect(onStreamId).toHaveBeenCalledTimes(2)
+      expect(onStreamId.mock.calls[0][0]).toBe('s1')
+      expect(onStreamId.mock.calls[1][0]).toBe('s2')
+    })
+
+    it('should ignore duplicate or out-of-order chunks by seq within one stream_id', async () => {
+      const encoder = new TextEncoder()
+      let callCount = 0
+      const mockReader = {
+        read: vi.fn().mockImplementation(() => {
+          callCount++
+          if (callCount === 1) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s1","seq":1,"delta":"A"}\n\n'),
+            })
+          }
+          if (callCount === 2) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s1","seq":3,"delta":"C"}\n\n'),
+            })
+          }
+          if (callCount === 3) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s1","seq":2,"delta":"SHOULD_IGNORE"}\n\n'),
+            })
+          }
+          if (callCount === 4) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s1","seq":3,"delta":"SHOULD_IGNORE_DUP"}\n\n'),
+            })
+          }
+          if (callCount === 5) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s1","seq":4,"delta":"D"}\n\n'),
+            })
+          }
+          if (callCount === 6) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: [DONE]\n\n'),
+            })
+          }
+          return Promise.resolve({ done: true, value: undefined })
+        }),
+      }
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: { getReader: () => mockReader },
+      })
+      global.fetch = mockFetch
+
+      const onMessage = vi.fn()
+      const onComplete = vi.fn()
+      const onError = vi.fn()
+
+      await client.connect(
+        'conv-1',
+        { message: 'test', provider: 'openai', model: 'gpt-4o-mini' },
+        { onMessage, onComplete, onError }
+      )
+
+      expect(onError).not.toHaveBeenCalled()
+      expect(onComplete).toHaveBeenCalledTimes(1)
+      expect(onMessage).toHaveBeenCalledTimes(3)
+      expect(onMessage.mock.calls[0][0]).toEqual(expect.objectContaining({ delta: 'A', seq: 1 }))
+      expect(onMessage.mock.calls[1][0]).toEqual(expect.objectContaining({ delta: 'C', seq: 3 }))
+      expect(onMessage.mock.calls[2][0]).toEqual(expect.objectContaining({ delta: 'D', seq: 4 }))
+    })
+
+    it('should reset seq ordering after injection-triggered stream_id switch', async () => {
+      const encoder = new TextEncoder()
+      let callCount = 0
+      const mockReader = {
+        read: vi.fn().mockImplementation(() => {
+          callCount++
+          if (callCount === 1) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s1","seq":1,"delta":"A"}\n\n'),
+            })
+          }
+          if (callCount === 2) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s1","seq":2,"injection":true,"user_message":"继续"}\n\n'),
+            })
+          }
+          if (callCount === 3) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s2","seq":1,"delta":"B"}\n\n'),
+            })
+          }
+          if (callCount === 4) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s2","seq":1,"delta":"SHOULD_IGNORE_DUP"}\n\n'),
+            })
+          }
+          if (callCount === 5) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"stream_id":"s2","seq":2,"delta":"C"}\n\n'),
+            })
+          }
+          if (callCount === 6) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: [DONE]\n\n'),
+            })
+          }
+          return Promise.resolve({ done: true, value: undefined })
+        }),
+      }
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: { getReader: () => mockReader },
+      })
+      global.fetch = mockFetch
+
+      const onMessage = vi.fn()
+      const onInjection = vi.fn()
+      const onComplete = vi.fn()
+      const onError = vi.fn()
+      const onStreamId = vi.fn()
+
+      await client.connect(
+        'conv-1',
+        { message: 'test', provider: 'openai', model: 'gpt-4o-mini' },
+        { onMessage, onInjection, onComplete, onError, onStreamId }
+      )
+
+      expect(onError).not.toHaveBeenCalled()
+      expect(onComplete).toHaveBeenCalledTimes(1)
+      expect(onInjection).toHaveBeenCalledTimes(1)
+      expect(onMessage).toHaveBeenCalledTimes(3)
+      expect(onMessage.mock.calls[0][0]).toEqual(expect.objectContaining({ delta: 'A', stream_id: 's1', seq: 1 }))
+      expect(onMessage.mock.calls[1][0]).toEqual(expect.objectContaining({ delta: 'B', stream_id: 's2', seq: 1 }))
+      expect(onMessage.mock.calls[2][0]).toEqual(expect.objectContaining({ delta: 'C', stream_id: 's2', seq: 2 }))
+      expect(onStreamId).toHaveBeenCalledTimes(2)
+      expect(onStreamId.mock.calls[0][0]).toBe('s1')
+      expect(onStreamId.mock.calls[1][0]).toBe('s2')
+    })
   })
 })

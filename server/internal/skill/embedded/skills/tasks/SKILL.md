@@ -1,3 +1,8 @@
+---
+name: tasks
+description: Create manage and track tasks with optional Things 3 integration on macOS.
+---
+
 # Tasks
 
 Create, manage, and track tasks with priorities and status.

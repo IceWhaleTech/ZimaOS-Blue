@@ -28,6 +28,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/gateway"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/lifecycle"
@@ -44,6 +45,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	skillEmbed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/embedded"
@@ -68,6 +70,23 @@ var (
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
+
+func applyPendingBackupRestore(dataDir string) error {
+	mgr, err := backup.NewManager(backup.Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          filepath.Join(dataDir, "backups"),
+		SkillsPath:    filepath.Join(dataDir, "workspace", ".claude", "skills"),
+	}, dataDir, dataDir)
+	if err != nil {
+		return err
+	}
+	if !mgr.HasPendingRestore() {
+		return nil
+	}
+	_, err = mgr.ApplyPendingRestore(context.Background())
+	return err
+}
 
 func main() {
 	// Fast-path: CLI subcommands bypass cobra to minimize page faults and RSS.
@@ -151,6 +170,9 @@ func runServer() {
 	dataDir := getDataDir()
 	if err := os.MkdirAll(dataDir, 0750); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to create data directory")
+	}
+	if err := applyPendingBackupRestore(dataDir); err != nil {
+		logger.Warn().Err(err).Msg("Failed to apply pending backup restore before database initialization")
 	}
 
 	dbPath := filepath.Join(dataDir, "blue.db")
@@ -455,21 +477,36 @@ func runServer() {
 
 	// Group 2: Non-critical services (async initialization for faster startup)
 
-	go func() {
+	initPool.Go(func() {
 		// Backup manager
 		var err error
 		backupManager, err = backup.NewManager(backup.Config{
-			Enabled:       true,
-			RetentionDays: 7,
-			Path:          filepath.Join(dataDir, "backups"),
+			Enabled:            true,
+			RetentionDays:      7,
+			Path:               filepath.Join(dataDir, "backups"),
+			SkillsPath:         filepath.Join(dataDir, "workspace", ".claude", "skills"),
+			AutoBackup:         true,
+			AutoBackupInterval: 6 * time.Hour,
+			AutoBackupOnChange: true,
+			ChangePollInterval: time.Minute,
+			ChangeDebounce:     5 * time.Minute,
 		}, dataDir, dataDir)
 		if err != nil {
 			logger.Warn().Err(err).Msg("Failed to initialize backup manager")
 			return
 		}
+		backupManager.StartAutoBackup(lm.Context())
 		backupHandler = backup.NewHandler(backupManager)
+		backupHandler.SetRestartFunc(func() error {
+			logger.Info().Msg("Backup restore staged; sending SIGTERM for graceful restart")
+			proc, err := os.FindProcess(os.Getpid())
+			if err != nil {
+				return err
+			}
+			return proc.Signal(syscall.SIGTERM)
+		})
 		logger.Info().Msg("Backup manager initialized")
-	}()
+	})
 
 	// Browser automation service — lazy init, only when first API call arrives
 	// Chromium is very heavy on memory, skip at startup
@@ -1003,6 +1040,47 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Call bootstrap.RegisterAllRoutes with all dependencies
 	routeUserRepo, _ := user.NewSQLiteRepository(db)
 
+	// Initialize session manager + handler (shared control plane for API + gateway methods).
+	sessionDBPath := cfg.Session.Persistence.Path
+	if sessionDBPath == "" {
+		sessionDBPath = filepath.Join(dataDir, "sessions.db")
+	}
+	if !filepath.IsAbs(sessionDBPath) {
+		// Keep persistence under dataDir for predictable deployment paths.
+		sessionDBPath = filepath.Join(dataDir, filepath.Base(sessionDBPath))
+	}
+	if err := os.MkdirAll(filepath.Dir(sessionDBPath), 0o750); err != nil {
+		logger.Warn("Failed to create session persistence directory", zap.String("path", sessionDBPath), zap.Error(err))
+	}
+
+	var sessionStore session.SessionStore
+	if cfg.Session.Persistence.Enabled {
+		store, err := session.NewSQLiteSessionStore(sessionDBPath, cfg.Session.MaxTokens)
+		if err != nil {
+			logger.Warn("Failed to initialize session store", zap.String("path", sessionDBPath), zap.Error(err))
+		} else {
+			sessionStore = store
+		}
+	}
+	var compactionProvider llm.Provider
+	if providerNames := llmRegistry.List(); len(providerNames) > 0 {
+		compactionProvider = llmRegistry.Get(providerNames[0])
+	}
+	sessionCompactor := session.NewSessionCompactor(compactionProvider, cfg.Session.Compaction)
+	sessionManager := session.NewSessionManager(cfg.Session, sessionStore, sessionCompactor)
+	if err := sessionManager.Recover(); err != nil {
+		logger.Warn("Failed to recover persisted sessions", zap.Error(err))
+	}
+	sessionHandler := server.NewSessionHandler(sessionManager)
+	lm.RegisterShutdownHook(func(ctx context.Context) error {
+		_ = ctx
+		return sessionManager.Stop()
+	})
+
+	// Initialize gateway runtime + HTTP handler; method handlers are wired in bootstrap routes.
+	gatewayRuntime := gateway.NewGateway(gateway.DefaultConfig(), zapLogger)
+	gatewayHandler := gateway.NewHandlerWithAuth(gatewayRuntime, zapLogger, jwtService)
+
 	// Create IPC adapters for browser, UI reviewer, and push notification SKILLs
 	browserIPC := sockipc.NewToolBrowserIPCAdapter(browserBackend)
 	uiReviewerIPC := sockipc.NewUIReviewIPCAdapter(&tools.UIReviewerTool{}) // placeholder, routes.go creates the real one
@@ -1031,6 +1109,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		MetricsWriter:      metricsWriter,
 		MetricsCollector:   metricsCollector,
 		ChatHandler:        chatHandler,
+		SessionHandler:     sessionHandler,
 		PluginRegistry:     pluginRegistry,
 		PluginStore:        pluginStore,
 		ExtauthHandler:     extauthHandler,
@@ -1070,6 +1149,8 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		HotReloader:        hotReloader,
 		WorkspaceHandler:   workspace.NewHandler(workspaceMgr),
 		SSEBroker:          sseBroker,
+		Gateway:            gatewayRuntime,
+		GatewayHandler:     gatewayHandler,
 		// Consolidated init deps
 		SkillEmbedFS:        skillEmbed.SkillsFS,
 		SandboxManager:      sandboxManager,

@@ -258,6 +258,9 @@ type ToolCallingConfig struct {
 	// SkillSelectorConfidenceThreshold is the confidence threshold for auto-selection.
 	SkillSelectorConfidenceThreshold float64 `yaml:"skill_selector_confidence_threshold" json:"skill_selector_confidence_threshold"`
 
+	// WebSearch controls the runtime web_search tool backend.
+	WebSearch ToolCallingWebSearchConfig `yaml:"web_search" json:"web_search"`
+
 	// Adapters holds adapter configurations
 	Adapters ToolCallingAdaptersConfig `yaml:"adapters" json:"adapters"`
 
@@ -296,6 +299,18 @@ type CCNexusAdapterConfig struct {
 type ProviderOverrideConfig struct {
 	// ToolCalling is the tool calling mode (native, adapter, disabled)
 	ToolCalling string `yaml:"tool_calling" json:"tool_calling"`
+}
+
+// ToolCallingWebSearchConfig holds runtime web_search provider configuration.
+type ToolCallingWebSearchConfig struct {
+	Provider   string        `yaml:"provider" json:"provider"`
+	Providers  []string      `yaml:"providers" json:"providers,omitempty"`
+	APIKey     string        `yaml:"api_key" json:"api_key,omitempty"`
+	BaseURL    string        `yaml:"base_url" json:"base_url,omitempty"`
+	MaxResults int           `yaml:"max_results" json:"max_results"`
+	Timeout    time.Duration `yaml:"timeout" json:"timeout"`
+	SafeSearch bool          `yaml:"safe_search" json:"safe_search"`
+	Region     string        `yaml:"region" json:"region"`
 }
 
 // DefaultClaudeCodeCLIConfig returns the default CLI configuration.
@@ -421,6 +436,14 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 		SkillRerankONNXEnabled:           false,
 		SkillRerankONNXAutoDownload:      false,
 		SkillSelectorConfidenceThreshold: 0.78,
+		WebSearch: ToolCallingWebSearchConfig{
+			Provider:   "duckduckgo",
+			Providers:  []string{"duckduckgo"},
+			MaxResults: 5,
+			Timeout:    30 * time.Second,
+			SafeSearch: false,
+			Region:     "wt-wt",
+		},
 		Adapters: ToolCallingAdaptersConfig{
 			CLIProxy: CLIProxyAdapterConfig{
 				Enabled:        true,

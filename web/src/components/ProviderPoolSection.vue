@@ -133,12 +133,13 @@ const verificationProbeEntries = computed(() => {
   const entries: Array<[string, { url: string; status_code?: number; reachable: boolean; error?: string }]> = []
 
   for (const key of preferredOrder) {
-    if (probes[key]) {
-      entries.push([key, probes[key]])
+    const probe = probes[key]
+    if (probe?.reachable) {
+      entries.push([key, probe])
     }
   }
   for (const [key, probe] of Object.entries(probes)) {
-    if (!preferredOrder.includes(key)) {
+    if (!preferredOrder.includes(key) && probe?.reachable) {
       entries.push([key, probe])
     }
   }
@@ -2062,7 +2063,15 @@ onMounted(() => {
 
           <!-- Usage Section -->
           <div v-if="providerUsage && !loadingUsage" class="mb-4">
-            <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-2">{{ t('providerPool.usage.title') }}</h3>
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('providerPool.usage.title') }}</h3>
+              <router-link
+                to="/billing"
+                class="inline-flex items-center rounded-md border border-gray-300 dark:border-gray-600 bg-white/80 dark:bg-slate-800/70 px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                {{ t('nav.billing') }}
+              </router-link>
+            </div>
             <div class="grid grid-cols-3 gap-2">
               <div class="p-2 bg-white dark:bg-slate-900/50 rounded-lg border border-gray-200 dark:border-gray-700 text-center">
                 <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('providerPool.usage.requests') }}</div>

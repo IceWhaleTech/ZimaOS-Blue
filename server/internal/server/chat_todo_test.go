@@ -1,10 +1,13 @@
 package server
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 func TestShouldAutoContinueForTodo(t *testing.T) {
@@ -44,10 +47,33 @@ func TestShouldAutoContinueForTodo(t *testing.T) {
 		}
 	})
 
+	t.Run("continues from tracked todo when current response is progress text", func(t *testing.T) {
+		current := "我会继续执行下一步并补充验证。"
+		tracked := "- [x] step1\n- [ ] step2"
+		if !shouldAutoContinueForTodo(current, tracked) {
+			t.Fatalf("expected auto-continue when tracked todo has pending items and current text is non-completion progress")
+		}
+	})
+
+	t.Run("stops when plan completion is known even if tracked todo still pending", func(t *testing.T) {
+		current := "继续执行中。"
+		tracked := "- [x] step1\n- [ ] step2"
+		if shouldAutoContinueForTodo(current, tracked, true) {
+			t.Fatalf("expected no auto-continue when plan completion is known")
+		}
+	})
+
 	t.Run("continues with star checklist and uppercase X", func(t *testing.T) {
 		tracked := "* [X] step1\n* [ ] step2"
 		if !shouldAutoContinueForTodo("", tracked) {
 			t.Fatalf("expected auto-continue for star checklist with uppercase X")
+		}
+	})
+
+	t.Run("stops when reply includes stale checklist but explicit completion deliverable", func(t *testing.T) {
+		current := "- [ ] 实现2048网页游戏\n- [ ] 本地运行并给出localhost地址\n已完成，游戏可直接运行，地址：http://localhost:3000"
+		if shouldAutoContinueForTodo(current, "") {
+			t.Fatalf("expected no auto-continue when completion deliverable is explicit")
 		}
 	})
 }
@@ -60,10 +86,45 @@ func TestShouldAutoContinueForActionPledge(t *testing.T) {
 		}
 	})
 
+	t.Run("continues for chinese quick-check plus wait phrasing", func(t *testing.T) {
+		current := "我先帮你快速查一下 OpenClaw 的最新相关新闻与动态。请稍等，我整理成要点给你。"
+		if !shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected auto-continue for chinese quick-check wait phrasing")
+		}
+	})
+
 	t.Run("continues for english action pledge", func(t *testing.T) {
 		current := "I need to verify this online. Let me check and I'll get back in a few seconds."
 		if !shouldAutoContinueForActionPledge(current) {
 			t.Fatalf("expected auto-continue for english action pledge")
+		}
+	})
+
+	t.Run("continues for spanish action pledge", func(t *testing.T) {
+		current := "Necesito verificarlo en línea. Voy a revisar y te respondo enseguida."
+		if !shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected auto-continue for spanish action pledge")
+		}
+	})
+
+	t.Run("continues for japanese action pledge", func(t *testing.T) {
+		current := "最新情報を確認します。少しお待ちください。"
+		if !shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected auto-continue for japanese action pledge")
+		}
+	})
+
+	t.Run("continues for soft-consent continuation offer", func(t *testing.T) {
+		current := "为了不给你错误信息，我建议按高可信来源整理。如果你同意，我下一步会按这个范围整理（1-2分钟）：\n1) 官方渠道\n2) 主流媒体"
+		if !shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected auto-continue for soft-consent continuation offer")
+		}
+	})
+
+	t.Run("continues for french soft-consent continuation offer", func(t *testing.T) {
+		current := "Pour éviter les erreurs, je propose de me limiter aux sources fiables. Si vous êtes d'accord, je vais résumer cela en 1-2 minutes."
+		if !shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected auto-continue for french soft-consent continuation offer")
 		}
 	})
 
@@ -73,12 +134,255 @@ func TestShouldAutoContinueForActionPledge(t *testing.T) {
 			t.Fatalf("expected no auto-continue when awaiting user input")
 		}
 	})
+
+	t.Run("does not continue for completed-result statement", func(t *testing.T) {
+		current := "我已经帮你查好了，下面是结果要点。"
+		if shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected no auto-continue for completed-result statement")
+		}
+	})
+}
+
+func TestShouldPreferDeepSearchReport(t *testing.T) {
+	positive := []string{
+		"帮我做一个 openclaw 最新新闻的深度搜索",
+		"Please do deep research on OpenClaw latest updates with sources",
+		"给我一份 OpenClaw 更新报告并附引用来源",
+	}
+	for _, msg := range positive {
+		if !shouldPreferDeepSearchReport(msg) {
+			t.Fatalf("expected deep-search preference for %q", msg)
+		}
+	}
+
+	negative := []string{
+		"hello",
+		"写一行 golang 代码",
+		"不要深度搜索，直接一句话回答",
+	}
+	for _, msg := range negative {
+		if shouldPreferDeepSearchReport(msg) {
+			t.Fatalf("expected no deep-search preference for %q", msg)
+		}
+	}
+}
+
+func TestBuildDeepSearchExecutionHint(t *testing.T) {
+	hint := buildDeepSearchExecutionHint("帮我查 OpenClaw 最新动态并做完整报告")
+	if hint == "" {
+		t.Fatal("expected deep-search execution hint for latest/news request")
+	}
+	if !strings.Contains(hint, "at least 2 diverse web_search rounds") {
+		t.Fatalf("expected hint to require multi-round search, got=%q", hint)
+	}
+	if !strings.Contains(hint, "complete report") {
+		t.Fatalf("expected hint to require complete report, got=%q", hint)
+	}
+
+	if got := buildDeepSearchExecutionHint("你好"); got != "" {
+		t.Fatalf("expected empty hint for non-research request, got=%q", got)
+	}
+}
+
+func TestShouldEnforceDeepSearchMinRounds(t *testing.T) {
+	if !shouldEnforceDeepSearchMinRounds("请做 OpenClaw 最新动态深度搜索，并给我完整报告附来源") {
+		t.Fatal("expected hard deep-search gate for explicit deep-search report request")
+	}
+	if !shouldEnforceDeepSearchMinRounds("OpenClaw latest updates with sources and citations") {
+		t.Fatal("expected hard deep-search gate for freshness + source requirement")
+	}
+	if shouldEnforceDeepSearchMinRounds("openclaw news") {
+		t.Fatal("expected no hard deep-search gate for lightweight news lookup")
+	}
+}
+
+func TestDeepSearchLoopState_ForceUntilMinRounds(t *testing.T) {
+	state := newDeepSearchLoopState("请深度检索 OpenClaw 最新新闻并整理完整报告", []tools.ToolDefinition{
+		{Name: "web_search"},
+	})
+	if state == nil || !state.enabled {
+		t.Fatal("expected deep-search loop state enabled")
+	}
+
+	if force, reason := state.shouldForceAnotherSearch(0, 6); !force || reason != "min_rounds_not_met" {
+		t.Fatalf("expected force before search rounds, got force=%v reason=%q", force, reason)
+	}
+
+	state.observeToolRound(
+		[]llm.ToolCall{
+			{ID: "s1", Name: "web_search", Arguments: `{"query":"OpenClaw release notes 2026"}`},
+		},
+		[]llm.Message{
+			{
+				Role:       llm.RoleTool,
+				ToolCallID: "s1",
+				Content:    `{"query":"OpenClaw release notes 2026","results":[{"title":"OpenClaw Releases","url":"https://github.com/openclaw/openclaw/releases","description":"release notes"}]}`,
+			},
+		},
+	)
+	if state.searchRounds != 1 {
+		t.Fatalf("searchRounds=%d, want=1", state.searchRounds)
+	}
+	if force, _ := state.shouldForceAnotherSearch(1, 6); !force {
+		t.Fatal("expected force after first search round")
+	}
+
+	state.observeToolRound(
+		[]llm.ToolCall{
+			{ID: "s2", Name: "web_search", Arguments: `{"query":"OpenClaw docs updates"}`},
+		},
+		[]llm.Message{
+			{
+				Role:       llm.RoleTool,
+				ToolCallID: "s2",
+				Content:    `{"query":"OpenClaw docs updates","results":[{"title":"OpenClaw Docs","url":"https://docs.openclaw.ai/tools/web","description":"web tool docs"}]}`,
+			},
+		},
+	)
+	if state.searchRounds != 2 {
+		t.Fatalf("searchRounds=%d, want=2", state.searchRounds)
+	}
+	if force, reason := state.shouldForceAnotherSearch(2, 6); force || reason != "min_met" {
+		t.Fatalf("expected no force when min met, got force=%v reason=%q", force, reason)
+	}
+}
+
+func TestDeepSearchLoopState_FailOpenOnNoProgress(t *testing.T) {
+	state := newDeepSearchLoopState("请深度检索 OpenClaw 最新新闻并整理完整报告", []tools.ToolDefinition{
+		{Name: "web_search"},
+	})
+	if state == nil || !state.enabled {
+		t.Fatal("expected deep-search loop state enabled")
+	}
+
+	state.observeToolRound(
+		[]llm.ToolCall{
+			{ID: "s1", Name: "web_search", Arguments: `{}`},
+		},
+		[]llm.Message{
+			{
+				Role:       llm.RoleTool,
+				ToolCallID: "s1",
+				Content:    `{"results":[]}`,
+			},
+		},
+	)
+	if state.searchRounds != 1 {
+		t.Fatalf("searchRounds=%d, want=1", state.searchRounds)
+	}
+	if state.consecutiveNoProgress == 0 {
+		t.Fatalf("expected no-progress streak > 0, got=%d", state.consecutiveNoProgress)
+	}
+	if force, reason := state.shouldForceAnotherSearch(1, 6); force || reason != "no_progress" {
+		t.Fatalf("expected fail-open no_progress, got force=%v reason=%q", force, reason)
+	}
+}
+
+func TestDeepSearchLoopState_FailOpenOnForceBudget(t *testing.T) {
+	state := newDeepSearchLoopState("deep research on OpenClaw latest updates", []tools.ToolDefinition{
+		{Name: "web_search"},
+	})
+	if state == nil || !state.enabled {
+		t.Fatal("expected deep-search loop state enabled")
+	}
+
+	for i := 0; i < deepSearchForceContinueMaxRetries; i++ {
+		if force, _ := state.shouldForceAnotherSearch(i, 6); !force {
+			t.Fatalf("expected force within retry budget at i=%d", i)
+		}
+		state.markForcedContinuation()
+	}
+	if force, reason := state.shouldForceAnotherSearch(2, 6); force || reason != "force_budget" {
+		t.Fatalf("expected fail-open force_budget, got force=%v reason=%q", force, reason)
+	}
+}
+
+func TestNewDeepSearchLoopState_DisabledWithoutSearchCapability(t *testing.T) {
+	state := newDeepSearchLoopState("帮我深度搜索 OpenClaw 最新消息", []tools.ToolDefinition{
+		{Name: "reminder"},
+		{Name: "scheduler"},
+	})
+	if state == nil {
+		t.Fatal("expected non-nil state")
+	}
+	if state.enabled {
+		t.Fatal("expected deep-search guard disabled when no search-capable tools are available")
+	}
+}
+
+func TestIsShortQAShape_SkipsDeepSearchRequest(t *testing.T) {
+	h := &ChatHandler{}
+	req := SendMessageRequest{}
+	if h.isShortQAShape(req, "帮我查一下 openclaw 的最新新闻") {
+		t.Fatal("expected deep-search/news request not to route to short-qa")
+	}
+	if !h.isShortQAShape(req, "什么是 OpenClaw?") {
+		t.Fatal("expected simple short question to keep short-qa shape")
+	}
+}
+
+func TestCompactAdditionalSearchToolResultForLLM_KeptPreview(t *testing.T) {
+	payload := map[string]interface{}{
+		"query": "OpenClaw latest news",
+		"results": []interface{}{
+			map[string]interface{}{
+				"title":       "OpenClaw release notes",
+				"url":         "https://github.com/openclaw/openclaw/releases",
+				"description": "official release notes",
+			},
+			map[string]interface{}{
+				"title":       "OpenClaw docs",
+				"url":         "https://docs.openclaw.ai/",
+				"description": "official docs",
+			},
+			map[string]interface{}{
+				"title":       "OpenClaw community report",
+				"url":         "https://example.com/openclaw-report",
+				"description": "community coverage",
+			},
+		},
+		"total_count": 3,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	got := compactAdditionalSearchToolResultForLLM("web_search", string(raw))
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal summary: %v", err)
+	}
+	if omitted, ok := out["omitted_from_llm_context"].(bool); !ok || !omitted {
+		t.Fatalf("expected omitted_from_llm_context=true, got=%#v", out["omitted_from_llm_context"])
+	}
+	results, ok := out["results"].([]interface{})
+	if !ok || len(results) == 0 {
+		t.Fatalf("expected compacted result preview, got=%#v", out["results"])
+	}
+	if len(results) > maxLLMAdditionalSearchItems {
+		t.Fatalf("preview result count = %d, want <= %d", len(results), maxLLMAdditionalSearchItems)
+	}
+}
+
+func TestSanitizeResponseContent_StripsMalformedCommandWorkdirPrefix(t *testing.T) {
+	leaked := "{\"command\":\"blue web_search query=\\\"OpenClaw GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 OpenClaw 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
+	got := sanitizeResponseContentWithProvider(leaked, "MockProxy", "prov_auto_continue_scripted", "gpt-5.3-codex-spark")
+	if strings.Contains(got, `"command":"blue web_search`) {
+		t.Fatalf("expected leaked command json removed from sanitized content, got=%q", got)
+	}
+	if strings.Contains(got, `"workdir":`) {
+		t.Fatalf("expected leaked workdir removed from sanitized content, got=%q", got)
+	}
+	if !strings.Contains(got, "我先帮你搜到一批 OpenClaw 相关最新结果") {
+		t.Fatalf("expected user-facing text retained after sanitize, got=%q", got)
+	}
 }
 
 func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 	t.Run("agent mode continues on pending todo", func(t *testing.T) {
 		current := "- [ ] 查询最新新闻\n- [ ] 汇总回答"
-		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true)
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, false)
 		if !ok || reason != "pending_todo" {
 			t.Fatalf("expected pending_todo auto-continue, got ok=%v reason=%q", ok, reason)
 		}
@@ -86,7 +390,7 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 
 	t.Run("non-agent continues on action pledge", func(t *testing.T) {
 		current := "我现在就去查，稍等我几秒。"
-		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false)
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
 		if !ok || reason != "action_pledge" {
 			t.Fatalf("expected action_pledge auto-continue, got ok=%v reason=%q", ok, reason)
 		}
@@ -94,7 +398,7 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 
 	t.Run("continues on pseudo tool-call text", func(t *testing.T) {
 		current := "{\"cmd\":\"ls -la\"}I’ll inspect now.{\"tool\":\"exec\",\"cmd\":\"ls -la\"}exec: ls -la\n```tool\n{\"name\":\"exec\",\"arguments\":{\"cmd\":\"ls -la\"}}\n```\n<exec>{\"cmd\":\"ls -la\"}</exec>"
-		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false)
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
 		if !ok || reason != "pseudo_tool_call" {
 			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
 		}
@@ -102,7 +406,7 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 
 	t.Run("continues on pseudo tool-call command/workdir json text", func(t *testing.T) {
 		current := "收到，开始设置提醒。\nWorking on task: add reminder for 10 seconds later.{\"command\":\"blue reminder.add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/tmp/workspace\"}{\"command\":\"blue help reminder\",...}"
-		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false)
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
 		if !ok || reason != "pseudo_tool_call" {
 			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
 		}
@@ -110,7 +414,33 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 
 	t.Run("continues on pseudo tool-call single placeholder command json text", func(t *testing.T) {
 		current := "我来给你设一个 10 秒后的提醒。{\"command\":\"...\"}`"
-		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false)
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if !ok || reason != "pseudo_tool_call" {
+			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
+	t.Run("continues on codex tool-directive leakage text", func(t *testing.T) {
+		current := "to=functions.exec {\"command\":\"blue help browser\"} to=multi_tool_use.parallel {...}"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if !ok || reason != "pseudo_tool_call" {
+			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
+	t.Run("continues on tool_uses plus recipient_name scaffold leakage", func(t *testing.T) {
+		current := "{\"tool_uses\":[...]} with recipient_name and parameters to multi_tool_use.parallel. Let's do that."
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if !ok || reason != "pseudo_tool_call" {
+			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
+	t.Run("continues on leaked tool execution envelope text", func(t *testing.T) {
+		current := "{\"tool_uses\":[...]} with recipient multi_tool_use.parallel. " +
+			"{\"command\":\"blue web_search query=\\\"OpenClaw GitHub\\\"\"}" +
+			"{\"data\":{\"format\":\"xml\",\"result\":\"<web_search>...</web_search>\",\"success\":true},\"duration_ms\":5,\"exit_code\":0,\"host\":\"local\",\"session_id\":\"16b745a8\",\"status\":\"completed\",\"stdout\":\"format: xml\"}"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
 		if !ok || reason != "pseudo_tool_call" {
 			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
 		}
@@ -118,9 +448,359 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 
 	t.Run("does not treat a single cmd json example as pseudo tool-call", func(t *testing.T) {
 		current := "你可以在 shell 里执行这个 JSON 示例：{\"cmd\":\"ls -la\"}"
-		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false)
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
 		if ok {
 			t.Fatalf("expected no auto-continue for benign single cmd json, got reason=%q", reason)
+		}
+	})
+
+	t.Run("does not auto-continue for leaked command/workdir prefix when answer body is already concrete", func(t *testing.T) {
+		current := "{\"command\":\"blue web_search query=\\\"OpenClaw GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 OpenClaw 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if ok {
+			t.Fatalf("expected no auto-continue for leaked command/workdir prefix with concrete answer body, got reason=%q", reason)
+		}
+	})
+
+	t.Run("agent mode bootstraps missing todo after prior rounds", func(t *testing.T) {
+		current := "我会继续修改实现并补充验证。"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, true)
+		if !ok || reason != "missing_todo" {
+			t.Fatalf("expected missing_todo auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
+	t.Run("agent mode missing todo bootstrap skips likely completion reply", func(t *testing.T) {
+		current := "任务已完成。最终总结：功能可用。"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, true)
+		if ok {
+			t.Fatalf("expected no auto-continue on likely completion reply, got reason=%q", reason)
+		}
+	})
+
+	t.Run("agent mode skips missing_todo when plan completion is known", func(t *testing.T) {
+		current := "继续执行中。"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, true, true)
+		if ok {
+			t.Fatalf("expected no auto-continue when plan completion is known, got reason=%q", reason)
+		}
+	})
+}
+
+func TestExtractPlanChecklistFromToolRound(t *testing.T) {
+	t.Run("extracts checklist from exec plan command result", func(t *testing.T) {
+		calls := []llm.ToolCall{
+			{
+				Name:      "exec",
+				Arguments: `{"command":"plan_update task_index=1 checked=true"}`,
+			},
+		}
+		results := []llm.Message{
+			{
+				Role:    llm.RoleTool,
+				Content: `{"status":"completed","data":{"checklist":"- [x] step1\n- [ ] step2"}}`,
+			},
+		}
+
+		checklist, ok := extractPlanChecklistFromToolRound(calls, results)
+		if !ok {
+			t.Fatal("expected checklist extraction to succeed")
+		}
+		if checklist != "- [x] step1\n- [ ] step2" {
+			t.Fatalf("unexpected checklist: %q", checklist)
+		}
+	})
+
+	t.Run("ignores non-plan exec commands", func(t *testing.T) {
+		calls := []llm.ToolCall{
+			{
+				Name:      "exec",
+				Arguments: `{"command":"ls -la"}`,
+			},
+		}
+		results := []llm.Message{
+			{
+				Role:    llm.RoleTool,
+				Content: `{"status":"completed","data":{"checklist":"- [ ] should-not-be-used"}}`,
+			},
+		}
+
+		if checklist, ok := extractPlanChecklistFromToolRound(calls, results); ok || checklist != "" {
+			t.Fatalf("expected non-plan exec command to be ignored, got ok=%v checklist=%q", ok, checklist)
+		}
+	})
+
+	t.Run("extracts checklist from direct plan tool result", func(t *testing.T) {
+		calls := []llm.ToolCall{
+			{
+				Name:      "plan_create",
+				Arguments: `{"tasks":["a","b"]}`,
+			},
+		}
+		results := []llm.Message{
+			{
+				Role:    llm.RoleTool,
+				Content: `{"checklist":"- [ ] a\n- [ ] b"}`,
+			},
+		}
+
+		checklist, ok := extractPlanChecklistFromToolRound(calls, results)
+		if !ok || checklist == "" {
+			t.Fatalf("expected direct plan tool checklist extraction, got ok=%v checklist=%q", ok, checklist)
+		}
+	})
+}
+
+func TestExtractPlanCompletionFromToolRound(t *testing.T) {
+	t.Run("extracts all_completed from exec plan command result", func(t *testing.T) {
+		calls := []llm.ToolCall{
+			{
+				Name:      "exec",
+				Arguments: `{"command":"plan_update task_index=2 checked=true"}`,
+			},
+		}
+		results := []llm.Message{
+			{
+				Role:    llm.RoleTool,
+				Content: `{"status":"completed","data":{"all_completed":"true","pending_count":"0","checklist":"- [x] a\n- [x] b"}}`,
+			},
+		}
+
+		done, ok := extractPlanCompletionFromToolRound(calls, results)
+		if !ok {
+			t.Fatal("expected plan completion extraction to succeed")
+		}
+		if !done {
+			t.Fatal("expected plan completion to be true")
+		}
+	})
+
+	t.Run("extracts incomplete state from direct plan tool result", func(t *testing.T) {
+		calls := []llm.ToolCall{
+			{
+				Name:      "plan_update",
+				Arguments: `{"task_index":1,"checked":false}`,
+			},
+		}
+		results := []llm.Message{
+			{
+				Role:    llm.RoleTool,
+				Content: `{"operation":"update","task_count":2,"completed_count":1,"pending_count":1,"all_completed":false}`,
+			},
+		}
+
+		done, ok := extractPlanCompletionFromToolRound(calls, results)
+		if !ok {
+			t.Fatal("expected plan completion extraction to succeed")
+		}
+		if done {
+			t.Fatal("expected plan completion to be false")
+		}
+	})
+
+	t.Run("ignores non-plan exec commands", func(t *testing.T) {
+		calls := []llm.ToolCall{
+			{
+				Name:      "exec",
+				Arguments: `{"command":"ls -la"}`,
+			},
+		}
+		results := []llm.Message{
+			{
+				Role:    llm.RoleTool,
+				Content: `{"status":"completed","data":{"all_completed":"true"}}`,
+			},
+		}
+
+		if done, ok := extractPlanCompletionFromToolRound(calls, results); ok || done {
+			t.Fatalf("expected non-plan exec completion to be ignored, got ok=%v done=%v", ok, done)
+		}
+	})
+}
+
+func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
+	t.Run("suppresses codex directive chunks and keeps suppression sticky in same round", func(t *testing.T) {
+		suppressing := false
+		suppressedChunks := 0
+
+		first := filterPseudoDirectiveDeltaForStreaming(
+			"先给结论：to=functions.exec {\"command\":\"blue help browser\"}",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if first != "先给结论：" {
+			t.Fatalf("unexpected first visible delta: %q", first)
+		}
+		if !suppressing {
+			t.Fatal("expected suppressing=true after directive leakage")
+		}
+
+		noise := filterPseudoDirectiveDeltaForStreaming(
+			"{\"command\":\"...\",\"workdir\":\"/tmp/workspace\"}",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if noise != "" {
+			t.Fatalf("expected noise chunk to be suppressed, got %q", noise)
+		}
+
+		recovery := filterPseudoDirectiveDeltaForStreaming(
+			"这是最终答复。",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if recovery != "" {
+			t.Fatalf("expected recovery chunk to stay suppressed within same round, got %q", recovery)
+		}
+		if !suppressing {
+			t.Fatal("expected suppressing=true after recovery chunk in sticky suppression mode")
+		}
+	})
+
+	t.Run("detects recipient_name style directive leakage", func(t *testing.T) {
+		suppressing := false
+		suppressedChunks := 0
+		visible := filterPseudoDirectiveDeltaForStreaming(
+			"{\"recipient_name\":\"functions.exec\",\"parameters\":{\"command\":\"blue help browser\"}}",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if visible != "" {
+			t.Fatalf("expected recipient_name directive chunk to be fully suppressed, got %q", visible)
+		}
+		if !suppressing {
+			t.Fatal("expected suppressing=true after recipient_name directive")
+		}
+	})
+
+	t.Run("suppresses cmd plus tool-wrapper leakage", func(t *testing.T) {
+		suppressing := false
+		suppressedChunks := 0
+		visible := filterPseudoDirectiveDeltaForStreaming(
+			"{\"cmd\":\"ls -la\"}I’ll inspect now.{\"tool\":\"exec\",\"cmd\":\"ls -la\"}\n```tool\n{\"name\":\"exec\",\"arguments\":{\"cmd\":\"ls -la\"}}\n```\n<exec>{\"cmd\":\"ls -la\"}</exec>",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if visible != "" {
+			t.Fatalf("expected cmd/tool-wrapper leakage to be fully suppressed, got %q", visible)
+		}
+		if !suppressing {
+			t.Fatal("expected suppressing=true after cmd/tool-wrapper leakage")
+		}
+	})
+
+	t.Run("keeps suppressing across long noise bursts and suppresses clean text in same round", func(t *testing.T) {
+		suppressing := false
+		suppressedChunks := 0
+
+		first := filterPseudoDirectiveDeltaForStreaming(
+			"{\"tool_uses\":[...]}",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if first != "" {
+			t.Fatalf("expected initial tool_uses leakage to be fully suppressed, got %q", first)
+		}
+		if !suppressing {
+			t.Fatal("expected suppressing=true after tool_uses leakage")
+		}
+
+		for i := 0; i < 120; i++ {
+			noise := filterPseudoDirectiveDeltaForStreaming(
+				"with recipient_name and parameters to multi_tool_use.parallel.",
+				&suppressing,
+				&suppressedChunks,
+			)
+			if noise != "" {
+				t.Fatalf("expected long-burst scaffold chunk %d to stay suppressed, got %q", i, noise)
+			}
+		}
+		if !suppressing {
+			t.Fatal("expected suppressing=true after long noise burst")
+		}
+
+		recovery := filterPseudoDirectiveDeltaForStreaming(
+			"这是最终答复。",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if recovery != "" {
+			t.Fatalf("expected recovery chunk to remain suppressed in same round, got %q", recovery)
+		}
+		if !suppressing {
+			t.Fatal("expected suppressing=true after recovery chunk in sticky suppression mode")
+		}
+	})
+
+	t.Run("suppresses leaked tool envelope burst with code fence and recipient phrase", func(t *testing.T) {
+		suppressing := false
+		suppressedChunks := 0
+
+		first := filterPseudoDirectiveDeltaForStreaming(
+			"{\"tool_uses\":[...]}",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if first != "" {
+			t.Fatalf("expected initial leakage to be fully suppressed, got %q", first)
+		}
+		if !suppressing {
+			t.Fatal("expected suppressing=true after initial leakage")
+		}
+
+		fence := filterPseudoDirectiveDeltaForStreaming(
+			"```",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if fence != "" {
+			t.Fatalf("expected code fence chunk to be suppressed, got %q", fence)
+		}
+
+		recipient := filterPseudoDirectiveDeltaForStreaming(
+			"with recipient multi_tool_use.parallel. We can do that again.",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if recipient != "" {
+			t.Fatalf("expected recipient scaffold chunk to be suppressed, got %q", recipient)
+		}
+
+		envelope := filterPseudoDirectiveDeltaForStreaming(
+			"{\"data\":{\"format\":\"xml\",\"result\":\"<web_search>...</web_search>\"},\"duration_ms\":5,\"exit_code\":0,\"host\":\"local\",\"session_id\":\"16b745a8\",\"status\":\"completed\",\"stdout\":\"format: xml\"}",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if envelope != "" {
+			t.Fatalf("expected leaked tool envelope chunk to be suppressed, got %q", envelope)
+		}
+
+		recovery := filterPseudoDirectiveDeltaForStreaming(
+			"这是最终答复。",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if recovery != "" {
+			t.Fatalf("expected recovery chunk to remain suppressed in same round, got %q", recovery)
+		}
+		if !suppressing {
+			t.Fatal("expected suppressing=true after recovery chunk in sticky suppression mode")
+		}
+	})
+
+	t.Run("starts suppression when stream begins with leaked tool envelope", func(t *testing.T) {
+		suppressing := false
+		suppressedChunks := 0
+		visible := filterPseudoDirectiveDeltaForStreaming(
+			"{\"data\":{\"format\":\"xml\",\"result\":\"<web_search>...</web_search>\"},\"duration_ms\":5,\"exit_code\":0,\"host\":\"local\",\"session_id\":\"16b745a8\",\"status\":\"completed\",\"stdout\":\"format: xml\"}",
+			&suppressing,
+			&suppressedChunks,
+		)
+		if visible != "" {
+			t.Fatalf("expected envelope-only initial chunk to be suppressed, got %q", visible)
+		}
+		if !suppressing {
+			t.Fatal("expected suppressing=true after envelope-only initial chunk")
 		}
 	})
 }
@@ -131,6 +811,9 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	}
 	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "Tool guidance constraints") || !strings.Contains(got, "structured tool_calls only") {
 		t.Fatalf("expected non-agent toolless nudge to include tool guidance constraints, got=%q", got)
+	}
+	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "do not run `blue reminder --help`") {
+		t.Fatalf("expected non-agent toolless nudge to block reminder help fallback, got=%q", got)
 	}
 
 	agentToolless := buildToollessAutoContinueNudge(true)
@@ -153,8 +836,11 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	}
 
 	pseudo := buildToollessAutoContinueNudgeForReason(false, "pseudo_tool_call")
-	if !strings.Contains(pseudo, "fake tool-call text") {
-		t.Fatalf("expected pseudo-tool nudge to mention fake tool-call text, got=%q", pseudo)
+	if strings.Contains(pseudo, "fake tool-call text") {
+		t.Fatalf("expected pseudo-tool nudge not to include dedicated fake-tool wording, got=%q", pseudo)
+	}
+	if !strings.Contains(pseudo, "Now actually execute by calling available tools") {
+		t.Fatalf("expected pseudo-tool nudge to reuse generic execution nudge, got=%q", pseudo)
 	}
 	if !strings.Contains(pseudo, "Tool guidance constraints") {
 		t.Fatalf("expected pseudo-tool nudge to include tool guidance constraints, got=%q", pseudo)
@@ -168,6 +854,20 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	}
 	if !strings.Contains(pseudoAgent, "Tool guidance constraints") {
 		t.Fatalf("expected agent pseudo-tool nudge to include tool guidance constraints, got=%q", pseudoAgent)
+	}
+	missingTodo := buildToollessAutoContinueNudgeForReason(true, "missing_todo")
+	if !strings.Contains(missingTodo, "checklist bootstrap required") || !strings.Contains(missingTodo, "`- [ ] step`") {
+		t.Fatalf("expected missing_todo nudge to enforce checklist bootstrap format, got=%q", missingTodo)
+	}
+	if !strings.Contains(missingTodo, "Keep updating the same checklist") {
+		t.Fatalf("expected missing_todo nudge to keep canonical checklist continuity, got=%q", missingTodo)
+	}
+	pendingTodo := buildToollessAutoContinueNudgeForReason(true, "pending_todo")
+	if !strings.Contains(pendingTodo, "Do NOT output another TODO list") {
+		t.Fatalf("expected pending_todo nudge to prevent checklist rewriting, got=%q", pendingTodo)
+	}
+	if !strings.Contains(pendingTodo, "at least one real tool call") {
+		t.Fatalf("expected pending_todo nudge to enforce real execution, got=%q", pendingTodo)
 	}
 
 	if shouldPersistToollessRoundContent("pseudo_tool_call") {
@@ -187,6 +887,27 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	}
 }
 
+func TestShouldCollapseToollessAutoContinueRound(t *testing.T) {
+	if !shouldCollapseToollessAutoContinueRound("pending_todo", "- [ ] step 1") {
+		t.Fatal("expected pending_todo rounds to be collapsed")
+	}
+	if !shouldCollapseToollessAutoContinueRound("missing_todo", "- [ ] step 1") {
+		t.Fatal("expected missing_todo rounds to be collapsed")
+	}
+	if !shouldCollapseToollessAutoContinueRound("deep_search_min_rounds", "先给结论") {
+		t.Fatal("expected deep_search_min_rounds rounds to be collapsed")
+	}
+	if !shouldCollapseToollessAutoContinueRound("action_pledge", "- [ ] step 1") {
+		t.Fatal("expected checklist-style action_pledge rounds to be collapsed")
+	}
+	if shouldCollapseToollessAutoContinueRound("action_pledge", "我先去查，稍等几秒。") {
+		t.Fatal("expected plain action_pledge rounds not to be collapsed")
+	}
+	if shouldCollapseToollessAutoContinueRound("pseudo_tool_call", "- [ ] step 1") {
+		t.Fatal("expected pseudo_tool_call rounds not to be collapsed")
+	}
+}
+
 func TestGetMaxAutoContinueForMode(t *testing.T) {
 	h := &ChatHandler{}
 	if got := h.getMaxAutoContinueForMode(false); got != maxAutoContinueDefault {
@@ -197,23 +918,96 @@ func TestGetMaxAutoContinueForMode(t *testing.T) {
 	}
 }
 
-func TestPseudoToolCallAutoContinueBudget(t *testing.T) {
-	if !shouldAutoContinueForReasonWithinBudget("pending_todo", true, 999) {
-		t.Fatal("expected non-pseudo reasons to bypass pseudo budget")
+func TestBumpContinuationDegradationWindowAndThreshold(t *testing.T) {
+	h := &ChatHandler{}
+	base := time.Date(2026, 3, 2, 14, 30, 0, 0, time.UTC)
+
+	for i := 1; i < continuationDegradeAlertThreshold; i++ {
+		count, alert := h.bumpContinuationDegradation(base)
+		if count != i {
+			t.Fatalf("count = %d, want %d", count, i)
+		}
+		if alert {
+			t.Fatalf("unexpected alert before threshold at count=%d", count)
+		}
 	}
 
-	if !shouldAutoContinueForReasonWithinBudget("pseudo_tool_call", false, maxPseudoToolCallAutoContinueDefault-1) {
+	count, alert := h.bumpContinuationDegradation(base)
+	if count != continuationDegradeAlertThreshold {
+		t.Fatalf("count = %d, want threshold %d", count, continuationDegradeAlertThreshold)
+	}
+	if !alert {
+		t.Fatal("expected alert at threshold")
+	}
+
+	count, alert = h.bumpContinuationDegradation(base.Add(continuationDegradeAlertWindow + time.Second))
+	if count != 1 {
+		t.Fatalf("count after window reset = %d, want 1", count)
+	}
+	if alert {
+		t.Fatal("did not expect alert after window reset")
+	}
+}
+
+func TestToollessAutoContinueBudget(t *testing.T) {
+	if shouldAutoContinueForReasonWithinBudget("pending_todo", false, 0, 0, 0, 0) {
+		t.Fatal("expected non-agent pending_todo to be disabled")
+	}
+	if !shouldAutoContinueForReasonWithinBudget("pending_todo", true, 0, 0, 0, maxPendingTodoAutoContinueAgent-1) {
+		t.Fatal("expected agent pending_todo within budget to continue")
+	}
+	if shouldAutoContinueForReasonWithinBudget("pending_todo", true, 0, 0, 0, maxPendingTodoAutoContinueAgent) {
+		t.Fatal("expected agent pending_todo at budget limit to stop")
+	}
+
+	if !shouldAutoContinueForReasonWithinBudget("pseudo_tool_call", false, maxPseudoToolCallAutoContinueDefault-1, 0, 0, 0) {
 		t.Fatal("expected non-agent pseudo_tool_call within budget to continue")
 	}
-	if shouldAutoContinueForReasonWithinBudget("pseudo_tool_call", false, maxPseudoToolCallAutoContinueDefault) {
+	if shouldAutoContinueForReasonWithinBudget("pseudo_tool_call", false, maxPseudoToolCallAutoContinueDefault, 0, 0, 0) {
 		t.Fatal("expected non-agent pseudo_tool_call at budget limit to stop")
 	}
 
-	if !shouldAutoContinueForReasonWithinBudget("pseudo_tool_call", true, maxPseudoToolCallAutoContinueAgent-1) {
+	if !shouldAutoContinueForReasonWithinBudget("pseudo_tool_call", true, maxPseudoToolCallAutoContinueAgent-1, 0, 0, 0) {
 		t.Fatal("expected agent pseudo_tool_call within budget to continue")
 	}
-	if shouldAutoContinueForReasonWithinBudget("pseudo_tool_call", true, maxPseudoToolCallAutoContinueAgent) {
+	if shouldAutoContinueForReasonWithinBudget("pseudo_tool_call", true, maxPseudoToolCallAutoContinueAgent, 0, 0, 0) {
 		t.Fatal("expected agent pseudo_tool_call at budget limit to stop")
+	}
+
+	if !shouldAutoContinueForReasonWithinBudget("action_pledge", false, 0, maxActionPledgeAutoContinueDefault-1, 0, 0) {
+		t.Fatal("expected non-agent action_pledge within budget to continue")
+	}
+	if shouldAutoContinueForReasonWithinBudget("action_pledge", false, 0, maxActionPledgeAutoContinueDefault, 0, 0) {
+		t.Fatal("expected non-agent action_pledge at budget limit to stop")
+	}
+
+	if !shouldAutoContinueForReasonWithinBudget("action_pledge", true, 0, maxActionPledgeAutoContinueAgent-1, 0, 0) {
+		t.Fatal("expected agent action_pledge within budget to continue")
+	}
+	if shouldAutoContinueForReasonWithinBudget("action_pledge", true, 0, maxActionPledgeAutoContinueAgent, 0, 0) {
+		t.Fatal("expected agent action_pledge at budget limit to stop")
+	}
+
+	if shouldAutoContinueForReasonWithinBudget("missing_todo", false, 0, 0, 0, 0) {
+		t.Fatal("expected non-agent missing_todo to be disabled")
+	}
+	if !shouldAutoContinueForReasonWithinBudget("missing_todo", true, 0, 0, maxMissingTodoAutoContinueAgent-1, 0) {
+		t.Fatal("expected agent missing_todo within budget to continue")
+	}
+	if shouldAutoContinueForReasonWithinBudget("missing_todo", true, 0, 0, maxMissingTodoAutoContinueAgent, 0) {
+		t.Fatal("expected agent missing_todo at budget limit to stop")
+	}
+}
+
+func TestActionPledgeDuplicateDebounce(t *testing.T) {
+	if shouldStopForDuplicateActionPledge("action_pledge", maxConsecutiveDuplicateActionPledgeAutoContinue) {
+		t.Fatal("expected first action_pledge duplicate count within threshold")
+	}
+	if !shouldStopForDuplicateActionPledge("action_pledge", maxConsecutiveDuplicateActionPledgeAutoContinue+1) {
+		t.Fatal("expected action_pledge duplicate count over threshold to stop")
+	}
+	if shouldStopForDuplicateActionPledge("pseudo_tool_call", 10) {
+		t.Fatal("expected duplicate stop gate to apply only to action_pledge")
 	}
 }
 
@@ -261,7 +1055,7 @@ func TestChoosePseudoToolCallPrimaryToolIndex(t *testing.T) {
 		{Name: "web_search"},
 		{Name: "exec"},
 	}
-	if got := choosePseudoToolCallPrimaryToolIndex(tools); got != 2 {
+	if got := choosePseudoToolCallPrimaryToolIndex(tools, false); got != 2 {
 		t.Fatalf("expected exec to be preferred, got index=%d", got)
 	}
 
@@ -269,8 +1063,40 @@ func TestChoosePseudoToolCallPrimaryToolIndex(t *testing.T) {
 		{Name: "ask"},
 		{Name: "file_read"},
 	}
-	if got := choosePseudoToolCallPrimaryToolIndex(tools); got != 1 {
+	if got := choosePseudoToolCallPrimaryToolIndex(tools, false); got != 1 {
 		t.Fatalf("expected non-ask tool fallback, got index=%d", got)
+	}
+
+	tools = []llm.Tool{
+		{Name: "exec"},
+		{Name: "reminder"},
+	}
+	if got := choosePseudoToolCallPrimaryToolIndex(tools, true); got != 1 {
+		t.Fatalf("expected reminder to be preferred when reminder intent is detected, got index=%d", got)
+	}
+}
+
+func TestShouldPreferReminderToolForRetry(t *testing.T) {
+	tools := []llm.Tool{
+		{Name: "exec"},
+		{Name: "reminder"},
+	}
+	messages := []llm.Message{
+		{Role: llm.RoleUser, Content: "提醒我10秒钟以后喝水"},
+	}
+	if !shouldPreferReminderToolForRetry(messages, tools) {
+		t.Fatal("expected reminder preference for reminder intent")
+	}
+
+	messages = []llm.Message{
+		{Role: llm.RoleUser, Content: "帮我看一下这个目录里的文件"},
+	}
+	if shouldPreferReminderToolForRetry(messages, tools) {
+		t.Fatal("expected no reminder preference for non-reminder intent")
+	}
+
+	if shouldPreferReminderToolForRetry([]llm.Message{{Role: llm.RoleUser, Content: "提醒我喝水"}}, []llm.Tool{{Name: "exec"}}) {
+		t.Fatal("expected no reminder preference when reminder tool is unavailable")
 	}
 }
 
@@ -311,5 +1137,129 @@ func TestHardenPseudoToolCallRetryRequest(t *testing.T) {
 	}
 	if got, ok := req.Tools[0].Parameters["additionalProperties"].(bool); !ok || got {
 		t.Fatalf("expected schema additionalProperties=false, got %v", req.Tools[0].Parameters["additionalProperties"])
+	}
+}
+
+func TestHardenPseudoToolCallRetryRequest_PrefersReminderForReminderIntent(t *testing.T) {
+	req := llm.ChatRequest{
+		Temperature: 0.7,
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "remind me to drink water in 10 seconds"},
+		},
+		Tools: []llm.Tool{
+			{
+				Name: "exec",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"command": map[string]interface{}{"type": "string"},
+					},
+				},
+			},
+			{
+				Name: "reminder",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"action":  map[string]interface{}{"type": "string"},
+						"message": map[string]interface{}{"type": "string"},
+						"time":    map[string]interface{}{"type": "string"},
+					},
+				},
+			},
+		},
+	}
+
+	actions := hardenPseudoToolCallRetryRequest(&req)
+	if len(actions) == 0 {
+		t.Fatal("expected hardening actions to be applied")
+	}
+	if len(req.Tools) != 1 || req.Tools[0].Name != "reminder" {
+		t.Fatalf("expected tool scope to reduce to reminder, got %+v", req.Tools)
+	}
+}
+
+func TestSanitizeResponseContent_StripsPseudoDirectiveArtifactsButKeepsAnswer(t *testing.T) {
+	raw := `---
+to=functions.exec  乐盈json ...
+Let's do correctly.
+to=functions.exec  菲娱json
+{"command":"blue help browser","workdir":"/Users/orca/.zimaos-blue/data/workspace"}to=functions.exec d天天json
+{"command":"blue help browser","workdir":"/Users/orca/.zimaos-blue/data/workspace"}收到，你选 **2**。
+
+第 2 条是这篇：
+- 标题：别再用旧版了！OpenClaw 2026.2.9 更新迁移避坑指南`
+
+	got := sanitizeResponseContent(raw)
+	if strings.Contains(strings.ToLower(got), "to=functions.exec") {
+		t.Fatalf("expected pseudo directive token removed, got=%q", got)
+	}
+	if strings.Contains(got, `"command":"blue help browser"`) {
+		t.Fatalf("expected leaked command json removed, got=%q", got)
+	}
+	if !strings.Contains(got, "收到，你选 **2**。") {
+		t.Fatalf("expected user-facing answer retained, got=%q", got)
+	}
+	if !strings.Contains(got, "第 2 条是这篇：") {
+		t.Fatalf("expected normal summary content retained, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContent_DoesNotStripBenignJSONExample(t *testing.T) {
+	raw := `你可以在 shell 里执行这个 JSON 示例：{"cmd":"ls -la"}`
+	got := sanitizeResponseContent(raw)
+	if got != raw {
+		t.Fatalf("expected benign single JSON example preserved, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContent_StripsLeakedCommandWorkdirPrefixButKeepsAnswer(t *testing.T) {
+	raw := `{"command":"blue web_search query=\"OpenClaw GitHub release\"""workdir":"/Users/orca/.zimaos-blue/data/workspace"}我先帮你搜到一批 OpenClaw 相关最新结果（当前检索到 5 条）：`
+	got := sanitizeResponseContent(raw)
+	if strings.Contains(got, `"command":"blue web_search`) {
+		t.Fatalf("expected leaked command json removed, got=%q", got)
+	}
+	if strings.Contains(got, `"workdir":`) {
+		t.Fatalf("expected leaked workdir removed, got=%q", got)
+	}
+	if !strings.Contains(got, "我先帮你搜到一批 OpenClaw 相关最新结果") {
+		t.Fatalf("expected user-facing answer retained, got=%q", got)
+	}
+}
+
+func TestResolveResponseSanitizeProfile_Deterministic(t *testing.T) {
+	if got := resolveResponseSanitizeProfile("openai", "openai", "gpt-4o"); got != responseSanitizeProfileBalanced {
+		t.Fatalf("expected openai profile balanced, got=%s", got)
+	}
+	if got := resolveResponseSanitizeProfile("deepresearch", "deepresearch", "deepresearch-fallback"); got != responseSanitizeProfileMinimal {
+		t.Fatalf("expected deepresearch profile minimal, got=%s", got)
+	}
+	if got := resolveResponseSanitizeProfile("openai", "openai", "gpt-5.3-codex-spark"); got != responseSanitizeProfileStrict {
+		t.Fatalf("expected codex model profile strict, got=%s", got)
+	}
+	if got := resolveResponseSanitizeProfile("", "custom_vendor", "custom-model"); got != responseSanitizeProfileBalanced {
+		t.Fatalf("expected unknown provider profile balanced, got=%s", got)
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_ProfileStrategy(t *testing.T) {
+	raw := `{"command":"blue help browser"}这是正文`
+
+	strict := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.3-codex-spark")
+	if strings.Contains(strict, `"command":"blue help browser"`) {
+		t.Fatalf("expected strict profile to strip leaked command json, got=%q", strict)
+	}
+	if !strings.Contains(strict, "这是正文") {
+		t.Fatalf("expected strict profile to keep user-facing answer, got=%q", strict)
+	}
+
+	balanced := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-4o")
+	if balanced != raw {
+		t.Fatalf("expected balanced profile to keep benign single command example, got=%q", balanced)
+	}
+
+	minimal := sanitizeResponseContentWithProvider(raw, "deepresearch", "deepresearch", "deepresearch-fallback")
+	if minimal != raw {
+		t.Fatalf("expected minimal profile to keep benign single command example, got=%q", minimal)
 	}
 }

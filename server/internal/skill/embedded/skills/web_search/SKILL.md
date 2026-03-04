@@ -27,12 +27,14 @@ No external dependencies required. Uses built-in web search capability.
 blue web_search query="ZimaOS Blue release notes"
 blue web_search query="OpenAI Responses API function calling" max_results=8
 blue web_search query="container sandbox security best practices" max_results=10 region=us-en
+blue web_search query="OpenAI Responses API" format=xml
 ```
 
 Parameters:
 - `query` (required)
 - `max_results` (optional, default 10, max 20)
 - `region` (optional, e.g. `us-en`, `wt-wt`)
+- `format` (optional, `json` or `xml`, default `xml`)
 
 ---
 

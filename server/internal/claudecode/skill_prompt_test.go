@@ -295,8 +295,6 @@ func TestPinnedSkills_ContainsCoreRoutedSkillSet(t *testing.T) {
 
 	required := []string{
 		"reminder",
-		"sandbox",
-		"workflows",
 		"scheduler",
 	}
 

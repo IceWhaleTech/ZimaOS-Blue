@@ -1,3 +1,8 @@
+---
+name: calculator
+description: Perform arithmetic calculations for numeric expressions percentages and parentheses.
+---
+
 # Calculator
 
 Performs basic arithmetic calculations.

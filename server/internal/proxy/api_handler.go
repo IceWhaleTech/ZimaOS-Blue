@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	stdjson "encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -476,7 +477,7 @@ func (h *ProxyAPIHandler) handleMaskingStats(w http.ResponseWriter, r *http.Requ
 	h.jsonResponse(w, http.StatusOK, h.dataMasker.Stats())
 }
 
-// handleMaskingRules handles GET/POST/DELETE /api/v1/proxy/masking/rules
+// handleMaskingRules handles GET/POST/PUT/DELETE /api/v1/proxy/masking/rules
 func (h *ProxyAPIHandler) handleMaskingRules(w http.ResponseWriter, r *http.Request) {
 	if h.dataMasker == nil {
 		http.Error(w, "Data masking not enabled", http.StatusNotFound)
@@ -493,7 +494,7 @@ func (h *ProxyAPIHandler) handleMaskingRules(w http.ResponseWriter, r *http.Requ
 
 	case http.MethodPost:
 		var rule MaskingRule
-		if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
+		if err := stdjson.NewDecoder(r.Body).Decode(&rule); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
@@ -507,6 +508,30 @@ func (h *ProxyAPIHandler) handleMaskingRules(w http.ResponseWriter, r *http.Requ
 		h.jsonResponse(w, http.StatusCreated, map[string]interface{}{
 			"message": "Masking rule added successfully",
 			"rule":    rule,
+		})
+
+	case http.MethodPut:
+		ruleID := r.URL.Query().Get("id")
+		if ruleID == "" {
+			http.Error(w, "Rule ID is required", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			Enabled *bool `json:"enabled"`
+		}
+		if err := stdjson.NewDecoder(r.Body).Decode(&req); err != nil || req.Enabled == nil {
+			http.Error(w, "enabled field is required", http.StatusBadRequest)
+			return
+		}
+		if !h.dataMasker.SetRuleEnabled(ruleID, *req.Enabled) {
+			http.Error(w, "Rule not found", http.StatusNotFound)
+			return
+		}
+		rule, _ := h.dataMasker.GetRule(ruleID)
+		h.jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"message": "Masking rule updated successfully",
+			"rule":    rule,
+			"stats":   h.dataMasker.Stats(),
 		})
 
 	case http.MethodDelete:
@@ -533,7 +558,7 @@ func (h *ProxyAPIHandler) handleMaskingRules(w http.ResponseWriter, r *http.Requ
 func (h *ProxyAPIHandler) jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	stdjson.NewEncoder(w).Encode(data)
 }
 
 // parseIntQuery parses an integer query parameter with a default value

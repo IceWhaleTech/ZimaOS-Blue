@@ -1,3 +1,8 @@
+---
+name: weather
+description: Get current weather and forecast data for locations via OpenWeatherMap APIs.
+---
+
 # Weather
 
 Get current weather and forecast for any location.

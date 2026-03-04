@@ -187,7 +187,7 @@ func TestConvertOpenAIChatCompletionsToResponses_ContinuationKeepsExplicitInstru
 func TestConvertOpenAIChatCompletionsToResponses_CapsMaxOutputTokens(t *testing.T) {
 	body := []byte(`{
 		"model":"o3",
-		"max_tokens":4096,
+		"max_tokens":16384,
 		"messages":[{"role":"user","content":"hello"}]
 	}`)
 
@@ -1734,7 +1734,7 @@ func TestBuildUpstreamRequestWithFormat_ResponsesPathCapsMaxOutputTokens(t *test
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	body := []byte(`{"model":"gpt-5.3-codex-spark","max_output_tokens":4096,"input":[{"role":"user","content":[{"type":"input_text","text":"hi"}]}]}`)
+	body := []byte(`{"model":"gpt-5.3-codex-spark","max_output_tokens":16384,"input":[{"role":"user","content":[{"type":"input_text","text":"hi"}]}]}`)
 	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
 	if err != nil {
 		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)

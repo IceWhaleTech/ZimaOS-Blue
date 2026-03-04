@@ -10,6 +10,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
@@ -28,42 +29,51 @@ type SettingsHandler struct {
 	skillRerankerModelManager *claudecode.SkillRerankerModelManager
 	smallModelManager         *smallmodel.Manager
 	soulProposals             map[string]*SoulProposal
+	chatHandler               *ChatHandler
 }
 
 // Settings represents user preferences stored on backend
 type Settings struct {
-	Locale                             string   `json:"locale,omitempty"`                                  // User's preferred locale (e.g., "zh-CN", "en-US")
-	Timezone                           string   `json:"timezone,omitempty"`                                // User's timezone
-	ThemeStyle                         string   `json:"theme_style,omitempty"`                             // Chat theme style
-	SmartToolSelection                 *bool    `json:"smart_tool_selection,omitempty"`                    // IR-based tool filtering (nil = default true)
-	SmartSkillSelection                *bool    `json:"smart_skill_selection,omitempty"`                   // Progressive skill selector (nil = default true)
-	SkillSelectorMode                  string   `json:"skill_selector_mode,omitempty"`                     // hybrid|ir_only|llm_only
-	SkillRerankEnabled                 *bool    `json:"skill_rerank_enabled,omitempty"`                    // Enable stage-2 rerank (nil = default true)
-	SkillRerankModel                   string   `json:"skill_rerank_model,omitempty"`                      // Reranker model repo (e.g. cross-encoder/ms-marco-MiniLM-L6-v2)
-	SkillRerankONNXEnabled             *bool    `json:"skill_rerank_onnx_enabled,omitempty"`               // Enable ONNX reranker path (nil = default false)
-	SkillRerankONNXAutoDownload        *bool    `json:"skill_rerank_onnx_auto_download,omitempty"`         // Allow ONNX model auto-download (nil = default false)
-	SkillSelectorConfidenceThreshold   *float64 `json:"skill_selector_confidence_threshold,omitempty"`     // default 0.78
-	MemoryRecallMode                   string   `json:"memory_recall_mode,omitempty"`                      // Memory recall strategy: aggressive|balanced|quality
-	AgentMode                          *bool    `json:"agent_mode,omitempty"`                              // Autonomous agent mode (nil = default false)
-	AgentAutoConfirm                   *bool    `json:"agent_auto_confirm,omitempty"`                      // Skip confirmation in agent mode (nil = default false)
-	AgentAskTimeoutSeconds             *int     `json:"agent_ask_timeout_seconds,omitempty"`               // Ask timeout in seconds (default 120, range 15-1800)
-	AgentAskTimeoutAction              string   `json:"agent_ask_timeout_action,omitempty"`                // default|error
-	SmallModelEnabled                  *bool    `json:"small_model_enabled,omitempty"`                     // default false
-	SmallModelRuntime                  string   `json:"small_model_runtime,omitempty"`                     // fixed: llama_cpp_native
-	SmallModelID                       string   `json:"small_model_id,omitempty"`                          // fixed: lfm2.5-1.2b-instruct-q4km
-	SmallModelAutoDownload             *bool    `json:"small_model_auto_download,omitempty"`               // default true
-	SmallModelShadowRatio              *float64 `json:"small_model_shadow_ratio,omitempty"`                // default 0.1, (0,1]
-	SmallModelShadowGateMinSamples     *int     `json:"small_model_shadow_gate_min_samples,omitempty"`     // default 40, [1,10000]
-	SmallModelShadowGateThresholdDelta *float64 `json:"small_model_shadow_gate_threshold_delta,omitempty"` // default 0.35, (0,1]
-	SmallModelShadowGateScene          string   `json:"small_model_shadow_gate_scene,omitempty"`           // default "", optional scene filter
-	SmallModelSummaryEnabled           *bool    `json:"small_model_summary_enabled,omitempty"`             // default true
-	SmallModelDocExtractEnabled        *bool    `json:"small_model_doc_extract_enabled,omitempty"`         // default true
-	SmallModelRerankEnabled            *bool    `json:"small_model_rerank_enabled,omitempty"`              // default true
-	SmallModelContextPruneEnabled      *bool    `json:"small_model_context_prune_enabled,omitempty"`       // default true
-	SmallModelRouteShortQAEnabled      *bool    `json:"small_model_route_short_qa_enabled,omitempty"`      // default false
-	SmallModelRouteToolDispatchEnabled *bool    `json:"small_model_route_tool_dispatch_enabled,omitempty"` // default false
-	NoLLMDegradeMode                   string   `json:"no_llm_degrade_mode,omitempty"`                     // fixed default deepresearch
-	SmallModelUnavailablePolicy        string   `json:"small_model_unavailable_policy,omitempty"`          // default ir_first
+	Locale                              string   `json:"locale,omitempty"`                                    // User's preferred locale (e.g., "zh-CN", "en-US")
+	Timezone                            string   `json:"timezone,omitempty"`                                  // User's timezone
+	ThemeStyle                          string   `json:"theme_style,omitempty"`                               // Chat theme style
+	SmartToolSelection                  *bool    `json:"smart_tool_selection,omitempty"`                      // IR-based tool filtering (nil = default true)
+	SmartSkillSelection                 *bool    `json:"smart_skill_selection,omitempty"`                     // Progressive skill selector (nil = default true)
+	SkillSelectorMode                   string   `json:"skill_selector_mode,omitempty"`                       // hybrid|ir_only|llm_only
+	SkillRerankEnabled                  *bool    `json:"skill_rerank_enabled,omitempty"`                      // Enable stage-2 rerank (nil = default true)
+	SkillRerankModel                    string   `json:"skill_rerank_model,omitempty"`                        // Reranker model repo (e.g. cross-encoder/ms-marco-MiniLM-L6-v2)
+	SkillRerankONNXEnabled              *bool    `json:"skill_rerank_onnx_enabled,omitempty"`                 // Enable ONNX reranker path (nil = default false)
+	SkillRerankONNXAutoDownload         *bool    `json:"skill_rerank_onnx_auto_download,omitempty"`           // Allow ONNX model auto-download (nil = default false)
+	SkillSelectorConfidenceThreshold    *float64 `json:"skill_selector_confidence_threshold,omitempty"`       // default 0.78
+	PromptPolicyVersion                 string   `json:"prompt_policy_version,omitempty"`                     // prompt policy version marker
+	PromptPolicyProfile                 string   `json:"prompt_policy_profile,omitempty"`                     // prompt policy profile
+	MemoryRecallMode                    string   `json:"memory_recall_mode,omitempty"`                        // Memory recall strategy: aggressive|balanced|quality
+	AgentMode                           *bool    `json:"agent_mode,omitempty"`                                // Autonomous agent mode (nil = default false)
+	AgentAutoConfirm                    *bool    `json:"agent_auto_confirm,omitempty"`                        // Skip confirmation in agent mode (nil = default false)
+	AgentAskTimeoutSeconds              *int     `json:"agent_ask_timeout_seconds,omitempty"`                 // Ask timeout in seconds (default 120, range 15-1800)
+	AgentAskTimeoutAction               string   `json:"agent_ask_timeout_action,omitempty"`                  // default|error
+	AgentLoopPolicyMaxToolRounds        *int     `json:"agent_loop_policy_max_tool_rounds,omitempty"`         // default maxToolRoundsAgent
+	AgentLoopPolicyMaxAutoContinue      *int     `json:"agent_loop_policy_max_auto_continue,omitempty"`       // default maxAutoContinueAgent
+	AgentLoopPolicyPseudoToolCallBudget *int     `json:"agent_loop_policy_pseudo_tool_call_budget,omitempty"` // default maxPseudoToolCallAutoContinueAgent
+	AgentLoopPolicyActionPledgeBudget   *int     `json:"agent_loop_policy_action_pledge_budget,omitempty"`    // default maxActionPledgeAutoContinueAgent
+	AgentLoopPolicyMissingTodoBudget    *int     `json:"agent_loop_policy_missing_todo_budget,omitempty"`     // default maxMissingTodoAutoContinueAgent
+	AgentLoopPolicyPendingTodoBudget    *int     `json:"agent_loop_policy_pending_todo_budget,omitempty"`     // default maxPendingTodoAutoContinueAgent
+	SmallModelEnabled                   *bool    `json:"small_model_enabled,omitempty"`                       // default false
+	SmallModelRuntime                   string   `json:"small_model_runtime,omitempty"`                       // fixed: onnx_genai_python
+	SmallModelID                        string   `json:"small_model_id,omitempty"`                            // fixed: qwen3.5-0.8b-onnx-q4
+	SmallModelAutoDownload              *bool    `json:"small_model_auto_download,omitempty"`                 // default true
+	SmallModelSummaryEnabled            *bool    `json:"small_model_summary_enabled,omitempty"`               // default true
+	SmallModelDocExtractEnabled         *bool    `json:"small_model_doc_extract_enabled,omitempty"`           // default true
+	SmallModelRerankEnabled             *bool    `json:"small_model_rerank_enabled,omitempty"`                // default true
+	SmallModelContextPruneEnabled       *bool    `json:"small_model_context_prune_enabled,omitempty"`         // default true
+	SmallModelMediaIntentEnabled        *bool    `json:"small_model_media_intent_enabled,omitempty"`          // default true
+	OfflineIRFallbackEnabled            *bool    `json:"offline_ir_fallback_enabled,omitempty"`               // default true
+	FeatureIntentIREnabled              *bool    `json:"feature_intent_ir_enabled,omitempty"`                 // default true
+	DeepResearchV2Enabled               *bool    `json:"deep_research_v2_enabled,omitempty"`                  // default true (full release)
+	SmallModelRouteShortQAEnabled       *bool    `json:"small_model_route_short_qa_enabled,omitempty"`        // default true
+	SmallModelRouteToolDispatchEnabled  *bool    `json:"small_model_route_tool_dispatch_enabled,omitempty"`   // default true
+	NoLLMDegradeMode                    string   `json:"no_llm_degrade_mode,omitempty"`                       // fixed default deepresearch
+	SmallModelUnavailablePolicy         string   `json:"small_model_unavailable_policy,omitempty"`            // default ir_first
 }
 
 type SoulProposal struct {
@@ -107,6 +117,8 @@ func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/settings", h.Get)
 	g.PUT("/settings", h.Update)
 	g.PATCH("/settings", h.Patch)
+	g.GET("/settings/prompt-policy", h.GetPromptPolicyStatus)
+	g.POST("/settings/selector/dry-run", h.SelectorDryRun)
 	g.GET("/settings/skill-reranker/model/status", h.GetSkillRerankerModelStatus)
 	g.POST("/settings/skill-reranker/model/download", h.StartSkillRerankerModelDownload)
 	g.POST("/settings/skill-reranker/model/cancel", h.CancelSkillRerankerModelDownload)
@@ -130,6 +142,13 @@ func (h *SettingsHandler) SetSmallModelManager(mgr *smallmodel.Manager) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.smallModelManager = mgr
+}
+
+// SetChatHandler wires chat handler for selector dry-run endpoints.
+func (h *SettingsHandler) SetChatHandler(ch *ChatHandler) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.chatHandler = ch
 }
 
 // Get handles GET /api/settings
@@ -184,7 +203,7 @@ func (h *SettingsHandler) GetSkillRerankerModelStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, mgr.GetStatus())
 }
 
-// StartSmallModelDownload starts downloading fixed llama.cpp small model in background.
+// StartSmallModelDownload starts downloading fixed ONNX small model in background.
 func (h *SettingsHandler) StartSmallModelDownload(c echo.Context) error {
 	h.mu.RLock()
 	mgr := h.smallModelManager
@@ -296,6 +315,88 @@ func (h *SettingsHandler) AddSoulProposal(title, content, source string) (*SoulP
 	return p, nil
 }
 
+// GetPromptPolicyStatus returns the effective prompt policy and loop policy snapshot.
+func (h *SettingsHandler) GetPromptPolicyStatus(c echo.Context) error {
+	if !isAdminRequest(c) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "admin role required"})
+	}
+	policy := resolvePromptPolicy(h.GetPromptPolicyVersion(), h.GetPromptPolicyProfile())
+	loopPolicy := AgentLoopPolicy{
+		MaxToolRounds:        h.GetAgentLoopPolicyMaxToolRounds(),
+		MaxAutoContinue:      h.GetAgentLoopPolicyMaxAutoContinue(),
+		PseudoToolCallBudget: h.GetAgentLoopPolicyPseudoToolCallBudget(),
+		ActionPledgeBudget:   h.GetAgentLoopPolicyActionPledgeBudget(),
+		MissingTodoBudget:    h.GetAgentLoopPolicyMissingTodoBudget(),
+		PendingTodoBudget:    h.GetAgentLoopPolicyPendingTodoBudget(),
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"prompt_policy_version": policy.Version,
+		"prompt_policy_profile": policy.Profile,
+		"prompt_policy_hash":    policy.Hash,
+		"agent_loop_policy":     loopPolicy,
+	})
+}
+
+// SelectorDryRun previews tool/skill selection decisions for a query.
+func (h *SettingsHandler) SelectorDryRun(c echo.Context) error {
+	if !isAdminRequest(c) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "admin role required"})
+	}
+	var req struct {
+		Query string `json:"query"`
+		Model string `json:"model,omitempty"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+	req.Query = strings.TrimSpace(req.Query)
+	req.Model = strings.TrimSpace(req.Model)
+	if req.Query == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "query is required"})
+	}
+	if req.Model == "" {
+		req.Model = "auto"
+	}
+
+	h.mu.RLock()
+	chatHandler := h.chatHandler
+	h.mu.RUnlock()
+	if chatHandler == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "chat handler not configured"})
+	}
+
+	selectedDefs := chatHandler.selectTools(req.Query, req.Model)
+	toolNames := make([]string, len(selectedDefs))
+	for i, def := range selectedDefs {
+		toolNames[i] = def.Name
+	}
+
+	response := map[string]interface{}{
+		"query":                 req.Query,
+		"model":                 req.Model,
+		"smart_tool_selection":  h.GetSmartToolSelection(),
+		"smart_skill_selection": h.GetSmartSkillSelection(),
+		"selected_tools":        toolNames,
+	}
+
+	if chatHandler.skillSelector != nil && h.GetSmartSkillSelection() {
+		opts := claudecode.SelectOptions{
+			Mode:                h.GetSkillSelectorMode(),
+			EnableRerank:        h.GetEffectiveSkillRerankEnabled(),
+			ConfidenceThreshold: h.GetSkillSelectorConfidenceThreshold(),
+		}
+		decision, err := chatHandler.skillSelector.Select(c.Request().Context(), req.Query, opts)
+		if err != nil {
+			response["skill_selector_error"] = err.Error()
+		} else {
+			response["skill_decision"] = decision
+			response["skill_prompt_hint"] = decision.PromptHint(3)
+		}
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
 // Update handles PUT /api/settings (full update)
 func (h *SettingsHandler) Update(c echo.Context) error {
 	var newSettings Settings
@@ -338,19 +439,50 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 			newSettings.AgentAskTimeoutAction = ""
 		}
 	}
+	if newSettings.PromptPolicyProfile != "" {
+		switch strings.ToLower(strings.TrimSpace(newSettings.PromptPolicyProfile)) {
+		case "default":
+			newSettings.PromptPolicyProfile = "default"
+		default:
+			newSettings.PromptPolicyProfile = ""
+		}
+	}
+	if newSettings.AgentLoopPolicyMaxToolRounds != nil {
+		if !isWithinIntRange(*newSettings.AgentLoopPolicyMaxToolRounds, 1, 200) {
+			newSettings.AgentLoopPolicyMaxToolRounds = nil
+		}
+	}
+	if newSettings.AgentLoopPolicyMaxAutoContinue != nil {
+		if !isWithinIntRange(*newSettings.AgentLoopPolicyMaxAutoContinue, 0, 100) {
+			newSettings.AgentLoopPolicyMaxAutoContinue = nil
+		}
+	}
+	if newSettings.AgentLoopPolicyPseudoToolCallBudget != nil {
+		if !isWithinIntRange(*newSettings.AgentLoopPolicyPseudoToolCallBudget, 0, 100) {
+			newSettings.AgentLoopPolicyPseudoToolCallBudget = nil
+		}
+	}
+	if newSettings.AgentLoopPolicyActionPledgeBudget != nil {
+		if !isWithinIntRange(*newSettings.AgentLoopPolicyActionPledgeBudget, 0, 100) {
+			newSettings.AgentLoopPolicyActionPledgeBudget = nil
+		}
+	}
+	if newSettings.AgentLoopPolicyMissingTodoBudget != nil {
+		if !isWithinIntRange(*newSettings.AgentLoopPolicyMissingTodoBudget, 0, 100) {
+			newSettings.AgentLoopPolicyMissingTodoBudget = nil
+		}
+	}
+	if newSettings.AgentLoopPolicyPendingTodoBudget != nil {
+		if !isWithinIntRange(*newSettings.AgentLoopPolicyPendingTodoBudget, 0, 100) {
+			newSettings.AgentLoopPolicyPendingTodoBudget = nil
+		}
+	}
 	if newSettings.SmallModelRuntime != "" && newSettings.SmallModelRuntime != smallmodel.RuntimeType {
 		newSettings.SmallModelRuntime = ""
 	}
 	if newSettings.SmallModelID != "" && newSettings.SmallModelID != smallmodel.ModelID {
 		newSettings.SmallModelID = ""
 	}
-	if newSettings.SmallModelShadowRatio != nil {
-		v := *newSettings.SmallModelShadowRatio
-		if v <= 0 || v > 1 {
-			newSettings.SmallModelShadowRatio = nil
-		}
-	}
-	newSettings.SmallModelShadowGateScene = normalizeSmallModelShadowGateScene(newSettings.SmallModelShadowGateScene)
 	if newSettings.NoLLMDegradeMode != "" {
 		switch newSettings.NoLLMDegradeMode {
 		case "deepresearch":
@@ -479,6 +611,45 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 			}
 		}
 	}
+	if version, ok := updates["prompt_policy_version"].(string); ok {
+		h.settings.PromptPolicyVersion = strings.TrimSpace(version)
+	}
+	if profile, ok := updates["prompt_policy_profile"].(string); ok {
+		switch strings.ToLower(strings.TrimSpace(profile)) {
+		case "default":
+			h.settings.PromptPolicyProfile = "default"
+		}
+	}
+	if v, ok := updates["agent_loop_policy_max_tool_rounds"]; ok {
+		if iv, ok := intFromAny(v); ok && isWithinIntRange(iv, 1, 200) {
+			h.settings.AgentLoopPolicyMaxToolRounds = &iv
+		}
+	}
+	if v, ok := updates["agent_loop_policy_max_auto_continue"]; ok {
+		if iv, ok := intFromAny(v); ok && isWithinIntRange(iv, 0, 100) {
+			h.settings.AgentLoopPolicyMaxAutoContinue = &iv
+		}
+	}
+	if v, ok := updates["agent_loop_policy_pseudo_tool_call_budget"]; ok {
+		if iv, ok := intFromAny(v); ok && isWithinIntRange(iv, 0, 100) {
+			h.settings.AgentLoopPolicyPseudoToolCallBudget = &iv
+		}
+	}
+	if v, ok := updates["agent_loop_policy_action_pledge_budget"]; ok {
+		if iv, ok := intFromAny(v); ok && isWithinIntRange(iv, 0, 100) {
+			h.settings.AgentLoopPolicyActionPledgeBudget = &iv
+		}
+	}
+	if v, ok := updates["agent_loop_policy_missing_todo_budget"]; ok {
+		if iv, ok := intFromAny(v); ok && isWithinIntRange(iv, 0, 100) {
+			h.settings.AgentLoopPolicyMissingTodoBudget = &iv
+		}
+	}
+	if v, ok := updates["agent_loop_policy_pending_todo_budget"]; ok {
+		if iv, ok := intFromAny(v); ok && isWithinIntRange(iv, 0, 100) {
+			h.settings.AgentLoopPolicyPendingTodoBudget = &iv
+		}
+	}
 	if v, ok := updates["small_model_enabled"]; ok {
 		if b, isBool := v.(bool); isBool {
 			h.settings.SmallModelEnabled = &b
@@ -499,51 +670,6 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 			h.settings.SmallModelID = modelID
 		}
 	}
-	if v, ok := updates["small_model_shadow_ratio"]; ok {
-		switch n := v.(type) {
-		case float64:
-			if n > 0 && n <= 1 {
-				h.settings.SmallModelShadowRatio = &n
-			}
-		case float32:
-			f := float64(n)
-			if f > 0 && f <= 1 {
-				h.settings.SmallModelShadowRatio = &f
-			}
-		}
-	}
-	if v, ok := updates["small_model_shadow_gate_min_samples"]; ok {
-		switch n := v.(type) {
-		case float64:
-			iv := int(n)
-			if iv >= 1 && iv <= 10000 {
-				h.settings.SmallModelShadowGateMinSamples = &iv
-			}
-		case int:
-			if n >= 1 && n <= 10000 {
-				iv := n
-				h.settings.SmallModelShadowGateMinSamples = &iv
-			}
-		}
-	}
-	if v, ok := updates["small_model_shadow_gate_threshold_delta"]; ok {
-		switch n := v.(type) {
-		case float64:
-			if n > 0 && n <= 1 {
-				h.settings.SmallModelShadowGateThresholdDelta = &n
-			}
-		case float32:
-			f := float64(n)
-			if f > 0 && f <= 1 {
-				h.settings.SmallModelShadowGateThresholdDelta = &f
-			}
-		}
-	}
-	if v, ok := updates["small_model_shadow_gate_scene"]; ok {
-		if s, isString := v.(string); isString {
-			h.settings.SmallModelShadowGateScene = normalizeSmallModelShadowGateScene(s)
-		}
-	}
 	if v, ok := updates["small_model_summary_enabled"]; ok {
 		if b, isBool := v.(bool); isBool {
 			h.settings.SmallModelSummaryEnabled = &b
@@ -562,6 +688,26 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 	if v, ok := updates["small_model_context_prune_enabled"]; ok {
 		if b, isBool := v.(bool); isBool {
 			h.settings.SmallModelContextPruneEnabled = &b
+		}
+	}
+	if v, ok := updates["small_model_media_intent_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelMediaIntentEnabled = &b
+		}
+	}
+	if v, ok := updates["offline_ir_fallback_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.OfflineIRFallbackEnabled = &b
+		}
+	}
+	if v, ok := updates["feature_intent_ir_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.FeatureIntentIREnabled = &b
+		}
+	}
+	if v, ok := updates["deep_research_v2_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.DeepResearchV2Enabled = &b
 		}
 	}
 	if v, ok := updates["small_model_route_short_qa_enabled"]; ok {
@@ -798,6 +944,124 @@ func (h *SettingsHandler) GetAgentAskTimeoutAction() string {
 	}
 }
 
+// GetPromptPolicyVersion returns the active prompt policy version marker.
+func (h *SettingsHandler) GetPromptPolicyVersion() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if strings.TrimSpace(h.settings.PromptPolicyVersion) == "" {
+		return DefaultPromptPolicyVersion
+	}
+	return strings.TrimSpace(h.settings.PromptPolicyVersion)
+}
+
+// GetPromptPolicyProfile returns the active prompt policy profile.
+func (h *SettingsHandler) GetPromptPolicyProfile() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	switch strings.ToLower(strings.TrimSpace(h.settings.PromptPolicyProfile)) {
+	case "default":
+		return "default"
+	default:
+		return DefaultPromptPolicyProfile
+	}
+}
+
+func (h *SettingsHandler) GetAgentLoopPolicyMaxToolRounds() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.AgentLoopPolicyMaxToolRounds == nil {
+		return maxToolRoundsAgent
+	}
+	v := *h.settings.AgentLoopPolicyMaxToolRounds
+	if v < 1 {
+		return 1
+	}
+	if v > 200 {
+		return 200
+	}
+	return v
+}
+
+func (h *SettingsHandler) GetAgentLoopPolicyMaxAutoContinue() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.AgentLoopPolicyMaxAutoContinue == nil {
+		return maxAutoContinueAgent
+	}
+	v := *h.settings.AgentLoopPolicyMaxAutoContinue
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
+func (h *SettingsHandler) GetAgentLoopPolicyPseudoToolCallBudget() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.AgentLoopPolicyPseudoToolCallBudget == nil {
+		return maxPseudoToolCallAutoContinueAgent
+	}
+	v := *h.settings.AgentLoopPolicyPseudoToolCallBudget
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
+func (h *SettingsHandler) GetAgentLoopPolicyActionPledgeBudget() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.AgentLoopPolicyActionPledgeBudget == nil {
+		return maxActionPledgeAutoContinueAgent
+	}
+	v := *h.settings.AgentLoopPolicyActionPledgeBudget
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
+func (h *SettingsHandler) GetAgentLoopPolicyMissingTodoBudget() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.AgentLoopPolicyMissingTodoBudget == nil {
+		return maxMissingTodoAutoContinueAgent
+	}
+	v := *h.settings.AgentLoopPolicyMissingTodoBudget
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
+func (h *SettingsHandler) GetAgentLoopPolicyPendingTodoBudget() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.AgentLoopPolicyPendingTodoBudget == nil {
+		return maxPendingTodoAutoContinueAgent
+	}
+	v := *h.settings.AgentLoopPolicyPendingTodoBudget
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
 // GetSmallModelEnabled returns whether small-model routing features are enabled (default false).
 func (h *SettingsHandler) GetSmallModelEnabled() bool {
 	h.mu.RLock()
@@ -808,7 +1072,7 @@ func (h *SettingsHandler) GetSmallModelEnabled() bool {
 	return *h.settings.SmallModelEnabled
 }
 
-// GetSmallModelRuntime returns the runtime type (fixed llama_cpp_native).
+// GetSmallModelRuntime returns the runtime type (fixed onnx_genai_python).
 func (h *SettingsHandler) GetSmallModelRuntime() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -836,55 +1100,6 @@ func (h *SettingsHandler) GetSmallModelAutoDownload() bool {
 		return true
 	}
 	return *h.settings.SmallModelAutoDownload
-}
-
-// GetSmallModelShadowRatio returns shadow ratio for guarded rollout (default 0.1).
-func (h *SettingsHandler) GetSmallModelShadowRatio() float64 {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	if h.settings.SmallModelShadowRatio == nil {
-		return 0.1
-	}
-	v := *h.settings.SmallModelShadowRatio
-	if v <= 0 || v > 1 {
-		return 0.1
-	}
-	return v
-}
-
-// GetSmallModelShadowGateMinSamples returns gate minimum samples (default 40).
-func (h *SettingsHandler) GetSmallModelShadowGateMinSamples() int {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	if h.settings.SmallModelShadowGateMinSamples == nil {
-		return 40
-	}
-	v := *h.settings.SmallModelShadowGateMinSamples
-	if v < 1 || v > 10000 {
-		return 40
-	}
-	return v
-}
-
-// GetSmallModelShadowGateThresholdDelta returns gate threshold delta (default 0.35).
-func (h *SettingsHandler) GetSmallModelShadowGateThresholdDelta() float64 {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	if h.settings.SmallModelShadowGateThresholdDelta == nil {
-		return 0.35
-	}
-	v := *h.settings.SmallModelShadowGateThresholdDelta
-	if v <= 0 || v > 1 {
-		return 0.35
-	}
-	return v
-}
-
-// GetSmallModelShadowGateScene returns optional gate scene filter (default "").
-func (h *SettingsHandler) GetSmallModelShadowGateScene() string {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return normalizeSmallModelShadowGateScene(h.settings.SmallModelShadowGateScene)
 }
 
 func (h *SettingsHandler) GetSmallModelSummaryEnabled() bool {
@@ -923,11 +1138,48 @@ func (h *SettingsHandler) GetSmallModelContextPruneEnabled() bool {
 	return *h.settings.SmallModelContextPruneEnabled
 }
 
+func (h *SettingsHandler) GetSmallModelMediaIntentEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelMediaIntentEnabled == nil {
+		return true
+	}
+	return *h.settings.SmallModelMediaIntentEnabled
+}
+
+func (h *SettingsHandler) GetOfflineIRFallbackEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.OfflineIRFallbackEnabled == nil {
+		return true
+	}
+	return *h.settings.OfflineIRFallbackEnabled
+}
+
+func (h *SettingsHandler) GetFeatureIntentIREnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.FeatureIntentIREnabled == nil {
+		return true
+	}
+	return *h.settings.FeatureIntentIREnabled
+}
+
+// GetDeepResearchV2Enabled returns whether deep research V2 pipeline is enabled (default true).
+func (h *SettingsHandler) GetDeepResearchV2Enabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.DeepResearchV2Enabled == nil {
+		return true
+	}
+	return *h.settings.DeepResearchV2Enabled
+}
+
 func (h *SettingsHandler) GetSmallModelRouteShortQAEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmallModelRouteShortQAEnabled == nil {
-		return false
+		return true
 	}
 	return *h.settings.SmallModelRouteShortQAEnabled
 }
@@ -936,7 +1188,7 @@ func (h *SettingsHandler) GetSmallModelRouteToolDispatchEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmallModelRouteToolDispatchEnabled == nil {
-		return false
+		return true
 	}
 	return *h.settings.SmallModelRouteToolDispatchEnabled
 }
@@ -971,104 +1223,6 @@ func (h *SettingsHandler) SetSmallModelRouteToolDispatchEnabled(enabled bool) (b
 		return false, err
 	}
 	return true, nil
-}
-
-// SetSmallModelShadowGateMinSamples updates shadow gate min-samples setting and persists it.
-// Returns true when value changed.
-func (h *SettingsHandler) SetSmallModelShadowGateMinSamples(samples int) (bool, error) {
-	if samples < 1 {
-		samples = 1
-	}
-	if samples > 10000 {
-		samples = 10000
-	}
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if h.settings.SmallModelShadowGateMinSamples != nil && *h.settings.SmallModelShadowGateMinSamples == samples {
-		return false, nil
-	}
-	h.settings.SmallModelShadowGateMinSamples = &samples
-	if err := h.save(); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// SetSmallModelShadowGateThresholdDelta updates shadow gate delta threshold and persists it.
-// Returns true when value changed.
-func (h *SettingsHandler) SetSmallModelShadowGateThresholdDelta(delta float64) (bool, error) {
-	if delta <= 0 {
-		delta = 0.01
-	}
-	if delta > 1 {
-		delta = 1
-	}
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if h.settings.SmallModelShadowGateThresholdDelta != nil && *h.settings.SmallModelShadowGateThresholdDelta == delta {
-		return false, nil
-	}
-	h.settings.SmallModelShadowGateThresholdDelta = &delta
-	if err := h.save(); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// SetSmallModelShadowGateScene updates shadow gate scene filter and persists it.
-// Returns true when value changed.
-func (h *SettingsHandler) SetSmallModelShadowGateScene(scene string) (bool, error) {
-	normalized := normalizeSmallModelShadowGateScene(scene)
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if h.settings.SmallModelShadowGateScene == normalized {
-		return false, nil
-	}
-	h.settings.SmallModelShadowGateScene = normalized
-	if err := h.save(); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// SetSmallModelShadowRatio updates shadow ratio and persists it.
-// Returns true when value changed.
-func (h *SettingsHandler) SetSmallModelShadowRatio(ratio float64) (bool, error) {
-	if ratio <= 0 {
-		ratio = 0.01
-	}
-	if ratio > 1 {
-		ratio = 1
-	}
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if h.settings.SmallModelShadowRatio != nil && *h.settings.SmallModelShadowRatio == ratio {
-		return false, nil
-	}
-	h.settings.SmallModelShadowRatio = &ratio
-	if err := h.save(); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func normalizeSmallModelShadowGateScene(scene string) string {
-	scene = strings.TrimSpace(scene)
-	if scene == "" {
-		return ""
-	}
-	if len(scene) > 128 {
-		scene = scene[:128]
-	}
-	return strings.TrimSpace(scene)
 }
 
 // SetSmallModelSummaryEnabled updates summary enhancement switch and persists it.
@@ -1116,6 +1270,34 @@ func (h *SettingsHandler) GetNoLLMDegradeMode() string {
 // GetSmallModelUnavailablePolicy returns fallback policy when small model is unavailable.
 func (h *SettingsHandler) GetSmallModelUnavailablePolicy() string {
 	return "ir_first"
+}
+
+func intFromAny(v interface{}) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int32:
+		return int(n), true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), true
+	case float32:
+		return int(n), true
+	default:
+		return 0, false
+	}
+}
+
+func isWithinIntRange(v, min, max int) bool {
+	return v >= min && v <= max
+}
+
+func isAdminRequest(c echo.Context) bool {
+	if claims := auth.GetUserFromContext(c); claims != nil {
+		return strings.EqualFold(strings.TrimSpace(claims.Role), "admin")
+	}
+	return false
 }
 
 // load reads settings from kvstore

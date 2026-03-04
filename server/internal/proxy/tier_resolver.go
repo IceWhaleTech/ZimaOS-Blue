@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
@@ -10,20 +11,96 @@ import (
 // TieredModel holds a model with its resolved tier and cost.
 type TieredModel struct {
 	ModelID    string    `json:"model_id"`
-	ProviderID string   `json:"provider_id"`
+	ProviderID string    `json:"provider_id"`
 	Tier       ModelTier `json:"tier"`
 	TotalCost  float64   `json:"total_cost"` // InputPrice + OutputPrice per 1M tokens
 }
 
-// TierResolver dynamically assigns ModelTier to models based on pricing.
-// It examines all available models and clusters them into tiers using
-// price boundaries, ensuring at least 2 distinct tiers exist before
-// enabling smart routing.
+// TierResolver assigns models into two stable tiers:
+// - TierLarge: all non-small models (typically big LLMs)
+// - TierSmall: fixed built-in small-model allowlist
+// Smart routing is enabled only when both tiers are present.
 type TierResolver struct {
 	mu       sync.RWMutex
-	tiers    map[ModelTier][]*TieredModel // tier -> models sorted by cost (cheapest first)
-	byModel  map[string]*TieredModel     // modelID -> tiered model (first match)
-	resolved bool                         // true if ≥2 distinct tiers found
+	tiers    map[ModelTier][]*TieredModel // tier -> models sorted by selection preference
+	byModel  map[string]*TieredModel      // modelID -> tiered model (first match)
+	resolved bool                         // true if both large and small tiers exist
+}
+
+// Priority for built-in small models. Lower index = higher priority.
+var builtinSmallModelPriority = []string{
+	"qwen3.5-0.8b-onnx-q4",
+	"qwen3.5-0.8b-q4kxl",
+	"gpt-4o-mini",
+	"o4-mini",
+	"o3-mini",
+	"o1-mini",
+	"claude-3-haiku",
+	"claude-haiku-4-5",
+	"claude-3-5-haiku-20241022",
+	"gemini-2.0-flash",
+	"gemini-2.0-flash-thinking",
+	"gemini-1.5-flash",
+	"qwen-turbo",
+	"llama-3.2-3b",
+	"glm-4-flash",
+	"glm-4-air",
+	"amazon.nova-lite-v1:0",
+}
+
+var builtinSmallModelRank = func() map[string]int {
+	rank := make(map[string]int, len(builtinSmallModelPriority))
+	for i, id := range builtinSmallModelPriority {
+		rank[id] = i
+	}
+	return rank
+}()
+
+var builtinSmallModelSet = buildBuiltinSmallModelSet()
+
+func buildBuiltinSmallModelSet() map[string]struct{} {
+	out := make(map[string]struct{}, len(builtinSmallModelPriority))
+	for _, id := range builtinSmallModelPriority {
+		norm := normalizeModelID(id)
+		if norm != "" {
+			out[norm] = struct{}{}
+		}
+	}
+
+	for _, models := range providerpool.BuiltinModels() {
+		for _, m := range models {
+			id := normalizeModelID(m.ID)
+			if id == "" {
+				continue
+			}
+			if _, ok := builtinSmallModelRank[id]; ok {
+				out[id] = struct{}{}
+			}
+		}
+	}
+	// Ensure fixed product small-model IDs are always treated as TierSmall.
+	out["qwen3.5-0.8b-onnx-q4"] = struct{}{}
+	out["qwen3.5-0.8b-q4kxl"] = struct{}{}
+	return out
+}
+
+func normalizeModelID(modelID string) string {
+	return strings.ToLower(strings.TrimSpace(modelID))
+}
+
+func resolveModelCost(m *providerpool.Model) float64 {
+	cost := m.InputPrice + m.OutputPrice
+	if cost == 0 {
+		if matched := providerpool.MatchModelPricing(m.ID); matched != nil {
+			cost = matched.InputPrice + matched.OutputPrice
+		}
+	}
+	return cost
+}
+
+func isBuiltinSmallModel(m *providerpool.Model) bool {
+	_, ok := builtinSmallModelSet[normalizeModelID(m.ID)]
+	return ok
 }
 
 // NewTierResolver creates an empty TierResolver.
@@ -34,60 +111,19 @@ func NewTierResolver() *TierResolver {
 	}
 }
 
-// Absolute price thresholds (USD per 1M tokens, input+output combined).
-// Used when there are too few models for percentile-based clustering.
-const (
-	tierThresholdPremium  = 10.0 // > $10/M → premium
-	tierThresholdStandard = 2.0  // $2-10/M → standard
-	// < $2/M → economy
-)
-
-// Resolve analyzes available models and assigns tiers based on pricing.
-// Returns true if at least 2 distinct tiers were found (smart routing viable).
+// Resolve analyzes available models and assigns large/small tiers deterministically.
+// Returns true when both tiers are present (smart routing viable).
 // Called on provider change (same hook as candidateSnapshot rebuild).
 func (tr *TierResolver) Resolve(models []*providerpool.Model) bool {
-	type pricedModel struct {
-		model     *providerpool.Model
-		totalCost float64
-	}
-
-	var priced []pricedModel
-	var freeModels []*providerpool.Model
-
-	for _, m := range models {
-		if !m.Enabled {
-			continue
-		}
-		cost := m.InputPrice + m.OutputPrice
-
-		// Try heuristic pricing if model has no price
-		if cost == 0 {
-			if matched := providerpool.MatchModelPricing(m.ID); matched != nil {
-				cost = matched.InputPrice + matched.OutputPrice
-			}
-		}
-
-		if cost > 0 {
-			priced = append(priced, pricedModel{model: m, totalCost: cost})
-		} else {
-			freeModels = append(freeModels, m)
-		}
-	}
-
-	// Sort by cost ascending
-	sort.Slice(priced, func(i, j int) bool {
-		return priced[i].totalCost < priced[j].totalCost
-	})
-
 	tiers := make(map[ModelTier][]*TieredModel)
 	byModel := make(map[string]*TieredModel)
 
-	addModel := func(m *providerpool.Model, tier ModelTier, cost float64) {
+	addModel := func(m *providerpool.Model, tier ModelTier) {
 		tm := &TieredModel{
 			ModelID:    m.ID,
 			ProviderID: m.ProviderID,
 			Tier:       tier,
-			TotalCost:  cost,
+			TotalCost:  resolveModelCost(m),
 		}
 		tiers[tier] = append(tiers[tier], tm)
 		if _, exists := byModel[m.ID]; !exists {
@@ -95,42 +131,43 @@ func (tr *TierResolver) Resolve(models []*providerpool.Model) bool {
 		}
 	}
 
-	// Assign tiers to priced models
-	if n := len(priced); n > 0 {
-		if n <= 2 {
-			// Too few for percentiles — use absolute thresholds
-			for _, pm := range priced {
-				tier := classifyByAbsoluteThreshold(pm.totalCost)
-				addModel(pm.model, tier, pm.totalCost)
-			}
-		} else {
-			// Percentile-based clustering
-			p50 := priced[n/2].totalCost
-			p75 := priced[n*3/4].totalCost
-
-			for _, pm := range priced {
-				var tier ModelTier
-				switch {
-				case pm.totalCost >= p75:
-					tier = TierPremium
-				case pm.totalCost >= p50:
-					tier = TierStandard
-				default:
-					tier = TierEconomy
-				}
-				addModel(pm.model, tier, pm.totalCost)
-			}
+	for _, m := range models {
+		if m == nil || !m.Enabled {
+			continue
 		}
+		if isBuiltinSmallModel(m) {
+			addModel(m, TierSmall)
+			continue
+		}
+		addModel(m, TierLarge)
 	}
 
-	// Free/local models
-	for _, m := range freeModels {
-		addModel(m, TierFree, 0)
+	for tier, tierModels := range tiers {
+		sort.Slice(tierModels, func(i, j int) bool {
+			a := tierModels[i]
+			b := tierModels[j]
+			if tier == TierSmall {
+				aRank, aOK := builtinSmallModelRank[normalizeModelID(a.ModelID)]
+				bRank, bOK := builtinSmallModelRank[normalizeModelID(b.ModelID)]
+				if aOK != bOK {
+					return aOK
+				}
+				if aOK && bOK && aRank != bRank {
+					return aRank < bRank
+				}
+			}
+			if a.TotalCost == b.TotalCost {
+				if a.ModelID == b.ModelID {
+					return a.ProviderID < b.ProviderID
+				}
+				return a.ModelID < b.ModelID
+			}
+			return a.TotalCost < b.TotalCost
+		})
+		tiers[tier] = tierModels
 	}
 
-	// Count distinct tiers
-	distinctTiers := len(tiers)
-	resolved := distinctTiers >= 2
+	resolved := len(tiers[TierLarge]) > 0 && len(tiers[TierSmall]) > 0
 
 	tr.mu.Lock()
 	tr.tiers = tiers
@@ -141,53 +178,31 @@ func (tr *TierResolver) Resolve(models []*providerpool.Model) bool {
 	return resolved
 }
 
-// classifyByAbsoluteThreshold assigns a tier based on fixed price boundaries.
-func classifyByAbsoluteThreshold(totalCost float64) ModelTier {
-	switch {
-	case totalCost > tierThresholdPremium:
-		return TierPremium
-	case totalCost > tierThresholdStandard:
-		return TierStandard
-	default:
-		return TierEconomy
-	}
-}
-
-// IsEnabled returns true if at least 2 distinct tiers were found.
+// IsEnabled returns true when both large and small tiers are available.
 func (tr *TierResolver) IsEnabled() bool {
 	tr.mu.RLock()
 	defer tr.mu.RUnlock()
 	return tr.resolved
 }
 
-// BestModelForTier returns the cheapest available model in the given tier.
-// Falls back to adjacent tiers if the requested tier has no models:
-// economy → free, standard → economy → free, premium → standard → economy.
-// Returns "" if no model available.
+// BestModelForTier returns the top-ranked model in the requested tier.
+// Returns "" if no model is available.
 func (tr *TierResolver) BestModelForTier(tier ModelTier) string {
 	tr.mu.RLock()
 	defer tr.mu.RUnlock()
 
-	// Try exact tier first
-	if models := tr.tiers[tier]; len(models) > 0 {
+	canonical := normalizeModelTier(tier)
+	if models := tr.tiers[canonical]; len(models) > 0 {
 		return models[0].ModelID
 	}
 
-	// Fallback chain
-	var fallbacks []ModelTier
-	switch tier {
-	case TierEconomy:
-		fallbacks = []ModelTier{TierFree}
-	case TierStandard:
-		fallbacks = []ModelTier{TierEconomy, TierFree}
-	case TierPremium:
-		fallbacks = []ModelTier{TierStandard, TierEconomy}
-	case TierFree:
-		fallbacks = []ModelTier{TierEconomy}
-	}
-
-	for _, fb := range fallbacks {
-		if models := tr.tiers[fb]; len(models) > 0 {
+	switch canonical {
+	case TierSmall:
+		if models := tr.tiers[TierLarge]; len(models) > 0 {
+			return models[0].ModelID
+		}
+	case TierLarge:
+		if models := tr.tiers[TierSmall]; len(models) > 0 {
 			return models[0].ModelID
 		}
 	}

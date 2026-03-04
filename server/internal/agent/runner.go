@@ -49,6 +49,8 @@ type RunnerConfig struct {
 	AskTimeout    time.Duration
 	// AskTimeoutAction controls timeout behavior: "error" (default) | "default".
 	AskTimeoutAction string
+	// MaxToolRoundsPerStep controls tool loop budget per plan step.
+	MaxToolRoundsPerStep int
 }
 
 // Runner executes agent tasks in the background.
@@ -73,6 +75,7 @@ type Runner struct {
 
 	askTimeoutFunc       func() time.Duration
 	askTimeoutActionFunc func() string // "error" | "default"
+	maxToolRoundsFunc    func() int
 }
 
 // NewRunner creates a new agent runner.
@@ -85,6 +88,9 @@ func NewRunner(store *Store, llmCaller LLMCaller, registry *tools.Registry, exec
 	}
 	if config.AskTimeout <= 0 {
 		config.AskTimeout = defaultAskTimeout
+	}
+	if config.MaxToolRoundsPerStep <= 0 {
+		config.MaxToolRoundsPerStep = MaxToolRoundsPerStep
 	}
 	switch strings.ToLower(strings.TrimSpace(config.AskTimeoutAction)) {
 	case "default":
@@ -117,6 +123,13 @@ func (r *Runner) SetAskTimeoutActionFunc(fn func() string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.askTimeoutActionFunc = fn
+}
+
+// SetMaxToolRoundsPerStepFunc sets a dynamic max-tool-round getter.
+func (r *Runner) SetMaxToolRoundsPerStepFunc(fn func() int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.maxToolRoundsFunc = fn
 }
 
 func (r *Runner) resolveAskTimeout() time.Duration {
@@ -156,6 +169,29 @@ func (r *Runner) resolveAskTimeoutAction() string {
 	default:
 		return "error"
 	}
+}
+
+func (r *Runner) resolveMaxToolRoundsPerStep() int {
+	r.mu.Lock()
+	fn := r.maxToolRoundsFunc
+	base := r.config.MaxToolRoundsPerStep
+	r.mu.Unlock()
+
+	if fn != nil {
+		if v := fn(); v > 0 {
+			if v > 200 {
+				return 200
+			}
+			return v
+		}
+	}
+	if base <= 0 {
+		return MaxToolRoundsPerStep
+	}
+	if base > 200 {
+		return 200
+	}
+	return base
 }
 
 // SetMemory sets the memory recaller for context injection.
@@ -1014,7 +1050,8 @@ Group related questions into a single ask call. Keep questions clear and provide
 	const maxRepeats = 3
 	cachedTools := r.llmTools() // cache once per step — tool list doesn't change mid-execution
 
-	for round := 0; round < MaxToolRoundsPerStep; round++ {
+	maxRounds := r.resolveMaxToolRoundsPerStep()
+	for round := 0; round < maxRounds; round++ {
 		if ctx.Err() != nil {
 			return lastContent, ctx.Err()
 		}

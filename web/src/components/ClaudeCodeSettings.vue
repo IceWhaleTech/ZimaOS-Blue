@@ -461,7 +461,10 @@ function formatDate(dateStr?: string) {
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">{{ t('claudecode.title') }}</h2>
+          <div class="min-w-0">
+            <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">{{ t('chat.enhancedMode') }}</h2>
+            <p class="text-xs text-gray-500 dark:text-slate-400 truncate">{{ t('claudecode.title') }}</p>
+          </div>
         </div>
         <!-- Main Toggle -->
         <button

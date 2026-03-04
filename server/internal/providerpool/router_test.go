@@ -249,6 +249,198 @@ func TestRouterWithFallback(t *testing.T) {
 	}
 }
 
+func TestRouterWithFallback_RetriesNextAPIKeyOnAuthError(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-multikey-auth-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	provider := &Provider{
+		ID:       "provider-multi-key",
+		Name:     "Provider Multi Key",
+		Type:     ProviderTypeCustom,
+		Enabled:  true,
+		Status:   ProviderStatusActive,
+		Priority: 100,
+		APIKeys: []APIKey{
+			{ID: "k-bad", Key: "sk-bad", Enabled: true},
+			{ID: "k-good", Key: "sk-good", Enabled: true},
+		},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Failed to register provider: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*Model{{
+		ID:          "test-model",
+		ProviderID:  provider.ID,
+		Name:        "test-model",
+		DisplayName: "Test Model",
+		Enabled:     true,
+		Capabilities: ModelCapabilities{
+			Chat: true,
+		},
+	}}); err != nil {
+		t.Fatalf("Failed to save model: %v", err)
+	}
+	router.RebuildCandidates()
+
+	var triedKeys []string
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "test-model",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		if result.APIKey == nil {
+			return errors.New("missing api key")
+		}
+		triedKeys = append(triedKeys, result.APIKey.ID)
+		if result.APIKey.ID == "k-bad" {
+			return errors.New("provider provider-multi-key auth error (401): invalid api key")
+		}
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("RouteWithFallback failed: %v", err)
+	}
+	if len(triedKeys) != 2 {
+		t.Fatalf("Expected 2 key attempts, got %d: %v", len(triedKeys), triedKeys)
+	}
+	if triedKeys[0] != "k-bad" || triedKeys[1] != "k-good" {
+		t.Errorf("Expected key order [k-bad k-good], got %v", triedKeys)
+	}
+}
+
+func TestRouterWithFallback_RetriesNextAPIKeyOnRateLimit(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-multikey-ratelimit-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	provider := &Provider{
+		ID:       "provider-multi-key",
+		Name:     "Provider Multi Key",
+		Type:     ProviderTypeCustom,
+		Enabled:  true,
+		Status:   ProviderStatusActive,
+		Priority: 100,
+		APIKeys: []APIKey{
+			{ID: "k-rl", Key: "sk-ratelimited", Enabled: true},
+			{ID: "k-ok", Key: "sk-ok", Enabled: true},
+		},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Failed to register provider: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*Model{{
+		ID:          "test-model",
+		ProviderID:  provider.ID,
+		Name:        "test-model",
+		DisplayName: "Test Model",
+		Enabled:     true,
+		Capabilities: ModelCapabilities{
+			Chat: true,
+		},
+	}}); err != nil {
+		t.Fatalf("Failed to save model: %v", err)
+	}
+	router.RebuildCandidates()
+
+	var triedKeys []string
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "test-model",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		if result.APIKey == nil {
+			return errors.New("missing api key")
+		}
+		triedKeys = append(triedKeys, result.APIKey.ID)
+		if result.APIKey.ID == "k-rl" {
+			return errors.New("provider provider-multi-key throttled (429)")
+		}
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("RouteWithFallback failed: %v", err)
+	}
+	if len(triedKeys) != 2 {
+		t.Fatalf("Expected 2 key attempts, got %d: %v", len(triedKeys), triedKeys)
+	}
+	if triedKeys[0] != "k-rl" || triedKeys[1] != "k-ok" {
+		t.Errorf("Expected key order [k-rl k-ok], got %v", triedKeys)
+	}
+}
+
+func TestRouterWithFallback_DoesNotRetryNextAPIKeyOnNonAuthError(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-multikey-nonauth-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	provider := &Provider{
+		ID:       "provider-multi-key",
+		Name:     "Provider Multi Key",
+		Type:     ProviderTypeCustom,
+		Enabled:  true,
+		Status:   ProviderStatusActive,
+		Priority: 100,
+		APIKeys: []APIKey{
+			{ID: "k-first", Key: "sk-first", Enabled: true},
+			{ID: "k-second", Key: "sk-second", Enabled: true},
+		},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Failed to register provider: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*Model{{
+		ID:          "test-model",
+		ProviderID:  provider.ID,
+		Name:        "test-model",
+		DisplayName: "Test Model",
+		Enabled:     true,
+		Capabilities: ModelCapabilities{
+			Chat: true,
+		},
+	}}); err != nil {
+		t.Fatalf("Failed to save model: %v", err)
+	}
+	router.RebuildCandidates()
+
+	callCount := 0
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "test-model",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		callCount++
+		return errors.New("upstream 500: internal server error")
+	})
+
+	if err == nil {
+		t.Fatal("Expected RouteWithFallback to fail")
+	}
+	if callCount != 1 {
+		t.Errorf("Expected only 1 attempt for non-auth error, got %d", callCount)
+	}
+}
+
 func TestRouterLatencyTracking(t *testing.T) {
 	router, cleanup := setupRouterTest(t)
 	defer cleanup()

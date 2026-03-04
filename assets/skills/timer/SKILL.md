@@ -1,3 +1,8 @@
+---
+name: timer
+description: Set check list and cancel in memory countdown timers.
+---
+
 # Timer
 
 Set, manage, and check countdown timers.

@@ -229,37 +229,36 @@ func isResponsesEndpointBaseURL(raw string) bool {
 // addAuthHeader adds the appropriate authentication header for a provider.
 // Uses provider ID for known providers, then falls back to API format.
 func addAuthHeader(req *http.Request, provider *Provider) {
-	if len(provider.APIKeys) == 0 {
+	key := firstUsableAPIKey(provider)
+	if key == nil {
 		return
 	}
-
-	key := provider.APIKeys[0].Key
 
 	// Provider-specific auth first
 	switch provider.ID {
 	case "anthropic":
-		req.Header.Set("x-api-key", key)
+		req.Header.Set("x-api-key", key.Key)
 		req.Header.Set("anthropic-version", provider.APIVersion)
 	case "azure-openai":
-		req.Header.Set("api-key", key)
+		req.Header.Set("api-key", key.Key)
 	case "google":
 		q := req.URL.Query()
-		q.Set("key", key)
+		q.Set("key", key.Key)
 		req.URL.RawQuery = q.Encode()
 	default:
 		// Format-based fallback for trial and custom providers
 		switch provider.APIFormat {
 		case APIFormatAnthropic:
-			req.Header.Set("x-api-key", key)
+			req.Header.Set("x-api-key", key.Key)
 			if provider.APIVersion != "" {
 				req.Header.Set("anthropic-version", provider.APIVersion)
 			}
 		case APIFormatGoogle:
 			q := req.URL.Query()
-			q.Set("key", key)
+			q.Set("key", key.Key)
 			req.URL.RawQuery = q.Encode()
 		default:
-			req.Header.Set("Authorization", "Bearer "+key)
+			req.Header.Set("Authorization", "Bearer "+key.Key)
 		}
 	}
 
@@ -267,6 +266,33 @@ func addAuthHeader(req *http.Request, provider *Provider) {
 	for k, v := range provider.Headers {
 		req.Header.Set(k, v)
 	}
+}
+
+func firstUsableAPIKey(provider *Provider) *APIKey {
+	if provider == nil || len(provider.APIKeys) == 0 {
+		return nil
+	}
+
+	for i := range provider.APIKeys {
+		key := &provider.APIKeys[i]
+		if !key.Enabled {
+			continue
+		}
+		if strings.TrimSpace(key.Key) == "" {
+			continue
+		}
+		return key
+	}
+
+	for i := range provider.APIKeys {
+		key := &provider.APIKeys[i]
+		if strings.TrimSpace(key.Key) == "" {
+			continue
+		}
+		return key
+	}
+
+	return nil
 }
 
 // CompositeHealthChecker combines multiple health check strategies
