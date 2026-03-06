@@ -3,7 +3,6 @@ package providerpool
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -106,7 +105,7 @@ func TestModelDiscovery(t *testing.T) {
 
 func TestFetchOpenAIModels(t *testing.T) {
 	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/models" {
 			http.NotFound(w, r)
 			return
@@ -200,7 +199,7 @@ func TestFetchOpenRouterFreeModels(t *testing.T) {
 
 func TestFetchOllamaModels(t *testing.T) {
 	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/tags" {
 			http.NotFound(w, r)
 			return

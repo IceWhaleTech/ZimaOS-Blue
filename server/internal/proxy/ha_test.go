@@ -234,6 +234,184 @@ func TestProxyHandler_IsSingleProviderMode(t *testing.T) {
 	}
 }
 
+func TestNormalizeModelRoutingHint(t *testing.T) {
+	tests := []struct {
+		name        string
+		model       string
+		wantModel   string
+		wantMode    string
+	}{
+		{name: "auto", model: "auto", wantModel: "", wantMode: "auto"},
+		{name: "cloud", model: "cloud", wantModel: "", wantMode: "cloud"},
+		{name: "local", model: "local", wantModel: "", wantMode: "local"},
+		{name: "trimmed auto", model: " auto ", wantModel: "", wantMode: "auto"},
+		{name: "explicit model unchanged", model: "gpt-4o", wantModel: "gpt-4o", wantMode: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotModel, gotMode := normalizeModelRoutingHint(tt.model)
+			if gotModel != tt.wantModel || gotMode != tt.wantMode {
+				t.Fatalf("normalizeModelRoutingHint(%q) = (%q,%q), want (%q,%q)",
+					tt.model, gotModel, gotMode, tt.wantModel, tt.wantMode)
+			}
+		})
+	}
+}
+
+func TestResolveRoutingMode(t *testing.T) {
+	tests := []struct {
+		name       string
+		scopedMode string
+		hintedMode string
+		want       string
+	}{
+		{name: "scope cloud wins over local hint", scopedMode: "cloud", hintedMode: "local", want: "cloud"},
+		{name: "scope local wins over cloud hint", scopedMode: "local", hintedMode: "cloud", want: "local"},
+		{name: "auto scope uses cloud hint", scopedMode: "auto", hintedMode: "cloud", want: "cloud"},
+		{name: "auto scope uses local hint", scopedMode: "auto", hintedMode: "local", want: "local"},
+		{name: "auto fallback", scopedMode: "auto", hintedMode: "", want: "auto"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveRoutingMode(tt.scopedMode, tt.hintedMode); got != tt.want {
+				t.Fatalf("resolveRoutingMode(%q,%q) = %q, want %q", tt.scopedMode, tt.hintedMode, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProxyHandler_ModelRoutingHintsCloudLocal(t *testing.T) {
+	cloudUpstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"cloud","choices":[{"message":{"content":"ok"}}],"model":"cloud-model"}`))
+	}))
+	defer cloudUpstream.Close()
+
+	localUpstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"local","choices":[{"message":{"content":"ok"}}],"model":"local-model"}`))
+	}))
+	defer localUpstream.Close()
+
+	tmpDir, err := os.MkdirTemp("", "proxy-routing-hint-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := providerpool.NewFileStorage(tmpDir)
+	registry, _ := providerpool.NewRegistry(storage)
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	router := providerpool.NewRouter(registry, discovery, providerpool.RoutingStrategyPriority)
+
+	cloudProvider := &providerpool.Provider{
+		ID:        "p-cloud",
+		Name:      "cloud-provider",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   cloudUpstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Priority:  100,
+		Location:  providerpool.ProviderLocationCloud,
+		APIFormat: providerpool.APIFormatOpenAI,
+		APIKeys:   []providerpool.APIKey{{ID: "k-cloud", Key: "cloud-key", Enabled: true}},
+	}
+	localProvider := &providerpool.Provider{
+		ID:        "p-local",
+		Name:      "local-provider",
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   localUpstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Priority:  100,
+		Location:  providerpool.ProviderLocationLocal,
+		APIFormat: providerpool.APIFormatOpenAI,
+		APIKeys:   []providerpool.APIKey{{ID: "k-local", Key: "local-key", Enabled: true}},
+	}
+	registry.Register(cloudProvider)
+	registry.Register(localProvider)
+
+	_ = storage.SaveModels(cloudProvider.ID, []*providerpool.Model{
+		{
+			ID:           "cloud-model",
+			Name:         "cloud-model",
+			ProviderID:   cloudProvider.ID,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, Streaming: true},
+		},
+	})
+	_ = storage.SaveModels(localProvider.ID, []*providerpool.Model{
+		{
+			ID:           "local-model",
+			Name:         "local-model",
+			ProviderID:   localProvider.ID,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, Streaming: true},
+		},
+	})
+	router.RebuildCandidates()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	ph.SetProviderPool(&providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Router:    router,
+	})
+
+	t.Run("cloud hint routes to cloud provider", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+			strings.NewReader(`{"model":"cloud","messages":[{"role":"user","content":"hi"}]}`))
+		rec := httptest.NewRecorder()
+		ph.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("X-Actual-Provider"); got != "cloud-provider" {
+			t.Fatalf("expected cloud-provider, got %q", got)
+		}
+	})
+
+	t.Run("local hint routes to local provider", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+			strings.NewReader(`{"model":"local","messages":[{"role":"user","content":"hi"}]}`))
+		rec := httptest.NewRecorder()
+		ph.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("X-Actual-Provider"); got != "local-provider" {
+			t.Fatalf("expected local-provider, got %q", got)
+		}
+	})
+
+	t.Run("api key scoped mode overrides model hint", func(t *testing.T) {
+		ph.SetAPIKeyValidator(func(key string) ([]string, error) {
+			if key == "scoped-key" {
+				return []string{"route:local"}, nil
+			}
+			return nil, nil
+		})
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+			strings.NewReader(`{"model":"cloud","messages":[{"role":"user","content":"hi"}]}`))
+		req.Header.Set("x-api-key", "scoped-key")
+		rec := httptest.NewRecorder()
+		ph.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("X-Actual-Provider"); got != "local-provider" {
+			t.Fatalf("expected scoped local-provider, got %q", got)
+		}
+	})
+}
+
 func TestAllFormatsForProvider_CopilotStaysSingleFormat(t *testing.T) {
 	ph := NewProxyHandler(nil, nil, nil)
 	pid := "github-copilot"
@@ -410,7 +588,7 @@ func TestTryOnProvider_NotConfiguredSkipsToNextProvider(t *testing.T) {
 	var requestCount int32
 
 	// Mock upstream: returns 404 "not configured" for all requests
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&requestCount, 1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
@@ -462,7 +640,7 @@ func TestTryOnProvider_NotConfiguredSkipsToNextProvider(t *testing.T) {
 }
 
 func TestTryOnProvider_RequestResponsesEndpointForcesResponsesFormat(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/responses" {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -504,7 +682,7 @@ func TestTryOnProvider_RequestResponsesEndpointForcesResponsesFormat(t *testing.
 // TestTryOnProvider_InvalidRequestDoesNotBlacklistModel verifies invalid_request_error
 // is treated as request-level failure and should not blacklist the model.
 func TestTryOnProvider_InvalidRequestDoesNotBlacklistModel(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -556,7 +734,7 @@ func TestTryOnProvider_10Models_OnlyLastWorks(t *testing.T) {
 	workingModel := "model-9"
 	var attemptLog []string
 
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Parse the model from request body
 		var body map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&body)
@@ -650,7 +828,7 @@ func TestTryOnProvider_10Models_OnlyLastWorks(t *testing.T) {
 
 // TestTryOnProvider_429ThrottlesEntireProvider verifies 429 skips entire provider
 func TestTryOnProvider_429ThrottlesEntireProvider(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Retry-After", "5")
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -702,7 +880,7 @@ func TestTryOnProvider_429ThrottlesEntireProvider(t *testing.T) {
 func TestTryOnProvider_5xxSkipsEntireProvider(t *testing.T) {
 	var requestCount int32
 
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&requestCount, 1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -753,7 +931,7 @@ func TestTryOnProvider_5xxSkipsEntireProvider(t *testing.T) {
 // TestTryOnProvider_SuccessRemembersFormatAndModel verifies successful requests
 // are remembered for future optimization
 func TestTryOnProvider_SuccessRemembersFormatAndModel(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -805,6 +983,79 @@ func TestTryOnProvider_SuccessRemembersFormatAndModel(t *testing.T) {
 	}
 	if format != string(providerpool.APIFormatOpenAI) {
 		t.Errorf("expected remembered format 'openai', got %q", format)
+	}
+}
+
+// TestExecuteOnRouteResult_ResolvedModelUsesActualUsedModel verifies that
+// resolvedModel reflects the model that actually succeeded upstream.
+func TestExecuteOnRouteResult_ResolvedModelUsesActualUsedModel(t *testing.T) {
+	const (
+		requestModel = "gpt-5.3-codex-spark"
+		aliasModel   = "gpt-5-codex"
+		providerID   = "alias-provider"
+	)
+
+	var seenModels []string
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		model, _ := body["model"].(string)
+		seenModels = append(seenModels, model)
+
+		w.Header().Set("Content-Type", "application/json")
+		if model == aliasModel {
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"id":      "chatcmpl-123",
+				"object":  "chat.completion",
+				"model":   model,
+				"choices": []map[string]interface{}{{"message": map[string]string{"content": "ok"}}},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": map[string]interface{}{
+				"message": fmt.Sprintf("Model %s is not available", model),
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	ph.providerMemory.RememberModelAlias(providerID, upstream.URL, requestModel, aliasModel)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        providerID,
+			Name:      providerID,
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: requestModel},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"` + requestModel + `","messages":[{"role":"user","content":"hi"}]}`),
+		model: requestModel,
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	outcome, err := ph.executeOnRouteResult(r, result, pr, false)
+	if err != nil {
+		t.Fatalf("executeOnRouteResult failed: %v", err)
+	}
+	if outcome == nil || outcome.resp == nil {
+		t.Fatal("expected non-nil outcome response")
+	}
+	defer outcome.resp.Body.Close()
+
+	if outcome.resolvedModel != aliasModel {
+		t.Fatalf("resolvedModel = %q, want %q", outcome.resolvedModel, aliasModel)
+	}
+	if len(seenModels) == 0 || seenModels[0] != aliasModel {
+		t.Fatalf("expected alias model to be tried first, seen=%v", seenModels)
 	}
 }
 
@@ -945,7 +1196,7 @@ func TestIsFormatMismatchError(t *testing.T) {
 // TestTryOnProvider_FormatMismatch422_ExpandsFormats verifies that a 422 on the
 // remembered format triggers expansion to all formats, eventually succeeding.
 func TestTryOnProvider_FormatMismatch422_ExpandsFormats(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		// OpenAI path → 422 (format mismatch)
 		if strings.Contains(r.URL.Path, "chat/completions") {
@@ -1006,7 +1257,7 @@ func TestTryOnProvider_FormatMismatch422_ExpandsFormats(t *testing.T) {
 // "openai_error" body is treated as format mismatch, not model blacklisting.
 func TestTryOnProvider_FormatMismatch404_OpenAIError(t *testing.T) {
 	var callCount atomic.Int32
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := callCount.Add(1)
 		if n == 1 {
 			// First call → 404 with openai_error
@@ -1059,7 +1310,7 @@ func TestTryOnProvider_FormatMismatch404_OpenAIError(t *testing.T) {
 // different model names if the provider doesn't understand any request format).
 func TestTryOnProvider_AllFormatsMismatch_SkipsAliases(t *testing.T) {
 	var callCount atomic.Int32
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount.Add(1)
 		// Always return 422 — provider doesn't understand any format
 		w.Header().Set("Content-Type", "application/json")
@@ -1134,7 +1385,7 @@ func TestProviderRace_EmptyRateCooldown(t *testing.T) {
 }
 
 func TestProxyHandler_ProviderRaceChoosesFastest(t *testing.T) {
-	slowUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	slowUpstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(150 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -1142,7 +1393,7 @@ func TestProxyHandler_ProviderRaceChoosesFastest(t *testing.T) {
 	}))
 	defer slowUpstream.Close()
 
-	fastUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	fastUpstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(20 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -1236,7 +1487,7 @@ func TestProxyHandler_ProviderRaceChoosesFastest(t *testing.T) {
 // /v1/chat/completions to it.
 func TestTryOnProvider_ResponsesEndpointBasePath(t *testing.T) {
 	pathCh := make(chan string, 1)
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case pathCh <- r.URL.Path:
 		default:
@@ -1282,7 +1533,7 @@ func TestTryOnProvider_ResponsesEndpointBasePath(t *testing.T) {
 
 func TestTryOnProvider_SingleProviderRetriesTransient5xx(t *testing.T) {
 	var requestCount int32
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := atomic.AddInt32(&requestCount, 1)
 		w.Header().Set("Content-Type", "application/json")
 		if n == 1 {
@@ -1323,6 +1574,51 @@ func TestTryOnProvider_SingleProviderRetriesTransient5xx(t *testing.T) {
 	}
 }
 
+func TestExecuteOnRouteResult_LastFallbackBehavesAsSingleProvider(t *testing.T) {
+	var requestCount int32
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&requestCount, 1)
+		w.Header().Set("Content-Type", "application/json")
+		if n == 1 {
+			w.WriteHeader(http.StatusBadGateway)
+			w.Write([]byte(`{"error":{"message":"Upstream request failed","type":"upstream_error"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"chatcmpl-1","choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "last-candidate-provider",
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey:    &providerpool.APIKey{Key: "test-key"},
+		Fallbacks: nil, // no remaining candidates
+	}
+	pr := &parsedRequest{
+		body:           []byte(`{"model":"gpt-5.3-codex","messages":[{"role":"user","content":"hi"}]}`),
+		model:          "gpt-5.3-codex",
+		singleProvider: false, // global mode is not single-provider
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	outcome, err := ph.executeOnRouteResult(r, result, pr, false)
+	if err != nil {
+		t.Fatalf("expected success after retry, got error: %v", err)
+	}
+	if outcome == nil || outcome.resp == nil {
+		t.Fatal("expected non-nil outcome response")
+	}
+	outcome.resp.Body.Close()
+	if got := atomic.LoadInt32(&requestCount); got != 2 {
+		t.Fatalf("expected 2 upstream attempts on last fallback provider, got %d", got)
+	}
+}
+
 func TestHasToolMessagesInRequest(t *testing.T) {
 	tests := []struct {
 		name string
@@ -1359,7 +1655,7 @@ func TestHasToolMessagesInRequest(t *testing.T) {
 // TestWarmToolCallSupport_Probe422 verifies that warmToolCallSupport marks a provider
 // as ToolCapNone when the upstream returns 422 on a tool-bearing request.
 func TestWarmToolCallSupport_Probe422(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
 			w.WriteHeader(200)
 			w.Write([]byte(`{"data":[]}`))
@@ -1417,7 +1713,7 @@ func TestWarmToolCallSupport_Probe422(t *testing.T) {
 // TestWarmToolCallSupport_Probe200 verifies that warmToolCallSupport marks a provider
 // as ToolCapNative when the upstream accepts tool-bearing requests.
 func TestWarmToolCallSupport_Probe200(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
 		w.Write([]byte(`{"id":"chatcmpl-1","choices":[{"message":{"role":"assistant","content":"hi"}}]}`))

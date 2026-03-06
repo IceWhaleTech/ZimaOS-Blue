@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 // AskQuestioner is the interface for asking user questions.
@@ -111,7 +112,8 @@ func (a *Ask) Execute(ctx context.Context, input map[string]any) (*skill.Result,
 	}
 
 	userID := skill.GetUserID(ctx)
-	answers, silent, err := a.questioner.AskQuestions(ctx, userID, "", questions)
+	sessionID := tools.GetSessionID(ctx)
+	answers, silent, err := a.questioner.AskQuestions(ctx, userID, sessionID, questions)
 	if err != nil {
 		return skill.NewErrorResult(err), nil
 	}

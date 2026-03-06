@@ -179,6 +179,10 @@ func TestFirePush_TypelessCardFormat(t *testing.T) {
 	if !strings.Contains(content, "Drink water") {
 		t.Errorf("expected message in card, got: %s", content)
 	}
+	// Should include reminder clock icon.
+	if !strings.Contains(content, `"icon":"⏰"`) {
+		t.Errorf("expected reminder icon in card, got: %s", content)
+	}
 	// Should NOT contain hardcoded emoji title
 	if strings.Contains(content, `"title":"📢"`) {
 		t.Error("card should not have hardcoded emoji title")

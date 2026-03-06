@@ -108,7 +108,21 @@ export interface RuntimeStats {
 }
 
 export const healthApi = {
-  getHealth: () => api.get<HealthStatus>('/health'),
+  getHealth: async () => {
+    try {
+      // Dashboard cards need runtime stats (uptime/memory/goroutines),
+      // which are exposed by /health/stats.
+      return await api.get<HealthStatus>('/health/stats')
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status !== 404) {
+        throw error
+      }
+
+      // Fallback for older/minimal deployments that only expose /health.
+      return api.get<HealthStatus>('/health')
+    }
+  },
   getLiveness: () => api.get<{ status: string }>('/health/live'),
   getReadiness: () => api.get<{ status: string }>('/health/ready'),
   getDetailedHealth: () => api.get<HealthStatus & { runtime: RuntimeStats }>('/system/health/detailed'),

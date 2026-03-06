@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -34,7 +33,7 @@ func TestMatrixValidator_MissingAccessToken(t *testing.T) {
 }
 
 func TestMatrixValidator_ValidCredentials(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request path
 		if r.URL.Path != "/_matrix/client/v3/account/whoami" {
 			t.Errorf("unexpected path: got %s", r.URL.Path)
@@ -79,7 +78,7 @@ func TestMatrixValidator_ValidCredentials(t *testing.T) {
 }
 
 func TestMatrixValidator_UnknownToken(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"errcode": "M_UNKNOWN_TOKEN",
 			"error":   "Unknown token",
@@ -104,7 +103,7 @@ func TestMatrixValidator_UnknownToken(t *testing.T) {
 }
 
 func TestMatrixValidator_MissingToken(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"errcode": "M_MISSING_TOKEN",
 			"error":   "Missing access token",
@@ -129,7 +128,7 @@ func TestMatrixValidator_MissingToken(t *testing.T) {
 }
 
 func TestMatrixValidator_Forbidden(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"errcode": "M_FORBIDDEN",
 			"error":   "Forbidden",
@@ -154,7 +153,7 @@ func TestMatrixValidator_Forbidden(t *testing.T) {
 }
 
 func TestMatrixValidator_UserDeactivated(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"errcode": "M_USER_DEACTIVATED",
 			"error":   "User has been deactivated",
@@ -179,7 +178,7 @@ func TestMatrixValidator_UserDeactivated(t *testing.T) {
 }
 
 func TestMatrixValidator_OtherError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"errcode": "M_UNKNOWN",
 			"error":   "Unknown error",
@@ -204,7 +203,7 @@ func TestMatrixValidator_OtherError(t *testing.T) {
 }
 
 func TestMatrixValidator_Timeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		json.NewEncoder(w).Encode(map[string]interface{}{"user_id": "@test:matrix.org"})
 	}))
@@ -226,7 +225,7 @@ func TestMatrixValidator_Timeout(t *testing.T) {
 }
 
 func TestMatrixValidator_InvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
@@ -246,7 +245,7 @@ func TestMatrixValidator_InvalidJSON(t *testing.T) {
 }
 
 func TestMatrixValidator_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL := server.URL
 	server.Close()
 
@@ -265,7 +264,7 @@ func TestMatrixValidator_NetworkError(t *testing.T) {
 }
 
 func TestMatrixValidator_HomeserverWithTrailingSlash(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Should not have double slashes
 		if r.URL.Path != "/_matrix/client/v3/account/whoami" {
 			t.Errorf("unexpected path: got %s", r.URL.Path)
@@ -291,7 +290,7 @@ func TestMatrixValidator_HomeserverWithTrailingSlash(t *testing.T) {
 }
 
 func TestMatrixValidator_GuestUser(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"user_id":   "@guest123:matrix.org",
 			"device_id": "GUESTDEVICE",

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -34,7 +33,7 @@ func TestDiscordValidator_EmptyBotToken(t *testing.T) {
 }
 
 func TestDiscordValidator_ValidToken(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request path
 		if r.URL.Path != "/users/@me" {
 			t.Errorf("unexpected path: got %s, want /users/@me", r.URL.Path)
@@ -78,7 +77,7 @@ func TestDiscordValidator_ValidToken(t *testing.T) {
 }
 
 func TestDiscordValidator_InvalidToken_401(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"code":    0,
 			"message": "401: Unauthorized",
@@ -100,7 +99,7 @@ func TestDiscordValidator_InvalidToken_401(t *testing.T) {
 }
 
 func TestDiscordValidator_Forbidden_403(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"code":    50001,
 			"message": "Missing Access",
@@ -122,7 +121,7 @@ func TestDiscordValidator_Forbidden_403(t *testing.T) {
 }
 
 func TestDiscordValidator_ServerError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"code":    0,
 			"message": "Internal Server Error",
@@ -144,7 +143,7 @@ func TestDiscordValidator_ServerError(t *testing.T) {
 }
 
 func TestDiscordValidator_Timeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		json.NewEncoder(w).Encode(map[string]interface{}{"id": "123"})
 	}))
@@ -163,7 +162,7 @@ func TestDiscordValidator_Timeout(t *testing.T) {
 }
 
 func TestDiscordValidator_InvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
@@ -180,7 +179,7 @@ func TestDiscordValidator_InvalidJSON(t *testing.T) {
 }
 
 func TestDiscordValidator_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL := server.URL
 	server.Close()
 
@@ -196,7 +195,7 @@ func TestDiscordValidator_NetworkError(t *testing.T) {
 }
 
 func TestDiscordValidator_BotInfoParsing(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"id":            "987654321098765432",
 			"username":      "AwesomeBot",

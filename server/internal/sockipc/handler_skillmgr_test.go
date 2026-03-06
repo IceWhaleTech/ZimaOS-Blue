@@ -95,9 +95,7 @@ func setupSkillMgrServer(t *testing.T) (net.Conn, func()) {
 	sock := shortSock(t)
 	srv := NewServer(sock, zap.NewNop())
 	RegisterSkillManagerHandlers(srv, newMockSkillManager(), zap.NewNop())
-	if err := srv.Start(); err != nil {
-		t.Fatal(err)
-	}
+	startServerOrSkip(t, srv)
 	conn, err := net.Dial("unix", sock)
 	if err != nil {
 		srv.Close()

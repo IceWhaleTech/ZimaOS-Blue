@@ -74,18 +74,20 @@ describe('settings store - small model integration', () => {
     const store = useSettingsStore()
 
     expect(store.smallModelEnabled).toBe(false)
-    expect(store.smallModelRuntime).toBe('onnx_genai_python')
-    expect(store.smallModelID).toBe('qwen3.5-0.8b-onnx-q4')
+    expect(store.smallModelRuntime).toBe('llama.cpp')
+    expect(store.smallModelID).toBe('qwen3.5-0.8b-gguf-q4km')
     expect(store.smallModelAutoDownload).toBe(true)
-    expect(store.smallModelSummaryEnabled).toBe(true)
-    expect(store.smallModelDocExtractEnabled).toBe(true)
-    expect(store.smallModelRerankEnabled).toBe(true)
-    expect(store.smallModelRouteShortQAEnabled).toBe(true)
-    expect(store.smallModelRouteToolDispatchEnabled).toBe(true)
+    expect(store.smallModelSummaryEnabled).toBe(false)
+    expect(store.smallModelDocExtractEnabled).toBe(false)
+    expect(store.smallModelRerankEnabled).toBe(false)
+    expect(store.smallModelRouteShortQAEnabled).toBe(false)
+    expect(store.smallModelRouteToolDispatchEnabled).toBe(false)
     expect(store.noLLMDegradeMode).toBe('deepresearch')
     expect(store.smallModelUnavailablePolicy).toBe('ir_first')
-    expect(store.offlineIRFallbackEnabled).toBe(true)
-    expect(store.featureIntentIREnabled).toBe(true)
+    expect(store.offlineIRFallbackEnabled).toBe(false)
+    expect(store.featureIntentIREnabled).toBe(false)
+    expect(store.smartToolSelection).toBe(false)
+    expect(store.smartSkillSelection).toBe(false)
   })
 
   it('migrates legacy maxTokens 2048 to 8192 once', () => {
@@ -130,8 +132,8 @@ describe('settings store - small model integration', () => {
       data: {
         ready: true,
         downloading: false,
-        model_id: 'qwen3.5-0.8b-onnx-q4',
-        runtime: 'onnx_genai_python',
+        model_id: 'qwen3.5-0.8b-gguf-q4km',
+        runtime: 'llama.cpp',
         model_path: '/tmp/model.gguf',
       },
     } as never)

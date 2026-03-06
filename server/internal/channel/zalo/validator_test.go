@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -22,7 +21,7 @@ func TestZaloValidator_MissingAccessToken(t *testing.T) {
 }
 
 func TestZaloValidator_ValidCredentials(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request path
 		if r.URL.Path != "/v2.0/oa/getoa" {
 			t.Errorf("unexpected path: got %s", r.URL.Path)
@@ -73,7 +72,7 @@ func TestZaloValidator_ValidCredentials(t *testing.T) {
 }
 
 func TestZaloValidator_InvalidAccessToken(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"error":   -124,
 			"message": "Invalid access token",
@@ -96,7 +95,7 @@ func TestZaloValidator_InvalidAccessToken(t *testing.T) {
 }
 
 func TestZaloValidator_ExpiredAccessToken(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"error":   -216,
 			"message": "Access token expired",
@@ -119,7 +118,7 @@ func TestZaloValidator_ExpiredAccessToken(t *testing.T) {
 }
 
 func TestZaloValidator_InvalidOA(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"error":   -201,
 			"message": "Invalid OA",
@@ -142,7 +141,7 @@ func TestZaloValidator_InvalidOA(t *testing.T) {
 }
 
 func TestZaloValidator_OtherError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"error":   -999,
 			"message": "Unknown error",
@@ -165,7 +164,7 @@ func TestZaloValidator_OtherError(t *testing.T) {
 }
 
 func TestZaloValidator_Timeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		json.NewEncoder(w).Encode(map[string]interface{}{"error": 0})
 	}))
@@ -186,7 +185,7 @@ func TestZaloValidator_Timeout(t *testing.T) {
 }
 
 func TestZaloValidator_InvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
@@ -205,7 +204,7 @@ func TestZaloValidator_InvalidJSON(t *testing.T) {
 }
 
 func TestZaloValidator_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL := server.URL
 	server.Close()
 
@@ -223,7 +222,7 @@ func TestZaloValidator_NetworkError(t *testing.T) {
 }
 
 func TestZaloValidator_NoOAData(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"error":   0,
 			"message": "Success",
@@ -247,7 +246,7 @@ func TestZaloValidator_NoOAData(t *testing.T) {
 }
 
 func TestZaloValidator_UnverifiedOA(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"error":   0,
 			"message": "Success",

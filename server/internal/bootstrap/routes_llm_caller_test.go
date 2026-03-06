@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 )
 
@@ -114,5 +116,15 @@ func TestProxyBridgeLLMCaller_NilBridge(t *testing.T) {
 	_, err := caller.Chat(context.Background(), llm.ChatRequest{Model: "auto"})
 	if err == nil {
 		t.Fatal("expected error when proxy bridge is nil")
+	}
+}
+
+func TestResolveDefaultModelForCCCLI_RespectsExplicitAuto(t *testing.T) {
+	cc := claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore())
+	if got := resolveDefaultModelForCCCLI("auto", cc, nil); got != "auto" {
+		t.Fatalf("resolveDefaultModelForCCCLI(auto) = %q, want auto", got)
+	}
+	if got := resolveDefaultModelForCCCLI("", cc, nil); got != defaultCCCLIModel {
+		t.Fatalf("resolveDefaultModelForCCCLI(empty) = %q, want %q", got, defaultCCCLIModel)
 	}
 }

@@ -668,15 +668,21 @@ export interface TypelessCardBrowserProgress extends TypelessCardBase {
 // Exec Card - Display shell command execution results with terminal styling
 export interface TypelessCardExec extends TypelessCardBase {
   type: 'exec'
-  command: string
+  command?: string
+  command_redacted?: boolean
   hide_command?: boolean
+  message?: string
   status: 'success' | 'error' | 'running'
   exit_code?: number
   stdout?: string
+  stdout_redacted?: boolean
   stderr?: string
+  stderr_redacted?: boolean
   duration_ms?: number
   truncated?: boolean
   warnings?: string[]
+  warning_count?: number
+  warnings_redacted?: boolean
   host?: 'local' | 'sandbox' | 'builtin'
   risk_level?: 'low' | 'medium' | 'high' | 'critical'
   session_id?: string

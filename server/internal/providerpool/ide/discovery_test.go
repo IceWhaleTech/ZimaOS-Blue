@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -70,7 +69,7 @@ func TestDiscovery(t *testing.T) {
 
 func TestFetchModels(t *testing.T) {
 	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/models" {
 			http.NotFound(w, r)
 			return
@@ -89,7 +88,7 @@ func TestFetchModels(t *testing.T) {
 
 	discovery := NewDiscovery(5 * time.Second)
 
-	models, err := discovery.fetchModels(context.Background(), server.URL)
+	models, err := discovery.fetchModels(context.Background(), server.URL, "")
 	if err != nil {
 		t.Fatalf("fetchModels failed: %v", err)
 	}
@@ -108,22 +107,72 @@ func TestFetchModels(t *testing.T) {
 
 func TestFetchModelsError(t *testing.T) {
 	// Create mock server that returns error
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
 
 	discovery := NewDiscovery(5 * time.Second)
 
-	_, err := discovery.fetchModels(context.Background(), server.URL)
+	_, err := discovery.fetchModels(context.Background(), server.URL, "")
 	if err == nil {
 		t.Error("Expected error for 500 response")
 	}
 }
 
+func TestFetchModelsRetriesWithAPIKeyOnForbidden(t *testing.T) {
+	var requestCount int
+	var seenAuth []string
+	var seenXAPIKey []string
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+
+		requestCount++
+		seenAuth = append(seenAuth, r.Header.Get("Authorization"))
+		seenXAPIKey = append(seenXAPIKey, r.Header.Get("x-api-key"))
+
+		// First request should be unauthenticated and forbidden.
+		if requestCount == 1 {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		if r.Header.Get("Authorization") != "Bearer test-api-key" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"id":"gpt-4"}]}`))
+	}))
+	defer server.Close()
+
+	discovery := NewDiscovery(5 * time.Second)
+
+	models, err := discovery.fetchModels(context.Background(), server.URL, "test-api-key")
+	if err != nil {
+		t.Fatalf("fetchModels failed: %v", err)
+	}
+	if len(models) != 1 || models[0] != "gpt-4" {
+		t.Fatalf("unexpected models: %#v", models)
+	}
+	if requestCount < 2 {
+		t.Fatalf("expected at least 2 requests, got %d", requestCount)
+	}
+	if len(seenAuth) < 2 || seenAuth[0] != "" || seenAuth[1] != "Bearer test-api-key" {
+		t.Fatalf("unexpected auth sequence: %#v", seenAuth)
+	}
+	if len(seenXAPIKey) > 1 && seenXAPIKey[1] != "" {
+		t.Fatalf("did not expect x-api-key on bearer retry, got %#v", seenXAPIKey)
+	}
+}
+
 func TestTryPorts(t *testing.T) {
 	// Create mock server on a specific port
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"data": []}`))
@@ -188,7 +237,7 @@ func TestScanWithMockConfig(t *testing.T) {
 
 func TestConnectWithMockServer(t *testing.T) {
 	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/models" {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"data": [{"id": "test-model"}]}`))

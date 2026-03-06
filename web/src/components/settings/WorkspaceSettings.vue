@@ -22,6 +22,7 @@ const fileInfo: Record<string, { icon: string; labelKey: string; descKey: string
   'IDENTITY.md': { icon: '🏷️', labelKey: 'workspace.label.identity', descKey: 'workspace.desc.identity' },
   'MEMORY.md': { icon: '💾', labelKey: 'workspace.label.memory', descKey: 'workspace.desc.memory' },
   'AGENTS.md': { icon: '📋', labelKey: 'workspace.label.agents', descKey: 'workspace.desc.agents' },
+  'TOOLS.md': { icon: '🧰', labelKey: 'workspace.label.tools', descKey: 'workspace.desc.tools' },
   'HEARTBEAT.md': { icon: '💗', labelKey: 'workspace.label.heartbeat', descKey: 'workspace.desc.heartbeat' },
 }
 

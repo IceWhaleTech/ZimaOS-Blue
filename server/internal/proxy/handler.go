@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +40,8 @@ type ResolvedRoute struct {
 
 type resolvedRouteKeyType struct{}
 
+type upstreamResponsesPreviousIDKeyType struct{}
+
 // WithResolvedRoute returns a context carrying a ResolvedRoute pointer.
 // After the proxy handler completes, the struct will be populated.
 func WithResolvedRoute(ctx context.Context, rr *ResolvedRoute) context.Context {
@@ -49,6 +51,21 @@ func WithResolvedRoute(ctx context.Context, rr *ResolvedRoute) context.Context {
 func getResolvedRoute(ctx context.Context) *ResolvedRoute {
 	rr, _ := ctx.Value(resolvedRouteKeyType{}).(*ResolvedRoute)
 	return rr
+}
+
+func withUpstreamResponsesPreviousID(ctx context.Context, previousResponseID string) context.Context {
+	if strings.TrimSpace(previousResponseID) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, upstreamResponsesPreviousIDKeyType{}, strings.TrimSpace(previousResponseID))
+}
+
+func upstreamResponsesPreviousIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	v, _ := ctx.Value(upstreamResponsesPreviousIDKeyType{}).(string)
+	return strings.TrimSpace(v)
 }
 
 // Pinned provider context — used for sticky routing during tool rounds.
@@ -162,6 +179,21 @@ func (ph *ProxyHandler) isSingleProviderMode(mode providerpool.RoutingMode) bool
 	return count == 1
 }
 
+// effectiveSingleProviderOnRoute returns whether the current provider execution
+// should behave as single-provider mode.
+// It is true when:
+// - global routing mode already has a single enabled provider; or
+// - this route result has no fallback candidates left (last candidate in failover).
+func effectiveSingleProviderOnRoute(pr *parsedRequest, result *providerpool.RouteResult) bool {
+	if pr != nil && pr.singleProvider {
+		return true
+	}
+	if result == nil {
+		return false
+	}
+	return len(result.Fallbacks) == 0
+}
+
 // isTransientNetworkError returns true if the error is a transient network error
 // that should be retried on the same provider (connection reset, EOF, timeout, etc.).
 // These are Go-level errors from client.Do(), not HTTP status codes.
@@ -217,6 +249,7 @@ var responsesContinuationErrorMarkers = [][]byte{
 	[]byte("previous response"),
 	[]byte("response_id"),
 	[]byte("response id"),
+	[]byte("continuation"),
 }
 
 var responsesContinuationRejectedMarkers = [][]byte{
@@ -228,6 +261,36 @@ var responsesContinuationRejectedMarkers = [][]byte{
 	[]byte("mismatch"),
 	[]byte("belongs to"),
 	[]byte("different conversation"),
+	[]byte("session"),
+	[]byte("conversation"),
+	[]byte("thread"),
+}
+
+var responsesContinuationAuthLikeMarkers = []string{
+	"auth error",
+	"unauthorized",
+	"forbidden",
+	"invalid api key",
+	"api key",
+}
+
+var responsesContinuationSessionScopeMarkers = []string{
+	"session",
+	"conversation",
+	"thread",
+}
+
+var responsesContinuationInvalidityMarkers = []string{
+	"not found",
+	"does not exist",
+	"invalid",
+	"unknown",
+	"expired",
+	"mismatch",
+	"belongs to",
+	"different conversation",
+	"different session",
+	"different thread",
 }
 
 func isResponsesContinuationRejectedError(statusCode int, body []byte) bool {
@@ -301,8 +364,42 @@ func (ph *ProxyHandler) probeWithRetry(
 	}
 }
 
+const (
+	// Total attempts (initial + retries) for generic transient upstream 5xx in
+	// single-provider mode.
+	singleProviderTransientUpstreamMaxAttempts = 3
+	// Total attempts (initial + retries) for rate-limit/overload-like upstream
+	// errors in single-provider mode.
+	singleProviderRateLimitLikeMaxAttempts = 5
+)
+
+func isRateLimitLikeUpstreamError(statusCode int, body []byte) bool {
+	switch statusCode {
+	case http.StatusTooManyRequests, 529:
+		return true
+	}
+	if statusCode < 500 {
+		return false
+	}
+	lower := toLowerBytes(body)
+	return bytes.Contains(lower, []byte("overloaded_error")) ||
+		bytes.Contains(lower, []byte("\"type\":\"overloaded\"")) ||
+		bytes.Contains(lower, []byte("overloaded")) ||
+		bytes.Contains(lower, []byte("rate_limit")) ||
+		bytes.Contains(lower, []byte("rate limit")) ||
+		bytes.Contains(lower, []byte("too many requests")) ||
+		bytes.Contains(lower, []byte("throttled")) ||
+		bytes.Contains(lower, []byte("capacity"))
+}
+
 func shouldRetryTransientUpstream5xx(singleProvider bool, statusCode int, body []byte, attempt int) bool {
-	if !singleProvider || attempt >= 2 {
+	if !singleProvider {
+		return false
+	}
+	if isRateLimitLikeUpstreamError(statusCode, body) {
+		return attempt < singleProviderRateLimitLikeMaxAttempts-1
+	}
+	if attempt >= singleProviderTransientUpstreamMaxAttempts-1 {
 		return false
 	}
 	switch statusCode {
@@ -336,11 +433,41 @@ var retryWithoutToolsSchemaMarkers = []string{
 	"unsupported request",
 }
 
+func isOpaqueUpstreamRelayError(msg string) bool {
+	hasUpstream5xx := strings.Contains(msg, "upstream 500:") ||
+		strings.Contains(msg, "upstream 502:") ||
+		strings.Contains(msg, "upstream 503:") ||
+		strings.Contains(msg, "upstream 504:") ||
+		strings.Contains(msg, "provider returned 500:") ||
+		strings.Contains(msg, "provider returned 502:") ||
+		strings.Contains(msg, "provider returned 503:") ||
+		strings.Contains(msg, "provider returned 504:")
+	if !hasUpstream5xx {
+		return false
+	}
+	// Some relays wrap all upstream failures into generic 5xx payloads, masking
+	// whether the root cause is tool/request-shape compatibility.
+	return strings.Contains(msg, "upstream request failed") ||
+		strings.Contains(msg, "\"type\":\"upstream_error\"") ||
+		strings.Contains(msg, "\"type\": \"upstream_error\"")
+}
+
 func shouldRetryWithoutTools(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
+
+	// Explicit capability signal.
+	if strings.Contains(msg, "does not support tool calls") {
+		return true
+	}
+
+	// Relay-opaque 5xx can hide request validation failures; allow one
+	// tools-stripped retry after normal upstream retries are exhausted.
+	if isOpaqueUpstreamRelayError(msg) {
+		return true
+	}
 
 	// Never drop tools on clearly transient/server-side failures.
 	if strings.Contains(msg, "returned no response") ||
@@ -351,11 +478,6 @@ func shouldRetryWithoutTools(err error) bool {
 		strings.Contains(msg, "overloaded (529)") ||
 		strings.Contains(msg, "auth error") {
 		return false
-	}
-
-	// Explicit capability signal.
-	if strings.Contains(msg, "does not support tool calls") {
-		return true
 	}
 
 	// Restrict fallback to request-validation style client errors.
@@ -392,11 +514,72 @@ func shouldRetryWithoutPreviousResponseID(err error) bool {
 	}
 
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "returned no response") ||
+	if strings.Contains(msg, "returned no response") ||
 		strings.Contains(msg, "empty streaming response") ||
 		strings.Contains(msg, "upstream 502") ||
 		strings.Contains(msg, "upstream 503") ||
-		strings.Contains(msg, "upstream 504")
+		strings.Contains(msg, "upstream 504") {
+		return true
+	}
+	for _, marker := range responsesContinuationAuthLikeMarkers {
+		if strings.Contains(msg, marker) {
+			return false
+		}
+	}
+	statusCode := parseStatusCodeFromUpstreamError(msg)
+	if statusCode == http.StatusBadRequest ||
+		statusCode == http.StatusNotFound ||
+		statusCode == http.StatusConflict ||
+		statusCode == http.StatusGone ||
+		statusCode == http.StatusUnprocessableEntity ||
+		statusCode >= http.StatusInternalServerError {
+		hasSessionScope := false
+		for _, marker := range responsesContinuationSessionScopeMarkers {
+			if strings.Contains(msg, marker) {
+				hasSessionScope = true
+				break
+			}
+		}
+		hasInvalidity := false
+		for _, marker := range responsesContinuationInvalidityMarkers {
+			if strings.Contains(msg, marker) {
+				hasInvalidity = true
+				break
+			}
+		}
+		hasContinuationCue := strings.Contains(msg, "previous_response_id") ||
+			strings.Contains(msg, "previous response") ||
+			strings.Contains(msg, "response_id") ||
+			strings.Contains(msg, "response id") ||
+			strings.Contains(msg, "continuation")
+		if hasContinuationCue && hasInvalidity {
+			return true
+		}
+		if hasSessionScope && hasInvalidity {
+			return true
+		}
+	}
+	return false
+}
+
+func parseStatusCodeFromUpstreamError(msg string) int {
+	msg = strings.TrimSpace(strings.ToLower(msg))
+	if msg == "" {
+		return 0
+	}
+	var statusCode int
+	for _, pattern := range []string{
+		"provider returned %d:",
+		"upstream %d:",
+		"proxy returned %d:",
+	} {
+		if _, err := fmt.Sscanf(msg, pattern, &statusCode); err == nil {
+			if statusCode >= 100 && statusCode <= 599 {
+				return statusCode
+			}
+		}
+	}
+	return 0
 }
 
 func hasPreviousResponseContinuation(body []byte, cachedPrevID string) bool {
@@ -507,22 +690,28 @@ type ProxyHandler struct {
 	responsesTools  map[string]string // session/provider/model -> tools schema signature
 	responsesAssist map[string]string // session/provider/model -> last assistant text
 	assistByRespID  map[string]string // response_id -> last assistant text
+	// provider/model -> continuation disabled (observed upstream returns
+	// previous_response_id=null for continuation requests)
+	responsesContinuationDisabled map[string]bool
+	responsesComp                 *responsesContinuationCompactor
 }
 
 // NewProxyHandler creates a new proxy handler
 func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *FailoverHandler) *ProxyHandler {
 	ph := &ProxyHandler{
-		router:             router,
-		connPool:           connPool,
-		failover:           failover,
-		promptCacheStats:   &PromptCacheStats{},
-		providerRaceConfig: normalizeProviderRaceConfig(DefaultProviderRaceConfig()),
-		providerRaceStats:  make(map[string]*providerRaceStat),
-		responsesPrevID:    make(map[string]string),
-		responsesInstr:     make(map[string]string),
-		responsesTools:     make(map[string]string),
-		responsesAssist:    make(map[string]string),
-		assistByRespID:     make(map[string]string),
+		router:                        router,
+		connPool:                      connPool,
+		failover:                      failover,
+		promptCacheStats:              &PromptCacheStats{},
+		providerRaceConfig:            normalizeProviderRaceConfig(DefaultProviderRaceConfig()),
+		providerRaceStats:             make(map[string]*providerRaceStat),
+		responsesPrevID:               make(map[string]string),
+		responsesInstr:                make(map[string]string),
+		responsesTools:                make(map[string]string),
+		responsesAssist:               make(map[string]string),
+		assistByRespID:                make(map[string]string),
+		responsesContinuationDisabled: make(map[string]bool),
+		responsesComp:                 newResponsesContinuationCompactor(nil),
 	}
 	ph.routingEnabled.Store(true)
 	ph.authProber = NewAuthProber() // default prober, can be overridden
@@ -545,6 +734,26 @@ func (ph *ProxyHandler) SetProviderPool(pool *providerpool.Pool) {
 // before forwarding to /responses endpoints.
 func (ph *ProxyHandler) SetSTTService(service stt.Service) {
 	ph.sttService = service
+}
+
+// SetResponsesContextCompressor overrides continuation assistant compression.
+// Pass nil to restore the default heuristic compressor.
+func (ph *ProxyHandler) SetResponsesContextCompressor(compressor ResponsesContextCompressor) {
+	if ph == nil {
+		return
+	}
+	if ph.responsesComp == nil {
+		ph.responsesComp = newResponsesContinuationCompactor(compressor)
+		return
+	}
+	ph.responsesComp.SetCompressor(compressor)
+}
+
+func (ph *ProxyHandler) responsesContinuationCompactor() *responsesContinuationCompactor {
+	if ph == nil || ph.responsesComp == nil {
+		return defaultResponsesContinuationCompactor
+	}
+	return ph.responsesComp
 }
 
 func (ph *ProxyHandler) responsesAudioTranscriber(ctx context.Context) chatAudioTranscriber {
@@ -950,6 +1159,10 @@ const ResponsesUsedHeader = "X-Zima-Responses-Used"
 // by the proxy for this session/request.
 const ResponsesPreviousIDHeader = "X-Zima-Previous-Response-ID"
 
+// ResponsesContinuationDisabledHeader is set when proxy detects upstream does not
+// honor previous_response_id continuation semantics for the routed provider.
+const ResponsesContinuationDisabledHeader = "X-Zima-Responses-Continuation-Disabled"
+
 // warmToolCallSupport sends a minimal tool-bearing request to each provider to detect
 // whether it supports native function calling. Results are cached in ProviderMemory
 // so the routing layer can skip providers that would 422 on tool_calls.
@@ -1051,6 +1264,40 @@ func (ph *ProxyHandler) extractRoutingMode(r *http.Request) string {
 	return "auto"
 }
 
+// normalizeModelRoutingHint converts routing-hint models ("auto"/"cloud"/"local")
+// into an empty concrete model with a routing mode hint.
+func normalizeModelRoutingHint(model string) (normalizedModel string, hintedMode string) {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case string(providerpool.RoutingModeAuto):
+		return "", string(providerpool.RoutingModeAuto)
+	case string(providerpool.RoutingModeCloud):
+		return "", string(providerpool.RoutingModeCloud)
+	case string(providerpool.RoutingModeLocal):
+		return "", string(providerpool.RoutingModeLocal)
+	default:
+		return model, ""
+	}
+}
+
+// resolveRoutingMode combines API-key-scoped routing with model hints.
+// API key scopes (cloud/local) are authoritative; model hints apply only when
+// scoped mode is auto.
+func resolveRoutingMode(scopedMode, hintedMode string) string {
+	mode := strings.ToLower(strings.TrimSpace(scopedMode))
+	switch mode {
+	case string(providerpool.RoutingModeCloud), string(providerpool.RoutingModeLocal):
+		return mode
+	}
+
+	hint := strings.ToLower(strings.TrimSpace(hintedMode))
+	switch hint {
+	case string(providerpool.RoutingModeCloud), string(providerpool.RoutingModeLocal):
+		return hint
+	default:
+		return string(providerpool.RoutingModeAuto)
+	}
+}
+
 func (ph *ProxyHandler) executeOnRouteResult(
 	r *http.Request,
 	result *providerpool.RouteResult,
@@ -1059,10 +1306,11 @@ func (ph *ProxyHandler) executeOnRouteResult(
 ) (*providerExecOutcome, error) {
 	pid := result.Provider.ID
 	burl := result.Provider.EffectiveBaseURL()
+	effectiveSingleProvider := effectiveSingleProviderOnRoute(pr, result)
 
 	// Tool cap check: skip providers known to not support function calling.
 	// This avoids wasting a round-trip on providers that will 422.
-	if hasTools && !pr.singleProvider {
+	if hasTools && !effectiveSingleProvider {
 		if cap, ok := ph.providerMemory.RecallToolCap(pid, burl); ok && cap == ToolCapNone {
 			// Responses-based endpoints may have been mis-probed previously via
 			// /v1/chat/completions. Drop stale cache and re-try once on real traffic.
@@ -1077,13 +1325,20 @@ func (ph *ProxyHandler) executeOnRouteResult(
 	}
 
 	// Throttle check: skip provider if recently 429'd
-	if !pr.singleProvider && ph.providerMemory.IsThrottled(pid, burl) {
+	if !effectiveSingleProvider && ph.providerMemory.IsThrottled(pid, burl) {
 		slog.Debug("[proxy] skipping throttled provider", "provider", pid)
 		return nil, fmt.Errorf("provider %s is throttled", pid)
 	}
 
+	tryReq := pr
+	if pr != nil && pr.singleProvider != effectiveSingleProvider {
+		prClone := *pr
+		prClone.singleProvider = effectiveSingleProvider
+		tryReq = &prClone
+	}
+
 	// Try all Model × Format combinations on this provider
-	resp, format, _, tryErr := ph.tryOnProvider(r, result, pr)
+	resp, format, usedModel, tryErr := ph.tryOnProvider(r, result, tryReq)
 	if tryErr != nil {
 		return nil, tryErr
 	}
@@ -1129,7 +1384,9 @@ func (ph *ProxyHandler) executeOnRouteResult(
 	if outcome.resolvedProvider == "" {
 		outcome.resolvedProvider = result.Provider.ID
 	}
-	if result.Model != nil && result.Model.ID != "" {
+	if usedModel != "" {
+		outcome.resolvedModel = usedModel
+	} else if result.Model != nil && result.Model.ID != "" {
 		outcome.resolvedModel = result.Model.ID
 	}
 	return outcome, nil
@@ -1343,10 +1600,13 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		pr.streaming = gjson.Get(bodyStr, "stream").Bool()
 	}
 
-	// "auto" means "use any available model" — normalize to empty so the router
-	// picks from allCandidates and allModelsForProvider doesn't send "auto" upstream.
-	if pr.model == "auto" {
-		pr.model = ""
+	// Routing-hint models ("auto"/"cloud"/"local") select provider location
+	// instead of a concrete model ID. Normalize to empty model so router picks
+	// from available models under the resolved routing mode.
+	routingModeHint := ""
+	if normalizedModel, hint := normalizeModelRoutingHint(pr.model); hint != "" {
+		pr.model = normalizedModel
+		routingModeHint = hint
 	}
 
 	// Model routing: evaluate rule engine to potentially swap to a cheaper model
@@ -1359,12 +1619,13 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ph.setRouteHeaders(w, pr)
-	routingMode := ph.extractRoutingMode(r)
+	routingMode := resolveRoutingMode(ph.extractRoutingMode(r), routingModeHint)
 	slog.Info("[proxy] routing request body",
 		"requested_model", pr.requestedModel,
 		"model", pr.model,
 		"streaming", pr.streaming,
 		"mode", routingMode,
+		"mode_hint_from_model", routingModeHint,
 		"body", ph.requestBodyForLog(pr.body),
 	)
 
@@ -1720,12 +1981,24 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	if strings.HasSuffix(finalPath, "/responses") {
 		// Ensure continuation trimming also applies to requests converted in the
 		// URI-fixup branch (e.g. direct /responses requests carrying messages).
-		body = trimResponsesInputForContinuation(body)
+		body = ph.responsesContinuationCompactor().TrimInput(body)
 		body = ph.ensureCachedInstructionsForResponsesBody(r, body)
 		body = ph.ensureCachedToolsForResponsesBody(r, route, body)
 		body = ph.injectCachedResponsesAssistantContextForRoute(r, route, body)
-		body = ensureResponsesStoreEnabled(body)
-		body = clampResponsesMaxOutputTokens(body)
+		body = ph.sanitizeResponsesInputForContinuationDisabledRoute(r, route, body)
+		storePolicy := ""
+		body, storePolicy = applyResponsesStorePolicy(body, finalPath)
+		body = clampResponsesMaxOutputTokens(body, resolveResponsesMaxOutputTokensLimit(route))
+		hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount := responsesContinuationLogFields(body)
+		slog.Info("[proxy] responses continuation payload prepared",
+			"provider", provider.ID,
+			"final_path", finalPath,
+			"has_prev_response_id", hasPrevResponseID,
+			"instructions_len", instructionsLen,
+			"input_items_count", inputItemsCount,
+			"tool_items_count", toolItemsCount,
+			"store_policy", storePolicy,
+		)
 	}
 	if endpointFormat, ok := detectEndpointFixedFormatFromPath(finalPath); ok {
 		effectiveFormat = endpointFormat
@@ -1741,13 +2014,18 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 		"body", ph.requestBodyForLog(body),
 	)
 
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(body))
+	upstreamPrevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+	requestCtx := withUpstreamResponsesPreviousID(r.Context(), upstreamPrevID)
+	req, err := http.NewRequestWithContext(requestCtx, r.Method, fullURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 
 	copyHeaders(req.Header, r.Header)
 	applyRequestLocaleHeader(req, r.Context())
+	// Force uncompressed upstream bodies to keep downstream conversion/parsing deterministic.
+	// Some relays return compressed payloads that may bypass automatic transport decoding.
+	req.Header.Set("Accept-Encoding", "identity")
 	req.Host = targetURL.Host
 
 	// Copilot API requires Editor-Version header for IDE authentication
@@ -2328,8 +2606,12 @@ func (ph *ProxyHandler) tryOnProvider(
 				if len(errMsg) > 500 {
 					errMsg = errMsg[:500]
 				}
-				slog.Warn("[proxy] transient upstream 5xx, retrying in single-provider mode",
-					"provider", pid, "status", statusCode, "attempt", upstreamAttempt+1, "delay", delay, "error", errMsg)
+				retryKind := "transient_5xx"
+				if isRateLimitLikeUpstreamError(statusCode, errBody) {
+					retryKind = "rate_limit_like"
+				}
+				slog.Warn("[proxy] upstream error with backoff retry in single-provider mode",
+					"provider", pid, "status", statusCode, "attempt", upstreamAttempt+1, "delay", delay, "kind", retryKind, "error", errMsg)
 				select {
 				case <-r.Context().Done():
 					return nil, "", "", r.Context().Err()
@@ -2476,8 +2758,12 @@ func (ph *ProxyHandler) tryOnProvider(
 					if len(errMsg) > 500 {
 						errMsg = errMsg[:500]
 					}
-					slog.Warn("[proxy] transient upstream 5xx, retrying in single-provider mode",
-						"provider", pid, "status", resp.StatusCode, "attempt", upstreamAttempt+1, "delay", delay, "error", errMsg)
+					retryKind := "transient_5xx"
+					if isRateLimitLikeUpstreamError(resp.StatusCode, errBody) {
+						retryKind = "rate_limit_like"
+					}
+					slog.Warn("[proxy] upstream error with backoff retry in single-provider mode",
+						"provider", pid, "status", resp.StatusCode, "attempt", upstreamAttempt+1, "delay", delay, "kind", retryKind, "error", errMsg)
 					select {
 					case <-r.Context().Done():
 						return nil, "", "", r.Context().Err()
@@ -2911,6 +3197,9 @@ func (ph *ProxyHandler) shouldLogUpstreamRequestBody() bool {
 }
 
 func (ph *ProxyHandler) requestBodyForLog(body []byte) string {
+	if !ph.shouldLogUpstreamRequestBody() {
+		return fmt.Sprintf("[redacted request body, bytes=%d]", len(body))
+	}
 	if ph.dataMasker != nil && ph.dataMasker.IsEnabled() {
 		return string(ph.dataMasker.MaskRequestBytes(body))
 	}
@@ -2960,6 +3249,8 @@ func (ph *ProxyHandler) forwardToProvider(r *http.Request, route *providerpool.R
 	// Copy headers
 	copyHeaders(req.Header, r.Header)
 	applyRequestLocaleHeader(req, r.Context())
+	// Keep deprecated path aligned with buildUpstreamRequestWithFormat behavior.
+	req.Header.Set("Accept-Encoding", "identity")
 
 	// Set authentication
 	// Use x-api-key only for Anthropic-native endpoints (/v1/messages);
@@ -3061,6 +3352,7 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 	if resp.Request != nil && resp.Request.URL != nil {
 		upstreamPath = strings.TrimSuffix(resp.Request.URL.Path, "/")
 	}
+	preferredModel := preferredModelForResponse(pr)
 	isResponsesEndpoint := strings.HasSuffix(upstreamPath, "/responses")
 	if isResponsesEndpoint {
 		w.Header().Set(ResponsesUsedHeader, "1")
@@ -3089,16 +3381,40 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 				slog.Warn("[proxy] stream conversion error", "source", pr.upstreamFormat, "error", err)
 			}
 			if pr.upstreamFormat == ProviderTypeAnthropic && upstreamCapture.Len() > 0 {
-				ph.recordPromptCacheFromSSE(pr, upstreamCapture.Bytes())
+				captured := upstreamCapture.Bytes()
+				ph.recordPromptCacheFromSSE(pr, captured)
+				if ph.shouldCaptureSessionUsage(r) {
+					tokensIn, tokensOut := parseUsageTokensFromSSE(captured)
+					ph.updateSessionUsage(r, pr, tokensIn, tokensOut, resp.StatusCode < http.StatusBadRequest)
+				}
 			}
 			return
 		}
 
 		needCapture := ph.shouldCaptureSessionUsage(r) || (isResponsesEndpoint && ph.hasResponsesSession(r))
-		captured := ph.copyStreamingResponseWithCapture(w, resp, needCapture)
+		captured := []byte(nil)
 		if isResponsesEndpoint {
+			captured = ph.copyResponsesStreamingAsOpenAIWithCapture(w, resp, needCapture, preferredModel)
+		} else {
+			captured = ph.copyStreamingResponseWithCapture(w, resp, needCapture)
+		}
+		if isResponsesEndpoint {
+			sentPrevID := ""
+			if resp.Request != nil {
+				sentPrevID = upstreamResponsesPreviousIDFromContext(resp.Request.Context())
+			}
+			if sentPrevID != "" {
+				if exists, returnedPrevID := parseLatestResponsesPreviousResponseIDFromSSE(captured); exists && returnedPrevID == "" {
+					ph.markResponsesContinuationDisabledForRoute(resolvedRoute)
+					ph.clearCachedResponsesPreviousID(r)
+					w.Header().Set(ResponsesContinuationDisabledHeader, "1")
+					slog.Warn("[proxy] responses continuation disabled after upstream dropped previous_response_id in streaming response",
+						"provider", pr.resolvedProviderID, "model", pr.resolvedModel, "sent_previous_response_id", sentPrevID != "")
+				}
+			}
+
 			prevID := parseLatestResponsesIDFromSSE(captured)
-			if prevID != "" {
+			if !ph.isResponsesContinuationDisabledForRoute(resolvedRoute) && prevID != "" {
 				ph.setCachedResponsesPreviousIDForRoute(r, resolvedRoute, prevID)
 				w.Header().Set(ResponsesPreviousIDHeader, prevID)
 			}
@@ -3138,8 +3454,22 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 		ph.recordPromptCacheFromBody(pr, respBody)
 	}
 	if isResponsesEndpoint && resp.StatusCode == http.StatusOK {
+		sentPrevID := ""
+		if resp.Request != nil {
+			sentPrevID = upstreamResponsesPreviousIDFromContext(resp.Request.Context())
+		}
+		if sentPrevID != "" {
+			if exists, returnedPrevID := parseResponsesPreviousResponseIDFromBody(respBody); exists && returnedPrevID == "" {
+				ph.markResponsesContinuationDisabledForRoute(resolvedRoute)
+				ph.clearCachedResponsesPreviousID(r)
+				w.Header().Set(ResponsesContinuationDisabledHeader, "1")
+				slog.Warn("[proxy] responses continuation disabled after upstream dropped previous_response_id in response body",
+					"provider", pr.resolvedProviderID, "model", pr.resolvedModel, "sent_previous_response_id", sentPrevID != "")
+			}
+		}
+
 		prevID := strings.TrimSpace(gjson.GetBytes(respBody, "id").String())
-		if prevID != "" {
+		if !ph.isResponsesContinuationDisabledForRoute(resolvedRoute) && prevID != "" {
 			ph.setCachedResponsesPreviousIDForRoute(r, resolvedRoute, prevID)
 			w.Header().Set(ResponsesPreviousIDHeader, prevID)
 		}
@@ -3160,9 +3490,23 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 	// Convert Responses API payload to chat-completions payload when request routing
 	// went through a /responses endpoint.
 	if isResponsesEndpoint && resp.StatusCode == http.StatusOK {
-		if converted, convErr := convertResponsesToOpenAIChatCompletions(respBody); convErr == nil {
-			respBody = converted
+		converted, convErr := convertResponsesToOpenAIChatCompletions(respBody, preferredModel)
+		if convErr != nil {
+			slog.Warn("[proxy] failed to convert /responses payload to chat-completions",
+				"provider", pr.resolvedProviderID,
+				"model", pr.resolvedModel,
+				"content_type", resp.Header.Get("Content-Type"),
+				"error", convErr)
+			// Upstream returned a 200 but not a valid Responses object.
+			// Surface this as a proxy error so bridge callers can treat it as retryable.
+			w.Header().Del("Content-Encoding")
+			w.Header().Del("Content-Length")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":{"message":"invalid responses payload from upstream","type":"upstream_error"}}`))
+			return
 		}
+		respBody = converted
 	}
 
 	// Mask sensitive data in response body (non-streaming only)
@@ -3225,18 +3569,24 @@ func parseUsageTokensFromSSE(data []byte) (int64, int64) {
 		return 0, 0
 	}
 	chunks := parseSSEChunks(data)
+	var prompt, completion int64
 	for i := len(chunks) - 1; i >= 0; i-- {
-		usage, ok := chunks[i]["usage"]
-		if !ok || usage == nil {
+		usage := usageMapFromSSEChunk(chunks[i])
+		if usage == nil {
 			continue
 		}
-		asMap, ok := usage.(map[string]interface{})
-		if !ok {
-			continue
+		p, c := usageMapTokens(usage)
+		if prompt == 0 && p > 0 {
+			prompt = p
 		}
-		return usageMapTokens(asMap)
+		if completion == 0 && c > 0 {
+			completion = c
+		}
+		if prompt > 0 && completion > 0 {
+			break
+		}
 	}
-	return 0, 0
+	return prompt, completion
 }
 
 func (ph *ProxyHandler) recordPromptCacheFromBody(pr *parsedRequest, body []byte) {
@@ -3259,20 +3609,31 @@ func (ph *ProxyHandler) recordPromptCacheFromSSE(pr *parsedRequest, data []byte)
 	}
 	chunks := parseSSEChunks(data)
 	for i := len(chunks) - 1; i >= 0; i-- {
-		usage, ok := chunks[i]["usage"]
-		if !ok || usage == nil {
+		usage := usageMapFromSSEChunk(chunks[i])
+		if usage == nil {
 			continue
 		}
-		asMap, ok := usage.(map[string]interface{})
-		if !ok {
+		input := getIntField(usage, "input_tokens")
+		cacheRead := getIntField(usage, "cache_read_input_tokens")
+		cacheCreation := getIntField(usage, "cache_creation_input_tokens")
+		if input == 0 && cacheRead == 0 && cacheCreation == 0 {
 			continue
 		}
-		input := getIntField(asMap, "input_tokens")
-		cacheRead := getIntField(asMap, "cache_read_input_tokens")
-		cacheCreation := getIntField(asMap, "cache_creation_input_tokens")
 		ph.recordPromptCache(pr, input, cacheRead, cacheCreation)
 		return
 	}
+}
+
+func usageMapFromSSEChunk(chunk map[string]interface{}) map[string]interface{} {
+	if top, ok := chunk["usage"].(map[string]interface{}); ok && top != nil {
+		return top
+	}
+	if response, ok := chunk["response"].(map[string]interface{}); ok && response != nil {
+		if nested, ok := response["usage"].(map[string]interface{}); ok && nested != nil {
+			return nested
+		}
+	}
+	return nil
 }
 
 func (ph *ProxyHandler) recordPromptCache(pr *parsedRequest, input, cacheRead, cacheCreation int64) {
@@ -3304,6 +3665,19 @@ func usageMapTokens(usage map[string]interface{}) (int64, int64) {
 	return getIntField(usage, "input_tokens"), getIntField(usage, "output_tokens")
 }
 
+func preferredModelForResponse(pr *parsedRequest) string {
+	if pr == nil {
+		return ""
+	}
+	if m := strings.TrimSpace(pr.resolvedModel); m != "" {
+		return m
+	}
+	if m := strings.TrimSpace(pr.model); m != "" {
+		return m
+	}
+	return strings.TrimSpace(pr.requestedModel)
+}
+
 func getIntField(m map[string]interface{}, key string) int64 {
 	v, ok := m[key]
 	if !ok {
@@ -3329,6 +3703,318 @@ func getIntField(m map[string]interface{}, key string) int64 {
 // Returns the captured SSE bytes for cache assembly.
 // When needCapture is false, streams directly without buffering (minimal-copy path).
 // Uses pooled 32KB buffers to reduce GC pressure.
+func (ph *ProxyHandler) copyResponsesStreamingAsOpenAIWithCapture(w http.ResponseWriter, resp *http.Response, needCapture bool, preferredModel string) []byte {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		data, _ := readBody(resp.Body)
+		_, _ = w.Write(data)
+		if needCapture {
+			return data
+		}
+		return nil
+	}
+
+	scanner, bufPtr := newPooledScanner(resp.Body)
+	defer scannerBufPool.Put(bufPtr)
+
+	var capture bytes.Buffer
+	if needCapture {
+		capture.Grow(8 * 1024)
+	}
+
+	messageID := ""
+	model := strings.TrimSpace(preferredModel)
+	roleEmitted := false
+	doneSent := false
+	toolArgsEmitted := make(map[string]bool)
+
+	emitDone := func() {
+		if doneSent {
+			return
+		}
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		flusher.Flush()
+		doneSent = true
+	}
+
+	emitChunk := func(chunk OpenAIStreamChunk) {
+		chunkJSON, err := json.Marshal(chunk)
+		if err != nil {
+			return
+		}
+		_, _ = w.Write([]byte("data: " + string(chunkJSON) + "\n\n"))
+		flusher.Flush()
+	}
+
+	emitAssistantRole := func() {
+		if roleEmitted || strings.TrimSpace(messageID) == "" {
+			return
+		}
+		emitChunk(OpenAIStreamChunk{
+			ID:     messageID,
+			Object: "chat.completion.chunk",
+			Model:  model,
+			Choices: []StreamChunkChoice{{
+				Index: 0,
+				Delta: StreamChunkDelta{Role: "assistant"},
+			}},
+		})
+		roleEmitted = true
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+		if needCapture {
+			capture.WriteString("data: ")
+			capture.WriteString(payload)
+			capture.WriteString("\n\n")
+		}
+
+		if payload == "[DONE]" {
+			emitDone()
+			if needCapture {
+				return capture.Bytes()
+			}
+			return nil
+		}
+
+		var event map[string]interface{}
+		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			continue
+		}
+
+		eventType, _ := event["type"].(string)
+		if eventType == "" {
+			// Unknown payload shape: pass through in SSE format.
+			_, _ = w.Write([]byte("data: " + payload + "\n\n"))
+			flusher.Flush()
+			continue
+		}
+
+		if id := strings.TrimSpace(anyToString(event["response_id"])); id != "" {
+			messageID = id
+		}
+		if response, ok := event["response"].(map[string]interface{}); ok && response != nil {
+			if id := strings.TrimSpace(anyToString(response["id"])); id != "" {
+				messageID = id
+			}
+		}
+
+		switch eventType {
+		case "response.created":
+			emitAssistantRole()
+		case "response.output_text.delta":
+			delta := anyToString(event["delta"])
+			if strings.TrimSpace(delta) == "" {
+				continue
+			}
+			emitAssistantRole()
+			emitChunk(OpenAIStreamChunk{
+				ID:     messageID,
+				Object: "chat.completion.chunk",
+				Model:  model,
+				Choices: []StreamChunkChoice{{
+					Index: 0,
+					Delta: StreamChunkDelta{Content: delta},
+				}},
+			})
+		case "response.output_item.added", "response.output_item.done":
+			item, ok := event["item"].(map[string]interface{})
+			if !ok || item == nil || strings.ToLower(strings.TrimSpace(anyToString(item["type"]))) != "function_call" {
+				continue
+			}
+			outputIndex := responsesOutputIndexFromEvent(event)
+			callID := strings.TrimSpace(anyToString(item["call_id"]))
+			if callID == "" {
+				callID = strings.TrimSpace(anyToString(item["id"]))
+			}
+			name := strings.TrimSpace(anyToString(item["name"]))
+			args := ""
+			if eventType == "response.output_item.done" {
+				callKey := responsesToolCallKey(callID, outputIndex)
+				if toolArgsEmitted[callKey] {
+					continue
+				}
+				args = anyToString(item["arguments"])
+				if strings.TrimSpace(args) == "" {
+					continue
+				}
+				toolArgsEmitted[callKey] = true
+			}
+			toolCall := StreamChunkToolCall{
+				Index: outputIndex,
+				Function: StreamChunkToolCallFunc{
+					Name:      name,
+					Arguments: args,
+				},
+			}
+			if callID != "" {
+				toolCall.ID = callID
+				toolCall.Type = "function"
+			}
+			emitChunk(OpenAIStreamChunk{
+				ID:     messageID,
+				Object: "chat.completion.chunk",
+				Model:  model,
+				Choices: []StreamChunkChoice{{
+					Index: 0,
+					Delta: StreamChunkDelta{ToolCalls: []StreamChunkToolCall{toolCall}},
+				}},
+			})
+		case "response.function_call_arguments.delta", "response.function_call_arguments.done":
+			outputIndex := responsesOutputIndexFromEvent(event)
+			callID := strings.TrimSpace(anyToString(event["call_id"]))
+			if callID == "" {
+				callID = strings.TrimSpace(anyToString(event["item_id"]))
+			}
+			name := strings.TrimSpace(anyToString(event["name"]))
+			args := anyToString(event["delta"])
+			if strings.TrimSpace(args) == "" {
+				args = anyToString(event["arguments"])
+			}
+			if callID == "" && name == "" && strings.TrimSpace(args) == "" {
+				continue
+			}
+			callKey := responsesToolCallKey(callID, outputIndex)
+			if eventType == "response.function_call_arguments.done" && toolArgsEmitted[callKey] {
+				continue
+			}
+			toolCall := StreamChunkToolCall{
+				Index: outputIndex,
+				Function: StreamChunkToolCallFunc{
+					Name:      name,
+					Arguments: args,
+				},
+			}
+			if callID != "" {
+				toolCall.ID = callID
+				toolCall.Type = "function"
+			}
+			if strings.TrimSpace(args) != "" {
+				toolArgsEmitted[callKey] = true
+			}
+			emitChunk(OpenAIStreamChunk{
+				ID:     messageID,
+				Object: "chat.completion.chunk",
+				Model:  model,
+				Choices: []StreamChunkChoice{{
+					Index: 0,
+					Delta: StreamChunkDelta{ToolCalls: []StreamChunkToolCall{toolCall}},
+				}},
+			})
+		case "response.completed":
+			response, _ := event["response"].(map[string]interface{})
+			emitAssistantRole()
+			usage := responsesUsageFromStreamEvent(response)
+			finishReason := responsesFinishReasonFromStreamEvent(response)
+			emitChunk(OpenAIStreamChunk{
+				ID:     messageID,
+				Object: "chat.completion.chunk",
+				Model:  model,
+				Choices: []StreamChunkChoice{{
+					Index:        0,
+					FinishReason: &finishReason,
+				}},
+				Usage: usage,
+			})
+			emitDone()
+			if needCapture {
+				return capture.Bytes()
+			}
+			return nil
+		case "response.failed", "response.cancelled":
+			finishReason := "stop"
+			emitChunk(OpenAIStreamChunk{
+				ID:     messageID,
+				Object: "chat.completion.chunk",
+				Model:  model,
+				Choices: []StreamChunkChoice{{
+					Index:        0,
+					FinishReason: &finishReason,
+				}},
+			})
+			emitDone()
+			if needCapture {
+				return capture.Bytes()
+			}
+			return nil
+		}
+	}
+
+	if needCapture {
+		return capture.Bytes()
+	}
+	return nil
+}
+
+func responsesOutputIndexFromEvent(event map[string]interface{}) int {
+	switch v := event["output_index"].(type) {
+	case float64:
+		return int(v)
+	case float32:
+		return int(v)
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case int32:
+		return int(v)
+	default:
+		return 0
+	}
+}
+
+func responsesToolCallKey(callID string, outputIndex int) string {
+	if id := strings.TrimSpace(callID); id != "" {
+		return "call:" + id
+	}
+	return "output_index:" + strconv.Itoa(outputIndex)
+}
+
+func responsesUsageFromStreamEvent(response map[string]interface{}) *StreamChunkUsage {
+	if response == nil {
+		return nil
+	}
+	usage, ok := response["usage"].(map[string]interface{})
+	if !ok || usage == nil {
+		return nil
+	}
+	prompt, completion := usageMapTokens(usage)
+	total := getIntField(usage, "total_tokens")
+	if total <= 0 {
+		total = prompt + completion
+	}
+	return &StreamChunkUsage{
+		PromptTokens:     int(prompt),
+		CompletionTokens: int(completion),
+		TotalTokens:      int(total),
+	}
+}
+
+func responsesFinishReasonFromStreamEvent(response map[string]interface{}) string {
+	if response == nil {
+		return "stop"
+	}
+	output, ok := response["output"].([]interface{})
+	if !ok || len(output) == 0 {
+		return "stop"
+	}
+	for _, itemRaw := range output {
+		item, ok := itemRaw.(map[string]interface{})
+		if !ok || item == nil {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(anyToString(item["type"]))) == "function_call" {
+			return "tool_calls"
+		}
+	}
+	return "stop"
+}
+
 func (ph *ProxyHandler) copyStreamingResponseWithCapture(w http.ResponseWriter, resp *http.Response, needCapture bool) []byte {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -3696,6 +4382,27 @@ func stripPreviousResponseID(body []byte) []byte {
 	return out
 }
 
+func responsesContinuationLogFields(body []byte) (hasPrevResponseID bool, instructionsLen int, inputItemsCount int, toolItemsCount int) {
+	if len(body) == 0 {
+		return false, 0, 0, 0
+	}
+	hasPrevResponseID = strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) != ""
+	instructionsLen = len(strings.TrimSpace(gjson.GetBytes(body, "instructions").String()))
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() || !input.IsArray() {
+		return hasPrevResponseID, instructionsLen, 0, 0
+	}
+	items := input.Array()
+	inputItemsCount = len(items)
+	for _, item := range items {
+		itemType := strings.TrimSpace(item.Get("type").String())
+		if itemType == "function_call_output" || itemType == "function_call" {
+			toolItemsCount++
+		}
+	}
+	return hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount
+}
+
 func (ph *ProxyHandler) responsesSessionID(r *http.Request) string {
 	if r == nil {
 		return ""
@@ -3721,6 +4428,56 @@ func responsesPrevIDKey(sessionID, providerID, modelID string) string {
 		return sessionID + "|p:" + providerID
 	}
 	return sessionID + "|p:" + providerID + "|m:" + modelID
+}
+
+func routeProviderModelIDs(route *providerpool.RouteResult) (string, string) {
+	if route == nil || route.Provider == nil {
+		return "", ""
+	}
+	providerID := strings.TrimSpace(route.Provider.ID)
+	modelID := ""
+	if route.Model != nil {
+		modelID = strings.TrimSpace(route.Model.ID)
+	}
+	return providerID, modelID
+}
+
+func responsesContinuationDisabledKey(providerID, modelID string) string {
+	providerID = strings.TrimSpace(providerID)
+	modelID = strings.TrimSpace(modelID)
+	if providerID == "" {
+		return ""
+	}
+	if modelID == "" {
+		return "p:" + providerID
+	}
+	return "p:" + providerID + "|m:" + modelID
+}
+
+func (ph *ProxyHandler) isResponsesContinuationDisabledForRoute(route *providerpool.RouteResult) bool {
+	providerID, modelID := routeProviderModelIDs(route)
+	if providerID == "" {
+		return false
+	}
+	ph.responsesPrevMu.RLock()
+	defer ph.responsesPrevMu.RUnlock()
+	if modelID != "" && ph.responsesContinuationDisabled[responsesContinuationDisabledKey(providerID, modelID)] {
+		return true
+	}
+	return ph.responsesContinuationDisabled[responsesContinuationDisabledKey(providerID, "")]
+}
+
+func (ph *ProxyHandler) markResponsesContinuationDisabledForRoute(route *providerpool.RouteResult) {
+	providerID, modelID := routeProviderModelIDs(route)
+	if providerID == "" {
+		return
+	}
+	ph.responsesPrevMu.Lock()
+	ph.responsesContinuationDisabled[responsesContinuationDisabledKey(providerID, "")] = true
+	if modelID != "" {
+		ph.responsesContinuationDisabled[responsesContinuationDisabledKey(providerID, modelID)] = true
+	}
+	ph.responsesPrevMu.Unlock()
 }
 
 func (ph *ProxyHandler) getCachedResponsesPreviousID(r *http.Request) string {
@@ -3992,6 +4749,9 @@ func (ph *ProxyHandler) injectCachedResponsesPreviousIDForRoute(r *http.Request,
 	if len(body) == 0 || disableResponsesContinuation(r) {
 		return body
 	}
+	if ph.isResponsesContinuationDisabledForRoute(route) {
+		return stripPreviousResponseID(body)
+	}
 	prevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
 	if prevID == "" {
 		prevID = ph.getCachedResponsesPreviousIDForRoute(r, route)
@@ -4006,195 +4766,7 @@ func (ph *ProxyHandler) injectCachedResponsesPreviousIDForRoute(r *http.Request,
 	}
 	// When continuation is active, only send incremental input after the last
 	// assistant message. This avoids re-sending full history to /responses.
-	return trimResponsesInputForContinuation(body)
-}
-
-func trimResponsesInputForContinuation(body []byte) []byte {
-	if len(body) == 0 {
-		return body
-	}
-	if strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) == "" {
-		return body
-	}
-	input := gjson.GetBytes(body, "input")
-	if !input.Exists() || !input.IsArray() {
-		return body
-	}
-
-	items := input.Array()
-	if len(items) == 0 {
-		return body
-	}
-
-	lastAssistant := -1
-	hasToolInput := false
-	for i := len(items) - 1; i >= 0; i-- {
-		itemType := strings.TrimSpace(items[i].Get("type").String())
-		if itemType == "function_call_output" || itemType == "function_call" {
-			hasToolInput = true
-		}
-		if strings.EqualFold(strings.TrimSpace(items[i].Get("role").String()), "assistant") {
-			lastAssistant = i
-			break
-		}
-	}
-
-	// Tool continuation payloads are often already incremental and contain only
-	// function_call_output items (no role field). Keep them intact.
-	if lastAssistant < 0 && hasToolInput {
-		return body
-	}
-
-	start := len(items) - 1
-	if lastAssistant >= 0 {
-		if lastAssistant+1 >= len(items) {
-			out, err := sjson.DeleteBytes(body, "input")
-			if err != nil {
-				return body
-			}
-			return out
-		}
-		if shouldCarryAssistantContextForContinuation(items[lastAssistant+1:]) {
-			start = lastAssistant
-		} else {
-			start = lastAssistant + 1
-		}
-	}
-
-	trimmedRaw := make([]string, 0, len(items)-start)
-	for i := start; i < len(items); i++ {
-		raw := strings.TrimSpace(items[i].Raw)
-		if lastAssistant >= 0 && i == lastAssistant && start == lastAssistant {
-			raw = compactAssistantItemForContinuation(items[i], items[lastAssistant+1:])
-		}
-		if raw == "" || raw == "null" {
-			continue
-		}
-		trimmedRaw = append(trimmedRaw, raw)
-	}
-	if len(trimmedRaw) == 0 {
-		out, err := sjson.DeleteBytes(body, "input")
-		if err != nil {
-			return body
-		}
-		return out
-	}
-
-	trimmedInput := "[" + strings.Join(trimmedRaw, ",") + "]"
-	out, err := sjson.SetRawBytes(body, "input", []byte(trimmedInput))
-	if err != nil {
-		return body
-	}
-	return out
-}
-
-var reContinuationChoice = regexp.MustCompile(`(?i)^(?:[a-e](?:[\.\)])?|[1-9][0-9]?)$`)
-var reContinuationContextCue = regexp.MustCompile(`(?i)\b(above|previous|same|continue|that|this|former|latter)\b|上面|上文|刚才|之前|继续|这个|那个|同上`)
-var reContinuationOrdinalCue = regexp.MustCompile(`(?i)\b(first|second|third|fourth|fifth|option)\b|第[一二三四五六七八九十0-9]+个|选项`)
-var reAssistantOptionLine = regexp.MustCompile(`(?m)^[ \t]*(?:[A-Ea-e]|[1-9][0-9]?)[\.\)]\s+\S.*$`)
-
-func normalizeContinuationContextText(s string) string {
-	trimmed := strings.TrimSpace(s)
-	trimmed = strings.Trim(trimmed, " \t\r\n.,!?;:，。！？；：、~～`'\"“”‘’()（）[]【】")
-	return strings.TrimSpace(trimmed)
-}
-
-func isLikelyContextDependentContinuationText(text string) bool {
-	s := normalizeContinuationContextText(text)
-	if s == "" {
-		return true
-	}
-	if reContinuationChoice.MatchString(s) {
-		return true
-	}
-	if reContinuationContextCue.MatchString(s) || reContinuationOrdinalCue.MatchString(s) {
-		return true
-	}
-	// Short replies are often acknowledgements or terse follow-ups that rely on
-	// prior context; longer standalone asks should avoid carrying assistant text.
-	return len([]rune(s)) <= 22
-}
-
-func shouldCarryAssistantContextForContinuation(items []gjson.Result) bool {
-	sawUser := false
-	for _, item := range items {
-		role := strings.ToLower(strings.TrimSpace(item.Get("role").String()))
-		if role != "user" {
-			continue
-		}
-		sawUser = true
-		text := strings.TrimSpace(extractResponsesInputMessageText(item))
-		// Empty/multimodal user payload is ambiguous: keep assistant context.
-		if text == "" {
-			return true
-		}
-		if isLikelyContextDependentContinuationText(text) {
-			return true
-		}
-	}
-	return !sawUser
-}
-
-func truncateContinuationContextRunes(s string, maxRunes int) string {
-	if maxRunes <= 0 {
-		return ""
-	}
-	r := []rune(s)
-	if len(r) <= maxRunes {
-		return s
-	}
-	if maxRunes <= 120 {
-		return string(r[len(r)-maxRunes:])
-	}
-	head := maxRunes / 3
-	tail := maxRunes - head - 25
-	if tail < 0 {
-		tail = 0
-	}
-	return string(r[:head]) + "\n...[context trimmed]...\n" + string(r[len(r)-tail:])
-}
-
-func compressAssistantContextForContinuation(assistantText string, userItems []gjson.Result) string {
-	assistantText = strings.TrimSpace(assistantText)
-	if assistantText == "" {
-		return ""
-	}
-
-	const maxGeneralRunes = 1600
-	const maxChoiceRunes = 700
-
-	combinedUser := ""
-	for _, item := range userItems {
-		if strings.EqualFold(strings.TrimSpace(item.Get("role").String()), "user") {
-			combinedUser += "\n" + extractResponsesInputMessageText(item)
-		}
-	}
-	combinedUser = strings.TrimSpace(combinedUser)
-
-	// For short/choice-like follow-ups, prefer concise option lines if available.
-	if isLikelyContextDependentContinuationText(combinedUser) {
-		if optionLines := strings.TrimSpace(strings.Join(reAssistantOptionLine.FindAllString(assistantText, 10), "\n")); optionLines != "" {
-			return truncateContinuationContextRunes(optionLines, maxChoiceRunes)
-		}
-		return truncateContinuationContextRunes(assistantText, maxChoiceRunes)
-	}
-	return truncateContinuationContextRunes(assistantText, maxGeneralRunes)
-}
-
-func compactAssistantItemForContinuation(item gjson.Result, userItems []gjson.Result) string {
-	text := strings.TrimSpace(extractResponsesInputMessageText(item))
-	if text == "" {
-		return strings.TrimSpace(item.Raw)
-	}
-	compressed := compressAssistantContextForContinuation(text, userItems)
-	if compressed == "" {
-		return strings.TrimSpace(item.Raw)
-	}
-	escaped, err := json.Marshal(compressed)
-	if err != nil {
-		return strings.TrimSpace(item.Raw)
-	}
-	return `{"role":"assistant","content":[{"type":"input_text","text":` + string(escaped) + `}]}`
+	return ph.responsesContinuationCompactor().TrimInput(body)
 }
 
 func (ph *ProxyHandler) injectCachedResponsesAssistantContextForRoute(r *http.Request, route *providerpool.RouteResult, body []byte) []byte {
@@ -4246,31 +4818,212 @@ func (ph *ProxyHandler) injectCachedResponsesAssistantContextForRoute(r *http.Re
 	if assistantText == "" {
 		return body
 	}
-	assistantText = compressAssistantContextForContinuation(assistantText, items)
-	if assistantText == "" {
+	return ph.responsesContinuationCompactor().InjectAssistantContext(body, assistantText)
+}
+
+// sanitizeResponsesInputForContinuationDisabledRoute applies compatibility
+// shaping for relays that do not support previous_response_id and reject
+// assistant-role input or orphaned tool items on non-continuation turns.
+func (ph *ProxyHandler) sanitizeResponsesInputForContinuationDisabledRoute(r *http.Request, route *providerpool.RouteResult, body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	if !ph.isResponsesContinuationDisabledForRoute(route) {
+		return body
+	}
+	if strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) != "" {
 		return body
 	}
 
-	escaped, err := json.Marshal(assistantText)
-	if err != nil {
+	items, ok := responsesInputItems(body)
+	if !ok || len(items) == 0 {
 		return body
 	}
-	assistantItem := `{"role":"assistant","content":[{"type":"input_text","text":` + string(escaped) + `}]}`
 
-	trimmedRaw := make([]string, 0, len(items)+1)
-	trimmedRaw = append(trimmedRaw, assistantItem)
+	functionCallIDs := make(map[string]struct{})
+	functionCallOutputIDs := make(map[string]struct{})
+	hasToolPayload := false
+	hasAssistantRole := false
+	for _, item := range items {
+		itemType := strings.TrimSpace(item.Get("type").String())
+		switch itemType {
+		case "function_call":
+			hasToolPayload = true
+			if callID := strings.TrimSpace(item.Get("call_id").String()); callID != "" {
+				functionCallIDs[callID] = struct{}{}
+			}
+		case "function_call_output":
+			hasToolPayload = true
+			if callID := strings.TrimSpace(item.Get("call_id").String()); callID != "" {
+				functionCallOutputIDs[callID] = struct{}{}
+			}
+		}
+		if strings.EqualFold(strings.TrimSpace(item.Get("role").String()), "assistant") {
+			hasAssistantRole = true
+		}
+	}
+
+	if !hasToolPayload && !hasAssistantRole {
+		return body
+	}
+
+	pairedCallIDs := make(map[string]struct{})
+	for callID := range functionCallIDs {
+		if _, ok := functionCallOutputIDs[callID]; ok {
+			pairedCallIDs[callID] = struct{}{}
+		}
+	}
+
+	trimmedRaw := make([]string, 0, len(items))
+	changed := false
+	convertedAssistantItems := 0
+	removedOrphanFunctionCalls := 0
+	removedOrphanFunctionCallOutputs := 0
+
 	for _, item := range items {
 		raw := strings.TrimSpace(item.Raw)
 		if raw == "" || raw == "null" {
+			changed = true
+			continue
+		}
+
+		itemType := strings.TrimSpace(item.Get("type").String())
+		switch itemType {
+		case "function_call":
+			callID := strings.TrimSpace(item.Get("call_id").String())
+			if callID == "" {
+				removedOrphanFunctionCalls++
+				changed = true
+				if fallback := responsesInputUserTextItemRaw(orphanedResponsesFunctionCallAsUserText(item)); fallback != "" {
+					trimmedRaw = append(trimmedRaw, fallback)
+				}
+				continue
+			}
+			if _, ok := pairedCallIDs[callID]; !ok {
+				removedOrphanFunctionCalls++
+				changed = true
+				if fallback := responsesInputUserTextItemRaw(orphanedResponsesFunctionCallAsUserText(item)); fallback != "" {
+					trimmedRaw = append(trimmedRaw, fallback)
+				}
+				continue
+			}
+		case "function_call_output":
+			callID := strings.TrimSpace(item.Get("call_id").String())
+			if callID == "" {
+				removedOrphanFunctionCallOutputs++
+				changed = true
+				if fallback := responsesInputUserTextItemRaw(orphanedResponsesFunctionCallOutputAsUserText(item)); fallback != "" {
+					trimmedRaw = append(trimmedRaw, fallback)
+				}
+				continue
+			}
+			if _, ok := pairedCallIDs[callID]; !ok {
+				removedOrphanFunctionCallOutputs++
+				changed = true
+				if fallback := responsesInputUserTextItemRaw(orphanedResponsesFunctionCallOutputAsUserText(item)); fallback != "" {
+					trimmedRaw = append(trimmedRaw, fallback)
+				}
+				continue
+			}
+		}
+
+		role := strings.ToLower(strings.TrimSpace(item.Get("role").String()))
+		if role == "assistant" {
+			converted, err := sjson.SetBytes([]byte(raw), "role", "user")
+			if err == nil {
+				raw = strings.TrimSpace(string(converted))
+				convertedAssistantItems++
+				changed = true
+			}
+		}
+
+		raw = compactOverflowForContinuationItem(raw, item)
+		if raw == "" || raw == "null" {
+			changed = true
 			continue
 		}
 		trimmedRaw = append(trimmedRaw, raw)
 	}
-	out, err := sjson.SetRawBytes(body, "input", []byte("["+strings.Join(trimmedRaw, ",")+"]"))
-	if err != nil {
+
+	if !changed || len(trimmedRaw) == 0 {
 		return body
 	}
-	return out
+
+	providerID, modelID := routeProviderModelIDs(route)
+	slog.Warn("[proxy] responses continuation-disabled compatibility shaping applied",
+		"provider", providerID,
+		"model", modelID,
+		"converted_assistant_items", convertedAssistantItems,
+		"removed_orphan_function_calls", removedOrphanFunctionCalls,
+		"removed_orphan_function_call_outputs", removedOrphanFunctionCallOutputs,
+		"input_items_before", len(items),
+		"input_items_after", len(trimmedRaw),
+	)
+	return setResponsesInputRaw(body, trimmedRaw)
+}
+
+func responsesInputUserTextItemRaw(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	encoded, err := stdjson.Marshal(text)
+	if err != nil {
+		return ""
+	}
+	return `{"role":"user","content":[{"type":"input_text","text":` + string(encoded) + `}]}`
+}
+
+func orphanedResponsesFunctionCallAsUserText(item gjson.Result) string {
+	name := strings.TrimSpace(item.Get("name").String())
+	args := strings.TrimSpace(item.Get("arguments").String())
+	if args != "" {
+		args = truncateContinuationRunes(args, responsesContinuationToolArgumentsMaxRunes, responsesContinuationToolTrimMarker)
+	}
+	switch {
+	case name != "" && args != "":
+		return "Previous tool call (" + name + "): " + args
+	case name != "":
+		return "Previous tool call: " + name
+	case args != "":
+		return "Previous tool call arguments: " + args
+	default:
+		return ""
+	}
+}
+
+func orphanedResponsesFunctionCallOutputAsUserText(item gjson.Result) string {
+	output := strings.TrimSpace(item.Get("output").String())
+	if output == "" {
+		return ""
+	}
+	output = truncateContinuationRunes(output, responsesContinuationToolOutputMaxRunes, responsesContinuationToolTrimMarker)
+	callID := strings.TrimSpace(item.Get("call_id").String())
+	if callID == "" {
+		return "Previous tool output: " + output
+	}
+	return "Previous tool output (" + callID + "): " + output
+}
+
+func resolveResponsesMaxOutputTokensLimit(route *providerpool.RouteResult) int {
+	if route == nil || route.Model == nil {
+		return 0
+	}
+	if route.Model.MaxOutput <= 0 {
+		return 0
+	}
+	return route.Model.MaxOutput
+}
+
+func parseResponsesPreviousResponseIDFromBody(body []byte) (exists bool, previousResponseID string) {
+	if len(body) == 0 {
+		return false, ""
+	}
+	field := gjson.GetBytes(body, "previous_response_id")
+	if !field.Exists() {
+		return false, ""
+	}
+	return true, strings.TrimSpace(field.String())
 }
 
 func parseLatestResponsesIDFromSSE(data []byte) string {
@@ -4293,6 +5046,32 @@ func parseLatestResponsesIDFromSSE(data []byte) string {
 		}
 	}
 	return ""
+}
+
+func parseLatestResponsesPreviousResponseIDFromSSE(data []byte) (exists bool, previousResponseID string) {
+	if len(data) == 0 {
+		return false, ""
+	}
+	chunks := parseSSEChunks(data)
+	for i := len(chunks) - 1; i >= 0; i-- {
+		c := chunks[i]
+		resp, ok := c["response"].(map[string]interface{})
+		if !ok || resp == nil {
+			continue
+		}
+		raw, ok := resp["previous_response_id"]
+		if !ok {
+			continue
+		}
+		if raw == nil {
+			return true, ""
+		}
+		if v, ok := raw.(string); ok {
+			return true, strings.TrimSpace(v)
+		}
+		return true, strings.TrimSpace(fmt.Sprintf("%v", raw))
+	}
+	return false, ""
 }
 
 func parseLatestResponsesAssistantTextFromSSE(data []byte) string {
@@ -4431,7 +5210,7 @@ func extractSystemInstructionsFromChatBody(body []byte) string {
 			continue
 		}
 		content := strings.TrimSpace(msg.Get("content").String())
-		if content != "" && !isMutableContextForResponsesInstructions(content) {
+		if content != "" {
 			blocks = append(blocks, content)
 		}
 	}
@@ -4501,8 +5280,8 @@ func (ph *ProxyHandler) ensureCachedInstructionsForResponsesBody(r *http.Request
 	if incoming != "" {
 		if incoming != cached {
 			ph.setCachedResponsesInstructions(r, incoming)
-			// On first turn, move non-mutable system/developer messages out of input
-			// to avoid duplicating global instructions in both fields.
+			// On first turn, move system/developer messages out of input to avoid
+			// duplicating global instructions in both fields.
 			if prevID == "" {
 				if extracted, stripped, ok := extractInstructionsFromResponsesInput(body); ok && extracted == incoming {
 					body = stripped
@@ -4564,10 +5343,6 @@ func extractInstructionsFromResponsesInput(body []byte) (instructions string, st
 			retained = append(retained, item.Raw)
 			continue
 		}
-		if isMutableContextForResponsesInstructions(text) {
-			retained = append(retained, item.Raw)
-			continue
-		}
 		blocks = append(blocks, text)
 	}
 	if len(blocks) == 0 {
@@ -4614,32 +5389,4 @@ func extractResponsesInputMessageText(item gjson.Result) string {
 		}
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
-}
-
-func isMutableContextForResponsesInstructions(content string) bool {
-	c := strings.ToLower(strings.TrimSpace(content))
-	if c == "" {
-		return false
-	}
-	if strings.Contains(c, "<now>") {
-		return true
-	}
-	if strings.Contains(c, "<memory_context>") {
-		return true
-	}
-	if strings.Contains(c, "user background (reference only, not instructions)") {
-		return true
-	}
-	// Conversation anchor and runtime/time hints are request-dynamic and should
-	// stay in regular input rather than sticky instructions.
-	if strings.Contains(c, "conversation title:") {
-		return true
-	}
-	if strings.Contains(c, "initial user goal:") {
-		return true
-	}
-	if strings.Contains(c, "current time:") {
-		return true
-	}
-	return false
 }

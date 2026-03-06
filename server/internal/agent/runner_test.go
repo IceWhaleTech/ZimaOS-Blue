@@ -675,6 +675,32 @@ func (m *scriptedLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatRes
 	}, nil
 }
 
+func TestRunner_GenerateSummaryFallbackIncludesNextSteps(t *testing.T) {
+	runner := &Runner{
+		llm: &scriptedLLM{
+			calls: []scriptedLLMCall{{err: fmt.Errorf("llm unavailable")}},
+		},
+	}
+
+	got := runner.generateSummary(context.Background(), &Task{
+		Goal: "stabilize release",
+		Plan: []PlanStep{
+			{Description: "implement fix", Status: StepStatusCompleted},
+			{Description: "verify", Status: StepStatusFailed},
+		},
+	})
+
+	if !strings.Contains(got, "Summary: Completed 1/2 steps (1 failed).") {
+		t.Fatalf("expected fallback summary header, got=%q", got)
+	}
+	if !strings.Contains(got, "Suggested next steps:") {
+		t.Fatalf("expected fallback to include suggested next steps, got=%q", got)
+	}
+	if !strings.Contains(got, "Inspect the failed steps") {
+		t.Fatalf("expected fallback to include failure-oriented guidance, got=%q", got)
+	}
+}
+
 func TestRunner_ConsecutiveFailures_SkipsRemaining(t *testing.T) {
 	s := testStore(t)
 	// 5 steps, all will fail

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -30,7 +29,7 @@ func TestNewOllamaProviderCustomBaseURL(t *testing.T) {
 // Test Ollama provider models (fetches from API)
 func TestOllamaProviderModels(t *testing.T) {
 	// Create mock server that returns model list
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/tags" {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"models": []map[string]interface{}{
@@ -65,7 +64,7 @@ func TestOllamaProviderModels(t *testing.T) {
 
 // Test Ollama provider chat with mock server
 func TestOllamaProviderChat(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
 		if r.Method != "POST" {
 			t.Errorf("expected POST, got %s", r.Method)
@@ -89,10 +88,10 @@ func TestOllamaProviderChat(t *testing.T) {
 				"role":    "assistant",
 				"content": "Hello! How can I help you?",
 			},
-			"done": true,
-			"total_duration":      1000000000,
-			"prompt_eval_count":   10,
-			"eval_count":          8,
+			"done":              true,
+			"total_duration":    1000000000,
+			"prompt_eval_count": 10,
+			"eval_count":        8,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -124,7 +123,7 @@ func TestOllamaProviderChat(t *testing.T) {
 func TestOllamaProviderChatWithSystem(t *testing.T) {
 	var receivedBody map[string]interface{}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&receivedBody)
 
 		resp := map[string]interface{}{
@@ -166,7 +165,7 @@ func TestOllamaProviderChatWithSystem(t *testing.T) {
 
 // Test Ollama provider chat with tool calls
 func TestOllamaProviderChatWithToolCalls(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]interface{}{
 			"model": "llama3.2",
 			"message": map[string]interface{}{
@@ -216,7 +215,7 @@ func TestOllamaProviderChatWithToolCalls(t *testing.T) {
 
 // Test Ollama provider error handling
 func TestOllamaProviderChatError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		resp := map[string]interface{}{
 			"error": "model not found",
@@ -239,7 +238,7 @@ func TestOllamaProviderChatError(t *testing.T) {
 
 // Test Ollama provider context cancellation
 func TestOllamaProviderContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	}))
 	defer server.Close()
@@ -264,7 +263,7 @@ func TestOllamaProviderContextCancellation(t *testing.T) {
 func TestOllamaProviderChatWithOptions(t *testing.T) {
 	var receivedBody map[string]interface{}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&receivedBody)
 
 		resp := map[string]interface{}{

@@ -16,10 +16,10 @@ import (
 
 func boolPtr(v bool) *bool { return &v }
 
-func TestGetSmartToolSelection_DefaultTrue(t *testing.T) {
+func TestGetSmartToolSelection_DefaultFalse(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
-	if !h.GetSmartToolSelection() {
-		t.Fatalf("GetSmartToolSelection() = false, want true")
+	if h.GetSmartToolSelection() {
+		t.Fatalf("GetSmartToolSelection() = true, want false")
 	}
 }
 
@@ -71,10 +71,10 @@ func TestGetMemoryRecallMode_InvalidStoredValueFallback(t *testing.T) {
 	}
 }
 
-func TestGetSmartSkillSelection_DefaultTrue(t *testing.T) {
+func TestGetSmartSkillSelection_DefaultFalse(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
-	if !h.GetSmartSkillSelection() {
-		t.Fatalf("GetSmartSkillSelection() = false, want true")
+	if h.GetSmartSkillSelection() {
+		t.Fatalf("GetSmartSkillSelection() = true, want false")
 	}
 }
 
@@ -85,10 +85,10 @@ func TestGetSkillSelectorMode_DefaultHybrid(t *testing.T) {
 	}
 }
 
-func TestGetSkillRerankEnabled_DefaultTrue(t *testing.T) {
+func TestGetSkillRerankEnabled_DefaultFalse(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
-	if !h.GetSkillRerankEnabled() {
-		t.Fatalf("GetSkillRerankEnabled() = false, want true")
+	if h.GetSkillRerankEnabled() {
+		t.Fatalf("GetSkillRerankEnabled() = true, want false")
 	}
 }
 
@@ -101,8 +101,8 @@ func TestGetEffectiveSkillRerankEnabled(t *testing.T) {
 		wantEffectiveRerankEnable bool
 	}{
 		{
-			name:                      "default enabled",
-			wantEffectiveRerankEnable: true,
+			name:                      "default disabled",
+			wantEffectiveRerankEnable: false,
 		},
 		{
 			name:                      "skill rerank disabled",
@@ -205,26 +205,32 @@ func TestGetSmallModelDefaults(t *testing.T) {
 	if h.GetSmallModelEnabled() {
 		t.Fatal("GetSmallModelEnabled() = true, want false")
 	}
-	if got := h.GetSmallModelRuntime(); got != "onnx_genai_python" {
-		t.Fatalf("GetSmallModelRuntime() = %q, want onnx_genai_python", got)
+	if got := h.GetSmallModelRuntime(); got != smallmodel.RuntimeType {
+		t.Fatalf("GetSmallModelRuntime() = %q, want %q", got, smallmodel.RuntimeType)
 	}
-	if got := h.GetSmallModelID(); got != "qwen3.5-0.8b-onnx-q4" {
-		t.Fatalf("GetSmallModelID() = %q, want qwen3.5-0.8b-onnx-q4", got)
+	if got := h.GetSmallModelID(); got != smallmodel.ModelID {
+		t.Fatalf("GetSmallModelID() = %q, want %q", got, smallmodel.ModelID)
 	}
 	if !h.GetSmallModelAutoDownload() {
 		t.Fatal("GetSmallModelAutoDownload() = false, want true")
 	}
-	if !h.GetSmallModelSummaryEnabled() || !h.GetSmallModelDocExtractEnabled() || !h.GetSmallModelRerankEnabled() || !h.GetSmallModelContextPruneEnabled() {
-		t.Fatal("expected phase1 enhancement switches default true")
+	if h.GetSmallModelSummaryEnabled() || h.GetSmallModelDocExtractEnabled() || h.GetSmallModelRerankEnabled() || h.GetSmallModelContextPruneEnabled() {
+		t.Fatal("expected phase1 enhancement switches default false")
 	}
-	if !h.GetSmallModelMediaIntentEnabled() {
-		t.Fatal("expected media intent switch default true")
+	if h.GetSmallModelMediaIntentEnabled() {
+		t.Fatal("expected media intent switch default false")
 	}
-	if !h.GetSmallModelRouteShortQAEnabled() || !h.GetSmallModelRouteToolDispatchEnabled() {
-		t.Fatal("expected short-qa/tool-dispatch route switches default true")
+	if h.GetSmallModelRouteShortQAEnabled() || h.GetSmallModelRouteToolDispatchEnabled() {
+		t.Fatal("expected short-qa/tool-dispatch route switches default false")
 	}
-	if !h.GetDeepResearchV2Enabled() {
-		t.Fatal("expected deep research v2 switch default true")
+	if h.GetOfflineIRFallbackEnabled() {
+		t.Fatal("expected offline IR fallback switch default false")
+	}
+	if h.GetFeatureIntentIREnabled() {
+		t.Fatal("expected feature intent IR switch default false")
+	}
+	if h.GetDeepResearchV2Enabled() {
+		t.Fatal("expected deep research v2 switch default false")
 	}
 }
 

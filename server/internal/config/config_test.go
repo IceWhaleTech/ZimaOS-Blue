@@ -36,6 +36,12 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Worker.PoolSize != 10 {
 		t.Errorf("Worker.PoolSize = %v, want %v", cfg.Worker.PoolSize, 10)
 	}
+	if !cfg.Session.Audit.Enabled {
+		t.Errorf("Session.Audit.Enabled = %v, want true", cfg.Session.Audit.Enabled)
+	}
+	if cfg.Session.Audit.RetentionDays != 30 {
+		t.Errorf("Session.Audit.RetentionDays = %v, want %v", cfg.Session.Audit.RetentionDays, 30)
+	}
 }
 
 func TestLoad_FromFile(t *testing.T) {

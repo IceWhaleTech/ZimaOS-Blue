@@ -3,7 +3,6 @@ package crawler_test
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +12,7 @@ import (
 
 func TestCrawler_BasicFetch(t *testing.T) {
 	// Create a test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.Write([]byte(`
 			<!DOCTYPE html>
@@ -63,7 +62,7 @@ func TestCrawler_BasicFetch(t *testing.T) {
 
 func TestCrawler_DepthCrawling(t *testing.T) {
 	visitCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		visitCount++
 		w.Header().Set("Content-Type", "text/html")
 		switch r.URL.Path {
@@ -94,7 +93,7 @@ func TestCrawler_DepthCrawling(t *testing.T) {
 }
 
 func TestCrawler_DomainRestriction(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.Write([]byte(`<html><head><title>Test</title></head><body><a href="https://external.com/page">External</a></body></html>`))
 	}))

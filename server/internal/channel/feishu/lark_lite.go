@@ -77,6 +77,66 @@ type larkAPIResp struct {
 	Data json.RawMessage `json:"data"`
 }
 
+func (c *larkClient) addMessageReaction(ctx context.Context, messageID string, emojiType string) (string, error) {
+	token, err := c.getToken(ctx)
+	if err != nil {
+		return "", err
+	}
+	body, _ := json.Marshal(map[string]any{
+		"reaction_type": map[string]string{
+			"emoji_type": emojiType,
+		},
+	})
+	u := fmt.Sprintf("%s/im/v1/messages/%s/reactions", c.baseURL, url.PathEscape(messageID))
+	req, _ := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var r larkAPIResp
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return "", err
+	}
+	if r.Code != 0 {
+		return "", fmt.Errorf("feishu add reaction: %d %s", r.Code, r.Msg)
+	}
+	var data struct {
+		ReactionID string `json:"reaction_id"`
+	}
+	if len(r.Data) > 0 {
+		_ = json.Unmarshal(r.Data, &data)
+	}
+	return data.ReactionID, nil
+}
+
+func (c *larkClient) deleteMessageReaction(ctx context.Context, messageID string, reactionID string) error {
+	token, err := c.getToken(ctx)
+	if err != nil {
+		return err
+	}
+	u := fmt.Sprintf("%s/im/v1/messages/%s/reactions/%s", c.baseURL, url.PathEscape(messageID), url.PathEscape(reactionID))
+	req, _ := http.NewRequestWithContext(ctx, "DELETE", u, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var r larkAPIResp
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return err
+	}
+	if r.Code != 0 {
+		return fmt.Errorf("feishu delete reaction: %d %s", r.Code, r.Msg)
+	}
+	return nil
+}
+
 func (c *larkClient) sendMessage(ctx context.Context, receiveIDType, receiveID, msgType, content, replyToID string) error {
 	_, err := c.sendMessageWithID(ctx, receiveIDType, receiveID, msgType, content, replyToID)
 	return err
@@ -484,7 +544,8 @@ func (c *larkWSClient) receiveLoop(ctx context.Context) {
 		if mt != ws.BinaryMessage {
 			continue
 		}
-		go c.handleFrame(ctx, msg)
+		// Process frames serially to preserve event order on a single websocket stream.
+		c.handleFrame(ctx, msg)
 	}
 }
 

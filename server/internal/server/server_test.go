@@ -13,6 +13,18 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
 
+func newTCP4Server(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skip test server setup (tcp4 unavailable): %v", err)
+	}
+	srv := httptest.NewUnstartedServer(handler)
+	srv.Listener = ln
+	srv.Start()
+	return srv
+}
+
 func TestNew(t *testing.T) {
 	cfg := &config.ServerConfig{
 		Host:         "127.0.0.1",
@@ -148,7 +160,7 @@ func splitHostPortFromURL(t *testing.T, rawURL string) (string, int) {
 
 func TestCheckExistingServer(t *testing.T) {
 	t.Run("returns true for zimaos-blue health response", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/api/v1/health" {
 				http.NotFound(w, r)
 				return
@@ -165,7 +177,7 @@ func TestCheckExistingServer(t *testing.T) {
 	})
 
 	t.Run("returns false for non-blue service response", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/api/v1/health" {
 				http.NotFound(w, r)
 				return
@@ -184,7 +196,7 @@ func TestCheckExistingServer(t *testing.T) {
 
 func TestRequestGracefulShutdown(t *testing.T) {
 	var called bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/shutdown" {
 			http.NotFound(w, r)
 			return

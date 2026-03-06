@@ -13,9 +13,14 @@ function unescapeBackticks(s: string): string {
   return s.replace(/`​``/g, '```')
 }
 
-const command = computed(() => unescapeBackticks(props.card.command || ''))
-const stdout = computed(() => unescapeBackticks(props.card.stdout || ''))
-const stderr = computed(() => unescapeBackticks(props.card.stderr || ''))
+const commandRedacted = computed(() => props.card.command_redacted === true || props.card.hide_command === true)
+const stdoutRedacted = computed(() => props.card.stdout_redacted === true)
+const stderrRedacted = computed(() => props.card.stderr_redacted === true)
+const outputRedacted = computed(() => stdoutRedacted.value || stderrRedacted.value)
+
+const command = computed(() => commandRedacted.value ? '' : unescapeBackticks(props.card.command || ''))
+const stdout = computed(() => stdoutRedacted.value ? '' : unescapeBackticks(props.card.stdout || ''))
+const stderr = computed(() => stderrRedacted.value ? '' : unescapeBackticks(props.card.stderr || ''))
 const isRunning = computed(() => props.card.status === 'running' || props.card._streaming)
 const isError = computed(() => props.card.status === 'error' || (props.card.exit_code != null && props.card.exit_code !== 0))
 const hasOutput = computed(() => !!(stdout.value || stderr.value))
@@ -23,6 +28,12 @@ const outputText = computed(() => {
   if (stderr.value) return stderr.value
   if (stdout.value) return stdout.value
   return ''
+})
+const fallbackText = computed(() => {
+  if (props.card.message) return props.card.message
+  if (outputRedacted.value) return t('execCard.outputHidden', 'Output hidden for safety')
+  if (isRunning.value) return '...'
+  return t('execCard.noOutput', 'No output')
 })
 const outputToneClass = computed(() => {
   if (isRunning.value) return 'exec-output--pending'
@@ -37,7 +48,7 @@ const shieldLabel = computed(() => {
 })
 
 const expanded = ref(false)
-const showCommand = ref(!props.card.hide_command)
+const showCommand = ref(!commandRedacted.value)
 const lineCount = computed(() => outputText.value ? outputText.value.split('\n').length : 0)
 const shouldCollapse = computed(() => lineCount.value > 14)
 const visibleOutput = computed(() => {
@@ -47,9 +58,9 @@ const visibleOutput = computed(() => {
 })
 
 watch(
-  () => props.card.hide_command,
-  (hideCommand) => {
-    if (hideCommand === true) {
+  () => [props.card.hide_command, props.card.command_redacted],
+  ([hideCommand, commandIsRedacted]) => {
+    if (hideCommand === true || commandIsRedacted === true) {
       showCommand.value = false
     }
   }
@@ -68,7 +79,7 @@ watch(
         </svg>
       </span>
       <button
-        v-if="command"
+        v-if="command && !commandRedacted"
         class="exec-card__command-toggle"
         @click="showCommand = !showCommand"
       >
@@ -78,8 +89,7 @@ watch(
 
     <div class="exec-card__body" :class="outputToneClass">
       <pre v-if="hasOutput" class="exec-card__output">{{ visibleOutput }}</pre>
-      <pre v-else-if="isRunning" class="exec-card__output">...</pre>
-      <pre v-else class="exec-card__output">{{ t('execCard.noOutput', 'No output') }}</pre>
+      <pre v-else class="exec-card__output">{{ fallbackText }}</pre>
     </div>
 
     <button

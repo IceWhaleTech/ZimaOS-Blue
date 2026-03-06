@@ -152,6 +152,10 @@ export function useEventStream() {
       console.log('[EventStream] Entering switch with type:', type)
       switch (type) {
       case 'push': {
+        const reminderTextRaw = String(data.message || t('push.defaultMessage'))
+        const reminderText = reminderTextRaw.startsWith('⏰') ? reminderTextRaw : `⏰ ${reminderTextRaw}`
+        const reminderTitle = t('push.reminder')
+
         // Show toast notification with optional action to navigate to conversation
         const toastOpts: any = { duration: 10000 }
         if (data.conversation_id) {
@@ -163,8 +167,8 @@ export function useEventStream() {
           }
         }
         notificationStore.info(
-          t('push.title'),
-          data.message || t('push.defaultMessage'),
+          reminderTitle,
+          reminderText,
           toastOpts,
         )
 
@@ -176,7 +180,7 @@ export function useEventStream() {
 
         // Desktop notification if page is hidden
         if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification(t('push.title'), { body: data.message })
+          new Notification(reminderTitle, { body: reminderText })
         }
         break
       }

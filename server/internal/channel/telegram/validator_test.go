@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -35,7 +34,7 @@ func TestValidator_EmptyBotToken(t *testing.T) {
 
 func TestValidator_ValidToken(t *testing.T) {
 	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request path contains getMe
 		expectedPath := "/bottest-token-123/getMe"
 		if r.URL.Path != expectedPath {
@@ -82,7 +81,7 @@ func TestValidator_ValidToken(t *testing.T) {
 
 func TestValidator_InvalidToken_401(t *testing.T) {
 	// Create mock server that returns 401
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"ok":          false,
 			"error_code":  401,
@@ -106,7 +105,7 @@ func TestValidator_InvalidToken_401(t *testing.T) {
 
 func TestValidator_InvalidToken_404(t *testing.T) {
 	// Create mock server that returns 404
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"ok":          false,
 			"error_code":  404,
@@ -130,7 +129,7 @@ func TestValidator_InvalidToken_404(t *testing.T) {
 
 func TestValidator_ServerError(t *testing.T) {
 	// Create mock server that returns 500
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"ok":          false,
 			"error_code":  500,
@@ -154,7 +153,7 @@ func TestValidator_ServerError(t *testing.T) {
 
 func TestValidator_Timeout(t *testing.T) {
 	// Create a slow server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
 	}))
@@ -175,7 +174,7 @@ func TestValidator_Timeout(t *testing.T) {
 
 func TestValidator_InvalidJSON(t *testing.T) {
 	// Create mock server that returns invalid JSON
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
@@ -193,7 +192,7 @@ func TestValidator_InvalidJSON(t *testing.T) {
 
 func TestValidator_NetworkError(t *testing.T) {
 	// Use a closed server to simulate network error
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL := server.URL
 	server.Close()
 
@@ -210,7 +209,7 @@ func TestValidator_NetworkError(t *testing.T) {
 
 func TestValidator_BotInfoParsing(t *testing.T) {
 	// Test with full bot info
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"ok": true,
 			"result": map[string]interface{}{

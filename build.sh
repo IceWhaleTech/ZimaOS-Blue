@@ -281,6 +281,15 @@ codesign_binary() {
     success "Binary signed: $(codesign -dv "$target" 2>&1 | head -1)"
 }
 
+# Run the web security audit with optional allowlist support.
+run_web_audit() {
+    if [ -f "$PROJECT_ROOT/web/scripts/audit-ci.mjs" ] && [ -f "$PROJECT_ROOT/web/audit-allowlist.json" ]; then
+        node scripts/audit-ci.mjs --omit=dev
+    else
+        npm audit --omit=dev
+    fi
+}
+
 # Build for production
 build_all() {
     check_prereqs
@@ -290,7 +299,7 @@ build_all() {
     # Check production dependencies for vulnerabilities
     info "Checking production dependencies for vulnerabilities..."
     cd "$PROJECT_ROOT/web"
-    if ! npm audit --omit=dev; then
+    if ! run_web_audit; then
         error "Production dependencies have vulnerabilities. Please fix them before building."
         exit 1
     fi
@@ -348,7 +357,7 @@ prd_run() {
     # Check production dependencies for vulnerabilities
     info "Checking production dependencies for vulnerabilities..."
     cd "$PROJECT_ROOT/web"
-    if ! npm audit --omit=dev; then
+    if ! run_web_audit; then
         error "Production dependencies have vulnerabilities. Please fix them before building."
         exit 1
     fi

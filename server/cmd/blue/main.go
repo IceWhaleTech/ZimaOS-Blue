@@ -46,6 +46,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sessionaudit"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	skillEmbed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/embedded"
@@ -317,6 +318,7 @@ func runServer() {
 	// Initialize tools registry and register built-in tools
 	toolRegistry := tools.NewRegistry()
 	tools.RegisterBuiltinTools(toolRegistry)
+	tools.RegisterFactoryToolDefinitions(toolRegistry)
 	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 
 	// Initialize skill registry and register built-in skills
@@ -335,6 +337,36 @@ func runServer() {
 
 	// Initialize chat handler
 	chatHandler := server.NewChatHandler(memoryStore, llmRegistry, toolRegistry)
+	if cfg.Session.Audit.Enabled {
+		auditDBPath := cfg.Session.Audit.Path
+		if auditDBPath == "" {
+			auditDBPath = filepath.Join(dataDir, "session_audit.db")
+		}
+		if !filepath.IsAbs(auditDBPath) {
+			// Keep audit DB under dataDir by default for predictable deployment paths.
+			auditDBPath = filepath.Join(dataDir, filepath.Base(auditDBPath))
+		}
+		if err := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); err != nil {
+			logger.Warn().Err(err).Str("path", auditDBPath).Msg("Failed to create session audit directory")
+		} else {
+			auditStore, err := sessionaudit.NewSQLiteStore(auditDBPath, sessionaudit.StoreConfig{
+				RetentionDays:    cfg.Session.Audit.RetentionDays,
+				CleanupInterval:  cfg.Session.Audit.CleanupInterval,
+				CleanupBatchSize: cfg.Session.Audit.CleanupBatchSize,
+			})
+			if err != nil {
+				logger.Warn().Err(err).Str("path", auditDBPath).Msg("Failed to initialize session audit store")
+			} else {
+				chatHandler.SetSessionAuditStore(auditStore)
+				logger.Info().Str("path", auditDBPath).Int("retention_days", cfg.Session.Audit.RetentionDays).Msg("Session tool payload audit store enabled")
+			}
+		}
+	}
+	lm.RegisterShutdownHook(func(ctx context.Context) error {
+		_ = ctx
+		chatHandler.Shutdown()
+		return nil
+	})
 
 	// Initialize external auth service (for OAuth/OIDC providers)
 	extauthService, err := extauth.NewService(&extauth.ServiceConfig{
@@ -1160,20 +1192,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	_ = bootstrap.RegisterAllRoutes(e, deps)
-
-	// Wire memory tool into MgmtTool after both are initialized.
-	// Memory init is async (go memoryHandler.Init), so poll until available.
-	if deps.Services.MgmtTool != nil {
-		go func() {
-			for i := 0; i < 60; i++ {
-				if mt := tools.GetMemoryTool(toolRegistry); mt != nil {
-					deps.Services.MgmtTool.SetMemory(mt)
-					return
-				}
-				time.Sleep(500 * time.Millisecond)
-			}
-		}()
-	}
 
 	// Register shutdown hooks for closers started during route registration (e.g., sockipc)
 	for _, c := range deps.Closers {

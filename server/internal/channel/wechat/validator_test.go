@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -35,7 +34,7 @@ func TestWeChatValidator_MissingSecret(t *testing.T) {
 }
 
 func TestWeChatValidator_ValidCredentials(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request path
 		if !strings.HasPrefix(r.URL.Path, "/gettoken") {
 			t.Errorf("unexpected path: got %s", r.URL.Path)
@@ -86,7 +85,7 @@ func TestWeChatValidator_ValidCredentials(t *testing.T) {
 }
 
 func TestWeChatValidator_InvalidSecret(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"errcode": 40001,
 			"errmsg":  "invalid credential",
@@ -110,7 +109,7 @@ func TestWeChatValidator_InvalidSecret(t *testing.T) {
 }
 
 func TestWeChatValidator_InvalidCorpID(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"errcode": 40013,
 			"errmsg":  "invalid corpid",
@@ -134,7 +133,7 @@ func TestWeChatValidator_InvalidCorpID(t *testing.T) {
 }
 
 func TestWeChatValidator_NoPermission(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"errcode": 60011,
 			"errmsg":  "no privilege to access/binduser",
@@ -158,7 +157,7 @@ func TestWeChatValidator_NoPermission(t *testing.T) {
 }
 
 func TestWeChatValidator_AgentNotEnabled(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"errcode": 60020,
 			"errmsg":  "agent not enabled",
@@ -182,7 +181,7 @@ func TestWeChatValidator_AgentNotEnabled(t *testing.T) {
 }
 
 func TestWeChatValidator_OtherError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"errcode": 99999,
 			"errmsg":  "unknown error",
@@ -206,7 +205,7 @@ func TestWeChatValidator_OtherError(t *testing.T) {
 }
 
 func TestWeChatValidator_Timeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		json.NewEncoder(w).Encode(map[string]interface{}{"errcode": 0})
 	}))
@@ -228,7 +227,7 @@ func TestWeChatValidator_Timeout(t *testing.T) {
 }
 
 func TestWeChatValidator_InvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
@@ -248,7 +247,7 @@ func TestWeChatValidator_InvalidJSON(t *testing.T) {
 }
 
 func TestWeChatValidator_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL := server.URL
 	server.Close()
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -111,7 +110,7 @@ func TestChannel_Stop_NotStarted(t *testing.T) {
 
 func TestChannel_Start_Success(t *testing.T) {
 	// Create mock OAuth server
-	oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	oauthServer := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/botframework.com/oauth2/v2.0/token" {
 			response := map[string]interface{}{
 				"access_token": "test-access-token",
@@ -152,7 +151,7 @@ func TestChannel_Start_Success(t *testing.T) {
 
 func TestChannel_Start_AuthFailure(t *testing.T) {
 	// Create mock OAuth server that returns error
-	oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	oauthServer := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		response := map[string]interface{}{
 			"error":             "invalid_client",

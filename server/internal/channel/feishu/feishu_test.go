@@ -3,6 +3,8 @@ package feishu
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -374,5 +376,133 @@ func TestBuildStreamingCardJSON_Structure(t *testing.T) {
 	last := card.Elements[len(card.Elements)-1]
 	if last.Tag != "markdown" || !strings.Contains(last.Content, "...") {
 		t.Fatalf("streaming suffix element missing: %+v", last)
+	}
+}
+
+func TestBuildMarkdownCardJSON_TitleAndTable(t *testing.T) {
+	input := "# 周报\n\n| 指标 | 数值 |\n| --- | --- |\n| 成功率 | 99% |\n| 失败率 | 1% |"
+	raw, err := buildMarkdownCardJSON(input)
+	if err != nil {
+		t.Fatalf("buildMarkdownCardJSON failed: %v", err)
+	}
+
+	var card struct {
+		Header struct {
+			Title struct {
+				Tag     string `json:"tag"`
+				Content string `json:"content"`
+			} `json:"title"`
+		} `json:"header"`
+		Elements []struct {
+			Tag     string `json:"tag"`
+			Content string `json:"content"`
+		} `json:"elements"`
+	}
+	if err := json.Unmarshal([]byte(raw), &card); err != nil {
+		t.Fatalf("invalid card json: %v", err)
+	}
+	if card.Header.Title.Tag != "plain_text" {
+		t.Fatalf("expected plain_text header title, got %q", card.Header.Title.Tag)
+	}
+	if card.Header.Title.Content != "周报" {
+		t.Fatalf("expected title 周报, got %q", card.Header.Title.Content)
+	}
+	if len(card.Elements) == 0 {
+		t.Fatal("elements should not be empty")
+	}
+
+	var all string
+	for _, el := range card.Elements {
+		if el.Tag != "markdown" {
+			t.Fatalf("element tag should be markdown, got %q", el.Tag)
+		}
+		all += el.Content + "\n"
+	}
+	if strings.Contains(all, "# 周报") {
+		t.Fatalf("heading should be promoted to card title, got content: %q", all)
+	}
+	if !strings.Contains(all, "```text") {
+		t.Fatalf("table should be converted into code fence table, got content: %q", all)
+	}
+	if !strings.Contains(all, "| 指标") || !strings.Contains(all, "| 成功率") {
+		t.Fatalf("table rows missing after conversion: %q", all)
+	}
+}
+
+func TestChannel_Send_MarkdownUsesInteractiveCard(t *testing.T) {
+	var (
+		gotPath string
+		gotBody []byte
+	)
+
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.RequestURI()
+		body, _ := io.ReadAll(r.Body)
+		gotBody = body
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]any{"message_id": "out_1"},
+		})
+	}))
+	defer srv.Close()
+
+	ch := New(channel.FeishuConfig{
+		Enabled:   true,
+		AppID:     "test-app-id",
+		AppSecret: "test-app-secret",
+	}, zap.NewNop())
+	ch.client = newLarkClient("test-app-id", "test-app-secret")
+	ch.client.baseURL = srv.URL + "/open-apis"
+	ch.client.http = srv.Client()
+	ch.client.token = "test-token"
+	ch.client.tokenExp = time.Now().Add(time.Hour)
+
+	err := ch.Send(context.Background(), channel.OutgoingMessage{
+		ChatID:  "oc_test_chat",
+		Format:  "markdown",
+		Content: "# 发布说明\n\n| 字段 | 值 |\n| --- | --- |\n| 版本 | v1.2.3 |",
+	})
+	if err != nil {
+		t.Fatalf("Send returned error: %v", err)
+	}
+
+	if !strings.Contains(gotPath, "/open-apis/im/v1/messages?receive_id_type=chat_id") {
+		t.Fatalf("unexpected request path: %s", gotPath)
+	}
+
+	var payload struct {
+		MsgType string `json:"msg_type"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(gotBody, &payload); err != nil {
+		t.Fatalf("invalid send payload: %v", err)
+	}
+	if payload.MsgType != "interactive" {
+		t.Fatalf("expected interactive msg_type, got %q", payload.MsgType)
+	}
+
+	var card struct {
+		Header struct {
+			Title struct {
+				Content string `json:"content"`
+			} `json:"title"`
+		} `json:"header"`
+		Elements []struct {
+			Content string `json:"content"`
+		} `json:"elements"`
+	}
+	if err := json.Unmarshal([]byte(payload.Content), &card); err != nil {
+		t.Fatalf("invalid card content json: %v", err)
+	}
+	if card.Header.Title.Content != "发布说明" {
+		t.Fatalf("expected card title 发布说明, got %q", card.Header.Title.Content)
+	}
+	if len(card.Elements) == 0 {
+		t.Fatal("card elements should not be empty")
+	}
+	if !strings.Contains(card.Elements[0].Content, "```text") {
+		t.Fatalf("expected table converted to code fence in card body, got %q", card.Elements[0].Content)
 	}
 }

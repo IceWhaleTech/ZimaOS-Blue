@@ -22,10 +22,12 @@ func TestToCard(t *testing.T) {
 		{"web_search_empty", "web_search", `{"query":"go","results":[],"total_count":0}`, "", true},
 		{"deep_research", "deep_research", `{"query":"go","mode":"standard","answer":"summary","confidence":0.9,"evidence_count":2,"citations":[{"title":"A","url":"https://example.com"}]}`, "deep-research", false},
 		{"current_time", "current_time", `{"datetime":"2025-01-01","timezone":"UTC","unix":1735689600}`, "result", false},
-		{"file_read", "file_read", `{"path":"/tmp/x","content":"hello"}`, "collapsible-code", false},
-		{"file_read_empty", "file_read", `{"path":"/tmp/x","content":""}`, "", true},
-		{"file_read_error", "file_read", `{"error":"not found"}`, "result", false},
-		{"file_write", "file_write", `{"path":"/tmp/x","message":"ok"}`, "result", false},
+		{"read", "read", `{"path":"/tmp/x","content":"hello"}`, "collapsible-code", false},
+		{"read_empty", "read", `{"path":"/tmp/x","content":""}`, "", true},
+		{"read_error", "read", `{"error":"not found"}`, "result", false},
+		{"write", "write", `{"path":"/tmp/x","message":"ok"}`, "result", false},
+		{"legacy_file_read", "file_read", `{"path":"/tmp/x","content":"hello"}`, "collapsible-code", false},
+		{"legacy_file_write", "file_write", `{"path":"/tmp/x","message":"ok"}`, "result", false},
 		{"system_info", "system_info", `{"os":"linux","arch":"amd64"}`, "result", false},
 		{"memory_search", "memory_search", `{"results":[{"text":"hi"}]}`, "result", false},
 		{"memory_search_error", "memory_search", `{"error":"no index"}`, "result", false},
@@ -116,15 +118,106 @@ func TestDeepResearchCard_FieldsPreserved(t *testing.T) {
 	}
 }
 
-func TestGenericCard_Truncation(t *testing.T) {
-	long := strings.Repeat("a", 600)
-	card := GenericCard("test", long)
-	msg := card["message"].(string)
-	if len(msg) > 510 {
-		t.Errorf("expected truncated message, got len=%d", len(msg))
+func TestGenericCard_ShowsDetails(t *testing.T) {
+	card := GenericCard("test", `{"foo":"bar","token":"secret"}`)
+	if card["type"] != "result" {
+		t.Fatalf("expected result type, got %v", card["type"])
 	}
-	if !strings.HasSuffix(msg, "...") {
-		t.Error("expected ... suffix")
+	if card["status"] != "success" {
+		t.Fatalf("expected success status, got %v", card["status"])
+	}
+	if _, hasMessage := card["message"]; hasMessage {
+		t.Fatalf("expected no fallback message when details exist, got %v", card["message"])
+	}
+
+	details, ok := card["details"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected details list, got %T", card["details"])
+	}
+	if len(details) != 2 {
+		t.Fatalf("expected 2 detail items, got %d", len(details))
+	}
+	if details[0]["label"] != "foo" || details[0]["value"] != "bar" {
+		t.Fatalf("unexpected first detail: %+v", details[0])
+	}
+	if details[1]["label"] != "token" || details[1]["value"] != "secret" {
+		t.Fatalf("unexpected second detail: %+v", details[1])
+	}
+}
+
+func TestGenericCard_ErrorIsRedacted(t *testing.T) {
+	card := GenericCard("test", `{"error":"secret stack trace"}`)
+	if card["status"] != "error" {
+		t.Fatalf("expected error status, got %v", card["status"])
+	}
+	if card["message"] != redactedErrorText {
+		t.Fatalf("expected redacted error message, got %v", card["message"])
+	}
+	if card["error_redacted"] != true {
+		t.Fatalf("expected error_redacted marker, got %v", card["error_redacted"])
+	}
+}
+
+func TestExecCard_RedactsSensitiveFields(t *testing.T) {
+	card := ToCard("exec", `{"command":"cat ~/.ssh/id_rsa","stdout":"SECRET","stderr":"ERR","exit_code":1,"warnings":["warn"],"session_id":"abc","host":"sandbox","risk_level":"high","duration_ms":8}`)
+	if card == nil {
+		t.Fatal("expected exec card")
+	}
+	if card["type"] != "exec" {
+		t.Fatalf("expected exec type, got %v", card["type"])
+	}
+	if card["status"] != "error" {
+		t.Fatalf("expected error status, got %v", card["status"])
+	}
+	if card["message"] != redactedOutputText {
+		t.Fatalf("expected redacted output message, got %v", card["message"])
+	}
+	if card["command_redacted"] != true || card["hide_command"] != true {
+		t.Fatalf("expected command redaction markers, got %+v", card)
+	}
+	if card["stdout_redacted"] != true || card["stderr_redacted"] != true {
+		t.Fatalf("expected output redaction markers, got %+v", card)
+	}
+	if card["warnings_redacted"] != true || card["warning_count"] != 1 {
+		t.Fatalf("expected warning redaction markers, got %+v", card)
+	}
+	if _, ok := card["command"]; ok {
+		t.Fatalf("command field should be omitted: %+v", card)
+	}
+	if _, ok := card["stdout"]; ok {
+		t.Fatalf("stdout field should be omitted: %+v", card)
+	}
+	if _, ok := card["stderr"]; ok {
+		t.Fatalf("stderr field should be omitted: %+v", card)
+	}
+	if _, ok := card["session_id"]; ok {
+		t.Fatalf("session_id field should be omitted: %+v", card)
+	}
+	if _, ok := card["host"]; ok {
+		t.Fatalf("host field should be omitted: %+v", card)
+	}
+	if _, ok := card["warnings"]; ok {
+		t.Fatalf("warnings field should be omitted: %+v", card)
+	}
+}
+
+func TestFormatTypeless_ExecForcesCommandHidden(t *testing.T) {
+	calls := []llm.ToolCall{
+		{ID: "1", Name: "exec", Arguments: `{"command":"echo secret"}`},
+	}
+	results := []llm.Message{
+		{Role: llm.RoleTool, Content: `{"stdout":"ok","exit_code":0}`, ToolCallID: "1"},
+	}
+
+	out := FormatTypeless(calls, results)
+	if !strings.Contains(out, `"command_redacted":true`) {
+		t.Fatalf("expected command redaction marker, got %q", out)
+	}
+	if !strings.Contains(out, `"hide_command":true`) {
+		t.Fatalf("expected hide_command marker, got %q", out)
+	}
+	if strings.Contains(out, "echo secret") {
+		t.Fatalf("expected exec command to be hidden, got %q", out)
 	}
 }
 

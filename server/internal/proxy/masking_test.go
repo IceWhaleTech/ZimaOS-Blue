@@ -1,8 +1,11 @@
 package proxy
 
 import (
+	stdjson "encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/tidwall/gjson"
 )
 
 func TestDataMasker_Disabled(t *testing.T) {
@@ -229,6 +232,43 @@ func TestDataMasker_MaskBytes_ResponseOnly(t *testing.T) {
 	gotResp := dm.MaskResponseBytes(input)
 	if string(gotResp) == string(input) {
 		t.Error("response bytes should be masked")
+	}
+}
+
+func TestDataMasker_MaskResponseBytes_JSONDoesNotCorruptNumberFields(t *testing.T) {
+	rules := GetDefaultRules()
+	for _, r := range rules {
+		r.Enabled = (r.ID == "phone")
+	}
+	dm := NewDataMasker(&MaskingConfig{Enabled: true, Rules: rules})
+
+	input := []byte(`{"id":"resp_1","created":1234567890,"text":"ok"}`)
+	got := dm.MaskResponseBytes(input)
+	if !stdjson.Valid(got) {
+		t.Fatalf("masked JSON became invalid: %s", string(got))
+	}
+	if gotCreated := gjson.GetBytes(got, "created").Int(); gotCreated != 1234567890 {
+		t.Fatalf("created = %d, want %d, body=%s", gotCreated, int64(1234567890), string(got))
+	}
+	if strings.Contains(string(got), "[PHONE]") {
+		t.Fatalf("number field should not be replaced by phone masker: %s", string(got))
+	}
+}
+
+func TestDataMasker_MaskResponseBytes_JSONMasksStringFields(t *testing.T) {
+	rules := GetDefaultRules()
+	for _, r := range rules {
+		r.Enabled = (r.ID == "phone")
+	}
+	dm := NewDataMasker(&MaskingConfig{Enabled: true, Rules: rules})
+
+	input := []byte(`{"text":"call me 555-123-4567"}`)
+	got := dm.MaskResponseBytes(input)
+	if !stdjson.Valid(got) {
+		t.Fatalf("masked JSON became invalid: %s", string(got))
+	}
+	if !strings.Contains(string(got), "[PHONE]") {
+		t.Fatalf("expected phone marker in masked JSON string field: %s", string(got))
 	}
 }
 

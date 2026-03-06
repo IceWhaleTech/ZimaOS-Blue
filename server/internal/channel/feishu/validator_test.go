@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -35,7 +34,7 @@ func TestFeishuValidator_MissingAppSecret(t *testing.T) {
 }
 
 func TestFeishuValidator_ValidCredentials(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request path
 		if r.URL.Path != "/auth/v3/tenant_access_token/internal" {
 			t.Errorf("unexpected path: got %s", r.URL.Path)
@@ -87,7 +86,7 @@ func TestFeishuValidator_ValidCredentials(t *testing.T) {
 }
 
 func TestFeishuValidator_InvalidAppID(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"code": 10003,
 			"msg":  "app_id not found",
@@ -111,7 +110,7 @@ func TestFeishuValidator_InvalidAppID(t *testing.T) {
 }
 
 func TestFeishuValidator_InvalidAppSecret(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"code": 10014,
 			"msg":  "app secret invalid",
@@ -135,7 +134,7 @@ func TestFeishuValidator_InvalidAppSecret(t *testing.T) {
 }
 
 func TestFeishuValidator_AppDisabled(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"code": 10015,
 			"msg":  "app has been disabled",
@@ -159,7 +158,7 @@ func TestFeishuValidator_AppDisabled(t *testing.T) {
 }
 
 func TestFeishuValidator_OtherError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"code": 99999,
 			"msg":  "unknown error",
@@ -183,7 +182,7 @@ func TestFeishuValidator_OtherError(t *testing.T) {
 }
 
 func TestFeishuValidator_Timeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		json.NewEncoder(w).Encode(map[string]interface{}{"code": 0})
 	}))
@@ -205,7 +204,7 @@ func TestFeishuValidator_Timeout(t *testing.T) {
 }
 
 func TestFeishuValidator_InvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
@@ -225,7 +224,7 @@ func TestFeishuValidator_InvalidJSON(t *testing.T) {
 }
 
 func TestFeishuValidator_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL := server.URL
 	server.Close()
 

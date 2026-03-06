@@ -216,6 +216,12 @@ func TestStripFunctionCalls(t *testing.T) {
 </invoke>
 </function_calls>`
 
+	readCall := `<function_calls>
+<invoke name="read">
+<parameter name="path">README.md</parameter>
+</invoke>
+</function_calls>`
+
 	multiCall := `<function_calls>
 <invoke name="web_search">
 <parameter name="query">golang generics</parameter>
@@ -249,6 +255,12 @@ func TestStripFunctionCalls(t *testing.T) {
 			calcCall,
 			ModeIM,
 			"🔧 计算器（2+2）",
+		},
+		{
+			"read IM",
+			readCall,
+			ModeIM,
+			"🔧 读取文件（路径: README.md）",
 		},
 		{
 			"multi tool IM",

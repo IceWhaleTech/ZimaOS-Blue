@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -267,9 +268,13 @@ func (d *Discovery) scanIDE(ctx context.Context, ideType IDEType) (*IDEInfo, err
 	proxyURL := findProxyURL(ideType, configPath)
 	if proxyURL != "" {
 		info.ProxyURL = proxyURL
+		apiKey, maskedKey := d.resolveIDEAPIKey(ideType, configPath)
+		if maskedKey != "" {
+			info.APIKey = maskedKey
+		}
 
 		// Try to connect and get models
-		models, err := d.fetchModels(ctx, proxyURL)
+		models, err := d.fetchModels(ctx, proxyURL, apiKey)
 		if err == nil {
 			info.Connected = true
 			info.Models = models
@@ -297,8 +302,13 @@ func (d *Discovery) Connect(ctx context.Context, ideType IDEType) (*IDEInfo, err
 		return nil, fmt.Errorf("no proxy URL found for %s", ideType)
 	}
 
+	apiKey, maskedKey := d.resolveIDEAPIKey(ideType, info.ConfigPath)
+	if maskedKey != "" {
+		info.APIKey = maskedKey
+	}
+
 	// Try to fetch models
-	models, err := d.fetchModels(ctx, info.ProxyURL)
+	models, err := d.fetchModels(ctx, info.ProxyURL, apiKey)
 	if err != nil {
 		info.Connected = false
 		info.Error = err.Error()
@@ -318,22 +328,62 @@ func (d *Discovery) Connect(ctx context.Context, ideType IDEType) (*IDEInfo, err
 }
 
 // fetchModels fetches available models from an IDE proxy
-func (d *Discovery) fetchModels(ctx context.Context, proxyURL string) ([]string, error) {
+func (d *Discovery) fetchModels(ctx context.Context, proxyURL, apiKey string) ([]string, error) {
 	url := strings.TrimSuffix(proxyURL, "/") + "/models"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	type requestAuthStyle string
+	const (
+		authNone    requestAuthStyle = "none"
+		authBearer  requestAuthStyle = "bearer"
+		authXAPIKey requestAuthStyle = "x-api-key"
+	)
+
+	doModelsRequest := func(auth requestAuthStyle) (int, []byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return 0, nil, err
+		}
+		trimmedKey := strings.TrimSpace(apiKey)
+		if trimmedKey != "" {
+			switch auth {
+			case authBearer:
+				req.Header.Set("Authorization", "Bearer "+trimmedKey)
+			case authXAPIKey:
+				req.Header.Set("x-api-key", trimmedKey)
+			}
+		}
+		resp, err := d.client.Do(req)
+		if err != nil {
+			return 0, nil, err
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return resp.StatusCode, nil, err
+		}
+		return resp.StatusCode, body, nil
+	}
+
+	status, body, err := doModelsRequest(authNone)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := d.client.Do(req)
-	if err != nil {
-		return nil, err
+	if (status == http.StatusUnauthorized || status == http.StatusForbidden) && strings.TrimSpace(apiKey) != "" {
+		status, body, err = doModelsRequest(authBearer)
+		if err != nil {
+			return nil, err
+		}
+		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			status, body, err = doModelsRequest(authXAPIKey)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", status)
 	}
 
 	var result struct {
@@ -342,7 +392,7 @@ func (d *Discovery) fetchModels(ctx context.Context, proxyURL string) ([]string,
 		} `json:"data"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
 	}
 
@@ -352,6 +402,16 @@ func (d *Discovery) fetchModels(ctx context.Context, proxyURL string) ([]string,
 	}
 
 	return models, nil
+}
+
+func (d *Discovery) resolveIDEAPIKey(ideType IDEType, configPath string) (string, string) {
+	if key, _ := GetAPIKeyFromEnv(ideType); key != "" {
+		return key, maskAPIKey(key)
+	}
+	if configPath == "" {
+		return "", ""
+	}
+	return d.ExtractAPIKey(ideType, configPath)
 }
 
 // getIDEName returns the display name for an IDE type
@@ -841,14 +901,14 @@ func getEnvVarsForIDE(ideType IDEType) []string {
 
 // ImportConfig represents configuration that can be imported from an IDE
 type ImportConfig struct {
-	IDEType    IDEType  `json:"ide_type"`
-	IDEName    string   `json:"ide_name"`
-	APIKey     string   `json:"api_key,omitempty"`
-	BaseURL    string   `json:"base_url,omitempty"`
-	Models     []string `json:"models,omitempty"`
-	Provider   string   `json:"provider,omitempty"` // "anthropic", "openai", etc.
-	ConfigPath string   `json:"config_path,omitempty"`
-	EnvVar     string   `json:"env_var,omitempty"` // Which env var the key came from
+	IDEType         IDEType  `json:"ide_type"`
+	IDEName         string   `json:"ide_name"`
+	APIKey          string   `json:"api_key,omitempty"`
+	BaseURL         string   `json:"base_url,omitempty"`
+	Models          []string `json:"models,omitempty"`
+	Provider        string   `json:"provider,omitempty"` // "anthropic", "openai", etc.
+	ConfigPath      string   `json:"config_path,omitempty"`
+	EnvVar          string   `json:"env_var,omitempty"` // Which env var the key came from
 	Source          string   `json:"source"`            // "config", "env", "cc-switch", "extension", "oauth"
 	CanImport       bool     `json:"can_import"`        // Whether this config can be imported
 	AlreadyImported bool     `json:"already_imported"`  // Whether this key already exists in provider pool
@@ -858,7 +918,7 @@ type ImportConfig struct {
 
 	// OAuth token fields (populated when Source == "oauth")
 	HasOAuth   bool   `json:"has_oauth,omitempty"`
-	OAuthType  string `json:"oauth_type,omitempty"`  // "antigravity", "gemini-cli", "copilot"
+	OAuthType  string `json:"oauth_type,omitempty"` // "antigravity", "gemini-cli", "copilot"
 	OAuthEmail string `json:"oauth_email,omitempty"`
 }
 
@@ -871,7 +931,7 @@ type ClaudeCodeExtConfig struct {
 // ClaudeCodeEnvVar represents a single env var from claudeCode.environmentVariables
 type ClaudeCodeEnvVar struct {
 	Name  string `json:"name"`
-	Value string `json:"value"`  // Masked for display
+	Value string `json:"value"` // Masked for display
 }
 
 // GetImportableConfigs returns all configurations that can be imported
@@ -1186,18 +1246,18 @@ var claudeCodeEnvVarProviders = map[string]struct {
 	ProviderID string
 	FieldType  string // "api_key", "base_url", "auth_token"
 }{
-	"ANTHROPIC_API_KEY":         {ProviderID: "anthropic", FieldType: "api_key"},
-	"ANTHROPIC_AUTH_TOKEN":      {ProviderID: "anthropic", FieldType: "auth_token"},
-	"ANTHROPIC_BASE_URL":        {ProviderID: "anthropic", FieldType: "base_url"},
-	"OPENAI_API_KEY":            {ProviderID: "openai", FieldType: "api_key"},
-	"OPENAI_BASE_URL":           {ProviderID: "openai", FieldType: "base_url"},
-	"GOOGLE_API_KEY":            {ProviderID: "google", FieldType: "api_key"},
-	"AZURE_OPENAI_API_KEY":      {ProviderID: "azure-openai", FieldType: "api_key"},
-	"AZURE_OPENAI_BASE_URL":     {ProviderID: "azure-openai", FieldType: "base_url"},
-	"AZURE_OPENAI_ENDPOINT":     {ProviderID: "azure-openai", FieldType: "base_url"},
-	"DEEPSEEK_API_KEY":          {ProviderID: "deepseek", FieldType: "api_key"},
-	"MISTRAL_API_KEY":           {ProviderID: "mistral", FieldType: "api_key"},
-	"GROQ_API_KEY":              {ProviderID: "groq", FieldType: "api_key"},
+	"ANTHROPIC_API_KEY":     {ProviderID: "anthropic", FieldType: "api_key"},
+	"ANTHROPIC_AUTH_TOKEN":  {ProviderID: "anthropic", FieldType: "auth_token"},
+	"ANTHROPIC_BASE_URL":    {ProviderID: "anthropic", FieldType: "base_url"},
+	"OPENAI_API_KEY":        {ProviderID: "openai", FieldType: "api_key"},
+	"OPENAI_BASE_URL":       {ProviderID: "openai", FieldType: "base_url"},
+	"GOOGLE_API_KEY":        {ProviderID: "google", FieldType: "api_key"},
+	"AZURE_OPENAI_API_KEY":  {ProviderID: "azure-openai", FieldType: "api_key"},
+	"AZURE_OPENAI_BASE_URL": {ProviderID: "azure-openai", FieldType: "base_url"},
+	"AZURE_OPENAI_ENDPOINT": {ProviderID: "azure-openai", FieldType: "base_url"},
+	"DEEPSEEK_API_KEY":      {ProviderID: "deepseek", FieldType: "api_key"},
+	"MISTRAL_API_KEY":       {ProviderID: "mistral", FieldType: "api_key"},
+	"GROQ_API_KEY":          {ProviderID: "groq", FieldType: "api_key"},
 }
 
 // ExtractClaudeCodeExtConfig reads Claude Code extension config from an IDE's settings.json

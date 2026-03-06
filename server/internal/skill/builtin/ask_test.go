@@ -1,6 +1,56 @@
 package builtin
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
+)
+
+type captureAskQuestioner struct {
+	lastUserID    string
+	lastSessionID string
+	answers       []AskQuestionAnswerResult
+	silent        bool
+	err           error
+}
+
+func (c *captureAskQuestioner) AskQuestions(_ context.Context, userID, sessionID string, _ []AskQuestionItem) ([]AskQuestionAnswerResult, bool, error) {
+	c.lastUserID = userID
+	c.lastSessionID = sessionID
+	return c.answers, c.silent, c.err
+}
+
+func TestAskExecute_PassesSessionIDToQuestioner(t *testing.T) {
+	a := NewAsk()
+	mock := &captureAskQuestioner{
+		answers: []AskQuestionAnswerResult{{
+			QuestionID: "q0",
+			Selected:   []string{"continue"},
+		}},
+	}
+	a.SetQuestioner(mock)
+
+	ctx := tools.WithUserID(context.Background(), "user-123")
+	ctx = tools.WithSessionID(ctx, "conv-456")
+
+	res, err := a.Execute(ctx, map[string]any{
+		"q": "continue?",
+		"a": []any{"continue", "cancel"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("Execute returned unsuccessful result: %+v", res)
+	}
+	if mock.lastUserID != "user-123" {
+		t.Fatalf("user id = %q, want %q", mock.lastUserID, "user-123")
+	}
+	if mock.lastSessionID != "conv-456" {
+		t.Fatalf("session id = %q, want %q", mock.lastSessionID, "conv-456")
+	}
+}
 
 func TestAskValidate_AcceptsQuestionsArray(t *testing.T) {
 	a := NewAsk()

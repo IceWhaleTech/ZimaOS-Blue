@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -94,7 +93,7 @@ func TestClaudeProviderModels(t *testing.T) {
 
 // Test Claude provider chat with mock server
 func TestClaudeProviderChat(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
 		if r.Method != "POST" {
 			t.Errorf("expected POST, got %s", r.Method)
@@ -157,7 +156,7 @@ func TestClaudeProviderChat(t *testing.T) {
 func TestClaudeProviderChatWithSystem(t *testing.T) {
 	var receivedBody map[string]interface{}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&receivedBody)
 
 		resp := map[string]interface{}{
@@ -200,7 +199,7 @@ func TestClaudeProviderChatWithSystem(t *testing.T) {
 
 // Test Claude provider chat with tool calls
 func TestClaudeProviderChatWithToolCalls(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]interface{}{
 			"id":    "msg_789",
 			"type":  "message",
@@ -253,7 +252,7 @@ func TestClaudeProviderChatWithToolCalls(t *testing.T) {
 
 // Test Claude provider error handling
 func TestClaudeProviderChatError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		resp := map[string]interface{}{
 			"type": "error",
@@ -280,7 +279,7 @@ func TestClaudeProviderChatError(t *testing.T) {
 
 // Test Claude provider context cancellation
 func TestClaudeProviderContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	}))
 	defer server.Close()

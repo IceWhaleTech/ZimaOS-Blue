@@ -727,7 +727,7 @@ onUnmounted(() => {
           <div class="flex items-center justify-between py-2 px-2.5 bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
             <div>
               <div class="text-sm text-gray-800 dark:text-gray-100">{{ t('settings.smallModel.irFeatureHintTitle', 'Feature Hint Detection') }}</div>
-              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('settings.smallModel.irFeatureHintDesc', 'For channel messages, detect hints and auto-enable Deep Search / Agent Mode.') }}</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('settings.smallModel.irFeatureHintDesc', { deepResearch: t('ui.deepResearchTitle'), agentMode: t('agent.mode') }) }}</div>
             </div>
             <button
               data-testid="feature-intent-ir-switch"

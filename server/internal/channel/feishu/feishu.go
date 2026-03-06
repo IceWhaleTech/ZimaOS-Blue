@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -52,6 +53,9 @@ type Channel struct {
 	// Ensure messages channel is only closed once
 	closeOnce sync.Once
 
+	typingReactionMu      sync.Mutex
+	typingReactionByMsgID map[string]*typingReactionState
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -65,11 +69,12 @@ type MessageHandler func(ctx context.Context, msg channel.Message) (string, erro
 // New creates a new Feishu channel.
 func New(cfg channel.FeishuConfig, logger *zap.Logger) *Channel {
 	c := &Channel{
-		config:          cfg,
-		logger:          logger.With(zap.String("channel", "feishu")),
-		messages:        make(chan channel.Message, 100),
-		status:          channel.StatusDisconnected,
-		commandHandlers: make(map[string]BotCommandHandler),
+		config:                cfg,
+		logger:                logger.With(zap.String("channel", "feishu")),
+		messages:              make(chan channel.Message, 100),
+		status:                channel.StatusDisconnected,
+		commandHandlers:       make(map[string]BotCommandHandler),
+		typingReactionByMsgID: make(map[string]*typingReactionState),
 	}
 	c.RegisterCommand("/help", c.handleHelpCommand)
 	c.RegisterCommand("/start", c.handleStartCommand)
@@ -148,12 +153,13 @@ func (c *Channel) onWSEvent(ctx context.Context, payload []byte) {
 func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessage) {
 	var event struct {
 		Message struct {
-			MessageID   string `json:"message_id"`
-			ChatID      string `json:"chat_id"`
-			ChatType    string `json:"chat_type"`
-			MessageType string `json:"message_type"`
-			Content     string `json:"content"`
-			ParentID    string `json:"parent_id"`
+			MessageID   string          `json:"message_id"`
+			ChatID      string          `json:"chat_id"`
+			ChatType    string          `json:"chat_type"`
+			MessageType string          `json:"message_type"`
+			Content     string          `json:"content"`
+			ParentID    string          `json:"parent_id"`
+			CreateTime  json.RawMessage `json:"create_time"`
 		} `json:"message"`
 		Sender struct {
 			SenderID struct {
@@ -229,9 +235,17 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 		return
 	}
 
+	c.addTypingReaction(ctx, messageID)
+	c.startTypingReactionKeepalive(ctx, messageID, 5*time.Second)
+
+	msgTimestamp := time.Now()
+	if ts, ok := parseFeishuMessageTimestamp(msg.CreateTime); ok {
+		msgTimestamp = ts
+	}
+
 	channelMsg := channel.Message{
 		ID: messageID, ChannelName: "feishu", ChatID: chatID, UserID: userID,
-		Type: c.convertMessageType(msgType), Content: content, Timestamp: time.Now(),
+		Type: c.convertMessageType(msgType), Content: content, Timestamp: msgTimestamp,
 		IsGroup:   msg.ChatType == "group",
 		ReplyToID: msg.ParentID,
 		Metadata:  map[string]interface{}{"msg_type": msgType, "language": "zh-CN"},
@@ -270,7 +284,7 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 				}
 				// Send user-friendly error message
 				errMsg := i18n.T(lang, i18n.MsgProcessingError, err)
-				if sendErr := c.SendText(c.ctx, chatID, errMsg, ""); sendErr != nil {
+				if sendErr := c.SendText(c.ctx, chatID, errMsg, messageID); sendErr != nil {
 					c.logger.Error("failed to send error message to user", zap.Error(sendErr), zap.String("original_error", err.Error()))
 				}
 				return
@@ -286,6 +300,50 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 		}()
 	} else {
 		c.safeSendMessage(channelMsg, messageID)
+	}
+}
+
+func parseFeishuMessageTimestamp(raw json.RawMessage) (time.Time, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return time.Time{}, false
+	}
+
+	var tsText string
+	if err := json.Unmarshal(raw, &tsText); err == nil {
+		tsText = strings.TrimSpace(tsText)
+		if tsText != "" {
+			if ts, err := strconv.ParseInt(tsText, 10, 64); err == nil {
+				return normalizeFeishuUnixTimestamp(ts)
+			}
+		}
+	}
+
+	var tsInt int64
+	if err := json.Unmarshal(raw, &tsInt); err == nil {
+		return normalizeFeishuUnixTimestamp(tsInt)
+	}
+
+	var tsFloat float64
+	if err := json.Unmarshal(raw, &tsFloat); err == nil {
+		return normalizeFeishuUnixTimestamp(int64(tsFloat))
+	}
+
+	return time.Time{}, false
+}
+
+func normalizeFeishuUnixTimestamp(ts int64) (time.Time, bool) {
+	if ts <= 0 {
+		return time.Time{}, false
+	}
+	switch {
+	case ts >= 1_000_000_000_000_000_000:
+		return time.Unix(0, ts), true // nanoseconds
+	case ts >= 1_000_000_000_000_000:
+		return time.Unix(0, ts*int64(time.Microsecond)), true // microseconds
+	case ts >= 1_000_000_000_000:
+		return time.Unix(0, ts*int64(time.Millisecond)), true // milliseconds
+	default:
+		return time.Unix(ts, 0), true // seconds
 	}
 }
 
@@ -316,6 +374,7 @@ func (c *Channel) SendText(ctx context.Context, chatID string, text string, repl
 	} else if strings.HasPrefix(chatID, "on_") {
 		receiveIDType = "union_id"
 	}
+	c.removeTypingReaction(ctx, replyToID)
 	if err := c.client.sendMessage(ctx, receiveIDType, chatID, "text", string(content), replyToID); err != nil {
 		return err
 	}
@@ -339,6 +398,9 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		}
 	}
 	if msg.Content != "" {
+		if strings.EqualFold(msg.Format, "markdown") {
+			return c.SendMarkdown(ctx, msg.ChatID, msg.Content, msg.ReplyToID)
+		}
 		return c.SendText(ctx, msg.ChatID, msg.Content, msg.ReplyToID)
 	}
 	return nil
@@ -364,6 +426,7 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID string, 
 			return fmt.Errorf("upload image: %w", err)
 		}
 		content, _ := json.Marshal(map[string]string{"image_key": imageKey})
+		c.removeTypingReaction(ctx, replyToID)
 		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "image", string(content), replyToID); err != nil {
 			return err
 		}
@@ -386,6 +449,7 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID string, 
 			return fmt.Errorf("upload video cover: %w", err)
 		}
 		content, _ := json.Marshal(map[string]string{"file_key": fileKey, "image_key": imageKey})
+		c.removeTypingReaction(ctx, replyToID)
 		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "media", string(content), replyToID); err != nil {
 			return err
 		}
@@ -410,6 +474,7 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID string, 
 			return fmt.Errorf("upload file: %w", err)
 		}
 		content, _ := json.Marshal(map[string]string{"file_key": fileKey})
+		c.removeTypingReaction(ctx, replyToID)
 		if err := c.client.sendMessage(ctx, receiveIDType, chatID, "file", string(content), replyToID); err != nil {
 			return err
 		}
@@ -424,6 +489,26 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID string, 
 func (c *Channel) SendCard(ctx context.Context, chatID string, cardJSON string) error {
 	receiveIDType := resolveReceiveIDType(chatID)
 	return c.client.sendMessage(ctx, receiveIDType, chatID, "interactive", cardJSON, "")
+}
+
+// SendMarkdown sends markdown content using Feishu interactive cards.
+// It preserves markdown structure (including headings/tables) instead of humanizing to plain text.
+func (c *Channel) SendMarkdown(ctx context.Context, chatID, markdown, replyToID string) error {
+	cardJSON, err := buildMarkdownCardJSON(markdown)
+	if err != nil {
+		return err
+	}
+	receiveIDType := resolveReceiveIDType(chatID)
+	c.removeTypingReaction(ctx, replyToID)
+	if err := c.client.sendMessage(ctx, receiveIDType, chatID, "interactive", cardJSON, replyToID); err != nil {
+		return err
+	}
+	c.msgsSent.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastReplyAt = &now
+	c.mu.Unlock()
+	return nil
 }
 
 func (c *Channel) Stop(ctx context.Context) error {
@@ -469,7 +554,11 @@ func (c *Channel) Info() channel.Info {
 		ConnectedAt: c.connectedAt, LastError: c.lastError, LastErrorAt: c.lastErrorAt,
 		MessageCount: c.msgCount.Load(), MessagesReceived: c.msgsReceived.Load(), MessagesSent: c.msgsSent.Load(),
 		LastMessageAt: c.lastMessageAt, LastReplyAt: c.lastReplyAt,
-		Metadata: map[string]interface{}{"app_id": c.config.AppID, "connection": "websocket"},
+		Metadata: map[string]interface{}{
+			"app_id":                  c.config.AppID,
+			"connection":              "websocket",
+			"typing_reaction_enabled": !c.config.DisableTypingReaction,
+		},
 	}
 }
 
@@ -580,10 +669,12 @@ func minimalPNG() []byte {
 func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID string, content <-chan string, done chan<- struct{}) error {
 	defer close(done)
 
-	const updateInterval = 700 * time.Millisecond
+	// Keep streaming card updates in multi-second cadence to reduce edit noise/rate pressure.
+	const updateInterval = 3 * time.Second
 	var fullContent strings.Builder
 	var messageID string
 	var dirty bool
+	var clearedReaction bool
 	ticker := time.NewTicker(updateInterval)
 	defer ticker.Stop()
 
@@ -601,6 +692,10 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 		}
 		receiveIDType := resolveReceiveIDType(chatID)
 		if messageID == "" {
+			if !clearedReaction {
+				c.removeTypingReaction(ctx, replyToID)
+				clearedReaction = true
+			}
 			sentID, err := c.client.sendMessageWithID(ctx, receiveIDType, chatID, "interactive", cardJSON, replyToID)
 			if err != nil {
 				return err
@@ -756,4 +851,415 @@ func splitMarkdownForCard(s string, limit int) []string {
 	}
 	flush()
 	return chunks
+}
+
+func buildMarkdownCardJSON(markdown string) (string, error) {
+	markdown = strings.ReplaceAll(markdown, "\r\n", "\n")
+	title, body := extractMarkdownCardTitle(markdown)
+	body = normalizeMarkdownTablesForCard(body)
+
+	parts := splitMarkdownForCard(body, 1400)
+	if len(parts) == 0 {
+		parts = []string{" "}
+	}
+
+	elements := make([]map[string]string, 0, len(parts))
+	for _, p := range parts {
+		elements = append(elements, map[string]string{
+			"tag":     "markdown",
+			"content": p,
+		})
+	}
+
+	card := map[string]interface{}{
+		"config": map[string]bool{
+			"wide_screen_mode": true,
+		},
+		"elements": elements,
+	}
+	if title != "" {
+		card["header"] = map[string]interface{}{
+			"title": map[string]string{
+				"tag":     "plain_text",
+				"content": title,
+			},
+		}
+	}
+
+	raw, err := json.Marshal(card)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func extractMarkdownCardTitle(markdown string) (title, body string) {
+	lines := strings.Split(markdown, "\n")
+	headingIdx := -1
+	headingContent := ""
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if h, ok := parseATXHeading(trimmed); ok {
+			headingIdx = i
+			headingContent = h
+		}
+		break
+	}
+
+	if headingIdx < 0 {
+		return "", markdown
+	}
+
+	rest := make([]string, 0, len(lines)-1)
+	rest = append(rest, lines[:headingIdx]...)
+	next := headingIdx + 1
+	for next < len(lines) && strings.TrimSpace(lines[next]) == "" {
+		next++
+	}
+	rest = append(rest, lines[next:]...)
+	return headingContent, strings.Join(rest, "\n")
+}
+
+func parseATXHeading(line string) (string, bool) {
+	if line == "" || line[0] != '#' {
+		return "", false
+	}
+	i := 0
+	for i < len(line) && line[i] == '#' {
+		i++
+	}
+	if i == 0 || i > 6 {
+		return "", false
+	}
+	if i >= len(line) || line[i] != ' ' {
+		return "", false
+	}
+	content := strings.TrimSpace(line[i+1:])
+	if content == "" {
+		return "", false
+	}
+	return content, true
+}
+
+func normalizeMarkdownTablesForCard(markdown string) string {
+	lines := strings.Split(markdown, "\n")
+	if len(lines) == 0 {
+		return markdown
+	}
+
+	out := make([]string, 0, len(lines))
+	for i := 0; i < len(lines); {
+		if !isPipeTableLine(lines[i]) || i+1 >= len(lines) || !isPipeTableLine(lines[i+1]) {
+			out = append(out, lines[i])
+			i++
+			continue
+		}
+
+		header := parseMarkdownTableCells(lines[i])
+		divider := parseMarkdownTableCells(lines[i+1])
+		if !isMarkdownTableDivider(divider) {
+			out = append(out, lines[i])
+			i++
+			continue
+		}
+
+		rows := [][]string{header}
+		i += 2
+		for i < len(lines) && isPipeTableLine(lines[i]) {
+			rows = append(rows, parseMarkdownTableCells(lines[i]))
+			i++
+		}
+		out = append(out, renderMarkdownTableAsCodeFence(rows))
+	}
+
+	return strings.Join(out, "\n")
+}
+
+func isPipeTableLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return len(trimmed) >= 2 && trimmed[0] == '|' && trimmed[len(trimmed)-1] == '|'
+}
+
+func parseMarkdownTableCells(line string) []string {
+	trimmed := strings.TrimSpace(line)
+	if len(trimmed) > 0 && trimmed[0] == '|' {
+		trimmed = trimmed[1:]
+	}
+	if len(trimmed) > 0 && trimmed[len(trimmed)-1] == '|' {
+		trimmed = trimmed[:len(trimmed)-1]
+	}
+	parts := strings.Split(trimmed, "|")
+	cells := make([]string, len(parts))
+	for i, p := range parts {
+		cells[i] = strings.TrimSpace(p)
+	}
+	return cells
+}
+
+func isMarkdownTableDivider(cells []string) bool {
+	if len(cells) == 0 {
+		return false
+	}
+	for _, c := range cells {
+		normalized := strings.TrimSpace(c)
+		normalized = strings.Trim(normalized, ":-")
+		if normalized != "" {
+			return false
+		}
+	}
+	return true
+}
+
+func renderMarkdownTableAsCodeFence(rows [][]string) string {
+	if len(rows) == 0 {
+		return ""
+	}
+
+	colCount := 0
+	for _, row := range rows {
+		if len(row) > colCount {
+			colCount = len(row)
+		}
+	}
+	widths := make([]int, colCount)
+	for _, row := range rows {
+		for i, cell := range row {
+			w := utf8.RuneCountInString(cell)
+			if w > widths[i] {
+				widths[i] = w
+			}
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("```text\n")
+	writeMarkdownTableCodeRow(&sb, rows[0], widths)
+	sb.WriteString("|")
+	for _, w := range widths {
+		if w < 3 {
+			w = 3
+		}
+		sb.WriteString(" ")
+		sb.WriteString(strings.Repeat("-", w))
+		sb.WriteString(" |")
+	}
+	sb.WriteByte('\n')
+	for _, row := range rows[1:] {
+		writeMarkdownTableCodeRow(&sb, row, widths)
+	}
+	sb.WriteString("```")
+	return sb.String()
+}
+
+func writeMarkdownTableCodeRow(sb *strings.Builder, row []string, widths []int) {
+	sb.WriteString("|")
+	for i, w := range widths {
+		cell := ""
+		if i < len(row) {
+			cell = row[i]
+		}
+		sb.WriteString(" ")
+		sb.WriteString(cell)
+		pad := w - utf8.RuneCountInString(cell)
+		for j := 0; j < pad; j++ {
+			sb.WriteByte(' ')
+		}
+		sb.WriteString(" |")
+	}
+	sb.WriteByte('\n')
+}
+
+const typingReactionEmojiType = "Typing"
+
+type typingReactionState struct {
+	reactionID      string
+	ready           chan struct{}
+	removeScheduled bool
+	resendInFlight  bool
+}
+
+func (c *Channel) addTypingReaction(ctx context.Context, messageID string) {
+	if c.client == nil || messageID == "" || c.config.DisableTypingReaction {
+		return
+	}
+	c.typingReactionMu.Lock()
+	if _, exists := c.typingReactionByMsgID[messageID]; exists {
+		c.typingReactionMu.Unlock()
+		return
+	}
+	state := &typingReactionState{ready: make(chan struct{})}
+	c.typingReactionByMsgID[messageID] = state
+	c.typingReactionMu.Unlock()
+
+	go func() {
+		reactionID, err := c.client.addMessageReaction(ctx, messageID, typingReactionEmojiType)
+		if err != nil {
+			c.logger.Debug("failed to add typing reaction", zap.String("message_id", messageID), zap.Error(err))
+		}
+
+		c.typingReactionMu.Lock()
+		current, ok := c.typingReactionByMsgID[messageID]
+		if ok && current == state {
+			if err == nil {
+				state.reactionID = reactionID
+			}
+			close(state.ready)
+		}
+		c.typingReactionMu.Unlock()
+	}()
+}
+
+func (c *Channel) startTypingReactionKeepalive(ctx context.Context, messageID string, interval time.Duration) {
+	if c.client == nil || messageID == "" || c.config.DisableTypingReaction {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				c.typingReactionMu.Lock()
+				state := c.typingReactionByMsgID[messageID]
+				stop := state == nil || state.removeScheduled
+				c.typingReactionMu.Unlock()
+				if stop {
+					return
+				}
+				c.resendTypingReaction(ctx, messageID)
+			}
+		}
+	}()
+}
+
+func (c *Channel) resendTypingReaction(ctx context.Context, messageID string) {
+	if c.client == nil || messageID == "" || c.config.DisableTypingReaction {
+		return
+	}
+
+	c.typingReactionMu.Lock()
+	state := c.typingReactionByMsgID[messageID]
+	if state == nil || state.removeScheduled || state.resendInFlight {
+		c.typingReactionMu.Unlock()
+		return
+	}
+	state.resendInFlight = true
+	c.typingReactionMu.Unlock()
+	defer func() {
+		c.typingReactionMu.Lock()
+		current, ok := c.typingReactionByMsgID[messageID]
+		if ok && current == state {
+			state.resendInFlight = false
+		}
+		c.typingReactionMu.Unlock()
+	}()
+
+	<-state.ready
+
+	c.typingReactionMu.Lock()
+	current, ok := c.typingReactionByMsgID[messageID]
+	if !ok || current != state || state.removeScheduled {
+		c.typingReactionMu.Unlock()
+		return
+	}
+	oldReactionID := state.reactionID
+	c.typingReactionMu.Unlock()
+
+	if oldReactionID != "" {
+		if err := c.client.deleteMessageReaction(ctx, messageID, oldReactionID); err != nil {
+			c.logger.Debug("failed to delete typing reaction before resend",
+				zap.String("message_id", messageID),
+				zap.String("reaction_id", oldReactionID),
+				zap.Error(err))
+		}
+	}
+
+	newReactionID, err := c.client.addMessageReaction(ctx, messageID, typingReactionEmojiType)
+	if err != nil {
+		c.logger.Debug("failed to resend typing reaction", zap.String("message_id", messageID), zap.Error(err))
+		return
+	}
+
+	c.typingReactionMu.Lock()
+	current, ok = c.typingReactionByMsgID[messageID]
+	if ok && current == state && !state.removeScheduled {
+		state.reactionID = newReactionID
+		c.typingReactionMu.Unlock()
+		return
+	}
+	c.typingReactionMu.Unlock()
+
+	// If message already completed and state was removed, avoid leaking the newly re-sent reaction.
+	if newReactionID != "" {
+		if err := c.client.deleteMessageReaction(ctx, messageID, newReactionID); err != nil {
+			c.logger.Debug("failed to cleanup resent typing reaction",
+				zap.String("message_id", messageID),
+				zap.String("reaction_id", newReactionID),
+				zap.Error(err))
+		}
+	}
+}
+
+func (c *Channel) removeTypingReaction(ctx context.Context, messageID string) {
+	if c.client == nil || messageID == "" {
+		return
+	}
+	c.typingReactionMu.Lock()
+	state := c.typingReactionByMsgID[messageID]
+	if state == nil {
+		c.typingReactionMu.Unlock()
+		return
+	}
+	if state.removeScheduled {
+		c.typingReactionMu.Unlock()
+		return
+	}
+	state.removeScheduled = true
+	c.typingReactionMu.Unlock()
+
+	select {
+	case <-state.ready:
+	case <-ctx.Done():
+		return
+	}
+
+	// Wait for any in-flight resend operation to complete so we delete the latest reaction id.
+	for {
+		c.typingReactionMu.Lock()
+		current, ok := c.typingReactionByMsgID[messageID]
+		if !ok || current != state {
+			c.typingReactionMu.Unlock()
+			return
+		}
+		if !state.resendInFlight {
+			reactionID := state.reactionID
+			delete(c.typingReactionByMsgID, messageID)
+			c.typingReactionMu.Unlock()
+
+			if reactionID == "" {
+				return
+			}
+			if err := c.client.deleteMessageReaction(ctx, messageID, reactionID); err != nil {
+				c.logger.Debug("failed to remove typing reaction",
+					zap.String("message_id", messageID),
+					zap.String("reaction_id", reactionID),
+					zap.Error(err))
+			}
+			return
+		}
+		c.typingReactionMu.Unlock()
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
 }

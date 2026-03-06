@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/downloader"
@@ -12,10 +13,12 @@ import (
 
 const (
 	// Fixed model/runtime per product decision.
-	ModelID     = "qwen3.5-0.8b-onnx-q4"
-	RuntimeType = "onnx_genai_python"
+	ModelID     = "qwen3.5-0.8b-gguf-q4km"
+	RuntimeType = "llama.cpp"
 
-	onnxRepo = "onnx-community/Qwen3.5-0.8B-ONNX"
+	defaultHFRepo         = "Qwen/Qwen3.5-0.8B-GGUF"
+	defaultModelFilename  = "qwen3.5-0.8b-q4_k_m.gguf"
+	defaultMMProjFilename = "mmproj-model-bf16.gguf"
 )
 
 // Fallback reason codes for observability.
@@ -57,17 +60,26 @@ type Status struct {
 	Files       []FileStatus      `json:"files,omitempty"`
 }
 
+type modelAssetConfig struct {
+	repo           string
+	modelFilename  string
+	mmprojFilename string
+}
+
 // Manager controls fixed small-model artifacts.
 type Manager struct {
 	modelDir   string
+	assets     modelAssetConfig
 	downloader *downloader.ModelDownloader
 	mu         sync.Mutex
 }
 
 func NewManager(dataDir string) *Manager {
 	modelDir := filepath.Join(dataDir, "models", ModelID)
+	assets := resolveModelAssetConfig()
 	return &Manager{
 		modelDir:   modelDir,
+		assets:     assets,
 		downloader: downloader.NewModelDownloader(modelDir),
 	}
 }
@@ -75,7 +87,11 @@ func NewManager(dataDir string) *Manager {
 func (m *Manager) ModelDir() string { return m.modelDir }
 
 func (m *Manager) ModelPath() string {
-	return filepath.Join(m.modelDir, "onnx", "decoder_model_merged_q4.onnx")
+	return filepath.Join(m.modelDir, m.assets.modelFilename)
+}
+
+func (m *Manager) MMProjPath() string {
+	return filepath.Join(m.modelDir, m.assets.mmprojFilename)
 }
 
 func (m *Manager) IsReady() bool {
@@ -105,7 +121,7 @@ func (m *Manager) downloadLocked(ctx context.Context) error {
 	if err := os.MkdirAll(m.modelDir, 0o755); err != nil {
 		return fmt.Errorf("create small model dir: %w", err)
 	}
-	if err := m.downloader.Download(ctx, requiredModelFiles()); err != nil {
+	if err := m.downloader.Download(ctx, requiredModelFiles(m.assets)); err != nil {
 		return fmt.Errorf("download small model: %w", err)
 	}
 	return nil
@@ -116,7 +132,7 @@ func (m *Manager) CancelDownload() {
 }
 
 func (m *Manager) GetStatus() Status {
-	files := requiredModelFiles()
+	files := requiredModelFiles(m.assets)
 	allDownloaded := true
 	fileStatuses := make([]FileStatus, 0, len(files))
 	for _, f := range files {
@@ -160,7 +176,7 @@ func (m *Manager) GetStatus() Status {
 }
 
 func (m *Manager) filesReadyLocked() bool {
-	for _, f := range requiredModelFiles() {
+	for _, f := range requiredModelFiles(m.assets) {
 		if _, err := os.Stat(filepath.Join(m.modelDir, f.Filename)); err != nil {
 			return false
 		}
@@ -168,35 +184,41 @@ func (m *Manager) filesReadyLocked() bool {
 	return true
 }
 
-func requiredModelFiles() []downloader.ModelFile {
-	root := []downloader.ModelFile{
-		modelFile("chat_template.jinja", "chat_template.jinja", "4.4KB"),
-		modelFile("config.json", "config.json", "2.8KB"),
-		modelFile("generation_config.json", "generation_config.json", "223B"),
-		modelFile("preprocessor_config.json", "preprocessor_config.json", "502B"),
-		modelFile("processor_config.json", "processor_config.json", "31.6KB"),
-		modelFile("tokenizer.json", "tokenizer.json", "6.66MB"),
-		modelFile("tokenizer_config.json", "tokenizer_config.json", "5.4KB"),
+func requiredModelFiles(assets modelAssetConfig) []downloader.ModelFile {
+	return []downloader.ModelFile{
+		modelFile(assets.repo, assets.modelFilename, assets.modelFilename, "2.0GB"),
+		modelFile(assets.repo, assets.mmprojFilename, assets.mmprojFilename, "1.0GB"),
 	}
-	onnx := []downloader.ModelFile{
-		modelFile("onnx/decoder_model_merged_q4.onnx", "onnx/decoder_model_merged_q4.onnx", "856KB"),
-		modelFile("onnx/decoder_model_merged_q4.onnx_data", "onnx/decoder_model_merged_q4.onnx_data", "463MB"),
-		modelFile("onnx/embed_tokens_q4.onnx", "onnx/embed_tokens_q4.onnx", "857B"),
-		modelFile("onnx/embed_tokens_q4.onnx_data", "onnx/embed_tokens_q4.onnx_data", "155MB"),
-		modelFile("onnx/vision_encoder_q4.onnx", "onnx/vision_encoder_q4.onnx", "181KB"),
-		modelFile("onnx/vision_encoder_q4.onnx_data", "onnx/vision_encoder_q4.onnx_data", "65.1MB"),
-	}
-	return append(root, onnx...)
 }
 
-func modelFile(filename, repoPath, size string) downloader.ModelFile {
+func modelFile(repo, filename, repoPath, size string) downloader.ModelFile {
 	return downloader.ModelFile{
 		Filename: filename,
-		URL:      "https://huggingface.co/" + onnxRepo + "/resolve/main/" + repoPath,
+		URL:      "https://huggingface.co/" + repo + "/resolve/main/" + repoPath,
 		Mirrors: []string{
-			"https://hf-mirror.com/" + onnxRepo + "/resolve/main/" + repoPath,
-			"https://modelscope.cn/models/" + onnxRepo + "/resolve/master/" + repoPath,
+			"https://hf-mirror.com/" + repo + "/resolve/main/" + repoPath,
+			"https://modelscope.cn/models/" + repo + "/resolve/master/" + repoPath,
 		},
 		Size: size,
+	}
+}
+
+func resolveModelAssetConfig() modelAssetConfig {
+	repo := strings.TrimSpace(os.Getenv("SMALL_MODEL_HF_REPO"))
+	if repo == "" {
+		repo = defaultHFRepo
+	}
+	modelFilename := strings.TrimSpace(os.Getenv("SMALL_MODEL_GGUF_FILENAME"))
+	if modelFilename == "" {
+		modelFilename = defaultModelFilename
+	}
+	mmprojFilename := strings.TrimSpace(os.Getenv("SMALL_MODEL_MMPROJ_FILENAME"))
+	if mmprojFilename == "" {
+		mmprojFilename = defaultMMProjFilename
+	}
+	return modelAssetConfig{
+		repo:           repo,
+		modelFilename:  modelFilename,
+		mmprojFilename: mmprojFilename,
 	}
 }

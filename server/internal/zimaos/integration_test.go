@@ -2,12 +2,25 @@ package zimaos
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func newTCP4Server(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skip test server setup (tcp4 unavailable): %v", err)
+	}
+	srv := httptest.NewUnstartedServer(handler)
+	srv.Listener = ln
+	srv.Start()
+	return srv
+}
 
 func TestNewIntegration(t *testing.T) {
 	cfg := Config{
@@ -81,7 +94,7 @@ func TestIntegration_GetSystemInfo_NotOnZimaOS(t *testing.T) {
 
 func TestIntegration_GetSystemInfo_OnZimaOS(t *testing.T) {
 	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/sys/info" {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{
@@ -123,7 +136,7 @@ func TestIntegration_GetSystemInfo_OnZimaOS(t *testing.T) {
 }
 
 func TestIntegration_ListApps(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/apps" {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`[
@@ -177,7 +190,7 @@ func TestIntegration_ListApps_NotOnZimaOS(t *testing.T) {
 }
 
 func TestIntegration_GetApp(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/apps/app1" {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{
@@ -291,7 +304,7 @@ func TestIntegration_SendNotification_NotOnZimaOS(t *testing.T) {
 
 func TestIntegration_SystemInfoCaching(t *testing.T) {
 	callCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/sys/info" {
 			callCount++
 			w.Header().Set("Content-Type", "application/json")

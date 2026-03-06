@@ -48,6 +48,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sessionaudit"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
@@ -448,6 +449,34 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	// Initialize chat handler
 	chatHandler := server.NewChatHandler(services.MemoryStore, services.LLMRegistry, services.ToolRegistry)
 	chatHandler.SetMetricsRecorder(metricsWriter)
+	if cfg.Session.Audit.Enabled {
+		auditDBPath := cfg.Session.Audit.Path
+		if auditDBPath == "" {
+			auditDBPath = filepath.Join(dataDir, "session_audit.db")
+		}
+		if !filepath.IsAbs(auditDBPath) {
+			// Keep audit DB under dataDir by default for predictable deployment paths.
+			auditDBPath = filepath.Join(dataDir, filepath.Base(auditDBPath))
+		}
+		if err := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); err != nil {
+			zapLogger.Warn("Failed to create session audit directory", zap.String("path", auditDBPath), zap.Error(err))
+		} else {
+			auditStore, err := sessionaudit.NewSQLiteStore(auditDBPath, sessionaudit.StoreConfig{
+				RetentionDays:    cfg.Session.Audit.RetentionDays,
+				CleanupInterval:  cfg.Session.Audit.CleanupInterval,
+				CleanupBatchSize: cfg.Session.Audit.CleanupBatchSize,
+			})
+			if err != nil {
+				zapLogger.Warn("Failed to initialize session audit store", zap.String("path", auditDBPath), zap.Error(err))
+			} else {
+				chatHandler.SetSessionAuditStore(auditStore)
+				registerCleanup(func() error {
+					return auditStore.Close()
+				})
+				zapLogger.Info("Session tool payload audit store enabled", zap.String("path", auditDBPath), zap.Int("retention_days", cfg.Session.Audit.RetentionDays))
+			}
+		}
+	}
 
 	// Initialize external auth service
 	extauthService, _ := extauth.NewService(&extauth.ServiceConfig{

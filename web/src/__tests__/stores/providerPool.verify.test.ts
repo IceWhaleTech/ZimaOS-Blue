@@ -89,16 +89,14 @@ describe('providerPool store verification actions', () => {
       },
     } as never)
 
-    const result = await store.verifyProviderRecommendation('custom-provider', true, 'key-main', 'gpt-5.3-codex')
+    const result = await store.verifyProviderRecommendation('custom-provider', true, 'key-main')
 
     expect(providerPoolApi.verifyProviderByID).toHaveBeenCalledWith('custom-provider', {
       apply: true,
       key_id: 'key-main',
-      model: 'gpt-5.3-codex',
     })
     expect(result.applied).toBe(true)
     expect(store.providers[0]?.api_format).toBe('responses')
     expect(store.providers[0]?.base_url).toBe('https://example.com/v1/responses')
   })
 })
-

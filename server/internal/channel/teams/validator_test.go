@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -34,7 +33,7 @@ func TestTeamsValidator_MissingAppPassword(t *testing.T) {
 }
 
 func TestTeamsValidator_ValidCredentials(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request path contains token endpoint
 		if r.URL.Path != "/botframework.com/oauth2/v2.0/token" {
 			t.Errorf("unexpected path: got %s", r.URL.Path)
@@ -84,7 +83,7 @@ func TestTeamsValidator_ValidCredentials(t *testing.T) {
 }
 
 func TestTeamsValidator_WithTenantID(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify tenant ID is in path
 		if r.URL.Path != "/custom-tenant-id/oauth2/v2.0/token" {
 			t.Errorf("unexpected path: got %s, want /custom-tenant-id/oauth2/v2.0/token", r.URL.Path)
@@ -115,7 +114,7 @@ func TestTeamsValidator_WithTenantID(t *testing.T) {
 }
 
 func TestTeamsValidator_InvalidClient(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"error":             "invalid_client",
 			"error_description": "Invalid client credentials",
@@ -140,7 +139,7 @@ func TestTeamsValidator_InvalidClient(t *testing.T) {
 }
 
 func TestTeamsValidator_UnauthorizedClient(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"error":             "unauthorized_client",
 			"error_description": "Client is not authorized",
@@ -165,7 +164,7 @@ func TestTeamsValidator_UnauthorizedClient(t *testing.T) {
 }
 
 func TestTeamsValidator_InvalidGrant(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"error":             "invalid_grant",
 			"error_description": "Credentials expired",
@@ -190,7 +189,7 @@ func TestTeamsValidator_InvalidGrant(t *testing.T) {
 }
 
 func TestTeamsValidator_OtherError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"error":             "server_error",
 			"error_description": "Internal server error",
@@ -215,7 +214,7 @@ func TestTeamsValidator_OtherError(t *testing.T) {
 }
 
 func TestTeamsValidator_Timeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		json.NewEncoder(w).Encode(map[string]interface{}{"access_token": "token"})
 	}))
@@ -237,7 +236,7 @@ func TestTeamsValidator_Timeout(t *testing.T) {
 }
 
 func TestTeamsValidator_InvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
@@ -257,7 +256,7 @@ func TestTeamsValidator_InvalidJSON(t *testing.T) {
 }
 
 func TestTeamsValidator_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL := server.URL
 	server.Close()
 
@@ -276,7 +275,7 @@ func TestTeamsValidator_NetworkError(t *testing.T) {
 }
 
 func TestTeamsValidator_NoAccessToken(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"token_type": "Bearer",
 			"expires_in": 3600,

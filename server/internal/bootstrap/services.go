@@ -113,9 +113,10 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 	s.LLMRegistry = llm.NewProviderRegistry()
 	registerLLMProviders(s.LLMRegistry, appCfg)
 
-	// Tool registry (file_read, file_write, web_search + memory registered lazily)
+	// Tool registry (read, write, web_search + memory registered lazily)
 	s.ToolRegistry = tools.NewRegistry()
 	tools.RegisterBuiltinToolsWithConfig(s.ToolRegistry, buildWebSearchConfig(appCfg), nil, 0)
+	tools.RegisterFactoryToolDefinitions(s.ToolRegistry)
 
 	// Skill registry (for skill list UI and IPC — NOT bridged to LLM tools)
 	s.SkillRegistry = skill.NewRegistry()

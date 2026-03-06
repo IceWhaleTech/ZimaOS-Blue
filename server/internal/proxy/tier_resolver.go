@@ -29,6 +29,7 @@ type TierResolver struct {
 
 // Priority for built-in small models. Lower index = higher priority.
 var builtinSmallModelPriority = []string{
+	"qwen3.5-0.8b-gguf-q4km",
 	"qwen3.5-0.8b-onnx-q4",
 	"qwen3.5-0.8b-q4kxl",
 	"gpt-4o-mini",
@@ -79,6 +80,7 @@ func buildBuiltinSmallModelSet() map[string]struct{} {
 		}
 	}
 	// Ensure fixed product small-model IDs are always treated as TierSmall.
+	out["qwen3.5-0.8b-gguf-q4km"] = struct{}{}
 	out["qwen3.5-0.8b-onnx-q4"] = struct{}{}
 	out["qwen3.5-0.8b-q4kxl"] = struct{}{}
 	return out

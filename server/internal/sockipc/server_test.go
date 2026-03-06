@@ -16,9 +16,7 @@ func TestServerPingPong(t *testing.T) {
 		return OkResponse(map[string]string{"pong": "1"})
 	})
 
-	if err := srv.Start(); err != nil {
-		t.Fatal(err)
-	}
+	startServerOrSkip(t, srv)
 	defer srv.Close()
 
 	conn, err := net.Dial("unix", sock)
@@ -39,9 +37,7 @@ func TestServerPingPong(t *testing.T) {
 func TestServerUnknownCmd(t *testing.T) {
 	sock := shortSock(t)
 	srv := NewServer(sock, zap.NewNop())
-	if err := srv.Start(); err != nil {
-		t.Fatal(err)
-	}
+	startServerOrSkip(t, srv)
 	defer srv.Close()
 
 	conn, err := net.Dial("unix", sock)
@@ -59,9 +55,7 @@ func TestServerUnknownCmd(t *testing.T) {
 func TestServerMissingCmd(t *testing.T) {
 	sock := shortSock(t)
 	srv := NewServer(sock, zap.NewNop())
-	if err := srv.Start(); err != nil {
-		t.Fatal(err)
-	}
+	startServerOrSkip(t, srv)
 	defer srv.Close()
 
 	conn, err := net.Dial("unix", sock)
@@ -86,9 +80,7 @@ func TestServerMultipleMessages(t *testing.T) {
 		return OkResponse(nil)
 	})
 
-	if err := srv.Start(); err != nil {
-		t.Fatal(err)
-	}
+	startServerOrSkip(t, srv)
 	defer srv.Close()
 
 	conn, err := net.Dial("unix", sock)
@@ -119,9 +111,7 @@ func TestServerStaleSocketCleanup(t *testing.T) {
 		return OkResponse(nil)
 	})
 
-	if err := srv.Start(); err != nil {
-		t.Fatalf("Start failed with stale socket: %v", err)
-	}
+	startServerOrSkip(t, srv)
 	defer srv.Close()
 
 	conn, err := net.Dial("unix", sock)

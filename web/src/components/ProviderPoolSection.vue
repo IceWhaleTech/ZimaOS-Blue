@@ -29,7 +29,6 @@ const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
 const verifyingProvider = ref<string | null>(null)
 const applyingVerification = ref<string | null>(null)
-const verificationModel = ref('')
 const verificationKeyId = ref('')
 const verificationResult = ref<ProviderVerificationResult | null>(null)
 const verificationError = ref('')
@@ -146,27 +145,32 @@ const verificationProbeEntries = computed(() => {
   return entries
 })
 
+let providerSelectionSeq = 0
+
 // Refresh models when provider changes
 watch(() => displayProvider.value, async (provider) => {
   if (!provider) return
+  const seq = ++providerSelectionSeq
+  const providerId = provider.id
+
   // Fetch provider-level models (backend unions all keys automatically)
-  if (store.selectedProviderId) {
-    await store.refreshModels(store.selectedProviderId)
-    fetchProviderUsage(store.selectedProviderId)
-    // Fetch OAuth quota lazily when provider is selected
-    if (provider.oauth?.connected) {
-      store.fetchOAuthQuota(store.selectedProviderId)
-    }
-    // Always fetch OAuth accounts list for OAuth-capable providers
-    if (provider.oauth) {
-      fetchOAuthAccounts(store.selectedProviderId)
-    }
-    // Auto-test all API keys when entering provider detail
-    if (provider.api_keys?.length) {
-      for (const key of provider.api_keys) {
-        if (!keyTestResults.value[key.id]) {
-          testConnection(store.selectedProviderId, key.id)
-        }
+  await store.refreshModels(providerId)
+  if (seq !== providerSelectionSeq) return
+
+  fetchProviderUsage(providerId)
+  // Fetch OAuth quota lazily when provider is selected
+  if (provider.oauth?.connected) {
+    store.fetchOAuthQuota(providerId)
+  }
+  // Always fetch OAuth accounts list for OAuth-capable providers
+  if (provider.oauth) {
+    fetchOAuthAccounts(providerId)
+  }
+  // Auto-test all API keys when entering provider detail
+  if (provider.api_keys?.length) {
+    for (const key of provider.api_keys) {
+      if (!keyTestResults.value[key.id]) {
+        testConnection(providerId, key.id)
       }
     }
   }
@@ -363,7 +367,6 @@ watch(() => displayProvider.value?.id, () => {
   verificationResult.value = null
   verificationError.value = ''
   verificationKeyId.value = ''
-  verificationModel.value = ''
 })
 
 // Methods
@@ -469,8 +472,7 @@ async function runProviderVerification(apply = false) {
     const result = await store.verifyProviderRecommendation(
       provider.id,
       apply,
-      verificationKeyId.value || undefined,
-      verificationModel.value || undefined
+      verificationKeyId.value || undefined
     )
     verificationResult.value = result.verification
 
@@ -499,6 +501,7 @@ async function runProviderVerification(apply = false) {
 function getVerificationProbeLabel(key: string): string {
   const labels: Record<string, string> = {
     models: '/v1/models',
+    anthropic_messages: '/v1/messages',
     chat_completions: '/v1/chat/completions',
     responses_v1: '/v1/responses',
     responses_plain: '/responses',
@@ -528,26 +531,37 @@ async function addCustomProvider() {
 
     let available = 0
     let total = 0
+    // Keep the add-flow probe step snappy so the modal does not feel blocked.
+    const discoveryDeadline = Date.now() + 12000
+    const remainingDiscoveryMs = () => Math.max(0, discoveryDeadline - Date.now())
 
     try {
-      // Race the fetch against a 15s timeout
+      // Fetch models quickly; if the provider is slow/unreachable, continue without blocking.
+      const fetchTimeoutMs = remainingDiscoveryMs()
       const fetchResult = await Promise.race([
         store.refreshModels(providerId),
         new Promise<{ success: false; error: string; models: never[] }>(resolve =>
-          setTimeout(() => resolve({ success: false, error: 'timeout', models: [] }), 15000)
+          setTimeout(() => resolve({ success: false, error: 'timeout', models: [] }), fetchTimeoutMs)
         ),
       ])
 
       if (fetchResult.success && fetchResult.models && fetchResult.models.length > 0) {
-        const probeResult = await Promise.race([
-          store.probeModels(providerId),
-          new Promise<{ success: false; error: string; total: number; available: number; unavailable: number; results: never[] }>(resolve =>
-            setTimeout(() => resolve({ success: false, error: 'timeout', total: 0, available: 0, unavailable: 0, results: [] }), 20000)
-          ),
-        ])
-        if (probeResult.success) {
-          available = probeResult.available
-          total = probeResult.total
+        const probeTimeoutMs = remainingDiscoveryMs()
+        if (probeTimeoutMs > 0) {
+          const probeResult = await Promise.race([
+            // Probe with higher concurrency during add-flow to reduce waiting time.
+            store.probeModels(providerId, 10),
+            new Promise<{ success: false; error: string; total: number; available: number; unavailable: number; results: never[] }>(resolve =>
+              setTimeout(() => resolve({ success: false, error: 'timeout', total: 0, available: 0, unavailable: 0, results: [] }), probeTimeoutMs)
+            ),
+          ])
+          if (probeResult.success) {
+            available = probeResult.available
+            total = probeResult.total
+          } else {
+            total = fetchResult.models.length
+            available = total
+          }
         } else {
           total = fetchResult.models.length
           available = total
@@ -1755,28 +1769,17 @@ onMounted(() => {
               </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-              <div>
-                <label class="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.verifyModelLabel') }}</label>
-                <input
-                  v-model.trim="verificationModel"
-                  type="text"
-                  :placeholder="t('providerPool.verifyModelPlaceholder')"
-                  class="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-400"
-                />
-              </div>
-              <div v-if="displayProvider!.api_keys?.length">
-                <label class="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.verifyKeyLabel') }}</label>
-                <select
-                  v-model="verificationKeyId"
-                  class="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-400"
-                >
-                  <option value="">{{ t('providerPool.verifyKeyAuto') }}</option>
-                  <option v-for="key in displayProvider!.api_keys" :key="key.id" :value="key.id">
-                    {{ key.key_hash }}{{ key.label ? ` (${formatKeyLabel(key.label)})` : '' }}
-                  </option>
-                </select>
-              </div>
+            <div v-if="displayProvider!.api_keys?.length" class="mb-2">
+              <label class="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.verifyKeyLabel') }}</label>
+              <select
+                v-model="verificationKeyId"
+                class="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-400"
+              >
+                <option value="">{{ t('providerPool.verifyKeyAuto') }}</option>
+                <option v-for="key in displayProvider!.api_keys" :key="key.id" :value="key.id">
+                  {{ key.key_hash }}{{ key.label ? ` (${formatKeyLabel(key.label)})` : '' }}
+                </option>
+              </select>
             </div>
 
             <div v-if="verificationError" class="text-xs text-red-600 dark:text-red-400 break-all mb-2">

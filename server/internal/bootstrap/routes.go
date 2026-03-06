@@ -85,16 +85,33 @@ var routesStartTime = timeutil.NowTime()
 
 const defaultCCCLIModel = "gpt-5.3-codex-spark"
 
-func resolveDefaultModelForCCCLI(model string, handler *claudecode.Handler) string {
+func shouldUseDefaultCCCLIModel(pool *providerpool.Pool, modelID string) bool {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return false
+	}
+	if pool == nil || pool.Discovery == nil {
+		// Keep legacy behavior when provider pool is unavailable.
+		return true
+	}
+	m, _, err := pool.Discovery.FindModel(modelID)
+	return err == nil && m != nil && m.Enabled
+}
+
+func resolveDefaultModelForCCCLI(model string, handler *claudecode.Handler, pool *providerpool.Pool) string {
 	normalized := strings.TrimSpace(model)
 	if normalized == "" {
 		if handler != nil && handler.IsEnabled() {
-			return defaultCCCLIModel
+			if shouldUseDefaultCCCLIModel(pool, defaultCCCLIModel) {
+				return defaultCCCLIModel
+			}
+			return "auto"
 		}
 		return "auto"
 	}
-	if strings.EqualFold(normalized, "auto") && handler != nil && handler.IsEnabled() {
-		return defaultCCCLIModel
+	// Respect explicit auto selection from UI/API.
+	if strings.EqualFold(normalized, "auto") {
+		return "auto"
 	}
 	return model
 }
@@ -146,13 +163,14 @@ func resolveMCPWorkspaceRoot(dataDir string, appCfg *config.Config) string {
 type proxyBridgeLLMCaller struct {
 	bridge            *proxybridge.Bridge
 	claudeCodeHandler *claudecode.Handler
+	providerPool      *providerpool.Pool
 }
 
 func (c *proxyBridgeLLMCaller) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	if c == nil || c.bridge == nil {
 		return nil, fmt.Errorf("proxy bridge is not configured")
 	}
-	req.Model = resolveDefaultModelForCCCLI(req.Model, c.claudeCodeHandler)
+	req.Model = resolveDefaultModelForCCCLI(req.Model, c.claudeCodeHandler, c.providerPool)
 	return c.bridge.Chat(ctx, req)
 }
 
@@ -962,9 +980,13 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		deps.ChatHandler.SetToolSelector(ts)
 	}
-	// Tool router: dynamic exposure + schema compression.
-	// Keep enabled even when smart selection is off.
-	deps.ChatHandler.SetToolRouter(tools.DefaultToolRouter())
+	// Tool router: dynamic exposure + schema compression (config-driven, default off).
+	toolRouter := tools.DefaultToolRouter()
+	toolRouter.DynamicExposure = deps.Config.ToolCalling.ToolRouterDynamicExposure
+	toolRouter.SchemaCompression = deps.Config.ToolCalling.ToolRouterSchemaCompression
+	if toolRouter.DynamicExposure || toolRouter.SchemaCompression {
+		deps.ChatHandler.SetToolRouter(toolRouter)
+	}
 	// Smart skill selection (progressive: rule -> IR -> optional rerank)
 	if deps.Config.ToolCalling.SmartSkillSelection {
 		workspaceDir := filepath.Join(cfg.DataDir, "workspace")
@@ -1385,9 +1407,9 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		})
 	}
 
-	// Management tool: skill-only in v0.10.31 (tool registration removed).
-	// Service adapters are still wired for the mgmt skill/CLI subcommand.
-	mgmtTool := tools.NewMgmtTool()
+	// Management tool: register as a native tool and wire service adapters.
+	// It is also used by the mgmt skill/CLI subcommand path.
+	mgmtTool := tools.RegisterMgmtTool(s.ToolRegistry)
 	// Wire services that are available now
 	if deps.ProviderPool != nil {
 		mgmtTool.SetProviders(&mgmtProviderAdapter{pool: deps.ProviderPool})
@@ -1503,7 +1525,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 					}
 				}
 				return func(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
-					req.Model = resolveDefaultModelForCCCLI(req.Model, deps.ClaudeCodeHandler)
+					req.Model = resolveDefaultModelForCCCLI(req.Model, deps.ClaudeCodeHandler, deps.ProviderPool)
 					return pc.Chat(ctx, req)
 				}
 			}(),
@@ -2117,6 +2139,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		agentLLMCaller = &proxyBridgeLLMCaller{
 			bridge:            bridge,
 			claudeCodeHandler: deps.ClaudeCodeHandler,
+			providerPool:      deps.ProviderPool,
 		}
 		deps.ChatHandler.SetProxyBridge(bridge)
 		deps.ChatHandler.SetIMModel("auto") // proxy auto-selects model
@@ -2124,7 +2147,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		// Wire LLM calls for voice mode through the same proxy pipeline
 		if deps.VoiceHandler != nil {
 			deps.VoiceHandler.Service().SetChatFunc(func(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
-				req.Model = resolveDefaultModelForCCCLI(req.Model, deps.ClaudeCodeHandler)
+				req.Model = resolveDefaultModelForCCCLI(req.Model, deps.ClaudeCodeHandler, deps.ProviderPool)
 				return bridge.Chat(ctx, req)
 			})
 		}
@@ -2375,7 +2398,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			}
 			if deps.ChatHandler != nil {
 				aiResponse, err := deps.ChatHandler.ProcessChannelMessage(ctx, msg)
-				if err == nil && aiResponse != "" {
+				if err != nil {
+					return nil, err
+				}
+				if aiResponse != "" {
 					return &channel.OutgoingMessage{ChatID: msg.ChatID, Content: aiResponse}, nil
 				}
 			}
@@ -2438,7 +2464,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	settingsHandler.SetChatHandler(deps.ChatHandler)
 	smManager := smallmodel.NewManager(cfg.DataDir)
 	settingsHandler.SetSmallModelManager(smManager)
-	smallRuntime := smallmodel.NewNativeRuntime(smManager)
+	smallRuntime := smallmodel.NewLlamaCppRuntime(smManager)
 	deps.ChatHandler.SetSmallModelRuntime(smallRuntime)
 	settingsHandler.RegisterRoutes(protected)
 	// Also make locale available to provider settings handler

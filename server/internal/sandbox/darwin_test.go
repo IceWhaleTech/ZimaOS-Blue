@@ -33,6 +33,7 @@ func TestDarwinExecutor_Execute(t *testing.T) {
 
 	ctx := context.Background()
 	result, err := executor.Execute(ctx, req)
+	skipIfSandboxExecUnavailable(t, result, err)
 
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -60,6 +61,7 @@ func TestDarwinExecutor_Execute_WithEnv(t *testing.T) {
 
 	ctx := context.Background()
 	result, err := executor.Execute(ctx, req)
+	skipIfSandboxExecUnavailable(t, result, err)
 
 	if err != nil {
 		t.Fatalf("Execute(env) error = %v", err)
@@ -82,6 +84,7 @@ func TestDarwinExecutor_Execute_Timeout(t *testing.T) {
 
 	ctx := context.Background()
 	result, err := executor.Execute(ctx, req)
+	skipIfSandboxExecUnavailable(t, result, err)
 
 	if err != nil {
 		t.Fatalf("Execute(timeout) error = %v", err)
@@ -104,6 +107,7 @@ func TestDarwinExecutor_Execute_Failed(t *testing.T) {
 
 	ctx := context.Background()
 	result, err := executor.Execute(ctx, req)
+	skipIfSandboxExecUnavailable(t, result, err)
 
 	if err != nil {
 		t.Fatalf("Execute(failed) error = %v", err)
@@ -126,6 +130,7 @@ func TestDarwinExecutor_Execute_ResourceUsage(t *testing.T) {
 
 	ctx := context.Background()
 	result, err := executor.Execute(ctx, req)
+	skipIfSandboxExecUnavailable(t, result, err)
 
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -168,6 +173,7 @@ func TestDarwinExecutor_GetStatus(t *testing.T) {
 
 	ctx := context.Background()
 	result, _ := executor.Execute(ctx, req)
+	skipIfSandboxExecUnavailable(t, result, nil)
 
 	status, err := executor.GetStatus(result.ID)
 	if err != nil {

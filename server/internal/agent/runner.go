@@ -1230,12 +1230,19 @@ Suggested next steps:
 		Temperature: 0.3,
 	})
 	if err != nil {
-		// Fallback to simple summary
-		result := fmt.Sprintf("Completed %d/%d steps", completed, len(task.Plan))
+		// Fallback to deterministic summary + next-step guidance.
+		result := fmt.Sprintf("Summary: Completed %d/%d steps", completed, len(task.Plan))
 		if failed > 0 {
 			result += fmt.Sprintf(" (%d failed)", failed)
+			return result + ".\n\nSuggested next steps:\n" +
+				"1. Inspect the failed steps and retry with a safer fallback path.\n" +
+				"2. Re-run validation to confirm the recovery result.\n" +
+				"3. Tell me whether to continue fixing remaining issues or finalize the report."
 		}
-		return result + "."
+		return result + ".\n\nSuggested next steps:\n" +
+			"1. Verify the deliverables in your environment.\n" +
+			"2. Run relevant tests to confirm no regressions.\n" +
+			"3. Tell me what to optimize next."
 	}
 	return strings.TrimSpace(resp.Message.Content)
 }

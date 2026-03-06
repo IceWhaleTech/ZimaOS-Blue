@@ -3,7 +3,6 @@ package security
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"testing"
 )
@@ -54,7 +53,7 @@ func TestSplitDomainRR(t *testing.T) {
 func TestAliDNSSignature(t *testing.T) {
 	// Verify that doAPI produces a valid Signature parameter
 	var captured url.Values
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTCP4TLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		captured = r.URL.Query()
 		w.Write([]byte(`{"RecordId":"123"}`))
 	}))
@@ -84,7 +83,7 @@ func TestAliDNSSignature(t *testing.T) {
 
 func TestAliDNSCleanUp(t *testing.T) {
 	var actions []string
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTCP4TLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		actions = append(actions, q.Get("Action"))
 		switch q.Get("Action") {

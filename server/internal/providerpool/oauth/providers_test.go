@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"testing"
 )
@@ -35,7 +34,7 @@ func TestGoogleOAuthClientSecretsDefaultEmpty(t *testing.T) {
 
 func TestExchangeCodeSkipsEmptyClientSecret(t *testing.T) {
 	var captured url.Values
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Fatalf("read request body: %v", err)
@@ -68,7 +67,7 @@ func TestExchangeCodeSkipsEmptyClientSecret(t *testing.T) {
 
 func TestRefreshTokenIncludesClientSecretWhenPresent(t *testing.T) {
 	var captured url.Values
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Fatalf("read request body: %v", err)

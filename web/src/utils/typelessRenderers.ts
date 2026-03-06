@@ -18,6 +18,12 @@ import type {
 import { i18n } from '@/i18n'
 import { parseInline, highlightCode } from './markdown'
 
+const TYPELESS_INLINE_OPTIONS = { allowUnderscoreEmphasis: false } as const
+
+function parseTypelessInline(text: string): string {
+  return parseInline(text, TYPELESS_INLINE_OPTIONS)
+}
+
 // ============================================================================
 // Render Cache - LRU cache for rendered card HTML
 // ============================================================================
@@ -232,7 +238,7 @@ function renderTable(card: TypelessCardTable): string {
   const headersHtml = card.headers.length > 0
     ? `<thead>
         <tr class="bg-gray-50 dark:bg-gray-700/50">
-          ${card.headers.map(h => `<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">${parseInline(String(h))}</th>`).join('')}
+          ${card.headers.map(h => `<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">${parseTypelessInline(String(h))}</th>`).join('')}
         </tr>
       </thead>`
     : ''
@@ -240,7 +246,7 @@ function renderTable(card: TypelessCardTable): string {
   const rowsHtml = card.rows.map((row, rowIndex) => {
     const stripedClass = card.striped && rowIndex % 2 === 1 ? 'bg-gray-50 dark:bg-gray-700/30' : ''
     const cells = row.map(cell =>
-      `<td class="px-4 py-3 text-gray-700 dark:text-gray-300${card.compact ? ' py-2' : ''}">${parseInline(String(cell))}</td>`
+      `<td class="px-4 py-3 text-gray-700 dark:text-gray-300${card.compact ? ' py-2' : ''}">${parseTypelessInline(String(cell))}</td>`
     ).join('')
     return `<tr class="${stripedClass} hover:bg-gray-50 dark:hover:bg-gray-700/50">${cells}</tr>`
   }).join('')
@@ -422,7 +428,7 @@ function renderList(card: TypelessCardList): string {
     return `<li class="flex items-start gap-2 ${textClass}">
       ${iconHtml}
       <div class="flex-1">
-        <span>${parseInline(item.content)}</span>
+        <span>${parseTypelessInline(item.content)}</span>
         ${subItemsHtml}
       </div>
     </li>`
@@ -486,7 +492,7 @@ function renderList(card: TypelessCardList): string {
         <div class="flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${checkboxBg} transition-colors">
           ${checkIcon}
         </div>
-        <span class="flex-1 text-sm ${textClass} transition-colors">${parseInline(item.content)}</span>
+        <span class="flex-1 text-sm ${textClass} transition-colors">${parseTypelessInline(item.content)}</span>
         ${checked ? '<span class="text-xs text-green-500 dark:text-green-400">✓</span>' : ''}
       </li>`
     }).join('')
@@ -513,7 +519,7 @@ function renderList(card: TypelessCardList): string {
       return `<div class="relative flex items-start gap-4 pb-4 last:pb-0">
         <div class="absolute left-0 w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-700 ${dotClass}"></div>
         <div class="flex-1 min-w-0 ml-6">
-          <p class="text-gray-700 dark:text-gray-300">${parseInline(item.content)}</p>
+          <p class="text-gray-700 dark:text-gray-300">${parseTypelessInline(item.content)}</p>
           ${timestampHtml}
         </div>
       </div>`
@@ -540,12 +546,12 @@ function renderList(card: TypelessCardList): string {
  * Render info card
  */
 function renderInfo(card: TypelessCardInfo): string {
-  const defaultStyle = { bg: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20', border: 'border-gray-900 dark:border-white dark:border-gray-900 dark:border-white', icon: 'text-gray-900 dark:text-white' }
+  const defaultStyle = { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', icon: 'text-blue-600 dark:text-blue-300' }
   const variantStyles: Record<string, { bg: string; border: string; icon: string }> = {
     default: defaultStyle,
-    success: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-200 dark:border-green-800', icon: 'text-green-500' },
-    warning: { bg: 'bg-yellow-50 dark:bg-yellow-900/20', border: 'border-yellow-200 dark:border-yellow-800', icon: 'text-yellow-500' },
-    error: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800', icon: 'text-red-500' },
+    success: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-200 dark:border-green-800', icon: 'text-green-600 dark:text-green-300' },
+    warning: { bg: 'bg-yellow-50 dark:bg-yellow-900/20', border: 'border-yellow-200 dark:border-yellow-800', icon: 'text-yellow-600 dark:text-yellow-300' },
+    error: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800', icon: 'text-red-600 dark:text-red-300' },
   }
 
   const style = variantStyles[card.variant || 'default'] || defaultStyle
@@ -559,7 +565,7 @@ function renderInfo(card: TypelessCardInfo): string {
     : ''
 
   const contentHtml = card.content
-    ? `<p class="text-sm text-gray-600 dark:text-gray-400">${parseInline(card.content)}</p>`
+    ? `<p class="text-sm text-gray-600 dark:text-gray-400">${parseTypelessInline(card.content)}</p>`
     : ''
 
   return `<div class="info-card rounded-lg border ${style.border} ${style.bg} p-4">
@@ -583,7 +589,7 @@ function renderQuote(card: TypelessCardQuote): string {
 
   return `<div class="quote-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <blockquote class="p-4 border-l-4 border-gray-900 dark:border-white">
-      <p class="text-gray-700 dark:text-gray-300 italic">${parseInline(card.content)}</p>
+      <p class="text-gray-700 dark:text-gray-300 italic">${parseTypelessInline(card.content)}</p>
       ${authorHtml}
     </blockquote>
   </div>`
@@ -594,10 +600,10 @@ function renderQuote(card: TypelessCardQuote): string {
  */
 function renderAlert(card: TypelessCardAlert): string {
   const defaultStyle = {
-    bg: 'bg-gray-700 dark:bg-gray-700 dark:bg-gray-700 dark:bg-gray-700/20',
-    border: 'border-gray-900 dark:border-white dark:border-gray-900 dark:border-white',
-    text: 'text-gray-900 dark:text-white dark:text-gray-900 dark:text-white',
-    icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
+    bg: 'bg-blue-50 dark:bg-blue-900/20',
+    border: 'border-blue-200 dark:border-blue-800',
+    text: 'text-blue-800 dark:text-blue-200',
+    icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-600 dark:text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
   }
   const variantStyles: Record<string, { bg: string; border: string; text: string; icon: string }> = {
     info: defaultStyle,
@@ -632,7 +638,7 @@ function renderAlert(card: TypelessCardAlert): string {
       <div class="flex-shrink-0">${style.icon}</div>
       <div class="flex-1 min-w-0">
         ${titleHtml}
-        <p class="text-sm">${parseInline(card.message)}</p>
+        <p class="text-sm">${parseTypelessInline(card.message)}</p>
       </div>
     </div>
   </div>`

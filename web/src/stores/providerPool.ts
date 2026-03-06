@@ -262,7 +262,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     }
   }
 
-  async function probeModels(providerId: string) {
+  async function probeModels(providerId: string, concurrency = 5) {
     try {
       if (isMediaProvider(providerId)) {
         const mediaModels = models.value.filter(m => m.provider_id === providerId)
@@ -274,7 +274,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
           results: [],
         }
       }
-      const response = await providerPoolApi.probeProviderModels(providerId)
+      const response = await providerPoolApi.probeProviderModels(providerId, concurrency)
       // After probing, refresh the model list to reflect enabled/disabled state
       await fetchModels(providerId)
       return {
@@ -464,12 +464,11 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
     }
   }
 
-  async function verifyProviderRecommendation(providerId: string, apply = false, keyId?: string, model?: string) {
+  async function verifyProviderRecommendation(providerId: string, apply = false, keyId?: string) {
     try {
       const response = await providerPoolApi.verifyProviderByID(providerId, {
         apply,
         key_id: keyId || undefined,
-        model: model?.trim() || undefined,
       })
 
       const updatedProvider = response.data.provider
@@ -503,7 +502,17 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
         }
         return response.data
       }
-      const response = await providerPoolApi.testProvider(id, keyId)
+      let response
+      try {
+        response = await providerPoolApi.testProvider(id, keyId)
+      } catch (e: any) {
+        // Key-level test can race with key updates; retry once at provider-level.
+        if (keyId && e?.response?.status === 404) {
+          response = await providerPoolApi.testProvider(id)
+        } else {
+          throw e
+        }
+      }
       if (provider) {
         provider.status = response.data.healthy ? 'active' : 'error'
         provider.last_health_check = response.data.checked_at

@@ -1076,6 +1076,283 @@ func TestRouterSingleProvider_NoCooldownPenalty(t *testing.T) {
 	}
 }
 
+func TestRouterSingleProvider_ErrorStatusStillRoutes(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-single-provider-error-status-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	provider := &Provider{
+		ID:      "provider-only-error",
+		Name:    "Only Provider Error",
+		Type:    ProviderTypeCustom,
+		Enabled: true,
+		Status:  ProviderStatusError,
+		APIKeys: []APIKey{{ID: "k1", Key: "key1", Enabled: true}},
+	}
+	registry.Register(provider)
+	storage.SaveModels(provider.ID, []*Model{{
+		ID:          "test-model",
+		ProviderID:  provider.ID,
+		Name:        "test-model",
+		DisplayName: "Test Model",
+		Enabled:     true,
+	}})
+	router.RebuildCandidates()
+
+	result, routeErr := router.Route(&RouteRequest{ModelID: "test-model"})
+	if routeErr != nil {
+		t.Fatalf("Route failed: %v", routeErr)
+	}
+	if result.Provider.ID != provider.ID {
+		t.Fatalf("expected provider %s, got %s", provider.ID, result.Provider.ID)
+	}
+}
+
+func TestRouterSingleProvider_BlindFallbackBypassesErrorStatus(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-single-provider-error-blind-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	provider := &Provider{
+		ID:      "provider-only-error",
+		Name:    "Only Provider Error",
+		Type:    ProviderTypeCustom,
+		Enabled: true,
+		Status:  ProviderStatusError,
+		APIKeys: []APIKey{{ID: "k1", Key: "key1", Enabled: true}},
+	}
+	registry.Register(provider)
+	router.RebuildCandidates()
+
+	var tried []string
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID: "nonexistent-model",
+	}, func(result *RouteResult) error {
+		tried = append(tried, result.Provider.ID)
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("Expected success, got: %v", err)
+	}
+	if len(tried) != 1 || tried[0] != provider.ID {
+		t.Fatalf("Expected blind fallback to try only %s, got %v", provider.ID, tried)
+	}
+}
+
+func TestRouterPreferredProviderPinned(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-preferred-provider-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	highPriority := &Provider{
+		ID: "provider-high", Name: "High Priority", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 100,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k1", Key: "key1", Enabled: true}},
+	}
+	lowPriority := &Provider{
+		ID: "provider-low", Name: "Low Priority", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 10,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k2", Key: "key2", Enabled: true}},
+	}
+
+	if err := registry.Register(highPriority); err != nil {
+		t.Fatalf("Register highPriority failed: %v", err)
+	}
+	if err := registry.Register(lowPriority); err != nil {
+		t.Fatalf("Register lowPriority failed: %v", err)
+	}
+
+	model := &Model{
+		ID: "gpt-5.3-codex-spark", ProviderID: "provider-high", Name: "gpt-5.3-codex-spark",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true, FunctionCall: true},
+	}
+	if err := storage.SaveModels("provider-high", []*Model{model}); err != nil {
+		t.Fatalf("SaveModels provider-high failed: %v", err)
+	}
+	model2 := *model
+	model2.ProviderID = "provider-low"
+	if err := storage.SaveModels("provider-low", []*Model{&model2}); err != nil {
+		t.Fatalf("SaveModels provider-low failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	result, err := router.Route(&RouteRequest{
+		ModelID:             "gpt-5.3-codex-spark",
+		PreferredProviderID: "provider-low",
+	})
+	if err != nil {
+		t.Fatalf("Route failed: %v", err)
+	}
+	if result.Provider.ID != "provider-low" {
+		t.Fatalf("expected preferred provider-low, got %s", result.Provider.ID)
+	}
+	if len(result.Fallbacks) == 0 || result.Fallbacks[0].Provider.ID != "provider-high" {
+		t.Fatalf("expected provider-high as fallback, got %+v", result.Fallbacks)
+	}
+}
+
+func TestRouterDynamicProviderRegisterUnregisterUpdatesRouting(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-dynamic-provider-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	base := &Provider{
+		ID: "provider-base", Name: "Base", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 50,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "kb", Key: "key-base", Enabled: true}},
+	}
+	if err := registry.Register(base); err != nil {
+		t.Fatalf("Register base failed: %v", err)
+	}
+	if err := storage.SaveModels(base.ID, []*Model{{
+		ID: "gpt-5.3-codex-spark", ProviderID: base.ID, Name: "gpt-5.3-codex-spark",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true, FunctionCall: true},
+	}}); err != nil {
+		t.Fatalf("SaveModels base failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	req := &RouteRequest{ModelID: "gpt-5.3-codex-spark", RequireCap: &ModelCapabilities{FunctionCall: true}}
+	result, err := router.Route(req)
+	if err != nil {
+		t.Fatalf("initial Route failed: %v", err)
+	}
+	if result.Provider.ID != base.ID {
+		t.Fatalf("expected base provider, got %s", result.Provider.ID)
+	}
+
+	dynamic := &Provider{
+		ID: "provider-dynamic", Name: "Dynamic", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 120,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "kd", Key: "key-dynamic", Enabled: true}},
+	}
+	if err := storage.SaveModels(dynamic.ID, []*Model{{
+		ID: "gpt-5.3-codex-spark", ProviderID: dynamic.ID, Name: "gpt-5.3-codex-spark",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true, FunctionCall: true},
+	}}); err != nil {
+		t.Fatalf("SaveModels dynamic failed: %v", err)
+	}
+	if err := registry.Register(dynamic); err != nil {
+		t.Fatalf("Register dynamic failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	result, err = router.Route(req)
+	if err != nil {
+		t.Fatalf("Route after dynamic register failed: %v", err)
+	}
+	if result.Provider.ID != dynamic.ID {
+		t.Fatalf("expected dynamic provider after register, got %s", result.Provider.ID)
+	}
+
+	if err := registry.Unregister(dynamic.ID); err != nil {
+		t.Fatalf("Unregister dynamic failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	result, err = router.Route(req)
+	if err != nil {
+		t.Fatalf("Route after dynamic unregister failed: %v", err)
+	}
+	if result.Provider.ID != base.ID {
+		t.Fatalf("expected base provider after dynamic unregister, got %s", result.Provider.ID)
+	}
+}
+
+func TestRouterDynamicAPIKeyChangesAffectRouting(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-dynamic-apikey-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	provider := &Provider{
+		ID: "provider-keyed", Name: "Keyed", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 100,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k1", Key: "key-1", Enabled: true}},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register provider failed: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*Model{{
+		ID: "gpt-5.3-codex-spark", ProviderID: provider.ID, Name: "gpt-5.3-codex-spark",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true, FunctionCall: true},
+	}}); err != nil {
+		t.Fatalf("SaveModels failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	req := &RouteRequest{ModelID: "gpt-5.3-codex-spark", RequireCap: &ModelCapabilities{FunctionCall: true}}
+	result, err := router.Route(req)
+	if err != nil {
+		t.Fatalf("initial Route failed: %v", err)
+	}
+	if result.Provider.ID != provider.ID {
+		t.Fatalf("expected provider-keyed initially, got %s", result.Provider.ID)
+	}
+
+	if err := registry.RemoveAPIKey(provider.ID, "k1"); err != nil {
+		t.Fatalf("RemoveAPIKey failed: %v", err)
+	}
+	router.RebuildCandidates()
+	if _, err := router.Route(req); !errors.Is(err, ErrNoAvailableProvider) {
+		t.Fatalf("expected ErrNoAvailableProvider after key removal, got %v", err)
+	}
+
+	if err := registry.AddAPIKey(provider.ID, &APIKey{
+		ID: "k2", Key: "key-2", Enabled: true,
+	}); err != nil {
+		t.Fatalf("AddAPIKey failed: %v", err)
+	}
+	router.RebuildCandidates()
+	result, err = router.Route(req)
+	if err != nil {
+		t.Fatalf("Route after key add failed: %v", err)
+	}
+	if result.Provider.ID != provider.ID {
+		t.Fatalf("expected provider-keyed after key add, got %s", result.Provider.ID)
+	}
+}
+
 func TestRouterCooldownReset(t *testing.T) {
 	router, cleanup := setupRouterTest(t)
 	defer cleanup()
@@ -1173,7 +1450,10 @@ func TestRouterTransientCooldown(t *testing.T) {
 	}
 
 	// Short cooldown expires quickly
-	time.Sleep(80 * time.Millisecond)
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for router.IsInCooldown(providerID) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if router.IsInCooldown(providerID) {
 		t.Error("Transient cooldown should have expired after 80ms (initial=50ms)")
 	}
@@ -1708,6 +1988,46 @@ func TestRouterBlindFallback_AllFail(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("Expected error when all providers fail")
+	}
+}
+
+// TestRouterBlindFallback_EmptyModelSkipsBlindFallback verifies that model=""
+// (auto mode) does not enter blind fallback when no routable models exist.
+func TestRouterBlindFallback_EmptyModelSkipsBlindFallback(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-empty-model-no-blind-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	// Provider exists but has no discovered/allowed models.
+	provider := &Provider{
+		ID: "provider-no-models", Name: "Provider No Models", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 100,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k1", Key: "key1", Enabled: true}},
+	}
+	registry.Register(provider)
+	router.RebuildCandidates()
+
+	attempts := 0
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID: "",
+	}, func(result *RouteResult) error {
+		attempts++
+		return nil
+	})
+
+	if !errors.Is(err, ErrNoAvailableProvider) {
+		t.Fatalf("expected ErrNoAvailableProvider, got %v", err)
+	}
+	if attempts != 0 {
+		t.Fatalf("expected 0 attempts for empty-model blind fallback, got %d", attempts)
 	}
 }
 

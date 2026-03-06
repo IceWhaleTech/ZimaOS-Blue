@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -34,7 +33,7 @@ func TestMattermostValidator_MissingBotToken(t *testing.T) {
 }
 
 func TestMattermostValidator_ValidCredentials(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request path
 		if r.URL.Path != "/api/v4/users/me" {
 			t.Errorf("unexpected path: got %s", r.URL.Path)
@@ -83,7 +82,7 @@ func TestMattermostValidator_ValidCredentials(t *testing.T) {
 }
 
 func TestMattermostValidator_ServerURLWithTrailingSlash(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Should not have double slashes
 		if r.URL.Path != "/api/v4/users/me" {
 			t.Errorf("unexpected path: got %s", r.URL.Path)
@@ -110,7 +109,7 @@ func TestMattermostValidator_ServerURLWithTrailingSlash(t *testing.T) {
 }
 
 func TestMattermostValidator_Unauthorized(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"id":          "api.context.session_expired.app_error",
 			"message":     "Invalid or expired session",
@@ -136,7 +135,7 @@ func TestMattermostValidator_Unauthorized(t *testing.T) {
 }
 
 func TestMattermostValidator_Forbidden(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"id":          "api.context.permissions.app_error",
 			"message":     "You do not have the appropriate permissions",
@@ -162,7 +161,7 @@ func TestMattermostValidator_Forbidden(t *testing.T) {
 }
 
 func TestMattermostValidator_ServerError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"id":          "api.context.internal_error",
 			"message":     "Internal server error",
@@ -188,7 +187,7 @@ func TestMattermostValidator_ServerError(t *testing.T) {
 }
 
 func TestMattermostValidator_Timeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		json.NewEncoder(w).Encode(map[string]interface{}{"id": "123"})
 	}))
@@ -210,7 +209,7 @@ func TestMattermostValidator_Timeout(t *testing.T) {
 }
 
 func TestMattermostValidator_InvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
@@ -230,7 +229,7 @@ func TestMattermostValidator_InvalidJSON(t *testing.T) {
 }
 
 func TestMattermostValidator_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL := server.URL
 	server.Close()
 

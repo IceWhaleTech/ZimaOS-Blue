@@ -39,9 +39,7 @@ func TestE2EGenerateAndPoll(t *testing.T) {
 	sock := shortSock(t)
 	srv := NewServer(sock, zap.NewNop())
 	RegisterMediaHandlers(srv, gen, query, zap.NewNop())
-	if err := srv.Start(); err != nil {
-		t.Fatal(err)
-	}
+	startServerOrSkip(t, srv)
 	defer srv.Close()
 
 	conn, err := net.Dial("unix", sock)
@@ -107,9 +105,7 @@ func TestE2EParamPassthrough(t *testing.T) {
 	sock := shortSock(t)
 	srv := NewServer(sock, zap.NewNop())
 	RegisterMediaHandlers(srv, gen, query, zap.NewNop())
-	if err := srv.Start(); err != nil {
-		t.Fatal(err)
-	}
+	startServerOrSkip(t, srv)
 	defer srv.Close()
 
 	conn, err := net.Dial("unix", sock)

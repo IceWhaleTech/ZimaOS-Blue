@@ -125,12 +125,12 @@ func (m *MemoryTool) executeSearch(ctx context.Context, args map[string]interfac
 			continue
 		}
 		filteredResults = append(filteredResults, map[string]interface{}{
-			"id":         r.Chunk.ID,
-			"content":    content,
-			"score":      r.CombinedScore,
+			"id":          r.Chunk.ID,
+			"content":     content,
+			"score":       r.CombinedScore,
 			"match_types": r.MatchTypes,
-			"created_at": r.Chunk.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			"metadata":   r.Chunk.Metadata,
+			"created_at":  r.Chunk.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			"metadata":    r.Chunk.Metadata,
 		})
 	}
 
@@ -174,10 +174,34 @@ func (m *MemoryTool) executeRemember(ctx context.Context, args map[string]interf
 	}
 
 	var tags []string
-	if rawTags, ok := args["tags"].([]interface{}); ok {
+	switch rawTags := args["tags"].(type) {
+	case []interface{}:
 		for _, t := range rawTags {
 			if s, ok := t.(string); ok {
-				tags = append(tags, s)
+				if trimmed := strings.TrimSpace(s); trimmed != "" {
+					tags = append(tags, trimmed)
+				}
+			}
+		}
+	case []string:
+		for _, t := range rawTags {
+			if trimmed := strings.TrimSpace(t); trimmed != "" {
+				tags = append(tags, trimmed)
+			}
+		}
+	case string:
+		if trimmed := strings.TrimSpace(rawTags); trimmed != "" {
+			for _, part := range strings.Split(trimmed, ",") {
+				if tag := strings.TrimSpace(part); tag != "" {
+					tags = append(tags, tag)
+				}
+			}
+		}
+	}
+	if len(tags) == 0 {
+		if category, ok := args["category"].(string); ok {
+			if trimmed := strings.TrimSpace(category); trimmed != "" {
+				tags = append(tags, trimmed)
 			}
 		}
 	}

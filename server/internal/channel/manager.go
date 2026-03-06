@@ -12,6 +12,8 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 )
 
+const managerSendTimeoutFallback = 10 * time.Second
+
 // Manager manages all messaging channels.
 type Manager struct {
 	mu       sync.RWMutex
@@ -207,7 +209,7 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(m.ctx, time.Duration(m.config.DefaultTimeoutSeconds)*time.Second)
+	processCtx, cancel := context.WithTimeout(m.ctx, time.Duration(m.config.DefaultTimeoutSeconds)*time.Second)
 	defer cancel()
 
 	m.logger.Debug("processing message",
@@ -218,7 +220,7 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 
 	// Send typing indicator immediately so the user sees the bot is working
 	if ti, ok := ch.(TypingIndicator); ok {
-		if err := ti.SendTyping(ctx, msg.ChatID); err != nil {
+		if err := ti.SendTyping(processCtx, msg.ChatID); err != nil {
 			m.logger.Debug("failed to send typing indicator",
 				zap.String("channel", ch.Name()),
 				zap.String("chat_id", msg.ChatID),
@@ -242,10 +244,10 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 				select {
 				case <-typingDone:
 					return
-				case <-ctx.Done():
+				case <-processCtx.Done():
 					return
 				case <-ticker.C:
-					_ = ti.SendTyping(ctx, msg.ChatID)
+					_ = ti.SendTyping(processCtx, msg.ChatID)
 				}
 			}
 		}()
@@ -253,9 +255,9 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 
 	// Send periodic heartbeat messages so the user knows the bot is still alive
 	heartbeatDone := make(chan struct{})
-	go m.sendHeartbeats(ctx, ch, msg.ChatID, msg.ID, heartbeatDone)
+	go m.sendHeartbeats(processCtx, ch, msg.ChatID, msg.ID, heartbeatDone)
 
-	response, err := handler(ctx, msg)
+	response, err := handler(processCtx, msg)
 	close(typingDone)
 	close(heartbeatDone)
 
@@ -278,7 +280,7 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 			ReplyToID: msg.ID,
 			Content:   i18n.T(lang, i18n.MsgProcessingError, err),
 		}
-		if sendErr := ch.Send(ctx, errorResponse); sendErr != nil {
+		if sendErr := m.sendWithTimeout(ch, errorResponse); sendErr != nil {
 			m.logger.Error("error sending error response",
 				zap.String("channel", ch.Name()),
 				zap.String("chat_id", msg.ChatID),
@@ -335,7 +337,7 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 				outMsg.Attachments = nil
 			}
 
-			if err := ch.Send(ctx, outMsg); err != nil {
+			if err := m.sendWithTimeout(ch, outMsg); err != nil {
 				m.logger.Error("error sending response",
 					zap.String("channel", ch.Name()),
 					zap.String("chat_id", outMsg.ChatID),
@@ -346,6 +348,19 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 			}
 		}
 	}
+}
+
+func (m *Manager) sendWithTimeout(ch Channel, msg OutgoingMessage) error {
+	sendCtx, cancel := context.WithTimeout(m.ctx, m.responseSendTimeout())
+	defer cancel()
+	return ch.Send(sendCtx, msg)
+}
+
+func (m *Manager) responseSendTimeout() time.Duration {
+	if m.config.DefaultTimeoutSeconds <= 0 {
+		return managerSendTimeoutFallback
+	}
+	return time.Duration(m.config.DefaultTimeoutSeconds) * time.Second
 }
 
 // Stop stops all channels.
@@ -504,6 +519,11 @@ func (m *Manager) Broadcast(ctx context.Context, msg OutgoingMessage) map[string
 func (m *Manager) sendHeartbeats(ctx context.Context, ch Channel, chatID, replyToID string, done <-chan struct{}) {
 	cfg := m.config.Heartbeat
 	if !cfg.Enabled || len(cfg.Emojis) == 0 {
+		return
+	}
+	// Feishu now uses reaction-based pending indicator on inbound message,
+	// so we suppress extra heartbeat text like "💬..." to avoid noisy placeholders.
+	if ch.Type() == "feishu" {
 		return
 	}
 

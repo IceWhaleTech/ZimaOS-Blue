@@ -246,6 +246,23 @@ function getScoreColor(score: number): string {
   return 'text-gray-500 dark:text-gray-400'
 }
 
+function formatMatchType(type: string): string {
+  switch (type.trim().toLowerCase()) {
+    case 'keyword':
+      return t('memory.matchTypes.keyword')
+    case 'vector':
+      return t('memory.matchTypes.vector')
+    case 'exact':
+      return t('memory.matchTypes.exact')
+    case 'partial':
+      return t('memory.matchTypes.partial')
+    case 'heading':
+      return t('memory.matchTypes.heading')
+    default:
+      return type
+  }
+}
+
 watch(searchQuery, () => {
   if (searchDebounceTimer !== null) {
     window.clearTimeout(searchDebounceTimer)
@@ -439,7 +456,7 @@ onBeforeUnmount(() => {
                         :key="mt"
                         class="px-2 py-0.5 font-medium rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
                       >
-                        {{ mt }}
+                        {{ formatMatchType(mt) }}
                       </span>
                     </div>
                   </div>

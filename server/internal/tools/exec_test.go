@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -621,6 +622,84 @@ func TestExecLang(t *testing.T) {
 	}
 }
 
+func TestExecBlueCommandInjectsContextEnv(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	binDir := t.TempDir()
+	bluePath := filepath.Join(binDir, "blue")
+	script := "#!/bin/sh\nprintf '%s|%s\\n' \"$BLUE_USER_ID\" \"$BLUE_SESSION_ID\"\n"
+	if err := os.WriteFile(bluePath, []byte(script), 0755); err != nil {
+		t.Fatalf("write blue script: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	ctx := WithUserID(context.Background(), "user-ctx")
+	ctx = WithSessionID(ctx, "conv-ctx")
+
+	result, err := tool.Execute(ctx, map[string]interface{}{
+		"command": "blue reminder list",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := strings.TrimSpace(res.Stdout); got != "user-ctx|conv-ctx" {
+		t.Fatalf("stdout = %q, want %q", got, "user-ctx|conv-ctx")
+	}
+}
+
+func TestExecBlueCommandDoesNotOverrideExplicitContextEnv(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	binDir := t.TempDir()
+	bluePath := filepath.Join(binDir, "blue")
+	script := "#!/bin/sh\nprintf '%s|%s\\n' \"$BLUE_USER_ID\" \"$BLUE_SESSION_ID\"\n"
+	if err := os.WriteFile(bluePath, []byte(script), 0755); err != nil {
+		t.Fatalf("write blue script: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	ctx := WithUserID(context.Background(), "user-ctx")
+	ctx = WithSessionID(ctx, "conv-ctx")
+
+	result, err := tool.Execute(ctx, map[string]interface{}{
+		"command": "blue reminder list",
+		"env": map[string]interface{}{
+			"BLUE_USER_ID":    "explicit-user",
+			"BLUE_SESSION_ID": "explicit-session",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := strings.TrimSpace(res.Stdout); got != "explicit-user|explicit-session" {
+		t.Fatalf("stdout = %q, want %q", got, "explicit-user|explicit-session")
+	}
+}
+
 func TestExecSkillShortCircuit_DottedAliasMapsAction(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()
@@ -853,6 +932,128 @@ func TestExecSkillShortCircuit_ReminderInfersDeleteActionFromID(t *testing.T) {
 	if gotInput["id"] != "push_1" {
 		t.Fatalf("id = %v, want %q", gotInput["id"], "push_1")
 	}
+}
+
+func TestExecSkillShortCircuit_AutoResolveClarificationExecutesSelectedSkill(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+	tool.SetAutoConfirmFunc(func() bool { return true })
+	tool.SetSkillSelector(func(_ context.Context, _ string) SkillSelectionDecision {
+		return SkillSelectionDecision{
+			SelectedSkill: "browser",
+			NeedClarify:   true,
+			Candidates:    []string{"browser", "web_search"},
+		}
+	})
+
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		switch skillID {
+		case "web_fetch":
+			return nil, fmt.Errorf("unknown skill: %s", skillID)
+		case "browser":
+			if got := input["action"]; got != "navigate" {
+				t.Fatalf("browser action = %v, want navigate", got)
+			}
+			if got := input["url"]; got != "https://example.com" {
+				t.Fatalf("browser url = %v, want https://example.com", got)
+			}
+			return map[string]string{"success": "true", "status": "ok"}, nil
+		case "ask":
+			t.Fatal("ask should not be called in auto-confirm mode")
+		}
+		return nil, fmt.Errorf("unexpected skill: %s", skillID)
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "blue web_fetch url=https://example.com",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := res.Data["status"]; got != "ok" {
+		t.Fatalf("status = %q, want %q", got, "ok")
+	}
+	if !containsWarning(res.Warnings, "skill clarification auto-resolved: browser") {
+		t.Fatalf("warnings = %+v, missing auto-resolved marker", res.Warnings)
+	}
+	if containsWarning(res.Warnings, "skill clarification required") {
+		t.Fatalf("warnings = %+v, should not include required marker", res.Warnings)
+	}
+}
+
+func TestExecSkillShortCircuit_SilentAskUsesAutoAnsweredWarning(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+	tool.SetSkillSelector(func(_ context.Context, _ string) SkillSelectionDecision {
+		return SkillSelectionDecision{
+			SelectedSkill: "web_search",
+			NeedClarify:   true,
+			Candidates:    []string{"web_search", "browser"},
+		}
+	})
+
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, _ map[string]any) (map[string]string, error) {
+		switch skillID {
+		case "web_fetch":
+			return nil, fmt.Errorf("unknown skill: %s", skillID)
+		case "ask":
+			return map[string]string{
+				"success":  "true",
+				"silent":   "true",
+				"selected": `["web_search"]`,
+				"answers":  `[{"question_id":"q0","selected":["web_search"]}]`,
+			}, nil
+		default:
+			return nil, fmt.Errorf("unexpected skill: %s", skillID)
+		}
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "blue web_fetch url=https://example.com",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := res.Data["silent"]; got != "true" {
+		t.Fatalf("silent = %q, want %q", got, "true")
+	}
+	if !containsWarning(res.Warnings, "skill clarification auto-answered") {
+		t.Fatalf("warnings = %+v, missing auto-answered marker", res.Warnings)
+	}
+	if containsWarning(res.Warnings, "skill clarification required") {
+		t.Fatalf("warnings = %+v, should not include required marker", res.Warnings)
+	}
+}
+
+func containsWarning(warnings []string, target string) bool {
+	for _, warning := range warnings {
+		if warning == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestParseKeyValuePairs_AggregatesRepeatedListKeys(t *testing.T) {

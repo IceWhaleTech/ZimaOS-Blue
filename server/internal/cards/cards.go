@@ -9,6 +9,7 @@ package cards
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -32,6 +33,29 @@ var (
 	registry   = map[string]CardFunc{}
 )
 
+const (
+	redactedErrorText  = "Error details hidden for safety"
+	redactedOutputText = "Output hidden for safety"
+)
+
+func hasNonEmptyError(data map[string]interface{}) bool {
+	if data == nil {
+		return false
+	}
+	errMsg, ok := data["error"].(string)
+	return ok && strings.TrimSpace(errMsg) != ""
+}
+
+func buildRedactedErrorCard(cardType, title string) map[string]interface{} {
+	return map[string]interface{}{
+		"type":           cardType,
+		"title":          title,
+		"status":         "error",
+		"message":        redactedErrorText,
+		"error_redacted": true,
+	}
+}
+
 // Register adds a custom card formatter for a tool name.
 // Registered formatters take priority over built-in ones.
 func Register(toolName string, fn CardFunc) {
@@ -49,14 +73,10 @@ func FormatTypeless(toolCalls []llm.ToolCall, toolResults []llm.Message) string 
 			break
 		}
 		card := ToCard(tc.Name, toolResults[i].Content)
-		// Inject command into exec card from tool call arguments.
+		// Enforce privacy on exec cards: command text should never be exposed.
 		if card != nil && tc.Name == "exec" {
-			var args struct {
-				Command string `json:"command"`
-			}
-			if json.Unmarshal([]byte(tc.Arguments), &args) == nil && args.Command != "" {
-				card["command"] = escapeBackticks(args.Command)
-			}
+			card["hide_command"] = true
+			card["command_redacted"] = true
 		}
 		if card != nil {
 			cardJSON, _ := json.Marshal(card)
@@ -101,9 +121,9 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return calculatorCard(content)
 	case "current_time":
 		return currentTimeCard(content)
-	case "file_read":
+	case "read", "file_read":
 		return fileReadCard(content)
-	case "file_write":
+	case "write", "file_write":
 		return fileWriteCard(content)
 	case "system_info":
 		return systemInfoCard(content)
@@ -148,13 +168,8 @@ func deepResearchCard(content string) map[string]interface{} {
 	if json.Unmarshal([]byte(content), &data) != nil {
 		return nil
 	}
-	if errMsg, ok := data["error"].(string); ok && strings.TrimSpace(errMsg) != "" {
-		return map[string]interface{}{
-			"type":    "result",
-			"title":   "deep_research",
-			"status":  "error",
-			"message": errMsg,
-		}
+	if hasNonEmptyError(data) {
+		return buildRedactedErrorCard("result", "deep_research")
 	}
 
 	card := map[string]interface{}{
@@ -186,13 +201,8 @@ func calculatorCard(content string) map[string]interface{} {
 	if json.Unmarshal([]byte(content), &data) != nil {
 		return nil
 	}
-	if errMsg, ok := data["error"].(string); ok {
-		return map[string]interface{}{
-			"type":    "result",
-			"title":   "Calculator",
-			"status":  "error",
-			"message": errMsg,
-		}
+	if hasNonEmptyError(data) {
+		return buildRedactedErrorCard("result", "Calculator")
 	}
 	expr, _ := data["expression"].(string)
 	result := fmt.Sprintf("%v", data["result"])
@@ -241,13 +251,8 @@ func fileReadCard(content string) map[string]interface{} {
 	if json.Unmarshal([]byte(content), &data) != nil {
 		return nil
 	}
-	if errMsg, ok := data["error"].(string); ok {
-		return map[string]interface{}{
-			"type":    "result",
-			"title":   "File Read",
-			"status":  "error",
-			"message": errMsg,
-		}
+	if hasNonEmptyError(data) {
+		return buildRedactedErrorCard("result", "File Read")
 	}
 	fileContent, _ := data["content"].(string)
 	filePath, _ := data["path"].(string)
@@ -269,9 +274,9 @@ func fileWriteCard(content string) map[string]interface{} {
 	}
 	status := "success"
 	msg := "File written successfully"
-	if errMsg, ok := data["error"].(string); ok {
+	if hasNonEmptyError(data) {
 		status = "error"
-		msg = errMsg
+		msg = redactedErrorText
 	} else if m, ok := data["message"].(string); ok {
 		msg = m
 	}
@@ -312,13 +317,8 @@ func memorySearchCard(content string) map[string]interface{} {
 	if json.Unmarshal([]byte(content), &data) != nil {
 		return nil
 	}
-	if errMsg, ok := data["error"].(string); ok {
-		return map[string]interface{}{
-			"type":    "result",
-			"title":   "Memory Search",
-			"status":  "error",
-			"message": errMsg,
-		}
+	if hasNonEmptyError(data) {
+		return buildRedactedErrorCard("result", "Memory Search")
 	}
 	msg := "Search completed"
 	if results, ok := data["results"].([]interface{}); ok {
@@ -337,13 +337,8 @@ func reminderCard(content string) map[string]interface{} {
 	if json.Unmarshal([]byte(content), &data) != nil {
 		return nil
 	}
-	if errMsg, ok := data["error"].(string); ok {
-		return map[string]interface{}{
-			"type":    "result",
-			"title":   "Reminder",
-			"status":  "error",
-			"message": errMsg,
-		}
+	if hasNonEmptyError(data) {
+		return buildRedactedErrorCard("result", "Reminder")
 	}
 
 	msg, _ := data["message"].(string)
@@ -396,13 +391,8 @@ func analyzeCard(content string) map[string]interface{} {
 	if json.Unmarshal([]byte(content), &data) != nil {
 		return nil
 	}
-	if errMsg, ok := data["error"].(string); ok {
-		return map[string]interface{}{
-			"type":    "result",
-			"title":   "analyze",
-			"status":  "error",
-			"message": errMsg,
-		}
+	if hasNonEmptyError(data) {
+		return buildRedactedErrorCard("result", "analyze")
 	}
 	topic, _ := data["topic"].(string)
 	reportURL, _ := data["report_url"].(string)
@@ -489,52 +479,56 @@ func formatValue(v interface{}) string {
 func GenericCard(toolName, content string) map[string]interface{} {
 	var data map[string]interface{}
 	if json.Unmarshal([]byte(content), &data) == nil {
-		if errMsg, ok := data["error"].(string); ok {
-			return map[string]interface{}{
-				"type":    "result",
-				"title":   toolName,
-				"status":  "error",
-				"message": errMsg,
-			}
-		}
-		// Extract message field if present
-		msg, _ := data["message"].(string)
-		// Build details from remaining fields, skipping internal ones
-		hiddenFields := map[string]bool{
-			"id": true, "cron": true, "trigger_at": true,
-			"status": true, "result": true, "message": true,
-			"created_at": true, "updated_at": true,
-			"owner_id": true, "user_id": true,
-		}
-		details := []map[string]interface{}{}
-		for key, v := range data {
-			if hiddenFields[key] {
-				continue
-			}
-			details = append(details, map[string]interface{}{"label": key, "value": formatValue(v)})
+		if hasNonEmptyError(data) {
+			return buildRedactedErrorCard("result", toolName)
 		}
 		card := map[string]interface{}{
 			"type":   "result",
 			"title":  toolName,
 			"status": "success",
 		}
-		if msg != "" {
-			card["message"] = msg
+
+		if message, ok := data["message"].(string); ok && strings.TrimSpace(message) != "" {
+			card["message"] = message
+		}
+
+		keys := make([]string, 0, len(data))
+		for k := range data {
+			if k == "message" || k == "error" {
+				continue
+			}
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		details := make([]map[string]interface{}, 0, len(keys))
+		for _, k := range keys {
+			details = append(details, map[string]interface{}{
+				"label": k,
+				"value": formatValue(data[k]),
+			})
 		}
 		if len(details) > 0 {
 			card["details"] = details
 		}
+
+		if _, hasMessage := card["message"]; !hasMessage && len(details) == 0 {
+			card["message"] = "No result data"
+		}
+
 		return card
 	}
-	display := content
-	if len(display) > 500 {
-		display = display[:500] + "..."
+
+	message := strings.TrimSpace(content)
+	if message == "" {
+		message = "No result data"
 	}
+
 	return map[string]interface{}{
 		"type":    "result",
 		"title":   toolName,
 		"status":  "info",
-		"message": display,
+		"message": message,
 	}
 }
 
@@ -618,18 +612,28 @@ func execCard(content string) map[string]interface{} {
 	}
 
 	card := map[string]interface{}{
-		"type":   "exec",
-		"status": status,
+		"type":             "exec",
+		"status":           status,
+		"hide_command":     true,
+		"command_redacted": true,
 	}
 
 	if data.ExitCode != nil {
 		card["exit_code"] = *data.ExitCode
 	}
+	hasOutput := false
 	if data.Stdout != "" {
-		card["stdout"] = escapeBackticks(data.Stdout)
+		card["stdout_redacted"] = true
+		hasOutput = true
 	}
 	if data.Stderr != "" {
-		card["stderr"] = escapeBackticks(data.Stderr)
+		card["stderr_redacted"] = true
+		hasOutput = true
+	}
+	if hasOutput {
+		card["message"] = redactedOutputText
+	} else if status == "error" {
+		card["message"] = redactedErrorText
 	}
 	if data.Duration > 0 {
 		card["duration_ms"] = data.Duration
@@ -638,16 +642,11 @@ func execCard(content string) map[string]interface{} {
 		card["truncated"] = true
 	}
 	if len(data.Warnings) > 0 {
-		card["warnings"] = data.Warnings
-	}
-	if data.Host != "" {
-		card["host"] = data.Host
+		card["warning_count"] = len(data.Warnings)
+		card["warnings_redacted"] = true
 	}
 	if data.RiskLevel != "" {
 		card["risk_level"] = data.RiskLevel
-	}
-	if data.SessionID != "" {
-		card["session_id"] = data.SessionID
 	}
 
 	return card
@@ -660,14 +659,15 @@ func uiReviewCard(content string) map[string]interface{} {
 	}
 
 	// Check for error result
-	if errMsg, ok := data["error"].(string); ok {
+	if hasNonEmptyError(data) {
 		return map[string]interface{}{
 			"type":    "ui-review",
 			"status":  "error",
-			"message": errMsg,
+			"message": redactedErrorText,
 			"actions": []map[string]interface{}{
 				{"id": "recheck", "label": "Retry", "variant": "primary"},
 			},
+			"error_redacted": true,
 		}
 	}
 

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
@@ -16,27 +17,29 @@ import (
 // FileReadTool reads content from a file.
 type FileReadTool struct {
 	// AllowedPaths restricts file access to specific directories.
-	// If empty, all paths are allowed (use with caution).
+	// When empty, current working directory is treated as workspace root.
 	AllowedPaths []string
-	// MaxFileSize is the maximum file size to read (default 1MB).
+	// MaxFileSize is the maximum file size to read (default 2 MiB).
 	MaxFileSize int64
+	scope       *fsToolScope
 }
 
 // NewFileReadTool creates a new file read tool.
 func NewFileReadTool(allowedPaths []string, maxFileSize int64) *FileReadTool {
-	if maxFileSize <= 0 {
-		maxFileSize = 1024 * 1024 // 1MB default
+	if maxFileSize <= 0 || maxFileSize > maxFSToolBytes {
+		maxFileSize = maxFSToolBytes
 	}
 	return &FileReadTool{
 		AllowedPaths: allowedPaths,
 		MaxFileSize:  maxFileSize,
+		scope:        newFSToolScope(allowedPaths),
 	}
 }
 
 // Definition returns the tool's definition.
 func (f *FileReadTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "file_read",
+		Name:        "read",
 		Description: "Reads content from a file. Returns the file content as text.",
 		Icon:        "file-read",
 		Parameters: map[string]interface{}{
@@ -46,9 +49,17 @@ func (f *FileReadTool) Definition() ToolDefinition {
 					"type":        "string",
 					"description": "The path to the file to read",
 				},
-				"encoding": map[string]interface{}{
-					"type":        "string",
-					"description": "The encoding of the file (default: utf-8)",
+				"start_line": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional start line (1-based, default: 1)",
+				},
+				"end_line": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional end line (1-based, inclusive)",
+				},
+				"max_bytes": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional read size cap in bytes (1..2097152)",
 				},
 			},
 			"required": []string{"path"},
@@ -58,21 +69,36 @@ func (f *FileReadTool) Definition() ToolDefinition {
 
 // Execute reads the file content.
 func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	path, ok := args["path"].(string)
-	if !ok || path == "" {
-		return nil, errors.New("path is required")
-	}
+	_ = ctx
 
-	// Security: validate path
-	if err := f.validatePath(path); err != nil {
+	path, err := fsAsString(args, "path")
+	if err != nil || path == "" {
+		return nil, errors.New("path must be a non-empty string")
+	}
+	startLine, err := fsAsInt(args, "start_line", 1)
+	if err != nil {
+		return nil, err
+	}
+	endLine, err := fsAsInt(args, "end_line", 0)
+	if err != nil {
+		return nil, err
+	}
+	maxBytes, err := fsAsInt(args, "max_bytes", int(f.MaxFileSize))
+	if err != nil {
+		return nil, err
+	}
+	maxBytes = fsClamp(maxBytes, 1, int(f.MaxFileSize))
+
+	absPath, relPath, _, err := f.scope.resolvePath(path, false)
+	if err != nil {
 		return nil, err
 	}
 
 	// Check file info
-	info, err := os.Stat(path)
+	info, err := os.Stat(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("file not found: %s", path)
+			return nil, fmt.Errorf("file not found: %s", relPath)
 		}
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
@@ -86,15 +112,54 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 
 	// Read file
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
+	truncated := false
+	if len(content) > maxBytes {
+		content = content[:maxBytes]
+		truncated = true
+		for len(content) > 0 && !utf8.Valid(content) {
+			content = content[:len(content)-1]
+		}
+	}
+	if !utf8.Valid(content) {
+		return nil, fmt.Errorf("file is not valid UTF-8 text: %s", relPath)
+	}
+	text := string(content)
+	if startLine < 1 {
+		return nil, errors.New("start_line must be >= 1")
+	}
+	lines := strings.Split(text, "\n")
+	totalLines := len(lines)
+	if totalLines == 0 {
+		totalLines = 1
+	}
+	if startLine > totalLines {
+		return nil, fmt.Errorf("start_line %d out of range (total lines: %d)", startLine, totalLines)
+	}
+	from := startLine - 1
+	to := totalLines
+	if endLine > 0 {
+		to = endLine
+	}
+	if to > totalLines {
+		to = totalLines
+	}
+	if to < startLine {
+		return nil, errors.New("end_line must be >= start_line")
+	}
+	sliced := strings.Join(lines[from:to], "\n")
 
 	response := map[string]interface{}{
-		"path":    path,
-		"size":    info.Size(),
-		"content": string(content),
+		"path":        relPath,
+		"size":        info.Size(),
+		"start_line":  startLine,
+		"end_line":    to,
+		"total_lines": totalLines,
+		"truncated":   truncated,
+		"content":     sliced,
 	}
 	jsonResult, _ := json.Marshal(response)
 	return string(jsonResult), nil
@@ -102,48 +167,35 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 
 // validatePath checks if the path is allowed.
 func (f *FileReadTool) validatePath(path string) error {
-	// Clean the path to prevent directory traversal
-	cleanPath := filepath.Clean(path)
-
-	// If no allowed paths are configured, allow all
-	if len(f.AllowedPaths) == 0 {
-		return nil
-	}
-
-	// Check if path is within allowed directories
-	for _, allowed := range f.AllowedPaths {
-		allowedClean := filepath.Clean(allowed)
-		if strings.HasPrefix(cleanPath, allowedClean) {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("access denied: path %s is not in allowed directories", path)
+	_, _, _, err := f.scope.resolvePath(path, false)
+	return err
 }
 
 // FileWriteTool writes content to a file.
 type FileWriteTool struct {
 	// AllowedPaths restricts file access to specific directories.
 	AllowedPaths []string
-	// MaxFileSize is the maximum file size to write (default 1MB).
+	// MaxFileSize is the maximum file size to write (default 2 MiB).
 	MaxFileSize int64
+	scope       *fsToolScope
 }
 
 // NewFileWriteTool creates a new file write tool.
 func NewFileWriteTool(allowedPaths []string, maxFileSize int64) *FileWriteTool {
-	if maxFileSize <= 0 {
-		maxFileSize = 1024 * 1024 // 1MB default
+	if maxFileSize <= 0 || maxFileSize > maxFSToolBytes {
+		maxFileSize = maxFSToolBytes
 	}
 	return &FileWriteTool{
 		AllowedPaths: allowedPaths,
 		MaxFileSize:  maxFileSize,
+		scope:        newFSToolScope(allowedPaths),
 	}
 }
 
 // Definition returns the tool's definition.
 func (f *FileWriteTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "file_write",
+		Name:        "write",
 		Description: "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does.",
 		Icon:        "file-write",
 		Parameters: map[string]interface{}{
@@ -161,6 +213,14 @@ func (f *FileWriteTool) Definition() ToolDefinition {
 					"type":        "boolean",
 					"description": "If true, append to the file instead of overwriting (default: false)",
 				},
+				"create_dirs": map[string]interface{}{
+					"type":        "boolean",
+					"description": "If true, create parent directories when missing (default: true)",
+				},
+				"line": map[string]interface{}{
+					"type":        "integer",
+					"description": "Replace a 1-based line in-place (append must be false; content may span multiple lines)",
+				},
 			},
 			"required": []string{"path", "content"},
 		},
@@ -169,23 +229,44 @@ func (f *FileWriteTool) Definition() ToolDefinition {
 
 // Execute writes content to the file.
 func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	path, ok := args["path"].(string)
-	if !ok || path == "" {
-		return nil, errors.New("path is required")
+	_ = ctx
+
+	path, err := fsAsString(args, "path")
+	if err != nil || path == "" {
+		return nil, errors.New("path must be a non-empty string")
 	}
 
-	content, ok := args["content"].(string)
-	if !ok {
-		return nil, errors.New("content is required")
+	content, err := fsAsString(args, "content")
+	if err != nil {
+		return nil, errors.New("content must be a string")
 	}
 
-	appendMode := false
-	if v, ok := args["append"].(bool); ok {
-		appendMode = v
+	appendMode, err := fsAsBool(args, "append", false)
+	if err != nil {
+		return nil, err
+	}
+	createDirs, err := fsAsBool(args, "create_dirs", true)
+	if err != nil {
+		return nil, err
+	}
+	line, hasLine := 0, false
+	if rawLine, ok := args["line"]; ok {
+		_ = rawLine
+		line, err = fsAsInt(args, "line", 0)
+		if err != nil {
+			return nil, err
+		}
+		hasLine = true
+	}
+	if hasLine && appendMode {
+		return nil, errors.New("line mode cannot be used with append=true")
+	}
+	if hasLine && line < 1 {
+		return nil, errors.New("line must be >= 1")
 	}
 
-	// Security: validate path
-	if err := f.validatePath(path); err != nil {
+	absPath, relPath, _, err := f.scope.resolvePath(path, false)
+	if err != nil {
 		return nil, err
 	}
 
@@ -194,38 +275,65 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 		return nil, fmt.Errorf("content too large: %d bytes (max: %d bytes)", len(content), f.MaxFileSize)
 	}
 
-	// Ensure directory exists
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create directory: %w", err)
+	// Ensure directory exists when requested.
+	if createDirs {
+		dir := filepath.Dir(absPath)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, fmt.Errorf("failed to create directory: %w", err)
+		}
+	}
+
+	if hasLine {
+		updatedContent, err := f.replaceSingleLine(absPath, line, content)
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(updatedContent)) > f.MaxFileSize {
+			return nil, fmt.Errorf("result too large: %d bytes (max: %d bytes)", len(updatedContent), f.MaxFileSize)
+		}
+		if err := os.WriteFile(absPath, []byte(updatedContent), 0o644); err != nil {
+			return nil, fmt.Errorf("failed to write file: %w", err)
+		}
+		info, _ := os.Stat(absPath)
+		size := int64(0)
+		if info != nil {
+			size = info.Size()
+		}
+		response := map[string]interface{}{
+			"path":    relPath,
+			"size":    size,
+			"success": true,
+			"line":    line,
+		}
+		jsonResult, _ := json.Marshal(response)
+		return string(jsonResult), nil
 	}
 
 	// Write file
-	var err error
 	if appendMode {
-		file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		file, err := os.OpenFile(absPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open file: %w", err)
 		}
 		defer file.Close()
-		_, err = file.WriteString(content)
+		if _, err = file.WriteString(content); err != nil {
+			return nil, fmt.Errorf("failed to write file: %w", err)
+		}
 	} else {
-		err = os.WriteFile(path, []byte(content), 0644)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to write file: %w", err)
+		if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
+			return nil, fmt.Errorf("failed to write file: %w", err)
+		}
 	}
 
 	// Get file info after write
-	info, _ := os.Stat(path)
+	info, _ := os.Stat(absPath)
 	var size int64
 	if info != nil {
 		size = info.Size()
 	}
 
 	response := map[string]interface{}{
-		"path":    path,
+		"path":    relPath,
 		"size":    size,
 		"success": true,
 		"append":  appendMode,
@@ -236,23 +344,48 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 
 // validatePath checks if the path is allowed.
 func (f *FileWriteTool) validatePath(path string) error {
-	// Clean the path to prevent directory traversal
-	cleanPath := filepath.Clean(path)
+	_, _, _, err := f.scope.resolvePath(path, false)
+	return err
+}
 
-	// If no allowed paths are configured, allow all
-	if len(f.AllowedPaths) == 0 {
-		return nil
-	}
-
-	// Check if path is within allowed directories
-	for _, allowed := range f.AllowedPaths {
-		allowedClean := filepath.Clean(allowed)
-		if strings.HasPrefix(cleanPath, allowedClean) {
-			return nil
+func (f *FileWriteTool) replaceSingleLine(path string, line int, content string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if line == 1 {
+				return content, nil
+			}
+			return "", fmt.Errorf("line %d out of range (total lines: %d)", line, 0)
 		}
+		return "", err
 	}
-
-	return fmt.Errorf("access denied: path %s is not in allowed directories", path)
+	if !utf8.Valid(data) {
+		return "", fmt.Errorf("file is not valid UTF-8 text: %s", path)
+	}
+	text := string(data)
+	hasTrailingNewline := strings.HasSuffix(text, "\n")
+	if hasTrailingNewline {
+		text = strings.TrimSuffix(text, "\n")
+	}
+	lines := []string{}
+	if text != "" {
+		lines = strings.Split(text, "\n")
+	}
+	totalLines := len(lines)
+	if line > totalLines {
+		if totalLines == 0 && line == 1 {
+			lines = []string{content}
+		} else {
+			return "", fmt.Errorf("line %d out of range (total lines: %d)", line, totalLines)
+		}
+	} else {
+		lines[line-1] = content
+	}
+	out := strings.Join(lines, "\n")
+	if hasTrailingNewline {
+		out += "\n"
+	}
+	return out, nil
 }
 
 // RegisterBuiltinTools registers built-in core tools with default configuration.
@@ -262,7 +395,12 @@ func RegisterBuiltinTools(registry *Registry) {
 	}
 	registry.Register(NewFileReadTool(nil, 0))
 	registry.Register(NewFileWriteTool(nil, 0))
+	registry.Register(NewEditTool(nil, 0))
+	registry.Register(NewGrepTool(nil, 0))
+	registry.Register(NewFindTool(nil))
+	registry.Register(NewLsTool(nil))
 	registry.Register(NewWebSearchTool(WebSearchConfig{}))
+	registry.Register(NewMCPTool(registry))
 }
 
 // RegisterBuiltinToolsWithConfig registers built-in core tools with custom configuration.
@@ -272,7 +410,12 @@ func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearc
 	}
 	registry.Register(NewFileReadTool(allowedPaths, maxFileSize))
 	registry.Register(NewFileWriteTool(allowedPaths, maxFileSize))
+	registry.Register(NewEditTool(allowedPaths, maxFileSize))
+	registry.Register(NewGrepTool(allowedPaths, maxFileSize))
+	registry.Register(NewFindTool(allowedPaths))
+	registry.Register(NewLsTool(allowedPaths))
 	registry.Register(NewWebSearchTool(webSearchConfig))
+	registry.Register(NewMCPTool(registry))
 }
 
 // RegisterExecTools registers exec + process tools with shared session state.
@@ -308,7 +451,7 @@ func GetExecTool(registry *Registry) *ExecTool {
 
 // RegisterMemoryTools creates a MemoryTool for internal use (e.g., MgmtTool).
 // As of v0.10.31, memory is no longer exposed as a native LLM tool —
-// it's invoked via `blue mgmt memory` skill instead.
+// it's accessed via compatibility aliases / internal routing.
 // The tool is registered as disabled so GetMemoryTool() still works.
 func RegisterMemoryTools(registry *Registry, memoryService MemoryServiceInterface) {
 	if memoryService == nil {

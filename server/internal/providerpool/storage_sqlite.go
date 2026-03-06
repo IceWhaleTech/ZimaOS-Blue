@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	z "github.com/IceWhaleTech/zorm"
@@ -179,6 +181,7 @@ func (s *SQLiteStorage) LoadAllProviders() ([]*Provider, error) {
 	for i := range rows {
 		p, err := s.rowToProvider(&rows[i])
 		if err != nil {
+			slog.Warn("[providerpool] skip invalid provider row", "provider_id", rows[i].ID, "error", err)
 			continue
 		}
 		// Backfill missing key IDs
@@ -213,8 +216,15 @@ func (s *SQLiteStorage) DeleteProvider(id string) error {
 
 func (s *SQLiteStorage) rowToProvider(row *ppProviderRow) (*Provider, error) {
 	var provider Provider
-	if err := json.Unmarshal([]byte(row.Data), &provider); err != nil {
-		return nil, err
+	raw := []byte(row.Data)
+	if err := json.Unmarshal(raw, &provider); err != nil {
+		normalized := normalizeProviderJSONTimestamps(raw)
+		if len(normalized) == 0 || string(normalized) == string(raw) {
+			return nil, err
+		}
+		if err2 := json.Unmarshal(normalized, &provider); err2 != nil {
+			return nil, err
+		}
 	}
 
 	// Restore API keys
@@ -238,6 +248,83 @@ func (s *SQLiteStorage) rowToProvider(row *ppProviderRow) (*Provider, error) {
 	}
 
 	return &provider, nil
+}
+
+var providerTimestampFields = []string{
+	"created_at",
+	"updated_at",
+	"detected_at",
+	"last_health_check",
+	"last_error_time",
+}
+
+func normalizeProviderJSONTimestamps(raw []byte) []byte {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return raw
+	}
+
+	changed := false
+	for _, field := range providerTimestampFields {
+		value, ok := obj[field]
+		if !ok {
+			continue
+		}
+		var s string
+		if err := json.Unmarshal(value, &s); err != nil {
+			continue
+		}
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if _, err := time.Parse(time.RFC3339Nano, s); err == nil {
+			continue
+		}
+		if ts, ok := parseProviderTimestamp(s); ok {
+			encoded, _ := json.Marshal(ts.Format(time.RFC3339Nano))
+			obj[field] = encoded
+			changed = true
+			continue
+		}
+		// Drop unparseable timestamps to keep provider loadable.
+		delete(obj, field)
+		changed = true
+	}
+
+	if !changed {
+		return raw
+	}
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
+func parseProviderTimestamp(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+
+	// Common legacy format found in migrated rows.
+	if ts, err := time.ParseInLocation("2006-01-02 15:04:05", value, time.Local); err == nil {
+		return ts, true
+	}
+
+	layouts := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05Z07:00",
+		"2006-01-02 15:04:05.999999999",
+	}
+	for _, layout := range layouts {
+		if ts, err := time.Parse(layout, value); err == nil {
+			return ts, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // --- Model operations ---

@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -81,7 +80,7 @@ func TestGetPlatform(t *testing.T) {
 
 func TestDownloadManager_GetDownloadInfo(t *testing.T) {
 	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "latest.json") {
 			info := DownloadInfo{
 				Version:     "1.0.0",
@@ -124,7 +123,7 @@ func TestDownloadManager_GetDownloadInfo(t *testing.T) {
 
 func TestDownloadManager_GetDownloadInfo_Fallback(t *testing.T) {
 	// Create mock server that returns 404
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -111,7 +110,7 @@ func TestChannel_Stop_NotStarted(t *testing.T) {
 
 func TestChannel_Start_Success(t *testing.T) {
 	// Create mock BlueBubbles server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/server/info":
 			response := map[string]interface{}{
@@ -157,7 +156,7 @@ func TestChannel_Start_Success(t *testing.T) {
 
 func TestChannel_Start_AuthFailure(t *testing.T) {
 	// Create mock server that returns unauthorized
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		response := map[string]interface{}{
 			"status":  401,

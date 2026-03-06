@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -117,12 +119,27 @@ func (f *ChannelFactory) createDiscord(cfg *ChannelConfig) (channel.Channel, err
 }
 
 func (f *ChannelFactory) createFeishu(cfg *ChannelConfig) (channel.Channel, error) {
+	disableTypingReaction := false
+	if v, ok := parseConfigBool(cfg.Config["typing_indicator"]); ok {
+		disableTypingReaction = !v
+	}
+	if v, ok := parseConfigBool(cfg.Config["typingIndicator"]); ok {
+		disableTypingReaction = !v
+	}
+	if v, ok := parseConfigBool(cfg.Config["disable_typing_reaction"]); ok {
+		disableTypingReaction = v
+	}
+	if v, ok := parseConfigBool(cfg.Config["disableTypingReaction"]); ok {
+		disableTypingReaction = v
+	}
+
 	feishuCfg := channel.FeishuConfig{
-		Enabled:           cfg.Enabled,
-		AppID:             cfg.Config["app_id"],
-		AppSecret:         cfg.Config["app_secret"],
-		VerificationToken: cfg.Config["verification_token"],
-		EncryptKey:        cfg.Config["encrypt_key"],
+		Enabled:               cfg.Enabled,
+		AppID:                 cfg.Config["app_id"],
+		AppSecret:             cfg.Config["app_secret"],
+		VerificationToken:     cfg.Config["verification_token"],
+		EncryptKey:            cfg.Config["encrypt_key"],
+		DisableTypingReaction: disableTypingReaction,
 	}
 	return feishu.New(feishuCfg, f.logger), nil
 }
@@ -421,5 +438,24 @@ func (f *ChannelFactory) ValidateConnection(ctx context.Context, channelType str
 		Message:    message,
 		MessageKey: result.MessageKey,
 		Details:    result.Data,
+	}
+}
+
+func parseConfigBool(raw string) (bool, bool) {
+	s := strings.TrimSpace(strings.ToLower(raw))
+	if s == "" {
+		return false, false
+	}
+	switch s {
+	case "1", "true", "yes", "y", "on":
+		return true, true
+	case "0", "false", "no", "n", "off":
+		return false, true
+	default:
+		v, err := strconv.ParseBool(s)
+		if err != nil {
+			return false, false
+		}
+		return v, true
 	}
 }

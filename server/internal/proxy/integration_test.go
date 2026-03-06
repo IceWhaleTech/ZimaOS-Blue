@@ -184,13 +184,13 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 func TestFailoverIntegration(t *testing.T) {
 	// Create two mock upstreams - first fails, second succeeds
 	failCount := 0
-	upstream1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream1 := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		failCount++
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer upstream1.Close()
 
-	upstream2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream2 := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	}))
@@ -223,7 +223,7 @@ func TestProxyRequestForwarding(t *testing.T) {
 	// Create mock upstream
 	receivedHeaders := make(map[string]string)
 	receivedBody := ""
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Capture request details
 		for k, v := range r.Header {
 			receivedHeaders[k] = v[0]
@@ -333,10 +333,10 @@ func TestRateLimitHeaderParsing(t *testing.T) {
 	qm := NewQuotaMonitor(nil)
 
 	tests := []struct {
-		name       string
-		headers    map[string]string
-		wantTotal  int64
-		wantPct    float64
+		name      string
+		headers   map[string]string
+		wantTotal int64
+		wantPct   float64
 	}{
 		{
 			name: "standard_headers",

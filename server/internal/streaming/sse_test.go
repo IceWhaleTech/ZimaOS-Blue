@@ -3,12 +3,25 @@ package streaming
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 )
+
+func newTCP4Server(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skip test server setup (tcp4 unavailable): %v", err)
+	}
+	srv := httptest.NewUnstartedServer(handler)
+	srv.Listener = ln
+	srv.Start()
+	return srv
+}
 
 // Test SSEWriter creation
 func TestNewSSEWriter(t *testing.T) {
@@ -223,7 +236,7 @@ func TestSSEEndpointIntegration(t *testing.T) {
 	handler := NewStreamHandler()
 
 	// Create test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chunks := make(chan StreamChunk, 2)
 		chunks <- StreamChunk{Delta: "Test", Done: false}
 		chunks <- StreamChunk{Delta: "", Done: true}

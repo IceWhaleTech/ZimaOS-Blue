@@ -155,8 +155,8 @@ function primeApiMocks() {
   vi.mocked(settingsApi.get).mockResolvedValue({
     data: {
       small_model_enabled: true,
-      small_model_runtime: 'onnx_genai_python',
-      small_model_id: 'qwen3.5-0.8b-onnx-q4',
+      small_model_runtime: 'llama.cpp',
+      small_model_id: 'qwen3.5-0.8b-gguf-q4km',
       small_model_summary_enabled: true,
       small_model_doc_extract_enabled: true,
       small_model_route_short_qa_enabled: true,
@@ -178,9 +178,9 @@ function primeApiMocks() {
     data: {
       ready: false,
       downloading: false,
-      model_id: 'qwen3.5-0.8b-onnx-q4',
-      runtime: 'onnx_genai_python',
-      model_path: '/tmp/model.onnx',
+      model_id: 'qwen3.5-0.8b-gguf-q4km',
+      runtime: 'llama.cpp',
+      model_path: '/tmp/model.gguf',
       state: 'idle',
     },
   } as never)

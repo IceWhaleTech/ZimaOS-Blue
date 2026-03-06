@@ -15,7 +15,7 @@ function handleToggle(index: number) {
 }
 
 function renderContent(content: string): string {
-  return parseInline(content)
+  return parseInline(content, { allowUnderscoreEmphasis: false })
 }
 </script>
 

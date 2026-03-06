@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,18 @@ import (
 
 	"github.com/labstack/echo/v4"
 )
+
+func newTCP4Server(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skip test server setup (tcp4 unavailable): %v", err)
+	}
+	srv := httptest.NewUnstartedServer(handler)
+	srv.Listener = ln
+	srv.Start()
+	return srv
+}
 
 func newTestHandler(t *testing.T) (*Handler, string) {
 	t.Helper()
@@ -194,7 +207,7 @@ func TestHandler_DownloadOTA_WithMockServer(t *testing.T) {
 	h, dir := newTestHandler(t)
 
 	// Create a mock OTA server that serves a binary
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("new-binary-content"))
 	}))
 	defer srv.Close()
@@ -257,7 +270,7 @@ func TestHandler_DownloadOTA_ThenApply_EndToEnd(t *testing.T) {
 	h.latestInfo = &UpdateInfo{LatestVersion: "0.2.0"}
 
 	// Mock OTA binary server.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("new-binary-content"))
 	}))
 	defer srv.Close()
@@ -466,7 +479,14 @@ func TestNewHandler_RecoversPendingResumeTask(t *testing.T) {
 		t.Fatalf("status state = %q, want %q", state, StateIdle)
 	}
 
-	if _, err := os.Stat(filepath.Join(dir, resumeTaskFile)); !os.IsNotExist(err) {
+	resumePath := filepath.Join(dir, resumeTaskFile)
+	for i := 0; i < 40; i++ {
+		if _, err := os.Stat(resumePath); os.IsNotExist(err) {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if _, err := os.Stat(resumePath); !os.IsNotExist(err) {
 		t.Fatalf("resume task file should be removed, stat err=%v", err)
 	}
 }
@@ -610,7 +630,7 @@ func TestHandler_RunAutoUpdateCycle_AutoDownloadOnly(t *testing.T) {
 	mock := &mockExecutor{}
 	h.applier.SetExecutor(mock)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("new-binary-content"))
 	}))
 	defer srv.Close()
@@ -654,7 +674,7 @@ func TestHandler_RunAutoUpdateCycle_AutoApply(t *testing.T) {
 	mock := &mockExecutor{}
 	h.applier.SetExecutor(mock)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("new-binary-content"))
 	}))
 	defer srv.Close()

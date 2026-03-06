@@ -71,10 +71,10 @@ func TestHandleAnthropicMessages_NoProviderPool(t *testing.T) {
 // TestAnthropicRequestParsing tests that Anthropic request body is correctly parsed
 func TestAnthropicRequestParsing(t *testing.T) {
 	tests := []struct {
-		name        string
-		body        map[string]interface{}
-		wantModel   string
-		wantStream  bool
+		name       string
+		body       map[string]interface{}
+		wantModel  string
+		wantStream bool
 	}{
 		{
 			name: "basic request",
@@ -193,7 +193,7 @@ func TestMockUpstreamIntegration(t *testing.T) {
 		StopReason: "end_turn",
 	}
 
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mockServer := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
 		if r.URL.Path != "/v1/messages" {
 			t.Errorf("expected path /v1/messages, got %s", r.URL.Path)
@@ -232,7 +232,7 @@ func TestMockUpstreamIntegration(t *testing.T) {
 
 // TestStreamingMockUpstream tests streaming response from mock upstream
 func TestStreamingMockUpstream(t *testing.T) {
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mockServer := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Return streaming response
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")

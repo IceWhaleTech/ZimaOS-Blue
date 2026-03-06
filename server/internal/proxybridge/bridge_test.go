@@ -1,8 +1,11 @@
 package proxybridge
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -505,6 +508,55 @@ func TestBridgeChat_ResolvedModelPreserved(t *testing.T) {
 	}
 }
 
+func TestBridgeChat_ParseErrorIncludesRawResponseBody(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "【invalid-non-json-payload】")
+	})
+
+	bridge := NewBridge(handler)
+	_, err := bridge.Chat(context.Background(), llm.ChatRequest{
+		Model:    "gpt-5.3-codex-spark",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Fatal("expected parse error, got nil")
+	}
+	if !strings.Contains(err.Error(), "raw response:") {
+		t.Fatalf("expected raw response marker in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "【invalid-non-json-payload】") {
+		t.Fatalf("expected raw response body in error, got: %v", err)
+	}
+}
+
+func TestBridgeChat_DecodesGzipResponseBody(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		_, _ = io.WriteString(zw, `{"id":"1","model":"gpt-5.3-codex-spark","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+		_ = zw.Close()
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(buf.Bytes())
+	})
+
+	bridge := NewBridge(handler)
+	resp, err := bridge.Chat(context.Background(), llm.ChatRequest{
+		Model:    "gpt-5.3-codex-spark",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat failed: %v", err)
+	}
+	if resp == nil || strings.TrimSpace(resp.Message.Content) != "ok" {
+		t.Fatalf("unexpected response: %#v", resp)
+	}
+}
+
 func TestBridgeChatStream_AcceptsSSEEventLines(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
@@ -615,6 +667,49 @@ func TestBridgeChatStream_CompletedSnapshotDoesNotDuplicateDelta(t *testing.T) {
 	}
 	if got := out.String(); got != "Hello" {
 		t.Fatalf("expected output %q, got %q", "Hello", got)
+	}
+}
+
+func TestBridgeChatStream_SynthesizesDoneWhenTerminalMarkerMissing(t *testing.T) {
+	handler := &fakeProxyHandler{
+		providerName: "OpenAI",
+		modelID:      "o3",
+		chunks: []string{
+			`{"id":"1","choices":[{"delta":{"content":"Hello"},"finish_reason":null}],"model":""}`,
+		},
+	}
+
+	bridge := NewBridge(handler)
+	var out strings.Builder
+	var gotDone bool
+	var doneProvider, doneModel string
+
+	err := bridge.ChatStream(context.Background(), llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	}, func(chunk llm.StreamChunk) error {
+		out.WriteString(chunk.Delta)
+		if chunk.Done {
+			gotDone = true
+			doneProvider = chunk.Provider
+			doneModel = chunk.Model
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ChatStream failed: %v", err)
+	}
+	if got := out.String(); got != "Hello" {
+		t.Fatalf("expected output %q, got %q", "Hello", got)
+	}
+	if !gotDone {
+		t.Fatal("expected synthesized done chunk")
+	}
+	if doneProvider != "OpenAI" {
+		t.Fatalf("expected synthesized done provider %q, got %q", "OpenAI", doneProvider)
+	}
+	if doneModel != "o3" {
+		t.Fatalf("expected synthesized done model %q, got %q", "o3", doneModel)
 	}
 }
 

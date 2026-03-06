@@ -443,24 +443,24 @@ export const useSettingsStore = defineStore('settings', () => {
     if (mode === 'aggressive' || mode === 'quality') return mode
     return 'balanced'
   })
-  const skillRerankEnabled = computed(() => backendSettings.value.skill_rerank_enabled ?? true)
+  const skillRerankEnabled = computed(() => backendSettings.value.skill_rerank_enabled ?? false)
   const skillRerankONNXEnabled = computed(() => backendSettings.value.skill_rerank_onnx_enabled ?? false)
   const skillRerankONNXAutoDownload = computed(() => backendSettings.value.skill_rerank_onnx_auto_download ?? false)
   const smallModelEnabled = computed(() => backendSettings.value.small_model_enabled ?? false)
   const smallModelRuntime = computed<SmallModelRuntime>(() => {
     const runtime = backendSettings.value.small_model_runtime
-    return runtime === 'onnx_genai_python' ? runtime : 'onnx_genai_python'
+    return runtime === 'llama.cpp' ? runtime : 'llama.cpp'
   })
   const smallModelID = computed<SmallModelID>(() => {
     const id = backendSettings.value.small_model_id
-    return id === 'qwen3.5-0.8b-onnx-q4' ? id : 'qwen3.5-0.8b-onnx-q4'
+    return id === 'qwen3.5-0.8b-gguf-q4km' ? id : 'qwen3.5-0.8b-gguf-q4km'
   })
   const smallModelAutoDownload = computed(() => backendSettings.value.small_model_auto_download ?? true)
-  const smallModelSummaryEnabled = computed(() => backendSettings.value.small_model_summary_enabled ?? true)
-  const smallModelDocExtractEnabled = computed(() => backendSettings.value.small_model_doc_extract_enabled ?? true)
-  const smallModelRerankEnabled = computed(() => backendSettings.value.small_model_rerank_enabled ?? true)
-  const smartToolSelection = computed(() => backendSettings.value.smart_tool_selection ?? true)
-  const smartSkillSelection = computed(() => backendSettings.value.smart_skill_selection ?? true)
+  const smallModelSummaryEnabled = computed(() => backendSettings.value.small_model_summary_enabled ?? false)
+  const smallModelDocExtractEnabled = computed(() => backendSettings.value.small_model_doc_extract_enabled ?? false)
+  const smallModelRerankEnabled = computed(() => backendSettings.value.small_model_rerank_enabled ?? false)
+  const smartToolSelection = computed(() => backendSettings.value.smart_tool_selection ?? false)
+  const smartSkillSelection = computed(() => backendSettings.value.smart_skill_selection ?? false)
   const skillSelectorMode = computed<'hybrid' | 'ir_only' | 'llm_only'>(() => {
     const mode = backendSettings.value.skill_selector_mode
     if (mode === 'ir_only' || mode === 'llm_only') return mode
@@ -478,12 +478,12 @@ export const useSettingsStore = defineStore('settings', () => {
   const agentLoopPolicyActionPledgeBudget = computed(() => backendSettings.value.agent_loop_policy_action_pledge_budget ?? 3)
   const agentLoopPolicyMissingTodoBudget = computed(() => backendSettings.value.agent_loop_policy_missing_todo_budget ?? 3)
   const agentLoopPolicyPendingTodoBudget = computed(() => backendSettings.value.agent_loop_policy_pending_todo_budget ?? 3)
-  const smallModelContextPruneEnabled = computed(() => backendSettings.value.small_model_context_prune_enabled ?? true)
-  const smallModelMediaIntentEnabled = computed(() => backendSettings.value.small_model_media_intent_enabled ?? true)
-  const offlineIRFallbackEnabled = computed(() => backendSettings.value.offline_ir_fallback_enabled ?? true)
-  const featureIntentIREnabled = computed(() => backendSettings.value.feature_intent_ir_enabled ?? true)
-  const smallModelRouteShortQAEnabled = computed(() => backendSettings.value.small_model_route_short_qa_enabled ?? true)
-  const smallModelRouteToolDispatchEnabled = computed(() => backendSettings.value.small_model_route_tool_dispatch_enabled ?? true)
+  const smallModelContextPruneEnabled = computed(() => backendSettings.value.small_model_context_prune_enabled ?? false)
+  const smallModelMediaIntentEnabled = computed(() => backendSettings.value.small_model_media_intent_enabled ?? false)
+  const offlineIRFallbackEnabled = computed(() => backendSettings.value.offline_ir_fallback_enabled ?? false)
+  const featureIntentIREnabled = computed(() => backendSettings.value.feature_intent_ir_enabled ?? false)
+  const smallModelRouteShortQAEnabled = computed(() => backendSettings.value.small_model_route_short_qa_enabled ?? false)
+  const smallModelRouteToolDispatchEnabled = computed(() => backendSettings.value.small_model_route_tool_dispatch_enabled ?? false)
   const noLLMDegradeMode = computed<NoLLMDegradeMode>(() => {
     return backendSettings.value.no_llm_degrade_mode === 'deepresearch'
       ? backendSettings.value.no_llm_degrade_mode

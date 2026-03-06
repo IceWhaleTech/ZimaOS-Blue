@@ -709,14 +709,7 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 
 		// Handle tool calls in assistant messages
 		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
-			var blocks []AnthropicContentBlock
-			// Add text content if present
-			if content, ok := msg.Content.(string); ok && content != "" {
-				blocks = append(blocks, AnthropicContentBlock{
-					Type: "text",
-					Text: content,
-				})
-			}
+			blocks := anthropicContentBlocksFromMessageContent(anthropicMsg.Content)
 			// Add tool use blocks
 			for _, tc := range msg.ToolCalls {
 				var input interface{}
@@ -737,7 +730,7 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 			anthropicMsg.Content = []AnthropicContentBlock{{
 				Type:      "tool_result",
 				ToolUseID: msg.ToolCallID,
-				Content:   fmt.Sprintf("%v", msg.Content),
+				Content:   anthropicToolResultString(msg.Content),
 			}}
 		}
 
@@ -760,6 +753,75 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 	}
 
 	return anthropicReq
+}
+
+func anthropicContentBlocksFromMessageContent(content interface{}) []AnthropicContentBlock {
+	switch c := content.(type) {
+	case string:
+		if strings.TrimSpace(c) == "" {
+			return nil
+		}
+		return []AnthropicContentBlock{{
+			Type: "text",
+			Text: c,
+		}}
+	case []AnthropicContentBlock:
+		if len(c) == 0 {
+			return nil
+		}
+		out := make([]AnthropicContentBlock, 0, len(c))
+		out = append(out, c...)
+		return out
+	case []interface{}:
+		if len(c) == 0 {
+			return nil
+		}
+		out := make([]AnthropicContentBlock, 0, len(c))
+		for _, raw := range c {
+			block, ok := raw.(map[string]interface{})
+			if !ok || block == nil {
+				continue
+			}
+			blockType, _ := block["type"].(string)
+			switch blockType {
+			case "text":
+				text, _ := block["text"].(string)
+				if strings.TrimSpace(text) == "" {
+					continue
+				}
+				out = append(out, AnthropicContentBlock{
+					Type: "text",
+					Text: text,
+				})
+			}
+		}
+		if len(out) == 0 {
+			return nil
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func anthropicToolResultString(content interface{}) string {
+	switch v := content.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case gojson.RawMessage:
+		raw := strings.TrimSpace(string(v))
+		if raw == "" || raw == "null" {
+			return ""
+		}
+		return raw
+	default:
+		if encoded, err := json.Marshal(v); err == nil {
+			return string(encoded)
+		}
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 // ApplyPromptCaching adds cache_control breakpoints to an Anthropic request.

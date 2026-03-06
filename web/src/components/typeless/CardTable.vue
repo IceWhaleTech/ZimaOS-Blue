@@ -20,7 +20,7 @@ function renderContent(content: string | number | null | undefined): string {
   if (typeof content === 'number') {
     return String(content)
   }
-  return parseInline(content as string)
+  return parseInline(content as string, { allowUnderscoreEmphasis: false })
 }
 </script>
 

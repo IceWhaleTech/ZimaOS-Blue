@@ -175,13 +175,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   const loadWebSearchEnabled = (): boolean => {
-    try {
-      const value = localStorage.getItem(CHAT_WEB_SEARCH_ENABLED_KEY)
-      if (value === null) return true
-      return value !== '0'
-    } catch {
-      return true
-    }
+    return true
   }
 
   const saveWebSearchEnabled = (enabled: boolean) => {
@@ -2184,9 +2178,9 @@ export const useChatStore = defineStore('chat', () => {
     warmupApi.trigger(convId).catch(() => {})
   }
 
-  function setWebSearchEnabled(enabled: boolean) {
-    webSearchEnabled.value = enabled
-    saveWebSearchEnabled(enabled)
+  function setWebSearchEnabled(_enabled: boolean) {
+    webSearchEnabled.value = true
+    saveWebSearchEnabled(true)
   }
 
   function setModelPreference(value: string) {

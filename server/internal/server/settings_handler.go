@@ -37,10 +37,10 @@ type Settings struct {
 	Locale                              string   `json:"locale,omitempty"`                                    // User's preferred locale (e.g., "zh-CN", "en-US")
 	Timezone                            string   `json:"timezone,omitempty"`                                  // User's timezone
 	ThemeStyle                          string   `json:"theme_style,omitempty"`                               // Chat theme style
-	SmartToolSelection                  *bool    `json:"smart_tool_selection,omitempty"`                      // IR-based tool filtering (nil = default true)
-	SmartSkillSelection                 *bool    `json:"smart_skill_selection,omitempty"`                     // Progressive skill selector (nil = default true)
+	SmartToolSelection                  *bool    `json:"smart_tool_selection,omitempty"`                      // IR-based tool filtering (nil = default false)
+	SmartSkillSelection                 *bool    `json:"smart_skill_selection,omitempty"`                     // Progressive skill selector (nil = default false)
 	SkillSelectorMode                   string   `json:"skill_selector_mode,omitempty"`                       // hybrid|ir_only|llm_only
-	SkillRerankEnabled                  *bool    `json:"skill_rerank_enabled,omitempty"`                      // Enable stage-2 rerank (nil = default true)
+	SkillRerankEnabled                  *bool    `json:"skill_rerank_enabled,omitempty"`                      // Enable stage-2 rerank (nil = default false)
 	SkillRerankModel                    string   `json:"skill_rerank_model,omitempty"`                        // Reranker model repo (e.g. cross-encoder/ms-marco-MiniLM-L6-v2)
 	SkillRerankONNXEnabled              *bool    `json:"skill_rerank_onnx_enabled,omitempty"`                 // Enable ONNX reranker path (nil = default false)
 	SkillRerankONNXAutoDownload         *bool    `json:"skill_rerank_onnx_auto_download,omitempty"`           // Allow ONNX model auto-download (nil = default false)
@@ -59,19 +59,19 @@ type Settings struct {
 	AgentLoopPolicyMissingTodoBudget    *int     `json:"agent_loop_policy_missing_todo_budget,omitempty"`     // default maxMissingTodoAutoContinueAgent
 	AgentLoopPolicyPendingTodoBudget    *int     `json:"agent_loop_policy_pending_todo_budget,omitempty"`     // default maxPendingTodoAutoContinueAgent
 	SmallModelEnabled                   *bool    `json:"small_model_enabled,omitempty"`                       // default false
-	SmallModelRuntime                   string   `json:"small_model_runtime,omitempty"`                       // fixed: onnx_genai_python
-	SmallModelID                        string   `json:"small_model_id,omitempty"`                            // fixed: qwen3.5-0.8b-onnx-q4
+	SmallModelRuntime                   string   `json:"small_model_runtime,omitempty"`                       // fixed: llama.cpp
+	SmallModelID                        string   `json:"small_model_id,omitempty"`                            // fixed: qwen3.5-0.8b-gguf-q4km
 	SmallModelAutoDownload              *bool    `json:"small_model_auto_download,omitempty"`                 // default true
-	SmallModelSummaryEnabled            *bool    `json:"small_model_summary_enabled,omitempty"`               // default true
-	SmallModelDocExtractEnabled         *bool    `json:"small_model_doc_extract_enabled,omitempty"`           // default true
-	SmallModelRerankEnabled             *bool    `json:"small_model_rerank_enabled,omitempty"`                // default true
-	SmallModelContextPruneEnabled       *bool    `json:"small_model_context_prune_enabled,omitempty"`         // default true
-	SmallModelMediaIntentEnabled        *bool    `json:"small_model_media_intent_enabled,omitempty"`          // default true
-	OfflineIRFallbackEnabled            *bool    `json:"offline_ir_fallback_enabled,omitempty"`               // default true
-	FeatureIntentIREnabled              *bool    `json:"feature_intent_ir_enabled,omitempty"`                 // default true
-	DeepResearchV2Enabled               *bool    `json:"deep_research_v2_enabled,omitempty"`                  // default true (full release)
-	SmallModelRouteShortQAEnabled       *bool    `json:"small_model_route_short_qa_enabled,omitempty"`        // default true
-	SmallModelRouteToolDispatchEnabled  *bool    `json:"small_model_route_tool_dispatch_enabled,omitempty"`   // default true
+	SmallModelSummaryEnabled            *bool    `json:"small_model_summary_enabled,omitempty"`               // default false
+	SmallModelDocExtractEnabled         *bool    `json:"small_model_doc_extract_enabled,omitempty"`           // default false
+	SmallModelRerankEnabled             *bool    `json:"small_model_rerank_enabled,omitempty"`                // default false
+	SmallModelContextPruneEnabled       *bool    `json:"small_model_context_prune_enabled,omitempty"`         // default false
+	SmallModelMediaIntentEnabled        *bool    `json:"small_model_media_intent_enabled,omitempty"`          // default false
+	OfflineIRFallbackEnabled            *bool    `json:"offline_ir_fallback_enabled,omitempty"`               // default false
+	FeatureIntentIREnabled              *bool    `json:"feature_intent_ir_enabled,omitempty"`                 // default false
+	DeepResearchV2Enabled               *bool    `json:"deep_research_v2_enabled,omitempty"`                  // default false
+	SmallModelRouteShortQAEnabled       *bool    `json:"small_model_route_short_qa_enabled,omitempty"`        // default false
+	SmallModelRouteToolDispatchEnabled  *bool    `json:"small_model_route_tool_dispatch_enabled,omitempty"`   // default false
 	NoLLMDegradeMode                    string   `json:"no_llm_degrade_mode,omitempty"`                       // fixed default deepresearch
 	SmallModelUnavailablePolicy         string   `json:"small_model_unavailable_policy,omitempty"`            // default ir_first
 }
@@ -203,7 +203,7 @@ func (h *SettingsHandler) GetSkillRerankerModelStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, mgr.GetStatus())
 }
 
-// StartSmallModelDownload starts downloading fixed ONNX small model in background.
+// StartSmallModelDownload starts downloading fixed llama.cpp small model in background.
 func (h *SettingsHandler) StartSmallModelDownload(c echo.Context) error {
 	h.mu.RLock()
 	mgr := h.smallModelManager
@@ -749,22 +749,22 @@ func (h *SettingsHandler) GetLocale() string {
 	return workspace.DetectLocale()
 }
 
-// GetSmartToolSelection returns whether smart tool selection is enabled (default true).
+// GetSmartToolSelection returns whether smart tool selection is enabled (default false).
 func (h *SettingsHandler) GetSmartToolSelection() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmartToolSelection == nil {
-		return true
+		return false
 	}
 	return *h.settings.SmartToolSelection
 }
 
-// GetSmartSkillSelection returns whether smart skill selection is enabled (default true).
+// GetSmartSkillSelection returns whether smart skill selection is enabled (default false).
 func (h *SettingsHandler) GetSmartSkillSelection() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmartSkillSelection == nil {
-		return true
+		return false
 	}
 	return *h.settings.SmartSkillSelection
 }
@@ -781,12 +781,12 @@ func (h *SettingsHandler) GetSkillSelectorMode() string {
 	}
 }
 
-// GetSkillRerankEnabled returns whether stage-2 rerank is enabled (default true).
+// GetSkillRerankEnabled returns whether stage-2 rerank is enabled (default false).
 func (h *SettingsHandler) GetSkillRerankEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SkillRerankEnabled == nil {
-		return true
+		return false
 	}
 	return *h.settings.SkillRerankEnabled
 }
@@ -797,7 +797,7 @@ func (h *SettingsHandler) GetEffectiveSkillRerankEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	rerankEnabled := true
+	rerankEnabled := false
 	if h.settings.SkillRerankEnabled != nil {
 		rerankEnabled = *h.settings.SkillRerankEnabled
 	}
@@ -813,7 +813,7 @@ func (h *SettingsHandler) GetEffectiveSkillRerankEnabled() bool {
 		return true
 	}
 
-	smallModelRerankEnabled := true
+	smallModelRerankEnabled := false
 	if h.settings.SmallModelRerankEnabled != nil {
 		smallModelRerankEnabled = *h.settings.SmallModelRerankEnabled
 	}
@@ -1072,7 +1072,7 @@ func (h *SettingsHandler) GetSmallModelEnabled() bool {
 	return *h.settings.SmallModelEnabled
 }
 
-// GetSmallModelRuntime returns the runtime type (fixed onnx_genai_python).
+// GetSmallModelRuntime returns the runtime type (fixed llama.cpp).
 func (h *SettingsHandler) GetSmallModelRuntime() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -1106,7 +1106,7 @@ func (h *SettingsHandler) GetSmallModelSummaryEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmallModelSummaryEnabled == nil {
-		return true
+		return false
 	}
 	return *h.settings.SmallModelSummaryEnabled
 }
@@ -1115,7 +1115,7 @@ func (h *SettingsHandler) GetSmallModelDocExtractEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmallModelDocExtractEnabled == nil {
-		return true
+		return false
 	}
 	return *h.settings.SmallModelDocExtractEnabled
 }
@@ -1124,7 +1124,7 @@ func (h *SettingsHandler) GetSmallModelRerankEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmallModelRerankEnabled == nil {
-		return true
+		return false
 	}
 	return *h.settings.SmallModelRerankEnabled
 }
@@ -1133,7 +1133,7 @@ func (h *SettingsHandler) GetSmallModelContextPruneEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmallModelContextPruneEnabled == nil {
-		return true
+		return false
 	}
 	return *h.settings.SmallModelContextPruneEnabled
 }
@@ -1142,7 +1142,7 @@ func (h *SettingsHandler) GetSmallModelMediaIntentEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmallModelMediaIntentEnabled == nil {
-		return true
+		return false
 	}
 	return *h.settings.SmallModelMediaIntentEnabled
 }
@@ -1151,7 +1151,7 @@ func (h *SettingsHandler) GetOfflineIRFallbackEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.OfflineIRFallbackEnabled == nil {
-		return true
+		return false
 	}
 	return *h.settings.OfflineIRFallbackEnabled
 }
@@ -1160,17 +1160,17 @@ func (h *SettingsHandler) GetFeatureIntentIREnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.FeatureIntentIREnabled == nil {
-		return true
+		return false
 	}
 	return *h.settings.FeatureIntentIREnabled
 }
 
-// GetDeepResearchV2Enabled returns whether deep research V2 pipeline is enabled (default true).
+// GetDeepResearchV2Enabled returns whether deep research V2 pipeline is enabled (default false).
 func (h *SettingsHandler) GetDeepResearchV2Enabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.DeepResearchV2Enabled == nil {
-		return true
+		return false
 	}
 	return *h.settings.DeepResearchV2Enabled
 }
@@ -1179,7 +1179,7 @@ func (h *SettingsHandler) GetSmallModelRouteShortQAEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmallModelRouteShortQAEnabled == nil {
-		return true
+		return false
 	}
 	return *h.settings.SmallModelRouteShortQAEnabled
 }
@@ -1188,7 +1188,7 @@ func (h *SettingsHandler) GetSmallModelRouteToolDispatchEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	if h.settings.SmallModelRouteToolDispatchEnabled == nil {
-		return true
+		return false
 	}
 	return *h.settings.SmallModelRouteToolDispatchEnabled
 }

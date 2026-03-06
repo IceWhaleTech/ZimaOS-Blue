@@ -159,6 +159,19 @@ func getHealthCheckMethod(provider *Provider) (string, []string) {
 	switch provider.ID {
 	case "openai", "deepseek", "openrouter", "openrouter-free", "aihubmix":
 		return http.MethodGet, []string{baseURL + "/models"}
+	case "nvidia":
+		// NVIDIA NIM public integrate endpoint is centered on chat completions.
+		// Some tenants do not expose /models, which can cause false 404 health failures.
+		if strings.HasSuffix(baseURL, "/chat/completions") {
+			return http.MethodPost, []string{baseURL}
+		}
+		if strings.HasSuffix(baseURL, "/v1") {
+			return http.MethodPost, []string{baseURL + "/chat/completions"}
+		}
+		return http.MethodPost, []string{
+			baseURL + "/v1/chat/completions",
+			baseURL + "/chat/completions",
+		}
 	case "moonshot":
 		// Moonshot (Kimi) has domestic (.cn) and international (.ai) domains.
 		urls := []string{baseURL + "/models"}

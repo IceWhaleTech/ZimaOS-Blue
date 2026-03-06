@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -34,7 +33,7 @@ func TestBlueBubblesValidator_MissingPassword(t *testing.T) {
 }
 
 func TestBlueBubblesValidator_ValidCredentials(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request path
 		if r.URL.Path != "/api/v1/server/info" {
 			t.Errorf("unexpected path: got %s", r.URL.Path)
@@ -50,12 +49,12 @@ func TestBlueBubblesValidator_ValidCredentials(t *testing.T) {
 			"status":  200,
 			"message": "Success",
 			"data": map[string]interface{}{
-				"os_version":        "14.0",
-				"server_version":    "1.9.0",
-				"private_api_mode":  true,
-				"helper_connected":  true,
-				"proxy_service":     "Cloudflare",
-				"detected_icloud":   "user@icloud.com",
+				"os_version":       "14.0",
+				"server_version":   "1.9.0",
+				"private_api_mode": true,
+				"helper_connected": true,
+				"proxy_service":    "Cloudflare",
+				"detected_icloud":  "user@icloud.com",
 			},
 		}
 		json.NewEncoder(w).Encode(response)
@@ -83,7 +82,7 @@ func TestBlueBubblesValidator_ValidCredentials(t *testing.T) {
 }
 
 func TestBlueBubblesValidator_ServerURLWithTrailingSlash(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Should not have double slashes
 		if r.URL.Path != "/api/v1/server/info" {
 			t.Errorf("unexpected path: got %s", r.URL.Path)
@@ -112,7 +111,7 @@ func TestBlueBubblesValidator_ServerURLWithTrailingSlash(t *testing.T) {
 }
 
 func TestBlueBubblesValidator_InvalidPassword(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"status":  401,
 			"message": "Unauthorized",
@@ -140,7 +139,7 @@ func TestBlueBubblesValidator_InvalidPassword(t *testing.T) {
 }
 
 func TestBlueBubblesValidator_ServerError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"status":  500,
 			"message": "Internal Server Error",
@@ -168,7 +167,7 @@ func TestBlueBubblesValidator_ServerError(t *testing.T) {
 }
 
 func TestBlueBubblesValidator_Timeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": 200})
 	}))
@@ -190,7 +189,7 @@ func TestBlueBubblesValidator_Timeout(t *testing.T) {
 }
 
 func TestBlueBubblesValidator_InvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
@@ -210,7 +209,7 @@ func TestBlueBubblesValidator_InvalidJSON(t *testing.T) {
 }
 
 func TestBlueBubblesValidator_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL := server.URL
 	server.Close()
 
@@ -229,7 +228,7 @@ func TestBlueBubblesValidator_NetworkError(t *testing.T) {
 }
 
 func TestBlueBubblesValidator_HelperNotConnected(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"status":  200,
 			"message": "Success",

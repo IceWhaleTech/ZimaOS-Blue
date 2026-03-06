@@ -123,6 +123,15 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	if cfg.DetectionTimeout != 5*time.Second {
 		t.Errorf("expected DetectionTimeout 5s, got %v", cfg.DetectionTimeout)
 	}
+	if cfg.SmartSelection {
+		t.Error("expected SmartSelection to be false by default")
+	}
+	if cfg.SmartSkillSelection {
+		t.Error("expected SmartSkillSelection to be false by default")
+	}
+	if cfg.SkillRerankEnabled {
+		t.Error("expected SkillRerankEnabled to be false by default")
+	}
 	if cfg.SkillRerankModel != "cross-encoder/ms-marco-MiniLM-L6-v2" {
 		t.Errorf("expected SkillRerankModel cross-encoder/ms-marco-MiniLM-L6-v2, got %q", cfg.SkillRerankModel)
 	}
@@ -131,6 +140,12 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	}
 	if cfg.SkillRerankONNXAutoDownload {
 		t.Error("expected SkillRerankONNXAutoDownload to be false by default")
+	}
+	if cfg.ToolRouterDynamicExposure {
+		t.Error("expected ToolRouterDynamicExposure to be false by default")
+	}
+	if cfg.ToolRouterSchemaCompression {
+		t.Error("expected ToolRouterSchemaCompression to be false by default")
 	}
 
 	if !cfg.Adapters.CLIProxy.Enabled {

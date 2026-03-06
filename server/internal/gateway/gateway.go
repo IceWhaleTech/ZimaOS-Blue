@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -68,6 +69,9 @@ type Config struct {
 	PongTimeoutSeconds int `yaml:"pong_timeout_seconds"`
 	// WriteTimeout is the timeout for write operations.
 	WriteTimeoutSeconds int `yaml:"write_timeout_seconds"`
+	// RequestTimeout is the timeout for a single gateway request.
+	// 0 disables hard request timeout and relies on connection cancellation.
+	RequestTimeoutSeconds int `yaml:"request_timeout_seconds"`
 	// MaxConnections is the maximum number of connections.
 	MaxConnections int `yaml:"max_connections"`
 }
@@ -75,14 +79,15 @@ type Config struct {
 // DefaultConfig returns the default gateway configuration.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:             true,
-		ReadBufferSize:      1024,
-		WriteBufferSize:     1024,
-		MaxMessageSize:      512 * 1024, // 512KB
-		PingIntervalSeconds: 30,
-		PongTimeoutSeconds:  60,
-		WriteTimeoutSeconds: 10,
-		MaxConnections:      1000,
+		Enabled:               true,
+		ReadBufferSize:        1024,
+		WriteBufferSize:       1024,
+		MaxMessageSize:        512 * 1024, // 512KB
+		PingIntervalSeconds:   30,
+		PongTimeoutSeconds:    60,
+		WriteTimeoutSeconds:   10,
+		RequestTimeoutSeconds: 0,
+		MaxConnections:        1000,
 	}
 }
 
@@ -272,8 +277,8 @@ func (g *Gateway) handleMessage(conn *Connection, msg *Message) {
 		return
 	}
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(g.ctx, 30*time.Second)
+	// Create request context bound to gateway/connection lifecycle, with optional timeout.
+	ctx, cancel := g.newRequestContext(conn)
 	defer cancel()
 
 	// Call handler
@@ -283,7 +288,19 @@ func (g *Gateway) handleMessage(conn *Connection, msg *Message) {
 			zap.String("conn_id", conn.ID),
 			zap.String("method", msg.Method),
 			zap.Error(err))
-		g.sendError(conn, msg.ID, 500, err.Error())
+		if errors.Is(err, context.Canceled) && ctx.Err() == context.Canceled {
+			// Connection closed/cancelled — no user-facing error needed.
+			return
+		}
+		msgText := err.Error()
+		if errors.Is(err, context.DeadlineExceeded) {
+			if g.config.RequestTimeoutSeconds > 0 {
+				msgText = fmt.Sprintf("request timed out after %ds: %v", g.config.RequestTimeoutSeconds, err)
+			} else {
+				msgText = fmt.Sprintf("request timed out: %v", err)
+			}
+		}
+		g.sendError(conn, msg.ID, 500, msgText)
 		return
 	}
 
@@ -293,6 +310,25 @@ func (g *Gateway) handleMessage(conn *Connection, msg *Message) {
 		response.Type = TypeResponse
 		response.Timestamp = timeutil.NowMilli()
 		conn.Send(response)
+	}
+}
+
+func (g *Gateway) newRequestContext(conn *Connection) (context.Context, context.CancelFunc) {
+	baseCtx, baseCancel := context.WithCancel(g.ctx)
+	go func() {
+		select {
+		case <-conn.done:
+			baseCancel()
+		case <-baseCtx.Done():
+		}
+	}()
+	if g.config.RequestTimeoutSeconds <= 0 {
+		return baseCtx, baseCancel
+	}
+	timeoutCtx, timeoutCancel := context.WithTimeout(baseCtx, time.Duration(g.config.RequestTimeoutSeconds)*time.Second)
+	return timeoutCtx, func() {
+		timeoutCancel()
+		baseCancel()
 	}
 }
 

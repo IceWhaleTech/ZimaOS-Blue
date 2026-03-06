@@ -1,7 +1,7 @@
 import api from './client'
 
-export type SmallModelRuntime = 'onnx_genai_python'
-export type SmallModelID = 'qwen3.5-0.8b-onnx-q4'
+export type SmallModelRuntime = 'llama.cpp'
+export type SmallModelID = 'qwen3.5-0.8b-gguf-q4km'
 export type NoLLMDegradeMode = 'deepresearch'
 export type SmallModelUnavailablePolicy = 'ir_first'
 export type SoulProposalStatus = 'pending' | 'approved' | 'rejected'
@@ -11,10 +11,10 @@ export interface Settings {
   locale?: string   // User's preferred locale (e.g., "zh-CN", "en-US")
   timezone?: string // User's timezone
   theme_style?: string // Chat theme style (default/bubble/minimal/gradient/ocean)
-  smart_tool_selection?: boolean // IR-based tool filtering (default true)
-  smart_skill_selection?: boolean // Progressive skill selector (default true)
+  smart_tool_selection?: boolean // IR-based tool filtering (default false)
+  smart_skill_selection?: boolean // Progressive skill selector (default false)
   skill_selector_mode?: 'hybrid' | 'ir_only' | 'llm_only' // Skill selector strategy
-  skill_rerank_enabled?: boolean // Enable stage-2 rerank (default true)
+  skill_rerank_enabled?: boolean // Enable stage-2 rerank (default false)
   skill_rerank_model?: string // Reranker model repo
   skill_rerank_onnx_enabled?: boolean // Enable ONNX reranker path (default false)
   skill_rerank_onnx_auto_download?: boolean // Allow ONNX model auto-download (default false)
@@ -31,18 +31,19 @@ export interface Settings {
   agent_loop_policy_pending_todo_budget?: number // Agent loop pending-todo budget
   memory_recall_mode?: 'aggressive' | 'balanced' | 'quality' // Memory recall strategy (default balanced)
   small_model_enabled?: boolean // Enable small-model routing features (default false)
-  small_model_runtime?: SmallModelRuntime // Fixed: onnx_genai_python
-  small_model_id?: SmallModelID // Fixed: qwen3.5-0.8b-onnx-q4
+  small_model_runtime?: SmallModelRuntime // Fixed: llama.cpp
+  small_model_id?: SmallModelID // Fixed: qwen3.5-0.8b-gguf-q4km
   small_model_auto_download?: boolean // Auto download small model (default true)
-  small_model_summary_enabled?: boolean // Phase1 default true
-  small_model_doc_extract_enabled?: boolean // Phase1 default true
-  small_model_rerank_enabled?: boolean // Phase1 default true
-  small_model_context_prune_enabled?: boolean // Phase1 default true
-  small_model_media_intent_enabled?: boolean // Phase1 default true
-  offline_ir_fallback_enabled?: boolean // Offline IR fallback (default true)
-  feature_intent_ir_enabled?: boolean // Channel feature-intent IR hints (default true)
-  small_model_route_short_qa_enabled?: boolean // default true
-  small_model_route_tool_dispatch_enabled?: boolean // default true
+  small_model_summary_enabled?: boolean // Phase1 default false
+  small_model_doc_extract_enabled?: boolean // Phase1 default false
+  small_model_rerank_enabled?: boolean // Phase1 default false
+  small_model_context_prune_enabled?: boolean // Phase1 default false
+  small_model_media_intent_enabled?: boolean // Phase1 default false
+  offline_ir_fallback_enabled?: boolean // Offline IR fallback (default false)
+  feature_intent_ir_enabled?: boolean // Channel feature-intent IR hints (default false)
+  deep_research_v2_enabled?: boolean // default false
+  small_model_route_short_qa_enabled?: boolean // default false
+  small_model_route_tool_dispatch_enabled?: boolean // default false
   no_llm_degrade_mode?: NoLLMDegradeMode // Fixed deepresearch
   small_model_unavailable_policy?: SmallModelUnavailablePolicy // Fixed ir_first
 }

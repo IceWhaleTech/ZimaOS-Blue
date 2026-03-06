@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -139,6 +141,46 @@ func TestRegistryDefinitions(t *testing.T) {
 	defs := registry.Definitions()
 	if len(defs) != 2 {
 		t.Errorf("expected 2 definitions, got %d", len(defs))
+	}
+}
+
+func TestRegistryExposeDefinition(t *testing.T) {
+	registry := NewRegistry()
+	registry.ExposeDefinition(ToolDefinition{
+		Name:        "sessions_list",
+		Description: "List sessions",
+	})
+
+	if got := registry.List(); len(got) != 0 {
+		t.Fatalf("active tool list = %v, want empty for exposed-only definition", got)
+	}
+	if got := registry.Get("sessions_list"); got != nil {
+		t.Fatalf("Get returned %v for exposed-only definition, want nil", got)
+	}
+
+	defs := registry.Definitions()
+	if len(defs) != 1 {
+		t.Fatalf("definitions len = %d, want 1", len(defs))
+	}
+	if defs[0].Name != "sessions_list" {
+		t.Fatalf("definition name = %q, want sessions_list", defs[0].Name)
+	}
+}
+
+func TestRegistryExposeDefinition_ActiveToolWins(t *testing.T) {
+	registry := NewRegistry()
+	registry.ExposeDefinition(ToolDefinition{
+		Name:        "web_search",
+		Description: "compat",
+	})
+	registry.Register(NewMockTool("web_search", "native"))
+
+	defs := registry.Definitions()
+	if len(defs) != 1 {
+		t.Fatalf("definitions len = %d, want 1", len(defs))
+	}
+	if defs[0].Description != "native" {
+		t.Fatalf("definition description = %q, want native", defs[0].Description)
 	}
 }
 
@@ -592,7 +634,7 @@ func TestFileReadTool(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	tool := NewFileReadTool(nil, 0)
+	tool := NewFileReadTool([]string{tmpDir}, 0)
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
 		"path": testFile,
@@ -691,7 +733,7 @@ func TestFileWriteTool(t *testing.T) {
 	testFile := tmpDir + "/output.txt"
 	testContent := "Hello, World!"
 
-	tool := NewFileWriteTool(nil, 0)
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
 		"path":    testFile,
@@ -725,7 +767,7 @@ func TestFileWriteToolAppend(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := tmpDir + "/append.txt"
 
-	tool := NewFileWriteTool(nil, 0)
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
 
 	// Write initial content
 	_, err := tool.Execute(context.Background(), map[string]interface{}{
@@ -826,15 +868,884 @@ func TestFileWriteToolContentTooLarge(t *testing.T) {
 	}
 }
 
+func TestFileToolDefinitionsUseNewNames(t *testing.T) {
+	if got := NewFileReadTool(nil, 0).Definition().Name; got != "read" {
+		t.Fatalf("read tool name = %q, want read", got)
+	}
+	if got := NewFileWriteTool(nil, 0).Definition().Name; got != "write" {
+		t.Fatalf("write tool name = %q, want write", got)
+	}
+}
+
+func TestExecutorLegacyToolNameRemap(t *testing.T) {
+	registry := NewRegistry()
+	readTool := NewMockTool("read", "Read")
+	readTool.SetResult("ok")
+	writeTool := NewMockTool("write", "Write")
+	writeTool.SetResult("ok")
+	registry.Register(readTool)
+	registry.Register(writeTool)
+
+	executor := NewExecutor(registry)
+	if _, err := executor.Execute(context.Background(), "file_read", map[string]interface{}{"path": "a.txt"}); err != nil {
+		t.Fatalf("file_read compatibility execute failed: %v", err)
+	}
+	if _, err := executor.Execute(context.Background(), "file_write", map[string]interface{}{"path": "a.txt", "content": "x"}); err != nil {
+		t.Fatalf("file_write compatibility execute failed: %v", err)
+	}
+}
+
+func TestExecutorMemoryCompatToolNameRemapAndArgs(t *testing.T) {
+	registry := NewRegistry()
+	memoryTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "memory",
+			Description: "Memory operations",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"action":  map[string]interface{}{"type": "string"},
+					"query":   map[string]interface{}{"type": "string"},
+					"id":      map[string]interface{}{"type": "string"},
+					"content": map[string]interface{}{"type": "string"},
+					"tags": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+					},
+				},
+				"required": []string{"action"},
+			},
+		},
+	}
+	registry.Register(memoryTool)
+
+	executor := NewExecutor(registry)
+
+	if _, err := executor.Execute(context.Background(), "memory_write", map[string]interface{}{
+		"text":     "remember this",
+		"category": "prefs",
+	}); err != nil {
+		t.Fatalf("memory_write compatibility execute failed: %v", err)
+	}
+	if got := memoryTool.args["action"]; got != "remember" {
+		t.Fatalf("action = %v, want %q", got, "remember")
+	}
+	if got := memoryTool.args["content"]; got != "remember this" {
+		t.Fatalf("content = %v, want %q", got, "remember this")
+	}
+	tags, ok := memoryTool.args["tags"].([]interface{})
+	if !ok || len(tags) != 1 || tags[0] != "prefs" {
+		t.Fatalf("tags = %v, want [prefs]", memoryTool.args["tags"])
+	}
+
+	if _, err := executor.Execute(context.Background(), "memory_search", map[string]interface{}{
+		"q": "compat context",
+	}); err != nil {
+		t.Fatalf("memory_search compatibility execute failed: %v", err)
+	}
+	if got := memoryTool.args["action"]; got != "search" {
+		t.Fatalf("action = %v, want %q", got, "search")
+	}
+	if got := memoryTool.args["query"]; got != "compat context" {
+		t.Fatalf("query = %v, want %q", got, "compat context")
+	}
+
+	if _, err := executor.Execute(context.Background(), "memory_get", map[string]interface{}{
+		"path": "memory/2026-03-05.md",
+	}); err != nil {
+		t.Fatalf("memory_get compatibility execute failed: %v", err)
+	}
+	if got := memoryTool.args["action"]; got != "get" {
+		t.Fatalf("action = %v, want %q", got, "get")
+	}
+	if got := memoryTool.args["id"]; got != "memory/2026-03-05.md" {
+		t.Fatalf("id = %v, want %q", got, "memory/2026-03-05.md")
+	}
+}
+
+func TestExecutorBrowserCompatInfersNavigateAction(t *testing.T) {
+	registry := NewRegistry()
+	browserTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "browser",
+			Description: "Browser",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"action": map[string]interface{}{"type": "string"},
+					"url":    map[string]interface{}{"type": "string"},
+				},
+			},
+		},
+	}
+	registry.Register(browserTool)
+
+	executor := NewExecutor(registry)
+	if _, err := executor.Execute(context.Background(), "web_fetch", map[string]interface{}{
+		"url": "https://example.com/docs",
+	}); err != nil {
+		t.Fatalf("web_fetch compatibility execute failed: %v", err)
+	}
+	if got := browserTool.args["action"]; got != "navigate" {
+		t.Fatalf("action = %v, want %q", got, "navigate")
+	}
+	if got := browserTool.args["url"]; got != "https://example.com/docs" {
+		t.Fatalf("url = %v, want %q", got, "https://example.com/docs")
+	}
+}
+
+func TestExecutorWebSearchCompatQueryNormalization(t *testing.T) {
+	registry := NewRegistry()
+	webTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "web_search",
+			Description: "Web search",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query":       map[string]interface{}{"type": "string"},
+					"max_results": map[string]interface{}{"type": "integer"},
+				},
+			},
+		},
+	}
+	registry.Register(webTool)
+
+	executor := NewExecutor(registry)
+	if _, err := executor.Execute(context.Background(), "web_search", map[string]interface{}{
+		"q":     "blue compat routing",
+		"limit": 7,
+	}); err != nil {
+		t.Fatalf("web_search compatibility execute failed: %v", err)
+	}
+	if got := webTool.args["query"]; got != "blue compat routing" {
+		t.Fatalf("query = %v, want %q", got, "blue compat routing")
+	}
+	if got := webTool.args["max_results"]; got != 7 {
+		t.Fatalf("max_results = %v, want %d", got, 7)
+	}
+}
+
+func TestFileWriteToolLineModeSuccess(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "line.txt")
+	if err := writeTestFile(target, "alpha\nbeta\ngamma\n"); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    target,
+		"content": "BETA",
+		"line":    2,
+	}); err != nil {
+		t.Fatalf("line mode write failed: %v", err)
+	}
+
+	got, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if got != "alpha\nBETA\ngamma\n" {
+		t.Fatalf("line mode content = %q, want %q", got, "alpha\nBETA\ngamma\n")
+	}
+}
+
+func TestFileWriteToolLineModeOutOfRange(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "line.txt")
+	if err := writeTestFile(target, "only one line\n"); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    target,
+		"content": "x",
+		"line":    3,
+	})
+	if err == nil {
+		t.Fatal("expected out-of-range error")
+	}
+	if got, want := err.Error(), "line 3 out of range (total lines: 1)"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestFileWriteToolLineModeMultiLineContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "line.txt")
+	if err := writeTestFile(target, "alpha\nbeta\ngamma\n"); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    target,
+		"content": "BETA-1\nBETA-2",
+		"line":    2,
+	}); err != nil {
+		t.Fatalf("line mode multi-line write failed: %v", err)
+	}
+
+	got, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if got != "alpha\nBETA-1\nBETA-2\ngamma\n" {
+		t.Fatalf("line mode multi-line content = %q, want %q", got, "alpha\nBETA-1\nBETA-2\ngamma\n")
+	}
+}
+
+func TestFileWriteToolLineModeAppendConflict(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "line.txt")
+	if err := writeTestFile(target, "hello\n"); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    target,
+		"content": "x",
+		"line":    1,
+		"append":  true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "line mode cannot be used with append=true") {
+		t.Fatalf("expected append conflict error, got %v", err)
+	}
+}
+
+func TestFileWriteToolLineModeMissingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "new-line.txt")
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    target,
+		"content": "first",
+		"line":    1,
+	}); err != nil {
+		t.Fatalf("line mode create first line failed: %v", err)
+	}
+	got, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if got != "first" {
+		t.Fatalf("content = %q, want %q", got, "first")
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"path":    filepath.Join(tmpDir, "missing.txt"),
+		"content": "x",
+		"line":    2,
+	})
+	if err == nil {
+		t.Fatal("expected out-of-range error for missing file line>1")
+	}
+	if got, want := err.Error(), "line 2 out of range (total lines: 0)"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestEditTool(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "edit.txt")
+	if err := writeTestFile(target, "hello world"); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	tool := NewEditTool([]string{tmpDir}, 0)
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":     target,
+		"old_text": "world",
+		"new_text": "blue",
+	}); err != nil {
+		t.Fatalf("edit failed: %v", err)
+	}
+
+	got, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if got != "hello blue" {
+		t.Fatalf("content = %q, want %q", got, "hello blue")
+	}
+}
+
+func TestGrepTool(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := writeTestFile(filepath.Join(tmpDir, "a.txt"), "hello\nworld\n"); err != nil {
+		t.Fatalf("write a.txt: %v", err)
+	}
+	if err := writeTestFile(filepath.Join(tmpDir, "b.txt"), "HELLO again\n"); err != nil {
+		t.Fatalf("write b.txt: %v", err)
+	}
+
+	tool := NewGrepTool([]string{tmpDir}, 0)
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"pattern": "hello",
+		"path":    ".",
+	})
+	if err != nil {
+		t.Fatalf("grep failed: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("decode grep result: %v", err)
+	}
+	if count, _ := payload["count"].(float64); count < 2 {
+		t.Fatalf("grep count = %v, want >= 2", payload["count"])
+	}
+}
+
+func TestFindTool(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	if err := writeTestFile(filepath.Join(tmpDir, "sub", "note.txt"), "x"); err != nil {
+		t.Fatalf("write note.txt: %v", err)
+	}
+
+	tool := NewFindTool([]string{tmpDir})
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":      ".",
+		"pattern":   "*.txt",
+		"type":      "file",
+		"max_depth": 5,
+	})
+	if err != nil {
+		t.Fatalf("find failed: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("decode find result: %v", err)
+	}
+	if count, _ := payload["count"].(float64); count < 1 {
+		t.Fatalf("find count = %v, want >= 1", payload["count"])
+	}
+}
+
+func TestLsTool(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	if err := writeTestFile(filepath.Join(tmpDir, "sub", "note.txt"), "x"); err != nil {
+		t.Fatalf("write note.txt: %v", err)
+	}
+
+	tool := NewLsTool([]string{tmpDir})
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":      ".",
+		"max_depth": 5,
+	})
+	if err != nil {
+		t.Fatalf("ls failed: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("decode ls result: %v", err)
+	}
+	if count, _ := payload["count"].(float64); count < 1 {
+		t.Fatalf("ls count = %v, want >= 1", payload["count"])
+	}
+}
+
 // Test RegisterBuiltinTools
 func TestRegisterBuiltinTools(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltinTools(registry)
 
-	expectedTools := []string{"file_read", "file_write", "web_search"}
+	expectedTools := []string{"read", "write", "edit", "grep", "find", "ls", "web_search", "mcp"}
 	for _, name := range expectedTools {
 		if registry.Get(name) == nil {
 			t.Errorf("expected tool '%s' to be registered", name)
+		}
+	}
+	if registry.Get("file_read") != nil {
+		t.Errorf("did not expect legacy tool name 'file_read' to be registered")
+	}
+	if registry.Get("file_write") != nil {
+		t.Errorf("did not expect legacy tool name 'file_write' to be registered")
+	}
+}
+
+func TestMCPToolDispatchesBuiltin(t *testing.T) {
+	registry := NewRegistry()
+	target := NewMockTool("read", "Read")
+	target.SetResult("ok")
+	registry.Register(target)
+	registry.Register(NewMCPTool(registry))
+
+	executor := NewExecutor(registry)
+	got, err := executor.Execute(context.Background(), "mcp", map[string]interface{}{
+		"tool": "read",
+		"params": map[string]interface{}{
+			"path": "a.txt",
+		},
+	})
+	if err != nil {
+		t.Fatalf("mcp dispatch failed: %v", err)
+	}
+	if got != "ok" {
+		t.Fatalf("result = %v, want ok", got)
+	}
+}
+
+func TestMCPToolFactoryToolValidationReturnsStructuredResult(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	registry.Register(NewMCPTool(registry))
+	execTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(execTool)
+
+	executor := NewExecutor(registry)
+	result, err := executor.Execute(context.Background(), "mcp", map[string]interface{}{
+		"tool": "sessions_send",
+		"params": map[string]interface{}{
+			"limit": 5,
+		},
+	})
+	if err != nil {
+		t.Fatalf("mcp fallback failed: %v", err)
+	}
+	if execTool.args != nil {
+		t.Fatalf("exec should not be called for invalid alias args, args=%v", execTool.args)
+	}
+	raw, ok := result.(string)
+	if !ok {
+		t.Fatalf("result type = %T, want string", result)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if payload["code"] != "invalid_arguments" {
+		t.Fatalf("code = %v, want invalid_arguments", payload["code"])
+	}
+	if payload["tool"] != "sessions_send" {
+		t.Fatalf("tool = %v, want sessions_send", payload["tool"])
+	}
+}
+
+func TestMCPToolValidation(t *testing.T) {
+	registry := NewRegistry()
+	registry.Register(NewMCPTool(registry))
+	executor := NewExecutor(registry)
+
+	if _, err := executor.Execute(context.Background(), "mcp", map[string]interface{}{}); err == nil {
+		t.Fatal("expected error for missing tool")
+	}
+	if _, err := executor.Execute(context.Background(), "mcp", map[string]interface{}{
+		"tool":   "read",
+		"params": "bad",
+	}); err == nil {
+		t.Fatal("expected error for non-object params")
+	}
+	if _, err := executor.Execute(context.Background(), "mcp", map[string]interface{}{
+		"tool": "mcp",
+	}); err == nil {
+		t.Fatal("expected error for recursive mcp call")
+	}
+}
+
+func TestRegisterFactoryToolDefinitions(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+
+	if got := registry.List(); len(got) != 0 {
+		t.Fatalf("active tool list = %v, want empty for exposed-only definitions", got)
+	}
+
+	defs := registry.Definitions()
+	names := make(map[string]struct{}, len(defs))
+	for _, def := range defs {
+		names[def.Name] = struct{}{}
+	}
+	for _, name := range []string{
+		"browser",
+		"canvas",
+		"nodes",
+		"cron",
+		"message",
+		"tts",
+		"gateway",
+		"agents_list",
+		"sessions_list",
+		"sessions_history",
+		"sessions_send",
+		"sessions_spawn",
+		"subagents",
+		"session_status",
+		"memory_search",
+		"memory_get",
+		"memory_write",
+		"memory_forget",
+		"web_search",
+		"web_fetch",
+		"image",
+		"pdf",
+	} {
+		if _, ok := names[name]; !ok {
+			t.Fatalf("expected definition %q to be exposed", name)
+		}
+	}
+}
+
+func TestExecutorFactoryWebFetchFallbackUsesBrowserNavigate(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	execTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(execTool)
+
+	executor := NewExecutor(registry)
+	if _, err := executor.Execute(context.Background(), "web_fetch", map[string]interface{}{"url": "https://example.com"}); err != nil {
+		t.Fatalf("execute web_fetch failed: %v", err)
+	}
+	cmd, _ := execTool.args["command"].(string)
+	if !strings.HasPrefix(cmd, "blue browser") {
+		t.Fatalf("command = %q, want prefix %q", cmd, "blue browser")
+	}
+	if !strings.Contains(cmd, "action=navigate") {
+		t.Fatalf("command = %q, want to contain %q", cmd, "action=navigate")
+	}
+	if !strings.Contains(cmd, "url=https://example.com") {
+		t.Fatalf("command = %q, want to contain %q", cmd, "url=https://example.com")
+	}
+}
+
+func TestExecutorFactorySessionsListMapsToCLICommand(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	execTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(execTool)
+
+	executor := NewExecutor(registry)
+	if _, err := executor.Execute(context.Background(), "sessions_list", map[string]interface{}{"active": true}); err != nil {
+		t.Fatalf("execute sessions_list failed: %v", err)
+	}
+	cmd, _ := execTool.args["command"].(string)
+	if cmd != "blue sessions list --active" {
+		t.Fatalf("command = %q, want %q", cmd, "blue sessions list --active")
+	}
+}
+
+func TestExecutorFactorySessionsHistoryRequiresID(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+
+	executor := NewExecutor(registry)
+	result, err := executor.Execute(context.Background(), "sessions_history", map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("execute sessions_history failed: %v", err)
+	}
+	out, ok := result.(string)
+	if !ok {
+		t.Fatalf("result type = %T, want string", result)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if payload["code"] != "invalid_arguments" {
+		t.Fatalf("code = %v, want invalid_arguments", payload["code"])
+	}
+	if payload["tool"] != "sessions_history" {
+		t.Fatalf("tool = %v, want sessions_history", payload["tool"])
+	}
+}
+
+func TestExecutorFactoryCronAndGatewayMapToCLICommand(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	execTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(execTool)
+	executor := NewExecutor(registry)
+
+	if _, err := executor.Execute(context.Background(), "cron", map[string]interface{}{"action": "status"}); err != nil {
+		t.Fatalf("execute cron status failed: %v", err)
+	}
+	if got, _ := execTool.args["command"].(string); got != "blue cron status" {
+		t.Fatalf("cron command = %q, want %q", got, "blue cron status")
+	}
+
+	if _, err := executor.Execute(context.Background(), "gateway", map[string]interface{}{"action": "restart"}); err != nil {
+		t.Fatalf("execute gateway restart failed: %v", err)
+	}
+	if got, _ := execTool.args["command"].(string); got != "blue gateway restart" {
+		t.Fatalf("gateway command = %q, want %q", got, "blue gateway restart")
+	}
+}
+
+func TestExecutorFactoryMessageMapsToReminderSkillCommand(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	execTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(execTool)
+	executor := NewExecutor(registry)
+
+	if _, err := executor.Execute(context.Background(), "message", map[string]interface{}{
+		"action":  "send",
+		"message": "drink water",
+		"time":    "10m",
+	}); err != nil {
+		t.Fatalf("execute message send failed: %v", err)
+	}
+	cmd, _ := execTool.args["command"].(string)
+	if !strings.HasPrefix(cmd, "blue reminder") {
+		t.Fatalf("command = %q, want prefix %q", cmd, "blue reminder")
+	}
+	if !strings.Contains(cmd, "action=add") {
+		t.Fatalf("command = %q, want action=add", cmd)
+	}
+	if !strings.Contains(cmd, "message=\"drink water\"") {
+		t.Fatalf("command = %q, want message arg", cmd)
+	}
+	if !strings.Contains(cmd, "time=10m") {
+		t.Fatalf("command = %q, want time arg", cmd)
+	}
+}
+
+func TestExecutorFactorySessionsSendAndSpawnMapToAPICommands(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	execTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(execTool)
+
+	executor := NewExecutor(registry)
+	if _, err := executor.Execute(context.Background(), "sessions_spawn", map[string]interface{}{"title": "demo"}); err != nil {
+		t.Fatalf("execute sessions_spawn failed: %v", err)
+	}
+	cmd, _ := execTool.args["command"].(string)
+	if !strings.Contains(cmd, "-X POST") || !strings.Contains(cmd, "/api/v1/conversations") {
+		t.Fatalf("spawn command = %q, want POST /api/v1/conversations", cmd)
+	}
+
+	if _, err := executor.Execute(context.Background(), "sessions_send", map[string]interface{}{"id": "abc", "message": "hello"}); err != nil {
+		t.Fatalf("execute sessions_send failed: %v", err)
+	}
+	cmd, _ = execTool.args["command"].(string)
+	if !strings.Contains(cmd, "/api/v1/conversations/abc/messages") {
+		t.Fatalf("send command = %q, want path /api/v1/conversations/abc/messages", cmd)
+	}
+	if !strings.Contains(cmd, "--data") {
+		t.Fatalf("send command = %q, want --data payload", cmd)
+	}
+}
+
+func TestExecutorFactoryAdditionalAliasesMapToCommands(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	execTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(execTool)
+
+	executor := NewExecutor(registry)
+	cases := []struct {
+		name     string
+		args     map[string]interface{}
+		contains string
+		prefix   string
+	}{
+		{name: "canvas", args: map[string]interface{}{"action": "list"}, contains: "/api/v1/workflows"},
+		{name: "nodes", args: map[string]interface{}{"action": "templates"}, contains: "/api/v1/workflows/templates"},
+		{name: "tts", args: map[string]interface{}{"text": "hello"}, contains: "/api/v1/voice/synthesize"},
+		{name: "memory_search", args: map[string]interface{}{"query": "foo"}, contains: "/api/v1/memory/search"},
+		{name: "memory_get", args: map[string]interface{}{"id": "m1"}, contains: "/api/v1/memory/m1"},
+		{name: "memory_write", args: map[string]interface{}{"content": "hello"}, contains: "/api/v1/memory/store"},
+		{name: "memory_forget", args: map[string]interface{}{"id": "m1"}, contains: "/api/v1/memory/m1"},
+		{name: "image", args: map[string]interface{}{"prompt": "a cat"}, prefix: "blue media generate"},
+	}
+
+	for _, tc := range cases {
+		_, err := executor.Execute(context.Background(), tc.name, tc.args)
+		if err != nil {
+			t.Fatalf("execute %s failed: %v", tc.name, err)
+		}
+		cmd, _ := execTool.args["command"].(string)
+		if tc.prefix != "" && !strings.HasPrefix(cmd, tc.prefix) {
+			t.Fatalf("%s command = %q, want prefix %q", tc.name, cmd, tc.prefix)
+		}
+		if tc.contains != "" && !strings.Contains(cmd, tc.contains) {
+			t.Fatalf("%s command = %q, want to contain %q", tc.name, cmd, tc.contains)
+		}
+	}
+}
+
+func TestExecutorFactoryUnsupportedAliasesReturnStructuredResult(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+
+	executor := NewExecutor(registry)
+	for _, name := range []string{"agents_list", "subagents", "pdf"} {
+		result, err := executor.Execute(context.Background(), name, map[string]interface{}{"input": "test"})
+		if err != nil {
+			t.Fatalf("execute %s failed: %v", name, err)
+		}
+		out, ok := result.(string)
+		if !ok {
+			t.Fatalf("%s result type = %T, want string", name, result)
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal([]byte(out), &payload); err != nil {
+			t.Fatalf("%s decode result: %v", name, err)
+		}
+		if payload["code"] != "tool_unavailable" {
+			t.Fatalf("%s code = %v, want tool_unavailable", name, payload["code"])
+		}
+		if payload["tool"] != name {
+			t.Fatalf("%s tool = %v, want %s", name, payload["tool"], name)
+		}
+	}
+}
+
+func TestExecutorFactorySessionsSendRequiresMessage(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+
+	executor := NewExecutor(registry)
+	result, err := executor.Execute(context.Background(), "sessions_send", map[string]interface{}{"id": "abc"})
+	if err != nil {
+		t.Fatalf("execute sessions_send failed: %v", err)
+	}
+	out, ok := result.(string)
+	if !ok {
+		t.Fatalf("result type = %T, want string", result)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if payload["code"] != "invalid_arguments" {
+		t.Fatalf("code = %v, want invalid_arguments", payload["code"])
+	}
+	if payload["tool"] != "sessions_send" {
+		t.Fatalf("tool = %v, want sessions_send", payload["tool"])
+	}
+}
+
+func TestExecutorFactoryCompatCoverage_NoErrToolNotFound(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	execTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(execTool)
+	executor := NewExecutor(registry)
+
+	for _, name := range factoryToolNames {
+		result, err := executor.Execute(context.Background(), name, map[string]interface{}{"input": "test"})
+		if errors.Is(err, ErrToolNotFound) {
+			t.Fatalf("tool %q returned ErrToolNotFound", name)
+		}
+		if raw, ok := result.(string); ok && strings.HasPrefix(strings.TrimSpace(raw), "{") {
+			var payload map[string]interface{}
+			if json.Unmarshal([]byte(raw), &payload) == nil {
+				if payload["code"] == "tool_unavailable" && name != "agents_list" && name != "subagents" && name != "pdf" {
+					t.Fatalf("tool %q returned unavailable payload: %s", name, raw)
+				}
+			}
 		}
 	}
 }

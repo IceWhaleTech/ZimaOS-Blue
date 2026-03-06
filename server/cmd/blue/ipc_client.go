@@ -111,10 +111,16 @@ func injectIPCContextParams(params map[string]string, getenv func(string) string
 	}
 	// Use reserved internal key to avoid colliding with skill arguments.
 	if _, exists := params["__blue_user_id"]; exists {
-		return
-	}
-	if userID := strings.TrimSpace(getenv("BLUE_USER_ID")); userID != "" {
+		// keep explicit value
+	} else if userID := strings.TrimSpace(getenv("BLUE_USER_ID")); userID != "" {
 		params["__blue_user_id"] = userID
+	}
+	// session_id routes reminders and other session-scoped skill outputs back
+	// to the originating conversation when commands go through IPC fallback.
+	if _, exists := params["session_id"]; !exists {
+		if sessionID := strings.TrimSpace(getenv("BLUE_SESSION_ID")); sessionID != "" {
+			params["session_id"] = sessionID
+		}
 	}
 }
 

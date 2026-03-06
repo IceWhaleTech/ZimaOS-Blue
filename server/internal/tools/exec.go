@@ -131,7 +131,7 @@ func (t *ExecTool) SetToolNames(names []string) {
 }
 
 // SetRegistry sets the tool registry so exec can auto-forward commands that
-// match a tool name (e.g. "web_search openclaw news") to the actual tool
+// match a tool name (e.g. "web_search latest news") to the actual tool
 // instead of returning an error.
 func (t *ExecTool) SetRegistry(r *Registry) {
 	t.registry = r
@@ -465,6 +465,24 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		}
 		envArg["LANG"] = locale
 		envArg["LC_ALL"] = locale
+	}
+
+	// Propagate user/session context into blue CLI subprocesses so IPC fallback
+	// keeps skill actions (e.g. reminder delivery) bound to the source chat.
+	if isBlueCommand {
+		if envArg == nil {
+			envArg = make(map[string]string, 2)
+		}
+		if _, exists := envArg["BLUE_USER_ID"]; !exists {
+			if userID := strings.TrimSpace(GetUserID(ctx)); userID != "" {
+				envArg["BLUE_USER_ID"] = userID
+			}
+		}
+		if _, exists := envArg["BLUE_SESSION_ID"]; !exists {
+			if sessionID := strings.TrimSpace(GetSessionID(ctx)); sessionID != "" {
+				envArg["BLUE_SESSION_ID"] = sessionID
+			}
+		}
 	}
 
 	// Build environment.
@@ -929,18 +947,19 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 					}
 
 					if forceClarify {
-						if askResp, askOK := t.askForSkillClarification(ctx, skillName, decision, warnings); askOK {
+						if askResp, askOK := t.askForSkillClarification(ctx, skillName, decision, input, warnings); askOK {
 							return askResp, true
 						}
 					} else {
 						slog.Info("[exec] selector fallback chose skill", "original", skillName, "selected", decision.SelectedSkill, "confidence", decision.Confidence)
-						selectedData, selErr := t.skillExec(ctx, decision.SelectedSkill, input)
+						selectedInput := adaptClarifiedSkillInput(skillName, decision.SelectedSkill, input)
+						selectedData, selErr := t.skillExec(ctx, decision.SelectedSkill, selectedInput)
 						if selErr == nil {
 							return t.buildSkillResult(ctx, decision.SelectedSkill, selectedData, warnings), true
 						}
 						slog.Warn("[exec] selector fallback execution failed", "skill", decision.SelectedSkill, "err", selErr)
 					}
-				} else if askResp, askOK := t.askForSkillClarification(ctx, skillName, decision, warnings); askOK {
+				} else if askResp, askOK := t.askForSkillClarification(ctx, skillName, decision, input, warnings); askOK {
 					return askResp, true
 				}
 			}
@@ -1070,7 +1089,7 @@ func shouldConvertSkillCardHint(hint string) bool {
 	}
 }
 
-func (t *ExecTool) askForSkillClarification(ctx context.Context, originalSkill string, d SkillSelectionDecision, warnings []string) (interface{}, bool) {
+func (t *ExecTool) askForSkillClarification(ctx context.Context, originalSkill string, d SkillSelectionDecision, input map[string]any, warnings []string) (interface{}, bool) {
 	if t.skillExec == nil {
 		return nil, false
 	}
@@ -1087,6 +1106,42 @@ func (t *ExecTool) askForSkillClarification(ctx context.Context, originalSkill s
 	if len(options) == 0 {
 		options = []string{"web_search", "browser"}
 	}
+	// In auto-confirm mode, treat clarification as a deterministic router:
+	// directly execute the highest-priority candidate instead of blocking on ask.
+	if t.autoConfirm != nil && t.autoConfirm() {
+		choices := make([]string, 0, len(options)+1)
+		if chosen := strings.TrimSpace(d.SelectedSkill); chosen != "" {
+			choices = append(choices, chosen)
+		}
+		for _, candidate := range options {
+			candidate = strings.TrimSpace(candidate)
+			if candidate == "" {
+				continue
+			}
+			seen := false
+			for _, picked := range choices {
+				if picked == candidate {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				choices = append(choices, candidate)
+			}
+		}
+		for _, chosen := range choices {
+			selectedInput := adaptClarifiedSkillInput(originalSkill, chosen, input)
+			selectedData, selErr := t.skillExec(ctx, chosen, selectedInput)
+			if selErr == nil {
+				autoWarnings := append(warnings, "skill clarification auto-resolved: "+chosen)
+				return t.buildSkillResult(ctx, chosen, selectedData, autoWarnings), true
+			}
+			slog.Warn("[exec] auto-resolved skill clarification execution failed",
+				"skill", chosen,
+				"original", originalSkill,
+				"err", selErr)
+		}
+	}
 	choicesJSON, _ := json.Marshal(options)
 	question := fmt.Sprintf("无法确定 skill `%s`，请选择要执行的技能。", originalSkill)
 	if d.SelectedSkill != "" {
@@ -1100,7 +1155,11 @@ func (t *ExecTool) askForSkillClarification(ctx context.Context, originalSkill s
 	if err != nil {
 		return nil, false
 	}
-	return t.buildSkillResult(ctx, "ask", askData, append(warnings, "skill clarification required")), true
+	clarifyWarning := "skill clarification required"
+	if strings.EqualFold(strings.TrimSpace(askData["silent"]), "true") {
+		clarifyWarning = "skill clarification auto-answered"
+	}
+	return t.buildSkillResult(ctx, "ask", askData, append(warnings, clarifyWarning)), true
 }
 
 func isDestructiveSkill(skillName string) bool {
@@ -1114,6 +1173,54 @@ func isDestructiveSkill(skillName string) bool {
 		}
 	}
 	return false
+}
+
+func adaptClarifiedSkillInput(originalSkill, selectedSkill string, input map[string]any) map[string]any {
+	orig := strings.ToLower(strings.TrimSpace(originalSkill))
+	sel := strings.ToLower(strings.TrimSpace(selectedSkill))
+	if orig == "" || sel == "" || len(input) == 0 {
+		return input
+	}
+	adapted := make(map[string]any, len(input)+1)
+	for k, v := range input {
+		adapted[k] = v
+	}
+
+	// Factory compatibility: `web_fetch` commonly carries only `url`.
+	// If routed to browser, default to navigate so the call is executable.
+	if orig == "web_fetch" && sel == "browser" {
+		action := strings.TrimSpace(asCompatString(adapted["action"]))
+		if action == "" {
+			adapted["action"] = "navigate"
+		}
+	}
+
+	// If `web_fetch` is routed to web_search, lift url/input into query.
+	if orig == "web_fetch" && sel == "web_search" {
+		query := strings.TrimSpace(asCompatString(adapted["query"]))
+		if query == "" {
+			if url := strings.TrimSpace(asCompatString(adapted["url"])); url != "" {
+				adapted["query"] = url
+			} else if text := strings.TrimSpace(asCompatString(adapted["input"])); text != "" {
+				adapted["query"] = text
+			}
+		}
+	}
+	return adapted
+}
+
+func asCompatString(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch x := v.(type) {
+	case string:
+		return x
+	case fmt.Stringer:
+		return x.String()
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 func isSafeSkillAutoRun(skillName string) bool {

@@ -126,7 +126,7 @@ func TestLoadBootstrapFiles(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileMEMORY, FileHEARTBEAT} {
+	for _, name := range []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY, FileHEARTBEAT} {
 		if !found[name] {
 			t.Errorf("missing %s in bootstrap files", name)
 		}
@@ -144,6 +144,9 @@ func TestLoadContextFiles(t *testing.T) {
 	}
 	if _, ok := ctx[FileSOUL]; !ok {
 		t.Error("expected SOUL.md in context files")
+	}
+	if _, ok := ctx[FileTOOLS]; !ok {
+		t.Error("expected TOOLS.md in context files")
 	}
 }
 
@@ -268,6 +271,9 @@ func TestLocaleTemplates(t *testing.T) {
 	ts = getTemplates("fr")
 	if !strings.Contains(ts.soul, "Assistant IA") {
 		t.Error("fr should use French templates")
+	}
+	if strings.TrimSpace(ts.tools) == "" {
+		t.Error("fr should receive TOOLS.md via field-level english fallback")
 	}
 
 	// BCP-47 prefix matching: zh-TW has its own template (Traditional Chinese)
@@ -511,9 +517,9 @@ type fakeDirEntry struct {
 }
 
 func (e *fakeDirEntry) Name() string               { return e.name }
-func (e *fakeDirEntry) IsDir() bool                 { return e.isDir }
-func (e *fakeDirEntry) Type() os.FileMode           { return 0 }
-func (e *fakeDirEntry) Info() (os.FileInfo, error)   { return nil, nil }
+func (e *fakeDirEntry) IsDir() bool                { return e.isDir }
+func (e *fakeDirEntry) Type() os.FileMode          { return 0 }
+func (e *fakeDirEntry) Info() (os.FileInfo, error) { return nil, nil }
 
 // testFSAdapter wraps testFS to implement fs.FS + fs.ReadDirFS + fs.ReadFileFS
 type testFSAdapter struct{ inner *testFS }

@@ -297,6 +297,8 @@ type FeishuConfig struct {
 	AppSecret         string `yaml:"app_secret"`
 	VerificationToken string `yaml:"verification_token"`
 	EncryptKey        string `yaml:"encrypt_key"`
+	// DisableTypingReaction disables the transient Typing reaction indicator.
+	DisableTypingReaction bool `yaml:"disable_typing_reaction"`
 }
 
 // MatrixConfig contains Matrix configuration.
@@ -379,7 +381,7 @@ type ZaloConfig struct {
 func DefaultConfig() Config {
 	return Config{
 		Enabled:               false,
-		DefaultTimeoutSeconds: 30,
+		DefaultTimeoutSeconds: 90,
 		MaxMessageLength:      4096,
 		Heartbeat:             DefaultHeartbeatConfig(),
 		Telegram: TelegramConfig{

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -133,7 +132,7 @@ func TestCapabilityDetector_DetectCapabilities(t *testing.T) {
 
 func TestCapabilityDetector_DetectFromAPI(t *testing.T) {
 	// Create mock OpenAI-compatible API server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": []map[string]string{

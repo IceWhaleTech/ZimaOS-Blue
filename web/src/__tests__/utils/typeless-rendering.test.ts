@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { renderCardToHtml } from '@/utils/typelessRenderers'
-import type { TypelessCardCode } from '@/types/typeless'
+import type { TypelessCardCode, TypelessCardInfo } from '@/types/typeless'
 
 describe('Typeless Code Card Rendering', () => {
   it('should render code card without language as "Text"', () => {
@@ -87,5 +87,34 @@ describe('Typeless Code Card Rendering', () => {
     expect(html).toContain('Show more 6 lines')
     expect(html).toContain('data-code-container-id=')
     expect(html).toContain('data-collapsed="true"')
+  })
+})
+
+describe('Typeless Inline Parsing', () => {
+  it('should keep identifier underscores literal in info cards', () => {
+    const card: TypelessCardInfo = {
+      type: 'info',
+      id: 'info-1',
+      content: 'task_id and message_id',
+    }
+
+    const html = renderCardToHtml(card)
+
+    expect(html).toContain('task_id and message_id')
+    expect(html).not.toContain('<em>id and message</em>')
+  })
+
+  it('should keep underscore markers literal but still support asterisk emphasis', () => {
+    const card: TypelessCardInfo = {
+      type: 'info',
+      id: 'info-2',
+      content: '*done* with _raw_token_',
+    }
+
+    const html = renderCardToHtml(card)
+
+    expect(html).toContain('<em>done</em>')
+    expect(html).toContain('_raw_token_')
+    expect(html).not.toContain('<em>raw_token</em>')
   })
 })

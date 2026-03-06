@@ -35,9 +35,7 @@ func setupSkillFallbackServer(t *testing.T, executor SkillExecutor) (net.Conn, f
 	sock := shortSock(t)
 	srv := NewServer(sock, zap.NewNop())
 	RegisterSkillFallback(srv, executor, zap.NewNop())
-	if err := srv.Start(); err != nil {
-		t.Fatal(err)
-	}
+	startServerOrSkip(t, srv)
 	conn, err := net.Dial("unix", sock)
 	if err != nil {
 		srv.Close()

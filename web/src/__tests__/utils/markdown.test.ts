@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { renderMarkdown, renderMarkdownCached, copyCodeToClipboard, markdownToText } from '@/utils/markdown'
+import { renderMarkdown, renderMarkdownCached, copyCodeToClipboard, markdownToText, parseInline } from '@/utils/markdown'
 
 describe('Markdown Renderer', () => {
   describe('renderMarkdown', () => {
@@ -33,6 +33,13 @@ describe('Markdown Renderer', () => {
     it('should render italic text', () => {
       const result = renderMarkdown('*italic text*')
       expect(result).toContain('<em>italic text</em>')
+    })
+
+    it('should keep underscore command names literal in markdown rendering', () => {
+      const result = renderMarkdown('use web_search then deep_research')
+      expect(result).toContain('web_search')
+      expect(result).toContain('deep_research')
+      expect(result).not.toContain('<em>')
     })
 
     it('should render inline code', () => {
@@ -299,6 +306,17 @@ const x = 1;
       expect(mockWriteText).toHaveBeenCalledWith('test code')
 
       vi.unstubAllGlobals()
+    })
+  })
+
+  describe('parseInline', () => {
+    it('should parse underscore emphasis by default', () => {
+      expect(parseInline('_italic_')).toContain('<em>italic</em>')
+    })
+
+    it('should keep underscore text literal when underscore emphasis is disabled', () => {
+      expect(parseInline('task_id and message_id', { allowUnderscoreEmphasis: false })).toBe('task_id and message_id')
+      expect(parseInline('_italic_', { allowUnderscoreEmphasis: false })).toBe('_italic_')
     })
   })
 

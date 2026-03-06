@@ -7,11 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
-
-const defaultProviderVerificationModel = "gpt-5.3-codex"
 
 type providerVerificationRequest struct {
 	BaseURL       string `json:"base_url"`
@@ -41,6 +40,7 @@ type providerVerificationResult struct {
 
 type providerVerificationURLs struct {
 	modelsURL    string
+	anthropicURL string
 	chatURL      string
 	responsesV1  string
 	responsesRaw string
@@ -57,10 +57,7 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 		return nil, fmt.Errorf("base_url is required")
 	}
 
-	model := strings.TrimSpace(req.Model)
-	if model == "" {
-		model = defaultProviderVerificationModel
-	}
+	requestedModel := strings.TrimSpace(req.Model)
 
 	urls := buildProviderVerificationURLs(baseURL)
 
@@ -85,28 +82,84 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 	}
 
 	client := newProviderVerifyHTTPClient(req.SkipTLSVerify)
-	modelsStatus, _, modelsErr := doProviderVerificationRequest(ctx, client, http.MethodGet, urls.modelsURL, "", req.APIKey)
-	chatStatus, chatBody, chatErr := doProviderVerificationRequest(ctx, client, http.MethodPost, urls.chatURL, openAIChatProbeBody(model), req.APIKey)
-	respV1Status, respV1Body, respV1Err := doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesV1, responsesProbeBody(model), req.APIKey)
-	respRawStatus, _, respRawErr := doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesRaw, responsesProbeBody(model), req.APIKey)
+	modelsStatus, modelsBody, modelsErr := doProviderVerificationRequest(ctx, client, http.MethodGet, urls.modelsURL, "", req.APIKey)
+	modelCandidates := resolveProviderVerificationModelCandidates(requestedModel, modelsBody)
+	if requestedModel == "" {
+		modelCandidates = append(modelCandidates, "")
+	}
+	if len(modelCandidates) == 0 {
+		modelCandidates = []string{""}
+	}
+
+	probeModel := ""
+	chatStatus := 0
+	chatBody := ""
+	var chatErr error
+	respV1Status := 0
+	respV1Body := ""
+	var respV1Err error
+	respRawStatus := 0
+	respRawBody := ""
+	var respRawErr error
+
+	for _, candidateModel := range modelCandidates {
+		chatStatus, chatBody, chatErr = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.chatURL, openAIChatProbeBody(candidateModel), req.APIKey)
+		respV1Status, respV1Body, respV1Err = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesV1, responsesProbeBody(candidateModel), req.APIKey)
+		respRawStatus, respRawBody, respRawErr = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesRaw, responsesProbeBody(candidateModel), req.APIKey)
+		probeModel = candidateModel
+
+		if candidateModel == "" || !allProbeResultsModelNotFound(chatStatus, chatBody, respV1Status, respV1Body, respRawStatus, respRawBody) {
+			break
+		}
+	}
+	anthropicStatus, _, anthropicErr := doProviderVerificationRequest(ctx, client, http.MethodPost, urls.anthropicURL, anthropicProbeBody(probeModel), req.APIKey)
 
 	chatError := extractErrorMessage(chatBody)
+	if probeModel == "" && isMissingModelRequiredError(chatError) {
+		// Model-less probe can trigger expected parameter errors on strict endpoints.
+		chatError = ""
+	}
 	responsesStatus := extractFieldOrError(respV1Body, "status")
 	responsesOnly := indicatesResponsesOnlyProvider(chatStatus, chatBody)
+	anthropicReachable := isProviderVerificationReachable(anthropicStatus)
+	openAIReachable := isProviderVerificationReachable(chatStatus)
+	responsesReachable := isProviderVerificationReachable(respV1Status) || isProviderVerificationReachable(respRawStatus)
 
+	recommendedFormat := detectedFormat
+	switch {
+	case anthropicReachable:
+		recommendedFormat = APIFormatAnthropic
+	case openAIReachable && !responsesOnly:
+		recommendedFormat = APIFormatOpenAI
+	case responsesReachable:
+		recommendedFormat = APIFormatResponses
+	case openAIReachable:
+		recommendedFormat = APIFormatOpenAI
+	}
+
+	rootBaseURL := strings.TrimSuffix(urls.modelsURL, "/v1/models")
+	if strings.TrimSpace(rootBaseURL) == "" {
+		rootBaseURL = baseURL
+	}
 	recommendedBaseURL := strings.TrimSpace(detectedBaseURL)
 	if recommendedBaseURL == "" {
+		recommendedBaseURL = rootBaseURL
+	}
+	if recommendedFormat == APIFormatResponses {
 		switch {
 		case isProviderVerificationReachable(respV1Status):
 			recommendedBaseURL = urls.responsesV1
 		case isProviderVerificationReachable(respRawStatus):
 			recommendedBaseURL = urls.responsesRaw
 		default:
-			recommendedBaseURL = baseURL
+			recommendedBaseURL = rootBaseURL
 		}
+	} else {
+		// For non-responses formats, prefer root base URL rather than a /responses suffix.
+		recommendedBaseURL = rootBaseURL
 	}
 	// responses-only providers should prefer a /responses endpoint base.
-	if responsesOnly && !strings.HasSuffix(strings.TrimSuffix(recommendedBaseURL, "/"), "/responses") {
+	if recommendedFormat == APIFormatResponses && responsesOnly && !strings.HasSuffix(strings.TrimSuffix(recommendedBaseURL, "/"), "/responses") {
 		switch {
 		case isProviderVerificationReachable(respV1Status):
 			recommendedBaseURL = urls.responsesV1
@@ -115,14 +168,9 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 		}
 	}
 
-	recommendedFormat := detectedFormat
-	if responsesOnly {
-		recommendedFormat = APIFormatResponses
-	}
-
 	result := &providerVerificationResult{
 		BaseURL:              baseURL,
-		Model:                model,
+		Model:                probeModel,
 		DetectedFormat:       detectedFormat,
 		RecommendedAPIFormat: recommendedFormat,
 		RecommendedBaseURL:   recommendedBaseURL,
@@ -141,6 +189,12 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 				StatusCode: chatStatus,
 				Reachable:  isProviderVerificationReachable(chatStatus),
 				Error:      sanitizeProbeError(chatErr),
+			},
+			"anthropic_messages": {
+				URL:        urls.anthropicURL,
+				StatusCode: anthropicStatus,
+				Reachable:  isProviderVerificationReachable(anthropicStatus),
+				Error:      sanitizeProbeError(anthropicErr),
 			},
 			"responses_v1": {
 				URL:        urls.responsesV1,
@@ -238,6 +292,7 @@ func buildProviderVerificationURLs(baseURL string) providerVerificationURLs {
 
 	return providerVerificationURLs{
 		modelsURL:    rootForV1 + "/v1/models",
+		anthropicURL: rootForV1 + "/v1/messages",
 		chatURL:      rootForV1 + "/v1/chat/completions",
 		responsesV1:  respV1URL,
 		responsesRaw: respPlainURL,
@@ -300,18 +355,255 @@ func sanitizeProbeError(err error) string {
 	return truncateRunes(strings.TrimSpace(err.Error()), 180)
 }
 
+func resolveProviderVerificationModelCandidates(requestedModel, modelsBody string) []string {
+	if requestedModel = strings.TrimSpace(requestedModel); requestedModel != "" {
+		return []string{requestedModel}
+	}
+	modelIDs := extractModelIDsFromModelsResponse(modelsBody)
+	if len(modelIDs) == 0 {
+		return nil
+	}
+
+	type scoredModel struct {
+		id    string
+		score int
+		index int
+	}
+
+	scored := make([]scoredModel, 0, len(modelIDs))
+	for idx, modelID := range modelIDs {
+		scored = append(scored, scoredModel{
+			id:    modelID,
+			score: modelIntelligenceScore(modelID),
+			index: idx,
+		})
+	}
+
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].score == scored[j].score {
+			return scored[i].index < scored[j].index
+		}
+		return scored[i].score > scored[j].score
+	})
+
+	out := make([]string, 0, len(scored))
+	for _, item := range scored {
+		out = append(out, item.id)
+	}
+	return out
+}
+
+func extractModelIDsFromModelsResponse(body string) []string {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return nil
+	}
+
+	type modelEntry struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Model string `json:"model"`
+	}
+
+	var payload struct {
+		Data   []modelEntry `json:"data"`
+		Models []modelEntry `json:"models"`
+	}
+	seen := map[string]struct{}{}
+	var out []string
+	appendUnique := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return
+		}
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+
+	if err := json.Unmarshal([]byte(body), &payload); err == nil {
+		for _, model := range payload.Data {
+			appendUnique(model.ID)
+			appendUnique(model.Model)
+			appendUnique(model.Name)
+		}
+		for _, model := range payload.Models {
+			appendUnique(model.ID)
+			appendUnique(model.Model)
+			appendUnique(model.Name)
+		}
+		return out
+	}
+
+	var payloadStrings struct {
+		Data   []string `json:"data"`
+		Models []string `json:"models"`
+	}
+	if err := json.Unmarshal([]byte(body), &payloadStrings); err == nil {
+		for _, model := range payloadStrings.Data {
+			appendUnique(model)
+		}
+		for _, model := range payloadStrings.Models {
+			appendUnique(model)
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+
+	var arrayPayload []modelEntry
+	if err := json.Unmarshal([]byte(body), &arrayPayload); err == nil {
+		for _, model := range arrayPayload {
+			appendUnique(model.ID)
+			appendUnique(model.Model)
+			appendUnique(model.Name)
+		}
+		return out
+	}
+
+	var arrayStrings []string
+	if err := json.Unmarshal([]byte(body), &arrayStrings); err == nil {
+		for _, model := range arrayStrings {
+			appendUnique(model)
+		}
+		return out
+	}
+
+	return nil
+}
+
+func modelIntelligenceScore(modelID string) int {
+	id := strings.ToLower(strings.TrimSpace(modelID))
+	if id == "" {
+		return 0
+	}
+
+	score := 0
+	boosts := []struct {
+		key   string
+		score int
+	}{
+		{"gpt-5", 140},
+		{"o3", 120},
+		{"o1", 95},
+		{"opus", 110},
+		{"reasoner", 110},
+		{"thinking", 95},
+		{"sonnet", 80},
+		{"pro", 65},
+		{"max", 60},
+		{"ultra", 60},
+		{"codex", 55},
+		{"r1", 45},
+	}
+	for _, item := range boosts {
+		if strings.Contains(id, item.key) {
+			score += item.score
+		}
+	}
+
+	penalties := []struct {
+		key   string
+		score int
+	}{
+		{"mini", -80},
+		{"nano", -95},
+		{"lite", -70},
+		{"flash", -70},
+		{"haiku", -60},
+		{"spark", -55},
+		{"small", -45},
+		{"tiny", -45},
+	}
+	for _, item := range penalties {
+		if strings.Contains(id, item.key) {
+			score += item.score
+		}
+	}
+
+	return score
+}
+
+func allProbeResultsModelNotFound(chatStatus int, chatBody string, respV1Status int, respV1Body string, respRawStatus int, respRawBody string) bool {
+	return isModelNotFoundProbe(chatStatus, chatBody) &&
+		isModelNotFoundProbe(respV1Status, respV1Body) &&
+		isModelNotFoundProbe(respRawStatus, respRawBody)
+}
+
+func isModelNotFoundProbe(status int, body string) bool {
+	if status == 0 {
+		return false
+	}
+	if status != http.StatusBadRequest && status != http.StatusNotFound && status != http.StatusUnprocessableEntity {
+		return false
+	}
+	content := strings.ToLower(strings.TrimSpace(body))
+	if content == "" {
+		return false
+	}
+
+	hints := []string{
+		"model_not_found",
+		"unknown model",
+		"no such model",
+		"model not found",
+		"model does not exist",
+		"invalid model",
+		"unsupported model",
+		"unavailable model",
+	}
+	for _, hint := range hints {
+		if strings.Contains(content, hint) {
+			return true
+		}
+	}
+	return strings.Contains(content, "model") && strings.Contains(content, "not found")
+}
+
+func isMissingModelRequiredError(message string) bool {
+	text := strings.ToLower(strings.TrimSpace(message))
+	if text == "" {
+		return false
+	}
+	hints := []string{
+		"model name is required",
+		"model is required",
+		"missing required field: model",
+		"must provide a model",
+		"未指定模型名称",
+		"模型名称不能为空",
+		"缺少模型",
+	}
+	for _, hint := range hints {
+		if strings.Contains(text, strings.ToLower(hint)) {
+			return true
+		}
+	}
+	return false
+}
+
 func openAIChatProbeBody(model string) string {
 	model = strings.TrimSpace(model)
 	if model == "" {
-		model = defaultProviderVerificationModel
+		return `{"messages":[{"role":"user","content":"ping"}],"max_tokens":8}`
 	}
 	return fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"ping"}],"max_tokens":8}`, model)
+}
+
+func anthropicProbeBody(model string) string {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return `{"max_tokens":8,"messages":[{"role":"user","content":[{"type":"text","text":"ping"}]}]}`
+	}
+	return fmt.Sprintf(`{"model":%q,"max_tokens":8,"messages":[{"role":"user","content":[{"type":"text","text":"ping"}]}]}`, model)
 }
 
 func responsesProbeBody(model string) string {
 	model = strings.TrimSpace(model)
 	if model == "" {
-		model = defaultProviderVerificationModel
+		return `{"input":"ping","max_output_tokens":8}`
 	}
 	return fmt.Sprintf(`{"model":%q,"input":"ping","max_output_tokens":8}`, model)
 }

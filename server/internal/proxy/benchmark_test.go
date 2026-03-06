@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -22,6 +21,9 @@ func TestPortAllocationTime(t *testing.T) {
 	allocationTime := time.Since(start)
 
 	if err != nil {
+		if isBindPermissionError(err) {
+			t.Skipf("skip port allocation benchmark in restricted environment: %v", err)
+		}
 		t.Fatalf("Port allocation failed: %v", err)
 	}
 	defer pa.Release()
@@ -41,7 +43,7 @@ func TestPortAllocationTime(t *testing.T) {
 // TestHealthCheckLatency verifies health check latency < 100ms
 func TestHealthCheckLatency(t *testing.T) {
 	// Create mock health endpoint
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()

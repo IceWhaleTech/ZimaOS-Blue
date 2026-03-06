@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,18 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+func newTCP4Server(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skip test server setup (tcp4 unavailable): %v", err)
+	}
+	srv := httptest.NewUnstartedServer(handler)
+	srv.Listener = ln
+	srv.Start()
+	return srv
+}
 
 func setupSyncTestDB(t *testing.T) (*sql.DB, *Store, func()) {
 	tmpFile, err := os.CreateTemp("", "skillstore_sync_test_*.db")
@@ -46,7 +59,7 @@ func setupSyncTestDB(t *testing.T) (*sql.DB, *Store, func()) {
 
 // mockClawHubServer creates a mock server that returns paginated skills
 func mockClawHubServer(t *testing.T, pages map[int][]ClawHubSkill) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/api/v1/skills") {
 			http.NotFound(w, r)
 			return
@@ -182,7 +195,7 @@ func TestSyncService_FetchClawHubSkillsWithInsert_PageByPageInsertion(t *testing
 
 	// Create a server that tracks when pages are fetched
 	pagesFetched := make([]int, 0)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pageStr := r.URL.Query().Get("page")
 		page := 1
 		if pageStr != "" {
@@ -236,7 +249,7 @@ func TestSyncService_DoSync_PartialSuccess(t *testing.T) {
 
 	// Create mock server that fails on page 2
 	requestCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount++
 		pageStr := r.URL.Query().Get("page")
 		page := 1
@@ -302,7 +315,7 @@ func TestSyncService_DoSync_CompleteFailure(t *testing.T) {
 	defer cleanup()
 
 	// Create mock server that always fails
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "server error", http.StatusInternalServerError)
 	}))
 	defer server.Close()

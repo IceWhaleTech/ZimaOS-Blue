@@ -134,6 +134,7 @@ func (t *PushTool) executeAdd(ctx context.Context, userID string, args map[strin
 	// Emit a success alert card so the user sees immediate visual confirmation.
 	EmitCard(ctx, map[string]interface{}{
 		"type":      "alert",
+		"icon":      "⏰",
 		"variant":   "success",
 		"title_key": "push.reminderSet",
 		"message":   fmt.Sprintf("%s — %s", message, fireAt.Format("2006-01-02 15:04")),

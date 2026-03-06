@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/inject"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"go.uber.org/zap"
 )
 
 // EventPublisher pushes real-time events to connected clients.
@@ -276,7 +276,7 @@ func (s *Service) firePush(ctx context.Context, r *PushNotification) {
 	// Inject message into conversation as a typeless alert card
 	var conversationID string
 	if inj != nil {
-		content := fmt.Sprintf("```typeless\n{\"type\":\"alert\",\"message\":%q,\"variant\":\"info\",\"title_key\":\"push.reminder\"}\n```", r.Message)
+		content := fmt.Sprintf("```typeless\n{\"type\":\"alert\",\"icon\":\"⏰\",\"message\":%q,\"variant\":\"info\",\"title_key\":\"push.reminder\"}\n```", r.Message)
 		var err error
 		conversationID, err = inj.InjectMessage(ctx, r.OwnerID, r.SessionID, content)
 		if err != nil {

@@ -181,15 +181,15 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null
 watch(question, (q) => {
   if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
   if (q) {
-    const updateRemaining = () => {
-      const ms = q.expires_at - Date.now()
-      remainingSeconds.value = Math.max(0, Math.ceil(ms / 1000))
-      if (remainingSeconds.value <= 0 && countdownTimer) {
-        clearInterval(countdownTimer)
-        countdownTimer = null
-        chatStore.dismissQuestion()
-      }
-    }
+		const updateRemaining = () => {
+			const ms = q.expires_at - Date.now()
+			remainingSeconds.value = Math.max(0, Math.ceil(ms / 1000))
+			if (remainingSeconds.value <= 0 && countdownTimer) {
+				clearInterval(countdownTimer)
+				countdownTimer = null
+				dismiss()
+			}
+		}
     updateRemaining()
     countdownTimer = setInterval(updateRemaining, 1000)
   }

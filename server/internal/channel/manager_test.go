@@ -21,6 +21,7 @@ type mockChannel struct {
 	startErr    error
 	stopErr     error
 	sendErr     error
+	respectCtx  bool
 	msgCount    int64
 	sent        []OutgoingMessage
 }
@@ -66,6 +67,13 @@ func (m *mockChannel) Stop(ctx context.Context) error {
 func (m *mockChannel) Send(ctx context.Context, msg OutgoingMessage) error {
 	if m.sendErr != nil {
 		return m.sendErr
+	}
+	if m.respectCtx {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 	}
 	m.mu.Lock()
 	m.msgCount++
@@ -530,4 +538,71 @@ func TestTruncateString(t *testing.T) {
 			t.Errorf("truncateString(%q, %d) = %q, want %q", tt.input, tt.maxLen, result, tt.expected)
 		}
 	}
+}
+
+func TestManager_SendHeartbeats_SkipsFeishuPlaceholder(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Heartbeat.Enabled = true
+	cfg.Heartbeat.InitialDelay = 1 * time.Millisecond
+	cfg.Heartbeat.Emojis = []string{"💬"}
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("feishu", "feishu", true)
+
+	done := make(chan struct{})
+	mgr.sendHeartbeats(context.Background(), ch, "chat1", "msg1", done)
+
+	if _, ok := ch.lastSent(); ok {
+		t.Fatal("expected no heartbeat placeholder for feishu channel")
+	}
+}
+
+func TestManager_ProcessTimeoutStillAllowsResponseSend(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.DefaultTimeoutSeconds = 1
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("test", "mock", true)
+	ch.respectCtx = true
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		// Simulate a handler that runs longer than the processing deadline but still returns a response.
+		time.Sleep(1100 * time.Millisecond)
+		return &OutgoingMessage{Content: "late response"}, nil
+	})
+
+	if err := mgr.StartChannel(context.Background(), "test"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = mgr.Stop(stopCtx)
+	}()
+
+	ch.simulateMessage(Message{
+		ID:      "msg-timeout-send",
+		ChatID:  "chat-timeout-send",
+		UserID:  "user-timeout-send",
+		Content: "hello",
+	})
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if sent, ok := ch.lastSent(); ok {
+			if sent.Content != "late response" {
+				t.Fatalf("unexpected sent content: %q", sent.Content)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Fatal("expected response to be sent with fresh send context after processing timeout")
 }

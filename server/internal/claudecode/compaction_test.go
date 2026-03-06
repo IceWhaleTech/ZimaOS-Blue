@@ -112,10 +112,10 @@ func TestSplitMessagesByTokenShare(t *testing.T) {
 
 func TestChunkMessagesByMaxTokens(t *testing.T) {
 	messages := []llm.Message{
-		{Content: "Short"},                                  // ~1 token
-		{Content: "This is a medium length message"},        // ~8 tokens
-		{Content: "Another short one"},                      // ~4 tokens
-		{Content: "And one more message to test chunking"},  // ~9 tokens
+		{Content: "Short"},                                 // ~1 token
+		{Content: "This is a medium length message"},       // ~8 tokens
+		{Content: "Another short one"},                     // ~4 tokens
+		{Content: "And one more message to test chunking"}, // ~9 tokens
 	}
 
 	// With max 10 tokens, should create multiple chunks
@@ -283,7 +283,7 @@ func TestSanitizeToolPairs(t *testing.T) {
 		messages := []llm.Message{
 			{Role: llm.RoleAssistant, Content: "", ToolCalls: []llm.ToolCall{
 				{ID: "tc1", Name: "exec"},
-				{ID: "tc2", Name: "file_read"},
+				{ID: "tc2", Name: "read"},
 			}},
 			{Role: llm.RoleTool, Content: "result1", ToolCallID: "tc1"},
 			// tc2 result was pruned

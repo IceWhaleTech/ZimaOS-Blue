@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +19,13 @@ func TestNewGateway(t *testing.T) {
 	g := NewGateway(cfg, logger)
 	if g == nil {
 		t.Fatal("expected non-nil gateway")
+	}
+}
+
+func TestDefaultConfig_RequestTimeoutDisabled(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.RequestTimeoutSeconds != 0 {
+		t.Fatalf("expected RequestTimeoutSeconds=0, got %d", cfg.RequestTimeoutSeconds)
 	}
 }
 
@@ -69,7 +75,7 @@ func TestWebSocketConnection(t *testing.T) {
 	g := NewGateway(cfg, logger)
 
 	// Create test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.HandleWebSocket(w, r)
 	}))
 	defer server.Close()
@@ -110,7 +116,7 @@ func TestWebSocketRequestResponse(t *testing.T) {
 	})
 
 	// Create test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.HandleWebSocket(w, r)
 	}))
 	defer server.Close()
@@ -158,7 +164,7 @@ func TestWebSocketUnknownMethod(t *testing.T) {
 	cfg.PingIntervalSeconds = 10
 	g := NewGateway(cfg, logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.HandleWebSocket(w, r)
 	}))
 	defer server.Close()
@@ -199,13 +205,70 @@ func TestWebSocketUnknownMethod(t *testing.T) {
 	}
 }
 
+func TestWebSocketRequestTimeout(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.PingIntervalSeconds = 10
+	cfg.RequestTimeoutSeconds = 1
+	g := NewGateway(cfg, logger)
+
+	g.RegisterHandler("slow.method", func(ctx context.Context, conn *Connection, msg *Message) (*Message, error) {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+			return &Message{Payload: json.RawMessage(`{"ok":true}`)}, nil
+		}
+	})
+
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		g.HandleWebSocket(w, r)
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer ws.Close()
+
+	request := Message{
+		ID:     "timeout-1",
+		Type:   TypeRequest,
+		Method: "slow.method",
+	}
+	if err := ws.WriteJSON(request); err != nil {
+		t.Fatalf("failed to send message: %v", err)
+	}
+
+	var response Message
+	ws.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if err := ws.ReadJSON(&response); err != nil {
+		t.Fatalf("failed to read response: %v", err)
+	}
+
+	if response.Type != TypeError {
+		t.Fatalf("expected error response, got %s", response.Type)
+	}
+	if response.Error == nil {
+		t.Fatal("expected error payload")
+	}
+	if response.Error.Code != 500 {
+		t.Fatalf("expected error code 500, got %d", response.Error.Code)
+	}
+	if !strings.Contains(strings.ToLower(response.Error.Message), "timed out") {
+		t.Fatalf("expected timeout message, got %q", response.Error.Message)
+	}
+}
+
 func TestWebSocketBroadcast(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := DefaultConfig()
 	cfg.PingIntervalSeconds = 10
 	g := NewGateway(cfg, logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.HandleWebSocket(w, r)
 	}))
 	defer server.Close()
@@ -263,7 +326,7 @@ func TestConnectionInfo(t *testing.T) {
 	cfg.PingIntervalSeconds = 10
 	g := NewGateway(cfg, logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.HandleWebSocket(w, r)
 	}))
 	defer server.Close()
@@ -298,7 +361,7 @@ func TestGetConnection(t *testing.T) {
 	cfg.PingIntervalSeconds = 10
 	g := NewGateway(cfg, logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.HandleWebSocket(w, r)
 	}))
 	defer server.Close()
@@ -342,7 +405,7 @@ func TestConnectionClose(t *testing.T) {
 	cfg.PingIntervalSeconds = 10
 	g := NewGateway(cfg, logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.HandleWebSocket(w, r)
 	}))
 	defer server.Close()
@@ -382,7 +445,7 @@ func TestSendToConnection(t *testing.T) {
 	cfg.PingIntervalSeconds = 10
 	g := NewGateway(cfg, logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.HandleWebSocket(w, r)
 	}))
 	defer server.Close()
@@ -432,7 +495,7 @@ func TestGatewayStop(t *testing.T) {
 	cfg.PingIntervalSeconds = 10
 	g := NewGateway(cfg, logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.HandleWebSocket(w, r)
 	}))
 	defer server.Close()
@@ -463,7 +526,7 @@ func TestBroadcastToUser(t *testing.T) {
 	cfg.PingIntervalSeconds = 10
 	g := NewGateway(cfg, logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.HandleWebSocket(w, r)
 	}))
 	defer server.Close()

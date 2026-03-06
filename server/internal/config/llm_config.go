@@ -62,6 +62,7 @@ type SessionConfig struct {
 	Persistence SessionPersistenceConfig `yaml:"persistence"`
 	Isolation   SessionIsolationConfig   `yaml:"isolation"`
 	Cleanup     SessionCleanupConfig     `yaml:"cleanup"`
+	Audit       SessionAuditConfig       `yaml:"audit"`
 }
 
 // SessionCompactionConfig holds compaction settings.
@@ -100,16 +101,25 @@ type SessionCleanupConfig struct {
 	CleanupInterval time.Duration `yaml:"cleanup_interval"`
 }
 
+// SessionAuditConfig controls dedicated chat tool-payload audit logging.
+type SessionAuditConfig struct {
+	Enabled          bool          `yaml:"enabled"`
+	Path             string        `yaml:"path"`
+	RetentionDays    int           `yaml:"retention_days"`
+	CleanupInterval  time.Duration `yaml:"cleanup_interval"`
+	CleanupBatchSize int           `yaml:"cleanup_batch_size"`
+}
+
 // EmbeddingConfig holds embedding provider configuration.
 type EmbeddingConfig struct {
-	Provider   string                   `yaml:"provider"`
-	Model      string                   `yaml:"model"`
-	Dimensions int                      `yaml:"dimensions"`
-	BatchSize  int                      `yaml:"batch_size"`
-	Timeout    time.Duration            `yaml:"timeout"`
-	Cache      EmbeddingCacheConfig     `yaml:"cache"`
-	OpenAI     OpenAIEmbeddingConfig    `yaml:"openai"`
-	Ollama     OllamaEmbeddingConfig    `yaml:"ollama"`
+	Provider   string                `yaml:"provider"`
+	Model      string                `yaml:"model"`
+	Dimensions int                   `yaml:"dimensions"`
+	BatchSize  int                   `yaml:"batch_size"`
+	Timeout    time.Duration         `yaml:"timeout"`
+	Cache      EmbeddingCacheConfig  `yaml:"cache"`
+	OpenAI     OpenAIEmbeddingConfig `yaml:"openai"`
+	Ollama     OllamaEmbeddingConfig `yaml:"ollama"`
 }
 
 // EmbeddingCacheConfig holds embedding cache configuration.

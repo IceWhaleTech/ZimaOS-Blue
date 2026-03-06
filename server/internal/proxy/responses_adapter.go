@@ -10,20 +10,27 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-const responsesMaxOutputTokensCap = 8192
-
 // openAIChatRequestForResponses captures the subset of OpenAI chat-completions
 // fields we need to map into the Responses API.
 type openAIChatRequestForResponses struct {
-	Model              string                          `json:"model"`
-	Messages           []openAIChatMessageForResponses `json:"messages"`
-	Tools              []openAIChatToolForResponses    `json:"tools,omitempty"`
-	Stream             bool                            `json:"stream,omitempty"`
-	MaxTokens          int                             `json:"max_tokens,omitempty"`
-	Temperature        *float64                        `json:"temperature,omitempty"`
-	TopP               *float64                        `json:"top_p,omitempty"`
-	PreviousResponseID string                          `json:"previous_response_id,omitempty"`
-	Instructions       string                          `json:"instructions,omitempty"`
+	Model               string                          `json:"model"`
+	Messages            []openAIChatMessageForResponses `json:"messages"`
+	Tools               []openAIChatToolForResponses    `json:"tools,omitempty"`
+	Stream              bool                            `json:"stream,omitempty"`
+	MaxTokens           int                             `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int                             `json:"max_completion_tokens,omitempty"`
+	Temperature         *float64                        `json:"temperature,omitempty"`
+	TopP                *float64                        `json:"top_p,omitempty"`
+	ToolChoice          gojson.RawMessage               `json:"tool_choice,omitempty"`
+	ParallelToolCalls   *bool                           `json:"parallel_tool_calls,omitempty"`
+	ResponseFormat      gojson.RawMessage               `json:"response_format,omitempty"`
+	PreviousResponseID  string                          `json:"previous_response_id,omitempty"`
+	Instructions        string                          `json:"instructions,omitempty"`
+	User                string                          `json:"user,omitempty"`
+	SafetyIdentifier    string                          `json:"safety_identifier,omitempty"`
+	PromptCacheKey      string                          `json:"prompt_cache_key,omitempty"`
+	Metadata            gojson.RawMessage               `json:"metadata,omitempty"`
+	ReasoningEffort     string                          `json:"reasoning_effort,omitempty"`
 }
 
 type openAIChatMessageForResponses struct {
@@ -53,16 +60,32 @@ type openAIChatToolForResponses struct {
 }
 
 type responsesRequestForOpenAI struct {
-	Model              string          `json:"model,omitempty"`
-	Store              bool            `json:"store"`
-	Input              []interface{}   `json:"input,omitempty"`
-	Tools              []responsesTool `json:"tools,omitempty"`
-	Stream             bool            `json:"stream,omitempty"`
-	MaxOutputTokens    int             `json:"max_output_tokens,omitempty"`
-	Temperature        *float64        `json:"temperature,omitempty"`
-	TopP               *float64        `json:"top_p,omitempty"`
-	Instructions       string          `json:"instructions,omitempty"`
-	PreviousResponseID string          `json:"previous_response_id,omitempty"`
+	Model              string              `json:"model,omitempty"`
+	Store              bool                `json:"store"`
+	Input              []interface{}       `json:"input,omitempty"`
+	Tools              []responsesTool     `json:"tools,omitempty"`
+	Stream             bool                `json:"stream,omitempty"`
+	MaxOutputTokens    int                 `json:"max_output_tokens,omitempty"`
+	Temperature        *float64            `json:"temperature,omitempty"`
+	TopP               *float64            `json:"top_p,omitempty"`
+	ToolChoice         interface{}         `json:"tool_choice,omitempty"`
+	ParallelToolCalls  *bool               `json:"parallel_tool_calls,omitempty"`
+	Text               *responsesText      `json:"text,omitempty"`
+	Instructions       string              `json:"instructions,omitempty"`
+	PreviousResponseID string              `json:"previous_response_id,omitempty"`
+	User               string              `json:"user,omitempty"`
+	SafetyIdentifier   string              `json:"safety_identifier,omitempty"`
+	PromptCacheKey     string              `json:"prompt_cache_key,omitempty"`
+	Metadata           interface{}         `json:"metadata,omitempty"`
+	Reasoning          *responsesReasoning `json:"reasoning,omitempty"`
+}
+
+type responsesText struct {
+	Format interface{} `json:"format,omitempty"`
+}
+
+type responsesReasoning struct {
+	Effort string `json:"effort,omitempty"`
 }
 
 type responsesInputMessage struct {
@@ -145,11 +168,11 @@ func convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body []byte, au
 		Store:  true,
 		Stream: in.Stream,
 	}
-	if in.MaxTokens > 0 {
+	// Prefer max_completion_tokens when both fields are present.
+	if in.MaxCompletionTokens > 0 {
+		out.MaxOutputTokens = in.MaxCompletionTokens
+	} else if in.MaxTokens > 0 {
 		out.MaxOutputTokens = in.MaxTokens
-		if out.MaxOutputTokens > responsesMaxOutputTokensCap {
-			out.MaxOutputTokens = responsesMaxOutputTokensCap
-		}
 	}
 	if in.Temperature != nil {
 		out.Temperature = in.Temperature
@@ -157,11 +180,35 @@ func convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body []byte, au
 	if in.TopP != nil {
 		out.TopP = in.TopP
 	}
+	if parsedToolChoice, ok := decodeRawJSONValue(in.ToolChoice); ok {
+		out.ToolChoice = parsedToolChoice
+	}
+	if in.ParallelToolCalls != nil {
+		out.ParallelToolCalls = in.ParallelToolCalls
+	}
+	if textCfg := convertChatResponseFormatToResponsesText(in.ResponseFormat); textCfg != nil {
+		out.Text = textCfg
+	}
 	if in.PreviousResponseID != "" {
 		out.PreviousResponseID = in.PreviousResponseID
 	}
 	if strings.TrimSpace(in.Instructions) != "" {
 		out.Instructions = strings.TrimSpace(in.Instructions)
+	}
+	if strings.TrimSpace(in.User) != "" {
+		out.User = strings.TrimSpace(in.User)
+	}
+	if strings.TrimSpace(in.SafetyIdentifier) != "" {
+		out.SafetyIdentifier = strings.TrimSpace(in.SafetyIdentifier)
+	}
+	if strings.TrimSpace(in.PromptCacheKey) != "" {
+		out.PromptCacheKey = strings.TrimSpace(in.PromptCacheKey)
+	}
+	if metadata, ok := decodeRawJSONValue(in.Metadata); ok {
+		out.Metadata = metadata
+	}
+	if reasoningEffort := normalizeReasoningEffort(in.ReasoningEffort); reasoningEffort != "" {
+		out.Reasoning = &responsesReasoning{Effort: reasoningEffort}
 	}
 
 	if len(in.Tools) > 0 {
@@ -235,31 +282,60 @@ func convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body []byte, au
 	return converted, nil
 }
 
-// clampResponsesMaxOutputTokens limits max_output_tokens to reduce upstream pressure.
-func clampResponsesMaxOutputTokens(body []byte) []byte {
+// clampResponsesMaxOutputTokens caps max_output_tokens only when a positive
+// model-level limit is provided. Unknown model limits remain passthrough.
+func clampResponsesMaxOutputTokens(body []byte, maxAllowed int) []byte {
+	if maxAllowed <= 0 {
+		return body
+	}
+	if len(body) == 0 {
+		return body
+	}
 	maxOutputTokens := gjson.GetBytes(body, "max_output_tokens")
 	if !maxOutputTokens.Exists() {
 		return body
 	}
-	if maxOutputTokens.Int() <= responsesMaxOutputTokensCap {
+	value := int(maxOutputTokens.Int())
+	if value <= 0 || value <= maxAllowed {
 		return body
 	}
-	out, err := sjson.SetBytes(body, "max_output_tokens", responsesMaxOutputTokensCap)
+	out, err := sjson.SetBytes(body, "max_output_tokens", maxAllowed)
 	if err != nil {
 		return body
 	}
 	return out
 }
 
-// ensureResponsesStoreEnabled forces Responses API requests to set store=true.
+const fixedCodexResponsesEndpointPath = "/backend-api/codex/responses"
+
+// applyResponsesStorePolicy applies endpoint-specific store policy and returns
+// both transformed body and the policy label for observability.
+func applyResponsesStorePolicy(body []byte, finalPath string) ([]byte, string) {
+	if normalizeResponsesEndpointPath(finalPath) == fixedCodexResponsesEndpointPath {
+		return ensureResponsesStore(body, false), "codex_store_false"
+	}
+	return ensureResponsesStore(body, true), "responses_store_true"
+}
+
+func normalizeResponsesEndpointPath(path string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(path)), "/")
+}
+
+// ensureResponsesStoreEnabled keeps legacy behavior for generic /responses
+// endpoints by forcing store=true.
 func ensureResponsesStoreEnabled(body []byte) []byte {
+	return ensureResponsesStore(body, true)
+}
+
+func ensureResponsesStore(body []byte, enabled bool) []byte {
 	if len(body) == 0 {
 		return body
 	}
-	if gjson.GetBytes(body, "store").Bool() {
+	store := gjson.GetBytes(body, "store")
+	if store.Exists() && store.Bool() == enabled {
 		return body
 	}
-	out, err := sjson.SetBytes(body, "store", true)
+	out, err := sjson.SetBytes(body, "store", enabled)
 	if err != nil {
 		return body
 	}
@@ -281,6 +357,14 @@ func trimMessagesForContinuation(messages []openAIChatMessageForResponses) []ope
 	}
 
 	if lastAssistant >= 0 {
+		// Tool rounds already carry explicit function_call / function_call_output
+		// items. Re-sending the assistant tool_call message causes redundant echo.
+		if len(messages[lastAssistant].ToolCalls) > 0 {
+			if lastAssistant+1 >= len(messages) {
+				return nil
+			}
+			return messages[lastAssistant+1:]
+		}
 		if lastAssistant+1 >= len(messages) {
 			return nil
 		}
@@ -293,7 +377,8 @@ func trimMessagesForContinuation(messages []openAIChatMessageForResponses) []ope
 
 // convertResponsesToOpenAIChatCompletions converts an OpenAI Responses API
 // response body into an OpenAI chat-completions response body.
-func convertResponsesToOpenAIChatCompletions(body []byte) ([]byte, error) {
+// preferredModel should come from routing/request metadata, not upstream response payload.
+func convertResponsesToOpenAIChatCompletions(body []byte, preferredModel string) ([]byte, error) {
 	var in responsesAPIResponse
 	if err := gojson.Unmarshal(body, &in); err != nil {
 		return nil, fmt.Errorf("parse responses api response: %w", err)
@@ -346,7 +431,7 @@ func convertResponsesToOpenAIChatCompletions(body []byte) ([]byte, error) {
 		ID:      in.ID,
 		Object:  "chat.completion",
 		Created: in.CreatedAt,
-		Model:   in.Model,
+		Model:   strings.TrimSpace(preferredModel),
 		Choices: []struct {
 			Index        int           `json:"index"`
 			Message      OpenAIMessage `json:"message"`
@@ -527,6 +612,77 @@ func anyToString(v interface{}) string {
 		return strconv.FormatInt(int64(t), 10)
 	case int64:
 		return strconv.FormatInt(t, 10)
+	default:
+		return ""
+	}
+}
+
+func decodeRawJSONValue(raw gojson.RawMessage) (interface{}, bool) {
+	rawStr := strings.TrimSpace(string(raw))
+	if rawStr == "" || rawStr == "null" {
+		return nil, false
+	}
+	var out interface{}
+	if err := gojson.Unmarshal(raw, &out); err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
+func convertChatResponseFormatToResponsesText(raw gojson.RawMessage) *responsesText {
+	parsed, ok := decodeRawJSONValue(raw)
+	if !ok {
+		return nil
+	}
+	formatObj, ok := parsed.(map[string]interface{})
+	if !ok || formatObj == nil {
+		return nil
+	}
+
+	formatType := strings.ToLower(strings.TrimSpace(anyToString(formatObj["type"])))
+	switch formatType {
+	case "text", "json_object":
+		return &responsesText{
+			Format: map[string]interface{}{"type": formatType},
+		}
+	case "json_schema":
+		// Chat Completions nests schema details under `response_format.json_schema`.
+		if nested, ok := formatObj["json_schema"].(map[string]interface{}); ok && nested != nil {
+			return buildResponsesJSONSchemaTextConfig(nested)
+		}
+		return buildResponsesJSONSchemaTextConfig(formatObj)
+	default:
+		return nil
+	}
+}
+
+func buildResponsesJSONSchemaTextConfig(obj map[string]interface{}) *responsesText {
+	name := strings.TrimSpace(anyToString(obj["name"]))
+	schema, hasSchema := obj["schema"]
+	if name == "" || !hasSchema || schema == nil {
+		return nil
+	}
+
+	format := map[string]interface{}{
+		"type":   "json_schema",
+		"name":   name,
+		"schema": schema,
+	}
+	if description := strings.TrimSpace(anyToString(obj["description"])); description != "" {
+		format["description"] = description
+	}
+	if strict, ok := obj["strict"].(bool); ok {
+		format["strict"] = strict
+	}
+	return &responsesText{Format: format}
+}
+
+func normalizeReasoningEffort(effort string) string {
+	switch strings.ToLower(strings.TrimSpace(effort)) {
+	case "none", "minimal", "low", "medium", "high", "xhigh":
+		return strings.ToLower(strings.TrimSpace(effort))
+	case "extrahigh", "extra_high", "extra-high":
+		return "xhigh"
 	default:
 		return ""
 	}

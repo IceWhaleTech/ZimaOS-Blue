@@ -22,6 +22,7 @@ type MacOSNativeTTS struct {
 	mu       sync.Mutex         // serializes speech (held for duration of say)
 	cancelMu sync.Mutex         // protects cancelFn (never held during say)
 	cancelFn context.CancelFunc // cancel the currently running say process
+	currCmd  *exec.Cmd          // currently running say command
 }
 
 // NewMacOSNativeTTS creates a new macOS native TTS provider
@@ -158,16 +159,6 @@ func (p *MacOSNativeTTS) SpeakLocally(ctx context.Context, text string, speed fl
 	cmdCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	p.cancelMu.Lock()
-	p.cancelFn = cancel
-	p.cancelMu.Unlock()
-
-	defer func() {
-		p.cancelMu.Lock()
-		p.cancelFn = nil
-		p.cancelMu.Unlock()
-	}()
-
 	args := []string{}
 
 	// Select voice based on language detection
@@ -189,6 +180,16 @@ func (p *MacOSNativeTTS) SpeakLocally(ctx context.Context, text string, speed fl
 
 	slog.Info("[macos-tts] speak locally", "text_len", len(text), "speed", speed)
 	cmd := exec.CommandContext(cmdCtx, "say", args...)
+	p.cancelMu.Lock()
+	p.cancelFn = cancel
+	p.currCmd = cmd
+	p.cancelMu.Unlock()
+	defer func() {
+		p.cancelMu.Lock()
+		p.cancelFn = nil
+		p.currCmd = nil
+		p.cancelMu.Unlock()
+	}()
 	if output, err := cmd.CombinedOutput(); err != nil {
 		if cmdCtx.Err() != nil {
 			slog.Info("[macos-tts] speak locally cancelled")
@@ -204,10 +205,17 @@ func (p *MacOSNativeTTS) SpeakLocally(ctx context.Context, text string, speed fl
 // StopSpeaking cancels any currently running local speech.
 func (p *MacOSNativeTTS) StopSpeaking() {
 	p.cancelMu.Lock()
-	defer p.cancelMu.Unlock()
-	if p.cancelFn != nil {
-		p.cancelFn()
-		p.cancelFn = nil
+	cancel := p.cancelFn
+	cmd := p.currCmd
+	p.cancelFn = nil
+	p.currCmd = nil
+	p.cancelMu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
 	}
 }
 

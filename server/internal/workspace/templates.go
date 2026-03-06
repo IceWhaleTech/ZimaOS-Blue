@@ -16,6 +16,7 @@ type templateSet struct {
 	user      string
 	identity  string
 	agents    string
+	tools     string
 	memory    string
 	heartbeat string
 	bootstrap string
@@ -57,6 +58,8 @@ func loadTemplateSet(locale string) *templateSet {
 			ts.identity = content
 		case "AGENTS.md":
 			ts.agents = content
+		case "TOOLS.md":
+			ts.tools = content
 		case "MEMORY.md":
 			ts.memory = content
 		case "HEARTBEAT.md":
@@ -104,42 +107,43 @@ func getTemplates(locale string) *templateSet {
 
 // resolveTemplates tries to find the best matching template set for a locale.
 func resolveTemplates(locale string) *templateSet {
+	en := loadTemplateSet("en")
+	if en == nil {
+		// Should never happen — en templates are always embedded
+		en = &templateSet{}
+	}
+
 	// 1. Exact match
 	if ts := loadTemplateSet(locale); ts != nil {
-		return ts
+		return mergeTemplateSetWithFallback(ts, en)
 	}
 	// 2. Alias (e.g. "zh-HK" → "zh-TW")
 	if alias, ok := localeAliases[locale]; ok {
 		if ts := loadTemplateSet(alias); ts != nil {
-			return ts
+			return mergeTemplateSetWithFallback(ts, en)
 		}
 	}
 	// 3. Try uppercase region: "zh-tw" → "zh-TW"
 	if idx := strings.IndexByte(locale, '-'); idx > 0 && idx+1 < len(locale) {
 		normalized := locale[:idx] + "-" + strings.ToUpper(locale[idx+1:])
 		if ts := loadTemplateSet(normalized); ts != nil {
-			return ts
+			return mergeTemplateSetWithFallback(ts, en)
 		}
 		// Check alias for normalized form too
 		if alias, ok := localeAliases[normalized]; ok {
 			if ts := loadTemplateSet(alias); ts != nil {
-				return ts
+				return mergeTemplateSetWithFallback(ts, en)
 			}
 		}
 	}
 	// 4. Language prefix: "zh-CN" → "zh"
 	if len(locale) >= 2 {
 		if ts := loadTemplateSet(locale[:2]); ts != nil {
-			return ts
+			return mergeTemplateSetWithFallback(ts, en)
 		}
 	}
 	// 5. Fallback to English
-	ts := loadTemplateSet("en")
-	if ts == nil {
-		// Should never happen — en templates are always embedded
-		return &templateSet{}
-	}
-	return ts
+	return en
 }
 
 // templateMap returns the standard file→content map (excluding bootstrap).
@@ -149,6 +153,7 @@ func (ts *templateSet) templateMap() map[string]string {
 		FileUSER:      ts.user,
 		FileIDENTITY:  ts.identity,
 		FileAGENTS:    ts.agents,
+		FileTOOLS:     ts.tools,
 		FileMEMORY:    ts.memory,
 		FileHEARTBEAT: ts.heartbeat,
 	}
@@ -168,6 +173,8 @@ func templateContentByFile(ts *templateSet, name string) string {
 		return ts.identity
 	case FileAGENTS:
 		return ts.agents
+	case FileTOOLS:
+		return ts.tools
 	case FileMEMORY:
 		return ts.memory
 	case FileHEARTBEAT:
@@ -177,6 +184,45 @@ func templateContentByFile(ts *templateSet, name string) string {
 	default:
 		return ""
 	}
+}
+
+func mergeTemplateSetWithFallback(primary, fallback *templateSet) *templateSet {
+	if primary == nil {
+		if fallback == nil {
+			return &templateSet{}
+		}
+		return fallback
+	}
+	if fallback == nil {
+		return primary
+	}
+
+	out := *primary
+	if strings.TrimSpace(out.soul) == "" {
+		out.soul = fallback.soul
+	}
+	if strings.TrimSpace(out.user) == "" {
+		out.user = fallback.user
+	}
+	if strings.TrimSpace(out.identity) == "" {
+		out.identity = fallback.identity
+	}
+	if strings.TrimSpace(out.agents) == "" {
+		out.agents = fallback.agents
+	}
+	if strings.TrimSpace(out.tools) == "" {
+		out.tools = fallback.tools
+	}
+	if strings.TrimSpace(out.memory) == "" {
+		out.memory = fallback.memory
+	}
+	if strings.TrimSpace(out.heartbeat) == "" {
+		out.heartbeat = fallback.heartbeat
+	}
+	if strings.TrimSpace(out.bootstrap) == "" {
+		out.bootstrap = fallback.bootstrap
+	}
+	return &out
 }
 
 // NormalizeDefaultTemplateToEnglish maps locale-specific default workspace template

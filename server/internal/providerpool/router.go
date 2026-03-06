@@ -89,7 +89,8 @@ func (r *Router) SetFailoverCallback(cb func(*FailoverResult)) {
 }
 
 // shouldBypassPenalty returns true when only one provider is enabled.
-// In single-provider setups we should avoid cooldown-based self-isolation.
+// In single-provider setups we should avoid self-isolation penalties
+// (cooldown and transient unhealthy status) that can block all routing.
 func (r *Router) shouldBypassPenalty() bool {
 	return len(r.registry.ListEnabled()) <= 1
 }
@@ -274,15 +275,15 @@ func (r *Router) getCandidatesFromSnapshot(req *RouteRequest) []*RouteCandidate 
 	// Copy + filter (runtime state: cooldown, exclude, routing mode, status)
 	result := make([]*RouteCandidate, 0, len(source))
 	needModeFilter := req.Mode != "" && req.Mode != RoutingModeAuto
-	skipCooldown := r.shouldBypassPenalty()
+	bypassPenalty := r.shouldBypassPenalty()
 	for _, c := range source {
 		if len(excludeSet) > 0 && excludeSet[c.Provider.ID] {
 			continue
 		}
-		if c.Provider.Status == ProviderStatusError {
+		if c.Provider.Status == ProviderStatusError && !bypassPenalty {
 			continue
 		}
-		if !skipCooldown && r.IsInCooldown(c.Provider.ID) {
+		if !bypassPenalty && r.IsInCooldown(c.Provider.ID) {
 			continue
 		}
 		if needModeFilter {
@@ -314,7 +315,7 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 	for _, id := range req.Exclude {
 		excludeSet[id] = true
 	}
-	skipCooldown := r.shouldBypassPenalty()
+	bypassPenalty := r.shouldBypassPenalty()
 
 	for _, provider := range providers {
 		// Skip excluded providers
@@ -323,12 +324,12 @@ func (r *Router) findCandidates(req *RouteRequest) ([]*RouteCandidate, error) {
 		}
 
 		// Skip unhealthy providers
-		if provider.Status == ProviderStatusError {
+		if provider.Status == ProviderStatusError && !bypassPenalty {
 			continue
 		}
 
 		// Skip providers in cooldown
-		if !skipCooldown && r.IsInCooldown(provider.ID) {
+		if !bypassPenalty && r.IsInCooldown(provider.ID) {
 			continue
 		}
 
@@ -907,6 +908,15 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 
 	result, err := r.Route(req)
 	if err != nil {
+		// Empty model means "auto pick any available model". Blind fallback is not
+		// useful in this case because it forwards req.ModelID as-is, which would be
+		// empty and lead to provider-side model selection errors/misleading logs.
+		if strings.TrimSpace(req.ModelID) == "" {
+			if failoverResult != nil {
+				failoverResult.FinalError = ErrNoAvailableProvider.Error()
+			}
+			return ErrNoAvailableProvider
+		}
 		// Model not in snapshot — skip to blind provider fallback
 		slog.Info("[router] model not in snapshot, trying blind provider fallback",
 			"model", req.ModelID, "mode", req.Mode)
@@ -1068,6 +1078,22 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 	}
 
 blindFallback:
+	// Blind fallback is only meaningful for explicit model IDs not present in the
+	// snapshot. For empty model requests, providers were already exhausted above.
+	if strings.TrimSpace(req.ModelID) == "" {
+		if failoverResult != nil {
+			if err != nil {
+				failoverResult.FinalError = err.Error()
+			} else {
+				failoverResult.FinalError = ErrNoAvailableProvider.Error()
+			}
+		}
+		if err != nil {
+			return err
+		}
+		return ErrNoAvailableProvider
+	}
+
 	// Blind provider fallback: try any healthy provider matching the routing mode.
 	// The original model name is forwarded as-is — the upstream decides if it supports it.
 	// This handles cases where our local model list is incomplete or the model is new.
@@ -1191,16 +1217,16 @@ blindFallback:
 func (r *Router) findBlindFallbackProviders(modelID string, mode RoutingMode, exclude map[string]bool) []*Provider {
 	providers := r.registry.ListEnabled()
 	var candidates []*Provider
-	skipCooldown := r.shouldBypassPenalty()
+	bypassPenalty := r.shouldBypassPenalty()
 
 	for _, p := range providers {
 		if exclude[p.ID] {
 			continue
 		}
-		if p.Status == ProviderStatusError {
+		if p.Status == ProviderStatusError && !bypassPenalty {
 			continue
 		}
-		if !skipCooldown && r.IsInCooldown(p.ID) {
+		if !bypassPenalty && r.IsInCooldown(p.ID) {
 			continue
 		}
 		// Cloud providers need usable credentials (API key or OAuth)

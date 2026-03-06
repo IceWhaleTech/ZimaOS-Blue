@@ -2,6 +2,8 @@ package proxy
 
 import (
 	"bytes"
+	stdjson "encoding/json"
+	"io"
 	"regexp"
 	"strings"
 	"sync"
@@ -184,7 +186,72 @@ func (dm *DataMasker) MaskRequestBytes(content []byte) []byte {
 
 // MaskResponseBytes masks sensitive data in response body bytes.
 func (dm *DataMasker) MaskResponseBytes(content []byte) []byte {
+	trimmed := bytes.TrimSpace(content)
+	// Keep JSON responses structurally valid: mask only string fields.
+	// Raw byte-level regex replacement can corrupt numbers/booleans/null.
+	if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') && stdjson.Valid(trimmed) {
+		if masked, ok := dm.maskJSONResponseBytes(trimmed); ok {
+			return masked
+		}
+		// Fail-safe: preserve original valid JSON if safe masking fails unexpectedly.
+		return content
+	}
 	return dm.MaskBytes(content, MaskingResponse)
+}
+
+func (dm *DataMasker) maskJSONResponseBytes(content []byte) ([]byte, bool) {
+	dec := stdjson.NewDecoder(bytes.NewReader(content))
+	dec.UseNumber()
+
+	var payload interface{}
+	if err := dec.Decode(&payload); err != nil {
+		return nil, false
+	}
+	// Reject trailing garbage; keep behavior conservative.
+	var extra interface{}
+	if err := dec.Decode(&extra); err != io.EOF {
+		return nil, false
+	}
+
+	maskedPayload, changed := dm.maskJSONResponseValue(payload)
+	if !changed {
+		return content, true
+	}
+	out, err := stdjson.Marshal(maskedPayload)
+	if err != nil || !stdjson.Valid(out) {
+		return nil, false
+	}
+	return out, true
+}
+
+func (dm *DataMasker) maskJSONResponseValue(v interface{}) (interface{}, bool) {
+	switch tv := v.(type) {
+	case map[string]interface{}:
+		changed := false
+		for k, child := range tv {
+			maskedChild, childChanged := dm.maskJSONResponseValue(child)
+			if childChanged {
+				tv[k] = maskedChild
+				changed = true
+			}
+		}
+		return tv, changed
+	case []interface{}:
+		changed := false
+		for i := range tv {
+			maskedChild, childChanged := dm.maskJSONResponseValue(tv[i])
+			if childChanged {
+				tv[i] = maskedChild
+				changed = true
+			}
+		}
+		return tv, changed
+	case string:
+		masked := dm.Mask(tv, MaskingResponse)
+		return masked, masked != tv
+	default:
+		return v, false
+	}
 }
 
 // AddRule adds a masking rule

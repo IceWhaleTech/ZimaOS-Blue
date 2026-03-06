@@ -576,8 +576,13 @@ func (r *Registry) AddAPIKey(providerID string, key *APIKey) error {
 
 	provider.APIKeys = append(provider.APIKeys, *key)
 	provider.UpdatedAt = timeutil.NowTime()
-
-	return r.storage.SaveProvider(provider)
+	if err := r.storage.SaveProvider(provider); err != nil {
+		return err
+	}
+	if r.onProviderChange != nil {
+		r.onProviderChange(provider, "add_api_key")
+	}
+	return nil
 }
 
 // RemoveAPIKey removes an API key from a provider
@@ -606,8 +611,13 @@ func (r *Registry) RemoveAPIKey(providerID, keyID string) error {
 
 	provider.APIKeys = newKeys
 	provider.UpdatedAt = timeutil.NowTime()
-
-	return r.storage.SaveProvider(provider)
+	if err := r.storage.SaveProvider(provider); err != nil {
+		return err
+	}
+	if r.onProviderChange != nil {
+		r.onProviderChange(provider, "remove_api_key")
+	}
+	return nil
 }
 
 // GetAPIKey returns an API key for a provider

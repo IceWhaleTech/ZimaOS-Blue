@@ -36,6 +36,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sessionaudit"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
@@ -1893,17 +1894,34 @@ func shouldAutoContinueForPseudoToolCall(currentContent string) bool {
 func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent string, agentMode bool, options ...bool) (bool, string) {
 	allowMissingTodo := false
 	planCompletedByTool := false
+	preferReminderTool := false
+	allowMissingNextSteps := true
 	if len(options) > 0 {
 		allowMissingTodo = options[0]
 	}
 	if len(options) > 1 {
 		planCompletedByTool = options[1]
 	}
+	if len(options) > 2 {
+		preferReminderTool = options[2]
+	}
+	if len(options) > 3 {
+		allowMissingNextSteps = options[3]
+	}
 	if shouldAutoContinueForPseudoToolCall(currentContent) {
+		return true, "pseudo_tool_call"
+	}
+	if preferReminderTool && shouldAutoContinueForReminderSetClaimWithoutToolCall(currentContent) {
 		return true, "pseudo_tool_call"
 	}
 	if agentMode && shouldAutoContinueForTodo(currentContent, trackedTodoContent, planCompletedByTool) {
 		return true, "pending_todo"
+	}
+	// If a tracked checklist is still pending, "missing next steps" nudge can
+	// cause repeated summary loops even after a completion-style reply. In that
+	// case we treat the pending checklist as dominant context and skip this path.
+	if agentMode && allowMissingNextSteps && !hasPendingTodo(trackedTodoContent) && shouldAutoContinueForMissingNextSteps(currentContent) {
+		return true, "missing_next_steps"
 	}
 	if shouldAutoContinueForMissingTodo(currentContent, trackedTodoContent, agentMode, allowMissingTodo, planCompletedByTool) {
 		return true, "missing_todo"
@@ -1912,6 +1930,49 @@ func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent str
 		return true, "action_pledge"
 	}
 	return false, ""
+}
+
+func shouldAutoContinueForReminderSetClaimWithoutToolCall(currentContent string) bool {
+	if isAwaitingUserInput(currentContent) {
+		return false
+	}
+	s := strings.TrimSpace(currentContent)
+	if s == "" {
+		return false
+	}
+	lower := strings.ToLower(s)
+
+	englishClaims := []string{
+		"reminder set",
+		"reminder has been set",
+		"i set a reminder",
+		"i've set a reminder",
+		"i have set a reminder",
+		"scheduled a reminder",
+		"alarm set",
+	}
+	for _, claim := range englishClaims {
+		if strings.Contains(lower, claim) {
+			return true
+		}
+	}
+
+	zhClaims := []string{
+		"已设置提醒",
+		"已经设置提醒",
+		"提醒已设置",
+		"已为你设置提醒",
+		"已帮你设置提醒",
+		"提醒设置好了",
+		"闹钟已设置",
+	}
+	for _, claim := range zhClaims {
+		if strings.Contains(s, claim) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func shouldAutoContinueForMissingTodo(currentContent, trackedTodoContent string, agentMode, allowMissingTodoBootstrap, planCompletedByTool bool) bool {
@@ -2037,12 +2098,108 @@ func isLikelyTaskCompletionResponse(content string) bool {
 	return zhMatches >= 2
 }
 
+func shouldAutoContinueForMissingNextSteps(content string) bool {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return false
+	}
+	if isAwaitingUserInput(trimmed) {
+		return false
+	}
+	if !isLikelyTaskCompletionResponse(trimmed) {
+		return false
+	}
+	// Completion responses that already include a concrete delivery endpoint/URL
+	// should not be forced into extra "next steps" rounds.
+	if hasConcreteCompletionDelivery(trimmed) {
+		return false
+	}
+	return !hasSuggestedNextSteps(trimmed)
+}
+
+func hasConcreteCompletionDelivery(content string) bool {
+	s := strings.TrimSpace(content)
+	if s == "" {
+		return false
+	}
+	lower := strings.ToLower(s)
+
+	enCues := []string{
+		"http://",
+		"https://",
+		"localhost",
+		"127.0.0.1",
+		"url:",
+		"link:",
+		"address:",
+		"run at",
+	}
+	for _, cue := range enCues {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+
+	zhCues := []string{
+		"地址：",
+		"访问地址",
+		"运行地址",
+		"链接：",
+		"可直接运行",
+		"可以直接运行",
+	}
+	for _, cue := range zhCues {
+		if strings.Contains(s, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSuggestedNextSteps(content string) bool {
+	s := strings.TrimSpace(content)
+	if s == "" {
+		return false
+	}
+	lower := strings.ToLower(s)
+
+	enCues := []string{
+		"suggested next steps",
+		"next steps",
+		"next step:",
+		"next step suggestion",
+		"follow-up actions",
+		"follow up actions",
+	}
+	for _, cue := range enCues {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+
+	zhCues := []string{
+		"下一步建议",
+		"建议下一步",
+		"下一步：",
+		"后续建议",
+		"后续步骤",
+		"接下来可以",
+		"后续可做",
+	}
+	for _, cue := range zhCues {
+		if strings.Contains(s, cue) {
+			return true
+		}
+	}
+	return false
+}
+
 func buildToollessAutoContinueNudge(agentMode bool) string {
 	return buildToollessAutoContinueNudgeForReason(agentMode, "")
 }
 
 func shouldPersistToollessRoundContent(reason string) bool {
-	return reason != "pseudo_tool_call"
+	return reason != "pseudo_tool_call" && reason != "missing_next_steps"
 }
 
 func shouldCollapseToollessAutoContinueRound(reason, content string) bool {
@@ -2350,6 +2507,87 @@ func sanitizeModelHint(actualModel, requestedModel string) string {
 	return requestedModel
 }
 
+// modelExistsInKnownLists checks model IDs against local model inventories.
+// This avoids trusting arbitrary upstream model names in response payloads.
+func (h *ChatHandler) modelExistsInKnownLists(model string) bool {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return false
+	}
+	if h.providerPool != nil && h.providerPool.Router != nil && h.providerPool.Router.HasModel(model) {
+		return true
+	}
+	if h.providers == nil {
+		return false
+	}
+	for _, name := range h.providers.List() {
+		p := h.providers.Get(name)
+		if p == nil {
+			continue
+		}
+		for _, known := range p.Models() {
+			if strings.TrimSpace(known) == model {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// resolveStableModel returns a trusted concrete model for routing/pinning.
+// Priority: explicit request model > known routed model.
+func (h *ChatHandler) resolveStableModel(requestModel, routedModel string) string {
+	requested := strings.TrimSpace(requestModel)
+	if requested != "" && !strings.EqualFold(requested, "auto") {
+		return requested
+	}
+	routed := strings.TrimSpace(routedModel)
+	if routed != "" && h.modelExistsInKnownLists(routed) {
+		return routed
+	}
+	return ""
+}
+
+// resolveResponseModel returns the model to expose in metrics/persistence.
+// Falls back to request model (including "auto") when no concrete routed model is known.
+func (h *ChatHandler) resolveResponseModel(requestModel, routedModel string) string {
+	if stable := h.resolveStableModel(requestModel, routedModel); stable != "" {
+		return stable
+	}
+	requested := strings.TrimSpace(requestModel)
+	if requested != "" {
+		return requested
+	}
+	return "auto"
+}
+
+func isTrustedSyntheticProvider(providerID, provider string) bool {
+	id := strings.ToLower(strings.TrimSpace(providerID))
+	switch id {
+	case "ir", "deepresearch", "web_search", "smallmodel", "local":
+		return true
+	}
+	name := strings.ToLower(strings.TrimSpace(provider))
+	switch name {
+	case "ir", "deepresearch", "web_search", "smallmodel", "local":
+		return true
+	}
+	return false
+}
+
+// resolveResponseModelWithFallback keeps request/routed model as primary source
+// and only accepts resp.Model for trusted synthetic/local fallback providers.
+func (h *ChatHandler) resolveResponseModelWithFallback(requestModel, routedModel string, resp *llm.ChatResponse) string {
+	model := h.resolveResponseModel(requestModel, routedModel)
+	if resp == nil || !isTrustedSyntheticProvider(resp.ProviderID, resp.Provider) {
+		return model
+	}
+	if fallback := strings.TrimSpace(resp.Model); fallback != "" {
+		return fallback
+	}
+	return model
+}
+
 // advanceTodoItem replaces the first unchecked `- [ ] text` with `- [x] text`.
 // Returns the updated string and true if a replacement was made.
 // Note: no ~~strikethrough~~ — the markdown renderer applies line-through via CSS
@@ -2442,10 +2680,7 @@ func formatProcessBlock(summary []map[string]interface{}) string {
 			if json.Unmarshal([]byte(result), &res) == nil {
 				if errMsg, ok := res["error"].(string); ok && errMsg != "" {
 					it.Icon = "✗"
-					if len(errMsg) > 100 {
-						errMsg = errMsg[:100]
-					}
-					it.Status = errMsg
+					it.Status = "error (details hidden)"
 				} else if exitCode, ok := res["exit_code"].(float64); ok {
 					if exitCode == 0 {
 						it.Icon = "✓"
@@ -2461,10 +2696,9 @@ func formatProcessBlock(summary []map[string]interface{}) string {
 				}
 				if stdout, ok := res["stdout"].(string); ok {
 					stdout = strings.TrimSpace(stdout)
-					if len(stdout) > 200 {
-						stdout = stdout[:200] + "..."
+					if stdout != "" {
+						it.Output = "stdout hidden for safety"
 					}
-					it.Output = stdout
 				}
 			}
 		}
@@ -2477,51 +2711,147 @@ func formatProcessBlock(summary []map[string]interface{}) string {
 	return "\n\n<!-- process-start -->\n```process\n" + string(jsonBytes) + "\n```\n<!-- process-end -->\n"
 }
 
-// buildToolFallbackText converts tool result JSON messages into a concise
-// human-readable fallback instead of dumping raw JSON blobs into chat.
+func payloadStringField(payload map[string]interface{}, key string) string {
+	if payload == nil {
+		return ""
+	}
+	raw, ok := payload[key]
+	if !ok || raw == nil {
+		return ""
+	}
+	switch v := raw.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case json.Number:
+		return strings.TrimSpace(v.String())
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", v))
+	}
+}
+
+func payloadExitCode(payload map[string]interface{}) (int, bool) {
+	if payload == nil {
+		return 0, false
+	}
+	raw, ok := payload["exit_code"]
+	if !ok || raw == nil {
+		return 0, false
+	}
+	switch v := raw.(type) {
+	case int:
+		return v, true
+	case int32:
+		return int(v), true
+	case int64:
+		return int(v), true
+	case float64:
+		return int(v), true
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return int(i), true
+		}
+		if f, err := v.Float64(); err == nil {
+			return int(f), true
+		}
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return 0, false
+		}
+		if i, err := strconv.Atoi(s); err == nil {
+			return i, true
+		}
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return int(f), true
+		}
+	}
+	return 0, false
+}
+
+func classifyToolFallbackOutcome(payload map[string]interface{}) string {
+	if payloadStringField(payload, "error") != "" {
+		return "failed"
+	}
+	if code, ok := payloadExitCode(payload); ok {
+		if code == 0 {
+			return "succeeded"
+		}
+		return "failed"
+	}
+	status := strings.ToLower(payloadStringField(payload, "status"))
+	if status == "" {
+		return "unknown"
+	}
+	failedStatuses := []string{"failed", "error", "timeout", "aborted", "denied", "panic"}
+	for _, token := range failedStatuses {
+		if strings.Contains(status, token) {
+			return "failed"
+		}
+	}
+	successStatuses := []string{"success", "completed", "ok", "done", "passed"}
+	for _, token := range successStatuses {
+		if strings.Contains(status, token) {
+			return "succeeded"
+		}
+	}
+	return "unknown"
+}
+
+// buildToolFallbackText returns a safe fallback summary when tool rounds
+// completed but the model failed to provide a final user-facing report.
+// It must not echo raw stdout/stderr/error payloads.
 func buildToolFallbackText(messages []llm.Message, maxLen int) (string, int) {
-	var parts []string
 	toolCount := 0
+	succeeded := 0
+	failed := 0
+	unknown := 0
+	redactedFields := 0
+
 	for _, m := range messages {
 		if m.Role != llm.RoleTool || strings.TrimSpace(m.Content) == "" {
 			continue
 		}
 		toolCount++
+
 		var payload map[string]interface{}
 		if json.Unmarshal([]byte(m.Content), &payload) != nil {
+			unknown++
 			continue
 		}
-		if stdout, _ := payload["stdout"].(string); strings.TrimSpace(stdout) != "" {
-			text := strings.TrimSpace(stdout)
-			if len(text) > 600 {
-				text = text[:600] + "..."
+
+		for _, key := range []string{"stdout", "stderr", "error"} {
+			if payloadStringField(payload, key) != "" {
+				redactedFields++
 			}
-			parts = append(parts, text)
-			continue
 		}
-		if stderr, _ := payload["stderr"].(string); strings.TrimSpace(stderr) != "" {
-			text := strings.TrimSpace(stderr)
-			if len(text) > 400 {
-				text = text[:400] + "..."
-			}
-			parts = append(parts, "stderr: "+text)
-			continue
-		}
-		if errMsg, _ := payload["error"].(string); strings.TrimSpace(errMsg) != "" {
-			parts = append(parts, "error: "+strings.TrimSpace(errMsg))
-			continue
-		}
-		if status, _ := payload["status"].(string); strings.TrimSpace(status) != "" {
-			parts = append(parts, "status: "+strings.TrimSpace(status))
-			continue
+
+		switch classifyToolFallbackOutcome(payload) {
+		case "succeeded":
+			succeeded++
+		case "failed":
+			failed++
+		default:
+			unknown++
 		}
 	}
 
-	if len(parts) == 0 {
-		return "Tool execution completed, but the model failed to produce a final summary. Please review the tool results above.", toolCount
+	if toolCount == 0 {
+		return "Tool execution completed, but final summary generation failed. Raw tool output is hidden for safety. Please review tool cards/history for details.", 0
 	}
 
-	out := strings.Join(parts, "\n\n")
+	out := fmt.Sprintf(
+		"Tool execution completed (%d result(s)), but final summary generation failed. Safe status: %d succeeded, %d failed, %d unknown. Raw tool output fields (stdout/stderr/error) were redacted for safety%s Please review tool cards/history for details or ask me to retry summarizing.",
+		toolCount,
+		succeeded,
+		failed,
+		unknown,
+		func() string {
+			if redactedFields == 0 {
+				return "."
+			}
+			return fmt.Sprintf(" (%d field(s) hidden).", redactedFields)
+		}(),
+	)
 	if maxLen > 0 && len(out) > maxLen {
 		out = out[:maxLen]
 	}
@@ -2816,6 +3146,7 @@ type ChatHandler struct {
 	providerPool      *providerpool.Pool
 	toolRegistry      *tools.Registry
 	toolExecutor      *tools.Executor
+	sessionAuditStore *sessionaudit.Store
 	streamController  *claudecode.StreamController
 	compactionConfig  claudecode.CompactionConfig
 	claudeCodeHandler *claudecode.Handler
@@ -3133,6 +3464,109 @@ func applyDeepResearchPreference(defs []tools.ToolDefinition, deepResearchEnable
 	return filtered
 }
 
+func applyReminderToolPreference(defs []tools.ToolDefinition, userMessage string) []tools.ToolDefinition {
+	if len(defs) == 0 {
+		return defs
+	}
+	if !isReminderIntentMessage(userMessage) {
+		return defs
+	}
+	if hasExplicitSystemReminderTarget(userMessage) {
+		return defs
+	}
+
+	filtered := make([]tools.ToolDefinition, 0, 2)
+	for _, def := range defs {
+		name := strings.ToLower(strings.TrimSpace(def.Name))
+		if name == "reminder" || name == "push-notification" {
+			filtered = append(filtered, def)
+		}
+	}
+	if len(filtered) == 0 {
+		return defs
+	}
+	return filtered
+}
+
+func isReminderIntentMessage(userMessage string) bool {
+	msg := strings.TrimSpace(userMessage)
+	if msg == "" {
+		return false
+	}
+
+	lower := strings.ToLower(msg)
+	englishSignals := []string{
+		"remind",
+		"reminder",
+		"set reminder",
+		"set a reminder",
+		"notify me",
+		"alert me",
+		"drink water",
+		"hydrate",
+	}
+	for _, signal := range englishSignals {
+		if strings.Contains(lower, signal) {
+			return true
+		}
+	}
+
+	cjkSignals := []string{
+		"提醒",
+		"提醒我",
+		"闹钟",
+		"通知我",
+		"喝水",
+		"记得",
+	}
+	for _, signal := range cjkSignals {
+		if strings.Contains(msg, signal) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasExplicitSystemReminderTarget(userMessage string) bool {
+	msg := strings.TrimSpace(userMessage)
+	if msg == "" {
+		return false
+	}
+	lower := strings.ToLower(msg)
+
+	enCues := []string{
+		"apple reminders",
+		"system reminder",
+		"system reminders",
+		"ios reminders",
+		"macos reminders",
+		"calendar reminder",
+	}
+	for _, cue := range enCues {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+
+	zhCues := []string{
+		"系统提醒事项",
+		"系统提醒",
+		"苹果提醒事项",
+		"ios提醒事项",
+		"macos提醒事项",
+		"提醒事项",
+		"同步到提醒事项",
+	}
+	for _, cue := range zhCues {
+		if strings.Contains(msg, cue) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (h *ChatHandler) buildSkillSelectionPrompt(ctx context.Context, userMessage string) string {
 	if h.skillSelector == nil {
 		return ""
@@ -3197,6 +3631,45 @@ func withProxyLocale(ctx context.Context, locale string) context.Context {
 	return proxy.WithLocale(ctx, locale)
 }
 
+func isTimeoutLikeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	if pe, ok := err.(*proxybridge.ProxyError); ok {
+		if pe.StatusCode == http.StatusGatewayTimeout {
+			return true
+		}
+		bodyLower := strings.ToLower(pe.Body)
+		if strings.Contains(bodyLower, "timeout") || strings.Contains(bodyLower, "deadline exceeded") {
+			return true
+		}
+	}
+	errLower := strings.ToLower(err.Error())
+	return strings.Contains(errLower, "timeout") || strings.Contains(errLower, "deadline exceeded")
+}
+
+func buildIMChatFailureError(lang i18n.Language, err error) error {
+	baseKey := i18n.MsgServiceUnavailable
+	if isTimeoutLikeError(err) {
+		baseKey = i18n.MsgTimeout
+	}
+	base := i18n.T(lang, baseKey)
+	if err == nil {
+		return fmt.Errorf("%s", base)
+	}
+	detail := strings.TrimSpace(err.Error())
+	if detail == "" {
+		return fmt.Errorf("%s", base)
+	}
+	if len(detail) > 240 {
+		detail = detail[:240] + "...(truncated)"
+	}
+	return fmt.Errorf("%s (%s)", base, detail)
+}
+
 func streamContinuationFailureText(_ string) string {
 	// When a continuation round fails after prior content has already streamed,
 	// silently complete the stream to keep degradation user-transparent.
@@ -3231,6 +3704,32 @@ func preContentRetrySkipReason(err error) string {
 	// may be no proxy-side fallback path, so one more end-to-end attempt can
 	// recover from short-lived upstream flakiness.
 	return ""
+}
+
+func isRetryableIMPreContentProxyError(err error) bool {
+	pe, ok := err.(*proxybridge.ProxyError)
+	if !ok {
+		return false
+	}
+	if pe.IsNoProvider() {
+		return false
+	}
+	if pe.IsOverloaded() {
+		return true
+	}
+	if pe.IsClientError() {
+		return false
+	}
+	return pe.StatusCode >= http.StatusInternalServerError
+}
+
+func shouldRollbackIMDefaultModelToAuto(model string, err error) bool {
+	if strings.TrimSpace(model) != defaultCCCLIModel {
+		return false
+	}
+	// Default Codex model is a convenience preference. If it's unavailable on
+	// current providers, retry once with routing mode "auto".
+	return isRetryableIMPreContentProxyError(err) || isNoProviderError(err)
 }
 
 func mapStreamErrorCode(err error, actualProviderID string) string {
@@ -3340,8 +3839,18 @@ func isNoProviderError(err error) bool {
 	return strings.Contains(msg, "no available provider") || strings.Contains(msg, "no proxy bridge configured")
 }
 
-func (h *ChatHandler) shouldUseDeepResearchFallback(err error) bool {
+func shouldTriggerDeepResearchFallbackByIntent(routingMessage string, deepResearchEnabled *bool) bool {
+	if deepResearchEnabled != nil {
+		return *deepResearchEnabled
+	}
+	return shouldPreferDeepSearchReport(routingMessage)
+}
+
+func (h *ChatHandler) shouldUseDeepResearchFallback(err error, routingMessage string, deepResearchEnabled *bool) bool {
 	if !isNoProviderError(err) {
+		return false
+	}
+	if !shouldTriggerDeepResearchFallbackByIntent(routingMessage, deepResearchEnabled) {
 		return false
 	}
 	if h.settingsHandler == nil {
@@ -3767,9 +4276,6 @@ func (h *ChatHandler) shouldPreferIRFirstFallback() bool {
 	if h == nil || h.settingsHandler == nil {
 		return true
 	}
-	if !h.settingsHandler.GetOfflineIRFallbackEnabled() {
-		return false
-	}
 	return h.settingsHandler.GetSmallModelUnavailablePolicy() == "ir_first"
 }
 
@@ -4020,6 +4526,9 @@ func (h *ChatHandler) maybeAutoRollbackSummaryRoute() {
 }
 
 func (h *ChatHandler) runLocalIRFallback(ctx context.Context, convID, query string, allowGeneric bool) (string, error) {
+	// Keep offline_ir_fallback_enabled as the global gate for local IR fallback.
+	// When disabled, all IR fallback routes should short-circuit and let the caller
+	// continue to other fallback strategies.
 	if h != nil && h.settingsHandler != nil && !h.settingsHandler.GetOfflineIRFallbackEnabled() {
 		return "", errNoIRLocalSignal
 	}
@@ -4698,6 +5207,9 @@ func (h *ChatHandler) Close() {
 // Call this before httpServer.Shutdown() so long-lived connections close promptly.
 func (h *ChatHandler) Shutdown() {
 	h.streamController.CancelAll()
+	if h.sessionAuditStore != nil {
+		_ = h.sessionAuditStore.Close()
+	}
 	h.Close()
 }
 
@@ -4715,6 +5227,11 @@ func (h *ChatHandler) queueEvent(fn func()) {
 // SetMetricsRecorder sets the metrics recorder for tracking API call metrics.
 func (h *ChatHandler) SetMetricsRecorder(recorder MetricsRecorder) {
 	h.metricsRecorder = recorder
+}
+
+// SetSessionAuditStore sets an isolated audit store for raw tool payload logs.
+func (h *ChatHandler) SetSessionAuditStore(store *sessionaudit.Store) {
+	h.sessionAuditStore = store
 }
 
 // SetClaudeCodeHandler sets the Claude Code handler for checking enabled status.
@@ -4768,16 +5285,53 @@ func (h *ChatHandler) isCCCLIEnabled() bool {
 	return h != nil && h.claudeCodeHandler != nil && h.claudeCodeHandler.IsEnabled()
 }
 
+func (h *ChatHandler) shouldUseDefaultCCCLIModel(modelID string) bool {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return false
+	}
+
+	// Provider-pool path: require a real enabled model entry so we can
+	// fall back to "auto" when provider is disabled or probing disabled the model.
+	if h != nil && h.providerPool != nil && h.providerPool.Discovery != nil {
+		m, _, err := h.providerPool.Discovery.FindModel(modelID)
+		return err == nil && m != nil && m.Enabled
+	}
+
+	// Legacy direct-provider path.
+	if h != nil && h.providers != nil {
+		for _, name := range h.providers.List() {
+			p := h.providers.Get(name)
+			if p == nil {
+				continue
+			}
+			for _, mid := range p.Models() {
+				if strings.EqualFold(strings.TrimSpace(mid), modelID) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	// If no routing registry is wired yet, keep previous behavior.
+	return true
+}
+
 func (h *ChatHandler) defaultModelForCCCLI(model string) string {
 	normalized := strings.TrimSpace(model)
 	if normalized == "" {
 		if h.isCCCLIEnabled() {
-			return defaultCCCLIModel
+			if h.shouldUseDefaultCCCLIModel(defaultCCCLIModel) {
+				return defaultCCCLIModel
+			}
+			return "auto"
 		}
 		return "auto"
 	}
-	if strings.EqualFold(normalized, "auto") && h.isCCCLIEnabled() {
-		return defaultCCCLIModel
+	// Respect explicit auto selection from UI/API.
+	if strings.EqualFold(normalized, "auto") {
+		return "auto"
 	}
 	return normalized
 }
@@ -5236,11 +5790,11 @@ func (h *ChatHandler) buildBrowserCheckpointRequester(baseCtx context.Context, c
 				Question: "Browser action needs confirmation. Continue?",
 				Detail:   fmt.Sprintf("Step: %s | Action: %s", record.Step, record.Action),
 				Options: []tools.QuestionOption{
-					{Label: "Continue", Value: "continue"},
 					{Label: "Cancel", Value: "cancel"},
+					{Label: "Continue", Value: "continue"},
 				},
 			}}
-			answers, _, err := h.questionManager.AskQuestionsWithContext(ctx, req.UserID, req.SessionID, question, contextPayload)
+			answers, silent, err := h.questionManager.AskQuestionsWithContext(ctx, req.UserID, req.SessionID, question, contextPayload)
 			if err != nil {
 				_ = h.browserCheckpointMgr.Resolve(record.ID, tools.BrowserCheckpointDeny)
 				logger.Warn().
@@ -5248,6 +5802,16 @@ func (h *ChatHandler) buildBrowserCheckpointRequester(baseCtx context.Context, c
 					Str("checkpoint_id", record.ID).
 					Msg("browser checkpoint denied: ask dialog failed")
 				return tools.BrowserCheckpointResult{Decision: tools.BrowserCheckpointDeny, CheckpointID: record.ID}, err
+			}
+			if silent {
+				_ = h.browserCheckpointMgr.Resolve(record.ID, tools.BrowserCheckpointDeny)
+				logger.Warn().
+					Str("checkpoint_id", record.ID).
+					Msg("browser checkpoint denied: explicit confirmation unavailable")
+				return tools.BrowserCheckpointResult{
+					Decision:     tools.BrowserCheckpointDeny,
+					CheckpointID: record.ID,
+				}, nil
 			}
 			decision := tools.BrowserCheckpointDeny
 			if len(answers) > 0 {
@@ -5591,7 +6155,12 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 
 		var resp *llm.ChatResponse
 		var err error
-		for imRound := 0; imRound < h.getMaxToolRoundsForMode(pendingState.AgentMode); imRound++ {
+		maxResumeToolRounds := h.resolveToolRoundLimitForRequest(
+			pendingState.AgentMode,
+			pendingState.RoutingMessage,
+			shouldEnforceDeepSearchMinRounds(pendingState.RoutingMessage),
+		)
+		for imRound := 0; imRound < maxResumeToolRounds; imRound++ {
 			resp, err = h.chatOnce(ctx, req)
 			if err != nil {
 				if imRound > 0 {
@@ -5603,7 +6172,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 					}
 				}
 				logger.Error().Err(err).Str("model", req.Model).Msg("LLM chat request failed during checkpoint resume")
-				return "", fmt.Errorf("%s", i18n.T(lang, i18n.MsgServiceUnavailable))
+				return "", buildIMChatFailureError(lang, err)
 			}
 
 			if imRound == 0 && len(resp.Message.ToolCalls) > 0 && resp.ProviderID != "" {
@@ -5617,7 +6186,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				req.PreviousResponseID = resp.ID
 			}
 			if resp.Message.Content != "" {
-				h.persistChannelResponse(ctx, convID, sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, resp.Model))
+				h.persistChannelResponse(ctx, convID, sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, req.Model))
 			}
 			completed, pendingCall, stillRemaining, checkpointID, pendingMsg := h.executeIMToolCallsUntilCheckpoint(checkpointToolCtx, resp.Message.ToolCalls)
 			if pendingCall != nil {
@@ -5651,12 +6220,19 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		}
 
 		if resp == nil || strings.TrimSpace(resp.Message.Content) == "" {
+			fallback, toolResultCount := buildToolFallbackText(req.Messages, 4096)
+			if toolResultCount > 0 {
+				logger.Warn().
+					Int("tool_results", toolResultCount).
+					Msg("[im] checkpoint resume ended with empty response, using tool fallback")
+				return fallback, nil
+			}
 			return "", fmt.Errorf("AI returned empty response")
 		}
 		if supportsResponsesContinuation(req.Model) && resp.ID != "" {
 			h.setPreviousResponseID(convID, resp.ID)
 		}
-		responseContent := sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, resp.Model)
+		responseContent := sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, req.Model)
 		h.persistChannelResponse(ctx, convID, responseContent)
 		if resp.ProviderID != "" {
 			baseURL := ""
@@ -5718,10 +6294,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	// Use provider pool with system prompt
 	var messages []llm.Message
 	var preloaded []memory.Message
-	systemPromptMessages := h.buildSystemPromptMessages(ctx, mergeExtraPrompt(
-		h.buildSkillSelectionPrompt(ctx, msg.Content),
-		buildDeepSearchExecutionHint(msg.Content),
-	))
+	var systemPromptMessages []llm.Message
 	// Try to use pre-computed warmup context (reduces TTFT for channel messages)
 	if warmup := h.consumeWarmup(convID); warmup != nil {
 		logger.Info().Str("conv_id", convID).Msg("[chat] ProcessChannelMessage: using warmup cache")
@@ -5779,10 +6352,13 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			messages = append([]llm.Message{{Role: llm.RoleSystem, Content: memoryCtx}}, messages...)
 		}
 	}
-	systemPromptMessages = h.buildSystemPromptMessages(ctx, mergeExtraPrompt(
+	extraPrompt := mergeExtraPrompt(
 		h.buildSkillSelectionPrompt(ctx, routingMessage),
 		buildDeepSearchExecutionHint(routingMessage),
-	))
+	)
+	if extraPrompt != "" || len(systemPromptMessages) == 0 {
+		systemPromptMessages = h.buildSystemPromptMessages(ctx, extraPrompt)
+	}
 	messages = prependSystemMessages(messages, systemPromptMessages)
 	if featureIR.AgentMode && !globalAgentModeEnabled {
 		messages = append([]llm.Message{{
@@ -5928,6 +6504,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	// Add tool definitions (smart selection filters by user query when enabled)
 	selectedTools := h.selectTools(routingMessage, req.Model)
 	selectedTools = applyDeepResearchPreference(selectedTools, channelDeepResearchEnabled)
+	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
 	req.Tools = defsToLLMTools(selectedTools)
 
 	logger.Info().
@@ -5943,14 +6520,96 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		ctx = proxy.WithPinnedProvider(ctx, aff.ProviderID)
 	}
 	toolCtx := h.buildIMToolContext(ctx, msg, convID, lang, true)
+	hasAltProviders := h.providerPool != nil && h.providerPool.Registry != nil && len(h.providerPool.Registry.ListEnabled()) > 1
+	maxIMToolRounds := h.resolveToolRoundLimitForRequest(
+		channelAgentModeEnabled,
+		routingMessage,
+		channelDeepResearchEnabled != nil && *channelDeepResearchEnabled,
+	)
 
 	// Tool execution loop for IM
 	var resp *llm.ChatResponse
 	var err error
-	for imRound := 0; imRound < h.getMaxToolRoundsForMode(channelAgentModeEnabled); imRound++ {
+	unpinnedRetryTried := false
+	autoModelRollbackTried := false
+	for imRound := 0; imRound < maxIMToolRounds; imRound++ {
 		resp, err = h.chatOnce(ctx, req)
 		if err != nil {
-			if h.shouldUseDeepResearchFallback(err) {
+			// Availability fallback #1: if first-round request fails on a pinned
+			// provider, retry once without provider affinity so router failover can
+			// choose alternatives.
+			if imRound == 0 && !unpinnedRetryTried && hasAltProviders &&
+				isRetryableIMPreContentProxyError(err) {
+				pinnedProviderID := strings.TrimSpace(proxy.GetPinnedProvider(ctx))
+				if pinnedProviderID != "" {
+					unpinnedRetryTried = true
+					retryCtx := proxy.WithPinnedProvider(ctx, "")
+					retryReq := req
+					// Provider switch can invalidate continuation IDs.
+					if strings.TrimSpace(retryReq.PreviousResponseID) != "" {
+						retryReq.PreviousResponseID = ""
+						retryCtx = proxy.WithDisableResponsesContinuation(retryCtx)
+					}
+					logger.Warn().
+						Err(err).
+						Str("model", req.Model).
+						Str("pinned_provider_id", pinnedProviderID).
+						Msg("[chat] IM pre-content failed — retrying once without pinned provider")
+					retryResp, retryErr := h.chatOnce(retryCtx, retryReq)
+					if retryErr == nil {
+						resp = retryResp
+						err = nil
+						ctx = retryCtx
+						req = retryReq
+						logger.Info().
+							Str("model", req.Model).
+							Str("previous_pinned_provider_id", pinnedProviderID).
+							Msg("[chat] IM retry without pinned provider succeeded")
+					} else {
+						err = retryErr
+						logger.Warn().
+							Err(retryErr).
+							Str("model", req.Model).
+							Str("previous_pinned_provider_id", pinnedProviderID).
+							Msg("[chat] IM retry without pinned provider failed")
+					}
+				}
+			}
+			// Availability fallback #2: default Codex model is best-effort only.
+			// On transient failures or no-provider routing misses, rollback once
+			// to routing mode "auto" so another provider/model can answer.
+			if err != nil && imRound == 0 && !autoModelRollbackTried &&
+				shouldRollbackIMDefaultModelToAuto(req.Model, err) {
+				autoModelRollbackTried = true
+				fallbackReq := req
+				fallbackReq.Model = "auto"
+				fallbackReq.PreviousResponseID = ""
+				fallbackCtx := proxy.WithPinnedProvider(ctx, "")
+				fallbackCtx = proxy.WithDisableResponsesContinuation(fallbackCtx)
+				logger.Warn().
+					Err(err).
+					Str("from_model", req.Model).
+					Str("to_model", fallbackReq.Model).
+					Msg("[chat] IM default model unavailable — retrying once with auto routing")
+				retryResp, retryErr := h.chatOnce(fallbackCtx, fallbackReq)
+				if retryErr == nil {
+					resp = retryResp
+					err = nil
+					ctx = fallbackCtx
+					req = fallbackReq
+					logger.Info().
+						Str("model", req.Model).
+						Msg("[chat] IM auto-routing rollback succeeded")
+				} else {
+					err = retryErr
+					logger.Warn().
+						Err(retryErr).
+						Str("from_model", req.Model).
+						Str("to_model", fallbackReq.Model).
+						Msg("[chat] IM auto-routing rollback failed")
+				}
+			}
+			if err != nil && h.shouldUseDeepResearchFallback(err, routingMessage, channelDeepResearchEnabled) {
 				fbCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 				fallback, fbErr := h.runDeepResearchFallback(fbCtx, routingMessage, string(lang))
 				cancel()
@@ -6006,7 +6665,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				}
 			}
 			// Graceful fallback: if a later round fails but we have tool results, use them
-			if imRound > 0 {
+			if err != nil && imRound > 0 {
 				fallback, toolResultCount := buildToolFallbackText(req.Messages, 4096)
 				if toolResultCount > 0 {
 					logger.Warn().Err(err).Int("round", imRound).Int("tool_results", toolResultCount).
@@ -6016,8 +6675,10 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 					break
 				}
 			}
-			logger.Error().Err(err).Str("model", req.Model).Msg("LLM chat request failed")
-			return "", fmt.Errorf("%s", i18n.T(lang, i18n.MsgServiceUnavailable))
+			if err != nil {
+				logger.Error().Err(err).Str("model", req.Model).Msg("LLM chat request failed")
+				return "", buildIMChatFailureError(lang, err)
+			}
 		}
 
 		// Pin provider after first successful round with tool calls.
@@ -6046,7 +6707,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		logger.Info().Int("round", imRound).Int("tool_calls", len(resp.Message.ToolCalls)).Msg("[im] executing tool calls")
 		// Persist intermediate round content as a separate message for IM channels
 		if resp.Message.Content != "" {
-			h.persistChannelResponse(ctx, convID, sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, resp.Model))
+			h.persistChannelResponse(ctx, convID, sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, req.Model))
 		}
 		completed, pendingCall, remainingCalls, checkpointID, pendingMessage := h.executeIMToolCallsUntilCheckpoint(toolCtx, resp.Message.ToolCalls)
 		if pendingCall != nil {
@@ -6079,7 +6740,14 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		req.Messages = append(req.Messages, completed...)
 	}
 
-	if resp == nil || resp.Message.Content == "" {
+	if resp == nil || strings.TrimSpace(resp.Message.Content) == "" {
+		fallback, toolResultCount := buildToolFallbackText(req.Messages, 4096)
+		if toolResultCount > 0 {
+			logger.Warn().
+				Int("tool_results", toolResultCount).
+				Msg("[im] tool loop ended with empty response, using tool fallback")
+			return fallback, nil
+		}
 		logger.Warn().Msg("LLM returned empty response")
 		return "", fmt.Errorf("AI returned empty response")
 	}
@@ -6087,7 +6755,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		h.setPreviousResponseID(convID, resp.ID)
 	}
 
-	responseContent = sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, resp.Model)
+	responseContent = sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, req.Model)
 	h.persistChannelResponse(ctx, convID, responseContent)
 
 	// Update provider affinity for prompt cache stickiness (IM path)
@@ -6109,7 +6777,9 @@ func (h *ChatHandler) persistChannelResponse(ctx context.Context, convID, conten
 	if h.store == nil {
 		return
 	}
-	_, err := h.store.AddMessage(ctx, convID, memory.Message{
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_, err := h.store.AddMessage(persistCtx, convID, memory.Message{
 		Role:    "assistant",
 		Content: content,
 	})
@@ -6214,15 +6884,26 @@ func (h *ChatHandler) recallMemories(ctx context.Context, userMessage string, mo
 	return sb.String()
 }
 
-// maxToolRounds limits the number of tool call round-trips to prevent infinite loops.
-const maxToolRounds = 5
+// maxToolRounds limits the default number of tool call round-trips.
+// Keep this meaningfully higher for non-agent mode so multi-step research tasks
+// can finish without prematurely ending on an empty final turn.
+const maxToolRounds = 12
+
+// maxToolRoundsNonAgentHardCap limits dynamic expansion for non-agent requests.
+const maxToolRoundsNonAgentHardCap = 24
+
+// Additional headroom when deep-research intent is detected in non-agent mode.
+const maxToolRoundsDeepSearchBoost = 8
+
+// Additional headroom for general research/report style requests in non-agent mode.
+const maxToolRoundsResearchBoost = 4
 
 // maxToolRoundsAgent is the limit for agent mode — effectively unlimited.
 const maxToolRoundsAgent = 1000
 
 // maxAutoContinueDefault caps how many times non-agent mode can nudge the LLM
 // after a toolless stop.
-const maxAutoContinueDefault = 2
+const maxAutoContinueDefault = 3
 
 // maxAutoContinueAgent is effectively unlimited in agent mode, bounded by the
 // overall tool-round limit.
@@ -6279,6 +6960,19 @@ const continuationDegradeAlertWindow = 10 * time.Minute
 // continuationDegradeAlertThreshold is the number of continuation degrade
 // events within the rolling window that triggers an ops alert log.
 const continuationDegradeAlertThreshold = 5
+
+const continuationRecoveryStage1 = "silent_recovery_stage1"
+const continuationRecoveryStage2 = "stage2_reduced_payload"
+
+const (
+	continuationRecoveryTailMessages       = 4
+	continuationRecoverySystemMessagesMax  = 2
+	continuationRecoveryToolsMax           = 3
+	continuationRecoverySystemMaxLen       = 2048
+	continuationRecoveryTextPayloadMaxLen  = 2048
+	continuationRecoveryToolPayloadMaxLen  = 2 * 1024
+	continuationRecoveryToolDescPayloadLen = 240
+)
 
 // toolCallSignature returns a string key for deduplication of tool calls.
 func toolCallSignature(calls []llm.ToolCall) string {
@@ -6349,6 +7043,33 @@ func (h *ChatHandler) getMaxToolRoundsForMode(agentMode bool) int {
 	return h.loopPolicyForMode(agentMode).MaxToolRounds
 }
 
+func clampToolRoundLimit(limit, maxCap int) int {
+	if limit < 1 {
+		return 1
+	}
+	if maxCap > 0 && limit > maxCap {
+		return maxCap
+	}
+	return limit
+}
+
+func (h *ChatHandler) resolveToolRoundLimitForRequest(agentMode bool, routingMessage string, deepSearchEnabled bool) int {
+	base := h.getMaxToolRoundsForMode(agentMode)
+	if agentMode {
+		return clampToolRoundLimit(base, 0)
+	}
+
+	boost := 0
+	trimmed := strings.TrimSpace(routingMessage)
+	if deepSearchEnabled || shouldEnforceDeepSearchMinRounds(trimmed) {
+		boost = maxToolRoundsDeepSearchBoost
+	} else if shouldPreferDeepSearchReport(trimmed) {
+		boost = maxToolRoundsResearchBoost
+	}
+
+	return clampToolRoundLimit(base+boost, maxToolRoundsNonAgentHardCap)
+}
+
 func (h *ChatHandler) getMaxAutoContinueForMode(agentMode bool) int {
 	return h.loopPolicyForMode(agentMode).MaxAutoContinue
 }
@@ -6393,6 +7114,8 @@ func (h *ChatHandler) shouldAutoContinueForReasonWithinBudget(reason string, age
 		return missingTodoAutoContinueCount < h.getMaxMissingTodoAutoContinueForMode(agentMode)
 	case "pending_todo":
 		return pendingTodoAutoContinueCount < h.getMaxPendingTodoAutoContinueForMode(agentMode)
+	case "missing_next_steps":
+		return pendingTodoAutoContinueCount < h.getMaxPendingTodoAutoContinueForMode(agentMode)
 	default:
 		return true
 	}
@@ -6435,11 +7158,16 @@ func (h *ChatHandler) bumpContinuationDegradation(now time.Time) (int, bool) {
 	return count, count == continuationDegradeAlertThreshold
 }
 
-func (h *ChatHandler) recordContinuationDegradation(convID string, toolRound int, recovered bool, err error) {
+func (h *ChatHandler) recordContinuationDegradation(convID string, toolRound int, recoveryStage string, recovered bool, err error) {
+	recoveryStage = strings.TrimSpace(recoveryStage)
+	if recoveryStage == "" {
+		recoveryStage = continuationRecoveryStage1
+	}
 	count, alert := h.bumpContinuationDegradation(timeutil.NowTime())
 	event := logger.Warn().
 		Str("conv_id", convID).
 		Int("tool_round", toolRound).
+		Str("recovery_stage", recoveryStage).
 		Bool("recovered", recovered).
 		Int("window_count", count).
 		Dur("window", continuationDegradeAlertWindow)
@@ -6454,6 +7182,7 @@ func (h *ChatHandler) recordContinuationDegradation(convID string, toolRound int
 
 	alertEvent := logger.Error().
 		Str("conv_id", convID).
+		Str("recovery_stage", recoveryStage).
 		Int("window_count", count).
 		Int("threshold", continuationDegradeAlertThreshold).
 		Dur("window", continuationDegradeAlertWindow)
@@ -6461,6 +7190,208 @@ func (h *ChatHandler) recordContinuationDegradation(convID string, toolRound int
 		alertEvent = alertEvent.Err(err)
 	}
 	alertEvent.Msg("[ops] continuation degradation threshold reached")
+}
+
+func continuationRequestStats(chatReq llm.ChatRequest) (hasPrevResponseID bool, instructionsLen int, inputItemsCount int, toolItemsCount int, storePolicy string) {
+	hasPrevResponseID = strings.TrimSpace(chatReq.PreviousResponseID) != ""
+	instructionsLen = len(strings.TrimSpace(chatReq.Instructions))
+	inputItemsCount = len(chatReq.Messages)
+	for _, msg := range chatReq.Messages {
+		if msg.Role == llm.RoleTool {
+			toolItemsCount++
+		}
+		if msg.Role == llm.RoleAssistant && len(msg.ToolCalls) > 0 {
+			toolItemsCount += len(msg.ToolCalls)
+		}
+	}
+	storePolicy = "unset"
+	if chatReq.Store != nil {
+		if *chatReq.Store {
+			storePolicy = "store_true"
+		} else {
+			storePolicy = "store_false"
+		}
+	}
+	return hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount, storePolicy
+}
+
+func buildReducedContinuationRecoveryRequest(chatReq llm.ChatRequest) llm.ChatRequest {
+	recoveryReq := chatReq
+	reducedMessages := buildReducedContinuationRecoveryMessages(chatReq.Messages)
+	aggressiveMessages := buildAggressiveReducedContinuationRecoveryMessages(chatReq.Messages)
+	if len(aggressiveMessages) > 0 && (len(reducedMessages) == 0 || len(aggressiveMessages) < len(reducedMessages)) {
+		reducedMessages = aggressiveMessages
+	}
+	recoveryReq.Messages = reducedMessages
+	recoveryReq.Tools = buildReducedContinuationRecoveryTools(chatReq.Tools, recoveryReq.Messages)
+	return recoveryReq
+}
+
+func buildAggressiveReducedContinuationRecoveryMessages(messages []llm.Message) []llm.Message {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	trimmed := make([]llm.Message, 0, 2)
+	for i := len(messages) - 1; i >= 0 && len(trimmed) < 2; i-- {
+		msg := messages[i]
+		if msg.Role == llm.RoleSystem {
+			continue
+		}
+		trimmed = append(trimmed, compactContinuationRecoveryMessage(msg))
+	}
+	if len(trimmed) == 0 {
+		return []llm.Message{compactContinuationRecoveryMessage(messages[len(messages)-1])}
+	}
+	for i, j := 0, len(trimmed)-1; i < j; i, j = i+1, j-1 {
+		trimmed[i], trimmed[j] = trimmed[j], trimmed[i]
+	}
+	return trimmed
+}
+
+func buildReducedContinuationRecoveryMessages(messages []llm.Message) []llm.Message {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	systemMessages := make([]llm.Message, 0, 4)
+	for _, msg := range messages {
+		if msg.Role == llm.RoleSystem {
+			systemMessages = append(systemMessages, compactContinuationRecoveryMessage(msg))
+		}
+	}
+	if len(systemMessages) > continuationRecoverySystemMessagesMax {
+		systemMessages = systemMessages[len(systemMessages)-continuationRecoverySystemMessagesMax:]
+	}
+
+	tail := make([]llm.Message, 0, continuationRecoveryTailMessages)
+	for i := len(messages) - 1; i >= 0 && len(tail) < continuationRecoveryTailMessages; i-- {
+		msg := messages[i]
+		if msg.Role == llm.RoleSystem {
+			continue
+		}
+		tail = append(tail, compactContinuationRecoveryMessage(msg))
+	}
+	for i, j := 0, len(tail)-1; i < j; i, j = i+1, j-1 {
+		tail[i], tail[j] = tail[j], tail[i]
+	}
+
+	reduced := make([]llm.Message, 0, len(systemMessages)+len(tail))
+	reduced = append(reduced, systemMessages...)
+	reduced = append(reduced, tail...)
+	if len(reduced) == 0 {
+		return []llm.Message{compactContinuationRecoveryMessage(messages[len(messages)-1])}
+	}
+	return reduced
+}
+
+func compactContinuationRecoveryMessage(msg llm.Message) llm.Message {
+	compacted := msg
+	if compacted.Content != "" && compacted.Role != llm.RoleTool {
+		if compacted.Role == llm.RoleSystem {
+			compacted.Content = truncateUTF8Bytes(compacted.Content, continuationRecoverySystemMaxLen)
+		} else {
+			compacted.Content = truncateUTF8Bytes(compacted.Content, continuationRecoveryTextPayloadMaxLen)
+		}
+	}
+	if compacted.Role == llm.RoleTool && compacted.Content != "" {
+		compacted.Content = truncateUTF8Bytes(compacted.Content, continuationRecoveryToolPayloadMaxLen)
+	}
+	if len(compacted.ToolCalls) == 0 {
+		return compacted
+	}
+	toolCalls := make([]llm.ToolCall, len(compacted.ToolCalls))
+	copy(toolCalls, compacted.ToolCalls)
+	for i := range toolCalls {
+		if toolCalls[i].Arguments == "" {
+			continue
+		}
+		toolCalls[i].Arguments = truncateUTF8Bytes(toolCalls[i].Arguments, continuationRecoveryToolPayloadMaxLen)
+	}
+	compacted.ToolCalls = toolCalls
+	return compacted
+}
+
+func buildReducedContinuationRecoveryTools(tools []llm.Tool, messages []llm.Message) []llm.Tool {
+	if len(tools) == 0 {
+		return nil
+	}
+
+	needed := make(map[string]struct{}, continuationRecoveryToolsMax)
+	for i := len(messages) - 1; i >= 0 && len(needed) < continuationRecoveryToolsMax; i-- {
+		msg := messages[i]
+		if msg.Role != llm.RoleAssistant || len(msg.ToolCalls) == 0 {
+			continue
+		}
+		for j := len(msg.ToolCalls) - 1; j >= 0 && len(needed) < continuationRecoveryToolsMax; j-- {
+			name := strings.ToLower(strings.TrimSpace(msg.ToolCalls[j].Name))
+			if name == "" {
+				continue
+			}
+			needed[name] = struct{}{}
+		}
+	}
+
+	pick := make([]llm.Tool, 0, continuationRecoveryToolsMax)
+	appendCompactTool := func(t llm.Tool) {
+		t.Description = truncateUTF8Bytes(strings.TrimSpace(t.Description), continuationRecoveryToolDescPayloadLen)
+		pick = append(pick, t)
+	}
+
+	if len(needed) == 0 {
+		priority := []string{"exec", "web_search", "read", "browser", "mcp"}
+		indexByName := make(map[string]int, len(tools))
+		for i, t := range tools {
+			name := strings.ToLower(strings.TrimSpace(t.Name))
+			if name == "" {
+				continue
+			}
+			if _, exists := indexByName[name]; !exists {
+				indexByName[name] = i
+			}
+		}
+		for _, name := range priority {
+			if len(pick) >= continuationRecoveryToolsMax {
+				break
+			}
+			if idx, ok := indexByName[name]; ok {
+				appendCompactTool(tools[idx])
+			}
+		}
+		if len(pick) == 0 {
+			limit := len(tools)
+			if limit > continuationRecoveryToolsMax {
+				limit = continuationRecoveryToolsMax
+			}
+			for i := 0; i < limit; i++ {
+				appendCompactTool(tools[i])
+			}
+		}
+		return pick
+	}
+
+	for _, t := range tools {
+		if len(pick) >= continuationRecoveryToolsMax {
+			break
+		}
+		name := strings.ToLower(strings.TrimSpace(t.Name))
+		if _, ok := needed[name]; !ok {
+			continue
+		}
+		appendCompactTool(t)
+	}
+	if len(pick) > 0 {
+		return pick
+	}
+
+	limit := len(tools)
+	if limit > continuationRecoveryToolsMax {
+		limit = continuationRecoveryToolsMax
+	}
+	for i := 0; i < limit; i++ {
+		appendCompactTool(tools[i])
+	}
+	return pick
 }
 
 func cloneJSONValue(v interface{}) interface{} {
@@ -6500,6 +7431,7 @@ func choosePseudoToolCallPrimaryToolIndex(tools []llm.Tool, preferReminder bool)
 	priority := []string{
 		"exec",
 		"web_search",
+		"read",
 		"file_read",
 		"browser",
 		"ui_reviewer",
@@ -6714,6 +7646,43 @@ func selectPseudoToolCallFallbackModel(currentModel string, availableModels []st
 // executeToolCalls executes tool calls and returns tool result messages.
 // Each result is returned as an llm.Message with Role=tool and the JSON result as content.
 // For known tool types (e.g. Web Search), the result is also wrapped as a typeless card.
+func (h *ChatHandler) recordToolPayloadAudit(ctx context.Context, eventType, role string, tc llm.ToolCall, payload string, isError bool) {
+	if h == nil || h.sessionAuditStore == nil {
+		return
+	}
+	conversationID := strings.TrimSpace(tools.GetSessionID(ctx))
+	if conversationID == "" {
+		return
+	}
+
+	entry := sessionaudit.Entry{
+		ConversationID: conversationID,
+		SessionID:      conversationID,
+		UserID:         strings.TrimSpace(tools.GetUserID(ctx)),
+		Source:         strings.TrimSpace(tools.GetChannel(ctx)),
+		EventType:      strings.TrimSpace(eventType),
+		Role:           strings.TrimSpace(role),
+		ToolCallID:     strings.TrimSpace(tc.ID),
+		ToolName:       strings.TrimSpace(tc.Name),
+		Payload:        payload,
+		IsError:        isError,
+	}
+	if lang := strings.TrimSpace(tools.GetLang(ctx)); lang != "" {
+		entry.Metadata = map[string]interface{}{"lang": lang}
+	}
+
+	auditCtx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	if err := h.sessionAuditStore.Record(auditCtx, entry); err != nil {
+		logger.Warn().
+			Err(err).
+			Str("conv_id", conversationID).
+			Str("event", entry.EventType).
+			Str("tool", entry.ToolName).
+			Msg("failed to persist tool payload audit log")
+	}
+}
+
 func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.ToolCall) []llm.Message {
 	// Conservative batching policy:
 	// When a round includes multiple tool calls, disable per-tool streaming card
@@ -6726,6 +7695,7 @@ func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.Tool
 
 	var results []llm.Message
 	for _, tc := range toolCalls {
+		h.recordToolPayloadAudit(ctx, "assistant_tool_call", string(llm.RoleAssistant), tc, tc.Arguments, false)
 		logger.Info().Str("tool", tc.Name).Str("id", tc.ID).Msg("[chat] executing tool call")
 		result, err := h.toolExecutor.ExecuteJSON(ctx, tc.Name, tc.Arguments)
 		var content string
@@ -6747,6 +7717,7 @@ func (h *ChatHandler) executeToolCalls(ctx context.Context, toolCalls []llm.Tool
 				content = string(b)
 			}
 		}
+		h.recordToolPayloadAudit(ctx, "tool_result", string(llm.RoleTool), tc, content, err != nil)
 		results = append(results, llm.Message{
 			Role:       llm.RoleTool,
 			Content:    content,
@@ -7013,19 +7984,37 @@ func compactExecPayloadForLLM(payload map[string]interface{}) map[string]interfa
 
 	out := make(map[string]interface{}, 12)
 	for _, k := range []string{
-		"session_id", "status", "exit_code", "duration_ms", "truncated",
-		"warnings", "host", "risk_level", "command", "error",
+		"status", "exit_code", "duration_ms", "truncated", "risk_level",
 	} {
 		if v, ok := payload[k]; ok {
 			out[k] = compactJSONValueForLLM(v, 1)
 		}
 	}
 
-	if stdout := anyToStringForLLM(payload["stdout"]); stdout != "" {
-		out["stdout"] = truncateUTF8Bytes(stdout, maxLLMToolStdoutBytes)
+	if warningCount := warningCountForLLM(payload["warnings"]); warningCount > 0 {
+		out["warning_count"] = warningCount
 	}
-	if stderr := anyToStringForLLM(payload["stderr"]); stderr != "" {
-		out["stderr"] = truncateUTF8Bytes(stderr, maxLLMToolStderrBytes)
+	if anyToStringForLLM(payload["error"]) != "" {
+		out["error_redacted"] = true
+	}
+
+	hasStdout := anyToStringForLLM(payload["stdout"]) != ""
+	hasStderr := anyToStringForLLM(payload["stderr"]) != ""
+	if hasStdout || hasStderr {
+		out["output_redacted"] = true
+		if hasStdout {
+			out["stdout_redacted"] = true
+		}
+		if hasStderr {
+			out["stderr_redacted"] = true
+		}
+	}
+
+	if anyToStringForLLM(payload["command"]) != "" {
+		out["command_redacted"] = true
+	}
+	if anyToStringForLLM(payload["session_id"]) != "" || anyToStringForLLM(payload["host"]) != "" {
+		out["runtime_redacted"] = true
 	}
 
 	if rawData, ok := payload["data"]; ok {
@@ -7033,9 +8022,6 @@ func compactExecPayloadForLLM(payload map[string]interface{}) map[string]interfa
 			data := compactExecDataForLLM(dataMap)
 			if len(data) > 0 {
 				out["data"] = data
-				if _, hasResults := data["results"]; hasResults {
-					delete(out, "stdout")
-				}
 			}
 		} else {
 			out["data"] = compactJSONValueForLLM(rawData, 1)
@@ -7053,13 +8039,21 @@ func compactExecDataForLLM(data map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{}, 8)
 	handled := map[string]struct{}{}
 	for _, k := range []string{
-		"_card", "provider", "query", "status", "success", "message",
-		"total_count", "totalCount", "error",
+		"_card", "provider", "query", "status", "success",
+		"total_count", "totalCount",
 	} {
 		if v, ok := data[k]; ok {
 			out[k] = compactJSONValueForLLM(v, 2)
 			handled[k] = struct{}{}
 		}
+	}
+	if anyToStringForLLM(data["message"]) != "" {
+		out["message_redacted"] = true
+		handled["message"] = struct{}{}
+	}
+	if anyToStringForLLM(data["error"]) != "" {
+		out["error_redacted"] = true
+		handled["error"] = struct{}{}
 	}
 
 	results, ok := parseSearchResultsForLLM(data["results"])
@@ -7082,23 +8076,34 @@ func compactExecDataForLLM(data map[string]interface{}) map[string]interface{} {
 		}
 	}
 
-	keys := make([]string, 0, len(data))
+	extraFields := 0
 	for k := range data {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
 		if _, exists := handled[k]; exists {
 			continue
 		}
-		if len(out) >= 16 {
-			out["truncated"] = true
-			break
-		}
-		out[k] = compactJSONValueForLLM(data[k], 2)
+		extraFields++
+	}
+	if extraFields > 0 {
+		out["extra_fields_redacted"] = extraFields
 	}
 
 	return out
+}
+
+func warningCountForLLM(v interface{}) int {
+	switch t := v.(type) {
+	case []interface{}:
+		return len(t)
+	case []string:
+		return len(t)
+	case string:
+		if strings.TrimSpace(t) == "" {
+			return 0
+		}
+		return 1
+	default:
+		return 0
+	}
 }
 
 func compactWebSearchPayloadForLLM(payload map[string]interface{}) map[string]interface{} {
@@ -8050,6 +9055,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	selectedTools := h.selectTools(routingMessage, chatReq.Model)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
+	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
 	if h.shouldRouteToolDispatch(selectedTools) && !shouldPreferDeepSearchReport(routingMessage) {
 		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
 		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
@@ -8078,6 +9084,11 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 	chatReq.Tools = defsToLLMTools(selectedTools)
 	deepSearchState := newDeepSearchLoopState(routingMessage, selectedTools)
+	maxToolRoundsForRequest := h.resolveToolRoundLimitForRequest(
+		isAgentMode,
+		routingMessage,
+		deepSearchState != nil && deepSearchState.enabled,
+	)
 
 	logger.Info().
 		Str("model", chatReq.Model).
@@ -8090,6 +9101,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	// Call LLM with tool execution loop
 	startTime := timeutil.NowTime()
 	var resp *llm.ChatResponse
+	var accumulatedToolRoundInputTokens, accumulatedToolRoundOutputTokens int64
 
 	// Build context with locale for tool execution.
 	// Use WithoutCancel so long-running tools (e.g. browser) survive request disconnects.
@@ -8112,6 +9124,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 	llmCtx := withProxySession(c.Request().Context(), convID)
 	llmCtx = withProxyLocale(llmCtx, locale)
+	var resolvedRoute proxy.ResolvedRoute
+	llmCtx = proxy.WithResolvedRoute(llmCtx, &resolvedRoute)
 	// Attach prune stats slot so the proxy pruner can populate it (non-streaming path).
 	pruneStats := &pruner.RequestPruneStats{}
 	llmCtx = pruner.WithPruneStats(llmCtx, pruneStats)
@@ -8184,10 +9198,10 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		planCompletedByTool := false
 		prevToollessAutoContinueSig := ""
 		consecutiveToollessAutoContinueDups := 0
-		agentModeAutoContinue := h.getMaxToolRounds() > maxToolRounds
+		agentModeAutoContinue := isAgentMode
 		maxAutoContinueRetries := h.getMaxAutoContinueForMode(agentModeAutoContinue)
 
-		for round := 0; round < h.getMaxToolRounds(); round++ {
+		for round := 0; round < maxToolRoundsForRequest; round++ {
 			resp, err = h.chatOnce(llmCtx, chatReq)
 			if err != nil || resp == nil {
 				// Graceful fallback: if a later round fails but we have tool results, use them
@@ -8201,6 +9215,12 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 					}
 				}
 				break
+			}
+			// Accumulate usage for intermediate tool rounds so trial quota (and
+			// metrics) reflects the full request cost, not just the final round.
+			if len(resp.Message.ToolCalls) > 0 {
+				accumulatedToolRoundInputTokens += int64(resp.Usage.PromptTokens)
+				accumulatedToolRoundOutputTokens += int64(resp.Usage.CompletionTokens)
 			}
 
 			// Pin provider after first successful round with tool calls
@@ -8221,7 +9241,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 			// No tool calls — done
 			if len(resp.Message.ToolCalls) == 0 {
-				if shouldForce, reason := deepSearchState.shouldForceAnotherSearch(round, h.getMaxToolRounds()); shouldForce {
+				if shouldForce, reason := deepSearchState.shouldForceAnotherSearch(round, maxToolRoundsForRequest); shouldForce {
 					deepSearchState.markForcedContinuation()
 					chatReq.Messages = append(chatReq.Messages,
 						llm.Message{Role: llm.RoleAssistant, Content: resp.Message.Content},
@@ -8253,7 +9273,8 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				}
 
 				if autoContinueCount < maxAutoContinueRetries {
-					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(resp.Message.Content, todoContent, agentModeAutoContinue, round > 0, planCompletedByTool); shouldContinue {
+					preferReminderTool := round == 0 && shouldPreferReminderToolForRetry(chatReq.Messages, chatReq.Tools)
+					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(resp.Message.Content, todoContent, agentModeAutoContinue, round > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
 						if h.shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
 							sig := toollessAutoContinueSignature(reason, resp.Message.Content)
 							if sig == prevToollessAutoContinueSig {
@@ -8305,7 +9326,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 								pseudoToolCallAutoContinueCount = 0
 								missingTodoAutoContinueCount = 0
 								pendingTodoAutoContinueCount = 0
-							} else if reason == "pending_todo" {
+							} else if reason == "pending_todo" || reason == "missing_next_steps" {
 								pendingTodoAutoContinueCount++
 								pseudoToolCallAutoContinueCount = 0
 								actionPledgeAutoContinueCount = 0
@@ -8389,7 +9410,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			}
 		}
 	}
-	if err != nil && strings.TrimSpace(req.Provider) == "" && h.shouldUseDeepResearchFallback(err) {
+	if err != nil && strings.TrimSpace(req.Provider) == "" && h.shouldUseDeepResearchFallback(err, routingMessage, req.DeepResearchEnabled) {
 		fbCtx, cancel := context.WithTimeout(c.Request().Context(), 45*time.Second)
 		defer cancel()
 		if fbContent, fbErr := h.runDeepResearchFallback(fbCtx, routingMessage, locale); fbErr == nil {
@@ -8487,20 +9508,29 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		}
 	}
 
-	// Sanitize response content — strip internal markers before sending to client
-	if resp != nil {
-		resp.Message.Content = sanitizeResponseContentWithProvider(resp.Message.Content, resp.Provider, resp.ProviderID, resp.Model)
-	}
+	// Never trust upstream resp.Model directly. Use request model + routed model
+	// from local model inventories.
+	model = h.resolveResponseModelWithFallback(model, resolvedRoute.Model, resp)
 
-	// Use actual model from response if available
-	if resp != nil && resp.Model != "" {
-		model = resp.Model
+	// Sanitize response content — strip internal markers before sending to client.
+	if resp != nil {
+		resp.Message.Content = sanitizeResponseContentWithProvider(
+			resp.Message.Content,
+			resp.Provider,
+			resp.ProviderID,
+			sanitizeModelHint(model, chatReq.Model),
+		)
 	}
 
 	// Estimate tokens if API didn't return usage data
 	if resp != nil && resp.Usage.TotalTokens == 0 {
 		resp.Usage.PromptTokens = estimateInputTokens(chatReq.Messages)
 		resp.Usage.CompletionTokens = estimateTokens(resp.Message.Content)
+		resp.Usage.TotalTokens = resp.Usage.PromptTokens + resp.Usage.CompletionTokens
+	}
+	if resp != nil && (accumulatedToolRoundInputTokens > 0 || accumulatedToolRoundOutputTokens > 0) {
+		resp.Usage.PromptTokens += int(accumulatedToolRoundInputTokens)
+		resp.Usage.CompletionTokens += int(accumulatedToolRoundOutputTokens)
 		resp.Usage.TotalTokens = resp.Usage.PromptTokens + resp.Usage.CompletionTokens
 	}
 
@@ -8511,26 +9541,23 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 
 	// Record metrics
+	var inputTokens, outputTokens int64
+	var errorType string
+	success := err == nil
+	if resp != nil {
+		inputTokens = int64(resp.Usage.PromptTokens)
+		outputTokens = int64(resp.Usage.CompletionTokens)
+	}
+	if err != nil {
+		errorType = "api_error"
+	}
 	if h.metricsRecorder != nil {
-		var inputTokens, outputTokens int64
-		var errorType string
-		success := err == nil
-
-		if resp != nil {
-			inputTokens = int64(resp.Usage.PromptTokens)
-			outputTokens = int64(resp.Usage.CompletionTokens)
-		}
-		if err != nil {
-			errorType = "api_error"
-		}
-
 		userID := h.getUserID(c)
 		h.metricsRecorder.RecordAPICallForUser(userID, model, success, latencyMs, inputTokens, outputTokens, 0, 0, errorType)
-
-		// Record trial usage if this is a trial provider
-		if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && resp != nil && providerpool.IsTrialProvider(resp.ProviderID) {
-			h.providerPool.TrialQuotaManager.RecordUsage(inputTokens, outputTokens, convID)
-		}
+	}
+	// Trial quota deduction must not depend on metrics recorder wiring.
+	if err == nil && h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && resp != nil && providerpool.IsTrialProvider(resp.ProviderID) {
+		h.providerPool.TrialQuotaManager.RecordUsage(inputTokens, outputTokens, convID)
 	}
 
 	if err != nil {
@@ -8544,9 +9571,6 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	providerName := "auto"
 	if resp != nil && resp.Provider != "" {
 		providerName = resp.Provider
-	}
-	if resp != nil && resp.Model != "" {
-		model = resp.Model
 	}
 
 	// Store assistant message with stats
@@ -9477,6 +10501,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	selectedTools := h.selectTools(routingMessage, chatReq.Model)
 	selectedTools = applyWebSearchPreference(selectedTools, req.WebSearchEnabled)
 	selectedTools = applyDeepResearchPreference(selectedTools, req.DeepResearchEnabled)
+	selectedTools = applyReminderToolPreference(selectedTools, routingMessage)
 	if h.shouldRouteToolDispatch(selectedTools) && !shouldPreferDeepSearchReport(routingMessage) {
 		routeCtx, routeCancel := context.WithTimeout(c.Request().Context(), 4*time.Second)
 		routedTools, routeErr := h.trySmallModelToolDispatch(routeCtx, routingMessage, selectedTools)
@@ -9505,6 +10530,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	}
 	chatReq.Tools = defsToLLMTools(selectedTools)
 	deepSearchState := newDeepSearchLoopState(routingMessage, selectedTools)
+	maxToolRoundsForRequest := h.resolveToolRoundLimitForRequest(
+		isAgentMode,
+		routingMessage,
+		deepSearchState != nil && deepSearchState.enabled,
+	)
 	logger.Info().
 		Str("model", chatReq.Model).
 		Int("messages", len(chatReq.Messages)).
@@ -9647,12 +10677,23 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	startTime := timeutil.NowTime()
 	var fullContent string
 	var totalInputTokens, totalOutputTokens int
+	var completedRoundInputTokens, completedRoundOutputTokens int
+	trialUsageRecorded := false
 	var firstChunkTime time.Time
 	var actualModel string      // Track actual model from response
 	var actualProvider string   // Track actual provider from response
 	var actualProviderID string // Track actual provider ID for sticky routing
 	var latestResponseID string // Track latest Responses response.id for continuation
 	userID := h.getUserID(c)
+	accumulateCompletedRoundUsage := func() {
+		if totalInputTokens == 0 && totalOutputTokens == 0 {
+			return
+		}
+		completedRoundInputTokens += totalInputTokens
+		completedRoundOutputTokens += totalOutputTokens
+		totalInputTokens = 0
+		totalOutputTokens = 0
+	}
 
 	// Micro-batch delta chunks to reduce flush/write frequency while keeping
 	// sub-frame latency for perceived streaming responsiveness.
@@ -9771,7 +10812,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var prevToolSig string          // signature of previous round's tool calls for duplicate detection
 	var consecutiveDups int         // count of consecutive identical tool call rounds
 	var typelessCardsPersisted bool // true once tool result cards are appended to persisted content
-	agentModeAutoContinue := h.getMaxToolRounds() > maxToolRounds
+	agentModeAutoContinue := isAgentMode
 	maxAutoContinueRetries := h.getMaxAutoContinueForMode(agentModeAutoContinue)
 	dropPendingVisibleDelta := func() int {
 		dropped := pendingDeltaBuffer.Len()
@@ -9805,9 +10846,11 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		if chatReq.Model != "" && !strings.EqualFold(chatReq.Model, "auto") {
 			return
 		}
-		pinnedModel := strings.TrimSpace(resolvedRoute.Model)
+		pinnedModel := h.resolveStableModel(chatReq.Model, resolvedRoute.Model)
+		// For continuation stability, trust the router-selected model even if it is
+		// not present in local model catalogs (e.g. provider-pool mocked tests).
 		if pinnedModel == "" {
-			pinnedModel = strings.TrimSpace(actualModel)
+			pinnedModel = strings.TrimSpace(resolvedRoute.Model)
 		}
 		if pinnedModel != "" {
 			chatReq.Model = pinnedModel
@@ -9818,7 +10861,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 	}
 STREAM_LOOP:
-	for toolRound := 0; toolRound < h.getMaxToolRounds(); toolRound++ {
+	for toolRound := 0; toolRound < maxToolRoundsForRequest; toolRound++ {
 		streamToolCalls = streamToolCalls[:0]
 		streamErrorHandled = false
 		deepSearchForcePending = false
@@ -9873,12 +10916,13 @@ STREAM_LOOP:
 				firstChunkTime = timeutil.NowTime()
 			}
 
-			// Capture actual model/provider from response if provided
+			// Capture provider metadata from stream chunk. Model identity is derived
+			// from request/routed metadata, not upstream payload model fields.
 			if chunk.ID != "" {
 				latestResponseID = chunk.ID
 			}
-			if chunk.Model != "" && actualModel == "" {
-				actualModel = chunk.Model
+			if actualModel == "" {
+				actualModel = h.resolveStableModel(chatReq.Model, resolvedRoute.Model)
 			}
 			if chunk.Provider != "" && actualProvider == "" {
 				actualProvider = chunk.Provider
@@ -10083,7 +11127,7 @@ STREAM_LOOP:
 					return nil
 				}
 				if len(streamToolCalls) == 0 && fullContent != "" {
-					if shouldForce, reason := deepSearchState.shouldForceAnotherSearch(toolRound, h.getMaxToolRounds()); shouldForce {
+					if shouldForce, reason := deepSearchState.shouldForceAnotherSearch(toolRound, maxToolRoundsForRequest); shouldForce {
 						deepSearchForcePending = true
 						deepSearchForceReason = reason
 						logger.Info().
@@ -10108,7 +11152,7 @@ STREAM_LOOP:
 				// Auto-continue: if LLM stopped without tool calls but the content
 				// indicates a pending next action, defer done and nudge another round.
 				if len(streamToolCalls) == 0 && fullContent != "" && autoContinueCount < maxAutoContinueRetries {
-					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool); shouldContinue {
+					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool, false, missingTodoAutoContinueCount == 0); shouldContinue {
 						if h.shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
 							logger.Info().
 								Int("tool_round", toolRound).
@@ -10138,10 +11182,11 @@ STREAM_LOOP:
 					Str("fullContent_len", fmt.Sprintf("%d", len(fullContent))).
 					Msg("[chat] stream: sending final done chunk to client")
 
-				// Use actual model from response if available, otherwise use request model
-				if actualModel != "" {
-					model = actualModel
+				trustedModel := h.resolveResponseModel(chatReq.Model, resolvedRoute.Model)
+				if actualModel == "" {
+					actualModel = trustedModel
 				}
+				model = trustedModel
 
 				// Fallback: estimate tokens if provider didn't return usage
 				if totalInputTokens == 0 {
@@ -10149,6 +11194,12 @@ STREAM_LOOP:
 				}
 				if totalOutputTokens == 0 {
 					totalOutputTokens = estimateTokens(fullContent)
+				}
+				if completedRoundInputTokens > 0 || completedRoundOutputTokens > 0 {
+					totalInputTokens += completedRoundInputTokens
+					totalOutputTokens += completedRoundOutputTokens
+					completedRoundInputTokens = 0
+					completedRoundOutputTokens = 0
 				}
 
 				// Record successful completion metrics
@@ -10164,12 +11215,11 @@ STREAM_LOOP:
 							h.metricsRecorder.RecordSpeed(req.Model, tokensPerSecond, ttftMs, tokensPerSecond)
 						}
 					}
-
-					// Record trial usage if this is a trial provider
-					if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(actualProviderID) {
-						logger.Debug().Str("provider_id", actualProviderID).Int("input", totalInputTokens).Int("output", totalOutputTokens).Msg("[chat] recording trial usage")
-						h.providerPool.TrialQuotaManager.RecordUsage(int64(totalInputTokens), int64(totalOutputTokens), convID)
-					}
+				}
+				if h.providerPool != nil && h.providerPool.TrialQuotaManager != nil && providerpool.IsTrialProvider(actualProviderID) {
+					logger.Debug().Str("provider_id", actualProviderID).Int("input", totalInputTokens).Int("output", totalOutputTokens).Msg("[chat] recording trial usage")
+					h.providerPool.TrialQuotaManager.RecordUsage(int64(totalInputTokens), int64(totalOutputTokens), convID)
+					trialUsageRecorded = true
 				}
 
 				// Calculate speed metrics for response
@@ -10191,8 +11241,8 @@ STREAM_LOOP:
 				if actualProviderID == "" && resolvedRoute.ProviderID != "" {
 					actualProviderID = resolvedRoute.ProviderID
 				}
-				if actualModel == "" && resolvedRoute.Model != "" {
-					actualModel = resolvedRoute.Model
+				if actualModel == "" {
+					actualModel = h.resolveResponseModel(chatReq.Model, resolvedRoute.Model)
 				}
 
 				// Send final chunk with provider/model info and stats
@@ -10249,25 +11299,34 @@ STREAM_LOOP:
 		if h.proxyBridge != nil {
 			err = h.proxyBridge.ChatStream(ctx, chatReq, streamCb)
 			// Transparent retry: if the stream failed before any content was sent to the client,
-			// retry up to 2 times with backoff. This handles transient network errors silently.
+			// retry with backoff. This handles transient network errors silently.
 			// Skip retries for client errors (4xx), overloaded (429/529), and no-provider (503)
 			// — retrying won't help for any of these.
+			preContentRetryLimit := 2
 			isAutoContinueFollowUpRound := toolRound > 0 && autoContinueCount > 0 && totalDeltaChars > 0
 			skipReason := preContentRetrySkipReason(err)
 			skipRetry := skipReason != ""
 			// Continuation follow-up rounds have already produced user-visible content.
-			// For generic transient 5xx, skip chat-layer pre-content retries and fail-fast
-			// into graceful degradation (with a single silent recovery later), avoiding
-			// multiplicative retry loops. Keep continuation-specific retries enabled.
+			// For generic transient 5xx, keep only one bounded chat-layer pre-content retry
+			// before graceful degradation recovery. This preserves resilience for short relay
+			// hiccups while still avoiding multiplicative retry loops.
 			if err != nil && !skipRetry && isAutoContinueFollowUpRound &&
 				!shouldDisableResponsesContinuationForPreContentRetry(err) {
-				skipRetry = true
-				skipReason = "auto_continue_followup"
+				preContentRetryLimit = 1
+				skipReason = "auto_continue_followup_limited"
+			}
+			// Continuation-related follow-up failures should transition directly to
+			// stage1/stage2 recovery instead of consuming pre-content retries.
+			if err != nil && !skipRetry && isAutoContinueFollowUpRound &&
+				shouldDisableResponsesContinuationForPreContentRetry(err) {
+				preContentRetryLimit = 0
+				skipReason = "auto_continue_followup_continuation_recovery"
 			}
 			if err != nil {
 				decisionLog := logger.Info().
 					Err(err).
 					Int("tool_round", toolRound).
+					Int("pre_content_retry_limit", preContentRetryLimit).
 					Bool("skip_retry", skipRetry).
 					Str("skip_reason", skipReason)
 				if pe, ok := err.(*proxybridge.ProxyError); ok {
@@ -10276,14 +11335,21 @@ STREAM_LOOP:
 				decisionLog.Msg("[chat] pre-content error: retry decision")
 			}
 			continuationDisabledForRetry := false
-			for retryAttempt := 0; retryAttempt < 2 && err != nil && !skipRetry && fullContent == "" && !streamErrorHandled && ctx.Err() == nil; retryAttempt++ {
+			for retryAttempt := 0; retryAttempt < preContentRetryLimit && err != nil && !skipRetry && fullContent == "" && !streamErrorHandled && ctx.Err() == nil; retryAttempt++ {
 				if !continuationDisabledForRetry && shouldDisableResponsesContinuationForPreContentRetry(err) &&
-					(!proxy.DisableResponsesContinuationFromContext(ctx) || strings.TrimSpace(chatReq.PreviousResponseID) != "") {
-					continuationDisabledForRetry = true
-					logger.Warn().
-						Err(err).
-						Int("tool_round", toolRound).
-						Msg("[chat] pre-content retry: disabled responses continuation after upstream metadata/no-chunk failure")
+					!proxy.DisableResponsesContinuationFromContext(ctx) {
+					if strings.TrimSpace(chatReq.PreviousResponseID) == "" {
+						continuationDisabledForRetry = true
+						logger.Warn().
+							Err(err).
+							Int("tool_round", toolRound).
+							Msg("[chat] pre-content retry: disabled responses continuation after upstream metadata/no-chunk failure")
+					} else {
+						logger.Warn().
+							Err(err).
+							Int("tool_round", toolRound).
+							Msg("[chat] pre-content retry: keep previous_response_id for session continuity")
+					}
 				}
 				delay := time.Duration(retryAttempt+1) * time.Second
 				retryLog := logger.Warn().Err(err).Int("retry", retryAttempt+1).Dur("delay", delay)
@@ -10312,6 +11378,7 @@ STREAM_LOOP:
 				endLog := logger.Info().
 					Err(err).
 					Int("tool_round", toolRound).
+					Int("pre_content_retry_limit", preContentRetryLimit).
 					Bool("skip_retry", skipRetry).
 					Str("skip_reason", skipReason)
 				if pe, ok := err.(*proxybridge.ProxyError); ok {
@@ -10326,7 +11393,8 @@ STREAM_LOOP:
 			hasAltProviders := h.providerPool != nil && h.providerPool.Registry != nil && len(h.providerPool.Registry.ListEnabled()) > 1
 			if err != nil && fullContent == "" && !streamErrorHandled && ctx.Err() == nil &&
 				toolRound > 0 && autoContinueCount > 0 && totalDeltaChars > 0 &&
-				strings.TrimSpace(req.Provider) == "" && hasAltProviders {
+				strings.TrimSpace(req.Provider) == "" && hasAltProviders &&
+				strings.TrimSpace(chatReq.PreviousResponseID) == "" {
 				pinnedProviderID := strings.TrimSpace(proxy.GetPinnedProvider(ctx))
 				if pinnedProviderID != "" {
 					logger.Warn().
@@ -10385,8 +11453,10 @@ STREAM_LOOP:
 		if actualProviderID == "" && resolvedRoute.ProviderID != "" {
 			actualProviderID = resolvedRoute.ProviderID
 		}
-		if actualModel == "" && resolvedRoute.Model != "" {
-			actualModel = resolvedRoute.Model
+		if actualModel == "" {
+			actualModel = h.resolveResponseModel(chatReq.Model, resolvedRoute.Model)
+		}
+		if actualModel != "" {
 			logger.Info().Str("model", actualModel).Msg("[chat] stream: recovered model from ResolvedRoute fallback")
 		}
 
@@ -10700,6 +11770,7 @@ STREAM_LOOP:
 			// Reset for next round — new message will be created
 			streamingMsgID = ""
 			lastFlushLen = 0
+			accumulateCompletedRoundUsage()
 
 			// Reset content for next round (LLM will generate new response)
 			logger.Info().
@@ -10718,43 +11789,105 @@ STREAM_LOOP:
 			continue
 		}
 		if err != nil {
+			continuationRecoveryStage := continuationRecoveryStage1
 			// Auto-continue recovery: if we already streamed prior content and the
 			// follow-up continuation round fails before producing any chunks, end
 			// gracefully instead of replacing a partial success with STREAM_ERROR.
 			if toolRound > 0 && autoContinueCount > 0 && totalDeltaChars > 0 && fullContent == "" && len(streamToolCalls) == 0 {
 				continuationErr := err
+				hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount, storePolicy := continuationRequestStats(chatReq)
 				logger.Warn().
 					Err(err).
 					Int("tool_round", toolRound).
 					Int("auto_continue", autoContinueCount).
 					Int("total_delta_chars", totalDeltaChars).
+					Bool("has_prev_response_id", hasPrevResponseID).
+					Int("instructions_len", instructionsLen).
+					Int("input_items_count", inputItemsCount).
+					Int("tool_items_count", toolItemsCount).
+					Str("store_policy", storePolicy).
+					Str("recovery_stage", continuationRecoveryStage).
 					Msg("[chat] stream: continuation round failed after prior content, completing stream gracefully")
-				// Silent shadow recovery: retry once without pinned provider and without
-				// Responses continuation so users don't perceive transient continuation failures.
+				// Silent shadow recovery: keep continuation within the same session
+				// (same previous_response_id chain) and retry once.
 				if h.proxyBridge != nil && ctx.Err() == nil {
-					recoveryCtx := proxy.WithPinnedProvider(ctx, "")
-					recoveryCtx = proxy.WithDisableResponsesContinuation(recoveryCtx)
+					recoveryCtx := ctx
 					recoveryReq := chatReq
-					recoveryReq.PreviousResponseID = ""
+					hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount, storePolicy = continuationRequestStats(recoveryReq)
 					logger.Warn().
 						Err(continuationErr).
 						Int("tool_round", toolRound).
-						Msg("[chat] stream: attempting silent continuation recovery without pin/continuation")
+						Bool("has_prev_response_id", hasPrevResponseID).
+						Int("instructions_len", instructionsLen).
+						Int("input_items_count", inputItemsCount).
+						Int("tool_items_count", toolItemsCount).
+						Str("store_policy", storePolicy).
+						Str("recovery_stage", continuationRecoveryStage).
+						Msg("[chat] stream: attempting silent continuation recovery with previous_response_id")
 					if recoveryErr := h.proxyBridge.ChatStream(recoveryCtx, recoveryReq, streamCb); recoveryErr == nil {
-						// Keep route unpinned after successful recovery so follow-up rounds
-						// are not forced back to the previously failing provider.
-						ctx = proxy.WithPinnedProvider(ctx, "")
-						h.recordContinuationDegradation(convID, toolRound, true, continuationErr)
+						h.recordContinuationDegradation(convID, toolRound, continuationRecoveryStage, true, continuationErr)
 						err = nil
 						logger.Info().
 							Int("tool_round", toolRound).
+							Bool("has_prev_response_id", hasPrevResponseID).
+							Int("instructions_len", instructionsLen).
+							Int("input_items_count", inputItemsCount).
+							Int("tool_items_count", toolItemsCount).
+							Str("store_policy", storePolicy).
+							Str("recovery_stage", continuationRecoveryStage).
 							Msg("[chat] stream: silent continuation recovery succeeded")
 					} else {
 						err = recoveryErr
 						logger.Warn().
 							Err(recoveryErr).
 							Int("tool_round", toolRound).
+							Bool("has_prev_response_id", hasPrevResponseID).
+							Int("instructions_len", instructionsLen).
+							Int("input_items_count", inputItemsCount).
+							Int("tool_items_count", toolItemsCount).
+							Str("store_policy", storePolicy).
+							Str("recovery_stage", continuationRecoveryStage).
 							Msg("[chat] stream: silent continuation recovery failed")
+						if ctx.Err() == nil {
+							continuationRecoveryStage = continuationRecoveryStage2
+							reducedRecoveryReq := buildReducedContinuationRecoveryRequest(chatReq)
+							hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount, storePolicy = continuationRequestStats(reducedRecoveryReq)
+							logger.Warn().
+								Err(recoveryErr).
+								Int("tool_round", toolRound).
+								Bool("has_prev_response_id", hasPrevResponseID).
+								Int("instructions_len", instructionsLen).
+								Int("input_items_count", inputItemsCount).
+								Int("tool_items_count", toolItemsCount).
+								Str("store_policy", storePolicy).
+								Str("recovery_stage", continuationRecoveryStage).
+								Msg("[chat] stream: attempting reduced continuation recovery payload")
+							if reducedErr := h.proxyBridge.ChatStream(recoveryCtx, reducedRecoveryReq, streamCb); reducedErr == nil {
+								h.recordContinuationDegradation(convID, toolRound, continuationRecoveryStage, true, continuationErr)
+								err = nil
+								logger.Info().
+									Int("tool_round", toolRound).
+									Bool("has_prev_response_id", hasPrevResponseID).
+									Int("instructions_len", instructionsLen).
+									Int("input_items_count", inputItemsCount).
+									Int("tool_items_count", toolItemsCount).
+									Str("store_policy", storePolicy).
+									Str("recovery_stage", continuationRecoveryStage).
+									Msg("[chat] stream: reduced continuation recovery succeeded")
+							} else {
+								err = reducedErr
+								logger.Warn().
+									Err(reducedErr).
+									Int("tool_round", toolRound).
+									Bool("has_prev_response_id", hasPrevResponseID).
+									Int("instructions_len", instructionsLen).
+									Int("input_items_count", inputItemsCount).
+									Int("tool_items_count", toolItemsCount).
+									Str("store_policy", storePolicy).
+									Str("recovery_stage", continuationRecoveryStage).
+									Msg("[chat] stream: reduced continuation recovery failed")
+							}
+						}
 					}
 				}
 			}
@@ -10769,7 +11902,7 @@ STREAM_LOOP:
 					fullContent = fallback
 					totalDeltaChars += len(fallback)
 				}
-				h.recordContinuationDegradation(convID, toolRound, false, err)
+				h.recordContinuationDegradation(convID, toolRound, continuationRecoveryStage, false, err)
 				autoContinueFailed = true
 				err = nil
 				streamCompleted = true
@@ -10864,6 +11997,7 @@ STREAM_LOOP:
 				llm.Message{Role: llm.RoleAssistant, Content: buildToollessAutoContinueAssistantContent(fullContent, "deep_search_min_rounds")},
 				llm.Message{Role: llm.RoleUser, Content: buildDeepSearchMinRoundsNudge(deepSearchState)},
 			)
+			accumulateCompletedRoundUsage()
 			fullContent = ""
 			streamCompleted = false
 			awaitingInputSent = false
@@ -10874,8 +12008,9 @@ STREAM_LOOP:
 
 		// Auto-continue: when LLM stopped without tool calls but the content
 		// still implies pending action, inject a continuation prompt and loop back.
-		if streamCompleted && fullContent != "" && len(streamToolCalls) == 0 && autoContinueCount < maxAutoContinueRetries {
-			if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool); shouldContinue {
+		if streamCompleted && !streamDoneSent && fullContent != "" && len(streamToolCalls) == 0 && autoContinueCount < maxAutoContinueRetries {
+			preferReminderTool := toolRound == 0 && shouldPreferReminderToolForRetry(chatReq.Messages, chatReq.Tools)
+			if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
 				if !h.shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
 					logger.Warn().
 						Int("tool_round", toolRound).
@@ -10941,7 +12076,7 @@ STREAM_LOOP:
 					pseudoToolCallAutoContinueCount = 0
 					missingTodoAutoContinueCount = 0
 					pendingTodoAutoContinueCount = 0
-				} else if reason == "pending_todo" {
+				} else if reason == "pending_todo" || reason == "missing_next_steps" {
 					pendingTodoAutoContinueCount++
 					pseudoToolCallAutoContinueCount = 0
 					actionPledgeAutoContinueCount = 0
@@ -11024,6 +12159,7 @@ STREAM_LOOP:
 					llm.Message{Role: llm.RoleAssistant, Content: assistantFollowUpContent},
 					llm.Message{Role: llm.RoleUser, Content: buildToollessAutoContinueNudgeForReasonWithPolicy(promptPolicy, agentModeAutoContinue, reason)},
 				)
+				accumulateCompletedRoundUsage()
 				fullContent = ""
 				streamCompleted = false
 				continue
@@ -11033,7 +12169,7 @@ STREAM_LOOP:
 		// Agent mode: if LLM returned completely empty (no content, no tool calls)
 		// after executing tools, only auto-continue when a TODO checklist still
 		// has unfinished items.
-		if streamCompleted && fullContent == "" && len(streamToolCalls) == 0 && toolRound > 0 && h.getMaxToolRounds() > maxToolRounds && autoContinueCount < maxAutoContinueRetries {
+		if streamCompleted && fullContent == "" && len(streamToolCalls) == 0 && toolRound > 0 && agentModeAutoContinue && autoContinueCount < maxAutoContinueRetries {
 			if autoContinueFailed {
 				logger.Info().
 					Int("tool_round", toolRound).
@@ -11070,7 +12206,7 @@ STREAM_LOOP:
 			if reason == "missing_todo" {
 				missingTodoAutoContinueCount++
 				pendingTodoAutoContinueCount = 0
-			} else if reason == "pending_todo" {
+			} else if reason == "pending_todo" || reason == "missing_next_steps" {
 				pendingTodoAutoContinueCount++
 				missingTodoAutoContinueCount = 0
 			} else {
@@ -11098,6 +12234,7 @@ STREAM_LOOP:
 				llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
 				llm.Message{Role: llm.RoleUser, Content: nudge},
 			)
+			accumulateCompletedRoundUsage()
 			streamCompleted = false
 			continue
 		}
@@ -11180,6 +12317,18 @@ STREAM_LOOP:
 	// This happens when: (a) LLM returned empty on a tool round (deferred path),
 	// or (b) stream never produced any content at all.
 	if err == nil && streamCompleted && !streamDoneSent {
+		if completedRoundInputTokens > 0 || completedRoundOutputTokens > 0 {
+			totalInputTokens += completedRoundInputTokens
+			totalOutputTokens += completedRoundOutputTokens
+			completedRoundInputTokens = 0
+			completedRoundOutputTokens = 0
+		}
+		if totalInputTokens == 0 {
+			totalInputTokens = estimateInputTokens(compactedMessages)
+		}
+		if totalOutputTokens == 0 {
+			totalOutputTokens = estimateTokens(fullContent)
+		}
 		donePayload := map[string]interface{}{
 			"delta":     "",
 			"done":      true,
@@ -11188,8 +12337,8 @@ STREAM_LOOP:
 			"model":     actualModel,
 			"stats": map[string]interface{}{
 				"input_tokens":  totalInputTokens,
-				"output_tokens": estimateTokens(fullContent),
-				"total_tokens":  totalInputTokens + estimateTokens(fullContent),
+				"output_tokens": totalOutputTokens,
+				"total_tokens":  totalInputTokens + totalOutputTokens,
 			},
 		}
 		if fullContent == "" {
@@ -11327,6 +12476,7 @@ STREAM_LOOP:
 				injectedTools := h.selectTools(injectedMsg, model)
 				injectedTools = applyWebSearchPreference(injectedTools, req.WebSearchEnabled)
 				injectedTools = applyDeepResearchPreference(injectedTools, req.DeepResearchEnabled)
+				injectedTools = applyReminderToolPreference(injectedTools, injectedMsg)
 
 				// Rebuild chat request
 				chatReq = llm.ChatRequest{
@@ -11354,6 +12504,9 @@ STREAM_LOOP:
 				firstChunkTime = time.Time{}
 				totalInputTokens = 0
 				totalOutputTokens = 0
+				completedRoundInputTokens = 0
+				completedRoundOutputTokens = 0
+				trialUsageRecorded = false
 				actualModel = ""
 				actualProvider = ""
 				actualProviderID = ""
@@ -11391,7 +12544,7 @@ STREAM_LOOP:
 		if streamErrorHandled {
 			return nil
 		}
-		if fullContent == "" && strings.TrimSpace(req.Provider) == "" && h.shouldUseDeepResearchFallback(err) {
+		if fullContent == "" && strings.TrimSpace(req.Provider) == "" && h.shouldUseDeepResearchFallback(err, routingMessage, req.DeepResearchEnabled) {
 			fbCtx, cancel := context.WithTimeout(c.Request().Context(), 45*time.Second)
 			fallbackContent, fbErr := h.runDeepResearchFallback(fbCtx, routingMessage, streamLocale)
 			cancel()
@@ -11581,6 +12734,35 @@ STREAM_LOOP:
 	// so only persist the final round's content here.
 	// Sanitize internal markers before persisting/displaying.
 	fullContent = sanitizeResponseContentWithProvider(fullContent, actualProvider, actualProviderID, sanitizeModelHint(actualModel, chatReq.Model))
+	// Safety net for providers/relays that end stream without an explicit
+	// terminal chunk: emit a final done event so frontend state can close
+	// cleanly even when callback never received chunk.Done.
+	if err == nil && !streamDoneSent {
+		if actualProvider == "" && resolvedRoute.Provider != "" {
+			actualProvider = resolvedRoute.Provider
+		}
+		if actualProviderID == "" && resolvedRoute.ProviderID != "" {
+			actualProviderID = resolvedRoute.ProviderID
+		}
+		if actualModel == "" {
+			actualModel = h.resolveResponseModel(chatReq.Model, resolvedRoute.Model)
+		}
+		if !streamCompleted {
+			logger.Warn().
+				Str("conv_id", convID).
+				Str("model", model).
+				Msg("[chat] stream: synthesizing final done chunk after implicit completion")
+			streamCompleted = true
+		}
+		emitSSE(map[string]interface{}{
+			"delta":     "",
+			"done":      true,
+			"stream_id": streamID,
+			"provider":  actualProvider,
+			"model":     actualModel,
+		})
+		streamDoneSent = true
+	}
 	// Safety net: also persist if fullContent is non-empty even when streamCompleted
 	// wasn't explicitly set (e.g., missing finish_reason from provider, bridge error).
 	if fullContent != "" && (streamCompleted || err == nil) {
@@ -11689,6 +12871,15 @@ STREAM_LOOP:
 				h.emitMessageSentEventAsync(sessionID, fullContent, totalOutputTokens)
 			}
 		}
+	}
+	if err == nil && !trialUsageRecorded && h.providerPool != nil && h.providerPool.TrialQuotaManager != nil &&
+		providerpool.IsTrialProvider(actualProviderID) && (totalInputTokens > 0 || totalOutputTokens > 0) {
+		logger.Debug().
+			Str("provider_id", actualProviderID).
+			Int("input", totalInputTokens).
+			Int("output", totalOutputTokens).
+			Msg("[chat] recording trial usage (post-loop fallback)")
+		h.providerPool.TrialQuotaManager.RecordUsage(int64(totalInputTokens), int64(totalOutputTokens), convID)
 	}
 	if supportsResponsesContinuation(model) && latestResponseID != "" {
 		h.setPreviousResponseID(convID, latestResponseID)

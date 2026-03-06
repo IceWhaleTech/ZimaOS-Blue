@@ -196,6 +196,35 @@ func TestShouldEnforceDeepSearchMinRounds(t *testing.T) {
 	}
 }
 
+func TestResolveToolRoundLimitForRequest(t *testing.T) {
+	var h *ChatHandler
+
+	if got := h.resolveToolRoundLimitForRequest(false, "hello", false); got != maxToolRounds {
+		t.Fatalf("default non-agent tool rounds = %d, want %d", got, maxToolRounds)
+	}
+
+	researchMsg := "请做 OpenClaw 最新动态深度搜索，并给我完整报告附来源"
+	gotResearch := h.resolveToolRoundLimitForRequest(false, researchMsg, false)
+	if gotResearch <= maxToolRounds {
+		t.Fatalf("expected research request to increase tool rounds, got=%d base=%d", gotResearch, maxToolRounds)
+	}
+	if gotResearch > maxToolRoundsNonAgentHardCap {
+		t.Fatalf("research tool rounds exceeded hard cap: got=%d cap=%d", gotResearch, maxToolRoundsNonAgentHardCap)
+	}
+
+	gotDeepHint := h.resolveToolRoundLimitForRequest(false, "openclaw news", true)
+	if gotDeepHint <= maxToolRounds {
+		t.Fatalf("expected deep-search hint to increase tool rounds, got=%d base=%d", gotDeepHint, maxToolRounds)
+	}
+	if gotDeepHint > maxToolRoundsNonAgentHardCap {
+		t.Fatalf("deep-search hinted tool rounds exceeded hard cap: got=%d cap=%d", gotDeepHint, maxToolRoundsNonAgentHardCap)
+	}
+
+	if got := h.resolveToolRoundLimitForRequest(true, researchMsg, true); got != maxToolRoundsAgent {
+		t.Fatalf("agent mode should keep agent loop policy max, got=%d want=%d", got, maxToolRoundsAgent)
+	}
+}
+
 func TestDeepSearchLoopState_ForceUntilMinRounds(t *testing.T) {
 	state := newDeepSearchLoopState("请深度检索 OpenClaw 最新新闻并整理完整报告", []tools.ToolDefinition{
 		{Name: "web_search"},
@@ -446,6 +475,22 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 		}
 	})
 
+	t.Run("continues on reminder set claim without tool call when reminder is preferred", func(t *testing.T) {
+		current := "已设置提醒：10秒后提醒你喝水"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false, false, true)
+		if !ok || reason != "pseudo_tool_call" {
+			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
+	t.Run("does not auto-continue on reminder set claim when reminder is not preferred", func(t *testing.T) {
+		current := "已设置提醒：10秒后提醒你喝水"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false, false, false)
+		if ok {
+			t.Fatalf("expected no auto-continue when reminder is not preferred, got reason=%q", reason)
+		}
+	})
+
 	t.Run("does not treat a single cmd json example as pseudo tool-call", func(t *testing.T) {
 		current := "你可以在 shell 里执行这个 JSON 示例：{\"cmd\":\"ls -la\"}"
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
@@ -470,11 +515,11 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 		}
 	})
 
-	t.Run("agent mode missing todo bootstrap skips likely completion reply", func(t *testing.T) {
+	t.Run("agent mode completion reply without next-step guidance requests follow-up", func(t *testing.T) {
 		current := "任务已完成。最终总结：功能可用。"
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, true)
-		if ok {
-			t.Fatalf("expected no auto-continue on likely completion reply, got reason=%q", reason)
+		if !ok || reason != "missing_next_steps" {
+			t.Fatalf("expected missing_next_steps auto-continue on completion reply, got ok=%v reason=%q", ok, reason)
 		}
 	})
 
@@ -485,6 +530,70 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 			t.Fatalf("expected no auto-continue when plan completion is known, got reason=%q", reason)
 		}
 	})
+
+	t.Run("agent mode requests next-step guidance when completion misses it", func(t *testing.T) {
+		current := "任务已完成。完成内容：已执行。使用方法：已验证。"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, true)
+		if !ok || reason != "missing_next_steps" {
+			t.Fatalf("expected missing_next_steps auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
+	t.Run("agent mode completion with concrete localhost delivery does not force next steps", func(t *testing.T) {
+		current := "已完成，游戏可直接运行，地址：http://localhost:3000"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, true)
+		if ok {
+			t.Fatalf("expected no auto-continue for concrete localhost delivery, got reason=%q", reason)
+		}
+	})
+
+	t.Run("agent mode completion with pending tracked checklist does not force next steps", func(t *testing.T) {
+		current := "任务已完成。最终总结：功能可用。"
+		tracked := "- [x] 创建实现计划\n- [ ] 执行计划步骤"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, tracked, true, true)
+		if ok {
+			t.Fatalf("expected no auto-continue when tracked checklist is still pending, got reason=%q", reason)
+		}
+	})
+
+	t.Run("agent mode completion after missing_todo bootstrap does not force next steps", func(t *testing.T) {
+		current := "任务已完成。最终总结：实现可用并已验证。"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, true, false, false, false)
+		if ok {
+			t.Fatalf("expected no auto-continue when missing_next_steps is suppressed after missing_todo bootstrap, got reason=%q", reason)
+		}
+	})
+
+	t.Run("agent mode does not request next-step guidance when already present", func(t *testing.T) {
+		current := "任务已完成。完成内容：已执行。使用方法：已验证。下一步建议：1. 运行回归测试。"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, true)
+		if ok {
+			t.Fatalf("expected no auto-continue when next-step guidance already exists, got reason=%q", reason)
+		}
+	})
+}
+
+func TestBuildReducedContinuationRecoveryRequest_AggressiveFallbackShrinksWhenNeeded(t *testing.T) {
+	chatReq := llm.ChatRequest{
+		Model: "gpt-5.3-codex-spark",
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "system instructions"},
+			{Role: llm.RoleAssistant, Content: "partial previous reply"},
+			{Role: llm.RoleUser, Content: "continue please"},
+		},
+		Tools: []llm.Tool{
+			{Name: "exec", Description: "execute command"},
+			{Name: "web_search", Description: "search web"},
+		},
+	}
+
+	reduced := buildReducedContinuationRecoveryRequest(chatReq)
+	if len(reduced.Messages) >= len(chatReq.Messages) {
+		t.Fatalf("reduced messages should shrink, got %d from %d", len(reduced.Messages), len(chatReq.Messages))
+	}
+	if len(reduced.Messages) == 0 {
+		t.Fatal("reduced messages should not be empty")
+	}
 }
 
 func TestExtractPlanChecklistFromToolRound(t *testing.T) {
@@ -869,9 +978,16 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	if !strings.Contains(pendingTodo, "at least one real tool call") {
 		t.Fatalf("expected pending_todo nudge to enforce real execution, got=%q", pendingTodo)
 	}
+	missingNextSteps := buildToollessAutoContinueNudgeForReason(true, "missing_next_steps")
+	if !strings.Contains(missingNextSteps, "WITHOUT calling tools") || !strings.Contains(missingNextSteps, "Suggested next steps") {
+		t.Fatalf("expected missing_next_steps nudge to enforce completion + next-step guidance, got=%q", missingNextSteps)
+	}
 
 	if shouldPersistToollessRoundContent("pseudo_tool_call") {
 		t.Fatal("expected pseudo_tool_call rounds not to be persisted")
+	}
+	if shouldPersistToollessRoundContent("missing_next_steps") {
+		t.Fatal("expected missing_next_steps rounds not to be persisted")
 	}
 	if !shouldPersistToollessRoundContent("action_pledge") {
 		t.Fatal("expected action_pledge rounds to be persisted")
@@ -997,6 +1113,16 @@ func TestToollessAutoContinueBudget(t *testing.T) {
 	if shouldAutoContinueForReasonWithinBudget("missing_todo", true, 0, 0, maxMissingTodoAutoContinueAgent, 0) {
 		t.Fatal("expected agent missing_todo at budget limit to stop")
 	}
+
+	if shouldAutoContinueForReasonWithinBudget("missing_next_steps", false, 0, 0, 0, 0) {
+		t.Fatal("expected non-agent missing_next_steps to be disabled")
+	}
+	if !shouldAutoContinueForReasonWithinBudget("missing_next_steps", true, 0, 0, 0, maxPendingTodoAutoContinueAgent-1) {
+		t.Fatal("expected agent missing_next_steps within budget to continue")
+	}
+	if shouldAutoContinueForReasonWithinBudget("missing_next_steps", true, 0, 0, 0, maxPendingTodoAutoContinueAgent) {
+		t.Fatal("expected agent missing_next_steps at budget limit to stop")
+	}
 }
 
 func TestActionPledgeDuplicateDebounce(t *testing.T) {
@@ -1008,6 +1134,65 @@ func TestActionPledgeDuplicateDebounce(t *testing.T) {
 	}
 	if shouldStopForDuplicateActionPledge("pseudo_tool_call", 10) {
 		t.Fatal("expected duplicate stop gate to apply only to action_pledge")
+	}
+}
+
+func TestBuildToolFallbackText_RedactsSensitiveOutput(t *testing.T) {
+	msgs := []llm.Message{
+		{
+			Role:    llm.RoleTool,
+			Content: `{"stdout":"AWS_SECRET_ACCESS_KEY=abc123","stderr":"password=very-secret","error":"token leaked","exit_code":1}`,
+		},
+		{
+			Role:    llm.RoleTool,
+			Content: `{"status":"completed","stdout":"safe output"}`,
+		},
+	}
+
+	out, toolCount := buildToolFallbackText(msgs, 4096)
+	if toolCount != 2 {
+		t.Fatalf("toolCount = %d, want 2", toolCount)
+	}
+	if strings.Contains(out, "AWS_SECRET_ACCESS_KEY") || strings.Contains(out, "password=very-secret") || strings.Contains(out, "token leaked") {
+		t.Fatalf("expected fallback text to redact raw sensitive output, got=%q", out)
+	}
+	if !strings.Contains(out, "Safe status: 1 succeeded, 1 failed, 0 unknown.") {
+		t.Fatalf("expected fallback safe status summary, got=%q", out)
+	}
+	if !strings.Contains(out, "redacted for safety") {
+		t.Fatalf("expected fallback redaction marker, got=%q", out)
+	}
+}
+
+func TestBuildToolFallbackText_NoToolResults(t *testing.T) {
+	out, toolCount := buildToolFallbackText([]llm.Message{
+		{Role: llm.RoleAssistant, Content: "hello"},
+	}, 4096)
+	if toolCount != 0 {
+		t.Fatalf("toolCount = %d, want 0", toolCount)
+	}
+	if !strings.Contains(out, "Raw tool output is hidden for safety") {
+		t.Fatalf("expected safe no-tool fallback text, got=%q", out)
+	}
+}
+
+func TestFormatProcessBlock_HidesSensitiveToolResultOutput(t *testing.T) {
+	summary := []map[string]interface{}{
+		{
+			"name":   "exec",
+			"args":   `{"command":"echo secret"}`,
+			"result": `{"exit_code":1,"error":"password=abc123","stdout":"token=xyz","duration_ms":12}`,
+		},
+	}
+	got := formatProcessBlock(summary)
+	if strings.Contains(got, "password=abc123") || strings.Contains(got, "token=xyz") {
+		t.Fatalf("expected process block to hide sensitive result text, got=%q", got)
+	}
+	if !strings.Contains(got, "error (details hidden)") {
+		t.Fatalf("expected process block to preserve redacted error status, got=%q", got)
+	}
+	if !strings.Contains(got, "stdout hidden for safety") {
+		t.Fatalf("expected process block to mark stdout as hidden, got=%q", got)
 	}
 }
 
@@ -1098,6 +1283,46 @@ func TestShouldPreferReminderToolForRetry(t *testing.T) {
 	if shouldPreferReminderToolForRetry([]llm.Message{{Role: llm.RoleUser, Content: "提醒我喝水"}}, []llm.Tool{{Name: "exec"}}) {
 		t.Fatal("expected no reminder preference when reminder tool is unavailable")
 	}
+}
+
+func TestApplyReminderToolPreference(t *testing.T) {
+	defs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "reminder"},
+		{Name: "notifications"},
+	}
+
+	filtered := applyReminderToolPreference(defs, "提醒我10秒后喝水")
+	if len(filtered) != 1 || filtered[0].Name != "reminder" {
+		t.Fatalf("expected reminder-only toolset for reminder intent, got=%v", toolNames(filtered))
+	}
+
+	kept := applyReminderToolPreference(defs, "帮我同步到系统提醒事项")
+	if len(kept) != len(defs) {
+		t.Fatalf("expected full toolset for explicit system reminder target, got=%v", toolNames(kept))
+	}
+
+	unchanged := applyReminderToolPreference(defs, "帮我查一下今天的新闻")
+	if len(unchanged) != len(defs) {
+		t.Fatalf("expected non-reminder query not to be filtered, got=%v", toolNames(unchanged))
+	}
+
+	noReminderDefs := []tools.ToolDefinition{
+		{Name: "web_search"},
+		{Name: "notifications"},
+	}
+	noFilter := applyReminderToolPreference(noReminderDefs, "提醒我十分钟后站起来")
+	if len(noFilter) != len(noReminderDefs) {
+		t.Fatalf("expected no filtering when built-in reminder is unavailable, got=%v", toolNames(noFilter))
+	}
+}
+
+func toolNames(defs []tools.ToolDefinition) []string {
+	names := make([]string, 0, len(defs))
+	for _, def := range defs {
+		names = append(names, def.Name)
+	}
+	return names
 }
 
 func TestHardenPseudoToolCallRetryRequest(t *testing.T) {

@@ -31,7 +31,7 @@ func (m *mockProviderService) AddKey(_ context.Context, providerID, apiKey strin
 	}
 	return nil, fmt.Errorf("provider %q not found", providerID)
 }
-func (m *mockProviderService) RemoveProvider(_ context.Context, id string) error { return nil }
+func (m *mockProviderService) RemoveProvider(_ context.Context, id string) error  { return nil }
 func (m *mockProviderService) EnableProvider(_ context.Context, id string) error  { return nil }
 func (m *mockProviderService) DisableProvider(_ context.Context, id string) error { return nil }
 func (m *mockProviderService) TestProvider(_ context.Context, id string) (map[string]interface{}, error) {

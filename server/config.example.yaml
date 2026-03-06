@@ -212,3 +212,12 @@ tool_calling:
     timeout: "30s"
     safe_search: false
     region: "wt-wt"
+
+# Session settings (conversation context + audit trail)
+session:
+  audit:
+    enabled: true
+    path: "./data/session_audit.db"   # dedicated DB, isolated from conversations
+    retention_days: 30
+    cleanup_interval: "6h"
+    cleanup_batch_size: 500

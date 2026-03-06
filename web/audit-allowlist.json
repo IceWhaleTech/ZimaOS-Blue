@@ -1,0 +1,14 @@
+{
+  "allowedAdvisoryIds": [
+    1113979
+  ],
+  "notes": {
+    "1113979": {
+      "ghsa": "GHSA-v2wj-7wpq-c8vv",
+      "package": "dompurify",
+      "reason": "No patched DOMPurify version is published on npm yet; this is currently transitive via mermaid.",
+      "addedOn": "2026-03-05",
+      "reviewAfter": "2026-04-05"
+    }
+  }
+}

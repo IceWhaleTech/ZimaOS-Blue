@@ -4,12 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 )
+
+func newTCP4Server(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skip test server setup (tcp4 unavailable): %v", err)
+	}
+	srv := httptest.NewUnstartedServer(handler)
+	srv.Listener = ln
+	srv.Start()
+	return srv
+}
 
 func TestWebSearchTool_Definition(t *testing.T) {
 	tool := NewWebSearchTool(WebSearchConfig{})
@@ -59,7 +72,7 @@ func TestWebSearchTool_Execute_MissingQuery(t *testing.T) {
 
 func TestWebSearchTool_SearXNG(t *testing.T) {
 	// Create mock SearXNG server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/search" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
@@ -133,7 +146,7 @@ func TestWebSearchTool_SearXNG(t *testing.T) {
 
 func TestWebSearchTool_Brave(t *testing.T) {
 	// Create mock Brave Search server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		apiKey := r.Header.Get("X-Subscription-Token")
 		if apiKey != "test-api-key" {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -187,7 +200,7 @@ func TestWebSearchTool_UnsupportedProvider(t *testing.T) {
 }
 
 func TestWebSearchTool_ProviderFallback(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"results": []map[string]interface{}{
 				{
@@ -230,7 +243,7 @@ func TestWebSearchTool_ProviderFallback(t *testing.T) {
 }
 
 func TestWebSearchTool_MaxResults(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Return many results
 		results := make([]map[string]interface{}, 30)
 		for i := 0; i < 30; i++ {
@@ -317,7 +330,7 @@ func TestWebSearchTool_MaxResults(t *testing.T) {
 }
 
 func TestWebSearchTool_DefaultFormatXML(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"results": []map[string]interface{}{
 				{
@@ -390,7 +403,7 @@ func TestWebSearchTool_InvalidFormat(t *testing.T) {
 }
 
 func TestWebSearchTool_FormatAliases(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"results": []map[string]interface{}{
 				{
@@ -458,7 +471,7 @@ func TestWebSearchTool_FormatAliases(t *testing.T) {
 }
 
 func TestWebSearchTool_Timeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -479,7 +492,7 @@ func TestWebSearchTool_Timeout(t *testing.T) {
 }
 
 func TestWebSearchTool_ContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(1 * time.Second)
 		w.WriteHeader(http.StatusOK)
 	}))

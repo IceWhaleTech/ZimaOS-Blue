@@ -15,8 +15,8 @@ import (
 // mockClaudeAWSProvider simulates a provider (like right.codes/claude-aws) that
 // returns a model list via /v1/models but only some models are actually configured.
 // Unconfigured models return HTTP 400 with {"error":"端点/claude-aws未配置模型xxx"}.
-func mockClaudeAWSProvider(configuredModels map[string]bool) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func mockClaudeAWSProvider(t *testing.T, configuredModels map[string]bool) *httptest.Server {
+	return newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Model list endpoint
 		if r.URL.Path == "/v1/models" {
 			w.Header().Set("Content-Type", "application/json")
@@ -38,9 +38,9 @@ func mockClaudeAWSProvider(configuredModels map[string]bool) *httptest.Server {
 			var data []map[string]interface{}
 			for _, id := range allModels {
 				data = append(data, map[string]interface{}{
-					"id":      id,
-					"object":  "model",
-					"created": 1626777600,
+					"id":       id,
+					"object":   "model",
+					"created":  1626777600,
 					"owned_by": "custom",
 				})
 			}
@@ -98,17 +98,17 @@ func mockClaudeAWSProvider(configuredModels map[string]bool) *httptest.Server {
 func TestProbeModels(t *testing.T) {
 	// Models that are actually configured (matches real test results)
 	configured := map[string]bool{
-		"claude-haiku-4-5":          true,
-		"claude-haiku-4-5-20251001": true,
-		"claude-opus-4-5":           true,
-		"claude-opus-4-5-20251101":  true,
-		"claude-opus-4-6":           true,
-		"claude-sonnet-4-5":         true,
+		"claude-haiku-4-5":           true,
+		"claude-haiku-4-5-20251001":  true,
+		"claude-opus-4-5":            true,
+		"claude-opus-4-5-20251101":   true,
+		"claude-opus-4-6":            true,
+		"claude-sonnet-4-5":          true,
 		"claude-sonnet-4-5-20250929": true,
-		"claude-sonnet-4-6":         true,
+		"claude-sonnet-4-6":          true,
 	}
 
-	server := mockClaudeAWSProvider(configured)
+	server := mockClaudeAWSProvider(t, configured)
 	defer server.Close()
 
 	tmpDir, err := os.MkdirTemp("", "probe-test-*")
@@ -215,7 +215,7 @@ func TestProbeModels_RouterIntegration(t *testing.T) {
 		"model-c": true,
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -229,7 +229,9 @@ func TestProbeModels_RouterIntegration(t *testing.T) {
 			return
 		}
 		if r.URL.Path == "/v1/chat/completions" {
-			var req struct{ Model string `json:"model"` }
+			var req struct {
+				Model string `json:"model"`
+			}
 			json.NewDecoder(r.Body).Decode(&req)
 			if !configured[req.Model] {
 				w.WriteHeader(400)
@@ -312,7 +314,7 @@ func TestProbeModels_RouterIntegration(t *testing.T) {
 
 func TestProbeModels_TransientErrors(t *testing.T) {
 	// Test that transient errors (429, 500) don't disable models
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -326,7 +328,9 @@ func TestProbeModels_TransientErrors(t *testing.T) {
 			return
 		}
 		if r.URL.Path == "/v1/chat/completions" {
-			var req struct{ Model string `json:"model"` }
+			var req struct {
+				Model string `json:"model"`
+			}
 			json.NewDecoder(r.Body).Decode(&req)
 			switch req.Model {
 			case "model-ok":

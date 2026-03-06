@@ -20,6 +20,9 @@ func TestPortAllocator(t *testing.T) {
 		pa := NewPortAllocator(config)
 		port, err := pa.Allocate()
 		if err != nil {
+			if isBindPermissionError(err) {
+				t.Skipf("skip dynamic port allocation test in restricted environment: %v", err)
+			}
 			t.Fatalf("failed to allocate port: %v", err)
 		}
 
@@ -231,7 +234,7 @@ func TestFailoverHandler(t *testing.T) {
 
 func TestProxyHandler(t *testing.T) {
 	// Create mock upstream server
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"message": "hello"}`))
@@ -283,7 +286,7 @@ func TestProxyHandler(t *testing.T) {
 
 func TestHealthChecker(t *testing.T) {
 	// Create mock health endpoint server
-	healthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	healthServer := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"status": "ok"}`))
@@ -294,7 +297,7 @@ func TestHealthChecker(t *testing.T) {
 	defer healthServer.Close()
 
 	// Create unhealthy server
-	unhealthyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	unhealthyServer := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer unhealthyServer.Close()
@@ -397,7 +400,7 @@ func TestHealthChecker(t *testing.T) {
 
 func TestStreamingResponse(t *testing.T) {
 	// Create mock SSE server
-	sseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	sseServer := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
@@ -464,4 +467,3 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
-

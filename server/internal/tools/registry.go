@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -46,7 +47,8 @@ type Registry struct {
 	mu       sync.RWMutex
 	tools    map[string]Tool
 	disabled map[string]Tool // disabled tools (still registered, but hidden from Definitions/List)
-	version  uint64          // incremented on every mutation (Register/Disable/Enable)
+	exposed  map[string]ToolDefinition
+	version  uint64 // incremented on every mutation (Register/ExposeDefinition/Disable/Enable)
 }
 
 // NewRegistry creates a new tool registry.
@@ -54,6 +56,7 @@ func NewRegistry() *Registry {
 	return &Registry{
 		tools:    make(map[string]Tool),
 		disabled: make(map[string]Tool),
+		exposed:  make(map[string]ToolDefinition),
 	}
 }
 
@@ -67,8 +70,22 @@ func (r *Registry) Register(tool Tool) {
 	r.version++
 }
 
+// ExposeDefinition registers a tool definition that is visible to the model/UI
+// but is not backed by a native Tool implementation in this registry.
+func (r *Registry) ExposeDefinition(def ToolDefinition) {
+	name := strings.TrimSpace(def.Name)
+	if name == "" {
+		return
+	}
+	def.Name = name
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.exposed[name] = def
+	r.version++
+}
+
 // Version returns the current mutation version of the registry.
-// It increments on every Register, Disable, or Enable call.
+// It increments on every Register, ExposeDefinition, Disable, or Enable call.
 func (r *Registry) Version() uint64 {
 	r.mu.RLock()
 	v := r.version
@@ -151,9 +168,21 @@ func (r *Registry) ListDisabled() []string {
 func (r *Registry) Definitions() []ToolDefinition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	defs := make([]ToolDefinition, 0, len(r.tools))
+	defs := make([]ToolDefinition, 0, len(r.tools)+len(r.exposed))
+	seen := make(map[string]struct{}, len(r.tools)+len(r.exposed))
 	for _, tool := range r.tools {
-		defs = append(defs, tool.Definition())
+		def := tool.Definition()
+		defs = append(defs, def)
+		seen[def.Name] = struct{}{}
+	}
+	for name, def := range r.exposed {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		if _, disabled := r.disabled[name]; disabled {
+			continue
+		}
+		defs = append(defs, def)
 	}
 	sort.Slice(defs, func(i, j int) bool {
 		return defs[i].Name < defs[j].Name
@@ -182,33 +211,103 @@ func (e *Executor) Execute(ctx context.Context, name string, args map[string]int
 	default:
 	}
 
-	tool := e.registry.Get(name)
+	normalizedName := normalizeCompatToolName(name)
+	tool := e.registry.Get(normalizedName)
+	if tool == nil && normalizedName != name {
+		// If the raw name itself is registered, prefer that implementation.
+		if original := e.registry.Get(name); original != nil {
+			tool = original
+			normalizedName = name
+		}
+	}
+	args = normalizeCompatArgs(name, normalizedName, args)
+
 	if tool == nil {
+		if cmd, handled, immediate := resolveFactoryAliasCommand(name, args); handled {
+			if immediate != "" {
+				return immediate, nil
+			}
+			if execTool := e.registry.Get("exec"); execTool != nil {
+				return execTool.Execute(ctx, map[string]interface{}{"command": cmd})
+			}
+			return nil, ErrToolNotFound
+		}
+
+		if result, ok := unsupportedFactoryToolResult(name); ok {
+			return result, nil
+		}
+
+		fallbackName, fallbackArgs := normalizeCompatFallbackTarget(name, normalizedName, args)
 		// Skill fallback: if the LLM calls a tool that doesn't exist in the
 		// tool registry, try forwarding to `blue <name> key=value` via exec.
 		// This handles skills (analyze, web_search, etc.) that the LLM may
 		// call as native tools despite the system prompt saying to use exec.
 		if execTool := e.registry.Get("exec"); execTool != nil {
-			cmd := buildSkillCommand(name, args)
+			cmd := buildSkillCommand(fallbackName, fallbackArgs)
 			return execTool.Execute(ctx, map[string]interface{}{"command": cmd})
 		}
 		return nil, ErrToolNotFound
 	}
 
-	args = normalizeCompatArgs(name, args)
 	return tool.Execute(ctx, args)
 }
 
-func normalizeCompatArgs(name string, args map[string]interface{}) map[string]interface{} {
+func normalizeCompatToolName(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "file_read":
+		return "read"
+	case "file_write":
+		return "write"
+	case "web_fetch":
+		return "browser"
+	case "memory_search", "memory_get", "memory_read",
+		"memory_write", "memory_remember", "memory_store",
+		"memory_forget", "memory_delete":
+		return "memory"
+	default:
+		return name
+	}
+}
+
+func normalizeCompatArgs(rawName, normalizedName string, args map[string]interface{}) map[string]interface{} {
+	switch strings.ToLower(strings.TrimSpace(normalizedName)) {
+	case "exec":
+		return normalizeExecCompatArgs(args)
+	case "memory":
+		return normalizeMemoryCompatArgs(rawName, args)
+	case "web_search":
+		return normalizeWebSearchCompatArgs(rawName, args)
+	case "browser":
+		return normalizeBrowserCompatArgs(rawName, args)
+	default:
+		return args
+	}
+}
+
+func normalizeCompatFallbackTarget(rawName, normalizedName string, args map[string]interface{}) (string, map[string]interface{}) {
+	rawKey := strings.ToLower(strings.TrimSpace(rawName))
+	switch rawKey {
+	case "web_fetch":
+		return "browser", normalizeBrowserCompatArgs(rawName, args)
+	case "browser":
+		return "browser", normalizeBrowserCompatArgs(rawName, args)
+	case "web_search":
+		return "web_search", normalizeWebSearchCompatArgs(rawName, args)
+	default:
+		if isFactoryToolName(rawName) {
+			return rawName, args
+		}
+		return normalizedName, args
+	}
+}
+
+func normalizeExecCompatArgs(args map[string]interface{}) map[string]interface{} {
 	if len(args) == 0 {
 		return args
 	}
 	// Some providers emit exec arguments in non-canonical forms:
 	// {"cmd":"..."}, {"tool":"..."}, or wrapped inside {"arguments":{...}}.
 	// Normalize to the canonical schema {"command":"..."}.
-	if !strings.EqualFold(strings.TrimSpace(name), "exec") {
-		return args
-	}
 	if command, hasCommand := args["command"].(string); hasCommand && strings.TrimSpace(command) != "" {
 		return args
 	}
@@ -254,6 +353,214 @@ func normalizeCompatArgs(name string, args map[string]interface{}) map[string]in
 	normalized["command"] = candidate
 	delete(normalized, "cmd")
 	return normalized
+}
+
+func normalizeMemoryCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
+	normalized := make(map[string]interface{}, len(args)+2)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	action, _ := normalized["action"].(string)
+	action = strings.ToLower(strings.TrimSpace(action))
+	if action == "" {
+		if inferred := inferMemoryActionFromAlias(rawName); inferred != "" {
+			action = inferred
+			normalized["action"] = inferred
+		}
+	}
+
+	switch action {
+	case "search":
+		if strings.TrimSpace(asString(normalized["query"])) == "" {
+			if q := firstCompatString(normalized, "query", "q", "search", "vsearch", "text", "input", "content"); q != "" {
+				normalized["query"] = q
+			}
+		}
+	case "get", "forget":
+		if strings.TrimSpace(asString(normalized["id"])) == "" {
+			if id := firstCompatString(normalized, "id", "path", "file", "memory_id", "memoryId", "key"); id != "" {
+				normalized["id"] = id
+			}
+		}
+	case "remember":
+		if strings.TrimSpace(asString(normalized["content"])) == "" {
+			if content := firstCompatString(normalized, "content", "text", "input", "memory", "note", "message"); content != "" {
+				normalized["content"] = content
+			}
+		}
+		if tags, ok := coerceCompatStringList(normalized["tags"]); ok {
+			normalized["tags"] = tags
+		} else if category := firstCompatString(normalized, "category", "tag"); category != "" {
+			normalized["tags"] = []interface{}{category}
+		}
+	}
+
+	return normalized
+}
+
+func normalizeWebSearchCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
+	normalized := make(map[string]interface{}, len(args)+2)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	if strings.TrimSpace(asString(normalized["query"])) == "" {
+		query := firstCompatString(normalized, "query", "q", "search", "keyword", "text", "input", "url")
+		if query == "" && strings.EqualFold(strings.TrimSpace(rawName), "web_fetch") {
+			query = firstCompatString(normalized, "href", "target")
+		}
+		if query != "" {
+			normalized["query"] = query
+		}
+	}
+
+	if _, hasMaxResults := normalized["max_results"]; !hasMaxResults {
+		if limit, ok := coerceCompatInt(normalized["limit"]); ok && limit > 0 {
+			normalized["max_results"] = limit
+		}
+	}
+
+	return normalized
+}
+
+func normalizeBrowserCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
+	normalized := make(map[string]interface{}, len(args)+2)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	action := strings.ToLower(strings.TrimSpace(asString(normalized["action"])))
+	if action == "" {
+		switch strings.ToLower(strings.TrimSpace(rawName)) {
+		case "web_fetch":
+			action = "navigate"
+		default:
+			if strings.TrimSpace(asString(normalized["url"])) != "" {
+				action = "navigate"
+			}
+		}
+	}
+	if action != "" {
+		normalized["action"] = action
+	}
+
+	if strings.TrimSpace(asString(normalized["url"])) == "" {
+		if url := firstCompatString(normalized, "url", "href", "target", "input", "query", "q"); url != "" {
+			normalized["url"] = url
+		}
+	}
+
+	return normalized
+}
+
+func inferMemoryActionFromAlias(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "memory_search":
+		return "search"
+	case "memory_get", "memory_read":
+		return "get"
+	case "memory_write", "memory_remember", "memory_store":
+		return "remember"
+	case "memory_forget", "memory_delete":
+		return "forget"
+	default:
+		return ""
+	}
+}
+
+func firstCompatString(args map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if v, ok := args[key]; ok {
+			if s := strings.TrimSpace(asString(v)); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+func asString(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func coerceCompatStringList(v interface{}) ([]interface{}, bool) {
+	switch typed := v.(type) {
+	case []interface{}:
+		out := make([]interface{}, 0, len(typed))
+		for _, item := range typed {
+			if s, ok := item.(string); ok {
+				if trimmed := strings.TrimSpace(s); trimmed != "" {
+					out = append(out, trimmed)
+				}
+			}
+		}
+		if len(out) > 0 {
+			return out, true
+		}
+	case []string:
+		out := make([]interface{}, 0, len(typed))
+		for _, s := range typed {
+			if trimmed := strings.TrimSpace(s); trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		if len(out) > 0 {
+			return out, true
+		}
+	case string:
+		raw := strings.TrimSpace(typed)
+		if raw == "" {
+			return nil, false
+		}
+		parts := strings.Split(raw, ",")
+		out := make([]interface{}, 0, len(parts))
+		for _, p := range parts {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		if len(out) > 0 {
+			return out, true
+		}
+	}
+	return nil, false
+}
+
+func coerceCompatInt(v interface{}) (int, bool) {
+	switch typed := v.(type) {
+	case int:
+		return typed, true
+	case int32:
+		return int(typed), true
+	case int64:
+		return int(typed), true
+	case float64:
+		return int(typed), true
+	case float32:
+		return int(typed), true
+	case json.Number:
+		n, err := typed.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(n), true
+	case string:
+		raw := strings.TrimSpace(typed)
+		if raw == "" {
+			return 0, false
+		}
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	default:
+		return 0, false
+	}
 }
 
 func extractExecCommandFromCompatValue(v interface{}) string {

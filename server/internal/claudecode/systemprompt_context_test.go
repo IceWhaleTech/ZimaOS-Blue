@@ -232,7 +232,7 @@ func TestBuildStructured_StaticIncludesPriorityAndGrounding(t *testing.T) {
 	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
 	static := b.BuildStructured(context.Background(), "").Static
 
-	required := []string{"<role>", "<instruction_priority>", "<grounding>"}
+	required := []string{"<role>", "<instruction_priority>", "<grounding>", "<blue_core_rules>"}
 	for _, tag := range required {
 		if !strings.Contains(static, tag) {
 			t.Fatalf("expected static prompt to contain %s, got: %s", tag, static)
@@ -247,10 +247,51 @@ func TestBuild_IncludesPriorityAndGroundingGuidance(t *testing.T) {
 	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
 	out := b.Build(context.Background(), "")
 
-	required := []string{"<role>", "<instruction_priority>", "<grounding>"}
+	required := []string{"<role>", "<instruction_priority>", "<grounding>", "<blue_core_rules>"}
 	for _, tag := range required {
 		if !strings.Contains(out, tag) {
 			t.Fatalf("expected Build output to contain %s, got: %s", tag, out)
 		}
+	}
+}
+
+func TestBuildProjectContext_PrioritizesToolsBetweenAgentsAndIdentity(t *testing.T) {
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
+	b.SetMaxContextTokens(0)
+
+	out := b.buildProjectContext(map[string]string{
+		workspace.FileAGENTS:   "agents",
+		workspace.FileTOOLS:    "tools",
+		workspace.FileIDENTITY: "identity",
+	})
+
+	agentsIdx := strings.Index(out, `<file name="AGENTS.md">`)
+	toolsIdx := strings.Index(out, `<file name="TOOLS.md">`)
+	identityIdx := strings.Index(out, `<file name="IDENTITY.md">`)
+	if agentsIdx < 0 || toolsIdx < 0 || identityIdx < 0 {
+		t.Fatalf("expected AGENTS/TOOLS/IDENTITY in output, got: %s", out)
+	}
+	if !(agentsIdx < toolsIdx && toolsIdx < identityIdx) {
+		t.Fatalf("expected AGENTS -> TOOLS -> IDENTITY order, got: %s", out)
+	}
+}
+
+func TestBuildProjectContext_ToolsSoftCapApplied(t *testing.T) {
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
+	b.SetMaxContextTokens(0)
+
+	huge := strings.Repeat("tools guidance sentence for cap testing.\n", 1200)
+	out := b.buildProjectContext(map[string]string{
+		workspace.FileTOOLS: huge,
+	})
+	if out == "" {
+		t.Fatal("expected TOOLS.md context to be included")
+	}
+	stats := b.LastContextStats()
+	if stats == nil {
+		t.Fatal("expected context stats")
+	}
+	if stats.TotalTokens <= 0 || stats.TotalTokens > 600 {
+		t.Fatalf("TOOLS.md soft cap not applied, total tokens = %d", stats.TotalTokens)
 	}
 }

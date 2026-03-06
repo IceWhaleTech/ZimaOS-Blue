@@ -245,7 +245,7 @@ func parseExecCommand(argsJSON string) string {
 
 func isReadLikeTool(name string) bool {
 	switch name {
-	case "file_read", "memory", "web_search", "analyze", "ui_reviewer", "ask":
+	case "read", "file_read", "memory", "web_search", "analyze", "ui_reviewer", "ask":
 		return true
 	default:
 		return false

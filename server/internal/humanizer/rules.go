@@ -283,6 +283,8 @@ var toolNameZh = map[string]string{
 	"calculator":    "计算器",
 	"system_info":   "系统信息",
 	"current_time":  "当前时间",
+	"read":          "读取文件",
+	"write":         "写入文件",
 	"file_read":     "读取文件",
 	"file_write":    "写入文件",
 	"memory_search": "记忆搜索",
@@ -290,6 +292,7 @@ var toolNameZh = map[string]string{
 	"memory_get":    "获取记忆",
 	"memory_stats":  "记忆统计",
 	"memory":        "记忆系统",
+	"mcp":           "MCP 调用",
 }
 
 // Parameter name localization.

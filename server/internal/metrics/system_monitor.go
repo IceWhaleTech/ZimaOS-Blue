@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 	"sync"
@@ -14,6 +15,15 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 )
 
+func safeNetIOCounters(pernic bool) (_ []net.IOCountersStat, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic while collecting network IO counters: %v", r)
+		}
+	}()
+	return net.IOCounters(pernic)
+}
+
 // SystemMonitor monitors system resources.
 type SystemMonitor struct {
 	mu sync.RWMutex
@@ -23,8 +33,8 @@ type SystemMonitor struct {
 
 	// Ring buffer for history
 	history     []ResourceHistory
-	historyHead int  // Next write position
-	historyLen  int  // Current number of items
+	historyHead int // Next write position
+	historyLen  int // Current number of items
 	maxHistory  int
 
 	// Process tracking
@@ -93,7 +103,7 @@ func (m *SystemMonitor) Collect() error {
 	}
 
 	// Network metrics
-	if netIO, err := net.IOCounters(false); err == nil && len(netIO) > 0 {
+	if netIO, err := safeNetIOCounters(false); err == nil && len(netIO) > 0 {
 		metrics.NetworkBytesSent = int64(netIO[0].BytesSent)
 		metrics.NetworkBytesRecv = int64(netIO[0].BytesRecv)
 	}

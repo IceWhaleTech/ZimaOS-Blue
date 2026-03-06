@@ -41,9 +41,7 @@ func setupAllSkills(t *testing.T) (net.Conn, func()) {
 	RegisterPushHandlers(srv, &mockPush{}, log)
 	RegisterSkillManagerHandlers(srv, newMockSkillManager(), log)
 
-	if err := srv.Start(); err != nil {
-		t.Fatal(err)
-	}
+	startServerOrSkip(t, srv)
 
 	conn, err := net.Dial("unix", sock)
 	if err != nil {

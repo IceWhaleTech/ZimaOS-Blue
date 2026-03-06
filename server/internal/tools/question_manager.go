@@ -181,6 +181,14 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 	if userID == "" {
 		userID = "default"
 	}
+	// If no active SSE consumer exists for this user, do not block on timeout.
+	// Treat it as unattended mode and return deterministic defaults immediately.
+	if m.broker == nil || m.broker.ClientCount(userID) == 0 {
+		if m.resolveTimeoutAction() == "error" {
+			return nil, false, fmt.Errorf("question cannot be delivered: no active SSE client for user %q", userID)
+		}
+		return m.defaultAnswers(questions), true, nil
+	}
 
 	reqID := uuid.New().String()
 	answerCh := make(chan []QuestionAnswerResult, 1)

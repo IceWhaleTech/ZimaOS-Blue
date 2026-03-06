@@ -3,13 +3,12 @@ package providerpool
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
 
 func TestHTTPHealthChecker_CloudCode401WithoutAPIKeyIsReachable(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer upstream.Close()
@@ -29,7 +28,7 @@ func TestHTTPHealthChecker_CloudCode401WithoutAPIKeyIsReachable(t *testing.T) {
 }
 
 func TestHTTPHealthChecker_NonCloudCode401IsAuthError(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer upstream.Close()

@@ -1013,10 +1013,6 @@ function selectThemeStyle(style: ThemeStyle) {
   showTopbarMenu.value = false
 }
 
-function toggleWebSearch() {
-  chatStore.setWebSearchEnabled(!chatStore.webSearchEnabled)
-}
-
 function toggleDeepResearch() {
   chatStore.setDeepResearchEnabled(!chatStore.deepResearchEnabled)
 }
@@ -1323,19 +1319,6 @@ onUnmounted(() => {
 
         <!-- Routing Mode Switch & Provider Status -->
         <div class="chat-tools ml-auto flex items-center gap-2 flex-shrink-0">
-          <button
-            v-if="!shouldCollapseTopbarControls"
-            class="topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer"
-            :class="chatStore.webSearchEnabled
-              ? 'text-cyan-500 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/30'
-              : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'"
-            :title="t('tools.names.web_search')"
-            @click="toggleWebSearch"
-          >
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-4.35-4.35m0 0A7.5 7.5 0 1 0 6.04 6.04a7.5 7.5 0 0 0 10.607 10.607Z" />
-            </svg>
-          </button>
           <button
             v-if="!shouldCollapseTopbarControls"
             class="topbar-icon-btn p-2 rounded-lg transition-colors cursor-pointer"
@@ -1802,20 +1785,6 @@ onUnmounted(() => {
               </div>
               <div class="p-4">
                 <div class="grid grid-cols-2 gap-3">
-                  <button
-                    class="quick-action-tile"
-                    :class="{ 'is-active': chatStore.webSearchEnabled }"
-                    @click="toggleWebSearch"
-                  >
-                    <div class="flex items-center justify-between">
-                      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m21 21-4.35-4.35m0 0A7.5 7.5 0 1 0 6.04 6.04a7.5 7.5 0 0 0 10.607 10.607Z" />
-                      </svg>
-                      <span class="quick-action-pill">{{ chatStore.webSearchEnabled ? t('common.enabled') : t('common.disabled') }}</span>
-                    </div>
-                    <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">{{ t('tools.names.web_search') }}</div>
-                  </button>
-
                   <button
                     class="quick-action-tile"
                     :class="{ 'is-active': chatStore.deepResearchEnabled }"

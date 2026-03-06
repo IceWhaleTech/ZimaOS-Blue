@@ -83,6 +83,10 @@ export interface RenderOptions {
   sanitize?: boolean
 }
 
+export interface ParseInlineOptions {
+  allowUnderscoreEmphasis?: boolean
+}
+
 const RE_INLINE_BOLD_ASTERISK = /\*\*(.+?)\*\*/g
 const RE_INLINE_BOLD_UNDERSCORE = /__(.+?)__/g
 const RE_INLINE_ITALIC_ASTERISK = /\*(.+?)\*/g
@@ -116,43 +120,47 @@ function escapeHtml(text: string): string {
 }
 
 // Parse inline markdown elements
-export function parseInline(text: string): string {
+export function parseInline(text: string, options: ParseInlineOptions = {}): string {
+  const allowUnderscoreEmphasis = options.allowUnderscoreEmphasis ?? true
+  const cacheKey = allowUnderscoreEmphasis ? text : `no_underscore:${text}`
   const shouldUseCache = text.length > 0 && text.length <= INLINE_PARSE_CACHE_MAX_TEXT_LENGTH
   if (shouldUseCache) {
-    const cached = inlineParseCache.get(text)
+    const cached = inlineParseCache.get(cacheKey)
     if (cached !== undefined) return cached
   }
 
   if (
     !text.includes('*')
-    && !text.includes('_')
+    && (!allowUnderscoreEmphasis || !text.includes('_'))
     && !text.includes('~')
     && !text.includes('`')
     && !text.includes('[')
   ) {
     const escaped = escapeHtml(text)
     if (shouldUseCache) {
-      if (inlineParseCache.size >= INLINE_PARSE_CACHE_MAX && !inlineParseCache.has(text)) {
+      if (inlineParseCache.size >= INLINE_PARSE_CACHE_MAX && !inlineParseCache.has(cacheKey)) {
         evictOldestMapEntry(inlineParseCache)
       }
-      inlineParseCache.set(text, escaped)
+      inlineParseCache.set(cacheKey, escaped)
     }
     return escaped
   }
 
   let result = escapeHtml(text)
 
-  if (text.includes('**') || text.includes('__')) {
+  if (text.includes('**') || (allowUnderscoreEmphasis && text.includes('__'))) {
     // Bold: **text** or __text__
     result = result.replace(RE_INLINE_BOLD_ASTERISK, '<strong>$1</strong>')
-    result = result.replace(RE_INLINE_BOLD_UNDERSCORE, '<strong>$1</strong>')
+    if (allowUnderscoreEmphasis) {
+      result = result.replace(RE_INLINE_BOLD_UNDERSCORE, '<strong>$1</strong>')
+    }
   }
 
   if (text.includes('*')) {
     // Italic: *text*
     result = result.replace(RE_INLINE_ITALIC_ASTERISK, '<em>$1</em>')
   }
-  if (text.includes('_')) {
+  if (allowUnderscoreEmphasis && text.includes('_')) {
     // Italic: _text_
     result = result.replace(RE_INLINE_ITALIC_UNDERSCORE, '<em>$1</em>')
   }
@@ -178,10 +186,10 @@ export function parseInline(text: string): string {
   }
 
   if (shouldUseCache) {
-    if (inlineParseCache.size >= INLINE_PARSE_CACHE_MAX && !inlineParseCache.has(text)) {
+    if (inlineParseCache.size >= INLINE_PARSE_CACHE_MAX && !inlineParseCache.has(cacheKey)) {
       evictOldestMapEntry(inlineParseCache)
     }
-    inlineParseCache.set(text, result)
+    inlineParseCache.set(cacheKey, result)
   }
 
   return result
@@ -470,6 +478,8 @@ function renderMultilinePlainText(markdown: string): string {
   return renderMultilinePlainTextWithMeta(markdown).html
 }
 
+const MARKDOWN_INLINE_OPTIONS: ParseInlineOptions = { allowUnderscoreEmphasis: false }
+
 // Main render function
 export function renderMarkdown(markdown: string, _options: RenderOptions = {}): string {
   const fastPathMode = getMarkdownFastPathMode(markdown)
@@ -525,7 +535,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
           result.push('<thead class="bg-gray-100 dark:bg-gray-700">')
           result.push('<tr>')
           row.forEach(cell => {
-            result.push(`<th class="border border-gray-300 dark:border-gray-600 px-4 py-2 text-left font-semibold">${parseInline(cell)}</th>`)
+            result.push(`<th class="border border-gray-300 dark:border-gray-600 px-4 py-2 text-left font-semibold">${parseInline(cell, MARKDOWN_INLINE_OPTIONS)}</th>`)
           })
           result.push('</tr>')
           result.push('</thead>')
@@ -533,7 +543,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
         } else {
           result.push('<tr class="even:bg-gray-50 dark:even:bg-gray-700/50">')
           row.forEach(cell => {
-            result.push(`<td class="border border-gray-300 dark:border-gray-600 px-4 py-2">${parseInline(cell)}</td>`)
+            result.push(`<td class="border border-gray-300 dark:border-gray-600 px-4 py-2">${parseInline(cell, MARKDOWN_INLINE_OPTIONS)}</td>`)
           })
           result.push('</tr>')
         }
@@ -684,7 +694,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
       flushTable()
       flushTree()
       const level = headerMatch[1].length
-      const text = parseInline(headerMatch[2])
+      const text = parseInline(headerMatch[2], MARKDOWN_INLINE_OPTIONS)
       const sizes = ['text-2xl', 'text-xl', 'text-lg', 'text-base', 'text-sm', 'text-sm']
       result.push(
         `<h${level} class="${sizes[level - 1] || 'text-sm'} font-bold my-2">${text}</h${level}>`
@@ -706,7 +716,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
       flushList()
       flushTable()
       flushTree()
-      const text = parseInline(line.slice(1).trim())
+      const text = parseInline(line.slice(1).trim(), MARKDOWN_INLINE_OPTIONS)
       result.push(
         `<blockquote class="border-l-4 border-gray-500 pl-4 my-2 text-gray-400 italic">${text}</blockquote>`
       )
@@ -728,9 +738,9 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
           ? '<input type="checkbox" checked disabled class="mr-1.5 accent-current opacity-60 pointer-events-none" />'
           : '<input type="checkbox" disabled class="mr-1.5 opacity-60 pointer-events-none" />'
         const textClass = checked ? 'line-through opacity-50' : ''
-        listItems.push(`<li class="list-none">${cbHtml}<span class="${textClass}">${parseInline(cbMatch[2] ?? '')}</span></li>`)
+        listItems.push(`<li class="list-none">${cbHtml}<span class="${textClass}">${parseInline(cbMatch[2] ?? '', MARKDOWN_INLINE_OPTIONS)}</span></li>`)
       } else {
-        listItems.push(`<li>${parseInline(itemContent)}</li>`)
+        listItems.push(`<li>${parseInline(itemContent, MARKDOWN_INLINE_OPTIONS)}</li>`)
       }
       continue
     }
@@ -744,7 +754,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
         inList = true
         listItems = []
       }
-      listItems.push(`<li>${parseInline(olMatch[1])}</li>`)
+      listItems.push(`<li>${parseInline(olMatch[1], MARKDOWN_INLINE_OPTIONS)}</li>`)
       continue
     }
 
@@ -752,7 +762,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
     flushList()
     flushTable()
     flushTree()
-    result.push(`<p class="my-1">${parseInline(line)}</p>`)
+    result.push(`<p class="my-1">${parseInline(line, MARKDOWN_INLINE_OPTIONS)}</p>`)
   }
 
   flushList()

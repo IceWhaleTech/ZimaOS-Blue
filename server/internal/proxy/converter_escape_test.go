@@ -501,6 +501,109 @@ func TestConvertRequest_MultiTurnToolConversation(t *testing.T) {
 	}
 }
 
+func TestConvertRequest_ToolResultJSONObjectPreserved(t *testing.T) {
+	fc := NewFormatConverter()
+
+	openaiReq := `{
+		"model": "claude-3-5-sonnet",
+		"messages": [
+			{"role": "user", "content": "run tool"},
+			{"role": "assistant", "content": "", "tool_calls": [
+				{
+					"id": "call_json_1",
+					"type": "function",
+					"function": {"name": "read_file", "arguments": "{\"path\":\"/tmp/a.txt\"}"}
+				}
+			]},
+			{"role": "tool", "tool_call_id": "call_json_1", "content": {"ok": true, "items": [1,2], "meta": {"k":"v"}}}
+		]
+	}`
+
+	converted, _, err := fc.ConvertRequest([]byte(openaiReq), ProviderTypeAnthropic)
+	if err != nil {
+		t.Fatalf("ConvertRequest failed: %v", err)
+	}
+
+	var anthropicReq AnthropicRequest
+	if err := json.Unmarshal(converted, &anthropicReq); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n  body: %s", err, converted)
+	}
+	if len(anthropicReq.Messages) < 3 {
+		t.Fatalf("Messages count = %d, want >=3", len(anthropicReq.Messages))
+	}
+
+	resultBlocks, ok := anthropicReq.Messages[2].Content.([]interface{})
+	if !ok || len(resultBlocks) == 0 {
+		t.Fatalf("tool result content is not array: %T", anthropicReq.Messages[2].Content)
+	}
+	firstBlock, _ := resultBlocks[0].(map[string]interface{})
+	content, _ := firstBlock["content"].(string)
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+		t.Fatalf("tool_result content should be JSON string, got=%q, err=%v", content, err)
+	}
+	if okv, _ := parsed["ok"].(bool); !okv {
+		t.Fatalf("parsed ok=false, content=%q", content)
+	}
+}
+
+func TestConvertRequest_AssistantArrayContentWithToolCalls_Preserved(t *testing.T) {
+	fc := NewFormatConverter()
+
+	openaiReq := `{
+		"model": "claude-3-5-sonnet",
+		"messages": [
+			{"role": "user", "content": "do something"},
+			{
+				"role": "assistant",
+				"content": [{"type":"text","text":"Let me call a tool first."}],
+				"tool_calls": [{
+					"id":"call_arr_1",
+					"type":"function",
+					"function":{"name":"exec","arguments":"{\"cmd\":\"pwd\"}"}
+				}]
+			}
+		]
+	}`
+
+	converted, _, err := fc.ConvertRequest([]byte(openaiReq), ProviderTypeAnthropic)
+	if err != nil {
+		t.Fatalf("ConvertRequest failed: %v", err)
+	}
+
+	var anthropicReq AnthropicRequest
+	if err := json.Unmarshal(converted, &anthropicReq); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n  body: %s", err, converted)
+	}
+	if len(anthropicReq.Messages) != 2 {
+		t.Fatalf("Messages count = %d, want 2", len(anthropicReq.Messages))
+	}
+
+	assistantBlocks, ok := anthropicReq.Messages[1].Content.([]interface{})
+	if !ok {
+		t.Fatalf("assistant content is not array: %T", anthropicReq.Messages[1].Content)
+	}
+	var hasText, hasToolUse bool
+	for _, b := range assistantBlocks {
+		block, _ := b.(map[string]interface{})
+		if block == nil {
+			continue
+		}
+		if block["type"] == "text" && strings.Contains(fmt.Sprintf("%v", block["text"]), "Let me call a tool first.") {
+			hasText = true
+		}
+		if block["type"] == "tool_use" && block["name"] == "exec" {
+			hasToolUse = true
+		}
+	}
+	if !hasText {
+		t.Fatalf("assistant text block lost, blocks=%v", assistantBlocks)
+	}
+	if !hasToolUse {
+		t.Fatalf("assistant tool_use block missing, blocks=%v", assistantBlocks)
+	}
+}
+
 // ---------- Anthropic stream: message_delta with usage ----------
 
 func TestConvertAnthropicStream_MessageDeltaUsage(t *testing.T) {

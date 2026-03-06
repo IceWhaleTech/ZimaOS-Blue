@@ -548,6 +548,13 @@ func defaults() Config {
 			Persistence: SessionPersistenceConfig{Enabled: true, Path: "./data/sessions.db", Interval: time.Minute, OnMessage: true, OnCompact: true},
 			Isolation:   SessionIsolationConfig{ByAgent: true, ByChannel: true, ByPeer: true},
 			Cleanup:     SessionCleanupConfig{Enabled: true, ArchiveAfter: 168 * time.Hour, DeleteAfter: 720 * time.Hour, CleanupInterval: time.Hour},
+			Audit: SessionAuditConfig{
+				Enabled:          true,
+				Path:             "./data/session_audit.db",
+				RetentionDays:    30,
+				CleanupInterval:  6 * time.Hour,
+				CleanupBatchSize: 500,
+			},
 		},
 		Embedding: EmbeddingConfig{
 			Provider: "cybertron", Model: "BAAI/bge-small-zh-v1.5", Dimensions: 0, BatchSize: 100, Timeout: 30 * time.Second,

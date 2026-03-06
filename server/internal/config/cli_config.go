@@ -258,6 +258,12 @@ type ToolCallingConfig struct {
 	// SkillSelectorConfidenceThreshold is the confidence threshold for auto-selection.
 	SkillSelectorConfidenceThreshold float64 `yaml:"skill_selector_confidence_threshold" json:"skill_selector_confidence_threshold"`
 
+	// ToolRouterDynamicExposure enables query-based tool exposure filtering.
+	ToolRouterDynamicExposure bool `yaml:"tool_router_dynamic_exposure" json:"tool_router_dynamic_exposure"`
+
+	// ToolRouterSchemaCompression removes non-essential schema fields before prompting.
+	ToolRouterSchemaCompression bool `yaml:"tool_router_schema_compression" json:"tool_router_schema_compression"`
+
 	// WebSearch controls the runtime web_search tool backend.
 	WebSearch ToolCallingWebSearchConfig `yaml:"web_search" json:"web_search"`
 
@@ -427,15 +433,17 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 	return &ToolCallingConfig{
 		AutoDetect:                       true,
 		DetectionTimeout:                 5 * time.Second,
-		SmartSelection:                   true,
+		SmartSelection:                   false,
 		SmartSelectionMaxTools:           10,
-		SmartSkillSelection:              true,
+		SmartSkillSelection:              false,
 		SkillSelectorMode:                "hybrid",
-		SkillRerankEnabled:               true,
+		SkillRerankEnabled:               false,
 		SkillRerankModel:                 "cross-encoder/ms-marco-MiniLM-L6-v2",
 		SkillRerankONNXEnabled:           false,
 		SkillRerankONNXAutoDownload:      false,
 		SkillSelectorConfidenceThreshold: 0.78,
+		ToolRouterDynamicExposure:        false,
+		ToolRouterSchemaCompression:      false,
 		WebSearch: ToolCallingWebSearchConfig{
 			Provider:   "duckduckgo",
 			Providers:  []string{"duckduckgo"},

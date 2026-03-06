@@ -191,6 +191,36 @@ describe('MemoryManager', () => {
     wrapper.unmount()
   })
 
+  it('localizes match type labels in search results', async () => {
+    vi.useFakeTimers()
+    vi.mocked(memoryApi.search).mockResolvedValue({
+      data: {
+        results: [
+          {
+            id: 'memory-1',
+            content: 'keyword hit',
+            score: 0.89,
+            match_types: ['keyword', 'vector'],
+            created_at: '2026-03-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    } as never)
+
+    const wrapper = mountManager()
+    await flushPromises()
+
+    await byId(wrapper, 'memory-search-input').setValue('hit')
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('memory.matchTypes.keyword')
+    expect(wrapper.text()).toContain('memory.matchTypes.vector')
+
+    wrapper.unmount()
+  })
+
   it('requires user confirmation before deleting a memory', async () => {
     vi.useFakeTimers()
     const confirmMock = vi.fn(() => false)

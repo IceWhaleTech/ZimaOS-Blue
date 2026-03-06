@@ -3,6 +3,9 @@ package proxybridge
 import (
 	"bufio"
 	"bytes"
+	"compress/flate"
+	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"fmt"
 	"io"
@@ -44,9 +47,20 @@ func (e *ProxyError) IsClientError() bool {
 	return e.StatusCode >= 400 && e.StatusCode < 500
 }
 
-// IsOverloaded returns true for 429 (rate limit) or 529 (overloaded) — retrying is pointless.
+// IsOverloaded returns true for explicit overload statuses and common overload
+// markers in proxy/upstream error bodies (e.g. wrapped upstream 5xx).
 func (e *ProxyError) IsOverloaded() bool {
-	return e.StatusCode == 429 || e.StatusCode == 529
+	if e.StatusCode == http.StatusTooManyRequests || e.StatusCode == 529 {
+		return true
+	}
+	bodyLower := strings.ToLower(e.Body)
+	return strings.Contains(bodyLower, "overloaded_error") ||
+		strings.Contains(bodyLower, "\"type\":\"overloaded\"") ||
+		strings.Contains(bodyLower, "overloaded") ||
+		strings.Contains(bodyLower, "rate_limit") ||
+		strings.Contains(bodyLower, "rate limit") ||
+		strings.Contains(bodyLower, "too many requests") ||
+		strings.Contains(bodyLower, "throttled")
 }
 
 // IsNoProvider returns true when no provider is available for the requested model.
@@ -73,14 +87,65 @@ func ensureTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, defaultTimeout)
 }
 
+func decodeResponseBodyByContentEncoding(body []byte, contentEncoding string) ([]byte, error) {
+	enc := strings.TrimSpace(strings.ToLower(contentEncoding))
+	if enc == "" || enc == "identity" {
+		return body, nil
+	}
+	parts := strings.Split(enc, ",")
+	decoded := body
+	for i := len(parts) - 1; i >= 0; i-- {
+		p := strings.TrimSpace(parts[i])
+		if p == "" || p == "identity" {
+			continue
+		}
+
+		var (
+			reader io.ReadCloser
+			err    error
+		)
+		switch p {
+		case "gzip", "x-gzip":
+			reader, err = gzip.NewReader(bytes.NewReader(decoded))
+		case "deflate":
+			reader, err = zlib.NewReader(bytes.NewReader(decoded))
+			if err != nil {
+				// Some relays send raw DEFLATE streams without zlib wrapper.
+				raw := flate.NewReader(bytes.NewReader(decoded))
+				decoded, err = io.ReadAll(raw)
+				_ = raw.Close()
+				if err != nil {
+					return nil, fmt.Errorf("decode content-encoding %q: %w", p, err)
+				}
+				continue
+			}
+		default:
+			return nil, fmt.Errorf("unsupported content-encoding %q", p)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("decode content-encoding %q: %w", p, err)
+		}
+		decoded, err = io.ReadAll(reader)
+		_ = reader.Close()
+		if err != nil {
+			return nil, fmt.Errorf("decode content-encoding %q: %w", p, err)
+		}
+	}
+	return decoded, nil
+}
+
 // Chat sends a non-streaming request through the proxy pipeline.
 func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	ctx, cancel := ensureTimeout(ctx)
 	defer cancel()
 
-	// Inject ResolvedRoute into context so the proxy handler can populate it
-	var resolved proxy.ResolvedRoute
-	ctx = proxy.WithResolvedRoute(ctx, &resolved)
+	// Reuse caller-provided ResolvedRoute when available so callers can consume
+	// router-selected provider/model without trusting upstream response payloads.
+	resolved := proxy.GetResolvedRouteFromContext(ctx)
+	if resolved == nil {
+		resolved = &proxy.ResolvedRoute{}
+		ctx = proxy.WithResolvedRoute(ctx, resolved)
+	}
 
 	req.Stream = false
 	body, err := MarshalChatRequest(req)
@@ -116,9 +181,34 @@ func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatRespon
 		return nil, fmt.Errorf("proxy response too large: %d bytes", rec.Body.Len())
 	}
 
-	resp, parseErr := ParseChatResponse(rec.Body.Bytes())
+	respBody := rec.Body.Bytes()
+	if decoded, decodeErr := decodeResponseBodyByContentEncoding(respBody, rec.Header().Get("Content-Encoding")); decodeErr != nil {
+		rawBody := rec.Body.String()
+		slog.Error("[bridge] failed to decode non-stream chat response",
+			"error", decodeErr,
+			"status", rec.Code,
+			"content_type", rec.Header().Get("Content-Type"),
+			"content_encoding", rec.Header().Get("Content-Encoding"),
+			"model", req.Model,
+			"raw_response", rawBody,
+		)
+		return nil, fmt.Errorf("decode response: %w, raw response: %s", decodeErr, rawBody)
+	} else {
+		respBody = decoded
+	}
+
+	resp, parseErr := ParseChatResponse(respBody)
 	if parseErr != nil {
-		return nil, parseErr
+		rawBody := string(respBody)
+		slog.Error("[bridge] failed to parse non-stream chat response",
+			"error", parseErr,
+			"status", rec.Code,
+			"content_type", rec.Header().Get("Content-Type"),
+			"content_encoding", rec.Header().Get("Content-Encoding"),
+			"model", req.Model,
+			"raw_response", rawBody,
+		)
+		return nil, fmt.Errorf("%w, raw response: %s", parseErr, rawBody)
 	}
 	// Inject resolved provider/model into response.
 	// Always prefer resolved.Model — the upstream provider may return its own
@@ -178,9 +268,13 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	// Check if caller provided a ResolvedRoute to populate
 	callerRoute := proxy.GetResolvedRouteFromContext(ctx)
 
-	// Inject our own ResolvedRoute into context so the proxy handler can populate it
-	var resolved proxy.ResolvedRoute
-	ctx = proxy.WithResolvedRoute(ctx, &resolved)
+	// Reuse caller-provided ResolvedRoute when available so streaming callers
+	// can observe routed provider/model during the stream (not only at EOF).
+	resolved := callerRoute
+	if resolved == nil {
+		resolved = &proxy.ResolvedRoute{}
+	}
+	ctx = proxy.WithResolvedRoute(ctx, resolved)
 
 	req.Stream = true
 	body, err := MarshalChatRequest(req)
@@ -226,6 +320,8 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	var chunkCount int
 	var streamedText strings.Builder
 	var nonSSELines []string // capture non-SSE lines for error diagnostics
+	var sawTerminalChunk bool
+	var sawMaterialChunk bool
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" || strings.HasPrefix(line, ":") {
@@ -262,6 +358,9 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 			continue
 		}
 		chunkCount++
+		if done {
+			sawTerminalChunk = true
+		}
 		if done && chunk.Delta != "" {
 			// Responses `response.completed` may carry a full text snapshot in
 			// addition to prior deltas. Keep only the missing suffix.
@@ -277,6 +376,9 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 		}
 		if chunk.Delta != "" {
 			streamedText.WriteString(chunk.Delta)
+		}
+		if chunk.Delta != "" || chunk.Error != "" || len(chunk.ToolCalls) > 0 || chunk.Usage != nil {
+			sawMaterialChunk = true
 		}
 		// Inject actual provider/model from the resolved route (set by proxy handler
 		// via context before any data is written to the pipe, so it's safe to read here).
@@ -323,6 +425,31 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 		slog.Error("[bridge] handler error after stream", "error", handlerErr, "chunks", chunkCount, "model", req.Model)
 	}
 
+	// Some upstream relays close an otherwise valid stream without emitting an
+	// explicit terminal marker (`response.completed` or `[DONE]`). If we already
+	// received meaningful chunks, synthesize a final done chunk so downstream
+	// handlers can finalize metrics/persistence consistently.
+	if scanErr == nil && handlerErr == nil && chunkCount > 0 && sawMaterialChunk && !sawTerminalChunk {
+		synth := llm.StreamChunk{Done: true}
+		if resolved.Provider != "" {
+			synth.Provider = resolved.Provider
+		}
+		if resolved.ProviderID != "" {
+			synth.ProviderID = resolved.ProviderID
+		}
+		if resolved.Model != "" {
+			synth.Model = resolved.Model
+		}
+		slog.Warn("[bridge] stream ended without terminal marker; emitting synthesized done chunk",
+			"chunks", chunkCount,
+			"model", req.Model,
+			"provider", synth.Provider,
+		)
+		if cbErr := callback(synth); cbErr != nil {
+			return cbErr
+		}
+	}
+
 	// Prefer handler-level errors (HTTP 4xx/5xx) over scan errors.
 	// Enrich ProxyError with non-SSE body lines captured during scanning so that
 	// callers (e.g. IsNoProvider, IsClientError) can inspect the error body.
@@ -346,8 +473,9 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 		return &ProxyError{StatusCode: http.StatusBadGateway, Body: body}
 	}
 
-	// Propagate resolved route back to caller if they provided one
-	if callerRoute != nil {
+	// Propagate resolved route back to caller if they provided one.
+	// When callerRoute is non-nil, resolved and callerRoute point to the same struct.
+	if callerRoute != nil && callerRoute != resolved {
 		if callerRoute.Provider == "" {
 			callerRoute.Provider = resolved.Provider
 		}

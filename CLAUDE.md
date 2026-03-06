@@ -126,6 +126,7 @@ When working on multiple tasks or a complex task with multiple steps:
 5. **Large Document Chunking** - When writing large documents (>200 lines or >5KB), MUST split into multiple write operations to prevent failures. Write section by section, verify each write succeeds before continuing
 6. **Route Registration Checkpoint** - When implementing frontend and backend code together, add a checkpoint to verify all backend routes are properly registered before proceeding. Never skip this checkpoint - unregistered routes cause 404 errors
 7. **Internationalization (i18n)** - When adding i18n content, English & Chinese locale is sufficient. Do not add other languages unless explicitly requested
+8. **Model Source of Truth** - Never trust upstream `response.model`/`resp.Model` as routing truth. Use request model + locally routed/known model list (`resolved model`, provider model inventory) as the authoritative source for persistence, metrics, retries, and follow-up rounds.
 
 This ensures:
 - Higher quality output

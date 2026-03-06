@@ -56,6 +56,7 @@ func TestHypervisorExecutor_Execute(t *testing.T) {
 
 	ctx := context.Background()
 	result, err := executor.Execute(ctx, req)
+	skipIfSandboxExecUnavailable(t, result, err)
 
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -86,6 +87,7 @@ func TestHypervisorExecutor_Execute_WithEnv(t *testing.T) {
 
 	ctx := context.Background()
 	result, err := executor.Execute(ctx, req)
+	skipIfSandboxExecUnavailable(t, result, err)
 
 	if err != nil {
 		t.Fatalf("Execute(env) error = %v", err)
@@ -108,6 +110,7 @@ func TestHypervisorExecutor_Execute_Timeout(t *testing.T) {
 
 	ctx := context.Background()
 	result, err := executor.Execute(ctx, req)
+	skipIfSandboxExecUnavailable(t, result, err)
 
 	if err != nil {
 		t.Fatalf("Execute(timeout) error = %v", err)

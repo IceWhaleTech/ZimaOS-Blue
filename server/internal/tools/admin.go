@@ -20,7 +20,6 @@ type MgmtTool struct {
 	proxy     AdminProxyService
 	users     AdminUserService
 	apiKeys   AdminAPIKeyService
-	memory    *MemoryTool
 	upgrade   AdminUpgradeService
 }
 
@@ -40,14 +39,13 @@ func (t *MgmtTool) SetSystem(svc AdminSystemService)      { t.system = svc }
 func (t *MgmtTool) SetProxy(svc AdminProxyService)        { t.proxy = svc }
 func (t *MgmtTool) SetUsers(svc AdminUserService)         { t.users = svc }
 func (t *MgmtTool) SetAPIKeys(svc AdminAPIKeyService)     { t.apiKeys = svc }
-func (t *MgmtTool) SetMemory(mem *MemoryTool)             { t.memory = mem }
-func (t *MgmtTool) SetUpgrade(svc AdminUpgradeService)   { t.upgrade = svc }
+func (t *MgmtTool) SetUpgrade(svc AdminUpgradeService)    { t.upgrade = svc }
 
 // Definition returns the tool definition.
 func (t *MgmtTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "mgmt",
-		Description: `System management tool. Use {domain}.{action} format. Domains: providers, settings, channels, skills, tools, system, proxy, users, apikeys, memory, upgrade. Call with action="providers.list" first to explore available operations. Common: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.`,
+		Description: `System management tool. Use {domain}.{action} format. Domains: providers, settings, channels, skills, tools, system, proxy, users, apikeys, upgrade. Call with action="providers.list" first to explore available operations. Common: providers.list, settings.get, system.health, tools.list, users.list, upgrade.status.`,
 		Icon:        "settings",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -127,8 +125,6 @@ func (t *MgmtTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return t.handleUsers(ctx, op, args)
 	case "apikeys":
 		return t.handleAPIKeys(ctx, op, args)
-	case "memory":
-		return t.handleMemory(ctx, op, args)
 	case "upgrade":
 		return t.handleUpgrade(ctx, op)
 	default:
@@ -485,8 +481,8 @@ func (t *MgmtTool) emitUpgradeCard(ctx context.Context, action string, info *Adm
 		"data": map[string]interface{}{
 			"current_version": info.CurrentVersion,
 			"latest_version":  info.LatestVersion,
-			"state":          info.State,
-			"progress":       info.Progress,
+			"state":           info.State,
+			"progress":        info.Progress,
 		},
 	})
 }
@@ -586,22 +582,6 @@ func (t *MgmtTool) handleAPIKeys(ctx context.Context, op string, args map[string
 	default:
 		return errJSON(fmt.Sprintf("unknown apikeys operation: %s", op)), nil
 	}
-}
-
-// --- Memory handlers ---
-
-func (t *MgmtTool) handleMemory(ctx context.Context, op string, args map[string]interface{}) (interface{}, error) {
-	if t.memory == nil {
-		return errJSON("memory service not available"), nil
-	}
-	// Proxy to MemoryTool: map mgmt op to memory action
-	memArgs := map[string]interface{}{"action": op}
-	for _, key := range []string{"query", "id", "content", "category", "limit"} {
-		if v, ok := args[key]; ok {
-			memArgs[key] = v
-		}
-	}
-	return t.memory.Execute(ctx, memArgs)
 }
 
 // --- Helpers ---

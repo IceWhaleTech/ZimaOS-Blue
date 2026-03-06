@@ -27,6 +27,7 @@ const (
 	FileUSER      = "USER.md"
 	FileIDENTITY  = "IDENTITY.md"
 	FileAGENTS    = "AGENTS.md"
+	FileTOOLS     = "TOOLS.md"
 	FileMEMORY    = "MEMORY.md"
 	FileHEARTBEAT = "HEARTBEAT.md"
 	FileBOOTSTRAP = "BOOTSTRAP.md"
@@ -97,10 +98,9 @@ func (m *Manager) InvalidateFileCache() {
 	m.fileCacheMu.Unlock()
 }
 
-
 var (
-	detectedLocale     string
-	detectLocaleOnce   sync.Once
+	detectedLocale   string
+	detectLocaleOnce sync.Once
 )
 
 // DetectLocale returns the cached system locale (computed once per process).
@@ -262,7 +262,7 @@ func (m *Manager) LoadBootstrapFiles() []BootstrapFile {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	names := []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileMEMORY, FileHEARTBEAT}
+	names := []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY, FileHEARTBEAT}
 	files := make([]BootstrapFile, 0, len(names)+3) // +3 for bootstrap + daily logs
 
 	for _, name := range names {
@@ -296,7 +296,7 @@ func (m *Manager) LoadContextFiles() map[string]string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	names := []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileMEMORY, FileHEARTBEAT}
+	names := []string{FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY, FileHEARTBEAT}
 	ctx := make(map[string]string, len(names)+3)
 
 	for _, name := range names {
@@ -378,7 +378,7 @@ func isAllowedFile(name string) bool {
 		return false
 	}
 	switch name {
-	case FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileMEMORY, FileHEARTBEAT, FileBOOTSTRAP:
+	case FileSOUL, FileUSER, FileIDENTITY, FileAGENTS, FileTOOLS, FileMEMORY, FileHEARTBEAT, FileBOOTSTRAP:
 		return true
 	}
 	return false

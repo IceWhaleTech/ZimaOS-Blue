@@ -3,8 +3,11 @@ package proxy
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/tidwall/gjson"
 )
 
@@ -172,6 +175,93 @@ func TestApplyModelRouting_LazyToolExtraction(t *testing.T) {
 
 	if pr.model != "gpt-4o-mini" {
 		t.Errorf("expected tool match to route to 'gpt-4o-mini', got %q", pr.model)
+	}
+}
+
+func TestApplyModelRouting_TargetAvailabilityDynamicProviderChanges(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "proxy-routing-dynamic-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := providerpool.NewFileStorage(tmpDir)
+	registry, _ := providerpool.NewRegistry(storage)
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	router := providerpool.NewRouter(registry, discovery, providerpool.RoutingStrategyPriority)
+
+	baseProvider := &providerpool.Provider{
+		ID: "base-provider", Name: "Base", Type: providerpool.ProviderTypeCustom,
+		Enabled: true, Status: providerpool.ProviderStatusActive, Priority: 50,
+		Location: providerpool.ProviderLocationCloud,
+		APIKeys:  []providerpool.APIKey{{ID: "k1", Key: "key-base", Enabled: true}},
+	}
+	if err := registry.Register(baseProvider); err != nil {
+		t.Fatalf("register base provider failed: %v", err)
+	}
+	if err := storage.SaveModels(baseProvider.ID, []*providerpool.Model{{
+		ID: "gpt-4", ProviderID: baseProvider.ID, Name: "gpt-4", Enabled: true,
+	}}); err != nil {
+		t.Fatalf("save base models failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	ph := NewProxyHandler(nil, nil, nil)
+	ph.providerPool = &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Router:    router,
+	}
+	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{
+		{
+			Name:        "always-to-spark",
+			Priority:    1,
+			Condition:   RouteCondition{MaxBodyBytes: 99999},
+			TargetModel: "gpt-5.3-codex-spark",
+		},
+	}))
+
+	// 1) Target model unavailable => keep requested model fixed.
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}`),
+		model: "gpt-4",
+	}
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ph.applyModelRouting(r, pr)
+	if pr.model != "gpt-4" {
+		t.Fatalf("expected model to stay fixed at gpt-4 when target unavailable, got %q", pr.model)
+	}
+	if got := gjson.GetBytes(pr.body, "model").Str; got != "gpt-4" {
+		t.Fatalf("expected body model gpt-4 when target unavailable, got %q", got)
+	}
+
+	// 2) Dynamically add provider that has target model => switch should take effect.
+	dynamicProvider := &providerpool.Provider{
+		ID: "dynamic-provider", Name: "Dynamic", Type: providerpool.ProviderTypeCustom,
+		Enabled: true, Status: providerpool.ProviderStatusActive, Priority: 120,
+		Location: providerpool.ProviderLocationCloud,
+		APIKeys:  []providerpool.APIKey{{ID: "k2", Key: "key-dynamic", Enabled: true}},
+	}
+	if err := storage.SaveModels(dynamicProvider.ID, []*providerpool.Model{{
+		ID: "gpt-5.3-codex-spark", ProviderID: dynamicProvider.ID, Name: "gpt-5.3-codex-spark", Enabled: true,
+	}}); err != nil {
+		t.Fatalf("save dynamic models failed: %v", err)
+	}
+	if err := registry.Register(dynamicProvider); err != nil {
+		t.Fatalf("register dynamic provider failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	pr2 := &parsedRequest{
+		body:  []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}`),
+		model: "gpt-4",
+	}
+	ph.applyModelRouting(r, pr2)
+	if pr2.model != "gpt-5.3-codex-spark" {
+		t.Fatalf("expected switch to gpt-5.3-codex-spark after dynamic provider add, got %q", pr2.model)
+	}
+	if got := gjson.GetBytes(pr2.body, "model").Str; got != "gpt-5.3-codex-spark" {
+		t.Fatalf("expected rewritten body model gpt-5.3-codex-spark, got %q", got)
 	}
 }
 

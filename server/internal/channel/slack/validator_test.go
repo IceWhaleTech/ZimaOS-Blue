@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -34,7 +33,7 @@ func TestSlackValidator_EmptyBotToken(t *testing.T) {
 }
 
 func TestSlackValidator_ValidToken(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request path
 		if r.URL.Path != "/auth.test" {
 			t.Errorf("unexpected path: got %s, want /auth.test", r.URL.Path)
@@ -80,7 +79,7 @@ func TestSlackValidator_ValidToken(t *testing.T) {
 }
 
 func TestSlackValidator_InvalidAuth(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"ok":    false,
 			"error": "invalid_auth",
@@ -101,7 +100,7 @@ func TestSlackValidator_InvalidAuth(t *testing.T) {
 }
 
 func TestSlackValidator_TokenRevoked(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"ok":    false,
 			"error": "token_revoked",
@@ -122,7 +121,7 @@ func TestSlackValidator_TokenRevoked(t *testing.T) {
 }
 
 func TestSlackValidator_AccountInactive(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"ok":    false,
 			"error": "account_inactive",
@@ -143,7 +142,7 @@ func TestSlackValidator_AccountInactive(t *testing.T) {
 }
 
 func TestSlackValidator_OtherError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"ok":    false,
 			"error": "some_other_error",
@@ -164,7 +163,7 @@ func TestSlackValidator_OtherError(t *testing.T) {
 }
 
 func TestSlackValidator_Timeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
 	}))
@@ -183,7 +182,7 @@ func TestSlackValidator_Timeout(t *testing.T) {
 }
 
 func TestSlackValidator_InvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
@@ -200,7 +199,7 @@ func TestSlackValidator_InvalidJSON(t *testing.T) {
 }
 
 func TestSlackValidator_NetworkError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	serverURL := server.URL
 	server.Close()
 
@@ -216,7 +215,7 @@ func TestSlackValidator_NetworkError(t *testing.T) {
 }
 
 func TestSlackValidator_WithAppToken(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"ok":      true,
 			"url":     "https://testworkspace.slack.com/",
@@ -245,7 +244,7 @@ func TestSlackValidator_WithAppToken(t *testing.T) {
 }
 
 func TestSlackValidator_EnterpriseInstall(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
 			"ok":                    true,
 			"url":                   "https://enterprise.slack.com/",

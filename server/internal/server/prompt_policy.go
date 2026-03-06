@@ -45,18 +45,21 @@ func policyFingerprint(profile string) string {
 	// Keep this stable unless policy text/behavior changes.
 	switch profile {
 	case DefaultPromptPolicyProfile:
-		return "tool_guidance_v1|toolless_nudge_v1|post_tool_nudge_v1"
+		return "tool_guidance_v2|toolless_nudge_v3|post_tool_nudge_v2|openclaw_rules_v1"
 	default:
-		return "tool_guidance_v1|toolless_nudge_v1|post_tool_nudge_v1"
+		return "tool_guidance_v2|toolless_nudge_v3|post_tool_nudge_v2|openclaw_rules_v1"
 	}
 }
 
 func (p PromptPolicy) ToolGuidanceConstraints() string {
-	return "Tool guidance constraints: (1) Never print tool-call syntax as plain text (no {\"cmd\":...}, {\"command\":...}, ```tool, <exec>). (2) When using tools, emit structured tool_calls only, with valid JSON arguments. (3) Prefer one high-confidence tool call per round, then wait for results before the next call. (4) For exec, arguments must contain a concrete non-empty command without placeholders. (5) If tools are unavailable or unnecessary, provide direct executable steps instead of fake calls. (6) For reminder requests, call `reminder` directly with action/message/time and do not run `blue reminder --help`."
+	return "Tool guidance constraints: (1) Never print tool-call syntax as plain text (no {\"cmd\":...}, {\"command\":...}, ```tool, <exec>). (2) When using tools, emit structured tool_calls only, with valid JSON arguments. (3) One step at a time: prefer one high-confidence tool call per round, then wait for results. (4) Only use listed tools; do not invent capabilities. (5) For exec, arguments must contain a concrete non-empty command without placeholders. (6) If tools are unavailable or unnecessary, provide direct executable steps instead of fake calls. (7) Built-in tools first; MCP fallback only when needed. (8) For reminder requests, call `reminder` directly with action/message/time and do not run `blue reminder --help`."
 }
 
 func (p PromptPolicy) ToollessAutoContinueNudge(agentMode bool, reason string) string {
 	if agentMode {
+		if reason == "missing_next_steps" {
+			return "You already provided a completion summary but missed the required next-step guidance. Reply WITHOUT calling tools. Keep the completion concise, then add a `Suggested next steps:` section with 1-3 concrete, low-risk actions the user can take immediately. If no further action is needed, explicitly include `1. No further action needed.` Stop only if the user explicitly asks to stop."
+		}
 		if reason == "missing_todo" {
 			return "Agent mode checklist bootstrap required. FIRST output a canonical TODO checklist using markdown checkboxes (`- [ ] step`) for all remaining concrete tasks. Then execute the first unchecked item with tools. Now actually execute by calling available tools. Keep updating the same checklist (mark completed items first), and continue until all items are checked. " + p.ToolGuidanceConstraints() + " Stop only if the user explicitly asks to stop."
 		}
@@ -64,6 +67,9 @@ func (p PromptPolicy) ToollessAutoContinueNudge(agentMode bool, reason string) s
 			return "A canonical TODO checklist already exists. Do NOT output another TODO list and do NOT rewrite the current checklist in this turn. Execute the first unchecked item immediately by emitting at least one real tool call (prefer `exec`). If no tool is needed, provide a concrete completion summary with deliverables. " + p.ToolGuidanceConstraints() + " Stop only if the user explicitly asks to stop."
 		}
 		return "You described what to do but did not call any tools. Now actually execute by calling available tools (especially exec for file creation/edit/run steps). Do not describe - act. " + p.ToolGuidanceConstraints() + " Keep agent mode in a continuous improvement loop: after each completed action, find the next concrete improvement and execute it while continuing from the existing canonical TODO checklist. Update checklist status first, and avoid rewriting the full checklist unless scope changed. Stop only if the user explicitly asks to stop."
+	}
+	if reason == "missing_next_steps" {
+		return "You already provided a completion summary but missed next-step guidance. Reply with a concise summary plus `Suggested next steps:` and 1-3 concrete actions (or explicitly state no further action is needed)."
 	}
 	return "You described what to do but did not call any tools. Now actually execute by calling available tools (especially exec for file creation/edit/run steps). Do not describe - act. " + p.ToolGuidanceConstraints()
 }

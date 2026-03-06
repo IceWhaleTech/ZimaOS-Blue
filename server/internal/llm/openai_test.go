@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -51,7 +50,7 @@ func TestOpenAIProviderModels(t *testing.T) {
 // Test OpenAI provider chat with mock server
 func TestOpenAIProviderChat(t *testing.T) {
 	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
 		if r.Method != "POST" {
 			t.Errorf("expected POST, got %s", r.Method)
@@ -114,7 +113,7 @@ func TestOpenAIProviderChat(t *testing.T) {
 
 // Test OpenAI provider chat with tool calls
 func TestOpenAIProviderChatWithToolCalls(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]interface{}{
 			"id":    "chatcmpl-456",
 			"model": "gpt-4",
@@ -175,7 +174,7 @@ func TestOpenAIProviderChatWithToolCalls(t *testing.T) {
 
 // Test OpenAI provider error handling
 func TestOpenAIProviderChatError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		resp := map[string]interface{}{
 			"error": map[string]interface{}{
@@ -201,7 +200,7 @@ func TestOpenAIProviderChatError(t *testing.T) {
 
 // Test OpenAI provider context cancellation
 func TestOpenAIProviderContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate slow response
 		<-r.Context().Done()
 	}))
@@ -227,7 +226,7 @@ func TestOpenAIProviderContextCancellation(t *testing.T) {
 func TestOpenAIProviderStreamingIncludesUsageOption(t *testing.T) {
 	var receivedRequest map[string]interface{}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Decode the request body
 		json.NewDecoder(r.Body).Decode(&receivedRequest)
 
@@ -270,7 +269,7 @@ func TestOpenAIProviderStreamingIncludesUsageOption(t *testing.T) {
 
 // Test OpenAI provider streaming callback includes usage in final chunk
 func TestOpenAIProviderStreamingCallbackIncludesUsage(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		// Send content chunks

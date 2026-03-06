@@ -150,6 +150,76 @@ func TestCompactToolResultContentForLLM_NonJSONCapped(t *testing.T) {
 	}
 }
 
+func TestCompactToolResultContentForLLM_ExecRedactsSensitiveFields(t *testing.T) {
+	raw := map[string]interface{}{
+		"status":     "failed",
+		"exit_code":  1,
+		"command":    "cat ~/.ssh/id_rsa",
+		"stdout":     "SECRET_STDOUT",
+		"stderr":     "SECRET_STDERR",
+		"error":      "SECRET_ERROR",
+		"session_id": "sess-123",
+		"host":       "sandbox",
+		"warnings":   []interface{}{"warn1", "warn2"},
+		"data": map[string]interface{}{
+			"provider":      "duckduckgo",
+			"query":         "OpenClaw",
+			"message":       "sensitive internal message",
+			"error":         "sensitive internal error",
+			"secret_blob":   "should-not-leak",
+			"debug_payload": map[string]interface{}{"token": "abc"},
+		},
+	}
+	contentBytes, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("marshal exec payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("exec", string(contentBytes))
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted payload: %v", err)
+	}
+
+	for _, forbidden := range []string{"stdout", "stderr", "command", "session_id", "host", "warnings", "error"} {
+		if _, ok := out[forbidden]; ok {
+			t.Fatalf("expected %s to be redacted from LLM payload: %#v", forbidden, out)
+		}
+	}
+	if out["output_redacted"] != true || out["stdout_redacted"] != true || out["stderr_redacted"] != true {
+		t.Fatalf("expected output redaction markers, got %#v", out)
+	}
+	if out["command_redacted"] != true || out["runtime_redacted"] != true || out["error_redacted"] != true {
+		t.Fatalf("expected exec redaction markers, got %#v", out)
+	}
+	if out["warning_count"] != float64(2) {
+		t.Fatalf("expected warning_count=2, got %#v", out["warning_count"])
+	}
+
+	data, ok := out["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected compacted data map, got %#v", out["data"])
+	}
+	if data["message_redacted"] != true || data["error_redacted"] != true {
+		t.Fatalf("expected nested data redaction markers, got %#v", data)
+	}
+	if _, ok := data["message"]; ok {
+		t.Fatalf("expected nested message removed, got %#v", data)
+	}
+	if _, ok := data["error"]; ok {
+		t.Fatalf("expected nested error removed, got %#v", data)
+	}
+	if _, ok := data["secret_blob"]; ok {
+		t.Fatalf("expected unknown nested fields redacted, got %#v", data)
+	}
+	if _, ok := data["debug_payload"]; ok {
+		t.Fatalf("expected unknown nested fields redacted, got %#v", data)
+	}
+	if data["extra_fields_redacted"] != float64(2) {
+		t.Fatalf("expected extra_fields_redacted=2, got %#v", data["extra_fields_redacted"])
+	}
+}
+
 func TestCompactToolResultsForLLM_BoundsResponsesBodySize(t *testing.T) {
 	results := make([]map[string]interface{}, 0, 10)
 	for i := 0; i < 10; i++ {

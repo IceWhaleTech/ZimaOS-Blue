@@ -12,13 +12,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
 )
@@ -419,12 +423,84 @@ func TestDefaultModelForCCCLI(t *testing.T) {
 	if got := h.defaultModelForCCCLI(""); got != defaultCCCLIModel {
 		t.Fatalf("empty model with cc cli = %q, want %q", got, defaultCCCLIModel)
 	}
-	if got := h.defaultModelForCCCLI("auto"); got != defaultCCCLIModel {
-		t.Fatalf("auto model with cc cli = %q, want %q", got, defaultCCCLIModel)
+	if got := h.defaultModelForCCCLI("auto"); got != "auto" {
+		t.Fatalf("auto model with cc cli = %q, want %q", got, "auto")
 	}
 	if got := h.defaultModelForCCCLI("gpt-4o"); got != "gpt-4o" {
 		t.Fatalf("explicit model with cc cli = %q, want %q", got, "gpt-4o")
 	}
+
+	newPoolWithModel := func(t *testing.T, providerEnabled, modelEnabled bool) *providerpool.Pool {
+		t.Helper()
+
+		storage, err := providerpool.NewFileStorage(t.TempDir())
+		if err != nil {
+			t.Fatalf("create provider storage: %v", err)
+		}
+		registry, err := providerpool.NewRegistry(storage)
+		if err != nil {
+			t.Fatalf("create provider registry: %v", err)
+		}
+		provider := &providerpool.Provider{
+			ID:      "p-test",
+			Name:    "p-test",
+			Type:    providerpool.ProviderTypeCustom,
+			Enabled: true,
+			Status:  providerpool.ProviderStatusActive,
+			BaseURL: "https://example.com/v1",
+		}
+		if err := registry.Register(provider); err != nil {
+			t.Fatalf("register provider: %v", err)
+		}
+		if !providerEnabled {
+			if err := registry.Disable(provider.ID); err != nil {
+				t.Fatalf("disable provider: %v", err)
+			}
+		}
+		if err := storage.SaveModels(provider.ID, []*providerpool.Model{
+			{
+				ID:         defaultCCCLIModel,
+				Name:       defaultCCCLIModel,
+				ProviderID: provider.ID,
+				Enabled:    modelEnabled,
+			},
+		}); err != nil {
+			t.Fatalf("save models: %v", err)
+		}
+
+		discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+		return &providerpool.Pool{
+			Registry:  registry,
+			Discovery: discovery,
+		}
+	}
+
+	t.Run("fallbacks to auto when default model provider is disabled", func(t *testing.T) {
+		h2 := &ChatHandler{}
+		h2.SetClaudeCodeHandler(claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore()))
+		h2.SetProviderPool(newPoolWithModel(t, false, true))
+		if got := h2.defaultModelForCCCLI("auto"); got != "auto" {
+			t.Fatalf("auto model with disabled provider = %q, want auto", got)
+		}
+	})
+
+	t.Run("fallbacks to auto when default model probe marked unavailable", func(t *testing.T) {
+		h2 := &ChatHandler{}
+		h2.SetClaudeCodeHandler(claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore()))
+		h2.SetProviderPool(newPoolWithModel(t, true, false))
+		if got := h2.defaultModelForCCCLI("auto"); got != "auto" {
+			t.Fatalf("auto model with disabled default model = %q, want auto", got)
+		}
+	})
+
+	t.Run("keeps explicit auto when provider and model are available", func(t *testing.T) {
+		h2 := &ChatHandler{}
+		h2.SetClaudeCodeHandler(claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore()))
+		h2.SetProviderPool(newPoolWithModel(t, true, true))
+		if got := h2.defaultModelForCCCLI("auto"); got != "auto" {
+			t.Fatalf("auto model with available default model = %q, want auto", got)
+		}
+	})
 }
 
 func TestChatOnce_InjectsLocaleFromSettingsToProxyBridge(t *testing.T) {
@@ -484,6 +560,91 @@ func TestChatOnce_DoesNotOverrideContextLocale(t *testing.T) {
 	if gotLocale != "ja-JP" {
 		t.Fatalf("Accept-Language = %q, want %q", gotLocale, "ja-JP")
 	}
+}
+
+func TestProcessChannelMessage_DefaultModel502RollsBackToAuto(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	registry := llm.NewProviderRegistry()
+	registry.Register(&scriptedChatProvider{
+		name:   "model-catalog",
+		models: []string{defaultCCCLIModel},
+	})
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler.SetClaudeCodeHandler(claudecode.NewHandlerWithDataDir(nil, "", kvstore.NewMemoryStore()))
+
+	var requestModels []string
+	bridge := proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		requestModels = append(requestModels, strings.TrimSpace(body.Model))
+		if len(requestModels) == 1 {
+			http.Error(w, `upstream 502: {"error":{"message":"Upstream request failed","type":"upstream_error"}}`, http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp_ok","model":"auto","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	handler.SetProxyBridge(bridge)
+
+	resp, err := handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_fallback_auto",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Content:     "hello",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v (models=%v)", err, requestModels)
+	}
+	if strings.TrimSpace(resp) == "" {
+		t.Fatalf("ProcessChannelMessage() returned empty response")
+	}
+	if len(requestModels) != 2 {
+		t.Fatalf("proxy calls = %d, want 2; models=%v", len(requestModels), requestModels)
+	}
+	if requestModels[0] != defaultCCCLIModel {
+		t.Fatalf("first request model = %q, want %q", requestModels[0], defaultCCCLIModel)
+	}
+	if requestModels[1] != "auto" {
+		t.Fatalf("second request model = %q, want auto", requestModels[1])
+	}
+}
+
+func TestShouldRollbackIMDefaultModelToAuto(t *testing.T) {
+	t.Run("returns true for default model on 5xx", func(t *testing.T) {
+		err := &proxybridge.ProxyError{StatusCode: http.StatusBadGateway, Body: "upstream 502"}
+		if !shouldRollbackIMDefaultModelToAuto(defaultCCCLIModel, err) {
+			t.Fatalf("shouldRollbackIMDefaultModelToAuto() = false, want true")
+		}
+	})
+
+	t.Run("returns true for default model on overload", func(t *testing.T) {
+		err := &proxybridge.ProxyError{StatusCode: http.StatusTooManyRequests, Body: "rate limit"}
+		if !shouldRollbackIMDefaultModelToAuto(defaultCCCLIModel, err) {
+			t.Fatalf("shouldRollbackIMDefaultModelToAuto() = false, want true")
+		}
+	})
+
+	t.Run("returns false for non-default model", func(t *testing.T) {
+		err := &proxybridge.ProxyError{StatusCode: http.StatusBadGateway, Body: "upstream 502"}
+		if shouldRollbackIMDefaultModelToAuto("auto", err) {
+			t.Fatalf("shouldRollbackIMDefaultModelToAuto() = true, want false")
+		}
+	})
+
+	t.Run("returns true for default model on no-provider error", func(t *testing.T) {
+		err := &proxybridge.ProxyError{StatusCode: http.StatusServiceUnavailable, Body: "no available provider"}
+		if !shouldRollbackIMDefaultModelToAuto(defaultCCCLIModel, err) {
+			t.Fatalf("shouldRollbackIMDefaultModelToAuto() = false, want true")
+		}
+	})
 }
 
 func TestSendMessage_PropagatesSettingsLocaleToUpstreamAcceptLanguage(t *testing.T) {
@@ -846,7 +1007,7 @@ func TestChatHandlerSendMessageAutoContinue_PseudoToolCallCommandWorkdirJSON(t *
 	conv, _ := store.CreateConversation(context.Background(), "Pseudo Tool Call SendMessage")
 
 	registry := llm.NewProviderRegistry()
-	pseudoContent := "好的，我来给你设一个 10 秒后的提醒。{\"command\":\"blue reminder.add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}{\"command\":\"...\"}\n```\nLet's do that exactly.{\"command\":\"blue help reminder\",...}\n```"
+	pseudoContent := "好的，我来给你设一个 10 秒后的提醒。to=functions.exec {\"command\":\"blue reminder.add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}{\"command\":\"...\"}\n```\nLet's do that exactly.{\"command\":\"blue help reminder\",...}\n```"
 	scripted := &scriptedChatProvider{
 		name: "scripted",
 		responses: []llm.ChatResponse{
@@ -971,7 +1132,7 @@ func TestChatHandlerSendMessageAutoContinue_TracksPlanStateAcrossToolAndToolless
 				Model: "gpt-5.3-codex-spark",
 				Message: llm.Message{
 					Role:    llm.RoleAssistant,
-					Content: "已完成，游戏可直接运行，地址：http://localhost:3000",
+					Content: "已完成，游戏可直接运行，地址：http://localhost:3000。下一步建议：1. 访问并验证游戏功能。2. 运行回归测试。",
 				},
 				Usage: llm.Usage{PromptTokens: 130, CompletionTokens: 35, TotalTokens: 165},
 			},
@@ -1318,7 +1479,7 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToDeepResearch(t *testing.T) 
 	handler.deepResearchExec = execMock
 
 	e := echo.New()
-	reqBody := `{"message":"no provider configured","provider":"","model":""}`
+	reqBody := `{"message":"please do deep research on zimaos latest updates with sources","provider":"","model":""}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -1362,6 +1523,45 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToDeepResearch(t *testing.T) 
 	}
 }
 
+func TestChatHandlerSendMessage_NoProviderNonResearchSkipsDeepResearchFallback(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Fallback Conv Non Research")
+	registry := llm.NewProviderRegistry() // intentionally empty
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	execMock := &deepResearchExecMock{
+		result: map[string]interface{}{
+			"answer": "should not be used",
+		},
+	}
+	handler.deepResearchExec = execMock
+
+	e := echo.New()
+	reqBody := `{"message":"hello","provider":"","model":""}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	err := handler.SendMessage(c)
+	if err == nil {
+		t.Fatalf("expected error when no provider and no research intent")
+	}
+	if !strings.Contains(err.Error(), "no proxy bridge configured") {
+		t.Fatalf("error = %v, want no proxy bridge configured", err)
+	}
+	execMock.mu.Lock()
+	calls := execMock.calls
+	execMock.mu.Unlock()
+	if calls != 0 {
+		t.Fatalf("deep research fallback calls = %d, want 0", calls)
+	}
+}
+
 func TestChatHandlerSendMessage_NoProviderFallsBackToDeepResearchWithV2Fields(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -1392,7 +1592,7 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToDeepResearchWithV2Fields(t 
 	handler.deepResearchExec = execMock
 
 	e := echo.New()
-	reqBody := `{"message":"调研蓝驰付强观点演变","provider":"","model":""}`
+	reqBody := `{"message":"请深度调研蓝驰付强观点演变并附来源","provider":"","model":""}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -1499,10 +1699,13 @@ func TestChatHandlerSendMessage_NoProviderFallsBackToIROnlyWhenDeepResearchUnava
 	conv, _ := store.CreateConversation(context.Background(), "IR fallback Conv")
 	registry := llm.NewProviderRegistry() // intentionally empty
 	handler := NewChatHandler(store, registry, tools.NewRegistry())
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	settings.settings.OfflineIRFallbackEnabled = &enabled
+	handler.SetSettingsHandler(settings)
 
 	e := echo.New()
-	reqBody := `{"message":"no provider and no deepresearch","provider":"","model":""}`
+	reqBody := `{"message":"please deep research zimaos latest updates","provider":"","model":""}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -1620,7 +1823,10 @@ func TestChatHandlerSendMessage_NoProviderIROnlyUsesLayeredMemoryRecall(t *testi
 	conv, _ := store.CreateConversation(context.Background(), "IR layered memory fallback")
 	registry := llm.NewProviderRegistry() // intentionally empty
 	handler := NewChatHandler(store, registry, tools.NewRegistry())
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	settings.settings.OfflineIRFallbackEnabled = &enabled
+	handler.SetSettingsHandler(settings)
 
 	memDir := t.TempDir()
 	mdBackend, err := memory.NewPureMarkdownBackend(memDir)
@@ -1641,7 +1847,7 @@ func TestChatHandlerSendMessage_NoProviderIROnlyUsesLayeredMemoryRecall(t *testi
 	}
 
 	e := echo.New()
-	reqBody := `{"message":"What is Alpha project timeline?","provider":"","model":""}`
+	reqBody := `{"message":"Please deep research Alpha project timeline with local references","provider":"","model":""}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -1681,8 +1887,10 @@ func TestChatHandlerSendMessage_ShortQARoutesToSmallModel(t *testing.T) {
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
 	enabled := true
 	shortQAEnabled := true
+	offlineIRFallbackEnabled := true
 	settings.settings.SmallModelEnabled = &enabled
 	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	settings.settings.OfflineIRFallbackEnabled = &offlineIRFallbackEnabled
 	handler.SetSettingsHandler(settings)
 	sm := &smallModelRuntimeMock{respText: "small model answer"}
 	handler.SetSmallModelRuntime(sm)
@@ -1727,8 +1935,10 @@ func TestChatHandlerSendMessage_ShortQAWithImageAttachmentRoutesToSmallModel(t *
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
 	enabled := true
 	shortQAEnabled := true
+	offlineIRFallbackEnabled := true
 	settings.settings.SmallModelEnabled = &enabled
 	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	settings.settings.OfflineIRFallbackEnabled = &offlineIRFallbackEnabled
 	handler.SetSettingsHandler(settings)
 	sm := &smallModelRuntimeMock{respText: "image small model answer"}
 	handler.SetSmallModelRuntime(sm)
@@ -1852,8 +2062,10 @@ func TestChatHandlerSendMessage_ShortQAFallbackIRFirst(t *testing.T) {
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
 	enabled := true
 	shortQAEnabled := true
+	offlineIRFallbackEnabled := true
 	settings.settings.SmallModelEnabled = &enabled
 	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	settings.settings.OfflineIRFallbackEnabled = &offlineIRFallbackEnabled
 	handler.SetSettingsHandler(settings)
 	sm := &smallModelRuntimeMock{err: smallmodel.ErrNotReady}
 	handler.SetSmallModelRuntime(sm)
@@ -1888,6 +2100,70 @@ func TestChatHandlerSendMessage_ShortQAFallbackIRFirst(t *testing.T) {
 	}
 	if got, _ := resp["content"].(string); !strings.Contains(got, "Project X timeline is planned for Q4") {
 		t.Fatalf("content = %q, want local IR snippet", got)
+	}
+}
+
+func TestChatHandlerSendMessage_ShortQAFallbackIROfflineSwitchDisabledGoesToLLM(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Short QA IR Disabled")
+	_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{
+		Role:    "assistant",
+		Content: "Project Z timeline is planned for next month.",
+	})
+
+	registry := llm.NewProviderRegistry()
+	mockProvider := llm.NewMockProvider()
+	mockProvider.SetResponse(llm.ChatResponse{
+		ID:      "resp-ir-disabled",
+		Model:   "mock-model",
+		Message: llm.Message{Role: llm.RoleAssistant, Content: "llm fallback answer"},
+	})
+	registry.Register(mockProvider)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	shortQAEnabled := true
+	offlineIRFallbackEnabled := false
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	settings.settings.OfflineIRFallbackEnabled = &offlineIRFallbackEnabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{err: smallmodel.ErrNotReady}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{"message":"Project Z timeline?","provider":"","model":"mock-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["provider"]; got == "ir" {
+		t.Fatalf("provider = %v, want non-IR LLM fallback", got)
+	}
+	if got := resp["content"]; got != "llm fallback answer" {
+		t.Fatalf("content = %v, want llm fallback answer", got)
+	}
+
+	stats := handler.smallModelStats.Snapshot()
+	if stats.FallbackReasons[fallbackReasonIRNoSignal] != 1 {
+		t.Fatalf("fallback reason %q = %d, want 1", fallbackReasonIRNoSignal, stats.FallbackReasons[fallbackReasonIRNoSignal])
 	}
 }
 
@@ -1960,8 +2236,10 @@ func TestChatHandlerSendMessage_ShortQACircuitBreakerFallsBackToIR(t *testing.T)
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
 	enabled := true
 	shortQAEnabled := true
+	offlineIRFallbackEnabled := true
 	settings.settings.SmallModelEnabled = &enabled
 	settings.settings.SmallModelRouteShortQAEnabled = &shortQAEnabled
+	settings.settings.OfflineIRFallbackEnabled = &offlineIRFallbackEnabled
 	handler.SetSettingsHandler(settings)
 	handler.smallModelBreaker = newSmallModelCircuitBreaker(2, time.Minute)
 	sm := &smallModelRuntimeMock{err: context.DeadlineExceeded}
@@ -3031,6 +3309,86 @@ func TestChatHandlerSendMessageRecordsMetrics(t *testing.T) {
 	}
 }
 
+func TestChatHandlerSendMessageTrialUsageAggregatesToolRoundsWithoutMetricsRecorder(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Trial Conv")
+
+	registry := llm.NewProviderRegistry()
+	registry.Register(&scriptedChatProvider{
+		name:   "scripted-trial",
+		models: []string{"gpt-5.3-codex"},
+		responses: []llm.ChatResponse{
+			{
+				ID:         "round-1",
+				Model:      "gpt-5.3-codex",
+				Provider:   "trial",
+				ProviderID: providerpool.TrialProviderID,
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{
+						{ID: "tc-1", Name: "dummy_tool", Arguments: "{}"},
+					},
+				},
+				Usage: llm.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
+			},
+			{
+				ID:         "round-2",
+				Model:      "gpt-5.3-codex",
+				Provider:   "trial",
+				ProviderID: providerpool.TrialProviderID,
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "done",
+				},
+				Usage: llm.Usage{PromptTokens: 7, CompletionTokens: 3, TotalTokens: 10},
+			},
+		},
+	})
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{
+		def:    tools.ToolDefinition{Name: "dummy_tool"},
+		result: map[string]interface{}{"ok": true},
+	})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	ppStorage, err := providerpool.NewFileStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("create providerpool storage: %v", err)
+	}
+	ppRegistry, err := providerpool.NewRegistry(ppStorage)
+	if err != nil {
+		t.Fatalf("create providerpool registry: %v", err)
+	}
+	handler.providerPool = &providerpool.Pool{
+		Registry:          ppRegistry,
+		TrialQuotaManager: &providerpool.TrialQuotaManager{},
+	}
+
+	e := echo.New()
+	reqBody := `{"message":"run tool flow","provider":"scripted-trial","model":"gpt-5.3-codex"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	status := handler.providerPool.TrialQuotaManager.GetStatus()
+	if status.TokensUsed != 25 {
+		t.Fatalf("trial tokens_used = %d, want 25", status.TokensUsed)
+	}
+}
+
 // Test mapProviderID function
 func TestMapProviderID(t *testing.T) {
 	tests := []struct {
@@ -3324,4 +3682,173 @@ func TestEstimateInputTokens(t *testing.T) {
 	if result > 50 {
 		t.Errorf("estimateInputTokens() = %d, expected at most 50", result)
 	}
+}
+
+func TestBrowserCheckpointRequesterWeb_DeniesWhenSilent(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetBrowserCheckpointManager(tools.NewBrowserCheckpointManager(2 * time.Minute))
+
+	// No active SSE client => AskQuestionsWithContext returns silent fallback.
+	questionMgr := tools.NewQuestionManager(sse.NewBroker(), func() bool { return false }, 2*time.Minute)
+	questionMgr.SetTimeoutActionFunc(func() string { return "default" })
+	handler.SetQuestionManager(questionMgr)
+
+	requester := handler.buildBrowserCheckpointRequester(
+		context.Background(),
+		"web",
+		"user-1",
+		"session-1",
+		"",
+		"",
+		i18n.DefaultLanguage,
+	)
+	if requester == nil {
+		t.Fatal("expected browser checkpoint requester")
+	}
+
+	result, err := requester(context.Background(), tools.BrowserCheckpointRequest{
+		Required:  true,
+		RiskLevel: "high",
+		Step:      "act",
+		Action:    "click",
+	})
+	if err != nil {
+		t.Fatalf("requester returned error: %v", err)
+	}
+	if result.Decision != tools.BrowserCheckpointDeny {
+		t.Fatalf("decision = %s, want %s", result.Decision, tools.BrowserCheckpointDeny)
+	}
+	if pending := handler.browserCheckpointMgr.GetPendingBySession("session-1"); pending != nil {
+		t.Fatalf("expected checkpoint resolved, got pending %+v", pending)
+	}
+}
+
+func TestBrowserCheckpointRequesterWeb_DismissDenies(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetBrowserCheckpointManager(tools.NewBrowserCheckpointManager(2 * time.Minute))
+
+	broker := sse.NewBroker()
+	client := broker.Subscribe("user-2")
+	defer broker.Unsubscribe("user-2", client)
+
+	questionMgr := tools.NewQuestionManager(broker, func() bool { return false }, 2*time.Minute)
+	handler.SetQuestionManager(questionMgr)
+
+	requester := handler.buildBrowserCheckpointRequester(
+		context.Background(),
+		"web",
+		"user-2",
+		"session-2",
+		"",
+		"",
+		i18n.DefaultLanguage,
+	)
+	if requester == nil {
+		t.Fatal("expected browser checkpoint requester")
+	}
+
+	resultCh := make(chan tools.BrowserCheckpointResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, err := requester(context.Background(), tools.BrowserCheckpointRequest{
+			Required:  true,
+			RiskLevel: "high",
+			Step:      "act",
+			Action:    "click",
+		})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resultCh <- result
+	}()
+
+	pending := waitPendingQuestionForUser(t, questionMgr, "user-2", 2*time.Second)
+	if !questionMgr.DismissQuestion(pending.ID) {
+		t.Fatalf("failed to dismiss question id=%s", pending.ID)
+	}
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("requester returned error: %v", err)
+	case result := <-resultCh:
+		if result.Decision != tools.BrowserCheckpointDeny {
+			t.Fatalf("decision = %s, want %s", result.Decision, tools.BrowserCheckpointDeny)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for requester result")
+	}
+}
+
+func TestBrowserCheckpointRequesterWeb_ContinueApproves(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetBrowserCheckpointManager(tools.NewBrowserCheckpointManager(2 * time.Minute))
+
+	broker := sse.NewBroker()
+	client := broker.Subscribe("user-3")
+	defer broker.Unsubscribe("user-3", client)
+
+	questionMgr := tools.NewQuestionManager(broker, func() bool { return false }, 2*time.Minute)
+	handler.SetQuestionManager(questionMgr)
+
+	requester := handler.buildBrowserCheckpointRequester(
+		context.Background(),
+		"web",
+		"user-3",
+		"session-3",
+		"",
+		"",
+		i18n.DefaultLanguage,
+	)
+	if requester == nil {
+		t.Fatal("expected browser checkpoint requester")
+	}
+
+	resultCh := make(chan tools.BrowserCheckpointResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, err := requester(context.Background(), tools.BrowserCheckpointRequest{
+			Required:  true,
+			RiskLevel: "high",
+			Step:      "act",
+			Action:    "click",
+		})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resultCh <- result
+	}()
+
+	pending := waitPendingQuestionForUser(t, questionMgr, "user-3", 2*time.Second)
+	if !questionMgr.ResolveAnswer(pending.ID, []tools.QuestionAnswerResult{{
+		QuestionID: "browser_checkpoint",
+		Selected:   []string{"continue"},
+	}}) {
+		t.Fatalf("failed to resolve question id=%s", pending.ID)
+	}
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("requester returned error: %v", err)
+	case result := <-resultCh:
+		if result.Decision != tools.BrowserCheckpointApprove {
+			t.Fatalf("decision = %s, want %s", result.Decision, tools.BrowserCheckpointApprove)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for requester result")
+	}
+}
+
+func waitPendingQuestionForUser(t *testing.T, mgr *tools.QuestionManager, userID string, timeout time.Duration) *tools.QuestionRequest {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if pending := mgr.GetPending(userID); pending != nil {
+			return pending
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timeout waiting for pending question for user %s", userID)
+	return nil
 }

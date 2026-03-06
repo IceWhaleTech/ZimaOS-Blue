@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,7 +17,7 @@ func TestOTAChecker_FetchOTA(t *testing.T) {
 		ReleaseNoteURL: "https://example.com/ZimaOS-Blue/notes.md",
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		if q.Get("os") == "" || q.Get("ver") == "" {
 			t.Error("missing required query params")
@@ -46,7 +45,7 @@ func TestOTAChecker_FetchOTA(t *testing.T) {
 
 func TestOTAChecker_HostHeader(t *testing.T) {
 	var gotHost string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotHost = r.Host
 		json.NewEncoder(w).Encode(OTAResponse{Version: "0.1.0", ReleaseNoteURL: "https://example.com/blue/notes.md"})
 	}))

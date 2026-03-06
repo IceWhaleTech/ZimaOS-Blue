@@ -189,10 +189,12 @@ func TestRegistryWithCallback(t *testing.T) {
 	registry.Register(provider)
 	registry.Enable("test")
 	registry.Disable("test")
+	registry.AddAPIKey("test", &APIKey{ID: "k1", Key: "sk-test", Enabled: true})
+	registry.RemoveAPIKey("test", "k1")
 	registry.Update(provider)
 	registry.Unregister("test")
 
-	expected := []string{"register", "enable", "disable", "update", "unregister"}
+	expected := []string{"register", "enable", "disable", "add_api_key", "remove_api_key", "update", "unregister"}
 	if len(actions) != len(expected) {
 		t.Fatalf("Expected %d actions, got %d", len(expected), len(actions))
 	}
@@ -334,6 +336,18 @@ func TestGetHealthCheckURLs(t *testing.T) {
 			provider: &Provider{ID: "glm", BaseURL: "https://open.bigmodel.cn/api/paas/v4", APIFormat: APIFormatOpenAI},
 			method:   "GET",
 			expected: "https://open.bigmodel.cn/api/paas/v4/models",
+		},
+		{
+			name:     "nvidia-v1",
+			provider: &Provider{ID: "nvidia", BaseURL: "https://integrate.api.nvidia.com/v1", APIFormat: APIFormatOpenAI},
+			method:   "POST",
+			expected: "https://integrate.api.nvidia.com/v1/chat/completions",
+		},
+		{
+			name:     "nvidia-root",
+			provider: &Provider{ID: "nvidia", BaseURL: "https://integrate.api.nvidia.com", APIFormat: APIFormatOpenAI},
+			method:   "POST",
+			expected: "https://integrate.api.nvidia.com/v1/chat/completions",
 		},
 	}
 

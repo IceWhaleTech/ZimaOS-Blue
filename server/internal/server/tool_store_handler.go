@@ -110,7 +110,7 @@ type ToolResponse struct {
 }
 
 // toolsHiddenFromUI lists tools that should not appear on the plugins page.
-// These are internal-only tools (e.g. memory is accessed via the mgmt skill).
+// These are internal-only tools (e.g. memory is accessed via compat/internal routing).
 var toolsHiddenFromUI = map[string]bool{
 	"memory": true,
 }

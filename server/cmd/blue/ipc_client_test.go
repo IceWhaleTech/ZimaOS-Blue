@@ -77,3 +77,46 @@ func TestInjectIPCContextParams_DoesNotOverrideExplicitValue(t *testing.T) {
 		t.Fatalf("__blue_user_id = %q, want %q", got, "explicit")
 	}
 }
+
+func TestInjectIPCContextParams_AddsSessionID(t *testing.T) {
+	params := map[string]string{
+		"query": "hello",
+	}
+	getenv := func(key string) string {
+		switch key {
+		case "BLUE_USER_ID":
+			return "user-123"
+		case "BLUE_SESSION_ID":
+			return "conv-456"
+		default:
+			return ""
+		}
+	}
+
+	injectIPCContextParams(params, getenv)
+
+	if got := params["session_id"]; got != "conv-456" {
+		t.Fatalf("session_id = %q, want %q", got, "conv-456")
+	}
+	if got := params["__blue_user_id"]; got != "user-123" {
+		t.Fatalf("__blue_user_id = %q, want %q", got, "user-123")
+	}
+}
+
+func TestInjectIPCContextParams_DoesNotOverrideExplicitSessionID(t *testing.T) {
+	params := map[string]string{
+		"session_id": "explicit-conv",
+	}
+	getenv := func(key string) string {
+		if key == "BLUE_SESSION_ID" {
+			return "from-env"
+		}
+		return ""
+	}
+
+	injectIPCContextParams(params, getenv)
+
+	if got := params["session_id"]; got != "explicit-conv" {
+		t.Fatalf("session_id = %q, want %q", got, "explicit-conv")
+	}
+}
