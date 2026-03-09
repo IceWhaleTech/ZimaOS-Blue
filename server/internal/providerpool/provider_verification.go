@@ -125,17 +125,7 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 	openAIReachable := isProviderVerificationReachable(chatStatus)
 	responsesReachable := isProviderVerificationReachable(respV1Status) || isProviderVerificationReachable(respRawStatus)
 
-	recommendedFormat := detectedFormat
-	switch {
-	case anthropicReachable:
-		recommendedFormat = APIFormatAnthropic
-	case openAIReachable && !responsesOnly:
-		recommendedFormat = APIFormatOpenAI
-	case responsesReachable:
-		recommendedFormat = APIFormatResponses
-	case openAIReachable:
-		recommendedFormat = APIFormatOpenAI
-	}
+	recommendedFormat := recommendedAPIFormatForModel(probeModel, detectedFormat, anthropicReachable, openAIReachable && !responsesOnly, responsesReachable, responsesOnly)
 
 	rootBaseURL := strings.TrimSuffix(urls.modelsURL, "/v1/models")
 	if strings.TrimSpace(rootBaseURL) == "" {
@@ -472,58 +462,6 @@ func extractModelIDsFromModelsResponse(body string) []string {
 	}
 
 	return nil
-}
-
-func modelIntelligenceScore(modelID string) int {
-	id := strings.ToLower(strings.TrimSpace(modelID))
-	if id == "" {
-		return 0
-	}
-
-	score := 0
-	boosts := []struct {
-		key   string
-		score int
-	}{
-		{"gpt-5", 140},
-		{"o3", 120},
-		{"o1", 95},
-		{"opus", 110},
-		{"reasoner", 110},
-		{"thinking", 95},
-		{"sonnet", 80},
-		{"pro", 65},
-		{"max", 60},
-		{"ultra", 60},
-		{"codex", 55},
-		{"r1", 45},
-	}
-	for _, item := range boosts {
-		if strings.Contains(id, item.key) {
-			score += item.score
-		}
-	}
-
-	penalties := []struct {
-		key   string
-		score int
-	}{
-		{"mini", -80},
-		{"nano", -95},
-		{"lite", -70},
-		{"flash", -70},
-		{"haiku", -60},
-		{"spark", -55},
-		{"small", -45},
-		{"tiny", -45},
-	}
-	for _, item := range penalties {
-		if strings.Contains(id, item.key) {
-			score += item.score
-		}
-	}
-
-	return score
 }
 
 func allProbeResultsModelNotFound(chatStatus int, chatBody string, respV1Status int, respV1Body string, respRawStatus int, respRawBody string) bool {

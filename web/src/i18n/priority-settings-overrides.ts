@@ -30,7 +30,43 @@ export default {
       "closeBehavior": "Comportament en tancar",
       "closeBehaviorMinimize": "Minimitza a la safata",
       "closeBehaviorQuit": "Surt",
-      "closeBehaviorSaved": "S'ha desat el comportament en tancar"
+      "closeBehaviorSaved": "S'ha desat el comportament en tancar",
+      "network": {
+        "corsTitle": "Configuració de CORS",
+        "corsDescription": "Configura els orígens permesos per a les sol·licituds entre orígens",
+        "dynamicOrigins": "Orígens dinàmics (URL del túnel)",
+        "defaultOrigins": "Orígens predeterminats",
+        "builtIn": "Integrat",
+        "originPlaceholder": "https://example.com/ca",
+        "originAdded": "Origen afegit",
+        "originRemoved": "Origen eliminat",
+        "invalidUrl": "Format d'URL no vàlid",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certificat ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... clau privada ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Afegeix un camp",
+            "challengeType": "Mètode de verificació",
+            "configured": "Certificat ACME configurat",
+            "dnsCredentialHint": "Introdueix el nom i el valor de la variable d'entorn per al teu proveïdor DNS",
+            "dnsCredentials": "Credencials d'API",
+            "dnsProvider": "Proveïdor DNS",
+            "domainsHint": "Els dominis han d'apuntar a aquest servidor (registre DNS A/AAAA)",
+            "email": "Adreça electrònica",
+            "emailDomainRequired": "Cal correu electrònic i com a mínim un domini",
+            "envKey": "Nom de la variable",
+            "envValue": "Valor",
+            "note": "Nota",
+            "noteText": "El port 80 ha de ser accessible des d'internet per verificar el domini. El certificat es renovarà automàticament.",
+            "noteTextDNS": "Els registres DNS es crearan automàticament amb les credencials de la teva API. No cal accés al port 80.",
+            "provider": "Proveïdor de certificats",
+            "request": "Certificat gratuït",
+            "requestFailed": "No s'ha pogut sol·licitar el certificat",
+            "httpChallenge": "Verificació HTTP-01",
+            "dnsChallenge": "Verificació DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Control de recuperació de memòria",
@@ -426,7 +462,43 @@ export default {
       "closeBehavior": "Chování při zavření",
       "closeBehaviorMinimize": "Minimalizovat do lišty",
       "closeBehaviorQuit": "Ukončit",
-      "closeBehaviorSaved": "Chování při zavření uloženo"
+      "closeBehaviorSaved": "Chování při zavření uloženo",
+      "network": {
+        "corsTitle": "Nastavení CORS",
+        "corsDescription": "Nakonfigurujte povolené zdroje pro požadavky mezi různými zdroji",
+        "dynamicOrigins": "Dynamické zdroje (URL tunelu)",
+        "defaultOrigins": "Výchozí zdroje",
+        "builtIn": "Vestavěné",
+        "originPlaceholder": "https://example.com/cs",
+        "originAdded": "Zdroj přidán",
+        "originRemoved": "Zdroj odebrán",
+        "invalidUrl": "Neplatný formát URL",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certifikát ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... soukromý klíč ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Přidat pole",
+            "challengeType": "Metoda ověření",
+            "configured": "Certifikát ACME je nakonfigurován",
+            "dnsCredentialHint": "Zadejte název proměnné prostředí a hodnotu pro svého poskytovatele DNS",
+            "dnsCredentials": "Přihlašovací údaje API",
+            "dnsProvider": "Poskytovatel DNS",
+            "domainsHint": "Domény musí směřovat na tento server (DNS záznam A/AAAA)",
+            "email": "E-mailová adresa",
+            "emailDomainRequired": "Je vyžadován e-mail a alespoň jedna doména",
+            "envKey": "Název proměnné",
+            "envValue": "Hodnota",
+            "note": "Poznámka",
+            "noteText": "Port 80 musí být dostupný z internetu pro ověření domény. Certifikát bude automaticky obnovován.",
+            "noteTextDNS": "Záznamy DNS budou automaticky vytvořeny pomocí vašich API přihlašovacích údajů. Přístup na port 80 není vyžadován.",
+            "provider": "Poskytovatel certifikátu",
+            "request": "Certifikát zdarma",
+            "requestFailed": "Nepodařilo se vyžádat certifikát",
+            "httpChallenge": "Ověření HTTP-01",
+            "dnsChallenge": "Ověření DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Řízení vyvolání paměti",
@@ -822,7 +894,43 @@ export default {
       "closeBehavior": "Lukkeadfærd",
       "closeBehaviorMinimize": "Minimer til systembakken",
       "closeBehaviorQuit": "Afslut",
-      "closeBehaviorSaved": "Lukkeadfærd gemt"
+      "closeBehaviorSaved": "Lukkeadfærd gemt",
+      "network": {
+        "corsTitle": "CORS-konfiguration",
+        "corsDescription": "Konfigurer tilladte origins for forespørgsler på tværs af oprindelser",
+        "dynamicOrigins": "Dynamiske origins (tunnel-URL'er)",
+        "defaultOrigins": "Standard-origins",
+        "builtIn": "Indbygget",
+        "originPlaceholder": "https://example.com/da",
+        "originAdded": "Origin tilføjet",
+        "originRemoved": "Origin fjernet",
+        "invalidUrl": "Ugyldigt URL-format",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certifikat ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... privat nøgle ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Tilføj felt",
+            "challengeType": "Bekræftelsesmetode",
+            "configured": "ACME-certifikat konfigureret",
+            "dnsCredentialHint": "Indtast miljøvariabelnavnet og værdien for din DNS-udbyder",
+            "dnsCredentials": "API-legitimationsoplysninger",
+            "dnsProvider": "DNS-udbyder",
+            "domainsHint": "Domæner skal pege på denne server (DNS A/AAAA-post)",
+            "email": "E-mailadresse",
+            "emailDomainRequired": "E-mail og mindst ét domæne er påkrævet",
+            "envKey": "Variabelnavn",
+            "envValue": "Værdi",
+            "note": "Bemærk",
+            "noteText": "Port 80 skal være tilgængelig fra internettet for domænebekræftelse. Certifikatet fornyes automatisk.",
+            "noteTextDNS": "DNS-poster oprettes automatisk ved hjælp af dine API-oplysninger. Ingen adgang til port 80 er påkrævet.",
+            "provider": "Certifikatudbyder",
+            "request": "Gratis certifikat",
+            "requestFailed": "Kunne ikke anmode om certifikat",
+            "httpChallenge": "HTTP-01-verifikation",
+            "dnsChallenge": "DNS-01-verifikation"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Kontrol af hukommelsesgenkaldelse",
@@ -1218,7 +1326,43 @@ export default {
       "closeBehavior": "Verhalten beim Schließen",
       "closeBehaviorMinimize": "In den Infobereich minimieren",
       "closeBehaviorQuit": "Beenden",
-      "closeBehaviorSaved": "Verhalten beim Schließen gespeichert"
+      "closeBehaviorSaved": "Verhalten beim Schließen gespeichert",
+      "network": {
+        "corsTitle": "CORS-Konfiguration",
+        "corsDescription": "Konfigurieren Sie zulässige Origins für ursprungsübergreifende Anfragen",
+        "dynamicOrigins": "Dynamische Origins (Tunnel-URLs)",
+        "defaultOrigins": "Standard-Origins",
+        "builtIn": "Integriert",
+        "originPlaceholder": "https://example.com/de",
+        "originAdded": "Origin hinzugefügt",
+        "originRemoved": "Origin entfernt",
+        "invalidUrl": "Ungültiges URL-Format",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... Zertifikat ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... privater Schlüssel ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Feld hinzufügen",
+            "challengeType": "Verifizierungsmethode",
+            "configured": "ACME-Zertifikat konfiguriert",
+            "dnsCredentialHint": "Geben Sie den Namen und den Wert der Umgebungsvariable für Ihren DNS-Anbieter ein",
+            "dnsCredentials": "API-Anmeldedaten",
+            "dnsProvider": "DNS-Anbieter",
+            "domainsHint": "Domains müssen auf diesen Server zeigen (DNS-A/AAAA-Eintrag)",
+            "email": "E-Mail-Adresse",
+            "emailDomainRequired": "E-Mail und mindestens eine Domain sind erforderlich",
+            "envKey": "Variablenname",
+            "envValue": "Wert",
+            "note": "Hinweis",
+            "noteText": "Port 80 muss aus dem Internet erreichbar sein, damit die Domain verifiziert werden kann. Das Zertifikat wird automatisch erneuert.",
+            "noteTextDNS": "DNS-Einträge werden automatisch mit Ihren API-Anmeldedaten erstellt. Zugriff auf Port 80 ist nicht erforderlich.",
+            "provider": "Zertifikatsanbieter",
+            "request": "Kostenloses Zertifikat",
+            "requestFailed": "Zertifikat konnte nicht angefordert werden",
+            "httpChallenge": "HTTP-01-Verifizierung",
+            "dnsChallenge": "DNS-01-Verifizierung"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Speicherabruf-Steuerung",
@@ -1580,7 +1724,43 @@ export default {
       "closeBehavior": "Συμπεριφορά κατά το κλείσιμο",
       "closeBehaviorMinimize": "Ελαχιστοποίηση στο δίσκο συστήματος",
       "closeBehaviorQuit": "Έξοδος",
-      "closeBehaviorSaved": "Η συμπεριφορά κλεισίματος αποθηκεύτηκε"
+      "closeBehaviorSaved": "Η συμπεριφορά κλεισίματος αποθηκεύτηκε",
+      "network": {
+        "corsTitle": "Ρυθμίσεις CORS",
+        "corsDescription": "Ρυθμίστε τα επιτρεπόμενα origins για αιτήματα μεταξύ διαφορετικών προελεύσεων",
+        "dynamicOrigins": "Δυναμικά origins (URL τούνελ)",
+        "defaultOrigins": "Προεπιλεγμένα origins",
+        "builtIn": "Ενσωματωμένο",
+        "originPlaceholder": "https://example.com/el",
+        "originAdded": "Το origin προστέθηκε",
+        "originRemoved": "Το origin αφαιρέθηκε",
+        "invalidUrl": "Μη έγκυρη μορφή URL",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... πιστοποιητικό ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... ιδιωτικό κλειδί ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Προσθήκη πεδίου",
+            "challengeType": "Μέθοδος επαλήθευσης",
+            "configured": "Το πιστοποιητικό ACME ρυθμίστηκε",
+            "dnsCredentialHint": "Εισαγάγετε το όνομα και την τιμή της μεταβλητής περιβάλλοντος για τον πάροχο DNS σας",
+            "dnsCredentials": "Διαπιστευτήρια API",
+            "dnsProvider": "Πάροχος DNS",
+            "domainsHint": "Τα domains πρέπει να δείχνουν σε αυτόν τον διακομιστή (εγγραφή DNS A/AAAA)",
+            "email": "Διεύθυνση email",
+            "emailDomainRequired": "Απαιτούνται email και τουλάχιστον ένα domain",
+            "envKey": "Όνομα μεταβλητής",
+            "envValue": "Τιμή",
+            "note": "Σημείωση",
+            "noteText": "Η θύρα 80 πρέπει να είναι προσβάσιμη από το internet για την επαλήθευση του domain. Το πιστοποιητικό θα ανανεώνεται αυτόματα.",
+            "noteTextDNS": "Οι εγγραφές DNS θα δημιουργηθούν αυτόματα χρησιμοποιώντας τα διαπιστευτήρια API σας. Δεν απαιτείται πρόσβαση στη θύρα 80.",
+            "provider": "Πάροχος πιστοποιητικού",
+            "request": "Δωρεάν πιστοποιητικό",
+            "requestFailed": "Αποτυχία αίτησης πιστοποιητικού",
+            "httpChallenge": "Επαλήθευση HTTP-01",
+            "dnsChallenge": "Επαλήθευση DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Έλεγχος ανάκλησης μνήμης",
@@ -1963,6 +2143,42 @@ export default {
         "newVersionAvailable": "New version available",
         "title": "About",
         "upToDate": "Up to date"
+      },
+      "network": {
+        "corsTitle": "CORS settings",
+        "corsDescription": "Set the allowed origins for cross-origin requests",
+        "dynamicOrigins": "Dynamic origins (tunnel URLs)",
+        "defaultOrigins": "Default origins",
+        "builtIn": "Built in",
+        "originPlaceholder": "https://example.com/uk",
+        "originAdded": "Added origin",
+        "originRemoved": "Removed origin",
+        "invalidUrl": "Invalid URL",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certificate contents ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... private key contents ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Add field",
+            "challengeType": "Verification type",
+            "configured": "ACME certificate set up",
+            "dnsCredentialHint": "Enter the environment variable name and value used by your DNS provider",
+            "dnsCredentials": "API credentials",
+            "dnsProvider": "DNS provider",
+            "domainsHint": "Domains must point at this server (DNS A/AAAA record)",
+            "email": "Email address",
+            "emailDomainRequired": "An email address and at least one domain are required",
+            "envKey": "Variable name",
+            "envValue": "Variable value",
+            "note": "Important",
+            "noteText": "Port 80 must be reachable from the internet for domain verification. The certificate will renew automatically.",
+            "noteTextDNS": "DNS records will be created automatically using your API credentials. Port 80 access is not required.",
+            "provider": "Certificate issuer",
+            "request": "Free certificate",
+            "requestFailed": "Could not request certificate",
+            "httpChallenge": "HTTP-01 challenge",
+            "dnsChallenge": "DNS-01 challenge"
+          }
+        }
       }
     },
     "tokenEconomy": {
@@ -2162,7 +2378,43 @@ export default {
       "closeBehavior": "Comportamiento al cerrar",
       "closeBehaviorMinimize": "Minimizar a la bandeja",
       "closeBehaviorQuit": "Salir",
-      "closeBehaviorSaved": "Comportamiento al cerrar guardado"
+      "closeBehaviorSaved": "Comportamiento al cerrar guardado",
+      "network": {
+        "corsTitle": "Configuración de CORS",
+        "corsDescription": "Configura los orígenes permitidos para las solicitudes entre orígenes",
+        "dynamicOrigins": "Orígenes dinámicos (URL de túnel)",
+        "defaultOrigins": "Orígenes predeterminados",
+        "builtIn": "Integrado",
+        "originPlaceholder": "https://example.com/es",
+        "originAdded": "Origen añadido",
+        "originRemoved": "Origen eliminado",
+        "invalidUrl": "Formato de URL no válido",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certificado ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... clave privada ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Añadir campo",
+            "challengeType": "Método de verificación",
+            "configured": "Certificado ACME configurado",
+            "dnsCredentialHint": "Introduce el nombre y el valor de la variable de entorno de tu proveedor DNS",
+            "dnsCredentials": "Credenciales de API",
+            "dnsProvider": "Proveedor DNS",
+            "domainsHint": "Los dominios deben apuntar a este servidor (registro DNS A/AAAA)",
+            "email": "Correo electrónico",
+            "emailDomainRequired": "Se requiere correo electrónico y al menos un dominio",
+            "envKey": "Nombre de la variable",
+            "envValue": "Valor",
+            "note": "Nota",
+            "noteText": "El puerto 80 debe ser accesible desde internet para verificar el dominio. El certificado se renovará automáticamente.",
+            "noteTextDNS": "Los registros DNS se crearán automáticamente con tus credenciales de API. No se requiere acceso al puerto 80.",
+            "provider": "Proveedor de certificados",
+            "request": "Certificado gratis",
+            "requestFailed": "No se pudo solicitar el certificado",
+            "httpChallenge": "Verificación HTTP-01",
+            "dnsChallenge": "Verificación DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Control de recuperación de memoria",
@@ -2524,7 +2776,43 @@ export default {
       "closeBehavior": "Comportement à la fermeture",
       "closeBehaviorMinimize": "Réduire dans la zone de notification",
       "closeBehaviorQuit": "Quitter",
-      "closeBehaviorSaved": "Comportement à la fermeture enregistré"
+      "closeBehaviorSaved": "Comportement à la fermeture enregistré",
+      "network": {
+        "corsTitle": "Configuration CORS",
+        "corsDescription": "Configurez les origines autorisées pour les requêtes inter-origines",
+        "dynamicOrigins": "Origines dynamiques (URL de tunnel)",
+        "defaultOrigins": "Origines par défaut",
+        "builtIn": "Intégré",
+        "originPlaceholder": "https://example.com/fr",
+        "originAdded": "Origine ajoutée",
+        "originRemoved": "Origine supprimée",
+        "invalidUrl": "Format d'URL invalide",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certificat ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... clé privée ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Ajouter un champ",
+            "challengeType": "Méthode de vérification",
+            "configured": "Certificat ACME configuré",
+            "dnsCredentialHint": "Saisissez le nom et la valeur de la variable d'environnement pour votre fournisseur DNS",
+            "dnsCredentials": "Identifiants API",
+            "dnsProvider": "Fournisseur DNS",
+            "domainsHint": "Les domaines doivent pointer vers ce serveur (enregistrement DNS A/AAAA)",
+            "email": "Adresse e-mail",
+            "emailDomainRequired": "L'e-mail et au moins un domaine sont requis",
+            "envKey": "Nom de variable",
+            "envValue": "Valeur",
+            "note": "Remarque",
+            "noteText": "Le port 80 doit être accessible depuis internet pour la vérification du domaine. Le certificat sera renouvelé automatiquement.",
+            "noteTextDNS": "Les enregistrements DNS seront créés automatiquement à l'aide de vos identifiants API. Aucun accès au port 80 n'est requis.",
+            "provider": "Fournisseur de certificats",
+            "request": "Certificat gratuit",
+            "requestFailed": "Échec de la demande de certificat",
+            "httpChallenge": "Vérification HTTP-01",
+            "dnsChallenge": "Vérification DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Contrôle de rappel mémoire",
@@ -2885,7 +3173,43 @@ export default {
       "closeBehavior": "Iompar dúnta",
       "closeBehaviorMinimize": "Íoslaghdaigh go dtí an tráidire",
       "closeBehaviorQuit": "Scoir",
-      "closeBehaviorSaved": "Sábháladh an t-iompar dúnta"
+      "closeBehaviorSaved": "Sábháladh an t-iompar dúnta",
+      "network": {
+        "corsTitle": "Cumraíocht CORS",
+        "corsDescription": "Cumraigh na bunáiteanna ceadaithe do iarratais tras-bhunáite",
+        "dynamicOrigins": "Bunáiteanna dinimiciúla (URLanna tolláin)",
+        "defaultOrigins": "Bunáiteanna réamhshocraithe",
+        "builtIn": "Réamhthógtha",
+        "originPlaceholder": "https://example.com/ie",
+        "originAdded": "Bunáit curtha leis",
+        "originRemoved": "Bunáit bainte",
+        "invalidUrl": "Formáid URL neamhbhailí",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... teastas ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... eochair phríobháideach ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Cuir réimse leis",
+            "challengeType": "Modh fíorúcháin",
+            "configured": "Teastas ACME cumraithe",
+            "dnsCredentialHint": "Cuir isteach ainm agus luach na hathróige comhshaoil do do sholáthraí DNS",
+            "dnsCredentials": "Dintiúir API",
+            "dnsProvider": "Soláthraí DNS",
+            "domainsHint": "Caithfidh na fearainn pointeáil chuig an bhfreastalaí seo (taifead DNS A/AAAA)",
+            "email": "Seoladh ríomhphoist",
+            "emailDomainRequired": "Tá seoladh ríomhphoist agus fearann amháin ar a laghad riachtanach",
+            "envKey": "Ainm na hathróige",
+            "envValue": "Luach",
+            "note": "Nóta",
+            "noteText": "Caithfidh port 80 a bheith inrochtana ón idirlíon chun an fearann a fhíorú. Déanfar an teastas a athnuachan go huathoibríoch.",
+            "noteTextDNS": "Cruthófar taifid DNS go huathoibríoch ag úsáid do dhintiúr API. Níl rochtain ar phort 80 riachtanach.",
+            "provider": "Soláthraí teastais",
+            "request": "Teastas saor in aisce",
+            "requestFailed": "Theip ar iarratas teastais",
+            "httpChallenge": "Fíorú HTTP-01",
+            "dnsChallenge": "Fíorú DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Geata aisghlao cuimhne",
@@ -3281,7 +3605,43 @@ export default {
       "closeBehavior": "Ponašanje pri zatvaranju",
       "closeBehaviorMinimize": "Minimiziraj u traku",
       "closeBehaviorQuit": "Izađi",
-      "closeBehaviorSaved": "Ponašanje pri zatvaranju spremljeno"
+      "closeBehaviorSaved": "Ponašanje pri zatvaranju spremljeno",
+      "network": {
+        "corsTitle": "Konfiguracija CORS-a",
+        "corsDescription": "Konfigurirajte dopuštene izvore za zahtjeve između različitih izvora",
+        "dynamicOrigins": "Dinamički izvori (URL-ovi tunela)",
+        "defaultOrigins": "Zadani izvori",
+        "builtIn": "Ugrađeno",
+        "originPlaceholder": "https://example.com/hr",
+        "originAdded": "Izvor dodan",
+        "originRemoved": "Izvor uklonjen",
+        "invalidUrl": "Nevažeći format URL-a",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certifikat ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... privatni ključ ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Dodaj polje",
+            "challengeType": "Način provjere",
+            "configured": "ACME certifikat konfiguriran",
+            "dnsCredentialHint": "Unesite naziv i vrijednost varijable okruženja za svoj DNS pružatelj",
+            "dnsCredentials": "API vjerodajnice",
+            "dnsProvider": "DNS pružatelj",
+            "domainsHint": "Domene moraju upućivati na ovaj poslužitelj (DNS A/AAAA zapis)",
+            "email": "Adresa e-pošte",
+            "emailDomainRequired": "Potrebni su e-pošta i barem jedna domena",
+            "envKey": "Naziv varijable",
+            "envValue": "Vrijednost",
+            "note": "Napomena",
+            "noteText": "Port 80 mora biti dostupan s interneta radi provjere domene. Certifikat će se automatski obnavljati.",
+            "noteTextDNS": "DNS zapisi bit će automatski stvoreni pomoću vaših API vjerodajnica. Pristup portu 80 nije potreban.",
+            "provider": "Pružatelj certifikata",
+            "request": "Besplatni certifikat",
+            "requestFailed": "Zahtjev za certifikat nije uspio",
+            "httpChallenge": "HTTP-01 provjera",
+            "dnsChallenge": "DNS-01 provjera"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Kontrola prisjećanja memorije",
@@ -3680,7 +4040,43 @@ export default {
       "closeBehavior": "Bezárási viselkedés",
       "closeBehaviorMinimize": "Kis méretre a tálcára",
       "closeBehaviorQuit": "Kilépés",
-      "closeBehaviorSaved": "A bezárási viselkedés mentve"
+      "closeBehaviorSaved": "A bezárási viselkedés mentve",
+      "network": {
+        "corsTitle": "CORS-beállítások",
+        "corsDescription": "Állítsa be a cross-origin kérésekhez engedélyezett forrásokat",
+        "dynamicOrigins": "Dinamikus eredetek (alagút URL-ek)",
+        "defaultOrigins": "Alapértelmezett eredetek",
+        "builtIn": "Beépített",
+        "originPlaceholder": "https://example.com/hu",
+        "originAdded": "Eredet hozzáadva",
+        "originRemoved": "Eredet eltávolítva",
+        "invalidUrl": "Érvénytelen URL-formátum",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... tanúsítvány ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... privát kulcs ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Mező hozzáadása",
+            "challengeType": "Ellenőrzési módszer",
+            "configured": "ACME-tanúsítvány beállítva",
+            "dnsCredentialHint": "Adja meg a DNS-szolgáltató környezeti változójának nevét és értékét",
+            "dnsCredentials": "API-hitelesítő adatok",
+            "dnsProvider": "DNS-szolgáltató",
+            "domainsHint": "A domaineknek erre a szerverre kell mutatniuk (DNS A/AAAA rekord)",
+            "email": "E-mail-cím",
+            "emailDomainRequired": "E-mail-cím és legalább egy domain szükséges",
+            "envKey": "Változónév",
+            "envValue": "Érték",
+            "note": "Megjegyzés",
+            "noteText": "A 80-as portnak elérhetőnek kell lennie az internetről a domain ellenőrzéséhez. A tanúsítvány automatikusan megújul.",
+            "noteTextDNS": "A DNS-rekordok automatikusan létrejönnek az API-hitelesítő adataival. A 80-as port elérése nem szükséges.",
+            "provider": "Tanúsítványszolgáltató",
+            "request": "Ingyenes tanúsítvány",
+            "requestFailed": "Nem sikerült tanúsítványt igényelni",
+            "httpChallenge": "HTTP-01 ellenőrzés",
+            "dnsChallenge": "DNS-01 ellenőrzés"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Memóriafelidézés vezérlése",
@@ -4076,7 +4472,43 @@ export default {
       "closeBehavior": "Comportamento alla chiusura",
       "closeBehaviorMinimize": "Riduci nell'area di notifica",
       "closeBehaviorQuit": "Esci",
-      "closeBehaviorSaved": "Comportamento alla chiusura salvato"
+      "closeBehaviorSaved": "Comportamento alla chiusura salvato",
+      "network": {
+        "corsTitle": "Configurazione CORS",
+        "corsDescription": "Configura le origini consentite per le richieste cross-origin",
+        "dynamicOrigins": "Origini dinamiche (URL del tunnel)",
+        "defaultOrigins": "Origini predefinite",
+        "builtIn": "Integrato",
+        "originPlaceholder": "https://example.com/it",
+        "originAdded": "Origine aggiunta",
+        "originRemoved": "Origine rimossa",
+        "invalidUrl": "Formato URL non valido",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certificato ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... chiave privata ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Aggiungi campo",
+            "challengeType": "Metodo di verifica",
+            "configured": "Certificato ACME configurato",
+            "dnsCredentialHint": "Inserisci nome e valore della variabile d'ambiente per il tuo provider DNS",
+            "dnsCredentials": "Credenziali API",
+            "dnsProvider": "Provider DNS",
+            "domainsHint": "I domini devono puntare a questo server (record DNS A/AAAA)",
+            "email": "Indirizzo email",
+            "emailDomainRequired": "Sono richiesti email e almeno un dominio",
+            "envKey": "Nome variabile",
+            "envValue": "Valore",
+            "note": "Nota",
+            "noteText": "La porta 80 deve essere accessibile da internet per la verifica del dominio. Il certificato verrà rinnovato automaticamente.",
+            "noteTextDNS": "I record DNS verranno creati automaticamente usando le tue credenziali API. Non è richiesto l'accesso alla porta 80.",
+            "provider": "Provider di certificati",
+            "request": "Certificato gratuito",
+            "requestFailed": "Impossibile richiedere il certificato",
+            "httpChallenge": "Verifica HTTP-01",
+            "dnsChallenge": "Verifica DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Controllo richiamo memoria",
@@ -4459,6 +4891,17 @@ export default {
       },
       "tab": {
         "llm": "LLMモデル"
+      },
+      "network": {
+        "originPlaceholder": "https://example.com/jp",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... 証明書 ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... 秘密鍵 ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "httpChallenge": "HTTP-01認証",
+            "dnsChallenge": "DNS-01認証"
+          }
+        }
       }
     },
     "tokenEconomy": {
@@ -4682,7 +5125,43 @@ export default {
       "closeBehavior": "닫기 동작",
       "closeBehaviorMinimize": "트레이로 최소화",
       "closeBehaviorQuit": "종료",
-      "closeBehaviorSaved": "닫기 동작이 저장되었습니다"
+      "closeBehaviorSaved": "닫기 동작이 저장되었습니다",
+      "network": {
+        "corsTitle": "CORS 설정",
+        "corsDescription": "교차 출처 요청에 허용할 origin을 구성합니다",
+        "dynamicOrigins": "동적 origin(터널 URL)",
+        "defaultOrigins": "기본 origin",
+        "builtIn": "내장",
+        "originPlaceholder": "https://example.com/kr",
+        "originAdded": "Origin 추가됨",
+        "originRemoved": "Origin 제거됨",
+        "invalidUrl": "잘못된 URL 형식",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... 인증서 ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... 개인 키 ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "필드 추가",
+            "challengeType": "검증 방식",
+            "configured": "ACME 인증서가 구성되었습니다",
+            "dnsCredentialHint": "DNS 제공자용 환경 변수 이름과 값을 입력하세요",
+            "dnsCredentials": "API 자격 증명",
+            "dnsProvider": "DNS 제공자",
+            "domainsHint": "도메인은 이 서버를 가리켜야 합니다(DNS A/AAAA 레코드)",
+            "email": "이메일 주소",
+            "emailDomainRequired": "이메일 주소와 최소 한 개의 도메인이 필요합니다",
+            "envKey": "변수 이름",
+            "envValue": "값",
+            "note": "참고",
+            "noteText": "도메인 검증을 위해 인터넷에서 80번 포트에 접근할 수 있어야 합니다. 인증서는 자동으로 갱신됩니다.",
+            "noteTextDNS": "API 자격 증명을 사용해 DNS 레코드가 자동으로 생성됩니다. 80번 포트 접근은 필요하지 않습니다.",
+            "provider": "인증서 제공자",
+            "request": "무료 인증서",
+            "requestFailed": "인증서 요청에 실패했습니다",
+            "httpChallenge": "HTTP-01 검증",
+            "dnsChallenge": "DNS-01 검증"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "메모리 회상 게이트",
@@ -5043,7 +5522,43 @@ export default {
       "closeBehavior": "അടയ്ക്കൽ പെരുമാറ്റം",
       "closeBehaviorMinimize": "ട്രേയിലേക്ക് ചുരുക്കുക",
       "closeBehaviorQuit": "പുറത്തുകടക്കുക",
-      "closeBehaviorSaved": "അടയ്ക്കൽ പെരുമാറ്റം സംരക്ഷിച്ചു"
+      "closeBehaviorSaved": "അടയ്ക്കൽ പെരുമാറ്റം സംരക്ഷിച്ചു",
+      "network": {
+        "corsTitle": "CORS കോൺഫിഗറേഷൻ",
+        "corsDescription": "ക്രോസ്-ഓറിജിൻ അഭ്യർത്ഥനകൾക്കായി അനുവദിച്ച origin-കൾ ക്രമീകരിക്കുക",
+        "dynamicOrigins": "ഡൈനാമിക് origin-കൾ (ടണൽ URL-കൾ)",
+        "defaultOrigins": "ഡിഫോൾട്ട് origin-കൾ",
+        "builtIn": "അന്തർനിർമ്മിതം",
+        "originPlaceholder": "https://example.com/in",
+        "originAdded": "Origin ചേർത്തു",
+        "originRemoved": "Origin നീക്കി",
+        "invalidUrl": "അസാധുവായ URL ഫോർമാറ്റ്",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... സർട്ടിഫിക്കറ്റ് ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... സ്വകാര്യ കീ ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "ഫീൽഡ് ചേർക്കുക",
+            "challengeType": "സ്ഥിരീകരണ രീതി",
+            "configured": "ACME സർട്ടിഫിക്കറ്റ് ക്രമീകരിച്ചു",
+            "dnsCredentialHint": "നിങ്ങളുടെ DNS പ്രൊവൈഡറിന് വേണ്ട പരിസ്ഥിതി വ്യത്യാശത്തിന്റെ പേരും മൂല്യവും നൽകുക",
+            "dnsCredentials": "API ക്രെഡൻഷ്യലുകൾ",
+            "dnsProvider": "DNS പ്രൊവൈഡർ",
+            "domainsHint": "ഡൊമെയ്‌നുകൾ ഈ സർവറിലേക്കാണ് കാണിക്കേണ്ടത് (DNS A/AAAA റെക്കോർഡ്)",
+            "email": "ഇമെയിൽ വിലാസം",
+            "emailDomainRequired": "ഇമെയിലും കുറഞ്ഞത് ഒരു ഡൊമെയിനും ആവശ്യമാണ്",
+            "envKey": "വേരിയബിൾ പേര്",
+            "envValue": "മൂല്യം",
+            "note": "കുറിപ്പ്",
+            "noteText": "ഡൊമെയിൻ സ്ഥിരീകരണത്തിനായി പോർട്ട് 80 ഇന്റർനെറ്റിൽ നിന്ന് ലഭ്യമാകണം. സർട്ടിഫിക്കറ്റ് സ്വയമേവ പുതുക്കപ്പെടും.",
+            "noteTextDNS": "നിങ്ങളുടെ API ക്രെഡൻഷ്യലുകൾ ഉപയോഗിച്ച് DNS റെക്കോർഡുകൾ സ്വയമേവ സൃഷ്ടിക്കും. പോർട്ട് 80 ആക്സസ് ആവശ്യമില്ല.",
+            "provider": "സർട്ടിഫിക്കറ്റ് പ്രൊവൈഡർ",
+            "request": "സൗജന്യ സർട്ടിഫിക്കറ്റ്",
+            "requestFailed": "സർട്ടിഫിക്കറ്റ് അഭ്യർത്ഥിക്കാൻ കഴിഞ്ഞില്ല",
+            "httpChallenge": "HTTP-01 സ്ഥിരീകരണം",
+            "dnsChallenge": "DNS-01 സ്ഥിരീകരണം"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "മെമ്മറി റീകാൾ നിയന്ത്രണം",
@@ -5439,7 +5954,43 @@ export default {
       "closeBehavior": "Lukkeatferd",
       "closeBehaviorMinimize": "Minimer til systemfeltet",
       "closeBehaviorQuit": "Avslutt",
-      "closeBehaviorSaved": "Lukkeatferd lagret"
+      "closeBehaviorSaved": "Lukkeatferd lagret",
+      "network": {
+        "corsTitle": "CORS-konfigurasjon",
+        "corsDescription": "Konfigurer tillatte opprinnelser for forespørsler på tvers av opprinnelser",
+        "dynamicOrigins": "Dynamiske opprinnelser (tunnel-URL-er)",
+        "defaultOrigins": "Standardopprinnelser",
+        "builtIn": "Innebygd",
+        "originPlaceholder": "https://example.com/no",
+        "originAdded": "Opprinnelse lagt til",
+        "originRemoved": "Opprinnelse fjernet",
+        "invalidUrl": "Ugyldig URL-format",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... sertifikat ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... privat nøkkel ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Legg til felt",
+            "challengeType": "Bekreftelsesmetode",
+            "configured": "ACME-sertifikat konfigurert",
+            "dnsCredentialHint": "Skriv inn miljøvariabelnavnet og verdien for DNS-leverandøren din",
+            "dnsCredentials": "API-legitimasjon",
+            "dnsProvider": "DNS-leverandør",
+            "domainsHint": "Domenene må peke til denne serveren (DNS A/AAAA-oppføring)",
+            "email": "E-postadresse",
+            "emailDomainRequired": "E-post og minst ett domene er påkrevd",
+            "envKey": "Variabelnavn",
+            "envValue": "Verdi",
+            "note": "Merknad",
+            "noteText": "Port 80 må være tilgjengelig fra internett for domeneverifisering. Sertifikatet fornyes automatisk.",
+            "noteTextDNS": "DNS-poster opprettes automatisk med API-legitimasjonen din. Tilgang til port 80 er ikke nødvendig.",
+            "provider": "Sertifikatutsteder",
+            "request": "Gratis sertifikat",
+            "requestFailed": "Kunne ikke be om sertifikat",
+            "httpChallenge": "HTTP-01-verifisering",
+            "dnsChallenge": "DNS-01-verifisering"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Minnegjenkallingskontroll",
@@ -5835,7 +6386,43 @@ export default {
       "closeBehavior": "Gedrag bij sluiten",
       "closeBehaviorMinimize": "Minimaliseren naar systeemvak",
       "closeBehaviorQuit": "Afsluiten",
-      "closeBehaviorSaved": "Gedrag bij sluiten opgeslagen"
+      "closeBehaviorSaved": "Gedrag bij sluiten opgeslagen",
+      "network": {
+        "corsTitle": "CORS-configuratie",
+        "corsDescription": "Configureer toegestane origins voor cross-origin verzoeken",
+        "dynamicOrigins": "Dynamische origins (tunnel-URL's)",
+        "defaultOrigins": "Standaardorigins",
+        "builtIn": "Ingebouwd",
+        "originPlaceholder": "https://example.com/nl",
+        "originAdded": "Origin toegevoegd",
+        "originRemoved": "Origin verwijderd",
+        "invalidUrl": "Ongeldig URL-formaat",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certificaat ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... privésleutel ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Veld toevoegen",
+            "challengeType": "Verificatiemethode",
+            "configured": "ACME-certificaat geconfigureerd",
+            "dnsCredentialHint": "Voer de naam en waarde van de omgevingsvariabele voor je DNS-provider in",
+            "dnsCredentials": "API-gegevens",
+            "dnsProvider": "DNS-provider",
+            "domainsHint": "Domeinen moeten naar deze server wijzen (DNS A/AAAA-record)",
+            "email": "E-mailadres",
+            "emailDomainRequired": "E-mailadres en minimaal één domein zijn vereist",
+            "envKey": "Variabelenaam",
+            "envValue": "Waarde",
+            "note": "Opmerking",
+            "noteText": "Poort 80 moet vanaf internet bereikbaar zijn voor domeinverificatie. Het certificaat wordt automatisch vernieuwd.",
+            "noteTextDNS": "DNS-records worden automatisch aangemaakt met je API-gegevens. Toegang tot poort 80 is niet vereist.",
+            "provider": "Certificaatprovider",
+            "request": "Gratis certificaat",
+            "requestFailed": "Certificaat aanvragen mislukt",
+            "httpChallenge": "HTTP-01-verificatie",
+            "dnsChallenge": "DNS-01-verificatie"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Geheugenoproepcontrole",
@@ -6231,7 +6818,43 @@ export default {
       "closeBehavior": "Zachowanie przy zamykaniu",
       "closeBehaviorMinimize": "Minimalizuj do zasobnika",
       "closeBehaviorQuit": "Zakończ",
-      "closeBehaviorSaved": "Zachowanie przy zamykaniu zapisane"
+      "closeBehaviorSaved": "Zachowanie przy zamykaniu zapisane",
+      "network": {
+        "corsTitle": "Konfiguracja CORS",
+        "corsDescription": "Skonfiguruj dozwolone originy dla żądań między źródłami",
+        "dynamicOrigins": "Dynamiczne originy (adresy URL tunelu)",
+        "defaultOrigins": "Domyślne originy",
+        "builtIn": "Wbudowane",
+        "originPlaceholder": "https://example.com/pl",
+        "originAdded": "Origin dodany",
+        "originRemoved": "Origin usunięty",
+        "invalidUrl": "Nieprawidłowy format URL",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certyfikat ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... klucz prywatny ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Dodaj pole",
+            "challengeType": "Metoda weryfikacji",
+            "configured": "Certyfikat ACME skonfigurowany",
+            "dnsCredentialHint": "Wprowadź nazwę i wartość zmiennej środowiskowej dla swojego dostawcy DNS",
+            "dnsCredentials": "Poświadczenia API",
+            "dnsProvider": "Dostawca DNS",
+            "domainsHint": "Domeny muszą wskazywać na ten serwer (rekord DNS A/AAAA)",
+            "email": "Adres e-mail",
+            "emailDomainRequired": "Wymagany jest adres e-mail i co najmniej jedna domena",
+            "envKey": "Nazwa zmiennej",
+            "envValue": "Wartość",
+            "note": "Uwaga",
+            "noteText": "Port 80 musi być dostępny z internetu do weryfikacji domeny. Certyfikat będzie odnawiany automatycznie.",
+            "noteTextDNS": "Rekordy DNS zostaną utworzone automatycznie przy użyciu poświadczeń API. Dostęp do portu 80 nie jest wymagany.",
+            "provider": "Dostawca certyfikatu",
+            "request": "Bezpłatny certyfikat",
+            "requestFailed": "Nie udało się zamówić certyfikatu",
+            "httpChallenge": "Weryfikacja HTTP-01",
+            "dnsChallenge": "Weryfikacja DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Kontrola przywołania pamięci",
@@ -6627,7 +7250,43 @@ export default {
       "closeBehavior": "Comportamento ao fechar",
       "closeBehaviorMinimize": "Minimizar para a bandeja",
       "closeBehaviorQuit": "Sair",
-      "closeBehaviorSaved": "Comportamento ao fechar salvo"
+      "closeBehaviorSaved": "Comportamento ao fechar salvo",
+      "network": {
+        "corsTitle": "Configuração de CORS",
+        "corsDescription": "Configure as origens permitidas para solicitações entre origens",
+        "dynamicOrigins": "Origens dinâmicas (URLs de túnel)",
+        "defaultOrigins": "Origens padrão",
+        "builtIn": "Integrado",
+        "originPlaceholder": "https://example.com/br",
+        "originAdded": "Origem adicionada",
+        "originRemoved": "Origem removida",
+        "invalidUrl": "Formato de URL inválido",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certificado ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... chave privada ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Adicionar campo",
+            "challengeType": "Método de verificação",
+            "configured": "Certificado ACME configurado",
+            "dnsCredentialHint": "Informe o nome e o valor da variável de ambiente do seu provedor DNS",
+            "dnsCredentials": "Credenciais de API",
+            "dnsProvider": "Provedor DNS",
+            "domainsHint": "Os domínios devem apontar para este servidor (registro DNS A/AAAA)",
+            "email": "Endereço de e-mail",
+            "emailDomainRequired": "É necessário informar um e-mail e pelo menos um domínio",
+            "envKey": "Nome da variável",
+            "envValue": "Valor",
+            "note": "Observação",
+            "noteText": "A porta 80 deve estar acessível pela internet para a verificação do domínio. O certificado será renovado automaticamente.",
+            "noteTextDNS": "Os registros DNS serão criados automaticamente usando suas credenciais de API. Não é necessário acesso à porta 80.",
+            "provider": "Provedor de certificados",
+            "request": "Certificado grátis",
+            "requestFailed": "Falha ao solicitar certificado",
+            "httpChallenge": "Verificação HTTP-01",
+            "dnsChallenge": "Verificação DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Controle de recuperação de memória",
@@ -7020,7 +7679,43 @@ export default {
       "closeBehavior": "Comportamento ao fechar",
       "closeBehaviorMinimize": "Minimizar para a área de notificação",
       "closeBehaviorQuit": "Sair",
-      "closeBehaviorSaved": "Comportamento ao fechar guardado"
+      "closeBehaviorSaved": "Comportamento ao fechar guardado",
+      "network": {
+        "corsTitle": "Configuração de CORS",
+        "corsDescription": "Configure as origens permitidas para pedidos entre origens",
+        "dynamicOrigins": "Origens dinâmicas (URLs de túnel)",
+        "defaultOrigins": "Origens predefinidas",
+        "builtIn": "Integrado",
+        "originPlaceholder": "https://example.com/pt",
+        "originAdded": "Origem adicionada",
+        "originRemoved": "Origem removida",
+        "invalidUrl": "Formato de URL inválido",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certificado ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... chave privada ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Adicionar campo",
+            "challengeType": "Método de verificação",
+            "configured": "Certificado ACME configurado",
+            "dnsCredentialHint": "Introduza o nome e o valor da variável de ambiente do seu fornecedor DNS",
+            "dnsCredentials": "Credenciais de API",
+            "dnsProvider": "Fornecedor DNS",
+            "domainsHint": "Os domínios devem apontar para este servidor (registo DNS A/AAAA)",
+            "email": "Endereço de e-mail",
+            "emailDomainRequired": "É necessário um e-mail e pelo menos um domínio",
+            "envKey": "Nome da variável",
+            "envValue": "Valor",
+            "note": "Nota",
+            "noteText": "A porta 80 deve estar acessível a partir da internet para a verificação do domínio. O certificado será renovado automaticamente.",
+            "noteTextDNS": "Os registos DNS serão criados automaticamente usando as suas credenciais de API. Não é necessário acesso à porta 80.",
+            "provider": "Fornecedor de certificados",
+            "request": "Certificado gratuito",
+            "requestFailed": "Falha ao solicitar certificado",
+            "httpChallenge": "Verificação HTTP-01",
+            "dnsChallenge": "Verificação DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Controlo de recuperação de memória",
@@ -7413,7 +8108,43 @@ export default {
       "closeBehavior": "Comportament la închidere",
       "closeBehaviorMinimize": "Minimizează în tavă",
       "closeBehaviorQuit": "Ieșire",
-      "closeBehaviorSaved": "Comportamentul la închidere a fost salvat"
+      "closeBehaviorSaved": "Comportamentul la închidere a fost salvat",
+      "network": {
+        "corsTitle": "Configurare CORS",
+        "corsDescription": "Configurați originile permise pentru cereri cross-origin",
+        "dynamicOrigins": "Origini dinamice (URL-uri de tunel)",
+        "defaultOrigins": "Origini implicite",
+        "builtIn": "Integrat",
+        "originPlaceholder": "https://example.com/ro",
+        "originAdded": "Origine adăugată",
+        "originRemoved": "Origine eliminată",
+        "invalidUrl": "Format URL invalid",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certificat ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... cheie privată ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Adaugă câmp",
+            "challengeType": "Metodă de verificare",
+            "configured": "Certificat ACME configurat",
+            "dnsCredentialHint": "Introduceți numele și valoarea variabilei de mediu pentru furnizorul dvs. DNS",
+            "dnsCredentials": "Credențiale API",
+            "dnsProvider": "Furnizor DNS",
+            "domainsHint": "Domeniile trebuie să indice către acest server (înregistrare DNS A/AAAA)",
+            "email": "Adresă de e-mail",
+            "emailDomainRequired": "Sunt necesare o adresă de e-mail și cel puțin un domeniu",
+            "envKey": "Nume variabilă",
+            "envValue": "Valoare",
+            "note": "Notă",
+            "noteText": "Portul 80 trebuie să fie accesibil de pe internet pentru verificarea domeniului. Certificatul va fi reînnoit automat.",
+            "noteTextDNS": "Înregistrările DNS vor fi create automat folosind credențialele dvs. API. Nu este necesar accesul la portul 80.",
+            "provider": "Furnizor de certificate",
+            "request": "Certificat gratuit",
+            "requestFailed": "Solicitarea certificatului a eșuat",
+            "httpChallenge": "Verificare HTTP-01",
+            "dnsChallenge": "Verificare DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Controlul rechemării memoriei",
@@ -7809,7 +8540,43 @@ export default {
       "closeBehavior": "Поведение при закрытии",
       "closeBehaviorMinimize": "Свернуть в трей",
       "closeBehaviorQuit": "Выйти",
-      "closeBehaviorSaved": "Поведение при закрытии сохранено"
+      "closeBehaviorSaved": "Поведение при закрытии сохранено",
+      "network": {
+        "corsTitle": "Настройка CORS",
+        "corsDescription": "Настройте разрешённые origin для междоменных запросов",
+        "dynamicOrigins": "Динамические origin (URL туннеля)",
+        "defaultOrigins": "Origin по умолчанию",
+        "builtIn": "Встроено",
+        "originPlaceholder": "https://example.com/ru",
+        "originAdded": "Origin добавлен",
+        "originRemoved": "Origin удалён",
+        "invalidUrl": "Неверный формат URL",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... сертификат ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... закрытый ключ ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Добавить поле",
+            "challengeType": "Метод проверки",
+            "configured": "Сертификат ACME настроен",
+            "dnsCredentialHint": "Введите имя и значение переменной окружения для вашего DNS-провайдера",
+            "dnsCredentials": "Учетные данные API",
+            "dnsProvider": "DNS-провайдер",
+            "domainsHint": "Домены должны указывать на этот сервер (DNS-запись A/AAAA)",
+            "email": "Адрес электронной почты",
+            "emailDomainRequired": "Требуются электронная почта и как минимум один домен",
+            "envKey": "Имя переменной",
+            "envValue": "Значение",
+            "note": "Примечание",
+            "noteText": "Порт 80 должен быть доступен из интернета для проверки домена. Сертификат будет продлеваться автоматически.",
+            "noteTextDNS": "DNS-записи будут созданы автоматически с использованием ваших учетных данных API. Доступ к порту 80 не требуется.",
+            "provider": "Поставщик сертификатов",
+            "request": "Бесплатный сертификат",
+            "requestFailed": "Не удалось запросить сертификат",
+            "httpChallenge": "Проверка HTTP-01",
+            "dnsChallenge": "Проверка DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Управление вызовом памяти",
@@ -8202,7 +8969,43 @@ export default {
       "closeBehavior": "Správanie pri zatvorení",
       "closeBehaviorMinimize": "Minimalizovať do lišty",
       "closeBehaviorQuit": "Ukončiť",
-      "closeBehaviorSaved": "Správanie pri zatvorení uložené"
+      "closeBehaviorSaved": "Správanie pri zatvorení uložené",
+      "network": {
+        "corsTitle": "Konfigurácia CORS",
+        "corsDescription": "Nakonfigurujte povolené zdroje pre požiadavky medzi rôznymi zdrojmi",
+        "dynamicOrigins": "Dynamické zdroje (URL tunela)",
+        "defaultOrigins": "Predvolené zdroje",
+        "builtIn": "Vstavané",
+        "originPlaceholder": "https://example.com/sk",
+        "originAdded": "Zdroj pridaný",
+        "originRemoved": "Zdroj odstránený",
+        "invalidUrl": "Neplatný formát URL",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certifikát ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... súkromný kľúč ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Pridať pole",
+            "challengeType": "Metóda overenia",
+            "configured": "ACME certifikát nakonfigurovaný",
+            "dnsCredentialHint": "Zadajte názov a hodnotu premennej prostredia pre svojho DNS poskytovateľa",
+            "dnsCredentials": "API poverenia",
+            "dnsProvider": "DNS poskytovateľ",
+            "domainsHint": "Domény musia smerovať na tento server (DNS záznam A/AAAA)",
+            "email": "E-mailová adresa",
+            "emailDomainRequired": "Je potrebný e-mail a aspoň jedna doména",
+            "envKey": "Názov premennej",
+            "envValue": "Hodnota",
+            "note": "Poznámka",
+            "noteText": "Port 80 musí byť dostupný z internetu na overenie domény. Certifikát sa bude automaticky obnovovať.",
+            "noteTextDNS": "Záznamy DNS budú automaticky vytvorené pomocou vašich API poverení. Prístup na port 80 nie je potrebný.",
+            "provider": "Poskytovateľ certifikátu",
+            "request": "Bezplatný certifikát",
+            "requestFailed": "Nepodarilo sa vyžiadať certifikát",
+            "httpChallenge": "Overenie HTTP-01",
+            "dnsChallenge": "Overenie DNS-01"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Riadenie vyvolania pamäte",
@@ -8598,7 +9401,43 @@ export default {
       "closeBehavior": "Beteende vid stängning",
       "closeBehaviorMinimize": "Minimera till aktivitetsfältet",
       "closeBehaviorQuit": "Avsluta",
-      "closeBehaviorSaved": "Beteende vid stängning sparat"
+      "closeBehaviorSaved": "Beteende vid stängning sparat",
+      "network": {
+        "corsTitle": "CORS-konfiguration",
+        "corsDescription": "Konfigurera tillåtna origins för cross-origin-förfrågningar",
+        "dynamicOrigins": "Dynamiska origins (tunnel-URL:er)",
+        "defaultOrigins": "Standardorigins",
+        "builtIn": "Inbyggt",
+        "originPlaceholder": "https://example.com/se",
+        "originAdded": "Origin tillagd",
+        "originRemoved": "Origin borttagen",
+        "invalidUrl": "Ogiltigt URL-format",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... certifikat ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... privat nyckel ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "addCredential": "Lägg till fält",
+            "challengeType": "Verifieringsmetod",
+            "configured": "ACME-certifikat konfigurerat",
+            "dnsCredentialHint": "Ange miljövariabelns namn och värde för din DNS-leverantör",
+            "dnsCredentials": "API-uppgifter",
+            "dnsProvider": "DNS-leverantör",
+            "domainsHint": "Domäner måste peka på den här servern (DNS A/AAAA-post)",
+            "email": "E-postadress",
+            "emailDomainRequired": "E-postadress och minst en domän krävs",
+            "envKey": "Variabelnamn",
+            "envValue": "Värde",
+            "note": "Obs",
+            "noteText": "Port 80 måste vara åtkomlig från internet för domänverifiering. Certifikatet förnyas automatiskt.",
+            "noteTextDNS": "DNS-poster skapas automatiskt med dina API-uppgifter. Åtkomst till port 80 krävs inte.",
+            "provider": "Certifikatleverantör",
+            "request": "Gratis certifikat",
+            "requestFailed": "Det gick inte att begära certifikat",
+            "httpChallenge": "HTTP-01-verifiering",
+            "dnsChallenge": "DNS-01-verifiering"
+          }
+        }
+      }
     },
     "tokenEconomy": {
       "memoryLabel": "Minnesåterkallningskontroll",
@@ -8981,6 +9820,17 @@ export default {
         "newVersionAvailable": "发现新版本",
         "title": "关于",
         "upToDate": "已是最新"
+      },
+      "network": {
+        "originPlaceholder": "https://example.com/cn",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... 证书 ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... 私钥 ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "httpChallenge": "HTTP-01 验证",
+            "dnsChallenge": "DNS-01 验证"
+          }
+        }
       }
     },
     "tokenEconomy": {
@@ -9119,6 +9969,17 @@ export default {
         "newVersionAvailable": "發現新版本",
         "title": "關於",
         "upToDate": "已是最新"
+      },
+      "network": {
+        "originPlaceholder": "https://example.com/tw",
+        "tls": {
+          "certPlaceholder": "-----BEGIN CERTIFICATE-----\n... 憑證 ...\n-----END CERTIFICATE-----",
+          "keyPlaceholder": "-----BEGIN PRIVATE KEY-----\n... 私密金鑰 ...\n-----END PRIVATE KEY-----",
+          "acme": {
+            "httpChallenge": "HTTP-01 驗證",
+            "dnsChallenge": "DNS-01 驗證"
+          }
+        }
       }
     },
     "tokenEconomy": {

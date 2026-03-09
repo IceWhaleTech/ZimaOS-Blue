@@ -249,6 +249,39 @@ func TestRouterWithFallback(t *testing.T) {
 	}
 }
 
+func TestRouterWithFallback_RetriesSameProviderOnceOnTransientError(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	var triedProviders []string
+	providerHighAttempts := 0
+
+	err := router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "test-model",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		triedProviders = append(triedProviders, result.Provider.ID)
+		if result.Provider.ID == "provider-high" {
+			providerHighAttempts++
+			if providerHighAttempts == 1 {
+				return errors.New("upstream 503")
+			}
+			return nil
+		}
+		return errors.New("should not switch providers")
+	})
+
+	if err != nil {
+		t.Fatalf("RouteWithFallback failed: %v", err)
+	}
+	if providerHighAttempts != 2 {
+		t.Fatalf("Expected 2 attempts on provider-high, got %d", providerHighAttempts)
+	}
+	if len(triedProviders) != 2 || triedProviders[0] != "provider-high" || triedProviders[1] != "provider-high" {
+		t.Fatalf("Expected transient retry to stay on provider-high, got %v", triedProviders)
+	}
+}
+
 func TestRouterWithFallback_RetriesNextAPIKeyOnAuthError(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "router-multikey-auth-*")
 	if err != nil {
@@ -438,6 +471,75 @@ func TestRouterWithFallback_DoesNotRetryNextAPIKeyOnNonAuthError(t *testing.T) {
 	}
 	if callCount != 1 {
 		t.Errorf("Expected only 1 attempt for non-auth error, got %d", callCount)
+	}
+}
+
+func TestRouterPriorityStrategy_PrefersAnthropicForClaudeModels(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-claude-affinity-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	openAIProvider := &Provider{
+		ID:        "provider-openai-relay",
+		Name:      "OpenAI Relay",
+		Type:      ProviderTypeCustom,
+		Enabled:   true,
+		Status:    ProviderStatusActive,
+		Priority:  100,
+		APIFormat: APIFormatOpenAI,
+		APIKeys:   []APIKey{{ID: "k-openai", Key: "sk-openai", Enabled: true}},
+	}
+	anthropicProvider := &Provider{
+		ID:        "provider-anthropic",
+		Name:      "Anthropic",
+		Type:      ProviderTypeCustom,
+		Enabled:   true,
+		Status:    ProviderStatusActive,
+		Priority:  90,
+		APIFormat: APIFormatAnthropic,
+		APIKeys:   []APIKey{{ID: "k-anthropic", Key: "sk-anthropic", Enabled: true}},
+	}
+	if err := registry.Register(openAIProvider); err != nil {
+		t.Fatalf("register openai provider failed: %v", err)
+	}
+	if err := registry.Register(anthropicProvider); err != nil {
+		t.Fatalf("register anthropic provider failed: %v", err)
+	}
+
+	models := []*Model{{
+		ID:           "claude-sonnet-4-5",
+		Name:         "claude-sonnet-4-5",
+		DisplayName:  "Claude Sonnet 4.5",
+		Enabled:      true,
+		Capabilities: ModelCapabilities{Chat: true},
+	}}
+	if err := storage.SaveModels(openAIProvider.ID, []*Model{{
+		ID: models[0].ID, ProviderID: openAIProvider.ID, Name: models[0].Name, DisplayName: models[0].DisplayName, Enabled: true,
+		Capabilities: models[0].Capabilities,
+	}}); err != nil {
+		t.Fatalf("save openai models failed: %v", err)
+	}
+	if err := storage.SaveModels(anthropicProvider.ID, []*Model{{
+		ID: models[0].ID, ProviderID: anthropicProvider.ID, Name: models[0].Name, DisplayName: models[0].DisplayName, Enabled: true,
+		Capabilities: models[0].Capabilities,
+	}}); err != nil {
+		t.Fatalf("save anthropic models failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	result, err := router.Route(&RouteRequest{ModelID: "claude-sonnet-4-5", Strategy: RoutingStrategyPriority})
+	if err != nil {
+		t.Fatalf("Route failed: %v", err)
+	}
+	if result.Provider.ID != anthropicProvider.ID {
+		t.Fatalf("Expected claude model to prefer anthropic provider, got %s", result.Provider.ID)
 	}
 }
 
@@ -1555,7 +1657,7 @@ func TestRouterFailoverTracking(t *testing.T) {
 	}, func(result *RouteResult) error {
 		if failFirst && result.Provider.ID == "provider-high" {
 			failFirst = false
-			return errors.New("simulated timeout error")
+			return errors.New("provider provider-high auth error (401): invalid api key")
 		}
 		return nil
 	})
@@ -1577,8 +1679,8 @@ func TestRouterFailoverTracking(t *testing.T) {
 		t.Errorf("Expected 1 failed attempt, got %d", len(capturedResult.FailedAttempts))
 	}
 
-	if capturedResult.FailedAttempts[0].Reason != FailoverReasonTimeout {
-		t.Errorf("Expected timeout reason, got %s", capturedResult.FailedAttempts[0].Reason)
+	if capturedResult.FailedAttempts[0].Reason != FailoverReasonAuthError {
+		t.Errorf("Expected auth error reason, got %s", capturedResult.FailedAttempts[0].Reason)
 	}
 
 	if capturedResult.SuccessProvider == "" {

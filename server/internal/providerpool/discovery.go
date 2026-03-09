@@ -189,14 +189,14 @@ func (d *ModelDiscovery) GetFilteredModels(providerID string) ([]*Model, error) 
 	// Older persisted providers may have AllowedModels set without AllowlistConfigured.
 	allowlistConfigured := provider.AllowlistConfigured || provider.AllowedModels != nil
 	if !allowlistConfigured {
-		return models, nil
+		return sortModelsByPreference(models), nil
 	}
 	// Configured with an empty/nil list means block all models.
 	if len(provider.AllowedModels) == 0 {
 		return []*Model{}, nil
 	}
 
-	// Filter models by AllowedModels
+	// Filter models by AllowedModels while preserving the user's configured order.
 	return filterModelsByAllowed(models, provider.AllowedModels), nil
 }
 
@@ -210,18 +210,47 @@ func filterModelsByAllowed(models []*Model, allowedModels []string) []*Model {
 		return []*Model{}
 	}
 
-	// Create a set for fast lookup
-	allowedSet := make(map[string]bool, len(allowedModels))
-	for _, id := range allowedModels {
-		allowedSet[id] = true
+	byID := make(map[string]*Model, len(models))
+	byName := make(map[string]*Model, len(models))
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		if id := strings.TrimSpace(model.ID); id != "" {
+			byID[id] = model
+		}
+		if name := strings.TrimSpace(model.Name); name != "" {
+			byName[name] = model
+		}
 	}
 
-	// Filter models
 	filtered := make([]*Model, 0, len(allowedModels))
-	for _, model := range models {
-		if allowedSet[model.ID] || allowedSet[model.Name] {
-			filtered = append(filtered, model)
+	seen := make(map[string]struct{}, len(allowedModels))
+	appendUnique := func(model *Model) {
+		if model == nil {
+			return
 		}
+		key := preferredModelID(model)
+		if key == "" {
+			return
+		}
+		if _, exists := seen[key]; exists {
+			return
+		}
+		seen[key] = struct{}{}
+		filtered = append(filtered, model)
+	}
+
+	for _, allowed := range allowedModels {
+		allowed = strings.TrimSpace(allowed)
+		if allowed == "" {
+			continue
+		}
+		if model := byID[allowed]; model != nil {
+			appendUnique(model)
+			continue
+		}
+		appendUnique(byName[allowed])
 	}
 
 	return filtered

@@ -191,7 +191,7 @@ func (r *Router) Route(req *RouteRequest) (*RouteResult, error) {
 		return nil, ErrNoAvailableProvider
 	}
 
-	r.sortByStrategy(candidates, req.Strategy)
+	r.sortByStrategy(candidates, req.Strategy, req.ModelID)
 
 	// Sticky routing: if a preferred provider is set (e.g., during tool rounds),
 	// move it to the front so it's tried first. Fallbacks remain available.
@@ -443,24 +443,29 @@ func modelMatches(modelID, modelName, requestedID string) bool {
 }
 
 // sortByStrategy sorts candidates according to the routing strategy
-func (r *Router) sortByStrategy(candidates []*RouteCandidate, strategy RoutingStrategy) {
+func (r *Router) sortByStrategy(candidates []*RouteCandidate, strategy RoutingStrategy, modelID string) {
 	switch strategy {
 	case RoutingStrategyPriority:
-		r.sortByPriority(candidates)
+		r.sortByPriority(candidates, modelID)
 	case RoutingStrategyCost:
 		r.sortByCost(candidates)
 	case RoutingStrategyLatency:
-		r.sortByLatency(candidates)
+		r.sortByLatency(candidates, modelID)
 	case RoutingStrategyRoundRobin:
 		r.sortByRoundRobin(candidates)
 	default:
-		r.sortByPriority(candidates)
+		r.sortByPriority(candidates, modelID)
 	}
 }
 
 // sortByPriority sorts by provider priority (higher first)
-func (r *Router) sortByPriority(candidates []*RouteCandidate) {
-	sort.Slice(candidates, func(i, j int) bool {
+func (r *Router) sortByPriority(candidates []*RouteCandidate, modelID string) {
+	sort.SliceStable(candidates, func(i, j int) bool {
+		affinityI := providerFormatAffinityScore(modelID, candidates[i].Provider)
+		affinityJ := providerFormatAffinityScore(modelID, candidates[j].Provider)
+		if affinityI != affinityJ {
+			return affinityI > affinityJ
+		}
 		// Same provider: keep together (maintain order)
 		if candidates[i].Provider.ID == candidates[j].Provider.ID {
 			return false
@@ -501,11 +506,17 @@ func (r *Router) sortByCost(candidates []*RouteCandidate) {
 }
 
 // sortByLatency sorts by provider latency (lower first)
-func (r *Router) sortByLatency(candidates []*RouteCandidate) {
+func (r *Router) sortByLatency(candidates []*RouteCandidate, modelID string) {
 	r.latencyMu.RLock()
 	defer r.latencyMu.RUnlock()
 
-	sort.Slice(candidates, func(i, j int) bool {
+	sort.SliceStable(candidates, func(i, j int) bool {
+		affinityI := providerFormatAffinityScore(modelID, candidates[i].Provider)
+		affinityJ := providerFormatAffinityScore(modelID, candidates[j].Provider)
+		if affinityI != affinityJ {
+			return affinityI > affinityJ
+		}
+
 		latI := r.latencies[candidates[i].Provider.ID]
 		latJ := r.latencies[candidates[j].Provider.ID]
 
@@ -854,6 +865,65 @@ func shouldRetryWithNextAPIKey(err error) bool {
 		strings.Contains(errStr, "billing hard limit")
 }
 
+func shouldRetrySameProvider(err error) bool {
+	if err == nil || isNoResponseError(err) {
+		return false
+	}
+	if shouldRetryWithNextAPIKey(err) {
+		return false
+	}
+	if isAuthError(err) || isTransientError(err) {
+		return !isAuthError(err)
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "deadline exceeded") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "temporary network") ||
+		strings.Contains(errStr, "unexpected eof")
+}
+
+func shouldAttemptBlindFallback(err error) bool {
+	if err == nil {
+		return true
+	}
+	if isNoResponseError(err) {
+		return false
+	}
+	if isTransientError(err) || shouldRetryWithNextAPIKey(err) {
+		return true
+	}
+	if classifyError(err) == FailoverReasonModelNotFound || classifyError(err) == FailoverReasonTimeout {
+		return true
+	}
+	errStr := strings.ToLower(err.Error())
+	if strings.Contains(errStr, "upstream") ||
+		strings.Contains(errStr, "internal server error") ||
+		strings.Contains(errStr, "server error") ||
+		strings.Contains(errStr, "service unavailable") {
+		return true
+	}
+	if strings.Contains(errStr, "invalid_request") ||
+		strings.Contains(errStr, "invalid request") ||
+		strings.Contains(errStr, "bad request") ||
+		strings.Contains(errStr, "malformed") ||
+		strings.Contains(errStr, "content filter") ||
+		strings.Contains(errStr, "policy violation") {
+		return false
+	}
+	return false
+}
+
+func executeWithNaturalRetry(ctx context.Context, attemptResult *RouteResult, execute func(*RouteResult) error) (time.Duration, error) {
+	start := timeutil.NowTime()
+	err := execute(attemptResult)
+	if err != nil && ctx.Err() == nil && shouldRetrySameProvider(err) {
+		err = execute(attemptResult)
+	}
+	return timeutil.SinceTime(start), err
+}
+
 // buildAPIKeyAttempts builds an ordered API key list to try for a provider.
 // Order: preferred key first, then other enabled keys, then first key fallback.
 func buildAPIKeyAttempts(provider *Provider, preferred *APIKey) []*APIKey {
@@ -928,6 +998,8 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		triedProviders[providerID] = true
 	}
 
+	allowBlindFallback := false
+
 	result, err := r.Route(req)
 	if err != nil {
 		// Empty model means "auto pick any available model". Blind fallback is not
@@ -942,6 +1014,7 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		// Model not in snapshot — skip to blind provider fallback
 		slog.Info("[router] model not in snapshot, trying blind provider fallback",
 			"model", req.ModelID, "mode", req.Mode)
+		allowBlindFallback = true
 		goto blindFallback
 	}
 
@@ -971,8 +1044,7 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 				failoverResult.TotalAttempts++
 			}
 			start := timeutil.NowTime()
-			err = execute(attemptResult)
-			latency := timeutil.SinceTime(start)
+			latency, err := executeWithNaturalRetry(ctx, attemptResult, execute)
 			triedProviders[result.Provider.ID] = true
 
 			if err == nil {
@@ -1057,8 +1129,7 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 					failoverResult.TotalAttempts++
 				}
 				start := timeutil.NowTime()
-				err = execute(attemptResult)
-				latency := timeutil.SinceTime(start)
+				latency, err := executeWithNaturalRetry(ctx, attemptResult, execute)
 				triedProviders[fallback.Provider.ID] = true
 
 				if err == nil {
@@ -1099,7 +1170,23 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		}
 	}
 
+	allowBlindFallback = shouldAttemptBlindFallback(err)
+
 blindFallback:
+	if !allowBlindFallback {
+		if failoverResult != nil {
+			if err != nil {
+				failoverResult.FinalError = err.Error()
+			} else {
+				failoverResult.FinalError = ErrNoAvailableProvider.Error()
+			}
+		}
+		if err != nil {
+			return err
+		}
+		return ErrNoAvailableProvider
+	}
+
 	// Blind fallback is only meaningful for explicit model IDs not present in the
 	// snapshot. For empty model requests, providers were already exhausted above.
 	if strings.TrimSpace(req.ModelID) == "" {
@@ -1189,8 +1276,7 @@ blindFallback:
 				failoverResult.TotalAttempts++
 			}
 			start := timeutil.NowTime()
-			err = execute(attemptResult)
-			latency := timeutil.SinceTime(start)
+			latency, err := executeWithNaturalRetry(ctx, attemptResult, execute)
 
 			if err == nil {
 				r.UpdateLatency(provider.ID, latency)
@@ -1286,8 +1372,13 @@ func (r *Router) findBlindFallbackProviders(modelID string, mode RoutingMode, ex
 		candidates = append(candidates, p)
 	}
 
-	// Sort by priority (highest first)
-	sort.Slice(candidates, func(i, j int) bool {
+	// Sort by model/provider affinity first, then priority.
+	sort.SliceStable(candidates, func(i, j int) bool {
+		affinityI := providerFormatAffinityScore(modelID, candidates[i])
+		affinityJ := providerFormatAffinityScore(modelID, candidates[j])
+		if affinityI != affinityJ {
+			return affinityI > affinityJ
+		}
 		return candidates[i].Priority > candidates[j].Priority
 	})
 

@@ -393,6 +393,91 @@ func TestGetFilteredModels_AllowlistConfiguredEmptyPersists(t *testing.T) {
 	}
 }
 
+func TestGetFilteredModels_DefaultSortsByPreference(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "model-pref-sort-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+
+	provider := &Provider{
+		ID:      "custom-provider",
+		Name:    "Custom Provider",
+		Type:    ProviderTypeCustom,
+		Enabled: true,
+		Status:  ProviderStatusActive,
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	if err := storage.SaveModels(provider.ID, []*Model{
+		{ID: "gpt-4o-mini", ProviderID: provider.ID, Name: "gpt-4o-mini", Enabled: true},
+		{ID: "gpt-5.3-codex-spark", ProviderID: provider.ID, Name: "gpt-5.3-codex-spark", Enabled: true},
+		{ID: "gpt-5.3-codex", ProviderID: provider.ID, Name: "gpt-5.3-codex", Enabled: true},
+	}); err != nil {
+		t.Fatalf("SaveModels failed: %v", err)
+	}
+
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	filtered, err := discovery.GetFilteredModels(provider.ID)
+	if err != nil {
+		t.Fatalf("GetFilteredModels failed: %v", err)
+	}
+	if len(filtered) != 3 {
+		t.Fatalf("Expected 3 models, got %d", len(filtered))
+	}
+	if filtered[0].ID != "gpt-5.3-codex" || filtered[1].ID != "gpt-5.3-codex-spark" || filtered[2].ID != "gpt-4o-mini" {
+		t.Fatalf("unexpected model order: [%s %s %s]", filtered[0].ID, filtered[1].ID, filtered[2].ID)
+	}
+}
+
+func TestGetFilteredModels_PreservesAllowlistOrder(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "allowlist-order-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+
+	provider := &Provider{
+		ID:                  "custom-provider",
+		Name:                "Custom Provider",
+		Type:                ProviderTypeCustom,
+		Enabled:             true,
+		Status:              ProviderStatusActive,
+		AllowlistConfigured: true,
+		AllowedModels:       []string{"gpt-4o-mini", "gpt-5.3-codex"},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	if err := storage.SaveModels(provider.ID, []*Model{
+		{ID: "gpt-5.3-codex", ProviderID: provider.ID, Name: "gpt-5.3-codex", Enabled: true},
+		{ID: "gpt-4o-mini", ProviderID: provider.ID, Name: "gpt-4o-mini", Enabled: true},
+	}); err != nil {
+		t.Fatalf("SaveModels failed: %v", err)
+	}
+
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	filtered, err := discovery.GetFilteredModels(provider.ID)
+	if err != nil {
+		t.Fatalf("GetFilteredModels failed: %v", err)
+	}
+	if len(filtered) != 2 {
+		t.Fatalf("Expected 2 models, got %d", len(filtered))
+	}
+	if filtered[0].ID != "gpt-4o-mini" || filtered[1].ID != "gpt-5.3-codex" {
+		t.Fatalf("unexpected allowlist order: [%s %s]", filtered[0].ID, filtered[1].ID)
+	}
+}
+
 func TestFormatModelName(t *testing.T) {
 	tests := []struct {
 		input    string

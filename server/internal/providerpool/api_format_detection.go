@@ -209,10 +209,10 @@ func normalizeDetectedBaseURL(originalBaseURL string, best formatProbeResult) st
 
 func tieBreakPrefer(a, b formatProbeResult) bool {
 	rank := map[APIFormat]int{
-		APIFormatAnthropic: 4,
+		APIFormatOpenAI:    4,
 		APIFormatResponses: 3,
-		APIFormatOpenAI:    3,
-		APIFormatGoogle:    2,
+		APIFormatAnthropic: 2,
+		APIFormatGoogle:    1,
 	}
 	return rank[a.format] > rank[b.format]
 }

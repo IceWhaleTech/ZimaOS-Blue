@@ -289,6 +289,22 @@ func TestResolveProviderVerificationModelCandidates_PrefersHighIntelligence(t *t
 	}
 }
 
+func TestResolveProviderVerificationModelCandidates_PrefersHigherVersion(t *testing.T) {
+	candidates := resolveProviderVerificationModelCandidates("", `{"data":[{"id":"claude-sonnet-4-5"},{"id":"claude-sonnet-4-7"},{"id":"claude-sonnet-3-7"}]}`)
+	if len(candidates) < 3 {
+		t.Fatalf("candidates length = %d, want >= 3", len(candidates))
+	}
+	if candidates[0] != "claude-sonnet-4-7" {
+		t.Fatalf("first candidate = %q, want %q", candidates[0], "claude-sonnet-4-7")
+	}
+	if candidates[1] != "claude-sonnet-4-5" {
+		t.Fatalf("second candidate = %q, want %q", candidates[1], "claude-sonnet-4-5")
+	}
+	if candidates[2] != "claude-sonnet-3-7" {
+		t.Fatalf("third candidate = %q, want %q", candidates[2], "claude-sonnet-3-7")
+	}
+}
+
 func TestExtractModelIDsFromModelsResponse_SupportsCommonShapes(t *testing.T) {
 	tests := []struct {
 		name string
@@ -501,6 +517,92 @@ func TestVerifyProviderCandidate_PrioritizesAnthropicOverOpenAI(t *testing.T) {
 	}
 	if result.RecommendedBaseURL != "https://relay.example.com" {
 		t.Fatalf("RecommendedBaseURL = %q, want %q", result.RecommendedBaseURL, "https://relay.example.com")
+	}
+}
+
+func TestVerifyProviderCandidate_DefaultsToOpenAIWhenModelIsNotClaude(t *testing.T) {
+	restoreVerify := installProviderVerifyTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/models":
+			return http.StatusOK, `{"data":[{"id":"gpt-4.1"}]}`
+		case "/v1/messages":
+			return http.StatusBadRequest, `{"error":{"message":"invalid_request"}}`
+		case "/v1/chat/completions":
+			return http.StatusOK, `{"choices":[{"message":{"content":"pong"}}]}`
+		case "/v1/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		case "/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreVerify()
+
+	restoreProbe := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			return http.StatusBadRequest, `{"error":"probe"}`
+		case "/v1/responses":
+			return http.StatusBadRequest, `{"error":"probe"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreProbe()
+
+	result, err := verifyProviderCandidate(context.Background(), providerVerificationRequest{
+		BaseURL: "https://relay.example.com",
+		APIKey:  "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("verifyProviderCandidate returned error: %v", err)
+	}
+	if result.RecommendedAPIFormat != APIFormatOpenAI {
+		t.Fatalf("RecommendedAPIFormat = %q, want %q", result.RecommendedAPIFormat, APIFormatOpenAI)
+	}
+}
+
+func TestVerifyProviderCandidate_UsesResponsesForCodexModels(t *testing.T) {
+	restoreVerify := installProviderVerifyTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/models":
+			return http.StatusOK, `{"data":[{"id":"gpt-5.3-codex"}]}`
+		case "/v1/messages":
+			return http.StatusNotFound, `{"error":"not found"}`
+		case "/v1/chat/completions":
+			return http.StatusOK, `{"choices":[{"message":{"content":"pong"}}]}`
+		case "/v1/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		case "/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreVerify()
+
+	restoreProbe := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			return http.StatusBadRequest, `{"error":"probe"}`
+		case "/v1/responses":
+			return http.StatusBadRequest, `{"error":"probe"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreProbe()
+
+	result, err := verifyProviderCandidate(context.Background(), providerVerificationRequest{
+		BaseURL: "https://relay.example.com",
+		APIKey:  "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("verifyProviderCandidate returned error: %v", err)
+	}
+	if result.RecommendedAPIFormat != APIFormatResponses {
+		t.Fatalf("RecommendedAPIFormat = %q, want %q", result.RecommendedAPIFormat, APIFormatResponses)
 	}
 }
 
