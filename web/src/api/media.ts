@@ -166,6 +166,7 @@ export function streamMediaTask(
   callbacks: {
     onProgress?: (evt: MediaProgressEvent) => void
     onComplete?: (evt: MediaProgressEvent) => void
+    onCancelled?: (evt: MediaProgressEvent) => void
     onError?: (error: string) => void
   },
 ): AbortController {
@@ -231,6 +232,10 @@ export function streamMediaTask(
                 case 'complete':
                   receivedTerminal = true
                   callbacks.onComplete?.(data)
+                  return
+                case 'cancelled':
+                  receivedTerminal = true
+                  callbacks.onCancelled?.(data)
                   return
                 case 'error':
                   receivedTerminal = true

@@ -16,6 +16,7 @@ import (
 	concpool "github.com/sourcegraph/conc/pool"
 	"go.uber.org/zap"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a2ui"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
@@ -25,6 +26,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
@@ -38,7 +40,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mfa"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
+	ocrruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ocr"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/password"
+	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
@@ -83,6 +87,17 @@ func applyPendingBackupRestore(dataDir string) error {
 		return err
 	}
 	if !mgr.HasPendingRestore() {
+		dbPaths, err := backup.DiscoverSQLiteDatabasePaths(dataDir)
+		if err != nil {
+			return err
+		}
+		result, err := mgr.CheckAndAutoRecover(context.Background(), dbPaths)
+		if err != nil {
+			return err
+		}
+		if result != nil && result.Recovered {
+			fmt.Fprintf(os.Stderr, "Recovered databases %v from backup %s\n", result.CorruptedDatabases, result.BackupID)
+		}
 		return nil
 	}
 	_, err = mgr.ApplyPendingRestore(context.Background())
@@ -177,33 +192,33 @@ func runServer() {
 	}
 
 	dbPath := filepath.Join(dataDir, "blue.db")
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dbPath, dbPath, func(db *sql.DB) error {
+		// Configure database connection pool (shared by user, memory, apikey tables)
+		db.SetMaxOpenConns(8)
+		db.SetMaxIdleConns(3)
+		db.SetConnMaxLifetime(time.Hour)
+
+		// Enable WAL mode for better concurrency
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return fmt.Errorf("enable WAL mode: %w", err)
+		}
+		// Enable foreign keys
+		if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+			return fmt.Errorf("enable foreign keys: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+			return fmt.Errorf("set synchronous mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA cache_size=-2000"); err != nil {
+			return fmt.Errorf("set cache size: %w", err)
+		}
+		db.Exec("PRAGMA shrink_memory")
+		return nil
+	})
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to open database")
 	}
 	defer db.Close()
-
-	// Configure database connection pool (shared by user, memory, apikey tables)
-	db.SetMaxOpenConns(8)
-	db.SetMaxIdleConns(3)
-	db.SetConnMaxLifetime(time.Hour)
-
-	// Enable WAL mode for better concurrency
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		logger.Warn().Err(err).Msg("Failed to enable WAL mode")
-	}
-	// Enable foreign keys
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		logger.Warn().Err(err).Msg("Failed to enable foreign keys")
-	}
-	// 优化: 添加更多 SQLite 性能优化
-	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
-		logger.Warn().Err(err).Msg("Failed to set synchronous mode")
-	}
-	if _, err := db.Exec("PRAGMA cache_size=-2000"); err != nil { // ~2MB page cache (reduced from 8MB for lower idle memory)
-		logger.Warn().Err(err).Msg("Failed to set cache size")
-	}
-	db.Exec("PRAGMA shrink_memory") // Release unused memory after pragma changes
 
 	// Shared kvstore for all config persistence (replaces scattered JSON files)
 	sqliteKV, err := kvstore.NewSQLiteStoreWithDB(db)
@@ -317,7 +332,8 @@ func runServer() {
 
 	// Initialize tools registry and register built-in tools
 	toolRegistry := tools.NewRegistry()
-	tools.RegisterBuiltinTools(toolRegistry)
+	webSearchConfig, webFetchConfig := buildBuiltinToolConfigs(cfg)
+	tools.RegisterBuiltinToolsWithConfig(toolRegistry, webSearchConfig, webFetchConfig, nil, 0)
 	tools.RegisterFactoryToolDefinitions(toolRegistry)
 	logger.Info().Int("count", len(toolRegistry.List())).Msg("Built-in tools registered")
 
@@ -335,31 +351,42 @@ func runServer() {
 	pluginStore := plugin.NewStore(pluginStoreConfig, pluginRegistry)
 	logger.Info().Msg("Plugin store initialized")
 
+	var a2uiManager *a2ui.Manager
+	var ocrService *ocrruntime.TesseractService
+	var pdfService *pdfextract.Service
+
 	// Initialize chat handler
 	chatHandler := server.NewChatHandler(memoryStore, llmRegistry, toolRegistry)
 	if cfg.Session.Audit.Enabled {
+		auditCfg := sessionaudit.StoreConfig{
+			RetentionDays:    cfg.Session.Audit.RetentionDays,
+			CleanupInterval:  cfg.Session.Audit.CleanupInterval,
+			CleanupBatchSize: cfg.Session.Audit.CleanupBatchSize,
+		}
 		auditDBPath := cfg.Session.Audit.Path
+		var (
+			auditStore *sessionaudit.Store
+			err        error
+		)
 		if auditDBPath == "" {
-			auditDBPath = filepath.Join(dataDir, "session_audit.db")
-		}
-		if !filepath.IsAbs(auditDBPath) {
-			// Keep audit DB under dataDir by default for predictable deployment paths.
-			auditDBPath = filepath.Join(dataDir, filepath.Base(auditDBPath))
-		}
-		if err := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); err != nil {
-			logger.Warn().Err(err).Str("path", auditDBPath).Msg("Failed to create session audit directory")
+			auditDBPath = dbPath
+			auditStore, err = sessionaudit.NewSQLiteStoreWithDB(db, auditCfg)
 		} else {
-			auditStore, err := sessionaudit.NewSQLiteStore(auditDBPath, sessionaudit.StoreConfig{
-				RetentionDays:    cfg.Session.Audit.RetentionDays,
-				CleanupInterval:  cfg.Session.Audit.CleanupInterval,
-				CleanupBatchSize: cfg.Session.Audit.CleanupBatchSize,
-			})
-			if err != nil {
-				logger.Warn().Err(err).Str("path", auditDBPath).Msg("Failed to initialize session audit store")
-			} else {
-				chatHandler.SetSessionAuditStore(auditStore)
-				logger.Info().Str("path", auditDBPath).Int("retention_days", cfg.Session.Audit.RetentionDays).Msg("Session tool payload audit store enabled")
+			if !filepath.IsAbs(auditDBPath) {
+				// Keep audit DB under dataDir by default for predictable deployment paths.
+				auditDBPath = filepath.Join(dataDir, filepath.Base(auditDBPath))
 			}
+			if mkErr := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); mkErr != nil {
+				logger.Warn().Err(mkErr).Str("path", auditDBPath).Msg("Failed to create session audit directory")
+			} else {
+				auditStore, err = sessionaudit.NewSQLiteStore(auditDBPath, auditCfg)
+			}
+		}
+		if err != nil {
+			logger.Warn().Err(err).Str("path", auditDBPath).Msg("Failed to initialize session audit store")
+		} else if auditStore != nil {
+			chatHandler.SetSessionAuditStore(auditStore)
+			logger.Info().Str("path", auditDBPath).Int("retention_days", cfg.Session.Audit.RetentionDays).Msg("Session tool payload audit store enabled")
 		}
 	}
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -457,6 +484,15 @@ func runServer() {
 
 	// Initialize auto-reply service and handler
 	zapLogger, _ := zap.NewProduction()
+	a2uiManager = a2ui.NewManager(zapLogger)
+	ocrService = ocrruntime.NewTesseractService(zapLogger, ocrruntime.Config{
+		ModelDir:     filepath.Join(dataDir, "models", "tesseract"),
+		AutoDownload: true,
+		WorkerCount:  1,
+	})
+	pdfService = pdfextract.NewService(zapLogger, ocrService)
+	tools.RegisterCanvasTools(toolRegistry, a2uiManager)
+	tools.RegisterPDFTool(toolRegistry, pdfService)
 	autoreplyService := autoreply.NewService(autoreply.DefaultConfig(), zapLogger)
 	autoreplyHandler := autoreply.NewHandler(autoreplyService, zapLogger)
 
@@ -490,14 +526,15 @@ func runServer() {
 
 	// Metrics: async init — chat handler nil-checks metricsRecorder, so first
 	// requests simply skip recording until metrics is ready.  This avoids
-	// blocking server start on metrics.db open + collector goroutine.
+	// blocking server start on metrics initialization + collector goroutine.
 	go func() {
 		// Metrics collector (collect every 10 seconds, keep 5 minutes of history)
 		metricsCollector = metrics.NewCollector(10*time.Second, 30)
 		metricsCollector.Start()
-		// Metrics writer for detailed API metrics with SQLite persistence
+		// Metrics writer for detailed API metrics with SQLite persistence.
+		// Reuse blue.db by default to reduce auxiliary SQLite files.
 		metricsConfig := metrics.DefaultWriterConfig()
-		metricsConfig.SQLiteDBPath = filepath.Join(dataDir, "metrics.db")
+		metricsConfig.SharedSQLiteDB = db
 		metricsWriter = metrics.NewMetricsWriter(nil, metricsConfig)
 		metricsWriter.Start()
 		logger.Info().Msg("Metrics services initialized")
@@ -778,7 +815,7 @@ func runServer() {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, configKV, configStore)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, haHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, db, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, configKV, configStore)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -873,6 +910,10 @@ func runServer() {
 		ttsService.Close()
 		logger.Info().Msg("TTS service cleaned up")
 	}
+	if pdfService != nil {
+		_ = pdfService.Close()
+		logger.Info().Msg("PDF service cleaned up")
+	}
 
 	// Clean up extracted web dist from tmpfs
 	web.CleanupDist()
@@ -880,7 +921,7 @@ func runServer() {
 	logger.Info().Msg("ZimaOS-Blue stopped")
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, configKV kvstore.Store, configStore *config.ConfigStore) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, haHandler *homeassistant.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, db *sql.DB, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, configKV kvstore.Store, configStore *config.ConfigStore) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -1041,7 +1082,19 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Initialize provider pool (SQLite-backed, auto-migrates from JSON files)
 	var providerPool *providerpool.Pool
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
-	providerPool, ppErr := providerpool.NewPool(providerPoolPath, providerpool.WithDB(db))
+	ppOpts := []providerpool.PoolOption{providerpool.WithDB(db)}
+	if cfg.Security.Encryption.Enabled {
+		secretEncryptor, encErr := auth.NewEncryptor(&auth.EncryptionConfig{
+			KeyPath:    cfg.Security.Encryption.KeyPath,
+			Passphrase: cfg.Security.Encryption.Passphrase,
+		})
+		if encErr != nil {
+			logger.Warn("Failed to initialize provider pool secret encryption", zap.Error(encErr))
+		} else {
+			ppOpts = append(ppOpts, providerpool.WithSecretEncryptor(secretEncryptor))
+		}
+	}
+	providerPool, ppErr := providerpool.NewPool(providerPoolPath, ppOpts...)
 	if ppErr != nil {
 		logger.Warn("Failed to initialize provider pool", zap.Error(ppErr))
 		providerPool = nil
@@ -1072,42 +1125,23 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Call bootstrap.RegisterAllRoutes with all dependencies
 	routeUserRepo, _ := user.NewSQLiteRepository(db)
 
-	// Initialize session manager + handler (shared control plane for API + gateway methods).
-	sessionDBPath := cfg.Session.Persistence.Path
-	if sessionDBPath == "" {
-		sessionDBPath = filepath.Join(dataDir, "sessions.db")
-	}
-	if !filepath.IsAbs(sessionDBPath) {
-		// Keep persistence under dataDir for predictable deployment paths.
-		sessionDBPath = filepath.Join(dataDir, filepath.Base(sessionDBPath))
-	}
-	if err := os.MkdirAll(filepath.Dir(sessionDBPath), 0o750); err != nil {
-		logger.Warn("Failed to create session persistence directory", zap.String("path", sessionDBPath), zap.Error(err))
-	}
-
-	var sessionStore session.SessionStore
-	if cfg.Session.Persistence.Enabled {
-		store, err := session.NewSQLiteSessionStore(sessionDBPath, cfg.Session.MaxTokens)
-		if err != nil {
-			logger.Warn("Failed to initialize session store", zap.String("path", sessionDBPath), zap.Error(err))
-		} else {
-			sessionStore = store
-		}
-	}
+	// Wire threshold-triggered memory extraction (compactor_memory) into chat flow.
 	var compactionProvider llm.Provider
 	if providerNames := llmRegistry.List(); len(providerNames) > 0 {
 		compactionProvider = llmRegistry.Get(providerNames[0])
 	}
 	sessionCompactor := session.NewSessionCompactor(compactionProvider, cfg.Session.Compaction)
-	sessionManager := session.NewSessionManager(cfg.Session, sessionStore, sessionCompactor)
-	if err := sessionManager.Recover(); err != nil {
-		logger.Warn("Failed to recover persisted sessions", zap.Error(err))
+	memoryRefreshCfg := session.DefaultMemoryRefreshConfig()
+	memoryRefreshCfg.Enabled = memoryRefreshCfg.Enabled && cfg.Session.Compaction.Enabled && compactionProvider != nil
+	if memoryRefreshCfg.Enabled {
+		sessionMemRefresher := server.NewSessionMemoryRefresher(memoryHandler)
+		chatHandler.SetCompactorMemoryIntegration(session.NewCompactorMemoryIntegration(
+			sessionCompactor,
+			sessionMemRefresher,
+			compactionProvider,
+			memoryRefreshCfg,
+		), cfg.Session.MaxTokens)
 	}
-	sessionHandler := server.NewSessionHandler(sessionManager)
-	lm.RegisterShutdownHook(func(ctx context.Context) error {
-		_ = ctx
-		return sessionManager.Stop()
-	})
 
 	// Initialize gateway runtime + HTTP handler; method handlers are wired in bootstrap routes.
 	gatewayRuntime := gateway.NewGateway(gateway.DefaultConfig(), zapLogger)
@@ -1135,13 +1169,15 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			SkillRegistry: skillRegistry,
 			ToolRegistry:  toolRegistry,
 			WorkerPool:    pool,
+			A2UIManager:   a2uiManager,
+			OCRService:    ocrService,
+			PDFService:    pdfService,
 		},
 		Logger:             zapLogger,
 		Ctx:                lm.Context(),
 		MetricsWriter:      metricsWriter,
 		MetricsCollector:   metricsCollector,
 		ChatHandler:        chatHandler,
-		SessionHandler:     sessionHandler,
 		PluginRegistry:     pluginRegistry,
 		PluginStore:        pluginStore,
 		ExtauthHandler:     extauthHandler,

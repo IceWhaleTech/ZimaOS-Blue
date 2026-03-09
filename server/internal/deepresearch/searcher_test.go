@@ -15,9 +15,9 @@ func TestToolWebSearcherSearch_RequestsJSONFormat(t *testing.T) {
 		_, _ = w.Write([]byte(`{
 			"results": [
 				{
-					"title": "OpenClaw",
-					"url": "https://example.com/openclaw",
-					"content": "OpenClaw search result",
+					"title": "ZimaOS Blue",
+					"url": "https://example.com/zimaos-blue",
+					"content": "ZimaOS Blue search result",
 					"engine": "searxng"
 				}
 			]
@@ -33,17 +33,17 @@ func TestToolWebSearcherSearch_RequestsJSONFormat(t *testing.T) {
 		Region:     "wt-wt",
 	})
 
-	hits, err := searcher.Search(context.Background(), "OpenClaw", 5, "en")
+	hits, err := searcher.Search(context.Background(), "ZimaOS Blue", 5, "en")
 	if err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}
 	if len(hits) != 1 {
 		t.Fatalf("len(hits) = %d, want 1", len(hits))
 	}
-	if hits[0].Title != "OpenClaw" {
-		t.Fatalf("hits[0].Title = %q, want %q", hits[0].Title, "OpenClaw")
+	if hits[0].Title != "ZimaOS Blue" {
+		t.Fatalf("hits[0].Title = %q, want %q", hits[0].Title, "ZimaOS Blue")
 	}
-	if hits[0].URL != "https://example.com/openclaw" {
-		t.Fatalf("hits[0].URL = %q, want %q", hits[0].URL, "https://example.com/openclaw")
+	if hits[0].URL != "https://example.com/zimaos-blue" {
+		t.Fatalf("hits[0].URL = %q, want %q", hits[0].URL, "https://example.com/zimaos-blue")
 	}
 }

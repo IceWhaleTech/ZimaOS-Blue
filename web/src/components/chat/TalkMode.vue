@@ -6,6 +6,7 @@ import { speechApi } from '@/api/speech'
 import { convertToWav } from '@/utils/audioConverter'
 import { EnergyVAD } from '@/utils/vad'
 import { markdownToText } from '@/utils/markdown'
+import { isTtsAutoPlayEnabled, setTtsAutoPlayEnabled } from '@/utils/ttsPreferences'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 import { useLocaleStore } from '@/stores/locale'
 import { useChatStore } from '@/stores/chat'
@@ -28,7 +29,7 @@ const emit = defineEmits<{
 // Conversation state machine
 type ConversationState = 'idle' | 'listening' | 'transcribing' | 'processing' | 'speaking'
 const conversationState = ref<ConversationState>('idle')
-const autoPlayTTS = ref(localStorage.getItem('tts-auto-play') !== 'false')
+const autoPlayTTS = ref(isTtsAutoPlayEnabled())
 const error = ref<string | null>(null)
 
 type TalkBubble = {
@@ -51,6 +52,7 @@ const lastSpokenAssistantMessageId = ref<string | null>(null)
 
 // VAD instance
 let vad: EnergyVAD | null = null
+let isSynthesizingTTS = false
 
 // Derived state helpers
 const isActive = () => conversationState.value !== 'idle'
@@ -220,7 +222,9 @@ function close() {
 
 function stopTTSPlayback() {
   ttsAudioManager.stop()
-  voiceApi.stopSpeaking().catch(() => {})
+  if (isSynthesizingTTS) {
+    voiceApi.stopSpeaking().catch(() => {})
+  }
 }
 
 function handleWindowBlur() {
@@ -236,7 +240,7 @@ function handleVisibilityChange() {
 // Toggle mute
 function toggleAutoPlay() {
   autoPlayTTS.value = !autoPlayTTS.value
-  localStorage.setItem('tts-auto-play', autoPlayTTS.value.toString())
+  setTtsAutoPlayEnabled(autoPlayTTS.value)
 }
 
 // Watch for modelValue changes
@@ -296,6 +300,7 @@ async function playResponseTTS(text: string) {
   if (vad) vad.pause()
 
   try {
+    isSynthesizingTTS = true
     const result = await speechApi.synthesize(text)
     if (result.audio) {
       await ttsAudioManager.play(result.audio, result.content_type || 'audio/mp3')
@@ -303,6 +308,7 @@ async function playResponseTTS(text: string) {
   } catch (e) {
     console.error('TTS playback failed:', e)
   } finally {
+    isSynthesizingTTS = false
     // Resume listening for next turn
     resumeListening()
   }

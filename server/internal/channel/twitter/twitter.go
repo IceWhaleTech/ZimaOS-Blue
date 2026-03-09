@@ -46,12 +46,12 @@ const (
 
 // dmEvent represents a Twitter DM event from the v2 API.
 type dmEvent struct {
-	ID        string    `json:"id"`
-	EventType string    `json:"event_type"`
-	Text      string    `json:"text"`
-	SenderID  string    `json:"sender_id"`
-	DMID      string    `json:"dm_conversation_id"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string         `json:"id"`
+	EventType   string         `json:"event_type"`
+	Text        string         `json:"text"`
+	SenderID    string         `json:"sender_id"`
+	DMID        string         `json:"dm_conversation_id"`
+	CreatedAt   time.Time      `json:"created_at"`
 	Attachments *dmAttachments `json:"attachments,omitempty"`
 }
 
@@ -62,8 +62,8 @@ type dmAttachments struct {
 type dmEventsResponse struct {
 	Data []dmEvent `json:"data"`
 	Meta struct {
-		NextToken  string `json:"next_token"`
-		ResultCount int   `json:"result_count"`
+		NextToken   string `json:"next_token"`
+		ResultCount int    `json:"result_count"`
 	} `json:"meta"`
 	Includes *dmIncludes `json:"includes,omitempty"`
 }
@@ -73,9 +73,9 @@ type dmIncludes struct {
 }
 
 type dmMedia struct {
-	MediaKey string `json:"media_key"`
-	Type     string `json:"type"`
-	URL      string `json:"url,omitempty"`
+	MediaKey   string `json:"media_key"`
+	Type       string `json:"type"`
+	URL        string `json:"url,omitempty"`
 	PreviewURL string `json:"preview_image_url,omitempty"`
 }
 
@@ -100,9 +100,11 @@ type Channel struct {
 	msgsSent    atomic.Int64
 	msgsRecv    atomic.Int64
 
-	sinceID string
-	ctx     context.Context
-	cancel  context.CancelFunc
+	sinceID      string
+	selfUserID   string
+	selfUsername string
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 // New creates a new Twitter/X channel.
@@ -116,8 +118,8 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	}
 }
 
-func (c *Channel) Name() string                    { return "twitter" }
-func (c *Channel) Type() string                    { return "twitter" }
+func (c *Channel) Name() string                     { return "twitter" }
+func (c *Channel) Type() string                     { return "twitter" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -133,6 +135,17 @@ func (c *Channel) Start(ctx context.Context) error {
 		return fmt.Errorf("channel already started")
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
+	c.mu.Unlock()
+
+	if err := c.fetchSelfProfile(ctx); err != nil {
+		c.setError(err.Error())
+		if c.cancel != nil {
+			c.cancel()
+		}
+		return err
+	}
+
+	c.mu.Lock()
 	now := time.Now()
 	c.status = channel.StatusConnected
 	c.connectedAt = &now
@@ -140,7 +153,7 @@ func (c *Channel) Start(ctx context.Context) error {
 
 	go c.pollDMEvents()
 
-	c.logger.Info("Twitter channel started")
+	c.logger.Info("Twitter channel started", zap.String("self_user_id", c.selfUserID))
 	return nil
 }
 
@@ -157,6 +170,43 @@ func (c *Channel) Stop(ctx context.Context) error {
 }
 
 // pollDMEvents polls for new DM events using the v2 API.
+func (c *Channel) fetchSelfProfile(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, usersMeURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create self profile request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.config.BearerToken)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to fetch self profile: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Twitter self profile error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var userResp struct {
+		Data struct {
+			ID       string `json:"id"`
+			Username string `json:"username"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&userResp); err != nil {
+		return fmt.Errorf("failed to decode self profile: %w", err)
+	}
+	if strings.TrimSpace(userResp.Data.ID) == "" {
+		return fmt.Errorf("twitter self profile missing id")
+	}
+
+	c.mu.Lock()
+	c.selfUserID = strings.TrimSpace(userResp.Data.ID)
+	c.selfUsername = strings.TrimSpace(userResp.Data.Username)
+	c.mu.Unlock()
+	return nil
+}
+
 func (c *Channel) pollDMEvents() {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -232,18 +282,41 @@ func (c *Channel) fetchDMEvents() error {
 
 // processMessage converts a DM event into a channel.Message.
 func (c *Channel) processMessage(event dmEvent, mediaMap map[string]dmMedia) {
+	c.mu.RLock()
+	selfUserID := c.selfUserID
+	selfUsername := c.selfUsername
+	c.mu.RUnlock()
+	if strings.TrimSpace(event.SenderID) == "" {
+		return
+	}
+	if strings.TrimSpace(selfUserID) != "" && event.SenderID == selfUserID {
+		return
+	}
+
+	chatTarget := strings.TrimSpace(event.SenderID)
+	if chatTarget == "" {
+		chatTarget = event.DMID
+	}
+	metadata := map[string]interface{}{
+		"dm_conversation_id": event.DMID,
+		"participant_id":     event.SenderID,
+	}
+	if strings.TrimSpace(selfUserID) != "" {
+		metadata["self_user_id"] = selfUserID
+	}
+	if strings.TrimSpace(selfUsername) != "" {
+		metadata["self_username"] = selfUsername
+	}
 	msg := channel.Message{
 		ID:          event.ID,
 		ChannelName: "twitter",
-		ChatID:      event.DMID,
+		ChatID:      chatTarget,
 		UserID:      event.SenderID,
 		Username:    event.SenderID,
 		Type:        channel.MessageTypeText,
 		Content:     event.Text,
 		Timestamp:   event.CreatedAt,
-		Metadata: map[string]interface{}{
-			"dm_conversation_id": event.DMID,
-		},
+		Metadata:    metadata,
 	}
 
 	// Attach media if present
@@ -291,35 +364,49 @@ func toMessageType(twitterType string) channel.MessageType {
 
 // Send sends a DM via the Twitter v2 API, including media attachments.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
-	sendURL := fmt.Sprintf("%s/dm_conversations/with/%s/messages", twitterAPIBase, msg.ChatID)
+	sendURL := twitterSendURL(msg)
 
-	payload := map[string]interface{}{
-		"text": msg.Content,
+	textParts := make([]string, 0, 1+len(msg.Attachments))
+	if strings.TrimSpace(msg.Content) != "" {
+		textParts = append(textParts, strings.TrimSpace(msg.Content))
 	}
+
+	payload := map[string]interface{}{}
 
 	// Upload and attach media if present.
 	if len(msg.Attachments) > 0 {
 		mediaIDs := make([]map[string]string, 0, len(msg.Attachments))
 		for _, att := range msg.Attachments {
-			// Use pre-set ID if available.
 			if att.ID != "" {
 				mediaIDs = append(mediaIDs, map[string]string{"media_id": att.ID})
 				continue
 			}
-			// Upload binary data via v1.1 media/upload.
 			if len(att.Data) > 0 {
 				mid, err := c.uploadMedia(ctx, att.Data)
 				if err != nil {
-					c.logger.Warn("failed to upload media to Twitter",
-						zap.String("type", string(att.Type)), zap.Error(err))
+					c.logger.Warn("failed to upload media to Twitter", zap.String("type", string(att.Type)), zap.Error(err))
+					if fallback := twitterAttachmentFallbackText(att); fallback != "" {
+						textParts = append(textParts, fallback)
+					}
 					continue
 				}
 				mediaIDs = append(mediaIDs, map[string]string{"media_id": mid})
+				continue
+			}
+			if fallback := twitterAttachmentFallbackText(att); fallback != "" {
+				textParts = append(textParts, fallback)
 			}
 		}
 		if len(mediaIDs) > 0 {
 			payload["attachments"] = mediaIDs
 		}
+	}
+
+	if text := strings.Join(textParts, "\n"); text != "" {
+		payload["text"] = text
+	}
+	if len(payload) == 0 {
+		return fmt.Errorf("no sendable Twitter content")
 	}
 
 	body, err := json.Marshal(payload)
@@ -347,6 +434,51 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 
 	c.msgsSent.Add(1)
 	return nil
+}
+
+func twitterSendURL(msg channel.OutgoingMessage) string {
+	if conversationID := twitterConversationID(msg); conversationID != "" {
+		return fmt.Sprintf("%s/dm_conversations/%s/messages", twitterAPIBase, conversationID)
+	}
+	return fmt.Sprintf("%s/dm_conversations/with/%s/messages", twitterAPIBase, msg.ChatID)
+}
+
+func twitterConversationID(msg channel.OutgoingMessage) string {
+	if msg.Metadata != nil {
+		if conversationID, ok := msg.Metadata["dm_conversation_id"].(string); ok && strings.TrimSpace(conversationID) != "" {
+			return strings.TrimSpace(conversationID)
+		}
+	}
+	if strings.Contains(msg.ChatID, "-") {
+		return strings.TrimSpace(msg.ChatID)
+	}
+	return ""
+}
+
+func twitterAttachmentFallbackText(att channel.Attachment) string {
+	parts := make([]string, 0, 2)
+	if strings.TrimSpace(att.Name) != "" {
+		parts = append(parts, strings.TrimSpace(att.Name))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		parts = append(parts, strings.TrimSpace(att.URL))
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, "\n")
+	}
+	if len(att.Data) == 0 {
+		return ""
+	}
+	switch att.Type {
+	case channel.MessageTypeImage:
+		return "Image attachment"
+	case channel.MessageTypeVideo:
+		return "Video attachment"
+	case channel.MessageTypeAudio:
+		return "Audio attachment"
+	default:
+		return "File attachment"
+	}
 }
 
 // SendMedia uploads an image and sends it as a DM.
@@ -437,7 +569,7 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 		if buf.Len() == 0 {
 			return nil
 		}
-		err := c.Send(ctx, channel.OutgoingMessage{ChatID: chatID, Content: buf.String()})
+		err := c.Send(ctx, channel.OutgoingMessage{ChatID: chatID, ReplyToID: replyToID, Content: buf.String()})
 		buf.Reset()
 		return err
 	}

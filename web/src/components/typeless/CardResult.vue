@@ -7,6 +7,8 @@ const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardResult
+  actionLoading?: boolean
+  activeActionId?: string
 }>()
 
 const emit = defineEmits<{
@@ -110,7 +112,20 @@ async function copyTitle() {
   }
 }
 
-function handleAction(actionId: string) {
+function isActionActive(actionId: string): boolean {
+  return props.actionLoading === true && props.activeActionId === actionId
+}
+
+function isActionDisabled(action: { disabled?: boolean }): boolean {
+  return props.actionLoading === true || action.disabled === true
+}
+
+function actionButtonLabel(action: { id: string; label: string }): string {
+  return isActionActive(action.id) ? 'Working...' : tAction(action.id, action.label)
+}
+
+function handleAction(actionId: string, disabled = false) {
+  if (props.actionLoading || disabled) return
   emit('action', actionId, props.card.id)
 }
 
@@ -124,6 +139,19 @@ function tAction(id: string, fallback: string): string {
   const key = 'resultCard.actions.' + id
   const translated = t(key, fallback)
   return translated === key ? fallback : translated
+}
+
+function formatWarningCodeLabel(code?: string): string {
+  switch ((code || '').trim()) {
+    case 'login_wall':
+      return 'Login wall'
+    case 'challenge':
+      return 'Challenge'
+    case 'browser_required':
+      return 'Browser required'
+    default:
+      return code ? `warning_code=${code}` : ''
+  }
 }
 
 const translatedTitle = computed(() => {
@@ -151,6 +179,9 @@ const translatedMessage = computed(() => {
   return msg
 })
 
+const warningText = computed(() => (props.card.warning || '').trim())
+const warningCodeLabel = computed(() => formatWarningCodeLabel(props.card.warning_code))
+
 // Filter out details that are redundant with the title/message
 const visibleDetails = computed(() => {
   if (!props.card.details) return []
@@ -158,6 +189,7 @@ const visibleDetails = computed(() => {
     .filter(d => {
       const lbl = d.label.toLowerCase()
       if (lbl === 'status' || lbl === '状态') return false
+      if (lbl === 'warning' || lbl === 'warning_code') return false
       if ((lbl === 'result' || lbl === '结果') && props.card.message) return false
       return true
     })
@@ -191,6 +223,12 @@ const visibleDetails = computed(() => {
         :class="{ 'font-mono': isTitleCopyable }"
       >
         {{ translatedTitle }}
+      </span>
+      <span
+        v-if="warningCodeLabel"
+        class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200"
+      >
+        {{ warningCodeLabel }}
       </span>
       <button
         v-if="isTitleCopyable"
@@ -230,6 +268,19 @@ const visibleDetails = computed(() => {
       >
         {{ translatedMessage }}
       </p>
+
+      <div
+        v-if="warningText || warningCodeLabel"
+        class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800/60 dark:bg-amber-900/20"
+        :class="card.message ? 'mt-3' : ''"
+      >
+        <div class="flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-200">
+          <span>{{ warningCodeLabel || 'Warning' }}</span>
+        </div>
+        <p v-if="warningText" class="mt-1 text-sm leading-relaxed text-amber-900 dark:text-amber-100">
+          {{ warningText }}
+        </p>
+      </div>
 
       <!-- Details -->
       <div v-if="visibleDetails.length > 0" class="mt-2.5">
@@ -316,12 +367,17 @@ const visibleDetails = computed(() => {
           v-for="action in card.actions"
           :key="action.id"
           class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :class="buttonClasses[action.variant || 'secondary']"
-          :disabled="action.disabled"
-          @click="handleAction(action.id)"
+          :class="[buttonClasses[action.variant || 'secondary'], { 'opacity-60 cursor-wait': actionLoading }]"
+          :disabled="isActionDisabled(action)"
+          :aria-busy="isActionActive(action.id) ? 'true' : undefined"
+          @click="handleAction(action.id, !!action.disabled)"
         >
-          <span v-if="action.icon" class="mr-1">{{ action.icon }}</span>
-          {{ tAction(action.id, action.label) }}
+          <span
+            v-if="isActionActive(action.id)"
+            class="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent align-[-2px]"
+          />
+          <span v-else-if="action.icon" class="mr-1">{{ action.icon }}</span>
+          {{ actionButtonLabel(action) }}
         </button>
       </div>
     </div>

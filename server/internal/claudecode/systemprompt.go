@@ -195,8 +195,12 @@ const (
 
 	groundingGuidance = "<grounding>Prefer verified facts. If evidence is insufficient or conflicting, state uncertainty explicitly. Never fabricate sources. Distinguish observations from inference. If missing information makes execution risky or irreversible, ask a brief clarifying question first; otherwise proceed with reasonable assumptions and state them.</grounding>"
 
+	expressivenessGuidance = "<expressiveness>In written replies, avoid stiff, generic, or overly corporate tone. Occasional natural emoji and light expressive formatting are welcome when they improve warmth, tone, or readability, especially in confirmations, congratulations, and friendly section headers. Use them sparingly and organically; never force them or let them replace substance.</expressiveness>"
+
 	toolCallStyleGuidance = "<tool_style>Do not narrate routine tool calls. Narrate only for multi-step work, complex problems, sensitive actions, or when asked. Keep narration brief.</tool_style>" +
 		"<research_style>For latest/news/deep-research requests, run multiple search rounds before concluding and return one complete report with key findings plus source links. For lightweight lookup requests, summarize key findings and then suggest next steps.</research_style>"
+
+	webToolRoutingGuidance = "<web_tools>Use web_fetch for lightweight public HTTP page reads. Use browser first for login flows, CAPTCHA/challenges, JS-heavy pages, or interactions. If a web_fetch result includes warning_code=login_wall, challenge, or browser_required, immediately switch to browser. When available, reuse browser session state with browser_target_id.</web_tools>"
 
 	blueCoreRulesGuidance = "<blue_core_rules>" +
 		"<rule>Brevity is mandatory: one sentence when possible, no fluff.</rule>" +
@@ -250,8 +254,10 @@ func (b *SystemPromptBuilder) BuildStructured(ctx context.Context, extraPrompt s
 		sb.WriteString(roleGuidance)
 		sb.WriteString(instructionPriorityGuidance)
 		sb.WriteString(groundingGuidance)
+		sb.WriteString(expressivenessGuidance)
 		sb.WriteString(safetyGuidance)
 		sb.WriteString(toolCallStyleGuidance)
+		sb.WriteString(webToolRoutingGuidance)
 		sb.WriteString(blueCoreRulesGuidance)
 		sb.WriteString(silentReplyGuidance)
 		sb.WriteString(heartbeatGuidance)
@@ -417,7 +423,7 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 
 	var sb strings.Builder
 	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). For reminders, prefer `blue reminder.add message=\"...\" time=...` (or call tool `reminder` directly); do not use `blue reminder --help` as an execution step. ")
-	sb.WriteString("Routing: ask→ask, search→web_search, URL→browser, UI review→ui_reviewer, analyze→analyze, reminder/alert→reminder, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. ")
+	sb.WriteString("Routing: ask→ask, search→web_search, public URL read→web_fetch, interactive/login URL→browser, UI review→ui_reviewer, analyze→analyze, reminder/alert→reminder, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. If web_fetch returns warning_code=login_wall, challenge, or browser_required, switch to browser. ")
 	sb.WriteString("Use progressive skill selection: prefer routed/pinned commands first, then inspect likely SKILL.md files on demand. ")
 	sb.WriteString("More skills in workspace `.claude/skills/` and user default `~/.claude/skills/`.")
 
@@ -501,8 +507,7 @@ func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string
 			continue
 		}
 		content = workspace.NormalizeDefaultTemplateToEnglish(name, content)
-		// Ultra-compact mode: normalize markdown and collapse line breaks/whitespace.
-		content = pruner.MarkdownToTextMinimal(content)
+		content = promptContextText(name, content)
 		if content == "" {
 			continue
 		}
@@ -596,7 +601,7 @@ func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string
 		// Check for SOUL.md
 		for _, e := range included {
 			if strings.ToLower(e.name) == "soul.md" {
-				sb.WriteString("If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.")
+				sb.WriteString("If SOUL.md is present, embody its persona, warmth, and tone. Avoid stiff, generic, or overly corporate replies; follow its guidance unless higher-priority instructions override it.")
 				break
 			}
 		}
@@ -616,6 +621,14 @@ func (b *SystemPromptBuilder) buildProjectContext(contextFiles map[string]string
 	b.projectContextCacheMu.Unlock()
 
 	return projectContext
+}
+
+func promptContextText(name, content string) string {
+	if strings.EqualFold(name, workspace.FileSOUL) {
+		return pruner.CompactMarkdown(content)
+	}
+	// Ultra-compact mode: normalize markdown and collapse line breaks/whitespace.
+	return pruner.MarkdownToTextMinimal(content)
 }
 
 func contextFileTokenSoftCap(name string) int {

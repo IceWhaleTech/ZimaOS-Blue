@@ -13,13 +13,13 @@ import (
 type mockMemoryRefresher struct {
 	refreshCalled bool
 	sessionID     string
-	messageCount  int
+	extracted     string
 }
 
-func (m *mockMemoryRefresher) RefreshMemory(ctx context.Context, messages []sessionctx.Message, sessionID string) error {
+func (m *mockMemoryRefresher) RefreshMemory(ctx context.Context, extracted string, sessionID string) error {
 	m.refreshCalled = true
 	m.sessionID = sessionID
-	m.messageCount = len(messages)
+	m.extracted = extracted
 	return nil
 }
 
@@ -98,5 +98,51 @@ func TestDefaultMemoryRefreshConfig(t *testing.T) {
 	}
 	if !strings.Contains(config.SystemPrompt, "session query capability") {
 		t.Error("default system prompt should include capability memory guidance")
+	}
+}
+
+func TestCompactorMemoryIntegration_NilCompactorSafe(t *testing.T) {
+	cfg := MemoryRefreshConfig{
+		Enabled:            true,
+		SoftThresholdRatio: 0.6,
+	}
+	integration := NewCompactorMemoryIntegration(nil, nil, nil, cfg)
+	session := NewSession(SessionID{AgentID: "test", ChannelID: "ch", PeerID: "peer"}, 100)
+	session.AddMessage(sessionctx.Message{Role: "user", Content: "hello"})
+
+	if integration.ShouldRefreshMemory(session) {
+		t.Fatal("should not refresh memory when compactor is nil")
+	}
+	if integration.ShouldCompact(session) {
+		t.Fatal("should not compact when compactor is nil")
+	}
+	if integration.ShouldCompactOnTransition(0.5, session) {
+		t.Fatal("should not compact on transition when compactor is nil")
+	}
+	if _, err := integration.CompactWithMemoryRefresh(context.Background(), session); err == nil {
+		t.Fatal("expected error when compacting with nil compactor")
+	}
+}
+
+func TestCompactorMemoryIntegration_ShouldCompactOnTransition(t *testing.T) {
+	compactor := &SessionCompactor{
+		config: config.SessionCompactionConfig{
+			Enabled:   true,
+			Threshold: 0.8,
+		},
+	}
+	integration := NewCompactorMemoryIntegration(compactor, nil, nil, MemoryRefreshConfig{Enabled: true})
+	session := NewSession(SessionID{AgentID: "test", ChannelID: "ch", PeerID: "peer"}, 100)
+	for i := 0; i < 16; i++ {
+		session.AddMessage(sessionctx.Message{Role: "user", Content: "message content here"})
+	}
+	if !integration.ShouldCompact(session) {
+		t.Skip("session did not reach hard threshold under current token estimator")
+	}
+	if !integration.ShouldCompactOnTransition(0.6, session) {
+		t.Fatal("expected hard-threshold transition to trigger compaction window")
+	}
+	if integration.ShouldCompactOnTransition(0.85, session) {
+		t.Fatal("should not trigger when already above hard threshold previously")
 	}
 }

@@ -7,6 +7,8 @@ const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardUIReview
+  actionLoading?: boolean
+  activeActionId?: string
 }>()
 
 const emit = defineEmits<{
@@ -67,7 +69,20 @@ function scoreBarColor(score: number): string {
   return 'bg-red-500'
 }
 
-function handleAction(actionId: string) {
+function isActionActive(actionId: string): boolean {
+  return props.actionLoading === true && props.activeActionId === actionId
+}
+
+function isActionDisabled(action: { disabled?: boolean }): boolean {
+  return props.actionLoading === true || action.disabled === true
+}
+
+function actionLabel(action: { id: string; label: string }): string {
+  return isActionActive(action.id) ? 'Working...' : t('uiReview.actions.' + action.id, action.label)
+}
+
+function handleAction(actionId: string, disabled = false) {
+  if (props.actionLoading || disabled) return
   emit('action', actionId, props.card.id)
 }
 </script>
@@ -86,13 +101,19 @@ function handleAction(actionId: string) {
         <button
           v-for="action in card.actions"
           :key="action.id"
-          class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-          :class="action.variant === 'primary'
+          class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 disabled:cursor-wait"
+          :class="[action.variant === 'primary'
             ? 'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white'
-            : 'bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-300'"
-          @click="handleAction(action.id)"
+            : 'bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-300', { 'opacity-60 cursor-wait': actionLoading }]"
+          :disabled="isActionDisabled(action)"
+          :aria-busy="isActionActive(action.id) ? 'true' : undefined"
+          @click="handleAction(action.id, !!action.disabled)"
         >
-          {{ t('uiReview.actions.' + action.id, action.label) }}
+          <span
+            v-if="isActionActive(action.id)"
+            class="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent align-[-2px]"
+          />
+          {{ actionLabel(action) }}
         </button>
       </div>
     </div>
@@ -247,13 +268,19 @@ function handleAction(actionId: string) {
             <button
               v-for="action in card.actions"
               :key="action.id"
-              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-              :class="action.variant === 'primary'
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 disabled:cursor-wait"
+              :class="[action.variant === 'primary'
                 ? 'bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white'
-                : 'bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-300'"
-              @click.stop="handleAction(action.id)"
+                : 'bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-300', { 'opacity-60 cursor-wait': actionLoading }]"
+              :disabled="isActionDisabled(action)"
+              :aria-busy="isActionActive(action.id) ? 'true' : undefined"
+              @click.stop="handleAction(action.id, !!action.disabled)"
             >
-              {{ t('uiReview.actions.' + action.id, action.label) }}
+              <span
+                v-if="isActionActive(action.id)"
+                class="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent align-[-2px]"
+              />
+              {{ actionLabel(action) }}
             </button>
           </div>
         </div>

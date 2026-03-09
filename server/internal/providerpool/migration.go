@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/google/uuid"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/google/uuid"
 )
 
 // LegacyProviderConfig represents the old provider configuration format
@@ -25,12 +25,12 @@ type LegacyProvidersConfig struct {
 
 // MigrationResult contains the result of a migration operation
 type MigrationResult struct {
-	Migrated       int      `json:"migrated"`
-	Skipped        int      `json:"skipped"`
-	Errors         []string `json:"errors,omitempty"`
-	MigratedNames  []string `json:"migrated_names,omitempty"`
-	SkippedNames   []string `json:"skipped_names,omitempty"`
-	BackupPath     string   `json:"backup_path,omitempty"`
+	Migrated      int      `json:"migrated"`
+	Skipped       int      `json:"skipped"`
+	Errors        []string `json:"errors,omitempty"`
+	MigratedNames []string `json:"migrated_names,omitempty"`
+	SkippedNames  []string `json:"skipped_names,omitempty"`
+	BackupPath    string   `json:"backup_path,omitempty"`
 }
 
 // MigrateFromLegacy migrates provider settings from the old format to the new Provider Pool format
@@ -147,10 +147,10 @@ func MigrateFromLegacy(dataDir string, pool *Pool) (*MigrationResult, error) {
 // mapLegacyProviderName maps old provider names to new provider IDs
 func mapLegacyProviderName(name string) string {
 	mapping := map[string]string{
-		"claude":  "anthropic",
-		"openai":  "openai",
-		"ollama":  "ollama",
-		"custom":  "custom",
+		"claude": "anthropic",
+		"openai": "openai",
+		"ollama": "ollama",
+		"custom": "custom",
 	}
 
 	if id, ok := mapping[name]; ok {
@@ -355,13 +355,13 @@ func findDuplicatesByAPIKey(providers []*Provider) []*Provider {
 		return nil
 	}
 
-	// Build a map of API key hashes to providers
+	// Build a map of API key fingerprints to providers.
 	keyHashToProviders := make(map[string][]*Provider)
 
 	for _, p := range providers {
 		for _, key := range p.APIKeys {
-			if key.KeyHash != "" && key.Enabled {
-				keyHashToProviders[key.KeyHash] = append(keyHashToProviders[key.KeyHash], p)
+			if fp := apiKeyFingerprint(&key); fp != "" && key.Enabled {
+				keyHashToProviders[fp] = append(keyHashToProviders[fp], p)
 				break // Only consider the first enabled key
 			}
 		}
@@ -423,19 +423,19 @@ func mergeAPIKeys(target *Provider, sources []*Provider) {
 	// Build a set of existing key hashes
 	existingHashes := make(map[string]bool)
 	for _, key := range target.APIKeys {
-		if key.KeyHash != "" {
-			existingHashes[key.KeyHash] = true
+		if fp := apiKeyFingerprint(&key); fp != "" {
+			existingHashes[fp] = true
 		}
 	}
 
 	// Add unique keys from sources
 	for _, source := range sources {
 		for _, key := range source.APIKeys {
-			if key.KeyHash != "" && !existingHashes[key.KeyHash] {
+			if fp := apiKeyFingerprint(&key); fp != "" && !existingHashes[fp] {
 				// Update label to indicate merge
 				key.Label = fmt.Sprintf("Merged from %s", source.ID)
 				target.APIKeys = append(target.APIKeys, key)
-				existingHashes[key.KeyHash] = true
+				existingHashes[fp] = true
 			}
 		}
 	}

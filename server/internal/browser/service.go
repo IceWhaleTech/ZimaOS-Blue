@@ -174,7 +174,8 @@ func (s *RodService) Tabs(ctx context.Context) ([]*Tab, error) {
 
 // OpenTab opens a new tab with the given URL.
 func (s *RodService) OpenTab(ctx context.Context, url string) (*Tab, error) {
-	if err := s.security.CheckURL(url); err != nil {
+	normalizedURL, err := s.security.NormalizeAndCheckURL(url)
+	if err != nil {
 		return nil, err
 	}
 
@@ -185,7 +186,7 @@ func (s *RodService) OpenTab(ctx context.Context, url string) (*Tab, error) {
 
 	// Navigate to URL
 	timeout := GetTimeout(0, s.config)
-	err = page.Timeout(timeout).Navigate(url)
+	err = page.Timeout(timeout).Navigate(normalizedURL)
 	if err != nil {
 		s.pool.ReleasePage(page, browser)
 		return nil, err
@@ -274,7 +275,8 @@ func (s *RodService) CloseTab(ctx context.Context, targetID string) error {
 
 // Navigate navigates to a URL in the current or specified tab.
 func (s *RodService) Navigate(ctx context.Context, req *NavigateRequest) (*NavigateResponse, error) {
-	if err := s.security.CheckURL(req.URL); err != nil {
+	normalizedURL, err := s.security.NormalizeAndCheckURL(req.URL)
+	if err != nil {
 		return nil, err
 	}
 
@@ -300,7 +302,7 @@ func (s *RodService) Navigate(ctx context.Context, req *NavigateRequest) (*Navig
 
 	if tab == nil {
 		// Open new tab
-		newTab, err := s.OpenTab(ctx, req.URL)
+		newTab, err := s.OpenTab(ctx, normalizedURL)
 		if err != nil {
 			return nil, err
 		}
@@ -312,13 +314,13 @@ func (s *RodService) Navigate(ctx context.Context, req *NavigateRequest) (*Navig
 	}
 
 	timeout := GetTimeout(req.Timeout, s.config)
-	err := tab.page.Timeout(timeout).Navigate(req.URL)
+	err = tab.page.Timeout(timeout).Navigate(normalizedURL)
 	if err != nil {
 		// Connection may be dead (Chrome crashed, WebSocket closed).
 		// Clean up the stale tab and retry with a fresh one.
 		if isConnectionClosed(err) {
 			s.removeTab(tab)
-			newTab, retryErr := s.OpenTab(ctx, req.URL)
+			newTab, retryErr := s.OpenTab(ctx, normalizedURL)
 			if retryErr != nil {
 				return nil, retryErr
 			}
@@ -363,7 +365,8 @@ func (s *RodService) Navigate(ctx context.Context, req *NavigateRequest) (*Navig
 
 // Screenshot captures a screenshot of a page.
 func (s *RodService) Screenshot(ctx context.Context, req *ScreenshotRequest) (*ScreenshotResponse, error) {
-	if err := s.security.CheckURL(req.URL); err != nil {
+	normalizedURL, err := s.security.NormalizeAndCheckURL(req.URL)
+	if err != nil {
 		return nil, err
 	}
 
@@ -385,7 +388,7 @@ func (s *RodService) Screenshot(ctx context.Context, req *ScreenshotRequest) (*S
 	}
 
 	timeout := GetTimeout(req.Timeout, s.config)
-	err = page.Timeout(timeout).Navigate(req.URL)
+	err = page.Timeout(timeout).Navigate(normalizedURL)
 	if err != nil {
 		return nil, err
 	}
@@ -473,7 +476,8 @@ func (f ScreenshotFormat) toProto() proto.PageCaptureScreenshotFormat {
 
 // PDF generates a PDF from a page.
 func (s *RodService) PDF(ctx context.Context, req *PDFRequest) (*PDFResponse, error) {
-	if err := s.security.CheckURL(req.URL); err != nil {
+	normalizedURL, err := s.security.NormalizeAndCheckURL(req.URL)
+	if err != nil {
 		return nil, err
 	}
 
@@ -484,7 +488,7 @@ func (s *RodService) PDF(ctx context.Context, req *PDFRequest) (*PDFResponse, er
 	defer s.pool.ReleasePage(page, browser)
 
 	timeout := GetTimeout(req.Timeout, s.config)
-	err = page.Timeout(timeout).Navigate(req.URL)
+	err = page.Timeout(timeout).Navigate(normalizedURL)
 	if err != nil {
 		return nil, err
 	}
@@ -606,7 +610,8 @@ func (s *RodService) Snapshot(ctx context.Context, req *SnapshotRequest) (*Snaps
 
 // Scrape extracts data from a page.
 func (s *RodService) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeResponse, error) {
-	if err := s.security.CheckURL(req.URL); err != nil {
+	normalizedURL, err := s.security.NormalizeAndCheckURL(req.URL)
+	if err != nil {
 		return nil, err
 	}
 
@@ -617,7 +622,7 @@ func (s *RodService) Scrape(ctx context.Context, req *ScrapeRequest) (*ScrapeRes
 	defer s.pool.ReleasePage(page, browser)
 
 	timeout := GetTimeout(req.Timeout, s.config)
-	err = page.Timeout(timeout).Navigate(req.URL)
+	err = page.Timeout(timeout).Navigate(normalizedURL)
 	if err != nil {
 		return nil, err
 	}
@@ -811,7 +816,8 @@ func (s *RodService) Act(ctx context.Context, req *ActRequest) (*ActResponse, er
 
 // Automate runs a multi-step automation task.
 func (s *RodService) Automate(ctx context.Context, req *AutomateRequest) (*AutomateResponse, error) {
-	if err := s.security.CheckURL(req.URL); err != nil {
+	normalizedURL, err := s.security.NormalizeAndCheckURL(req.URL)
+	if err != nil {
 		return nil, err
 	}
 
@@ -822,7 +828,7 @@ func (s *RodService) Automate(ctx context.Context, req *AutomateRequest) (*Autom
 	defer s.pool.ReleasePage(page, browser)
 
 	timeout := GetTimeout(req.Timeout, s.config)
-	err = page.Timeout(timeout).Navigate(req.URL)
+	err = page.Timeout(timeout).Navigate(normalizedURL)
 	if err != nil {
 		return nil, err
 	}
@@ -921,10 +927,11 @@ func (s *RodService) executeStep(ctx context.Context, page *rod.Page, step *Auto
 		return nil
 
 	case ActionNavigate:
-		if err := s.security.CheckURL(step.Value); err != nil {
+		normalizedURL, err := s.security.NormalizeAndCheckURL(step.Value)
+		if err != nil {
 			return err
 		}
-		return page.Navigate(step.Value)
+		return page.Navigate(normalizedURL)
 
 	case ActionEval:
 		_, err := page.Eval(step.Value)
@@ -1006,6 +1013,34 @@ func (s *RodService) getTab(targetID string) (*tabInfo, error) {
 		}
 	}
 	return nil, ErrTabNotFound
+}
+
+// CookieHeader returns cookies applicable to the target URL from the tab's browser context.
+func (s *RodService) CookieHeader(ctx context.Context, targetID string, targetURL string) (string, error) {
+	_ = ctx
+	normalizedURL, err := s.security.NormalizeAndCheckURL(targetURL)
+	if err != nil {
+		return "", err
+	}
+	tab, err := s.getTab(targetID)
+	if err != nil {
+		return "", err
+	}
+	cookies, err := tab.page.Cookies([]string{normalizedURL})
+	if err != nil {
+		if isConnectionClosed(err) {
+			s.removeTab(tab)
+		}
+		return "", err
+	}
+	parts := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		if cookie == nil || strings.TrimSpace(cookie.Name) == "" {
+			continue
+		}
+		parts = append(parts, cookie.Name+"="+cookie.Value)
+	}
+	return strings.Join(parts, "; "), nil
 }
 
 // AccessibilityTree returns a compact DSL representation of the page's accessibility tree.
@@ -1102,22 +1137,22 @@ const interactiveSelector = `a, button, input, select, textarea, [role="button"]
 
 // interactiveRoles are roles that get @ref assignments for LLM targeting.
 var interactiveRoles = map[string]bool{
-	"link":          true,
-	"button":        true,
-	"textbox":       true,
-	"searchbox":     true,
-	"combobox":      true,
-	"checkbox":      true,
-	"radio":         true,
-	"switch":        true,
-	"slider":        true,
-	"spinbutton":    true,
-	"tab":           true,
-	"menuitem":      true,
+	"link":             true,
+	"button":           true,
+	"textbox":          true,
+	"searchbox":        true,
+	"combobox":         true,
+	"checkbox":         true,
+	"radio":            true,
+	"switch":           true,
+	"slider":           true,
+	"spinbutton":       true,
+	"tab":              true,
+	"menuitem":         true,
 	"menuitemcheckbox": true,
-	"menuitemradio": true,
-	"option":        true,
-	"treeitem":      true,
+	"menuitemradio":    true,
+	"option":           true,
+	"treeitem":         true,
 }
 
 // skipRoles are roles that add noise without useful info for LLM.

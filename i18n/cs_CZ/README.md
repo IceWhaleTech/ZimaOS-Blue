@@ -66,7 +66,7 @@ Jdeme ještě dál: nativní podpora **20+ IM platforem**, **hlasové** rozhran�
 
 Nativně kompilovaný v Go — žádný interpret, žádný VM, žádná režie. Tiše běží na všem od serverů po vaše stolní zařízení.
 
-| Metrika | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Metrika | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |---------|-------------------|------------------------|
 | `help` studený / teplý start | **0,18 s / < 0,01 s** | 3,31 s / ~1,11 s |
 | `status` runtime (nejlepší ze 3) | **< 0,01 s** | 5,98 s |

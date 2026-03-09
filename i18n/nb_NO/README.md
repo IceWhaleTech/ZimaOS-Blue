@@ -66,7 +66,7 @@ Ta det videre: innebygd støtte for **20+ IM-plattformer**, **stemmedrevne** gre
 
 Kompilert direkte i Go — ingen tolk, ingen VM, ingen overhead. Kjører stille på alt fra servere til stasjonære enheter.
 
-| Metrikk | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Metrikk | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |---------|-------------------|------------------------|
 | `help` kald / varm | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` kjøretid (beste av 3) | **< 0.01 s** | 5.98 s |

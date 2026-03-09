@@ -322,3 +322,186 @@ func TestChannel_isUserAllowed(t *testing.T) {
 		})
 	}
 }
+
+func TestChannel_ConvertActivity_PreservesCardMetadataAndTimestamp(t *testing.T) {
+	ch := New(channel.TeamsConfig{Enabled: true, AppID: "app", AppPassword: "pw"}, zap.NewNop())
+
+	activity := &Activity{
+		Type:       "message",
+		ID:         "activity-1",
+		Timestamp:  "2026-03-08T09:10:11Z",
+		ServiceURL: "https://smba.trafficmanager.net/amer/",
+		TextFormat: "xml",
+		ReplyToID:  "parent-1",
+		Conversation: &ConversationAccount{
+			ID:      "conv-1",
+			Name:    "Team Chat",
+			IsGroup: true,
+		},
+		From: &ChannelAccount{ID: "user-1", Name: "Alice"},
+		ChannelData: map[string]interface{}{
+			"team": map[string]interface{}{"id": "team-1"},
+		},
+		Attachments: []ActivityAttachment{{
+			ContentType: "application/vnd.microsoft.card.adaptive",
+			Content: map[string]interface{}{
+				"type":    "AdaptiveCard",
+				"version": "1.4",
+			},
+		}},
+	}
+
+	msg := ch.convertActivity(activity)
+	if msg.Type != channel.MessageTypeCard {
+		t.Fatalf("Type = %q, want card", msg.Type)
+	}
+	if msg.ChatID != "https://smba.trafficmanager.net/amer/|conv-1" {
+		t.Fatalf("ChatID = %q", msg.ChatID)
+	}
+	if msg.ReplyToID != "parent-1" {
+		t.Fatalf("ReplyToID = %q, want parent-1", msg.ReplyToID)
+	}
+	if msg.Timestamp.Format(time.RFC3339) != "2026-03-08T09:10:11Z" {
+		t.Fatalf("Timestamp = %s", msg.Timestamp.Format(time.RFC3339))
+	}
+	if msg.Metadata["team_id"] != "team-1" {
+		t.Fatalf("team_id = %v", msg.Metadata["team_id"])
+	}
+	if msg.Metadata["textFormat"] != "xml" {
+		t.Fatalf("textFormat = %v", msg.Metadata["textFormat"])
+	}
+	attachments, ok := msg.Metadata["attachments"].([]map[string]interface{})
+	if !ok || len(attachments) != 1 {
+		t.Fatalf("attachments = %#v", msg.Metadata["attachments"])
+	}
+	if attachments[0]["contentType"] != "application/vnd.microsoft.card.adaptive" {
+		t.Fatalf("contentType = %v", attachments[0]["contentType"])
+	}
+	if _, ok := attachments[0]["content"].(map[string]interface{}); !ok {
+		t.Fatalf("content = %#v", attachments[0]["content"])
+	}
+}
+
+func TestChannel_ConvertActivity_MapsMediaAttachmentKinds(t *testing.T) {
+	ch := New(channel.TeamsConfig{Enabled: true, AppID: "app", AppPassword: "pw"}, zap.NewNop())
+	msg := ch.convertActivity(&Activity{
+		Type:       "message",
+		ID:         "activity-2",
+		ServiceURL: "https://smba.trafficmanager.net/amer/",
+		Conversation: &ConversationAccount{
+			ID: "conv-2",
+		},
+		Attachments: []ActivityAttachment{{
+			ContentType: "image/png",
+			ContentURL:  "https://example.com/image.png",
+			Name:        "image.png",
+		}},
+	})
+	if msg.Type != channel.MessageTypeImage {
+		t.Fatalf("Type = %q, want image", msg.Type)
+	}
+	if len(msg.Attachments) != 1 || msg.Attachments[0].URL != "https://example.com/image.png" {
+		t.Fatalf("Attachments = %#v", msg.Attachments)
+	}
+}
+
+func TestChannel_ConvertActivity_PreservesEntitiesAndMentions(t *testing.T) {
+	ch := New(channel.TeamsConfig{Enabled: true, AppID: "app", AppPassword: "pw"}, zap.NewNop())
+	msg := ch.convertActivity(&Activity{
+		Type:       "message",
+		ID:         "activity-mentions",
+		ServiceURL: "https://smba.trafficmanager.net/amer/",
+		Conversation: &ConversationAccount{
+			ID: "conv-mentions",
+		},
+		Entities: []map[string]interface{}{{
+			"type": "mention",
+			"text": "<at>Alice</at>",
+			"mentioned": map[string]interface{}{
+				"id":   "29:user-1",
+				"name": "Alice",
+			},
+		}},
+	})
+
+	entities, ok := msg.Metadata["entities"].([]map[string]interface{})
+	if !ok || len(entities) != 1 {
+		t.Fatalf("entities = %#v", msg.Metadata["entities"])
+	}
+	mentionIDs, ok := msg.Metadata["mention_ids"].([]string)
+	if !ok || len(mentionIDs) != 1 || mentionIDs[0] != "29:user-1" {
+		t.Fatalf("mention_ids = %#v", msg.Metadata["mention_ids"])
+	}
+	mentions, ok := msg.Metadata["mentions"].([]map[string]interface{})
+	if !ok || len(mentions) != 1 {
+		t.Fatalf("mentions = %#v", msg.Metadata["mentions"])
+	}
+	if mentions[0]["name"] != "Alice" || mentions[0]["id"] != "29:user-1" {
+		t.Fatalf("first mention = %#v", mentions[0])
+	}
+}
+
+func TestChannel_ConvertActivity_InvokePreservesValueAndFallbackContent(t *testing.T) {
+	ch := New(channel.TeamsConfig{Enabled: true, AppID: "app", AppPassword: "pw"}, zap.NewNop())
+	msg := ch.convertActivity(&Activity{
+		Type:       "invoke",
+		ID:         "invoke-1",
+		Timestamp:  "2026-03-08T10:11:12Z",
+		ServiceURL: "https://smba.trafficmanager.net/amer/",
+		ChannelID:  "msteams",
+		Name:       "adaptiveCard/action",
+		Value: map[string]interface{}{
+			"verb":   "approve",
+			"ticket": "T-1",
+		},
+		Conversation: &ConversationAccount{ID: "conv-invoke", Name: "Ops", IsGroup: true},
+		From:         &ChannelAccount{ID: "user-1", Name: "Alice"},
+	})
+
+	if msg.Content != "approve" {
+		t.Fatalf("Content = %q, want approve", msg.Content)
+	}
+	if msg.Metadata["activity_type"] != "invoke" {
+		t.Fatalf("activity_type = %v", msg.Metadata["activity_type"])
+	}
+	if msg.Metadata["activity_name"] != "adaptiveCard/action" {
+		t.Fatalf("activity_name = %v", msg.Metadata["activity_name"])
+	}
+	if msg.Metadata["channel_id"] != "msteams" {
+		t.Fatalf("channel_id = %v", msg.Metadata["channel_id"])
+	}
+	value, ok := msg.Metadata["value"].(map[string]interface{})
+	if !ok || value["ticket"] != "T-1" {
+		t.Fatalf("value = %#v", msg.Metadata["value"])
+	}
+}
+
+func TestChannel_HandleActivity_AllowsInvokeActivities(t *testing.T) {
+	ch := New(channel.TeamsConfig{Enabled: true, AppID: "app", AppPassword: "pw"}, zap.NewNop())
+	ch.HandleActivity(&Activity{
+		Type:       "invoke",
+		ID:         "invoke-2",
+		ServiceURL: "https://smba.trafficmanager.net/amer/",
+		Name:       "adaptiveCard/action",
+		Value: map[string]interface{}{
+			"action": "approve",
+		},
+		Conversation: &ConversationAccount{ID: "conv-2"},
+		From:         &ChannelAccount{ID: "user-2", Name: "Bob"},
+	})
+
+	select {
+	case msg := <-ch.Messages():
+		if msg.ID != "invoke-2" {
+			t.Fatalf("ID = %q, want invoke-2", msg.ID)
+		}
+		if msg.Content != "approve" {
+			t.Fatalf("Content = %q, want approve", msg.Content)
+		}
+		if msg.Metadata["activity_type"] != "invoke" {
+			t.Fatalf("activity_type = %v", msg.Metadata["activity_type"])
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for invoke activity")
+	}
+}

@@ -13,17 +13,20 @@ import (
 
 	z "github.com/IceWhaleTech/zorm"
 
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // SQLiteStorage implements Storage using SQLite tables.
 type SQLiteStorage struct {
-	db *sql.DB
+	db        *sql.DB
+	encryptor SecretEncryptor
 }
 
 // NewSQLiteStorage creates a new SQLite-backed storage and runs migrations.
-func NewSQLiteStorage(db *sql.DB) (*SQLiteStorage, error) {
-	s := &SQLiteStorage{db: db}
+func NewSQLiteStorage(db *sql.DB, opts ...StorageOption) (*SQLiteStorage, error) {
+	storageOpts := applyStorageOptions(opts...)
+	s := &SQLiteStorage{db: db, encryptor: storageOpts.encryptor}
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate provider pool tables: %w", err)
 	}
@@ -111,47 +114,66 @@ type ppSingleRow struct {
 	UpdatedAt string `json:"updated_at" zorm:"updated_at"`
 }
 
+func (s *SQLiteStorage) retryAfterWALCheckpoint(ctx context.Context, opName string, op func() error) error {
+	err := op()
+	if err == nil || !dbutil.IsSQLiteCorruptionError(err) {
+		return err
+	}
+
+	slog.Warn("[providerpool] sqlite corruption detected, retrying after WAL checkpoint", "op", opName, "error", err)
+	if _, checkpointErr := s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); checkpointErr != nil {
+		return fmt.Errorf("%s: sqlite corruption detected (%v) and WAL checkpoint failed: %w", opName, err, checkpointErr)
+	}
+
+	if retryErr := op(); retryErr != nil {
+		return fmt.Errorf("%s: retry after WAL checkpoint failed: %w", opName, retryErr)
+	}
+	return nil
+}
+
 // --- Provider operations ---
 
 func (s *SQLiteStorage) SaveProvider(provider *Provider) error {
 	ctx := context.Background()
+	normalizeProviderAPIKeys(provider)
 
 	data, err := json.Marshal(provider)
 	if err != nil {
 		return err
 	}
 
-	// Extract API keys (json:"-" tagged)
 	var apiKeysJSON *string
-	if provider.Type != ProviderTypeTrial && len(provider.APIKeys) > 0 {
-		keys := make([]string, len(provider.APIKeys))
-		for i, k := range provider.APIKeys {
-			keys[i] = k.Key
-		}
+	if keys, err := prepareStoredAPIKeys(provider, s.encryptor); err != nil {
+		return err
+	} else if len(keys) > 0 {
 		b, _ := json.Marshal(keys)
 		s := string(b)
 		apiKeysJSON = &s
 	}
 
-	// Extract OAuth secrets
 	var oauthJSON *string
-	if secrets := extractOAuthSecrets(provider); secrets != nil {
+	if secrets, err := prepareStoredOAuthSecrets(provider, s.encryptor); err != nil {
+		return err
+	} else if secrets != nil {
 		b, _ := json.Marshal(secrets)
 		s := string(b)
 		oauthJSON = &s
 	}
 
 	now := timeutil.NowTime().Format(time.RFC3339)
-	_, err = s.providers(ctx).Insert(map[string]interface{}{
-		"id":            provider.ID,
-		"data":          string(data),
-		"api_keys":      apiKeysJSON,
-		"oauth_secrets": oauthJSON,
-		"updated_at":    now,
-	}, z.OnConflictDoUpdateSet(
-		[]string{"id"},
-		[]string{"data", "api_keys", "oauth_secrets", "updated_at"},
-	))
+	err = s.retryAfterWALCheckpoint(ctx, "save provider", func() error {
+		_, err := s.providers(ctx).Insert(map[string]interface{}{
+			"id":            provider.ID,
+			"data":          string(data),
+			"api_keys":      apiKeysJSON,
+			"oauth_secrets": oauthJSON,
+			"updated_at":    now,
+		}, z.OnConflictDoUpdateSet(
+			[]string{"id"},
+			[]string{"data", "api_keys", "oauth_secrets", "updated_at"},
+		))
+		return err
+	})
 	return err
 }
 
@@ -171,7 +193,11 @@ func (s *SQLiteStorage) LoadProvider(id string) (*Provider, error) {
 func (s *SQLiteStorage) LoadAllProviders() ([]*Provider, error) {
 	ctx := context.Background()
 	var rows []ppProviderRow
-	_, err := s.providers(ctx).Select(&rows)
+	err := s.retryAfterWALCheckpoint(ctx, "load providers", func() error {
+		rows = nil
+		_, err := s.providers(ctx).Select(&rows)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +205,18 @@ func (s *SQLiteStorage) LoadAllProviders() ([]*Provider, error) {
 	providers := make([]*Provider, 0, len(rows))
 	needsSave := false
 	for i := range rows {
+		if rows[i].APIKeys != nil && *rows[i].APIKeys != "" {
+			var keys []string
+			if err := json.Unmarshal([]byte(*rows[i].APIKeys), &keys); err == nil && storedAPIKeysNeedEncryption(keys, s.encryptor) {
+				needsSave = true
+			}
+		}
+		if rows[i].OAuthSecrets != nil && *rows[i].OAuthSecrets != "" {
+			var secrets oauthSecrets
+			if err := json.Unmarshal([]byte(*rows[i].OAuthSecrets), &secrets); err == nil && storedOAuthSecretsNeedEncryption(&secrets, s.encryptor) {
+				needsSave = true
+			}
+		}
 		p, err := s.rowToProvider(&rows[i])
 		if err != nil {
 			slog.Warn("[providerpool] skip invalid provider row", "provider_id", rows[i].ID, "error", err)
@@ -205,13 +243,13 @@ func (s *SQLiteStorage) LoadAllProviders() ([]*Provider, error) {
 
 func (s *SQLiteStorage) DeleteProvider(id string) error {
 	ctx := context.Background()
-	_, err := s.providers(ctx).Delete(z.Where(z.Eq("id", id)))
-	if err != nil {
+	return s.retryAfterWALCheckpoint(ctx, "delete provider", func() error {
+		if _, err := s.providers(ctx).Delete(z.Where(z.Eq("id", id))); err != nil {
+			return err
+		}
+		_, err := s.models(ctx).Delete(z.Where(z.Eq("provider_id", id)))
 		return err
-	}
-	// Also delete models
-	s.models(ctx).Delete(z.Where(z.Eq("provider_id", id)))
-	return nil
+	})
 }
 
 func (s *SQLiteStorage) rowToProvider(row *ppProviderRow) (*Provider, error) {
@@ -231,10 +269,8 @@ func (s *SQLiteStorage) rowToProvider(row *ppProviderRow) (*Provider, error) {
 	if row.APIKeys != nil && *row.APIKeys != "" {
 		var keys []string
 		if err := json.Unmarshal([]byte(*row.APIKeys), &keys); err == nil {
-			for i := range provider.APIKeys {
-				if i < len(keys) {
-					provider.APIKeys[i].Key = keys[i]
-				}
+			if err := restoreStoredAPIKeys(&provider, keys, s.encryptor); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -243,7 +279,9 @@ func (s *SQLiteStorage) rowToProvider(row *ppProviderRow) (*Provider, error) {
 	if row.OAuthSecrets != nil && *row.OAuthSecrets != "" {
 		var secrets oauthSecrets
 		if err := json.Unmarshal([]byte(*row.OAuthSecrets), &secrets); err == nil {
-			restoreOAuthSecrets(&provider, &secrets)
+			if err := restoreStoredOAuthSecrets(&provider, &secrets, s.encryptor); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -512,7 +550,7 @@ func (s *SQLiteStorage) MigrateFromFiles(basePath string) error {
 	}
 
 	// Load from FileStorage
-	fs, err := NewFileStorage(basePath)
+	fs, err := NewFileStorage(basePath, WithStorageEncryptor(s.encryptor))
 	if err != nil {
 		return fmt.Errorf("open legacy file storage: %w", err)
 	}

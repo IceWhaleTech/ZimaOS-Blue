@@ -3,8 +3,11 @@ package providerpool
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 )
 
 func TestHashAPIKey(t *testing.T) {
@@ -208,6 +211,65 @@ func TestFileStorage(t *testing.T) {
 			t.Errorf("InputTokens mismatch: got %d, want 1000", records[0].InputTokens)
 		}
 	})
+}
+
+func TestFileStorage_EncryptsProviderSecretsAtRest(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "providerpool-file-encrypted-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	enc, err := auth.NewEncryptor(&auth.EncryptionConfig{Key: []byte("01234567890123456789012345678901")})
+	if err != nil {
+		t.Fatalf("NewEncryptor failed: %v", err)
+	}
+
+	storage, err := NewFileStorage(tmpDir, WithStorageEncryptor(enc))
+	if err != nil {
+		t.Fatalf("NewFileStorage failed: %v", err)
+	}
+
+	provider := &Provider{
+		ID:      "test-provider",
+		Name:    "Test Provider",
+		Type:    ProviderTypeCustom,
+		Enabled: true,
+		Status:  ProviderStatusActive,
+		BaseURL: "https://api.test.com/v1",
+		APIKeys: []APIKey{{
+			ID:      "key-1",
+			Key:     "sk-secret-key-12345",
+			Enabled: true,
+		}},
+		OAuth: &OAuthConfig{AccessToken: "oauth-access-token"},
+	}
+	if err := storage.SaveProvider(provider); err != nil {
+		t.Fatalf("SaveProvider failed: %v", err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(tmpDir, "providers.json"))
+	if err != nil {
+		t.Fatalf("Read providers.json failed: %v", err)
+	}
+	text := string(raw)
+	if strings.Contains(text, "sk-secret-key-12345") || strings.Contains(text, "oauth-access-token") {
+		t.Fatalf("providers.json should not contain plaintext secrets: %s", text)
+	}
+	if !strings.Contains(text, encryptedSecretPrefix) {
+		t.Fatalf("providers.json should contain encrypted secret prefix, got: %s", text)
+	}
+
+	loaded, err := storage.LoadProvider("test-provider")
+	if err != nil {
+		t.Fatalf("LoadProvider failed: %v", err)
+	}
+	if len(loaded.APIKeys) != 1 || loaded.APIKeys[0].Key != "sk-secret-key-12345" {
+		t.Fatalf("API key restore failed: %+v", loaded.APIKeys)
+	}
+	if loaded.OAuth == nil || loaded.OAuth.AccessToken != "oauth-access-token" {
+		t.Fatalf("OAuth restore failed: %+v", loaded.OAuth)
+	}
 }
 
 func TestFileStorageDirectoryCreation(t *testing.T) {

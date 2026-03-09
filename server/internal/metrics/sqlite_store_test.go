@@ -2,11 +2,13 @@ package metrics
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -141,15 +143,15 @@ func TestSQLiteStore_ModelMetrics(t *testing.T) {
 			AvgLatency:       150.5,
 		},
 		{
-			Model:            "claude-3-sonnet",
-			Calls:            50,
-			SuccessfulCalls:  48,
-			FailedCalls:      2,
-			InputTokens:      30000,
-			OutputTokens:     15000,
-			TotalTokens:      45000,
-			EstimatedCost:    0.75,
-			AvgLatency:       200.0,
+			Model:           "claude-3-sonnet",
+			Calls:           50,
+			SuccessfulCalls: 48,
+			FailedCalls:     2,
+			InputTokens:     30000,
+			OutputTokens:    15000,
+			TotalTokens:     45000,
+			EstimatedCost:   0.75,
+			AvgLatency:      200.0,
 		},
 	}
 
@@ -515,4 +517,21 @@ func TestSQLiteStore_ConcurrentAccess(t *testing.T) {
 	usage, err := store.LoadTokenUsage(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, usage)
+}
+
+func TestNewSQLiteStoreWithDBDoesNotCloseSharedDB(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "shared_metrics.db")
+	db, err := sql.Open("sqlite3", dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	store, err := NewSQLiteStoreWithDB(db)
+	require.NoError(t, err)
+	require.NotNil(t, store)
+
+	err = store.Close()
+	require.NoError(t, err)
+
+	_, err = db.Exec("SELECT 1")
+	require.NoError(t, err)
 }

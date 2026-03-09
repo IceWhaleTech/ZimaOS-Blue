@@ -6,10 +6,13 @@ import { componentPool } from '@/utils/componentPool'
 
 const props = defineProps<{
   card: TypelessCard
+  actionLoading?: boolean
+  activeActionId?: string
+  actionError?: string
 }>()
 
 const emit = defineEmits<{
-  action: [cardId: string, actionId: string]
+  action: [actionId: string, cardId?: string]
   select: [cardId: string, selectedIds: string[], otherText?: string]
 }>()
 
@@ -18,6 +21,7 @@ const isStreaming = computed(() => props.card._streaming === true)
 
 // Check if card can be rendered functionally (simple cards)
 const isFunctional = computed(() => canRenderFunctionally(props.card))
+const supportsActionLoading = computed(() => ['result', 'web-fetch', 'action', 'ui-review', 'choice'].includes(props.card.type))
 
 // Pre-render HTML for functional cards
 const functionalHtml = computed(() => {
@@ -60,7 +64,7 @@ watch(
 
 function handleAction(actionId: string, cardId?: string) {
   if (cardId) {
-    emit('action', cardId, actionId)
+    emit('action', actionId, cardId)
   }
 }
 
@@ -88,13 +92,22 @@ function handleSelect(selectedIds: string[], otherText?: string) {
     />
 
     <!-- Dynamic component from pool -->
-    <component
-      :is="dynamicComponent"
-      v-else-if="dynamicComponent"
-      :card="card"
-      @action="handleAction"
-      @select="handleSelect"
-    />
+    <template v-else-if="dynamicComponent">
+      <component
+        :is="dynamicComponent"
+        :card="card"
+        :action-loading="supportsActionLoading ? actionLoading : undefined"
+        :active-action-id="supportsActionLoading ? activeActionId : undefined"
+        @action="handleAction"
+        @select="handleSelect"
+      />
+      <div
+        v-if="supportsActionLoading && actionError"
+        class="mt-2 rounded-lg border border-red-200 dark:border-red-800/60 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-700 dark:text-red-200"
+      >
+        {{ actionError }}
+      </div>
+    </template>
 
     <!-- Fallback for unknown types: hide silently (streaming may produce partial/invalid types) -->
     <template v-else />

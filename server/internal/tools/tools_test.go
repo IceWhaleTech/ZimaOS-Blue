@@ -965,34 +965,45 @@ func TestExecutorMemoryCompatToolNameRemapAndArgs(t *testing.T) {
 	}
 }
 
-func TestExecutorBrowserCompatInfersNavigateAction(t *testing.T) {
+func TestExecutorWebFetchCompatNormalizesArgs(t *testing.T) {
 	registry := NewRegistry()
-	browserTool := &captureArgsTool{
+	webFetchTool := &captureArgsTool{
 		def: ToolDefinition{
-			Name:        "browser",
-			Description: "Browser",
+			Name:        "web_fetch",
+			Description: "Web fetch",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"action": map[string]interface{}{"type": "string"},
-					"url":    map[string]interface{}{"type": "string"},
+					"url":               map[string]interface{}{"type": "string"},
+					"extract_mode":      map[string]interface{}{"type": "string"},
+					"max_chars":         map[string]interface{}{"type": "integer"},
+					"browser_target_id": map[string]interface{}{"type": "string"},
 				},
 			},
 		},
 	}
-	registry.Register(browserTool)
+	registry.Register(webFetchTool)
 
 	executor := NewExecutor(registry)
 	if _, err := executor.Execute(context.Background(), "web_fetch", map[string]interface{}{
-		"url": "https://example.com/docs",
+		"href":            "https://example.com/docs",
+		"extractMode":     "text",
+		"maxChars":        321,
+		"browserTargetId": "tab-99",
 	}); err != nil {
 		t.Fatalf("web_fetch compatibility execute failed: %v", err)
 	}
-	if got := browserTool.args["action"]; got != "navigate" {
-		t.Fatalf("action = %v, want %q", got, "navigate")
-	}
-	if got := browserTool.args["url"]; got != "https://example.com/docs" {
+	if got := webFetchTool.args["url"]; got != "https://example.com/docs" {
 		t.Fatalf("url = %v, want %q", got, "https://example.com/docs")
+	}
+	if got := webFetchTool.args["extract_mode"]; got != "text" {
+		t.Fatalf("extract_mode = %v, want %q", got, "text")
+	}
+	if got := webFetchTool.args["max_chars"]; got != 321 {
+		t.Fatalf("max_chars = %v, want %d", got, 321)
+	}
+	if got := webFetchTool.args["browser_target_id"]; got != "tab-99" {
+		t.Fatalf("browser_target_id = %v, want %q", got, "tab-99")
 	}
 }
 
@@ -1264,7 +1275,7 @@ func TestRegisterBuiltinTools(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltinTools(registry)
 
-	expectedTools := []string{"read", "write", "edit", "grep", "find", "ls", "web_search", "mcp"}
+	expectedTools := []string{"read", "write", "edit", "grep", "find", "ls", "web_search", "web_fetch", "mcp"}
 	for _, name := range expectedTools {
 		if registry.Get(name) == nil {
 			t.Errorf("expected tool '%s' to be registered", name)
@@ -1412,7 +1423,7 @@ func TestRegisterFactoryToolDefinitions(t *testing.T) {
 	}
 }
 
-func TestExecutorFactoryWebFetchFallbackUsesBrowserNavigate(t *testing.T) {
+func TestExecutorFactoryWebFetchFallbackUsesWebFetchCommand(t *testing.T) {
 	registry := NewRegistry()
 	RegisterFactoryToolDefinitions(registry)
 	execTool := &captureArgsTool{
@@ -1435,11 +1446,8 @@ func TestExecutorFactoryWebFetchFallbackUsesBrowserNavigate(t *testing.T) {
 		t.Fatalf("execute web_fetch failed: %v", err)
 	}
 	cmd, _ := execTool.args["command"].(string)
-	if !strings.HasPrefix(cmd, "blue browser") {
-		t.Fatalf("command = %q, want prefix %q", cmd, "blue browser")
-	}
-	if !strings.Contains(cmd, "action=navigate") {
-		t.Fatalf("command = %q, want to contain %q", cmd, "action=navigate")
+	if !strings.HasPrefix(cmd, "blue web_fetch") {
+		t.Fatalf("command = %q, want prefix %q", cmd, "blue web_fetch")
 	}
 	if !strings.Contains(cmd, "url=https://example.com") {
 		t.Fatalf("command = %q, want to contain %q", cmd, "url=https://example.com")

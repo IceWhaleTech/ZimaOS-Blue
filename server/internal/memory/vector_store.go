@@ -39,8 +39,7 @@ func quantizeFloat32ToInt8(emb []float32) []byte {
 	return buf
 }
 
-// serializeFloat32 serializes float32 embeddings to little-endian bytes for sqlite-vec queries.
-// sqlite-vec accepts float32 queries against int8 columns (it quantizes internally for MATCH).
+// serializeFloat32 serializes float32 embeddings to little-endian bytes for sqlite-vec helper functions.
 func serializeFloat32(emb []float32) []byte {
 	buf := make([]byte, len(emb)*4)
 	for i, v := range emb {
@@ -133,6 +132,112 @@ CREATE TRIGGER IF NOT EXISTS memory_chunks_au AFTER UPDATE ON memory_chunks BEGI
 END;
 `
 
+func supportsFTS5(db *sql.DB) bool {
+	if db == nil {
+		return false
+	}
+
+	rows, err := db.Query(`SELECT name FROM pragma_module_list WHERE name = 'fts5'`)
+	if err == nil {
+		defer rows.Close()
+		if rows.Next() {
+			return true
+		}
+	}
+
+	if _, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS temp.memory_fts5_probe USING fts5(content)`); err != nil {
+		return false
+	}
+	_, _ = db.Exec(`DROP TABLE IF EXISTS temp.memory_fts5_probe`)
+	return true
+}
+
+func dropMemoryFTSTriggers(db *sql.DB) error {
+	if db == nil {
+		return nil
+	}
+	for _, stmt := range []string{
+		`DROP TRIGGER IF EXISTS memory_chunks_ai`,
+		`DROP TRIGGER IF EXISTS memory_chunks_ad`,
+		`DROP TRIGGER IF EXISTS memory_chunks_au`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isMissingFTSModuleError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such module") && strings.Contains(msg, "fts5")
+}
+
+func extractTagValues(metadata map[string]string) []string {
+	if len(metadata) == 0 {
+		return nil
+	}
+	tags := make([]string, 0, len(metadata))
+	for key, value := range metadata {
+		if !strings.HasPrefix(key, "tag_") {
+			continue
+		}
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			tags = append(tags, trimmed)
+		}
+	}
+	sort.Strings(tags)
+	return tags
+}
+
+func keywordFallbackTerms(query string) []string {
+	words := strings.Fields(strings.ToLower(strings.TrimSpace(query)))
+	if len(words) == 0 {
+		return nil
+	}
+	terms := make([]string, 0, len(words))
+	seen := make(map[string]struct{}, len(words))
+	for _, word := range words {
+		word = strings.Trim(word, `"'*+-():,.;!?[]{} `)
+		if word == "" {
+			continue
+		}
+		if _, ok := seen[word]; ok {
+			continue
+		}
+		seen[word] = struct{}{}
+		terms = append(terms, word)
+	}
+	return terms
+}
+
+func keywordFallbackScore(query string, terms []string, content string, tags string) float32 {
+	haystack := strings.ToLower(strings.TrimSpace(content + " " + tags))
+	if haystack == "" || len(terms) == 0 {
+		return 0
+	}
+	matches := 0
+	for _, term := range terms {
+		if strings.Contains(haystack, term) {
+			matches++
+		}
+	}
+	if matches == 0 {
+		return 0
+	}
+	score := float32(matches) / float32(len(terms))
+	if normalized := strings.ToLower(strings.TrimSpace(query)); normalized != "" && strings.Contains(haystack, normalized) {
+		score += 0.25
+	}
+	if score > 1 {
+		return 1
+	}
+	return score
+}
+
 // NewVectorStore creates a new vector store.
 func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
 	if cfg.EmbeddingDim <= 0 {
@@ -155,11 +260,31 @@ func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
 		return nil, fmt.Errorf("create vector store schema: %w", err)
 	}
 
-	// Create FTS5 tables + triggers
-	if cfg.EnableFTS {
-		if _, err := db.Exec(ftsSchema); err != nil {
+	ftsEnabled := cfg.EnableFTS
+	if !ftsEnabled {
+		if err := dropMemoryFTSTriggers(db); err != nil {
 			db.Close()
-			return nil, fmt.Errorf("create FTS schema: %w", err)
+			return nil, fmt.Errorf("disable FTS triggers: %w", err)
+		}
+	}
+
+	if ftsEnabled {
+		if !supportsFTS5(db) {
+			ftsEnabled = false
+			if err := dropMemoryFTSTriggers(db); err != nil {
+				db.Close()
+				return nil, fmt.Errorf("disable FTS triggers: %w", err)
+			}
+		} else if _, err := db.Exec(ftsSchema); err != nil {
+			if !isMissingFTSModuleError(err) {
+				db.Close()
+				return nil, fmt.Errorf("create FTS schema: %w", err)
+			}
+			ftsEnabled = false
+			if err := dropMemoryFTSTriggers(db); err != nil {
+				db.Close()
+				return nil, fmt.Errorf("disable FTS triggers: %w", err)
+			}
 		}
 	}
 
@@ -177,7 +302,7 @@ func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
 		db:           db,
 		embeddingDim: cfg.EmbeddingDim,
 		maxChunks:    cfg.MaxChunks,
-		enableFTS:    cfg.EnableFTS,
+		enableFTS:    ftsEnabled,
 	}, nil
 }
 
@@ -188,8 +313,11 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 
 	now := timeutil.NowTime()
 	chunkID := NewEntryID()
+	if sourceID := sourceIDFromMetadata(metadata); sourceID != "" {
+		chunkID = sourceID + "#" + chunkID
+	}
 
-	tagsJSON, _ := json.Marshal([]string{})
+	tagsText := strings.Join(extractTagValues(metadata), " ")
 	metaJSON, _ := json.Marshal(metadata)
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -202,7 +330,7 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 	res, err := tx.ExecContext(ctx,
 		`INSERT INTO memory_chunks (chunk_id, content, tags, metadata, embedding_model, importance, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, 0.5, ?, ?)`,
-		chunkID, content, string(tagsJSON), string(metaJSON), embModel, now, now,
+		chunkID, content, tagsText, string(metaJSON), embModel, now, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert chunk: %w", err)
@@ -215,10 +343,10 @@ func (s *VectorStore) Store(ctx context.Context, content string, emb []float32, 
 
 	// Insert into memory_vec (must be manual, vec0 doesn't support triggers)
 	if len(emb) == s.embeddingDim {
-		quantized := quantizeFloat32ToInt8(emb)
+		serialized := serializeFloat32(emb)
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO memory_vec (rowid, embedding) VALUES (?, ?)`,
-			rowID, quantized,
+			`INSERT INTO memory_vec (rowid, embedding) VALUES (?, vec_quantize_int8(?, 'unit'))`,
+			rowID, serialized,
 		); err != nil {
 			return nil, fmt.Errorf("insert vec: %w", err)
 		}
@@ -252,9 +380,8 @@ func (s *VectorStore) SearchVector(ctx context.Context, queryEmb []float32, limi
 		SELECT c.chunk_id, c.content, c.metadata, c.created_at, c.updated_at, v.distance
 		FROM memory_vec v
 		JOIN memory_chunks c ON c.id = v.rowid
-		WHERE v.embedding MATCH ?
-		ORDER BY v.distance
-		LIMIT ?`,
+		WHERE v.embedding MATCH vec_quantize_int8(vec_f32(?), 'unit') AND k = ?
+		ORDER BY v.distance`,
 		serialized, limit*3,
 	)
 	if err != nil {
@@ -278,6 +405,7 @@ func (s *VectorStore) SearchVector(ctx context.Context, queryEmb []float32, limi
 		if metaStr.Valid {
 			_ = json.Unmarshal([]byte(metaStr.String), &r.Chunk.Metadata)
 		}
+		applySourceIDToChunk(&r.Chunk)
 		results = append(results, r)
 	}
 
@@ -293,7 +421,7 @@ func (s *VectorStore) SearchKeyword(ctx context.Context, query string, limit int
 	defer s.mu.RUnlock()
 
 	if !s.enableFTS {
-		return nil, fmt.Errorf("FTS not enabled")
+		return s.searchKeywordFallback(ctx, query, limit)
 	}
 
 	// Escape FTS5 special characters
@@ -312,6 +440,9 @@ func (s *VectorStore) SearchKeyword(ctx context.Context, query string, limit int
 		ftsQuery, limit*3,
 	)
 	if err != nil {
+		if isMissingFTSModuleError(err) {
+			return s.searchKeywordFallback(ctx, query, limit)
+		}
 		return nil, fmt.Errorf("search keyword: %w", err)
 	}
 	defer rows.Close()
@@ -328,6 +459,7 @@ func (s *VectorStore) SearchKeyword(ctx context.Context, query string, limit int
 		if metaStr.Valid {
 			_ = json.Unmarshal([]byte(metaStr.String), &r.Chunk.Metadata)
 		}
+		applySourceIDToChunk(&r.Chunk)
 		r.Score = float32(rank) // raw BM25 rank (negative, lower=better)
 		results = append(results, r)
 		ranks = append(ranks, rank)
@@ -354,6 +486,72 @@ func (s *VectorStore) SearchKeyword(ctx context.Context, query string, limit int
 			}
 		}
 	}
+
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return results, nil
+}
+
+func (s *VectorStore) searchKeywordFallback(ctx context.Context, query string, limit int) ([]VectorSearchResult, error) {
+	terms := keywordFallbackTerms(query)
+	if len(terms) == 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+
+	candidateLimit := limit * 5
+	if candidateLimit < 25 {
+		candidateLimit = 25
+	}
+
+	clauses := make([]string, 0, len(terms))
+	args := make([]interface{}, 0, len(terms)*2+1)
+	for _, term := range terms {
+		pattern := "%" + term + "%"
+		clauses = append(clauses, `(LOWER(content) LIKE ? OR LOWER(tags) LIKE ?)`)
+		args = append(args, pattern, pattern)
+	}
+	args = append(args, candidateLimit)
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT chunk_id, content, metadata, created_at, updated_at, COALESCE(tags, '')
+		FROM memory_chunks
+		WHERE `+strings.Join(clauses, ` OR `)+`
+		ORDER BY updated_at DESC
+		LIMIT ?`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search keyword fallback: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]VectorSearchResult, 0, limit)
+	for rows.Next() {
+		var result VectorSearchResult
+		var metaStr sql.NullString
+		var tagsStr string
+		if err := rows.Scan(&result.Chunk.ID, &result.Chunk.Content, &metaStr, &result.Chunk.CreatedAt, &result.Chunk.UpdatedAt, &tagsStr); err != nil {
+			continue
+		}
+		if metaStr.Valid {
+			_ = json.Unmarshal([]byte(metaStr.String), &result.Chunk.Metadata)
+		}
+		applySourceIDToChunk(&result.Chunk)
+		result.Score = keywordFallbackScore(query, terms, result.Chunk.Content, tagsStr)
+		if result.Score <= 0 {
+			continue
+		}
+		results = append(results, result)
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Score == results[j].Score {
+			return results[i].Chunk.UpdatedAt.After(results[j].Chunk.UpdatedAt)
+		}
+		return results[i].Score > results[j].Score
+	})
 
 	if len(results) > limit {
 		results = results[:limit]
@@ -479,20 +677,43 @@ func (s *VectorStore) Delete(ctx context.Context, id string) error {
 	}
 	defer tx.Rollback()
 
-	// Get rowid first for vec deletion
-	var rowID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM memory_chunks WHERE chunk_id = ?`, id).Scan(&rowID)
-	if err == sql.ErrNoRows {
-		return nil
-	}
+	rows, err := tx.QueryContext(ctx, `SELECT id, chunk_id, metadata FROM memory_chunks`)
 	if err != nil {
 		return err
 	}
+	defer rows.Close()
 
-	// Delete from vec (manual)
-	tx.ExecContext(ctx, `DELETE FROM memory_vec WHERE rowid = ?`, rowID)
-	// Delete from chunks (FTS trigger handles FTS deletion)
-	tx.ExecContext(ctx, `DELETE FROM memory_chunks WHERE id = ?`, rowID)
+	rowIDs := make([]int64, 0, 4)
+	for rows.Next() {
+		var rowID int64
+		var chunkID string
+		var metaStr sql.NullString
+		if err := rows.Scan(&rowID, &chunkID, &metaStr); err != nil {
+			continue
+		}
+		if chunkID == id {
+			rowIDs = append(rowIDs, rowID)
+			continue
+		}
+		if !metaStr.Valid {
+			continue
+		}
+		metadata := map[string]string{}
+		if err := json.Unmarshal([]byte(metaStr.String), &metadata); err != nil {
+			continue
+		}
+		if sourceIDFromMetadata(metadata) == id {
+			rowIDs = append(rowIDs, rowID)
+		}
+	}
+	if len(rowIDs) == 0 {
+		return nil
+	}
+
+	for _, rowID := range rowIDs {
+		_, _ = tx.ExecContext(ctx, `DELETE FROM memory_vec WHERE rowid = ?`, rowID)
+		_, _ = tx.ExecContext(ctx, `DELETE FROM memory_chunks WHERE id = ?`, rowID)
+	}
 
 	return tx.Commit()
 }

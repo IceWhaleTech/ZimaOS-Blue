@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,12 +14,8 @@ import (
 )
 
 // dialSock connects to the blue IPC socket.
-// Tries /tmp/blue.sock first (server default), then {dataDir}/blue.sock.
 func dialSock() (net.Conn, error) {
-	paths := []string{
-		"/tmp/blue.sock",
-		filepath.Join(getDataDir(), "blue.sock"),
-	}
+	paths := candidateIPCSocketPaths()
 	var lastErr error
 	for _, p := range paths {
 		conn, err := net.DialTimeout("unix", p, 5*time.Second)

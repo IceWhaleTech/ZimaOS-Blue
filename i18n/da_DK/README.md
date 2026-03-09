@@ -66,7 +66,7 @@ Tag det videre: det leverer indbygget understøttelse af **20+ IM-platforme**, *
 
 Kompileret direkte i Go — ingen fortolker, ingen VM, ingen overhead. Kører lydløst på alt fra servere til dine stationære enheder.
 
-| Målepunkt | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Målepunkt | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |-----------|-------------------|------------------------|
 | `help` kold / varm | **0,18 s / < 0,01 s** | 3,31 s / ~1,11 s |
 | `status` køretid (bedste af 3) | **< 0,01 s** | 5,98 s |

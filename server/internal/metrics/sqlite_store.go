@@ -10,15 +10,32 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // SQLiteStore implements MetricsStore using SQLite for persistence.
 type SQLiteStore struct {
 	db     *sql.DB
 	dbPath string
+	ownsDB bool
 	mu     sync.RWMutex
+}
+
+func newStoreWithDB(db *sql.DB, dbPath string, ownsDB bool) (*SQLiteStore, error) {
+	store := &SQLiteStore{
+		db:     db,
+		dbPath: dbPath,
+		ownsDB: ownsDB,
+	}
+
+	if err := store.initSchema(); err != nil {
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
+
+	// Release unused memory after schema init
+	db.Exec("PRAGMA shrink_memory")
+	return store, nil
 }
 
 // NewSQLiteStore creates a new SQLite-based metrics store.
@@ -29,20 +46,33 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	store, err := openMetricsDB(dbPath)
+	db, err := openMetricsDB(dbPath)
 	if err != nil {
 		// DB is corrupt or locked — rename and retry with a fresh one
 		rotateCorruptDB(dbPath)
-		store, err = openMetricsDB(dbPath)
+		db, err = openMetricsDB(dbPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open database after rotation: %w", err)
 		}
 	}
+	store, err := newStoreWithDB(db, dbPath, true)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return store, nil
 }
 
-// openMetricsDB opens (or creates) the metrics SQLite database.
-func openMetricsDB(dbPath string) (*SQLiteStore, error) {
+// NewSQLiteStoreWithDB reuses an existing SQLite database for metrics persistence.
+func NewSQLiteStoreWithDB(db *sql.DB) (*SQLiteStore, error) {
+	if db == nil {
+		return nil, fmt.Errorf("metrics db is nil")
+	}
+	return newStoreWithDB(db, "", false)
+}
+
+// openMetricsDB opens (or creates) the dedicated metrics SQLite database.
+func openMetricsDB(dbPath string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -57,20 +87,7 @@ func openMetricsDB(dbPath string) (*SQLiteStore, error) {
 	db.Exec("PRAGMA busy_timeout=5000")
 	db.Exec("PRAGMA cache_size=-500") // ~512KB page cache for lower idle memory
 
-	store := &SQLiteStore{
-		db:     db,
-		dbPath: dbPath,
-	}
-
-	if err := store.initSchema(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
-	}
-
-	// Release unused memory after schema init
-	db.Exec("PRAGMA shrink_memory")
-
-	return store, nil
+	return db, nil
 }
 
 // rotateCorruptDB renames a corrupt/locked DB (and its WAL/SHM) out of the way.
@@ -584,7 +601,10 @@ func (s *SQLiteStore) Cleanup(ctx context.Context, retention time.Duration) erro
 	return err
 }
 
-// Close closes the database connection.
+// Close closes the database connection when this store owns it.
 func (s *SQLiteStore) Close() error {
+	if s == nil || s.db == nil || !s.ownsDB {
+		return nil
+	}
 	return s.db.Close()
 }

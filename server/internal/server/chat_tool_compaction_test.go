@@ -11,11 +11,11 @@ import (
 
 func TestCompactToolResultsForLLM_ExecSearchTrimAndRerank(t *testing.T) {
 	results := []map[string]interface{}{
-		{"title": "Releases · openclaw/openclaw - GitHub", "url": "https://github.com/openclaw/openclaw/releases", "description": strings.Repeat("release notes ", 30)},
-		{"title": "openclaw organization - GitHub", "url": "https://github.com/openclaw", "description": "org page"},
-		{"title": "OpenClaw docs", "url": "https://docs.openclaw.ai/", "description": "official docs"},
-		{"title": "OpenClaw News", "url": "https://openclaw.report/", "description": "news"},
-		{"title": "Community mirror", "url": "https://mirror.example.com/openclaw", "description": "community mirror"},
+		{"title": "Releases · blueagent/blueagent - GitHub", "url": "https://github.com/blueagent/blueagent/releases", "description": strings.Repeat("release notes ", 30)},
+		{"title": "blueagent organization - GitHub", "url": "https://github.com/blueagent", "description": "org page"},
+		{"title": "BlueAgent docs", "url": "https://docs.blueagent.ai/", "description": "official docs"},
+		{"title": "BlueAgent News", "url": "https://blueagent.report/", "description": "news"},
+		{"title": "Community mirror", "url": "https://mirror.example.com/blueagent", "description": "community mirror"},
 	}
 	rawResults, err := json.Marshal(results)
 	if err != nil {
@@ -32,12 +32,12 @@ func TestCompactToolResultsForLLM_ExecSearchTrimAndRerank(t *testing.T) {
 		"warnings":    []string{"skill short-circuit: web_search"},
 		"risk_level":  "low",
 		"truncated":   false,
-		"command":     `blue web_search query="OpenClaw GitHub releases"`,
+		"command":     `blue web_search query="BlueAgent GitHub releases"`,
 		"stderr":      "",
 		"data": map[string]interface{}{
 			"_card":      "search",
 			"provider":   "duckduckgo",
-			"query":      "OpenClaw GitHub releases",
+			"query":      "BlueAgent GitHub releases",
 			"results":    string(rawResults),
 			"totalCount": "5",
 			"success":    "true",
@@ -97,13 +97,13 @@ func TestCompactToolResultsForLLM_WebSearchOutputBounded(t *testing.T) {
 	results := make([]interface{}, 0, 10)
 	for i := 0; i < 10; i++ {
 		results = append(results, map[string]interface{}{
-			"title":       "OpenClaw update " + string(rune('A'+i)),
-			"url":         "https://site" + string(rune('a'+i)) + ".example.com/openclaw/" + string(rune('0'+i)),
+			"title":       "BlueAgent update " + string(rune('A'+i)),
+			"url":         "https://site" + string(rune('a'+i)) + ".example.com/blueagent/" + string(rune('0'+i)),
 			"description": strings.Repeat("description ", 80),
 		})
 	}
 	raw := map[string]interface{}{
-		"query":       "OpenClaw latest news",
+		"query":       "BlueAgent latest news",
 		"provider":    "duckduckgo",
 		"total_count": 10,
 		"results":     results,
@@ -163,7 +163,7 @@ func TestCompactToolResultContentForLLM_ExecRedactsSensitiveFields(t *testing.T)
 		"warnings":   []interface{}{"warn1", "warn2"},
 		"data": map[string]interface{}{
 			"provider":      "duckduckgo",
-			"query":         "OpenClaw",
+			"query":         "BlueAgent",
 			"message":       "sensitive internal message",
 			"error":         "sensitive internal error",
 			"secret_blob":   "should-not-leak",
@@ -224,8 +224,8 @@ func TestCompactToolResultsForLLM_BoundsResponsesBodySize(t *testing.T) {
 	results := make([]map[string]interface{}, 0, 10)
 	for i := 0; i < 10; i++ {
 		results = append(results, map[string]interface{}{
-			"title":       "OpenClaw item " + string(rune('A'+i)),
-			"url":         "https://site" + string(rune('a'+i)) + ".example.com/openclaw",
+			"title":       "BlueAgent item " + string(rune('A'+i)),
+			"url":         "https://site" + string(rune('a'+i)) + ".example.com/blueagent",
 			"description": strings.Repeat("long text ", 200),
 		})
 	}
@@ -240,7 +240,7 @@ func TestCompactToolResultsForLLM_BoundsResponsesBodySize(t *testing.T) {
 		"data": map[string]interface{}{
 			"_card":      "search",
 			"provider":   "duckduckgo",
-			"query":      "OpenClaw latest news",
+			"query":      "BlueAgent latest news",
 			"results":    string(rawResults),
 			"totalCount": "10",
 			"success":    "true",
@@ -312,8 +312,8 @@ func TestCompactToolResultsForLLM_KeepsMultipleSearchPayloadsAndCompactsLaterRou
 	searchData := map[string]interface{}{
 		"_card":      "search",
 		"provider":   "duckduckgo",
-		"query":      "OpenClaw latest news",
-		"results":    `[{"title":"OpenClaw","url":"https://openclaw.ai","description":"latest"}]`,
+		"query":      "BlueAgent latest news",
+		"results":    `[{"title":"BlueAgent","url":"https://blueagent.ai","description":"latest"}]`,
 		"totalCount": "1",
 		"success":    "true",
 	}
@@ -328,10 +328,10 @@ func TestCompactToolResultsForLLM_KeepsMultipleSearchPayloadsAndCompactsLaterRou
 	}
 
 	toolCalls := []llm.ToolCall{
-		{ID: "call_1", Name: "exec", Arguments: `{"command":"blue web_search query=\"OpenClaw latest news\""}`},
-		{ID: "call_2", Name: "exec", Arguments: `{"command":"blue web_search query=\"OpenClaw GitHub releases\""}`},
-		{ID: "call_3", Name: "exec", Arguments: `{"command":"blue web_search query=\"OpenClaw docs\""}`},
-		{ID: "call_4", Name: "exec", Arguments: `{"command":"blue web_search query=\"OpenClaw changelog\""}`},
+		{ID: "call_1", Name: "exec", Arguments: `{"command":"blue web_search query=\"BlueAgent latest news\""}`},
+		{ID: "call_2", Name: "exec", Arguments: `{"command":"blue web_search query=\"BlueAgent GitHub releases\""}`},
+		{ID: "call_3", Name: "exec", Arguments: `{"command":"blue web_search query=\"BlueAgent docs\""}`},
+		{ID: "call_4", Name: "exec", Arguments: `{"command":"blue web_search query=\"BlueAgent changelog\""}`},
 	}
 	toolResults := []llm.Message{
 		{Role: llm.RoleTool, ToolCallID: "call_1", Content: string(rawExecBytes)},

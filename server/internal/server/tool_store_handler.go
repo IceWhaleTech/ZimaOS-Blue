@@ -129,6 +129,17 @@ var skillsShownAsTools = []ToolResponse{
 func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 	toolNames := h.registry.List()
 	response := make([]ToolResponse, 0, len(toolNames)+len(skillsShownAsTools))
+	seen := make(map[string]struct{}, len(toolNames)+len(skillsShownAsTools))
+	appendUnique := func(item ToolResponse) {
+		if item.ID == "" {
+			return
+		}
+		if _, ok := seen[item.ID]; ok {
+			return
+		}
+		seen[item.ID] = struct{}{}
+		response = append(response, item)
+	}
 
 	for _, name := range toolNames {
 		if toolsHiddenFromUI[name] {
@@ -139,7 +150,7 @@ func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 			continue
 		}
 		def := tool.Definition()
-		response = append(response, ToolResponse{
+		appendUnique(ToolResponse{
 			ID:          def.Name,
 			Name:        def.Name,
 			Version:     "1.0.0",
@@ -161,7 +172,7 @@ func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 			continue
 		}
 		def := tool.Definition()
-		response = append(response, ToolResponse{
+		appendUnique(ToolResponse{
 			ID:          def.Name,
 			Name:        def.Name,
 			Version:     "1.0.0",
@@ -173,8 +184,10 @@ func (h *ToolStoreHandler) ListTools(c echo.Context) error {
 		})
 	}
 
-	// Append skills that are displayed as tools in the UI
-	response = append(response, skillsShownAsTools...)
+	// Append skills that are displayed as tools in the UI.
+	for _, item := range skillsShownAsTools {
+		appendUnique(item)
+	}
 
 	return c.JSON(http.StatusOK, response)
 }

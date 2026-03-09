@@ -35,6 +35,7 @@ type Config struct {
 	CCSwitch      CCSwitchConfig      `yaml:"cc_switch"`       // v0.10.3
 	Statistics    StatisticsConfig    `yaml:"statistics"`      // v0.10.3
 	ToolCalling   ToolCallingConfig   `yaml:"tool_calling"`    // v0.10.3
+	Agents        AgentsConfig        `yaml:"agents"`          // v0.11.0
 	Proxy         *proxy.ProxyConfig  `yaml:"proxy"`           // v0.10.5.1: API Proxy
 	Pruner        *pruner.Config      `yaml:"pruner"`          // v0.10.27: Context Pruner
 	Update        UpdateConfig        `yaml:"update"`          // OTA Update
@@ -465,6 +466,16 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("BLUE_LOG_LEVEL"); v != "" {
 		cfg.Log.Level = v
 	}
+	if v := os.Getenv("BLUE_WEB_FETCH_ALLOW_PRIVATE_HOSTS"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.ToolCalling.WebFetch.AllowPrivateHosts = enabled
+		}
+	}
+	if v := os.Getenv("BLUE_WEB_FETCH_TIMEOUT"); v != "" {
+		if timeout, err := time.ParseDuration(v); err == nil {
+			cfg.ToolCalling.WebFetch.Timeout = timeout
+		}
+	}
 }
 
 // findConfigFile searches standard locations for config.yaml.
@@ -545,12 +556,12 @@ func defaults() Config {
 		Session: SessionConfig{
 			MaxTokens: 8000, MaxMessages: 100, IdleTimeout: 30 * time.Minute,
 			Compaction:  SessionCompactionConfig{Enabled: true, Threshold: 0.8, Strategy: "summarize", SummaryMaxTokens: 500, PreserveRecent: 5, AutoCompact: true, AutoCompactInterval: 5 * time.Minute},
-			Persistence: SessionPersistenceConfig{Enabled: true, Path: "./data/sessions.db", Interval: time.Minute, OnMessage: true, OnCompact: true},
+			Persistence: SessionPersistenceConfig{Enabled: true, Path: "./data/blue.db", Interval: time.Minute, OnMessage: true, OnCompact: true},
 			Isolation:   SessionIsolationConfig{ByAgent: true, ByChannel: true, ByPeer: true},
 			Cleanup:     SessionCleanupConfig{Enabled: true, ArchiveAfter: 168 * time.Hour, DeleteAfter: 720 * time.Hour, CleanupInterval: time.Hour},
 			Audit: SessionAuditConfig{
 				Enabled:          true,
-				Path:             "./data/session_audit.db",
+				Path:             "",
 				RetentionDays:    30,
 				CleanupInterval:  6 * time.Hour,
 				CleanupBatchSize: 500,
@@ -594,6 +605,7 @@ func defaults() Config {
 		CCSwitch:      *DefaultCCSwitchConfig(),
 		Statistics:    *DefaultStatisticsConfig(),
 		ToolCalling:   *DefaultToolCallingConfig(),
+		Agents:        *DefaultAgentsConfig(),
 
 		Proxy: &proxy.ProxyConfig{
 			Enabled: true,

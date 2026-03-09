@@ -650,8 +650,22 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 
 	// Convert messages
 	var systemBlocks []AnthropicSystemBlock
+	var pendingToolResults []AnthropicContentBlock
+	flushPendingToolResults := func() {
+		if len(pendingToolResults) == 0 {
+			return
+		}
+		blocks := make([]AnthropicContentBlock, len(pendingToolResults))
+		copy(blocks, pendingToolResults)
+		anthropicReq.Messages = append(anthropicReq.Messages, AnthropicMessage{
+			Role:    "user",
+			Content: blocks,
+		})
+		pendingToolResults = pendingToolResults[:0]
+	}
 	for _, msg := range req.Messages {
 		if msg.Role == "system" {
+			flushPendingToolResults()
 			// Preserve individual system blocks to keep static/config/dynamic boundaries.
 			switch content := msg.Content.(type) {
 			case string:
@@ -682,6 +696,17 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 			}
 			continue
 		}
+
+		if msg.Role == "tool" {
+			pendingToolResults = append(pendingToolResults, AnthropicContentBlock{
+				Type:      "tool_result",
+				ToolUseID: msg.ToolCallID,
+				Content:   anthropicToolResultString(msg.Content),
+			})
+			continue
+		}
+
+		flushPendingToolResults()
 
 		anthropicMsg := AnthropicMessage{
 			Role: msg.Role,
@@ -724,18 +749,9 @@ func (fc *FormatConverter) openAIToAnthropic(req OpenAIChatRequest) AnthropicReq
 			anthropicMsg.Content = blocks
 		}
 
-		// Handle tool results
-		if msg.Role == "tool" {
-			anthropicMsg.Role = "user"
-			anthropicMsg.Content = []AnthropicContentBlock{{
-				Type:      "tool_result",
-				ToolUseID: msg.ToolCallID,
-				Content:   anthropicToolResultString(msg.Content),
-			}}
-		}
-
 		anthropicReq.Messages = append(anthropicReq.Messages, anthropicMsg)
 	}
+	flushPendingToolResults()
 
 	if len(systemBlocks) > 0 {
 		anthropicReq.System = systemBlocks

@@ -10,12 +10,15 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a2ui"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	ocrruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ocr"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/password"
+	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
@@ -35,6 +38,9 @@ type Services struct {
 	JWTService    *auth.JWTService
 	APIKeyService *auth.APIKeyService
 	MemoryStore   *memory.Store
+	A2UIManager   *a2ui.Manager
+	OCRService    *ocrruntime.TesseractService
+	PDFService    *pdfextract.Service
 	LLMRegistry   *llm.ProviderRegistry
 	ToolRegistry  *tools.Registry
 	SkillRegistry *skill.Registry
@@ -109,14 +115,26 @@ func InitServices(cfg *ServerConfig, appCfg *config.Config, logger *zap.Logger) 
 		return nil, fmt.Errorf("failed to initialize memory store: %w", err)
 	}
 
+	s.A2UIManager = a2ui.NewManager(logger)
+	s.OCRService = ocrruntime.NewTesseractService(logger, ocrruntime.Config{
+		ModelDir:     filepath.Join(cfg.DataDir, "models", "tesseract"),
+		AutoDownload: true,
+		WorkerCount:  1,
+	})
+	s.PDFService = pdfextract.NewService(logger, s.OCRService)
+
 	// LLM registry
 	s.LLMRegistry = llm.NewProviderRegistry()
 	registerLLMProviders(s.LLMRegistry, appCfg)
 
 	// Tool registry (read, write, web_search + memory registered lazily)
 	s.ToolRegistry = tools.NewRegistry()
-	tools.RegisterBuiltinToolsWithConfig(s.ToolRegistry, buildWebSearchConfig(appCfg), nil, 0)
+	tools.RegisterBuiltinToolsWithConfig(s.ToolRegistry, buildWebSearchConfig(appCfg), buildWebFetchConfig(appCfg), nil, 0)
 	tools.RegisterFactoryToolDefinitions(s.ToolRegistry)
+	tools.RegisterAgentTools(s.ToolRegistry, appCfg)
+	tools.RegisterSessionTools(s.ToolRegistry, sessionListAdapter{store: s.MemoryStore})
+	tools.RegisterCanvasTools(s.ToolRegistry, s.A2UIManager)
+	tools.RegisterPDFTool(s.ToolRegistry, s.PDFService)
 
 	// Skill registry (for skill list UI and IPC — NOT bridged to LLM tools)
 	s.SkillRegistry = skill.NewRegistry()
@@ -156,6 +174,12 @@ func registerLLMProviders(registry *llm.ProviderRegistry, cfg *config.Config) {
 func (s *Services) Close() {
 	if s.APIKeyService != nil {
 		s.APIKeyService.Close()
+	}
+	if s.PDFService != nil {
+		_ = s.PDFService.Close()
+	}
+	if s.OCRService != nil {
+		_ = s.OCRService.Close()
 	}
 	if s.DB != nil {
 		s.DB.Close()
@@ -211,4 +235,145 @@ func LoadProvidersFromPool(pool *providerpool.Pool, llmRegistry *llm.ProviderReg
 			llmRegistry.Register(llmProvider)
 		}
 	}
+}
+
+type sessionListAdapter struct {
+	store *memory.Store
+}
+
+func (a sessionListAdapter) ListSessions(ctx context.Context, limit, offset int, userID string) ([]tools.SessionSummary, error) {
+	if a.store == nil {
+		return nil, nil
+	}
+	var (
+		convs []memory.Conversation
+		err   error
+	)
+	if userID != "" {
+		convs, err = a.store.ListConversations(ctx, limit, offset, userID)
+	} else {
+		convs, err = a.store.ListConversations(ctx, limit, offset)
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tools.SessionSummary, 0, len(convs))
+	for _, conv := range convs {
+		out = append(out, tools.SessionSummary{
+			ID:        conv.ID,
+			Title:     conv.Title,
+			UserID:    conv.UserID,
+			Pinned:    conv.Pinned,
+			CreatedAt: conv.CreatedAt,
+			UpdatedAt: conv.UpdatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (a sessionListAdapter) GetSession(ctx context.Context, sessionID string) (*tools.SessionSummary, error) {
+	if a.store == nil {
+		return nil, nil
+	}
+	conv, err := a.store.GetConversation(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if conv == nil {
+		return nil, nil
+	}
+	return &tools.SessionSummary{
+		ID:        conv.ID,
+		Title:     conv.Title,
+		UserID:    conv.UserID,
+		Pinned:    conv.Pinned,
+		CreatedAt: conv.CreatedAt,
+		UpdatedAt: conv.UpdatedAt,
+	}, nil
+}
+
+func (a sessionListAdapter) GetSessionMessages(ctx context.Context, sessionID string, limit, offset int) ([]tools.SessionMessage, error) {
+	if a.store == nil {
+		return nil, nil
+	}
+	messages, err := a.store.GetMessages(ctx, sessionID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tools.SessionMessage, 0, len(messages))
+	for _, msg := range messages {
+		out = append(out, tools.SessionMessage{
+			ID:         msg.ID,
+			Role:       msg.Role,
+			Content:    msg.Content,
+			ToolCallID: msg.ToolCallID,
+			ToolName:   msg.ToolName,
+			Provider:   msg.Provider,
+			Model:      msg.Model,
+			CreatedAt:  msg.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (a sessionListAdapter) CreateSession(ctx context.Context, title, userID string, pinned bool) (*tools.SessionSummary, error) {
+	if a.store == nil {
+		return nil, nil
+	}
+	var (
+		conv *memory.Conversation
+		err  error
+	)
+	if userID != "" {
+		conv, err = a.store.CreateConversation(ctx, title, userID)
+	} else {
+		conv, err = a.store.CreateConversation(ctx, title)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if pinned {
+		if err := a.store.PinConversation(ctx, conv.ID); err != nil {
+			return nil, err
+		}
+		conv, err = a.store.GetConversation(ctx, conv.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &tools.SessionSummary{
+		ID:        conv.ID,
+		Title:     conv.Title,
+		UserID:    conv.UserID,
+		Pinned:    conv.Pinned,
+		CreatedAt: conv.CreatedAt,
+		UpdatedAt: conv.UpdatedAt,
+	}, nil
+}
+
+func (a sessionListAdapter) AppendSessionMessage(ctx context.Context, sessionID string, msg tools.SessionMessage) (*tools.SessionMessage, error) {
+	if a.store == nil {
+		return nil, nil
+	}
+	created, err := a.store.AddMessage(ctx, sessionID, memory.Message{
+		Role:       msg.Role,
+		Content:    msg.Content,
+		ToolCallID: msg.ToolCallID,
+		ToolName:   msg.ToolName,
+		Provider:   msg.Provider,
+		Model:      msg.Model,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &tools.SessionMessage{
+		ID:         created.ID,
+		Role:       created.Role,
+		Content:    created.Content,
+		ToolCallID: created.ToolCallID,
+		ToolName:   created.ToolName,
+		Provider:   created.Provider,
+		Model:      created.Model,
+		CreatedAt:  created.CreatedAt,
+	}, nil
 }

@@ -66,7 +66,7 @@ Noch weiter gedacht: Native Unterstützung für **20+ IM-Plattformen**, **sprach
 
 Nativ in Go kompiliert — kein Interpreter, keine VM, kein Overhead. Läuft unauffällig auf allem, von Servern bis zu Desktop-Geräten.
 
-| Metrik | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Metrik | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |--------|-------------------|------------------------|
 | `help` kalt / warm | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` Laufzeit (bester von 3) | **< 0.01 s** | 5.98 s |

@@ -1,0 +1,125 @@
+{
+  "generated_at": "2026-03-04T11:27:52Z",
+  "repo_root": "/Users/orca/Documents/GitHub/ZimaOS-Blue",
+  "summary": {
+    "total_checks": 23,
+    "ok": 23,
+    "missing": 0,
+    "warning": 0
+  },
+  "categories": [
+    {
+      "category": "routes_missing",
+      "items": [
+        {
+          "name": "chat_routes_registered",
+          "status": "ok"
+        },
+        {
+          "name": "session_routes_registered",
+          "status": "ok"
+        },
+        {
+          "name": "gateway_routes_registered",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "category": "gateway_methods_missing",
+      "items": [
+        {
+          "name": "browser.request",
+          "status": "ok"
+        },
+        {
+          "name": "chat.abort",
+          "status": "ok"
+        },
+        {
+          "name": "chat.send",
+          "status": "ok"
+        },
+        {
+          "name": "hooks.wake",
+          "status": "ok"
+        },
+        {
+          "name": "sessions.list",
+          "status": "ok"
+        },
+        {
+          "name": "sessions.reset",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "category": "settings_config_missing",
+      "items": [
+        {
+          "name": "smart_tool_selection",
+          "status": "ok"
+        },
+        {
+          "name": "smart_skill_selection",
+          "status": "ok"
+        },
+        {
+          "name": "skill_selector_mode",
+          "status": "ok"
+        },
+        {
+          "name": "skill_selector_confidence_threshold",
+          "status": "ok"
+        },
+        {
+          "name": "prompt_policy_version",
+          "status": "ok"
+        },
+        {
+          "name": "prompt_policy_profile",
+          "status": "ok"
+        },
+        {
+          "name": "agent_loop_policy_max_tool_rounds",
+          "status": "ok"
+        },
+        {
+          "name": "agent_loop_policy_max_auto_continue",
+          "status": "ok"
+        },
+        {
+          "name": "agent_loop_policy_pseudo_tool_call_budget",
+          "status": "ok"
+        },
+        {
+          "name": "agent_loop_policy_action_pledge_budget",
+          "status": "ok"
+        },
+        {
+          "name": "agent_loop_policy_missing_todo_budget",
+          "status": "ok"
+        },
+        {
+          "name": "agent_loop_policy_pending_todo_budget",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "category": "hook_lifecycle_missing",
+      "items": [
+        {
+          "name": "register_hook_available",
+          "status": "ok"
+        },
+        {
+          "name": "hook_trigger_lifecycle_wired",
+          "status": "ok",
+          "details": "trigger call sites: server/internal/bootstrap/routes.go"
+        }
+      ]
+    }
+  ]
+}

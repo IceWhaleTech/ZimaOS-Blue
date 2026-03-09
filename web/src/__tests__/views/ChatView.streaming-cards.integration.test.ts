@@ -1,0 +1,843 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import ChatView from '@/views/ChatView.vue'
+import { i18n } from '@/i18n'
+import { useChatStore } from '@/stores/chat'
+import { conversationApi, messageApi } from '@/api/chat'
+
+const mocks = vi.hoisted(() => ({
+  sseConnect: vi.fn(),
+  sseDisconnect: vi.fn(),
+  cardActionSubmit: vi.fn(),
+  settingsStore: {
+    agentAutoConfirm: false,
+    agentMode: false,
+    claudeCodeEnabled: false,
+    showToolDetails: true,
+    themeStyle: 'default',
+    selectedProvider: 'openai',
+    selectedModel: 'gpt-4o-mini',
+    temperature: 0.7,
+    maxTokens: 8192,
+    fetchTools: vi.fn(),
+    updateFromPoolProviders: vi.fn(),
+    setAgentAutoConfirm: vi.fn(),
+    setAgentMode: vi.fn(),
+    setShowToolDetails: vi.fn(),
+    setThemeStyle: vi.fn(),
+  },
+  providerPoolStore: {
+    activeProviders: [] as unknown[],
+    cloudProviders: [] as unknown[],
+    enabledProviders: [] as unknown[],
+    hasCloudProviders: false,
+    hasLocalProviders: false,
+    localProviders: [] as unknown[],
+    models: [] as unknown[],
+    providers: [] as unknown[],
+    routingMode: 'auto',
+    trialProviders: [] as unknown[],
+    trialQuota: null as null | Record<string, unknown>,
+    getProviderDisplayName: vi.fn((providerId: string) => providerId),
+    fetchProviders: vi.fn(),
+    fetchRoutingMode: vi.fn(),
+    fetchTrialQuota: vi.fn(),
+    setRoutingMode: vi.fn(),
+  },
+  mediaGenerate: {
+    showPanel: { value: false },
+    intent: { value: null },
+    models: { value: [] as unknown[] },
+    selectedModel: { value: '' },
+    generating: { value: false },
+    ambiguous: { value: false },
+    task: { value: null },
+    classify: vi.fn(),
+    generate: vi.fn(),
+    reset: vi.fn(),
+    confirmAmbiguous: vi.fn(),
+    cancel: vi.fn(),
+    switchCategory: vi.fn(),
+  },
+  speechGetStatus: vi.fn(),
+  agentApi: {
+    listTasks: vi.fn(),
+    cancelTask: vi.fn(),
+    deleteTask: vi.fn(),
+    sendMessage: vi.fn(),
+    submitAnswers: vi.fn(),
+  },
+  authFetch: vi.fn(),
+  apiGet: vi.fn(),
+  apiPost: vi.fn(),
+  onSSEEvent: vi.fn(),
+  offSSEEvent: vi.fn(),
+  notificationStore: {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    remove: vi.fn(),
+  },
+  warmupTrigger: vi.fn(),
+  injectMessage: vi.fn(),
+  approvalApi: {
+    listPending: vi.fn(),
+    resolve: vi.fn(),
+    getConfig: vi.fn(),
+    updateConfig: vi.fn(),
+  },
+  systemWriteLog: vi.fn(),
+}))
+
+vi.mock('@/api/chat', () => ({
+  conversationApi: {
+    create: vi.fn(),
+    list: vi.fn(),
+    get: vi.fn(),
+    delete: vi.fn(),
+    search: vi.fn(),
+    getCommandState: vi.fn(),
+    patchCommandState: vi.fn(),
+  },
+  messageApi: {
+    list: vi.fn(),
+    send: vi.fn(),
+    cancelStream: vi.fn(),
+  },
+  warmupApi: {
+    trigger: (...args: unknown[]) => mocks.warmupTrigger(...args),
+  },
+  injectionApi: {
+    inject: (...args: unknown[]) => mocks.injectMessage(...args),
+  },
+  cardActionApi: {
+    submit: (...args: unknown[]) => mocks.cardActionSubmit(...args),
+  },
+  agentApi: {
+    listTasks: (...args: unknown[]) => mocks.agentApi.listTasks(...args),
+    cancelTask: (...args: unknown[]) => mocks.agentApi.cancelTask(...args),
+    deleteTask: (...args: unknown[]) => mocks.agentApi.deleteTask(...args),
+    sendMessage: (...args: unknown[]) => mocks.agentApi.sendMessage(...args),
+    submitAnswers: (...args: unknown[]) => mocks.agentApi.submitAnswers(...args),
+  },
+}))
+
+vi.mock('@/stores/settings', () => ({
+  THEME_STYLES: [
+    { id: 'default', labelKey: 'theme.styles.default' },
+    { id: 'bubble', labelKey: 'theme.styles.bubble' },
+  ],
+  useSettingsStore: () => mocks.settingsStore,
+}))
+
+vi.mock('@/stores/providerPool', () => ({
+  useProviderPoolStore: () => mocks.providerPoolStore,
+}))
+
+vi.mock('@/stores/notification', () => ({
+  useNotificationStore: () => mocks.notificationStore,
+}))
+
+vi.mock('@/api/client', () => ({
+  default: {
+    get: (...args: unknown[]) => mocks.apiGet(...args),
+    post: (...args: unknown[]) => mocks.apiPost(...args),
+  },
+  authFetch: (...args: unknown[]) => mocks.authFetch(...args),
+}))
+
+vi.mock('@/api/approval', () => ({
+  approvalApi: {
+    listPending: (...args: unknown[]) => mocks.approvalApi.listPending(...args),
+    resolve: (...args: unknown[]) => mocks.approvalApi.resolve(...args),
+    getConfig: (...args: unknown[]) => mocks.approvalApi.getConfig(...args),
+    updateConfig: (...args: unknown[]) => mocks.approvalApi.updateConfig(...args),
+  },
+}))
+
+vi.mock('@/api/system', () => ({
+  systemApi: {
+    writeLog: (...args: unknown[]) => mocks.systemWriteLog(...args),
+  },
+}))
+
+vi.mock('@/utils/sse', () => ({
+  SSEClient: class {
+    connect(...args: unknown[]) {
+      return mocks.sseConnect(...args)
+    }
+
+    disconnect(...args: unknown[]) {
+      return mocks.sseDisconnect(...args)
+    }
+  },
+}))
+
+vi.mock('@/api/voice', () => ({
+  ttsAudioManager: {
+    stop: vi.fn(),
+  },
+  streamingTTSManager: {
+    setLocale: vi.fn(),
+    stop: vi.fn(),
+    streamAndPlay: vi.fn(),
+    reset: vi.fn(),
+    streamText: vi.fn(),
+    play: vi.fn(),
+    onComplete: null as null | (() => void),
+  },
+}))
+
+vi.mock('@/api/speech', () => ({
+  speechApi: {
+    getStatus: (...args: unknown[]) => mocks.speechGetStatus(...args),
+  },
+}))
+
+vi.mock('@/composables/useEventStream', () => ({
+  onSSEEvent: (...args: unknown[]) => mocks.onSSEEvent(...args),
+  offSSEEvent: (...args: unknown[]) => mocks.offSSEEvent(...args),
+}))
+
+vi.mock('@/composables/useKeyboardShortcuts', () => ({
+  useChatShortcuts: vi.fn(),
+}))
+
+vi.mock('@/composables/useMediaGenerate', () => ({
+  useMediaGenerate: () => mocks.mediaGenerate,
+}))
+
+vi.mock('@/components/ConversationList.vue', () => ({
+  default: { name: 'ConversationList', template: '<div class="conversation-list-stub" />' },
+}))
+
+vi.mock('@/components/ChatInput.vue', () => ({
+  default: { name: 'ChatInput', template: '<div class="chat-input-stub" />' },
+}))
+
+vi.mock('@/components/onboarding/PresetQuestions.vue', () => ({
+  default: { name: 'PresetQuestions', template: '<div class="preset-questions-stub" />' },
+}))
+
+vi.mock('@/components/VirtualScroll.vue', () => ({
+  default: { name: 'VirtualScroll', template: '<div class="virtual-scroll-stub"><slot /></div>' },
+}))
+
+vi.mock('@/components/chat/TalkMode.vue', () => ({
+  default: { name: 'TalkMode', template: '<div class="talk-mode-stub" />' },
+}))
+
+vi.mock('@/components/ToolApprovalDialog.vue', () => ({
+  default: { name: 'ToolApprovalDialog', template: '<div class="tool-approval-stub" />' },
+}))
+
+vi.mock('@/components/ExecApprovalDialog.vue', () => ({
+  default: { name: 'ExecApprovalDialog', template: '<div class="exec-approval-stub" />' },
+}))
+
+vi.mock('@/components/MediaParamPanel.vue', () => ({
+  default: { name: 'MediaParamPanel', template: '<div class="media-param-panel-stub" />' },
+}))
+
+vi.mock('@/components/AgentTaskPanel.vue', () => ({
+  default: { name: 'AgentTaskPanel', template: '<div class="agent-task-panel-stub" />' },
+}))
+
+const localStorageMock = (() => {
+  let store: Record<string, string> = {}
+  return {
+    getItem: (key: string) => (key in store ? store[key] : null),
+    setItem: (key: string, value: string) => {
+      store[key] = String(value)
+    },
+    removeItem: (key: string) => {
+      delete store[key]
+    },
+    clear: () => {
+      store = {}
+    },
+  }
+})()
+
+vi.stubGlobal('localStorage', localStorageMock)
+vi.stubGlobal('matchMedia', vi.fn().mockImplementation(() => ({
+  matches: false,
+  media: '',
+  onchange: null,
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+  addListener: vi.fn(),
+  removeListener: vi.fn(),
+  dispatchEvent: vi.fn(),
+})))
+vi.stubGlobal('ResizeObserver', class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+})
+if (typeof window !== 'undefined' && typeof window.requestAnimationFrame !== 'function') {
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => setTimeout(() => cb(Date.now()), 0))
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+}
+
+const WEB_FETCH_URL = 'https://www.reddit.com/r/test'
+const WEB_FETCH_CARD_ID = 'web-fetch-https%3A%2F%2Fwww.reddit.com%2Fr%2Ftest'
+const BROWSER_CARD_ID = 'browser-https%3A%2F%2Fwww.reddit.com%2Fr%2Ftest'
+const CONVERSATION = {
+  id: 'conv-1',
+  title: 'Reddit flow',
+  created_at: '2026-03-08T00:00:00.000Z',
+  updated_at: '2026-03-08T00:00:02.000Z',
+}
+
+function makeTypelessBlock(payload: Record<string, unknown>) {
+  return ['```typeless', JSON.stringify(payload), '```'].join('\n')
+}
+
+function findButtonByText(wrapper: ReturnType<typeof mount>, text: string) {
+  return wrapper.findAll('button').find(button => button.text().includes(text))
+}
+
+async function settleView() {
+  await flushPromises()
+  await vi.dynamicImportSettled()
+  await flushPromises()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  await flushPromises()
+}
+
+async function mountIntegratedChatView() {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  window.history.replaceState({}, '', '/chat?conversationId=conv-1')
+
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/chat', component: { template: '<div />' } },
+      { path: '/settings', component: { template: '<div />' } },
+    ],
+  })
+  router.push('/chat')
+  await router.isReady()
+
+  const wrapper = mount(ChatView, {
+    global: {
+      plugins: [pinia, i18n, router],
+      stubs: {
+        Teleport: true,
+        Transition: true,
+      },
+    },
+  })
+
+  await settleView()
+  return { wrapper, store: useChatStore() }
+}
+
+
+describe('ChatView streaming card chain integration', () => {
+  beforeEach(() => {
+    localStorageMock.clear()
+    Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true })
+    Object.defineProperty(window.navigator, 'userAgent', { value: 'desktop', configurable: true })
+    Object.defineProperty(window.navigator, 'platform', { value: 'MacIntel', configurable: true })
+
+    vi.clearAllMocks()
+
+    mocks.sseConnect.mockReset().mockResolvedValue(undefined)
+    mocks.sseDisconnect.mockReset()
+    mocks.cardActionSubmit.mockReset()
+
+    mocks.settingsStore.agentAutoConfirm = false
+    mocks.settingsStore.agentMode = false
+    mocks.settingsStore.claudeCodeEnabled = false
+    mocks.settingsStore.showToolDetails = true
+    mocks.settingsStore.themeStyle = 'default'
+    mocks.settingsStore.selectedProvider = 'openai'
+    mocks.settingsStore.selectedModel = 'gpt-4o-mini'
+    mocks.settingsStore.temperature = 0.7
+    mocks.settingsStore.maxTokens = 8192
+    mocks.settingsStore.fetchTools.mockReset().mockResolvedValue(undefined)
+    mocks.settingsStore.updateFromPoolProviders.mockReset()
+    mocks.settingsStore.setAgentAutoConfirm.mockReset()
+    mocks.settingsStore.setAgentMode.mockReset()
+    mocks.settingsStore.setShowToolDetails.mockReset()
+    mocks.settingsStore.setThemeStyle.mockReset()
+
+    mocks.providerPoolStore.activeProviders = []
+    mocks.providerPoolStore.cloudProviders = []
+    mocks.providerPoolStore.enabledProviders = []
+    mocks.providerPoolStore.hasCloudProviders = false
+    mocks.providerPoolStore.hasLocalProviders = false
+    mocks.providerPoolStore.localProviders = []
+    mocks.providerPoolStore.models = []
+    mocks.providerPoolStore.providers = []
+    mocks.providerPoolStore.routingMode = 'auto'
+    mocks.providerPoolStore.trialProviders = []
+    mocks.providerPoolStore.trialQuota = null
+    mocks.providerPoolStore.getProviderDisplayName.mockReset().mockImplementation((providerId: string) => providerId)
+    mocks.providerPoolStore.fetchProviders.mockReset().mockResolvedValue(undefined)
+    mocks.providerPoolStore.fetchRoutingMode.mockReset().mockResolvedValue(undefined)
+    mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
+    mocks.providerPoolStore.setRoutingMode.mockReset().mockResolvedValue(undefined)
+
+    mocks.mediaGenerate.showPanel.value = false
+    mocks.mediaGenerate.intent.value = null
+    mocks.mediaGenerate.models.value = []
+    mocks.mediaGenerate.selectedModel.value = ''
+    mocks.mediaGenerate.generating.value = false
+    mocks.mediaGenerate.ambiguous.value = false
+    mocks.mediaGenerate.task.value = null
+    mocks.mediaGenerate.classify.mockReset()
+    mocks.mediaGenerate.generate.mockReset()
+    mocks.mediaGenerate.reset.mockReset()
+    mocks.mediaGenerate.confirmAmbiguous.mockReset()
+    mocks.mediaGenerate.cancel.mockReset()
+    mocks.mediaGenerate.switchCategory.mockReset()
+
+    mocks.speechGetStatus.mockReset().mockResolvedValue({ data: {} })
+    mocks.agentApi.listTasks.mockReset().mockResolvedValue({ data: [] })
+    mocks.agentApi.cancelTask.mockReset().mockResolvedValue({})
+    mocks.agentApi.deleteTask.mockReset().mockResolvedValue({})
+    mocks.agentApi.sendMessage.mockReset().mockResolvedValue({})
+    mocks.agentApi.submitAnswers.mockReset().mockResolvedValue({})
+
+    mocks.authFetch.mockReset().mockResolvedValue({})
+    mocks.apiGet.mockReset().mockResolvedValue({ data: { pending: false } })
+    mocks.apiPost.mockReset().mockResolvedValue({})
+    mocks.onSSEEvent.mockReset()
+    mocks.offSSEEvent.mockReset()
+
+    mocks.notificationStore.success.mockReset()
+    mocks.notificationStore.error.mockReset()
+    mocks.notificationStore.info.mockReset()
+    mocks.notificationStore.remove.mockReset()
+
+    mocks.warmupTrigger.mockReset().mockResolvedValue(undefined)
+    mocks.injectMessage.mockReset().mockResolvedValue({})
+    mocks.approvalApi.listPending.mockReset().mockResolvedValue({ data: [] })
+    mocks.approvalApi.resolve.mockReset().mockResolvedValue({})
+    mocks.approvalApi.getConfig.mockReset().mockResolvedValue({ data: { auto_approve_tools: [] } })
+    mocks.approvalApi.updateConfig.mockReset().mockResolvedValue({})
+    mocks.systemWriteLog.mockReset().mockResolvedValue(undefined)
+
+    vi.mocked(conversationApi.list).mockReset().mockResolvedValue({ data: [CONVERSATION] } as never)
+    vi.mocked(conversationApi.create).mockReset()
+    vi.mocked(conversationApi.get).mockReset()
+    vi.mocked(conversationApi.delete).mockReset()
+    vi.mocked(conversationApi.search).mockReset()
+    vi.mocked(conversationApi.getCommandState).mockReset().mockResolvedValue({
+      data: {
+        conversation_id: 'conv-1',
+        selected_provider_id: '',
+        selected_model_id: '',
+        offline: false,
+        web_search_enabled: true,
+        deep_research_enabled: false,
+      },
+    } as never)
+    vi.mocked(conversationApi.patchCommandState).mockReset().mockResolvedValue({
+      data: {
+        conversation_id: 'conv-1',
+        selected_provider_id: '',
+        selected_model_id: '',
+        offline: false,
+        web_search_enabled: true,
+        deep_research_enabled: false,
+      },
+    } as never)
+
+    vi.mocked(messageApi.list).mockReset().mockResolvedValue({ data: [] } as never)
+    vi.mocked(messageApi.send).mockReset()
+    vi.mocked(messageApi.cancelStream).mockReset()
+  })
+
+  it('renders streamed web-fetch and browser cards with the real chat store, then submits both card actions', async () => {
+    const webFetchBlock = makeTypelessBlock({
+      type: 'web-fetch',
+      id: WEB_FETCH_CARD_ID,
+      title: 'Sign in',
+      status: 'warning',
+      url: WEB_FETCH_URL,
+      content: 'Log in to continue',
+      content_type: 'text/html',
+      extract_mode: 'text',
+      extractor: 'html',
+      warning: 'page appears to be a login wall; use browser or pass browser_target_id',
+      warning_code: 'login_wall',
+      actions: [
+        {
+          id: 'use_browser',
+          label: 'Use browser',
+          variant: 'primary',
+          form_data: { url: WEB_FETCH_URL },
+        },
+      ],
+    })
+    const browserBlock = makeTypelessBlock({
+      type: 'result',
+      id: BROWSER_CARD_ID,
+      title: 'Browser page',
+      status: 'info',
+      message: 'Interactive page opened in the browser session.',
+      details: [
+        { label: 'url', value: WEB_FETCH_URL },
+        { label: 'browser_target_id', value: 'tab-42' },
+      ],
+      actions: [
+        {
+          id: 'extract_with_web_fetch',
+          label: 'Extract readable content',
+          variant: 'primary',
+          form_data: {
+            url: WEB_FETCH_URL,
+            browser_target_id: 'tab-42',
+          },
+        },
+      ],
+    })
+    const persistedMessages = [
+      {
+        id: 'msg-user-1',
+        conversation_id: 'conv-1',
+        role: 'user',
+        content: `Inspect ${WEB_FETCH_URL}`,
+        created_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'msg-assistant-1',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: webFetchBlock,
+        created_at: '2026-03-08T00:00:01.000Z',
+      },
+      {
+        id: 'msg-assistant-2',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: browserBlock,
+        created_at: '2026-03-08T00:00:02.000Z',
+      },
+    ]
+
+    vi.mocked(messageApi.list)
+      .mockResolvedValueOnce({ data: [] } as never)
+      .mockResolvedValueOnce({ data: persistedMessages } as never)
+
+    mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+      expect(_conversationId).toBe('conv-1')
+      expect(request).toEqual(expect.objectContaining({
+        message: `Inspect ${WEB_FETCH_URL}`,
+        web_search_enabled: true,
+        deep_research_enabled: false,
+      }))
+
+      options.onMessage({ delta: webFetchBlock, done: false })
+      options.onNewMessage?.(1)
+      options.onMessage({ delta: browserBlock, done: false })
+      options.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+    })
+
+    mocks.cardActionSubmit
+      .mockResolvedValueOnce({
+        data: {
+          success: true,
+          message: `Open ${WEB_FETCH_URL} with the browser tool.`,
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          success: true,
+          message: `Use web_fetch on ${WEB_FETCH_URL} with browser_target_id=tab-42 to extract readable content.`,
+        },
+      })
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    expect(store.currentConversationId).toBe('conv-1')
+    expect(vi.mocked(messageApi.list)).toHaveBeenCalledWith('conv-1', 50, 0)
+
+    await store.sendMessage(`Inspect ${WEB_FETCH_URL}`)
+    await settleView()
+
+    expect(mocks.sseConnect).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(messageApi.list)).toHaveBeenCalledTimes(2)
+    expect(store.messages).toEqual(persistedMessages)
+    expect(wrapper.text()).toContain('Sign in')
+    expect(wrapper.text()).toContain('Browser page')
+
+    const useBrowserButton = findButtonByText(wrapper, 'Use browser')
+    const extractButton = findButtonByText(wrapper, 'Extract readable content')
+
+    expect(useBrowserButton?.exists()).toBe(true)
+    expect(extractButton?.exists()).toBe(true)
+
+    const sendSpy = vi.spyOn(store, 'sendMessage').mockResolvedValue(undefined)
+
+    await useBrowserButton!.trigger('click')
+    await settleView()
+
+    await extractButton!.trigger('click')
+    await settleView()
+
+    expect(mocks.cardActionSubmit).toHaveBeenCalledTimes(2)
+    expect(mocks.cardActionSubmit).toHaveBeenNthCalledWith(1, 'conv-1', 'msg-assistant-1', {
+      card_id: WEB_FETCH_CARD_ID,
+      action_id: 'use_browser',
+      action_label: 'Use browser',
+      card_type: 'web-fetch',
+      card_title: 'Sign in',
+      form_data: { url: WEB_FETCH_URL },
+    })
+    expect(mocks.cardActionSubmit).toHaveBeenNthCalledWith(2, 'conv-1', 'msg-assistant-2', {
+      card_id: BROWSER_CARD_ID,
+      action_id: 'extract_with_web_fetch',
+      action_label: 'Extract readable content',
+      card_type: 'result',
+      card_title: 'Browser page',
+      form_data: {
+        url: WEB_FETCH_URL,
+        browser_target_id: 'tab-42',
+      },
+    })
+    expect(sendSpy).toHaveBeenNthCalledWith(1, `Open ${WEB_FETCH_URL} with the browser tool.`)
+    expect(sendSpy).toHaveBeenNthCalledWith(2, `Use web_fetch on ${WEB_FETCH_URL} with browser_target_id=tab-42 to extract readable content.`)
+  })
+
+  it('hides fallback boilerplate when chat history contains extracted tool summaries', async () => {
+    const searchBlock = makeTypelessBlock({
+      type: 'search',
+      id: 'search-openclaw',
+      query: 'OpenClaw recent updates',
+      results: [
+        {
+          title: 'OpenClaw Release Notes',
+          url: 'https://github.com/opendungeons/openclaw/releases',
+          description: 'recent release notes',
+        },
+      ],
+    })
+
+    const persistedMessages = [
+      {
+        id: 'msg-user-openclaw',
+        conversation_id: 'conv-1',
+        role: 'user',
+        content: '帮我调研一下最近一周 openclaw 的动向吧',
+        created_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'msg-assistant-openclaw',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: [
+          '工具执行已完成，但最终总结生成失败。以下是从工具结果自动提炼的安全摘要：',
+          '',
+          'Web search fallback results for "OpenClaw 最近动向":',
+          '',
+          searchBlock,
+          '',
+          '原始 stdout/stderr/error 字段已隐藏以保护安全。如需我重试完整总结，请回复“重试总结”。',
+        ].join('\n'),
+        created_at: '2026-03-08T00:00:01.000Z',
+      },
+    ]
+
+    vi.mocked(messageApi.list).mockResolvedValue({ data: persistedMessages } as never)
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    expect(store.currentConversationId).toBe('conv-1')
+    expect(wrapper.text()).toContain('Web search fallback results for "OpenClaw 最近动向"')
+    expect(wrapper.text()).toContain('OpenClaw Release Notes')
+    expect(wrapper.text()).not.toContain('工具执行已完成，但最终总结生成失败')
+    expect(wrapper.text()).not.toContain('自动提炼的安全摘要')
+    expect(wrapper.text()).not.toContain('原始 stdout/stderr/error 字段已隐藏')
+  })
+
+  it('renders a streamed browser_required web-fetch card and still routes use_browser through card actions', async () => {
+    const browserRequiredBlock = makeTypelessBlock({
+      type: 'web-fetch',
+      id: WEB_FETCH_CARD_ID,
+      title: 'Protected page',
+      status: 'warning',
+      url: WEB_FETCH_URL,
+      content: 'Use a browser session to read this page.',
+      content_type: 'text/html',
+      extract_mode: 'text',
+      extractor: 'html',
+      warning: 'page requires a browser session for readable extraction; switch to browser or reuse browser_target_id',
+      warning_code: 'browser_required',
+      actions: [
+        {
+          id: 'use_browser',
+          label: 'Use browser',
+          variant: 'primary',
+          form_data: { url: WEB_FETCH_URL },
+        },
+      ],
+    })
+    const persistedMessages = [
+      {
+        id: 'msg-user-1',
+        conversation_id: 'conv-1',
+        role: 'user',
+        content: 'Inspect ' + WEB_FETCH_URL,
+        created_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'msg-assistant-1',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: browserRequiredBlock,
+        created_at: '2026-03-08T00:00:01.000Z',
+      },
+    ]
+
+    vi.mocked(messageApi.list)
+      .mockResolvedValueOnce({ data: [] } as never)
+      .mockResolvedValueOnce({ data: persistedMessages } as never)
+
+    mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+      expect(_conversationId).toBe('conv-1')
+      expect(request).toEqual(expect.objectContaining({
+        message: 'Inspect ' + WEB_FETCH_URL,
+        web_search_enabled: true,
+        deep_research_enabled: false,
+      }))
+
+      options.onMessage({ delta: browserRequiredBlock, done: false })
+      options.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+    })
+
+    mocks.cardActionSubmit.mockResolvedValueOnce({
+      data: {
+        success: true,
+        message: 'Open ' + WEB_FETCH_URL + ' with the browser tool.',
+      },
+    })
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    await store.sendMessage('Inspect ' + WEB_FETCH_URL)
+    await settleView()
+
+    expect(store.messages).toEqual(persistedMessages)
+    expect(wrapper.text()).toContain('Protected page')
+    expect(wrapper.text()).toContain('browser session')
+
+    const useBrowserButton = findButtonByText(wrapper, 'Use browser')
+    expect(useBrowserButton?.exists()).toBe(true)
+
+    const sendSpy = vi.spyOn(store, 'sendMessage').mockResolvedValue(undefined)
+
+    await useBrowserButton!.trigger('click')
+    await settleView()
+
+    expect(mocks.cardActionSubmit).toHaveBeenCalledTimes(1)
+    expect(mocks.cardActionSubmit).toHaveBeenCalledWith('conv-1', 'msg-assistant-1', {
+      card_id: WEB_FETCH_CARD_ID,
+      action_id: 'use_browser',
+      action_label: 'Use browser',
+      card_type: 'web-fetch',
+      card_title: 'Protected page',
+      form_data: { url: WEB_FETCH_URL },
+    })
+    expect(sendSpy).toHaveBeenCalledWith('Open ' + WEB_FETCH_URL + ' with the browser tool.')
+  })
+
+  it('renders a streamed challenge web-fetch card and still routes use_browser through card actions', async () => {
+    const challengeBlock = makeTypelessBlock({
+      type: 'web-fetch',
+      id: WEB_FETCH_CARD_ID,
+      title: 'Verification required',
+      status: 'warning',
+      url: WEB_FETCH_URL,
+      content: 'Complete the verification to continue.',
+      content_type: 'text/html',
+      extract_mode: 'text',
+      extractor: 'html',
+      warning: 'page appears to require a verification challenge; switch to browser or reuse browser_target_id',
+      warning_code: 'challenge',
+      actions: [
+        {
+          id: 'use_browser',
+          label: 'Use browser',
+          variant: 'primary',
+          form_data: { url: WEB_FETCH_URL },
+        },
+      ],
+    })
+    const persistedMessages = [
+      {
+        id: 'msg-user-1',
+        conversation_id: 'conv-1',
+        role: 'user',
+        content: 'Inspect ' + WEB_FETCH_URL,
+        created_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'msg-assistant-1',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: challengeBlock,
+        created_at: '2026-03-08T00:00:01.000Z',
+      },
+    ]
+
+    vi.mocked(messageApi.list)
+      .mockResolvedValueOnce({ data: [] } as never)
+      .mockResolvedValueOnce({ data: persistedMessages } as never)
+
+    mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+      expect(_conversationId).toBe('conv-1')
+      expect(request).toEqual(expect.objectContaining({
+        message: 'Inspect ' + WEB_FETCH_URL,
+        web_search_enabled: true,
+        deep_research_enabled: false,
+      }))
+
+      options.onMessage({ delta: challengeBlock, done: false })
+      options.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+    })
+
+    mocks.cardActionSubmit.mockResolvedValueOnce({
+      data: {
+        success: true,
+        message: 'Open ' + WEB_FETCH_URL + ' with the browser tool.',
+      },
+    })
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    await store.sendMessage('Inspect ' + WEB_FETCH_URL)
+    await settleView()
+
+    expect(store.messages).toEqual(persistedMessages)
+    expect(wrapper.text()).toContain('Verification required')
+    expect(wrapper.text()).toContain('verification challenge')
+
+    const useBrowserButton = findButtonByText(wrapper, 'Use browser')
+    expect(useBrowserButton?.exists()).toBe(true)
+
+    const sendSpy = vi.spyOn(store, 'sendMessage').mockResolvedValue(undefined)
+
+    await useBrowserButton!.trigger('click')
+    await settleView()
+
+    expect(mocks.cardActionSubmit).toHaveBeenCalledTimes(1)
+    expect(mocks.cardActionSubmit).toHaveBeenCalledWith('conv-1', 'msg-assistant-1', {
+      card_id: WEB_FETCH_CARD_ID,
+      action_id: 'use_browser',
+      action_label: 'Use browser',
+      card_type: 'web-fetch',
+      card_title: 'Verification required',
+      form_data: { url: WEB_FETCH_URL },
+    })
+    expect(sendSpy).toHaveBeenCalledWith('Open ' + WEB_FETCH_URL + ' with the browser tool.')
+  })
+
+})

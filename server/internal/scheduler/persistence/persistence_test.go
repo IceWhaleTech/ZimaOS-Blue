@@ -10,8 +10,8 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	config := DefaultConfig()
 
-	if config.DBPath != "./data/scheduler.db" {
-		t.Errorf("expected DBPath='./data/scheduler.db', got %s", config.DBPath)
+	if config.DBPath != "./data/blue.db" {
+		t.Errorf("expected DBPath='./data/blue.db', got %s", config.DBPath)
 	}
 	if !config.Enabled {
 		t.Error("expected Enabled=true by default")
@@ -383,7 +383,7 @@ func TestCleanup(t *testing.T) {
 		t.Fatalf("failed to save old task: %v", err)
 	}
 	// Manually set completed_at to old time
-	store.db.Exec("UPDATE tasks SET completed_at = ? WHERE id = ?", oldTime, oldTask.ID)
+	store.db.Exec("UPDATE scheduler_tasks SET completed_at = ? WHERE id = ?", oldTime, oldTask.ID)
 
 	// Create recent completed task
 	recentTask := &TaskRecord{
@@ -572,5 +572,24 @@ func TestDependencies(t *testing.T) {
 	}
 	if retrieved.Dependencies[0] != "dep-1" {
 		t.Errorf("expected first dependency 'dep-1', got %s", retrieved.Dependencies[0])
+	}
+}
+
+func TestStoreUsesNamespacedSchedulerTable(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	store, err := NewStore(Config{DBPath: dbPath, Enabled: true, RetentionDays: 7})
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	var count int
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'scheduler_tasks'").Scan(&count); err != nil {
+		t.Fatalf("failed to inspect sqlite_master: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected scheduler_tasks table to exist, got count=%d", count)
 	}
 }

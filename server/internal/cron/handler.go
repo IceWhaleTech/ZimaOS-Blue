@@ -69,12 +69,36 @@ type UpdateRequest struct {
 	Payload     map[string]interface{} `json:"payload"`
 }
 
+type listResponse struct {
+	Jobs []*Job `json:"jobs"`
+}
+
+type executionsResponse struct {
+	Executions []*JobExecution `json:"executions"`
+}
+
+type statusResponse struct {
+	Running    bool `json:"running"`
+	JobCount   int  `json:"job_count"`
+	ActiveJobs int  `json:"active_jobs"`
+}
+
 // RegisterRoutes registers cron routes.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	cron := g.Group("/cron")
+
 	cron.GET("", h.List)
-	cron.GET("/jobs", h.List) // Alias for frontend compatibility
 	cron.POST("", h.Create)
+
+	cron.GET("/jobs", h.ListWrapped)
+	cron.POST("/jobs", h.Create)
+	cron.GET("/status", h.Status)
+	cron.GET("/jobs/:id/executions", h.GetExecutionsWrapped)
+	cron.DELETE("/jobs/:id", h.Delete)
+	cron.POST("/jobs/:id/enable", h.Enable)
+	cron.POST("/jobs/:id/disable", h.Disable)
+	cron.POST("/jobs/:id/trigger", h.Trigger)
+
 	cron.GET("/:id", h.Get)
 	cron.PUT("/:id", h.Update)
 	cron.DELETE("/:id", h.Delete)
@@ -93,6 +117,30 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 func (h *Handler) List(c echo.Context) error {
 	jobs := h.svc().List()
 	return c.JSON(http.StatusOK, jobs)
+}
+
+// ListWrapped returns cron jobs in the legacy CLI response shape.
+func (h *Handler) ListWrapped(c echo.Context) error {
+	jobs := h.svc().List()
+	return c.JSON(http.StatusOK, listResponse{Jobs: jobs})
+}
+
+// Status returns scheduler status in the legacy CLI response shape.
+func (h *Handler) Status(c echo.Context) error {
+	service := h.svc()
+	jobs := service.List()
+	activeJobs := 0
+	for _, job := range jobs {
+		if job.Enabled {
+			activeJobs++
+		}
+	}
+
+	return c.JSON(http.StatusOK, statusResponse{
+		Running:    service.Config().Enabled,
+		JobCount:   len(jobs),
+		ActiveJobs: activeJobs,
+	})
 }
 
 // Create creates a new cron job.
@@ -246,12 +294,7 @@ func (h *Handler) Trigger(c echo.Context) error {
 // @Router /api/v1/cron/{id}/executions [get]
 func (h *Handler) GetExecutions(c echo.Context) error {
 	id := c.Param("id")
-	limit := 20
-	if l := c.QueryParam("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil {
-			limit = parsed
-		}
-	}
+	limit := parseExecutionLimit(c)
 
 	executions, err := h.svc().GetExecutions(id, limit)
 	if err != nil {
@@ -259,4 +302,27 @@ func (h *Handler) GetExecutions(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, executions)
+}
+
+// GetExecutionsWrapped returns executions in the legacy CLI response shape.
+func (h *Handler) GetExecutionsWrapped(c echo.Context) error {
+	id := c.Param("id")
+	limit := parseExecutionLimit(c)
+
+	executions, err := h.svc().GetExecutions(id, limit)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, executionsResponse{Executions: executions})
+}
+
+func parseExecutionLimit(c echo.Context) int {
+	limit := 20
+	if l := c.QueryParam("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil {
+			limit = parsed
+		}
+	}
+	return limit
 }

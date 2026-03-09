@@ -333,5 +333,5 @@ memory:
 
 ## 参考
 
-- [clawdbot Memory Documentation](https://docs.openclaw.ai/concepts/memory)
+- [clawdbot Memory Documentation](https://docs.reference-agent.ai/concepts/memory)
 - [ZimaOS-Blue Memory Implementation](../server/internal/memory/)

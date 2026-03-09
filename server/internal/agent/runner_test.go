@@ -311,6 +311,85 @@ func TestRunner_Cancel(t *testing.T) {
 	}
 }
 
+func TestRunner_Cancel_PersistsCancelledStatusDuringPlanning(t *testing.T) {
+	s := testStore(t)
+	runner := NewRunner(s, &slowMockLLM{delay: 2 * time.Second}, nil, nil, nil, RunnerConfig{TaskTimeout: 10 * time.Second})
+	t.Cleanup(func() { runner.Shutdown() })
+
+	task, err := runner.Submit(context.Background(), "u1", "slow task", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if !runner.Cancel(task.ID) {
+		t.Fatal("Cancel returned false, expected true")
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := s.Get(context.Background(), task.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status == TaskStatusCancelled {
+			if got.RuntimeState != RuntimeStateAborted {
+				t.Fatalf("runtime_state = %q, want %q", got.RuntimeState, RuntimeStateAborted)
+			}
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	got, _ := s.Get(context.Background(), task.ID)
+	t.Fatalf("status = %q, want %q", got.Status, TaskStatusCancelled)
+}
+
+func TestRunner_Cancel_PersistsCancelledStatusWhileWaitingInput(t *testing.T) {
+	s := testStore(t)
+	runner := NewRunner(s, &mockLLM{}, nil, tools.NewExecutor(nil), nil, RunnerConfig{TaskTimeout: 10 * time.Second})
+	t.Cleanup(func() { runner.Shutdown() })
+
+	task, err := runner.Submit(context.Background(), "u1", "TBD", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	waitDeadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(waitDeadline) {
+		got, err := s.Get(context.Background(), task.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status == TaskStatusWaitingInput {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	if !runner.Cancel(task.ID) {
+		t.Fatal("Cancel returned false, expected true")
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := s.Get(context.Background(), task.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status == TaskStatusCancelled {
+			if got.RuntimeState != RuntimeStateAborted {
+				t.Fatalf("runtime_state = %q, want %q", got.RuntimeState, RuntimeStateAborted)
+			}
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	got, _ := s.Get(context.Background(), task.ID)
+	t.Fatalf("status = %q, want %q", got.Status, TaskStatusCancelled)
+}
+
 type slowMockLLM struct {
 	delay time.Duration
 }
@@ -1212,6 +1291,46 @@ func TestRunner_AskUser_Cleanup(t *testing.T) {
 	r.askMu.Unlock()
 	if exists {
 		t.Error("askQueues should be cleaned up after AskUser returns")
+	}
+}
+
+func TestRunner_AskUser_CancelDoesNotOverwriteCancelledStatus(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	task := &Task{ID: "ask_cancel", UserID: "u1", Goal: "test", Status: TaskStatusWaitingInput, RuntimeState: RuntimeStateConfirmGate}
+	if err := s.Create(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRunner(s, &mockLLM{}, nil, tools.NewExecutor(nil), nil, RunnerConfig{})
+	r.mu.Lock()
+	r.running["ask_cancel"] = func() {}
+	r.mu.Unlock()
+
+	askCtx, askCancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.AskUser(askCtx, "ask_cancel", []AgentQuestion{{ID: "q1", Question: "test", Header: "Q"}}, 0)
+		done <- err
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	if err := s.SetStatus(ctx, "ask_cancel", TaskStatusCancelled, "cancelled by user"); err != nil {
+		t.Fatal(err)
+	}
+	askCancel()
+
+	if err := <-done; err == nil {
+		t.Fatal("expected AskUser to return cancellation error")
+	}
+
+	got, err := s.Get(ctx, "ask_cancel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != TaskStatusCancelled {
+		t.Fatalf("status = %q, want %q", got.Status, TaskStatusCancelled)
 	}
 }
 

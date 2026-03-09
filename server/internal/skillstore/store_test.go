@@ -590,3 +590,160 @@ func TestEscapeFTS5Query(t *testing.T) {
 		})
 	}
 }
+
+func TestStore_SearchFallbackWithoutFTS(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	store.ftsEnabled = false
+
+	ctx := context.Background()
+	now := time.Now()
+	if err := store.UpsertSkillBatch(ctx, []*Skill{
+		{
+			ID:        "smart-home",
+			Name:      "Smart Home Controller",
+			Summary:   "Control your smart home devices",
+			Category:  "automation",
+			SourceID:  "clawhub",
+			Stars:     100,
+			Downloads: 1000,
+			CreatedAt: now,
+			UpdatedAt: now,
+			SyncedAt:  now,
+		},
+		{
+			ID:        "ai-writer",
+			Name:      "AI Writing Assistant",
+			Summary:   "AI-powered writing helper",
+			Category:  "productivity",
+			SourceID:  "clawhub",
+			Stars:     200,
+			Downloads: 2000,
+			CreatedAt: now,
+			UpdatedAt: now,
+			SyncedAt:  now,
+		},
+	}); err != nil {
+		t.Fatalf("failed to insert skills: %v", err)
+	}
+
+	result, err := store.Search(ctx, SearchOptions{Query: "smart home", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("search fallback failed: %v", err)
+	}
+	if result.Total == 0 {
+		t.Fatal("expected fallback search results")
+	}
+	if result.Skills[0].Skill.ID != "smart-home" {
+		t.Fatalf("unexpected top fallback result: %+v", result.Skills[0].Skill)
+	}
+}
+
+func TestStore_SearchHandlesNullableTextColumns(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	store.ftsEnabled = false
+
+	if _, err := db.Exec(`
+		INSERT INTO skills (
+			id, name, source_id, search_content, created_at, updated_at, synced_at
+		) VALUES (
+			?, ?, ?, ?, datetime('now'), datetime('now'), datetime('now')
+		)
+	`, "nullable-skill", "Nullable Skill", "clawhub", "nullable skill smoke query"); err != nil {
+		t.Fatalf("failed to insert nullable skill row: %v", err)
+	}
+
+	result, err := store.Search(context.Background(), SearchOptions{Query: "nullable", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("search with nullable columns failed: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("expected one result, got %d", result.Total)
+	}
+	if result.Skills[0].Skill.ID != "nullable-skill" {
+		t.Fatalf("unexpected skill id: %+v", result.Skills[0].Skill)
+	}
+	if result.Skills[0].Skill.Changelog != "" {
+		t.Fatalf("expected empty changelog, got %q", result.Skills[0].Skill.Changelog)
+	}
+	if result.Skills[0].Skill.Summary != "" {
+		t.Fatalf("expected empty summary, got %q", result.Skills[0].Skill.Summary)
+	}
+}
+
+func TestStore_InitSchemaDropsStaleFTSTriggers(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	coreSchema := `
+	CREATE TABLE IF NOT EXISTS skills (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		version TEXT,
+		summary TEXT,
+		description TEXT,
+		author TEXT,
+		category TEXT,
+		tags TEXT,
+		source_id TEXT NOT NULL,
+		source_name TEXT,
+		homepage TEXT,
+		download_url TEXT,
+		stars INTEGER DEFAULT 0,
+		downloads INTEGER DEFAULT 0,
+		reviews INTEGER DEFAULT 0,
+		rating REAL DEFAULT 0.0,
+		versions INTEGER DEFAULT 0,
+		changelog TEXT,
+		readme TEXT,
+		readme_hash TEXT,
+		dedup_key TEXT,
+		installed INTEGER DEFAULT 0,
+		enabled INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		search_content TEXT
+	);`
+	if _, err := db.Exec(coreSchema); err != nil {
+		t.Fatalf("create core schema: %v", err)
+	}
+	if _, err := db.Exec(`
+		CREATE TRIGGER skills_ai AFTER INSERT ON skills BEGIN
+			SELECT RAISE(FAIL, 'stale trigger');
+		END;
+	`); err != nil {
+		t.Fatalf("create stale trigger: %v", err)
+	}
+
+	store := &Store{db: db, zorm: NewZormStore(db)}
+	if err := store.initSchema(); err != nil {
+		t.Fatalf("initSchema failed: %v", err)
+	}
+
+	ctx := context.Background()
+	now := time.Now()
+	if err := store.UpsertSkill(ctx, &Skill{
+		ID:        "post-init",
+		Name:      "Post Init Skill",
+		Summary:   "Works after stale trigger cleanup",
+		Category:  "testing",
+		SourceID:  "clawhub",
+		CreatedAt: now,
+		UpdatedAt: now,
+		SyncedAt:  now,
+	}); err != nil {
+		t.Fatalf("upsert after trigger cleanup failed: %v", err)
+	}
+}

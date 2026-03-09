@@ -43,16 +43,16 @@ type webhookBody struct {
 }
 
 type webhookEntry struct {
-	ID        string             `json:"id"`
-	Time      int64              `json:"time"`
-	Messaging []messagingEvent   `json:"messaging"`
+	ID        string           `json:"id"`
+	Time      int64            `json:"time"`
+	Messaging []messagingEvent `json:"messaging"`
 }
 
 type messagingEvent struct {
-	Sender    webhookUser        `json:"sender"`
-	Recipient webhookUser        `json:"recipient"`
-	Timestamp int64              `json:"timestamp"`
-	Message   *incomingMessage   `json:"message,omitempty"`
+	Sender    webhookUser      `json:"sender"`
+	Recipient webhookUser      `json:"recipient"`
+	Timestamp int64            `json:"timestamp"`
+	Message   *incomingMessage `json:"message,omitempty"`
 }
 
 type webhookUser struct {
@@ -60,13 +60,19 @@ type webhookUser struct {
 }
 
 type incomingMessage struct {
-	MID         string              `json:"mid"`
-	Text        string              `json:"text,omitempty"`
+	MID         string               `json:"mid"`
+	Text        string               `json:"text,omitempty"`
+	IsEcho      bool                 `json:"is_echo,omitempty"`
+	ReplyTo     *incomingReplyTo     `json:"reply_to,omitempty"`
 	Attachments []incomingAttachment `json:"attachments,omitempty"`
 }
 
+type incomingReplyTo struct {
+	MID string `json:"mid"`
+}
+
 type incomingAttachment struct {
-	Type    string           `json:"type"`
+	Type    string            `json:"type"`
 	Payload attachmentPayload `json:"payload"`
 }
 
@@ -76,9 +82,9 @@ type attachmentPayload struct {
 
 // Send API types.
 type sendRequest struct {
-	Recipient   sendUser    `json:"recipient"`
-	Message     sendMessage `json:"message,omitempty"`
-	SenderAction string    `json:"sender_action,omitempty"`
+	Recipient    sendUser    `json:"recipient"`
+	Message      sendMessage `json:"message,omitempty"`
+	SenderAction string      `json:"sender_action,omitempty"`
 }
 
 type sendUser struct {
@@ -91,7 +97,7 @@ type sendMessage struct {
 }
 
 type sendAttachment struct {
-	Type    string              `json:"type"`
+	Type    string                `json:"type"`
 	Payload sendAttachmentPayload `json:"payload"`
 }
 
@@ -131,8 +137,8 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	}
 }
 
-func (c *Channel) Name() string                    { return "messenger" }
-func (c *Channel) Type() string                    { return "messenger" }
+func (c *Channel) Name() string                     { return "messenger" }
+func (c *Channel) Type() string                     { return "messenger" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -210,11 +216,22 @@ func (c *Channel) VerifyWebhook(mode, token, challenge string) (string, error) {
 
 func (c *Channel) processMessage(event messagingEvent) {
 	msg := event.Message
+	if msg == nil || msg.IsEcho {
+		return
+	}
 	chatID := event.Sender.ID
+	replyToID := ""
+	if msg.ReplyTo != nil {
+		replyToID = strings.TrimSpace(msg.ReplyTo.MID)
+	}
+	baseMetadata := map[string]interface{}{}
+	if replyToID != "" {
+		baseMetadata["reply_to_mid"] = replyToID
+	}
 
 	// Determine message type and process attachments
 	if msg.Text != "" {
-		c.enqueueMessage(channel.Message{
+		textMsg := channel.Message{
 			ID:          msg.MID,
 			ChannelName: "messenger",
 			ChatID:      chatID,
@@ -222,29 +239,48 @@ func (c *Channel) processMessage(event messagingEvent) {
 			Username:    event.Sender.ID,
 			Type:        channel.MessageTypeText,
 			Content:     msg.Text,
+			ReplyToID:   replyToID,
 			Timestamp:   time.UnixMilli(event.Timestamp),
-		})
+		}
+		if len(baseMetadata) > 0 {
+			textMsg.Metadata = cloneMetadataMap(baseMetadata)
+		}
+		c.enqueueMessage(textMsg)
 	}
 
 	for _, att := range msg.Attachments {
 		msgType := mapAttachmentType(att.Type)
-		c.enqueueMessage(channel.Message{
+		attMsg := channel.Message{
 			ID:          msg.MID,
 			ChannelName: "messenger",
 			ChatID:      chatID,
 			UserID:      event.Sender.ID,
 			Username:    event.Sender.ID,
 			Type:        msgType,
+			ReplyToID:   replyToID,
 			Timestamp:   time.UnixMilli(event.Timestamp),
-			Attachments: []channel.Attachment{
-				{
-					Type:     msgType,
-					URL:      att.Payload.URL,
-					MimeType: att.Type,
-				},
-			},
-		})
+			Attachments: []channel.Attachment{{
+				Type:     msgType,
+				URL:      att.Payload.URL,
+				MimeType: att.Type,
+			}},
+		}
+		if len(baseMetadata) > 0 {
+			attMsg.Metadata = cloneMetadataMap(baseMetadata)
+		}
+		c.enqueueMessage(attMsg)
 	}
+}
+
+func cloneMetadataMap(src map[string]interface{}) map[string]interface{} {
+	if len(src) == 0 {
+		return nil
+	}
+	cloned := make(map[string]interface{}, len(src))
+	for key, value := range src {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func mapAttachmentType(fbType string) channel.MessageType {
@@ -277,7 +313,20 @@ func (c *Channel) enqueueMessage(msg channel.Message) {
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	// Send media attachments first.
 	for i, att := range msg.Attachments {
-		if att.URL == "" {
+		includeCaption := i == 0 && strings.TrimSpace(msg.Content) != ""
+		fallback := messengerAttachmentFallbackText(msg.Content, att, includeCaption)
+		if strings.TrimSpace(att.URL) == "" {
+			if fallback == "" {
+				continue
+			}
+			if err := c.callSendAPI(ctx, sendRequest{
+				Recipient: sendUser{ID: msg.ChatID},
+				Message:   sendMessage{Text: fallback},
+			}); err != nil {
+				c.logger.Warn("failed to send attachment fallback via Messenger", zap.String("type", string(att.Type)), zap.Error(err))
+			} else if includeCaption {
+				msg.Content = ""
+			}
 			continue
 		}
 		mediaType := mapOutgoingAttachmentType(att.Type)
@@ -294,20 +343,15 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 			},
 		}
 		if err := c.callSendAPI(ctx, payload); err != nil {
-			c.logger.Warn("failed to send media via Messenger",
-				zap.String("type", mediaType), zap.Error(err))
-			// Fall back to text with URL.
-			fallback := att.URL
-			if i == 0 && msg.Content != "" {
-				fallback = msg.Content + "\n" + att.URL
+			c.logger.Warn("failed to send media via Messenger", zap.String("type", mediaType), zap.Error(err))
+			if fallback != "" {
+				if fallbackErr := c.callSendAPI(ctx, sendRequest{
+					Recipient: sendUser{ID: msg.ChatID},
+					Message:   sendMessage{Text: fallback},
+				}); fallbackErr == nil && includeCaption {
+					msg.Content = ""
+				}
 			}
-			_ = c.callSendAPI(ctx, sendRequest{
-				Recipient: sendUser{ID: msg.ChatID},
-				Message:   sendMessage{Text: fallback},
-			})
-		}
-		if i == 0 {
-			msg.Content = "" // Caption sent with first attachment.
 		}
 	}
 
@@ -325,6 +369,25 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 
 	c.msgsSent.Add(1)
 	return nil
+}
+
+func messengerAttachmentFallbackText(caption string, att channel.Attachment, includeCaption bool) string {
+	parts := make([]string, 0, 2)
+	if includeCaption && strings.TrimSpace(caption) != "" {
+		parts = append(parts, strings.TrimSpace(caption))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		parts = append(parts, strings.TrimSpace(att.URL))
+	} else {
+		name := strings.TrimSpace(att.Name)
+		if name == "" && len(att.Data) > 0 {
+			name = "Attachment"
+		}
+		if name != "" {
+			parts = append(parts, name)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func mapOutgoingAttachmentType(t channel.MessageType) string {
@@ -384,7 +447,7 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 			if !ok {
 				// Channel closed, send final accumulated content
 				if fullContent.Len() > 0 {
-					return c.Send(ctx, channel.OutgoingMessage{ChatID: chatID, Content: fullContent.String()})
+					return c.Send(ctx, channel.OutgoingMessage{ChatID: chatID, ReplyToID: replyToID, Content: fullContent.String()})
 				}
 				return nil
 			}

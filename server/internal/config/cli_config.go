@@ -264,8 +264,29 @@ type ToolCallingConfig struct {
 	// ToolRouterSchemaCompression removes non-essential schema fields before prompting.
 	ToolRouterSchemaCompression bool `yaml:"tool_router_schema_compression" json:"tool_router_schema_compression"`
 
+	// Profile selects the global base tool profile.
+	Profile string `yaml:"profile" json:"profile"`
+
+	// Profiles defines named base tool allowlists.
+	Profiles map[string][]string `yaml:"profiles" json:"profiles,omitempty"`
+
+	// Groups defines reusable tool groups for allow/deny expansion.
+	Groups map[string][]string `yaml:"groups" json:"groups,omitempty"`
+
+	// Allow further narrows the globally visible tool set.
+	Allow []string `yaml:"allow" json:"allow,omitempty"`
+
+	// Deny removes tools from the globally visible tool set.
+	Deny []string `yaml:"deny" json:"deny,omitempty"`
+
+	// ByProvider narrows tool policy for specific providers or models.
+	ByProvider map[string]ToolPolicyConfig `yaml:"by_provider" json:"by_provider,omitempty"`
+
 	// WebSearch controls the runtime web_search tool backend.
 	WebSearch ToolCallingWebSearchConfig `yaml:"web_search" json:"web_search"`
+
+	// WebFetch controls the runtime web_fetch tool backend.
+	WebFetch ToolCallingWebFetchConfig `yaml:"web_fetch" json:"web_fetch"`
 
 	// Adapters holds adapter configurations
 	Adapters ToolCallingAdaptersConfig `yaml:"adapters" json:"adapters"`
@@ -317,6 +338,12 @@ type ToolCallingWebSearchConfig struct {
 	Timeout    time.Duration `yaml:"timeout" json:"timeout"`
 	SafeSearch bool          `yaml:"safe_search" json:"safe_search"`
 	Region     string        `yaml:"region" json:"region"`
+}
+
+// ToolCallingWebFetchConfig holds runtime web_fetch configuration.
+type ToolCallingWebFetchConfig struct {
+	AllowPrivateHosts bool          `yaml:"allow_private_hosts" json:"allow_private_hosts"`
+	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
 }
 
 // DefaultClaudeCodeCLIConfig returns the default CLI configuration.
@@ -444,6 +471,23 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 		SkillSelectorConfidenceThreshold: 0.78,
 		ToolRouterDynamicExposure:        false,
 		ToolRouterSchemaCompression:      false,
+		Profile:                          "full",
+		Profiles: map[string][]string{
+			"minimal":   {"session_status"},
+			"coding":    {"group:fs", "group:runtime", "group:sessions", "group:memory", "apply_patch", "pdf"},
+			"messaging": {"message", "sessions_list", "sessions_history", "sessions_send", "session_status"},
+			"full":      {},
+		},
+		Groups: map[string][]string{
+			"group:runtime":    {"exec", "process"},
+			"group:fs":         {"read", "write", "edit", "grep", "find", "ls", "apply_patch"},
+			"group:sessions":   {"sessions_list", "sessions_history", "sessions_send", "sessions_spawn", "session_status"},
+			"group:memory":     {"memory_search", "memory_get", "memory_write", "memory_forget"},
+			"group:web":        {"web_search", "web_fetch"},
+			"group:ui":         {"browser", "canvas"},
+			"group:automation": {"cron", "gateway", "nodes"},
+			"group:messaging":  {"message"},
+		},
 		WebSearch: ToolCallingWebSearchConfig{
 			Provider:   "duckduckgo",
 			Providers:  []string{"duckduckgo"},
@@ -451,6 +495,10 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 			Timeout:    30 * time.Second,
 			SafeSearch: false,
 			Region:     "wt-wt",
+		},
+		WebFetch: ToolCallingWebFetchConfig{
+			AllowPrivateHosts: false,
+			Timeout:           20 * time.Second,
 		},
 		Adapters: ToolCallingAdaptersConfig{
 			CLIProxy: CLIProxyAdapterConfig{

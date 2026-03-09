@@ -94,6 +94,30 @@ func TestBuildProjectContext_NormalizeDefaultWorkspaceTemplateToEnglish(t *testi
 	}
 }
 
+func TestBuildProjectContext_SOULPreservesStructure(t *testing.T) {
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
+	b.SetMaxContextTokens(0)
+
+	out := b.buildProjectContext(map[string]string{
+		workspace.FileSOUL: `# Soul
+
+Be warm and natural.
+
+Use a little emoji when it fits.`,
+	})
+
+	if !strings.Contains(out, `# Soul
+
+Be warm and natural.`) {
+		t.Fatalf("expected SOUL.md heading structure to be preserved, got: %s", out)
+	}
+	if !strings.Contains(out, `Be warm and natural.
+
+Use a little emoji when it fits.`) {
+		t.Fatalf("expected SOUL.md context to preserve structure, got: %s", out)
+	}
+}
+
 func TestBuildProjectContext_CacheHitAndInvalidation(t *testing.T) {
 	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
 	b.SetMaxContextTokens(256)
@@ -232,7 +256,7 @@ func TestBuildStructured_StaticIncludesPriorityAndGrounding(t *testing.T) {
 	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
 	static := b.BuildStructured(context.Background(), "").Static
 
-	required := []string{"<role>", "<instruction_priority>", "<grounding>", "<blue_core_rules>"}
+	required := []string{"<role>", "<instruction_priority>", "<grounding>", "<expressiveness>", "<blue_core_rules>"}
 	for _, tag := range required {
 		if !strings.Contains(static, tag) {
 			t.Fatalf("expected static prompt to contain %s, got: %s", tag, static)
@@ -241,13 +265,16 @@ func TestBuildStructured_StaticIncludesPriorityAndGrounding(t *testing.T) {
 	if !strings.Contains(static, "untrusted content") {
 		t.Fatalf("expected static prompt to define untrusted content boundary, got: %s", static)
 	}
+	if !strings.Contains(static, "Occasional natural emoji and light expressive formatting are welcome") {
+		t.Fatalf("expected static prompt to include written emoji guidance, got: %s", static)
+	}
 }
 
 func TestBuild_IncludesPriorityAndGroundingGuidance(t *testing.T) {
 	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
 	out := b.Build(context.Background(), "")
 
-	required := []string{"<role>", "<instruction_priority>", "<grounding>", "<blue_core_rules>"}
+	required := []string{"<role>", "<instruction_priority>", "<grounding>", "<expressiveness>", "<blue_core_rules>"}
 	for _, tag := range required {
 		if !strings.Contains(out, tag) {
 			t.Fatalf("expected Build output to contain %s, got: %s", tag, out)
@@ -293,5 +320,33 @@ func TestBuildProjectContext_ToolsSoftCapApplied(t *testing.T) {
 	}
 	if stats.TotalTokens <= 0 || stats.TotalTokens > 600 {
 		t.Fatalf("TOOLS.md soft cap not applied, total tokens = %d", stats.TotalTokens)
+	}
+}
+
+func TestBuildStructured_StaticIncludesWebToolRoutingGuidance(t *testing.T) {
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
+	static := b.BuildStructured(context.Background(), "").Static
+
+	if !strings.Contains(static, "Use web_fetch for lightweight public HTTP page reads") {
+		t.Fatalf("expected static prompt to mention web_fetch routing, got: %s", static)
+	}
+	if !strings.Contains(static, "warning_code=login_wall, challenge, or browser_required") {
+		t.Fatalf("expected static prompt to mention structured browser fallback codes, got: %s", static)
+	}
+	if !strings.Contains(static, "browser_target_id") {
+		t.Fatalf("expected static prompt to mention browser_target_id reuse, got: %s", static)
+	}
+}
+
+func TestBuildSkillsSection_UsesWebFetchBrowserRouting(t *testing.T) {
+	workspaceDir := t.TempDir()
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{WorkspaceDir: workspaceDir})
+	section := b.buildSkillsSection()
+
+	if !strings.Contains(section, "public URL read→web_fetch, interactive/login URL→browser") {
+		t.Fatalf("expected skills section to route between web_fetch and browser, got: %s", section)
+	}
+	if !strings.Contains(section, "If web_fetch returns warning_code=login_wall, challenge, or browser_required, switch to browser") {
+		t.Fatalf("expected skills section to mention browser fallback on structured warning code, got: %s", section)
 	}
 }

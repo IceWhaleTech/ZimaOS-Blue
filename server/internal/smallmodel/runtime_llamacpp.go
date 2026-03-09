@@ -4,7 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +22,7 @@ import (
 
 const (
 	llamaCppDefaultTemperature = 0.2
+	llamaServerStartupTimeout  = 45 * time.Second
 )
 
 type LlamaCppMode string
@@ -29,13 +36,18 @@ const (
 
 // LlamaCppRuntimeOptions controls llama.cpp runtime behavior.
 type LlamaCppRuntimeOptions struct {
-	Timeout     time.Duration
-	MaxParallel int
-	CLIPath     string
-	Mode        string
+	Timeout       time.Duration
+	MaxParallel   int
+	CLIPath       string
+	Mode          string
+	ServerURL     string
+	ServerBin     string
+	ServerExtra   []string
+	ServerStartup time.Duration
 }
 
-// LlamaCppRuntime executes fixed GGUF+mmproj inference via llama.cpp CLI.
+// LlamaCppRuntime executes fixed GGUF+mmproj inference via llama.cpp backends.
+// Current production backend is server mode (llama-server + HTTP), with CLI fallback.
 type LlamaCppRuntime struct {
 	manager *Manager
 	timeout time.Duration
@@ -43,9 +55,25 @@ type LlamaCppRuntime struct {
 
 	parallelSem chan struct{}
 
-	configuredCLI string
-	resolveMu     sync.RWMutex
-	resolvedCLI   string
+	configuredCLI       string
+	configuredServerURL string
+	configuredServerBin string
+	configuredServerArg []string
+	serverStartup       time.Duration
+
+	resolveMu          sync.RWMutex
+	resolvedCLI        string
+	resolvedServerBin  string
+	resolveErrorCached error
+
+	serverMu  sync.Mutex
+	serverURL string
+	serverCmd *exec.Cmd
+
+	httpClient *http.Client
+	cgoOnce    sync.Once
+	cgoErr     error
+	ffiBackend *llamaCppFFIBackend
 }
 
 func NewLlamaCppRuntime(manager *Manager, opts ...LlamaCppRuntimeOptions) *LlamaCppRuntime {
@@ -62,10 +90,12 @@ func NewLlamaCppRuntime(manager *Manager, opts ...LlamaCppRuntimeOptions) *Llama
 	if maxParallel <= 0 {
 		maxParallel = defaultMaxParallel
 	}
+
 	cliPath := strings.TrimSpace(opt.CLIPath)
 	if cliPath == "" {
 		cliPath = strings.TrimSpace(os.Getenv("SMALL_MODEL_LLAMA_CPP_CLI"))
 	}
+
 	mode := normalizeLlamaCppMode(opt.Mode)
 	if mode == LlamaCppModeAuto {
 		mode = normalizeLlamaCppMode(os.Getenv("SMALL_MODEL_LLAMA_MODE"))
@@ -74,12 +104,42 @@ func NewLlamaCppRuntime(manager *Manager, opts ...LlamaCppRuntimeOptions) *Llama
 		mode = LlamaCppModeAuto
 	}
 
+	serverURL := strings.TrimSpace(opt.ServerURL)
+	if serverURL == "" {
+		serverURL = strings.TrimSpace(os.Getenv("SMALL_MODEL_LLAMA_SERVER_URL"))
+	}
+	serverBin := strings.TrimSpace(opt.ServerBin)
+	if serverBin == "" {
+		serverBin = strings.TrimSpace(os.Getenv("SMALL_MODEL_LLAMA_SERVER_BIN"))
+	}
+	if serverBin == "" {
+		serverBin = "llama-server"
+	}
+
+	serverExtra := make([]string, 0, len(opt.ServerExtra))
+	serverExtra = append(serverExtra, opt.ServerExtra...)
+	if envExtra := strings.TrimSpace(os.Getenv("SMALL_MODEL_LLAMA_SERVER_ARGS")); envExtra != "" {
+		serverExtra = append(serverExtra, strings.Fields(envExtra)...)
+	}
+
+	startup := opt.ServerStartup
+	if startup <= 0 {
+		startup = llamaServerStartupTimeout
+	}
+
 	return &LlamaCppRuntime{
-		manager:       manager,
-		timeout:       timeout,
-		mode:          mode,
-		parallelSem:   make(chan struct{}, maxParallel),
-		configuredCLI: cliPath,
+		manager:             manager,
+		timeout:             timeout,
+		mode:                mode,
+		parallelSem:         make(chan struct{}, maxParallel),
+		configuredCLI:       cliPath,
+		configuredServerURL: serverURL,
+		configuredServerBin: serverBin,
+		configuredServerArg: serverExtra,
+		serverStartup:       startup,
+		httpClient: &http.Client{
+			Timeout: 90 * time.Second,
+		},
 	}
 }
 
@@ -101,9 +161,6 @@ func (r *LlamaCppRuntime) ReadinessDetail() string {
 func (r *LlamaCppRuntime) Generate(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
 	reason, _ := r.readinessState()
 	if reason != "ready" {
-		return nil, ErrNotReady
-	}
-	if r.resolveBackend() != LlamaCppModeServer {
 		return nil, ErrNotReady
 	}
 
@@ -139,51 +196,32 @@ func (r *LlamaCppRuntime) Generate(ctx context.Context, req GenerateRequest) (*G
 		return nil, runCtx.Err()
 	}
 
-	cliPath, err := r.resolveCLIPath()
-	if err != nil {
-		return nil, ErrNotReady
-	}
-
-	imagePaths, cleanup, err := prepareLlamaImageFiles(req.Images)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-
-	args := []string{
-		"-m", r.manager.ModelPath(),
-		"--mmproj", r.manager.MMProjPath(),
-		"-n", strconv.Itoa(maxTokens),
-		"--temp", strconv.FormatFloat(temperature, 'f', 3, 64),
-		"--simple-io",
-		"--no-display-prompt",
-		"-p", prompt,
-	}
-	for _, imgPath := range imagePaths {
-		args = append(args, "--image", imgPath)
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd := exec.CommandContext(runCtx, cliPath, args...)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		detail := compactSingleLine(stderr.String())
-		if detail == "" {
-			detail = compactSingleLine(stdout.String())
+	switch r.resolveBackend() {
+	case LlamaCppModeCGO:
+		if err := r.ensureCGOBackend(); err != nil {
+			return nil, ErrNotReady
 		}
-		if detail == "" {
-			detail = err.Error()
+		fallthrough
+	case LlamaCppModeFFI:
+		if err := r.ensureFFIBackend(); err != nil {
+			return nil, ErrNotReady
 		}
-		return nil, fmt.Errorf("llama.cpp generation failed: %s", truncateText(detail, 512))
+		fallthrough
+	default:
+		// server mode with CLI fallback.
+		text, err := r.generateViaServer(runCtx, prompt, maxTokens, temperature, req.Images)
+		if err == nil && strings.TrimSpace(text) != "" {
+			return &GenerateResponse{Text: strings.TrimSpace(text)}, nil
+		}
+		cliText, cliErr := r.generateViaCLI(runCtx, prompt, maxTokens, temperature, req.Images)
+		if cliErr == nil && strings.TrimSpace(cliText) != "" {
+			return &GenerateResponse{Text: strings.TrimSpace(cliText)}, nil
+		}
+		if errors.Is(cliErr, ErrNotReady) {
+			return nil, ErrNotReady
+		}
+		return nil, fmt.Errorf("llama.cpp generation failed (server=%v, cli=%v)", err, cliErr)
 	}
-
-	text := sanitizeLlamaOutput(prompt, stdout.String())
-	if strings.TrimSpace(text) == "" {
-		return nil, fmt.Errorf("empty output from llama.cpp runtime")
-	}
-	return &GenerateResponse{Text: strings.TrimSpace(text)}, nil
 }
 
 func (r *LlamaCppRuntime) readinessState() (string, string) {
@@ -206,19 +244,478 @@ func (r *LlamaCppRuntime) readinessState() (string, string) {
 	if _, err := os.Stat(r.manager.ModelPath()); err != nil {
 		return "model_file_missing", err.Error()
 	}
-	if _, err := os.Stat(r.manager.MMProjPath()); err != nil {
-		return "mmproj_file_missing", err.Error()
+	if mmprojPath := strings.TrimSpace(r.manager.MMProjPath()); mmprojPath != "" {
+		if _, err := os.Stat(mmprojPath); err != nil {
+			return "mmproj_file_missing", err.Error()
+		}
 	}
+
 	switch r.resolveBackend() {
 	case LlamaCppModeCGO:
-		return "llama_cpp_cgo_unavailable", "llama.cpp cgo backend is not linked in this build"
+		if err := r.ensureCGOBackend(); err != nil {
+			return "llama_cpp_cgo_unavailable", err.Error()
+		}
+		fallthrough
 	case LlamaCppModeFFI:
-		return "llama_cpp_ffi_unavailable", "llama.cpp ffi backend is not linked in this build"
+		if err := r.ensureFFIBackend(); err != nil {
+			return "llama_cpp_ffi_unavailable", err.Error()
+		}
+		fallthrough
+	default:
+		if r.configuredServerURL != "" {
+			if _, err := normalizeServerURL(r.configuredServerURL); err != nil {
+				return "llama_cpp_server_url_invalid", err.Error()
+			}
+			return "ready", ""
+		}
+		if _, err := r.resolveServerBinary(); err != nil {
+			if _, cliErr := r.resolveCLIPath(); cliErr != nil {
+				return "llama_cpp_server_or_cli_not_found", fmt.Sprintf("%v; %v", err, cliErr)
+			}
+		}
+		return "ready", ""
 	}
-	if _, err := r.resolveCLIPath(); err != nil {
-		return "llama_cpp_cli_not_found", err.Error()
+}
+
+func (r *LlamaCppRuntime) resolveBackend() LlamaCppMode {
+	switch r.mode {
+	case LlamaCppModeCGO:
+		return LlamaCppModeCGO
+	case LlamaCppModeFFI:
+		return LlamaCppModeFFI
+	case LlamaCppModeServer:
+		return LlamaCppModeServer
+	default:
+		// Auto mode: prefer server mode today.
+		return LlamaCppModeServer
 	}
-	return "ready", ""
+}
+
+func normalizeLlamaCppMode(raw string) LlamaCppMode {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "":
+		return ""
+	case "auto":
+		return LlamaCppModeAuto
+	case "server":
+		return LlamaCppModeServer
+	case "cgo":
+		return LlamaCppModeCGO
+	case "ffi":
+		return LlamaCppModeFFI
+	default:
+		return LlamaCppModeAuto
+	}
+}
+
+func (r *LlamaCppRuntime) ensureCGOBackend() error {
+	if r == nil {
+		return fmt.Errorf("nil runtime")
+	}
+	r.cgoOnce.Do(func() {
+		r.cgoErr = ensureLlamaCppCGOBackend()
+	})
+	return r.cgoErr
+}
+
+func (r *LlamaCppRuntime) ensureFFIBackend() error {
+	if r == nil {
+		return fmt.Errorf("nil runtime")
+	}
+	r.serverMu.Lock()
+	if r.ffiBackend == nil {
+		r.ffiBackend = newLlamaCppFFIBackend()
+	}
+	backend := r.ffiBackend
+	r.serverMu.Unlock()
+	return backend.EnsureLoaded()
+}
+
+func (r *LlamaCppRuntime) generateViaServer(
+	ctx context.Context,
+	prompt string,
+	maxTokens int,
+	temperature float64,
+	images []ImageInput,
+) (string, error) {
+	serverURL, err := r.ensureServer(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	text, err := r.callServerChatCompletions(ctx, serverURL, prompt, maxTokens, temperature, images)
+	if err == nil && strings.TrimSpace(text) != "" {
+		return strings.TrimSpace(text), nil
+	}
+	// Text-only fallback endpoint for older llama-server releases.
+	if len(images) == 0 {
+		fallbackText, fallbackErr := r.callServerCompletion(ctx, serverURL, prompt, maxTokens, temperature)
+		if fallbackErr == nil && strings.TrimSpace(fallbackText) != "" {
+			return strings.TrimSpace(fallbackText), nil
+		}
+		if err == nil {
+			err = fallbackErr
+		}
+	}
+	if err == nil {
+		err = fmt.Errorf("empty response from llama-server")
+	}
+	return "", err
+}
+
+func (r *LlamaCppRuntime) generateViaCLI(
+	ctx context.Context,
+	prompt string,
+	maxTokens int,
+	temperature float64,
+	images []ImageInput,
+) (string, error) {
+	cliPath, err := r.resolveCLIPath()
+	if err != nil {
+		return "", ErrNotReady
+	}
+
+	imagePaths, cleanup, err := prepareLlamaImageFiles(images)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+
+	args := []string{
+		"-m", r.manager.ModelPath(),
+		"-n", strconv.Itoa(maxTokens),
+		"--temp", strconv.FormatFloat(temperature, 'f', 3, 64),
+		"--simple-io",
+		"--no-display-prompt",
+		"-p", prompt,
+	}
+	if mmprojPath := strings.TrimSpace(r.manager.MMProjPath()); mmprojPath != "" {
+		args = append(args, "--mmproj", mmprojPath)
+	}
+	for _, imgPath := range imagePaths {
+		args = append(args, "--image", imgPath)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, cliPath, args...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		detail := compactSingleLine(stderr.String())
+		if detail == "" {
+			detail = compactSingleLine(stdout.String())
+		}
+		if detail == "" {
+			detail = err.Error()
+		}
+		return "", fmt.Errorf("llama-cli run failed: %s", truncateText(detail, 512))
+	}
+
+	text := sanitizeLlamaOutput(prompt, stdout.String())
+	if strings.TrimSpace(text) == "" {
+		return "", fmt.Errorf("empty output from llama.cpp CLI")
+	}
+	return strings.TrimSpace(text), nil
+}
+
+func (r *LlamaCppRuntime) ensureServer(ctx context.Context) (string, error) {
+	if r.configuredServerURL != "" {
+		return normalizeServerURL(r.configuredServerURL)
+	}
+
+	r.serverMu.Lock()
+	defer r.serverMu.Unlock()
+
+	if r.serverURL != "" && r.isServerHealthy(r.serverURL) {
+		return r.serverURL, nil
+	}
+	if r.serverURL != "" && !r.isServerHealthy(r.serverURL) {
+		r.stopServerLocked()
+	}
+
+	binPath, err := r.resolveServerBinary()
+	if err != nil {
+		return "", err
+	}
+
+	host, port, err := resolveServerBindAddress()
+	if err != nil {
+		return "", err
+	}
+	serverURL := fmt.Sprintf("http://%s:%d", host, port)
+	args := []string{
+		"-m", r.manager.ModelPath(),
+		"--host", host,
+		"--port", strconv.Itoa(port),
+	}
+	if mmprojPath := strings.TrimSpace(r.manager.MMProjPath()); mmprojPath != "" {
+		args = append(args, "--mmproj", mmprojPath)
+	}
+	args = append(args, r.configuredServerArg...)
+
+	cmd := exec.CommandContext(context.Background(), binPath, args...)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("start llama-server: %w", err)
+	}
+
+	r.serverCmd = cmd
+	r.serverURL = serverURL
+
+	// Reap process and clear cached state when server exits.
+	go func(proc *exec.Cmd, url string) {
+		_ = proc.Wait()
+		r.serverMu.Lock()
+		defer r.serverMu.Unlock()
+		if r.serverCmd == proc {
+			r.serverCmd = nil
+		}
+		if r.serverURL == url {
+			r.serverURL = ""
+		}
+	}(cmd, serverURL)
+
+	waitTimeout := r.serverStartup
+	if waitTimeout <= 0 {
+		waitTimeout = llamaServerStartupTimeout
+	}
+	waitCtx := ctx
+	if _, ok := waitCtx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		waitCtx, cancel = context.WithTimeout(context.Background(), waitTimeout)
+		defer cancel()
+	}
+	if err := r.waitServerHealthy(waitCtx, serverURL); err != nil {
+		r.stopServerLocked()
+		return "", err
+	}
+
+	return serverURL, nil
+}
+
+func (r *LlamaCppRuntime) stopServerLocked() {
+	if r.serverCmd != nil && r.serverCmd.Process != nil {
+		_ = r.serverCmd.Process.Kill()
+	}
+	r.serverCmd = nil
+	r.serverURL = ""
+}
+
+func (r *LlamaCppRuntime) waitServerHealthy(ctx context.Context, serverURL string) error {
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if r.isServerHealthy(serverURL) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("llama-server startup timeout: %w", ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func (r *LlamaCppRuntime) isServerHealthy(serverURL string) bool {
+	healthURL := strings.TrimRight(serverURL, "/") + "/health"
+	if r.getOK(healthURL) {
+		return true
+	}
+	modelsURL := strings.TrimRight(serverURL, "/") + "/v1/models"
+	return r.getOK(modelsURL)
+}
+
+func (r *LlamaCppRuntime) getOK(rawURL string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 1200*time.Millisecond)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
+}
+
+func (r *LlamaCppRuntime) callServerChatCompletions(
+	ctx context.Context,
+	serverURL, prompt string,
+	maxTokens int,
+	temperature float64,
+	images []ImageInput,
+) (string, error) {
+	type reqMessage struct {
+		Role    string      `json:"role"`
+		Content interface{} `json:"content"`
+	}
+	type reqBody struct {
+		Model       string       `json:"model"`
+		Messages    []reqMessage `json:"messages"`
+		MaxTokens   int          `json:"max_tokens"`
+		Temperature float64      `json:"temperature"`
+		Stream      bool         `json:"stream"`
+	}
+
+	content := interface{}(prompt)
+	if len(images) > 0 {
+		parts := make([]map[string]interface{}, 0, 1+len(images))
+		parts = append(parts, map[string]interface{}{
+			"type": "text",
+			"text": prompt,
+		})
+		for _, img := range images {
+			mime := strings.TrimSpace(img.MimeType)
+			if mime == "" {
+				mime = "image/png"
+			}
+			b64 := strings.TrimSpace(img.Data)
+			if strings.HasPrefix(strings.ToLower(b64), "data:") {
+				if idx := strings.Index(b64, ","); idx >= 0 {
+					b64 = b64[idx+1:]
+				}
+			}
+			parts = append(parts, map[string]interface{}{
+				"type": "image_url",
+				"image_url": map[string]string{
+					"url": "data:" + mime + ";base64," + b64,
+				},
+			})
+		}
+		content = parts
+	}
+
+	payload := reqBody{
+		Model: "local",
+		Messages: []reqMessage{{
+			Role:    "user",
+			Content: content,
+		}},
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
+		Stream:      false,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	rawURL := strings.TrimRight(serverURL, "/") + "/v1/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	respData, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("chat completions status=%d body=%s", resp.StatusCode, truncateText(compactSingleLine(string(respData)), 240))
+	}
+
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(respData, &parsed); err != nil {
+		return "", err
+	}
+	if len(parsed.Choices) == 0 {
+		return "", fmt.Errorf("chat completions returned no choices")
+	}
+
+	return extractContentFromRawJSON(parsed.Choices[0].Message.Content), nil
+}
+
+func (r *LlamaCppRuntime) callServerCompletion(
+	ctx context.Context,
+	serverURL, prompt string,
+	maxTokens int,
+	temperature float64,
+) (string, error) {
+	payload := map[string]interface{}{
+		"prompt":      prompt,
+		"n_predict":   maxTokens,
+		"temperature": temperature,
+		"stream":      false,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	rawURL := strings.TrimRight(serverURL, "/") + "/completion"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	respData, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("completion status=%d body=%s", resp.StatusCode, truncateText(compactSingleLine(string(respData)), 240))
+	}
+
+	var parsed struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(respData, &parsed); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(parsed.Content), nil
+}
+
+func extractContentFromRawJSON(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return ""
+	}
+
+	var plain string
+	if err := json.Unmarshal(raw, &plain); err == nil {
+		return strings.TrimSpace(plain)
+	}
+
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &parts); err == nil {
+		var sb strings.Builder
+		for _, p := range parts {
+			if strings.TrimSpace(p.Text) == "" {
+				continue
+			}
+			if sb.Len() > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(strings.TrimSpace(p.Text))
+		}
+		return strings.TrimSpace(sb.String())
+	}
+
+	var obj struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return strings.TrimSpace(obj.Text)
+	}
+	return ""
 }
 
 func (r *LlamaCppRuntime) resolveCLIPath() (string, error) {
@@ -259,35 +756,93 @@ func (r *LlamaCppRuntime) resolveCLIPath() (string, error) {
 	return "", fmt.Errorf("llama.cpp CLI not found in PATH (expected `llama-cli`; optional env SMALL_MODEL_LLAMA_CPP_CLI)")
 }
 
-func normalizeLlamaCppMode(raw string) LlamaCppMode {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "":
-		return ""
-	case "auto":
-		return LlamaCppModeAuto
-	case "server":
-		return LlamaCppModeServer
-	case "cgo":
-		return LlamaCppModeCGO
-	case "ffi":
-		return LlamaCppModeFFI
-	default:
-		return LlamaCppModeAuto
+func (r *LlamaCppRuntime) resolveServerBinary() (string, error) {
+	r.resolveMu.RLock()
+	if r.resolvedServerBin != "" {
+		defer r.resolveMu.RUnlock()
+		return r.resolvedServerBin, nil
 	}
+	r.resolveMu.RUnlock()
+
+	r.resolveMu.Lock()
+	defer r.resolveMu.Unlock()
+	if r.resolvedServerBin != "" {
+		return r.resolvedServerBin, nil
+	}
+	if r.resolveErrorCached != nil {
+		return "", r.resolveErrorCached
+	}
+
+	candidates := make([]string, 0, 4)
+	if bin := strings.TrimSpace(r.configuredServerBin); bin != "" {
+		candidates = append(candidates, bin)
+	}
+	candidates = append(candidates, "llama-server", "llama.cpp-server", "server")
+
+	seen := map[string]struct{}{}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		if p, err := exec.LookPath(candidate); err == nil {
+			r.resolvedServerBin = p
+			return p, nil
+		}
+	}
+	r.resolveErrorCached = fmt.Errorf("llama-server binary not found in PATH (set SMALL_MODEL_LLAMA_SERVER_BIN)")
+	return "", r.resolveErrorCached
 }
 
-func (r *LlamaCppRuntime) resolveBackend() LlamaCppMode {
-	switch r.mode {
-	case LlamaCppModeCGO:
-		return LlamaCppModeCGO
-	case LlamaCppModeFFI:
-		return LlamaCppModeFFI
-	case LlamaCppModeServer:
-		return LlamaCppModeServer
-	default:
-		// Auto mode: reserve CGO/FFI priority for future linked backends.
-		return LlamaCppModeServer
+func resolveServerBindAddress() (string, int, error) {
+	host := strings.TrimSpace(os.Getenv("SMALL_MODEL_LLAMA_SERVER_HOST"))
+	if host == "" {
+		host = "127.0.0.1"
 	}
+	if rawPort := strings.TrimSpace(os.Getenv("SMALL_MODEL_LLAMA_SERVER_PORT")); rawPort != "" {
+		port, err := strconv.Atoi(rawPort)
+		if err != nil || port <= 0 || port > 65535 {
+			return "", 0, fmt.Errorf("invalid SMALL_MODEL_LLAMA_SERVER_PORT: %q", rawPort)
+		}
+		return host, port, nil
+	}
+	port, err := reservePort(host)
+	if err != nil {
+		return "", 0, err
+	}
+	return host, port, nil
+}
+
+func reservePort(host string) (int, error) {
+	ln, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
+	if err != nil {
+		return 0, err
+	}
+	defer ln.Close()
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok || addr.Port <= 0 {
+		return 0, fmt.Errorf("failed to reserve ephemeral port")
+	}
+	return addr.Port, nil
+}
+
+func normalizeServerURL(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", fmt.Errorf("empty llama server url")
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return "", err
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return "", fmt.Errorf("invalid llama server url: %s", trimmed)
+	}
+	return strings.TrimRight(u.String(), "/"), nil
 }
 
 func prepareLlamaImageFiles(images []ImageInput) ([]string, func(), error) {

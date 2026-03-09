@@ -9,6 +9,8 @@ package cards
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -34,9 +36,41 @@ var (
 )
 
 const (
-	redactedErrorText  = "Error details hidden for safety"
-	redactedOutputText = "Output hidden for safety"
+	redactedErrorText = "Error details hidden for safety"
+	sensitiveValueKey = `(?:api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|session[_-]?token|token|secret|password|passwd|pwd|authorization|cookie|set-cookie|aws_access_key_id|aws_secret_access_key|aws_session_token|openai_api_key|x-api-key)`
 )
+
+type textRedactionRule struct {
+	re          *regexp.Regexp
+	replacement string
+}
+
+var sensitiveTextRedactionRules = []textRedactionRule{
+	{re: regexp.MustCompile(`(?is)-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----.*?-----END(?: [A-Z0-9]+)? PRIVATE KEY-----`), replacement: "[PRIVATE_KEY_REDACTED]"},
+	{re: regexp.MustCompile(`(?i)\bbearer\s+[a-z0-9._=-]{8,}`), replacement: "Bearer [TOKEN_REDACTED]"},
+	{re: regexp.MustCompile(`\beyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+\b`), replacement: "[JWT_REDACTED]"},
+	{re: regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`), replacement: "[AWS_KEY_REDACTED]"},
+	{re: regexp.MustCompile(`(?i)([?&](?:token|access_token|refresh_token|api_key|apikey|secret|password|authorization)=)[^&#\s]+`), replacement: "${1}[REDACTED]"},
+	{re: regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]+:)([^@\s/]+)@`), replacement: "${1}[REDACTED]@"},
+	{re: regexp.MustCompile(`(?i)(\b(?:cookie|set-cookie)\b\s*[:=]\s*)([^\n\r]+)`), replacement: "${1}[COOKIE_REDACTED]"},
+	{re: regexp.MustCompile(`(?i)(--?(?:api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|auth[-_]?token|session[-_]?token|token|secret|password|passwd|pwd|authorization|cookie))(=|\s+)(\"?[^\s\"']+\"?)`), replacement: "${1}${2}[REDACTED]"},
+	{re: regexp.MustCompile(fmt.Sprintf(`(?i)("%s"\s*:\s*")([^"\n\r]+)(")`, sensitiveValueKey)), replacement: "${1}[REDACTED]${3}"},
+	{re: regexp.MustCompile(fmt.Sprintf(`(?i)(\b%s\b\s*[:=]\s*)(\"?[^\s\"',;]+\"?)`, sensitiveValueKey)), replacement: "${1}[REDACTED]"},
+	{re: regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`), replacement: "[EMAIL_REDACTED]"},
+	{re: regexp.MustCompile(`\b(?:10(?:\.\d{1,3}){3}|127(?:\.\d{1,3}){3}|169\.254(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|localhost)\b`), replacement: "[IP_REDACTED]"},
+}
+
+// RedactSensitiveText masks obvious secrets/PII while preserving readable structure.
+func RedactSensitiveText(input string) string {
+	if input == "" {
+		return ""
+	}
+	redacted := input
+	for _, rule := range sensitiveTextRedactionRules {
+		redacted = rule.re.ReplaceAllString(redacted, rule.replacement)
+	}
+	return redacted
+}
 
 func hasNonEmptyError(data map[string]interface{}) bool {
 	if data == nil {
@@ -56,6 +90,29 @@ func buildRedactedErrorCard(cardType, title string) map[string]interface{} {
 	}
 }
 
+func shouldExposeErrorDetails(toolName string) bool {
+	switch strings.ToLower(strings.TrimSpace(toolName)) {
+	case "browser":
+		return true
+	default:
+		return false
+	}
+}
+
+func buildToolErrorCard(toolName string, data map[string]interface{}) map[string]interface{} {
+	if shouldExposeErrorDetails(toolName) {
+		if errMsg := strings.TrimSpace(formatValue(data["error"])); errMsg != "" {
+			return map[string]interface{}{
+				"type":    "result",
+				"title":   toolName,
+				"status":  "error",
+				"message": escapeBackticks(RedactSensitiveText(errMsg)),
+			}
+		}
+	}
+	return buildRedactedErrorCard("result", toolName)
+}
+
 // Register adds a custom card formatter for a tool name.
 // Registered formatters take priority over built-in ones.
 func Register(toolName string, fn CardFunc) {
@@ -73,10 +130,12 @@ func FormatTypeless(toolCalls []llm.ToolCall, toolResults []llm.Message) string 
 			break
 		}
 		card := ToCard(tc.Name, toolResults[i].Content)
-		// Enforce privacy on exec cards: command text should never be exposed.
 		if card != nil && tc.Name == "exec" {
-			card["hide_command"] = true
-			card["command_redacted"] = true
+			if _, hasCommand := card["command"]; !hasCommand {
+				if cmd := extractExecCommand(tc.Arguments); cmd != "" {
+					card["command"] = escapeBackticks(RedactSensitiveText(cmd))
+				}
+			}
 		}
 		if card != nil {
 			cardJSON, _ := json.Marshal(card)
@@ -86,6 +145,18 @@ func FormatTypeless(toolCalls []llm.ToolCall, toolResults []llm.Message) string 
 		}
 	}
 	return sb.String()
+}
+
+func extractExecCommand(arguments string) string {
+	if strings.TrimSpace(arguments) == "" {
+		return ""
+	}
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(arguments), &payload) != nil {
+		return ""
+	}
+	command, _ := payload["command"].(string)
+	return strings.TrimSpace(command)
 }
 
 // ToCard converts a single tool result into a typeless card map.
@@ -111,6 +182,10 @@ func ToCard(toolName, content string) map[string]interface{} {
 	switch toolName {
 	case "exec":
 		return execCard(content)
+	case "browser":
+		return browserCard(content)
+	case "web_fetch":
+		return webFetchCard(content)
 	case "web_search":
 		return webSearchCard(content)
 	case "deep_research", "deep-research":
@@ -138,6 +213,154 @@ func ToCard(toolName, content string) map[string]interface{} {
 	default:
 		return GenericCard(toolName, content)
 	}
+}
+
+func browserCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return GenericCard("browser", content)
+	}
+	if hasNonEmptyError(data) {
+		return buildToolErrorCard("browser", data)
+	}
+
+	title := strings.TrimSpace(formatValue(data["title"]))
+	if title == "" {
+		title = "Browser"
+	}
+	pageURL := strings.TrimSpace(formatValue(data["url"]))
+	targetID := strings.TrimSpace(formatValue(data["target_id"]))
+	strategy := strings.TrimSpace(formatValue(data["strategy"]))
+	tree := strings.TrimSpace(formatValue(data["tree"]))
+	message := strings.TrimSpace(formatValue(data["message"]))
+
+	card := map[string]interface{}{
+		"type":   "result",
+		"title":  escapeBackticks(RedactSensitiveText(title)),
+		"status": "success",
+	}
+	if message != "" && tree == "" && !strings.Contains(message, "\n") {
+		card["message"] = escapeBackticks(RedactSensitiveText(message))
+	}
+	if targetID != "" {
+		card["id"] = "browser-tab-" + url.QueryEscape(targetID)
+	}
+
+	details := make([]map[string]interface{}, 0, 5)
+	if pageURL != "" {
+		details = append(details, map[string]interface{}{
+			"label":    "url",
+			"value":    escapeBackticks(RedactSensitiveText(pageURL)),
+			"copyable": true,
+		})
+	}
+	if targetID != "" {
+		details = append(details, map[string]interface{}{
+			"label":    "target_id",
+			"value":    escapeBackticks(RedactSensitiveText(targetID)),
+			"copyable": true,
+		})
+	}
+	if strategy != "" {
+		details = append(details, map[string]interface{}{"label": "strategy", "value": strategy})
+	}
+	if count, ok := data["count"]; ok {
+		if countText := strings.TrimSpace(formatValue(count)); countText != "" {
+			details = append(details, map[string]interface{}{"label": "count", "value": countText})
+		}
+	}
+	if tree != "" {
+		details = append(details, map[string]interface{}{
+			"label":     "tree",
+			"value":     escapeBackticks(RedactSensitiveText(tree)),
+			"multiline": true,
+		})
+	}
+	if len(details) > 0 {
+		card["details"] = details
+	}
+	if pageURL != "" && targetID != "" {
+		card["actions"] = []map[string]interface{}{{
+			"id":      "extract_with_web_fetch",
+			"label":   "Extract with web_fetch",
+			"variant": "primary",
+			"form_data": map[string]interface{}{
+				"url":               pageURL,
+				"browser_target_id": targetID,
+			},
+		}}
+	}
+	if _, hasMessage := card["message"]; !hasMessage && len(details) == 0 {
+		card["message"] = "Browser tab ready"
+	}
+
+	return card
+}
+
+func webFetchCard(content string) map[string]interface{} {
+	var data struct {
+		URL         string `json:"url"`
+		Title       string `json:"title"`
+		Content     string `json:"content"`
+		ContentType string `json:"content_type"`
+		ExtractMode string `json:"extract_mode"`
+		Extractor   string `json:"extractor"`
+		Truncated   bool   `json:"truncated"`
+		Warning     string `json:"warning"`
+		WarningCode string `json:"warning_code"`
+		Error       string `json:"error"`
+	}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return GenericCard("web_fetch", content)
+	}
+
+	if strings.TrimSpace(data.Error) != "" {
+		return buildToolErrorCard("web_fetch", map[string]interface{}{"error": data.Error})
+	}
+
+	title := strings.TrimSpace(data.Title)
+	if title == "" {
+		title = "web_fetch"
+	}
+	fetchURL := strings.TrimSpace(data.URL)
+
+	card := map[string]interface{}{
+		"type":         "web-fetch",
+		"title":        escapeBackticks(RedactSensitiveText(title)),
+		"status":       "success",
+		"url":          escapeBackticks(RedactSensitiveText(fetchURL)),
+		"content":      escapeBackticks(RedactSensitiveText(strings.TrimSpace(data.Content))),
+		"content_type": strings.TrimSpace(data.ContentType),
+		"extract_mode": strings.TrimSpace(data.ExtractMode),
+		"extractor":    strings.TrimSpace(data.Extractor),
+	}
+	if fetchURL != "" {
+		card["id"] = "web-fetch-" + url.QueryEscape(fetchURL)
+		card["actions"] = []map[string]interface{}{{
+			"id":      "use_browser",
+			"label":   "Use browser",
+			"variant": "primary",
+			"form_data": map[string]interface{}{
+				"url": fetchURL,
+			},
+		}}
+	}
+	if data.Truncated {
+		card["truncated"] = true
+	}
+
+	warning := escapeBackticks(RedactSensitiveText(strings.TrimSpace(data.Warning)))
+	warningCode := strings.TrimSpace(data.WarningCode)
+	if warning != "" {
+		card["warning"] = warning
+		card["status"] = "warning"
+	}
+	if warningCode != "" {
+		card["warning_code"] = warningCode
+		card["status"] = "warning"
+	}
+
+	return card
 }
 
 func webSearchCard(content string) map[string]interface{} {
@@ -480,7 +703,7 @@ func GenericCard(toolName, content string) map[string]interface{} {
 	var data map[string]interface{}
 	if json.Unmarshal([]byte(content), &data) == nil {
 		if hasNonEmptyError(data) {
-			return buildRedactedErrorCard("result", toolName)
+			return buildToolErrorCard(toolName, data)
 		}
 		card := map[string]interface{}{
 			"type":   "result",
@@ -580,6 +803,7 @@ func execCard(content string) map[string]interface{} {
 		ExitCode  *int     `json:"exit_code"`
 		Stdout    string   `json:"stdout"`
 		Stderr    string   `json:"stderr"`
+		Error     string   `json:"error"`
 		Duration  int64    `json:"duration_ms"`
 		Truncated bool     `json:"truncated"`
 		Warnings  []string `json:"warnings"`
@@ -591,10 +815,13 @@ func execCard(content string) map[string]interface{} {
 		return nil
 	}
 
-	// If exec returned a plain error (e.g. "command is required") with no
-	// actual execution data, suppress the card entirely — it's LLM noise.
+	// If exec returned a "command is required" validation error with no
+	// execution data, suppress the card entirely — it's LLM noise.
 	if data.ExitCode == nil && data.Stdout == "" && data.Stderr == "" && data.Command == "" {
-		return nil
+		errMsg := strings.TrimSpace(data.Error)
+		if errMsg == "" || strings.EqualFold(errMsg, "command is required") {
+			return nil
+		}
 	}
 
 	// When a `blue` subcommand ran and produced __CARD__ lines, the card
@@ -607,33 +834,36 @@ func execCard(content string) map[string]interface{} {
 	}
 
 	status := "success"
-	if data.Status == "failed" || (data.ExitCode != nil && *data.ExitCode != 0) {
+	if data.Status == "failed" || (data.ExitCode != nil && *data.ExitCode != 0) || strings.TrimSpace(data.Error) != "" {
 		status = "error"
 	}
 
 	card := map[string]interface{}{
-		"type":             "exec",
-		"status":           status,
-		"hide_command":     true,
-		"command_redacted": true,
+		"type":   "exec",
+		"status": status,
 	}
 
 	if data.ExitCode != nil {
 		card["exit_code"] = *data.ExitCode
 	}
+	if strings.TrimSpace(data.Command) != "" {
+		card["command"] = escapeBackticks(RedactSensitiveText(data.Command))
+	}
 	hasOutput := false
 	if data.Stdout != "" {
-		card["stdout_redacted"] = true
+		card["stdout"] = escapeBackticks(RedactSensitiveText(data.Stdout))
 		hasOutput = true
 	}
 	if data.Stderr != "" {
-		card["stderr_redacted"] = true
+		card["stderr"] = escapeBackticks(RedactSensitiveText(data.Stderr))
 		hasOutput = true
 	}
-	if hasOutput {
-		card["message"] = redactedOutputText
-	} else if status == "error" {
-		card["message"] = redactedErrorText
+	if !hasOutput && status == "error" {
+		if errMsg := strings.TrimSpace(data.Error); errMsg != "" {
+			card["message"] = escapeBackticks(RedactSensitiveText(errMsg))
+		} else {
+			card["message"] = "Command failed"
+		}
 	}
 	if data.Duration > 0 {
 		card["duration_ms"] = data.Duration
@@ -642,8 +872,21 @@ func execCard(content string) map[string]interface{} {
 		card["truncated"] = true
 	}
 	if len(data.Warnings) > 0 {
-		card["warning_count"] = len(data.Warnings)
-		card["warnings_redacted"] = true
+		warnings := make([]string, 0, len(data.Warnings))
+		for _, warning := range data.Warnings {
+			warning = strings.TrimSpace(warning)
+			if warning == "" {
+				continue
+			}
+			warnings = append(warnings, escapeBackticks(RedactSensitiveText(warning)))
+		}
+		if len(warnings) > 0 {
+			card["warning_count"] = len(warnings)
+			card["warnings"] = warnings
+		}
+	}
+	if data.Host != "" {
+		card["host"] = data.Host
 	}
 	if data.RiskLevel != "" {
 		card["risk_level"] = data.RiskLevel

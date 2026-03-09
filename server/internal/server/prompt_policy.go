@@ -45,9 +45,9 @@ func policyFingerprint(profile string) string {
 	// Keep this stable unless policy text/behavior changes.
 	switch profile {
 	case DefaultPromptPolicyProfile:
-		return "tool_guidance_v2|toolless_nudge_v3|post_tool_nudge_v2|openclaw_rules_v1"
+		return "tool_guidance_v2|toolless_nudge_v3|post_tool_nudge_v2|context_rules_v1"
 	default:
-		return "tool_guidance_v2|toolless_nudge_v3|post_tool_nudge_v2|openclaw_rules_v1"
+		return "tool_guidance_v2|toolless_nudge_v3|post_tool_nudge_v2|context_rules_v1"
 	}
 }
 

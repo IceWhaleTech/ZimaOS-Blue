@@ -14,7 +14,7 @@ describe('Typeless Card Parsing', () => {
   it('parses exec typeless blocks into exec cards', () => {
     const content = [
       '```typeless',
-      '{"type":"exec","command":"blue web_search query=\\\"openclaw 最新消息\\\"","status":"success","exit_code":0,"stdout":"query: openclaw 最新消息"}',
+      '{"type":"exec","command":"blue web_search query=\\\"zimaos-blue 最新消息\\\"","status":"success","exit_code":0,"stdout":"query: zimaos-blue 最新消息"}',
       '```',
     ].join('\n')
 
@@ -25,19 +25,54 @@ describe('Typeless Card Parsing', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const execCard = result.cards[0] as any
     expect(execCard.command).toContain('blue web_search')
-    expect(execCard.stdout).toContain('query: openclaw 最新消息')
+    expect(execCard.stdout).toContain('query: zimaos-blue 最新消息')
+  })
+
+  it('parses web-fetch typeless cards with warning metadata', () => {
+    const content = [
+      '```typeless',
+      '{"type":"web-fetch","id":"web-fetch-https%3A%2F%2Fwww.reddit.com%2Fr%2Ftest","title":"Sign in","status":"warning","url":"https://www.reddit.com/r/test","content":"Log in to continue","content_type":"text/html","extract_mode":"text","extractor":"html","warning":"page appears to be a login wall; use browser or pass browser_target_id","warning_code":"login_wall","actions":[{"id":"use_browser","label":"Use browser","variant":"primary","form_data":{"url":"https://www.reddit.com/r/test"}}]}',
+      '```',
+    ].join('\n')
+
+    const result = parseTypelessContent(content)
+
+    expect(result.cards).toHaveLength(1)
+    const card = result.cards[0] as any
+    expect(card.type).toBe('web-fetch')
+    expect(card.warning_code).toBe('login_wall')
+    expect(card.url).toContain('reddit.com')
+    expect(card.id).toBe('web-fetch-https%3A%2F%2Fwww.reddit.com%2Fr%2Ftest')
+    expect(card.actions?.[0]?.id).toBe('use_browser')
+    expect(card.actions?.[0]?.form_data?.url).toBe('https://www.reddit.com/r/test')
+  })
+
+  it('preserves warning_code on typeless result cards', () => {
+    const content = [
+      '```typeless',
+      '{"type":"result","title":"Sign in","status":"warning","warning":"page appears to be a login wall; use browser or pass browser_target_id","warning_code":"login_wall","details":[{"label":"url","value":"https://www.reddit.com/r/test"}]}',
+      '```',
+    ].join('\n')
+
+    const result = parseTypelessContent(content)
+
+    expect(result.cards).toHaveLength(1)
+    const card = result.cards[0] as any
+    expect(card.type).toBe('result')
+    expect(card.warning_code).toBe('login_wall')
+    expect(card.warning).toContain('login wall')
   })
 
   it('parses typeless exec block correctly after function_calls block', () => {
     const content = [
       '<function_calls>',
       '<invoke name="web_search">',
-      '<parameter name="query">OpenClaw 最新消息 2026</parameter>',
+      '<parameter name="query">ZimaOS Blue 最新消息 2026</parameter>',
       '</invoke>',
       '</function_calls>',
       '',
       '```typeless',
-      '{"type":"exec","id":"card-0","command":"blue web_search query=\\"OpenClaw 最新消息 2026\\"","status":"success","stdout":"query: OpenClaw 最新消息 2026\\nprovider: duckduckgo"}',
+      '{"type":"exec","id":"card-0","command":"blue web_search query=\\"ZimaOS Blue 最新消息 2026\\"","status":"success","stdout":"query: ZimaOS Blue 最新消息 2026\\nprovider: duckduckgo"}',
       '```',
     ].join('\n')
 
@@ -56,12 +91,12 @@ describe('Typeless Card Parsing', () => {
     const chunk1 = [
       '<function_calls>',
       '<invoke name="web_search">',
-      '<parameter name="query">OpenClaw 最新消息 2026</parameter>',
+      '<parameter name="query">ZimaOS Blue 最新消息 2026</parameter>',
       '</invoke>',
       '</function_calls>',
       '',
       '```typeless',
-      '{"type":"exec","id":"card-0","command":"blue web_search query=\\"OpenClaw 最新消息 2026\\"","status":"running","stdout":"query: OpenClaw',
+      '{"type":"exec","id":"card-0","command":"blue web_search query=\\"ZimaOS Blue 最新消息 2026\\"","status":"running","stdout":"query: ZimaOS Blue',
     ].join('\n')
 
     const partial = parseTypelessContentIncremental(chunk1, 'msg-streaming-1', 'conv-1')
@@ -83,12 +118,12 @@ describe('Typeless Card Parsing', () => {
     const content = [
       '<function_calls>',
       '<invoke name="web_search">',
-      '<parameter name="query">OpenClaw 最新消息 2026</parameter>',
+      '<parameter name="query">ZimaOS Blue 最新消息 2026</parameter>',
       '</invoke>',
       '</function_calls>',
       '',
       '```typeless',
-      '{"type":"exec","id":"card-0","command":"blue web_search query=\\"OpenClaw 最新消息 2026\\"","status":"running","stdout":"query: OpenClaw 最新消息 2026"}',
+      '{"type":"exec","id":"card-0","command":"blue web_search query=\\"ZimaOS Blue 最新消息 2026\\"","status":"running","stdout":"query: ZimaOS Blue 最新消息 2026"}',
       '```',
     ].join('\n')
 

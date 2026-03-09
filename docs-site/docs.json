@@ -1,0 +1,154 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "ZimaOS Blue",
+  "description": "Open-source, auditable, local-first agent runtime and toolkit for self-hosted personal AI agents.",
+  "theme": "mint",
+  "icons": {
+    "library": "lucide"
+  },
+  "logo": {
+    "light": "/assets/bannerX.png",
+    "dark": "/assets/bannerX.png"
+  },
+  "favicon": "/assets/bannerX.png",
+  "colors": {
+    "primary": "#2563EB",
+    "dark": "#2563EB",
+    "light": "#60A5FA"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/IceWhaleTech/ZimaOS-Blue",
+        "icon": "github"
+      },
+      {
+        "label": "Releases",
+        "href": "https://github.com/IceWhaleTech/ZimaOS-Blue/releases",
+        "icon": "package"
+      },
+      {
+        "label": "DeepWiki",
+        "href": "https://deepwiki.com/IceWhaleTech/ZimaOS-Blue",
+        "icon": "book-open"
+      }
+    ]
+  },
+  "navigation": {
+    "languages": [
+      {
+        "language": "en",
+        "tabs": [
+          {
+            "tab": "Get Started",
+            "groups": [
+              {
+                "group": "Home",
+                "pages": [
+                  "index"
+                ]
+              },
+              {
+                "group": "First Steps",
+                "pages": [
+                  "start/getting-started",
+                  "start/installation",
+                  "start/quick-start",
+                  "start/docs-directory"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Product",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": [
+                  "product/overview",
+                  "product/features",
+                  "product/architecture"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Guides",
+            "groups": [
+              {
+                "group": "Core Guides",
+                "pages": [
+                  "guides/channels",
+                  "guides/providers-models",
+                  "guides/automation"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Help",
+            "groups": [
+              {
+                "group": "Support",
+                "pages": [
+                  "help/faq",
+                  "help/troubleshooting",
+                  "help/deployment"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "language": "zh-Hans",
+        "tabs": [
+          {
+            "tab": "快速开始",
+            "groups": [
+              {
+                "group": "首页",
+                "pages": [
+                  "zh-CN/index"
+                ]
+              },
+              {
+                "group": "入门",
+                "pages": [
+                  "zh-CN/start/getting-started",
+                  "zh-CN/start/installation",
+                  "zh-CN/start/quick-start",
+                  "zh-CN/start/docs-directory"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "产品",
+            "groups": [
+              {
+                "group": "能力",
+                "pages": [
+                  "zh-CN/product/features"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "帮助",
+            "groups": [
+              {
+                "group": "支持",
+                "pages": [
+                  "zh-CN/help/faq",
+                  "zh-CN/help/troubleshooting"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

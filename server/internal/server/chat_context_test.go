@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
@@ -385,6 +386,273 @@ func TestExtractRecentRounds(t *testing.T) {
 	}
 }
 
+func TestTrimPolicyPruneContextMessages_SoftTrim(t *testing.T) {
+	longTool := strings.Repeat("x", 7000)
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "u1"},
+		{Role: llm.RoleAssistant, Content: "a1"},
+		{Role: llm.RoleTool, Content: longTool, ToolCallID: "tc1"},
+		{Role: llm.RoleAssistant, Content: "a1 followup"},
+		{Role: llm.RoleUser, Content: "u2"},
+		{Role: llm.RoleAssistant, Content: "a2"},
+		{Role: llm.RoleUser, Content: "u3"},
+		{Role: llm.RoleAssistant, Content: "a3"},
+		{Role: llm.RoleUser, Content: "u4"},
+		{Role: llm.RoleAssistant, Content: "a4"},
+	}
+
+	out := trimPolicyPruneContextMessages(msgs, 500)
+	if len(out) != len(msgs) {
+		t.Fatalf("len(out) = %d, want %d", len(out), len(msgs))
+	}
+	if out[2].Content == longTool {
+		t.Fatal("expected old tool result to be soft-trimmed")
+	}
+	if !strings.Contains(out[2].Content, "[Tool result trimmed: kept first") {
+		t.Fatalf("trim note missing: %q", out[2].Content)
+	}
+	if len([]rune(out[2].Content)) >= len([]rune(longTool)) {
+		t.Fatalf("trimmed content length = %d, want < %d", len([]rune(out[2].Content)), len([]rune(longTool)))
+	}
+}
+
+func TestTrimPolicyPruneContextMessages_ProtectedTailNotPruned(t *testing.T) {
+	longTool := strings.Repeat("y", 7000)
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "u1"},
+		{Role: llm.RoleAssistant, Content: "a1"},
+		{Role: llm.RoleUser, Content: "u2"},
+		{Role: llm.RoleAssistant, Content: "a2"},
+		{Role: llm.RoleUser, Content: "u3"},
+		{Role: llm.RoleAssistant, Content: "a3"},
+		{Role: llm.RoleTool, Content: longTool, ToolCallID: "tc9"},
+		{Role: llm.RoleUser, Content: "u4"},
+		{Role: llm.RoleAssistant, Content: "a4"},
+	}
+
+	out := trimPolicyPruneContextMessages(msgs, 500)
+	if out[6].Content != longTool {
+		t.Fatalf("tool result in protected tail should stay unchanged")
+	}
+}
+
+func TestTrimPolicyPruneContextMessages_InsufficientAssistantsSkips(t *testing.T) {
+	longTool := strings.Repeat("z", 7000)
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "u1"},
+		{Role: llm.RoleAssistant, Content: "a1"},
+		{Role: llm.RoleTool, Content: longTool, ToolCallID: "tc1"},
+		{Role: llm.RoleUser, Content: "u2"},
+		{Role: llm.RoleAssistant, Content: "a2"},
+	}
+	out := trimPolicyPruneContextMessages(msgs, 500)
+	if out[2].Content != longTool {
+		t.Fatalf("expected no pruning when assistant count < keepLastAssistants")
+	}
+}
+
+func TestTrimPolicyPruneContextMessages_ToolAllowDeny(t *testing.T) {
+	longTool := strings.Repeat("w", 7000)
+	buildMsgs := func() []llm.Message {
+		return []llm.Message{
+			{Role: llm.RoleUser, Content: "u1"},
+			{
+				Role: llm.RoleAssistant,
+				ToolCalls: []llm.ToolCall{
+					{ID: "tc1", Name: "web_search", Arguments: `{"query":"x"}`},
+				},
+			},
+			{Role: llm.RoleTool, Content: longTool, ToolCallID: "tc1"},
+			{Role: llm.RoleUser, Content: "u2"},
+			{Role: llm.RoleAssistant, Content: "a2"},
+			{Role: llm.RoleUser, Content: "u3"},
+			{Role: llm.RoleAssistant, Content: "a3"},
+			{Role: llm.RoleUser, Content: "u4"},
+			{Role: llm.RoleAssistant, Content: "a4"},
+		}
+	}
+
+	defaultOut := trimPolicyPruneContextMessages(buildMsgs(), 500)
+	if defaultOut[2].Content == longTool {
+		t.Fatal("expected default policy to prune tool result")
+	}
+
+	denyWeb := trimPolicyDefaultPruneSettings
+	denyWeb.Tools.Deny = []string{"web_*"}
+	denyOut := trimPolicyPruneContextMessagesWithSettings(buildMsgs(), 500, denyWeb)
+	if denyOut[2].Content != longTool {
+		t.Fatal("deny rule should skip pruning for web_search")
+	}
+
+	allowExecOnly := trimPolicyDefaultPruneSettings
+	allowExecOnly.Tools.Allow = []string{"exec"}
+	allowOut := trimPolicyPruneContextMessagesWithSettings(buildMsgs(), 500, allowExecOnly)
+	if allowOut[2].Content != longTool {
+		t.Fatal("allow rule should skip pruning for unmatched tool")
+	}
+
+	allowAndDeny := trimPolicyDefaultPruneSettings
+	allowAndDeny.Tools.Allow = []string{"web_*"}
+	allowAndDeny.Tools.Deny = []string{"web_search"}
+	allowAndDenyOut := trimPolicyPruneContextMessagesWithSettings(buildMsgs(), 500, allowAndDeny)
+	if allowAndDenyOut[2].Content != longTool {
+		t.Fatal("deny rule should take precedence over allow rule")
+	}
+}
+
+func TestTrimPolicyPruneContextMessages_ToolAllowDeny_ExplicitToolName(t *testing.T) {
+	longTool := strings.Repeat("w", 7000)
+	buildMsgs := func() []llm.Message {
+		return []llm.Message{
+			{Role: llm.RoleUser, Content: "u1"},
+			{Role: llm.RoleAssistant, Content: "a1"},
+			{Role: llm.RoleTool, Content: longTool, ToolName: "web_search"},
+			{Role: llm.RoleUser, Content: "u2"},
+			{Role: llm.RoleAssistant, Content: "a2"},
+			{Role: llm.RoleUser, Content: "u3"},
+			{Role: llm.RoleAssistant, Content: "a3"},
+			{Role: llm.RoleUser, Content: "u4"},
+			{Role: llm.RoleAssistant, Content: "a4"},
+		}
+	}
+
+	defaultOut := trimPolicyPruneContextMessages(buildMsgs(), 500)
+	if defaultOut[2].Content == longTool {
+		t.Fatal("expected default policy to prune tool result")
+	}
+
+	allowExecOnly := trimPolicyDefaultPruneSettings
+	allowExecOnly.Tools.Allow = []string{"exec"}
+	allowOut := trimPolicyPruneContextMessagesWithSettings(buildMsgs(), 500, allowExecOnly)
+	if allowOut[2].Content != longTool {
+		t.Fatal("allow rule should skip pruning for unmatched explicit tool name")
+	}
+
+	allowWeb := trimPolicyDefaultPruneSettings
+	allowWeb.Tools.Allow = []string{"web_*"}
+	allowWebOut := trimPolicyPruneContextMessagesWithSettings(buildMsgs(), 500, allowWeb)
+	if allowWebOut[2].Content == longTool {
+		t.Fatal("allow rule should permit pruning for matched explicit tool name")
+	}
+}
+
+func TestTrimPolicyPruneContextMessages_HardClearWithSettings(t *testing.T) {
+	longTool := strings.Repeat("k", 9000)
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "u1"},
+		{
+			Role: llm.RoleAssistant,
+			ToolCalls: []llm.ToolCall{
+				{ID: "tc1", Name: "exec", Arguments: `{"command":"echo 1"}`},
+			},
+		},
+		{Role: llm.RoleTool, Content: longTool, ToolCallID: "tc1"},
+		{
+			Role: llm.RoleAssistant,
+			ToolCalls: []llm.ToolCall{
+				{ID: "tc2", Name: "exec", Arguments: `{"command":"echo 2"}`},
+			},
+		},
+		{Role: llm.RoleTool, Content: longTool, ToolCallID: "tc2"},
+		{Role: llm.RoleUser, Content: "u2"},
+		{Role: llm.RoleAssistant, Content: "a2"},
+		{Role: llm.RoleUser, Content: "u3"},
+		{Role: llm.RoleAssistant, Content: "a3"},
+		{Role: llm.RoleUser, Content: "u4"},
+		{Role: llm.RoleAssistant, Content: "a4"},
+	}
+
+	settings := trimPolicyDefaultPruneSettings
+	settings.MinPrunableToolChars = 3000
+	settings.HardClearRatio = 0.4
+	settings.HardClear.Placeholder = "[cleared-by-policy]"
+
+	out := trimPolicyPruneContextMessagesWithSettings(msgs, 500, settings)
+	if out[2].Content != settings.HardClear.Placeholder {
+		t.Fatalf("tool[2] not hard-cleared, got=%q", out[2].Content)
+	}
+	if out[4].Content != settings.HardClear.Placeholder {
+		t.Fatalf("tool[4] not hard-cleared, got=%q", out[4].Content)
+	}
+}
+
+func TestTrimPolicyPruneContextMessagesWithReport_SkippedByToolPolicy(t *testing.T) {
+	longTool := strings.Repeat("p", 7000)
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "u1"},
+		{
+			Role: llm.RoleAssistant,
+			ToolCalls: []llm.ToolCall{
+				{ID: "tc1", Name: "web_search", Arguments: `{"query":"x"}`},
+			},
+		},
+		{Role: llm.RoleTool, Content: longTool, ToolCallID: "tc1"},
+		{Role: llm.RoleUser, Content: "u2"},
+		{Role: llm.RoleAssistant, Content: "a2"},
+		{Role: llm.RoleUser, Content: "u3"},
+		{Role: llm.RoleAssistant, Content: "a3"},
+		{Role: llm.RoleUser, Content: "u4"},
+		{Role: llm.RoleAssistant, Content: "a4"},
+	}
+
+	settings := trimPolicyDefaultPruneSettings
+	settings.Tools.Allow = []string{"exec"}
+	out, report := trimPolicyPruneContextMessagesWithReport(msgs, 500, settings)
+	if out[2].Content != longTool {
+		t.Fatal("tool result should remain unchanged when disallowed by tool policy")
+	}
+	if report.ExaminedToolResults != 1 {
+		t.Fatalf("examined=%d, want 1", report.ExaminedToolResults)
+	}
+	if report.SkippedByToolPolicy != 1 {
+		t.Fatalf("skipped_by_tool_policy=%d, want 1", report.SkippedByToolPolicy)
+	}
+	if report.EligibleToolResults != 0 || report.SoftTrimmed != 0 || report.HardCleared != 0 {
+		t.Fatalf("unexpected report counts: %+v", report)
+	}
+}
+
+func TestTrimPolicyPruneContextMessagesWithReport_HardClearByTool(t *testing.T) {
+	longTool := strings.Repeat("h", 9000)
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "u1"},
+		{
+			Role: llm.RoleAssistant,
+			ToolCalls: []llm.ToolCall{
+				{ID: "tc1", Name: "exec", Arguments: `{"command":"echo 1"}`},
+			},
+		},
+		{Role: llm.RoleTool, Content: longTool, ToolCallID: "tc1"},
+		{
+			Role: llm.RoleAssistant,
+			ToolCalls: []llm.ToolCall{
+				{ID: "tc2", Name: "exec", Arguments: `{"command":"echo 2"}`},
+			},
+		},
+		{Role: llm.RoleTool, Content: longTool, ToolCallID: "tc2"},
+		{Role: llm.RoleUser, Content: "u2"},
+		{Role: llm.RoleAssistant, Content: "a2"},
+		{Role: llm.RoleUser, Content: "u3"},
+		{Role: llm.RoleAssistant, Content: "a3"},
+		{Role: llm.RoleUser, Content: "u4"},
+		{Role: llm.RoleAssistant, Content: "a4"},
+	}
+
+	settings := trimPolicyDefaultPruneSettings
+	settings.MinPrunableToolChars = 3000
+	settings.HardClearRatio = 0.4
+	out, report := trimPolicyPruneContextMessagesWithReport(msgs, 500, settings)
+	if out[2].Content != settings.HardClear.Placeholder || out[4].Content != settings.HardClear.Placeholder {
+		t.Fatalf("expected both tool results hard-cleared, got tool2=%q tool4=%q", out[2].Content, out[4].Content)
+	}
+	if report.HardCleared != 2 {
+		t.Fatalf("hard_cleared=%d, want 2", report.HardCleared)
+	}
+	if report.HardClearByTool["exec"] != 2 {
+		t.Fatalf("hard_clear_by_tool=%v, want exec:2", report.HardClearByTool)
+	}
+}
+
 func TestExtractRecentRoundsWithToolCalls(t *testing.T) {
 	messages := []memory.Message{
 		{Role: "user", Content: "Q1"},
@@ -419,7 +687,7 @@ func TestConvertToLLMMessages(t *testing.T) {
 		{Role: "assistant", Content: "Hi", ToolCalls: []memory.ToolCall{
 			{ID: "t1", Name: "calc", Arguments: `{"x":1}`},
 		}},
-		{Role: "tool", Content: "1", ToolCallID: "t1"},
+		{Role: "tool", Content: "1", ToolCallID: "t1", ToolName: "calc"},
 	}
 
 	result := convertToLLMMessages(messages)
@@ -434,6 +702,9 @@ func TestConvertToLLMMessages(t *testing.T) {
 	}
 	if result[2].ToolCallID != "t1" {
 		t.Errorf("msg[2] ToolCallID = %q, want t1", result[2].ToolCallID)
+	}
+	if result[2].ToolName != "calc" {
+		t.Errorf("msg[2] ToolName = %q, want calc", result[2].ToolName)
 	}
 }
 
@@ -481,6 +752,60 @@ func TestBuildSmartContextTierNoHistoryUsesLatestTurnOnly(t *testing.T) {
 	}
 	if got.Messages[0].Role != llm.RoleUser || got.Messages[0].Content != "What is Rust?" {
 		t.Fatalf("latest message = %+v, want user/What is Rust?", got.Messages[0])
+	}
+}
+
+func TestBuildSmartContext_UsesPruneToolRulesFromSettings(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	h.compactionConfig.MaxContextTokens = 500
+
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	settings.settings.SmallModelContextPruneToolAllow = []string{"exec"}
+	h.SetSettingsHandler(settings)
+
+	longTool := strings.Repeat("r", 7000)
+	preloaded := []memory.Message{
+		{Role: "user", Content: "u1"},
+		{Role: "assistant", Content: "a1"},
+		{Role: "user", Content: "u2"},
+		{
+			Role: "assistant",
+			ToolCalls: []memory.ToolCall{
+				{ID: "tc1", Name: "web_search", Arguments: `{"query":"x"}`},
+			},
+		},
+		{Role: "tool", Content: longTool, ToolCallID: "tc1"},
+		{Role: "assistant", Content: "a2 done"},
+		{Role: "user", Content: "u3"},
+		{Role: "assistant", Content: "a3"},
+		{Role: "user", Content: "u4"},
+		{Role: "assistant", Content: "a4"},
+	}
+
+	got := h.buildSmartContext(context.Background(), smartContextParams{
+		ConvID:            "conv-prune-rules",
+		UserMessage:       "继续",
+		PreloadedMessages: preloaded,
+	})
+
+	var toolContent string
+	for _, m := range got.Messages {
+		if m.Role == llm.RoleTool && m.ToolCallID == "tc1" {
+			toolContent = m.Content
+			break
+		}
+	}
+	if toolContent == "" {
+		t.Fatal("expected tool message tc1 to be present in smart context")
+	}
+	if toolContent != longTool {
+		t.Fatalf("tool content should be unchanged by allow-list policy, got=%q", toolContent)
 	}
 }
 

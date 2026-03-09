@@ -13,14 +13,29 @@ function unescapeBackticks(s: string): string {
   return s.replace(/`​``/g, '```')
 }
 
+function formatWarningCodeLabel(code?: string): string {
+  switch ((code || '').trim()) {
+    case 'login_wall':
+      return 'Login wall'
+    case 'challenge':
+      return 'Challenge'
+    case 'browser_required':
+      return 'Browser required'
+    default:
+      return code ? `warning_code=${code}` : ''
+  }
+}
+
 const commandRedacted = computed(() => props.card.command_redacted === true || props.card.hide_command === true)
 const stdoutRedacted = computed(() => props.card.stdout_redacted === true)
 const stderrRedacted = computed(() => props.card.stderr_redacted === true)
-const outputRedacted = computed(() => stdoutRedacted.value || stderrRedacted.value)
 
 const command = computed(() => commandRedacted.value ? '' : unescapeBackticks(props.card.command || ''))
-const stdout = computed(() => stdoutRedacted.value ? '' : unescapeBackticks(props.card.stdout || ''))
-const stderr = computed(() => stderrRedacted.value ? '' : unescapeBackticks(props.card.stderr || ''))
+const stdout = computed(() => unescapeBackticks(props.card.stdout || ''))
+const stderr = computed(() => unescapeBackticks(props.card.stderr || ''))
+const outputRedacted = computed(() =>
+  (stdoutRedacted.value && !stdout.value) || (stderrRedacted.value && !stderr.value)
+)
 const isRunning = computed(() => props.card.status === 'running' || props.card._streaming)
 const isError = computed(() => props.card.status === 'error' || (props.card.exit_code != null && props.card.exit_code !== 0))
 const hasOutput = computed(() => !!(stdout.value || stderr.value))
@@ -40,6 +55,23 @@ const outputToneClass = computed(() => {
   if (isError.value) return 'exec-output--error'
   return 'exec-output--success'
 })
+const warningCodeLabel = computed(() => formatWarningCodeLabel(props.card.warning_code))
+const warningMessages = computed(() => {
+  const items: string[] = []
+  const seen = new Set<string>()
+  const push = (value?: string) => {
+    const trimmed = (value || '').trim()
+    if (!trimmed) return
+    const normalized = unescapeBackticks(trimmed)
+    if (seen.has(normalized)) return
+    seen.add(normalized)
+    items.push(normalized)
+  }
+  push(props.card.warning)
+  for (const warning of props.card.warnings || []) push(warning)
+  return items
+})
+const hasWarnings = computed(() => !!(warningCodeLabel.value || warningMessages.value.length > 0))
 
 const showShield = computed(() => props.card.host === 'sandbox' || props.card.host === 'builtin')
 const shieldLabel = computed(() => {
@@ -73,6 +105,9 @@ watch(
       <span class="exec-card__prompt">{{ showCommand ? '$' : '•' }}</span>
       <span v-if="showCommand" class="exec-card__command" :title="command">{{ command }}</span>
       <span v-else class="exec-card__command exec-card__command--muted">{{ t('execCard.commandHidden', 'Command hidden') }}</span>
+      <span v-if="warningCodeLabel" class="exec-card__warning-badge">
+        {{ warningCodeLabel }}
+      </span>
       <span v-if="showShield" class="exec-card__shield" :title="shieldLabel">
         <svg xmlns="http://www.w3.org/2000/svg" class="exec-card__shield-icon" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
@@ -85,6 +120,13 @@ watch(
       >
         {{ showCommand ? t('execCard.hideCommand', 'Hide command') : t('execCard.showCommand', 'Show command') }}
       </button>
+    </div>
+
+    <div v-if="hasWarnings" class="exec-card__warnings">
+      <div class="exec-card__warnings-header">{{ warningCodeLabel || 'Warning' }}</div>
+      <ul v-if="warningMessages.length > 0" class="exec-card__warnings-list">
+        <li v-for="(warning, index) in warningMessages" :key="index">{{ warning }}</li>
+      </ul>
     </div>
 
     <div class="exec-card__body" :class="outputToneClass">
@@ -136,6 +178,21 @@ watch(
   text-overflow: ellipsis;
 }
 
+.exec-card__warning-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
 .exec-card__shield {
   display: inline-flex;
   align-items: center;
@@ -170,6 +227,36 @@ watch(
 
 .exec-card__command-toggle:hover {
   color: #e2e8f0;
+}
+
+.exec-card__warnings {
+  padding: 10px 10px 0;
+}
+
+.exec-card__warnings-header {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.exec-card__warnings-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #fde68a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.exec-card__warnings-list li + li {
+  margin-top: 4px;
 }
 
 .exec-card__body {

@@ -1,0 +1,12 @@
+{
+  "name": "zimaos-blue-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node ./scripts/run-mint.mjs dev",
+    "build": "node ./scripts/run-mint.mjs build"
+  },
+  "devDependencies": {
+    "mint": "4.2.416"
+  }
+}

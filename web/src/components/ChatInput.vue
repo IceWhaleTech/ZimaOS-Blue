@@ -47,6 +47,7 @@ export interface FileAttachment {
 const props = defineProps<{
   disabled?: boolean
   streaming?: boolean
+  canCancel?: boolean
   maxFileSize?: number // in bytes, default 10MB
   allowedTypes?: string[] // MIME types
 }>()
@@ -118,6 +119,7 @@ const isDictating = ref(false)
 let dictationVAD: EnergyVAD | null = null
 
 const maxSize = computed(() => props.maxFileSize || 10 * 1024 * 1024) // 10MB default
+const canShowCancelButton = computed(() => props.canCancel ?? props.streaming ?? false)
 const allowedMimeTypes = computed(() => props.allowedTypes || [
   // Images
   'image/*',
@@ -1190,7 +1192,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 
         <!-- Right: + button for extensions (or Cancel during streaming) -->
         <button
-          v-if="streaming"
+          v-if="canShowCancelButton"
           class="flex-shrink-0 w-10 h-10 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 flex items-center justify-center transition-all duration-200 cursor-pointer"
           :title="t('common.cancel')"
           @click="handleCancel"
@@ -1432,7 +1434,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 
       <!-- Desktop: Cancel button (during streaming) -->
       <button
-        v-if="!isCompact && streaming"
+        v-if="!isCompact && canShowCancelButton"
         class="flex-shrink-0 w-10 h-10 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 flex items-center justify-center transition-all duration-200 cursor-pointer"
         :title="t('common.cancel')"
         @click="handleCancel"

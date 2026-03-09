@@ -57,6 +57,14 @@ func (a *RodBrowserBackend) Navigate(ctx context.Context, url string, targetID s
 	return BrowserNavResult{URL: resp.URL, Title: resp.Title, TargetID: resp.TargetID}, nil
 }
 
+func (a *RodBrowserBackend) CookieHeader(ctx context.Context, targetID string, url string) (string, error) {
+	svc, err := a.get()
+	if err != nil {
+		return "", err
+	}
+	return svc.CookieHeader(ctx, targetID, url)
+}
+
 func (a *RodBrowserBackend) AccessibilityTree(ctx context.Context, targetID string, maxDepth int) (BrowserA11yTreeResult, error) {
 	svc, err := a.get()
 	if err != nil {

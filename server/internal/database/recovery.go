@@ -6,8 +6,68 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
+
+// IsSQLiteCorruptionError reports whether err looks like SQLite file corruption.
+func IsSQLiteCorruptionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "database disk image is malformed") ||
+		strings.Contains(msg, "database is malformed") ||
+		strings.Contains(msg, "sqlite_corrupt") ||
+		strings.Contains(msg, "file is not a database")
+}
+
+// WrapSQLiteOpenError annotates SQLite corruption errors with the database path.
+func WrapSQLiteOpenError(dbPath string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if IsSQLiteCorruptionError(err) {
+		return fmt.Errorf("sqlite database %s appears corrupted: %w", dbPath, err)
+	}
+	return err
+}
+
+// OpenSQLiteWithRecovery opens a SQLite database and retries once after cleaning
+// stale WAL auxiliary files when SQLite reports corruption.
+func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (*sql.DB, error) {
+	if strings.TrimSpace(dbPath) == "" {
+		dbPath = dsn
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		db, err := sql.Open("sqlite3", dsn)
+		if err != nil {
+			return nil, WrapSQLiteOpenError(dbPath, err)
+		}
+
+		if configure == nil {
+			return db, nil
+		}
+
+		if err := configure(db); err != nil {
+			_ = db.Close()
+			if attempt == 0 && IsSQLiteCorruptionError(err) {
+				if cleanErr := CleanWALFiles(dbPath); cleanErr == nil {
+					continue
+				} else {
+					return nil, fmt.Errorf("%w (failed to clean WAL files: %v)", WrapSQLiteOpenError(dbPath, err), cleanErr)
+				}
+			}
+			return nil, WrapSQLiteOpenError(dbPath, err)
+		}
+
+		return db, nil
+	}
+
+	return nil, fmt.Errorf("failed to open sqlite database %s", dbPath)
+}
 
 // CleanWALFiles removes SQLite WAL mode auxiliary files (.shm and .wal)
 // for the given database path. This should be called after restoring a database

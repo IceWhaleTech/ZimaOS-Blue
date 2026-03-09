@@ -66,7 +66,7 @@ Vai oltre: offre supporto nativo per **oltre 20 piattaforme di messaggistica**, 
 
 Compilato nativamente in Go — nessun interprete, nessuna VM, nessun overhead. Funziona silenziosamente su tutto, dai server ai tuoi dispositivi desktop.
 
-| Metrica | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Metrica | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |---------|-------------------|------------------------|
 | `help` cold / warm | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` runtime (migliore su 3) | **< 0.01 s** | 5.98 s |

@@ -2,11 +2,15 @@ package backup
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestNewManager(t *testing.T) {
@@ -986,4 +990,149 @@ func TestManagerApplyPendingRestoreCreatesCheckpoint(t *testing.T) {
 	if string(restored) != "v1" {
 		t.Fatalf("expected restored data to be v1, got %q", string(restored))
 	}
+}
+
+func TestDiscoverSQLiteDatabasePathsIncludesAdditionalDatabases(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, "nested"), 0755); err != nil {
+		t.Fatalf("failed to create nested dir: %v", err)
+	}
+
+	files := []string{
+		"blue.db",
+		"session_audit.db",
+		"memory.sqlite",
+		"metrics.sqlite3",
+		"notes.txt",
+	}
+	for _, name := range files {
+		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(name), 0644); err != nil {
+			t.Fatalf("failed to create %s: %v", name, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "nested", "ignored.db"), []byte("nested"), 0644); err != nil {
+		t.Fatalf("failed to create nested db: %v", err)
+	}
+
+	paths, err := DiscoverSQLiteDatabasePaths(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to discover database paths: %v", err)
+	}
+
+	want := []string{
+		filepath.Join(tmpDir, "blue.db"),
+		filepath.Join(tmpDir, "memory.sqlite"),
+		filepath.Join(tmpDir, "metrics.sqlite3"),
+		filepath.Join(tmpDir, "session_audit.db"),
+	}
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("unexpected database paths: got %v want %v", paths, want)
+	}
+}
+
+func TestCheckAndAutoRecoverRestoresAdditionalDatabase(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+
+	blueDB := filepath.Join(dataDir, "blue.db")
+	auditDB := filepath.Join(dataDir, "session_audit.db")
+	writeSQLiteValue(t, blueDB, "blue-v1")
+	writeSQLiteValue(t, auditDB, "audit-v1")
+
+	m, err := NewManager(Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          backupDir,
+	}, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	if _, err := m.Create(context.Background(), BackupTypeData); err != nil {
+		t.Fatalf("failed to create backup: %v", err)
+	}
+
+	writeSQLiteValue(t, blueDB, "blue-v2")
+	if err := os.WriteFile(auditDB, []byte("not a sqlite database"), 0644); err != nil {
+		t.Fatalf("failed to corrupt audit db: %v", err)
+	}
+
+	dbPaths, err := DiscoverSQLiteDatabasePaths(dataDir)
+	if err != nil {
+		t.Fatalf("failed to discover database paths: %v", err)
+	}
+
+	result, err := m.CheckAndAutoRecover(context.Background(), dbPaths)
+	if err != nil {
+		t.Fatalf("auto recovery failed: %v", err)
+	}
+	if result == nil || !result.Recovered {
+		t.Fatalf("expected recovery result, got %+v", result)
+	}
+	if !containsString(result.CorruptedDatabases, auditDB) {
+		t.Fatalf("expected corrupted databases to include %s, got %v", auditDB, result.CorruptedDatabases)
+	}
+
+	if got := readSQLiteValue(t, blueDB); got != "blue-v1" {
+		t.Fatalf("expected blue db to be restored to v1, got %q", got)
+	}
+	if got := readSQLiteValue(t, auditDB); got != "audit-v1" {
+		t.Fatalf("expected audit db to be restored to v1, got %q", got)
+	}
+}
+
+func writeSQLiteValue(t *testing.T, path, value string) {
+	t.Helper()
+
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("failed to open sqlite db %s: %v", path, err)
+	}
+	defer db.Close()
+
+	statements := []string{
+		"DROP TABLE IF EXISTS entries",
+		"CREATE TABLE entries (value TEXT NOT NULL)",
+		"INSERT INTO entries(value) VALUES (?)",
+	}
+	if _, err := db.Exec(statements[0]); err != nil {
+		t.Fatalf("failed to reset sqlite db %s: %v", path, err)
+	}
+	if _, err := db.Exec(statements[1]); err != nil {
+		t.Fatalf("failed to create sqlite schema %s: %v", path, err)
+	}
+	if _, err := db.Exec(statements[2], value); err != nil {
+		t.Fatalf("failed to insert sqlite value %s: %v", path, err)
+	}
+}
+
+func readSQLiteValue(t *testing.T, path string) string {
+	t.Helper()
+
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatalf("failed to open sqlite db %s: %v", path, err)
+	}
+	defer db.Close()
+
+	var value string
+	if err := db.QueryRow("SELECT value FROM entries LIMIT 1").Scan(&value); err != nil {
+		t.Fatalf("failed to read sqlite value from %s: %v", path, err)
+	}
+	return value
+}
+
+func containsString(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }

@@ -934,6 +934,87 @@ func TestExecSkillShortCircuit_ReminderInfersDeleteActionFromID(t *testing.T) {
 	}
 }
 
+func TestExecPinnedAskStructuredArgsUseSkillParser(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+	tool.SetPinnedSkills([]string{"ask"})
+
+	var gotSkill string
+	var gotInput map[string]any
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		gotSkill = skillID
+		gotInput = input
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": `ask q="Pick a deploy strategy" a='["Canary", "Blue-Green"]'`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotSkill != "ask" {
+		t.Fatalf("skill = %q, want %q", gotSkill, "ask")
+	}
+	if gotInput["q"] != "Pick a deploy strategy" {
+		t.Fatalf("q = %v, want %q", gotInput["q"], "Pick a deploy strategy")
+	}
+	if gotInput["a"] != `["Canary", "Blue-Green"]` {
+		t.Fatalf("a = %v, want JSON array string", gotInput["a"])
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if len(res.Warnings) != 0 {
+		t.Fatalf("warnings = %+v, want none", res.Warnings)
+	}
+}
+
+func TestExecSkillShortCircuit_DoesNotLeakShortCircuitWarning(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		if skillID != "web_search" {
+			return nil, fmt.Errorf("unexpected skill: %s", skillID)
+		}
+		if input["query"] != "latest blue release" {
+			t.Fatalf("query = %v, want %q", input["query"], "latest blue release")
+		}
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": `blue web_search query="latest blue release"`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if len(res.Warnings) != 0 {
+		t.Fatalf("warnings = %+v, want none", res.Warnings)
+	}
+}
+
 func TestExecSkillShortCircuit_AutoResolveClarificationExecutesSelectedSkill(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()
@@ -1074,6 +1155,15 @@ func TestParseKeyValuePairs_RepeatedNonListKeyKeepsLastValue(t *testing.T) {
 
 	if got, _ := out["question"].(string); got != "second" {
 		t.Fatalf("question = %q, want %q", got, "second")
+	}
+}
+
+func TestParseKeyValuePairs_SingleQuotedValueKeepsSpaces(t *testing.T) {
+	out := map[string]any{}
+	parseKeyValuePairs(`questions='[{"question":"Pick one","options":["A", "B"]}]'`, out)
+
+	if got, _ := out["questions"].(string); got != `[{"question":"Pick one","options":["A", "B"]}]` {
+		t.Fatalf("questions = %q, want full single-quoted payload", got)
 	}
 }
 

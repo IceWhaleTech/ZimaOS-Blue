@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import type { TypelessCardAction } from '@/types/typeless'
+import type { ActionButton, TypelessCardAction } from '@/types/typeless'
 
 const props = defineProps<{
   card: TypelessCardAction
+  actionLoading?: boolean
+  activeActionId?: string
 }>()
 
 const emit = defineEmits<{
@@ -15,7 +17,20 @@ const buttonClasses = {
   danger: 'bg-red-500 hover:bg-red-600 text-white',
 }
 
-function handleClick(actionId: string) {
+function isActionActive(actionId: string): boolean {
+  return props.actionLoading === true && props.activeActionId === actionId
+}
+
+function isActionDisabled(action: ActionButton): boolean {
+  return props.actionLoading === true || action.disabled === true
+}
+
+function actionButtonLabel(action: ActionButton): string {
+  return isActionActive(action.id) ? 'Working...' : action.label
+}
+
+function handleClick(actionId: string, disabled = false) {
+  if (props.actionLoading || disabled) return
   emit('action', actionId, props.card.id)
 }
 </script>
@@ -36,13 +51,18 @@ function handleClick(actionId: string) {
       <button
         v-for="action in card.actions"
         :key="action.id"
-        class="px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        :class="buttonClasses[action.variant || 'secondary']"
-        :disabled="action.disabled"
-        @click="handleClick(action.id)"
+        class="px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-wait"
+        :class="[buttonClasses[action.variant || 'secondary'], { 'opacity-60 cursor-wait': actionLoading }]"
+        :disabled="isActionDisabled(action)"
+        :aria-busy="isActionActive(action.id) ? 'true' : undefined"
+        @click="handleClick(action.id, !!action.disabled)"
       >
-        <span v-if="action.icon" class="mr-1.5">{{ action.icon }}</span>
-        {{ action.label }}
+        <span
+          v-if="isActionActive(action.id)"
+          class="mr-1.5 inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent align-[-2px]"
+        />
+        <span v-else-if="action.icon" class="mr-1.5">{{ action.icon }}</span>
+        {{ actionButtonLabel(action) }}
       </button>
     </div>
   </div>

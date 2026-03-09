@@ -814,6 +814,7 @@ class StreamingTTSManager {
   }
 
   stop() {
+    const shouldStopServerSpeech = this.activeFetches > 0
     this.generation++
     this.isStopped = true
     this.isPlaying = false
@@ -824,7 +825,9 @@ class StreamingTTSManager {
     this.activeFetches = 0
     this.currentEventSource?.close()
     ttsAudioManager.stop()
-    voiceApi.stopSpeaking().catch(() => {})
+    if (shouldStopServerSpeech) {
+      voiceApi.stopSpeaking().catch(() => {})
+    }
   }
 }
 

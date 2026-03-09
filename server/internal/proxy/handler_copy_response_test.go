@@ -411,7 +411,7 @@ func TestCopyResponse_OpenAIResponsesEndpoint_SetsResponsesHeadersAndCachesPrevI
 	}
 }
 
-func TestCopyResponse_OpenAIResponsesEndpoint_DisablesContinuationWhenUpstreamDropsPreviousResponseID(t *testing.T) {
+func TestCopyResponse_OpenAIResponsesEndpoint_KeepsContinuationWhenUpstreamDropsPreviousResponseIDButReturnsID(t *testing.T) {
 	ph := NewProxyHandler(nil, nil, nil)
 
 	body := `{
@@ -440,19 +440,107 @@ func TestCopyResponse_OpenAIResponsesEndpoint_DisablesContinuationWhenUpstreamDr
 	ph.setCachedResponsesPreviousID(req, "resp_prev_1")
 	ph.copyResponse(rec, resp, pr, req)
 
-	if got := rec.Header().Get(ResponsesContinuationDisabledHeader); got != "1" {
-		t.Fatalf("%s = %q, want %q", ResponsesContinuationDisabledHeader, got, "1")
+	if got := rec.Header().Get(ResponsesContinuationDisabledHeader); got != "" {
+		t.Fatalf("%s = %q, want empty", ResponsesContinuationDisabledHeader, got)
 	}
-	if got := ph.getCachedResponsesPreviousID(req); got != "" {
-		t.Fatalf("cached previous_response_id should be cleared, got %q", got)
+	if got := ph.getCachedResponsesPreviousID(req); got != "resp_followup_1" {
+		t.Fatalf("cached previous_response_id should be advanced, got %q", got)
 	}
 
 	route := &providerpool.RouteResult{
 		Provider: &providerpool.Provider{ID: "provider-prev-drop"},
 		Model:    &providerpool.Model{ID: "gpt-5.3-codex"},
 	}
-	if !ph.isResponsesContinuationDisabledForRoute(route) {
-		t.Fatal("expected continuation to be disabled for provider route")
+	if ph.isResponsesContinuationDisabledForRoute(req, route) {
+		t.Fatal("continuation should remain enabled for provider route")
+	}
+}
+
+func TestCopyResponse_OpenAIResponsesEndpoint_KeepsContinuationWhenUpstreamDropsPreviousResponseIDAndResponseIDMissing(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+
+	body := `{
+		"object":"response",
+		"model":"gpt-5.3-codex",
+		"previous_response_id":null,
+		"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I do not remember previous context"}]}]
+	}`
+	upstreamReq := httptest.NewRequest(http.MethodPost, "https://relay.example.com/v1/responses", nil)
+	upstreamReq = upstreamReq.WithContext(withUpstreamResponsesPreviousID(upstreamReq.Context(), "resp_prev_1"))
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    upstreamReq,
+	}
+
+	rec := httptest.NewRecorder()
+	pr := &parsedRequest{
+		resolvedProviderID: "provider-prev-drop",
+		resolvedModel:      "gpt-5.3-codex",
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-copy-disable-2"))
+	ph.setCachedResponsesPreviousID(req, "resp_prev_1")
+	ph.copyResponse(rec, resp, pr, req)
+
+	// REGRESSION-GUARD: metadata-only omissions (previous_response_id=null and
+	// missing id) should not hard-disable continuation. We keep cached pointer
+	// and rely on explicit continuation errors (4xx/markers) to disable.
+	if got := rec.Header().Get(ResponsesContinuationDisabledHeader); got != "" {
+		t.Fatalf("%s = %q, want empty", ResponsesContinuationDisabledHeader, got)
+	}
+	if got := ph.getCachedResponsesPreviousID(req); got != "resp_prev_1" {
+		t.Fatalf("cached previous_response_id should be retained, got %q", got)
+	}
+
+	route := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{ID: "provider-prev-drop"},
+		Model:    &providerpool.Model{ID: "gpt-5.3-codex"},
+	}
+	if ph.isResponsesContinuationDisabledForRoute(req, route) {
+		t.Fatal("continuation should remain enabled for provider route")
+	}
+}
+
+func TestCopyResponse_OpenAIResponsesEndpoint_StreamingKeepsContinuationWhenUpstreamDropsPreviousResponseIDAndResponseIDMissing(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+
+	sse := "event: response.completed\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"object\":\"response\",\"model\":\"gpt-5.3-codex\",\"status\":\"completed\",\"previous_response_id\":null,\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}]}}\n\n"
+	upstreamReq := httptest.NewRequest(http.MethodPost, "https://relay.example.com/v1/responses", nil)
+	upstreamReq = upstreamReq.WithContext(withUpstreamResponsesPreviousID(upstreamReq.Context(), "resp_prev_1"))
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sse)),
+		Request:    upstreamReq,
+	}
+
+	rec := httptest.NewRecorder()
+	pr := &parsedRequest{
+		streaming:          true,
+		resolvedProviderID: "provider-prev-drop",
+		resolvedModel:      "gpt-5.3-codex",
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req = req.WithContext(WithSessionID(context.Background(), "sess-copy-disable-stream-1"))
+	ph.setCachedResponsesPreviousID(req, "resp_prev_1")
+	ph.copyResponse(rec, resp, pr, req)
+
+	if got := rec.Header().Get(ResponsesContinuationDisabledHeader); got != "" {
+		t.Fatalf("%s = %q, want empty", ResponsesContinuationDisabledHeader, got)
+	}
+	if got := ph.getCachedResponsesPreviousID(req); got != "resp_prev_1" {
+		t.Fatalf("cached previous_response_id should be retained, got %q", got)
+	}
+
+	route := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{ID: "provider-prev-drop"},
+		Model:    &providerpool.Model{ID: "gpt-5.3-codex"},
+	}
+	if ph.isResponsesContinuationDisabledForRoute(req, route) {
+		t.Fatal("continuation should remain enabled for provider route")
 	}
 }
 

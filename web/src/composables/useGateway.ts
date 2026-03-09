@@ -75,8 +75,6 @@ export function useGateway(autoConnect = true) {
     chatSend: (conversationId: string, content: string) =>
       client.chatSend(conversationId, content),
     chatAbort: (conversationId: string) => client.chatAbort(conversationId),
-    sessionsList: () => client.sessionsList(),
-    sessionsReset: (sessionId: string) => client.sessionsReset(sessionId),
     browserRequest: (action: string, params?: Record<string, unknown>) =>
       client.browserRequest(action, params),
     hooksWake: (hookId: string, payload?: unknown) => client.hooksWake(hookId, payload),

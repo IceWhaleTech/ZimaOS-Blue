@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -414,6 +415,23 @@ func (g *Gateway) GetConnections() []*Connection {
 		connections = append(connections, conn)
 	}
 	return connections
+}
+
+// Stats returns gateway statistics.
+func (g *Gateway) Config() Config {
+	return g.config
+}
+
+// Methods returns the registered gateway method names.
+func (g *Gateway) Methods() []string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	methods := make([]string, 0, len(g.handlers))
+	for method := range g.handlers {
+		methods = append(methods, method)
+	}
+	sort.Strings(methods)
+	return methods
 }
 
 // Stats returns gateway statistics.

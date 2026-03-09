@@ -1,10 +1,15 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 )
 
 func TestTransientUpstreamRetryDelay(t *testing.T) {
@@ -26,75 +31,101 @@ func TestTransientUpstreamRetryDelay(t *testing.T) {
 
 func TestShouldRetryTransientUpstream5xx(t *testing.T) {
 	tests := []struct {
-		name    string
-		single  bool
-		status  int
-		body    string
-		attempt int
-		want    bool
+		name          string
+		single        bool
+		routingSingle bool
+		status        int
+		body          string
+		attempt       int
+		want          bool
 	}{
 		{
-			name:    "non single-provider never retries",
-			single:  false,
-			status:  429,
-			body:    `{"error":{"type":"overloaded_error"}}`,
-			attempt: 0,
-			want:    false,
+			name:          "non single-provider never retries",
+			single:        false,
+			routingSingle: false,
+			status:        429,
+			body:          `{"error":{"type":"overloaded_error"}}`,
+			attempt:       0,
+			want:          false,
 		},
 		{
-			name:    "429 retries until 5 total attempts",
-			single:  true,
-			status:  429,
-			body:    `{"error":"rate limit exceeded"}`,
-			attempt: 3,
-			want:    true,
+			name:          "429 retries until 5 total attempts when routing is truly single-provider",
+			single:        true,
+			routingSingle: true,
+			status:        429,
+			body:          `{"error":"rate limit exceeded"}`,
+			attempt:       3,
+			want:          true,
 		},
 		{
-			name:    "429 stops after 5 total attempts",
-			single:  true,
-			status:  429,
-			body:    `{"error":"rate limit exceeded"}`,
-			attempt: 4,
-			want:    false,
+			name:          "429 stops after 5 total attempts when routing is truly single-provider",
+			single:        true,
+			routingSingle: true,
+			status:        429,
+			body:          `{"error":"rate limit exceeded"}`,
+			attempt:       4,
+			want:          false,
 		},
 		{
-			name:    "wrapped 500 overloaded retries",
-			single:  true,
-			status:  500,
-			body:    `{"error":{"type":"overloaded_error","message":"构建请求失败"}}`,
-			attempt: 2,
-			want:    true,
+			name:          "rate-limit-like 500 fails fast when outer fallback is available",
+			single:        true,
+			routingSingle: false,
+			status:        500,
+			body:          `{"error":{"type":"overloaded_error","message":"构建请求失败"}}`,
+			attempt:       0,
+			want:          false,
 		},
 		{
-			name:    "generic 500 does not retry",
-			single:  true,
-			status:  500,
-			body:    `{"error":"internal error"}`,
-			attempt: 0,
-			want:    false,
+			name:          "529 never retries",
+			single:        true,
+			routingSingle: true,
+			status:        529,
+			body:          `{"error":{"type":"overloaded_error","message":"Overloaded"}}`,
+			attempt:       0,
+			want:          false,
 		},
 		{
-			name:    "transient 503 retries with short policy",
-			single:  true,
-			status:  503,
-			body:    `{"error":"service unavailable"}`,
-			attempt: 1,
-			want:    true,
+			name:          "wrapped 500 overloaded retries when routing is truly single-provider",
+			single:        true,
+			routingSingle: true,
+			status:        500,
+			body:          `{"error":{"type":"overloaded_error","message":"构建请求失败"}}`,
+			attempt:       2,
+			want:          true,
 		},
 		{
-			name:    "transient 503 stops after short policy limit",
-			single:  true,
-			status:  503,
-			body:    `{"error":"service unavailable"}`,
-			attempt: 2,
-			want:    false,
+			name:          "generic 500 does not retry",
+			single:        true,
+			routingSingle: true,
+			status:        500,
+			body:          `{"error":"internal error"}`,
+			attempt:       0,
+			want:          false,
+		},
+		{
+			name:          "transient 503 retries with short policy",
+			single:        true,
+			routingSingle: false,
+			status:        503,
+			body:          `{"error":"service unavailable"}`,
+			attempt:       1,
+			want:          true,
+		},
+		{
+			name:          "transient 503 stops after short policy limit",
+			single:        true,
+			routingSingle: false,
+			status:        503,
+			body:          `{"error":"service unavailable"}`,
+			attempt:       2,
+			want:          false,
 		},
 	}
 
 	for _, tc := range tests {
-		if got := shouldRetryTransientUpstream5xx(tc.single, tc.status, []byte(tc.body), tc.attempt); got != tc.want {
-			t.Fatalf("%s: shouldRetryTransientUpstream5xx(%v, %d, %q, %d) = %v, want %v",
-				tc.name, tc.single, tc.status, tc.body, tc.attempt, got, tc.want)
+		if got := shouldRetryTransientUpstream5xx(tc.single, tc.routingSingle, tc.status, []byte(tc.body), tc.attempt); got != tc.want {
+			t.Fatalf("%s: shouldRetryTransientUpstream5xx(%v, %v, %d, %q, %d) = %v, want %v",
+				tc.name, tc.single, tc.routingSingle, tc.status, tc.body, tc.attempt, got, tc.want)
 		}
 	}
 }
@@ -139,6 +170,53 @@ func TestIsResponsesContinuationRejectedError(t *testing.T) {
 		if got := isResponsesContinuationRejectedError(tc.status, []byte(tc.body)); got != tc.want {
 			t.Fatalf("%s: isResponsesContinuationRejectedError(%d, %q) = %v, want %v", tc.name, tc.status, tc.body, got, tc.want)
 		}
+	}
+}
+
+func TestProxyFailureStatusCode(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{
+			name: "no provider",
+			err:  providerpool.ErrNoAvailableProvider,
+			want: http.StatusServiceUnavailable,
+		},
+		{
+			name: "wrapped overloaded 500 maps to 529",
+			err:  errors.New(`upstream 500: {"error":{"type":"overloaded_error","message":"构建请求失败"},"type":"error"}`),
+			want: 529,
+		},
+		{
+			name: "wrapped rate limit 500 maps to 429",
+			err:  errors.New(`upstream 500: {"error":{"type":"rate_limit_error","message":"Rate limit exceeded"},"type":"error"}`),
+			want: http.StatusTooManyRequests,
+		},
+		{
+			name: "wrapped upstream 401 preserved",
+			err:  errors.New(`upstream 401: {"error":{"message":"Invalid API key"}}`),
+			want: http.StatusUnauthorized,
+		},
+		{
+			name: "wrapped upstream 404 preserved",
+			err:  errors.New(`upstream 404: {"error":{"message":"Model not found"}}`),
+			want: http.StatusNotFound,
+		},
+		{
+			name: "generic 500 stays 502",
+			err:  errors.New(`upstream 500: {"error":{"message":"internal error"}}`),
+			want: http.StatusBadGateway,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := proxyFailureStatusCode(tc.err); got != tc.want {
+				t.Fatalf("proxyFailureStatusCode(%v) = %d, want %d", tc.err, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -231,5 +309,40 @@ func TestHasPreviousResponseContinuation(t *testing.T) {
 		if got := hasPreviousResponseContinuation(tc.body, tc.cachedPrevID); got != tc.want {
 			t.Fatalf("%s: hasPreviousResponseContinuation(...) = %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestDisableResponsesContinuationForRoute_SessionScopedAndStripsPreviousResponseID(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	route := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{ID: "provider-a"},
+		Model:    &providerpool.Model{ID: "gpt-5.3-codex"},
+	}
+
+	reqA := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	reqA = reqA.WithContext(WithSessionID(context.Background(), "sess-disable-helper-a"))
+	ph.setCachedResponsesPreviousIDForRoute(reqA, route, "resp_prev_a")
+
+	body := []byte(`{"model":"gpt-5.3-codex","previous_response_id":"resp_prev_a","input":[{"role":"user","content":[{"type":"input_text","text":"continue"}]}]}`)
+	rewritten := ph.disableResponsesContinuationForRoute(reqA, "provider-a", "gpt-5.3-codex", body)
+
+	if bytes.Contains(rewritten, []byte(`"previous_response_id"`)) {
+		t.Fatalf("previous_response_id should be stripped after disable: %s", string(rewritten))
+	}
+	if got := ph.getCachedResponsesPreviousIDForRoute(reqA, route); got != "" {
+		t.Fatalf("cached previous_response_id should be cleared, got %q", got)
+	}
+	if !ph.isResponsesContinuationDisabledForRoute(reqA, route) {
+		t.Fatal("continuation should be disabled for session A route")
+	}
+
+	reqB := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	reqB = reqB.WithContext(WithSessionID(context.Background(), "sess-disable-helper-b"))
+	ph.setCachedResponsesPreviousIDForRoute(reqB, route, "resp_prev_b")
+	if ph.isResponsesContinuationDisabledForRoute(reqB, route) {
+		t.Fatal("continuation disable state must not leak across sessions")
+	}
+	if got := ph.getCachedResponsesPreviousIDForRoute(reqB, route); got != "resp_prev_b" {
+		t.Fatalf("session B cache should remain intact, got %q", got)
 	}
 }

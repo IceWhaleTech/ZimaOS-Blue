@@ -68,7 +68,13 @@ type webhookUser struct {
 type webhookMessage struct {
 	MID         string              `json:"mid"`
 	Text        string              `json:"text,omitempty"`
+	IsEcho      bool                `json:"is_echo,omitempty"`
+	ReplyTo     *webhookReplyTo     `json:"reply_to,omitempty"`
 	Attachments []webhookAttachment `json:"attachments,omitempty"`
+}
+
+type webhookReplyTo struct {
+	MID string `json:"mid"`
 }
 
 type webhookAttachment struct {
@@ -111,8 +117,8 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	}
 }
 
-func (c *Channel) Name() string                    { return "instagram" }
-func (c *Channel) Type() string                    { return "instagram" }
+func (c *Channel) Name() string                     { return "instagram" }
+func (c *Channel) Type() string                     { return "instagram" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -191,14 +197,25 @@ func (c *Channel) HandleWebhook(body []byte, signature string) error {
 
 // processMessage handles a single incoming message, including text and media attachments.
 func (c *Channel) processMessage(m webhookMessaging) {
+	if m.Message == nil || m.Message.IsEcho {
+		return
+	}
+	replyToID := ""
+	if m.Message.ReplyTo != nil {
+		replyToID = strings.TrimSpace(m.Message.ReplyTo.MID)
+	}
 	msg := channel.Message{
 		ID:          m.Message.MID,
 		ChannelName: "instagram",
 		ChatID:      m.Sender.ID,
 		UserID:      m.Sender.ID,
 		Username:    m.Sender.ID,
+		ReplyToID:   replyToID,
 		Timestamp:   time.UnixMilli(m.Timestamp),
 		Metadata:    map[string]interface{}{},
+	}
+	if replyToID != "" {
+		msg.Metadata["reply_to_mid"] = replyToID
 	}
 
 	// Process attachments (image, video, story_mention, etc.)
@@ -261,7 +278,20 @@ func (c *Channel) processMessage(m webhookMessaging) {
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	// Send media attachments first.
 	for i, att := range msg.Attachments {
-		if att.URL == "" {
+		includeCaption := i == 0 && strings.TrimSpace(msg.Content) != ""
+		fallback := instagramAttachmentFallbackText(msg.Content, att, includeCaption)
+		if strings.TrimSpace(att.URL) == "" {
+			if fallback == "" {
+				continue
+			}
+			if err := c.callSendAPI(ctx, map[string]interface{}{
+				"recipient": map[string]string{"id": msg.ChatID},
+				"message":   map[string]string{"text": fallback},
+			}); err != nil {
+				c.logger.Warn("failed to send attachment fallback via Instagram", zap.String("type", string(att.Type)), zap.Error(err))
+			} else if includeCaption {
+				msg.Content = ""
+			}
 			continue
 		}
 		mediaType := "image"
@@ -283,20 +313,15 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 			},
 		}
 		if err := c.callSendAPI(ctx, payload); err != nil {
-			c.logger.Warn("failed to send media via Instagram",
-				zap.String("type", mediaType), zap.Error(err))
-			// Fall back to text with URL.
-			fallback := att.URL
-			if i == 0 && msg.Content != "" {
-				fallback = msg.Content + "\n" + att.URL
+			c.logger.Warn("failed to send media via Instagram", zap.String("type", mediaType), zap.Error(err))
+			if fallback != "" {
+				if fallbackErr := c.callSendAPI(ctx, map[string]interface{}{
+					"recipient": map[string]string{"id": msg.ChatID},
+					"message":   map[string]string{"text": fallback},
+				}); fallbackErr == nil && includeCaption {
+					msg.Content = ""
+				}
 			}
-			_ = c.callSendAPI(ctx, map[string]interface{}{
-				"recipient": map[string]string{"id": msg.ChatID},
-				"message":   map[string]string{"text": fallback},
-			})
-		}
-		if i == 0 {
-			msg.Content = "" // Caption sent with first attachment.
 		}
 	}
 
@@ -314,6 +339,25 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 
 	c.msgsSent.Add(1)
 	return nil
+}
+
+func instagramAttachmentFallbackText(caption string, att channel.Attachment, includeCaption bool) string {
+	parts := make([]string, 0, 2)
+	if includeCaption && strings.TrimSpace(caption) != "" {
+		parts = append(parts, strings.TrimSpace(caption))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		parts = append(parts, strings.TrimSpace(att.URL))
+	} else {
+		name := strings.TrimSpace(att.Name)
+		if name == "" && len(att.Data) > 0 {
+			name = "Attachment"
+		}
+		if name != "" {
+			parts = append(parts, name)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 // SendMedia sends an image attachment via the Instagram Messaging API.
@@ -368,7 +412,7 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 			_ = c.sendTypingIndicator(ctx, chatID, "typing_on")
 			time.Sleep(time.Duration(typingDelayMS) * time.Millisecond)
 		}
-		if err := c.Send(ctx, channel.OutgoingMessage{ChatID: chatID, Content: chunk}); err != nil {
+		if err := c.Send(ctx, channel.OutgoingMessage{ChatID: chatID, ReplyToID: replyToID, Content: chunk}); err != nil {
 			return err
 		}
 	}

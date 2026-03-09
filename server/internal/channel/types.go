@@ -244,6 +244,8 @@ type Config struct {
 	Teams TeamsConfig `yaml:"teams"`
 	// Mattermost configuration.
 	Mattermost MattermostConfig `yaml:"mattermost"`
+	// Nextcloud Talk configuration.
+	NextcloudTalk NextcloudTalkConfig `yaml:"nextcloudtalk"`
 	// BlueBubbles configuration.
 	BlueBubbles BlueBubblesConfig `yaml:"bluebubbles"`
 	// Zalo configuration.
@@ -359,6 +361,15 @@ type MattermostConfig struct {
 	AllowedUsers    []string `yaml:"allowed_users"`
 }
 
+// NextcloudTalkConfig contains Nextcloud Talk configuration.
+type NextcloudTalkConfig struct {
+	Enabled   bool   `yaml:"enabled"`
+	ServerURL string `yaml:"server_url"`
+	Username  string `yaml:"username"`
+	Password  string `yaml:"password"`
+	RoomToken string `yaml:"room_token"`
+}
+
 // BlueBubblesConfig contains BlueBubbles (iMessage bridge) configuration.
 type BlueBubblesConfig struct {
 	Enabled      bool     `yaml:"enabled"`
@@ -422,6 +433,9 @@ func DefaultConfig() Config {
 			Enabled: false,
 		},
 		Mattermost: MattermostConfig{
+			Enabled: false,
+		},
+		NextcloudTalk: NextcloudTalkConfig{
 			Enabled: false,
 		},
 		BlueBubbles: BlueBubblesConfig{

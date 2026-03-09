@@ -85,11 +85,7 @@ type ModelsResponse struct {
 func runModelsList(cmd *cobra.Command, args []string) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	port := 8080
-	if devMode {
-		port = 8081
-	}
-	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	baseURL := getServiceBaseURL()
 
 	url := baseURL + "/api/v1/models"
 	if modelsProvider != "" {
@@ -126,11 +122,7 @@ func runModelsList(cmd *cobra.Command, args []string) {
 func runModelsStatus(cmd *cobra.Command, args []string) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	port := 8080
-	if devMode {
-		port = 8081
-	}
-	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	baseURL := getServiceBaseURL()
 
 	resp, err := client.Get(baseURL + "/api/v1/providers")
 	if err != nil {
@@ -215,11 +207,7 @@ func runModelsSet(cmd *cobra.Command, args []string) {
 func runModelsScan(cmd *cobra.Command, args []string) {
 	client := &http.Client{Timeout: 30 * time.Second}
 
-	port := 8080
-	if devMode {
-		port = 8081
-	}
-	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	baseURL := getServiceBaseURL()
 
 	if !jsonOutput {
 		fmt.Println("Scanning for available models...")

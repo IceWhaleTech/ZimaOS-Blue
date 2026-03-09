@@ -22,18 +22,18 @@ import (
 
 // Config contains Nextcloud Talk channel configuration.
 type Config struct {
-	Enabled     bool   `yaml:"enabled"`
-	ServerURL   string `yaml:"server_url"`
-	Username    string `yaml:"username"`
-	Password    string `yaml:"password"`
-	RoomToken   string `yaml:"room_token"`
+	Enabled   bool   `yaml:"enabled"`
+	ServerURL string `yaml:"server_url"`
+	Username  string `yaml:"username"`
+	Password  string `yaml:"password"`
+	RoomToken string `yaml:"room_token"`
 }
 
 const (
-	chatAPIPath    = "/ocs/v2.php/apps/spreed/api/v1/chat/"
-	userAPIPath    = "/ocs/v2.php/cloud/user"
-	shareAPIPath   = "/ocs/v2.php/apps/files_sharing/api/v1/shares"
-	pollInterval   = 3 * time.Second
+	chatAPIPath  = "/ocs/v2.php/apps/spreed/api/v1/chat/"
+	userAPIPath  = "/ocs/v2.php/cloud/user"
+	shareAPIPath = "/ocs/v2.php/apps/files_sharing/api/v1/shares"
+	pollInterval = 3 * time.Second
 )
 
 // ocsResponse wraps the standard OCS API response envelope.
@@ -49,18 +49,28 @@ type ocsResponse struct {
 
 // chatMessage represents a Nextcloud Talk chat message.
 type chatMessage struct {
-	ID                int               `json:"id"`
-	Token             string            `json:"token"`
-	ActorType         string            `json:"actorType"`
-	ActorID           string            `json:"actorId"`
-	ActorDisplayName  string            `json:"actorDisplayName"`
-	Timestamp         int64             `json:"timestamp"`
-	Message           string            `json:"message"`
-	MessageParameters map[string]interface{} `json:"messageParameters"`
-	SystemMessage     string            `json:"systemMessage"`
-	MessageType       string            `json:"messageType"`
-	IsReplyable       bool              `json:"isReplyable"`
-	ReferenceID       string            `json:"referenceId"`
+	ID                       int                    `json:"id"`
+	Token                    string                 `json:"token"`
+	ActorType                string                 `json:"actorType"`
+	ActorID                  string                 `json:"actorId"`
+	ActorDisplayName         string                 `json:"actorDisplayName"`
+	Timestamp                int64                  `json:"timestamp"`
+	Message                  string                 `json:"message"`
+	MessageParameters        map[string]interface{} `json:"messageParameters"`
+	SystemMessage            string                 `json:"systemMessage"`
+	MessageType              string                 `json:"messageType"`
+	IsReplyable              bool                   `json:"isReplyable"`
+	ReferenceID              string                 `json:"referenceId"`
+	Parent                   map[string]interface{} `json:"parent"`
+	Reactions                map[string]int         `json:"reactions"`
+	ReactionsSelf            []string               `json:"reactionsSelf"`
+	Markdown                 bool                   `json:"markdown"`
+	Silent                   bool                   `json:"silent"`
+	ExpirationTimestamp      int64                  `json:"expirationTimestamp"`
+	LastEditTimestamp        int64                  `json:"lastEditTimestamp"`
+	LastEditActorType        string                 `json:"lastEditActorType"`
+	LastEditActorID          string                 `json:"lastEditActorId"`
+	LastEditActorDisplayName string                 `json:"lastEditActorDisplayName"`
 }
 
 // Channel implements the channel.Channel interface for Nextcloud Talk.
@@ -96,8 +106,8 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	}
 }
 
-func (c *Channel) Name() string                    { return "nextcloudtalk" }
-func (c *Channel) Type() string                    { return "nextcloudtalk" }
+func (c *Channel) Name() string                     { return "nextcloudtalk" }
+func (c *Channel) Type() string                     { return "nextcloudtalk" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -260,6 +270,50 @@ func (c *Channel) fetchMessages() ([]chatMessage, error) {
 }
 
 func (c *Channel) processMessage(m chatMessage) {
+	metadata := map[string]interface{}{
+		"actor_type":   m.ActorType,
+		"is_replyable": m.IsReplyable,
+	}
+	if strings.TrimSpace(m.ReferenceID) != "" {
+		metadata["reference_id"] = strings.TrimSpace(m.ReferenceID)
+	}
+	if strings.TrimSpace(m.MessageType) != "" {
+		metadata["message_type"] = strings.TrimSpace(m.MessageType)
+	}
+	if len(m.MessageParameters) > 0 {
+		metadata["message_parameters"] = m.MessageParameters
+	}
+	if len(m.Parent) > 0 {
+		metadata["parent"] = m.Parent
+	}
+	if len(m.Reactions) > 0 {
+		metadata["reactions"] = m.Reactions
+	}
+	if len(m.ReactionsSelf) > 0 {
+		metadata["reactions_self"] = m.ReactionsSelf
+	}
+	if m.Markdown {
+		metadata["markdown"] = true
+	}
+	if m.Silent {
+		metadata["silent"] = true
+	}
+	if m.ExpirationTimestamp > 0 {
+		metadata["expiration_timestamp"] = m.ExpirationTimestamp
+	}
+	if m.LastEditTimestamp > 0 {
+		metadata["last_edit_timestamp"] = m.LastEditTimestamp
+	}
+	if strings.TrimSpace(m.LastEditActorType) != "" {
+		metadata["last_edit_actor_type"] = strings.TrimSpace(m.LastEditActorType)
+	}
+	if strings.TrimSpace(m.LastEditActorID) != "" {
+		metadata["last_edit_actor_id"] = strings.TrimSpace(m.LastEditActorID)
+	}
+	if strings.TrimSpace(m.LastEditActorDisplayName) != "" {
+		metadata["last_edit_actor_display_name"] = strings.TrimSpace(m.LastEditActorDisplayName)
+	}
+
 	msg := channel.Message{
 		ID:          strconv.Itoa(m.ID),
 		ChannelName: "nextcloudtalk",
@@ -271,11 +325,14 @@ func (c *Channel) processMessage(m chatMessage) {
 		Timestamp:   time.Unix(m.Timestamp, 0),
 		IsGroup:     true, // Talk rooms are group conversations.
 		GroupName:   m.Token,
-		Metadata: map[string]interface{}{
-			"actor_type":   m.ActorType,
-			"is_replyable": m.IsReplyable,
-			"reference_id": m.ReferenceID,
-		},
+		Metadata:    metadata,
+	}
+	if parentID := nextcloudParentID(m.Parent); parentID != "" {
+		msg.ReplyToID = parentID
+		msg.Metadata["parent_id"] = parentID
+	}
+	if strings.TrimSpace(msg.Content) == "" && len(m.MessageParameters) > 0 {
+		msg.Type = channel.MessageTypeCard
 	}
 
 	c.msgCount.Add(1)
@@ -288,24 +345,96 @@ func (c *Channel) processMessage(m chatMessage) {
 	}
 }
 
+func nextcloudParentID(parent map[string]interface{}) string {
+	if len(parent) == 0 {
+		return ""
+	}
+	value, ok := parent["id"]
+	if !ok {
+		return ""
+	}
+	switch id := value.(type) {
+	case int:
+		return strconv.Itoa(id)
+	case int64:
+		return strconv.FormatInt(id, 10)
+	case float64:
+		return strconv.Itoa(int(id))
+	case json.Number:
+		return id.String()
+	case string:
+		return strings.TrimSpace(id)
+	default:
+		return ""
+	}
+}
+
 // Send sends a message to the Nextcloud Talk room.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
+	sentSomething := false
+
 	// Send text message.
-	if msg.Content != "" {
+	if strings.TrimSpace(msg.Content) != "" {
 		if err := c.sendText(ctx, msg.ChatID, msg.Content, msg.ReplyToID); err != nil {
 			return err
 		}
+		sentSomething = true
 	}
 
-	// Share file attachments via Nextcloud file sharing API.
+	// Share file attachments via Nextcloud file sharing API or fall back to text.
 	for _, att := range msg.Attachments {
-		if err := c.shareFile(ctx, msg.ChatID, att); err != nil {
-			c.logger.Warn("failed to share file", zap.String("name", att.Name), zap.Error(err))
+		if canShareNextcloudPath(att.URL) {
+			if err := c.shareFile(ctx, msg.ChatID, att); err == nil {
+				sentSomething = true
+				continue
+			} else {
+				c.logger.Warn("failed to share file", zap.String("name", att.Name), zap.Error(err))
+			}
 		}
+		fallback := nextcloudAttachmentFallbackText(att)
+		if fallback == "" {
+			continue
+		}
+		if err := c.sendText(ctx, msg.ChatID, fallback, msg.ReplyToID); err != nil {
+			c.logger.Warn("failed to send attachment fallback text", zap.String("name", att.Name), zap.Error(err))
+			continue
+		}
+		sentSomething = true
+	}
+
+	if !sentSomething {
+		return fmt.Errorf("no sendable Nextcloud Talk content")
 	}
 
 	c.msgsSent.Add(1)
 	return nil
+}
+
+func canShareNextcloudPath(path string) bool {
+	path = strings.TrimSpace(path)
+	return path != "" && !strings.Contains(path, "://")
+}
+
+func nextcloudAttachmentFallbackText(att channel.Attachment) string {
+	if strings.TrimSpace(att.URL) != "" {
+		return strings.TrimSpace(att.URL)
+	}
+	if strings.TrimSpace(att.Name) != "" {
+		return strings.TrimSpace(att.Name)
+	}
+	if len(att.Data) == 0 {
+		return ""
+	}
+	switch att.Type {
+	case channel.MessageTypeImage:
+		return "Image attachment"
+	case channel.MessageTypeVideo:
+		return "Video attachment"
+	case channel.MessageTypeAudio:
+		return "Audio attachment"
+	default:
+		return "File attachment"
+	}
 }
 
 func (c *Channel) sendText(ctx context.Context, roomToken, text, replyToID string) error {
@@ -354,9 +483,9 @@ func (c *Channel) shareFile(ctx context.Context, roomToken string, att channel.A
 
 	// shareType 10 = share to Talk room.
 	payload := map[string]interface{}{
-		"shareType":  10,
-		"shareWith":  roomToken,
-		"path":       att.URL,
+		"shareType":   10,
+		"shareWith":   roomToken,
+		"path":        att.URL,
 		"permissions": 1, // read-only
 	}
 

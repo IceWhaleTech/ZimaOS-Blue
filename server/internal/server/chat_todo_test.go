@@ -87,7 +87,7 @@ func TestShouldAutoContinueForActionPledge(t *testing.T) {
 	})
 
 	t.Run("continues for chinese quick-check plus wait phrasing", func(t *testing.T) {
-		current := "我先帮你快速查一下 OpenClaw 的最新相关新闻与动态。请稍等，我整理成要点给你。"
+		current := "我先帮你快速查一下 BlueAgent 的最新相关新闻与动态。请稍等，我整理成要点给你。"
 		if !shouldAutoContinueForActionPledge(current) {
 			t.Fatalf("expected auto-continue for chinese quick-check wait phrasing")
 		}
@@ -145,9 +145,9 @@ func TestShouldAutoContinueForActionPledge(t *testing.T) {
 
 func TestShouldPreferDeepSearchReport(t *testing.T) {
 	positive := []string{
-		"帮我做一个 openclaw 最新新闻的深度搜索",
-		"Please do deep research on OpenClaw latest updates with sources",
-		"给我一份 OpenClaw 更新报告并附引用来源",
+		"帮我做一个 blueagent 最新新闻的深度搜索",
+		"Please do deep research on BlueAgent latest updates with sources",
+		"给我一份 BlueAgent 更新报告并附引用来源",
 	}
 	for _, msg := range positive {
 		if !shouldPreferDeepSearchReport(msg) {
@@ -168,7 +168,7 @@ func TestShouldPreferDeepSearchReport(t *testing.T) {
 }
 
 func TestBuildDeepSearchExecutionHint(t *testing.T) {
-	hint := buildDeepSearchExecutionHint("帮我查 OpenClaw 最新动态并做完整报告")
+	hint := buildDeepSearchExecutionHint("帮我查 BlueAgent 最新动态并做完整报告")
 	if hint == "" {
 		t.Fatal("expected deep-search execution hint for latest/news request")
 	}
@@ -185,13 +185,13 @@ func TestBuildDeepSearchExecutionHint(t *testing.T) {
 }
 
 func TestShouldEnforceDeepSearchMinRounds(t *testing.T) {
-	if !shouldEnforceDeepSearchMinRounds("请做 OpenClaw 最新动态深度搜索，并给我完整报告附来源") {
+	if !shouldEnforceDeepSearchMinRounds("请做 BlueAgent 最新动态深度搜索，并给我完整报告附来源") {
 		t.Fatal("expected hard deep-search gate for explicit deep-search report request")
 	}
-	if !shouldEnforceDeepSearchMinRounds("OpenClaw latest updates with sources and citations") {
+	if !shouldEnforceDeepSearchMinRounds("BlueAgent latest updates with sources and citations") {
 		t.Fatal("expected hard deep-search gate for freshness + source requirement")
 	}
-	if shouldEnforceDeepSearchMinRounds("openclaw news") {
+	if shouldEnforceDeepSearchMinRounds("blueagent news") {
 		t.Fatal("expected no hard deep-search gate for lightweight news lookup")
 	}
 }
@@ -203,7 +203,7 @@ func TestResolveToolRoundLimitForRequest(t *testing.T) {
 		t.Fatalf("default non-agent tool rounds = %d, want %d", got, maxToolRounds)
 	}
 
-	researchMsg := "请做 OpenClaw 最新动态深度搜索，并给我完整报告附来源"
+	researchMsg := "请做 BlueAgent 最新动态深度搜索，并给我完整报告附来源"
 	gotResearch := h.resolveToolRoundLimitForRequest(false, researchMsg, false)
 	if gotResearch <= maxToolRounds {
 		t.Fatalf("expected research request to increase tool rounds, got=%d base=%d", gotResearch, maxToolRounds)
@@ -212,7 +212,7 @@ func TestResolveToolRoundLimitForRequest(t *testing.T) {
 		t.Fatalf("research tool rounds exceeded hard cap: got=%d cap=%d", gotResearch, maxToolRoundsNonAgentHardCap)
 	}
 
-	gotDeepHint := h.resolveToolRoundLimitForRequest(false, "openclaw news", true)
+	gotDeepHint := h.resolveToolRoundLimitForRequest(false, "blueagent news", true)
 	if gotDeepHint <= maxToolRounds {
 		t.Fatalf("expected deep-search hint to increase tool rounds, got=%d base=%d", gotDeepHint, maxToolRounds)
 	}
@@ -226,7 +226,7 @@ func TestResolveToolRoundLimitForRequest(t *testing.T) {
 }
 
 func TestDeepSearchLoopState_ForceUntilMinRounds(t *testing.T) {
-	state := newDeepSearchLoopState("请深度检索 OpenClaw 最新新闻并整理完整报告", []tools.ToolDefinition{
+	state := newDeepSearchLoopState("请深度检索 BlueAgent 最新新闻并整理完整报告", []tools.ToolDefinition{
 		{Name: "web_search"},
 	})
 	if state == nil || !state.enabled {
@@ -239,13 +239,13 @@ func TestDeepSearchLoopState_ForceUntilMinRounds(t *testing.T) {
 
 	state.observeToolRound(
 		[]llm.ToolCall{
-			{ID: "s1", Name: "web_search", Arguments: `{"query":"OpenClaw release notes 2026"}`},
+			{ID: "s1", Name: "web_search", Arguments: `{"query":"BlueAgent release notes 2026"}`},
 		},
 		[]llm.Message{
 			{
 				Role:       llm.RoleTool,
 				ToolCallID: "s1",
-				Content:    `{"query":"OpenClaw release notes 2026","results":[{"title":"OpenClaw Releases","url":"https://github.com/openclaw/openclaw/releases","description":"release notes"}]}`,
+				Content:    `{"query":"BlueAgent release notes 2026","results":[{"title":"BlueAgent Releases","url":"https://github.com/blueagent/blueagent/releases","description":"release notes"}]}`,
 			},
 		},
 	)
@@ -258,13 +258,13 @@ func TestDeepSearchLoopState_ForceUntilMinRounds(t *testing.T) {
 
 	state.observeToolRound(
 		[]llm.ToolCall{
-			{ID: "s2", Name: "web_search", Arguments: `{"query":"OpenClaw docs updates"}`},
+			{ID: "s2", Name: "web_search", Arguments: `{"query":"BlueAgent docs updates"}`},
 		},
 		[]llm.Message{
 			{
 				Role:       llm.RoleTool,
 				ToolCallID: "s2",
-				Content:    `{"query":"OpenClaw docs updates","results":[{"title":"OpenClaw Docs","url":"https://docs.openclaw.ai/tools/web","description":"web tool docs"}]}`,
+				Content:    `{"query":"BlueAgent docs updates","results":[{"title":"BlueAgent Docs","url":"https://docs.blueagent.ai/tools/web","description":"web tool docs"}]}`,
 			},
 		},
 	)
@@ -277,7 +277,7 @@ func TestDeepSearchLoopState_ForceUntilMinRounds(t *testing.T) {
 }
 
 func TestDeepSearchLoopState_FailOpenOnNoProgress(t *testing.T) {
-	state := newDeepSearchLoopState("请深度检索 OpenClaw 最新新闻并整理完整报告", []tools.ToolDefinition{
+	state := newDeepSearchLoopState("请深度检索 BlueAgent 最新新闻并整理完整报告", []tools.ToolDefinition{
 		{Name: "web_search"},
 	})
 	if state == nil || !state.enabled {
@@ -308,7 +308,7 @@ func TestDeepSearchLoopState_FailOpenOnNoProgress(t *testing.T) {
 }
 
 func TestDeepSearchLoopState_FailOpenOnForceBudget(t *testing.T) {
-	state := newDeepSearchLoopState("deep research on OpenClaw latest updates", []tools.ToolDefinition{
+	state := newDeepSearchLoopState("deep research on BlueAgent latest updates", []tools.ToolDefinition{
 		{Name: "web_search"},
 	})
 	if state == nil || !state.enabled {
@@ -327,7 +327,7 @@ func TestDeepSearchLoopState_FailOpenOnForceBudget(t *testing.T) {
 }
 
 func TestNewDeepSearchLoopState_DisabledWithoutSearchCapability(t *testing.T) {
-	state := newDeepSearchLoopState("帮我深度搜索 OpenClaw 最新消息", []tools.ToolDefinition{
+	state := newDeepSearchLoopState("帮我深度搜索 BlueAgent 最新消息", []tools.ToolDefinition{
 		{Name: "reminder"},
 		{Name: "scheduler"},
 	})
@@ -342,31 +342,31 @@ func TestNewDeepSearchLoopState_DisabledWithoutSearchCapability(t *testing.T) {
 func TestIsShortQAShape_SkipsDeepSearchRequest(t *testing.T) {
 	h := &ChatHandler{}
 	req := SendMessageRequest{}
-	if h.isShortQAShape(req, "帮我查一下 openclaw 的最新新闻") {
+	if h.isShortQAShape(req, "帮我查一下 blueagent 的最新新闻") {
 		t.Fatal("expected deep-search/news request not to route to short-qa")
 	}
-	if !h.isShortQAShape(req, "什么是 OpenClaw?") {
+	if !h.isShortQAShape(req, "什么是 BlueAgent?") {
 		t.Fatal("expected simple short question to keep short-qa shape")
 	}
 }
 
 func TestCompactAdditionalSearchToolResultForLLM_KeptPreview(t *testing.T) {
 	payload := map[string]interface{}{
-		"query": "OpenClaw latest news",
+		"query": "BlueAgent latest news",
 		"results": []interface{}{
 			map[string]interface{}{
-				"title":       "OpenClaw release notes",
-				"url":         "https://github.com/openclaw/openclaw/releases",
+				"title":       "BlueAgent release notes",
+				"url":         "https://github.com/blueagent/blueagent/releases",
 				"description": "official release notes",
 			},
 			map[string]interface{}{
-				"title":       "OpenClaw docs",
-				"url":         "https://docs.openclaw.ai/",
+				"title":       "BlueAgent docs",
+				"url":         "https://docs.blueagent.ai/",
 				"description": "official docs",
 			},
 			map[string]interface{}{
-				"title":       "OpenClaw community report",
-				"url":         "https://example.com/openclaw-report",
+				"title":       "BlueAgent community report",
+				"url":         "https://example.com/blueagent-report",
 				"description": "community coverage",
 			},
 		},
@@ -395,7 +395,7 @@ func TestCompactAdditionalSearchToolResultForLLM_KeptPreview(t *testing.T) {
 }
 
 func TestSanitizeResponseContent_StripsMalformedCommandWorkdirPrefix(t *testing.T) {
-	leaked := "{\"command\":\"blue web_search query=\\\"OpenClaw GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 OpenClaw 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
+	leaked := "{\"command\":\"blue web_search query=\\\"BlueAgent GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
 	got := sanitizeResponseContentWithProvider(leaked, "MockProxy", "prov_auto_continue_scripted", "gpt-5.3-codex-spark")
 	if strings.Contains(got, `"command":"blue web_search`) {
 		t.Fatalf("expected leaked command json removed from sanitized content, got=%q", got)
@@ -403,7 +403,7 @@ func TestSanitizeResponseContent_StripsMalformedCommandWorkdirPrefix(t *testing.
 	if strings.Contains(got, `"workdir":`) {
 		t.Fatalf("expected leaked workdir removed from sanitized content, got=%q", got)
 	}
-	if !strings.Contains(got, "我先帮你搜到一批 OpenClaw 相关最新结果") {
+	if !strings.Contains(got, "我先帮你搜到一批 BlueAgent 相关最新结果") {
 		t.Fatalf("expected user-facing text retained after sanitize, got=%q", got)
 	}
 }
@@ -467,8 +467,21 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 
 	t.Run("continues on leaked tool execution envelope text", func(t *testing.T) {
 		current := "{\"tool_uses\":[...]} with recipient multi_tool_use.parallel. " +
-			"{\"command\":\"blue web_search query=\\\"OpenClaw GitHub\\\"\"}" +
+			"{\"command\":\"blue web_search query=\\\"BlueAgent GitHub\\\"\"}" +
 			"{\"data\":{\"format\":\"xml\",\"result\":\"<web_search>...</web_search>\",\"success\":true},\"duration_ms\":5,\"exit_code\":0,\"host\":\"local\",\"session_id\":\"16b745a8\",\"status\":\"completed\",\"stdout\":\"format: xml\"}"
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if !ok || reason != "pseudo_tool_call" {
+			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
+	t.Run("continues on protocol deliberation leakage text", func(t *testing.T) {
+		current := `{"format":"..."}
+No to field maybe automatically from functions.web_search?
+Actually first call in transcript: assistant with commentary.
+In this interface, I need specify function in message property maybe not possible manually?
+Need include in assistant message header not possible in plaintext.
+{"format":"...","max_results":10,"provider":"duckduckgo","query":"site:github.com/blueagent/blueagent/releases","region":"wt-wt"}`
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
 		if !ok || reason != "pseudo_tool_call" {
 			t.Fatalf("expected pseudo_tool_call auto-continue, got ok=%v reason=%q", ok, reason)
@@ -500,7 +513,7 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 	})
 
 	t.Run("does not auto-continue for leaked command/workdir prefix when answer body is already concrete", func(t *testing.T) {
-		current := "{\"command\":\"blue web_search query=\\\"OpenClaw GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 OpenClaw 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
+		current := "{\"command\":\"blue web_search query=\\\"BlueAgent GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
 		if ok {
 			t.Fatalf("expected no auto-continue for leaked command/workdir prefix with concrete answer body, got reason=%q", reason)
@@ -1003,6 +1016,21 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	}
 }
 
+func TestClassifyEmptyPostToolAutoContinueReason(t *testing.T) {
+	if got := classifyEmptyPostToolAutoContinueReason("", false, false); got != "post_tool_summary" {
+		t.Fatalf("non-agent reason = %q, want post_tool_summary", got)
+	}
+	if got := classifyEmptyPostToolAutoContinueReason("", true, false); got != "missing_todo" {
+		t.Fatalf("agent missing TODO reason = %q, want missing_todo", got)
+	}
+	if got := classifyEmptyPostToolAutoContinueReason("- [ ] 搜索最近动态", true, false); got != "pending_todo" {
+		t.Fatalf("agent pending TODO reason = %q, want pending_todo", got)
+	}
+	if got := classifyEmptyPostToolAutoContinueReason("- [x] 搜索最近动态", true, true); got != "post_tool_summary" {
+		t.Fatalf("agent completed plan reason = %q, want post_tool_summary", got)
+	}
+}
+
 func TestShouldCollapseToollessAutoContinueRound(t *testing.T) {
 	if !shouldCollapseToollessAutoContinueRound("pending_todo", "- [ ] step 1") {
 		t.Fatal("expected pending_todo rounds to be collapsed")
@@ -1176,6 +1204,151 @@ func TestBuildToolFallbackText_NoToolResults(t *testing.T) {
 	}
 }
 
+func TestBuildToolFallbackText_UsesExtractedSafeSummaryWhenAvailable(t *testing.T) {
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "帮我调研一下最近一周 blueagent 的动向"},
+		{
+			Role: llm.RoleAssistant,
+			ToolCalls: []llm.ToolCall{
+				{ID: "call_web_1", Name: "web_search", Arguments: `{"query":"blueagent latest"}`},
+			},
+		},
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call_web_1",
+			Content:    `{"query":"blueagent latest","results":[{"title":"BlueAgent Releases","url":"https://github.com/blueagent/blueagent/releases","description":"release notes"},{"title":"BlueAgent Docs","url":"https://docs.blueagent.ai","description":"documentation"}],"stdout":"secret-token"}`,
+		},
+	}
+
+	out, toolCount := buildToolFallbackText(msgs, 4096)
+	if toolCount != 1 {
+		t.Fatalf("toolCount = %d, want 1", toolCount)
+	}
+	if !strings.Contains(out, "自动提炼的安全摘要") {
+		t.Fatalf("expected extracted safe summary marker, got=%q", out)
+	}
+	if !strings.Contains(out, "BlueAgent Releases") {
+		t.Fatalf("expected extracted web search title in fallback, got=%q", out)
+	}
+	if strings.Contains(out, "Safe status:") {
+		t.Fatalf("expected extracted summary path, got generic safe status fallback=%q", out)
+	}
+	if strings.Contains(out, "secret-token") {
+		t.Fatalf("expected raw tool output redacted in fallback, got=%q", out)
+	}
+}
+
+func TestBuildToolFallbackText_UsesExtractedSummaryForWebSearchXML(t *testing.T) {
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "帮我看看 BlueAgent 最近一周动态"},
+		{
+			Role: llm.RoleAssistant,
+			ToolCalls: []llm.ToolCall{
+				{ID: "call_web_xml_1", Name: "web_search", Arguments: `{"query":"blueagent weekly"}`},
+			},
+		},
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call_web_xml_1",
+			Content: `<web_search>
+  <query>blueagent weekly</query>
+  <provider>duckduckgo</provider>
+  <total_count>2</total_count>
+  <results>
+    <result><title>BlueAgent Weekly Update</title><url>https://example.com/a</url></result>
+    <result><title>BlueAgent Release Notes</title><url>https://example.com/b</url></result>
+  </results>
+</web_search>`,
+		},
+	}
+
+	out, toolCount := buildToolFallbackText(msgs, 4096)
+	if toolCount != 1 {
+		t.Fatalf("toolCount = %d, want 1", toolCount)
+	}
+	if !strings.Contains(out, "自动提炼的安全摘要") {
+		t.Fatalf("expected extracted safe summary marker, got=%q", out)
+	}
+	if !strings.Contains(out, "BlueAgent Weekly Update") {
+		t.Fatalf("expected extracted xml web_search title in fallback, got=%q", out)
+	}
+	if strings.Contains(out, "Safe status:") {
+		t.Fatalf("expected extracted summary path, got generic safe status fallback=%q", out)
+	}
+}
+
+func TestBuildToolFallbackTextWithOptions_UsesConciseSummaryWhenCardsVisible(t *testing.T) {
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "帮我调研一下最近一周 OpenClaw 的动向"},
+		{
+			Role: llm.RoleAssistant,
+			ToolCalls: []llm.ToolCall{{
+				ID:        "call_web_2",
+				Name:      "web_search",
+				Arguments: `{"query":"OpenClaw latest news 2025"}`,
+			}},
+		},
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call_web_2",
+			Content:    `{"query":"OpenClaw latest news 2025","results":[{"title":"OpenClaw 发布周报","url":"https://example.com/openclaw-weekly"},{"title":"OpenClaw Roadmap Update","url":"https://example.com/openclaw-roadmap"}],"stdout":"secret-token"}`,
+		},
+	}
+
+	out, toolCount := buildToolFallbackTextWithOptions(msgs, 4096, toolFallbackTextOptions{toolCardsVisible: true})
+	if toolCount != 1 {
+		t.Fatalf("toolCount = %d, want 1", toolCount)
+	}
+	if !strings.Contains(out, "我先根据已完成的工具结果，给你一个简要汇总") {
+		t.Fatalf("expected concise cards-visible summary intro, got=%q", out)
+	}
+	if !strings.Contains(out, "详细执行记录见上方工具卡片") {
+		t.Fatalf("expected cards-visible follow-up note, got=%q", out)
+	}
+	if !strings.Contains(out, "OpenClaw 发布周报") {
+		t.Fatalf("expected extracted search result title, got=%q", out)
+	}
+	if strings.Contains(out, "最终总结生成失败") {
+		t.Fatalf("expected softer fallback wording without failure phrasing, got=%q", out)
+	}
+	if strings.Contains(out, "secret-token") {
+		t.Fatalf("expected raw tool output redacted in fallback, got=%q", out)
+	}
+}
+
+func TestBuildToolFallbackText_UsesToolNameSummaryWhenExtractionUnavailable(t *testing.T) {
+	msgs := []llm.Message{
+		{Role: llm.RoleUser, Content: "帮我查一下近期项目进展"},
+		{
+			Role: llm.RoleAssistant,
+			ToolCalls: []llm.ToolCall{
+				{ID: "call_1", Name: "web_search"},
+				{ID: "call_2", Name: "exec_command"},
+			},
+		},
+		// Simulate concurrent completion order: call_2 returns before call_1.
+		{Role: llm.RoleTool, ToolCallID: "call_2", Content: "execution completed"},
+		{Role: llm.RoleTool, ToolCallID: "call_1", Content: `{"status":"running","stdout":"secret"}`},
+	}
+
+	out, toolCount := buildToolFallbackText(msgs, 4096)
+	if toolCount != 2 {
+		t.Fatalf("toolCount = %d, want 2", toolCount)
+	}
+	if strings.Contains(out, "Safe status:") {
+		t.Fatalf("expected tool-name fallback path instead of safe status diagnostics, got=%q", out)
+	}
+	if !strings.Contains(out, "exec_command") || !strings.Contains(out, "web_search") {
+		t.Fatalf("expected tool names in fallback summary, got=%q", out)
+	}
+	if !strings.Contains(out, "stdout/stderr/error") {
+		t.Fatalf("expected redaction notice in fallback, got=%q", out)
+	}
+	if strings.Contains(out, "secret") {
+		t.Fatalf("expected raw tool output redacted in fallback, got=%q", out)
+	}
+}
+
 func TestFormatProcessBlock_HidesSensitiveToolResultOutput(t *testing.T) {
 	summary := []map[string]interface{}{
 		{
@@ -1186,13 +1359,13 @@ func TestFormatProcessBlock_HidesSensitiveToolResultOutput(t *testing.T) {
 	}
 	got := formatProcessBlock(summary)
 	if strings.Contains(got, "password=abc123") || strings.Contains(got, "token=xyz") {
-		t.Fatalf("expected process block to hide sensitive result text, got=%q", got)
+		t.Fatalf("expected process block to mask sensitive result text, got=%q", got)
 	}
-	if !strings.Contains(got, "error (details hidden)") {
-		t.Fatalf("expected process block to preserve redacted error status, got=%q", got)
+	if !strings.Contains(got, "password=[REDACTED]") {
+		t.Fatalf("expected process block to include masked error details, got=%q", got)
 	}
-	if !strings.Contains(got, "stdout hidden for safety") {
-		t.Fatalf("expected process block to mark stdout as hidden, got=%q", got)
+	if !strings.Contains(got, "token=[REDACTED]") {
+		t.Fatalf("expected process block to include masked stdout text, got=%q", got)
 	}
 }
 
@@ -1413,7 +1586,7 @@ to=functions.exec  菲娱json
 {"command":"blue help browser","workdir":"/Users/orca/.zimaos-blue/data/workspace"}收到，你选 **2**。
 
 第 2 条是这篇：
-- 标题：别再用旧版了！OpenClaw 2026.2.9 更新迁移避坑指南`
+- 标题：别再用旧版了！BlueAgent 2026.2.9 更新迁移避坑指南`
 
 	got := sanitizeResponseContent(raw)
 	if strings.Contains(strings.ToLower(got), "to=functions.exec") {
@@ -1439,7 +1612,7 @@ func TestSanitizeResponseContent_DoesNotStripBenignJSONExample(t *testing.T) {
 }
 
 func TestSanitizeResponseContent_StripsLeakedCommandWorkdirPrefixButKeepsAnswer(t *testing.T) {
-	raw := `{"command":"blue web_search query=\"OpenClaw GitHub release\"""workdir":"/Users/orca/.zimaos-blue/data/workspace"}我先帮你搜到一批 OpenClaw 相关最新结果（当前检索到 5 条）：`
+	raw := `{"command":"blue web_search query=\"BlueAgent GitHub release\"""workdir":"/Users/orca/.zimaos-blue/data/workspace"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：`
 	got := sanitizeResponseContent(raw)
 	if strings.Contains(got, `"command":"blue web_search`) {
 		t.Fatalf("expected leaked command json removed, got=%q", got)
@@ -1447,7 +1620,7 @@ func TestSanitizeResponseContent_StripsLeakedCommandWorkdirPrefixButKeepsAnswer(
 	if strings.Contains(got, `"workdir":`) {
 		t.Fatalf("expected leaked workdir removed, got=%q", got)
 	}
-	if !strings.Contains(got, "我先帮你搜到一批 OpenClaw 相关最新结果") {
+	if !strings.Contains(got, "我先帮你搜到一批 BlueAgent 相关最新结果") {
 		t.Fatalf("expected user-facing answer retained, got=%q", got)
 	}
 }
@@ -1486,5 +1659,27 @@ func TestSanitizeResponseContentWithProvider_ProfileStrategy(t *testing.T) {
 	minimal := sanitizeResponseContentWithProvider(raw, "deepresearch", "deepresearch", "deepresearch-fallback")
 	if minimal != raw {
 		t.Fatalf("expected minimal profile to keep benign single command example, got=%q", minimal)
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_StripsProtocolDeliberationLeakInStrictProfile(t *testing.T) {
+	raw := `{"format":"..."}
+No to field maybe automatically from functions.web_search? Actually first call in transcript: assistant with commentary.
+In this interface, I need specify function in message property maybe not possible manually?
+{"format":"...","max_results":10,"provider":"duckduckgo","query":"site:github.com/blueagent/blueagent/releases","region":"wt-wt"}
+以下是最近一周 BlueAgent 动向：发布了新版本并修复了关键问题。`
+
+	got := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.3-codex-spark")
+	if strings.Contains(got, "functions.web_search") {
+		t.Fatalf("expected protocol deliberation leakage removed, got=%q", got)
+	}
+	if strings.Contains(got, "assistant with commentary") {
+		t.Fatalf("expected commentary scaffold removed, got=%q", got)
+	}
+	if strings.Contains(got, `{"format":"...","max_results":10`) {
+		t.Fatalf("expected leaked protocol json removed, got=%q", got)
+	}
+	if !strings.Contains(got, "以下是最近一周 BlueAgent 动向") {
+		t.Fatalf("expected user-facing summary retained, got=%q", got)
 	}
 }

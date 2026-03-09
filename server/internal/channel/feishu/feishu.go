@@ -387,21 +387,45 @@ func (c *Channel) SendText(ctx context.Context, chatID string, text string, repl
 }
 
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
-	// Send attachments first (image/video/file), then text caption
+	if cardJSON, ok, err := feishuCardJSON(msg.Metadata); err != nil {
+		return err
+	} else if ok {
+		return c.sendCardMessage(ctx, msg.ChatID, cardJSON, msg.ReplyToID)
+	}
+
+	sentAny := false
 	for _, att := range msg.Attachments {
 		if err := c.sendAttachment(ctx, msg.ChatID, msg.ReplyToID, att); err != nil {
 			c.logger.Warn("failed to send attachment, falling back to text",
-				zap.String("type", string(att.Type)), zap.Error(err))
-			if att.URL != "" {
-				_ = c.SendText(ctx, msg.ChatID, att.URL, msg.ReplyToID)
+				zap.String("type", string(att.Type)),
+				zap.String("name", att.Name),
+				zap.Error(err))
+			fallback := feishuAttachmentFallback(att)
+			if fallback == "" {
+				continue
 			}
+			if err := c.SendText(ctx, msg.ChatID, fallback, msg.ReplyToID); err != nil {
+				return fmt.Errorf("failed to send attachment fallback: %w", err)
+			}
+			sentAny = true
+			continue
 		}
+		sentAny = true
 	}
 	if msg.Content != "" {
 		if strings.EqualFold(msg.Format, "markdown") {
-			return c.SendMarkdown(ctx, msg.ChatID, msg.Content, msg.ReplyToID)
+			if err := c.SendMarkdown(ctx, msg.ChatID, msg.Content, msg.ReplyToID); err != nil {
+				return err
+			}
+		} else {
+			if err := c.SendText(ctx, msg.ChatID, msg.Content, msg.ReplyToID); err != nil {
+				return err
+			}
 		}
-		return c.SendText(ctx, msg.ChatID, msg.Content, msg.ReplyToID)
+		sentAny = true
+	}
+	if !sentAny {
+		return fmt.Errorf("no sendable Feishu content")
 	}
 	return nil
 }
@@ -487,17 +511,10 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID string, 
 }
 
 func (c *Channel) SendCard(ctx context.Context, chatID string, cardJSON string) error {
-	receiveIDType := resolveReceiveIDType(chatID)
-	return c.client.sendMessage(ctx, receiveIDType, chatID, "interactive", cardJSON, "")
+	return c.sendCardMessage(ctx, chatID, cardJSON, "")
 }
 
-// SendMarkdown sends markdown content using Feishu interactive cards.
-// It preserves markdown structure (including headings/tables) instead of humanizing to plain text.
-func (c *Channel) SendMarkdown(ctx context.Context, chatID, markdown, replyToID string) error {
-	cardJSON, err := buildMarkdownCardJSON(markdown)
-	if err != nil {
-		return err
-	}
+func (c *Channel) sendCardMessage(ctx context.Context, chatID string, cardJSON string, replyToID string) error {
 	receiveIDType := resolveReceiveIDType(chatID)
 	c.removeTypingReaction(ctx, replyToID)
 	if err := c.client.sendMessage(ctx, receiveIDType, chatID, "interactive", cardJSON, replyToID); err != nil {
@@ -509,6 +526,64 @@ func (c *Channel) SendMarkdown(ctx context.Context, chatID, markdown, replyToID 
 	c.lastReplyAt = &now
 	c.mu.Unlock()
 	return nil
+}
+
+// SendMarkdown sends markdown content using Feishu interactive cards.
+// It preserves markdown structure (including headings/tables) instead of humanizing to plain text.
+func (c *Channel) SendMarkdown(ctx context.Context, chatID, markdown, replyToID string) error {
+	cardJSON, err := buildMarkdownCardJSON(markdown)
+	if err != nil {
+		return err
+	}
+	return c.sendCardMessage(ctx, chatID, cardJSON, replyToID)
+}
+
+func feishuCardJSON(metadata map[string]interface{}) (string, bool, error) {
+	if metadata == nil {
+		return "", false, nil
+	}
+	for _, key := range []string{"card_json", "card"} {
+		raw, ok := metadata[key]
+		if !ok {
+			continue
+		}
+		switch value := raw.(type) {
+		case string:
+			if strings.TrimSpace(value) == "" {
+				return "", false, nil
+			}
+			return value, true, nil
+		default:
+			body, err := json.Marshal(value)
+			if err != nil {
+				return "", false, fmt.Errorf("failed to marshal Feishu %s: %w", key, err)
+			}
+			return string(body), true, nil
+		}
+	}
+	return "", false, nil
+}
+
+func feishuAttachmentFallback(att channel.Attachment) string {
+	if strings.TrimSpace(att.URL) != "" {
+		return strings.TrimSpace(att.URL)
+	}
+	if strings.TrimSpace(att.Name) != "" {
+		return strings.TrimSpace(att.Name)
+	}
+	if len(att.Data) == 0 {
+		return ""
+	}
+	switch att.Type {
+	case channel.MessageTypeImage:
+		return "Image attachment"
+	case channel.MessageTypeVideo:
+		return "Video attachment"
+	case channel.MessageTypeAudio:
+		return "Audio attachment"
+	default:
+		return "File attachment"
+	}
 }
 
 func (c *Channel) Stop(ctx context.Context) error {

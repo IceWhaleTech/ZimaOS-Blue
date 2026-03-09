@@ -264,11 +264,12 @@ func (s *MemoryService) GetSearcher() *HybridSearcher {
 
 // Remember stores a memory.
 func (s *MemoryService) Remember(ctx context.Context, content string, tags []string) (*MemoryChunk, error) {
-	metadata := make(map[string]string)
-	if len(tags) > 0 {
-		for i, tag := range tags {
-			metadata[fmt.Sprintf("tag_%d", i)] = tag
-		}
+	return s.RememberWithMetadata(ctx, content, metadataFromTags(tags))
+}
+
+func (s *MemoryService) RememberWithMetadata(ctx context.Context, content string, metadata map[string]string) (*MemoryChunk, error) {
+	if metadata == nil {
+		metadata = map[string]string{}
 	}
 	return s.Searcher.Store(ctx, content, metadata)
 }

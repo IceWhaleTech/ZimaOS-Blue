@@ -228,13 +228,11 @@ func checkServiceRunning() CheckResult {
 		Name: "Service Status",
 	}
 
-	port := 8080
-	if devMode {
-		port = 8081
-	}
+	port := resolveServerPort()
+	baseURL := getServiceBaseURL()
 
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/health", port))
+	resp, err := client.Get(baseURL + "/health")
 	if err != nil {
 		result.Status = "warn"
 		result.Message = "Service not running"
@@ -257,20 +255,18 @@ func checkPort() CheckResult {
 		Name: "Port Availability",
 	}
 
-	port := 8080
-	if devMode {
-		port = 8081
-	}
+	port := resolveServerPort()
+	baseURL := getServiceBaseURL()
 
 	// Try to connect to the port
 	client := &http.Client{Timeout: 1 * time.Second}
-	_, err := client.Get(fmt.Sprintf("http://localhost:%d", port))
+	_, err := client.Get(baseURL)
 	if err != nil {
 		result.Status = "pass"
 		result.Message = fmt.Sprintf("Port %d available", port)
 	} else {
 		// Port is in use - check if it's our service
-		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/health", port))
+		resp, err := client.Get(baseURL + "/health")
 		if err == nil {
 			resp.Body.Close()
 			result.Status = "pass"

@@ -354,7 +354,17 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 					firstWord, firstWord, firstWord,
 				)
 			}
-			input := map[string]any{"query": restArgs}
+			if shouldParsePinnedSkillArgs(firstWord, restArgs) {
+				if result, ok := t.trySkillShortCircuit(ctx, command, nil); ok {
+					return result, nil
+				}
+				return nil, fmt.Errorf("invalid %s arguments", firstWord)
+			}
+
+			input, err := buildPinnedSkillFreeTextInput(firstWord, restArgs)
+			if err != nil {
+				return nil, err
+			}
 			slog.Info("[exec] pinned skill short-circuit", "skill", firstWord, "input", restArgs, "source", "direct_command")
 			data, err := t.skillExec(ctx, firstWord, input)
 			if err != nil {
@@ -364,7 +374,6 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 					"error", err)
 				return nil, err
 			}
-			// Log success
 			slog.Info("[exec] pinned skill short-circuit success",
 				"skill", firstWord,
 				"input", restArgs)
@@ -871,7 +880,7 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 			slog.Info("[exec] skill short-circuit skipped", "reason", "no_skill_token", "command", truncateStr(command, 200))
 			return nil, false
 		}
-		rest = strings.TrimSpace(trimmed[spaceIdx:])
+		rest = trimmed
 	}
 
 	if rest == "" {
@@ -979,7 +988,7 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 			Status:    "failed",
 			ExitCode:  &exitCode,
 			Stderr:    err.Error(),
-			Warnings:  append(warnings, "skill short-circuit: "+skillName),
+			Warnings:  warnings,
 			Host:      "local",
 		}
 		b, _ := json.Marshal(result)
@@ -1003,7 +1012,6 @@ func (t *ExecTool) buildSkillResult(ctx context.Context, skillName string, data 
 
 	emitSkillResultCardFromData(ctx, skillName, data)
 
-	warnings = append(warnings, "skill short-circuit: "+skillName)
 	exitCode := 0
 	result := execResult{
 		SessionID: NewSessionID(),
@@ -1246,15 +1254,15 @@ func parseKeyValuePairs(s string, out map[string]any) {
 
 		// Parse value (may be quoted)
 		var val string
-		if len(s) > 0 && s[0] == '"' {
-			// Find closing quote (handle escaped quotes)
+		if len(s) > 0 && (s[0] == '"' || s[0] == '\'') {
+			quote := s[0]
 			end := 1
 			for end < len(s) {
 				if s[end] == '\\' && end+1 < len(s) {
 					end += 2
 					continue
 				}
-				if s[end] == '"' {
+				if s[end] == quote {
 					break
 				}
 				end++
@@ -1266,8 +1274,11 @@ func parseKeyValuePairs(s string, out map[string]any) {
 				val = s[1:]
 				s = ""
 			}
-			// Unescape
-			val = strings.ReplaceAll(val, `\"`, `"`)
+			if quote == '"' {
+				val = strings.ReplaceAll(val, `\"`, `"`)
+			} else {
+				val = strings.ReplaceAll(val, `\'`, `'`)
+			}
 		} else {
 			// Unquoted: read until next space
 			spIdx := strings.IndexByte(s, ' ')
@@ -1283,6 +1294,50 @@ func parseKeyValuePairs(s string, out map[string]any) {
 			appendParsedKeyValue(out, key, val)
 		}
 	}
+}
+
+func shouldParsePinnedSkillArgs(skillName, restArgs string) bool {
+	if strings.Contains(restArgs, "=") {
+		return true
+	}
+	if !supportsPositionalAction(skillName) {
+		return false
+	}
+	action, _ := consumeLeadingBareToken(restArgs)
+	return action != ""
+}
+
+func buildPinnedSkillFreeTextInput(skillName, restArgs string) (map[string]any, error) {
+	arg := strings.TrimSpace(restArgs)
+	if arg == "" {
+		return nil, fmt.Errorf("%s requires arguments", skillName)
+	}
+
+	switch strings.ToLower(strings.TrimSpace(skillName)) {
+	case "web_search", "deep_research":
+		return map[string]any{"query": arg}, nil
+	case "analyze":
+		return map[string]any{"topic": arg}, nil
+	case "browser":
+		if !looksLikeURL(arg) {
+			return nil, fmt.Errorf("browser free-text calls require a URL or structured args like action=navigate url=...")
+		}
+		return map[string]any{"action": "navigate", "url": arg}, nil
+	case "ui_reviewer":
+		if !looksLikeURL(arg) {
+			return nil, fmt.Errorf("ui_reviewer free-text calls require a URL or structured args like action=review_url url=...")
+		}
+		return map[string]any{"url": arg}, nil
+	case "ask":
+		return nil, fmt.Errorf("ask requires structured args: q=... a='[...]' or questions='[...]'")
+	default:
+		return nil, fmt.Errorf("%s requires structured arguments. Use key=value pairs or 'blue %s <args>'", skillName, skillName)
+	}
+}
+
+func looksLikeURL(s string) bool {
+	s = strings.TrimSpace(strings.ToLower(s))
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
 }
 
 func consumeLeadingBareToken(s string) (token string, remaining string) {

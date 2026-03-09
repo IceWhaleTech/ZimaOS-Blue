@@ -128,7 +128,13 @@ const displayModels = computed(() => {
 const verificationProbeEntries = computed(() => {
   if (!verificationResult.value?.probes) return []
   const probes = verificationResult.value.probes
-  const preferredOrder = ['models', 'chat_completions', 'responses_v1', 'responses_plain']
+  const showResponsesProbes = verificationResult.value.recommended_api_format === 'responses'
+    || verificationResult.value.detected_format === 'responses'
+    || verificationResult.value.responses_only
+  const preferredOrder = ['models', 'anthropic_messages', 'chat_completions']
+  if (showResponsesProbes) {
+    preferredOrder.push('responses_v1', 'responses_plain')
+  }
   const entries: Array<[string, { url: string; status_code?: number; reachable: boolean; error?: string }]> = []
 
   for (const key of preferredOrder) {
@@ -138,6 +144,9 @@ const verificationProbeEntries = computed(() => {
     }
   }
   for (const [key, probe] of Object.entries(probes)) {
+    if (!showResponsesProbes && (key === 'responses_v1' || key === 'responses_plain')) {
+      continue
+    }
     if (!preferredOrder.includes(key) && probe?.reachable) {
       entries.push([key, probe])
     }
@@ -1787,7 +1796,7 @@ onMounted(() => {
             </div>
 
             <div v-if="verificationResult" class="space-y-2">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                 <div class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700">
                   <div class="text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyDetectedFormat') }}</div>
                   <div class="font-mono text-gray-900 dark:text-white">{{ verificationResult.detected_format || '-' }}</div>
@@ -1796,10 +1805,6 @@ onMounted(() => {
                   <div class="text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyRecommendedFormat') }}</div>
                   <div class="font-mono text-gray-900 dark:text-white">{{ verificationResult.recommended_api_format || '-' }}</div>
                 </div>
-                <div class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700">
-                  <div class="text-gray-500 dark:text-gray-400">{{ t('providerPool.verifyResponsesStatus') }}</div>
-                  <div class="text-gray-900 dark:text-white break-all">{{ verificationResult.responses_status || '-' }}</div>
-                </div>
               </div>
 
               <div class="text-xs">
@@ -1807,9 +1812,6 @@ onMounted(() => {
                 <div class="font-mono text-gray-900 dark:text-white break-all">{{ verificationResult.recommended_base_url || '-' }}</div>
               </div>
 
-              <div v-if="verificationResult.responses_only" class="text-[11px] inline-flex px-2 py-1 rounded bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300">
-                {{ t('providerPool.verifyResponsesOnly') }}
-              </div>
               <div v-if="verificationResult.chat_error" class="text-xs text-amber-600 dark:text-amber-400 break-all">
                 {{ t('providerPool.verifyChatError') }}: {{ verificationResult.chat_error }}
               </div>

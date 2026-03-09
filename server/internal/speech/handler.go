@@ -38,6 +38,11 @@ func NewHandler(svc Service, kv kvstore.Store, dataPath string) *Handler {
 	}
 }
 
+// Service returns the speech service.
+func (h *Handler) Service() Service {
+	return h.service
+}
+
 // GetEspeakManager returns the EspeakManager instance.
 func (h *Handler) GetEspeakManager() *EspeakManager {
 	return h.espeakManager

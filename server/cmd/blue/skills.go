@@ -68,11 +68,7 @@ type SkillInfo struct {
 }
 
 func getSkillsBaseURL() string {
-	port := 8080
-	if devMode {
-		port = 8081
-	}
-	return fmt.Sprintf("http://localhost:%d/api/v1/skills", port)
+	return getServiceAPIBaseURL("/api/v1/skills")
 }
 
 func runSkillsList(cmd *cobra.Command, args []string) {

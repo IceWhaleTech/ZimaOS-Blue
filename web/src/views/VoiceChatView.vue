@@ -13,6 +13,7 @@ import { speechApi } from '@/api/speech'
 import { WakeWordDetector } from '@/utils/wakeword'
 import { convertToWav } from '@/utils/audioConverter'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
+import { isTtsAutoPlayEnabled, setTtsAutoPlayEnabled } from '@/utils/ttsPreferences'
 import { useChatStore } from '@/stores/chat'
 
 const { t } = useI18n()
@@ -28,7 +29,7 @@ const messages = ref<{ role: 'user' | 'assistant'; text: string }[]>([])
 const voices = ref<Voice[]>([])
 const selectedVoice = ref('alloy')
 const selectedLanguage = ref('en')
-const autoPlayResponse = ref(true)
+const autoPlayResponse = ref(isTtsAutoPlayEnabled())
 const continuousListening = ref(false)
 const isPlaying = ref(false)
 
@@ -225,6 +226,11 @@ function stopRecording() {
   if (recorder?.isRecording) {
     recorder.stop()
   }
+}
+
+function updateAutoPlayResponse() {
+  setTtsAutoPlayEnabled(autoPlayResponse.value)
+  updateConfig()
 }
 
 function updateConfig() {
@@ -452,7 +458,7 @@ watch(wakeWordEnabled, () => {
               v-model="autoPlayResponse"
               type="checkbox"
               class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
-              @change="updateConfig"
+              @change="updateAutoPlayResponse"
             />
             <span class="text-sm text-gray-300">{{ t('voiceView.autoPlay') }}</span>
           </label>

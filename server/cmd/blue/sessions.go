@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -74,14 +76,52 @@ type SessionInfo struct {
 	Status       string    `json:"status"`
 }
 
+type sessionListEntry struct {
+	ID           string    `json:"id"`
+	Title        string    `json:"title"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	MessageCount int       `json:"message_count"`
+}
+
+type sessionListResponse struct {
+	Conversations []sessionListEntry `json:"conversations"`
+}
+
+func decodeSessionsListResponse(body io.Reader) (sessionListResponse, error) {
+	payload, err := io.ReadAll(body)
+	if err != nil {
+		return sessionListResponse{}, err
+	}
+
+	trimmed := bytes.TrimSpace(payload)
+	if len(trimmed) == 0 {
+		return sessionListResponse{}, nil
+	}
+
+	switch trimmed[0] {
+	case '[':
+		var conversations []sessionListEntry
+		if err := json.Unmarshal(trimmed, &conversations); err != nil {
+			return sessionListResponse{}, err
+		}
+		return sessionListResponse{Conversations: conversations}, nil
+	default:
+		var wrapped sessionListResponse
+		if err := json.Unmarshal(trimmed, &wrapped); err != nil {
+			return sessionListResponse{}, err
+		}
+		if wrapped.Conversations == nil {
+			wrapped.Conversations = []sessionListEntry{}
+		}
+		return wrapped, nil
+	}
+}
+
 func runSessionsList(cmd *cobra.Command, args []string) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	port := 8080
-	if devMode {
-		port = 8081
-	}
-	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	baseURL := getServiceBaseURL()
 
 	url := baseURL + "/api/v1/conversations"
 	if sessionsActive {
@@ -95,17 +135,8 @@ func runSessionsList(cmd *cobra.Command, args []string) {
 	}
 	defer resp.Body.Close()
 
-	var result struct {
-		Conversations []struct {
-			ID           string    `json:"id"`
-			Title        string    `json:"title"`
-			CreatedAt    time.Time `json:"created_at"`
-			UpdatedAt    time.Time `json:"updated_at"`
-			MessageCount int       `json:"message_count"`
-		} `json:"conversations"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	result, err := decodeSessionsListResponse(resp.Body)
+	if err != nil {
 		printSessionsError("Failed to parse response", err)
 		return
 	}
@@ -142,11 +173,7 @@ func runSessionsShow(cmd *cobra.Command, args []string) {
 	sessionID := args[0]
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	port := 8080
-	if devMode {
-		port = 8081
-	}
-	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	baseURL := getServiceBaseURL()
 
 	resp, err := client.Get(baseURL + "/api/v1/conversations/" + sessionID)
 	if err != nil {
@@ -221,11 +248,7 @@ func runSessionsDelete(cmd *cobra.Command, args []string) {
 	sessionID := args[0]
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	port := 8080
-	if devMode {
-		port = 8081
-	}
-	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	baseURL := getServiceBaseURL()
 
 	req, err := http.NewRequest(http.MethodDelete, baseURL+"/api/v1/conversations/"+sessionID, nil)
 	if err != nil {
@@ -281,11 +304,7 @@ func runSessionsClear(cmd *cobra.Command, args []string) {
 
 	client := &http.Client{Timeout: 30 * time.Second}
 
-	port := 8080
-	if devMode {
-		port = 8081
-	}
-	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	baseURL := getServiceBaseURL()
 
 	req, err := http.NewRequest(http.MethodDelete, baseURL+"/api/v1/conversations", nil)
 	if err != nil {

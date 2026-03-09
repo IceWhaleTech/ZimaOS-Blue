@@ -12,8 +12,8 @@ import (
 
 // MemoryRefresher interface for memory integration during compaction.
 type MemoryRefresher interface {
-	// RefreshMemory extracts important information from messages and saves to memory.
-	RefreshMemory(ctx context.Context, messages []sessionctx.Message, sessionID string) error
+	// RefreshMemory stores already-extracted important information.
+	RefreshMemory(ctx context.Context, extracted string, sessionID string) error
 }
 
 // MemoryRefreshConfig holds configuration for memory refresh before compaction.
@@ -75,16 +75,40 @@ func NewCompactorMemoryIntegration(
 
 // ShouldRefreshMemory checks if memory refresh should be triggered (soft threshold).
 func (c *CompactorMemoryIntegration) ShouldRefreshMemory(session *Session) bool {
-	if !c.config.Enabled {
+	if !c.config.Enabled || c.compactor == nil || !c.compactor.config.Enabled {
 		return false
 	}
-	ratio := session.TokenUsageRatio()
+	return c.shouldRefreshForRatio(session.TokenUsageRatio())
+}
+
+func (c *CompactorMemoryIntegration) shouldRefreshForRatio(ratio float64) bool {
 	return ratio >= c.config.SoftThresholdRatio && ratio < c.compactor.config.Threshold
+}
+
+// ShouldRefreshMemoryOnTransition returns true only when token usage crosses
+// from below soft threshold into the refresh window.
+func (c *CompactorMemoryIntegration) ShouldRefreshMemoryOnTransition(previousRatio float64, session *Session) bool {
+	if !c.ShouldRefreshMemory(session) {
+		return false
+	}
+	return !c.shouldRefreshForRatio(previousRatio)
 }
 
 // ShouldCompact delegates to the underlying compactor.
 func (c *CompactorMemoryIntegration) ShouldCompact(session *Session) bool {
+	if c.compactor == nil {
+		return false
+	}
 	return c.compactor.ShouldCompact(session)
+}
+
+// ShouldCompactOnTransition returns true only when token usage crosses
+// from below hard threshold into compaction window.
+func (c *CompactorMemoryIntegration) ShouldCompactOnTransition(previousRatio float64, session *Session) bool {
+	if !c.ShouldCompact(session) {
+		return false
+	}
+	return previousRatio < c.compactor.config.Threshold
 }
 
 // RefreshMemoryBeforeCompaction extracts and saves important information before compaction.
@@ -110,8 +134,8 @@ func (c *CompactorMemoryIntegration) RefreshMemoryBeforeCompaction(ctx context.C
 		return nil
 	}
 
-	// Save to memory
-	if err := c.memoryRefresher.RefreshMemory(ctx, messages, session.ID.String()); err != nil {
+	// Save extracted memory
+	if err := c.memoryRefresher.RefreshMemory(ctx, extracted, session.ID.String()); err != nil {
 		log.Printf("[WARN] failed to refresh memory: %v", err)
 		return nil
 	}
@@ -160,6 +184,10 @@ func (c *CompactorMemoryIntegration) extractImportantInfo(ctx context.Context, m
 
 // CompactWithMemoryRefresh performs compaction with memory refresh.
 func (c *CompactorMemoryIntegration) CompactWithMemoryRefresh(ctx context.Context, session *Session) (*CompactionResult, error) {
+	if c.compactor == nil {
+		return nil, fmt.Errorf("compactor not configured")
+	}
+
 	// First, refresh memory if enabled
 	if c.config.Enabled {
 		if err := c.RefreshMemoryBeforeCompaction(ctx, session); err != nil {

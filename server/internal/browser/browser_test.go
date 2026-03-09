@@ -107,6 +107,20 @@ func TestSecurityChecker_CheckURL(t *testing.T) {
 			expectError:    nil,
 		},
 		{
+			name:           "allow bare domain when allowlist set",
+			allowedDomains: []string{"allowed.com"},
+			blockedDomains: []string{},
+			url:            "allowed.com/page",
+			expectError:    nil,
+		},
+		{
+			name:           "ignore empty allowlist entries",
+			allowedDomains: []string{"", "allowed.com"},
+			blockedDomains: []string{},
+			url:            "https://allowed.com/page",
+			expectError:    nil,
+		},
+		{
 			name:           "reject non-allowed domain",
 			allowedDomains: []string{"allowed.com"},
 			blockedDomains: []string{},
@@ -146,6 +160,133 @@ func TestSecurityChecker_CheckURL(t *testing.T) {
 
 			err := checker.CheckURL(tt.url)
 			assert.Equal(t, tt.expectError, err)
+		})
+	}
+}
+
+func TestSecurityChecker_NormalizeAndCheckURL(t *testing.T) {
+	checker := NewSecurityChecker(&Config{})
+
+	t.Run("bare domain is normalized to https", func(t *testing.T) {
+		normalized, err := checker.NormalizeAndCheckURL("example.com/path")
+		require.NoError(t, err)
+		assert.Equal(t, "https://example.com/path", normalized)
+	})
+
+	t.Run("wrapped url and spaces are normalized", func(t *testing.T) {
+		normalized, err := checker.NormalizeAndCheckURL(` <"https://example.com/a b"> `)
+		require.NoError(t, err)
+		assert.Equal(t, "https://example.com/a%20b", normalized)
+	})
+}
+
+func TestSecurityChecker_NormalizeAndCheckURL_Table(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		want       string
+		wantErr    error
+		checkerCfg *Config
+	}{
+		{
+			name:       "protocol-relative URL gets https scheme",
+			input:      "//example.com/path",
+			want:       "https://example.com/path",
+			checkerCfg: &Config{},
+		},
+		{
+			name:       "bare localhost with port is normalized",
+			input:      "localhost:8080/health",
+			want:       "https://localhost:8080/health",
+			checkerCfg: &Config{},
+		},
+		{
+			name:       "bare IPv4 with port is normalized",
+			input:      "127.0.0.1:9222",
+			want:       "https://127.0.0.1:9222",
+			checkerCfg: &Config{},
+		},
+		{
+			name:       "wrapped bare domain is normalized",
+			input:      ` <"example.com/docs"> `,
+			want:       "https://example.com/docs",
+			checkerCfg: &Config{},
+		},
+		{
+			name:       "sentence with https url is extracted and normalized",
+			input:      "请打开 https://www.zimaos.com/docs，帮我看一下",
+			want:       "https://www.zimaos.com/docs",
+			checkerCfg: &Config{},
+		},
+		{
+			name:       "sentence with bare domain token is extracted and normalized",
+			input:      "请访问 example.com/path 并检查导航",
+			want:       "https://example.com/path",
+			checkerCfg: &Config{},
+		},
+		{
+			name:       "invalid command-like text is rejected",
+			input:      "go test ./...",
+			wantErr:    ErrURLNotAllowed,
+			checkerCfg: &Config{},
+		},
+		{
+			name:  "allowlist works with bare domain input",
+			input: "allowed.com/page",
+			want:  "https://allowed.com/page",
+			checkerCfg: &Config{
+				AllowedDomains: []string{"allowed.com"},
+			},
+		},
+		{
+			name:    "blocklist still takes precedence after normalization",
+			input:   "blocked.com/page",
+			wantErr: ErrURLBlocked,
+			checkerCfg: &Config{
+				AllowedDomains: []string{"blocked.com"},
+				BlockedDomains: []string{"blocked.com"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := tt.checkerCfg
+			if cfg == nil {
+				cfg = &Config{}
+			}
+			checker := NewSecurityChecker(cfg)
+			got, err := checker.NormalizeAndCheckURL(tt.input)
+			if tt.wantErr != nil {
+				assert.Equal(t, tt.wantErr, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestLooksLikeHostCandidate(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{name: "domain", input: "example.com", want: true},
+		{name: "localhost with port", input: "localhost:8080", want: true},
+		{name: "IPv4", input: "127.0.0.1", want: true},
+		{name: "IPv6 with port", input: "[::1]:9000", want: true},
+		{name: "single token without dot", input: "example", want: false},
+		{name: "contains spaces", input: "exa mple.com", want: false},
+		{name: "path only", input: "/tmp/file", want: false},
+		{name: "command-like text", input: "go test ./...", want: false},
+		{name: "empty", input: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, looksLikeHostCandidate(tt.input))
 		})
 	}
 }

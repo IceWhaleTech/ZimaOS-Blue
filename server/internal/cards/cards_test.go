@@ -20,6 +20,7 @@ func TestToCard(t *testing.T) {
 		{"calculator_invalid", "calculator", `not json`, "", true},
 		{"web_search", "web_search", `{"query":"go","results":[{"title":"Go"}],"total_count":1}`, "search", false},
 		{"web_search_empty", "web_search", `{"query":"go","results":[],"total_count":0}`, "", true},
+		{"web_fetch_warning", "web_fetch", `{"url":"https://www.reddit.com/r/test","title":"Sign in","content":"Log in to continue","content_type":"text/html","extract_mode":"text","extractor":"html","warning":"page appears to be a login wall; use browser or pass browser_target_id","warning_code":"login_wall"}`, "web-fetch", false},
 		{"deep_research", "deep_research", `{"query":"go","mode":"standard","answer":"summary","confidence":0.9,"evidence_count":2,"citations":[{"title":"A","url":"https://example.com"}]}`, "deep-research", false},
 		{"current_time", "current_time", `{"datetime":"2025-01-01","timezone":"UTC","unix":1735689600}`, "result", false},
 		{"read", "read", `{"path":"/tmp/x","content":"hello"}`, "collapsible-code", false},
@@ -158,8 +159,21 @@ func TestGenericCard_ErrorIsRedacted(t *testing.T) {
 	}
 }
 
-func TestExecCard_RedactsSensitiveFields(t *testing.T) {
-	card := ToCard("exec", `{"command":"cat ~/.ssh/id_rsa","stdout":"SECRET","stderr":"ERR","exit_code":1,"warnings":["warn"],"session_id":"abc","host":"sandbox","risk_level":"high","duration_ms":8}`)
+func TestGenericCard_BrowserErrorShowsSanitizedMessage(t *testing.T) {
+	card := GenericCard("browser", `{"error":"navigation failed: URL not allowed","success":false}`)
+	if card["status"] != "error" {
+		t.Fatalf("expected error status, got %v", card["status"])
+	}
+	if card["message"] != "navigation failed: URL not allowed" {
+		t.Fatalf("expected browser error message, got %v", card["message"])
+	}
+	if _, redacted := card["error_redacted"]; redacted {
+		t.Fatalf("expected browser error to be visible, got redacted=%v", card["error_redacted"])
+	}
+}
+
+func TestExecCard_ShowsStructuredOutputWithMaskedSensitiveData(t *testing.T) {
+	card := ToCard("exec", `{"command":"curl -H 'Authorization: Bearer secret-token-1234567890' https://example.com?token=abc123","stdout":"AWS_SECRET_ACCESS_KEY=abc123\ncontact=user@example.com\ncookie=session=abcdef","stderr":"password=abc123","exit_code":1,"warnings":["set --token super-secret"],"session_id":"abc","host":"sandbox","risk_level":"high","duration_ms":8}`)
 	if card == nil {
 		t.Fatal("expected exec card")
 	}
@@ -169,55 +183,171 @@ func TestExecCard_RedactsSensitiveFields(t *testing.T) {
 	if card["status"] != "error" {
 		t.Fatalf("expected error status, got %v", card["status"])
 	}
-	if card["message"] != redactedOutputText {
-		t.Fatalf("expected redacted output message, got %v", card["message"])
+	command, ok := card["command"].(string)
+	if !ok || command == "" {
+		t.Fatalf("expected command to be present, got %+v", card)
 	}
-	if card["command_redacted"] != true || card["hide_command"] != true {
-		t.Fatalf("expected command redaction markers, got %+v", card)
+	if strings.Contains(command, "secret-token-1234567890") || strings.Contains(command, "token=abc123") {
+		t.Fatalf("expected command to be masked, got %q", command)
 	}
-	if card["stdout_redacted"] != true || card["stderr_redacted"] != true {
-		t.Fatalf("expected output redaction markers, got %+v", card)
+	stdout, ok := card["stdout"].(string)
+	if !ok || stdout == "" {
+		t.Fatalf("expected stdout to be present, got %+v", card)
 	}
-	if card["warnings_redacted"] != true || card["warning_count"] != 1 {
-		t.Fatalf("expected warning redaction markers, got %+v", card)
+	if strings.Contains(stdout, "AWS_SECRET_ACCESS_KEY=abc123") || strings.Contains(stdout, "user@example.com") || strings.Contains(stdout, "session=abcdef") {
+		t.Fatalf("expected stdout to be masked, got %q", stdout)
 	}
-	if _, ok := card["command"]; ok {
-		t.Fatalf("command field should be omitted: %+v", card)
+	stderr, ok := card["stderr"].(string)
+	if !ok || stderr == "" {
+		t.Fatalf("expected stderr to be present, got %+v", card)
 	}
-	if _, ok := card["stdout"]; ok {
-		t.Fatalf("stdout field should be omitted: %+v", card)
+	if strings.Contains(stderr, "password=abc123") {
+		t.Fatalf("expected stderr to be masked, got %q", stderr)
 	}
-	if _, ok := card["stderr"]; ok {
-		t.Fatalf("stderr field should be omitted: %+v", card)
+	if card["warning_count"] != 1 {
+		t.Fatalf("expected warning_count=1, got %+v", card["warning_count"])
+	}
+	warnings, ok := card["warnings"].([]string)
+	if !ok || len(warnings) != 1 {
+		t.Fatalf("expected one warning entry, got %+v", card["warnings"])
+	}
+	if strings.Contains(warnings[0], "super-secret") {
+		t.Fatalf("expected warning text to be masked, got %q", warnings[0])
+	}
+	if card["host"] != "sandbox" {
+		t.Fatalf("expected host to be preserved, got %+v", card["host"])
 	}
 	if _, ok := card["session_id"]; ok {
-		t.Fatalf("session_id field should be omitted: %+v", card)
-	}
-	if _, ok := card["host"]; ok {
-		t.Fatalf("host field should be omitted: %+v", card)
-	}
-	if _, ok := card["warnings"]; ok {
-		t.Fatalf("warnings field should be omitted: %+v", card)
+		t.Fatalf("session_id should remain omitted: %+v", card)
 	}
 }
 
-func TestFormatTypeless_ExecForcesCommandHidden(t *testing.T) {
+func TestWebFetchCard_PreservesWarningCode(t *testing.T) {
+	card := ToCard("web_fetch", `{"url":"https://www.reddit.com/r/test","title":"Sign in","content":"Log in to continue","content_type":"text/html","extract_mode":"text","extractor":"html","warning":"page appears to be a login wall; use browser or pass browser_target_id","warning_code":"login_wall"}`)
+	if card == nil {
+		t.Fatal("expected web_fetch card")
+	}
+	if card["type"] != "web-fetch" {
+		t.Fatalf("expected web-fetch type, got %v", card["type"])
+	}
+	if card["title"] != "Sign in" {
+		t.Fatalf("expected title to use page title, got %v", card["title"])
+	}
+	if card["status"] != "warning" {
+		t.Fatalf("expected warning status, got %v", card["status"])
+	}
+	if card["warning_code"] != "login_wall" {
+		t.Fatalf("expected warning_code=login_wall, got %v", card["warning_code"])
+	}
+	warning, ok := card["warning"].(string)
+	if !ok || !strings.Contains(warning, "login wall") {
+		t.Fatalf("expected warning text, got %v", card["warning"])
+	}
+	if card["url"] != "https://www.reddit.com/r/test" {
+		t.Fatalf("expected url to be preserved, got %v", card["url"])
+	}
+	if card["id"] != "web-fetch-https%3A%2F%2Fwww.reddit.com%2Fr%2Ftest" {
+		t.Fatalf("expected encoded stable id, got %v", card["id"])
+	}
+	actions, ok := card["actions"].([]map[string]interface{})
+	if !ok || len(actions) != 1 {
+		t.Fatalf("expected one web-fetch action, got %#v", card["actions"])
+	}
+	if actions[0]["id"] != "use_browser" {
+		t.Fatalf("expected use_browser action, got %#v", actions[0])
+	}
+	formData, ok := actions[0]["form_data"].(map[string]interface{})
+	if !ok || formData["url"] != "https://www.reddit.com/r/test" {
+		t.Fatalf("expected web-fetch action form_data url, got %#v", actions[0]["form_data"])
+	}
+	if card["content"] != "Log in to continue" {
+		t.Fatalf("expected content to be preserved, got %v", card["content"])
+	}
+	if card["extractor"] != "html" {
+		t.Fatalf("expected extractor=html, got %v", card["extractor"])
+	}
+}
+
+func TestWebFetchCard_PreservesChallengeWarningCode(t *testing.T) {
+	card := ToCard("web_fetch", `{"url":"https://www.reddit.com/r/test","title":"Verification required","content":"Complete the verification to continue","content_type":"text/html","extract_mode":"text","extractor":"html","warning":"page appears to require a verification challenge; switch to browser or reuse browser_target_id","warning_code":"challenge"}`)
+	if card == nil {
+		t.Fatal("expected web_fetch card")
+	}
+	if card["warning_code"] != "challenge" {
+		t.Fatalf("expected warning_code=challenge, got %v", card["warning_code"])
+	}
+	warning, ok := card["warning"].(string)
+	if !ok || !strings.Contains(warning, "verification challenge") {
+		t.Fatalf("expected challenge warning text, got %v", card["warning"])
+	}
+	actions, ok := card["actions"].([]map[string]interface{})
+	if !ok || len(actions) != 1 || actions[0]["id"] != "use_browser" {
+		t.Fatalf("expected use_browser action for challenge warning, got %#v", card["actions"])
+	}
+}
+
+func TestWebFetchCard_PreservesBrowserRequiredWarningCode(t *testing.T) {
+	card := ToCard("web_fetch", `{"url":"https://www.reddit.com/r/test","title":"Protected page","content":"Use a browser session to read this page.","content_type":"text/html","extract_mode":"text","extractor":"html","warning":"page requires a browser session for readable extraction; switch to browser or reuse browser_target_id","warning_code":"browser_required"}`)
+	if card == nil {
+		t.Fatal("expected web_fetch card")
+	}
+	if card["warning_code"] != "browser_required" {
+		t.Fatalf("expected warning_code=browser_required, got %v", card["warning_code"])
+	}
+	warning, ok := card["warning"].(string)
+	if !ok || !strings.Contains(warning, "browser session") {
+		t.Fatalf("expected browser_required warning text, got %v", card["warning"])
+	}
+	actions, ok := card["actions"].([]map[string]interface{})
+	if !ok || len(actions) != 1 || actions[0]["id"] != "use_browser" {
+		t.Fatalf("expected use_browser action for browser_required warning, got %#v", card["actions"])
+	}
+}
+
+func TestBrowserCard_IncludesExtractWithWebFetchAction(t *testing.T) {
+	card := ToCard("browser", `{"url":"https://www.reddit.com/r/test","title":"r/test","target_id":"tab-42","strategy":"interactive","tree":"@1 link \"Log in\""}`)
+	if card == nil {
+		t.Fatal("expected browser card")
+	}
+	if card["type"] != "result" {
+		t.Fatalf("expected result type, got %v", card["type"])
+	}
+	if card["title"] != "r/test" {
+		t.Fatalf("expected title to use page title, got %v", card["title"])
+	}
+	actions, ok := card["actions"].([]map[string]interface{})
+	if !ok || len(actions) != 1 {
+		t.Fatalf("expected one browser action, got %#v", card["actions"])
+	}
+	if actions[0]["id"] != "extract_with_web_fetch" {
+		t.Fatalf("expected extract_with_web_fetch action, got %#v", actions[0])
+	}
+	formData, ok := actions[0]["form_data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected browser action form_data, got %#v", actions[0]["form_data"])
+	}
+	if formData["url"] != "https://www.reddit.com/r/test" || formData["browser_target_id"] != "tab-42" {
+		t.Fatalf("unexpected browser action form_data: %#v", formData)
+	}
+}
+
+func TestFormatTypeless_ExecInjectsSanitizedCommand(t *testing.T) {
 	calls := []llm.ToolCall{
-		{ID: "1", Name: "exec", Arguments: `{"command":"echo secret"}`},
+		{ID: "1", Name: "exec", Arguments: `{"command":"curl https://example.com?token=raw-secret"}`},
 	}
 	results := []llm.Message{
 		{Role: llm.RoleTool, Content: `{"stdout":"ok","exit_code":0}`, ToolCallID: "1"},
 	}
 
 	out := FormatTypeless(calls, results)
-	if !strings.Contains(out, `"command_redacted":true`) {
-		t.Fatalf("expected command redaction marker, got %q", out)
+	if !strings.Contains(out, `"command":"curl https://example.com?token=[REDACTED]"`) {
+		t.Fatalf("expected sanitized command in typeless block, got %q", out)
 	}
-	if !strings.Contains(out, `"hide_command":true`) {
-		t.Fatalf("expected hide_command marker, got %q", out)
+	if strings.Contains(out, `"command_redacted":true`) || strings.Contains(out, `"hide_command":true`) {
+		t.Fatalf("expected no forced command hiding markers, got %q", out)
 	}
-	if strings.Contains(out, "echo secret") {
-		t.Fatalf("expected exec command to be hidden, got %q", out)
+	if strings.Contains(out, "raw-secret") {
+		t.Fatalf("expected sensitive token to be masked, got %q", out)
 	}
 }
 

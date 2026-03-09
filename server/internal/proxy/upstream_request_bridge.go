@@ -6,8 +6,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/tidwall/gjson"
-
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool/oauth"
 )
@@ -89,17 +87,10 @@ type codexModelResponsesBridge struct{}
 func (codexModelResponsesBridge) Name() string { return "codex_model_responses" }
 
 func (codexModelResponsesBridge) Match(ctx *UpstreamRequestBridgeContext) bool {
-	if ctx.EffectiveFormat != providerpool.APIFormatOpenAI && ctx.EffectiveFormat != providerpool.APIFormatResponses {
-		return false
-	}
 	if !isChatCompletionsPath(ctx.RequestPath) {
 		return false
 	}
-	if ctx.EffectiveFormat == providerpool.APIFormatResponses {
-		return true
-	}
-	model := strings.ToLower(strings.TrimSpace(gjson.GetBytes(ctx.Body, "model").String()))
-	return strings.Contains(model, "codex")
+	return ctx.EffectiveFormat == providerpool.APIFormatResponses
 }
 
 func (codexModelResponsesBridge) Build(ctx *UpstreamRequestBridgeContext) error {

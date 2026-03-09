@@ -34,3 +34,32 @@ export function stripFirstLineHeading(content: string): string {
 
   return content
 }
+
+const ZH_TOOL_FALLBACK_PREFIX = '工具执行已完成，但最终总结生成失败。以下是从工具结果自动提炼的安全摘要：'
+const ZH_TOOL_FALLBACK_SUFFIX = '原始 stdout/stderr/error 字段已隐藏以保护安全。如需我重试完整总结，请回复“重试总结”。'
+
+const EN_TOOL_FALLBACK_PREFIX = 'Tool execution completed, but final summary generation failed. Here is a safe fallback summary extracted from tool results:'
+const EN_TOOL_FALLBACK_SUFFIX = 'Raw stdout/stderr/error fields remain hidden for safety. Ask me to retry summarizing for a full report.'
+
+function unwrapToolFallbackSummary(content: string, prefix: string, suffix: string): string | null {
+  const trimmed = content.trim()
+  if (!trimmed.startsWith(prefix)) return null
+
+  let body = trimmed.slice(prefix.length).trim()
+  if (body.endsWith(suffix)) {
+    body = body.slice(0, -suffix.length).trim()
+  }
+  return body || null
+}
+
+export function normalizeToolFallbackSummaryText(content: string): string {
+  if (!content) return content
+
+  const zh = unwrapToolFallbackSummary(content, ZH_TOOL_FALLBACK_PREFIX, ZH_TOOL_FALLBACK_SUFFIX)
+  if (zh) return zh
+
+  const en = unwrapToolFallbackSummary(content, EN_TOOL_FALLBACK_PREFIX, EN_TOOL_FALLBACK_SUFFIX)
+  if (en) return en
+
+  return content
+}

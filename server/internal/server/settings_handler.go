@@ -66,6 +66,8 @@ type Settings struct {
 	SmallModelDocExtractEnabled         *bool    `json:"small_model_doc_extract_enabled,omitempty"`           // default false
 	SmallModelRerankEnabled             *bool    `json:"small_model_rerank_enabled,omitempty"`                // default false
 	SmallModelContextPruneEnabled       *bool    `json:"small_model_context_prune_enabled,omitempty"`         // default false
+	SmallModelContextPruneToolAllow     []string `json:"small_model_context_prune_tool_allow,omitempty"`      // glob allow list for prunable tools
+	SmallModelContextPruneToolDeny      []string `json:"small_model_context_prune_tool_deny,omitempty"`       // glob deny list for prunable tools
 	SmallModelMediaIntentEnabled        *bool    `json:"small_model_media_intent_enabled,omitempty"`          // default false
 	OfflineIRFallbackEnabled            *bool    `json:"offline_ir_fallback_enabled,omitempty"`               // default false
 	FeatureIntentIREnabled              *bool    `json:"feature_intent_ir_enabled,omitempty"`                 // default false
@@ -497,6 +499,8 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 			newSettings.SmallModelUnavailablePolicy = ""
 		}
 	}
+	newSettings.SmallModelContextPruneToolAllow = sanitizeStringList(newSettings.SmallModelContextPruneToolAllow, 32, 128)
+	newSettings.SmallModelContextPruneToolDeny = sanitizeStringList(newSettings.SmallModelContextPruneToolDeny, 32, 128)
 
 	h.mu.Lock()
 	h.settings = &newSettings
@@ -688,6 +692,20 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 	if v, ok := updates["small_model_context_prune_enabled"]; ok {
 		if b, isBool := v.(bool); isBool {
 			h.settings.SmallModelContextPruneEnabled = &b
+		}
+	}
+	if v, ok := updates["small_model_context_prune_tool_allow"]; ok {
+		if v == nil {
+			h.settings.SmallModelContextPruneToolAllow = nil
+		} else if list, ok := stringSliceFromAny(v); ok {
+			h.settings.SmallModelContextPruneToolAllow = sanitizeStringList(list, 32, 128)
+		}
+	}
+	if v, ok := updates["small_model_context_prune_tool_deny"]; ok {
+		if v == nil {
+			h.settings.SmallModelContextPruneToolDeny = nil
+		} else if list, ok := stringSliceFromAny(v); ok {
+			h.settings.SmallModelContextPruneToolDeny = sanitizeStringList(list, 32, 128)
 		}
 	}
 	if v, ok := updates["small_model_media_intent_enabled"]; ok {
@@ -1138,6 +1156,18 @@ func (h *SettingsHandler) GetSmallModelContextPruneEnabled() bool {
 	return *h.settings.SmallModelContextPruneEnabled
 }
 
+func (h *SettingsHandler) GetSmallModelContextPruneToolAllow() []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return append([]string(nil), sanitizeStringList(h.settings.SmallModelContextPruneToolAllow, 32, 128)...)
+}
+
+func (h *SettingsHandler) GetSmallModelContextPruneToolDeny() []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return append([]string(nil), sanitizeStringList(h.settings.SmallModelContextPruneToolDeny, 32, 128)...)
+}
+
 func (h *SettingsHandler) GetSmallModelMediaIntentEnabled() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -1287,6 +1317,55 @@ func intFromAny(v interface{}) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func stringSliceFromAny(v interface{}) ([]string, bool) {
+	switch vv := v.(type) {
+	case []string:
+		return vv, true
+	case []interface{}:
+		out := make([]string, 0, len(vv))
+		for _, item := range vv {
+			s, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, s)
+		}
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
+func sanitizeStringList(values []string, maxItems, maxLen int) []string {
+	if len(values) == 0 || maxItems <= 0 || maxLen <= 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, v := range values {
+		s := strings.TrimSpace(v)
+		if s == "" {
+			continue
+		}
+		if len([]rune(s)) > maxLen {
+			continue
+		}
+		key := strings.ToLower(s)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, s)
+		if len(out) >= maxItems {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func isWithinIntRange(v, min, max int) bool {

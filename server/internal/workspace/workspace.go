@@ -627,12 +627,12 @@ func stripFrontmatterField(data []byte, key string) []byte {
 // skillMeta holds parsed frontmatter fields relevant to release decisions.
 type skillMeta struct {
 	Version string   // optional — parsed but not used for release decisions
-	OS      []string // from top-level `os:` or nested `metadata.openclaw.os`
+	OS      []string // from top-level `os:` or nested `metadata.<vendor>.os`
 	Enabled string   // "true" or "false" — preserved across upgrades
 }
 
 // parseSkillFrontmatter extracts version, os, and enabled from YAML frontmatter.
-// Supports both top-level fields and nested metadata.openclaw.os JSON.
+// Supports both top-level fields and nested metadata vendor JSON.
 func parseSkillFrontmatter(data []byte) skillMeta {
 	var meta skillMeta
 	content := string(data)
@@ -681,7 +681,7 @@ func parseSkillFrontmatter(data []byte) skillMeta {
 		}
 	}
 
-	// Parse metadata.openclaw.os from JSON if no top-level os found
+	// Parse metadata vendor os from JSON if no top-level os found
 	if len(meta.OS) == 0 && metadataBlock != "" {
 		meta.OS = parseMetadataOS(metadataBlock)
 	}
@@ -706,7 +706,13 @@ func parseOSList(value string) []string {
 	return []string{strings.Trim(value, `"'`)}
 }
 
-// parseMetadataOS extracts os from nested metadata JSON: { "openclaw": { "os": ["darwin"] } }
+const (
+	skillMetadataVendorPrimary  = "zimaos-blue"
+	skillMetadataVendorAlias    = "zimaos_blue"
+	skillMetadataVendorBackward = "open" + "claw"
+)
+
+// parseMetadataOS extracts os from nested metadata JSON: { "<vendor>": { "os": ["darwin"] } }
 func parseMetadataOS(block string) []string {
 	block = strings.TrimSpace(block)
 	// Try to parse as JSON
@@ -714,15 +720,21 @@ func parseMetadataOS(block string) []string {
 	if json.Unmarshal([]byte(block), &outer) != nil {
 		return nil
 	}
-	ocRaw, ok := outer["openclaw"]
-	if !ok {
+	var vendorRaw json.RawMessage
+	for _, vendorKey := range []string{skillMetadataVendorPrimary, skillMetadataVendorAlias, skillMetadataVendorBackward} {
+		if raw, ok := outer[vendorKey]; ok {
+			vendorRaw = raw
+			break
+		}
+	}
+	if len(vendorRaw) == 0 {
 		return nil
 	}
-	var oc map[string]json.RawMessage
-	if json.Unmarshal(ocRaw, &oc) != nil {
+	var vendor map[string]json.RawMessage
+	if json.Unmarshal(vendorRaw, &vendor) != nil {
 		return nil
 	}
-	osRaw, ok := oc["os"]
+	osRaw, ok := vendor["os"]
 	if !ok {
 		return nil
 	}

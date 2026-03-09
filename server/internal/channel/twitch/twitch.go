@@ -71,8 +71,8 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	}
 }
 
-func (c *Channel) Name() string                    { return "twitch" }
-func (c *Channel) Type() string                    { return "twitch" }
+func (c *Channel) Name() string                     { return "twitch" }
+func (c *Channel) Type() string                     { return "twitch" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -235,7 +235,6 @@ func (c *Channel) reconnect() {
 
 // parseLine handles a raw IRC line, extracting PRIVMSG into channel.Message.
 func (c *Channel) parseLine(line string) {
-	// IRCv3 tags are prefixed with @
 	var tags map[string]string
 	if strings.HasPrefix(line, "@") {
 		idx := strings.Index(line, " ")
@@ -246,7 +245,6 @@ func (c *Channel) parseLine(line string) {
 		line = line[idx+1:]
 	}
 
-	// Format: :user!user@user.tmi.twitch.tv PRIVMSG #channel :message
 	if !strings.Contains(line, "PRIVMSG") {
 		return
 	}
@@ -257,11 +255,9 @@ func (c *Channel) parseLine(line string) {
 	}
 
 	prefix := parts[0]
-	// command := parts[1] // PRIVMSG
 	target := parts[2]
 	text := strings.TrimPrefix(parts[3], ":")
 
-	// Extract username from :user!user@user.tmi.twitch.tv
 	username := ""
 	if strings.HasPrefix(prefix, ":") {
 		prefix = prefix[1:]
@@ -273,18 +269,45 @@ func (c *Channel) parseLine(line string) {
 	metadata := make(map[string]interface{})
 	if emotes, ok := tags["emotes"]; ok && emotes != "" {
 		metadata["emotes"] = emotes
+		if parsedEmotes := parseTwitchEmotes(emotes); len(parsedEmotes) > 0 {
+			metadata["emote_ranges"] = parsedEmotes
+		}
 	}
 	if displayName, ok := tags["display-name"]; ok && displayName != "" {
 		metadata["display_name"] = displayName
 	}
-	if msgID, ok := tags["id"]; ok {
+	if msgID, ok := tags["id"]; ok && msgID != "" {
 		metadata["twitch_msg_id"] = msgID
 	}
-	if color, ok := tags["color"]; ok {
+	if color, ok := tags["color"]; ok && color != "" {
 		metadata["color"] = color
 	}
-	if badges, ok := tags["badges"]; ok {
+	if badges, ok := tags["badges"]; ok && badges != "" {
 		metadata["badges"] = badges
+	}
+	if roomID, ok := tags["room-id"]; ok && roomID != "" {
+		metadata["room_id"] = roomID
+	}
+	if messageType, ok := tags["message-type"]; ok && messageType != "" {
+		metadata["message_type"] = messageType
+	}
+	if firstMsg, ok := tags["first-msg"]; ok && firstMsg != "" {
+		metadata["first_msg"] = firstMsg == "1"
+	}
+	if replyParentMsgID, ok := tags["reply-parent-msg-id"]; ok && replyParentMsgID != "" {
+		metadata["reply_parent_msg_id"] = replyParentMsgID
+	}
+	if replyParentUserID, ok := tags["reply-parent-user-id"]; ok && replyParentUserID != "" {
+		metadata["reply_parent_user_id"] = replyParentUserID
+	}
+	if replyParentUserLogin, ok := tags["reply-parent-user-login"]; ok && replyParentUserLogin != "" {
+		metadata["reply_parent_user_login"] = replyParentUserLogin
+	}
+	if replyParentDisplayName, ok := tags["reply-parent-display-name"]; ok && replyParentDisplayName != "" {
+		metadata["reply_parent_display_name"] = replyParentDisplayName
+	}
+	if replyParentMsgBody, ok := tags["reply-parent-msg-body"]; ok && replyParentMsgBody != "" {
+		metadata["reply_parent_msg_body"] = replyParentMsgBody
 	}
 
 	displayName := username
@@ -297,18 +320,26 @@ func (c *Channel) parseLine(line string) {
 		msgID = fmt.Sprintf("twitch-%d", time.Now().UnixNano())
 	}
 
+	userID := username
+	if rawUserID, ok := tags["user-id"]; ok && rawUserID != "" {
+		userID = rawUserID
+	}
+
 	msg := channel.Message{
 		ID:          msgID,
 		ChannelName: "twitch",
 		ChatID:      target,
-		UserID:      username,
+		UserID:      userID,
 		Username:    displayName,
 		Type:        channel.MessageTypeText,
 		Content:     text,
-		Timestamp:   time.Now(),
+		Timestamp:   twitchMessageTimestamp(tags),
 		IsGroup:     true,
 		GroupName:   target,
 		Metadata:    metadata,
+	}
+	if replyParentMsgID, ok := tags["reply-parent-msg-id"]; ok && replyParentMsgID != "" {
+		msg.ReplyToID = replyParentMsgID
 	}
 
 	c.msgCount.Add(1)
@@ -332,6 +363,52 @@ func parseTags(raw string) map[string]string {
 	return tags
 }
 
+func twitchMessageTimestamp(tags map[string]string) time.Time {
+	if tags != nil {
+		if raw, ok := tags["tmi-sent-ts"]; ok && strings.TrimSpace(raw) != "" {
+			if millis, err := time.ParseDuration(strings.TrimSpace(raw) + "ms"); err == nil {
+				return time.Unix(0, millis.Nanoseconds())
+			}
+		}
+	}
+	return time.Now()
+}
+
+func parseTwitchEmotes(raw string) []map[string]interface{} {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	items := make([]map[string]interface{}, 0)
+	for _, segment := range strings.Split(raw, "/") {
+		parts := strings.SplitN(strings.TrimSpace(segment), ":", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+			continue
+		}
+		ranges := make([]map[string]int, 0)
+		for _, loc := range strings.Split(parts[1], ",") {
+			bounds := strings.SplitN(strings.TrimSpace(loc), "-", 2)
+			if len(bounds) != 2 {
+				continue
+			}
+			var start, end int
+			if _, err := fmt.Sscanf(bounds[0], "%d", &start); err != nil {
+				continue
+			}
+			if _, err := fmt.Sscanf(bounds[1], "%d", &end); err != nil {
+				continue
+			}
+			ranges = append(ranges, map[string]int{"start": start, "end": end})
+		}
+		item := map[string]interface{}{"id": parts[0]}
+		if len(ranges) > 0 {
+			item["ranges"] = ranges
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
 // Send sends a PRIVMSG to the target channel.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	c.mu.RLock()
@@ -346,7 +423,21 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		target = "#" + target
 	}
 
-	for _, chunk := range splitMessage(msg.Content, maxIRCMsgLen) {
+	textParts := make([]string, 0, 1+len(msg.Attachments))
+	if strings.TrimSpace(msg.Content) != "" {
+		textParts = append(textParts, strings.TrimSpace(msg.Content))
+	}
+	for _, att := range msg.Attachments {
+		if fallback := twitchAttachmentFallbackText(att); fallback != "" {
+			textParts = append(textParts, fallback)
+		}
+	}
+	content := strings.Join(textParts, "\n")
+	if content == "" {
+		return fmt.Errorf("no sendable Twitch content")
+	}
+
+	for _, chunk := range splitMessage(content, maxIRCMsgLen) {
 		if err := c.sendRaw(fmt.Sprintf("PRIVMSG %s :%s", target, chunk)); err != nil {
 			return fmt.Errorf("failed to send PRIVMSG: %w", err)
 		}
@@ -354,6 +445,32 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 
 	c.msgsSent.Add(1)
 	return nil
+}
+
+func twitchAttachmentFallbackText(att channel.Attachment) string {
+	parts := make([]string, 0, 2)
+	if strings.TrimSpace(att.Name) != "" {
+		parts = append(parts, strings.TrimSpace(att.Name))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		parts = append(parts, strings.TrimSpace(att.URL))
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, "\n")
+	}
+	if len(att.Data) == 0 {
+		return ""
+	}
+	switch att.Type {
+	case channel.MessageTypeImage:
+		return "Image attachment"
+	case channel.MessageTypeVideo:
+		return "Video attachment"
+	case channel.MessageTypeAudio:
+		return "Audio attachment"
+	default:
+		return "File attachment"
+	}
 }
 
 // SendStreaming collects streamed chunks and sends them as chunked IRC messages.

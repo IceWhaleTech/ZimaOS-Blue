@@ -159,6 +159,53 @@ func TestFetchOpenAIModels(t *testing.T) {
 	}
 }
 
+func TestFetchOpenAIModels_ResponsesBaseURLUsesRootModelsEndpoint(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"data": [
+				{"id": "gpt-5.3-codex-spark", "object": "model", "created": 1687882411, "owned_by": "relay"}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	tmpDir, _ := os.MkdirTemp("", "fetch-responses-models-test-*")
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+
+	provider := &Provider{
+		ID:        "test-responses",
+		Name:      "Test Responses",
+		Type:      ProviderTypeCustom,
+		Enabled:   true,
+		BaseURL:   server.URL + "/v1/responses",
+		APIFormat: APIFormatResponses,
+		APIKeys:   []APIKey{{ID: "key1", Key: "test-key", Enabled: true}},
+	}
+	registry.Register(provider)
+
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+
+	models, err := discovery.FetchModels(context.Background(), "test-responses")
+	if err != nil {
+		t.Fatalf("FetchModels failed: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+	if models[0].ID != "gpt-5.3-codex-spark" {
+		t.Fatalf("expected gpt-5.3-codex-spark, got %s", models[0].ID)
+	}
+}
+
 func TestFetchOpenRouterFreeModels(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "openrouter-free-test-*")
 	defer os.RemoveAll(tmpDir)

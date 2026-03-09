@@ -10,17 +10,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	basetask "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/google/uuid"
 )
 
 // CostEvent contains the data needed to record a media generation cost.
 type CostEvent struct {
 	Provider    string
 	Model       string
-	Type        string  // "image" or "video"
-	Category    string  // "t2i", "t2v", etc.
+	Type        string // "image" or "video"
+	Category    string // "t2i", "t2v", etc.
 	ImageCount  int
 	DurationSec float64
 	CostUSD     float64
@@ -43,13 +43,13 @@ type TaskDoneCallback func(taskID, status, model, imageURL string)
 
 // Manager orchestrates media generation across providers.
 type Manager struct {
-	providers    map[string]MediaProvider // name -> provider
-	providerOrder []string               // provider names sorted by priority (ascending)
-	modelMap     map[string]string       // modelID -> provider name
-	storage      *MediaStorage
-	tasks        sync.Map // taskID -> *MediaTask
-	taskStore    *TaskStore
-	mu           sync.RWMutex
+	providers     map[string]MediaProvider // name -> provider
+	providerOrder []string                 // provider names sorted by priority (ascending)
+	modelMap      map[string]string        // modelID -> provider name
+	storage       *MediaStorage
+	tasks         sync.Map // taskID -> *MediaTask
+	taskStore     *TaskStore
+	mu            sync.RWMutex
 
 	// Provider config management
 	configs      map[string]*MediaProviderConfig
@@ -72,6 +72,23 @@ func NewManager(storage *MediaStorage, configStore MediaConfigStore, locale stri
 	}
 }
 
+func (m *Manager) registerConfiguredProviderLocked(c *MediaProviderConfig) {
+	if c == nil {
+		return
+	}
+	p := createProvider(c)
+	if p == nil {
+		return
+	}
+	c.Models = p.SupportedModels()
+	delete(m.providers, c.ID)
+	if !c.Enabled || !providerHasCredential(c) {
+		return
+	}
+	m.providers[c.ID] = p
+	log.Printf("[mediagen] registered provider: %s (priority %d)", c.ID, c.Priority)
+}
+
 // InitConfigs merges builtin defaults with persisted configs and registers enabled providers.
 // Providers are registered then ordered by priority (lower number = higher priority).
 // Higher-priority providers win model ID conflicts (e.g. qwen-image-max).
@@ -90,7 +107,7 @@ func (m *Manager) InitConfigs() {
 		for id, s := range saved {
 			if c, ok := m.configs[id]; ok {
 				c.APIKey = s.APIKey
-				c.HasAPIKey = s.APIKey != ""
+				c.HasAPIKey = providerHasCredential(c)
 				c.KeyHash = hashAPIKey(s.APIKey)
 				c.Enabled = s.Enabled
 				if s.BaseURL != "" {
@@ -102,14 +119,8 @@ func (m *Manager) InitConfigs() {
 
 	// Register enabled providers (order doesn't matter — rebuildProviderOrderLocked sorts by priority)
 	for _, c := range m.configs {
-		// Always populate Models so pricing is visible even for disabled providers
-		if p := createProvider(c); p != nil {
-			c.Models = p.SupportedModels()
-			if c.Enabled && c.APIKey != "" {
-				m.providers[p.Name()] = p
-				log.Printf("[mediagen] registered provider: %s (priority %d)", c.ID, c.Priority)
-			}
-		}
+		c.HasAPIKey = providerHasCredential(c)
+		m.registerConfiguredProviderLocked(c)
 	}
 
 	// Build priority-sorted providerOrder + modelMap (higher priority wins conflicts)
@@ -145,16 +156,10 @@ func (m *Manager) SetAPIKey(id, key string) error {
 		return fmt.Errorf("unknown media provider: %s", id)
 	}
 	c.APIKey = key
-	c.HasAPIKey = key != ""
+	c.HasAPIKey = providerHasCredential(c)
 	c.KeyHash = hashAPIKey(key)
 
-	// If enabled and key set, register provider
-	if c.Enabled && key != "" {
-		if p := createProvider(c); p != nil {
-			m.providers[p.Name()] = p
-			c.Models = p.SupportedModels()
-		}
-	}
+	m.registerConfiguredProviderLocked(c)
 	m.rebuildProviderOrderLocked()
 	m.mu.Unlock()
 
@@ -170,9 +175,9 @@ func (m *Manager) RemoveAPIKey(id string) error {
 		return fmt.Errorf("unknown media provider: %s", id)
 	}
 	c.APIKey = ""
-	c.HasAPIKey = false
+	c.HasAPIKey = providerHasCredential(c)
 	c.KeyHash = ""
-	delete(m.providers, id)
+	m.registerConfiguredProviderLocked(c)
 	m.rebuildProviderOrderLocked()
 	m.mu.Unlock()
 
@@ -188,12 +193,7 @@ func (m *Manager) Enable(id string) error {
 		return fmt.Errorf("unknown media provider: %s", id)
 	}
 	c.Enabled = true
-	if c.APIKey != "" {
-		if p := createProvider(c); p != nil {
-			m.providers[p.Name()] = p
-			c.Models = p.SupportedModels()
-		}
-	}
+	m.registerConfiguredProviderLocked(c)
 	m.rebuildProviderOrderLocked()
 	m.mu.Unlock()
 
@@ -286,7 +286,7 @@ func (m *Manager) rebuildProviderOrderLocked() {
 	for i := len(entries) - 1; i >= 0; i-- {
 		p := m.providers[entries[i].name]
 		for _, model := range p.SupportedModels() {
-			m.modelMap[model.ID] = p.Name()
+			m.modelMap[model.ID] = entries[i].name
 		}
 	}
 }
@@ -431,6 +431,11 @@ func (m *Manager) WaitForTask(ctx context.Context, taskID string) (*MediaTask, e
 			return task, nil
 		case TaskStatusFailed:
 			return task, fmt.Errorf("%w: %s", ErrGenerationFailed, task.Error)
+		case TaskStatusCancelled:
+			if strings.TrimSpace(task.Error) != "" {
+				return task, fmt.Errorf("%w: %s", ErrGenerationCancelled, task.Error)
+			}
+			return task, ErrGenerationCancelled
 		}
 
 		// Exponential backoff
@@ -439,6 +444,15 @@ func (m *Manager) WaitForTask(ctx context.Context, taskID string) (*MediaTask, e
 			interval = maxInterval
 		}
 	}
+}
+
+func (m *Manager) isTaskCancelled(taskID string) bool {
+	v, ok := m.tasks.Load(taskID)
+	if !ok {
+		return false
+	}
+	task, ok := v.(*MediaTask)
+	return ok && task != nil && task.Status == TaskStatusCancelled
 }
 
 // findProvider looks up the provider for a given model ID.
@@ -484,6 +498,9 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 			return
 		}
 		task := v.(*MediaTask)
+		if task.Status == TaskStatusCancelled {
+			return
+		}
 
 		updated, err := provider.Poll(context.Background(), task.UpstreamID)
 		if err != nil {
@@ -512,6 +529,9 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 		updated.MessageID = task.MessageID
 		updated.Category = task.Category
 		updated.Source = task.Source
+		if m.isTaskCancelled(taskID) {
+			return
+		}
 
 		switch updated.Status {
 		case TaskStatusSucceeded:
@@ -547,6 +567,9 @@ func (m *Manager) pollTask(taskID string, provider MediaProvider) {
 
 // cacheResults downloads remote media to local storage and generates thumbnails.
 func (m *Manager) cacheResults(task *MediaTask) {
+	if task == nil || m.isTaskCancelled(task.ID) {
+		return
+	}
 	if task.Response == nil || m.storage == nil {
 		return
 	}
@@ -597,6 +620,9 @@ func (m *Manager) cacheResults(task *MediaTask) {
 
 	now := timeutil.NowTime()
 	task.CompletedAt = &now
+	if m.isTaskCancelled(task.ID) {
+		return
+	}
 	m.tasks.Store(task.ID, task)
 
 	// Record cost
@@ -636,6 +662,9 @@ func (m *Manager) updateTaskError(taskID, errMsg string) {
 		return
 	}
 	task := v.(*MediaTask)
+	if task.Status == TaskStatusCancelled {
+		return
+	}
 	task.Status = TaskStatusFailed
 	task.Error = errMsg
 	now := timeutil.NowTime()
@@ -830,7 +859,13 @@ func (m *Manager) executeTask(task *MediaTask, provider MediaProvider) {
 
 	upstream, err := provider.Generate(ctx, task.Request)
 	if err != nil {
+		if task.Status == TaskStatusCancelled {
+			return
+		}
 		m.updateTaskError(task.ID, err.Error())
+		return
+	}
+	if task.Status == TaskStatusCancelled {
 		return
 	}
 
@@ -842,6 +877,9 @@ func (m *Manager) executeTask(task *MediaTask, provider MediaProvider) {
 
 	// If sync provider returned immediately
 	if upstream.Status == TaskStatusSucceeded {
+		if task.Status == TaskStatusCancelled {
+			return
+		}
 		task.Status = TaskStatusSucceeded
 		task.Response = upstream.Response
 		task.Progress = 1.0
@@ -851,6 +889,9 @@ func (m *Manager) executeTask(task *MediaTask, provider MediaProvider) {
 	}
 
 	// Async: update status to processing and start polling
+	if task.Status == TaskStatusCancelled {
+		return
+	}
 	task.Status = TaskStatusProcessing
 	m.tasks.Store(task.ID, task)
 	if m.taskStore != nil {
@@ -930,6 +971,8 @@ func createProvider(c *MediaProviderConfig) MediaProvider {
 		return NewMuleRouterProvider(c.APIKey, c.BaseURL)
 	case "minimax-media":
 		return NewMiniMaxProvider(c.APIKey, c.BaseURL)
+	case fakeMediaProviderID:
+		return NewFakeMediaProvider()
 	default:
 		return nil
 	}

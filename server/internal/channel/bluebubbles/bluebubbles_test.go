@@ -280,3 +280,89 @@ func TestChannel_isChatAllowed(t *testing.T) {
 		})
 	}
 }
+
+func TestChannel_HandleWebhook_NilDataDoesNotPanic(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := channel.BlueBubblesConfig{
+		Enabled:   true,
+		ServerURL: "http://localhost:1234",
+		Password:  "test-password",
+	}
+
+	ch := New(cfg, logger)
+	ch.HandleWebhook(&WebhookEvent{Type: "new-message"})
+
+	select {
+	case msg := <-ch.Messages():
+		t.Fatalf("unexpected message: %#v", msg)
+	default:
+	}
+}
+
+func TestChannel_convertMessage_PreservesVisibleMetadata(t *testing.T) {
+	ch := New(channel.BlueBubblesConfig{}, zap.NewNop())
+
+	msg := ch.convertMessage(&MessageData{
+		GUID:        "msg-1",
+		ChatGUID:    "chat-1",
+		Handle:      "+15551234567",
+		Text:        "",
+		Subject:     "Vacation photo",
+		Service:     "iMessage",
+		IsFromMe:    false,
+		DateCreated: 1700000000000,
+		DateRead:    1700000005000,
+		Attachments: []AttachmentData{{
+			GUID:         "att-1",
+			TransferName: "beach.png",
+			MimeType:     "image/png",
+			TotalBytes:   12345,
+		}},
+		Chats: []ChatData{{
+			GUID:         "chat-1",
+			DisplayName:  "Family",
+			Participants: 3,
+		}},
+	})
+
+	if msg.Content != "Vacation photo" {
+		t.Fatalf("Content = %q, want subject fallback", msg.Content)
+	}
+	if msg.Type != channel.MessageTypeText {
+		t.Fatalf("Type = %q, want text when fallback content exists", msg.Type)
+	}
+	if !msg.IsGroup || msg.GroupName != "Family" {
+		t.Fatalf("group = (%v, %q), want (true, Family)", msg.IsGroup, msg.GroupName)
+	}
+	if len(msg.Attachments) != 1 {
+		t.Fatalf("Attachments len = %d, want 1", len(msg.Attachments))
+	}
+	if msg.Attachments[0].Type != channel.MessageTypeImage {
+		t.Fatalf("attachment type = %q, want image", msg.Attachments[0].Type)
+	}
+	if msg.Attachments[0].Size != 12345 {
+		t.Fatalf("attachment size = %d, want 12345", msg.Attachments[0].Size)
+	}
+	if got := msg.Metadata["subject"]; got != "Vacation photo" {
+		t.Fatalf("subject metadata = %#v", got)
+	}
+	if got := msg.Metadata["date_read"]; got != int64(1700000005000) {
+		t.Fatalf("date_read metadata = %#v", got)
+	}
+	if got := msg.Metadata["attachment_count"]; got != 1 {
+		t.Fatalf("attachment_count = %#v", got)
+	}
+	rawAttachments, ok := msg.Metadata["attachments"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("attachments metadata type = %T", msg.Metadata["attachments"])
+	}
+	if len(rawAttachments) != 1 {
+		t.Fatalf("raw attachments len = %d, want 1", len(rawAttachments))
+	}
+	if got := rawAttachments[0]["transfer_name"]; got != "beach.png" {
+		t.Fatalf("transfer_name = %#v", got)
+	}
+	if got := rawAttachments[0]["total_bytes"]; got != int64(12345) {
+		t.Fatalf("total_bytes = %#v", got)
+	}
+}

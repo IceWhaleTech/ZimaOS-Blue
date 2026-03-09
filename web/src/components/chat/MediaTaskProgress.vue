@@ -32,6 +32,7 @@ const statusLabel = computed(() => {
     case 'pending': return t('media.status.pending')
     case 'processing': return t('media.status.processing')
     case 'succeeded': return t('media.status.succeeded')
+    case 'cancelled': return t('media.cancelled')
     case 'failed': return t('media.status.failed')
     default: return ''
   }
@@ -70,6 +71,11 @@ onMounted(() => {
         imageUrls.value = evt.response.data.map(d => d.url).filter(Boolean)
       }
       emit('complete', evt)
+    },
+    onCancelled(evt) {
+      status.value = 'cancelled'
+      progress.value = evt.progress
+      errorMessage.value = evt.error || ''
     },
     onError(err) {
       status.value = 'failed'
@@ -189,6 +195,17 @@ onUnmounted(() => {
             </svg>
           </a>
         </div>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="status === 'cancelled'" class="px-4 py-3 flex items-start gap-2.5">
+      <svg class="w-4 h-4 mt-0.5 shrink-0 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6.75 6.75l10.5 10.5m0-10.5-10.5 10.5" />
+      </svg>
+      <div class="min-w-0">
+        <p class="text-sm text-amber-500 dark:text-amber-400">{{ t('media.cancelled') }}</p>
+        <p v-if="errorMessage" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 break-all">{{ errorMessage }}</p>
       </div>
     </div>
 

@@ -66,7 +66,7 @@ Idemo dalje: nativna podrška za **20+ IM platformi**, **glasovno upravljana** s
 
 Nativno kompilirano u Go — bez interpretera, bez VM-a, bez opterećenja. Tiho radi na svemu, od servera do vaših stolnih uređaja.
 
-| Metrika | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Metrika | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |---------|-------------------|------------------------|
 | `help` hladno / toplo | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` vrijeme izvršavanja (najbolje od 3) | **< 0.01 s** | 5.98 s |

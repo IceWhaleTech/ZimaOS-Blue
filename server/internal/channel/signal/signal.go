@@ -41,6 +41,10 @@ type Channel struct {
 	isRegistered bool
 	isLinked     bool
 	cmd          *exec.Cmd
+
+	sendTextFunc      func(ctx context.Context, chatID, content string) error
+	sendImageDataFunc func(ctx context.Context, chatID string, imageData []byte, filename string, caption string) error
+	sendFileDataFunc  func(ctx context.Context, chatID string, fileData []byte, filename string, caption string) error
 }
 
 // Config contains Signal channel configuration.
@@ -66,23 +70,31 @@ func DefaultConfig() Config {
 // SignalMessage represents a message from signal-cli JSON output.
 type SignalMessage struct {
 	Envelope struct {
-		Source        string `json:"source"`
-		SourceNumber  string `json:"sourceNumber"`
-		SourceUUID    string `json:"sourceUuid"`
-		SourceName    string `json:"sourceName"`
-		SourceDevice  int    `json:"sourceDevice"`
-		Timestamp     int64  `json:"timestamp"`
-		DataMessage   *DataMessage `json:"dataMessage"`
-		SyncMessage   *SyncMessage `json:"syncMessage"`
+		Source       string       `json:"source"`
+		SourceNumber string       `json:"sourceNumber"`
+		SourceUUID   string       `json:"sourceUuid"`
+		SourceName   string       `json:"sourceName"`
+		SourceDevice int          `json:"sourceDevice"`
+		Timestamp    int64        `json:"timestamp"`
+		DataMessage  *DataMessage `json:"dataMessage"`
+		SyncMessage  *SyncMessage `json:"syncMessage"`
 	} `json:"envelope"`
 }
 
 // DataMessage represents a Signal data message.
 type DataMessage struct {
-	Timestamp        int64       `json:"timestamp"`
-	Message          string      `json:"message"`
-	ExpiresInSeconds int         `json:"expiresInSeconds"`
-	GroupInfo        *GroupInfo  `json:"groupInfo"`
+	Timestamp        int64                     `json:"timestamp"`
+	Message          string                    `json:"message"`
+	ExpiresInSeconds int                       `json:"expiresInSeconds"`
+	GroupInfo        *GroupInfo                `json:"groupInfo"`
+	Attachments      []SignalMessageAttachment `json:"attachments,omitempty"`
+}
+
+type SignalMessageAttachment struct {
+	ContentType string `json:"contentType,omitempty"`
+	Filename    string `json:"filename,omitempty"`
+	ID          string `json:"id,omitempty"`
+	Size        int64  `json:"size,omitempty"`
 }
 
 // SyncMessage represents a Signal sync message.
@@ -92,10 +104,10 @@ type SyncMessage struct {
 
 // SentMessage represents a sent message in sync.
 type SentMessage struct {
-	Destination string       `json:"destination"`
-	Timestamp   int64        `json:"timestamp"`
-	Message     string       `json:"message"`
-	GroupInfo   *GroupInfo   `json:"groupInfo"`
+	Destination string     `json:"destination"`
+	Timestamp   int64      `json:"timestamp"`
+	Message     string     `json:"message"`
+	GroupInfo   *GroupInfo `json:"groupInfo"`
 }
 
 // GroupInfo represents Signal group information.
@@ -107,12 +119,16 @@ type GroupInfo struct {
 
 // New creates a new Signal channel.
 func New(cfg Config, logger *zap.Logger) *Channel {
-	return &Channel{
+	c := &Channel{
 		config:   cfg,
 		logger:   logger.With(zap.String("channel", "signal")),
 		messages: make(chan channel.Message, 100),
 		status:   channel.StatusDisconnected,
 	}
+	c.sendTextFunc = c.sendText
+	c.sendImageDataFunc = c.SendImageData
+	c.sendFileDataFunc = c.SendFileData
+	return c
 }
 
 // Name returns the channel name.
@@ -293,7 +309,7 @@ func (c *Channel) processMessage(jsonLine string) {
 // handleDataMessage processes an incoming data message.
 func (c *Channel) handleDataMessage(msg *SignalMessage) {
 	dm := msg.Envelope.DataMessage
-	if dm.Message == "" {
+	if strings.TrimSpace(dm.Message) == "" && len(dm.Attachments) == 0 {
 		return
 	}
 
@@ -337,6 +353,21 @@ func (c *Channel) handleDataMessage(msg *SignalMessage) {
 			"source_device": msg.Envelope.SourceDevice,
 		},
 	}
+	for _, att := range dm.Attachments {
+		channelMsg.Attachments = append(channelMsg.Attachments, channel.Attachment{
+			ID:       strings.TrimSpace(att.ID),
+			Type:     signalIncomingAttachmentType(att.ContentType),
+			Name:     strings.TrimSpace(att.Filename),
+			Size:     att.Size,
+			MimeType: strings.TrimSpace(att.ContentType),
+		})
+	}
+	if len(channelMsg.Attachments) > 0 {
+		channelMsg.Metadata["attachment_count"] = len(channelMsg.Attachments)
+		if strings.TrimSpace(channelMsg.Content) == "" {
+			channelMsg.Type = channelMsg.Attachments[0].Type
+		}
+	}
 
 	c.msgCount.Add(1)
 
@@ -345,6 +376,20 @@ func (c *Channel) handleDataMessage(msg *SignalMessage) {
 	default:
 		c.logger.Warn("message channel full, dropping message",
 			zap.String("message_id", channelMsg.ID))
+	}
+}
+
+func signalIncomingAttachmentType(contentType string) channel.MessageType {
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	switch {
+	case strings.HasPrefix(contentType, "image/"):
+		return channel.MessageTypeImage
+	case strings.HasPrefix(contentType, "audio/"):
+		return channel.MessageTypeAudio
+	case strings.HasPrefix(contentType, "video/"):
+		return channel.MessageTypeVideo
+	default:
+		return channel.MessageTypeFile
 	}
 }
 
@@ -412,20 +457,93 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	}
 	c.mu.RUnlock()
 
+	if c.sendTextFunc == nil {
+		c.sendTextFunc = c.sendText
+	}
+	if c.sendImageDataFunc == nil {
+		c.sendImageDataFunc = c.SendImageData
+	}
+	if c.sendFileDataFunc == nil {
+		c.sendFileDataFunc = c.SendFileData
+	}
+
+	captionConsumed := false
+	sentAny := false
+
+	for _, att := range msg.Attachments {
+		caption := ""
+		if !captionConsumed {
+			caption = msg.Content
+		}
+		includeCaption := caption != ""
+		filename := att.Name
+		if filename == "" {
+			filename = fmt.Sprintf("attachment_%d", time.Now().UnixNano())
+		}
+
+		if len(att.Data) == 0 {
+			fallback := signalAttachmentFallbackText(caption, att, includeCaption)
+			if fallback == "" {
+				continue
+			}
+			if err := c.sendTextFunc(ctx, msg.ChatID, fallback); err != nil {
+				return fmt.Errorf("failed to send Signal attachment fallback %s: %w", filename, err)
+			}
+			if includeCaption {
+				captionConsumed = true
+			}
+			sentAny = true
+			continue
+		}
+
+		var err error
+		switch att.Type {
+		case channel.MessageTypeImage:
+			err = c.sendImageDataFunc(ctx, msg.ChatID, att.Data, filename, caption)
+		default:
+			err = c.sendFileDataFunc(ctx, msg.ChatID, att.Data, filename, caption)
+		}
+		if err != nil {
+			fallback := signalAttachmentFallbackText(caption, att, includeCaption)
+			if fallback == "" {
+				return fmt.Errorf("failed to send attachment %s: %w", filename, err)
+			}
+			if err2 := c.sendTextFunc(ctx, msg.ChatID, fallback); err2 != nil {
+				return fmt.Errorf("failed to send attachment %s: %w (fallback send failed: %v)", filename, err, err2)
+			}
+		}
+		if includeCaption {
+			captionConsumed = true
+		}
+		sentAny = true
+	}
+
+	if msg.Content != "" && !captionConsumed {
+		if err := c.sendTextFunc(ctx, msg.ChatID, msg.Content); err != nil {
+			return err
+		}
+		sentAny = true
+	}
+
+	if !sentAny {
+		return fmt.Errorf("no sendable Signal content")
+	}
+
+	return nil
+}
+
+func (c *Channel) sendText(ctx context.Context, chatID, content string) error {
 	args := []string{
 		"--config", c.config.ConfigPath,
 		"-u", c.config.PhoneNumber,
 		"send",
-		"-m", msg.Content,
+		"-m", content,
 	}
 
-	// Determine if sending to group or individual
-	if strings.HasPrefix(msg.ChatID, "group.") || len(msg.ChatID) > 20 {
-		// Assume it's a group ID
-		args = append(args, "-g", msg.ChatID)
+	if strings.HasPrefix(chatID, "group.") || len(chatID) > 20 {
+		args = append(args, "-g", chatID)
 	} else {
-		// Individual recipient
-		args = append(args, msg.ChatID)
+		args = append(args, chatID)
 	}
 
 	cmd := exec.CommandContext(ctx, c.config.SignalCLIPath, args...)
@@ -434,17 +552,32 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		c.logger.Error("failed to send Signal message",
-			zap.String("recipient", msg.ChatID),
+			zap.String("recipient", chatID),
 			zap.String("output", string(output)),
 			zap.Error(err))
 		return fmt.Errorf("failed to send Signal message: %w", err)
 	}
 
 	c.logger.Debug("Signal message sent",
-		zap.String("recipient", msg.ChatID),
-		zap.Int("content_length", len(msg.Content)))
+		zap.String("recipient", chatID),
+		zap.Int("content_length", len(content)))
 
 	return nil
+}
+
+func signalAttachmentFallbackText(caption string, att channel.Attachment, includeCaption bool) string {
+	parts := make([]string, 0, 2)
+	if includeCaption && strings.TrimSpace(caption) != "" {
+		parts = append(parts, strings.TrimSpace(caption))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		parts = append(parts, strings.TrimSpace(att.URL))
+	} else if strings.TrimSpace(att.Name) != "" {
+		parts = append(parts, strings.TrimSpace(att.Name))
+	} else if len(att.Data) > 0 {
+		parts = append(parts, "[Attachment]")
+	}
+	return strings.Join(parts, "\n")
 }
 
 // SendStreaming sends a message with streaming support.
@@ -732,29 +865,7 @@ func (c *Channel) SendFileData(ctx context.Context, chatID string, fileData []by
 
 // SendWithAttachment sends a message with an attachment.
 func (c *Channel) SendWithAttachment(ctx context.Context, msg channel.OutgoingMessage) error {
-	if len(msg.Attachments) == 0 {
-		return c.Send(ctx, msg)
-	}
-
-	for _, att := range msg.Attachments {
-		var err error
-		filename := att.Name
-		if filename == "" {
-			filename = fmt.Sprintf("attachment_%d", time.Now().UnixNano())
-		}
-
-		switch att.Type {
-		case channel.MessageTypeImage:
-			err = c.SendImageData(ctx, msg.ChatID, att.Data, filename, msg.Content)
-		default:
-			err = c.SendFileData(ctx, msg.ChatID, att.Data, filename, msg.Content)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to send attachment %s: %w", filename, err)
-		}
-	}
-
-	return nil
+	return c.Send(ctx, msg)
 }
 
 // SendMultipleAttachments sends a message with multiple attachments.

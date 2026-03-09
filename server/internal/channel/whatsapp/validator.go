@@ -3,6 +3,8 @@ package whatsapp
 import (
 	"context"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
 )
@@ -30,6 +32,7 @@ func (v *Validator) Validate(ctx context.Context, config map[string]string) vali
 	if sessionPath == "" {
 		sessionPath = "./data/whatsapp"
 	}
+	cliPath := strings.TrimSpace(config["cli_path"])
 
 	// Check if session directory exists or can be created
 	if err := os.MkdirAll(sessionPath, 0755); err != nil {
@@ -37,6 +40,16 @@ func (v *Validator) Validate(ctx context.Context, config map[string]string) vali
 			Success:    false,
 			Error:      "cannot create session directory: " + err.Error(),
 			MessageKey: "channels.sessionDirError",
+		}
+	}
+
+	if cliPath != "" {
+		if _, err := exec.LookPath(cliPath); err != nil {
+			return validator.Result{
+				Success:    false,
+				Error:      "cannot find configured WhatsApp CLI: " + err.Error(),
+				MessageKey: "channels.connectionFailed",
+			}
 		}
 	}
 

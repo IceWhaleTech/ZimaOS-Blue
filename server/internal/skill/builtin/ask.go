@@ -135,7 +135,7 @@ func (a *Ask) Execute(ctx context.Context, input map[string]any) (*skill.Result,
 
 func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 	if raw, ok := input["questions"]; ok {
-		items, err := parseQuestionsInput(raw)
+		items, err := parseQuestionsInput(raw, input)
 		if err != nil {
 			return nil, err
 		}
@@ -203,7 +203,7 @@ func parseAskQuestions(input map[string]any) ([]AskQuestionItem, error) {
 	}, nil
 }
 
-func parseQuestionsInput(raw any) ([]AskQuestionItem, error) {
+func parseQuestionsInput(raw any, input map[string]any) ([]AskQuestionItem, error) {
 	parsed, err := parseJSONOrValue(raw)
 	if err != nil {
 		return nil, err
@@ -215,6 +215,14 @@ func parseQuestionsInput(raw any) ([]AskQuestionItem, error) {
 	list, ok := asAnySlice(parsed)
 	if !ok {
 		return nil, fmt.Errorf("invalid questions JSON: must be an array")
+	}
+
+	mode := detectQuestionsInputMode(list)
+	if mode == questionsInputModeString {
+		return parseStringQuestionsInput(list, input)
+	}
+	if mode == questionsInputModeMixed {
+		return nil, fmt.Errorf("invalid questions JSON: cannot mix question strings with question objects")
 	}
 
 	items := make([]AskQuestionItem, 0, len(list))
@@ -246,6 +254,125 @@ func parseQuestionsInput(raw any) ([]AskQuestionItem, error) {
 		return nil, fmt.Errorf("questions is empty")
 	}
 	return items, nil
+}
+
+type questionsInputMode string
+
+const (
+	questionsInputModeUnknown questionsInputMode = ""
+	questionsInputModeObject  questionsInputMode = "object"
+	questionsInputModeString  questionsInputMode = "string"
+	questionsInputModeMixed   questionsInputMode = "mixed"
+)
+
+func detectQuestionsInputMode(items []any) questionsInputMode {
+	mode := questionsInputModeUnknown
+	for _, item := range items {
+		switch v := item.(type) {
+		case map[string]any:
+			if mode == questionsInputModeUnknown {
+				mode = questionsInputModeObject
+				continue
+			}
+			if mode != questionsInputModeObject {
+				return questionsInputModeMixed
+			}
+		case string:
+			if strings.TrimSpace(v) == "" {
+				continue
+			}
+			if mode == questionsInputModeUnknown {
+				mode = questionsInputModeString
+				continue
+			}
+			if mode != questionsInputModeString {
+				return questionsInputModeMixed
+			}
+		}
+	}
+	return mode
+}
+
+func parseStringQuestionsInput(list []any, input map[string]any) ([]AskQuestionItem, error) {
+	questionTexts := make([]string, 0, len(list))
+	for _, entry := range list {
+		text, ok := entry.(string)
+		if !ok {
+			continue
+		}
+		text = strings.TrimSpace(text)
+		if text != "" {
+			questionTexts = append(questionTexts, text)
+		}
+	}
+	if len(questionTexts) == 0 {
+		return nil, fmt.Errorf("questions is empty")
+	}
+
+	optionGroups := parseOptionGroupsFromInput(input, "options")
+	if len(optionGroups) == 0 {
+		return nil, fmt.Errorf("options is required when questions is a string array")
+	}
+	if len(optionGroups) != len(questionTexts) {
+		return nil, fmt.Errorf("questions/options length mismatch: %d questions, %d option groups", len(questionTexts), len(optionGroups))
+	}
+
+	items := make([]AskQuestionItem, 0, len(questionTexts))
+	for i, question := range questionTexts {
+		options := optionGroups[i]
+		if len(options) == 0 {
+			return nil, fmt.Errorf("question %d has no options", i+1)
+		}
+		items = append(items, AskQuestionItem{
+			ID:          fmt.Sprintf("q%d", i),
+			Question:    question,
+			Header:      shortHeader(question),
+			Options:     options,
+			MultiSelect: false,
+		})
+	}
+	return items, nil
+}
+
+func parseOptionGroupsFromInput(input map[string]any, key string) [][]AskQuestionOption {
+	for _, candidate := range append([]string{key}, optionAliases(key)...) {
+		raw, ok := input[candidate]
+		if !ok {
+			continue
+		}
+		if groups := parseOptionGroupsPayload(raw); len(groups) > 0 {
+			return groups
+		}
+	}
+	return nil
+}
+
+func parseOptionGroupsPayload(raw any) [][]AskQuestionOption {
+	parsed, err := parseJSONOrValue(raw)
+	if err != nil || parsed == nil {
+		return nil
+	}
+	if opts := parseOptionPayload(parsed); len(opts) > 0 {
+		return [][]AskQuestionOption{opts}
+	}
+
+	list, ok := asAnySlice(parsed)
+	if !ok {
+		return nil
+	}
+
+	groups := make([][]AskQuestionOption, 0, len(list))
+	for _, item := range list {
+		opts := parseOptionPayload(item)
+		if len(opts) == 0 {
+			return nil
+		}
+		groups = append(groups, opts)
+	}
+	if len(groups) == 0 {
+		return nil
+	}
+	return groups
 }
 
 func parseOptionsFromQuestion(q map[string]any) []AskQuestionOption {

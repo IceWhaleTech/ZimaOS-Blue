@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/labstack/echo/v4"
 )
 
 // Handler handles browser automation HTTP requests.
@@ -189,8 +189,10 @@ func (h *Handler) RunTask(c echo.Context) error {
 		time.Sleep(2 * time.Second)
 		h.tasksMu.Lock()
 		if t, ok := h.tasks[id]; ok {
-			t.Status = "completed"
-			t.CompletedAt = timeutil.NowTime().Format(time.RFC3339)
+			if t.Status == "running" {
+				t.Status = "completed"
+				t.CompletedAt = timeutil.NowTime().Format(time.RFC3339)
+			}
 		}
 		h.tasksMu.Unlock()
 	}()
@@ -204,7 +206,7 @@ func (h *Handler) CancelTask(c echo.Context) error {
 
 	h.tasksMu.Lock()
 	task, exists := h.tasks[id]
-	if exists && task.Status == "running" {
+	if exists && (task.Status == "pending" || task.Status == "running") {
 		task.Status = "cancelled"
 		task.CompletedAt = timeutil.NowTime().Format(time.RFC3339)
 	}

@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
-	z "github.com/IceWhaleTech/zorm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -93,29 +94,26 @@ CREATE INDEX IF NOT EXISTS idx_sessions_last_active ON sessions(last_active_at);
 
 // NewSQLiteSessionStore creates a new SQLiteSessionStore.
 func NewSQLiteSessionStore(dbPath string, maxTokens int) (*SQLiteSessionStore, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := dbutil.OpenSQLiteWithRecovery(dbPath, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(2)
+		db.SetMaxIdleConns(1)
+
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return fmt.Errorf("failed to enable WAL mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+			return fmt.Errorf("failed to enable foreign keys: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("failed to set busy timeout: %w", err)
+		}
+		if _, err := db.Exec(sessionSchema); err != nil {
+			return fmt.Errorf("failed to create schema: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
-	}
-
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(1)
-
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
-	}
-	if _, err := db.Exec(sessionSchema); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to create schema: %w", err)
+		return nil, err
 	}
 
 	return &SQLiteSessionStore{db: db, maxTokens: maxTokens}, nil

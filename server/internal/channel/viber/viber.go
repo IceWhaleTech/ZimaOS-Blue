@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -57,24 +59,30 @@ type callbackSender struct {
 }
 
 type callbackMessage struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	Media    string `json:"media,omitempty"`
-	FileName string `json:"file_name,omitempty"`
-	FileSize int64  `json:"file_size,omitempty"`
+	Type         string                 `json:"type"`
+	Text         string                 `json:"text,omitempty"`
+	Media        string                 `json:"media,omitempty"`
+	FileName     string                 `json:"file_name,omitempty"`
+	FileSize     int64                  `json:"file_size,omitempty"`
+	Thumbnail    string                 `json:"thumbnail,omitempty"`
+	Duration     int                    `json:"duration,omitempty"`
+	StickerID    int64                  `json:"sticker_id,omitempty"`
+	TrackingData string                 `json:"tracking_data,omitempty"`
+	RichMedia    map[string]interface{} `json:"rich_media,omitempty"`
+	Keyboard     map[string]interface{} `json:"keyboard,omitempty"`
 }
 
 // --- Viber send payload types ---
 
 type sendPayload struct {
-	Receiver  string       `json:"receiver"`
-	Type      string       `json:"type"`
-	Text      string       `json:"text,omitempty"`
-	Media     string       `json:"media,omitempty"`
-	FileName  string       `json:"file_name,omitempty"`
-	FileSize  int64        `json:"file_size,omitempty"`
-	Thumbnail string       `json:"thumbnail,omitempty"`
-	Sender    senderInfo   `json:"sender"`
+	Receiver  string     `json:"receiver"`
+	Type      string     `json:"type"`
+	Text      string     `json:"text,omitempty"`
+	Media     string     `json:"media,omitempty"`
+	FileName  string     `json:"file_name,omitempty"`
+	FileSize  int64      `json:"file_size,omitempty"`
+	Thumbnail string     `json:"thumbnail,omitempty"`
+	Sender    senderInfo `json:"sender"`
 }
 
 type senderInfo struct {
@@ -113,8 +121,8 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	}
 }
 
-func (c *Channel) Name() string                    { return "viber" }
-func (c *Channel) Type() string                    { return "viber" }
+func (c *Channel) Name() string                     { return "viber" }
+func (c *Channel) Type() string                     { return "viber" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -183,8 +191,39 @@ func (c *Channel) HandleWebhook(body []byte) error {
 // processMessage handles incoming messages including text and media attachments.
 func (c *Channel) processMessage(event callbackEvent) {
 	msgType := channel.MessageTypeText
-	content := event.Message.Text
+	content := strings.TrimSpace(event.Message.Text)
 	var attachments []channel.Attachment
+	metadata := map[string]interface{}{
+		"sender_avatar": event.Sender.Avatar,
+		"message_type":  event.Message.Type,
+	}
+	if strings.TrimSpace(event.Message.Media) != "" {
+		metadata["media"] = strings.TrimSpace(event.Message.Media)
+	}
+	if strings.TrimSpace(event.Message.FileName) != "" {
+		metadata["file_name"] = strings.TrimSpace(event.Message.FileName)
+	}
+	if event.Message.FileSize > 0 {
+		metadata["file_size"] = event.Message.FileSize
+	}
+	if strings.TrimSpace(event.Message.Thumbnail) != "" {
+		metadata["thumbnail"] = strings.TrimSpace(event.Message.Thumbnail)
+	}
+	if event.Message.Duration > 0 {
+		metadata["duration"] = event.Message.Duration
+	}
+	if event.Message.StickerID > 0 {
+		metadata["sticker_id"] = event.Message.StickerID
+	}
+	if strings.TrimSpace(event.Message.TrackingData) != "" {
+		metadata["tracking_data"] = strings.TrimSpace(event.Message.TrackingData)
+	}
+	if len(event.Message.RichMedia) > 0 {
+		metadata["rich_media"] = event.Message.RichMedia
+	}
+	if len(event.Message.Keyboard) > 0 {
+		metadata["keyboard"] = event.Message.Keyboard
+	}
 
 	switch event.Message.Type {
 	case "picture":
@@ -193,7 +232,7 @@ func (c *Channel) processMessage(event callbackEvent) {
 			attachments = append(attachments, channel.Attachment{
 				Type:     channel.MessageTypeImage,
 				URL:      event.Message.Media,
-				MimeType: "image/jpeg",
+				MimeType: viberAttachmentMimeType(event.Message.Type, event.Message.FileName),
 			})
 		}
 	case "video":
@@ -202,7 +241,7 @@ func (c *Channel) processMessage(event callbackEvent) {
 			attachments = append(attachments, channel.Attachment{
 				Type:     channel.MessageTypeVideo,
 				URL:      event.Message.Media,
-				MimeType: "video/mp4",
+				MimeType: viberAttachmentMimeType(event.Message.Type, event.Message.FileName),
 			})
 		}
 	case "file":
@@ -213,6 +252,7 @@ func (c *Channel) processMessage(event callbackEvent) {
 				Name:     event.Message.FileName,
 				URL:      event.Message.Media,
 				Size:     event.Message.FileSize,
+				MimeType: viberAttachmentMimeType(event.Message.Type, event.Message.FileName),
 			})
 		}
 	case "sticker":
@@ -221,17 +261,29 @@ func (c *Channel) processMessage(event callbackEvent) {
 			attachments = append(attachments, channel.Attachment{
 				Type:     channel.MessageTypeImage,
 				URL:      event.Message.Media,
-				MimeType: "image/png",
+				MimeType: viberAttachmentMimeType(event.Message.Type, event.Message.FileName),
 			})
 		}
 		if content == "" {
 			content = "[sticker]"
+		}
+	case "url":
+		if content == "" {
+			content = strings.TrimSpace(event.Message.Media)
+		}
+	case "rich_media":
+		msgType = channel.MessageTypeCard
+		if content == "" {
+			content = "[rich media]"
 		}
 	case "text":
 		// already handled by defaults
 	default:
 		c.logger.Debug("unsupported message type", zap.String("type", event.Message.Type))
 		return
+	}
+	if len(attachments) > 0 {
+		metadata["attachment_count"] = len(attachments)
 	}
 
 	msg := channel.Message{
@@ -244,10 +296,7 @@ func (c *Channel) processMessage(event callbackEvent) {
 		Content:     content,
 		Attachments: attachments,
 		Timestamp:   time.UnixMilli(event.Timestamp),
-		Metadata: map[string]interface{}{
-			"sender_avatar": event.Sender.Avatar,
-			"message_type":  event.Message.Type,
-		},
+		Metadata:    metadata,
 	}
 
 	c.msgCount.Add(1)
@@ -261,13 +310,49 @@ func (c *Channel) processMessage(event callbackEvent) {
 	}
 }
 
+func viberAttachmentMimeType(messageType string, fileName string) string {
+	if ext := strings.TrimSpace(filepath.Ext(fileName)); ext != "" {
+		if detected := strings.TrimSpace(mime.TypeByExtension(ext)); detected != "" {
+			return detected
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(messageType)) {
+	case "picture":
+		return "image/jpeg"
+	case "video":
+		return "video/mp4"
+	case "sticker":
+		return "image/png"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 // Send sends a message via Viber send_message API, including media attachments.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
+	captionConsumed := false
+	sentSomething := false
+
 	// Send media attachments first.
-	for i, att := range msg.Attachments {
-		if att.URL == "" {
+	for _, att := range msg.Attachments {
+		includeCaption := !captionConsumed && strings.TrimSpace(msg.Content) != ""
+		fallbackText := viberAttachmentFallbackText(msg.Content, att, includeCaption)
+		if strings.TrimSpace(att.URL) == "" {
+			if fallbackText == "" {
+				continue
+			}
+			payload := sendPayload{Receiver: msg.ChatID, Type: "text", Text: fallbackText, Sender: c.senderInfo()}
+			if err := c.doSend(ctx, payload); err != nil {
+				c.logger.Warn("failed to send attachment fallback via Viber", zap.String("type", string(att.Type)), zap.Error(err))
+				continue
+			}
+			sentSomething = true
+			if includeCaption {
+				captionConsumed = true
+			}
 			continue
 		}
+
 		viberType := "file"
 		switch att.Type {
 		case channel.MessageTypeImage:
@@ -276,9 +361,8 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 			viberType = "video"
 		}
 		caption := ""
-		if i == 0 {
+		if includeCaption {
 			caption = msg.Content
-			msg.Content = ""
 		}
 		payload := sendPayload{
 			Receiver: msg.ChatID,
@@ -295,27 +379,74 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 			payload.FileSize = att.Size
 		}
 		if err := c.doSend(ctx, payload); err != nil {
-			c.logger.Warn("failed to send media via Viber",
-				zap.String("type", viberType), zap.Error(err))
+			c.logger.Warn("failed to send media via Viber", zap.String("type", viberType), zap.Error(err))
+			if fallbackText != "" {
+				fallbackPayload := sendPayload{Receiver: msg.ChatID, Type: "text", Text: fallbackText, Sender: c.senderInfo()}
+				if fallbackErr := c.doSend(ctx, fallbackPayload); fallbackErr != nil {
+					c.logger.Warn("failed to send attachment fallback via Viber", zap.String("type", string(att.Type)), zap.Error(fallbackErr))
+					continue
+				}
+				sentSomething = true
+				if includeCaption {
+					captionConsumed = true
+				}
+			}
+			continue
+		}
+		sentSomething = true
+		if includeCaption {
+			captionConsumed = true
 		}
 	}
 
 	// Send remaining text.
-	if msg.Content != "" {
-		payload := sendPayload{
-			Receiver: msg.ChatID,
-			Type:     "text",
-			Text:     msg.Content,
-			Sender:   c.senderInfo(),
-		}
+	if strings.TrimSpace(msg.Content) != "" && !captionConsumed {
+		payload := sendPayload{Receiver: msg.ChatID, Type: "text", Text: msg.Content, Sender: c.senderInfo()}
 		if err := c.doSend(ctx, payload); err != nil {
 			c.setError(err.Error())
 			return err
 		}
+		sentSomething = true
+	}
+
+	if !sentSomething {
+		return fmt.Errorf("no sendable Viber content")
 	}
 
 	c.msgsSent.Add(1)
 	return nil
+}
+
+func viberAttachmentFallbackText(caption string, att channel.Attachment, includeCaption bool) string {
+	parts := make([]string, 0, 2)
+	if includeCaption && strings.TrimSpace(caption) != "" {
+		parts = append(parts, strings.TrimSpace(caption))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		parts = append(parts, strings.TrimSpace(att.URL))
+	} else {
+		name := strings.TrimSpace(att.Name)
+		if name == "" && len(att.Data) > 0 {
+			name = viberAttachmentLabel(att)
+		}
+		if name != "" {
+			parts = append(parts, name)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func viberAttachmentLabel(att channel.Attachment) string {
+	switch att.Type {
+	case channel.MessageTypeImage:
+		return "Image attachment"
+	case channel.MessageTypeVideo:
+		return "Video attachment"
+	case channel.MessageTypeAudio:
+		return "Audio attachment"
+	default:
+		return "File attachment"
+	}
 }
 
 // SendMedia sends a media message (picture, video, or file) via Viber API.

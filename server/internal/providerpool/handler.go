@@ -39,8 +39,9 @@ type Pool struct {
 
 // poolInitOpts collects options before Pool construction.
 type poolInitOpts struct {
-	db     *sql.DB
-	config *PoolConfig
+	db              *sql.DB
+	config          *PoolConfig
+	secretEncryptor SecretEncryptor
 }
 
 // PoolOption configures the Pool
@@ -61,6 +62,13 @@ func WithDB(db *sql.DB) PoolOption {
 	}
 }
 
+// WithSecretEncryptor enables at-rest encryption for persisted provider secrets.
+func WithSecretEncryptor(enc SecretEncryptor) PoolOption {
+	return func(o *poolInitOpts) {
+		o.secretEncryptor = enc
+	}
+}
+
 // NewPool creates a new Pool with all components
 func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 	// Collect options
@@ -72,7 +80,7 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 	// Create storage: prefer SQLite if DB is provided
 	var storage Storage
 	if initOpts.db != nil {
-		sqliteStorage, err := NewSQLiteStorage(initOpts.db)
+		sqliteStorage, err := NewSQLiteStorage(initOpts.db, WithStorageEncryptor(initOpts.secretEncryptor))
 		if err != nil {
 			return nil, fmt.Errorf("create sqlite storage: %w", err)
 		}
@@ -83,7 +91,7 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 		storage = sqliteStorage
 	} else {
 		var err error
-		storage, err = NewFileStorage(dataPath)
+		storage, err = NewFileStorage(dataPath, WithStorageEncryptor(initOpts.secretEncryptor))
 		if err != nil {
 			return nil, err
 		}
@@ -1777,13 +1785,13 @@ func (h *Handler) GetImportableConfigs(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	// Collect all existing API key hashes from the registry
-	existingKeyHashes := make(map[string]bool)
+	// Collect all existing API key fingerprints from the registry.
+	existingKeyFingerprints := make(map[string]bool)
 	if h.pool.Registry != nil {
 		for _, provider := range h.pool.Registry.List() {
 			for _, apiKey := range provider.APIKeys {
-				if apiKey.KeyHash != "" {
-					existingKeyHashes[apiKey.KeyHash] = true
+				if fp := apiKeyFingerprint(&apiKey); fp != "" {
+					existingKeyFingerprints[fp] = true
 				}
 			}
 		}
@@ -1798,8 +1806,7 @@ func (h *Handler) GetImportableConfigs(c echo.Context) error {
 		if err != nil || realKey == "" {
 			continue
 		}
-		keyHash := HashAPIKey(realKey)
-		if existingKeyHashes[keyHash] {
+		if existingKeyFingerprints[apiKeyFingerprint(&APIKey{Key: realKey})] {
 			cfg.AlreadyImported = true
 			cfg.CanImport = false
 		}

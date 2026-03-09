@@ -17,7 +17,13 @@ type TestResult struct {
 
 // TestMediaProvider probes a media provider to check connectivity.
 func TestMediaProvider(config *MediaProviderConfig) *TestResult {
-	if config.APIKey == "" {
+	if config == nil {
+		return &TestResult{Error: "provider config is required"}
+	}
+	if config.ID == fakeMediaProviderID {
+		return &TestResult{Healthy: true, LatencyMs: 0}
+	}
+	if providerRequiresAPIKey(config.ID) && config.APIKey == "" {
 		return &TestResult{Error: "no API key configured"}
 	}
 

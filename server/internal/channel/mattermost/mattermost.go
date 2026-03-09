@@ -184,34 +184,54 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("channel not connected")
 	}
 
-	// Upload attachments and collect file IDs.
 	var fileIDs []string
+	var contentParts []string
+	if msg.Content != "" {
+		contentParts = append(contentParts, msg.Content)
+	}
+
 	for _, att := range msg.Attachments {
 		if len(att.Data) > 0 {
 			name := att.Name
-			if name == "" { name = "file" }
+			if name == "" {
+				name = "file"
+			}
 			fid, err := c.uploadFile(ctx, msg.ChatID, name, att.Data)
-			if err != nil {
-				c.logger.Warn("failed to upload file to mattermost",
-					zap.String("type", string(att.Type)), zap.Error(err))
+			if err == nil {
+				fileIDs = append(fileIDs, fid)
 				continue
 			}
-			fileIDs = append(fileIDs, fid)
+			c.logger.Warn("failed to upload file to mattermost",
+				zap.String("type", string(att.Type)),
+				zap.String("name", name),
+				zap.Error(err))
+		}
+		if fallback := mattermostAttachmentFallbackText(att); fallback != "" {
+			contentParts = append(contentParts, fallback)
 		}
 	}
 
-	// Build post
-	post := map[string]interface{}{
-		"channel_id": msg.ChatID,
-		"message":    msg.Content,
+	message := strings.Join(contentParts, "\n")
+	props, hasProps, err := mattermostPostProps(msg.Metadata)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(message) == "" && len(fileIDs) == 0 && !hasProps {
+		return fmt.Errorf("no sendable Mattermost content")
 	}
 
+	post := map[string]interface{}{
+		"channel_id": msg.ChatID,
+		"message":    message,
+	}
 	if msg.ReplyToID != "" {
 		post["root_id"] = msg.ReplyToID
 	}
-
 	if len(fileIDs) > 0 {
 		post["file_ids"] = fileIDs
+	}
+	if hasProps {
+		post["props"] = props
 	}
 
 	postJSON, err := json.Marshal(post)
@@ -220,7 +240,6 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	}
 
 	url := fmt.Sprintf("%s/api/v4/posts", c.config.ServerURL)
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(postJSON)))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -241,6 +260,68 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	}
 
 	return nil
+}
+
+func mattermostPostProps(metadata map[string]interface{}) (map[string]interface{}, bool, error) {
+	if metadata == nil {
+		return nil, false, nil
+	}
+	props := map[string]interface{}{}
+	if rawProps, ok := metadata["props"]; ok {
+		switch value := rawProps.(type) {
+		case map[string]interface{}:
+			for key, item := range value {
+				props[key] = item
+			}
+		default:
+			body, err := json.Marshal(value)
+			if err != nil {
+				return nil, false, fmt.Errorf("failed to marshal Mattermost props: %w", err)
+			}
+			if err := json.Unmarshal(body, &props); err != nil {
+				return nil, false, fmt.Errorf("invalid Mattermost props metadata: %w", err)
+			}
+		}
+	}
+	if rawAttachments, ok := metadata["attachments"]; ok {
+		switch value := rawAttachments.(type) {
+		case []interface{}:
+			props["attachments"] = value
+		case []map[string]interface{}:
+			attachments := make([]interface{}, 0, len(value))
+			for _, item := range value {
+				attachments = append(attachments, item)
+			}
+			props["attachments"] = attachments
+		default:
+			body, err := json.Marshal(value)
+			if err != nil {
+				return nil, false, fmt.Errorf("failed to marshal Mattermost attachments: %w", err)
+			}
+			var attachments []interface{}
+			if err := json.Unmarshal(body, &attachments); err != nil {
+				return nil, false, fmt.Errorf("invalid Mattermost attachments metadata: %w", err)
+			}
+			props["attachments"] = attachments
+		}
+	}
+	if len(props) == 0 {
+		return nil, false, nil
+	}
+	return props, true, nil
+}
+
+func mattermostAttachmentFallbackText(att channel.Attachment) string {
+	if strings.TrimSpace(att.URL) != "" {
+		return strings.TrimSpace(att.URL)
+	}
+	if strings.TrimSpace(att.Name) != "" {
+		return strings.TrimSpace(att.Name)
+	}
+	if len(att.Data) > 0 {
+		return "[Attachment]"
+	}
+	return ""
 }
 
 // uploadFile uploads a file to Mattermost and returns the file ID.
@@ -483,7 +564,7 @@ func (c *Channel) convertPost(post *Post, event *WebhookEvent) channel.Message {
 
 // WebhookEvent represents a Mattermost webhook event.
 type WebhookEvent struct {
-	Event string          `json:"event"`
+	Event string           `json:"event"`
 	Data  WebhookEventData `json:"data"`
 }
 

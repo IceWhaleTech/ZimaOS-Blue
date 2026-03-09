@@ -95,8 +95,8 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	}
 }
 
-func (c *Channel) Name() string                    { return "line" }
-func (c *Channel) Type() string                    { return "line" }
+func (c *Channel) Name() string                     { return "line" }
+func (c *Channel) Type() string                     { return "line" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -197,57 +197,85 @@ func (c *Channel) processTextMessage(event webhookEvent) {
 // Send sends a message via LINE push API.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	var messages []map[string]interface{}
+	captionConsumed := false
 
 	// Build media messages from attachments.
 	for _, att := range msg.Attachments {
-		if att.URL == "" {
-			continue
-		}
+		includeCaption := !captionConsumed && strings.TrimSpace(msg.Content) != ""
 		switch att.Type {
 		case channel.MessageTypeImage:
+			if strings.TrimSpace(att.URL) == "" {
+				if text := lineAttachmentFallbackText(msg.Content, att, includeCaption); text != "" {
+					messages = append(messages, map[string]interface{}{"type": "text", "text": text})
+					if includeCaption {
+						captionConsumed = true
+					}
+				}
+				continue
+			}
 			messages = append(messages, map[string]interface{}{
 				"type":               "image",
 				"originalContentUrl": att.URL,
 				"previewImageUrl":    att.URL,
 			})
 		case channel.MessageTypeVideo:
-			m := map[string]interface{}{
+			if strings.TrimSpace(att.URL) == "" {
+				if text := lineAttachmentFallbackText(msg.Content, att, includeCaption); text != "" {
+					messages = append(messages, map[string]interface{}{"type": "text", "text": text})
+					if includeCaption {
+						captionConsumed = true
+					}
+				}
+				continue
+			}
+			messages = append(messages, map[string]interface{}{
 				"type":               "video",
 				"originalContentUrl": att.URL,
-				"previewImageUrl":    att.URL, // LINE requires a preview; use same URL as fallback
-			}
-			messages = append(messages, m)
+				"previewImageUrl":    att.URL,
+			})
 		case channel.MessageTypeAudio:
+			if strings.TrimSpace(att.URL) == "" {
+				if text := lineAttachmentFallbackText(msg.Content, att, includeCaption); text != "" {
+					messages = append(messages, map[string]interface{}{"type": "text", "text": text})
+					if includeCaption {
+						captionConsumed = true
+					}
+				}
+				continue
+			}
 			messages = append(messages, map[string]interface{}{
 				"type":               "audio",
 				"originalContentUrl": att.URL,
-				"duration":           60000, // default 60s; LINE requires duration
+				"duration":           60000,
 			})
 		default:
-			// Files: send as text with URL
-			text := att.Name
-			if text == "" { text = "File" }
-			text += "\n" + att.URL
-			messages = append(messages, map[string]interface{}{
-				"type": "text", "text": text,
-			})
+			if text := lineAttachmentFallbackText(msg.Content, att, includeCaption); text != "" {
+				messages = append(messages, map[string]interface{}{"type": "text", "text": text})
+				if includeCaption {
+					captionConsumed = true
+				}
+			}
 		}
 	}
 
 	// Add text message if present.
-	if msg.Content != "" {
+	if strings.TrimSpace(msg.Content) != "" && !captionConsumed {
 		messages = append(messages, map[string]interface{}{
 			"type": "text", "text": msg.Content,
 		})
 	}
 
 	if len(messages) == 0 {
-		return nil
+		return fmt.Errorf("no sendable LINE content")
 	}
 
-	payload := map[string]interface{}{
-		"to":       msg.ChatID,
-		"messages": messages,
+	payload := map[string]interface{}{"messages": messages}
+	requestURL := linePushURL
+	if strings.TrimSpace(msg.ReplyToID) != "" {
+		payload["replyToken"] = msg.ReplyToID
+		requestURL = lineReplyURL
+	} else {
+		payload["to"] = msg.ChatID
 	}
 
 	body, err := json.Marshal(payload)
@@ -255,7 +283,7 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, linePushURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -275,6 +303,41 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 
 	c.msgsSent.Add(1)
 	return nil
+}
+
+func lineAttachmentFallbackText(caption string, att channel.Attachment, includeCaption bool) string {
+	parts := make([]string, 0, 2)
+	if includeCaption && strings.TrimSpace(caption) != "" {
+		parts = append(parts, strings.TrimSpace(caption))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		if att.Type == channel.MessageTypeFile && strings.TrimSpace(att.Name) != "" {
+			parts = append(parts, strings.TrimSpace(att.Name))
+		}
+		parts = append(parts, strings.TrimSpace(att.URL))
+	} else {
+		name := strings.TrimSpace(att.Name)
+		if name == "" && len(att.Data) > 0 {
+			name = lineAttachmentLabel(att)
+		}
+		if name != "" {
+			parts = append(parts, name)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func lineAttachmentLabel(att channel.Attachment) string {
+	switch att.Type {
+	case channel.MessageTypeImage:
+		return "Image attachment"
+	case channel.MessageTypeVideo:
+		return "Video attachment"
+	case channel.MessageTypeAudio:
+		return "Audio attachment"
+	default:
+		return "File attachment"
+	}
 }
 
 // ReplyMessage sends a reply using a reply token.
@@ -320,7 +383,7 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 		fullContent.WriteString(chunk)
 	}
 	if fullContent.Len() > 0 {
-		return c.Send(ctx, channel.OutgoingMessage{ChatID: chatID, Content: fullContent.String()})
+		return c.Send(ctx, channel.OutgoingMessage{ChatID: chatID, ReplyToID: replyToID, Content: fullContent.String()})
 	}
 	return nil
 }

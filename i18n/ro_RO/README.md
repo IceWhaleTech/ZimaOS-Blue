@@ -66,7 +66,7 @@ Mergem mai departe: suport nativ pentru **peste 20 de platforme IM**, interfețe
 
 Compilat nativ în Go — fără interpretor, fără VM, fără overhead. Rulează silențios pe orice, de la servere la dispozitive desktop.
 
-| Metrică | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Metrică | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |---------|-------------------|------------------------|
 | `help` la rece / la cald | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` timp de execuție (cel mai bun din 3) | **< 0.01 s** | 5.98 s |

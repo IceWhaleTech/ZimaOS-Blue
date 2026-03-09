@@ -57,3 +57,24 @@ func TestRequestBodyForLog_OptInUsesMasker(t *testing.T) {
 		t.Fatalf("expected masked marker in logged body, got=%q", got)
 	}
 }
+
+func TestUpstreamRequestShapeForLog(t *testing.T) {
+	tests := []struct {
+		name string
+		body []byte
+		want string
+	}{
+		{name: "chat completions", body: []byte(`{"messages":[{"role":"user","content":"hi"}]}`), want: "chat_completions"},
+		{name: "responses", body: []byte(`{"input":[{"role":"user","content":[{"type":"input_text","text":"hi"}]}]}`), want: "responses"},
+		{name: "hybrid", body: []byte(`{"messages":[{"role":"user","content":"hi"}],"input":[{"role":"user","content":[{"type":"input_text","text":"hi"}]}]}`), want: "hybrid"},
+		{name: "unknown", body: []byte(`{"model":"gpt-5"}`), want: "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := upstreamRequestShapeForLog(tt.body); got != tt.want {
+				t.Fatalf("shape = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

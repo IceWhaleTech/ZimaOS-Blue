@@ -109,6 +109,34 @@ type toolCallThenTextProxyHandler struct {
 	callCount int
 }
 
+// toolRoundPreContentFailingProxyHandler simulates:
+// 1) first round emits a tool_call
+// 2) second round fails before any SSE chunk with upstream 502
+type toolRoundPreContentFailingProxyHandler struct {
+	callCount int
+}
+
+// toolRoundPinnedProviderFailoverProxyHandler simulates:
+// 1) first round emits a tool_call and pins provider
+// 2) second round fails pre-content while pinned
+// 3) third round succeeds only when request is retried without pinning
+type toolRoundPinnedProviderFailoverProxyHandler struct {
+	callCount             int
+	requestPinnedProvider []string
+	requestExcluded       [][]string
+	requestPrevIDs        []string
+	requestDisableCont    []bool
+}
+
+// toolRoundOverloadedAfterSearchProxyHandler simulates:
+// 1) first round emits a web_search tool call
+// 2) second round fails pre-content with an overloaded-style 500
+// The chat layer should still emit a concise fallback summary instead of an
+// empty post-tool message.
+type toolRoundOverloadedAfterSearchProxyHandler struct {
+	callCount int
+}
+
 // actionPledgeThenToolCallProxyHandler simulates:
 // 1) first round returns an action-pledge placeholder (toolless)
 // 2) auto-continue round emits a structured tool_call
@@ -638,6 +666,141 @@ func (h *toolCallThenTextProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.
 	flush()
 }
 
+func (h *toolRoundPreContentFailingProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_tool_round_precontent_fail"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	if h.callCount == 1 {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_precontent_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_precontent_1","type":"function","function":{"name":"noop_tool","arguments":"{\"task\":\"inspect\"}"}}]},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_precontent_1","choices":[{"delta":{},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		return
+	}
+
+	http.Error(w, `{"error":{"message":"Upstream request failed","type":"upstream_error"}}`, http.StatusBadGateway)
+}
+
+func (h *toolRoundOverloadedAfterSearchProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_claude_overloaded"
+		rr.Model = "claude-opus-4-6"
+	}
+
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	if h.callCount == 1 {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_search_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_search_1","type":"function","function":{"name":"web_search","arguments":"{\"query\":\"OpenClaw latest news 2025\",\"max_results\":4}"}}]},"finish_reason":null}],"model":"claude-opus-4-6"}`)
+		flush()
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_search_1","choices":[{"delta":{},"finish_reason":"tool_calls"}],"model":"claude-opus-4-6"}`)
+		flush()
+		return
+	}
+
+	http.Error(w, `{"error":{"type":"overloaded_error","message":"构建请求失败"},"type":"error"}`, http.StatusInternalServerError)
+}
+
+func (h *toolRoundPinnedProviderFailoverProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+	h.requestPinnedProvider = append(h.requestPinnedProvider, proxy.GetPinnedProvider(r.Context()))
+	h.requestExcluded = append(h.requestExcluded, proxy.GetExcludedProviders(r.Context()))
+	h.requestDisableCont = append(h.requestDisableCont, strings.TrimSpace(r.Header.Get(proxy.DisableResponsesContinuationHeader)) == "1")
+
+	var body struct {
+		PreviousResponseID string `json:"previous_response_id"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	h.requestPrevIDs = append(h.requestPrevIDs, body.PreviousResponseID)
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_primary"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	switch h.callCount {
+	case 1:
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_failover_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_failover_1","type":"function","function":{"name":"noop_tool","arguments":"{\"task\":\"failover\"}"}}]},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_failover_1","choices":[{"delta":{},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		return
+	case 2:
+		http.Error(w, `{"error":{"message":"Upstream request failed","type":"upstream_error"}}`, http.StatusBadGateway)
+		return
+	default:
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_failover_2","choices":[{"delta":{"content":"备用 provider 恢复成功。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	}
+}
+
+func newEnabledProviderPoolForStreamTests(t *testing.T, providerIDs ...string) *providerpool.Pool {
+	t.Helper()
+
+	storage, err := providerpool.NewFileStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("failed to create provider storage: %v", err)
+	}
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("failed to create provider registry: %v", err)
+	}
+	for i, id := range providerIDs {
+		provider := &providerpool.Provider{
+			ID:        id,
+			Name:      id,
+			Type:      providerpool.ProviderTypeCustom,
+			BaseURL:   fmt.Sprintf("https://example-%d.com/v1", i+1),
+			Enabled:   true,
+			Status:    providerpool.ProviderStatusActive,
+			Priority:  10 + i,
+			APIFormat: providerpool.APIFormatOpenAI,
+			APIKeys: []providerpool.APIKey{
+				{ID: "k-" + id, Key: "sk-test", Enabled: true},
+			},
+		}
+		if err := registry.Register(provider); err != nil {
+			t.Fatalf("failed to register provider %s: %v", id, err)
+		}
+	}
+
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	return &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+	}
+}
+
 func (h *actionPledgeThenToolCallProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.callCount++
 
@@ -676,13 +839,13 @@ func (h *actionPledgeThenToolCallProxyHandler) ServeHTTP(w http.ResponseWriter, 
 
 	switch h.callCount {
 	case 1:
-		fmt.Fprintf(w, "data: %s\n\n", `{"id":"action_round_1","choices":[{"delta":{"content":"我先帮你快速查一下 OpenClaw 的最新相关新闻与动态。请稍等，我整理成要点给你。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"action_round_1","choices":[{"delta":{"content":"我先帮你快速查一下 BlueAgent 的最新相关新闻与动态。请稍等，我整理成要点给你。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
 	case 2:
-		fmt.Fprintf(w, "data: %s\n\n", `{"id":"action_round_2","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_action_1","type":"function","function":{"name":"noop_tool","arguments":"{\"query\":\"openclaw news\"}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"action_round_2","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_action_1","type":"function","function":{"name":"noop_tool","arguments":"{\"query\":\"blueagent news\"}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
 	default:
-		fmt.Fprintf(w, "data: %s\n\n", `{"id":"action_round_3","choices":[{"delta":{"content":"已完成查询并整理：这是 OpenClaw 的最新动态摘要。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"action_round_3","choices":[{"delta":{"content":"已完成查询并整理：这是 BlueAgent 的最新动态摘要。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
 	}
 }
@@ -2392,7 +2555,7 @@ func TestStreamMessageAutoContinue_ActionPledge_ExecutesToolRoundThenSummary(t *
 	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我查询一下openclaw的新闻","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我查询一下blueagent的新闻","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -2414,7 +2577,7 @@ func TestStreamMessageAutoContinue_ActionPledge_ExecutesToolRoundThenSummary(t *
 	if !strings.Contains(body, `"tool_executing":true`) {
 		t.Fatalf("expected tool execution event in stream body, body=%s", body)
 	}
-	if !strings.Contains(body, "已完成查询并整理：这是 OpenClaw 的最新动态摘要。") {
+	if !strings.Contains(body, "已完成查询并整理：这是 BlueAgent 的最新动态摘要。") {
 		t.Fatalf("expected final summary content in stream body, got=%s", body)
 	}
 	if fakeProxy.callCount != 3 {
@@ -2492,7 +2655,7 @@ func TestStreamMessageAutoContinue_ActionPledge_DuplicateDebounceStopsLoop(t *te
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	duplicateActionPledge := "我先帮你快速查一下 OpenClaw 的最新相关新闻与动态。请稍等，我整理成要点给你。"
+	duplicateActionPledge := "我先帮你快速查一下 BlueAgent 的最新相关新闻与动态。请稍等，我整理成要点给你。"
 	fakeProxy := &autoContinueScriptedProxyHandler{
 		roundContents: []string{
 			duplicateActionPledge,
@@ -2503,7 +2666,7 @@ func TestStreamMessageAutoContinue_ActionPledge_DuplicateDebounceStopsLoop(t *te
 	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我查询一下openclaw的新闻","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我查询一下blueagent的新闻","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -2582,6 +2745,185 @@ func TestStreamMessage_ToolCallRound_SuppressesPostToolCallDelta(t *testing.T) {
 	}
 	if fakeProxy.callCount != 2 {
 		t.Fatalf("expected 2 proxy calls (tool round + final round), got %d", fakeProxy.callCount)
+	}
+}
+
+func TestStreamMessage_ToolRoundPreContent502_SkipsChatLayerRetryAmplification(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test tool-round pre-content 502")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &toolRoundPreContentFailingProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请执行工具后总结","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"tool_executing":true`) {
+		t.Fatalf("expected tool execution event in stream body, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 2 {
+		t.Fatalf("expected exactly 2 proxy calls (tool round + single failed follow-up), got %d", fakeProxy.callCount)
+	}
+}
+
+func TestStreamMessage_ToolRoundOverloadedAfterSearch_EmitsFallbackSummary(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test tool-round overloaded fallback summary")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	toolRegistry := tools.NewRegistry()
+	mockSearch := tools.NewMockTool("web_search", "mock web search")
+	mockSearch.SetResult(map[string]interface{}{
+		"query": "OpenClaw latest news 2025",
+		"results": []map[string]interface{}{
+			{"title": "OpenClaw 发布周报", "url": "https://example.com/openclaw-weekly", "description": "weekly update"},
+			{"title": "OpenClaw Roadmap Update", "url": "https://example.com/openclaw-roadmap", "description": "roadmap"},
+		},
+		"total_count": 2,
+		"provider":    "mock",
+	})
+	toolRegistry.Register(mockSearch)
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &toolRoundOverloadedAfterSearchProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我调研一下最近一周 OpenClaw 的动向","model":"claude-opus-4-6"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if strings.Contains(body, `"empty_response":true`) {
+		t.Fatalf("expected non-empty fallback summary after tool round, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if !strings.Contains(body, "我先根据已完成的工具结果，给你一个简要汇总") {
+		t.Fatalf("expected concise fallback summary bubble, body=%s", body)
+	}
+	if !strings.Contains(body, "OpenClaw 发布周报") {
+		t.Fatalf("expected extracted web_search result title, body=%s", body)
+	}
+	if !strings.Contains(body, "详细执行记录见上方工具卡片") {
+		t.Fatalf("expected cards-visible fallback note, body=%s", body)
+	}
+	if strings.Contains(body, "最终总结生成失败") {
+		t.Fatalf("expected softer degradation wording, body=%s", body)
+	}
+	if fakeProxy.callCount != 2 {
+		t.Fatalf("expected exactly 2 proxy calls (tool round + overloaded follow-up), got %d", fakeProxy.callCount)
+	}
+}
+
+func TestStreamMessage_ToolRoundPreContent502_RetriesWithoutPinnedProvider(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test tool-round pre-content 502 unpinned retry")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	handler.SetProviderPool(newEnabledProviderPoolForStreamTests(t, "prov_primary", "prov_backup"))
+
+	fakeProxy := &toolRoundPinnedProviderFailoverProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请执行工具后总结","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if !strings.Contains(body, "备用 provider 恢复成功。") {
+		t.Fatalf("expected unpinned retry follow-up content, body=%s", body)
+	}
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected exactly 3 proxy calls (tool round + pinned failure + unpinned retry), got %d", fakeProxy.callCount)
+	}
+	if len(fakeProxy.requestPinnedProvider) < 3 {
+		t.Fatalf("expected pinned provider trace for 3 calls, got %v", fakeProxy.requestPinnedProvider)
+	}
+	if got := fakeProxy.requestPinnedProvider[1]; got != "prov_primary" {
+		t.Fatalf("expected second call to keep pinned provider, got %q", got)
+	}
+	if got := fakeProxy.requestPinnedProvider[2]; got != "" {
+		t.Fatalf("expected third call to clear pinned provider, got %q", got)
+	}
+	if len(fakeProxy.requestExcluded) < 3 {
+		t.Fatalf("expected excluded provider trace for 3 calls, got %v", fakeProxy.requestExcluded)
+	}
+	if len(fakeProxy.requestExcluded[2]) != 1 || fakeProxy.requestExcluded[2][0] != "prov_primary" {
+		t.Fatalf("expected third call to exclude prov_primary, got %v", fakeProxy.requestExcluded[2])
 	}
 }
 
@@ -2880,14 +3222,14 @@ func TestStreamMessage_SanitizesLeakedCommandWorkdirPrefixOnFinalPersist(t *test
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	leaked := "{\"command\":\"blue web_search query=\\\"OpenClaw GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 OpenClaw 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
+	leaked := "{\"command\":\"blue web_search query=\\\"BlueAgent GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
 	fakeProxy := &autoContinueScriptedProxyHandler{
 		firstRoundContent: leaked,
 	}
 	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
 
 	e := echo.New()
-	reqBody := `{"message":"帮我查询一下openclaw的新闻","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"帮我查询一下blueagent的新闻","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -2918,7 +3260,7 @@ func TestStreamMessage_SanitizesLeakedCommandWorkdirPrefixOnFinalPersist(t *test
 	if strings.Contains(assistantContent, `"workdir":`) {
 		t.Fatalf("expected leaked workdir removed from persisted content, got=%q", assistantContent)
 	}
-	if !strings.Contains(assistantContent, "我先帮你搜到一批 OpenClaw 相关最新结果") {
+	if !strings.Contains(assistantContent, "我先帮你搜到一批 BlueAgent 相关最新结果") {
 		t.Fatalf("expected user-facing answer retained in persisted content, got=%q", assistantContent)
 	}
 }
@@ -3259,7 +3601,7 @@ func TestStreamMessageCodexResponsesSecondTurn_UsesPreviousResponseID(t *testing
 		Enabled:   true,
 		Status:    providerpool.ProviderStatusActive,
 		Priority:  10,
-		APIFormat: providerpool.APIFormatOpenAI,
+		APIFormat: providerpool.APIFormatResponses,
 		APIKeys: []providerpool.APIKey{
 			{ID: "k-codex", Key: "sk-test", Enabled: true},
 		},

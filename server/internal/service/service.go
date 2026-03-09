@@ -6,6 +6,8 @@ import (
 	"context"
 	"os"
 	"runtime"
+
+	"golang.org/x/term"
 )
 
 // Service represents a system service that can be started, stopped, and managed.
@@ -84,12 +86,14 @@ func IsInteractive() bool {
 
 // isInteractiveUnix checks if running interactively on Unix systems.
 func isInteractiveUnix() bool {
-	// Check if stdin is a terminal
-	fi, err := os.Stdin.Stat()
-	if err != nil {
+	return isTerminalFile(os.Stdin)
+}
+
+func isTerminalFile(file *os.File) bool {
+	if file == nil {
 		return false
 	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
+	return term.IsTerminal(int(file.Fd()))
 }
 
 // DefaultConfig returns a default service configuration.

@@ -1,6 +1,16 @@
 package mediagen
 
-import "strings"
+import (
+	"os"
+	"strconv"
+	"strings"
+)
+
+const (
+	fakeMediaProviderID  = "fake-media-dev"
+	fakeMediaModelID     = "fake-image"
+	fakeMediaProviderEnv = "ZIMA_ENABLE_FAKE_MEDIA_PROVIDER"
+)
 
 // MediaProviderConfig holds configuration for a media generation provider.
 type MediaProviderConfig struct {
@@ -34,6 +44,36 @@ func hashAPIKey(key string) string {
 	return key[:8] + "..." + key[len(key)-4:]
 }
 
+func providerRequiresAPIKey(id string) bool {
+	return id != fakeMediaProviderID
+}
+
+func providerHasCredential(c *MediaProviderConfig) bool {
+	if c == nil {
+		return false
+	}
+	if !providerRequiresAPIKey(c.ID) {
+		return true
+	}
+	return strings.TrimSpace(c.APIKey) != ""
+}
+
+func fakeMediaProviderEnabled() bool {
+	v := strings.TrimSpace(os.Getenv(fakeMediaProviderEnv))
+	if v == "" {
+		return false
+	}
+	if ok, err := strconv.ParseBool(v); err == nil {
+		return ok
+	}
+	switch strings.ToLower(v) {
+	case "on", "yes", "y":
+		return true
+	default:
+		return false
+	}
+}
+
 // isChineseLocale returns true if the locale string indicates a Chinese region.
 func isChineseLocale(locale string) bool {
 	locale = strings.ToLower(locale)
@@ -52,7 +92,7 @@ func BuiltinMediaProviders(locale string) []*MediaProviderConfig {
 		dashPri, geminiPri = 10, 20
 	}
 
-	return []*MediaProviderConfig{
+	providers := []*MediaProviderConfig{
 		{
 			ID:          "dashscope-image",
 			Name:        "DashScope (Qwen Image)",
@@ -94,4 +134,18 @@ func BuiltinMediaProviders(locale string) []*MediaProviderConfig {
 			APIKeyURL:   "https://platform.minimaxi.com/user-center/basic-information/interface-key",
 		},
 	}
+
+	if fakeMediaProviderEnabled() {
+		providers = append(providers, &MediaProviderConfig{
+			ID:          fakeMediaProviderID,
+			Name:        "Fake Media (Dev)",
+			Priority:    999,
+			BaseURL:     "dev://fake-media",
+			HasAPIKey:   true,
+			Icon:        "sparkles",
+			Description: "Dev-only fake media provider for local image-generation smoke tests. Returns placeholder images without external API calls.",
+		})
+	}
+
+	return providers
 }

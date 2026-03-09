@@ -71,6 +71,10 @@ func upstreamResponsesPreviousIDFromContext(ctx context.Context) string {
 // Pinned provider context — used for sticky routing during tool rounds.
 type pinnedProviderKeyType struct{}
 
+// Excluded providers context — used for one-shot failover retries after a
+// pinned provider already failed pre-content.
+type excludedProvidersKeyType struct{}
+
 // WithPinnedProvider returns a context carrying a preferred provider ID.
 // The proxy handler reads this to set RouteRequest.PreferredProviderID.
 func WithPinnedProvider(ctx context.Context, providerID string) context.Context {
@@ -83,6 +87,36 @@ func GetPinnedProvider(ctx context.Context) string {
 	return v
 }
 
+// WithExcludedProviders returns a context carrying the providers that routing
+// should skip for the current request.
+func WithExcludedProviders(ctx context.Context, providerIDs ...string) context.Context {
+	normalized := make([]string, 0, len(providerIDs))
+	seen := make(map[string]struct{}, len(providerIDs))
+	for _, providerID := range providerIDs {
+		providerID = strings.TrimSpace(providerID)
+		if providerID == "" {
+			continue
+		}
+		if _, ok := seen[providerID]; ok {
+			continue
+		}
+		seen[providerID] = struct{}{}
+		normalized = append(normalized, providerID)
+	}
+	return context.WithValue(ctx, excludedProvidersKeyType{}, normalized)
+}
+
+// GetExcludedProviders returns the excluded provider IDs from context.
+func GetExcludedProviders(ctx context.Context) []string {
+	v, _ := ctx.Value(excludedProvidersKeyType{}).([]string)
+	if len(v) == 0 {
+		return nil
+	}
+	out := make([]string, len(v))
+	copy(out, v)
+	return out
+}
+
 // GetResolvedRouteFromContext is the exported version of getResolvedRoute.
 func GetResolvedRouteFromContext(ctx context.Context) *ResolvedRoute {
 	return getResolvedRoute(ctx)
@@ -93,17 +127,18 @@ func GetResolvedRouteFromContext(ctx context.Context) *ResolvedRoute {
 // Uses gjson for zero-alloc field extraction instead of map[string]interface{}.
 // Layout: pointer-sized fields first, then bools — minimizes padding for cache-line efficiency.
 type parsedRequest struct {
-	body               []byte
-	requestedModel     string // model value from request body before normalization/routing
-	model              string
-	originalModel      string         // model before routing (for cost savings tracking)
-	upstreamFormat     ProviderType   // set when request was converted to non-OpenAI format
-	routed             *RouteDecision // non-nil if rule engine rerouted the model
-	streaming          bool
-	singleProvider     bool   // true when only one provider matches current routing mode
-	resolvedProvider   string // actual provider name after routing
-	resolvedProviderID string // actual provider ID after routing
-	resolvedModel      string // actual model ID after routing
+	body                  []byte
+	requestedModel        string // model value from request body before normalization/routing
+	model                 string
+	originalModel         string         // model before routing (for cost savings tracking)
+	upstreamFormat        ProviderType   // set when request was converted to non-OpenAI format
+	routed                *RouteDecision // non-nil if rule engine rerouted the model
+	streaming             bool
+	singleProvider        bool   // true when only one provider is available on the current execution path
+	routingSingleProvider bool   // true when the routing mode itself only has one enabled provider
+	resolvedProvider      string // actual provider name after routing
+	resolvedProviderID    string // actual provider ID after routing
+	resolvedModel         string // actual model ID after routing
 }
 
 // sseBufferPool reuses 32KB buffers for SSE streaming to reduce GC pressure.
@@ -392,11 +427,57 @@ func isRateLimitLikeUpstreamError(statusCode int, body []byte) bool {
 		bytes.Contains(lower, []byte("capacity"))
 }
 
-func shouldRetryTransientUpstream5xx(singleProvider bool, statusCode int, body []byte, attempt int) bool {
+func classifyRateLimitLikeErrorText(msg string) int {
+	msg = strings.TrimSpace(strings.ToLower(msg))
+	if msg == "" {
+		return 0
+	}
+	if strings.Contains(msg, "overloaded_error") ||
+		strings.Contains(msg, `"type":"overloaded"`) ||
+		strings.Contains(msg, "overloaded") ||
+		strings.Contains(msg, "capacity") {
+		return 529
+	}
+	if strings.Contains(msg, "rate_limit") ||
+		strings.Contains(msg, "rate limit") ||
+		strings.Contains(msg, "too many requests") ||
+		strings.Contains(msg, "throttled") {
+		return http.StatusTooManyRequests
+	}
+	return 0
+}
+
+func proxyFailureStatusCode(err error) int {
+	if err == nil {
+		return http.StatusBadGateway
+	}
+	errMsg := strings.TrimSpace(strings.ToLower(err.Error()))
+	if errors.Is(err, providerpool.ErrNoAvailableProvider) || strings.Contains(errMsg, "no available provider") {
+		return http.StatusServiceUnavailable
+	}
+	if statusCode := classifyRateLimitLikeErrorText(errMsg); statusCode != 0 {
+		return statusCode
+	}
+	if strings.Contains(errMsg, "not configured on provider") {
+		return http.StatusBadRequest
+	}
+	if upstreamStatus := parseStatusCodeFromUpstreamError(errMsg); upstreamStatus >= 400 && upstreamStatus < 500 {
+		return upstreamStatus
+	}
+	return http.StatusBadGateway
+}
+
+func shouldRetryTransientUpstream5xx(singleProvider bool, routingSingleProvider bool, statusCode int, body []byte, attempt int) bool {
 	if !singleProvider {
 		return false
 	}
+	if statusCode == 529 {
+		return false
+	}
 	if isRateLimitLikeUpstreamError(statusCode, body) {
+		if !routingSingleProvider {
+			return false
+		}
 		return attempt < singleProviderRateLimitLikeMaxAttempts-1
 	}
 	if attempt >= singleProviderTransientUpstreamMaxAttempts-1 {
@@ -690,7 +771,7 @@ type ProxyHandler struct {
 	responsesTools  map[string]string // session/provider/model -> tools schema signature
 	responsesAssist map[string]string // session/provider/model -> last assistant text
 	assistByRespID  map[string]string // response_id -> last assistant text
-	// provider/model -> continuation disabled (observed upstream returns
+	// session/provider/model -> continuation disabled (observed upstream returns
 	// previous_response_id=null for continuation requests)
 	responsesContinuationDisabled map[string]bool
 	responsesComp                 *responsesContinuationCompactor
@@ -1340,6 +1421,11 @@ func (ph *ProxyHandler) executeOnRouteResult(
 	// Try all Model × Format combinations on this provider
 	resp, format, usedModel, tryErr := ph.tryOnProvider(r, result, tryReq)
 	if tryErr != nil {
+		if hasTools && errors.Is(tryErr, errRequestConversionUnsupported) && !effectiveSingleProvider {
+			ph.providerMemory.RememberToolCap(pid, burl, ToolCapNone)
+			slog.Info("[proxy] remembered no-tool support after request conversion failure",
+				"provider", pid, "model", pr.model)
+		}
 		return nil, tryErr
 	}
 	if resp == nil {
@@ -1632,9 +1718,11 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	routeReq := &providerpool.RouteRequest{
 		ModelID:             pr.model,
 		Mode:                providerpool.RoutingMode(routingMode),
+		Exclude:             GetExcludedProviders(r.Context()),
 		PreferredProviderID: GetPinnedProvider(r.Context()),
 	}
 	pr.singleProvider = ph.isSingleProviderMode(routeReq.Mode)
+	pr.routingSingleProvider = pr.singleProvider
 
 	// When the request includes tools, require providers that support function calling.
 	// This prevents routing to providers/models that would reject tool_calls.
@@ -1648,6 +1736,8 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"model", pr.model,
 		"mode", routeReq.Mode,
 		"preferred_provider", routeReq.PreferredProviderID,
+		"exclude_count", len(routeReq.Exclude),
+		"excluded_providers", routeReq.Exclude,
 		"has_tools", hasTools,
 		"has_tool_messages", hasToolMessages,
 		"single_provider_mode", pr.singleProvider,
@@ -1813,30 +1903,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		)
 		// Propagate original status code so the bridge can distinguish
 		// non-retryable errors from transient server failures.
-		statusCode := http.StatusBadGateway
-		errMsg := err.Error()
-		switch {
-		case errors.Is(err, providerpool.ErrNoAvailableProvider) || strings.Contains(errMsg, "no available provider"):
-			// 503 = no provider can serve this model — retrying won't help.
-			statusCode = http.StatusServiceUnavailable
-		case strings.Contains(errMsg, "not configured on provider"):
-			// Model/endpoint mismatch is not transient; surface as client error
-			// so chat layer does not retry pre-content failures.
-			statusCode = http.StatusBadRequest
-		case strings.HasPrefix(errMsg, "upstream 400:"):
-			statusCode = http.StatusBadRequest
-		case strings.HasPrefix(errMsg, "provider returned "):
-			var upstreamStatus int
-			if _, scanErr := fmt.Sscanf(errMsg, "provider returned %d:", &upstreamStatus); scanErr == nil {
-				if upstreamStatus >= 400 && upstreamStatus < 500 {
-					statusCode = upstreamStatus
-				}
-			}
-		case strings.Contains(errMsg, "overloaded (529)"):
-			statusCode = 529
-		case strings.Contains(errMsg, "throttled (429)"):
-			statusCode = http.StatusTooManyRequests
-		}
+		statusCode := proxyFailureStatusCode(err)
 		http.Error(w, SanitizeError(err), statusCode)
 		return
 	}
@@ -2007,6 +2074,19 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 
 	fullURL := upstreamURL.String()
 	slog.Debug("[proxy] upstream request", "url", fullURL, "method", r.Method, "format", effectiveFormat, "body_len", len(body))
+	upstreamPrevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+	slog.Info("[proxy] upstream request prepared",
+		"provider", provider.ID,
+		"url", fullURL,
+		"path", finalPath,
+		"method", r.Method,
+		"format", effectiveFormat,
+		"model", strings.TrimSpace(gjson.GetBytes(body, "model").String()),
+		"shape", upstreamRequestShapeForLog(body),
+		"has_prev_response_id", upstreamPrevID != "",
+		"has_tools", gjson.GetBytes(body, "tools").Exists(),
+		"body_len", len(body),
+	)
 	slog.Info("[proxy] upstream request body",
 		"url", fullURL,
 		"method", r.Method,
@@ -2014,7 +2094,6 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 		"body", ph.requestBodyForLog(body),
 	)
 
-	upstreamPrevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
 	requestCtx := withUpstreamResponsesPreviousID(r.Context(), upstreamPrevID)
 	req, err := http.NewRequestWithContext(requestCtx, r.Method, fullURL, bytes.NewReader(body))
 	if err != nil {
@@ -2130,37 +2209,36 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 		return false
 	}
 
+	add := func(f providerpool.APIFormat) {
+		if f == "" || has(f) || n >= len(buf) {
+			return
+		}
+		buf[n] = f
+		n++
+	}
+
 	// 0. Endpoint-locked format (highest priority).
 	// If the provider base URL already points to a protocol-specific endpoint,
 	// lock to that family and avoid cross-format fallback probing.
 	if endpointFormat, ok := detectEndpointFixedFormat(burl); ok {
-		buf[n] = endpointFormat
-		n++
+		add(endpointFormat)
 		return buf, n, true
 	}
 
 	// 1. Persisted detected format (highest priority — survives restarts)
 	if provider.DetectedFormat != "" {
-		buf[n] = provider.DetectedFormat
-		n++
+		add(provider.DetectedFormat)
 		known = true
 	}
 
 	// 2. In-memory remembered format (from recent successful requests)
 	if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
-		f := providerpool.APIFormat(remembered)
-		if !has(f) {
-			buf[n] = f
-			n++
-		}
+		add(providerpool.APIFormat(remembered))
 		known = true
 	}
 
 	// 3. Provider default
-	if provider.APIFormat != "" && !has(provider.APIFormat) {
-		buf[n] = provider.APIFormat
-		n++
-	}
+	add(provider.APIFormat)
 
 	// Non-third-party providers should use a single canonical family.
 	// Custom/third-party relays may still need cross-family fallback.
@@ -2170,27 +2248,35 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 
 	// 4. Infer format from base URL — if the URL hints at Anthropic, prefer it
 	if strings.HasSuffix(burl, "/messages") || strings.Contains(burl, "anthropic") {
-		if !has(providerpool.APIFormatAnthropic) {
-			buf[n] = providerpool.APIFormatAnthropic
-			n++
-		}
+		add(providerpool.APIFormatAnthropic)
 	}
 
 	// 5. Remaining formats — skip cross-family fallbacks for providers that
 	// definitively only support one API family. Copilot, CloudCode, and Ollama
-	// should stay single-format; probing OpenAI/Anthropic alternates just adds
+	// should stay single-format; probing alternate families just adds
 	// guaranteed 404s and noisy mismatch logs.
 	switch provider.APIFormat {
 	case providerpool.APIFormatCopilot, providerpool.APIFormatCloudCode, providerpool.APIFormatOllama, providerpool.APIFormatResponses:
 		// Single-family providers: no cross-format fallback.
 	default:
-		// All other providers (including generic openai, anthropic, cloudcode, unknown)
-		// — try both families as fallback
-		for _, f := range [...]providerpool.APIFormat{providerpool.APIFormatAnthropic, providerpool.APIFormatOpenAI} {
-			if !has(f) {
-				buf[n] = f
-				n++
+		// Generic/custom relays may front OpenAI, Anthropic, or Responses APIs.
+		// Prefer Responses before Anthropic/OpenAI so Codex-style relays can
+		// recover immediately from legacy /chat/completions mismatches instead of
+		// bailing out on an intermediate auth error.
+		fallbacks := [...]providerpool.APIFormat{
+			providerpool.APIFormatResponses,
+			providerpool.APIFormatAnthropic,
+			providerpool.APIFormatOpenAI,
+		}
+		if provider.APIFormat == providerpool.APIFormatAnthropic {
+			fallbacks = [...]providerpool.APIFormat{
+				providerpool.APIFormatResponses,
+				providerpool.APIFormatOpenAI,
+				providerpool.APIFormatAnthropic,
 			}
+		}
+		for _, f := range fallbacks {
+			add(f)
 		}
 	}
 
@@ -2594,13 +2680,12 @@ func (ph *ProxyHandler) tryOnProvider(
 			statusCode := resp.StatusCode
 			if !continuationResetTried && isResponsesContinuationRejectedError(statusCode, errBody) {
 				continuationResetTried = true
-				ph.clearCachedResponsesPreviousID(r)
-				fastPathBody = stripPreviousResponseID(fastPathBody)
-				slog.Info("[proxy] responses continuation rejected on fast path, cleared cached previous_response_id and retrying",
+				fastPathBody = ph.disableResponsesContinuationForRoute(r, pid, pr.model, fastPathBody)
+				slog.Info("[proxy] responses continuation rejected on fast path, disabled continuation for session route and retrying",
 					"provider", pid, "status", statusCode, "model", pr.model)
 				continue
 			}
-			if shouldRetryTransientUpstream5xx(pr.singleProvider, statusCode, errBody, upstreamAttempt) {
+			if shouldRetryTransientUpstream5xx(pr.singleProvider, pr.routingSingleProvider, statusCode, errBody, upstreamAttempt) {
 				delay := transientUpstreamRetryDelay(upstreamAttempt)
 				errMsg := string(errBody)
 				if len(errMsg) > 500 {
@@ -2618,6 +2703,10 @@ func (ph *ProxyHandler) tryOnProvider(
 				case <-time.After(delay):
 				}
 				continue
+			} else if isRateLimitLikeUpstreamError(statusCode, errBody) && pr.singleProvider && !pr.routingSingleProvider {
+				ph.providerMemory.RememberThrottle(pid, burl, 30*time.Second)
+				slog.Warn("[proxy] rate-limit-like upstream error, skipping same-provider retries to allow failover",
+					"provider", pid, "status", statusCode, "kind", "rate_limit_like")
 			}
 
 			known404ModelNotConfigured := treatKnown404AsModelNotConfigured(result.Provider, formatKnown, statusCode)
@@ -2656,6 +2745,23 @@ func (ph *ProxyHandler) tryOnProvider(
 						ph.providerMemory.RememberThrottle(pid, burl, 30*time.Second)
 					}
 					return nil, "", "", fmt.Errorf("provider %s overloaded (529)", pid)
+				}
+				if statusCode >= 500 && isRateLimitLikeUpstreamError(statusCode, errBody) {
+					if !pr.singleProvider {
+						ph.providerMemory.RememberThrottle(pid, burl, 30*time.Second)
+					}
+				}
+				if isRequestConversionUnsupportedError(statusCode, errBody) {
+					if allFormats > 1 {
+						slog.Warn("[proxy] request conversion unsupported on fast path, expanding to all formats",
+							"provider", pid, "format", format, "model", pr.model, "status", statusCode, "body", errStr)
+						ph.providerMemory.ForgetFormat(pid, burl)
+						ph.clearDetectedFormat(result.Provider)
+						nFormats = allFormats
+						lastErr = newRequestConversionUnsupportedError(pr.model, pid, errStr)
+						break
+					}
+					return nil, "", "", newRequestConversionUnsupportedError(pr.model, pid, errStr)
 				}
 				if statusCode >= 500 {
 					// 5xx: server error, skip entire provider
@@ -2746,13 +2852,12 @@ func (ph *ProxyHandler) tryOnProvider(
 				resp.Body.Close()
 				if !continuationResetTried && isResponsesContinuationRejectedError(resp.StatusCode, errBody) {
 					continuationResetTried = true
-					ph.clearCachedResponsesPreviousID(r)
-					currentBody = stripPreviousResponseID(currentBody)
-					slog.Info("[proxy] responses continuation rejected, cleared cached previous_response_id and retrying",
+					currentBody = ph.disableResponsesContinuationForRoute(r, pid, model, currentBody)
+					slog.Info("[proxy] responses continuation rejected, disabled continuation for session route and retrying",
 						"provider", pid, "status", resp.StatusCode, "model", model, "format", format)
 					continue
 				}
-				if shouldRetryTransientUpstream5xx(pr.singleProvider, resp.StatusCode, errBody, upstreamAttempt) {
+				if shouldRetryTransientUpstream5xx(pr.singleProvider, pr.routingSingleProvider, resp.StatusCode, errBody, upstreamAttempt) {
 					delay := transientUpstreamRetryDelay(upstreamAttempt)
 					errMsg := string(errBody)
 					if len(errMsg) > 500 {
@@ -2770,6 +2875,10 @@ func (ph *ProxyHandler) tryOnProvider(
 					case <-time.After(delay):
 					}
 					continue
+				} else if isRateLimitLikeUpstreamError(resp.StatusCode, errBody) && pr.singleProvider && !pr.routingSingleProvider {
+					ph.providerMemory.RememberThrottle(pid, burl, 30*time.Second)
+					slog.Warn("[proxy] rate-limit-like upstream error, skipping same-provider retries to allow failover",
+						"provider", pid, "status", resp.StatusCode, "kind", "rate_limit_like")
 				}
 				preReadStatusCode = resp.StatusCode
 				preReadErrBody = errBody
@@ -2844,6 +2953,23 @@ func (ph *ProxyHandler) tryOnProvider(
 				}
 				slog.Warn("[proxy] upstream overloaded (529), fast-fail", "provider", pid, "model", model)
 				return nil, "", "", fmt.Errorf("provider %s overloaded (529)", pid)
+			}
+			if statusCode >= 500 && isRateLimitLikeUpstreamError(statusCode, errBody) {
+				if !pr.singleProvider {
+					ph.providerMemory.RememberThrottle(pid, burl, 30*time.Second)
+				}
+			}
+
+			if isRequestConversionUnsupportedError(statusCode, errBody) {
+				slog.Warn("[proxy] request conversion unsupported on provider, trying next format",
+					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
+				lastErr = newRequestConversionUnsupportedError(model, pid, errStr)
+				if fi == nFormats-1 && allFormats > nFormats {
+					ph.providerMemory.ForgetFormat(pid, burl)
+					ph.clearDetectedFormat(result.Provider)
+					nFormats = allFormats
+				}
+				continue
 			}
 
 			if statusCode >= 500 {
@@ -3061,6 +3187,17 @@ var formatMismatch422Patterns = [][]byte{
 	[]byte("additional properties"), // JSON schema validation — wrong format
 }
 
+var requestConversionUnsupportedPatterns = [][]byte{
+	[]byte("convert_request_failed"),
+	[]byte("not implemented"),
+}
+
+var errRequestConversionUnsupported = errors.New("request conversion unsupported")
+
+func newRequestConversionUnsupportedError(model, providerID, detail string) error {
+	return fmt.Errorf("%w: provider cannot convert request for model %s on provider %s: %s", errRequestConversionUnsupported, model, providerID, detail)
+}
+
 // isFormatMismatchError returns true if the error indicates a request format mismatch
 // rather than a model configuration issue. These errors should trigger format fallback,
 // not model blacklisting.
@@ -3124,6 +3261,27 @@ func isFormatMismatchError(statusCode int, body []byte) bool {
 	}
 	// For 400/404, check body for format-related patterns
 	return containsFormatPattern
+}
+
+func isRequestConversionUnsupportedError(statusCode int, body []byte) bool {
+	if statusCode != http.StatusInternalServerError && statusCode != http.StatusBadGateway && statusCode != http.StatusNotImplemented {
+		return false
+	}
+	lower := toLowerBytes(body)
+	hasConvertFailed := false
+	for _, pattern := range requestConversionUnsupportedPatterns {
+		if bytes.Contains(lower, pattern) {
+			if bytes.Equal(pattern, []byte("convert_request_failed")) {
+				hasConvertFailed = true
+				continue
+			}
+			// "not implemented" is too broad on its own; require relay-style context.
+			if bytes.Contains(lower, []byte("new_api_error")) || bytes.Contains(lower, []byte("request id")) {
+				return true
+			}
+		}
+	}
+	return hasConvertFailed
 }
 
 // authRelatedPatterns are body patterns indicating an authentication/authorization
@@ -3204,6 +3362,21 @@ func (ph *ProxyHandler) requestBodyForLog(body []byte) string {
 		return string(ph.dataMasker.MaskRequestBytes(body))
 	}
 	return string(body)
+}
+
+func upstreamRequestShapeForLog(body []byte) string {
+	hasMessages := gjson.GetBytes(body, "messages").Exists()
+	hasInput := gjson.GetBytes(body, "input").Exists()
+	switch {
+	case hasMessages && hasInput:
+		return "hybrid"
+	case hasInput:
+		return "responses"
+	case hasMessages:
+		return "chat_completions"
+	default:
+		return "unknown"
+	}
 }
 
 // forwardToProvider forwards the request to upstream provider.
@@ -3403,18 +3576,24 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 			if resp.Request != nil {
 				sentPrevID = upstreamResponsesPreviousIDFromContext(resp.Request.Context())
 			}
+			prevID := parseLatestResponsesIDFromSSE(captured)
 			if sentPrevID != "" {
 				if exists, returnedPrevID := parseLatestResponsesPreviousResponseIDFromSSE(captured); exists && returnedPrevID == "" {
-					ph.markResponsesContinuationDisabledForRoute(resolvedRoute)
-					ph.clearCachedResponsesPreviousID(r)
-					w.Header().Set(ResponsesContinuationDisabledHeader, "1")
-					slog.Warn("[proxy] responses continuation disabled after upstream dropped previous_response_id in streaming response",
-						"provider", pr.resolvedProviderID, "model", pr.resolvedModel, "sent_previous_response_id", sentPrevID != "")
+					// REGRESSION-GUARD: Some OpenAI-compatible relays may omit both
+					// previous_response_id and response.id in successful continuation
+					// replies. Treat this as a soft signal only; hard-disabling here
+					// causes first-tool-followup availability regressions.
+					if strings.TrimSpace(prevID) == "" {
+						slog.Warn("[proxy] responses continuation metadata dropped previous_response_id and returned no response id in streaming response; keeping continuation enabled",
+							"provider", pr.resolvedProviderID, "model", pr.resolvedModel, "sent_previous_response_id", sentPrevID != "")
+					} else {
+						slog.Info("[proxy] responses continuation metadata dropped previous_response_id but returned response id; keeping continuation enabled",
+							"provider", pr.resolvedProviderID, "model", pr.resolvedModel, "sent_previous_response_id", sentPrevID != "")
+					}
 				}
 			}
 
-			prevID := parseLatestResponsesIDFromSSE(captured)
-			if !ph.isResponsesContinuationDisabledForRoute(resolvedRoute) && prevID != "" {
+			if !ph.isResponsesContinuationDisabledForRoute(r, resolvedRoute) && prevID != "" {
 				ph.setCachedResponsesPreviousIDForRoute(r, resolvedRoute, prevID)
 				w.Header().Set(ResponsesPreviousIDHeader, prevID)
 			}
@@ -3458,18 +3637,24 @@ func (ph *ProxyHandler) copyResponse(w http.ResponseWriter, resp *http.Response,
 		if resp.Request != nil {
 			sentPrevID = upstreamResponsesPreviousIDFromContext(resp.Request.Context())
 		}
+		prevID := strings.TrimSpace(gjson.GetBytes(respBody, "id").String())
 		if sentPrevID != "" {
 			if exists, returnedPrevID := parseResponsesPreviousResponseIDFromBody(respBody); exists && returnedPrevID == "" {
-				ph.markResponsesContinuationDisabledForRoute(resolvedRoute)
-				ph.clearCachedResponsesPreviousID(r)
-				w.Header().Set(ResponsesContinuationDisabledHeader, "1")
-				slog.Warn("[proxy] responses continuation disabled after upstream dropped previous_response_id in response body",
-					"provider", pr.resolvedProviderID, "model", pr.resolvedModel, "sent_previous_response_id", sentPrevID != "")
+				// REGRESSION-GUARD: Some OpenAI-compatible relays may omit both
+				// previous_response_id and response.id in successful continuation
+				// replies. Treat this as a soft signal only; hard-disabling here
+				// causes first-tool-followup availability regressions.
+				if prevID == "" {
+					slog.Warn("[proxy] responses continuation metadata dropped previous_response_id and returned no response id in response body; keeping continuation enabled",
+						"provider", pr.resolvedProviderID, "model", pr.resolvedModel, "sent_previous_response_id", sentPrevID != "")
+				} else {
+					slog.Info("[proxy] responses continuation metadata dropped previous_response_id but returned response id; keeping continuation enabled",
+						"provider", pr.resolvedProviderID, "model", pr.resolvedModel, "sent_previous_response_id", sentPrevID != "")
+				}
 			}
 		}
 
-		prevID := strings.TrimSpace(gjson.GetBytes(respBody, "id").String())
-		if !ph.isResponsesContinuationDisabledForRoute(resolvedRoute) && prevID != "" {
+		if !ph.isResponsesContinuationDisabledForRoute(r, resolvedRoute) && prevID != "" {
 			ph.setCachedResponsesPreviousIDForRoute(r, resolvedRoute, prevID)
 			w.Header().Set(ResponsesPreviousIDHeader, prevID)
 		}
@@ -4442,42 +4627,66 @@ func routeProviderModelIDs(route *providerpool.RouteResult) (string, string) {
 	return providerID, modelID
 }
 
-func responsesContinuationDisabledKey(providerID, modelID string) string {
+func responsesContinuationDisabledKey(sessionID, providerID, modelID string) string {
+	sessionID = strings.TrimSpace(sessionID)
 	providerID = strings.TrimSpace(providerID)
 	modelID = strings.TrimSpace(modelID)
-	if providerID == "" {
+	if sessionID == "" || providerID == "" {
 		return ""
 	}
 	if modelID == "" {
-		return "p:" + providerID
+		return sessionID + "|cd|p:" + providerID
 	}
-	return "p:" + providerID + "|m:" + modelID
+	return sessionID + "|cd|p:" + providerID + "|m:" + modelID
 }
 
-func (ph *ProxyHandler) isResponsesContinuationDisabledForRoute(route *providerpool.RouteResult) bool {
+func (ph *ProxyHandler) isResponsesContinuationDisabledForRoute(r *http.Request, route *providerpool.RouteResult) bool {
+	sid := ph.responsesSessionID(r)
+	if sid == "" {
+		return false
+	}
 	providerID, modelID := routeProviderModelIDs(route)
 	if providerID == "" {
 		return false
 	}
 	ph.responsesPrevMu.RLock()
 	defer ph.responsesPrevMu.RUnlock()
-	if modelID != "" && ph.responsesContinuationDisabled[responsesContinuationDisabledKey(providerID, modelID)] {
+	if modelID != "" && ph.responsesContinuationDisabled[responsesContinuationDisabledKey(sid, providerID, modelID)] {
 		return true
 	}
-	return ph.responsesContinuationDisabled[responsesContinuationDisabledKey(providerID, "")]
+	return ph.responsesContinuationDisabled[responsesContinuationDisabledKey(sid, providerID, "")]
 }
 
-func (ph *ProxyHandler) markResponsesContinuationDisabledForRoute(route *providerpool.RouteResult) {
+func (ph *ProxyHandler) markResponsesContinuationDisabledForRoute(r *http.Request, route *providerpool.RouteResult) {
+	sid := ph.responsesSessionID(r)
+	if sid == "" {
+		return
+	}
 	providerID, modelID := routeProviderModelIDs(route)
 	if providerID == "" {
 		return
 	}
 	ph.responsesPrevMu.Lock()
-	ph.responsesContinuationDisabled[responsesContinuationDisabledKey(providerID, "")] = true
+	ph.responsesContinuationDisabled[responsesContinuationDisabledKey(sid, providerID, "")] = true
 	if modelID != "" {
-		ph.responsesContinuationDisabled[responsesContinuationDisabledKey(providerID, modelID)] = true
+		ph.responsesContinuationDisabled[responsesContinuationDisabledKey(sid, providerID, modelID)] = true
 	}
 	ph.responsesPrevMu.Unlock()
+}
+
+func (ph *ProxyHandler) disableResponsesContinuationForRoute(r *http.Request, providerID, modelID string, body []byte) []byte {
+	route := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{ID: strings.TrimSpace(providerID)},
+	}
+	if mid := strings.TrimSpace(modelID); mid != "" {
+		route.Model = &providerpool.Model{ID: mid}
+	}
+	// REGRESSION-GUARD: only explicit continuation rejection errors (4xx/5xx
+	// with continuation markers) should disable continuation for this
+	// session/provider/model. Metadata-only omissions are handled as soft signals.
+	ph.markResponsesContinuationDisabledForRoute(r, route)
+	ph.clearCachedResponsesPreviousID(r)
+	return stripPreviousResponseID(body)
 }
 
 func (ph *ProxyHandler) getCachedResponsesPreviousID(r *http.Request) string {
@@ -4749,7 +4958,7 @@ func (ph *ProxyHandler) injectCachedResponsesPreviousIDForRoute(r *http.Request,
 	if len(body) == 0 || disableResponsesContinuation(r) {
 		return body
 	}
-	if ph.isResponsesContinuationDisabledForRoute(route) {
+	if ph.isResponsesContinuationDisabledForRoute(r, route) {
 		return stripPreviousResponseID(body)
 	}
 	prevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
@@ -4828,7 +5037,7 @@ func (ph *ProxyHandler) sanitizeResponsesInputForContinuationDisabledRoute(r *ht
 	if len(body) == 0 {
 		return body
 	}
-	if !ph.isResponsesContinuationDisabledForRoute(route) {
+	if !ph.isResponsesContinuationDisabledForRoute(r, route) {
 		return body
 	}
 	if strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) != "" {

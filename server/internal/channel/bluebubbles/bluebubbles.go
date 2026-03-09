@@ -192,11 +192,24 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("channel not connected")
 	}
 
-	// Build message request
+	var contentParts []string
+	if msg.Content != "" {
+		contentParts = append(contentParts, msg.Content)
+	}
+	for _, att := range msg.Attachments {
+		if fallback := blueBubblesAttachmentFallbackText(att); fallback != "" {
+			contentParts = append(contentParts, fallback)
+		}
+	}
+	message := strings.Join(contentParts, "\n")
+	if strings.TrimSpace(message) == "" {
+		return fmt.Errorf("no sendable BlueBubbles content")
+	}
+
 	messageReq := map[string]interface{}{
 		"chatGuid": msg.ChatID,
-		"message":  msg.Content,
-		"method":   "private-api", // Use private API for better delivery
+		"message":  message,
+		"method":   "private-api",
 	}
 
 	messageJSON, err := json.Marshal(messageReq)
@@ -205,7 +218,6 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	}
 
 	url := fmt.Sprintf("%s/api/v1/message/text?password=%s", c.config.ServerURL, c.config.Password)
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(messageJSON)))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -225,6 +237,19 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	}
 
 	return nil
+}
+
+func blueBubblesAttachmentFallbackText(att channel.Attachment) string {
+	if strings.TrimSpace(att.URL) != "" {
+		return strings.TrimSpace(att.URL)
+	}
+	if strings.TrimSpace(att.Name) != "" {
+		return strings.TrimSpace(att.Name)
+	}
+	if len(att.Data) > 0 {
+		return "[Attachment]"
+	}
+	return ""
 }
 
 // SendStreaming sends a message with streaming support.
@@ -329,7 +354,7 @@ func (c *Channel) isChatAllowed(chatGUID string) bool {
 // HandleWebhook processes an incoming webhook from BlueBubbles.
 // This should be called from a webhook handler.
 func (c *Channel) HandleWebhook(event *WebhookEvent) {
-	if event == nil {
+	if event == nil || event.Data == nil {
 		return
 	}
 
@@ -380,6 +405,43 @@ func (c *Channel) convertMessage(msg *MessageData) channel.Message {
 		groupName = msg.Chats[0].DisplayName
 	}
 
+	content := strings.TrimSpace(msg.Text)
+	if content == "" {
+		content = strings.TrimSpace(msg.Subject)
+	}
+
+	metadata := map[string]interface{}{
+		"is_from_me": msg.IsFromMe,
+		"service":    msg.Service,
+	}
+	if strings.TrimSpace(msg.Subject) != "" {
+		metadata["subject"] = strings.TrimSpace(msg.Subject)
+	}
+	if msg.DateRead > 0 {
+		metadata["date_read"] = msg.DateRead
+	}
+	if len(msg.Attachments) > 0 {
+		rawAttachments := make([]map[string]interface{}, 0, len(msg.Attachments))
+		for _, att := range msg.Attachments {
+			raw := map[string]interface{}{}
+			if strings.TrimSpace(att.GUID) != "" {
+				raw["guid"] = strings.TrimSpace(att.GUID)
+			}
+			if strings.TrimSpace(att.TransferName) != "" {
+				raw["transfer_name"] = strings.TrimSpace(att.TransferName)
+			}
+			if strings.TrimSpace(att.MimeType) != "" {
+				raw["mime_type"] = strings.TrimSpace(att.MimeType)
+			}
+			if att.TotalBytes > 0 {
+				raw["total_bytes"] = att.TotalBytes
+			}
+			rawAttachments = append(rawAttachments, raw)
+		}
+		metadata["attachments"] = rawAttachments
+		metadata["attachment_count"] = len(rawAttachments)
+	}
+
 	channelMsg := channel.Message{
 		ID:          msg.GUID,
 		ChannelName: "bluebubbles",
@@ -387,14 +449,11 @@ func (c *Channel) convertMessage(msg *MessageData) channel.Message {
 		UserID:      msg.Handle,
 		Username:    senderName,
 		Type:        channel.MessageTypeText,
-		Content:     msg.Text,
+		Content:     content,
 		Timestamp:   time.UnixMilli(msg.DateCreated),
 		IsGroup:     isGroup,
 		GroupName:   groupName,
-		Metadata: map[string]interface{}{
-			"is_from_me": msg.IsFromMe,
-			"service":    msg.Service,
-		},
+		Metadata:    metadata,
 	}
 
 	// Handle attachments
@@ -402,6 +461,7 @@ func (c *Channel) convertMessage(msg *MessageData) channel.Message {
 		msgAtt := channel.Attachment{
 			ID:       att.GUID,
 			Name:     att.TransferName,
+			Size:     att.TotalBytes,
 			MimeType: att.MimeType,
 		}
 
@@ -419,7 +479,7 @@ func (c *Channel) convertMessage(msg *MessageData) channel.Message {
 		channelMsg.Attachments = append(channelMsg.Attachments, msgAtt)
 	}
 
-	if len(channelMsg.Attachments) > 0 {
+	if len(channelMsg.Attachments) > 0 && strings.TrimSpace(channelMsg.Content) == "" {
 		channelMsg.Type = channelMsg.Attachments[0].Type
 	}
 

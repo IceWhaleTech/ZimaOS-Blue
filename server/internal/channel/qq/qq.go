@@ -34,9 +34,9 @@ const (
 	prodAPIBase    = "https://api.sgroup.qq.com"
 	sandboxAPIBase = "https://sandbox.api.sgroup.qq.com"
 
-	gatewayPath       = "/gateway"
-	sendMessagePath   = "/channels/%s/messages"
-	accessTokenPath   = "/app/getAppAccessToken"
+	gatewayPath     = "/gateway"
+	sendMessagePath = "/channels/%s/messages"
+	accessTokenPath = "/app/getAppAccessToken"
 
 	wsReconnectDelay  = 5 * time.Second
 	heartbeatInterval = 30 * time.Second
@@ -45,14 +45,14 @@ const (
 
 // WebSocket opcodes from QQ Bot gateway protocol.
 const (
-	opDispatch        = 0
-	opHeartbeat       = 1
-	opIdentify        = 2
-	opResume          = 6
-	opReconnect       = 7
-	opInvalidSession  = 9
-	opHello           = 10
-	opHeartbeatAck    = 11
+	opDispatch       = 0
+	opHeartbeat      = 1
+	opIdentify       = 2
+	opResume         = 6
+	opReconnect      = 7
+	opInvalidSession = 9
+	opHello          = 10
+	opHeartbeatAck   = 11
 )
 
 // wsPayload represents a WebSocket gateway payload.
@@ -70,10 +70,10 @@ type helloData struct {
 
 // identifyData is sent to authenticate with the gateway.
 type identifyData struct {
-	Token   string           `json:"token"`
-	Intents int              `json:"intents"`
-	Shard   [2]int           `json:"shard"`
-	Props   *identifyProps   `json:"properties,omitempty"`
+	Token   string         `json:"token"`
+	Intents int            `json:"intents"`
+	Shard   [2]int         `json:"shard"`
+	Props   *identifyProps `json:"properties,omitempty"`
 }
 
 type identifyProps struct {
@@ -102,12 +102,30 @@ type gatewayResponse struct {
 
 // messageEvent represents an incoming message from the gateway.
 type messageEvent struct {
-	ID        string       `json:"id"`
-	ChannelID string       `json:"channel_id"`
-	GuildID   string       `json:"guild_id"`
-	Content   string       `json:"content"`
-	Author    messageAuthor `json:"author"`
-	Timestamp string       `json:"timestamp"`
+	ID               string                   `json:"id"`
+	ChannelID        string                   `json:"channel_id"`
+	GuildID          string                   `json:"guild_id"`
+	Content          string                   `json:"content"`
+	Author           messageAuthor            `json:"author"`
+	Timestamp        string                   `json:"timestamp"`
+	MentionEveryone  bool                     `json:"mention_everyone,omitempty"`
+	Attachments      []messageAttachment      `json:"attachments,omitempty"`
+	Embeds           []map[string]interface{} `json:"embeds,omitempty"`
+	Ark              map[string]interface{}   `json:"ark,omitempty"`
+	MessageReference *messageReference        `json:"message_reference,omitempty"`
+}
+
+type messageAttachment struct {
+	URL         string `json:"url"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type,omitempty"`
+	Height      int    `json:"height,omitempty"`
+	Width       int    `json:"width,omitempty"`
+	Size        int64  `json:"size,omitempty"`
+}
+
+type messageReference struct {
+	MessageID string `json:"message_id"`
 }
 
 type messageAuthor struct {
@@ -157,8 +175,8 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	}
 }
 
-func (c *Channel) Name() string                    { return "qq" }
-func (c *Channel) Type() string                    { return "qq" }
+func (c *Channel) Name() string                     { return "qq" }
+func (c *Channel) Type() string                     { return "qq" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -184,7 +202,7 @@ func (c *Channel) refreshAccessToken(ctx context.Context) error {
 	c.tokenMu.RUnlock()
 
 	body, _ := json.Marshal(map[string]string{
-		"appId":     c.config.AppID,
+		"appId":        c.config.AppID,
 		"clientSecret": c.config.AppSecret,
 	})
 
@@ -564,6 +582,28 @@ func (c *Channel) handleDispatch(payload wsPayload) {
 func (c *Channel) processMessage(msg messageEvent) {
 	ts, _ := time.Parse(time.RFC3339, msg.Timestamp)
 
+	rawAttachments, attachments := qqIncomingAttachments(msg.Attachments)
+	rawEmbeds := qqIncomingEmbeds(msg.Embeds)
+
+	metadata := map[string]interface{}{
+		"guild_id":   msg.GuildID,
+		"channel_id": msg.ChannelID,
+	}
+	if msg.MentionEveryone {
+		metadata["mention_everyone"] = true
+	}
+	if len(rawAttachments) > 0 {
+		metadata["attachments"] = rawAttachments
+		metadata["attachment_count"] = len(rawAttachments)
+	}
+	if len(rawEmbeds) > 0 {
+		metadata["embeds"] = rawEmbeds
+		metadata["embed_count"] = len(rawEmbeds)
+	}
+	if len(msg.Ark) > 0 {
+		metadata["ark"] = msg.Ark
+	}
+
 	channelMsg := channel.Message{
 		ID:          msg.ID,
 		ChannelName: "qq",
@@ -574,13 +614,22 @@ func (c *Channel) processMessage(msg messageEvent) {
 		Content:     msg.Content,
 		Timestamp:   ts,
 		IsGroup:     msg.GuildID != "",
-		Metadata: map[string]interface{}{
-			"guild_id":   msg.GuildID,
-			"channel_id": msg.ChannelID,
-		},
+		Metadata:    metadata,
+	}
+	if len(rawAttachments) > 0 {
+		channelMsg.Attachments = attachments
+	}
+	if msg.MessageReference != nil && strings.TrimSpace(msg.MessageReference.MessageID) != "" {
+		channelMsg.ReplyToID = strings.TrimSpace(msg.MessageReference.MessageID)
+		channelMsg.Metadata["reference_message_id"] = channelMsg.ReplyToID
 	}
 	if channelMsg.IsGroup {
 		channelMsg.GroupName = msg.GuildID
+	}
+	if len(channelMsg.Attachments) > 0 && strings.TrimSpace(channelMsg.Content) == "" {
+		channelMsg.Type = channelMsg.Attachments[0].Type
+	} else if strings.TrimSpace(channelMsg.Content) == "" && (len(msg.Embeds) > 0 || len(msg.Ark) > 0) {
+		channelMsg.Type = channel.MessageTypeCard
 	}
 
 	c.msgCount.Add(1)
@@ -591,6 +640,89 @@ func (c *Channel) processMessage(msg messageEvent) {
 	default:
 		c.logger.Warn("message channel full, dropping message", zap.String("id", msg.ID))
 	}
+}
+
+func qqIncomingAttachments(items []messageAttachment) ([]map[string]interface{}, []channel.Attachment) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	raw := make([]map[string]interface{}, 0, len(items))
+	attachments := make([]channel.Attachment, 0, len(items))
+	for _, item := range items {
+		raw = append(raw, qqIncomingAttachmentMetadata(item))
+		attachments = append(attachments, channel.Attachment{
+			Type:     qqIncomingAttachmentType(item),
+			Name:     strings.TrimSpace(item.Filename),
+			URL:      strings.TrimSpace(item.URL),
+			Size:     item.Size,
+			MimeType: strings.TrimSpace(item.ContentType),
+		})
+	}
+	return raw, attachments
+}
+
+func qqIncomingAttachmentMetadata(item messageAttachment) map[string]interface{} {
+	metadata := map[string]interface{}{}
+	if strings.TrimSpace(item.URL) != "" {
+		metadata["url"] = strings.TrimSpace(item.URL)
+	}
+	if strings.TrimSpace(item.Filename) != "" {
+		metadata["filename"] = strings.TrimSpace(item.Filename)
+	}
+	if strings.TrimSpace(item.ContentType) != "" {
+		metadata["content_type"] = strings.TrimSpace(item.ContentType)
+	}
+	if item.Width > 0 {
+		metadata["width"] = item.Width
+	}
+	if item.Height > 0 {
+		metadata["height"] = item.Height
+	}
+	if item.Size > 0 {
+		metadata["size"] = item.Size
+	}
+	return metadata
+}
+
+func qqIncomingAttachmentType(item messageAttachment) channel.MessageType {
+	contentType := strings.ToLower(strings.TrimSpace(item.ContentType))
+	switch {
+	case strings.HasPrefix(contentType, "image/"):
+		return channel.MessageTypeImage
+	case strings.HasPrefix(contentType, "audio/"):
+		return channel.MessageTypeAudio
+	case strings.HasPrefix(contentType, "video/"):
+		return channel.MessageTypeVideo
+	}
+	name := strings.ToLower(strings.TrimSpace(item.Filename))
+	switch {
+	case strings.HasSuffix(name, ".png"), strings.HasSuffix(name, ".jpg"), strings.HasSuffix(name, ".jpeg"), strings.HasSuffix(name, ".gif"), strings.HasSuffix(name, ".webp"):
+		return channel.MessageTypeImage
+	case strings.HasSuffix(name, ".mp3"), strings.HasSuffix(name, ".wav"), strings.HasSuffix(name, ".ogg"), strings.HasSuffix(name, ".m4a"):
+		return channel.MessageTypeAudio
+	case strings.HasSuffix(name, ".mp4"), strings.HasSuffix(name, ".mov"), strings.HasSuffix(name, ".webm"), strings.HasSuffix(name, ".mkv"):
+		return channel.MessageTypeVideo
+	default:
+		return channel.MessageTypeFile
+	}
+}
+
+func qqIncomingEmbeds(items []map[string]interface{}) []map[string]interface{} {
+	if len(items) == 0 {
+		return nil
+	}
+	embeds := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		if len(item) == 0 {
+			continue
+		}
+		copyItem := make(map[string]interface{}, len(item))
+		for key, value := range item {
+			copyItem[key] = value
+		}
+		embeds = append(embeds, copyItem)
+	}
+	return embeds
 }
 
 // tokenRefreshLoop periodically refreshes the access token.
@@ -628,27 +760,47 @@ func (c *Channel) Stop(ctx context.Context) error {
 
 // Send sends a message via QQ Bot HTTP API.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
+	captionConsumed := false
+	sentSomething := false
+
 	// Send attachments first, then text.
 	for _, att := range msg.Attachments {
-		if err := c.sendAttachment(ctx, msg.ChatID, msg.ReplyToID, msg.Content, att); err != nil {
+		caption := ""
+		includeCaption := !captionConsumed && strings.TrimSpace(msg.Content) != ""
+		if includeCaption {
+			caption = msg.Content
+		}
+		if err := c.sendAttachment(ctx, msg.ChatID, msg.ReplyToID, caption, att); err != nil {
 			c.logger.Warn("failed to send attachment, falling back to text",
 				zap.String("channel", "qq"), zap.String("type", string(att.Type)), zap.Error(err))
-			// Fall back to URL text
-			fallback := msg.Content
-			if att.URL != "" {
-				fallback += "\n" + att.URL
+			fallback := qqAttachmentFallbackText(msg.Content, att, includeCaption)
+			if fallback == "" {
+				continue
 			}
 			if err2 := c.sendText(ctx, msg.ChatID, msg.ReplyToID, fallback); err2 != nil {
 				return fmt.Errorf("qq send fallback: %w", err2)
 			}
+			sentSomething = true
+			if includeCaption {
+				captionConsumed = true
+			}
+			continue
 		}
-		// Caption already sent with first attachment; clear for subsequent.
-		msg.Content = ""
+		sentSomething = true
+		if includeCaption {
+			captionConsumed = true
+		}
 	}
 
-	// Send remaining text if no attachments or text wasn't consumed.
-	if len(msg.Attachments) == 0 && msg.Content != "" {
-		return c.sendText(ctx, msg.ChatID, msg.ReplyToID, msg.Content)
+	// Send remaining text if no attachment consumed it.
+	if strings.TrimSpace(msg.Content) != "" && !captionConsumed {
+		if err := c.sendText(ctx, msg.ChatID, msg.ReplyToID, msg.Content); err != nil {
+			return err
+		}
+		sentSomething = true
+	}
+	if !sentSomething {
+		return fmt.Errorf("no sendable QQ content")
 	}
 	return nil
 }
@@ -670,7 +822,7 @@ func (c *Channel) sendText(ctx context.Context, chatID, replyToID, content strin
 
 // sendAttachment sends a media attachment via QQ Bot API.
 // QQ guild channel API supports file_image (URL) for images.
-// For other types, we include the URL as text.
+// For other types, we include fallback text content.
 func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID, caption string, att channel.Attachment) error {
 	token, err := c.getAccessToken(ctx)
 	if err != nil {
@@ -693,19 +845,46 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, replyToID, caption
 			return fmt.Errorf("image attachment has no URL")
 		}
 	default:
-		// Video/audio/file: QQ guild API doesn't support direct upload.
-		// Send URL as text content.
-		text := caption
-		if att.URL != "" {
-			if text != "" {
-				text += "\n"
-			}
-			text += att.URL
+		text := qqAttachmentFallbackText(caption, att, caption != "")
+		if text == "" {
+			return fmt.Errorf("attachment has no URL or fallback text")
 		}
 		payload["content"] = text
 	}
 
 	return c.postMessage(ctx, token, chatID, payload)
+}
+
+func qqAttachmentFallbackText(caption string, att channel.Attachment, includeCaption bool) string {
+	parts := make([]string, 0, 2)
+	if includeCaption && strings.TrimSpace(caption) != "" {
+		parts = append(parts, strings.TrimSpace(caption))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		parts = append(parts, strings.TrimSpace(att.URL))
+	} else {
+		name := strings.TrimSpace(att.Name)
+		if name == "" && len(att.Data) > 0 {
+			name = qqAttachmentLabel(att)
+		}
+		if name != "" {
+			parts = append(parts, name)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func qqAttachmentLabel(att channel.Attachment) string {
+	switch att.Type {
+	case channel.MessageTypeImage:
+		return "Image attachment"
+	case channel.MessageTypeVideo:
+		return "Video attachment"
+	case channel.MessageTypeAudio:
+		return "Audio attachment"
+	default:
+		return "File attachment"
+	}
 }
 
 // postMessage posts a JSON payload to the QQ channel messages endpoint.

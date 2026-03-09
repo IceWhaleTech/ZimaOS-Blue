@@ -32,10 +32,25 @@ const isShortOutput = computed(() => {
   return props.item.output.length <= 80 && !props.item.output.includes('\n')
 })
 const hasStatus = computed(() => !!props.item.status?.trim())
+const hasWarningCode = computed(() => !!props.item.warningCode?.trim())
 const statusText = computed(() => props.item.status || '')
+const warningCodeText = computed(() => props.item.warningCode || '')
+const warningLabel = computed(() => {
+  switch (warningCodeText.value) {
+    case 'login_wall':
+      return 'Login wall'
+    case 'challenge':
+      return 'Challenge'
+    case 'browser_required':
+      return 'Browser required'
+    default:
+      return warningCodeText.value ? warningCodeText.value.replace(/_/g, ' ') : ''
+  }
+})
 const statusToneClass = computed(() => {
   if (props.item.icon === '✗') return 'tool-detail-card__status--error'
   if (props.item.icon === '⏳') return 'tool-detail-card__status--pending'
+  if (hasWarningCode.value) return 'tool-detail-card__status--warning'
   return 'tool-detail-card__status--success'
 })
 </script>
@@ -50,6 +65,11 @@ const statusToneClass = computed(() => {
     <div v-if="item.command" class="tool-detail-card__command">
       <span class="tool-detail-card__command-label">$</span>
       <span class="tool-detail-card__command-text">{{ item.command }}</span>
+    </div>
+
+    <div v-if="hasWarningCode" class="tool-detail-card__warning-row">
+      <span class="tool-detail-card__warning-pill">warning_code={{ warningCodeText }}</span>
+      <span v-if="warningLabel" class="tool-detail-card__warning-label">{{ warningLabel }}</span>
     </div>
 
     <!-- Status/Error -->
@@ -134,6 +154,43 @@ const statusToneClass = computed(() => {
   color: rgba(255, 255, 255, 0.8);
 }
 
+.tool-detail-card__warning-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.tool-detail-card__warning-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  color: #9a3412;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+}
+
+.tool-detail-card__warning-label {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #9a3412;
+}
+
+:root.dark .tool-detail-card__warning-pill {
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.16);
+  border-color: rgba(249, 115, 22, 0.34);
+}
+
+:root.dark .tool-detail-card__warning-label {
+  color: #fdba74;
+}
+
 /* Output section */
 .tool-detail-card__output-wrapper {
   margin-top: 6px;
@@ -168,6 +225,12 @@ const statusToneClass = computed(() => {
   border-color: #fde68a;
 }
 
+.tool-detail-card__status--warning {
+  color: #9a3412;
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
 :root.dark .tool-detail-card__status--success {
   color: #86efac;
   background: rgba(34, 197, 94, 0.15);
@@ -184,6 +247,12 @@ const statusToneClass = computed(() => {
   color: #fcd34d;
   background: rgba(245, 158, 11, 0.14);
   border-color: rgba(245, 158, 11, 0.32);
+}
+
+:root.dark .tool-detail-card__status--warning {
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.16);
+  border-color: rgba(249, 115, 22, 0.34);
 }
 
 .tool-detail-card__output-inline {

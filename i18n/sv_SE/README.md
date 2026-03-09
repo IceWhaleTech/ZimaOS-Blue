@@ -66,7 +66,7 @@ Ta det vidare: det levererar inbyggt stöd för **20+ IM-plattformar**, **rösts
 
 Nativt kompilerat i Go — ingen tolk, ingen VM, ingen overhead. Körs tyst på allt från servrar till dina stationära enheter.
 
-| Mätvärde | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Mätvärde | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |----------|-------------------|------------------------|
 | `help` kall / varm | **0,18 s / < 0,01 s** | 3,31 s / ~1,11 s |
 | `status` körtid (bästa av 3) | **< 0,01 s** | 5,98 s |

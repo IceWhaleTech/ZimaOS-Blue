@@ -152,11 +152,6 @@ func (c *checker) checkRoutes() ([]CheckItem, error) {
 			details: "expected chat API routes to be registered on /api/v1",
 		},
 		{
-			name:    "session_routes_registered",
-			marker:  "deps.SessionHandler.RegisterRoutes(",
-			details: "expected SessionHandler to be wired into bootstrap routes",
-		},
-		{
 			name:    "gateway_routes_registered",
 			marker:  "deps.GatewayHandler.RegisterRoutes(",
 			details: "expected gateway HTTP/WS routes to be wired into bootstrap routes",

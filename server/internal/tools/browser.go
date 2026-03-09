@@ -13,6 +13,7 @@ import (
 type BrowserBackend interface {
 	Start(ctx context.Context) error
 	Navigate(ctx context.Context, url string, targetID string) (BrowserNavResult, error)
+	CookieHeader(ctx context.Context, targetID string, url string) (string, error)
 	AccessibilityTree(ctx context.Context, targetID string, maxDepth int) (BrowserA11yTreeResult, error)
 	InteractiveElements(ctx context.Context, targetID string) (BrowserInteractiveResult, error)
 	CountInteractiveElements(ctx context.Context, targetID string) (int, error)

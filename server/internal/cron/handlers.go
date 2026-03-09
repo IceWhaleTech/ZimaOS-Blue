@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"go.uber.org/zap"
 )
 
 // CommandResult represents the result of a command execution.
@@ -26,13 +26,13 @@ type CommandResult struct {
 
 // Security: Dangerous shell patterns that could indicate command injection
 var dangerousPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`[;&|]`),                    // Command chaining
-	regexp.MustCompile(`\$\(`),                     // Command substitution $(...)
-	regexp.MustCompile("`"),                        // Backtick command substitution
-	regexp.MustCompile(`\$\{`),                     // Variable expansion ${...}
-	regexp.MustCompile(`>\s*[/~]`),                 // Output redirection to absolute path
-	regexp.MustCompile(`<\s*[/~]`),                 // Input redirection from absolute path
-	regexp.MustCompile(`\.\./`),                    // Path traversal
+	regexp.MustCompile(`[;&|]`),                   // Command chaining
+	regexp.MustCompile(`\$\(`),                    // Command substitution $(...)
+	regexp.MustCompile("`"),                       // Backtick command substitution
+	regexp.MustCompile(`\$\{`),                    // Variable expansion ${...}
+	regexp.MustCompile(`>\s*[/~]`),                // Output redirection to absolute path
+	regexp.MustCompile(`<\s*[/~]`),                // Input redirection from absolute path
+	regexp.MustCompile(`\.\./`),                   // Path traversal
 	regexp.MustCompile(`(?i)(rm|dd|mkfs|format)`), // Destructive commands
 	regexp.MustCompile(`(?i)/etc/`),               // System config access
 	regexp.MustCompile(`(?i)/proc/`),              // Proc filesystem access
@@ -108,6 +108,36 @@ func (s *Service) RegisterCommandHandler(config CommandSecurityConfig) {
 	}
 
 	s.RegisterHandler("command", s.commandHandler)
+}
+
+func validatePayloadForHandler(handler string, payload map[string]interface{}) error {
+	switch handler {
+	case "command":
+		cmdStr, _ := payload["command"].(string)
+		if strings.TrimSpace(cmdStr) == "" {
+			return fmt.Errorf("command not specified in payload")
+		}
+	case "http":
+		url, _ := payload["url"].(string)
+		if strings.TrimSpace(url) == "" {
+			return fmt.Errorf("url not specified in payload")
+		}
+		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			return fmt.Errorf("invalid URL scheme - must be http or https")
+		}
+
+		method := "GET"
+		if m, ok := payload["method"].(string); ok && m != "" {
+			method = strings.ToUpper(m)
+		}
+
+		validMethods := map[string]bool{"GET": true, "POST": true, "PUT": true, "DELETE": true, "PATCH": true, "HEAD": true}
+		if !validMethods[method] {
+			return fmt.Errorf("invalid HTTP method: %s", method)
+		}
+	}
+
+	return nil
 }
 
 // validateCommand checks if a command is safe to execute.

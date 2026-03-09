@@ -312,6 +312,47 @@ func TestPatchSmallModelMediaIntentEnabled_Persisted(t *testing.T) {
 	}
 }
 
+func TestPatchSmallModelContextPruneToolRules_Persisted(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	body := `{
+		"small_model_context_prune_tool_allow":[" exec ","web_*","exec",""],
+		"small_model_context_prune_tool_deny":["web_search","web_search"," "]
+	}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Patch(c); err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	allow := h.GetSmallModelContextPruneToolAllow()
+	deny := h.GetSmallModelContextPruneToolDeny()
+	if len(allow) != 2 || allow[0] != "exec" || allow[1] != "web_*" {
+		t.Fatalf("allow = %v, want [exec web_*]", allow)
+	}
+	if len(deny) != 1 || deny[0] != "web_search" {
+		t.Fatalf("deny = %v, want [web_search]", deny)
+	}
+
+	h2 := NewSettingsHandler(store)
+	allow2 := h2.GetSmallModelContextPruneToolAllow()
+	deny2 := h2.GetSmallModelContextPruneToolDeny()
+	if len(allow2) != 2 || allow2[0] != "exec" || allow2[1] != "web_*" {
+		t.Fatalf("persisted allow = %v, want [exec web_*]", allow2)
+	}
+	if len(deny2) != 1 || deny2[0] != "web_search" {
+		t.Fatalf("persisted deny = %v, want [web_search]", deny2)
+	}
+}
+
 func TestSetSmallModelRouteShortQAEnabled_Persisted(t *testing.T) {
 	store := kvstore.NewMemoryStore()
 	h := NewSettingsHandler(store)

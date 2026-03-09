@@ -547,6 +547,104 @@ func TestConvertRequest_ToolResultJSONObjectPreserved(t *testing.T) {
 	}
 }
 
+func TestConvertRequest_MultipleToolResultsMergedIntoSingleUserMessage(t *testing.T) {
+	fc := NewFormatConverter()
+
+	openaiReq := `{
+		"model": "claude-3-5-sonnet",
+		"messages": [
+			{"role": "user", "content": "帮我查两个来源"},
+			{"role": "assistant", "content": "", "tool_calls": [
+				{
+					"id": "call_1",
+					"type": "function",
+					"function": {"name": "web_search", "arguments": "{\"query\":\"OpenClaw latest news 2025\"}"}
+				},
+				{
+					"id": "call_2",
+					"type": "function",
+					"function": {"name": "web_search", "arguments": "{\"query\":\"OpenClaw 开源 新闻\"}"}
+				}
+			]},
+			{"role": "tool", "tool_call_id": "call_1", "content": "result-one"},
+			{"role": "tool", "tool_call_id": "call_2", "content": "result-two"}
+		],
+		"tools": [
+			{
+				"type": "function",
+				"function": {
+					"name": "web_search",
+					"description": "Search the web",
+					"parameters": {"type": "object", "properties": {"query": {"type": "string"}}}
+				}
+			}
+		]
+	}`
+
+	converted, _, err := fc.ConvertRequest([]byte(openaiReq), ProviderTypeAnthropic)
+	if err != nil {
+		t.Fatalf("ConvertRequest failed: %v", err)
+	}
+
+	var anthropicReq AnthropicRequest
+	if err := json.Unmarshal(converted, &anthropicReq); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n  body: %s", err, converted)
+	}
+
+	if len(anthropicReq.Messages) != 3 {
+		t.Fatalf("Messages count = %d, want 3", len(anthropicReq.Messages))
+	}
+
+	assistantBlocks, ok := anthropicReq.Messages[1].Content.([]interface{})
+	if !ok {
+		t.Fatalf("assistant content is not array: %T", anthropicReq.Messages[1].Content)
+	}
+	toolUseCount := 0
+	for _, block := range assistantBlocks {
+		blockMap, ok := block.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if blockMap["type"] == "tool_use" {
+			toolUseCount++
+		}
+	}
+	if toolUseCount != 2 {
+		t.Fatalf("assistant tool_use count = %d, want 2", toolUseCount)
+	}
+
+	toolResultMsg := anthropicReq.Messages[2]
+	if toolResultMsg.Role != "user" {
+		t.Fatalf("tool result role = %s, want user", toolResultMsg.Role)
+	}
+	resultBlocks, ok := toolResultMsg.Content.([]interface{})
+	if !ok {
+		t.Fatalf("tool result content is not array: %T", toolResultMsg.Content)
+	}
+	if len(resultBlocks) != 2 {
+		t.Fatalf("tool result block count = %d, want 2", len(resultBlocks))
+	}
+
+	firstBlock, ok := resultBlocks[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("first tool result block is not map: %T", resultBlocks[0])
+	}
+	secondBlock, ok := resultBlocks[1].(map[string]interface{})
+	if !ok {
+		t.Fatalf("second tool result block is not map: %T", resultBlocks[1])
+	}
+
+	if firstBlock["type"] != "tool_result" || secondBlock["type"] != "tool_result" {
+		t.Fatalf("tool result block types = %v / %v, want tool_result", firstBlock["type"], secondBlock["type"])
+	}
+	if firstBlock["tool_use_id"] != "call_1" || secondBlock["tool_use_id"] != "call_2" {
+		t.Fatalf("tool_use_id order = %v / %v, want call_1 / call_2", firstBlock["tool_use_id"], secondBlock["tool_use_id"])
+	}
+	if firstBlock["content"] != "result-one" || secondBlock["content"] != "result-two" {
+		t.Fatalf("tool result content = %v / %v, want result-one / result-two", firstBlock["content"], secondBlock["content"])
+	}
+}
+
 func TestConvertRequest_AssistantArrayContentWithToolCalls_Preserved(t *testing.T) {
 	fc := NewFormatConverter()
 

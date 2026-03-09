@@ -66,7 +66,10 @@ func cliDispatch(args []string) bool {
 	case "skills":
 		return false // skills subcommands need cobra arg validation
 	case "sessions":
-		return false // sessions subcommands need cobra arg validation
+		if dispatchSessionsFastPath(rest) {
+			break
+		}
+		return false // fall back to cobra for unsupported/invalid shapes
 	case "cron":
 		return false // cron subcommands need cobra arg validation
 	case "logs":
@@ -90,6 +93,39 @@ func cliDispatch(args []string) bool {
 
 	os.Exit(0)
 	return true
+}
+
+func dispatchSessionsFastPath(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+
+	switch args[0] {
+	case "list":
+		sessionsActive = flagBool(args[1:], "--active")
+		runSessionsList(nil, nil)
+		return true
+	case "show":
+		if len(args) != 2 {
+			return false
+		}
+		runSessionsShow(nil, []string{args[1]})
+		return true
+	case "delete":
+		if len(args) != 2 {
+			return false
+		}
+		runSessionsDelete(nil, []string{args[1]})
+		return true
+	case "clear":
+		if len(args) != 1 {
+			return false
+		}
+		runSessionsClear(nil, nil)
+		return true
+	default:
+		return false
+	}
 }
 
 func flagBool(args []string, name string) bool {

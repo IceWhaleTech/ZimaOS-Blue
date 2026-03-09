@@ -66,7 +66,7 @@ Take it further: it delivers native support for **20+ IM platforms**, **voice-dr
 
 Compiled natively in Go — no interpreter, no VM, no overhead. Runs silently on everything from servers to your desktop devices.
 
-| Metric | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Metric | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |--------|-------------------|------------------------|
 | `help` cold / warm | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` runtime (best of 3) | **< 0.01 s** | 5.98 s |

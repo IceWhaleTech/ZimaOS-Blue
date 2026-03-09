@@ -66,7 +66,7 @@ Téigh níos faide: soláthraíonn sé tacaíocht dhúchasach do **20+ ardán IM
 
 Tiomsaithe go dúchasach i Go — gan ateangaire, gan VM, gan forchostais. Ritheann sé go ciúin ar gach rud ó fhreastalaithe go do ghléasanna deisce.
 
-| Méadrach | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Méadrach | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |--------|-------------------|------------------------|
 | `help` fuar / te | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` am rite (is fearr as 3) | **< 0.01 s** | 5.98 s |

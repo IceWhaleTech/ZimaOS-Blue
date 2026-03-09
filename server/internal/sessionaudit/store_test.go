@@ -2,11 +2,13 @@ package sessionaudit
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestStoreRecordAndRecent(t *testing.T) {
@@ -102,4 +104,26 @@ func TestStorePruneExpired(t *testing.T) {
 		t.Fatalf("remaining tool_call_id = %q, want tc-new", got[0].ToolCallID)
 	}
 
+}
+
+func TestStoreWithDBDoesNotOwnSharedConnection(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "shared_audit.db")
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	store, err := NewSQLiteStoreWithDB(db, StoreConfig{RetentionDays: 30, CleanupBatchSize: 100})
+	if err != nil {
+		t.Fatalf("NewSQLiteStoreWithDB() error = %v", err)
+	}
+
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	if _, err := db.Exec("SELECT 1"); err != nil {
+		t.Fatalf("shared DB should remain usable after store.Close(): %v", err)
+	}
 }

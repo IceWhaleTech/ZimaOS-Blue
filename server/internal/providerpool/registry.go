@@ -138,6 +138,8 @@ func (r *Registry) Register(provider *Provider) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	normalizeProviderAPIKeys(provider)
+
 	if _, exists := r.providers[provider.ID]; exists {
 		return ErrProviderExists
 	}
@@ -563,13 +565,11 @@ func (r *Registry) AddAPIKey(providerID string, key *APIKey) error {
 	if key.CreatedAt.IsZero() {
 		key.CreatedAt = timeutil.NowTime()
 	}
-	if key.KeyHash == "" {
-		key.KeyHash = HashAPIKey(key.Key)
-	}
+	normalizeAPIKeyMetadata(key)
 
 	// Deduplicate: skip if a key with the same hash already exists
 	for _, existing := range provider.APIKeys {
-		if existing.KeyHash == key.KeyHash {
+		if apiKeyFingerprint(&existing) != "" && apiKeyFingerprint(&existing) == apiKeyFingerprint(key) {
 			return nil // already exists, no-op
 		}
 	}

@@ -2,7 +2,7 @@
 
 ## 审查范围
 
-基于 ClawdBot/OpenClaw 2026年1月安全事件，对 ZimaOS-Blue 项目进行安全审查，重点关注：
+基于 ClawdBot/Reference Agent 2026年1月安全事件，对 ZimaOS-Blue 项目进行安全审查，重点关注：
 1. WebSocket 网关安全 (RCE 漏洞)
 2. CORS 配置 (CSRF 漏洞)
 3. 本地网络访问保护
@@ -442,7 +442,7 @@ v.SetDefault("security.oidc.issuer", "http://localhost")
 - 审查日期: 2026-02-01
 - 修复日期: 2026-02-01 (第一轮 + 第二轮)
 - 审查工具: Claude Code
-- 参考: ClawdBot/OpenClaw 安全事件 (2026年1月)
+- 参考: ClawdBot/Reference Agent 安全事件 (2026年1月)
 
 ## 修复统计
 

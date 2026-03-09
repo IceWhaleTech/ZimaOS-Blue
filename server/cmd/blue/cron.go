@@ -4,11 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/spf13/cobra"
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/spf13/cobra"
 )
 
 // cronCmd represents the cron command
@@ -111,25 +110,21 @@ func init() {
 
 // CronJob represents a cron job
 type CronJob struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	Schedule    string    `json:"schedule"`
-	Handler     string    `json:"handler"`
-	Enabled     bool      `json:"enabled"`
-	Status      string    `json:"status"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	Schedule    string     `json:"schedule"`
+	Handler     string     `json:"handler"`
+	Enabled     bool       `json:"enabled"`
+	Status      string     `json:"status"`
 	LastRunAt   *time.Time `json:"last_run_at,omitempty"`
 	NextRunAt   *time.Time `json:"next_run_at,omitempty"`
-	RunCount    int64     `json:"run_count"`
-	FailCount   int64     `json:"fail_count"`
+	RunCount    int64      `json:"run_count"`
+	FailCount   int64      `json:"fail_count"`
 }
 
 func getCronBaseURL() string {
-	port := 8080
-	if devMode {
-		port = 8081
-	}
-	return fmt.Sprintf("http://localhost:%d/api/cron", port)
+	return getServiceAPIBaseURL("/api/cron")
 }
 
 func runCronList(cmd *cobra.Command, args []string) {

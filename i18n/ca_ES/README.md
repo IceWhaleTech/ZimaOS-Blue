@@ -66,7 +66,7 @@ Aneu més enllà: ofereix suport natiu per a **més de 20 plataformes de missatg
 
 Compilat nativament en Go — sense intèrpret, sense VM, sense sobrecàrrega. Funciona silenciosament en tot, des de servidors fins als vostres dispositius d'escriptori.
 
-| Mètrica | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Mètrica | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |---------|-------------------|------------------------|
 | `help` fred / calent | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` temps d'execució (millor de 3) | **< 0.01 s** | 5.98 s |

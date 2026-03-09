@@ -3,8 +3,11 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cronApi } from '@/api/cron'
 import type { CronJob, JobExecution } from '@/api/cron'
+import { useNotificationStore } from '@/stores/notification'
+import { getErrorMessage } from '@/utils/error'
 
 const { t } = useI18n()
+const notification = useNotificationStore()
 
 const loading = ref(false)
 const jobs = ref<CronJob[]>([])
@@ -149,8 +152,8 @@ async function createJob() {
     })
     showCreateModal.value = false
     await loadJobs()
-  } catch {
-    // Handle error
+  } catch (error) {
+    notification.error(t('common.error'), getErrorMessage(error))
   } finally {
     loading.value = false
   }
@@ -175,8 +178,8 @@ async function updateJob() {
     })
     showEditModal.value = false
     await loadJobs()
-  } catch {
-    // Handle error
+  } catch (error) {
+    notification.error(t('common.error'), getErrorMessage(error))
   } finally {
     loading.value = false
   }
@@ -190,8 +193,8 @@ async function toggleJob(job: CronJob) {
       await cronApi.enable(job.id)
     }
     await loadJobs()
-  } catch {
-    // Handle error
+  } catch (error) {
+    notification.error(t('common.error'), getErrorMessage(error))
   }
 }
 
@@ -199,8 +202,8 @@ async function triggerJob(job: CronJob) {
   try {
     await cronApi.trigger(job.id)
     await loadExecutions(job)
-  } catch {
-    // Handle error
+  } catch (error) {
+    notification.error(t('common.error'), getErrorMessage(error))
   }
 }
 
@@ -210,8 +213,8 @@ async function deleteJob(job: CronJob) {
   try {
     await cronApi.delete(job.id)
     await loadJobs()
-  } catch {
-    // Handle error
+  } catch (error) {
+    notification.error(t('common.error'), getErrorMessage(error))
   }
 }
 
@@ -221,8 +224,9 @@ async function loadExecutions(job: CronJob) {
     const response = await cronApi.getExecutions(job.id, 20)
     executions.value = response.data
     showExecutionsModal.value = true
-  } catch {
+  } catch (error) {
     executions.value = []
+    notification.error(t('common.error'), getErrorMessage(error))
   }
 }
 
@@ -237,8 +241,13 @@ function formatDate(dateStr: string | undefined): string {
 
 function getNextRunText(job: CronJob): string {
   if (!job.enabled) return t('cron.disabled')
-  if (!job.next_run) return t('cron.calculating')
-  return formatDate(job.next_run)
+  if (!job.next_run_at) return t('cron.calculating')
+  return formatDate(job.next_run_at)
+}
+
+function getExecutionDurationMs(execution: JobExecution): number {
+  if (!execution.duration) return 0
+  return Math.round(execution.duration / 1_000_000)
 }
 </script>
 
@@ -309,8 +318,8 @@ function getNextRunText(job: CronJob): string {
               <div>
                 {{ t('cron.nextRun') }}: {{ getNextRunText(job) }}
               </div>
-              <div v-if="job.last_run">
-                {{ t('cron.lastRun') }}: {{ formatDate(job.last_run) }}
+              <div v-if="job.last_run_at">
+                {{ t('cron.lastRun') }}: {{ formatDate(job.last_run_at) }}
               </div>
             </div>
           </div>
@@ -572,9 +581,11 @@ function getNextRunText(job: CronJob): string {
                 <span
                   :class="[
                     'px-2 py-0.5 rounded-full text-xs font-medium',
-                    execution.status === 'success'
+                    execution.status === 'completed'
                       ? 'bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300'
-                      : 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
+                      : execution.status === 'failed'
+                        ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                   ]"
                 >
                   {{ execution.status }}
@@ -584,7 +595,7 @@ function getNextRunText(job: CronJob): string {
                 </span>
               </div>
               <div class="flex items-center gap-4 text-xs text-gray-500 dark:text-slate-400">
-                <span>{{ t('cron.duration') }}: {{ execution.duration_ms }}ms</span>
+                <span>{{ t('cron.duration') }}: {{ getExecutionDurationMs(execution) }}ms</span>
               </div>
               <div v-if="execution.error" class="mt-2 text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded">
                 {{ execution.error }}

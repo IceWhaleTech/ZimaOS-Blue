@@ -74,7 +74,7 @@ func OpenSQLite(path string, opts *SQLiteOpenOpts) (*SQLiteConn, error) {
 	}
 
 	// Open writer connection
-	writer, err := openAndConfigure(path, false, opts)
+	writer, err := openAndConfigure(path, path, false, opts)
 	if err != nil {
 		return nil, fmt.Errorf("open writer: %w", err)
 	}
@@ -93,7 +93,7 @@ func OpenSQLite(path string, opts *SQLiteOpenOpts) (*SQLiteConn, error) {
 
 	// Open separate reader pool (file: URI required for mode=ro)
 	readerDSN := fmt.Sprintf("file:%s?mode=ro", path)
-	reader, err := openAndConfigure(readerDSN, true, opts)
+	reader, err := openAndConfigure(readerDSN, path, true, opts)
 	if err != nil {
 		writer.Close()
 		return nil, fmt.Errorf("open reader: %w", err)
@@ -108,12 +108,7 @@ func OpenSQLite(path string, opts *SQLiteOpenOpts) (*SQLiteConn, error) {
 }
 
 // openAndConfigure opens a SQLite connection and applies standard PRAGMAs.
-func openAndConfigure(dsn string, readOnly bool, opts *SQLiteOpenOpts) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		return nil, err
-	}
-
+func openAndConfigure(dsn, dbPath string, readOnly bool, opts *SQLiteOpenOpts) (*sql.DB, error) {
 	// Apply PRAGMAs — order matters
 	pragmas := []string{
 		fmt.Sprintf("PRAGMA busy_timeout=%d", opts.BusyTimeout),
@@ -129,40 +124,41 @@ func openAndConfigure(dsn string, readOnly bool, opts *SQLiteOpenOpts) (*sql.DB,
 		pragmas = append(pragmas, "PRAGMA wal_autocheckpoint=1000")
 	}
 
-	for _, p := range pragmas {
-		if _, err := db.Exec(p); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("exec %q: %w", p, err)
+	return OpenSQLiteWithRecovery(dsn, dbPath, func(db *sql.DB) error {
+		for _, p := range pragmas {
+			if _, err := db.Exec(p); err != nil {
+				return fmt.Errorf("exec %q: %w", p, err)
+			}
 		}
-	}
-
-	return db, nil
+		return nil
+	})
 }
 
 // OpenSQLiteSimple opens a SQLite database with a single connection pool (no read-write split).
 // Use this for auxiliary databases that don't need high concurrency.
 func OpenSQLiteSimple(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", path)
+	db, err := OpenSQLiteWithRecovery(path, path, func(db *sql.DB) error {
+		db.SetMaxOpenConns(2)
+		db.SetMaxIdleConns(2)
+		db.SetConnMaxLifetime(time.Hour)
+		db.SetConnMaxIdleTime(30 * time.Minute)
+
+		pragmas := []string{
+			"PRAGMA busy_timeout=5000",
+			"PRAGMA journal_mode=WAL",
+			"PRAGMA cache_size=-2000",
+			"PRAGMA synchronous=NORMAL",
+			"PRAGMA foreign_keys=ON",
+		}
+		for _, p := range pragmas {
+			if _, err := db.Exec(p); err != nil {
+				return fmt.Errorf("exec %q: %w", p, err)
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(2)
-	db.SetConnMaxLifetime(time.Hour)
-	db.SetConnMaxIdleTime(30 * time.Minute)
-
-	pragmas := []string{
-		"PRAGMA busy_timeout=5000",
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA cache_size=-2000",
-		"PRAGMA synchronous=NORMAL",
-		"PRAGMA foreign_keys=ON",
-	}
-	for _, p := range pragmas {
-		if _, err := db.Exec(p); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("exec %q: %w", p, err)
-		}
 	}
 	return db, nil
 }

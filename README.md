@@ -37,6 +37,12 @@
 </p>
 
 <p align="center">
+  <a href="./docs-site/README.md"><strong>Docs</strong></a> ·
+  <a href="https://deepwiki.com/IceWhaleTech/ZimaOS-Blue"><strong>DeepWiki</strong></a> ·
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><strong>Releases</strong></a>
+</p>
+
+<p align="center">
   <a href="https://discord.gg/b3AgFDxe9v"><img src="./docs/assets/discord.png" alt="Discord" height="128" /></a>&nbsp;&nbsp;
   <a href="https://www.facebook.com/zimaboard/"><img src="./docs/assets/facebook.png" alt="Facebook" height="128" /></a>&nbsp;&nbsp;
   <a href="https://x.com/ZimaSpace"><img src="./docs/assets/x.png" alt="X" height="128" /></a>
@@ -50,6 +56,8 @@ Inspired by Clawdbot, we believe the **future** of personal computing will be **
 **ZimaOS Blue is our answer** — a fully **open‑source, auditable, and production‑ready agent runtime and toolkit** that lets you ship private, self‑hosted agents with zero friction.
 
 Built for bold developers who want to **vibe or handcraft their own agents**, Blue is **engineered for performance**: written in **Go**, with a memory footprint as low as 10 MB. It runs on **any x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — anywhere you plug in power.
+
+For the curated documentation path, start with [Docs](./docs-site/README.md). For repository-wide exploration, use [DeepWiki](https://deepwiki.com/IceWhaleTech/ZimaOS-Blue).
 
 ![](./docs/assets/features.png)
 
@@ -67,7 +75,7 @@ Take it further: it delivers native support for **20+ IM platforms**, **voice‑
 
 Compiled natively in Go — no interpreter, no VM, no overhead. Runs silently on everything from servers to your desktop devices.
 
-| Metric | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Metric | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |--------|-------------------|------------------------|
 | `help` cold / warm | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` runtime (best of 3) | **< 0.01 s** | 5.98 s |
@@ -209,6 +217,34 @@ Ticker (30min) → Read HEARTBEAT.md → LLM Eval → Strip HEARTBEAT_OK token
 ## How to Use
 
 ![](./docs/assets/handcraft.png)
+
+## Channel Setup Examples
+
+Blue's `Channels` page is the easiest way to connect messaging surfaces, but the same keys can also be managed declaratively in config.
+
+### Minimal examples
+
+```yaml
+channels:
+  nextcloudtalk:
+    enabled: true
+    server_url: "https://cloud.example.com"
+    username: "bot-user"
+    password: "app-password-or-user-password"
+    room_token: "room-token"
+
+  mattermost:
+    enabled: true
+    server_url: "https://mattermost.example.com"
+    bot_token: "mm-bot-token"
+
+  bluebubbles:
+    enabled: true
+    server_url: "http://mac-host:1234"
+    password: "server-password"
+```
+
+See [`docs-site/guides/channels.mdx`](./docs-site/guides/channels.mdx) for the supported channel list and setup notes.
 
 ## Milestone Timeline
 

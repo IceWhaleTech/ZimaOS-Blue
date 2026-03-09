@@ -200,14 +200,6 @@ export class GatewayClient {
     return this.request('chat.abort', { conversation_id: conversationId })
   }
 
-  async sessionsList(): Promise<GatewayMessage> {
-    return this.request('sessions.list')
-  }
-
-  async sessionsReset(sessionId: string): Promise<GatewayMessage> {
-    return this.request('sessions.reset', { session_id: sessionId })
-  }
-
   async browserRequest(action: string, params?: Record<string, unknown>): Promise<GatewayMessage> {
     return this.request('browser.request', { action, params })
   }

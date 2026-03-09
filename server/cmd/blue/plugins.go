@@ -80,11 +80,7 @@ type PluginInfo struct {
 }
 
 func getPluginsBaseURL() string {
-	port := 8080
-	if devMode {
-		port = 8081
-	}
-	return fmt.Sprintf("http://localhost:%d/api/v1/plugins", port)
+	return getServiceAPIBaseURL("/api/v1/plugins")
 }
 
 func runPluginsList(cmd *cobra.Command, args []string) {
@@ -259,12 +255,12 @@ func runPluginsDoctor(cmd *cobra.Command, args []string) {
 	defer resp.Body.Close()
 
 	var result struct {
-		Healthy  bool `json:"healthy"`
-		Plugins  []struct {
-			ID      string `json:"id"`
-			Name    string `json:"name"`
-			Status  string `json:"status"`
-			Error   string `json:"error,omitempty"`
+		Healthy bool `json:"healthy"`
+		Plugins []struct {
+			ID     string `json:"id"`
+			Name   string `json:"name"`
+			Status string `json:"status"`
+			Error  string `json:"error,omitempty"`
 		} `json:"plugins"`
 		Issues []string `json:"issues,omitempty"`
 	}

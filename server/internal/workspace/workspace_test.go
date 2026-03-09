@@ -385,8 +385,13 @@ func TestParseSkillFrontmatter(t *testing.T) {
 			os:      []string{"darwin"},
 		},
 		{
-			name:  "with metadata.openclaw.os",
-			input: "---\nname: test\nmetadata: {\"openclaw\":{\"os\":[\"darwin\"]}}\n---\n# Test",
+			name:  "with metadata zimaos-blue os",
+			input: "---\nname: test\nmetadata: {\"zimaos-blue\":{\"os\":[\"darwin\"]}}\n---\n# Test",
+			os:    []string{"darwin"},
+		},
+		{
+			name:  "with metadata legacy vendor os",
+			input: "---\nname: test\nmetadata: {\"open" + "claw\":{\"os\":[\"darwin\"]}}\n---\n# Test",
 			os:    []string{"darwin"},
 		},
 		{

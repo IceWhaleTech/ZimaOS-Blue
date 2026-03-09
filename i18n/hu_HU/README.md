@@ -66,7 +66,7 @@ Tovább gondolva: natív támogatás **20+ IM platformhoz**, **hangvezérelt** f
 
 Natívan Go-ban fordítva — nincs interpreter, nincs VM, nincs többletterhelés. Csendben fut mindenen, a szerverektől az asztali eszközökig.
 
-| Metrika | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Metrika | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |---------|-------------------|------------------------|
 | `help` hideg / meleg | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` futásidő (legjobb 3-ból) | **< 0.01 s** | 5.98 s |

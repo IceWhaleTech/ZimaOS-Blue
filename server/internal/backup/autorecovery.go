@@ -3,12 +3,49 @@ package backup
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 )
+
+var sqliteDatabaseExtensions = map[string]struct{}{
+	".db":      {},
+	".sqlite":  {},
+	".sqlite3": {},
+}
+
+// DiscoverSQLiteDatabasePaths returns managed SQLite database files in the data directory.
+//
+// Only top-level files are considered so startup auto-recovery stays scoped to the
+// application's own databases and does not traverse user workspace content.
+func DiscoverSQLiteDatabasePaths(dataDir string) ([]string, error) {
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read data directory: %w", err)
+	}
+
+	paths := make([]string, 0)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if _, ok := sqliteDatabaseExtensions[ext]; !ok {
+			continue
+		}
+		paths = append(paths, filepath.Join(dataDir, entry.Name()))
+	}
+
+	sort.Strings(paths)
+	return paths, nil
+}
 
 // AutoRecoveryResult contains information about an auto-recovery operation.
 type AutoRecoveryResult struct {
@@ -120,14 +157,12 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 func (m *Manager) CheckDatabaseHealth(ctx context.Context) ([]string, error) {
 	var corrupted []string
 
-	// Find all .db files in data directory
-	pattern := filepath.Join(m.dataDir, "*.db")
-	matches, err := filepath.Glob(pattern)
+	dbPaths, err := DiscoverSQLiteDatabasePaths(m.dataDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find database files: %w", err)
 	}
 
-	for _, dbPath := range matches {
+	for _, dbPath := range dbPaths {
 		if err := database.QuickCheckDatabase(dbPath); err != nil {
 			corrupted = append(corrupted, dbPath)
 		}

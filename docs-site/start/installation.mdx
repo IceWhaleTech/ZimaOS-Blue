@@ -1,0 +1,63 @@
+---
+title: "Installation"
+summary: "Install ZimaOS Blue with the desktop app, install script, or from source."
+---
+
+# Installation
+
+The current repository presents three clear install paths.
+
+## Option 1: Desktop app
+
+Use the native application when you want the quickest out-of-the-box experience.
+
+- macOS: [Latest release](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- Windows: [Latest release](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+
+## Option 2: Install script
+
+Use the install script on macOS or Linux:
+
+```bash
+curl -fsSL https://ota.zimaos.com/blue | sh
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://ota.zimaos.com/blue/windows | iex
+```
+
+## Option 3: Build from source
+
+```bash
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+git submodule update --init --recursive
+```
+
+macOS and Linux:
+
+```bash
+sh build.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\build.bat
+```
+
+## Windows build notes
+
+The repository README currently calls out these prerequisites for source builds on Windows:
+
+- MinGW-w64 and CMake for native C dependencies
+- Windows SDK for system libraries
+- `gcc` and `cmake` available in `PATH`
+
+## What to read next
+
+- [Quick Start](/start/quick-start)
+- [Docs Directory](/start/docs-directory)
+- [Troubleshooting](/help/troubleshooting)

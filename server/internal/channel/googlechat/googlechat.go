@@ -91,8 +91,8 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	}
 }
 
-func (c *Channel) Name() string                    { return "googlechat" }
-func (c *Channel) Type() string                    { return "googlechat" }
+func (c *Channel) Name() string                     { return "googlechat" }
+func (c *Channel) Type() string                     { return "googlechat" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -199,58 +199,77 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("webhook URL not configured")
 	}
 
-	payload := map[string]interface{}{}
-
-	if msg.Content != "" {
-		payload["text"] = msg.Content
+	payload, err := googleChatMetadataPayload(msg.Metadata)
+	if err != nil {
+		return err
+	}
+	if msg.ReplyToID != "" {
+		if _, ok := payload["thread"]; !ok {
+			payload["thread"] = map[string]interface{}{"name": msg.ReplyToID}
+		}
+	}
+	textParts := make([]string, 0, 1+len(msg.Attachments))
+	if strings.TrimSpace(msg.Content) != "" {
+		textParts = append(textParts, strings.TrimSpace(msg.Content))
 	}
 
-	// Attach images as cards (Google Chat webhook supports cardsV2 with image widgets).
-	if len(msg.Attachments) > 0 {
-		var widgets []map[string]interface{}
-		for _, att := range msg.Attachments {
-			if att.URL == "" {
-				continue
+	var widgets []map[string]interface{}
+	for _, att := range msg.Attachments {
+		if strings.TrimSpace(att.URL) == "" {
+			if fallback := googleChatAttachmentFallback(att); fallback != "" {
+				textParts = append(textParts, fallback)
 			}
-			switch att.Type {
-			case channel.MessageTypeImage:
-				widgets = append(widgets, map[string]interface{}{
-					"image": map[string]interface{}{
-						"imageUrl": att.URL,
-					},
-				})
-			default:
-				// Non-image: add as a clickable button/link.
-				name := att.Name
-				if name == "" {
-					name = "Download"
-				}
-				widgets = append(widgets, map[string]interface{}{
-					"buttonList": map[string]interface{}{
-						"buttons": []map[string]interface{}{
-							{
-								"text": name,
-								"onClick": map[string]interface{}{
-									"openLink": map[string]string{"url": att.URL},
-								},
+			continue
+		}
+		switch att.Type {
+		case channel.MessageTypeImage:
+			widgets = append(widgets, map[string]interface{}{
+				"image": map[string]interface{}{
+					"imageUrl": att.URL,
+				},
+			})
+		default:
+			name := strings.TrimSpace(att.Name)
+			if name == "" {
+				name = "Download"
+			}
+			widgets = append(widgets, map[string]interface{}{
+				"buttonList": map[string]interface{}{
+					"buttons": []map[string]interface{}{
+						{
+							"text": name,
+							"onClick": map[string]interface{}{
+								"openLink": map[string]string{"url": att.URL},
 							},
 						},
 					},
-				})
-			}
-		}
-		if len(widgets) > 0 {
-			payload["cardsV2"] = []map[string]interface{}{
-				{
-					"cardId": "media",
-					"card": map[string]interface{}{
-						"sections": []map[string]interface{}{
-							{"widgets": widgets},
-						},
-					},
 				},
-			}
+			})
 		}
+	}
+
+	if text := strings.Join(textParts, "\n"); text != "" {
+		payload["text"] = text
+	}
+	if len(widgets) > 0 {
+		card := map[string]interface{}{
+			"cardId": "media",
+			"card": map[string]interface{}{
+				"sections": []map[string]interface{}{{"widgets": widgets}},
+			},
+		}
+		if rawCards, ok := payload["cardsV2"]; ok {
+			cards, ok := rawCards.([]interface{})
+			if !ok {
+				return fmt.Errorf("google chat cardsV2 must be a slice")
+			}
+			payload["cardsV2"] = append(cards, card)
+		} else {
+			payload["cardsV2"] = []interface{}{card}
+		}
+	}
+	if len(payload) == 0 {
+		return fmt.Errorf("no sendable Google Chat content")
 	}
 
 	body, err := json.Marshal(payload)
@@ -279,6 +298,71 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	return nil
 }
 
+func googleChatMetadataPayload(metadata map[string]interface{}) (map[string]interface{}, error) {
+	payload := map[string]interface{}{}
+	if metadata == nil {
+		return payload, nil
+	}
+	if rawCards, ok := metadata["cardsV2"]; ok {
+		switch cards := rawCards.(type) {
+		case []interface{}:
+			payload["cardsV2"] = cards
+		case []map[string]interface{}:
+			converted := make([]interface{}, 0, len(cards))
+			for _, card := range cards {
+				converted = append(converted, card)
+			}
+			payload["cardsV2"] = converted
+		default:
+			body, err := json.Marshal(cards)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal google chat cardsV2: %w", err)
+			}
+			var decoded []interface{}
+			if err := json.Unmarshal(body, &decoded); err != nil {
+				return nil, fmt.Errorf("invalid google chat cardsV2 metadata: %w", err)
+			}
+			payload["cardsV2"] = decoded
+		}
+	}
+	if rawThread, ok := metadata["thread"]; ok {
+		switch thread := rawThread.(type) {
+		case map[string]interface{}:
+			payload["thread"] = thread
+		default:
+			body, err := json.Marshal(thread)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal google chat thread metadata: %w", err)
+			}
+			var decoded map[string]interface{}
+			if err := json.Unmarshal(body, &decoded); err != nil {
+				return nil, fmt.Errorf("invalid google chat thread metadata: %w", err)
+			}
+			payload["thread"] = decoded
+		}
+	}
+	return payload, nil
+}
+
+func googleChatAttachmentFallback(att channel.Attachment) string {
+	if name := strings.TrimSpace(att.Name); name != "" {
+		return name
+	}
+	if len(att.Data) == 0 {
+		return ""
+	}
+	switch att.Type {
+	case channel.MessageTypeImage:
+		return "Image attachment"
+	case channel.MessageTypeVideo:
+		return "Video attachment"
+	case channel.MessageTypeAudio:
+		return "Audio attachment"
+	default:
+		return "File attachment"
+	}
+}
+
 func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID string, content <-chan string, done chan<- struct{}) error {
 	defer close(done)
 	var fullContent strings.Builder
@@ -286,7 +370,7 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 		fullContent.WriteString(chunk)
 	}
 	if fullContent.Len() > 0 {
-		return c.Send(ctx, channel.OutgoingMessage{ChatID: chatID, Content: fullContent.String()})
+		return c.Send(ctx, channel.OutgoingMessage{ChatID: chatID, ReplyToID: replyToID, Content: fullContent.String()})
 	}
 	return nil
 }
@@ -299,7 +383,7 @@ func (c *Channel) Info() channel.Info {
 		ConnectedAt: c.connectedAt, LastError: c.lastError,
 		MessageCount: c.msgCount.Load(), MessagesReceived: c.msgsRecv.Load(),
 		MessagesSent: c.msgsSent.Load(),
-		Metadata: map[string]interface{}{"space_id": c.config.SpaceID},
+		Metadata:     map[string]interface{}{"space_id": c.config.SpaceID},
 	}
 }
 

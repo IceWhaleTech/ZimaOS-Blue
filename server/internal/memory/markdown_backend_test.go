@@ -128,3 +128,32 @@ func TestMarkdownMemoryStore_ReadFile(t *testing.T) {
 		t.Errorf("expected 'Line 2\\nLine 3', got '%s'", partial)
 	}
 }
+
+func TestPureMarkdownBackendRememberReturnsReadablePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	backend, err := NewPureMarkdownBackend(tmpDir)
+	if err != nil {
+		t.Fatalf("NewPureMarkdownBackend returned error: %v", err)
+	}
+	ctx := context.Background()
+	chunk, err := backend.Remember(ctx, "Path-readable memory", []string{"smoke"})
+	if err != nil {
+		t.Fatalf("Remember returned error: %v", err)
+	}
+	if chunk.ID == "" {
+		t.Fatal("expected non-empty chunk ID")
+	}
+	got, err := backend.Get(ctx, chunk.ID)
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if got.ID != chunk.ID {
+		t.Fatalf("Get ID = %q, want %q", got.ID, chunk.ID)
+	}
+	if got.Content == "" {
+		t.Fatal("expected readable content")
+	}
+	if err := backend.Forget(ctx, chunk.ID); err != nil {
+		t.Fatalf("Forget returned error: %v", err)
+	}
+}

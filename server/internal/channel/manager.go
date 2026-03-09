@@ -3,8 +3,11 @@ package channel
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"go.uber.org/zap"
 
@@ -13,6 +16,14 @@ import (
 )
 
 const managerSendTimeoutFallback = 10 * time.Second
+
+var (
+	markdownHeadingLineRe      = regexp.MustCompile(`(?m)^\s{0,3}#{1,6}\s+\S`)
+	markdownTableDividerLineRe = regexp.MustCompile(`(?m)^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$`)
+	markdownFenceLineRe        = regexp.MustCompile("(?m)^```")
+	markdownBulletLineRe       = regexp.MustCompile(`(?m)^\s{0,3}[-*+]\s+\S`)
+	markdownOrderedLineRe      = regexp.MustCompile(`(?m)^\s{0,3}\d+\.\s+\S`)
+)
 
 // Manager manages all messaging channels.
 type Manager struct {
@@ -277,7 +288,7 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 		}
 		errorResponse := OutgoingMessage{
 			ChatID:    msg.ChatID,
-			ReplyToID: msg.ID,
+			ReplyToID: defaultReplyTarget(ch.Type(), msg),
 			Content:   i18n.T(lang, i18n.MsgProcessingError, err),
 		}
 		if sendErr := m.sendWithTimeout(ch, errorResponse); sendErr != nil {
@@ -294,55 +305,33 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 		if response.ChatID == "" {
 			response.ChatID = msg.ChatID
 		}
-		// Set reply to the original message
+		// Set reply to the original message or channel-specific thread target.
 		if response.ReplyToID == "" {
-			response.ReplyToID = msg.ID
+			response.ReplyToID = defaultReplyTarget(ch.Type(), msg)
 		}
-		// IM channels default to concise output. Keep markdown untouched when explicitly requested.
-		if response.Format != "markdown" && response.Content != "" {
-			if !shouldShowDetails(*response) {
-				response.Content = humanizer.CompactForIM(response.Content)
-			}
-			formatted, format := humanizer.HumanizeForChannel(response.Content, ch.Type())
-			response.Content = formatted
-			if response.Format == "" {
-				response.Format = format
-			}
-		}
-
-		// Prepare response: strip AI tags and split if too long
-		parts := PrepareResponse(response.Content, m.config.MaxMessageLength)
-		if len(parts) == 0 {
+		parts, prepared := prepareOutgoingTextParts(ch.Type(), *response, m.config.MaxMessageLength, true)
+		if len(parts) == 0 && len(prepared.Attachments) == 0 {
 			m.logger.Warn("response content is empty after processing",
 				zap.String("channel", ch.Name()),
-				zap.String("chat_id", response.ChatID))
+				zap.String("chat_id", prepared.ChatID))
 			return
 		}
 
-		// Send each part
-		for i, part := range parts {
-			outMsg := OutgoingMessage{
-				ChatID:      response.ChatID,
-				Content:     part,
-				Format:      response.Format,
-				Attachments: response.Attachments,
-				Metadata:    response.Metadata,
-			}
-			// Only set ReplyToID for the first message
-			if i == 0 {
-				outMsg.ReplyToID = response.ReplyToID
-			}
-			// Only include attachments in the last message
-			if i < len(parts)-1 {
-				outMsg.Attachments = nil
-			}
+		outbound := buildOutgoingMessages(ch.Type(), prepared, parts)
+		if len(outbound) == 0 {
+			m.logger.Warn("response content is empty after preparation",
+				zap.String("channel", ch.Name()),
+				zap.String("chat_id", prepared.ChatID))
+			return
+		}
 
+		for i, outMsg := range outbound {
 			if err := m.sendWithTimeout(ch, outMsg); err != nil {
 				m.logger.Error("error sending response",
 					zap.String("channel", ch.Name()),
 					zap.String("chat_id", outMsg.ChatID),
 					zap.Int("part", i+1),
-					zap.Int("total_parts", len(parts)),
+					zap.Int("total_parts", len(outbound)),
 					zap.Error(err))
 				break
 			}
@@ -474,15 +463,8 @@ func (m *Manager) Send(ctx context.Context, channelName string, msg OutgoingMess
 		return fmt.Errorf("channel %s is not connected", channelName)
 	}
 
-	// Humanize content for IM channels (skip if explicitly markdown)
-	if msg.Format != "markdown" && msg.Content != "" {
-		if !shouldShowDetails(msg) {
-			msg.Content = humanizer.CompactForIM(msg.Content)
-		}
-		msg.Content, msg.Format = humanizer.HumanizeForChannel(msg.Content, ch.Type())
-	}
-
-	return ch.Send(ctx, msg)
+	parts, prepared := prepareOutgoingTextParts(ch.Type(), msg, m.config.MaxMessageLength, false)
+	return sendPreparedMessages(ctx, ch, buildOutgoingMessages(ch.Type(), prepared, parts))
 }
 
 // Broadcast sends a message to all connected channels.
@@ -498,15 +480,8 @@ func (m *Manager) Broadcast(ctx context.Context, msg OutgoingMessage) map[string
 
 	errors := make(map[string]error)
 	for _, ch := range channels {
-		outMsg := msg
-		// Per-channel formatting
-		if outMsg.Format != "markdown" && outMsg.Content != "" {
-			if !shouldShowDetails(outMsg) {
-				outMsg.Content = humanizer.CompactForIM(outMsg.Content)
-			}
-			outMsg.Content, outMsg.Format = humanizer.HumanizeForChannel(outMsg.Content, ch.Type())
-		}
-		if err := ch.Send(ctx, outMsg); err != nil {
+		parts, prepared := prepareOutgoingTextParts(ch.Type(), msg, m.config.MaxMessageLength, false)
+		if err := sendPreparedMessages(ctx, ch, buildOutgoingMessages(ch.Type(), prepared, parts)); err != nil {
 			errors[ch.Name()] = err
 		}
 	}
@@ -567,6 +542,53 @@ func channelConversationID(channelName, chatID string) string {
 	return "ch:" + channelName
 }
 
+func maybePromoteMarkdownReport(channelType string, msg *OutgoingMessage) {
+	if msg == nil {
+		return
+	}
+	if !shouldPromoteMarkdownReport(channelType, *msg) {
+		return
+	}
+	msg.Format = "markdown"
+}
+
+func shouldPromoteMarkdownReport(channelType string, msg OutgoingMessage) bool {
+	// Feishu supports interactive cards; preserve report markdown instead of compacting to plain text.
+	if channelType != "feishu" {
+		return false
+	}
+	format := strings.ToLower(strings.TrimSpace(msg.Format))
+	switch format {
+	case "", "text", "plain", "plain_text":
+	default:
+		return false
+	}
+	content := strings.TrimSpace(msg.Content)
+	if content == "" {
+		return false
+	}
+	runeCount := utf8.RuneCountInString(content)
+	if runeCount < 240 || !strings.Contains(content, "\n") {
+		return false
+	}
+
+	// Strong markdown signals: fenced code or table divider rows.
+	if markdownFenceLineRe.MatchString(content) || markdownTableDividerLineRe.MatchString(content) {
+		return true
+	}
+
+	// Report-like long structured markdown: multi-section headings.
+	headingCount := len(markdownHeadingLineRe.FindAllString(content, -1))
+	if headingCount >= 2 && runeCount >= 360 {
+		return true
+	}
+
+	// Fallback for long structured lists (common in research summaries).
+	bulletCount := len(markdownBulletLineRe.FindAllString(content, -1))
+	orderedCount := len(markdownOrderedLineRe.FindAllString(content, -1))
+	return runeCount >= 800 && (bulletCount >= 4 || orderedCount >= 4 || bulletCount+orderedCount >= 5)
+}
+
 func shouldShowDetails(msg OutgoingMessage) bool {
 	if msg.Metadata == nil {
 		return false
@@ -577,4 +599,222 @@ func shouldShowDetails(msg OutgoingMessage) bool {
 	}
 	show, ok := v.(bool)
 	return ok && show
+}
+
+func defaultReplyTarget(channelType string, msg Message) string {
+	switch channelType {
+	case "googlechat":
+		if msg.Metadata != nil {
+			if threadName, ok := msg.Metadata["thread_name"].(string); ok && strings.TrimSpace(threadName) != "" {
+				return threadName
+			}
+		}
+		return ""
+	case "line":
+		if msg.Metadata != nil {
+			if replyToken, ok := msg.Metadata["reply_token"].(string); ok && strings.TrimSpace(replyToken) != "" {
+				return replyToken
+			}
+		}
+		return ""
+	case "slack":
+		if msg.Metadata != nil {
+			if threadTS, ok := msg.Metadata["thread_ts"].(string); ok && strings.TrimSpace(threadTS) != "" {
+				return threadTS
+			}
+		}
+		if strings.TrimSpace(msg.ReplyToID) != "" {
+			return msg.ReplyToID
+		}
+		return msg.ID
+	case "telegram":
+		if msg.Metadata != nil {
+			if originMessageID, ok := msg.Metadata["origin_message_id"].(string); ok && strings.TrimSpace(originMessageID) != "" {
+				return originMessageID
+			}
+		}
+		return msg.ID
+	case "mattermost":
+		if strings.TrimSpace(msg.ReplyToID) != "" {
+			return msg.ReplyToID
+		}
+		return msg.ID
+	case "nextcloudtalk":
+		if msg.Metadata != nil {
+			if replyable, ok := msg.Metadata["is_replyable"].(bool); ok && !replyable {
+				return ""
+			}
+		}
+		return msg.ID
+	case "messenger", "instagram", "twitter", "signal", "viber", "zalo", "wechat_work":
+		return ""
+	default:
+		return msg.ID
+	}
+}
+
+func prepareOutgoingTextParts(channelType string, msg OutgoingMessage, maxLength int, stripAITags bool) ([]string, OutgoingMessage) {
+	maybePromoteMarkdownReport(channelType, &msg)
+	if msg.Content == "" {
+		return nil, msg
+	}
+
+	content := msg.Content
+	if stripAITags {
+		content = StripAITags(content)
+	} else {
+		content = strings.TrimSpace(content)
+	}
+	if content == "" {
+		msg.Content = ""
+		return nil, msg
+	}
+
+	format := strings.ToLower(strings.TrimSpace(msg.Format))
+	switch format {
+	case "markdown", "md", "markdownv2":
+		msg.Content = content
+		msg.Format = "markdown"
+		if channelType == "feishu" {
+			return []string{content}, msg
+		}
+		return splitMarkdownAware(content, maxLength), msg
+	case "html":
+		msg.Content = content
+		return SplitMessage(content, maxLength), msg
+	}
+
+	if !shouldShowDetails(msg) {
+		content = humanizer.CompactForIM(content)
+	}
+	content = strings.TrimSpace(content)
+	if content == "" {
+		msg.Content = ""
+		return nil, msg
+	}
+
+	sourceParts := splitSourceContent(content, maxLength)
+	if len(sourceParts) == 0 {
+		msg.Content = ""
+		return nil, msg
+	}
+
+	renderedParts := make([]string, 0, len(sourceParts))
+	resolvedFormat := ""
+	for _, part := range sourceParts {
+		rendered, recommendedFormat := humanizer.HumanizeForChannel(part, channelType)
+		rendered = strings.TrimSpace(rendered)
+		if rendered == "" {
+			continue
+		}
+		renderedParts = append(renderedParts, rendered)
+		if resolvedFormat == "" {
+			resolvedFormat = recommendedFormat
+		}
+	}
+
+	msg.Content = content
+	if isPlainLikeFormat(msg.Format) {
+		msg.Format = resolvedFormat
+	}
+	return renderedParts, msg
+}
+
+func buildOutgoingMessages(channelType string, msg OutgoingMessage, parts []string) []OutgoingMessage {
+	if len(parts) == 0 {
+		if msg.Content == "" && len(msg.Attachments) == 0 {
+			return nil
+		}
+		return []OutgoingMessage{msg}
+	}
+
+	outbound := make([]OutgoingMessage, 0, len(parts))
+	for i, part := range parts {
+		outMsg := msg
+		outMsg.Content = part
+		if i > 0 && replyTargetSingleUse(channelType) {
+			outMsg.ReplyToID = ""
+		}
+		if i < len(parts)-1 {
+			outMsg.Attachments = nil
+		}
+		outbound = append(outbound, outMsg)
+	}
+	return outbound
+}
+
+func replyTargetSingleUse(channelType string) bool {
+	switch channelType {
+	case "line":
+		return true
+	default:
+		return false
+	}
+}
+
+func sendPreparedMessages(ctx context.Context, ch Channel, msgs []OutgoingMessage) error {
+	for _, msg := range msgs {
+		if err := ch.Send(ctx, msg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func splitSourceContent(content string, maxLength int) []string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil
+	}
+	if looksLikeMarkdown(content) {
+		return splitMarkdownAware(content, maxLength)
+	}
+	return SplitMessage(content, maxLength)
+}
+
+func splitMarkdownAware(content string, maxLength int) []string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil
+	}
+	parts := humanizer.ChunkMarkdownTextWithMode(content, markdownByteLimit(content, maxLength), humanizer.ChunkNewline)
+	cleaned := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			cleaned = append(cleaned, part)
+		}
+	}
+	return cleaned
+}
+
+func looksLikeMarkdown(content string) bool {
+	return markdownFenceLineRe.MatchString(content) ||
+		markdownTableDividerLineRe.MatchString(content) ||
+		markdownHeadingLineRe.MatchString(content) ||
+		markdownBulletLineRe.MatchString(content) ||
+		markdownOrderedLineRe.MatchString(content)
+}
+
+func markdownByteLimit(content string, maxLength int) int {
+	if maxLength <= 0 {
+		return 4096
+	}
+	runeCount := 0
+	for idx := range content {
+		if runeCount == maxLength {
+			return idx
+		}
+		runeCount++
+	}
+	return len(content)
+}
+
+func isPlainLikeFormat(format string) bool {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", "text", "plain", "plain_text":
+		return true
+	default:
+		return false
+	}
 }

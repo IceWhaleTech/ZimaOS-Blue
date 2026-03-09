@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 )
@@ -114,6 +115,135 @@ func TestShouldSkipPreContentRetry(t *testing.T) {
 			got := shouldSkipPreContentRetry(tc.err)
 			if got != tc.want {
 				t.Fatalf("shouldSkipPreContentRetry() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestShouldSkipToolRoundPreContentRetry(t *testing.T) {
+	tests := []struct {
+		name        string
+		chatReq     llm.ChatRequest
+		toolRound   int
+		fullContent string
+		err         error
+		want        bool
+	}{
+		{
+			name:      "not a tool round",
+			chatReq:   llm.ChatRequest{},
+			toolRound: 0,
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       "upstream error",
+			},
+			want: false,
+		},
+		{
+			name: "tool round with previous_response_id and 5xx skips retry",
+			chatReq: llm.ChatRequest{
+				PreviousResponseID: "resp_prev_1",
+				Messages: []llm.Message{
+					{Role: llm.RoleTool, Content: `{"ok":true}`},
+				},
+			},
+			toolRound: 1,
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       "upstream error",
+			},
+			want: true,
+		},
+		{
+			name: "tool round without tool context keeps retry path",
+			chatReq: llm.ChatRequest{
+				Messages: []llm.Message{
+					{Role: llm.RoleUser, Content: "continue"},
+				},
+			},
+			toolRound: 1,
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       "upstream error",
+			},
+			want: false,
+		},
+		{
+			name: "tool round with tool result skips retry",
+			chatReq: llm.ChatRequest{
+				Messages: []llm.Message{
+					{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{{ID: "call_1", Name: "noop_tool", Arguments: "{}"}}},
+					{Role: llm.RoleTool, ToolCallID: "call_1", Content: `{"ok":true}`},
+				},
+			},
+			toolRound: 1,
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       "upstream error",
+			},
+			want: true,
+		},
+		{
+			name: "tool round with non-5xx keeps retry path",
+			chatReq: llm.ChatRequest{
+				Messages: []llm.Message{
+					{Role: llm.RoleTool, Content: `{"ok":true}`},
+				},
+			},
+			toolRound: 1,
+			err: &proxybridge.ProxyError{
+				StatusCode: 400,
+				Body:       "bad request",
+			},
+			want: false,
+		},
+		{
+			name: "tool round with full content already streamed keeps retry path",
+			chatReq: llm.ChatRequest{
+				Messages: []llm.Message{
+					{Role: llm.RoleTool, Content: `{"ok":true}`},
+				},
+			},
+			toolRound:   1,
+			fullContent: "already have content",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       "upstream error",
+			},
+			want: false,
+		},
+		{
+			name: "tool round with context canceled keeps retry path",
+			chatReq: llm.ChatRequest{
+				Messages: []llm.Message{
+					{Role: llm.RoleTool, Content: `{"ok":true}`},
+				},
+			},
+			toolRound: 1,
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       "context deadline exceeded",
+			},
+			want: false,
+		},
+		{
+			name: "tool round with non-proxy error keeps retry path",
+			chatReq: llm.ChatRequest{
+				Messages: []llm.Message{
+					{Role: llm.RoleTool, Content: `{"ok":true}`},
+				},
+			},
+			toolRound: 1,
+			err:       errors.New("temporary network hiccup"),
+			want:      false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := shouldSkipToolRoundPreContentRetry(tc.chatReq, tc.toolRound, tc.fullContent, tc.err)
+			if got != tc.want {
+				t.Fatalf("shouldSkipToolRoundPreContentRetry() = %v, want %v", got, tc.want)
 			}
 		})
 	}

@@ -36,21 +36,21 @@ func init() {
 
 // StatusResponse represents the status response
 type StatusResponse struct {
-	Status    string            `json:"status"`
-	Version   string            `json:"version"`
-	Uptime    string            `json:"uptime,omitempty"`
-	Providers []ProviderStatus  `json:"providers,omitempty"`
-	Sessions  *SessionsStatus   `json:"sessions,omitempty"`
-	System    *SystemStatus     `json:"system,omitempty"`
-	Errors    []string          `json:"errors,omitempty"`
+	Status    string           `json:"status"`
+	Version   string           `json:"version"`
+	Uptime    string           `json:"uptime,omitempty"`
+	Providers []ProviderStatus `json:"providers,omitempty"`
+	Sessions  *SessionsStatus  `json:"sessions,omitempty"`
+	System    *SystemStatus    `json:"system,omitempty"`
+	Errors    []string         `json:"errors,omitempty"`
 }
 
 // ProviderStatus represents a provider's status
 type ProviderStatus struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Status  string `json:"status"`
-	Models  int    `json:"models,omitempty"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Models int    `json:"models,omitempty"`
 }
 
 // SessionsStatus represents sessions status
@@ -72,12 +72,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 		Timeout: time.Duration(statusTimeout) * time.Second,
 	}
 
-	// Determine the service URL
-	port := 8080
-	if devMode {
-		port = 8081 // Dev mode uses different port
-	}
-	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	baseURL := getServiceBaseURL()
 
 	// Check health endpoint
 	resp, err := client.Get(baseURL + "/health")

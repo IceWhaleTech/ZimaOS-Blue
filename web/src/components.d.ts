@@ -64,6 +64,7 @@ declare module 'vue' {
     CardUIReviewProgress: typeof import('./components/typeless/CardUIReviewProgress.vue')['default']
     CardVideo: typeof import('./components/typeless/CardVideo.vue')['default']
     CardWeather: typeof import('./components/typeless/CardWeather.vue')['default']
+    CardWebFetch: typeof import('./components/typeless/CardWebFetch.vue')['default']
     ChannelCard: typeof import('./components/channels/ChannelCard.vue')['default']
     ChatInput: typeof import('./components/ChatInput.vue')['default']
     ChatMessage: typeof import('./components/ChatMessage.vue')['default']

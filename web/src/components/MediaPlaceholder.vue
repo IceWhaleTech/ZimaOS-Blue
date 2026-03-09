@@ -82,6 +82,16 @@ const isProviderError = computed(() => {
   return e.includes('404') || e.includes('no provider') || e.includes('not configured') || e.includes('api error') || e.includes('auth') || e.includes('api key')
 })
 
+const cancelMessage = computed(() => {
+  const raw = task.value?.error?.trim()
+  if (!raw) return t('chat.taskCancelled')
+  const normalized = raw.toLowerCase()
+  if (normalized === 'cancelled by user' || normalized === 'task cancelled') {
+    return t('chat.taskCancelled')
+  }
+  return raw
+})
+
 function calcElapsed(): number {
   if (task.value?.created_at) {
     return Math.max(0, (Date.now() - new Date(task.value.created_at).getTime()) / 1000)
@@ -111,6 +121,8 @@ function handleTerminal() {
       notificationStore.success(t('media.succeeded'), t('media.completedToast'))
     } else if (task.value?.status === 'failed') {
       notificationStore.error(t('media.failed'), task.value?.error || t('media.toast.failed'))
+    } else if (task.value?.status === 'cancelled') {
+      notificationStore.info(t('media.cancelled'), cancelMessage.value)
     }
   }
 }
@@ -266,7 +278,10 @@ watch(() => props.taskId, (newId) => {
 
     <!-- Cancelled -->
     <div v-else class="mp-cancelled" role="status">
-      <span>{{ statusLabel }}</span>
+      <div class="mp-error-body">
+        <span class="mp-cancelled-text">{{ cancelMessage }}</span>
+      </div>
+      <button class="mp-retry mp-retry--cancelled" :disabled="retrying" @click="handleRetry" :aria-label="t('media.retry')">{{ retrying ? '...' : t('media.retry') }}</button>
     </div>
 
     <!-- Image Viewer Overlay -->
@@ -537,8 +552,22 @@ watch(() => props.taskId, (newId) => {
 }
 
 .mp-cancelled {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   padding: 10px 12px;
+  background: var(--color-warning-bg, #fffbeb);
+  border: 1px solid var(--color-warning-border, #fde68a);
+  border-radius: 8px;
+}
+
+.mp-cancelled-text {
   font-size: 13px;
-  color: var(--color-text-tertiary, #999);
+  color: var(--color-warning, #d97706);
+}
+
+.mp-retry--cancelled {
+  border-color: var(--color-warning, #d97706);
+  color: var(--color-warning, #d97706);
 }
 </style>

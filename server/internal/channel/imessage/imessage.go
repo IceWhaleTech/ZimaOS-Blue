@@ -30,13 +30,13 @@ type Channel struct {
 	db       *sql.DB
 	messages chan channel.Message
 
-	mu          sync.RWMutex
-	status      channel.Status
-	connectedAt *time.Time
-	lastError   string
+	mu           sync.RWMutex
+	status       channel.Status
+	connectedAt  *time.Time
+	lastError    string
 	lastErrorKey string
-	lastErrorAt *time.Time
-	msgCount    atomic.Int64
+	lastErrorAt  *time.Time
+	msgCount     atomic.Int64
 
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -44,6 +44,8 @@ type Channel struct {
 	lastRowID    int64
 	processedIDs map[int64]bool
 	closeOnce    sync.Once
+
+	sendTextFunc func(ctx context.Context, recipient, content string) error
 }
 
 // Config contains iMessage channel configuration.
@@ -67,13 +69,15 @@ func DefaultConfig() Config {
 
 // New creates a new iMessage channel.
 func New(cfg Config, logger *zap.Logger) *Channel {
-	return &Channel{
+	c := &Channel{
 		config:       cfg,
 		logger:       logger.With(zap.String("channel", "imessage")),
 		messages:     make(chan channel.Message, 100),
 		status:       channel.StatusDisconnected,
 		processedIDs: make(map[int64]bool),
 	}
+	c.sendTextFunc = c.defaultSendText
+	return c
 }
 
 // Name returns the channel name.
@@ -422,15 +426,33 @@ func (c *Channel) Stop(ctx context.Context) error {
 // Send sends a message through iMessage using AppleScript.
 // Requires macOS Automation permission for Messages.app (auto-prompted on first use).
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
+	if c.sendTextFunc == nil {
+		c.sendTextFunc = c.defaultSendText
+	}
+
+	var contentParts []string
+	if msg.Content != "" {
+		contentParts = append(contentParts, msg.Content)
+	}
+	for _, att := range msg.Attachments {
+		if fallback := imessageAttachmentFallbackText(att); fallback != "" {
+			contentParts = append(contentParts, fallback)
+		}
+	}
+	content := strings.Join(contentParts, "\n")
+	if strings.TrimSpace(content) == "" {
+		return fmt.Errorf("no sendable iMessage content")
+	}
+
+	return c.sendTextFunc(ctx, msg.ChatID, content)
+}
+
+func (c *Channel) defaultSendText(ctx context.Context, recipient, content string) error {
 	if !isMacOS() {
 		return fmt.Errorf("iMessage sending only works on macOS")
 	}
 
-	// Escape content for AppleScript
-	content := escapeAppleScript(msg.Content)
-	recipient := msg.ChatID
-
-	// Build AppleScript command — pass as argv to avoid shell injection
+	escapedContent := escapeAppleScript(content)
 	script := `on run argv
 	set theRecipient to item 1 of argv
 	set theMessage to item 2 of argv
@@ -441,7 +463,7 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	end tell
 end run`
 
-	cmd := exec.CommandContext(ctx, "osascript", "-e", script, recipient, content)
+	cmd := exec.CommandContext(ctx, "osascript", "-e", script, recipient, escapedContent)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		outStr := string(output)
@@ -449,10 +471,9 @@ end run`
 			zap.String("recipient", recipient),
 			zap.String("output", outStr),
 			zap.Error(err))
-		// Detect Automation permission denial — try fallback
 		if strings.Contains(outStr, "not authorized") || strings.Contains(outStr, "not authorised") || strings.Contains(outStr, "-1743") {
 			c.logger.Info("Automation denied, trying NSSharingService fallback...")
-			if fbErr := c.sendViaSharingService(ctx, recipient, msg.Content); fbErr != nil {
+			if fbErr := c.sendViaSharingService(ctx, recipient, content); fbErr != nil {
 				c.logger.Error("NSSharingService fallback also failed", zap.Error(fbErr))
 				appName := tccAppName()
 				errMsg := i18n.T(i18n.DefaultLanguage, i18n.MsgIMAutomationDenied, appName)
@@ -468,9 +489,22 @@ end run`
 
 	c.logger.Debug("iMessage sent",
 		zap.String("recipient", recipient),
-		zap.Int("content_length", len(msg.Content)))
+		zap.Int("content_length", len(content)))
 
 	return nil
+}
+
+func imessageAttachmentFallbackText(att channel.Attachment) string {
+	if strings.TrimSpace(att.URL) != "" {
+		return strings.TrimSpace(att.URL)
+	}
+	if strings.TrimSpace(att.Name) != "" {
+		return strings.TrimSpace(att.Name)
+	}
+	if len(att.Data) > 0 {
+		return "[Attachment]"
+	}
+	return ""
 }
 
 // SendStreaming sends a message with streaming support.

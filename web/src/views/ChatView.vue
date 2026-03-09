@@ -119,6 +119,11 @@ watch(showTalkMode, (open) => {
 // Agent task state
 const agentTasks = ref<AgentTask[]>([])
 
+const hasCancelableWork = computed(() => {
+  if (chatStore.streaming || mediaGen.generating.value) return true
+  return agentTasks.value.some(task => ['pending', 'planning', 'executing', 'waiting_input'].includes(task.status))
+})
+
 async function fetchAgentTasks() {
   try {
     const resp = await agentApi.listTasks()
@@ -156,6 +161,7 @@ function onAgentEvent(data: any) {
     if (data.progress !== undefined) task.progress = data.progress
     if (data.event_type === 'task_completed') { task.status = 'completed'; task.result = data.message }
     if (data.event_type === 'task_failed') { task.status = 'failed'; task.error = data.message }
+    if (data.event_type === 'task_cancelled') { task.status = 'cancelled'; task.error = data.message; task.questions = undefined }
     if (data.event_type === 'task_step_completed' && task.plan?.[data.step_index]) {
       task.plan[data.step_index]!.status = 'completed'
       task.plan[data.step_index]!.output = data.output
@@ -192,7 +198,7 @@ function onAgentEvent(data: any) {
   }
 }
 
-const agentEventTypes = ['task_created', 'task_planning', 'task_progress', 'task_step_completed', 'task_completed', 'task_failed', 'task_user_message', 'task_question', 'task_question_answered']
+const agentEventTypes = ['task_created', 'task_planning', 'task_progress', 'task_step_completed', 'task_completed', 'task_failed', 'task_cancelled', 'task_user_message', 'task_question', 'task_question_answered']
 
 // Virtual scroll threshold - use virtual scroll when message count exceeds this
 const VIRTUAL_SCROLL_THRESHOLD = 50
@@ -607,7 +613,7 @@ useChatShortcuts({
   onNewChat: () => handleCreateConversation(),
   onFocusInput: () => chatInputRef.value?.focus?.(),
   onToggleSidebar: () => toggleSidebar(),
-  onCancelStream: () => chatStore.streaming && handleCancel(),
+  onCancelStream: () => hasCancelableWork.value && handleCancel(),
 })
 
 // Scroll to bottom when messages change
@@ -2374,6 +2380,7 @@ onUnmounted(() => {
           ref="chatInputRef"
           :disabled="chatStore.sending && !chatStore.isPreTTFT"
           :streaming="chatStore.streaming"
+          :can-cancel="hasCancelableWork"
           @send="handleSend"
           @inject="handleInject"
           @cancel="handleCancel"

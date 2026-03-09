@@ -42,8 +42,11 @@ type WriterConfig struct {
 	// Disk path for disk usage monitoring
 	DiskPath string
 
-	// SQLite database path for persistence
+	// SQLite database path for persistence when using a dedicated metrics DB.
 	SQLiteDBPath string
+
+	// SharedSQLiteDB reuses an existing SQLite database instead of opening metrics.db.
+	SharedSQLiteDB *sql.DB
 
 	// Persistence save interval
 	PersistenceInterval time.Duration
@@ -81,8 +84,14 @@ func NewMetricsWriter(store MetricsStore, config *WriterConfig) *MetricsWriter {
 		done:           make(chan struct{}),
 	}
 
-	// Initialize SQLite store if path is configured
-	if config.SQLiteDBPath != "" {
+	// Initialize SQLite store if configured.
+	if config.SharedSQLiteDB != nil {
+		sqliteStore, err := NewSQLiteStoreWithDB(config.SharedSQLiteDB)
+		if err == nil {
+			w.sqliteStore = sqliteStore
+			w.loadPersistedData()
+		}
+	} else if config.SQLiteDBPath != "" {
 		sqliteStore, err := NewSQLiteStore(config.SQLiteDBPath)
 		if err == nil {
 			w.sqliteStore = sqliteStore
@@ -248,8 +257,17 @@ func (w *MetricsWriter) Stop() {
 
 // resetSQLiteStore closes the broken DB, rotates it, and opens a fresh one.
 func (w *MetricsWriter) resetSQLiteStore() {
+	if w.sqliteStore == nil {
+		return
+	}
+	if !w.sqliteStore.ownsDB {
+		// Shared blue.db should not be rotated or closed by the metrics layer.
+		w.sqliteStore = nil
+		return
+	}
+
 	dbPath := w.sqliteStore.dbPath
-	w.sqliteStore.Close()
+	_ = w.sqliteStore.Close()
 	rotateCorruptDB(dbPath)
 	newStore, err := NewSQLiteStore(dbPath)
 	if err != nil {

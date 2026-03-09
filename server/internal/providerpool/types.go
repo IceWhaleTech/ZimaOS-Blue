@@ -3,7 +3,9 @@
 package providerpool
 
 import (
+	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -175,6 +177,7 @@ type APIKey struct {
 	ID         string    `json:"id"`
 	Key        string    `json:"-"`        // Never expose in JSON
 	KeyHash    string    `json:"key_hash"` // For identification (first 8 + last 4 chars)
+	KeyDigest  string    `json:"-"`        // Internal full fingerprint for dedupe/storage only
 	Label      string    `json:"label,omitempty"`
 	UsageCount int64     `json:"usage_count"`
 	LastUsed   time.Time `json:"last_used,omitempty"`
@@ -510,6 +513,40 @@ type FailoverResult struct {
 	SuccessModel    string            `json:"success_model,omitempty"`
 	FailedAttempts  []*FailoverRecord `json:"failed_attempts,omitempty"`
 	FinalError      string            `json:"final_error,omitempty"`
+}
+
+// Summary returns a compact trace of provider attempts for logging.
+func (r *FailoverResult) Summary() string {
+	if r == nil {
+		return ""
+	}
+	parts := make([]string, 0, len(r.FailedAttempts)+1)
+	for _, attempt := range r.FailedAttempts {
+		if attempt == nil {
+			continue
+		}
+		providerID := strings.TrimSpace(attempt.ProviderID)
+		if providerID == "" {
+			providerID = strings.TrimSpace(attempt.ProviderName)
+		}
+		if providerID == "" {
+			providerID = "unknown"
+		}
+		segment := fmt.Sprintf("%s[%s,%dms]", providerID, attempt.Reason, attempt.Latency.Milliseconds())
+		if nextProviderID := strings.TrimSpace(attempt.NextProviderID); nextProviderID != "" {
+			segment += "->" + nextProviderID
+		}
+		parts = append(parts, segment)
+	}
+	if successProvider := strings.TrimSpace(r.SuccessProvider); successProvider != "" {
+		successSegment := successProvider + "[success"
+		if successModel := strings.TrimSpace(r.SuccessModel); successModel != "" {
+			successSegment += ":" + successModel
+		}
+		successSegment += "]"
+		parts = append(parts, successSegment)
+	}
+	return strings.Join(parts, " | ")
 }
 
 // CooldownEntry tracks cooldown state for a provider

@@ -1,12 +1,12 @@
 # Security Hardening Tracker
 
-本文档追踪 ZimaOS-Blue 项目的所有安全加固项，包括已实现的、计划中的，以及来自外部项目（如 ClawdBot/OpenClaw）的安全更新。
+本文档追踪 ZimaOS-Blue 项目的所有安全加固项，包括已实现的、计划中的，以及来自外部项目（如 ClawdBot/Reference Agent）的安全更新。
 
 ---
 
-## ClawdBot/OpenClaw 漏洞对照表 (2026年1月)
+## ClawdBot/Reference Agent 漏洞对照表 (2026年1月)
 
-> 以下是 ClawdBot/OpenClaw 项目在 2026 年 1 月被披露的安全漏洞，以及我们项目的防护状态。
+> 以下是 ClawdBot/Reference Agent 项目在 2026 年 1 月被披露的安全漏洞，以及我们项目的防护状态。
 
 ### 严重漏洞 (Critical)
 
@@ -42,7 +42,7 @@
 | 移除 `auth: "none"` 模式 | 强制所有实例必须认证 | ✅ **已同步** - 我们从未支持无认证模式 |
 | WebSocket 网关令牌验证 | 修复 URL 参数覆盖漏洞 | ⚠️ **需审查** |
 | 本地网络访问保护 | 防止 localhost 实例被利用 | ⚠️ **需审查** |
-| npm 包重命名 | 从 moltbot 到 openclaw | ✅ **不适用** |
+| npm 包重命名 | 从 moltbot 到 reference-agent | ✅ **不适用** |
 
 ---
 
@@ -277,13 +277,13 @@ tailscale up --accept-routes
 
 ## 参考资料
 
-### ClawdBot/OpenClaw 安全事件
+### ClawdBot/Reference Agent 安全事件
 
 - [Over 1,000 AI Agent Servers Exposed](https://beyondmachines.net/event_details/clawdbot-security-issues-over-1000-ai-agent-servers-exposed-to-unauthenticated-access-6-y-a-t-e)
-- [AI Hacks AI: RCE in OpenClaw](https://www.cyberkendra.com/2026/01/openclaw-hacked-by-ai.html)
-- [OpenClaw Complete Guide 2026](https://www.nxcode.io/resources/news/openclaw-complete-guide-2026)
+- [AI Hacks AI: RCE in Reference Agent](https://www.cyberkendra.com/2026/01/reference-agent-hacked-by-ai.html)
+- [Reference Agent Complete Guide 2026](https://www.nxcode.io/resources/news/reference-agent-complete-guide-2026)
 - [Your Lobster Is Leaking](https://paddo.dev/blog/your-lobster-is-leaking/)
-- [Personal AI Agents Security Nightmare - Cisco](https://blogs.cisco.com/ai/personal-ai-agents-like-openclaw-are-a-security-nightmare)
+- [Personal AI Agents Security Nightmare - Cisco](https://blogs.cisco.com/ai/personal-ai-agents-like-reference-agent-are-a-security-nightmare)
 - [Moltbot Security Alert - Bitdefender](https://www.bitdefender.com/en-us/blog/hotforsecurity/moltbot-security-alert-exposed-clawdbot-control-panels-risk-credential-leaks-and-account-takeovers)
 
 ### 安全标准

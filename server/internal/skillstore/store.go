@@ -8,14 +8,15 @@ import (
 	"strings"
 	"time"
 
-	z "github.com/IceWhaleTech/zorm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	z "github.com/IceWhaleTech/zorm"
 )
 
 // Store provides skill storage and search operations.
 type Store struct {
-	db   *sql.DB
-	zorm *ZormStore
+	db         *sql.DB
+	zorm       *ZormStore
+	ftsEnabled bool
 }
 
 // NewStore creates a new skill store.
@@ -28,6 +29,77 @@ func NewStore(db *sql.DB) (*Store, error) {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 	return store, nil
+}
+
+func supportsFTS5(db *sql.DB) bool {
+	if db == nil {
+		return false
+	}
+
+	rows, err := db.Query(`SELECT name FROM pragma_module_list WHERE name = 'fts5'`)
+	if err == nil {
+		defer rows.Close()
+		if rows.Next() {
+			return true
+		}
+	}
+
+	if _, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS temp.skills_fts5_probe USING fts5(content)`); err != nil {
+		return false
+	}
+	_, _ = db.Exec(`DROP TABLE IF EXISTS temp.skills_fts5_probe`)
+	return true
+}
+
+func dropFTSTriggers(db *sql.DB) error {
+	if db == nil {
+		return nil
+	}
+	for _, stmt := range []string{
+		`DROP TRIGGER IF EXISTS skills_ai`,
+		`DROP TRIGGER IF EXISTS skills_ad`,
+		`DROP TRIGGER IF EXISTS skills_au`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isFTSUnavailableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return (strings.Contains(msg, "no such module") && strings.Contains(msg, "fts5")) ||
+		(strings.Contains(msg, "no such table") && strings.Contains(msg, "skills_fts"))
+}
+
+func searchTerms(query string) []string {
+	words := strings.Fields(strings.ToLower(strings.TrimSpace(query)))
+	if len(words) == 0 {
+		return nil
+	}
+	terms := make([]string, 0, len(words))
+	seen := make(map[string]struct{}, len(words))
+	for _, word := range words {
+		word = strings.Trim(word, `"'*+-():,.;!?[]{} `)
+		if word == "" {
+			continue
+		}
+		if _, ok := seen[word]; ok {
+			continue
+		}
+		seen[word] = struct{}{}
+		terms = append(terms, word)
+	}
+	return terms
+}
+
+func (s *Store) disableFTS() {
+	s.ftsEnabled = false
+	_ = dropFTSTriggers(s.db)
 }
 
 // initSchema creates the necessary tables and indexes.
@@ -90,6 +162,15 @@ func (s *Store) initSchema() error {
 
 	_, _ = s.db.Exec("ALTER TABLE skills ADD COLUMN readme_hash TEXT")
 
+	if err := dropFTSTriggers(s.db); err != nil {
+		return fmt.Errorf("drop skill FTS triggers: %w", err)
+	}
+
+	s.ftsEnabled = supportsFTS5(s.db)
+	if !s.ftsEnabled {
+		return nil
+	}
+
 	ftsStatements := []string{
 		`CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
 			id, name, summary, description, author, category, tags, readme,
@@ -112,8 +193,11 @@ func (s *Store) initSchema() error {
 	}
 	for _, stmt := range ftsStatements {
 		if _, err := s.db.Exec(stmt); err != nil {
-			fmt.Printf("[skillstore] FTS5 setup warning: %v\n", err)
-			break
+			if isFTSUnavailableError(err) {
+				s.disableFTS()
+				return nil
+			}
+			return fmt.Errorf("setup skill FTS schema: %w", err)
 		}
 	}
 
@@ -274,16 +358,19 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 	var args []interface{}
 	var conditions []string
 	var orderBy string
-	hasQuery := opts.Query != ""
+	hasQuery := strings.TrimSpace(opts.Query) != ""
+	useFTS := hasQuery && s.ftsEnabled
+	queryScoreArgs := []interface{}{}
 
 	baseQuery := `FROM skills s`
 	scoreSelect := "0.0 as score"
 
-	if hasQuery {
+	if useFTS {
 		baseQuery = `FROM skills s INNER JOIN skills_fts fts ON s.rowid = fts.rowid`
 		conditions = append(conditions, "skills_fts MATCH ?")
 		searchQuery := escapeFTS5Query(opts.Query)
 		args = append(args, searchQuery)
+		queryScoreArgs = append(queryScoreArgs, opts.Query, opts.Query, opts.Query, opts.Query)
 		scoreSelect = `(
 			-bm25(skills_fts, 10.0, 5.0, 3.0, 2.0, 1.0, 1.0, 1.0) +
 			CASE WHEN LOWER(s.name) = LOWER(?) THEN 100.0 ELSE 0.0 END +
@@ -292,6 +379,31 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 			CASE WHEN LOWER(s.id) LIKE LOWER(?) || '%' THEN 40.0 ELSE 0.0 END +
 			(s.stars * 0.01) + (s.downloads * 0.001)
 		) as score`
+	} else if hasQuery {
+		terms := searchTerms(opts.Query)
+		if len(terms) == 0 {
+			hasQuery = false
+		} else {
+			likeConditions := make([]string, 0, len(terms))
+			scoreParts := make([]string, 0, len(terms))
+			queryScoreArgs = append(queryScoreArgs, opts.Query, opts.Query, opts.Query, opts.Query)
+			for _, term := range terms {
+				pattern := "%" + term + "%"
+				likeConditions = append(likeConditions, "LOWER(s.search_content) LIKE ?")
+				args = append(args, pattern)
+				scoreParts = append(scoreParts, "CASE WHEN LOWER(s.search_content) LIKE ? THEN 5.0 ELSE 0.0 END")
+				queryScoreArgs = append(queryScoreArgs, pattern)
+			}
+			conditions = append(conditions, "("+strings.Join(likeConditions, " OR ")+")")
+			scoreSelect = fmt.Sprintf(`(
+				CASE WHEN LOWER(s.name) = LOWER(?) THEN 100.0 ELSE 0.0 END +
+				CASE WHEN LOWER(s.name) LIKE LOWER(?) || '%%' THEN 50.0 ELSE 0.0 END +
+				CASE WHEN LOWER(s.id) = LOWER(?) THEN 80.0 ELSE 0.0 END +
+				CASE WHEN LOWER(s.id) LIKE LOWER(?) || '%%' THEN 40.0 ELSE 0.0 END +
+				%s +
+				(s.stars * 0.01) + (s.downloads * 0.001)
+			) as score`, strings.Join(scoreParts, " + "))
+		}
 	}
 
 	if len(opts.Categories) > 0 {
@@ -347,6 +459,10 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 	countQuery := "SELECT COUNT(*) " + baseQuery + whereClause
 	var total int64
 	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		if useFTS && isFTSUnavailableError(err) {
+			s.disableFTS()
+			return s.Search(ctx, opts)
+		}
 		return nil, err
 	}
 
@@ -357,23 +473,28 @@ func (s *Store) Search(ctx context.Context, opts SearchOptions) (*SearchResponse
 	var selectArgs []interface{}
 
 	if hasQuery {
-		selectArgs = append(selectArgs, opts.Query, opts.Query, opts.Query, opts.Query)
+		selectArgs = append(selectArgs, queryScoreArgs...)
 		selectArgs = append(selectArgs, args...)
 	} else {
 		selectArgs = args
 	}
 
 	selectQuery = fmt.Sprintf(`
-		SELECT s.id, s.name, s.version, s.summary, s.description, s.author, s.category, s.tags,
-			s.source_id, s.source_name, s.homepage, s.download_url, s.stars, s.downloads,
-			s.reviews, s.rating, s.versions, s.changelog, s.installed, s.enabled,
-			s.created_at, s.updated_at, s.synced_at, %s
+		SELECT s.id, s.name, COALESCE(s.version, ''), COALESCE(s.summary, ''), COALESCE(s.description, ''),
+			COALESCE(s.author, ''), COALESCE(s.category, ''), COALESCE(s.tags, ''),
+			s.source_id, COALESCE(s.source_name, ''), COALESCE(s.homepage, ''), COALESCE(s.download_url, ''),
+			s.stars, s.downloads, s.reviews, s.rating, s.versions, COALESCE(s.changelog, ''),
+			s.installed, s.enabled, s.created_at, s.updated_at, s.synced_at, %s
 		%s %s ORDER BY %s LIMIT ? OFFSET ?
 	`, scoreSelect, baseQuery, whereClause, orderBy)
 	selectArgs = append(selectArgs, opts.PageSize, offset)
 
 	rows, err := s.db.QueryContext(ctx, selectQuery, selectArgs...)
 	if err != nil {
+		if useFTS && isFTSUnavailableError(err) {
+			s.disableFTS()
+			return s.Search(ctx, opts)
+		}
 		return nil, err
 	}
 	defer rows.Close()

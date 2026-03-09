@@ -206,6 +206,56 @@ func TestRegistryWithCallback(t *testing.T) {
 	}
 }
 
+func TestRegistryAddAPIKey_DoesNotDeduplicateOnDisplayMaskCollision(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "registry-key-collision-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, err := NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewFileStorage failed: %v", err)
+	}
+
+	registry, err := NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("NewRegistry failed: %v", err)
+	}
+
+	provider := &Provider{ID: "test-provider", Name: "Test Provider", Type: ProviderTypeCustom, Enabled: true}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	keyA := "12345678-alpha-wxyz"
+	keyB := "12345678-bravo-wxyz"
+	if HashAPIKey(keyA) != HashAPIKey(keyB) {
+		t.Fatalf("test setup invalid: display masks differ (%q vs %q)", HashAPIKey(keyA), HashAPIKey(keyB))
+	}
+
+	if err := registry.AddAPIKey("test-provider", &APIKey{Key: keyA, Enabled: true}); err != nil {
+		t.Fatalf("AddAPIKey keyA failed: %v", err)
+	}
+	if err := registry.AddAPIKey("test-provider", &APIKey{Key: keyB, Enabled: true}); err != nil {
+		t.Fatalf("AddAPIKey keyB failed: %v", err)
+	}
+
+	loaded, err := registry.Get("test-provider")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if len(loaded.APIKeys) != 2 {
+		t.Fatalf("expected 2 distinct keys after display-mask collision, got %d: %+v", len(loaded.APIKeys), loaded.APIKeys)
+	}
+	if loaded.APIKeys[0].KeyDigest == "" || loaded.APIKeys[1].KeyDigest == "" {
+		t.Fatalf("expected full key digests to be populated, got %+v", loaded.APIKeys)
+	}
+	if loaded.APIKeys[0].KeyDigest == loaded.APIKeys[1].KeyDigest {
+		t.Fatalf("expected different full digests for distinct keys, got %+v", loaded.APIKeys)
+	}
+}
+
 func TestDefaultHealthChecker(t *testing.T) {
 	checker := &DefaultHealthChecker{}
 

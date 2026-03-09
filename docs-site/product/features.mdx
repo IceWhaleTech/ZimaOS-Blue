@@ -1,0 +1,52 @@
+---
+title: "Features"
+summary: "Key product capabilities pulled from the current README and implementation surfaces."
+---
+
+# Features
+
+![Feature overview](/assets/features.png)
+
+## Local-first and extensible
+
+Blue is built for private, self-hosted agent deployments. The product direction in this repository focuses on keeping model access, runtime control, and integration choices in the user's hands.
+
+## Fast and lightweight runtime
+
+The README benchmarks position Blue around a Go-native runtime with low startup time and low memory usage compared with heavier Node-based references.
+
+## Multi-surface interaction
+
+Current product surfaces in this repository include:
+
+- Web application views for chat, channels, settings, security, cron, tenants, backups, and audit
+- Voice-oriented experiences and audio handling
+- Messaging integrations across more than twenty platforms
+- Automation surfaces such as cron, webhooks, and workflow-oriented pages
+
+## Provider flexibility
+
+![Provider overview](/assets/providers.png)
+
+The provider layer is intended to support:
+
+- Open ecosystem model usage
+- Default provider selection
+- Priority, weighted, and round-robin routing
+- Failover and provider racing
+- Model-family routing for common naming patterns
+
+## Security and governance
+
+The repository README explicitly highlights:
+
+- Sandbox execution
+- Prompt injection defense
+- Session auditing
+- RBAC and WebAuthn support
+
+## Product philosophy
+
+![Design principles](/assets/design_principle.png)
+
+Blue aims to minimize boilerplate so builders can focus on agent behavior, product shape, and integrations instead of hand-assembling the runtime stack.

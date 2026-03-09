@@ -184,6 +184,7 @@ func (r *Router) Route(req *RouteRequest) (*RouteResult, error) {
 			"preferred_provider", req.PreferredProviderID,
 			"required_cap", fmt.Sprintf("%+v", req.RequireCap),
 			"exclude_count", len(req.Exclude),
+			"excluded_providers", req.Exclude,
 			"enabled_providers", len(r.registry.ListEnabled()),
 			"relaxed_candidates", len(diagCandidates),
 		)
@@ -704,8 +705,32 @@ func isTransientError(err error) bool {
 	if err == nil {
 		return false
 	}
-	s := err.Error()
-	return strings.Contains(s, "upstream 502") || strings.Contains(s, "upstream 503")
+	s := strings.ToLower(err.Error())
+	if strings.Contains(s, "upstream 502") ||
+		strings.Contains(s, "upstream 503") ||
+		strings.Contains(s, "upstream 504") ||
+		strings.Contains(s, "proxy returned 502") ||
+		strings.Contains(s, "proxy returned 503") ||
+		strings.Contains(s, "proxy returned 504") ||
+		strings.Contains(s, "throttled (429)") ||
+		strings.Contains(s, "overloaded (529)") {
+		return true
+	}
+
+	hasTransientRateLimitLikeMarker := strings.Contains(s, "overloaded_error") ||
+		strings.Contains(s, `"type":"overloaded"`) ||
+		strings.Contains(s, "overloaded") ||
+		strings.Contains(s, "rate_limit") ||
+		strings.Contains(s, "rate limit") ||
+		strings.Contains(s, "too many requests") ||
+		strings.Contains(s, "throttled") ||
+		strings.Contains(s, "capacity")
+	if !hasTransientRateLimitLikeMarker {
+		return false
+	}
+	return strings.Contains(s, "upstream 500") ||
+		strings.Contains(s, "provider returned 500") ||
+		strings.Contains(s, "proxy returned 502")
 }
 
 // isNoResponseError returns true for errors indicating the provider returned
@@ -836,19 +861,7 @@ func buildAPIKeyAttempts(provider *Provider, preferred *APIKey) []*APIKey {
 	seen := make(map[string]struct{})
 
 	keyFingerprint := func(k *APIKey) string {
-		if k == nil {
-			return ""
-		}
-		if k.ID != "" {
-			return "id:" + k.ID
-		}
-		if k.KeyHash != "" {
-			return "hash:" + k.KeyHash
-		}
-		if k.Key != "" {
-			return "key:" + k.Key
-		}
-		return ""
+		return apiKeyFingerprint(k)
 	}
 
 	add := func(k *APIKey) {
@@ -903,8 +916,17 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		}()
 	}
 
-	// Track which providers we've already tried (to avoid retrying in blind fallback)
-	triedProviders := make(map[string]bool)
+	// Track which providers we've already tried (to avoid retrying in blind fallback).
+	// Seed with explicit exclusions too — callers use Exclude for hard bans during
+	// a retry window (for example, dropping an overloaded pinned provider), and
+	// blind fallback must not reintroduce them.
+	triedProviders := make(map[string]bool, len(req.Exclude))
+	for _, providerID := range req.Exclude {
+		if strings.TrimSpace(providerID) == "" {
+			continue
+		}
+		triedProviders[providerID] = true
+	}
 
 	result, err := r.Route(req)
 	if err != nil {

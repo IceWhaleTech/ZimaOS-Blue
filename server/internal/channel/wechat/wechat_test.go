@@ -231,3 +231,34 @@ func TestChannel_convertMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestChannel_convertMessage_PreservesMediaMetadata(t *testing.T) {
+	cfg := channel.WeChatWorkConfig{Enabled: true, CorpID: "corp", AgentID: "agent", Secret: "secret"}
+	ch := New(cfg, zap.NewNop())
+	msg := &wechatMessage{
+		MsgType:      "image",
+		FromUserName: "user123",
+		MsgId:        "msg123",
+		CreateTime:   1807890,
+		MediaId:      "media123",
+		PicUrl:       "https://example.com/image.jpg",
+		AgentID:      "agent-1",
+	}
+
+	result := ch.convertMessage(msg)
+	if len(result.Attachments) != 1 {
+		t.Fatalf("Attachments len = %d, want 1", len(result.Attachments))
+	}
+	if result.Attachments[0].ID != "media123" {
+		t.Fatalf("attachment ID = %q", result.Attachments[0].ID)
+	}
+	if result.Attachments[0].MimeType != "image/jpeg" {
+		t.Fatalf("MimeType = %q", result.Attachments[0].MimeType)
+	}
+	if result.Metadata["media_id"] != "media123" {
+		t.Fatalf("media_id = %v", result.Metadata["media_id"])
+	}
+	if result.Metadata["pic_url"] != "https://example.com/image.jpg" {
+		t.Fatalf("pic_url = %v", result.Metadata["pic_url"])
+	}
+}

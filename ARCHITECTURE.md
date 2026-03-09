@@ -231,7 +231,7 @@
 ║  │  │  │CPU/Mem │ │API Call│   │  │  │Periodic│ │HEART-  │   │  │  │Realtime│ │Session │   │         │    ║
 ║  │  │  │GC/Gortn│ │Token $ │   │  │  │Poll    │ │BEAT.md │   │  │  │Events  │ │Monitor │   │         │    ║
 ║  │  │  └────────┘ └────────┘   │  │  └────────┘ └────────┘   │  │  └────────┘ └────────┘   │         │    ║
-║  │  │  SQLite: metrics.db      │  │  Dedup: 24h cache        │  │  WebSocket + JSONL       │         │    ║
+║  │  │  SQLite: blue.db         │  │  Dedup: 24h cache        │  │  WebSocket + JSONL       │         │    ║
 ║  │  │  Interval: 10s, 30pts    │  │  Active hours window     │  │  Retention: 7d/30d/90d   │         │    ║
 ║  │  └──────────────────────────┘  └──────────────────────────┘  └──────────────────────────┘         │    ║
 ║  └───────────────────────────────────────────────────────────────────────────────────────────────────┘    ║
@@ -284,10 +284,10 @@
 ║  │                  Data Layer                                                                       │    ║
 ║  │                                                                                                   │    ║
 ║  │  ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐   │    ║
-║  │  │  SQLite (WAL)  │ │  metrics.db    │ │  skills.db     │ │  cache.db      │ │  Files/JSON    │   │    ║
-║  │  │  blue.db       │ │  API stats     │ │  skill meta    │ │  L2 disk cache │ │  {dataDir}/*   │   │    ║
-║  │  │  users/roles   │ │  token usage   │ │  featured list │ │  (proxy)       │ │  providers     │   │    ║
-║  │  │  audit/keys    │ │  system perf   │ │                │ │                │ │  channels      │   │    ║
+║  │  │  SQLite (WAL)  │ │  skills.db     │ │  cache.db      │ │  Files/JSON    │ │  memory.db     │   │    ║
+║  │  │  blue.db       │ │  skill meta    │ │  L2 disk cache │ │  {dataDir}/*   │ │  vector search │   │    ║
+║  │  │  users/roles   │ │  featured list │ │  (proxy)       │ │  providers     │ │  sqlite-vec    │   │    ║
+║  │  │  audit/keys    │ │                │ │                │ │  channels      │ │  FTS/hybrid    │   │    ║
 ║  │  │  conversations │ │                │ │                │ │                │ │                │   │    ║
 ║  │  │  api_keys      │ │                │ │                │ │                │ │                │   │    ║
 ║  │  └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘   │    ║

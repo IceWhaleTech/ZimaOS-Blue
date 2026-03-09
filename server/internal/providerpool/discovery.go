@@ -684,9 +684,19 @@ func (d *ModelDiscovery) tryLiteLLMStyleEndpoint(ctx context.Context, baseURL st
 
 // fetchOpenAIModels fetches models from OpenAI-compatible API
 func (d *ModelDiscovery) fetchOpenAIModels(ctx context.Context, provider *Provider, apiKey *APIKey) ([]*Model, error) {
-	// Build list of URLs to try
-	// Different providers use different paths: /models, /v1/models
+	// Build list of URLs to try.
+	// Different providers use different paths: /models, /v1/models.
+	// Responses-style relays may store BaseURL as a concrete responses endpoint
+	// (for example /v1/responses); strip that suffix before discovering /models.
 	baseURL := strings.TrimSuffix(provider.BaseURL, "/")
+	if provider != nil && provider.APIFormat == APIFormatResponses && isResponsesEndpointBaseURL(baseURL) {
+		switch {
+		case strings.HasSuffix(baseURL, "/v1/responses"):
+			baseURL = strings.TrimSuffix(baseURL, "/v1/responses")
+		case strings.HasSuffix(baseURL, "/responses"):
+			baseURL = strings.TrimSuffix(baseURL, "/responses")
+		}
+	}
 	var urls []string
 
 	if strings.HasSuffix(baseURL, "/v1") {

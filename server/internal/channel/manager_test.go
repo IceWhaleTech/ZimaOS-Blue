@@ -353,6 +353,80 @@ func TestManager_Send(t *testing.T) {
 	mgr.Stop(ctx)
 }
 
+func TestManager_Send_FeishuReportAutoMarkdown(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("feishu", "feishu", true)
+	mgr.Register(ch)
+
+	ctx := context.Background()
+	mgr.StartChannel(ctx, "feishu")
+
+	report := "# 调研报告\n\n## 背景\n" +
+		strings.Repeat("- 这是背景信息，包含上下文与范围说明。\n", 6) +
+		"\n## 关键发现\n| 维度 | 结论 |\n| --- | --- |\n| 可靠性 | 高 |\n| 风险 | 中 |\n" +
+		strings.Repeat("\n详细分析：该结论由多条证据共同支持。", 18)
+	msg := OutgoingMessage{
+		ChatID:  "oc_chat_1",
+		Content: report,
+	}
+
+	if err := mgr.Send(ctx, "feishu", msg); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	sent, ok := ch.lastSent()
+	if !ok {
+		t.Fatal("expected a sent message")
+	}
+	if sent.Format != "markdown" {
+		t.Fatalf("expected format markdown, got %q", sent.Format)
+	}
+	if sent.Content != report {
+		t.Fatalf("expected report markdown to stay unchanged, got %q", sent.Content)
+	}
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	mgr.Stop(stopCtx)
+}
+
+func TestManager_Send_FeishuShortTextDoesNotForceMarkdown(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("feishu", "feishu", true)
+	mgr.Register(ch)
+
+	ctx := context.Background()
+	mgr.StartChannel(ctx, "feishu")
+
+	msg := OutgoingMessage{
+		ChatID:  "oc_chat_1",
+		Content: "你好，帮我看下今天上海天气。",
+	}
+	if err := mgr.Send(ctx, "feishu", msg); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	sent, ok := ch.lastSent()
+	if !ok {
+		t.Fatal("expected a sent message")
+	}
+	if sent.Format == "markdown" {
+		t.Fatalf("expected short plain text to avoid markdown promotion, got %q", sent.Format)
+	}
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	mgr.Stop(stopCtx)
+}
+
 func TestManager_Send_DefaultHidesDetailedProcess(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := DefaultConfig()
@@ -420,6 +494,74 @@ func TestManager_Send_ShowDetailsKeepsProcessContent(t *testing.T) {
 	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	mgr.Stop(stopCtx)
+}
+
+func TestManager_Send_SplitsLongMessages(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.MaxMessageLength = 12
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("test", "mock", true)
+	mgr.Register(ch)
+
+	ctx := context.Background()
+	mgr.StartChannel(ctx, "test")
+
+	msg := OutgoingMessage{
+		ChatID:  "123",
+		Content: "第一段内容。\n\n第二段内容。\n\n第三段内容。",
+	}
+	if err := mgr.Send(ctx, "test", msg); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	ch.mu.RLock()
+	defer ch.mu.RUnlock()
+	if len(ch.sent) < 2 {
+		t.Fatalf("expected split sends, got %d", len(ch.sent))
+	}
+}
+
+func TestManager_ProcessMessage_AttachmentsOnlyStillSend(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("test", "mock", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+	ctx := context.Background()
+	if err := mgr.StartChannel(ctx, "test"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		return &OutgoingMessage{
+			ChatID: msg.ChatID,
+			Attachments: []Attachment{{
+				Type: MessageTypeImage,
+				Name: "img.png",
+				URL:  "https://example.com/img.png",
+			}},
+		}, nil
+	})
+
+	mgr.processMessage(ch, Message{ID: "m1", ChatID: "chat-1"})
+
+	sent, ok := ch.lastSent()
+	if !ok {
+		t.Fatal("expected attachment-only response to be sent")
+	}
+	if len(sent.Attachments) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(sent.Attachments))
+	}
+	if sent.Content != "" {
+		t.Fatalf("expected empty content, got %q", sent.Content)
+	}
 }
 
 func TestManager_Broadcast(t *testing.T) {
@@ -495,6 +637,62 @@ func TestManager_MessageHandler(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	mgr.Stop(ctx)
+}
+
+func TestManager_MessageHandler_FeishuReportKeepsMarkdown(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.DefaultTimeoutSeconds = 5
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("feishu", "feishu", true)
+	mgr.Register(ch)
+
+	report := "# 调研结论\n\n## 摘要\n" +
+		strings.Repeat("- 结论点。\n", 6) +
+		"\n## 证据\n| 来源 | 说明 |\n| --- | --- |\n| A | 有效 |\n| B | 有效 |\n" +
+		strings.Repeat("\n补充说明：这是完整调研报告正文。", 16)
+	handlerCalled := make(chan struct{})
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		close(handlerCalled)
+		return &OutgoingMessage{Content: report}, nil
+	})
+
+	ctx := context.Background()
+	mgr.StartChannel(ctx, "feishu")
+
+	ch.simulateMessage(Message{
+		ID:      "msg_report_1",
+		ChatID:  "oc_chat_report_1",
+		UserID:  "ou_report_user_1",
+		Content: "请给我完整调研报告",
+	})
+
+	select {
+	case <-handlerCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler was not called")
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		sent, ok := ch.lastSent()
+		if ok {
+			if sent.Format != "markdown" {
+				t.Fatalf("expected markdown format, got %q", sent.Format)
+			}
+			if !strings.Contains(sent.Content, "## 摘要") {
+				t.Fatalf("expected markdown heading to be preserved, got %q", sent.Content)
+			}
+			stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			mgr.Stop(stopCtx)
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("expected report message to be sent")
 }
 
 func TestManager_DisabledChannels(t *testing.T) {
@@ -605,4 +803,336 @@ func TestManager_ProcessTimeoutStillAllowsResponseSend(t *testing.T) {
 	}
 
 	t.Fatal("expected response to be sent with fresh send context after processing timeout")
+}
+
+func TestManager_ProcessMessage_GoogleChatRepliesUseThreadName(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("googlechat", "googlechat", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+	ctx := context.Background()
+	if err := mgr.StartChannel(ctx, "googlechat"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		return &OutgoingMessage{ChatID: msg.ChatID, Content: "reply"}, nil
+	})
+
+	mgr.processMessage(ch, Message{
+		ID:     "spaces/AAA/messages/1",
+		ChatID: "spaces/AAA",
+		Metadata: map[string]interface{}{
+			"thread_name": "spaces/AAA/threads/thread-1",
+		},
+	})
+
+	sent, ok := ch.lastSent()
+	if !ok {
+		t.Fatal("expected response to be sent")
+	}
+	if sent.ReplyToID != "spaces/AAA/threads/thread-1" {
+		t.Fatalf("ReplyToID = %q, want thread name", sent.ReplyToID)
+	}
+}
+
+func TestManager_ProcessMessage_LineRepliesUseReplyToken(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("line", "line", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+	ctx := context.Background()
+	if err := mgr.StartChannel(ctx, "line"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		return &OutgoingMessage{ChatID: msg.ChatID, Content: "reply"}, nil
+	})
+
+	mgr.processMessage(ch, Message{
+		ID:     "line-msg-1",
+		ChatID: "user-1",
+		Metadata: map[string]interface{}{
+			"reply_token": "reply-token-1",
+		},
+	})
+
+	sent, ok := ch.lastSent()
+	if !ok {
+		t.Fatal("expected response to be sent")
+	}
+	if sent.ReplyToID != "reply-token-1" {
+		t.Fatalf("ReplyToID = %q, want reply token", sent.ReplyToID)
+	}
+}
+
+func TestManager_Send_SplitKeepsThreadReplyForGoogleChat(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.MaxMessageLength = 12
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("googlechat", "googlechat", true)
+	mgr.Register(ch)
+
+	ctx := context.Background()
+	mgr.StartChannel(ctx, "googlechat")
+
+	msg := OutgoingMessage{
+		ChatID:    "spaces/AAA",
+		ReplyToID: "spaces/AAA/threads/thread-1",
+		Content:   "part one\n\npart two\n\npart three",
+	}
+	if err := mgr.Send(ctx, "googlechat", msg); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	ch.mu.RLock()
+	defer ch.mu.RUnlock()
+	if len(ch.sent) < 2 {
+		t.Fatalf("expected split sends, got %d", len(ch.sent))
+	}
+	for i, sent := range ch.sent {
+		if sent.ReplyToID != "spaces/AAA/threads/thread-1" {
+			t.Fatalf("part %d ReplyToID = %q, want thread preserved", i, sent.ReplyToID)
+		}
+	}
+}
+
+func TestManager_Send_SplitClearsSingleUseReplyForLine(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.MaxMessageLength = 12
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("line", "line", true)
+	mgr.Register(ch)
+
+	ctx := context.Background()
+	mgr.StartChannel(ctx, "line")
+
+	msg := OutgoingMessage{
+		ChatID:    "user-1",
+		ReplyToID: "reply-token-1",
+		Content:   "part one\n\npart two\n\npart three",
+	}
+	if err := mgr.Send(ctx, "line", msg); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	ch.mu.RLock()
+	defer ch.mu.RUnlock()
+	if len(ch.sent) < 2 {
+		t.Fatalf("expected split sends, got %d", len(ch.sent))
+	}
+	if ch.sent[0].ReplyToID != "reply-token-1" {
+		t.Fatalf("first ReplyToID = %q, want reply token", ch.sent[0].ReplyToID)
+	}
+	for i := 1; i < len(ch.sent); i++ {
+		if ch.sent[i].ReplyToID != "" {
+			t.Fatalf("part %d ReplyToID = %q, want cleared", i, ch.sent[i].ReplyToID)
+		}
+	}
+}
+
+func TestManager_ProcessMessage_SlackRepliesUseThreadTS(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("slack", "slack", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+	ctx := context.Background()
+	if err := mgr.StartChannel(ctx, "slack"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		return &OutgoingMessage{ChatID: msg.ChatID, Content: "reply"}, nil
+	})
+
+	mgr.processMessage(ch, Message{
+		ID:     "1710000000.002",
+		ChatID: "C123",
+		Metadata: map[string]interface{}{
+			"thread_ts": "1710000000.001",
+		},
+	})
+
+	sent, ok := ch.lastSent()
+	if !ok {
+		t.Fatal("expected response to be sent")
+	}
+	if sent.ReplyToID != "1710000000.001" {
+		t.Fatalf("ReplyToID = %q, want thread ts", sent.ReplyToID)
+	}
+}
+
+func TestManager_ProcessMessage_MattermostRepliesUseRootID(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("mattermost", "mattermost", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+	ctx := context.Background()
+	if err := mgr.StartChannel(ctx, "mattermost"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		return &OutgoingMessage{ChatID: msg.ChatID, Content: "reply"}, nil
+	})
+
+	mgr.processMessage(ch, Message{
+		ID:        "post-reply-1",
+		ChatID:    "channel-1",
+		ReplyToID: "root-post-1",
+	})
+
+	sent, ok := ch.lastSent()
+	if !ok {
+		t.Fatal("expected response to be sent")
+	}
+	if sent.ReplyToID != "root-post-1" {
+		t.Fatalf("ReplyToID = %q, want root id", sent.ReplyToID)
+	}
+}
+
+func TestManager_ProcessMessage_NextcloudTalkNonReplyableSkipsReplyTarget(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("nextcloudtalk", "nextcloudtalk", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+	ctx := context.Background()
+	if err := mgr.StartChannel(ctx, "nextcloudtalk"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		return &OutgoingMessage{ChatID: msg.ChatID, Content: "reply"}, nil
+	})
+
+	mgr.processMessage(ch, Message{
+		ID:     "123",
+		ChatID: "room-1",
+		Metadata: map[string]interface{}{
+			"is_replyable": false,
+		},
+	})
+
+	sent, ok := ch.lastSent()
+	if !ok {
+		t.Fatal("expected response to be sent")
+	}
+	if sent.ReplyToID != "" {
+		t.Fatalf("ReplyToID = %q, want empty for non-replyable message", sent.ReplyToID)
+	}
+}
+
+func TestManager_ProcessMessage_UnsupportedReplyChannelsSkipReplyTarget(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+
+	channelTypes := []string{"messenger", "instagram", "twitter", "signal", "viber", "zalo", "wechat_work"}
+	for _, channelType := range channelTypes {
+		t.Run(channelType, func(t *testing.T) {
+			mgr := NewManager(cfg, logger)
+			ch := newMockChannel(channelType, channelType, true)
+			if err := mgr.Register(ch); err != nil {
+				t.Fatalf("register channel: %v", err)
+			}
+			ctx := context.Background()
+			if err := mgr.StartChannel(ctx, channelType); err != nil {
+				t.Fatalf("start channel: %v", err)
+			}
+
+			mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+				return &OutgoingMessage{ChatID: msg.ChatID, Content: "reply"}, nil
+			})
+
+			mgr.processMessage(ch, Message{ID: "msg-1", ChatID: "chat-1"})
+
+			sent, ok := ch.lastSent()
+			if !ok {
+				t.Fatal("expected response to be sent")
+			}
+			if sent.ReplyToID != "" {
+				t.Fatalf("ReplyToID = %q, want empty", sent.ReplyToID)
+			}
+		})
+	}
+}
+
+func TestDefaultReplyTarget_Matrix(t *testing.T) {
+	tests := []struct {
+		name        string
+		channelType string
+		msg         Message
+		want        string
+	}{
+		{name: "googlechat thread", channelType: "googlechat", msg: Message{ID: "msg-1", Metadata: map[string]interface{}{"thread_name": "spaces/1/threads/2"}}, want: "spaces/1/threads/2"},
+		{name: "line reply token", channelType: "line", msg: Message{ID: "msg-1", Metadata: map[string]interface{}{"reply_token": "reply-token-1"}}, want: "reply-token-1"},
+		{name: "slack thread", channelType: "slack", msg: Message{ID: "msg-1", ReplyToID: "reply-1", Metadata: map[string]interface{}{"thread_ts": "1710000000.001"}}, want: "1710000000.001"},
+		{name: "slack reply fallback", channelType: "slack", msg: Message{ID: "msg-1", ReplyToID: "reply-1"}, want: "reply-1"},
+		{name: "mattermost reply", channelType: "mattermost", msg: Message{ID: "msg-1", ReplyToID: "post-1"}, want: "post-1"},
+		{name: "nextcloudtalk non replyable", channelType: "nextcloudtalk", msg: Message{ID: "msg-1", Metadata: map[string]interface{}{"is_replyable": false}}, want: ""},
+		{name: "nextcloudtalk replyable", channelType: "nextcloudtalk", msg: Message{ID: "msg-1"}, want: "msg-1"},
+		{name: "unsupported messenger", channelType: "messenger", msg: Message{ID: "msg-1"}, want: ""},
+		{name: "telegram callback origin", channelType: "telegram", msg: Message{ID: "cb-1", Metadata: map[string]interface{}{"origin_message_id": "123"}}, want: "123"},
+		{name: "default fallback", channelType: "telegram", msg: Message{ID: "msg-1"}, want: "msg-1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := defaultReplyTarget(tt.channelType, tt.msg); got != tt.want {
+				t.Fatalf("defaultReplyTarget(%q) = %q, want %q", tt.channelType, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReplyTargetSingleUse_Matrix(t *testing.T) {
+	tests := []struct {
+		channelType string
+		want        bool
+	}{
+		{channelType: "line", want: true},
+		{channelType: "slack", want: false},
+		{channelType: "googlechat", want: false},
+		{channelType: "telegram", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.channelType, func(t *testing.T) {
+			if got := replyTargetSingleUse(tt.channelType); got != tt.want {
+				t.Fatalf("replyTargetSingleUse(%q) = %v, want %v", tt.channelType, got, tt.want)
+			}
+		})
+	}
 }

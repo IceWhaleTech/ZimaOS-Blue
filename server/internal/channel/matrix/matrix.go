@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/humanizer"
 )
 
 // Channel implements the channel.Channel interface for Matrix.
@@ -22,11 +23,11 @@ type Channel struct {
 	client   *matrixClient
 	messages chan channel.Message
 
-	mu          sync.RWMutex
-	status      channel.Status
-	connectedAt *time.Time
-	lastError   string
-	lastErrorAt *time.Time
+	mu            sync.RWMutex
+	status        channel.Status
+	connectedAt   *time.Time
+	lastError     string
+	lastErrorAt   *time.Time
 	msgCount      atomic.Int64
 	msgsReceived  atomic.Int64
 	msgsSent      atomic.Int64
@@ -226,52 +227,74 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("client not initialized")
 	}
 
+	fallbackLines := make([]string, 0)
+
 	// Send attachments as media messages.
 	for _, att := range msg.Attachments {
-		if len(att.Data) > 0 {
-			mime := att.MimeType
-			if mime == "" { mime = "application/octet-stream" }
-			name := att.Name
-			if name == "" { name = "file" }
-			mxcURI, err := c.client.uploadMedia(ctx, name, mime, att.Data)
-			if err != nil {
-				c.logger.Warn("failed to upload media to matrix", zap.String("type", string(att.Type)), zap.Error(err))
-				continue
+		if len(att.Data) == 0 {
+			if link := buildAttachmentFallback(att); link != "" {
+				fallbackLines = append(fallbackLines, link)
 			}
-			// Determine m.msgtype based on attachment type.
-			msgType := "m.file"
-			switch att.Type {
-			case channel.MessageTypeImage:
-				msgType = "m.image"
-			case channel.MessageTypeAudio:
-				msgType = "m.audio"
-			case channel.MessageTypeVideo:
-				msgType = "m.video"
+			continue
+		}
+
+		mime := att.MimeType
+		if mime == "" {
+			mime = "application/octet-stream"
+		}
+		name := att.Name
+		if name == "" {
+			name = "file"
+		}
+		mxcURI, err := c.client.uploadMedia(ctx, name, mime, att.Data)
+		if err != nil {
+			return fmt.Errorf("failed to upload media to matrix: %w", err)
+		}
+		// Determine m.msgtype based on attachment type.
+		msgType := "m.file"
+		switch att.Type {
+		case channel.MessageTypeImage:
+			msgType = "m.image"
+		case channel.MessageTypeAudio:
+			msgType = "m.audio"
+		case channel.MessageTypeVideo:
+			msgType = "m.video"
+		}
+		mediaContent := map[string]interface{}{
+			"msgtype": msgType,
+			"body":    name,
+			"url":     mxcURI,
+			"info":    map[string]interface{}{"mimetype": mime, "size": len(att.Data)},
+		}
+		if msg.ReplyToID != "" {
+			mediaContent["m.relates_to"] = map[string]interface{}{
+				"m.in_reply_to": map[string]string{"event_id": msg.ReplyToID},
 			}
-			mediaContent := map[string]interface{}{
-				"msgtype": msgType,
-				"body":    name,
-				"url":     mxcURI,
-				"info":    map[string]interface{}{"mimetype": mime, "size": len(att.Data)},
-			}
-			if msg.ReplyToID != "" {
-				mediaContent["m.relates_to"] = map[string]interface{}{
-					"m.in_reply_to": map[string]string{"event_id": msg.ReplyToID},
-				}
-			}
-			c.client.sendMessage(ctx, msg.ChatID, mediaContent)
+		}
+		if _, err := c.client.sendMessage(ctx, msg.ChatID, mediaContent); err != nil {
+			return fmt.Errorf("failed to send matrix media message: %w", err)
+		}
+	}
+
+	textBody := msg.Content
+	if len(fallbackLines) > 0 {
+		fallbackText := strings.Join(fallbackLines, "\n")
+		if textBody == "" {
+			textBody = fallbackText
+		} else {
+			textBody = textBody + "\n\n" + fallbackText
 		}
 	}
 
 	// Send text if present and no attachments consumed it.
-	if msg.Content != "" {
-		content := &messageContent{MsgType: "m.text", Body: msg.Content}
+	if textBody != "" {
+		content := &messageContent{MsgType: "m.text", Body: textBody}
 		if msg.Format == "html" {
 			content.Format = "org.matrix.custom.html"
-			content.FormattedBody = msg.Content
+			content.FormattedBody = textBody
 		} else if msg.Format == "markdown" {
 			content.Format = "org.matrix.custom.html"
-			content.FormattedBody = markdownToHTML(msg.Content)
+			content.FormattedBody = markdownToHTML(textBody)
 		}
 		if msg.ReplyToID != "" {
 			content.RelatesTo = &relatesTo{InReplyTo: &inReplyTo{EventID: msg.ReplyToID}}
@@ -335,8 +358,8 @@ func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID st
 
 func (c *Channel) editMessage(ctx context.Context, roomID, eventID, newContent string) error {
 	content := &messageContent{
-		MsgType: "m.text",
-		Body:    "* " + newContent,
+		MsgType:    "m.text",
+		Body:       "* " + newContent,
 		NewContent: &messageContent{MsgType: "m.text", Body: newContent},
 		RelatesTo:  &relatesTo{RelType: "m.replace", EventID: eventID},
 	}
@@ -382,9 +405,20 @@ func (c *Channel) setError(err string) {
 }
 
 func markdownToHTML(md string) string {
-	html := md
-	html = strings.ReplaceAll(html, "**", "<strong>")
-	html = strings.ReplaceAll(html, "*", "<em>")
-	html = strings.ReplaceAll(html, "`", "<code>")
-	return html
+	if strings.TrimSpace(md) == "" {
+		return ""
+	}
+	ir := humanizer.Parse(md, humanizer.ParseOptions{
+		HeadingStyle:     "bold",
+		BlockquotePrefix: "",
+		TableMode:        "bullets",
+	})
+	return humanizer.RenderMatrix(ir)
+}
+
+func buildAttachmentFallback(att channel.Attachment) string {
+	if strings.TrimSpace(att.URL) != "" {
+		return strings.TrimSpace(att.URL)
+	}
+	return strings.TrimSpace(att.Name)
 }

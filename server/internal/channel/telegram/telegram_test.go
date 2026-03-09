@@ -2,9 +2,12 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"testing"
 	"time"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
@@ -297,5 +300,261 @@ func TestChannel_SendStreaming_NotInitialized(t *testing.T) {
 	err := ch.SendStreaming(ctx, "180", "", content, done)
 	if err == nil {
 		t.Error("expected error when streaming without initialization")
+	}
+}
+
+func TestBuildAttachmentChattable_AppliesReplyAndParseMode(t *testing.T) {
+	att := channel.Attachment{
+		Type: channel.MessageTypeImage,
+		Name: "image.png",
+		URL:  "https://example.com/image.png",
+	}
+
+	chattable, err := buildAttachmentChattable(123, "42", "<b>hello</b>", "html", att)
+	if err != nil {
+		t.Fatalf("buildAttachmentChattable returned error: %v", err)
+	}
+
+	photo, ok := chattable.(tgbotapi.PhotoConfig)
+	if !ok {
+		t.Fatalf("expected PhotoConfig, got %T", chattable)
+	}
+	if photo.ReplyToMessageID != 42 {
+		t.Fatalf("expected reply_to_message_id 42, got %d", photo.ReplyToMessageID)
+	}
+	if photo.ParseMode != tgbotapi.ModeHTML {
+		t.Fatalf("expected HTML parse mode, got %q", photo.ParseMode)
+	}
+	if photo.Caption != "<b>hello</b>" {
+		t.Fatalf("expected caption to be preserved, got %q", photo.Caption)
+	}
+}
+
+func TestTelegramParseMode(t *testing.T) {
+	tests := []struct {
+		format string
+		want   string
+	}{
+		{format: "markdown", want: tgbotapi.ModeMarkdown},
+		{format: "md", want: tgbotapi.ModeMarkdown},
+		{format: "html", want: tgbotapi.ModeHTML},
+		{format: "markdownv2", want: tgbotapi.ModeMarkdownV2},
+		{format: "plain", want: ""},
+	}
+
+	for _, tt := range tests {
+		if got := telegramParseMode(tt.format); got != tt.want {
+			t.Fatalf("telegramParseMode(%q) = %q, want %q", tt.format, got, tt.want)
+		}
+	}
+}
+
+func TestChannel_HandleUpdate_MessageHandlerRepliesToCurrentMessage(t *testing.T) {
+	var replyTo string
+	done := make(chan struct{})
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bottest-token/getMe":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok": true,
+				"result": map[string]interface{}{
+					"id":         1,
+					"is_bot":     true,
+					"first_name": "bot",
+					"username":   "bot",
+				},
+			})
+		case "/bottest-token/sendMessage":
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("parse form: %v", err)
+			}
+			replyTo = r.FormValue("reply_to_message_id")
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok": true,
+				"result": map[string]interface{}{
+					"message_id": 999,
+					"date":       1710000000,
+					"chat": map[string]interface{}{
+						"id":   456,
+						"type": "private",
+					},
+					"text": "reply",
+				},
+			})
+			close(done)
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	bot, err := tgbotapi.NewBotAPIWithClient("test-token", server.URL+"/bot%s/%s", server.Client())
+	if err != nil {
+		t.Fatalf("new bot api: %v", err)
+	}
+
+	ch := New(channel.TelegramConfig{Enabled: true}, zap.NewNop())
+	ch.ctx = context.Background()
+	ch.bot = bot
+	ch.SetMessageHandler(func(ctx context.Context, msg channel.Message) (string, error) {
+		return "reply", nil
+	})
+
+	ch.handleUpdate(tgbotapi.Update{Message: &tgbotapi.Message{
+		MessageID: 123,
+		Text:      "hello",
+		Chat:      &tgbotapi.Chat{ID: 456, Type: "private"},
+		From:      &tgbotapi.User{ID: 7, UserName: "alice"},
+	}})
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for reply send")
+	}
+
+	if replyTo != "123" {
+		t.Fatalf("reply_to_message_id = %q, want current message id", replyTo)
+	}
+}
+
+func TestChannel_ConvertMessage_PreservesCaptionEntitiesAndMediaKinds(t *testing.T) {
+	ch := New(channel.TelegramConfig{Enabled: true}, zap.NewNop())
+	msg := ch.convertMessage(&tgbotapi.Message{
+		MessageID: 321,
+		Date:      1710000000,
+		Chat:      &tgbotapi.Chat{ID: 456, Type: "private"},
+		From:      &tgbotapi.User{ID: 7, UserName: "alice"},
+		Caption:   "See Bob",
+		CaptionEntities: []tgbotapi.MessageEntity{{
+			Type:   "text_mention",
+			Offset: 4,
+			Length: 3,
+			User:   &tgbotapi.User{ID: 99, UserName: "bob", FirstName: "Bob"},
+		}},
+		Video: &tgbotapi.Video{FileID: "video-1", FileName: "demo.mp4", MimeType: "video/mp4", FileSize: 2048},
+	})
+
+	if msg.Type != channel.MessageTypeVideo {
+		t.Fatalf("Type = %q, want video", msg.Type)
+	}
+	if msg.Content != "See Bob" {
+		t.Fatalf("Content = %q, want caption", msg.Content)
+	}
+	if len(msg.Attachments) != 1 || msg.Attachments[0].ID != "video-1" {
+		t.Fatalf("Attachments = %#v", msg.Attachments)
+	}
+	if msg.Attachments[0].MimeType != "video/mp4" {
+		t.Fatalf("MimeType = %q", msg.Attachments[0].MimeType)
+	}
+	if msg.Metadata["entity_source"] != "caption" {
+		t.Fatalf("entity_source = %v", msg.Metadata["entity_source"])
+	}
+	mentionIDs, ok := msg.Metadata["mention_ids"].([]string)
+	if !ok || len(mentionIDs) != 1 || mentionIDs[0] != "99" {
+		t.Fatalf("mention_ids = %#v", msg.Metadata["mention_ids"])
+	}
+	mentions, ok := msg.Metadata["mentions"].([]map[string]interface{})
+	if !ok || len(mentions) != 1 || mentions[0]["id"] != "99" {
+		t.Fatalf("mentions = %#v", msg.Metadata["mentions"])
+	}
+}
+
+func TestChannel_ConvertMessage_MapsVoiceAndSticker(t *testing.T) {
+	ch := New(channel.TelegramConfig{Enabled: true}, zap.NewNop())
+
+	voiceMsg := ch.convertMessage(&tgbotapi.Message{
+		MessageID: 401,
+		Chat:      &tgbotapi.Chat{ID: 456, Type: "private"},
+		From:      &tgbotapi.User{ID: 7, UserName: "alice"},
+		Voice:     &tgbotapi.Voice{FileID: "voice-1", MimeType: "audio/ogg", FileSize: 128},
+	})
+	if voiceMsg.Type != channel.MessageTypeAudio {
+		t.Fatalf("voice Type = %q, want audio", voiceMsg.Type)
+	}
+	if len(voiceMsg.Attachments) != 1 || voiceMsg.Attachments[0].ID != "voice-1" {
+		t.Fatalf("voice attachments = %#v", voiceMsg.Attachments)
+	}
+
+	stickerMsg := ch.convertMessage(&tgbotapi.Message{
+		MessageID: 402,
+		Chat:      &tgbotapi.Chat{ID: -100, Type: "supergroup", Title: "group"},
+		From:      &tgbotapi.User{ID: 7, UserName: "alice"},
+		Sticker:   &tgbotapi.Sticker{FileID: "sticker-1", Emoji: "🙂", SetName: "set", FileSize: 64},
+	})
+	if stickerMsg.Type != channel.MessageTypeImage {
+		t.Fatalf("sticker Type = %q, want image", stickerMsg.Type)
+	}
+	if stickerMsg.Metadata["sticker_emoji"] != "🙂" {
+		t.Fatalf("sticker_emoji = %v", stickerMsg.Metadata["sticker_emoji"])
+	}
+	if stickerMsg.Metadata["sticker_set_name"] != "set" {
+		t.Fatalf("sticker_set_name = %v", stickerMsg.Metadata["sticker_set_name"])
+	}
+}
+
+func TestChannel_HandleCallbackQuery_PreservesOriginMessageMetadata(t *testing.T) {
+	answered := false
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bottest-token/getMe":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok": true,
+				"result": map[string]interface{}{
+					"id":         1,
+					"is_bot":     true,
+					"first_name": "bot",
+					"username":   "bot",
+				},
+			})
+		case "/bottest-token/answerCallbackQuery":
+			answered = true
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "result": true})
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	bot, err := tgbotapi.NewBotAPIWithClient("test-token", server.URL+"/bot%s/%s", server.Client())
+	if err != nil {
+		t.Fatalf("new bot api: %v", err)
+	}
+
+	ch := New(channel.TelegramConfig{Enabled: true}, zap.NewNop())
+	ch.ctx = context.Background()
+	ch.bot = bot
+	ch.handleCallbackQuery(&tgbotapi.CallbackQuery{
+		ID:           "cb-1",
+		Data:         "approve",
+		ChatInstance: "ci-1",
+		From:         &tgbotapi.User{ID: 7, UserName: "alice"},
+		Message:      &tgbotapi.Message{MessageID: 123, Chat: &tgbotapi.Chat{ID: -100, Type: "supergroup", Title: "Ops"}},
+	})
+
+	select {
+	case msg := <-ch.Messages():
+		if msg.ReplyToID != "123" {
+			t.Fatalf("ReplyToID = %q, want 123", msg.ReplyToID)
+		}
+		if msg.Metadata["origin_message_id"] != "123" {
+			t.Fatalf("origin_message_id = %v", msg.Metadata["origin_message_id"])
+		}
+		if msg.Metadata["chat_instance"] != "ci-1" {
+			t.Fatalf("chat_instance = %v", msg.Metadata["chat_instance"])
+		}
+		if msg.GroupName != "Ops" {
+			t.Fatalf("GroupName = %q, want Ops", msg.GroupName)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for callback message")
+	}
+
+	if !answered {
+		t.Fatal("expected callback query to be answered")
 	}
 }

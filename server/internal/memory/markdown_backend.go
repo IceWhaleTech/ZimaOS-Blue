@@ -49,10 +49,9 @@ func (b *PureMarkdownBackend) Name() string {
 
 // Remember appends a memory entry to today's daily log.
 func (b *PureMarkdownBackend) Remember(ctx context.Context, content string, tags []string) (*MemoryChunk, error) {
-	id := fmt.Sprintf("%d", timeutil.NowNano())
 	now := timeutil.NowTime()
-
-	dailyPath := filepath.Join(b.baseDir, "daily", now.Format("2006-01-02")+".md")
+	relID := filepath.Join("daily", now.Format("2006-01-02")+".md")
+	dailyPath := filepath.Join(b.baseDir, relID)
 
 	f, err := os.OpenFile(dailyPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -72,7 +71,7 @@ func (b *PureMarkdownBackend) Remember(ctx context.Context, content string, tags
 	f.WriteString(content + "\n\n---\n\n")
 
 	return &MemoryChunk{
-		ID:        id,
+		ID:        relID,
 		Content:   content,
 		CreatedAt: now,
 		UpdatedAt: now,

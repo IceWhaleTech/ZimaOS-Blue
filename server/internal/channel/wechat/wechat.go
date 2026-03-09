@@ -33,11 +33,11 @@ type Channel struct {
 	logger   *zap.Logger
 	messages chan channel.Message
 
-	mu          sync.RWMutex
-	status      channel.Status
-	connectedAt *time.Time
-	lastError   string
-	lastErrorAt *time.Time
+	mu            sync.RWMutex
+	status        channel.Status
+	connectedAt   *time.Time
+	lastError     string
+	lastErrorAt   *time.Time
 	msgCount      atomic.Int64
 	msgsReceived  atomic.Int64
 	msgsSent      atomic.Int64
@@ -51,16 +51,22 @@ type Channel struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	server *http.Server
+
+	sendTextFunc       func(ctx context.Context, chatID, content, format string) error
+	sendAttachmentFunc func(ctx context.Context, chatID, caption string, att channel.Attachment) error
 }
 
 // New creates a new WeChat Work channel.
 func New(cfg channel.WeChatWorkConfig, logger *zap.Logger) *Channel {
-	return &Channel{
+	ch := &Channel{
 		config:   cfg,
 		logger:   logger.With(zap.String("channel", "wechat_work")),
 		messages: make(chan channel.Message, 100),
 		status:   channel.StatusDisconnected,
 	}
+	ch.sendTextFunc = ch.sendText
+	ch.sendAttachmentFunc = ch.sendAttachment
+	return ch
 }
 
 // Name returns the channel name.
@@ -308,13 +314,33 @@ func (c *Channel) convertMessage(msg *wechatMessage) channel.Message {
 	// Handle attachments
 	if msg.MediaId != "" {
 		channelMsg.Attachments = append(channelMsg.Attachments, channel.Attachment{
-			ID:   msg.MediaId,
-			Type: msgType,
-			URL:  msg.PicUrl,
+			ID:       msg.MediaId,
+			Type:     msgType,
+			URL:      msg.PicUrl,
+			MimeType: wechatAttachmentMimeType(msg.MsgType),
 		})
+		channelMsg.Metadata["media_id"] = msg.MediaId
+		if strings.TrimSpace(msg.PicUrl) != "" {
+			channelMsg.Metadata["pic_url"] = strings.TrimSpace(msg.PicUrl)
+		}
 	}
 
 	return channelMsg
+}
+
+func wechatAttachmentMimeType(msgType string) string {
+	switch msgType {
+	case "image":
+		return "image/jpeg"
+	case "voice":
+		return "audio/amr"
+	case "video":
+		return "video/mp4"
+	case "file":
+		return "application/octet-stream"
+	default:
+		return ""
+	}
 }
 
 // verifySignature verifies the message signature.
@@ -436,26 +462,73 @@ func (c *Channel) Stop(ctx context.Context) error {
 
 // Send sends a message through WeChat Work.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
-	// Send attachments first.
-	for _, att := range msg.Attachments {
-		if err := c.sendAttachment(ctx, msg.ChatID, msg.Content, att); err != nil {
-			c.logger.Warn("failed to send attachment, falling back to text",
-				zap.String("channel", "wechat_work"), zap.String("type", string(att.Type)), zap.Error(err))
-			fallback := msg.Content
-			if att.URL != "" {
-				fallback += "\n" + att.URL
-			}
-			if err2 := c.sendText(ctx, msg.ChatID, fallback, msg.Format); err2 != nil {
-				return fmt.Errorf("wechat send fallback: %w", err2)
-			}
-		}
-		msg.Content = ""
+	captionConsumed := false
+	sentSomething := false
+	if c.sendTextFunc == nil {
+		c.sendTextFunc = c.sendText
+	}
+	if c.sendAttachmentFunc == nil {
+		c.sendAttachmentFunc = c.sendAttachment
 	}
 
-	if len(msg.Attachments) == 0 && msg.Content != "" {
-		return c.sendText(ctx, msg.ChatID, msg.Content, msg.Format)
+	// Send attachments first.
+	for _, att := range msg.Attachments {
+		caption := ""
+		includeCaption := !captionConsumed && strings.TrimSpace(msg.Content) != ""
+		if includeCaption {
+			caption = msg.Content
+		}
+		if err := c.sendAttachmentFunc(ctx, msg.ChatID, caption, att); err != nil {
+			c.logger.Warn("failed to send attachment, falling back to text",
+				zap.String("channel", "wechat_work"), zap.String("type", string(att.Type)), zap.Error(err))
+			fallback := wechatAttachmentFallbackText(msg.Content, att, includeCaption)
+			if fallback == "" {
+				continue
+			}
+			if err2 := c.sendTextFunc(ctx, msg.ChatID, fallback, msg.Format); err2 != nil {
+				return fmt.Errorf("wechat send fallback: %w", err2)
+			}
+			sentSomething = true
+			if includeCaption {
+				captionConsumed = true
+			}
+			continue
+		}
+		sentSomething = true
+		if includeCaption {
+			captionConsumed = true
+		}
+	}
+
+	if strings.TrimSpace(msg.Content) != "" && !captionConsumed {
+		if err := c.sendTextFunc(ctx, msg.ChatID, msg.Content, msg.Format); err != nil {
+			return err
+		}
+		sentSomething = true
+	}
+	if !sentSomething {
+		return fmt.Errorf("no sendable WeChat Work content")
 	}
 	return nil
+}
+
+func wechatAttachmentFallbackText(caption string, att channel.Attachment, includeCaption bool) string {
+	parts := make([]string, 0, 2)
+	if includeCaption && strings.TrimSpace(caption) != "" {
+		parts = append(parts, strings.TrimSpace(caption))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		parts = append(parts, strings.TrimSpace(att.URL))
+	} else {
+		name := strings.TrimSpace(att.Name)
+		if name == "" && len(att.Data) > 0 {
+			name = "Attachment"
+		}
+		if name != "" {
+			parts = append(parts, name)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 // sendText sends a plain text or markdown message.
@@ -767,8 +840,8 @@ func (c *Channel) GetMenu(ctx context.Context) (*Menu, error) {
 	defer resp.Body.Close()
 
 	var result struct {
-		ErrCode int    `json:"errcode"`
-		ErrMsg  string `json:"errmsg"`
+		ErrCode int          `json:"errcode"`
+		ErrMsg  string       `json:"errmsg"`
 		Button  []MenuButton `json:"button"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -1081,9 +1154,9 @@ func (c *Channel) GetTagUsers(ctx context.Context, tagID int) ([]string, []int, 
 	defer resp.Body.Close()
 
 	var result struct {
-		ErrCode   int    `json:"errcode"`
-		ErrMsg    string `json:"errmsg"`
-		UserList  []struct {
+		ErrCode  int    `json:"errcode"`
+		ErrMsg   string `json:"errmsg"`
+		UserList []struct {
 			UserID string `json:"userid"`
 			Name   string `json:"name"`
 		} `json:"userlist"`

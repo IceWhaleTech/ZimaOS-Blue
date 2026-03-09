@@ -9,6 +9,11 @@ log:
   level: "debug"
   format: "console"
 
+# Channel message processing timeout (seconds).
+# Keep this larger for multi-round tool calls and transient upstream retries.
+channels:
+  default_timeout_seconds: 180
+
 # =============================================================================
 # API Proxy Configuration (v0.10.5.1+)
 # =============================================================================
@@ -67,7 +72,7 @@ proxy:
     keep_alive_interval: "30s"
     dial_timeout: "30s"
     tls_handshake_timeout: "10s"
-    response_header_timeout: "60s"
+    response_header_timeout: "120s"
     force_http2: true
 
   # Health check configuration

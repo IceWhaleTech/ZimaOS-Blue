@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -56,6 +57,7 @@ type Store struct {
 	db       *sql.DB
 	cfg      StoreConfig
 	done     chan struct{}
+	ownsDB   bool
 	closeMu  sync.Mutex
 	isClosed bool
 }
@@ -87,42 +89,30 @@ CREATE INDEX IF NOT EXISTS idx_session_tool_audit_tool_call
 	ON session_tool_audit_logs(tool_call_id);
 `
 
-// NewSQLiteStore opens/creates an isolated SQLite database for tool payload audit logs.
-func NewSQLiteStore(dbPath string, cfg StoreConfig) (*Store, error) {
-	if strings.TrimSpace(dbPath) == "" {
-		return nil, fmt.Errorf("session audit db path is empty")
-	}
+func normalizeStoreConfig(cfg StoreConfig) StoreConfig {
 	if cfg.CleanupBatchSize <= 0 {
 		cfg.CleanupBatchSize = DefaultStoreConfig().CleanupBatchSize
 	}
 	if cfg.CleanupInterval <= 0 {
 		cfg.CleanupInterval = DefaultStoreConfig().CleanupInterval
 	}
+	return cfg
+}
 
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("open session audit db: %w", err)
+func newStoreWithDB(db *sql.DB, cfg StoreConfig, ownsDB bool) (*Store, error) {
+	if db == nil {
+		return nil, fmt.Errorf("session audit db is nil")
 	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("enable WAL mode: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("set busy timeout: %w", err)
-	}
+	cfg = normalizeStoreConfig(cfg)
 	if _, err := db.Exec(storeSchema); err != nil {
-		db.Close()
 		return nil, fmt.Errorf("create session audit schema: %w", err)
 	}
 
 	s := &Store{
-		db:   db,
-		cfg:  cfg,
-		done: make(chan struct{}),
+		db:     db,
+		cfg:    cfg,
+		done:   make(chan struct{}),
+		ownsDB: ownsDB,
 	}
 
 	if s.cfg.RetentionDays > 0 {
@@ -130,6 +120,41 @@ func NewSQLiteStore(dbPath string, cfg StoreConfig) (*Store, error) {
 		go s.cleanupLoop()
 	}
 	return s, nil
+}
+
+// NewSQLiteStore opens/creates an isolated SQLite database for tool payload audit logs.
+func NewSQLiteStore(dbPath string, cfg StoreConfig) (*Store, error) {
+	if strings.TrimSpace(dbPath) == "" {
+		return nil, fmt.Errorf("session audit db path is empty")
+	}
+
+	db, err := dbutil.OpenSQLiteWithRecovery(dbPath, dbPath, func(db *sql.DB) error {
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return fmt.Errorf("enable WAL mode: %w", err)
+		}
+		if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+			return fmt.Errorf("set busy timeout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open session audit db: %w", err)
+	}
+
+	s, err := newStoreWithDB(db, cfg, true)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
+// NewSQLiteStoreWithDB reuses an existing SQLite connection for audit storage.
+func NewSQLiteStoreWithDB(db *sql.DB, cfg StoreConfig) (*Store, error) {
+	return newStoreWithDB(db, cfg, false)
 }
 
 // Record appends one audit entry.
@@ -350,7 +375,7 @@ func (s *Store) Close() error {
 	s.db = nil
 	s.closeMu.Unlock()
 
-	if db != nil {
+	if db != nil && s.ownsDB {
 		return db.Close()
 	}
 	return nil

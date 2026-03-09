@@ -64,9 +64,9 @@ function resolveChannelError(channel: ChannelDef): string {
   return channel.lastError || ''
 }
 
-// Show top 6 channels by default, collapse the rest (17 channels)
+// Start collapsed; the primary section still keeps locale favorites,
+// self-hosted channels, and any enabled channels visible by default.
 const getInitialShowMoreState = (): boolean => {
-  // Always start collapsed - show only top 6 channels
   return false
 }
 
@@ -101,8 +101,37 @@ const getLocalizedChannelOrder = (): string[] => {
   return ['whatsapp', 'telegram', 'imessage', 'messenger', 'instagram', 'discord']
 }
 
-// Primary channels shown by default - dynamically determined by locale
-const primaryChannelIds = computed(() => getLocalizedChannelOrder())
+const alwaysVisibleChannelIds = ['mattermost', 'nextcloudtalk'] as const
+
+// Primary channels shown by default - locale favorites, self-hosted channels,
+// plus any channels the user already enabled.
+const primaryChannelIds = computed(() => {
+  const seen = new Set<string>()
+  const ordered: string[] = []
+
+  for (const id of getLocalizedChannelOrder()) {
+    if (!seen.has(id)) {
+      seen.add(id)
+      ordered.push(id)
+    }
+  }
+
+  for (const id of alwaysVisibleChannelIds) {
+    if (!seen.has(id)) {
+      seen.add(id)
+      ordered.push(id)
+    }
+  }
+
+  for (const channel of channelDefs.value) {
+    if (channel.enabled && !seen.has(channel.id)) {
+      seen.add(channel.id)
+      ordered.push(channel.id)
+    }
+  }
+
+  return ordered
+})
 
 // Remote Access state
 type RemoteAccessState = 'loading' | 'ready' | 'connecting' | 'connected' | 'error'
@@ -224,6 +253,22 @@ const channelDefs = shallowRef<ChannelDef[]>([
     fields: [
       { key: 'server_url', labelKey: 'channels.serverUrl', type: 'url', placeholderKey: 'channels.placeholderServerUrl', value: '', required: true },
       { key: 'bot_token', labelKey: 'channels.botToken', type: 'password', placeholderKey: 'channels.placeholderBotAccessToken', value: '', required: true },
+    ],
+  },
+  {
+    id: 'nextcloudtalk',
+    nameKey: 'channels.nextcloudTalk',
+    icon: getChannelIconOrDefault('nextcloudtalk'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.nextcloudTalkDesc',
+    hintKey: 'channels.nextcloudTalkHint',
+    docUrl: 'https://nextcloud.com/talk/',
+    fields: [
+      { key: 'server_url', labelKey: 'channels.serverUrl', type: 'url', placeholderKey: 'channels.placeholderNextcloudServerUrl', value: '', required: true },
+      { key: 'username', labelKey: 'channels.username', type: 'text', placeholderKey: 'channels.placeholderUsername', value: '', required: true },
+      { key: 'password', labelKey: 'channels.password', type: 'password', placeholderKey: 'channels.placeholderPassword', value: '', required: true },
+      { key: 'room_token', labelKey: 'channels.roomToken', type: 'text', placeholderKey: 'channels.placeholderNextcloudRoomToken', value: '', required: true },
     ],
   },
   {

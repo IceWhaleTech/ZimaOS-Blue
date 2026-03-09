@@ -219,6 +219,7 @@ func (f *ChannelFactory) createWhatsApp(cfg *ChannelConfig) (channel.Channel, er
 		Enabled:     cfg.Enabled,
 		PhoneNumber: cfg.Config["phone_number"],
 		SessionPath: cfg.Config["session_path"],
+		CLIPath:     cfg.Config["cli_path"],
 	}
 	if whatsappCfg.SessionPath == "" {
 		whatsappCfg.SessionPath = "./data/whatsapp"

@@ -1,0 +1,106 @@
+---
+title: "Channels"
+summary: "Messaging integrations currently surfaced by the Blue web application."
+---
+
+# Channels
+
+The current web application exposes configuration surfaces for a broad set of chat channels.
+
+## Supported integrations visible in the product
+
+- Telegram
+- Discord
+- Slack
+- WhatsApp
+- Signal
+- Microsoft Teams
+- Mattermost
+- Nextcloud Talk
+- Google Chat
+- Feishu
+- DingTalk
+- QQ
+- WeChat
+- Matrix
+- iMessage
+- BlueBubbles
+- Zalo
+- LINE
+- Messenger
+- Viber
+- X direct messages
+- Instagram direct messages
+- Twitch
+
+## How to think about channels
+
+- Channels are interaction surfaces, not separate runtimes
+- They typically require platform-specific credentials or pairing steps
+- They sit on top of the same model, automation, and security layers
+- They are best documented alongside provider and automation decisions, not in isolation
+
+## Configuration surfaces
+
+Blue currently exposes channel setup in two places:
+
+- The web application `Channels` view for day-to-day setup and validation
+- The server configuration file when you prefer declarative deployment workflows
+
+The field names shown in the web UI match the persisted config keys.
+
+## Example channel config
+
+These examples are intentionally minimal and focus on the keys users actually need to fill.
+
+### Nextcloud Talk
+
+```yaml
+channels:
+  nextcloudtalk:
+    enabled: true
+    server_url: "https://cloud.example.com"
+    username: "bot-user"
+    password: "app-password-or-user-password"
+    room_token: "room-token"
+```
+
+Use this when you want Blue to poll and reply inside a specific Nextcloud Talk room.
+
+### Mattermost
+
+```yaml
+channels:
+  mattermost:
+    enabled: true
+    server_url: "https://mattermost.example.com"
+    bot_token: "mm-bot-token"
+```
+
+Use this when you already have a Mattermost bot account and token.
+
+### BlueBubbles
+
+```yaml
+channels:
+  bluebubbles:
+    enabled: true
+    server_url: "http://mac-host:1234"
+    password: "server-password"
+```
+
+Use this when Blue should bridge to iMessage through a BlueBubbles server running on macOS.
+
+## Practical setup notes
+
+- Prefer the web UI first if you want connection testing before saving
+- Prefer YAML or managed config rollout when you deploy the same channel setup to multiple nodes
+- Self-hosted channels like Mattermost, Nextcloud Talk, and BlueBubbles usually need reachable `server_url` values from the Blue server process
+- `Nextcloud Talk` requires a room token in addition to account credentials
+- `BlueBubbles` depends on a working BlueBubbles server instance on macOS
+
+## What to read next
+
+- [Providers and Models](/guides/providers-models)
+- [Automation](/guides/automation)
+- [Troubleshooting](/help/troubleshooting)

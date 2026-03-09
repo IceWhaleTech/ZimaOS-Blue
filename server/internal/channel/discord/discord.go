@@ -60,11 +60,11 @@ type Channel struct {
 	session  *discordgo.Session
 	messages chan channel.Message
 
-	mu          sync.RWMutex
-	status      channel.Status
-	connectedAt *time.Time
-	lastError   string
-	lastErrorAt *time.Time
+	mu            sync.RWMutex
+	status        channel.Status
+	connectedAt   *time.Time
+	lastError     string
+	lastErrorAt   *time.Time
 	msgCount      atomic.Int64
 	msgsReceived  atomic.Int64
 	msgsSent      atomic.Int64
@@ -87,13 +87,15 @@ type Channel struct {
 	// Bot session manager for monitoring
 	sessionManager *channel.BotSessionManager
 
+	sendMessageFunc func(channelID string, data *discordgo.MessageSend) (*discordgo.Message, error)
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 // New creates a new Discord channel.
 func New(cfg channel.DiscordConfig, logger *zap.Logger) *Channel {
-	return &Channel{
+	c := &Channel{
 		config:            cfg,
 		logger:            logger.With(zap.String("channel", "discord")),
 		messages:          make(chan channel.Message, 100),
@@ -103,6 +105,8 @@ func New(cfg channel.DiscordConfig, logger *zap.Logger) *Channel {
 		shardID:           0,
 		shardCount:        1,
 	}
+	c.sendMessageFunc = c.sendMessage
+	return c
 }
 
 // NewWithSharding creates a new Discord channel with sharding support.
@@ -252,6 +256,7 @@ func (c *Channel) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate
 
 	// If message handler is set, process and reply
 	if c.messageHandler != nil {
+		replyToID := channelMsg.ID
 		go func() {
 			response, err := c.messageHandler(c.ctx, channelMsg)
 			if err != nil {
@@ -262,7 +267,7 @@ func (c *Channel) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate
 				if c.sessionManager != nil && sessionID != "" {
 					c.sessionManager.EmitError(sessionID, userID, err.Error())
 				}
-				errMsg := channel.OutgoingMessage{ChatID: chatID, Content: "处理消息时发生错误，请稍后重试。"}
+				errMsg := channel.OutgoingMessage{ChatID: chatID, ReplyToID: replyToID, Content: "处理消息时发生错误，请稍后重试。"}
 				if sendErr := c.Send(c.ctx, errMsg); sendErr != nil {
 					c.logger.Error("failed to send error response", zap.Error(sendErr))
 				}
@@ -274,7 +279,7 @@ func (c *Channel) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate
 					zap.String("user_id", userID))
 				return
 			}
-			outMsg := channel.OutgoingMessage{ChatID: chatID, Content: response}
+			outMsg := channel.OutgoingMessage{ChatID: chatID, ReplyToID: replyToID, Content: response}
 			if err := c.Send(c.ctx, outMsg); err != nil {
 				c.logger.Error("failed to send response", zap.Error(err))
 			} else if c.sessionManager != nil && sessionID != "" {
@@ -295,36 +300,60 @@ func (c *Channel) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate
 
 // convertMessage converts a Discord message to the unified format.
 func (c *Channel) convertMessage(m *discordgo.MessageCreate) channel.Message {
+	authorID := ""
+	authorName := ""
+	if m.Author != nil {
+		authorID = m.Author.ID
+		authorName = m.Author.Username
+	}
+
+	metadata := map[string]interface{}{
+		"guild_id":   m.GuildID,
+		"channel_id": m.ChannelID,
+	}
+	if m.MentionEveryone {
+		metadata["mention_everyone"] = true
+	}
+	if mentions, mentionIDs := discordMentionsMetadata(m.Mentions); len(mentions) > 0 {
+		metadata["mentions"] = mentions
+		metadata["mention_ids"] = mentionIDs
+	}
+	if embeds := discordEmbedsMetadata(m.Embeds); len(embeds) > 0 {
+		metadata["embeds"] = embeds
+	}
+	if components := discordComponentsMetadata(m.Components); len(components) > 0 {
+		metadata["components"] = components
+	}
+
 	channelMsg := channel.Message{
 		ID:          m.ID,
 		ChannelName: "discord",
 		ChatID:      m.ChannelID,
-		UserID:      m.Author.ID,
-		Username:    m.Author.Username,
+		UserID:      authorID,
+		Username:    authorName,
 		Type:        channel.MessageTypeText,
 		Content:     m.Content,
 		Timestamp:   m.Timestamp,
 		IsGroup:     m.GuildID != "",
-		Metadata: map[string]interface{}{
-			"guild_id":   m.GuildID,
-			"channel_id": m.ChannelID,
-		},
+		Metadata:    metadata,
 	}
 
-	// Get guild name if in a guild
-	if m.GuildID != "" {
+	if m.GuildID != "" && c.session != nil {
 		guild, err := c.session.Guild(m.GuildID)
 		if err == nil {
 			channelMsg.GroupName = guild.Name
 		}
 	}
 
-	// Handle reply
 	if m.ReferencedMessage != nil {
 		channelMsg.ReplyToID = m.ReferencedMessage.ID
+	} else if m.MessageReference != nil && strings.TrimSpace(m.MessageReference.MessageID) != "" {
+		channelMsg.ReplyToID = strings.TrimSpace(m.MessageReference.MessageID)
+	}
+	if strings.TrimSpace(channelMsg.ReplyToID) != "" {
+		channelMsg.Metadata["reference_message_id"] = channelMsg.ReplyToID
 	}
 
-	// Handle attachments
 	for _, att := range m.Attachments {
 		msgType := channel.MessageTypeFile
 		if strings.HasPrefix(att.ContentType, "image/") {
@@ -347,9 +376,184 @@ func (c *Channel) convertMessage(m *discordgo.MessageCreate) channel.Message {
 
 	if len(channelMsg.Attachments) > 0 && channelMsg.Content == "" {
 		channelMsg.Type = channelMsg.Attachments[0].Type
+	} else if len(m.Embeds) > 0 && strings.TrimSpace(channelMsg.Content) == "" {
+		channelMsg.Type = channel.MessageTypeCard
 	}
 
 	return channelMsg
+}
+
+func discordMentionsMetadata(mentions []*discordgo.User) ([]map[string]interface{}, []string) {
+	if len(mentions) == 0 {
+		return nil, nil
+	}
+	items := make([]map[string]interface{}, 0, len(mentions))
+	ids := make([]string, 0, len(mentions))
+	seen := make(map[string]struct{}, len(mentions))
+	for _, mention := range mentions {
+		if mention == nil {
+			continue
+		}
+		mentionID := strings.TrimSpace(mention.ID)
+		if mentionID == "" {
+			continue
+		}
+		if _, exists := seen[mentionID]; exists {
+			continue
+		}
+		seen[mentionID] = struct{}{}
+		item := map[string]interface{}{"id": mentionID}
+		if strings.TrimSpace(mention.Username) != "" {
+			item["username"] = strings.TrimSpace(mention.Username)
+		}
+		if strings.TrimSpace(mention.GlobalName) != "" {
+			item["global_name"] = strings.TrimSpace(mention.GlobalName)
+		}
+		items = append(items, item)
+		ids = append(ids, mentionID)
+	}
+	return items, ids
+}
+
+func discordEmbedsMetadata(embeds []*discordgo.MessageEmbed) []map[string]interface{} {
+	if len(embeds) == 0 {
+		return nil
+	}
+	items := make([]map[string]interface{}, 0, len(embeds))
+	for _, embed := range embeds {
+		if embed == nil {
+			continue
+		}
+		item := map[string]interface{}{}
+		if strings.TrimSpace(embed.Title) != "" {
+			item["title"] = strings.TrimSpace(embed.Title)
+		}
+		if strings.TrimSpace(embed.Description) != "" {
+			item["description"] = strings.TrimSpace(embed.Description)
+		}
+		if strings.TrimSpace(embed.URL) != "" {
+			item["url"] = strings.TrimSpace(embed.URL)
+		}
+		if strings.TrimSpace(string(embed.Type)) != "" {
+			item["type"] = strings.TrimSpace(string(embed.Type))
+		}
+		if embed.Author != nil && strings.TrimSpace(embed.Author.Name) != "" {
+			item["author"] = strings.TrimSpace(embed.Author.Name)
+		}
+		if len(embed.Fields) > 0 {
+			item["field_count"] = len(embed.Fields)
+		}
+		if len(item) > 0 {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func discordComponentsMetadata(components []discordgo.MessageComponent) []map[string]interface{} {
+	if len(components) == 0 {
+		return nil
+	}
+	items := make([]map[string]interface{}, 0, len(components))
+	for _, component := range components {
+		item := discordComponentMetadata(component)
+		if len(item) > 0 {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func discordComponentMetadata(component discordgo.MessageComponent) map[string]interface{} {
+	switch cmp := component.(type) {
+	case discordgo.ActionsRow:
+		return map[string]interface{}{"type": int(cmp.Type()), "components": discordComponentsMetadata(cmp.Components)}
+	case *discordgo.ActionsRow:
+		if cmp == nil {
+			return nil
+		}
+		return map[string]interface{}{"type": int(cmp.Type()), "components": discordComponentsMetadata(cmp.Components)}
+	case discordgo.Button:
+		return discordButtonMetadata(cmp)
+	case *discordgo.Button:
+		if cmp == nil {
+			return nil
+		}
+		return discordButtonMetadata(*cmp)
+	case discordgo.SelectMenu:
+		return discordSelectMenuMetadata(cmp)
+	case *discordgo.SelectMenu:
+		if cmp == nil {
+			return nil
+		}
+		return discordSelectMenuMetadata(*cmp)
+	case discordgo.TextInput:
+		return discordTextInputMetadata(cmp)
+	case *discordgo.TextInput:
+		if cmp == nil {
+			return nil
+		}
+		return discordTextInputMetadata(*cmp)
+	default:
+		if component == nil {
+			return nil
+		}
+		return map[string]interface{}{"type": int(component.Type())}
+	}
+}
+
+func discordButtonMetadata(button discordgo.Button) map[string]interface{} {
+	item := map[string]interface{}{
+		"type":  int(button.Type()),
+		"label": button.Label,
+		"style": int(button.Style),
+	}
+	if strings.TrimSpace(button.CustomID) != "" {
+		item["custom_id"] = strings.TrimSpace(button.CustomID)
+	}
+	if strings.TrimSpace(button.URL) != "" {
+		item["url"] = strings.TrimSpace(button.URL)
+	}
+	if button.Disabled {
+		item["disabled"] = true
+	}
+	return item
+}
+
+func discordSelectMenuMetadata(menu discordgo.SelectMenu) map[string]interface{} {
+	item := map[string]interface{}{
+		"type":         int(menu.Type()),
+		"custom_id":    menu.CustomID,
+		"option_count": len(menu.Options),
+	}
+	if strings.TrimSpace(menu.Placeholder) != "" {
+		item["placeholder"] = strings.TrimSpace(menu.Placeholder)
+	}
+	if menu.MinValues != nil {
+		item["min_values"] = *menu.MinValues
+	}
+	if menu.MaxValues > 0 {
+		item["max_values"] = menu.MaxValues
+	}
+	if menu.Disabled {
+		item["disabled"] = true
+	}
+	return item
+}
+
+func discordTextInputMetadata(input discordgo.TextInput) map[string]interface{} {
+	item := map[string]interface{}{
+		"type":      int(input.Type()),
+		"custom_id": input.CustomID,
+		"label":     input.Label,
+	}
+	if strings.TrimSpace(input.Placeholder) != "" {
+		item["placeholder"] = strings.TrimSpace(input.Placeholder)
+	}
+	if input.Required {
+		item["required"] = true
+	}
+	return item
 }
 
 // isGuildAllowed checks if a guild is allowed.
@@ -410,6 +614,9 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	if c.session == nil {
 		return fmt.Errorf("session not initialized")
 	}
+	if c.sendMessageFunc == nil {
+		c.sendMessageFunc = c.sendMessage
+	}
 
 	// Build message send data
 	data := &discordgo.MessageSend{
@@ -424,14 +631,27 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		}
 	}
 
-	// Handle embeds from metadata
+	// Handle rich message metadata
 	if msg.Metadata != nil {
 		if embeds, ok := msg.Metadata["embeds"].([]*discordgo.MessageEmbed); ok {
 			data.Embeds = embeds
 		}
+		if rows, ok := msg.Metadata["components"].([]ActionRow); ok {
+			data.Components = c.buildComponents(rows)
+		} else if components, ok := msg.Metadata["components"].([]discordgo.MessageComponent); ok {
+			data.Components = components
+		}
+		if allowedMentions, ok := msg.Metadata["allowed_mentions"].(*discordgo.MessageAllowedMentions); ok {
+			data.AllowedMentions = allowedMentions
+		} else if allowedMentions, ok := msg.Metadata["allowed_mentions"].(discordgo.MessageAllowedMentions); ok {
+			data.AllowedMentions = &allowedMentions
+		}
+		if tts, ok := msg.Metadata["tts"].(bool); ok {
+			data.TTS = tts
+		}
 	}
 
-	// Attach files from attachments
+	var fallbackParts []string
 	for _, att := range msg.Attachments {
 		if len(att.Data) > 0 {
 			name := att.Name
@@ -443,10 +663,25 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 				ContentType: att.MimeType,
 				Reader:      bytes.NewReader(att.Data),
 			})
+			continue
+		}
+		if fallback := discordAttachmentFallbackText(att); fallback != "" {
+			fallbackParts = append(fallbackParts, fallback)
+		}
+	}
+	if len(fallbackParts) > 0 {
+		if data.Content != "" {
+			data.Content += "\n" + strings.Join(fallbackParts, "\n")
+		} else {
+			data.Content = strings.Join(fallbackParts, "\n")
 		}
 	}
 
-	_, err := c.session.ChannelMessageSendComplex(msg.ChatID, data)
+	if data.Content == "" && len(data.Files) == 0 && len(data.Embeds) == 0 && len(data.Components) == 0 {
+		return fmt.Errorf("no sendable Discord content")
+	}
+
+	_, err := c.sendMessageFunc(msg.ChatID, data)
 	if err != nil {
 		c.logger.Error("failed to send message",
 			zap.String("channel_id", msg.ChatID),
@@ -461,6 +696,26 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	c.mu.Unlock()
 
 	return nil
+}
+
+func (c *Channel) sendMessage(channelID string, data *discordgo.MessageSend) (*discordgo.Message, error) {
+	if c.session == nil {
+		return nil, fmt.Errorf("session not initialized")
+	}
+	return c.session.ChannelMessageSendComplex(channelID, data)
+}
+
+func discordAttachmentFallbackText(att channel.Attachment) string {
+	if strings.TrimSpace(att.URL) != "" {
+		return strings.TrimSpace(att.URL)
+	}
+	if strings.TrimSpace(att.Name) != "" {
+		return strings.TrimSpace(att.Name)
+	}
+	if len(att.Data) > 0 {
+		return "[Attachment]"
+	}
+	return ""
 }
 
 // SendTyping sends a typing indicator to the given Discord channel.

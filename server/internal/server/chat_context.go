@@ -2,7 +2,10 @@ package server
 
 import (
 	"context"
+	"path/filepath"
 	"regexp"
+	"sort"
+	"strings"
 	"sync/atomic"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
@@ -43,6 +46,72 @@ type ContextStrategyResult struct {
 type ConversationSummary struct {
 	Text         string
 	MessageCount int
+}
+
+const compressedTierRecentRounds = 3
+
+const (
+	trimPolicyCharsPerTokenEstimate = 4
+	trimPolicyImageCharEstimate     = 8000
+)
+
+type trimPolicyToolMatch struct {
+	Allow []string
+	Deny  []string
+}
+
+type trimPolicySoftTrimSettings struct {
+	MaxChars  int
+	HeadChars int
+	TailChars int
+}
+
+type trimPolicyHardClearSettings struct {
+	Enabled     bool
+	Placeholder string
+}
+
+type trimPolicyPruneSettings struct {
+	KeepLastAssistants   int
+	SoftTrimRatio        float64
+	HardClearRatio       float64
+	MinPrunableToolChars int
+	Tools                trimPolicyToolMatch
+	SoftTrim             trimPolicySoftTrimSettings
+	HardClear            trimPolicyHardClearSettings
+}
+
+type trimPolicyPruneReport struct {
+	BeforeChars         int
+	AfterChars          int
+	ContextWindowChars  int
+	BeforeRatio         float64
+	AfterRatio          float64
+	ExaminedToolResults int
+	EligibleToolResults int
+	SkippedByToolPolicy int
+	SkippedByImage      int
+	SoftTrimmed         int
+	HardCleared         int
+	SoftTrimByTool      map[string]int
+	HardClearByTool     map[string]int
+}
+
+var trimPolicyDefaultPruneSettings = trimPolicyPruneSettings{
+	KeepLastAssistants:   3,
+	SoftTrimRatio:        0.3,
+	HardClearRatio:       0.5,
+	MinPrunableToolChars: 50000,
+	Tools:                trimPolicyToolMatch{},
+	SoftTrim: trimPolicySoftTrimSettings{
+		MaxChars:  4000,
+		HeadChars: 1500,
+		TailChars: 1500,
+	},
+	HardClear: trimPolicyHardClearSettings{
+		Enabled:     true,
+		Placeholder: "[Old tool result content cleared]",
+	},
 }
 
 // --- Classification ---
@@ -502,6 +571,7 @@ func convertToLLMMessages(messages []memory.Message) []llm.Message {
 			Role:       llm.Role(msg.Role),
 			Content:    msg.Content,
 			ToolCallID: msg.ToolCallID,
+			ToolName:   msg.ToolName,
 		}
 		for _, tc := range msg.ToolCalls {
 			m.ToolCalls = append(m.ToolCalls, llm.ToolCall{
@@ -581,6 +651,414 @@ func removeOrphanedToolResults(msgs []llm.Message) []llm.Message {
 	return filtered
 }
 
+func trimPolicyEstimateMessageChars(msg llm.Message) int {
+	estimateParts := func(parts []llm.ContentPart) int {
+		chars := 0
+		for _, p := range parts {
+			switch p.Type {
+			case "text":
+				chars += len([]rune(p.Text))
+			case "image":
+				chars += trimPolicyImageCharEstimate
+			}
+		}
+		return chars
+	}
+
+	switch msg.Role {
+	case llm.RoleUser:
+		if len(msg.ContentParts) > 0 {
+			return estimateParts(msg.ContentParts)
+		}
+		return len([]rune(msg.Content))
+	case llm.RoleAssistant:
+		chars := len([]rune(msg.Content))
+		if len(msg.ContentParts) > 0 {
+			chars += estimateParts(msg.ContentParts)
+		}
+		for _, tc := range msg.ToolCalls {
+			chars += len([]rune(tc.Arguments))
+			chars += len([]rune(tc.Name))
+		}
+		return chars
+	case llm.RoleTool:
+		if len(msg.ContentParts) > 0 {
+			return estimateParts(msg.ContentParts)
+		}
+		return len([]rune(msg.Content))
+	default:
+		if msg.Content != "" {
+			return len([]rune(msg.Content))
+		}
+		return 256
+	}
+}
+
+func trimPolicyEstimateContextChars(messages []llm.Message) int {
+	total := 0
+	for _, m := range messages {
+		total += trimPolicyEstimateMessageChars(m)
+	}
+	return total
+}
+
+func trimPolicyFindAssistantCutoffIndex(messages []llm.Message, keepLastAssistants int) (int, bool) {
+	if keepLastAssistants <= 0 {
+		return len(messages), true
+	}
+	remaining := keepLastAssistants
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != llm.RoleAssistant {
+			continue
+		}
+		remaining--
+		if remaining == 0 {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+func trimPolicyFirstUserIndex(messages []llm.Message) int {
+	for i := 0; i < len(messages); i++ {
+		if messages[i].Role == llm.RoleUser {
+			return i
+		}
+	}
+	return -1
+}
+
+func trimPolicyHasImageParts(msg llm.Message) bool {
+	for _, p := range msg.ContentParts {
+		if p.Type == "image" {
+			return true
+		}
+	}
+	return false
+}
+
+func trimPolicyClampRatio(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+func trimPolicyNormalizePruneSettings(settings trimPolicyPruneSettings) trimPolicyPruneSettings {
+	if settings.KeepLastAssistants < 0 {
+		settings.KeepLastAssistants = 0
+	}
+	settings.SoftTrimRatio = trimPolicyClampRatio(settings.SoftTrimRatio)
+	settings.HardClearRatio = trimPolicyClampRatio(settings.HardClearRatio)
+	if settings.MinPrunableToolChars < 0 {
+		settings.MinPrunableToolChars = 0
+	}
+	if settings.SoftTrim.MaxChars < 0 {
+		settings.SoftTrim.MaxChars = 0
+	}
+	if settings.SoftTrim.HeadChars < 0 {
+		settings.SoftTrim.HeadChars = 0
+	}
+	if settings.SoftTrim.TailChars < 0 {
+		settings.SoftTrim.TailChars = 0
+	}
+	if strings.TrimSpace(settings.HardClear.Placeholder) == "" {
+		settings.HardClear.Placeholder = trimPolicyDefaultPruneSettings.HardClear.Placeholder
+	}
+	return settings
+}
+
+func trimPolicyNormalizeGlob(v string) string {
+	return strings.ToLower(strings.TrimSpace(v))
+}
+
+func trimPolicyNormalizeGlobs(globs []string) []string {
+	if len(globs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(globs))
+	for _, g := range globs {
+		if s := trimPolicyNormalizeGlob(g); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func trimPolicyMatchesAnyGlob(value string, globs []string) bool {
+	for _, g := range globs {
+		if ok, err := filepath.Match(g, value); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+func trimPolicyMakeToolPrunablePredicate(match trimPolicyToolMatch) func(string) bool {
+	deny := trimPolicyNormalizeGlobs(match.Deny)
+	allow := trimPolicyNormalizeGlobs(match.Allow)
+	return func(toolName string) bool {
+		normalized := trimPolicyNormalizeGlob(toolName)
+		if trimPolicyMatchesAnyGlob(normalized, deny) {
+			return false
+		}
+		if len(allow) == 0 {
+			return true
+		}
+		return trimPolicyMatchesAnyGlob(normalized, allow)
+	}
+}
+
+func trimPolicyToolNameForMessage(msg llm.Message, toolCallNameIndex map[string]string) string {
+	if name := strings.TrimSpace(msg.ToolName); name != "" {
+		return name
+	}
+	if id := strings.TrimSpace(msg.ToolCallID); id != "" {
+		if name := strings.TrimSpace(toolCallNameIndex[id]); name != "" {
+			return name
+		}
+	}
+	return strings.TrimSpace(detectToolNameFromToolResultContent(msg.Content))
+}
+
+func trimPolicySoftTrimToolMessage(msg llm.Message, settings trimPolicyPruneSettings) (llm.Message, bool) {
+	if msg.Role != llm.RoleTool {
+		return msg, false
+	}
+	if trimPolicyHasImageParts(msg) {
+		return msg, false
+	}
+	text := strings.TrimSpace(msg.Content)
+	if text == "" && len(msg.ContentParts) > 0 {
+		parts := make([]string, 0, len(msg.ContentParts))
+		for _, p := range msg.ContentParts {
+			if p.Type == "text" {
+				parts = append(parts, p.Text)
+			}
+		}
+		text = strings.Join(parts, "\n")
+	}
+	runes := []rune(text)
+	rawLen := len(runes)
+	if rawLen <= settings.SoftTrim.MaxChars {
+		return msg, false
+	}
+	if settings.SoftTrim.HeadChars+settings.SoftTrim.TailChars >= rawLen {
+		return msg, false
+	}
+	head := string(runes[:settings.SoftTrim.HeadChars])
+	tail := string(runes[rawLen-settings.SoftTrim.TailChars:])
+	trimmed := head + "\n...\n" + tail
+	trimmed += "\n\n[Tool result trimmed: kept first "
+	trimmed += intToString(settings.SoftTrim.HeadChars)
+	trimmed += " chars and last "
+	trimmed += intToString(settings.SoftTrim.TailChars)
+	trimmed += " chars of "
+	trimmed += intToString(rawLen)
+	trimmed += " chars.]"
+
+	msg.Content = trimmed
+	msg.ContentParts = nil
+	return msg, true
+}
+
+func intToString(v int) string {
+	// Avoid importing strconv in this hot path file.
+	if v == 0 {
+		return "0"
+	}
+	if v < 0 {
+		return "-" + intToString(-v)
+	}
+	var buf [20]byte
+	i := len(buf)
+	for v > 0 {
+		i--
+		buf[i] = byte('0' + v%10)
+		v /= 10
+	}
+	return string(buf[i:])
+}
+
+func trimPolicyPruneContextMessages(messages []llm.Message, contextWindowTokens int) []llm.Message {
+	out, _ := trimPolicyPruneContextMessagesWithReport(messages, contextWindowTokens, trimPolicyDefaultPruneSettings)
+	return out
+}
+
+func trimPolicyPruneContextMessagesWithSettings(messages []llm.Message, contextWindowTokens int, settings trimPolicyPruneSettings) []llm.Message {
+	out, _ := trimPolicyPruneContextMessagesWithReport(messages, contextWindowTokens, settings)
+	return out
+}
+
+func trimPolicyPruneContextMessagesWithReport(
+	messages []llm.Message,
+	contextWindowTokens int,
+	settings trimPolicyPruneSettings,
+) ([]llm.Message, trimPolicyPruneReport) {
+	settings = trimPolicyNormalizePruneSettings(settings)
+	report := trimPolicyPruneReport{}
+	if len(messages) == 0 || contextWindowTokens <= 0 {
+		return messages, report
+	}
+	charWindow := contextWindowTokens * trimPolicyCharsPerTokenEstimate
+	report.ContextWindowChars = charWindow
+	if charWindow <= 0 {
+		return messages, report
+	}
+
+	cutoffIndex, ok := trimPolicyFindAssistantCutoffIndex(messages, settings.KeepLastAssistants)
+	if !ok {
+		return messages, report
+	}
+	firstUser := trimPolicyFirstUserIndex(messages)
+	pruneStart := len(messages)
+	if firstUser >= 0 {
+		pruneStart = firstUser
+	}
+
+	totalChars := trimPolicyEstimateContextChars(messages)
+	report.BeforeChars = totalChars
+	ratio := float64(totalChars) / float64(charWindow)
+	report.BeforeRatio = ratio
+	report.AfterChars = totalChars
+	report.AfterRatio = ratio
+	if ratio < settings.SoftTrimRatio {
+		return messages, report
+	}
+
+	prunableToolIndexes := make([]int, 0)
+	isToolPrunable := trimPolicyMakeToolPrunablePredicate(settings.Tools)
+	toolCallNameIndex := buildToolCallNameIndex(messages)
+	prunableToolNames := make(map[int]string)
+	var next []llm.Message
+	for i := pruneStart; i < cutoffIndex; i++ {
+		msg := messages[i]
+		if msg.Role != llm.RoleTool {
+			continue
+		}
+		report.ExaminedToolResults++
+		toolName := trimPolicyToolNameForMessage(msg, toolCallNameIndex)
+		if !isToolPrunable(toolName) {
+			report.SkippedByToolPolicy++
+			continue
+		}
+		if trimPolicyHasImageParts(msg) {
+			report.SkippedByImage++
+			continue
+		}
+		report.EligibleToolResults++
+		prunableToolIndexes = append(prunableToolIndexes, i)
+		prunableToolNames[i] = toolName
+		updated, changed := trimPolicySoftTrimToolMessage(msg, settings)
+		if !changed {
+			continue
+		}
+		report.SoftTrimmed++
+		if report.SoftTrimByTool == nil {
+			report.SoftTrimByTool = make(map[string]int)
+		}
+		report.SoftTrimByTool[toolName]++
+		beforeChars := trimPolicyEstimateMessageChars(msg)
+		afterChars := trimPolicyEstimateMessageChars(updated)
+		totalChars += afterChars - beforeChars
+		if next == nil {
+			next = make([]llm.Message, len(messages))
+			copy(next, messages)
+		}
+		next[i] = updated
+	}
+
+	outputAfterSoftTrim := messages
+	if next != nil {
+		outputAfterSoftTrim = next
+	}
+	ratio = float64(totalChars) / float64(charWindow)
+	report.AfterChars = totalChars
+	report.AfterRatio = ratio
+	if ratio < settings.HardClearRatio || !settings.HardClear.Enabled {
+		return outputAfterSoftTrim, report
+	}
+
+	prunableToolChars := 0
+	for _, i := range prunableToolIndexes {
+		msg := outputAfterSoftTrim[i]
+		if msg.Role != llm.RoleTool {
+			continue
+		}
+		prunableToolChars += trimPolicyEstimateMessageChars(msg)
+	}
+	if prunableToolChars < settings.MinPrunableToolChars {
+		return outputAfterSoftTrim, report
+	}
+
+	if next == nil {
+		next = make([]llm.Message, len(messages))
+		copy(next, messages)
+	}
+	for _, i := range prunableToolIndexes {
+		if ratio < settings.HardClearRatio {
+			break
+		}
+		msg := next[i]
+		if msg.Role != llm.RoleTool {
+			continue
+		}
+		beforeChars := trimPolicyEstimateMessageChars(msg)
+		msg.Content = settings.HardClear.Placeholder
+		msg.ContentParts = nil
+		next[i] = msg
+		report.HardCleared++
+		if report.HardClearByTool == nil {
+			report.HardClearByTool = make(map[string]int)
+		}
+		report.HardClearByTool[prunableToolNames[i]]++
+		afterChars := trimPolicyEstimateMessageChars(msg)
+		totalChars += afterChars - beforeChars
+		ratio = float64(totalChars) / float64(charWindow)
+		report.AfterChars = totalChars
+		report.AfterRatio = ratio
+	}
+
+	return next, report
+}
+
+func trimPolicyTopToolCounters(counter map[string]int, limit int) []string {
+	if len(counter) == 0 {
+		return nil
+	}
+	if limit <= 0 {
+		limit = 3
+	}
+	type pair struct {
+		name  string
+		count int
+	}
+	pairs := make([]pair, 0, len(counter))
+	for name, count := range counter {
+		if strings.TrimSpace(name) == "" || count <= 0 {
+			continue
+		}
+		pairs = append(pairs, pair{name: name, count: count})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].count == pairs[j].count {
+			return pairs[i].name < pairs[j].name
+		}
+		return pairs[i].count > pairs[j].count
+	})
+	if len(pairs) > limit {
+		pairs = pairs[:limit]
+	}
+	out := make([]string, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, p.name+":"+intToString(p.count))
+	}
+	return out
+}
+
 // extractLatestTurn returns only the newest user turn (from the last user message
 // to the end). For fresh standalone questions we intentionally avoid replaying
 // older history/tool traces.
@@ -658,7 +1136,9 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 		result.Messages = extractLatestTurn(messages)
 
 	case TierCompressedMemory:
-		recentMessages := extractRecentRounds(messages, 2)
+		// Keep more recent rounds (TrimPolicy-style protected tail) so short-lived
+		// decisions and constraints survive summary compression.
+		recentMessages := extractRecentRounds(messages, compressedTierRecentRounds)
 
 		// Try cached summary
 		var summaryText string
@@ -686,13 +1166,52 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 		}
 	}
 
+	if len(result.Messages) > 0 {
+		contextWindowTokens := h.compactionConfig.MaxContextTokens
+		if contextWindowTokens <= 0 {
+			contextWindowTokens = claudecode.DefaultContextTokens
+		}
+		pruneSettings := trimPolicyDefaultPruneSettings
+		if h.settingsHandler != nil {
+			pruneSettings.Tools.Allow = h.settingsHandler.GetSmallModelContextPruneToolAllow()
+			pruneSettings.Tools.Deny = h.settingsHandler.GetSmallModelContextPruneToolDeny()
+		}
+		pruned, report := trimPolicyPruneContextMessagesWithReport(result.Messages, contextWindowTokens, pruneSettings)
+		result.Messages = pruned
+
+		if report.ExaminedToolResults > 0 {
+			ev := logger.Debug().
+				Str("conv_id", params.ConvID).
+				Int("tool_results_examined", report.ExaminedToolResults).
+				Int("tool_results_eligible", report.EligibleToolResults).
+				Int("skipped_by_tool_policy", report.SkippedByToolPolicy).
+				Int("skipped_by_image", report.SkippedByImage).
+				Int("soft_trimmed", report.SoftTrimmed).
+				Int("hard_cleared", report.HardCleared).
+				Int("before_chars", report.BeforeChars).
+				Int("after_chars", report.AfterChars)
+			if report.ContextWindowChars > 0 {
+				ev = ev.Float64("before_ratio", report.BeforeRatio).Float64("after_ratio", report.AfterRatio)
+			}
+			if top := trimPolicyTopToolCounters(report.SoftTrimByTool, 3); len(top) > 0 {
+				ev = ev.Strs("soft_trim_tools", top)
+			}
+			if top := trimPolicyTopToolCounters(report.HardClearByTool, 3); len(top) > 0 {
+				ev = ev.Strs("hard_clear_tools", top)
+			}
+			ev.Msg("[context] trim policy report")
+		}
+	}
+
 	return result
 }
 
 // summaryCustomInstructions is the prompt for generating compressed summaries.
-const summaryCustomInstructions = "Summarize in 1-2 sentences (30-50 tokens max). " +
-	"Focus on: current topic, key decisions, open questions. " +
-	"Do NOT include greetings or meta-commentary."
+const summaryCustomInstructions = "Summarize old conversation for continuation context. " +
+	"Keep important content, omit intermediate reasoning process. " +
+	"Output concise bullet points (max 8) covering: current objective, key decisions, " +
+	"constraints/preferences, confirmed facts, open questions/TODO. " +
+	"Skip empty sections. Keep total length under 120 tokens."
 
 // generateSummarySync generates a compressed summary for older messages.
 // Called synchronously when no cached summary exists.
@@ -726,7 +1245,7 @@ func (h *ChatHandler) generateSummarySync(ctx context.Context, convID string, al
 	compactor := claudecode.NewCompactor(claudecode.CompactionConfig{
 		MaxContextTokens:   4096,
 		MaxHistoryShare:    1.0,
-		ReserveTokens:      100,
+		ReserveTokens:      220,
 		CustomInstructions: summaryCustomInstructions,
 	}, provider)
 
@@ -791,7 +1310,7 @@ func (h *ChatHandler) refreshSummaryAsync(convID string, messages []memory.Messa
 		compactor := claudecode.NewCompactor(claudecode.CompactionConfig{
 			MaxContextTokens:   4096,
 			MaxHistoryShare:    1.0,
-			ReserveTokens:      100,
+			ReserveTokens:      220,
 			CustomInstructions: summaryCustomInstructions,
 		}, provider)
 

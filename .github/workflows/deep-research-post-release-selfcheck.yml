@@ -1,0 +1,60 @@
+name: Deep Research Post-Release Selfcheck
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: "Blue API URL (e.g. http://127.0.0.1:18080 or deployed URL)"
+        required: true
+        default: "http://127.0.0.1:18080"
+      query:
+        description: "Research query used in selfcheck jobs"
+        required: true
+        default: "OpenAI"
+      mode:
+        description: "deep_research mode"
+        required: true
+        default: "fast"
+      locales:
+        description: "CSV locales (empty => CI smoke default en-US,zh-CN,ja-JP)"
+        required: false
+        default: ""
+      output_json:
+        description: "Output artifact filename"
+        required: false
+        default: "deep-research-selfcheck.json"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Run Deep Research Smoke Selfcheck
+    runs-on: ubuntu-latest
+    env:
+      SERVER_URL: ${{ github.event.inputs.server_url }}
+      QUERY: ${{ github.event.inputs.query }}
+      MODE: ${{ github.event.inputs.mode }}
+      LOCALES: ${{ github.event.inputs.locales }}
+      OUTPUT_JSON: ${{ github.event.inputs.output_json }}
+      TOKEN: ${{ secrets.BLUE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq jq curl
+
+      - name: Run selfcheck (3-locale smoke by default)
+        working-directory: server
+        run: |
+          chmod +x ./tools/verify_deep_research_post_release.sh ./tools/verify_deep_research_smoke_ci.sh
+          make verify-deep-research-smoke
+
+      - name: Upload selfcheck report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-research-selfcheck
+          path: server/${{ github.event.inputs.output_json }}

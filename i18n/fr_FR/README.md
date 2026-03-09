@@ -66,7 +66,7 @@ Allez plus loin : il offre un support natif pour **plus de 20 plateformes de mes
 
 Compilé nativement en Go — pas d'interpréteur, pas de VM, pas de surcharge. Fonctionne silencieusement sur tout, des serveurs à vos appareils de bureau.
 
-| Métrique | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Métrique | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |--------|-------------------|------------------------|
 | `help` démarrage à froid / à chaud | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` exécution (meilleur sur 3) | **< 0.01 s** | 5.98 s |

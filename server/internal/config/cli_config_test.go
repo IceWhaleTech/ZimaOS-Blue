@@ -160,6 +160,16 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 		t.Errorf("expected SchemaMapping 'auto', got '%s'", cfg.Adapters.CCNexus.SchemaMapping)
 	}
 
+	if cfg.Profile != "full" {
+		t.Errorf("expected Profile full, got %q", cfg.Profile)
+	}
+	if len(cfg.Profiles["coding"]) == 0 {
+		t.Fatalf("expected coding profile entries to be populated")
+	}
+	if len(cfg.Groups["group:runtime"]) == 0 {
+		t.Fatalf("expected group:runtime entries to be populated")
+	}
+
 	if cfg.WebSearch.Provider != "duckduckgo" {
 		t.Errorf("expected WebSearch.Provider 'duckduckgo', got %q", cfg.WebSearch.Provider)
 	}

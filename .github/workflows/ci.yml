@@ -16,6 +16,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify OpenClaw submodule
+        run: |
+          git submodule status -- third_party/openclaw
+          test -f third_party/openclaw/README.md
 
       - uses: actions/setup-node@v4
         with:
@@ -23,22 +30,39 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Install & Build
+      - name: Install, Audit & Build
         working-directory: web
         run: |
           npm ci
+          npm run audit:ci
           npm run build
+
 
   server:
     name: Server Build & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify OpenClaw submodule
+        run: |
+          git submodule status -- third_party/openclaw
+          test -f third_party/openclaw/README.md
 
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: server/go.sum
+
+      - name: Run chat-chain gap check
+        run: |
+          go -C server run ./tools/chat_chain_gapcheck \
+            --repo-root .. \
+            --json-output ../docs/reports/chat-chain-gap.json \
+            --md-output ../docs/reports/chat-chain-gap.md \
+            --fail-on-missing
 
       - name: Create stub web dist
         run: mkdir -p server/internal/web/dist && touch server/internal/web/dist/.gitkeep

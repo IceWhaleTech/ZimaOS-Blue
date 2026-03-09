@@ -556,7 +556,7 @@ func TestBuildUpstreamRequestWithFormat_AnthropicEndpointConvertsBody(t *testing
 	}
 }
 
-func TestBuildUpstreamRequestWithFormat_CodexModelUsesResponsesEndpoint(t *testing.T) {
+func TestBuildUpstreamRequestWithFormat_CodexModelStaysChatCompletionsOnOpenAICompatProvider(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 
 	result := &providerpool.RouteResult{
@@ -571,6 +571,48 @@ func TestBuildUpstreamRequestWithFormat_CodexModelUsesResponsesEndpoint(t *testi
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	body := []byte(`{"model":"gpt-5.3-codex-spark","messages":[{"role":"user","content":"hi"}],"max_tokens":9}`)
 	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatOpenAI)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	if upstreamReq.URL.Path != "/v1/chat/completions" {
+		t.Fatalf("upstream path = %q, want %q", upstreamReq.URL.Path, "/v1/chat/completions")
+	}
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if !gjson.GetBytes(convertedBody, "messages").Exists() {
+		t.Fatalf("converted body missing messages: %s", string(convertedBody))
+	}
+	if gjson.GetBytes(convertedBody, "input").Exists() {
+		t.Fatalf("converted body unexpectedly contains input: %s", string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "max_tokens").Int(); got != 9 {
+		t.Fatalf("max_tokens = %d, want 9", got)
+	}
+	if got := gjson.GetBytes(convertedBody, "store"); got.Exists() {
+		t.Fatalf("store should not be injected for chat-completions body: %s", string(convertedBody))
+	}
+}
+
+func TestBuildUpstreamRequestWithFormat_ResponsesFormatUsesResponsesEndpoint(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-responses",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatResponses,
+		},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	body := []byte(`{"model":"gpt-5.3-codex-spark","messages":[{"role":"user","content":"hi"}],"max_tokens":9}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
 	if err != nil {
 		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
 	}
@@ -1610,6 +1652,62 @@ func TestBuildUpstreamRequestWithFormat_ContinuationKeepsAllToolOutputsWithoutAs
 	}
 }
 
+func TestBuildUpstreamRequestWithFormat_ContinuationToolOnlyShapeDropsStaleUserHistory(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "third-party-openai",
+			BaseURL:   "https://relay.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-test"},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	// REGRESSION-GUARD: tool-only continuation payloads must not keep stale
+	// historical user turns; only function_call_output + latest follow-up user
+	// turn should remain after TrimInput compaction.
+	body := []byte(`{
+		"model":"gpt-5.3-codex-spark",
+		"stream":true,
+		"previous_response_id":"resp_tool_only_shape_1",
+		"input":[
+			{"role":"user","content":[{"type":"input_text","text":"old context 1"}]},
+			{"role":"user","content":[{"type":"input_text","text":"old context 2"}]},
+			{"type":"function_call","call_id":"call_1","name":"web_search","arguments":"{\"q\":\"ZimaOS Blue\"}"},
+			{"type":"function_call_output","call_id":"call_1","output":"{\"ok\":true}"},
+			{"role":"user","content":[{"type":"input_text","text":"latest follow-up"}]}
+		]
+	}`)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
+	}
+	defer upstreamReq.Body.Close()
+
+	convertedBody, err := io.ReadAll(upstreamReq.Body)
+	if err != nil {
+		t.Fatalf("read converted body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.type").String(); got != "function_call_output" {
+		t.Fatalf("input.0.type = %q, want %q", got, "function_call_output")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.content.0.text").String(); got != "latest follow-up" {
+		t.Fatalf("input.1.content.0.text = %q, want %q", got, "latest follow-up")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.name"); got.Exists() {
+		t.Fatalf("function_call item should be dropped when output exists, body=%s", string(convertedBody))
+	}
+}
+
 func TestBuildUpstreamRequestWithFormat_ContinuationToolPayloadDoesNotCarryAssistantWithoutUserFollowup(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 
@@ -1716,14 +1814,14 @@ func TestBuildUpstreamRequestWithFormat_ContinuationToolOutputOverflowIsCompacte
 	}
 }
 
-func TestBuildUpstreamRequestWithFormat_OpenAICompatContinuationToolOutputOverflowIsCompacted(t *testing.T) {
+func TestBuildUpstreamRequestWithFormat_ResponsesContinuationToolOutputOverflowIsCompacted(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 
 	result := &providerpool.RouteResult{
 		Provider: &providerpool.Provider{
 			ID:        "third-party-openai",
 			BaseURL:   "https://relay.example.com/v1",
-			APIFormat: providerpool.APIFormatOpenAI,
+			APIFormat: providerpool.APIFormatResponses,
 		},
 		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
 		APIKey: &providerpool.APIKey{Key: "sk-test"},
@@ -1747,7 +1845,7 @@ func TestBuildUpstreamRequestWithFormat_OpenAICompatContinuationToolOutputOverfl
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatOpenAI)
+	upstreamReq, err := ph.buildUpstreamRequestWithFormat(req, result, body, providerpool.APIFormatResponses)
 	if err != nil {
 		t.Fatalf("buildUpstreamRequestWithFormat failed: %v", err)
 	}
@@ -1844,7 +1942,7 @@ func TestBuildUpstreamRequestWithFormat_ContinuationDisabledForProviderStripsPre
 	seedReq := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	seedReq = seedReq.WithContext(WithSessionID(context.Background(), "sess-prev-disable-1"))
 	ph.setCachedResponsesPreviousIDForRoute(seedReq, route, "resp_cached_should_not_be_used")
-	ph.markResponsesContinuationDisabledForRoute(route)
+	ph.markResponsesContinuationDisabledForRoute(seedReq, route)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	req = req.WithContext(WithSessionID(context.Background(), "sess-prev-disable-1"))
@@ -1867,6 +1965,61 @@ func TestBuildUpstreamRequestWithFormat_ContinuationDisabledForProviderStripsPre
 	}
 }
 
+func TestBuildUpstreamRequestWithFormat_ContinuationDisabledScopedBySession(t *testing.T) {
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	route := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "provider-disable-prev",
+			BaseURL:   "https://relay-disable.example.com/v1",
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		Model:  &providerpool.Model{ID: "gpt-5.3-codex-spark"},
+		APIKey: &providerpool.APIKey{Key: "sk-disable"},
+	}
+
+	reqASeed := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	reqASeed = reqASeed.WithContext(WithSessionID(context.Background(), "sess-disable-a"))
+	ph.setCachedResponsesPreviousIDForRoute(reqASeed, route, "resp_prev_a")
+	ph.markResponsesContinuationDisabledForRoute(reqASeed, route)
+
+	reqBSeed := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	reqBSeed = reqBSeed.WithContext(WithSessionID(context.Background(), "sess-disable-b"))
+	ph.setCachedResponsesPreviousIDForRoute(reqBSeed, route, "resp_prev_b")
+
+	body := []byte(`{"model":"gpt-5.3-codex-spark","messages":[{"role":"user","content":"continue"}]}`)
+
+	reqA := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	reqA = reqA.WithContext(WithSessionID(context.Background(), "sess-disable-a"))
+	upstreamA, err := ph.buildUpstreamRequestWithFormat(reqA, route, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("build request for session A failed: %v", err)
+	}
+	defer upstreamA.Body.Close()
+	convertedA, err := io.ReadAll(upstreamA.Body)
+	if err != nil {
+		t.Fatalf("read request A body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedA, "previous_response_id"); got.Exists() {
+		t.Fatalf("session A previous_response_id should be stripped after disable: %s", string(convertedA))
+	}
+
+	reqB := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	reqB = reqB.WithContext(WithSessionID(context.Background(), "sess-disable-b"))
+	upstreamB, err := ph.buildUpstreamRequestWithFormat(reqB, route, body, providerpool.APIFormatResponses)
+	if err != nil {
+		t.Fatalf("build request for session B failed: %v", err)
+	}
+	defer upstreamB.Body.Close()
+	convertedB, err := io.ReadAll(upstreamB.Body)
+	if err != nil {
+		t.Fatalf("read request B body failed: %v", err)
+	}
+	if got := gjson.GetBytes(convertedB, "previous_response_id").String(); got != "resp_prev_b" {
+		t.Fatalf("session B previous_response_id = %q, want %q", got, "resp_prev_b")
+	}
+}
+
 func TestBuildUpstreamRequestWithFormat_ContinuationDisabledForProvider_SanitizesAssistantAndOrphanToolItems(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 
@@ -1880,10 +2033,9 @@ func TestBuildUpstreamRequestWithFormat_ContinuationDisabledForProvider_Sanitize
 		APIKey: &providerpool.APIKey{Key: "sk-disable"},
 	}
 
-	ph.markResponsesContinuationDisabledForRoute(route)
-
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	req = req.WithContext(WithSessionID(context.Background(), "sess-prev-disable-sanitize-1"))
+	ph.markResponsesContinuationDisabledForRoute(req, route)
 	body := []byte(`{
 		"model":"gpt-5.3-codex-spark",
 		"previous_response_id":"resp_should_be_removed",
@@ -1977,10 +2129,9 @@ func TestBuildUpstreamRequestWithFormat_ContinuationDisabledForProvider_Converts
 		APIKey: &providerpool.APIKey{Key: "sk-disable"},
 	}
 
-	ph.markResponsesContinuationDisabledForRoute(route)
-
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	req = req.WithContext(WithSessionID(context.Background(), "sess-prev-disable-assist-1"))
+	ph.markResponsesContinuationDisabledForRoute(req, route)
 	body := []byte(`{
 		"model":"gpt-5.3-codex-spark",
 		"previous_response_id":"resp_should_be_removed",
@@ -2385,7 +2536,7 @@ func TestBuildUpstreamRequestWithFormat_ResponsesPathClampsMaxOutputTokensByMode
 	}
 }
 
-func TestBuildUpstreamRequestWithFormat_OpenAICompatPathClampsMaxOutputTokensByModelLimit(t *testing.T) {
+func TestBuildUpstreamRequestWithFormat_OpenAICompatPathDoesNotClampChatCompletionsMaxTokens(t *testing.T) {
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 
 	result := &providerpool.RouteResult{
@@ -2406,16 +2557,19 @@ func TestBuildUpstreamRequestWithFormat_OpenAICompatPathClampsMaxOutputTokensByM
 	}
 	defer upstreamReq.Body.Close()
 
-	if upstreamReq.URL.Path != "/v1/responses" {
-		t.Fatalf("upstream path = %q, want %q", upstreamReq.URL.Path, "/v1/responses")
+	if upstreamReq.URL.Path != "/v1/chat/completions" {
+		t.Fatalf("upstream path = %q, want %q", upstreamReq.URL.Path, "/v1/chat/completions")
 	}
 
 	convertedBody, err := io.ReadAll(upstreamReq.Body)
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if got := gjson.GetBytes(convertedBody, "max_output_tokens").Int(); got != 1024 {
-		t.Fatalf("max_output_tokens = %d, want %d", got, 1024)
+	if got := gjson.GetBytes(convertedBody, "max_tokens").Int(); got != 4096 {
+		t.Fatalf("max_tokens = %d, want %d", got, 4096)
+	}
+	if got := gjson.GetBytes(convertedBody, "max_output_tokens"); got.Exists() {
+		t.Fatalf("chat-completions body should not be rewritten to responses payload: %s", string(convertedBody))
 	}
 }
 
@@ -2427,7 +2581,7 @@ func TestConvertResponsesToOpenAIChatCompletions(t *testing.T) {
 		"model":"gpt-5.3-codex",
 		"output":[
 			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hello "} ,{"type":"output_text","text":"world"}]},
-			{"type":"function_call","id":"fc_1","call_id":"call_1","name":"web_search","arguments":"{\"query\":\"OpenClaw\"}"}
+			{"type":"function_call","id":"fc_1","call_id":"call_1","name":"web_search","arguments":"{\"query\":\"ZimaOS Blue\"}"}
 		],
 		"usage":{"input_tokens":12,"output_tokens":5,"total_tokens":17}
 	}`)
@@ -2449,8 +2603,8 @@ func TestConvertResponsesToOpenAIChatCompletions(t *testing.T) {
 	if got := gjson.GetBytes(converted, "choices.0.message.tool_calls.0.function.name").String(); got != "web_search" {
 		t.Fatalf("tool call function name = %q, want %q", got, "web_search")
 	}
-	if got := gjson.GetBytes(converted, "choices.0.message.tool_calls.0.function.arguments").String(); got != `{"query":"OpenClaw"}` {
-		t.Fatalf("tool call arguments = %q, want %q", got, `{"query":"OpenClaw"}`)
+	if got := gjson.GetBytes(converted, "choices.0.message.tool_calls.0.function.arguments").String(); got != `{"query":"ZimaOS Blue"}` {
+		t.Fatalf("tool call arguments = %q, want %q", got, `{"query":"ZimaOS Blue"}`)
 	}
 	if got := gjson.GetBytes(converted, "choices.0.finish_reason").String(); got != "tool_calls" {
 		t.Fatalf("finish_reason = %q, want %q", got, "tool_calls")

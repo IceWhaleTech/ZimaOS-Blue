@@ -86,6 +86,10 @@ type mockBrowserBackend struct {
 	navErr      error
 	a11yResult  BrowserA11yTreeResult
 	a11yErr     error
+	cookieValue string
+	cookieErr   error
+	cookieURL   string
+	cookieTabID string
 	closeCalled bool
 }
 
@@ -102,6 +106,11 @@ func (m *mockBrowserBackend) Navigate(_ context.Context, url, _ string) (Browser
 		r.TargetID = "tab-1"
 	}
 	return r, nil
+}
+func (m *mockBrowserBackend) CookieHeader(_ context.Context, targetID, url string) (string, error) {
+	m.cookieTabID = targetID
+	m.cookieURL = url
+	return m.cookieValue, m.cookieErr
 }
 func (m *mockBrowserBackend) AccessibilityTree(_ context.Context, _ string, _ int) (BrowserA11yTreeResult, error) {
 	return m.a11yResult, m.a11yErr

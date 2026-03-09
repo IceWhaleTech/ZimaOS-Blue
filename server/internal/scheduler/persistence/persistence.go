@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	z "github.com/IceWhaleTech/zorm"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Common errors
@@ -124,10 +124,12 @@ type Config struct {
 	RetentionDays int `yaml:"retention_days" yaml:"retention_days"`
 }
 
+const schedulerTasksTable = "scheduler_tasks"
+
 // DefaultConfig returns the default configuration.
 func DefaultConfig() Config {
 	return Config{
-		DBPath:        "./data/scheduler.db",
+		DBPath:        "./data/blue.db",
 		Enabled:       true,
 		RetentionDays: 7,
 	}
@@ -178,13 +180,13 @@ func NewStore(config Config) (*Store, error) {
 }
 
 func (s *Store) table() *z.ZormTable {
-	return z.Table(s.db, "tasks")
+	return z.Table(s.db, schedulerTasksTable)
 }
 
 // migrate creates the necessary tables.
 func (s *Store) migrate() error {
 	schema := `
-	CREATE TABLE IF NOT EXISTS tasks (
+	CREATE TABLE IF NOT EXISTS scheduler_tasks (
 		id TEXT PRIMARY KEY,
 		name TEXT NOT NULL,
 		priority INTEGER NOT NULL DEFAULT 1,
@@ -204,14 +206,14 @@ func (s *Store) migrate() error {
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-	CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(scheduled_at);
-	CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority DESC);
+	CREATE INDEX IF NOT EXISTS idx_scheduler_tasks_status ON scheduler_tasks(status);
+	CREATE INDEX IF NOT EXISTS idx_scheduler_tasks_scheduled_at ON scheduler_tasks(scheduled_at);
+	CREATE INDEX IF NOT EXISTS idx_scheduler_tasks_priority ON scheduler_tasks(priority DESC);
 
-	CREATE TRIGGER IF NOT EXISTS update_tasks_timestamp
-	AFTER UPDATE ON tasks
+	CREATE TRIGGER IF NOT EXISTS update_scheduler_tasks_timestamp
+	AFTER UPDATE ON scheduler_tasks
 	BEGIN
-		UPDATE tasks SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+		UPDATE scheduler_tasks SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 	END;
 	`
 
@@ -444,7 +446,7 @@ func (s *Store) IncrementRetry(id string) error {
 	}
 
 	result, err := s.db.Exec(
-		"UPDATE tasks SET retry_count = retry_count + 1, status = 'pending', started_at = NULL WHERE id = ?",
+		"UPDATE scheduler_tasks SET retry_count = retry_count + 1, status = 'pending', started_at = NULL WHERE id = ?",
 		id,
 	)
 	if err != nil {
@@ -494,32 +496,32 @@ func (s *Store) Stats() (StoreStats, error) {
 
 	var stats StoreStats
 
-	err := s.db.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&stats.TotalTasks)
+	err := s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks").Scan(&stats.TotalTasks)
 	if err != nil {
 		return stats, err
 	}
 
-	err = s.db.QueryRow("SELECT COUNT(*) FROM tasks WHERE status = 'pending'").Scan(&stats.PendingTasks)
+	err = s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks WHERE status = 'pending'").Scan(&stats.PendingTasks)
 	if err != nil {
 		return stats, err
 	}
 
-	err = s.db.QueryRow("SELECT COUNT(*) FROM tasks WHERE status = 'running'").Scan(&stats.RunningTasks)
+	err = s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks WHERE status = 'running'").Scan(&stats.RunningTasks)
 	if err != nil {
 		return stats, err
 	}
 
-	err = s.db.QueryRow("SELECT COUNT(*) FROM tasks WHERE status = 'completed'").Scan(&stats.CompletedTasks)
+	err = s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks WHERE status = 'completed'").Scan(&stats.CompletedTasks)
 	if err != nil {
 		return stats, err
 	}
 
-	err = s.db.QueryRow("SELECT COUNT(*) FROM tasks WHERE status = 'failed'").Scan(&stats.FailedTasks)
+	err = s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks WHERE status = 'failed'").Scan(&stats.FailedTasks)
 	if err != nil {
 		return stats, err
 	}
 
-	err = s.db.QueryRow("SELECT COUNT(*) FROM tasks WHERE status = 'cancelled'").Scan(&stats.CancelledTasks)
+	err = s.db.QueryRow("SELECT COUNT(*) FROM scheduler_tasks WHERE status = 'cancelled'").Scan(&stats.CancelledTasks)
 	if err != nil {
 		return stats, err
 	}

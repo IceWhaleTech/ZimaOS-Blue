@@ -74,6 +74,23 @@ export interface SendMessageResponse {
   }
 }
 
+export interface ConversationCommandState {
+  conversation_id?: string
+  selected_provider_id?: string
+  selected_model_id?: string
+  offline: boolean
+  web_search_enabled: boolean
+  deep_research_enabled: boolean
+}
+
+export interface ConversationCommandStatePatch {
+  selected_provider_id?: string
+  selected_model_id?: string
+  offline?: boolean
+  web_search_enabled?: boolean
+  deep_research_enabled?: boolean
+}
+
 export interface ToolDefinition {
   name: string
   description: string
@@ -152,6 +169,12 @@ export const conversationApi = {
 
   search: (query: string, limit = 20) =>
     api.get<Conversation[]>('/conversations', { params: { q: query, limit } }),
+
+  getCommandState: (id: string) =>
+    api.get<ConversationCommandState>(`/conversations/${id}/command-state`),
+
+  patchCommandState: (id: string, patch: ConversationCommandStatePatch) =>
+    api.patch<ConversationCommandState>(`/conversations/${id}/command-state`, patch),
 }
 
 // Message API

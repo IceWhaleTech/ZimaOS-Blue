@@ -218,9 +218,9 @@ func TestMarkdownToHTML(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"**bold**", "<strong>bold<strong>"},
-		{"*italic*", "<em>italic<em>"},
-		{"`code`", "<code>code<code>"},
+		{"**bold**", "<strong>bold</strong>"},
+		{"*italic*", "<em>italic</em>"},
+		{"`code`", "<code>code</code>"},
 		{"plain text", "plain text"},
 	}
 

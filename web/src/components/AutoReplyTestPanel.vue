@@ -27,6 +27,8 @@ const channels = computed(() => [
   { value: 'wechat', label: 'WeChat' },
   { value: 'feishu', label: 'Feishu' },
   { value: 'matrix', label: 'Matrix' },
+  { value: 'mattermost', label: 'Mattermost' },
+  { value: 'nextcloudtalk', label: 'Nextcloud Talk' },
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'signal', label: 'Signal' },
 ])

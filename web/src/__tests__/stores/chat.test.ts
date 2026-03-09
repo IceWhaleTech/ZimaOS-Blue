@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useChatStore } from '@/stores/chat'
+import { parseToolResults, useChatStore } from '@/stores/chat'
 import { conversationApi, messageApi } from '@/api/chat'
+
+const mocks = vi.hoisted(() => ({
+  sseConnect: vi.fn(),
+  sseDisconnect: vi.fn(),
+  providerPoolStore: {
+    fetchTrialQuota: vi.fn(),
+  },
+}))
 
 vi.mock('@/api/chat', () => ({
   conversationApi: {
@@ -10,6 +18,8 @@ vi.mock('@/api/chat', () => ({
     get: vi.fn(),
     delete: vi.fn(),
     search: vi.fn(),
+    getCommandState: vi.fn(),
+    patchCommandState: vi.fn(),
   },
   messageApi: {
     list: vi.fn(),
@@ -27,10 +37,61 @@ vi.mock('@/stores/settings', () => ({
   }),
 }))
 
+vi.mock('@/stores/providerPool', () => ({
+  useProviderPoolStore: () => mocks.providerPoolStore,
+}))
+
+vi.mock('@/utils/sse', () => ({
+  SSEClient: class {
+    connect(...args: unknown[]) {
+      return mocks.sseConnect(...args)
+    }
+
+    disconnect(...args: unknown[]) {
+      return mocks.sseDisconnect(...args)
+    }
+  },
+}))
+
+function makeTypelessBlock(payload: Record<string, unknown>) {
+  return ['```typeless', JSON.stringify(payload), '```'].join('\n')
+}
+
+async function settleAsyncWork() {
+  await Promise.resolve()
+  await Promise.resolve()
+  await new Promise(resolve => setTimeout(resolve, 0))
+}
+
 describe('Chat Store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    mocks.sseConnect.mockReset().mockResolvedValue(undefined)
+    mocks.sseDisconnect.mockReset()
+    mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
+    vi.mocked(conversationApi.list).mockResolvedValue({ data: [] } as never)
+    vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+    vi.mocked(conversationApi.getCommandState).mockResolvedValue({
+      data: {
+        conversation_id: '1',
+        selected_provider_id: '',
+        selected_model_id: '',
+        offline: false,
+        web_search_enabled: true,
+        deep_research_enabled: false,
+      },
+    } as never)
+    vi.mocked(conversationApi.patchCommandState).mockResolvedValue({
+      data: {
+        conversation_id: '1',
+        selected_provider_id: '',
+        selected_model_id: '',
+        offline: false,
+        web_search_enabled: true,
+        deep_research_enabled: false,
+      },
+    } as never)
   })
 
   describe('fetchConversations', () => {
@@ -163,4 +224,197 @@ describe('Chat Store', () => {
       expect(store.sortedConversations[2].id).toBe('1')
     })
   })
+
+  describe('sendMessage streaming', () => {
+    it('should split streamed Reddit follow-up cards into separate assistant messages before persistence refresh', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        { id: 'conv-1', title: 'Reddit flow', created_at: '2026-03-08T00:00:00.000Z', updated_at: '2026-03-08T00:00:00.000Z' },
+      ]
+
+      const webFetchBlock = makeTypelessBlock({
+        type: 'web-fetch',
+        id: 'web-fetch-https%3A%2F%2Fwww.reddit.com%2Fr%2Ftest',
+        title: 'Sign in',
+        status: 'warning',
+        url: 'https://www.reddit.com/r/test',
+        content: 'Log in to continue',
+        content_type: 'text/html',
+        extract_mode: 'text',
+        extractor: 'html',
+        warning: 'page appears to be a login wall; use browser or pass browser_target_id',
+        warning_code: 'login_wall',
+        actions: [
+          {
+            id: 'use_browser',
+            label: 'Use browser',
+            variant: 'primary',
+            form_data: { url: 'https://www.reddit.com/r/test' },
+          },
+        ],
+      })
+      const browserBlock = makeTypelessBlock({
+        type: 'result',
+        id: 'browser-https%3A%2F%2Fwww.reddit.com%2Fr%2Ftest',
+        title: 'Browser page',
+        status: 'info',
+        message: 'Interactive page opened in the browser session.',
+        details: [
+          { label: 'url', value: 'https://www.reddit.com/r/test' },
+          { label: 'browser_target_id', value: 'tab-42' },
+        ],
+        actions: [
+          {
+            id: 'extract_with_web_fetch',
+            label: 'Extract readable content',
+            variant: 'primary',
+            form_data: {
+              url: 'https://www.reddit.com/r/test',
+              browser_target_id: 'tab-42',
+            },
+          },
+        ],
+      })
+
+      const persistedMessages = [
+        {
+          id: 'msg-user-1',
+          conversation_id: 'conv-1',
+          role: 'user',
+          content: 'Inspect https://www.reddit.com/r/test',
+          created_at: '2026-03-08T00:00:00.000Z',
+        },
+        {
+          id: 'msg-assistant-1',
+          conversation_id: 'conv-1',
+          role: 'assistant',
+          content: webFetchBlock,
+          created_at: '2026-03-08T00:00:01.000Z',
+        },
+        {
+          id: 'msg-assistant-2',
+          conversation_id: 'conv-1',
+          role: 'assistant',
+          content: browserBlock,
+          created_at: '2026-03-08T00:00:02.000Z',
+        },
+      ]
+
+      vi.mocked(messageApi.list).mockResolvedValue({ data: persistedMessages } as never)
+      vi.mocked(conversationApi.list).mockResolvedValue({
+        data: [
+          { id: 'conv-1', title: 'Reddit flow', created_at: '2026-03-08T00:00:00.000Z', updated_at: '2026-03-08T00:00:02.000Z' },
+        ],
+      } as never)
+
+      const snapshotAfterSplit: Array<{ id: string; role: string; content: string }> = []
+      const snapshotBeforeRefresh: Array<{ id: string; role: string; content: string }> = []
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+        expect(_conversationId).toBe('conv-1')
+        expect(request).toEqual(expect.objectContaining({
+          message: 'Inspect https://www.reddit.com/r/test',
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        }))
+
+        options.onMessage({ delta: webFetchBlock, done: false })
+        options.onNewMessage?.(1)
+        snapshotAfterSplit.push(...store.messages.map(message => ({
+          id: message.id,
+          role: message.role,
+          content: message.content,
+        })))
+
+        options.onMessage({ delta: browserBlock, done: false })
+        options.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+        snapshotBeforeRefresh.push(...store.messages.map(message => ({
+          id: message.id,
+          role: message.role,
+          content: message.content,
+        })))
+      })
+
+      await store.sendMessage('Inspect https://www.reddit.com/r/test')
+      await settleAsyncWork()
+
+      expect(mocks.sseConnect).toHaveBeenCalledTimes(1)
+      expect(snapshotAfterSplit).toHaveLength(3)
+      expect(snapshotAfterSplit[0]?.role).toBe('user')
+      expect(snapshotAfterSplit[1]?.content).toBe(webFetchBlock)
+      expect(snapshotAfterSplit[2]?.content).toBe('')
+
+      expect(snapshotBeforeRefresh).toHaveLength(3)
+      expect(snapshotBeforeRefresh[1]?.content).toBe(webFetchBlock)
+      expect(snapshotBeforeRefresh[2]?.content).toBe(browserBlock)
+      expect(snapshotBeforeRefresh[2]?.id.startsWith('streaming-')).toBe(true)
+
+      expect(messageApi.list).toHaveBeenCalledWith('conv-1', 50, 0)
+      expect(conversationApi.list).toHaveBeenCalledTimes(1)
+      expect(mocks.providerPoolStore.fetchTrialQuota).toHaveBeenCalledTimes(1)
+      expect(store.messages).toEqual(persistedMessages)
+      expect(store.messages.some(message => message.id.startsWith('temp-') || message.id.startsWith('streaming-'))).toBe(false)
+      expect(store.streaming).toBe(false)
+      expect(store.sending).toBe(false)
+    })
+  })
+
+  describe('parseToolResults', () => {
+    it('should map challenge and browser_required warning codes to friendly statuses', () => {
+      const items = parseToolResults([
+        {
+          name: 'web_fetch',
+          id: 'wf-challenge',
+          args: JSON.stringify({ url: 'https://example.com/challenge' }),
+          result: JSON.stringify({
+            url: 'https://example.com/challenge',
+            warning: 'verification challenge detected',
+            warning_code: 'challenge',
+          }),
+        },
+        {
+          name: 'web_fetch',
+          id: 'wf-browser-required',
+          args: JSON.stringify({ url: 'https://example.com/protected' }),
+          result: JSON.stringify({
+            url: 'https://example.com/protected',
+            warning: 'browser session required',
+            warning_code: 'browser_required',
+          }),
+        },
+      ])
+
+      expect(items).toHaveLength(2)
+      expect(items[0]?.warningCode).toBe('challenge')
+      expect(items[0]?.status).toBe('Verification challenge detected')
+      expect(items[1]?.warningCode).toBe('browser_required')
+      expect(items[1]?.status).toBe('Browser session required')
+    })
+
+    it('should surface warning_code for web_fetch results', () => {
+      const items = parseToolResults([
+        {
+          name: 'web_fetch',
+          id: 'wf-1',
+          args: JSON.stringify({ url: 'https://www.reddit.com/r/test' }),
+          result: JSON.stringify({
+            url: 'https://www.reddit.com/r/test',
+            warning: 'page appears to be a login wall; use browser or pass browser_target_id',
+            warning_code: 'login_wall',
+            extractor: 'html',
+          }),
+        },
+      ])
+
+      expect(items).toHaveLength(1)
+      expect(items[0]?.command).toBe('https://www.reddit.com/r/test')
+      expect(items[0]?.warningCode).toBe('login_wall')
+      expect(items[0]?.status).toBe('Login wall detected')
+      expect(items[0]?.output).toContain('browser_target_id')
+      expect(items[0]?.icon).toBe('✓')
+    })
+  })
+
+
 })

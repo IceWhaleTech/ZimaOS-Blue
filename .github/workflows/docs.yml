@@ -1,0 +1,39 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs-site/**'
+      - 'README.md'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs-site/**'
+      - 'README.md'
+      - '.github/workflows/docs.yml'
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  validate:
+    name: Validate docs-site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install & validate docs-site
+        working-directory: docs-site
+        run: |
+          npm ci
+          npm run build

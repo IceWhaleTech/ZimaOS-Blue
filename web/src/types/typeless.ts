@@ -41,6 +41,7 @@ export type TypelessCardType =
   | 'media-generate'
   | 'analyze-progress'
   | 'browser-progress'
+  | 'web-fetch'
   | 'exec'
 
 export interface TypelessCardBase {
@@ -88,6 +89,7 @@ export interface ActionButton {
   variant?: 'primary' | 'secondary' | 'danger'
   icon?: string
   disabled?: boolean
+  form_data?: Record<string, unknown>
 }
 
 // Result Card - Display operation results
@@ -96,6 +98,8 @@ export interface TypelessCardResult extends TypelessCardBase {
   title: string
   status: 'success' | 'error' | 'warning' | 'info'
   message?: string
+  warning?: string
+  warning_code?: string
   details?: ResultDetail[]
   actions?: ActionButton[]
 }
@@ -665,6 +669,21 @@ export interface TypelessCardBrowserProgress extends TypelessCardBase {
   steps?: BrowserProgressStep[]
 }
 
+export interface TypelessCardWebFetch extends TypelessCardBase {
+  type: 'web-fetch'
+  title: string
+  status: 'success' | 'warning' | 'error'
+  url?: string
+  content?: string
+  content_type?: string
+  extract_mode?: 'markdown' | 'text' | string
+  extractor?: string
+  truncated?: boolean
+  warning?: string
+  warning_code?: string
+  actions?: ActionButton[]
+}
+
 // Exec Card - Display shell command execution results with terminal styling
 export interface TypelessCardExec extends TypelessCardBase {
   type: 'exec'
@@ -672,6 +691,8 @@ export interface TypelessCardExec extends TypelessCardBase {
   command_redacted?: boolean
   hide_command?: boolean
   message?: string
+  warning?: string
+  warning_code?: string
   status: 'success' | 'error' | 'running'
   exit_code?: number
   stdout?: string
@@ -730,6 +751,7 @@ export type TypelessCard =
   | TypelessCardMediaGenerate
   | TypelessCardAnalyzeProgress
   | TypelessCardBrowserProgress
+  | TypelessCardWebFetch
   | TypelessCardExec
 
 // Card parsing result

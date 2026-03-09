@@ -38,12 +38,14 @@ type Storage interface {
 
 // FileStorage implements Storage using JSON files
 type FileStorage struct {
-	basePath string
-	mu       sync.RWMutex
+	basePath  string
+	encryptor SecretEncryptor
+	mu        sync.RWMutex
 }
 
 // NewFileStorage creates a new FileStorage
-func NewFileStorage(basePath string) (*FileStorage, error) {
+func NewFileStorage(basePath string, opts ...StorageOption) (*FileStorage, error) {
+	storageOpts := applyStorageOptions(opts...)
 	// Create directory structure
 	dirs := []string{
 		basePath,
@@ -57,7 +59,8 @@ func NewFileStorage(basePath string) (*FileStorage, error) {
 	}
 
 	return &FileStorage{
-		basePath: basePath,
+		basePath:  basePath,
+		encryptor: storageOpts.encryptor,
 	}, nil
 }
 
@@ -112,21 +115,20 @@ func (s *FileStorage) SaveProvider(provider *Provider) error {
 		}
 	}
 
-	// Extract API keys (since they have json:"-" tag)
-	// Never persist trial provider keys — they come from the signed license at build time
-	var apiKeys []string
-	if provider.Type != ProviderTypeTrial {
-		apiKeys = make([]string, len(provider.APIKeys))
-		for i, key := range provider.APIKeys {
-			apiKeys[i] = key.Key
-		}
+	apiKeys, err := prepareStoredAPIKeys(provider, s.encryptor)
+	if err != nil {
+		return err
+	}
+	secrets, err := prepareStoredOAuthSecrets(provider, s.encryptor)
+	if err != nil {
+		return err
 	}
 
 	// Store provider with keys separately
 	storage.Providers[provider.ID] = &providerData{
-		Provider: provider,
-		APIKeys:  apiKeys,
-		OAuthSecrets: extractOAuthSecrets(provider),
+		Provider:     provider,
+		APIKeys:      apiKeys,
+		OAuthSecrets: secrets,
 	}
 	storage.UpdatedAt = timeutil.NowTime()
 
@@ -151,16 +153,15 @@ func (s *FileStorage) LoadProvider(id string) (*Provider, error) {
 		return nil, ErrProviderNotFound
 	}
 
-	// Restore API keys
 	provider := data.Provider
-	for i := range provider.APIKeys {
-		if i < len(data.APIKeys) {
-			provider.APIKeys[i].Key = data.APIKeys[i]
-		}
+	if err := restoreStoredAPIKeys(provider, data.APIKeys, s.encryptor); err != nil {
+		return nil, err
 	}
 
 	// Restore OAuth secrets
-	restoreOAuthSecrets(provider, data.OAuthSecrets)
+	if err := restoreStoredOAuthSecrets(provider, data.OAuthSecrets, s.encryptor); err != nil {
+		return nil, err
+	}
 
 	return provider, nil
 }
@@ -182,19 +183,25 @@ func (s *FileStorage) LoadAllProviders() ([]*Provider, error) {
 	needsSave := false
 	for _, data := range storage.Providers {
 		provider := data.Provider
-		// Restore API keys
+		if storedAPIKeysNeedEncryption(data.APIKeys, s.encryptor) || storedOAuthSecretsNeedEncryption(data.OAuthSecrets, s.encryptor) {
+			needsSave = true
+		}
+		if err := restoreStoredAPIKeys(provider, data.APIKeys, s.encryptor); err != nil {
+			return nil, err
+		}
+		// Backfill missing key IDs (pre-existing providers saved before key ID system)
 		for i := range provider.APIKeys {
-			if i < len(data.APIKeys) {
-				provider.APIKeys[i].Key = data.APIKeys[i]
-			}
-			// Backfill missing key IDs (pre-existing providers saved before key ID system)
 			if provider.APIKeys[i].ID == "" {
 				provider.APIKeys[i].ID = GenerateID("key")
 				needsSave = true
 			}
+			if normalizeAPIKeyMetadata(&provider.APIKeys[i]) {
+				needsSave = true
+			}
 		}
-		// Restore OAuth secrets
-		restoreOAuthSecrets(provider, data.OAuthSecrets)
+		if err := restoreStoredOAuthSecrets(provider, data.OAuthSecrets, s.encryptor); err != nil {
+			return nil, err
+		}
 		providers = append(providers, provider)
 	}
 
@@ -245,16 +252,12 @@ func (s *FileStorage) loadProvidersInternal() (*providerStorage, error) {
 
 	// Restore API keys from separate storage to Provider.APIKeys
 	for _, data := range storage.Providers {
-		if data.Provider != nil && len(data.APIKeys) > 0 {
-			// Ensure APIKeys slice is initialized
-			if data.Provider.APIKeys == nil {
-				data.Provider.APIKeys = make([]APIKey, 0, len(data.APIKeys))
+		if data.Provider != nil {
+			if err := restoreStoredAPIKeys(data.Provider, data.APIKeys, s.encryptor); err != nil {
+				return nil, fmt.Errorf("failed to restore provider API keys: %w", err)
 			}
-			// Restore keys from string array
-			for i, keyStr := range data.APIKeys {
-				if i < len(data.Provider.APIKeys) {
-					data.Provider.APIKeys[i].Key = keyStr
-				}
+			if err := restoreStoredOAuthSecrets(data.Provider, data.OAuthSecrets, s.encryptor); err != nil {
+				return nil, fmt.Errorf("failed to restore provider oauth secrets: %w", err)
 			}
 		}
 	}

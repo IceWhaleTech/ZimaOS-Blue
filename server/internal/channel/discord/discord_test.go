@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bwmarrin/discordgo"
 	"go.uber.org/zap"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
@@ -231,5 +232,106 @@ func TestChannel_SendStreaming_NotInitialized(t *testing.T) {
 	err := ch.SendStreaming(ctx, "180", "", content, done)
 	if err == nil {
 		t.Error("expected error when streaming without initialization")
+	}
+}
+
+func TestChannel_HandleMessage_MessageHandlerRepliesToCurrentMessage(t *testing.T) {
+	ch := New(channel.DiscordConfig{Enabled: true, BotToken: "test-token"}, zap.NewNop())
+	ch.ctx = context.Background()
+	ch.session = &discordgo.Session{}
+
+	done := make(chan struct{})
+	var sent *discordgo.MessageSend
+	ch.sendMessageFunc = func(channelID string, data *discordgo.MessageSend) (*discordgo.Message, error) {
+		if channelID != "ch-1" {
+			t.Fatalf("channelID = %q, want ch-1", channelID)
+		}
+		sent = data
+		close(done)
+		return &discordgo.Message{ID: "resp-1"}, nil
+	}
+	ch.SetMessageHandler(func(ctx context.Context, msg channel.Message) (string, error) {
+		return "reply", nil
+	})
+
+	state := discordgo.NewState()
+	state.Ready.User = &discordgo.User{ID: "bot-1"}
+	session := &discordgo.Session{State: state}
+	ch.handleMessage(session, &discordgo.MessageCreate{Message: &discordgo.Message{
+		ID:        "msg-1",
+		ChannelID: "ch-1",
+		Content:   "hello",
+		Author:    &discordgo.User{ID: "user-1", Username: "alice"},
+	}})
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for reply send")
+	}
+
+	if sent == nil || sent.Reference == nil {
+		t.Fatal("expected reply reference to be set")
+	}
+	if sent.Reference.MessageID != "msg-1" {
+		t.Fatalf("reference message_id = %q, want current message id", sent.Reference.MessageID)
+	}
+	if sent.Reference.ChannelID != "ch-1" {
+		t.Fatalf("reference channel_id = %q, want ch-1", sent.Reference.ChannelID)
+	}
+}
+
+func TestChannel_ConvertMessage_NormalizesMentionsEmbedsComponentsAndReply(t *testing.T) {
+	ch := New(channel.DiscordConfig{Enabled: true, BotToken: "test-token"}, zap.NewNop())
+	msg := ch.convertMessage(&discordgo.MessageCreate{Message: &discordgo.Message{
+		ID:        "msg-1",
+		ChannelID: "ch-1",
+		GuildID:   "guild-1",
+		Author:    &discordgo.User{ID: "user-1", Username: "alice"},
+		Mentions: []*discordgo.User{{
+			ID:         "user-2",
+			Username:   "bob",
+			GlobalName: "Bob",
+		}},
+		Embeds: []*discordgo.MessageEmbed{{
+			Type:        discordgo.EmbedTypeRich,
+			Title:       "Card title",
+			Description: "Card body",
+		}},
+		Components: []discordgo.MessageComponent{
+			discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+				discordgo.Button{Label: "Approve", CustomID: "approve", Style: discordgo.PrimaryButton},
+			}},
+		},
+		MessageReference: &discordgo.MessageReference{MessageID: "parent-1", ChannelID: "ch-1"},
+	}})
+
+	if msg.Type != channel.MessageTypeCard {
+		t.Fatalf("Type = %q, want card", msg.Type)
+	}
+	if msg.ReplyToID != "parent-1" {
+		t.Fatalf("ReplyToID = %q, want parent-1", msg.ReplyToID)
+	}
+	mentionIDs, ok := msg.Metadata["mention_ids"].([]string)
+	if !ok || len(mentionIDs) != 1 || mentionIDs[0] != "user-2" {
+		t.Fatalf("mention_ids = %#v", msg.Metadata["mention_ids"])
+	}
+	embeds, ok := msg.Metadata["embeds"].([]map[string]interface{})
+	if !ok || len(embeds) != 1 || embeds[0]["title"] != "Card title" {
+		t.Fatalf("embeds = %#v", msg.Metadata["embeds"])
+	}
+	components, ok := msg.Metadata["components"].([]map[string]interface{})
+	if !ok || len(components) != 1 {
+		t.Fatalf("components = %#v", msg.Metadata["components"])
+	}
+	rowChildren, ok := components[0]["components"].([]map[string]interface{})
+	if !ok || len(rowChildren) != 1 {
+		t.Fatalf("row children = %#v", components[0]["components"])
+	}
+	if rowChildren[0]["custom_id"] != "approve" {
+		t.Fatalf("first component = %#v", rowChildren[0])
+	}
+	if msg.Metadata["reference_message_id"] != "parent-1" {
+		t.Fatalf("reference_message_id = %v", msg.Metadata["reference_message_id"])
 	}
 }

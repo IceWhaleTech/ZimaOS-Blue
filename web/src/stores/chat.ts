@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed, watch, triggerRef } from 'vue'
-import type { Conversation, Message, SendMessageRequest, MessageStats, MessageAttachment } from '@/api/chat'
+import type { Conversation, Message, SendMessageRequest, MessageStats, MessageAttachment, ConversationCommandState, ConversationCommandStatePatch } from '@/api/chat'
 import { conversationApi, messageApi, warmupApi, injectionApi } from '@/api/chat'
 import { approvalApi } from '@/api/approval'
 import type { Decision, ExecDecision } from '@/api/approval'
@@ -30,17 +30,32 @@ export interface ToolResultItem {
   durationMs?: number
   host?: 'local' | 'sandbox'
   riskLevel?: string
+  warning?: string
+  warningCode?: string
   timestamp: number     // When this result was received
 }
 
+function formatToolWarningCode(code: string): string {
+  switch ((code || '').trim()) {
+    case 'login_wall':
+      return 'Login wall detected'
+    case 'challenge':
+      return 'Verification challenge detected'
+    case 'browser_required':
+      return 'Browser session required'
+    default:
+      return code ? `Warning: ${code}` : ''
+  }
+}
+
 /** Parse raw tool results into structured ToolResultItems. */
-function parseToolResults(results: Array<{ name: string; id: string; args?: string; result?: string }>): ToolResultItem[] {
+export function parseToolResults(results: Array<{ name: string; id: string; args?: string; result?: string }>): ToolResultItem[] {
   return results.map(r => {
     let command = ''
     if (r.args) {
       try {
         const parsed = JSON.parse(r.args)
-        command = parsed.command || parsed.query || parsed.path || parsed.name || parsed.action || parsed.sq || parsed.mq || ''
+        command = parsed.command || parsed.query || parsed.url || parsed.href || parsed.path || parsed.name || parsed.action || parsed.sq || parsed.mq || ''
       } catch {
         // If args is not valid JSON, use it directly for ask_user_question
         if (r.name === 'ask') {
@@ -57,6 +72,8 @@ function parseToolResults(results: Array<{ name: string; id: string; args?: stri
     let durationMs: number | undefined
     let host: 'local' | 'sandbox' | undefined
     let riskLevel: string | undefined
+    let warning: string | undefined
+    let warningCode: string | undefined
     if (r.result) {
       try {
         const res = JSON.parse(r.result)
@@ -88,11 +105,15 @@ function parseToolResults(results: Array<{ name: string; id: string; args?: stri
         } else {
           icon = '✓'
         }
+        if (typeof res.warning === 'string' && res.warning.trim()) warning = res.warning.trim()
+        if (typeof res.warning_code === 'string' && res.warning_code.trim()) warningCode = res.warning_code.trim()
         if (res.stdout?.trim() && r.name !== 'ask') { output = res.stdout.trim() }
         if (res.stderr?.trim()) {
           const stderr = res.stderr.trim()
           output = output ? `${output}\n${stderr}` : stderr
         }
+        if (!status && warningCode) status = formatToolWarningCode(warningCode)
+        if (!output && warning) output = warning
         if (res.host) host = res.host
         if (res.risk_level) riskLevel = res.risk_level
       } catch {
@@ -106,7 +127,7 @@ function parseToolResults(results: Array<{ name: string; id: string; args?: stri
         }
       }
     }
-    return { name: r.name, id: r.id, command, args: r.args, icon, status, output, exitCode, durationMs, host, riskLevel, timestamp: Date.now() }
+    return { name: r.name, id: r.id, command, args: r.args, icon, status, output, exitCode, durationMs, host, riskLevel, warning, warningCode, timestamp: Date.now() }
   })
 }
 
@@ -166,16 +187,14 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  const saveOfflineMode = (enabled: boolean) => {
-    try {
-      localStorage.setItem(CHAT_OFFLINE_MODE_KEY, enabled ? '1' : '0')
-    } catch {
-      // ignore storage errors
-    }
-  }
-
   const loadWebSearchEnabled = (): boolean => {
-    return true
+    try {
+      const value = localStorage.getItem(CHAT_WEB_SEARCH_ENABLED_KEY)
+      if (value === null) return true
+      return value !== '0'
+    } catch {
+      return true
+    }
   }
 
   const saveWebSearchEnabled = (enabled: boolean) => {
@@ -202,6 +221,27 @@ export const useChatStore = defineStore('chat', () => {
     } catch {
       // ignore storage errors
     }
+  }
+
+  function splitModelPreference(value: string): { selected_provider_id?: string; selected_model_id?: string } {
+    const trimmed = value.trim()
+    if (!trimmed || trimmed === 'auto') return {}
+    const slash = trimmed.indexOf('/')
+    if (slash > 0 && slash < trimmed.length - 1) {
+      return {
+        selected_provider_id: trimmed.slice(0, slash).trim(),
+        selected_model_id: trimmed.slice(slash + 1).trim(),
+      }
+    }
+    return { selected_model_id: trimmed }
+  }
+
+  function commandStateToModelPreference(state: ConversationCommandState): string {
+    const provider = state.selected_provider_id?.trim() || ''
+    const model = state.selected_model_id?.trim() || ''
+    if (provider && model) return `${provider}/${model}`
+    if (model) return model
+    return 'auto'
   }
 
   // State
@@ -296,6 +336,7 @@ export const useChatStore = defineStore('chat', () => {
   } | null>(null)
 
   const isMultiSelectMode = ref(false)
+  const selectedProviderId = ref<string>('')
   const modelPreference = ref<string>(loadModelPreference())
   const offlineMode = ref<boolean>(loadOfflineMode())
   const webSearchEnabled = ref<boolean>(loadWebSearchEnabled())
@@ -304,6 +345,47 @@ export const useChatStore = defineStore('chat', () => {
 
   // SSE client for streaming
   const sseClient = new SSEClient()
+
+  function applyCommandState(state: ConversationCommandState) {
+    selectedProviderId.value = state.selected_provider_id?.trim() || ''
+    modelPreference.value = commandStateToModelPreference(state)
+    offlineMode.value = !!state.offline
+    webSearchEnabled.value = state.web_search_enabled !== false
+    deepResearchEnabled.value = !!state.deep_research_enabled
+  }
+
+  async function fetchCommandState(conversationId: string) {
+    const response = await conversationApi.getCommandState(conversationId)
+    if (currentConversationId.value === conversationId) {
+      applyCommandState(response.data)
+    }
+    return response.data
+  }
+
+  async function patchCommandState(conversationId: string, patch: ConversationCommandStatePatch) {
+    const response = await conversationApi.patchCommandState(conversationId, patch)
+    if (currentConversationId.value === conversationId) {
+      applyCommandState(response.data)
+    }
+    return response.data
+  }
+
+  async function seedConversationCommandState(conversationId: string) {
+    const seed: ConversationCommandStatePatch = {
+      ...splitModelPreference(loadModelPreference()),
+      offline: loadOfflineMode(),
+      web_search_enabled: loadWebSearchEnabled(),
+      deep_research_enabled: loadDeepResearchEnabled(),
+    }
+    const next = await patchCommandState(conversationId, seed)
+    if (currentConversationId.value === conversationId) {
+      applyCommandState(next)
+    }
+  }
+
+  function isSlashCommandText(value: string): boolean {
+    return value.trim().startsWith('/')
+  }
 
   function rememberActiveStreamId(streamId?: string | null) {
     const next = streamId?.trim()
@@ -563,6 +645,16 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = []
       hasMoreMessages.value = false
       currentPage.value = 0
+      try {
+        await seedConversationCommandState(response.data.id)
+      } catch {
+        applyCommandState({
+          ...splitModelPreference(loadModelPreference()),
+          offline: loadOfflineMode(),
+          web_search_enabled: loadWebSearchEnabled(),
+          deep_research_enabled: loadDeepResearchEnabled(),
+        })
+      }
       return response.data
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create conversation'
@@ -581,6 +673,11 @@ export const useChatStore = defineStore('chat', () => {
         messages.value = []
         hasMoreMessages.value = false
         currentPage.value = 0
+        selectedProviderId.value = ''
+        modelPreference.value = loadModelPreference()
+        offlineMode.value = loadOfflineMode()
+        webSearchEnabled.value = loadWebSearchEnabled()
+        deepResearchEnabled.value = loadDeepResearchEnabled()
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to delete conversation'
@@ -630,8 +727,11 @@ export const useChatStore = defineStore('chat', () => {
     try {
       // Fetch messages without setting loading state to avoid flash
       error.value = null
-      const response = await messageApi.list(id, PAGE_SIZE, 0)
-      const fetchedMessages = response.data
+      const [messageResponse] = await Promise.all([
+        messageApi.list(id, PAGE_SIZE, 0),
+        fetchCommandState(id).catch(() => null),
+      ])
+      const fetchedMessages = messageResponse.data
 
       // Only update if we're still on the same conversation
       if (currentConversationId.value === id) {
@@ -746,128 +846,6 @@ export const useChatStore = defineStore('chat', () => {
     touchConversationLocal(conversationId)
   }
 
-  async function handleSlashCommand(conversationId: string, raw: string): Promise<boolean> {
-    const text = raw.trim()
-    if (!text.startsWith('/')) return false
-
-    const parts = text.slice(1).trim().split(/\s+/)
-    const cmd = (parts[0] || '').toLowerCase()
-    const args = parts.slice(1)
-
-    if (!cmd) return false
-
-    const userMessage: Message = {
-      id: `temp-${Date.now()}`,
-      conversation_id: conversationId,
-      role: 'user',
-      content: raw,
-      created_at: new Date().toISOString(),
-    }
-    messages.value = [...messages.value, userMessage]
-
-    if (cmd === 'help' || cmd === 'commands') {
-      appendAssistantLocalMessage(
-        conversationId,
-        [
-          '可用命令：',
-          '`/commands` 同 `/help`',
-          '`/status` 查看当前会话命令状态',
-          '`/model` 查看当前模型偏好',
-          '`/model auto` 使用自动路由',
-          '`/model <模型ID>` 固定模型',
-          '`/model list` 或 `/models` 列出可用模型',
-          '`/offline on|off|status` 切换或查看离线模式',
-          '`/clear` 或 `/reset` 清空当前会话消息',
-        ].join('\n')
-      )
-      return true
-    }
-
-    if (cmd === 'status') {
-      const status = [
-        '会话状态：',
-        `- model: \`${modelPreference.value}\``,
-        `- offline: \`${offlineMode.value ? 'ON' : 'OFF'}\``,
-        `- messages: \`${messages.value.length}\``,
-      ].join('\n')
-      appendAssistantLocalMessage(conversationId, status)
-      return true
-    }
-
-    if (cmd === 'model' || cmd === 'models') {
-      if (cmd === 'models' && args.length === 0) {
-        args.push('list')
-      }
-      const sub = (args[0] || '').trim()
-      if (!sub) {
-        appendAssistantLocalMessage(conversationId, `当前模型偏好：\`${modelPreference.value}\``)
-        return true
-      }
-      if (sub.toLowerCase() === 'list') {
-        const providerStore = useProviderPoolStore()
-        if (providerStore.models.length === 0) {
-          try {
-            await providerStore.fetchModels()
-          } catch {
-            // ignore
-          }
-        }
-        const all = Array.from(new Set(providerStore.models.map((m) => m.id))).sort()
-        if (all.length === 0) {
-          appendAssistantLocalMessage(conversationId, '当前没有可用模型列表，请先在 Provider 配置页完成模型拉取。')
-          return true
-        }
-        const preview = all.slice(0, 30).map((m) => `- \`${m}\``).join('\n')
-        const suffix = all.length > 30 ? `\n... 共 ${all.length} 个模型` : ''
-        appendAssistantLocalMessage(conversationId, `可用模型：\n${preview}${suffix}`)
-        return true
-      }
-
-      const nextModel = sub.toLowerCase() === 'auto' ? 'auto' : sub
-      modelPreference.value = nextModel
-      saveModelPreference(nextModel)
-      appendAssistantLocalMessage(conversationId, `模型偏好已设置为：\`${nextModel}\``)
-      return true
-    }
-
-    if (cmd === 'offline') {
-      const sub = (args[0] || 'status').toLowerCase()
-      if (sub === 'on') {
-        offlineMode.value = true
-        saveOfflineMode(true)
-        appendAssistantLocalMessage(conversationId, '离线模式已开启。后续消息不会调用模型，只返回本地离线响应。')
-        return true
-      }
-      if (sub === 'off') {
-        offlineMode.value = false
-        saveOfflineMode(false)
-        appendAssistantLocalMessage(conversationId, '离线模式已关闭。后续消息将恢复模型调用。')
-        return true
-      }
-      appendAssistantLocalMessage(conversationId, `离线模式当前为：${offlineMode.value ? 'ON' : 'OFF'}`)
-      return true
-    }
-
-    if (cmd === 'clear' || cmd === 'reset') {
-      try {
-        const idsToDelete = messages.value
-          .map(m => m.id)
-          .filter(id => !id.startsWith('temp-') && !id.startsWith('local-') && !id.startsWith('streaming-'))
-        if (idsToDelete.length > 0) {
-          await messageApi.delete(conversationId, idsToDelete)
-        }
-        messages.value = [userMessage]
-        appendAssistantLocalMessage(conversationId, `已清空当前会话（删除 ${idsToDelete.length} 条消息）。`)
-      } catch {
-        appendAssistantLocalMessage(conversationId, '清空会话失败，请稍后重试。')
-      }
-      return true
-    }
-
-    // Let backend handle commands not implemented in local fast-path.
-    return false
-  }
-
   async function sendMessage(content: string, fileAttachments?: { id: string; file: File; name: string; size: number; type: string; preview?: string; duration?: number }[]) {
     if (!currentConversationId.value) {
       // Use the first part of the message as the conversation title
@@ -875,12 +853,9 @@ export const useChatStore = defineStore('chat', () => {
       await createConversation(title)
     }
 
-    const conversationId = currentConversationId.value!
-    const settingsStore = useSettingsStore()
-
-    if ((!fileAttachments || fileAttachments.length === 0) && await handleSlashCommand(conversationId, content)) {
-      return
-    }
+	const conversationId = currentConversationId.value!
+	const settingsStore = useSettingsStore()
+	const shouldRefreshCommandStateAfterComplete = (!fileAttachments || fileAttachments.length === 0) && isSlashCommandText(content)
 
     // Convert file attachments to MessageAttachment format (base64)
     const attachments: MessageAttachment[] = []
@@ -931,23 +906,14 @@ export const useChatStore = defineStore('chat', () => {
     }
     messages.value = [...messages.value, userMessage]
 
-    if (offlineMode.value) {
-      appendAssistantLocalMessage(
-        conversationId,
-        `离线模式响应：已收到你的消息（${content.length} 字）。该模式不调用模型推理，仅做本地命令与占位回复。`
-      )
-      return
-    }
-
-    // Keep provider empty so backend router can choose provider.
-    // Model can be overridden by `/model` command; empty string means auto.
-    const request: SendMessageRequest = {
-      message: content,
-      provider: '',
-      model: modelPreference.value === 'auto' ? '' : modelPreference.value,
-      temperature: settingsStore.temperature,
-      max_tokens: settingsStore.maxTokens,
-      attachments: attachments.length > 0 ? attachments : undefined,
+	const modelSelection = splitModelPreference(modelPreference.value)
+	const request: SendMessageRequest = {
+	  message: content,
+	  provider: selectedProviderId.value || modelSelection.selected_provider_id || '',
+	  model: modelSelection.selected_model_id || '',
+	  temperature: settingsStore.temperature,
+	  max_tokens: settingsStore.maxTokens,
+	  attachments: attachments.length > 0 ? attachments : undefined,
       web_search_enabled: webSearchEnabled.value,
       deep_research_enabled: deepResearchEnabled.value,
     }
@@ -1229,11 +1195,14 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
           // Refresh messages to get the actual IDs from server
-          fetchMessages(conversationId)
-          // Refresh conversations to get updated title (auto-generated after first message)
-          fetchConversations()
-          // Refresh trial quota to update progress bar
-          useProviderPoolStore().fetchTrialQuota()
+		  fetchMessages(conversationId)
+		  // Refresh conversations to get updated title (auto-generated after first message)
+		  fetchConversations()
+		  if (shouldRefreshCommandStateAfterComplete) {
+			void fetchCommandState(conversationId).catch(() => {})
+		  }
+		  // Refresh trial quota to update progress bar
+		  useProviderPoolStore().fetchTrialQuota()
           if (awaitingConfirmation.value) {
             void recoverPendingConfirmations(true)
           }
@@ -1374,10 +1343,11 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.value = [...messages.value, assistantMessage]
 
+      const modelSelection = splitModelPreference(modelPreference.value)
       const request: SendMessageRequest = {
         message: '[CONTINUE_AFTER_CANCEL]',
-        provider: '',
-        model: modelPreference.value === 'auto' ? '' : modelPreference.value,
+        provider: selectedProviderId.value || modelSelection.selected_provider_id || '',
+        model: modelSelection.selected_model_id || '',
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         web_search_enabled: webSearchEnabled.value,
@@ -1526,10 +1496,11 @@ export const useChatStore = defineStore('chat', () => {
       awaitingConfirmation.value = false
       error.value = null
 
+      const modelSelection = splitModelPreference(modelPreference.value)
       const request: SendMessageRequest = {
         message: '[CONTINUE]', // Special marker for continue
-        provider: '',
-        model: modelPreference.value === 'auto' ? '' : modelPreference.value,
+        provider: selectedProviderId.value || modelSelection.selected_provider_id || '',
+        model: modelSelection.selected_model_id || '',
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         web_search_enabled: webSearchEnabled.value,
@@ -1712,10 +1683,11 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.value = [...messages.value, assistantMessage]
 
+      const modelSelection = splitModelPreference(modelPreference.value)
       const request: SendMessageRequest = {
         message: lastUserMessage.content,
-        provider: '',
-        model: modelPreference.value === 'auto' ? '' : modelPreference.value,
+        provider: selectedProviderId.value || modelSelection.selected_provider_id || '',
+        model: modelSelection.selected_model_id || '',
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
         attachments: lastUserMessage.attachments,
@@ -2162,6 +2134,11 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = []
       hasMoreMessages.value = false
       currentPage.value = 0
+      selectedProviderId.value = ''
+      modelPreference.value = loadModelPreference()
+      offlineMode.value = loadOfflineMode()
+      webSearchEnabled.value = loadWebSearchEnabled()
+      deepResearchEnabled.value = loadDeepResearchEnabled()
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to clear conversations'
       throw e
@@ -2178,20 +2155,45 @@ export const useChatStore = defineStore('chat', () => {
     warmupApi.trigger(convId).catch(() => {})
   }
 
-  function setWebSearchEnabled(_enabled: boolean) {
-    webSearchEnabled.value = true
-    saveWebSearchEnabled(true)
+  function setWebSearchEnabled(enabled: boolean) {
+    webSearchEnabled.value = enabled
+    saveWebSearchEnabled(enabled)
+    const convId = currentConversationId.value
+    if (convId) {
+      void patchCommandState(convId, { web_search_enabled: enabled }).catch(() => {})
+    }
   }
 
   function setModelPreference(value: string) {
     const next = value.trim()
     modelPreference.value = next || 'auto'
     saveModelPreference(modelPreference.value)
+    const parsed = splitModelPreference(modelPreference.value)
+    if (parsed.selected_provider_id) {
+      selectedProviderId.value = parsed.selected_provider_id
+    }
+    const convId = currentConversationId.value
+    if (convId) {
+      const patch: ConversationCommandStatePatch = {}
+      if (!next || next === 'auto') {
+        patch.selected_model_id = ''
+      } else {
+        patch.selected_model_id = parsed.selected_model_id || ''
+        if (parsed.selected_provider_id) {
+          patch.selected_provider_id = parsed.selected_provider_id
+        }
+      }
+      void patchCommandState(convId, patch).catch(() => {})
+    }
   }
 
   function setDeepResearchEnabled(enabled: boolean) {
     deepResearchEnabled.value = enabled
     saveDeepResearchEnabled(enabled)
+    const convId = currentConversationId.value
+    if (convId) {
+      void patchCommandState(convId, { deep_research_enabled: enabled }).catch(() => {})
+    }
   }
 
   // Reset warmup tracking (call when conversation changes)
@@ -2232,6 +2234,7 @@ export const useChatStore = defineStore('chat', () => {
     pendingQuestion,
     awaitingConfirmation,
     pendingExecApproval,
+    selectedProviderId,
     modelPreference,
     offlineMode,
     webSearchEnabled,

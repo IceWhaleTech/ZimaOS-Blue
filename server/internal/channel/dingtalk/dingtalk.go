@@ -23,22 +23,22 @@ import (
 )
 
 const (
-	dtAPIBase      = "https://oapi.dingtalk.com"
-	dtNewAPIBase   = "https://api.dingtalk.com"
-	dtTokenPath    = "/v1.0/oauth2/accessToken"
-	dtUploadPath   = "/media/upload"
-	dtRobotSend    = "/v1.0/robot/oToMessages/batchSend"
+	dtAPIBase    = "https://oapi.dingtalk.com"
+	dtNewAPIBase = "https://api.dingtalk.com"
+	dtTokenPath  = "/v1.0/oauth2/accessToken"
+	dtUploadPath = "/media/upload"
+	dtRobotSend  = "/v1.0/robot/oToMessages/batchSend"
 )
 
 // Config contains DingTalk channel configuration.
 type Config struct {
-	Enabled     bool   `yaml:"enabled"`
-	AppKey      string `yaml:"app_key"`
-	AppSecret   string `yaml:"app_secret"`
-	AgentID     string `yaml:"agent_id"`
-	RobotCode   string `yaml:"robot_code"`
-	WebhookURL  string `yaml:"webhook_url"`
-	SignSecret  string `yaml:"sign_secret"`
+	Enabled    bool   `yaml:"enabled"`
+	AppKey     string `yaml:"app_key"`
+	AppSecret  string `yaml:"app_secret"`
+	AgentID    string `yaml:"agent_id"`
+	RobotCode  string `yaml:"robot_code"`
+	WebhookURL string `yaml:"webhook_url"`
+	SignSecret string `yaml:"sign_secret"`
 }
 
 // Channel implements the channel.Channel interface for DingTalk.
@@ -63,21 +63,27 @@ type Channel struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	sendTextFunc       func(ctx context.Context, chatID, content string) error
+	sendAttachmentFunc func(ctx context.Context, chatID, caption string, att channel.Attachment) error
 }
 
 // New creates a new DingTalk channel.
 func New(cfg Config, logger *zap.Logger) *Channel {
-	return &Channel{
+	ch := &Channel{
 		config:   cfg,
 		logger:   logger.With(zap.String("channel", "dingtalk")),
 		client:   &http.Client{Timeout: 30 * time.Second},
 		messages: make(chan channel.Message, 100),
 		status:   channel.StatusDisconnected,
 	}
+	ch.sendTextFunc = ch.sendText
+	ch.sendAttachmentFunc = ch.sendAttachment
+	return ch
 }
 
-func (c *Channel) Name() string                    { return "dingtalk" }
-func (c *Channel) Type() string                    { return "dingtalk" }
+func (c *Channel) Name() string                     { return "dingtalk" }
+func (c *Channel) Type() string                     { return "dingtalk" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -168,26 +174,73 @@ func (c *Channel) getAccessToken(ctx context.Context) (string, error) {
 
 // Send sends a message through DingTalk.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
-	// Try attachments first.
-	for _, att := range msg.Attachments {
-		if err := c.sendAttachment(ctx, msg.ChatID, msg.Content, att); err != nil {
-			c.logger.Warn("failed to send attachment, falling back to text",
-				zap.String("channel", "dingtalk"), zap.String("type", string(att.Type)), zap.Error(err))
-			fallback := msg.Content
-			if att.URL != "" {
-				fallback += "\n" + att.URL
-			}
-			if err2 := c.sendText(ctx, msg.ChatID, fallback); err2 != nil {
-				return fmt.Errorf("dingtalk send fallback: %w", err2)
-			}
-		}
-		msg.Content = ""
+	captionConsumed := false
+	sentSomething := false
+	if c.sendTextFunc == nil {
+		c.sendTextFunc = c.sendText
+	}
+	if c.sendAttachmentFunc == nil {
+		c.sendAttachmentFunc = c.sendAttachment
 	}
 
-	if len(msg.Attachments) == 0 && msg.Content != "" {
-		return c.sendText(ctx, msg.ChatID, msg.Content)
+	// Try attachments first.
+	for _, att := range msg.Attachments {
+		caption := ""
+		includeCaption := !captionConsumed && strings.TrimSpace(msg.Content) != ""
+		if includeCaption {
+			caption = msg.Content
+		}
+		if err := c.sendAttachmentFunc(ctx, msg.ChatID, caption, att); err != nil {
+			c.logger.Warn("failed to send attachment, falling back to text",
+				zap.String("channel", "dingtalk"), zap.String("type", string(att.Type)), zap.Error(err))
+			fallback := dingtalkAttachmentFallbackText(msg.Content, att, includeCaption)
+			if fallback == "" {
+				continue
+			}
+			if err2 := c.sendTextFunc(ctx, msg.ChatID, fallback); err2 != nil {
+				return fmt.Errorf("dingtalk send fallback: %w", err2)
+			}
+			sentSomething = true
+			if includeCaption {
+				captionConsumed = true
+			}
+			continue
+		}
+		sentSomething = true
+		if includeCaption {
+			captionConsumed = true
+		}
+	}
+
+	if strings.TrimSpace(msg.Content) != "" && !captionConsumed {
+		if err := c.sendTextFunc(ctx, msg.ChatID, msg.Content); err != nil {
+			return err
+		}
+		sentSomething = true
+	}
+	if !sentSomething {
+		return fmt.Errorf("no sendable DingTalk content")
 	}
 	return nil
+}
+
+func dingtalkAttachmentFallbackText(caption string, att channel.Attachment, includeCaption bool) string {
+	parts := make([]string, 0, 2)
+	if includeCaption && strings.TrimSpace(caption) != "" {
+		parts = append(parts, strings.TrimSpace(caption))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		parts = append(parts, strings.TrimSpace(att.URL))
+	} else {
+		name := strings.TrimSpace(att.Name)
+		if name == "" && len(att.Data) > 0 {
+			name = "Attachment"
+		}
+		if name != "" {
+			parts = append(parts, name)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 // sendText sends a text message via DingTalk webhook or robot API.
@@ -205,9 +258,13 @@ func (c *Channel) sendText(ctx context.Context, chatID, content string) error {
 	if err != nil {
 		return fmt.Errorf("get access token: %w", err)
 	}
+	msgParam, err := marshalJSONString(map[string]string{"content": content})
+	if err != nil {
+		return fmt.Errorf("marshal text params: %w", err)
+	}
 	return c.sendRobotOTO(ctx, token, chatID, map[string]interface{}{
-		"msgKey":  "sampleText",
-		"msgParam": mustMarshalJSON(map[string]string{"content": content}),
+		"msgKey":   "sampleText",
+		"msgParam": msgParam,
 	})
 }
 
@@ -229,10 +286,23 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, caption string, at
 				})
 			}
 		}
-		// For other types, send as markdown with URL.
-		text := caption
+		// For other types, send as markdown with URL or fallback text.
+		text := ""
 		if att.URL != "" {
-			text += fmt.Sprintf("\n[%s](%s)", att.Name, att.URL)
+			label := strings.TrimSpace(att.Name)
+			if label == "" {
+				label = "Attachment"
+			}
+			text = caption
+			if text != "" {
+				text += "\n"
+			}
+			text += fmt.Sprintf("[%s](%s)", label, att.URL)
+		} else {
+			text = dingtalkAttachmentFallbackText(caption, att, caption != "")
+		}
+		if strings.TrimSpace(text) == "" {
+			return fmt.Errorf("attachment has no sendable webhook content")
 		}
 		return c.sendWebhook(ctx, map[string]interface{}{
 			"msgtype":  "markdown",
@@ -252,20 +322,24 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, caption string, at
 			return fmt.Errorf("upload media: %w", err)
 		}
 
-		var msgKey, msgParam string
+		var msgKey string
+		var msgParam string
 		switch att.Type {
 		case channel.MessageTypeImage:
 			msgKey = "sampleImageMsg"
-			msgParam = mustMarshalJSON(map[string]string{"photoURL": mediaID})
+			msgParam, err = marshalJSONString(map[string]string{"photoURL": mediaID})
 		case channel.MessageTypeVideo:
 			msgKey = "sampleVideo"
-			msgParam = mustMarshalJSON(map[string]string{"mediaId": mediaID, "videoType": "mp4", "duration": "0"})
+			msgParam, err = marshalJSONString(map[string]string{"mediaId": mediaID, "videoType": "mp4", "duration": "0"})
 		case channel.MessageTypeAudio:
 			msgKey = "sampleAudio"
-			msgParam = mustMarshalJSON(map[string]string{"mediaId": mediaID, "duration": "0"})
+			msgParam, err = marshalJSONString(map[string]string{"mediaId": mediaID, "duration": "0"})
 		default:
 			msgKey = "sampleFile"
-			msgParam = mustMarshalJSON(map[string]string{"mediaId": mediaID, "fileName": att.Name})
+			msgParam, err = marshalJSONString(map[string]string{"mediaId": mediaID, "fileName": att.Name})
+		}
+		if err != nil {
+			return fmt.Errorf("marshal attachment params: %w", err)
 		}
 		return c.sendRobotOTO(ctx, token, chatID, map[string]interface{}{
 			"msgKey":   msgKey,
@@ -273,10 +347,10 @@ func (c *Channel) sendAttachment(ctx context.Context, chatID, caption string, at
 		})
 	}
 
-	// No binary data — send URL as text.
-	text := caption
-	if att.URL != "" {
-		text += "\n" + att.URL
+	// No binary data — send URL/name as text.
+	text := dingtalkAttachmentFallbackText(caption, att, caption != "")
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("attachment has no binary data or fallback text")
 	}
 	return c.sendText(ctx, chatID, text)
 }
@@ -376,8 +450,8 @@ func (c *Channel) sendWebhook(ctx context.Context, payload map[string]interface{
 // sendRobotOTO sends a one-to-one robot message via DingTalk new API.
 func (c *Channel) sendRobotOTO(ctx context.Context, token, userID string, msgBody map[string]interface{}) error {
 	payload := map[string]interface{}{
-		"robotCode":    c.config.RobotCode,
-		"userIds":      []string{userID},
+		"robotCode": c.config.RobotCode,
+		"userIds":   []string{userID},
 	}
 	for k, v := range msgBody {
 		payload[k] = v
@@ -410,14 +484,13 @@ func (c *Channel) sendRobotOTO(ctx context.Context, token, userID string, msgBod
 	return nil
 }
 
-// mustMarshalJSON marshals v to a JSON string. Panics on error (should never happen for simple maps).
-func mustMarshalJSON(v interface{}) string {
+// marshalJSONString marshals v to a JSON string.
+func marshalJSONString(v interface{}) (string, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
-		// This should never happen for simple string maps.
-		panic(fmt.Sprintf("dingtalk: json.Marshal failed: %v", err))
+		return "", err
 	}
-	return string(b)
+	return string(b), nil
 }
 
 func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID string, content <-chan string, done chan<- struct{}) error {
@@ -439,7 +512,7 @@ func (c *Channel) Info() channel.Info {
 		Name: "dingtalk", Type: "dingtalk", Status: c.status, Enabled: c.config.Enabled,
 		ConnectedAt: c.connectedAt, LastError: c.lastError, MessageCount: c.msgCount.Load(),
 		MessagesSent: c.msgsSent.Load(),
-		Metadata: map[string]interface{}{"robot_code": c.config.RobotCode},
+		Metadata:     map[string]interface{}{"robot_code": c.config.RobotCode},
 	}
 }
 

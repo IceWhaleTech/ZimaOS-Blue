@@ -37,6 +37,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
@@ -48,6 +49,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sessionaudit"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
@@ -81,6 +83,14 @@ func applyPendingBackupRestore(dataDir string) error {
 		return err
 	}
 	if !mgr.HasPendingRestore() {
+		dbPaths, err := backup.DiscoverSQLiteDatabasePaths(dataDir)
+		if err != nil {
+			return err
+		}
+		_, err = mgr.CheckAndAutoRecover(context.Background(), dbPaths)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	_, err = mgr.ApplyPendingRestore(context.Background())
@@ -436,7 +446,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	})
 
 	// Initialize metrics
-	metricsCollector, metricsWriter := bootstrap.InitMetrics(dataDir)
+	metricsCollector, metricsWriter := bootstrap.InitMetrics(dataDir, services.DB)
 	defer metricsCollector.Stop()
 	defer metricsWriter.Stop()
 	// Register cleanup for metrics
@@ -450,31 +460,38 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	chatHandler := server.NewChatHandler(services.MemoryStore, services.LLMRegistry, services.ToolRegistry)
 	chatHandler.SetMetricsRecorder(metricsWriter)
 	if cfg.Session.Audit.Enabled {
+		auditCfg := sessionaudit.StoreConfig{
+			RetentionDays:    cfg.Session.Audit.RetentionDays,
+			CleanupInterval:  cfg.Session.Audit.CleanupInterval,
+			CleanupBatchSize: cfg.Session.Audit.CleanupBatchSize,
+		}
 		auditDBPath := cfg.Session.Audit.Path
+		var (
+			auditStore *sessionaudit.Store
+			err        error
+		)
 		if auditDBPath == "" {
-			auditDBPath = filepath.Join(dataDir, "session_audit.db")
-		}
-		if !filepath.IsAbs(auditDBPath) {
-			// Keep audit DB under dataDir by default for predictable deployment paths.
-			auditDBPath = filepath.Join(dataDir, filepath.Base(auditDBPath))
-		}
-		if err := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); err != nil {
-			zapLogger.Warn("Failed to create session audit directory", zap.String("path", auditDBPath), zap.Error(err))
+			auditDBPath = filepath.Join(dataDir, "blue.db")
+			auditStore, err = sessionaudit.NewSQLiteStoreWithDB(services.DB, auditCfg)
 		} else {
-			auditStore, err := sessionaudit.NewSQLiteStore(auditDBPath, sessionaudit.StoreConfig{
-				RetentionDays:    cfg.Session.Audit.RetentionDays,
-				CleanupInterval:  cfg.Session.Audit.CleanupInterval,
-				CleanupBatchSize: cfg.Session.Audit.CleanupBatchSize,
-			})
-			if err != nil {
-				zapLogger.Warn("Failed to initialize session audit store", zap.String("path", auditDBPath), zap.Error(err))
-			} else {
-				chatHandler.SetSessionAuditStore(auditStore)
-				registerCleanup(func() error {
-					return auditStore.Close()
-				})
-				zapLogger.Info("Session tool payload audit store enabled", zap.String("path", auditDBPath), zap.Int("retention_days", cfg.Session.Audit.RetentionDays))
+			if !filepath.IsAbs(auditDBPath) {
+				// Keep audit DB under dataDir by default for predictable deployment paths.
+				auditDBPath = filepath.Join(dataDir, filepath.Base(auditDBPath))
 			}
+			if mkErr := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); mkErr != nil {
+				zapLogger.Warn("Failed to create session audit directory", zap.String("path", auditDBPath), zap.Error(mkErr))
+			} else {
+				auditStore, err = sessionaudit.NewSQLiteStore(auditDBPath, auditCfg)
+			}
+		}
+		if err != nil {
+			zapLogger.Warn("Failed to initialize session audit store", zap.String("path", auditDBPath), zap.Error(err))
+		} else if auditStore != nil {
+			chatHandler.SetSessionAuditStore(auditStore)
+			registerCleanup(func() error {
+				return auditStore.Close()
+			})
+			zapLogger.Info("Session tool payload audit store enabled", zap.String("path", auditDBPath), zap.Int("retention_days", cfg.Session.Audit.RetentionDays))
 		}
 	}
 
@@ -728,7 +745,19 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Initialize provider pool (SQLite-backed, auto-migrates from JSON files)
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
-	providerPool, _ := providerpool.NewPool(providerPoolPath, providerpool.WithDB(services.DB))
+	ppOpts := []providerpool.PoolOption{providerpool.WithDB(services.DB)}
+	if cfg.Security.Encryption.Enabled {
+		secretEncryptor, encErr := auth.NewEncryptor(&auth.EncryptionConfig{
+			KeyPath:    cfg.Security.Encryption.KeyPath,
+			Passphrase: cfg.Security.Encryption.Passphrase,
+		})
+		if encErr != nil {
+			zapLogger.Warn("Failed to initialize provider pool secret encryption", zap.Error(encErr))
+		} else {
+			ppOpts = append(ppOpts, providerpool.WithSecretEncryptor(secretEncryptor))
+		}
+	}
+	providerPool, _ := providerpool.NewPool(providerPoolPath, ppOpts...)
 	if providerPool != nil {
 		bootstrap.LoadProvidersFromPool(providerPool, services.LLMRegistry)
 		chatHandler.SetProviderPool(providerPool)
@@ -863,6 +892,24 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	// Initialize memory handler in background — it's not needed until the first
 	// memory API call or chat recall, so don't block server startup.
 	go memoryHandler.Init()
+
+	// Wire threshold-triggered memory extraction (compactor_memory) into chat flow.
+	var compactionProvider llm.Provider
+	if providerNames := services.LLMRegistry.List(); len(providerNames) > 0 {
+		compactionProvider = services.LLMRegistry.Get(providerNames[0])
+	}
+	sessionCompactor := session.NewSessionCompactor(compactionProvider, cfg.Session.Compaction)
+	memoryRefreshCfg := session.DefaultMemoryRefreshConfig()
+	memoryRefreshCfg.Enabled = memoryRefreshCfg.Enabled && cfg.Session.Compaction.Enabled && compactionProvider != nil
+	if memoryRefreshCfg.Enabled {
+		sessionMemRefresher := server.NewSessionMemoryRefresher(memoryHandler)
+		chatHandler.SetCompactorMemoryIntegration(session.NewCompactorMemoryIntegration(
+			sessionCompactor,
+			sessionMemRefresher,
+			compactionProvider,
+			memoryRefreshCfg,
+		), cfg.Session.MaxTokens)
+	}
 
 	// Create Echo server
 	e := echo.New()

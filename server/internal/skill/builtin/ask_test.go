@@ -10,14 +10,16 @@ import (
 type captureAskQuestioner struct {
 	lastUserID    string
 	lastSessionID string
+	lastQuestions []AskQuestionItem
 	answers       []AskQuestionAnswerResult
 	silent        bool
 	err           error
 }
 
-func (c *captureAskQuestioner) AskQuestions(_ context.Context, userID, sessionID string, _ []AskQuestionItem) ([]AskQuestionAnswerResult, bool, error) {
+func (c *captureAskQuestioner) AskQuestions(_ context.Context, userID, sessionID string, questions []AskQuestionItem) ([]AskQuestionAnswerResult, bool, error) {
 	c.lastUserID = userID
 	c.lastSessionID = sessionID
+	c.lastQuestions = append([]AskQuestionItem(nil), questions...)
 	return c.answers, c.silent, c.err
 }
 
@@ -68,6 +70,42 @@ func TestAskValidate_AcceptsQuestionsArray(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Validate returned error: %v", err)
+	}
+}
+
+func TestAskExecute_AcceptsStringQuestionsArrayWithTopLevelOptionGroups(t *testing.T) {
+	a := NewAsk()
+	mock := &captureAskQuestioner{
+		answers: []AskQuestionAnswerResult{
+			{QuestionID: "q0", Selected: []string{"开发环境"}},
+			{QuestionID: "q1", Selected: []string{"Go"}},
+			{QuestionID: "q2", Selected: []string{"简洁回答"}},
+		},
+	}
+	a.SetQuestioner(mock)
+
+	res, err := a.Execute(context.Background(), map[string]any{
+		"questions": `["你主要用 ZimaOS 做什么？","你最常用的编程语言是？","有没有希望我记住的工作习惯或偏好？"]`,
+		"options":   `[["存储备份","媒体中心","开发环境","其他"],["Python","JavaScript/TypeScript","Go","Rust","其他"],["简洁回答","详细解释","多给代码示例","其他"]]`,
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("Execute returned unsuccessful result: %+v", res)
+	}
+	if got := len(mock.lastQuestions); got != 3 {
+		t.Fatalf("question count = %d, want 3", got)
+	}
+	if mock.lastQuestions[1].Question != "你最常用的编程语言是？" {
+		t.Fatalf("question[1] = %q", mock.lastQuestions[1].Question)
+	}
+	if got := len(mock.lastQuestions[2].Options); got != 4 {
+		t.Fatalf("question[2] options len = %d, want 4", got)
+	}
+	selected, _ := res.Data.(map[string]any)["selected"].([]string)
+	if len(selected) != 1 || selected[0] != "开发环境" {
+		t.Fatalf("selected = %#v, want first answer", selected)
 	}
 }
 
@@ -224,6 +262,44 @@ func TestParseAskQuestions_QuestionsNativeArray(t *testing.T) {
 	}
 	if items[0].Options[0].Description != "Directly answer 1-4" {
 		t.Fatalf("option[0].Description = %q", items[0].Options[0].Description)
+	}
+}
+
+func TestParseAskQuestions_StringQuestionsArrayUsesTopLevelOptionGroups(t *testing.T) {
+	items, err := parseAskQuestions(map[string]any{
+		"questions": `["你主要用 ZimaOS 做什么？","你最常用的编程语言是？","有没有希望我记住的工作习惯或偏好？"]`,
+		"options":   `[["存储备份","媒体中心","开发环境","其他"],["Python","JavaScript/TypeScript","Go","Rust","其他"],["简洁回答","详细解释","多给代码示例","其他"]]`,
+	})
+	if err != nil {
+		t.Fatalf("parseAskQuestions returned error: %v", err)
+	}
+	if got := len(items); got != 3 {
+		t.Fatalf("items len = %d, want 3", got)
+	}
+	if items[0].Question != "你主要用 ZimaOS 做什么？" {
+		t.Fatalf("question[0] = %q", items[0].Question)
+	}
+	if got := len(items[1].Options); got != 5 {
+		t.Fatalf("question[1] options len = %d, want 5", got)
+	}
+	if items[2].Options[2].Label != "多给代码示例" {
+		t.Fatalf("question[2] option[2] label = %q", items[2].Options[2].Label)
+	}
+	if items[2].MultiSelect {
+		t.Fatalf("question[2] MultiSelect = true, want false")
+	}
+}
+
+func TestParseAskQuestions_StringQuestionsArrayRejectsLengthMismatch(t *testing.T) {
+	_, err := parseAskQuestions(map[string]any{
+		"questions": `["Q1","Q2"]`,
+		"options":   `[["A","B"]]`,
+	})
+	if err == nil {
+		t.Fatalf("expected mismatch error, got nil")
+	}
+	if err.Error() != "questions/options length mismatch: 2 questions, 1 option groups" {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

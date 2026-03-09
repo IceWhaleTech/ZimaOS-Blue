@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -293,8 +294,17 @@ func (r *Runner) drainMessages(taskID string) []string {
 }
 
 // AskUser sends questions to the user and blocks until answers are received or ctx is cancelled.
-// Sets task status to waiting_input while blocked, restores to executing after.
+// Sets task status to waiting_input while blocked, then restores the prior running status.
 func (r *Runner) AskUser(ctx context.Context, taskID string, questions []AgentQuestion, stepIndex int) ([]QuestionAnswer, error) {
+	task, err := r.store.Get(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("task not found: %w", err)
+	}
+	resumeStatus := task.Status
+	if resumeStatus == "" || resumeStatus == TaskStatusWaitingInput {
+		resumeStatus = resumeStatusForRuntimeState(task.RuntimeState)
+	}
+
 	ch := make(chan []QuestionAnswer, 1)
 	r.askMu.Lock()
 	r.askQueues[taskID] = ch
@@ -304,15 +314,11 @@ func (r *Runner) AskUser(ctx context.Context, taskID string, questions []AgentQu
 		r.askMu.Lock()
 		delete(r.askQueues, taskID)
 		r.askMu.Unlock()
-		// Restore status to executing
-		_ = r.store.SetStatus(context.Background(), taskID, TaskStatusExecuting, "")
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
+		}
+		_ = r.store.SetStatus(context.Background(), taskID, resumeStatus, "")
 	}()
-
-	// Look up userID from running task
-	task, err := r.store.Get(ctx, taskID)
-	if err != nil {
-		return nil, fmt.Errorf("task not found: %w", err)
-	}
 
 	// Set status to waiting_input
 	_ = r.store.SetStatus(ctx, taskID, TaskStatusWaitingInput, "")
@@ -347,6 +353,17 @@ func (r *Runner) AskUser(ctx context.Context, taskID string, questions []AgentQu
 		return nil, fmt.Errorf("ask_user timed out after %v — no user response", askTimeout)
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	}
+}
+
+func resumeStatusForRuntimeState(state RuntimeState) TaskStatus {
+	switch state {
+	case RuntimeStateClarify, RuntimeStatePlan, RuntimeStateConfirmGate:
+		return TaskStatusPlanning
+	case RuntimeStateExecute, RuntimeStateVerify, RuntimeStateRecover, RuntimeStateReport:
+		return TaskStatusExecuting
+	default:
+		return TaskStatusExecuting
 	}
 }
 
@@ -729,14 +746,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	const maxConsecutiveFailures = 3 // abort if too many steps fail in a row
 	for i := range task.Plan {
 		if ctx.Err() != nil {
-			task.Status = TaskStatusCancelled
-			task.Error = "task cancelled"
-			_ = r.store.Update(context.Background(), task)
-			r.publishEvent(task.UserID, TaskEvent{
-				TaskID:    task.ID,
-				EventType: "task_failed",
-				Message:   "task cancelled",
-			})
+			r.cancelTask(task, "task cancelled")
 			return
 		}
 
@@ -773,6 +783,10 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 
 		output, err := r.executeStep(ctx, task, step)
 		if err != nil {
+			if errors.Is(ctx.Err(), context.Canceled) {
+				r.cancelTask(task, "task cancelled")
+				return
+			}
 			// Retry once before marking as failed
 			logger.Warn().Err(err).Int("step", i).Str("task_id", task.ID).Msg("[agent] step failed, retrying once")
 			r.publishEvent(task.UserID, TaskEvent{
@@ -784,6 +798,10 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 			output, err = r.executeStep(ctx, task, step)
 		}
 		if err != nil {
+			if errors.Is(ctx.Err(), context.Canceled) {
+				r.cancelTask(task, "task cancelled")
+				return
+			}
 			step.Status = StepStatusFailed
 			step.Output = fmt.Sprintf("Error: %v", err)
 			completedAt := timeutil.NowTime()
@@ -823,6 +841,10 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 			}(),
 		})
 	}
+	if ctx.Err() != nil {
+		r.cancelTask(task, "task cancelled")
+		return
+	}
 
 	// Phase 3: Auto-verification
 	r.publishEvent(task.UserID, TaskEvent{
@@ -845,6 +867,10 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		return
 	}
 	verifyOutput, verifyErr := r.executeStep(ctx, task, verifyStep)
+	if errors.Is(ctx.Err(), context.Canceled) {
+		r.cancelTask(task, "task cancelled")
+		return
+	}
 	if verifyErr != nil {
 		verifyStep.Status = StepStatusFailed
 		verifyStep.Output = fmt.Sprintf("Verification error: %v", verifyErr)
@@ -857,6 +883,10 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	task.Plan = append(task.Plan, *verifyStep)
 
 	if verifyStep.Status != StepStatusCompleted {
+		if ctx.Err() != nil {
+			r.cancelTask(task, "task cancelled")
+			return
+		}
 		if err := r.transitionState(ctx, task, RuntimeStateRecover, "verification failed", nil, TaskStatusExecuting); err != nil {
 			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before recovery: %v", err))
 			return
@@ -869,6 +899,10 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		start := timeutil.NowTime()
 		recoverStep.StartedAt = &start
 		recoverOut, recoverErr := r.executeStep(ctx, task, recoverStep)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			r.cancelTask(task, "task cancelled")
+			return
+		}
 		end := timeutil.NowTime()
 		recoverStep.CompletedAt = &end
 		if recoverErr != nil {
@@ -896,6 +930,10 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		retryStart := timeutil.NowTime()
 		verifyRetryStep.StartedAt = &retryStart
 		verifyRetryOutput, verifyRetryErr := r.executeStep(ctx, task, verifyRetryStep)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			r.cancelTask(task, "task cancelled")
+			return
+		}
 		retryEnd := timeutil.NowTime()
 		verifyRetryStep.CompletedAt = &retryEnd
 		if verifyRetryErr != nil {
@@ -911,6 +949,10 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 			return
 		}
 	}
+	if ctx.Err() != nil {
+		r.cancelTask(task, "task cancelled")
+		return
+	}
 
 	// Phase 4: Summarize and suggest next steps
 	if err := r.transitionState(ctx, task, RuntimeStateReport, "generating final report", nil, TaskStatusExecuting); err != nil {
@@ -920,6 +962,10 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	task.Status = TaskStatusCompleted
 	task.Progress = 100
 	task.Result = r.generateSummary(ctx, task)
+	if ctx.Err() != nil {
+		r.cancelTask(task, "task cancelled")
+		return
+	}
 	_ = r.store.Update(ctx, task)
 	if err := r.transitionState(ctx, task, RuntimeStateDone, "task completed", nil, TaskStatusCompleted); err != nil {
 		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before done: %v", err))
@@ -1249,16 +1295,50 @@ Suggested next steps:
 
 // failTask marks a task as failed and publishes the event.
 func (r *Runner) failTask(ctx context.Context, task *Task, errMsg string) {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		r.cancelTask(task, "task cancelled")
+		return
+	}
+	persistCtx := context.Background()
 	task.Status = TaskStatusFailed
 	task.Error = errMsg
 	if task.RuntimeState != RuntimeStateAborted {
-		_ = r.transitionState(ctx, task, RuntimeStateAborted, "task failed", nil, TaskStatusFailed)
+		_ = r.transitionState(persistCtx, task, RuntimeStateAborted, "task failed", nil, TaskStatusFailed)
 	}
-	_ = r.store.Update(ctx, task)
+	_ = r.store.Update(persistCtx, task)
 	r.publishEvent(task.UserID, TaskEvent{
 		TaskID:    task.ID,
 		EventType: "task_failed",
 		Message:   errMsg,
+	})
+}
+
+func (r *Runner) cancelTask(task *Task, reason string) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "task cancelled"
+	}
+	if task.Status == TaskStatusCancelled && task.RuntimeState == RuntimeStateAborted {
+		return
+	}
+	from := task.RuntimeState
+	task.Status = TaskStatusCancelled
+	task.Error = reason
+	task.RuntimeState = RuntimeStateAborted
+	task.RuntimeAudit = append(task.RuntimeAudit, RuntimeAuditEvent{
+		Timestamp: timeutil.NowTime(),
+		From:      from,
+		To:        RuntimeStateAborted,
+		Reason:    reason,
+	})
+	_ = r.store.Update(context.Background(), task)
+	r.publishEvent(task.UserID, TaskEvent{
+		TaskID:    task.ID,
+		EventType: "task_cancelled",
+		Progress:  task.Progress,
+		Message:   reason,
+		FromState: from,
+		ToState:   RuntimeStateAborted,
 	})
 }
 

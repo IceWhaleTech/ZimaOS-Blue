@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf16"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
@@ -221,6 +222,10 @@ func (c *Channel) handleUpdate(update tgbotapi.Update) {
 	}
 
 	msg := update.Message
+	if msg.From == nil {
+		c.logger.Debug("ignoring message without sender")
+		return
+	}
 
 	// Check if user is allowed
 	if !c.isUserAllowed(msg.From) {
@@ -267,6 +272,7 @@ func (c *Channel) handleUpdate(update tgbotapi.Update) {
 
 	// If message handler is set, process and reply
 	if c.messageHandler != nil {
+		replyToID := channelMsg.ID
 		go func() {
 			response, err := c.messageHandler(c.ctx, channelMsg)
 			if err != nil {
@@ -277,7 +283,7 @@ func (c *Channel) handleUpdate(update tgbotapi.Update) {
 				if c.sessionManager != nil && sessionID != "" {
 					c.sessionManager.EmitError(sessionID, userID, err.Error())
 				}
-				errMsg := channel.OutgoingMessage{ChatID: chatID, Content: "处理消息时发生错误，请稍后重试。"}
+				errMsg := channel.OutgoingMessage{ChatID: chatID, ReplyToID: replyToID, Content: "处理消息时发生错误，请稍后重试。"}
 				if sendErr := c.Send(c.ctx, errMsg); sendErr != nil {
 					c.logger.Error("failed to send error response", zap.Error(sendErr))
 				}
@@ -289,7 +295,7 @@ func (c *Channel) handleUpdate(update tgbotapi.Update) {
 					zap.String("user_id", userID))
 				return
 			}
-			outMsg := channel.OutgoingMessage{ChatID: chatID, Content: response}
+			outMsg := channel.OutgoingMessage{ChatID: chatID, ReplyToID: replyToID, Content: response}
 			if err := c.Send(c.ctx, outMsg); err != nil {
 				c.logger.Error("failed to send response", zap.Error(err))
 			} else if c.sessionManager != nil && sessionID != "" {
@@ -310,69 +316,242 @@ func (c *Channel) handleUpdate(update tgbotapi.Update) {
 
 // convertMessage converts a Telegram message to the unified format.
 func (c *Channel) convertMessage(msg *tgbotapi.Message) channel.Message {
-	username := msg.From.UserName
-	if username == "" {
-		username = strings.TrimSpace(msg.From.FirstName + " " + msg.From.LastName)
+	content, entities, entitySource := telegramMessageContentAndEntities(msg)
+	metadata := map[string]interface{}{}
+	if msg.Chat != nil {
+		metadata["chat_type"] = msg.Chat.Type
+	}
+	if entityMetadata, mentions, mentionIDs := telegramEntitiesMetadata(content, entities); len(entityMetadata) > 0 {
+		metadata["entities"] = entityMetadata
+		metadata["entity_source"] = entitySource
+		if len(mentions) > 0 {
+			metadata["mentions"] = mentions
+		}
+		if len(mentionIDs) > 0 {
+			metadata["mention_ids"] = mentionIDs
+		}
 	}
 
 	channelMsg := channel.Message{
 		ID:          fmt.Sprintf("%d", msg.MessageID),
 		ChannelName: "telegram",
-		ChatID:      fmt.Sprintf("%d", msg.Chat.ID),
-		UserID:      fmt.Sprintf("%d", msg.From.ID),
-		Username:    username,
 		Type:        channel.MessageTypeText,
-		Content:     msg.Text,
+		Content:     content,
 		Timestamp:   time.Unix(int64(msg.Date), 0),
-		IsGroup:     msg.Chat.IsGroup() || msg.Chat.IsSuperGroup(),
-		Metadata: map[string]interface{}{
-			"chat_type": msg.Chat.Type,
-		},
+		Metadata:    metadata,
+	}
+	if msg.Chat != nil {
+		channelMsg.ChatID = fmt.Sprintf("%d", msg.Chat.ID)
+		channelMsg.IsGroup = msg.Chat.IsGroup() || msg.Chat.IsSuperGroup()
+		if channelMsg.IsGroup {
+			channelMsg.GroupName = msg.Chat.Title
+		}
+	}
+	if msg.From != nil {
+		channelMsg.UserID = fmt.Sprintf("%d", msg.From.ID)
+		channelMsg.Username = telegramUsername(msg.From)
 	}
 
-	if channelMsg.IsGroup {
-		channelMsg.GroupName = msg.Chat.Title
-	}
-
-	// Handle reply
 	if msg.ReplyToMessage != nil {
 		channelMsg.ReplyToID = fmt.Sprintf("%d", msg.ReplyToMessage.MessageID)
 	}
 
-	// Handle attachments
-	if msg.Photo != nil && len(msg.Photo) > 0 {
-		channelMsg.Type = channel.MessageTypeImage
-		// Get the largest photo
+	if len(msg.Photo) > 0 {
 		photo := msg.Photo[len(msg.Photo)-1]
 		channelMsg.Attachments = append(channelMsg.Attachments, channel.Attachment{
 			ID:   photo.FileID,
 			Type: channel.MessageTypeImage,
 			Name: "photo.jpg",
+			Size: int64(photo.FileSize),
 		})
-		if msg.Caption != "" {
-			channelMsg.Content = msg.Caption
-		}
 	}
-
+	if msg.Video != nil {
+		name := strings.TrimSpace(msg.Video.FileName)
+		if name == "" {
+			name = "video.mp4"
+		}
+		channelMsg.Attachments = append(channelMsg.Attachments, channel.Attachment{
+			ID:       msg.Video.FileID,
+			Type:     channel.MessageTypeVideo,
+			Name:     name,
+			MimeType: msg.Video.MimeType,
+			Size:     int64(msg.Video.FileSize),
+		})
+	}
+	if msg.Audio != nil {
+		name := strings.TrimSpace(msg.Audio.FileName)
+		if name == "" && strings.TrimSpace(msg.Audio.Title) != "" {
+			name = strings.TrimSpace(msg.Audio.Title)
+		}
+		if name == "" {
+			name = "audio"
+		}
+		channelMsg.Attachments = append(channelMsg.Attachments, channel.Attachment{
+			ID:       msg.Audio.FileID,
+			Type:     channel.MessageTypeAudio,
+			Name:     name,
+			MimeType: msg.Audio.MimeType,
+			Size:     int64(msg.Audio.FileSize),
+		})
+	}
+	if msg.Voice != nil {
+		channelMsg.Attachments = append(channelMsg.Attachments, channel.Attachment{
+			ID:       msg.Voice.FileID,
+			Type:     channel.MessageTypeAudio,
+			Name:     "voice.ogg",
+			MimeType: msg.Voice.MimeType,
+			Size:     int64(msg.Voice.FileSize),
+		})
+	}
 	if msg.Document != nil {
-		channelMsg.Type = channel.MessageTypeFile
+		name := strings.TrimSpace(msg.Document.FileName)
+		if name == "" {
+			name = "document"
+		}
 		channelMsg.Attachments = append(channelMsg.Attachments, channel.Attachment{
 			ID:       msg.Document.FileID,
 			Type:     channel.MessageTypeFile,
-			Name:     msg.Document.FileName,
+			Name:     name,
 			MimeType: msg.Document.MimeType,
 			Size:     int64(msg.Document.FileSize),
 		})
-		if msg.Caption != "" {
-			channelMsg.Content = msg.Caption
+	}
+	if msg.Sticker != nil {
+		stickerType := channel.MessageTypeImage
+		name := "sticker.webp"
+		if msg.Sticker.IsAnimated {
+			stickerType = channel.MessageTypeFile
+			name = "sticker.tgs"
 		}
+		channelMsg.Attachments = append(channelMsg.Attachments, channel.Attachment{
+			ID:   msg.Sticker.FileID,
+			Type: stickerType,
+			Name: name,
+			Size: int64(msg.Sticker.FileSize),
+		})
+		if strings.TrimSpace(msg.Sticker.Emoji) != "" {
+			channelMsg.Metadata["sticker_emoji"] = strings.TrimSpace(msg.Sticker.Emoji)
+		}
+		if strings.TrimSpace(msg.Sticker.SetName) != "" {
+			channelMsg.Metadata["sticker_set_name"] = strings.TrimSpace(msg.Sticker.SetName)
+		}
+	}
+
+	if len(channelMsg.Attachments) > 0 {
+		channelMsg.Type = channelMsg.Attachments[0].Type
 	}
 
 	return channelMsg
 }
 
+func telegramUsername(user *tgbotapi.User) string {
+	if user == nil {
+		return ""
+	}
+	if strings.TrimSpace(user.UserName) != "" {
+		return strings.TrimSpace(user.UserName)
+	}
+	return strings.TrimSpace(user.FirstName + " " + user.LastName)
+}
+
+func telegramMessageContentAndEntities(msg *tgbotapi.Message) (string, []tgbotapi.MessageEntity, string) {
+	if msg == nil {
+		return "", nil, ""
+	}
+	if strings.TrimSpace(msg.Caption) != "" || len(msg.CaptionEntities) > 0 {
+		return msg.Caption, msg.CaptionEntities, "caption"
+	}
+	return msg.Text, msg.Entities, "text"
+}
+
+func telegramEntitiesMetadata(text string, entities []tgbotapi.MessageEntity) ([]map[string]interface{}, []map[string]interface{}, []string) {
+	if len(entities) == 0 {
+		return nil, nil, nil
+	}
+	items := make([]map[string]interface{}, 0, len(entities))
+	mentions := make([]map[string]interface{}, 0)
+	mentionIDs := make([]string, 0)
+	seenMentionIDs := make(map[string]struct{})
+	for _, entity := range entities {
+		item := map[string]interface{}{
+			"type":   entity.Type,
+			"offset": entity.Offset,
+			"length": entity.Length,
+		}
+		entityText := strings.TrimSpace(telegramUTF16Substring(text, entity.Offset, entity.Length))
+		if entityText != "" {
+			item["text"] = entityText
+		}
+		if strings.TrimSpace(entity.URL) != "" {
+			item["url"] = strings.TrimSpace(entity.URL)
+		}
+		if strings.TrimSpace(entity.Language) != "" {
+			item["language"] = strings.TrimSpace(entity.Language)
+		}
+		if entity.User != nil {
+			userMeta := map[string]interface{}{"id": fmt.Sprintf("%d", entity.User.ID)}
+			if username := telegramUsername(entity.User); username != "" {
+				userMeta["username"] = username
+			}
+			item["user"] = userMeta
+		}
+		items = append(items, item)
+
+		switch entity.Type {
+		case "mention":
+			mention := map[string]interface{}{"type": "mention"}
+			if entityText != "" {
+				mention["text"] = entityText
+				mention["username"] = strings.TrimPrefix(entityText, "@")
+			}
+			if len(mention) > 1 {
+				mentions = append(mentions, mention)
+			}
+		case "text_mention":
+			if entity.User == nil {
+				continue
+			}
+			mentionID := fmt.Sprintf("%d", entity.User.ID)
+			mention := map[string]interface{}{
+				"type": "mention",
+				"id":   mentionID,
+			}
+			if username := telegramUsername(entity.User); username != "" {
+				mention["username"] = username
+			}
+			if entityText != "" {
+				mention["text"] = entityText
+			}
+			mentions = append(mentions, mention)
+			if _, exists := seenMentionIDs[mentionID]; !exists {
+				seenMentionIDs[mentionID] = struct{}{}
+				mentionIDs = append(mentionIDs, mentionID)
+			}
+		}
+	}
+	return items, mentions, mentionIDs
+}
+
+func telegramUTF16Substring(text string, offset int, length int) string {
+	if offset < 0 || length <= 0 {
+		return ""
+	}
+	encoded := utf16.Encode([]rune(text))
+	if offset >= len(encoded) {
+		return ""
+	}
+	end := offset + length
+	if end > len(encoded) {
+		end = len(encoded)
+	}
+	return string(utf16.Decode(encoded[offset:end]))
+}
+
 // isUserAllowed checks if a user is allowed to interact with the bot.
 func (c *Channel) isUserAllowed(user *tgbotapi.User) bool {
+	if user == nil {
+		return false
+	}
 	if len(c.config.AllowedUsers) == 0 {
 		return true
 	}
@@ -465,6 +644,10 @@ func (c *Channel) handleCommand(msg *tgbotapi.Message) {
 
 // handleCallbackQuery processes a callback query from an inline keyboard.
 func (c *Channel) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
+	if query == nil || query.From == nil {
+		c.logger.Debug("ignoring callback without sender")
+		return
+	}
 	c.logger.Debug("handling callback query",
 		zap.String("data", query.Data),
 		zap.Int64("user_id", query.From.ID))
@@ -511,23 +694,30 @@ func (c *Channel) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 
 	// No handler found - send to message channel for AI handling
 	if query.Message != nil {
+		originMessageID := fmt.Sprintf("%d", query.Message.MessageID)
 		channelMsg := channel.Message{
 			ID:          fmt.Sprintf("cb_%s", query.ID),
 			ChannelName: "telegram",
 			ChatID:      fmt.Sprintf("%d", query.Message.Chat.ID),
 			UserID:      fmt.Sprintf("%d", query.From.ID),
-			Username:    query.From.UserName,
+			Username:    telegramUsername(query.From),
 			Type:        channel.MessageTypeText,
 			Content:     query.Data,
+			ReplyToID:   originMessageID,
 			Timestamp:   time.Now(),
 			IsGroup:     query.Message.Chat.IsGroup() || query.Message.Chat.IsSuperGroup(),
 			Metadata: map[string]interface{}{
-				"is_callback":    true,
-				"callback_id":    query.ID,
-				"callback_data":  query.Data,
-				"message_id":     query.Message.MessageID,
-				"inline_message": query.InlineMessageID,
+				"is_callback":       true,
+				"callback_id":       query.ID,
+				"callback_data":     query.Data,
+				"message_id":        query.Message.MessageID,
+				"origin_message_id": originMessageID,
+				"inline_message":    query.InlineMessageID,
+				"chat_instance":     query.ChatInstance,
 			},
+		}
+		if channelMsg.IsGroup {
+			channelMsg.GroupName = query.Message.Chat.Title
 		}
 
 		select {
@@ -635,41 +825,39 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		return fmt.Errorf("invalid chat ID: %w", err)
 	}
 
+	captionConsumed := false
+
 	// Send attachments first (image/video/audio/file)
 	for _, att := range msg.Attachments {
-		if err := c.sendAttachment(chatID, msg.ReplyToID, msg.Content, att); err != nil {
+		caption := ""
+		if !captionConsumed {
+			caption = msg.Content
+		}
+		if err := c.sendAttachment(chatID, msg.ReplyToID, caption, msg.Format, att); err != nil {
 			c.logger.Warn("failed to send attachment, falling back to URL",
 				zap.String("type", string(att.Type)), zap.Error(err))
 			if att.URL != "" {
-				fallback := tgbotapi.NewMessage(chatID, att.URL)
-				c.bot.Send(fallback)
+				fallbackText := att.URL
+				if caption != "" {
+					fallbackText = caption + "\n" + att.URL
+				}
+				if err := c.sendTextMessage(chatID, msg.ReplyToID, fallbackText, msg.Format); err != nil {
+					return fmt.Errorf("failed to send attachment fallback: %w", err)
+				}
+				if caption != "" {
+					captionConsumed = true
+				}
 			}
+		} else if caption != "" {
+			captionConsumed = true
 		}
 	}
 
-	// Send text content (skip if already sent as caption with a single attachment)
-	if msg.Content != "" && len(msg.Attachments) == 0 {
-		tgMsg := tgbotapi.NewMessage(chatID, msg.Content)
-		switch msg.Format {
-		case "markdown", "md":
-			tgMsg.ParseMode = tgbotapi.ModeMarkdown
-		case "html":
-			tgMsg.ParseMode = tgbotapi.ModeHTML
-		case "markdownv2":
-			tgMsg.ParseMode = tgbotapi.ModeMarkdownV2
+	// Send text content only if it wasn't already used as attachment caption.
+	if msg.Content != "" && !captionConsumed {
+		if err := c.sendTextMessage(chatID, msg.ReplyToID, msg.Content, msg.Format); err != nil {
+			return err
 		}
-		if msg.ReplyToID != "" {
-			if replyID, err := parseMessageID(msg.ReplyToID); err == nil {
-				tgMsg.ReplyToMessageID = replyID
-			}
-		}
-		if _, err := c.bot.Send(tgMsg); err != nil {
-			return fmt.Errorf("failed to send message: %w", err)
-		}
-	} else if msg.Content != "" && len(msg.Attachments) > 0 {
-		// Attachments were sent; send remaining text as separate message
-		tgMsg := tgbotapi.NewMessage(chatID, msg.Content)
-		c.bot.Send(tgMsg)
 	}
 
 	c.msgsSent.Add(1)
@@ -681,70 +869,142 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 }
 
 // sendAttachment sends a single media attachment via Telegram Bot API.
-func (c *Channel) sendAttachment(chatID int64, replyToID string, caption string, att channel.Attachment) error {
+func (c *Channel) sendAttachment(chatID int64, replyToID string, caption string, format string, att channel.Attachment) error {
 	if len(att.Data) == 0 && att.URL == "" {
 		return fmt.Errorf("no data or URL for attachment")
 	}
 
-	var chattable tgbotapi.Chattable
+	chattable, err := buildAttachmentChattable(chatID, replyToID, caption, format, att)
+	if err != nil {
+		return err
+	}
 
-	// Prefer binary upload; fall back to URL
+	_, err = c.bot.Send(chattable)
+	return err
+}
+
+func (c *Channel) sendTextMessage(chatID int64, replyToID string, content string, format string) error {
+	tgMsg := tgbotapi.NewMessage(chatID, content)
+	tgMsg.ParseMode = telegramParseMode(format)
+	if replyID, ok := telegramReplyID(replyToID); ok {
+		tgMsg.ReplyToMessageID = replyID
+	}
+	if _, err := c.bot.Send(tgMsg); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+	return nil
+}
+
+func buildAttachmentChattable(chatID int64, replyToID string, caption string, format string, att channel.Attachment) (tgbotapi.Chattable, error) {
 	file := tgbotapi.FileBytes{Name: att.Name, Bytes: att.Data}
 	if len(att.Data) == 0 {
-		// No binary data — send by URL
 		switch att.Type {
 		case channel.MessageTypeImage:
 			photo := tgbotapi.NewPhoto(chatID, tgbotapi.FileURL(att.URL))
-			photo.Caption = caption
-			chattable = photo
+			applyPhotoOptions(&photo, replyToID, caption, format)
+			return photo, nil
 		case channel.MessageTypeVideo:
 			video := tgbotapi.NewVideo(chatID, tgbotapi.FileURL(att.URL))
-			video.Caption = caption
-			chattable = video
+			applyVideoOptions(&video, replyToID, caption, format)
+			return video, nil
 		case channel.MessageTypeAudio:
 			audio := tgbotapi.NewAudio(chatID, tgbotapi.FileURL(att.URL))
-			audio.Caption = caption
-			chattable = audio
+			applyAudioOptions(&audio, replyToID, caption, format)
+			return audio, nil
 		default:
 			doc := tgbotapi.NewDocument(chatID, tgbotapi.FileURL(att.URL))
-			doc.Caption = caption
-			chattable = doc
-		}
-	} else {
-		if file.Name == "" {
-			switch att.Type {
-			case channel.MessageTypeImage:
-				file.Name = "image.png"
-			case channel.MessageTypeVideo:
-				file.Name = "video.mp4"
-			case channel.MessageTypeAudio:
-				file.Name = "audio.ogg"
-			default:
-				file.Name = "file"
-			}
-		}
-		switch att.Type {
-		case channel.MessageTypeImage:
-			photo := tgbotapi.NewPhoto(chatID, file)
-			photo.Caption = caption
-			chattable = photo
-		case channel.MessageTypeVideo:
-			video := tgbotapi.NewVideo(chatID, file)
-			video.Caption = caption
-			chattable = video
-		case channel.MessageTypeAudio:
-			audio := tgbotapi.NewAudio(chatID, file)
-			audio.Caption = caption
-			chattable = audio
-		default:
-			doc := tgbotapi.NewDocument(chatID, file)
-			doc.Caption = caption
-			chattable = doc
+			applyDocumentOptions(&doc, replyToID, caption, format)
+			return doc, nil
 		}
 	}
 
-	_, err := c.bot.Send(chattable)
-	return err
+	if file.Name == "" {
+		switch att.Type {
+		case channel.MessageTypeImage:
+			file.Name = "image.png"
+		case channel.MessageTypeVideo:
+			file.Name = "video.mp4"
+		case channel.MessageTypeAudio:
+			file.Name = "audio.ogg"
+		default:
+			file.Name = "file"
+		}
+	}
+
+	switch att.Type {
+	case channel.MessageTypeImage:
+		photo := tgbotapi.NewPhoto(chatID, file)
+		applyPhotoOptions(&photo, replyToID, caption, format)
+		return photo, nil
+	case channel.MessageTypeVideo:
+		video := tgbotapi.NewVideo(chatID, file)
+		applyVideoOptions(&video, replyToID, caption, format)
+		return video, nil
+	case channel.MessageTypeAudio:
+		audio := tgbotapi.NewAudio(chatID, file)
+		applyAudioOptions(&audio, replyToID, caption, format)
+		return audio, nil
+	default:
+		doc := tgbotapi.NewDocument(chatID, file)
+		applyDocumentOptions(&doc, replyToID, caption, format)
+		return doc, nil
+	}
+}
+
+func applyPhotoOptions(photo *tgbotapi.PhotoConfig, replyToID string, caption string, format string) {
+	photo.Caption = caption
+	photo.ParseMode = telegramParseMode(format)
+	if replyID, ok := telegramReplyID(replyToID); ok {
+		photo.ReplyToMessageID = replyID
+	}
+}
+
+func applyVideoOptions(video *tgbotapi.VideoConfig, replyToID string, caption string, format string) {
+	video.Caption = caption
+	video.ParseMode = telegramParseMode(format)
+	if replyID, ok := telegramReplyID(replyToID); ok {
+		video.ReplyToMessageID = replyID
+	}
+}
+
+func applyAudioOptions(audio *tgbotapi.AudioConfig, replyToID string, caption string, format string) {
+	audio.Caption = caption
+	audio.ParseMode = telegramParseMode(format)
+	if replyID, ok := telegramReplyID(replyToID); ok {
+		audio.ReplyToMessageID = replyID
+	}
+}
+
+func applyDocumentOptions(doc *tgbotapi.DocumentConfig, replyToID string, caption string, format string) {
+	doc.Caption = caption
+	doc.ParseMode = telegramParseMode(format)
+	if replyID, ok := telegramReplyID(replyToID); ok {
+		doc.ReplyToMessageID = replyID
+	}
+}
+
+func telegramParseMode(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "markdown", "md":
+		return tgbotapi.ModeMarkdown
+	case "html":
+		return tgbotapi.ModeHTML
+	case "markdownv2":
+		return tgbotapi.ModeMarkdownV2
+	default:
+		return ""
+	}
+}
+
+func telegramReplyID(replyToID string) (int, bool) {
+	if replyToID == "" {
+		return 0, false
+	}
+	replyID, err := parseMessageID(replyToID)
+	if err != nil {
+		return 0, false
+	}
+	return replyID, true
 }
 
 // SendStreaming sends a message with streaming support.

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { isTtsAutoPlayEnabled, setTtsAutoPlayEnabled } from '@/utils/ttsPreferences'
 import { speechApi, type SpeechStatus, type ASRModel } from '@/api/speech'
 import { useTauri } from '@/composables/useTauri'
 
@@ -110,7 +111,7 @@ const speechPitch = ref(parseFloat(localStorage.getItem('tts-speech-pitch') || '
 const speechVolume = ref(parseFloat(localStorage.getItem('tts-speech-volume') || '100'))
 
 // Auto-play TTS for assistant responses
-const autoPlayTTS = ref(localStorage.getItem('tts-auto-play') === 'true')
+const autoPlayTTS = ref(isTtsAutoPlayEnabled())
 
 async function saveProvider() {
   localStorage.setItem('tts-provider', selectedProvider.value)
@@ -147,7 +148,7 @@ async function saveTTSConfig() {
 }
 
 function saveAutoPlayTTS() {
-  localStorage.setItem('tts-auto-play', autoPlayTTS.value.toString())
+  setTtsAutoPlayEnabled(autoPlayTTS.value)
 }
 
 async function fetchStatus() {

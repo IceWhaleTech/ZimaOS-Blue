@@ -134,9 +134,49 @@ func extractBluecli(dst string) error {
 	if len(embeddedBluecli) == 0 {
 		return fmt.Errorf("embedded bluecli asset is missing; build via `make build-launcher`")
 	}
-	if err := os.WriteFile(dst, embeddedBluecli, 0o755); err != nil {
-		return fmt.Errorf("write bluecli: %w", err)
+
+	// Write to a new inode then atomically replace. On macOS, in-place truncation
+	// of an existing executable can leave AMFI/Syspolicy seeing stale signature
+	// state ("load code signature error"), causing immediate SIGKILL on exec.
+	dir := filepath.Dir(dst)
+	tmp, err := os.CreateTemp(dir, ".bluecli-tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp bluecli: %w", err)
 	}
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmp.Write(embeddedBluecli); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write temp bluecli: %w", err)
+	}
+	if err := tmp.Chmod(0o755); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("chmod temp bluecli: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync temp bluecli: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp bluecli: %w", err)
+	}
+
+	// Windows cannot rename over an existing destination.
+	if runtime.GOOS == "windows" {
+		if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove existing bluecli: %w", err)
+		}
+	}
+	if err := os.Rename(tmpPath, dst); err != nil {
+		return fmt.Errorf("replace bluecli: %w", err)
+	}
+	cleanup = false
 	return nil
 }
 

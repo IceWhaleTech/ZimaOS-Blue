@@ -13,6 +13,10 @@ const __dirname = path.dirname(__filename)
 const WEB_ROOT = path.resolve(__dirname, '..')
 const SRC_DIR = path.join(WEB_ROOT, 'src')
 const LOCALES_DIR = path.join(SRC_DIR, 'i18n', 'locales')
+const PRIORITY_OVERRIDES_PATH = path.join(SRC_DIR, 'i18n', 'priority-overrides.ts')
+const PRIORITY_BILLING_OVERRIDES_PATH = path.join(SRC_DIR, 'i18n', 'priority-billing-overrides.ts')
+const PRIORITY_SETTINGS_OVERRIDES_PATH = path.join(SRC_DIR, 'i18n', 'priority-settings-overrides.ts')
+const PRIORITY_SMALL_MODEL_OVERRIDES_PATH = path.join(SRC_DIR, 'i18n', 'priority-small-model-overrides.ts')
 
 function collectFiles(dir, extensions) {
   const out = []
@@ -298,6 +302,13 @@ function parseImports(rawSource) {
   return imports
 }
 
+function loadExportedObject(filePath) {
+  if (!fs.existsSync(filePath)) return {}
+  const raw = fs.readFileSync(filePath, 'utf8')
+  const executable = raw.replace(/^\s*export\s+default\s*/m, 'return ')
+  return new Function(executable)()
+}
+
 function loadLocaleObjectByCode(localeCode, cache = new Map(), loading = new Set()) {
   if (cache.has(localeCode)) {
     return cache.get(localeCode)
@@ -332,6 +343,38 @@ function loadLocaleObjectByCode(localeCode, cache = new Map(), loading = new Set
   cache.set(localeCode, localeValue)
   loading.delete(localeCode)
   return localeValue
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function cloneMessageValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneMessageValue(item))
+  }
+  if (isPlainObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [key, cloneMessageValue(nestedValue)]),
+    )
+  }
+  return value
+}
+
+function deepMergeMessages(base, overrides) {
+  const merged = cloneMessageValue(base)
+
+  for (const [key, overrideValue] of Object.entries(overrides)) {
+    const baseValue = merged[key]
+    if (isPlainObject(baseValue) && isPlainObject(overrideValue)) {
+      merged[key] = deepMergeMessages(baseValue, overrideValue)
+      continue
+    }
+
+    merged[key] = cloneMessageValue(overrideValue)
+  }
+
+  return merged
 }
 
 function flattenStringLeaves(value, prefix = '', out = new Map()) {
@@ -415,6 +458,10 @@ function main() {
 
   const localeCache = new Map()
   const enUSObject = loadLocaleObjectByCode('en-US', localeCache)
+  const priorityLocaleOverrides = loadExportedObject(PRIORITY_OVERRIDES_PATH)
+  const priorityBillingOverrides = loadExportedObject(PRIORITY_BILLING_OVERRIDES_PATH)
+  const prioritySettingsOverrides = loadExportedObject(PRIORITY_SETTINGS_OVERRIDES_PATH)
+  const prioritySmallModelOverrides = loadExportedObject(PRIORITY_SMALL_MODEL_OVERRIDES_PATH)
   const enUSMap = flattenStringLeaves(enUSObject)
   const enUSKeys = [...enUSMap.keys()].sort()
   const enUSKeySet = new Set(enUSKeys)
@@ -480,7 +527,13 @@ function main() {
   for (const fileName of localeFiles) {
     const locale = sanitizeLocaleCode(fileName)
     const filePath = path.join(LOCALES_DIR, fileName)
-    const localeObject = loadLocaleObjectByCode(locale, localeCache)
+    const localeBaseObject = locale === 'en-US'
+      ? enUSObject
+      : deepMergeMessages(enUSObject, loadLocaleObjectByCode(locale, localeCache))
+    const withPriorityOverrides = deepMergeMessages(localeBaseObject, priorityLocaleOverrides[locale] || {})
+    const withBillingOverrides = deepMergeMessages(withPriorityOverrides, priorityBillingOverrides[locale] || {})
+    const withSettingsOverrides = deepMergeMessages(withBillingOverrides, prioritySettingsOverrides[locale] || {})
+    const localeObject = deepMergeMessages(withSettingsOverrides, prioritySmallModelOverrides[locale] || {})
     const localeMap = flattenStringLeaves(localeObject)
     const missing = []
     const fallbackToEnglish = []

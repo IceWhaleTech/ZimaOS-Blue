@@ -20,6 +20,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a2ui"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agent"
 	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
@@ -47,6 +48,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mfa"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
+	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/preview"
@@ -60,7 +62,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
@@ -79,6 +80,78 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workflow"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
+
+func tryExecuteToolFallback(ctx context.Context, registry *tools.Registry, toolName string, input map[string]any) (map[string]string, bool, error) {
+	if registry == nil {
+		return nil, false, nil
+	}
+	tool := registry.Get(strings.TrimSpace(toolName))
+	if tool == nil {
+		return nil, false, nil
+	}
+
+	args := make(map[string]interface{}, len(input))
+	for k, v := range input {
+		args[k] = v
+	}
+
+	result, err := tool.Execute(ctx, args)
+	if err != nil {
+		return nil, true, err
+	}
+	return toolResultToIPCData(result), true, nil
+}
+
+func toolResultToIPCData(result any) map[string]string {
+	switch typed := result.(type) {
+	case nil:
+		return map[string]string{}
+	case map[string]string:
+		out := make(map[string]string, len(typed))
+		for k, v := range typed {
+			out[k] = v
+		}
+		return out
+	case map[string]interface{}:
+		return flattenToolResultMap(typed)
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return map[string]string{}
+		}
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+			return flattenToolResultMap(parsed)
+		}
+		return map[string]string{"result": typed}
+	default:
+		encoded, err := json.Marshal(typed)
+		if err != nil {
+			return map[string]string{"result": fmt.Sprintf("%v", typed)}
+		}
+		return map[string]string{"result": string(encoded)}
+	}
+}
+
+func flattenToolResultMap(data map[string]interface{}) map[string]string {
+	out := make(map[string]string, len(data))
+	for k, v := range data {
+		switch typed := v.(type) {
+		case nil:
+			out[k] = "null"
+		case string:
+			out[k] = typed
+		default:
+			encoded, err := json.Marshal(typed)
+			if err != nil {
+				out[k] = fmt.Sprintf("%v", typed)
+				continue
+			}
+			out[k] = string(encoded)
+		}
+	}
+	return out
+}
 
 // routesStartTime records when the server started, used for uptime calculation
 var routesStartTime = timeutil.NowTime()
@@ -419,7 +492,6 @@ type RoutesDeps struct {
 	MetricsWriter    *metrics.MetricsWriter
 	MetricsCollector *metrics.Collector
 	ChatHandler      *server.ChatHandler
-	SessionHandler   *server.SessionHandler
 	PluginRegistry   *plugin.Registry
 	PluginStore      *plugin.Store
 	ExtauthService   extauth.Service
@@ -464,6 +536,7 @@ type RoutesDeps struct {
 	UIReviewerIPC  sockipc.UIReviewBackend
 	UIReviewerTool *tools.UIReviewerTool // for VLM bridge wiring
 	AnalyzeTool    *tools.AnalyzeTool    // for LLM bridge wiring
+	MediaManager   *mediagen.Manager     // for native image tool wiring
 	PushIPC        sockipc.PushBackend
 	PushService    *push.Service // for skill/tool wiring
 	CronIPC        sockipc.CronBackend
@@ -638,6 +711,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		mediaManager := mediagen.NewManager(mediaStorage, mediaConfigStore, locale)
 		mediaManager.InitConfigs()
+		deps.MediaManager = mediaManager
 
 		// Task persistence for power-failure recovery (shares main DB)
 		taskStore, err := mediagen.NewTaskStore(s.DB)
@@ -737,7 +811,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// Start IPC socket for LLM skills and CLI
 		// Auth: Unix socket file permissions (0600) — no token needed.
-		sockPath := "/tmp/blue.sock"
+		sockPath := resolveIPCSocketPath(dataDir)
 		ipcSrv = sockipc.NewServer(sockPath, logger)
 
 		// Media generator — creates a persistent task via MediaManager
@@ -807,20 +881,26 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 
 		// Skill fallback: forward unmatched IPC commands to the skill executor.
-		// This enables `blue <skill_name> key=value` to invoke any registered skill.
+		// This enables `blue <skill_name> key=value` to invoke any registered skill,
+		// and falls back to builtin tools like `web_fetch` when no skill matches.
 		sockipc.RegisterSkillFallback(ipcSrv, sockipc.SkillExecutorFunc(func(ctx context.Context, skillID string, input map[string]any) (map[string]string, error) {
 			sk := s.SkillRegistry.Get(skillID)
-			if sk == nil {
-				return nil, fmt.Errorf("unknown skill: %s", skillID)
+			if sk != nil {
+				if !s.SkillRegistry.IsEnabled(skillID) {
+					return nil, fmt.Errorf("skill %s is disabled", skillID)
+				}
+				result, err := sk.Execute(ctx, input)
+				if err != nil {
+					return nil, err
+				}
+				return sockipc.SkillResultToMap(result.Data, result.Success, result.Error), nil
 			}
-			if !s.SkillRegistry.IsEnabled(skillID) {
-				return nil, fmt.Errorf("skill %s is disabled", skillID)
+
+			if data, handled, err := tryExecuteToolFallback(ctx, s.ToolRegistry, skillID, input); handled {
+				return data, err
 			}
-			result, err := sk.Execute(ctx, input)
-			if err != nil {
-				return nil, err
-			}
-			return sockipc.SkillResultToMap(result.Data, result.Success, result.Error), nil
+
+			return nil, fmt.Errorf("unknown skill: %s", skillID)
 		}), logger)
 
 		if err := ipcSrv.Start(); err != nil {
@@ -898,16 +978,25 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	protected := v1.Group("")
 	protected.Use(deps.AuthMiddleware.Authenticate())
 
-	// Session control plane routes (protected)
-	if deps.SessionHandler != nil {
-		deps.SessionHandler.RegisterRoutes(protected)
+	// Gateway REST + WS routes
+	if deps.Gateway != nil {
+		tools.RegisterGatewayTool(s.ToolRegistry, deps.Gateway)
 	}
 
-	// Gateway REST + WS routes
 	if deps.Gateway != nil && deps.GatewayHandler != nil {
 		registerGatewayMethods(deps.Gateway, deps)
 		deps.GatewayHandler.RegisterRoutes(e, protected)
 		deps.Closers = append(deps.Closers, gatewayStopper{gateway: deps.Gateway})
+	}
+
+	// A2UI canvas routes (protected) - /api/v1/a2ui/*
+	if s.A2UIManager != nil {
+		tools.RegisterCanvasTools(s.ToolRegistry, s.A2UIManager)
+		a2uiHandler := a2ui.NewHandler(s.A2UIManager)
+		a2uiHandler.RegisterRoutes(protected.Group("/a2ui"))
+	}
+	if s.PDFService != nil {
+		tools.RegisterPDFTool(s.ToolRegistry, s.PDFService)
 	}
 
 	// Protected external auth routes
@@ -980,6 +1069,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		deps.ChatHandler.SetToolSelector(ts)
 	}
+	toolPolicyResolver := tools.NewToolPolicyResolver(deps.Config)
+	deps.ChatHandler.SetToolPolicyResolver(toolPolicyResolver)
+	deps.ChatHandler.SetToolTraceStore(tools.NewToolTraceStore(1000))
+
 	// Tool router: dynamic exposure + schema compression (config-driven, default off).
 	toolRouter := tools.DefaultToolRouter()
 	toolRouter.DynamicExposure = deps.Config.ToolCalling.ToolRouterDynamicExposure
@@ -1145,6 +1238,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Wire backing services into skills
 	if deps.CronHandler != nil {
+		if deps.WorkflowHandler != nil {
+			if svc := deps.WorkflowHandler.GetService(); svc != nil {
+				tools.RegisterNodesTool(s.ToolRegistry, svc)
+			}
+		}
 		cronAdapter := cron.NewSkillAdapter(deps.CronHandler.GetService)
 		if sk := s.SkillRegistry.Get("scheduler"); sk != nil {
 			if ss, ok := sk.(*builtin.Scheduler); ok {
@@ -1153,6 +1251,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		}
 		// Register command handler for scheduler skill
 		if svc := deps.CronHandler.GetService(); svc != nil {
+			tools.RegisterCronTool(s.ToolRegistry, cronToolAdapter{runtime: svc})
 			svc.RegisterCommandHandler(cron.CommandSecurityConfig{
 				Enabled:          true,
 				RequireAdminRole: true,
@@ -1165,6 +1264,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		uiTool.SetBrowser(tools.NewLazyRodBrowserAdapter(deps.LazyBrowserSvc))
 		uiTool.SetMediaDir(mediaDir)
 		deps.UIReviewerTool = uiTool
+	}
+	if deps.BrowserBackend != nil {
+		tools.RegisterBrowserTool(s.ToolRegistry, deps.BrowserBackend)
+		if webFetchTool := tools.GetWebFetchTool(s.ToolRegistry); webFetchTool != nil {
+			webFetchTool.SetBrowser(deps.BrowserBackend)
+		}
 	}
 	// Wire browser backend into browser skill
 	if deps.BrowserBackend != nil {
@@ -1185,11 +1290,34 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Wire push notification service into reminder skill
 	if deps.PushService != nil {
+		pushTools := push.NewToolsAdapter(func() *push.Service { return deps.PushService })
+		tools.RegisterPushTool(s.ToolRegistry, pushTools)
+		tools.RegisterMessageTool(s.ToolRegistry, pushTools)
 		if sk := s.SkillRegistry.Get("reminder"); sk != nil {
 			if r, ok := sk.(*builtin.Reminder); ok {
 				r.SetPushService(push.NewSkillAdapter(func() *push.Service { return deps.PushService }))
 			}
 		}
+	}
+
+	// Register native image tool backed by mediagen + ui_reviewer.
+	tools.RegisterImageTool(s.ToolRegistry, deps.UIReviewerTool, newImageGenerateAdapter(deps.MediaManager), newImageTaskLookupAdapter(deps.MediaManager))
+	if tool := s.ToolRegistry.Get("image"); tool != nil {
+		if imageTool, ok := tool.(*tools.ImageTool); ok {
+			imageTool.SetOCRService(newImageOCRAdapter(s.OCRService))
+		}
+	}
+
+	if deps.SpeechHandler != nil || deps.VoiceHandler != nil {
+		var speechSvc speech.Service
+		if deps.SpeechHandler != nil {
+			speechSvc = deps.SpeechHandler.Service()
+		}
+		var voiceSvc voice.Service
+		if deps.VoiceHandler != nil {
+			voiceSvc = deps.VoiceHandler.Service()
+		}
+		tools.RegisterTTSTool(s.ToolRegistry, ttsToolAdapter{speech: speechSvc, voice: voiceSvc})
 	}
 
 	// Analyze: skill-only, executed via `blue analyze`.
@@ -1844,7 +1972,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		failoverAPIHandler.RegisterRoutes(failoverGroup)
 
 		// Pipeline stats collector: unified async batch persistence for routing/failover
-		// Uses metrics.db (via MetricsWriter) instead of blue.db for cleaner separation
+		// Uses MetricsWriter persistence; by default this now shares blue.db unless explicitly split
 		var pipelineStats *proxy.PipelineStatsCollector
 		var metricsDB *sql.DB
 		if deps.MetricsWriter != nil {
@@ -1861,7 +1989,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			proxyHandler.SetPipelineStats(pipelineStats)
 			deps.Closers = append(deps.Closers, pipelineStats)
 		} else if deps.DB != nil {
-			// Fallback to blue.db if metrics.db is not available
+			// Fallback to blue.db if MetricsWriter persistence is unavailable
 			pipelineStats = proxy.NewPipelineStatsCollector(deps.DB, proxyHandler.GetRoutingStatsRef())
 			pipelineStats.SetSmartFailoverMetrics(smartFailover.GetMetrics())
 			pipelineStats.SetFailoverHandler(smartFailover.FailoverHandler)
@@ -1886,6 +2014,17 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 					smartFailover.GetMetrics().RecordProviderPoolResult(result)
 					if pipelineStats != nil {
 						pipelineStats.OnFailover(result)
+					}
+					if result != nil && (len(result.FailedAttempts) > 0 || result.SuccessProvider == "" || result.TotalAttempts > 1) {
+						slog.Info("[router] failover summary",
+							"request_id", result.RequestID,
+							"attempts", result.TotalAttempts,
+							"trace", result.Summary(),
+							"success_provider", result.SuccessProvider,
+							"success_model", result.SuccessModel,
+							"final_error", result.FinalError,
+							"duration_ms", result.EndTime.Sub(result.StartTime).Milliseconds(),
+						)
 					}
 				})
 			}
@@ -2156,6 +2295,16 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if deps.UIReviewerTool != nil {
 			deps.UIReviewerTool.SetVLMBridge(tools.NewProxyBridgeVLMAdapter(bridge))
 		}
+		// Wire VLM bridge into PDF extraction fallback for scanned pages.
+		if s.PDFService != nil {
+			s.PDFService.SetVisionService(pdfextract.NewProxyBridgeVisionAdapter(bridge))
+		}
+		if tool := s.ToolRegistry.Get("image"); tool != nil {
+			if imageTool, ok := tool.(*tools.ImageTool); ok {
+				imageTool.SetVisionBridge(tools.NewProxyBridgeVLMAdapter(bridge))
+			}
+		}
+
 		// Wire VLM bridge into ui_reviewer skill (registered in skill registry)
 		if sk := s.SkillRegistry.Get("ui_reviewer"); sk != nil {
 			if ur, ok := sk.(*builtin.UIReviewer); ok {
@@ -2680,50 +2829,6 @@ func registerGatewayMethods(gw *gateway.Gateway, deps *RoutesDeps) {
 		})
 	})
 
-	gw.RegisterHandler("sessions.list", func(_ context.Context, _ *gateway.Connection, _ *gateway.Message) (*gateway.Message, error) {
-		if deps.SessionHandler == nil || deps.SessionHandler.Manager() == nil {
-			return nil, fmt.Errorf("session manager not configured")
-		}
-		items, err := deps.SessionHandler.Manager().List(session.SessionFilter{
-			Limit:  200,
-			Offset: 0,
-		})
-		if err != nil {
-			return nil, err
-		}
-		infos := make([]session.SessionInfo, len(items))
-		for i, s := range items {
-			infos[i] = s.Info()
-		}
-		return gatewayMessageWithPayload(map[string]interface{}{
-			"sessions": infos,
-			"total":    len(infos),
-		})
-	})
-
-	gw.RegisterHandler("sessions.reset", func(_ context.Context, _ *gateway.Connection, msg *gateway.Message) (*gateway.Message, error) {
-		if deps.SessionHandler == nil || deps.SessionHandler.Manager() == nil {
-			return nil, fmt.Errorf("session manager not configured")
-		}
-		var req struct {
-			SessionID string `json:"session_id"`
-		}
-		if err := decodeGatewayPayload(msg, &req); err != nil {
-			return nil, err
-		}
-		parsed, err := session.ParseSessionID(req.SessionID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid session_id: %w", err)
-		}
-		if err := deps.SessionHandler.Manager().Reset(parsed); err != nil {
-			return nil, err
-		}
-		return gatewayMessageWithPayload(map[string]interface{}{
-			"session_id": req.SessionID,
-			"reset":      true,
-		})
-	})
-
 	gw.RegisterHandler("browser.request", func(ctx context.Context, _ *gateway.Connection, msg *gateway.Message) (*gateway.Message, error) {
 		if deps.BrowserBackend == nil {
 			return nil, fmt.Errorf("browser backend not configured")
@@ -2804,13 +2909,17 @@ func gatewayMessageWithPayload(payload interface{}) (*gateway.Message, error) {
 	return &gateway.Message{Payload: raw}, nil
 }
 
-// InitMetrics initializes metrics services
-func InitMetrics(dataDir string) (*metrics.Collector, *metrics.MetricsWriter) {
+// InitMetrics initializes metrics services.
+func InitMetrics(dataDir string, sharedDB *sql.DB) (*metrics.Collector, *metrics.MetricsWriter) {
 	metricsCollector := metrics.NewCollector(5*time.Second, 120)
 	metricsCollector.Start()
 
 	metricsConfig := metrics.DefaultWriterConfig()
-	metricsConfig.SQLiteDBPath = filepath.Join(dataDir, "metrics.db")
+	if sharedDB != nil {
+		metricsConfig.SharedSQLiteDB = sharedDB
+	} else {
+		metricsConfig.SQLiteDBPath = filepath.Join(dataDir, "metrics.db")
+	}
 	metricsWriter := metrics.NewMetricsWriter(nil, metricsConfig)
 	metricsWriter.Start()
 

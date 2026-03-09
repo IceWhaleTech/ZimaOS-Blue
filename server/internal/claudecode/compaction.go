@@ -425,7 +425,12 @@ func (c *Compactor) Summarize(ctx context.Context, messages []llm.Message, previ
 
 	// Build summarization prompt
 	var sb strings.Builder
-	sb.WriteString("Please summarize the following conversation, preserving key decisions, TODOs, open questions, and constraints:\n\n")
+	sb.WriteString("Summarize this conversation for future continuation context.\n")
+	sb.WriteString("Requirements:\n")
+	sb.WriteString("- Keep durable information: objective, key decisions, constraints, confirmed facts, TODO/open questions.\n")
+	sb.WriteString("- Omit intermediate reasoning traces and failed exploratory branches.\n")
+	sb.WriteString("- Use concise bullet points only.\n")
+	sb.WriteString("- Mark uncertain items explicitly as uncertain.\n\n")
 
 	if previousSummary != "" {
 		sb.WriteString("Previous context summary:\n")

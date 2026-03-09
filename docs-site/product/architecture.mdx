@@ -1,0 +1,56 @@
+---
+title: "Architecture"
+summary: "Current package map and high-level data flows from the repository README."
+---
+
+# Architecture
+
+![Architecture overview](/assets/architecture.png)
+
+## Package map
+
+| Layer | Packages |
+| --- | --- |
+| Gateway | bootstrap, server, gateway |
+| Proxy | proxy, connection, streaming, resilience |
+| Provider | providerpool, providers, llm |
+| Pruner | pruner and related detector, segmenter, scoring pipeline pieces |
+| Agent | context, tools, personality, humanizer |
+| Memory | memory, embedding, kvstore |
+| Channel | channel, autoreply, i18n |
+| Security | security, auth, permission, rbac, mfa, password, oidc, sandbox, audit |
+| Voice | voice, tts, stt, speech |
+| Observe | metrics, heartbeat, profiling, leak detection style services |
+| Plugin | plugin, skill, skillstore |
+| Integrate | browser, homeassistant, cron, workflow, formfiller, tunnel, crawler |
+| Scheduler | scheduler, worker, workerpool, pool |
+| Core | lifecycle, config, logger, database, cache, ratelimit, retry, sync |
+| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
+| Multi-tenant | tenant, user, session, preview |
+
+## Hot path: chat request
+
+```text
+Client -> Auth Gate -> Prompt Guard -> Context Pruner
+  -> Provider Pool -> Cache Checks -> Upstream Model
+  -> Response -> Cache Store -> Metrics -> Client
+```
+
+## Hot path: channel message
+
+```text
+Chat Platform -> Channel Manager -> AutoReply
+  -> Chat Handler -> LLM -> Humanizer -> Channel -> User
+```
+
+## Hot path: voice pipeline
+
+```text
+Audio Stream -> STT -> LLM Processing -> TTS -> Audio Stream
+```
+
+## What matters most
+
+- Gateway and provider routing are central control points
+- Messaging, voice, and web UI are interaction surfaces over the same runtime core
+- Security, audit, and sandboxing are first-class design constraints, not bolt-ons

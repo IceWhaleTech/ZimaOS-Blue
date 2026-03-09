@@ -47,12 +47,167 @@ var secp256k1Params = &elliptic.CurveParams{
 	Name:    "secp256k1",
 }
 
+var secp256k1 = &secp256k1KoblitzCurve{params: secp256k1Params}
+
+type secp256k1KoblitzCurve struct {
+	params *elliptic.CurveParams
+}
+
 func fromHex(s string) *big.Int {
 	v, _ := new(big.Int).SetString(s, 16)
 	return v
 }
 
-func secp256k1Curve() elliptic.Curve { return secp256k1Params }
+func secp256k1Curve() elliptic.Curve { return secp256k1 }
+
+func (c *secp256k1KoblitzCurve) Params() *elliptic.CurveParams {
+	return c.params
+}
+
+func (c *secp256k1KoblitzCurve) IsOnCurve(x, y *big.Int) bool {
+	if x == nil || y == nil {
+		return false
+	}
+	if x.Sign() < 0 || y.Sign() < 0 || x.Cmp(c.params.P) >= 0 || y.Cmp(c.params.P) >= 0 {
+		return false
+	}
+
+	lhs := new(big.Int).Mul(y, y)
+	lhs.Mod(lhs, c.params.P)
+
+	rhs := new(big.Int).Mul(x, x)
+	rhs.Mul(rhs, x)
+	rhs.Add(rhs, c.params.B)
+	rhs.Mod(rhs, c.params.P)
+
+	return lhs.Cmp(rhs) == 0
+}
+
+func (c *secp256k1KoblitzCurve) Add(x1, y1, x2, y2 *big.Int) (*big.Int, *big.Int) {
+	if x1 == nil || y1 == nil {
+		return c.copyPoint(x2, y2)
+	}
+	if x2 == nil || y2 == nil {
+		return c.copyPoint(x1, y1)
+	}
+	if !c.IsOnCurve(x1, y1) || !c.IsOnCurve(x2, y2) {
+		return nil, nil
+	}
+
+	if x1.Cmp(x2) == 0 {
+		ySum := new(big.Int).Add(y1, y2)
+		ySum.Mod(ySum, c.params.P)
+		if ySum.Sign() == 0 {
+			return nil, nil
+		}
+		return c.Double(x1, y1)
+	}
+
+	numerator := new(big.Int).Sub(y2, y1)
+	numerator.Mod(numerator, c.params.P)
+	denominator := new(big.Int).Sub(x2, x1)
+	denominator.Mod(denominator, c.params.P)
+	denominatorInv := new(big.Int).ModInverse(denominator, c.params.P)
+	if denominatorInv == nil {
+		return nil, nil
+	}
+
+	lambda := numerator.Mul(numerator, denominatorInv)
+	lambda.Mod(lambda, c.params.P)
+
+	x3 := new(big.Int).Mul(lambda, lambda)
+	x3.Sub(x3, x1)
+	x3.Sub(x3, x2)
+	x3.Mod(x3, c.params.P)
+	if x3.Sign() < 0 {
+		x3.Add(x3, c.params.P)
+	}
+
+	y3 := new(big.Int).Sub(x1, x3)
+	y3.Mul(lambda, y3)
+	y3.Sub(y3, y1)
+	y3.Mod(y3, c.params.P)
+	if y3.Sign() < 0 {
+		y3.Add(y3, c.params.P)
+	}
+
+	return x3, y3
+}
+
+func (c *secp256k1KoblitzCurve) Double(x1, y1 *big.Int) (*big.Int, *big.Int) {
+	if x1 == nil || y1 == nil || !c.IsOnCurve(x1, y1) || y1.Sign() == 0 {
+		return nil, nil
+	}
+
+	numerator := new(big.Int).Mul(x1, x1)
+	numerator.Mul(numerator, big.NewInt(3))
+	numerator.Mod(numerator, c.params.P)
+
+	denominator := new(big.Int).Lsh(new(big.Int).Set(y1), 1)
+	denominator.Mod(denominator, c.params.P)
+	denominatorInv := new(big.Int).ModInverse(denominator, c.params.P)
+	if denominatorInv == nil {
+		return nil, nil
+	}
+
+	lambda := numerator.Mul(numerator, denominatorInv)
+	lambda.Mod(lambda, c.params.P)
+
+	twoX1 := new(big.Int).Lsh(new(big.Int).Set(x1), 1)
+	twoX1.Mod(twoX1, c.params.P)
+
+	x3 := new(big.Int).Mul(lambda, lambda)
+	x3.Sub(x3, twoX1)
+	x3.Mod(x3, c.params.P)
+	if x3.Sign() < 0 {
+		x3.Add(x3, c.params.P)
+	}
+
+	y3 := new(big.Int).Sub(x1, x3)
+	y3.Mul(lambda, y3)
+	y3.Sub(y3, y1)
+	y3.Mod(y3, c.params.P)
+	if y3.Sign() < 0 {
+		y3.Add(y3, c.params.P)
+	}
+
+	return x3, y3
+}
+
+func (c *secp256k1KoblitzCurve) ScalarMult(x1, y1 *big.Int, scalar []byte) (*big.Int, *big.Int) {
+	if x1 == nil || y1 == nil || !c.IsOnCurve(x1, y1) {
+		return nil, nil
+	}
+
+	var x, y *big.Int
+	for _, b := range scalar {
+		for bit := 7; bit >= 0; bit-- {
+			if x != nil {
+				x, y = c.Double(x, y)
+			}
+			if b&(1<<uint(bit)) == 0 {
+				continue
+			}
+			if x == nil {
+				x, y = c.copyPoint(x1, y1)
+				continue
+			}
+			x, y = c.Add(x, y, x1, y1)
+		}
+	}
+	return x, y
+}
+
+func (c *secp256k1KoblitzCurve) ScalarBaseMult(scalar []byte) (*big.Int, *big.Int) {
+	return c.ScalarMult(c.params.Gx, c.params.Gy, scalar)
+}
+
+func (c *secp256k1KoblitzCurve) copyPoint(x, y *big.Int) (*big.Int, *big.Int) {
+	if x == nil || y == nil {
+		return nil, nil
+	}
+	return new(big.Int).Set(x), new(big.Int).Set(y)
+}
 
 const (
 	kindEncryptedDM = 4
@@ -79,12 +234,12 @@ type relayMessage struct {
 
 // Channel implements the channel.Channel interface for Nostr.
 type Channel struct {
-	config     Config
-	logger     *zap.Logger
-	messages   chan channel.Message
-	privKey    *ecdsa.PrivateKey
-	pubKeyHex  string
-	relayURLs  []string
+	config    Config
+	logger    *zap.Logger
+	messages  chan channel.Message
+	privKey   *ecdsa.PrivateKey
+	pubKeyHex string
+	relayURLs []string
 
 	mu          sync.RWMutex
 	status      channel.Status
@@ -115,8 +270,8 @@ func New(cfg Config, logger *zap.Logger) *Channel {
 	}
 }
 
-func (c *Channel) Name() string                    { return "nostr" }
-func (c *Channel) Type() string                    { return "nostr" }
+func (c *Channel) Name() string                     { return "nostr" }
+func (c *Channel) Type() string                     { return "nostr" }
 func (c *Channel) Messages() <-chan channel.Message { return c.messages }
 
 func (c *Channel) IsConnected() bool {
@@ -143,10 +298,19 @@ func (c *Channel) Start(ctx context.Context) error {
 	}
 
 	curve := secp256k1Curve()
+	privScalar := new(big.Int).SetBytes(privKeyBytes)
+	if privScalar.Sign() == 0 || privScalar.Cmp(curve.Params().N) >= 0 {
+		c.setError("invalid private key: scalar out of range")
+		return fmt.Errorf("invalid private key")
+	}
 	privKey := new(ecdsa.PrivateKey)
 	privKey.Curve = curve
-	privKey.D = new(big.Int).SetBytes(privKeyBytes)
+	privKey.D = privScalar
 	privKey.PublicKey.X, privKey.PublicKey.Y = curve.ScalarBaseMult(privKeyBytes)
+	if privKey.PublicKey.X == nil || privKey.PublicKey.Y == nil {
+		c.setError("invalid private key: failed to derive public key")
+		return fmt.Errorf("invalid private key")
+	}
 	c.privKey = privKey
 
 	// Derive public key (x-only, 32 bytes hex)
@@ -367,9 +531,22 @@ func (c *Channel) handleDMEvent(evt *nostrEvent, relayURL string) {
 // Send sends an encrypted DM via Nostr relays.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	recipientPubKey := msg.ChatID
+	textParts := make([]string, 0, 1+len(msg.Attachments))
+	if strings.TrimSpace(msg.Content) != "" {
+		textParts = append(textParts, strings.TrimSpace(msg.Content))
+	}
+	for _, att := range msg.Attachments {
+		if fallback := nostrAttachmentFallbackText(att); fallback != "" {
+			textParts = append(textParts, fallback)
+		}
+	}
+	plaintext := strings.Join(textParts, "\n")
+	if plaintext == "" {
+		return fmt.Errorf("no sendable Nostr content")
+	}
 
 	// Encrypt content with NIP-04
-	encrypted, err := c.encryptNIP04(msg.Content, recipientPubKey)
+	encrypted, err := c.encryptNIP04(plaintext, recipientPubKey)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt message: %w", err)
 	}
@@ -425,6 +602,32 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 
 	c.msgsSent.Add(1)
 	return nil
+}
+
+func nostrAttachmentFallbackText(att channel.Attachment) string {
+	parts := make([]string, 0, 2)
+	if strings.TrimSpace(att.Name) != "" {
+		parts = append(parts, strings.TrimSpace(att.Name))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		parts = append(parts, strings.TrimSpace(att.URL))
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, "\n")
+	}
+	if len(att.Data) == 0 {
+		return ""
+	}
+	switch att.Type {
+	case channel.MessageTypeImage:
+		return "Image attachment"
+	case channel.MessageTypeVideo:
+		return "Video attachment"
+	case channel.MessageTypeAudio:
+		return "Audio attachment"
+	default:
+		return "File attachment"
+	}
 }
 
 // SendStreaming accumulates chunked content into multiple DM events.
@@ -731,7 +934,22 @@ func (v *Validator) Validate(ctx context.Context, config map[string]string) vali
 	// Derive public key for display
 	privKeyBytes, _ := hex.DecodeString(privateKey)
 	curve := secp256k1Curve()
+	privScalar := new(big.Int).SetBytes(privKeyBytes)
+	if privScalar.Sign() == 0 || privScalar.Cmp(curve.Params().N) >= 0 {
+		return validator.Result{
+			Success:    false,
+			Error:      "private_key scalar out of range",
+			MessageKey: "channels.invalidPrivateKey",
+		}
+	}
 	x, _ := curve.ScalarBaseMult(privKeyBytes)
+	if x == nil {
+		return validator.Result{
+			Success:    false,
+			Error:      "failed to derive public key from private_key",
+			MessageKey: "channels.invalidPrivateKey",
+		}
+	}
 	xBytes := x.Bytes()
 	if len(xBytes) < 32 {
 		padded := make([]byte, 32)
@@ -750,4 +968,3 @@ func (v *Validator) Validate(ctx context.Context, config map[string]string) vali
 		},
 	}
 }
-

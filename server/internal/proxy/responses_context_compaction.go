@@ -125,11 +125,15 @@ func (c *responsesContinuationCompactor) TrimInput(body []byte) []byte {
 		}
 	}
 
-	// Tool continuation payloads are often already incremental and contain only
-	// function_call_output items (no role field). Keep ordering as-is and only
-	// run overflow guards.
+	// REGRESSION-GUARD: Tool continuation payloads are often "tool-only"
+	// (function_call_output + optional latest user follow-up, no assistant role).
+	// Some chat->responses conversion paths accidentally carry stale user history
+	// in this shape. Do NOT fall back to applyOverflowGuards() here: that keeps
+	// old user turns and re-sends oversized history on continuation rounds,
+	// which can trigger relays to drop previous_response_id on the first tool
+	// follow-up turn. Keep only tool payload + latest user follow-up.
 	if lastAssistant < 0 && hasToolInput {
-		return c.applyOverflowGuards(body, items)
+		return c.compactToolOnlyContinuationInput(body, items)
 	}
 
 	start := len(items) - 1
@@ -165,6 +169,64 @@ func (c *responsesContinuationCompactor) TrimInput(body []byte) []byte {
 		trimmedRaw = append(trimmedRaw, raw)
 	}
 
+	return setResponsesInputRaw(body, trimmedRaw)
+}
+
+func (c *responsesContinuationCompactor) compactToolOnlyContinuationInput(body []byte, items []gjson.Result) []byte {
+	if len(items) == 0 {
+		return body
+	}
+
+	latestUserIdx := -1
+	hasFunctionCallOutput := false
+	for i := len(items) - 1; i >= 0; i-- {
+		itemType := strings.TrimSpace(items[i].Get("type").String())
+		if itemType == "function_call_output" {
+			hasFunctionCallOutput = true
+		}
+		if latestUserIdx >= 0 {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(items[i].Get("role").String()), "user") {
+			latestUserIdx = i
+		}
+	}
+
+	trimmedRaw := make([]string, 0, len(items))
+	for i, item := range items {
+		itemType := strings.TrimSpace(item.Get("type").String())
+		keep := false
+		switch itemType {
+		case "function_call_output":
+			keep = true
+		case "function_call":
+			// REGRESSION-GUARD: Prefer function_call_output over function_call
+			// when both are present in continuation payloads; echoing both can
+			// bloat input and confuse some OpenAI-compatible relays.
+			// Keep function_call only when outputs are absent so we don't drop
+			// all tool context.
+			keep = !hasFunctionCallOutput
+		default:
+			role := strings.ToLower(strings.TrimSpace(item.Get("role").String()))
+			keep = role == "user" && i == latestUserIdx
+		}
+		if !keep {
+			continue
+		}
+		raw := strings.TrimSpace(item.Raw)
+		if raw == "" || raw == "null" {
+			continue
+		}
+		raw = compactOverflowForContinuationItem(raw, item)
+		if raw == "" || raw == "null" {
+			continue
+		}
+		trimmedRaw = append(trimmedRaw, raw)
+	}
+
+	if len(trimmedRaw) == 0 {
+		return c.applyOverflowGuards(body, items)
+	}
 	return setResponsesInputRaw(body, trimmedRaw)
 }
 

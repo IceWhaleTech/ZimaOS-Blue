@@ -16,10 +16,29 @@ const (
 	ModelID     = "qwen3.5-0.8b-gguf-q4km"
 	RuntimeType = "llama.cpp"
 
-	defaultHFRepo         = "Qwen/Qwen3.5-0.8B-GGUF"
-	defaultModelFilename  = "qwen3.5-0.8b-q4_k_m.gguf"
-	defaultMMProjFilename = "mmproj-model-bf16.gguf"
+	defaultHFRepo         = "AaryanK/Qwen3.5-0.8B-GGUF"
+	defaultModelFilename  = "Qwen3.5-0.8B.Q4_K_M.gguf"
+	defaultMMProjFilename = ""
 )
+
+var defaultModelDownloadCandidates = []string{
+	"https://huggingface.co/AaryanK/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B.Q4_K_M.gguf",
+	"https://huggingface.co/AaryanK/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
+	"https://huggingface.co/Qwen/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B.Q4_K_M.gguf",
+	"https://huggingface.co/Qwen/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
+	"https://huggingface.co/Qwen/Qwen3.5-0.8B-GGUF/resolve/main/qwen3.5-0.8b-q4_k_m.gguf",
+}
+
+var legacyModelDownloadRepos = map[string]struct{}{
+	defaultHFRepo:            {},
+	"Qwen/Qwen3.5-0.8B-GGUF": {},
+}
+
+var legacyModelDownloadFilenames = map[string]struct{}{
+	defaultModelFilename:       {},
+	"Qwen3.5-0.8B-Q4_K_M.gguf": {},
+	"qwen3.5-0.8b-q4_k_m.gguf": {},
+}
 
 // Fallback reason codes for observability.
 const (
@@ -91,6 +110,9 @@ func (m *Manager) ModelPath() string {
 }
 
 func (m *Manager) MMProjPath() string {
+	if strings.TrimSpace(m.assets.mmprojFilename) == "" {
+		return ""
+	}
 	return filepath.Join(m.modelDir, m.assets.mmprojFilename)
 }
 
@@ -185,9 +207,31 @@ func (m *Manager) filesReadyLocked() bool {
 }
 
 func requiredModelFiles(assets modelAssetConfig) []downloader.ModelFile {
-	return []downloader.ModelFile{
-		modelFile(assets.repo, assets.modelFilename, assets.modelFilename, "2.0GB"),
-		modelFile(assets.repo, assets.mmprojFilename, assets.mmprojFilename, "1.0GB"),
+	files := []downloader.ModelFile{
+		modelDownloadFile(assets),
+	}
+	if strings.TrimSpace(assets.mmprojFilename) != "" {
+		files = append(files, modelFile(assets.repo, assets.mmprojFilename, assets.mmprojFilename, "1.0GB"))
+	}
+	return files
+}
+
+func modelDownloadFile(assets modelAssetConfig) downloader.ModelFile {
+	if usesDefaultModelDownloadCandidates(assets) {
+		return modelFileWithURLs(assets.modelFilename, "528MB", defaultModelDownloadCandidates...)
+	}
+	return modelFile(assets.repo, assets.modelFilename, assets.modelFilename, "528MB")
+}
+
+func modelFileWithURLs(filename, size string, urls ...string) downloader.ModelFile {
+	if len(urls) == 0 {
+		return downloader.ModelFile{Filename: filename, Size: size}
+	}
+	return downloader.ModelFile{
+		Filename: filename,
+		URL:      urls[0],
+		Mirrors:  append([]string(nil), urls[1:]...),
+		Size:     size,
 	}
 }
 
@@ -201,6 +245,12 @@ func modelFile(repo, filename, repoPath, size string) downloader.ModelFile {
 		},
 		Size: size,
 	}
+}
+
+func usesDefaultModelDownloadCandidates(assets modelAssetConfig) bool {
+	_, repoOK := legacyModelDownloadRepos[strings.TrimSpace(assets.repo)]
+	_, filenameOK := legacyModelDownloadFilenames[strings.TrimSpace(assets.modelFilename)]
+	return repoOK && filenameOK
 }
 
 func resolveModelAssetConfig() modelAssetConfig {

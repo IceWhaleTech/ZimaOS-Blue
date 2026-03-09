@@ -83,11 +83,17 @@ func (c *slackClient) postMessage(ctx context.Context, channelID, text, threadTS
 	if threadTS != "" {
 		body["thread_ts"] = threadTS
 	}
+	return c.postMessageWithBody(ctx, body)
+}
+
+func (c *slackClient) postMessageWithBody(ctx context.Context, body map[string]interface{}) (string, error) {
 	data, err := c.apiCall(ctx, "chat.postMessage", body)
 	if err != nil {
 		return "", err
 	}
-	var r struct{ TS string `json:"ts"` }
+	var r struct {
+		TS string `json:"ts"`
+	}
 	json.Unmarshal(data, &r)
 	return r.TS, nil
 }
@@ -148,7 +154,9 @@ func (c *slackClient) getUserInfo(ctx context.Context, userID string) (string, e
 		return userID, err
 	}
 	var r struct {
-		User struct{ Name string `json:"name"` } `json:"user"`
+		User struct {
+			Name string `json:"name"`
+		} `json:"user"`
 	}
 	json.Unmarshal(data, &r)
 	if r.User.Name != "" {

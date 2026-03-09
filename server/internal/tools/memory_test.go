@@ -9,17 +9,18 @@ import (
 
 // mockMemoryService implements MemoryServiceInterface for testing.
 type mockMemoryService struct {
-	recallResults   []MemorySearchResult
-	recallErr       error
-	getResult       *MemoryChunkResult
-	getErr          error
-	statsResult     *MemoryStatsResult
-	statsErr        error
-	rememberResult  *MemoryChunkResult
-	rememberErr     error
-	forgetErr       error
-	backend         string
-	lastForgetID    string
+	recallResults       []MemorySearchResult
+	recallErr           error
+	getResult           *MemoryChunkResult
+	getErr              error
+	statsResult         *MemoryStatsResult
+	statsErr            error
+	rememberResult      *MemoryChunkResult
+	rememberErr         error
+	forgetErr           error
+	backend             string
+	lastGetID           string
+	lastForgetID        string
 	lastRememberContent string
 	lastRememberTags    []string
 }
@@ -32,6 +33,7 @@ func (m *mockMemoryService) Recall(ctx context.Context, query string, limit int)
 }
 
 func (m *mockMemoryService) Get(ctx context.Context, id string) (*MemoryChunkResult, error) {
+	m.lastGetID = id
 	if m.getErr != nil {
 		return nil, m.getErr
 	}

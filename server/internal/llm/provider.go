@@ -31,6 +31,7 @@ type Message struct {
 	ContentParts []ContentPart `json:"content_parts,omitempty"` // for multimodal messages
 	ToolCalls    []ToolCall    `json:"tool_calls,omitempty"`
 	ToolCallID   string        `json:"tool_call_id,omitempty"`
+	ToolName     string        `json:"tool_name,omitempty"` // optional explicit tool name for tool-result messages
 }
 
 // Tool represents a function/tool that can be called by the LLM.

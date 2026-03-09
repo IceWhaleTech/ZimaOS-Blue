@@ -14,14 +14,15 @@ import (
 
 // SessionManager manages sessions with isolation and persistence.
 type SessionManager struct {
-	sessions    map[string]*Session
-	store       SessionStore
-	compactor   *SessionCompactor
-	hookManager *HookManager
-	config      config.SessionConfig
-	mu          sync.RWMutex
-	stopCh      chan struct{}
-	wg          sync.WaitGroup
+	sessions     map[string]*Session
+	store        SessionStore
+	compactor    *SessionCompactor
+	memCompactor *CompactorMemoryIntegration
+	hookManager  *HookManager
+	config       config.SessionConfig
+	mu           sync.RWMutex
+	stopCh       chan struct{}
+	wg           sync.WaitGroup
 }
 
 // NewSessionManager creates a new SessionManager.
@@ -107,7 +108,22 @@ func (m *SessionManager) AddMessage(id SessionID, msg ctxpkg.Message) error {
 		return err
 	}
 
+	prevRatio := session.TokenUsageRatio()
 	session.AddMessage(msg)
+
+	// Trigger proactive memory refresh once when crossing the soft threshold.
+	m.mu.RLock()
+	memCompactor := m.memCompactor
+	m.mu.RUnlock()
+	if memCompactor != nil && memCompactor.ShouldRefreshMemoryOnTransition(prevRatio, session) {
+		go func(sess *Session) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := memCompactor.RefreshMemoryBeforeCompaction(ctx, sess); err != nil {
+				log.Printf("[WARN] pre-compaction memory refresh failed: %v", err)
+			}
+		}(session)
+	}
 
 	// Check if compaction is needed
 	if m.compactor != nil && m.compactor.ShouldCompact(session) {
@@ -151,7 +167,20 @@ func (m *SessionManager) Compact(id SessionID) (*CompactionResult, error) {
 		return nil, fmt.Errorf("compactor not configured")
 	}
 
-	result, err := m.compactor.Compact(session)
+	var (
+		result *CompactionResult
+		err    error
+	)
+	m.mu.RLock()
+	memCompactor := m.memCompactor
+	m.mu.RUnlock()
+	if memCompactor != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		result, err = memCompactor.CompactWithMemoryRefresh(ctx, session)
+	} else {
+		result, err = m.compactor.Compact(session)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -280,6 +309,14 @@ func (m *SessionManager) RegisterHook(hook SessionHook) {
 	}
 }
 
+// SetCompactorMemoryIntegration attaches memory-refresh integration to the
+// normal compaction path. Nil disables memory refresh integration.
+func (m *SessionManager) SetCompactorMemoryIntegration(integration *CompactorMemoryIntegration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.memCompactor = integration
+}
+
 // List lists sessions matching the filter.
 func (m *SessionManager) List(filter SessionFilter) ([]*Session, error) {
 	if m.store != nil {
@@ -337,12 +374,12 @@ func (m *SessionManager) Stats() SessionManagerStats {
 
 // SessionManagerStats holds session manager statistics.
 type SessionManagerStats struct {
-	TotalSessions    int   `json:"total_sessions"`
-	ActiveSessions   int   `json:"active_sessions"`
-	IdleSessions     int   `json:"idle_sessions"`
-	ArchivedSessions int   `json:"archived_sessions"`
-	TotalMessages    int   `json:"total_messages"`
-	TotalTokens      int   `json:"total_tokens"`
+	TotalSessions    int `json:"total_sessions"`
+	ActiveSessions   int `json:"active_sessions"`
+	IdleSessions     int `json:"idle_sessions"`
+	ArchivedSessions int `json:"archived_sessions"`
+	TotalMessages    int `json:"total_messages"`
+	TotalTokens      int `json:"total_tokens"`
 }
 
 // Recover recovers sessions from persistence.

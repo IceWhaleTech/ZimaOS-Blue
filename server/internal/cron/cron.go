@@ -5,13 +5,14 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // JobStatus represents the status of a cron job.
@@ -183,6 +184,9 @@ func (s *Service) Create(name, description, schedule, handler string, payload ma
 	if _, exists := s.handlers[handler]; !exists {
 		return nil, fmt.Errorf("handler %s not found", handler)
 	}
+	if err := validatePayloadForHandler(handler, payload); err != nil {
+		return nil, err
+	}
 
 	// Generate unique ID using crypto/rand
 	idBytes := make([]byte, 8)
@@ -243,6 +247,23 @@ func (s *Service) Get(id string) (*Job, bool) {
 }
 
 // List returns all jobs.
+func (s *Service) Config() Config {
+	return s.config
+}
+
+// Handlers returns registered handler names.
+func (s *Service) Handlers() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	handlers := make([]string, 0, len(s.handlers))
+	for name := range s.handlers {
+		handlers = append(handlers, name)
+	}
+	sort.Strings(handlers)
+	return handlers
+}
+
+// List returns all jobs.
 func (s *Service) List() []*Job {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -267,6 +288,9 @@ func (s *Service) Update(id, name, description, schedule string, payload map[str
 
 	// Normalize schedule: convert 5-field to 6-field format
 	schedule = normalizeSchedule(schedule)
+	if err := validatePayloadForHandler(job.Handler, payload); err != nil {
+		return err
+	}
 
 	// If schedule changed, reschedule
 	if schedule != job.Schedule {

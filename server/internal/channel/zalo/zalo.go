@@ -201,17 +201,27 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 
 	// Send media attachments first.
 	for i, att := range msg.Attachments {
+		includeCaption := i == 0 && msg.Content != ""
+		fallbackText := buildAttachmentFallbackText(msg.Content, att, includeCaption)
 		if att.URL == "" {
+			if fallbackText != "" {
+				if err := c.sendJSON(ctx, zaloTextMessage(msg.ChatID, fallbackText)); err != nil {
+					c.logger.Warn("failed to send attachment fallback via Zalo",
+						zap.String("type", string(att.Type)), zap.Error(err))
+				} else if includeCaption {
+					msg.Content = ""
+				}
+			}
 			continue
 		}
-		var messageReq map[string]interface{}
+
 		switch att.Type {
 		case channel.MessageTypeImage:
-			messageReq = map[string]interface{}{
+			messageReq := map[string]interface{}{
 				"recipient": map[string]string{"user_id": msg.ChatID},
 				"message": map[string]interface{}{
 					"attachment": map[string]interface{}{
-						"type":    "template",
+						"type": "template",
 						"payload": map[string]interface{}{
 							"template_type": "media",
 							"elements": []map[string]interface{}{
@@ -221,40 +231,59 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 					},
 				},
 			}
+			if err := c.sendJSON(ctx, messageReq); err != nil {
+				c.logger.Warn("failed to send media via Zalo",
+					zap.String("type", string(att.Type)), zap.Error(err))
+				if fallbackText != "" {
+					if fallbackErr := c.sendJSON(ctx, zaloTextMessage(msg.ChatID, fallbackText)); fallbackErr != nil {
+						c.logger.Warn("failed to send attachment fallback via Zalo",
+							zap.String("type", string(att.Type)), zap.Error(fallbackErr))
+					} else if includeCaption {
+						msg.Content = ""
+					}
+				}
+			}
 		default:
-			// For non-image types, send as text with URL.
-			fallback := att.URL
-			if i == 0 && msg.Content != "" {
-				fallback = msg.Content + "\n" + att.URL
+			if fallbackText == "" {
+				continue
+			}
+			if err := c.sendJSON(ctx, zaloTextMessage(msg.ChatID, fallbackText)); err != nil {
+				c.logger.Warn("failed to send media via Zalo",
+					zap.String("type", string(att.Type)), zap.Error(err))
+			} else if includeCaption {
 				msg.Content = ""
 			}
-			messageReq = map[string]interface{}{
-				"recipient": map[string]string{"user_id": msg.ChatID},
-				"message":   map[string]string{"text": fallback},
-			}
-		}
-
-		if err := c.sendJSON(ctx, messageReq); err != nil {
-			c.logger.Warn("failed to send media via Zalo",
-				zap.String("type", string(att.Type)), zap.Error(err))
-		}
-		if i == 0 {
-			msg.Content = ""
 		}
 	}
 
 	// Send remaining text.
 	if msg.Content != "" {
-		messageReq := map[string]interface{}{
-			"recipient": map[string]string{"user_id": msg.ChatID},
-			"message":   map[string]string{"text": msg.Content},
-		}
-		if err := c.sendJSON(ctx, messageReq); err != nil {
+		if err := c.sendJSON(ctx, zaloTextMessage(msg.ChatID, msg.Content)); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func buildAttachmentFallbackText(caption string, att channel.Attachment, includeCaption bool) string {
+	parts := make([]string, 0, 2)
+	if includeCaption && strings.TrimSpace(caption) != "" {
+		parts = append(parts, strings.TrimSpace(caption))
+	}
+	if strings.TrimSpace(att.URL) != "" {
+		parts = append(parts, strings.TrimSpace(att.URL))
+	} else if strings.TrimSpace(att.Name) != "" {
+		parts = append(parts, strings.TrimSpace(att.Name))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func zaloTextMessage(chatID string, text string) map[string]interface{} {
+	return map[string]interface{}{
+		"recipient": map[string]string{"user_id": chatID},
+		"message":   map[string]string{"text": text},
+	}
 }
 
 // sendJSON posts a JSON payload to the Zalo OA message API.
@@ -387,12 +416,7 @@ func (c *Channel) setError(err string) {
 // HandleWebhook processes an incoming webhook from Zalo.
 // This should be called from a webhook handler.
 func (c *Channel) HandleWebhook(event *WebhookEvent) {
-	if event == nil {
-		return
-	}
-
-	// Only handle user_send_text events
-	if event.EventName != "user_send_text" {
+	if event == nil || !zaloIsIncomingUserMessage(event) {
 		return
 	}
 
@@ -453,19 +477,28 @@ func (c *Channel) convertEvent(event *WebhookEvent) channel.Message {
 
 	if len(msg.Attachments) > 0 {
 		msg.Type = msg.Attachments[0].Type
+		msg.Metadata["attachment_count"] = len(msg.Attachments)
 	}
 
 	return msg
 }
 
+func zaloIsIncomingUserMessage(event *WebhookEvent) bool {
+	eventName := strings.TrimSpace(event.EventName)
+	if !strings.HasPrefix(eventName, "user_send") {
+		return false
+	}
+	return strings.TrimSpace(event.Message.Text) != "" || len(event.Message.Attachments) > 0
+}
+
 // WebhookEvent represents a Zalo webhook event.
 type WebhookEvent struct {
-	AppID     string        `json:"app_id"`
-	OAID      string        `json:"oa_id"`
-	EventName string        `json:"event_name"`
-	MsgID     string        `json:"msg_id"`
-	Timestamp int64         `json:"timestamp"`
-	Sender    WebhookSender `json:"sender"`
+	AppID     string         `json:"app_id"`
+	OAID      string         `json:"oa_id"`
+	EventName string         `json:"event_name"`
+	MsgID     string         `json:"msg_id"`
+	Timestamp int64          `json:"timestamp"`
+	Sender    WebhookSender  `json:"sender"`
 	Message   WebhookMessage `json:"message"`
 }
 

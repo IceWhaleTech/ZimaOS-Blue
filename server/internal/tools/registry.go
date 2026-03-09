@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Common errors
@@ -192,7 +193,8 @@ func (r *Registry) Definitions() []ToolDefinition {
 
 // Executor handles tool execution.
 type Executor struct {
-	registry *Registry
+	registry   *Registry
+	traceStore *ToolTraceStore
 }
 
 // NewExecutor creates a new tool executor.
@@ -200,6 +202,14 @@ func NewExecutor(registry *Registry) *Executor {
 	return &Executor{
 		registry: registry,
 	}
+}
+
+// SetTraceStore wires an optional in-memory trace sink for tool executions.
+func (e *Executor) SetTraceStore(store *ToolTraceStore) {
+	if e == nil {
+		return
+	}
+	e.traceStore = store
 }
 
 // Execute runs a tool by name with the given arguments.
@@ -211,45 +221,52 @@ func (e *Executor) Execute(ctx context.Context, name string, args map[string]int
 	default:
 	}
 
-	normalizedName := normalizeCompatToolName(name)
-	tool := e.registry.Get(normalizedName)
-	if tool == nil && normalizedName != name {
-		// If the raw name itself is registered, prefer that implementation.
-		if original := e.registry.Get(name); original != nil {
-			tool = original
-			normalizedName = name
+	startedAt := time.Now().UTC()
+	record := func(actual string, result interface{}, err error) (interface{}, error) {
+		if e != nil && e.traceStore != nil {
+			e.traceStore.Record(startedAt, name, actual, args, result, err)
 		}
+		return result, err
 	}
-	args = normalizeCompatArgs(name, normalizedName, args)
+
+	normalizedName := normalizeCompatToolName(name)
+	resolvedName := name
+	tool := e.registry.Get(name)
+	if tool == nil {
+		resolvedName = normalizedName
+		tool = e.registry.Get(normalizedName)
+	}
+	args = normalizeCompatArgs(name, resolvedName, args)
 
 	if tool == nil {
 		if cmd, handled, immediate := resolveFactoryAliasCommand(name, args); handled {
 			if immediate != "" {
-				return immediate, nil
+				return record(normalizeFactoryToolName(name), immediate, nil)
 			}
 			if execTool := e.registry.Get("exec"); execTool != nil {
-				return execTool.Execute(ctx, map[string]interface{}{"command": cmd})
+				result, err := execTool.Execute(ctx, map[string]interface{}{"command": cmd})
+				return record("exec", result, err)
 			}
-			return nil, ErrToolNotFound
+			return record(resolvedName, nil, ErrToolNotFound)
 		}
 
 		if result, ok := unsupportedFactoryToolResult(name); ok {
-			return result, nil
+			return record(normalizeFactoryToolName(name), result, nil)
 		}
 
 		fallbackName, fallbackArgs := normalizeCompatFallbackTarget(name, normalizedName, args)
-		// Skill fallback: if the LLM calls a tool that doesn't exist in the
+		// Skill fallback: if the LLM calls a tool that does not exist in the
 		// tool registry, try forwarding to `blue <name> key=value` via exec.
-		// This handles skills (analyze, web_search, etc.) that the LLM may
-		// call as native tools despite the system prompt saying to use exec.
 		if execTool := e.registry.Get("exec"); execTool != nil {
 			cmd := buildSkillCommand(fallbackName, fallbackArgs)
-			return execTool.Execute(ctx, map[string]interface{}{"command": cmd})
+			result, err := execTool.Execute(ctx, map[string]interface{}{"command": cmd})
+			return record("exec", result, err)
 		}
-		return nil, ErrToolNotFound
+		return record(resolvedName, nil, ErrToolNotFound)
 	}
 
-	return tool.Execute(ctx, args)
+	result, err := tool.Execute(ctx, args)
+	return record(resolvedName, result, err)
 }
 
 func normalizeCompatToolName(name string) string {
@@ -258,8 +275,6 @@ func normalizeCompatToolName(name string) string {
 		return "read"
 	case "file_write":
 		return "write"
-	case "web_fetch":
-		return "browser"
 	case "memory_search", "memory_get", "memory_read",
 		"memory_write", "memory_remember", "memory_store",
 		"memory_forget", "memory_delete":
@@ -277,6 +292,8 @@ func normalizeCompatArgs(rawName, normalizedName string, args map[string]interfa
 		return normalizeMemoryCompatArgs(rawName, args)
 	case "web_search":
 		return normalizeWebSearchCompatArgs(rawName, args)
+	case "web_fetch":
+		return normalizeWebFetchCompatArgs(rawName, args)
 	case "browser":
 		return normalizeBrowserCompatArgs(rawName, args)
 	default:
@@ -288,7 +305,7 @@ func normalizeCompatFallbackTarget(rawName, normalizedName string, args map[stri
 	rawKey := strings.ToLower(strings.TrimSpace(rawName))
 	switch rawKey {
 	case "web_fetch":
-		return "browser", normalizeBrowserCompatArgs(rawName, args)
+		return "web_fetch", normalizeWebFetchCompatArgs(rawName, args)
 	case "browser":
 		return "browser", normalizeBrowserCompatArgs(rawName, args)
 	case "web_search":

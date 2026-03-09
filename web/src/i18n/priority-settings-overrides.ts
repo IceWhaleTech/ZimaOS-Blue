@@ -1,0 +1,9255 @@
+export default {
+  "ca-ES": {
+    "settings": {
+      "update": {
+        "applying": "S'està aplicant l'actualització...",
+        "confirmRestart": "Aplica i reinicia",
+        "downloadComplete": "Descàrrega completada",
+        "downloadFailed": "Ha fallat la descàrrega",
+        "restarting": "S'està reiniciant...",
+        "serverNotResponding": "El servidor no ha tornat després de l'actualització",
+        "waitingForServer": "S'està esperant que el servidor torni...",
+        "autoCheck": "Comprova automàticament si hi ha actualitzacions en iniciar",
+        "checkNow": "Comprova ara",
+        "currentVersion": "Versió actual",
+        "download": "Descarrega",
+        "downloading": "Descarregant...",
+        "newVersionAvailable": "Nova versió disponible",
+        "title": "Informació",
+        "upToDate": "Actualitzat"
+      },
+      "tab": {
+        "llm": "Models LLM",
+        "memory": "Memòria",
+        "network": "Xarxa",
+        "security": "Seguretat",
+        "speech": "Veu",
+        "update": "Actualització",
+        "userdata": "Gestió de dades"
+      },
+      "closeBehavior": "Comportament en tancar",
+      "closeBehaviorMinimize": "Minimitza a la safata",
+      "closeBehaviorQuit": "Surt",
+      "closeBehaviorSaved": "S'ha desat el comportament en tancar"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Control de recuperació de memòria",
+      "memoryMeta": "S'ha omès la recuperació en {skipped}/{total} torns",
+      "memoryMode": "Mode: {mode}",
+      "modes": {
+        "aggressive": "Agressiu",
+        "balanced": "Equilibrat",
+        "quality": "Qualitat"
+      },
+      "combined": "Memòria cau + poda + eines + encaminament",
+      "estimated": "Estalvi estimat",
+      "costSaved": "Cost estalviat",
+      "tokensSaved": "Tokens estalviats",
+      "compression": "Compressió",
+      "breakdown": "Desglossament de l'estalvi",
+      "estCost": "Cost estimat",
+      "noSavingsYet": "Encara no s'ha registrat cap estalvi de tokens",
+      "prunerLabel": "Poda de context",
+      "prunerMeta": "{pruned}/{total} sol·licituds podades",
+      "routingLabel": "Encaminament intel·ligent",
+      "routingMeta": "{requests} sol·licituds encaminades",
+      "toolsLabel": "Filtre d'eines",
+      "toolsMeta": "{skipped} eines omeses en {requests} sol·licituds"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Anàlisi",
+        "auto_reply": "Resposta automàtica",
+        "browser": "Navegador",
+        "calculator": "Calculadora",
+        "calendar": "Calendari",
+        "contacts": "Contactes",
+        "crypto": "Cripto",
+        "datetime": "Data i hora",
+        "email": "Correu electrònic",
+        "file_read": "Lectura de fitxers",
+        "file_write": "Escriptura de fitxers",
+        "files": "Fitxers",
+        "memory": "Memòria",
+        "network": "Xarxa",
+        "news": "Notícies",
+        "notes": "Notes",
+        "notifications": "Notificacions",
+        "process": "Processos",
+        "reminders": "Recordatoris",
+        "sandbox": "Entorn aïllat",
+        "scheduler": "Planificador",
+        "search": "Cerca",
+        "stocks": "Borsa",
+        "system_info": "Informació del sistema",
+        "tasks": "Tasques",
+        "timer": "Temporitzador",
+        "translate": "Tradueix",
+        "ui_reviewer": "Revisor d'interfície",
+        "unit_converter": "Conversor d'unitats",
+        "weather": "Temps",
+        "web_search": "Cerca web",
+        "workflows": "Fluxos de treball",
+        "exec": "Execució d'ordres",
+        "workspace_file": "Fitxer de l'espai de treball"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Reproducció automàtica",
+      "checkpoint": {
+        "cancel": "Cancel·la",
+        "continue": "Continua",
+        "fallbackQuestion": "Confirma aquesta acció del navegador.",
+        "help": "Pots dir \"continua\" o \"cancel·la\", o tocar un botó a sota.",
+        "title": "Cal confirmar el punt de control del navegador"
+      },
+      "clearConversation": "Neteja la conversa",
+      "connected": "Connectat",
+      "continuous": "Continu",
+      "disconnected": "Desconnectat",
+      "emptyHint": "Mantén premut el botó del micròfon per parlar",
+      "errors": {
+        "connectionFailed": "Ha fallat la connexió",
+        "processAudioFailed": "No s'ha pogut processar l'àudio",
+        "startRecordingFailed": "No s'ha pogut iniciar l'enregistrament",
+        "wakeWordStartFailed": "No s'ha pogut iniciar la detecció de la paraula d'activació"
+      },
+      "title": "Assistent de veu",
+      "settingsTitle": "Configuració",
+      "languageLabel": "Idioma",
+      "voiceLabel": "Veu",
+      "holdToSpeak": "Mantén premut per parlar",
+      "releaseToSend": "Deixa anar per enviar",
+      "wakeWordTitle": "Detecció de paraula d'activació",
+      "wakeWordEnable": "Activa",
+      "wakeWordLabel": "Paraula d'activació",
+      "wakeWordPlaceholder": "p. ex., hola eco",
+      "wakeWordListening": "Escoltant la paraula d'activació...",
+      "wakeWordIdle": "No està escoltant",
+      "state": {
+        "ready": "A punt",
+        "listening": "Escoltant...",
+        "processing": "Processant...",
+        "speaking": "Parlant...",
+        "unknown": "Desconegut"
+      },
+      "languages": {
+        "en": "Anglès",
+        "zh": "Xinès",
+        "ja": "Japonès",
+        "ko": "Coreà",
+        "de": "Alemany",
+        "fr": "Francès",
+        "es": "Espanyol"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Runtime d'agents lliure i de codi obert"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Cerca als registres..."
+    },
+    "companion": {
+      "title": "Acompanyant",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Usuari web"
+      },
+      "ackedBy": "Confirmat per",
+      "anonymous": "Anònim",
+      "eventHistory": "Historial d'esdeveniments",
+      "flow": {
+        "duration": "Durada",
+        "empty": "No hi ha dades de flux disponibles",
+        "fitView": "Ajusta la vista",
+        "legend": "Llegenda",
+        "loading": "S'està carregant el flux...",
+        "nodeTypes": {
+          "llmRequest": "Sol·licitud LLM",
+          "message": "Missatge",
+          "securityCheck": "Comprovació de seguretat",
+          "toolCall": "Crida d'eina"
+        },
+        "reset": "Restableix la vista",
+        "retry": "Torna-ho a provar",
+        "status": "Estat",
+        "time": "Hora",
+        "type": "Tipus",
+        "zoomIn": "Amplia",
+        "zoomOut": "Redueix"
+      },
+      "hoursAgo": "fa {n} hores",
+      "justNow": "Ara mateix",
+      "liveSession": "Sessió en directe",
+      "llmDetails": {
+        "completion": "Tokens de sortida",
+        "input": "Entrada",
+        "prompt": "Tokens d'entrada",
+        "score": "Puntuació",
+        "total": "Total de tokens"
+      },
+      "minutesAgo": "fa {n} min",
+      "nodes": {
+        "chars": "{count} caràcters",
+        "llmRequest": "Sol·licitud LLM",
+        "message": "Missatge",
+        "received": "Rebut",
+        "sandbox": "Entorn aïllat"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Suport",
+      "deepResearchConflict": "Conflicte",
+      "deepResearchHasConflict": "Senyals en conflicte"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Cal el permís d'Automation per enviar iMessages. Concedeix-lo a System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Cal Full Disk Access per llegir l'historial d'iMessage. Concedeix-lo a System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage no està configurat en aquest Mac. Obre l'app Messages i inicia sessió amb el teu Apple ID.",
+          "not_signed_in": "No has iniciat sessió a iMessage. Obre l'app Messages i inicia sessió amb el teu Apple ID.",
+          "unavailable_platform": "iMessage només està disponible a macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "Petició HTTP"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "p. ex., Personal, Feina",
+      "widget": {
+        "pasteExample": "nom: Joan Doe\ncorreu: joan{'@'}example.com\ntelèfon: 123-456-7890",
+        "title": "Omplidor de formularis",
+        "fillAll": "Omple-ho tot",
+        "fillThis": "Omple aquest camp",
+        "undo": "Desfés",
+        "readClipboard": "Llegeix del porta-retalls",
+        "showPassword": "Mostra la contrasenya",
+        "hidePassword": "Amaga la contrasenya",
+        "filledFields": "S'han omplert {count} camps",
+        "parsedFields": "S'han analitzat {count} camps",
+        "pasteData": "Enganxa dades per omplir",
+        "pasteDataHint": "Enganxa parelles clau-valor"
+      },
+      "createTemplate": "Crea una plantilla",
+      "default": "Predeterminada",
+      "defaultSet": "S'ha actualitzat la plantilla predeterminada",
+      "editTemplate": "Edita la plantilla",
+      "enterValue": "Introdueix un valor...",
+      "fields": "Camps",
+      "fieldTypes": "tipus de camps configurats",
+      "patterns": "Patrons de camp",
+      "patternsDescription": "Els patrons de camp ajuden a detectar camps de formulari fent coincidir paraules clau en noms de camp, etiquetes i textos de marcador.",
+      "setAsDefault": "Defineix-la com a plantilla predeterminada",
+      "templateCreated": "La plantilla s'ha creat correctament",
+      "templateDeleted": "La plantilla s'ha suprimit correctament",
+      "templateName": "Nom de la plantilla",
+      "templateUpdated": "La plantilla s'ha actualitzat correctament",
+      "templates": "Plantilles",
+      "newTemplate": "Plantilla nova",
+      "setDefault": "Defineix com a predeterminada",
+      "noTemplates": "Encara no hi ha plantilles. Crea'n una per començar.",
+      "editPatterns": "Edita els patrons",
+      "patternsSaved": "Els patrons s'han desat correctament",
+      "confirmDelete": "Segur que vols suprimir aquesta plantilla?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Xarxa Ethernet",
+      "loopback": "Bucle local",
+      "unknown": "Desconegut",
+      "virtual": "Interfície virtual"
+    },
+    "plugins": {
+      "builtin": "Integrat",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo o https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Desactivat",
+        "enabled": "Activat",
+        "total": "En total"
+      },
+      "categories": {
+        "analytics": "Analítica",
+        "communication": "Comunicació",
+        "development": "Desenvolupament",
+        "extension": "Extensió",
+        "information": "Informació",
+        "integration": "Integració",
+        "other": "Altres",
+        "productivity": "Productivitat",
+        "system": "Sistema",
+        "utility": "Utilitat"
+      },
+      "title": "Complements",
+      "subtitle": "Gestiona habilitats i eines",
+      "noDescription": "No hi ha cap descripció disponible",
+      "allCategories": "Totes les categories",
+      "dropFileHere": "Deixa anar el fitxer aquí o fes clic per cercar",
+      "fileRequired": "Selecciona un fitxer",
+      "install": "Instal·la",
+      "installFailed": "La instal·lació ha fallat",
+      "installFromUrl": "Des d'una URL",
+      "installing": "S'està instal·lant...",
+      "installSkillTitle": "Instal·la una habilitat",
+      "noMatchingTools": "No s'ha trobat cap element coincident",
+      "noTools": "No hi ha cap element disponible",
+      "skillPackageInfo": "Requisits del paquet d'habilitats",
+      "skillPackageRequirement1": "Ha de contenir un manifest skill.json vàlid",
+      "skillPackageRequirement2": "Ha d'incloure tots els fitxers d'habilitat necessaris",
+      "skillUrlHint": "Introdueix l'URL d'un repositori de GitHub o un enllaç directe a un paquet d'habilitat",
+      "skillUrlLabel": "URL de l'habilitat",
+      "supportedFormats": "Formats compatibles",
+      "uploadFile": "Puja un fitxer",
+      "uploadSkill": "Instal·la una habilitat",
+      "urlRequired": "Introdueix una URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Sessió activa",
+      "cancel": "Cancel·la",
+      "diagnostics": "Diagnosi",
+      "diagnosticsTitle": "Informació de diagnosi",
+      "disconnect": "Desconnecta",
+      "disconnectConfirmMessage": "Si hi accedeixes mitjançant el túnel remot, pots perdre l'accés a aquesta pàgina.",
+      "disconnectConfirmMessageSameHost": "Ara mateix hi accedeixes mitjançant aquest túnel remot. Si et desconnectes, aquesta pàgina es tancarà i perdràs l'accés.",
+      "disconnectConfirmTitle": "Desconnectar l'accés remot?",
+      "error": "Errada",
+      "firewallException": "Excepció del tallafoc",
+      "getToken": "Obtén el teu token",
+      "logs": "Registres",
+      "logsTitle": "Registres de connexió",
+      "ngrokClaimDomain": "Reclama'l",
+      "ngrokDomain": "Domini estàtic",
+      "ngrokDomainHint": "Opcional: els usuaris gratuïts poden reclamar un domini estàtic.",
+      "ngrokDomainPlaceholder": "p. ex., myapp.ngrok-free.app",
+      "noKeyRequired": "No cal configuració",
+      "noLogs": "No hi ha registres disponibles",
+      "platform": "Plataforma",
+      "provider": "Proveïdor",
+      "qrCodeError": "No s'ha pogut carregar el codi QR",
+      "recentErrors": "Errors recents",
+      "requiresKey": "Requereix token d'autenticació",
+      "selectProvider": "Selecciona el proveïdor del túnel",
+      "showQRCode": "Mostra el codi QR",
+      "status": "Estat",
+      "troubleshootingHints": "Consells de resolució de problemes",
+      "tunnelRunning": "Túnel en execució"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "Correcte (buit)",
+        "ok-token": "Correcte",
+        "failed": "Ha fallat",
+        "ran": "Executat",
+        "sent": "Avís enviat",
+        "skipped": "Omès"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "S'ha esborrat l'error — ja pots tornar-ho a provar",
+      "keyLabelPlaceholder": "Principal, Còpia de seguretat, etc.",
+      "modelIdPlaceholder": "openai, anthropic, etcètera",
+      "providerId": "ID del proveïdor",
+      "retry": "Torna-ho a provar",
+      "addFailed": "No s'ha pogut afegir el proveïdor",
+      "addingProvider": "S'està afegint el proveïdor...",
+      "apiKeyHint": "Alguns proveïdors, com Ollama, no necessiten cap clau API",
+      "apiKeyOptional": "Clau API (opcional)",
+      "baseUrlRequired": "Configura primer l'URL base",
+      "fetchingKeyModels": "S'estan obtenint els models...",
+      "getApiKey": "Obtén la clau API",
+      "ideImportLabel": "Importat des de {ide} (extensió de Claude Code)",
+      "noAvailableModels": "No s'ha trobat cap model disponible",
+      "noModelsFound": "No s'ha trobat cap model — comprova l'URL i la clau API",
+      "probeComplete": "Sonda completada: {available}/{total} models disponibles",
+      "probingModels": "S'estan sondejant els models...",
+      "providerAdded": "S'ha afegit el proveïdor",
+      "providerAddedWithModels": "{count} models disponibles",
+      "scanIDE": "Importa des de l'IDE",
+      "dragToReorder": "Arrossega per reordenar la prioritat",
+      "freeTier": "Gratuït",
+      "location": "Ubicació",
+      "locationCloud": "Núvol",
+      "locationHint": "Els proveïdors al núvol s'executen en servidors remots; els proveïdors locals s'executen a la teva màquina",
+      "locationLocal": "En local",
+      "preferredModelsHint": "Marca els models que prefereixes. Només estaran disponibles els models marcats; si no n'hi ha cap de marcat, tots els models estaran disponibles.",
+      "selectPreferredModels": "Selecciona els models preferits",
+      "tabs": {
+        "oauth": "Autenticació OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Prova de ZimaOS Blue",
+        "quotaExhaustedConversations": "Has arribat al límit de converses de prova. Configura el teu propi proveïdor per continuar.",
+        "quotaExhaustedTokens": "Has esgotat la quota de tokens de prova. Configura el teu propi proveïdor per continuar.",
+        "tokensUsed": "Queden {remaining} / {total} tokens"
+      },
+      "usage": {
+        "estimatedCost": "Cost estimat",
+        "inputTokens": "Tokens d'entrada",
+        "loading": "S'està carregant l'ús...",
+        "outputTokens": "Tokens de sortida",
+        "requests": "Sol·licituds"
+      }
+    }
+  },
+  "cs-CZ": {
+    "settings": {
+      "update": {
+        "applying": "Aplikuje se aktualizace...",
+        "confirmRestart": "Použít a restartovat",
+        "downloadComplete": "Stahování dokončeno",
+        "downloadFailed": "Stahování selhalo",
+        "restarting": "Restartování...",
+        "serverNotResponding": "Server se po aktualizaci nevrátil",
+        "waitingForServer": "Čeká se, až se server vrátí...",
+        "autoCheck": "Při spuštění automaticky kontrolovat aktualizace",
+        "checkNow": "Zkontrolovat nyní",
+        "currentVersion": "Aktuální verze",
+        "download": "Stáhnout",
+        "downloading": "Stahování...",
+        "newVersionAvailable": "K dispozici je nová verze",
+        "title": "O aplikaci",
+        "upToDate": "Aktuální"
+      },
+      "tab": {
+        "llm": "LLM modely",
+        "memory": "Paměť",
+        "network": "Síť",
+        "security": "Zabezpečení",
+        "speech": "Řeč",
+        "update": "Aktualizace",
+        "userdata": "Správa dat"
+      },
+      "closeBehavior": "Chování při zavření",
+      "closeBehaviorMinimize": "Minimalizovat do lišty",
+      "closeBehaviorQuit": "Ukončit",
+      "closeBehaviorSaved": "Chování při zavření uloženo"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Řízení vyvolání paměti",
+      "memoryMeta": "Vyvolání bylo přeskočeno v {skipped}/{total} kolech",
+      "memoryMode": "Režim: {mode}",
+      "modes": {
+        "aggressive": "Agresivní",
+        "balanced": "Vyvážený",
+        "quality": "Kvalita"
+      },
+      "combined": "Cache + ořez + nástroje + směrování",
+      "estimated": "Odhadovaná úspora",
+      "costSaved": "Ušetřené náklady",
+      "tokensSaved": "Ušetřené tokeny",
+      "compression": "Komprese",
+      "breakdown": "Rozpis úspor",
+      "estCost": "Odhad. náklady",
+      "noSavingsYet": "Zatím nebyly zaznamenány žádné úspory tokenů",
+      "prunerLabel": "Ořezávač kontextu",
+      "prunerMeta": "{pruned}/{total} požadavků ořezáno",
+      "routingLabel": "Chytré směrování",
+      "routingMeta": "{requests} požadavků směrováno",
+      "toolsLabel": "Filtr nástrojů",
+      "toolsMeta": "{skipped} nástrojů přeskočeno v {requests} požadavcích"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analýza",
+        "auto_reply": "Automatická odpověď",
+        "browser": "Prohlížeč",
+        "calculator": "Kalkulačka",
+        "calendar": "Kalendář",
+        "contacts": "Kontakty",
+        "crypto": "Krypto",
+        "datetime": "Datum a čas",
+        "email": "E-mail",
+        "file_read": "Čtení souborů",
+        "file_write": "Zápis souborů",
+        "files": "Soubory",
+        "memory": "Paměť",
+        "network": "Síť",
+        "news": "Zprávy",
+        "notes": "Poznámky",
+        "notifications": "Oznámení",
+        "process": "Procesy",
+        "reminders": "Připomínky",
+        "sandbox": "Sandbox",
+        "scheduler": "Plánovač",
+        "search": "Hledání",
+        "stocks": "Akcie",
+        "system_info": "Informace o systému",
+        "tasks": "Úkoly",
+        "timer": "Časovač",
+        "translate": "Překlad",
+        "ui_reviewer": "Kontrola UI",
+        "unit_converter": "Převodník jednotek",
+        "weather": "Počasí",
+        "web_search": "Vyhledávání na webu",
+        "workflows": "Pracovní postupy",
+        "exec": "Spouštění příkazů",
+        "workspace_file": "Soubor pracovního prostoru"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Automatické přehrávání",
+      "checkpoint": {
+        "cancel": "Zrušit",
+        "continue": "Pokračovat",
+        "fallbackQuestion": "Potvrďte prosím tuto akci v prohlížeči.",
+        "help": "Můžete říct \"pokračovat\" nebo \"zrušit\", případně klepnout na tlačítko níže.",
+        "title": "Je vyžadováno potvrzení kontrolního bodu prohlížeče"
+      },
+      "clearConversation": "Vymazat konverzaci",
+      "connected": "Připojeno",
+      "continuous": "Průběžné",
+      "disconnected": "Odpojeno",
+      "emptyHint": "Pro mluvení stiskněte a podržte tlačítko mikrofonu",
+      "errors": {
+        "connectionFailed": "Připojení se nezdařilo",
+        "processAudioFailed": "Nepodařilo se zpracovat zvuk",
+        "startRecordingFailed": "Nepodařilo se spustit nahrávání",
+        "wakeWordStartFailed": "Nepodařilo se spustit detekci budicího slova"
+      },
+      "title": "Hlasový asistent",
+      "settingsTitle": "Nastavení",
+      "languageLabel": "Jazyk",
+      "voiceLabel": "Hlas",
+      "holdToSpeak": "Podržením mluvte",
+      "releaseToSend": "Uvolněním odeslat",
+      "wakeWordTitle": "Detekce probouzecího slova",
+      "wakeWordEnable": "Povolit",
+      "wakeWordLabel": "Probouzecí slovo",
+      "wakeWordPlaceholder": "např. ahoj echo",
+      "wakeWordListening": "Naslouchá probouzecímu slovu...",
+      "wakeWordIdle": "Nenaslouchá",
+      "state": {
+        "ready": "Připraveno",
+        "listening": "Naslouchání...",
+        "processing": "Zpracování...",
+        "speaking": "Mluví...",
+        "unknown": "Neznámé"
+      },
+      "languages": {
+        "en": "Angličtina",
+        "zh": "Čínština",
+        "ja": "Japonština",
+        "ko": "Korejština",
+        "de": "Němčina",
+        "fr": "Francouzština",
+        "es": "Španělština"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Open-source a bezplatné běhové prostředí agenta"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Hledat v protokolech..."
+    },
+    "companion": {
+      "title": "Společník",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Webový uživatel"
+      },
+      "ackedBy": "Potvrdil",
+      "anonymous": "Anonymní",
+      "eventHistory": "Historie událostí",
+      "flow": {
+        "duration": "Trvání",
+        "empty": "Nejsou k dispozici žádná data toku",
+        "fitView": "Přizpůsobit zobrazení",
+        "legend": "Legenda",
+        "loading": "Načítání toku...",
+        "nodeTypes": {
+          "llmRequest": "Požadavek LLM",
+          "message": "Zpráva",
+          "securityCheck": "Bezpečnostní kontrola",
+          "toolCall": "Volání nástroje"
+        },
+        "reset": "Obnovit zobrazení",
+        "retry": "Opakovat",
+        "status": "Stav",
+        "time": "Čas",
+        "type": "Typ",
+        "zoomIn": "Přiblížit",
+        "zoomOut": "Oddálit"
+      },
+      "hoursAgo": "před {n} hodinami",
+      "justNow": "Právě teď",
+      "liveSession": "Živá relace",
+      "llmDetails": {
+        "completion": "Výstupní tokeny",
+        "input": "Vstup",
+        "prompt": "Vstupní tokeny",
+        "score": "Skóre",
+        "total": "Celkem tokenů"
+      },
+      "minutesAgo": "před {n} min",
+      "nodes": {
+        "chars": "{count} znaků",
+        "llmRequest": "Požadavek LLM",
+        "message": "Zpráva",
+        "received": "Přijato",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Podpora",
+      "deepResearchConflict": "Konflikt",
+      "deepResearchHasConflict": "Konfliktní signály"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "K odesílání iMessages je vyžadováno oprávnění Automation. Udělte jej v System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Ke čtení historie iMessage je vyžadováno Full Disk Access. Udělte jej v System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage není na tomto Macu nastaveno. Otevřete aplikaci Messages a přihlaste se pomocí Apple ID.",
+          "not_signed_in": "K iMessage nejste přihlášeni. Otevřete aplikaci Messages a přihlaste se pomocí Apple ID.",
+          "unavailable_platform": "iMessage je k dispozici pouze v macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP požadavek"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "např. Osobní, Práce",
+      "widget": {
+        "pasteExample": "jméno: Jan Novák\ne-mail: jan{'@'}example.com\ntelefon: 123-456-7890",
+        "title": "Vyplňovač formulářů",
+        "fillAll": "Vyplnit vše",
+        "fillThis": "Vyplnit toto pole",
+        "undo": "Zpět",
+        "readClipboard": "Načíst ze schránky",
+        "showPassword": "Zobrazit heslo",
+        "hidePassword": "Skrýt heslo",
+        "filledFields": "Vyplněno {count} polí",
+        "parsedFields": "Rozpoznáno {count} polí",
+        "pasteData": "Vložte data k vyplnění",
+        "pasteDataHint": "Vložte dvojice klíč–hodnota"
+      },
+      "createTemplate": "Vytvořit šablonu",
+      "default": "Výchozí",
+      "defaultSet": "Výchozí šablona byla aktualizována",
+      "editTemplate": "Upravit šablonu",
+      "enterValue": "Zadejte hodnotu...",
+      "fields": "Pole",
+      "fieldTypes": "typů polí nakonfigurováno",
+      "patterns": "Vzory polí",
+      "patternsDescription": "Vzory polí pomáhají rozpoznat pole formuláře porovnáním klíčových slov v názvech polí, štítcích a zástupných textech.",
+      "setAsDefault": "Nastavit jako výchozí šablonu",
+      "templateCreated": "Šablona byla úspěšně vytvořena",
+      "templateDeleted": "Šablona byla úspěšně smazána",
+      "templateName": "Název šablony",
+      "templateUpdated": "Šablona byla úspěšně aktualizována",
+      "templates": "Šablony",
+      "newTemplate": "Nová šablona",
+      "setDefault": "Nastavit jako výchozí",
+      "noTemplates": "Zatím nejsou žádné šablony. Začněte vytvořením první.",
+      "editPatterns": "Upravit vzory",
+      "patternsSaved": "Vzory byly úspěšně uloženy",
+      "confirmDelete": "Opravdu chcete tuto šablonu smazat?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Ethernet síť",
+      "loopback": "Zpětná smyčka",
+      "unknown": "Neznámé",
+      "virtual": "Virtuální"
+    },
+    "plugins": {
+      "builtin": "Vestavěný",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo nebo https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Zakázáno",
+        "enabled": "Povoleno",
+        "total": "Celkem"
+      },
+      "categories": {
+        "analytics": "Analytika",
+        "communication": "Komunikace",
+        "development": "Vývoj",
+        "extension": "Rozšíření",
+        "information": "Informace",
+        "integration": "Integrace",
+        "other": "Ostatní",
+        "productivity": "Produktivita",
+        "system": "Systém",
+        "utility": "Nástroj"
+      },
+      "title": "Rozšíření",
+      "subtitle": "Spravujte dovednosti a nástroje",
+      "noDescription": "Popis není k dispozici",
+      "allCategories": "Všechny kategorie",
+      "dropFileHere": "Přetáhněte sem soubor nebo klikněte pro výběr",
+      "fileRequired": "Vyberte soubor",
+      "install": "Nainstalovat",
+      "installFailed": "Instalace selhala",
+      "installFromUrl": "Z URL",
+      "installing": "Instaluje se...",
+      "installSkillTitle": "Nainstalovat dovednost",
+      "noMatchingTools": "Nebyly nalezeny žádné odpovídající položky",
+      "noTools": "Nejsou k dispozici žádné položky",
+      "skillPackageInfo": "Požadavky na balíček dovednosti",
+      "skillPackageRequirement1": "Musí obsahovat platný manifest skill.json",
+      "skillPackageRequirement2": "Zahrňte všechny požadované soubory dovednosti",
+      "skillUrlHint": "Zadejte URL repozitáře GitHub nebo přímý odkaz na balíček dovednosti",
+      "skillUrlLabel": "URL dovednosti",
+      "supportedFormats": "Podporované formáty",
+      "uploadFile": "Nahrát soubor",
+      "uploadSkill": "Nainstalovat dovednost",
+      "urlRequired": "Zadejte URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Aktivní relace",
+      "cancel": "Zrušit",
+      "diagnostics": "Diagnostika",
+      "diagnosticsTitle": "Diagnostické informace",
+      "disconnect": "Odpojit",
+      "disconnectConfirmMessage": "Pokud přistupujete přes vzdálený tunel, můžete ztratit přístup k této stránce.",
+      "disconnectConfirmMessageSameHost": "Právě přistupujete přes tento vzdálený tunel. Odpojením se tato stránka zavře a ztratíte přístup.",
+      "disconnectConfirmTitle": "Odpojit vzdálený přístup?",
+      "error": "Chyba",
+      "firewallException": "Výjimka firewallu",
+      "getToken": "Získat token",
+      "logs": "Protokoly",
+      "logsTitle": "Protokoly připojení",
+      "ngrokClaimDomain": "Získat svou",
+      "ngrokDomain": "Statická doména",
+      "ngrokDomainHint": "Volitelné: uživatelé bezplatného tarifu si mohou nárokovat jednu statickou doménu.",
+      "ngrokDomainPlaceholder": "např. myapp.ngrok-free.app",
+      "noKeyRequired": "Není vyžadováno nastavení",
+      "noLogs": "Nejsou k dispozici žádné protokoly",
+      "platform": "Platforma",
+      "provider": "Poskytovatel",
+      "qrCodeError": "Nepodařilo se načíst QR kód",
+      "recentErrors": "Nedávné chyby",
+      "requiresKey": "Vyžaduje ověřovací token",
+      "selectProvider": "Vyberte poskytovatele tunelu",
+      "showQRCode": "Zobrazit QR kód",
+      "status": "Stav",
+      "troubleshootingHints": "Tipy k řešení problémů",
+      "tunnelRunning": "Tunel běží"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "V pořádku (prázdné)",
+        "ok-token": "V pořádku",
+        "failed": "Neúspěšné",
+        "ran": "Proběhlo",
+        "sent": "Upozornění odesláno",
+        "skipped": "Přeskočeno"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Chyba byla vymazána — můžete to zkusit znovu",
+      "keyLabelPlaceholder": "Hlavní, Záložní apod.",
+      "modelIdPlaceholder": "openai, anthropic apod.",
+      "providerId": "ID poskytovatele",
+      "retry": "Zkusit znovu",
+      "addFailed": "Nepodařilo se přidat poskytovatele",
+      "addingProvider": "Přidává se poskytovatel...",
+      "apiKeyHint": "Někteří poskytovatelé, jako Ollama, nepotřebují API klíč",
+      "apiKeyOptional": "API klíč (volitelné)",
+      "baseUrlRequired": "Nejprve nastavte základní URL",
+      "fetchingKeyModels": "Načítají se modely...",
+      "getApiKey": "Získat API klíč",
+      "ideImportLabel": "Importováno z {ide} (rozšíření Claude Code)",
+      "noAvailableModels": "Nebyly nalezeny žádné dostupné modely",
+      "noModelsFound": "Nenalezeny žádné modely — zkontrolujte URL a API klíč",
+      "probeComplete": "Sonda dokončena: {available}/{total} modelů k dispozici",
+      "probingModels": "Zjišťují se modely...",
+      "providerAdded": "Poskytovatel přidán",
+      "providerAddedWithModels": "{count} modelů k dispozici",
+      "scanIDE": "Import z IDE",
+      "dragToReorder": "Přetažením změňte prioritu",
+      "freeTier": "Zdarma",
+      "location": "Umístění",
+      "locationCloud": "V cloudu",
+      "locationHint": "Cloudoví poskytovatelé běží na vzdálených serverech, místní poskytovatelé běží na vašem zařízení",
+      "locationLocal": "Místní",
+      "preferredModelsHint": "Vyberte modely, které preferujete. K dispozici budou pouze zaškrtnuté modely; pokud nevyberete žádný, budou k dispozici všechny modely.",
+      "selectPreferredModels": "Vybrat preferované modely",
+      "tabs": {
+        "oauth": "OAuth přihlášení"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Zkušební verze ZimaOS Blue",
+        "quotaExhaustedConversations": "Dosáhli jste limitu zkušebních konverzací. Chcete-li pokračovat, nastavte vlastního poskytovatele.",
+        "quotaExhaustedTokens": "Vyčerpali jste zkušební kvótu tokenů. Chcete-li pokračovat, nastavte vlastního poskytovatele.",
+        "tokensUsed": "Zbývá {remaining} / {total} tokenů"
+      },
+      "usage": {
+        "estimatedCost": "Odhadovaná cena",
+        "inputTokens": "Vstupní tokeny",
+        "loading": "Načítání využití...",
+        "outputTokens": "Výstupní tokeny",
+        "requests": "Požadavky"
+      }
+    }
+  },
+  "da-DK": {
+    "settings": {
+      "update": {
+        "applying": "Anvender opdatering...",
+        "confirmRestart": "Anvend og genstart",
+        "downloadComplete": "Download fuldført",
+        "downloadFailed": "Download mislykkedes",
+        "restarting": "Genstarter...",
+        "serverNotResponding": "Serveren kom ikke tilbage efter opdateringen",
+        "waitingForServer": "Venter på, at serveren kommer tilbage...",
+        "autoCheck": "Søg automatisk efter opdateringer ved opstart",
+        "checkNow": "Søg nu",
+        "currentVersion": "Nuværende version",
+        "download": "Download",
+        "downloading": "Downloader...",
+        "newVersionAvailable": "Ny version tilgængelig",
+        "title": "Om",
+        "upToDate": "Opdateret"
+      },
+      "tab": {
+        "llm": "LLM-modeller",
+        "memory": "Hukommelse",
+        "network": "Netværk",
+        "security": "Sikkerhed",
+        "speech": "Tale",
+        "update": "Opdatering",
+        "userdata": "Datahåndtering"
+      },
+      "closeBehavior": "Lukkeadfærd",
+      "closeBehaviorMinimize": "Minimer til systembakken",
+      "closeBehaviorQuit": "Afslut",
+      "closeBehaviorSaved": "Lukkeadfærd gemt"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Kontrol af hukommelsesgenkaldelse",
+      "memoryMeta": "Genkaldelse blev sprunget over i {skipped}/{total} runder",
+      "memoryMode": "Tilstand: {mode}",
+      "modes": {
+        "aggressive": "Aggressiv",
+        "balanced": "Balanceret",
+        "quality": "Kvalitet"
+      },
+      "combined": "Cache + beskæring + værktøjer + routing",
+      "estimated": "Anslået besparelse",
+      "costSaved": "Sparet omkostning",
+      "tokensSaved": "Sparede tokens",
+      "compression": "Komprimering",
+      "breakdown": "Besparelsesoversigt",
+      "estCost": "Anslået pris",
+      "noSavingsYet": "Ingen tokenbesparelser registreret endnu",
+      "prunerLabel": "Kontekstbeskærer",
+      "prunerMeta": "{pruned}/{total} forespørgsler beskåret",
+      "routingLabel": "Smart routing",
+      "routingMeta": "{requests} forespørgsler routet",
+      "toolsLabel": "Værktøjsfilter",
+      "toolsMeta": "{skipped} værktøjer sprunget over på tværs af {requests} forespørgsler"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analyse",
+        "auto_reply": "Autosvar",
+        "browser": "Browser",
+        "calculator": "Lommeregner",
+        "calendar": "Kalender",
+        "contacts": "Kontakter",
+        "crypto": "Krypto",
+        "datetime": "Dato og tid",
+        "email": "E-mail",
+        "file_read": "Fillæsning",
+        "file_write": "Filskrivning",
+        "files": "Filer",
+        "memory": "Hukommelse",
+        "network": "Netværk",
+        "news": "Nyheder",
+        "notes": "Noter",
+        "notifications": "Notifikationer",
+        "process": "Processer",
+        "reminders": "Påmindelser",
+        "sandbox": "Sandbox",
+        "scheduler": "Planlægger",
+        "search": "Søgning",
+        "stocks": "Aktier",
+        "system_info": "Systeminfo",
+        "tasks": "Opgaver",
+        "timer": "Timer",
+        "translate": "Oversæt",
+        "ui_reviewer": "UI-gennemgang",
+        "unit_converter": "Enhedsomregner",
+        "weather": "Vejr",
+        "web_search": "Websøgning",
+        "workflows": "Arbejdsgange",
+        "exec": "Kommandoafvikling",
+        "workspace_file": "Arbejdsområdefil"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Automatisk afspilning",
+      "checkpoint": {
+        "cancel": "Annuller",
+        "continue": "Fortsæt",
+        "fallbackQuestion": "Bekræft venligst denne browserhandling.",
+        "help": "Du kan sige \"fortsæt\" eller \"annuller\" eller trykke på en knap nedenfor.",
+        "title": "Bekræftelse af browserkontrolpunkt kræves"
+      },
+      "clearConversation": "Ryd samtale",
+      "connected": "Tilsluttet",
+      "continuous": "Kontinuerlig",
+      "disconnected": "Frakoblet",
+      "emptyHint": "Tryk og hold mikrofonknappen nede for at tale",
+      "errors": {
+        "connectionFailed": "Forbindelse mislykkedes",
+        "processAudioFailed": "Kunne ikke behandle lyd",
+        "startRecordingFailed": "Kunne ikke starte optagelse",
+        "wakeWordStartFailed": "Kunne ikke starte registrering af vækkeord"
+      },
+      "title": "Stemmeassistent",
+      "settingsTitle": "Indstillinger",
+      "languageLabel": "Sprog",
+      "voiceLabel": "Stemme",
+      "holdToSpeak": "Hold nede for at tale",
+      "releaseToSend": "Slip for at sende",
+      "wakeWordTitle": "Registrering af vækkeord",
+      "wakeWordEnable": "Aktivér",
+      "wakeWordLabel": "Vækkeord",
+      "wakeWordPlaceholder": "f.eks. hej ekko",
+      "wakeWordListening": "Lytter efter vækkeord...",
+      "wakeWordIdle": "Lytter ikke",
+      "state": {
+        "ready": "Klar",
+        "listening": "Lytter...",
+        "processing": "Behandler...",
+        "speaking": "Taler...",
+        "unknown": "Ukendt"
+      },
+      "languages": {
+        "en": "Engelsk",
+        "zh": "Kinesisk",
+        "ja": "Japansk",
+        "ko": "Koreansk",
+        "de": "Tysk",
+        "fr": "Fransk",
+        "es": "Spansk"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Open source og gratis agent-runtime"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Søg i logfiler..."
+    },
+    "companion": {
+      "title": "Ledsager",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Webbruger"
+      },
+      "ackedBy": "Bekræftet af",
+      "anonymous": "Anonym",
+      "eventHistory": "Hændelseshistorik",
+      "flow": {
+        "duration": "Varighed",
+        "empty": "Ingen flowdata tilgængelige",
+        "fitView": "Tilpas visning",
+        "legend": "Forklaring",
+        "loading": "Indlæser flow...",
+        "nodeTypes": {
+          "llmRequest": "LLM-anmodning",
+          "message": "Besked",
+          "securityCheck": "Sikkerhedskontrol",
+          "toolCall": "Værktøjskald"
+        },
+        "reset": "Nulstil visning",
+        "retry": "Prøv igen",
+        "status": "Status",
+        "time": "Tid",
+        "type": "Type",
+        "zoomIn": "Zoom ind",
+        "zoomOut": "Zoom ud"
+      },
+      "hoursAgo": "for {n} timer siden",
+      "justNow": "Lige nu",
+      "liveSession": "Live-session",
+      "llmDetails": {
+        "completion": "Output-tokens",
+        "input": "Input",
+        "prompt": "Input-tokens",
+        "score": "Score",
+        "total": "Samlede tokens"
+      },
+      "minutesAgo": "for {n} min siden",
+      "nodes": {
+        "chars": "{count} tegn",
+        "llmRequest": "LLM-anmodning",
+        "message": "Besked",
+        "received": "Modtaget",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Støtte",
+      "deepResearchConflict": "Konflikt",
+      "deepResearchHasConflict": "Modstridende signaler"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Automation-tilladelse er påkrævet for at sende iMessages. Giv den i System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Full Disk Access er påkrævet for at læse iMessage-historik. Giv den i System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage er ikke sat op på denne Mac. Åbn appen Messages, og log ind med dit Apple ID.",
+          "not_signed_in": "Du er ikke logget ind på iMessage. Åbn appen Messages, og log ind med dit Apple ID.",
+          "unavailable_platform": "iMessage er kun tilgængelig på macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP-anmodning"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "f.eks. Privat, Arbejde",
+      "widget": {
+        "pasteExample": "navn: Jens Jensen\ne-mail: jens{'@'}example.com\ntelefon: 123-456-7890",
+        "title": "Formularudfylder",
+        "fillAll": "Udfyld alle",
+        "fillThis": "Udfyld dette felt",
+        "undo": "Fortryd",
+        "readClipboard": "Læs fra udklipsholder",
+        "showPassword": "Vis adgangskode",
+        "hidePassword": "Skjul adgangskode",
+        "filledFields": "Udfyldte {count} felter",
+        "parsedFields": "{count} felter blev analyseret",
+        "pasteData": "Indsæt data til udfyldning",
+        "pasteDataHint": "Indsæt nøgle-værdi-par"
+      },
+      "createTemplate": "Opret skabelon",
+      "default": "Standard",
+      "defaultSet": "Standardskabelonen er opdateret",
+      "editTemplate": "Rediger skabelon",
+      "enterValue": "Indtast værdi...",
+      "fields": "Felter",
+      "fieldTypes": "felttyper konfigureret",
+      "patterns": "Feltmønstre",
+      "patternsDescription": "Feltmønstre hjælper med at opdage formularfelter ved at matche nøgleord i feltnavne, etiketter og pladsholdere.",
+      "setAsDefault": "Angiv som standardskabelon",
+      "templateCreated": "Skabelonen blev oprettet",
+      "templateDeleted": "Skabelonen blev slettet",
+      "templateName": "Skabelonnavn",
+      "templateUpdated": "Skabelonen blev opdateret",
+      "templates": "Skabeloner",
+      "newTemplate": "Ny skabelon",
+      "setDefault": "Angiv som standard",
+      "noTemplates": "Der er ingen skabeloner endnu. Opret en for at komme i gang.",
+      "editPatterns": "Rediger mønstre",
+      "patternsSaved": "Mønstre blev gemt",
+      "confirmDelete": "Er du sikker på, at du vil slette denne skabelon?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Ethernet-netværk",
+      "loopback": "Tilbagekobling",
+      "unknown": "Ukendt",
+      "virtual": "Virtuel"
+    },
+    "plugins": {
+      "builtin": "Indbygget",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo eller https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Deaktiveret",
+        "enabled": "Aktiveret",
+        "total": "I alt"
+      },
+      "categories": {
+        "analytics": "Analyse",
+        "communication": "Kommunikation",
+        "development": "Udvikling",
+        "extension": "Udvidelse",
+        "information": "Informationer",
+        "integration": "Integrationer",
+        "other": "Andet",
+        "productivity": "Produktivitet",
+        "system": "Systemer",
+        "utility": "Værktøj"
+      },
+      "title": "Udvidelser",
+      "subtitle": "Administrer færdigheder og værktøjer",
+      "noDescription": "Ingen beskrivelse tilgængelig",
+      "allCategories": "Alle kategorier",
+      "dropFileHere": "Slip filen her, eller klik for at vælge",
+      "fileRequired": "Vælg en fil",
+      "install": "Installer",
+      "installFailed": "Installation mislykkedes",
+      "installFromUrl": "Fra URL",
+      "installing": "Installerer...",
+      "installSkillTitle": "Installer færdighed",
+      "noMatchingTools": "Ingen matchende elementer fundet",
+      "noTools": "Ingen elementer tilgængelige",
+      "skillPackageInfo": "Krav til færdighedspakke",
+      "skillPackageRequirement1": "Skal indeholde en gyldig skill.json-manifestfil",
+      "skillPackageRequirement2": "Medtag alle nødvendige færdighedsfiler",
+      "skillUrlHint": "Indtast en GitHub-repository-URL eller et direkte link til en færdighedspakke",
+      "skillUrlLabel": "Færdigheds-URL",
+      "supportedFormats": "Understøttede formater",
+      "uploadFile": "Upload fil",
+      "uploadSkill": "Installer færdighed",
+      "urlRequired": "Indtast en URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Aktiv session",
+      "cancel": "Annuller",
+      "diagnostics": "Diagnostik",
+      "diagnosticsTitle": "Diagnostiske oplysninger",
+      "disconnect": "Afbryd",
+      "disconnectConfirmMessage": "Hvis du tilgår via den eksterne tunnel, kan du miste adgangen til denne side.",
+      "disconnectConfirmMessageSameHost": "Du tilgår i øjeblikket via denne eksterne tunnel. Hvis du afbryder, lukkes denne side, og du mister adgangen.",
+      "disconnectConfirmTitle": "Afbryd fjernadgang?",
+      "error": "Fejl",
+      "firewallException": "Firewall-undtagelse",
+      "getToken": "Hent dit token",
+      "logs": "Logfiler",
+      "logsTitle": "Forbindelseslogfiler",
+      "ngrokClaimDomain": "Gør krav på dit",
+      "ngrokDomain": "Statisk domæne",
+      "ngrokDomainHint": "Valgfrit: Gratis brugere kan gøre krav på ét statisk domæne.",
+      "ngrokDomainPlaceholder": "f.eks. myapp.ngrok-free.app",
+      "noKeyRequired": "Ingen opsætning påkrævet",
+      "noLogs": "Ingen logfiler tilgængelige",
+      "platform": "Platformtype",
+      "provider": "Udbyder",
+      "qrCodeError": "Kunne ikke indlæse QR-kode",
+      "recentErrors": "Seneste fejl",
+      "requiresKey": "Kræver godkendelsestoken",
+      "selectProvider": "Vælg tunneludbyder",
+      "showQRCode": "Vis QR-kode",
+      "status": "Tilstand",
+      "troubleshootingHints": "Fejlfindingstips",
+      "tunnelRunning": "Tunnel kører"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "OK (tom)",
+        "ok-token": "I orden",
+        "failed": "Mislykkedes",
+        "ran": "Kørte",
+        "sent": "Advarsel sendt",
+        "skipped": "Sprunget over"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Fejlen er ryddet — du kan prøve igen",
+      "keyLabelPlaceholder": "Primær, Backup osv.",
+      "modelIdPlaceholder": "openai, anthropic osv.",
+      "providerId": "Udbyder-ID",
+      "retry": "Prøv igen",
+      "addFailed": "Kunne ikke tilføje udbyder",
+      "addingProvider": "Tilføjer udbyder...",
+      "apiKeyHint": "Nogle udbydere som Ollama behøver ikke en API-nøgle",
+      "apiKeyOptional": "API-nøgle (valgfri)",
+      "baseUrlRequired": "Konfigurer først basis-URL",
+      "fetchingKeyModels": "Henter modeller...",
+      "getApiKey": "Hent API-nøgle",
+      "ideImportLabel": "Importeret fra {ide} (Claude Code-udvidelse)",
+      "noAvailableModels": "Ingen tilgængelige modeller fundet",
+      "noModelsFound": "Ingen modeller fundet — tjek URL og API-nøgle",
+      "probeComplete": "Søgning fuldført: {available}/{total} modeller tilgængelige",
+      "probingModels": "Sonderer modeller...",
+      "providerAdded": "Udbyder tilføjet",
+      "providerAddedWithModels": "{count} modeller tilgængelige",
+      "scanIDE": "Importér fra IDE",
+      "dragToReorder": "Træk for at ændre prioriteten",
+      "freeTier": "Gratis",
+      "location": "Placering",
+      "locationCloud": "Sky",
+      "locationHint": "Cloud-udbydere kører på eksterne servere, lokale udbydere kører på din maskine",
+      "locationLocal": "Lokal",
+      "preferredModelsHint": "Vælg de modeller, du foretrækker. Kun markerede modeller vil være tilgængelige; hvis ingen er markeret, vil alle modeller være tilgængelige.",
+      "selectPreferredModels": "Vælg foretrukne modeller",
+      "tabs": {
+        "oauth": "OAuth-login"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "ZimaOS Blue-prøveversion",
+        "quotaExhaustedConversations": "Din grænse for prøvesamtaler er nået. Konfigurer din egen udbyder for at fortsætte.",
+        "quotaExhaustedTokens": "Din prøvekvote for tokens er opbrugt. Konfigurer din egen udbyder for at fortsætte.",
+        "tokensUsed": "{remaining} / {total} tokens tilbage"
+      },
+      "usage": {
+        "estimatedCost": "Anslået pris",
+        "inputTokens": "Inputtokens",
+        "loading": "Indlæser forbrug...",
+        "outputTokens": "Outputtokens",
+        "requests": "Anmodninger"
+      }
+    }
+  },
+  "de-DE": {
+    "settings": {
+      "update": {
+        "applying": "Aktualisierung wird angewendet...",
+        "confirmRestart": "Anwenden und neu starten",
+        "downloadComplete": "Download abgeschlossen",
+        "downloadFailed": "Download fehlgeschlagen",
+        "restarting": "Wird neu gestartet...",
+        "serverNotResponding": "Server kam nach der Aktualisierung nicht zurück",
+        "waitingForServer": "Warte, bis der Server zurückkommt...",
+        "autoCheck": "Beim Start automatisch nach Updates suchen",
+        "checkNow": "Jetzt prüfen",
+        "currentVersion": "Aktuelle Version",
+        "download": "Herunterladen",
+        "downloading": "Wird heruntergeladen...",
+        "newVersionAvailable": "Neue Version verfügbar",
+        "title": "Info",
+        "upToDate": "Aktuell"
+      },
+      "tab": {
+        "llm": "LLM-Modelle",
+        "memory": "Speicher",
+        "network": "Netzwerk",
+        "security": "Sicherheit",
+        "speech": "Sprache",
+        "update": "Aktualisierung",
+        "userdata": "Datenverwaltung"
+      },
+      "closeBehavior": "Verhalten beim Schließen",
+      "closeBehaviorMinimize": "In den Infobereich minimieren",
+      "closeBehaviorQuit": "Beenden",
+      "closeBehaviorSaved": "Verhalten beim Schließen gespeichert"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Speicherabruf-Steuerung",
+      "memoryMeta": "In {skipped}/{total} Runden wurde der Abruf übersprungen",
+      "memoryMode": "Modus: {mode}",
+      "modes": {
+        "aggressive": "Aggressiv",
+        "balanced": "Ausgewogen",
+        "quality": "Qualität"
+      },
+      "combined": "Cache + Kürzung + Werkzeuge + Routing",
+      "estimated": "Geschätzte Einsparung",
+      "costSaved": "Eingesparte Kosten",
+      "tokensSaved": "Eingesparte Tokens",
+      "compression": "Kompression",
+      "breakdown": "Aufschlüsselung der Einsparungen",
+      "estCost": "Geschätzte Kosten",
+      "noSavingsYet": "Noch keine Token-Einsparungen erfasst",
+      "prunerLabel": "Kontextkürzer",
+      "prunerMeta": "{pruned}/{total} Anfragen gekürzt",
+      "routingLabel": "Intelligentes Routing",
+      "routingMeta": "{requests} Anfragen geroutet",
+      "toolsLabel": "Werkzeugfilter",
+      "toolsMeta": "{skipped} Werkzeuge in {requests} Anfragen übersprungen"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analyse",
+        "auto_reply": "Automatische Antwort",
+        "browser": "Browser",
+        "calculator": "Taschenrechner",
+        "calendar": "Kalender",
+        "contacts": "Kontakte",
+        "crypto": "Krypto",
+        "datetime": "Datum und Uhrzeit",
+        "email": "E-Mail",
+        "file_read": "Datei lesen",
+        "file_write": "Datei schreiben",
+        "files": "Dateien",
+        "memory": "Speicher",
+        "network": "Netzwerk",
+        "news": "Nachrichten",
+        "notes": "Notizen",
+        "notifications": "Benachrichtigungen",
+        "process": "Prozesse",
+        "reminders": "Erinnerungen",
+        "sandbox": "Sandbox",
+        "scheduler": "Planer",
+        "search": "Suche",
+        "stocks": "Aktien",
+        "system_info": "Systeminfo",
+        "tasks": "Aufgaben",
+        "timer": "Timer",
+        "translate": "Übersetzen",
+        "ui_reviewer": "UI-Prüfer",
+        "unit_converter": "Einheitenumrechner",
+        "weather": "Wetter",
+        "web_search": "Websuche",
+        "workflows": "Workflows",
+        "exec": "Befehlsausführung",
+        "workspace_file": "Arbeitsbereichsdatei"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Automatische Wiedergabe",
+      "checkpoint": {
+        "cancel": "Abbrechen",
+        "continue": "Weiter",
+        "fallbackQuestion": "Bitte bestätigen Sie diese Browseraktion.",
+        "help": "Sie können \"Weiter\" oder \"Abbrechen\" sagen oder unten auf eine Schaltfläche tippen.",
+        "title": "Bestätigung für Browser-Checkpoint erforderlich"
+      },
+      "clearConversation": "Unterhaltung löschen",
+      "connected": "Verbunden",
+      "continuous": "Fortlaufend",
+      "disconnected": "Getrennt",
+      "emptyHint": "Halten Sie die Mikrofontaste gedrückt, um zu sprechen",
+      "errors": {
+        "connectionFailed": "Verbindung fehlgeschlagen",
+        "processAudioFailed": "Audio konnte nicht verarbeitet werden",
+        "startRecordingFailed": "Aufzeichnung konnte nicht gestartet werden",
+        "wakeWordStartFailed": "Erkennung des Aktivierungsworts konnte nicht gestartet werden"
+      },
+      "title": "Sprachassistent",
+      "settingsTitle": "Einstellungen",
+      "languageLabel": "Sprache",
+      "voiceLabel": "Stimme",
+      "holdToSpeak": "Zum Sprechen gedrückt halten",
+      "releaseToSend": "Zum Senden loslassen",
+      "wakeWordTitle": "Erkennung des Aktivierungsworts",
+      "wakeWordEnable": "Aktivieren",
+      "wakeWordLabel": "Aktivierungswort",
+      "wakeWordPlaceholder": "z. B. hey echo",
+      "wakeWordListening": "Warte auf Aktivierungswort...",
+      "wakeWordIdle": "Hört nicht zu",
+      "state": {
+        "ready": "Bereit",
+        "listening": "Hört zu...",
+        "processing": "Verarbeitet...",
+        "speaking": "Spricht...",
+        "unknown": "Unbekannt"
+      },
+      "languages": {
+        "en": "Englisch",
+        "zh": "Chinesisch",
+        "ja": "Japanisch",
+        "ko": "Koreanisch",
+        "de": "Deutsch",
+        "fr": "Französisch",
+        "es": "Spanisch"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Open-Source- und kostenlose Agent-Laufzeit"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Logs durchsuchen..."
+    },
+    "companion": {
+      "title": "Begleiter",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Webnutzer"
+      },
+      "ackedBy": "Bestätigt von",
+      "anonymous": "Anonym",
+      "eventHistory": "Ereignisverlauf",
+      "flow": {
+        "duration": "Dauer",
+        "empty": "Keine Flussdaten verfügbar",
+        "fitView": "Ansicht anpassen",
+        "legend": "Legende",
+        "loading": "Fluss wird geladen...",
+        "nodeTypes": {
+          "llmRequest": "LLM-Anfrage",
+          "message": "Nachricht",
+          "securityCheck": "Sicherheitsprüfung",
+          "toolCall": "Werkzeugaufruf"
+        },
+        "reset": "Ansicht zurücksetzen",
+        "retry": "Erneut versuchen",
+        "status": "Status",
+        "time": "Zeit",
+        "type": "Typ",
+        "zoomIn": "Hineinzoomen",
+        "zoomOut": "Herauszoomen"
+      },
+      "hoursAgo": "vor {n} Stunden",
+      "justNow": "Gerade eben",
+      "liveSession": "Live-Sitzung",
+      "llmDetails": {
+        "completion": "Ausgabe-Token",
+        "input": "Eingabe",
+        "prompt": "Eingabe-Token",
+        "score": "Bewertung",
+        "total": "Gesamt-Token"
+      },
+      "minutesAgo": "vor {n} Min.",
+      "nodes": {
+        "chars": "{count} Zeichen",
+        "llmRequest": "LLM-Anfrage",
+        "message": "Nachricht",
+        "received": "Empfangen",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Unterstützung",
+      "deepResearchConflict": "Konflikt",
+      "deepResearchHasConflict": "Widersprüchliche Signale"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Für das Senden von iMessages ist die Berechtigung Automation erforderlich. Bitte gewähren Sie sie unter System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Zum Lesen des iMessage-Verlaufs ist Full Disk Access erforderlich. Bitte gewähren Sie es unter System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage ist auf diesem Mac nicht eingerichtet. Öffnen Sie die App Messages und melden Sie sich mit Ihrer Apple ID an.",
+          "not_signed_in": "Bei iMessage sind Sie nicht angemeldet. Öffnen Sie die App Messages und melden Sie sich mit Ihrer Apple ID an.",
+          "unavailable_platform": "iMessage ist nur auf macOS verfügbar."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP-Anfrage"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "z. B. Privat, Arbeit",
+      "widget": {
+        "pasteExample": "Name: Max Mustermann\nE-Mail: max{'@'}example.com\nTelefon: 123-456-7890",
+        "filledFields": "{count} Felder ausgefüllt",
+        "parsedFields": "{count} Felder erkannt",
+        "pasteData": "Daten zum Ausfüllen einfügen",
+        "pasteDataHint": "Schlüssel-Wert-Paare einfügen"
+      },
+      "createTemplate": "Vorlage erstellen",
+      "default": "Standard",
+      "defaultSet": "Standardvorlage aktualisiert",
+      "editTemplate": "Vorlage bearbeiten",
+      "enterValue": "Wert eingeben...",
+      "fields": "Felder",
+      "fieldTypes": "Feldtypen konfiguriert",
+      "patterns": "Feldmuster",
+      "patternsDescription": "Feldmuster helfen dabei, Formularfelder zu erkennen, indem Schlüsselwörter in Feldnamen, Beschriftungen und Platzhaltern abgeglichen werden.",
+      "setAsDefault": "Als Standardvorlage festlegen",
+      "templateCreated": "Vorlage erfolgreich erstellt",
+      "templateDeleted": "Vorlage erfolgreich gelöscht",
+      "templateName": "Name der Vorlage",
+      "templateUpdated": "Vorlage erfolgreich aktualisiert"
+    },
+    "network": {
+      "wifi": "WLAN",
+      "ethernet": "Ethernet-Netzwerk",
+      "loopback": "Loopback-Schnittstelle",
+      "unknown": "Unbekannt",
+      "virtual": "Virtuell"
+    },
+    "plugins": {
+      "builtin": "Integriert",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo oder https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Deaktiviert",
+        "enabled": "Aktiviert",
+        "total": "Gesamt"
+      },
+      "categories": {
+        "analytics": "Analytik",
+        "communication": "Kommunikation",
+        "development": "Entwicklung",
+        "extension": "Erweiterung",
+        "information": "Infos",
+        "integration": "Einbindung",
+        "other": "Sonstiges",
+        "productivity": "Produktivität",
+        "system": "Systeme",
+        "utility": "Dienstprogramm"
+      },
+      "allCategories": "Alle Kategorien",
+      "dropFileHere": "Datei hier ablegen oder zum Auswählen klicken",
+      "fileRequired": "Bitte wählen Sie eine Datei aus",
+      "install": "Installieren",
+      "installFailed": "Installation fehlgeschlagen",
+      "installFromUrl": "Von URL",
+      "installing": "Wird installiert...",
+      "installSkillTitle": "Skill installieren",
+      "noMatchingTools": "Keine passenden Einträge gefunden",
+      "noTools": "Keine Einträge verfügbar",
+      "skillPackageInfo": "Anforderungen an Skill-Paket",
+      "skillPackageRequirement1": "Muss eine gültige Manifestdatei skill.json enthalten",
+      "skillPackageRequirement2": "Alle erforderlichen Skill-Dateien einschließen",
+      "skillUrlHint": "Geben Sie eine GitHub-Repository-URL oder einen direkten Link zu einem Skill-Paket ein",
+      "skillUrlLabel": "Skill-URL",
+      "supportedFormats": "Unterstützte Formate",
+      "uploadFile": "Datei hochladen",
+      "uploadSkill": "Skill installieren",
+      "urlRequired": "Bitte geben Sie eine URL ein"
+    },
+    "remoteAccess": {
+      "cancel": "Abbrechen",
+      "disconnect": "Trennen",
+      "disconnectConfirmMessage": "Wenn Sie über den Remote-Tunnel zugreifen, verlieren Sie möglicherweise den Zugriff auf diese Seite.",
+      "disconnectConfirmMessageSameHost": "Sie greifen derzeit über diesen Remote-Tunnel zu. Beim Trennen wird diese Seite geschlossen und Sie verlieren den Zugriff.",
+      "disconnectConfirmTitle": "Remote-Zugriff trennen?",
+      "ngrokClaimDomain": "Domain beanspruchen",
+      "ngrokDomain": "Statische Domain",
+      "ngrokDomainHint": "Optional: Nutzer des kostenlosen Tarifs können eine statische Domain beanspruchen.",
+      "ngrokDomainPlaceholder": "z. B. myapp.ngrok-free.app",
+      "qrCodeError": "QR-Code konnte nicht geladen werden",
+      "showQRCode": "QR-Code anzeigen",
+      "status": "Verbindungsstatus"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "OK (leer)",
+        "ok-token": "In Ordnung",
+        "failed": "Fehlgeschlagen",
+        "ran": "Ausgeführt",
+        "sent": "Warnung gesendet",
+        "skipped": "Übersprungen"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Fehler behoben — Sie können es erneut versuchen",
+      "keyLabelPlaceholder": "Primär, Backup usw.",
+      "modelIdPlaceholder": "openai, anthropic usw.",
+      "providerId": "Anbieter-ID",
+      "retry": "Erneut versuchen",
+      "addFailed": "Anbieter konnte nicht hinzugefügt werden",
+      "addingProvider": "Anbieter wird hinzugefügt...",
+      "apiKeyHint": "Einige Anbieter wie Ollama benötigen keinen API-Schlüssel",
+      "apiKeyOptional": "API-Schlüssel (optional)",
+      "baseUrlRequired": "Konfigurieren Sie zuerst die Basis-URL",
+      "fetchingKeyModels": "Modelle werden geladen...",
+      "getApiKey": "API-Schlüssel abrufen",
+      "ideImportLabel": "Importiert aus {ide} (Claude Code-Erweiterung)",
+      "noAvailableModels": "Keine verfügbaren Modelle gefunden",
+      "noModelsFound": "Keine Modelle gefunden — URL und API-Schlüssel prüfen",
+      "probeComplete": "Prüfung abgeschlossen: {available}/{total} Modelle verfügbar",
+      "probingModels": "Modelle werden geprüft...",
+      "providerAdded": "Anbieter hinzugefügt",
+      "providerAddedWithModels": "{count} Modelle verfügbar",
+      "scanIDE": "Aus IDE importieren",
+      "dragToReorder": "Ziehen, um die Priorität neu zu ordnen",
+      "freeTier": "Kostenlos",
+      "location": "Standort",
+      "locationCloud": "In der Cloud",
+      "locationHint": "Cloud-Anbieter laufen auf entfernten Servern, lokale Anbieter auf Ihrem Rechner",
+      "locationLocal": "Lokal",
+      "preferredModelsHint": "Wählen Sie die Modelle aus, die Sie bevorzugen. Nur ausgewählte Modelle sind verfügbar; wenn keine ausgewählt sind, sind alle Modelle verfügbar.",
+      "selectPreferredModels": "Bevorzugte Modelle auswählen",
+      "tabs": {
+        "oauth": "OAuth-Anmeldung"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "ZimaOS Blue-Testversion",
+        "quotaExhaustedConversations": "Ihr Testlimit für Unterhaltungen wurde erreicht. Bitte konfigurieren Sie einen eigenen Anbieter, um fortzufahren.",
+        "quotaExhaustedTokens": "Ihr Testkontingent für Tokens ist aufgebraucht. Bitte konfigurieren Sie einen eigenen Anbieter, um fortzufahren.",
+        "tokensUsed": "{remaining} / {total} Tokens verbleibend"
+      },
+      "usage": {
+        "estimatedCost": "Geschätzte Kosten",
+        "inputTokens": "Eingabe-Tokens",
+        "loading": "Nutzung wird geladen...",
+        "outputTokens": "Ausgabe-Tokens",
+        "requests": "Anfragen"
+      }
+    }
+  },
+  "el-GR": {
+    "settings": {
+      "update": {
+        "applying": "Εφαρμογή ενημέρωσης...",
+        "confirmRestart": "Εφαρμογή και επανεκκίνηση",
+        "downloadComplete": "Η λήψη ολοκληρώθηκε",
+        "downloadFailed": "Η λήψη απέτυχε",
+        "restarting": "Επανεκκίνηση...",
+        "serverNotResponding": "Ο διακομιστής δεν επανήλθε μετά την ενημέρωση",
+        "waitingForServer": "Αναμονή να επανέλθει ο διακομιστής...",
+        "autoCheck": "Αυτόματος έλεγχος ενημερώσεων κατά την εκκίνηση",
+        "checkNow": "Έλεγχος τώρα",
+        "currentVersion": "Τρέχουσα έκδοση",
+        "download": "Λήψη",
+        "downloading": "Γίνεται λήψη...",
+        "newVersionAvailable": "Νέα έκδοση διαθέσιμη",
+        "title": "Σχετικά",
+        "upToDate": "Ενημερωμένο"
+      },
+      "tab": {
+        "llm": "Μοντέλα LLM",
+        "memory": "Μνήμη",
+        "network": "Δίκτυο",
+        "security": "Ασφάλεια",
+        "speech": "Ομιλία",
+        "update": "Ενημέρωση",
+        "userdata": "Διαχείριση δεδομένων"
+      },
+      "closeBehavior": "Συμπεριφορά κατά το κλείσιμο",
+      "closeBehaviorMinimize": "Ελαχιστοποίηση στο δίσκο συστήματος",
+      "closeBehaviorQuit": "Έξοδος",
+      "closeBehaviorSaved": "Η συμπεριφορά κλεισίματος αποθηκεύτηκε"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Έλεγχος ανάκλησης μνήμης",
+      "memoryMeta": "Η ανάκληση παραλείφθηκε σε {skipped}/{total} γύρους",
+      "memoryMode": "Λειτουργία: {mode}",
+      "modes": {
+        "aggressive": "Επιθετική",
+        "balanced": "Ισορροπημένη",
+        "quality": "Ποιότητα"
+      },
+      "combined": "Cache + περικοπή + εργαλεία + δρομολόγηση",
+      "estimated": "Εκτιμώμενη εξοικονόμηση",
+      "costSaved": "Εξοικονομημένο κόστος",
+      "tokensSaved": "Εξοικονομημένα token",
+      "compression": "Συμπίεση",
+      "breakdown": "Ανάλυση εξοικονόμησης",
+      "estCost": "Εκτ. κόστος",
+      "noSavingsYet": "Δεν έχουν καταγραφεί ακόμη εξοικονομήσεις token",
+      "prunerLabel": "Περικοπή συμφραζομένων",
+      "prunerMeta": "{pruned}/{total} αιτήματα περικόπηκαν",
+      "routingLabel": "Έξυπνη δρομολόγηση",
+      "routingMeta": "{requests} αιτήματα δρομολογήθηκαν",
+      "toolsLabel": "Φίλτρο εργαλείων",
+      "toolsMeta": "{skipped} εργαλεία παραλείφθηκαν σε {requests} αιτήματα"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Ανάλυση",
+        "auto_reply": "Αυτόματη απάντηση",
+        "browser": "Περιηγητής",
+        "calculator": "Αριθμομηχανή",
+        "calendar": "Ημερολόγιο",
+        "contacts": "Επαφές",
+        "crypto": "Κρύπτο",
+        "datetime": "Ημερομηνία και ώρα",
+        "email": "Ηλεκτρονικό ταχυδρομείο",
+        "file_read": "Ανάγνωση αρχείου",
+        "file_write": "Εγγραφή αρχείου",
+        "files": "Αρχεία",
+        "memory": "Μνήμη",
+        "network": "Δίκτυο",
+        "news": "Νέα",
+        "notes": "Σημειώσεις",
+        "notifications": "Ειδοποιήσεις",
+        "process": "Διεργασίες",
+        "reminders": "Υπενθυμίσεις",
+        "sandbox": "Sandbox",
+        "scheduler": "Προγραμματιστής",
+        "search": "Αναζήτηση",
+        "stocks": "Μετοχές",
+        "system_info": "Πληροφορίες συστήματος",
+        "tasks": "Εργασίες",
+        "timer": "Χρονοδιακόπτης",
+        "translate": "Μετάφραση",
+        "ui_reviewer": "Έλεγχος διεπαφής",
+        "unit_converter": "Μετατροπέας μονάδων",
+        "weather": "Καιρός",
+        "web_search": "Αναζήτηση ιστού",
+        "workflows": "Ροές εργασίας",
+        "exec": "Εκτέλεση εντολών",
+        "workspace_file": "Αρχείο χώρου εργασίας"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Αυτόματη αναπαραγωγή",
+      "checkpoint": {
+        "cancel": "Ακύρωση",
+        "continue": "Συνέχεια",
+        "fallbackQuestion": "Επιβεβαιώστε αυτήν την ενέργεια του προγράμματος περιήγησης.",
+        "help": "Μπορείτε να πείτε \"συνέχεια\" ή \"ακύρωση\" ή να πατήσετε ένα κουμπί παρακάτω.",
+        "title": "Απαιτείται επιβεβαίωση σημείου ελέγχου προγράμματος περιήγησης"
+      },
+      "clearConversation": "Εκκαθάριση συνομιλίας",
+      "connected": "Συνδεδεμένο",
+      "continuous": "Συνεχές",
+      "disconnected": "Αποσυνδεδεμένο",
+      "emptyHint": "Πατήστε παρατεταμένα το κουμπί μικροφώνου για να μιλήσετε",
+      "errors": {
+        "connectionFailed": "Η σύνδεση απέτυχε",
+        "processAudioFailed": "Αποτυχία επεξεργασίας ήχου",
+        "startRecordingFailed": "Αποτυχία έναρξης εγγραφής",
+        "wakeWordStartFailed": "Αποτυχία έναρξης ανίχνευσης λέξης αφύπνισης"
+      },
+      "title": "Φωνητικός βοηθός",
+      "settingsTitle": "Ρυθμίσεις",
+      "languageLabel": "Γλώσσα",
+      "voiceLabel": "Φωνή",
+      "holdToSpeak": "Κρατήστε πατημένο για να μιλήσετε",
+      "releaseToSend": "Αφήστε για αποστολή",
+      "wakeWordTitle": "Ανίχνευση λέξης αφύπνισης",
+      "wakeWordEnable": "Ενεργοποίηση",
+      "wakeWordLabel": "Λέξη αφύπνισης",
+      "wakeWordPlaceholder": "π.χ. γεια ηχώ",
+      "wakeWordListening": "Αναμονή για λέξη αφύπνισης...",
+      "wakeWordIdle": "Δεν ακούει",
+      "state": {
+        "ready": "Έτοιμο",
+        "listening": "Ακρόαση...",
+        "processing": "Επεξεργασία...",
+        "speaking": "Ομιλία...",
+        "unknown": "Άγνωστο"
+      },
+      "languages": {
+        "en": "Αγγλικά",
+        "zh": "Κινέζικα",
+        "ja": "Ιαπωνικά",
+        "ko": "Κορεατικά",
+        "de": "Γερμανικά",
+        "fr": "Γαλλικά",
+        "es": "Ισπανικά"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Ανοιχτού κώδικα και δωρεάν runtime πρακτόρων"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Αναζήτηση στα αρχεία καταγραφής..."
+    },
+    "companion": {
+      "title": "Συνοδός",
+      "platforms": {
+        "web": "Ιστός",
+        "web-user": "Χρήστης web"
+      },
+      "ackedBy": "Επιβεβαιώθηκε από",
+      "anonymous": "Ανώνυμος",
+      "eventHistory": "Ιστορικό συμβάντων",
+      "flow": {
+        "duration": "Διάρκεια",
+        "empty": "Δεν υπάρχουν διαθέσιμα δεδομένα ροής",
+        "fitView": "Προσαρμογή προβολής",
+        "legend": "Υπόμνημα",
+        "loading": "Φόρτωση ροής...",
+        "nodeTypes": {
+          "llmRequest": "Αίτημα LLM",
+          "message": "Μήνυμα",
+          "securityCheck": "Έλεγχος ασφαλείας",
+          "toolCall": "Κλήση εργαλείου"
+        },
+        "reset": "Επαναφορά προβολής",
+        "retry": "Δοκιμή ξανά",
+        "status": "Κατάσταση",
+        "time": "Χρόνος",
+        "type": "Τύπος",
+        "zoomIn": "Μεγέθυνση",
+        "zoomOut": "Σμίκρυνση"
+      },
+      "hoursAgo": "πριν από {n} ώρες",
+      "justNow": "Μόλις τώρα",
+      "liveSession": "Ζωντανή συνεδρία",
+      "llmDetails": {
+        "completion": "Token εξόδου",
+        "input": "Είσοδος",
+        "prompt": "Token εισόδου",
+        "score": "Βαθμολογία",
+        "total": "Σύνολο token"
+      },
+      "minutesAgo": "πριν από {n} λεπτά",
+      "nodes": {
+        "chars": "{count} χαρακτήρες",
+        "llmRequest": "Αίτημα LLM",
+        "message": "Μήνυμα",
+        "received": "Ελήφθη",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Υποστήριξη",
+      "deepResearchConflict": "Σύγκρουση",
+      "deepResearchHasConflict": "Συγκρουόμενα σήματα"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Απαιτείται άδεια Automation για την αποστολή iMessages. Παραχωρήστε την στο System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Απαιτείται Full Disk Access για την ανάγνωση του ιστορικού iMessage. Παραχωρήστε το στο System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "Το iMessage δεν έχει ρυθμιστεί σε αυτό το Mac. Ανοίξτε την εφαρμογή Messages και συνδεθείτε με το Apple ID σας.",
+          "not_signed_in": "Δεν έχετε συνδεθεί στο iMessage. Ανοίξτε την εφαρμογή Messages και συνδεθείτε με το Apple ID σας.",
+          "unavailable_platform": "Το iMessage είναι διαθέσιμο μόνο σε macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "Αίτημα HTTP"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "π.χ. Προσωπικό, Εργασία",
+      "widget": {
+        "pasteExample": "όνομα: Γιάννης Παπαδόπουλος\nemail: giannis{'@'}example.com\nτηλέφωνο: 123-456-7890",
+        "title": "Συμπλήρωση φορμών",
+        "fillAll": "Συμπλήρωση όλων",
+        "fillThis": "Συμπλήρωση αυτού",
+        "undo": "Αναίρεση",
+        "readClipboard": "Ανάγνωση από το πρόχειρο",
+        "showPassword": "Εμφάνιση κωδικού",
+        "hidePassword": "Απόκρυψη κωδικού",
+        "filledFields": "Συμπληρώθηκαν {count} πεδία",
+        "parsedFields": "Αναλύθηκαν {count} πεδία",
+        "pasteData": "Επικολλήστε δεδομένα για συμπλήρωση",
+        "pasteDataHint": "Επικολλήστε ζεύγη κλειδιού-τιμής"
+      },
+      "createTemplate": "Δημιουργία προτύπου",
+      "default": "Προεπιλογή",
+      "defaultSet": "Το προεπιλεγμένο πρότυπο ενημερώθηκε",
+      "editTemplate": "Επεξεργασία προτύπου",
+      "enterValue": "Εισαγάγετε τιμή...",
+      "fields": "Πεδία",
+      "fieldTypes": "τύποι πεδίων διαμορφωμένοι",
+      "patterns": "Μοτίβα πεδίων",
+      "patternsDescription": "Τα μοτίβα πεδίων βοηθούν στον εντοπισμό πεδίων φόρμας αντιστοιχίζοντας λέξεις-κλειδιά σε ονόματα πεδίων, ετικέτες και κείμενα κράτησης θέσης.",
+      "setAsDefault": "Ορισμός ως προεπιλεγμένου προτύπου",
+      "templateCreated": "Το πρότυπο δημιουργήθηκε με επιτυχία",
+      "templateDeleted": "Το πρότυπο διαγράφηκε με επιτυχία",
+      "templateName": "Όνομα προτύπου",
+      "templateUpdated": "Το πρότυπο ενημερώθηκε με επιτυχία",
+      "templates": "Πρότυπα",
+      "newTemplate": "Νέο πρότυπο",
+      "setDefault": "Ορισμός ως προεπιλογή",
+      "noTemplates": "Δεν υπάρχουν ακόμη πρότυπα. Δημιουργήστε ένα για να ξεκινήσετε.",
+      "editPatterns": "Επεξεργασία μοτίβων",
+      "patternsSaved": "Τα μοτίβα αποθηκεύτηκαν με επιτυχία",
+      "confirmDelete": "Είστε βέβαιοι ότι θέλετε να διαγράψετε αυτό το πρότυπο;"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Δίκτυο Ethernet",
+      "loopback": "Βρόχος επιστροφής",
+      "unknown": "Άγνωστο",
+      "virtual": "Εικονικό"
+    },
+    "plugins": {
+      "builtin": "Ενσωματωμένο",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo ή https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Απενεργοποιημένο",
+        "enabled": "Ενεργοποιημένο",
+        "total": "Σύνολο"
+      },
+      "categories": {
+        "analytics": "Αναλυτικά",
+        "communication": "Επικοινωνία",
+        "development": "Ανάπτυξη",
+        "extension": "Επέκταση",
+        "information": "Πληροφορίες",
+        "integration": "Ενσωμάτωση",
+        "other": "Άλλο",
+        "productivity": "Παραγωγικότητα",
+        "system": "Σύστημα",
+        "utility": "Βοήθημα"
+      },
+      "title": "Επεκτάσεις",
+      "subtitle": "Διαχειριστείτε δεξιότητες και εργαλεία",
+      "noDescription": "Δεν υπάρχει διαθέσιμη περιγραφή",
+      "allCategories": "Όλες οι κατηγορίες",
+      "dropFileHere": "Αποθέστε το αρχείο εδώ ή κάντε κλικ για περιήγηση",
+      "fileRequired": "Επιλέξτε ένα αρχείο",
+      "install": "Εγκατάσταση",
+      "installFailed": "Η εγκατάσταση απέτυχε",
+      "installFromUrl": "Από URL",
+      "installing": "Γίνεται εγκατάσταση...",
+      "installSkillTitle": "Εγκατάσταση δεξιότητας",
+      "noMatchingTools": "Δεν βρέθηκαν αντίστοιχα στοιχεία",
+      "noTools": "Δεν υπάρχουν διαθέσιμα στοιχεία",
+      "skillPackageInfo": "Απαιτήσεις πακέτου δεξιότητας",
+      "skillPackageRequirement1": "Πρέπει να περιέχει έγκυρο manifest skill.json",
+      "skillPackageRequirement2": "Συμπεριλάβετε όλα τα απαιτούμενα αρχεία δεξιότητας",
+      "skillUrlHint": "Εισαγάγετε URL αποθετηρίου GitHub ή άμεσο σύνδεσμο σε πακέτο δεξιότητας",
+      "skillUrlLabel": "URL δεξιότητας",
+      "supportedFormats": "Υποστηριζόμενες μορφές",
+      "uploadFile": "Μεταφόρτωση αρχείου",
+      "uploadSkill": "Εγκατάσταση δεξιότητας",
+      "urlRequired": "Εισαγάγετε μια URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Ενεργή συνεδρία",
+      "cancel": "Ακύρωση",
+      "diagnostics": "Διαγνωστικά",
+      "diagnosticsTitle": "Πληροφορίες διαγνωστικών",
+      "disconnect": "Αποσύνδεση",
+      "disconnectConfirmMessage": "Αν συνδέεστε μέσω της απομακρυσμένης σήραγγας, μπορεί να χάσετε την πρόσβαση σε αυτή τη σελίδα.",
+      "disconnectConfirmMessageSameHost": "Αυτή τη στιγμή συνδέεστε μέσω αυτής της απομακρυσμένης σήραγγας. Αν αποσυνδεθείτε, αυτή η σελίδα θα κλείσει και θα χάσετε την πρόσβαση.",
+      "disconnectConfirmTitle": "Αποσύνδεση απομακρυσμένης πρόσβασης;",
+      "error": "Σφάλμα",
+      "firewallException": "Εξαίρεση τείχους προστασίας",
+      "getToken": "Λάβετε το διακριτικό σας",
+      "logs": "Αρχεία καταγραφής",
+      "logsTitle": "Αρχεία καταγραφής σύνδεσης",
+      "ngrokClaimDomain": "Διεκδικήστε το",
+      "ngrokDomain": "Στατικός τομέας",
+      "ngrokDomainHint": "Προαιρετικό: οι δωρεάν χρήστες μπορούν να διεκδικήσουν έναν στατικό τομέα.",
+      "ngrokDomainPlaceholder": "π.χ. myapp.ngrok-free.app",
+      "noKeyRequired": "Δεν απαιτείται ρύθμιση",
+      "noLogs": "Δεν υπάρχουν διαθέσιμα αρχεία καταγραφής",
+      "platform": "Πλατφόρμα",
+      "provider": "Πάροχος",
+      "qrCodeError": "Αποτυχία φόρτωσης του κωδικού QR",
+      "recentErrors": "Πρόσφατα σφάλματα",
+      "requiresKey": "Απαιτείται διακριτικό ταυτοποίησης",
+      "selectProvider": "Επιλέξτε πάροχο σήραγγας",
+      "showQRCode": "Εμφάνιση κωδικού QR",
+      "status": "Κατάσταση",
+      "troubleshootingHints": "Συμβουλές αντιμετώπισης προβλημάτων",
+      "tunnelRunning": "Η σήραγγα εκτελείται"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "Εντάξει (κενό)",
+        "ok-token": "Εντάξει",
+        "failed": "Απέτυχε",
+        "ran": "Εκτελέστηκε",
+        "sent": "Η ειδοποίηση στάλθηκε",
+        "skipped": "Παραλείφθηκε"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Το σφάλμα καθαρίστηκε — μπορείτε να δοκιμάσετε ξανά",
+      "keyLabelPlaceholder": "Κύριο, Εφεδρικό κ.λπ.",
+      "modelIdPlaceholder": "openai, anthropic κ.λπ.",
+      "providerId": "Αναγνωριστικό παρόχου",
+      "retry": "Δοκιμάστε ξανά",
+      "addFailed": "Αποτυχία προσθήκης παρόχου",
+      "addingProvider": "Γίνεται προσθήκη παρόχου...",
+      "apiKeyHint": "Ορισμένοι πάροχοι όπως το Ollama δεν χρειάζονται κλειδί API",
+      "apiKeyOptional": "Κλειδί API (προαιρετικό)",
+      "baseUrlRequired": "Ρυθμίστε πρώτα το βασικό URL",
+      "fetchingKeyModels": "Γίνεται ανάκτηση μοντέλων...",
+      "getApiKey": "Λήψη κλειδιού API",
+      "ideImportLabel": "Εισήχθη από το {ide} (επέκταση Claude Code)",
+      "noAvailableModels": "Δεν βρέθηκαν διαθέσιμα μοντέλα",
+      "noModelsFound": "Δεν βρέθηκαν μοντέλα — ελέγξτε το URL και το κλειδί API",
+      "probeComplete": "Ο έλεγχος ολοκληρώθηκε: {available}/{total} μοντέλα διαθέσιμα",
+      "probingModels": "Γίνεται έλεγχος μοντέλων...",
+      "providerAdded": "Ο πάροχος προστέθηκε",
+      "providerAddedWithModels": "{count} μοντέλα διαθέσιμα",
+      "scanIDE": "Εισαγωγή από IDE",
+      "dragToReorder": "Σύρετε για αλλαγή προτεραιότητας",
+      "freeTier": "Δωρεάν",
+      "location": "Τοποθεσία",
+      "locationCloud": "Στο cloud",
+      "locationHint": "Οι πάροχοι cloud εκτελούνται σε απομακρυσμένους διακομιστές, οι τοπικοί πάροχοι εκτελούνται στη συσκευή σας",
+      "locationLocal": "Τοπικό",
+      "preferredModelsHint": "Επιλέξτε τα μοντέλα που προτιμάτε. Μόνο τα επιλεγμένα μοντέλα θα είναι διαθέσιμα· αν δεν επιλεγεί κανένα, θα είναι διαθέσιμα όλα τα μοντέλα.",
+      "selectPreferredModels": "Επιλογή προτιμώμενων μοντέλων",
+      "tabs": {
+        "oauth": "Σύνδεση OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Δοκιμή ZimaOS Blue",
+        "quotaExhaustedConversations": "Έχετε φτάσει το όριο δοκιμαστικών συνομιλιών. Ρυθμίστε τον δικό σας πάροχο για να συνεχίσετε.",
+        "quotaExhaustedTokens": "Έχει εξαντληθεί το δοκιμαστικό σας όριο token. Ρυθμίστε τον δικό σας πάροχο για να συνεχίσετε.",
+        "tokensUsed": "Απομένουν {remaining} / {total} token"
+      },
+      "usage": {
+        "estimatedCost": "Εκτιμώμενο κόστος",
+        "inputTokens": "Token εισόδου",
+        "loading": "Φόρτωση χρήσης...",
+        "outputTokens": "Token εξόδου",
+        "requests": "Αιτήματα"
+      }
+    }
+  },
+  "en-GB": {
+    "settings": {
+      "update": {
+        "applying": "Applying update…",
+        "confirmRestart": "Apply and restart",
+        "downloadComplete": "Download complete",
+        "downloadFailed": "Download failed",
+        "restarting": "Restarting…",
+        "serverNotResponding": "Server did not come back after the update",
+        "waitingForServer": "Waiting for the server to come back…",
+        "autoCheck": "Auto-check for updates on start-up",
+        "checkNow": "Check now",
+        "currentVersion": "Current version",
+        "download": "Download",
+        "downloading": "Downloading…",
+        "newVersionAvailable": "New version available",
+        "title": "About",
+        "upToDate": "Up to date"
+      }
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Memory-recall gate",
+      "memoryMeta": "{skipped}/{total} turns skipped memory recall",
+      "memoryMode": "Mode — {mode}",
+      "modes": {
+        "aggressive": "Aggressive",
+        "balanced": "Balanced",
+        "quality": "Quality"
+      },
+      "combined": "Cache + pruner + tools + routing",
+      "estimated": "Estimated savings",
+      "costSaved": "Cost saved",
+      "tokensSaved": "Tokens saved",
+      "compression": "Compression",
+      "breakdown": "Savings breakdown",
+      "estCost": "Estimated cost",
+      "noSavingsYet": "No token savings recorded yet",
+      "prunerLabel": "Context pruner",
+      "prunerMeta": "{pruned}/{total} requests pruned",
+      "routingLabel": "Smart routing",
+      "routingMeta": "{requests} requests routed",
+      "toolsLabel": "Tool filter",
+      "toolsMeta": "{skipped} tools skipped across {requests} requests"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analysis",
+        "auto_reply": "Auto-reply",
+        "browser": "Browser",
+        "calculator": "Calculator",
+        "calendar": "Calendar",
+        "contacts": "Contacts",
+        "crypto": "Crypto",
+        "datetime": "Date and time",
+        "email": "Email",
+        "file_read": "File read",
+        "file_write": "File write",
+        "files": "Files",
+        "memory": "Memory",
+        "network": "Network",
+        "news": "News",
+        "notes": "Notes",
+        "notifications": "Notifications",
+        "process": "Processes",
+        "reminders": "Reminders",
+        "sandbox": "Sandbox",
+        "scheduler": "Scheduler",
+        "search": "Search",
+        "stocks": "Stocks",
+        "system_info": "System information",
+        "tasks": "Tasks",
+        "timer": "Timer",
+        "translate": "Translate",
+        "ui_reviewer": "UI reviewer",
+        "unit_converter": "Unit converter",
+        "weather": "Weather",
+        "web_search": "Web search",
+        "workflows": "Workflows",
+        "exec": "Command execution",
+        "workspace_file": "Workspace file"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Auto-play",
+      "checkpoint": {
+        "cancel": "Cancel",
+        "continue": "Continue",
+        "fallbackQuestion": "Please confirm this browser action.",
+        "help": "You can say \"continue\" or \"cancel\", or tap a button below.",
+        "title": "Browser checkpoint confirmation required"
+      },
+      "clearConversation": "Clear conversation",
+      "connected": "Connected",
+      "continuous": "Continuous",
+      "disconnected": "Disconnected",
+      "emptyHint": "Press and hold the microphone button to speak",
+      "errors": {
+        "connectionFailed": "Connection failed",
+        "processAudioFailed": "Failed to process audio",
+        "startRecordingFailed": "Failed to start recording",
+        "wakeWordStartFailed": "Failed to start wake-word detection"
+      },
+      "title": "Voice assistant",
+      "settingsTitle": "Preferences",
+      "languageLabel": "Language setting",
+      "voiceLabel": "Voice option",
+      "holdToSpeak": "Hold to talk",
+      "releaseToSend": "Let go to send",
+      "wakeWordTitle": "Wake-word detection",
+      "wakeWordEnable": "Switch on",
+      "wakeWordLabel": "Wake word",
+      "wakeWordPlaceholder": "e.g. hey echo",
+      "wakeWordListening": "Listening for a wake word…",
+      "wakeWordIdle": "Idle",
+      "state": {
+        "ready": "Ready to go",
+        "listening": "Listening…",
+        "processing": "Processing…",
+        "speaking": "Speaking…",
+        "unknown": "Status unknown"
+      },
+      "languages": {
+        "en": "English",
+        "zh": "Chinese (ZH)",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "de": "German",
+        "fr": "French",
+        "es": "Spanish"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Open-source and free agent runtime"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Search logs…"
+    },
+    "companion": {
+      "platforms": {
+        "web-user": "Web user"
+      }
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Permission for Automation is required to send iMessages. Grant it in System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Full Disk Access is required to read iMessage history. Grant it in System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage is not set up on this Mac. Open the Messages app and sign in with your Apple ID.",
+          "not_signed_in": "iMessage is not signed in. Open the Messages app and sign in with your Apple ID.",
+          "unavailable_platform": "iMessage is available only on macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP request"
+      }
+    },
+    "providerPool": {
+      "dragToReorder": "Drag to reorder the priority",
+      "freeTier": "Free tier",
+      "location": "Run location",
+      "locationCloud": "Cloud-hosted",
+      "locationHint": "Cloud providers run on remote servers; local providers run on your machine",
+      "locationLocal": "On-device",
+      "preferredModelsHint": "Tick the models you prefer. Only ticked models will be available; if none are ticked, all models will be available.",
+      "selectPreferredModels": "Choose Preferred Models",
+      "tabs": {
+        "oauth": "OAuth sign-in"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "ZimaOS Blue Trial",
+        "quotaExhaustedConversations": "Your trial conversation limit has been reached. Please configure your own provider to carry on.",
+        "quotaExhaustedTokens": "Your trial token allowance has been exhausted. Please configure your own provider to carry on.",
+        "tokensUsed": "{remaining} / {total} tokens left"
+      },
+      "usage": {
+        "estimatedCost": "Estimated cost",
+        "inputTokens": "Input tokens",
+        "loading": "Loading usage…",
+        "outputTokens": "Output tokens",
+        "requests": "Requests made"
+      }
+    }
+  },
+  "es-ES": {
+    "settings": {
+      "update": {
+        "applying": "Aplicando actualización...",
+        "confirmRestart": "Aplicar y reiniciar",
+        "downloadComplete": "Descarga completada",
+        "downloadFailed": "La descarga ha fallado",
+        "restarting": "Reiniciando...",
+        "serverNotResponding": "El servidor no volvió después de la actualización",
+        "waitingForServer": "Esperando a que el servidor vuelva...",
+        "autoCheck": "Comprobar actualizaciones automáticamente al iniciar",
+        "checkNow": "Comprobar ahora",
+        "currentVersion": "Versión actual",
+        "download": "Descargar",
+        "downloading": "Descargando...",
+        "newVersionAvailable": "Nueva versión disponible",
+        "title": "Acerca de",
+        "upToDate": "Actualizado"
+      },
+      "tab": {
+        "llm": "Modelos LLM",
+        "memory": "Memoria",
+        "network": "Red",
+        "security": "Seguridad",
+        "speech": "Voz",
+        "update": "Actualización",
+        "userdata": "Gestión de datos"
+      },
+      "closeBehavior": "Comportamiento al cerrar",
+      "closeBehaviorMinimize": "Minimizar a la bandeja",
+      "closeBehaviorQuit": "Salir",
+      "closeBehaviorSaved": "Comportamiento al cerrar guardado"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Control de recuperación de memoria",
+      "memoryMeta": "Se omitió la recuperación en {skipped}/{total} turnos",
+      "memoryMode": "Modo: {mode}",
+      "modes": {
+        "aggressive": "Agresivo",
+        "balanced": "Equilibrado",
+        "quality": "Calidad"
+      },
+      "combined": "Caché + poda + herramientas + enrutado",
+      "estimated": "Ahorro estimado",
+      "costSaved": "Costo ahorrado",
+      "tokensSaved": "Tokens ahorrados",
+      "compression": "Compresión",
+      "breakdown": "Desglose del ahorro",
+      "estCost": "Costo est.",
+      "noSavingsYet": "Aún no se han registrado ahorros de tokens",
+      "prunerLabel": "Poda de contexto",
+      "prunerMeta": "{pruned}/{total} solicitudes podadas",
+      "routingLabel": "Enrutado inteligente",
+      "routingMeta": "{requests} solicitudes enrutadas",
+      "toolsLabel": "Filtro de herramientas",
+      "toolsMeta": "{skipped} herramientas omitidas en {requests} solicitudes"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Análisis",
+        "auto_reply": "Respuesta automática",
+        "browser": "Navegador",
+        "calculator": "Calculadora",
+        "calendar": "Calendario",
+        "contacts": "Contactos",
+        "crypto": "Cripto",
+        "datetime": "Fecha y hora",
+        "email": "Correo electrónico",
+        "file_read": "Lectura de archivos",
+        "file_write": "Escritura de archivos",
+        "files": "Archivos",
+        "memory": "Memoria",
+        "network": "Red",
+        "news": "Noticias",
+        "notes": "Notas",
+        "notifications": "Notificaciones",
+        "process": "Procesos",
+        "reminders": "Recordatorios",
+        "sandbox": "Sandbox",
+        "scheduler": "Planificador",
+        "search": "Buscar",
+        "stocks": "Acciones",
+        "system_info": "Información del sistema",
+        "tasks": "Tareas",
+        "timer": "Temporizador",
+        "translate": "Traducir",
+        "ui_reviewer": "Revisor de interfaz",
+        "unit_converter": "Conversor de unidades",
+        "weather": "Tiempo",
+        "web_search": "Búsqueda web",
+        "workflows": "Flujos de trabajo",
+        "exec": "Ejecución de comandos",
+        "workspace_file": "Archivo del espacio de trabajo"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Reproducción automática",
+      "checkpoint": {
+        "cancel": "Cancelar",
+        "continue": "Continuar",
+        "fallbackQuestion": "Confirma esta acción del navegador.",
+        "help": "Puedes decir \"continuar\" o \"cancelar\", o tocar un botón abajo.",
+        "title": "Se requiere confirmación del punto de control del navegador"
+      },
+      "clearConversation": "Borrar conversación",
+      "connected": "Conectado",
+      "continuous": "Continuo",
+      "disconnected": "Desconectado",
+      "emptyHint": "Mantén pulsado el botón del micrófono para hablar",
+      "errors": {
+        "connectionFailed": "La conexión falló",
+        "processAudioFailed": "No se pudo procesar el audio",
+        "startRecordingFailed": "No se pudo iniciar la grabación",
+        "wakeWordStartFailed": "No se pudo iniciar la detección de la palabra de activación"
+      },
+      "title": "Asistente de voz",
+      "settingsTitle": "Configuración",
+      "languageLabel": "Idioma",
+      "voiceLabel": "Voz",
+      "holdToSpeak": "Mantén pulsado para hablar",
+      "releaseToSend": "Suelta para enviar",
+      "wakeWordTitle": "Detección de palabra de activación",
+      "wakeWordEnable": "Activar",
+      "wakeWordLabel": "Palabra de activación",
+      "wakeWordPlaceholder": "p. ej., hola eco",
+      "wakeWordListening": "Escuchando la palabra de activación...",
+      "wakeWordIdle": "Sin escuchar",
+      "state": {
+        "ready": "Listo",
+        "listening": "Escuchando...",
+        "processing": "Procesando...",
+        "speaking": "Hablando...",
+        "unknown": "Desconocido"
+      },
+      "languages": {
+        "en": "Inglés",
+        "zh": "Chino",
+        "ja": "Japonés",
+        "ko": "Coreano",
+        "de": "Alemán",
+        "fr": "Francés",
+        "es": "Español"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Runtime de agentes libre y de código abierto"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Buscar en los registros..."
+    },
+    "companion": {
+      "title": "Compañero",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Usuario web"
+      },
+      "ackedBy": "Confirmado por",
+      "anonymous": "Anónimo",
+      "eventHistory": "Historial de eventos",
+      "flow": {
+        "duration": "Duración",
+        "empty": "No hay datos de flujo disponibles",
+        "fitView": "Ajustar vista",
+        "legend": "Leyenda",
+        "loading": "Cargando flujo...",
+        "nodeTypes": {
+          "llmRequest": "Solicitud LLM",
+          "message": "Mensaje",
+          "securityCheck": "Comprobación de seguridad",
+          "toolCall": "Llamada de herramienta"
+        },
+        "reset": "Restablecer vista",
+        "retry": "Reintentar",
+        "status": "Estado",
+        "time": "Hora",
+        "type": "Tipo",
+        "zoomIn": "Acercar",
+        "zoomOut": "Alejar"
+      },
+      "hoursAgo": "hace {n} horas",
+      "justNow": "Ahora mismo",
+      "liveSession": "Sesión en directo",
+      "llmDetails": {
+        "completion": "Tokens de salida",
+        "input": "Entrada",
+        "prompt": "Tokens de entrada",
+        "score": "Puntuación",
+        "total": "Total de tokens"
+      },
+      "minutesAgo": "hace {n} min",
+      "nodes": {
+        "chars": "{count} caracteres",
+        "llmRequest": "Solicitud LLM",
+        "message": "Mensaje",
+        "received": "Recibido",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Soporte",
+      "deepResearchConflict": "Conflicto",
+      "deepResearchHasConflict": "Señales en conflicto"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Se requiere el permiso Automation para enviar iMessages. Concédelo en System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Se requiere Full Disk Access para leer el historial de iMessage. Concédelo en System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage no está configurado en este Mac. Abre la app Messages e inicia sesión con tu Apple ID.",
+          "not_signed_in": "No has iniciado sesión en iMessage. Abre la app Messages e inicia sesión con tu Apple ID.",
+          "unavailable_platform": "iMessage solo está disponible en macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "Solicitud HTTP"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "p. ej., Personal, Trabajo",
+      "widget": {
+        "pasteExample": "nombre: Juan Pérez\ncorreo: juan{'@'}example.com\nteléfono: 123-456-7890",
+        "filledFields": "Se rellenaron {count} campos",
+        "parsedFields": "Se analizaron {count} campos",
+        "pasteData": "Pega datos para rellenar",
+        "pasteDataHint": "Pega pares clave-valor"
+      },
+      "createTemplate": "Crear plantilla",
+      "default": "Predeterminada",
+      "defaultSet": "Plantilla predeterminada actualizada",
+      "editTemplate": "Editar plantilla",
+      "enterValue": "Introduce un valor...",
+      "fields": "Campos",
+      "fieldTypes": "tipos de campo configurados",
+      "patterns": "Patrones de campos",
+      "patternsDescription": "Los patrones de campos ayudan a detectar campos de formularios al hacer coincidir palabras clave en nombres de campos, etiquetas y marcadores de posición.",
+      "setAsDefault": "Establecer como plantilla predeterminada",
+      "templateCreated": "Plantilla creada correctamente",
+      "templateDeleted": "Plantilla eliminada correctamente",
+      "templateName": "Nombre de la plantilla",
+      "templateUpdated": "Plantilla actualizada correctamente"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Red Ethernet",
+      "loopback": "Bucle local",
+      "unknown": "Desconocido",
+      "virtual": "Interfaz virtual"
+    },
+    "plugins": {
+      "builtin": "Integrado",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo o https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Desactivado",
+        "enabled": "Activado",
+        "total": "En total"
+      },
+      "categories": {
+        "analytics": "Analítica",
+        "communication": "Comunicación",
+        "development": "Desarrollo",
+        "extension": "Extensión",
+        "information": "Información",
+        "integration": "Integración",
+        "other": "Otros",
+        "productivity": "Productividad",
+        "system": "Sistema",
+        "utility": "Utilidad"
+      },
+      "allCategories": "Todas las categorías",
+      "dropFileHere": "Suelta el archivo aquí o haz clic para buscar",
+      "fileRequired": "Selecciona un archivo",
+      "install": "Instalar",
+      "installFailed": "La instalación falló",
+      "installFromUrl": "Desde URL",
+      "installing": "Instalando...",
+      "installSkillTitle": "Instalar habilidad",
+      "noMatchingTools": "No se encontraron elementos coincidentes",
+      "noTools": "No hay elementos disponibles",
+      "skillPackageInfo": "Requisitos del paquete de habilidades",
+      "skillPackageRequirement1": "Debe contener un manifiesto skill.json válido",
+      "skillPackageRequirement2": "Incluye todos los archivos de habilidad necesarios",
+      "skillUrlHint": "Introduce la URL de un repositorio de GitHub o un enlace directo a un paquete de habilidades",
+      "skillUrlLabel": "URL de la habilidad",
+      "supportedFormats": "Formatos compatibles",
+      "uploadFile": "Subir archivo",
+      "uploadSkill": "Instalar habilidad",
+      "urlRequired": "Introduce una URL"
+    },
+    "remoteAccess": {
+      "cancel": "Cancelar",
+      "disconnect": "Desconectar",
+      "disconnectConfirmMessage": "Si accedes mediante el túnel remoto, es posible que pierdas el acceso a esta página.",
+      "disconnectConfirmMessageSameHost": "Ahora mismo accedes mediante este túnel remoto. Al desconectar, esta página se cerrará y perderás el acceso.",
+      "disconnectConfirmTitle": "¿Desconectar el acceso remoto?",
+      "error": "Fallo",
+      "ngrokClaimDomain": "Reclama el tuyo",
+      "ngrokDomain": "Dominio estático",
+      "ngrokDomainHint": "Opcional: los usuarios gratuitos pueden reclamar un dominio estático.",
+      "ngrokDomainPlaceholder": "p. ej., myapp.ngrok-free.app",
+      "qrCodeError": "No se pudo cargar el código QR",
+      "showQRCode": "Mostrar código QR"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "Correcto (vacío)",
+        "ok-token": "Correcto",
+        "failed": "Falló",
+        "ran": "Se ejecutó",
+        "sent": "Alerta enviada",
+        "skipped": "Omitido"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "El error se ha borrado: ya puedes volver a intentarlo",
+      "keyLabelPlaceholder": "Principal, Respaldo, etc.",
+      "modelIdPlaceholder": "openai, anthropic, etcétera",
+      "providerId": "ID del proveedor",
+      "retry": "Reintentar",
+      "addFailed": "No se pudo añadir el proveedor",
+      "addingProvider": "Añadiendo proveedor...",
+      "apiKeyHint": "Algunos proveedores, como Ollama, no necesitan una clave API",
+      "apiKeyOptional": "Clave API (opcional)",
+      "baseUrlRequired": "Configura primero la URL base",
+      "fetchingKeyModels": "Obteniendo modelos...",
+      "getApiKey": "Obtener clave API",
+      "ideImportLabel": "Importado desde {ide} (extensión de Claude Code)",
+      "noAvailableModels": "No se encontraron modelos disponibles",
+      "noModelsFound": "No se encontraron modelos; revisa la URL y la clave API",
+      "probeComplete": "Sondeo completado: {available}/{total} modelos disponibles",
+      "probingModels": "Sondeando modelos...",
+      "providerAdded": "Proveedor añadido",
+      "providerAddedWithModels": "{count} modelos disponibles",
+      "scanIDE": "Importar desde IDE",
+      "dragToReorder": "Arrastra para reordenar la prioridad",
+      "freeTier": "Gratis",
+      "location": "Ubicación",
+      "locationCloud": "Nube",
+      "locationHint": "Los proveedores en la nube se ejecutan en servidores remotos; los proveedores locales se ejecutan en tu equipo",
+      "locationLocal": "En local",
+      "preferredModelsHint": "Marca los modelos que prefieras. Solo estarán disponibles los modelos marcados; si no marcas ninguno, estarán disponibles todos.",
+      "selectPreferredModels": "Seleccionar modelos preferidos",
+      "tabs": {
+        "oauth": "Inicio de sesión OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Prueba de ZimaOS Blue",
+        "quotaExhaustedConversations": "Has alcanzado el límite de conversaciones de prueba. Configura tu propio proveedor para continuar.",
+        "quotaExhaustedTokens": "Has agotado tu cuota de tokens de prueba. Configura tu propio proveedor para continuar.",
+        "tokensUsed": "Quedan {remaining} / {total} tokens"
+      },
+      "usage": {
+        "estimatedCost": "Coste estimado",
+        "inputTokens": "Tokens de entrada",
+        "loading": "Cargando uso...",
+        "outputTokens": "Tokens de salida",
+        "requests": "Solicitudes"
+      }
+    }
+  },
+  "fr-FR": {
+    "settings": {
+      "update": {
+        "applying": "Application de la mise à jour...",
+        "confirmRestart": "Appliquer et redémarrer",
+        "downloadComplete": "Téléchargement terminé",
+        "downloadFailed": "Échec du téléchargement",
+        "restarting": "Redémarrage...",
+        "serverNotResponding": "Le serveur n'est pas revenu après la mise à jour",
+        "waitingForServer": "En attente du retour du serveur...",
+        "autoCheck": "Vérifier automatiquement les mises à jour au démarrage",
+        "checkNow": "Vérifier maintenant",
+        "currentVersion": "Version actuelle",
+        "download": "Télécharger",
+        "downloading": "Téléchargement...",
+        "newVersionAvailable": "Nouvelle version disponible",
+        "title": "À propos",
+        "upToDate": "À jour"
+      },
+      "tab": {
+        "llm": "Modèles LLM",
+        "memory": "Mémoire",
+        "network": "Réseau",
+        "security": "Sécurité",
+        "speech": "Voix",
+        "update": "Mise à jour",
+        "userdata": "Gestion des données"
+      },
+      "closeBehavior": "Comportement à la fermeture",
+      "closeBehaviorMinimize": "Réduire dans la zone de notification",
+      "closeBehaviorQuit": "Quitter",
+      "closeBehaviorSaved": "Comportement à la fermeture enregistré"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Contrôle de rappel mémoire",
+      "memoryMeta": "Rappel ignoré sur {skipped}/{total} tours",
+      "memoryMode": "Mode : {mode}",
+      "modes": {
+        "aggressive": "Agressif",
+        "balanced": "Équilibré",
+        "quality": "Qualité"
+      },
+      "combined": "Cache + élagage + outils + routage",
+      "estimated": "Économies estimées",
+      "costSaved": "Coût économisé",
+      "tokensSaved": "Tokens économisés",
+      "compression": "Compression",
+      "breakdown": "Détail des économies",
+      "estCost": "Coût estimé",
+      "noSavingsYet": "Aucune économie de tokens n'a encore été enregistrée",
+      "prunerLabel": "Élagueur de contexte",
+      "prunerMeta": "{pruned}/{total} requêtes élaguées",
+      "routingLabel": "Routage intelligent",
+      "routingMeta": "{requests} requêtes routées",
+      "toolsLabel": "Filtre d'outils",
+      "toolsMeta": "{skipped} outils ignorés sur {requests} requêtes"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analyse",
+        "auto_reply": "Réponse automatique",
+        "browser": "Navigateur",
+        "calculator": "Calculatrice",
+        "calendar": "Calendrier",
+        "contacts": "Contacts",
+        "crypto": "Crypto",
+        "datetime": "Date et heure",
+        "email": "E-mail",
+        "file_read": "Lecture de fichier",
+        "file_write": "Écriture de fichier",
+        "files": "Fichiers",
+        "memory": "Mémoire",
+        "network": "Réseau",
+        "news": "Actualités",
+        "notes": "Notes",
+        "notifications": "Notifications",
+        "process": "Processus",
+        "reminders": "Rappels",
+        "sandbox": "Bac à sable",
+        "scheduler": "Planificateur",
+        "search": "Recherche",
+        "stocks": "Actions",
+        "system_info": "Infos système",
+        "tasks": "Tâches",
+        "timer": "Minuteur",
+        "translate": "Traduire",
+        "ui_reviewer": "Vérificateur d'interface",
+        "unit_converter": "Convertisseur d'unités",
+        "weather": "Météo",
+        "web_search": "Recherche web",
+        "workflows": "Flux de travail",
+        "exec": "Exécution de commandes",
+        "workspace_file": "Fichier d'espace de travail"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Lecture automatique",
+      "checkpoint": {
+        "cancel": "Annuler",
+        "continue": "Continuer",
+        "fallbackQuestion": "Veuillez confirmer cette action du navigateur.",
+        "help": "Vous pouvez dire \"continuer\" ou \"annuler\", ou appuyer sur un bouton ci-dessous.",
+        "title": "Confirmation du point de contrôle du navigateur requise"
+      },
+      "clearConversation": "Effacer la conversation",
+      "connected": "Connecté",
+      "continuous": "Continu",
+      "disconnected": "Déconnecté",
+      "emptyHint": "Maintenez le bouton du microphone enfoncé pour parler",
+      "errors": {
+        "connectionFailed": "Échec de la connexion",
+        "processAudioFailed": "Échec du traitement audio",
+        "startRecordingFailed": "Échec du démarrage de l'enregistrement",
+        "wakeWordStartFailed": "Échec du démarrage de la détection du mot d'activation"
+      },
+      "title": "Assistant vocal",
+      "settingsTitle": "Paramètres",
+      "languageLabel": "Langue",
+      "voiceLabel": "Voix",
+      "holdToSpeak": "Maintenir pour parler",
+      "releaseToSend": "Relâcher pour envoyer",
+      "wakeWordTitle": "Détection du mot d'activation",
+      "wakeWordEnable": "Activer",
+      "wakeWordLabel": "Mot d'activation",
+      "wakeWordPlaceholder": "ex. : salut écho",
+      "wakeWordListening": "Écoute du mot d'activation...",
+      "wakeWordIdle": "Aucune écoute",
+      "state": {
+        "ready": "Prêt",
+        "listening": "Écoute...",
+        "processing": "Traitement...",
+        "speaking": "Parle...",
+        "unknown": "Inconnu"
+      },
+      "languages": {
+        "en": "Anglais",
+        "zh": "Chinois",
+        "ja": "Japonais",
+        "ko": "Coréen",
+        "de": "Allemand",
+        "fr": "Français",
+        "es": "Espagnol"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Runtime d'agent libre et open source"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Rechercher dans les journaux..."
+    },
+    "companion": {
+      "title": "Compagnon",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Utilisateur web"
+      },
+      "ackedBy": "Confirmé par",
+      "anonymous": "Anonyme",
+      "eventHistory": "Historique des événements",
+      "flow": {
+        "duration": "Durée",
+        "empty": "Aucune donnée de flux disponible",
+        "fitView": "Ajuster la vue",
+        "legend": "Légende",
+        "loading": "Chargement du flux...",
+        "nodeTypes": {
+          "llmRequest": "Requête LLM",
+          "message": "Message",
+          "securityCheck": "Vérification de sécurité",
+          "toolCall": "Appel d'outil"
+        },
+        "reset": "Réinitialiser la vue",
+        "retry": "Réessayer",
+        "status": "Statut",
+        "time": "Heure",
+        "type": "Type",
+        "zoomIn": "Zoom avant",
+        "zoomOut": "Zoom arrière"
+      },
+      "hoursAgo": "il y a {n} heures",
+      "justNow": "À l'instant",
+      "liveSession": "Session en direct",
+      "llmDetails": {
+        "completion": "Tokens de sortie",
+        "input": "Entrée",
+        "prompt": "Tokens d'entrée",
+        "score": "Score",
+        "total": "Total des tokens"
+      },
+      "minutesAgo": "il y a {n} min",
+      "nodes": {
+        "chars": "{count} caractères",
+        "llmRequest": "Requête LLM",
+        "message": "Message",
+        "received": "Reçu",
+        "sandbox": "Bac à sable"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Prise en charge",
+      "deepResearchConflict": "Conflit",
+      "deepResearchHasConflict": "Signaux contradictoires"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "L'autorisation Automation est requise pour envoyer des iMessages. Accordez-la dans System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Full Disk Access est requis pour lire l'historique iMessage. Accordez-le dans System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage n'est pas configuré sur ce Mac. Ouvrez l'app Messages et connectez-vous avec votre Apple ID.",
+          "not_signed_in": "Vous n'êtes pas connecté à iMessage. Ouvrez l'app Messages et connectez-vous avec votre Apple ID.",
+          "unavailable_platform": "iMessage est disponible uniquement sur macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "Requête HTTP"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "ex. : Personnel, Travail",
+      "widget": {
+        "pasteExample": "nom : Jean Dupont\nemail : jean{'@'}example.com\ntéléphone : 123-456-7890",
+        "filledFields": "{count} champs remplis",
+        "parsedFields": "{count} champs analysés",
+        "pasteData": "Coller des données à remplir",
+        "pasteDataHint": "Coller des paires clé-valeur"
+      },
+      "createTemplate": "Créer un modèle",
+      "default": "Par défaut",
+      "defaultSet": "Le modèle par défaut a été mis à jour",
+      "editTemplate": "Modifier le modèle",
+      "enterValue": "Saisir une valeur...",
+      "fields": "Champs",
+      "fieldTypes": "types de champs configurés",
+      "patterns": "Motifs de champs",
+      "patternsDescription": "Les motifs de champs aident à détecter les champs de formulaire en faisant correspondre des mots-clés dans les noms de champs, les étiquettes et les textes indicatifs.",
+      "setAsDefault": "Définir comme modèle par défaut",
+      "templateCreated": "Modèle créé avec succès",
+      "templateDeleted": "Modèle supprimé avec succès",
+      "templateName": "Nom du modèle",
+      "templateUpdated": "Modèle mis à jour avec succès"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Réseau Ethernet",
+      "loopback": "Boucle locale",
+      "unknown": "Inconnu",
+      "virtual": "Virtuel"
+    },
+    "plugins": {
+      "builtin": "Intégré",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo ou https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Désactivé",
+        "enabled": "Activé",
+        "total": "Au total"
+      },
+      "categories": {
+        "analytics": "Analytique",
+        "communication": "Communications",
+        "development": "Développement",
+        "extension": "Extensions",
+        "information": "Informations",
+        "integration": "Intégration",
+        "other": "Autre",
+        "productivity": "Productivité",
+        "system": "Système",
+        "utility": "Utilitaire"
+      },
+      "allCategories": "Toutes les catégories",
+      "dropFileHere": "Déposez le fichier ici ou cliquez pour parcourir",
+      "fileRequired": "Veuillez sélectionner un fichier",
+      "install": "Installer",
+      "installFailed": "Échec de l'installation",
+      "installFromUrl": "Depuis une URL",
+      "installing": "Installation...",
+      "installSkillTitle": "Installer une compétence",
+      "noMatchingTools": "Aucun élément correspondant trouvé",
+      "noTools": "Aucun élément disponible",
+      "skillPackageInfo": "Exigences du paquet de compétences",
+      "skillPackageRequirement1": "Doit contenir un manifeste skill.json valide",
+      "skillPackageRequirement2": "Inclure tous les fichiers de compétence requis",
+      "skillUrlHint": "Saisissez l'URL d'un dépôt GitHub ou un lien direct vers un paquet de compétences",
+      "skillUrlLabel": "URL de la compétence",
+      "supportedFormats": "Formats pris en charge",
+      "uploadFile": "Téléverser un fichier",
+      "uploadSkill": "Installer une compétence",
+      "urlRequired": "Veuillez saisir une URL"
+    },
+    "remoteAccess": {
+      "cancel": "Annuler",
+      "disconnect": "Déconnecter",
+      "disconnectConfirmMessage": "Si vous accédez via le tunnel distant, vous risquez de perdre l'accès à cette page.",
+      "disconnectConfirmMessageSameHost": "Vous accédez actuellement via ce tunnel distant. Si vous vous déconnectez, cette page se fermera et vous perdrez l'accès.",
+      "disconnectConfirmTitle": "Déconnecter l'accès distant ?",
+      "ngrokClaimDomain": "Réclamer le vôtre",
+      "ngrokDomain": "Domaine statique",
+      "ngrokDomainHint": "Optionnel : les utilisateurs gratuits peuvent réclamer un domaine statique.",
+      "ngrokDomainPlaceholder": "ex. : myapp.ngrok-free.app",
+      "qrCodeError": "Impossible de charger le code QR",
+      "showQRCode": "Afficher le code QR"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "Valide (vide)",
+        "ok-token": "Valide",
+        "failed": "Échec",
+        "ran": "Exécuté",
+        "sent": "Alerte envoyée",
+        "skipped": "Ignoré"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "L'erreur a été effacée — vous pouvez réessayer",
+      "keyLabelPlaceholder": "Principal, Secours, etc.",
+      "modelIdPlaceholder": "openai, anthropic, entre autres",
+      "providerId": "ID du fournisseur",
+      "retry": "Réessayer",
+      "addFailed": "Échec de l'ajout du fournisseur",
+      "addingProvider": "Ajout du fournisseur...",
+      "apiKeyHint": "Certains fournisseurs comme Ollama n'ont pas besoin de clé API",
+      "apiKeyOptional": "Clé API (optionnelle)",
+      "baseUrlRequired": "Configurez d'abord l'URL de base",
+      "fetchingKeyModels": "Récupération des modèles...",
+      "getApiKey": "Obtenir une clé API",
+      "ideImportLabel": "Importé depuis {ide} (extension Claude Code)",
+      "noAvailableModels": "Aucun modèle disponible trouvé",
+      "noModelsFound": "Aucun modèle trouvé — vérifiez l'URL et la clé API",
+      "probeComplete": "Sondage terminé : {available}/{total} modèles disponibles",
+      "probingModels": "Sondage des modèles...",
+      "providerAdded": "Fournisseur ajouté",
+      "providerAddedWithModels": "{count} modèles disponibles",
+      "scanIDE": "Importer depuis l'IDE",
+      "dragToReorder": "Faites glisser pour réorganiser la priorité",
+      "freeTier": "Gratuit",
+      "location": "Emplacement",
+      "locationCloud": "Dans le cloud",
+      "locationHint": "Les fournisseurs cloud s'exécutent sur des serveurs distants, les fournisseurs locaux s'exécutent sur votre machine",
+      "locationLocal": "En local",
+      "preferredModelsHint": "Cochez les modèles que vous préférez. Seuls les modèles cochés seront disponibles ; si aucun n'est coché, tous les modèles seront disponibles.",
+      "selectPreferredModels": "Sélectionner les modèles préférés",
+      "tabs": {
+        "oauth": "Connexion OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Essai ZimaOS Blue",
+        "quotaExhaustedConversations": "Vous avez atteint la limite de conversations d'essai. Configurez votre propre fournisseur pour continuer.",
+        "quotaExhaustedTokens": "Votre quota de jetons d'essai est épuisé. Configurez votre propre fournisseur pour continuer.",
+        "tokensUsed": "{remaining} / {total} jetons restants"
+      },
+      "usage": {
+        "estimatedCost": "Coût estimé",
+        "inputTokens": "Jetons d'entrée",
+        "loading": "Chargement de l'utilisation...",
+        "outputTokens": "Jetons de sortie",
+        "requests": "Requêtes"
+      }
+    }
+  },
+  "ga-IE": {
+    "settings": {
+      "update": {
+        "applying": "Nuashonrú á chur i bhfeidhm...",
+        "confirmRestart": "Cuir i bhfeidhm agus atosaigh",
+        "downloadComplete": "Íoslódáil críochnaithe",
+        "downloadFailed": "Theip ar an íoslódáil",
+        "restarting": "Ag atosú...",
+        "serverNotResponding": "Níor tháinig an freastalaí ar ais tar éis an nuashonraithe",
+        "waitingForServer": "Ag fanacht go dtiocfaidh an freastalaí ar ais...",
+        "autoCheck": "Seiceáil go huathoibríoch le haghaidh nuashonruithe ag am tosaithe",
+        "checkNow": "Seiceáil anois",
+        "currentVersion": "Leagan reatha",
+        "download": "Íoslódáil",
+        "downloading": "Ag íoslódáil...",
+        "newVersionAvailable": "Leagan nua ar fáil",
+        "title": "Maidir leis",
+        "upToDate": "Cothrom le dáta"
+      },
+      "tab": {
+        "llm": "Samhlacha LLM",
+        "memory": "Cuimhne",
+        "network": "Líonra",
+        "security": "Slándáil",
+        "speech": "Urlabhairt",
+        "update": "Nuashonrú",
+        "userdata": "Bainistiú sonraí"
+      },
+      "closeBehavior": "Iompar dúnta",
+      "closeBehaviorMinimize": "Íoslaghdaigh go dtí an tráidire",
+      "closeBehaviorQuit": "Scoir",
+      "closeBehaviorSaved": "Sábháladh an t-iompar dúnta"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Geata aisghlao cuimhne",
+      "memoryMeta": "Scipeáladh aisghlao i {skipped}/{total} cas",
+      "memoryMode": "Mód: {mode}",
+      "modes": {
+        "aggressive": "Ionsaitheach",
+        "balanced": "Cothromaithe",
+        "quality": "Cáilíocht"
+      },
+      "combined": "Taisce + gearradh + uirlisí + ródú",
+      "estimated": "Coigilteas measta",
+      "costSaved": "Costas sábháilte",
+      "tokensSaved": "Tóicain sábháilte",
+      "compression": "Comhbhrú",
+      "breakdown": "Miondealú coigiltis",
+      "estCost": "Costas measta",
+      "noSavingsYet": "Níl aon choigilteas tóicain taifeadta fós",
+      "prunerLabel": "Gearrthóir comhthéacs",
+      "prunerMeta": "{pruned}/{total} iarratas gearrtha",
+      "routingLabel": "Ródú cliste",
+      "routingMeta": "{requests} iarratas ródaithe",
+      "toolsLabel": "Scagaire uirlisí",
+      "toolsMeta": "{skipped} uirlis scipeáilte thar {requests} iarratas"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Anailís",
+        "auto_reply": "Freagra uathoibríoch",
+        "browser": "Brabhsálaí",
+        "calculator": "Áireamhán",
+        "calendar": "Féilire",
+        "contacts": "Teagmhálaithe",
+        "crypto": "Cripteo",
+        "datetime": "Dáta agus am",
+        "email": "Ríomhphost",
+        "file_read": "Léamh comhaid",
+        "file_write": "Scríobh comhaid",
+        "files": "Comhaid",
+        "memory": "Cuimhne",
+        "network": "Líonra",
+        "news": "Nuacht",
+        "notes": "Nótaí",
+        "notifications": "Fógraí",
+        "process": "Próisis",
+        "reminders": "Meabhrúcháin",
+        "sandbox": "Bosca gainimh",
+        "scheduler": "Sceidealóir",
+        "search": "Cuardach",
+        "stocks": "Stoic",
+        "system_info": "Eolas córais",
+        "tasks": "Tascanna",
+        "timer": "Uaineadóir",
+        "translate": "Aistrigh",
+        "ui_reviewer": "Athbhreithneoir UI",
+        "unit_converter": "Tiontaire aonad",
+        "weather": "Aimsir",
+        "web_search": "Cuardach gréasáin",
+        "workflows": "Sreafaí oibre",
+        "exec": "Rith ordaithe",
+        "workspace_file": "Comhad spáis oibre"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Uathsheinm",
+      "checkpoint": {
+        "cancel": "Cealaigh",
+        "continue": "Lean ar aghaidh",
+        "fallbackQuestion": "Deimhnigh an gníomh brabhsálaí seo le do thoil.",
+        "help": "Is féidir leat \"lean ar aghaidh\" nó \"cealaigh\" a rá, nó cnaipe thíos a thapáil.",
+        "title": "Tá deimhniú seicphointe an bhrabhsálaí riachtanach"
+      },
+      "clearConversation": "Glan an comhrá",
+      "connected": "Ceangailte",
+      "continuous": "Leanúnach",
+      "disconnected": "Dínasctha",
+      "emptyHint": "Brúigh agus coinnigh an cnaipe micreafóin chun labhairt",
+      "errors": {
+        "connectionFailed": "Theip ar an nasc",
+        "processAudioFailed": "Theip ar phróiseáil an fhuaime",
+        "startRecordingFailed": "Theip ar thosú na taifeadta",
+        "wakeWordStartFailed": "Theip ar thosú braite an fhocail múscailte"
+      },
+      "title": "Cúntóir gutha",
+      "settingsTitle": "Socruithe",
+      "languageLabel": "Teanga",
+      "voiceLabel": "Guth",
+      "holdToSpeak": "Coinnigh síos chun labhairt",
+      "releaseToSend": "Scaoil chun seoladh",
+      "wakeWordTitle": "Braite focail múscailte",
+      "wakeWordEnable": "Cumasaigh",
+      "wakeWordLabel": "Focal múscailte",
+      "wakeWordPlaceholder": "m.sh., dia dhuit echo",
+      "wakeWordListening": "Ag éisteacht leis an bhfocal múscailte...",
+      "wakeWordIdle": "Gan éisteacht",
+      "state": {
+        "ready": "Réidh",
+        "listening": "Ag éisteacht...",
+        "processing": "Á phróiseáil...",
+        "speaking": "Ag labhairt...",
+        "unknown": "Anaithnid"
+      },
+      "languages": {
+        "en": "Béarla",
+        "zh": "Sínis",
+        "ja": "Seapáinis",
+        "ko": "Cóiréis",
+        "de": "Gearmáinis",
+        "fr": "Fraincis",
+        "es": "Spáinnis"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Rith-am gníomhaire saor in aisce agus foinse oscailte"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Cuardaigh sna logaí..."
+    },
+    "companion": {
+      "title": "Compánach",
+      "platforms": {
+        "web": "Gréasáin",
+        "web-user": "Úsáideoir gréasáin"
+      },
+      "ackedBy": "Deimhnithe ag",
+      "anonymous": "Gan ainm",
+      "eventHistory": "Stair imeachtaí",
+      "flow": {
+        "duration": "Fad",
+        "empty": "Níl aon sonraí sreafa ar fáil",
+        "fitView": "Oiriúnaigh an radharc",
+        "legend": "Eochair",
+        "loading": "Sreabhadh á luchtú...",
+        "nodeTypes": {
+          "llmRequest": "Iarratas LLM",
+          "message": "Teachtaireacht",
+          "securityCheck": "Seiceáil slándála",
+          "toolCall": "Glao uirlise"
+        },
+        "reset": "Athshocraigh an radharc",
+        "retry": "Bain triail eile as",
+        "status": "Stádas",
+        "time": "Am",
+        "type": "Cineál",
+        "zoomIn": "Súmáil isteach",
+        "zoomOut": "Súmáil amach"
+      },
+      "hoursAgo": "{n} uair ó shin",
+      "justNow": "Díreach anois",
+      "liveSession": "Seisiún beo",
+      "llmDetails": {
+        "completion": "Tóicain aschuir",
+        "input": "Ionchur",
+        "prompt": "Tóicain ionchuir",
+        "score": "Scór",
+        "total": "Iomlán tóicain"
+      },
+      "minutesAgo": "{n} nóiméad ó shin",
+      "nodes": {
+        "chars": "{count} carachtar",
+        "llmRequest": "Iarratas LLM",
+        "message": "Teachtaireacht",
+        "received": "Faighte",
+        "sandbox": "Bosca gainimh"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Tacaíocht",
+      "deepResearchConflict": "Coinbhleacht",
+      "deepResearchHasConflict": "Comharthaí coinbhleachta"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Tá cead Automation de dhíth chun iMessages a sheoladh. Tabhair é i System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Tá Full Disk Access de dhíth chun stair iMessage a léamh. Tabhair é i System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "Níl iMessage socraithe ar an Mac seo. Oscail an aip Messages agus sínigh isteach le d'Apple ID.",
+          "not_signed_in": "Níl tú sínithe isteach in iMessage. Oscail an aip Messages agus sínigh isteach le d'Apple ID.",
+          "unavailable_platform": "Níl iMessage ar fáil ach ar macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "Iarratas HTTP"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "m.sh., Pearsanta, Obair",
+      "widget": {
+        "pasteExample": "ainm: Seán Ó Dónaill\nríomhphost: sean{'@'}example.com\nfón: 123-456-7890",
+        "title": "Líonadh foirme",
+        "fillAll": "Líon gach réimse",
+        "fillThis": "Líon an réimse seo",
+        "undo": "Cealaigh",
+        "readClipboard": "Léigh ón ngearrthaisce",
+        "showPassword": "Taispeáin an focal faire",
+        "hidePassword": "Folaigh an focal faire",
+        "filledFields": "Líonadh {count} réimse",
+        "parsedFields": "Parsáladh {count} réimse",
+        "pasteData": "Greamaigh sonraí le líonadh",
+        "pasteDataHint": "Greamaigh péirí eochair-luach"
+      },
+      "createTemplate": "Cruthaigh teimpléad",
+      "default": "Réamhshocraithe",
+      "defaultSet": "Nuashonraíodh an teimpléad réamhshocraithe",
+      "editTemplate": "Cuir teimpléad in eagar",
+      "enterValue": "Cuir luach isteach...",
+      "fields": "Réimsí",
+      "fieldTypes": "cineálacha réimse cumraithe",
+      "patterns": "Patrúin réimse",
+      "patternsDescription": "Cabhraíonn patrúin réimse le réimsí foirme a bhrath trí eochairfhocail in ainmneacha réimsí, lipéid agus áitshealbhóirí a mheaitseáil.",
+      "setAsDefault": "Socraigh mar theimpléad réamhshocraithe",
+      "templateCreated": "Cruthaíodh an teimpléad go rathúil",
+      "templateDeleted": "Scriosadh an teimpléad go rathúil",
+      "templateName": "Ainm an teimpléid",
+      "templateUpdated": "Nuashonraíodh an teimpléad go rathúil",
+      "templates": "Teimpléid",
+      "newTemplate": "Teimpléad nua",
+      "setDefault": "Socraigh mar réamhshocrú",
+      "noTemplates": "Níl aon teimpléid ann fós. Cruthaigh ceann chun tosú.",
+      "editPatterns": "Cuir patrúin in eagar",
+      "patternsSaved": "Sábháladh na patrúin go rathúil",
+      "confirmDelete": "An bhfuil tú cinnte gur mhaith leat an teimpléad seo a scriosadh?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Líonra Ethernet",
+      "loopback": "Lúb siar",
+      "unknown": "Anaithnid",
+      "virtual": "Fíorúil"
+    },
+    "plugins": {
+      "builtin": "Ionsuite",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo nó https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Díchumasaithe",
+        "enabled": "Cumasaithe",
+        "total": "Iomlán"
+      },
+      "categories": {
+        "analytics": "Anailísíocht",
+        "communication": "Cumarsáid",
+        "development": "Forbairt",
+        "extension": "Síneadh",
+        "information": "Faisnéis",
+        "integration": "Comhtháthú",
+        "other": "Eile",
+        "productivity": "Táirgiúlacht",
+        "system": "Córas",
+        "utility": "Fóntas"
+      },
+      "title": "Breiseáin",
+      "subtitle": "Bainistigh scileanna agus uirlisí",
+      "noDescription": "Níl cur síos ar fáil",
+      "allCategories": "Gach catagóir",
+      "dropFileHere": "Scaoil an comhad anseo nó cliceáil chun brabhsáil",
+      "fileRequired": "Roghnaigh comhad",
+      "install": "Suiteáil",
+      "installFailed": "Theip ar an suiteáil",
+      "installFromUrl": "Ó URL",
+      "installing": "Ag suiteáil...",
+      "installSkillTitle": "Suiteáil scil",
+      "noMatchingTools": "Níor aimsíodh aon mhíreanna comhoiriúnacha",
+      "noTools": "Níl aon mhíreanna ar fáil",
+      "skillPackageInfo": "Ceanglais phacáiste scile",
+      "skillPackageRequirement1": "Caithfidh manifest bailí skill.json a bheith ann",
+      "skillPackageRequirement2": "Cuir san áireamh gach comhad scile riachtanach",
+      "skillUrlHint": "Cuir isteach URL stór GitHub nó nasc díreach le pacáiste scile",
+      "skillUrlLabel": "URL scile",
+      "supportedFormats": "Formáidí tacaithe",
+      "uploadFile": "Uaslódáil comhad",
+      "uploadSkill": "Suiteáil scil",
+      "urlRequired": "Cuir isteach URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Seisiún gníomhach",
+      "cancel": "Cealaigh",
+      "diagnostics": "Diagnóisic",
+      "diagnosticsTitle": "Eolas diagnóisice",
+      "disconnect": "Dícheangail",
+      "disconnectConfirmMessage": "Má tá tú ag teacht isteach tríd an tollán cianda, seans go gcaillfidh tú rochtain ar an leathanach seo.",
+      "disconnectConfirmMessageSameHost": "Tá tú ag teacht isteach tríd an tollán cianda seo faoi láthair. Má dhícheanglaíonn tú, dúnfar an leathanach seo agus caillfidh tú rochtain.",
+      "disconnectConfirmTitle": "An ndícheanglófar an ciandrochtain?",
+      "error": "Earráid",
+      "firewallException": "Eisceacht balla dóiteáin",
+      "getToken": "Faigh do chomhartha",
+      "logs": "Logaí",
+      "logsTitle": "Logaí ceangail",
+      "ngrokClaimDomain": "Éiligh do cheann",
+      "ngrokDomain": "Fearann statach",
+      "ngrokDomainHint": "Roghnach: is féidir le húsáideoirí saor in aisce fearann statach amháin a éileamh.",
+      "ngrokDomainPlaceholder": "m.sh., myapp.ngrok-free.app",
+      "noKeyRequired": "Níl socrú de dhíth",
+      "noLogs": "Níl logaí ar fáil",
+      "platform": "Ardán",
+      "provider": "Soláthraí",
+      "qrCodeError": "Níorbh fhéidir an cód QR a luchtú",
+      "recentErrors": "Earráidí le déanaí",
+      "requiresKey": "Teastaíonn comhartha fíordheimhnithe",
+      "selectProvider": "Roghnaigh soláthraí tolláin",
+      "showQRCode": "Taispeáin cód QR",
+      "status": "Stádas",
+      "troubleshootingHints": "Leideanna fabhtcheartaithe",
+      "tunnelRunning": "Tá an tollán ag rith"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "Ceart go leor (folamh)",
+        "ok-token": "Ceart go leor",
+        "failed": "Theip",
+        "ran": "Rith sé",
+        "sent": "Seoladh foláireamh",
+        "skipped": "Fágadh ar lár"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Glanadh an earráid — is féidir leat triail eile a bhaint anois",
+      "keyLabelPlaceholder": "Príomh, Cúltaca, srl.",
+      "modelIdPlaceholder": "openai, anthropic srl.",
+      "providerId": "Aitheantas an tsoláthraí",
+      "retry": "Bain triail eile as",
+      "addFailed": "Níorbh fhéidir an soláthraí a chur leis",
+      "addingProvider": "Ag cur an tsoláthraí leis...",
+      "apiKeyHint": "Ní bhíonn eochair API ag teastáil ó roinnt soláthraithe cosúil le Ollama",
+      "apiKeyOptional": "Eochair API (roghnach)",
+      "baseUrlRequired": "Cumraigh an Bonn-URL ar dtús",
+      "fetchingKeyModels": "Ag fáil na samhlacha...",
+      "getApiKey": "Faigh eochair API",
+      "ideImportLabel": "Iompórtáilte ó {ide} (síneadh Claude Code)",
+      "noAvailableModels": "Níor aimsíodh aon samhlacha ar fáil",
+      "noModelsFound": "Níor aimsíodh samhlacha — seiceáil an URL agus an eochair API",
+      "probeComplete": "Críochnaíodh an tástáil: {available}/{total} samhlacha ar fáil",
+      "probingModels": "Ag tástáil samhlacha...",
+      "providerAdded": "Cuireadh an soláthraí leis",
+      "providerAddedWithModels": "{count} samhlacha ar fáil",
+      "scanIDE": "Iompórtáil ó IDE",
+      "dragToReorder": "Tarraing chun an tosaíocht a athordú",
+      "freeTier": "Saor in aisce",
+      "location": "Suíomh",
+      "locationCloud": "Néal",
+      "locationHint": "Ritheann soláthraithe néil ar fhreastalaithe cianda, ritheann soláthraithe áitiúla ar do mheaisín",
+      "locationLocal": "Áitiúil",
+      "preferredModelsHint": "Ticeáil na samhlacha is fearr leat. Ní bheidh ach na samhlacha ticáilte ar fáil; mura bhfuil ceann ar bith ticáilte, beidh na samhlacha go léir ar fáil.",
+      "selectPreferredModels": "Roghnaigh na samhlacha is fearr leat",
+      "tabs": {
+        "oauth": "Síniú isteach OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Triail ZimaOS Blue",
+        "quotaExhaustedConversations": "Sroicheadh do theorainn comhráite trialach. Cumraigh do sholáthraí féin chun leanúint ar aghaidh.",
+        "quotaExhaustedTokens": "Tá do chuóta comharthaí trialach ídithe. Cumraigh do sholáthraí féin chun leanúint ar aghaidh.",
+        "tokensUsed": "{remaining} / {total} comhartha fágtha"
+      },
+      "usage": {
+        "estimatedCost": "Costas measta",
+        "inputTokens": "Comharthaí ionchuir",
+        "loading": "Ag luchtú úsáide...",
+        "outputTokens": "Comharthaí aschuir",
+        "requests": "Iarratais"
+      }
+    }
+  },
+  "hr-HR": {
+    "settings": {
+      "update": {
+        "applying": "Primjena ažuriranja...",
+        "confirmRestart": "Primijeni i ponovno pokreni",
+        "downloadComplete": "Preuzimanje dovršeno",
+        "downloadFailed": "Preuzimanje nije uspjelo",
+        "restarting": "Ponovno pokretanje...",
+        "serverNotResponding": "Poslužitelj se nije vratio nakon ažuriranja",
+        "waitingForServer": "Čeka se povratak poslužitelja...",
+        "autoCheck": "Automatski provjeri ažuriranja pri pokretanju",
+        "checkNow": "Provjeri sada",
+        "currentVersion": "Trenutna verzija",
+        "download": "Preuzmi",
+        "downloading": "Preuzimanje...",
+        "newVersionAvailable": "Nova verzija dostupna",
+        "title": "O aplikaciji",
+        "upToDate": "Ažurno"
+      },
+      "tab": {
+        "llm": "LLM modeli",
+        "memory": "Memorija",
+        "network": "Mreža",
+        "security": "Sigurnost",
+        "speech": "Govor",
+        "update": "Ažuriranje",
+        "userdata": "Upravljanje podacima"
+      },
+      "closeBehavior": "Ponašanje pri zatvaranju",
+      "closeBehaviorMinimize": "Minimiziraj u traku",
+      "closeBehaviorQuit": "Izađi",
+      "closeBehaviorSaved": "Ponašanje pri zatvaranju spremljeno"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Kontrola prisjećanja memorije",
+      "memoryMeta": "Prisjećanje je preskočeno u {skipped}/{total} krugova",
+      "memoryMode": "Način: {mode}",
+      "modes": {
+        "aggressive": "Agresivno",
+        "balanced": "Uravnoteženo",
+        "quality": "Kvaliteta"
+      },
+      "combined": "Predmemorija + skraćivanje + alati + usmjeravanje",
+      "estimated": "Procijenjena ušteda",
+      "costSaved": "Ušteđeni trošak",
+      "tokensSaved": "Ušteđeni tokeni",
+      "compression": "Kompresija",
+      "breakdown": "Raščlamba uštede",
+      "estCost": "Proc. trošak",
+      "noSavingsYet": "Još nema zabilježene uštede tokena",
+      "prunerLabel": "Skraćivanje konteksta",
+      "prunerMeta": "{pruned}/{total} zahtjeva skraćeno",
+      "routingLabel": "Pametno usmjeravanje",
+      "routingMeta": "{requests} zahtjeva usmjereno",
+      "toolsLabel": "Filtar alata",
+      "toolsMeta": "{skipped} alata preskočeno kroz {requests} zahtjeva"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analiza",
+        "auto_reply": "Automatski odgovor",
+        "browser": "Preglednik",
+        "calculator": "Kalkulator",
+        "calendar": "Kalendar",
+        "contacts": "Kontakti",
+        "crypto": "Kripto",
+        "datetime": "Datum i vrijeme",
+        "email": "E-pošta",
+        "file_read": "Čitanje datoteka",
+        "file_write": "Pisanje datoteka",
+        "files": "Datoteke",
+        "memory": "Memorija",
+        "network": "Mreža",
+        "news": "Vijesti",
+        "notes": "Bilješke",
+        "notifications": "Obavijesti",
+        "process": "Procesi",
+        "reminders": "Podsjetnici",
+        "sandbox": "Sandbox",
+        "scheduler": "Raspoređivač",
+        "search": "Pretraživanje",
+        "stocks": "Dionice",
+        "system_info": "Informacije o sustavu",
+        "tasks": "Zadaci",
+        "timer": "Mjerač vremena",
+        "translate": "Prevedi",
+        "ui_reviewer": "Preglednik sučelja",
+        "unit_converter": "Pretvarač jedinica",
+        "weather": "Vrijeme",
+        "web_search": "Pretraživanje weba",
+        "workflows": "Tijekovi rada",
+        "exec": "Izvršavanje naredbi",
+        "workspace_file": "Datoteka radnog prostora"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Automatska reprodukcija",
+      "checkpoint": {
+        "cancel": "Odustani",
+        "continue": "Nastavi",
+        "fallbackQuestion": "Potvrdite ovu radnju preglednika.",
+        "help": "Možete reći \"nastavi\" ili \"odustani\", ili dodirnuti gumb ispod.",
+        "title": "Potrebna je potvrda kontrolne točke preglednika"
+      },
+      "clearConversation": "Očisti razgovor",
+      "connected": "Povezano",
+      "continuous": "Neprekidno",
+      "disconnected": "Prekinuto",
+      "emptyHint": "Pritisnite i držite gumb mikrofona za govor",
+      "errors": {
+        "connectionFailed": "Povezivanje nije uspjelo",
+        "processAudioFailed": "Obrada zvuka nije uspjela",
+        "startRecordingFailed": "Pokretanje snimanja nije uspjelo",
+        "wakeWordStartFailed": "Pokretanje prepoznavanja ključne riječi nije uspjelo"
+      },
+      "title": "Glasovni asistent",
+      "settingsTitle": "Postavke",
+      "languageLabel": "Jezik",
+      "voiceLabel": "Glas",
+      "holdToSpeak": "Držite za govor",
+      "releaseToSend": "Otpustite za slanje",
+      "wakeWordTitle": "Prepoznavanje aktivacijske riječi",
+      "wakeWordEnable": "Omogući",
+      "wakeWordLabel": "Aktivacijska riječ",
+      "wakeWordPlaceholder": "npr. hej echo",
+      "wakeWordListening": "Slušanje aktivacijske riječi...",
+      "wakeWordIdle": "Ne sluša",
+      "state": {
+        "ready": "Spremno",
+        "listening": "Sluša...",
+        "processing": "Obrada...",
+        "speaking": "Govori...",
+        "unknown": "Nepoznato"
+      },
+      "languages": {
+        "en": "Engleski",
+        "zh": "Kineski",
+        "ja": "Japanski",
+        "ko": "Korejski",
+        "de": "Njemački",
+        "fr": "Francuski",
+        "es": "Španjolski"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Otvoreni i besplatni runtime agenta"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Pretraži zapise..."
+    },
+    "companion": {
+      "title": "Suputnik",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Web korisnik"
+      },
+      "ackedBy": "Potvrdio",
+      "anonymous": "Anonimno",
+      "eventHistory": "Povijest događaja",
+      "flow": {
+        "duration": "Trajanje",
+        "empty": "Nema dostupnih podataka toka",
+        "fitView": "Prilagodi prikaz",
+        "legend": "Legenda",
+        "loading": "Učitavanje toka...",
+        "nodeTypes": {
+          "llmRequest": "LLM zahtjev",
+          "message": "Poruka",
+          "securityCheck": "Sigurnosna provjera",
+          "toolCall": "Poziv alata"
+        },
+        "reset": "Resetiraj prikaz",
+        "retry": "Pokušaj ponovno",
+        "status": "Status",
+        "time": "Vrijeme",
+        "type": "Vrsta",
+        "zoomIn": "Povećaj",
+        "zoomOut": "Smanji"
+      },
+      "hoursAgo": "prije {n} sati",
+      "justNow": "Upravo sada",
+      "liveSession": "Sesija uživo",
+      "llmDetails": {
+        "completion": "Izlazni tokeni",
+        "input": "Ulaz",
+        "prompt": "Ulazni tokeni",
+        "score": "Ocjena",
+        "total": "Ukupno tokena"
+      },
+      "minutesAgo": "prije {n} min",
+      "nodes": {
+        "chars": "{count} znakova",
+        "llmRequest": "LLM zahtjev",
+        "message": "Poruka",
+        "received": "Primljeno",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Podrška",
+      "deepResearchConflict": "Sukob",
+      "deepResearchHasConflict": "Sukobljeni signali"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Za slanje iMessages poruka potrebna je dozvola Automation. Dodijelite je u System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Za čitanje povijesti iMessage poruka potreban je Full Disk Access. Dodijelite ga u System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage nije postavljen na ovom Macu. Otvorite aplikaciju Messages i prijavite se svojim Apple ID-jem.",
+          "not_signed_in": "Niste prijavljeni u iMessage. Otvorite aplikaciju Messages i prijavite se svojim Apple ID-jem.",
+          "unavailable_platform": "iMessage je dostupan samo na macOS-u."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP zahtjev"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "npr. Osobno, Posao",
+      "widget": {
+        "pasteExample": "ime: Ivan Horvat\nemail: ivan{'@'}example.com\ntelefon: 123-456-7890",
+        "title": "Ispunjavanje obrazaca",
+        "fillAll": "Ispuni sve",
+        "fillThis": "Ispuni ovo polje",
+        "undo": "Poništi",
+        "readClipboard": "Čitaj iz međuspremnika",
+        "showPassword": "Prikaži lozinku",
+        "hidePassword": "Sakrij lozinku",
+        "filledFields": "Ispunjeno je {count} polja",
+        "parsedFields": "Analizirano je {count} polja",
+        "pasteData": "Zalijepite podatke za ispunu",
+        "pasteDataHint": "Zalijepite parove ključ-vrijednost"
+      },
+      "createTemplate": "Izradi predložak",
+      "default": "Zadano",
+      "defaultSet": "Zadani predložak je ažuriran",
+      "editTemplate": "Uredi predložak",
+      "enterValue": "Unesite vrijednost...",
+      "fields": "Polja",
+      "fieldTypes": "konfigurirane vrste polja",
+      "patterns": "Uzorci polja",
+      "patternsDescription": "Uzorci polja pomažu prepoznati polja obrasca usklađivanjem ključnih riječi u nazivima polja, oznakama i tekstu rezerviranog mjesta.",
+      "setAsDefault": "Postavi kao zadani predložak",
+      "templateCreated": "Predložak je uspješno izrađen",
+      "templateDeleted": "Predložak je uspješno izbrisan",
+      "templateName": "Naziv predloška",
+      "templateUpdated": "Predložak je uspješno ažuriran",
+      "templates": "Predlošci",
+      "newTemplate": "Novi predložak",
+      "setDefault": "Postavi kao zadani",
+      "noTemplates": "Još nema predložaka. Izradite jedan za početak.",
+      "editPatterns": "Uredi uzorke",
+      "patternsSaved": "Uzorci su uspješno spremljeni",
+      "confirmDelete": "Jeste li sigurni da želite izbrisati ovaj predložak?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Ethernet mreža",
+      "loopback": "Povratna petlja",
+      "unknown": "Nepoznato",
+      "virtual": "Virtualno"
+    },
+    "plugins": {
+      "builtin": "Ugrađeno",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo ili https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Onemogućeno",
+        "enabled": "Omogućeno",
+        "total": "Ukupno"
+      },
+      "categories": {
+        "analytics": "Analitika",
+        "communication": "Komunikacija",
+        "development": "Razvoj",
+        "extension": "Proširenje",
+        "information": "Informacije",
+        "integration": "Integracija",
+        "other": "Ostalo",
+        "productivity": "Produktivnost",
+        "system": "Sustav",
+        "utility": "Uslužni program"
+      },
+      "title": "Proširenja",
+      "subtitle": "Upravljajte vještinama i alatima",
+      "noDescription": "Opis nije dostupan",
+      "allCategories": "Sve kategorije",
+      "dropFileHere": "Ispustite datoteku ovdje ili kliknite za pregledavanje",
+      "fileRequired": "Odaberite datoteku",
+      "install": "Instaliraj",
+      "installFailed": "Instalacija nije uspjela",
+      "installFromUrl": "Iz URL-a",
+      "installing": "Instaliranje...",
+      "installSkillTitle": "Instaliraj vještinu",
+      "noMatchingTools": "Nisu pronađene odgovarajuće stavke",
+      "noTools": "Nema dostupnih stavki",
+      "skillPackageInfo": "Zahtjevi paketa vještine",
+      "skillPackageRequirement1": "Mora sadržavati valjani manifest skill.json",
+      "skillPackageRequirement2": "Uključite sve potrebne datoteke vještine",
+      "skillUrlHint": "Unesite URL GitHub repozitorija ili izravnu poveznicu na paket vještine",
+      "skillUrlLabel": "URL vještine",
+      "supportedFormats": "Podržani formati",
+      "uploadFile": "Prenesi datoteku",
+      "uploadSkill": "Instaliraj vještinu",
+      "urlRequired": "Unesite URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Aktivna sesija",
+      "cancel": "Odustani",
+      "diagnostics": "Dijagnostika",
+      "diagnosticsTitle": "Informacije o dijagnostici",
+      "disconnect": "Odspoji",
+      "disconnectConfirmMessage": "Ako pristupate putem udaljenog tunela, mogli biste izgubiti pristup ovoj stranici.",
+      "disconnectConfirmMessageSameHost": "Trenutačno pristupate putem ovog udaljenog tunela. Odspajanjem će se ova stranica zatvoriti i izgubit ćete pristup.",
+      "disconnectConfirmTitle": "Odspojiti daljinski pristup?",
+      "error": "Pogreška",
+      "firewallException": "Iznimka vatrozida",
+      "getToken": "Preuzmi svoj token",
+      "loadError": "Nije moguće učitati status daljinskog pristupa",
+      "logs": "Zapisnici",
+      "logsTitle": "Zapisnici veze",
+      "ngrokClaimDomain": "Preuzmite svoj",
+      "ngrokDomain": "Statička domena",
+      "ngrokDomainHint": "Neobavezno: besplatni korisnici mogu zatražiti jednu statičku domenu.",
+      "ngrokDomainPlaceholder": "npr. myapp.ngrok-free.app",
+      "noKeyRequired": "Nije potrebno postavljanje",
+      "noLogs": "Nema dostupnih zapisnika",
+      "platform": "Platforma",
+      "provider": "Davatelj",
+      "qrCodeError": "Nije moguće učitati QR kod",
+      "recentErrors": "Nedavne pogreške",
+      "requiresKey": "Zahtijeva autentifikacijski token",
+      "selectProvider": "Odaberite pružatelja tunela",
+      "showQRCode": "Prikaži QR kod",
+      "startError": "Nije moguće pokrenuti daljinski pristup",
+      "status": "Stanje",
+      "stopError": "Nije moguće zaustaviti daljinski pristup",
+      "troubleshootingHints": "Savjeti za rješavanje problema",
+      "tunnelRunning": "Tunel je aktivan"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "U redu (prazno)",
+        "ok-token": "U redu",
+        "failed": "Neuspješno",
+        "ran": "Pokrenuto",
+        "sent": "Upozorenje poslano",
+        "skipped": "Preskočeno"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Pogreška je uklonjena — možete pokušati ponovno",
+      "keyLabelPlaceholder": "Glavni, Pričuvni, itd.",
+      "modelIdPlaceholder": "openai, anthropic itd.",
+      "providerId": "ID pružatelja",
+      "retry": "Pokušaj ponovno",
+      "addFailed": "Dodavanje pružatelja nije uspjelo",
+      "addingProvider": "Dodavanje pružatelja...",
+      "apiKeyHint": "Neki pružatelji, poput Ollame, ne trebaju API ključ",
+      "apiKeyOptional": "API ključ (neobavezno)",
+      "baseUrlRequired": "Najprije konfigurirajte osnovni URL",
+      "fetchingKeyModels": "Dohvaćanje modela...",
+      "getApiKey": "Preuzmi API ključ",
+      "ideImportLabel": "Uvezeno iz {ide} (Claude Code proširenje)",
+      "noAvailableModels": "Nisu pronađeni dostupni modeli",
+      "noModelsFound": "Nisu pronađeni modeli — provjerite URL i API ključ",
+      "probeComplete": "Provjera dovršena: dostupno {available}/{total} modela",
+      "probingModels": "Provjera modela...",
+      "providerAdded": "Pružatelj je dodan",
+      "providerAddedWithModels": "Dostupno je {count} modela",
+      "scanIDE": "Uvezi iz IDE-a",
+      "dragToReorder": "Povuci za promjenu prioriteta",
+      "freeTier": "Besplatno",
+      "location": "Lokacija",
+      "locationCloud": "Oblak",
+      "locationHint": "Pružatelji u oblaku rade na udaljenim poslužiteljima, lokalni pružatelji rade na vašem računalu",
+      "locationLocal": "Lokalno",
+      "preferredModelsHint": "Označite modele koje preferirate. Bit će dostupni samo označeni modeli; ako nijedan nije označen, bit će dostupni svi modeli.",
+      "selectPreferredModels": "Odaberite preferirane modele",
+      "tabs": {
+        "oauth": "OAuth prijava"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Probna verzija ZimaOS Blue",
+        "quotaExhaustedConversations": "Dosegli ste ograničenje probnih razgovora. Konfigurirajte vlastitog pružatelja za nastavak.",
+        "quotaExhaustedTokens": "Iscrpili ste probnu kvotu tokena. Konfigurirajte vlastitog pružatelja za nastavak.",
+        "tokensUsed": "Preostalo je {remaining} / {total} tokena"
+      },
+      "usage": {
+        "estimatedCost": "Procijenjeni trošak",
+        "inputTokens": "Ulazni tokeni",
+        "loading": "Učitavanje potrošnje...",
+        "outputTokens": "Izlazni tokeni",
+        "requests": "Zahtjevi"
+      }
+    }
+  },
+  "hu-HU": {
+    "settings": {
+      "update": {
+        "applying": "Frissítés alkalmazása...",
+        "confirmRestart": "Alkalmazás és újraindítás",
+        "downloadComplete": "Letöltés befejezve",
+        "downloadFailed": "A letöltés sikertelen",
+        "restarting": "Újraindítás...",
+        "serverNotResponding": "A kiszolgáló a frissítés után nem tért vissza",
+        "waitingForServer": "Várakozás a kiszolgáló visszatérésére...",
+        "autoCheck": "Frissítések automatikus keresése induláskor",
+        "checkNow": "Ellenőrzés most",
+        "currentVersion": "Jelenlegi verzió",
+        "download": "Letöltés",
+        "downloading": "Letöltés...",
+        "newVersionAvailable": "Új verzió érhető el",
+        "title": "Névjegy",
+        "upToDate": "Naprakész"
+      },
+      "tab": {
+        "llm": "LLM modellek",
+        "memory": "Memória",
+        "network": "Hálózat",
+        "security": "Biztonság",
+        "speech": "Beszéd",
+        "update": "Frissítés",
+        "userdata": "Adatkezelés"
+      },
+      "closeBehavior": "Bezárási viselkedés",
+      "closeBehaviorMinimize": "Kis méretre a tálcára",
+      "closeBehaviorQuit": "Kilépés",
+      "closeBehaviorSaved": "A bezárási viselkedés mentve"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Memóriafelidézés vezérlése",
+      "memoryMeta": "Az előhívás {skipped}/{total} körben kimaradt",
+      "memoryMode": "Mód: {mode}",
+      "modes": {
+        "aggressive": "Agresszív",
+        "balanced": "Kiegyensúlyozott",
+        "quality": "Minőség"
+      },
+      "combined": "Gyorsítótár + metszés + eszközök + útvonalválasztás",
+      "estimated": "Becsült megtakarítás",
+      "costSaved": "Megspórolt költség",
+      "tokensSaved": "Megspórolt tokenek",
+      "compression": "Tömörítés",
+      "breakdown": "Megtakarítás részletei",
+      "estCost": "Becsült költség",
+      "noSavingsYet": "Még nincs rögzített tokenmegtakarítás",
+      "prunerLabel": "Kontextusmetsző",
+      "prunerMeta": "{pruned}/{total} kérés megmetszve",
+      "routingLabel": "Intelligens útvonalválasztás",
+      "routingMeta": "{requests} kérés irányítva",
+      "toolsLabel": "Eszközszűrő",
+      "toolsMeta": "{skipped} eszköz kihagyva {requests} kérés során"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Elemzés",
+        "auto_reply": "Automatikus válasz",
+        "browser": "Böngésző",
+        "calculator": "Számológép",
+        "calendar": "Naptár",
+        "contacts": "Névjegyek",
+        "crypto": "Kripto",
+        "datetime": "Dátum és idő",
+        "email": "E-mail",
+        "file_read": "Fájlolvasás",
+        "file_write": "Fájlírás",
+        "files": "Fájlok",
+        "memory": "Memória",
+        "network": "Hálózat",
+        "news": "Hírek",
+        "notes": "Jegyzetek",
+        "notifications": "Értesítések",
+        "process": "Folyamatok",
+        "reminders": "Emlékeztetők",
+        "sandbox": "Homokozó",
+        "scheduler": "Ütemező",
+        "search": "Keresés",
+        "stocks": "Részvények",
+        "system_info": "Rendszerinformáció",
+        "tasks": "Feladatok",
+        "timer": "Időzítő",
+        "translate": "Fordítás",
+        "ui_reviewer": "Felületellenőrző",
+        "unit_converter": "Mértékegység-átváltó",
+        "weather": "Időjárás",
+        "web_search": "Webes keresés",
+        "workflows": "Munkafolyamatok",
+        "exec": "Parancsvégrehajtás",
+        "workspace_file": "Munkaterületfájl"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Automatikus lejátszás",
+      "checkpoint": {
+        "cancel": "Mégse",
+        "continue": "Folytatás",
+        "fallbackQuestion": "Kérjük, erősítse meg ezt a böngészőműveletet.",
+        "help": "Mondhatja, hogy \"folytatás\" vagy \"mégse\", vagy megérinthet egy gombot alább.",
+        "title": "Böngésző-ellenőrzőpont megerősítése szükséges"
+      },
+      "clearConversation": "Beszélgetés törlése",
+      "connected": "Csatlakozva",
+      "continuous": "Folyamatos",
+      "disconnected": "Leválasztva",
+      "emptyHint": "Tartsa nyomva a mikrofon gombot a beszédhez",
+      "errors": {
+        "connectionFailed": "A kapcsolat sikertelen",
+        "processAudioFailed": "Nem sikerült feldolgozni a hangot",
+        "startRecordingFailed": "Nem sikerült elindítani a felvételt",
+        "wakeWordStartFailed": "Nem sikerült elindítani az ébresztőszó-felismerést"
+      },
+      "title": "Hangsegéd",
+      "settingsTitle": "Beállítások",
+      "languageLabel": "Nyelv",
+      "voiceLabel": "Hang",
+      "holdToSpeak": "Tartsa lenyomva a beszédhez",
+      "releaseToSend": "Elengedés a küldéshez",
+      "wakeWordTitle": "Ébresztőszó-észlelés",
+      "wakeWordEnable": "Engedélyezés",
+      "wakeWordLabel": "Ébresztőszó",
+      "wakeWordPlaceholder": "pl. helló echo",
+      "wakeWordListening": "Ébresztőszóra figyelés...",
+      "wakeWordIdle": "Nem figyel",
+      "state": {
+        "ready": "Kész",
+        "listening": "Figyelés...",
+        "processing": "Feldolgozás...",
+        "speaking": "Beszél...",
+        "unknown": "Ismeretlen"
+      },
+      "languages": {
+        "en": "Angol",
+        "zh": "Kínai",
+        "ja": "Japán",
+        "ko": "Koreai",
+        "de": "Német",
+        "fr": "Francia",
+        "es": "Spanyol"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Nyílt forráskódú és ingyenes ügynök-futtatókörnyezet"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Naplók keresése..."
+    },
+    "companion": {
+      "title": "Kísérő",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Webfelhasználó"
+      },
+      "ackedBy": "Jóváhagyta",
+      "anonymous": "Névtelen",
+      "eventHistory": "Eseménytörténet",
+      "flow": {
+        "duration": "Időtartam",
+        "empty": "Nincsenek elérhető folyamatadatok",
+        "fitView": "Nézet igazítása",
+        "legend": "Jelmagyarázat",
+        "loading": "Folyamat betöltése...",
+        "nodeTypes": {
+          "llmRequest": "LLM-kérés",
+          "message": "Üzenet",
+          "securityCheck": "Biztonsági ellenőrzés",
+          "toolCall": "Eszközhívás"
+        },
+        "reset": "Nézet visszaállítása",
+        "retry": "Újrapróbálkozás",
+        "status": "Állapot",
+        "time": "Idő",
+        "type": "Típus",
+        "zoomIn": "Nagyítás",
+        "zoomOut": "Kicsinyítés"
+      },
+      "hoursAgo": "{n} órája",
+      "justNow": "Épp most",
+      "liveSession": "Élő munkamenet",
+      "llmDetails": {
+        "completion": "Kimeneti tokenek",
+        "input": "Bemenet",
+        "prompt": "Bemeneti tokenek",
+        "score": "Pontszám",
+        "total": "Összes token"
+      },
+      "minutesAgo": "{n} perce",
+      "nodes": {
+        "chars": "{count} karakter",
+        "llmRequest": "LLM-kérés",
+        "message": "Üzenet",
+        "received": "Fogadva",
+        "sandbox": "Homokozó"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Támogatás",
+      "deepResearchConflict": "Ütközés",
+      "deepResearchHasConflict": "Ellentmondó jelek"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Az iMessages üzenetek küldéséhez Automation engedély szükséges. Engedélyezze itt: System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Az iMessage-előzmények olvasásához Full Disk Access szükséges. Engedélyezze itt: System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "Az iMessage nincs beállítva ezen a Macen. Nyissa meg a Messages alkalmazást, és jelentkezzen be az Apple ID-jával.",
+          "not_signed_in": "Nincs bejelentkezve az iMessage szolgáltatásba. Nyissa meg a Messages alkalmazást, és jelentkezzen be az Apple ID-jával.",
+          "unavailable_platform": "Az iMessage csak macOS rendszeren érhető el."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP-kérés"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "pl. Személyes, Munka",
+      "widget": {
+        "pasteExample": "név: Kovács János\nemail: janos{'@'}example.com\ntelefon: 123-456-7890",
+        "title": "Űrlapkitöltő",
+        "fillAll": "Összes kitöltése",
+        "fillThis": "E mező kitöltése",
+        "undo": "Visszavonás",
+        "readClipboard": "Olvasás a vágólapról",
+        "showPassword": "Jelszó megjelenítése",
+        "hidePassword": "Jelszó elrejtése",
+        "filledFields": "{count} mező kitöltve",
+        "parsedFields": "{count} mező feldolgozva",
+        "pasteData": "Illesszen be kitöltendő adatokat",
+        "pasteDataHint": "Illesszen be kulcs-érték párokat"
+      },
+      "createTemplate": "Sablon létrehozása",
+      "default": "Alapértelmezett",
+      "defaultSet": "Az alapértelmezett sablon frissítve",
+      "editTemplate": "Sablon szerkesztése",
+      "enterValue": "Adjon meg egy értéket...",
+      "fields": "Mezők",
+      "fieldTypes": "mezőtípusok beállítva",
+      "patterns": "Mezőminták",
+      "patternsDescription": "A mezőminták segítenek felismerni az űrlapmezőket a mezőnevekben, címkékben és helyőrzőkben található kulcsszavak egyeztetésével.",
+      "setAsDefault": "Beállítás alapértelmezett sablonként",
+      "templateCreated": "A sablon sikeresen létrejött",
+      "templateDeleted": "A sablon sikeresen törölve",
+      "templateName": "Sablon neve",
+      "templateUpdated": "A sablon sikeresen frissítve",
+      "templates": "Sablonok",
+      "newTemplate": "Új sablon",
+      "setDefault": "Beállítás alapértelmezettként",
+      "noTemplates": "Még nincsenek sablonok. Hozzon létre egyet a kezdéshez.",
+      "editPatterns": "Minták szerkesztése",
+      "patternsSaved": "A minták sikeresen mentve",
+      "confirmDelete": "Biztosan törli ezt a sablont?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Ethernet hálózat",
+      "loopback": "Visszacsatoló",
+      "unknown": "Ismeretlen",
+      "virtual": "Virtuális"
+    },
+    "plugins": {
+      "builtin": "Beépített",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo vagy https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Letiltva",
+        "enabled": "Engedélyezve",
+        "total": "Összesen"
+      },
+      "categories": {
+        "analytics": "Analitika",
+        "communication": "Kommunikáció",
+        "development": "Fejlesztés",
+        "extension": "Bővítmény",
+        "information": "Információ",
+        "integration": "Integráció",
+        "other": "Egyéb",
+        "productivity": "Produktivitás",
+        "system": "Rendszer",
+        "utility": "Segédprogram"
+      },
+      "title": "Bővítmények",
+      "subtitle": "Készségek és eszközök kezelése",
+      "noDescription": "Nem áll rendelkezésre leírás",
+      "allCategories": "Összes kategória",
+      "dropFileHere": "Húzza ide a fájlt, vagy kattintson a tallózáshoz",
+      "fileRequired": "Válasszon egy fájlt",
+      "install": "Telepítés",
+      "installFailed": "A telepítés sikertelen",
+      "installFromUrl": "URL-ből",
+      "installing": "Telepítés...",
+      "installSkillTitle": "Készség telepítése",
+      "noMatchingTools": "Nincs találat",
+      "noTools": "Nincsenek elérhető elemek",
+      "skillPackageInfo": "Készségcsomag követelményei",
+      "skillPackageRequirement1": "Érvényes skill.json jegyzéket kell tartalmaznia",
+      "skillPackageRequirement2": "Tartalmazza az összes szükséges készségfájlt",
+      "skillUrlHint": "Adjon meg egy GitHub-tár URL-t vagy közvetlen hivatkozást egy készségcsomagra",
+      "skillUrlLabel": "Készség URL",
+      "supportedFormats": "Támogatott formátumok",
+      "uploadFile": "Fájl feltöltése",
+      "uploadSkill": "Készség telepítése",
+      "urlRequired": "Adjon meg egy URL-t"
+    },
+    "remoteAccess": {
+      "activeSession": "Aktív munkamenet",
+      "cancel": "Mégse",
+      "diagnostics": "Diagnosztika",
+      "diagnosticsTitle": "Diagnosztikai információk",
+      "disconnect": "Kapcsolat bontása",
+      "disconnectConfirmMessage": "Ha távoli alagúton keresztül éri el, elveszítheti az oldalhoz való hozzáférést.",
+      "disconnectConfirmMessageSameHost": "Jelenleg ezen a távoli alagúton keresztül éri el. Ha bontja a kapcsolatot, ez az oldal bezárul, és elveszíti a hozzáférést.",
+      "disconnectConfirmTitle": "Leválasztja a távoli hozzáférést?",
+      "error": "Hiba",
+      "firewallException": "Tűzfal-kivétel",
+      "getToken": "Szerezze be a tokenjét",
+      "logs": "Naplók",
+      "logsTitle": "Kapcsolati naplók",
+      "ngrokClaimDomain": "Igényelje a sajátját",
+      "ngrokDomain": "Statikus tartomány",
+      "ngrokDomainHint": "Opcionális: az ingyenes felhasználók igényelhetnek egy statikus tartományt.",
+      "ngrokDomainPlaceholder": "pl. myapp.ngrok-free.app",
+      "noKeyRequired": "Nincs szükség beállításra",
+      "noLogs": "Nincsenek elérhető naplók",
+      "platform": "Platform típusa",
+      "provider": "Szolgáltató",
+      "qrCodeError": "Nem sikerült betölteni a QR-kódot",
+      "recentErrors": "Legutóbbi hibák",
+      "requiresKey": "Hitelesítési token szükséges",
+      "selectProvider": "Válasszon alagútszolgáltatót",
+      "showQRCode": "QR-kód megjelenítése",
+      "status": "Állapot",
+      "troubleshootingHints": "Hibaelhárítási tippek",
+      "tunnelRunning": "Az alagút fut"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "Rendben (üres)",
+        "ok-token": "Rendben",
+        "failed": "Sikertelen",
+        "ran": "Lefutott",
+        "sent": "Riasztás elküldve",
+        "skipped": "Kihagyva"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "A hiba törölve — újra próbálkozhat",
+      "keyLabelPlaceholder": "Elsődleges, Tartalék stb.",
+      "modelIdPlaceholder": "openai, anthropic stb.",
+      "providerId": "Szolgáltatóazonosító",
+      "retry": "Próbálja újra",
+      "addFailed": "Nem sikerült hozzáadni a szolgáltatót",
+      "addingProvider": "Szolgáltató hozzáadása...",
+      "apiKeyHint": "Néhány szolgáltatónak, például az Ollamának, nincs szüksége API-kulcsra",
+      "apiKeyOptional": "API-kulcs (opcionális)",
+      "baseUrlRequired": "Először állítsa be az alap URL-t",
+      "fetchingKeyModels": "Modellek lekérése...",
+      "getApiKey": "API-kulcs beszerzése",
+      "ideImportLabel": "Importálva innen: {ide} (Claude Code bővítmény)",
+      "noAvailableModels": "Nem találhatók elérhető modellek",
+      "noModelsFound": "Nem találhatók modellek — ellenőrizze az URL-t és az API-kulcsot",
+      "probeComplete": "A vizsgálat befejeződött: {available}/{total} modell érhető el",
+      "probingModels": "Modellek vizsgálata...",
+      "providerAdded": "Szolgáltató hozzáadva",
+      "providerAddedWithModels": "{count} modell érhető el",
+      "scanIDE": "Importálás IDE-ből",
+      "dragToReorder": "Húzással rendezheti át a prioritást",
+      "freeTier": "Ingyenes",
+      "location": "Hely",
+      "locationCloud": "Felhő",
+      "locationHint": "A felhőszolgáltatók távoli szervereken futnak, a helyi szolgáltatók pedig az Ön gépén",
+      "locationLocal": "Helyi",
+      "preferredModelsHint": "Jelölje be a kívánt modelleket. Csak a bejelölt modellek lesznek elérhetők; ha egyik sincs bejelölve, minden modell elérhető lesz.",
+      "selectPreferredModels": "Előnyben részesített modellek kiválasztása",
+      "tabs": {
+        "oauth": "OAuth bejelentkezés"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "ZimaOS Blue próba",
+        "quotaExhaustedConversations": "Elérte a próbabeszélgetések korlátját. A folytatáshoz állítsa be saját szolgáltatóját.",
+        "quotaExhaustedTokens": "A próba tokenkerete elfogyott. A folytatáshoz állítsa be saját szolgáltatóját.",
+        "tokensUsed": "{remaining} / {total} token maradt"
+      },
+      "usage": {
+        "estimatedCost": "Becsült költség",
+        "inputTokens": "Bemeneti tokenek",
+        "loading": "Használat betöltése...",
+        "outputTokens": "Kimeneti tokenek",
+        "requests": "Kérések"
+      }
+    }
+  },
+  "it-IT": {
+    "settings": {
+      "update": {
+        "applying": "Applicazione aggiornamento...",
+        "confirmRestart": "Applica e riavvia",
+        "downloadComplete": "Download completato",
+        "downloadFailed": "Download non riuscito",
+        "restarting": "Riavvio...",
+        "serverNotResponding": "Il server non è tornato dopo l'aggiornamento",
+        "waitingForServer": "In attesa del ritorno del server...",
+        "autoCheck": "Controlla automaticamente gli aggiornamenti all’avvio",
+        "checkNow": "Controlla ora",
+        "currentVersion": "Versione attuale",
+        "download": "Scarica",
+        "downloading": "Download in corso...",
+        "newVersionAvailable": "Nuova versione disponibile",
+        "title": "Informazioni",
+        "upToDate": "Aggiornato"
+      },
+      "tab": {
+        "llm": "Modelli LLM",
+        "memory": "Memoria",
+        "network": "Rete",
+        "security": "Sicurezza",
+        "speech": "Voce",
+        "update": "Aggiornamento",
+        "userdata": "Gestione dati"
+      },
+      "closeBehavior": "Comportamento alla chiusura",
+      "closeBehaviorMinimize": "Riduci nell'area di notifica",
+      "closeBehaviorQuit": "Esci",
+      "closeBehaviorSaved": "Comportamento alla chiusura salvato"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Controllo richiamo memoria",
+      "memoryMeta": "Richiamo saltato in {skipped}/{total} turni",
+      "memoryMode": "Modalità: {mode}",
+      "modes": {
+        "aggressive": "Aggressiva",
+        "balanced": "Bilanciata",
+        "quality": "Qualità"
+      },
+      "combined": "Cache + potatura + strumenti + instradamento",
+      "estimated": "Risparmio stimato",
+      "costSaved": "Costo risparmiato",
+      "tokensSaved": "Token risparmiati",
+      "compression": "Compressione",
+      "breakdown": "Dettaglio del risparmio",
+      "estCost": "Costo stimato",
+      "noSavingsYet": "Nessun risparmio di token registrato finora",
+      "prunerLabel": "Potatore del contesto",
+      "prunerMeta": "{pruned}/{total} richieste potate",
+      "routingLabel": "Instradamento intelligente",
+      "routingMeta": "{requests} richieste instradate",
+      "toolsLabel": "Filtro strumenti",
+      "toolsMeta": "{skipped} strumenti saltati su {requests} richieste"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analisi",
+        "auto_reply": "Risposta automatica",
+        "browser": "Browser",
+        "calculator": "Calcolatrice",
+        "calendar": "Calendario",
+        "contacts": "Contatti",
+        "crypto": "Crypto",
+        "datetime": "Data e ora",
+        "email": "Email",
+        "file_read": "Lettura file",
+        "file_write": "Scrittura file",
+        "files": "File",
+        "memory": "Memoria",
+        "network": "Rete",
+        "news": "Notizie",
+        "notes": "Note",
+        "notifications": "Notifiche",
+        "process": "Processi",
+        "reminders": "Promemoria",
+        "sandbox": "Sandbox",
+        "scheduler": "Pianificatore",
+        "search": "Ricerca",
+        "stocks": "Azioni",
+        "system_info": "Informazioni di sistema",
+        "tasks": "Attività",
+        "timer": "Timer",
+        "translate": "Traduci",
+        "ui_reviewer": "Revisore interfaccia",
+        "unit_converter": "Convertitore unità",
+        "weather": "Meteo",
+        "web_search": "Ricerca web",
+        "workflows": "Flussi di lavoro",
+        "exec": "Esecuzione comandi",
+        "workspace_file": "File area di lavoro"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Riproduzione automatica",
+      "checkpoint": {
+        "cancel": "Annulla",
+        "continue": "Continua",
+        "fallbackQuestion": "Conferma questa azione del browser.",
+        "help": "Puoi dire \"continua\" o \"annulla\", oppure toccare un pulsante qui sotto.",
+        "title": "È richiesta la conferma del checkpoint del browser"
+      },
+      "clearConversation": "Cancella conversazione",
+      "connected": "Connesso",
+      "continuous": "Continuo",
+      "disconnected": "Disconnesso",
+      "emptyHint": "Tieni premuto il pulsante del microfono per parlare",
+      "errors": {
+        "connectionFailed": "Connessione non riuscita",
+        "processAudioFailed": "Impossibile elaborare l'audio",
+        "startRecordingFailed": "Impossibile avviare la registrazione",
+        "wakeWordStartFailed": "Impossibile avviare il rilevamento della parola di attivazione"
+      },
+      "title": "Assistente vocale",
+      "settingsTitle": "Impostazioni",
+      "languageLabel": "Lingua",
+      "voiceLabel": "Voce",
+      "holdToSpeak": "Tieni premuto per parlare",
+      "releaseToSend": "Rilascia per inviare",
+      "wakeWordTitle": "Rilevamento parola di attivazione",
+      "wakeWordEnable": "Abilita",
+      "wakeWordLabel": "Parola di attivazione",
+      "wakeWordPlaceholder": "es. ciao echo",
+      "wakeWordListening": "In ascolto della parola di attivazione...",
+      "wakeWordIdle": "Non in ascolto",
+      "state": {
+        "ready": "Pronto",
+        "listening": "In ascolto...",
+        "processing": "Elaborazione...",
+        "speaking": "Parla...",
+        "unknown": "Sconosciuto"
+      },
+      "languages": {
+        "en": "Inglese",
+        "zh": "Cinese",
+        "ja": "Giapponese",
+        "ko": "Coreano",
+        "de": "Tedesco",
+        "fr": "Francese",
+        "es": "Spagnolo"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Runtime agente libero e open source"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Cerca nei log..."
+    },
+    "companion": {
+      "title": "Compagno",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Utente web"
+      },
+      "ackedBy": "Confermato da",
+      "anonymous": "Anonimo",
+      "eventHistory": "Cronologia eventi",
+      "flow": {
+        "duration": "Durata",
+        "empty": "Nessun dato di flusso disponibile",
+        "fitView": "Adatta vista",
+        "legend": "Legenda",
+        "loading": "Caricamento flusso...",
+        "nodeTypes": {
+          "llmRequest": "Richiesta LLM",
+          "message": "Messaggio",
+          "securityCheck": "Controllo di sicurezza",
+          "toolCall": "Chiamata strumento"
+        },
+        "reset": "Reimposta vista",
+        "retry": "Riprova",
+        "status": "Stato",
+        "time": "Ora",
+        "type": "Tipo",
+        "zoomIn": "Ingrandisci",
+        "zoomOut": "Riduci"
+      },
+      "hoursAgo": "{n} ore fa",
+      "justNow": "Proprio ora",
+      "liveSession": "Sessione live",
+      "llmDetails": {
+        "completion": "Token di output",
+        "input": "Input",
+        "prompt": "Token di input",
+        "score": "Punteggio",
+        "total": "Token totali"
+      },
+      "minutesAgo": "{n} min fa",
+      "nodes": {
+        "chars": "{count} caratteri",
+        "llmRequest": "Richiesta LLM",
+        "message": "Messaggio",
+        "received": "Ricevuto",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Supporto",
+      "deepResearchConflict": "Conflitto",
+      "deepResearchHasConflict": "Segnali in conflitto"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Per inviare iMessages è richiesta l'autorizzazione Automation. Concedila in System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Per leggere la cronologia di iMessage è richiesto Full Disk Access. Concedilo in System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage non è configurato su questo Mac. Apri l'app Messages e accedi con il tuo Apple ID.",
+          "not_signed_in": "iMessage non è collegato a un account. Apri l'app Messages e accedi con il tuo Apple ID.",
+          "unavailable_platform": "iMessage è disponibile solo su macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "Richiesta HTTP"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "es. Personale, Lavoro",
+      "widget": {
+        "pasteExample": "nome: Mario Rossi\nemail: mario{'@'}example.com\ntelefono: 123-456-7890",
+        "filledFields": "Compilati {count} campi",
+        "parsedFields": "Analizzati {count} campi",
+        "pasteData": "Incolla i dati da compilare",
+        "pasteDataHint": "Incolla coppie chiave-valore",
+        "title": "Compilazione moduli",
+        "fillAll": "Compila tutto",
+        "fillThis": "Compila questo campo",
+        "undo": "Annulla",
+        "readClipboard": "Leggi dagli appunti",
+        "showPassword": "Mostra password",
+        "hidePassword": "Nascondi password"
+      },
+      "createTemplate": "Crea modello",
+      "default": "Predefinito",
+      "defaultSet": "Modello predefinito aggiornato",
+      "editTemplate": "Modifica modello",
+      "enterValue": "Inserisci un valore...",
+      "fields": "Campi",
+      "fieldTypes": "tipi di campo configurati",
+      "patterns": "Schemi di campo",
+      "patternsDescription": "Gli schemi di campo aiutano a rilevare i campi del modulo confrontando parole chiave nei nomi dei campi, nelle etichette e nei segnaposto.",
+      "setAsDefault": "Imposta come modello predefinito",
+      "templateCreated": "Modello creato con successo",
+      "templateDeleted": "Modello eliminato con successo",
+      "templateName": "Nome del modello",
+      "templateUpdated": "Modello aggiornato con successo",
+      "templates": "Modelli",
+      "newTemplate": "Nuovo modello",
+      "setDefault": "Imposta come predefinito",
+      "noTemplates": "Non ci sono ancora modelli. Creane uno per iniziare.",
+      "editPatterns": "Modifica schemi",
+      "patternsSaved": "Schemi salvati con successo",
+      "confirmDelete": "Sei sicuro di voler eliminare questo modello?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Rete Ethernet",
+      "loopback": "Anello locale",
+      "unknown": "Sconosciuto",
+      "virtual": "Virtuale"
+    },
+    "plugins": {
+      "builtin": "Integrato",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo oppure https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Disabilitato",
+        "enabled": "Abilitato",
+        "total": "Totale"
+      },
+      "categories": {
+        "analytics": "Analisi",
+        "communication": "Comunicazione",
+        "development": "Sviluppo",
+        "extension": "Estensione",
+        "information": "Informazioni",
+        "integration": "Integrazione",
+        "other": "Altro",
+        "productivity": "Produttività",
+        "system": "Sistema",
+        "utility": "Utilità"
+      },
+      "allCategories": "Tutte le categorie",
+      "dropFileHere": "Trascina qui il file oppure fai clic per sfogliare",
+      "fileRequired": "Seleziona un file",
+      "install": "Installa",
+      "installFailed": "Installazione non riuscita",
+      "installFromUrl": "Da URL",
+      "installing": "Installazione...",
+      "installSkillTitle": "Installa competenza",
+      "noMatchingTools": "Nessun elemento corrispondente trovato",
+      "noTools": "Nessun elemento disponibile",
+      "skillPackageInfo": "Requisiti del pacchetto competenza",
+      "skillPackageRequirement1": "Deve contenere un manifest skill.json valido",
+      "skillPackageRequirement2": "Includi tutti i file di competenza richiesti",
+      "skillUrlHint": "Inserisci l'URL di un repository GitHub o un collegamento diretto a un pacchetto di competenze",
+      "skillUrlLabel": "URL della competenza",
+      "supportedFormats": "Formati supportati",
+      "uploadFile": "Carica file",
+      "uploadSkill": "Installa competenza",
+      "urlRequired": "Inserisci un URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Sessione attiva",
+      "cancel": "Annulla",
+      "diagnostics": "Diagnostica",
+      "diagnosticsTitle": "Informazioni diagnostiche",
+      "disconnect": "Disconnetti",
+      "disconnectConfirmMessage": "Se stai accedendo tramite il tunnel remoto, potresti perdere l'accesso a questa pagina.",
+      "disconnectConfirmMessageSameHost": "Stai accedendo tramite questo tunnel remoto. Disconnettendoti, questa pagina si chiuderà e perderai l'accesso.",
+      "disconnectConfirmTitle": "Disconnettere l'accesso remoto?",
+      "error": "Errore",
+      "firewallException": "Eccezione firewall",
+      "getToken": "Ottieni il tuo token",
+      "logs": "Registri",
+      "logsTitle": "Registri di connessione",
+      "ngrokClaimDomain": "Richiedi il tuo",
+      "ngrokDomain": "Dominio statico",
+      "ngrokDomainHint": "Facoltativo: gli utenti gratuiti possono richiedere un dominio statico.",
+      "ngrokDomainPlaceholder": "es., myapp.ngrok-free.app",
+      "noKeyRequired": "Nessuna configurazione richiesta",
+      "noLogs": "Nessun registro disponibile",
+      "platform": "Piattaforma",
+      "provider": "Fornitore",
+      "qrCodeError": "Impossibile caricare il codice QR",
+      "recentErrors": "Errori recenti",
+      "requiresKey": "Richiede token di autenticazione",
+      "selectProvider": "Seleziona provider del tunnel",
+      "showQRCode": "Mostra codice QR",
+      "status": "Stato",
+      "troubleshootingHints": "Suggerimenti per la risoluzione dei problemi",
+      "tunnelRunning": "Tunnel in esecuzione"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "A posto (vuoto)",
+        "ok-token": "A posto",
+        "failed": "Fallito",
+        "ran": "Eseguito",
+        "sent": "Avviso inviato",
+        "skipped": "Saltato"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Errore cancellato — puoi riprovare",
+      "keyLabelPlaceholder": "Principale, Backup, ecc.",
+      "modelIdPlaceholder": "openai, anthropic, ecc.",
+      "providerId": "ID provider",
+      "retry": "Riprova",
+      "addFailed": "Impossibile aggiungere il provider",
+      "addingProvider": "Aggiunta provider...",
+      "apiKeyHint": "Alcuni provider come Ollama non richiedono una chiave API",
+      "apiKeyOptional": "Chiave API (opzionale)",
+      "baseUrlRequired": "Configura prima l'URL di base",
+      "fetchingKeyModels": "Recupero modelli...",
+      "getApiKey": "Ottieni chiave API",
+      "ideImportLabel": "Importato da {ide} (estensione Claude Code)",
+      "noAvailableModels": "Nessun modello disponibile trovato",
+      "noModelsFound": "Nessun modello trovato — controlla URL e chiave API",
+      "probeComplete": "Controllo completato: {available}/{total} modelli disponibili",
+      "probingModels": "Controllo modelli...",
+      "providerAdded": "Provider aggiunto",
+      "providerAddedWithModels": "{count} modelli disponibili",
+      "scanIDE": "Importa da IDE",
+      "dragToReorder": "Trascina per riordinare la priorità",
+      "freeTier": "Gratis",
+      "location": "Posizione",
+      "locationCloud": "Nel cloud",
+      "locationHint": "I provider cloud vengono eseguiti su server remoti, i provider locali sul tuo computer",
+      "locationLocal": "Locale",
+      "preferredModelsHint": "Seleziona i modelli che preferisci. Saranno disponibili solo i modelli selezionati; se non ne selezioni nessuno, saranno disponibili tutti i modelli.",
+      "selectPreferredModels": "Seleziona i modelli preferiti",
+      "tabs": {
+        "oauth": "Accesso OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Prova di ZimaOS Blue",
+        "quotaExhaustedConversations": "Hai raggiunto il limite di conversazioni di prova. Configura il tuo provider per continuare.",
+        "quotaExhaustedTokens": "Hai esaurito la quota di token di prova. Configura il tuo provider per continuare.",
+        "tokensUsed": "{remaining} / {total} token rimanenti"
+      },
+      "usage": {
+        "estimatedCost": "Costo stimato",
+        "inputTokens": "Token di input",
+        "loading": "Caricamento utilizzo...",
+        "outputTokens": "Token di output",
+        "requests": "Richieste"
+      }
+    }
+  },
+  "ja-JP": {
+    "settings": {
+      "update": {
+        "applying": "更新を適用中...",
+        "confirmRestart": "適用して再起動",
+        "downloadComplete": "ダウンロード完了",
+        "downloadFailed": "ダウンロードに失敗しました",
+        "restarting": "再起動中...",
+        "serverNotResponding": "更新後にサーバーが復帰しませんでした",
+        "waitingForServer": "サーバーの復帰を待機しています...",
+        "autoCheck": "起動時に更新を自動確認",
+        "checkNow": "今すぐ確認",
+        "currentVersion": "現在のバージョン",
+        "download": "ダウンロード",
+        "downloading": "ダウンロード中...",
+        "newVersionAvailable": "新しいバージョンがあります",
+        "title": "情報",
+        "upToDate": "最新です"
+      },
+      "tab": {
+        "llm": "LLMモデル"
+      }
+    },
+    "tokenEconomy": {
+      "memoryLabel": "メモリ想起ゲート",
+      "memoryMeta": "{skipped}/{total} ターンで想起をスキップ",
+      "memoryMode": "モード: {mode}",
+      "modes": {
+        "aggressive": "積極的",
+        "balanced": "バランス",
+        "quality": "高品質"
+      },
+      "combined": "キャッシュ + 削減 + ツール + ルーティング",
+      "estimated": "推定削減量",
+      "costSaved": "節約コスト",
+      "tokensSaved": "削減トークン",
+      "compression": "圧縮率",
+      "breakdown": "削減の内訳",
+      "estCost": "推定コスト",
+      "noSavingsYet": "まだトークン削減は記録されていません",
+      "prunerLabel": "コンテキスト削減",
+      "prunerMeta": "{pruned}/{total} 件のリクエストを削減",
+      "routingLabel": "スマートルーティング",
+      "routingMeta": "{requests} 件のリクエストをルーティング",
+      "toolsLabel": "ツールフィルター",
+      "toolsMeta": "{requests} 件のリクエストで {skipped} 個のツールをスキップ"
+    },
+    "tools": {
+      "names": {
+        "analyze": "分析",
+        "auto_reply": "自動返信",
+        "browser": "ブラウザー",
+        "calculator": "電卓",
+        "calendar": "カレンダー",
+        "contacts": "連絡先",
+        "crypto": "暗号資産",
+        "datetime": "日付と時刻",
+        "email": "メール",
+        "file_read": "ファイル読み取り",
+        "file_write": "ファイル書き込み",
+        "files": "ファイル",
+        "memory": "メモリ",
+        "network": "ネットワーク",
+        "news": "ニュース",
+        "notes": "メモ",
+        "notifications": "通知",
+        "process": "プロセス",
+        "reminders": "リマインダー",
+        "sandbox": "サンドボックス",
+        "scheduler": "スケジューラー",
+        "search": "検索",
+        "stocks": "株式",
+        "system_info": "システム情報",
+        "tasks": "タスク",
+        "timer": "タイマー",
+        "translate": "翻訳",
+        "ui_reviewer": "UIレビュー",
+        "unit_converter": "単位変換",
+        "weather": "天気",
+        "web_search": "ウェブ検索",
+        "workflows": "ワークフロー",
+        "exec": "コマンド実行",
+        "workspace_file": "ワークスペースファイル"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "自動再生",
+      "checkpoint": {
+        "cancel": "キャンセル",
+        "continue": "続行",
+        "fallbackQuestion": "このブラウザー操作を確認してください。",
+        "help": "\"続行\" または \"キャンセル\" と言うか、下のボタンをタップしてください。",
+        "title": "ブラウザーのチェックポイント確認が必要です"
+      },
+      "clearConversation": "会話をクリア",
+      "connected": "接続済み",
+      "continuous": "連続",
+      "disconnected": "未接続",
+      "emptyHint": "話すにはマイクボタンを長押ししてください",
+      "errors": {
+        "connectionFailed": "接続に失敗しました",
+        "processAudioFailed": "音声の処理に失敗しました",
+        "startRecordingFailed": "録音を開始できませんでした",
+        "wakeWordStartFailed": "ウェイクワード検出を開始できませんでした"
+      },
+      "title": "音声アシスタント",
+      "settingsTitle": "設定",
+      "languageLabel": "言語",
+      "voiceLabel": "音声",
+      "holdToSpeak": "押して話す",
+      "releaseToSend": "離して送信",
+      "wakeWordTitle": "ウェイクワード検出",
+      "wakeWordEnable": "有効化",
+      "wakeWordLabel": "ウェイクワード",
+      "wakeWordPlaceholder": "例: hey echo",
+      "wakeWordListening": "ウェイクワードを待機中...",
+      "wakeWordIdle": "待機していません",
+      "state": {
+        "ready": "準備完了",
+        "listening": "聞き取り中...",
+        "processing": "処理中...",
+        "speaking": "発話中...",
+        "unknown": "不明"
+      },
+      "languages": {
+        "en": "英語",
+        "zh": "中国語",
+        "ja": "日本語",
+        "ko": "韓国語",
+        "de": "ドイツ語",
+        "fr": "フランス語",
+        "es": "スペイン語"
+      }
+    },
+    "brand": {
+      "githubTooltip": "オープンソースで無料のエージェント実行環境"
+    },
+    "companion": {
+      "title": "コンパニオン",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Web ユーザー"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "支持",
+      "deepResearchConflict": "競合",
+      "deepResearchHasConflict": "矛盾するシグナル"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "iMessages を送信するには Automation の許可が必要です。System Settings > Privacy & Security > Automation で許可してください。",
+          "full_disk_access": "iMessage の履歴を読むには Full Disk Access が必要です。System Settings > Privacy & Security > Full Disk Access で許可してください。",
+          "not_set_up": "この Mac では iMessage が設定されていません。Messages アプリを開き、Apple ID でサインインしてください。",
+          "not_signed_in": "iMessage にサインインしていません。Messages アプリを開き、Apple ID でサインインしてください。",
+          "unavailable_platform": "iMessage は macOS でのみ利用できます。"
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP リクエスト"
+      }
+    },
+    "formFiller": {
+      "widget": {
+        "pasteExample": "名前: 山田 太郎\nメール: taro{'@'}example.com\n電話: 123-456-7890"
+      }
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "イーサネット",
+      "loopback": "ループバック",
+      "unknown": "不明",
+      "virtual": "仮想"
+    },
+    "plugins": {
+      "builtin": "組み込み",
+      "stats": {
+        "disabled": "無効",
+        "enabled": "有効",
+        "total": "合計"
+      },
+      "categories": {
+        "analytics": "分析",
+        "communication": "コミュニケーション",
+        "development": "開発",
+        "extension": "拡張",
+        "information": "情報",
+        "integration": "統合",
+        "other": "その他",
+        "productivity": "生産性",
+        "system": "システム",
+        "utility": "ユーティリティ"
+      }
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "正常（空）",
+        "ok-token": "正常"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "エラーがクリアされました。もう一度お試しください",
+      "providerId": "プロバイダーID",
+      "retry": "再試行",
+      "tabs": {
+        "oauth": "OAuth認証"
+      },
+      "topP": "Top-P"
+    }
+  },
+  "ko-KR": {
+    "settings": {
+      "update": {
+        "applying": "업데이트 적용 중...",
+        "confirmRestart": "적용 후 재시작",
+        "downloadComplete": "다운로드 완료",
+        "downloadFailed": "다운로드 실패",
+        "restarting": "재시작 중...",
+        "serverNotResponding": "업데이트 후 서버가 다시 올라오지 않았습니다",
+        "waitingForServer": "서버가 다시 올라오기를 기다리는 중...",
+        "autoCheck": "시작 시 업데이트 자동 확인",
+        "checkNow": "지금 확인",
+        "currentVersion": "현재 버전",
+        "download": "다운로드",
+        "downloading": "다운로드 중...",
+        "newVersionAvailable": "새 버전 사용 가능",
+        "title": "정보",
+        "upToDate": "최신 상태"
+      },
+      "tab": {
+        "llm": "LLM 모델",
+        "memory": "메모리",
+        "network": "네트워크",
+        "security": "보안",
+        "speech": "음성",
+        "update": "업데이트",
+        "userdata": "데이터 관리"
+      },
+      "closeBehavior": "닫기 동작",
+      "closeBehaviorMinimize": "트레이로 최소화",
+      "closeBehaviorQuit": "종료",
+      "closeBehaviorSaved": "닫기 동작이 저장되었습니다"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "메모리 회상 게이트",
+      "memoryMeta": "{skipped}/{total}턴에서 회상을 건너뜀",
+      "memoryMode": "모드: {mode}",
+      "modes": {
+        "aggressive": "공격적",
+        "balanced": "균형",
+        "quality": "품질"
+      },
+      "combined": "캐시 + 정리 + 도구 + 라우팅",
+      "estimated": "예상 절감량",
+      "costSaved": "절감 비용",
+      "tokensSaved": "절감 토큰",
+      "compression": "압축률",
+      "breakdown": "절감 내역",
+      "estCost": "예상 비용",
+      "noSavingsYet": "아직 기록된 토큰 절감이 없습니다",
+      "prunerLabel": "컨텍스트 정리",
+      "prunerMeta": "{pruned}/{total}개 요청 정리됨",
+      "routingLabel": "스마트 라우팅",
+      "routingMeta": "{requests}개 요청 라우팅됨",
+      "toolsLabel": "도구 필터",
+      "toolsMeta": "{requests}개 요청에서 {skipped}개 도구 건너뜀"
+    },
+    "tools": {
+      "names": {
+        "analyze": "분석",
+        "auto_reply": "자동 응답",
+        "browser": "브라우저",
+        "calculator": "계산기",
+        "calendar": "캘린더",
+        "contacts": "연락처",
+        "crypto": "크립토",
+        "datetime": "날짜 및 시간",
+        "email": "이메일",
+        "file_read": "파일 읽기",
+        "file_write": "파일 쓰기",
+        "files": "파일",
+        "memory": "메모리",
+        "network": "네트워크",
+        "news": "뉴스",
+        "notes": "노트",
+        "notifications": "알림",
+        "process": "프로세스",
+        "reminders": "미리 알림",
+        "sandbox": "샌드박스",
+        "scheduler": "스케줄러",
+        "search": "검색",
+        "stocks": "주식",
+        "system_info": "시스템 정보",
+        "tasks": "작업",
+        "timer": "타이머",
+        "translate": "번역",
+        "ui_reviewer": "UI 리뷰어",
+        "unit_converter": "단위 변환기",
+        "weather": "날씨",
+        "web_search": "웹 검색",
+        "workflows": "워크플로우",
+        "exec": "명령 실행",
+        "workspace_file": "워크스페이스 파일"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "자동 재생",
+      "checkpoint": {
+        "cancel": "취소",
+        "continue": "계속",
+        "fallbackQuestion": "이 브라우저 작업을 확인해 주세요.",
+        "help": "\"계속\" 또는 \"취소\"라고 말하거나 아래 버튼을 누르세요.",
+        "title": "브라우저 체크포인트 확인이 필요합니다"
+      },
+      "clearConversation": "대화 지우기",
+      "connected": "연결됨",
+      "continuous": "연속",
+      "disconnected": "연결 끊김",
+      "emptyHint": "말하려면 마이크 버튼을 길게 누르세요",
+      "errors": {
+        "connectionFailed": "연결에 실패했습니다",
+        "processAudioFailed": "오디오 처리에 실패했습니다",
+        "startRecordingFailed": "녹음을 시작하지 못했습니다",
+        "wakeWordStartFailed": "웨이크 워드 감지를 시작하지 못했습니다"
+      },
+      "title": "음성 도우미",
+      "settingsTitle": "설정",
+      "languageLabel": "언어",
+      "voiceLabel": "음성",
+      "holdToSpeak": "눌러서 말하기",
+      "releaseToSend": "놓아서 보내기",
+      "wakeWordTitle": "웨이크 워드 감지",
+      "wakeWordEnable": "사용",
+      "wakeWordLabel": "웨이크 워드",
+      "wakeWordPlaceholder": "예: hey echo",
+      "wakeWordListening": "웨이크 워드를 듣는 중...",
+      "wakeWordIdle": "듣고 있지 않음",
+      "state": {
+        "ready": "준비됨",
+        "listening": "듣는 중...",
+        "processing": "처리 중...",
+        "speaking": "말하는 중...",
+        "unknown": "알 수 없음"
+      },
+      "languages": {
+        "en": "영어",
+        "zh": "중국어",
+        "ja": "일본어",
+        "ko": "한국어",
+        "de": "독일어",
+        "fr": "프랑스어",
+        "es": "스페인어"
+      }
+    },
+    "brand": {
+      "githubTooltip": "오픈소스 무료 에이전트 런타임"
+    },
+    "common": {
+      "searchLogsPlaceholder": "로그 검색..."
+    },
+    "companion": {
+      "title": "컴패니언",
+      "platforms": {
+        "web": "웹",
+        "web-user": "웹 사용자"
+      },
+      "ackedBy": "확인자",
+      "anonymous": "익명",
+      "eventHistory": "이벤트 기록",
+      "flow": {
+        "duration": "지속 시간",
+        "empty": "사용 가능한 플로우 데이터가 없습니다",
+        "fitView": "화면에 맞추기",
+        "legend": "범례",
+        "loading": "플로우를 불러오는 중...",
+        "nodeTypes": {
+          "llmRequest": "LLM 요청",
+          "message": "메시지",
+          "securityCheck": "보안 검사",
+          "toolCall": "도구 호출"
+        },
+        "reset": "보기 초기화",
+        "retry": "다시 시도",
+        "status": "상태",
+        "time": "시간",
+        "type": "유형",
+        "zoomIn": "확대",
+        "zoomOut": "축소"
+      },
+      "hoursAgo": "{n}시간 전",
+      "justNow": "방금 전",
+      "liveSession": "실시간 세션",
+      "llmDetails": {
+        "completion": "출력 토큰",
+        "input": "입력",
+        "prompt": "입력 토큰",
+        "score": "점수",
+        "total": "총 토큰"
+      },
+      "minutesAgo": "{n}분 전",
+      "nodes": {
+        "chars": "{count}자",
+        "llmRequest": "LLM 요청",
+        "message": "메시지",
+        "received": "수신됨",
+        "sandbox": "샌드박스"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "지원",
+      "deepResearchConflict": "충돌",
+      "deepResearchHasConflict": "충돌 신호"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "iMessages를 보내려면 Automation 권한이 필요합니다. System Settings > Privacy & Security > Automation에서 허용하세요.",
+          "full_disk_access": "iMessage 기록을 읽으려면 Full Disk Access가 필요합니다. System Settings > Privacy & Security > Full Disk Access에서 허용하세요.",
+          "not_set_up": "이 Mac에서 iMessage가 설정되지 않았습니다. Messages 앱을 열고 Apple ID로 로그인하세요.",
+          "not_signed_in": "iMessage에 로그인되어 있지 않습니다. Messages 앱을 열고 Apple ID로 로그인하세요.",
+          "unavailable_platform": "iMessage는 macOS에서만 사용할 수 있습니다."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP 요청"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "예: 개인, 업무",
+      "widget": {
+        "pasteExample": "이름: 홍길동\n이메일: hong{'@'}example.com\n전화: 123-456-7890",
+        "filledFields": "{count}개 필드를 채웠습니다",
+        "parsedFields": "{count}개 필드를 분석했습니다",
+        "pasteData": "채울 데이터 붙여넣기",
+        "pasteDataHint": "키-값 쌍 붙여넣기"
+      },
+      "createTemplate": "템플릿 만들기",
+      "default": "기본값",
+      "defaultSet": "기본 템플릿이 업데이트되었습니다",
+      "editTemplate": "템플릿 편집",
+      "enterValue": "값 입력...",
+      "fields": "필드",
+      "fieldTypes": "구성된 필드 유형",
+      "patterns": "필드 패턴",
+      "patternsDescription": "필드 패턴은 필드 이름, 레이블, 플레이스홀더의 키워드를 비교해 폼 필드를 감지하는 데 도움이 됩니다.",
+      "setAsDefault": "기본 템플릿으로 설정",
+      "templateCreated": "템플릿이 생성되었습니다",
+      "templateDeleted": "템플릿이 삭제되었습니다",
+      "templateName": "템플릿 이름",
+      "templateUpdated": "템플릿이 업데이트되었습니다"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "이더넷",
+      "loopback": "루프백",
+      "unknown": "알 수 없음",
+      "virtual": "가상"
+    },
+    "plugins": {
+      "builtin": "내장",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo 또는 https://example.com/skill.zip",
+      "stats": {
+        "disabled": "비활성화",
+        "enabled": "활성화",
+        "total": "전체"
+      },
+      "categories": {
+        "analytics": "분석",
+        "communication": "커뮤니케이션",
+        "development": "개발",
+        "extension": "확장",
+        "information": "정보",
+        "integration": "통합",
+        "other": "기타",
+        "productivity": "생산성",
+        "system": "시스템",
+        "utility": "유틸리티"
+      },
+      "allCategories": "모든 카테고리",
+      "dropFileHere": "파일을 여기에 놓거나 클릭해 찾아보세요",
+      "fileRequired": "파일을 선택하세요",
+      "install": "설치",
+      "installFailed": "설치에 실패했습니다",
+      "installFromUrl": "URL에서",
+      "installing": "설치 중...",
+      "installSkillTitle": "스킬 설치",
+      "noMatchingTools": "일치하는 항목이 없습니다",
+      "noTools": "사용 가능한 항목이 없습니다",
+      "skillPackageInfo": "스킬 패키지 요구 사항",
+      "skillPackageRequirement1": "유효한 skill.json 매니페스트가 있어야 합니다",
+      "skillPackageRequirement2": "필수 스킬 파일을 모두 포함해야 합니다",
+      "skillUrlHint": "GitHub 저장소 URL 또는 스킬 패키지 직접 링크를 입력하세요",
+      "skillUrlLabel": "스킬 URL",
+      "supportedFormats": "지원 형식",
+      "uploadFile": "파일 업로드",
+      "uploadSkill": "스킬 설치",
+      "urlRequired": "URL을 입력하세요"
+    },
+    "remoteAccess": {
+      "cancel": "취소",
+      "disconnect": "연결 해제",
+      "disconnectConfirmMessage": "원격 터널을 통해 접근 중이라면 이 페이지에 대한 접근을 잃을 수 있습니다.",
+      "disconnectConfirmMessageSameHost": "현재 이 원격 터널을 통해 접근 중입니다. 연결을 해제하면 이 페이지가 닫히고 더 이상 접근할 수 없습니다.",
+      "disconnectConfirmTitle": "원격 액세스를 해제할까요?",
+      "ngrokClaimDomain": "내 도메인 받기",
+      "ngrokDomain": "고정 도메인",
+      "ngrokDomainHint": "선택 사항: 무료 사용자는 고정 도메인 하나를 받을 수 있습니다.",
+      "ngrokDomainPlaceholder": "예: myapp.ngrok-free.app",
+      "qrCodeError": "QR 코드 로드 실패",
+      "showQRCode": "QR 코드 표시"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "정상(비어 있음)",
+        "ok-token": "정상",
+        "failed": "실패",
+        "ran": "실행됨",
+        "sent": "알림 전송됨",
+        "skipped": "건너뜀"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "오류가 해제되었습니다. 다시 시도할 수 있습니다",
+      "keyLabelPlaceholder": "기본, 백업 등",
+      "modelIdPlaceholder": "openai, anthropic 등",
+      "providerId": "공급자 ID",
+      "retry": "다시 시도",
+      "addFailed": "공급자를 추가하지 못했습니다",
+      "addingProvider": "공급자 추가 중...",
+      "apiKeyHint": "Ollama 같은 일부 공급자는 API 키가 필요하지 않습니다",
+      "apiKeyOptional": "API 키(선택 사항)",
+      "baseUrlRequired": "먼저 기본 URL을 설정하세요",
+      "fetchingKeyModels": "모델을 가져오는 중...",
+      "getApiKey": "API 키 받기",
+      "ideImportLabel": "{ide}에서 가져옴(Claude Code 확장)",
+      "noAvailableModels": "사용 가능한 모델을 찾을 수 없습니다",
+      "noModelsFound": "모델을 찾을 수 없습니다. URL과 API 키를 확인하세요",
+      "probeComplete": "탐색 완료: {available}/{total}개 모델 사용 가능",
+      "probingModels": "모델 탐색 중...",
+      "providerAdded": "공급자가 추가되었습니다",
+      "providerAddedWithModels": "{count}개 모델 사용 가능",
+      "scanIDE": "IDE에서 가져오기",
+      "dragToReorder": "드래그하여 우선순위 재정렬",
+      "freeTier": "무료",
+      "location": "위치",
+      "locationCloud": "클라우드",
+      "locationHint": "클라우드 제공자는 원격 서버에서 실행되고, 로컬 제공자는 내 기기에서 실행됩니다",
+      "locationLocal": "로컬",
+      "preferredModelsHint": "선호하는 모델을 선택하세요. 선택한 모델만 사용할 수 있으며, 아무것도 선택하지 않으면 모든 모델을 사용할 수 있습니다.",
+      "selectPreferredModels": "선호 모델 선택",
+      "tabs": {
+        "oauth": "OAuth 로그인"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "ZimaOS Blue 체험판",
+        "quotaExhaustedConversations": "체험 대화 한도에 도달했습니다. 계속하려면 자체 제공자를 구성하세요.",
+        "quotaExhaustedTokens": "체험 토큰 할당량을 모두 사용했습니다. 계속하려면 자체 제공자를 구성하세요.",
+        "tokensUsed": "{remaining} / {total} 토큰 남음"
+      },
+      "usage": {
+        "estimatedCost": "예상 비용",
+        "inputTokens": "입력 토큰",
+        "loading": "사용량 불러오는 중...",
+        "outputTokens": "출력 토큰",
+        "requests": "요청 수"
+      }
+    }
+  },
+  "ml-IN": {
+    "settings": {
+      "update": {
+        "applying": "അപ്‌ഡേറ്റ് പ്രയോഗിക്കുന്നു...",
+        "confirmRestart": "പ്രയോഗിച്ച് പുനരാരംഭിക്കുക",
+        "downloadComplete": "ഡൗൺലോഡ് പൂർത്തിയായി",
+        "downloadFailed": "ഡൗൺലോഡ് പരാജയപ്പെട്ടു",
+        "restarting": "പുനരാരംഭിക്കുന്നു...",
+        "serverNotResponding": "അപ്‌ഡേറ്റിന് ശേഷം സർവർ തിരികെ വന്നില്ല",
+        "waitingForServer": "സർവർ തിരികെ വരുന്നത് കാത്തിരിക്കുന്നു...",
+        "autoCheck": "ആരംഭിക്കുമ്പോൾ അപ്‌ഡേറ്റുകൾ സ്വയമേവ പരിശോധിക്കുക",
+        "checkNow": "ഇപ്പോൾ പരിശോധിക്കുക",
+        "currentVersion": "നിലവിലെ പതിപ്പ്",
+        "download": "ഡൗൺലോഡ്",
+        "downloading": "ഡൗൺലോഡ് ചെയ്യുന്നു...",
+        "newVersionAvailable": "പുതിയ പതിപ്പ് ലഭ്യമാണ്",
+        "title": "വിവരങ്ങൾ",
+        "upToDate": "ഏറ്റവും പുതിയത്"
+      },
+      "tab": {
+        "llm": "LLM മോഡലുകൾ",
+        "memory": "മെമ്മറി",
+        "network": "നെറ്റ്‌വർക്ക്",
+        "security": "സുരക്ഷ",
+        "speech": "ശബ്ദം",
+        "update": "അപ്ഡേറ്റ്",
+        "userdata": "ഡാറ്റ മാനേജ്മെന്റ്"
+      },
+      "closeBehavior": "അടയ്ക്കൽ പെരുമാറ്റം",
+      "closeBehaviorMinimize": "ട്രേയിലേക്ക് ചുരുക്കുക",
+      "closeBehaviorQuit": "പുറത്തുകടക്കുക",
+      "closeBehaviorSaved": "അടയ്ക്കൽ പെരുമാറ്റം സംരക്ഷിച്ചു"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "മെമ്മറി റീകാൾ നിയന്ത്രണം",
+      "memoryMeta": "{skipped}/{total} ടേണുകളിൽ റീകാൾ ഒഴിവാക്കി",
+      "memoryMode": "മോഡ്: {mode}",
+      "modes": {
+        "aggressive": "ആക്രാമക",
+        "balanced": "സന്തുലിതം",
+        "quality": "ഗുണമേന്മ"
+      },
+      "combined": "കാഷ് + ചുരുക്കൽ + ഉപകരണങ്ങൾ + റൂട്ടിംഗ്",
+      "estimated": "കണക്കാക്കിയ ലാഭം",
+      "costSaved": "ലാഭിച്ച ചെലവ്",
+      "tokensSaved": "ലാഭിച്ച ടോക്കണുകൾ",
+      "compression": "സംകോചനം",
+      "breakdown": "ലാഭത്തിന്റെ വിഭജനം",
+      "estCost": "കണക്കാക്കിയ ചെലവ്",
+      "noSavingsYet": "ഇതുവരെ ടോക്കൺ ലാഭം രേഖപ്പെടുത്തിയിട്ടില്ല",
+      "prunerLabel": "സന്ദർഭ ചുരുക്കൽ",
+      "prunerMeta": "{pruned}/{total} അഭ്യർത്ഥനകൾ ചുരുക്കി",
+      "routingLabel": "സ്മാർട്ട് റൂട്ടിംഗ്",
+      "routingMeta": "{requests} അഭ്യർത്ഥനകൾ റൂട്ടുചെയ്‌തു",
+      "toolsLabel": "ഉപകരണ ഫിൽറ്റർ",
+      "toolsMeta": "{requests} അഭ്യർത്ഥനകളിൽ {skipped} ഉപകരണങ്ങൾ ഒഴിവാക്കി"
+    },
+    "tools": {
+      "names": {
+        "analyze": "വിശകലനം",
+        "auto_reply": "സ്വയമേധയുള്ള മറുപടി",
+        "browser": "ബ്രൗസർ",
+        "calculator": "കാൽക്കുലേറ്റർ",
+        "calendar": "കലണ്ടർ",
+        "contacts": "കോൺടാക്റ്റുകൾ",
+        "crypto": "ക്രിപ്റ്റോ",
+        "datetime": "തീയതിയും സമയവും",
+        "email": "ഇമെയിൽ",
+        "file_read": "ഫയൽ വായിക്കൽ",
+        "file_write": "ഫയൽ എഴുതൽ",
+        "files": "ഫയലുകൾ",
+        "memory": "മെമ്മറി",
+        "network": "നെറ്റ്‌വർക്ക്",
+        "news": "വാർത്തകൾ",
+        "notes": "കുറിപ്പുകൾ",
+        "notifications": "അറിയിപ്പുകൾ",
+        "process": "പ്രക്രിയകൾ",
+        "reminders": "ഓർമ്മിപ്പികൾ",
+        "sandbox": "സാൻഡ്ബോക്സ്",
+        "scheduler": "ഷെഡ്യൂളർ",
+        "search": "തിരയൽ",
+        "stocks": "ഓഹരികൾ",
+        "system_info": "സിസ്റ്റം വിവരം",
+        "tasks": "കാര്യങ്ങൾ",
+        "timer": "ടൈമർ",
+        "translate": "പരിഭാഷപ്പെടുത്തുക",
+        "ui_reviewer": "UI നിരീക്ഷകൻ",
+        "unit_converter": "യൂണിറ്റ് മാറ്റി നിർണ്ണയകൻ",
+        "weather": "കാലാവസ്ഥ",
+        "web_search": "വെബ് തിരയൽ",
+        "workflows": "പ്രവർത്തനപ്രവാഹങ്ങൾ",
+        "exec": "കമാൻഡ് പ്രവർത്തനം",
+        "workspace_file": "വർക്ക്‌സ്‌പേസ് ഫയൽ"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "സ്വയമേവ പ്ലേ ചെയ്യുക",
+      "checkpoint": {
+        "cancel": "റദ്ദാക്കുക",
+        "continue": "തുടരുക",
+        "fallbackQuestion": "ദയവായി ഈ ബ്രൗസർ പ്രവർത്തി സ്ഥിരീകരിക്കുക.",
+        "help": "നിങ്ങൾക്ക് \"തുടരുക\" അല്ലെങ്കിൽ \"റദ്ദാക്കുക\" എന്ന് പറയാം, അല്ലെങ്കിൽ താഴെയുള്ള ബട്ടൺ തൊടാം.",
+        "title": "ബ്രൗസർ ചെക്ക്‌പോയിന്റ് സ്ഥിരീകരണം ആവശ്യമാണ്"
+      },
+      "clearConversation": "സംഭാഷണം മായ്ക്കുക",
+      "connected": "കണക്റ്റഡ്",
+      "continuous": "തുടർച്ചയായ",
+      "disconnected": "ഡിസ്കണക്റ്റഡ്",
+      "emptyHint": "സംസാരിക്കാൻ മൈക്രോഫോൺ ബട്ടൺ അമർത്തിപ്പിടിക്കുക",
+      "errors": {
+        "connectionFailed": "കണക്ഷൻ പരാജയപ്പെട്ടു",
+        "processAudioFailed": "ഓഡിയോ പ്രോസസ്സ് ചെയ്യാൻ കഴിഞ്ഞില്ല",
+        "startRecordingFailed": "റെക്കോർഡിംഗ് ആരംഭിക്കാൻ കഴിഞ്ഞില്ല",
+        "wakeWordStartFailed": "വേക്ക് വേഡ് കണ്ടെത്തൽ ആരംഭിക്കാൻ കഴിഞ്ഞില്ല"
+      },
+      "title": "ശബ്ദ അസിസ്റ്റന്റ്",
+      "settingsTitle": "ക്രമീകരണങ്ങൾ",
+      "languageLabel": "ഭാഷ",
+      "voiceLabel": "ശബ്ദം",
+      "holdToSpeak": "സംസാരിക്കാൻ അമർത്തിപ്പിടിക്കുക",
+      "releaseToSend": "അയയ്ക്കാൻ വിടുക",
+      "wakeWordTitle": "വേക്ക് വേഡ് കണ്ടെത്തൽ",
+      "wakeWordEnable": "പ്രവർത്തനക്ഷമമാക്കുക",
+      "wakeWordLabel": "വേക്ക് വേഡ്",
+      "wakeWordPlaceholder": "ഉദാ., hey echo",
+      "wakeWordListening": "വേക്ക് വേഡ് കേൾക്കുന്നു...",
+      "wakeWordIdle": "കേൾക്കുന്നില്ല",
+      "state": {
+        "ready": "തയ്യാർ",
+        "listening": "കേൾക്കുന്നു...",
+        "processing": "പ്രോസസ്സ് ചെയ്യുന്നു...",
+        "speaking": "സംസാരിക്കുന്നു...",
+        "unknown": "അജ്ഞാതം"
+      },
+      "languages": {
+        "en": "ഇംഗ്ലീഷ്",
+        "zh": "ചൈനീസ്",
+        "ja": "ജാപ്പനീസ്",
+        "ko": "കൊറിയൻ",
+        "de": "ജർമ്മൻ",
+        "fr": "ഫ്രഞ്ച്",
+        "es": "സ്പാനിഷ്"
+      }
+    },
+    "brand": {
+      "githubTooltip": "ഓപ്പൺ സോഴ്‌സും സൗജന്യവും ആയ ഏജന്റ് റൺടൈം"
+    },
+    "common": {
+      "searchLogsPlaceholder": "ലോഗുകൾ തിരയുക..."
+    },
+    "companion": {
+      "title": "സഹായി",
+      "platforms": {
+        "web": "വെബ്",
+        "web-user": "വെബ് ഉപയോക്താവ്"
+      },
+      "ackedBy": "സ്ഥിരീകരിച്ചത്",
+      "anonymous": "അജ്ഞാതൻ",
+      "eventHistory": "സംഭവങ്ങളുടെ ചരിത്രം",
+      "flow": {
+        "duration": "ദൈർഘ്യം",
+        "empty": "ലഭ്യമായ ഫ്ലോ ഡാറ്റയില്ല",
+        "fitView": "കാഴ്ച ഒതുക്കുക",
+        "legend": "വിവരണം",
+        "loading": "ഫ്ലോ ലോഡുചെയ്യുന്നു...",
+        "nodeTypes": {
+          "llmRequest": "LLM അഭ്യർത്ഥന",
+          "message": "സന്ദേശം",
+          "securityCheck": "സുരക്ഷാ പരിശോധന",
+          "toolCall": "ഉപകരണ വിളി"
+        },
+        "reset": "കാഴ്ച പുനഃസജ്ജമാക്കുക",
+        "retry": "വീണ്ടും ശ്രമിക്കുക",
+        "status": "സ്ഥിതി",
+        "time": "സമയം",
+        "type": "തരം",
+        "zoomIn": "വലുതാക്കുക",
+        "zoomOut": "ചെറുതാക്കുക"
+      },
+      "hoursAgo": "{n} മണിക്കൂർ മുമ്പ്",
+      "justNow": "ഇപ്പോഴെ",
+      "liveSession": "തത്സമയ സെഷൻ",
+      "llmDetails": {
+        "completion": "ഔട്ട്‌പുട്ട് ടോക്കണുകൾ",
+        "input": "ഇൻപുട്ട്",
+        "prompt": "ഇൻപുട്ട് ടോക്കണുകൾ",
+        "score": "സ്കോർ",
+        "total": "ആകെ ടോക്കണുകൾ"
+      },
+      "minutesAgo": "{n} മിനിറ്റ് മുമ്പ്",
+      "nodes": {
+        "chars": "{count} പ്രതീകങ്ങൾ",
+        "llmRequest": "LLM അഭ്യർത്ഥന",
+        "message": "സന്ദേശം",
+        "received": "സ്വീകരിച്ചു",
+        "sandbox": "സാൻഡ്ബോക്സ്"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "പിന്തുണ",
+      "deepResearchConflict": "സംഘർഷം",
+      "deepResearchHasConflict": "സംഘർഷമുള്ള സൂചനകൾ"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "iMessages അയയ്ക്കാൻ Automation അനുമതി ആവശ്യമാണ്. അത് System Settings > Privacy & Security > Automation ൽ അനുവദിക്കുക.",
+          "full_disk_access": "iMessage ചരിത്രം വായിക്കാൻ Full Disk Access ആവശ്യമാണ്. അത് System Settings > Privacy & Security > Full Disk Access ൽ അനുവദിക്കുക.",
+          "not_set_up": "ഈ Mac ൽ iMessage സജ്ജീകരിച്ചിട്ടില്ല. Messages ആപ്പ് തുറന്ന് നിങ്ങളുടെ Apple ID ഉപയോഗിച്ച് സൈൻ ഇൻ ചെയ്യുക.",
+          "not_signed_in": "iMessage ൽ സൈൻ ഇൻ ചെയ്തിട്ടില്ല. Messages ആപ്പ് തുറന്ന് നിങ്ങളുടെ Apple ID ഉപയോഗിച്ച് സൈൻ ഇൻ ചെയ്യുക.",
+          "unavailable_platform": "iMessage macOS ൽ മാത്രമേ ലഭ്യമാകൂ."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP അഭ്യർത്ഥന"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "ഉദാ., വ്യക്തിഗതം, ജോലി",
+      "widget": {
+        "pasteExample": "പേര്: അനിൽ കുമാർ\nഇമെയിൽ: anil{'@'}example.com\nഫോൺ: 123-456-7890",
+        "title": "ഫോം നിറയ്ക്കൽ",
+        "fillAll": "എല്ലാം നിറയ്ക്കുക",
+        "fillThis": "ഈ ഫീൽഡ് നിറയ്ക്കുക",
+        "undo": "പൂർവസ്ഥിതിയിലാക്കുക",
+        "readClipboard": "ക്ലിപ്പ്ബോർഡിൽ നിന്ന് വായിക്കുക",
+        "showPassword": "പാസ്‌വേഡ് കാണിക്കുക",
+        "hidePassword": "പാസ്‌വേഡ് മറയ്ക്കുക",
+        "filledFields": "{count} ഫീൽഡുകൾ നിറച്ചു",
+        "parsedFields": "{count} ഫീൽഡുകൾ വിശകലനം ചെയ്തു",
+        "pasteData": "നിറയ്ക്കാൻ ഡാറ്റ ഒട്ടിക്കുക",
+        "pasteDataHint": "കീ-മൂല്യ ജോടികൾ ഒട്ടിക്കുക"
+      },
+      "createTemplate": "ടെംപ്ലേറ്റ് സൃഷ്ടിക്കുക",
+      "default": "സ്വതേ",
+      "defaultSet": "സ്വതേ ടെംപ്ലേറ്റ് പുതുക്കി",
+      "editTemplate": "ടെംപ്ലേറ്റ് തിരുത്തുക",
+      "enterValue": "മൂല്യം നൽകുക...",
+      "fields": "ഫീൽഡുകൾ",
+      "fieldTypes": "ക്രമീകരിച്ച ഫീൽഡ് തരങ്ങൾ",
+      "patterns": "ഫീൽഡ് പാറ്റേണുകൾ",
+      "patternsDescription": "ഫീൽഡ് പേരുകൾ, ലേബലുകൾ, പ്ലേസ്‌ഹോൾഡറുകൾ എന്നിവയിലെ കീവേഡുകൾ പൊരുത്തപ്പെടുത്തി ഫോം ഫീൽഡുകൾ കണ്ടെത്താൻ ഫീൽഡ് പാറ്റേണുകൾ സഹായിക്കുന്നു.",
+      "setAsDefault": "സ്വതേ ടെംപ്ലേറ്റായി ക്രമീകരിക്കുക",
+      "templateCreated": "ടെംപ്ലേറ്റ് വിജയകരമായി സൃഷ്ടിച്ചു",
+      "templateDeleted": "ടെംപ്ലേറ്റ് വിജയകരമായി ഇല്ലാതാക്കി",
+      "templateName": "ടെംപ്ലേറ്റ് പേര്",
+      "templateUpdated": "ടെംപ്ലേറ്റ് വിജയകരമായി പുതുക്കി",
+      "templates": "ടെംപ്ലേറ്റുകൾ",
+      "newTemplate": "പുതിയ ടെംപ്ലേറ്റ്",
+      "setDefault": "സ്വതേ ആക്കി ക്രമീകരിക്കുക",
+      "noTemplates": "ഇനിയും ടെംപ്ലേറ്റുകളൊന്നുമില്ല. തുടങ്ങാൻ ഒന്ന് സൃഷ്ടിക്കുക.",
+      "editPatterns": "പാറ്റേണുകൾ തിരുത്തുക",
+      "patternsSaved": "പാറ്റേണുകൾ വിജയകരമായി സംരക്ഷിച്ചു",
+      "confirmDelete": "ഈ ടെംപ്ലേറ്റ് ഇല്ലാതാക്കണോ?"
+    },
+    "network": {
+      "wifi": "വൈ‑ഫൈ",
+      "ethernet": "ഈഥർനെറ്റ്",
+      "loopback": "ലൂപ്പ്ബാക്ക്",
+      "unknown": "അജ്ഞാതം",
+      "virtual": "വെർച്വൽ"
+    },
+    "plugins": {
+      "builtin": "ഉൾനിർമ്മിതം",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo അല്ലെങ്കിൽ https://example.com/skill.zip",
+      "stats": {
+        "disabled": "അപ്രാപ്തം",
+        "enabled": "സജ്ജം",
+        "total": "മൊത്തം"
+      },
+      "categories": {
+        "analytics": "വിശകലനം",
+        "communication": "ആശയവിനിമയം",
+        "development": "വികസനം",
+        "extension": "വിപുലീകരണം",
+        "information": "വിവരം",
+        "integration": "ഏകീകരണം",
+        "other": "മറ്റ്",
+        "productivity": "ഉൽപ്പാദനക്ഷമത",
+        "system": "സിസ്റ്റം",
+        "utility": "യൂട്ടിലിറ്റി"
+      },
+      "title": "വിപുലീകരണങ്ങൾ",
+      "subtitle": "സ്കില്ലുകളും ഉപകരണങ്ങളും നിയന്ത്രിക്കുക",
+      "noDescription": "വിവരണം ലഭ്യമല്ല",
+      "allCategories": "എല്ലാ വിഭാഗങ്ങളും",
+      "dropFileHere": "ഫയൽ ഇവിടെ ഇടുകയോ ബ്രൗസ് ചെയ്യാൻ ക്ലിക്ക് ചെയ്യുകയോ ചെയ്യൂ",
+      "fileRequired": "ദയവായി ഒരു ഫയൽ തിരഞ്ഞെടുക്കുക",
+      "install": "ഇൻസ്റ്റാൾ ചെയ്യുക",
+      "installFailed": "ഇൻസ്റ്റാളേഷൻ പരാജയപ്പെട്ടു",
+      "installFromUrl": "URL-ൽ നിന്ന്",
+      "installing": "ഇൻസ്റ്റാൾ ചെയ്യുന്നു...",
+      "installSkillTitle": "സ്കിൽ ഇൻസ്റ്റാൾ ചെയ്യുക",
+      "noMatchingTools": "പൊരുത്തപ്പെടുന്ന ഇനങ്ങളൊന്നും കണ്ടെത്തിയില്ല",
+      "noTools": "ലഭ്യമായ ഇനങ്ങളൊന്നുമില്ല",
+      "skillPackageInfo": "സ്കിൽ പാക്കേജ് ആവശ്യകതകൾ",
+      "skillPackageRequirement1": "സാധുവായ skill.json മാനിഫെസ്റ്റ് ഉണ്ടായിരിക്കണം",
+      "skillPackageRequirement2": "ആവശ്യമായ എല്ലാ സ്കിൽ ഫയലുകളും ഉൾപ്പെടുത്തണം",
+      "skillUrlHint": "ഒരു GitHub റെപ്പോസിറ്ററി URL അല്ലെങ്കിൽ സ്കിൽ പാക്കേജിലേക്കുള്ള നേരിട്ടുള്ള ലിങ്ക് നൽകുക",
+      "skillUrlLabel": "സ്കിൽ URL",
+      "supportedFormats": "പിന്തുണയ്ക്കുന്ന ഫോർമാറ്റുകൾ",
+      "uploadFile": "ഫയൽ അപ്‌ലോഡ് ചെയ്യുക",
+      "uploadSkill": "സ്കിൽ ഇൻസ്റ്റാൾ ചെയ്യുക",
+      "urlRequired": "ദയവായി ഒരു URL നൽകുക"
+    },
+    "remoteAccess": {
+      "activeSession": "സജീവ സെഷൻ",
+      "cancel": "റദ്ദാക്കുക",
+      "diagnostics": "ഡയഗ്നോസ്റ്റിക്സ്",
+      "diagnosticsTitle": "ഡയഗ്നോസ്റ്റിക് വിവരങ്ങൾ",
+      "disconnect": "ബന്ധം വിച്ഛേദിക്കുക",
+      "disconnectConfirmMessage": "റിമോട്ട് ടണൽ വഴി പ്രവേശിക്കുന്നുവെങ്കിൽ, ഈ പേജിലേക്കുള്ള പ്രവേശനം നഷ്ടപ്പെടാം.",
+      "disconnectConfirmMessageSameHost": "നിങ്ങൾ ഇപ്പോൾ ഈ റിമോട്ട് ടണൽ വഴിയാണ് പ്രവേശിക്കുന്നത്. ബന്ധം വിച്ഛേദിച്ചാൽ ഈ പേജ് അടയുകയും പ്രവേശനം നഷ്ടപ്പെടുകയും ചെയ്യും.",
+      "disconnectConfirmTitle": "ദൂര പ്രവേശനം വിച്ഛേദിക്കണോ?",
+      "error": "പിശക്",
+      "firewallException": "ഫയർവാൾ ഒഴിവാക്കൽ",
+      "getToken": "നിങ്ങളുടെ ടോക്കൺ നേടുക",
+      "logs": "ലോഗുകൾ",
+      "logsTitle": "കണക്ഷൻ ലോഗുകൾ",
+      "ngrokClaimDomain": "നിങ്ങളുടേത് നേടുക",
+      "ngrokDomain": "സ്ഥിര ഡൊമെയ്ൻ",
+      "ngrokDomainHint": "ഐച്ഛികം: സൗജന്യ ഉപയോക്താക്കൾക്ക് ഒരു സ്ഥിര ഡൊമെയ്ൻ സ്വന്തമാക്കാം.",
+      "ngrokDomainPlaceholder": "ഉദാ., myapp.ngrok-free.app",
+      "noKeyRequired": "സജ്ജീകരണം ആവശ്യമില്ല",
+      "noLogs": "ലോഗുകൾ ലഭ്യമല്ല",
+      "platform": "പ്ലാറ്റ്ഫോം",
+      "provider": "ദാതാവ്",
+      "qrCodeError": "QR കോഡ് ലോഡ് ചെയ്യാനായില്ല",
+      "recentErrors": "സമീപകാല പിശകുകൾ",
+      "requiresKey": "ഓതന്റിക്കേഷൻ ടോക്കൺ ആവശ്യമാണ്",
+      "selectProvider": "ടണൽ ദാതാവിനെ തിരഞ്ഞെടുക്കുക",
+      "showQRCode": "QR കോഡ് കാണിക്കുക",
+      "status": "നില",
+      "troubleshootingHints": "പ്രശ്നപരിഹാര സൂചനകൾ",
+      "tunnelRunning": "ടണൽ പ്രവർത്തിക്കുന്നു"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "ശരി (ശൂന്യം)",
+        "ok-token": "ശരി",
+        "failed": "പരാജയപ്പെട്ടു",
+        "ran": "നടത്തി",
+        "sent": "അറിയിപ്പ് അയച്ചു",
+        "skipped": "ഒഴിവാക്കി"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "പിശക് നീക്കി — വീണ്ടും ശ്രമിക്കാം",
+      "keyLabelPlaceholder": "പ്രാഥമികം, ബാക്കപ്പ് തുടങ്ങിയവ",
+      "modelIdPlaceholder": "openai, anthropic മുതലായവ",
+      "providerId": "ദാതാവിന്റെ ID",
+      "retry": "വീണ്ടും ശ്രമിക്കുക",
+      "addFailed": "ദാതാവിനെ ചേർക്കാനായില്ല",
+      "addingProvider": "ദാതാവിനെ ചേർക്കുന്നു...",
+      "apiKeyHint": "Ollama പോലെയുള്ള ചില ദാതാക്കൾക്ക് API കീ ആവശ്യമില്ല",
+      "apiKeyOptional": "API കീ (ഐച്ഛികം)",
+      "baseUrlRequired": "ആദ്യം അടിസ്ഥാന URL ക്രമീകരിക്കുക",
+      "fetchingKeyModels": "മോഡലുകൾ സ്വീകരിക്കുന്നു...",
+      "getApiKey": "API കീ നേടുക",
+      "ideImportLabel": "{ide}-യിൽ നിന്ന് ഇറക്കുമതി ചെയ്തത് (Claude Code എക്സ്റ്റെൻഷൻ)",
+      "noAvailableModels": "ലഭ്യമായ മോഡലുകളൊന്നും കണ്ടെത്തിയില്ല",
+      "noModelsFound": "മോഡലുകളൊന്നും കണ്ടെത്തിയില്ല — URLയും API കീയും പരിശോധിക്കുക",
+      "probeComplete": "പരിശോധന പൂർത്തിയായി: {available}/{total} മോഡലുകൾ ലഭ്യമാണ്",
+      "probingModels": "മോഡലുകൾ പരിശോധിക്കുന്നു...",
+      "providerAdded": "ദാതാവിനെ ചേർത്തു",
+      "providerAddedWithModels": "{count} മോഡലുകൾ ലഭ്യമാണ്",
+      "scanIDE": "IDE-യിൽ നിന്ന് ഇറക്കുമതി ചെയ്യുക",
+      "dragToReorder": "മുൻഗണന പുനഃക്രമീകരിക്കാൻ വലിച്ചിടുക",
+      "freeTier": "സൗജന്യം",
+      "location": "സ്ഥാനം",
+      "locationCloud": "ക്ലൗഡ്",
+      "locationHint": "ക്ലൗഡ് പ്രൊവൈഡറുകൾ ദൂരസ്ഥ സർവറുകളിൽ പ്രവർത്തിക്കുന്നു; ലോക്കൽ പ്രൊവൈഡറുകൾ നിങ്ങളുടെ യന്ത്രത്തിൽ പ്രവർത്തിക്കുന്നു",
+      "locationLocal": "ലോക്കൽ",
+      "preferredModelsHint": "നിങ്ങൾക്ക് ഇഷ്ടമുള്ള മോഡലുകൾ തിരഞ്ഞെടുക്കുക. തിരഞ്ഞെടുക്കപ്പെട്ട മോഡലുകൾ മാത്രം ലഭ്യമാകും; ഒന്നും തിരഞ്ഞെടുക്കാത്ത പക്ഷം എല്ലാ മോഡലുകളും ലഭ്യമാകും.",
+      "selectPreferredModels": "മുൻഗണനാ മോഡലുകൾ തിരഞ്ഞെടുക്കുക",
+      "tabs": {
+        "oauth": "OAuth സൈൻ-ഇൻ"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "ZimaOS Blue ട്രയൽ",
+        "quotaExhaustedConversations": "നിങ്ങളുടെ ട്രയൽ സംഭാഷണ പരിധി എത്തിയിരിക്കുന്നു. തുടരാൻ നിങ്ങളുടെ സ്വന്തം പ്രൊവൈഡർ സജ്ജീകരിക്കുക.",
+        "quotaExhaustedTokens": "നിങ്ങളുടെ ട്രയൽ ടോക്കൺ ക്വോട്ട തീർന്നിരിക്കുന്നു. തുടരാൻ നിങ്ങളുടെ സ്വന്തം പ്രൊവൈഡർ സജ്ജീകരിക്കുക.",
+        "tokensUsed": "{remaining} / {total} ടോക്കണുകൾ ശേഷിക്കുന്നു"
+      },
+      "usage": {
+        "estimatedCost": "കണക്കാക്കിയ ചെലവ്",
+        "inputTokens": "ഇൻപുട്ട് ടോക്കണുകൾ",
+        "loading": "ഉപയോഗം ലോഡ് ചെയ്യുന്നു...",
+        "outputTokens": "ഔട്ട്പുട്ട് ടോക്കണുകൾ",
+        "requests": "അഭ്യർത്ഥനകൾ"
+      }
+    }
+  },
+  "nb-NO": {
+    "settings": {
+      "update": {
+        "applying": "Bruker oppdatering...",
+        "confirmRestart": "Bruk og start på nytt",
+        "downloadComplete": "Nedlasting fullført",
+        "downloadFailed": "Nedlasting mislyktes",
+        "restarting": "Starter på nytt...",
+        "serverNotResponding": "Serveren kom ikke tilbake etter oppdateringen",
+        "waitingForServer": "Venter på at serveren skal komme tilbake...",
+        "autoCheck": "Se etter oppdateringer automatisk ved oppstart",
+        "checkNow": "Sjekk nå",
+        "currentVersion": "Gjeldende versjon",
+        "download": "Last ned",
+        "downloading": "Laster ned...",
+        "newVersionAvailable": "Ny versjon tilgjengelig",
+        "title": "Om",
+        "upToDate": "Oppdatert"
+      },
+      "tab": {
+        "llm": "LLM-modeller",
+        "memory": "Minne",
+        "network": "Nettverk",
+        "security": "Sikkerhet",
+        "speech": "Tale",
+        "update": "Oppdatering",
+        "userdata": "Databehandling"
+      },
+      "closeBehavior": "Lukkeatferd",
+      "closeBehaviorMinimize": "Minimer til systemfeltet",
+      "closeBehaviorQuit": "Avslutt",
+      "closeBehaviorSaved": "Lukkeatferd lagret"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Minnegjenkallingskontroll",
+      "memoryMeta": "Gjenkalling hoppet over i {skipped}/{total} runder",
+      "memoryMode": "Modus: {mode}",
+      "modes": {
+        "aggressive": "Aggressiv",
+        "balanced": "Balansert",
+        "quality": "Kvalitet"
+      },
+      "combined": "Cache + beskjæring + verktøy + ruting",
+      "estimated": "Anslått besparelse",
+      "costSaved": "Spart kostnad",
+      "tokensSaved": "Sparte token",
+      "compression": "Komprimering",
+      "breakdown": "Besparelsesoversikt",
+      "estCost": "Anslått kostnad",
+      "noSavingsYet": "Ingen tokenbesparelser registrert ennå",
+      "prunerLabel": "Kontekstbeskjæring",
+      "prunerMeta": "{pruned}/{total} forespørsler beskåret",
+      "routingLabel": "Smart ruting",
+      "routingMeta": "{requests} forespørsler rutet",
+      "toolsLabel": "Verktøyfilter",
+      "toolsMeta": "{skipped} verktøy hoppet over på tvers av {requests} forespørsler"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analyse",
+        "auto_reply": "Autosvar",
+        "browser": "Nettleser",
+        "calculator": "Kalkulator",
+        "calendar": "Kalender",
+        "contacts": "Kontakter",
+        "crypto": "Krypto",
+        "datetime": "Dato og klokkeslett",
+        "email": "E-post",
+        "file_read": "Fillesing",
+        "file_write": "Filskriving",
+        "files": "Filer",
+        "memory": "Minne",
+        "network": "Nettverk",
+        "news": "Nyheter",
+        "notes": "Notater",
+        "notifications": "Varsler",
+        "process": "Prosesser",
+        "reminders": "Påminnelser",
+        "sandbox": "Sandbox",
+        "scheduler": "Planlegger",
+        "search": "Søk",
+        "stocks": "Aksjer",
+        "system_info": "Systeminfo",
+        "tasks": "Oppgaver",
+        "timer": "Timer",
+        "translate": "Oversett",
+        "ui_reviewer": "UI-gjennomgang",
+        "unit_converter": "Enhetsomregner",
+        "weather": "Vær",
+        "web_search": "Nettsøk",
+        "workflows": "Arbeidsflyter",
+        "exec": "Kommandokjøring",
+        "workspace_file": "Arbeidsområdefil"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Automatisk avspilling",
+      "checkpoint": {
+        "cancel": "Avbryt",
+        "continue": "Fortsett",
+        "fallbackQuestion": "Bekreft denne nettleserhandlingen.",
+        "help": "Du kan si \"fortsett\" eller \"avbryt\", eller trykke på en knapp nedenfor.",
+        "title": "Bekreftelse for nettleserkontrollpunkt kreves"
+      },
+      "clearConversation": "Tøm samtalen",
+      "connected": "Tilkoblet",
+      "continuous": "Kontinuerlig",
+      "disconnected": "Frakoblet",
+      "emptyHint": "Trykk og hold inne mikrofonknappen for å snakke",
+      "errors": {
+        "connectionFailed": "Tilkobling mislyktes",
+        "processAudioFailed": "Kunne ikke behandle lyd",
+        "startRecordingFailed": "Kunne ikke starte opptak",
+        "wakeWordStartFailed": "Kunne ikke starte registrering av vekkeord"
+      },
+      "title": "Stemmeassistent",
+      "settingsTitle": "Innstillinger",
+      "languageLabel": "Språk",
+      "voiceLabel": "Stemme",
+      "holdToSpeak": "Hold inne for å snakke",
+      "releaseToSend": "Slipp for å sende",
+      "wakeWordTitle": "Registrering av vekkeord",
+      "wakeWordEnable": "Aktiver",
+      "wakeWordLabel": "Vekkeord",
+      "wakeWordPlaceholder": "f.eks. hei echo",
+      "wakeWordListening": "Lytter etter vekkeord...",
+      "wakeWordIdle": "Lytter ikke",
+      "state": {
+        "ready": "Klar",
+        "listening": "Lytter...",
+        "processing": "Behandler...",
+        "speaking": "Snakker...",
+        "unknown": "Ukjent"
+      },
+      "languages": {
+        "en": "Engelsk",
+        "zh": "Kinesisk",
+        "ja": "Japansk",
+        "ko": "Koreansk",
+        "de": "Tysk",
+        "fr": "Fransk",
+        "es": "Spansk"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Åpen kildekode og gratis agent-runtime"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Søk i logger..."
+    },
+    "companion": {
+      "title": "Følgesvenn",
+      "platforms": {
+        "web": "Nett",
+        "web-user": "Nettbruker"
+      },
+      "ackedBy": "Bekreftet av",
+      "anonymous": "Anonym",
+      "eventHistory": "Hendelseshistorikk",
+      "flow": {
+        "duration": "Varighet",
+        "empty": "Ingen flytdata tilgjengelig",
+        "fitView": "Tilpass visning",
+        "legend": "Forklaring",
+        "loading": "Laster flyt...",
+        "nodeTypes": {
+          "llmRequest": "LLM-forespørsel",
+          "message": "Melding",
+          "securityCheck": "Sikkerhetskontroll",
+          "toolCall": "Verktøykall"
+        },
+        "reset": "Nullstill visning",
+        "retry": "Prøv igjen",
+        "status": "Status",
+        "time": "Tid",
+        "type": "Type",
+        "zoomIn": "Zoom inn",
+        "zoomOut": "Zoom ut"
+      },
+      "hoursAgo": "for {n} timer siden",
+      "justNow": "Akkurat nå",
+      "liveSession": "Direktesession",
+      "llmDetails": {
+        "completion": "Utdata-token",
+        "input": "Inndata",
+        "prompt": "Inndata-token",
+        "score": "Poengsum",
+        "total": "Totale token"
+      },
+      "minutesAgo": "for {n} min siden",
+      "nodes": {
+        "chars": "{count} tegn",
+        "llmRequest": "LLM-forespørsel",
+        "message": "Melding",
+        "received": "Mottatt",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Støtte",
+      "deepResearchConflict": "Konflikt",
+      "deepResearchHasConflict": "Motstridende signaler"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Automation-tillatelse kreves for å sende iMessages. Gi den i System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Full Disk Access kreves for å lese iMessage-historikk. Gi den i System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage er ikke satt opp på denne Mac-en. Åpne appen Messages og logg inn med Apple ID-en din.",
+          "not_signed_in": "Du er ikke logget inn på iMessage. Åpne appen Messages og logg inn med Apple ID-en din.",
+          "unavailable_platform": "iMessage er bare tilgjengelig på macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP-forespørsel"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "f.eks. Privat, Arbeid",
+      "widget": {
+        "pasteExample": "navn: Ola Nordmann\ne-post: ola{'@'}example.com\ntelefon: 123-456-7890",
+        "title": "Skjemautfyller",
+        "fillAll": "Fyll ut alle",
+        "fillThis": "Fyll ut dette feltet",
+        "undo": "Angre",
+        "readClipboard": "Les fra utklippstavlen",
+        "showPassword": "Vis passord",
+        "hidePassword": "Skjul passord",
+        "filledFields": "Fylte ut {count} felt",
+        "parsedFields": "{count} felt analysert",
+        "pasteData": "Lim inn data som skal fylles ut",
+        "pasteDataHint": "Lim inn nøkkel-verdi-par"
+      },
+      "createTemplate": "Opprett mal",
+      "default": "Standard",
+      "defaultSet": "Standardmal oppdatert",
+      "editTemplate": "Rediger mal",
+      "enterValue": "Skriv inn verdi...",
+      "fields": "Felt",
+      "fieldTypes": "felttyper konfigurert",
+      "patterns": "Feltmønstre",
+      "patternsDescription": "Feltmønstre hjelper med å oppdage skjemafelt ved å matche nøkkelord i feltnavn, etiketter og plassholdere.",
+      "setAsDefault": "Sett som standardmal",
+      "templateCreated": "Malen ble opprettet",
+      "templateDeleted": "Malen ble slettet",
+      "templateName": "Malnavn",
+      "templateUpdated": "Malen ble oppdatert",
+      "templates": "Maler",
+      "newTemplate": "Ny mal",
+      "setDefault": "Sett som standard",
+      "noTemplates": "Ingen maler ennå. Opprett en for å komme i gang.",
+      "editPatterns": "Rediger mønstre",
+      "patternsSaved": "Mønstre lagret",
+      "confirmDelete": "Er du sikker på at du vil slette denne malen?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Ethernet-nettverk",
+      "loopback": "Tilbakesløyfe",
+      "unknown": "Ukjent",
+      "virtual": "Virtuell"
+    },
+    "plugins": {
+      "builtin": "Innebygd",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo eller https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Deaktivert",
+        "enabled": "Aktivert",
+        "total": "Totalt"
+      },
+      "categories": {
+        "analytics": "Analyse",
+        "communication": "Kommunikasjon",
+        "development": "Utvikling",
+        "extension": "Utvidelse",
+        "information": "Informasjon",
+        "integration": "Integrasjon",
+        "other": "Annet",
+        "productivity": "Produktivitet",
+        "system": "Systemer",
+        "utility": "Verktøy"
+      },
+      "title": "Utvidelser",
+      "subtitle": "Administrer ferdigheter og verktøy",
+      "noDescription": "Ingen beskrivelse tilgjengelig",
+      "allCategories": "Alle kategorier",
+      "dropFileHere": "Slipp filen her eller klikk for å bla gjennom",
+      "fileRequired": "Velg en fil",
+      "install": "Installer",
+      "installFailed": "Installasjonen mislyktes",
+      "installFromUrl": "Fra URL",
+      "installing": "Installerer...",
+      "installSkillTitle": "Installer ferdighet",
+      "noMatchingTools": "Ingen samsvarende elementer funnet",
+      "noTools": "Ingen elementer tilgjengelig",
+      "skillPackageInfo": "Krav til ferdighetspakke",
+      "skillPackageRequirement1": "Må inneholde et gyldig skill.json-manifest",
+      "skillPackageRequirement2": "Ta med alle nødvendige ferdighetsfiler",
+      "skillUrlHint": "Skriv inn en GitHub-repositorie-URL eller en direkte lenke til en ferdighetspakke",
+      "skillUrlLabel": "Ferdighets-URL",
+      "supportedFormats": "Støttede formater",
+      "uploadFile": "Last opp fil",
+      "uploadSkill": "Installer ferdighet",
+      "urlRequired": "Skriv inn en URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Aktiv økt",
+      "cancel": "Avbryt",
+      "diagnostics": "Diagnostikk",
+      "diagnosticsTitle": "Diagnostikkinformasjon",
+      "disconnect": "Koble fra",
+      "disconnectConfirmMessage": "Hvis du bruker den eksterne tunnelen, kan du miste tilgangen til denne siden.",
+      "disconnectConfirmMessageSameHost": "Du bruker for øyeblikket denne eksterne tunnelen. Hvis du kobler fra, lukkes denne siden og du mister tilgangen.",
+      "disconnectConfirmTitle": "Koble fra fjerntilgang?",
+      "error": "Feil",
+      "firewallException": "Brannmurunntak",
+      "getToken": "Hent tokenet ditt",
+      "logs": "Logger",
+      "logsTitle": "Tilkoblingslogger",
+      "ngrokClaimDomain": "Gjør krav på ditt",
+      "ngrokDomain": "Statisk domene",
+      "ngrokDomainHint": "Valgfritt: Gratisbrukere kan gjøre krav på ett statisk domene.",
+      "ngrokDomainPlaceholder": "f.eks. myapp.ngrok-free.app",
+      "noKeyRequired": "Ingen oppsett kreves",
+      "noLogs": "Ingen logger tilgjengelig",
+      "platform": "Plattform",
+      "provider": "Leverandør",
+      "qrCodeError": "Kunne ikke laste QR-kode",
+      "recentErrors": "Nylige feil",
+      "requiresKey": "Krever autentiseringstoken",
+      "selectProvider": "Velg tunnelleverandør",
+      "showQRCode": "Vis QR-kode",
+      "status": "Tilstand",
+      "troubleshootingHints": "Feilsøkingstips",
+      "tunnelRunning": "Tunnel kjører"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "OK (tom)",
+        "ok-token": "I orden",
+        "failed": "Mislyktes",
+        "ran": "Kjørt",
+        "sent": "Varsel sendt",
+        "skipped": "Hoppet over"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Feilen er fjernet — du kan prøve igjen",
+      "keyLabelPlaceholder": "Primær, Reserve osv.",
+      "modelIdPlaceholder": "openai, anthropic osv.",
+      "providerId": "Leverandør-ID",
+      "retry": "Prøv igjen",
+      "addFailed": "Kunne ikke legge til leverandør",
+      "addingProvider": "Legger til leverandør...",
+      "apiKeyHint": "Noen leverandører, som Ollama, trenger ikke API-nøkkel",
+      "apiKeyOptional": "API-nøkkel (valgfri)",
+      "baseUrlRequired": "Konfigurer basis-URL først",
+      "fetchingKeyModels": "Henter modeller...",
+      "getApiKey": "Hent API-nøkkel",
+      "ideImportLabel": "Importert fra {ide} (Claude Code-utvidelse)",
+      "noAvailableModels": "Ingen tilgjengelige modeller funnet",
+      "noModelsFound": "Ingen modeller funnet — sjekk URL og API-nøkkel",
+      "probeComplete": "Sjekk fullført: {available}/{total} modeller tilgjengelig",
+      "probingModels": "Sjekker modeller...",
+      "providerAdded": "Leverandør lagt til",
+      "providerAddedWithModels": "{count} modeller tilgjengelig",
+      "scanIDE": "Importer fra IDE",
+      "dragToReorder": "Dra for å endre prioriteten",
+      "freeTier": "Gratis",
+      "location": "Plassering",
+      "locationCloud": "Sky",
+      "locationHint": "Sky-leverandører kjører på eksterne servere, lokale leverandører kjører på maskinen din",
+      "locationLocal": "Lokal",
+      "preferredModelsHint": "Kryss av modellene du foretrekker. Bare avkryssede modeller vil være tilgjengelige; hvis ingen er avkrysset, vil alle modeller være tilgjengelige.",
+      "selectPreferredModels": "Velg foretrukne modeller",
+      "tabs": {
+        "oauth": "OAuth-innlogging"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "ZimaOS Blue-prøveversjon",
+        "quotaExhaustedConversations": "Du har nådd grensen for prøvesamtaler. Konfigurer din egen leverandør for å fortsette.",
+        "quotaExhaustedTokens": "Prøvekvoten din for token er brukt opp. Konfigurer din egen leverandør for å fortsette.",
+        "tokensUsed": "{remaining} / {total} token gjenstår"
+      },
+      "usage": {
+        "estimatedCost": "Estimert kostnad",
+        "inputTokens": "Inndatatoken",
+        "loading": "Laster inn bruk...",
+        "outputTokens": "Utdata-token",
+        "requests": "Forespørsler"
+      }
+    }
+  },
+  "nl-NL": {
+    "settings": {
+      "update": {
+        "applying": "Update toepassen...",
+        "confirmRestart": "Toepassen en herstarten",
+        "downloadComplete": "Download voltooid",
+        "downloadFailed": "Download mislukt",
+        "restarting": "Opnieuw opstarten...",
+        "serverNotResponding": "De server kwam na de update niet terug",
+        "waitingForServer": "Wachten tot de server terugkomt...",
+        "autoCheck": "Controleer automatisch op updates bij opstart",
+        "checkNow": "Nu controleren",
+        "currentVersion": "Huidige versie",
+        "download": "Downloaden",
+        "downloading": "Bezig met downloaden...",
+        "newVersionAvailable": "Nieuwe versie beschikbaar",
+        "title": "Info",
+        "upToDate": "Bijgewerkt"
+      },
+      "tab": {
+        "llm": "LLM-modellen",
+        "memory": "Geheugen",
+        "network": "Netwerk",
+        "security": "Beveiliging",
+        "speech": "Spraak",
+        "update": "Bijwerken",
+        "userdata": "Gegevensbeheer"
+      },
+      "closeBehavior": "Gedrag bij sluiten",
+      "closeBehaviorMinimize": "Minimaliseren naar systeemvak",
+      "closeBehaviorQuit": "Afsluiten",
+      "closeBehaviorSaved": "Gedrag bij sluiten opgeslagen"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Geheugenoproepcontrole",
+      "memoryMeta": "In {skipped}/{total} beurten is oproep overgeslagen",
+      "memoryMode": "Modus: {mode}",
+      "modes": {
+        "aggressive": "Agressief",
+        "balanced": "Gebalanceerd",
+        "quality": "Kwaliteit"
+      },
+      "combined": "Cache + inkorting + hulpmiddelen + routering",
+      "estimated": "Geschatte besparing",
+      "costSaved": "Bespaarde kosten",
+      "tokensSaved": "Bespaarde tokens",
+      "compression": "Compressie",
+      "breakdown": "Uitsplitsing van besparingen",
+      "estCost": "Geschatte kosten",
+      "noSavingsYet": "Nog geen tokenbesparingen vastgelegd",
+      "prunerLabel": "Contextinkorter",
+      "prunerMeta": "{pruned}/{total} verzoeken ingekort",
+      "routingLabel": "Slimme routering",
+      "routingMeta": "{requests} verzoeken gerouteerd",
+      "toolsLabel": "Hulpmiddelenfilter",
+      "toolsMeta": "{skipped} hulpmiddelen overgeslagen in {requests} verzoeken"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analyse",
+        "auto_reply": "Automatisch antwoord",
+        "browser": "Browser",
+        "calculator": "Rekenmachine",
+        "calendar": "Kalender",
+        "contacts": "Contacten",
+        "crypto": "Crypto",
+        "datetime": "Datum en tijd",
+        "email": "E-mail",
+        "file_read": "Bestand lezen",
+        "file_write": "Bestand schrijven",
+        "files": "Bestanden",
+        "memory": "Geheugen",
+        "network": "Netwerk",
+        "news": "Nieuws",
+        "notes": "Notities",
+        "notifications": "Meldingen",
+        "process": "Processen",
+        "reminders": "Herinneringen",
+        "sandbox": "Sandbox",
+        "scheduler": "Planner",
+        "search": "Zoeken",
+        "stocks": "Aandelen",
+        "system_info": "Systeeminformatie",
+        "tasks": "Taken",
+        "timer": "Timer",
+        "translate": "Vertalen",
+        "ui_reviewer": "UI-beoordelaar",
+        "unit_converter": "Eenhedenomzetter",
+        "weather": "Weer",
+        "web_search": "Webzoeken",
+        "workflows": "Werkstromen",
+        "exec": "Opdrachtuitvoering",
+        "workspace_file": "Werkruimtebestand"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Automatisch afspelen",
+      "checkpoint": {
+        "cancel": "Annuleren",
+        "continue": "Doorgaan",
+        "fallbackQuestion": "Bevestig deze browseractie.",
+        "help": "Je kunt \"doorgaan\" of \"annuleren\" zeggen, of hieronder op een knop tikken.",
+        "title": "Bevestiging voor browsercontrolepunt vereist"
+      },
+      "clearConversation": "Gesprek wissen",
+      "connected": "Verbonden",
+      "continuous": "Doorlopend",
+      "disconnected": "Verbroken",
+      "emptyHint": "Houd de microfoonknop ingedrukt om te spreken",
+      "errors": {
+        "connectionFailed": "Verbinding mislukt",
+        "processAudioFailed": "Audio verwerken is mislukt",
+        "startRecordingFailed": "Opname starten is mislukt",
+        "wakeWordStartFailed": "Starten van wakeword-detectie is mislukt"
+      },
+      "title": "Spraakassistent",
+      "settingsTitle": "Instellingen",
+      "languageLabel": "Taal",
+      "voiceLabel": "Stem",
+      "holdToSpeak": "Ingedrukt houden om te spreken",
+      "releaseToSend": "Loslaten om te verzenden",
+      "wakeWordTitle": "Detectie van wakeword",
+      "wakeWordEnable": "Inschakelen",
+      "wakeWordLabel": "Wakeword",
+      "wakeWordPlaceholder": "bijv. hey echo",
+      "wakeWordListening": "Luistert naar wakeword...",
+      "wakeWordIdle": "Luistert niet",
+      "state": {
+        "ready": "Gereed",
+        "listening": "Luistert...",
+        "processing": "Verwerken...",
+        "speaking": "Spreekt...",
+        "unknown": "Onbekend"
+      },
+      "languages": {
+        "en": "Engels",
+        "zh": "Chinees",
+        "ja": "Japans",
+        "ko": "Koreaans",
+        "de": "Duits",
+        "fr": "Frans",
+        "es": "Spaans"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Open-source en gratis agentruntime"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Zoek in logboeken..."
+    },
+    "companion": {
+      "title": "Metgezel",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Webgebruiker"
+      },
+      "ackedBy": "Bevestigd door",
+      "anonymous": "Anoniem",
+      "eventHistory": "Gebeurtenisgeschiedenis",
+      "flow": {
+        "duration": "Duur",
+        "empty": "Geen stroomgegevens beschikbaar",
+        "fitView": "Weergave passend maken",
+        "legend": "Legenda",
+        "loading": "Stroom laden...",
+        "nodeTypes": {
+          "llmRequest": "LLM-verzoek",
+          "message": "Bericht",
+          "securityCheck": "Beveiligingscontrole",
+          "toolCall": "Hulpmiddeloproep"
+        },
+        "reset": "Weergave resetten",
+        "retry": "Opnieuw proberen",
+        "status": "Status",
+        "time": "Tijd",
+        "type": "Type",
+        "zoomIn": "Inzoomen",
+        "zoomOut": "Uitzoomen"
+      },
+      "hoursAgo": "{n} uur geleden",
+      "justNow": "Zojuist",
+      "liveSession": "Live sessie",
+      "llmDetails": {
+        "completion": "Uitvoertokens",
+        "input": "Invoer",
+        "prompt": "Invoertokens",
+        "score": "Score",
+        "total": "Totale tokens"
+      },
+      "minutesAgo": "{n} min geleden",
+      "nodes": {
+        "chars": "{count} tekens",
+        "llmRequest": "LLM-verzoek",
+        "message": "Bericht",
+        "received": "Ontvangen",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Ondersteuning",
+      "deepResearchConflict": "Conflict",
+      "deepResearchHasConflict": "Tegenstrijdige signalen"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Toestemming voor Automation is vereist om iMessages te verzenden. Geef die in System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Full Disk Access is vereist om de iMessage-geschiedenis te lezen. Geef die in System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage is niet ingesteld op deze Mac. Open de app Messages en meld je aan met je Apple ID.",
+          "not_signed_in": "Je bent niet aangemeld bij iMessage. Open de app Messages en meld je aan met je Apple ID.",
+          "unavailable_platform": "iMessage is alleen beschikbaar op macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP-verzoek"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "bijv. Persoonlijk, Werk",
+      "widget": {
+        "pasteExample": "naam: Jan Jansen\ne-mail: jan{'@'}example.com\ntelefoon: 123-456-7890",
+        "title": "Formulierinvuller",
+        "fillAll": "Alles invullen",
+        "fillThis": "Dit veld invullen",
+        "undo": "Ongedaan maken",
+        "readClipboard": "Van klembord lezen",
+        "showPassword": "Wachtwoord tonen",
+        "hidePassword": "Wachtwoord verbergen",
+        "filledFields": "{count} velden ingevuld",
+        "parsedFields": "{count} velden geparseerd",
+        "pasteData": "Gegevens plakken om in te vullen",
+        "pasteDataHint": "Sleutel-waardeparen plakken"
+      },
+      "createTemplate": "Sjabloon maken",
+      "default": "Standaard",
+      "defaultSet": "Standaardsjabloon bijgewerkt",
+      "editTemplate": "Sjabloon bewerken",
+      "enterValue": "Waarde invoeren...",
+      "fields": "Velden",
+      "fieldTypes": "veldtypen geconfigureerd",
+      "patterns": "Veldpatronen",
+      "patternsDescription": "Veldpatronen helpen formuliervelden te detecteren door trefwoorden in veldnamen, labels en placeholders te vergelijken.",
+      "setAsDefault": "Als standaardsjabloon instellen",
+      "templateCreated": "Sjabloon succesvol aangemaakt",
+      "templateDeleted": "Sjabloon succesvol verwijderd",
+      "templateName": "Sjabloonnaam",
+      "templateUpdated": "Sjabloon succesvol bijgewerkt",
+      "templates": "Sjablonen",
+      "newTemplate": "Nieuw sjabloon",
+      "setDefault": "Als standaard instellen",
+      "noTemplates": "Nog geen sjablonen. Maak er een om te beginnen.",
+      "editPatterns": "Patronen bewerken",
+      "patternsSaved": "Patronen succesvol opgeslagen",
+      "confirmDelete": "Weet je zeker dat je dit sjabloon wilt verwijderen?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Ethernet-netwerk",
+      "loopback": "Teruglus",
+      "unknown": "Onbekend",
+      "virtual": "Virtueel"
+    },
+    "plugins": {
+      "builtin": "Ingebouwd",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo of https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Uitgeschakeld",
+        "enabled": "Ingeschakeld",
+        "total": "Totaal"
+      },
+      "categories": {
+        "analytics": "Analyse",
+        "communication": "Communicatie",
+        "development": "Ontwikkeling",
+        "extension": "Extensie",
+        "information": "Informatie",
+        "integration": "Integratie",
+        "other": "Overig",
+        "productivity": "Productiviteit",
+        "system": "Systeem",
+        "utility": "Hulpprogramma"
+      },
+      "title": "Uitbreidingen",
+      "subtitle": "Beheer vaardigheden en tools",
+      "noDescription": "Geen beschrijving beschikbaar",
+      "allCategories": "Alle categorieën",
+      "dropFileHere": "Sleep het bestand hierheen of klik om te bladeren",
+      "fileRequired": "Selecteer een bestand",
+      "install": "Installeren",
+      "installFailed": "Installatie mislukt",
+      "installFromUrl": "Van URL",
+      "installing": "Bezig met installeren...",
+      "installSkillTitle": "Vaardigheid installeren",
+      "noMatchingTools": "Geen overeenkomende items gevonden",
+      "noTools": "Geen items beschikbaar",
+      "skillPackageInfo": "Vereisten voor vaardigheidspakket",
+      "skillPackageRequirement1": "Moet een geldig skill.json-manifest bevatten",
+      "skillPackageRequirement2": "Neem alle vereiste vaardigheidsbestanden op",
+      "skillUrlHint": "Voer een GitHub-repository-URL in of een directe link naar een vaardigheidspakket",
+      "skillUrlLabel": "Vaardigheids-URL",
+      "supportedFormats": "Ondersteunde indelingen",
+      "uploadFile": "Bestand uploaden",
+      "uploadSkill": "Vaardigheid installeren",
+      "urlRequired": "Voer een URL in"
+    },
+    "remoteAccess": {
+      "activeSession": "Actieve sessie",
+      "cancel": "Annuleren",
+      "diagnostics": "Diagnostiek",
+      "diagnosticsTitle": "Diagnostische informatie",
+      "disconnect": "Verbinding verbreken",
+      "disconnectConfirmMessage": "Als je via de externe tunnel bent verbonden, kun je de toegang tot deze pagina verliezen.",
+      "disconnectConfirmMessageSameHost": "Je gebruikt momenteel deze externe tunnel. Als je de verbinding verbreekt, wordt deze pagina gesloten en verlies je de toegang.",
+      "disconnectConfirmTitle": "Externe toegang verbreken?",
+      "error": "Fout",
+      "firewallException": "Firewall-uitzondering",
+      "getToken": "Haal je token op",
+      "logs": "Logboeken",
+      "logsTitle": "Verbindingslogboeken",
+      "ngrokClaimDomain": "Claim de jouwe",
+      "ngrokDomain": "Statisch domein",
+      "ngrokDomainHint": "Optioneel: gratis gebruikers kunnen één statisch domein claimen.",
+      "ngrokDomainPlaceholder": "bijv. myapp.ngrok-free.app",
+      "noKeyRequired": "Geen configuratie vereist",
+      "noLogs": "Geen logboeken beschikbaar",
+      "platform": "Platformtype",
+      "provider": "Aanbieder",
+      "qrCodeError": "Kan QR-code niet laden",
+      "recentErrors": "Recente fouten",
+      "requiresKey": "Authenticatietoken vereist",
+      "selectProvider": "Selecteer tunnelprovider",
+      "showQRCode": "QR-code tonen",
+      "status": "Verbindingsstatus",
+      "troubleshootingHints": "Tips voor probleemoplossing",
+      "tunnelRunning": "Tunnel actief"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "In orde (leeg)",
+        "ok-token": "In orde",
+        "failed": "Mislukt",
+        "ran": "Uitgevoerd",
+        "sent": "Waarschuwing verzonden",
+        "skipped": "Overgeslagen"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Fout gewist — je kunt het opnieuw proberen",
+      "keyLabelPlaceholder": "Primair, Reserve, enz.",
+      "modelIdPlaceholder": "openai, anthropic enz.",
+      "providerId": "Provider-ID",
+      "retry": "Opnieuw proberen",
+      "addFailed": "Provider toevoegen mislukt",
+      "addingProvider": "Provider toevoegen...",
+      "apiKeyHint": "Sommige providers, zoals Ollama, hebben geen API-sleutel nodig",
+      "apiKeyOptional": "API-sleutel (optioneel)",
+      "baseUrlRequired": "Configureer eerst de basis-URL",
+      "fetchingKeyModels": "Modellen ophalen...",
+      "getApiKey": "API-sleutel ophalen",
+      "ideImportLabel": "Geïmporteerd uit {ide} (Claude Code-extensie)",
+      "noAvailableModels": "Geen beschikbare modellen gevonden",
+      "noModelsFound": "Geen modellen gevonden — controleer URL en API-sleutel",
+      "probeComplete": "Controle voltooid: {available}/{total} modellen beschikbaar",
+      "probingModels": "Modellen controleren...",
+      "providerAdded": "Provider toegevoegd",
+      "providerAddedWithModels": "{count} modellen beschikbaar",
+      "scanIDE": "Importeren vanuit IDE",
+      "dragToReorder": "Sleep om de prioriteit te wijzigen",
+      "freeTier": "Gratis",
+      "location": "Locatie",
+      "locationCloud": "In de cloud",
+      "locationHint": "Cloudproviders draaien op externe servers, lokale providers draaien op je machine",
+      "locationLocal": "Lokaal",
+      "preferredModelsHint": "Vink de modellen aan die je prefereert. Alleen aangevinkte modellen zijn beschikbaar; als er geen zijn aangevinkt, zijn alle modellen beschikbaar.",
+      "selectPreferredModels": "Voorkeursmodellen selecteren",
+      "tabs": {
+        "oauth": "OAuth-aanmelding"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "ZimaOS Blue-proefversie",
+        "quotaExhaustedConversations": "Je limiet voor proefgesprekken is bereikt. Configureer je eigen provider om door te gaan.",
+        "quotaExhaustedTokens": "Je proefquotum voor tokens is opgebruikt. Configureer je eigen provider om door te gaan.",
+        "tokensUsed": "{remaining} / {total} tokens resterend"
+      },
+      "usage": {
+        "estimatedCost": "Geschatte kosten",
+        "inputTokens": "Invoertokens",
+        "loading": "Gebruik laden...",
+        "outputTokens": "Uitvoertokens",
+        "requests": "Aanvragen"
+      }
+    }
+  },
+  "pl-PL": {
+    "settings": {
+      "update": {
+        "applying": "Trwa stosowanie aktualizacji...",
+        "confirmRestart": "Zastosuj i uruchom ponownie",
+        "downloadComplete": "Pobieranie ukończone",
+        "downloadFailed": "Pobieranie nie powiodło się",
+        "restarting": "Ponowne uruchamianie...",
+        "serverNotResponding": "Serwer nie wrócił po aktualizacji",
+        "waitingForServer": "Oczekiwanie na powrót serwera...",
+        "autoCheck": "Automatycznie sprawdzaj aktualizacje przy uruchomieniu",
+        "checkNow": "Sprawdź teraz",
+        "currentVersion": "Aktualna wersja",
+        "download": "Pobierz",
+        "downloading": "Pobieranie...",
+        "newVersionAvailable": "Dostępna nowa wersja",
+        "title": "Informacje",
+        "upToDate": "Aktualne"
+      },
+      "tab": {
+        "llm": "Modele LLM",
+        "memory": "Pamięć",
+        "network": "Sieć",
+        "security": "Bezpieczeństwo",
+        "speech": "Mowa",
+        "update": "Aktualizacja",
+        "userdata": "Zarządzanie danymi"
+      },
+      "closeBehavior": "Zachowanie przy zamykaniu",
+      "closeBehaviorMinimize": "Minimalizuj do zasobnika",
+      "closeBehaviorQuit": "Zakończ",
+      "closeBehaviorSaved": "Zachowanie przy zamykaniu zapisane"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Kontrola przywołania pamięci",
+      "memoryMeta": "Pominięto przywołanie w {skipped}/{total} turach",
+      "memoryMode": "Tryb: {mode}",
+      "modes": {
+        "aggressive": "Agresywny",
+        "balanced": "Zrównoważony",
+        "quality": "Jakość"
+      },
+      "combined": "Pamięć podręczna + przycinanie + narzędzia + routing",
+      "estimated": "Szacowane oszczędności",
+      "costSaved": "Zaoszczędzony koszt",
+      "tokensSaved": "Zaoszczędzone tokeny",
+      "compression": "Kompresja",
+      "breakdown": "Rozkład oszczędności",
+      "estCost": "Szac. koszt",
+      "noSavingsYet": "Nie odnotowano jeszcze oszczędności tokenów",
+      "prunerLabel": "Przycinanie kontekstu",
+      "prunerMeta": "Przycięto {pruned}/{total} żądań",
+      "routingLabel": "Inteligentny routing",
+      "routingMeta": "Przekierowano {requests} żądań",
+      "toolsLabel": "Filtr narzędzi",
+      "toolsMeta": "Pominięto {skipped} narzędzi w {requests} żądaniach"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analiza",
+        "auto_reply": "Automatyczna odpowiedź",
+        "browser": "Przeglądarka",
+        "calculator": "Kalkulator",
+        "calendar": "Kalendarz",
+        "contacts": "Kontakty",
+        "crypto": "Krypto",
+        "datetime": "Data i czas",
+        "email": "E-mail",
+        "file_read": "Odczyt pliku",
+        "file_write": "Zapis pliku",
+        "files": "Pliki",
+        "memory": "Pamięć",
+        "network": "Sieć",
+        "news": "Wiadomości",
+        "notes": "Notatki",
+        "notifications": "Powiadomienia",
+        "process": "Procesy",
+        "reminders": "Przypomnienia",
+        "sandbox": "Piaskownica",
+        "scheduler": "Harmonogram",
+        "search": "Szukaj",
+        "stocks": "Akcje",
+        "system_info": "Informacje systemowe",
+        "tasks": "Zadania",
+        "timer": "Minutnik",
+        "translate": "Tłumacz",
+        "ui_reviewer": "Recenzent interfejsu",
+        "unit_converter": "Konwerter jednostek",
+        "weather": "Pogoda",
+        "web_search": "Wyszukiwanie w sieci",
+        "workflows": "Przepływy pracy",
+        "exec": "Wykonywanie poleceń",
+        "workspace_file": "Plik obszaru roboczego"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Autoodtwarzanie",
+      "checkpoint": {
+        "cancel": "Anuluj",
+        "continue": "Kontynuuj",
+        "fallbackQuestion": "Potwierdź to działanie przeglądarki.",
+        "help": "Możesz powiedzieć \"kontynuuj\" lub \"anuluj\", albo stuknąć przycisk poniżej.",
+        "title": "Wymagane jest potwierdzenie punktu kontrolnego przeglądarki"
+      },
+      "clearConversation": "Wyczyść rozmowę",
+      "connected": "Połączono",
+      "continuous": "Ciągłe",
+      "disconnected": "Rozłączono",
+      "emptyHint": "Naciśnij i przytrzymaj przycisk mikrofonu, aby mówić",
+      "errors": {
+        "connectionFailed": "Połączenie nie powiodło się",
+        "processAudioFailed": "Nie udało się przetworzyć dźwięku",
+        "startRecordingFailed": "Nie udało się rozpocząć nagrywania",
+        "wakeWordStartFailed": "Nie udało się uruchomić wykrywania słowa wybudzającego"
+      },
+      "title": "Asystent głosowy",
+      "settingsTitle": "Ustawienia",
+      "languageLabel": "Język",
+      "voiceLabel": "Głos",
+      "holdToSpeak": "Przytrzymaj, aby mówić",
+      "releaseToSend": "Puść, aby wysłać",
+      "wakeWordTitle": "Wykrywanie słowa wybudzającego",
+      "wakeWordEnable": "Włącz",
+      "wakeWordLabel": "Słowo wybudzające",
+      "wakeWordPlaceholder": "np. hej echo",
+      "wakeWordListening": "Nasłuchiwanie słowa wybudzającego...",
+      "wakeWordIdle": "Nie nasłuchuje",
+      "state": {
+        "ready": "Gotowe",
+        "listening": "Nasłuchiwanie...",
+        "processing": "Przetwarzanie...",
+        "speaking": "Mówi...",
+        "unknown": "Nieznane"
+      },
+      "languages": {
+        "en": "Angielski",
+        "zh": "Chiński",
+        "ja": "Japoński",
+        "ko": "Koreański",
+        "de": "Niemiecki",
+        "fr": "Francuski",
+        "es": "Hiszpański"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Otwartoźródłowe i bezpłatne środowisko uruchomieniowe agenta"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Szukaj w logach..."
+    },
+    "companion": {
+      "title": "Towarzysz",
+      "platforms": {
+        "web": "Sieć",
+        "web-user": "Użytkownik WWW"
+      },
+      "ackedBy": "Potwierdził",
+      "anonymous": "Anonimowy",
+      "eventHistory": "Historia zdarzeń",
+      "flow": {
+        "duration": "Czas trwania",
+        "empty": "Brak dostępnych danych przepływu",
+        "fitView": "Dopasuj widok",
+        "legend": "Legenda",
+        "loading": "Ładowanie przepływu...",
+        "nodeTypes": {
+          "llmRequest": "Żądanie LLM",
+          "message": "Wiadomość",
+          "securityCheck": "Kontrola bezpieczeństwa",
+          "toolCall": "Wywołanie narzędzia"
+        },
+        "reset": "Resetuj widok",
+        "retry": "Spróbuj ponownie",
+        "status": "Status",
+        "time": "Czas",
+        "type": "Typ",
+        "zoomIn": "Powiększ",
+        "zoomOut": "Pomniejsz"
+      },
+      "hoursAgo": "{n} godz. temu",
+      "justNow": "Przed chwilą",
+      "liveSession": "Sesja na żywo",
+      "llmDetails": {
+        "completion": "Tokeny wyjściowe",
+        "input": "Wejście",
+        "prompt": "Tokeny wejściowe",
+        "score": "Wynik",
+        "total": "Łącznie tokenów"
+      },
+      "minutesAgo": "{n} min temu",
+      "nodes": {
+        "chars": "{count} znaków",
+        "llmRequest": "Żądanie LLM",
+        "message": "Wiadomość",
+        "received": "Odebrano",
+        "sandbox": "Piaskownica"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Wsparcie",
+      "deepResearchConflict": "Konflikt",
+      "deepResearchHasConflict": "Sprzeczne sygnały"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Do wysyłania iMessages wymagane jest uprawnienie Automation. Przyznaj je w System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Do odczytu historii iMessage wymagane jest Full Disk Access. Przyznaj je w System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage nie jest skonfigurowany na tym Macu. Otwórz aplikację Messages i zaloguj się przy użyciu Apple ID.",
+          "not_signed_in": "Nie jesteś zalogowany do iMessage. Otwórz aplikację Messages i zaloguj się przy użyciu Apple ID.",
+          "unavailable_platform": "iMessage jest dostępne tylko w systemie macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "Żądanie HTTP"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "np. Prywatne, Praca",
+      "widget": {
+        "pasteExample": "imię: Jan Kowalski\ne-mail: jan{'@'}example.com\ntelefon: 123-456-7890",
+        "title": "Wypełnianie formularzy",
+        "fillAll": "Wypełnij wszystkie",
+        "fillThis": "Wypełnij to pole",
+        "undo": "Cofnij",
+        "readClipboard": "Wczytaj ze schowka",
+        "showPassword": "Pokaż hasło",
+        "hidePassword": "Ukryj hasło",
+        "filledFields": "Wypełniono {count} pól",
+        "parsedFields": "Przeanalizowano {count} pól",
+        "pasteData": "Wklej dane do wypełnienia",
+        "pasteDataHint": "Wklej pary klucz-wartość"
+      },
+      "createTemplate": "Utwórz szablon",
+      "default": "Domyślny",
+      "defaultSet": "Zaktualizowano domyślny szablon",
+      "editTemplate": "Edytuj szablon",
+      "enterValue": "Wpisz wartość...",
+      "fields": "Pola",
+      "fieldTypes": "typy pól skonfigurowane",
+      "patterns": "Wzorce pól",
+      "patternsDescription": "Wzorce pól pomagają wykrywać pola formularza przez dopasowywanie słów kluczowych w nazwach pól, etykietach i tekstach zastępczych.",
+      "setAsDefault": "Ustaw jako domyślny szablon",
+      "templateCreated": "Szablon został utworzony",
+      "templateDeleted": "Szablon został usunięty",
+      "templateName": "Nazwa szablonu",
+      "templateUpdated": "Szablon został zaktualizowany",
+      "templates": "Szablony",
+      "newTemplate": "Nowy szablon",
+      "setDefault": "Ustaw jako domyślny",
+      "noTemplates": "Nie ma jeszcze szablonów. Utwórz pierwszy, aby zacząć.",
+      "editPatterns": "Edytuj wzorce",
+      "patternsSaved": "Wzorce zostały zapisane",
+      "confirmDelete": "Czy na pewno chcesz usunąć ten szablon?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Sieć Ethernet",
+      "loopback": "Pętla zwrotna",
+      "unknown": "Nieznane",
+      "virtual": "Wirtualne"
+    },
+    "plugins": {
+      "builtin": "Wbudowane",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo lub https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Wyłączone",
+        "enabled": "Włączone",
+        "total": "Łącznie"
+      },
+      "categories": {
+        "analytics": "Analityka",
+        "communication": "Komunikacja",
+        "development": "Rozwój",
+        "extension": "Rozszerzenie",
+        "information": "Informacje",
+        "integration": "Integracja",
+        "other": "Inne",
+        "productivity": "Produktywność",
+        "system": "Systemy",
+        "utility": "Narzędzia"
+      },
+      "title": "Rozszerzenia",
+      "subtitle": "Zarządzaj umiejętnościami i narzędziami",
+      "noDescription": "Brak opisu",
+      "allCategories": "Wszystkie kategorie",
+      "dropFileHere": "Upuść plik tutaj lub kliknij, aby przeglądać",
+      "fileRequired": "Wybierz plik",
+      "install": "Zainstaluj",
+      "installFailed": "Instalacja nie powiodła się",
+      "installFromUrl": "Z URL",
+      "installing": "Instalowanie...",
+      "installSkillTitle": "Zainstaluj umiejętność",
+      "noMatchingTools": "Nie znaleziono pasujących elementów",
+      "noTools": "Brak dostępnych elementów",
+      "skillPackageInfo": "Wymagania pakietu umiejętności",
+      "skillPackageRequirement1": "Musi zawierać prawidłowy manifest skill.json",
+      "skillPackageRequirement2": "Dołącz wszystkie wymagane pliki umiejętności",
+      "skillUrlHint": "Wprowadź adres URL repozytorium GitHub lub bezpośredni link do pakietu umiejętności",
+      "skillUrlLabel": "URL umiejętności",
+      "supportedFormats": "Obsługiwane formaty",
+      "uploadFile": "Prześlij plik",
+      "uploadSkill": "Zainstaluj umiejętność",
+      "urlRequired": "Wprowadź URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Aktywna sesja",
+      "cancel": "Anuluj",
+      "diagnostics": "Diagnostyka",
+      "diagnosticsTitle": "Informacje diagnostyczne",
+      "disconnect": "Rozłącz",
+      "disconnectConfirmMessage": "Jeśli korzystasz z dostępu przez zdalny tunel, możesz utracić dostęp do tej strony.",
+      "disconnectConfirmMessageSameHost": "Obecnie korzystasz z tego zdalnego tunelu. Po rozłączeniu ta strona zostanie zamknięta i utracisz dostęp.",
+      "disconnectConfirmTitle": "Rozłączyć zdalny dostęp?",
+      "error": "Błąd",
+      "firewallException": "Wyjątek zapory",
+      "getToken": "Pobierz swój token",
+      "logs": "Dzienniki",
+      "logsTitle": "Dzienniki połączeń",
+      "ngrokClaimDomain": "Odbierz swoją",
+      "ngrokDomain": "Statyczna domena",
+      "ngrokDomainHint": "Opcjonalne: użytkownicy darmowego planu mogą odebrać jedną statyczną domenę.",
+      "ngrokDomainPlaceholder": "np. myapp.ngrok-free.app",
+      "noKeyRequired": "Nie wymaga konfiguracji",
+      "noLogs": "Brak dostępnych dzienników",
+      "platform": "Platforma",
+      "provider": "Dostawca",
+      "qrCodeError": "Nie udało się wczytać kodu QR",
+      "recentErrors": "Ostatnie błędy",
+      "requiresKey": "Wymaga tokenu uwierzytelniającego",
+      "selectProvider": "Wybierz dostawcę tunelu",
+      "showQRCode": "Pokaż kod QR",
+      "status": "Stan",
+      "troubleshootingHints": "Wskazówki rozwiązywania problemów",
+      "tunnelRunning": "Tunel działa"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "OK (puste)",
+        "ok-token": "W porządku",
+        "failed": "Niepowodzenie",
+        "ran": "Uruchomiono",
+        "sent": "Wysłano alert",
+        "skipped": "Pominięto"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Błąd został wyczyszczony — możesz spróbować ponownie",
+      "keyLabelPlaceholder": "Główny, Zapasowy itd.",
+      "modelIdPlaceholder": "openai, anthropic itd.",
+      "providerId": "ID dostawcy",
+      "retry": "Spróbuj ponownie",
+      "addFailed": "Nie udało się dodać dostawcy",
+      "addingProvider": "Dodawanie dostawcy...",
+      "apiKeyHint": "Niektórzy dostawcy, tacy jak Ollama, nie potrzebują klucza API",
+      "apiKeyOptional": "Klucz API (opcjonalnie)",
+      "baseUrlRequired": "Najpierw skonfiguruj podstawowy URL",
+      "fetchingKeyModels": "Pobieranie modeli...",
+      "getApiKey": "Pobierz klucz API",
+      "ideImportLabel": "Zaimportowano z {ide} (rozszerzenie Claude Code)",
+      "noAvailableModels": "Nie znaleziono dostępnych modeli",
+      "noModelsFound": "Nie znaleziono modeli — sprawdź URL i klucz API",
+      "probeComplete": "Sondowanie zakończone: dostępne modele {available}/{total}",
+      "probingModels": "Sondowanie modeli...",
+      "providerAdded": "Dodano dostawcę",
+      "providerAddedWithModels": "{count} modeli dostępnych",
+      "scanIDE": "Importuj z IDE",
+      "dragToReorder": "Przeciągnij, aby zmienić priorytet",
+      "freeTier": "Bezpłatnie",
+      "location": "Lokalizacja",
+      "locationCloud": "Chmura",
+      "locationHint": "Dostawcy chmurowi działają na zdalnych serwerach, a lokalni dostawcy na Twoim urządzeniu",
+      "locationLocal": "Lokalnie",
+      "preferredModelsHint": "Zaznacz modele, które preferujesz. Dostępne będą tylko zaznaczone modele; jeśli nie zaznaczysz żadnego, dostępne będą wszystkie modele.",
+      "selectPreferredModels": "Wybierz preferowane modele",
+      "tabs": {
+        "oauth": "Logowanie OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Wersja próbna ZimaOS Blue",
+        "quotaExhaustedConversations": "Osiągnięto limit rozmów próbnych. Aby kontynuować, skonfiguruj własnego dostawcę.",
+        "quotaExhaustedTokens": "Twój próbny limit tokenów został wyczerpany. Aby kontynuować, skonfiguruj własnego dostawcę.",
+        "tokensUsed": "Pozostało {remaining} / {total} tokenów"
+      },
+      "usage": {
+        "estimatedCost": "Szacowany koszt",
+        "inputTokens": "Tokeny wejściowe",
+        "loading": "Wczytywanie użycia...",
+        "outputTokens": "Tokeny wyjściowe",
+        "requests": "Żądania"
+      }
+    }
+  },
+  "pt-BR": {
+    "settings": {
+      "update": {
+        "applying": "Aplicando atualização...",
+        "confirmRestart": "Aplicar e reiniciar",
+        "downloadComplete": "Download concluído",
+        "downloadFailed": "Falha no download",
+        "restarting": "Reiniciando...",
+        "serverNotResponding": "O servidor não voltou após a atualização",
+        "waitingForServer": "Aguardando o servidor voltar...",
+        "autoCheck": "Verificar atualizações automaticamente ao iniciar",
+        "checkNow": "Verificar agora",
+        "currentVersion": "Versão atual",
+        "download": "Baixar",
+        "downloading": "Baixando...",
+        "newVersionAvailable": "Nova versão disponível",
+        "title": "Sobre",
+        "upToDate": "Atualizado"
+      },
+      "tab": {
+        "llm": "Modelos LLM",
+        "memory": "Memória",
+        "network": "Rede",
+        "security": "Segurança",
+        "speech": "Fala",
+        "update": "Atualização",
+        "userdata": "Gerenciamento de dados"
+      },
+      "closeBehavior": "Comportamento ao fechar",
+      "closeBehaviorMinimize": "Minimizar para a bandeja",
+      "closeBehaviorQuit": "Sair",
+      "closeBehaviorSaved": "Comportamento ao fechar salvo"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Controle de recuperação de memória",
+      "memoryMeta": "A recuperação foi ignorada em {skipped}/{total} turnos",
+      "memoryMode": "Modo: {mode}",
+      "modes": {
+        "aggressive": "Agressivo",
+        "balanced": "Equilibrado",
+        "quality": "Qualidade"
+      },
+      "combined": "Cache + poda + ferramentas + roteamento",
+      "estimated": "Economia estimada",
+      "costSaved": "Custo economizado",
+      "tokensSaved": "Tokens economizados",
+      "compression": "Compressão",
+      "breakdown": "Detalhamento da economia",
+      "estCost": "Custo estimado",
+      "noSavingsYet": "Ainda não há economia de tokens registrada",
+      "prunerLabel": "Poda de contexto",
+      "prunerMeta": "{pruned}/{total} solicitações podadas",
+      "routingLabel": "Roteamento inteligente",
+      "routingMeta": "{requests} solicitações roteadas",
+      "toolsLabel": "Filtro de ferramentas",
+      "toolsMeta": "{skipped} ferramentas ignoradas em {requests} solicitações"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Análise",
+        "auto_reply": "Resposta automática",
+        "browser": "Navegador",
+        "calculator": "Calculadora",
+        "calendar": "Calendário",
+        "contacts": "Contatos",
+        "crypto": "Cripto",
+        "datetime": "Data e hora",
+        "email": "E-mail",
+        "file_read": "Leitura de arquivo",
+        "file_write": "Escrita de arquivo",
+        "files": "Arquivos",
+        "memory": "Memória",
+        "network": "Rede",
+        "news": "Notícias",
+        "notes": "Notas",
+        "notifications": "Notificações",
+        "process": "Processos",
+        "reminders": "Lembretes",
+        "sandbox": "Sandbox",
+        "scheduler": "Agendador",
+        "search": "Buscar",
+        "stocks": "Ações",
+        "system_info": "Informações do sistema",
+        "tasks": "Tarefas",
+        "timer": "Temporizador",
+        "translate": "Traduzir",
+        "ui_reviewer": "Revisor de interface",
+        "unit_converter": "Conversor de unidades",
+        "weather": "Clima",
+        "web_search": "Busca na web",
+        "workflows": "Fluxos de trabalho",
+        "exec": "Execução de comandos",
+        "workspace_file": "Arquivo do espaço de trabalho"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Reprodução automática",
+      "checkpoint": {
+        "cancel": "Cancelar",
+        "continue": "Continuar",
+        "fallbackQuestion": "Confirme esta ação do navegador.",
+        "help": "Você pode dizer \"continuar\" ou \"cancelar\", ou tocar em um botão abaixo.",
+        "title": "É necessária a confirmação do ponto de verificação do navegador"
+      },
+      "clearConversation": "Limpar conversa",
+      "connected": "Conectado",
+      "continuous": "Contínuo",
+      "disconnected": "Desconectado",
+      "emptyHint": "Pressione e segure o botão do microfone para falar",
+      "errors": {
+        "connectionFailed": "Falha na conexão",
+        "processAudioFailed": "Falha ao processar o áudio",
+        "startRecordingFailed": "Falha ao iniciar a gravação",
+        "wakeWordStartFailed": "Falha ao iniciar a detecção da palavra de ativação"
+      },
+      "title": "Assistente de voz",
+      "settingsTitle": "Configurações",
+      "languageLabel": "Idioma",
+      "voiceLabel": "Voz",
+      "holdToSpeak": "Segure para falar",
+      "releaseToSend": "Solte para enviar",
+      "wakeWordTitle": "Detecção de palavra de ativação",
+      "wakeWordEnable": "Ativar",
+      "wakeWordLabel": "Palavra de ativação",
+      "wakeWordPlaceholder": "ex.: hey echo",
+      "wakeWordListening": "Ouvindo a palavra de ativação...",
+      "wakeWordIdle": "Não está ouvindo",
+      "state": {
+        "ready": "Pronto",
+        "listening": "Ouvindo...",
+        "processing": "Processando...",
+        "speaking": "Falando...",
+        "unknown": "Desconhecido"
+      },
+      "languages": {
+        "en": "Inglês",
+        "zh": "Chinês",
+        "ja": "Japonês",
+        "ko": "Coreano",
+        "de": "Alemão",
+        "fr": "Francês",
+        "es": "Espanhol"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Runtime de agentes livre e de código aberto"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Buscar nos logs..."
+    },
+    "companion": {
+      "title": "Companheiro",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Usuário web"
+      },
+      "ackedBy": "Confirmado por",
+      "anonymous": "Anônimo",
+      "eventHistory": "Histórico de eventos",
+      "flow": {
+        "duration": "Duração",
+        "empty": "Nenhum dado de fluxo disponível",
+        "fitView": "Ajustar visualização",
+        "legend": "Legenda",
+        "loading": "Carregando fluxo...",
+        "nodeTypes": {
+          "llmRequest": "Solicitação LLM",
+          "message": "Mensagem",
+          "securityCheck": "Verificação de segurança",
+          "toolCall": "Chamada de ferramenta"
+        },
+        "reset": "Redefinir visualização",
+        "retry": "Tentar novamente",
+        "status": "Status",
+        "time": "Hora",
+        "type": "Tipo",
+        "zoomIn": "Ampliar",
+        "zoomOut": "Reduzir"
+      },
+      "hoursAgo": "há {n} horas",
+      "justNow": "Agora mesmo",
+      "liveSession": "Sessão ao vivo",
+      "llmDetails": {
+        "completion": "Tokens de saída",
+        "input": "Entrada",
+        "prompt": "Tokens de entrada",
+        "score": "Pontuação",
+        "total": "Total de tokens"
+      },
+      "minutesAgo": "há {n} min",
+      "nodes": {
+        "chars": "{count} caracteres",
+        "llmRequest": "Solicitação LLM",
+        "message": "Mensagem",
+        "received": "Recebido",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Suporte",
+      "deepResearchConflict": "Conflito",
+      "deepResearchHasConflict": "Sinais conflitantes"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "A permissão Automation é necessária para enviar iMessages. Conceda-a em System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Full Disk Access é necessário para ler o histórico do iMessage. Conceda-o em System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "O iMessage não está configurado neste Mac. Abra o app Messages e entre com seu Apple ID.",
+          "not_signed_in": "Você não está conectado ao iMessage. Abra o app Messages e entre com seu Apple ID.",
+          "unavailable_platform": "O iMessage só está disponível no macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "Requisição HTTP"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "ex.: Pessoal, Trabalho",
+      "widget": {
+        "pasteExample": "nome: João Silva\ne-mail: joao{'@'}example.com\ntelefone: 123-456-7890",
+        "title": "Preenchimento de formulários",
+        "fillAll": "Preencher tudo",
+        "fillThis": "Preencher este campo",
+        "undo": "Desfazer",
+        "readClipboard": "Ler da área de transferência",
+        "showPassword": "Mostrar senha",
+        "hidePassword": "Ocultar senha",
+        "filledFields": "{count} campos preenchidos",
+        "parsedFields": "{count} campos analisados",
+        "pasteData": "Cole dados para preencher",
+        "pasteDataHint": "Cole pares chave-valor"
+      },
+      "createTemplate": "Criar modelo",
+      "default": "Padrão",
+      "defaultSet": "Modelo padrão atualizado",
+      "editTemplate": "Editar modelo",
+      "enterValue": "Digite um valor...",
+      "fields": "Campos",
+      "fieldTypes": "tipos de campo configurados",
+      "patterns": "Padrões de campo",
+      "patternsDescription": "Os padrões de campo ajudam a detectar campos de formulário ao corresponder palavras-chave em nomes de campos, rótulos e placeholders.",
+      "setAsDefault": "Definir como modelo padrão",
+      "templateCreated": "Modelo criado com sucesso",
+      "templateDeleted": "Modelo excluído com sucesso",
+      "templateName": "Nome do modelo",
+      "templateUpdated": "Modelo atualizado com sucesso",
+      "templates": "Modelos",
+      "newTemplate": "Novo modelo",
+      "setDefault": "Definir como padrão",
+      "noTemplates": "Ainda não há modelos. Crie um para começar.",
+      "editPatterns": "Editar padrões",
+      "patternsSaved": "Padrões salvos com sucesso",
+      "confirmDelete": "Tem certeza de que deseja excluir este modelo?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Rede Ethernet",
+      "loopback": "Retorno local",
+      "unknown": "Desconhecido",
+      "virtual": "Rede virtual"
+    },
+    "plugins": {
+      "builtin": "Integrado",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo ou https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Desativado",
+        "enabled": "Ativado",
+        "total": "No total"
+      },
+      "categories": {
+        "analytics": "Análise",
+        "communication": "Comunicação",
+        "development": "Desenvolvimento",
+        "extension": "Extensão",
+        "information": "Informação",
+        "integration": "Integração",
+        "other": "Outros",
+        "productivity": "Produtividade",
+        "system": "Sistema",
+        "utility": "Utilitário"
+      },
+      "allCategories": "Todas as categorias",
+      "dropFileHere": "Solte o arquivo aqui ou clique para procurar",
+      "fileRequired": "Selecione um arquivo",
+      "install": "Instalar",
+      "installFailed": "A instalação falhou",
+      "installFromUrl": "De URL",
+      "installing": "Instalando...",
+      "installSkillTitle": "Instalar skill",
+      "noMatchingTools": "Nenhum item correspondente encontrado",
+      "noTools": "Nenhum item disponível",
+      "skillPackageInfo": "Requisitos do pacote de skill",
+      "skillPackageRequirement1": "Deve conter um manifesto skill.json válido",
+      "skillPackageRequirement2": "Inclua todos os arquivos de skill necessários",
+      "skillUrlHint": "Digite a URL de um repositório GitHub ou um link direto para um pacote de skill",
+      "skillUrlLabel": "URL da skill",
+      "supportedFormats": "Formatos compatíveis",
+      "uploadFile": "Enviar arquivo",
+      "uploadSkill": "Instalar skill",
+      "urlRequired": "Digite uma URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Sessão ativa",
+      "cancel": "Cancelar",
+      "diagnostics": "Diagnóstico",
+      "diagnosticsTitle": "Informações de diagnóstico",
+      "disconnect": "Desconectar",
+      "disconnectConfirmMessage": "Se você estiver acessando pelo túnel remoto, poderá perder o acesso a esta página.",
+      "disconnectConfirmMessageSameHost": "Você está acessando por este túnel remoto no momento. Ao desconectar, esta página será fechada e você perderá o acesso.",
+      "disconnectConfirmTitle": "Desconectar o acesso remoto?",
+      "error": "Erro",
+      "firewallException": "Exceção de firewall",
+      "getToken": "Obtenha seu token",
+      "logs": "Registros",
+      "logsTitle": "Registros de conexão",
+      "ngrokClaimDomain": "Obtenha o seu",
+      "ngrokDomain": "Domínio estático",
+      "ngrokDomainHint": "Opcional: usuários gratuitos podem resgatar um domínio estático.",
+      "ngrokDomainPlaceholder": "ex.: myapp.ngrok-free.app",
+      "noKeyRequired": "Não requer configuração",
+      "noLogs": "Nenhum registro disponível",
+      "platform": "Plataforma",
+      "provider": "Provedor",
+      "qrCodeError": "Falha ao carregar o QR Code",
+      "recentErrors": "Erros recentes",
+      "requiresKey": "Requer token de autenticação",
+      "selectProvider": "Selecione o provedor de túnel",
+      "showQRCode": "Mostrar QR Code",
+      "status": "Estado",
+      "troubleshootingHints": "Dicas de solução de problemas",
+      "tunnelRunning": "Túnel em execução"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "OK (vazio)",
+        "ok-token": "Tudo certo",
+        "failed": "Falhou",
+        "ran": "Executado",
+        "sent": "Alerta enviado",
+        "skipped": "Ignorado"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Erro limpo — você pode tentar novamente",
+      "keyLabelPlaceholder": "Principal, Reserva etc.",
+      "modelIdPlaceholder": "openai, anthropic etc.",
+      "providerId": "ID do provedor",
+      "retry": "Tentar novamente",
+      "addFailed": "Falha ao adicionar provedor",
+      "addingProvider": "Adicionando provedor...",
+      "apiKeyHint": "Alguns provedores, como Ollama, não precisam de chave de API",
+      "apiKeyOptional": "Chave de API (opcional)",
+      "baseUrlRequired": "Configure a URL base primeiro",
+      "fetchingKeyModels": "Buscando modelos...",
+      "getApiKey": "Obter chave de API",
+      "ideImportLabel": "Importado de {ide} (extensão Claude Code)",
+      "noAvailableModels": "Nenhum modelo disponível encontrado",
+      "noModelsFound": "Nenhum modelo encontrado — verifique a URL e a chave de API",
+      "probeComplete": "Verificação concluída: {available}/{total} modelos disponíveis",
+      "probingModels": "Verificando modelos...",
+      "providerAdded": "Provedor adicionado",
+      "providerAddedWithModels": "{count} modelos disponíveis",
+      "scanIDE": "Importar da IDE",
+      "dragToReorder": "Arraste para reordenar a prioridade",
+      "freeTier": "Grátis",
+      "location": "Localização",
+      "locationCloud": "Nuvem",
+      "locationHint": "Os provedores em nuvem executam em servidores remotos; os provedores locais executam na sua máquina",
+      "locationLocal": "No dispositivo",
+      "preferredModelsHint": "Marque os modelos que você prefere. Apenas os modelos marcados ficarão disponíveis; se nenhum for marcado, todos os modelos ficarão disponíveis.",
+      "selectPreferredModels": "Selecionar modelos preferidos",
+      "tabs": {
+        "oauth": "Login com OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Teste do ZimaOS Blue",
+        "quotaExhaustedConversations": "Você atingiu o limite de conversas de teste. Configure seu próprio provedor para continuar.",
+        "quotaExhaustedTokens": "Sua cota de tokens de teste foi esgotada. Configure seu próprio provedor para continuar.",
+        "tokensUsed": "{remaining} / {total} tokens restantes"
+      },
+      "usage": {
+        "estimatedCost": "Custo estimado",
+        "inputTokens": "Tokens de entrada",
+        "loading": "Carregando uso...",
+        "outputTokens": "Tokens de saída",
+        "requests": "Solicitações"
+      }
+    }
+  },
+  "pt-PT": {
+    "settings": {
+      "update": {
+        "applying": "A aplicar atualização...",
+        "confirmRestart": "Aplicar e reiniciar",
+        "downloadComplete": "Download concluído",
+        "downloadFailed": "Falha no download",
+        "restarting": "A reiniciar...",
+        "serverNotResponding": "O servidor não regressou após a atualização",
+        "waitingForServer": "A aguardar que o servidor regresse...",
+        "autoCheck": "Verificar atualizações automaticamente ao iniciar",
+        "checkNow": "Verificar agora",
+        "currentVersion": "Versão atual",
+        "download": "Transferir",
+        "downloading": "A transferir...",
+        "newVersionAvailable": "Nova versão disponível",
+        "title": "Sobre",
+        "upToDate": "Atualizado"
+      },
+      "tab": {
+        "llm": "Modelos LLM",
+        "memory": "Memória",
+        "network": "Rede",
+        "security": "Segurança",
+        "speech": "Fala",
+        "update": "Atualização",
+        "userdata": "Gestão de dados"
+      },
+      "closeBehavior": "Comportamento ao fechar",
+      "closeBehaviorMinimize": "Minimizar para a área de notificação",
+      "closeBehaviorQuit": "Sair",
+      "closeBehaviorSaved": "Comportamento ao fechar guardado"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Controlo de recuperação de memória",
+      "memoryMeta": "A recuperação foi ignorada em {skipped}/{total} turnos",
+      "memoryMode": "Modo: {mode}",
+      "modes": {
+        "aggressive": "Agressivo",
+        "balanced": "Equilibrado",
+        "quality": "Qualidade"
+      },
+      "combined": "Cache + poda + ferramentas + encaminhamento",
+      "estimated": "Poupança estimada",
+      "costSaved": "Custo poupado",
+      "tokensSaved": "Tokens poupados",
+      "compression": "Compressão",
+      "breakdown": "Detalhe da poupança",
+      "estCost": "Custo estimado",
+      "noSavingsYet": "Ainda não existe poupança de tokens registada",
+      "prunerLabel": "Poda de contexto",
+      "prunerMeta": "{pruned}/{total} pedidos podados",
+      "routingLabel": "Encaminhamento inteligente",
+      "routingMeta": "{requests} pedidos encaminhados",
+      "toolsLabel": "Filtro de ferramentas",
+      "toolsMeta": "{skipped} ferramentas ignoradas em {requests} pedidos"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Análise",
+        "auto_reply": "Resposta automática",
+        "browser": "Navegador",
+        "calculator": "Calculadora",
+        "calendar": "Calendário",
+        "contacts": "Contactos",
+        "crypto": "Cripto",
+        "datetime": "Data e hora",
+        "email": "E-mail",
+        "file_read": "Leitura de ficheiro",
+        "file_write": "Escrita de ficheiro",
+        "files": "Ficheiros",
+        "memory": "Memória",
+        "network": "Rede",
+        "news": "Notícias",
+        "notes": "Notas",
+        "notifications": "Notificações",
+        "process": "Processos",
+        "reminders": "Lembretes",
+        "sandbox": "Sandbox",
+        "scheduler": "Agendador",
+        "search": "Pesquisar",
+        "stocks": "Ações",
+        "system_info": "Informações do sistema",
+        "tasks": "Tarefas",
+        "timer": "Temporizador",
+        "translate": "Traduzir",
+        "ui_reviewer": "Revisor de interface",
+        "unit_converter": "Conversor de unidades",
+        "weather": "Meteorologia",
+        "web_search": "Pesquisa na web",
+        "workflows": "Fluxos de trabalho",
+        "exec": "Execução de comandos",
+        "workspace_file": "Ficheiro da área de trabalho"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Reprodução automática",
+      "checkpoint": {
+        "cancel": "Cancelar",
+        "continue": "Continuar",
+        "fallbackQuestion": "Confirme esta ação do navegador.",
+        "help": "Pode dizer \"continuar\" ou \"cancelar\", ou tocar num botão abaixo.",
+        "title": "É necessária a confirmação do ponto de controlo do navegador"
+      },
+      "clearConversation": "Limpar conversa",
+      "connected": "Ligado",
+      "continuous": "Contínuo",
+      "disconnected": "Desligado",
+      "emptyHint": "Prima e mantenha premido o botão do microfone para falar",
+      "errors": {
+        "connectionFailed": "Falha na ligação",
+        "processAudioFailed": "Falha ao processar o áudio",
+        "startRecordingFailed": "Falha ao iniciar a gravação",
+        "wakeWordStartFailed": "Falha ao iniciar a deteção da palavra de ativação"
+      },
+      "title": "Assistente de voz",
+      "settingsTitle": "Definições",
+      "languageLabel": "Idioma",
+      "voiceLabel": "Voz",
+      "holdToSpeak": "Mantenha premido para falar",
+      "releaseToSend": "Largue para enviar",
+      "wakeWordTitle": "Deteção da palavra de ativação",
+      "wakeWordEnable": "Ativar",
+      "wakeWordLabel": "Palavra de ativação",
+      "wakeWordPlaceholder": "ex.: hey echo",
+      "wakeWordListening": "A ouvir a palavra de ativação...",
+      "wakeWordIdle": "Não está a ouvir",
+      "state": {
+        "ready": "Pronto",
+        "listening": "A ouvir...",
+        "processing": "A processar...",
+        "speaking": "A falar...",
+        "unknown": "Desconhecido"
+      },
+      "languages": {
+        "en": "Inglês",
+        "zh": "Chinês",
+        "ja": "Japonês",
+        "ko": "Coreano",
+        "de": "Alemão",
+        "fr": "Francês",
+        "es": "Espanhol"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Runtime de agentes livre e de código aberto"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Pesquisar nos registos..."
+    },
+    "companion": {
+      "title": "Companheiro",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Utilizador web"
+      },
+      "ackedBy": "Confirmado por",
+      "anonymous": "Anónimo",
+      "eventHistory": "Histórico de eventos",
+      "flow": {
+        "duration": "Duração",
+        "empty": "Não existem dados de fluxo disponíveis",
+        "fitView": "Ajustar vista",
+        "legend": "Legenda",
+        "loading": "A carregar fluxo...",
+        "nodeTypes": {
+          "llmRequest": "Pedido LLM",
+          "message": "Mensagem",
+          "securityCheck": "Verificação de segurança",
+          "toolCall": "Chamada de ferramenta"
+        },
+        "reset": "Repor vista",
+        "retry": "Tentar novamente",
+        "status": "Estado",
+        "time": "Hora",
+        "type": "Tipo",
+        "zoomIn": "Ampliar",
+        "zoomOut": "Reduzir"
+      },
+      "hoursAgo": "há {n} horas",
+      "justNow": "Mesmo agora",
+      "liveSession": "Sessão em direto",
+      "llmDetails": {
+        "completion": "Tokens de saída",
+        "input": "Entrada",
+        "prompt": "Tokens de entrada",
+        "score": "Pontuação",
+        "total": "Total de tokens"
+      },
+      "minutesAgo": "há {n} min",
+      "nodes": {
+        "chars": "{count} caracteres",
+        "llmRequest": "Pedido LLM",
+        "message": "Mensagem",
+        "received": "Recebido",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Suporte",
+      "deepResearchConflict": "Conflito",
+      "deepResearchHasConflict": "Sinais em conflito"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "A permissão Automation é necessária para enviar iMessages. Conceda-a em System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Full Disk Access é necessário para ler o histórico do iMessage. Conceda-o em System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "O iMessage não está configurado neste Mac. Abra a app Messages e inicie sessão com o seu Apple ID.",
+          "not_signed_in": "Não tem sessão iniciada no iMessage. Abra a app Messages e inicie sessão com o seu Apple ID.",
+          "unavailable_platform": "O iMessage só está disponível no macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "Pedido HTTP"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "ex.: Pessoal, Trabalho",
+      "widget": {
+        "pasteExample": "nome: João Silva\ne-mail: joao{'@'}example.com\ntelefone: 123-456-7890",
+        "title": "Preenchimento de formulários",
+        "fillAll": "Preencher tudo",
+        "fillThis": "Preencher este campo",
+        "undo": "Anular",
+        "readClipboard": "Ler da área de transferência",
+        "showPassword": "Mostrar palavra-passe",
+        "hidePassword": "Ocultar palavra-passe",
+        "filledFields": "{count} campos preenchidos",
+        "parsedFields": "{count} campos analisados",
+        "pasteData": "Cole dados para preencher",
+        "pasteDataHint": "Cole pares chave-valor"
+      },
+      "createTemplate": "Criar modelo",
+      "default": "Predefinido",
+      "defaultSet": "Modelo predefinido atualizado",
+      "editTemplate": "Editar modelo",
+      "enterValue": "Introduza um valor...",
+      "fields": "Campos",
+      "fieldTypes": "tipos de campo configurados",
+      "patterns": "Padrões de campo",
+      "patternsDescription": "Os padrões de campo ajudam a detetar campos de formulário ao corresponder palavras-chave em nomes de campos, rótulos e placeholders.",
+      "setAsDefault": "Definir como modelo predefinido",
+      "templateCreated": "Modelo criado com sucesso",
+      "templateDeleted": "Modelo eliminado com sucesso",
+      "templateName": "Nome do modelo",
+      "templateUpdated": "Modelo atualizado com sucesso",
+      "templates": "Modelos",
+      "newTemplate": "Novo modelo",
+      "setDefault": "Definir como predefinido",
+      "noTemplates": "Ainda não existem modelos. Crie um para começar.",
+      "editPatterns": "Editar padrões",
+      "patternsSaved": "Padrões guardados com sucesso",
+      "confirmDelete": "Tem a certeza de que pretende eliminar este modelo?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Rede Ethernet",
+      "loopback": "Retorno local",
+      "unknown": "Desconhecido",
+      "virtual": "Rede virtual"
+    },
+    "plugins": {
+      "builtin": "Integrado",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo ou https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Desativado",
+        "enabled": "Ativado",
+        "total": "No total"
+      },
+      "categories": {
+        "analytics": "Análise",
+        "communication": "Comunicação",
+        "development": "Desenvolvimento",
+        "extension": "Extensão",
+        "information": "Informação",
+        "integration": "Integração",
+        "other": "Outros",
+        "productivity": "Produtividade",
+        "system": "Sistema",
+        "utility": "Utilitário"
+      },
+      "allCategories": "Todas as categorias",
+      "dropFileHere": "Largue o ficheiro aqui ou clique para procurar",
+      "fileRequired": "Selecione um ficheiro",
+      "install": "Instalar",
+      "installFailed": "A instalação falhou",
+      "installFromUrl": "De URL",
+      "installing": "A instalar...",
+      "installSkillTitle": "Instalar skill",
+      "noMatchingTools": "Nenhum item correspondente encontrado",
+      "noTools": "Nenhum item disponível",
+      "skillPackageInfo": "Requisitos do pacote de skill",
+      "skillPackageRequirement1": "Tem de conter um manifesto skill.json válido",
+      "skillPackageRequirement2": "Inclua todos os ficheiros de skill necessários",
+      "skillUrlHint": "Introduza o URL de um repositório GitHub ou uma ligação direta para um pacote de skill",
+      "skillUrlLabel": "URL da skill",
+      "supportedFormats": "Formatos suportados",
+      "uploadFile": "Enviar ficheiro",
+      "uploadSkill": "Instalar skill",
+      "urlRequired": "Introduza um URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Sessão ativa",
+      "cancel": "Cancelar",
+      "diagnostics": "Diagnóstico",
+      "diagnosticsTitle": "Informações de diagnóstico",
+      "disconnect": "Desconectar",
+      "disconnectConfirmMessage": "Se estiver a aceder através do túnel remoto, poderá perder o acesso a esta página.",
+      "disconnectConfirmMessageSameHost": "Está a aceder através deste túnel remoto neste momento. Ao desconectar, esta página será fechada e perderá o acesso.",
+      "disconnectConfirmTitle": "Desconectar o acesso remoto?",
+      "error": "Erro",
+      "firewallException": "Exceção de firewall",
+      "getToken": "Obtenha o seu token",
+      "logs": "Registos",
+      "logsTitle": "Registos de ligação",
+      "ngrokClaimDomain": "Obtenha o seu",
+      "ngrokDomain": "Domínio estático",
+      "ngrokDomainHint": "Opcional: os utilizadores gratuitos podem obter um domínio estático.",
+      "ngrokDomainPlaceholder": "ex.: myapp.ngrok-free.app",
+      "noKeyRequired": "Não requer configuração",
+      "noLogs": "Nenhum registo disponível",
+      "platform": "Plataforma",
+      "provider": "Provedor",
+      "qrCodeError": "Falha ao carregar o código QR",
+      "recentErrors": "Erros recentes",
+      "requiresKey": "Requer token de autenticação",
+      "selectProvider": "Selecione o provedor de túnel",
+      "showQRCode": "Mostrar código QR",
+      "status": "Estado",
+      "troubleshootingHints": "Dicas de resolução de problemas",
+      "tunnelRunning": "Túnel em execução"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "OK (vazio)",
+        "ok-token": "Tudo certo",
+        "failed": "Falhou",
+        "ran": "Executado",
+        "sent": "Alerta enviado",
+        "skipped": "Ignorado"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Erro limpo — pode tentar novamente",
+      "keyLabelPlaceholder": "Principal, Reserva etc.",
+      "modelIdPlaceholder": "openai, anthropic etc.",
+      "providerId": "ID do fornecedor",
+      "retry": "Tentar novamente",
+      "addFailed": "Falha ao adicionar fornecedor",
+      "addingProvider": "A adicionar fornecedor...",
+      "apiKeyHint": "Alguns fornecedores, como o Ollama, não precisam de chave de API",
+      "apiKeyOptional": "Chave de API (opcional)",
+      "baseUrlRequired": "Configure primeiro o URL base",
+      "fetchingKeyModels": "A obter modelos...",
+      "getApiKey": "Obter chave de API",
+      "ideImportLabel": "Importado de {ide} (extensão Claude Code)",
+      "noAvailableModels": "Não foram encontrados modelos disponíveis",
+      "noModelsFound": "Não foram encontrados modelos — verifique o URL e a chave de API",
+      "probeComplete": "Verificação concluída: {available}/{total} modelos disponíveis",
+      "probingModels": "A verificar modelos...",
+      "providerAdded": "Fornecedor adicionado",
+      "providerAddedWithModels": "{count} modelos disponíveis",
+      "scanIDE": "Importar da IDE",
+      "dragToReorder": "Arraste para reordenar a prioridade",
+      "freeTier": "Gratuito",
+      "location": "Localização",
+      "locationCloud": "Nuvem",
+      "locationHint": "Os fornecedores na nuvem executam em servidores remotos; os fornecedores locais executam na sua máquina",
+      "locationLocal": "No dispositivo",
+      "preferredModelsHint": "Assinale os modelos que prefere. Apenas os modelos assinalados estarão disponíveis; se nenhum estiver assinalado, todos os modelos estarão disponíveis.",
+      "selectPreferredModels": "Selecionar modelos preferidos",
+      "tabs": {
+        "oauth": "Início de sessão OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Período experimental do ZimaOS Blue",
+        "quotaExhaustedConversations": "Atingiu o limite de conversas de teste. Configure o seu próprio fornecedor para continuar.",
+        "quotaExhaustedTokens": "A sua quota de tokens de teste foi esgotada. Configure o seu próprio fornecedor para continuar.",
+        "tokensUsed": "{remaining} / {total} tokens restantes"
+      },
+      "usage": {
+        "estimatedCost": "Custo estimado",
+        "inputTokens": "Tokens de entrada",
+        "loading": "A carregar utilização...",
+        "outputTokens": "Tokens de saída",
+        "requests": "Pedidos"
+      }
+    }
+  },
+  "ro-RO": {
+    "settings": {
+      "update": {
+        "applying": "Se aplică actualizarea...",
+        "confirmRestart": "Aplică și repornește",
+        "downloadComplete": "Descărcare finalizată",
+        "downloadFailed": "Descărcarea a eșuat",
+        "restarting": "Repornire...",
+        "serverNotResponding": "Serverul nu a revenit după actualizare",
+        "waitingForServer": "Se așteaptă revenirea serverului...",
+        "autoCheck": "Verifică automat actualizările la pornire",
+        "checkNow": "Verifică acum",
+        "currentVersion": "Versiunea curentă",
+        "download": "Descarcă",
+        "downloading": "Se descarcă...",
+        "newVersionAvailable": "Versiune nouă disponibilă",
+        "title": "Despre",
+        "upToDate": "Actualizat"
+      },
+      "tab": {
+        "llm": "Modele LLM",
+        "memory": "Memorie",
+        "network": "Rețea",
+        "security": "Securitate",
+        "speech": "Vorbire",
+        "update": "Actualizare",
+        "userdata": "Gestionarea datelor"
+      },
+      "closeBehavior": "Comportament la închidere",
+      "closeBehaviorMinimize": "Minimizează în tavă",
+      "closeBehaviorQuit": "Ieșire",
+      "closeBehaviorSaved": "Comportamentul la închidere a fost salvat"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Controlul rechemării memoriei",
+      "memoryMeta": "Rechemarea a fost omisă în {skipped}/{total} ture",
+      "memoryMode": "Mod: {mode}",
+      "modes": {
+        "aggressive": "Agresiv",
+        "balanced": "Echilibrat",
+        "quality": "Calitate"
+      },
+      "combined": "Cache + tăiere + instrumente + rutare",
+      "estimated": "Economie estimată",
+      "costSaved": "Cost economisit",
+      "tokensSaved": "Tokenuri economisite",
+      "compression": "Compresie",
+      "breakdown": "Defalcare a economiilor",
+      "estCost": "Cost estimat",
+      "noSavingsYet": "Nu au fost înregistrate încă economii de tokenuri",
+      "prunerLabel": "Tăierea contextului",
+      "prunerMeta": "{pruned}/{total} cereri tăiate",
+      "routingLabel": "Rutare inteligentă",
+      "routingMeta": "{requests} cereri rutate",
+      "toolsLabel": "Filtru de instrumente",
+      "toolsMeta": "{skipped} instrumente omise în {requests} cereri"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analiză",
+        "auto_reply": "Răspuns automat",
+        "browser": "Navigator",
+        "calculator": "Calculator",
+        "calendar": "Calendar",
+        "contacts": "Contacte",
+        "crypto": "Crypto",
+        "datetime": "Dată și oră",
+        "email": "E-mail",
+        "file_read": "Citire fișier",
+        "file_write": "Scriere fișier",
+        "files": "Fișiere",
+        "memory": "Memorie",
+        "network": "Rețea",
+        "news": "Știri",
+        "notes": "Note",
+        "notifications": "Notificări",
+        "process": "Procese",
+        "reminders": "Mementouri",
+        "sandbox": "Sandbox",
+        "scheduler": "Planificator",
+        "search": "Căutare",
+        "stocks": "Acțiuni",
+        "system_info": "Informații de sistem",
+        "tasks": "Sarcini",
+        "timer": "Cronometru",
+        "translate": "Tradu",
+        "ui_reviewer": "Revizor UI",
+        "unit_converter": "Convertor de unități",
+        "weather": "Vreme",
+        "web_search": "Căutare web",
+        "workflows": "Fluxuri de lucru",
+        "exec": "Executare comenzi",
+        "workspace_file": "Fișier spațiu de lucru"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Redare automată",
+      "checkpoint": {
+        "cancel": "Anulează",
+        "continue": "Continuă",
+        "fallbackQuestion": "Confirmați această acțiune din browser.",
+        "help": "Puteți spune \"continuă\" sau \"anulează\", ori puteți atinge un buton de mai jos.",
+        "title": "Este necesară confirmarea punctului de control al browserului"
+      },
+      "clearConversation": "Șterge conversația",
+      "connected": "Conectat",
+      "continuous": "Continuu",
+      "disconnected": "Deconectat",
+      "emptyHint": "Țineți apăsat butonul microfonului pentru a vorbi",
+      "errors": {
+        "connectionFailed": "Conexiunea a eșuat",
+        "processAudioFailed": "Procesarea audio a eșuat",
+        "startRecordingFailed": "Nu s-a putut porni înregistrarea",
+        "wakeWordStartFailed": "Nu s-a putut porni detectarea cuvântului de activare"
+      },
+      "title": "Asistent vocal",
+      "settingsTitle": "Setări",
+      "languageLabel": "Limbă",
+      "voiceLabel": "Voce",
+      "holdToSpeak": "Ține apăsat pentru a vorbi",
+      "releaseToSend": "Eliberează pentru a trimite",
+      "wakeWordTitle": "Detectarea cuvântului de activare",
+      "wakeWordEnable": "Activează",
+      "wakeWordLabel": "Cuvânt de activare",
+      "wakeWordPlaceholder": "ex.: hey echo",
+      "wakeWordListening": "Ascultă cuvântul de activare...",
+      "wakeWordIdle": "Nu ascultă",
+      "state": {
+        "ready": "Gata",
+        "listening": "Ascultă...",
+        "processing": "Procesează...",
+        "speaking": "Vorbește...",
+        "unknown": "Necunoscut"
+      },
+      "languages": {
+        "en": "Engleză",
+        "zh": "Chineză",
+        "ja": "Japoneză",
+        "ko": "Coreeană",
+        "de": "Germană",
+        "fr": "Franceză",
+        "es": "Spaniolă"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Runtime de agent gratuit și open-source"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Caută în jurnale..."
+    },
+    "companion": {
+      "title": "Însoțitor",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Utilizator web"
+      },
+      "ackedBy": "Confirmat de",
+      "anonymous": "Anonim",
+      "eventHistory": "Istoric evenimente",
+      "flow": {
+        "duration": "Durată",
+        "empty": "Nu există date de flux disponibile",
+        "fitView": "Potrivește vederea",
+        "legend": "Legendă",
+        "loading": "Se încarcă fluxul...",
+        "nodeTypes": {
+          "llmRequest": "Cerere LLM",
+          "message": "Mesaj",
+          "securityCheck": "Verificare de securitate",
+          "toolCall": "Apel instrument"
+        },
+        "reset": "Resetează vederea",
+        "retry": "Încearcă din nou",
+        "status": "Stare",
+        "time": "Timp",
+        "type": "Tip",
+        "zoomIn": "Mărește",
+        "zoomOut": "Micșorează"
+      },
+      "hoursAgo": "acum {n} ore",
+      "justNow": "Chiar acum",
+      "liveSession": "Sesiune live",
+      "llmDetails": {
+        "completion": "Tokenuri de ieșire",
+        "input": "Intrare",
+        "prompt": "Tokenuri de intrare",
+        "score": "Scor",
+        "total": "Total tokenuri"
+      },
+      "minutesAgo": "acum {n} min",
+      "nodes": {
+        "chars": "{count} caractere",
+        "llmRequest": "Cerere LLM",
+        "message": "Mesaj",
+        "received": "Primit",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Suport",
+      "deepResearchConflict": "Conflict",
+      "deepResearchHasConflict": "Semnale conflictuale"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Este necesară permisiunea Automation pentru a trimite iMessages. Acordați-o în System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Este necesar Full Disk Access pentru a citi istoricul iMessage. Acordați-l în System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage nu este configurat pe acest Mac. Deschideți aplicația Messages și autentificați-vă cu Apple ID-ul dvs.",
+          "not_signed_in": "Nu sunteți autentificat în iMessage. Deschideți aplicația Messages și autentificați-vă cu Apple ID-ul dvs.",
+          "unavailable_platform": "iMessage este disponibil doar pe macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "Cerere HTTP"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "ex.: Personal, Serviciu",
+      "widget": {
+        "pasteExample": "nume: Ion Popescu\nemail: ion{'@'}example.com\ntelefon: 123-456-7890",
+        "title": "Completare formulare",
+        "fillAll": "Completează tot",
+        "fillThis": "Completează acest câmp",
+        "undo": "Anulează",
+        "readClipboard": "Citește din clipboard",
+        "showPassword": "Arată parola",
+        "hidePassword": "Ascunde parola",
+        "filledFields": "{count} câmpuri completate",
+        "parsedFields": "{count} câmpuri analizate",
+        "pasteData": "Lipește date pentru completare",
+        "pasteDataHint": "Lipește perechi cheie-valoare"
+      },
+      "createTemplate": "Creează șablon",
+      "default": "Implicit",
+      "defaultSet": "Șablonul implicit a fost actualizat",
+      "editTemplate": "Editează șablonul",
+      "enterValue": "Introduceți o valoare...",
+      "fields": "Câmpuri",
+      "fieldTypes": "tipuri de câmp configurate",
+      "patterns": "Modele de câmp",
+      "patternsDescription": "Modelele de câmp ajută la detectarea câmpurilor de formular prin potrivirea cuvintelor-cheie din numele câmpurilor, etichete și texte substitutive.",
+      "setAsDefault": "Setează ca șablon implicit",
+      "templateCreated": "Șablon creat cu succes",
+      "templateDeleted": "Șablon șters cu succes",
+      "templateName": "Numele șablonului",
+      "templateUpdated": "Șablon actualizat cu succes",
+      "templates": "Șabloane",
+      "newTemplate": "Șablon nou",
+      "setDefault": "Setează ca implicit",
+      "noTemplates": "Încă nu există șabloane. Creează unul pentru a începe.",
+      "editPatterns": "Editează modelele",
+      "patternsSaved": "Modelele au fost salvate cu succes",
+      "confirmDelete": "Sigur doriți să ștergeți acest șablon?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Rețea Ethernet",
+      "loopback": "Buclă locală",
+      "unknown": "Necunoscut",
+      "virtual": "Interfață virtuală"
+    },
+    "plugins": {
+      "builtin": "Integrat",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo sau https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Dezactivat",
+        "enabled": "Activat",
+        "total": "În total"
+      },
+      "categories": {
+        "analytics": "Analitică",
+        "communication": "Comunicare",
+        "development": "Dezvoltare",
+        "extension": "Extensie",
+        "information": "Informații",
+        "integration": "Integrare",
+        "other": "Altele",
+        "productivity": "Productivitate",
+        "system": "Sistem",
+        "utility": "Utilitar"
+      },
+      "title": "Extensii",
+      "subtitle": "Gestionează abilități și unelte",
+      "noDescription": "Nu există nicio descriere disponibilă",
+      "allCategories": "Toate categoriile",
+      "dropFileHere": "Plasați fișierul aici sau faceți clic pentru a răsfoi",
+      "fileRequired": "Selectați un fișier",
+      "install": "Instalează",
+      "installFailed": "Instalarea a eșuat",
+      "installFromUrl": "Din URL",
+      "installing": "Se instalează...",
+      "installSkillTitle": "Instalează abilitatea",
+      "noMatchingTools": "Nu s-au găsit elemente potrivite",
+      "noTools": "Nu există elemente disponibile",
+      "skillPackageInfo": "Cerințe pentru pachetul de abilități",
+      "skillPackageRequirement1": "Trebuie să conțină un manifest skill.json valid",
+      "skillPackageRequirement2": "Include toate fișierele de abilități necesare",
+      "skillUrlHint": "Introduceți URL-ul unui depozit GitHub sau un link direct către un pachet de abilități",
+      "skillUrlLabel": "URL-ul abilității",
+      "supportedFormats": "Formate acceptate",
+      "uploadFile": "Încarcă fișier",
+      "uploadSkill": "Instalează abilitatea",
+      "urlRequired": "Introduceți un URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Sesiune activă",
+      "cancel": "Anulează",
+      "diagnostics": "Diagnostic",
+      "diagnosticsTitle": "Informații de diagnostic",
+      "disconnect": "Deconectează",
+      "disconnectConfirmMessage": "Dacă accesezi prin tunelul la distanță, este posibil să pierzi accesul la această pagină.",
+      "disconnectConfirmMessageSameHost": "În prezent accesezi prin acest tunel la distanță. Dacă te deconectezi, această pagină se va închide și vei pierde accesul.",
+      "disconnectConfirmTitle": "Deconectezi accesul la distanță?",
+      "error": "Eroare",
+      "firewallException": "Excepție de firewall",
+      "getToken": "Obține tokenul",
+      "logs": "Jurnale",
+      "logsTitle": "Jurnale de conexiune",
+      "ngrokClaimDomain": "Revendică-l",
+      "ngrokDomain": "Domeniu static",
+      "ngrokDomainHint": "Opțional: utilizatorii gratuiți pot revendica un domeniu static.",
+      "ngrokDomainPlaceholder": "ex.: myapp.ngrok-free.app",
+      "noKeyRequired": "Nu necesită configurare",
+      "noLogs": "Nu există jurnale disponibile",
+      "platform": "Platformă",
+      "provider": "Furnizor",
+      "qrCodeError": "Nu s-a putut încărca codul QR",
+      "recentErrors": "Erori recente",
+      "requiresKey": "Necesită token de autentificare",
+      "selectProvider": "Selectează furnizorul de tunel",
+      "showQRCode": "Afișează codul QR",
+      "status": "Stare",
+      "troubleshootingHints": "Sfaturi de depanare",
+      "tunnelRunning": "Tunel activ"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "OK (gol)",
+        "ok-token": "În regulă",
+        "failed": "Eșuat",
+        "ran": "Rulat",
+        "sent": "Alertă trimisă",
+        "skipped": "Omis"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Eroarea a fost ștearsă — puteți încerca din nou",
+      "keyLabelPlaceholder": "Principal, Rezervă etc.",
+      "modelIdPlaceholder": "openai, anthropic etc.",
+      "providerId": "ID furnizor",
+      "retry": "Încearcă din nou",
+      "addFailed": "Adăugarea furnizorului a eșuat",
+      "addingProvider": "Se adaugă furnizorul...",
+      "apiKeyHint": "Unii furnizori, precum Ollama, nu au nevoie de cheie API",
+      "apiKeyOptional": "Cheie API (opțional)",
+      "baseUrlRequired": "Configurați mai întâi URL-ul de bază",
+      "fetchingKeyModels": "Se preiau modelele...",
+      "getApiKey": "Obțineți cheia API",
+      "ideImportLabel": "Importat din {ide} (extensia Claude Code)",
+      "noAvailableModels": "Nu au fost găsite modele disponibile",
+      "noModelsFound": "Nu au fost găsite modele — verificați URL-ul și cheia API",
+      "probeComplete": "Verificare finalizată: {available}/{total} modele disponibile",
+      "probingModels": "Se verifică modelele...",
+      "providerAdded": "Furnizor adăugat",
+      "providerAddedWithModels": "{count} modele disponibile",
+      "scanIDE": "Importă din IDE",
+      "dragToReorder": "Trageți pentru a reordona prioritatea",
+      "freeTier": "Gratuit",
+      "location": "Locație",
+      "locationCloud": "În cloud",
+      "locationHint": "Furnizorii cloud rulează pe servere la distanță, iar furnizorii locali rulează pe dispozitivul dvs.",
+      "locationLocal": "Pe dispozitiv",
+      "preferredModelsHint": "Bifați modelele pe care le preferați. Vor fi disponibile doar modelele bifate; dacă nu este bifat niciunul, vor fi disponibile toate modelele.",
+      "selectPreferredModels": "Selectați modelele preferate",
+      "tabs": {
+        "oauth": "Autentificare OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Perioadă de probă ZimaOS Blue",
+        "quotaExhaustedConversations": "Ați atins limita de conversații de probă. Configurați propriul furnizor pentru a continua.",
+        "quotaExhaustedTokens": "V-ați epuizat cota de tokenuri de probă. Configurați propriul furnizor pentru a continua.",
+        "tokensUsed": "{remaining} / {total} tokenuri rămase"
+      },
+      "usage": {
+        "estimatedCost": "Cost estimat",
+        "inputTokens": "Tokenuri de intrare",
+        "loading": "Se încarcă utilizarea...",
+        "outputTokens": "Tokenuri de ieșire",
+        "requests": "Cereri"
+      }
+    }
+  },
+  "ru-RU": {
+    "settings": {
+      "update": {
+        "applying": "Применение обновления...",
+        "confirmRestart": "Применить и перезапустить",
+        "downloadComplete": "Загрузка завершена",
+        "downloadFailed": "Ошибка загрузки",
+        "restarting": "Перезапуск...",
+        "serverNotResponding": "Сервер не вернулся после обновления",
+        "waitingForServer": "Ожидание возврата сервера...",
+        "autoCheck": "Автоматически проверять обновления при запуске",
+        "checkNow": "Проверить сейчас",
+        "currentVersion": "Текущая версия",
+        "download": "Скачать",
+        "downloading": "Загрузка...",
+        "newVersionAvailable": "Доступна новая версия",
+        "title": "О программе",
+        "upToDate": "Актуально"
+      },
+      "tab": {
+        "llm": "LLM-модели",
+        "memory": "Память",
+        "network": "Сеть",
+        "security": "Безопасность",
+        "speech": "Речь",
+        "update": "Обновление",
+        "userdata": "Управление данными"
+      },
+      "closeBehavior": "Поведение при закрытии",
+      "closeBehaviorMinimize": "Свернуть в трей",
+      "closeBehaviorQuit": "Выйти",
+      "closeBehaviorSaved": "Поведение при закрытии сохранено"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Управление вызовом памяти",
+      "memoryMeta": "Вызов пропущен в {skipped}/{total} ходах",
+      "memoryMode": "Режим: {mode}",
+      "modes": {
+        "aggressive": "Агрессивный",
+        "balanced": "Сбалансированный",
+        "quality": "Качество"
+      },
+      "combined": "Кэш + сокращение + инструменты + маршрутизация",
+      "estimated": "Оценочная экономия",
+      "costSaved": "Сэкономленная стоимость",
+      "tokensSaved": "Сэкономленные токены",
+      "compression": "Сжатие",
+      "breakdown": "Структура экономии",
+      "estCost": "Оцен. стоимость",
+      "noSavingsYet": "Экономия токенов пока не зафиксирована",
+      "prunerLabel": "Сокращение контекста",
+      "prunerMeta": "Сокращено {pruned}/{total} запросов",
+      "routingLabel": "Умная маршрутизация",
+      "routingMeta": "Маршрутизировано {requests} запросов",
+      "toolsLabel": "Фильтр инструментов",
+      "toolsMeta": "Пропущено {skipped} инструментов в {requests} запросах"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Анализ",
+        "auto_reply": "Автоответ",
+        "browser": "Браузер",
+        "calculator": "Калькулятор",
+        "calendar": "Календарь",
+        "contacts": "Контакты",
+        "crypto": "Крипто",
+        "datetime": "Дата и время",
+        "email": "Эл. почта",
+        "file_read": "Чтение файла",
+        "file_write": "Запись файла",
+        "files": "Файлы",
+        "memory": "Память",
+        "network": "Сеть",
+        "news": "Новости",
+        "notes": "Заметки",
+        "notifications": "Уведомления",
+        "process": "Процессы",
+        "reminders": "Напоминания",
+        "sandbox": "Песочница",
+        "scheduler": "Планировщик",
+        "search": "Поиск",
+        "stocks": "Акции",
+        "system_info": "Сведения о системе",
+        "tasks": "Задачи",
+        "timer": "Таймер",
+        "translate": "Перевод",
+        "ui_reviewer": "Проверка интерфейса",
+        "unit_converter": "Конвертер единиц",
+        "weather": "Погода",
+        "web_search": "Веб-поиск",
+        "workflows": "Рабочие процессы",
+        "exec": "Выполнение команд",
+        "workspace_file": "Файл рабочей области"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Автовоспроизведение",
+      "checkpoint": {
+        "cancel": "Отмена",
+        "continue": "Продолжить",
+        "fallbackQuestion": "Подтвердите это действие браузера.",
+        "help": "Вы можете сказать \"продолжить\" или \"отмена\", либо нажать кнопку ниже.",
+        "title": "Требуется подтверждение контрольной точки браузера"
+      },
+      "clearConversation": "Очистить разговор",
+      "connected": "Подключено",
+      "continuous": "Непрерывно",
+      "disconnected": "Отключено",
+      "emptyHint": "Нажмите и удерживайте кнопку микрофона, чтобы говорить",
+      "errors": {
+        "connectionFailed": "Не удалось подключиться",
+        "processAudioFailed": "Не удалось обработать аудио",
+        "startRecordingFailed": "Не удалось начать запись",
+        "wakeWordStartFailed": "Не удалось запустить распознавание кодового слова"
+      },
+      "title": "Голосовой помощник",
+      "settingsTitle": "Настройки",
+      "languageLabel": "Язык",
+      "voiceLabel": "Голос",
+      "holdToSpeak": "Удерживайте, чтобы говорить",
+      "releaseToSend": "Отпустите, чтобы отправить",
+      "wakeWordTitle": "Распознавание кодового слова",
+      "wakeWordEnable": "Включить",
+      "wakeWordLabel": "Кодовое слово",
+      "wakeWordPlaceholder": "напр., hey echo",
+      "wakeWordListening": "Ожидание кодового слова...",
+      "wakeWordIdle": "Не прослушивает",
+      "state": {
+        "ready": "Готово",
+        "listening": "Слушает...",
+        "processing": "Обработка...",
+        "speaking": "Говорит...",
+        "unknown": "Неизвестно"
+      },
+      "languages": {
+        "en": "Английский",
+        "zh": "Китайский",
+        "ja": "Японский",
+        "ko": "Корейский",
+        "de": "Немецкий",
+        "fr": "Французский",
+        "es": "Испанский"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Открытая и бесплатная среда выполнения агента"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Поиск по журналам..."
+    },
+    "companion": {
+      "title": "Спутник",
+      "platforms": {
+        "web": "Веб",
+        "web-user": "Веб-пользователь"
+      },
+      "ackedBy": "Подтверждено",
+      "anonymous": "Анонимно",
+      "eventHistory": "История событий",
+      "flow": {
+        "duration": "Длительность",
+        "empty": "Данные потока недоступны",
+        "fitView": "Подогнать вид",
+        "legend": "Легенда",
+        "loading": "Загрузка потока...",
+        "nodeTypes": {
+          "llmRequest": "Запрос LLM",
+          "message": "Сообщение",
+          "securityCheck": "Проверка безопасности",
+          "toolCall": "Вызов инструмента"
+        },
+        "reset": "Сбросить вид",
+        "retry": "Повторить",
+        "status": "Статус",
+        "time": "Время",
+        "type": "Тип",
+        "zoomIn": "Увеличить",
+        "zoomOut": "Уменьшить"
+      },
+      "hoursAgo": "{n} ч назад",
+      "justNow": "Только что",
+      "liveSession": "Живая сессия",
+      "llmDetails": {
+        "completion": "Выходные токены",
+        "input": "Ввод",
+        "prompt": "Входные токены",
+        "score": "Оценка",
+        "total": "Всего токенов"
+      },
+      "minutesAgo": "{n} мин назад",
+      "nodes": {
+        "chars": "{count} символов",
+        "llmRequest": "Запрос LLM",
+        "message": "Сообщение",
+        "received": "Получено",
+        "sandbox": "Песочница"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Поддержка",
+      "deepResearchConflict": "Конфликт",
+      "deepResearchHasConflict": "Противоречивые сигналы"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Для отправки iMessages требуется разрешение Automation. Предоставьте его в System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Для чтения истории iMessage требуется Full Disk Access. Предоставьте его в System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage не настроен на этом Mac. Откройте приложение Messages и войдите с помощью Apple ID.",
+          "not_signed_in": "Вы не вошли в iMessage. Откройте приложение Messages и войдите с помощью Apple ID.",
+          "unavailable_platform": "iMessage доступен только на macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP-запрос"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "напр., Личное, Работа",
+      "widget": {
+        "pasteExample": "имя: Иван Иванов\nemail: ivan{'@'}example.com\nтелефон: 123-456-7890",
+        "title": "Заполнение форм",
+        "fillAll": "Заполнить все",
+        "fillThis": "Заполнить это поле",
+        "undo": "Отменить",
+        "readClipboard": "Читать из буфера обмена",
+        "showPassword": "Показать пароль",
+        "hidePassword": "Скрыть пароль",
+        "filledFields": "Заполнено {count} полей",
+        "parsedFields": "Разобрано {count} полей",
+        "pasteData": "Вставьте данные для заполнения",
+        "pasteDataHint": "Вставьте пары ключ-значение"
+      },
+      "createTemplate": "Создать шаблон",
+      "default": "По умолчанию",
+      "defaultSet": "Шаблон по умолчанию обновлён",
+      "editTemplate": "Редактировать шаблон",
+      "enterValue": "Введите значение...",
+      "fields": "Поля",
+      "fieldTypes": "типы полей настроены",
+      "patterns": "Шаблоны полей",
+      "patternsDescription": "Шаблоны полей помогают распознавать поля формы, сопоставляя ключевые слова в названиях полей, метках и плейсхолдерах.",
+      "setAsDefault": "Сделать шаблоном по умолчанию",
+      "templateCreated": "Шаблон успешно создан",
+      "templateDeleted": "Шаблон успешно удалён",
+      "templateName": "Название шаблона",
+      "templateUpdated": "Шаблон успешно обновлён",
+      "templates": "Шаблоны",
+      "newTemplate": "Новый шаблон",
+      "setDefault": "Сделать основным",
+      "noTemplates": "Шаблонов пока нет. Создайте первый, чтобы начать.",
+      "editPatterns": "Редактировать шаблоны",
+      "patternsSaved": "Шаблоны успешно сохранены",
+      "confirmDelete": "Вы уверены, что хотите удалить этот шаблон?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Сеть Ethernet",
+      "loopback": "Обратная петля",
+      "unknown": "Неизвестно",
+      "virtual": "Виртуальная"
+    },
+    "plugins": {
+      "builtin": "Встроенный",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo или https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Отключено",
+        "enabled": "Включено",
+        "total": "Всего"
+      },
+      "categories": {
+        "analytics": "Аналитика",
+        "communication": "Коммуникация",
+        "development": "Разработка",
+        "extension": "Расширение",
+        "information": "Информация",
+        "integration": "Интеграция",
+        "other": "Другое",
+        "productivity": "Продуктивность",
+        "system": "Система",
+        "utility": "Утилиты"
+      },
+      "allCategories": "Все категории",
+      "dropFileHere": "Перетащите файл сюда или нажмите, чтобы выбрать",
+      "fileRequired": "Выберите файл",
+      "install": "Установить",
+      "installFailed": "Установка не удалась",
+      "installFromUrl": "По URL",
+      "installing": "Установка...",
+      "installSkillTitle": "Установить навык",
+      "noMatchingTools": "Подходящие элементы не найдены",
+      "noTools": "Нет доступных элементов",
+      "skillPackageInfo": "Требования к пакету навыка",
+      "skillPackageRequirement1": "Должен содержать действительный манифест skill.json",
+      "skillPackageRequirement2": "Включите все необходимые файлы навыка",
+      "skillUrlHint": "Введите URL репозитория GitHub или прямую ссылку на пакет навыка",
+      "skillUrlLabel": "URL навыка",
+      "supportedFormats": "Поддерживаемые форматы",
+      "uploadFile": "Загрузить файл",
+      "uploadSkill": "Установить навык",
+      "urlRequired": "Введите URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Активный сеанс",
+      "cancel": "Отмена",
+      "diagnostics": "Диагностика",
+      "diagnosticsTitle": "Диагностическая информация",
+      "disconnect": "Отключить",
+      "disconnectConfirmMessage": "Если вы подключены через удалённый туннель, вы можете потерять доступ к этой странице.",
+      "disconnectConfirmMessageSameHost": "Сейчас вы подключены через этот удалённый туннель. После отключения эта страница закроется, и вы потеряете доступ.",
+      "disconnectConfirmTitle": "Отключить удалённый доступ?",
+      "error": "Ошибка",
+      "firewallException": "Исключение брандмауэра",
+      "getToken": "Получить токен",
+      "logs": "Журналы",
+      "logsTitle": "Журналы подключений",
+      "ngrokClaimDomain": "Зарезервировать свой",
+      "ngrokDomain": "Статический домен",
+      "ngrokDomainHint": "Необязательно: пользователи бесплатного тарифа могут зарезервировать один статический домен.",
+      "ngrokDomainPlaceholder": "напр., myapp.ngrok-free.app",
+      "noKeyRequired": "Настройка не требуется",
+      "noLogs": "Журналы недоступны",
+      "platform": "Платформа",
+      "provider": "Поставщик",
+      "qrCodeError": "Не удалось загрузить QR-код",
+      "recentErrors": "Последние ошибки",
+      "requiresKey": "Требуется токен авторизации",
+      "selectProvider": "Выберите провайдера туннеля",
+      "showQRCode": "Показать QR-код",
+      "status": "Состояние",
+      "troubleshootingHints": "Советы по устранению неполадок",
+      "tunnelRunning": "Туннель активен"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "OK (пусто)",
+        "ok-token": "В норме",
+        "failed": "Сбой",
+        "ran": "Выполнено",
+        "sent": "Оповещение отправлено",
+        "skipped": "Пропущено"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Ошибка очищена — можно попробовать снова",
+      "keyLabelPlaceholder": "Основной, Резервный и т. д.",
+      "modelIdPlaceholder": "openai, anthropic и т. д.",
+      "providerId": "ID провайдера",
+      "retry": "Повторить",
+      "addFailed": "Не удалось добавить провайдера",
+      "addingProvider": "Добавление провайдера...",
+      "apiKeyHint": "Некоторым провайдерам, таким как Ollama, не нужен API-ключ",
+      "apiKeyOptional": "API-ключ (необязательно)",
+      "baseUrlRequired": "Сначала настройте базовый URL",
+      "fetchingKeyModels": "Получение моделей...",
+      "getApiKey": "Получить API-ключ",
+      "ideImportLabel": "Импортировано из {ide} (расширение Claude Code)",
+      "noAvailableModels": "Доступные модели не найдены",
+      "noModelsFound": "Модели не найдены — проверьте URL и API-ключ",
+      "probeComplete": "Проверка завершена: доступно {available}/{total} моделей",
+      "probingModels": "Проверка моделей...",
+      "providerAdded": "Провайдер добавлен",
+      "providerAddedWithModels": "Доступно {count} моделей",
+      "scanIDE": "Импорт из IDE",
+      "dragToReorder": "Перетащите, чтобы изменить приоритет",
+      "freeTier": "Бесплатно",
+      "location": "Расположение",
+      "locationCloud": "Облако",
+      "locationHint": "Облачные провайдеры работают на удалённых серверах, локальные провайдеры — на вашем устройстве",
+      "locationLocal": "Локально",
+      "preferredModelsHint": "Отметьте предпочитаемые модели. Доступны будут только отмеченные модели; если не отмечено ни одной, будут доступны все модели.",
+      "selectPreferredModels": "Выбрать предпочитаемые модели",
+      "tabs": {
+        "oauth": "Вход через OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Пробная версия ZimaOS Blue",
+        "quotaExhaustedConversations": "Вы достигли лимита пробных диалогов. Чтобы продолжить, настройте собственного провайдера.",
+        "quotaExhaustedTokens": "Пробная квота токенов исчерпана. Чтобы продолжить, настройте собственного провайдера.",
+        "tokensUsed": "Осталось {remaining} / {total} токенов"
+      },
+      "usage": {
+        "estimatedCost": "Оценочная стоимость",
+        "inputTokens": "Входные токены",
+        "loading": "Загрузка использования...",
+        "outputTokens": "Выходные токены",
+        "requests": "Запросы"
+      }
+    }
+  },
+  "sk-SK": {
+    "settings": {
+      "update": {
+        "applying": "Aplikuje sa aktualizácia...",
+        "confirmRestart": "Použiť a reštartovať",
+        "downloadComplete": "Sťahovanie dokončené",
+        "downloadFailed": "Sťahovanie zlyhalo",
+        "restarting": "Reštartovanie...",
+        "serverNotResponding": "Server sa po aktualizácii nevrátil",
+        "waitingForServer": "Čaká sa na návrat servera...",
+        "autoCheck": "Pri spustení automaticky kontrolovať aktualizácie",
+        "checkNow": "Skontrolovať teraz",
+        "currentVersion": "Aktuálna verzia",
+        "download": "Stiahnuť",
+        "downloading": "Sťahovanie...",
+        "newVersionAvailable": "K dispozícii je nová verzia",
+        "title": "O aplikácii",
+        "upToDate": "Aktuálne"
+      },
+      "tab": {
+        "llm": "LLM modely",
+        "memory": "Pamäť",
+        "network": "Sieť",
+        "security": "Zabezpečenie",
+        "speech": "Reč",
+        "update": "Aktualizácia",
+        "userdata": "Správa údajov"
+      },
+      "closeBehavior": "Správanie pri zatvorení",
+      "closeBehaviorMinimize": "Minimalizovať do lišty",
+      "closeBehaviorQuit": "Ukončiť",
+      "closeBehaviorSaved": "Správanie pri zatvorení uložené"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Riadenie vyvolania pamäte",
+      "memoryMeta": "Vyvolanie bolo preskočené v {skipped}/{total} ťahoch",
+      "memoryMode": "Režim: {mode}",
+      "modes": {
+        "aggressive": "Agresívny",
+        "balanced": "Vyvážený",
+        "quality": "Kvalita"
+      },
+      "combined": "Cache + orezanie + nástroje + smerovanie",
+      "estimated": "Odhadovaná úspora",
+      "costSaved": "Ušetrené náklady",
+      "tokensSaved": "Ušetrené tokeny",
+      "compression": "Kompresia",
+      "breakdown": "Rozpis úspor",
+      "estCost": "Odhad. náklady",
+      "noSavingsYet": "Zatiaľ nebola zaznamenaná žiadna úspora tokenov",
+      "prunerLabel": "Orezanie kontextu",
+      "prunerMeta": "{pruned}/{total} požiadaviek orezaných",
+      "routingLabel": "Inteligentné smerovanie",
+      "routingMeta": "{requests} požiadaviek smerovaných",
+      "toolsLabel": "Filter nástrojov",
+      "toolsMeta": "{skipped} nástrojov preskočených v {requests} požiadavkách"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analýza",
+        "auto_reply": "Automatická odpoveď",
+        "browser": "Prehliadač",
+        "calculator": "Kalkulačka",
+        "calendar": "Kalendár",
+        "contacts": "Kontakty",
+        "crypto": "Krypto",
+        "datetime": "Dátum a čas",
+        "email": "E-mail",
+        "file_read": "Čítanie súboru",
+        "file_write": "Zápis súboru",
+        "files": "Súbory",
+        "memory": "Pamäť",
+        "network": "Sieť",
+        "news": "Správy",
+        "notes": "Poznámky",
+        "notifications": "Oznámenia",
+        "process": "Procesy",
+        "reminders": "Pripomienky",
+        "sandbox": "Sandbox",
+        "scheduler": "Plánovač",
+        "search": "Vyhľadávanie",
+        "stocks": "Akcie",
+        "system_info": "Informácie o systéme",
+        "tasks": "Úlohy",
+        "timer": "Časovač",
+        "translate": "Preložiť",
+        "ui_reviewer": "Kontrola UI",
+        "unit_converter": "Prevodník jednotiek",
+        "weather": "Počasie",
+        "web_search": "Vyhľadávanie na webe",
+        "workflows": "Pracovné postupy",
+        "exec": "Spúšťanie príkazov",
+        "workspace_file": "Súbor pracovného priestoru"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Automatické prehrávanie",
+      "checkpoint": {
+        "cancel": "Zrušiť",
+        "continue": "Pokračovať",
+        "fallbackQuestion": "Potvrďte túto akciu prehliadača.",
+        "help": "Môžete povedať \"pokračovať\" alebo \"zrušiť\", prípadne klepnúť na tlačidlo nižšie.",
+        "title": "Vyžaduje sa potvrdenie kontrolného bodu prehliadača"
+      },
+      "clearConversation": "Vymazať konverzáciu",
+      "connected": "Pripojené",
+      "continuous": "Nepretržité",
+      "disconnected": "Odpojené",
+      "emptyHint": "Stlačte a podržte tlačidlo mikrofónu, aby ste mohli hovoriť",
+      "errors": {
+        "connectionFailed": "Pripojenie zlyhalo",
+        "processAudioFailed": "Nepodarilo sa spracovať zvuk",
+        "startRecordingFailed": "Nepodarilo sa spustiť nahrávanie",
+        "wakeWordStartFailed": "Nepodarilo sa spustiť detekciu zobúdzacieho slova"
+      },
+      "title": "Hlasový asistent",
+      "settingsTitle": "Nastavenia",
+      "languageLabel": "Jazyk",
+      "voiceLabel": "Hlas",
+      "holdToSpeak": "Podržte pre hovorenie",
+      "releaseToSend": "Pustite na odoslanie",
+      "wakeWordTitle": "Detekcia zobúdzacieho slova",
+      "wakeWordEnable": "Povoliť",
+      "wakeWordLabel": "Zobúdzacie slovo",
+      "wakeWordPlaceholder": "napr. ahoj echo",
+      "wakeWordListening": "Počúvanie zobúdzacieho slova...",
+      "wakeWordIdle": "Nepočúva",
+      "state": {
+        "ready": "Pripravené",
+        "listening": "Počúva...",
+        "processing": "Spracovanie...",
+        "speaking": "Hovorí...",
+        "unknown": "Neznáme"
+      },
+      "languages": {
+        "en": "Angličtina",
+        "zh": "Čínština",
+        "ja": "Japončina",
+        "ko": "Kórejčina",
+        "de": "Nemčina",
+        "fr": "Francúzština",
+        "es": "Španielčina"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Open-source a bezplatné prostredie agenta"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Hľadať v záznamoch..."
+    },
+    "companion": {
+      "title": "Spoločník",
+      "platforms": {
+        "web": "Web",
+        "web-user": "Webový používateľ"
+      },
+      "ackedBy": "Potvrdil",
+      "anonymous": "Anonymný",
+      "eventHistory": "História udalostí",
+      "flow": {
+        "duration": "Trvanie",
+        "empty": "Nie sú dostupné žiadne údaje toku",
+        "fitView": "Prispôsobiť zobrazenie",
+        "legend": "Legenda",
+        "loading": "Načítava sa tok...",
+        "nodeTypes": {
+          "llmRequest": "Požiadavka LLM",
+          "message": "Správa",
+          "securityCheck": "Bezpečnostná kontrola",
+          "toolCall": "Volanie nástroja"
+        },
+        "reset": "Obnoviť zobrazenie",
+        "retry": "Skúsiť znova",
+        "status": "Stav",
+        "time": "Čas",
+        "type": "Typ",
+        "zoomIn": "Priblížiť",
+        "zoomOut": "Oddialiť"
+      },
+      "hoursAgo": "pred {n} hodinami",
+      "justNow": "Práve teraz",
+      "liveSession": "Živá relácia",
+      "llmDetails": {
+        "completion": "Výstupné tokeny",
+        "input": "Vstup",
+        "prompt": "Vstupné tokeny",
+        "score": "Skóre",
+        "total": "Spolu tokenov"
+      },
+      "minutesAgo": "pred {n} min",
+      "nodes": {
+        "chars": "{count} znakov",
+        "llmRequest": "Požiadavka LLM",
+        "message": "Správa",
+        "received": "Prijaté",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Podpora",
+      "deepResearchConflict": "Konflikt",
+      "deepResearchHasConflict": "Konfliktné signály"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Na odosielanie iMessages je potrebné oprávnenie Automation. Udeľte ho v System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Na čítanie histórie iMessage je potrebné Full Disk Access. Udeľte ho v System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage nie je na tomto Macu nastavené. Otvorte aplikáciu Messages a prihláste sa pomocou Apple ID.",
+          "not_signed_in": "Nie ste prihlásení do iMessage. Otvorte aplikáciu Messages a prihláste sa pomocou Apple ID.",
+          "unavailable_platform": "iMessage je dostupný len na macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP požiadavka"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "napr. Osobné, Práca",
+      "widget": {
+        "pasteExample": "meno: Ján Novák\ne-mail: jan{'@'}example.com\ntelefón: 123-456-7890",
+        "title": "Vyplňovanie formulárov",
+        "fillAll": "Vyplniť všetko",
+        "fillThis": "Vyplniť toto pole",
+        "undo": "Späť",
+        "readClipboard": "Načítať zo schránky",
+        "showPassword": "Zobraziť heslo",
+        "hidePassword": "Skryť heslo",
+        "filledFields": "Vyplnených {count} polí",
+        "parsedFields": "Spracovaných {count} polí",
+        "pasteData": "Prilepte údaje na vyplnenie",
+        "pasteDataHint": "Prilepte dvojice kľúč-hodnota"
+      },
+      "createTemplate": "Vytvoriť šablónu",
+      "default": "Predvolené",
+      "defaultSet": "Predvolená šablóna bola aktualizovaná",
+      "editTemplate": "Upraviť šablónu",
+      "enterValue": "Zadajte hodnotu...",
+      "fields": "Polia",
+      "fieldTypes": "typy polí nakonfigurované",
+      "patterns": "Vzory polí",
+      "patternsDescription": "Vzory polí pomáhajú rozpoznať polia formulára porovnávaním kľúčových slov v názvoch polí, štítkoch a zástupných textoch.",
+      "setAsDefault": "Nastaviť ako predvolenú šablónu",
+      "templateCreated": "Šablóna bola úspešne vytvorená",
+      "templateDeleted": "Šablóna bola úspešne odstránená",
+      "templateName": "Názov šablóny",
+      "templateUpdated": "Šablóna bola úspešne aktualizovaná",
+      "templates": "Šablóny",
+      "newTemplate": "Nová šablóna",
+      "setDefault": "Nastaviť ako predvolenú",
+      "noTemplates": "Zatiaľ žiadne šablóny. Vytvorte jednu na začiatok.",
+      "editPatterns": "Upraviť vzory",
+      "patternsSaved": "Vzory boli úspešne uložené",
+      "confirmDelete": "Naozaj chcete odstrániť túto šablónu?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Ethernet sieť",
+      "loopback": "Spätná slučka",
+      "unknown": "Neznáme",
+      "virtual": "Virtuálne"
+    },
+    "plugins": {
+      "builtin": "Vstavané",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo alebo https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Zakázané",
+        "enabled": "Povolené",
+        "total": "Celkovo"
+      },
+      "categories": {
+        "analytics": "Analytika",
+        "communication": "Komunikácia",
+        "development": "Vývoj",
+        "extension": "Rozšírenie",
+        "information": "Informácie",
+        "integration": "Integrácia",
+        "other": "Ostatné",
+        "productivity": "Produktivita",
+        "system": "Systém",
+        "utility": "Pomôcky"
+      },
+      "title": "Rozšírenia",
+      "subtitle": "Spravujte zručnosti a nástroje",
+      "noDescription": "Popis nie je k dispozícii",
+      "allCategories": "Všetky kategórie",
+      "dropFileHere": "Presuňte sem súbor alebo kliknite na prehľadávanie",
+      "fileRequired": "Vyberte súbor",
+      "install": "Nainštalovať",
+      "installFailed": "Inštalácia zlyhala",
+      "installFromUrl": "Z URL",
+      "installing": "Inštaluje sa...",
+      "installSkillTitle": "Nainštalovať zručnosť",
+      "noMatchingTools": "Nenašli sa žiadne zodpovedajúce položky",
+      "noTools": "Nie sú k dispozícii žiadne položky",
+      "skillPackageInfo": "Požiadavky na balík zručnosti",
+      "skillPackageRequirement1": "Musí obsahovať platný manifest skill.json",
+      "skillPackageRequirement2": "Zahrňte všetky potrebné súbory zručnosti",
+      "skillUrlHint": "Zadajte URL GitHub repozitára alebo priamy odkaz na balík zručnosti",
+      "skillUrlLabel": "URL zručnosti",
+      "supportedFormats": "Podporované formáty",
+      "uploadFile": "Nahrať súbor",
+      "uploadSkill": "Nainštalovať zručnosť",
+      "urlRequired": "Zadajte URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Aktívna relácia",
+      "cancel": "Zrušiť",
+      "diagnostics": "Diagnostika",
+      "diagnosticsTitle": "Diagnostické informácie",
+      "disconnect": "Odpojiť",
+      "disconnectConfirmMessage": "Ak pristupujete cez vzdialený tunel, môžete stratiť prístup k tejto stránke.",
+      "disconnectConfirmMessageSameHost": "Momentálne pristupujete cez tento vzdialený tunel. Po odpojení sa táto stránka zatvorí a stratíte prístup.",
+      "disconnectConfirmTitle": "Odpojiť vzdialený prístup?",
+      "error": "Chyba",
+      "firewallException": "Výnimka brány firewall",
+      "getToken": "Získať token",
+      "logs": "Záznamy",
+      "logsTitle": "Záznamy pripojenia",
+      "ngrokClaimDomain": "Získajte svoju",
+      "ngrokDomain": "Statická doména",
+      "ngrokDomainHint": "Voliteľné: používatelia bezplatného programu si môžu nárokovať jednu statickú doménu.",
+      "ngrokDomainPlaceholder": "napr. myapp.ngrok-free.app",
+      "noKeyRequired": "Nie je potrebné nastavenie",
+      "noLogs": "Nie sú k dispozícii žiadne záznamy",
+      "platform": "Platforma",
+      "provider": "Poskytovateľ",
+      "qrCodeError": "Nepodarilo sa načítať QR kód",
+      "recentErrors": "Nedávne chyby",
+      "requiresKey": "Vyžaduje overovací token",
+      "selectProvider": "Vyberte poskytovateľa tunela",
+      "showQRCode": "Zobraziť QR kód",
+      "status": "Stav",
+      "troubleshootingHints": "Tipy na riešenie problémov",
+      "tunnelRunning": "Tunel je aktívny"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "V poriadku (prázdne)",
+        "ok-token": "V poriadku",
+        "failed": "Zlyhalo",
+        "ran": "Spustené",
+        "sent": "Upozornenie odoslané",
+        "skipped": "Preskočené"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Chyba bola vymazaná — môžete to skúsiť znova",
+      "keyLabelPlaceholder": "Hlavný, Záložný atď.",
+      "modelIdPlaceholder": "openai, anthropic atď.",
+      "providerId": "ID poskytovateľa",
+      "retry": "Skúsiť znova",
+      "addFailed": "Nepodarilo sa pridať poskytovateľa",
+      "addingProvider": "Pridáva sa poskytovateľ...",
+      "apiKeyHint": "Niektorí poskytovatelia, ako Ollama, nepotrebujú API kľúč",
+      "apiKeyOptional": "API kľúč (voliteľné)",
+      "baseUrlRequired": "Najprv nastavte základnú URL",
+      "fetchingKeyModels": "Načítavajú sa modely...",
+      "getApiKey": "Získať API kľúč",
+      "ideImportLabel": "Importované z {ide} (rozšírenie Claude Code)",
+      "noAvailableModels": "Nenašli sa žiadne dostupné modely",
+      "noModelsFound": "Nenašli sa žiadne modely — skontrolujte URL a API kľúč",
+      "probeComplete": "Kontrola dokončená: {available}/{total} modelov k dispozícii",
+      "probingModels": "Kontrolujú sa modely...",
+      "providerAdded": "Poskytovateľ pridaný",
+      "providerAddedWithModels": "{count} modelov k dispozícii",
+      "scanIDE": "Importovať z IDE",
+      "dragToReorder": "Potiahnutím zmeňte prioritu",
+      "freeTier": "Bezplatne",
+      "location": "Umiestnenie",
+      "locationCloud": "V cloude",
+      "locationHint": "Cloudoví poskytovatelia bežia na vzdialených serveroch, lokálni poskytovatelia bežia na vašom zariadení",
+      "locationLocal": "Lokálne",
+      "preferredModelsHint": "Označte modely, ktoré preferujete. Dostupné budú len označené modely; ak neoznačíte žiadny, budú dostupné všetky modely.",
+      "selectPreferredModels": "Vybrať preferované modely",
+      "tabs": {
+        "oauth": "Prihlásenie cez OAuth"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "Skúšobná verzia ZimaOS Blue",
+        "quotaExhaustedConversations": "Dosiahli ste limit skúšobných konverzácií. Ak chcete pokračovať, nastavte si vlastného poskytovateľa.",
+        "quotaExhaustedTokens": "Vyčerpali ste skúšobnú kvótu tokenov. Ak chcete pokračovať, nastavte si vlastného poskytovateľa.",
+        "tokensUsed": "Zostáva {remaining} / {total} tokenov"
+      },
+      "usage": {
+        "estimatedCost": "Odhadované náklady",
+        "inputTokens": "Vstupné tokeny",
+        "loading": "Načítava sa využitie...",
+        "outputTokens": "Výstupné tokeny",
+        "requests": "Požiadavky"
+      }
+    }
+  },
+  "sv-SE": {
+    "settings": {
+      "update": {
+        "applying": "Tillämpar uppdatering...",
+        "confirmRestart": "Verkställ och starta om",
+        "downloadComplete": "Nedladdning klar",
+        "downloadFailed": "Nedladdningen misslyckades",
+        "restarting": "Startar om...",
+        "serverNotResponding": "Servern kom inte tillbaka efter uppdateringen",
+        "waitingForServer": "Väntar på att servern ska komma tillbaka...",
+        "autoCheck": "Sök automatiskt efter uppdateringar vid start",
+        "checkNow": "Kontrollera nu",
+        "currentVersion": "Nuvarande version",
+        "download": "Ladda ned",
+        "downloading": "Laddar ned...",
+        "newVersionAvailable": "Ny version tillgänglig",
+        "title": "Om",
+        "upToDate": "Uppdaterad"
+      },
+      "tab": {
+        "llm": "LLM-modeller",
+        "memory": "Minne",
+        "network": "Nätverk",
+        "security": "Säkerhet",
+        "speech": "Tal",
+        "update": "Uppdatering",
+        "userdata": "Datahantering"
+      },
+      "closeBehavior": "Beteende vid stängning",
+      "closeBehaviorMinimize": "Minimera till aktivitetsfältet",
+      "closeBehaviorQuit": "Avsluta",
+      "closeBehaviorSaved": "Beteende vid stängning sparat"
+    },
+    "tokenEconomy": {
+      "memoryLabel": "Minnesåterkallningskontroll",
+      "memoryMeta": "Återkallelse hoppades över i {skipped}/{total} omgångar",
+      "memoryMode": "Läge: {mode}",
+      "modes": {
+        "aggressive": "Aggressiv",
+        "balanced": "Balanserad",
+        "quality": "Kvalitet"
+      },
+      "combined": "Cache + trimning + verktyg + routning",
+      "estimated": "Beräknad besparing",
+      "costSaved": "Sparad kostnad",
+      "tokensSaved": "Sparade token",
+      "compression": "Komprimering",
+      "breakdown": "Besparingsöversikt",
+      "estCost": "Ber. kostnad",
+      "noSavingsYet": "Inga tokenbesparingar har registrerats ännu",
+      "prunerLabel": "Kontexttrimning",
+      "prunerMeta": "{pruned}/{total} förfrågningar trimmade",
+      "routingLabel": "Smart routning",
+      "routingMeta": "{requests} förfrågningar routade",
+      "toolsLabel": "Verktygsfilter",
+      "toolsMeta": "{skipped} verktyg hoppades över i {requests} förfrågningar"
+    },
+    "tools": {
+      "names": {
+        "analyze": "Analys",
+        "auto_reply": "Autosvar",
+        "browser": "Webbläsare",
+        "calculator": "Kalkylator",
+        "calendar": "Kalender",
+        "contacts": "Kontakter",
+        "crypto": "Krypto",
+        "datetime": "Datum och tid",
+        "email": "E-post",
+        "file_read": "Filläsning",
+        "file_write": "Filskrivning",
+        "files": "Filer",
+        "memory": "Minne",
+        "network": "Nätverk",
+        "news": "Nyheter",
+        "notes": "Anteckningar",
+        "notifications": "Aviseringar",
+        "process": "Processer",
+        "reminders": "Påminnelser",
+        "sandbox": "Sandbox",
+        "scheduler": "Schemaläggare",
+        "search": "Sök",
+        "stocks": "Aktier",
+        "system_info": "Systeminformation",
+        "tasks": "Uppgifter",
+        "timer": "Timer",
+        "translate": "Översätt",
+        "ui_reviewer": "UI-granskare",
+        "unit_converter": "Enhetsomvandlare",
+        "weather": "Väder",
+        "web_search": "Webbsökning",
+        "workflows": "Arbetsflöden",
+        "exec": "Kommandoexekvering",
+        "workspace_file": "Arbetsområdesfil"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "Automatisk uppspelning",
+      "checkpoint": {
+        "cancel": "Avbryt",
+        "continue": "Fortsätt",
+        "fallbackQuestion": "Bekräfta den här webbläsaråtgärden.",
+        "help": "Du kan säga \"fortsätt\" eller \"avbryt\", eller trycka på en knapp nedan.",
+        "title": "Bekräftelse för webbläsarkontrollpunkt krävs"
+      },
+      "clearConversation": "Rensa konversation",
+      "connected": "Ansluten",
+      "continuous": "Kontinuerlig",
+      "disconnected": "Frånkopplad",
+      "emptyHint": "Tryck och håll ned mikrofonknappen för att tala",
+      "errors": {
+        "connectionFailed": "Anslutningen misslyckades",
+        "processAudioFailed": "Det gick inte att bearbeta ljudet",
+        "startRecordingFailed": "Det gick inte att starta inspelningen",
+        "wakeWordStartFailed": "Det gick inte att starta upptäckt av väckningsord"
+      },
+      "title": "Röstassistent",
+      "settingsTitle": "Inställningar",
+      "languageLabel": "Språk",
+      "voiceLabel": "Röst",
+      "holdToSpeak": "Håll ned för att tala",
+      "releaseToSend": "Släpp för att skicka",
+      "wakeWordTitle": "Detektering av väckningsord",
+      "wakeWordEnable": "Aktivera",
+      "wakeWordLabel": "Väckningsord",
+      "wakeWordPlaceholder": "t.ex. hej echo",
+      "wakeWordListening": "Lyssnar efter väckningsord...",
+      "wakeWordIdle": "Lyssnar inte",
+      "state": {
+        "ready": "Klar",
+        "listening": "Lyssnar...",
+        "processing": "Bearbetar...",
+        "speaking": "Talar...",
+        "unknown": "Okänd"
+      },
+      "languages": {
+        "en": "Engelska",
+        "zh": "Kinesiska",
+        "ja": "Japanska",
+        "ko": "Koreanska",
+        "de": "Tyska",
+        "fr": "Franska",
+        "es": "Spanska"
+      }
+    },
+    "brand": {
+      "githubTooltip": "Öppen källkod och gratis agentruntime"
+    },
+    "common": {
+      "searchLogsPlaceholder": "Sök i loggar..."
+    },
+    "companion": {
+      "title": "Följeslagare",
+      "platforms": {
+        "web": "Webb",
+        "web-user": "Webbanvändare"
+      },
+      "ackedBy": "Bekräftad av",
+      "anonymous": "Anonym",
+      "eventHistory": "Händelsehistorik",
+      "flow": {
+        "duration": "Varaktighet",
+        "empty": "Inga flödesdata tillgängliga",
+        "fitView": "Anpassa vy",
+        "legend": "Teckenförklaring",
+        "loading": "Laddar flöde...",
+        "nodeTypes": {
+          "llmRequest": "LLM-begäran",
+          "message": "Meddelande",
+          "securityCheck": "Säkerhetskontroll",
+          "toolCall": "Verktygsanrop"
+        },
+        "reset": "Återställ vy",
+        "retry": "Försök igen",
+        "status": "Status",
+        "time": "Tid",
+        "type": "Typ",
+        "zoomIn": "Zooma in",
+        "zoomOut": "Zooma ut"
+      },
+      "hoursAgo": "för {n} timmar sedan",
+      "justNow": "Just nu",
+      "liveSession": "Live-session",
+      "llmDetails": {
+        "completion": "Utdata-token",
+        "input": "Inmatning",
+        "prompt": "Inmatningstoken",
+        "score": "Poäng",
+        "total": "Totalt antal token"
+      },
+      "minutesAgo": "för {n} min sedan",
+      "nodes": {
+        "chars": "{count} tecken",
+        "llmRequest": "LLM-begäran",
+        "message": "Meddelande",
+        "received": "Mottaget",
+        "sandbox": "Sandbox"
+      }
+    },
+    "chat": {
+      "deepResearchSupport": "Stöd",
+      "deepResearchConflict": "Konflikt",
+      "deepResearchHasConflict": "Motstridiga signaler"
+    },
+    "channels": {
+      "errors": {
+        "imessage": {
+          "automation_denied": "Automation-behörighet krävs för att skicka iMessages. Ge den i System Settings > Privacy & Security > Automation.",
+          "full_disk_access": "Full Disk Access krävs för att läsa iMessage-historik. Ge den i System Settings > Privacy & Security > Full Disk Access.",
+          "not_set_up": "iMessage är inte konfigurerat på den här Macen. Öppna appen Messages och logga in med ditt Apple ID.",
+          "not_signed_in": "Du är inte inloggad i iMessage. Öppna appen Messages och logga in med ditt Apple ID.",
+          "unavailable_platform": "iMessage är bara tillgängligt på macOS."
+        }
+      }
+    },
+    "cron": {
+      "handlers": {
+        "http": "HTTP-begäran"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "t.ex. Personligt, Arbete",
+      "widget": {
+        "pasteExample": "namn: Anna Andersson\ne-post: anna{'@'}example.com\ntelefon: 123-456-7890",
+        "title": "Formulärifyllare",
+        "fillAll": "Fyll i alla",
+        "fillThis": "Fyll i detta fält",
+        "undo": "Ångra",
+        "readClipboard": "Läs från urklipp",
+        "showPassword": "Visa lösenord",
+        "hidePassword": "Dölj lösenord",
+        "filledFields": "{count} fält ifyllda",
+        "parsedFields": "{count} fält tolkades",
+        "pasteData": "Klistra in data att fylla i",
+        "pasteDataHint": "Klistra in nyckel-värde-par"
+      },
+      "createTemplate": "Skapa mall",
+      "default": "Standard",
+      "defaultSet": "Standardmallen uppdaterades",
+      "editTemplate": "Redigera mall",
+      "enterValue": "Ange ett värde...",
+      "fields": "Fält",
+      "fieldTypes": "fälttyper konfigurerade",
+      "patterns": "Fältmönster",
+      "patternsDescription": "Fältmönster hjälper till att upptäcka formulärfält genom att matcha nyckelord i fältnamn, etiketter och platshållare.",
+      "setAsDefault": "Ange som standardmall",
+      "templateCreated": "Mallen skapades",
+      "templateDeleted": "Mallen togs bort",
+      "templateName": "Mallnamn",
+      "templateUpdated": "Mallen uppdaterades",
+      "templates": "Mallar",
+      "newTemplate": "Ny mall",
+      "setDefault": "Ange som standard",
+      "noTemplates": "Inga mallar ännu. Skapa en för att komma igång.",
+      "editPatterns": "Redigera mönster",
+      "patternsSaved": "Mönster sparades",
+      "confirmDelete": "Är du säker på att du vill ta bort den här mallen?"
+    },
+    "network": {
+      "wifi": "Wi‑Fi",
+      "ethernet": "Ethernetnät",
+      "loopback": "Återkoppling",
+      "unknown": "Okänd",
+      "virtual": "Virtuell"
+    },
+    "plugins": {
+      "builtin": "Inbyggd",
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo eller https://example.com/skill.zip",
+      "stats": {
+        "disabled": "Inaktiverad",
+        "enabled": "Aktiverad",
+        "total": "Totalt"
+      },
+      "categories": {
+        "analytics": "Analys",
+        "communication": "Kommunikation",
+        "development": "Utveckling",
+        "extension": "Tillägg",
+        "information": "Informationer",
+        "integration": "Integrering",
+        "other": "Övrigt",
+        "productivity": "Produktivitet",
+        "system": "Systemverktyg",
+        "utility": "Verktyg"
+      },
+      "title": "Tillägg",
+      "subtitle": "Hantera färdigheter och verktyg",
+      "noDescription": "Ingen beskrivning tillgänglig",
+      "allCategories": "Alla kategorier",
+      "dropFileHere": "Släpp filen här eller klicka för att bläddra",
+      "fileRequired": "Välj en fil",
+      "install": "Installera",
+      "installFailed": "Installationen misslyckades",
+      "installFromUrl": "Från URL",
+      "installing": "Installerar...",
+      "installSkillTitle": "Installera färdighet",
+      "noMatchingTools": "Inga matchande objekt hittades",
+      "noTools": "Inga objekt tillgängliga",
+      "skillPackageInfo": "Krav för färdighetspaket",
+      "skillPackageRequirement1": "Måste innehålla ett giltigt skill.json-manifest",
+      "skillPackageRequirement2": "Inkludera alla nödvändiga färdighetsfiler",
+      "skillUrlHint": "Ange en GitHub-repositorie-URL eller en direktlänk till ett färdighetspaket",
+      "skillUrlLabel": "Färdighets-URL",
+      "supportedFormats": "Format som stöds",
+      "uploadFile": "Ladda upp fil",
+      "uploadSkill": "Installera färdighet",
+      "urlRequired": "Ange en URL"
+    },
+    "remoteAccess": {
+      "activeSession": "Aktiv session",
+      "cancel": "Avbryt",
+      "diagnostics": "Diagnostik",
+      "diagnosticsTitle": "Diagnostikinformation",
+      "disconnect": "Koppla från",
+      "disconnectConfirmMessage": "Om du ansluter via den fjärrtunneln kan du förlora åtkomsten till den här sidan.",
+      "disconnectConfirmMessageSameHost": "Du ansluter just nu via den här fjärrtunneln. Om du kopplar från stängs den här sidan och du förlorar åtkomsten.",
+      "disconnectConfirmTitle": "Koppla från fjärråtkomst?",
+      "error": "Fel",
+      "firewallException": "Brandväggsundantag",
+      "getToken": "Hämta din token",
+      "logs": "Loggar",
+      "logsTitle": "Anslutningsloggar",
+      "ngrokClaimDomain": "Gör anspråk på din",
+      "ngrokDomain": "Statisk domän",
+      "ngrokDomainHint": "Valfritt: gratisanvändare kan göra anspråk på en statisk domän.",
+      "ngrokDomainPlaceholder": "t.ex. myapp.ngrok-free.app",
+      "noKeyRequired": "Ingen konfiguration krävs",
+      "noLogs": "Inga loggar tillgängliga",
+      "platform": "Plattform",
+      "provider": "Leverantör",
+      "qrCodeError": "Det gick inte att läsa in QR-koden",
+      "recentErrors": "Senaste fel",
+      "requiresKey": "Kräver autentiseringstoken",
+      "selectProvider": "Välj tunnelleverantör",
+      "showQRCode": "Visa QR-kod",
+      "status": "Tillstånd",
+      "troubleshootingHints": "Felsökningstips",
+      "tunnelRunning": "Tunneln körs"
+    },
+    "heartbeat": {
+      "status": {
+        "ok-empty": "OK (tom)",
+        "ok-token": "I ordning",
+        "failed": "Misslyckades",
+        "ran": "Kördes",
+        "sent": "Varning skickad",
+        "skipped": "Hoppades över"
+      }
+    },
+    "providerPool": {
+      "errorCleared": "Felet rensades — du kan försöka igen",
+      "keyLabelPlaceholder": "Primär, Reserv osv.",
+      "modelIdPlaceholder": "openai, anthropic osv.",
+      "providerId": "Leverantörs-ID",
+      "retry": "Försök igen",
+      "addFailed": "Det gick inte att lägga till leverantören",
+      "addingProvider": "Lägger till leverantör...",
+      "apiKeyHint": "Vissa leverantörer, som Ollama, behöver ingen API-nyckel",
+      "apiKeyOptional": "API-nyckel (valfritt)",
+      "baseUrlRequired": "Konfigurera först bas-URL",
+      "fetchingKeyModels": "Hämtar modeller...",
+      "getApiKey": "Hämta API-nyckel",
+      "ideImportLabel": "Importerad från {ide} (Claude Code-tillägg)",
+      "noAvailableModels": "Inga tillgängliga modeller hittades",
+      "noModelsFound": "Inga modeller hittades — kontrollera URL och API-nyckel",
+      "probeComplete": "Kontroll klar: {available}/{total} modeller tillgängliga",
+      "probingModels": "Kontrollerar modeller...",
+      "providerAdded": "Leverantör tillagd",
+      "providerAddedWithModels": "{count} modeller tillgängliga",
+      "scanIDE": "Importera från IDE",
+      "dragToReorder": "Dra för att ändra prioriteten",
+      "freeTier": "Gratis",
+      "location": "Plats",
+      "locationCloud": "Moln",
+      "locationHint": "Molnleverantörer körs på fjärrservrar, lokala leverantörer körs på din enhet",
+      "locationLocal": "Lokal",
+      "preferredModelsHint": "Markera de modeller du föredrar. Endast markerade modeller blir tillgängliga; om inga är markerade blir alla modeller tillgängliga.",
+      "selectPreferredModels": "Välj föredragna modeller",
+      "tabs": {
+        "oauth": "OAuth-inloggning"
+      },
+      "topP": "Top-P",
+      "trial": {
+        "name": "ZimaOS Blue-testversion",
+        "quotaExhaustedConversations": "Du har nått gränsen för testsamtal. Konfigurera din egen leverantör för att fortsätta.",
+        "quotaExhaustedTokens": "Din testkvot för token är slut. Konfigurera din egen leverantör för att fortsätta.",
+        "tokensUsed": "{remaining} / {total} token kvar"
+      },
+      "usage": {
+        "estimatedCost": "Beräknad kostnad",
+        "inputTokens": "Inmatningstoken",
+        "loading": "Läser in användning...",
+        "outputTokens": "Utmatningstoken",
+        "requests": "Förfrågningar"
+      }
+    }
+  },
+  "zh-CN": {
+    "settings": {
+      "update": {
+        "applying": "正在应用更新...",
+        "confirmRestart": "应用并重启",
+        "downloadComplete": "下载完成",
+        "downloadFailed": "下载失败",
+        "restarting": "正在重启...",
+        "serverNotResponding": "更新后服务器未恢复响应",
+        "waitingForServer": "正在等待服务器恢复...",
+        "autoCheck": "启动时自动检查更新",
+        "checkNow": "立即检查",
+        "currentVersion": "当前版本",
+        "download": "下载",
+        "downloading": "下载中...",
+        "newVersionAvailable": "发现新版本",
+        "title": "关于",
+        "upToDate": "已是最新"
+      }
+    },
+    "tokenEconomy": {
+      "memoryLabel": "记忆召回闸门",
+      "memoryMeta": "共 {total} 轮，跳过召回 {skipped} 轮",
+      "memoryMode": "模式：{mode}",
+      "modes": {
+        "aggressive": "激进",
+        "balanced": "平衡",
+        "quality": "质量"
+      },
+      "combined": "缓存 + 裁剪 + 工具 + 路由",
+      "estimated": "预计节省",
+      "costSaved": "节省成本",
+      "tokensSaved": "节省 Token",
+      "compression": "压缩率",
+      "breakdown": "节省明细",
+      "estCost": "预计成本",
+      "noSavingsYet": "暂未记录到 Token 节省",
+      "prunerLabel": "上下文裁剪",
+      "prunerMeta": "共裁剪 {pruned}/{total} 次请求",
+      "routingLabel": "智能路由",
+      "routingMeta": "已路由 {requests} 次请求",
+      "toolsLabel": "工具过滤",
+      "toolsMeta": "在 {requests} 次请求中跳过了 {skipped} 个工具"
+    },
+    "tools": {
+      "names": {
+        "analyze": "分析",
+        "auto_reply": "自动回复",
+        "browser": "浏览器",
+        "calculator": "计算器",
+        "calendar": "日历",
+        "contacts": "联系人",
+        "crypto": "加密",
+        "datetime": "日期和时间",
+        "email": "电子邮件",
+        "file_read": "文件读取",
+        "file_write": "文件写入",
+        "files": "文件",
+        "memory": "记忆",
+        "network": "网络",
+        "news": "新闻",
+        "notes": "笔记",
+        "notifications": "通知",
+        "process": "进程",
+        "reminders": "提醒",
+        "sandbox": "沙箱",
+        "scheduler": "调度器",
+        "search": "搜索",
+        "stocks": "股票",
+        "system_info": "系统信息",
+        "tasks": "任务",
+        "timer": "计时器",
+        "translate": "翻译",
+        "ui_reviewer": "界面审查",
+        "unit_converter": "单位换算",
+        "weather": "天气",
+        "web_search": "网页搜索",
+        "workflows": "工作流",
+        "exec": "命令执行",
+        "workspace_file": "工作区文件"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "自动播放",
+      "checkpoint": {
+        "cancel": "取消",
+        "continue": "继续",
+        "fallbackQuestion": "请确认此浏览器操作。",
+        "help": "你可以说“继续”或“取消”，也可以点击下方按钮。",
+        "title": "需要确认浏览器检查点"
+      },
+      "clearConversation": "清空对话",
+      "connected": "已连接",
+      "continuous": "连续",
+      "disconnected": "已断开",
+      "emptyHint": "按住麦克风按钮开始说话",
+      "errors": {
+        "connectionFailed": "连接失败",
+        "processAudioFailed": "处理音频失败",
+        "startRecordingFailed": "启动录音失败",
+        "wakeWordStartFailed": "启动唤醒词检测失败"
+      },
+      "title": "语音助手",
+      "settingsTitle": "设置",
+      "languageLabel": "语言",
+      "voiceLabel": "声音",
+      "holdToSpeak": "按住说话",
+      "releaseToSend": "松开发送",
+      "wakeWordTitle": "唤醒词检测",
+      "wakeWordEnable": "启用",
+      "wakeWordLabel": "唤醒词",
+      "wakeWordPlaceholder": "例如：hey echo",
+      "wakeWordListening": "正在监听唤醒词...",
+      "wakeWordIdle": "未在监听",
+      "state": {
+        "ready": "就绪",
+        "listening": "监听中...",
+        "processing": "处理中...",
+        "speaking": "说话中...",
+        "unknown": "未知"
+      },
+      "languages": {
+        "en": "英语",
+        "zh": "中文",
+        "ja": "日语",
+        "ko": "韩语",
+        "de": "德语",
+        "fr": "法语",
+        "es": "西班牙语"
+      }
+    },
+    "network": {
+      "wifi": "Wi‑Fi"
+    },
+    "providerPool": {
+      "topP": "Top-P"
+    }
+  },
+  "zh-TW": {
+    "settings": {
+      "update": {
+        "applying": "正在套用更新...",
+        "confirmRestart": "套用並重新啟動",
+        "downloadComplete": "下載完成",
+        "downloadFailed": "下載失敗",
+        "restarting": "重新啟動中...",
+        "serverNotResponding": "更新後伺服器未恢復回應",
+        "waitingForServer": "正在等待伺服器恢復...",
+        "autoCheck": "啟動時自動檢查更新",
+        "checkNow": "立即檢查",
+        "currentVersion": "目前版本",
+        "download": "下載",
+        "downloading": "下載中...",
+        "newVersionAvailable": "發現新版本",
+        "title": "關於",
+        "upToDate": "已是最新"
+      }
+    },
+    "tokenEconomy": {
+      "memoryLabel": "記憶召回閘門",
+      "memoryMeta": "共 {total} 輪，略過召回 {skipped} 輪",
+      "memoryMode": "模式：{mode}",
+      "modes": {
+        "aggressive": "積極",
+        "balanced": "平衡",
+        "quality": "品質"
+      },
+      "combined": "快取 + 裁剪 + 工具 + 路由",
+      "estimated": "預估節省",
+      "costSaved": "節省成本",
+      "tokensSaved": "節省 Token",
+      "compression": "壓縮率",
+      "breakdown": "節省明細",
+      "estCost": "預估成本",
+      "noSavingsYet": "尚未記錄到 Token 節省",
+      "prunerLabel": "情境裁剪",
+      "prunerMeta": "共裁剪 {pruned}/{total} 次請求",
+      "routingLabel": "智慧路由",
+      "routingMeta": "已路由 {requests} 次請求",
+      "toolsLabel": "工具篩選",
+      "toolsMeta": "在 {requests} 次請求中略過了 {skipped} 個工具"
+    },
+    "tools": {
+      "names": {
+        "analyze": "分析",
+        "auto_reply": "自動回覆",
+        "browser": "瀏覽器",
+        "calculator": "計算機",
+        "calendar": "行事曆",
+        "contacts": "聯絡人",
+        "crypto": "加密",
+        "datetime": "日期與時間",
+        "email": "電子郵件",
+        "file_read": "檔案讀取",
+        "file_write": "檔案寫入",
+        "files": "檔案",
+        "memory": "記憶",
+        "network": "網路",
+        "news": "新聞",
+        "notes": "筆記",
+        "notifications": "通知",
+        "process": "程序",
+        "reminders": "提醒",
+        "sandbox": "沙箱",
+        "scheduler": "排程器",
+        "search": "搜尋",
+        "stocks": "股票",
+        "system_info": "系統資訊",
+        "tasks": "任務",
+        "timer": "計時器",
+        "translate": "翻譯",
+        "ui_reviewer": "介面審查",
+        "unit_converter": "單位換算",
+        "weather": "天氣",
+        "web_search": "網頁搜尋",
+        "workflows": "工作流程",
+        "exec": "命令執行",
+        "workspace_file": "工作區檔案"
+      }
+    },
+    "voiceView": {
+      "autoPlay": "自動播放",
+      "checkpoint": {
+        "cancel": "取消",
+        "continue": "繼續",
+        "fallbackQuestion": "請確認此瀏覽器操作。",
+        "help": "你可以說「繼續」或「取消」，也可以點擊下方按鈕。",
+        "title": "需要確認瀏覽器檢查點"
+      },
+      "clearConversation": "清除對話",
+      "connected": "已連線",
+      "continuous": "連續",
+      "disconnected": "已中斷連線",
+      "emptyHint": "按住麥克風按鈕開始說話",
+      "errors": {
+        "connectionFailed": "連線失敗",
+        "processAudioFailed": "處理音訊失敗",
+        "startRecordingFailed": "啟動錄音失敗",
+        "wakeWordStartFailed": "啟動喚醒詞偵測失敗"
+      },
+      "title": "語音助理",
+      "settingsTitle": "設定",
+      "languageLabel": "語言",
+      "voiceLabel": "語音",
+      "holdToSpeak": "按住說話",
+      "releaseToSend": "放開送出",
+      "wakeWordTitle": "喚醒詞偵測",
+      "wakeWordEnable": "啟用",
+      "wakeWordLabel": "喚醒詞",
+      "wakeWordPlaceholder": "例如：hey echo",
+      "wakeWordListening": "正在監聽喚醒詞...",
+      "wakeWordIdle": "未在監聽",
+      "state": {
+        "ready": "就緒",
+        "listening": "監聽中...",
+        "processing": "處理中...",
+        "speaking": "說話中...",
+        "unknown": "未知"
+      },
+      "languages": {
+        "en": "英語",
+        "zh": "中文",
+        "ja": "日語",
+        "ko": "韓語",
+        "de": "德語",
+        "fr": "法語",
+        "es": "西班牙語"
+      }
+    },
+    "formFiller": {
+      "templateNamePlaceholder": "例如：個人、工作"
+    },
+    "network": {
+      "wifi": "Wi‑Fi"
+    },
+    "plugins": {
+      "skillUrlPlaceholder": "https://github.com/user/skill-repo 或 https://example.com/skill.zip"
+    },
+    "remoteAccess": {
+      "ngrokDomainPlaceholder": "例如：myapp.ngrok-free.app"
+    },
+    "providerPool": {
+      "errorCleared": "錯誤已清除，您可以再試一次",
+      "keyLabelPlaceholder": "主要、備援等",
+      "modelIdPlaceholder": "openai、anthropic 等",
+      "retry": "重試",
+      "topP": "Top-P"
+    }
+  }
+}

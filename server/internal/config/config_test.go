@@ -42,6 +42,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Session.Audit.RetentionDays != 30 {
 		t.Errorf("Session.Audit.RetentionDays = %v, want %v", cfg.Session.Audit.RetentionDays, 30)
 	}
+	if cfg.Session.Persistence.Path != "./data/blue.db" {
+		t.Errorf("Session.Persistence.Path = %v, want %v", cfg.Session.Persistence.Path, "./data/blue.db")
+	}
 }
 
 func TestLoad_FromFile(t *testing.T) {
@@ -86,9 +89,13 @@ func TestLoad_FromEnv(t *testing.T) {
 	// Set environment variables
 	os.Setenv("BLUE_SERVER_PORT", "7070")
 	os.Setenv("BLUE_LOG_LEVEL", "warn")
+	os.Setenv("BLUE_WEB_FETCH_ALLOW_PRIVATE_HOSTS", "true")
+	os.Setenv("BLUE_WEB_FETCH_TIMEOUT", "12s")
 	defer func() {
 		os.Unsetenv("BLUE_SERVER_PORT")
 		os.Unsetenv("BLUE_LOG_LEVEL")
+		os.Unsetenv("BLUE_WEB_FETCH_ALLOW_PRIVATE_HOSTS")
+		os.Unsetenv("BLUE_WEB_FETCH_TIMEOUT")
 	}()
 
 	cfg, err := Load("")
@@ -101,5 +108,11 @@ func TestLoad_FromEnv(t *testing.T) {
 	}
 	if cfg.Log.Level != "warn" {
 		t.Errorf("Log.Level = %v, want %v", cfg.Log.Level, "warn")
+	}
+	if !cfg.ToolCalling.WebFetch.AllowPrivateHosts {
+		t.Fatalf("ToolCalling.WebFetch.AllowPrivateHosts = %v, want true", cfg.ToolCalling.WebFetch.AllowPrivateHosts)
+	}
+	if cfg.ToolCalling.WebFetch.Timeout != 12*time.Second {
+		t.Fatalf("ToolCalling.WebFetch.Timeout = %v, want %v", cfg.ToolCalling.WebFetch.Timeout, 12*time.Second)
 	}
 }

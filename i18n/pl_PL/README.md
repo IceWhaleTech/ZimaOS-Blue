@@ -66,7 +66,7 @@ Idąc dalej: oferuje natywne wsparcie dla **ponad 20 platform komunikacyjnych**,
 
 Kompilowany natywnie w Go — bez interpretera, bez maszyny wirtualnej, bez narzutu. Działa cicho na wszystkim, od serwerów po urządzenia biurkowe.
 
-| Metryka | ZimaOS Blue (Go) | OpenClaw (Node + dist) |
+| Metryka | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
 |---------|-------------------|------------------------|
 | `help` zimny / ciepły start | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
 | `status` czas wykonania (najlepszy z 3) | **< 0.01 s** | 5.98 s |

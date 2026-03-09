@@ -59,11 +59,23 @@ type Message struct {
 	Content        string              `json:"content"`
 	ToolCalls      []ToolCall          `json:"tool_calls,omitempty"`
 	ToolCallID     string              `json:"tool_call_id,omitempty"`
+	ToolName       string              `json:"tool_name,omitempty"`
 	Provider       string              `json:"provider,omitempty"`
 	Model          string              `json:"model,omitempty"`
 	Stats          *MessageStats       `json:"stats,omitempty"`
 	Attachments    []MessageAttachment `json:"attachments,omitempty"`
 	CreatedAt      time.Time           `json:"created_at"`
+}
+
+// ConversationCommandState stores persisted per-conversation deterministic chat command state.
+type ConversationCommandState struct {
+	ConversationID      string    `json:"conversation_id"`
+	SelectedProviderID  string    `json:"selected_provider_id,omitempty"`
+	SelectedModelID     string    `json:"selected_model_id,omitempty"`
+	Offline             bool      `json:"offline"`
+	WebSearchEnabled    bool      `json:"web_search_enabled"`
+	DeepResearchEnabled bool      `json:"deep_research_enabled"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // Store provides conversation storage using SQLite.
@@ -148,6 +160,7 @@ func (s *Store) migrate() error {
 		content TEXT NOT NULL,
 		tool_calls TEXT,
 		tool_call_id TEXT,
+		tool_name TEXT,
 		provider TEXT,
 		model TEXT,
 		stats TEXT,
@@ -166,9 +179,21 @@ func (s *Store) migrate() error {
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 	);
 
+	CREATE TABLE IF NOT EXISTS conversation_command_state (
+		conversation_id TEXT PRIMARY KEY,
+		selected_provider_id TEXT NOT NULL DEFAULT '',
+		selected_model_id TEXT NOT NULL DEFAULT '',
+		offline BOOLEAN NOT NULL DEFAULT 0,
+		web_search_enabled BOOLEAN NOT NULL DEFAULT 1,
+		deep_research_enabled BOOLEAN NOT NULL DEFAULT 0,
+		updated_at DATETIME NOT NULL,
+		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
 	CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at);
 	CREATE INDEX IF NOT EXISTS idx_conversation_runtime_state_updated_at ON conversation_runtime_state(updated_at);
+	CREATE INDEX IF NOT EXISTS idx_conversation_command_state_updated_at ON conversation_command_state(updated_at);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -182,6 +207,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE messages ADD COLUMN model TEXT",
 		"ALTER TABLE messages ADD COLUMN stats TEXT",
 		"ALTER TABLE messages ADD COLUMN attachments TEXT",
+		"ALTER TABLE messages ADD COLUMN tool_name TEXT",
 		"ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT ''",
 		"ALTER TABLE conversations ADD COLUMN pinned BOOLEAN DEFAULT 0",
 	}
@@ -435,8 +461,8 @@ func (s *Store) AddMessage(ctx context.Context, conversationID string, msg Messa
 	}
 
 	_, err := s.db.ExecContext(ctx,
-		"INSERT INTO messages (id, conversation_id, role, content, tool_calls, tool_call_id, provider, model, stats, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		msg.ID, msg.ConversationID, msg.Role, msg.Content, toolCallsJSON, msg.ToolCallID, msg.Provider, msg.Model, statsJSON, attachmentsJSON, msg.CreatedAt,
+		"INSERT INTO messages (id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		msg.ID, msg.ConversationID, msg.Role, msg.Content, toolCallsJSON, msg.ToolCallID, msg.ToolName, msg.Provider, msg.Model, statsJSON, attachmentsJSON, msg.CreatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add message: %w", err)
@@ -494,7 +520,7 @@ func (s *Store) UpdateMessageContentFull(ctx context.Context, messageID, content
 // GetMessages retrieves messages for a conversation.
 func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, offset int) ([]Message, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, conversation_id, role, content, tool_calls, tool_call_id, provider, model, stats, attachments, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
+		"SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
 		conversationID, limit, offset,
 	)
 	if err != nil {
@@ -507,12 +533,13 @@ func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, o
 		var msg Message
 		var toolCallsJSON sql.NullString
 		var toolCallID sql.NullString
+		var toolName sql.NullString
 		var provider sql.NullString
 		var model sql.NullString
 		var statsJSON sql.NullString
 		var attachmentsJSON sql.NullString
 
-		if err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &toolCallsJSON, &toolCallID, &provider, &model, &statsJSON, &attachmentsJSON, &msg.CreatedAt); err != nil {
+		if err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &toolCallsJSON, &toolCallID, &toolName, &provider, &model, &statsJSON, &attachmentsJSON, &msg.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan message: %w", err)
 		}
 
@@ -524,6 +551,9 @@ func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, o
 
 		if toolCallID.Valid {
 			msg.ToolCallID = toolCallID.String
+		}
+		if toolName.Valid {
+			msg.ToolName = toolName.String
 		}
 
 		if provider.Valid {
@@ -551,6 +581,178 @@ func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, o
 	}
 
 	return messages, rows.Err()
+}
+
+// CountMessages returns the number of persisted messages in a conversation.
+func (s *Store) CountMessages(ctx context.Context, conversationID string) (int, error) {
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return 0, nil
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(1) FROM messages WHERE conversation_id = ?", conversationID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("failed to count messages: %w", err)
+	}
+	return count, nil
+}
+
+// GetLatestAssistantMessage returns the latest assistant message for a conversation.
+func (s *Store) GetLatestAssistantMessage(ctx context.Context, conversationID string) (*Message, error) {
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return nil, nil
+	}
+
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, created_at
+		FROM messages
+		WHERE conversation_id = ? AND role = 'assistant'
+		ORDER BY created_at DESC
+		LIMIT 1`,
+		conversationID,
+	)
+
+	var msg Message
+	var toolCallsJSON sql.NullString
+	var toolCallID sql.NullString
+	var toolName sql.NullString
+	var provider sql.NullString
+	var model sql.NullString
+	var statsJSON sql.NullString
+	var attachmentsJSON sql.NullString
+
+	if err := row.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &toolCallsJSON, &toolCallID, &toolName, &provider, &model, &statsJSON, &attachmentsJSON, &msg.CreatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to scan latest assistant message: %w", err)
+	}
+
+	if toolCallsJSON.Valid && toolCallsJSON.String != "" {
+		if err := json.Unmarshal([]byte(toolCallsJSON.String), &msg.ToolCalls); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal tool calls: %w", err)
+		}
+	}
+	if toolCallID.Valid {
+		msg.ToolCallID = toolCallID.String
+	}
+	if toolName.Valid {
+		msg.ToolName = toolName.String
+	}
+	if provider.Valid {
+		msg.Provider = provider.String
+	}
+	if model.Valid {
+		msg.Model = model.String
+	}
+	if statsJSON.Valid && statsJSON.String != "" {
+		msg.Stats = &MessageStats{}
+		if err := json.Unmarshal([]byte(statsJSON.String), msg.Stats); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal stats: %w", err)
+		}
+	}
+	if attachmentsJSON.Valid && attachmentsJSON.String != "" {
+		if err := json.Unmarshal([]byte(attachmentsJSON.String), &msg.Attachments); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal attachments: %w", err)
+		}
+	}
+
+	return &msg, nil
+}
+
+// GetConversationCommandState returns persisted deterministic command state for a conversation.
+// Missing rows fall back to defaults: provider/model auto, offline=false, web=true, deep=false.
+func (s *Store) GetConversationCommandState(ctx context.Context, conversationID string) (ConversationCommandState, error) {
+	conversationID = strings.TrimSpace(conversationID)
+	state := ConversationCommandState{
+		ConversationID:      conversationID,
+		WebSearchEnabled:    true,
+		DeepResearchEnabled: false,
+	}
+	if conversationID == "" {
+		return state, nil
+	}
+
+	var selectedProviderID, selectedModelID string
+	var offline, webSearchEnabled, deepResearchEnabled bool
+	var updatedAt time.Time
+	err := s.db.QueryRowContext(ctx,
+		`SELECT selected_provider_id, selected_model_id, offline, web_search_enabled, deep_research_enabled, updated_at
+		FROM conversation_command_state
+		WHERE conversation_id = ?`,
+		conversationID,
+	).Scan(&selectedProviderID, &selectedModelID, &offline, &webSearchEnabled, &deepResearchEnabled, &updatedAt)
+	if err == sql.ErrNoRows {
+		return state, nil
+	}
+	if err != nil {
+		return state, fmt.Errorf("failed to get conversation command state: %w", err)
+	}
+
+	state.SelectedProviderID = strings.TrimSpace(selectedProviderID)
+	state.SelectedModelID = strings.TrimSpace(selectedModelID)
+	state.Offline = offline
+	state.WebSearchEnabled = webSearchEnabled
+	state.DeepResearchEnabled = deepResearchEnabled
+	state.UpdatedAt = updatedAt
+	return state, nil
+}
+
+// UpsertConversationCommandState stores deterministic command state for a conversation.
+func (s *Store) UpsertConversationCommandState(ctx context.Context, state ConversationCommandState) error {
+	conversationID := strings.TrimSpace(state.ConversationID)
+	if conversationID == "" {
+		return nil
+	}
+
+	state.ConversationID = conversationID
+	state.SelectedProviderID = strings.TrimSpace(state.SelectedProviderID)
+	state.SelectedModelID = strings.TrimSpace(state.SelectedModelID)
+	state.UpdatedAt = timeutil.NowTime()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO conversation_command_state (conversation_id, selected_provider_id, selected_model_id, offline, web_search_enabled, deep_research_enabled, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(conversation_id)
+		DO UPDATE SET
+			selected_provider_id = excluded.selected_provider_id,
+			selected_model_id = excluded.selected_model_id,
+			offline = excluded.offline,
+			web_search_enabled = excluded.web_search_enabled,
+			deep_research_enabled = excluded.deep_research_enabled,
+			updated_at = excluded.updated_at`,
+		state.ConversationID,
+		state.SelectedProviderID,
+		state.SelectedModelID,
+		state.Offline,
+		state.WebSearchEnabled,
+		state.DeepResearchEnabled,
+		state.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to upsert conversation command state: %w", err)
+	}
+	return nil
+}
+
+// ClearConversationCommandState removes persisted deterministic command state for a conversation.
+func (s *Store) ClearConversationCommandState(ctx context.Context, conversationID string) error {
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM conversation_command_state WHERE conversation_id = ?`, conversationID); err != nil {
+		return fmt.Errorf("failed to clear conversation command state: %w", err)
+	}
+	return nil
 }
 
 // DeleteMessages deletes multiple messages by their IDs.

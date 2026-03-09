@@ -29,9 +29,9 @@ func init() {
 
 // HealthResponse represents the health check response
 type HealthResponse struct {
-	Status     string                    `json:"status"`
-	Version    string                    `json:"version,omitempty"`
-	Timestamp  string                    `json:"timestamp"`
+	Status     string                     `json:"status"`
+	Version    string                     `json:"version,omitempty"`
+	Timestamp  string                     `json:"timestamp"`
 	Components map[string]ComponentHealth `json:"components,omitempty"`
 }
 
@@ -47,12 +47,7 @@ func runHealth(cmd *cobra.Command, args []string) {
 		Timeout: time.Duration(healthTimeout) * time.Second,
 	}
 
-	// Determine the service URL
-	port := 8080
-	if devMode {
-		port = 8081
-	}
-	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	baseURL := getServiceBaseURL()
 
 	start := time.Now()
 	resp, err := client.Get(baseURL + "/health")

@@ -21,10 +21,11 @@ type DualWriteBackend struct {
 }
 
 type writeOp struct {
-	kind    string // "remember", "forget", "forgetall", "prune"
-	content string
-	tags    []string
-	id      string
+	kind     string // "remember", "forget", "forgetall", "prune"
+	content  string
+	tags     []string
+	id       string
+	sourceID string
 }
 
 const writeQueueCap = 256
@@ -53,7 +54,7 @@ func (d *DualWriteBackend) Remember(ctx context.Context, content string, tags []
 		return nil, err
 	}
 
-	d.enqueue(writeOp{kind: "remember", content: content, tags: tags})
+	d.enqueue(writeOp{kind: "remember", content: content, tags: tags, sourceID: chunk.ID})
 	return chunk, nil
 }
 
@@ -163,7 +164,11 @@ func (d *DualWriteBackend) processOp(op writeOp) {
 
 	switch op.kind {
 	case "remember":
-		if _, err := d.secondary.Remember(ctx, op.content, op.tags); err != nil {
+		metadata := metadataFromTags(op.tags)
+		if op.sourceID != "" {
+			metadata["source_id"] = op.sourceID
+		}
+		if _, err := d.secondary.RememberWithMetadata(ctx, op.content, metadata); err != nil {
 			slog.Warn("dual-write: secondary remember failed", "error", err)
 		}
 	case "forget":

@@ -78,6 +78,36 @@ func TestCreateHandlerNotFound(t *testing.T) {
 	}
 }
 
+func TestCreateHTTPRequiresURL(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	s := NewService(cfg, logger)
+	s.RegisterBuiltinHandlers()
+
+	_, err := s.Create("http-job", "", "0 * * * * *", "http", nil)
+	if err == nil {
+		t.Fatal("expected error for missing url")
+	}
+	if err.Error() != "url not specified in payload" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCreateCommandRequiresCommandPayload(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	s := NewService(cfg, logger)
+	s.RegisterCommandHandler(CommandSecurityConfig{Enabled: true})
+
+	_, err := s.Create("command-job", "", "0 * * * * *", "command", nil)
+	if err == nil {
+		t.Fatal("expected error for missing command")
+	}
+	if err.Error() != "command not specified in payload" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestGet(t *testing.T) {
 	logger := zap.NewNop()
 	cfg := DefaultConfig()
@@ -148,6 +178,26 @@ func TestUpdate(t *testing.T) {
 
 	if updated.Schedule != "30 * * * * *" {
 		t.Errorf("expected schedule '30 * * * * *', got '%s'", updated.Schedule)
+	}
+}
+
+func TestUpdateHTTPRequiresURL(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	s := NewService(cfg, logger)
+	s.RegisterBuiltinHandlers()
+
+	job, err := s.Create("http-job", "", "0 * * * * *", "http", map[string]interface{}{"url": "https://example.com"})
+	if err != nil {
+		t.Fatalf("failed to create http job: %v", err)
+	}
+
+	err = s.Update(job.ID, job.Name, job.Description, job.Schedule, map[string]interface{}{})
+	if err == nil {
+		t.Fatal("expected error when clearing http url")
+	}
+	if err.Error() != "url not specified in payload" {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

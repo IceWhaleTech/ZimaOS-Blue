@@ -1,0 +1,46 @@
+---
+title: "Providers and Models"
+summary: "How Blue approaches provider routing, failover, and model-family selection."
+---
+
+# Providers and Models
+
+ZimaOS Blue is designed around an open provider ecosystem.
+
+## Provider pool basics
+
+The sample server configuration shows a provider routing layer with:
+
+- A default provider
+- Multiple providers in a priority or weighted order
+- Health checks per provider
+- Failover settings with retry and recovery controls
+- Optional provider racing for parallel attempts
+
+## Example providers in the sample config
+
+- Anthropic
+- OpenAI
+- Gemini
+
+The README also positions Blue as compatible with bring-your-own model strategies, including local and open model workflows.
+
+## Model routing
+
+The sample config also defines model families and fallback patterns. In practice this means Blue can:
+
+- Match a requested model name to a provider family
+- Send the request to the right upstream provider
+- Fall back to a safer or cheaper sibling model when configured
+
+## Why this matters
+
+- You can separate product behavior from a single vendor contract
+- Teams can trade off latency, price, capability, and resilience
+- One runtime can support experimentation, failover, and migration paths over time
+
+## Related pages
+
+- [Overview](/product/overview)
+- [Features](/product/features)
+- [Architecture](/product/architecture)

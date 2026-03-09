@@ -1474,6 +1474,41 @@ func TestRouterTransientCooldown(t *testing.T) {
 	}
 }
 
+func TestRouterTransientCooldown_WrappedOverloaded500(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	router.SetCooldownConfig(&CooldownConfig{
+		FailureThreshold:          2,
+		InitialCooldown:           time.Hour,
+		MaxCooldown:               time.Hour,
+		CooldownMultiplier:        1.0,
+		ResetAfter:                time.Hour,
+		TransientFailureThreshold: 3,
+		TransientInitialCooldown:  50 * time.Millisecond,
+		TransientMaxCooldown:      200 * time.Millisecond,
+	})
+
+	providerID := "provider-high"
+	wrappedOverloadErr := errors.New(`upstream 500: {"error":{"type":"overloaded_error","message":"构建请求失败"},"type":"error"}`)
+
+	router.RecordFailure(providerID, wrappedOverloadErr)
+	router.RecordFailure(providerID, wrappedOverloadErr)
+	if router.IsInCooldown(providerID) {
+		t.Fatal("provider should not be in cooldown after 2 wrapped overloaded 500 failures")
+	}
+
+	router.RecordFailure(providerID, wrappedOverloadErr)
+	if !router.IsInCooldown(providerID) {
+		t.Fatal("provider should enter transient cooldown after 3 wrapped overloaded 500 failures")
+	}
+
+	time.Sleep(120 * time.Millisecond)
+	if router.IsInCooldown(providerID) {
+		t.Fatal("wrapped overloaded transient cooldown should expire quickly")
+	}
+}
+
 func TestRouterTransientCooldownSuccessResets(t *testing.T) {
 	router, cleanup := setupRouterTest(t)
 	defer cleanup()
@@ -1548,6 +1583,27 @@ func TestRouterFailoverTracking(t *testing.T) {
 
 	if capturedResult.SuccessProvider == "" {
 		t.Error("Success provider should be set")
+	}
+}
+
+func TestFailoverResultSummary(t *testing.T) {
+	result := &FailoverResult{
+		SuccessProvider: "provider-b",
+		SuccessModel:    "claude-opus-4-6",
+		FailedAttempts: []*FailoverRecord{
+			{
+				ProviderID:     "provider-a",
+				Reason:         FailoverReasonRateLimit,
+				Latency:        250 * time.Millisecond,
+				NextProviderID: "provider-b",
+			},
+		},
+	}
+
+	got := result.Summary()
+	want := "provider-a[rate_limit,250ms]->provider-b | provider-b[success:claude-opus-4-6]"
+	if got != want {
+		t.Fatalf("Summary() = %q, want %q", got, want)
 	}
 }
 
@@ -1904,6 +1960,66 @@ func TestRouterBlindFallback_AllSameModelFail(t *testing.T) {
 	}
 	if triedProviders[1] != "provider-b" {
 		t.Errorf("Second attempt should be provider-b (blind fallback), got %s", triedProviders[1])
+	}
+}
+
+// TestRouterBlindFallback_RespectsExplicitExclude verifies that blind fallback
+// does not resurrect providers the caller explicitly excluded.
+func TestRouterBlindFallback_RespectsExplicitExclude(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-blind-exclude-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	providerA := &Provider{
+		ID: "provider-a", Name: "Provider A", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 100,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k1", Key: "key-a", Enabled: true}},
+	}
+	providerB := &Provider{
+		ID: "provider-b", Name: "Provider B", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 50,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k2", Key: "key-b", Enabled: true}},
+	}
+	registry.Register(providerA)
+	registry.Register(providerB)
+
+	storage.SaveModels("provider-a", []*Model{{
+		ID: "special-model", ProviderID: "provider-a", Name: "special-model",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true},
+	}})
+	storage.SaveModels("provider-b", []*Model{{
+		ID: "other-model", ProviderID: "provider-b", Name: "other-model",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true},
+	}})
+	router.RebuildCandidates()
+
+	var triedProviders []string
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "special-model",
+		Exclude:  []string{"provider-a"},
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		triedProviders = append(triedProviders, result.Provider.ID)
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("Expected blind fallback to succeed on non-excluded provider, got: %v", err)
+	}
+	if len(triedProviders) != 1 {
+		t.Fatalf("expected exactly 1 attempt, got %d (%v)", len(triedProviders), triedProviders)
+	}
+	if triedProviders[0] != "provider-b" {
+		t.Fatalf("expected blind fallback to skip excluded provider-a and use provider-b, got %v", triedProviders)
 	}
 }
 

@@ -358,7 +358,7 @@ func TestMarshalResponsesRequest_ContinuationSkipsAssistantToolCallEcho(t *testi
 				Role:    llm.RoleAssistant,
 				Content: "tool call summary",
 				ToolCalls: []llm.ToolCall{
-					{ID: "call_1", Name: "exec", Arguments: `{"command":"blue web_search query=\"OpenClaw latest news\""}`},
+					{ID: "call_1", Name: "exec", Arguments: `{"command":"blue web_search query=\"ZimaOS Blue latest news\""}`},
 				},
 			},
 			{Role: llm.RoleTool, ToolCallID: "call_1", Content: `{"status":"completed","stdout":"ok"}`},

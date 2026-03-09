@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	stdjson "encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -236,10 +238,10 @@ func TestProxyHandler_IsSingleProviderMode(t *testing.T) {
 
 func TestNormalizeModelRoutingHint(t *testing.T) {
 	tests := []struct {
-		name        string
-		model       string
-		wantModel   string
-		wantMode    string
+		name      string
+		model     string
+		wantModel string
+		wantMode  string
 	}{
 		{name: "auto", model: "auto", wantModel: "", wantMode: "auto"},
 		{name: "cloud", model: "cloud", wantModel: "", wantMode: "cloud"},
@@ -470,11 +472,66 @@ func TestAllFormatsForProvider_OpenAIKeepsCrossFamilyFallback(t *testing.T) {
 	if known {
 		t.Fatal("expected known=false without detected/remembered format")
 	}
-	if n != 2 {
-		t.Fatalf("expected 2 formats for generic openai provider, got %d", n)
+	if n != 3 {
+		t.Fatalf("expected 3 formats for generic openai provider, got %d", n)
 	}
-	if formats[0] != providerpool.APIFormatOpenAI || formats[1] != providerpool.APIFormatAnthropic {
-		t.Fatalf("unexpected format order: [%q %q]", formats[0], formats[1])
+	if formats[0] != providerpool.APIFormatOpenAI || formats[1] != providerpool.APIFormatResponses || formats[2] != providerpool.APIFormatAnthropic {
+		t.Fatalf("unexpected format order: [%q %q %q]", formats[0], formats[1], formats[2])
+	}
+}
+
+func TestTryOnProvider_LegacyProtocolMismatchPrefersResponsesBeforeAnthropic(t *testing.T) {
+	var paths []string
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses.","type":"invalid_request_error"}}`))
+		case "/v1/responses":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id":"resp_1","object":"response","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`))
+		case "/v1/messages":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":{"message":"wrong format reached anthropic path"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "responses-relay",
+			Type:      providerpool.ProviderTypeCustom,
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"gpt-5.3-codex","messages":[{"role":"user","content":"hi"}]}`),
+		model: "gpt-5.3-codex",
+	}
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	resp, format, _, err := ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("expected success after responses fallback, got: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if format != providerpool.APIFormatResponses {
+		t.Fatalf("format = %q, want %q", format, providerpool.APIFormatResponses)
+	}
+	if len(paths) != 2 {
+		t.Fatalf("expected exactly 2 upstream attempts, got %d (%v)", len(paths), paths)
+	}
+	if paths[0] != "/v1/chat/completions" || paths[1] != "/v1/responses" {
+		t.Fatalf("expected chat/completions then responses, got %v", paths)
 	}
 }
 
@@ -592,7 +649,7 @@ func TestTryOnProvider_NotConfiguredSkipsToNextProvider(t *testing.T) {
 		atomic.AddInt32(&requestCount, 1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		stdjson.NewEncoder(w).Encode(map[string]interface{}{
 			"error": map[string]interface{}{
 				"message": "Model gpt-4 is not configured on this provider",
 				"type":    "not_found_error",
@@ -876,6 +933,55 @@ func TestTryOnProvider_429ThrottlesEntireProvider(t *testing.T) {
 	}
 }
 
+// TestTryOnProvider_WrappedOverloaded5xxThrottlesProvider verifies wrapped
+// overload responses are treated as short-lived provider throttles.
+func TestTryOnProvider_WrappedOverloaded5xxThrottlesProvider(t *testing.T) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": map[string]interface{}{
+				"type":    "overloaded_error",
+				"message": "构建请求失败",
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "wrapped-overload-provider",
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatOpenAI,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}`),
+		model: "gpt-4",
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	resp, _, _, err := ph.tryOnProvider(r, result, pr)
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	if err == nil {
+		t.Fatal("expected error for wrapped overloaded 500")
+	}
+	if !strings.Contains(err.Error(), "upstream 500") {
+		t.Fatalf("expected upstream 500 error, got: %s", err)
+	}
+	if !ph.providerMemory.IsThrottled("wrapped-overload-provider", upstream.URL) {
+		t.Fatal("provider should be throttled after wrapped overloaded 500")
+	}
+}
+
 // TestTryOnProvider_5xxSkipsEntireProvider verifies 5xx errors skip the provider
 func TestTryOnProvider_5xxSkipsEntireProvider(t *testing.T) {
 	var requestCount int32
@@ -925,6 +1031,121 @@ func TestTryOnProvider_5xxSkipsEntireProvider(t *testing.T) {
 	// Should only make 1 request (5xx = skip entire provider immediately)
 	if count := atomic.LoadInt32(&requestCount); count != 1 {
 		t.Errorf("expected 1 request for 5xx (skip provider), got %d", count)
+	}
+}
+
+func TestTryOnProvider_RequestConversionUnsupportedSkipsAliases(t *testing.T) {
+	var requestCount atomic.Int32
+	var seenModels []string
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		var body map[string]interface{}
+		_ = stdjson.NewDecoder(r.Body).Decode(&body)
+		if model, _ := body["model"].(string); model != "" {
+			seenModels = append(seenModels, model)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": map[string]interface{}{
+				"message": "not implemented (request id: abc123)",
+				"type":    "new_api_error",
+				"code":    "convert_request_failed",
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "responses-provider",
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatResponses,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+		Fallbacks: []*providerpool.RouteCandidate{{
+			Provider: &providerpool.Provider{ID: "fallback-provider", BaseURL: "http://fallback.invalid", APIFormat: providerpool.APIFormatResponses},
+			Model:    &providerpool.Model{ID: "claude-opus-4-6"},
+		}},
+	}
+
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"noop","parameters":{"type":"object","properties":{}}}}]}`),
+		model: "claude-opus-4-6",
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	resp, _, _, err := ph.tryOnProvider(r, result, pr)
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	if err == nil {
+		t.Fatal("expected request conversion unsupported error")
+	}
+	if !errors.Is(err, errRequestConversionUnsupported) {
+		t.Fatalf("expected conversion error, got: %s", err)
+	}
+	if ph.providerMemory.IsModelBlacklisted("responses-provider", upstream.URL, "claude-opus-4-6") {
+		t.Fatal("model should not be blacklisted after convert_request_failed")
+	}
+	if got := requestCount.Load(); got != 1 {
+		t.Fatalf("expected exactly 1 upstream request, got %d", got)
+	}
+	if len(seenModels) != 1 || seenModels[0] != "claude-opus-4-6" {
+		t.Fatalf("expected only original model to be tried, saw %v", seenModels)
+	}
+}
+
+func TestExecuteOnRouteResult_RequestConversionUnsupportedMarksToolCapNone(t *testing.T) {
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": map[string]interface{}{
+				"message": "not implemented (request id: abc123)",
+				"type":    "new_api_error",
+				"code":    "convert_request_failed",
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        "responses-provider",
+			BaseURL:   upstream.URL,
+			APIFormat: providerpool.APIFormatResponses,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+		Fallbacks: []*providerpool.RouteCandidate{{
+			Provider: &providerpool.Provider{ID: "fallback-provider", BaseURL: "http://fallback.invalid", APIFormat: providerpool.APIFormatResponses},
+			Model:    &providerpool.Model{ID: "claude-opus-4-6"},
+		}},
+	}
+
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"noop","parameters":{"type":"object","properties":{}}}}]}`),
+		model: "claude-opus-4-6",
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	_, err := ph.executeOnRouteResult(r, result, pr, true)
+	if err == nil {
+		t.Fatal("expected executeOnRouteResult to fail")
+	}
+
+	cap, ok := ph.providerMemory.RecallToolCap("responses-provider", upstream.URL)
+	if !ok {
+		t.Fatal("expected tool capability to be remembered")
+	}
+	if cap != ToolCapNone {
+		t.Fatalf("expected ToolCapNone, got %d", cap)
 	}
 }
 
@@ -1188,6 +1409,28 @@ func TestIsFormatMismatchError(t *testing.T) {
 			got := isFormatMismatchError(tt.status, []byte(tt.body))
 			if got != tt.want {
 				t.Errorf("isFormatMismatchError(%d, %q) = %v, want %v", tt.status, tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsRequestConversionUnsupportedError(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   bool
+	}{
+		{"500 convert_request_failed", 500, `{"error":{"message":"not implemented (request id: abc123)","type":"new_api_error","code":"convert_request_failed"}}`, true},
+		{"501 not implemented relay error", 501, `{"error":{"message":"not implemented","type":"new_api_error"}}`, true},
+		{"500 generic internal", 500, `{"error":{"message":"internal server error"}}`, false},
+		{"400 convert_request_failed", 400, `{"error":{"code":"convert_request_failed"}}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isRequestConversionUnsupportedError(tt.status, []byte(tt.body))
+			if got != tt.want {
+				t.Errorf("isRequestConversionUnsupportedError(%d, %q) = %v, want %v", tt.status, tt.body, got, tt.want)
 			}
 		})
 	}

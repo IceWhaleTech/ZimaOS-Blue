@@ -400,11 +400,12 @@ func RegisterBuiltinTools(registry *Registry) {
 	registry.Register(NewFindTool(nil))
 	registry.Register(NewLsTool(nil))
 	registry.Register(NewWebSearchTool(WebSearchConfig{}))
+	registry.Register(NewWebFetchTool(WebFetchConfig{}))
 	registry.Register(NewMCPTool(registry))
 }
 
 // RegisterBuiltinToolsWithConfig registers built-in core tools with custom configuration.
-func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearchConfig, allowedPaths []string, maxFileSize int64) {
+func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearchConfig, webFetchConfig WebFetchConfig, allowedPaths []string, maxFileSize int64) {
 	if registry == nil {
 		return
 	}
@@ -415,6 +416,7 @@ func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearc
 	registry.Register(NewFindTool(allowedPaths))
 	registry.Register(NewLsTool(allowedPaths))
 	registry.Register(NewWebSearchTool(webSearchConfig))
+	registry.Register(NewWebFetchTool(webFetchConfig))
 	registry.Register(NewMCPTool(registry))
 }
 
@@ -449,16 +451,27 @@ func GetExecTool(registry *Registry) *ExecTool {
 	return nil
 }
 
-// RegisterMemoryTools creates a MemoryTool for internal use (e.g., MgmtTool).
-// As of v0.10.31, memory is no longer exposed as a native LLM tool —
-// it's accessed via compatibility aliases / internal routing.
-// The tool is registered as disabled so GetMemoryTool() still works.
+// GetWebFetchTool retrieves the WebFetchTool from the registry for dependency injection.
+func GetWebFetchTool(registry *Registry) *WebFetchTool {
+	tool := registry.Get("web_fetch")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*WebFetchTool); ok {
+		return t
+	}
+	return nil
+}
+
+// RegisterMemoryTools creates a disabled unified memory tool for internal use
+// and native OpenClaw-style memory_* wrappers for model-visible compatibility.
 func RegisterMemoryTools(registry *Registry, memoryService MemoryServiceInterface) {
 	if memoryService == nil {
 		return
 	}
 	registry.Register(NewMemoryTool(memoryService))
 	registry.Disable("memory")
+	RegisterMemoryCompatTools(registry, memoryService)
 }
 
 // GetMemoryTool retrieves the MemoryTool from the registry for dependency injection.

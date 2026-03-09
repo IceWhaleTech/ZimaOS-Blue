@@ -15,7 +15,7 @@ import {
   clearIncrementalState,
   clearSplitSegmentsIncrementalState,
 } from '@/utils/typeless'
-import { stripFirstLineHeading } from '@/utils/chat-message-text'
+import { stripFirstLineHeading, normalizeToolFallbackSummaryText } from '@/utils/chat-message-text'
 import type { TypelessCard, TypelessCardChoice, ParsedContent } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
 import ToolDetailCard from '@/components/ToolDetailCard.vue'
@@ -23,6 +23,7 @@ import MediaPlaceholder from '@/components/MediaPlaceholder.vue'
 import { ttsAudioManager, streamingTTSManager } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { useNotificationStore } from '@/stores/notification'
+import { isTtsAutoPlayEnabled } from '@/utils/ttsPreferences'
 
 const { t, te } = useI18n()
 const providerPoolStore = useProviderPoolStore()
@@ -48,8 +49,8 @@ const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 
 // Card action state
-const cardActionLoading = ref<string | null>(null) // cardId that is loading
-const cardActionError = ref<string | null>(null)
+const cardActionLoading = ref<{ cardId: string; actionId: string } | null>(null) // active card action in flight
+const cardActionError = ref<{ cardId: string; message: string } | null>(null)
 
 const isUser = computed(() => props.message.role === 'user')
 const isAssistant = computed(() => props.message.role === 'assistant')
@@ -593,6 +594,7 @@ const strippedContent = computed(() => {
   if (content.includes('[SILENT_REPLY]')) {
     content = content.replace(/\[SILENT_REPLY\]/g, '💤')
   }
+  content = normalizeToolFallbackSummaryText(content)
   return content
 })
 
@@ -793,6 +795,7 @@ const RESULT_CARD_TYPES = new Set([
   'media-generate', 'ui-review', 'deep-research', 'detection',
   'ui-review-progress', 'analyze-progress', 'browser-progress',
   'deep-research-progress',
+  'web-fetch',
   'list', 'table', 'code', 'terminal', 'mermaid', 'accordion',
 ])
 
@@ -1536,21 +1539,46 @@ watch(() => props.isStreaming, async (isStreaming, wasStreaming) => {
   }
 })
 
+function isCardActionLoading(cardId?: string, actionId?: string): boolean {
+  if (!cardId || cardActionLoading.value?.cardId !== cardId) return false
+  return actionId ? cardActionLoading.value.actionId === actionId : true
+}
+
+function activeCardActionId(cardId?: string): string | undefined {
+  if (!cardId || cardActionLoading.value?.cardId !== cardId) return undefined
+  return cardActionLoading.value.actionId
+}
+
+function cardActionErrorMessage(cardId?: string): string | undefined {
+  if (!cardId || cardActionError.value?.cardId !== cardId) return undefined
+  return cardActionError.value.message
+}
+
 // Handle card action (button click)
 async function handleCardAction(actionId: string, cardId?: string) {
-  if (!cardId) return
+  if (!cardId || isCardActionLoading(cardId)) return
 
-  // Find the action label and card metadata (actions exist on result, ui-review, alert, action cards)
+  // Find the action label and structured metadata.
   let actionLabel: string | undefined
+  let formData: Record<string, unknown> | undefined
+  let cardType: string | undefined
+  let cardTitle: string | undefined
   const card = parsedContent.value?.cards.find(c => c.id === cardId)
   if (card) {
+    cardType = card.type
+    if ('title' in card && typeof (card as any).title === 'string') {
+      cardTitle = (card as any).title
+    }
     if ('actions' in card && Array.isArray((card as any).actions)) {
       const action = (card as any).actions.find((a: any) => a.id === actionId)
       actionLabel = action?.label
+      if (action?.form_data && typeof action.form_data === 'object' && !Array.isArray(action.form_data)) {
+        formData = action.form_data as Record<string, unknown>
+      }
     }
   }
 
-  cardActionLoading.value = cardId
+  cardActionLoading.value = { cardId, actionId }
   cardActionError.value = null
 
   try {
@@ -1558,6 +1586,9 @@ async function handleCardAction(actionId: string, cardId?: string) {
       card_id: cardId,
       action_id: actionId,
       action_label: actionLabel,
+      card_type: cardType,
+      card_title: cardTitle,
+      form_data: formData,
     })
     // Emit event to parent for potential UI updates
     emit('cardAction', props.message.conversation_id, props.message.id, cardId, actionId, actionLabel)
@@ -1567,7 +1598,7 @@ async function handleCardAction(actionId: string, cardId?: string) {
     }
   } catch (error) {
     console.error('Card action failed:', error)
-    cardActionError.value = error instanceof Error ? error.message : 'Action failed'
+    cardActionError.value = { cardId, message: error instanceof Error ? error.message : 'Action failed' }
   } finally {
     cardActionLoading.value = null
   }
@@ -1575,7 +1606,7 @@ async function handleCardAction(actionId: string, cardId?: string) {
 
 // Handle card selection (choice card)
 async function handleCardSelect(cardId: string, selectedIds: string[], otherText?: string) {
-  if (!cardId) return
+  if (!cardId || isCardActionLoading(cardId)) return
 
   // Find the choice card
   const choiceCard = parsedContent.value?.cards.find(c => c.id === cardId) as TypelessCardChoice | undefined
@@ -1595,7 +1626,7 @@ async function handleCardSelect(cardId: string, selectedIds: string[], otherText
     .filter(Boolean)
     .join(', ')
 
-  cardActionLoading.value = cardId
+  cardActionLoading.value = { cardId, actionId: 'select' }
   cardActionError.value = null
 
   try {
@@ -1608,7 +1639,7 @@ async function handleCardSelect(cardId: string, selectedIds: string[], otherText
     emit('cardAction', props.message.conversation_id, props.message.id, cardId, 'select', selectedLabels)
   } catch (error) {
     console.error('Card selection failed:', error)
-    cardActionError.value = error instanceof Error ? error.message : 'Selection failed'
+    cardActionError.value = { cardId, message: error instanceof Error ? error.message : 'Selection failed' }
   } finally {
     cardActionLoading.value = null
   }
@@ -1641,7 +1672,7 @@ let ttsAborted = false
 
 function isAutoPlayEnabled(): boolean {
   if (props.disableAutoTTS) return false
-  return localStorage.getItem('tts-auto-play') === 'true'
+  return isTtsAutoPlayEnabled()
 }
 
 watch(() => props.disableAutoTTS, (disabled) => {
@@ -2136,6 +2167,9 @@ async function handleMobileDelete() {
             v-for="segment in cardOnlySegments"
             :key="segment.key"
             :card="segment.content as TypelessCard"
+            :action-loading="isCardActionLoading((segment.content as TypelessCard).id)"
+            :active-action-id="activeCardActionId((segment.content as TypelessCard).id)"
+            :action-error="cardActionErrorMessage((segment.content as TypelessCard).id)"
             @action="handleCardAction"
             @select="handleCardSelect"
           />
@@ -2221,6 +2255,9 @@ async function handleMobileDelete() {
                   v-else
                   :key="segment.key"
                   :card="segment.content as TypelessCard"
+                  :action-loading="isCardActionLoading((segment.content as TypelessCard).id)"
+                  :active-action-id="activeCardActionId((segment.content as TypelessCard).id)"
+                  :action-error="cardActionErrorMessage((segment.content as TypelessCard).id)"
                   class="my-3 -mx-1"
                   @action="handleCardAction"
                   @select="handleCardSelect"

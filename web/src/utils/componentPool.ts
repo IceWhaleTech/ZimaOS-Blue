@@ -108,6 +108,7 @@ class ComponentPool {
       'media-generate': () => import('@/components/typeless/CardMediaGenerate.vue'),
       'analyze-progress': () => import('@/components/typeless/CardAnalyzeProgress.vue'),
       'browser-progress': () => import('@/components/typeless/CardBrowserProgress.vue'),
+      'web-fetch': () => import('@/components/typeless/CardWebFetch.vue'),
       'exec': () => import('@/components/typeless/CardExec.vue'),
     }
 

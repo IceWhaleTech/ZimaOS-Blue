@@ -242,11 +242,12 @@ func (p *scriptedChatProvider) ChatStream(ctx context.Context, req llm.ChatReque
 		return nil, err
 	}
 	ch <- llm.StreamChunk{
-		ID:    resp.ID,
-		Model: resp.Model,
-		Delta: resp.Message.Content,
-		Done:  true,
-		Usage: &resp.Usage,
+		ID:        resp.ID,
+		Model:     resp.Model,
+		Delta:     resp.Message.Content,
+		Done:      true,
+		Usage:     &resp.Usage,
+		ToolCalls: resp.Message.ToolCalls,
 	}
 	close(ch)
 	return ch, nil
@@ -258,11 +259,12 @@ func (p *scriptedChatProvider) ChatStreamCallback(ctx context.Context, req llm.C
 		return err
 	}
 	return callback(llm.StreamChunk{
-		ID:    resp.ID,
-		Model: resp.Model,
-		Delta: resp.Message.Content,
-		Done:  true,
-		Usage: &resp.Usage,
+		ID:        resp.ID,
+		Model:     resp.Model,
+		Delta:     resp.Message.Content,
+		Done:      true,
+		Usage:     &resp.Usage,
+		ToolCalls: resp.Message.ToolCalls,
 	})
 }
 
@@ -342,7 +344,7 @@ func TestDeriveContinuationContext_AffirmativeWithDefaultPlan(t *testing.T) {
 
 func TestDeriveContinuationContext_AffirmativeWithSoftConsentOffer(t *testing.T) {
 	msgs := []llm.Message{
-		{Role: llm.RoleUser, Content: "帮我查 OpenClaw 最近动态"},
+		{Role: llm.RoleUser, Content: "帮我查 BlueAgent 最近动态"},
 		{
 			Role:    llm.RoleAssistant,
 			Content: "为了避免误导，我建议只看高可信来源。如果你同意，我下一步会按这个范围整理（1-2分钟）：\n1) 官方公告\n2) 主流科技媒体",
@@ -354,7 +356,7 @@ func TestDeriveContinuationContext_AffirmativeWithSoftConsentOffer(t *testing.T)
 	if strings.TrimSpace(cc.Hint) == "" {
 		t.Fatal("expected continuation hint for short affirmative reply after soft consent offer")
 	}
-	if cc.ToolQuery != "帮我查 OpenClaw 最近动态" {
+	if cc.ToolQuery != "帮我查 BlueAgent 最近动态" {
 		t.Fatalf("unexpected tool query: %q", cc.ToolQuery)
 	}
 }
@@ -614,6 +616,179 @@ func TestProcessChannelMessage_DefaultModel502RollsBackToAuto(t *testing.T) {
 	}
 	if requestModels[1] != "auto" {
 		t.Fatalf("second request model = %q, want auto", requestModels[1])
+	}
+}
+
+func TestProcessChannelMessage_AutoContinueRetriesEmptyReplyAfterToolRound(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "im-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "我先查一下最近一周的动态。",
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_web_1",
+						Name:      "web_search",
+						Arguments: `{"query":"OpenClaw recent updates"}`,
+					}},
+				},
+			},
+			{
+				ID:      "im-round-2",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: ""},
+			},
+			{
+				ID:      "im-round-3",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: "最近一周 OpenClaw 主要动态集中在 GitHub 发布说明和文档更新；我已经整理完关键变化与来源。"},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&webSearchToolMock{result: map[string]interface{}{
+		"query": "OpenClaw recent updates",
+		"results": []map[string]interface{}{
+			{"title": "OpenClaw Release Notes", "url": "https://github.com/opendungeons/openclaw/releases", "description": "recent release notes"},
+		},
+	}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	resp, err := handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_post_tool",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "帮我调研一下最近一周 openclaw 的动向吧",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+	if !strings.Contains(resp, "最近一周 OpenClaw 主要动态") {
+		t.Fatalf("expected retried final summary, got %q", resp)
+	}
+	if strings.Contains(resp, "最终总结生成失败") || strings.Contains(resp, "Tool execution completed") {
+		t.Fatalf("expected no tool-fallback failure wording, got %q", resp)
+	}
+	if scripted.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM rounds (tool + empty + retry), got %d", scripted.CallCount())
+	}
+
+	thirdReq, ok := scripted.RequestAt(2)
+	if !ok {
+		t.Fatalf("missing third request capture")
+	}
+	last := thirdReq.Messages[len(thirdReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "The tools above have been executed successfully") {
+		t.Fatalf("expected post-tool continuation nudge in third request, got role=%s content=%q", last.Role, last.Content)
+	}
+}
+
+func TestProcessChannelMessage_CheckpointResumeRetriesEmptyReplyAfterToolRound(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-resume",
+		responses: []llm.ChatResponse{
+			{
+				ID:      "resume-round-1",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: ""},
+			},
+			{
+				ID:      "resume-round-2",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: "最近一周 OpenClaw 主要动态集中在 GitHub 发布说明和文档更新；我已经整理完关键变化与来源。"},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&webSearchToolMock{result: map[string]interface{}{
+		"query": "OpenClaw recent updates",
+		"results": []map[string]interface{}{
+			{"title": "OpenClaw Release Notes", "url": "https://github.com/opendungeons/openclaw/releases", "description": "recent release notes"},
+		},
+	}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	mgr := tools.NewBrowserCheckpointManager(2 * time.Minute)
+	handler.SetBrowserCheckpointManager(mgr)
+
+	convID := channelConversationID("feishu", "chat_im_resume")
+	checkpoint := mgr.Create(tools.BrowserCheckpointRequest{
+		SessionID: convID,
+		Required:  true,
+		RiskLevel: "high",
+		Step:      "research",
+		Action:    "search",
+	})
+	pendingTool := llm.ToolCall{ID: "call_web_resume_1", Name: "web_search", Arguments: `{"query":"OpenClaw recent updates"}`}
+	handler.setIMCheckpointState(convID, &imCheckpointResumeState{
+		CheckpointID:    checkpoint.ID,
+		ConversationID:  convID,
+		ChannelName:     "feishu",
+		ChatID:          "chat_im_resume",
+		ReplyToID:       "msg_prev",
+		Lang:            i18n.DefaultLanguage,
+		AgentMode:       false,
+		RoutingMessage:  "帮我调研一下最近一周 openclaw 的动向吧",
+		CreatedAt:       time.Now(),
+		ResumeReq:       llm.ChatRequest{Model: "gpt-5.3-codex-spark"},
+		AssistantMsg:    llm.Message{Role: llm.RoleAssistant, Content: "我先查一下最近一周的动态。", ToolCalls: []llm.ToolCall{pendingTool}},
+		PendingToolCall: pendingTool,
+	})
+
+	resp, err := handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_resume",
+		ID:          "msg_confirm",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "1",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() resume error = %v", err)
+	}
+	if !strings.Contains(resp, "最近一周 OpenClaw 主要动态") {
+		t.Fatalf("expected retried final summary, got %q", resp)
+	}
+	if strings.Contains(resp, "最终总结生成失败") || strings.Contains(resp, "Tool execution completed") {
+		t.Fatalf("expected no tool-fallback failure wording, got %q", resp)
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (empty + retry) after resumed tool execution, got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	last := secondReq.Messages[len(secondReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "The tools above have been executed successfully") {
+		t.Fatalf("expected post-tool continuation nudge in resumed request, got role=%s content=%q", last.Role, last.Content)
 	}
 }
 
@@ -1093,6 +1268,104 @@ func TestChatHandlerSendMessageAutoContinue_PseudoToolCallCommandWorkdirJSON(t *
 	}
 }
 
+func TestChatHandlerSendMessageAutoContinue_RetriesEmptyReplyAfterToolRound(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Post Tool Empty Reply Non-Stream")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "post-tool-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "我先查一下最近一周的动态。",
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_web_1",
+						Name:      "web_search",
+						Arguments: `{"query":"OpenClaw recent updates"}`,
+					}},
+				},
+				Usage: llm.Usage{PromptTokens: 60, CompletionTokens: 18, TotalTokens: 78},
+			},
+			{
+				ID:    "post-tool-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "",
+				},
+				Usage: llm.Usage{PromptTokens: 82, CompletionTokens: 1, TotalTokens: 83},
+			},
+			{
+				ID:    "post-tool-round-3",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "最近一周 OpenClaw 主要动态集中在 GitHub 发布说明和文档更新；我已经整理完关键变化与来源。",
+				},
+				Usage: llm.Usage{PromptTokens: 96, CompletionTokens: 28, TotalTokens: 124},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&webSearchToolMock{result: map[string]interface{}{
+		"query": "OpenClaw recent updates",
+		"results": []map[string]interface{}{
+			{"title": "OpenClaw Release Notes", "url": "https://github.com/opendungeons/openclaw/releases", "description": "recent release notes"},
+		},
+	}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我调研一下最近一周 openclaw 的动向吧","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM rounds (tool + empty + retry), got %d", scripted.CallCount())
+	}
+
+	thirdReq, ok := scripted.RequestAt(2)
+	if !ok {
+		t.Fatalf("missing third request capture")
+	}
+	last := thirdReq.Messages[len(thirdReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "The tools above have been executed successfully") {
+		t.Fatalf("expected post-tool continuation nudge in third request, got role=%s content=%q", last.Role, last.Content)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "最近一周 OpenClaw 主要动态") {
+		t.Fatalf("expected retried final summary, got %q", content)
+	}
+	if strings.Contains(content, "最终总结生成失败") || strings.Contains(content, "Tool execution completed") {
+		t.Fatalf("expected no tool-fallback failure wording, got %q", content)
+	}
+}
+
 func TestChatHandlerSendMessageAutoContinue_TracksPlanStateAcrossToolAndToollessRounds(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -1233,7 +1506,7 @@ func TestChatHandlerSendMessage_DeepSearchGuardForcesSecondSearchRound(t *testin
 						{
 							ID:        "call_search_1",
 							Name:      "web_search",
-							Arguments: `{"query":"OpenClaw latest release notes"}`,
+							Arguments: `{"query":"BlueAgent latest release notes"}`,
 						},
 					},
 				},
@@ -1244,7 +1517,7 @@ func TestChatHandlerSendMessage_DeepSearchGuardForcesSecondSearchRound(t *testin
 				Model: "gpt-5.3-codex-spark",
 				Message: llm.Message{
 					Role:    llm.RoleAssistant,
-					Content: "先给你初步结论：OpenClaw 最近有更新。",
+					Content: "先给你初步结论：BlueAgent 最近有更新。",
 				},
 				Usage: llm.Usage{PromptTokens: 120, CompletionTokens: 28, TotalTokens: 148},
 			},
@@ -1257,7 +1530,7 @@ func TestChatHandlerSendMessage_DeepSearchGuardForcesSecondSearchRound(t *testin
 						{
 							ID:        "call_search_2",
 							Name:      "web_search",
-							Arguments: `{"query":"OpenClaw changelog migration guide"}`,
+							Arguments: `{"query":"BlueAgent changelog migration guide"}`,
 						},
 					},
 				},
@@ -1268,7 +1541,7 @@ func TestChatHandlerSendMessage_DeepSearchGuardForcesSecondSearchRound(t *testin
 				Model: "gpt-5.3-codex-spark",
 				Message: llm.Message{
 					Role:    llm.RoleAssistant,
-					Content: "执行摘要：OpenClaw 近期版本更新集中在工具链与文档。\n关键发现：发布说明与文档更新一致。\n风险与不确定性：社区二手信息存在时效偏差。\n来源：https://github.com/openclaw/openclaw/releases",
+					Content: "执行摘要：BlueAgent 近期版本更新集中在工具链与文档。\n关键发现：发布说明与文档更新一致。\n风险与不确定性：社区二手信息存在时效偏差。\n来源：https://github.com/blueagent/blueagent/releases",
 				},
 				Usage: llm.Usage{PromptTokens: 170, CompletionTokens: 48, TotalTokens: 218},
 			},
@@ -1279,11 +1552,11 @@ func TestChatHandlerSendMessage_DeepSearchGuardForcesSecondSearchRound(t *testin
 	toolRegistry := tools.NewRegistry()
 	toolRegistry.Register(&webSearchToolMock{
 		result: map[string]interface{}{
-			"query": "OpenClaw latest release notes",
+			"query": "BlueAgent latest release notes",
 			"results": []map[string]interface{}{
 				{
-					"title":       "OpenClaw Releases",
-					"url":         "https://github.com/openclaw/openclaw/releases",
+					"title":       "BlueAgent Releases",
+					"url":         "https://github.com/blueagent/blueagent/releases",
 					"description": "official release notes",
 				},
 			},
@@ -1294,7 +1567,7 @@ func TestChatHandlerSendMessage_DeepSearchGuardForcesSecondSearchRound(t *testin
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()
-	reqBody := `{"message":"请深度搜索 OpenClaw 最新新闻并给我完整报告附来源","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	reqBody := `{"message":"请深度搜索 BlueAgent 最新新闻并给我完整报告附来源","provider":"scripted","model":"gpt-5.3-codex-spark"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -2625,6 +2898,103 @@ func TestChatHandlerStreamMessage_ToolDispatchRoutesToSmallModel(t *testing.T) {
 	}
 }
 
+func TestChatHandlerStreamMessageAutoContinue_RetriesEmptyReplyAfterToolRound(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Post Tool Empty Reply Stream")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-stream",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "stream-post-tool-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "我先查一下最近一周的动态。",
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_web_stream_1",
+						Name:      "web_search",
+						Arguments: `{"query":"OpenClaw recent updates"}`,
+					}},
+				},
+				Usage: llm.Usage{PromptTokens: 60, CompletionTokens: 18, TotalTokens: 78},
+			},
+			{
+				ID:    "stream-post-tool-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "",
+				},
+				Usage: llm.Usage{PromptTokens: 82, CompletionTokens: 1, TotalTokens: 83},
+			},
+			{
+				ID:    "stream-post-tool-round-3",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "最近一周 OpenClaw 主要动态集中在 GitHub 发布说明和文档更新；我已经整理完关键变化与来源。",
+				},
+				Usage: llm.Usage{PromptTokens: 96, CompletionTokens: 28, TotalTokens: 124},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&webSearchToolMock{result: map[string]interface{}{
+		"query": "OpenClaw recent updates",
+		"results": []map[string]interface{}{
+			{"title": "OpenClaw Release Notes", "url": "https://github.com/opendungeons/openclaw/releases", "description": "recent release notes"},
+		},
+	}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我调研一下最近一周 openclaw 的动向吧","provider":"scripted-stream","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM rounds (tool + empty + retry), got %d", scripted.CallCount())
+	}
+
+	thirdReq, ok := scripted.RequestAt(2)
+	if !ok {
+		t.Fatalf("missing third request capture")
+	}
+	last := thirdReq.Messages[len(thirdReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "The tools above have been executed successfully") {
+		t.Fatalf("expected post-tool continuation nudge in third request, got role=%s content=%q", last.Role, last.Content)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "最近一周 OpenClaw 主要动态") {
+		t.Fatalf("expected retried final stream summary, got: %s", body)
+	}
+	if strings.Contains(body, "最终总结生成失败") || strings.Contains(body, "Tool execution completed") {
+		t.Fatalf("expected no tool-fallback failure wording in stream body, got: %s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected done marker in stream body, got: %s", body)
+	}
+}
+
 func TestMaybeAutoRollbackToolDispatchRoute_DisablesRouteOnHighFailureRate(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -2977,7 +3347,7 @@ func TestChatHandlerSendMessageSlashCommandsAndOffline(t *testing.T) {
 
 	resp = callSend(`{"message":"/models","provider":"","model":""}`)
 	modelsContent := resp["content"].(string)
-	if !strings.Contains(modelsContent, "Available models") && !strings.Contains(modelsContent, "No model list") {
+	if !strings.Contains(modelsContent, "Available models") && !strings.Contains(modelsContent, "No model list") && !strings.Contains(modelsContent, "Providers:") && !strings.Contains(modelsContent, "No models available") {
 		t.Fatalf("unexpected /models response: %v", resp["content"])
 	}
 

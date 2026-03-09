@@ -519,7 +519,7 @@ func inferPluginTags(id string) []string {
 
 	// Channel plugins
 	channels := []string{"telegram", "discord", "slack", "matrix", "whatsapp", "signal",
-		"line", "msteams", "googlechat", "imessage", "bluebubbles", "twitch", "zalo", "nostr", "tlon"}
+		"line", "msteams", "googlechat", "imessage", "bluebubbles", "mattermost", "nextcloudtalk", "twitch", "zalo", "nostr", "tlon"}
 	for _, ch := range channels {
 		if strings.Contains(id, ch) {
 			tags = append(tags, "channel", ch)

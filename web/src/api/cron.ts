@@ -8,21 +8,24 @@ export interface CronJob {
   handler: string
   payload?: Record<string, unknown>
   enabled: boolean
-  last_run?: string
-  next_run?: string
+  status: 'active' | 'paused' | 'running'
+  last_run_at?: string
+  next_run_at?: string
   created_at: string
   updated_at: string
+  run_count: number
+  fail_count: number
 }
 
 export interface JobExecution {
   id: string
   job_id: string
-  status: 'success' | 'failure'
+  status: 'running' | 'completed' | 'failed'
   started_at: string
-  completed_at: string
-  duration_ms: number
+  ended_at?: string
+  duration?: number
   error?: string
-  output?: string
+  result?: unknown
 }
 
 export interface CreateCronJobRequest {

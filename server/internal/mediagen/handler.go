@@ -3,6 +3,7 @@ package mediagen
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -39,6 +40,22 @@ func (h *Handler) SetAddMessage(fn AddMessageFunc) {
 // SetUpdateTitle sets the function for updating conversation titles.
 func (h *Handler) SetUpdateTitle(fn UpdateTitleFunc) {
 	h.updateTitle = fn
+}
+
+func writeMediaRequestError(c echo.Context, err error) error {
+	if err == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unknown media generation error"})
+	}
+	if errors.Is(err, ErrProviderNotFound) {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+			"error": "no media provider is configured and enabled",
+			"hint":  "Configure a provider in /api/v1/media/providers, add an API key, and enable it before generating media.",
+		})
+	}
+	if errors.Is(err, ErrUnsupportedType) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 }
 
 // RegisterRoutes registers all media generation routes.
@@ -100,7 +117,7 @@ func (h *Handler) GenerateImage(c echo.Context) error {
 
 	task, err := h.manager.Generate(c.Request().Context(), &req)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return writeMediaRequestError(c, err)
 	}
 
 	// For sync providers, wait for completion
@@ -139,7 +156,7 @@ func (h *Handler) GenerateVideo(c echo.Context) error {
 
 	task, err := h.manager.Generate(c.Request().Context(), &req)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return writeMediaRequestError(c, err)
 	}
 
 	// Video always returns task ID immediately (too slow to block)
@@ -212,6 +229,13 @@ func (h *Handler) StreamTask(c echo.Context) error {
 				writeSSE(w, "complete", evt)
 				writeSSE(w, "done", "[DONE]")
 				return nil
+			case TaskStatusCancelled:
+				if task.Error != "" {
+					evt["error"] = task.Error
+				}
+				writeSSE(w, "cancelled", evt)
+				writeSSE(w, "done", "[DONE]")
+				return nil
 			case TaskStatusFailed:
 				evt["error"] = task.Error
 				writeSSE(w, "error", evt)
@@ -261,7 +285,7 @@ func (h *Handler) ListModels(c echo.Context) error {
 func (h *Handler) streamGeneration(c echo.Context, req *MediaRequest) error {
 	task, err := h.manager.Generate(c.Request().Context(), req)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return writeMediaRequestError(c, err)
 	}
 
 	w := c.Response()
@@ -327,6 +351,13 @@ func (h *Handler) streamGeneration(c echo.Context, req *MediaRequest) error {
 				writeSSE(w, "complete", evt)
 				writeSSE(w, "done", "[DONE]")
 				return nil
+			case TaskStatusCancelled:
+				if current.Error != "" {
+					evt["error"] = current.Error
+				}
+				writeSSE(w, "cancelled", evt)
+				writeSSE(w, "done", "[DONE]")
+				return nil
 			case TaskStatusFailed:
 				evt["error"] = current.Error
 				writeSSE(w, "error", evt)
@@ -361,7 +392,7 @@ func (h *Handler) GetMediaStats(c echo.Context) error {
 	}
 	stats, err := h.manager.taskStore.GetStats()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return writeMediaRequestError(c, err)
 	}
 	return c.JSON(http.StatusOK, stats)
 }
@@ -596,7 +627,7 @@ func (h *Handler) DirectGenerate(c echo.Context) error {
 	// Create persistent task and start async generation
 	task, err := h.manager.CreateTask(c.Request().Context(), mediaReq, req.MessageID, string(req.Category), source)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return writeMediaRequestError(c, err)
 	}
 
 	// If conversation_id is provided and we have a message store, persist messages into the conversation.
@@ -642,13 +673,13 @@ func (h *Handler) DirectGenerate(c echo.Context) error {
 
 	// Return task ID immediately — client polls for status
 	return c.JSON(http.StatusAccepted, map[string]interface{}{
-		"task_id":          task.ID,
-		"message_id":       task.MessageID,
-		"user_message_id":  userMsgID,
+		"task_id":              task.ID,
+		"message_id":           task.MessageID,
+		"user_message_id":      userMsgID,
 		"assistant_message_id": assistantMsgID,
-		"status":           string(task.Status),
-		"category":         task.Category,
-		"model":            task.Model,
+		"status":               string(task.Status),
+		"category":             task.Category,
+		"model":                task.Model,
 	})
 }
 
@@ -657,22 +688,34 @@ func categoryDisplayName(cat MediaCategory, locale string) string {
 	cn := strings.HasPrefix(locale, "zh")
 	switch cat {
 	case CategoryT2I:
-		if cn { return "文生图" }
+		if cn {
+			return "文生图"
+		}
 		return "Text to Image"
 	case CategoryT2V:
-		if cn { return "文生视频" }
+		if cn {
+			return "文生视频"
+		}
 		return "Text to Video"
 	case CategoryI2V:
-		if cn { return "图生视频" }
+		if cn {
+			return "图生视频"
+		}
 		return "Image to Video"
 	case CategoryI2I:
-		if cn { return "图片编辑" }
+		if cn {
+			return "图片编辑"
+		}
 		return "Image Edit"
 	case CategoryKF2V:
-		if cn { return "关键帧生视频" }
+		if cn {
+			return "关键帧生视频"
+		}
 		return "Keyframe to Video"
 	default:
-		if cn { return "媒体生成" }
+		if cn {
+			return "媒体生成"
+		}
 		return "Media"
 	}
 }

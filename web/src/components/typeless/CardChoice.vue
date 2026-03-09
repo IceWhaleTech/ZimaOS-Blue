@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { TypelessCardChoice, ChoiceOption } from '@/types/typeless'
 
 const props = defineProps<{
   card: TypelessCardChoice
+  actionLoading?: boolean
+  activeActionId?: string
 }>()
 
 const emit = defineEmits<{
@@ -13,23 +15,26 @@ const emit = defineEmits<{
 const selectedIds = ref<Set<string>>(new Set(props.card.selectedIds || []))
 const otherText = ref('')
 const otherSelected = ref(false)
+const isSubmitting = computed(() => props.actionLoading === true && props.activeActionId === 'select')
 
 function isSelected(optionId: string): boolean {
   return selectedIds.value.has(optionId)
 }
 
+function isOptionDisabled(option: ChoiceOption): boolean {
+  return isSubmitting.value || option.disabled === true
+}
+
 function toggleOption(option: ChoiceOption) {
-  if (option.disabled) return
+  if (isOptionDisabled(option)) return
 
   if (props.card.multiple) {
-    // Multi-select mode
     if (selectedIds.value.has(option.id)) {
       selectedIds.value.delete(option.id)
     } else {
       selectedIds.value.add(option.id)
     }
   } else {
-    // Single-select mode
     selectedIds.value.clear()
     selectedIds.value.add(option.id)
     otherSelected.value = false
@@ -39,6 +44,8 @@ function toggleOption(option: ChoiceOption) {
 }
 
 function toggleOther() {
+  if (isSubmitting.value) return
+
   if (props.card.multiple) {
     otherSelected.value = !otherSelected.value
   } else {
@@ -49,6 +56,7 @@ function toggleOther() {
 }
 
 function handleOtherInput() {
+  if (isSubmitting.value) return
   emitSelection()
 }
 
@@ -60,7 +68,6 @@ function emitSelection() {
 
 <template>
   <div class="choice-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
-    <!-- Header -->
     <div v-if="card.title || card.description" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
       <h4 v-if="card.title" class="font-medium text-gray-900 dark:text-white">
         {{ card.title }}
@@ -74,21 +81,20 @@ function emitSelection() {
       </p>
     </div>
 
-    <!-- Options -->
     <div class="p-4 space-y-2">
       <button
         v-for="option in card.options"
         :key="option.id"
-        class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3"
+        class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3 disabled:cursor-wait"
         :class="{
           'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500/20': isSelected(option.id),
-          'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600': !isSelected(option.id) && !option.disabled,
-          'border-gray-100 dark:border-gray-800 opacity-50 cursor-not-allowed': option.disabled,
+          'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600': !isSelected(option.id) && !isOptionDisabled(option),
+          'border-gray-100 dark:border-gray-800 opacity-50 cursor-not-allowed': isOptionDisabled(option),
         }"
-        :disabled="option.disabled"
+        :disabled="isOptionDisabled(option)"
+        :aria-busy="isSubmitting ? 'true' : undefined"
         @click="toggleOption(option)"
       >
-        <!-- Checkbox/Radio indicator -->
         <div
           class="flex-shrink-0 w-5 h-5 mt-0.5 rounded flex items-center justify-center border-2 transition-colors"
           :class="{
@@ -109,10 +115,8 @@ function emitSelection() {
           </svg>
         </div>
 
-        <!-- Icon -->
         <span v-if="option.icon" class="flex-shrink-0 text-xl">{{ option.icon }}</span>
 
-        <!-- Content -->
         <div class="flex-1 min-w-0">
           <p class="font-medium text-gray-900 dark:text-white">{{ option.label }}</p>
           <p v-if="option.description" class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
@@ -121,17 +125,18 @@ function emitSelection() {
         </div>
       </button>
 
-      <!-- Other option -->
       <div v-if="card.allowOther" class="space-y-2">
         <button
-          class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3"
+          class="w-full p-3 rounded-lg border-2 text-left transition-all flex items-start gap-3 disabled:cursor-wait"
           :class="{
             'border-gray-900 dark:border-white bg-gray-700 dark:bg-gray-500/20': otherSelected,
-            'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600': !otherSelected,
+            'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600': !otherSelected && !isSubmitting,
+            'border-gray-100 dark:border-gray-800 opacity-50 cursor-not-allowed': isSubmitting,
           }"
+          :disabled="isSubmitting"
+          :aria-busy="isSubmitting ? 'true' : undefined"
           @click="toggleOther"
         >
-          <!-- Checkbox/Radio indicator -->
           <div
             class="flex-shrink-0 w-5 h-5 mt-0.5 rounded flex items-center justify-center border-2 transition-colors"
             :class="{
@@ -155,17 +160,22 @@ function emitSelection() {
           <span class="font-medium text-gray-900 dark:text-white">Other</span>
         </button>
 
-        <!-- Other text input -->
         <div v-if="otherSelected" class="pl-8">
           <input
             v-model="otherText"
             type="text"
             :placeholder="card.otherPlaceholder || 'Please specify...'"
-            class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
+            class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent disabled:opacity-60 disabled:cursor-wait"
+            :disabled="isSubmitting"
             @input="handleOtherInput"
           />
         </div>
       </div>
+    </div>
+
+    <div v-if="isSubmitting" class="px-4 pb-4 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+      <span class="inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent" />
+      <span>Submitting...</span>
     </div>
   </div>
 </template>
