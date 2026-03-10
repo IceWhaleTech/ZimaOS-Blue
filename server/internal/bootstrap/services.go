@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -159,11 +160,10 @@ func registerLLMProviders(registry *llm.ProviderRegistry, cfg *config.Config) {
 	}
 	registry.Register(llm.NewClaudeProvider(claudeKey, claudeBaseURL))
 
-	ollamaURL := os.Getenv("OLLAMA_URL")
-	if ollamaURL == "" {
-		ollamaURL = "http://localhost:11434"
+	ollamaURL := strings.TrimSpace(os.Getenv("OLLAMA_URL"))
+	if ollamaURL != "" {
+		registry.Register(llm.NewOllamaProvider(ollamaURL))
 	}
-	registry.Register(llm.NewOllamaProvider(ollamaURL))
 	registry.Register(llm.NewCustomProvider(os.Getenv("CUSTOM_API_KEY"), os.Getenv("CUSTOM_API_URL")))
 	registry.Register(llm.NewGrokProvider(os.Getenv("GROK_API_KEY"), ""))
 	registry.Register(llm.NewQwenProvider(os.Getenv("QWEN_API_KEY"), ""))

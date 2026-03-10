@@ -62,6 +62,7 @@ func NewProxyServer(config *ProxyConfig) (*ProxyServer, error) {
 	failover := NewFailoverHandler(&config.Routing.Failover, router)
 	healthCheck := NewHealthChecker(router, connPool, &config.HealthCheck)
 	handler := NewProxyHandler(router, connPool, failover)
+	handler.SetResponsesIntegrationEnabled(false)
 
 	// Initialize v0.10.5.1+ components (Antigravity-inspired)
 	var modelRouter *ModelRouter

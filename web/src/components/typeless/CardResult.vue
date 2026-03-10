@@ -2,8 +2,9 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TypelessCardResult } from '@/types/typeless'
+import { formatToolWarningCodeLabel } from '@/utils/toolWarnings'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardResult
@@ -121,7 +122,7 @@ function isActionDisabled(action: { disabled?: boolean }): boolean {
 }
 
 function actionButtonLabel(action: { id: string; label: string }): string {
-  return isActionActive(action.id) ? 'Working...' : tAction(action.id, action.label)
+  return isActionActive(action.id) ? t('common.processing', 'Processing...') : tAction(action.id, action.label)
 }
 
 function handleAction(actionId: string, disabled = false) {
@@ -131,34 +132,39 @@ function handleAction(actionId: string, disabled = false) {
 
 function tLabel(label: string): string {
   const key = 'resultCard.labels.' + label.toLowerCase().replace(/\s+/g, '_')
-  const translated = t(key, label)
-  return translated === key ? label : translated
+  return te(key) ? t(key) : label
+}
+
+const genericActionFallbacks: Record<string, string[]> = {
+  extract_with_web_fetch: ['Extract with web_fetch', 'Extract with Web Fetch'],
+  use_browser: ['Use browser'],
+}
+
+function shouldLocalizeActionFallback(id: string, fallback: string): boolean {
+  const normalizedFallback = fallback.trim()
+  if (!normalizedFallback || normalizedFallback === id) return true
+  return genericActionFallbacks[id]?.includes(normalizedFallback) === true
 }
 
 function tAction(id: string, fallback: string): string {
+  const normalizedFallback = fallback.trim()
+  if (!shouldLocalizeActionFallback(id, normalizedFallback)) return normalizedFallback || id
   const key = 'resultCard.actions.' + id
-  const translated = t(key, fallback)
-  return translated === key ? fallback : translated
-}
-
-function formatWarningCodeLabel(code?: string): string {
-  switch ((code || '').trim()) {
-    case 'login_wall':
-      return 'Login wall'
-    case 'challenge':
-      return 'Challenge'
-    case 'browser_required':
-      return 'Browser required'
-    default:
-      return code ? `warning_code=${code}` : ''
-  }
+  const translated = t(key, normalizedFallback || id)
+  return translated === key ? (normalizedFallback || id) : translated
 }
 
 const translatedTitle = computed(() => {
   if (!props.card.title) return ''
-  const key = 'resultCard.titles.' + props.card.title.toLowerCase().replace(/\s+/g, '_')
-  const translated = t(key, props.card.title)
-  return translated === key ? props.card.title : translated
+  const rawTitle = props.card.title.trim()
+  const normalizedTitle = rawTitle.toLowerCase().replace(/\s+/g, '_')
+  const toolKeys = [`tools.names.${rawTitle}`, `tools.names.${normalizedTitle}`]
+  for (const key of toolKeys) {
+    if (te(key)) return t(key)
+  }
+  const key = 'resultCard.titles.' + normalizedTitle
+  const translated = t(key, rawTitle)
+  return translated === key ? rawTitle : translated
 })
 
 const errorKeyMap: [RegExp, string][] = [
@@ -176,11 +182,13 @@ const translatedMessage = computed(() => {
       if (re.test(msg)) return t(key, msg)
     }
   }
-  return msg
+  const normalizedMessage = msg.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  const key = 'resultCard.messages.' + normalizedMessage
+  return te(key) ? t(key) : msg
 })
 
 const warningText = computed(() => (props.card.warning || '').trim())
-const warningCodeLabel = computed(() => formatWarningCodeLabel(props.card.warning_code))
+const warningCodeLabel = computed(() => formatToolWarningCodeLabel(props.card.warning_code, t))
 
 // Filter out details that are redundant with the title/message
 const visibleDetails = computed(() => {
@@ -275,7 +283,7 @@ const visibleDetails = computed(() => {
         :class="card.message ? 'mt-3' : ''"
       >
         <div class="flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-200">
-          <span>{{ warningCodeLabel || 'Warning' }}</span>
+          <span>{{ warningCodeLabel || t('toolWarnings.warning', 'Warning') }}</span>
         </div>
         <p v-if="warningText" class="mt-1 text-sm leading-relaxed text-amber-900 dark:text-amber-100">
           {{ warningText }}
@@ -299,7 +307,7 @@ const visibleDetails = computed(() => {
                 :key="String(subKey)"
                 class="flex items-center justify-between px-3 py-1.5 text-xs"
               >
-                <span class="text-gray-400 dark:text-gray-500">{{ subKey }}</span>
+                <span class="text-gray-400 dark:text-gray-500">{{ tLabel(String(subKey)) }}</span>
                 <span class="text-gray-700 dark:text-gray-300 font-mono text-right max-w-[70%] break-all">{{ toDisplayString(subVal) }}</span>
               </div>
             </div>

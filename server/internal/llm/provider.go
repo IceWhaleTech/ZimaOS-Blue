@@ -59,6 +59,7 @@ type ChatRequest struct {
 	// Responses API fields (used by native /v1/responses path).
 	PreviousResponseID string `json:"previous_response_id,omitempty"`
 	Instructions       string `json:"instructions,omitempty"`
+	PromptCacheKey     string `json:"prompt_cache_key,omitempty"`
 	Store              *bool  `json:"store,omitempty"`
 }
 

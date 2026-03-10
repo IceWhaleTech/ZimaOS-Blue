@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { extauthAdminApi, getProviderDisplayName } from '@/api/extauth'
+import { extauthAdminApi } from '@/api/extauth'
 import type { ProviderConfig, ProviderType, CreateProviderRequest, UpdateProviderRequest } from '@/api/extauth'
 
 const { t } = useI18n()
@@ -32,15 +32,28 @@ const form = ref<CreateProviderRequest>({
   order: 0,
 })
 
-const providerTypes: { value: ProviderType; label: string }[] = [
-  { value: 'generic', label: 'Generic OIDC' },
-  { value: 'google', label: 'Google' },
-  { value: 'github', label: 'GitHub' },
-  { value: 'microsoft', label: 'Microsoft / Azure AD' },
-  { value: 'keycloak', label: 'Keycloak' },
-  { value: 'authentik', label: 'Authentik' },
-  { value: 'auth0', label: 'Auth0' },
-]
+const providerTypes: ProviderType[] = ['generic', 'google', 'github', 'microsoft', 'keycloak', 'authentik', 'auth0']
+
+function getProviderTypeLabel(type: ProviderType): string {
+  switch (type) {
+    case 'generic':
+      return t('authProviders.types.generic')
+    case 'google':
+      return t('authProviders.types.google')
+    case 'github':
+      return t('authProviders.types.github')
+    case 'microsoft':
+      return t('authProviders.types.microsoft')
+    case 'keycloak':
+      return t('authProviders.types.keycloak')
+    case 'authentik':
+      return t('authProviders.types.authentik')
+    case 'auth0':
+      return t('authProviders.types.auth0')
+    default:
+      return type
+  }
+}
 
 const defaultScopes: Record<ProviderType, string[]> = {
   generic: ['openid', 'profile', 'email'],
@@ -309,13 +322,13 @@ function updateScope(index: number, value: string) {
               <div class="flex items-center gap-2">
                 <h3 class="text-white font-medium">{{ provider.name }}</h3>
                 <span class="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-300">
-                  {{ getProviderDisplayName(provider.type) }}
+                  {{ getProviderTypeLabel(provider.type) }}
                 </span>
               </div>
               <div class="text-sm text-gray-400 mt-1">
-                <span>ID: {{ provider.id }}</span>
+                <span>{{ t('authProviders.providerId') }}: {{ provider.id }}</span>
                 <span class="mx-2">|</span>
-                <span>Client ID: {{ provider.client_id.substring(0, 20) }}...</span>
+                <span>{{ t('authProviders.clientId') }}: {{ provider.client_id.substring(0, 20) }}...</span>
               </div>
               <div v-if="provider.issuer_url" class="text-sm text-gray-500 mt-1">
                 {{ t('authProviders.issuer') }}: {{ provider.issuer_url }}
@@ -360,46 +373,46 @@ function updateScope(index: number, value: string) {
       <div class="bg-gray-700 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div class="p-6">
           <h3 class="text-lg font-semibold text-white mb-6">
-            {{ isCreating ? 'Add Authentication Provider' : 'Edit Provider' }}
+            {{ isCreating ? t('authProviders.addAuthProvider') : t('authProviders.editProvider') }}
           </h3>
 
           <form class="space-y-6" @submit.prevent="saveProvider">
             <!-- Basic Info -->
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm text-gray-400 mb-2">Provider ID</label>
+                <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.providerId') }}</label>
                 <input
                   v-model="form.id"
                   type="text"
                   required
                   :disabled="!isCreating"
                   class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 disabled:opacity-50"
-                  placeholder="e.g., google, github"
+                  :placeholder="t('authProviders.placeholderId')"
                   @input="onIdChange"
                 />
               </div>
               <div>
-                <label class="block text-sm text-gray-400 mb-2">Display Name</label>
+                <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.displayName') }}</label>
                 <input
                   v-model="form.name"
                   type="text"
                   required
                   class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
-                  placeholder="e.g., Google, GitHub"
+                  :placeholder="t('authProviders.placeholderName')"
                 />
               </div>
             </div>
 
             <!-- Provider Type -->
             <div>
-              <label class="block text-sm text-gray-400 mb-2">Provider Type</label>
+              <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.providerType') }}</label>
               <select
                 v-model="form.type"
                 class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                 @change="onTypeChange"
               >
-                <option v-for="type in providerTypes" :key="type.value" :value="type.value">
-                  {{ type.label }}
+                <option v-for="type in providerTypes" :key="type" :value="type">
+                  {{ getProviderTypeLabel(type) }}
                 </option>
               </select>
             </div>
@@ -407,26 +420,26 @@ function updateScope(index: number, value: string) {
             <!-- OAuth Credentials -->
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm text-gray-400 mb-2">Client ID</label>
+                <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.clientId') }}</label>
                 <input
                   v-model="form.client_id"
                   type="text"
                   required
                   class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
-                  placeholder="OAuth Client ID"
+                  :placeholder="t('authProviders.placeholderClientId')"
                 />
               </div>
               <div>
                 <label class="block text-sm text-gray-400 mb-2">
-                  Client Secret
-                  <span v-if="!isCreating" class="text-gray-500">(leave blank to keep current)</span>
+                  {{ t('authProviders.clientSecret') }}
+                  <span v-if="!isCreating" class="text-gray-500">{{ t('authProviders.clientSecretKeepBlank') }}</span>
                 </label>
                 <input
                   v-model="form.client_secret"
                   type="password"
                   :required="isCreating"
                   class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
-                  placeholder="OAuth Client Secret"
+                  :placeholder="t('authProviders.placeholderClientSecret')"
                 />
               </div>
             </div>
@@ -434,8 +447,8 @@ function updateScope(index: number, value: string) {
             <!-- OIDC URLs -->
             <div>
               <label class="block text-sm text-gray-400 mb-2">
-                Issuer URL
-                <span class="text-gray-500">(for OIDC discovery)</span>
+                {{ t('authProviders.issuerUrl') }}
+                <span class="text-gray-500">{{ t('authProviders.issuerOidcHint') }}</span>
               </label>
               <input
                 v-model="form.issuer_url"
@@ -446,27 +459,27 @@ function updateScope(index: number, value: string) {
             </div>
 
             <div>
-              <label class="block text-sm text-gray-400 mb-2">Redirect URL</label>
+              <label class="block text-sm text-gray-400 mb-2">{{ t('authProviders.redirectUrl') }}</label>
               <input
                 v-model="form.redirect_url"
                 type="url"
                 required
                 class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
-                placeholder="https://your-domain.com/auth/callback/provider-id"
+                :placeholder="t('authProviders.placeholderRedirect')"
               />
-              <p class="text-xs text-gray-500 mt-1">Configure this URL in your OAuth provider's settings</p>
+              <p class="text-xs text-gray-500 mt-1">{{ t('authProviders.redirectUrlHint') }}</p>
             </div>
 
             <!-- Scopes -->
             <div>
               <div class="flex items-center justify-between mb-2">
-                <label class="text-sm text-gray-400">Scopes</label>
+                <label class="text-sm text-gray-400">{{ t('authProviders.scopes') }}</label>
                 <button
                   type="button"
                   class="text-xs text-gray-900 dark:text-white hover:text-gray-900 dark:text-white"
                   @click="addScope"
                 >
-                  + Add Scope
+                  {{ t('authProviders.addScope') }}
                 </button>
               </div>
               <div class="space-y-2">

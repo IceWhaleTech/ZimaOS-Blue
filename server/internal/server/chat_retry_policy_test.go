@@ -69,12 +69,12 @@ func TestShouldSkipPreContentRetry(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "wrapped overloaded 502 skips retry",
+			name: "wrapped overloaded build failure 502 keeps retry",
 			err: &proxybridge.ProxyError{
 				StatusCode: 502,
 				Body:       `upstream 500: {"error":{"type":"overloaded_error","message":"构建请求失败"},"type":"error"}`,
 			},
-			want: true,
+			want: false,
 		},
 		{
 			name: "provider no response keeps retry",
@@ -336,6 +336,14 @@ func TestMapStreamErrorCode(t *testing.T) {
 			name: "plain no provider",
 			err:  errors.New("no available provider"),
 			want: "provider_unavailable",
+		},
+		{
+			name: "proxy wrapped build failure overload",
+			err: &proxybridge.ProxyError{
+				StatusCode: 502,
+				Body:       `upstream 500: {"error":{"type":"overloaded_error","message":"构建请求失败"},"type":"error"}`,
+			},
+			want: "STREAM_ERROR",
 		},
 		{
 			name: "plain auth",

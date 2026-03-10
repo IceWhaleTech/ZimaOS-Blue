@@ -19,6 +19,7 @@ func TestProviderToolRegistryIntegration(t *testing.T) {
 	testTool := tools.NewMockTool("test_tool", "A test tool for integration testing")
 	testTool.SetResult(map[string]string{"result": "test"})
 	registry.Register(testTool)
+	registry.Register(tools.NewMockTool("write", "Write file contents"))
 
 	// Create provider with config
 	config := &ClaudeCodeConfig{
@@ -42,6 +43,9 @@ func TestProviderToolRegistryIntegration(t *testing.T) {
 
 	if !strings.Contains(systemPrompt, "tool_guidance") {
 		t.Error("expected system prompt to contain 'tool_guidance' section")
+	}
+	if !strings.Contains(systemPrompt, "append=true") || !strings.Contains(systemPrompt, "write payload") {
+		t.Error("expected system prompt to include chunked write guidance")
 	}
 }
 

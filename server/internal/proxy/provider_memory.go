@@ -101,6 +101,41 @@ func memKeyWithSuffix(prefix, providerID, baseURL, suffix string) uint64 {
 	return hash
 }
 
+func normalizeMemoryBaseURL(rawURL string) string {
+	return strings.TrimSuffix(strings.TrimSpace(rawURL), "/")
+}
+
+func memKeyWithFullBaseURL(prefix, providerID, baseURL, suffix string) uint64 {
+	baseURL = normalizeMemoryBaseURL(baseURL)
+	suffix = strings.TrimSpace(suffix)
+	hash := fnvOffset64
+	for i := 0; i < len(prefix); i++ {
+		hash ^= uint64(prefix[i])
+		hash *= fnvPrime64
+	}
+	for i := 0; i < len(providerID); i++ {
+		hash ^= uint64(providerID[i])
+		hash *= fnvPrime64
+	}
+	if baseURL != "" {
+		hash ^= uint64(':')
+		hash *= fnvPrime64
+		for i := 0; i < len(baseURL); i++ {
+			hash ^= uint64(baseURL[i])
+			hash *= fnvPrime64
+		}
+	}
+	if suffix != "" {
+		hash ^= uint64(':')
+		hash *= fnvPrime64
+		for i := 0; i < len(suffix); i++ {
+			hash ^= uint64(suffix[i])
+			hash *= fnvPrime64
+		}
+	}
+	return hash
+}
+
 // --- Format memory ---
 
 // RecallFormat returns the remembered API format for a provider (as a raw string).
@@ -122,6 +157,27 @@ func (pm *ProviderMemory) RememberFormat(providerID, baseURL string, format stri
 // ForgetFormat evicts the cached format.
 func (pm *ProviderMemory) ForgetFormat(providerID, baseURL string) {
 	pm.cache.Del(memKey("fmt:", providerID, baseURL))
+}
+
+// RecallModelFormat returns the remembered API format for a specific provider+baseURL+requested model.
+func (pm *ProviderMemory) RecallModelFormat(providerID, baseURL, requestedModel string) (string, bool) {
+	if v, ok := pm.cache.Get(memKeyWithFullBaseURL("model-fmt:", providerID, baseURL, requestedModel)); ok {
+		if s, ok := v.(string); ok {
+			return s, true
+		}
+	}
+	return "", false
+}
+
+// RememberModelFormat caches the API format that worked for a specific requested model.
+func (pm *ProviderMemory) RememberModelFormat(providerID, baseURL, requestedModel, format string) {
+	pm.cache.Put(memKeyWithFullBaseURL("model-fmt:", providerID, baseURL, requestedModel), format)
+	slog.Debug("[provider-memory] remembered model format", "provider", providerID, "base_url", normalizeMemoryBaseURL(baseURL), "requested", strings.TrimSpace(requestedModel), "format", format)
+}
+
+// ForgetModelFormat evicts the cached model-scoped format.
+func (pm *ProviderMemory) ForgetModelFormat(providerID, baseURL, requestedModel string) {
+	pm.cache.Del(memKeyWithFullBaseURL("model-fmt:", providerID, baseURL, requestedModel))
 }
 
 // --- Model alias memory ---

@@ -26,6 +26,7 @@ export interface MessageStats {
 
 export interface Message {
   id: string
+  render_key?: string
   conversation_id: string
   role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
@@ -208,6 +209,9 @@ export const warmupApi = {
   /** Fire-and-forget warmup for a conversation. Returns 204. */
   trigger: (conversationId: string) =>
     api.post(`/conversations/${conversationId}/warmup`),
+  /** Cancel an in-flight hidden warmup request. Returns 204. */
+  cancel: (conversationId: string) =>
+    api.delete(`/conversations/${conversationId}/warmup`),
 }
 
 // Injection API - Send a message during active streaming

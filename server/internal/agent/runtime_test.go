@@ -9,6 +9,9 @@ func TestCanTransition(t *testing.T) {
 	if !canTransition(RuntimeStatePlan, RuntimeStateExecute) {
 		t.Fatal("PLAN -> EXECUTE should be allowed")
 	}
+	if !canTransition(RuntimeStateVerify, RuntimeStateReflect) {
+		t.Fatal("VERIFY -> REFLECT should be allowed")
+	}
 	if canTransition(RuntimeStateDone, RuntimeStateExecute) {
 		t.Fatal("DONE -> EXECUTE should not be allowed")
 	}

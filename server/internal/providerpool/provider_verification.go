@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -80,9 +81,10 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 	if detectedFormat == "" {
 		detectedFormat = APIFormatOpenAI
 	}
+	responsesEnabled := ResponsesIntegrationEnabled()
 
 	client := newProviderVerifyHTTPClient(req.SkipTLSVerify)
-	modelsStatus, modelsBody, modelsErr := doProviderVerificationRequest(ctx, client, http.MethodGet, urls.modelsURL, "", req.APIKey)
+	modelsStatus, modelsBody, modelsErr := doProviderVerificationRequest(ctx, client, http.MethodGet, urls.modelsURL, "", req.APIKey, APIFormatOpenAI)
 	modelCandidates := resolveProviderVerificationModelCandidates(requestedModel, modelsBody)
 	if requestedModel == "" {
 		modelCandidates = append(modelCandidates, "")
@@ -103,27 +105,40 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 	var respRawErr error
 
 	for _, candidateModel := range modelCandidates {
-		chatStatus, chatBody, chatErr = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.chatURL, openAIChatProbeBody(candidateModel), req.APIKey)
-		respV1Status, respV1Body, respV1Err = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesV1, responsesProbeBody(candidateModel), req.APIKey)
-		respRawStatus, respRawBody, respRawErr = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesRaw, responsesProbeBody(candidateModel), req.APIKey)
+		chatStatus, chatBody, chatErr = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.chatURL, openAIChatProbeBody(candidateModel), req.APIKey, APIFormatOpenAI)
+		if responsesEnabled {
+			respV1Status, respV1Body, respV1Err = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesV1, responsesProbeBody(candidateModel), req.APIKey, APIFormatResponses)
+			respRawStatus, respRawBody, respRawErr = doProviderVerificationRequest(ctx, client, http.MethodPost, urls.responsesRaw, responsesProbeBody(candidateModel), req.APIKey, APIFormatResponses)
+		} else {
+			respV1Status, respV1Body, respV1Err = 0, "", nil
+			respRawStatus, respRawBody, respRawErr = 0, "", nil
+		}
 		probeModel = candidateModel
 
-		if candidateModel == "" || !allProbeResultsModelNotFound(chatStatus, chatBody, respV1Status, respV1Body, respRawStatus, respRawBody) {
+		allModelNotFound := isModelNotFoundProbe(chatStatus, chatBody)
+		if responsesEnabled {
+			allModelNotFound = allProbeResultsModelNotFound(chatStatus, chatBody, respV1Status, respV1Body, respRawStatus, respRawBody)
+		}
+		if candidateModel == "" || !allModelNotFound {
 			break
 		}
 	}
-	anthropicStatus, _, anthropicErr := doProviderVerificationRequest(ctx, client, http.MethodPost, urls.anthropicURL, anthropicProbeBody(probeModel), req.APIKey)
+	anthropicStatus, _, anthropicErr := doProviderVerificationRequest(ctx, client, http.MethodPost, urls.anthropicURL, anthropicProbeBody(probeModel), req.APIKey, APIFormatAnthropic)
 
 	chatError := extractErrorMessage(chatBody)
 	if probeModel == "" && isMissingModelRequiredError(chatError) {
 		// Model-less probe can trigger expected parameter errors on strict endpoints.
 		chatError = ""
 	}
-	responsesStatus := extractFieldOrError(respV1Body, "status")
-	responsesOnly := indicatesResponsesOnlyProvider(chatStatus, chatBody)
+	responsesStatus := ""
+	responsesOnly := false
+	if responsesEnabled {
+		responsesStatus = extractFieldOrError(respV1Body, "status")
+		responsesOnly = indicatesResponsesOnlyProvider(chatStatus, chatBody)
+	}
 	anthropicReachable := isProviderVerificationReachable(anthropicStatus)
 	openAIReachable := isProviderVerificationReachable(chatStatus)
-	responsesReachable := isProviderVerificationReachable(respV1Status) || isProviderVerificationReachable(respRawStatus)
+	responsesReachable := responsesEnabled && (isProviderVerificationReachable(respV1Status) || isProviderVerificationReachable(respRawStatus))
 
 	recommendedFormat := recommendedAPIFormatForModel(probeModel, detectedFormat, anthropicReachable, openAIReachable && !responsesOnly, responsesReachable, responsesOnly)
 
@@ -158,6 +173,41 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 		}
 	}
 
+	probes := map[string]providerVerificationProbe{
+		"models": {
+			URL:        urls.modelsURL,
+			StatusCode: modelsStatus,
+			Reachable:  isProviderVerificationReachable(modelsStatus),
+			Error:      sanitizeProbeError(modelsErr),
+		},
+		"chat_completions": {
+			URL:        urls.chatURL,
+			StatusCode: chatStatus,
+			Reachable:  isProviderVerificationReachable(chatStatus),
+			Error:      sanitizeProbeError(chatErr),
+		},
+		"anthropic_messages": {
+			URL:        urls.anthropicURL,
+			StatusCode: anthropicStatus,
+			Reachable:  isProviderVerificationReachable(anthropicStatus),
+			Error:      sanitizeProbeError(anthropicErr),
+		},
+	}
+	if responsesEnabled {
+		probes["responses_v1"] = providerVerificationProbe{
+			URL:        urls.responsesV1,
+			StatusCode: respV1Status,
+			Reachable:  isProviderVerificationReachable(respV1Status),
+			Error:      sanitizeProbeError(respV1Err),
+		}
+		probes["responses_plain"] = providerVerificationProbe{
+			URL:        urls.responsesRaw,
+			StatusCode: respRawStatus,
+			Reachable:  isProviderVerificationReachable(respRawStatus),
+			Error:      sanitizeProbeError(respRawErr),
+		}
+	}
+
 	result := &providerVerificationResult{
 		BaseURL:              baseURL,
 		Model:                probeModel,
@@ -167,38 +217,7 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 		ResponsesOnly:        responsesOnly,
 		ChatError:            chatError,
 		ResponsesStatus:      responsesStatus,
-		Probes: map[string]providerVerificationProbe{
-			"models": {
-				URL:        urls.modelsURL,
-				StatusCode: modelsStatus,
-				Reachable:  isProviderVerificationReachable(modelsStatus),
-				Error:      sanitizeProbeError(modelsErr),
-			},
-			"chat_completions": {
-				URL:        urls.chatURL,
-				StatusCode: chatStatus,
-				Reachable:  isProviderVerificationReachable(chatStatus),
-				Error:      sanitizeProbeError(chatErr),
-			},
-			"anthropic_messages": {
-				URL:        urls.anthropicURL,
-				StatusCode: anthropicStatus,
-				Reachable:  isProviderVerificationReachable(anthropicStatus),
-				Error:      sanitizeProbeError(anthropicErr),
-			},
-			"responses_v1": {
-				URL:        urls.responsesV1,
-				StatusCode: respV1Status,
-				Reachable:  isProviderVerificationReachable(respV1Status),
-				Error:      sanitizeProbeError(respV1Err),
-			},
-			"responses_plain": {
-				URL:        urls.responsesRaw,
-				StatusCode: respRawStatus,
-				Reachable:  isProviderVerificationReachable(respRawStatus),
-				Error:      sanitizeProbeError(respRawErr),
-			},
-		},
+		Probes:               probes,
 	}
 
 	return result, nil
@@ -210,6 +229,36 @@ func applyProviderVerificationRecommendation(provider *Provider, result *provide
 	}
 
 	changed := false
+	if isThirdPartyProvider(provider) {
+		if result.RecommendedAPIFormat != "" && result.RecommendedAPIFormat != APIFormatResponses && provider.APIFormat != result.RecommendedAPIFormat {
+			provider.APIFormat = result.RecommendedAPIFormat
+			changed = true
+		}
+		recommendedBaseURL := normalizeCustomVerificationApplyBaseURL(strings.TrimSpace(result.RecommendedBaseURL))
+		if recommendedBaseURL == "" {
+			recommendedBaseURL = normalizeCustomVerificationApplyBaseURL(strings.TrimSpace(provider.BaseURL))
+		}
+		if recommendedBaseURL != "" && provider.BaseURL != recommendedBaseURL {
+			provider.BaseURL = recommendedBaseURL
+			provider.ResetParsedURL()
+			changed = true
+		}
+		if isGenericVerificationEndpointLock(provider.DetectedEndpoint) {
+			provider.DetectedEndpoint = ""
+			provider.ResetParsedURL()
+			changed = true
+		}
+		if provider.DetectedFormat != "" {
+			provider.DetectedFormat = ""
+			provider.DetectedAt = time.Time{}
+			changed = true
+		}
+		if changed {
+			provider.UpdatedAt = now
+		}
+		return changed
+	}
+
 	if result.RecommendedAPIFormat != "" && provider.APIFormat != result.RecommendedAPIFormat {
 		provider.APIFormat = result.RecommendedAPIFormat
 		provider.DetectedFormat = result.RecommendedAPIFormat
@@ -229,7 +278,43 @@ func applyProviderVerificationRecommendation(provider *Provider, result *provide
 	return changed
 }
 
-func doProviderVerificationRequest(ctx context.Context, client *http.Client, method, endpoint, body, apiKey string) (int, string, error) {
+func normalizeCustomVerificationApplyBaseURL(raw string) string {
+	raw = strings.TrimSuffix(strings.TrimSpace(raw), "/")
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	path := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(u.Path)), "/")
+	switch path {
+	case "/responses", "/v1/responses", "/messages", "/v1/messages":
+		u.Path = ""
+		u.RawPath = ""
+		u.RawQuery = ""
+		u.Fragment = ""
+		return strings.TrimSuffix(u.String(), "/")
+	default:
+		return raw
+	}
+}
+
+func isGenericVerificationEndpointLock(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err == nil {
+		raw = u.Path
+	}
+	raw = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(raw)), "/")
+	switch raw {
+	case "/responses", "/v1/responses", "/messages", "/v1/messages":
+		return true
+	default:
+		return false
+	}
+}
+
+func doProviderVerificationRequest(ctx context.Context, client *http.Client, method, endpoint, body, apiKey string, format APIFormat) (int, string, error) {
 	var reader io.Reader
 	if strings.TrimSpace(body) != "" {
 		reader = bytes.NewBufferString(body)
@@ -243,7 +328,15 @@ func doProviderVerificationRequest(ctx context.Context, client *http.Client, met
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if key := strings.TrimSpace(apiKey); key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
+		switch format {
+		case APIFormatAnthropic:
+			req.Header.Set("x-api-key", key)
+			req.Header.Set("anthropic-version", "2023-06-01")
+			req.Header.Del("Authorization")
+		default:
+			req.Header.Set("Authorization", "Bearer "+key)
+			req.Header.Del("x-api-key")
+		}
 	}
 
 	resp, err := client.Do(req)

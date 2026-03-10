@@ -132,6 +132,35 @@ type OutgoingMessage struct {
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
+// OutboundMarkdownMode controls how markdown payloads should be prepared before send.
+type OutboundMarkdownMode uint8
+
+const (
+	// OutboundMarkdownModeChunked splits markdown into send-safe chunks.
+	OutboundMarkdownModeChunked OutboundMarkdownMode = iota
+	// OutboundMarkdownModePreserveWhole keeps the markdown body intact for channel-specific rendering.
+	OutboundMarkdownModePreserveWhole
+)
+
+// OutboundCapabilities describes channel-specific outbound formatting behavior.
+type OutboundCapabilities struct {
+	// MarkdownMode controls how markdown text is chunked before send.
+	MarkdownMode OutboundMarkdownMode `json:"markdown_mode,omitempty"`
+	// HumanizerPreset selects the renderer used when humanizing plain-like outbound text.
+	HumanizerPreset string `json:"humanizer_preset,omitempty"`
+	// SupportsMarkdownFormat indicates the channel can accept structured markdown/html payloads.
+	SupportsMarkdownFormat bool `json:"supports_markdown_format,omitempty"`
+	// AutoPromoteMarkdownReport upgrades long structured plain text reports to markdown.
+	AutoPromoteMarkdownReport bool `json:"auto_promote_markdown_report,omitempty"`
+	// SuppressHeartbeatText disables textual heartbeat placeholders during long processing.
+	SuppressHeartbeatText bool `json:"suppress_heartbeat_text,omitempty"`
+}
+
+// DefaultOutboundCapabilities returns the default outbound behavior for channels.
+func DefaultOutboundCapabilities() OutboundCapabilities {
+	return OutboundCapabilities{MarkdownMode: OutboundMarkdownModeChunked}
+}
+
 // Info contains information about a channel.
 type Info struct {
 	// Name is the unique identifier of the channel.
@@ -210,6 +239,12 @@ type TypingIndicator interface {
 	// SendTyping sends a "typing" indicator to the given chat.
 	// Best-effort: errors are logged but not propagated.
 	SendTyping(ctx context.Context, chatID string) error
+}
+
+// OutboundCapabilityProvider is an optional interface for channels to describe
+// how manager-level outbound preparation should treat markdown and heartbeats.
+type OutboundCapabilityProvider interface {
+	OutboundCapabilities() OutboundCapabilities
 }
 
 // Config contains common configuration for all channels.

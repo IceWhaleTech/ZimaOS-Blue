@@ -28,6 +28,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/stt"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/upstreamerrors"
 )
 
 // ResolvedRoute carries the actual provider/model chosen by the router.
@@ -134,6 +135,7 @@ type parsedRequest struct {
 	upstreamFormat        ProviderType   // set when request was converted to non-OpenAI format
 	routed                *RouteDecision // non-nil if rule engine rerouted the model
 	streaming             bool
+	promptCacheKey        string
 	singleProvider        bool   // true when only one provider is available on the current execution path
 	routingSingleProvider bool   // true when the routing mode itself only has one enabled provider
 	resolvedProvider      string // actual provider name after routing
@@ -416,6 +418,9 @@ func isRateLimitLikeUpstreamError(statusCode int, body []byte) bool {
 	if statusCode < 500 {
 		return false
 	}
+	if upstreamerrors.HasRequestBuildFailureBody(body) {
+		return false
+	}
 	lower := toLowerBytes(body)
 	return bytes.Contains(lower, []byte("overloaded_error")) ||
 		bytes.Contains(lower, []byte("\"type\":\"overloaded\"")) ||
@@ -430,6 +435,9 @@ func isRateLimitLikeUpstreamError(statusCode int, body []byte) bool {
 func classifyRateLimitLikeErrorText(msg string) int {
 	msg = strings.TrimSpace(strings.ToLower(msg))
 	if msg == "" {
+		return 0
+	}
+	if upstreamerrors.HasRequestBuildFailureText(msg) {
 		return 0
 	}
 	if strings.Contains(msg, "overloaded_error") ||
@@ -745,6 +753,7 @@ type ProxyHandler struct {
 	providerRaceMu     sync.Mutex
 	routingEnabled     atomic.Bool       // Toggle for model routing
 	promptCacheEnabled atomic.Bool       // Toggle for Anthropic prompt caching
+	responsesEnabled   atomic.Bool       // Toggle for Responses compatibility/integration
 	promptCacheStats   *PromptCacheStats // Prompt cache effectiveness stats
 
 	// Warm path — accessed conditionally
@@ -795,6 +804,7 @@ func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *Failove
 		responsesComp:                 newResponsesContinuationCompactor(nil),
 	}
 	ph.routingEnabled.Store(true)
+	ph.responsesEnabled.Store(true)
 	ph.authProber = NewAuthProber() // default prober, can be overridden
 	ph.providerMemory = NewProviderMemory()
 	ph.routingStats = NewRoutingStats()
@@ -1119,6 +1129,21 @@ func (ph *ProxyHandler) SetPromptCacheEnabled(enabled bool) {
 	ph.promptCacheEnabled.Store(enabled)
 }
 
+// SetResponsesIntegrationEnabled toggles Responses compatibility/integration on/off at runtime.
+func (ph *ProxyHandler) SetResponsesIntegrationEnabled(enabled bool) {
+	if ph == nil {
+		return
+	}
+	ph.responsesEnabled.Store(enabled)
+}
+
+func (ph *ProxyHandler) responsesIntegrationEnabled() bool {
+	if ph == nil {
+		return true
+	}
+	return ph.responsesEnabled.Load()
+}
+
 // GetPromptCacheStats returns prompt cache stats snapshot.
 func (ph *ProxyHandler) GetPromptCacheStats() PromptCacheSnapshot {
 	if ph.promptCacheStats == nil {
@@ -1385,6 +1410,10 @@ func (ph *ProxyHandler) executeOnRouteResult(
 	pr *parsedRequest,
 	hasTools bool,
 ) (*providerExecOutcome, error) {
+	if !ph.responsesIntegrationEnabled() && result != nil && providerpool.UsesResponsesIntegration(result.Provider) {
+		return nil, errors.New(providerpool.ResponsesIntegrationDisabledReason())
+	}
+
 	pid := result.Provider.ID
 	burl := result.Provider.EffectiveBaseURL()
 	effectiveSingleProvider := effectiveSingleProviderOnRoute(pr, result)
@@ -1443,13 +1472,32 @@ func (ph *ProxyHandler) executeOnRouteResult(
 	if pr.streaming && resp.Body != nil {
 		peekBuf := make([]byte, 32)
 		n, peekErr := resp.Body.Read(peekBuf)
-		if n == 0 || peekErr != nil {
+		prefix := peekBuf[:n]
+		if shouldTreatStreamingProbeAsEmpty(prefix, peekErr) {
 			resp.Body.Close()
-			slog.Warn("[proxy] streaming response body empty", "provider", pid, "error", peekErr)
+			slog.Warn("[proxy] streaming response body empty",
+				"provider", pid,
+				"error", peekErr,
+				"peek_bytes", n)
 			return nil, fmt.Errorf("provider %s returned empty streaming response", pid)
 		}
+		if n == 0 && peekErr != nil {
+			resp.Body.Close()
+			slog.Warn("[proxy] streaming response probe failed before first byte",
+				"provider", pid,
+				"error", peekErr)
+			return nil, fmt.Errorf("provider %s stream probe failed: %w", pid, peekErr)
+		}
+		if n > 0 && peekErr != nil && !errors.Is(peekErr, io.EOF) {
+			// Some readers can return data together with a non-EOF error.
+			// Keep the already-read prefix and let the downstream stream path decide.
+			slog.Warn("[proxy] streaming probe read data with non-EOF error",
+				"provider", pid,
+				"error", peekErr,
+				"peek_bytes", n)
+		}
 		// Reconstruct body: peeked bytes + rest of original body
-		resp.Body = &peekReader{prefix: peekBuf[:n], rest: resp.Body}
+		resp.Body = &peekReader{prefix: prefix, rest: resp.Body}
 	}
 
 	outcome := &providerExecOutcome{
@@ -1655,6 +1703,10 @@ func (ph *ProxyHandler) executeWithProviderRace(
 
 // ServeHTTP implements http.Handler.
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !ph.responsesIntegrationEnabled() && strings.HasSuffix(strings.TrimSuffix(strings.ToLower(strings.TrimSpace(r.URL.Path)), "/"), "/responses") {
+		http.Error(w, providerpool.ResponsesIntegrationDisabledReason(), http.StatusNotImplemented)
+		return
+	}
 
 	// Handle /v1/models specially
 	if r.URL.Path == "/v1/models" || strings.HasSuffix(r.URL.Path, "/models") {
@@ -1684,6 +1736,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		pr.model = gjson.Get(bodyStr, "model").Str
 		pr.requestedModel = pr.model
 		pr.streaming = gjson.Get(bodyStr, "stream").Bool()
+		pr.promptCacheKey = strings.TrimSpace(gjson.Get(bodyStr, "prompt_cache_key").Str)
 	}
 
 	// Routing-hint models ("auto"/"cloud"/"local") select provider location
@@ -1712,6 +1765,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"streaming", pr.streaming,
 		"mode", routingMode,
 		"mode_hint_from_model", routingModeHint,
+		"has_prompt_cache_key", pr.promptCacheKey != "",
 		"body", ph.requestBodyForLog(pr.body),
 	)
 
@@ -1946,10 +2000,11 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 
 	// Use effective base URL (considers DetectedEndpoint)
 	effectiveBaseURL := provider.EffectiveBaseURL()
-	targetURL := provider.ParsedEffectiveBaseURL()
-	if targetURL == nil {
+	parsedTargetURL := provider.ParsedEffectiveBaseURL()
+	if parsedTargetURL == nil {
 		return nil, fmt.Errorf("invalid provider base URL: %s", effectiveBaseURL)
 	}
+	targetURL := normalizeCustomRelayBaseURLForFormat(provider, parsedTargetURL, effectiveFormat)
 
 	// Copilot: use dynamic endpoint from token response if available
 	// The endpoint is returned from GetCopilotToken and cached in the OAuth manager.
@@ -2019,6 +2074,9 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	// URI-based format enforcement: the final URL path is the source of truth.
 	// Ensure the body format matches the endpoint, regardless of effectiveFormat.
 	finalPath := upstreamURL.Path
+	if !ph.responsesIntegrationEnabled() && strings.HasSuffix(strings.TrimSuffix(strings.ToLower(strings.TrimSpace(finalPath)), "/"), "/responses") {
+		return nil, errors.New(providerpool.ResponsesIntegrationDisabledReason())
+	}
 	if strings.HasSuffix(finalPath, "/responses") {
 		body = ph.injectCachedResponsesInstructions(r, body)
 		body = ph.injectCachedResponsesPreviousIDForRoute(r, route, body)
@@ -2075,7 +2133,8 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 	fullURL := upstreamURL.String()
 	slog.Debug("[proxy] upstream request", "url", fullURL, "method", r.Method, "format", effectiveFormat, "body_len", len(body))
 	upstreamPrevID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
-	slog.Info("[proxy] upstream request prepared",
+	upstreamPromptCacheKey := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
+	upstreamPreparedAttrs := []any{
 		"provider", provider.ID,
 		"url", fullURL,
 		"path", finalPath,
@@ -2084,9 +2143,14 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 		"model", strings.TrimSpace(gjson.GetBytes(body, "model").String()),
 		"shape", upstreamRequestShapeForLog(body),
 		"has_prev_response_id", upstreamPrevID != "",
+		"has_prompt_cache_key", upstreamPromptCacheKey != "",
 		"has_tools", gjson.GetBytes(body, "tools").Exists(),
 		"body_len", len(body),
-	)
+	}
+	if upstreamPromptCacheKey != "" {
+		upstreamPreparedAttrs = append(upstreamPreparedAttrs, "prompt_cache_key", upstreamPromptCacheKey)
+	}
+	slog.Info("[proxy] upstream request prepared", upstreamPreparedAttrs...)
 	slog.Info("[proxy] upstream request body",
 		"url", fullURL,
 		"method", r.Method,
@@ -2179,8 +2243,7 @@ func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.Ro
 			continue
 		}
 		if resp.StatusCode < 400 {
-			ph.providerMemory.RememberModelAlias(pid, burl, failedModel, alias)
-			ph.providerMemory.RememberFormat(pid, burl, string(effectiveFormat))
+			ph.rememberSuccessfulFormat(result.Provider, burl, failedModel, alias, effectiveFormat)
 			if effectiveFormat == providerpool.APIFormatAnthropic {
 				pr.upstreamFormat = ProviderTypeAnthropic
 			}
@@ -2195,7 +2258,7 @@ func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.Ro
 // allFormatsForProvider returns format candidates to try for a provider.
 // Persisted format first, then remembered (in-memory), then provider default, then remaining.
 // Returns (buf, count, known) where known=true means the first format is from detection/memory.
-func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *providerpool.Provider) ([4]providerpool.APIFormat, int, bool) {
+func (ph *ProxyHandler) allFormatsForProvider(pid, burl, requestedModel string, provider *providerpool.Provider) ([4]providerpool.APIFormat, int, bool) {
 	var buf [4]providerpool.APIFormat
 	n := 0
 	known := false
@@ -2217,52 +2280,42 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 		n++
 	}
 
-	// 0. Endpoint-locked format (highest priority).
-	// If the provider base URL already points to a protocol-specific endpoint,
-	// lock to that family and avoid cross-format fallback probing.
-	if endpointFormat, ok := detectEndpointFixedFormat(burl); ok {
+	if endpointFormat, ok := providerEndpointFixedFormat(provider, burl); ok {
 		add(endpointFormat)
 		return buf, n, true
 	}
 
-	// 1. Persisted detected format (highest priority — survives restarts)
-	if provider.DetectedFormat != "" {
+	if isCustomRelayProvider(provider) {
+		if remembered, ok := ph.providerMemory.RecallModelFormat(pid, burl, requestedModel); ok {
+			add(providerpool.APIFormat(remembered))
+			known = true
+		}
+		for _, format := range providerpool.PreferredAPIFormatsForModel(requestedModel) {
+			add(format)
+		}
+		return buf, n, known
+	}
+
+	if provider != nil && provider.DetectedFormat != "" {
 		add(provider.DetectedFormat)
 		known = true
 	}
-
-	// 2. In-memory remembered format (from recent successful requests)
 	if remembered, ok := ph.providerMemory.RecallFormat(pid, burl); ok {
 		add(providerpool.APIFormat(remembered))
 		known = true
 	}
-
-	// 3. Provider default
-	add(provider.APIFormat)
-
-	// Non-third-party providers should use a single canonical family.
-	// Custom/third-party relays may still need cross-family fallback.
+	if provider != nil {
+		add(provider.APIFormat)
+	}
 	if isSingleFormatProvider(provider) {
 		return buf, n, known
 	}
-
-	// 4. Infer format from base URL — if the URL hints at Anthropic, prefer it
 	if strings.HasSuffix(burl, "/messages") || strings.Contains(burl, "anthropic") {
 		add(providerpool.APIFormatAnthropic)
 	}
-
-	// 5. Remaining formats — skip cross-family fallbacks for providers that
-	// definitively only support one API family. Copilot, CloudCode, and Ollama
-	// should stay single-format; probing alternate families just adds
-	// guaranteed 404s and noisy mismatch logs.
 	switch provider.APIFormat {
 	case providerpool.APIFormatCopilot, providerpool.APIFormatCloudCode, providerpool.APIFormatOllama, providerpool.APIFormatResponses:
-		// Single-family providers: no cross-format fallback.
 	default:
-		// Generic/custom relays may front OpenAI, Anthropic, or Responses APIs.
-		// Prefer Responses before Anthropic/OpenAI so Codex-style relays can
-		// recover immediately from legacy /chat/completions mismatches instead of
-		// bailing out on an intermediate auth error.
 		fallbacks := [...]providerpool.APIFormat{
 			providerpool.APIFormatResponses,
 			providerpool.APIFormatAnthropic,
@@ -2281,6 +2334,70 @@ func (ph *ProxyHandler) allFormatsForProvider(pid, burl string, provider *provid
 	}
 
 	return buf, n, known
+}
+
+func isCustomRelayProvider(provider *providerpool.Provider) bool {
+	if provider == nil {
+		return false
+	}
+	return provider.Type == providerpool.ProviderTypeCustom || strings.HasPrefix(provider.ID, "custom-")
+}
+
+func isGenericEndpointLockPath(path string) bool {
+	path = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(path)), "/")
+	switch path {
+	case "/responses", "/v1/responses", "/messages", "/v1/messages":
+		return true
+	default:
+		return false
+	}
+}
+
+func providerEndpointFixedFormat(provider *providerpool.Provider, raw string) (providerpool.APIFormat, bool) {
+	format, ok := detectEndpointFixedFormat(raw)
+	if !ok {
+		return "", false
+	}
+	if !isCustomRelayProvider(provider) {
+		return format, true
+	}
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", false
+	}
+	if isGenericEndpointLockPath(u.Path) {
+		return "", false
+	}
+	return format, true
+}
+
+func normalizeCustomRelayBaseURLForFormat(provider *providerpool.Provider, parsed *url.URL, effectiveFormat providerpool.APIFormat) *url.URL {
+	if parsed == nil || !isCustomRelayProvider(provider) {
+		return parsed
+	}
+	path := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(parsed.Path)), "/")
+	switch path {
+	case "/responses", "/v1/responses":
+		if effectiveFormat == providerpool.APIFormatResponses {
+			return parsed
+		}
+	case "/messages", "/v1/messages":
+		if effectiveFormat == providerpool.APIFormatAnthropic {
+			return parsed
+		}
+	default:
+		return parsed
+	}
+	cloned := *parsed
+	switch path {
+	case "/responses", "/messages":
+		cloned.Path = ""
+		cloned.RawPath = ""
+	case "/v1/responses", "/v1/messages":
+		cloned.Path = "/v1"
+		cloned.RawPath = ""
+	}
+	return &cloned
 }
 
 // detectEndpointFixedFormat infers API format from endpoint-specific base URLs.
@@ -2309,26 +2426,61 @@ func isSingleFormatProvider(provider *providerpool.Provider) bool {
 	if provider == nil {
 		return false
 	}
+	if isCustomRelayProvider(provider) {
+		return false
+	}
 	switch provider.APIFormat {
 	case providerpool.APIFormatCopilot, providerpool.APIFormatCloudCode, providerpool.APIFormatOllama, providerpool.APIFormatResponses:
 		return true
 	}
-	// Explicitly custom providers are third-party and can need format probing/fallback.
-	if provider.Type == providerpool.ProviderTypeCustom || strings.HasPrefix(provider.ID, "custom-") {
-		return false
-	}
-	// For known non-custom provider types, keep a single format.
 	switch provider.Type {
 	case providerpool.ProviderTypeBuiltin, providerpool.ProviderTypePlatform, providerpool.ProviderTypeIDE, providerpool.ProviderTypeTrial, providerpool.ProviderTypeACP, providerpool.ProviderTypeMedia:
 		return true
 	}
-	// Unknown/empty type: keep legacy cross-family fallback behavior.
 	return false
+}
+
+func (ph *ProxyHandler) rememberSuccessfulFormat(provider *providerpool.Provider, baseURL, requestedModel, actualModel string, format providerpool.APIFormat) {
+	if provider == nil || format == "" {
+		return
+	}
+	if isCustomRelayProvider(provider) && strings.TrimSpace(requestedModel) != "" {
+		ph.providerMemory.RememberModelFormat(provider.ID, baseURL, requestedModel, string(format))
+		ph.providerMemory.ForgetFormat(provider.ID, baseURL)
+	} else {
+		ph.providerMemory.RememberFormat(provider.ID, baseURL, string(format))
+	}
+	if actualModel != "" && requestedModel != "" && actualModel != requestedModel {
+		ph.providerMemory.RememberModelAlias(provider.ID, baseURL, requestedModel, actualModel)
+	}
+}
+
+func (ph *ProxyHandler) forgetRememberedFormat(provider *providerpool.Provider, baseURL, requestedModel string) {
+	if provider == nil {
+		return
+	}
+	if isCustomRelayProvider(provider) && strings.TrimSpace(requestedModel) != "" {
+		ph.providerMemory.ForgetModelFormat(provider.ID, baseURL, requestedModel)
+	}
+	ph.providerMemory.ForgetFormat(provider.ID, baseURL)
+}
+
+func shouldPersistDetectedFormatForProvider(provider *providerpool.Provider) bool {
+	if provider == nil {
+		return false
+	}
+	if _, ok := providerEndpointFixedFormat(provider, provider.EffectiveBaseURL()); ok {
+		return true
+	}
+	return !isCustomRelayProvider(provider)
 }
 
 // persistDetectedFormat saves the detected API format to the provider for persistence across restarts.
 // Only updates if the format changed, to avoid unnecessary writes.
 func (ph *ProxyHandler) persistDetectedFormat(provider *providerpool.Provider, format providerpool.APIFormat) {
+	if provider == nil || format == "" || !shouldPersistDetectedFormatForProvider(provider) {
+		return
+	}
 	if provider.DetectedFormat == format {
 		return // already persisted
 	}
@@ -2472,11 +2624,8 @@ func (ph *ProxyHandler) tryEndpointFallback(
 					slog.Info("[proxy] alternate endpoint worked, persisting",
 						"provider", pid, "endpoint", altURL, "format", format, "model", model)
 					ph.persistDetectedEndpoint(provider, altURL)
-					ph.providerMemory.RememberFormat(pid, altURL, string(format))
+					ph.rememberSuccessfulFormat(provider, altURL, pr.model, model, format)
 					ph.persistDetectedFormat(provider, format)
-					if model != pr.model {
-						ph.providerMemory.RememberModelAlias(pid, altURL, pr.model, model)
-					}
 					return resp, format, model, nil
 				}
 
@@ -2594,7 +2743,7 @@ func (ph *ProxyHandler) tryOnProvider(
 		}
 	}
 
-	formatsBuf, nFormats, formatKnown := ph.allFormatsForProvider(pid, burl, result.Provider)
+	formatsBuf, nFormats, formatKnown := ph.allFormatsForProvider(pid, burl, pr.model, result.Provider)
 	allFormats := nFormats // remember full count before truncation
 	if endpointFormat, ok := detectEndpointFixedFormatFromPath(r.URL.Path); ok {
 		formatsBuf[0] = endpointFormat
@@ -2670,7 +2819,7 @@ func (ph *ProxyHandler) tryOnProvider(
 				return nil, "", "", probeErr
 			}
 			if resp.StatusCode < 400 {
-				ph.providerMemory.RememberFormat(pid, burl, string(format))
+				ph.rememberSuccessfulFormat(result.Provider, burl, pr.model, pr.model, format)
 				ph.persistDetectedFormat(result.Provider, format)
 				return resp, format, pr.model, nil
 			}
@@ -2711,17 +2860,30 @@ func (ph *ProxyHandler) tryOnProvider(
 
 			known404ModelNotConfigured := treatKnown404AsModelNotConfigured(result.Provider, formatKnown, statusCode)
 
-			// Format mismatch on fast path — expand to all formats and fall through to general loop.
-			// Exception: some curated providers return generic 404 for unknown models
-			// (e.g. Copilot). In that case, treat it as model-not-configured.
-			if allFormats > 1 && isFormatMismatchError(statusCode, errBody) && !known404ModelNotConfigured {
+			// Request conversion unsupported on fast path should expand to the
+			// remaining format candidates for custom relays instead of bailing out.
+			if allFormats > 1 && isRequestConversionUnsupportedError(statusCode, errBody) {
+				errStr := string(errBody)
+				if len(errStr) > 256 {
+					errStr = errStr[:256]
+				}
+				slog.Warn("[proxy] request conversion unsupported on fast path, expanding to all formats",
+					"provider", pid, "format", format, "model", pr.model, "status", statusCode, "body", errStr)
+				ph.forgetRememberedFormat(result.Provider, burl, pr.model)
+				ph.clearDetectedFormat(result.Provider)
+				nFormats = allFormats
+				lastErr = newRequestConversionUnsupportedError(pr.model, pid, errStr)
+			} else if allFormats > 1 && isFormatMismatchError(statusCode, errBody) && !known404ModelNotConfigured {
+				// Format mismatch on fast path — expand to all formats and fall through to general loop.
+				// Exception: some curated providers return generic 404 for unknown models
+				// (e.g. Copilot). In that case, treat it as model-not-configured.
 				errStr := string(errBody)
 				if len(errStr) > 256 {
 					errStr = errStr[:256]
 				}
 				slog.Warn("[proxy] format mismatch on fast path, expanding to all formats",
 					"provider", pid, "format", format, "model", pr.model)
-				ph.providerMemory.ForgetFormat(pid, burl)
+				ph.forgetRememberedFormat(result.Provider, burl, pr.model)
 				ph.clearDetectedFormat(result.Provider)
 				nFormats = allFormats
 				lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
@@ -2755,7 +2917,7 @@ func (ph *ProxyHandler) tryOnProvider(
 					if allFormats > 1 {
 						slog.Warn("[proxy] request conversion unsupported on fast path, expanding to all formats",
 							"provider", pid, "format", format, "model", pr.model, "status", statusCode, "body", errStr)
-						ph.providerMemory.ForgetFormat(pid, burl)
+						ph.forgetRememberedFormat(result.Provider, burl, pr.model)
 						ph.clearDetectedFormat(result.Provider)
 						nFormats = allFormats
 						lastErr = newRequestConversionUnsupportedError(pr.model, pid, errStr)
@@ -2914,10 +3076,7 @@ func (ph *ProxyHandler) tryOnProvider(
 
 			if resp.StatusCode < 400 {
 				// Success — remember what worked
-				ph.providerMemory.RememberFormat(pid, burl, string(format))
-				if model != pr.model {
-					ph.providerMemory.RememberModelAlias(pid, burl, pr.model, model)
-				}
+				ph.rememberSuccessfulFormat(result.Provider, burl, pr.model, model, format)
 				// Persist detected format to provider (survives restarts)
 				ph.persistDetectedFormat(result.Provider, format)
 				return resp, format, model, nil
@@ -2965,7 +3124,7 @@ func (ph *ProxyHandler) tryOnProvider(
 					"provider", pid, "format", format, "model", model, "status", statusCode, "body", errStr)
 				lastErr = newRequestConversionUnsupportedError(model, pid, errStr)
 				if fi == nFormats-1 && allFormats > nFormats {
-					ph.providerMemory.ForgetFormat(pid, burl)
+					ph.forgetRememberedFormat(result.Provider, burl, pr.model)
 					ph.clearDetectedFormat(result.Provider)
 					nFormats = allFormats
 				}
@@ -2998,7 +3157,7 @@ func (ph *ProxyHandler) tryOnProvider(
 				lastErr = fmt.Errorf("provider returned %d: %s", statusCode, errStr)
 				// If we're on the last format and there are more available, expand
 				if fi == nFormats-1 && allFormats > nFormats {
-					ph.providerMemory.ForgetFormat(pid, burl)
+					ph.forgetRememberedFormat(result.Provider, burl, pr.model)
 					ph.clearDetectedFormat(result.Provider)
 					nFormats = allFormats
 				}
@@ -3830,15 +3989,19 @@ func (ph *ProxyHandler) recordPromptCache(pr *parsedRequest, input, cacheRead, c
 	}
 	ph.promptCacheStats.Record(int(input), int(cacheRead), int(cacheCreation))
 
-	provider := pr.resolvedProvider
-	if provider == "" {
-		provider = pr.resolvedProviderID
+	var provider, model, promptCacheKey string
+	if pr != nil {
+		provider = pr.resolvedProvider
+		if provider == "" {
+			provider = pr.resolvedProviderID
+		}
+		model = pr.resolvedModel
+		if model == "" {
+			model = pr.model
+		}
+		promptCacheKey = pr.promptCacheKey
 	}
-	model := pr.resolvedModel
-	if model == "" {
-		model = pr.model
-	}
-	LogTokenChurn(provider, model, int(input), int(cacheRead), int(cacheCreation))
+	LogTokenChurn(provider, model, promptCacheKey, int(input), int(cacheRead), int(cacheCreation))
 }
 
 func usageMapTokens(usage map[string]interface{}) (int64, int64) {
@@ -4226,6 +4389,30 @@ func (ph *ProxyHandler) copyStreamingResponseWithCapture(w http.ResponseWriter, 
 	return capture.Bytes()
 }
 
+func shouldTreatStreamingProbeAsEmpty(prefix []byte, probeErr error) bool {
+	// No bytes at all: EOF (or nil from broken readers) means an empty stream.
+	if len(prefix) == 0 {
+		return probeErr == nil || errors.Is(probeErr, io.EOF)
+	}
+	// A one-shot stream that only contains DONE carries no assistant content.
+	return errors.Is(probeErr, io.EOF) && isDoneOnlyStreamingPrefix(prefix)
+}
+
+func isDoneOnlyStreamingPrefix(prefix []byte) bool {
+	trimmed := bytes.TrimSpace(prefix)
+	if len(trimmed) == 0 {
+		return false
+	}
+	if bytes.Equal(trimmed, []byte("[DONE]")) {
+		return true
+	}
+	if bytes.HasPrefix(trimmed, []byte("data:")) {
+		payload := bytes.TrimSpace(bytes.TrimPrefix(trimmed, []byte("data:")))
+		return bytes.Equal(payload, []byte("[DONE]"))
+	}
+	return false
+}
+
 // flushWriter wraps a ResponseWriter+Flusher to flush after every Write.
 // This enables io.CopyBuffer to drive the streaming loop efficiently.
 type flushWriter struct {
@@ -4308,12 +4495,21 @@ func isHopByHopHeader(header string) bool {
 // applyModelRouting evaluates the rule engine and model router to potentially
 // swap the requested model to a cheaper/smaller one. Mutates pr.model and pr.body.
 func (ph *ProxyHandler) applyModelRouting(r *http.Request, pr *parsedRequest) {
-	if pr.model == "" || !ph.routingEnabled.Load() {
+	if !ph.routingEnabled.Load() {
+		return
+	}
+	isBackground := ph.modelRouter != nil && ph.modelRouter.IsBackgroundRequest(r)
+
+	// "auto"/"cloud"/"local" are normalized to empty model IDs before this point.
+	// Keep passthrough for normal requests, but allow background requests to route
+	// to a concrete small model via model-router tier downgrade.
+	if strings.TrimSpace(pr.model) == "" && !isBackground {
 		return
 	}
 
 	// 1. Rule engine: condition-based tier routing (header, body size, tool pattern, system tag)
-	if ph.ruleEngine != nil {
+	// Keep rule-engine behavior for explicit model IDs only.
+	if ph.ruleEngine != nil && strings.TrimSpace(pr.model) != "" {
 		req := RouteRequest{
 			Headers:  r.Header,
 			BodySize: len(pr.body),
@@ -4364,16 +4560,23 @@ func (ph *ProxyHandler) applyModelRouting(r *http.Request, pr *parsedRequest) {
 
 	// 2. Model router: family-based routing + background task downgrade
 	if ph.modelRouter != nil {
-		isBackground := ph.modelRouter.IsBackgroundRequest(r)
-		route, err := ph.modelRouter.RouteModel(pr.model, isBackground)
-		if err == nil && route.TargetModel != pr.model {
+		routeModel := strings.TrimSpace(pr.model)
+		if routeModel == "" {
+			routeModel = strings.TrimSpace(pr.requestedModel)
+			if routeModel == "" {
+				routeModel = "auto"
+			}
+		}
+		route, err := ph.modelRouter.RouteModel(routeModel, isBackground)
+		targetModel := strings.TrimSpace(route.TargetModel)
+		if err == nil && targetModel != "" && !strings.EqualFold(targetModel, "auto") && targetModel != pr.model {
 			// Verify the target model is available before swapping
-			if ph.providerPool != nil && ph.providerPool.Router != nil && !ph.providerPool.Router.HasModel(route.TargetModel) {
+			if ph.providerPool != nil && ph.providerPool.Router != nil && !ph.providerPool.Router.HasModel(targetModel) {
 				slog.Debug("[proxy] model router target not available, keeping original",
-					"target", route.TargetModel, "original", pr.model)
+					"target", targetModel, "original", pr.model)
 			} else {
-				pr.model = route.TargetModel
-				pr.body = replaceModelInBody(pr.body, route.TargetModel)
+				pr.model = targetModel
+				pr.body = replaceModelInBody(pr.body, targetModel)
 			}
 		}
 	}

@@ -83,6 +83,21 @@ var thirdPartyFormatCandidates = []formatCandidate{
 	},
 }
 
+func activeThirdPartyFormatCandidates() []formatCandidate {
+	if ResponsesIntegrationEnabled() {
+		return thirdPartyFormatCandidates
+	}
+
+	active := make([]formatCandidate, 0, len(thirdPartyFormatCandidates))
+	for _, candidate := range thirdPartyFormatCandidates {
+		if candidate.format == APIFormatResponses {
+			continue
+		}
+		active = append(active, candidate)
+	}
+	return active
+}
+
 // canonicalAPIFormatForProvider returns the best single API format for built-in/non-third-party providers.
 func canonicalAPIFormatForProvider(provider *Provider) APIFormat {
 	if provider == nil {
@@ -145,8 +160,9 @@ func probeThirdPartyAPIFormat(ctx context.Context, provider *Provider) formatPro
 
 	client := newProbeHTTPClient(provider.SkipTLSVerify)
 
-	results := make([]formatProbeResult, 0, len(thirdPartyFormatCandidates))
-	for _, c := range thirdPartyFormatCandidates {
+	activeCandidates := activeThirdPartyFormatCandidates()
+	results := make([]formatProbeResult, 0, len(activeCandidates))
+	for _, c := range activeCandidates {
 		r := probeCandidate(ctx, client, provider, baseURL, c)
 		if r.foundAnyEndpoint {
 			results = append(results, r)

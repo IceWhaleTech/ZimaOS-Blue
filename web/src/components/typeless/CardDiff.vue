@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardDiff } from '@/types/typeless'
 import { useFullscreen } from '@/composables/useFullscreen'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardDiff
@@ -178,7 +181,7 @@ function getLinePrefix(type: string): string {
           <span class="text-red-600 dark:text-red-400">-{{ stats.removed }}</span>
         </div>
         <!-- Fullscreen hint -->
-        <span class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline" title="Double-click to fullscreen">⤢</span>
+        <span class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline" :title="t('media.fullscreen', 'Full Screen')">⤢</span>
         <!-- View mode toggle -->
         <div class="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           <button
@@ -186,14 +189,14 @@ function getLinePrefix(type: string): string {
             :class="viewMode === 'unified' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'"
             @click.stop="viewMode = 'unified'"
           >
-            Unified
+            {{ t('diffCard.unified', 'Unified') }}
           </button>
           <button
             class="px-3 py-1 text-xs font-medium transition-colors"
             :class="viewMode === 'split' ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'"
             @click.stop="viewMode = 'split'"
           >
-            Split
+            {{ t('diffCard.split', 'Split') }}
           </button>
         </div>
       </div>
@@ -202,10 +205,10 @@ function getLinePrefix(type: string): string {
     <!-- Labels -->
     <div v-if="card.oldLabel || card.newLabel" class="flex border-b border-gray-200 dark:border-gray-700 text-xs">
       <div v-if="viewMode === 'split'" class="flex-1 px-4 py-2 bg-red-50 dark:bg-red-900/10 text-red-700 dark:text-red-300 font-medium">
-        {{ card.oldLabel || 'Original' }}
+        {{ card.oldLabel || t('diffCard.original', 'Original') }}
       </div>
       <div v-if="viewMode === 'split'" class="flex-1 px-4 py-2 bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-300 font-medium border-l border-gray-200 dark:border-gray-700">
-        {{ card.newLabel || 'Modified' }}
+        {{ card.newLabel || t('diffCard.modified', 'Modified') }}
       </div>
     </div>
 

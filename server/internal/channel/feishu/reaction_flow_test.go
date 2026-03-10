@@ -244,3 +244,87 @@ func TestChannel_OnMessageReceive_DisableTypingReaction_DoesNotUseReactionAPI(t 
 		}
 	}
 }
+
+func TestChannel_OnMessageReceive_EmptyHandlerResponseRemovesTypingReaction(t *testing.T) {
+	var (
+		mu    sync.Mutex
+		calls []string
+	)
+	removed := make(chan struct{})
+
+	srv := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/reactions"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"msg":  "ok",
+				"data": map[string]any{"reaction_id": "reaction-1"},
+			})
+		case r.Method == http.MethodDelete && strings.HasSuffix(r.URL.Path, "/reactions/reaction-1"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"msg":  "ok",
+				"data": map[string]any{},
+			})
+			select {
+			case <-removed:
+			default:
+				close(removed)
+			}
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	ch := New(channel.FeishuConfig{
+		Enabled:   true,
+		AppID:     "test-app-id",
+		AppSecret: "test-app-secret",
+	}, zap.NewNop())
+	ch.ctx = context.Background()
+	ch.client = newLarkClient("test-app-id", "test-app-secret")
+	ch.client.baseURL = srv.URL + "/open-apis"
+	ch.client.http = srv.Client()
+	ch.client.token = "test-token"
+	ch.client.tokenExp = time.Now().Add(time.Hour)
+	ch.SetMessageHandler(func(ctx context.Context, msg channel.Message) (string, error) {
+		return "", nil
+	})
+
+	ch.onMessageReceive(context.Background(), json.RawMessage(`{
+		"message": {
+			"message_id": "msg_1",
+			"chat_id": "oc_test_chat",
+			"chat_type": "p2p",
+			"message_type": "text",
+			"content": "{\"text\":\"hello\"}",
+			"parent_id": ""
+		},
+		"sender": {
+			"sender_id": {
+				"open_id": "ou_test_user"
+			}
+		}
+	}`))
+
+	select {
+	case <-removed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for typing reaction removal")
+	}
+
+	mu.Lock()
+	got := append([]string(nil), calls...)
+	mu.Unlock()
+	for _, call := range got {
+		if call == "POST /open-apis/im/v1/messages/msg_1/reply" {
+			t.Fatalf("did not expect reply call for empty handler response, calls: %v", got)
+		}
+	}
+}

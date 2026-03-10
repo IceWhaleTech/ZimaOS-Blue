@@ -98,3 +98,14 @@ func TestDeepResearchSkill_ValidateAcceptsFormatAliases(t *testing.T) {
 		t.Fatalf("format = %q, want %q", got, "xml")
 	}
 }
+
+func TestDeepResearchSkill_ValidateRejectsInvalidRouteMode(t *testing.T) {
+	s := NewDeepResearch()
+	err := s.Validate(map[string]any{
+		"query":      "test deep research",
+		"route_mode": "lab",
+	})
+	if err == nil {
+		t.Fatalf("expected invalid route_mode validation error")
+	}
+}

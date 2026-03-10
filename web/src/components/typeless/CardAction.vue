@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { ActionButton, TypelessCardAction } from '@/types/typeless'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardAction
@@ -26,7 +29,7 @@ function isActionDisabled(action: ActionButton): boolean {
 }
 
 function actionButtonLabel(action: ActionButton): string {
-  return isActionActive(action.id) ? 'Working...' : action.label
+  return isActionActive(action.id) ? t('common.processing', 'Processing...') : action.label
 }
 
 function handleClick(actionId: string, disabled = false) {

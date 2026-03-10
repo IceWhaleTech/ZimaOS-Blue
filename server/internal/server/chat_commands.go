@@ -102,7 +102,6 @@ func (h *ChatHandler) saveConversationCommandState(ctx context.Context, state me
 
 func (h *ChatHandler) clearCommandStateForRoutingChange(ctx context.Context, convID string) {
 	h.clearPreviousResponseID(convID)
-	h.invalidateWarmup(convID)
 }
 
 func (h *ChatHandler) resetConversationForCommand(ctx context.Context, convID string) (int, error) {
@@ -124,7 +123,6 @@ func (h *ChatHandler) resetConversationForCommand(ctx context.Context, convID st
 	h.clearProviderAffinity(convID)
 	h.conversationCache.Invalidate(convID)
 	h.summaryCache.Del(convID)
-	h.invalidateWarmup(convID)
 	return len(ids), nil
 }
 

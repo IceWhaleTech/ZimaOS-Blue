@@ -108,16 +108,16 @@ func TestShouldRecallMemories(t *testing.T) {
 		wantRecall bool
 	}{
 		{
-			name:       "compressed_tier_recalls",
+			name:       "automatic_turn_recalls",
 			msg:        "继续这个方案",
-			tier:       TierCompressedMemory,
+			tier:       TierNoHistory,
 			wantRecall: true,
 		},
 		{
-			name:       "no_history_without_cue_skips",
+			name:       "no_history_without_cue_still_recalls",
 			msg:        "今天天气怎么样",
 			tier:       TierNoHistory,
-			wantRecall: false,
+			wantRecall: true,
 		},
 		{
 			name:       "no_history_with_memory_cue_recalls",
@@ -132,7 +132,7 @@ func TestShouldRecallMemories(t *testing.T) {
 			wantRecall: true,
 		},
 		{
-			name:       "agent_mode_always_recalls",
+			name:       "agent_mode_still_recalls",
 			msg:        "run tests",
 			tier:       TierNoHistory,
 			agentMode:  true,
@@ -160,63 +160,38 @@ func TestShouldRecallMemories(t *testing.T) {
 
 func TestMemoryRecallDecisionReason(t *testing.T) {
 	tests := []struct {
-		name       string
-		msg        string
-		tier       ContextTier
-		agentMode  bool
-		regenerate bool
-		wantRecall bool
-		wantReason MemoryRecallReason
+		name         string
+		msg          string
+		continuation bool
+		regenerate   bool
+		wantRecall   bool
+		wantReason   MemoryRecallReason
 	}{
 		{
 			name:       "regenerate",
 			msg:        "remember this",
-			tier:       TierCompressedMemory,
 			regenerate: true,
 			wantRecall: false,
 			wantReason: MemoryRecallReasonRegenerateSkip,
 		},
 		{
-			name:       "agent_mode",
-			msg:        "hello",
-			tier:       TierNoHistory,
-			agentMode:  true,
-			wantRecall: true,
-			wantReason: MemoryRecallReasonAgentMode,
+			name:         "continuation_skip",
+			msg:          "hello",
+			continuation: true,
+			wantRecall:   false,
+			wantReason:   MemoryRecallReasonContinuationSkip,
 		},
 		{
-			name:       "compressed_tier",
+			name:       "automatic_turn",
 			msg:        "继续",
-			tier:       TierCompressedMemory,
 			wantRecall: true,
-			wantReason: MemoryRecallReasonCompressedTier,
-		},
-		{
-			name:       "memory_cue",
-			msg:        "你还记得我的偏好吗",
-			tier:       TierNoHistory,
-			wantRecall: true,
-			wantReason: MemoryRecallReasonMemoryCue,
-		},
-		{
-			name:       "memory_cue_session_query_capability",
-			msg:        "请把 session query capability 记录到记忆里",
-			tier:       TierNoHistory,
-			wantRecall: true,
-			wantReason: MemoryRecallReasonMemoryCue,
-		},
-		{
-			name:       "default_skip",
-			msg:        "今天天气怎么样",
-			tier:       TierNoHistory,
-			wantRecall: false,
-			wantReason: MemoryRecallReasonDefaultSkip,
+			wantReason: MemoryRecallReasonAutomaticTurn,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotRecall, gotReason := memoryRecallDecision(tt.msg, tt.tier, tt.agentMode, tt.regenerate, MemoryRecallModeBalanced)
+			gotRecall, gotReason := memoryRecallDecision(tt.msg, tt.continuation, tt.regenerate, MemoryRecallModeBalanced)
 			if gotRecall != tt.wantRecall || gotReason != tt.wantReason {
 				t.Fatalf("memoryRecallDecision()=(%v,%s), want (%v,%s)",
 					gotRecall, gotReason, tt.wantRecall, tt.wantReason)
@@ -227,14 +202,14 @@ func TestMemoryRecallDecisionReason(t *testing.T) {
 
 func TestShouldRecallMemories_Mode(t *testing.T) {
 	msg := "继续这个方案"
-	if shouldRecallMemories(msg, TierCompressedMemory, false, false, MemoryRecallModeAggressive) {
-		t.Fatalf("aggressive mode should skip compressed-tier recall without explicit memory cue")
+	if !shouldRecallMemories(msg, TierCompressedMemory, false, false, MemoryRecallModeAggressive) {
+		t.Fatalf("aggressive mode should still recall normal turns")
 	}
 	if !shouldRecallMemories(msg, TierCompressedMemory, false, false, MemoryRecallModeBalanced) {
-		t.Fatalf("balanced mode should recall on compressed tier")
+		t.Fatalf("balanced mode should recall normal turns")
 	}
 	if !shouldRecallMemories("hello", TierCompressedMemory, false, false, MemoryRecallModeQuality) {
-		t.Fatalf("quality mode should recall on compressed tier")
+		t.Fatalf("quality mode should recall normal turns")
 	}
 }
 
@@ -269,12 +244,12 @@ func TestRecallMinScoreForMode(t *testing.T) {
 
 func TestMemoryRecallStats(t *testing.T) {
 	var stats MemoryRecallStats
-	stats.RecordWithSource(true, MemoryRecallReasonCompressedTier, MemoryRecallSourceSend)
-	stats.RecordWithSource(true, MemoryRecallReasonMemoryCue, MemoryRecallSourceSend)
-	stats.RecordWithSource(false, MemoryRecallReasonDefaultSkip, MemoryRecallSourceStream)
+	stats.RecordWithSource(true, MemoryRecallReasonAutomaticTurn, MemoryRecallSourceSend)
+	stats.RecordWithSource(true, MemoryRecallReasonAutomaticTurn, MemoryRecallSourceSend)
+	stats.RecordWithSource(false, MemoryRecallReasonContinuationSkip, MemoryRecallSourceStream)
 	stats.RecordInjectionWithSource(120, MemoryRecallSourceSend)
 	stats.RecordInjectionWithSource(80, MemoryRecallSourceSend)
-	stats.RecordWithSource(false, MemoryRecallReasonDefaultSkip, MemoryRecallSourceIM)
+	stats.RecordWithSource(false, MemoryRecallReasonRegenerateSkip, MemoryRecallSourceIM)
 
 	s := stats.Snapshot()
 	if s.Total != 4 || s.Recalled != 2 || s.Skipped != 2 {
@@ -289,14 +264,14 @@ func TestMemoryRecallStats(t *testing.T) {
 	if s.EstimatedSavedTokens != 200 {
 		t.Fatalf("estimated saved tokens = %d, want 200", s.EstimatedSavedTokens)
 	}
-	if s.ReasonCounts[string(MemoryRecallReasonCompressedTier)] != 1 {
-		t.Fatalf("compressed count = %d, want 1", s.ReasonCounts[string(MemoryRecallReasonCompressedTier)])
+	if s.ReasonCounts[string(MemoryRecallReasonAutomaticTurn)] != 2 {
+		t.Fatalf("automatic_turn count = %d, want 2", s.ReasonCounts[string(MemoryRecallReasonAutomaticTurn)])
 	}
-	if s.ReasonCounts[string(MemoryRecallReasonMemoryCue)] != 1 {
-		t.Fatalf("memory cue count = %d, want 1", s.ReasonCounts[string(MemoryRecallReasonMemoryCue)])
+	if s.ReasonCounts[string(MemoryRecallReasonContinuationSkip)] != 1 {
+		t.Fatalf("continuation_skip count = %d, want 1", s.ReasonCounts[string(MemoryRecallReasonContinuationSkip)])
 	}
-	if s.ReasonCounts[string(MemoryRecallReasonDefaultSkip)] != 2 {
-		t.Fatalf("default skip count = %d, want 2", s.ReasonCounts[string(MemoryRecallReasonDefaultSkip)])
+	if s.ReasonCounts[string(MemoryRecallReasonRegenerateSkip)] != 1 {
+		t.Fatalf("regenerate skip count = %d, want 1", s.ReasonCounts[string(MemoryRecallReasonRegenerateSkip)])
 	}
 
 	send := s.BySource[string(MemoryRecallSourceSend)]
@@ -306,29 +281,28 @@ func TestMemoryRecallStats(t *testing.T) {
 	if send.AvgInjectedTokens != 100 || send.EstimatedSavedTokens != 0 {
 		t.Fatalf("send source token stats %+v", send)
 	}
-	if send.ReasonCounts[string(MemoryRecallReasonCompressedTier)] != 1 ||
-		send.ReasonCounts[string(MemoryRecallReasonMemoryCue)] != 1 {
+	if send.ReasonCounts[string(MemoryRecallReasonAutomaticTurn)] != 2 {
 		t.Fatalf("send source reason counts %+v", send.ReasonCounts)
 	}
 	stream := s.BySource[string(MemoryRecallSourceStream)]
 	if stream.Total != 1 || stream.Skipped != 1 || stream.EstimatedSavedTokens != 0 {
 		t.Fatalf("stream source stats %+v", stream)
 	}
-	if stream.ReasonCounts[string(MemoryRecallReasonDefaultSkip)] != 1 {
+	if stream.ReasonCounts[string(MemoryRecallReasonContinuationSkip)] != 1 {
 		t.Fatalf("stream source reason counts %+v", stream.ReasonCounts)
 	}
 	im := s.BySource[string(MemoryRecallSourceIM)]
 	if im.Total != 1 || im.Skipped != 1 {
 		t.Fatalf("im source stats %+v", im)
 	}
-	if im.ReasonCounts[string(MemoryRecallReasonDefaultSkip)] != 1 {
+	if im.ReasonCounts[string(MemoryRecallReasonRegenerateSkip)] != 1 {
 		t.Fatalf("im source reason counts %+v", im.ReasonCounts)
 	}
 }
 
 func TestMemoryRecallStatsReset(t *testing.T) {
 	var stats MemoryRecallStats
-	stats.RecordWithSource(true, MemoryRecallReasonMemoryCue, MemoryRecallSourceSend)
+	stats.RecordWithSource(true, MemoryRecallReasonAutomaticTurn, MemoryRecallSourceSend)
 	stats.RecordInjectionWithSource(42, MemoryRecallSourceSend)
 	stats.Reset()
 
@@ -752,6 +726,46 @@ func TestBuildSmartContextTierNoHistoryUsesLatestTurnOnly(t *testing.T) {
 	}
 	if got.Messages[0].Role != llm.RoleUser || got.Messages[0].Content != "What is Rust?" {
 		t.Fatalf("latest message = %+v, want user/What is Rust?", got.Messages[0])
+	}
+}
+
+func TestBuildSmartContextTierNoHistoryKeepsRecentRoundsWhenConfigured(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	preloaded := []memory.Message{
+		{Role: "user", Content: "Q1"},
+		{Role: "assistant", Content: "A1"},
+		{Role: "user", Content: "Q2"},
+		{Role: "assistant", Content: "A2"},
+		{Role: "user", Content: "What is Rust?"},
+	}
+
+	got := h.buildSmartContext(context.Background(), smartContextParams{
+		ConvID:                "conv-no-history-recent",
+		UserMessage:           "What is Rust?",
+		NoHistoryRecentRounds: 2,
+		PreloadedMessages:     preloaded,
+	})
+
+	if got.Tier != TierNoHistory {
+		t.Fatalf("tier = %v, want %v", got.Tier, TierNoHistory)
+	}
+	if len(got.Messages) != 3 {
+		t.Fatalf("messages len = %d, want 3", len(got.Messages))
+	}
+	if got.Messages[0].Role != llm.RoleUser || got.Messages[0].Content != "Q2" {
+		t.Fatalf("messages[0] = %+v, want user/Q2", got.Messages[0])
+	}
+	if got.Messages[1].Role != llm.RoleAssistant || got.Messages[1].Content != "A2" {
+		t.Fatalf("messages[1] = %+v, want assistant/A2", got.Messages[1])
+	}
+	if got.Messages[2].Role != llm.RoleUser || got.Messages[2].Content != "What is Rust?" {
+		t.Fatalf("messages[2] = %+v, want user/What is Rust?", got.Messages[2])
 	}
 }
 

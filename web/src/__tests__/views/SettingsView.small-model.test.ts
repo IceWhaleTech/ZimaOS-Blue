@@ -93,9 +93,6 @@ vi.mock('@/api/settings', () => ({
     getSmallModelStatus: vi.fn(),
     downloadSmallModel: vi.fn(),
     cancelSmallModelDownload: vi.fn(),
-    listSoulProposals: vi.fn(),
-    approveSoulProposal: vi.fn(),
-    rejectSoulProposal: vi.fn(),
     getSmallModelStats: vi.fn(),
     resetSmallModelStats: vi.fn(),
   },
@@ -200,20 +197,6 @@ function primeApiMocks() {
     },
   } as never)
   vi.mocked(settingsApi.resetSmallModelStats).mockResolvedValue({ data: { success: true } } as never)
-  vi.mocked(settingsApi.listSoulProposals).mockResolvedValue({
-    data: {
-      proposals: [
-        {
-          id: 'p-1',
-          title: 'Keep tests first',
-          content: 'Always reproduce and add a regression test.',
-          source: 'user-feedback',
-          status: 'pending',
-          created_at: '2026-03-01T00:00:00Z',
-        },
-      ],
-    },
-  } as never)
   vi.mocked(backupApi.list).mockResolvedValue({ data: [] } as never)
   vi.mocked(serviceApi.getInfo).mockResolvedValue({
     data: { installed: false, enabled: false },
@@ -308,14 +291,13 @@ describe('SettingsView small-model controls', () => {
     wrapper.unmount()
   })
 
-  it('triggers SOUL proposal approve/reject actions on memory tab', async () => {
+  it('defaults auto reflection to enabled on memory tab when unset', async () => {
     routeTab = 'memory'
     const pinia = createPinia()
     setActivePinia(pinia)
     const store = useSettingsStore()
 
-    const approveSpy = vi.spyOn(store, 'approveSoulProposal').mockResolvedValue({} as never)
-    const rejectSpy = vi.spyOn(store, 'rejectSoulProposal').mockResolvedValue({} as never)
+    const autoReflectSpy = vi.spyOn(store, 'setAgentAutoReflect').mockResolvedValue()
 
     const wrapper = mount(SettingsView, {
       shallow: true,
@@ -325,13 +307,12 @@ describe('SettingsView small-model controls', () => {
     })
     await flushPromises()
 
-    await wrapper.get('[data-testid="soul-approve-p-1"]').trigger('click')
-    await flushPromises()
-    expect(approveSpy).toHaveBeenCalledWith('p-1')
+    expect(store.agentAutoReflect).toBe(true)
+    expect(wrapper.get('[data-testid="agent-auto-reflect-switch"]').attributes('aria-checked')).toBe('true')
 
-    await wrapper.get('[data-testid="soul-reject-p-1"]').trigger('click')
+    await wrapper.get('[data-testid="agent-auto-reflect-switch"]').trigger('click')
     await flushPromises()
-    expect(rejectSpy).toHaveBeenCalledWith('p-1')
+    expect(autoReflectSpy).toHaveBeenCalledWith(false)
 
     wrapper.unmount()
   })

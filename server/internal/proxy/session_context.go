@@ -5,6 +5,9 @@ import "context"
 type sessionIDKeyType struct{}
 type disableResponsesContinuationKeyType struct{}
 type localeKeyType struct{}
+type backgroundTaskKeyType struct{}
+
+const BackgroundTaskHeader = "X-Background-Task"
 
 // WithSessionID stores the proxy session ID in request context.
 func WithSessionID(ctx context.Context, sessionID string) context.Context {
@@ -38,4 +41,17 @@ func WithLocale(ctx context.Context, locale string) context.Context {
 func LocaleFromContext(ctx context.Context) string {
 	locale, _ := ctx.Value(localeKeyType{}).(string)
 	return locale
+}
+
+// WithBackgroundTask marks a request context as an internal/background task so
+// the proxy can apply background-specific routing policies.
+func WithBackgroundTask(ctx context.Context) context.Context {
+	return context.WithValue(ctx, backgroundTaskKeyType{}, true)
+}
+
+// BackgroundTaskFromContext reports whether the request context is marked as a
+// background/internal task.
+func BackgroundTaskFromContext(ctx context.Context) bool {
+	v, _ := ctx.Value(backgroundTaskKeyType{}).(bool)
+	return v
 }

@@ -4,16 +4,30 @@ import (
 	stdjson "encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 )
+
+func forceProviderPoolReady(pool *providerpool.Pool) {
+	if pool == nil {
+		return
+	}
+	closedCh := make(chan struct{})
+	close(closedCh)
+	field := reflect.ValueOf(pool).Elem().FieldByName("readyCh")
+	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(closedCh))
+}
 
 // --- Provider Memory HA Tests ---
 
@@ -358,11 +372,13 @@ func TestProxyHandler_ModelRoutingHintsCloudLocal(t *testing.T) {
 	router.RebuildCandidates()
 
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
-	ph.SetProviderPool(&providerpool.Pool{
+	pool := &providerpool.Pool{
 		Registry:  registry,
 		Discovery: discovery,
 		Router:    router,
-	})
+	}
+	forceProviderPoolReady(pool)
+	ph.SetProviderPool(pool)
 
 	t.Run("cloud hint routes to cloud provider", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
@@ -414,6 +430,657 @@ func TestProxyHandler_ModelRoutingHintsCloudLocal(t *testing.T) {
 	})
 }
 
+func TestServeHTTP_CustomRelayRemembersFormatPerProviderModel_Smoke(t *testing.T) {
+	const (
+		providerID   = "custom-relay-memory"
+		providerName = "relay-memory-provider"
+		claudeModel  = "claude-sonnet-4-6"
+		codexModel   = "gpt-5.3-codex"
+	)
+
+	var (
+		mu           sync.Mutex
+		counts       = map[string]int{}
+		headerErrors []string
+	)
+
+	key := func(model, path string) string {
+		return model + "|" + path
+	}
+	snapshot := func() map[string]int {
+		mu.Lock()
+		defer mu.Unlock()
+		out := make(map[string]int, len(counts))
+		for k, v := range counts {
+			out[k] = v
+		}
+		return out
+	}
+	delta := func(before map[string]int, model, path string) int {
+		mu.Lock()
+		defer mu.Unlock()
+		return counts[key(model, path)] - before[key(model, path)]
+	}
+	recordHeaderError := func(format string, args ...interface{}) {
+		mu.Lock()
+		defer mu.Unlock()
+		headerErrors = append(headerErrors, fmt.Sprintf(format, args...))
+	}
+
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]interface{}
+		_ = stdjson.Unmarshal(body, &payload)
+		model, _ := payload["model"].(string)
+
+		mu.Lock()
+		counts[key(model, r.URL.Path)]++
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/messages":
+			if got := r.Header.Get("x-api-key"); got != "relay-key" {
+				recordHeaderError("/v1/messages x-api-key = %q, want %q", got, "relay-key")
+			}
+			if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+				recordHeaderError("/v1/messages anthropic-version = %q, want %q", got, "2023-06-01")
+			}
+			if got := r.Header.Get("Authorization"); got != "" {
+				recordHeaderError("/v1/messages Authorization = %q, want empty", got)
+			}
+			if model != claudeModel {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(`{"error":{"message":"Unsupported request body."}}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","content":[{"type":"text","text":"claude ok"}]}`))
+		case "/v1/responses":
+			if gotAuth, gotKey := r.Header.Get("Authorization"), r.Header.Get("x-api-key"); gotAuth != "Bearer relay-key" && gotKey != "relay-key" {
+				recordHeaderError("/v1/responses expected API key auth, got Authorization=%q x-api-key=%q", gotAuth, gotKey)
+			}
+			if model != codexModel {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error":{"message":"not implemented","type":"new_api_error","code":"convert_request_failed"}}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id":"resp_1","object":"response","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"codex ok"}]}]}`))
+		case "/v1/chat/completions":
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"error":{"message":"Unsupported request body."}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer upstream.Close()
+
+	tmpDir, err := os.MkdirTemp("", "proxy-relay-memory-smoke-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, err := providerpool.NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("create storage failed: %v", err)
+	}
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("create registry failed: %v", err)
+	}
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	router := providerpool.NewRouter(registry, discovery, providerpool.RoutingStrategyPriority)
+
+	provider := &providerpool.Provider{
+		ID:        providerID,
+		Name:      providerName,
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   upstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Priority:  100,
+		Location:  providerpool.ProviderLocationCloud,
+		APIFormat: providerpool.APIFormatOpenAI,
+		APIKeys:   []providerpool.APIKey{{ID: "k-relay", Key: "relay-key", Enabled: true}},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider failed: %v", err)
+	}
+	if err := storage.SaveModels(providerID, []*providerpool.Model{
+		{
+			ID:           claudeModel,
+			Name:         claudeModel,
+			ProviderID:   providerID,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, Streaming: true},
+		},
+		{
+			ID:           codexModel,
+			Name:         codexModel,
+			ProviderID:   providerID,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, Streaming: true},
+		},
+	}); err != nil {
+		t.Fatalf("save models failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	pool := &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Router:    router,
+	}
+	forceProviderPoolReady(pool)
+	ph.SetProviderPool(pool)
+
+	send := func(model string) {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+			strings.NewReader(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hi"}]}`, model)))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		ph.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("model %s: expected 200, got %d body=%s", model, rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("X-Actual-Provider"); got != providerName {
+			t.Fatalf("model %s: X-Actual-Provider = %q, want %q", model, got, providerName)
+		}
+	}
+
+	if _, ok := ph.providerMemory.RecallModelFormat(providerID, upstream.URL, claudeModel); ok {
+		t.Fatal("expected claude format memory miss before first request")
+	}
+	if _, ok := ph.providerMemory.RecallModelFormat(providerID, upstream.URL, codexModel); ok {
+		t.Fatal("expected codex format memory miss before first request")
+	}
+
+	beforeClaudeFirst := snapshot()
+	send(claudeModel)
+	if got := delta(beforeClaudeFirst, claudeModel, "/v1/messages"); got != 1 {
+		t.Fatalf("claude first request /v1/messages delta = %d, want 1", got)
+	}
+	if got := delta(beforeClaudeFirst, claudeModel, "/v1/responses"); got != 0 {
+		t.Fatalf("claude first request /v1/responses delta = %d, want 0", got)
+	}
+	if got := delta(beforeClaudeFirst, claudeModel, "/v1/chat/completions"); got != 0 {
+		t.Fatalf("claude first request /v1/chat/completions delta = %d, want 0", got)
+	}
+	if format, ok := ph.providerMemory.RecallModelFormat(providerID, upstream.URL, claudeModel); !ok || format != string(providerpool.APIFormatAnthropic) {
+		t.Fatalf("claude remembered format = %q (ok=%v), want anthropic", format, ok)
+	}
+	if _, ok := ph.providerMemory.RecallModelFormat(providerID, upstream.URL, codexModel); ok {
+		t.Fatal("expected codex format to remain unremembered after claude success")
+	}
+
+	beforeClaudeSecond := snapshot()
+	send(claudeModel)
+	if got := delta(beforeClaudeSecond, claudeModel, "/v1/messages"); got != 1 {
+		t.Fatalf("claude second request /v1/messages delta = %d, want 1", got)
+	}
+	if got := delta(beforeClaudeSecond, claudeModel, "/v1/responses"); got != 0 {
+		t.Fatalf("claude second request /v1/responses delta = %d, want 0", got)
+	}
+	if got := delta(beforeClaudeSecond, claudeModel, "/v1/chat/completions"); got != 0 {
+		t.Fatalf("claude second request /v1/chat/completions delta = %d, want 0", got)
+	}
+
+	beforeCodexFirst := snapshot()
+	send(codexModel)
+	if got := delta(beforeCodexFirst, codexModel, "/v1/responses"); got != 1 {
+		t.Fatalf("codex first request /v1/responses delta = %d, want 1", got)
+	}
+	if got := delta(beforeCodexFirst, codexModel, "/v1/messages"); got != 0 {
+		t.Fatalf("codex first request /v1/messages delta = %d, want 0", got)
+	}
+	if got := delta(beforeCodexFirst, codexModel, "/v1/chat/completions"); got != 0 {
+		t.Fatalf("codex first request /v1/chat/completions delta = %d, want 0", got)
+	}
+	if format, ok := ph.providerMemory.RecallModelFormat(providerID, upstream.URL, codexModel); !ok || format != string(providerpool.APIFormatResponses) {
+		t.Fatalf("codex remembered format = %q (ok=%v), want responses", format, ok)
+	}
+	if format, ok := ph.providerMemory.RecallModelFormat(providerID, upstream.URL, claudeModel); !ok || format != string(providerpool.APIFormatAnthropic) {
+		t.Fatalf("claude remembered format after codex request = %q (ok=%v), want anthropic", format, ok)
+	}
+
+	beforeCodexSecond := snapshot()
+	send(codexModel)
+	if got := delta(beforeCodexSecond, codexModel, "/v1/responses"); got != 1 {
+		t.Fatalf("codex second request /v1/responses delta = %d, want 1", got)
+	}
+	if got := delta(beforeCodexSecond, codexModel, "/v1/messages"); got != 0 {
+		t.Fatalf("codex second request /v1/messages delta = %d, want 0", got)
+	}
+	if got := delta(beforeCodexSecond, codexModel, "/v1/chat/completions"); got != 0 {
+		t.Fatalf("codex second request /v1/chat/completions delta = %d, want 0", got)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(headerErrors) > 0 {
+		t.Fatalf("unexpected upstream auth headers:\n%s", strings.Join(headerErrors, "\n"))
+	}
+}
+
+func TestServeHTTP_CustomRelayDoesNotRememberFormatUntilFirstSuccess_Smoke(t *testing.T) {
+	const (
+		providerID   = "custom-relay-fail-then-success"
+		providerName = "relay-fail-then-success"
+		modelID      = "claude-sonnet-4-6"
+	)
+
+	var (
+		mu           sync.Mutex
+		counts       = map[string]int{}
+		headerErrors []string
+		phase        atomic.Int32
+	)
+
+	snapshot := func() map[string]int {
+		mu.Lock()
+		defer mu.Unlock()
+		out := make(map[string]int, len(counts))
+		for k, v := range counts {
+			out[k] = v
+		}
+		return out
+	}
+	delta := func(before map[string]int, path string) int {
+		mu.Lock()
+		defer mu.Unlock()
+		return counts[path] - before[path]
+	}
+	recordHeaderError := func(format string, args ...interface{}) {
+		mu.Lock()
+		defer mu.Unlock()
+		headerErrors = append(headerErrors, fmt.Sprintf(format, args...))
+	}
+
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]interface{}
+		_ = stdjson.Unmarshal(body, &payload)
+		model, _ := payload["model"].(string)
+
+		mu.Lock()
+		counts[r.URL.Path]++
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		if model != modelID {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"message":"unknown model"}}`))
+			return
+		}
+
+		switch r.URL.Path {
+		case "/v1/messages":
+			if gotAuth, gotKey := r.Header.Get("Authorization"), r.Header.Get("x-api-key"); gotAuth == "" && gotKey == "" {
+				recordHeaderError("/v1/messages expected some API key auth, got Authorization=%q x-api-key=%q", gotAuth, gotKey)
+			}
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"error":{"message":"Unsupported request body."}}`))
+		case "/v1/chat/completions":
+			if gotAuth, gotKey := r.Header.Get("Authorization"), r.Header.Get("x-api-key"); gotAuth == "" && gotKey == "" {
+				recordHeaderError("/v1/chat/completions expected some API key auth, got Authorization=%q x-api-key=%q", gotAuth, gotKey)
+			}
+			if phase.Load() == 0 {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(`{"error":{"message":"Unsupported request body."}}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id":"chatcmpl-1","object":"chat.completion","choices":[{"message":{"role":"assistant","content":"openai ok"}}]}`))
+		case "/v1/responses":
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"error":{"message":"Unsupported request body."}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer upstream.Close()
+
+	tmpDir, err := os.MkdirTemp("", "proxy-relay-fail-then-success-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, err := providerpool.NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("create storage failed: %v", err)
+	}
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("create registry failed: %v", err)
+	}
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	router := providerpool.NewRouter(registry, discovery, providerpool.RoutingStrategyPriority)
+
+	provider := &providerpool.Provider{
+		ID:        providerID,
+		Name:      providerName,
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   upstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Priority:  100,
+		Location:  providerpool.ProviderLocationCloud,
+		APIFormat: providerpool.APIFormatOpenAI,
+		APIKeys:   []providerpool.APIKey{{ID: "k-relay", Key: "relay-key", Enabled: true}},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider failed: %v", err)
+	}
+	if err := storage.SaveModels(providerID, []*providerpool.Model{{
+		ID:           modelID,
+		Name:         modelID,
+		ProviderID:   providerID,
+		Enabled:      true,
+		Capabilities: providerpool.ModelCapabilities{Chat: true, Streaming: true},
+	}}); err != nil {
+		t.Fatalf("save models failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), NewFailoverHandler(&FailoverConfig{Enabled: false}, nil))
+	pool := &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Router:    router,
+	}
+	forceProviderPoolReady(pool)
+	ph.SetProviderPool(pool)
+	time.Sleep(200 * time.Millisecond)
+
+	send := func(wantStatus int) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+			strings.NewReader(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hi"}]}`, modelID)))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		ph.ServeHTTP(rec, req)
+		if rec.Code != wantStatus {
+			t.Fatalf("expected %d, got %d body=%s", wantStatus, rec.Code, rec.Body.String())
+		}
+		return rec
+	}
+
+	beforeFail := snapshot()
+	failureRec := send(http.StatusUnprocessableEntity)
+	if got := delta(beforeFail, "/v1/messages"); got != 1 {
+		t.Fatalf("first failed request /v1/messages delta = %d, want 1", got)
+	}
+	if got := delta(beforeFail, "/v1/chat/completions"); got != 1 {
+		t.Fatalf("first failed request /v1/chat/completions delta = %d, want 1", got)
+	}
+	if got := delta(beforeFail, "/v1/responses"); got != 1 {
+		t.Fatalf("first failed request /v1/responses delta = %d, want 1", got)
+	}
+	if _, ok := ph.providerMemory.RecallModelFormat(providerID, upstream.URL, modelID); ok {
+		t.Fatalf("expected no model format memory after first failure, body=%s", failureRec.Body.String())
+	}
+	if _, ok := ph.providerMemory.RecallFormat(providerID, upstream.URL); ok {
+		t.Fatal("expected no provider format memory after first failure")
+	}
+
+	phase.Store(1)
+	beforeSuccess := snapshot()
+	successRec := send(http.StatusOK)
+	if got := successRec.Header().Get("X-Actual-Provider"); got != providerName {
+		t.Fatalf("second request X-Actual-Provider = %q, want %q", got, providerName)
+	}
+	if got := delta(beforeSuccess, "/v1/messages"); got != 1 {
+		t.Fatalf("second request /v1/messages delta = %d, want 1", got)
+	}
+	if got := delta(beforeSuccess, "/v1/chat/completions"); got != 1 {
+		t.Fatalf("second request /v1/chat/completions delta = %d, want 1", got)
+	}
+	if got := delta(beforeSuccess, "/v1/responses"); got != 0 {
+		t.Fatalf("second request /v1/responses delta = %d, want 0", got)
+	}
+	if format, ok := ph.providerMemory.RecallModelFormat(providerID, upstream.URL, modelID); !ok || format != string(providerpool.APIFormatOpenAI) {
+		t.Fatalf("remembered model format after first success = %q (ok=%v), want openai", format, ok)
+	}
+	if _, ok := ph.providerMemory.RecallFormat(providerID, upstream.URL); ok {
+		t.Fatal("expected custom relay to keep provider-scoped format memory empty after success")
+	}
+
+	phase.Store(2)
+	beforeRemembered := snapshot()
+	rememberedRec := send(http.StatusOK)
+	if got := rememberedRec.Header().Get("X-Actual-Provider"); got != providerName {
+		t.Fatalf("third request X-Actual-Provider = %q, want %q", got, providerName)
+	}
+	if got := delta(beforeRemembered, "/v1/messages"); got != 0 {
+		t.Fatalf("remembered request /v1/messages delta = %d, want 0", got)
+	}
+	if got := delta(beforeRemembered, "/v1/chat/completions"); got != 1 {
+		t.Fatalf("remembered request /v1/chat/completions delta = %d, want 1", got)
+	}
+	if got := delta(beforeRemembered, "/v1/responses"); got != 0 {
+		t.Fatalf("remembered request /v1/responses delta = %d, want 0", got)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(headerErrors) > 0 {
+		t.Fatalf("unexpected upstream auth headers:\n%s", strings.Join(headerErrors, "\n"))
+	}
+}
+
+func TestServeHTTP_CustomRelayModelFailureDoesNotPolluteOtherRememberedFormat_Smoke(t *testing.T) {
+	const (
+		providerID      = "custom-relay-model-isolation"
+		providerName    = "relay-model-isolation"
+		rememberedModel = "claude-sonnet-4-6"
+		failingModel    = "claude-haiku-4-5"
+	)
+
+	var (
+		mu           sync.Mutex
+		counts       = map[string]int{}
+		headerErrors []string
+	)
+
+	key := func(model, path string) string {
+		return model + "|" + path
+	}
+	snapshot := func() map[string]int {
+		mu.Lock()
+		defer mu.Unlock()
+		out := make(map[string]int, len(counts))
+		for k, v := range counts {
+			out[k] = v
+		}
+		return out
+	}
+	delta := func(before map[string]int, model, path string) int {
+		mu.Lock()
+		defer mu.Unlock()
+		return counts[key(model, path)] - before[key(model, path)]
+	}
+	recordHeaderError := func(format string, args ...interface{}) {
+		mu.Lock()
+		defer mu.Unlock()
+		headerErrors = append(headerErrors, fmt.Sprintf(format, args...))
+	}
+
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]interface{}
+		_ = stdjson.Unmarshal(body, &payload)
+		model, _ := payload["model"].(string)
+
+		mu.Lock()
+		counts[key(model, r.URL.Path)]++
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/messages":
+			if gotAuth, gotKey := r.Header.Get("Authorization"), r.Header.Get("x-api-key"); gotAuth == "" && gotKey == "" {
+				recordHeaderError("/v1/messages expected some API key auth, got Authorization=%q x-api-key=%q", gotAuth, gotKey)
+			}
+			if model != rememberedModel {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(`{"error":{"message":"Unsupported request body."}}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","content":[{"type":"text","text":"remembered ok"}]}`))
+		case "/v1/chat/completions":
+			if gotAuth, gotKey := r.Header.Get("Authorization"), r.Header.Get("x-api-key"); gotAuth == "" && gotKey == "" {
+				recordHeaderError("/v1/chat/completions expected some API key auth, got Authorization=%q x-api-key=%q", gotAuth, gotKey)
+			}
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"error":{"message":"Unsupported request body."}}`))
+		case "/v1/responses":
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"error":{"message":"Unsupported request body."}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer upstream.Close()
+
+	tmpDir, err := os.MkdirTemp("", "proxy-relay-model-isolation-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, err := providerpool.NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("create storage failed: %v", err)
+	}
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("create registry failed: %v", err)
+	}
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	router := providerpool.NewRouter(registry, discovery, providerpool.RoutingStrategyPriority)
+
+	provider := &providerpool.Provider{
+		ID:        providerID,
+		Name:      providerName,
+		Type:      providerpool.ProviderTypeCustom,
+		BaseURL:   upstream.URL,
+		Enabled:   true,
+		Status:    providerpool.ProviderStatusActive,
+		Priority:  100,
+		Location:  providerpool.ProviderLocationCloud,
+		APIFormat: providerpool.APIFormatOpenAI,
+		APIKeys:   []providerpool.APIKey{{ID: "k-relay", Key: "relay-key", Enabled: true}},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider failed: %v", err)
+	}
+	if err := storage.SaveModels(providerID, []*providerpool.Model{
+		{
+			ID:           rememberedModel,
+			Name:         rememberedModel,
+			ProviderID:   providerID,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, Streaming: true},
+		},
+		{
+			ID:           failingModel,
+			Name:         failingModel,
+			ProviderID:   providerID,
+			Enabled:      true,
+			Capabilities: providerpool.ModelCapabilities{Chat: true, Streaming: true},
+		},
+	}); err != nil {
+		t.Fatalf("save models failed: %v", err)
+	}
+	router.RebuildCandidates()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), NewFailoverHandler(&FailoverConfig{Enabled: false}, nil))
+	pool := &providerpool.Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Router:    router,
+	}
+	forceProviderPoolReady(pool)
+	ph.SetProviderPool(pool)
+	time.Sleep(200 * time.Millisecond)
+
+	send := func(model string, wantStatus int) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+			strings.NewReader(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hi"}]}`, model)))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		ph.ServeHTTP(rec, req)
+		if rec.Code != wantStatus {
+			t.Fatalf("model %s: expected %d, got %d body=%s", model, wantStatus, rec.Code, rec.Body.String())
+		}
+		return rec
+	}
+
+	beforeRememberedWarm := snapshot()
+	firstRemembered := send(rememberedModel, http.StatusOK)
+	if got := firstRemembered.Header().Get("X-Actual-Provider"); got != providerName {
+		t.Fatalf("remembered model first request provider = %q, want %q", got, providerName)
+	}
+	if got := delta(beforeRememberedWarm, rememberedModel, "/v1/messages"); got != 1 {
+		t.Fatalf("remembered model first request /v1/messages delta = %d, want 1", got)
+	}
+	if got := delta(beforeRememberedWarm, rememberedModel, "/v1/chat/completions"); got != 0 {
+		t.Fatalf("remembered model first request /v1/chat/completions delta = %d, want 0", got)
+	}
+	if got := delta(beforeRememberedWarm, rememberedModel, "/v1/responses"); got != 0 {
+		t.Fatalf("remembered model first request /v1/responses delta = %d, want 0", got)
+	}
+	if format, ok := ph.providerMemory.RecallModelFormat(providerID, upstream.URL, rememberedModel); !ok || format != string(providerpool.APIFormatAnthropic) {
+		t.Fatalf("remembered model format = %q (ok=%v), want anthropic", format, ok)
+	}
+
+	beforeFailing := snapshot()
+	failingRec := send(failingModel, http.StatusUnprocessableEntity)
+	if got := delta(beforeFailing, failingModel, "/v1/messages"); got != 1 {
+		t.Fatalf("failing model /v1/messages delta = %d, want 1", got)
+	}
+	if got := delta(beforeFailing, failingModel, "/v1/chat/completions"); got != 1 {
+		t.Fatalf("failing model /v1/chat/completions delta = %d, want 1", got)
+	}
+	if got := delta(beforeFailing, failingModel, "/v1/responses"); got != 1 {
+		t.Fatalf("failing model /v1/responses delta = %d, want 1", got)
+	}
+	if _, ok := ph.providerMemory.RecallModelFormat(providerID, upstream.URL, failingModel); ok {
+		t.Fatalf("expected failing model to remain unremembered, body=%s", failingRec.Body.String())
+	}
+	if format, ok := ph.providerMemory.RecallModelFormat(providerID, upstream.URL, rememberedModel); !ok || format != string(providerpool.APIFormatAnthropic) {
+		t.Fatalf("remembered model format after other model failure = %q (ok=%v), want anthropic", format, ok)
+	}
+
+	beforeRememberedAgain := snapshot()
+	secondRemembered := send(rememberedModel, http.StatusOK)
+	if got := secondRemembered.Header().Get("X-Actual-Provider"); got != providerName {
+		t.Fatalf("remembered model second request provider = %q, want %q", got, providerName)
+	}
+	if got := delta(beforeRememberedAgain, rememberedModel, "/v1/messages"); got != 1 {
+		t.Fatalf("remembered model second request /v1/messages delta = %d, want 1", got)
+	}
+	if got := delta(beforeRememberedAgain, rememberedModel, "/v1/chat/completions"); got != 0 {
+		t.Fatalf("remembered model second request /v1/chat/completions delta = %d, want 0", got)
+	}
+	if got := delta(beforeRememberedAgain, rememberedModel, "/v1/responses"); got != 0 {
+		t.Fatalf("remembered model second request /v1/responses delta = %d, want 0", got)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(headerErrors) > 0 {
+		t.Fatalf("unexpected upstream auth headers:\n%s", strings.Join(headerErrors, "\n"))
+	}
+}
+
 func TestAllFormatsForProvider_CopilotStaysSingleFormat(t *testing.T) {
 	ph := NewProxyHandler(nil, nil, nil)
 	pid := "github-copilot"
@@ -424,7 +1091,7 @@ func TestAllFormatsForProvider_CopilotStaysSingleFormat(t *testing.T) {
 		APIFormat: providerpool.APIFormatCopilot,
 	}
 
-	formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+	formats, n, known := ph.allFormatsForProvider(pid, burl, "", provider)
 	if known {
 		t.Fatal("expected known=false without detected/remembered format")
 	}
@@ -446,7 +1113,7 @@ func TestAllFormatsForProvider_CloudCodeStaysSingleFormat(t *testing.T) {
 		APIFormat: providerpool.APIFormatCloudCode,
 	}
 
-	formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+	formats, n, known := ph.allFormatsForProvider(pid, burl, "", provider)
 	if known {
 		t.Fatal("expected known=false without detected/remembered format")
 	}
@@ -464,18 +1131,55 @@ func TestAllFormatsForProvider_OpenAIKeepsCrossFamilyFallback(t *testing.T) {
 	burl := "https://api.example.com/v1"
 	provider := &providerpool.Provider{
 		ID:        pid,
+		Type:      providerpool.ProviderTypeCustom,
 		BaseURL:   burl,
 		APIFormat: providerpool.APIFormatOpenAI,
 	}
 
-	formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+	formats, n, known := ph.allFormatsForProvider(pid, burl, "gpt-5.1", provider)
 	if known {
 		t.Fatal("expected known=false without detected/remembered format")
 	}
 	if n != 3 {
 		t.Fatalf("expected 3 formats for generic openai provider, got %d", n)
 	}
-	if formats[0] != providerpool.APIFormatOpenAI || formats[1] != providerpool.APIFormatResponses || formats[2] != providerpool.APIFormatAnthropic {
+	if formats[0] != providerpool.APIFormatOpenAI || formats[1] != providerpool.APIFormatAnthropic || formats[2] != providerpool.APIFormatResponses {
+		t.Fatalf("unexpected format order: [%q %q %q]", formats[0], formats[1], formats[2])
+	}
+}
+
+func TestAllFormatsForProvider_CustomClaudePrefersAnthropic(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+	pid := "generic-claude"
+	burl := "https://relay.example.com"
+	provider := &providerpool.Provider{ID: pid, Type: providerpool.ProviderTypeCustom, BaseURL: burl, APIFormat: providerpool.APIFormatOpenAI}
+
+	formats, n, known := ph.allFormatsForProvider(pid, burl, "claude-sonnet-4-6", provider)
+	if known {
+		t.Fatal("expected known=false without remembered model format")
+	}
+	if n != 3 {
+		t.Fatalf("expected 3 formats, got %d", n)
+	}
+	if formats[0] != providerpool.APIFormatAnthropic || formats[1] != providerpool.APIFormatOpenAI || formats[2] != providerpool.APIFormatResponses {
+		t.Fatalf("unexpected format order: [%q %q %q]", formats[0], formats[1], formats[2])
+	}
+}
+
+func TestAllFormatsForProvider_CustomCodexPrefersResponses(t *testing.T) {
+	ph := NewProxyHandler(nil, nil, nil)
+	pid := "generic-codex"
+	burl := "https://relay.example.com"
+	provider := &providerpool.Provider{ID: pid, Type: providerpool.ProviderTypeCustom, BaseURL: burl, APIFormat: providerpool.APIFormatOpenAI}
+
+	formats, n, known := ph.allFormatsForProvider(pid, burl, "gpt-5.3-codex", provider)
+	if known {
+		t.Fatal("expected known=false without remembered model format")
+	}
+	if n != 3 {
+		t.Fatalf("expected 3 formats, got %d", n)
+	}
+	if formats[0] != providerpool.APIFormatResponses || formats[1] != providerpool.APIFormatOpenAI || formats[2] != providerpool.APIFormatAnthropic {
 		t.Fatalf("unexpected format order: [%q %q %q]", formats[0], formats[1], formats[2])
 	}
 }
@@ -527,11 +1231,11 @@ func TestTryOnProvider_LegacyProtocolMismatchPrefersResponsesBeforeAnthropic(t *
 	if format != providerpool.APIFormatResponses {
 		t.Fatalf("format = %q, want %q", format, providerpool.APIFormatResponses)
 	}
-	if len(paths) != 2 {
-		t.Fatalf("expected exactly 2 upstream attempts, got %d (%v)", len(paths), paths)
+	if len(paths) != 1 {
+		t.Fatalf("expected exactly 1 upstream attempt, got %d (%v)", len(paths), paths)
 	}
-	if paths[0] != "/v1/chat/completions" || paths[1] != "/v1/responses" {
-		t.Fatalf("expected chat/completions then responses, got %v", paths)
+	if paths[0] != "/v1/responses" {
+		t.Fatalf("expected responses-first attempt, got %v", paths)
 	}
 }
 
@@ -548,7 +1252,7 @@ func TestAllFormatsForProvider_ResponsesEndpointLocksOpenAI(t *testing.T) {
 	provider.DetectedFormat = providerpool.APIFormatAnthropic
 	ph.providerMemory.RememberFormat(pid, burl, "anthropic")
 
-	formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+	formats, n, known := ph.allFormatsForProvider(pid, burl, "gpt-5.3-codex", provider)
 	if !known {
 		t.Fatal("expected known=true for endpoint-locked format")
 	}
@@ -577,7 +1281,7 @@ func TestAllFormatsForProvider_AnthropicEndpointLocksAnthropic(t *testing.T) {
 		provider.DetectedFormat = providerpool.APIFormatOpenAI
 		ph.providerMemory.RememberFormat(pid, burl, "openai")
 
-		formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+		formats, n, known := ph.allFormatsForProvider(pid, burl, "claude-sonnet-4-6", provider)
 		if !known {
 			t.Fatalf("expected known=true for endpoint-locked format on %s", burl)
 		}
@@ -625,7 +1329,7 @@ func TestAllFormatsForProvider_BuiltinSingleFormat(t *testing.T) {
 		APIFormat: providerpool.APIFormatAnthropic,
 	}
 
-	formats, n, known := ph.allFormatsForProvider(pid, burl, provider)
+	formats, n, known := ph.allFormatsForProvider(pid, burl, "claude-sonnet-4-6", provider)
 	if !known {
 		t.Fatal("expected known=true for endpoint-locked builtin provider")
 	}
@@ -1169,6 +1873,7 @@ func TestTryOnProvider_SuccessRemembersFormatAndModel(t *testing.T) {
 	result := &providerpool.RouteResult{
 		Provider: &providerpool.Provider{
 			ID:        pid,
+			Type:      providerpool.ProviderTypeCustom,
 			BaseURL:   upstream.URL,
 			APIFormat: providerpool.APIFormatOpenAI,
 		},
@@ -1197,13 +1902,15 @@ func TestTryOnProvider_SuccessRemembersFormatAndModel(t *testing.T) {
 		t.Errorf("expected format openai, got %q", usedFormat)
 	}
 
-	// Verify format was remembered
-	format, ok := ph.providerMemory.RecallFormat(pid, upstream.URL)
+	format, ok := ph.providerMemory.RecallModelFormat(pid, upstream.URL, "gpt-4")
 	if !ok {
-		t.Fatal("expected format to be remembered")
+		t.Fatal("expected model-scoped format to be remembered")
 	}
 	if format != string(providerpool.APIFormatOpenAI) {
-		t.Errorf("expected remembered format 'openai', got %q", format)
+		t.Errorf("expected remembered model format 'openai', got %q", format)
+	}
+	if _, ok := ph.providerMemory.RecallFormat(pid, upstream.URL); ok {
+		t.Fatal("expected custom provider not to persist provider-scoped format memory")
 	}
 }
 
@@ -1441,13 +2148,11 @@ func TestIsRequestConversionUnsupportedError(t *testing.T) {
 func TestTryOnProvider_FormatMismatch422_ExpandsFormats(t *testing.T) {
 	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// OpenAI path → 422 (format mismatch)
 		if strings.Contains(r.URL.Path, "chat/completions") {
 			w.WriteHeader(422)
 			w.Write([]byte(`{"error":{"message":"Unsupported request body."}}`))
 			return
 		}
-		// Anthropic path → success
 		w.WriteHeader(200)
 		w.Write([]byte(`{"id":"msg_1","type":"message","content":[{"type":"text","text":"ok"}]}`))
 	}))
@@ -1455,13 +2160,14 @@ func TestTryOnProvider_FormatMismatch422_ExpandsFormats(t *testing.T) {
 
 	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
 	pid := "format-mismatch-provider"
+	modelID := "claude-sonnet-4-5-20250514"
 
-	// Pre-remember openai format (wrong) so formatKnown=true, nFormats=1
-	ph.providerMemory.RememberFormat(pid, upstream.URL, "openai")
+	ph.providerMemory.RememberModelFormat(pid, upstream.URL, modelID, "openai")
 
 	result := &providerpool.RouteResult{
 		Provider: &providerpool.Provider{
 			ID:        pid,
+			Type:      providerpool.ProviderTypeCustom,
 			BaseURL:   upstream.URL,
 			APIFormat: providerpool.APIFormatOpenAI,
 		},
@@ -1470,7 +2176,7 @@ func TestTryOnProvider_FormatMismatch422_ExpandsFormats(t *testing.T) {
 
 	pr := &parsedRequest{
 		body:  []byte(`{"model":"claude-sonnet-4-5-20250514","messages":[{"role":"user","content":"hi"}]}`),
-		model: "claude-sonnet-4-5-20250514",
+		model: modelID,
 	}
 
 	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
@@ -1486,13 +2192,73 @@ func TestTryOnProvider_FormatMismatch422_ExpandsFormats(t *testing.T) {
 		t.Errorf("expected anthropic format after fallback, got %q", usedFormat)
 	}
 
-	// Verify the correct format is now remembered (anthropic, not openai)
-	format, ok := ph.providerMemory.RecallFormat(pid, upstream.URL)
+	format, ok := ph.providerMemory.RecallModelFormat(pid, upstream.URL, modelID)
 	if !ok {
-		t.Fatal("expected format to be remembered after successful fallback")
+		t.Fatal("expected model-scoped format to be remembered after successful fallback")
 	}
 	if format != string(providerpool.APIFormatAnthropic) {
-		t.Errorf("expected remembered format 'anthropic', got %q", format)
+		t.Errorf("expected remembered model format 'anthropic', got %q", format)
+	}
+	if _, ok := ph.providerMemory.RecallFormat(pid, upstream.URL); ok {
+		t.Fatal("expected provider-scoped format memory to stay empty for custom relays")
+	}
+}
+
+func TestTryOnProvider_CustomResponsesLockSelfHealsClaude(t *testing.T) {
+	var paths []string
+	upstream := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/responses":
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error":{"message":"not implemented","type":"new_api_error","code":"convert_request_failed"}}`))
+		case "/v1/messages":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"id":"msg_1","type":"message","content":[{"type":"text","text":"ok"}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer upstream.Close()
+
+	ph := NewProxyHandler(nil, NewConnectionPool(DefaultConnectionConfig()), nil)
+	pid := "claude-relay"
+	baseURL := upstream.URL + "/v1/responses"
+	modelID := "claude-sonnet-4-6"
+	ph.providerMemory.RememberModelFormat(pid, baseURL, modelID, "responses")
+
+	result := &providerpool.RouteResult{
+		Provider: &providerpool.Provider{
+			ID:        pid,
+			Type:      providerpool.ProviderTypeCustom,
+			BaseURL:   baseURL,
+			APIFormat: providerpool.APIFormatResponses,
+		},
+		APIKey: &providerpool.APIKey{Key: "test-key"},
+	}
+	pr := &parsedRequest{
+		body:  []byte(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"hi"}]}`),
+		model: modelID,
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp, usedFormat, _, err := ph.tryOnProvider(r, result, pr)
+	if err != nil {
+		t.Fatalf("expected custom relay to self-heal, got error: %v", err)
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if usedFormat != providerpool.APIFormatAnthropic {
+		t.Fatalf("usedFormat = %q, want %q", usedFormat, providerpool.APIFormatAnthropic)
+	}
+	if len(paths) != 2 || paths[0] != "/v1/responses" || paths[1] != "/v1/messages" {
+		t.Fatalf("expected responses then anthropic self-heal, got %v", paths)
+	}
+	format, ok := ph.providerMemory.RecallModelFormat(pid, baseURL, modelID)
+	if !ok || format != string(providerpool.APIFormatAnthropic) {
+		t.Fatalf("expected remembered model format anthropic, got %q (ok=%v)", format, ok)
 	}
 }
 
@@ -1586,11 +2352,11 @@ func TestTryOnProvider_AllFormatsMismatch_SkipsAliases(t *testing.T) {
 		t.Fatal("expected error when all formats mismatch")
 	}
 
-	// Should only try 2 formats (openai + anthropic) for the first model,
-	// then skip remaining aliases. Without the fix, it would try 2 × nModels.
+	// Should only try all request formats for the first model, then skip
+	// remaining aliases. Without the fix, it would multiply by alias count.
 	calls := callCount.Load()
-	if calls > 2 {
-		t.Errorf("expected at most 2 upstream calls (all formats for first model), got %d", calls)
+	if calls > 3 {
+		t.Errorf("expected at most 3 upstream calls (all formats for first model), got %d", calls)
 	}
 }
 

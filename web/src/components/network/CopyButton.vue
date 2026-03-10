@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   text: string
@@ -55,7 +58,7 @@ const iconSizes = {
       'focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800',
       copied ? 'text-green-500 dark:text-green-400' : '',
     ]"
-    :title="copied ? 'Copied!' : 'Copy to clipboard'"
+    :title="copied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy')"
     @click="copy"
   >
     <!-- Copy icon -->

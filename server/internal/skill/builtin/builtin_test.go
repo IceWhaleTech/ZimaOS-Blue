@@ -11,6 +11,7 @@ func TestRegisterAll(t *testing.T) {
 		NewPlanCreate(),
 		NewPlanUpdate(),
 		NewPlanAppend(),
+		NewSelfReflect(),
 		NewReminder(),
 		NewScheduler(),
 		NewBrowser(),

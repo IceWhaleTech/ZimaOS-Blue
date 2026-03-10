@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { parseToolResults, useChatStore } from '@/stores/chat'
+import { i18n } from '@/i18n'
 import { conversationApi, messageApi } from '@/api/chat'
 
 const mocks = vi.hoisted(() => ({
@@ -208,6 +209,55 @@ describe('Chat Store', () => {
 
       expect(messageApi.list).not.toHaveBeenCalled()
     })
+
+    it('should keep chronological order across multi-page loadMore', async () => {
+      const store = useChatStore()
+
+      const makePage = (start: number, end: number) =>
+        Array.from({ length: end - start + 1 }, (_, idx) => {
+          const value = start + idx
+          const n = String(value).padStart(3, '0')
+          return {
+            id: `msg-${n}`,
+            conversation_id: 'conv-1',
+            role: 'user',
+            content: `m${n}`,
+            created_at: `2026-03-08T00:00:${String(value).padStart(2, '0')}.000Z`,
+          }
+        })
+
+      const latestPage = makePage(71, 120)
+      const olderPage1 = makePage(21, 70)
+      const olderPage2 = makePage(1, 20)
+
+      vi.mocked(messageApi.list).mockImplementation(async (_id: string, _limit = 50, offset = 0) => {
+        if (offset === 0) return { data: latestPage } as never
+        if (offset === 50) return { data: olderPage1 } as never
+        if (offset === 100) return { data: olderPage2 } as never
+        return { data: [] } as never
+      })
+
+      await store.selectConversation('conv-1')
+      expect(store.messages.map(m => m.content)).toEqual(latestPage.map(m => m.content))
+      expect(store.hasMoreMessages).toBe(true)
+
+      await store.loadMoreMessages()
+      await store.loadMoreMessages()
+
+      const expected = [
+        ...olderPage2.map(m => m.content),
+        ...olderPage1.map(m => m.content),
+        ...latestPage.map(m => m.content),
+      ]
+      const actual = store.messages.map(m => m.content)
+
+      expect(actual).toEqual(expected)
+      expect(new Set(actual).size).toBe(120)
+      expect(store.hasMoreMessages).toBe(false)
+      expect(messageApi.list).toHaveBeenCalledWith('conv-1', 50, 0)
+      expect(messageApi.list).toHaveBeenCalledWith('conv-1', 50, 50)
+      expect(messageApi.list).toHaveBeenCalledWith('conv-1', 50, 100)
+    })
   })
 
   describe('sortedConversations', () => {
@@ -222,6 +272,17 @@ describe('Chat Store', () => {
       expect(store.sortedConversations[0].id).toBe('2')
       expect(store.sortedConversations[1].id).toBe('3')
       expect(store.sortedConversations[2].id).toBe('1')
+    })
+
+    it('should apply deterministic tie-breakers for same updated_at', () => {
+      const store = useChatStore()
+      store.conversations = [
+        { id: 'a', title: 'A', created_at: '2024-01-01T00:00:00.000Z', updated_at: '2024-01-03T00:00:00.000Z' },
+        { id: 'c', title: 'C', created_at: '2024-01-02T00:00:00.000Z', updated_at: '2024-01-03T00:00:00.000Z' },
+        { id: 'b', title: 'B', created_at: '2024-01-02T00:00:00.000Z', updated_at: '2024-01-03T00:00:00.000Z' },
+      ]
+
+      expect(store.sortedConversations.map(c => c.id)).toEqual(['c', 'b', 'a'])
     })
   })
 
@@ -358,9 +419,85 @@ describe('Chat Store', () => {
       expect(store.streaming).toBe(false)
       expect(store.sending).toBe(false)
     })
+
+    it('updates the most recent checklist bubble when todo_updated cannot match a local message id', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        { id: 'conv-1', title: 'Checklist fallback', created_at: '2026-03-10T00:00:00.000Z', updated_at: '2026-03-10T00:00:00.000Z' },
+      ]
+      store.messages = [
+        {
+          id: 'msg-user-legacy',
+          conversation_id: 'conv-1',
+          role: 'user',
+          content: 'Earlier task',
+          created_at: '2026-03-10T00:00:00.000Z',
+        },
+        {
+          id: 'msg-assistant-legacy',
+          conversation_id: 'conv-1',
+          role: 'assistant',
+          content: '- [ ] legacy task\n- [ ] legacy verify',
+          created_at: '2026-03-10T00:00:01.000Z',
+        },
+      ]
+
+      let snapshotAfterTodoUpdate: Array<{ id: string; role: string; content: string }> = []
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+        expect(_conversationId).toBe('conv-1')
+        expect(request).toEqual(expect.objectContaining({
+          message: 'Continue the current work',
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        }))
+
+        options.onMessage({ delta: '- [ ] collect facts\n- [ ] write summary', done: false })
+        options.onNewMessage?.(1)
+        options.onTodoUpdated?.('msg-assistant-current', '- [x] collect facts\n- [ ] write summary')
+
+        snapshotAfterTodoUpdate = store.messages.map(message => ({
+          id: message.id,
+          role: message.role,
+          content: message.content,
+        }))
+      })
+
+      await store.sendMessage('Continue the current work')
+
+      expect(mocks.sseConnect).toHaveBeenCalledTimes(1)
+      expect(snapshotAfterTodoUpdate).toHaveLength(5)
+      expect(snapshotAfterTodoUpdate[1]?.id).toBe('msg-assistant-legacy')
+      expect(snapshotAfterTodoUpdate[1]?.content).toBe('- [ ] legacy task\n- [ ] legacy verify')
+
+      const updatedChecklist = snapshotAfterTodoUpdate.find(message => message.content === '- [x] collect facts\n- [ ] write summary')
+      expect(updatedChecklist).toBeTruthy()
+      expect(updatedChecklist?.id.startsWith('streaming-')).toBe(true)
+
+      const staleLegacyMatches = snapshotAfterTodoUpdate.filter(message => message.content.includes('legacy task'))
+      expect(staleLegacyMatches).toHaveLength(1)
+      expect(snapshotAfterTodoUpdate.at(-1)?.content).toBe('')
+    })
   })
 
   describe('parseToolResults', () => {
+    it('extracts exec commands from cmd arguments', () => {
+      const items = parseToolResults([
+        {
+          name: 'exec',
+          id: 'exec-cmd',
+          args: JSON.stringify({ cmd: 'mkdir -p /Users/orca/.zimaos-blue/data/workspace/tank-battle' }),
+          result: JSON.stringify({ exit_code: 0, duration_ms: 25 }),
+        },
+      ])
+
+      expect(items).toHaveLength(1)
+      expect(items[0]?.command).toBe('mkdir -p /Users/orca/.zimaos-blue/data/workspace/tank-battle')
+      expect(items[0]?.status).toBe('25ms')
+      expect(items[0]?.icon).toBe('✓')
+    })
+
     it('should map challenge and browser_required warning codes to friendly statuses', () => {
       const items = parseToolResults([
         {
@@ -392,6 +529,32 @@ describe('Chat Store', () => {
       expect(items[1]?.status).toBe('Browser session required')
     })
 
+    it('localizes warning statuses from warning_code', () => {
+      i18n.global.setLocaleMessage('zh-CN', {
+        toolWarnings: {
+          statuses: {
+            loginWall: '检测到登录墙',
+            challenge: '检测到验证挑战',
+            browserRequired: '需要浏览器会话',
+            unknown: '警告：{code}',
+          },
+        },
+      })
+      i18n.global.locale.value = 'zh-CN'
+
+      const items = parseToolResults([
+        {
+          name: 'web_fetch',
+          id: 'wf-localized',
+          args: JSON.stringify({ url: 'https://example.com' }),
+          result: JSON.stringify({ warning_code: 'login_wall' }),
+        },
+      ])
+
+      expect(items[0]?.status).toBe('检测到登录墙')
+
+      i18n.global.locale.value = 'en-US'
+    })
     it('should surface warning_code for web_fetch results', () => {
       const items = parseToolResults([
         {

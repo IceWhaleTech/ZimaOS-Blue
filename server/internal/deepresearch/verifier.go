@@ -141,7 +141,11 @@ func buildClaimKey(title, snippet string) string {
 	stop := map[string]struct{}{
 		"the": {}, "and": {}, "for": {}, "with": {}, "from": {}, "that": {}, "this": {}, "have": {}, "been": {}, "will": {},
 		"is": {}, "are": {}, "was": {}, "were": {}, "in": {}, "on": {}, "to": {}, "of": {}, "a": {}, "an": {},
+		"official": {}, "update": {}, "updates": {}, "confirm": {}, "confirms": {}, "confirmed": {}, "rumor": {}, "rumour": {},
+		"say": {}, "says": {}, "saying": {}, "happening": {}, "available": {}, "company": {}, "report": {}, "reports": {},
+		"not": {}, "no": {}, "false": {},
 		"的": {}, "了": {}, "和": {}, "在": {}, "是": {}, "与": {}, "及": {}, "并": {}, "中": {}, "对": {},
+		"官方": {}, "确认": {}, "证实": {}, "传闻": {}, "谣言": {}, "并非": {}, "不是": {}, "不实": {},
 	}
 	seen := make(map[string]struct{}, len(tokens))
 	key := make([]string, 0, 5)

@@ -133,6 +133,32 @@ describe('Typeless Card Parsing', () => {
     expect(second).toBe(first)
   })
 
+  it('keeps streaming typeless cards alive when JSON content contains inner code fences', () => {
+    const chunk1 = [
+      '```typeless',
+      '{"type":"web-fetch","id":"card-inner-fence","title":"Doc","status":"success","content":"介绍如下：\\n\\n```mermaid\\ngraph TD\\nA-->B\\n```"}',
+    ].join('\n')
+
+    const partial = parseTypelessContentIncremental(chunk1, 'msg-streaming-inner-fence', 'conv-inner-fence')
+    const partialCard = partial.cards.find(c => c.id === 'card-inner-fence') as any
+
+    expect(partialCard).toBeTruthy()
+    expect(partialCard.type).toBe('web-fetch')
+    expect(partialCard._streaming).toBe(true)
+    expect(partial.text).toContain('[[TYPELESS_CARD:card-inner-fence]]')
+    expect(partial.text).not.toContain('```typeless')
+
+    const chunk2 = `${chunk1}\n\`\`\``
+    const full = parseTypelessContentIncremental(chunk2, 'msg-streaming-inner-fence', 'conv-inner-fence')
+    const fullCard = full.cards.find(c => c.id === 'card-inner-fence') as any
+
+    expect(fullCard).toBeTruthy()
+    expect(fullCard.type).toBe('web-fetch')
+    expect(fullCard._streaming).toBeUndefined()
+    expect(full.text).toContain('[[TYPELESS_CARD:card-inner-fence]]')
+    expect(full.text).not.toContain('```typeless')
+  })
+
   it('parses multiple consecutive typeless blocks and keeps ui-review progress cards', () => {
     const content = [
       '```typeless',
@@ -206,6 +232,26 @@ describe('Typeless Card Parsing', () => {
     ])
   })
 
+  it('updates trailing text immediately for small streaming deltas after a card', () => {
+    const first = [
+      '```typeless',
+      '{"type":"result","id":"card-1","title":"Done","status":"success"}',
+      '```',
+      '',
+      '已完成，接下来',
+    ].join('\n')
+
+    const second = `${first}继续说明`
+
+    const initial = parseTypelessContentIncremental(first, 'msg-streaming-small-delta', 'conv-small-delta')
+    const updated = parseTypelessContentIncremental(second, 'msg-streaming-small-delta', 'conv-small-delta')
+
+    expect(initial.cards.find(card => (card as any).id === 'card-1')).toBeTruthy()
+    expect(initial.text).toContain('已完成，接下来')
+    expect(updated.cards.find(card => (card as any).id === 'card-1')).toBeTruthy()
+    expect(updated.text).toContain('已完成，接下来继续说明')
+  })
+
   it('incremental split falls back to full scan when delta adds card placeholder', () => {
     const cards = [{ type: 'result', id: 'card-1' }] as any
     const key = 'conv-1:msg-2'
@@ -253,5 +299,41 @@ describe('Typeless Card Parsing', () => {
     const merged = second[0]?.content as any
     expect(merged.type).toBe('ui-review-progress')
     expect(merged.steps).toHaveLength(2)
+  })
+
+  it('preserves browser progress recipe metadata when merging steps', () => {
+    const cards = [
+      { type: 'browser-progress', id: 'bp1', step: 'screenshot', name: 'Capturing screenshot', status: 'success' },
+      { type: 'browser-progress', id: 'bp2', step: 'recipe', name: 'Running login recipe', status: 'running', recipe_name: 'login recipe' },
+    ] as any
+
+    const segments = splitIntoSegments('[[TYPELESS_CARD:bp1]][[TYPELESS_CARD:bp2]]', cards)
+
+    expect(segments).toHaveLength(1)
+    expect(segments[0]?.type).toBe('card')
+    const merged = segments[0]?.content as any
+    expect(merged.type).toBe('browser-progress')
+    expect(merged.steps).toHaveLength(2)
+    expect(merged.steps[1]?.recipe_name).toBe('login recipe')
+  })
+
+  it('keeps the latest analyze-progress step state and metadata when merging duplicates', () => {
+    const cards = [
+      { type: 'analyze-progress', id: 'ap1', step: 'url_fetch_1', name: 'Fetching URL 1/2', status: 'running', current: 1, total: 2, source_label: 'https://example.com' },
+      { type: 'analyze-progress', id: 'ap2', step: 'url_fetch_1', name: 'Fetching URL 1/2', status: 'success', current: 1, total: 2, source_label: 'https://example.com', detail: 'Page content extracted', char_count: 1200 },
+      { type: 'analyze-progress', id: 'ap3', step: 'analysis', name: 'Analyzing content', status: 'running' },
+    ] as any
+
+    const segments = splitIntoSegments('[[TYPELESS_CARD:ap1]][[TYPELESS_CARD:ap2]][[TYPELESS_CARD:ap3]]', cards)
+
+    expect(segments).toHaveLength(1)
+    expect(segments[0]?.type).toBe('card')
+    const merged = segments[0]?.content as any
+    expect(merged.type).toBe('analyze-progress')
+    expect(merged.steps).toHaveLength(2)
+    expect(merged.steps[0]?.status).toBe('success')
+    expect(merged.steps[0]?.detail).toBe('Page content extracted')
+    expect(merged.steps[0]?.char_count).toBe(1200)
+    expect(merged.steps[1]?.step).toBe('analysis')
   })
 })

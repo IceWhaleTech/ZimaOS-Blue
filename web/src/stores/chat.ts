@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed, watch, triggerRef } from 'vue'
-import type { Conversation, Message, SendMessageRequest, MessageStats, MessageAttachment, ConversationCommandState, ConversationCommandStatePatch } from '@/api/chat'
+import type { Conversation, Message, SendMessageRequest, MessageStats, MessageAttachment, ConversationCommandState, ConversationCommandStatePatch, StreamChunk } from '@/api/chat'
 import { conversationApi, messageApi, warmupApi, injectionApi } from '@/api/chat'
 import { approvalApi } from '@/api/approval'
 import type { Decision, ExecDecision } from '@/api/approval'
@@ -36,15 +36,25 @@ export interface ToolResultItem {
 }
 
 function formatToolWarningCode(code: string): string {
-  switch ((code || '').trim()) {
+  const normalized = (code || '').trim()
+  const t = i18n.global.t
+  const te = i18n.global.te
+  const resolve = (key: string, fallback: string, named?: Record<string, string>): string => {
+    if (te(key)) return String(named ? t(key, named) : t(key))
+    return fallback
+  }
+
+  switch (normalized) {
     case 'login_wall':
-      return 'Login wall detected'
+      return resolve('toolWarnings.statuses.loginWall', 'Login wall detected')
     case 'challenge':
-      return 'Verification challenge detected'
+      return resolve('toolWarnings.statuses.challenge', 'Verification challenge detected')
     case 'browser_required':
-      return 'Browser session required'
+      return resolve('toolWarnings.statuses.browserRequired', 'Browser session required')
     default:
-      return code ? `Warning: ${code}` : ''
+      return normalized
+        ? resolve('toolWarnings.statuses.unknown', 'Warning: ' + normalized, { code: normalized })
+        : ''
   }
 }
 
@@ -55,7 +65,7 @@ export function parseToolResults(results: Array<{ name: string; id: string; args
     if (r.args) {
       try {
         const parsed = JSON.parse(r.args)
-        command = parsed.command || parsed.query || parsed.url || parsed.href || parsed.path || parsed.name || parsed.action || parsed.sq || parsed.mq || ''
+        command = parsed.command || parsed.cmd || parsed.query || parsed.url || parsed.href || parsed.path || parsed.name || parsed.action || parsed.sq || parsed.mq || ''
       } catch {
         // If args is not valid JSON, use it directly for ask_user_question
         if (r.name === 'ask') {
@@ -478,6 +488,75 @@ export const useChatStore = defineStore('chat', () => {
     pendingStreamConversationId = null
   }
 
+  function createStreamingAssistantMessage(conversationId: string): Message {
+    const id = `streaming-${Date.now()}`
+    return {
+      id,
+      render_key: id,
+      conversation_id: conversationId,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+    }
+  }
+
+  function isTodoChecklistContent(content?: string): boolean {
+    if (!content) return false
+    return /(^|\n)[ \t]*[-*]\s+\[(?: |x|X)\]\s+/.test(content)
+  }
+
+  function findTodoChecklistMessageIndex(messageId?: string): number {
+    const normalizedMessageId = messageId?.trim()
+    if (normalizedMessageId) {
+      const exactIndex = messages.value.findIndex(m => m.id === normalizedMessageId || m.render_key === normalizedMessageId)
+      if (exactIndex >= 0) return exactIndex
+    }
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      const msg = messages.value[i]
+      if (!msg || msg.role !== 'assistant') continue
+      if (isTodoChecklistContent(msg.content)) return i
+    }
+    return -1
+  }
+
+  function applyTodoChecklistUpdate(messageId: string, content: string) {
+    const idx = findTodoChecklistMessageIndex(messageId)
+    if (idx < 0) return
+    const msg = messages.value[idx]
+    if (msg && msg.content !== content) {
+      msg.content = content
+      triggerRef(messages)
+    }
+  }
+
+  function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk): boolean {
+    if (currentConversationId.value !== conversationId) return false
+    const persistedMessageId = finalChunk?.message_id?.trim()
+    if (!persistedMessageId) return false
+
+    const lastIndex = messages.value.length - 1
+    if (lastIndex < 0) return false
+    const lastMsg = messages.value[lastIndex]
+    if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.id.startsWith('streaming-')) {
+      return false
+    }
+
+    const nextContent = finalChunk?.content ?? streamingContent.value
+    const nextMessage: Message = {
+      ...lastMsg,
+      id: persistedMessageId,
+      render_key: lastMsg.render_key || lastMsg.id,
+      content: nextContent,
+      provider: finalChunk?.provider || lastMsg.provider,
+      model: finalChunk?.model || lastMsg.model,
+      stats: finalChunk?.stats || lastMsg.stats,
+    }
+    const nextMessages = [...messages.value]
+    nextMessages[lastIndex] = nextMessage
+    messages.value = nextMessages
+    return true
+  }
+
   watch(pendingQuestion, (q) => {
     if (q) {
       awaitingConfirmation.value = true
@@ -599,8 +678,12 @@ export const useChatStore = defineStore('chat', () => {
       // Pinned conversations first
       if (a.pinned && !b.pinned) return -1
       if (!a.pinned && b.pinned) return 1
-      // Then sort by updated_at
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      // Then sort by update recency; tie-break to keep deterministic order.
+      const updatedDiff = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      if (updatedDiff !== 0) return updatedDiff
+      const createdDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      if (createdDiff !== 0) return createdDiff
+      return b.id.localeCompare(a.id)
     })
   })
 
@@ -941,13 +1024,7 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       // Add placeholder for assistant message
-      const assistantMessage: Message = {
-        id: `streaming-${Date.now()}`,
-        conversation_id: conversationId,
-        role: 'assistant',
-        content: '',
-        created_at: new Date().toISOString(),
-      }
+      const assistantMessage = createStreamingAssistantMessage(conversationId)
       messages.value = [...messages.value, assistantMessage]
 
       // Capture the conversation ID at send time so callbacks can detect stale streams
@@ -999,32 +1076,12 @@ export const useChatStore = defineStore('chat', () => {
           // Server persisted previous round — start a new message bubble
           streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
           toolExecuting.value = false
-          const newAssistant: Message = {
-            id: `streaming-${Date.now()}`,
-            conversation_id: conversationId,
-            role: 'assistant',
-            content: '',
-            created_at: new Date().toISOString(),
-          }
+          const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
         },
         onTodoUpdated: (messageId, content) => {
           if (currentConversationId.value !== sendConvId) return
-          // Backend updated TODO list — prefer exact message id, fallback to first checklist bubble.
-          let idx = -1
-          if (messageId) {
-            idx = messages.value.findIndex(m => m.id === messageId)
-          }
-          if (idx < 0) {
-            idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
-          }
-          if (idx >= 0) {
-            const msg = messages.value[idx]
-            if (msg && msg.content !== content) {
-              msg.content = content
-              triggerRef(messages)
-            }
-          }
+          applyTodoChecklistUpdate(messageId, content)
         },
         onInjection: () => {
           if (currentConversationId.value !== sendConvId) return
@@ -1035,13 +1092,7 @@ export const useChatStore = defineStore('chat', () => {
           streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
           toolExecuting.value = false
           // Add a new streaming placeholder for the restarted response
-          const newAssistant: Message = {
-            id: `streaming-${Date.now()}`,
-            conversation_id: conversationId,
-            role: 'assistant',
-            content: '',
-            created_at: new Date().toISOString(),
-          }
+          const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
         },
         onError: (err) => {
@@ -1172,30 +1223,28 @@ export const useChatStore = defineStore('chat', () => {
           toolExecuting.value = false
           // Guard: if user switched away, don't touch messages
           if (currentConversationId.value !== sendConvId) return
-          // Store metadata from final chunk directly on the message object
-          // This ensures metadata persists even after fetchMessages() refreshes the list
+          const finalizedLocally = applyFinalStreamChunk(sendConvId, finalChunk)
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
-            if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
-              // Update the message with metadata inline (this will be visible immediately)
+            if (!finalizedLocally && lastIndex >= 0 && lastMsg?.role === 'assistant') {
               lastMsg.provider = finalChunk.provider
               lastMsg.model = finalChunk.model
               lastMsg.stats = finalChunk.stats
               triggerRef(messages)
-              // Also store in metadata map using streaming ID as backup
-              const msgId = lastMsg.id
-              if (msgId) {
-                messageMetadata.value.set(msgId, {
-                  provider: finalChunk.provider,
-                  model: finalChunk.model,
-                  stats: finalChunk.stats,
-                })
-              }
+            }
+            const msgId = finalChunk.message_id?.trim() || lastMsg?.id
+            if (msgId) {
+              messageMetadata.value.set(msgId, {
+                provider: finalChunk.provider,
+                model: finalChunk.model,
+                stats: finalChunk.stats,
+              })
             }
           }
-          // Refresh messages to get the actual IDs from server
-		  fetchMessages(conversationId)
+		  if (!finalizedLocally) {
+			fetchMessages(conversationId)
+		  }
 		  // Refresh conversations to get updated title (auto-generated after first message)
 		  fetchConversations()
 		  if (shouldRefreshCommandStateAfterComplete) {
@@ -1334,13 +1383,7 @@ export const useChatStore = defineStore('chat', () => {
       _receivedFirstChunk.value = false
 
       // Add placeholder for assistant message
-      const assistantMessage: Message = {
-        id: `streaming-${Date.now()}`,
-        conversation_id: convId,
-        role: 'assistant',
-        content: '',
-        created_at: new Date().toISOString(),
-      }
+      const assistantMessage = createStreamingAssistantMessage(convId)
       messages.value = [...messages.value, assistantMessage]
 
       const modelSelection = splitModelPreference(modelPreference.value)
@@ -1396,31 +1439,12 @@ export const useChatStore = defineStore('chat', () => {
           flushPendingStreamDelta(convId)
           streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
           toolExecuting.value = false
-          const newAssistant: Message = {
-            id: `streaming-${Date.now()}`,
-            conversation_id: convId,
-            role: 'assistant',
-            content: '',
-            created_at: new Date().toISOString(),
-          }
+          const newAssistant = createStreamingAssistantMessage(convId)
           messages.value = [...messages.value, newAssistant]
         },
         onTodoUpdated: (messageId, content) => {
           if (currentConversationId.value !== convId) return
-          let idx = -1
-          if (messageId) {
-            idx = messages.value.findIndex(m => m.id === messageId)
-          }
-          if (idx < 0) {
-            idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
-          }
-          if (idx >= 0) {
-            const msg = messages.value[idx]
-            if (msg && msg.content !== content) {
-              msg.content = content
-              triggerRef(messages)
-            }
-          }
+          applyTodoChecklistUpdate(messageId, content)
         },
         onError: (err) => {
           if (currentConversationId.value !== convId) return
@@ -1437,17 +1461,20 @@ export const useChatStore = defineStore('chat', () => {
           streamProgress.value = null
           toolExecuting.value = false
           if (currentConversationId.value !== convId) return
+          const finalizedLocally = applyFinalStreamChunk(convId, finalChunk)
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
-            if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
+            if (!finalizedLocally && lastIndex >= 0 && lastMsg?.role === 'assistant') {
               lastMsg.provider = finalChunk.provider
               lastMsg.model = finalChunk.model
               lastMsg.stats = finalChunk.stats
               triggerRef(messages)
             }
           }
-          fetchMessages(convId)
+          if (!finalizedLocally) {
+            fetchMessages(convId)
+          }
           fetchConversations()
           useProviderPoolStore().fetchTrialQuota()
           if (awaitingConfirmation.value) {
@@ -1548,31 +1575,12 @@ export const useChatStore = defineStore('chat', () => {
           flushPendingStreamDelta(conversationId)
           streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
           toolExecuting.value = false
-          const newAssistant: Message = {
-            id: `streaming-${Date.now()}`,
-            conversation_id: conversationId,
-            role: 'assistant',
-            content: '',
-            created_at: new Date().toISOString(),
-          }
+          const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
         },
         onTodoUpdated: (messageId, content) => {
           if (currentConversationId.value !== conversationId) return
-          let idx = -1
-          if (messageId) {
-            idx = messages.value.findIndex(m => m.id === messageId)
-          }
-          if (idx < 0) {
-            idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
-          }
-          if (idx >= 0) {
-            const msg = messages.value[idx]
-            if (msg && msg.content !== content) {
-              msg.content = content
-              triggerRef(messages)
-            }
-          }
+          applyTodoChecklistUpdate(messageId, content)
         },
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
@@ -1599,10 +1607,11 @@ export const useChatStore = defineStore('chat', () => {
           streamProgress.value = null
           toolExecuting.value = false
           if (currentConversationId.value !== conversationId) return
+          const finalizedLocally = applyFinalStreamChunk(conversationId, finalChunk)
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
-            if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
+            if (!finalizedLocally && lastIndex >= 0 && lastMsg?.role === 'assistant') {
               lastMsg.content = streamingContent.value
               lastMsg.provider = finalChunk.provider
               lastMsg.model = finalChunk.model
@@ -1610,7 +1619,9 @@ export const useChatStore = defineStore('chat', () => {
               triggerRef(messages)
             }
           }
-          fetchMessages(conversationId)
+          if (!finalizedLocally) {
+            fetchMessages(conversationId)
+          }
           // Refresh trial quota to update progress bar
           useProviderPoolStore().fetchTrialQuota()
           if (awaitingConfirmation.value) {
@@ -1674,13 +1685,7 @@ export const useChatStore = defineStore('chat', () => {
       error.value = null
 
       // Add placeholder for new assistant message
-      const assistantMessage: Message = {
-        id: `streaming-${Date.now()}`,
-        conversation_id: conversationId,
-        role: 'assistant',
-        content: '',
-        created_at: new Date().toISOString(),
-      }
+      const assistantMessage = createStreamingAssistantMessage(conversationId)
       messages.value = [...messages.value, assistantMessage]
 
       const modelSelection = splitModelPreference(modelPreference.value)
@@ -1737,31 +1742,12 @@ export const useChatStore = defineStore('chat', () => {
           flushPendingStreamDelta(conversationId)
           streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
           toolExecuting.value = false
-          const newAssistant: Message = {
-            id: `streaming-${Date.now()}`,
-            conversation_id: conversationId,
-            role: 'assistant',
-            content: '',
-            created_at: new Date().toISOString(),
-          }
+          const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
         },
         onTodoUpdated: (messageId, content) => {
           if (currentConversationId.value !== conversationId) return
-          let idx = -1
-          if (messageId) {
-            idx = messages.value.findIndex(m => m.id === messageId)
-          }
-          if (idx < 0) {
-            idx = messages.value.findIndex(m => m.role === 'assistant' && (m.content.includes('- [ ]') || m.content.includes('- [x]')))
-          }
-          if (idx >= 0) {
-            const msg = messages.value[idx]
-            if (msg && msg.content !== content) {
-              msg.content = content
-              triggerRef(messages)
-            }
-          }
+          applyTodoChecklistUpdate(messageId, content)
         },
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
@@ -1808,17 +1794,20 @@ export const useChatStore = defineStore('chat', () => {
           streamProgress.value = null
           toolExecuting.value = false
           if (currentConversationId.value !== conversationId) return
+          const finalizedLocally = applyFinalStreamChunk(conversationId, finalChunk)
           if (finalChunk && (finalChunk.provider || finalChunk.model || finalChunk.stats)) {
             const lastIndex = messages.value.length - 1
             const lastMsg = messages.value[lastIndex]
-            if (lastIndex >= 0 && lastMsg?.role === 'assistant') {
+            if (!finalizedLocally && lastIndex >= 0 && lastMsg?.role === 'assistant') {
               lastMsg.provider = finalChunk.provider
               lastMsg.model = finalChunk.model
               lastMsg.stats = finalChunk.stats
               triggerRef(messages)
             }
           }
-          fetchMessages(conversationId)
+          if (!finalizedLocally) {
+            fetchMessages(conversationId)
+          }
           // Refresh trial quota to update progress bar
           useProviderPoolStore().fetchTrialQuota()
           if (awaitingConfirmation.value) {
@@ -2151,7 +2140,11 @@ export const useChatStore = defineStore('chat', () => {
   function warmupConversation() {
     const convId = currentConversationId.value
     if (!convId || convId === warmupConvId) return
+    const previousWarmupConvId = warmupConvId
     warmupConvId = convId
+    if (previousWarmupConvId && previousWarmupConvId !== convId) {
+      warmupApi.cancel(previousWarmupConvId).catch(() => {})
+    }
     warmupApi.trigger(convId).catch(() => {})
   }
 
@@ -2198,7 +2191,11 @@ export const useChatStore = defineStore('chat', () => {
 
   // Reset warmup tracking (call when conversation changes)
   function resetWarmup() {
+    const convId = warmupConvId
     warmupConvId = null
+    if (convId) {
+      warmupApi.cancel(convId).catch(() => {})
+    }
   }
 
   return {

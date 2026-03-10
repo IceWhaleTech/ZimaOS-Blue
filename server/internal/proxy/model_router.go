@@ -206,7 +206,7 @@ func (mr *ModelRouter) IsBackgroundRequest(r *http.Request) bool {
 	// Check for common background task indicators
 
 	// 1. X-Background-Task header
-	if r.Header.Get("X-Background-Task") == "true" {
+	if r.Header.Get(BackgroundTaskHeader) == "true" {
 		return true
 	}
 

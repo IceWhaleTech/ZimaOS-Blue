@@ -13,6 +13,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -48,6 +49,7 @@ type RunnerConfig struct {
 	MaxConcurrent int
 	TaskTimeout   time.Duration
 	AskTimeout    time.Duration
+	AutoReflect   bool
 	// AskTimeoutAction controls timeout behavior: "error" (default) | "default".
 	AskTimeoutAction string
 	// MaxToolRoundsPerStep controls tool loop budget per plan step.
@@ -56,13 +58,14 @@ type RunnerConfig struct {
 
 // Runner executes agent tasks in the background.
 type Runner struct {
-	store    *Store
-	llm      LLMCaller
-	executor *tools.Executor
-	registry *tools.Registry
-	broker   *sse.Broker
-	memory   MemoryRecaller
-	config   RunnerConfig
+	store     *Store
+	llm       LLMCaller
+	executor  *tools.Executor
+	registry  *tools.Registry
+	broker    *sse.Broker
+	memory    MemoryRecaller
+	reflector SelfReflector
+	config    RunnerConfig
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc // task ID → cancel
@@ -77,6 +80,11 @@ type Runner struct {
 	askTimeoutFunc       func() time.Duration
 	askTimeoutActionFunc func() string // "error" | "default"
 	maxToolRoundsFunc    func() int
+	autoReflectFunc      func() bool
+}
+
+type SelfReflector interface {
+	Reflect(ctx context.Context, input selfreflect.Input) (*selfreflect.Result, error)
 }
 
 // NewRunner creates a new agent runner.
@@ -131,6 +139,13 @@ func (r *Runner) SetMaxToolRoundsPerStepFunc(fn func() int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.maxToolRoundsFunc = fn
+}
+
+// SetAutoReflectFunc sets a dynamic auto-reflect toggle getter.
+func (r *Runner) SetAutoReflectFunc(fn func() bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.autoReflectFunc = fn
 }
 
 func (r *Runner) resolveAskTimeout() time.Duration {
@@ -195,9 +210,25 @@ func (r *Runner) resolveMaxToolRoundsPerStep() int {
 	return base
 }
 
+func (r *Runner) resolveAutoReflect() bool {
+	r.mu.Lock()
+	fn := r.autoReflectFunc
+	base := r.config.AutoReflect
+	r.mu.Unlock()
+	if fn != nil {
+		return fn()
+	}
+	return base
+}
+
 // SetMemory sets the memory recaller for context injection.
 func (r *Runner) SetMemory(m MemoryRecaller) {
 	r.memory = m
+}
+
+// SetReflector sets the post-task reflection engine.
+func (r *Runner) SetReflector(reflector SelfReflector) {
+	r.reflector = reflector
 }
 
 // Submit creates and starts a new agent task. Returns the task immediately.
@@ -227,7 +258,7 @@ func (r *Runner) Submit(ctx context.Context, userID, goal, conversationID, conve
 	r.publishEvent(userID, TaskEvent{
 		TaskID:    task.ID,
 		EventType: "task_created",
-		Message:   goal,
+		Message:   taskCreatedMessage(goal),
 	})
 
 	// Start background execution
@@ -328,7 +359,7 @@ func (r *Runner) AskUser(ctx context.Context, taskID string, questions []AgentQu
 		TaskID:    taskID,
 		EventType: "task_question",
 		StepIndex: stepIndex,
-		Message:   "Waiting for user input...",
+		Message:   taskQuestionWaitingMessage(),
 		Questions: questions,
 	})
 
@@ -346,7 +377,7 @@ func (r *Runner) AskUser(ctx context.Context, taskID string, questions []AgentQu
 				TaskID:    taskID,
 				EventType: "task_question_timeout",
 				StepIndex: stepIndex,
-				Message:   fmt.Sprintf("No response received in %s, using default option(s).", askTimeout),
+				Message:   taskQuestionTimeoutMessage(askTimeout),
 			})
 			return defaultQuestionAnswers(questions), nil
 		}
@@ -360,7 +391,7 @@ func resumeStatusForRuntimeState(state RuntimeState) TaskStatus {
 	switch state {
 	case RuntimeStateClarify, RuntimeStatePlan, RuntimeStateConfirmGate:
 		return TaskStatusPlanning
-	case RuntimeStateExecute, RuntimeStateVerify, RuntimeStateRecover, RuntimeStateReport:
+	case RuntimeStateExecute, RuntimeStateVerify, RuntimeStateReflect, RuntimeStateRecover, RuntimeStateReport:
 		return TaskStatusExecuting
 	default:
 		return TaskStatusExecuting
@@ -383,7 +414,7 @@ func (r *Runner) SubmitAnswers(taskID string, answers []QuestionAnswer) bool {
 			r.publishEvent(task.UserID, TaskEvent{
 				TaskID:    taskID,
 				EventType: "task_question_answered",
-				Message:   fmt.Sprintf("User answered %d question(s)", len(answers)),
+				Message:   taskQuestionAnsweredMessage(len(answers)),
 			})
 		}
 		return true
@@ -586,6 +617,215 @@ func normalizeAgentQuestions(questions []AgentQuestion) ([]AgentQuestion, error)
 	return out, nil
 }
 
+func buildClarificationQuestions() []AgentQuestion {
+	return []AgentQuestion{{
+		ID:       "goal_scope",
+		Header:   "Scope",
+		Question: "你希望这次任务采用哪种执行深度？",
+		Detail:   "当前目标缺少关键范围信息；如果你暂时不回复，系统会默认选择平衡方案。",
+		Options: []QuestionOption{
+			{Label: "平衡方案（推荐）", Value: "balanced", Description: "速度与质量均衡，适合作为默认执行方式"},
+			{Label: "快速可运行", Value: "fast", Description: "优先速度，较少工程化"},
+			{Label: "工程化完善", Value: "rigorous", Description: "包含测试、文档与健壮性"},
+		},
+		Required: true,
+	}}
+}
+
+func buildPlanConfirmationQuestions(plan runtimePlan) []AgentQuestion {
+	detailParts := []string{fmt.Sprintf("当前计划共 %d 个步骤", len(plan.Subtasks))}
+	if reasons := compactListForQuestion(plan.RequiresConfirmation, 2); len(reasons) > 0 {
+		detailParts = append(detailParts, "需要你确认："+strings.Join(reasons, "；"))
+	}
+	detailParts = append(detailParts, "如果你暂时不回复，系统会先回到规划阶段收紧方案")
+	return []AgentQuestion{{
+		ID:       "plan_gate",
+		Header:   "Plan",
+		Question: "计划已生成，下一步怎么做？",
+		Detail:   strings.Join(detailParts, "。") + "。",
+		Options: []QuestionOption{
+			{Label: "先调整计划（推荐）", Value: "revise", Description: "返回规划阶段，降低风险并提高确定性"},
+			{Label: "继续执行", Value: "continue", Description: "按当前计划继续"},
+			{Label: "中止任务", Value: "abort", Description: "立即停止任务"},
+		},
+		Required: true,
+	}}
+}
+
+func buildHighRiskConfirmationQuestions(toolName string, cap CapabilityInfo, stepDescription string) []AgentQuestion {
+	detailParts := []string{
+		fmt.Sprintf("风险级别：%s", strings.ToUpper(strings.TrimSpace(cap.RiskLevel))),
+		fmt.Sprintf("调用类型：%s", cap.Kind),
+	}
+	if step := strings.TrimSpace(stepDescription); step != "" {
+		detailParts = append(detailParts, "当前步骤："+step)
+	}
+	if !cap.Idempotent {
+		detailParts = append(detailParts, "该调用可能产生不可逆副作用")
+	}
+	detailParts = append(detailParts, "如果你暂时不回复，系统会默认跳过本次调用")
+	return []AgentQuestion{{
+		ID:       "tool_gate",
+		Header:   "Confirm",
+		Question: fmt.Sprintf("高风险调用 `%s` 已准备执行，下一步怎么做？", toolName),
+		Detail:   strings.Join(detailParts, "。") + "。",
+		Options: []QuestionOption{
+			{Label: "跳过本次调用（推荐）", Value: "skip", Description: "跳过这次高风险操作，并继续寻找更安全路径"},
+			{Label: "继续执行", Value: "continue", Description: "执行本次调用"},
+			{Label: "中止任务", Value: "abort", Description: "立即中止任务"},
+		},
+		Required: true,
+	}}
+}
+
+func compactListForQuestion(items []string, limit int) []string {
+	if limit <= 0 {
+		limit = len(items)
+	}
+	out := make([]string, 0, limit)
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		out = append(out, item)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func taskQuestionWaitingMessage() string {
+	return "Waiting for your input to continue."
+}
+
+func taskQuestionTimeoutMessage(askTimeout time.Duration) string {
+	return fmt.Sprintf("No reply received in %s. Continuing with the default option.", askTimeout)
+}
+
+func taskQuestionAnsweredMessage(answerCount int) string {
+	return fmt.Sprintf("Received %d user answer(s). Continuing execution.", answerCount)
+}
+
+func taskPlanningStartedMessage() string {
+	return "Building the execution plan."
+}
+
+func taskStepRetryMessage(stepIndex int) string {
+	return fmt.Sprintf("Step %d failed. Retrying once with a safer path.", stepIndex+1)
+}
+
+func taskVerifyingMessage() string {
+	return "Running verification checks."
+}
+
+func taskReflectingMessage() string {
+	return "Capturing reusable lessons from this task."
+}
+
+func taskTimeoutWarningMessage(remaining time.Duration) string {
+	return fmt.Sprintf("Task is nearing timeout (%s remaining).", remaining)
+}
+
+func taskCreatedMessage(goal string) string {
+	msg := strings.TrimSpace(goal)
+	if msg == "" {
+		return "Task created."
+	}
+	return "Task created: " + msg
+}
+
+func taskUserUpdateMessage(message string) string {
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return "Received user update."
+	}
+	return "Received user update: " + msg
+}
+
+func taskFailedMessage(errMsg string) string {
+	msg := strings.TrimSpace(errMsg)
+	if msg == "" {
+		return "Task failed."
+	}
+	switch {
+	case strings.HasPrefix(msg, "clarify failed:"):
+		return "Task failed during clarification: " + strings.TrimSpace(strings.TrimPrefix(msg, "clarify failed:"))
+	case strings.HasPrefix(msg, "planning failed:"):
+		return "Task failed during planning: " + strings.TrimSpace(strings.TrimPrefix(msg, "planning failed:"))
+	case strings.HasPrefix(msg, "confirm gate failed:"):
+		return "Task failed during confirmation: " + strings.TrimSpace(strings.TrimPrefix(msg, "confirm gate failed:"))
+	case strings.HasPrefix(msg, "replanning failed:"):
+		return "Task failed while revising the plan: " + strings.TrimSpace(strings.TrimPrefix(msg, "replanning failed:"))
+	case strings.HasPrefix(msg, "verification failed and recovery failed:"):
+		return "Verification failed and recovery did not succeed: " + strings.TrimSpace(strings.TrimPrefix(msg, "verification failed and recovery failed:"))
+	case msg == "verification did not pass after bounded recovery retry":
+		return "Verification did not pass after the bounded recovery retry."
+	case strings.HasPrefix(msg, "runtime transition failed"):
+		return "Task failed while updating runtime state: " + msg
+	default:
+		return "Task failed: " + msg
+	}
+}
+
+func taskCancelledMessage(reason string) string {
+	msg := strings.TrimSpace(reason)
+	if msg == "" || msg == "task cancelled" {
+		return "Task cancelled."
+	}
+	return "Task cancelled: " + msg
+}
+
+func taskStateTransitionMessage(reason string, from RuntimeState, to RuntimeState) string {
+	switch strings.TrimSpace(reason) {
+	case "task accepted":
+		return "Task accepted."
+	case "goal missing critical details":
+		return "Goal needs clarification before planning."
+	case "start planning":
+		return "Planning started."
+	case "plan requires user confirmation":
+		return "Plan requires your confirmation."
+	case "user requested plan revision":
+		return "Revising the plan."
+	case "user aborted at confirm gate":
+		return "Task aborted at plan confirmation."
+	case "start execution":
+		return "Execution started."
+	case "verifying task result":
+		return "Verification started."
+	case "reflecting on task outcome":
+		return "Capturing reusable lessons."
+	case "verification failed":
+		return "Verification failed. Starting recovery."
+	case "re-verify after recovery":
+		return "Re-running verification after recovery."
+	case "generating final report":
+		return "Generating final report."
+	case "task completed":
+		return "Task completed."
+	case "high-risk capability requires confirmation":
+		return "High-risk action requires your confirmation."
+	case "user aborted on high-risk tool call":
+		return "Task aborted at high-risk confirmation."
+	case "user skipped high-risk tool call":
+		return "Skipped high-risk action and continued."
+	case "high-risk tool call approved":
+		return "High-risk action approved. Continuing."
+	case "task failed":
+		return "Task failed."
+	default:
+		if from != "" && to != "" {
+			return fmt.Sprintf("State changed: %s → %s.", from, to)
+		}
+		if to != "" {
+			return fmt.Sprintf("State changed: %s.", to)
+		}
+		return "State updated."
+	}
+}
+
 func defaultQuestionAnswers(questions []AgentQuestion) []QuestionAnswer {
 	results := make([]QuestionAnswer, len(questions))
 	for i, q := range questions {
@@ -637,17 +877,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed at clarify: %v", err))
 			return
 		}
-		clarifyQs := []AgentQuestion{{
-			ID:       "goal_scope",
-			Header:   "Scope",
-			Question: "请选择任务范围",
-			Options: []QuestionOption{
-				{Label: "快速可运行", Value: "fast", Description: "优先速度，较少工程化"},
-				{Label: "平衡方案", Value: "balanced", Description: "速度与质量均衡"},
-				{Label: "工程化完善", Value: "rigorous", Description: "包含测试/文档/健壮性"},
-			},
-			Required: true,
-		}}
+		clarifyQs := buildClarificationQuestions()
 		answers, askErr := r.AskUser(ctx, task.ID, clarifyQs, 0)
 		if askErr != nil {
 			r.failTask(ctx, task, fmt.Sprintf("clarify failed: %v", askErr))
@@ -665,7 +895,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	r.publishEvent(task.UserID, TaskEvent{
 		TaskID:    task.ID,
 		EventType: "task_planning",
-		Message:   "Creating execution plan...",
+		Message:   taskPlanningStartedMessage(),
 	})
 
 	// Start timeout warning goroutine (warn at 80% of timeout)
@@ -689,22 +919,12 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 			r.failTask(ctx, task, fmt.Sprintf("runtime transition failed at confirm gate: %v", err))
 			return
 		}
-		answers, askErr := r.AskUser(ctx, task.ID, []AgentQuestion{{
-			ID:       "plan_gate",
-			Header:   "Plan",
-			Question: "执行计划已生成，是否继续？",
-			Options: []QuestionOption{
-				{Label: "继续执行", Value: "continue", Description: "按当前计划继续"},
-				{Label: "先调整计划", Value: "revise", Description: "返回规划阶段调整"},
-				{Label: "中止任务", Value: "abort", Description: "立即停止任务"},
-			},
-			Required: true,
-		}}, 0)
+		answers, askErr := r.AskUser(ctx, task.ID, buildPlanConfirmationQuestions(planSpec.Raw), 0)
 		if askErr != nil {
 			r.failTask(ctx, task, fmt.Sprintf("confirm gate failed: %v", askErr))
 			return
 		}
-		decision := "continue"
+		decision := "revise"
 		if len(answers) > 0 && len(answers[0].Values) > 0 {
 			decision = answers[0].Values[0]
 		}
@@ -759,7 +979,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 				r.publishEvent(task.UserID, TaskEvent{
 					TaskID:    task.ID,
 					EventType: "task_user_message",
-					Message:   msg,
+					Message:   taskUserUpdateMessage(msg),
 				})
 			}
 			logger.Info().Str("task_id", task.ID).Int("count", len(injected)).Msg("[agent] injected user messages between steps")
@@ -793,7 +1013,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 				TaskID:    task.ID,
 				EventType: "task_progress",
 				StepIndex: i,
-				Message:   fmt.Sprintf("Step %d failed, retrying...", i+1),
+				Message:   taskStepRetryMessage(i),
 			})
 			output, err = r.executeStep(ctx, task, step)
 		}
@@ -851,7 +1071,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		TaskID:    task.ID,
 		EventType: "task_progress",
 		Progress:  95,
-		Message:   "Verifying results...",
+		Message:   taskVerifyingMessage(),
 	})
 
 	verifyStep := &PlanStep{
@@ -954,6 +1174,12 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		return
 	}
 
+	reflection := r.runReflection(ctx, task, TaskStatusCompleted, "")
+	if ctx.Err() != nil {
+		r.cancelTask(task, "task cancelled")
+		return
+	}
+
 	// Phase 4: Summarize and suggest next steps
 	if err := r.transitionState(ctx, task, RuntimeStateReport, "generating final report", nil, TaskStatusExecuting); err != nil {
 		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before report: %v", err))
@@ -961,7 +1187,7 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 	}
 	task.Status = TaskStatusCompleted
 	task.Progress = 100
-	task.Result = r.generateSummary(ctx, task)
+	task.Result = r.generateSummary(ctx, task, reflection)
 	if ctx.Err() != nil {
 		r.cancelTask(task, "task cancelled")
 		return
@@ -988,30 +1214,50 @@ type planResult struct {
 	FallbackPlan    []string
 }
 
+func buildPlanningSystemPrompt(memoryCtx string) string {
+	var sb strings.Builder
+	sb.WriteString("You are a deterministic task planner for ZimaOS Blue. Plan the work before execution.\n\n")
+	sb.WriteString("## Output Contract\n")
+	sb.WriteString("Return ONLY one JSON object in this exact shape:\n")
+	sb.WriteString("{\n")
+	sb.WriteString("  \"goal\": \"<normalized goal>\",\n")
+	sb.WriteString("  \"subtasks\": [{\"description\":\"...\"}],\n")
+	sb.WriteString("  \"requires_confirmation\": [\"...\"],\n")
+	sb.WriteString("  \"success_criteria\": [\"...\"],\n")
+	sb.WriteString("  \"fallback_plan\": [\"...\"]\n")
+	sb.WriteString("}\n")
+	sb.WriteString("Always include all keys. Use [] when a list is empty.\n")
+
+	sb.WriteString("\n## Planning Rules\n")
+	sb.WriteString("- Create 3-10 ordered subtasks. Each one must be concrete, actionable, and execution-ready.\n")
+	sb.WriteString("- Prefer the smallest plan that can fully satisfy the goal.\n")
+	sb.WriteString("- Preserve explicit user constraints, scope limits, and acceptance signals.\n")
+	sb.WriteString("- Avoid duplicate, vague, or overlapping subtasks.\n")
+	sb.WriteString("- Use requires_confirmation only for real user-choice, destructive, irreversible, privileged, or high-risk gates.\n")
+	sb.WriteString("- Make success_criteria observable and testable.\n")
+	sb.WriteString("- Make fallback_plan safe, bounded, and finite; no loops, no open-ended retries, and no retrying the same action without a change.\n")
+	sb.WriteString("- Normalize the goal, but do not invent missing requirements.\n")
+	sb.WriteString("- If the task may write a large file, plan to split content into smaller write chunks and continue with append=true instead of one huge write payload.\n")
+
+	sb.WriteString("\n## Output Rules\n")
+	sb.WriteString("- No markdown, no code fences, no commentary, and no prose outside the JSON object.\n")
+	sb.WriteString("- Each subtask object must contain a non-empty description string.\n")
+	sb.WriteString("- Keep wording concise and execution-oriented.\n")
+
+	if strings.TrimSpace(memoryCtx) != "" {
+		sb.WriteString("\n## Relevant Context\n")
+		sb.WriteString(memoryCtx)
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
 // generatePlan asks the LLM to create a structured plan.
 func (r *Runner) generatePlan(ctx context.Context, goal, conversationCtx string) (*planResult, error) {
 	// Recall relevant memories for context
 	memoryCtx := r.recallMemories(ctx, goal)
 
-	systemPrompt := `You are a deterministic task planner. Given a goal, return ONLY JSON in this shape:
-{
-  "goal": "<normalized goal>",
-  "subtasks": [{"description":"..."}],
-  "requires_confirmation": ["..."],
-  "success_criteria": ["..."],
-  "fallback_plan": ["..."]
-}
-
-Rules:
-- 3-10 subtasks, each concrete and actionable.
-- Include requires_confirmation only for real high-risk/ambiguous points.
-- success_criteria must be testable.
-- fallback_plan must be safe and finite (no loops).
-- No markdown, no prose outside JSON.`
-
-	if memoryCtx != "" {
-		systemPrompt += "\n\n# Relevant Context\n" + memoryCtx
-	}
+	systemPrompt := buildPlanningSystemPrompt(memoryCtx)
 
 	userMsg := goal
 	if conversationCtx != "" {
@@ -1025,7 +1271,7 @@ Rules:
 			{Role: llm.RoleUser, Content: userMsg},
 		},
 		MaxTokens:   1000,
-		Temperature: 0.3,
+		Temperature: 0.2,
 	})
 	if err != nil {
 		return nil, err
@@ -1074,18 +1320,10 @@ func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (s
 	}
 	contextMsg.WriteString(fmt.Sprintf("\nNow execute step %d: %s", step.Index+1, step.Description))
 
+	cachedTools := r.llmTools() // cache once per step — tool list doesn't change mid-execution
+
 	messages := []llm.Message{
-		{Role: llm.RoleSystem, Content: `You are an autonomous agent executing a plan step. Use available tools to complete the step. Be concise in your response — just do the work and report the result.
-
-Do not depend on 'blue' CLI subcommands. If CLI-specific commands are unavailable, fall back to standard shell commands and available file/workspace tools.
-
-When you encounter ambiguity, need user preferences, or face a decision with multiple valid options, use the ask tool to ask the user.
-Preferred format: {"questions":[{"question":"Which approach?","type":"radio","options":["Option A","Option B"]}]}
-Single-question shorthand: {"q":"Which approach?","a":["Option A","Option B"]} or {"mq":"...","a":[...]}
-Optional extra detail: set "detail" and it will be shown with a ❕ marker.
-Inside questions items, use "question"/"detail"/"type"/"options".
-
-Group related questions into a single ask call. Keep questions clear and provide good option labels.`},
+		{Role: llm.RoleSystem, Content: buildStepExecutionSystemPrompt(cachedTools)},
 		{Role: llm.RoleUser, Content: contextMsg.String()},
 	}
 
@@ -1094,7 +1332,6 @@ Group related questions into a single ask call. Keep questions clear and provide
 	var lastToolSig string // detect repeated identical tool calls
 	var repeatCount int
 	const maxRepeats = 3
-	cachedTools := r.llmTools() // cache once per step — tool list doesn't change mid-execution
 
 	maxRounds := r.resolveMaxToolRoundsPerStep()
 	for round := 0; round < maxRounds; round++ {
@@ -1113,7 +1350,7 @@ Group related questions into a single ask call. Keep questions clear and provide
 				TaskID:    task.ID,
 				EventType: "task_user_message",
 				StepIndex: step.Index,
-				Message:   combined,
+				Message:   taskUserUpdateMessage(combined),
 			})
 			logger.Info().Str("task_id", task.ID).Int("step", step.Index).Int("round", round).Msg("[agent] injected user messages between tool rounds")
 		}
@@ -1160,21 +1397,11 @@ Group related questions into a single ask call. Keep questions clear and provide
 				if err := r.transitionState(ctx, task, RuntimeStateConfirmGate, "high-risk capability requires confirmation", &capability, TaskStatusWaitingInput); err != nil {
 					return lastContent, err
 				}
-				ans, askErr := r.AskUser(ctx, task.ID, []AgentQuestion{{
-					ID:       "tool_gate",
-					Header:   "Confirm",
-					Question: fmt.Sprintf("将执行高风险调用 `%s`，是否继续？", tc.Name),
-					Options: []QuestionOption{
-						{Label: "继续", Value: "continue", Description: "执行本次调用"},
-						{Label: "跳过", Value: "skip", Description: "跳过本次调用继续任务"},
-						{Label: "中止", Value: "abort", Description: "立即中止任务"},
-					},
-					Required: true,
-				}}, step.Index)
+				ans, askErr := r.AskUser(ctx, task.ID, buildHighRiskConfirmationQuestions(tc.Name, capability, step.Description), step.Index)
 				if askErr != nil {
 					return lastContent, askErr
 				}
-				decision := "continue"
+				decision := "skip"
 				if len(ans) > 0 && len(ans[0].Values) > 0 {
 					decision = ans[0].Values[0]
 				}
@@ -1234,9 +1461,96 @@ Group related questions into a single ask call. Keep questions clear and provide
 	return lastContent, nil
 }
 
+func buildStepExecutionSystemPrompt(tools []llm.Tool) string {
+	var sb strings.Builder
+	sb.WriteString("You are an autonomous agent executing a single plan step inside ZimaOS Blue. Finish the current step using the available tools, then stop and report the result.\n\n")
+	sb.WriteString("## Tooling\n")
+	sb.WriteString("Tool names are case-sensitive. Call tools exactly as listed.\n")
+	if len(tools) == 0 {
+		sb.WriteString("No first-class tools are available in this run; rely on direct reasoning only.\n")
+	} else {
+		sb.WriteString("Tool availability:\n")
+		for _, tool := range tools {
+			sb.WriteString("- ")
+			sb.WriteString(tool.Name)
+			if desc := strings.TrimSpace(tool.Description); desc != "" {
+				sb.WriteString(": ")
+				sb.WriteString(desc)
+			}
+			sb.WriteByte('\n')
+		}
+	}
+	sb.WriteString("Prefer first-class tools over shell commands when they directly cover the action.\n")
+	sb.WriteString("Do not depend on 'blue' CLI subcommands. If CLI-specific commands are unavailable, fall back to standard shell commands and available file/workspace tools.\n")
+	if hasStepTool(tools, "exec") && hasStepTool(tools, "process") {
+		sb.WriteString("For long-running commands, use exec with a sensible timeout and inspect the returned session_id with process; avoid tight polling loops or repeating the same command without a change.\n")
+	}
+
+	sb.WriteString("\n## Tool Call Style\n")
+	sb.WriteString("Default: do not narrate routine, low-risk tool calls; just call the tool.\n")
+	sb.WriteString("Narrate only when it helps: multi-step work, complex problems, sensitive actions, or when the user explicitly asks.\n")
+	sb.WriteString("Keep narration brief and value-dense; avoid repeating obvious steps.\n")
+
+	sb.WriteString("\n## Step Execution\n")
+	sb.WriteString("Stay focused on the current step while using the full plan as context.\n")
+	sb.WriteString("If a tool fails, inspect the result, adjust the approach, and avoid repeating identical failing calls.\n")
+	sb.WriteString("When the step is complete or blocked, stop calling tools and explain the result or blocker concisely.\n")
+
+	if hasStepTool(tools, "ask") {
+		sb.WriteString("\n## Ask Tool\n")
+		sb.WriteString("When you encounter ambiguity, need user preferences, or face multiple valid options, use the ask tool instead of guessing.\n")
+		sb.WriteString("Preferred format: {\"questions\":[{\"question\":\"Which approach?\",\"type\":\"radio\",\"options\":[\"Option A\",\"Option B\"]}]}\n")
+		sb.WriteString("Single-question shorthand: {\"q\":\"Which approach?\",\"a\":[\"Option A\",\"Option B\"]} or {\"mq\":\"...\",\"a\":[...]}\n")
+		sb.WriteString("Optional extra detail: set \"detail\" and it will be shown with a ❕ marker.\n")
+		sb.WriteString("Inside questions items, use only \"question\"/\"detail\"/\"type\"/\"options\".\n")
+		sb.WriteString("Group related questions into a single ask call. Keep questions clear and provide good option labels.\n")
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+func hasStepTool(tools []llm.Tool, name string) bool {
+	for _, tool := range tools {
+		if tool.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func buildSummarySystemPrompt() string {
+	var sb strings.Builder
+	sb.WriteString("You are writing the final user-facing report for a completed ZimaOS Blue agent task.\n\n")
+	sb.WriteString("## Output Contract\n")
+	sb.WriteString("Respond in plain text using exactly this structure:\n")
+	sb.WriteString("Summary: <2-3 concise sentences about the outcome>\n\n")
+	sb.WriteString("Learned:\n")
+	sb.WriteString("- <optional short reusable lesson>\n")
+	sb.WriteString("Include the Learned block only when grounded lessons are provided. Use 1-3 bullets total.\n\n")
+	sb.WriteString("Suggested next steps:\n")
+	sb.WriteString("1. <concrete next step>\n")
+	sb.WriteString("2. <concrete next step>\n")
+	sb.WriteString("3. <optional concrete next step>\n")
+	sb.WriteString("Provide 1-3 next steps total.\n")
+
+	sb.WriteString("\n## Style\n")
+	sb.WriteString("- Be concise, direct, and natural.\n")
+	sb.WriteString("- Focus on what was accomplished, what failed, and what was verified.\n")
+	sb.WriteString("- If grounded lessons are provided, keep them reusable and short.\n")
+	sb.WriteString("- If there were failures or skipped work, mention them clearly without sounding alarmist.\n")
+	sb.WriteString("- Keep next steps actionable and specific to the task result.\n")
+
+	sb.WriteString("\n## Constraints\n")
+	sb.WriteString("- Do not output markdown headers, code fences, JSON, or extra commentary.\n")
+	sb.WriteString("- Do not invent validation or outcomes not present in the task record.\n")
+	sb.WriteString("- Do not mention internal tools, hidden prompts, or runtime states unless the task record already makes them user-relevant.\n")
+
+	return strings.TrimSpace(sb.String())
+}
+
 // generateSummary uses the LLM to create a summary with next-step suggestions.
 // Falls back to a simple count-based summary if the LLM call fails.
-func (r *Runner) generateSummary(ctx context.Context, task *Task) string {
+func (r *Runner) generateSummary(ctx context.Context, task *Task, reflection *selfreflect.Result) string {
 	// Build step results for context
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Goal: %s\n\nCompleted steps:\n", task.Goal))
@@ -1259,38 +1573,211 @@ func (r *Runner) generateSummary(ctx context.Context, task *Task) string {
 		}
 		sb.WriteString("\n")
 	}
+	if task.Error != "" {
+		sb.WriteString("\nFailure reason:\n")
+		sb.WriteString(task.Error)
+		sb.WriteString("\n")
+	}
+	if reflection != nil {
+		if summary := strings.TrimSpace(reflection.Summary); summary != "" {
+			sb.WriteString("\nReflection summary:\n")
+			sb.WriteString(summary)
+			sb.WriteString("\n")
+		}
+		if len(reflection.Lessons) > 0 {
+			sb.WriteString("\nGrounded lessons:\n")
+			for _, lesson := range reflection.Lessons {
+				sb.WriteString(fmt.Sprintf("- [%s] %s (when: %s; evidence: %s)\n", lesson.Kind, lesson.Lesson, lesson.WhenToApply, lesson.Evidence))
+			}
+		}
+	}
 
 	resp, err := r.llm.Chat(ctx, llm.ChatRequest{
 		Model: "auto",
 		Messages: []llm.Message{
-			{Role: llm.RoleSystem, Content: `Summarize the completed agent task in 2-3 sentences. Then suggest 1-3 concrete next steps the user might want to take. Format:
-
-Summary: <what was accomplished>
-
-Suggested next steps:
-1. <suggestion>
-2. <suggestion>`},
+			{Role: llm.RoleSystem, Content: buildSummarySystemPrompt()},
 			{Role: llm.RoleUser, Content: sb.String()},
 		},
 		MaxTokens:   500,
-		Temperature: 0.3,
+		Temperature: 0.2,
 	})
 	if err != nil {
 		// Fallback to deterministic summary + next-step guidance.
 		result := fmt.Sprintf("Summary: Completed %d/%d steps", completed, len(task.Plan))
+		learned := formatLearnedSection(reflection)
 		if failed > 0 {
 			result += fmt.Sprintf(" (%d failed)", failed)
-			return result + ".\n\nSuggested next steps:\n" +
+			result += "."
+			if learned != "" {
+				result += "\n\n" + learned
+			}
+			return result + "\n\nSuggested next steps:\n" +
 				"1. Inspect the failed steps and retry with a safer fallback path.\n" +
 				"2. Re-run validation to confirm the recovery result.\n" +
 				"3. Tell me whether to continue fixing remaining issues or finalize the report."
 		}
-		return result + ".\n\nSuggested next steps:\n" +
+		result += "."
+		if learned != "" {
+			result += "\n\n" + learned
+		}
+		return result + "\n\nSuggested next steps:\n" +
 			"1. Verify the deliverables in your environment.\n" +
 			"2. Run relevant tests to confirm no regressions.\n" +
 			"3. Tell me what to optimize next."
 	}
 	return strings.TrimSpace(resp.Message.Content)
+}
+
+func formatLearnedSection(reflection *selfreflect.Result) string {
+	if reflection == nil || len(reflection.Lessons) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("Learned:\n")
+	for _, lesson := range reflection.Lessons {
+		sb.WriteString("- ")
+		sb.WriteString(lesson.Lesson)
+		sb.WriteString("\n")
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func (r *Runner) runReflection(ctx context.Context, task *Task, finalStatus TaskStatus, failureReason string) *selfreflect.Result {
+	if !r.resolveAutoReflect() || r.reflector == nil || task == nil {
+		return nil
+	}
+	if finalStatus == TaskStatusCancelled || finalStatus == TaskStatusAborted {
+		return nil
+	}
+	planSnapshot := append([]PlanStep(nil), task.Plan...)
+	step := PlanStep{
+		Index:       len(task.Plan),
+		Description: "Reflect on the task and capture reusable lessons",
+		Status:      StepStatusRunning,
+	}
+	startedAt := timeutil.NowTime()
+	step.StartedAt = &startedAt
+	task.CurrentStep = step.Index
+	task.Plan = append(task.Plan, step)
+	_ = r.store.Update(ctx, task)
+
+	r.publishEvent(task.UserID, TaskEvent{
+		TaskID:    task.ID,
+		EventType: "task_reflection_started",
+		StepIndex: step.Index,
+		Progress:  98,
+		Message:   taskReflectingMessage(),
+	})
+	r.publishEvent(task.UserID, TaskEvent{
+		TaskID:    task.ID,
+		EventType: "task_progress",
+		StepIndex: step.Index,
+		Progress:  98,
+		Message:   taskReflectingMessage(),
+	})
+
+	if err := r.transitionState(ctx, task, RuntimeStateReflect, "reflecting on task outcome", nil, ""); err != nil {
+		logger.Warn().Err(err).Str("task_id", task.ID).Msg("[agent] reflection state transition failed")
+	}
+
+	reflection, err := r.reflector.Reflect(ctx, buildReflectionInput(task, planSnapshot, finalStatus, failureReason))
+	completedAt := timeutil.NowTime()
+	idx := len(task.Plan) - 1
+	task.Plan[idx].CompletedAt = &completedAt
+	if err != nil {
+		task.Plan[idx].Status = StepStatusFailed
+		task.Plan[idx].Output = fmt.Sprintf("Reflection error: %v", err)
+		_ = r.store.Update(ctx, task)
+		r.publishEvent(task.UserID, TaskEvent{
+			TaskID:    task.ID,
+			EventType: "task_reflection_completed",
+			StepIndex: idx,
+			Progress:  98,
+			Message:   "Reflection did not produce reusable lessons.",
+			Output:    truncate(task.Plan[idx].Output, 500),
+		})
+		return nil
+	}
+
+	task.Plan[idx].Status = StepStatusCompleted
+	task.Plan[idx].Output = formatReflectionOutput(reflection)
+	_ = r.store.Update(ctx, task)
+	durationMs := int64(0)
+	if task.Plan[idx].StartedAt != nil && task.Plan[idx].CompletedAt != nil {
+		durationMs = task.Plan[idx].CompletedAt.Sub(*task.Plan[idx].StartedAt).Milliseconds()
+	}
+	r.publishEvent(task.UserID, TaskEvent{
+		TaskID:     task.ID,
+		EventType:  "task_step_completed",
+		StepIndex:  idx,
+		Output:     truncate(task.Plan[idx].Output, 500),
+		DurationMs: durationMs,
+	})
+	r.publishEvent(task.UserID, TaskEvent{
+		TaskID:    task.ID,
+		EventType: "task_reflection_completed",
+		StepIndex: idx,
+		Progress:  99,
+		Message:   reflection.Summary,
+		Output:    truncate(task.Plan[idx].Output, 500),
+	})
+	return reflection
+}
+
+func buildReflectionInput(task *Task, plan []PlanStep, finalStatus TaskStatus, failureReason string) selfreflect.Input {
+	steps := make([]selfreflect.Step, 0, len(plan))
+	verificationOutput := ""
+	for _, step := range plan {
+		steps = append(steps, selfreflect.Step{
+			Description: step.Description,
+			Status:      string(step.Status),
+			Output:      step.Output,
+		})
+		if verificationOutput == "" && strings.HasPrefix(strings.ToLower(step.Description), "verify") {
+			verificationOutput = step.Output
+		}
+	}
+	return selfreflect.Input{
+		TaskID:             task.ID,
+		Goal:               task.Goal,
+		Plan:               steps,
+		VerificationOutput: verificationOutput,
+		FinalStatus:        strings.ToLower(string(finalStatus)),
+		ResultSummary:      task.Result,
+		FailureReason:      failureReason,
+	}
+}
+
+func formatReflectionOutput(reflection *selfreflect.Result) string {
+	if reflection == nil {
+		return "Reflection skipped."
+	}
+	parts := []string{}
+	if summary := strings.TrimSpace(reflection.Summary); summary != "" {
+		parts = append(parts, summary)
+	}
+	if len(reflection.Lessons) > 0 {
+		var sb strings.Builder
+		sb.WriteString("Learned:\n")
+		for _, lesson := range reflection.Lessons {
+			sb.WriteString("- [")
+			sb.WriteString(string(lesson.Kind))
+			sb.WriteString("] ")
+			sb.WriteString(lesson.Lesson)
+			sb.WriteString("\n")
+		}
+		parts = append(parts, strings.TrimSpace(sb.String()))
+	}
+	if reflection.MemoryWritten > 0 {
+		parts = append(parts, fmt.Sprintf("Memory written: %d", reflection.MemoryWritten))
+	}
+	if reflection.SkippedReason != "" {
+		parts = append(parts, "Skipped: "+reflection.SkippedReason)
+	}
+	if len(parts) == 0 {
+		return "Reflection completed."
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // failTask marks a task as failed and publishes the event.
@@ -1302,14 +1789,28 @@ func (r *Runner) failTask(ctx context.Context, task *Task, errMsg string) {
 	persistCtx := context.Background()
 	task.Status = TaskStatusFailed
 	task.Error = errMsg
-	if task.RuntimeState != RuntimeStateAborted {
-		_ = r.transitionState(persistCtx, task, RuntimeStateAborted, "task failed", nil, TaskStatusFailed)
+	reflection := r.runReflection(persistCtx, task, TaskStatusFailed, errMsg)
+	if task.RuntimeState != RuntimeStateReport {
+		if err := r.transitionState(persistCtx, task, RuntimeStateReport, "generating final report", nil, ""); err != nil {
+			logger.Warn().Err(err).Str("task_id", task.ID).Msg("[agent] report transition failed during failure finalization")
+		}
 	}
+	task.Progress = 100
+	task.Result = r.generateSummary(persistCtx, task, reflection)
+	_ = r.store.Update(persistCtx, task)
+	if task.RuntimeState != RuntimeStateDone {
+		if err := r.transitionState(persistCtx, task, RuntimeStateDone, "task failed", nil, TaskStatusFailed); err != nil {
+			logger.Warn().Err(err).Str("task_id", task.ID).Msg("[agent] done transition failed during failure finalization")
+		}
+	}
+	task.Status = TaskStatusFailed
 	_ = r.store.Update(persistCtx, task)
 	r.publishEvent(task.UserID, TaskEvent{
 		TaskID:    task.ID,
 		EventType: "task_failed",
-		Message:   errMsg,
+		Progress:  100,
+		Message:   taskFailedMessage(errMsg),
+		Output:    task.Result,
 	})
 }
 
@@ -1336,7 +1837,7 @@ func (r *Runner) cancelTask(task *Task, reason string) {
 		TaskID:    task.ID,
 		EventType: "task_cancelled",
 		Progress:  task.Progress,
-		Message:   reason,
+		Message:   taskCancelledMessage(reason),
 		FromState: from,
 		ToState:   RuntimeStateAborted,
 	})
@@ -1373,7 +1874,7 @@ func (r *Runner) transitionState(ctx context.Context, task *Task, to RuntimeStat
 		EventType: "task_state_transition",
 		FromState: from,
 		ToState:   to,
-		Message:   reason,
+		Message:   taskStateTransitionMessage(reason, from, to),
 	})
 	return nil
 }
@@ -1455,7 +1956,7 @@ func (r *Runner) watchTimeout(ctx context.Context, task *Task) {
 		r.publishEvent(task.UserID, TaskEvent{
 			TaskID:    task.ID,
 			EventType: "task_progress",
-			Message:   fmt.Sprintf("Warning: task approaching timeout (%s remaining)", remaining),
+			Message:   taskTimeoutWarningMessage(remaining),
 		})
 	}
 }

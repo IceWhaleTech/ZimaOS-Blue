@@ -19,6 +19,7 @@ const (
 	RuntimeStateConfirmGate RuntimeState = "CONFIRM_GATE"
 	RuntimeStateExecute     RuntimeState = "EXECUTE"
 	RuntimeStateVerify      RuntimeState = "VERIFY"
+	RuntimeStateReflect     RuntimeState = "REFLECT"
 	RuntimeStateReport      RuntimeState = "REPORT"
 	RuntimeStateRecover     RuntimeState = "RECOVER"
 	RuntimeStateDone        RuntimeState = "DONE"
@@ -63,26 +64,35 @@ var runtimeTransitions = map[RuntimeState]map[RuntimeState]struct{}{
 	},
 	RuntimeStateClarify: {
 		RuntimeStatePlan:    {},
+		RuntimeStateReflect: {},
+		RuntimeStateReport:  {},
 		RuntimeStateAborted: {},
 	},
 	RuntimeStatePlan: {
 		RuntimeStateConfirmGate: {},
 		RuntimeStateExecute:     {},
+		RuntimeStateReflect:     {},
+		RuntimeStateReport:      {},
 		RuntimeStateAborted:     {},
 	},
 	RuntimeStateConfirmGate: {
 		RuntimeStateExecute: {},
 		RuntimeStatePlan:    {},
 		RuntimeStateRecover: {},
+		RuntimeStateReflect: {},
+		RuntimeStateReport:  {},
 		RuntimeStateAborted: {},
 	},
 	RuntimeStateExecute: {
 		RuntimeStateVerify:      {},
 		RuntimeStateConfirmGate: {},
 		RuntimeStateRecover:     {},
+		RuntimeStateReflect:     {},
+		RuntimeStateReport:      {},
 		RuntimeStateAborted:     {},
 	},
 	RuntimeStateVerify: {
+		RuntimeStateReflect: {},
 		RuntimeStateReport:  {},
 		RuntimeStateRecover: {},
 		RuntimeStateAborted: {},
@@ -91,8 +101,13 @@ var runtimeTransitions = map[RuntimeState]map[RuntimeState]struct{}{
 		RuntimeStateExecute:     {},
 		RuntimeStateVerify:      {},
 		RuntimeStateConfirmGate: {},
+		RuntimeStateReflect:     {},
 		RuntimeStateReport:      {},
 		RuntimeStateAborted:     {},
+	},
+	RuntimeStateReflect: {
+		RuntimeStateReport: {},
+		RuntimeStateDone:   {},
 	},
 	RuntimeStateReport: {
 		RuntimeStateDone: {},

@@ -238,12 +238,6 @@ export function parseTypelessContentIncremental(
   const tailProbe = state.lastContent.slice(-INCREMENTAL_CARD_HINT_TAIL) + newContent
   const hasIncrementalCardHints = mightContainIncrementalCardHints(tailProbe)
 
-  // If the new chunk is very small and has no card hints, debounce parsing.
-  // Preserve streaming-card behavior: always re-parse when a card is in-progress.
-  if (newContent.length < 24 && !state.hasStreaming && !hasIncrementalCardHints) {
-    return state.lastResult
-  }
-
   // Check if new content might contain new cards or update streaming cards
   const mightHaveNewCards = hasIncrementalCardHints || state.hasStreaming
 
@@ -823,29 +817,36 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
   // During streaming, also try to parse incomplete typeless blocks
   // Look for blocks that start with marker but don't have closing marker yet
   if (isStreaming) {
-    const incompleteRegex = new RegExp(
-      `${escapeRegex(TYPELESS_MARKER_START)}\\s*([\\s\\S]*)$`
-    )
-    const incompleteMatch = incompleteRegex.exec(text)
-    if (incompleteMatch && incompleteMatch[1]) {
-      const jsonStr = incompleteMatch[1].trim()
-      // Only try to parse if it looks like JSON (starts with {)
-      if (jsonStr.startsWith('{')) {
-        const partialCard = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
-        if (partialCard && typeof partialCard.type === 'string' && isValidCardType(partialCard.type)) {
-          // Mark as streaming/incomplete
-          partialCard._streaming = true
-          if (!partialCard.id) {
-            partialCard.id = `card-streaming-${cardIndex.value++}`
-          }
-          cards.push(partialCard)
+    const lastStartIdx = text.lastIndexOf(TYPELESS_MARKER_START)
+    if (lastStartIdx !== -1) {
+      const alreadyParsedAsCompleteBlock = replacements.some(replacement => replacement.start === lastStartIdx)
+      const incompleteStart = lastStartIdx + TYPELESS_MARKER_START.length
+      const trailingContent = text.slice(incompleteStart)
 
-          // Mark for replacement with placeholder
-          replacements.push({
-            start: incompleteMatch.index,
-            end: text.length,
-            placeholder: `[[TYPELESS_CARD:${partialCard.id}]]`,
-          })
+      // Only treat the final typeless block as incomplete when we have not
+      // already paired it with a valid closing fence. Raw "```" inside JSON
+      // strings (for example embedded markdown/code fences) must not suppress
+      // streaming card updates.
+      if (!alreadyParsedAsCompleteBlock) {
+        const jsonStr = trailingContent.trim()
+        // Only try to parse if it looks like JSON (starts with {)
+        if (jsonStr.startsWith('{')) {
+          const partialCard = tryParseIncompleteJSON(jsonStr) as TypelessCard | null
+          if (partialCard && typeof partialCard.type === 'string' && isValidCardType(partialCard.type)) {
+            // Mark as streaming/incomplete
+            partialCard._streaming = true
+            if (!partialCard.id) {
+              partialCard.id = `card-streaming-${cardIndex.value++}`
+            }
+            cards.push(partialCard)
+
+            // Mark for replacement with placeholder
+            replacements.push({
+              start: lastStartIdx,
+              end: text.length,
+              placeholder: `[[TYPELESS_CARD:${partialCard.id}]]`,
+            })
+          }
         }
       }
     }
@@ -1378,16 +1379,39 @@ function mergeConsecutiveProgressCards(
 
   const flushPending = () => {
     if (pendingSteps.length === 0 || !pendingType) return
-    const first = pendingSteps[0]!
+    const dedupedByStep = new Map<string, TypelessCard>()
+    const stepOrder: string[] = []
+    pendingSteps.forEach((stepCard, index) => {
+      const record = stepCard as unknown as Record<string, unknown>
+      const rawStep = typeof record.step === 'string' && record.step.trim()
+        ? record.step.trim()
+        : `${pendingType}-${index}`
+      if (!dedupedByStep.has(rawStep)) {
+        stepOrder.push(rawStep)
+      }
+      dedupedByStep.set(rawStep, stepCard)
+    })
+    const normalizedSteps = stepOrder
+      .map(step => dedupedByStep.get(step))
+      .filter((step): step is TypelessCard => Boolean(step))
+    const first = normalizedSteps[0]!
     const firstRecord = first as unknown as Record<string, unknown>
     const merged: TypelessCard = {
       type: pendingType,
       id: (firstRecord.id as string) || `${pendingType}-merged`,
-      steps: pendingSteps.map(s => ({
+      steps: normalizedSteps.map(s => ({
         step: (s as unknown as Record<string, unknown>).step,
         name: (s as unknown as Record<string, unknown>).name,
         status: (s as unknown as Record<string, unknown>).status,
+        detail: (s as unknown as Record<string, unknown>).detail,
+        current: (s as unknown as Record<string, unknown>).current,
+        total: (s as unknown as Record<string, unknown>).total,
+        source_kind: (s as unknown as Record<string, unknown>).source_kind,
+        source_label: (s as unknown as Record<string, unknown>).source_label,
+        char_count: (s as unknown as Record<string, unknown>).char_count,
+        result_count: (s as unknown as Record<string, unknown>).result_count,
         url: (s as unknown as Record<string, unknown>).url,
+        recipe_name: (s as unknown as Record<string, unknown>).recipe_name,
         score: (s as unknown as Record<string, unknown>).score,
       })),
       _streaming: pendingSteps.some(s => s._streaming),
@@ -1412,10 +1436,6 @@ function mergeConsecutiveProgressCards(
   }
   flushPending()
   return result
-}
-
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /**

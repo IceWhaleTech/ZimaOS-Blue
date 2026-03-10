@@ -125,3 +125,26 @@ func BenchmarkHumanize(b *testing.B) {
 		}
 	})
 }
+
+func TestHumanizeForPreset(t *testing.T) {
+	tests := []struct {
+		name       string
+		preset     string
+		input      string
+		wantText   string
+		wantFormat string
+	}{
+		{name: "telegram html", preset: "telegram", input: "Hello **world**", wantText: "Hello <b>world</b>", wantFormat: "html"},
+		{name: "matrix html", preset: "matrix", input: "Hello **world**", wantText: "Hello <strong>world</strong>", wantFormat: "html"},
+		{name: "plain fallback", preset: "", input: "Hello **world**", wantText: "Hello world", wantFormat: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotText, gotFormat := HumanizeForPreset(tt.input, tt.preset)
+			if gotText != tt.wantText || gotFormat != tt.wantFormat {
+				t.Fatalf("HumanizeForPreset(%q, %q) = (%q, %q), want (%q, %q)", tt.input, tt.preset, gotText, gotFormat, tt.wantText, tt.wantFormat)
+			}
+		})
+	}
+}

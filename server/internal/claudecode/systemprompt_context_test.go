@@ -3,6 +3,7 @@ package claudecode
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -152,6 +153,42 @@ func TestBuildProjectContext_CacheHitAndInvalidation(t *testing.T) {
 	}
 }
 
+func TestBuildStructured_ConfigCacheHitAndInvalidation(t *testing.T) {
+	workspaceDir := t.TempDir()
+	mgr := workspace.NewManager(workspaceDir)
+	if err := mgr.EnsureWorkspace(); err != nil {
+		t.Fatalf("failed to ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceDir, workspace.FileUSER), []byte("user context"), 0o644); err != nil {
+		t.Fatalf("write USER.md: %v", err)
+	}
+
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{WorkspaceDir: workspaceDir})
+	b.SetWorkspace(mgr)
+
+	first := b.BuildStructured(context.Background(), "")
+	if first.Config == "" {
+		t.Fatal("expected non-empty config block")
+	}
+	if b.configCacheHit != 0 {
+		t.Fatalf("config cache hits = %d, want 0 after first build", b.configCacheHit)
+	}
+
+	second := b.BuildStructured(context.Background(), "")
+	if second.Config != first.Config {
+		t.Fatal("expected config cache hit to return same config")
+	}
+	if b.configCacheHit != 1 {
+		t.Fatalf("config cache hits = %d, want 1 after second build", b.configCacheHit)
+	}
+
+	b.SetAgentMode(true)
+	_ = b.BuildStructured(context.Background(), "")
+	if b.configCacheHit != 1 {
+		t.Fatalf("config cache hits = %d, want unchanged after config invalidation", b.configCacheHit)
+	}
+}
+
 func TestBuildAgentModeGuidance_IncludesChecklistAndAskFormat(t *testing.T) {
 	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
 	b.SetAgentMode(true)
@@ -205,6 +242,9 @@ func TestBuildAgentModeGuidance_IncludesChecklistAndAskFormat(t *testing.T) {
 	}
 	if !strings.Contains(out, "Do NOT call exec without a concrete command") {
 		t.Fatalf("agent mode guidance should enforce concrete exec command requirement: %s", out)
+	}
+	if !strings.Contains(out, "append=true") || !strings.Contains(out, "never send one huge payload") {
+		t.Fatalf("agent mode guidance should include chunked write execution guidance: %s", out)
 	}
 	if !strings.Contains(out, "Ask confirmation before destructive actions") {
 		t.Fatalf("agent mode guidance should include manual-confirm clause by default: %s", out)

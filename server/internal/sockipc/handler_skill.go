@@ -11,6 +11,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	defaultSkillFallbackTimeout = 2 * time.Minute
+	analyzeSkillFallbackTimeout = 10 * time.Minute
+)
+
 // SkillExecutor is the interface for executing skills by ID.
 // Matches skill.Executor.Execute signature without importing the skill package.
 type SkillExecutor interface {
@@ -38,9 +43,6 @@ func RegisterSkillFallback(srv *Server, executor SkillExecutor, log *zap.Logger)
 
 		log.Info("skill fallback", zap.String("cmd", req.Cmd), zap.Any("params", req.Params))
 
-		ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		defer cancel()
-
 		execSkillID := req.Cmd
 		execInput := input
 
@@ -63,6 +65,13 @@ func RegisterSkillFallback(srv *Server, executor SkillExecutor, log *zap.Logger)
 				zap.String("skill_id", execSkillID),
 				zap.String("action", action))
 		}
+
+		timeout := defaultSkillFallbackTimeout
+		if strings.EqualFold(strings.TrimSpace(execSkillID), "analyze") {
+			timeout = analyzeSkillFallbackTimeout
+		}
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
 
 		data, err := executor.Execute(ctx, execSkillID, execInput)
 		if err != nil {

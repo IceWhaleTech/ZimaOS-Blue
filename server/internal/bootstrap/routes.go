@@ -61,7 +61,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
@@ -1107,7 +1109,29 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Deep research service (shared by API + skill executor)
 	deepResearchService := deepresearch.NewService(nil, deepresearch.NewToolWebSearcherWithConfig(webSearchConfig))
+	deepResearchService.SetRoutePolicy(deepresearch.RoutePolicy{
+		DefaultMode:     deepresearch.RouteMode(deps.Config.Research.Router.DefaultMode),
+		AllowExperiment: deps.Config.Research.Router.AllowExperiment,
+		AllowHybrid:     deps.Config.Research.Router.AllowHybrid,
+	})
+	if deps.Config.Research.Autoresearch.Enabled {
+		backend, err := deepresearch.NewAutoresearchBackend(deepresearch.AutoresearchBackendConfig{
+			Command:     deps.Config.Research.Autoresearch.Command,
+			Args:        deps.Config.Research.Autoresearch.Args,
+			WorkingDir:  deps.Config.Research.Autoresearch.WorkingDir,
+			Timeout:     deps.Config.Research.Autoresearch.Timeout,
+			ArtifactDir: deps.Config.Research.Autoresearch.ArtifactDir,
+			Env:         deps.Config.Research.Autoresearch.Env,
+		})
+		if err != nil {
+			logger.Warn("Failed to initialize autoresearch backend", zap.Error(err))
+		} else {
+			deepResearchService.SetExperimentBackend(backend)
+			logger.Info("Autoresearch backend enabled for deep research")
+		}
+	}
 	deps.ChatHandler.SetDeepResearchService(deepResearchService)
+	tools.RegisterResearchTools(s.ToolRegistry, newDeepResearchToolAdapter(deepResearchService))
 
 	// Register auto-reply routes
 	if deps.AutoreplyHandler != nil {
@@ -1270,6 +1294,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if webFetchTool := tools.GetWebFetchTool(s.ToolRegistry); webFetchTool != nil {
 			webFetchTool.SetBrowser(deps.BrowserBackend)
 		}
+		if webReadTool := tools.GetWebReadTool(s.ToolRegistry); webReadTool != nil {
+			webReadTool.SetBrowser(deps.BrowserBackend)
+		}
+		if webExtractTool := tools.GetWebExtractTool(s.ToolRegistry); webExtractTool != nil {
+			webExtractTool.SetBrowser(deps.BrowserBackend)
+		}
 	}
 	// Wire browser backend into browser skill
 	if deps.BrowserBackend != nil {
@@ -1353,6 +1383,8 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			ds.SetExecutor(deepresearch.NewSkillExecutor(deepResearchService))
 		}
 	}
+
+	var reflectService *selfreflect.Service
 
 	// Ask-user-question: QuestionManager for handling question dialogs
 	var questionMgr *tools.QuestionManager
@@ -1948,6 +1980,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// OpenAI-compatible proxy routes on /v1/*
 	var agentRunnerRef *agent.Runner
+	auxiliaryLLM := newAuxiliaryLLMCaller()
 	agentLLMCaller := agent.LLMCaller(newProviderRegistryLLMCaller(s.LLMRegistry))
 	if deps.Config.Proxy != nil && deps.Config.Proxy.Enabled {
 		routingConfig := &deps.Config.Proxy.Routing
@@ -1958,6 +1991,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		proxyConnPool := proxy.NewConnectionPool(&deps.Config.Proxy.Connection)
 		proxyFailover := proxy.NewFailoverHandler(&routingConfig.Failover, proxyRouter)
 		proxyHandler := proxy.NewProxyHandler(proxyRouter, proxyConnPool, proxyFailover)
+		proxyHandler.SetResponsesIntegrationEnabled(false)
 		proxyHandler.SetSTTService(deps.STTService)
 		proxyHandler.SetProviderRaceConfig(routingConfig.Failover.ProviderRace)
 		proxyHandler.SetPromptCacheEnabled(true) // default ON for new installs
@@ -2275,13 +2309,17 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 		// ProxyBridge: route ChatHandler LLM calls through proxy pipeline
 		bridge := proxybridge.NewBridge(proxyHandler)
-		agentLLMCaller = &proxyBridgeLLMCaller{
+		proxyCaller := &proxyBridgeLLMCaller{
 			bridge:            bridge,
 			claudeCodeHandler: deps.ClaudeCodeHandler,
 			providerPool:      deps.ProviderPool,
 		}
+		auxiliaryLLM.SetFallback(proxyCaller)
+		agentLLMCaller = proxyCaller
 		deps.ChatHandler.SetProxyBridge(bridge)
-		deps.ChatHandler.SetIMModel("auto") // proxy auto-selects model
+		// Leave IM model empty so ChatHandler can dynamically resolve defaults:
+		// prefer codex-spark when available, otherwise fall back to auto routing.
+		deps.ChatHandler.SetIMModel("")
 
 		// Wire LLM calls for voice mode through the same proxy pipeline
 		if deps.VoiceHandler != nil {
@@ -2434,6 +2472,15 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	agentRunnerRef = registerAgentAndMCPRoutes(protected, v1, s, cfg, deps, logger, agentLLMCaller)
+	reflectService = selfreflect.NewService(auxiliaryLLM, nil)
+	if sk := s.SkillRegistry.Get("self_reflect"); sk != nil {
+		if sr, ok := sk.(*builtin.SelfReflect); ok {
+			sr.SetExecutor(reflectService)
+		}
+	}
+	if agentRunnerRef != nil {
+		agentRunnerRef.SetReflector(reflectService)
+	}
 
 	// Ngrok remote access routes
 	if deps.NgrokTunnelMgr != nil && deps.NgrokConfigStore != nil {
@@ -2466,6 +2513,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			if agentRunnerRef != nil {
 				agentRunnerRef.SetMemory(newAgentMemoryAdapter(ls))
 			}
+			reflectService.SetMemoryWriter(newAgentReflectionMemoryWriter(ls))
 		})
 	} else {
 		stub := featureDisabled("memory")
@@ -2557,11 +2605,6 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			return nil, nil
 		})
 
-		// Wire warmup function so channel messages trigger pre-computation
-		if deps.ChatHandler != nil {
-			channelManager.SetWarmupFunc(deps.ChatHandler.DoChannelWarmup)
-		}
-
 		// Start enabled channels in background — network I/O should not block route registration
 		enabledChannels := deps.ChannelConfigStore.GetEnabled()
 		if len(enabledChannels) > 0 {
@@ -2615,6 +2658,21 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	settingsHandler.SetSmallModelManager(smManager)
 	smallRuntime := smallmodel.NewLlamaCppRuntime(smManager)
 	deps.ChatHandler.SetSmallModelRuntime(smallRuntime)
+	auxiliaryLLM.SetSmallModel(smallRuntime)
+	memoryRefreshCfg := session.DefaultMemoryRefreshConfig()
+	memoryRefreshCfg.Enabled = memoryRefreshCfg.Enabled && deps.Config.Session.Compaction.Enabled && deps.MemoryHandler != nil
+	if memoryRefreshCfg.Enabled {
+		sessionCompactor := session.NewSessionCompactor(auxiliaryLLM, deps.Config.Session.Compaction)
+		sessionMemRefresher := server.NewSessionMemoryRefresher(deps.MemoryHandler)
+		deps.ChatHandler.SetCompactorMemoryIntegration(session.NewCompactorMemoryIntegration(
+			sessionCompactor,
+			sessionMemRefresher,
+			auxiliaryLLM,
+			memoryRefreshCfg,
+		), deps.Config.Session.MaxTokens)
+	} else {
+		deps.ChatHandler.SetCompactorMemoryIntegration(nil, deps.Config.Session.MaxTokens)
+	}
 	settingsHandler.RegisterRoutes(protected)
 	// Also make locale available to provider settings handler
 	providerSettingsHandler.SetSettingsHandler(settingsHandler)
@@ -2700,6 +2758,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		})
 		agentRunnerRef.SetAskTimeoutActionFunc(settingsHandler.GetAgentAskTimeoutAction)
 		agentRunnerRef.SetMaxToolRoundsPerStepFunc(settingsHandler.GetAgentLoopPolicyMaxToolRounds)
+		agentRunnerRef.SetAutoReflectFunc(settingsHandler.GetAgentAutoReflect)
 	}
 
 	// User-level routes (protected) — /api/v1/my/*
@@ -2967,4 +3026,19 @@ func (a *agentMemoryAdapter) Recall(ctx context.Context, query string, limit int
 		}
 	}
 	return out, nil
+}
+
+type agentReflectionMemoryWriter struct {
+	svc *memory.LayeredMemoryService
+}
+
+func newAgentReflectionMemoryWriter(svc *memory.LayeredMemoryService) *agentReflectionMemoryWriter {
+	return &agentReflectionMemoryWriter{svc: svc}
+}
+
+func (a *agentReflectionMemoryWriter) Write(ctx context.Context, content string, tags []string) error {
+	if a == nil || a.svc == nil {
+		return nil
+	}
+	return a.svc.AppendToDaily(ctx, content, tags)
 }

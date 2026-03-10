@@ -358,12 +358,12 @@ function renderCode(card: TypelessCardCode): string {
         ${langBadge}
       </div>
       <div class="flex items-center gap-1.5">
-        <span class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline" title="Double-click to fullscreen">⤢</span>
+        <span class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline" title="${t('media.fullscreen', 'Full Screen')}">⤢</span>
         <button
           class="typeless-copy-btn flex items-center p-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors rounded hover:bg-gray-200 dark:hover:bg-gray-700"
           data-code-id="${codeId}"
           onclick="event.stopPropagation(); window.__typelessCopyCode && window.__typelessCopyCode('${codeId}')"
-          title="Copy"
+          title="${t('common.copy', 'Copy')}"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -374,7 +374,7 @@ function renderCode(card: TypelessCardCode): string {
     <div
       id="${codeContainerId}"
       class="overflow-x-auto cursor-pointer relative"
-      title="Double-click to view fullscreen"
+      title="${t('media.fullscreen', 'Full Screen')}"
       ${shouldCollapse ? `data-collapsed="true" style="max-height: ${collapsedMaxHeightPx}px; overflow-y: hidden;"` : ''}
     >
       <pre class="p-4 text-sm leading-relaxed" style="margin: 0; font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;"><code id="${codeId}" class="text-gray-800 dark:text-gray-100">${linesHtml}</code></pre>
@@ -800,16 +800,16 @@ function renderTerminal(card: TypelessCardTerminal): string {
           <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
         </div>
         ${titleHtml}
-        <span class="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">Terminal</span>
+        <span class="px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300">${t('terminalCard.title', 'Terminal')}</span>
       </div>
       <div class="flex items-center gap-1.5">
-        <span class="text-xs text-gray-500 hidden sm:inline" title="Double-click to fullscreen">⤢</span>
+        <span class="text-xs text-gray-500 hidden sm:inline" title="${t('media.fullscreen', 'Full Screen')}">⤢</span>
         <button
           class="typeless-copy-btn flex items-center p-1 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
           data-terminal-id="${terminalId}"
           data-terminal-content="${escapeHtml(plainContent).replace(/"/g, '&quot;')}"
           onclick="event.stopPropagation(); window.__typelessCopyTerminal && window.__typelessCopyTerminal('${terminalId}')"
-          title="Copy"
+          title="${t('common.copy', 'Copy')}"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -817,7 +817,7 @@ function renderTerminal(card: TypelessCardTerminal): string {
         </button>
       </div>
     </div>
-    <div class="overflow-auto ${themeClass} cursor-pointer" style="${maxHeightStyle}" title="Double-click to view fullscreen">
+    <div class="overflow-auto ${themeClass} cursor-pointer" style="${maxHeightStyle}" title="${t('media.fullscreen', 'Full Screen')}">
       <pre id="${terminalId}" class="p-4 text-sm leading-relaxed ${textClass}" style="margin: 0; font-family: 'Fira Code', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace; white-space: pre-wrap; word-wrap: break-word;">${promptHtml}${parsedContent}</pre>
     </div>
   </div>`

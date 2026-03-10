@@ -520,14 +520,14 @@ func (t *BrowserTool) doRecipe(ctx context.Context, b BrowserBackend, args map[s
 		}
 	}
 
-	emitBrowserProgress(ctx, "recipe", "Running "+recipeName, "running", "")
+	emitBrowserProgress(ctx, "recipe", "Running "+recipeName, "running", "", map[string]interface{}{"recipe_name": recipeName})
 	_ = b.Start(ctx)
 	result, err := b.ExecuteRecipe(ctx, recipeName, params)
 	if err != nil {
-		emitBrowserProgress(ctx, "recipe", "Running "+recipeName, "failed", "")
+		emitBrowserProgress(ctx, "recipe", "Running "+recipeName, "failed", "", map[string]interface{}{"recipe_name": recipeName})
 		return jsonErr(fmt.Sprintf("recipe %s failed: %s", recipeName, err)), nil
 	}
-	emitBrowserProgress(ctx, "recipe", "Running "+recipeName, "success", "")
+	emitBrowserProgress(ctx, "recipe", "Running "+recipeName, "success", "", map[string]interface{}{"recipe_name": recipeName})
 
 	data := map[string]interface{}{
 		"success": result.Success,
@@ -632,12 +632,18 @@ func browserPageMsg(title, url, tree string, count int) string {
 
 // emitBrowserProgress pushes a streaming progress card to the client.
 // No-op when no card emitter is set in the context.
-func emitBrowserProgress(ctx context.Context, stepID, stepName, status, url string) {
-	EmitCard(ctx, map[string]interface{}{
+func emitBrowserProgress(ctx context.Context, stepID, stepName, status, url string, extras ...map[string]interface{}) {
+	card := map[string]interface{}{
 		"type":   "browser-progress",
 		"step":   stepID,
 		"name":   stepName,
 		"status": status,
 		"url":    url,
-	})
+	}
+	if len(extras) > 0 {
+		for key, value := range extras[0] {
+			card[key] = value
+		}
+	}
+	EmitCard(ctx, card)
 }

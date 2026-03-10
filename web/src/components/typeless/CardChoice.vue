@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardChoice, ChoiceOption } from '@/types/typeless'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardChoice
@@ -77,7 +80,7 @@ function emitSelection() {
         {{ card.description }}
       </p>
       <p v-if="card.multiple" class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-        (Select multiple options)
+        ({{ t('common.selectMultipleOptions', 'Select multiple options') }})
       </p>
     </div>
 
@@ -157,14 +160,14 @@ function emitSelection() {
             </svg>
           </div>
 
-          <span class="font-medium text-gray-900 dark:text-white">Other</span>
+          <span class="font-medium text-gray-900 dark:text-white">{{ t('askQuestion.other', 'Other') }}</span>
         </button>
 
         <div v-if="otherSelected" class="pl-8">
           <input
             v-model="otherText"
             type="text"
-            :placeholder="card.otherPlaceholder || 'Please specify...'"
+            :placeholder="card.otherPlaceholder || t('askQuestion.otherPlaceholder', 'Type your answer...')"
             class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent disabled:opacity-60 disabled:cursor-wait"
             :disabled="isSubmitting"
             @input="handleOtherInput"
@@ -175,7 +178,7 @@ function emitSelection() {
 
     <div v-if="isSubmitting" class="px-4 pb-4 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
       <span class="inline-block h-3 w-3 animate-spin rounded-full border border-current border-r-transparent" />
-      <span>Submitting...</span>
+      <span>{{ t('common.processing', 'Processing...') }}</span>
     </div>
   </div>
 </template>

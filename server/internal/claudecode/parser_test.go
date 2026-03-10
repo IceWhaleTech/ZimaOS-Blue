@@ -19,11 +19,11 @@ func TestParseJSON(t *testing.T) {
 	parser := NewOutputParser(&config)
 
 	tests := []struct {
-		name      string
-		input     string
-		wantText  string
-		wantSess  string
-		wantErr   bool
+		name     string
+		input    string
+		wantText string
+		wantSess string
+		wantErr  bool
 	}{
 		{
 			name:     "empty input",
@@ -117,11 +117,11 @@ func TestParseJSONL(t *testing.T) {
 	parser := NewOutputParser(&config)
 
 	tests := []struct {
-		name      string
-		input     string
-		wantText  string
-		wantSess  string
-		wantErr   bool
+		name     string
+		input    string
+		wantText string
+		wantSess string
+		wantErr  bool
 	}{
 		{
 			name:     "empty input",
@@ -187,6 +187,64 @@ invalid line
 
 			if output.SessionId != tt.wantSess {
 				t.Errorf("ParseJSONL() sessionId = '%s', want '%s'", output.SessionId, tt.wantSess)
+			}
+		})
+	}
+}
+
+func TestProcessJSONLLine_NonTerminalStopReasonDoesNotEmitDone(t *testing.T) {
+	config := DefaultClaudeCodeBackend()
+	parser := NewOutputParser(&config)
+	ch := make(chan CliStreamChunk, 1)
+
+	parser.processJSONLLine(`{"stop_reason":"tool_use","session_id":"sess-tool"}`, ch)
+
+	select {
+	case chunk := <-ch:
+		t.Fatalf("expected no chunk for non-terminal stop_reason, got %#v", chunk)
+	default:
+	}
+}
+
+func TestProcessJSONLLine_TerminalStopReasonEmitsDone(t *testing.T) {
+	config := DefaultClaudeCodeBackend()
+	parser := NewOutputParser(&config)
+
+	tests := []struct {
+		name       string
+		line       string
+		wantDone   bool
+		wantSessID string
+	}{
+		{
+			name:       "end_turn",
+			line:       `{"stop_reason":"end_turn","session_id":"sess-end"}`,
+			wantDone:   true,
+			wantSessID: "sess-end",
+		},
+		{
+			name:       "max_tokens",
+			line:       `{"stop_reason":"max_tokens","session_id":"sess-max"}`,
+			wantDone:   true,
+			wantSessID: "sess-max",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ch := make(chan CliStreamChunk, 1)
+			parser.processJSONLLine(tt.line, ch)
+
+			select {
+			case chunk := <-ch:
+				if chunk.Done != tt.wantDone {
+					t.Fatalf("chunk.Done = %v, want %v", chunk.Done, tt.wantDone)
+				}
+				if chunk.SessionId != tt.wantSessID {
+					t.Fatalf("chunk.SessionId = %q, want %q", chunk.SessionId, tt.wantSessID)
+				}
+			default:
+				t.Fatal("expected metadata chunk")
 			}
 		})
 	}
@@ -277,11 +335,11 @@ func TestExtractUsage(t *testing.T) {
 	parser := NewOutputParser(&config)
 
 	tests := []struct {
-		name        string
-		input       string
-		wantInput   int
-		wantOutput  int
-		wantTotal   int
+		name       string
+		input      string
+		wantInput  int
+		wantOutput int
+		wantTotal  int
 	}{
 		{
 			name:       "no usage",
@@ -369,6 +427,43 @@ func TestParseStream(t *testing.T) {
 	// Should have a done chunk
 	if !hasDone {
 		t.Error("expected at least one done chunk")
+	}
+}
+
+func TestParseStreamJSONL_NonTerminalStopReasonDoesNotFinalize(t *testing.T) {
+	config := DefaultClaudeCodeBackend()
+	config.Output = "jsonl"
+	parser := NewOutputParser(&config)
+
+	input := strings.Join([]string{
+		`{"stop_reason":"tool_use","session_id":"sess-tool"}`,
+		`{"text":"after tool","stop_reason":"end_turn","session_id":"sess-tool"}`,
+	}, "\n")
+
+	reader := strings.NewReader(input)
+	ch := parser.ParseStream(reader, OutputFormatJSONL)
+
+	var doneCount int
+	var fullText strings.Builder
+	var lastDoneSessionID string
+	for chunk := range ch {
+		if chunk.Text != "" {
+			fullText.WriteString(chunk.Text)
+		}
+		if chunk.Done {
+			doneCount++
+			lastDoneSessionID = chunk.SessionId
+		}
+	}
+
+	if got := fullText.String(); got != "after tool" {
+		t.Fatalf("stream text = %q, want %q", got, "after tool")
+	}
+	if doneCount != 1 {
+		t.Fatalf("done chunks = %d, want 1", doneCount)
+	}
+	if lastDoneSessionID != "sess-tool" {
+		t.Fatalf("done session_id = %q, want %q", lastDoneSessionID, "sess-tool")
 	}
 }
 

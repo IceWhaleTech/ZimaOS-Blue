@@ -154,11 +154,13 @@ var (
 type MemoryRecallReason string
 
 const (
-	MemoryRecallReasonRegenerateSkip MemoryRecallReason = "regenerate_skip"
-	MemoryRecallReasonAgentMode      MemoryRecallReason = "agent_mode"
-	MemoryRecallReasonCompressedTier MemoryRecallReason = "compressed_tier"
-	MemoryRecallReasonMemoryCue      MemoryRecallReason = "memory_cue"
-	MemoryRecallReasonDefaultSkip    MemoryRecallReason = "default_skip"
+	MemoryRecallReasonRegenerateSkip   MemoryRecallReason = "regenerate_skip"
+	MemoryRecallReasonContinuationSkip MemoryRecallReason = "continuation_skip"
+	MemoryRecallReasonAutomaticTurn    MemoryRecallReason = "automatic_turn"
+	MemoryRecallReasonAgentMode        MemoryRecallReason = "agent_mode"
+	MemoryRecallReasonCompressedTier   MemoryRecallReason = "compressed_tier"
+	MemoryRecallReasonMemoryCue        MemoryRecallReason = "memory_cue"
+	MemoryRecallReasonDefaultSkip      MemoryRecallReason = "default_skip"
 )
 
 // MemoryRecallSource indicates where the memory decision came from.
@@ -182,16 +184,18 @@ const (
 
 // MemoryRecallStats tracks memory recall decisions for observability.
 type MemoryRecallStats struct {
-	Total            atomic.Int64
-	Recalled         atomic.Int64
-	Skipped          atomic.Int64
-	InjectedContexts atomic.Int64
-	InjectedTokens   atomic.Int64
-	ReasonRegenerate atomic.Int64
-	ReasonAgentMode  atomic.Int64
-	ReasonCompressed atomic.Int64
-	ReasonMemoryCue  atomic.Int64
-	ReasonDefault    atomic.Int64
+	Total              atomic.Int64
+	Recalled           atomic.Int64
+	Skipped            atomic.Int64
+	InjectedContexts   atomic.Int64
+	InjectedTokens     atomic.Int64
+	ReasonRegenerate   atomic.Int64
+	ReasonContinuation atomic.Int64
+	ReasonAutomatic    atomic.Int64
+	ReasonAgentMode    atomic.Int64
+	ReasonCompressed   atomic.Int64
+	ReasonMemoryCue    atomic.Int64
+	ReasonDefault      atomic.Int64
 
 	TotalIM            atomic.Int64
 	RecalledIM         atomic.Int64
@@ -211,23 +215,29 @@ type MemoryRecallStats struct {
 	InjectedContextsStream atomic.Int64
 	InjectedTokensStream   atomic.Int64
 
-	ReasonRegenerateIM atomic.Int64
-	ReasonAgentModeIM  atomic.Int64
-	ReasonCompressedIM atomic.Int64
-	ReasonMemoryCueIM  atomic.Int64
-	ReasonDefaultIM    atomic.Int64
+	ReasonRegenerateIM   atomic.Int64
+	ReasonContinuationIM atomic.Int64
+	ReasonAutomaticIM    atomic.Int64
+	ReasonAgentModeIM    atomic.Int64
+	ReasonCompressedIM   atomic.Int64
+	ReasonMemoryCueIM    atomic.Int64
+	ReasonDefaultIM      atomic.Int64
 
-	ReasonRegenerateSend atomic.Int64
-	ReasonAgentModeSend  atomic.Int64
-	ReasonCompressedSend atomic.Int64
-	ReasonMemoryCueSend  atomic.Int64
-	ReasonDefaultSend    atomic.Int64
+	ReasonRegenerateSend   atomic.Int64
+	ReasonContinuationSend atomic.Int64
+	ReasonAutomaticSend    atomic.Int64
+	ReasonAgentModeSend    atomic.Int64
+	ReasonCompressedSend   atomic.Int64
+	ReasonMemoryCueSend    atomic.Int64
+	ReasonDefaultSend      atomic.Int64
 
-	ReasonRegenerateStream atomic.Int64
-	ReasonAgentModeStream  atomic.Int64
-	ReasonCompressedStream atomic.Int64
-	ReasonMemoryCueStream  atomic.Int64
-	ReasonDefaultStream    atomic.Int64
+	ReasonRegenerateStream   atomic.Int64
+	ReasonContinuationStream atomic.Int64
+	ReasonAutomaticStream    atomic.Int64
+	ReasonAgentModeStream    atomic.Int64
+	ReasonCompressedStream   atomic.Int64
+	ReasonMemoryCueStream    atomic.Int64
+	ReasonDefaultStream      atomic.Int64
 }
 
 // MemoryRecallStatsSnapshot is a JSON-serializable snapshot.
@@ -274,6 +284,10 @@ func (s *MemoryRecallStats) RecordWithSource(recalled bool, reason MemoryRecallR
 	switch reason {
 	case MemoryRecallReasonRegenerateSkip:
 		s.ReasonRegenerate.Add(1)
+	case MemoryRecallReasonContinuationSkip:
+		s.ReasonContinuation.Add(1)
+	case MemoryRecallReasonAutomaticTurn:
+		s.ReasonAutomatic.Add(1)
 	case MemoryRecallReasonAgentMode:
 		s.ReasonAgentMode.Add(1)
 	case MemoryRecallReasonCompressedTier:
@@ -291,7 +305,7 @@ func (s *MemoryRecallStats) RecordWithSource(recalled bool, reason MemoryRecallR
 		} else {
 			s.SkippedIM.Add(1)
 		}
-		recordReasonCounters(reason, &s.ReasonRegenerateIM, &s.ReasonAgentModeIM, &s.ReasonCompressedIM, &s.ReasonMemoryCueIM, &s.ReasonDefaultIM)
+		recordReasonCounters(reason, &s.ReasonRegenerateIM, &s.ReasonContinuationIM, &s.ReasonAutomaticIM, &s.ReasonAgentModeIM, &s.ReasonCompressedIM, &s.ReasonMemoryCueIM, &s.ReasonDefaultIM)
 	case MemoryRecallSourceSend:
 		s.TotalSend.Add(1)
 		if recalled {
@@ -299,7 +313,7 @@ func (s *MemoryRecallStats) RecordWithSource(recalled bool, reason MemoryRecallR
 		} else {
 			s.SkippedSend.Add(1)
 		}
-		recordReasonCounters(reason, &s.ReasonRegenerateSend, &s.ReasonAgentModeSend, &s.ReasonCompressedSend, &s.ReasonMemoryCueSend, &s.ReasonDefaultSend)
+		recordReasonCounters(reason, &s.ReasonRegenerateSend, &s.ReasonContinuationSend, &s.ReasonAutomaticSend, &s.ReasonAgentModeSend, &s.ReasonCompressedSend, &s.ReasonMemoryCueSend, &s.ReasonDefaultSend)
 	case MemoryRecallSourceStream:
 		s.TotalStream.Add(1)
 		if recalled {
@@ -307,7 +321,7 @@ func (s *MemoryRecallStats) RecordWithSource(recalled bool, reason MemoryRecallR
 		} else {
 			s.SkippedStream.Add(1)
 		}
-		recordReasonCounters(reason, &s.ReasonRegenerateStream, &s.ReasonAgentModeStream, &s.ReasonCompressedStream, &s.ReasonMemoryCueStream, &s.ReasonDefaultStream)
+		recordReasonCounters(reason, &s.ReasonRegenerateStream, &s.ReasonContinuationStream, &s.ReasonAutomaticStream, &s.ReasonAgentModeStream, &s.ReasonCompressedStream, &s.ReasonMemoryCueStream, &s.ReasonDefaultStream)
 	}
 }
 
@@ -363,24 +377,26 @@ func (s *MemoryRecallStats) Snapshot() MemoryRecallStatsSnapshot {
 		AvgInjectedTokens:    avgInjected,
 		EstimatedSavedTokens: skipped * avgInjected,
 		ReasonCounts: map[string]int64{
-			string(MemoryRecallReasonRegenerateSkip): s.ReasonRegenerate.Load(),
-			string(MemoryRecallReasonAgentMode):      s.ReasonAgentMode.Load(),
-			string(MemoryRecallReasonCompressedTier): s.ReasonCompressed.Load(),
-			string(MemoryRecallReasonMemoryCue):      s.ReasonMemoryCue.Load(),
-			string(MemoryRecallReasonDefaultSkip):    s.ReasonDefault.Load(),
+			string(MemoryRecallReasonRegenerateSkip):   s.ReasonRegenerate.Load(),
+			string(MemoryRecallReasonContinuationSkip): s.ReasonContinuation.Load(),
+			string(MemoryRecallReasonAutomaticTurn):    s.ReasonAutomatic.Load(),
+			string(MemoryRecallReasonAgentMode):        s.ReasonAgentMode.Load(),
+			string(MemoryRecallReasonCompressedTier):   s.ReasonCompressed.Load(),
+			string(MemoryRecallReasonMemoryCue):        s.ReasonMemoryCue.Load(),
+			string(MemoryRecallReasonDefaultSkip):      s.ReasonDefault.Load(),
 		},
 		BySource: map[string]MemoryRecallSourceSnapshot{
 			string(MemoryRecallSourceIM): sourceSnapshot(
 				s.TotalIM.Load(), s.RecalledIM.Load(), s.SkippedIM.Load(), s.InjectedContextsIM.Load(), s.InjectedTokensIM.Load(),
-				s.ReasonRegenerateIM.Load(), s.ReasonAgentModeIM.Load(), s.ReasonCompressedIM.Load(), s.ReasonMemoryCueIM.Load(), s.ReasonDefaultIM.Load(),
+				s.ReasonRegenerateIM.Load(), s.ReasonContinuationIM.Load(), s.ReasonAutomaticIM.Load(), s.ReasonAgentModeIM.Load(), s.ReasonCompressedIM.Load(), s.ReasonMemoryCueIM.Load(), s.ReasonDefaultIM.Load(),
 			),
 			string(MemoryRecallSourceSend): sourceSnapshot(
 				s.TotalSend.Load(), s.RecalledSend.Load(), s.SkippedSend.Load(), s.InjectedContextsSend.Load(), s.InjectedTokensSend.Load(),
-				s.ReasonRegenerateSend.Load(), s.ReasonAgentModeSend.Load(), s.ReasonCompressedSend.Load(), s.ReasonMemoryCueSend.Load(), s.ReasonDefaultSend.Load(),
+				s.ReasonRegenerateSend.Load(), s.ReasonContinuationSend.Load(), s.ReasonAutomaticSend.Load(), s.ReasonAgentModeSend.Load(), s.ReasonCompressedSend.Load(), s.ReasonMemoryCueSend.Load(), s.ReasonDefaultSend.Load(),
 			),
 			string(MemoryRecallSourceStream): sourceSnapshot(
 				s.TotalStream.Load(), s.RecalledStream.Load(), s.SkippedStream.Load(), s.InjectedContextsStream.Load(), s.InjectedTokensStream.Load(),
-				s.ReasonRegenerateStream.Load(), s.ReasonAgentModeStream.Load(), s.ReasonCompressedStream.Load(), s.ReasonMemoryCueStream.Load(), s.ReasonDefaultStream.Load(),
+				s.ReasonRegenerateStream.Load(), s.ReasonContinuationStream.Load(), s.ReasonAutomaticStream.Load(), s.ReasonAgentModeStream.Load(), s.ReasonCompressedStream.Load(), s.ReasonMemoryCueStream.Load(), s.ReasonDefaultStream.Load(),
 			),
 		},
 	}
@@ -388,7 +404,7 @@ func (s *MemoryRecallStats) Snapshot() MemoryRecallStatsSnapshot {
 
 func sourceSnapshot(
 	total, recalled, skipped, injectedContexts, injectedTokens int64,
-	reasonRegenerate, reasonAgentMode, reasonCompressed, reasonMemoryCue, reasonDefault int64,
+	reasonRegenerate, reasonContinuation, reasonAutomatic, reasonAgentMode, reasonCompressed, reasonMemoryCue, reasonDefault int64,
 ) MemoryRecallSourceSnapshot {
 	recallRate := 0.0
 	if total > 0 {
@@ -408,22 +424,28 @@ func sourceSnapshot(
 		AvgInjectedTokens:    avgInjected,
 		EstimatedSavedTokens: skipped * avgInjected,
 		ReasonCounts: map[string]int64{
-			string(MemoryRecallReasonRegenerateSkip): reasonRegenerate,
-			string(MemoryRecallReasonAgentMode):      reasonAgentMode,
-			string(MemoryRecallReasonCompressedTier): reasonCompressed,
-			string(MemoryRecallReasonMemoryCue):      reasonMemoryCue,
-			string(MemoryRecallReasonDefaultSkip):    reasonDefault,
+			string(MemoryRecallReasonRegenerateSkip):   reasonRegenerate,
+			string(MemoryRecallReasonContinuationSkip): reasonContinuation,
+			string(MemoryRecallReasonAutomaticTurn):    reasonAutomatic,
+			string(MemoryRecallReasonAgentMode):        reasonAgentMode,
+			string(MemoryRecallReasonCompressedTier):   reasonCompressed,
+			string(MemoryRecallReasonMemoryCue):        reasonMemoryCue,
+			string(MemoryRecallReasonDefaultSkip):      reasonDefault,
 		},
 	}
 }
 
 func recordReasonCounters(
 	reason MemoryRecallReason,
-	reasonRegenerate, reasonAgentMode, reasonCompressed, reasonMemoryCue, reasonDefault *atomic.Int64,
+	reasonRegenerate, reasonContinuation, reasonAutomatic, reasonAgentMode, reasonCompressed, reasonMemoryCue, reasonDefault *atomic.Int64,
 ) {
 	switch reason {
 	case MemoryRecallReasonRegenerateSkip:
 		reasonRegenerate.Add(1)
+	case MemoryRecallReasonContinuationSkip:
+		reasonContinuation.Add(1)
+	case MemoryRecallReasonAutomaticTurn:
+		reasonAutomatic.Add(1)
 	case MemoryRecallReasonAgentMode:
 		reasonAgentMode.Add(1)
 	case MemoryRecallReasonCompressedTier:
@@ -521,43 +543,23 @@ func recallMinScoreForMode(mode MemoryRecallMode) float64 {
 	}
 }
 
-func memoryRecallDecision(userMessage string, tier ContextTier, isAgentMode, isRegenerate bool, mode MemoryRecallMode) (bool, MemoryRecallReason) {
+func memoryRecallDecision(userMessage string, usesContinuation, isRegenerate bool, mode MemoryRecallMode) (bool, MemoryRecallReason) {
+	_ = userMessage
+	_ = mode
 	if isRegenerate {
 		return false, MemoryRecallReasonRegenerateSkip
 	}
-	if isAgentMode {
-		return true, MemoryRecallReasonAgentMode
+	if usesContinuation {
+		return false, MemoryRecallReasonContinuationSkip
 	}
-	switch parseMemoryRecallMode(string(mode)) {
-	case MemoryRecallModeAggressive:
-		if hasMemoryCue(userMessage) {
-			return true, MemoryRecallReasonMemoryCue
-		}
-		return false, MemoryRecallReasonDefaultSkip
-	case MemoryRecallModeQuality:
-		if tier == TierCompressedMemory {
-			return true, MemoryRecallReasonCompressedTier
-		}
-		if hasMemoryCue(userMessage) {
-			return true, MemoryRecallReasonMemoryCue
-		}
-		return false, MemoryRecallReasonDefaultSkip
-	default:
-		if tier == TierCompressedMemory {
-			return true, MemoryRecallReasonCompressedTier
-		}
-		if hasMemoryCue(userMessage) {
-			return true, MemoryRecallReasonMemoryCue
-		}
-		return false, MemoryRecallReasonDefaultSkip
-	}
+	return true, MemoryRecallReasonAutomaticTurn
 }
 
 // shouldRecallMemories decides whether to inject memory context for this turn.
 // It keeps recall for context-heavy turns, while skipping most standalone queries
 // to reduce token usage.
-func shouldRecallMemories(userMessage string, tier ContextTier, isAgentMode, isRegenerate bool, mode MemoryRecallMode) bool {
-	should, _ := memoryRecallDecision(userMessage, tier, isAgentMode, isRegenerate, mode)
+func shouldRecallMemories(userMessage string, _ ContextTier, _ bool, isRegenerate bool, mode MemoryRecallMode) bool {
+	should, _ := memoryRecallDecision(userMessage, false, isRegenerate, mode)
 	return should
 }
 
@@ -1084,6 +1086,9 @@ type smartContextParams struct {
 	ConvID       string
 	UserMessage  string
 	IsRegenerate bool
+	// When >0 and tier=no_history, keep last N user-assistant rounds instead of
+	// only the latest user turn.
+	NoHistoryRecentRounds int
 	// If non-nil, use these instead of fetching from DB/cache.
 	PreloadedMessages []memory.Message
 }
@@ -1131,9 +1136,15 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 
 	switch tier {
 	case TierNoHistory:
-		// No history context needed: include only the latest turn so stale tool
-		// traces from earlier rounds are not replayed.
-		result.Messages = extractLatestTurn(messages)
+		if params.NoHistoryRecentRounds > 0 {
+			// IM-style conservative context: keep a small recent window even when
+			// classified as no_history.
+			result.Messages = extractRecentRounds(messages, params.NoHistoryRecentRounds)
+		} else {
+			// No history context needed: include only the latest turn so stale tool
+			// traces from earlier rounds are not replayed.
+			result.Messages = extractLatestTurn(messages)
+		}
 
 	case TierCompressedMemory:
 		// Keep more recent rounds (TrimPolicy-style protected tail) so short-lived

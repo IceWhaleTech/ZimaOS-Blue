@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { ActionButton, TypelessCardWebFetch } from '@/types/typeless'
 import { renderMarkdown } from '@/utils/markdown'
+import { formatToolWarningCodeLabel } from '@/utils/toolWarnings'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardWebFetch
@@ -17,19 +21,6 @@ function unescapeBackticks(s: string): string {
   return s.replace(/`​``/g, '```')
 }
 
-function formatWarningCodeLabel(code?: string): string {
-  switch ((code || '').trim()) {
-    case 'login_wall':
-      return 'Login wall'
-    case 'challenge':
-      return 'Challenge'
-    case 'browser_required':
-      return 'Browser required'
-    default:
-      return code ? `warning_code=${code}` : ''
-  }
-}
-
 function hostFromUrl(url?: string): string {
   try {
     return new URL(url || '').hostname.replace(/^www\./, '')
@@ -41,19 +32,19 @@ function hostFromUrl(url?: string): string {
 const title = computed(() => {
   const raw = unescapeBackticks((props.card.title || '').trim())
   if (raw && raw !== 'web_fetch') return raw
-  return hostFromUrl(props.card.url) || 'Web fetch'
+  return hostFromUrl(props.card.url) || t('webFetchCard.title', 'Web fetch')
 })
 const url = computed(() => unescapeBackticks((props.card.url || '').trim()))
 const content = computed(() => unescapeBackticks(props.card.content || ''))
 const warning = computed(() => unescapeBackticks((props.card.warning || '').trim()))
-const warningCodeLabel = computed(() => formatWarningCodeLabel(props.card.warning_code))
+const warningCodeLabel = computed(() => formatToolWarningCodeLabel(props.card.warning_code, t))
 const hostname = computed(() => hostFromUrl(url.value))
 const isMarkdown = computed(() => (props.card.extract_mode || '').toLowerCase() === 'markdown')
 const useBrowserAction = computed<ActionButton | null>(() => {
   const configured = props.card.actions?.find(action => action.id === 'use_browser')
   if (configured) return configured
   if (!url.value) return null
-  return { id: 'use_browser', label: 'Use browser', variant: 'primary' }
+  return { id: 'use_browser', label: t('webFetchCard.actions.use_browser', 'Use browser'), variant: 'primary' }
 })
 const renderedMarkdown = computed(() => isMarkdown.value && content.value ? renderMarkdown(content.value) : '')
 const lines = computed(() => content.value ? content.value.split('\n') : [])
@@ -122,7 +113,10 @@ function isActionDisabled(action: { disabled?: boolean }): boolean {
 }
 
 function actionButtonLabel(action: { id: string; label: string }): string {
-  return isActionActive(action.id) ? 'Working...' : action.label
+  if (isActionActive(action.id)) return t('common.processing', 'Processing...')
+  const key = `webFetchCard.actions.${action.id}`
+  const translated = t(key, action.label)
+  return translated === key ? action.label : translated
 }
 
 function triggerAction(actionId: string, disabled = false) {
@@ -169,7 +163,7 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
             <span v-if="card.extract_mode" class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">{{ card.extract_mode }}</span>
             <span v-if="card.extractor" class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">{{ card.extractor }}</span>
             <span v-if="card.content_type" class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">{{ card.content_type }}</span>
-            <span v-if="card.truncated" class="rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 px-2 py-0.5">truncated</span>
+            <span v-if="card.truncated" class="rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 px-2 py-0.5">{{ t('execCard.outputTruncated', 'truncated') }}</span>
           </div>
 
           <a
@@ -203,14 +197,14 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
             class="rounded-md border border-gray-200 dark:border-gray-700 px-2.5 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
             @click="copyUrl"
           >
-            {{ copiedUrl ? 'Copied' : 'Copy URL' }}
+            {{ copiedUrl ? t('common.copied', 'Copied') : t('webFetchCard.copyUrl', 'Copy URL') }}
           </button>
           <button
             v-if="content"
             class="rounded-md border border-gray-200 dark:border-gray-700 px-2.5 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
             @click="copyContent"
           >
-            {{ copiedContent ? 'Copied' : 'Copy text' }}
+            {{ copiedContent ? t('common.copied', 'Copied') : t('webFetchCard.copyText', 'Copy text') }}
           </button>
         </div>
       </div>
@@ -222,7 +216,7 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
         class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800/60 dark:bg-amber-900/20"
       >
         <div class="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
-          {{ warningCodeLabel || 'Warning' }}
+          {{ warningCodeLabel || t('toolWarnings.warning', 'Warning') }}
         </div>
         <p v-if="warning" class="mt-1 text-sm leading-relaxed text-amber-900 dark:text-amber-100">
           {{ warning }}
@@ -250,12 +244,12 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
           class="mt-2 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
           @click="expanded = !expanded"
         >
-          {{ expanded ? 'Show less' : 'Show more' }}
+          {{ expanded ? t('execCard.collapse', 'Show less') : t('execCard.expand', 'Show more') }}
         </button>
       </div>
 
       <div v-else class="mt-3 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-        No extracted content
+        {{ t('webFetchCard.noContent', 'No extracted content') }}
       </div>
     </div>
   </div>

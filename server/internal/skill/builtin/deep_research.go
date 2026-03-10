@@ -37,6 +37,7 @@ func NewDeepResearch() *DeepResearch {
 			Inputs: []skill.Parameter{
 				{Name: "query", Type: "string", Description: "Research query", Required: true},
 				{Name: "mode", Type: "string", Description: "Search depth: fast, standard, deep"},
+				{Name: "route_mode", Type: "string", Description: "Routing mode: auto, web, experiment, hybrid"},
 				{Name: "lang", Type: "string", Description: "Output language (default follows system locale)"},
 				{Name: "max_sources", Type: "number", Description: "Optional source cap override"},
 				{Name: "max_seconds", Type: "number", Description: "Optional time budget in seconds"},
@@ -79,6 +80,17 @@ func (d *DeepResearch) Validate(input map[string]any) error {
 		case "", "fast", "standard", "deep":
 		default:
 			return fmt.Errorf("mode must be one of: fast, standard, deep")
+		}
+	}
+	if routeModeV, ok := input["route_mode"]; ok {
+		routeMode, ok := routeModeV.(string)
+		if !ok {
+			return fmt.Errorf("route_mode must be a string")
+		}
+		switch strings.ToLower(strings.TrimSpace(routeMode)) {
+		case "", "auto", "web", "experiment", "hybrid":
+		default:
+			return fmt.Errorf("route_mode must be one of: auto, web, experiment, hybrid")
 		}
 	}
 	if rawFormat, ok := input["format"]; ok {

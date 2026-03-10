@@ -21,10 +21,12 @@ import (
 )
 
 type Service struct {
-	planner   Planner
-	searcher  Searcher
-	summary   SummarySynthesizer
-	v2Enabled bool
+	planner     Planner
+	searcher    Searcher
+	summary     SummarySynthesizer
+	experiment  ExperimentBackend
+	routePolicy RoutePolicy
+	v2Enabled   bool
 
 	mu           sync.RWMutex
 	jobs         map[string]*Job
@@ -76,16 +78,20 @@ var (
 	ErrJobForbidden       = errors.New("job forbidden")
 	ErrReportNotReady     = errors.New("report not ready")
 	ErrJobAlreadyTerminal = errors.New("job already terminal")
+	ErrInvalidRouteMode   = errors.New("invalid route_mode")
 	ErrRateLimited        = errors.New("deep research rate limit exceeded")
 	ErrTooManyActiveJobs  = errors.New("too many deep research jobs in progress")
 	eventCounter          uint64
 )
 
 type SummaryInput struct {
-	Query    string
-	Lang     string
-	Evidence []Evidence
-	Draft    string
+	Query               string
+	Lang                string
+	Evidence            []Evidence
+	AllEvidence         []Evidence
+	Draft               string
+	ResearchTrace       []ResearchTraceEntry
+	VerificationSummary *VerificationSummary
 }
 
 type SummarySynthesizer interface {
@@ -120,6 +126,7 @@ func NewService(planner Planner, searcher Searcher) *Service {
 	return &Service{
 		planner:               planner,
 		searcher:              searcher,
+		routePolicy:           defaultRoutePolicy(),
 		v2Enabled:             false,
 		jobs:                  make(map[string]*Job),
 		cancelFuncs:           make(map[string]context.CancelFunc),
@@ -139,6 +146,30 @@ func NewService(planner Planner, searcher Searcher) *Service {
 			Timeout: deepResearchExtractTimeout,
 		},
 	}
+}
+
+func (s *Service) SetRoutePolicy(policy RoutePolicy) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.routePolicy = normalizeRoutePolicy(policy)
+}
+
+func (s *Service) SetExperimentBackend(backend ExperimentBackend) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.experiment = backend
+}
+
+func (s *Service) routePolicySnapshot() RoutePolicy {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.routePolicy
+}
+
+func (s *Service) experimentBackend() ExperimentBackend {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.experiment
 }
 
 func (s *Service) SetSummarySynthesizer(synth SummarySynthesizer) {
@@ -168,6 +199,10 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 	mode := req.Mode
 	if mode == "" {
 		mode = ModeStandard
+	}
+	requestedRouteMode, effectiveRouteMode, routeReason, err := resolveRouteMode(query, req.RouteMode, s.routePolicySnapshot(), s.experimentBackend() != nil)
+	if err != nil {
+		return nil, err
 	}
 	lang := strings.TrimSpace(req.Lang)
 	strictEntity := false
@@ -201,20 +236,23 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 
 	now := timeutil.NowTime()
 	job := &Job{
-		ID:           uuid.NewString(),
-		UserID:       userID,
-		TenantID:     tenantID,
-		Query:        query,
-		Lang:         lang,
-		Mode:         mode,
-		StrictEntity: strictEntity,
-		TimeWindows:  append([]string(nil), timeWindows...),
-		ReportStyle:  reportStyle,
-		Status:       JobStatusPending,
-		Budget:       budget,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		Stage:        "intake",
+		ID:                 uuid.NewString(),
+		UserID:             userID,
+		TenantID:           tenantID,
+		Query:              query,
+		Lang:               lang,
+		Mode:               mode,
+		RequestedRouteMode: requestedRouteMode,
+		EffectiveRouteMode: effectiveRouteMode,
+		RouteReason:        routeReason,
+		StrictEntity:       strictEntity,
+		TimeWindows:        append([]string(nil), timeWindows...),
+		ReportStyle:        reportStyle,
+		Status:             JobStatusPending,
+		Budget:             budget,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		Stage:              "intake",
 	}
 
 	timeout := time.Duration(maxInt(1, budget.MaxSeconds)) * time.Second
@@ -270,8 +308,7 @@ func (s *Service) GetReportForUser(id, userID, tenantID string) (*Report, error)
 	if job.Report == nil {
 		return nil, ErrReportNotReady
 	}
-	rep := *job.Report
-	return &rep, nil
+	return cloneReport(job.Report), nil
 }
 
 func (s *Service) CancelJob(id string) error {
@@ -361,6 +398,7 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 		j.Status = JobStatusRunning
 		j.Stage = "planning"
 		j.Progress = 10
+		j.LatestAction = "augment_query"
 	}) {
 		return
 	}
@@ -370,14 +408,30 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 	if !ok {
 		return
 	}
+	if job.EffectiveRouteMode == RouteModeExperiment {
+		s.runExperimentJob(ctx, job)
+		return
+	}
 	useV2 := s.IsV2Enabled()
+	brief := buildResearchBrief(job.Query, job.Lang, job.TimeWindows, job.ReportStyle)
+	s.broadcast(jobID, "brief_augmented", map[string]interface{}{
+		"goal":               brief.Goal,
+		"entity":             brief.Entity,
+		"time_windows":       brief.TimeWindows,
+		"must_verify_claims": brief.MustVerifyClaims,
+	})
 
-	tasks := s.planner.Plan(job.Query, job.Mode, job.Lang)
+	tasks := annotateTasksWithBrief(s.planner.Plan(job.Query, job.Mode, job.Lang), brief)
 	tasks = dedupeTaskQueries(tasks)
 	retrieveStepBudget := maxInt(1, job.Budget.MaxSteps-2) // reserve steps for plan + synthesize
 	if len(tasks) > retrieveStepBudget {
 		tasks = tasks[:retrieveStepBudget]
 	}
+	if len(tasks) == 0 {
+		s.failJob(jobID, "no tasks generated")
+		return
+	}
+
 	taskByID := make(map[string]Task, len(tasks))
 	for _, task := range tasks {
 		taskByID[task.ID] = task
@@ -386,186 +440,258 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 		j.Tasks = tasks
 		j.Stage = "retrieve"
 		j.Progress = 20
+		j.Iteration = 1
+		j.LatestAction = "initial_retrieve"
 	})
-	s.broadcast(jobID, "task_planned", map[string]interface{}{"count": len(tasks)})
-
-	if len(tasks) == 0 {
-		s.failJob(jobID, "no tasks generated")
-		return
-	}
-
-	type taskEvidence struct {
-		taskID string
-		query  string
-		hits   []SearchHit
-		err    error
-	}
-	results := make(chan taskEvidence, len(tasks))
-	searchCtx, searchCancel := context.WithCancel(ctx)
-	defer searchCancel()
-	tasksCh := make(chan Task)
-	workerCount := maxInt(1, minInt(len(tasks), s.searchParallelismForMode(job.Mode)))
-
-	var wg sync.WaitGroup
-	for i := 0; i < workerCount; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for task := range tasksCh {
-				hits, err := s.searchWithRetry(searchCtx, jobID, task.Question, searchResultsPerTask(job.Mode), job.Lang)
-				results <- taskEvidence{taskID: task.ID, query: task.Question, hits: hits, err: err}
-			}
-		}()
-	}
-
-	go func() {
-		defer close(tasksCh)
-		for _, t := range tasks {
-			task := t
-			select {
-			case <-searchCtx.Done():
-				return
-			case tasksCh <- task:
-			}
-		}
-	}()
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
+	s.broadcast(jobID, "task_planned", map[string]interface{}{
+		"count":     len(tasks),
+		"iteration": 1,
+	})
 
 	seenURLs := make(map[string]struct{})
+	reportedFiltered := make(map[string]struct{})
 	evidence := make([]Evidence, 0)
-	taskErrors := 0
 	stageErrors := make([]string, 0)
-	failedQueries := make([]string, 0)
-	maxSourcesReached := false
+	entityStats := EntityDisambiguation{
+		Enabled:   false,
+		Threshold: s.entityThreshold,
+	}
+	allFailedQueries := make([]string, 0)
+	trace := make([]ResearchTraceEntry, 0)
+	var verificationSummary *VerificationSummary
+	stopReason := ""
+	iteration := 0
+	followUpRounds := 0
+	remainingSteps := maxInt(0, retrieveStepBudget-len(tasks))
+	nextTaskIndex := len(tasks) + 1
+	roundTasks := tasks
 
-	for {
-		select {
-		case <-ctx.Done():
-			if ctx.Err() == context.DeadlineExceeded {
+	for len(roundTasks) > 0 {
+		iteration++
+		s.updateJob(jobID, func(j *Job) {
+			j.Stage = "retrieve"
+			j.Progress = minInt(85, 18+iteration*14)
+			j.Iteration = iteration
+			if iteration > 1 {
+				j.LatestAction = "followup_retrieve"
+			}
+		})
+
+		round := s.collectEvidenceRound(ctx, jobID, roundTasks, job.Mode, job.Lang, useV2, seenURLs, len(evidence), job.Budget.MaxSources, iteration)
+		if round.Aborted {
+			if errors.Is(round.AbortErr, context.DeadlineExceeded) {
 				s.failJob(jobID, "job timed out")
 			} else {
 				s.cancelJobInternal(jobID)
 			}
 			return
-		case r, ok := <-results:
-			if !ok {
-				goto done
+		}
+		if len(evidence) == 0 && len(round.Evidence) == 0 && round.TaskErrors >= len(roundTasks) {
+			s.failJob(jobID, "all search tasks failed")
+			return
+		}
+		evidence = append(evidence, round.Evidence...)
+		stageErrors = append(stageErrors, round.StageErrors...)
+		allFailedQueries = append(allFailedQueries, round.FailedQueries...)
+
+		s.updateJob(jobID, func(j *Job) {
+			j.Stage = "verify"
+			j.Progress = minInt(88, 24+iteration*15)
+			j.Iteration = iteration
+			j.LatestAction = "verification"
+			j.Evidence = append([]Evidence(nil), evidence...)
+		})
+
+		if useV2 {
+			original := append([]Evidence(nil), evidence...)
+			filteredEvidence, roundEntityStats := applyEntityDisambiguation(job.Query, job.StrictEntity, s.entityThreshold, evidence, taskByID)
+			evidence = filteredEvidence
+			entityStats.Enabled = roundEntityStats.Enabled
+			entityStats.Threshold = roundEntityStats.Threshold
+			if roundEntityStats.AmbiguousCount > entityStats.AmbiguousCount {
+				entityStats.AmbiguousCount = roundEntityStats.AmbiguousCount
 			}
-			if r.err != nil {
-				if errors.Is(r.err, context.Canceled) || errors.Is(r.err, context.DeadlineExceeded) {
+			kept := make(map[string]struct{}, len(evidence))
+			for _, ev := range evidence {
+				kept[ev.ID] = struct{}{}
+			}
+			for _, ev := range original {
+				if _, ok := kept[ev.ID]; ok {
 					continue
 				}
-				taskErrors++
-				failedQueries = append(failedQueries, r.query)
-				stageErrors = append(stageErrors, fmt.Sprintf("search failed: %s (%v)", r.query, r.err))
-				s.broadcast(jobID, "stage_warning", map[string]interface{}{
-					"stage": "retrieve",
-					"query": r.query,
-					"error": r.err.Error(),
+				if _, seen := reportedFiltered[ev.ID]; seen {
+					continue
+				}
+				reportedFiltered[ev.ID] = struct{}{}
+				s.broadcast(jobID, "entity_filtered", map[string]interface{}{
+					"iteration":    iteration,
+					"evidence_id":  ev.ID,
+					"title":        ev.Title,
+					"url":          ev.URL,
+					"entity_score": ev.EntityScore,
+					"threshold":    entityStats.Threshold,
 				})
-				continue
 			}
-			if maxSourcesReached {
-				continue
+			entityStats.FilteredCount = len(reportedFiltered)
+			if job.StrictEntity && len(evidence) == 0 {
+				stageErrors = append(stageErrors, "all evidence filtered by strict entity disambiguation")
+				s.broadcast(jobID, "stage_warning", map[string]interface{}{
+					"stage":     "verify",
+					"message":   "all evidence filtered by strict entity disambiguation",
+					"iteration": iteration,
+				})
 			}
-			for idx, hit := range r.hits {
-				canonicalURL := canonicalizeURL(hit.URL)
-				if canonicalURL == "" {
-					continue
-				}
-				if _, ok := seenURLs[canonicalURL]; ok {
-					continue
-				}
-				if len(evidence) >= job.Budget.MaxSources {
-					maxSourcesReached = true
-					searchCancel()
-					break
-				}
-				seenURLs[canonicalURL] = struct{}{}
-				domain := extractDomain(canonicalURL)
-				ev := Evidence{
-					ID:               uuid.NewString(),
-					TaskID:           r.taskID,
-					Query:            r.query,
-					Title:            hit.Title,
-					URL:              canonicalURL,
-					Snippet:          hit.Description,
-					Source:           hit.Source,
-					Domain:           domain,
-					FetchedAt:        timeutil.NowTime(),
-					RelevanceScore:   scoreByRank(idx),
-					CredibilityScore: scoreByDomain(domain),
-					NoveltyScore:     0.5,
-				}
-				ev.ClaimKey = buildClaimKey(ev.Title, ev.Snippet)
-				if useV2 && idx < deepResearchExtractTopK {
-					s.enrichEvidenceMetadata(searchCtx, &ev)
-				}
-				evidence = append(evidence, ev)
-				s.broadcast(jobID, "evidence_added", ev)
-				if len(evidence) >= job.Budget.MaxSources {
-					maxSourcesReached = true
-					searchCancel()
-					break
-				}
-			}
+		}
+
+		var gaps []researchGap
+		verificationSummary, gaps = buildVerificationSummary(job.Query, job.Lang, brief, evidence, tasks)
+		unresolved := unresolvedResearchGaps(gaps)
+		primaryGap := primaryResearchGap(unresolved)
+		verificationPayload := map[string]interface{}{
+			"iteration":          iteration,
+			"resolved_count":     0,
+			"conflicted_count":   0,
+			"insufficient_count": 0,
+			"latest_gap":         primaryGap.Gap,
+			"latest_action":      "verification_completed",
+		}
+		if verificationSummary != nil {
+			verificationPayload["resolved_count"] = verificationSummary.ResolvedCount
+			verificationPayload["conflicted_count"] = verificationSummary.ConflictedCount
+			verificationPayload["insufficient_count"] = verificationSummary.InsufficientCount
+		}
+		s.updateJob(jobID, func(j *Job) {
+			j.Stage = "verify"
+			j.Iteration = iteration
+			j.LatestGap = primaryGap.Gap
+			j.LatestAction = "verification_completed"
+			j.Evidence = append([]Evidence(nil), evidence...)
+		})
+		s.broadcast(jobID, "verification_completed", verificationPayload)
+
+		draft := synthesizeReportWithOptions(job.Query, job.Lang, append([]Evidence(nil), evidence...), reportBuildOptions{
+			StrictEntity:         job.StrictEntity,
+			TimeWindows:          append([]string(nil), job.TimeWindows...),
+			ReportStyle:          job.ReportStyle,
+			StageErrors:          dedupeStrings(stageErrors),
+			EntityDisambiguation: &entityStats,
+			UseTimelineStyle:     useV2,
+			Iterations:           iteration,
+			ResearchTrace:        trace,
+			VerificationSummary:  verificationSummary,
+		})
+
+		roundOutcome := verificationOutcome(verificationSummary)
+		roundEvidenceAdded := len(round.Evidence)
+		if roundEvidenceAdded == 0 {
+			stopReason = "no_new_canonical_evidence"
+		} else if draft.CitationCoverage >= 0.85 && !hasHighPriorityGap(unresolved) {
+			stopReason = "coverage_sufficient"
+		} else if round.MaxSourcesReached || remainingSteps < 2 || followUpRounds >= maxFollowUpRounds(job.Mode) {
+			stopReason = "budget_exhausted"
+		}
+
+		if stopReason != "" {
+			trace = append(trace, ResearchTraceEntry{
+				Iteration:           iteration,
+				Focus:               firstNonEmpty(primaryGap.Focus, localizedAxisLabel(job.Lang, "research", "Research")),
+				Gap:                 firstNonEmpty(primaryGap.Gap, stopReason),
+				EvidenceAdded:       roundEvidenceAdded,
+				VerificationOutcome: roundOutcome,
+			})
 			s.updateJob(jobID, func(j *Job) {
-				j.Progress = minInt(80, j.Progress+10)
+				j.Iteration = iteration
+				j.LatestGap = primaryGap.Gap
+				j.LatestAction = "loop_stopped"
+			})
+			s.broadcast(jobID, "loop_stopped", map[string]interface{}{
+				"iteration":     iteration,
+				"stop_reason":   stopReason,
+				"latest_gap":    primaryGap.Gap,
+				"latest_action": "loop_stopped",
+			})
+			break
+		}
+
+		followUpTasks := buildFollowUpTasks(brief, unresolved, job.Lang, iteration+1, remainingSteps, nextTaskIndex)
+		if len(followUpTasks) == 0 {
+			stopReason = "budget_exhausted"
+			trace = append(trace, ResearchTraceEntry{
+				Iteration:           iteration,
+				Focus:               firstNonEmpty(primaryGap.Focus, localizedAxisLabel(job.Lang, "research", "Research")),
+				Gap:                 firstNonEmpty(primaryGap.Gap, stopReason),
+				EvidenceAdded:       roundEvidenceAdded,
+				VerificationOutcome: roundOutcome,
+			})
+			s.broadcast(jobID, "loop_stopped", map[string]interface{}{
+				"iteration":     iteration,
+				"stop_reason":   stopReason,
+				"latest_gap":    primaryGap.Gap,
+				"latest_action": "loop_stopped",
+			})
+			break
+		}
+
+		gapByID := make(map[string]researchGap, len(unresolved))
+		for _, gap := range unresolved {
+			gapByID[gap.ID] = gap
+			s.broadcast(jobID, "gap_detected", map[string]interface{}{
+				"iteration": iteration,
+				"focus":     gap.Focus,
+				"gap":       gap.Gap,
+				"status":    gap.Status,
+				"priority":  gap.Priority,
 			})
 		}
-	}
-
-done:
-	if len(evidence) == 0 && taskErrors > 0 {
-		s.failJob(jobID, "all search tasks failed")
-		return
-	}
-
-	entityStats := EntityDisambiguation{
-		Enabled:   false,
-		Threshold: s.entityThreshold,
-	}
-	if useV2 {
-		original := append([]Evidence(nil), evidence...)
-		evidence, entityStats = applyEntityDisambiguation(job.Query, job.StrictEntity, s.entityThreshold, evidence, taskByID)
-		kept := make(map[string]struct{}, len(evidence))
-		for _, ev := range evidence {
-			kept[ev.ID] = struct{}{}
-		}
-		for _, ev := range original {
-			if _, ok := kept[ev.ID]; ok {
-				continue
-			}
-			s.broadcast(jobID, "entity_filtered", map[string]interface{}{
-				"evidence_id":  ev.ID,
-				"title":        ev.Title,
-				"url":          ev.URL,
-				"entity_score": ev.EntityScore,
-				"threshold":    entityStats.Threshold,
+		for _, task := range followUpTasks {
+			tasks = append(tasks, task)
+			taskByID[task.ID] = task
+			nextTaskIndex++
+			gap := gapByID[task.FollowUpOf]
+			trace = append(trace, ResearchTraceEntry{
+				Iteration:           iteration,
+				Focus:               firstNonEmpty(gap.Focus, task.Axis),
+				Gap:                 gap.Gap,
+				FollowUpQuery:       task.Question,
+				EvidenceAdded:       roundEvidenceAdded,
+				VerificationOutcome: roundOutcome,
+			})
+			s.broadcast(jobID, "followup_planned", map[string]interface{}{
+				"iteration":       iteration + 1,
+				"focus":           firstNonEmpty(gap.Focus, task.Axis),
+				"gap":             gap.Gap,
+				"follow_up_query": task.Question,
+				"axis":            task.Axis,
 			})
 		}
-		if job.StrictEntity && len(evidence) == 0 {
-			stageErrors = append(stageErrors, "all evidence filtered by strict entity disambiguation")
-			s.broadcast(jobID, "stage_warning", map[string]interface{}{
-				"stage":   "verify",
-				"message": "all evidence filtered by strict entity disambiguation",
-			})
-		}
+		remainingSteps -= len(followUpTasks)
+		followUpRounds++
+		roundTasks = followUpTasks
+		s.updateJob(jobID, func(j *Job) {
+			j.Tasks = append([]Task(nil), tasks...)
+			j.Stage = "planning"
+			j.Progress = minInt(89, 28+iteration*15)
+			j.Iteration = iteration + 1
+			j.LatestGap = primaryGap.Gap
+			j.LatestAction = "followup_planned"
+			j.Evidence = append([]Evidence(nil), evidence...)
+		})
 	}
 
-	if len(failedQueries) > 0 {
-		stageErrors = append(stageErrors, fmt.Sprintf("failed_queries=%d", len(failedQueries)))
+	if len(allFailedQueries) > 0 {
+		stageErrors = append(stageErrors, fmt.Sprintf("failed_queries=%d", len(dedupeStrings(allFailedQueries))))
 	}
 	stageErrors = dedupeStrings(stageErrors)
+	if stopReason == "" {
+		stopReason = "coverage_sufficient"
+	}
 
 	s.updateJob(jobID, func(j *Job) {
 		j.Status = JobStatusSynthesizing
 		j.Stage = "synthesize"
 		j.Progress = 90
+		j.Iteration = iteration
+		j.LatestAction = "synthesizing"
 		j.Evidence = evidence
 	})
 
@@ -576,10 +702,18 @@ done:
 		StageErrors:          stageErrors,
 		EntityDisambiguation: &entityStats,
 		UseTimelineStyle:     useV2,
+		Iterations:           iteration,
+		StopReason:           stopReason,
+		ResearchTrace:        trace,
+		VerificationSummary:  verificationSummary,
 	})
+	if job.EffectiveRouteMode == RouteModeHybrid {
+		report = s.mergeExperimentReport(ctx, job, evidence, report)
+	}
 	s.broadcast(jobID, "citation_coverage_updated", map[string]interface{}{
 		"citation_coverage": report.CitationCoverage,
 		"evidence_count":    len(evidence),
+		"iteration":         iteration,
 	})
 	if report.CitationCoverage < 0.8 {
 		s.broadcast(jobID, "stage_warning", map[string]interface{}{
@@ -593,15 +727,181 @@ done:
 		j.Status = JobStatusCompleted
 		j.Stage = "completed"
 		j.Progress = 100
+		j.Iteration = iteration
+		j.LatestAction = "completed"
 		j.Report = &report
 		now := timeutil.NowTime()
 		j.CompletedAt = &now
 	})
 	s.broadcast(jobID, "job_completed", map[string]interface{}{
+		"iterations":        report.Iterations,
+		"stop_reason":       report.StopReason,
 		"evidence_count":    len(evidence),
 		"confidence":        report.Confidence,
 		"citation_coverage": report.CitationCoverage,
 	})
+}
+
+func (s *Service) runExperimentJob(ctx context.Context, job *Job) {
+	backend := s.experimentBackend()
+	if backend == nil {
+		s.failJob(job.ID, "experiment backend is not configured")
+		return
+	}
+	s.updateJob(job.ID, func(j *Job) {
+		j.Stage = "experiment"
+		j.Progress = 30
+		j.Iteration = 1
+		j.LatestAction = "experiment_started"
+	})
+	s.broadcast(job.ID, "experiment_started", map[string]interface{}{
+		"job_id":     job.ID,
+		"route_mode": string(job.EffectiveRouteMode),
+	})
+
+	result, err := backend.Run(ctx, buildExperimentRequest(job, nil, nil))
+	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			s.cancelJobInternal(job.ID)
+			return
+		}
+		s.failJob(job.ID, fmt.Sprintf("experiment failed: %v", err))
+		return
+	}
+	report := reportFromExperimentResult(result)
+	s.updateJob(job.ID, func(j *Job) {
+		j.Status = JobStatusCompleted
+		j.Stage = "completed"
+		j.Progress = 100
+		j.Iteration = 1
+		j.LatestAction = "completed"
+		j.Report = &report
+		now := timeutil.NowTime()
+		j.CompletedAt = &now
+	})
+	s.broadcast(job.ID, "experiment_completed", map[string]interface{}{
+		"job_id":         job.ID,
+		"route_mode":     string(job.EffectiveRouteMode),
+		"finding_count":  len(report.ExperimentFindings()),
+		"artifact_count": len(report.ExperimentArtifacts()),
+	})
+	s.broadcast(job.ID, "job_completed", map[string]interface{}{
+		"iterations":        report.Iterations,
+		"stop_reason":       report.StopReason,
+		"evidence_count":    0,
+		"confidence":        report.Confidence,
+		"citation_coverage": report.CitationCoverage,
+	})
+}
+
+func (s *Service) mergeExperimentReport(ctx context.Context, job *Job, evidence []Evidence, report Report) Report {
+	backend := s.experimentBackend()
+	if backend == nil {
+		report.StageErrors = dedupeStrings(append(report.StageErrors, "experiment backend unavailable during hybrid execution"))
+		return report
+	}
+	s.broadcast(job.ID, "experiment_started", map[string]interface{}{
+		"job_id":     job.ID,
+		"route_mode": string(job.EffectiveRouteMode),
+	})
+	result, err := backend.Run(ctx, buildExperimentRequest(job, &report, evidence))
+	if err != nil {
+		report.StageErrors = dedupeStrings(append(report.StageErrors, fmt.Sprintf("experiment validation failed: %v", err)))
+		s.broadcast(job.ID, "stage_warning", map[string]interface{}{
+			"stage":   "experiment",
+			"message": err.Error(),
+		})
+		return report
+	}
+	report.Experiment = experimentReportFromResult(result)
+	if report.Experiment != nil && strings.TrimSpace(report.Experiment.Summary) != "" {
+		if strings.TrimSpace(report.Answer) == "" {
+			report.Answer = strings.TrimSpace(report.Experiment.Summary)
+		} else {
+			report.Answer = strings.TrimSpace(report.Answer) + "\n\nExperiment validation: " + strings.TrimSpace(report.Experiment.Summary)
+		}
+	}
+	if result != nil {
+		report.Confidence = maxFloat(report.Confidence, clampExperimentConfidence(result.Confidence))
+		if len(result.OpenQuestions) > 0 {
+			report.OpenQuestions = dedupeStrings(append(report.OpenQuestions, result.OpenQuestions...))
+		}
+	}
+	s.broadcast(job.ID, "experiment_completed", map[string]interface{}{
+		"job_id":         job.ID,
+		"route_mode":     string(job.EffectiveRouteMode),
+		"finding_count":  len(report.ExperimentFindings()),
+		"artifact_count": len(report.ExperimentArtifacts()),
+	})
+	return report
+}
+
+func buildExperimentRequest(job *Job, report *Report, evidence []Evidence) ExperimentRequest {
+	request := ExperimentRequest{
+		JobID:        job.ID,
+		Query:        job.Query,
+		Lang:         job.Lang,
+		Mode:         job.Mode,
+		RouteMode:    job.EffectiveRouteMode,
+		Budget:       job.Budget,
+		ReportStyle:  job.ReportStyle,
+		StrictEntity: job.StrictEntity,
+	}
+	if len(job.TimeWindows) > 0 {
+		request.TimeWindows = append([]string(nil), job.TimeWindows...)
+	}
+	if report != nil {
+		request.WebReport = cloneReport(report)
+	}
+	if len(evidence) > 0 {
+		request.WebEvidence = append([]Evidence(nil), evidence...)
+	}
+	return request
+}
+
+func reportFromExperimentResult(result *ExperimentResult) Report {
+	report := Report{
+		StopReason: "experiment_completed",
+	}
+	if result == nil {
+		report.Answer = "Experiment completed."
+		return report
+	}
+	report.Answer = strings.TrimSpace(result.Summary)
+	if report.Answer == "" {
+		report.Answer = "Experiment completed."
+	}
+	report.Confidence = clampExperimentConfidence(result.Confidence)
+	report.OpenQuestions = append([]string(nil), result.OpenQuestions...)
+	report.Experiment = experimentReportFromResult(result)
+	return report
+}
+
+func experimentReportFromResult(result *ExperimentResult) *ExperimentReport {
+	if result == nil {
+		return nil
+	}
+	report := &ExperimentReport{
+		Summary:       strings.TrimSpace(result.Summary),
+		Findings:      append([]string(nil), result.Findings...),
+		Artifacts:     append([]ExperimentArtifact(nil), result.Artifacts...),
+		OpenQuestions: append([]string(nil), result.OpenQuestions...),
+		Metadata:      cloneInterfaceMap(result.Metadata),
+	}
+	if report.Summary == "" && len(report.Findings) == 0 && len(report.Artifacts) == 0 && len(report.OpenQuestions) == 0 && len(report.Metadata) == 0 {
+		return nil
+	}
+	return report
+}
+
+func clampExperimentConfidence(value float64) float64 {
+	if value < 0 {
+		return 0
+	}
+	if value > 1 {
+		return 1
+	}
+	return value
 }
 
 func (s *Service) failJob(jobID, msg string) {
@@ -690,6 +990,10 @@ type reportBuildOptions struct {
 	StageErrors          []string
 	EntityDisambiguation *EntityDisambiguation
 	UseTimelineStyle     bool
+	Iterations           int
+	StopReason           string
+	ResearchTrace        []ResearchTraceEntry
+	VerificationSummary  *VerificationSummary
 }
 
 func (s *Service) synthesizeReport(ctx context.Context, query, lang string, evidence []Evidence, opts ...reportBuildOptions) Report {
@@ -701,12 +1005,19 @@ func (s *Service) synthesizeReport(ctx context.Context, query, lang string, evid
 	if s.summary == nil {
 		return report
 	}
+	activeEvidence := topEvidenceWorkset(evidence, deepResearchActiveEvidenceLimit)
+	if len(activeEvidence) == 0 {
+		activeEvidence = append([]Evidence(nil), evidence...)
+	}
 
 	answer, err := s.summary.Summarize(ctx, SummaryInput{
-		Query:    query,
-		Lang:     lang,
-		Evidence: append([]Evidence(nil), evidence...),
-		Draft:    report.Answer,
+		Query:               query,
+		Lang:                lang,
+		Evidence:            append([]Evidence(nil), activeEvidence...),
+		AllEvidence:         append([]Evidence(nil), evidence...),
+		Draft:               report.Answer,
+		ResearchTrace:       append([]ResearchTraceEntry(nil), buildOpts.ResearchTrace...),
+		VerificationSummary: cloneVerificationSummary(buildOpts.VerificationSummary),
 	})
 	if err != nil {
 		return report
@@ -1234,6 +1545,26 @@ func synthesizeReportWithOptions(query, lang string, evidence []Evidence, opts r
 	if len(opts.StageErrors) > 0 {
 		openQuestions = append(openQuestions, localizedStageErrorHint(lang, query))
 	}
+	if opts.VerificationSummary != nil {
+		for _, item := range opts.VerificationSummary.Items {
+			if item.Status == verificationStatusResolved || strings.TrimSpace(item.Gap) == "" {
+				continue
+			}
+			openQuestions = append(openQuestions, item.Gap)
+		}
+		openQuestions = dedupeStrings(openQuestions)
+	}
+	if opts.VerificationSummary != nil && len(opts.VerificationSummary.Items) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, localizedVerificationHeading(lang, query))
+		for _, item := range opts.VerificationSummary.Items {
+			line := fmt.Sprintf("- %s: %s", localizedVerificationStatusLabel(lang, item.Status), strings.TrimSpace(item.Summary))
+			if refs := formatCitationRefs(item.EvidenceIDs, indexByEvidenceID, lang, query); refs != "" {
+				line += " " + refs
+			}
+			lines = append(lines, line)
+		}
+	}
 	answer := strings.Join(lines, "\n")
 	coverage := computeCitationCoverage(answer, len(citations))
 	if coverage < 0.8 {
@@ -1254,10 +1585,14 @@ func synthesizeReportWithOptions(query, lang string, evidence []Evidence, opts r
 		SupportCount:         supportCount,
 		ConflictCount:        conflictCount,
 		HasConflict:          hasConflict,
+		Iterations:           opts.Iterations,
+		StopReason:           strings.TrimSpace(opts.StopReason),
 		CitationCoverage:     coverage,
 		EntityDisambiguation: entityInfo,
 		StageErrors:          append([]string(nil), opts.StageErrors...),
 		TimelineSections:     timelineSections,
+		ResearchTrace:        cloneResearchTrace(opts.ResearchTrace),
+		VerificationSummary:  cloneVerificationSummary(opts.VerificationSummary),
 	}
 }
 
@@ -1378,6 +1713,62 @@ func computeCitationCoverage(answer string, citationCount int) float64 {
 		return 0
 	}
 	return float64(citedCount) / float64(statementCount)
+}
+
+func localizedVerificationHeading(lang, query string) string {
+	if normalizeResearchLang(lang, query) == researchLangZH {
+		return "核验摘要"
+	}
+	return "Verification summary"
+}
+
+func localizedVerificationStatusLabel(lang, status string) string {
+	if normalizeResearchLang(lang, status) == researchLangZH {
+		switch status {
+		case verificationStatusResolved:
+			return "已核实"
+		case verificationStatusConflicted:
+			return "有冲突"
+		default:
+			return "待补证"
+		}
+	}
+	switch status {
+	case verificationStatusResolved:
+		return "Resolved"
+	case verificationStatusConflicted:
+		return "Conflicted"
+	default:
+		return "Insufficient"
+	}
+}
+
+func formatCitationRefs(evidenceIDs []string, citationIdx map[string]int, lang, query string) string {
+	if len(evidenceIDs) == 0 || len(citationIdx) == 0 {
+		return ""
+	}
+	indices := make([]int, 0, len(evidenceIDs))
+	seen := make(map[int]struct{}, len(evidenceIDs))
+	for _, id := range evidenceIDs {
+		idx := citationIdx[id]
+		if idx <= 0 {
+			continue
+		}
+		if _, ok := seen[idx]; ok {
+			continue
+		}
+		seen[idx] = struct{}{}
+		indices = append(indices, idx)
+	}
+	if len(indices) == 0 {
+		return ""
+	}
+	sort.Ints(indices)
+	parts := make([]string, len(indices))
+	for i, idx := range indices {
+		parts[i] = strconv.Itoa(idx)
+	}
+	return fmt.Sprintf("[%s#%s]", localizedSourceLabel(lang, query), strings.Join(parts, ","))
 }
 
 func isAllowedActor(job *Job, userID, tenantID string) bool {
@@ -1685,24 +2076,102 @@ func cloneJob(j *Job) *Job {
 		}
 	}
 	if j.Report != nil {
-		r := *j.Report
-		if j.Report.Citations != nil {
-			r.Citations = append([]Citation(nil), j.Report.Citations...)
+		cp.Report = cloneReport(j.Report)
+	}
+	return &cp
+}
+
+func cloneReport(r *Report) *Report {
+	if r == nil {
+		return nil
+	}
+	cp := *r
+	if r.Citations != nil {
+		cp.Citations = append([]Citation(nil), r.Citations...)
+	}
+	if r.OpenQuestions != nil {
+		cp.OpenQuestions = append([]string(nil), r.OpenQuestions...)
+	}
+	if r.StageErrors != nil {
+		cp.StageErrors = append([]string(nil), r.StageErrors...)
+	}
+	if r.TimelineSections != nil {
+		cp.TimelineSections = append([]TimelineSection(nil), r.TimelineSections...)
+		for i := range cp.TimelineSections {
+			cp.TimelineSections[i].Highlights = append([]string(nil), r.TimelineSections[i].Highlights...)
+			cp.TimelineSections[i].EvidenceIDs = append([]string(nil), r.TimelineSections[i].EvidenceIDs...)
 		}
-		if j.Report.OpenQuestions != nil {
-			r.OpenQuestions = append([]string(nil), j.Report.OpenQuestions...)
+	}
+	if r.EntityDisambiguation != nil {
+		ed := *r.EntityDisambiguation
+		cp.EntityDisambiguation = &ed
+	}
+	cp.ResearchTrace = cloneResearchTrace(r.ResearchTrace)
+	cp.VerificationSummary = cloneVerificationSummary(r.VerificationSummary)
+	cp.Experiment = cloneExperimentReport(r.Experiment)
+	return &cp
+}
+
+func cloneExperimentReport(report *ExperimentReport) *ExperimentReport {
+	if report == nil {
+		return nil
+	}
+	cp := *report
+	if report.Findings != nil {
+		cp.Findings = append([]string(nil), report.Findings...)
+	}
+	if report.Artifacts != nil {
+		cp.Artifacts = append([]ExperimentArtifact(nil), report.Artifacts...)
+	}
+	if report.OpenQuestions != nil {
+		cp.OpenQuestions = append([]string(nil), report.OpenQuestions...)
+	}
+	cp.Metadata = cloneInterfaceMap(report.Metadata)
+	return &cp
+}
+
+func cloneInterfaceMap(values map[string]interface{}) map[string]interface{} {
+	if len(values) == 0 {
+		return nil
+	}
+	cp := make(map[string]interface{}, len(values))
+	for k, v := range values {
+		cp[k] = v
+	}
+	return cp
+}
+
+func (r Report) ExperimentFindings() []string {
+	if r.Experiment == nil {
+		return nil
+	}
+	return r.Experiment.Findings
+}
+
+func (r Report) ExperimentArtifacts() []ExperimentArtifact {
+	if r.Experiment == nil {
+		return nil
+	}
+	return r.Experiment.Artifacts
+}
+
+func cloneResearchTrace(items []ResearchTraceEntry) []ResearchTraceEntry {
+	if len(items) == 0 {
+		return nil
+	}
+	return append([]ResearchTraceEntry(nil), items...)
+}
+
+func cloneVerificationSummary(summary *VerificationSummary) *VerificationSummary {
+	if summary == nil {
+		return nil
+	}
+	cp := *summary
+	if summary.Items != nil {
+		cp.Items = append([]VerificationItem(nil), summary.Items...)
+		for i := range cp.Items {
+			cp.Items[i].EvidenceIDs = append([]string(nil), summary.Items[i].EvidenceIDs...)
 		}
-		if j.Report.StageErrors != nil {
-			r.StageErrors = append([]string(nil), j.Report.StageErrors...)
-		}
-		if j.Report.TimelineSections != nil {
-			r.TimelineSections = append([]TimelineSection(nil), j.Report.TimelineSections...)
-		}
-		if j.Report.EntityDisambiguation != nil {
-			ed := *j.Report.EntityDisambiguation
-			r.EntityDisambiguation = &ed
-		}
-		cp.Report = &r
 	}
 	return &cp
 }

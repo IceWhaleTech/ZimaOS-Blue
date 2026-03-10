@@ -94,6 +94,7 @@ type Manager struct {
 
 var (
 	excludedBackupDirs = map[string]bool{
+		".git":        true, // Git metadata directory
 		"backups":     true, // Backup directory itself
 		"cache":       true, // Runtime cache
 		"log":         true, // Runtime logs
@@ -111,6 +112,9 @@ var (
 		".pth":         true, // PyTorch model files
 		".safetensors": true, // Model weights
 	}
+	excludedBackupFileNames = map[string]bool{
+		".git": true, // Git worktree metadata file
+	}
 	alwaysIncludeLargeBackupExtensions = map[string]bool{
 		".db":      true, // Keep core SQLite data even if large
 		".sqlite":  true, // Keep core SQLite data even if large
@@ -127,6 +131,9 @@ func shouldSkipBackupDir(name string) bool {
 }
 
 func shouldSkipBackupFile(name string, size int64) bool {
+	if excludedBackupFileNames[strings.ToLower(name)] {
+		return true
+	}
 	ext := strings.ToLower(filepath.Ext(name))
 	if excludedBackupExtensions[ext] {
 		return true

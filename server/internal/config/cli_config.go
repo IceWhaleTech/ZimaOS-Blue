@@ -474,7 +474,7 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 		Profile:                          "full",
 		Profiles: map[string][]string{
 			"minimal":   {"session_status"},
-			"coding":    {"group:fs", "group:runtime", "group:sessions", "group:memory", "apply_patch", "pdf"},
+			"coding":    {"group:fs", "group:runtime", "group:sessions", "group:memory", "group:research", "apply_patch", "pdf"},
 			"messaging": {"message", "sessions_list", "sessions_history", "sessions_send", "session_status"},
 			"full":      {},
 		},
@@ -483,7 +483,8 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 			"group:fs":         {"read", "write", "edit", "grep", "find", "ls", "apply_patch"},
 			"group:sessions":   {"sessions_list", "sessions_history", "sessions_send", "sessions_spawn", "session_status"},
 			"group:memory":     {"memory_search", "memory_get", "memory_write", "memory_forget"},
-			"group:web":        {"web_search", "web_fetch"},
+			"group:research":   {"research_run", "research_status"},
+			"group:web":        {"web_search", "web_fetch", "web_read", "web_extract", "web_crawl"},
 			"group:ui":         {"browser", "canvas"},
 			"group:automation": {"cron", "gateway", "nodes"},
 			"group:messaging":  {"message"},

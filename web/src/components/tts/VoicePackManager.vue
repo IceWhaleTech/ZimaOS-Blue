@@ -1,7 +1,7 @@
 <template>
   <div class="voice-pack-manager">
-    <h3>eSpeak-NG Language Packs</h3>
-    <p class="description">Download language packs for offline speech synthesis</p>
+    <h3>{{ t('speech.languagePacks') }}</h3>
+    <p class="description">{{ t('speech.voicePackManager.description') }}</p>
 
     <div class="pack-list">
       <div v-for="pack in packs" :key="pack.language" class="pack-item">
@@ -15,7 +15,7 @@
           class="btn-download"
           @click="downloadPack(pack.language)"
         >
-          {{ loading ? 'Downloading...' : 'Download' }}
+          {{ loading ? t('common.downloading') : t('common.download') }}
         </button>
         <button
           v-else
@@ -23,7 +23,7 @@
           class="btn-delete"
           @click="deletePack(pack.language)"
         >
-          Delete
+          {{ t('common.delete') }}
         </button>
       </div>
     </div>
@@ -36,8 +36,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useTTSStore } from '@/stores/tts'
 
+const { t } = useI18n()
 const ttsStore = useTTSStore()
 const packs = ref<{ language: string; name: string; size_kb: number; downloaded: boolean; downloading?: boolean }[]>([])
 const loading = ref(false)
@@ -54,7 +56,7 @@ const downloadPack = async (language: string) => {
   try {
     await ttsStore.downloadLanguagePack(language)
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Download failed'
+    error.value = err instanceof Error ? err.message : t('speech.downloadFailed')
   } finally {
     loading.value = false
   }
@@ -66,7 +68,7 @@ const deletePack = async (language: string) => {
   try {
     await ttsStore.deleteLanguagePack(language)
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Delete failed'
+    error.value = err instanceof Error ? err.message : t('speech.voicePackManager.deleteFailed')
   } finally {
     loading.value = false
   }

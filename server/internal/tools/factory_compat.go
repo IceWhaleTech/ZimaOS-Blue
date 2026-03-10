@@ -28,6 +28,9 @@ var factoryToolNames = []string{
 	"memory_forget",
 	"web_search",
 	"web_fetch",
+	"web_read",
+	"web_extract",
+	"web_crawl",
 	"image",
 	"pdf",
 }
@@ -88,6 +91,9 @@ func factoryToolDefinitions() []ToolDefinition {
 		factoryToolDefinition("memory_forget", "Delete a memory entry by ID."),
 		factoryToolDefinition("web_search", "Search the web for up-to-date information."),
 		factoryToolDefinition("web_fetch", "Fetch and parse a web page by URL."),
+		factoryToolDefinition("web_read", "Read a web page and return normalized main content."),
+		factoryToolDefinition("web_extract", "Extract structured fields from webpage HTML or a URL."),
+		factoryToolDefinition("web_crawl", "Crawl seed URLs with limits and checkpoints."),
 		factoryToolDefinition("image", "Analyze or process image inputs."),
 		factoryToolDefinition("pdf", "Read and extract information from PDF files."),
 	}

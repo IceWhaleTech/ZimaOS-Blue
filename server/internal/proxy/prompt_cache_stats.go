@@ -79,9 +79,21 @@ type PromptCacheSnapshot struct {
 	ReuseRatio           float64 `json:"reuse_ratio"`
 }
 
+func promptCacheEvent(cacheRead, cacheCreation int) string {
+	switch {
+	case cacheRead > 0 && cacheCreation > 0:
+		return "hit+create"
+	case cacheRead > 0:
+		return "hit"
+	case cacheCreation > 0:
+		return "create"
+	default:
+		return "miss"
+	}
+}
+
 // LogTokenChurn logs a per-request summary of token reuse vs churn.
-// Call this after each Anthropic response that includes usage data.
-func LogTokenChurn(provider, model string, inputTokens, cacheRead, cacheCreation int) {
+func LogTokenChurn(provider, model, promptCacheKey string, inputTokens, cacheRead, cacheCreation int) {
 	if inputTokens == 0 {
 		return
 	}
@@ -89,12 +101,17 @@ func LogTokenChurn(provider, model string, inputTokens, cacheRead, cacheCreation
 	if inputTokens > 0 {
 		reusePct = float64(cacheRead) / float64(inputTokens) * 100
 	}
-	slog.Info("[prompt-cache] token churn",
+	attrs := []any{
 		"provider", provider,
 		"model", model,
+		"cache_event", promptCacheEvent(cacheRead, cacheCreation),
 		"input_tokens", inputTokens,
 		"cache_read", cacheRead,
 		"cache_creation", cacheCreation,
 		"reuse_pct", int(reusePct),
-	)
+	}
+	if promptCacheKey != "" {
+		attrs = append(attrs, "prompt_cache_key", promptCacheKey)
+	}
+	slog.Info("[prompt-cache] token churn", attrs...)
 }

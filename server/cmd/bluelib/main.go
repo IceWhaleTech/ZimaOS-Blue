@@ -37,7 +37,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/homeassistant"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
@@ -49,7 +48,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sessionaudit"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/speech"
@@ -745,6 +743,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Initialize provider pool (SQLite-backed, auto-migrates from JSON files)
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
+	providerpool.SetResponsesIntegrationEnabled(false)
 	ppOpts := []providerpool.PoolOption{providerpool.WithDB(services.DB)}
 	if cfg.Security.Encryption.Enabled {
 		secretEncryptor, encErr := auth.NewEncryptor(&auth.EncryptionConfig{
@@ -759,6 +758,15 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	}
 	providerPool, _ := providerpool.NewPool(providerPoolPath, ppOpts...)
 	if providerPool != nil {
+		if normalized, err := providerPool.NormalizeLegacyCustomResponsesProviders(); err != nil {
+			zapLogger.Warn("Failed to normalize legacy custom responses providers", zap.Error(err))
+		} else if normalized > 0 {
+			zapLogger.Info("Legacy custom responses providers normalized", zap.Int("count", normalized))
+		}
+
+		if disabled := providerPool.DisableResponsesProviders(); disabled > 0 {
+			zapLogger.Info("Responses providers temporarily disabled", zap.Int("count", disabled))
+		}
 		bootstrap.LoadProvidersFromPool(providerPool, services.LLMRegistry)
 		chatHandler.SetProviderPool(providerPool)
 	}
@@ -862,7 +870,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 		// Try to set up dual-write backend with vector store + hybrid search
 		if cfg.Memory.VectorStore.Enabled {
-			if dualBackend := initDualWriteBackendLib(cfg, mdBackend); dualBackend != nil {
+			if dualBackend := initDualWriteBackendLib(cfg, dataDir, mdBackend); dualBackend != nil {
 				unifiedService.SetBackend(dualBackend)
 				zapLogger.Info("Memory service initialized (dual-write: markdown + vector store)")
 			} else {
@@ -892,24 +900,6 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	// Initialize memory handler in background — it's not needed until the first
 	// memory API call or chat recall, so don't block server startup.
 	go memoryHandler.Init()
-
-	// Wire threshold-triggered memory extraction (compactor_memory) into chat flow.
-	var compactionProvider llm.Provider
-	if providerNames := services.LLMRegistry.List(); len(providerNames) > 0 {
-		compactionProvider = services.LLMRegistry.Get(providerNames[0])
-	}
-	sessionCompactor := session.NewSessionCompactor(compactionProvider, cfg.Session.Compaction)
-	memoryRefreshCfg := session.DefaultMemoryRefreshConfig()
-	memoryRefreshCfg.Enabled = memoryRefreshCfg.Enabled && cfg.Session.Compaction.Enabled && compactionProvider != nil
-	if memoryRefreshCfg.Enabled {
-		sessionMemRefresher := server.NewSessionMemoryRefresher(memoryHandler)
-		chatHandler.SetCompactorMemoryIntegration(session.NewCompactorMemoryIntegration(
-			sessionCompactor,
-			sessionMemRefresher,
-			compactionProvider,
-			memoryRefreshCfg,
-		), cfg.Session.MaxTokens)
-	}
 
 	// Create Echo server
 	e := echo.New()
@@ -1039,15 +1029,28 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 // Required for c-archive build mode
 func main() {}
 
+func resolveVectorStoreDBPath(dataDir, configuredPath string) string {
+	trimmed := strings.TrimSpace(configuredPath)
+	if trimmed == "" {
+		return filepath.Join(dataDir, "memory.db")
+	}
+	// Preserve special sqlite DSNs and explicit absolute paths.
+	if trimmed == ":memory:" || strings.HasPrefix(trimmed, "file:") || filepath.IsAbs(trimmed) {
+		return trimmed
+	}
+	// Keep backward compatibility with legacy default "./data/memory.db" while anchoring to app data dir.
+	if filepath.Clean(trimmed) == filepath.Join("data", "memory.db") {
+		return filepath.Join(dataDir, "memory.db")
+	}
+	return trimmed
+}
+
 // initDualWriteBackendLib creates a DualWriteBackend with VectorStore + HybridSearcher.
 // Returns nil if initialization fails (caller should fall back to markdown-only).
-func initDualWriteBackendLib(cfg *config.Config, mdBackend *memory.PureMarkdownBackend) *memory.DualWriteBackend {
+func initDualWriteBackendLib(cfg *config.Config, dataDir string, mdBackend *memory.PureMarkdownBackend) *memory.DualWriteBackend {
 	log := logger.Get()
 
-	dbPath := cfg.Memory.VectorStore.DBPath
-	if dbPath == "" {
-		dbPath = "./data/memory.db"
-	}
+	dbPath := resolveVectorStoreDBPath(dataDir, cfg.Memory.VectorStore.DBPath)
 
 	dims := cfg.Memory.VectorStore.Dimensions
 

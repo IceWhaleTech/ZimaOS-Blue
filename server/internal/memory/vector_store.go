@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -238,6 +240,22 @@ func keywordFallbackScore(query string, terms []string, content string, tags str
 	return score
 }
 
+func ensureVectorStoreParentDir(dbPath string) error {
+	trimmed := strings.TrimSpace(dbPath)
+	// SQLite special DSNs do not map to filesystem directories.
+	if trimmed == "" || trimmed == ":memory:" || strings.HasPrefix(trimmed, "file:") {
+		return nil
+	}
+	dir := filepath.Dir(trimmed)
+	if dir == "" || dir == "." {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create vector store dir %q: %w", dir, err)
+	}
+	return nil
+}
+
 // NewVectorStore creates a new vector store.
 func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
 	if cfg.EmbeddingDim <= 0 {
@@ -245,6 +263,9 @@ func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {
 	}
 	if cfg.MaxChunks <= 0 {
 		cfg.MaxChunks = 10000
+	}
+	if err := ensureVectorStoreParentDir(cfg.DBPath); err != nil {
+		return nil, err
 	}
 
 	db, err := sql.Open("sqlite3", cfg.DBPath+"?_journal_mode=WAL&_busy_timeout=5000")

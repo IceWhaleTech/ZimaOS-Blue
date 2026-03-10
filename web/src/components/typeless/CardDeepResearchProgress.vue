@@ -16,6 +16,9 @@ const progress = computed(() => {
   return Math.max(0, Math.min(100, Math.round(p)))
 })
 const stage = computed(() => props.card.stage || 'running')
+const iteration = computed(() => props.card.iteration || 0)
+const latestGap = computed(() => props.card.latest_gap || '')
+const latestAction = computed(() => props.card.latest_action || '')
 const isDone = computed(() => props.card.status === 'completed')
 const isFailed = computed(() => props.card.status === 'failed')
 
@@ -25,6 +28,7 @@ const stageLabel = computed(() => {
     intake: t('chat.deepResearchStageIntake', 'Intake'),
     planning: t('chat.deepResearchStagePlanning', 'Planning'),
     retrieve: t('chat.deepResearchStageRetrieve', 'Retrieving'),
+    verify: t('chat.deepResearchStageVerify', 'Verifying'),
     synthesize: t('chat.deepResearchStageSynthesize', 'Synthesizing'),
     completed: t('chat.deepResearchStageCompleted', 'Completed'),
     failed: t('chat.deepResearchStageFailed', 'Failed'),
@@ -32,6 +36,31 @@ const stageLabel = computed(() => {
   }
   return stageMap[raw] || raw
 })
+
+function latestActionLabel(action?: string): string {
+  switch (action) {
+    case 'augment_query':
+      return t('chat.deepResearchActionAugmentQuery', 'Augmenting query')
+    case 'initial_retrieve':
+      return t('chat.deepResearchActionInitialRetrieve', 'Running initial retrieval')
+    case 'followup_retrieve':
+      return t('chat.deepResearchActionFollowupRetrieve', 'Running follow-up retrieval')
+    case 'verification':
+      return t('chat.deepResearchActionVerification', 'Verifying evidence')
+    case 'verification_completed':
+      return t('chat.deepResearchActionVerificationCompleted', 'Verification completed')
+    case 'followup_planned':
+      return t('chat.deepResearchActionFollowupPlanned', 'Follow-up planned')
+    case 'loop_stopped':
+      return t('chat.deepResearchActionLoopStopped', 'Research loop stopped')
+    case 'synthesizing':
+      return t('chat.deepResearchActionSynthesizing', 'Synthesizing report')
+    case 'completed':
+      return t('chat.deepResearchActionCompleted', 'Completed')
+    default:
+      return action || ''
+  }
+}
 </script>
 
 <template>
@@ -53,6 +82,11 @@ const stageLabel = computed(() => {
       <div class="flex items-center justify-between text-xs mb-2">
         <span class="text-gray-500 dark:text-gray-400">{{ stageLabel }}</span>
         <span class="font-medium text-gray-700 dark:text-gray-200">{{ progress }}%</span>
+      </div>
+      <div v-if="iteration || latestAction || latestGap" class="mb-2 space-y-1 text-xs text-gray-500 dark:text-gray-400">
+        <div v-if="iteration">{{ t('chat.deepResearchIteration', 'Iteration') }}: {{ iteration }}</div>
+        <div v-if="latestAction">{{ t('chat.deepResearchLatestAction', 'Latest action') }}: {{ latestActionLabel(latestAction) }}</div>
+        <div v-if="latestGap">{{ t('chat.deepResearchLatestGap', 'Latest gap') }}: {{ latestGap }}</div>
       </div>
       <div class="h-1.5 rounded bg-gray-100 dark:bg-gray-700 overflow-hidden">
         <div

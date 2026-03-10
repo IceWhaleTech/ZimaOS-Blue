@@ -45,6 +45,12 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Session.Persistence.Path != "./data/blue.db" {
 		t.Errorf("Session.Persistence.Path = %v, want %v", cfg.Session.Persistence.Path, "./data/blue.db")
 	}
+	if cfg.Research.Router.DefaultMode != "web" {
+		t.Errorf("Research.Router.DefaultMode = %v, want %v", cfg.Research.Router.DefaultMode, "web")
+	}
+	if cfg.Research.Autoresearch.Enabled {
+		t.Errorf("Research.Autoresearch.Enabled = %v, want false", cfg.Research.Autoresearch.Enabled)
+	}
 }
 
 func TestLoad_FromFile(t *testing.T) {
@@ -91,11 +97,31 @@ func TestLoad_FromEnv(t *testing.T) {
 	os.Setenv("BLUE_LOG_LEVEL", "warn")
 	os.Setenv("BLUE_WEB_FETCH_ALLOW_PRIVATE_HOSTS", "true")
 	os.Setenv("BLUE_WEB_FETCH_TIMEOUT", "12s")
+	os.Setenv("BLUE_RESEARCH_DEFAULT_ROUTE_MODE", "hybrid")
+	os.Setenv("BLUE_RESEARCH_ALLOW_EXPERIMENT", "false")
+	os.Setenv("BLUE_RESEARCH_ALLOW_HYBRID", "false")
+	os.Setenv("BLUE_AUTORESEARCH_ENABLED", "true")
+	os.Setenv("BLUE_AUTORESEARCH_COMMAND", "uv")
+	os.Setenv("BLUE_AUTORESEARCH_WORKING_DIR", "/tmp/autoresearch")
+	os.Setenv("BLUE_AUTORESEARCH_ARGS", "[\"run\",\"train.py\",\"--seed\",\"1337\"]")
+	os.Setenv("BLUE_AUTORESEARCH_ARTIFACT_DIR", "/tmp/autoresearch-artifacts")
+	os.Setenv("BLUE_AUTORESEARCH_ENV_JSON", "{\"WANDB_MODE\":\"disabled\",\"CUDA_VISIBLE_DEVICES\":\"0\"}")
+	os.Setenv("BLUE_AUTORESEARCH_TIMEOUT", "30m")
 	defer func() {
 		os.Unsetenv("BLUE_SERVER_PORT")
 		os.Unsetenv("BLUE_LOG_LEVEL")
 		os.Unsetenv("BLUE_WEB_FETCH_ALLOW_PRIVATE_HOSTS")
 		os.Unsetenv("BLUE_WEB_FETCH_TIMEOUT")
+		os.Unsetenv("BLUE_RESEARCH_DEFAULT_ROUTE_MODE")
+		os.Unsetenv("BLUE_RESEARCH_ALLOW_EXPERIMENT")
+		os.Unsetenv("BLUE_RESEARCH_ALLOW_HYBRID")
+		os.Unsetenv("BLUE_AUTORESEARCH_ENABLED")
+		os.Unsetenv("BLUE_AUTORESEARCH_COMMAND")
+		os.Unsetenv("BLUE_AUTORESEARCH_WORKING_DIR")
+		os.Unsetenv("BLUE_AUTORESEARCH_ARGS")
+		os.Unsetenv("BLUE_AUTORESEARCH_ARTIFACT_DIR")
+		os.Unsetenv("BLUE_AUTORESEARCH_ENV_JSON")
+		os.Unsetenv("BLUE_AUTORESEARCH_TIMEOUT")
 	}()
 
 	cfg, err := Load("")
@@ -114,5 +140,41 @@ func TestLoad_FromEnv(t *testing.T) {
 	}
 	if cfg.ToolCalling.WebFetch.Timeout != 12*time.Second {
 		t.Fatalf("ToolCalling.WebFetch.Timeout = %v, want %v", cfg.ToolCalling.WebFetch.Timeout, 12*time.Second)
+	}
+	if cfg.Research.Router.DefaultMode != "hybrid" {
+		t.Fatalf("Research.Router.DefaultMode = %v, want %v", cfg.Research.Router.DefaultMode, "hybrid")
+	}
+	if cfg.Research.Router.AllowExperiment {
+		t.Fatal("Research.Router.AllowExperiment = true, want false")
+	}
+	if cfg.Research.Router.AllowHybrid {
+		t.Fatal("Research.Router.AllowHybrid = true, want false")
+	}
+	if !cfg.Research.Autoresearch.Enabled {
+		t.Fatal("Research.Autoresearch.Enabled = false, want true")
+	}
+	if cfg.Research.Autoresearch.Command != "uv" {
+		t.Fatalf("Research.Autoresearch.Command = %v, want %v", cfg.Research.Autoresearch.Command, "uv")
+	}
+	if cfg.Research.Autoresearch.WorkingDir != "/tmp/autoresearch" {
+		t.Fatalf("Research.Autoresearch.WorkingDir = %v, want %v", cfg.Research.Autoresearch.WorkingDir, "/tmp/autoresearch")
+	}
+	if len(cfg.Research.Autoresearch.Args) != 4 {
+		t.Fatalf("len(Research.Autoresearch.Args) = %d, want 4", len(cfg.Research.Autoresearch.Args))
+	}
+	if cfg.Research.Autoresearch.Args[0] != "run" || cfg.Research.Autoresearch.Args[1] != "train.py" {
+		t.Fatalf("Research.Autoresearch.Args = %#v, want [run train.py --seed 1337]", cfg.Research.Autoresearch.Args)
+	}
+	if cfg.Research.Autoresearch.ArtifactDir != "/tmp/autoresearch-artifacts" {
+		t.Fatalf("Research.Autoresearch.ArtifactDir = %v, want %v", cfg.Research.Autoresearch.ArtifactDir, "/tmp/autoresearch-artifacts")
+	}
+	if got := cfg.Research.Autoresearch.Env["WANDB_MODE"]; got != "disabled" {
+		t.Fatalf("Research.Autoresearch.Env[WANDB_MODE] = %q, want %q", got, "disabled")
+	}
+	if got := cfg.Research.Autoresearch.Env["CUDA_VISIBLE_DEVICES"]; got != "0" {
+		t.Fatalf("Research.Autoresearch.Env[CUDA_VISIBLE_DEVICES] = %q, want %q", got, "0")
+	}
+	if cfg.Research.Autoresearch.Timeout != 30*time.Minute {
+		t.Fatalf("Research.Autoresearch.Timeout = %v, want %v", cfg.Research.Autoresearch.Timeout, 30*time.Minute)
 	}
 }

@@ -14,6 +14,8 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
 
+const maxFileWriteChunkBytes = 32 << 10 // 32 KiB per write call; use append=true for larger files.
+
 // FileReadTool reads content from a file.
 type FileReadTool struct {
 	// AllowedPaths restricts file access to specific directories.
@@ -196,7 +198,7 @@ func NewFileWriteTool(allowedPaths []string, maxFileSize int64) *FileWriteTool {
 func (f *FileWriteTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "write",
-		Description: "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does.",
+		Description: "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does. For large files, write the first chunk, then continue with append=true across multiple calls instead of sending one huge payload.",
 		Icon:        "file-write",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -207,11 +209,11 @@ func (f *FileWriteTool) Definition() ToolDefinition {
 				},
 				"content": map[string]interface{}{
 					"type":        "string",
-					"description": "The content to write to the file",
+					"description": "The content chunk to write. For large files, split content across multiple calls instead of sending one huge string.",
 				},
 				"append": map[string]interface{}{
 					"type":        "boolean",
-					"description": "If true, append to the file instead of overwriting (default: false)",
+					"description": "If true, append this chunk to the file instead of overwriting (default: false). Use this for multi-part writes.",
 				},
 				"create_dirs": map[string]interface{}{
 					"type":        "boolean",
@@ -236,9 +238,9 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 		return nil, errors.New("path must be a non-empty string")
 	}
 
-	content, err := fsAsString(args, "content")
+	content, err := fsAsTextContent(args, "content")
 	if err != nil {
-		return nil, errors.New("content must be a string")
+		return nil, errors.New("content must be text-compatible (string, number, boolean, object, or array)")
 	}
 
 	appendMode, err := fsAsBool(args, "append", false)
@@ -268,6 +270,12 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 	absPath, relPath, _, err := f.scope.resolvePath(path, false)
 	if err != nil {
 		return nil, err
+	}
+
+	// Guard oversized single-call payloads. Large files should be written in
+	// chunks so tool-call arguments do not balloon follow-up LLM requests.
+	if len(content) > maxFileWriteChunkBytes {
+		return nil, fmt.Errorf("content chunk too large: %d bytes (max: %d bytes per write); split into smaller chunks and use append=true for multi-part writes", len(content), maxFileWriteChunkBytes)
 	}
 
 	// Check content size
@@ -401,6 +409,9 @@ func RegisterBuiltinTools(registry *Registry) {
 	registry.Register(NewLsTool(nil))
 	registry.Register(NewWebSearchTool(WebSearchConfig{}))
 	registry.Register(NewWebFetchTool(WebFetchConfig{}))
+	registry.Register(NewWebReadTool(WebFetchConfig{}))
+	registry.Register(NewWebExtractTool(WebFetchConfig{}))
+	registry.Register(NewWebCrawlTool(WebFetchConfig{}))
 	registry.Register(NewMCPTool(registry))
 }
 
@@ -417,6 +428,9 @@ func RegisterBuiltinToolsWithConfig(registry *Registry, webSearchConfig WebSearc
 	registry.Register(NewLsTool(allowedPaths))
 	registry.Register(NewWebSearchTool(webSearchConfig))
 	registry.Register(NewWebFetchTool(webFetchConfig))
+	registry.Register(NewWebReadTool(webFetchConfig))
+	registry.Register(NewWebExtractTool(webFetchConfig))
+	registry.Register(NewWebCrawlTool(webFetchConfig))
 	registry.Register(NewMCPTool(registry))
 }
 
@@ -458,6 +472,39 @@ func GetWebFetchTool(registry *Registry) *WebFetchTool {
 		return nil
 	}
 	if t, ok := tool.(*WebFetchTool); ok {
+		return t
+	}
+	return nil
+}
+
+func GetWebReadTool(registry *Registry) *WebReadTool {
+	tool := registry.Get("web_read")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*WebReadTool); ok {
+		return t
+	}
+	return nil
+}
+
+func GetWebExtractTool(registry *Registry) *WebExtractTool {
+	tool := registry.Get("web_extract")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*WebExtractTool); ok {
+		return t
+	}
+	return nil
+}
+
+func GetWebCrawlTool(registry *Registry) *WebCrawlTool {
+	tool := registry.Get("web_crawl")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*WebCrawlTool); ok {
 		return t
 	}
 	return nil

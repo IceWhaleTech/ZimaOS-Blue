@@ -79,6 +79,13 @@ func (c *Channel) Type() string {
 	return "wechat_work"
 }
 
+func (c *Channel) OutboundCapabilities() channel.OutboundCapabilities {
+	return channel.OutboundCapabilities{
+		MarkdownMode:           channel.OutboundMarkdownModeChunked,
+		SupportsMarkdownFormat: true,
+	}
+}
+
 // Start initializes and starts the WeChat Work bot.
 func (c *Channel) Start(ctx context.Context) error {
 	c.mu.Lock()

@@ -607,7 +607,7 @@ describe('ChatView streaming card chain integration', () => {
     expect(sendSpy).toHaveBeenNthCalledWith(2, `Use web_fetch on ${WEB_FETCH_URL} with browser_target_id=tab-42 to extract readable content.`)
   })
 
-  it('hides fallback boilerplate when chat history contains extracted tool summaries', async () => {
+  it('keeps fallback boilerplate when chat history contains extracted tool summaries', async () => {
     const searchBlock = makeTypelessBlock({
       type: 'search',
       id: 'search-openclaw',
@@ -634,13 +634,13 @@ describe('ChatView streaming card chain integration', () => {
         conversation_id: 'conv-1',
         role: 'assistant',
         content: [
-          '工具执行已完成，但最终总结生成失败。以下是从工具结果自动提炼的安全摘要：',
+          '工具执行已完成，但最终总结生成失败。以下是基于工具结果整理的简要摘要：',
           '',
           'Web search fallback results for "OpenClaw 最近动向":',
           '',
           searchBlock,
           '',
-          '原始 stdout/stderr/error 字段已隐藏以保护安全。如需我重试完整总结，请回复“重试总结”。',
+          '原始 stdout/stderr/error 字段未包含在这条简要摘要中。如需我重试完整总结，请回复“重试总结”。',
         ].join('\n'),
         created_at: '2026-03-08T00:00:01.000Z',
       },
@@ -653,9 +653,9 @@ describe('ChatView streaming card chain integration', () => {
     expect(store.currentConversationId).toBe('conv-1')
     expect(wrapper.text()).toContain('Web search fallback results for "OpenClaw 最近动向"')
     expect(wrapper.text()).toContain('OpenClaw Release Notes')
-    expect(wrapper.text()).not.toContain('工具执行已完成，但最终总结生成失败')
-    expect(wrapper.text()).not.toContain('自动提炼的安全摘要')
-    expect(wrapper.text()).not.toContain('原始 stdout/stderr/error 字段已隐藏')
+    expect(wrapper.text()).toContain('工具执行已完成，但最终总结生成失败')
+    expect(wrapper.text()).toContain('简要摘要')
+    expect(wrapper.text()).toContain('原始 stdout/stderr/error 字段未包含在这条简要摘要中')
   })
 
   it('renders a streamed browser_required web-fetch card and still routes use_browser through card actions', async () => {
@@ -838,6 +838,52 @@ describe('ChatView streaming card chain integration', () => {
       form_data: { url: WEB_FETCH_URL },
     })
     expect(sendSpy).toHaveBeenCalledWith('Open ' + WEB_FETCH_URL + ' with the browser tool.')
+  })
+
+
+  it('opens the app sidebar from mobile chat view when the global header is hidden', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
+    Object.defineProperty(window.navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      configurable: true,
+    })
+    Object.defineProperty(window.navigator, 'platform', { value: 'iPhone', configurable: true })
+    window.history.replaceState({}, '', '/chat?conversationId=conv-1')
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/chat', component: { template: '<div />' } },
+        { path: '/settings', component: { template: '<div />' } },
+      ],
+    })
+    router.push('/chat')
+    await router.isReady()
+
+    const toggleAppSidebar = vi.fn()
+    const wrapper = mount(ChatView, {
+      global: {
+        plugins: [pinia, i18n, router],
+        provide: {
+          toggleAppSidebar,
+        },
+        stubs: {
+          Teleport: true,
+          Transition: true,
+        },
+      },
+    })
+
+    await settleView()
+
+    const globalNavButton = wrapper.findAll('button').find((button) => button.attributes('title') === i18n.global.t('nav.expandSidebar'))
+    expect(globalNavButton?.exists()).toBe(true)
+
+    await globalNavButton!.trigger('click')
+
+    expect(toggleAppSidebar).toHaveBeenCalledTimes(1)
   })
 
 })

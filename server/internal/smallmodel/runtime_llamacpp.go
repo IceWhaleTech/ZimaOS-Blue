@@ -3,7 +3,9 @@ package smallmodel
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,12 +19,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 const (
 	llamaCppDefaultTemperature = 0.2
 	llamaServerStartupTimeout  = 45 * time.Second
+	defaultPrefixCacheTTL      = 2 * time.Minute
 )
 
 type LlamaCppMode string
@@ -38,6 +42,8 @@ const (
 type LlamaCppRuntimeOptions struct {
 	Timeout       time.Duration
 	MaxParallel   int
+	BatchWindow   time.Duration
+	BatchMaxSize  int
 	CLIPath       string
 	Mode          string
 	ServerURL     string
@@ -60,6 +66,8 @@ type LlamaCppRuntime struct {
 	configuredServerBin string
 	configuredServerArg []string
 	serverStartup       time.Duration
+	batchWindow         time.Duration
+	batchMaxSize        int
 
 	resolveMu          sync.RWMutex
 	resolvedCLI        string
@@ -74,6 +82,51 @@ type LlamaCppRuntime struct {
 	cgoOnce    sync.Once
 	cgoErr     error
 	ffiBackend *llamaCppFFIBackend
+
+	prefixMu        sync.Mutex
+	prefixEntries   map[string]*llamaPrefixEntry
+	prefixByCache   map[string]string
+	nextPrefixSlot  int
+	prefixHits      atomic.Uint64
+	prefixMisses    atomic.Uint64
+	prefixEvictions atomic.Uint64
+
+	batcher *llamaBatchWindow
+}
+
+var _ PrefixCachingRuntime = (*LlamaCppRuntime)(nil)
+var _ BatchingRuntime = (*LlamaCppRuntime)(nil)
+
+type llamaPrefixEntry struct {
+	PrefixID     string
+	CacheKey     string
+	Prefix       string
+	SlotID       int
+	PrefixTokens int
+	ExpiresAt    time.Time
+	LastUsedAt   time.Time
+}
+
+type llamaBatchTask struct {
+	ctx    context.Context
+	run    func(context.Context) (string, error)
+	result chan llamaBatchResult
+}
+
+type llamaBatchResult struct {
+	text string
+	err  error
+}
+
+type llamaBatchWindow struct {
+	window       time.Duration
+	maxBatchSize int
+	tasks        chan llamaBatchTask
+	pending      atomic.Int64
+	submitted    atomic.Uint64
+	executed     atomic.Uint64
+	batchCount   atomic.Uint64
+	largestBatch atomic.Uint64
 }
 
 func NewLlamaCppRuntime(manager *Manager, opts ...LlamaCppRuntimeOptions) *LlamaCppRuntime {
@@ -127,7 +180,30 @@ func NewLlamaCppRuntime(manager *Manager, opts ...LlamaCppRuntimeOptions) *Llama
 		startup = llamaServerStartupTimeout
 	}
 
-	return &LlamaCppRuntime{
+	batchWindow := opt.BatchWindow
+	if batchWindow <= 0 {
+		if raw := strings.TrimSpace(os.Getenv("SMALL_MODEL_LLAMA_BATCH_WINDOW_MS")); raw != "" {
+			if ms, err := strconv.Atoi(raw); err == nil && ms > 0 {
+				batchWindow = time.Duration(ms) * time.Millisecond
+			}
+		}
+	}
+	if batchWindow <= 0 {
+		batchWindow = 2 * time.Millisecond
+	}
+	batchMaxSize := opt.BatchMaxSize
+	if batchMaxSize <= 0 {
+		if raw := strings.TrimSpace(os.Getenv("SMALL_MODEL_LLAMA_BATCH_MAX_SIZE")); raw != "" {
+			if size, err := strconv.Atoi(raw); err == nil && size > 0 {
+				batchMaxSize = size
+			}
+		}
+	}
+	if batchMaxSize <= 0 {
+		batchMaxSize = maxParallel
+	}
+
+	rt := &LlamaCppRuntime{
 		manager:             manager,
 		timeout:             timeout,
 		mode:                mode,
@@ -137,10 +213,125 @@ func NewLlamaCppRuntime(manager *Manager, opts ...LlamaCppRuntimeOptions) *Llama
 		configuredServerBin: serverBin,
 		configuredServerArg: serverExtra,
 		serverStartup:       startup,
+		batchWindow:         batchWindow,
+		batchMaxSize:        batchMaxSize,
+		prefixEntries:       make(map[string]*llamaPrefixEntry),
+		prefixByCache:       make(map[string]string),
+		nextPrefixSlot:      1,
 		httpClient: &http.Client{
 			Timeout: 90 * time.Second,
 		},
 	}
+	if batchWindow > 0 && batchMaxSize > 1 {
+		rt.batcher = newLlamaBatchWindow(batchWindow, batchMaxSize)
+	}
+	return rt
+}
+
+func newLlamaBatchWindow(window time.Duration, maxBatchSize int) *llamaBatchWindow {
+	if window <= 0 {
+		window = 2 * time.Millisecond
+	}
+	if maxBatchSize <= 0 {
+		maxBatchSize = 2
+	}
+	bw := &llamaBatchWindow{
+		window:       window,
+		maxBatchSize: maxBatchSize,
+		tasks:        make(chan llamaBatchTask, maxBatchSize*4),
+	}
+	go bw.run()
+	return bw
+}
+
+func (bw *llamaBatchWindow) Do(ctx context.Context, run func(context.Context) (string, error)) (string, error) {
+	result := make(chan llamaBatchResult, 1)
+	task := llamaBatchTask{ctx: ctx, run: run, result: result}
+	bw.submitted.Add(1)
+	bw.pending.Add(1)
+	defer bw.pending.Add(-1)
+
+	select {
+	case bw.tasks <- task:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+
+	select {
+	case out := <-result:
+		return out.text, out.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+func (bw *llamaBatchWindow) Stats() BatchingStats {
+	return BatchingStats{
+		Supported:    true,
+		Window:       bw.window,
+		MaxBatchSize: bw.maxBatchSize,
+		Pending:      bw.pending.Load(),
+		Submitted:    bw.submitted.Load(),
+		Executed:     bw.executed.Load(),
+		BatchCount:   bw.batchCount.Load(),
+		LargestBatch: int(bw.largestBatch.Load()),
+	}
+}
+
+func (bw *llamaBatchWindow) run() {
+	for first := range bw.tasks {
+		bw.collectAndRun(first)
+	}
+}
+
+func (bw *llamaBatchWindow) collectAndRun(first llamaBatchTask) {
+	batch := []llamaBatchTask{first}
+	timer := time.NewTimer(bw.window)
+	defer timer.Stop()
+
+	for len(batch) < bw.maxBatchSize {
+		select {
+		case task := <-bw.tasks:
+			batch = append(batch, task)
+		case <-timer.C:
+			bw.runBatch(batch)
+			return
+		}
+	}
+	bw.runBatch(batch)
+}
+
+func (bw *llamaBatchWindow) runBatch(batch []llamaBatchTask) {
+	bw.batchCount.Add(1)
+	bw.executed.Add(uint64(len(batch)))
+	for {
+		largest := bw.largestBatch.Load()
+		if uint64(len(batch)) <= largest {
+			break
+		}
+		if bw.largestBatch.CompareAndSwap(largest, uint64(len(batch))) {
+			break
+		}
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for _, task := range batch {
+		wg.Add(1)
+		go func(task llamaBatchTask) {
+			defer wg.Done()
+			select {
+			case <-start:
+			case <-task.ctx.Done():
+				task.result <- llamaBatchResult{err: task.ctx.Err()}
+				return
+			}
+			text, err := task.run(task.ctx)
+			task.result <- llamaBatchResult{text: text, err: err}
+		}(task)
+	}
+	close(start)
+	wg.Wait()
 }
 
 func (r *LlamaCppRuntime) Ready() bool {
@@ -189,13 +380,6 @@ func (r *LlamaCppRuntime) Generate(ctx context.Context, req GenerateRequest) (*G
 	}
 	defer cancel()
 
-	select {
-	case r.parallelSem <- struct{}{}:
-		defer func() { <-r.parallelSem }()
-	case <-runCtx.Done():
-		return nil, runCtx.Err()
-	}
-
 	switch r.resolveBackend() {
 	case LlamaCppModeCGO:
 		if err := r.ensureCGOBackend(); err != nil {
@@ -209,11 +393,15 @@ func (r *LlamaCppRuntime) Generate(ctx context.Context, req GenerateRequest) (*G
 		fallthrough
 	default:
 		// server mode with CLI fallback.
-		text, err := r.generateViaServer(runCtx, prompt, maxTokens, temperature, req.Images)
+		text, err := r.dispatchServerTask(runCtx, func(execCtx context.Context) (string, error) {
+			return r.generateViaServer(execCtx, prompt, maxTokens, temperature, req.Images)
+		})
 		if err == nil && strings.TrimSpace(text) != "" {
 			return &GenerateResponse{Text: strings.TrimSpace(text)}, nil
 		}
-		cliText, cliErr := r.generateViaCLI(runCtx, prompt, maxTokens, temperature, req.Images)
+		cliText, cliErr := r.runWithParallelSlot(runCtx, func(execCtx context.Context) (string, error) {
+			return r.generateViaCLI(execCtx, prompt, maxTokens, temperature, req.Images)
+		})
 		if cliErr == nil && strings.TrimSpace(cliText) != "" {
 			return &GenerateResponse{Text: strings.TrimSpace(cliText)}, nil
 		}
@@ -222,6 +410,318 @@ func (r *LlamaCppRuntime) Generate(ctx context.Context, req GenerateRequest) (*G
 		}
 		return nil, fmt.Errorf("llama.cpp generation failed (server=%v, cli=%v)", err, cliErr)
 	}
+}
+
+func (r *LlamaCppRuntime) Prefill(ctx context.Context, req PrefillRequest) (*PrefillResult, error) {
+	reason, _ := r.readinessState()
+	if reason != "ready" {
+		return nil, ErrNotReady
+	}
+	if r.resolveBackend() != LlamaCppModeServer {
+		return nil, ErrPrefixCachingUnsupported
+	}
+	if len(req.Images) > 0 {
+		return nil, ErrPrefixCachingUnsupported
+	}
+	prefix := strings.TrimSpace(req.Prefix)
+	if prefix == "" {
+		return nil, fmt.Errorf("empty prefix")
+	}
+
+	runCtx := ctx
+	cancel := func() {}
+	if _, ok := runCtx.Deadline(); !ok {
+		runCtx, cancel = context.WithTimeout(runCtx, r.timeout)
+	}
+	defer cancel()
+
+	entry, cacheHit := r.upsertPrefixEntry(prefix, req.CacheKey, req.TTL)
+	if _, err := r.dispatchServerTask(runCtx, func(execCtx context.Context) (string, error) {
+		serverURL, err := r.ensureServer(execCtx)
+		if err != nil {
+			return "", err
+		}
+		return r.callServerCompletionWithOptions(execCtx, serverURL, prefix, 0, 0, completionCallOptions{
+			CachePrompt: true,
+			SlotID:      entry.SlotID,
+		})
+	}); err != nil {
+		if cacheHit {
+			r.prefixMisses.Add(1)
+		}
+		return nil, err
+	}
+	if cacheHit {
+		r.prefixHits.Add(1)
+	} else {
+		r.prefixMisses.Add(1)
+	}
+	return r.prefillResultFromEntry(entry, cacheHit), nil
+}
+
+func (r *LlamaCppRuntime) GenerateFromPrefix(ctx context.Context, req GenerateFromPrefixRequest) (*GenerateResponse, error) {
+	reason, _ := r.readinessState()
+	if reason != "ready" {
+		return nil, ErrNotReady
+	}
+	if r.resolveBackend() != LlamaCppModeServer {
+		return nil, ErrPrefixCachingUnsupported
+	}
+	if len(req.Images) > 0 {
+		return nil, ErrPrefixCachingUnsupported
+	}
+	entry, ok := r.lookupPrefixEntry(req.PrefixID, req.CacheKeyHint)
+	if !ok {
+		r.prefixMisses.Add(1)
+		return nil, fmt.Errorf("prefix not found: %q", strings.TrimSpace(req.PrefixID))
+	}
+
+	maxTokens := req.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = defaultMaxTokens
+	}
+	if maxTokens > 1024 {
+		maxTokens = 1024
+	}
+	temperature := req.Temperature
+	if temperature <= 0 {
+		temperature = llamaCppDefaultTemperature
+	}
+	prompt := entry.Prefix + req.Suffix
+
+	runCtx := ctx
+	cancel := func() {}
+	if _, ok := runCtx.Deadline(); !ok {
+		runCtx, cancel = context.WithTimeout(runCtx, r.timeout)
+	}
+	defer cancel()
+	text, err := r.dispatchServerTask(runCtx, func(execCtx context.Context) (string, error) {
+		serverURL, err := r.ensureServer(execCtx)
+		if err != nil {
+			return "", err
+		}
+		return r.callServerCompletionWithOptions(execCtx, serverURL, prompt, maxTokens, temperature, completionCallOptions{
+			CachePrompt: true,
+			SlotID:      entry.SlotID,
+		})
+	})
+	if err == nil && strings.TrimSpace(text) != "" {
+		r.touchPrefixEntry(entry.PrefixID)
+		r.prefixHits.Add(1)
+		return &GenerateResponse{Text: strings.TrimSpace(text)}, nil
+	}
+
+	// Fallback to the regular generation path so correctness is preserved even
+	// if the backing llama-server does not support slot-based prompt caching.
+	fallbackResp, fallbackErr := r.Generate(runCtx, GenerateRequest{
+		Prompt:      prompt,
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
+	})
+	if fallbackErr == nil {
+		r.touchPrefixEntry(entry.PrefixID)
+		r.prefixMisses.Add(1)
+		return fallbackResp, nil
+	}
+	return nil, fmt.Errorf("generate from prefix failed (cached=%v, fallback=%v)", err, fallbackErr)
+}
+
+func (r *LlamaCppRuntime) EvictPrefix(prefixID string) bool {
+	r.prefixMu.Lock()
+	defer r.prefixMu.Unlock()
+	entry, ok := r.prefixEntries[prefixID]
+	if !ok {
+		return false
+	}
+	delete(r.prefixEntries, prefixID)
+	if entry.CacheKey != "" {
+		delete(r.prefixByCache, entry.CacheKey)
+	}
+	r.prefixEvictions.Add(1)
+	return true
+}
+
+func (r *LlamaCppRuntime) PrefixCacheStats() PrefixCacheStats {
+	r.prefixMu.Lock()
+	r.evictExpiredPrefixesLocked(time.Now())
+	entries := len(r.prefixEntries)
+	r.prefixMu.Unlock()
+	return PrefixCacheStats{
+		Supported: r != nil && r.resolveBackend() == LlamaCppModeServer,
+		Entries:   entries,
+		Hits:      r.prefixHits.Load(),
+		Misses:    r.prefixMisses.Load(),
+		Evictions: r.prefixEvictions.Load(),
+	}
+}
+
+func (r *LlamaCppRuntime) BatchingStats() BatchingStats {
+	if r == nil {
+		return BatchingStats{}
+	}
+	if r.batcher == nil {
+		return BatchingStats{
+			Supported:    false,
+			Window:       r.batchWindow,
+			MaxBatchSize: r.batchMaxSize,
+		}
+	}
+	return r.batcher.Stats()
+}
+
+func (r *LlamaCppRuntime) runWithParallelSlot(ctx context.Context, fn func(context.Context) (string, error)) (string, error) {
+	select {
+	case r.parallelSem <- struct{}{}:
+		defer func() { <-r.parallelSem }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	return fn(ctx)
+}
+
+func (r *LlamaCppRuntime) dispatchServerTask(ctx context.Context, fn func(context.Context) (string, error)) (string, error) {
+	if r == nil || r.batcher == nil {
+		return r.runWithParallelSlot(ctx, fn)
+	}
+	return r.batcher.Do(ctx, func(execCtx context.Context) (string, error) {
+		return r.runWithParallelSlot(execCtx, fn)
+	})
+}
+
+type completionCallOptions struct {
+	CachePrompt bool
+	SlotID      int
+}
+
+func (r *LlamaCppRuntime) prefillResultFromEntry(entry *llamaPrefixEntry, cacheHit bool) *PrefillResult {
+	if entry == nil {
+		return nil
+	}
+	return &PrefillResult{
+		PrefixID:     entry.PrefixID,
+		PrefixTokens: entry.PrefixTokens,
+		CacheHit:     cacheHit,
+		Tier:         "memory",
+		ExpiresAt:    entry.ExpiresAt,
+	}
+}
+
+func (r *LlamaCppRuntime) upsertPrefixEntry(prefix, cacheKey string, ttl time.Duration) (*llamaPrefixEntry, bool) {
+	now := time.Now()
+	if ttl <= 0 {
+		ttl = defaultPrefixCacheTTL
+	}
+	normalizedKey := normalizePrefixCacheKey(cacheKey, prefix)
+	r.prefixMu.Lock()
+	defer r.prefixMu.Unlock()
+	r.evictExpiredPrefixesLocked(now)
+	if prefixID, ok := r.prefixByCache[normalizedKey]; ok {
+		if entry, exists := r.prefixEntries[prefixID]; exists && entry.Prefix == prefix {
+			entry.ExpiresAt = now.Add(ttl)
+			entry.LastUsedAt = now
+			return entry, true
+		}
+	}
+	prefixID := buildPrefixID(normalizedKey)
+	entry := &llamaPrefixEntry{
+		PrefixID:     prefixID,
+		CacheKey:     normalizedKey,
+		Prefix:       prefix,
+		SlotID:       r.nextPrefixSlot,
+		PrefixTokens: estimatePromptTokens(prefix),
+		ExpiresAt:    now.Add(ttl),
+		LastUsedAt:   now,
+	}
+	r.nextPrefixSlot++
+	r.prefixEntries[prefixID] = entry
+	r.prefixByCache[normalizedKey] = prefixID
+	return entry, false
+}
+
+func (r *LlamaCppRuntime) lookupPrefixEntry(prefixID, cacheKeyHint string) (*llamaPrefixEntry, bool) {
+	now := time.Now()
+	r.prefixMu.Lock()
+	defer r.prefixMu.Unlock()
+	r.evictExpiredPrefixesLocked(now)
+	id := strings.TrimSpace(prefixID)
+	if id == "" {
+		id = strings.TrimSpace(cacheKeyHint)
+		if mapped, ok := r.prefixByCache[id]; ok {
+			id = mapped
+		}
+	}
+	if entry, ok := r.prefixEntries[id]; ok {
+		entry.LastUsedAt = now
+		return entry, true
+	}
+	if mapped, ok := r.prefixByCache[strings.TrimSpace(cacheKeyHint)]; ok {
+		if entry, exists := r.prefixEntries[mapped]; exists {
+			entry.LastUsedAt = now
+			return entry, true
+		}
+	}
+	return nil, false
+}
+
+func (r *LlamaCppRuntime) touchPrefixEntry(prefixID string) {
+	r.prefixMu.Lock()
+	defer r.prefixMu.Unlock()
+	if entry, ok := r.prefixEntries[prefixID]; ok {
+		entry.LastUsedAt = time.Now()
+	}
+}
+
+func (r *LlamaCppRuntime) evictExpiredPrefixesLocked(now time.Time) {
+	for prefixID, entry := range r.prefixEntries {
+		if now.Before(entry.ExpiresAt) {
+			continue
+		}
+		delete(r.prefixEntries, prefixID)
+		if entry.CacheKey != "" {
+			delete(r.prefixByCache, entry.CacheKey)
+		}
+		r.prefixEvictions.Add(1)
+	}
+}
+
+func (r *LlamaCppRuntime) clearPrefixCacheLocked() {
+	r.prefixMu.Lock()
+	defer r.prefixMu.Unlock()
+	for prefixID, entry := range r.prefixEntries {
+		delete(r.prefixEntries, prefixID)
+		if entry.CacheKey != "" {
+			delete(r.prefixByCache, entry.CacheKey)
+		}
+	}
+}
+
+func normalizePrefixCacheKey(cacheKey, prefix string) string {
+	key := strings.TrimSpace(cacheKey)
+	if key != "" {
+		return key
+	}
+	return "prefix:" + buildPrefixID(prefix)
+}
+
+func buildPrefixID(raw string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(raw)))
+	return hex.EncodeToString(sum[:8])
+}
+
+func estimatePromptTokens(prompt string) int {
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		return 0
+	}
+	byWords := len(strings.Fields(prompt))
+	byRunes := len([]rune(prompt)) / 4
+	if byRunes > byWords {
+		return byRunes
+	}
+	if byWords == 0 {
+		return 1
+	}
+	return byWords
 }
 
 func (r *LlamaCppRuntime) readinessState() (string, string) {
@@ -475,6 +975,7 @@ func (r *LlamaCppRuntime) ensureServer(ctx context.Context) (string, error) {
 		if r.serverURL == url {
 			r.serverURL = ""
 		}
+		r.clearPrefixCacheLocked()
 	}(cmd, serverURL)
 
 	waitTimeout := r.serverStartup
@@ -501,6 +1002,7 @@ func (r *LlamaCppRuntime) stopServerLocked() {
 	}
 	r.serverCmd = nil
 	r.serverURL = ""
+	r.clearPrefixCacheLocked()
 }
 
 func (r *LlamaCppRuntime) waitServerHealthy(ctx context.Context, serverURL string) error {
@@ -644,11 +1146,27 @@ func (r *LlamaCppRuntime) callServerCompletion(
 	maxTokens int,
 	temperature float64,
 ) (string, error) {
+	return r.callServerCompletionWithOptions(ctx, serverURL, prompt, maxTokens, temperature, completionCallOptions{})
+}
+
+func (r *LlamaCppRuntime) callServerCompletionWithOptions(
+	ctx context.Context,
+	serverURL, prompt string,
+	maxTokens int,
+	temperature float64,
+	options completionCallOptions,
+) (string, error) {
 	payload := map[string]interface{}{
 		"prompt":      prompt,
 		"n_predict":   maxTokens,
 		"temperature": temperature,
 		"stream":      false,
+	}
+	if options.CachePrompt {
+		payload["cache_prompt"] = true
+	}
+	if options.SlotID > 0 {
+		payload["id_slot"] = options.SlotID
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

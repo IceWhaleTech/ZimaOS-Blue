@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -827,16 +828,80 @@ func classifyError(err error) FailoverReason {
 	if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded") {
 		return FailoverReasonTimeout
 	}
-	if strings.Contains(errStr, "rate limit") || strings.Contains(errStr, "429") || strings.Contains(errStr, "too many requests") {
+	if strings.Contains(errStr, "rate limit") ||
+		strings.Contains(errStr, "too many requests") ||
+		containsHTTPStatusCode(errStr, 429) {
 		return FailoverReasonRateLimit
 	}
-	if strings.Contains(errStr, "unauthorized") || strings.Contains(errStr, "401") || strings.Contains(errStr, "invalid api key") || strings.Contains(errStr, "authentication") {
+	if strings.Contains(errStr, "unauthorized") ||
+		strings.Contains(errStr, "invalid api key") ||
+		strings.Contains(errStr, "authentication") ||
+		containsHTTPStatusCode(errStr, 401) ||
+		containsHTTPStatusCode(errStr, 403) {
 		return FailoverReasonAuthError
 	}
-	if strings.Contains(errStr, "model not found") || strings.Contains(errStr, "404") || strings.Contains(errStr, "does not exist") {
+	if strings.Contains(errStr, "model not found") ||
+		strings.Contains(errStr, "does not exist") ||
+		containsHTTPStatusCode(errStr, 404) {
 		return FailoverReasonModelNotFound
 	}
 	return FailoverReasonAPIError
+}
+
+var statusCodeContextMarkers = [...]string{
+	"status ",
+	"upstream ",
+	"provider returned ",
+	"returned ",
+	"http ",
+	"code ",
+	"code:",
+	"code=",
+}
+
+// containsHTTPStatusCode matches real status codes in error text while avoiding
+// accidental matches inside provider IDs like "prov_...4012...".
+func containsHTTPStatusCode(errStr string, code int) bool {
+	if errStr == "" {
+		return false
+	}
+
+	codeStr := strconv.Itoa(code)
+
+	if strings.HasPrefix(errStr, codeStr+" ") ||
+		strings.HasPrefix(errStr, codeStr+":") ||
+		strings.HasPrefix(errStr, codeStr+")") ||
+		strings.HasPrefix(errStr, codeStr+"]") ||
+		strings.Contains(errStr, "("+codeStr+")") ||
+		strings.Contains(errStr, "["+codeStr+"]") {
+		return true
+	}
+
+	for _, marker := range statusCodeContextMarkers {
+		needle := marker + codeStr
+		idx := strings.Index(errStr, needle)
+		for idx >= 0 {
+			end := idx + len(needle)
+			if end == len(errStr) || !isASCIIDigit(errStr[end]) {
+				return true
+			}
+			nextStart := idx + 1
+			if nextStart >= len(errStr) {
+				break
+			}
+			nextIdx := strings.Index(errStr[nextStart:], needle)
+			if nextIdx < 0 {
+				break
+			}
+			idx = nextStart + nextIdx
+		}
+	}
+
+	return false
+}
+
+func isASCIIDigit(ch byte) bool {
+	return ch >= '0' && ch <= '9'
 }
 
 // shouldRetryWithNextAPIKey returns true when retrying with a different API key
@@ -849,8 +914,6 @@ func shouldRetryWithNextAPIKey(err error) bool {
 	return strings.Contains(errStr, "all auth strategies exhausted") ||
 		strings.Contains(errStr, "auth error") ||
 		strings.Contains(errStr, "unauthorized") ||
-		strings.Contains(errStr, "401") ||
-		strings.Contains(errStr, "403") ||
 		strings.Contains(errStr, "forbidden") ||
 		strings.Contains(errStr, "invalid api key") ||
 		strings.Contains(errStr, "invalid key") ||
@@ -858,15 +921,27 @@ func shouldRetryWithNextAPIKey(err error) bool {
 		strings.Contains(errStr, "throttled (429)") ||
 		strings.Contains(errStr, "too many requests") ||
 		strings.Contains(errStr, "rate limit") ||
-		strings.Contains(errStr, "provider returned 402") ||
 		strings.Contains(errStr, "insufficient_quota") ||
 		strings.Contains(errStr, "insufficient quota") ||
 		strings.Contains(errStr, "quota exceeded") ||
-		strings.Contains(errStr, "billing hard limit")
+		strings.Contains(errStr, "billing hard limit") ||
+		containsHTTPStatusCode(errStr, 401) ||
+		containsHTTPStatusCode(errStr, 402) ||
+		containsHTTPStatusCode(errStr, 403) ||
+		containsHTTPStatusCode(errStr, 429)
 }
 
 func shouldRetrySameProvider(err error) bool {
-	if err == nil || isNoResponseError(err) {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	// Empty-stream EOFs can be transient on some relays. Retry same provider once
+	// before giving up or failing over.
+	if strings.Contains(errStr, "returned empty streaming response") {
+		return true
+	}
+	if isNoResponseError(err) {
 		return false
 	}
 	if shouldRetryWithNextAPIKey(err) {
@@ -875,7 +950,6 @@ func shouldRetrySameProvider(err error) bool {
 	if isAuthError(err) || isTransientError(err) {
 		return !isAuthError(err)
 	}
-	errStr := strings.ToLower(err.Error())
 	return strings.Contains(errStr, "timeout") ||
 		strings.Contains(errStr, "deadline exceeded") ||
 		strings.Contains(errStr, "connection reset") ||
@@ -999,9 +1073,11 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 	}
 
 	allowBlindFallback := false
+	var lastErr error
 
 	result, err := r.Route(req)
 	if err != nil {
+		lastErr = err
 		// Empty model means "auto pick any available model". Blind fallback is not
 		// useful in this case because it forwards req.ModelID as-is, which would be
 		// empty and lead to provider-side model selection errors/misleading logs.
@@ -1044,10 +1120,10 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 				failoverResult.TotalAttempts++
 			}
 			start := timeutil.NowTime()
-			latency, err := executeWithNaturalRetry(ctx, attemptResult, execute)
+			latency, attemptErr := executeWithNaturalRetry(ctx, attemptResult, execute)
 			triedProviders[result.Provider.ID] = true
 
-			if err == nil {
+			if attemptErr == nil {
 				r.UpdateLatency(result.Provider.ID, latency)
 				r.RecordSuccess(result.Provider.ID)
 				if failoverResult != nil {
@@ -1056,9 +1132,10 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 				}
 				return nil
 			}
+			lastErr = attemptErr
 
 			r.UpdateLatency(result.Provider.ID, latency*2)
-			r.RecordFailure(result.Provider.ID, err)
+			r.RecordFailure(result.Provider.ID, attemptErr)
 
 			if failoverResult != nil {
 				failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
@@ -1066,14 +1143,14 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 					ProviderID:   result.Provider.ID,
 					ProviderName: result.Provider.Name,
 					ModelID:      result.Model.ID,
-					Reason:       classifyError(err),
-					Error:        err.Error(),
+					Reason:       classifyError(attemptErr),
+					Error:        attemptErr.Error(),
 					Latency:      latency,
 				})
 			}
 
 			// Auth-like failures may be caused by a single bad key — try next key on same provider.
-			if keyIdx+1 < len(primaryKeyAttempts) && shouldRetryWithNextAPIKey(err) {
+			if keyIdx+1 < len(primaryKeyAttempts) && shouldRetryWithNextAPIKey(attemptErr) {
 				continue
 			}
 			break
@@ -1129,10 +1206,10 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 					failoverResult.TotalAttempts++
 				}
 				start := timeutil.NowTime()
-				latency, err := executeWithNaturalRetry(ctx, attemptResult, execute)
+				latency, attemptErr := executeWithNaturalRetry(ctx, attemptResult, execute)
 				triedProviders[fallback.Provider.ID] = true
 
-				if err == nil {
+				if attemptErr == nil {
 					r.UpdateLatency(fallback.Provider.ID, latency)
 					r.RecordSuccess(fallback.Provider.ID)
 					if failoverResult != nil {
@@ -1141,9 +1218,10 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 					}
 					return nil
 				}
+				lastErr = attemptErr
 
 				r.UpdateLatency(fallback.Provider.ID, latency*2)
-				r.RecordFailure(fallback.Provider.ID, err)
+				r.RecordFailure(fallback.Provider.ID, attemptErr)
 
 				if failoverResult != nil {
 					nextProviderID := ""
@@ -1155,14 +1233,14 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 						ProviderID:     fallback.Provider.ID,
 						ProviderName:   fallback.Provider.Name,
 						ModelID:        fallback.Model.ID,
-						Reason:         classifyError(err),
-						Error:          err.Error(),
+						Reason:         classifyError(attemptErr),
+						Error:          attemptErr.Error(),
 						Latency:        latency,
 						NextProviderID: nextProviderID,
 					})
 				}
 
-				if keyIdx+1 < len(fallbackKeyAttempts) && shouldRetryWithNextAPIKey(err) {
+				if keyIdx+1 < len(fallbackKeyAttempts) && shouldRetryWithNextAPIKey(attemptErr) {
 					continue
 				}
 				break
@@ -1170,19 +1248,19 @@ func (r *Router) RouteWithFallback(ctx context.Context, req *RouteRequest, execu
 		}
 	}
 
-	allowBlindFallback = shouldAttemptBlindFallback(err)
+	allowBlindFallback = shouldAttemptBlindFallback(lastErr)
 
 blindFallback:
 	if !allowBlindFallback {
 		if failoverResult != nil {
-			if err != nil {
-				failoverResult.FinalError = err.Error()
+			if lastErr != nil {
+				failoverResult.FinalError = lastErr.Error()
 			} else {
 				failoverResult.FinalError = ErrNoAvailableProvider.Error()
 			}
 		}
-		if err != nil {
-			return err
+		if lastErr != nil {
+			return lastErr
 		}
 		return ErrNoAvailableProvider
 	}
@@ -1191,14 +1269,14 @@ blindFallback:
 	// snapshot. For empty model requests, providers were already exhausted above.
 	if strings.TrimSpace(req.ModelID) == "" {
 		if failoverResult != nil {
-			if err != nil {
-				failoverResult.FinalError = err.Error()
+			if lastErr != nil {
+				failoverResult.FinalError = lastErr.Error()
 			} else {
 				failoverResult.FinalError = ErrNoAvailableProvider.Error()
 			}
 		}
-		if err != nil {
-			return err
+		if lastErr != nil {
+			return lastErr
 		}
 		return ErrNoAvailableProvider
 	}
@@ -1209,14 +1287,14 @@ blindFallback:
 	blindCandidates := r.findBlindFallbackProviders(req.ModelID, req.Mode, triedProviders)
 	if len(blindCandidates) == 0 {
 		if failoverResult != nil {
-			if err != nil {
-				failoverResult.FinalError = err.Error()
+			if lastErr != nil {
+				failoverResult.FinalError = lastErr.Error()
 			} else {
 				failoverResult.FinalError = ErrNoAvailableProvider.Error()
 			}
 		}
-		if err != nil {
-			return err
+		if lastErr != nil {
+			return lastErr
 		}
 		return ErrNoAvailableProvider
 	}
@@ -1276,9 +1354,9 @@ blindFallback:
 				failoverResult.TotalAttempts++
 			}
 			start := timeutil.NowTime()
-			latency, err := executeWithNaturalRetry(ctx, attemptResult, execute)
+			latency, attemptErr := executeWithNaturalRetry(ctx, attemptResult, execute)
 
-			if err == nil {
+			if attemptErr == nil {
 				r.UpdateLatency(provider.ID, latency)
 				r.RecordSuccess(provider.ID)
 				if failoverResult != nil {
@@ -1288,9 +1366,10 @@ blindFallback:
 				slog.Info("[router] blind fallback succeeded", "provider", provider.ID, "model", req.ModelID)
 				return nil
 			}
+			lastErr = attemptErr
 
 			r.UpdateLatency(provider.ID, latency*2)
-			r.RecordFailure(provider.ID, err)
+			r.RecordFailure(provider.ID, attemptErr)
 
 			if failoverResult != nil {
 				failoverResult.FailedAttempts = append(failoverResult.FailedAttempts, &FailoverRecord{
@@ -1298,13 +1377,13 @@ blindFallback:
 					ProviderID:   provider.ID,
 					ProviderName: provider.Name,
 					ModelID:      req.ModelID,
-					Reason:       classifyError(err),
-					Error:        err.Error(),
+					Reason:       classifyError(attemptErr),
+					Error:        attemptErr.Error(),
 					Latency:      latency,
 				})
 			}
 
-			if keyIdx+1 < len(blindKeyAttempts) && shouldRetryWithNextAPIKey(err) {
+			if keyIdx+1 < len(blindKeyAttempts) && shouldRetryWithNextAPIKey(attemptErr) {
 				continue
 			}
 			break
@@ -1312,9 +1391,16 @@ blindFallback:
 	}
 
 	if failoverResult != nil {
-		failoverResult.FinalError = err.Error()
+		if lastErr != nil {
+			failoverResult.FinalError = lastErr.Error()
+		} else {
+			failoverResult.FinalError = ErrNoAvailableProvider.Error()
+		}
 	}
-	return err
+	if lastErr != nil {
+		return lastErr
+	}
+	return ErrNoAvailableProvider
 }
 
 // findBlindFallbackProviders returns healthy providers matching the routing mode,

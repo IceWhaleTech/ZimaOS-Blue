@@ -4,7 +4,6 @@ export type SmallModelRuntime = 'llama.cpp'
 export type SmallModelID = 'qwen3.5-0.8b-gguf-q4km'
 export type NoLLMDegradeMode = 'deepresearch'
 export type SmallModelUnavailablePolicy = 'ir_first'
-export type SoulProposalStatus = 'pending' | 'approved' | 'rejected'
 
 // User settings stored on backend
 export interface Settings {
@@ -22,6 +21,7 @@ export interface Settings {
   prompt_policy_version?: string // Prompt policy version marker
   prompt_policy_profile?: 'default' // Prompt policy profile
   agent_mode?: boolean // Autonomous agent mode (default false)
+  agent_auto_reflect?: boolean // Run post-task reflection in agent mode (default true)
   agent_auto_confirm?: boolean // Skip confirmation in agent mode (default false)
   agent_loop_policy_max_tool_rounds?: number // Agent loop max tool rounds
   agent_loop_policy_max_auto_continue?: number // Agent loop max auto-continue retries
@@ -108,20 +108,6 @@ export interface SmallModelStatus {
   files?: SmallModelFileStatus[]
 }
 
-export interface SoulProposal {
-  id: string
-  title: string
-  content: string
-  source?: string
-  status: SoulProposalStatus
-  created_at: string
-  reviewed_at?: string
-}
-
-export interface SoulProposalListResponse {
-  proposals: SoulProposal[]
-}
-
 export interface SmallModelStats {
   short_qa_route_attempts: number
   short_qa_route_success: number
@@ -197,12 +183,6 @@ export const settingsApi = {
   getSmallModelStatus: () => api.get<SmallModelStatus>('/settings/small-model/status'),
   downloadSmallModel: () => api.post<{ success: boolean; message?: string }>('/settings/small-model/download'),
   cancelSmallModelDownload: () => api.post<{ success: boolean }>('/settings/small-model/cancel'),
-
-  // SOUL proposal review workflow
-  listSoulProposals: () => api.get<SoulProposalListResponse>('/settings/soul/proposals'),
-  approveSoulProposal: (id: string) => api.post<SoulProposal>(`/settings/soul/proposals/${id}/approve`),
-  rejectSoulProposal: (id: string) => api.post<SoulProposal>(`/settings/soul/proposals/${id}/reject`),
-
   // Small-model observability counters
   getSmallModelStats: () => api.get<SmallModelStats>('/small-model/stats'),
   resetSmallModelStats: () => api.post<{ success: boolean }>('/small-model/stats/reset'),

@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardCollapsibleCode } from '@/types/typeless'
 import { useFullscreen } from '@/composables/useFullscreen'
 import { renderMarkdown } from '@/utils/markdown'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardCollapsibleCode
@@ -99,13 +102,13 @@ function getLanguageDisplay(): string {
           {{ getLanguageDisplay() }}
         </span>
         <!-- Fallback label -->
-        <span v-if="!isMarkdown && !card.filename && !card.title && !card.language" class="text-xs text-gray-500 dark:text-gray-400">code</span>
+        <span v-if="!isMarkdown && !card.filename && !card.title && !card.language" class="text-xs text-gray-500 dark:text-gray-400">{{ t('codeBlock.code', 'code') }}</span>
         <!-- Lines count -->
-        <span v-if="!isMarkdown" class="text-xs text-gray-400 dark:text-gray-500">{{ lines.length }} lines</span>
+        <span v-if="!isMarkdown" class="text-xs text-gray-400 dark:text-gray-500">{{ lines.length }} {{ t('execCard.lines', 'lines') }}</span>
       </div>
       <div class="flex items-center gap-2">
         <!-- Fullscreen hint -->
-        <span class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline" title="Double-click to fullscreen">⤢</span>
+        <span class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline" :title="t('media.fullscreen', 'Full Screen')">⤢</span>
         <!-- Copy button -->
         <button
           class="flex items-center gap-1 px-1.5 py-0.5 text-xs transition-colors rounded"
@@ -123,7 +126,7 @@ function getLanguageDisplay(): string {
           <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
           </svg>
-          <span>{{ copied ? 'Copied' : 'Copy' }}</span>
+          <span>{{ copied ? t('common.copied', 'Copied') : t('common.copy', 'Copy') }}</span>
         </button>
       </div>
     </div>
@@ -175,8 +178,8 @@ function getLanguageDisplay(): string {
         >
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
         </svg>
-        <span v-if="!expanded">Show {{ hiddenLinesCount }} more lines</span>
-        <span v-else>Collapse</span>
+        <span v-if="!expanded">{{ t('execCard.expand', 'Show more') }} {{ hiddenLinesCount }} {{ t('execCard.lines', 'lines') }}</span>
+        <span v-else>{{ t('execCard.collapse', 'Collapse') }}</span>
       </button>
     </div>
   </div>

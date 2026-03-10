@@ -476,6 +476,50 @@ func TestExecutorExecuteJSONArgs_ExecArgumentsWrappedFallback(t *testing.T) {
 	}
 }
 
+func TestExecutorExecuteJSONArgs_FileWriteArgumentsWrappedFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "wrapped.txt")
+
+	registry := NewRegistry()
+	registry.Register(NewFileWriteTool([]string{tmpDir}, 0))
+	executor := NewExecutor(registry)
+
+	_, err := executor.ExecuteJSON(context.Background(), "file_write", `{"arguments":{"path":"`+target+`","content":"hello"}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("failed to read written file: %v", err)
+	}
+	if content != "hello" {
+		t.Fatalf("content = %q, want %q", content, "hello")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_FileWriteArgumentsAliasFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "alias.txt")
+
+	registry := NewRegistry()
+	registry.Register(NewFileWriteTool([]string{tmpDir}, 0))
+	executor := NewExecutor(registry)
+
+	_, err := executor.ExecuteJSON(context.Background(), "write", `{"input":{"file_path":"`+target+`","text":"hi"}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("failed to read written file: %v", err)
+	}
+	if content != "hi" {
+		t.Fatalf("content = %q, want %q", content, "hi")
+	}
+}
+
 func TestExecutorExecuteJSONArgs_LooseJSONObjectInsideJSONStringFallback(t *testing.T) {
 	registry := NewRegistry()
 	tool := &captureArgsTool{
@@ -798,6 +842,43 @@ func TestFileWriteToolAppend(t *testing.T) {
 	}
 }
 
+func TestFileWriteToolContentCoercion(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "coerce.json")
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    testFile,
+		"content": map[string]interface{}{"ok": true},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, err := readTestFile(testFile)
+	if err != nil {
+		t.Fatalf("failed to read test file: %v", err)
+	}
+	if content != `{"ok":true}` {
+		t.Fatalf("expected JSON content, got %q", content)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"path":    testFile,
+		"content": 42,
+	})
+	if err != nil {
+		t.Fatalf("unexpected numeric coercion error: %v", err)
+	}
+	content, err = readTestFile(testFile)
+	if err != nil {
+		t.Fatalf("failed to read test file: %v", err)
+	}
+	if content != "42" {
+		t.Fatalf("expected numeric content to be coerced to string, got %q", content)
+	}
+}
+
 // Test FileWrite tool with allowed paths
 func TestFileWriteToolAllowedPaths(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -865,6 +946,26 @@ func TestFileWriteToolContentTooLarge(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for content too large")
+	}
+}
+
+func TestFileWriteToolChunkTooLargeSuggestsAppend(t *testing.T) {
+	tmpDir := t.TempDir()
+	largeContent := strings.Repeat("x", maxFileWriteChunkBytes+1)
+
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    filepath.Join(tmpDir, "chunked.txt"),
+		"content": largeContent,
+	})
+	if err == nil {
+		t.Fatal("expected error for oversized write chunk")
+	}
+	if !strings.Contains(err.Error(), "append=true") {
+		t.Fatalf("expected append guidance, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "split into smaller chunks") {
+		t.Fatalf("expected chunking guidance, got %v", err)
 	}
 }
 
@@ -1275,7 +1376,7 @@ func TestRegisterBuiltinTools(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltinTools(registry)
 
-	expectedTools := []string{"read", "write", "edit", "grep", "find", "ls", "web_search", "web_fetch", "mcp"}
+	expectedTools := []string{"read", "write", "edit", "grep", "find", "ls", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl", "mcp"}
 	for _, name := range expectedTools {
 		if registry.Get(name) == nil {
 			t.Errorf("expected tool '%s' to be registered", name)
@@ -1414,6 +1515,9 @@ func TestRegisterFactoryToolDefinitions(t *testing.T) {
 		"memory_forget",
 		"web_search",
 		"web_fetch",
+		"web_read",
+		"web_extract",
+		"web_crawl",
 		"image",
 		"pdf",
 	} {

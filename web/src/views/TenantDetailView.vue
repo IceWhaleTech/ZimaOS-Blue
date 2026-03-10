@@ -1,14 +1,14 @@
 <template>
   <div class="tenant-detail-view">
     <div class="header">
-      <button class="back-btn" @click="goBack">← Back</button>
+      <button class="back-btn" @click="goBack">← {{ t('tenants.back') }}</button>
       <div class="header-info">
-        <h1>{{ tenant?.name || 'Loading...' }}</h1>
+        <h1>{{ tenant?.name || t('common.loading') }}</h1>
         <span v-if="tenant" class="tenant-slug">{{ tenant.slug }}</span>
       </div>
     </div>
 
-    <div v-if="loading" class="loading">Loading...</div>
+    <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
     <div v-else-if="!tenant" class="error">{{ t('common.workspaceNotFound') }}</div>
     <template v-else>
       <!-- Tabs -->
@@ -61,18 +61,18 @@
               <span v-if="member.email" class="member-email">{{ member.email }}</span>
             </div>
             <span class="member-role" :style="{ color: getRoleColor(member.role) }">
-              {{ getRoleLabel(member.role) }}
+              {{ getLocalizedRoleLabel(member.role) }}
             </span>
             <div v-if="isAdmin && member.role !== 'owner'" class="member-actions">
               <select
                 :value="member.role"
                 @change="updateMemberRole(member.user_id, ($event.target as HTMLSelectElement).value as MemberRole)"
               >
-                <option value="admin">Admin</option>
-                <option value="member">Member</option>
+                <option value="admin">{{ t('tenants.members.roles.admin') }}</option>
+                <option value="member">{{ t('tenants.members.roles.member') }}</option>
               </select>
               <button class="btn btn-sm btn-danger" @click="confirmRemoveMember(member)">
-                Remove
+                {{ t('tenants.members.remove') }}
               </button>
             </div>
           </div>
@@ -96,7 +96,7 @@
             <div class="invitation-info">
               <span class="invitation-email">{{ invitation.email }}</span>
               <span class="invitation-role" :style="{ color: getRoleColor(invitation.role) }">
-                {{ getRoleLabel(invitation.role) }}
+                {{ getLocalizedRoleLabel(invitation.role) }}
               </span>
             </div>
             <div class="invitation-meta">
@@ -123,22 +123,22 @@
           <div class="form-group">
             <label for="language">{{ t('tenants.settings.defaultLanguage') }}</label>
             <select id="language" v-model="settingsForm.default_language" :disabled="!isAdmin">
-              <option value="en">English</option>
-              <option value="zh">Chinese</option>
-              <option value="ja">Japanese</option>
-              <option value="ko">Korean</option>
+              <option value="en">{{ t('voiceView.languages.en') }}</option>
+              <option value="zh">{{ t('voiceView.languages.zh') }}</option>
+              <option value="ja">{{ t('voiceView.languages.ja') }}</option>
+              <option value="ko">{{ t('voiceView.languages.ko') }}</option>
             </select>
           </div>
 
           <div class="form-group">
             <label for="timezone">{{ t('tenants.settings.timezone') }}</label>
             <select id="timezone" v-model="settingsForm.timezone" :disabled="!isAdmin">
-              <option value="UTC">UTC</option>
-              <option value="America/New_York">Eastern Time</option>
-              <option value="America/Los_Angeles">Pacific Time</option>
-              <option value="Europe/London">London</option>
-              <option value="Asia/Shanghai">Shanghai</option>
-              <option value="Asia/Tokyo">Tokyo</option>
+              <option value="UTC">{{ t('tenants.settings.timezones.utc') }}</option>
+              <option value="America/New_York">{{ t('tenants.settings.timezones.eastern') }}</option>
+              <option value="America/Los_Angeles">{{ t('tenants.settings.timezones.pacific') }}</option>
+              <option value="Europe/London">{{ t('tenants.settings.timezones.london') }}</option>
+              <option value="Asia/Shanghai">{{ t('tenants.settings.timezones.shanghai') }}</option>
+              <option value="Asia/Tokyo">{{ t('tenants.settings.timezones.tokyo') }}</option>
             </select>
           </div>
 
@@ -246,7 +246,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTenantStore } from '@/stores/tenant'
 import type { TenantMember, TenantInvitation, MemberRole, TenantSettings, TenantLimits } from '@/api/tenant'
-import { getRoleLabel, getRoleColor, formatStorageSize } from '@/api/tenant'
+import { getRoleColor, formatStorageSize } from '@/api/tenant'
 import * as tenantApi from '@/api/tenant'
 
 const { t } = useI18n()
@@ -298,6 +298,19 @@ const canInvite = computed(() => {
 
 function getInitial(name: string): string {
   return name.charAt(0).toUpperCase()
+}
+
+function getLocalizedRoleLabel(role: MemberRole): string {
+  switch (role) {
+    case 'owner':
+      return t('tenants.members.roles.owner')
+    case 'admin':
+      return t('tenants.members.roles.admin')
+    case 'member':
+      return t('tenants.members.roles.member')
+    default:
+      return role
+  }
 }
 
 function formatDate(dateStr: string): string {

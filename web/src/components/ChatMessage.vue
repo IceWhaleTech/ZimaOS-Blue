@@ -7,6 +7,7 @@ import { renderMarkdownCached, copyCodeToClipboard } from '@/utils/markdown'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
+import type { ToolResultItem } from '@/stores/chat'
 import {
   parseTypelessContent,
   parseTypelessContentIncremental,
@@ -15,7 +16,7 @@ import {
   clearIncrementalState,
   clearSplitSegmentsIncrementalState,
 } from '@/utils/typeless'
-import { stripFirstLineHeading, normalizeToolFallbackSummaryText } from '@/utils/chat-message-text'
+import { stripFirstLineHeading } from '@/utils/chat-message-text'
 import type { TypelessCard, TypelessCardChoice, ParsedContent } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
 import ToolDetailCard from '@/components/ToolDetailCard.vue'
@@ -594,15 +595,17 @@ const strippedContent = computed(() => {
   if (content.includes('[SILENT_REPLY]')) {
     content = content.replace(/\[SILENT_REPLY\]/g, '💤')
   }
-  content = normalizeToolFallbackSummaryText(content)
   return content
 })
 
 // Regex to strip process content (tool results) and typeless card blocks
-const RE_PROCESS_BLOCK = /\n*<!-- process-start -->[\s\S]*?<!-- process-end -->\n*/g
+const RE_PROCESS_BLOCK = /\n*<!--\s*process-start\s*-->[\s\S]*?<!--\s*process-end\s*-->\n*/g
+const RE_PROCESS_FENCE = /```process\s*([\s\S]*?)```/g
 const RE_TYPELESS_BLOCK = /\n*```typeless\s*[\s\S]*?```\n*/g
 const PROCESS_STRIP_CACHE_KEY = '__zima_chat_process_strip_cache_v1__'
 const PROCESS_STRIP_CACHE_MAX = 300
+const PROCESS_TOOL_RESULTS_CACHE_KEY = '__zima_chat_process_tool_results_cache_v1__'
+const PROCESS_TOOL_RESULTS_CACHE_MAX = 200
 
 function getProcessStripCache(): Map<string, string> {
   const g = globalThis as Record<string, unknown>
@@ -613,6 +616,22 @@ function getProcessStripCache(): Map<string, string> {
   const cache = new Map<string, string>()
   g[PROCESS_STRIP_CACHE_KEY] = cache
   return cache
+}
+
+function getProcessToolResultsCache(): Map<string, ToolResultItem[]> {
+  const g = globalThis as Record<string, unknown>
+  const existing = g[PROCESS_TOOL_RESULTS_CACHE_KEY]
+  if (existing instanceof Map) {
+    return existing as Map<string, ToolResultItem[]>
+  }
+  const cache = new Map<string, ToolResultItem[]>()
+  g[PROCESS_TOOL_RESULTS_CACHE_KEY] = cache
+  return cache
+}
+
+function stripProcessBlocks(text: string): string {
+  if (!text.includes('<!-- process-start -->')) return text
+  return trimIfNeeded(text.replace(RE_PROCESS_BLOCK, '\n'))
 }
 
 // Strip process content (tool results + typeless cards) from text
@@ -628,10 +647,7 @@ function stripProcessContent(text: string): string {
   if (!hasProcessBlock && !hasTypelessBlock) {
     stripped = trimIfNeeded(text)
   } else {
-    stripped = text
-    if (hasProcessBlock) {
-      stripped = stripped.replace(RE_PROCESS_BLOCK, '\n')
-    }
+    stripped = hasProcessBlock ? stripProcessBlocks(text) : text
     if (hasTypelessBlock) {
       stripped = stripped.replace(RE_TYPELESS_BLOCK, '\n')
     }
@@ -644,6 +660,94 @@ function stripProcessContent(text: string): string {
   cache.set(text, stripped)
   return stripped
 }
+
+function parsePersistedProcessToolResults(content: string, messageId: string, createdAt?: string): ToolResultItem[] {
+  const cacheKey = `${messageId}:${content}`
+  const cache = getProcessToolResultsCache()
+  const cached = cache.get(cacheKey)
+  if (cached) return cached
+
+  if (!content.includes('```process')) {
+    if (cache.size >= PROCESS_TOOL_RESULTS_CACHE_MAX && !cache.has(cacheKey)) {
+      evictOldestMapEntry(cache)
+    }
+    cache.set(cacheKey, [])
+    return []
+  }
+
+  const timestamp = createdAt ? Date.parse(createdAt) || 0 : 0
+  const items: ToolResultItem[] = []
+  let match: RegExpExecArray | null
+  let blockIndex = 0
+  RE_PROCESS_FENCE.lastIndex = 0
+
+  while ((match = RE_PROCESS_FENCE.exec(content)) !== null) {
+    const rawPayload = (match[1] || '').trim()
+    if (!rawPayload) {
+      blockIndex += 1
+      continue
+    }
+    try {
+      const parsed = JSON.parse(rawPayload)
+      const entries = Array.isArray(parsed) ? parsed : [parsed]
+      entries.forEach((entry, itemIndex) => {
+        if (!entry || typeof entry !== 'object') return
+        const payload = entry as Record<string, unknown>
+        const command = typeof payload.cmd === 'string'
+          ? payload.cmd.trim()
+          : typeof payload.command === 'string'
+            ? payload.command.trim()
+            : ''
+        const status = typeof payload.status === 'string' ? payload.status.trim() : ''
+        const output = typeof payload.output === 'string' ? payload.output : ''
+        const name = typeof payload.tool === 'string'
+          ? payload.tool.trim()
+          : typeof payload.name === 'string'
+            ? payload.name.trim()
+            : ''
+        const rawIcon = typeof payload.icon === 'string' ? payload.icon : ''
+        const icon: ToolResultItem['icon'] = rawIcon === '✓' || rawIcon === '✗' || rawIcon === '⏳'
+          ? rawIcon
+          : /(error|fail)/i.test(status)
+            ? '✗'
+            : status
+              ? '✓'
+              : '⏳'
+
+        if (!command && !status && !output) return
+
+        items.push({
+          name: name || 'tool',
+          id: `${messageId}-process-${blockIndex}-${itemIndex}`,
+          command,
+          icon,
+          status,
+          output,
+          timestamp,
+        })
+      })
+    } catch {
+      // Ignore malformed persisted process blocks.
+    }
+    blockIndex += 1
+  }
+
+  if (cache.size >= PROCESS_TOOL_RESULTS_CACHE_MAX && !cache.has(cacheKey)) {
+    evictOldestMapEntry(cache)
+  }
+  cache.set(cacheKey, items)
+  return items
+}
+
+const persistedProcessToolResults = computed(() => {
+  if (isUser.value || props.isStreaming) return []
+  return parsePersistedProcessToolResults(strippedContent.value, props.message.id, props.message.created_at)
+})
+
+const contentWithoutProcessBlocks = computed(() => {
+  if (isUser.value) return renderSourceContent.value
+  return stripProcessBlocks(strippedContent.value)
+})
 
 type AssistantTextState = { html: string; isEmpty: boolean }
 interface AssistantTextStateCacheEntry {
@@ -680,7 +784,7 @@ const assistantTextState = computed<AssistantTextState>(() => {
     return { html: '', isEmpty: false }
   }
 
-  let text = strippedContent.value
+  let text = contentWithoutProcessBlocks.value
   // When tool details are hidden, strip process blocks and typeless card blocks
   if (!settingsStore.showToolDetails) {
     text = stripProcessContent(text)
@@ -735,7 +839,9 @@ const assistantTextState = computed<AssistantTextState>(() => {
 const renderedContent = computed(() => assistantTextState.value.html)
 
 // Whether bubble content is empty (only indicators showing)
-const isContentEmpty = computed(() => assistantTextState.value.isEmpty)
+const isContentEmpty = computed(() => {
+  return assistantTextState.value.isEmpty && (!settingsStore.showToolDetails || persistedProcessToolResults.value.length === 0)
+})
 
 // Hide empty assistant messages that are not streaming (collapsed empty bubbles)
 const shouldHideMessage = computed(() => {
@@ -746,7 +852,7 @@ const shouldHideMessage = computed(() => {
 // Parse typeless cards from assistant messages
 // Use incremental parsing for streaming messages, regular parsing for completed messages
 const parsedContent = computed(() => {
-  const content = strippedContent.value
+  const content = contentWithoutProcessBlocks.value
   if (isUser.value) {
     return null
   }
@@ -1158,7 +1264,7 @@ const segmentRenderState = computed(() => {
       convId,
       props.message.id,
       settingsStore.showToolDetails,
-      strippedContent.value,
+      contentWithoutProcessBlocks.value,
       interruptedIndicatorHtml.value,
     )
     cache = getSegmentRenderCache()
@@ -1357,9 +1463,9 @@ function handleCopyClick(event: Event) {
     const code = target.dataset.code
     if (code) {
       copyCodeToClipboard(code).then(() => {
-        target.textContent = 'Copied!'
+        target.textContent = t('common.copied', 'Copied!')
         setTimeout(() => {
-          target.textContent = 'Copy'
+          target.textContent = t('common.copy', 'Copy')
         }, 2000)
       })
     }
@@ -2269,6 +2375,13 @@ async function handleMobileDelete() {
               v-else-if="!isContentEmpty"
               v-html="renderedContent"
             />
+            <div v-if="!isStreaming && persistedProcessToolResults.length > 0 && settingsStore.showToolDetails" class="tool-detail-cards my-2 -mx-1">
+              <ToolDetailCard
+                v-for="item in persistedProcessToolResults"
+                :key="item.id"
+                :item="item"
+              />
+            </div>
             <!-- Tool detail cards (collapsible, shown when toggle is on) -->
             <div v-if="isStreaming && chatStore.toolResults.length > 0 && settingsStore.showToolDetails" class="tool-detail-cards my-2 -mx-1">
               <ToolDetailCard

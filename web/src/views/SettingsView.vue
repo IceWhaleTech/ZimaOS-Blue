@@ -121,6 +121,15 @@ async function handleMemoryRecallModeChange(mode: MemoryRecallMode) {
   }
 }
 
+async function handleAgentAutoReflectChange(next: boolean) {
+  try {
+    await settingsStore.setAgentAutoReflect(next)
+    showSaveStatus(t('settings.agentReflection.saved'))
+  } catch {
+    showSaveStatus(t('settings.agentReflection.saveFailed'))
+  }
+}
+
 const smallModelSaving = ref(false)
 let smallModelPollInterval: ReturnType<typeof setInterval> | null = null
 const smallModelDownloading = computed(() => {
@@ -130,7 +139,6 @@ const smallModelDownloading = computed(() => {
 })
 const smallModelReady = computed(() => settingsStore.smallModelStatus?.ready ?? false)
 const smallModelToggleDisabled = computed(() => smallModelSaving.value)
-const soulReviewingId = ref<string | null>(null)
 const smallModelStatsResetting = ref(false)
 const smallModelAdvancedExpanded = ref(false)
 const smallModelStatsExpanded = ref(false)
@@ -281,46 +289,6 @@ async function resetSmallModelStats() {
   }
 }
 
-function formatProposalTime(value: string): string {
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return value
-  return parsed.toLocaleString()
-}
-
-async function fetchSoulProposals() {
-  try {
-    await settingsStore.fetchSoulProposals()
-  } catch {
-    // ignore
-  }
-}
-
-async function approveSoulProposal(id: string) {
-  if (soulReviewingId.value) return
-  try {
-    soulReviewingId.value = id
-    await settingsStore.approveSoulProposal(id)
-    showSaveStatus(t('settings.smallModel.soulApproved', 'SOUL proposal approved'))
-  } catch {
-    showSaveStatus(t('settings.smallModel.soulReviewFailed', 'Failed to review SOUL proposal'))
-  } finally {
-    soulReviewingId.value = null
-  }
-}
-
-async function rejectSoulProposal(id: string) {
-  if (soulReviewingId.value) return
-  try {
-    soulReviewingId.value = id
-    await settingsStore.rejectSoulProposal(id)
-    showSaveStatus(t('settings.smallModel.soulRejected', 'SOUL proposal rejected'))
-  } catch {
-    showSaveStatus(t('settings.smallModel.soulReviewFailed', 'Failed to review SOUL proposal'))
-  } finally {
-    soulReviewingId.value = null
-  }
-}
-
 async function fetchServiceInfo() {
   try {
     const res = await serviceApi.getInfo()
@@ -358,9 +326,6 @@ function switchTab(tab: TabType) {
   }
   if (tab === 'proxy' && settingsStore.smallModelStats == null) {
     void fetchSmallModelStats()
-  }
-  if (tab === 'memory' && settingsStore.soulProposals.length === 0) {
-    void fetchSoulProposals()
   }
 }
 
@@ -437,7 +402,6 @@ onMounted(async () => {
   await settingsStore.fetchBackendSettings()
   await fetchSmallModelStatus()
   await fetchSmallModelStats()
-  await fetchSoulProposals()
   fetchServiceInfo()
 
   // Load data based on initial tab
@@ -1103,6 +1067,33 @@ onUnmounted(() => {
       <!-- Memory Management -->
       <MemoryManager @status-change="showSaveStatus" />
 
+      <!-- Agent Reflection -->
+      <div class="glass-card p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <label class="block text-sm text-gray-500 dark:text-slate-400">{{ t('settings.agentReflection.title') }}</label>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('settings.agentReflection.description', { agentMode: t('agent.mode') }) }}</p>
+          </div>
+          <button
+            data-testid="agent-auto-reflect-switch"
+            type="button"
+            role="switch"
+            :aria-checked="settingsStore.agentAutoReflect"
+            class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+            :class="settingsStore.agentAutoReflect ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+            @click="handleAgentAutoReflectChange(!settingsStore.agentAutoReflect)"
+          >
+            <span
+              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              :class="settingsStore.agentAutoReflect ? 'translate-x-5' : 'translate-x-0'"
+            />
+          </button>
+        </div>
+        <div class="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800/30 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('settings.agentReflection.hint') }}
+        </div>
+      </div>
+
       <!-- Memory Recall Mode -->
       <div class="glass-card p-4">
         <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{ t('settings.memoryRecallMode.title') }}</label>
@@ -1123,72 +1114,6 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- SOUL Proposal Review -->
-      <div class="glass-card p-4">
-        <div class="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-slate-400">{{ t('settings.smallModel.soulTitle', 'SOUL Proposals (Manual Review)') }}</label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('settings.smallModel.soulHint', 'Self-evolution writes require explicit approval before persistence.') }}</p>
-          </div>
-          <button class="px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" @click="fetchSoulProposals">
-            {{ t('common.refresh', 'Refresh') }}
-          </button>
-        </div>
-
-        <div v-if="settingsStore.soulProposalsLoading" class="text-xs text-gray-500 dark:text-gray-400 py-1">
-          {{ t('common.loading', 'Loading...') }}
-        </div>
-        <div v-else-if="settingsStore.soulProposals.length === 0" class="text-xs text-gray-500 dark:text-gray-400 py-1">
-          {{ t('settings.smallModel.soulEmpty', 'No proposals yet.') }}
-        </div>
-        <div v-else class="space-y-2">
-          <div
-            v-for="proposal in settingsStore.soulProposals"
-            :key="proposal.id"
-            class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-slate-800/30"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ proposal.title }}</h4>
-                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  <span class="mr-2">{{ t('settings.smallModel.createdAt', 'Created') }}: {{ formatProposalTime(proposal.created_at) }}</span>
-                  <span v-if="proposal.source">{{ t('settings.smallModel.source', 'Source') }}: {{ proposal.source }}</span>
-                </div>
-              </div>
-              <span
-                class="text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap"
-                :class="proposal.status === 'approved'
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                  : proposal.status === 'rejected'
-                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                    : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'"
-              >
-                {{ proposal.status }}
-              </span>
-            </div>
-            <p class="text-xs text-gray-700 dark:text-gray-200 mt-2 whitespace-pre-wrap">{{ proposal.content }}</p>
-
-            <div v-if="proposal.status === 'pending'" class="mt-3 flex items-center justify-end gap-2">
-              <button
-                :data-testid="`soul-reject-${proposal.id}`"
-                class="px-2.5 py-1.5 rounded-md text-xs text-red-600 border border-red-200 dark:text-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
-                :disabled="soulReviewingId === proposal.id"
-                @click="rejectSoulProposal(proposal.id)"
-              >
-                {{ t('common.reject', 'Reject') }}
-              </button>
-              <button
-                :data-testid="`soul-approve-${proposal.id}`"
-                class="px-2.5 py-1.5 rounded-md text-xs text-white bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:text-white dark:hover:bg-green-400 disabled:opacity-50"
-                :disabled="soulReviewingId === proposal.id"
-                @click="approveSoulProposal(proposal.id)"
-              >
-                {{ t('common.approve', 'Approve') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- User Data Tab -->

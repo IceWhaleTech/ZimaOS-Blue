@@ -562,7 +562,15 @@ function preprocessForSpeech(text: string, locale: string = 'en-US'): string {
 
 // Streaming TTS Queue Manager - plays sentences as they arrive
 class StreamingTTSManager {
-  private queue: Array<{ text: string; audio?: string; contentType?: string; failed?: boolean; playedLocally?: boolean; fetching?: boolean; _retried?: boolean }> = []
+  private queue: Array<{
+    text: string
+    segments?: Array<{ audio: string; contentType: string }>
+    failed?: boolean
+    playedLocally?: boolean
+    fetching?: boolean
+    fetchDone?: boolean
+    _retried?: boolean
+  }> = []
   private playIndex = 0 // cursor: next item to play
   private fetchIndex = 0 // cursor: next item to fetch
   private isPlaying = false
@@ -611,7 +619,7 @@ class StreamingTTSManager {
     if (sentences.length === 0) return
 
     for (const s of sentences) {
-      this.queue.push({ text: s })
+      this.queue.push({ text: s, segments: [] })
     }
 
     // Kick off fetch pipeline (prefetch only)
@@ -648,7 +656,7 @@ class StreamingTTSManager {
       this.fetchNext()
       return
     }
-    if (item.fetching || item.audio || item.failed) {
+    if (item.fetching || item.fetchDone || item.playedLocally || item.failed) {
       this.fetchIndex++
       this.fetchNext()
       return
@@ -680,22 +688,21 @@ class StreamingTTSManager {
       es.addEventListener('audio', (e) => {
         if (gen !== this.generation) { es.close(); closed = true; onDone(); return }
         if (this.isStopped) { es.close(); closed = true; onDone(); return }
-        received = true
         const data = JSON.parse(e.data)
         if (this.queue[index]) {
           if (data.played_locally) {
             this.queue[index].playedLocally = true
+            this.queue[index].fetchDone = true
+            this.queue[index].fetching = false
           } else {
-            this.queue[index].audio = data.audio
-            this.queue[index].contentType = data.content_type
+            received = true
+            const segments = this.queue[index].segments || (this.queue[index].segments = [])
+            segments.push({
+              audio: data.audio,
+              contentType: data.content_type,
+            })
           }
-          this.queue[index].fetching = false
         }
-        es.close()
-        closed = true
-        onDone()
-
-        this.fetchNext()
         if (this.playbackStarted && !this.isPlaying) this.playNext()
       })
 
@@ -704,9 +711,12 @@ class StreamingTTSManager {
         es.close()
         closed = true
         if (gen !== this.generation) { onDone(); return }
-        if (!received && this.queue[index]) {
-          this.queue[index].failed = true
+        if (this.queue[index]) {
           this.queue[index].fetching = false
+          this.queue[index].fetchDone = true
+          if (!received && !this.queue[index].playedLocally) {
+            this.queue[index].failed = true
+          }
         }
         onDone()
         if (gen === this.generation) {
@@ -716,8 +726,22 @@ class StreamingTTSManager {
       })
 
       es.addEventListener('done', () => {
+        if (closed) return
         es.close()
         closed = true
+        if (gen !== this.generation) { onDone(); return }
+        if (this.queue[index]) {
+          this.queue[index].fetching = false
+          this.queue[index].fetchDone = true
+          if (!received && !this.queue[index].playedLocally) {
+            this.queue[index].failed = true
+          }
+        }
+        onDone()
+        if (gen === this.generation) {
+          this.fetchNext()
+          if (this.playbackStarted && !this.isPlaying) this.playNext()
+        }
       })
     } catch (e) {
       onDone()
@@ -726,6 +750,7 @@ class StreamingTTSManager {
       if (this.queue[index]) {
         this.queue[index].failed = true
         this.queue[index].fetching = false
+        this.queue[index].fetchDone = true
         this.fetchNext()
         if (this.playbackStarted && !this.isPlaying) this.playNext()
       }
@@ -752,6 +777,8 @@ class StreamingTTSManager {
         item._retried = true
         item.failed = false
         item.fetching = false
+        item.fetchDone = false
+        item.segments = []
         // Re-fetch this item
         this.fetchAudio(item.text, this.playIndex)
         // Wait for re-fetch with polling
@@ -772,7 +799,7 @@ class StreamingTTSManager {
       return
     }
 
-    if (!item.audio || !item.contentType) {
+    if (!item.fetchDone) {
       const retryKey = `_retries_${this.playIndex}`
       const retries = (this as any)[retryKey] || 0
       if (retries > 150) {
@@ -791,11 +818,24 @@ class StreamingTTSManager {
 
     delete (this as any)[`_retries_${this.playIndex}`]
 
+    const segments = item.segments || []
+    if (segments.length === 0) {
+      this.playIndex++
+      this.playNext()
+      return
+    }
+
     this.isPlaying = true
     this.onSentenceStart?.(this.playIndex)
 
     try {
-      await ttsAudioManager.play(item.audio, item.contentType)
+      for (const segment of segments) {
+        if (gen !== this.generation || this.isStopped) {
+          this.isPlaying = false
+          return
+        }
+        await ttsAudioManager.play(segment.audio, segment.contentType)
+      }
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
         this.isPlaying = false

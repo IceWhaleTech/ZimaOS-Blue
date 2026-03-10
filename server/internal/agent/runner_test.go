@@ -12,6 +12,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
@@ -416,6 +417,22 @@ func (m *captureLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResp
 	}, nil
 }
 
+type captureResponseLLM struct {
+	requests []llm.ChatRequest
+	response string
+	err      error
+}
+
+func (m *captureResponseLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	m.requests = append(m.requests, req)
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &llm.ChatResponse{
+		Message: llm.Message{Role: llm.RoleAssistant, Content: m.response},
+	}, nil
+}
+
 func TestRunner_LLMTools(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.Register(&dummyTool{name: "exec", desc: "run commands"})
@@ -437,6 +454,153 @@ func TestRunner_LLMTools(t *testing.T) {
 	}
 }
 
+func TestBuildClarificationQuestions_DefaultsBalanced(t *testing.T) {
+	questions := buildClarificationQuestions()
+	if len(questions) != 1 {
+		t.Fatalf("questions len = %d, want 1", len(questions))
+	}
+	q := questions[0]
+	if q.Detail == "" || !strings.Contains(q.Detail, "默认选择平衡方案") {
+		t.Fatalf("expected clarification detail to explain default, got %q", q.Detail)
+	}
+	answers := defaultQuestionAnswers(questions)
+	if len(answers) != 1 || len(answers[0].Values) != 1 || answers[0].Values[0] != "balanced" {
+		t.Fatalf("expected default clarification answer to be balanced, got %#v", answers)
+	}
+}
+
+func TestBuildPlanConfirmationQuestions_DefaultsRevise(t *testing.T) {
+	questions := buildPlanConfirmationQuestions(runtimePlan{
+		Subtasks:             []string{"inspect", "change", "verify"},
+		RequiresConfirmation: []string{"会触发生产配置变更", "需要决定是否自动重启"},
+	})
+	if len(questions) != 1 {
+		t.Fatalf("questions len = %d, want 1", len(questions))
+	}
+	q := questions[0]
+	for _, want := range []string{"当前计划共 3 个步骤", "会触发生产配置变更", "需要决定是否自动重启", "系统会先回到规划阶段收紧方案"} {
+		if !strings.Contains(q.Detail, want) {
+			t.Fatalf("expected plan confirmation detail to contain %q, got %q", want, q.Detail)
+		}
+	}
+	answers := defaultQuestionAnswers(questions)
+	if len(answers) != 1 || len(answers[0].Values) != 1 || answers[0].Values[0] != "revise" {
+		t.Fatalf("expected default plan confirmation answer to be revise, got %#v", answers)
+	}
+}
+
+func TestBuildHighRiskConfirmationQuestions_DefaultsSkip(t *testing.T) {
+	questions := buildHighRiskConfirmationQuestions("exec", CapabilityInfo{
+		Name:       "exec",
+		Kind:       CapabilityKindTool,
+		RiskLevel:  "high",
+		Idempotent: false,
+	}, "deploy config change")
+	if len(questions) != 1 {
+		t.Fatalf("questions len = %d, want 1", len(questions))
+	}
+	q := questions[0]
+	for _, want := range []string{"高风险调用 `exec` 已准备执行", "风险级别：HIGH", "调用类型：tool", "当前步骤：deploy config change", "默认跳过本次调用"} {
+		if !strings.Contains(q.Question+"\n"+q.Detail, want) {
+			t.Fatalf("expected high-risk confirmation copy to contain %q, got question=%q detail=%q", want, q.Question, q.Detail)
+		}
+	}
+	answers := defaultQuestionAnswers(questions)
+	if len(answers) != 1 || len(answers[0].Values) != 1 || answers[0].Values[0] != "skip" {
+		t.Fatalf("expected default high-risk confirmation answer to be skip, got %#v", answers)
+	}
+}
+
+func TestTaskProgressMessageBuilders(t *testing.T) {
+	if got := taskQuestionWaitingMessage(); got != "Waiting for your input to continue." {
+		t.Fatalf("taskQuestionWaitingMessage = %q", got)
+	}
+	if got := taskQuestionTimeoutMessage(2 * time.Minute); got != "No reply received in 2m0s. Continuing with the default option." {
+		t.Fatalf("taskQuestionTimeoutMessage = %q", got)
+	}
+	if got := taskQuestionAnsweredMessage(2); got != "Received 2 user answer(s). Continuing execution." {
+		t.Fatalf("taskQuestionAnsweredMessage = %q", got)
+	}
+	if got := taskPlanningStartedMessage(); got != "Building the execution plan." {
+		t.Fatalf("taskPlanningStartedMessage = %q", got)
+	}
+	if got := taskStepRetryMessage(0); got != "Step 1 failed. Retrying once with a safer path." {
+		t.Fatalf("taskStepRetryMessage = %q", got)
+	}
+	if got := taskVerifyingMessage(); got != "Running verification checks." {
+		t.Fatalf("taskVerifyingMessage = %q", got)
+	}
+	if got := taskTimeoutWarningMessage(45 * time.Second); got != "Task is nearing timeout (45s remaining)." {
+		t.Fatalf("taskTimeoutWarningMessage = %q", got)
+	}
+}
+
+func TestTaskCreatedAndUserUpdateBuilders(t *testing.T) {
+	if got := taskCreatedMessage(""); got != "Task created." {
+		t.Fatalf("taskCreatedMessage(empty) = %q", got)
+	}
+	if got := taskCreatedMessage("implement parser improvements"); got != "Task created: implement parser improvements" {
+		t.Fatalf("taskCreatedMessage(goal) = %q", got)
+	}
+	if got := taskUserUpdateMessage(""); got != "Received user update." {
+		t.Fatalf("taskUserUpdateMessage(empty) = %q", got)
+	}
+	if got := taskUserUpdateMessage("Please also update tests"); got != "Received user update: Please also update tests" {
+		t.Fatalf("taskUserUpdateMessage(text) = %q", got)
+	}
+}
+
+func TestTaskStateTransitionMessageMapping(t *testing.T) {
+	if got := taskStateTransitionMessage("start planning", RuntimeStateIntake, RuntimeStatePlan); got != "Planning started." {
+		t.Fatalf("taskStateTransitionMessage(start planning) = %q", got)
+	}
+	if got := taskStateTransitionMessage("high-risk capability requires confirmation", RuntimeStateExecute, RuntimeStateConfirmGate); got != "High-risk action requires your confirmation." {
+		t.Fatalf("taskStateTransitionMessage(high-risk capability requires confirmation) = %q", got)
+	}
+	if got := taskStateTransitionMessage("task completed", RuntimeStateReport, RuntimeStateDone); got != "Task completed." {
+		t.Fatalf("taskStateTransitionMessage(task completed) = %q", got)
+	}
+}
+
+func TestTaskStateTransitionMessageFallback(t *testing.T) {
+	if got := taskStateTransitionMessage("unknown internal reason", RuntimeStatePlan, RuntimeStateExecute); got != "State changed: PLAN → EXECUTE." {
+		t.Fatalf("taskStateTransitionMessage fallback = %q", got)
+	}
+	if got := taskStateTransitionMessage("", "", RuntimeStateAborted); got != "State changed: ABORTED." {
+		t.Fatalf("taskStateTransitionMessage to-only fallback = %q", got)
+	}
+	if got := taskStateTransitionMessage("", "", ""); got != "State updated." {
+		t.Fatalf("taskStateTransitionMessage empty fallback = %q", got)
+	}
+}
+
+func TestTaskFailedMessageMapping(t *testing.T) {
+	if got := taskFailedMessage("planning failed: provider unavailable"); got != "Task failed during planning: provider unavailable" {
+		t.Fatalf("taskFailedMessage(planning failed) = %q", got)
+	}
+	if got := taskFailedMessage("verification did not pass after bounded recovery retry"); got != "Verification did not pass after the bounded recovery retry." {
+		t.Fatalf("taskFailedMessage(verification bounded retry) = %q", got)
+	}
+	if got := taskFailedMessage("runtime transition failed before verify: invalid runtime transition"); got != "Task failed while updating runtime state: runtime transition failed before verify: invalid runtime transition" {
+		t.Fatalf("taskFailedMessage(runtime transition) = %q", got)
+	}
+	if got := taskFailedMessage("plain failure"); got != "Task failed: plain failure" {
+		t.Fatalf("taskFailedMessage(plain failure) = %q", got)
+	}
+}
+
+func TestTaskCancelledMessageMapping(t *testing.T) {
+	if got := taskCancelledMessage(""); got != "Task cancelled." {
+		t.Fatalf("taskCancelledMessage(empty) = %q", got)
+	}
+	if got := taskCancelledMessage("task cancelled"); got != "Task cancelled." {
+		t.Fatalf("taskCancelledMessage(default) = %q", got)
+	}
+	if got := taskCancelledMessage("user requested stop"); got != "Task cancelled: user requested stop" {
+		t.Fatalf("taskCancelledMessage(custom) = %q", got)
+	}
+}
+
 func TestRunner_LLMTools_NilRegistry(t *testing.T) {
 	runner := &Runner{}
 	if got := runner.llmTools(); got != nil {
@@ -444,10 +608,16 @@ func TestRunner_LLMTools_NilRegistry(t *testing.T) {
 	}
 }
 
-func TestRunner_ExecuteStep_SystemPromptAvoidsBlueCLI(t *testing.T) {
+func TestRunner_ExecuteStep_SystemPromptUsesOpenClawStyleGuidance(t *testing.T) {
 	llmStub := &captureLLM{}
+	registry := tools.NewRegistry()
+	registry.Register(&dummyTool{name: "ask", desc: "ask the user a clarifying question"})
+	registry.Register(&dummyTool{name: "exec", desc: "run shell commands"})
+	registry.Register(&dummyTool{name: "process", desc: "inspect running exec sessions"})
+
 	runner := &Runner{
-		llm: llmStub,
+		llm:      llmStub,
+		registry: registry,
 	}
 
 	task := &Task{
@@ -472,8 +642,60 @@ func TestRunner_ExecuteStep_SystemPromptAvoidsBlueCLI(t *testing.T) {
 		t.Fatalf("expected first message to be system prompt, got: %#v", req.Messages)
 	}
 	systemPrompt := req.Messages[0].Content
-	if !strings.Contains(systemPrompt, "Do not depend on 'blue' CLI subcommands") {
-		t.Fatalf("expected no-blue-cli guidance in system prompt, got: %q", systemPrompt)
+	for _, want := range []string{
+		"Tool names are case-sensitive. Call tools exactly as listed.",
+		"- exec: run shell commands",
+		"Do not depend on 'blue' CLI subcommands.",
+		"Default: do not narrate routine, low-risk tool calls; just call the tool.",
+		"Prefer first-class tools over shell commands when they directly cover the action.",
+		"When you encounter ambiguity, need user preferences, or face multiple valid options, use the ask tool instead of guessing.",
+	} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Fatalf("expected system prompt to contain %q, got: %q", want, systemPrompt)
+		}
+	}
+}
+
+func TestRunner_GeneratePlan_UsesOpenClawStylePlannerPrompt(t *testing.T) {
+	llmStub := &captureResponseLLM{response: `{"goal":"build api","subtasks":[{"description":"inspect current implementation"},{"description":"make the minimal code change"},{"description":"run verification"}],"requires_confirmation":[],"success_criteria":["tests pass"],"fallback_plan":["inspect the failure and retry with a changed approach"]}`}
+	mem := &mockMemory{results: []MemoryResult{{Content: "Prefer the lowest-risk path and keep Go modules unchanged.", Score: 0.9}}}
+	runner := &Runner{llm: llmStub, memory: mem}
+
+	_, err := runner.generatePlan(context.Background(), "build api", "User wants the safest fix")
+	if err != nil {
+		t.Fatalf("generatePlan returned unexpected error: %v", err)
+	}
+	if len(llmStub.requests) != 1 {
+		t.Fatalf("requests len = %d, want 1", len(llmStub.requests))
+	}
+
+	req := llmStub.requests[0]
+	if req.Temperature != 0.2 {
+		t.Fatalf("temperature = %v, want 0.2", req.Temperature)
+	}
+	if len(req.Messages) < 2 {
+		t.Fatalf("expected system+user messages, got %#v", req.Messages)
+	}
+
+	systemPrompt := req.Messages[0].Content
+	for _, want := range []string{
+		"You are a deterministic task planner for ZimaOS Blue.",
+		"## Output Contract",
+		"Always include all keys. Use [] when a list is empty.",
+		"## Planning Rules",
+		"Make fallback_plan safe, bounded, and finite; no loops, no open-ended retries, and no retrying the same action without a change.",
+		"split content into smaller write chunks and continue with append=true",
+		"## Relevant Context",
+		"Prefer the lowest-risk path and keep Go modules unchanged.",
+	} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Fatalf("expected system prompt to contain %q, got: %q", want, systemPrompt)
+		}
+	}
+
+	userPrompt := req.Messages[1].Content
+	if !strings.Contains(userPrompt, "Recent conversation context:") || !strings.Contains(userPrompt, "Goal: build api") {
+		t.Fatalf("expected conversation context and goal in user prompt, got: %q", userPrompt)
 	}
 }
 
@@ -754,6 +976,63 @@ func (m *scriptedLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatRes
 	}, nil
 }
 
+func TestRunner_GenerateSummary_UsesOpenClawStyleReportPrompt(t *testing.T) {
+	llmStub := &captureResponseLLM{response: `Summary: Implemented the parser update and finished validation. One verification step still needs manual review.
+
+Suggested next steps:
+1. Review the manual verification output.
+2. Re-run the focused test suite after the next change.`}
+	runner := &Runner{llm: llmStub}
+
+	got := runner.generateSummary(context.Background(), &Task{
+		Goal: "stabilize release",
+		Plan: []PlanStep{
+			{Description: "implement fix", Status: StepStatusCompleted, Output: "patched parser path"},
+			{Description: "verify", Status: StepStatusFailed, Output: "integration test still flaky"},
+		},
+	}, nil)
+	if got == "" {
+		t.Fatal("expected non-empty summary output")
+	}
+	if len(llmStub.requests) != 1 {
+		t.Fatalf("requests len = %d, want 1", len(llmStub.requests))
+	}
+
+	req := llmStub.requests[0]
+	if req.Temperature != 0.2 {
+		t.Fatalf("temperature = %v, want 0.2", req.Temperature)
+	}
+	if len(req.Messages) < 2 {
+		t.Fatalf("expected system+user messages, got %#v", req.Messages)
+	}
+
+	systemPrompt := req.Messages[0].Content
+	for _, want := range []string{
+		"You are writing the final user-facing report for a completed ZimaOS Blue agent task.",
+		"## Output Contract",
+		"Provide 1-3 next steps total.",
+		"## Style",
+		"Focus on what was accomplished, what failed, and what was verified.",
+		"## Constraints",
+	} {
+		if !strings.Contains(systemPrompt, want) {
+			t.Fatalf("expected system prompt to contain %q, got: %q", want, systemPrompt)
+		}
+	}
+
+	userPrompt := req.Messages[1].Content
+	for _, want := range []string{
+		"Goal: stabilize release",
+		"Completed steps:",
+		"- [OK] implement fix: patched parser path",
+		"- [FAILED] verify: integration test still flaky",
+	} {
+		if !strings.Contains(userPrompt, want) {
+			t.Fatalf("expected user prompt to contain %q, got: %q", want, userPrompt)
+		}
+	}
+}
+
 func TestRunner_GenerateSummaryFallbackIncludesNextSteps(t *testing.T) {
 	runner := &Runner{
 		llm: &scriptedLLM{
@@ -767,7 +1046,7 @@ func TestRunner_GenerateSummaryFallbackIncludesNextSteps(t *testing.T) {
 			{Description: "implement fix", Status: StepStatusCompleted},
 			{Description: "verify", Status: StepStatusFailed},
 		},
-	})
+	}, nil)
 
 	if !strings.Contains(got, "Summary: Completed 1/2 steps (1 failed).") {
 		t.Fatalf("expected fallback summary header, got=%q", got)
@@ -842,6 +1121,25 @@ func (m *mockMemory) Recall(_ context.Context, query string, _ int) ([]MemoryRes
 	m.called = true
 	m.query = query
 	return m.results, m.err
+}
+
+type mockReflector struct {
+	called bool
+	inputs []selfreflect.Input
+	result *selfreflect.Result
+	err    error
+}
+
+func (m *mockReflector) Reflect(_ context.Context, input selfreflect.Input) (*selfreflect.Result, error) {
+	m.called = true
+	m.inputs = append(m.inputs, input)
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.result != nil {
+		return m.result, nil
+	}
+	return &selfreflect.Result{}, nil
 }
 
 func TestRunner_RecallMemories(t *testing.T) {
@@ -971,6 +1269,133 @@ func TestRunner_SetMemory(t *testing.T) {
 	runner.SetMemory(mem)
 	if runner.memory != mem {
 		t.Error("memory was not set")
+	}
+}
+
+func TestRunner_AutoReflectCompletedTask(t *testing.T) {
+	s := testStore(t)
+	m := &scriptedLLM{calls: []scriptedLLMCall{
+		{content: `{"goal":"finish parser fix","subtasks":[{"description":"apply parser fix"}],"success_criteria":["verification passes"],"fallback_plan":["inspect the failing step"]}`},
+		{content: "apply parser fix completed"},
+		{content: "verification passed"},
+		{content: "Summary: The parser fix completed and verification passed.\n\nLearned:\n- Run focused verification before broader validation.\n\nSuggested next steps:\n1. Verify the deliverable in your environment.\n2. Run the adjacent parser tests.\n3. Continue with the next improvement."},
+	}}
+	reflector := &mockReflector{result: &selfreflect.Result{
+		Summary: "Reflection complete.",
+		Lessons: []selfreflect.Lesson{{
+			Kind:        selfreflect.LessonKindHeuristic,
+			Lesson:      "Run focused verification before broader validation.",
+			WhenToApply: "After a parser or router change.",
+			Evidence:    "Verification completed before the broader task summary was generated.",
+		}},
+		MemoryWritten: 1,
+	}}
+	runner := NewRunner(s, m, nil, nil, nil, RunnerConfig{TaskTimeout: 10 * time.Second, AutoReflect: true})
+	runner.SetReflector(reflector)
+	t.Cleanup(func() { runner.Shutdown() })
+
+	task, err := runner.Submit(context.Background(), "u1", "finish parser fix", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := waitForTerminalTask(t, s, task.ID, 5*time.Second)
+	if got.Status != TaskStatusCompleted {
+		t.Fatalf("status = %q, want completed", got.Status)
+	}
+	if !reflector.called {
+		t.Fatal("expected reflector to be called")
+	}
+	if len(reflector.inputs) != 1 || reflector.inputs[0].FinalStatus != "completed" {
+		t.Fatalf("unexpected reflection input: %#v", reflector.inputs)
+	}
+	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateVerify, RuntimeStateReflect) {
+		t.Fatal("expected runtime transition VERIFY -> REFLECT")
+	}
+	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateReflect, RuntimeStateReport) {
+		t.Fatal("expected runtime transition REFLECT -> REPORT")
+	}
+	if !strings.Contains(got.Result, "Learned:") {
+		t.Fatalf("expected result to include learned section, got %q", got.Result)
+	}
+	last := got.Plan[len(got.Plan)-1]
+	if last.Description != "Reflect on the task and capture reusable lessons" || last.Status != StepStatusCompleted {
+		t.Fatalf("unexpected reflection step: %#v", last)
+	}
+}
+
+func TestRunner_AutoReflectFailedTask(t *testing.T) {
+	s := testStore(t)
+	m := &scriptedLLM{calls: []scriptedLLMCall{
+		{content: `{"goal":"build","subtasks":[{"description":"primary step"}],"success_criteria":["verify passes"],"fallback_plan":["recover once"]}`},
+		{content: "primary step completed"},
+		{err: fmt.Errorf("verify failed")},
+		{err: fmt.Errorf("recover failed")},
+		{content: "Summary: The task failed after verification and recovery both failed.\n\nLearned:\n- Record the first verification failure before retrying.\n\nSuggested next steps:\n1. Inspect the failing verification output.\n2. Narrow the recovery scope.\n3. Retry with a changed input."},
+	}}
+	reflector := &mockReflector{result: &selfreflect.Result{
+		Summary: "Failure reflection complete.",
+		Lessons: []selfreflect.Lesson{{
+			Kind:        selfreflect.LessonKindGuardrail,
+			Lesson:      "Record the first verification failure before retrying.",
+			WhenToApply: "When a verification step fails and a recovery retry is about to start.",
+			Evidence:    "The initial verification and recovery both failed, so the first failure output mattered.",
+		}},
+	}}
+	runner := NewRunner(s, m, nil, nil, nil, RunnerConfig{TaskTimeout: 10 * time.Second, AutoReflect: true})
+	runner.SetReflector(reflector)
+	t.Cleanup(func() { runner.Shutdown() })
+
+	task, err := runner.Submit(context.Background(), "u1", "execute and verify", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := waitForTerminalTask(t, s, task.ID, 5*time.Second)
+	if got.Status != TaskStatusFailed {
+		t.Fatalf("status = %q, want failed", got.Status)
+	}
+	if got.RuntimeState != RuntimeStateDone {
+		t.Fatalf("runtime_state = %q, want DONE", got.RuntimeState)
+	}
+	if !reflector.called {
+		t.Fatal("expected reflector to be called")
+	}
+	if len(reflector.inputs) != 1 || reflector.inputs[0].FinalStatus != "failed" {
+		t.Fatalf("unexpected reflection input: %#v", reflector.inputs)
+	}
+	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateRecover, RuntimeStateReflect) {
+		t.Fatal("expected runtime transition RECOVER -> REFLECT")
+	}
+	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateReflect, RuntimeStateReport) {
+		t.Fatal("expected runtime transition REFLECT -> REPORT")
+	}
+	if !strings.Contains(got.Result, "Learned:") {
+		t.Fatalf("expected failed task summary to include learned section, got %q", got.Result)
+	}
+}
+
+func TestRunner_CancelledTask_DoesNotReflect(t *testing.T) {
+	s := testStore(t)
+	reflector := &mockReflector{}
+	runner := NewRunner(s, &slowMockLLM{delay: 2 * time.Second}, nil, nil, nil, RunnerConfig{TaskTimeout: 10 * time.Second, AutoReflect: true})
+	runner.SetReflector(reflector)
+	t.Cleanup(func() { runner.Shutdown() })
+
+	task, err := runner.Submit(context.Background(), "u1", "slow task", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if !runner.Cancel(task.ID) {
+		t.Fatal("expected cancel to succeed")
+	}
+	got := waitForTerminalTask(t, s, task.ID, 4*time.Second)
+	if got.Status != TaskStatusCancelled {
+		t.Fatalf("status = %q, want cancelled", got.Status)
+	}
+	if reflector.called {
+		t.Fatal("did not expect reflector to be called for cancelled task")
 	}
 }
 
@@ -1408,8 +1833,8 @@ func TestRunner_VerifyRecoveryFailure_MarksFailed(t *testing.T) {
 			if got.Status != TaskStatusFailed {
 				t.Fatalf("status = %q, want failed", got.Status)
 			}
-			if got.RuntimeState != RuntimeStateAborted {
-				t.Fatalf("runtime_state = %q, want ABORTED", got.RuntimeState)
+			if got.RuntimeState != RuntimeStateDone {
+				t.Fatalf("runtime_state = %q, want DONE", got.RuntimeState)
 			}
 			return
 		}

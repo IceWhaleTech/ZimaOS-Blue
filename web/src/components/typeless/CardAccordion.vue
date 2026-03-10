@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import type { TypelessCardAccordion } from '@/types/typeless'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardAccordion
@@ -75,7 +78,7 @@ function isOpen(index: number): boolean {
       >
         <div class="flex items-center gap-2">
           <span v-if="firstItem.icon" class="text-sm">{{ firstItem.icon }}</span>
-          <span v-if="isThinkingCard" class="thinking-shimmer text-sm font-semibold">Thinking</span>
+          <span v-if="isThinkingCard" class="thinking-shimmer text-sm font-semibold">{{ t('accordionCard.thinking', 'Thinking') }}</span>
           <span v-else class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ card.title }}</span>
         </div>
         <svg

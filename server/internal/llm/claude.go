@@ -18,17 +18,17 @@ import (
 const (
 	defaultClaudeBaseURL = "https://api.anthropic.com"
 	claudeAPIVersion     = "2023-06-01"
-	claudeTimeout        = 120 * time.Second
+	claudeTimeout        = 5 * time.Minute
 )
 
 // ToolCapLevel represents the tool capability level of a provider endpoint.
 type ToolCapLevel int
 
 const (
-	ToolCapNative   ToolCapLevel = iota // Native tool_use supported
-	ToolCapPrompt                       // Tools via system prompt injection
-	ToolCapNone                         // No tools at all
-	ToolCapUnknown  ToolCapLevel = -1   // Not yet probed
+	ToolCapNative  ToolCapLevel = iota // Native tool_use supported
+	ToolCapPrompt                      // Tools via system prompt injection
+	ToolCapNone                        // No tools at all
+	ToolCapUnknown ToolCapLevel = -1   // Not yet probed
 )
 
 // toolCapCache stores the remembered tool capability level per baseURL.
@@ -118,7 +118,7 @@ type claudeRequest struct {
 }
 
 type claudeMessage struct {
-	Role    string         `json:"role"`
+	Role    string          `json:"role"`
 	Content []claudeContent `json:"content"`
 }
 
@@ -499,9 +499,9 @@ func (p *ClaudeProvider) processSSELineCallback(ctx context.Context, line string
 			Input map[string]interface{} `json:"input"`
 		} `json:"content_block"`
 		Delta struct {
-			Type         string `json:"type"`
-			Text         string `json:"text"`
-			PartialJSON  string `json:"partial_json"`
+			Type        string `json:"type"`
+			Text        string `json:"text"`
+			PartialJSON string `json:"partial_json"`
 		} `json:"delta"`
 		Usage struct {
 			InputTokens  int `json:"input_tokens"`

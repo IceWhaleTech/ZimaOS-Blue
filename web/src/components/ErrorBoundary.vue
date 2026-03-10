@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import { ref, onErrorCaptured } from 'vue'
+import { computed, ref, onErrorCaptured } from 'vue'
+import { useI18n } from 'vue-i18n'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     fallbackTitle?: string
     fallbackMessage?: string
     showRetry?: boolean
   }>(),
   {
-    fallbackTitle: 'Something went wrong',
-    fallbackMessage: 'An unexpected error occurred. Please try again.',
     showRetry: true,
   }
 )
+
+const { t } = useI18n()
+const resolvedTitle = computed(() => props.fallbackTitle || t('errorBoundary.fallbackTitle'))
+const resolvedMessage = computed(() => props.fallbackMessage || t('errorBoundary.fallbackMessage'))
 
 const emit = defineEmits<{
   retry: []
@@ -27,10 +30,8 @@ onErrorCaptured((error: Error) => {
   errorMessage.value = error.message
   errorStack.value = error.stack || ''
 
-  // Log error for debugging
   console.error('ErrorBoundary caught error:', error)
 
-  // Prevent error from propagating
   return false
 })
 
@@ -45,7 +46,6 @@ function handleRetry() {
 <template>
   <div v-if="hasError" class="min-h-[200px] flex items-center justify-center p-8">
     <div class="text-center max-w-md">
-      <!-- Error icon -->
       <div
         class="mx-auto w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4"
       >
@@ -65,22 +65,19 @@ function handleRetry() {
         </svg>
       </div>
 
-      <!-- Error title -->
       <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-        {{ fallbackTitle }}
+        {{ resolvedTitle }}
       </h3>
 
-      <!-- Error message -->
       <p class="text-gray-600 dark:text-gray-400 mb-4">
-        {{ fallbackMessage }}
+        {{ resolvedMessage }}
       </p>
 
-      <!-- Technical details (collapsible) -->
       <details v-if="errorMessage" class="text-left mb-4">
         <summary
           class="cursor-pointer text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
         >
-          Technical details
+          {{ t('common.details') }}
         </summary>
         <div class="mt-2 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg text-xs font-mono">
           <p class="text-red-600 dark:text-red-400 break-all">{{ errorMessage }}</p>
@@ -92,7 +89,6 @@ function handleRetry() {
         </div>
       </details>
 
-      <!-- Retry button -->
       <button
         v-if="showRetry"
         class="inline-flex items-center gap-2 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors"
@@ -112,7 +108,7 @@ function handleRetry() {
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
           />
         </svg>
-        Try again
+        {{ t('retry') }}
       </button>
     </div>
   </div>

@@ -268,7 +268,7 @@ func (p *OutputParser) processJSONLLine(line string, ch chan<- CliStreamChunk) {
 	if d, ok := raw["done"].(bool); ok && d {
 		done = true
 	}
-	if stopReason, ok := raw["stop_reason"].(string); ok && stopReason != "" {
+	if stopReason, ok := raw["stop_reason"].(string); ok && stopReason != "" && !isNonTerminalStopReason(stopReason) {
 		done = true
 	}
 
@@ -280,6 +280,15 @@ func (p *OutputParser) processJSONLLine(line string, ch chan<- CliStreamChunk) {
 			Usage:     usage,
 			Done:      done,
 		}
+	}
+}
+
+func isNonTerminalStopReason(stopReason string) bool {
+	switch strings.ToLower(strings.TrimSpace(stopReason)) {
+	case "tool_use", "tooluse", "tool_call", "toolcall", "function_call", "functioncall", "pause_turn", "pause":
+		return true
+	default:
+		return false
 	}
 }
 

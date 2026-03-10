@@ -63,8 +63,40 @@ export default {
             "request": "Certificat gratuït",
             "requestFailed": "No s'ha pogut sol·licitar el certificat",
             "httpChallenge": "Verificació HTTP-01",
-            "dnsChallenge": "Verificació DNS-01"
-          }
+            "dnsChallenge": "Verificació DNS-01",
+            "title": "Sol·licita un certificat gratuït"
+          },
+          "title": "Configuració de TLS/HTTPS",
+          "description": "Configura certificats SSL/TLS per a connexions HTTPS segures",
+          "uploadCert": "Puja el certificat",
+          "selfSigned": "Autofirmat",
+          "generateSelfSigned": "Genera un certificat autofirmat",
+          "certActive": "Certificat actiu",
+          "selfSignedLabel": "Autofirmat",
+          "noCert": "No hi ha cap certificat configurat. HTTPS està desactivat.",
+          "domains": "Dominis",
+          "issuer": "Emissor",
+          "validFrom": "Vàlid des de",
+          "validUntil": "Vàlid fins a",
+          "expired": "Caducat",
+          "daysLeft": "Queden {days} dies",
+          "certPem": "Certificat (PEM)",
+          "keyPem": "Clau privada (PEM)",
+          "certKeyRequired": "Calen el certificat i la clau privada",
+          "certUploaded": "Certificat pujat correctament",
+          "uploadFailed": "No s'ha pogut pujar el certificat",
+          "selfSignedGenerated": "S'ha generat el certificat autofirmat",
+          "generateFailed": "No s'ha pogut generar el certificat",
+          "validDays": "Dies de validesa",
+          "domainsHint": "Llista de dominis o adreces IP separats per comes",
+          "httpsOnly": "Només HTTPS",
+          "httpsOnlyDescription": "Redirigeix totes les sol·licituds HTTP a HTTPS. Requereix un certificat vàlid.",
+          "httpsOnlyEnabled": "S'ha activat el mode només HTTPS",
+          "httpsOnlyDisabled": "S'ha desactivat el mode només HTTPS",
+          "updateFailed": "No s'han pogut actualitzar els paràmetres TLS",
+          "reload": "Recarrega",
+          "certReloaded": "Certificat recarregat correctament",
+          "reloadFailed": "No s'ha pogut recarregar el certificat"
         }
       }
     },
@@ -127,7 +159,17 @@ export default {
         "web_search": "Cerca web",
         "workflows": "Fluxos de treball",
         "exec": "Execució d'ordres",
-        "workspace_file": "Fitxer de l'espai de treball"
+        "workspace_file": "Fitxer de l'espai de treball",
+        "web_fetch": "Captura web",
+        "web_read": "Lectura web",
+        "web_extract": "Extracció web",
+        "web_crawl": "Rastreig web",
+      },
+      "descriptions": {
+        "web_fetch": "Obté i analitza una pàgina web a partir d'una URL",
+        "web_read": "Llegeix una pàgina web i en retorna el contingut principal normalitzat",
+        "web_extract": "Extreu camps estructurats d'HTML web o d'una URL",
+        "web_crawl": "Rastreja URL llavor amb límits i punts de control",
       }
     },
     "voiceView": {
@@ -428,7 +470,10 @@ export default {
         "loading": "S'està carregant l'ús...",
         "outputTokens": "Tokens de sortida",
         "requests": "Sol·licituds"
-      }
+      },
+      "models": "Models IA",
+      "perImage": "/imatge",
+      "perVideo": "/vídeo"
     }
   },
   "cs-CZ": {
@@ -495,8 +540,40 @@ export default {
             "request": "Certifikát zdarma",
             "requestFailed": "Nepodařilo se vyžádat certifikát",
             "httpChallenge": "Ověření HTTP-01",
-            "dnsChallenge": "Ověření DNS-01"
-          }
+            "dnsChallenge": "Ověření DNS-01",
+            "title": "Vyžádat bezplatný certifikát"
+          },
+          "title": "Konfigurace TLS/HTTPS",
+          "description": "Nakonfigurujte certifikáty SSL/TLS pro bezpečná připojení HTTPS",
+          "uploadCert": "Nahrát certifikát",
+          "selfSigned": "Samopodepsaný",
+          "generateSelfSigned": "Vygenerovat samopodepsaný certifikát",
+          "certActive": "Certifikát aktivní",
+          "selfSignedLabel": "Samopodepsaný",
+          "noCert": "Není nakonfigurován žádný certifikát. HTTPS je vypnuto.",
+          "domains": "Domény",
+          "issuer": "Vydavatel",
+          "validFrom": "Platný od",
+          "validUntil": "Platný do",
+          "expired": "Platnost vypršela",
+          "daysLeft": "Zbývá {days} dní",
+          "certPem": "PEM certifikát",
+          "keyPem": "Soukromý klíč (PEM)",
+          "certKeyRequired": "Certifikát a soukromý klíč jsou povinné",
+          "certUploaded": "Certifikát byl úspěšně nahrán",
+          "uploadFailed": "Certifikát se nepodařilo nahrát",
+          "selfSignedGenerated": "Samopodepsaný certifikát byl vygenerován",
+          "generateFailed": "Nepodařilo se vygenerovat certifikát",
+          "validDays": "Dny platnosti",
+          "domainsHint": "Seznam domén nebo IP adres oddělených čárkami",
+          "httpsOnly": "Pouze HTTPS",
+          "httpsOnlyDescription": "Přesměruje všechny požadavky HTTP na HTTPS. Vyžaduje platný certifikát.",
+          "httpsOnlyEnabled": "Režim pouze HTTPS byl povolen",
+          "httpsOnlyDisabled": "Režim pouze HTTPS byl vypnut",
+          "updateFailed": "Nepodařilo se aktualizovat nastavení TLS",
+          "reload": "Znovu načíst",
+          "certReloaded": "Certifikát byl úspěšně znovu načten",
+          "reloadFailed": "Certifikát se nepodařilo znovu načíst"
         }
       }
     },
@@ -559,7 +636,17 @@ export default {
         "web_search": "Vyhledávání na webu",
         "workflows": "Pracovní postupy",
         "exec": "Spouštění příkazů",
-        "workspace_file": "Soubor pracovního prostoru"
+        "workspace_file": "Soubor pracovního prostoru",
+        "web_fetch": "Načtení webu",
+        "web_read": "Čtení webu",
+        "web_extract": "Extrakce z webu",
+        "web_crawl": "Procházení webu",
+      },
+      "descriptions": {
+        "web_fetch": "Načte a zpracuje webovou stránku podle URL",
+        "web_read": "Načte webovou stránku a vrátí normalizovaný hlavní obsah",
+        "web_extract": "Extrahuje strukturovaná pole z HTML webu nebo z URL",
+        "web_crawl": "Prochází počáteční URL s limity a checkpointy",
       }
     },
     "voiceView": {
@@ -860,7 +947,8 @@ export default {
         "loading": "Načítání využití...",
         "outputTokens": "Výstupní tokeny",
         "requests": "Požadavky"
-      }
+      },
+      "perVideo": "/video"
     }
   },
   "da-DK": {
@@ -927,8 +1015,40 @@ export default {
             "request": "Gratis certifikat",
             "requestFailed": "Kunne ikke anmode om certifikat",
             "httpChallenge": "HTTP-01-verifikation",
-            "dnsChallenge": "DNS-01-verifikation"
-          }
+            "dnsChallenge": "DNS-01-verifikation",
+            "title": "Anmod om gratis certifikat"
+          },
+          "title": "TLS/HTTPS-konfiguration",
+          "description": "Konfigurer SSL/TLS-certifikater til sikre HTTPS-forbindelser",
+          "uploadCert": "Upload certifikat",
+          "selfSigned": "Selvsigneret",
+          "generateSelfSigned": "Generer selvsigneret certifikat",
+          "certActive": "Certifikat aktivt",
+          "selfSignedLabel": "Selvsigneret",
+          "noCert": "Intet certifikat er konfigureret. HTTPS er deaktiveret.",
+          "domains": "Domæner",
+          "issuer": "Udsteder",
+          "validFrom": "Gyldig fra",
+          "validUntil": "Gyldig til",
+          "expired": "Udløbet",
+          "daysLeft": "{days} dage tilbage",
+          "certPem": "Certifikat (PEM)",
+          "keyPem": "Privat nøgle (PEM)",
+          "certKeyRequired": "Certifikat og privat nøgle er påkrævet",
+          "certUploaded": "Certifikat uploadet",
+          "uploadFailed": "Kunne ikke uploade certifikat",
+          "selfSignedGenerated": "Selvsigneret certifikat genereret",
+          "generateFailed": "Kunne ikke generere certifikat",
+          "validDays": "Gyldige dage",
+          "domainsHint": "Kommasepareret liste over domæner eller IP-adresser",
+          "httpsOnly": "Kun HTTPS",
+          "httpsOnlyDescription": "Omdiriger alle HTTP-forespørgsler til HTTPS. Kræver et gyldigt certifikat.",
+          "httpsOnlyEnabled": "Kun-HTTPS-tilstand aktiveret",
+          "httpsOnlyDisabled": "Kun-HTTPS-tilstand deaktiveret",
+          "updateFailed": "Kunne ikke opdatere TLS-indstillinger",
+          "reload": "Genindlæs",
+          "certReloaded": "Certifikat genindlæst",
+          "reloadFailed": "Kunne ikke genindlæse certifikat"
         }
       }
     },
@@ -991,7 +1111,17 @@ export default {
         "web_search": "Websøgning",
         "workflows": "Arbejdsgange",
         "exec": "Kommandoafvikling",
-        "workspace_file": "Arbejdsområdefil"
+        "workspace_file": "Arbejdsområdefil",
+        "web_fetch": "Webhentning",
+        "web_read": "Weblæsning",
+        "web_extract": "Webudtræk",
+        "web_crawl": "Webcrawl",
+      },
+      "descriptions": {
+        "web_fetch": "Henter og parser en webside ud fra en URL",
+        "web_read": "Læser en webside og returnerer normaliseret hovedindhold",
+        "web_extract": "Udtrækker strukturerede felter fra web-HTML eller en URL",
+        "web_crawl": "Gennemsøger seed-URL'er med grænser og kontrolpunkter",
       }
     },
     "voiceView": {
@@ -1277,7 +1407,8 @@ export default {
       "preferredModelsHint": "Vælg de modeller, du foretrækker. Kun markerede modeller vil være tilgængelige; hvis ingen er markeret, vil alle modeller være tilgængelige.",
       "selectPreferredModels": "Vælg foretrukne modeller",
       "tabs": {
-        "oauth": "OAuth-login"
+        "oauth": "OAuth-login",
+        "platform": "Platforme"
       },
       "topP": "Top-P",
       "trial": {
@@ -1292,7 +1423,9 @@ export default {
         "loading": "Indlæser forbrug...",
         "outputTokens": "Outputtokens",
         "requests": "Anmodninger"
-      }
+      },
+      "perMillionTokens": "pr. 1 mio. tokens",
+      "perVideo": "/video"
     }
   },
   "de-DE": {
@@ -1359,8 +1492,40 @@ export default {
             "request": "Kostenloses Zertifikat",
             "requestFailed": "Zertifikat konnte nicht angefordert werden",
             "httpChallenge": "HTTP-01-Verifizierung",
-            "dnsChallenge": "DNS-01-Verifizierung"
-          }
+            "dnsChallenge": "DNS-01-Verifizierung",
+            "title": "Kostenloses Zertifikat anfordern"
+          },
+          "title": "TLS/HTTPS-Konfiguration",
+          "description": "SSL/TLS-Zertifikate für sichere HTTPS-Verbindungen konfigurieren",
+          "uploadCert": "Zertifikat hochladen",
+          "selfSigned": "Selbstsigniert",
+          "generateSelfSigned": "Selbstsigniertes Zertifikat erstellen",
+          "certActive": "Zertifikat aktiv",
+          "selfSignedLabel": "Selbstsigniert",
+          "noCert": "Kein Zertifikat konfiguriert. HTTPS ist deaktiviert.",
+          "domains": "Domänen",
+          "issuer": "Aussteller",
+          "validFrom": "Gültig ab",
+          "validUntil": "Gültig bis",
+          "expired": "Abgelaufen",
+          "daysLeft": "Noch {days} Tage",
+          "certPem": "Zertifikat (PEM)",
+          "keyPem": "Privater Schlüssel (PEM)",
+          "certKeyRequired": "Zertifikat und privater Schlüssel sind erforderlich",
+          "certUploaded": "Zertifikat erfolgreich hochgeladen",
+          "uploadFailed": "Zertifikat konnte nicht hochgeladen werden",
+          "selfSignedGenerated": "Selbstsigniertes Zertifikat erstellt",
+          "generateFailed": "Zertifikat konnte nicht erstellt werden",
+          "validDays": "Gültigkeit (Tage)",
+          "domainsHint": "Durch Kommas getrennte Liste von Domänen oder IP-Adressen",
+          "httpsOnly": "Nur HTTPS",
+          "httpsOnlyDescription": "Alle HTTP-Anfragen auf HTTPS umleiten. Erfordert ein gültiges Zertifikat.",
+          "httpsOnlyEnabled": "Modus Nur-HTTPS aktiviert",
+          "httpsOnlyDisabled": "Modus Nur-HTTPS deaktiviert",
+          "updateFailed": "TLS-Einstellungen konnten nicht aktualisiert werden",
+          "reload": "Neu laden",
+          "certReloaded": "Zertifikat erfolgreich neu geladen",
+          "reloadFailed": "Zertifikat konnte nicht neu geladen werden"
         }
       }
     },
@@ -1423,7 +1588,17 @@ export default {
         "web_search": "Websuche",
         "workflows": "Workflows",
         "exec": "Befehlsausführung",
-        "workspace_file": "Arbeitsbereichsdatei"
+        "workspace_file": "Arbeitsbereichsdatei",
+        "web_fetch": "Web-Abruf",
+        "web_read": "Web-Lesen",
+        "web_extract": "Web-Extraktion",
+        "web_crawl": "Web-Crawl",
+      },
+      "descriptions": {
+        "web_fetch": "Ruft eine Webseite per URL ab und verarbeitet sie",
+        "web_read": "Liest eine Webseite und gibt den normalisierten Hauptinhalt zurück",
+        "web_extract": "Extrahiert strukturierte Felder aus Web-HTML oder einer URL",
+        "web_crawl": "Durchsucht Start-URLs mit Limits und Prüfpunkten",
       }
     },
     "voiceView": {
@@ -1690,7 +1865,8 @@ export default {
         "loading": "Nutzung wird geladen...",
         "outputTokens": "Ausgabe-Tokens",
         "requests": "Anfragen"
-      }
+      },
+      "keyLabel": "Bezeichnung"
     }
   },
   "el-GR": {
@@ -1757,8 +1933,40 @@ export default {
             "request": "Δωρεάν πιστοποιητικό",
             "requestFailed": "Αποτυχία αίτησης πιστοποιητικού",
             "httpChallenge": "Επαλήθευση HTTP-01",
-            "dnsChallenge": "Επαλήθευση DNS-01"
-          }
+            "dnsChallenge": "Επαλήθευση DNS-01",
+            "title": "Αίτηση δωρεάν πιστοποιητικού"
+          },
+          "title": "Ρυθμίσεις TLS/HTTPS",
+          "description": "Ρυθμίστε πιστοποιητικά SSL/TLS για ασφαλείς συνδέσεις HTTPS",
+          "uploadCert": "Μεταφόρτωση πιστοποιητικού",
+          "selfSigned": "Αυτοϋπογεγραμμένο",
+          "generateSelfSigned": "Δημιουργία αυτοϋπογεγραμμένου πιστοποιητικού",
+          "certActive": "Πιστοποιητικό ενεργό",
+          "selfSignedLabel": "Αυτοϋπογεγραμμένο",
+          "noCert": "Δεν έχει ρυθμιστεί πιστοποιητικό. Το HTTPS είναι απενεργοποιημένο.",
+          "domains": "Τομείς",
+          "issuer": "Εκδότης",
+          "validFrom": "Ισχύει από",
+          "validUntil": "Ισχύει έως",
+          "expired": "Έληξε",
+          "daysLeft": "Απομένουν {days} ημέρες",
+          "certPem": "Πιστοποιητικό (PEM)",
+          "keyPem": "Ιδιωτικό κλειδί (PEM)",
+          "certKeyRequired": "Απαιτούνται πιστοποιητικό και ιδιωτικό κλειδί",
+          "certUploaded": "Το πιστοποιητικό μεταφορτώθηκε επιτυχώς",
+          "uploadFailed": "Αποτυχία μεταφόρτωσης πιστοποιητικού",
+          "selfSignedGenerated": "Δημιουργήθηκε αυτοϋπογεγραμμένο πιστοποιητικό",
+          "generateFailed": "Αποτυχία δημιουργίας πιστοποιητικού",
+          "validDays": "Ημέρες ισχύος",
+          "domainsHint": "Λίστα τομέων ή διευθύνσεων IP χωρισμένη με κόμματα",
+          "httpsOnly": "Μόνο HTTPS",
+          "httpsOnlyDescription": "Ανακατευθύνει όλα τα αιτήματα HTTP σε HTTPS. Απαιτεί έγκυρο πιστοποιητικό.",
+          "httpsOnlyEnabled": "Ενεργοποιήθηκε η λειτουργία μόνο HTTPS",
+          "httpsOnlyDisabled": "Απενεργοποιήθηκε η λειτουργία μόνο HTTPS",
+          "updateFailed": "Αποτυχία ενημέρωσης ρυθμίσεων TLS",
+          "reload": "Επαναφόρτωση",
+          "certReloaded": "Το πιστοποιητικό επαναφορτώθηκε επιτυχώς",
+          "reloadFailed": "Αποτυχία επαναφόρτωσης πιστοποιητικού"
         }
       }
     },
@@ -1821,7 +2029,17 @@ export default {
         "web_search": "Αναζήτηση ιστού",
         "workflows": "Ροές εργασίας",
         "exec": "Εκτέλεση εντολών",
-        "workspace_file": "Αρχείο χώρου εργασίας"
+        "workspace_file": "Αρχείο χώρου εργασίας",
+        "web_fetch": "Ανάκτηση ιστού",
+        "web_read": "Ανάγνωση ιστού",
+        "web_extract": "Εξαγωγή ιστού",
+        "web_crawl": "Ανίχνευση ιστού",
+      },
+      "descriptions": {
+        "web_fetch": "Ανακτά και αναλύει μια ιστοσελίδα από ένα URL",
+        "web_read": "Διαβάζει μια ιστοσελίδα και επιστρέφει το κανονικοποιημένο κύριο περιεχόμενο",
+        "web_extract": "Εξάγει δομημένα πεδία από HTML ιστού ή από ένα URL",
+        "web_crawl": "Ανιχνεύει αρχικά URL με όρια και σημεία ελέγχου",
       }
     },
     "voiceView": {
@@ -2107,7 +2325,10 @@ export default {
       "preferredModelsHint": "Επιλέξτε τα μοντέλα που προτιμάτε. Μόνο τα επιλεγμένα μοντέλα θα είναι διαθέσιμα· αν δεν επιλεγεί κανένα, θα είναι διαθέσιμα όλα τα μοντέλα.",
       "selectPreferredModels": "Επιλογή προτιμώμενων μοντέλων",
       "tabs": {
-        "oauth": "Σύνδεση OAuth"
+        "oauth": "Σύνδεση OAuth",
+        "all": "Όλα",
+        "media": "Πολυμέσα",
+        "platform": "Πλατφόρμα"
       },
       "topP": "Top-P",
       "trial": {
@@ -2122,6 +2343,65 @@ export default {
         "loading": "Φόρτωση χρήσης...",
         "outputTokens": "Token εξόδου",
         "requests": "Αιτήματα"
+      },
+      "keyLabel": "Ετικέτα",
+      "models": "Μοντέλα",
+      "perImage": "/εικόνα",
+      "perMillionTokens": "ανά 1 εκ. token",
+      "perSecond": "/δευτ.",
+      "perVideo": "/βίντεο",
+      "addApiKey": "Προσθήκη κλειδιού API",
+      "addCustom": "Προσθήκη προσαρμοσμένου",
+      "addCustomProvider": "Προσθήκη προσαρμοσμένου παρόχου",
+      "addKey": "Προσθήκη κλειδιού",
+      "addModelPricing": "Προσθήκη τιμολόγησης μοντέλου",
+      "apiKey": "Κλειδί API",
+      "apiKeys": "Κλειδιά API",
+      "baseUrl": "Βασικό URL",
+      "cachePrice": "Τιμή cache",
+      "changeIcon": "Αλλαγή εικονιδίου",
+      "clearAll": "Εκκαθάριση όλων",
+      "configureModels": "Ρύθμιση",
+      "confirmDelete": "Είστε βέβαιοι ότι θέλετε να διαγράψετε αυτόν τον πάροχο;",
+      "confirmRemovePricing": "Είστε βέβαιοι ότι θέλετε να αφαιρέσετε αυτήν την προσαρμοσμένη τιμολόγηση;",
+      "customPricing": "Προσαρμοσμένη τιμολόγηση",
+      "default": "Προεπιλογή",
+      "defaultPlaceholder": "Χρήση προεπιλογής",
+      "defaultPricing": "Προεπιλεγμένη τιμολόγηση",
+      "detectCapabilities": "Ανίχνευση",
+      "detected": "ανιχνεύτηκε",
+      "detectedMax": "Ανιχνευμένο μέγιστο",
+      "detecting": "Ανίχνευση...",
+      "editModelParams": "Επεξεργασία παραμέτρων μοντέλου",
+      "editPricing": "Επεξεργασία τιμολόγησης",
+      "filtered": "φιλτραρισμένα",
+      "filteredModels": "Εμφανίζονται μόνο τα επιτρεπόμενα μοντέλα",
+      "inputPrice": "Τιμή εισόδου",
+      "maxTokens": "Όριο περιεχομένου",
+      "maxTokensHint": "Μέγιστο μήκος εξόδου. Αφήστε το κενό για να χρησιμοποιηθεί το προεπιλεγμένο όριο του μοντέλου.",
+      "mediaUnitHint": "USD ανά μονάδα (π.χ. $0.04 ανά εικόνα, $0.10 ανά δευτερόλεπτο βίντεο)",
+      "modelId": "Αναγνωριστικό μοντέλου",
+      "modelParams": "Παράμετροι μοντέλου",
+      "noKeys": "Δεν έχουν ρυθμιστεί κλειδιά API",
+      "noModelsAvailable": "Δεν υπάρχουν διαθέσιμα μοντέλα από αυτόν τον πάροχο",
+      "oauth": {
+        "title": "Σύνδεση OAuth",
+        "connect": "Σύνδεση",
+        "disconnect": "Αποσύνδεση",
+        "connected": "Η σύνδεση OAuth ολοκληρώθηκε επιτυχώς",
+        "notConnected": "Δεν έχει συνδεθεί",
+        "connectFailed": "Η σύνδεση OAuth απέτυχε",
+        "disconnected": "Η σύνδεση OAuth αποσυνδέθηκε",
+        "disconnectFailed": "Αποτυχία αποσύνδεσης OAuth",
+        "browserOpened": "Άνοιξε το πρόγραμμα περιήγησης για έλεγχο ταυτότητας",
+        "deviceFlow": "Εξουσιοδότηση συσκευής GitHub",
+        "deviceFlowInstructions": "Εισαγάγετε τον παρακάτω κωδικό στο GitHub για να εξουσιοδοτήσετε την πρόσβαση:",
+        "openGitHub": "Άνοιγμα GitHub",
+        "done": "Έχω εξουσιοδοτήσει",
+        "loadingQuota": "Φόρτωση πληροφοριών συνδρομής...",
+        "quotaUnavailable": "Οι πληροφορίες συνδρομής δεν είναι διαθέσιμες",
+        "modelQuota": "Όριο μοντέλων",
+        "addAccount": "Προσθήκη λογαριασμού"
       }
     }
   },
@@ -2176,8 +2456,40 @@ export default {
             "request": "Free certificate",
             "requestFailed": "Could not request certificate",
             "httpChallenge": "HTTP-01 challenge",
-            "dnsChallenge": "DNS-01 challenge"
-          }
+            "dnsChallenge": "DNS-01 challenge",
+            "title": "Request a free certificate"
+          },
+          "title": "TLS/HTTPS settings",
+          "description": "Set up SSL/TLS certificates for secure HTTPS connections",
+          "uploadCert": "Upload certificate",
+          "selfSigned": "Self-signed",
+          "generateSelfSigned": "Generate self-signed certificate",
+          "certActive": "Certificate active",
+          "selfSignedLabel": "Self-signed",
+          "noCert": "No certificate is configured. HTTPS is turned off.",
+          "domains": "Domain names",
+          "issuer": "Issued by",
+          "validFrom": "Valid from",
+          "validUntil": "Valid until",
+          "expired": "Has expired",
+          "daysLeft": "{days} days remaining",
+          "certPem": "Certificate in PEM format",
+          "keyPem": "Private key (PEM)",
+          "certKeyRequired": "A certificate and private key are required",
+          "certUploaded": "Certificate uploaded",
+          "uploadFailed": "Could not upload the certificate",
+          "selfSignedGenerated": "Self-signed certificate created",
+          "generateFailed": "Could not generate the certificate",
+          "validDays": "Valid for (days)",
+          "domainsHint": "Comma-separated list of domain names or IP addresses",
+          "httpsOnly": "HTTPS only",
+          "httpsOnlyDescription": "Redirect all HTTP requests to HTTPS. A valid certificate is required.",
+          "httpsOnlyEnabled": "HTTPS-only mode turned on",
+          "httpsOnlyDisabled": "HTTPS-only mode turned off",
+          "updateFailed": "Could not update TLS settings",
+          "reload": "Reload certificate",
+          "certReloaded": "Certificate reloaded",
+          "reloadFailed": "Could not reload the certificate"
         }
       }
     },
@@ -2240,7 +2552,17 @@ export default {
         "web_search": "Web search",
         "workflows": "Workflows",
         "exec": "Command execution",
-        "workspace_file": "Workspace file"
+        "workspace_file": "Workspace file",
+        "web_fetch": "Web fetch",
+        "web_read": "Web read",
+        "web_extract": "Web extract",
+        "web_crawl": "Web crawl",
+      },
+      "descriptions": {
+        "web_fetch": "Fetch and parse a web page by URL",
+        "web_read": "Read a web page and return normalised main content",
+        "web_extract": "Extract structured fields from webpage HTML or a URL",
+        "web_crawl": "Crawl seed URLs with limits and checkpoints",
       }
     },
     "voiceView": {
@@ -2329,7 +2651,10 @@ export default {
       "preferredModelsHint": "Tick the models you prefer. Only ticked models will be available; if none are ticked, all models will be available.",
       "selectPreferredModels": "Choose Preferred Models",
       "tabs": {
-        "oauth": "OAuth sign-in"
+        "oauth": "OAuth sign-in",
+        "all": "Everything",
+        "media": "Media providers",
+        "platform": "Platform providers"
       },
       "topP": "Top-P",
       "trial": {
@@ -2344,6 +2669,65 @@ export default {
         "loading": "Loading usage…",
         "outputTokens": "Output tokens",
         "requests": "Requests made"
+      },
+      "keyLabel": "Key label",
+      "models": "Available models",
+      "perImage": "per image",
+      "perMillionTokens": "per million tokens",
+      "perSecond": "per second",
+      "perVideo": "per video",
+      "addApiKey": "Add API key",
+      "addCustom": "Add custom",
+      "addCustomProvider": "Add custom provider",
+      "addKey": "Add key",
+      "addModelPricing": "Add model pricing",
+      "apiKey": "API key",
+      "apiKeys": "API keys",
+      "baseUrl": "Server base URL",
+      "cachePrice": "Cache pricing",
+      "changeIcon": "Swap icon",
+      "clearAll": "Clear everything",
+      "configureModels": "Configure models",
+      "confirmDelete": "Do you want to delete this provider?",
+      "confirmRemovePricing": "Do you want to remove this custom pricing?",
+      "customPricing": "Custom price settings",
+      "default": "Standard",
+      "defaultPlaceholder": "Use the standard setting",
+      "defaultPricing": "Standard pricing",
+      "detectCapabilities": "Detect capabilities",
+      "detected": "found",
+      "detectedMax": "Detected limit",
+      "detecting": "Detecting…",
+      "editModelParams": "Edit model settings",
+      "editPricing": "Change pricing",
+      "filtered": "shown",
+      "filteredModels": "Showing only allowed models",
+      "inputPrice": "Input cost",
+      "maxTokens": "Content cap",
+      "maxTokensHint": "Maximum response length. Leave blank to use the model default.",
+      "mediaUnitHint": "USD per unit (e.g. US$0.04 per image, US$0.10 per second of video)",
+      "modelId": "Model identifier",
+      "modelParams": "Model settings",
+      "noKeys": "No API keys are configured",
+      "noModelsAvailable": "No models are available from this provider",
+      "oauth": {
+        "title": "OAuth sign-in",
+        "connect": "Sign in",
+        "disconnect": "Disconnect account",
+        "connected": "OAuth sign-in completed",
+        "notConnected": "Not signed in",
+        "connectFailed": "OAuth sign-in failed",
+        "disconnected": "OAuth connection removed",
+        "disconnectFailed": "Could not disconnect OAuth",
+        "browserOpened": "Opened browser for authentication",
+        "deviceFlow": "GitHub device authorisation",
+        "deviceFlowInstructions": "Enter the code below on GitHub to authorise access:",
+        "openGitHub": "Open GitHub in browser",
+        "done": "I have authorised",
+        "loadingQuota": "Loading subscription details...",
+        "quotaUnavailable": "Subscription details unavailable",
+        "modelQuota": "Model allowance",
+        "addAccount": "Add account"
       }
     }
   },
@@ -2411,8 +2795,40 @@ export default {
             "request": "Certificado gratis",
             "requestFailed": "No se pudo solicitar el certificado",
             "httpChallenge": "Verificación HTTP-01",
-            "dnsChallenge": "Verificación DNS-01"
-          }
+            "dnsChallenge": "Verificación DNS-01",
+            "title": "Solicitar certificado gratuito"
+          },
+          "title": "Configuración de TLS/HTTPS",
+          "description": "Configura certificados SSL/TLS para conexiones HTTPS seguras",
+          "uploadCert": "Subir certificado",
+          "selfSigned": "Autofirmado",
+          "generateSelfSigned": "Generar certificado autofirmado",
+          "certActive": "Certificado activo",
+          "selfSignedLabel": "Autofirmado",
+          "noCert": "No hay ningún certificado configurado. HTTPS está desactivado.",
+          "domains": "Dominios",
+          "issuer": "Emisor",
+          "validFrom": "Válido desde",
+          "validUntil": "Válido hasta",
+          "expired": "Caducado",
+          "daysLeft": "Quedan {days} días",
+          "certPem": "Certificado (PEM)",
+          "keyPem": "Clave privada (PEM)",
+          "certKeyRequired": "Se requieren el certificado y la clave privada",
+          "certUploaded": "Certificado subido correctamente",
+          "uploadFailed": "No se pudo subir el certificado",
+          "selfSignedGenerated": "Se generó el certificado autofirmado",
+          "generateFailed": "No se pudo generar el certificado",
+          "validDays": "Días de validez",
+          "domainsHint": "Lista de dominios o direcciones IP separada por comas",
+          "httpsOnly": "Solo HTTPS",
+          "httpsOnlyDescription": "Redirige todas las solicitudes HTTP a HTTPS. Requiere un certificado válido.",
+          "httpsOnlyEnabled": "Modo solo HTTPS activado",
+          "httpsOnlyDisabled": "Modo solo HTTPS desactivado",
+          "updateFailed": "No se pudo actualizar la configuración TLS",
+          "reload": "Recargar",
+          "certReloaded": "Certificado recargado correctamente",
+          "reloadFailed": "No se pudo recargar el certificado"
         }
       }
     },
@@ -2475,7 +2891,17 @@ export default {
         "web_search": "Búsqueda web",
         "workflows": "Flujos de trabajo",
         "exec": "Ejecución de comandos",
-        "workspace_file": "Archivo del espacio de trabajo"
+        "workspace_file": "Archivo del espacio de trabajo",
+        "web_fetch": "Captura web",
+        "web_read": "Lectura web",
+        "web_extract": "Extracción web",
+        "web_crawl": "Rastreo web",
+      },
+      "descriptions": {
+        "web_fetch": "Obtiene y analiza una página web a partir de una URL",
+        "web_read": "Lee una página web y devuelve el contenido principal normalizado",
+        "web_extract": "Extrae campos estructurados de HTML web o de una URL",
+        "web_crawl": "Rastrea URL semilla con límites y puntos de control",
       }
     },
     "voiceView": {
@@ -2742,7 +3168,9 @@ export default {
         "loading": "Cargando uso...",
         "outputTokens": "Tokens de salida",
         "requests": "Solicitudes"
-      }
+      },
+      "perImage": "/imagen",
+      "perVideo": "/vídeo"
     }
   },
   "fr-FR": {
@@ -2809,8 +3237,40 @@ export default {
             "request": "Certificat gratuit",
             "requestFailed": "Échec de la demande de certificat",
             "httpChallenge": "Vérification HTTP-01",
-            "dnsChallenge": "Vérification DNS-01"
-          }
+            "dnsChallenge": "Vérification DNS-01",
+            "title": "Demander un certificat gratuit"
+          },
+          "title": "Configuration TLS/HTTPS",
+          "description": "Configurer les certificats SSL/TLS pour des connexions HTTPS sécurisées",
+          "uploadCert": "Téléverser le certificat",
+          "selfSigned": "Autosigné",
+          "generateSelfSigned": "Générer un certificat autosigné",
+          "certActive": "Certificat actif",
+          "selfSignedLabel": "Autosigné",
+          "noCert": "Aucun certificat configuré. HTTPS est désactivé.",
+          "domains": "Domaines",
+          "issuer": "Émetteur",
+          "validFrom": "Valide à partir du",
+          "validUntil": "Valide jusqu'au",
+          "expired": "Expiré",
+          "daysLeft": "{days} jours restants",
+          "certPem": "Certificat (PEM)",
+          "keyPem": "Clé privée (PEM)",
+          "certKeyRequired": "Le certificat et la clé privée sont requis",
+          "certUploaded": "Certificat téléversé avec succès",
+          "uploadFailed": "Échec du téléversement du certificat",
+          "selfSignedGenerated": "Certificat autosigné généré",
+          "generateFailed": "Échec de la génération du certificat",
+          "validDays": "Jours de validité",
+          "domainsHint": "Liste de domaines ou d'adresses IP séparés par des virgules",
+          "httpsOnly": "HTTPS uniquement",
+          "httpsOnlyDescription": "Redirige toutes les requêtes HTTP vers HTTPS. Nécessite un certificat valide.",
+          "httpsOnlyEnabled": "Mode HTTPS uniquement activé",
+          "httpsOnlyDisabled": "Mode HTTPS uniquement désactivé",
+          "updateFailed": "Échec de la mise à jour des paramètres TLS",
+          "reload": "Recharger",
+          "certReloaded": "Certificat rechargé avec succès",
+          "reloadFailed": "Échec du rechargement du certificat"
         }
       }
     },
@@ -2873,7 +3333,17 @@ export default {
         "web_search": "Recherche web",
         "workflows": "Flux de travail",
         "exec": "Exécution de commandes",
-        "workspace_file": "Fichier d'espace de travail"
+        "workspace_file": "Fichier d'espace de travail",
+        "web_fetch": "Récupération web",
+        "web_read": "Lecture web",
+        "web_extract": "Extraction web",
+        "web_crawl": "Exploration web",
+      },
+      "descriptions": {
+        "web_fetch": "Récupère et analyse une page web à partir d'une URL",
+        "web_read": "Lit une page web et renvoie le contenu principal normalisé",
+        "web_extract": "Extrait des champs structurés depuis du HTML web ou une URL",
+        "web_crawl": "Explore des URL de départ avec des limites et des points de contrôle",
       }
     },
     "voiceView": {
@@ -3139,7 +3609,10 @@ export default {
         "loading": "Chargement de l'utilisation...",
         "outputTokens": "Jetons de sortie",
         "requests": "Requêtes"
-      }
+      },
+      "perImage": "/image",
+      "perSecond": "/s",
+      "perVideo": "/vidéo"
     }
   },
   "ga-IE": {
@@ -3206,8 +3679,40 @@ export default {
             "request": "Teastas saor in aisce",
             "requestFailed": "Theip ar iarratas teastais",
             "httpChallenge": "Fíorú HTTP-01",
-            "dnsChallenge": "Fíorú DNS-01"
-          }
+            "dnsChallenge": "Fíorú DNS-01",
+            "title": "Iarr teastas saor in aisce"
+          },
+          "title": "Cumraíocht TLS/HTTPS",
+          "description": "Cumraigh teastais SSL/TLS le haghaidh nascanna slána HTTPS",
+          "uploadCert": "Uaslódáil teastas",
+          "selfSigned": "Féinshínithe",
+          "generateSelfSigned": "Gin teastas féinshínithe",
+          "certActive": "Teastas gníomhach",
+          "selfSignedLabel": "Féinshínithe",
+          "noCert": "Níl aon teastas cumraithe. Tá HTTPS díchumasaithe.",
+          "domains": "Fearainn",
+          "issuer": "Eisitheoir",
+          "validFrom": "Bailí ó",
+          "validUntil": "Bailí go dtí",
+          "expired": "Imithe in éag",
+          "daysLeft": "{days} lá fágtha",
+          "certPem": "Teastas (PEM)",
+          "keyPem": "Eochair phríobháideach (PEM)",
+          "certKeyRequired": "Tá teastas agus eochair phríobháideach riachtanach",
+          "certUploaded": "Teastas uaslódáilte go rathúil",
+          "uploadFailed": "Theip ar uaslódáil an teastais",
+          "selfSignedGenerated": "Gineadh teastas féinshínithe",
+          "generateFailed": "Theip ar ghiniúint teastais",
+          "validDays": "Laethanta bailíochta",
+          "domainsHint": "Liosta fearann nó seoltaí IP scartha le camóga",
+          "httpsOnly": "HTTPS amháin",
+          "httpsOnlyDescription": "Athsheol gach iarratas HTTP chuig HTTPS. Tá teastas bailí ag teastáil.",
+          "httpsOnlyEnabled": "Cumasaíodh mód HTTPS amháin",
+          "httpsOnlyDisabled": "Díchumasaíodh mód HTTPS amháin",
+          "updateFailed": "Theip ar shocruithe TLS a nuashonrú",
+          "reload": "Athlódáil",
+          "certReloaded": "Athluchtaíodh an teastas go rathúil",
+          "reloadFailed": "Theip ar athluchtú an teastais"
         }
       }
     },
@@ -3270,7 +3775,17 @@ export default {
         "web_search": "Cuardach gréasáin",
         "workflows": "Sreafaí oibre",
         "exec": "Rith ordaithe",
-        "workspace_file": "Comhad spáis oibre"
+        "workspace_file": "Comhad spáis oibre",
+        "web_fetch": "Aisghabháil gréasáin",
+        "web_read": "Léamh gréasáin",
+        "web_extract": "Eastóscadh gréasáin",
+        "web_crawl": "Crawláil gréasáin",
+      },
+      "descriptions": {
+        "web_fetch": "Aisghabhann agus parsálann sé leathanach gréasáin ó URL",
+        "web_read": "Léann sé leathanach gréasáin agus filleann sé an príomhábhar normalaithe",
+        "web_extract": "Baineann sé réimsí struchtúrtha as HTML gréasáin nó as URL",
+        "web_crawl": "Crawlálann sé URLanna síl le teorainneacha agus seicphointí",
       }
     },
     "voiceView": {
@@ -3556,7 +4071,10 @@ export default {
       "preferredModelsHint": "Ticeáil na samhlacha is fearr leat. Ní bheidh ach na samhlacha ticáilte ar fáil; mura bhfuil ceann ar bith ticáilte, beidh na samhlacha go léir ar fáil.",
       "selectPreferredModels": "Roghnaigh na samhlacha is fearr leat",
       "tabs": {
-        "oauth": "Síniú isteach OAuth"
+        "oauth": "Síniú isteach OAuth",
+        "all": "Uile",
+        "media": "Meáin",
+        "platform": "Ardán"
       },
       "topP": "Top-P",
       "trial": {
@@ -3571,6 +4089,65 @@ export default {
         "loading": "Ag luchtú úsáide...",
         "outputTokens": "Comharthaí aschuir",
         "requests": "Iarratais"
+      },
+      "keyLabel": "Lipéad",
+      "models": "Múnlaí",
+      "perImage": "/íomhá",
+      "perMillionTokens": "in aghaidh 1M comhartha",
+      "perSecond": "/soic",
+      "perVideo": "/físeán",
+      "addApiKey": "Cuir eochair API leis",
+      "addCustom": "Cuir saincheaptha leis",
+      "addCustomProvider": "Cuir soláthraí saincheaptha leis",
+      "addKey": "Cuir eochair leis",
+      "addModelPricing": "Cuir praghsáil mhúnla leis",
+      "apiKey": "Eochair API",
+      "apiKeys": "Eochracha API",
+      "baseUrl": "Bun-URL",
+      "cachePrice": "Praghas taisce",
+      "changeIcon": "Athraigh deilbhín",
+      "clearAll": "Glan uile",
+      "configureModels": "Cumraigh",
+      "confirmDelete": "An bhfuil tú cinnte gur mhaith leat an soláthraí seo a scriosadh?",
+      "confirmRemovePricing": "An bhfuil tú cinnte gur mhaith leat an phraghsáil saincheaptha seo a bhaint?",
+      "customPricing": "Praghsáil saincheaptha",
+      "default": "Réamhshocrú",
+      "defaultPlaceholder": "Úsáid an réamhshocrú",
+      "defaultPricing": "Praghsáil réamhshocraithe",
+      "detectCapabilities": "Braith",
+      "detected": "braitheadh",
+      "detectedMax": "Uasmhéid braite",
+      "detecting": "Á bhrath...",
+      "editModelParams": "Cuir paraiméadair an mhúnla in eagar",
+      "editPricing": "Cuir praghsáil in eagar",
+      "filtered": "scagtha",
+      "filteredModels": "Níl ach na samhlacha ceadaithe á dtaispeáint",
+      "inputPrice": "Praghas ionchuir",
+      "maxTokens": "Teorainn ábhair",
+      "maxTokensHint": "Uasfhad an aschuir. Fág folamh é chun réamhshocrú an mhúnla a úsáid.",
+      "mediaUnitHint": "USD in aghaidh an aonaid (m.sh. $0.04 in aghaidh na híomhá, $0.10 in aghaidh an tsoicind físeáin)",
+      "modelId": "Aitheantas an mhúnla",
+      "modelParams": "Paraiméadair an mhúnla",
+      "noKeys": "Níl aon eochracha API cumraithe",
+      "noModelsAvailable": "Níl aon mhúnlaí ar fáil ón soláthraí seo",
+      "oauth": {
+        "title": "Ceangal OAuth",
+        "connect": "Ceangail",
+        "disconnect": "Dícheangail",
+        "connected": "Ceanglaíodh OAuth go rathúil",
+        "notConnected": "Gan ceangal",
+        "connectFailed": "Theip ar cheangal OAuth",
+        "disconnected": "Dícheanglaíodh OAuth",
+        "disconnectFailed": "Theip ar dhícheangal OAuth",
+        "browserOpened": "Osclaíodh an brabhsálaí le haghaidh fíordheimhnithe",
+        "deviceFlow": "Údarú Gléis GitHub",
+        "deviceFlowInstructions": "Cuir isteach an cód thíos ar GitHub chun rochtain a údarú:",
+        "openGitHub": "Oscail GitHub",
+        "done": "Tá údarú déanta agam",
+        "loadingQuota": "Ag luchtú faisnéise síntiúis...",
+        "quotaUnavailable": "Níl faisnéis síntiúis ar fáil",
+        "modelQuota": "Cuóta samhlacha",
+        "addAccount": "Cuir cuntas leis"
       }
     }
   },
@@ -3638,8 +4215,40 @@ export default {
             "request": "Besplatni certifikat",
             "requestFailed": "Zahtjev za certifikat nije uspio",
             "httpChallenge": "HTTP-01 provjera",
-            "dnsChallenge": "DNS-01 provjera"
-          }
+            "dnsChallenge": "DNS-01 provjera",
+            "title": "Zatraži besplatni certifikat"
+          },
+          "title": "Konfiguracija TLS/HTTPS-a",
+          "description": "Konfigurirajte SSL/TLS certifikate za sigurne HTTPS veze",
+          "uploadCert": "Prenesi certifikat",
+          "selfSigned": "Samopotpisan",
+          "generateSelfSigned": "Generiraj samopotpisani certifikat",
+          "certActive": "Certifikat aktivan",
+          "selfSignedLabel": "Samopotpisan",
+          "noCert": "Nijedan certifikat nije konfiguriran. HTTPS je onemogućen.",
+          "domains": "Domene",
+          "issuer": "Izdavatelj",
+          "validFrom": "Vrijedi od",
+          "validUntil": "Vrijedi do",
+          "expired": "Istekao",
+          "daysLeft": "Preostalo {days} dana",
+          "certPem": "Certifikat (PEM)",
+          "keyPem": "Privatni ključ (PEM)",
+          "certKeyRequired": "Potrebni su certifikat i privatni ključ",
+          "certUploaded": "Certifikat je uspješno prenesen",
+          "uploadFailed": "Prijenos certifikata nije uspio",
+          "selfSignedGenerated": "Samopotpisani certifikat je generiran",
+          "generateFailed": "Generiranje certifikata nije uspjelo",
+          "validDays": "Dani valjanosti",
+          "domainsHint": "Popis domena ili IP adresa odvojenih zarezima",
+          "httpsOnly": "Samo HTTPS",
+          "httpsOnlyDescription": "Preusmjeri sve HTTP zahtjeve na HTTPS. Zahtijeva valjan certifikat.",
+          "httpsOnlyEnabled": "Način rada samo HTTPS je omogućen",
+          "httpsOnlyDisabled": "Način rada samo HTTPS je onemogućen",
+          "updateFailed": "Ažuriranje TLS postavki nije uspjelo",
+          "reload": "Ponovno učitaj",
+          "certReloaded": "Certifikat je uspješno ponovno učitan",
+          "reloadFailed": "Ponovno učitavanje certifikata nije uspjelo"
         }
       }
     },
@@ -3702,7 +4311,17 @@ export default {
         "web_search": "Pretraživanje weba",
         "workflows": "Tijekovi rada",
         "exec": "Izvršavanje naredbi",
-        "workspace_file": "Datoteka radnog prostora"
+        "workspace_file": "Datoteka radnog prostora",
+        "web_fetch": "Dohvat weba",
+        "web_read": "Čitanje weba",
+        "web_extract": "Izdvajanje s weba",
+        "web_crawl": "Puzanje weba",
+      },
+      "descriptions": {
+        "web_fetch": "Dohvaća i parsira web-stranicu iz URL-a",
+        "web_read": "Čita web-stranicu i vraća normalizirani glavni sadržaj",
+        "web_extract": "Izdvaja strukturirana polja iz web HTML-a ili URL-a",
+        "web_crawl": "Pretražuje početne URL-ove uz ograničenja i kontrolne točke",
       }
     },
     "voiceView": {
@@ -3991,7 +4610,10 @@ export default {
       "preferredModelsHint": "Označite modele koje preferirate. Bit će dostupni samo označeni modeli; ako nijedan nije označen, bit će dostupni svi modeli.",
       "selectPreferredModels": "Odaberite preferirane modele",
       "tabs": {
-        "oauth": "OAuth prijava"
+        "oauth": "OAuth prijava",
+        "all": "Sve",
+        "media": "Mediji",
+        "platform": "Platforma"
       },
       "topP": "Top-P",
       "trial": {
@@ -4006,6 +4628,65 @@ export default {
         "loading": "Učitavanje potrošnje...",
         "outputTokens": "Izlazni tokeni",
         "requests": "Zahtjevi"
+      },
+      "keyLabel": "Oznaka",
+      "models": "Modeli",
+      "perImage": "/slika",
+      "perMillionTokens": "po 1 mil. tokena",
+      "perSecond": "/sek",
+      "perVideo": "/video",
+      "addApiKey": "Dodaj API ključ",
+      "addCustom": "Dodaj prilagođeno",
+      "addCustomProvider": "Dodaj prilagođenog pružatelja",
+      "addKey": "Dodaj ključ",
+      "addModelPricing": "Dodaj cijenu modela",
+      "apiKey": "API ključ",
+      "apiKeys": "API ključevi",
+      "baseUrl": "Osnovni URL",
+      "cachePrice": "Cijena predmemorije",
+      "changeIcon": "Promijeni ikonu",
+      "clearAll": "Očisti sve",
+      "configureModels": "Konfiguriraj",
+      "confirmDelete": "Jeste li sigurni da želite izbrisati ovog pružatelja?",
+      "confirmRemovePricing": "Jeste li sigurni da želite ukloniti ovu prilagođenu cijenu?",
+      "customPricing": "Prilagođena cijena",
+      "default": "Zadano",
+      "defaultPlaceholder": "Koristi zadano",
+      "defaultPricing": "Zadana cijena",
+      "detectCapabilities": "Otkrij",
+      "detected": "otkriveno",
+      "detectedMax": "Otkriveni maksimum",
+      "detecting": "Otkrivanje...",
+      "editModelParams": "Uredi parametre modela",
+      "editPricing": "Uredi cijenu",
+      "filtered": "filtrirano",
+      "filteredModels": "Prikazuju se samo dopušteni modeli",
+      "inputPrice": "Ulazna cijena",
+      "maxTokens": "Ograničenje sadržaja",
+      "maxTokensHint": "Maksimalna duljina izlaza. Ostavite prazno za zadanu vrijednost modela.",
+      "mediaUnitHint": "USD po jedinici (npr. $0.04 po slici, $0.10 po sekundi videa)",
+      "modelId": "ID modela",
+      "modelParams": "Parametri modela",
+      "noKeys": "Nisu konfigurirani API ključevi",
+      "noModelsAvailable": "Od ovog pružatelja nema dostupnih modela",
+      "oauth": {
+        "title": "OAuth povezivanje",
+        "connect": "Poveži",
+        "disconnect": "Prekini vezu",
+        "connected": "OAuth je uspješno povezan",
+        "notConnected": "Nije povezano",
+        "connectFailed": "OAuth povezivanje nije uspjelo",
+        "disconnected": "OAuth je odspojen",
+        "disconnectFailed": "Odspajanje OAuth-a nije uspjelo",
+        "browserOpened": "Preglednik je otvoren za autentifikaciju",
+        "deviceFlow": "GitHub autorizacija uređaja",
+        "deviceFlowInstructions": "Unesite donji kod na GitHubu kako biste autorizirali pristup:",
+        "openGitHub": "Otvori GitHub",
+        "done": "Autorizirao sam",
+        "loadingQuota": "Učitavanje podataka o pretplati...",
+        "quotaUnavailable": "Podaci o pretplati nisu dostupni",
+        "modelQuota": "Kvota modela",
+        "addAccount": "Dodaj račun"
       }
     }
   },
@@ -4073,8 +4754,40 @@ export default {
             "request": "Ingyenes tanúsítvány",
             "requestFailed": "Nem sikerült tanúsítványt igényelni",
             "httpChallenge": "HTTP-01 ellenőrzés",
-            "dnsChallenge": "DNS-01 ellenőrzés"
-          }
+            "dnsChallenge": "DNS-01 ellenőrzés",
+            "title": "Ingyenes tanúsítvány igénylése"
+          },
+          "title": "TLS/HTTPS konfiguráció",
+          "description": "SSL/TLS tanúsítványok beállítása biztonságos HTTPS-kapcsolatokhoz",
+          "uploadCert": "Tanúsítvány feltöltése",
+          "selfSigned": "Önaláírt",
+          "generateSelfSigned": "Önaláírt tanúsítvány létrehozása",
+          "certActive": "Tanúsítvány aktív",
+          "selfSignedLabel": "Önaláírt",
+          "noCert": "Nincs beállított tanúsítvány. A HTTPS ki van kapcsolva.",
+          "domains": "Tartományok",
+          "issuer": "Kibocsátó",
+          "validFrom": "Érvényes ettől",
+          "validUntil": "Érvényes eddig",
+          "expired": "Lejárt",
+          "daysLeft": "{days} nap van hátra",
+          "certPem": "Tanúsítvány (PEM)",
+          "keyPem": "Privát kulcs (PEM)",
+          "certKeyRequired": "Tanúsítvány és privát kulcs megadása kötelező",
+          "certUploaded": "Tanúsítvány sikeresen feltöltve",
+          "uploadFailed": "A tanúsítvány feltöltése sikertelen",
+          "selfSignedGenerated": "Önaláírt tanúsítvány létrehozva",
+          "generateFailed": "A tanúsítvány létrehozása sikertelen",
+          "validDays": "Érvényességi napok",
+          "domainsHint": "Tartományok vagy IP-címek vesszővel elválasztott listája",
+          "httpsOnly": "Csak HTTPS",
+          "httpsOnlyDescription": "Minden HTTP-kérést HTTPS-re irányít át. Érvényes tanúsítvány szükséges.",
+          "httpsOnlyEnabled": "Csak HTTPS mód engedélyezve",
+          "httpsOnlyDisabled": "Csak HTTPS mód letiltva",
+          "updateFailed": "A TLS-beállítások frissítése sikertelen",
+          "reload": "Újratöltés",
+          "certReloaded": "Tanúsítvány sikeresen újratöltve",
+          "reloadFailed": "A tanúsítvány újratöltése sikertelen"
         }
       }
     },
@@ -4137,7 +4850,17 @@ export default {
         "web_search": "Webes keresés",
         "workflows": "Munkafolyamatok",
         "exec": "Parancsvégrehajtás",
-        "workspace_file": "Munkaterületfájl"
+        "workspace_file": "Munkaterületfájl",
+        "web_fetch": "Weblekérés",
+        "web_read": "Webolvasás",
+        "web_extract": "Webkinyerés",
+        "web_crawl": "Webbejárás",
+      },
+      "descriptions": {
+        "web_fetch": "Lekér és feldolgoz egy weboldalt URL alapján",
+        "web_read": "Beolvas egy weboldalt, és visszaadja a normalizált fő tartalmat",
+        "web_extract": "Strukturált mezőket nyer ki webes HTML-ből vagy URL-ből",
+        "web_crawl": "Kezdő URL-eket jár be korlátokkal és ellenőrzőpontokkal",
       }
     },
     "voiceView": {
@@ -4423,7 +5146,10 @@ export default {
       "preferredModelsHint": "Jelölje be a kívánt modelleket. Csak a bejelölt modellek lesznek elérhetők; ha egyik sincs bejelölve, minden modell elérhető lesz.",
       "selectPreferredModels": "Előnyben részesített modellek kiválasztása",
       "tabs": {
-        "oauth": "OAuth bejelentkezés"
+        "oauth": "OAuth bejelentkezés",
+        "all": "Összes",
+        "media": "Média",
+        "platform": "Platformok"
       },
       "topP": "Top-P",
       "trial": {
@@ -4438,6 +5164,65 @@ export default {
         "loading": "Használat betöltése...",
         "outputTokens": "Kimeneti tokenek",
         "requests": "Kérések"
+      },
+      "keyLabel": "Címke",
+      "models": "Modellek",
+      "perImage": "/kép",
+      "perMillionTokens": "1 M tokenenként",
+      "perSecond": "/mp",
+      "perVideo": "/videó",
+      "addApiKey": "API-kulcs hozzáadása",
+      "addCustom": "Egyéni hozzáadása",
+      "addCustomProvider": "Egyéni szolgáltató hozzáadása",
+      "addKey": "Kulcs hozzáadása",
+      "addModelPricing": "Modellárazás hozzáadása",
+      "apiKey": "API-kulcs",
+      "apiKeys": "API-kulcsok",
+      "baseUrl": "Alap URL",
+      "cachePrice": "Gyorsítótár ára",
+      "changeIcon": "Ikon módosítása",
+      "clearAll": "Összes törlése",
+      "configureModels": "Konfigurálás",
+      "confirmDelete": "Biztosan törli ezt a szolgáltatót?",
+      "confirmRemovePricing": "Biztosan eltávolítja ezt az egyéni árazást?",
+      "customPricing": "Egyéni árazás",
+      "default": "Alapértelmezett",
+      "defaultPlaceholder": "Alapértelmezett használata",
+      "defaultPricing": "Alapértelmezett árazás",
+      "detectCapabilities": "Felismerés",
+      "detected": "észlelve",
+      "detectedMax": "Észlelt maximum",
+      "detecting": "Felismerés...",
+      "editModelParams": "Modellparaméterek szerkesztése",
+      "editPricing": "Árazás szerkesztése",
+      "filtered": "szűrt",
+      "filteredModels": "Csak az engedélyezett modellek jelennek meg",
+      "inputPrice": "Bemeneti ár",
+      "maxTokens": "Tartalmi korlát",
+      "maxTokensHint": "A kimenet maximális hossza. Hagyja üresen a modell alapértelmezett értékének használatához.",
+      "mediaUnitHint": "USD egységenként (pl. $0.04 képenként, $0.10 videómásodpercenként)",
+      "modelId": "Modellazonosító",
+      "modelParams": "Modellparaméterek",
+      "noKeys": "Nincsenek API-kulcsok beállítva",
+      "noModelsAvailable": "Ehhez a szolgáltatóhoz nem érhetők el modellek",
+      "oauth": {
+        "title": "OAuth kapcsolat",
+        "connect": "Kapcsolódás",
+        "disconnect": "Leválasztás",
+        "connected": "Az OAuth sikeresen csatlakozott",
+        "notConnected": "Nincs csatlakoztatva",
+        "connectFailed": "Az OAuth-kapcsolat sikertelen",
+        "disconnected": "Az OAuth le lett választva",
+        "disconnectFailed": "Az OAuth leválasztása sikertelen",
+        "browserOpened": "A böngésző megnyílt a hitelesítéshez",
+        "deviceFlow": "GitHub eszközazonosítás",
+        "deviceFlowInstructions": "Adja meg az alábbi kódot a GitHubon a hozzáférés engedélyezéséhez:",
+        "openGitHub": "GitHub megnyitása",
+        "done": "Engedélyeztem",
+        "loadingQuota": "Előfizetési adatok betöltése...",
+        "quotaUnavailable": "Az előfizetési adatok nem érhetők el",
+        "modelQuota": "Modellek kvótája",
+        "addAccount": "Fiók hozzáadása"
       }
     }
   },
@@ -4505,8 +5290,40 @@ export default {
             "request": "Certificato gratuito",
             "requestFailed": "Impossibile richiedere il certificato",
             "httpChallenge": "Verifica HTTP-01",
-            "dnsChallenge": "Verifica DNS-01"
-          }
+            "dnsChallenge": "Verifica DNS-01",
+            "title": "Richiedi un certificato gratuito"
+          },
+          "title": "Configurazione TLS/HTTPS",
+          "description": "Configura i certificati SSL/TLS per connessioni HTTPS sicure",
+          "uploadCert": "Carica certificato",
+          "selfSigned": "Autofirmato",
+          "generateSelfSigned": "Genera certificato autofirmato",
+          "certActive": "Certificato attivo",
+          "selfSignedLabel": "Autofirmato",
+          "noCert": "Nessun certificato configurato. HTTPS è disabilitato.",
+          "domains": "Domini",
+          "issuer": "Emittente",
+          "validFrom": "Valido dal",
+          "validUntil": "Valido fino al",
+          "expired": "Scaduto",
+          "daysLeft": "{days} giorni rimanenti",
+          "certPem": "Certificato (PEM)",
+          "keyPem": "Chiave privata (PEM)",
+          "certKeyRequired": "Sono richiesti il certificato e la chiave privata",
+          "certUploaded": "Certificato caricato con successo",
+          "uploadFailed": "Caricamento del certificato non riuscito",
+          "selfSignedGenerated": "Certificato autofirmato generato",
+          "generateFailed": "Generazione del certificato non riuscita",
+          "validDays": "Giorni di validità",
+          "domainsHint": "Elenco di domini o indirizzi IP separati da virgole",
+          "httpsOnly": "Solo HTTPS",
+          "httpsOnlyDescription": "Reindirizza tutte le richieste HTTP a HTTPS. Richiede un certificato valido.",
+          "httpsOnlyEnabled": "Modalità solo HTTPS abilitata",
+          "httpsOnlyDisabled": "Modalità solo HTTPS disabilitata",
+          "updateFailed": "Impossibile aggiornare le impostazioni TLS",
+          "reload": "Ricarica",
+          "certReloaded": "Certificato ricaricato con successo",
+          "reloadFailed": "Impossibile ricaricare il certificato"
         }
       }
     },
@@ -4569,7 +5386,17 @@ export default {
         "web_search": "Ricerca web",
         "workflows": "Flussi di lavoro",
         "exec": "Esecuzione comandi",
-        "workspace_file": "File area di lavoro"
+        "workspace_file": "File area di lavoro",
+        "web_fetch": "Recupero web",
+        "web_read": "Lettura web",
+        "web_extract": "Estrazione web",
+        "web_crawl": "Crawl web",
+      },
+      "descriptions": {
+        "web_fetch": "Recupera e analizza una pagina web da un URL",
+        "web_read": "Legge una pagina web e restituisce il contenuto principale normalizzato",
+        "web_extract": "Estrae campi strutturati da HTML web o da un URL",
+        "web_crawl": "Esegue il crawl di URL seed con limiti e checkpoint",
       }
     },
     "voiceView": {
@@ -4852,7 +5679,8 @@ export default {
       "preferredModelsHint": "Seleziona i modelli che preferisci. Saranno disponibili solo i modelli selezionati; se non ne selezioni nessuno, saranno disponibili tutti i modelli.",
       "selectPreferredModels": "Seleziona i modelli preferiti",
       "tabs": {
-        "oauth": "Accesso OAuth"
+        "oauth": "Accesso OAuth",
+        "media": "Multimedia"
       },
       "topP": "Top-P",
       "trial": {
@@ -4867,7 +5695,10 @@ export default {
         "loading": "Caricamento utilizzo...",
         "outputTokens": "Token di output",
         "requests": "Richieste"
-      }
+      },
+      "perImage": "/immagine",
+      "perSecond": "/sec.",
+      "perVideo": "/video"
     }
   },
   "ja-JP": {
@@ -4963,7 +5794,17 @@ export default {
         "web_search": "ウェブ検索",
         "workflows": "ワークフロー",
         "exec": "コマンド実行",
-        "workspace_file": "ワークスペースファイル"
+        "workspace_file": "ワークスペースファイル",
+        "web_fetch": "ウェブ取得",
+        "web_read": "ウェブ読取",
+        "web_extract": "ウェブ抽出",
+        "web_crawl": "ウェブクロール",
+      },
+      "descriptions": {
+        "web_fetch": "URL からウェブページを取得して解析します",
+        "web_read": "ウェブページを読み取り、正規化された本文を返します",
+        "web_extract": "ウェブ HTML または URL から構造化フィールドを抽出します",
+        "web_crawl": "制限とチェックポイント付きでシード URL をクロールします",
       }
     },
     "voiceView": {
@@ -5089,7 +5930,8 @@ export default {
       "providerId": "プロバイダーID",
       "retry": "再試行",
       "tabs": {
-        "oauth": "OAuth認証"
+        "oauth": "OAuth認証",
+        "all": "すべて"
       },
       "topP": "Top-P"
     }
@@ -5158,8 +6000,40 @@ export default {
             "request": "무료 인증서",
             "requestFailed": "인증서 요청에 실패했습니다",
             "httpChallenge": "HTTP-01 검증",
-            "dnsChallenge": "DNS-01 검증"
-          }
+            "dnsChallenge": "DNS-01 검증",
+            "title": "무료 인증서 요청"
+          },
+          "title": "TLS/HTTPS 설정",
+          "description": "안전한 HTTPS 연결을 위해 SSL/TLS 인증서를 구성합니다",
+          "uploadCert": "인증서 업로드",
+          "selfSigned": "자체 서명",
+          "generateSelfSigned": "자체 서명 인증서 생성",
+          "certActive": "인증서 활성",
+          "selfSignedLabel": "자체 서명",
+          "noCert": "인증서가 구성되지 않았습니다. HTTPS가 비활성화되어 있습니다.",
+          "domains": "도메인",
+          "issuer": "발급자",
+          "validFrom": "유효 시작일",
+          "validUntil": "유효 종료일",
+          "expired": "만료됨",
+          "daysLeft": "{days}일 남음",
+          "certPem": "인증서 (PEM)",
+          "keyPem": "개인 키 (PEM)",
+          "certKeyRequired": "인증서와 개인 키가 필요합니다",
+          "certUploaded": "인증서가 성공적으로 업로드되었습니다",
+          "uploadFailed": "인증서 업로드에 실패했습니다",
+          "selfSignedGenerated": "자체 서명 인증서가 생성되었습니다",
+          "generateFailed": "인증서 생성에 실패했습니다",
+          "validDays": "유효 기간(일)",
+          "domainsHint": "쉼표로 구분된 도메인 또는 IP 주소 목록",
+          "httpsOnly": "HTTPS 전용",
+          "httpsOnlyDescription": "모든 HTTP 요청을 HTTPS로 리디렉션합니다. 유효한 인증서가 필요합니다.",
+          "httpsOnlyEnabled": "HTTPS 전용 모드가 활성화되었습니다",
+          "httpsOnlyDisabled": "HTTPS 전용 모드가 비활성화되었습니다",
+          "updateFailed": "TLS 설정 업데이트에 실패했습니다",
+          "reload": "다시 로드",
+          "certReloaded": "인증서를 성공적으로 다시 불러왔습니다",
+          "reloadFailed": "인증서 다시 불러오기에 실패했습니다"
         }
       }
     },
@@ -5222,7 +6096,17 @@ export default {
         "web_search": "웹 검색",
         "workflows": "워크플로우",
         "exec": "명령 실행",
-        "workspace_file": "워크스페이스 파일"
+        "workspace_file": "워크스페이스 파일",
+        "web_fetch": "웹 가져오기",
+        "web_read": "웹 읽기",
+        "web_extract": "웹 추출",
+        "web_crawl": "웹 크롤링",
+      },
+      "descriptions": {
+        "web_fetch": "URL로 웹페이지를 가져와 파싱합니다",
+        "web_read": "웹페이지를 읽고 정규화된 본문을 반환합니다",
+        "web_extract": "웹 HTML 또는 URL에서 구조화된 필드를 추출합니다",
+        "web_crawl": "제한과 체크포인트를 사용해 시드 URL을 크롤링합니다",
       }
     },
     "voiceView": {
@@ -5473,7 +6357,8 @@ export default {
       "preferredModelsHint": "선호하는 모델을 선택하세요. 선택한 모델만 사용할 수 있으며, 아무것도 선택하지 않으면 모든 모델을 사용할 수 있습니다.",
       "selectPreferredModels": "선호 모델 선택",
       "tabs": {
-        "oauth": "OAuth 로그인"
+        "oauth": "OAuth 로그인",
+        "all": "전체"
       },
       "topP": "Top-P",
       "trial": {
@@ -5555,8 +6440,40 @@ export default {
             "request": "സൗജന്യ സർട്ടിഫിക്കറ്റ്",
             "requestFailed": "സർട്ടിഫിക്കറ്റ് അഭ്യർത്ഥിക്കാൻ കഴിഞ്ഞില്ല",
             "httpChallenge": "HTTP-01 സ്ഥിരീകരണം",
-            "dnsChallenge": "DNS-01 സ്ഥിരീകരണം"
-          }
+            "dnsChallenge": "DNS-01 സ്ഥിരീകരണം",
+            "title": "സൗജന്യ സർട്ടിഫിക്കറ്റ് അഭ്യർത്ഥിക്കുക"
+          },
+          "title": "TLS/HTTPS ക്രമീകരണം",
+          "description": "സുരക്ഷിതമായ HTTPS കണക്ഷനുകൾക്കായി SSL/TLS സർട്ടിഫിക്കറ്റുകൾ ക്രമീകരിക്കുക",
+          "uploadCert": "സർട്ടിഫിക്കറ്റ് അപ്‌ലോഡ് ചെയ്യുക",
+          "selfSigned": "സ്വയം ഒപ്പിട്ടത്",
+          "generateSelfSigned": "സ്വയം ഒപ്പിട്ട സർട്ടിഫിക്കറ്റ് സൃഷ്ടിക്കുക",
+          "certActive": "സർട്ടിഫിക്കറ്റ് സജീവം",
+          "selfSignedLabel": "സ്വയം ഒപ്പിട്ടത്",
+          "noCert": "ഒരു സർട്ടിഫിക്കറ്റും ക്രമീകരിച്ചിട്ടില്ല. HTTPS പ്രവർത്തനരഹിതമാണ്.",
+          "domains": "ഡൊമെയ്‌നുകൾ",
+          "issuer": "ഇഷ്യൂവർ",
+          "validFrom": "സാധുവാകുന്നത്",
+          "validUntil": "സാധുവായ കാലാവധി അവസാനിക്കുന്നത്",
+          "expired": "കാലഹരണപ്പെട്ടു",
+          "daysLeft": "{days} ദിവസം ശേഷിക്കുന്നു",
+          "certPem": "സർട്ടിഫിക്കറ്റ് (PEM)",
+          "keyPem": "സ്വകാര്യ കീ (PEM)",
+          "certKeyRequired": "സർട്ടിഫിക്കറ്റും സ്വകാര്യ കീയും ആവശ്യമാണ്",
+          "certUploaded": "സർട്ടിഫിക്കറ്റ് വിജയകരമായി അപ്‌ലോഡ് ചെയ്തു",
+          "uploadFailed": "സർട്ടിഫിക്കറ്റ് അപ്‌ലോഡ് ചെയ്യാനായില്ല",
+          "selfSignedGenerated": "സ്വയം ഒപ്പിട്ട സർട്ടിഫിക്കറ്റ് സൃഷ്ടിച്ചു",
+          "generateFailed": "സർട്ടിഫിക്കറ്റ് സൃഷ്ടിക്കാനായില്ല",
+          "validDays": "സാധുവായ ദിവസങ്ങൾ",
+          "domainsHint": "കോമ ഉപയോഗിച്ച് വേർതിരിച്ച ഡൊമെയ്ൻകളുടെയോ IP വിലാസങ്ങളുടെയോ പട്ടിക",
+          "httpsOnly": "HTTPS മാത്രം",
+          "httpsOnlyDescription": "എല്ലാ HTTP അഭ്യർത്ഥനകളും HTTPS ലേക്ക് റീഡയറക്ട് ചെയ്യുക. സാധുവായ സർട്ടിഫിക്കറ്റ് ആവശ്യമാണ്.",
+          "httpsOnlyEnabled": "HTTPS-മാത്രം മോഡ് പ്രവർത്തനക്ഷമമാക്കി",
+          "httpsOnlyDisabled": "HTTPS-മാത്രം മോഡ് പ്രവർത്തനരഹിതമാക്കി",
+          "updateFailed": "TLS ക്രമീകരണങ്ങൾ പുതുക്കാനായില്ല",
+          "reload": "വീണ്ടും ലോഡ് ചെയ്യുക",
+          "certReloaded": "സർട്ടിഫിക്കറ്റ് വിജയകരമായി വീണ്ടും ലോഡ് ചെയ്തു",
+          "reloadFailed": "സർട്ടിഫിക്കറ്റ് വീണ്ടും ലോഡ് ചെയ്യാനായില്ല"
         }
       }
     },
@@ -5619,7 +6536,17 @@ export default {
         "web_search": "വെബ് തിരയൽ",
         "workflows": "പ്രവർത്തനപ്രവാഹങ്ങൾ",
         "exec": "കമാൻഡ് പ്രവർത്തനം",
-        "workspace_file": "വർക്ക്‌സ്‌പേസ് ഫയൽ"
+        "workspace_file": "വർക്ക്‌സ്‌പേസ് ഫയൽ",
+        "web_fetch": "വെബ് ഫെച്ച്",
+        "web_read": "വെബ് വായന",
+        "web_extract": "വെബ് എക്സ്ട്രാക്ഷൻ",
+        "web_crawl": "വെബ് ക്രോൾ",
+      },
+      "descriptions": {
+        "web_fetch": "ഒരു URL ൽ നിന്ന് വെബ് പേജ് ഫെച്ച് ചെയ്ത് പാഴ്സ് ചെയ്യുന്നു",
+        "web_read": "ഒരു വെബ് പേജ് വായിച്ച് ക്രമീകരിച്ച പ്രധാന ഉള്ളടക്കം മടക്കിനൽകുന്നു",
+        "web_extract": "വെബ് HTML ല്‍നിന്നോ URL ല്‍നിന്നോ ഘടനാബദ്ധമായ ഫീൽഡുകൾ പുറത്തെടുക്കുന്നു",
+        "web_crawl": "പരിധികളും ചെക്ക്പോയിന്റുകളും ഉപയോഗിച്ച് സീഡ് URL കൾ ക്രോൾ ചെയ്യുന്നു",
       }
     },
     "voiceView": {
@@ -5905,7 +6832,10 @@ export default {
       "preferredModelsHint": "നിങ്ങൾക്ക് ഇഷ്ടമുള്ള മോഡലുകൾ തിരഞ്ഞെടുക്കുക. തിരഞ്ഞെടുക്കപ്പെട്ട മോഡലുകൾ മാത്രം ലഭ്യമാകും; ഒന്നും തിരഞ്ഞെടുക്കാത്ത പക്ഷം എല്ലാ മോഡലുകളും ലഭ്യമാകും.",
       "selectPreferredModels": "മുൻഗണനാ മോഡലുകൾ തിരഞ്ഞെടുക്കുക",
       "tabs": {
-        "oauth": "OAuth സൈൻ-ഇൻ"
+        "oauth": "OAuth സൈൻ-ഇൻ",
+        "all": "എല്ലാം",
+        "media": "മീഡിയ",
+        "platform": "പ്ലാറ്റ്ഫോം"
       },
       "topP": "Top-P",
       "trial": {
@@ -5920,6 +6850,65 @@ export default {
         "loading": "ഉപയോഗം ലോഡ് ചെയ്യുന്നു...",
         "outputTokens": "ഔട്ട്പുട്ട് ടോക്കണുകൾ",
         "requests": "അഭ്യർത്ഥനകൾ"
+      },
+      "keyLabel": "ലേബൽ",
+      "models": "മോഡലുകൾ",
+      "perImage": "/ചിത്രം",
+      "perMillionTokens": "ഓരോ 10 ലക്ഷം ടോക്കണിന്",
+      "perSecond": "/സെ",
+      "perVideo": "/വീഡിയോ",
+      "addApiKey": "API കീ ചേർക്കുക",
+      "addCustom": "ഇഷ്ടാനുസൃതം ചേർക്കുക",
+      "addCustomProvider": "ഇഷ്ടാനുസൃത പ്രൊവൈഡർ ചേർക്കുക",
+      "addKey": "കീ ചേർക്കുക",
+      "addModelPricing": "മോഡൽ നിരക്കുകൾ ചേർക്കുക",
+      "apiKey": "API കീ",
+      "apiKeys": "API കീകൾ",
+      "baseUrl": "അടിസ്ഥാന URL",
+      "cachePrice": "കാഷെ നിരക്ക്",
+      "changeIcon": "ഐക്കൺ മാറ്റുക",
+      "clearAll": "എല്ലാം മായ്ക്കുക",
+      "configureModels": "ക്രമീകരിക്കുക",
+      "confirmDelete": "ഈ പ്രൊവൈഡർ ഇല്ലാതാക്കണമെന്ന് തീർച്ചയാണോ?",
+      "confirmRemovePricing": "ഈ ഇഷ്ടാനുസൃത നിരക്ക് നീക്കണമെന്ന് തീർച്ചയാണോ?",
+      "customPricing": "ഇഷ്ടാനുസൃത നിരക്ക്",
+      "default": "ഡിഫോൾട്ട്",
+      "defaultPlaceholder": "ഡിഫോൾട്ട് ഉപയോഗിക്കുക",
+      "defaultPricing": "ഡിഫോൾട്ട് നിരക്ക്",
+      "detectCapabilities": "കണ്ടെത്തുക",
+      "detected": "കണ്ടെത്തി",
+      "detectedMax": "കണ്ടെത്തിയ പരമാവധി",
+      "detecting": "കണ്ടെത്തുന്നു...",
+      "editModelParams": "മോഡൽ പാരാമീറ്ററുകൾ തിരുത്തുക",
+      "editPricing": "നിരക്ക് തിരുത്തുക",
+      "filtered": "ഫിൽട്ടർ ചെയ്തത്",
+      "filteredModels": "അനുവദിച്ച മോഡലുകൾ മാത്രം കാണിക്കുന്നു",
+      "inputPrice": "ഇൻപുട്ട് നിരക്ക്",
+      "maxTokens": "ഉള്ളടക്ക പരിധി",
+      "maxTokensHint": "ഔട്ട്പുട്ടിന്റെ പരമാവധി നീളം. മോഡലിന്റെ ഡിഫോൾട്ട് ഉപയോഗിക്കാൻ ഇത് ഒഴിവാക്കാം.",
+      "mediaUnitHint": "ഒരു യൂണിറ്റിന് USD (ഉദാ. ഒരു ചിത്രത്തിന് $0.04, ഒരു വീഡിയോ സെക്കന്റിന് $0.10)",
+      "modelId": "മോഡൽ ID",
+      "modelParams": "മോഡൽ പാരാമീറ്ററുകൾ",
+      "noKeys": "API കീകൾ ക്രമീകരിച്ചിട്ടില്ല",
+      "noModelsAvailable": "ഈ പ്രൊവൈഡറിൽ നിന്ന് ലഭ്യമായ മോഡലുകളൊന്നുമില്ല",
+      "oauth": {
+        "title": "OAuth കണക്ഷൻ",
+        "connect": "കണക്റ്റ് ചെയ്യുക",
+        "disconnect": "ബന്ധം വിച്ഛേദിക്കുക",
+        "connected": "OAuth വിജയകരമായി ബന്ധിപ്പിച്ചു",
+        "notConnected": "ബന്ധിപ്പിച്ചിട്ടില്ല",
+        "connectFailed": "OAuth കണക്ഷൻ പരാജയപ്പെട്ടു",
+        "disconnected": "OAuth ബന്ധം വിച്ഛേദിച്ചു",
+        "disconnectFailed": "OAuth ബന്ധം വിച്ഛേദിക്കാൻ കഴിഞ്ഞില്ല",
+        "browserOpened": "ഓതന്റിക്കേഷനായി ബ്രൗസർ തുറന്നു",
+        "deviceFlow": "GitHub ഉപകരണ അനുമതി",
+        "deviceFlowInstructions": "പ്രവേശനം അനുവദിക്കാൻ GitHub-ൽ താഴെയുള്ള കോഡ് നൽകുക:",
+        "openGitHub": "GitHub തുറക്കുക",
+        "done": "ഞാൻ അനുമതി നൽകി",
+        "loadingQuota": "സബ്സ്ക്രിപ്ഷൻ വിവരങ്ങൾ ലോഡ് ചെയ്യുന്നു...",
+        "quotaUnavailable": "സബ്സ്ക്രിപ്ഷൻ വിവരങ്ങൾ ലഭ്യമല്ല",
+        "modelQuota": "മോഡൽ ക്വോട്ട",
+        "addAccount": "അക്കൗണ്ട് ചേർക്കുക"
       }
     }
   },
@@ -5987,8 +6976,40 @@ export default {
             "request": "Gratis sertifikat",
             "requestFailed": "Kunne ikke be om sertifikat",
             "httpChallenge": "HTTP-01-verifisering",
-            "dnsChallenge": "DNS-01-verifisering"
-          }
+            "dnsChallenge": "DNS-01-verifisering",
+            "title": "Be om gratis sertifikat"
+          },
+          "title": "TLS/HTTPS-konfigurasjon",
+          "description": "Konfigurer SSL/TLS-sertifikater for sikre HTTPS-tilkoblinger",
+          "uploadCert": "Last opp sertifikat",
+          "selfSigned": "Selvsignert",
+          "generateSelfSigned": "Generer selvsignert sertifikat",
+          "certActive": "Sertifikat aktivt",
+          "selfSignedLabel": "Selvsignert",
+          "noCert": "Intet sertifikat konfigurert. HTTPS er deaktivert.",
+          "domains": "Domener",
+          "issuer": "Utsteder",
+          "validFrom": "Gyldig fra",
+          "validUntil": "Gyldig til",
+          "expired": "Utløpt",
+          "daysLeft": "{days} dager igjen",
+          "certPem": "Sertifikat (PEM)",
+          "keyPem": "Privat nøkkel (PEM)",
+          "certKeyRequired": "Sertifikat og privat nøkkel er påkrevd",
+          "certUploaded": "Sertifikat lastet opp",
+          "uploadFailed": "Kunne ikke laste opp sertifikat",
+          "selfSignedGenerated": "Selvsignert sertifikat generert",
+          "generateFailed": "Kunne ikke generere sertifikat",
+          "validDays": "Gyldighet (dager)",
+          "domainsHint": "Kommaseparert liste over domener eller IP-adresser",
+          "httpsOnly": "Kun HTTPS",
+          "httpsOnlyDescription": "Omdiriger alle HTTP-forespørsler til HTTPS. Krever et gyldig sertifikat.",
+          "httpsOnlyEnabled": "Kun-HTTPS-modus aktivert",
+          "httpsOnlyDisabled": "Kun-HTTPS-modus deaktivert",
+          "updateFailed": "Kunne ikke oppdatere TLS-innstillinger",
+          "reload": "Last på nytt",
+          "certReloaded": "Sertifikat lastet inn på nytt",
+          "reloadFailed": "Kunne ikke laste inn sertifikat på nytt"
         }
       }
     },
@@ -6051,7 +7072,17 @@ export default {
         "web_search": "Nettsøk",
         "workflows": "Arbeidsflyter",
         "exec": "Kommandokjøring",
-        "workspace_file": "Arbeidsområdefil"
+        "workspace_file": "Arbeidsområdefil",
+        "web_fetch": "Webhenting",
+        "web_read": "Weblesing",
+        "web_extract": "Webuttrekk",
+        "web_crawl": "Webgjennomsøking",
+      },
+      "descriptions": {
+        "web_fetch": "Henter og tolker en nettside fra en URL",
+        "web_read": "Leser en nettside og returnerer normalisert hovedinnhold",
+        "web_extract": "Ekstraherer strukturerte felt fra web-HTML eller en URL",
+        "web_crawl": "Gjennomsøker start-URL-er med grenser og sjekkpunkter",
       }
     },
     "voiceView": {
@@ -6337,7 +7368,10 @@ export default {
       "preferredModelsHint": "Kryss av modellene du foretrekker. Bare avkryssede modeller vil være tilgjengelige; hvis ingen er avkrysset, vil alle modeller være tilgjengelige.",
       "selectPreferredModels": "Velg foretrukne modeller",
       "tabs": {
-        "oauth": "OAuth-innlogging"
+        "oauth": "OAuth-innlogging",
+        "all": "Alle",
+        "media": "Medier",
+        "platform": "Plattform"
       },
       "topP": "Top-P",
       "trial": {
@@ -6352,6 +7386,65 @@ export default {
         "loading": "Laster inn bruk...",
         "outputTokens": "Utdata-token",
         "requests": "Forespørsler"
+      },
+      "keyLabel": "Etikett",
+      "models": "Modeller",
+      "perImage": "/bilde",
+      "perMillionTokens": "per 1 mill. token",
+      "perSecond": "/sek",
+      "perVideo": "/video",
+      "addApiKey": "Legg til API-nøkkel",
+      "addCustom": "Legg til egendefinert",
+      "addCustomProvider": "Legg til egendefinert leverandør",
+      "addKey": "Legg til nøkkel",
+      "addModelPricing": "Legg til modellprising",
+      "apiKey": "API-nøkkel",
+      "apiKeys": "API-nøkler",
+      "baseUrl": "Basis-URL",
+      "cachePrice": "Cache-pris",
+      "changeIcon": "Endre ikon",
+      "clearAll": "Fjern alle",
+      "configureModels": "Konfigurer",
+      "confirmDelete": "Er du sikker på at du vil slette denne leverandøren?",
+      "confirmRemovePricing": "Er du sikker på at du vil fjerne denne egendefinerte prisingen?",
+      "customPricing": "Egendefinert prising",
+      "default": "Standard",
+      "defaultPlaceholder": "Bruk standard",
+      "defaultPricing": "Standardprising",
+      "detectCapabilities": "Oppdag",
+      "detected": "oppdaget",
+      "detectedMax": "Oppdaget maks",
+      "detecting": "Oppdager...",
+      "editModelParams": "Rediger modellparametere",
+      "editPricing": "Rediger prising",
+      "filtered": "filtrert",
+      "filteredModels": "Viser bare tillatte modeller",
+      "inputPrice": "Inndata-pris",
+      "maxTokens": "Innholdsgrense",
+      "maxTokensHint": "Maksimal utgangslengde. La stå tomt for å bruke modellens standardverdi.",
+      "mediaUnitHint": "USD per enhet (f.eks. $0.04 per bilde, $0.10 per sekund video)",
+      "modelId": "Modell-ID",
+      "modelParams": "Modellparametere",
+      "noKeys": "Ingen API-nøkler er konfigurert",
+      "noModelsAvailable": "Ingen modeller er tilgjengelige fra denne leverandøren",
+      "oauth": {
+        "title": "OAuth-tilkobling",
+        "connect": "Koble til",
+        "disconnect": "Koble fra",
+        "connected": "OAuth koblet til",
+        "notConnected": "Ikke tilkoblet",
+        "connectFailed": "OAuth-tilkobling mislyktes",
+        "disconnected": "OAuth koblet fra",
+        "disconnectFailed": "Kunne ikke koble fra OAuth",
+        "browserOpened": "Nettleseren ble åpnet for autentisering",
+        "deviceFlow": "GitHub-enhetsautorisasjon",
+        "deviceFlowInstructions": "Skriv inn koden nedenfor på GitHub for å autorisere tilgang:",
+        "openGitHub": "Åpne GitHub",
+        "done": "Jeg har autorisert",
+        "loadingQuota": "Laster inn abonnementsinformasjon...",
+        "quotaUnavailable": "Abonnementsinformasjon er ikke tilgjengelig",
+        "modelQuota": "Modellkvote",
+        "addAccount": "Legg til konto"
       }
     }
   },
@@ -6419,8 +7512,40 @@ export default {
             "request": "Gratis certificaat",
             "requestFailed": "Certificaat aanvragen mislukt",
             "httpChallenge": "HTTP-01-verificatie",
-            "dnsChallenge": "DNS-01-verificatie"
-          }
+            "dnsChallenge": "DNS-01-verificatie",
+            "title": "Gratis certificaat aanvragen"
+          },
+          "title": "TLS/HTTPS-configuratie",
+          "description": "Configureer SSL/TLS-certificaten voor veilige HTTPS-verbindingen",
+          "uploadCert": "Certificaat uploaden",
+          "selfSigned": "Zelfondertekend",
+          "generateSelfSigned": "Zelfondertekend certificaat genereren",
+          "certActive": "Certificaat actief",
+          "selfSignedLabel": "Zelfondertekend",
+          "noCert": "Geen certificaat geconfigureerd. HTTPS is uitgeschakeld.",
+          "domains": "Domeinen",
+          "issuer": "Uitgever",
+          "validFrom": "Geldig vanaf",
+          "validUntil": "Geldig tot",
+          "expired": "Verlopen",
+          "daysLeft": "Nog {days} dagen",
+          "certPem": "Certificaat (PEM)",
+          "keyPem": "Privésleutel (PEM)",
+          "certKeyRequired": "Certificaat en privésleutel zijn vereist",
+          "certUploaded": "Certificaat succesvol geüpload",
+          "uploadFailed": "Uploaden van certificaat mislukt",
+          "selfSignedGenerated": "Zelfondertekend certificaat gegenereerd",
+          "generateFailed": "Genereren van certificaat mislukt",
+          "validDays": "Geldigheid (dagen)",
+          "domainsHint": "Door komma's gescheiden lijst van domeinen of IP-adressen",
+          "httpsOnly": "Alleen HTTPS",
+          "httpsOnlyDescription": "Leid alle HTTP-verzoeken om naar HTTPS. Vereist een geldig certificaat.",
+          "httpsOnlyEnabled": "Alleen-HTTPS-modus ingeschakeld",
+          "httpsOnlyDisabled": "Alleen-HTTPS-modus uitgeschakeld",
+          "updateFailed": "Bijwerken van TLS-instellingen mislukt",
+          "reload": "Opnieuw laden",
+          "certReloaded": "Certificaat succesvol opnieuw geladen",
+          "reloadFailed": "Opnieuw laden van certificaat mislukt"
         }
       }
     },
@@ -6483,7 +7608,17 @@ export default {
         "web_search": "Webzoeken",
         "workflows": "Werkstromen",
         "exec": "Opdrachtuitvoering",
-        "workspace_file": "Werkruimtebestand"
+        "workspace_file": "Werkruimtebestand",
+        "web_fetch": "Web ophalen",
+        "web_read": "Web lezen",
+        "web_extract": "Webextractie",
+        "web_crawl": "Webcrawl",
+      },
+      "descriptions": {
+        "web_fetch": "Haalt een webpagina op en parseert die via een URL",
+        "web_read": "Leest een webpagina en geeft genormaliseerde hoofdinhoud terug",
+        "web_extract": "Extraheert gestructureerde velden uit web-HTML of een URL",
+        "web_crawl": "Crawlt start-URL's met limieten en checkpoints",
       }
     },
     "voiceView": {
@@ -6769,7 +7904,9 @@ export default {
       "preferredModelsHint": "Vink de modellen aan die je prefereert. Alleen aangevinkte modellen zijn beschikbaar; als er geen zijn aangevinkt, zijn alle modellen beschikbaar.",
       "selectPreferredModels": "Voorkeursmodellen selecteren",
       "tabs": {
-        "oauth": "OAuth-aanmelding"
+        "oauth": "OAuth-aanmelding",
+        "media": "Mediadiensten",
+        "platform": "Platformdiensten"
       },
       "topP": "Top-P",
       "trial": {
@@ -6784,7 +7921,11 @@ export default {
         "loading": "Gebruik laden...",
         "outputTokens": "Uitvoertokens",
         "requests": "Aanvragen"
-      }
+      },
+      "keyLabel": "Sleutellabel",
+      "perMillionTokens": "per 1 mln tokens",
+      "perSecond": "/sec.",
+      "perVideo": "/video"
     }
   },
   "pl-PL": {
@@ -6851,8 +7992,40 @@ export default {
             "request": "Bezpłatny certyfikat",
             "requestFailed": "Nie udało się zamówić certyfikatu",
             "httpChallenge": "Weryfikacja HTTP-01",
-            "dnsChallenge": "Weryfikacja DNS-01"
-          }
+            "dnsChallenge": "Weryfikacja DNS-01",
+            "title": "Poproś o bezpłatny certyfikat"
+          },
+          "title": "Konfiguracja TLS/HTTPS",
+          "description": "Skonfiguruj certyfikaty SSL/TLS dla bezpiecznych połączeń HTTPS",
+          "uploadCert": "Prześlij certyfikat",
+          "selfSigned": "Samopodpisany",
+          "generateSelfSigned": "Wygeneruj certyfikat samopodpisany",
+          "certActive": "Certyfikat aktywny",
+          "selfSignedLabel": "Samopodpisany",
+          "noCert": "Nie skonfigurowano certyfikatu. HTTPS jest wyłączone.",
+          "domains": "Domeny",
+          "issuer": "Wystawca",
+          "validFrom": "Ważny od",
+          "validUntil": "Ważny do",
+          "expired": "Wygasł",
+          "daysLeft": "Pozostało {days} dni",
+          "certPem": "Certyfikat (PEM)",
+          "keyPem": "Klucz prywatny (PEM)",
+          "certKeyRequired": "Wymagane są certyfikat i klucz prywatny",
+          "certUploaded": "Certyfikat został pomyślnie przesłany",
+          "uploadFailed": "Nie udało się przesłać certyfikatu",
+          "selfSignedGenerated": "Wygenerowano certyfikat samopodpisany",
+          "generateFailed": "Nie udało się wygenerować certyfikatu",
+          "validDays": "Dni ważności",
+          "domainsHint": "Lista domen lub adresów IP oddzielonych przecinkami",
+          "httpsOnly": "Tylko HTTPS",
+          "httpsOnlyDescription": "Przekierowuje wszystkie żądania HTTP do HTTPS. Wymaga ważnego certyfikatu.",
+          "httpsOnlyEnabled": "Tryb tylko HTTPS włączony",
+          "httpsOnlyDisabled": "Tryb tylko HTTPS wyłączony",
+          "updateFailed": "Nie udało się zaktualizować ustawień TLS",
+          "reload": "Przeładuj",
+          "certReloaded": "Certyfikat został pomyślnie przeładowany",
+          "reloadFailed": "Nie udało się przeładować certyfikatu"
         }
       }
     },
@@ -6915,7 +8088,17 @@ export default {
         "web_search": "Wyszukiwanie w sieci",
         "workflows": "Przepływy pracy",
         "exec": "Wykonywanie poleceń",
-        "workspace_file": "Plik obszaru roboczego"
+        "workspace_file": "Plik obszaru roboczego",
+        "web_fetch": "Pobieranie WWW",
+        "web_read": "Odczyt WWW",
+        "web_extract": "Ekstrakcja WWW",
+        "web_crawl": "Przeszukiwanie WWW",
+      },
+      "descriptions": {
+        "web_fetch": "Pobiera i parsuje stronę WWW z adresu URL",
+        "web_read": "Czyta stronę WWW i zwraca znormalizowaną główną treść",
+        "web_extract": "Wyodrębnia ustrukturyzowane pola z HTML strony lub z URL-a",
+        "web_crawl": "Przeszukuje adresy startowe z limitami i punktami kontrolnymi",
       }
     },
     "voiceView": {
@@ -7201,7 +8384,8 @@ export default {
       "preferredModelsHint": "Zaznacz modele, które preferujesz. Dostępne będą tylko zaznaczone modele; jeśli nie zaznaczysz żadnego, dostępne będą wszystkie modele.",
       "selectPreferredModels": "Wybierz preferowane modele",
       "tabs": {
-        "oauth": "Logowanie OAuth"
+        "oauth": "Logowanie OAuth",
+        "media": "Multimedia"
       },
       "topP": "Top-P",
       "trial": {
@@ -7283,8 +8467,40 @@ export default {
             "request": "Certificado grátis",
             "requestFailed": "Falha ao solicitar certificado",
             "httpChallenge": "Verificação HTTP-01",
-            "dnsChallenge": "Verificação DNS-01"
-          }
+            "dnsChallenge": "Verificação DNS-01",
+            "title": "Solicitar certificado gratuito"
+          },
+          "title": "Configuração de TLS/HTTPS",
+          "description": "Configure certificados SSL/TLS para conexões HTTPS seguras",
+          "uploadCert": "Enviar certificado",
+          "selfSigned": "Autoassinado",
+          "generateSelfSigned": "Gerar certificado autoassinado",
+          "certActive": "Certificado ativo",
+          "selfSignedLabel": "Autoassinado",
+          "noCert": "Nenhum certificado configurado. HTTPS está desativado.",
+          "domains": "Domínios",
+          "issuer": "Emissor",
+          "validFrom": "Válido a partir de",
+          "validUntil": "Válido até",
+          "expired": "Expirado",
+          "daysLeft": "Faltam {days} dias",
+          "certPem": "Certificado (PEM)",
+          "keyPem": "Chave privada (PEM)",
+          "certKeyRequired": "Certificado e chave privada são obrigatórios",
+          "certUploaded": "Certificado enviado com sucesso",
+          "uploadFailed": "Falha ao enviar certificado",
+          "selfSignedGenerated": "Certificado autoassinado gerado",
+          "generateFailed": "Falha ao gerar certificado",
+          "validDays": "Dias de validade",
+          "domainsHint": "Lista de domínios ou endereços IP separados por vírgulas",
+          "httpsOnly": "Somente HTTPS",
+          "httpsOnlyDescription": "Redireciona todas as solicitações HTTP para HTTPS. Requer um certificado válido.",
+          "httpsOnlyEnabled": "Modo somente HTTPS ativado",
+          "httpsOnlyDisabled": "Modo somente HTTPS desativado",
+          "updateFailed": "Falha ao atualizar configurações TLS",
+          "reload": "Recarregar",
+          "certReloaded": "Certificado recarregado com sucesso",
+          "reloadFailed": "Falha ao recarregar certificado"
         }
       }
     },
@@ -7347,7 +8563,17 @@ export default {
         "web_search": "Busca na web",
         "workflows": "Fluxos de trabalho",
         "exec": "Execução de comandos",
-        "workspace_file": "Arquivo do espaço de trabalho"
+        "workspace_file": "Arquivo do espaço de trabalho",
+        "web_fetch": "Captura web",
+        "web_read": "Leitura web",
+        "web_extract": "Extração web",
+        "web_crawl": "Rastreamento web",
+      },
+      "descriptions": {
+        "web_fetch": "Obtém e analisa uma página da web a partir de uma URL",
+        "web_read": "Lê uma página da web e retorna o conteúdo principal normalizado",
+        "web_extract": "Extrai campos estruturados de HTML da web ou de uma URL",
+        "web_crawl": "Rastreia URLs semente com limites e checkpoints",
       }
     },
     "voiceView": {
@@ -7645,7 +8871,9 @@ export default {
         "loading": "Carregando uso...",
         "outputTokens": "Tokens de saída",
         "requests": "Solicitações"
-      }
+      },
+      "perImage": "/imagem",
+      "perVideo": "/vídeo"
     }
   },
   "pt-PT": {
@@ -7712,8 +8940,40 @@ export default {
             "request": "Certificado gratuito",
             "requestFailed": "Falha ao solicitar certificado",
             "httpChallenge": "Verificação HTTP-01",
-            "dnsChallenge": "Verificação DNS-01"
-          }
+            "dnsChallenge": "Verificação DNS-01",
+            "title": "Solicitar certificado gratuito"
+          },
+          "title": "Configuração TLS/HTTPS",
+          "description": "Configure certificados SSL/TLS para ligações HTTPS seguras",
+          "uploadCert": "Carregar certificado",
+          "selfSigned": "Autossinado",
+          "generateSelfSigned": "Gerar certificado autossinado",
+          "certActive": "Certificado ativo",
+          "selfSignedLabel": "Autossinado",
+          "noCert": "Nenhum certificado configurado. HTTPS está desativado.",
+          "domains": "Domínios",
+          "issuer": "Emissor",
+          "validFrom": "Válido desde",
+          "validUntil": "Válido até",
+          "expired": "Expirado",
+          "daysLeft": "Faltam {days} dias",
+          "certPem": "Certificado (PEM)",
+          "keyPem": "Chave privada (PEM)",
+          "certKeyRequired": "São necessários um certificado e uma chave privada",
+          "certUploaded": "Certificado carregado com sucesso",
+          "uploadFailed": "Falha ao carregar certificado",
+          "selfSignedGenerated": "Certificado autossinado gerado",
+          "generateFailed": "Falha ao gerar certificado",
+          "validDays": "Dias de validade",
+          "domainsHint": "Lista de domínios ou endereços IP separados por vírgulas",
+          "httpsOnly": "Apenas HTTPS",
+          "httpsOnlyDescription": "Redireciona todos os pedidos HTTP para HTTPS. Requer um certificado válido.",
+          "httpsOnlyEnabled": "Modo apenas HTTPS ativado",
+          "httpsOnlyDisabled": "Modo apenas HTTPS desativado",
+          "updateFailed": "Falha ao atualizar as definições TLS",
+          "reload": "Recarregar",
+          "certReloaded": "Certificado recarregado com sucesso",
+          "reloadFailed": "Falha ao recarregar certificado"
         }
       }
     },
@@ -7776,7 +9036,17 @@ export default {
         "web_search": "Pesquisa na web",
         "workflows": "Fluxos de trabalho",
         "exec": "Execução de comandos",
-        "workspace_file": "Ficheiro da área de trabalho"
+        "workspace_file": "Ficheiro da área de trabalho",
+        "web_fetch": "Captura web",
+        "web_read": "Leitura web",
+        "web_extract": "Extração web",
+        "web_crawl": "Rastreio web",
+      },
+      "descriptions": {
+        "web_fetch": "Obtém e analisa uma página web a partir de um URL",
+        "web_read": "Lê uma página web e devolve o conteúdo principal normalizado",
+        "web_extract": "Extrai campos estruturados de HTML web ou de um URL",
+        "web_crawl": "Faz rastreio de URLs semente com limites e pontos de controlo",
       }
     },
     "voiceView": {
@@ -8074,7 +9344,9 @@ export default {
         "loading": "A carregar utilização...",
         "outputTokens": "Tokens de saída",
         "requests": "Pedidos"
-      }
+      },
+      "perImage": "/imagem",
+      "perVideo": "/vídeo"
     }
   },
   "ro-RO": {
@@ -8141,8 +9413,40 @@ export default {
             "request": "Certificat gratuit",
             "requestFailed": "Solicitarea certificatului a eșuat",
             "httpChallenge": "Verificare HTTP-01",
-            "dnsChallenge": "Verificare DNS-01"
-          }
+            "dnsChallenge": "Verificare DNS-01",
+            "title": "Solicită certificat gratuit"
+          },
+          "title": "Configurare TLS/HTTPS",
+          "description": "Configurați certificatele SSL/TLS pentru conexiuni HTTPS securizate",
+          "uploadCert": "Încarcă certificatul",
+          "selfSigned": "Autosemnat",
+          "generateSelfSigned": "Generează certificat autosemnat",
+          "certActive": "Certificat activ",
+          "selfSignedLabel": "Autosemnat",
+          "noCert": "Nu este configurat niciun certificat. HTTPS este dezactivat.",
+          "domains": "Domenii",
+          "issuer": "Emitent",
+          "validFrom": "Valabil de la",
+          "validUntil": "Valabil până la",
+          "expired": "Expirat",
+          "daysLeft": "Mai sunt {days} zile",
+          "certPem": "Certificat (PEM)",
+          "keyPem": "Cheie privată (PEM)",
+          "certKeyRequired": "Sunt necesare certificatul și cheia privată",
+          "certUploaded": "Certificatul a fost încărcat cu succes",
+          "uploadFailed": "Încărcarea certificatului a eșuat",
+          "selfSignedGenerated": "Certificat autosemnat generat",
+          "generateFailed": "Generarea certificatului a eșuat",
+          "validDays": "Zile de valabilitate",
+          "domainsHint": "Listă de domenii sau adrese IP separate prin virgule",
+          "httpsOnly": "Numai HTTPS",
+          "httpsOnlyDescription": "Redirecționează toate cererile HTTP către HTTPS. Necesită un certificat valid.",
+          "httpsOnlyEnabled": "Modul numai HTTPS a fost activat",
+          "httpsOnlyDisabled": "Modul numai HTTPS a fost dezactivat",
+          "updateFailed": "Actualizarea setărilor TLS a eșuat",
+          "reload": "Reîncarcă",
+          "certReloaded": "Certificatul a fost reîncărcat cu succes",
+          "reloadFailed": "Reîncărcarea certificatului a eșuat"
         }
       }
     },
@@ -8205,7 +9509,17 @@ export default {
         "web_search": "Căutare web",
         "workflows": "Fluxuri de lucru",
         "exec": "Executare comenzi",
-        "workspace_file": "Fișier spațiu de lucru"
+        "workspace_file": "Fișier spațiu de lucru",
+        "web_fetch": "Preluare web",
+        "web_read": "Citire web",
+        "web_extract": "Extracție web",
+        "web_crawl": "Crawl web",
+      },
+      "descriptions": {
+        "web_fetch": "Preia și analizează o pagină web dintr-un URL",
+        "web_read": "Citește o pagină web și returnează conținutul principal normalizat",
+        "web_extract": "Extrage câmpuri structurate din HTML web sau dintr-un URL",
+        "web_crawl": "Parcurge URL-uri seed cu limite și puncte de control",
       }
     },
     "voiceView": {
@@ -8491,7 +9805,10 @@ export default {
       "preferredModelsHint": "Bifați modelele pe care le preferați. Vor fi disponibile doar modelele bifate; dacă nu este bifat niciunul, vor fi disponibile toate modelele.",
       "selectPreferredModels": "Selectați modelele preferate",
       "tabs": {
-        "oauth": "Autentificare OAuth"
+        "oauth": "Autentificare OAuth",
+        "all": "Toate",
+        "media": "Multimedia",
+        "platform": "Platformă"
       },
       "topP": "Top-P",
       "trial": {
@@ -8506,6 +9823,65 @@ export default {
         "loading": "Se încarcă utilizarea...",
         "outputTokens": "Tokenuri de ieșire",
         "requests": "Cereri"
+      },
+      "keyLabel": "Etichetă",
+      "models": "Modele",
+      "perImage": "/imagine",
+      "perMillionTokens": "per 1 mil. tokenuri",
+      "perSecond": "/sec.",
+      "perVideo": "/video",
+      "addApiKey": "Adaugă cheie API",
+      "addCustom": "Adaugă personalizat",
+      "addCustomProvider": "Adaugă furnizor personalizat",
+      "addKey": "Adaugă cheie",
+      "addModelPricing": "Adaugă tarif pentru model",
+      "apiKey": "Cheie API",
+      "apiKeys": "Chei API",
+      "baseUrl": "URL de bază",
+      "cachePrice": "Preț cache",
+      "changeIcon": "Schimbă pictograma",
+      "clearAll": "Șterge tot",
+      "configureModels": "Configurează",
+      "confirmDelete": "Sigur doriți să ștergeți acest furnizor?",
+      "confirmRemovePricing": "Sigur doriți să eliminați acest tarif personalizat?",
+      "customPricing": "Tarif personalizat",
+      "default": "Implicit",
+      "defaultPlaceholder": "Folosește implicit",
+      "defaultPricing": "Tarif implicit",
+      "detectCapabilities": "Detectează",
+      "detected": "detectat",
+      "detectedMax": "Maxim detectat",
+      "detecting": "Se detectează...",
+      "editModelParams": "Editează parametrii modelului",
+      "editPricing": "Editează tariful",
+      "filtered": "filtrat",
+      "filteredModels": "Sunt afișate doar modelele permise",
+      "inputPrice": "Preț intrare",
+      "maxTokens": "Limită de conținut",
+      "maxTokensHint": "Lungimea maximă a răspunsului. Lăsați gol pentru a folosi valoarea implicită a modelului.",
+      "mediaUnitHint": "USD per unitate (de ex. $0.04 per imagine, $0.10 per secundă de video)",
+      "modelId": "ID model",
+      "modelParams": "Parametri model",
+      "noKeys": "Nu sunt configurate chei API",
+      "noModelsAvailable": "Nu există modele disponibile de la acest furnizor",
+      "oauth": {
+        "title": "Conexiune OAuth",
+        "connect": "Conectează",
+        "disconnect": "Deconectează",
+        "connected": "OAuth a fost conectat cu succes",
+        "notConnected": "Neconectat",
+        "connectFailed": "Conectarea OAuth a eșuat",
+        "disconnected": "OAuth a fost deconectat",
+        "disconnectFailed": "Deconectarea OAuth a eșuat",
+        "browserOpened": "Browserul a fost deschis pentru autentificare",
+        "deviceFlow": "Autorizare dispozitiv GitHub",
+        "deviceFlowInstructions": "Introduceți codul de mai jos pe GitHub pentru a autoriza accesul:",
+        "openGitHub": "Deschide GitHub",
+        "done": "Am autorizat",
+        "loadingQuota": "Se încarcă informațiile despre abonament...",
+        "quotaUnavailable": "Informațiile despre abonament nu sunt disponibile",
+        "modelQuota": "Cota modelului",
+        "addAccount": "Adaugă cont"
       }
     }
   },
@@ -8573,8 +9949,40 @@ export default {
             "request": "Бесплатный сертификат",
             "requestFailed": "Не удалось запросить сертификат",
             "httpChallenge": "Проверка HTTP-01",
-            "dnsChallenge": "Проверка DNS-01"
-          }
+            "dnsChallenge": "Проверка DNS-01",
+            "title": "Запросить бесплатный сертификат"
+          },
+          "title": "Настройка TLS/HTTPS",
+          "description": "Настройте сертификаты SSL/TLS для безопасных HTTPS-подключений",
+          "uploadCert": "Загрузить сертификат",
+          "selfSigned": "Самоподписанный",
+          "generateSelfSigned": "Создать самоподписанный сертификат",
+          "certActive": "Сертификат активен",
+          "selfSignedLabel": "Самоподписанный",
+          "noCert": "Сертификат не настроен. HTTPS отключён.",
+          "domains": "Домены",
+          "issuer": "Издатель",
+          "validFrom": "Действителен с",
+          "validUntil": "Действителен до",
+          "expired": "Истёк",
+          "daysLeft": "Осталось {days} дней",
+          "certPem": "Сертификат (PEM)",
+          "keyPem": "Закрытый ключ (PEM)",
+          "certKeyRequired": "Требуются сертификат и закрытый ключ",
+          "certUploaded": "Сертификат успешно загружен",
+          "uploadFailed": "Не удалось загрузить сертификат",
+          "selfSignedGenerated": "Самоподписанный сертификат создан",
+          "generateFailed": "Не удалось создать сертификат",
+          "validDays": "Срок действия (дни)",
+          "domainsHint": "Список доменов или IP-адресов через запятую",
+          "httpsOnly": "Только HTTPS",
+          "httpsOnlyDescription": "Перенаправляет все HTTP-запросы на HTTPS. Требуется действительный сертификат.",
+          "httpsOnlyEnabled": "Режим только HTTPS включён",
+          "httpsOnlyDisabled": "Режим только HTTPS отключён",
+          "updateFailed": "Не удалось обновить настройки TLS",
+          "reload": "Перезагрузить",
+          "certReloaded": "Сертификат успешно перезагружен",
+          "reloadFailed": "Не удалось перезагрузить сертификат"
         }
       }
     },
@@ -8637,7 +10045,17 @@ export default {
         "web_search": "Веб-поиск",
         "workflows": "Рабочие процессы",
         "exec": "Выполнение команд",
-        "workspace_file": "Файл рабочей области"
+        "workspace_file": "Файл рабочей области",
+        "web_fetch": "Веб-загрузка",
+        "web_read": "Веб-чтение",
+        "web_extract": "Веб-извлечение",
+        "web_crawl": "Веб-обход",
+      },
+      "descriptions": {
+        "web_fetch": "Загружает и разбирает веб-страницу по URL",
+        "web_read": "Читает веб-страницу и возвращает нормализованное основное содержимое",
+        "web_extract": "Извлекает структурированные поля из веб-HTML или URL",
+        "web_crawl": "Обходит стартовые URL с лимитами и контрольными точками",
       }
     },
     "voiceView": {
@@ -9002,8 +10420,40 @@ export default {
             "request": "Bezplatný certifikát",
             "requestFailed": "Nepodarilo sa vyžiadať certifikát",
             "httpChallenge": "Overenie HTTP-01",
-            "dnsChallenge": "Overenie DNS-01"
-          }
+            "dnsChallenge": "Overenie DNS-01",
+            "title": "Požiadať o bezplatný certifikát"
+          },
+          "title": "Konfigurácia TLS/HTTPS",
+          "description": "Nakonfigurujte certifikáty SSL/TLS pre bezpečné HTTPS pripojenia",
+          "uploadCert": "Nahrať certifikát",
+          "selfSigned": "Samopodpísaný",
+          "generateSelfSigned": "Vygenerovať samopodpísaný certifikát",
+          "certActive": "Certifikát aktívny",
+          "selfSignedLabel": "Samopodpísaný",
+          "noCert": "Nie je nakonfigurovaný žiadny certifikát. HTTPS je vypnuté.",
+          "domains": "Domény",
+          "issuer": "Vydavateľ",
+          "validFrom": "Platný od",
+          "validUntil": "Platný do",
+          "expired": "Platnosť vypršala",
+          "daysLeft": "Zostáva {days} dní",
+          "certPem": "PEM certifikát",
+          "keyPem": "Súkromný kľúč (PEM)",
+          "certKeyRequired": "Certifikát a súkromný kľúč sú povinné",
+          "certUploaded": "Certifikát bol úspešne nahraný",
+          "uploadFailed": "Certifikát sa nepodarilo nahrať",
+          "selfSignedGenerated": "Samopodpísaný certifikát bol vygenerovaný",
+          "generateFailed": "Nepodarilo sa vygenerovať certifikát",
+          "validDays": "Dni platnosti",
+          "domainsHint": "Zoznam domén alebo IP adries oddelených čiarkami",
+          "httpsOnly": "Len HTTPS",
+          "httpsOnlyDescription": "Presmeruje všetky HTTP požiadavky na HTTPS. Vyžaduje platný certifikát.",
+          "httpsOnlyEnabled": "Režim len HTTPS bol povolený",
+          "httpsOnlyDisabled": "Režim len HTTPS bol vypnutý",
+          "updateFailed": "Nepodarilo sa aktualizovať nastavenia TLS",
+          "reload": "Znovu načítať",
+          "certReloaded": "Certifikát bol úspešne znovu načítaný",
+          "reloadFailed": "Certifikát sa nepodarilo znovu načítať"
         }
       }
     },
@@ -9066,7 +10516,17 @@ export default {
         "web_search": "Vyhľadávanie na webe",
         "workflows": "Pracovné postupy",
         "exec": "Spúšťanie príkazov",
-        "workspace_file": "Súbor pracovného priestoru"
+        "workspace_file": "Súbor pracovného priestoru",
+        "web_fetch": "Načítanie webu",
+        "web_read": "Čítanie webu",
+        "web_extract": "Extrakcia z webu",
+        "web_crawl": "Prehľadávanie webu",
+      },
+      "descriptions": {
+        "web_fetch": "Načíta a spracuje webovú stránku podľa URL",
+        "web_read": "Načíta webovú stránku a vráti normalizovaný hlavný obsah",
+        "web_extract": "Extrahuje štruktúrované polia z webového HTML alebo z URL",
+        "web_crawl": "Prehľadáva počiatočné URL s limitmi a checkpointmi",
       }
     },
     "voiceView": {
@@ -9352,7 +10812,10 @@ export default {
       "preferredModelsHint": "Označte modely, ktoré preferujete. Dostupné budú len označené modely; ak neoznačíte žiadny, budú dostupné všetky modely.",
       "selectPreferredModels": "Vybrať preferované modely",
       "tabs": {
-        "oauth": "Prihlásenie cez OAuth"
+        "oauth": "Prihlásenie cez OAuth",
+        "all": "Všetko",
+        "media": "Médiá",
+        "platform": "Platforma"
       },
       "topP": "Top-P",
       "trial": {
@@ -9367,6 +10830,65 @@ export default {
         "loading": "Načítava sa využitie...",
         "outputTokens": "Výstupné tokeny",
         "requests": "Požiadavky"
+      },
+      "keyLabel": "Označenie",
+      "models": "Modely",
+      "perImage": "/obrázok",
+      "perMillionTokens": "za 1 mil. tokenov",
+      "perSecond": "/s",
+      "perVideo": "/video",
+      "addApiKey": "Pridať API kľúč",
+      "addCustom": "Pridať vlastné",
+      "addCustomProvider": "Pridať vlastného poskytovateľa",
+      "addKey": "Pridať kľúč",
+      "addModelPricing": "Pridať cenu modelu",
+      "apiKey": "API kľúč",
+      "apiKeys": "API kľúče",
+      "baseUrl": "Základné URL",
+      "cachePrice": "Cena cache",
+      "changeIcon": "Zmeniť ikonu",
+      "clearAll": "Vyčistiť všetko",
+      "configureModels": "Konfigurovať",
+      "confirmDelete": "Naozaj chcete odstrániť tohto poskytovateľa?",
+      "confirmRemovePricing": "Naozaj chcete odstrániť túto vlastnú cenu?",
+      "customPricing": "Vlastná cena",
+      "default": "Predvolené",
+      "defaultPlaceholder": "Použiť predvolené",
+      "defaultPricing": "Predvolená cena",
+      "detectCapabilities": "Zistiť",
+      "detected": "zistené",
+      "detectedMax": "Zistené maximum",
+      "detecting": "Zisťovanie...",
+      "editModelParams": "Upraviť parametre modelu",
+      "editPricing": "Upraviť cenu",
+      "filtered": "filtrované",
+      "filteredModels": "Zobrazujú sa len povolené modely",
+      "inputPrice": "Vstupná cena",
+      "maxTokens": "Limit obsahu",
+      "maxTokensHint": "Maximálna dĺžka výstupu. Nechajte prázdne, ak chcete použiť predvolenú hodnotu modelu.",
+      "mediaUnitHint": "USD za jednotku (napr. $0.04 za obrázok, $0.10 za sekundu videa)",
+      "modelId": "ID modelu",
+      "modelParams": "Parametre modelu",
+      "noKeys": "Nie sú nakonfigurované žiadne API kľúče",
+      "noModelsAvailable": "Od tohto poskytovateľa nie sú dostupné žiadne modely",
+      "oauth": {
+        "title": "OAuth pripojenie",
+        "connect": "Pripojiť",
+        "disconnect": "Odpojiť",
+        "connected": "OAuth bolo úspešne pripojené",
+        "notConnected": "Nepripojené",
+        "connectFailed": "OAuth pripojenie zlyhalo",
+        "disconnected": "OAuth bolo odpojené",
+        "disconnectFailed": "OAuth sa nepodarilo odpojiť",
+        "browserOpened": "Prehliadač bol otvorený na overenie",
+        "deviceFlow": "Autorizácia zariadenia GitHub",
+        "deviceFlowInstructions": "Zadajte nižšie uvedený kód na GitHube, aby ste autorizovali prístup:",
+        "openGitHub": "Otvoriť GitHub",
+        "done": "Autorizoval som",
+        "loadingQuota": "Načítavajú sa informácie o predplatnom...",
+        "quotaUnavailable": "Informácie o predplatnom nie sú k dispozícii",
+        "modelQuota": "Kvóta modelu",
+        "addAccount": "Pridať účet"
       }
     }
   },
@@ -9434,8 +10956,40 @@ export default {
             "request": "Gratis certifikat",
             "requestFailed": "Det gick inte att begära certifikat",
             "httpChallenge": "HTTP-01-verifiering",
-            "dnsChallenge": "DNS-01-verifiering"
-          }
+            "dnsChallenge": "DNS-01-verifiering",
+            "title": "Begär gratis certifikat"
+          },
+          "title": "TLS/HTTPS-konfiguration",
+          "description": "Konfigurera SSL/TLS-certifikat för säkra HTTPS-anslutningar",
+          "uploadCert": "Ladda upp certifikat",
+          "selfSigned": "Självsignerat",
+          "generateSelfSigned": "Generera självsignerat certifikat",
+          "certActive": "Certifikat aktivt",
+          "selfSignedLabel": "Självsignerat",
+          "noCert": "Inget certifikat har konfigurerats. HTTPS är inaktiverat.",
+          "domains": "Domäner",
+          "issuer": "Utfärdare",
+          "validFrom": "Giltig från",
+          "validUntil": "Giltig till",
+          "expired": "Utgånget",
+          "daysLeft": "{days} dagar kvar",
+          "certPem": "Certifikat (PEM)",
+          "keyPem": "Privat nyckel (PEM)",
+          "certKeyRequired": "Certifikat och privat nyckel krävs",
+          "certUploaded": "Certifikat uppladdat",
+          "uploadFailed": "Det gick inte att ladda upp certifikatet",
+          "selfSignedGenerated": "Självsignerat certifikat genererat",
+          "generateFailed": "Det gick inte att generera certifikatet",
+          "validDays": "Giltighetsdagar",
+          "domainsHint": "Kommaseparerad lista över domäner eller IP-adresser",
+          "httpsOnly": "Endast HTTPS",
+          "httpsOnlyDescription": "Omdirigera alla HTTP-förfrågningar till HTTPS. Kräver ett giltigt certifikat.",
+          "httpsOnlyEnabled": "Endast HTTPS-läge aktiverat",
+          "httpsOnlyDisabled": "Endast HTTPS-läge inaktiverat",
+          "updateFailed": "Det gick inte att uppdatera TLS-inställningarna",
+          "reload": "Ladda om",
+          "certReloaded": "Certifikatet laddades om",
+          "reloadFailed": "Det gick inte att ladda om certifikatet"
         }
       }
     },
@@ -9498,7 +11052,17 @@ export default {
         "web_search": "Webbsökning",
         "workflows": "Arbetsflöden",
         "exec": "Kommandoexekvering",
-        "workspace_file": "Arbetsområdesfil"
+        "workspace_file": "Arbetsområdesfil",
+        "web_fetch": "Webbhämtning",
+        "web_read": "Webläsning",
+        "web_extract": "Webbextraktion",
+        "web_crawl": "Webbcrawlning",
+      },
+      "descriptions": {
+        "web_fetch": "Hämtar och tolkar en webbsida från en URL",
+        "web_read": "Läser en webbsida och returnerar normaliserat huvudinnehåll",
+        "web_extract": "Extraherar strukturerade fält från webb-HTML eller en URL",
+        "web_crawl": "Genomsöker start-URL:er med gränser och kontrollpunkter",
       }
     },
     "voiceView": {
@@ -9784,7 +11348,8 @@ export default {
       "preferredModelsHint": "Markera de modeller du föredrar. Endast markerade modeller blir tillgängliga; om inga är markerade blir alla modeller tillgängliga.",
       "selectPreferredModels": "Välj föredragna modeller",
       "tabs": {
-        "oauth": "OAuth-inloggning"
+        "oauth": "OAuth-inloggning",
+        "media": "Medier"
       },
       "topP": "Top-P",
       "trial": {
@@ -9799,7 +11364,9 @@ export default {
         "loading": "Läser in användning...",
         "outputTokens": "Utmatningstoken",
         "requests": "Förfrågningar"
-      }
+      },
+      "perMillionTokens": "per 1 M token",
+      "perVideo": "/video"
     }
   },
   "zh-CN": {
@@ -9892,7 +11459,17 @@ export default {
         "web_search": "网页搜索",
         "workflows": "工作流",
         "exec": "命令执行",
-        "workspace_file": "工作区文件"
+        "workspace_file": "工作区文件",
+        "web_fetch": "网页抓取",
+        "web_read": "网页阅读",
+        "web_extract": "网页提取",
+        "web_crawl": "网页爬取",
+      },
+      "descriptions": {
+        "web_fetch": "根据 URL 抓取并解析网页",
+        "web_read": "读取网页并返回规范化的正文内容",
+        "web_extract": "从网页 HTML 或 URL 中提取结构化字段",
+        "web_crawl": "在限制和检查点下爬取种子 URL",
       }
     },
     "voiceView": {
@@ -10041,7 +11618,17 @@ export default {
         "web_search": "網頁搜尋",
         "workflows": "工作流程",
         "exec": "命令執行",
-        "workspace_file": "工作區檔案"
+        "workspace_file": "工作區檔案",
+        "web_fetch": "網頁抓取",
+        "web_read": "網頁閱讀",
+        "web_extract": "網頁擷取",
+        "web_crawl": "網頁爬取",
+      },
+      "descriptions": {
+        "web_fetch": "根據 URL 抓取並解析網頁",
+        "web_read": "讀取網頁並回傳正規化的主要內容",
+        "web_extract": "從網頁 HTML 或 URL 擷取結構化欄位",
+        "web_crawl": "在限制與檢查點下爬取種子 URL",
       }
     },
     "voiceView": {

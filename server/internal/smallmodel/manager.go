@@ -16,22 +16,19 @@ const (
 	ModelID     = "qwen3.5-0.8b-gguf-q4km"
 	RuntimeType = "llama.cpp"
 
-	defaultHFRepo         = "AaryanK/Qwen3.5-0.8B-GGUF"
+	defaultHFRepo         = "unsloth/Qwen3.5-0.8B-GGUF"
 	defaultModelFilename  = "Qwen3.5-0.8B.Q4_K_M.gguf"
-	defaultMMProjFilename = ""
+	defaultMMProjFilename = "mmproj-F16.gguf"
 )
 
 var defaultModelDownloadCandidates = []string{
-	"https://huggingface.co/AaryanK/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B.Q4_K_M.gguf",
-	"https://huggingface.co/AaryanK/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
-	"https://huggingface.co/Qwen/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B.Q4_K_M.gguf",
-	"https://huggingface.co/Qwen/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
-	"https://huggingface.co/Qwen/Qwen3.5-0.8B-GGUF/resolve/main/qwen3.5-0.8b-q4_k_m.gguf",
+	"https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
+	"https://hf-mirror.com/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
+	"https://modelscope.cn/models/unsloth/Qwen3.5-0.8B-GGUF/resolve/master/Qwen3.5-0.8B-Q4_K_M.gguf",
 }
 
 var legacyModelDownloadRepos = map[string]struct{}{
-	defaultHFRepo:            {},
-	"Qwen/Qwen3.5-0.8B-GGUF": {},
+	defaultHFRepo: {},
 }
 
 var legacyModelDownloadFilenames = map[string]struct{}{

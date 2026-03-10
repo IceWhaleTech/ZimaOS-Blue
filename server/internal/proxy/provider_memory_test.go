@@ -32,6 +32,35 @@ func TestProviderMemory_Format(t *testing.T) {
 	}
 }
 
+func TestProviderMemory_ModelFormat(t *testing.T) {
+	pm := NewProviderMemory()
+	pid := "p1"
+	baseURL := "https://relay.example.com/v1/responses"
+	model := "claude-sonnet-4-6"
+
+	if _, ok := pm.RecallModelFormat(pid, baseURL, model); ok {
+		t.Fatal("expected miss on empty model-format cache")
+	}
+
+	pm.RememberModelFormat(pid, baseURL, model, "anthropic")
+	format, ok := pm.RecallModelFormat(pid, baseURL, model)
+	if !ok || format != "anthropic" {
+		t.Fatalf("expected anthropic, got %q (ok=%v)", format, ok)
+	}
+
+	if _, ok := pm.RecallModelFormat(pid, "https://relay.example.com", model); ok {
+		t.Fatal("expected different base URL to use a different model-format key")
+	}
+	if _, ok := pm.RecallModelFormat(pid, baseURL, "claude-haiku-4-5"); ok {
+		t.Fatal("expected different model to use a different model-format key")
+	}
+
+	pm.ForgetModelFormat(pid, baseURL, model)
+	if _, ok := pm.RecallModelFormat(pid, baseURL, model); ok {
+		t.Fatal("expected miss after forgetting model-format memory")
+	}
+}
+
 func TestProviderMemory_ModelAlias(t *testing.T) {
 	pm := NewProviderMemory()
 

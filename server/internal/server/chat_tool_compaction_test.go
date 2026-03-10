@@ -150,7 +150,7 @@ func TestCompactToolResultContentForLLM_NonJSONCapped(t *testing.T) {
 	}
 }
 
-func TestCompactToolResultContentForLLM_ExecRedactsSensitiveFields(t *testing.T) {
+func TestCompactToolResultContentForLLM_ExecKeepsCoreFields(t *testing.T) {
 	raw := map[string]interface{}{
 		"status":     "failed",
 		"exit_code":  1,
@@ -181,42 +181,49 @@ func TestCompactToolResultContentForLLM_ExecRedactsSensitiveFields(t *testing.T)
 		t.Fatalf("unmarshal compacted payload: %v", err)
 	}
 
-	for _, forbidden := range []string{"stdout", "stderr", "command", "session_id", "host", "warnings", "error"} {
-		if _, ok := out[forbidden]; ok {
-			t.Fatalf("expected %s to be redacted from LLM payload: %#v", forbidden, out)
+	for _, required := range []string{"stdout", "stderr", "command", "session_id", "host", "error"} {
+		v, ok := out[required].(string)
+		if !ok || strings.TrimSpace(v) == "" {
+			t.Fatalf("expected %s to remain visible in compacted payload: %#v", required, out)
 		}
 	}
-	if out["output_redacted"] != true || out["stdout_redacted"] != true || out["stderr_redacted"] != true {
-		t.Fatalf("expected output redaction markers, got %#v", out)
-	}
-	if out["command_redacted"] != true || out["runtime_redacted"] != true || out["error_redacted"] != true {
-		t.Fatalf("expected exec redaction markers, got %#v", out)
+	for _, removedMarker := range []string{
+		"output_redacted", "stdout_redacted", "stderr_redacted",
+		"command_redacted", "runtime_redacted", "error_redacted",
+	} {
+		if _, exists := out[removedMarker]; exists {
+			t.Fatalf("did not expect legacy redaction marker %s: %#v", removedMarker, out)
+		}
 	}
 	if out["warning_count"] != float64(2) {
 		t.Fatalf("expected warning_count=2, got %#v", out["warning_count"])
+	}
+	if _, ok := out["warnings"]; !ok {
+		t.Fatalf("expected warnings array preserved, got %#v", out)
 	}
 
 	data, ok := out["data"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("expected compacted data map, got %#v", out["data"])
 	}
-	if data["message_redacted"] != true || data["error_redacted"] != true {
-		t.Fatalf("expected nested data redaction markers, got %#v", data)
+	if msg, _ := data["message"].(string); strings.TrimSpace(msg) == "" {
+		t.Fatalf("expected nested message preserved, got %#v", data)
 	}
-	if _, ok := data["message"]; ok {
-		t.Fatalf("expected nested message removed, got %#v", data)
+	if errMsg, _ := data["error"].(string); strings.TrimSpace(errMsg) == "" {
+		t.Fatalf("expected nested error preserved, got %#v", data)
 	}
-	if _, ok := data["error"]; ok {
-		t.Fatalf("expected nested error removed, got %#v", data)
+	extra, ok := data["extra"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected nested extra map, got %#v", data["extra"])
 	}
-	if _, ok := data["secret_blob"]; ok {
-		t.Fatalf("expected unknown nested fields redacted, got %#v", data)
+	if _, ok := extra["secret_blob"]; !ok {
+		t.Fatalf("expected secret_blob in extra fields, got %#v", extra)
 	}
-	if _, ok := data["debug_payload"]; ok {
-		t.Fatalf("expected unknown nested fields redacted, got %#v", data)
+	if _, ok := extra["debug_payload"]; !ok {
+		t.Fatalf("expected debug_payload in extra fields, got %#v", extra)
 	}
-	if data["extra_fields_redacted"] != float64(2) {
-		t.Fatalf("expected extra_fields_redacted=2, got %#v", data["extra_fields_redacted"])
+	if _, exists := data["extra_fields_redacted"]; exists {
+		t.Fatalf("did not expect legacy extra_fields_redacted marker, got %#v", data)
 	}
 }
 

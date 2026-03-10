@@ -63,9 +63,9 @@ func Humanize(text string, mode Mode) string {
 	}
 }
 
-// HumanizeForChannel transforms Markdown for a specific channel type.
-// Returns the formatted text and the recommended format string for the channel.
-func HumanizeForChannel(text string, channelType string) (content string, format string) {
+// HumanizeForPreset transforms Markdown using an explicit renderer preset.
+// Returns the formatted text and the recommended format string for the target.
+func HumanizeForPreset(text string, preset string) (content string, format string) {
 	if text == "" {
 		return "", ""
 	}
@@ -81,7 +81,7 @@ func HumanizeForChannel(text string, channelType string) (content string, format
 		TableMode:        "bullets",
 	})
 
-	switch channelType {
+	switch preset {
 	case "discord":
 		return RenderDiscord(ir), ""
 	case "telegram":

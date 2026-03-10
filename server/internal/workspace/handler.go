@@ -28,6 +28,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/files", h.listFiles)
 	g.GET("/files/:name", h.getFile)
 	g.PUT("/files/:name", h.putFile)
+	g.GET("/git/capability", h.getGitCapability)
 	g.GET("/stats", h.getStats)
 	g.POST("/bootstrap/complete", h.completeBootstrap)
 	g.GET("/bootstrap/status", h.bootstrapStatus)
@@ -90,11 +91,6 @@ func (h *Handler) putFile(c echo.Context) error {
 		})
 	}
 
-	// Auto-complete bootstrap when USER.md is written with non-default content
-	if name == FileUSER && h.mgr.IsBootstrapPending() {
-		_ = h.mgr.CompleteBootstrap()
-	}
-
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status": "ok",
 		"name":   name,
@@ -104,12 +100,6 @@ func (h *Handler) putFile(c echo.Context) error {
 
 // completeBootstrap removes BOOTSTRAP.md, marking the first-run guide as done.
 func (h *Handler) completeBootstrap(c echo.Context) error {
-	if !h.mgr.IsBootstrapPending() {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"status":  "already_completed",
-			"pending": false,
-		})
-	}
 	if err := h.mgr.CompleteBootstrap(); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
@@ -126,6 +116,10 @@ func (h *Handler) bootstrapStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"pending": h.mgr.IsBootstrapPending(),
 	})
+}
+
+func (h *Handler) getGitCapability(c echo.Context) error {
+	return c.JSON(http.StatusOK, h.mgr.DetectGitCapability(c.Request().Context()))
 }
 
 // FileTokenStat holds per-file token estimate.

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 export interface DataPoint {
   timestamp: string
@@ -176,22 +179,22 @@ const lastChartPoint = computed(() => {
         v-else
         class="absolute inset-0 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm"
       >
-        No data available
+        {{ t('metrics.noData', 'No data available') }}
       </div>
     </div>
 
     <!-- Stats -->
     <div class="grid grid-cols-3 gap-2 text-xs">
       <div class="text-center">
-        <div class="text-gray-400 dark:text-gray-500">Min</div>
+        <div class="text-gray-400 dark:text-gray-500">{{ t('metrics.min', 'Min') }}</div>
         <div class="text-gray-700 dark:text-gray-300">{{ minValue }}{{ unit }}</div>
       </div>
       <div class="text-center">
-        <div class="text-gray-400 dark:text-gray-500">Avg</div>
+        <div class="text-gray-400 dark:text-gray-500">{{ t('resourceChart.avg', 'Avg') }}</div>
         <div class="text-gray-700 dark:text-gray-300">{{ avgValue }}{{ unit }}</div>
       </div>
       <div class="text-center">
-        <div class="text-gray-400 dark:text-gray-500">Max</div>
+        <div class="text-gray-400 dark:text-gray-500">{{ t('metrics.max', 'Max') }}</div>
         <div class="text-gray-700 dark:text-gray-300">{{ maxValueDisplay }}{{ unit }}</div>
       </div>
     </div>

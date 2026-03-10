@@ -413,6 +413,185 @@ function relative(filePath) {
   return path.relative(WEB_ROOT, filePath)
 }
 
+
+
+const EXPECTED_SAME_AS_ENGLISH_KEYS = new Set([
+  'agent.progress',
+  'askQuestion.browserCheckpoint.url',
+  'authProviders.placeholderRedirect',
+  'bluebubbles',
+  'brand.name',
+  'browserAutomation.createTask.params.urlPlaceholder',
+  'browserAutomation.security.blockedDomainsPlaceholder',
+  'browserAutomation.security.testUrlPlaceholder',
+  'cache.ttl',
+  'channels.instagramDM',
+  'channels.qqBot',
+  'channels.twitterDM',
+  'chat.stats.ttft',
+  'companion.anomalyGuide.types.commandInjection.example',
+  'companion.anomalyGuide.types.pathTraversal.example',
+  'companion.anomalyGuide.types.sqlInjection.example',
+  'companion.anomalyGuide.types.xss.example',
+  'connections.http',
+  'connections.sse',
+  'connections.websocket',
+  'csv',
+  'dingtalk',
+  'discord',
+  'feishu',
+  'footer.version',
+  'googlechat',
+  'homeAssistant.url',
+  'homeAssistant.urlPlaceholder',
+  'ideDiscovery.ide',
+  'ideDiscovery.oauth',
+  'ideDiscovery.sourceCCSwitch',
+  'imessage',
+  'instagram',
+  'json',
+  'matrix',
+  'mattermost',
+  'messenger',
+  'metrics.claudeCodeCli',
+  'metrics.cpu',
+  'metrics.echoServer',
+  'metrics.p50',
+  'metrics.p90',
+  'metrics.p95',
+  'metrics.p99',
+  'metrics.pid',
+  'nextcloudtalk',
+  'qq',
+  'resultCard.labels.url',
+  'securityAlerts.labels.ip',
+  'settings.baseUrlPlaceholder',
+  'settings.providers.grok',
+  'settings.providers.openai',
+  'settings.providers.qwen',
+  'settings.providers.siliconflow',
+  'signal',
+  'skillStore.detail.sections.readme',
+  'slack',
+  'speech.asrModelInfo.whisperBase.name',
+  'speech.asrModelInfo.whisperSmall.name',
+  'speech.asrModelInfo.whisperTiny.name',
+  'speech.edgeTTSName',
+  'speech.kokoroGithub',
+  'system.goMaxProcs',
+  'system.ipv4Address',
+  'system.macAddress',
+  'system.mtu',
+  'teams',
+  'telegram',
+  'tenants.invite.emailPlaceholder',
+  'tenants.settings.timezones.utc',
+  'tenants.slugPlaceholder',
+  'tools.params.id',
+  'twitch',
+  'twitter',
+  'userdata.formatJson',
+])
+
+const EXPECTED_SAME_AS_ENGLISH_PATTERNS = [
+  /^security\.scan\.items\.[^.]+\.details\.[^.]+$/,
+  /^security\.scan\.items\.[^.]+\.(description|risk|impact|remediation)$/,
+  /^security\.firewall\.builtin\.[^.]+\.description$/,
+  /^authProviders\.types\.(auth0|authentik|github|google|keycloak|microsoft)$/,
+  /^channels\.(blueBubbles|discord|googleChat|imessage|line|matrix|mattermost|messenger|nextcloudTalk|signal|slack|teams|telegram|twitchBot|viber|whatsapp|zaloOA)$/,
+  /^channels\.placeholder(?:AgentId|AppId|BlueBubblesServerUrl|BotToken|DingtalkAppKey|FeishuAppId|MatrixHomeserver|MatrixUserId|PhoneNumber|QQAppId|RobotCode|SlackAppToken|SlackBotToken|WechatCorpId)$/,
+  /^companion\.platforms\.(api|discord|feishu|matrix|slack|telegram|whatsapp)$/,
+  /^skills\.builtin\.(discord-skill|docker|github|notion|slack-skill)\.name$/,
+  /^tools\.names\.(discord|docker|github|notion|slack)$/,
+]
+
+function isExpectedSameAsEnglishKey(key) {
+  if (EXPECTED_SAME_AS_ENGLISH_KEYS.has(key)) return true
+  return EXPECTED_SAME_AS_ENGLISH_PATTERNS.some((pattern) => pattern.test(key))
+}
+
+const REQUIRED_PRIORITY_OVERRIDE_KEYS = [
+  'analyze.analyzing',
+  'analyze.meta.chars',
+  'analyze.meta.results',
+  'analyze.steps.data_collection',
+  'analyze.steps.text_input',
+  'analyze.steps.doc_extract',
+  'analyze.steps.analysis',
+  'analyze.steps.report',
+  'analyze.steps.save_report',
+  'chat.deepResearchTitle',
+  'chat.deepResearchEvidence',
+  'chat.deepResearchSupport',
+  'chat.deepResearchConflict',
+  'chat.deepResearchCitationCoverage',
+  'chat.deepResearchStatus',
+  'chat.deepResearchTimeWindows',
+  'chat.deepResearchStrictEntity',
+  'chat.deepResearchEntitySummary',
+  'chat.deepResearchEntityThreshold',
+  'chat.deepResearchEntityFiltered',
+  'chat.deepResearchEntityAmbiguous',
+  'chat.deepResearchHasConflict',
+  'chat.deepResearchCitations',
+  'chat.deepResearchOpenQuestions',
+  'chat.deepResearchProgress',
+  'chat.deepResearchStageIntake',
+  'chat.deepResearchStagePlanning',
+  'chat.deepResearchStageRetrieve',
+  'chat.deepResearchStageSynthesize',
+  'chat.deepResearchStageCompleted',
+  'chat.deepResearchStageFailed',
+  'chat.deepResearchStageCancelled',
+  'chat.deepResearchTimeline',
+  'chat.deepResearchStageErrors',
+  'uiReview.title',
+  'uiReview.reviewing',
+  'uiReview.error',
+  'uiReview.visual',
+  'uiReview.functional',
+  'uiReview.accessibility',
+  'uiReview.issues',
+  'uiReview.issuesTitle',
+  'uiReview.suggestions',
+  'uiReview.skipped',
+  'uiReview.showScreenshot',
+  'uiReview.hideScreenshot',
+  'uiReview.steps.navigate',
+  'uiReview.steps.viewport',
+  'uiReview.steps.functional',
+  'uiReview.steps.accessibility',
+  'uiReview.steps.scroll',
+  'uiReview.steps.screenshot',
+  'uiReview.steps.visual',
+  'uiReview.steps.structural',
+  'uiReview.actions.recheck',
+  'uiReview.actions.check_a11y',
+  'uiReview.actions.full_report',
+]
+
+function auditRequiredPriorityOverrides(localeFiles, priorityLocaleOverrides) {
+  const localeCodes = localeFiles
+    .map((fileName) => sanitizeLocaleCode(fileName))
+    .filter((locale) => locale !== 'en-US')
+    .sort()
+
+  const locales = localeCodes.map((locale) => {
+    const overrideMap = flattenStringLeaves(priorityLocaleOverrides[locale] || {})
+    const missingKeys = REQUIRED_PRIORITY_OVERRIDE_KEYS.filter((key) => !overrideMap.has(key))
+    return {
+      locale,
+      missingKeys,
+      missingCount: missingKeys.length,
+    }
+  })
+
+  return {
+    requiredKeys: [...REQUIRED_PRIORITY_OVERRIDE_KEYS],
+    locales,
+    missingLocales: locales.filter((item) => item.missingCount > 0),
+  }
+}
 const APPROVED_DYNAMIC_EXPRESSION_WHITELIST = [
   {
     file: /src\/components\/typeless\/CardAnalyzeProgress\.vue$/,
@@ -462,6 +641,7 @@ function main() {
   const priorityBillingOverrides = loadExportedObject(PRIORITY_BILLING_OVERRIDES_PATH)
   const prioritySettingsOverrides = loadExportedObject(PRIORITY_SETTINGS_OVERRIDES_PATH)
   const prioritySmallModelOverrides = loadExportedObject(PRIORITY_SMALL_MODEL_OVERRIDES_PATH)
+  const requiredPriorityOverrides = auditRequiredPriorityOverrides(localeFiles, priorityLocaleOverrides)
   const enUSMap = flattenStringLeaves(enUSObject)
   const enUSKeys = [...enUSMap.keys()].sort()
   const enUSKeySet = new Set(enUSKeys)
@@ -537,6 +717,7 @@ function main() {
     const localeMap = flattenStringLeaves(localeObject)
     const missing = []
     const fallbackToEnglish = []
+    const expectedSameAsEnglish = []
 
     for (const key of usedKeysArray) {
       const enValue = enUSMap.get(key)
@@ -546,7 +727,11 @@ function main() {
         continue
       }
       if (locale !== 'en-US' && enValue !== undefined && localeValue === enValue) {
-        fallbackToEnglish.push(key)
+        if (isExpectedSameAsEnglishKey(key)) {
+          expectedSameAsEnglish.push(key)
+        } else {
+          fallbackToEnglish.push(key)
+        }
       }
     }
 
@@ -563,6 +748,7 @@ function main() {
       translatedPct,
       missingKeys: missing,
       fallbackKeys: fallbackToEnglish,
+      expectedSameAsEnglishKeys: expectedSameAsEnglish,
     })
   }
 
@@ -650,6 +836,14 @@ function main() {
       file: relative(expr.file),
       line: expr.line,
     })),
+    requiredPriorityOverrides: {
+      requiredKeys: requiredPriorityOverrides.requiredKeys,
+      missingLocales: requiredPriorityOverrides.missingLocales.map((item) => ({
+        locale: item.locale,
+        missingCount: item.missingCount,
+        missingKeys: item.missingKeys,
+      })),
+    },
     locales: locales.map((l) => ({
       locale: l.locale,
       file: l.file,
@@ -660,6 +854,7 @@ function main() {
       translatedPct: Number(l.translatedPct.toFixed(2)),
       missingKeys: l.missingKeys,
       fallbackKeys: l.fallbackKeys,
+      expectedSameAsEnglishKeys: l.expectedSameAsEnglishKeys,
     })),
   }
 
@@ -682,6 +877,10 @@ function main() {
   console.log(`dynamic expression calls (whitelisted): ${report.dynamicExpressionWhitelisted}`)
   console.log(`dynamic existence checks (te): ${report.dynamicExistenceChecks}`)
   console.log(`dynamic guarded calls (te + t): ${report.dynamicGuardedCalls}`)
+  const expectedSameAsEnglishCount = locales.reduce((sum, locale) => sum + locale.expectedSameAsEnglishKeys.length, 0)
+  console.log(`expected same-as-English keys skipped: ${expectedSameAsEnglishCount}`)
+
+  console.log(`priority card override locales missing required keys: ${report.requiredPriorityOverrides.missingLocales.length}`)
 
   const header = [
     pad('Locale', 10),
@@ -764,6 +963,20 @@ function main() {
     if (dedupedDynamicGuardedExpressions.length > 30) {
       console.log(`- ... and ${dedupedDynamicGuardedExpressions.length - 30} more`)
     }
+  }
+
+  if (report.requiredPriorityOverrides.missingLocales.length > 0) {
+    console.log('\npriority override gaps:')
+    for (const locale of report.requiredPriorityOverrides.missingLocales) {
+      console.log(`- ${locale.locale}: ${locale.missingCount} missing`)
+      for (const key of locale.missingKeys.slice(0, 20)) {
+        console.log(`  - ${key}`)
+      }
+      if (locale.missingKeys.length > 20) {
+        console.log(`  - ... and ${locale.missingKeys.length - 20} more`)
+      }
+    }
+    process.exitCode = 1
   }
 
   if (details) {

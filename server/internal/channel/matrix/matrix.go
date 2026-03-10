@@ -51,6 +51,14 @@ func New(cfg channel.MatrixConfig, logger *zap.Logger) *Channel {
 func (c *Channel) Name() string { return "matrix" }
 func (c *Channel) Type() string { return "matrix" }
 
+func (c *Channel) OutboundCapabilities() channel.OutboundCapabilities {
+	return channel.OutboundCapabilities{
+		MarkdownMode:           channel.OutboundMarkdownModeChunked,
+		HumanizerPreset:        "matrix",
+		SupportsMarkdownFormat: true,
+	}
+}
+
 func (c *Channel) Start(ctx context.Context) error {
 	c.mu.Lock()
 	if c.status == channel.StatusConnected || c.status == channel.StatusConnecting {

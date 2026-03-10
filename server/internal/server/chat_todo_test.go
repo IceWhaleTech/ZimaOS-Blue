@@ -93,6 +93,13 @@ func TestShouldAutoContinueForActionPledge(t *testing.T) {
 		}
 	})
 
+	t.Run("continues for summary intro without body", func(t *testing.T) {
+		current := "我先根据已完成的工具结果，给你一个简要汇总："
+		if !shouldAutoContinueForActionPledge(current) {
+			t.Fatalf("expected auto-continue for summary intro without body")
+		}
+	})
+
 	t.Run("continues for english action pledge", func(t *testing.T) {
 		current := "I need to verify this online. Let me check and I'll get back in a few seconds."
 		if !shouldAutoContinueForActionPledge(current) {
@@ -425,6 +432,14 @@ func TestShouldAutoContinueAfterToollessReply(t *testing.T) {
 		}
 	})
 
+	t.Run("non-agent continues on summary intro without body", func(t *testing.T) {
+		current := "我先根据已完成的工具结果，给你一个简要汇总："
+		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
+		if !ok || reason != "summary_intro" {
+			t.Fatalf("expected summary_intro auto-continue, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
 	t.Run("continues on pseudo tool-call text", func(t *testing.T) {
 		current := "{\"cmd\":\"ls -la\"}I’ll inspect now.{\"tool\":\"exec\",\"cmd\":\"ls -la\"}exec: ls -la\n```tool\n{\"name\":\"exec\",\"arguments\":{\"cmd\":\"ls -la\"}}\n```\n<exec>{\"cmd\":\"ls -la\"}</exec>"
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
@@ -740,6 +755,46 @@ func TestExtractPlanCompletionFromToolRound(t *testing.T) {
 	})
 }
 
+func TestSyncTrackedTodoAfterToolRound(t *testing.T) {
+	t.Run("replaces tracked checklist when tool returns explicit update", func(t *testing.T) {
+		tracked := "- [ ] step1\n- [ ] step2"
+		updatedChecklist := "- [x] step1\n- [ ] step2"
+
+		got, changed := syncTrackedTodoAfterToolRound(tracked, updatedChecklist, true, false)
+		if !changed {
+			t.Fatal("expected tracked checklist to be updated")
+		}
+		if got != updatedChecklist {
+			t.Fatalf("unexpected checklist after explicit update: %q", got)
+		}
+	})
+
+	t.Run("marks remaining items done when tool reports plan completion", func(t *testing.T) {
+		tracked := "- [x] step1\n- [ ] step2"
+		want := "- [x] step1\n- [x] step2"
+
+		got, changed := syncTrackedTodoAfterToolRound(tracked, "", false, true)
+		if !changed {
+			t.Fatal("expected tracked checklist to be completed")
+		}
+		if got != want {
+			t.Fatalf("unexpected checklist after plan completion: %q", got)
+		}
+	})
+
+	t.Run("keeps tracked checklist unchanged without explicit tool update", func(t *testing.T) {
+		tracked := "- [ ] step1\n- [ ] step2"
+
+		got, changed := syncTrackedTodoAfterToolRound(tracked, "", false, false)
+		if changed {
+			t.Fatalf("expected checklist to remain unchanged, got=%q", got)
+		}
+		if got != tracked {
+			t.Fatalf("unexpected checklist mutation without explicit update: %q", got)
+		}
+	})
+}
+
 func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 	t.Run("suppresses codex directive chunks and keeps suppression sticky in same round", func(t *testing.T) {
 		suppressing := false
@@ -938,12 +993,16 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 		t.Fatalf("expected non-agent toolless nudge to block reminder help fallback, got=%q", got)
 	}
 
+	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "append=true") || !strings.Contains(got, "large file writes") {
+		t.Fatalf("expected non-agent toolless nudge to include chunked write guidance, got=%q", got)
+	}
+
 	agentToolless := buildToollessAutoContinueNudge(true)
 	if !strings.Contains(agentToolless, "continuous improvement loop") || !strings.Contains(agentToolless, "next concrete improvement") {
 		t.Fatalf("expected agent toolless nudge to include loop guidance, got=%q", agentToolless)
 	}
-	if !strings.Contains(agentToolless, "existing canonical TODO checklist") || !strings.Contains(agentToolless, "avoid rewriting the full checklist") {
-		t.Fatalf("expected agent toolless nudge to enforce stable TODO checklist updates, got=%q", agentToolless)
+	if !strings.Contains(agentToolless, "existing canonical TODO checklist") || !strings.Contains(agentToolless, "reprint the full checklist with updated checkbox states") {
+		t.Fatalf("expected agent toolless nudge to enforce checklist reprint guidance, got=%q", agentToolless)
 	}
 	if !strings.Contains(agentToolless, "Tool guidance constraints") {
 		t.Fatalf("expected agent toolless nudge to include tool guidance constraints, got=%q", agentToolless)
@@ -953,8 +1012,11 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	if !strings.Contains(agentPostTool, "agent loop") || !strings.Contains(agentPostTool, "next concrete improvement") {
 		t.Fatalf("expected agent post-tool nudge to include loop guidance, got=%q", agentPostTool)
 	}
-	if !strings.Contains(agentPostTool, "existing canonical TODO checklist") || !strings.Contains(agentPostTool, "mark completed items") {
-		t.Fatalf("expected agent post-tool nudge to enforce TODO status updates first, got=%q", agentPostTool)
+	if !strings.Contains(agentPostTool, "existing canonical TODO checklist") || !strings.Contains(agentPostTool, "reprint the full checklist with updated checkbox states") {
+		t.Fatalf("expected agent post-tool nudge to enforce checklist reprint guidance, got=%q", agentPostTool)
+	}
+	if !strings.Contains(agentPostTool, "append=true") || !strings.Contains(agentPostTool, "Tool guidance constraints") {
+		t.Fatalf("expected agent post-tool nudge to include chunked write tool guidance, got=%q", agentPostTool)
 	}
 
 	pseudo := buildToollessAutoContinueNudgeForReason(false, "pseudo_tool_call")
@@ -981,12 +1043,12 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	if !strings.Contains(missingTodo, "checklist bootstrap required") || !strings.Contains(missingTodo, "`- [ ] step`") {
 		t.Fatalf("expected missing_todo nudge to enforce checklist bootstrap format, got=%q", missingTodo)
 	}
-	if !strings.Contains(missingTodo, "Keep updating the same checklist") {
-		t.Fatalf("expected missing_todo nudge to keep canonical checklist continuity, got=%q", missingTodo)
+	if !strings.Contains(missingTodo, "Reprint the full checklist with updated checkbox states before each new action or summary") {
+		t.Fatalf("expected missing_todo nudge to require checklist reprint before progress, got=%q", missingTodo)
 	}
 	pendingTodo := buildToollessAutoContinueNudgeForReason(true, "pending_todo")
-	if !strings.Contains(pendingTodo, "Do NOT output another TODO list") {
-		t.Fatalf("expected pending_todo nudge to prevent checklist rewriting, got=%q", pendingTodo)
+	if !strings.Contains(pendingTodo, "FIRST re-output the full checklist with updated checkbox states") || !strings.Contains(pendingTodo, "rewriting the full checklist on each progress turn") {
+		t.Fatalf("expected pending_todo nudge to require full checklist rewrite each progress turn, got=%q", pendingTodo)
 	}
 	if !strings.Contains(pendingTodo, "at least one real tool call") {
 		t.Fatalf("expected pending_todo nudge to enforce real execution, got=%q", pendingTodo)
@@ -995,12 +1057,19 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	if !strings.Contains(missingNextSteps, "WITHOUT calling tools") || !strings.Contains(missingNextSteps, "Suggested next steps") {
 		t.Fatalf("expected missing_next_steps nudge to enforce completion + next-step guidance, got=%q", missingNextSteps)
 	}
+	summaryIntro := buildToollessAutoContinueNudgeForReason(false, "summary_intro")
+	if !strings.Contains(summaryIntro, "WITHOUT calling tools") || !strings.Contains(summaryIntro, "Suggested next steps") {
+		t.Fatalf("expected summary_intro nudge to enforce continuation summary + next steps, got=%q", summaryIntro)
+	}
 
 	if shouldPersistToollessRoundContent("pseudo_tool_call") {
 		t.Fatal("expected pseudo_tool_call rounds not to be persisted")
 	}
 	if shouldPersistToollessRoundContent("missing_next_steps") {
 		t.Fatal("expected missing_next_steps rounds not to be persisted")
+	}
+	if shouldPersistToollessRoundContent("summary_intro") {
+		t.Fatal("expected summary_intro rounds not to be persisted")
 	}
 	if !shouldPersistToollessRoundContent("action_pledge") {
 		t.Fatal("expected action_pledge rounds to be persisted")
@@ -1131,6 +1200,12 @@ func TestToollessAutoContinueBudget(t *testing.T) {
 	if shouldAutoContinueForReasonWithinBudget("action_pledge", true, 0, maxActionPledgeAutoContinueAgent, 0, 0) {
 		t.Fatal("expected agent action_pledge at budget limit to stop")
 	}
+	if !shouldAutoContinueForReasonWithinBudget("summary_intro", false, 0, maxActionPledgeAutoContinueDefault-1, 0, 0) {
+		t.Fatal("expected non-agent summary_intro within action-pledge budget to continue")
+	}
+	if shouldAutoContinueForReasonWithinBudget("summary_intro", false, 0, maxActionPledgeAutoContinueDefault, 0, 0) {
+		t.Fatal("expected non-agent summary_intro at action-pledge budget limit to stop")
+	}
 
 	if shouldAutoContinueForReasonWithinBudget("missing_todo", false, 0, 0, 0, 0) {
 		t.Fatal("expected non-agent missing_todo to be disabled")
@@ -1161,7 +1236,13 @@ func TestActionPledgeDuplicateDebounce(t *testing.T) {
 		t.Fatal("expected action_pledge duplicate count over threshold to stop")
 	}
 	if shouldStopForDuplicateActionPledge("pseudo_tool_call", 10) {
-		t.Fatal("expected duplicate stop gate to apply only to action_pledge")
+		t.Fatal("expected duplicate stop gate to ignore pseudo_tool_call")
+	}
+	if shouldStopForDuplicateActionPledge("summary_intro", maxConsecutiveDuplicateActionPledgeAutoContinue) {
+		t.Fatal("expected first summary_intro duplicate count within threshold")
+	}
+	if !shouldStopForDuplicateActionPledge("summary_intro", maxConsecutiveDuplicateActionPledgeAutoContinue+1) {
+		t.Fatal("expected summary_intro duplicate count over threshold to stop")
 	}
 }
 
@@ -1184,11 +1265,11 @@ func TestBuildToolFallbackText_RedactsSensitiveOutput(t *testing.T) {
 	if strings.Contains(out, "AWS_SECRET_ACCESS_KEY") || strings.Contains(out, "password=very-secret") || strings.Contains(out, "token leaked") {
 		t.Fatalf("expected fallback text to redact raw sensitive output, got=%q", out)
 	}
-	if !strings.Contains(out, "Safe status: 1 succeeded, 1 failed, 0 unknown.") {
-		t.Fatalf("expected fallback safe status summary, got=%q", out)
+	if !strings.Contains(out, "Status: 1 succeeded, 1 failed, 0 unknown.") {
+		t.Fatalf("expected fallback status summary, got=%q", out)
 	}
-	if !strings.Contains(out, "redacted for safety") {
-		t.Fatalf("expected fallback redaction marker, got=%q", out)
+	if !strings.Contains(out, "retry summarizing") {
+		t.Fatalf("expected fallback retry hint, got=%q", out)
 	}
 }
 
@@ -1199,8 +1280,8 @@ func TestBuildToolFallbackText_NoToolResults(t *testing.T) {
 	if toolCount != 0 {
 		t.Fatalf("toolCount = %d, want 0", toolCount)
 	}
-	if !strings.Contains(out, "Raw tool output is hidden for safety") {
-		t.Fatalf("expected safe no-tool fallback text, got=%q", out)
+	if !strings.Contains(out, "final summary is not available yet") {
+		t.Fatalf("expected no-tool fallback text, got=%q", out)
 	}
 }
 
@@ -1224,7 +1305,7 @@ func TestBuildToolFallbackText_UsesExtractedSafeSummaryWhenAvailable(t *testing.
 	if toolCount != 1 {
 		t.Fatalf("toolCount = %d, want 1", toolCount)
 	}
-	if !strings.Contains(out, "自动提炼的安全摘要") {
+	if !strings.Contains(out, "简要摘要") {
 		t.Fatalf("expected extracted safe summary marker, got=%q", out)
 	}
 	if !strings.Contains(out, "BlueAgent Releases") {
@@ -1266,7 +1347,7 @@ func TestBuildToolFallbackText_UsesExtractedSummaryForWebSearchXML(t *testing.T)
 	if toolCount != 1 {
 		t.Fatalf("toolCount = %d, want 1", toolCount)
 	}
-	if !strings.Contains(out, "自动提炼的安全摘要") {
+	if !strings.Contains(out, "简要摘要") {
 		t.Fatalf("expected extracted safe summary marker, got=%q", out)
 	}
 	if !strings.Contains(out, "BlueAgent Weekly Update") {
@@ -1305,6 +1386,9 @@ func TestBuildToolFallbackTextWithOptions_UsesConciseSummaryWhenCardsVisible(t *
 	if !strings.Contains(out, "详细执行记录见上方工具卡片") {
 		t.Fatalf("expected cards-visible follow-up note, got=%q", out)
 	}
+	if !strings.Contains(out, "下一步建议") {
+		t.Fatalf("expected fallback summary to include next-step suggestions, got=%q", out)
+	}
 	if !strings.Contains(out, "OpenClaw 发布周报") {
 		t.Fatalf("expected extracted search result title, got=%q", out)
 	}
@@ -1341,8 +1425,8 @@ func TestBuildToolFallbackText_UsesToolNameSummaryWhenExtractionUnavailable(t *t
 	if !strings.Contains(out, "exec_command") || !strings.Contains(out, "web_search") {
 		t.Fatalf("expected tool names in fallback summary, got=%q", out)
 	}
-	if !strings.Contains(out, "stdout/stderr/error") {
-		t.Fatalf("expected redaction notice in fallback, got=%q", out)
+	if strings.Contains(out, "stdout/stderr/error") {
+		t.Fatalf("expected fallback without hidden-fields notice, got=%q", out)
 	}
 	if strings.Contains(out, "secret") {
 		t.Fatalf("expected raw tool output redacted in fallback, got=%q", out)

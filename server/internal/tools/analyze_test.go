@@ -17,6 +17,13 @@ type mockLLMBridge struct {
 	idx       int
 }
 
+type deadlineProbeBridge struct {
+	responses []string
+	idx       int
+	hadDL     []bool
+	left      []time.Duration
+}
+
 type analyzeSmallModelMock struct {
 	respText string
 	err      error
@@ -74,6 +81,23 @@ func (m *mockLLMBridge) Chat(_ context.Context, prompt string, _ int) (string, e
 	if m.idx < len(m.responses) {
 		resp := m.responses[m.idx]
 		m.idx++
+		return resp, nil
+	}
+	return "{}", nil
+}
+
+func (d *deadlineProbeBridge) Chat(ctx context.Context, _ string, _ int) (string, error) {
+	deadline, ok := ctx.Deadline()
+	d.hadDL = append(d.hadDL, ok)
+	if ok {
+		d.left = append(d.left, time.Until(deadline))
+	} else {
+		d.left = append(d.left, 0)
+	}
+
+	if d.idx < len(d.responses) {
+		resp := d.responses[d.idx]
+		d.idx++
 		return resp, nil
 	}
 	return "{}", nil
@@ -244,6 +268,110 @@ func TestAnalyzeTool_Execute_AnalyzeWithText(t *testing.T) {
 	}
 }
 
+func TestAnalyzeTool_Execute_EmitsDetailedProgressAndCollectionCard(t *testing.T) {
+	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
+	htmlBody := `<div class="hero"><h1>Test</h1></div>`
+	bridge := &mockLLMBridge{responses: []string{analysisJSON, htmlBody}}
+
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	tool.SetMediaDir(t.TempDir())
+
+	var emitted []map[string]interface{}
+	ctx := WithCardEmitter(context.Background(), func(card map[string]interface{}) {
+		copyCard := make(map[string]interface{}, len(card))
+		for k, v := range card {
+			copyCard[k] = v
+		}
+		emitted = append(emitted, copyCard)
+	})
+
+	_, err := tool.Execute(ctx, map[string]interface{}{
+		"topic": "Detailed Progress",
+		"text":  strings.Repeat("content line\n", 12),
+		"lang":  "en-US",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var sawTextStep, sawDocStep, sawSaveStep, sawCollectionCard bool
+	for _, card := range emitted {
+		typ, _ := card["type"].(string)
+		switch typ {
+		case "analyze-progress":
+			step, _ := card["step"].(string)
+			status, _ := card["status"].(string)
+			switch step {
+			case "text_input":
+				if status == "success" {
+					sawTextStep = true
+					if card["char_count"] == nil {
+						t.Fatal("expected text_input step to include char_count")
+					}
+				}
+			case "doc_extract":
+				if status == "skipped" || status == "success" {
+					sawDocStep = true
+				}
+			case "save_report":
+				if status == "success" {
+					sawSaveStep = true
+				}
+			}
+		case "result":
+			if status, _ := card["status"].(string); status == "info" {
+				sawCollectionCard = true
+			}
+		}
+	}
+
+	if !sawTextStep {
+		t.Fatal("expected text_input progress step")
+	}
+	if !sawDocStep {
+		t.Fatal("expected doc_extract progress step")
+	}
+	if !sawSaveStep {
+		t.Fatal("expected save_report progress step")
+	}
+	if !sawCollectionCard {
+		t.Fatal("expected collection summary card")
+	}
+}
+
+func TestAnalyzeTool_Execute_AddsLongLLMDeadlineWhenParentHasNone(t *testing.T) {
+	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
+	htmlBody := `<div class="hero"><h1>Test</h1></div>`
+
+	bridge := &deadlineProbeBridge{responses: []string{analysisJSON, htmlBody}}
+
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	tool.SetMediaDir(t.TempDir())
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"topic": "Timeout Test",
+		"text":  "Some content",
+		"lang":  "en-US",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(bridge.hadDL) != 2 {
+		t.Fatalf("expected 2 bridge calls, got %d", len(bridge.hadDL))
+	}
+	for i, ok := range bridge.hadDL {
+		if !ok {
+			t.Fatalf("call %d should carry deadline", i)
+		}
+		if bridge.left[i] < analyzeLLMRequestTimeout-10*time.Second {
+			t.Fatalf("call %d deadline too short: %s", i, bridge.left[i])
+		}
+	}
+}
+
 func TestAnalyzeTool_Execute_UsesSmallModelDocExtractWhenEnabled(t *testing.T) {
 	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
 	htmlBody := `<div class="hero"><h1>Test</h1></div>`
@@ -361,8 +489,8 @@ func TestAnalyzeTool_DocExtractAutoRollbackDisablesSwitchOnHighFailureRate(t *te
 	raw := strings.Repeat("line content\n", 30)
 	for i := 0; i < 40; i++ {
 		got := tool.smallModelDocExtract(context.Background(), "Doc Auto Rollback", raw, "en-US")
-		if got != "" {
-			t.Fatalf("smallModelDocExtract should fallback empty on failure, got: %q", got)
+		if got.content != "" {
+			t.Fatalf("smallModelDocExtract should fallback empty on failure, got: %q", got.content)
 		}
 	}
 
@@ -495,9 +623,9 @@ func TestAnalyzeTool_GatherData_URLLimit(t *testing.T) {
 		urls[i] = "https://example.com"
 	}
 
-	content := tool.gatherData(context.Background(), map[string]interface{}{
+	content, _ := tool.gatherData(context.Background(), map[string]interface{}{
 		"urls": urls,
-	}, browser, nil)
+	}, "en-US", browser, nil)
 
 	// Count URL sections
 	count := strings.Count(content, "=== URL:")
@@ -563,7 +691,10 @@ func TestAnalyzeTool_SaveReport(t *testing.T) {
 	tool := NewAnalyzeTool()
 	dir := t.TempDir()
 
-	url := tool.saveReport("<html>test</html>", dir)
+	url, err := tool.saveReport("<html>test</html>", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if url == "" {
 		t.Fatal("expected non-empty URL")
 	}
@@ -577,7 +708,10 @@ func TestAnalyzeTool_SaveReport(t *testing.T) {
 
 func TestAnalyzeTool_SaveReport_NoMediaDir(t *testing.T) {
 	tool := NewAnalyzeTool()
-	url := tool.saveReport("<html>test</html>", "")
+	url, err := tool.saveReport("<html>test</html>", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if url != "" {
 		t.Errorf("expected empty URL when no mediaDir, got %q", url)
 	}

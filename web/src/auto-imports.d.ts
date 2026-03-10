@@ -6,7 +6,6 @@
 // biome-ignore lint: disable
 export {}
 declare global {
-  const CHAT_STYLES: typeof import('./stores/settings').CHAT_STYLES
   const EffectScope: typeof import('vue').EffectScope
   const THEME_STYLES: typeof import('./stores/settings').THEME_STYLES
   const acceptHMRUpdate: typeof import('pinia').acceptHMRUpdate
@@ -80,7 +79,6 @@ declare global {
   const toValue: typeof import('vue').toValue
   const triggerRef: typeof import('vue').triggerRef
   const unref: typeof import('vue').unref
-  const useA2UIWebSocket: typeof import('./composables/useA2UI').useA2UIWebSocket
   const useAttrs: typeof import('vue').useAttrs
   const useAuthStore: typeof import('./stores/auth').useAuthStore
   const useAutoReplyStore: typeof import('./stores/autoreply').useAutoReplyStore
@@ -112,7 +110,6 @@ declare global {
   const useNetwork: typeof import('./composables/useNetwork').useNetwork
   const useNotificationStore: typeof import('./stores/notification').useNotificationStore
   const usePermissions: typeof import('./composables/usePermissions').usePermissions
-  const usePersonalityStore: typeof import('./stores/personality').usePersonalityStore
   const usePluginStore: typeof import('./stores/plugin').usePluginStore
   const usePreviewStore: typeof import('./stores/preview').usePreviewStore
   const useProviderPoolStore: typeof import('./stores/providerPool').useProviderPoolStore

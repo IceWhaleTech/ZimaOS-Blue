@@ -533,18 +533,71 @@ export interface DeepResearchCitationItem {
   url: string
 }
 
+export interface DeepResearchEntityDisambiguation {
+  enabled?: boolean
+  threshold?: number
+  filtered_count?: number
+  ambiguous_count?: number
+}
+
+export interface DeepResearchTimelineSection {
+  label: string
+  highlights?: string[]
+  evidence_ids?: string[]
+}
+
+export interface DeepResearchTraceItem {
+  iteration: number
+  focus?: string
+  gap?: string
+  follow_up_query?: string
+  evidence_added?: number
+  verification_outcome?: string
+}
+
+export interface DeepResearchVerificationItem {
+  focus?: string
+  gap?: string
+  status?: 'resolved' | 'conflicted' | 'insufficient' | string
+  summary?: string
+  evidence_ids?: string[]
+}
+
+export interface DeepResearchVerificationSummary {
+  resolved_count?: number
+  conflicted_count?: number
+  insufficient_count?: number
+  items?: DeepResearchVerificationItem[]
+}
+
 export interface TypelessCardDeepResearch extends TypelessCardBase {
   type: 'deep-research'
+  job_id?: string
   query?: string
   mode?: 'fast' | 'standard' | 'deep'
+  progress?: number
+  iteration?: number
+  latest_gap?: string
+  latest_action?: string
   answer?: string
   confidence?: number
   evidence_count?: number
+  iterations?: number
+  stop_reason?: string
   citations?: DeepResearchCitationItem[]
   open_questions?: string[]
   support_count?: number
   conflict_count?: number
   has_conflict?: boolean
+  citation_coverage?: number
+  entity_disambiguation?: DeepResearchEntityDisambiguation
+  stage_errors?: string[]
+  timeline_sections?: DeepResearchTimelineSection[]
+  strict_entity?: boolean
+  time_windows?: string[]
+  report_style?: string
+  research_trace?: DeepResearchTraceItem[]
+  verification_summary?: DeepResearchVerificationSummary
   status?: string
 }
 
@@ -556,6 +609,9 @@ export interface TypelessCardDeepResearchProgress extends TypelessCardBase {
   stage?: string
   status?: string
   progress?: number
+  iteration?: number
+  latest_gap?: string
+  latest_action?: string
 }
 
 // UI Review Card - Display UI quality review results with collapsible steps
@@ -596,6 +652,12 @@ export interface TypelessCardUIReview extends TypelessCardBase {
   steps?: UIReviewStep[]
   viewports?: string[]
   screenshot?: string
+  media_url?: string
+  thumbnail_url?: string
+  screenshots?: string[]
+  device?: string
+  channel?: string
+  human?: string
   status?: string
   message?: string
   actions?: ActionButton[]
@@ -638,6 +700,13 @@ export interface AnalyzeProgressStep {
   step: string
   name: string
   status: string
+  detail?: string
+  current?: number
+  total?: number
+  source_kind?: string
+  source_label?: string
+  char_count?: number
+  result_count?: number
 }
 
 export interface TypelessCardAnalyzeProgress extends TypelessCardBase {
@@ -646,6 +715,13 @@ export interface TypelessCardAnalyzeProgress extends TypelessCardBase {
   step?: string
   name?: string
   status?: string
+  detail?: string
+  current?: number
+  total?: number
+  source_kind?: string
+  source_label?: string
+  char_count?: number
+  result_count?: number
   // Merged steps (after frontend consolidation)
   steps?: AnalyzeProgressStep[]
 }
@@ -656,6 +732,7 @@ export interface BrowserProgressStep {
   name: string
   status: string
   url?: string
+  recipe_name?: string
 }
 
 export interface TypelessCardBrowserProgress extends TypelessCardBase {
@@ -665,6 +742,7 @@ export interface TypelessCardBrowserProgress extends TypelessCardBase {
   name?: string
   status?: string
   url?: string
+  recipe_name?: string
   // Merged steps (after frontend consolidation)
   steps?: BrowserProgressStep[]
 }

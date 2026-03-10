@@ -13,13 +13,14 @@ import (
 
 // bridgeRequest mirrors the OpenAI chat completion request format.
 type bridgeRequest struct {
-	Model         string            `json:"model"`
-	Messages      []bridgeMessage   `json:"messages"`
-	Temperature   float64           `json:"temperature,omitempty"`
-	MaxTokens     int               `json:"max_tokens,omitempty"`
-	Tools         []bridgeTool      `json:"tools,omitempty"`
-	Stream        bool              `json:"stream,omitempty"`
-	StreamOptions *bridgeStreamOpts `json:"stream_options,omitempty"`
+	Model          string            `json:"model"`
+	Messages       []bridgeMessage   `json:"messages"`
+	Temperature    float64           `json:"temperature,omitempty"`
+	MaxTokens      int               `json:"max_tokens,omitempty"`
+	PromptCacheKey string            `json:"prompt_cache_key,omitempty"`
+	Tools          []bridgeTool      `json:"tools,omitempty"`
+	Stream         bool              `json:"stream,omitempty"`
+	StreamOptions  *bridgeStreamOpts `json:"stream_options,omitempty"`
 }
 
 type bridgeStreamOpts struct {
@@ -149,6 +150,7 @@ type bridgeResponsesRequest struct {
 	Temperature        *float64              `json:"temperature,omitempty"`
 	PreviousResponseID string                `json:"previous_response_id,omitempty"`
 	Instructions       string                `json:"instructions,omitempty"`
+	PromptCacheKey     string                `json:"prompt_cache_key,omitempty"`
 }
 
 type bridgeResponsesTool struct {
@@ -223,32 +225,33 @@ func MarshalChatRequest(req llm.ChatRequest) ([]byte, error) {
 			// Empty string is valid per OpenAI spec and gives relays a
 			// parseable value during format conversion.
 			bm.Content = ""
+		} else if m.Role == llm.RoleTool {
+			// Keep tool-result content as a string for chat-completions payloads.
+			// Some OpenAI-compatible relays reject object-typed tool content with
+			// 400 "Improperly formed request".
+			bm.Content = m.Content
 		} else if m.Content != "" {
-			// For tool results, if content is already valid JSON, embed it
-			// directly as json.RawMessage to avoid double-encoding.
-			if m.Role == llm.RoleTool && json.Valid([]byte(m.Content)) {
-				bm.Content = json.RawMessage(m.Content)
-			} else {
-				bm.Content = m.Content
-			}
+			bm.Content = m.Content
 		}
 		if len(m.ToolCalls) > 0 {
 			bm.ToolCalls = make([]bridgeToolCall, len(m.ToolCalls))
 			for j, tc := range m.ToolCalls {
 				bm.ToolCalls[j] = bridgeToolCall{ID: tc.ID, Type: "function"}
 				bm.ToolCalls[j].Function.Name = tc.Name
-				bm.ToolCalls[j].Function.Arguments = toRawJSON(tc.Arguments)
+				encodedArgs, _ := json.Marshal(tc.Arguments)
+				bm.ToolCalls[j].Function.Arguments = encodedArgs
 			}
 		}
 		msgs[i] = bm
 	}
 
 	br := bridgeRequest{
-		Model:       req.Model,
-		Messages:    msgs,
-		Temperature: req.Temperature,
-		MaxTokens:   req.MaxTokens,
-		Stream:      req.Stream,
+		Model:          req.Model,
+		Messages:       msgs,
+		Temperature:    req.Temperature,
+		MaxTokens:      req.MaxTokens,
+		PromptCacheKey: strings.TrimSpace(req.PromptCacheKey),
+		Stream:         req.Stream,
 	}
 	if req.Stream {
 		// Note: stream_options is not set — many relay/proxy services
@@ -308,6 +311,9 @@ func MarshalResponsesRequest(req llm.ChatRequest) ([]byte, error) {
 	}
 	if req.PreviousResponseID != "" {
 		out.PreviousResponseID = req.PreviousResponseID
+	}
+	if strings.TrimSpace(req.PromptCacheKey) != "" {
+		out.PromptCacheKey = strings.TrimSpace(req.PromptCacheKey)
 	}
 
 	messages := req.Messages

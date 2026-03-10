@@ -261,6 +261,72 @@ func TestParseChatResponse_ResponsesObject(t *testing.T) {
 	}
 }
 
+func TestMarshalChatRequest_ToolMessageContentIsJSONString(t *testing.T) {
+	req := llm.ChatRequest{
+		Model: "gpt-5.3-codex-spark",
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "帮我查今天战况"},
+			{
+				Role:    llm.RoleAssistant,
+				Content: "",
+				ToolCalls: []llm.ToolCall{
+					{ID: "call_1", Name: "web_search", Arguments: `{"query":"Iran latest updates"}`},
+				},
+			},
+			{Role: llm.RoleTool, ToolCallID: "call_1", Content: `{"query":"Iran latest updates","results":[{"title":"x"}]}`},
+		},
+	}
+
+	raw, err := MarshalChatRequest(req)
+	if err != nil {
+		t.Fatalf("MarshalChatRequest failed: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	msgs, ok := payload["messages"].([]any)
+	if !ok || len(msgs) != 3 {
+		t.Fatalf("messages shape mismatch: %#v", payload["messages"])
+	}
+	assistantMsg, ok := msgs[1].(map[string]any)
+	if !ok {
+		t.Fatalf("assistant message type mismatch: %#v", msgs[1])
+	}
+	toolCalls, ok := assistantMsg["tool_calls"].([]any)
+	if !ok || len(toolCalls) != 1 {
+		t.Fatalf("assistant tool_calls shape mismatch: %#v", assistantMsg["tool_calls"])
+	}
+	tc, ok := toolCalls[0].(map[string]any)
+	if !ok {
+		t.Fatalf("tool_call type mismatch: %#v", toolCalls[0])
+	}
+	fn, ok := tc["function"].(map[string]any)
+	if !ok {
+		t.Fatalf("tool_call.function type mismatch: %#v", tc["function"])
+	}
+	args, ok := fn["arguments"].(string)
+	if !ok {
+		t.Fatalf("tool_call.function.arguments should be string, got type=%T value=%#v", fn["arguments"], fn["arguments"])
+	}
+	if args != `{"query":"Iran latest updates"}` {
+		t.Fatalf("tool_call.function.arguments = %q", args)
+	}
+	toolMsg, ok := msgs[2].(map[string]any)
+	if !ok {
+		t.Fatalf("tool message type mismatch: %#v", msgs[2])
+	}
+	content, ok := toolMsg["content"].(string)
+	if !ok {
+		t.Fatalf("tool content should be string, got type=%T value=%#v", toolMsg["content"], toolMsg["content"])
+	}
+	if content != `{"query":"Iran latest updates","results":[{"title":"x"}]}` {
+		t.Fatalf("tool content = %q", content)
+	}
+}
+
 func TestMarshalResponsesRequest_UsesNativeResponsesShape(t *testing.T) {
 	req := llm.ChatRequest{
 		Model:              "gpt-5.3-codex-spark",
@@ -446,5 +512,43 @@ func TestMarshalResponsesRequest_ContinuationSizeGuard(t *testing.T) {
 	}
 	if !foundLatestCall {
 		t.Fatal("latest function_call_output (call_3) should be preserved")
+	}
+}
+
+func TestMarshalChatRequest_EmitsPromptCacheKey(t *testing.T) {
+	req := llm.ChatRequest{
+		Model:          "gpt-5",
+		Messages:       []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+		PromptCacheKey: "pcache-key-1",
+	}
+	raw, err := MarshalChatRequest(req)
+	if err != nil {
+		t.Fatalf("MarshalChatRequest failed: %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if got, _ := body["prompt_cache_key"].(string); got != "pcache-key-1" {
+		t.Fatalf("prompt_cache_key = %q, want %q", got, "pcache-key-1")
+	}
+}
+
+func TestMarshalResponsesRequest_EmitsPromptCacheKey(t *testing.T) {
+	req := llm.ChatRequest{
+		Model:          "gpt-5",
+		Messages:       []llm.Message{{Role: llm.RoleSystem, Content: "sys"}, {Role: llm.RoleUser, Content: "hello"}},
+		PromptCacheKey: "pcache-key-2",
+	}
+	raw, err := MarshalResponsesRequest(req)
+	if err != nil {
+		t.Fatalf("MarshalResponsesRequest failed: %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if got, _ := body["prompt_cache_key"].(string); got != "pcache-key-2" {
+		t.Fatalf("prompt_cache_key = %q, want %q", got, "pcache-key-2")
 	}
 }

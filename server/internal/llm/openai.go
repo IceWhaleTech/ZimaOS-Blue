@@ -16,7 +16,7 @@ import (
 
 const (
 	defaultOpenAIBaseURL = "https://api.openai.com"
-	openAITimeout        = 120 * time.Second
+	openAITimeout        = 5 * time.Minute
 )
 
 // OpenAIProvider implements the Provider interface for OpenAI.
@@ -213,13 +213,13 @@ func (p *OpenAIProvider) RefreshModels() []string {
 
 // openAIRequest represents the OpenAI API request format.
 type openAIRequest struct {
-	Model         string                 `json:"model"`
-	Messages      []openAIMessage        `json:"messages"`
-	Temperature   float64                `json:"temperature,omitempty"`
-	MaxTokens     int                    `json:"max_tokens,omitempty"`
-	Tools         []openAITool           `json:"tools,omitempty"`
-	Stream        bool                   `json:"stream,omitempty"`
-	StreamOptions *openAIStreamOptions   `json:"stream_options,omitempty"`
+	Model         string               `json:"model"`
+	Messages      []openAIMessage      `json:"messages"`
+	Temperature   float64              `json:"temperature,omitempty"`
+	MaxTokens     int                  `json:"max_tokens,omitempty"`
+	Tools         []openAITool         `json:"tools,omitempty"`
+	Stream        bool                 `json:"stream,omitempty"`
+	StreamOptions *openAIStreamOptions `json:"stream_options,omitempty"`
 }
 
 // openAIStreamOptions represents streaming options for OpenAI API.
@@ -236,14 +236,14 @@ type openAIMessage struct {
 
 // openAIContentPart represents a content part for vision API
 type openAIContentPart struct {
-	Type     string              `json:"type"` // "text" or "image_url"
-	Text     string              `json:"text,omitempty"`
-	ImageURL *openAIImageURL     `json:"image_url,omitempty"`
+	Type       string            `json:"type"` // "text" or "image_url"
+	Text       string            `json:"text,omitempty"`
+	ImageURL   *openAIImageURL   `json:"image_url,omitempty"`
 	InputAudio *openAIInputAudio `json:"input_audio,omitempty"`
 }
 
 type openAIImageURL struct {
-	URL    string `json:"url"`    // data:image/jpeg;base64,... or URL
+	URL    string `json:"url"`              // data:image/jpeg;base64,... or URL
 	Detail string `json:"detail,omitempty"` // "low", "high", or "auto"
 }
 
@@ -279,9 +279,9 @@ type openAIResponse struct {
 	Choices []struct {
 		Index   int `json:"index"`
 		Message struct {
-			Role       string           `json:"role"`
-			Content    string           `json:"content"`
-			ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
+			Role      string           `json:"role"`
+			Content   string           `json:"content"`
+			ToolCalls []openAIToolCall `json:"tool_calls,omitempty"`
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -513,7 +513,7 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 				Choices []struct {
 					Delta struct {
 						Content   string           `json:"content"`
-						ToolCalls []openAIToolCall  `json:"tool_calls,omitempty"`
+						ToolCalls []openAIToolCall `json:"tool_calls,omitempty"`
 					} `json:"delta"`
 					FinishReason string `json:"finish_reason"`
 				} `json:"choices"`
@@ -655,7 +655,7 @@ func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Rea
 				Choices []struct {
 					Delta struct {
 						Content   string           `json:"content"`
-						ToolCalls []openAIToolCall  `json:"tool_calls,omitempty"`
+						ToolCalls []openAIToolCall `json:"tool_calls,omitempty"`
 					} `json:"delta"`
 					FinishReason string `json:"finish_reason"`
 				} `json:"choices"`

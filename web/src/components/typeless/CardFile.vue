@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardFile } from '@/types/typeless'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardFile
@@ -97,7 +100,8 @@ function handlePreview() {
         <button
           v-if="card.previewUrl"
           class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          title="Preview"
+          :title="t('common.preview', 'Preview')"
+          :aria-label="t('common.preview', 'Preview')"
           @click="handlePreview"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -113,7 +117,8 @@ function handlePreview() {
         <button
           v-if="card.downloadUrl"
           class="p-2 text-gray-900 dark:text-white hover:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-lg transition-colors"
-          title="Download"
+          :title="t('common.download', 'Download')"
+          :aria-label="t('common.download', 'Download')"
           @click="handleDownload"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

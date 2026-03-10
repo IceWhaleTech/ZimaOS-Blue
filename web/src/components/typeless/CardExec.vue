@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TypelessCardExec } from '@/types/typeless'
+import { formatToolWarningCodeLabel } from '@/utils/toolWarnings'
 
 const { t } = useI18n()
 
@@ -11,19 +12,6 @@ const props = defineProps<{
 
 function unescapeBackticks(s: string): string {
   return s.replace(/`​``/g, '```')
-}
-
-function formatWarningCodeLabel(code?: string): string {
-  switch ((code || '').trim()) {
-    case 'login_wall':
-      return 'Login wall'
-    case 'challenge':
-      return 'Challenge'
-    case 'browser_required':
-      return 'Browser required'
-    default:
-      return code ? `warning_code=${code}` : ''
-  }
 }
 
 const commandRedacted = computed(() => props.card.command_redacted === true || props.card.hide_command === true)
@@ -46,7 +34,7 @@ const outputText = computed(() => {
 })
 const fallbackText = computed(() => {
   if (props.card.message) return props.card.message
-  if (outputRedacted.value) return t('execCard.outputHidden', 'Output hidden for safety')
+  if (outputRedacted.value) return t('execCard.outputUnavailable', 'Output unavailable in this card')
   if (isRunning.value) return '...'
   return t('execCard.noOutput', 'No output')
 })
@@ -55,7 +43,7 @@ const outputToneClass = computed(() => {
   if (isError.value) return 'exec-output--error'
   return 'exec-output--success'
 })
-const warningCodeLabel = computed(() => formatWarningCodeLabel(props.card.warning_code))
+const warningCodeLabel = computed(() => formatToolWarningCodeLabel(props.card.warning_code, t))
 const warningMessages = computed(() => {
   const items: string[] = []
   const seen = new Set<string>()
@@ -75,7 +63,7 @@ const hasWarnings = computed(() => !!(warningCodeLabel.value || warningMessages.
 
 const showShield = computed(() => props.card.host === 'sandbox' || props.card.host === 'builtin')
 const shieldLabel = computed(() => {
-  if (props.card.host === 'builtin') return 'Built-in'
+  if (props.card.host === 'builtin') return t('execCard.builtin', 'Built-in')
   return t('tools.sandboxProtected')
 })
 
@@ -123,7 +111,7 @@ watch(
     </div>
 
     <div v-if="hasWarnings" class="exec-card__warnings">
-      <div class="exec-card__warnings-header">{{ warningCodeLabel || 'Warning' }}</div>
+      <div class="exec-card__warnings-header">{{ warningCodeLabel || t('toolWarnings.warning', 'Warning') }}</div>
       <ul v-if="warningMessages.length > 0" class="exec-card__warnings-list">
         <li v-for="(warning, index) in warningMessages" :key="index">{{ warning }}</li>
       </ul>

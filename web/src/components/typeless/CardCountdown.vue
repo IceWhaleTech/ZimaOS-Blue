@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardCountdown } from '@/types/typeless'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardCountdown
@@ -57,7 +60,7 @@ function padZero(num: number): string {
 
     <!-- Expired state -->
     <div v-if="timeLeft.expired" class="text-center py-4">
-      <p class="text-2xl font-bold text-gray-900 dark:text-white">Time's up!</p>
+      <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('countdownCard.expired', "Time's up!") }}</p>
     </div>
 
     <!-- Countdown display -->
@@ -74,7 +77,7 @@ function padZero(num: number): string {
         >
           {{ padZero(timeLeft.days) }}
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Days</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('countdownCard.days', 'Days') }}</p>
       </div>
 
       <!-- Separator -->
@@ -92,7 +95,7 @@ function padZero(num: number): string {
         >
           {{ padZero(timeLeft.hours) }}
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Hours</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('countdownCard.hours', 'Hours') }}</p>
       </div>
 
       <!-- Separator -->
@@ -110,7 +113,7 @@ function padZero(num: number): string {
         >
           {{ padZero(timeLeft.minutes) }}
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Minutes</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('countdownCard.minutes', 'Minutes') }}</p>
       </div>
 
       <!-- Separator -->
@@ -128,7 +131,7 @@ function padZero(num: number): string {
         >
           {{ padZero(timeLeft.seconds) }}
         </div>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Seconds</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('countdownCard.seconds', 'Seconds') }}</p>
       </div>
     </div>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch, computed, onUnmounted } from 'vue'
+import { ref, onMounted, nextTick, watch, computed, onUnmounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import type { ComponentPublicInstance } from 'vue'
@@ -31,6 +31,7 @@ import { formatTokens } from '@/utils/format'
 
 const { t, te, locale } = useI18n()
 const router = useRouter()
+const toggleAppSidebar = inject<() => void>('toggleAppSidebar', () => {})
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 const providerPoolStore = useProviderPoolStore()
@@ -160,12 +161,25 @@ function onAgentEvent(data: any) {
     const task = agentTasks.value[idx]!
     if (data.progress !== undefined) task.progress = data.progress
     if (data.event_type === 'task_completed') { task.status = 'completed'; task.result = data.message }
-    if (data.event_type === 'task_failed') { task.status = 'failed'; task.error = data.message }
+    if (data.event_type === 'task_failed') {
+      task.status = 'failed'
+      task.error = data.message
+      if (data.output) task.result = data.output
+    }
     if (data.event_type === 'task_cancelled') { task.status = 'cancelled'; task.error = data.message; task.questions = undefined }
     if (data.event_type === 'task_step_completed' && task.plan?.[data.step_index]) {
       task.plan[data.step_index]!.status = 'completed'
       task.plan[data.step_index]!.output = data.output
       if (data.duration_ms) task.plan[data.step_index]!.completed_at = new Date(Date.now()).toISOString()
+    }
+    if (data.event_type === 'task_reflection_started' && data.step_index !== undefined && task.plan?.[data.step_index]) {
+      task.plan[data.step_index]!.status = 'running'
+      task.plan[data.step_index]!.started_at = new Date(Date.now()).toISOString()
+    }
+    if (data.event_type === 'task_reflection_completed' && data.step_index !== undefined && task.plan?.[data.step_index]) {
+      task.plan[data.step_index]!.output = data.output || task.plan[data.step_index]!.output
+      task.plan[data.step_index]!.status = String(data.output || '').startsWith('Reflection error:') ? 'failed' : 'completed'
+      task.plan[data.step_index]!.completed_at = new Date(Date.now()).toISOString()
     }
     if (data.event_type === 'task_progress' && data.step_index !== undefined && task.plan?.[data.step_index]) {
       if (task.plan[data.step_index]!.status === 'pending') {
@@ -198,7 +212,7 @@ function onAgentEvent(data: any) {
   }
 }
 
-const agentEventTypes = ['task_created', 'task_planning', 'task_progress', 'task_step_completed', 'task_completed', 'task_failed', 'task_cancelled', 'task_user_message', 'task_question', 'task_question_answered']
+const agentEventTypes = ['task_created', 'task_planning', 'task_progress', 'task_step_completed', 'task_reflection_started', 'task_reflection_completed', 'task_completed', 'task_failed', 'task_cancelled', 'task_user_message', 'task_question', 'task_question_answered']
 
 // Virtual scroll threshold - use virtual scroll when message count exceeds this
 const VIRTUAL_SCROLL_THRESHOLD = 50
@@ -224,10 +238,15 @@ const streamingMessageId = computed(() => {
 type MessageMemoSource = {
   conversation_id: string
   id: string
+  render_key?: string
   content: string
   attachments?: unknown[]
   updated_at?: string
   created_at: string
+}
+
+function getMessageRenderKey(message: { conversation_id: string; id: string; render_key?: string }) {
+  return `${message.conversation_id}:${message.render_key || message.id}`
 }
 
 type MessageMemoDepsTuple = [
@@ -263,7 +282,7 @@ type MessageRenderMeta = {
 function getMessageRenderMetaKey(message: MessageMemoSource): string {
   const cachedKey = messageRenderMetaKeyCache.get(message)
   if (cachedKey) return cachedKey
-  const key = `${message.conversation_id}:${message.id}`
+  const key = getMessageRenderKey(message)
   messageRenderMetaKeyCache.set(message, key)
   return key
 }
@@ -494,8 +513,8 @@ const currentThemeStyleIconColor = computed(() => {
   }
 })
 
-function getMessageHeightKey(message: { conversation_id: string; id: string }) {
-  return `${message.conversation_id}:${message.id}`
+function getMessageHeightKey(message: { conversation_id: string; id: string; render_key?: string }) {
+  return getMessageRenderKey(message)
 }
 
 function getVirtualResizeObserver() {
@@ -956,6 +975,10 @@ function toggleSidebar() {
   }
 }
 
+function openAppSidebar() {
+  toggleAppSidebar()
+}
+
 function toggleRoutingMenu() {
   showTopbarMenu.value = false
   showStyleSelector.value = false
@@ -1265,6 +1288,27 @@ onUnmounted(() => {
         :class="isMobile ? 'bg-white dark:bg-gray-900' : 'glass-header'"
       >
         <div class="chat-title-wrap flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+          <button
+            v-if="isMobile && !showListPage"
+            class="chat-nav-btn flex-shrink-0 p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white rounded-lg transition-all duration-200 cursor-pointer"
+            :title="t('nav.expandSidebar')"
+            @click="openAppSidebar"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </button>
           <!-- Back/Sidebar toggle button -->
           <button
             class="chat-nav-btn flex-shrink-0 p-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white rounded-lg transition-all duration-200 cursor-pointer"
@@ -1981,7 +2025,7 @@ onUnmounted(() => {
             <template #default="{ item: message, updateHeight }">
               <div
                 v-if="message"
-                :key="`${message.conversation_id}-${message.id}`"
+                :key="getMessageRenderKey(message)"
                 :ref="bindVirtualItemHeight(message, updateHeight)"
               >
                 <ChatMessage
@@ -2000,7 +2044,7 @@ onUnmounted(() => {
           <div v-else class="pb-4">
             <div
               v-for="message in chatStore.messages"
-              :key="`${message.conversation_id}-${message.id}`"
+              :key="getMessageRenderKey(message)"
             >
               <ChatMessage
                 v-memo="messageMemoDeps(message)"
@@ -2106,7 +2150,7 @@ onUnmounted(() => {
               <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M7 4h10l3 5v11H4V9l3-5z" />
               </svg>
-              <span>Waiting for your confirmation to continue</span>
+              <span>{{ t('chat.awaitingConfirmation', 'Waiting for your confirmation to continue') }}</span>
             </div>
           </div>
 

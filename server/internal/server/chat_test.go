@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -33,9 +34,10 @@ type requestCaptureProvider struct {
 }
 
 type scriptedChatProvider struct {
-	name      string
-	models    []string
-	responses []llm.ChatResponse
+	name       string
+	models     []string
+	responses  []llm.ChatResponse
+	callErrors []error
 
 	mu        sync.Mutex
 	callCount int
@@ -217,7 +219,8 @@ func (p *scriptedChatProvider) Chat(ctx context.Context, req llm.ChatRequest) (*
 	p.mu.Lock()
 	p.callCount++
 	p.requests = append(p.requests, cloneChatRequestForTest(req))
-	idx := p.callCount - 1
+	rawIdx := p.callCount - 1
+	idx := rawIdx
 	if idx >= len(p.responses) {
 		idx = len(p.responses) - 1
 	}
@@ -229,6 +232,9 @@ func (p *scriptedChatProvider) Chat(ctx context.Context, req llm.ChatRequest) (*
 			Model:   req.Model,
 			Message: llm.Message{Role: llm.RoleAssistant, Content: "ok"},
 		}, nil
+	}
+	if rawIdx >= 0 && rawIdx < len(p.callErrors) && p.callErrors[rawIdx] != nil {
+		return nil, p.callErrors[rawIdx]
 	}
 	resp := p.responses[idx]
 	return &resp, nil
@@ -358,6 +364,75 @@ func TestDeriveContinuationContext_AffirmativeWithSoftConsentOffer(t *testing.T)
 	}
 	if cc.ToolQuery != "帮我查 BlueAgent 最近动态" {
 		t.Fatalf("unexpected tool query: %q", cc.ToolQuery)
+	}
+}
+
+func TestProcessChannelMessage_AffirmativeContinuationUsesStoredObjective(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	convID := channelConversationID("feishu", "chat_im_affirmative_continue")
+	if _, err := store.CreateConversationWithID(context.Background(), convID, "feishu - user_1"); err != nil {
+		t.Fatalf("CreateConversationWithID: %v", err)
+	}
+	seed := []memory.Message{
+		{Role: "user", Content: "帮我查询一下伊朗今天的战况"},
+		{Role: "assistant", Content: "为了不给你错误信息，我建议按高可信来源整理。如果你同意，我下一步会按这个范围整理（1-2分钟）：\n1) 官方渠道\n2) 主流媒体"},
+	}
+	for _, msg := range seed {
+		if _, err := store.AddMessage(context.Background(), convID, msg); err != nil {
+			t.Fatalf("AddMessage: %v", err)
+		}
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-affirmative-continue",
+		responses: []llm.ChatResponse{{
+			ID:      "im-continue-round-1",
+			Model:   "gpt-5.3-codex-spark",
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "已继续整理。"},
+		}},
+	}
+	registry.Register(scripted)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+
+	resp, err := handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_affirmative_continue",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "同意",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+	if got := strings.TrimSpace(resp); got != "已继续整理。" {
+		t.Fatalf("unexpected response: %q", got)
+	}
+
+	firstReq, ok := scripted.RequestAt(0)
+	if !ok {
+		t.Fatalf("missing first request capture")
+	}
+
+	foundTarget := false
+	for _, msg := range firstReq.Messages {
+		if msg.Role != llm.RoleSystem {
+			continue
+		}
+		if strings.Contains(msg.Content, "Continuation target: resume the user's original objective: 帮我查询一下伊朗今天的战况") {
+			foundTarget = true
+			break
+		}
+	}
+	if !foundTarget {
+		t.Fatalf("expected continuation target system message in request, got %+v", firstReq.Messages)
 	}
 }
 
@@ -503,6 +578,26 @@ func TestDefaultModelForCCCLI(t *testing.T) {
 			t.Fatalf("auto model with available default model = %q, want auto", got)
 		}
 	})
+}
+
+func TestGenerateTitleWithLLM_MarksBackgroundTask(t *testing.T) {
+	var gotBackground string
+	h := &ChatHandler{
+		proxyBridge: proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotBackground = r.Header.Get(proxy.BackgroundTaskHeader)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, `{"id":"1","model":"","choices":[{"message":{"role":"assistant","content":"简短标题"},"finish_reason":"stop"}]}`)
+		})),
+	}
+
+	title := h.generateTitleWithLLM(strings.Repeat("这是一个很长的问题。", 8), "zh")
+	if title != "简短标题" {
+		t.Fatalf("title = %q, want %q", title, "简短标题")
+	}
+	if gotBackground != "true" {
+		t.Fatalf("expected %s header=true, got %q", proxy.BackgroundTaskHeader, gotBackground)
+	}
 }
 
 func TestChatOnce_InjectsLocaleFromSettingsToProxyBridge(t *testing.T) {
@@ -696,6 +791,445 @@ func TestProcessChannelMessage_AutoContinueRetriesEmptyReplyAfterToolRound(t *te
 	last := thirdReq.Messages[len(thirdReq.Messages)-1]
 	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "The tools above have been executed successfully") {
 		t.Fatalf("expected post-tool continuation nudge in third request, got role=%s content=%q", last.Role, last.Content)
+	}
+}
+
+func TestProcessChannelMessage_AutoContinueRetriesToollessPendingTodoInAgentMode(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-agent-todo",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "im-agent-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "开始处理。\n\n- [ ] 搜索伊朗今天的战况\n- [ ] 汇总关键进展\n\n我先去搜索一下。",
+				},
+			},
+			{
+				ID:    "im-agent-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "先检索一下最新战况。",
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_web_ir_1",
+						Name:      "web_search",
+						Arguments: `{"query":"Iran latest battlefield updates today"}`,
+					}},
+				},
+			},
+			{
+				ID:    "im-agent-round-3",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "任务已完成。伊朗今天的战况要点包括：前线动态、袭击通报和主要来源。",
+				},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&webSearchToolMock{result: map[string]interface{}{
+		"query": "Iran latest battlefield updates today",
+		"results": []map[string]interface{}{
+			{"title": "Live updates", "url": "https://example.com/live", "description": "latest updates"},
+		},
+	}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	resp, err := handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_agent_pending_todo",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "帮我查询一下伊朗今天的战况",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+	if !strings.Contains(resp, "任务已完成") {
+		t.Fatalf("expected final summary after IM auto-continue, got %q", resp)
+	}
+	if scripted.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM rounds (todo + retry + tool summary), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	last := secondReq.Messages[len(secondReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "A canonical TODO checklist already exists") {
+		t.Fatalf("expected pending_todo continuation nudge in second request, got role=%s content=%q", last.Role, last.Content)
+	}
+}
+
+func TestProcessChannelMessage_FreshStandaloneTopicIgnoresOldIMHistoryInAgentMode(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	convID := channelConversationID("feishu", "chat_im_fresh_topic")
+	if _, err := store.CreateConversationWithID(context.Background(), convID, "feishu - user_1"); err != nil {
+		t.Fatalf("CreateConversationWithID: %v", err)
+	}
+	seed := []memory.Message{
+		{Role: "user", Content: "请帮我评审 zimaspace.com/zimaos 的 UI"},
+		{Role: "assistant", Content: "- [ ] 访问 zimaspace.com/zimaos 并截取页面快照\n- [ ] 生成 UI 质量报告"},
+	}
+	for _, m := range seed {
+		if _, err := store.AddMessage(context.Background(), convID, m); err != nil {
+			t.Fatalf("AddMessage: %v", err)
+		}
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-fresh-topic",
+		responses: []llm.ChatResponse{{
+			ID:      "fresh-topic-round-1",
+			Model:   "gpt-5.3-codex-spark",
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "ok"},
+		}},
+	}
+	registry.Register(scripted)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	_, err = handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_fresh_topic",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "帮我查询一下伊朗今天的战况",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+
+	firstReq, ok := scripted.RequestAt(0)
+	if !ok {
+		t.Fatalf("missing first request capture")
+	}
+	nonSystem := make([]llm.Message, 0, len(firstReq.Messages))
+	for _, msg := range firstReq.Messages {
+		if strings.Contains(msg.Content, "zimaspace.com/zimaos") {
+			t.Fatalf("expected fresh standalone IM topic to exclude old UI-review history, got message=%+v", msg)
+		}
+		if msg.Role != llm.RoleSystem {
+			nonSystem = append(nonSystem, msg)
+		}
+	}
+	if len(nonSystem) != 1 {
+		t.Fatalf("expected only the current user turn in non-system context, got %d messages", len(nonSystem))
+	}
+	if nonSystem[0].Role != llm.RoleUser || nonSystem[0].Content != "帮我查询一下伊朗今天的战况" {
+		t.Fatalf("expected isolated user turn, got %+v", nonSystem[0])
+	}
+}
+
+func TestProcessChannelMessage_IMHistoryLimitZeroDisablesRecentRoundsRetention(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	convID := channelConversationID("feishu", "chat_im_history_limit_zero")
+	if _, err := store.CreateConversationWithID(context.Background(), convID, "feishu - user_1"); err != nil {
+		t.Fatalf("CreateConversationWithID: %v", err)
+	}
+	seed := []memory.Message{
+		{Role: "user", Content: "Q1 old"},
+		{Role: "assistant", Content: "A1 old"},
+		{Role: "user", Content: "Q2 old"},
+		{Role: "assistant", Content: "A2 old"},
+	}
+	for _, m := range seed {
+		if _, err := store.AddMessage(context.Background(), convID, m); err != nil {
+			t.Fatalf("AddMessage: %v", err)
+		}
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-history-limit-zero",
+		responses: []llm.ChatResponse{{
+			ID:      "history-limit-zero-round-1",
+			Model:   "gpt-5.3-codex-spark",
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "ok"},
+		}},
+	}
+	registry.Register(scripted)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	zero := 0
+	settingsHandler.settings.IMHistoryLimit = &zero
+	handler.SetSettingsHandler(settingsHandler)
+
+	_, err = handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_history_limit_zero",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "今天天气怎么样",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+
+	firstReq, ok := scripted.RequestAt(0)
+	if !ok {
+		t.Fatalf("missing first request capture")
+	}
+	nonSystem := make([]llm.Message, 0, len(firstReq.Messages))
+	for _, msg := range firstReq.Messages {
+		if strings.Contains(msg.Content, "Q1 old") || strings.Contains(msg.Content, "Q2 old") ||
+			strings.Contains(msg.Content, "A1 old") || strings.Contains(msg.Content, "A2 old") {
+			t.Fatalf("expected old IM history to be excluded when im_history_limit=0, got message=%+v", msg)
+		}
+		if msg.Role != llm.RoleSystem {
+			nonSystem = append(nonSystem, msg)
+		}
+	}
+	if len(nonSystem) != 1 {
+		t.Fatalf("expected only the current user turn in non-system context, got %d messages", len(nonSystem))
+	}
+	if nonSystem[0].Role != llm.RoleUser || nonSystem[0].Content != "今天天气怎么样" {
+		t.Fatalf("expected isolated user turn, got %+v", nonSystem[0])
+	}
+}
+
+func TestProcessChannelMessage_IMHistoryLimitMetadataOverrideTakesPrecedence(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	convID := channelConversationID("feishu", "chat_im_history_limit_override")
+	if _, err := store.CreateConversationWithID(context.Background(), convID, "feishu - user_1"); err != nil {
+		t.Fatalf("CreateConversationWithID: %v", err)
+	}
+	seed := []memory.Message{
+		{Role: "user", Content: "Q1 old"},
+		{Role: "assistant", Content: "A1 old"},
+		{Role: "user", Content: "Q2 old"},
+		{Role: "assistant", Content: "A2 old"},
+	}
+	for _, m := range seed {
+		if _, err := store.AddMessage(context.Background(), convID, m); err != nil {
+			t.Fatalf("AddMessage: %v", err)
+		}
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-history-limit-override",
+		responses: []llm.ChatResponse{{
+			ID:      "history-limit-override-round-1",
+			Model:   "gpt-5.3-codex-spark",
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "ok"},
+		}},
+	}
+	registry.Register(scripted)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	zero := 0
+	settingsHandler.settings.IMHistoryLimit = &zero
+	handler.SetSettingsHandler(settingsHandler)
+
+	_, err = handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_history_limit_override",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "今天天气怎么样",
+		Metadata: map[string]interface{}{
+			"im_history_limit": 2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+
+	firstReq, ok := scripted.RequestAt(0)
+	if !ok {
+		t.Fatalf("missing first request capture")
+	}
+	nonSystem := make([]llm.Message, 0, len(firstReq.Messages))
+	for _, msg := range firstReq.Messages {
+		if msg.Role != llm.RoleSystem {
+			nonSystem = append(nonSystem, msg)
+		}
+	}
+	if len(nonSystem) != 3 {
+		t.Fatalf("expected 3 non-system messages with metadata override, got %d", len(nonSystem))
+	}
+	if nonSystem[0].Role != llm.RoleUser || nonSystem[0].Content != "Q2 old" {
+		t.Fatalf("messages[0] = %+v, want user/Q2 old", nonSystem[0])
+	}
+	if nonSystem[1].Role != llm.RoleAssistant || nonSystem[1].Content != "A2 old" {
+		t.Fatalf("messages[1] = %+v, want assistant/A2 old", nonSystem[1])
+	}
+	if nonSystem[2].Role != llm.RoleUser || nonSystem[2].Content != "今天天气怎么样" {
+		t.Fatalf("messages[2] = %+v, want user/current", nonSystem[2])
+	}
+}
+
+func TestProcessChannelMessage_IMHistoryLimitDynamicBoostForPendingContinuation(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	convID := channelConversationID("feishu", "chat_im_history_limit_dynamic")
+	if _, err := store.CreateConversationWithID(context.Background(), convID, "feishu - user_1"); err != nil {
+		t.Fatalf("CreateConversationWithID: %v", err)
+	}
+	seed := []memory.Message{
+		{Role: "user", Content: "Q1 old"},
+		{Role: "assistant", Content: "A1 old"},
+		{Role: "user", Content: "Q2 old"},
+		{Role: "assistant", Content: "A2 old"},
+		{Role: "user", Content: "Q3 old"},
+		{Role: "assistant", Content: "A3 old"},
+		{Role: "user", Content: "Q4 old"},
+		{Role: "assistant", Content: "A4 old"},
+		{Role: "user", Content: "Q5 old"},
+		{Role: "assistant", Content: "- [ ] 调研结果复核\n- [ ] 输出最终结论"},
+	}
+	for _, m := range seed {
+		if _, err := store.AddMessage(context.Background(), convID, m); err != nil {
+			t.Fatalf("AddMessage: %v", err)
+		}
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-history-limit-dynamic",
+		responses: []llm.ChatResponse{{
+			ID:      "history-limit-dynamic-round-1",
+			Model:   "gpt-5.3-codex-spark",
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "ok"},
+		}},
+	}
+	registry.Register(scripted)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	// Keep settings default (no explicit im_history_limit) so dynamic strategy applies.
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	_, err = handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_history_limit_dynamic",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "好",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+
+	firstReq, ok := scripted.RequestAt(0)
+	if !ok {
+		t.Fatalf("missing first request capture")
+	}
+	nonSystem := make([]llm.Message, 0, len(firstReq.Messages))
+	for _, msg := range firstReq.Messages {
+		if msg.Role != llm.RoleSystem {
+			nonSystem = append(nonSystem, msg)
+		}
+	}
+	containsQ1 := false
+	for _, msg := range nonSystem {
+		if msg.Role == llm.RoleUser && msg.Content == "Q1 old" {
+			containsQ1 = true
+			break
+		}
+	}
+	if !containsQ1 {
+		t.Fatalf("expected dynamic IM history window to include older round Q1 old, got non-system=%+v", nonSystem)
+	}
+}
+
+func TestProcessChannelMessage_FreshStandaloneTopicDropsPreviousResponseID(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	convID := channelConversationID("feishu", "chat_im_prev_resp_reset")
+	if _, err := store.CreateConversationWithID(context.Background(), convID, "feishu - user_1"); err != nil {
+		t.Fatalf("CreateConversationWithID: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-prev-id-reset",
+		responses: []llm.ChatResponse{{
+			ID:      "fresh-topic-prev-id-round-1",
+			Model:   "gpt-5.3-codex-spark",
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "ok"},
+		}},
+	}
+	registry.Register(scripted)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+	handler.setPreviousResponseID(convID, "resp_old_im_1")
+
+	_, err = handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_prev_resp_reset",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "帮我查询一下伊朗今天的战况",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+
+	firstReq, ok := scripted.RequestAt(0)
+	if !ok {
+		t.Fatalf("missing first request capture")
+	}
+	if firstReq.PreviousResponseID != "" {
+		t.Fatalf("expected fresh standalone IM topic to drop previous_response_id, got %q", firstReq.PreviousResponseID)
 	}
 }
 
@@ -1130,6 +1664,124 @@ func TestChatHandlerGetMessages(t *testing.T) {
 	}
 }
 
+func TestChatHandlerGetMessages_PaginatesFromLatest(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Test Conv")
+	for i := 1; i <= 5; i++ {
+		_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "user", Content: fmt.Sprintf("m%d", i)})
+	}
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+	e := echo.New()
+
+	run := func(offset int) []memory.Message {
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/conversations/%s/messages?limit=2&offset=%d", conv.ID, offset), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("id")
+		c.SetParamValues(conv.ID)
+
+		err := handler.GetMessages(c)
+		if err != nil {
+			t.Fatalf("handler error (offset=%d): %v", offset, err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status (offset=%d) = %d, want 200", offset, rec.Code)
+		}
+
+		var resp []memory.Message
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response (offset=%d): %v", offset, err)
+		}
+		return resp
+	}
+
+	page0 := run(0)
+	if len(page0) != 2 || page0[0].Content != "m4" || page0[1].Content != "m5" {
+		t.Fatalf("page0 = %#v, want [m4 m5]", page0)
+	}
+
+	page1 := run(2)
+	if len(page1) != 2 || page1[0].Content != "m2" || page1[1].Content != "m3" {
+		t.Fatalf("page1 = %#v, want [m2 m3]", page1)
+	}
+
+	page2 := run(4)
+	if len(page2) != 1 || page2[0].Content != "m1" {
+		t.Fatalf("page2 = %#v, want [m1]", page2)
+	}
+
+	page3 := run(6)
+	if len(page3) != 0 {
+		t.Fatalf("page3 len = %d, want 0", len(page3))
+	}
+}
+
+func TestChatHandlerGetMessages_PaginatesFromLatest_LargeConversation(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Large Conv")
+	for i := 1; i <= 120; i++ {
+		_, _ = store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "user", Content: fmt.Sprintf("m%03d", i)})
+	}
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	handler := NewChatHandler(store, registry, toolRegistry)
+	e := echo.New()
+
+	run := func(limit, offset int) []memory.Message {
+		req := httptest.NewRequest(
+			http.MethodGet,
+			fmt.Sprintf("/api/v1/conversations/%s/messages?limit=%d&offset=%d", conv.ID, limit, offset),
+			nil,
+		)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetParamNames("id")
+		c.SetParamValues(conv.ID)
+
+		err := handler.GetMessages(c)
+		if err != nil {
+			t.Fatalf("handler error (offset=%d): %v", offset, err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status (offset=%d) = %d, want 200", offset, rec.Code)
+		}
+
+		var resp []memory.Message
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response (offset=%d): %v", offset, err)
+		}
+		return resp
+	}
+
+	page0 := run(50, 0)
+	if len(page0) != 50 || page0[0].Content != "m071" || page0[49].Content != "m120" {
+		t.Fatalf("page0 bounds = [%s ... %s], len=%d, want [m071 ... m120], len=50", page0[0].Content, page0[len(page0)-1].Content, len(page0))
+	}
+
+	page1 := run(50, 50)
+	if len(page1) != 50 || page1[0].Content != "m021" || page1[49].Content != "m070" {
+		t.Fatalf("page1 bounds = [%s ... %s], len=%d, want [m021 ... m070], len=50", page1[0].Content, page1[len(page1)-1].Content, len(page1))
+	}
+
+	page2 := run(50, 100)
+	if len(page2) != 20 || page2[0].Content != "m001" || page2[19].Content != "m020" {
+		t.Fatalf("page2 bounds = [%s ... %s], len=%d, want [m001 ... m020], len=20", page2[0].Content, page2[len(page2)-1].Content, len(page2))
+	}
+
+	page3 := run(50, 150)
+	if len(page3) != 0 {
+		t.Fatalf("page3 len = %d, want 0", len(page3))
+	}
+}
+
 // Test SendMessage endpoint with mock provider
 func TestChatHandlerSendMessage(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
@@ -1363,6 +2015,99 @@ func TestChatHandlerSendMessageAutoContinue_RetriesEmptyReplyAfterToolRound(t *t
 	}
 	if strings.Contains(content, "最终总结生成失败") || strings.Contains(content, "Tool execution completed") {
 		t.Fatalf("expected no tool-fallback failure wording, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessageAutoContinue_RetriesErrorAfterToolRound(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Post Tool Error Reply Non-Stream")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "task-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "- [ ] 写服务端\n- [ ] 写前端\n- [ ] 启动并输出 localhost 地址",
+				},
+			},
+			{
+				ID:    "task-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_exec_1",
+						Name:      "exec",
+						Arguments: `{"cmd":"cat > server.js <<'EOF'\nconsole.log('ok')\nEOF"}`,
+					}},
+				},
+			},
+			{
+				ID:    "task-round-4",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已完成，游戏可直接运行，地址：http://localhost:3000",
+				},
+			},
+		},
+		callErrors: []error{nil, nil, errors.New("provider returned 500: follow-up summary failed"), nil},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "exec"}, result: map[string]interface{}{"ok": true}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	e := echo.New()
+	reqBody := `{"message":"帮我写一个坦克大战的 web 小游戏，要有服务端并启动后给我 localhost 地址","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 4 {
+		t.Fatalf("expected 4 LLM rounds (plan + tool + failed follow-up + retry), got %d", scripted.CallCount())
+	}
+
+	fourthReq, ok := scripted.RequestAt(3)
+	if !ok {
+		t.Fatalf("missing fourth request capture")
+	}
+	last := fourthReq.Messages[len(fourthReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "The tools above have been executed successfully") {
+		t.Fatalf("expected post-tool continuation nudge in fourth request, got role=%s content=%q", last.Role, last.Content)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "http://localhost:3000") {
+		t.Fatalf("expected final localhost address, got %q", content)
+	}
+	if strings.Contains(content, "详细执行记录见上方工具卡片") || strings.Contains(content, "Tool execution completed") {
+		t.Fatalf("expected no fallback-only summary wording, got %q", content)
 	}
 }
 
@@ -4221,4 +4966,544 @@ func waitPendingQuestionForUser(t *testing.T, mgr *tools.QuestionManager, userID
 	}
 	t.Fatalf("timeout waiting for pending question for user %s", userID)
 	return nil
+}
+
+func TestFormatIMBrowserProgressLocalized(t *testing.T) {
+	card := map[string]interface{}{
+		"type":   "browser-progress",
+		"step":   "screenshot",
+		"name":   "Capturing screenshot",
+		"status": "success",
+		"url":    "https://example.com",
+	}
+
+	got := formatIMBrowserProgress(card, i18n.LangZhCN)
+	want := "✅ 浏览器 正在截取屏幕截图 (https://example.com)"
+	if got != want {
+		t.Fatalf("formatIMBrowserProgress() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildIMCardEmitterLocalizesRecipeProgress(t *testing.T) {
+	h := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer h.Close()
+
+	var sent channel.OutgoingMessage
+	h.SetChannelSender(func(_ context.Context, channelName string, out channel.OutgoingMessage) error {
+		if channelName != "feishu" {
+			t.Fatalf("channelName = %q, want feishu", channelName)
+		}
+		sent = out
+		return nil
+	})
+
+	emitter := h.buildIMCardEmitter(context.Background(), "feishu", "chat_1", "msg_1", i18n.LangZhCN)
+	if emitter == nil {
+		t.Fatal("expected IM card emitter")
+	}
+
+	emitter(map[string]interface{}{
+		"type":        "browser-progress",
+		"step":        "recipe",
+		"name":        "Running login recipe",
+		"recipe_name": "login recipe",
+		"status":      "running",
+	})
+
+	want := "⏳ 浏览器 正在运行 login recipe"
+	if sent.Content != want {
+		t.Fatalf("sent content = %q, want %q", sent.Content, want)
+	}
+}
+
+func TestFormatIMCard_FinalUIReviewAndDeepResearch(t *testing.T) {
+	uiReview := formatIMCard(map[string]interface{}{
+		"type":          "ui-review",
+		"url":           "https://example.com",
+		"overall":       88.0,
+		"pass":          true,
+		"visual":        map[string]interface{}{"score": 86.0},
+		"functional":    map[string]interface{}{"score": 92.0},
+		"accessibility": map[string]interface{}{"score": 84.0},
+		"suggestions":   []interface{}{"Tighten spacing"},
+		"screenshots":   []interface{}{"/api/v1/media/ui-review/a.png"},
+	}, i18n.LangEnUS)
+	if !strings.Contains(uiReview, "UI Review") || !strings.Contains(uiReview, "Overall: 88") || !strings.Contains(uiReview, "Screenshots:") {
+		t.Fatalf("unexpected ui review IM card: %q", uiReview)
+	}
+
+	deepResearch := formatIMCard(map[string]interface{}{
+		"type":              "deep-research",
+		"query":             "ZimaOS market",
+		"mode":              "deep",
+		"answer":            "Summary body",
+		"confidence":        0.91,
+		"evidence_count":    4,
+		"citation_coverage": 0.85,
+		"citations":         []interface{}{map[string]interface{}{"title": "Doc A", "url": "https://example.com/a"}},
+		"open_questions":    []interface{}{"What changed recently?"},
+	}, i18n.LangEnUS)
+	if !strings.Contains(deepResearch, "Deep Research") || !strings.Contains(deepResearch, "Citation Coverage: 85%") || !strings.Contains(deepResearch, "Doc A") {
+		t.Fatalf("unexpected deep research IM card: %q", deepResearch)
+	}
+}
+
+func TestFormatIMCard_DeepResearchProgressIncludesIterationAndGap(t *testing.T) {
+	progress := formatIMCard(map[string]interface{}{
+		"type":          "deep-research-progress",
+		"stage":         "verify",
+		"status":        "running",
+		"progress":      62,
+		"iteration":     2,
+		"latest_action": "verification_completed",
+		"latest_gap":    "Need primary evidence",
+		"query":         "ZimaOS market",
+	}, i18n.LangEnUS)
+	for _, token := range []string{"Deep Research Verifying", "62%", "Current iteration: 2", "Latest action: Verification completed", "Latest gap: Need primary evidence"} {
+		if !strings.Contains(progress, token) {
+			t.Fatalf("unexpected deep research progress IM card, missing %q: %q", token, progress)
+		}
+	}
+}
+
+func TestFormatIMCard_DeepResearchIncludesVNextSummary(t *testing.T) {
+	deepResearch := formatIMCard(map[string]interface{}{
+		"type":              "deep-research",
+		"query":             "ZimaOS market",
+		"mode":              "deep",
+		"answer":            "Summary body",
+		"confidence":        0.91,
+		"evidence_count":    4,
+		"citation_coverage": 0.85,
+		"iterations":        2,
+		"stop_reason":       "coverage_sufficient",
+		"latest_action":     "loop_stopped",
+		"latest_gap":        "Need primary evidence",
+		"strict_entity":     true,
+		"time_windows":      []string{"2024", "2025"},
+		"report_style":      "timeline",
+		"verification_summary": map[string]interface{}{
+			"resolved_count":     1,
+			"conflicted_count":   0,
+			"insufficient_count": 1,
+			"items": []interface{}{
+				map[string]interface{}{"focus": "Official", "gap": "Need primary evidence", "status": "insufficient"},
+			},
+		},
+		"research_trace": []interface{}{
+			map[string]interface{}{"iteration": 1, "focus": "Official", "gap": "Need primary evidence", "follow_up_query": "topic official source", "evidence_added": 1, "verification_outcome": "insufficient"},
+		},
+		"citations":      []interface{}{map[string]interface{}{"title": "Doc A", "url": "https://example.com/a"}},
+		"open_questions": []interface{}{"What changed recently?"},
+	}, i18n.LangEnUS)
+	for _, token := range []string{"Iterations: 2", "Stop reason: Coverage target reached", "Latest action: Research loop stopped", "Latest gap: Need primary evidence", "Strict entity matching enabled", "Time windows: 2024, 2025", "Report style: timeline", "Verification:", "Resolved: 1 · Conflicted: 0 · Insufficient: 1", "Official · Need primary evidence · Insufficient", "Research trace:", "#1 · Official · Need primary evidence", "Query: topic official source", "Doc A"} {
+		if !strings.Contains(deepResearch, token) {
+			t.Fatalf("unexpected deep research IM card, missing %q: %q", token, deepResearch)
+		}
+	}
+}
+
+func TestBuildIMCardEmitter_DeepResearchProgressDedupesButKeepsMeaningfulUpdates(t *testing.T) {
+	h := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer h.Close()
+
+	var sent []channel.OutgoingMessage
+	h.SetChannelSender(func(_ context.Context, channelName string, out channel.OutgoingMessage) error {
+		if channelName != "feishu" {
+			t.Fatalf("channelName = %q, want feishu", channelName)
+		}
+		sent = append(sent, out)
+		return nil
+	})
+
+	emitter := h.buildIMCardEmitter(context.Background(), "feishu", "chat_1", "msg_1", i18n.LangEnUS)
+	if emitter == nil {
+		t.Fatal("expected IM card emitter")
+	}
+
+	base := map[string]interface{}{
+		"type":          "deep-research-progress",
+		"stage":         "verify",
+		"name":          "Verifying",
+		"status":        "running",
+		"progress":      62,
+		"iteration":     2,
+		"latest_action": "verification_completed",
+		"latest_gap":    "Need primary evidence",
+		"query":         "ZimaOS market",
+	}
+	emitter(base)
+	emitter(base)
+	emitter(map[string]interface{}{
+		"type":          "deep-research-progress",
+		"stage":         "planning",
+		"name":          "Planning",
+		"status":        "running",
+		"progress":      68,
+		"iteration":     3,
+		"latest_action": "followup_planned",
+		"latest_gap":    "Need fresher sources",
+		"query":         "ZimaOS market",
+	})
+
+	if len(sent) != 2 {
+		t.Fatalf("sent messages = %d, want 2", len(sent))
+	}
+	if sent[0].ChatID != "chat_1" || sent[0].ReplyToID != "msg_1" {
+		t.Fatalf("unexpected routing: %+v", sent[0])
+	}
+	if sent[0].Format != "markdown" {
+		t.Fatalf("format = %q, want markdown", sent[0].Format)
+	}
+	if got, _ := sent[0].Metadata["show_details"].(bool); !got {
+		t.Fatalf("expected show_details metadata, got %#v", sent[0].Metadata)
+	}
+	for _, token := range []string{"Current iteration: 2", "Latest action: Verification completed", "Latest gap: Need primary evidence"} {
+		if !strings.Contains(sent[0].Content, token) {
+			t.Fatalf("first emitted content missing %q: %q", token, sent[0].Content)
+		}
+	}
+	for _, token := range []string{"Current iteration: 3", "Latest action: Follow-up planned", "Latest gap: Need fresher sources"} {
+		if !strings.Contains(sent[1].Content, token) {
+			t.Fatalf("second emitted content missing %q: %q", token, sent[1].Content)
+		}
+	}
+}
+
+func TestSendIMToolResultCards_DeepResearchPreservesVNextSummaryAndMetadata(t *testing.T) {
+	h := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer h.Close()
+
+	var sent []channel.OutgoingMessage
+	h.SetChannelSender(func(_ context.Context, channelName string, out channel.OutgoingMessage) error {
+		if channelName != "slack" {
+			t.Fatalf("channelName = %q, want slack", channelName)
+		}
+		sent = append(sent, out)
+		return nil
+	})
+
+	h.sendIMToolResultCards(context.Background(), "slack", "chat_dr", "msg_root", i18n.LangEnUS,
+		[]llm.ToolCall{{Name: "deep_research"}},
+		[]llm.Message{{Content: `{"query":"ZimaOS","mode":"deep","answer":"summary","confidence":0.9,"evidence_count":2,"iterations":2,"stop_reason":"coverage_sufficient","latest_action":"loop_stopped","latest_gap":"Need primary evidence","strict_entity":true,"time_windows":["2024","2025"],"report_style":"timeline","research_trace":[{"iteration":1,"focus":"Official","gap":"Need primary evidence","follow_up_query":"topic official source","evidence_added":1,"verification_outcome":"insufficient"}],"verification_summary":{"resolved_count":1,"conflicted_count":0,"insufficient_count":1,"items":[{"focus":"Official","gap":"Need primary evidence","status":"insufficient"}]},"citations":[{"title":"Doc A","url":"https://example.com/a"}]}`}},
+	)
+
+	if len(sent) != 1 {
+		t.Fatalf("sent messages = %d, want 1", len(sent))
+	}
+	msg := sent[0]
+	if msg.ChatID != "chat_dr" || msg.ReplyToID != "msg_root" {
+		t.Fatalf("unexpected routing: %+v", msg)
+	}
+	if msg.Format != "markdown" {
+		t.Fatalf("format = %q, want markdown", msg.Format)
+	}
+	if got, _ := msg.Metadata["show_details"].(bool); !got {
+		t.Fatalf("expected show_details metadata, got %#v", msg.Metadata)
+	}
+	for _, token := range []string{"Deep Research", "Iterations: 2", "Stop reason: Coverage target reached", "Latest action: Research loop stopped", "Latest gap: Need primary evidence", "Verification:", "Research trace:", "Doc A"} {
+		if !strings.Contains(msg.Content, token) {
+			t.Fatalf("sent content missing %q: %q", token, msg.Content)
+		}
+	}
+}
+
+func TestSendIMToolResultCards_SendsStructuredResults(t *testing.T) {
+	h := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer h.Close()
+
+	var sent []channel.OutgoingMessage
+	h.SetChannelSender(func(_ context.Context, channelName string, out channel.OutgoingMessage) error {
+		if channelName != "feishu" {
+			t.Fatalf("channelName = %q, want feishu", channelName)
+		}
+		sent = append(sent, out)
+		return nil
+	})
+
+	h.sendIMToolResultCards(context.Background(), "feishu", "chat_1", "msg_1", i18n.LangEnUS,
+		[]llm.ToolCall{{Name: "ui_reviewer"}, {Name: "deep_research"}},
+		[]llm.Message{
+			{Content: `{"url":"https://example.com","overall":82,"pass":true,"visual":{"score":80},"functional":{"score":84},"accessibility":{"score":81}}`},
+			{Content: `{"query":"ZimaOS","mode":"deep","answer":"summary","confidence":0.9,"evidence_count":2,"citations":[{"title":"Doc A","url":"https://example.com/a"}]}`},
+		},
+	)
+
+	if len(sent) != 2 {
+		t.Fatalf("sent messages = %d, want 2", len(sent))
+	}
+	if !strings.Contains(sent[0].Content, "UI Review") {
+		t.Fatalf("first IM content = %q, want UI Review summary", sent[0].Content)
+	}
+	if !strings.Contains(sent[1].Content, "Deep Research") {
+		t.Fatalf("second IM content = %q, want Deep Research summary", sent[1].Content)
+	}
+}
+
+func TestBrowserCheckpointRequesterWeb_LocalizesPendingQuestion(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+	handler.SetBrowserCheckpointManager(tools.NewBrowserCheckpointManager(2 * time.Minute))
+
+	broker := sse.NewBroker()
+	client := broker.Subscribe("user-zh")
+	defer broker.Unsubscribe("user-zh", client)
+
+	questionMgr := tools.NewQuestionManager(broker, func() bool { return false }, 2*time.Minute)
+	handler.SetQuestionManager(questionMgr)
+
+	requester := handler.buildBrowserCheckpointRequester(
+		context.Background(),
+		"web",
+		"user-zh",
+		"session-zh",
+		"",
+		"",
+		i18n.LangZhCN,
+	)
+	if requester == nil {
+		t.Fatal("expected browser checkpoint requester")
+	}
+
+	resultCh := make(chan tools.BrowserCheckpointResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, err := requester(context.Background(), tools.BrowserCheckpointRequest{
+			Required:  true,
+			RiskLevel: "high",
+			Step:      "act",
+			Action:    "click",
+		})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resultCh <- result
+	}()
+
+	pending := waitPendingQuestionForUser(t, questionMgr, "user-zh", 2*time.Second)
+	if got := pending.Questions[0].Question; got != "浏览器操作需要确认。是否继续？" {
+		t.Fatalf("question = %q", got)
+	}
+	if got := pending.Questions[0].Detail; got != "步骤: 交互 | 动作: 点击" {
+		t.Fatalf("detail = %q", got)
+	}
+	if got := pending.Questions[0].Options[0].Label; got != "取消" {
+		t.Fatalf("first option = %q", got)
+	}
+	if got, _ := pending.Context["step"].(string); got != "交互" {
+		t.Fatalf("context step = %q", got)
+	}
+	if got, _ := pending.Context["action"].(string); got != "点击" {
+		t.Fatalf("context action = %q", got)
+	}
+	if !questionMgr.ResolveAnswer(pending.ID, []tools.QuestionAnswerResult{{
+		QuestionID: "browser_checkpoint",
+		Selected:   []string{"continue"},
+	}}) {
+		t.Fatalf("failed to resolve question id=%s", pending.ID)
+	}
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("requester returned error: %v", err)
+	case result := <-resultCh:
+		if result.Decision != tools.BrowserCheckpointApprove {
+			t.Fatalf("decision = %s, want %s", result.Decision, tools.BrowserCheckpointApprove)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for requester result")
+	}
+}
+
+func TestBrowserCheckpointRequesterIM_LocalizesConfirmMessage(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+	handler.SetBrowserCheckpointManager(tools.NewBrowserCheckpointManager(2 * time.Minute))
+
+	var sent channel.OutgoingMessage
+	handler.SetChannelSender(func(_ context.Context, channelName string, out channel.OutgoingMessage) error {
+		if channelName != "feishu" {
+			t.Fatalf("channelName = %q, want feishu", channelName)
+		}
+		sent = out
+		return nil
+	})
+
+	requester := handler.buildBrowserCheckpointRequester(
+		context.Background(),
+		"feishu",
+		"user-im-zh",
+		"session-im-zh",
+		"chat-im-zh",
+		"msg-im-zh",
+		i18n.LangZhCN,
+	)
+	if requester == nil {
+		t.Fatal("expected browser checkpoint requester")
+	}
+
+	result, err := requester(context.Background(), tools.BrowserCheckpointRequest{
+		Required:  true,
+		RiskLevel: "high",
+		Step:      "act",
+		Action:    "click",
+		URL:       "https://example.com",
+	})
+	if err != nil {
+		t.Fatalf("requester returned error: %v", err)
+	}
+	if !result.Pending {
+		t.Fatalf("expected pending checkpoint result")
+	}
+	want := "高风险浏览器操作需要确认。\n步骤: 交互\n动作: 点击\nURL: https://example.com\n回复 `1` 继续，或回复 `2` 取消。"
+	if result.Message != want {
+		t.Fatalf("result message = %q, want %q", result.Message, want)
+	}
+	if sent.Content != want {
+		t.Fatalf("sent content = %q, want %q", sent.Content, want)
+	}
+}
+
+func TestChatHandlerListToolsUsesSettingsLocaleForExamples(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{
+		Name:        "localized_tool",
+		Description: "test tool",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"lang": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional locale for command execution (e.g. en-US, zh-CN, ja-JP). When omitted, uses the system/default environment locale.",
+				},
+			},
+		},
+	}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	settingsHandler.settings.Locale = "zh-CN"
+	handler.SetSettingsHandler(settingsHandler)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tools", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListTools(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp []map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	var langDesc string
+	for _, tool := range resp {
+		if tool["name"] != "localized_tool" {
+			continue
+		}
+		params, _ := tool["parameters"].(map[string]interface{})
+		props, _ := params["properties"].(map[string]interface{})
+		langProp, _ := props["lang"].(map[string]interface{})
+		langDesc, _ = langProp["description"].(string)
+		break
+	}
+
+	if langDesc == "" {
+		t.Fatal("expected lang description in tools list")
+	}
+	if !strings.Contains(langDesc, "zh-CN") {
+		t.Fatalf("lang description = %q, want zh-CN example", langDesc)
+	}
+	if strings.Contains(langDesc, "en-US") || strings.Contains(langDesc, "ja-JP") {
+		t.Fatalf("lang description should use only the configured locale example: %q", langDesc)
+	}
+}
+
+func TestChatHandlerSendMessage_NoProviderDeepResearchFallbackIncludesVNextFields(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Fallback Conv VNext")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	settings.settings.Locale = "en-US"
+	handler.SetSettingsHandler(settings)
+	execMock := &deepResearchExecMock{
+		result: map[string]interface{}{
+			"answer":         "Deep research vNext fallback answer.",
+			"citations":      []map[string]interface{}{{"title": "Doc A", "url": "https://example.com/a"}},
+			"iteration":      2,
+			"iterations":     2,
+			"latest_gap":     "Need primary evidence",
+			"latest_action":  "completed",
+			"stop_reason":    "coverage_sufficient",
+			"strict_entity":  true,
+			"time_windows":   []string{"2024", "2025"},
+			"report_style":   "timeline",
+			"research_trace": []map[string]interface{}{{"iteration": 1, "focus": "Official", "gap": "Need primary evidence", "follow_up_query": "topic official source", "evidence_added": 1, "verification_outcome": "insufficient"}},
+			"verification_summary": map[string]interface{}{
+				"resolved_count":     1,
+				"conflicted_count":   0,
+				"insufficient_count": 1,
+				"items":              []map[string]interface{}{{"focus": "Official", "status": "insufficient", "gap": "Need primary evidence"}},
+			},
+		},
+	}
+	handler.deepResearchExec = execMock
+
+	e := echo.New()
+	reqBody := `{"message":"please deep research topic and show the verification summary","provider":"","model":""}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	content, _ := resp["content"].(string)
+	for _, token := range []string{
+		`"iteration":2`,
+		`"iterations":2`,
+		`"latest_gap":"Need primary evidence"`,
+		`"latest_action":"completed"`,
+		`"stop_reason":"coverage_sufficient"`,
+		`"strict_entity":true`,
+		`"time_windows":["2024","2025"]`,
+		`"report_style":"timeline"`,
+		`"research_trace":[`,
+		`"verification_summary":{`,
+	} {
+		if !strings.Contains(content, token) {
+			t.Fatalf("response content missing %q: %s", token, content)
+		}
+	}
 }

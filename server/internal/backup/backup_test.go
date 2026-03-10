@@ -687,6 +687,66 @@ func TestBackupFileSizeConsistency(t *testing.T) {
 	}
 }
 
+func TestManagerCreateExcludesGitMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+
+	if err := os.MkdirAll(filepath.Join(dataDir, "workspace", ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir repo .git dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "linked-worktree"), 0o755); err != nil {
+		t.Fatalf("mkdir linked-worktree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "workspace", ".git", "config"), []byte("[core]\nrepositoryformatversion = 0\n"), 0o644); err != nil {
+		t.Fatalf("write repo config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "linked-worktree", ".git"), []byte("gitdir: /tmp/example.git\n"), 0o644); err != nil {
+		t.Fatalf("write worktree .git file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "linked-worktree", "USER.md"), []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write workspace file: %v", err)
+	}
+
+	m, err := NewManager(Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          backupDir,
+	}, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	info, err := m.Create(context.Background(), BackupTypeData)
+	if err != nil {
+		t.Fatalf("failed to create backup: %v", err)
+	}
+
+	files, err := m.ListFiles(info.ID)
+	if err != nil {
+		t.Fatalf("failed to list files: %v", err)
+	}
+
+	for _, name := range files {
+		slashed := filepath.ToSlash(name)
+		if strings.Contains(slashed, "/.git/") || strings.HasSuffix(slashed, "/.git") {
+			t.Fatalf("expected git metadata to be excluded, got file %q in backup", slashed)
+		}
+	}
+
+	foundWorkspaceFile := false
+	for _, name := range files {
+		if filepath.ToSlash(name) == "data/linked-worktree/USER.md" {
+			foundWorkspaceFile = true
+			break
+		}
+	}
+	if !foundWorkspaceFile {
+		t.Fatalf("expected regular workspace file to remain in backup, files=%v", files)
+	}
+}
+
 func TestManagerBackupAndRestoreExternalSkillsDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	backupDir := filepath.Join(tmpDir, "backups")

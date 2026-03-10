@@ -47,6 +47,7 @@ func planPersonResearchTasks(query string, mode Mode, lang string) []Task {
 			Priority: 1,
 			Depth:    1,
 			Status:   "pending",
+			Axis:     "identity",
 			Category: "identity_validation",
 			NegKeywords: []string{
 				"同名", "另一位", "爱驰", "车联", "滴滴高管", "非蓝驰", "different person",
@@ -58,6 +59,7 @@ func planPersonResearchTasks(query string, mode Mode, lang string) []Task {
 			Priority:    2,
 			Depth:       1,
 			Status:      "pending",
+			Axis:        timelineAxisID(0),
 			Category:    "viewpoint_period",
 			TimeWindow:  timeLabels[0],
 			NegKeywords: []string{"无关", "同名", "other person"},
@@ -68,6 +70,7 @@ func planPersonResearchTasks(query string, mode Mode, lang string) []Task {
 			Priority:    3,
 			Depth:       1,
 			Status:      "pending",
+			Axis:        timelineAxisID(1),
 			Category:    "viewpoint_period",
 			TimeWindow:  timeLabels[1],
 			NegKeywords: []string{"无关", "同名", "other person"},
@@ -78,6 +81,7 @@ func planPersonResearchTasks(query string, mode Mode, lang string) []Task {
 			Priority:    4,
 			Depth:       1,
 			Status:      "pending",
+			Axis:        timelineAxisID(2),
 			Category:    "viewpoint_period",
 			TimeWindow:  timeLabels[2],
 			NegKeywords: []string{"无关", "同名", "other person"},
@@ -88,6 +92,7 @@ func planPersonResearchTasks(query string, mode Mode, lang string) []Task {
 			Priority:    5,
 			Depth:       1,
 			Status:      "pending",
+			Axis:        "footprint",
 			Category:    "internet_footprint",
 			NegKeywords: []string{"广告", "软文", "转载", "spam"},
 		},
@@ -158,4 +163,3 @@ func personFootprintQuery(entity, lang string) string {
 		return fmt.Sprintf("%s internet footprint platforms posts podcast", entity)
 	}
 }
-

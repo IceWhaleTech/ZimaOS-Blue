@@ -1015,6 +1015,71 @@ func TestExecSkillShortCircuit_DoesNotLeakShortCircuitWarning(t *testing.T) {
 	}
 }
 
+func TestExecSkillShortCircuit_EmitsAnalyzeErrorCardOnFailure(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	const wantErr = "analysis failed: proxy returned 502: Request timed out. The server may be busy — please try again later."
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		if skillID != "analyze" {
+			t.Fatalf("skillID = %q, want %q", skillID, "analyze")
+		}
+		if got := input["topic"]; got != "Reddit r/homelab 社区中关于 ZimaOS 的讨论分析" {
+			t.Fatalf("topic = %v", got)
+		}
+		if got := input["query"]; got != "site:reddit.com/r/homelab ZimaOS" {
+			t.Fatalf("query = %v", got)
+		}
+		return nil, fmt.Errorf(wantErr)
+	})
+
+	var emitted []map[string]interface{}
+	ctx := WithCardEmitter(context.Background(), func(card map[string]interface{}) {
+		emitted = append(emitted, card)
+	})
+
+	result, err := tool.Execute(ctx, map[string]interface{}{
+		"command": `blue analyze topic="Reddit r/homelab 社区中关于 ZimaOS 的讨论分析" query="site:reddit.com/r/homelab ZimaOS" lang="zh-CN"`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if res.Status != "failed" {
+		t.Fatalf("status = %q, want %q", res.Status, "failed")
+	}
+	if res.Stderr != wantErr {
+		t.Fatalf("stderr = %q, want %q", res.Stderr, wantErr)
+	}
+
+	if len(emitted) != 1 {
+		t.Fatalf("emitted %d cards, want 1", len(emitted))
+	}
+	card := emitted[0]
+	if got := card["title"]; got != "analyze" {
+		t.Fatalf("card title = %v, want analyze", got)
+	}
+	if got := card["status"]; got != "error" {
+		t.Fatalf("card status = %v, want error", got)
+	}
+	if got := card["message"]; got != wantErr {
+		t.Fatalf("card message = %v, want %q", got, wantErr)
+	}
+	if _, redacted := card["error_redacted"]; redacted {
+		t.Fatalf("expected visible analyze error, got redacted=%v", card["error_redacted"])
+	}
+}
+
 func TestExecSkillShortCircuit_AutoResolveClarificationExecutesSelectedSkill(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()

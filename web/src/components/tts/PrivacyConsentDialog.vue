@@ -2,48 +2,48 @@
   <div v-if="showDialog" class="privacy-consent-overlay">
     <div class="privacy-consent-dialog">
       <div class="dialog-header">
-        <h2>Privacy Notice: Edge-TTS Service</h2>
+        <h2>{{ t('speech.privacyDialog.title', { provider: t('speech.edgeTTSName') }) }}</h2>
         <button class="close-btn" @click="decline">✕</button>
       </div>
 
       <div class="dialog-content">
         <p class="intro">
-          You are about to use Microsoft Edge-TTS, an online text-to-speech service.
+          {{ t('speech.privacyDialog.intro', { provider: t('speech.edgeTTSName') }) }}
         </p>
 
         <div class="warning-box">
           <span class="warning-icon">⚠️</span>
           <div class="warning-content">
-            <h3>Privacy Information:</h3>
+            <h3>{{ t('speech.privacyDialog.infoTitle') }}</h3>
             <ul>
-              <li>Your text will be sent to Microsoft servers</li>
-              <li>Audio is generated in the cloud</li>
-              <li>Microsoft may log requests for service improvement</li>
-              <li>No personal data is required</li>
+              <li>{{ t('speech.privacyDialog.items.textSent') }}</li>
+              <li>{{ t('speech.privacyDialog.items.audioCloud') }}</li>
+              <li>{{ t('speech.privacyDialog.items.requestLogging') }}</li>
+              <li>{{ t('speech.privacyDialog.items.noPersonalData') }}</li>
             </ul>
           </div>
         </div>
 
         <div class="alternatives-box">
-          <h3>Alternatives:</h3>
+          <h3>{{ t('speech.privacyDialog.alternativesTitle') }}</h3>
           <ul>
-            <li><strong>Sherpa-ONNX:</strong> Fully offline, high quality (requires download)</li>
-            <li><strong>eSpeak-NG:</strong> Fully offline, lightweight (~5MB)</li>
+            <li><strong>Sherpa-ONNX:</strong> {{ t('speech.sherpaNote') }}</li>
+            <li><strong>eSpeak-NG:</strong> {{ t('speech.espeakNote') }}</li>
           </ul>
         </div>
 
         <div class="checkbox-group">
           <label>
             <input v-model="dontShowAgain" type="checkbox" />
-            Don't show this again for this account
+            {{ t('speech.privacyDialog.dontShowAgain') }}
           </label>
         </div>
       </div>
 
       <div class="dialog-footer">
-        <button class="btn-secondary" @click="decline">Decline</button>
-        <a href="#" class="learn-more">Learn More</a>
-        <button class="btn-primary" @click="accept">Accept & Continue</button>
+        <button class="btn-secondary" @click="decline">{{ t('decline') }}</button>
+        <a href="#" class="learn-more">{{ t('speech.privacyDialog.learnMore') }}</a>
+        <button class="btn-primary" @click="accept">{{ t('speech.privacyDialog.acceptContinue') }}</button>
       </div>
     </div>
   </div>
@@ -51,7 +51,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ttsApi } from '@/api/tts'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   visible: boolean
@@ -204,49 +207,40 @@ const decline = () => {
 }
 
 .checkbox-group {
-  margin: 16px 0;
+  margin-top: 16px;
 }
 
 .checkbox-group label {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  cursor: pointer;
+  font-size: 14px;
   color: #666;
-}
-
-.checkbox-group input {
   cursor: pointer;
 }
 
 .dialog-footer {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 20px;
   border-top: 1px solid #e0e0e0;
-  gap: 12px;
 }
 
-.btn-secondary,
-.btn-primary {
+.btn-primary,
+.btn-secondary {
   padding: 8px 16px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: opacity 0.2s;
 }
 
-.btn-secondary {
-  background: #f0f0f0;
-  color: #333;
-}
-
+.btn-primary:hover,
 .btn-secondary:hover {
-  background: #e0e0e0;
+  opacity: 0.9;
 }
 
 .btn-primary {
@@ -254,14 +248,17 @@ const decline = () => {
   color: white;
 }
 
-.btn-primary:hover {
-  background: #0056b3;
+.btn-secondary {
+  background: #f5f5f5;
+  color: #333;
 }
 
 .learn-more {
-  font-size: 13px;
+  padding: 8px 16px;
   color: #007bff;
   text-decoration: none;
+  font-size: 14px;
+  line-height: 20px;
 }
 
 .learn-more:hover {

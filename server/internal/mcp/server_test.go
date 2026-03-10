@@ -650,6 +650,36 @@ func TestWorkspaceTools_CodingFlow(t *testing.T) {
 	}
 }
 
+func TestWorkspaceWriteText_ContentCoercion(t *testing.T) {
+	root := t.TempDir()
+	s := testServer(t)
+	s.SetWorkspaceRoot(root)
+	sess := s.CreateSession()
+
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceWriteTextTool,
+		Arguments: map[string]interface{}{
+			"path":    "src/coerced.json",
+			"content": map[string]interface{}{"ok": true},
+		},
+	})
+	if resp.Error != nil {
+		t.Fatalf("write tool rpc error: %v", resp.Error)
+	}
+	callResult := parseToolCallResult(t, resp)
+	if callResult.IsError {
+		t.Fatalf("write tool failed: %v", callResult.Content)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "src", "coerced.json"))
+	if err != nil {
+		t.Fatalf("failed to read written file: %v", err)
+	}
+	if got := string(data); got != `{"ok":true}` {
+		t.Fatalf("content = %q, want %q", got, `{"ok":true}`)
+	}
+}
+
 func TestWorkspaceTools_RejectPathTraversal(t *testing.T) {
 	s := testServer(t)
 	s.SetWorkspaceRoot(t.TempDir())

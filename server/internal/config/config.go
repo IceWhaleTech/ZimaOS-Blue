@@ -1,11 +1,13 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -36,6 +38,7 @@ type Config struct {
 	Statistics    StatisticsConfig    `yaml:"statistics"`      // v0.10.3
 	ToolCalling   ToolCallingConfig   `yaml:"tool_calling"`    // v0.10.3
 	Agents        AgentsConfig        `yaml:"agents"`          // v0.11.0
+	Research      ResearchConfig      `yaml:"research"`        // v0.11.x
 	Proxy         *proxy.ProxyConfig  `yaml:"proxy"`           // v0.10.5.1: API Proxy
 	Pruner        *pruner.Config      `yaml:"pruner"`          // v0.10.27: Context Pruner
 	Update        UpdateConfig        `yaml:"update"`          // OTA Update
@@ -476,6 +479,107 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.ToolCalling.WebFetch.Timeout = timeout
 		}
 	}
+	if v := os.Getenv("BLUE_RESEARCH_DEFAULT_ROUTE_MODE"); v != "" {
+		cfg.Research.Router.DefaultMode = v
+	}
+	if v := os.Getenv("BLUE_RESEARCH_ALLOW_EXPERIMENT"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.Research.Router.AllowExperiment = enabled
+		}
+	}
+	if v := os.Getenv("BLUE_RESEARCH_ALLOW_HYBRID"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.Research.Router.AllowHybrid = enabled
+		}
+	}
+	if v := os.Getenv("BLUE_AUTORESEARCH_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.Research.Autoresearch.Enabled = enabled
+		}
+	}
+	if v := os.Getenv("BLUE_AUTORESEARCH_COMMAND"); v != "" {
+		cfg.Research.Autoresearch.Command = v
+	}
+	if v := os.Getenv("BLUE_AUTORESEARCH_WORKING_DIR"); v != "" {
+		cfg.Research.Autoresearch.WorkingDir = v
+	}
+	if v := os.Getenv("BLUE_AUTORESEARCH_ARGS"); v != "" {
+		if args := parseStringListEnv(v); len(args) > 0 {
+			cfg.Research.Autoresearch.Args = args
+		}
+	}
+	if v := os.Getenv("BLUE_AUTORESEARCH_ARTIFACT_DIR"); v != "" {
+		cfg.Research.Autoresearch.ArtifactDir = v
+	}
+	if v := os.Getenv("BLUE_AUTORESEARCH_ENV_JSON"); v != "" {
+		if parsed := parseStringMapEnv(v); len(parsed) > 0 {
+			cfg.Research.Autoresearch.Env = parsed
+		}
+	}
+	if v := os.Getenv("BLUE_AUTORESEARCH_TIMEOUT"); v != "" {
+		if timeout, err := time.ParseDuration(v); err == nil {
+			cfg.Research.Autoresearch.Timeout = timeout
+		}
+	}
+}
+
+func parseStringListEnv(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	var parsed []string
+	if strings.HasPrefix(raw, "[") {
+		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+			out := make([]string, 0, len(parsed))
+			for _, item := range parsed {
+				trimmed := strings.TrimSpace(item)
+				if trimmed != "" {
+					out = append(out, trimmed)
+				}
+			}
+			if len(out) > 0 {
+				return out
+			}
+		}
+	}
+
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func parseStringMapEnv(raw string) map[string]string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var parsed map[string]string
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil
+	}
+	out := make(map[string]string, len(parsed))
+	for key, value := range parsed {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		out[key] = value
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // findConfigFile searches standard locations for config.yaml.
@@ -606,6 +710,7 @@ func defaults() Config {
 		Statistics:    *DefaultStatisticsConfig(),
 		ToolCalling:   *DefaultToolCallingConfig(),
 		Agents:        *DefaultAgentsConfig(),
+		Research:      *DefaultResearchConfig(),
 
 		Proxy: &proxy.ProxyConfig{
 			Enabled: true,
@@ -622,7 +727,7 @@ func defaults() Config {
 			QuotaMonitor: &proxy.QuotaMonitorConfig{Enabled: true, SyncInterval: 5 * time.Minute, WarningThreshold: 20.0, CriticalThreshold: 5.0, TrackTokens: true, TrackRequests: true},
 		},
 		// Keep default trigger threshold moderate so pruning is observable in real chats.
-		Pruner: &pruner.Config{Enabled: false, Backend: "local", Threshold: 0.5, MinLines: 80, TimeoutMs: 5000},
+		Pruner: &pruner.Config{Enabled: true, Backend: "local", Threshold: 0.5, MinLines: 80, TimeoutMs: 5000},
 		Heartbeat: HeartbeatConfig{
 			Interval: 30 * time.Minute, AckMaxChars: 300, WorkspaceDir: "./data", LLMProvider: "claude", LLMModel: "claude-sonnet-4-5-20250929",
 			Prompt:     "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",

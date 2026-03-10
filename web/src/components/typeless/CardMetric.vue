@@ -1,9 +1,17 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardMetric, MetricItem } from '@/types/typeless'
+
+const { t, te } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardMetric
 }>()
+
+function tLabel(label: string): string {
+  const key = 'resultCard.labels.' + label.toLowerCase().replace(/\s+/g, '_')
+  return te(key) ? t(key) : label
+}
 
 function getGridCols(): string {
   const cols = props.card.columns || 2
@@ -55,7 +63,7 @@ function getChangeIcon(item: MetricItem): string {
         <!-- Icon and Label -->
         <div class="flex items-center gap-2 mb-2">
           <span v-if="metric.icon" class="text-lg">{{ metric.icon }}</span>
-          <span class="text-sm text-gray-500 dark:text-gray-400">{{ metric.label }}</span>
+          <span class="text-sm text-gray-500 dark:text-gray-400">{{ tLabel(metric.label) }}</span>
         </div>
 
         <!-- Value -->

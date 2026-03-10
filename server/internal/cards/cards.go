@@ -36,8 +36,8 @@ var (
 )
 
 const (
-	redactedErrorText = "Error details hidden for safety"
-	sensitiveValueKey = `(?:api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|session[_-]?token|token|secret|password|passwd|pwd|authorization|cookie|set-cookie|aws_access_key_id|aws_secret_access_key|aws_session_token|openai_api_key|x-api-key)`
+	noErrorDetailsText = "Operation failed (no error details provided)"
+	sensitiveValueKey  = `(?:api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|session[_-]?token|token|secret|password|passwd|pwd|authorization|cookie|set-cookie|aws_access_key_id|aws_secret_access_key|aws_session_token|openai_api_key|x-api-key)`
 )
 
 type textRedactionRule struct {
@@ -73,44 +73,34 @@ func RedactSensitiveText(input string) string {
 }
 
 func hasNonEmptyError(data map[string]interface{}) bool {
+	return sanitizedErrorMessage(data) != ""
+}
+
+func sanitizedErrorMessage(data map[string]interface{}) string {
 	if data == nil {
-		return false
+		return ""
 	}
-	errMsg, ok := data["error"].(string)
-	return ok && strings.TrimSpace(errMsg) != ""
+	if errMsg := strings.TrimSpace(formatValue(data["error"])); errMsg != "" {
+		return escapeBackticks(RedactSensitiveText(errMsg))
+	}
+	return ""
 }
 
-func buildRedactedErrorCard(cardType, title string) map[string]interface{} {
+func buildErrorCard(cardType, title string, data map[string]interface{}) map[string]interface{} {
+	errMsg := sanitizedErrorMessage(data)
+	if errMsg == "" {
+		errMsg = noErrorDetailsText
+	}
 	return map[string]interface{}{
-		"type":           cardType,
-		"title":          title,
-		"status":         "error",
-		"message":        redactedErrorText,
-		"error_redacted": true,
-	}
-}
-
-func shouldExposeErrorDetails(toolName string) bool {
-	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "browser":
-		return true
-	default:
-		return false
+		"type":    cardType,
+		"title":   title,
+		"status":  "error",
+		"message": errMsg,
 	}
 }
 
 func buildToolErrorCard(toolName string, data map[string]interface{}) map[string]interface{} {
-	if shouldExposeErrorDetails(toolName) {
-		if errMsg := strings.TrimSpace(formatValue(data["error"])); errMsg != "" {
-			return map[string]interface{}{
-				"type":    "result",
-				"title":   toolName,
-				"status":  "error",
-				"message": escapeBackticks(RedactSensitiveText(errMsg)),
-			}
-		}
-	}
-	return buildRedactedErrorCard("result", toolName)
+	return buildErrorCard("result", toolName, data)
 }
 
 // Register adds a custom card formatter for a tool name.
@@ -392,24 +382,42 @@ func deepResearchCard(content string) map[string]interface{} {
 		return nil
 	}
 	if hasNonEmptyError(data) {
-		return buildRedactedErrorCard("result", "deep_research")
+		return buildErrorCard("result", "deep_research", data)
 	}
 
 	card := map[string]interface{}{
 		"type": "deep-research",
 	}
+	if id := deepResearchCardID(data); id != "" {
+		card["id"] = id
+	}
 	for _, key := range []string{
 		"job_id",
 		"query",
 		"mode",
+		"progress",
+		"iteration",
+		"latest_gap",
+		"latest_action",
 		"answer",
 		"confidence",
 		"evidence_count",
+		"iterations",
+		"stop_reason",
 		"citations",
 		"open_questions",
 		"support_count",
 		"conflict_count",
 		"has_conflict",
+		"citation_coverage",
+		"entity_disambiguation",
+		"stage_errors",
+		"timeline_sections",
+		"research_trace",
+		"verification_summary",
+		"strict_entity",
+		"time_windows",
+		"report_style",
 		"status",
 	} {
 		if v, ok := data[key]; ok {
@@ -419,13 +427,25 @@ func deepResearchCard(content string) map[string]interface{} {
 	return card
 }
 
+func deepResearchCardID(data map[string]interface{}) string {
+	jobID := strings.TrimSpace(formatValue(data["job_id"]))
+	if jobID != "" {
+		return "deep-research-" + url.QueryEscape(jobID)
+	}
+	query := strings.TrimSpace(formatValue(data["query"]))
+	if query != "" {
+		return "deep-research-" + url.QueryEscape(query)
+	}
+	return ""
+}
+
 func calculatorCard(content string) map[string]interface{} {
 	var data map[string]interface{}
 	if json.Unmarshal([]byte(content), &data) != nil {
 		return nil
 	}
 	if hasNonEmptyError(data) {
-		return buildRedactedErrorCard("result", "Calculator")
+		return buildErrorCard("result", "Calculator", data)
 	}
 	expr, _ := data["expression"].(string)
 	result := fmt.Sprintf("%v", data["result"])
@@ -475,7 +495,7 @@ func fileReadCard(content string) map[string]interface{} {
 		return nil
 	}
 	if hasNonEmptyError(data) {
-		return buildRedactedErrorCard("result", "File Read")
+		return buildErrorCard("result", "File Read", data)
 	}
 	fileContent, _ := data["content"].(string)
 	filePath, _ := data["path"].(string)
@@ -499,7 +519,11 @@ func fileWriteCard(content string) map[string]interface{} {
 	msg := "File written successfully"
 	if hasNonEmptyError(data) {
 		status = "error"
-		msg = redactedErrorText
+		if errMsg := sanitizedErrorMessage(data); errMsg != "" {
+			msg = errMsg
+		} else {
+			msg = noErrorDetailsText
+		}
 	} else if m, ok := data["message"].(string); ok {
 		msg = m
 	}
@@ -541,7 +565,7 @@ func memorySearchCard(content string) map[string]interface{} {
 		return nil
 	}
 	if hasNonEmptyError(data) {
-		return buildRedactedErrorCard("result", "Memory Search")
+		return buildErrorCard("result", "Memory Search", data)
 	}
 	msg := "Search completed"
 	if results, ok := data["results"].([]interface{}); ok {
@@ -561,7 +585,7 @@ func reminderCard(content string) map[string]interface{} {
 		return nil
 	}
 	if hasNonEmptyError(data) {
-		return buildRedactedErrorCard("result", "Reminder")
+		return buildErrorCard("result", "Reminder", data)
 	}
 
 	msg, _ := data["message"].(string)
@@ -615,7 +639,7 @@ func analyzeCard(content string) map[string]interface{} {
 		return nil
 	}
 	if hasNonEmptyError(data) {
-		return buildRedactedErrorCard("result", "analyze")
+		return buildErrorCard("result", "analyze", data)
 	}
 	topic, _ := data["topic"].(string)
 	reportURL, _ := data["report_url"].(string)
@@ -624,6 +648,9 @@ func analyzeCard(content string) map[string]interface{} {
 		"type":   "result",
 		"title":  "analyze",
 		"status": "success",
+	}
+	if id := analyzeCardID(data); id != "" {
+		card["id"] = id
 	}
 	if topic != "" {
 		card["message"] = topic
@@ -634,6 +661,18 @@ func analyzeCard(content string) map[string]interface{} {
 		}
 	}
 	return card
+}
+
+func analyzeCardID(data map[string]interface{}) string {
+	reportURL := strings.TrimSpace(formatValue(data["report_url"]))
+	if reportURL != "" {
+		return "analyze-" + url.QueryEscape(reportURL)
+	}
+	topic := strings.TrimSpace(formatValue(data["topic"]))
+	if topic != "" {
+		return "analyze-" + url.QueryEscape(topic)
+	}
+	return ""
 }
 
 func askUserQuestionCard(content string) map[string]interface{} {
@@ -903,15 +942,19 @@ func uiReviewCard(content string) map[string]interface{} {
 
 	// Check for error result
 	if hasNonEmptyError(data) {
-		return map[string]interface{}{
-			"type":    "ui-review",
-			"status":  "error",
-			"message": redactedErrorText,
+		card := map[string]interface{}{
+			"type":   "ui-review",
+			"status": "error",
 			"actions": []map[string]interface{}{
 				{"id": "recheck", "label": "Retry", "variant": "primary"},
 			},
-			"error_redacted": true,
 		}
+		if errMsg := sanitizedErrorMessage(data); errMsg != "" {
+			card["message"] = errMsg
+		} else {
+			card["message"] = noErrorDetailsText
+		}
+		return card
 	}
 
 	card := map[string]interface{}{
@@ -919,8 +962,8 @@ func uiReviewCard(content string) map[string]interface{} {
 	}
 
 	// Stable card ID from URL
-	if url, ok := data["url"].(string); ok && url != "" {
-		card["id"] = "ui-review-" + url
+	if reviewURL, ok := data["url"].(string); ok && reviewURL != "" {
+		card["id"] = "ui-review-" + url.QueryEscape(reviewURL)
 	}
 
 	// Copy relevant fields
@@ -928,6 +971,7 @@ func uiReviewCard(content string) map[string]interface{} {
 		"url", "overall", "pass", "threshold",
 		"visual", "functional", "accessibility",
 		"issues", "suggestions", "steps", "viewports",
+		"media_url", "thumbnail_url", "screenshots", "device", "channel", "human",
 	} {
 		if v, ok := data[key]; ok {
 			card[key] = v

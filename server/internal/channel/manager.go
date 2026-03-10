@@ -25,6 +25,21 @@ var (
 	markdownOrderedLineRe      = regexp.MustCompile(`(?m)^\s{0,3}\d+\.\s+\S`)
 )
 
+func resolveOutboundCapabilities(ch Channel) OutboundCapabilities {
+	if ch == nil {
+		return DefaultOutboundCapabilities()
+	}
+	provider, ok := ch.(OutboundCapabilityProvider)
+	if !ok {
+		return DefaultOutboundCapabilities()
+	}
+	capabilities := provider.OutboundCapabilities()
+	if capabilities.MarkdownMode != OutboundMarkdownModeChunked && capabilities.MarkdownMode != OutboundMarkdownModePreserveWhole {
+		capabilities.MarkdownMode = OutboundMarkdownModeChunked
+	}
+	return capabilities
+}
+
 // Manager manages all messaging channels.
 type Manager struct {
 	mu       sync.RWMutex
@@ -36,10 +51,6 @@ type Manager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
-
-	// warmupFunc is called with a conversation ID to pre-compute context.
-	// Set by the chat handler via SetWarmupFunc.
-	warmupFunc func(convID string)
 
 	// onStopHooks are called when the manager stops, to persist stats
 	onStopHooks []func()
@@ -70,13 +81,6 @@ func (m *Manager) SetHandler(handler MessageHandler) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.handler = handler
-}
-
-// SetWarmupFunc sets the function called to pre-compute context when a channel message arrives.
-func (m *Manager) SetWarmupFunc(fn func(convID string)) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.warmupFunc = fn
 }
 
 // Register registers a channel with the manager.
@@ -210,7 +214,6 @@ func (m *Manager) handleMessages(ch Channel) {
 func (m *Manager) processMessage(ch Channel, msg Message) {
 	m.mu.RLock()
 	handler := m.handler
-	warmupFn := m.warmupFunc
 	m.mu.RUnlock()
 
 	if handler == nil {
@@ -237,12 +240,6 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 				zap.String("chat_id", msg.ChatID),
 				zap.Error(err))
 		}
-	}
-
-	// Fire warmup in background to pre-compute system prompt + history
-	if warmupFn != nil {
-		convID := channelConversationID(ch.Name(), msg.ChatID)
-		go warmupFn(convID)
 	}
 
 	// Periodically re-send typing indicator while the handler is running
@@ -309,7 +306,7 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 		if response.ReplyToID == "" {
 			response.ReplyToID = defaultReplyTarget(ch.Type(), msg)
 		}
-		parts, prepared := prepareOutgoingTextParts(ch.Type(), *response, m.config.MaxMessageLength, true)
+		parts, prepared := prepareOutgoingTextParts(resolveOutboundCapabilities(ch), *response, m.config.MaxMessageLength, true)
 		if len(parts) == 0 && len(prepared.Attachments) == 0 {
 			m.logger.Warn("response content is empty after processing",
 				zap.String("channel", ch.Name()),
@@ -463,7 +460,7 @@ func (m *Manager) Send(ctx context.Context, channelName string, msg OutgoingMess
 		return fmt.Errorf("channel %s is not connected", channelName)
 	}
 
-	parts, prepared := prepareOutgoingTextParts(ch.Type(), msg, m.config.MaxMessageLength, false)
+	parts, prepared := prepareOutgoingTextParts(resolveOutboundCapabilities(ch), msg, m.config.MaxMessageLength, false)
 	return sendPreparedMessages(ctx, ch, buildOutgoingMessages(ch.Type(), prepared, parts))
 }
 
@@ -480,7 +477,7 @@ func (m *Manager) Broadcast(ctx context.Context, msg OutgoingMessage) map[string
 
 	errors := make(map[string]error)
 	for _, ch := range channels {
-		parts, prepared := prepareOutgoingTextParts(ch.Type(), msg, m.config.MaxMessageLength, false)
+		parts, prepared := prepareOutgoingTextParts(resolveOutboundCapabilities(ch), msg, m.config.MaxMessageLength, false)
 		if err := sendPreparedMessages(ctx, ch, buildOutgoingMessages(ch.Type(), prepared, parts)); err != nil {
 			errors[ch.Name()] = err
 		}
@@ -496,9 +493,7 @@ func (m *Manager) sendHeartbeats(ctx context.Context, ch Channel, chatID, replyT
 	if !cfg.Enabled || len(cfg.Emojis) == 0 {
 		return
 	}
-	// Feishu now uses reaction-based pending indicator on inbound message,
-	// so we suppress extra heartbeat text like "💬..." to avoid noisy placeholders.
-	if ch.Type() == "feishu" {
+	if resolveOutboundCapabilities(ch).SuppressHeartbeatText {
 		return
 	}
 
@@ -542,19 +537,18 @@ func channelConversationID(channelName, chatID string) string {
 	return "ch:" + channelName
 }
 
-func maybePromoteMarkdownReport(channelType string, msg *OutgoingMessage) {
+func maybePromoteMarkdownReport(capabilities OutboundCapabilities, msg *OutgoingMessage) {
 	if msg == nil {
 		return
 	}
-	if !shouldPromoteMarkdownReport(channelType, *msg) {
+	if !shouldPromoteMarkdownReport(capabilities, *msg) {
 		return
 	}
 	msg.Format = "markdown"
 }
 
-func shouldPromoteMarkdownReport(channelType string, msg OutgoingMessage) bool {
-	// Feishu supports interactive cards; preserve report markdown instead of compacting to plain text.
-	if channelType != "feishu" {
+func shouldPromoteMarkdownReport(capabilities OutboundCapabilities, msg OutgoingMessage) bool {
+	if !capabilities.SupportsMarkdownFormat || !capabilities.AutoPromoteMarkdownReport {
 		return false
 	}
 	format := strings.ToLower(strings.TrimSpace(msg.Format))
@@ -653,8 +647,8 @@ func defaultReplyTarget(channelType string, msg Message) string {
 	}
 }
 
-func prepareOutgoingTextParts(channelType string, msg OutgoingMessage, maxLength int, stripAITags bool) ([]string, OutgoingMessage) {
-	maybePromoteMarkdownReport(channelType, &msg)
+func prepareOutgoingTextParts(capabilities OutboundCapabilities, msg OutgoingMessage, maxLength int, stripAITags bool) ([]string, OutgoingMessage) {
+	maybePromoteMarkdownReport(capabilities, &msg)
 	if msg.Content == "" {
 		return nil, msg
 	}
@@ -675,7 +669,7 @@ func prepareOutgoingTextParts(channelType string, msg OutgoingMessage, maxLength
 	case "markdown", "md", "markdownv2":
 		msg.Content = content
 		msg.Format = "markdown"
-		if channelType == "feishu" {
+		if capabilities.MarkdownMode == OutboundMarkdownModePreserveWhole {
 			return []string{content}, msg
 		}
 		return splitMarkdownAware(content, maxLength), msg
@@ -702,7 +696,7 @@ func prepareOutgoingTextParts(channelType string, msg OutgoingMessage, maxLength
 	renderedParts := make([]string, 0, len(sourceParts))
 	resolvedFormat := ""
 	for _, part := range sourceParts {
-		rendered, recommendedFormat := humanizer.HumanizeForChannel(part, channelType)
+		rendered, recommendedFormat := humanizer.HumanizeForPreset(part, capabilities.HumanizerPreset)
 		rendered = strings.TrimSpace(rendered)
 		if rendered == "" {
 			continue

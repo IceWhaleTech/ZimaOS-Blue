@@ -71,7 +71,7 @@ type CreateTaskRequest struct {
 // TaskEvent is an SSE event for task progress.
 type TaskEvent struct {
 	TaskID     string          `json:"task_id"`
-	EventType  string          `json:"event_type"` // task_created, task_planning, task_progress, task_step_completed, task_completed, task_failed, task_question
+	EventType  string          `json:"event_type"` // task_created, task_planning, task_progress, task_step_completed, task_reflection_started, task_reflection_completed, task_completed, task_failed, task_question
 	StepIndex  int             `json:"step_index,omitempty"`
 	Progress   int             `json:"progress,omitempty"`
 	Message    string          `json:"message,omitempty"`

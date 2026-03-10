@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ChatView from '@/views/ChatView.vue'
-import { i18n } from '@/i18n'
+import { i18n, setLocale } from '@/i18n'
 
 const mocks = vi.hoisted(() => ({
   chatStore: {
@@ -333,6 +333,7 @@ describe('ChatView page-level card actions', () => {
     Object.defineProperty(window.navigator, 'platform', { value: 'MacIntel', configurable: true })
 
     localStorageMock.clear()
+    i18n.global.locale.value = 'en-US'
 
     mocks.chatStore.awaitingConfirmation = false
     mocks.chatStore.preTTFTCancelActive = false
@@ -453,6 +454,18 @@ describe('ChatView page-level card actions', () => {
     mocks.notificationStore.error.mockReset()
     mocks.notificationStore.info.mockReset()
     mocks.notificationStore.remove.mockReset()
+  })
+
+  it('localizes the awaiting confirmation indicator', async () => {
+    await setLocale('zh-CN')
+    mocks.chatStore.awaitingConfirmation = true
+
+    const wrapper = await mountChatViewWithMessages([{ id: 'msg-confirm', content: 'Please confirm' }])
+
+    expect(wrapper.text()).toContain('等待你的确认以继续')
+    expect(wrapper.text()).not.toContain('Waiting for your confirmation to continue')
+
+    i18n.global.locale.value = 'en-US'
   })
 
   it('submits use_browser from a web-fetch card rendered inside ChatView', async () => {

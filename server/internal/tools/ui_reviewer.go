@@ -21,15 +21,15 @@ import (
 )
 
 const (
-	maxScrollPages     = 5
-	defaultWaitMS      = 2000
-	maxWaitMS          = 10000
-	maxVLMImageWidth   = 1024
-	maxA11yTreeChars   = 2000
-	desktopWidth       = 1920
-	desktopHeight      = 1080
-	mobileWidth        = 375
-	mobileHeight       = 812
+	maxScrollPages   = 5
+	defaultWaitMS    = 2000
+	maxWaitMS        = 10000
+	maxVLMImageWidth = 1024
+	maxA11yTreeChars = 2000
+	desktopWidth     = 1920
+	desktopHeight    = 1080
+	mobileWidth      = 375
+	mobileHeight     = 812
 )
 
 // mobileChannels maps channel names that should default to mobile viewport.
@@ -84,24 +84,24 @@ type UIReviewA11yResult struct {
 
 // UIReviewResult is the top-level output of a UI review.
 type UIReviewResult struct {
-	URL           string           `json:"url,omitempty"`
-	Visual        UIScoreDetail    `json:"visual"`
-	Functional    UIScoreDetail    `json:"functional"`
-	Accessibility UIScoreDetail    `json:"accessibility"`
-	Overall       float64          `json:"overall"`
-	Pass          bool             `json:"pass"`
-	Threshold     float64          `json:"threshold"`
-	Issues        []UIReviewIssue  `json:"issues"`
-	Suggestions   []string         `json:"suggestions,omitempty"`
-	Viewports     []string         `json:"viewports,omitempty"`
-	Steps         []UIReviewStep   `json:"steps,omitempty"`
-	Screenshot    string           `json:"screenshot,omitempty"`
-	MediaURL      string           `json:"media_url,omitempty"`
-	ThumbnailURL  string           `json:"thumbnail_url,omitempty"`
-	Screenshots   []string         `json:"screenshots,omitempty"`
-	Device        string           `json:"device,omitempty"`
-	Channel       string           `json:"channel,omitempty"`
-	Human         string           `json:"human,omitempty"`
+	URL           string          `json:"url,omitempty"`
+	Visual        UIScoreDetail   `json:"visual"`
+	Functional    UIScoreDetail   `json:"functional"`
+	Accessibility UIScoreDetail   `json:"accessibility"`
+	Overall       float64         `json:"overall"`
+	Pass          bool            `json:"pass"`
+	Threshold     float64         `json:"threshold"`
+	Issues        []UIReviewIssue `json:"issues"`
+	Suggestions   []string        `json:"suggestions,omitempty"`
+	Viewports     []string        `json:"viewports,omitempty"`
+	Steps         []UIReviewStep  `json:"steps,omitempty"`
+	Screenshot    string          `json:"screenshot,omitempty"`
+	MediaURL      string          `json:"media_url,omitempty"`
+	ThumbnailURL  string          `json:"thumbnail_url,omitempty"`
+	Screenshots   []string        `json:"screenshots,omitempty"`
+	Device        string          `json:"device,omitempty"`
+	Channel       string          `json:"channel,omitempty"`
+	Human         string          `json:"human,omitempty"`
 }
 
 // UIScoreDetail holds a category score and its sub-scores.
@@ -375,6 +375,15 @@ func (t *UIReviewerTool) reviewURL(ctx context.Context, url string, args map[str
 	if waitMS > 0 {
 		time.Sleep(time.Duration(waitMS) * time.Millisecond)
 	}
+	emitUIStageCard(ctx, lang, "info", uiReviewLocalized(lang,
+		"Page loaded and viewport ready",
+		"页面已加载，视口已就绪",
+	), []map[string]interface{}{
+		{"label": "url", "value": url},
+		{"label": "device", "value": device},
+		{"label": "viewport", "value": fmt.Sprintf("%dx%d", vpWidth, vpHeight)},
+		{"label": "wait_ms", "value": waitMS},
+	})
 
 	// 5. Functional checks
 	emitUIProgress(ctx, "functional", i18n.T(lang, i18n.MsgStepFunctional), "running", url, nil)
@@ -393,14 +402,31 @@ func (t *UIReviewerTool) reviewURL(ctx context.Context, url string, args map[str
 		Score: a11y.Score, Issues: len(a11y.Issues),
 	})
 	emitUIProgress(ctx, "accessibility", i18n.T(lang, i18n.MsgStepAccessibility), "success", url, &a11y.Score)
+	emitUIStageCard(ctx, lang, "info", uiReviewLocalized(lang,
+		"Core audits completed",
+		"核心审查已完成",
+	), []map[string]interface{}{
+		{"label": "functional_score", "value": funcResult.Score},
+		{"label": "functional_issues", "value": len(funcResult.Issues)},
+		{"label": "accessibility_score", "value": a11y.Score},
+		{"label": "accessibility_issues", "value": len(a11y.Issues)},
+	})
 
 	// 7. Multi-page scroll + screenshots
 	emitUIProgress(ctx, "screenshot", i18n.T(lang, i18n.MsgStepScreenshot), "running", url, nil)
 	screenshots, firstScreenshot := t.captureScrollScreenshots(ctx, browser, nav.TargetID, mediaDir, &steps, lang)
 	emitUIProgress(ctx, "screenshot", i18n.T(lang, i18n.MsgStepScreenshot), "success", url, nil)
+	emitUIStageCard(ctx, lang, "info", uiReviewLocalized(lang,
+		"Page screenshots captured",
+		"页面截图已捕获",
+	), []map[string]interface{}{
+		{"label": "screenshots", "value": len(screenshots)},
+	})
 
 	// 8. VLM visual review (or structural fallback)
 	var vlm *vlmParsedResult
+	var structuralScore float64
+	structuralUsed := false
 	if bridge != nil && firstScreenshot != "" {
 		emitUIProgress(ctx, "visual", i18n.T(lang, i18n.MsgStepVisualReview), "running", url, nil)
 		vlm = t.runVLMReview(ctx, bridge, firstScreenshot, url, lang)
@@ -421,10 +447,29 @@ func (t *UIReviewerTool) reviewURL(ctx context.Context, url string, args map[str
 
 	// If no VLM, run structural fallback from a11y tree
 	if vlm == nil && a11y.Tree != "" {
-		structScore := t.structuralScore(a11y.Tree)
+		structuralScore = t.structuralScore(a11y.Tree)
+		structuralUsed = true
 		steps = append(steps, UIReviewStep{
 			ID: "structural", Name: i18n.T(lang, i18n.MsgStepStructural), Status: "success",
-			Score: structScore, Message: i18n.T(lang, i18n.MsgStepStructuralMsg),
+			Score: structuralScore, Message: i18n.T(lang, i18n.MsgStepStructuralMsg),
+		})
+	}
+
+	switch {
+	case vlm != nil:
+		emitUIStageCard(ctx, lang, "info", uiReviewLocalized(lang,
+			"Visual review completed",
+			"视觉评审已完成",
+		), []map[string]interface{}{
+			{"label": "visual_score", "value": uiAvgScores(vlm.Scores)},
+			{"label": "visual_issues", "value": len(vlm.Issues)},
+		})
+	case structuralUsed:
+		emitUIStageCard(ctx, lang, "warning", uiReviewLocalized(lang,
+			"Visual model unavailable; used structural fallback",
+			"视觉模型不可用，已改用结构化兜底",
+		), []map[string]interface{}{
+			{"label": "structural_score", "value": structuralScore},
 		})
 	}
 
@@ -992,4 +1037,24 @@ func emitUIProgress(ctx context.Context, stepID, stepName, status, url string, s
 		card["score"] = *score
 	}
 	EmitCard(ctx, card)
+}
+
+func emitUIStageCard(ctx context.Context, lang i18n.Language, status, message string, details []map[string]interface{}) {
+	card := map[string]interface{}{
+		"type":    "result",
+		"title":   "ui_review",
+		"status":  status,
+		"message": message,
+	}
+	if len(details) > 0 {
+		card["details"] = details
+	}
+	EmitCard(ctx, card)
+}
+
+func uiReviewLocalized(lang i18n.Language, en, zh string) string {
+	if strings.HasPrefix(strings.ToLower(string(lang)), "zh") {
+		return zh
+	}
+	return en
 }

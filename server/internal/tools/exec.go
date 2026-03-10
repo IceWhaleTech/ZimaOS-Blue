@@ -982,6 +982,7 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 		// Skill found but execution failed — return error as exec result
 		// instead of falling through to subprocess (which would fail the same way).
 		slog.Warn("[exec] skill short-circuit failed", "skill", skillName, "err", err)
+		emitSkillErrorCard(ctx, execSkillName, err)
 		exitCode := 1
 		result := execResult{
 			SessionID: NewSessionID(),
@@ -1068,6 +1069,19 @@ func emitSkillResultCardFromData(ctx context.Context, skillName string, data map
 		if card := cardconv.ToCard(skillName, string(b)); card != nil {
 			EmitCard(ctx, card)
 		}
+	}
+}
+
+func emitSkillErrorCard(ctx context.Context, skillName string, err error) {
+	if err == nil || strings.TrimSpace(skillName) == "" {
+		return
+	}
+	b, marshalErr := json.Marshal(map[string]string{"error": err.Error()})
+	if marshalErr != nil {
+		return
+	}
+	if card := cardconv.ToCard(skillName, string(b)); card != nil {
+		EmitCard(ctx, card)
 	}
 }
 

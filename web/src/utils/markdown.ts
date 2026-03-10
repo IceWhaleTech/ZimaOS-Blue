@@ -2,6 +2,12 @@
 // Uses highlight.js for syntax highlighting (lazy-loaded on first use)
 
 import hljs from 'highlight.js/lib/core'
+import { i18n } from '@/i18n'
+
+function t(key: string, fallback: string): string {
+  const result = i18n.global.t(key)
+  return result === key ? fallback : String(result)
+}
 
 let hljsReady = false
 let hljsLoading: Promise<void> | null = null
@@ -601,8 +607,8 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
         result.push(
           `<div class="code-block my-3 rounded-lg overflow-hidden bg-gray-700">` +
             `<div class="code-header flex justify-between items-center px-4 py-2 bg-gray-700 text-gray-400 text-sm">` +
-            `<span>${codeBlockLang || 'code'}</span>` +
-            `<button class="copy-btn hover:text-white" data-code="${escapeHtml(code)}">Copy</button>` +
+            `<span>${codeBlockLang || t('codeBlock.code', 'code')}</span>` +
+            `<button class="copy-btn hover:text-white" data-code="${escapeHtml(code)}">${t('common.copy', 'Copy')}</button>` +
             `</div>` +
             `<pre class="p-4 overflow-x-auto"><code class="text-sm font-mono text-gray-100">${highlighted}</code></pre>` +
             `</div>`

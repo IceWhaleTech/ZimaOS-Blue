@@ -249,6 +249,10 @@ func (m *Manager) EnsureWorkspace() error {
 	userPath := filepath.Join(m.dir, FileUSER)
 	if isDefaultUserTemplate(userPath) {
 		_ = writeIfMissing(bootstrapPath, ts.bootstrap)
+	} else {
+		if err := m.removeBootstrapLocked(); err != nil {
+			log.Printf("workspace: remove stale %s: %v", FileBOOTSTRAP, err)
+		}
 	}
 
 	return nil
@@ -277,9 +281,12 @@ func (m *Manager) LoadBootstrapFiles() []BootstrapFile {
 		})
 	}
 
-	// Include BOOTSTRAP.md if it exists (first-run guide, deleted after completion)
-	if content, ok := m.readFileCached(filepath.Join(m.dir, FileBOOTSTRAP)); ok {
-		files = append(files, BootstrapFile{Name: FileBOOTSTRAP, Content: content})
+	// Include BOOTSTRAP.md only while first-run onboarding is actually pending.
+	if m.bootstrapPendingLocked() {
+		content, ok := m.readFileCached(filepath.Join(m.dir, FileBOOTSTRAP))
+		if ok {
+			files = append(files, BootstrapFile{Name: FileBOOTSTRAP, Content: content})
+		}
 	}
 
 	// Include today's and yesterday's daily logs
@@ -307,10 +314,12 @@ func (m *Manager) LoadContextFiles() map[string]string {
 		ctx[name] = s
 	}
 
-	// Include BOOTSTRAP.md if it exists
-	if s, ok := m.readFileCached(filepath.Join(m.dir, FileBOOTSTRAP)); ok {
-		if strings.TrimSpace(s) != "" {
-			ctx[FileBOOTSTRAP] = s
+	// Include BOOTSTRAP.md only while first-run onboarding is actually pending.
+	if m.bootstrapPendingLocked() {
+		if s, ok := m.readFileCached(filepath.Join(m.dir, FileBOOTSTRAP)); ok {
+			if strings.TrimSpace(s) != "" {
+				ctx[FileBOOTSTRAP] = s
+			}
 		}
 	}
 
@@ -366,6 +375,11 @@ func (m *Manager) WriteFile(name, content string) error {
 	err := os.WriteFile(m.resolveFilePath(name), []byte(content), 0o644)
 	if err == nil {
 		m.InvalidateFileCache()
+		if name == FileUSER && !isDefaultUserContent(content) {
+			if rmErr := m.removeBootstrapLocked(); rmErr != nil {
+				return rmErr
+			}
+		}
 	}
 	return err
 }
@@ -384,20 +398,15 @@ func isAllowedFile(name string) bool {
 	return false
 }
 
-// IsBootstrapPending returns true if BOOTSTRAP.md exists (first-run not completed).
-func (m *Manager) IsBootstrapPending() bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	_, err := os.Stat(filepath.Join(m.dir, FileBOOTSTRAP))
-	return err == nil
+func (m *Manager) bootstrapPendingLocked() bool {
+	if _, err := os.Stat(filepath.Join(m.dir, FileBOOTSTRAP)); err != nil {
+		return false
+	}
+	return isDefaultUserTemplate(filepath.Join(m.dir, FileUSER))
 }
 
-// CompleteBootstrap removes BOOTSTRAP.md after the first-run guide is done.
-func (m *Manager) CompleteBootstrap() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	path := filepath.Join(m.dir, FileBOOTSTRAP)
-	err := os.Remove(path)
+func (m *Manager) removeBootstrapLocked() error {
+	err := os.Remove(filepath.Join(m.dir, FileBOOTSTRAP))
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -405,6 +414,20 @@ func (m *Manager) CompleteBootstrap() error {
 		m.InvalidateFileCache()
 	}
 	return err
+}
+
+// IsBootstrapPending returns true only while first-run onboarding is actually pending.
+func (m *Manager) IsBootstrapPending() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.bootstrapPendingLocked()
+}
+
+// CompleteBootstrap removes BOOTSTRAP.md after the first-run guide is done.
+func (m *Manager) CompleteBootstrap() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.removeBootstrapLocked()
 }
 
 // MemoryDir returns the path to the memory/ subdirectory.
@@ -506,7 +529,11 @@ func isDefaultUserTemplate(path string) bool {
 	if err != nil {
 		return true // File doesn't exist, treat as default
 	}
-	trimmed := strings.TrimSpace(string(content))
+	return isDefaultUserContent(string(content))
+}
+
+func isDefaultUserContent(content string) bool {
+	trimmed := strings.TrimSpace(content)
 	for _, locale := range availableLocales() {
 		ts := getTemplates(locale)
 		if trimmed == strings.TrimSpace(ts.user) {

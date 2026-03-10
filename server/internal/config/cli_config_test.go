@@ -166,8 +166,20 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	if len(cfg.Profiles["coding"]) == 0 {
 		t.Fatalf("expected coding profile entries to be populated")
 	}
+	if !containsString(cfg.Profiles["coding"], "group:research") {
+		t.Fatalf("expected coding profile to include group:research, got %#v", cfg.Profiles["coding"])
+	}
 	if len(cfg.Groups["group:runtime"]) == 0 {
 		t.Fatalf("expected group:runtime entries to be populated")
+	}
+	if len(cfg.Groups["group:research"]) == 0 {
+		t.Fatalf("expected group:research entries to be populated")
+	}
+	if !containsString(cfg.Groups["group:research"], "research_run") {
+		t.Fatalf("expected group:research to include research_run, got %#v", cfg.Groups["group:research"])
+	}
+	if !containsString(cfg.Groups["group:research"], "research_status") {
+		t.Fatalf("expected group:research to include research_status, got %#v", cfg.Groups["group:research"])
 	}
 
 	if cfg.WebSearch.Provider != "duckduckgo" {
@@ -233,4 +245,13 @@ func TestProviderOverrideConfig(t *testing.T) {
 	if ollamaOverride.ToolCalling != "adapter" {
 		t.Errorf("expected ollama ToolCalling 'adapter', got '%s'", ollamaOverride.ToolCalling)
 	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

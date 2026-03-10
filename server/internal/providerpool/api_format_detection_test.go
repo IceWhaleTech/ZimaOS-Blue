@@ -161,6 +161,36 @@ func TestProbeThirdPartyAPIFormat_CodexBackendPathOnNonOfficialHostKeepsBaseURL(
 	}
 }
 
+func TestProbeThirdPartyAPIFormat_IgnoresResponsesWhenIntegrationDisabled(t *testing.T) {
+	SetResponsesIntegrationEnabled(false)
+	defer SetResponsesIntegrationEnabled(true)
+
+	restore := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			return http.StatusOK, `{"id":"chatcmpl-test"}`
+		case "/v1/responses", "/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restore()
+
+	p := &Provider{
+		ID:      "custom-relay",
+		Type:    ProviderTypeCustom,
+		BaseURL: "https://relay.example.com",
+	}
+	got, detectedURL := autoDetectAPIFormat(context.Background(), p)
+	if got != APIFormatOpenAI {
+		t.Fatalf("format = %q, want %q", got, APIFormatOpenAI)
+	}
+	if detectedURL != "" {
+		t.Fatalf("detectedURL = %q, want empty", detectedURL)
+	}
+}
+
 func installProbeTransport(fn func(*http.Request) (int, string)) func() {
 	oldFactory := newProbeHTTPClient
 	newProbeHTTPClient = func(_ bool) *http.Client {

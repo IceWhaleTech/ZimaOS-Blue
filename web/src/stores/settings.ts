@@ -12,7 +12,6 @@ import {
   type SmallModelStatus,
   type SmallModelStats,
   type SmallModelUnavailablePolicy,
-  type SoulProposal,
 } from '@/api/settings'
 import { claudeCodeApi } from '@/api/claudecode'
 
@@ -148,9 +147,6 @@ export const useSettingsStore = defineStore('settings', () => {
   const smallModelStats = ref<SmallModelStats | null>(null)
   const smallModelStatsLoading = ref(false)
   const smallModelStatsError = ref<string | null>(null)
-  const soulProposals = ref<SoulProposal[]>([])
-  const soulProposalsLoading = ref(false)
-  const soulProposalsError = ref<string | null>(null)
 
   // Computed: All provider-model options for dropdown
   const providerModelOptions = computed<ProviderModelOption[]>(() => {
@@ -437,6 +433,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Agent mode (from backend settings)
   const agentMode = computed(() => backendSettings.value.agent_mode ?? false)
+  const agentAutoReflect = computed(() => backendSettings.value.agent_auto_reflect ?? true)
   const agentAutoConfirm = computed(() => backendSettings.value.agent_auto_confirm ?? false)
   const memoryRecallMode = computed<MemoryRecallMode>(() => {
     const mode = backendSettings.value.memory_recall_mode
@@ -497,6 +494,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setAgentMode(enabled: boolean) {
     await updateBackendSettings({ agent_mode: enabled })
+  }
+
+  async function setAgentAutoReflect(enabled: boolean) {
+    await updateBackendSettings({ agent_auto_reflect: enabled })
   }
 
   async function setAgentAutoConfirm(enabled: boolean) {
@@ -644,43 +645,6 @@ export const useSettingsStore = defineStore('settings', () => {
     return fetchSmallModelStatus()
   }
 
-  async function fetchSoulProposals() {
-    try {
-      soulProposalsLoading.value = true
-      soulProposalsError.value = null
-      const response = await settingsApi.listSoulProposals()
-      soulProposals.value = response.data.proposals || []
-      return soulProposals.value
-    } catch (e) {
-      soulProposalsError.value = e instanceof Error ? e.message : 'Failed to fetch SOUL proposals'
-      throw e
-    } finally {
-      soulProposalsLoading.value = false
-    }
-  }
-
-  async function approveSoulProposal(id: string) {
-    const response = await settingsApi.approveSoulProposal(id)
-    const idx = soulProposals.value.findIndex((p) => p.id === response.data.id)
-    if (idx >= 0) {
-      soulProposals.value[idx] = response.data
-    } else {
-      soulProposals.value.unshift(response.data)
-    }
-    return response.data
-  }
-
-  async function rejectSoulProposal(id: string) {
-    const response = await settingsApi.rejectSoulProposal(id)
-    const idx = soulProposals.value.findIndex((p) => p.id === response.data.id)
-    if (idx >= 0) {
-      soulProposals.value[idx] = response.data
-    } else {
-      soulProposals.value.unshift(response.data)
-    }
-    return response.data
-  }
-
   async function fetchSmallModelStats() {
     try {
       smallModelStatsLoading.value = true
@@ -721,11 +685,9 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelStats,
     smallModelStatsLoading,
     smallModelStatsError,
-    soulProposals,
-    soulProposalsLoading,
-    soulProposalsError,
     claudeCodeEnabled,
     agentMode,
+    agentAutoReflect,
     agentAutoConfirm,
     memoryRecallMode,
     skillRerankEnabled,
@@ -786,6 +748,7 @@ export const useSettingsStore = defineStore('settings', () => {
     fetchClaudeCodeEnabled,
     setClaudeCodeEnabled,
     setAgentMode,
+    setAgentAutoReflect,
     setAgentAutoConfirm,
     setMemoryRecallMode,
     setSkillRerankEnabled,
@@ -819,9 +782,6 @@ export const useSettingsStore = defineStore('settings', () => {
     fetchSmallModelStatus,
     startSmallModelDownload,
     cancelSmallModelDownload,
-    fetchSoulProposals,
-    approveSoulProposal,
-    rejectSoulProposal,
     fetchSmallModelStats,
     resetSmallModelStats,
     setShowToolDetails,

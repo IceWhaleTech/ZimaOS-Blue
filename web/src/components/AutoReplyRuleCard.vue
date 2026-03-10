@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { AutoReplyRule } from '@/api/autoreply'
 
-defineProps<{
+const { t } = useI18n()
+
+const props = defineProps<{
   rule: AutoReplyRule
   loading?: boolean
 }>()
@@ -15,11 +18,11 @@ const emit = defineEmits<{
 
 function getTriggerTypeLabel(type: string): string {
   const labels: Record<string, string> = {
-    keyword: 'Keyword',
-    regex: 'Regex',
-    contains: 'Contains',
-    prefix: 'Prefix',
-    suffix: 'Suffix',
+    keyword: t('autoReply.keyword', 'Keyword'),
+    regex: t('autoReply.regex', 'Regex'),
+    contains: t('autoReply.contains', 'Contains'),
+    prefix: t('autoReply.prefix', 'Prefix'),
+    suffix: t('autoReply.suffix', 'Suffix'),
   }
   return labels[type] || type
 }
@@ -58,9 +61,9 @@ function formatDate(dateStr: string): string {
             :class="getTriggerTypeColor(rule.trigger_type)"
             class="px-2 py-0.5 rounded text-xs font-medium"
           >
-            {{ getTriggerTypeLabel(rule.trigger_type) }}
+            {{ getTriggerTypeLabel(props.rule.trigger_type) }}
           </span>
-          <span class="text-gray-400 dark:text-gray-500 text-xs">Priority: {{ rule.priority }}</span>
+          <span class="text-gray-400 dark:text-gray-500 text-xs">{{ t('autoReply.card.priority', { priority: props.rule.priority }) }}</span>
         </div>
       </div>
       <button
@@ -78,28 +81,28 @@ function formatDate(dateStr: string): string {
 
     <!-- Trigger Value -->
     <div class="mb-3">
-      <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">Trigger</div>
+      <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">{{ t('autoReply.card.trigger', 'Trigger') }}</div>
       <code class="text-sm text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded block truncate">
-        {{ rule.trigger_value }}
+        {{ props.rule.trigger_value }}
       </code>
     </div>
 
     <!-- Responses Preview -->
     <div class="mb-3">
       <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">
-        Responses ({{ rule.responses.length }})
+        {{ t('autoReply.responses', 'Responses') }} ({{ props.rule.responses.length }})
       </div>
       <div class="text-sm text-gray-600 dark:text-gray-400 truncate">
-        {{ rule.responses[0] || 'No responses' }}
+        {{ props.rule.responses[0] || t('common.noResponses', 'No responses') }}
         <span v-if="rule.responses.length > 1" class="text-gray-400 dark:text-gray-500">
-          +{{ rule.responses.length - 1 }} more
+          {{ t('autoReply.card.more', { count: props.rule.responses.length - 1 }) }}
         </span>
       </div>
     </div>
 
     <!-- Channels -->
     <div v-if="rule.channels.length > 0" class="mb-3">
-      <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">Channels</div>
+      <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">{{ t('autoReply.card.channels', 'Channels') }}</div>
       <div class="flex flex-wrap gap-1">
         <span
           v-for="channel in rule.channels"
@@ -113,8 +116,8 @@ function formatDate(dateStr: string): string {
 
     <!-- Stats -->
     <div class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 mb-3">
-      <span>Matched {{ rule.match_count }} times</span>
-      <span>Updated {{ formatDate(rule.updated_at) }}</span>
+      <span>{{ t('autoReply.card.matchedTimes', { count: props.rule.match_count }) }}</span>
+      <span>{{ t('autoReply.card.updatedAt', { date: formatDate(props.rule.updated_at) }) }}</span>
     </div>
 
     <!-- Actions -->
@@ -124,18 +127,20 @@ function formatDate(dateStr: string): string {
         :disabled="loading"
         @click="emit('edit')"
       >
-        Edit
+        {{ t('common.edit', 'Edit') }}
       </button>
       <button
         class="flex-1 px-3 py-1.5 bg-gray-800 dark:bg-gray-500 hover:bg-gray-700 dark:hover:bg-gray-400 text-white rounded text-sm transition-colors"
         :disabled="loading"
         @click="emit('test')"
       >
-        Test
+        {{ t('common.test', 'Test') }}
       </button>
       <button
         class="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded text-sm transition-colors"
         :disabled="loading"
+        :title="t('common.delete', 'Delete')"
+        :aria-label="t('common.delete', 'Delete')"
         @click="emit('delete')"
       >
         <svg

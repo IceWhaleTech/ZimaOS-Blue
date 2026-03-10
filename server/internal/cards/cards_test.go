@@ -94,7 +94,7 @@ func TestFormatTypeless_MoreCallsThanResults(t *testing.T) {
 }
 
 func TestDeepResearchCard_FieldsPreserved(t *testing.T) {
-	content := `{"query":"ZimaOS","mode":"deep","answer":"summary","confidence":0.87,"evidence_count":3,"citations":[{"title":"Doc","url":"https://example.com"}],"open_questions":["q1"],"support_count":2,"conflict_count":1,"has_conflict":true,"status":"completed"}`
+	content := `{"job_id":"job-1","query":"ZimaOS","mode":"deep","answer":"summary","confidence":0.87,"evidence_count":3,"citations":[{"title":"Doc","url":"https://example.com"}],"open_questions":["q1"],"support_count":2,"conflict_count":1,"has_conflict":true,"citation_coverage":0.92,"entity_disambiguation":{"enabled":true,"threshold":0.75},"stage_errors":["warn"],"timeline_sections":[{"label":"Recent","highlights":["h1"]}],"time_windows":["30d"],"report_style":"timeline","strict_entity":true,"status":"completed"}`
 	card := ToCard("deep_research", content)
 	if card == nil {
 		t.Fatal("expected non-nil deep-research card")
@@ -116,6 +116,46 @@ func TestDeepResearchCard_FieldsPreserved(t *testing.T) {
 	}
 	if got := card["has_conflict"]; got != true {
 		t.Fatalf("has_conflict=%v, want true", got)
+	}
+	if got := card["citation_coverage"]; got != 0.92 {
+		t.Fatalf("citation_coverage=%v, want 0.92", got)
+	}
+	if got := card["report_style"]; got != "timeline" {
+		t.Fatalf("report_style=%v, want timeline", got)
+	}
+	if got := card["strict_entity"]; got != true {
+		t.Fatalf("strict_entity=%v, want true", got)
+	}
+	if card["timeline_sections"] == nil {
+		t.Fatalf("expected timeline_sections")
+	}
+	if card["entity_disambiguation"] == nil {
+		t.Fatalf("expected entity_disambiguation")
+	}
+	if got := card["id"]; got != "deep-research-job-1" {
+		t.Fatalf("id=%v, want deep-research-job-1", got)
+	}
+}
+
+func TestDeepResearchCard_PrefersJobIDForStableID(t *testing.T) {
+	content := `{"job_id":"job-42","query":"ZimaOS","answer":"summary"}`
+	card := ToCard("deep_research", content)
+	if card == nil {
+		t.Fatal("expected non-nil deep-research card")
+	}
+	if got := card["id"]; got != "deep-research-job-42" {
+		t.Fatalf("id=%v, want deep-research-job-42", got)
+	}
+}
+
+func TestAnalyzeCard_StableID(t *testing.T) {
+	content := `{"topic":"Market analysis","report_url":"/reports/r1.html"}`
+	card := ToCard("analyze", content)
+	if card == nil {
+		t.Fatal("expected non-nil analyze card")
+	}
+	if got := card["id"]; got != "analyze-%2Freports%2Fr1.html" {
+		t.Fatalf("id=%v, want analyze-%%2Freports%%2Fr1.html", got)
 	}
 }
 
@@ -146,16 +186,49 @@ func TestGenericCard_ShowsDetails(t *testing.T) {
 	}
 }
 
-func TestGenericCard_ErrorIsRedacted(t *testing.T) {
-	card := GenericCard("test", `{"error":"secret stack trace"}`)
+func TestGenericCard_ErrorShowsSanitizedMessage(t *testing.T) {
+	card := GenericCard("test", `{"error":"secret stack trace?token=top-secret"}`)
 	if card["status"] != "error" {
 		t.Fatalf("expected error status, got %v", card["status"])
 	}
-	if card["message"] != redactedErrorText {
-		t.Fatalf("expected redacted error message, got %v", card["message"])
+	if card["message"] != "secret stack trace?token=[REDACTED]" {
+		t.Fatalf("expected sanitized error message, got %v", card["message"])
 	}
-	if card["error_redacted"] != true {
-		t.Fatalf("expected error_redacted marker, got %v", card["error_redacted"])
+	if _, redacted := card["error_redacted"]; redacted {
+		t.Fatalf("expected generic error to be visible, got redacted=%v", card["error_redacted"])
+	}
+}
+
+func TestGenericCard_ObjectErrorShowsSanitizedMessage(t *testing.T) {
+	card := GenericCard("test", `{"error":{"message":"permission denied","token":"top-secret"}}`)
+	if card["status"] != "error" {
+		t.Fatalf("expected error status, got %v", card["status"])
+	}
+	message, ok := card["message"].(string)
+	if !ok || strings.TrimSpace(message) == "" {
+		t.Fatalf("expected non-empty error message, got %v", card["message"])
+	}
+	if !strings.Contains(message, `"message":"permission denied"`) {
+		t.Fatalf("expected error message details, got %v", message)
+	}
+	if strings.Contains(message, "top-secret") {
+		t.Fatalf("expected object error secrets to be masked, got %v", message)
+	}
+	if _, redacted := card["error_redacted"]; redacted {
+		t.Fatalf("expected object error to be visible, got redacted=%v", card["error_redacted"])
+	}
+}
+
+func TestBuildErrorCard_UsesNoDetailsFallback(t *testing.T) {
+	card := buildErrorCard("result", "test", map[string]interface{}{})
+	if card["status"] != "error" {
+		t.Fatalf("expected error status, got %v", card["status"])
+	}
+	if card["message"] != noErrorDetailsText {
+		t.Fatalf("expected no-details fallback message, got %v", card["message"])
+	}
+	if _, redacted := card["error_redacted"]; redacted {
+		t.Fatalf("expected fallback message to be visible, got redacted=%v", card["error_redacted"])
 	}
 }
 
@@ -169,6 +242,54 @@ func TestGenericCard_BrowserErrorShowsSanitizedMessage(t *testing.T) {
 	}
 	if _, redacted := card["error_redacted"]; redacted {
 		t.Fatalf("expected browser error to be visible, got redacted=%v", card["error_redacted"])
+	}
+}
+
+func TestGenericCard_EditErrorShowsSanitizedMessage(t *testing.T) {
+	card := GenericCard("edit", `{"error":"target text not found in config.json?token=secret-value"}`)
+	if card["status"] != "error" {
+		t.Fatalf("expected error status, got %v", card["status"])
+	}
+	if card["message"] != "target text not found in config.json?token=[REDACTED]" {
+		t.Fatalf("expected edit error message, got %v", card["message"])
+	}
+	if _, redacted := card["error_redacted"]; redacted {
+		t.Fatalf("expected edit error to be visible, got redacted=%v", card["error_redacted"])
+	}
+	if strings.Contains(card["message"].(string), "secret-value") {
+		t.Fatalf("expected edit error secrets to be masked, got %v", card["message"])
+	}
+}
+
+func TestFileWriteCard_ErrorShowsSanitizedMessage(t *testing.T) {
+	card := ToCard("write", `{"error":"permission denied for settings.json?token=secret-value","path":"settings.json"}`)
+	if card == nil {
+		t.Fatal("expected file write card")
+	}
+	if card["status"] != "error" {
+		t.Fatalf("expected error status, got %v", card["status"])
+	}
+	if card["message"] != "permission denied for settings.json?token=[REDACTED]" {
+		t.Fatalf("expected write error message, got %v", card["message"])
+	}
+	if strings.Contains(card["message"].(string), "secret-value") {
+		t.Fatalf("expected write error secrets to be masked, got %v", card["message"])
+	}
+}
+
+func TestFileReadCard_ErrorShowsSanitizedMessage(t *testing.T) {
+	card := ToCard("read", `{"error":"permission denied for secrets.txt?token=secret-value","path":"secrets.txt"}`)
+	if card == nil {
+		t.Fatal("expected file read card")
+	}
+	if card["status"] != "error" {
+		t.Fatalf("expected error status, got %v", card["status"])
+	}
+	if card["message"] != "permission denied for secrets.txt?token=[REDACTED]" {
+		t.Fatalf("expected read error message, got %v", card["message"])
+	}
+	if strings.Contains(card["message"].(string), "secret-value") {
+		t.Fatalf("expected read error secrets to be masked, got %v", card["message"])
 	}
 }
 
@@ -387,7 +508,7 @@ func TestRegister_NewTool(t *testing.T) {
 }
 
 func TestUIReviewCard(t *testing.T) {
-	content := `{"url":"http://example.com","overall":82.1,"pass":true,"threshold":75,"visual":{"score":82},"functional":{"score":90},"accessibility":{"score":75},"issues":[{"severity":"major","category":"accessibility","description":"Missing alt"}],"steps":[{"id":"navigate","name":"Page Load","status":"success"}]}`
+	content := `{"url":"http://example.com","overall":82.1,"pass":true,"threshold":75,"visual":{"score":82},"functional":{"score":90},"accessibility":{"score":75},"issues":[{"severity":"major","category":"accessibility","description":"Missing alt"}],"steps":[{"id":"navigate","name":"Page Load","status":"success"}],"device":"desktop","channel":"web","media_url":"/api/v1/media/ui-review/a.png","thumbnail_url":"/api/v1/media/ui-review/thumb.png","screenshots":["/api/v1/media/ui-review/a.png"]}`
 	card := ToCard("ui_reviewer", content)
 	if card == nil {
 		t.Fatal("expected non-nil card")
@@ -412,6 +533,15 @@ func TestUIReviewCard(t *testing.T) {
 	if card["issues"] == nil {
 		t.Error("expected issues")
 	}
+	if card["device"] != "desktop" {
+		t.Errorf("expected device desktop, got %v", card["device"])
+	}
+	if card["thumbnail_url"] != "/api/v1/media/ui-review/thumb.png" {
+		t.Errorf("expected thumbnail_url, got %v", card["thumbnail_url"])
+	}
+	if card["screenshots"] == nil {
+		t.Error("expected screenshots")
+	}
 	// Actions should be present
 	actions, ok := card["actions"].([]map[string]interface{})
 	if !ok || len(actions) != 3 {
@@ -420,13 +550,13 @@ func TestUIReviewCard(t *testing.T) {
 		t.Errorf("expected first action id 'recheck', got %v", actions[0]["id"])
 	}
 	// Stable card ID from URL
-	if card["id"] != "ui-review-http://example.com" {
+	if card["id"] != "ui-review-http%3A%2F%2Fexample.com" {
 		t.Errorf("expected card id, got %v", card["id"])
 	}
 }
 
 func TestUIReviewCard_Error(t *testing.T) {
-	content := `{"error":"browser not available"}`
+	content := `{"error":"browser not available?token=secret-value"}`
 	card := ToCard("ui_reviewer", content)
 	if card == nil {
 		t.Fatal("expected non-nil card")
@@ -437,10 +567,40 @@ func TestUIReviewCard_Error(t *testing.T) {
 	if card["status"] != "error" {
 		t.Errorf("expected status error, got %v", card["status"])
 	}
+	if card["message"] != "browser not available?token=[REDACTED]" {
+		t.Errorf("expected sanitized ui-review error, got %v", card["message"])
+	}
+	if _, redacted := card["error_redacted"]; redacted {
+		t.Errorf("expected ui-review error to be visible, got %v", card["error_redacted"])
+	}
 	// Error card should have retry action
 	actions, ok := card["actions"].([]map[string]interface{})
 	if !ok || len(actions) != 1 {
 		t.Errorf("expected 1 action on error card, got %v", card["actions"])
+	}
+}
+
+func TestUIReviewCard_ObjectError(t *testing.T) {
+	content := `{"error":{"message":"browser not available","token":"secret-value"}}`
+	card := ToCard("ui_reviewer", content)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if card["type"] != "ui-review" {
+		t.Errorf("expected type ui-review, got %v", card["type"])
+	}
+	if card["status"] != "error" {
+		t.Errorf("expected status error, got %v", card["status"])
+	}
+	message, ok := card["message"].(string)
+	if !ok || strings.TrimSpace(message) == "" {
+		t.Errorf("expected non-empty ui-review error message, got %v", card["message"])
+	}
+	if strings.Contains(message, "secret-value") {
+		t.Errorf("expected ui-review object error to be masked, got %v", message)
+	}
+	if _, redacted := card["error_redacted"]; redacted {
+		t.Errorf("expected ui-review object error to be visible, got %v", card["error_redacted"])
 	}
 }
 

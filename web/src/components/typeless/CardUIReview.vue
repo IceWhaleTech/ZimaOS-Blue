@@ -25,6 +25,22 @@ const issues = computed(() => props.card.issues ?? [])
 const suggestions = computed(() => props.card.suggestions ?? [])
 const isError = computed(() => props.card.status === 'error')
 const isStreaming = computed(() => props.card._streaming === true)
+const screenshotSources = computed(() => {
+  const sources: string[] = []
+  if (props.card.screenshot) {
+    sources.push(`data:image/png;base64,${props.card.screenshot}`)
+  }
+  if (props.card.thumbnail_url) {
+    sources.push(props.card.thumbnail_url)
+  }
+  if (props.card.media_url) {
+    sources.push(props.card.media_url)
+  }
+  for (const url of props.card.screenshots || []) {
+    if (url) sources.push(url)
+  }
+  return Array.from(new Set(sources))
+})
 
 const scoreColor = computed(() => {
   if (overall.value >= 80) return 'text-green-500'
@@ -33,8 +49,8 @@ const scoreColor = computed(() => {
 })
 
 const passBadge = computed(() => {
-  if (pass.value) return { text: 'PASS', bg: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' }
-  return { text: 'FAIL', bg: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' }
+  if (pass.value) return { text: t('security.scan.passed', 'PASS'), bg: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' }
+  return { text: t('security.scan.failed', 'FAIL'), bg: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' }
 })
 
 const criticalCount = computed(() => issues.value.filter((i: UIReviewIssue) => i.severity === 'critical').length)
@@ -78,7 +94,7 @@ function isActionDisabled(action: { disabled?: boolean }): boolean {
 }
 
 function actionLabel(action: { id: string; label: string }): string {
-  return isActionActive(action.id) ? 'Working...' : t('uiReview.actions.' + action.id, action.label)
+  return isActionActive(action.id) ? t('common.processing', 'Processing...') : t('uiReview.actions.' + action.id, action.label)
 }
 
 function handleAction(actionId: string, disabled = false) {
@@ -137,6 +153,8 @@ function handleAction(actionId: string, disabled = false) {
               {{ t('uiReview.title', 'UI Review') }}{{ card.url ? ': ' + card.url : '' }}
             </span>
             <span v-if="isStreaming" class="inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse flex-shrink-0" />
+            <span v-if="card.device" class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300">{{ card.device }}</span>
+            <span v-if="card.channel" class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300">{{ card.channel }}</span>
           </div>
         </div>
 
@@ -251,15 +269,21 @@ function handleAction(actionId: string, disabled = false) {
           </div>
 
           <!-- Screenshot thumbnail -->
-          <div v-if="card.screenshot" class="px-4 py-3 border-t border-gray-100 dark:border-gray-700">
+          <div v-if="screenshotSources.length > 0" class="px-4 py-3 border-t border-gray-100 dark:border-gray-700">
             <button
               class="text-xs text-blue-600 dark:text-blue-400 hover:underline"
               @click.stop="showScreenshot = !showScreenshot"
             >
               {{ showScreenshot ? t('uiReview.hideScreenshot', 'Hide screenshot') : t('uiReview.showScreenshot', 'Show screenshot') }}
             </button>
-            <div v-if="showScreenshot" class="mt-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-              <img :src="'data:image/png;base64,' + card.screenshot" class="w-full" alt="Page screenshot" />
+            <div v-if="showScreenshot" class="mt-2 space-y-2">
+              <div
+                v-for="(src, idx) in screenshotSources"
+                :key="idx"
+                class="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
+              >
+                <img :src="src" class="w-full" :alt="t('askQuestion.browserCheckpoint.screenshotAlt', 'Page screenshot')" />
+              </div>
             </div>
           </div>
 

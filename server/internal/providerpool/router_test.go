@@ -282,6 +282,39 @@ func TestRouterWithFallback_RetriesSameProviderOnceOnTransientError(t *testing.T
 	}
 }
 
+func TestRouterWithFallback_RetriesSameProviderOnceOnEmptyStream(t *testing.T) {
+	router, cleanup := setupRouterTest(t)
+	defer cleanup()
+
+	var triedProviders []string
+	providerHighAttempts := 0
+
+	err := router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "test-model",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		triedProviders = append(triedProviders, result.Provider.ID)
+		if result.Provider.ID == "provider-high" {
+			providerHighAttempts++
+			if providerHighAttempts == 1 {
+				return errors.New("provider provider-high returned empty streaming response")
+			}
+			return nil
+		}
+		return errors.New("should not switch providers")
+	})
+
+	if err != nil {
+		t.Fatalf("RouteWithFallback failed: %v", err)
+	}
+	if providerHighAttempts != 2 {
+		t.Fatalf("Expected 2 attempts on provider-high, got %d", providerHighAttempts)
+	}
+	if len(triedProviders) != 2 || triedProviders[0] != "provider-high" || triedProviders[1] != "provider-high" {
+		t.Fatalf("Expected empty-stream retry to stay on provider-high, got %v", triedProviders)
+	}
+}
+
 func TestRouterWithFallback_RetriesNextAPIKeyOnAuthError(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "router-multikey-auth-*")
 	if err != nil {
@@ -471,6 +504,63 @@ func TestRouterWithFallback_DoesNotRetryNextAPIKeyOnNonAuthError(t *testing.T) {
 	}
 	if callCount != 1 {
 		t.Errorf("Expected only 1 attempt for non-auth error, got %d", callCount)
+	}
+}
+
+func TestRouterWithFallback_ReturnsLastExecutionErrorWhenOnlyProviderFails(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-last-error-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	provider := &Provider{
+		ID:       "prov_3c0f95294012d822",
+		Name:     "Single Provider",
+		Type:     ProviderTypeCustom,
+		Enabled:  true,
+		Status:   ProviderStatusActive,
+		Priority: 100,
+		APIKeys:  []APIKey{{ID: "k1", Key: "key1", Enabled: true}},
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Failed to register provider: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*Model{{
+		ID:          "test-model",
+		ProviderID:  provider.ID,
+		Name:        "test-model",
+		DisplayName: "Test Model",
+		Enabled:     true,
+		Capabilities: ModelCapabilities{
+			Chat: true,
+		},
+	}}); err != nil {
+		t.Fatalf("Failed to save model: %v", err)
+	}
+	router.RebuildCandidates()
+
+	execErr := errors.New("provider prov_3c0f95294012d822 returned empty streaming response")
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID:  "test-model",
+		Strategy: RoutingStrategyPriority,
+	}, func(result *RouteResult) error {
+		return execErr
+	})
+
+	if err == nil {
+		t.Fatal("Expected RouteWithFallback to fail")
+	}
+	if !errors.Is(err, execErr) {
+		t.Fatalf("Expected original execution error, got %v", err)
+	}
+	if errors.Is(err, ErrNoAvailableProvider) {
+		t.Fatalf("Expected execution error, got ErrNoAvailableProvider")
 	}
 }
 
@@ -1745,6 +1835,7 @@ func TestClassifyError(t *testing.T) {
 		{errors.New("invalid api key"), FailoverReasonAuthError},
 		{errors.New("model not found"), FailoverReasonModelNotFound},
 		{errors.New("404 resource does not exist"), FailoverReasonModelNotFound},
+		{errors.New("provider prov_3c0f95294012d822 returned empty streaming response"), FailoverReasonAPIError},
 		{errors.New("internal server error"), FailoverReasonAPIError},
 		{nil, FailoverReasonUnknown},
 	}
@@ -1757,6 +1848,36 @@ func TestClassifyError(t *testing.T) {
 				errStr = tt.err.Error()
 			}
 			t.Errorf("classifyError(%q) = %s, want %s", errStr, result, tt.expected)
+		}
+	}
+}
+
+func TestShouldRetryWithNextAPIKey_StatusDigitsInProviderID(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "provider id contains 401 digits only",
+			err:  errors.New("provider prov_3c0f95294012d822 returned empty streaming response"),
+			want: false,
+		},
+		{
+			name: "explicit auth status",
+			err:  errors.New("provider foo auth error (401): invalid api key"),
+			want: true,
+		},
+		{
+			name: "explicit rate limit status",
+			err:  errors.New("provider foo throttled (429)"),
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		if got := shouldRetryWithNextAPIKey(tt.err); got != tt.want {
+			t.Fatalf("%s: shouldRetryWithNextAPIKey(%q) = %v, want %v", tt.name, tt.err.Error(), got, tt.want)
 		}
 	}
 }

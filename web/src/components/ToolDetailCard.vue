@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ToolResultItem } from '@/stores/chat'
+import { formatToolWarningCodeLabel } from '@/utils/toolWarnings'
 
 const { t } = useI18n()
 
@@ -35,18 +36,7 @@ const hasStatus = computed(() => !!props.item.status?.trim())
 const hasWarningCode = computed(() => !!props.item.warningCode?.trim())
 const statusText = computed(() => props.item.status || '')
 const warningCodeText = computed(() => props.item.warningCode || '')
-const warningLabel = computed(() => {
-  switch (warningCodeText.value) {
-    case 'login_wall':
-      return 'Login wall'
-    case 'challenge':
-      return 'Challenge'
-    case 'browser_required':
-      return 'Browser required'
-    default:
-      return warningCodeText.value ? warningCodeText.value.replace(/_/g, ' ') : ''
-  }
-})
+const warningLabel = computed(() => formatToolWarningCodeLabel(warningCodeText.value, t, 'label'))
 const statusToneClass = computed(() => {
   if (props.item.icon === '✗') return 'tool-detail-card__status--error'
   if (props.item.icon === '⏳') return 'tool-detail-card__status--pending'

@@ -17,6 +17,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/upstreamerrors"
 )
 
 const (
@@ -52,6 +53,9 @@ func (e *ProxyError) IsClientError() bool {
 func (e *ProxyError) IsOverloaded() bool {
 	if e.StatusCode == http.StatusTooManyRequests || e.StatusCode == 529 {
 		return true
+	}
+	if upstreamerrors.HasRequestBuildFailureText(e.Body) {
+		return false
 	}
 	bodyLower := strings.ToLower(e.Body)
 	return strings.Contains(bodyLower, "overloaded_error") ||
@@ -160,6 +164,9 @@ func (b *Bridge) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatRespon
 	httpReq.Header.Set("Content-Type", "application/json")
 	if locale := strings.TrimSpace(proxy.LocaleFromContext(ctx)); locale != "" {
 		httpReq.Header.Set("Accept-Language", locale)
+	}
+	if proxy.BackgroundTaskFromContext(ctx) {
+		httpReq.Header.Set(proxy.BackgroundTaskHeader, "true")
 	}
 	if proxy.DisableResponsesContinuationFromContext(ctx) {
 		httpReq.Header.Set(proxy.DisableResponsesContinuationHeader, "1")
@@ -290,6 +297,9 @@ func (b *Bridge) ChatStream(ctx context.Context, req llm.ChatRequest, callback l
 	httpReq.Header.Set("Accept", "text/event-stream")
 	if locale := strings.TrimSpace(proxy.LocaleFromContext(ctx)); locale != "" {
 		httpReq.Header.Set("Accept-Language", locale)
+	}
+	if proxy.BackgroundTaskFromContext(ctx) {
+		httpReq.Header.Set(proxy.BackgroundTaskHeader, "true")
 	}
 	if proxy.DisableResponsesContinuationFromContext(ctx) {
 		httpReq.Header.Set(proxy.DisableResponsesContinuationHeader, "1")

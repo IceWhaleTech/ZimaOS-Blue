@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -49,7 +50,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/security"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sessionaudit"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
@@ -304,12 +304,11 @@ func runServer() {
 		llmRegistry.Register(llm.NewClaudeProvider(claudeKey, claudeBaseURL))
 	}
 
-	// Ollama provider (local, no API key needed)
-	ollamaURL := os.Getenv("OLLAMA_URL")
-	if ollamaURL == "" {
-		ollamaURL = "http://localhost:11434"
+	// Ollama provider is only registered when explicitly configured.
+	ollamaURL := strings.TrimSpace(os.Getenv("OLLAMA_URL"))
+	if ollamaURL != "" {
+		llmRegistry.Register(llm.NewOllamaProvider(ollamaURL))
 	}
-	llmRegistry.Register(llm.NewOllamaProvider(ollamaURL))
 
 	// Custom OpenAI-compatible provider (for third-party services like DeepSeek, Together, etc.)
 	customKey := os.Getenv("CUSTOM_API_KEY")
@@ -1048,7 +1047,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 		// Try to set up dual-write backend with vector store + hybrid search
 		if cfg.Memory.VectorStore.Enabled {
-			if dualBackend := initDualWriteBackend(cfg, mdBackend); dualBackend != nil {
+			if dualBackend := initDualWriteBackend(cfg, dataDir, mdBackend); dualBackend != nil {
 				unifiedService.SetBackend(dualBackend)
 				logger.Info("Memory service initialized (dual-write: markdown + vector store)")
 			} else {
@@ -1082,6 +1081,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	// Initialize provider pool (SQLite-backed, auto-migrates from JSON files)
 	var providerPool *providerpool.Pool
 	providerPoolPath := filepath.Join(dataDir, "providerpool")
+	providerpool.SetResponsesIntegrationEnabled(false)
 	ppOpts := []providerpool.PoolOption{providerpool.WithDB(db)}
 	if cfg.Security.Encryption.Enabled {
 		secretEncryptor, encErr := auth.NewEncryptor(&auth.EncryptionConfig{
@@ -1101,6 +1101,16 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	}
 
 	if providerPool != nil {
+		if normalized, err := providerPool.NormalizeLegacyCustomResponsesProviders(); err != nil {
+			logger.Warn("Failed to normalize legacy custom responses providers", zap.Error(err))
+		} else if normalized > 0 {
+			logger.Info("Legacy custom responses providers normalized", zap.Int("count", normalized))
+		}
+
+		if disabled := providerPool.DisableResponsesProviders(); disabled > 0 {
+			logger.Info("Responses providers temporarily disabled", zap.Int("count", disabled))
+		}
+
 		// Stop provider pool background goroutines (health checks, usage tracker) on shutdown
 		pp := providerPool
 		lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -1124,24 +1134,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 
 	// Call bootstrap.RegisterAllRoutes with all dependencies
 	routeUserRepo, _ := user.NewSQLiteRepository(db)
-
-	// Wire threshold-triggered memory extraction (compactor_memory) into chat flow.
-	var compactionProvider llm.Provider
-	if providerNames := llmRegistry.List(); len(providerNames) > 0 {
-		compactionProvider = llmRegistry.Get(providerNames[0])
-	}
-	sessionCompactor := session.NewSessionCompactor(compactionProvider, cfg.Session.Compaction)
-	memoryRefreshCfg := session.DefaultMemoryRefreshConfig()
-	memoryRefreshCfg.Enabled = memoryRefreshCfg.Enabled && cfg.Session.Compaction.Enabled && compactionProvider != nil
-	if memoryRefreshCfg.Enabled {
-		sessionMemRefresher := server.NewSessionMemoryRefresher(memoryHandler)
-		chatHandler.SetCompactorMemoryIntegration(session.NewCompactorMemoryIntegration(
-			sessionCompactor,
-			sessionMemRefresher,
-			compactionProvider,
-			memoryRefreshCfg,
-		), cfg.Session.MaxTokens)
-	}
 
 	// Initialize gateway runtime + HTTP handler; method handlers are wired in bootstrap routes.
 	gatewayRuntime := gateway.NewGateway(gateway.DefaultConfig(), zapLogger)
@@ -1270,16 +1262,28 @@ func convertClaudeCodeConfig(cfg *config.ClaudeCodeConfig, apiKey, baseURL strin
 	}
 }
 
+func resolveVectorStoreDBPath(dataDir, configuredPath string) string {
+	trimmed := strings.TrimSpace(configuredPath)
+	if trimmed == "" {
+		return filepath.Join(dataDir, "memory.db")
+	}
+	// Preserve special sqlite DSNs and explicit absolute paths.
+	if trimmed == ":memory:" || strings.HasPrefix(trimmed, "file:") || filepath.IsAbs(trimmed) {
+		return trimmed
+	}
+	// Keep backward compatibility with legacy default "./data/memory.db" while anchoring to app data dir.
+	if filepath.Clean(trimmed) == filepath.Join("data", "memory.db") {
+		return filepath.Join(dataDir, "memory.db")
+	}
+	return trimmed
+}
+
 // initDualWriteBackend creates a DualWriteBackend with VectorStore + HybridSearcher.
 // Returns nil if initialization fails (caller should fall back to markdown-only).
-func initDualWriteBackend(cfg *config.Config, mdBackend *memory.PureMarkdownBackend) *memory.DualWriteBackend {
+func initDualWriteBackend(cfg *config.Config, dataDir string, mdBackend *memory.PureMarkdownBackend) *memory.DualWriteBackend {
 	log := logger.Get()
 
-	// Resolve DB path
-	dbPath := cfg.Memory.VectorStore.DBPath
-	if dbPath == "" {
-		dbPath = "./data/memory.db"
-	}
+	dbPath := resolveVectorStoreDBPath(dataDir, cfg.Memory.VectorStore.DBPath)
 
 	dims := cfg.Memory.VectorStore.Dimensions
 

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -304,6 +306,107 @@ func (p *Pool) fixProviderTypes() {
 func (p *Pool) deduplicateProviders() {
 	// Call the deduplication function from migration.go
 	DeduplicateProviders(p)
+}
+
+// NormalizeLegacyCustomResponsesProviders fixes historical custom providers that were
+// auto-detected or saved as generic `/responses` relays while responses integration is disabled.
+func (p *Pool) NormalizeLegacyCustomResponsesProviders() (int, error) {
+	if p == nil || p.Registry == nil || ResponsesIntegrationEnabled() {
+		return 0, nil
+	}
+
+	normalized := 0
+	for _, provider := range p.Registry.List() {
+		if !shouldNormalizeLegacyCustomResponsesProvider(provider) {
+			continue
+		}
+		if !normalizeLegacyCustomResponsesProvider(provider, timeutil.NowTime()) {
+			continue
+		}
+		if err := p.Registry.Update(provider); err != nil {
+			return normalized, err
+		}
+		normalized++
+	}
+
+	return normalized, nil
+}
+
+func shouldNormalizeLegacyCustomResponsesProvider(provider *Provider) bool {
+	if provider == nil || !isThirdPartyProvider(provider) || UsesResponsesIntegration(provider) {
+		return false
+	}
+	if provider.APIFormat == APIFormatResponses || provider.DetectedFormat == APIFormatResponses {
+		return true
+	}
+	return isGenericResponsesEndpointLock(provider.BaseURL) || isGenericResponsesEndpointLock(provider.DetectedEndpoint)
+}
+
+func normalizeLegacyCustomResponsesProvider(provider *Provider, now time.Time) bool {
+	if provider == nil {
+		return false
+	}
+
+	changed := false
+	if provider.APIFormat == APIFormatResponses {
+		provider.APIFormat = APIFormatOpenAI
+		changed = true
+	}
+	if provider.DetectedFormat == APIFormatResponses {
+		provider.DetectedFormat = ""
+		provider.DetectedAt = time.Time{}
+		changed = true
+	}
+	if normalized := normalizeGenericResponsesBaseURL(strings.TrimSpace(provider.BaseURL)); normalized != "" && normalized != provider.BaseURL {
+		provider.BaseURL = normalized
+		provider.ResetParsedURL()
+		changed = true
+	}
+	if isGenericResponsesEndpointLock(provider.DetectedEndpoint) {
+		provider.DetectedEndpoint = ""
+		provider.ResetParsedURL()
+		changed = true
+	}
+	if changed {
+		provider.UpdatedAt = now
+	}
+	return changed
+}
+
+func normalizeGenericResponsesBaseURL(raw string) string {
+	raw = strings.TrimSuffix(strings.TrimSpace(raw), "/")
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	path := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(u.Path)), "/")
+	switch path {
+	case "/responses", "/v1/responses":
+		u.Path = ""
+		u.RawPath = ""
+		u.RawQuery = ""
+		u.Fragment = ""
+		return strings.TrimSuffix(u.String(), "/")
+	default:
+		return raw
+	}
+}
+
+func isGenericResponsesEndpointLock(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err == nil {
+		raw = u.Path
+	}
+	raw = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(raw)), "/")
+	switch raw {
+	case "/responses", "/v1/responses":
+		return true
+	default:
+		return false
+	}
 }
 
 // initBuiltinProviders initializes built-in providers if not already registered
@@ -974,6 +1077,9 @@ func (h *Handler) AddProvider(c echo.Context) error {
 	if detectedBaseURL != "" {
 		provider.BaseURL = detectedBaseURL
 	}
+	if err := validateResponsesIntegrationAllowed(&provider); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
 
 	if err := h.pool.Registry.Register(&provider); err != nil {
 		if err == ErrProviderExists {
@@ -995,6 +1101,9 @@ func (h *Handler) GetProvider(c echo.Context) error {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if err := validateResponsesIntegrationAllowed(provider); err != nil {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
 	}
 
 	// Get health status
@@ -1022,45 +1131,51 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 	if err := c.Bind(&updates); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
+	candidate := *existing
 
 	// Apply updates
 	if updates.Name != "" {
-		existing.Name = updates.Name
+		candidate.Name = updates.Name
 	}
 	if updates.BaseURL != "" {
-		existing.BaseURL = updates.BaseURL
+		candidate.BaseURL = updates.BaseURL
 	}
 	if updates.APIFormat != "" {
-		existing.APIFormat = updates.APIFormat
+		candidate.APIFormat = updates.APIFormat
 	}
 	if updates.Priority != 0 {
-		existing.Priority = updates.Priority
+		candidate.Priority = updates.Priority
 	}
 	if updates.Headers != nil {
-		existing.Headers = updates.Headers
+		candidate.Headers = updates.Headers
 	}
 	if updates.Location != "" {
 		if updates.Location != ProviderLocationCloud && updates.Location != ProviderLocationLocal {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "location must be 'cloud' or 'local'"})
 		}
-		existing.Location = updates.Location
+		candidate.Location = updates.Location
 	}
 
 	// Non-third-party providers use a single canonical format.
 	// Third-party providers auto-detect when format is not explicitly set.
-	if !isThirdPartyProvider(existing) {
-		existing.APIFormat = canonicalAPIFormatForProvider(existing)
-		existing.DetectedFormat = existing.APIFormat
-		existing.DetectedAt = timeutil.NowTime()
-	} else if updates.APIFormat == "" && (updates.BaseURL != "" || existing.APIFormat == "") {
-		detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), existing)
-		existing.APIFormat = detectedFormat
-		existing.DetectedFormat = detectedFormat
-		existing.DetectedAt = timeutil.NowTime()
+	if !isThirdPartyProvider(&candidate) {
+		candidate.APIFormat = canonicalAPIFormatForProvider(&candidate)
+		candidate.DetectedFormat = candidate.APIFormat
+		candidate.DetectedAt = timeutil.NowTime()
+	} else if updates.APIFormat == "" && (updates.BaseURL != "" || candidate.APIFormat == "") {
+		detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), &candidate)
+		candidate.APIFormat = detectedFormat
+		candidate.DetectedFormat = detectedFormat
+		candidate.DetectedAt = timeutil.NowTime()
 		if detectedBaseURL != "" {
-			existing.BaseURL = detectedBaseURL
+			candidate.BaseURL = detectedBaseURL
 		}
 	}
+	if err := validateResponsesIntegrationAllowed(&candidate); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	*existing = candidate
 
 	if err := h.pool.Registry.Update(existing); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -1086,6 +1201,14 @@ func (h *Handler) DeleteProvider(c echo.Context) error {
 // EnableProvider enables a provider
 func (h *Handler) EnableProvider(c echo.Context) error {
 	id := c.Param("id")
+	if !ResponsesIntegrationEnabled() {
+		provider, err := h.pool.Registry.Get(id)
+		if err == nil {
+			if err := validateResponsesIntegrationAllowed(provider); err != nil {
+				return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
+			}
+		}
+	}
 
 	if err := h.pool.Registry.Enable(id); err != nil {
 		if err == ErrProviderNotFound {
@@ -1121,6 +1244,9 @@ func (h *Handler) TestProvider(c echo.Context) error {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "provider not found"})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if err := validateResponsesIntegrationAllowed(provider); err != nil {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
 	}
 
 	// Optional: test with a specific API key
@@ -1842,6 +1968,9 @@ func (h *Handler) GetImportableConfigs(c echo.Context) error {
 // ImportIDEConfig imports configuration from a specific IDE
 func (h *Handler) ImportIDEConfig(c echo.Context) error {
 	ideType := ide.IDEType(c.Param("type"))
+	if !ResponsesIntegrationEnabled() && ideType == ide.IDETypeCodex {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": ResponsesIntegrationDisabledReason()})
+	}
 
 	// Get the real API key
 	apiKey, err := h.pool.IDEDiscovery.GetRealAPIKey(ideType)
@@ -1890,6 +2019,9 @@ func (h *Handler) ImportIDEConfig(c echo.Context) error {
 				provider.DetectedAt = timeutil.NowTime()
 				if detectedBaseURL != "" {
 					provider.BaseURL = detectedBaseURL
+				}
+				if err := validateResponsesIntegrationAllowed(provider); err != nil {
+					return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 				}
 				if regErr := h.pool.Registry.Register(provider); regErr != nil {
 					return c.JSON(http.StatusInternalServerError, map[string]string{"error": regErr.Error()})
@@ -2510,6 +2642,9 @@ func (h *Handler) SetMediaPricingLookup(fn MediaPricingLookup) {
 // Each provider may have a different callback path (e.g., /oauth-callback, /oauth2callback).
 func (h *Handler) RegisterOAuthCallbackRoute(e *echo.Echo, configs map[string]*oauth.ProviderConfig) {
 	for _, cfg := range configs {
+		if !ResponsesIntegrationEnabled() && cfg != nil && cfg.ID == "codex" {
+			continue
+		}
 		if cfg.RedirectPath != "" {
 			e.GET(cfg.RedirectPath, h.HandleOAuthCallback)
 		}
@@ -2541,6 +2676,9 @@ func (h *Handler) StartOAuth(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "provider_type is required"})
 		}
 	}
+	if !ResponsesIntegrationEnabled() && strings.EqualFold(strings.TrimSpace(req.ProviderType), "codex") {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": ResponsesIntegrationDisabledReason()})
+	}
 
 	result, err := h.oauthManager.StartAuth(c.Request().Context(), providerID, req.ProviderType)
 	if err != nil {
@@ -2568,6 +2706,12 @@ func (h *Handler) HandleOAuthCallback(c echo.Context) error {
 	token, err := h.oauthManager.HandleCallback(c.Request().Context(), state, code)
 	if err != nil {
 		return c.HTML(http.StatusBadRequest, fmt.Sprintf("<h2>Authorization failed</h2><p>%s</p>", err.Error()))
+	}
+	if !ResponsesIntegrationEnabled() && strings.EqualFold(strings.TrimSpace(token.ProviderType), "codex") {
+		if token.ID != "" {
+			_ = h.oauthManager.Disconnect(token.ProviderID, token.ID)
+		}
+		return c.HTML(http.StatusForbidden, fmt.Sprintf("<h2>Authorization disabled</h2><p>%s</p>", ResponsesIntegrationDisabledReason()))
 	}
 
 	// Update the provider's OAuth config — mark as connected, don't overwrite template
@@ -2887,6 +3031,9 @@ func oauthProviderIDForIDE(ideType ide.IDEType) string {
 // Returns the provider ID on success, or empty string on failure.
 func (h *Handler) autoImportOAuthToken(ideType ide.IDEType) string {
 	if h.oauthManager == nil || h.pool == nil || h.pool.Registry == nil {
+		return ""
+	}
+	if !ResponsesIntegrationEnabled() && ideType == ide.IDETypeCodex {
 		return ""
 	}
 

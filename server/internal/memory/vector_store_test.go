@@ -5,6 +5,7 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -155,5 +156,23 @@ func TestNewVectorStoreDropsStaleFTSTriggersWhenFTSDisabled(t *testing.T) {
 
 	if _, err := store.Store(context.Background(), "write after cleanup", nil, nil, ""); err != nil {
 		t.Fatalf("Store after cleanup: %v", err)
+	}
+}
+
+func TestNewVectorStoreCreatesMissingParentDirectory(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "nested", "path", "vector.db")
+	store, err := NewVectorStore(VectorStoreConfig{
+		DBPath:       dbPath,
+		EmbeddingDim: 4,
+		MaxChunks:    10,
+		EnableFTS:    false,
+	})
+	if err != nil {
+		t.Fatalf("NewVectorStore: %v", err)
+	}
+	defer store.Close()
+
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatalf("expected sqlite db file at %s: %v", dbPath, err)
 	}
 }

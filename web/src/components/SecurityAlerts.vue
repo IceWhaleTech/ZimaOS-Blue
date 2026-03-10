@@ -3,8 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { proxyApi, type SecurityAlert, type GuardStats, type AuthStats } from '@/api/proxy'
 
-// t is available for future i18n use
-const { t: _t } = useI18n()
+const { t } = useI18n()
 
 const alerts = ref<SecurityAlert[]>([])
 const guardStats = ref<GuardStats | null>(null)
@@ -13,12 +12,10 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const refreshInterval = ref<number | null>(null)
 
-// Computed
 const criticalAlerts = computed(() => alerts.value.filter((a) => a.severity === 'critical'))
 const highAlerts = computed(() => alerts.value.filter((a) => a.severity === 'high'))
 const mediumAlerts = computed(() => alerts.value.filter((a) => a.severity === 'medium'))
 const lowAlerts = computed(() => alerts.value.filter((a) => a.severity === 'low'))
-
 const unresolvedAlerts = computed(() => alerts.value.filter((a) => !a.resolved).length)
 
 const severityColor = (severity: string) => {
@@ -33,6 +30,21 @@ const severityColor = (severity: string) => {
       return 'text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700/50'
     default:
       return 'text-gray-600 bg-gray-100 dark:text-gray-400 dark:bg-gray-700/30'
+  }
+}
+
+const severityLabel = (severity: string) => {
+  switch (severity) {
+    case 'critical':
+      return t('security.threats.riskLevel.critical')
+    case 'high':
+      return t('security.threats.riskLevel.high')
+    case 'medium':
+      return t('security.threats.riskLevel.medium')
+    case 'low':
+      return t('security.threats.riskLevel.low')
+    default:
+      return severity
   }
 }
 
@@ -54,19 +66,18 @@ const typeIcon = (type: string) => {
 const typeLabel = (type: string) => {
   switch (type) {
     case 'injection':
-      return 'Prompt Injection'
+      return t('securityAlerts.types.injection')
     case 'rate_limit':
-      return 'Rate Limit'
+      return t('securityAlerts.types.rateLimit')
     case 'auth_failure':
-      return 'Auth Failure'
+      return t('securityAlerts.types.authFailure')
     case 'anomaly':
-      return 'Anomaly'
+      return t('securityAlerts.types.anomaly')
     default:
       return type
   }
 }
 
-// Methods
 async function fetchData() {
   loading.value = true
   error.value = null
@@ -80,7 +91,7 @@ async function fetchData() {
     guardStats.value = guardRes.data
     authStats.value = authRes.data
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to fetch security data'
+    error.value = e instanceof Error ? e.message : t('securityAlerts.fetchFailed')
     console.error('Failed to fetch security data:', e)
   } finally {
     loading.value = false
@@ -110,19 +121,17 @@ onUnmounted(() => {
 
 <template>
   <div class="security-alerts">
-    <!-- Header -->
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Security Alerts</h2>
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('securityAlerts.title') }}</h2>
       <button
         :disabled="loading"
         class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
         @click="fetchData"
       >
-        {{ loading ? 'Refreshing...' : 'Refresh' }}
+        {{ loading ? t('common.refreshing') : t('common.refresh') }}
       </button>
     </div>
 
-    <!-- Error -->
     <div
       v-if="error"
       class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400"
@@ -130,81 +139,78 @@ onUnmounted(() => {
       {{ error }}
     </div>
 
-    <!-- Summary Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
       <div class="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
         <div class="text-2xl font-bold text-red-600 dark:text-red-400">
           {{ criticalAlerts.length + highAlerts.length }}
         </div>
-        <div class="text-sm text-red-600/70 dark:text-red-400/70">Critical/High</div>
+        <div class="text-sm text-red-600/70 dark:text-red-400/70">{{ t('securityAlerts.summary.criticalHigh') }}</div>
       </div>
       <div class="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
         <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
           {{ mediumAlerts.length }}
         </div>
-        <div class="text-sm text-yellow-600/70 dark:text-yellow-400/70">Medium</div>
+        <div class="text-sm text-yellow-600/70 dark:text-yellow-400/70">{{ t('security.threats.riskLevel.medium') }}</div>
       </div>
       <div class="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
         <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white">
           {{ lowAlerts.length }}
         </div>
-        <div class="text-sm text-gray-900 dark:text-white/70 dark:text-white/70">Low</div>
+        <div class="text-sm text-gray-900 dark:text-white/70 dark:text-white/70">{{ t('security.threats.riskLevel.low') }}</div>
       </div>
       <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
         <div class="text-2xl font-bold text-gray-600 dark:text-gray-400">
           {{ unresolvedAlerts }}
         </div>
-        <div class="text-sm text-gray-600/70 dark:text-gray-400/70">Unresolved</div>
+        <div class="text-sm text-gray-600/70 dark:text-gray-400/70">{{ t('securityAlerts.summary.unresolved') }}</div>
       </div>
     </div>
 
-    <!-- Guard Stats -->
     <div v-if="guardStats" class="mb-4 p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
-      <h3 class="font-medium text-gray-900 dark:text-white mb-3">Prompt Guard Status</h3>
+      <h3 class="font-medium text-gray-900 dark:text-white mb-3">{{ t('securityAlerts.sections.promptGuard') }}</h3>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
-          <span class="text-gray-500 dark:text-gray-400">Status:</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ t('common.status') }}:</span>
           <span :class="guardStats.enabled ? 'text-green-600' : 'text-red-600'" class="ml-2 font-medium">
-            {{ guardStats.enabled ? 'Enabled' : 'Disabled' }}
+            {{ guardStats.enabled ? t('common.enabled') : t('common.disabled') }}
           </span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">Patterns:</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.patterns') }}:</span>
           <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ guardStats.pattern_count }}</span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">Detections:</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.detections') }}:</span>
           <span class="ml-2 font-medium text-yellow-600">{{ guardStats.detection_count }}</span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">Blocked:</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.blocked') }}:</span>
           <span class="ml-2 font-medium text-red-600">{{ guardStats.blocked_count }}</span>
         </div>
       </div>
     </div>
 
-    <!-- Auth Stats -->
     <div v-if="authStats" class="mb-4 p-4 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
-      <h3 class="font-medium text-gray-900 dark:text-white mb-3">Authentication Status</h3>
+      <h3 class="font-medium text-gray-900 dark:text-white mb-3">{{ t('securityAlerts.sections.authentication') }}</h3>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
-          <span class="text-gray-500 dark:text-gray-400">Auth:</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.auth') }}:</span>
           <span :class="authStats.auth_enabled ? 'text-green-600' : 'text-gray-600'" class="ml-2 font-medium">
-            {{ authStats.auth_enabled ? 'Enabled' : 'Disabled' }}
+            {{ authStats.auth_enabled ? t('common.enabled') : t('common.disabled') }}
           </span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">API Keys:</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.apiKeys') }}:</span>
           <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ authStats.api_key_count }}</span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">Auth Failures:</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.authFailures') }}:</span>
           <span :class="authStats.auth_failures > 0 ? 'text-red-600' : 'text-green-600'" class="ml-2 font-medium">
             {{ authStats.auth_failures }}
           </span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400">Rate Limited:</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.rateLimited') }}:</span>
           <span :class="authStats.rate_limit_hits > 0 ? 'text-yellow-600' : 'text-green-600'" class="ml-2 font-medium">
             {{ authStats.rate_limit_hits }}
           </span>
@@ -212,10 +218,9 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Alerts List -->
     <div class="space-y-2">
       <div v-if="alerts.length === 0 && !loading" class="text-center py-8 text-gray-500 dark:text-gray-400">
-        No security alerts
+        {{ t('common.noSecurityAlerts') }}
       </div>
 
       <div
@@ -231,7 +236,7 @@ onUnmounted(() => {
                 :class="severityColor(alert.severity)"
                 class="px-2 py-0.5 text-xs font-medium rounded-full uppercase"
               >
-                {{ alert.severity }}
+                {{ severityLabel(alert.severity) }}
               </span>
               <span class="text-xs text-gray-500 dark:text-gray-400">
                 {{ typeLabel(alert.type) }}
@@ -242,7 +247,7 @@ onUnmounted(() => {
               {{ alert.details }}
             </p>
             <div class="flex items-center gap-4 mt-2 text-xs text-gray-400">
-              <span v-if="alert.source_ip">IP: {{ alert.source_ip }}</span>
+              <span v-if="alert.source_ip">{{ t('securityAlerts.labels.ip') }}: {{ alert.source_ip }}</span>
               <span>{{ new Date(alert.timestamp).toLocaleString() }}</span>
             </div>
           </div>

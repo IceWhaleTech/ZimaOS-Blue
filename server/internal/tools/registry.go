@@ -191,6 +191,12 @@ func (r *Registry) Definitions() []ToolDefinition {
 	return defs
 }
 
+// DefinitionsForLocale returns tool definitions with lang/locale parameter
+// examples adjusted to the user's current locale.
+func (r *Registry) DefinitionsForLocale(locale string) []ToolDefinition {
+	return localizeToolDefinitions(r.Definitions(), locale)
+}
+
 // Executor handles tool execution.
 type Executor struct {
 	registry   *Registry
@@ -288,6 +294,8 @@ func normalizeCompatArgs(rawName, normalizedName string, args map[string]interfa
 	switch strings.ToLower(strings.TrimSpace(normalizedName)) {
 	case "exec":
 		return normalizeExecCompatArgs(args)
+	case "write":
+		return normalizeFileWriteCompatArgs(args)
 	case "memory":
 		return normalizeMemoryCompatArgs(rawName, args)
 	case "web_search":
@@ -369,6 +377,63 @@ func normalizeExecCompatArgs(args map[string]interface{}) map[string]interface{}
 	}
 	normalized["command"] = candidate
 	delete(normalized, "cmd")
+	return normalized
+}
+
+func normalizeFileWriteCompatArgs(args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return args
+	}
+
+	normalized := make(map[string]interface{}, len(args)+4)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	if strings.TrimSpace(asString(normalized["path"])) == "" {
+		if path := firstCompatString(normalized, "path", "file_path", "filepath", "filename", "file"); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if _, ok := normalized["content"]; !ok {
+		if content, ok := firstCompatValue(normalized, "content", "text", "body", "value"); ok {
+			normalized["content"] = content
+		}
+	}
+
+	for _, key := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(normalized[key])
+		if !ok {
+			continue
+		}
+
+		if strings.TrimSpace(asString(normalized["path"])) == "" {
+			if path := firstCompatString(nested, "path", "file_path", "filepath", "filename", "file"); path != "" {
+				normalized["path"] = path
+			}
+		}
+		if _, hasContent := normalized["content"]; !hasContent {
+			if content, ok := firstCompatValue(nested, "content", "text", "body", "value"); ok {
+				normalized["content"] = content
+			}
+		}
+		if _, hasAppend := normalized["append"]; !hasAppend {
+			if appendMode, ok := nested["append"]; ok {
+				normalized["append"] = appendMode
+			}
+		}
+		if _, hasCreateDirs := normalized["create_dirs"]; !hasCreateDirs {
+			if createDirs, ok := nested["create_dirs"]; ok {
+				normalized["create_dirs"] = createDirs
+			}
+		}
+		if _, hasLine := normalized["line"]; !hasLine {
+			if line, ok := nested["line"]; ok {
+				normalized["line"] = line
+			}
+		}
+	}
+
 	return normalized
 }
 
@@ -495,6 +560,22 @@ func firstCompatString(args map[string]interface{}, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func coerceCompatMap(v interface{}) (map[string]interface{}, bool) {
+	switch typed := v.(type) {
+	case map[string]interface{}:
+		return typed, true
+	case string:
+		raw := strings.TrimSpace(typed)
+		if raw == "" {
+			return nil, false
+		}
+		if parsed, ok := parseJSONObjectArgs(raw); ok {
+			return parsed, true
+		}
+	}
+	return nil, false
 }
 
 func asString(v interface{}) string {

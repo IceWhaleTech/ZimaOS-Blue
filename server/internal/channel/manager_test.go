@@ -14,6 +14,7 @@ import (
 type mockChannel struct {
 	name        string
 	channelType string
+	outbound    OutboundCapabilities
 	enabled     bool
 	connected   bool
 	messages    chan Message
@@ -30,8 +31,50 @@ func newMockChannel(name, channelType string, enabled bool) *mockChannel {
 	return &mockChannel{
 		name:        name,
 		channelType: channelType,
+		outbound:    defaultMockOutboundCapabilities(channelType),
 		enabled:     enabled,
 		messages:    make(chan Message, 10),
+	}
+}
+
+func defaultMockOutboundCapabilities(channelType string) OutboundCapabilities {
+	switch channelType {
+	case "feishu":
+		return OutboundCapabilities{
+			MarkdownMode:              OutboundMarkdownModePreserveWhole,
+			SupportsMarkdownFormat:    true,
+			AutoPromoteMarkdownReport: true,
+			SuppressHeartbeatText:     true,
+		}
+	case "telegram":
+		return OutboundCapabilities{
+			MarkdownMode:           OutboundMarkdownModeChunked,
+			HumanizerPreset:        "telegram",
+			SupportsMarkdownFormat: true,
+		}
+	case "matrix":
+		return OutboundCapabilities{
+			MarkdownMode:           OutboundMarkdownModeChunked,
+			HumanizerPreset:        "matrix",
+			SupportsMarkdownFormat: true,
+		}
+	case "teams", "wechat_work":
+		return OutboundCapabilities{
+			MarkdownMode:           OutboundMarkdownModeChunked,
+			SupportsMarkdownFormat: true,
+		}
+	case "discord":
+		return OutboundCapabilities{
+			MarkdownMode:    OutboundMarkdownModeChunked,
+			HumanizerPreset: "discord",
+		}
+	case "slack":
+		return OutboundCapabilities{
+			MarkdownMode:    OutboundMarkdownModeChunked,
+			HumanizerPreset: "slack",
+		}
+	default:
+		return DefaultOutboundCapabilities()
 	}
 }
 
@@ -41,6 +84,10 @@ func (m *mockChannel) Name() string {
 
 func (m *mockChannel) Type() string {
 	return m.channelType
+}
+
+func (m *mockChannel) OutboundCapabilities() OutboundCapabilities {
+	return m.outbound
 }
 
 func (m *mockChannel) Start(ctx context.Context) error {
@@ -425,6 +472,104 @@ func TestManager_Send_FeishuShortTextDoesNotForceMarkdown(t *testing.T) {
 	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	mgr.Stop(stopCtx)
+}
+
+func TestPrepareOutgoingTextParts_FeishuMarkdownUsesSpecialPath(t *testing.T) {
+	markdown := "# 周报\n\n- 第一项进展说明\n- 第二项进展说明\n- 第三项进展说明\n"
+	expected := strings.TrimSpace(markdown)
+	ch := newMockChannel("feishu", "feishu", true)
+	parts, prepared := prepareOutgoingTextParts(resolveOutboundCapabilities(ch), OutgoingMessage{
+		ChatID:  "oc_chat_1",
+		Format:  "markdown",
+		Content: markdown,
+	}, 16, false)
+
+	if prepared.Format != "markdown" {
+		t.Fatalf("expected markdown format, got %q", prepared.Format)
+	}
+	if len(parts) != 1 {
+		t.Fatalf("expected a single preserved markdown part, got %d", len(parts))
+	}
+	if parts[0] != expected {
+		t.Fatalf("expected markdown to stay unchanged, got %q", parts[0])
+	}
+}
+
+func TestChannelOutboundCapabilities_Feishu(t *testing.T) {
+	capabilities := resolveOutboundCapabilities(newMockChannel("feishu", "feishu", true))
+	if !capabilities.SupportsMarkdownFormat {
+		t.Fatal("expected feishu to support markdown formatting")
+	}
+	if !capabilities.AutoPromoteMarkdownReport {
+		t.Fatal("expected feishu to auto-promote markdown reports")
+	}
+	if !capabilities.SuppressHeartbeatText {
+		t.Fatal("expected feishu to suppress heartbeat placeholder text")
+	}
+	if capabilities.MarkdownMode != OutboundMarkdownModePreserveWhole {
+		t.Fatalf("expected feishu markdown mode preserve whole, got %v", capabilities.MarkdownMode)
+	}
+}
+
+func TestChannelOutboundCapabilities_GenericMarkdownChannels(t *testing.T) {
+	for _, channelType := range []string{"matrix", "teams", "telegram", "wechat_work"} {
+		capabilities := resolveOutboundCapabilities(newMockChannel(channelType, channelType, true))
+		if !capabilities.SupportsMarkdownFormat {
+			t.Fatalf("expected %s to support markdown formatting", channelType)
+		}
+		if capabilities.AutoPromoteMarkdownReport {
+			t.Fatalf("expected %s to keep report promotion disabled", channelType)
+		}
+		if capabilities.SuppressHeartbeatText {
+			t.Fatalf("expected %s to keep heartbeat placeholder enabled", channelType)
+		}
+		if capabilities.MarkdownMode != OutboundMarkdownModeChunked {
+			t.Fatalf("expected %s markdown mode chunked, got %v", channelType, capabilities.MarkdownMode)
+		}
+	}
+}
+
+func TestPrepareOutgoingTextParts_NonFeishuMarkdownUsesGenericSplit(t *testing.T) {
+	markdown := "# 周报\n\n- 第一项进展说明\n- 第二项进展说明\n- 第三项进展说明\n"
+	ch := newMockChannel("discord", "discord", true)
+	parts, prepared := prepareOutgoingTextParts(resolveOutboundCapabilities(ch), OutgoingMessage{
+		ChatID:  "oc_chat_1",
+		Format:  "markdown",
+		Content: markdown,
+	}, 16, false)
+
+	if prepared.Format != "markdown" {
+		t.Fatalf("expected markdown format, got %q", prepared.Format)
+	}
+	if len(parts) <= 1 {
+		t.Fatalf("expected generic markdown path to split content, got %d part(s)", len(parts))
+	}
+	if strings.Join(parts, "\n") == markdown {
+		t.Fatalf("expected generic markdown path to chunk content, got %q", parts)
+	}
+}
+
+func TestPrepareOutgoingTextParts_UsesCapabilityHumanizerPreset(t *testing.T) {
+	ch := newMockChannel("custom", "custom", true)
+	ch.outbound = OutboundCapabilities{
+		MarkdownMode:    OutboundMarkdownModeChunked,
+		HumanizerPreset: "telegram",
+	}
+
+	parts, prepared := prepareOutgoingTextParts(resolveOutboundCapabilities(ch), OutgoingMessage{
+		ChatID:  "oc_chat_1",
+		Content: "Hello **world**",
+	}, 256, false)
+
+	if prepared.Format != "html" {
+		t.Fatalf("expected format html from capability preset, got %q", prepared.Format)
+	}
+	if len(parts) != 1 {
+		t.Fatalf("expected one rendered part, got %d", len(parts))
+	}
+	if parts[0] != "Hello <b>world</b>" {
+		t.Fatalf("expected telegram html rendering, got %q", parts[0])
+	}
 }
 
 func TestManager_Send_DefaultHidesDetailedProcess(t *testing.T) {

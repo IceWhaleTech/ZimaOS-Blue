@@ -101,6 +101,14 @@ func (c *Channel) Type() string {
 	return "telegram"
 }
 
+func (c *Channel) OutboundCapabilities() channel.OutboundCapabilities {
+	return channel.OutboundCapabilities{
+		MarkdownMode:           channel.OutboundMarkdownModeChunked,
+		HumanizerPreset:        "telegram",
+		SupportsMarkdownFormat: true,
+	}
+}
+
 // SetMessageHandler sets the handler for processing messages.
 func (c *Channel) SetMessageHandler(handler MessageHandler) {
 	c.messageHandler = handler

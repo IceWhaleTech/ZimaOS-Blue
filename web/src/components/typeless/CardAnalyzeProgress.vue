@@ -6,6 +6,13 @@ interface ProgressStep {
   step: string
   name: string
   status: string
+  detail?: string
+  current?: number
+  total?: number
+  source_kind?: string
+  source_label?: string
+  char_count?: number
+  result_count?: number
 }
 
 const props = defineProps<{
@@ -15,12 +22,28 @@ const props = defineProps<{
     step?: string
     name?: string
     status?: string
+    detail?: string
+    current?: number
+    total?: number
+    source_kind?: string
+    source_label?: string
+    char_count?: number
+    result_count?: number
     steps?: ProgressStep[]
     _streaming?: boolean
   }
 }>()
 
 const { t } = useI18n()
+
+const localizedStepKeys: Record<string, string> = {
+  data_collection: 'data_collection',
+  text_input: 'text_input',
+  doc_extract: 'doc_extract',
+  analysis: 'analysis',
+  report: 'report',
+  save_report: 'save_report',
+}
 
 // Normalize: support both single-step and merged-steps format
 const steps = computed<ProgressStep[]>(() => {
@@ -32,6 +55,13 @@ const steps = computed<ProgressStep[]>(() => {
       step: props.card.step,
       name: props.card.name,
       status: props.card.status || 'running',
+      detail: props.card.detail,
+      current: props.card.current,
+      total: props.card.total,
+      source_kind: props.card.source_kind,
+      source_label: props.card.source_label,
+      char_count: props.card.char_count,
+      result_count: props.card.result_count,
     }]
   }
   return []
@@ -39,38 +69,69 @@ const steps = computed<ProgressStep[]>(() => {
 
 const isRunning = computed(() => steps.value.some(s => s.status === 'running'))
 
+function isDoneStatus(status: string): boolean {
+  return status === 'success' || status === 'failed' || status === 'error' || status === 'completed' || status === 'skipped'
+}
+
 // Overall progress percentage based on completed steps
 const progressPercent = computed(() => {
   if (steps.value.length === 0) return 0
-  const done = steps.value.filter(s => s.status === 'success' || s.status === 'failed').length
+  const done = steps.value.filter(s => isDoneStatus(s.status)).length
   return Math.round((done / steps.value.length) * 100)
 })
 
 function stepIcon(status: string): string {
   if (status === 'running') return '⟳'
-  if (status === 'success') return '✓'
-  if (status === 'failed') return '✗'
+  if (status === 'success' || status === 'completed') return '✓'
+  if (status === 'failed' || status === 'error') return '✗'
+  if (status === 'skipped') return '↷'
   return '○'
 }
 
 function stepColor(status: string): string {
   if (status === 'running') return 'text-indigo-500'
-  if (status === 'success') return 'text-emerald-500'
-  if (status === 'failed') return 'text-red-500'
+  if (status === 'success' || status === 'completed') return 'text-emerald-500'
+  if (status === 'failed' || status === 'error') return 'text-red-500'
+  if (status === 'skipped') return 'text-gray-500'
   return 'text-gray-400'
 }
 
 function stepBg(status: string): string {
   if (status === 'running') return 'bg-indigo-100 dark:bg-indigo-900/30'
-  if (status === 'success') return 'bg-emerald-100 dark:bg-emerald-900/30'
-  if (status === 'failed') return 'bg-red-100 dark:bg-red-900/30'
+  if (status === 'success' || status === 'completed') return 'bg-emerald-100 dark:bg-emerald-900/30'
+  if (status === 'failed' || status === 'error') return 'bg-red-100 dark:bg-red-900/30'
+  if (status === 'skipped') return 'bg-gray-100 dark:bg-gray-700'
   return 'bg-gray-100 dark:bg-gray-700'
 }
 
 function stepLabel(step: ProgressStep): string {
-  const key = 'analyze.steps.' + step.step
+  const stepKey = localizedStepKeys[(step.step || '').trim()]
+  if (!stepKey) return step.name || step.step
+  const key = 'analyze.steps.' + stepKey
   const translated = t(key, step.name)
   return translated === key ? step.name : translated
+}
+
+function stepDetail(step: ProgressStep): string {
+  const parts: string[] = []
+  if (step.source_label) {
+    parts.push(step.source_label)
+  }
+  if (step.detail) {
+    parts.push(step.detail)
+  } else if (typeof step.result_count === 'number') {
+    parts.push(t('analyze.meta.results', { count: step.result_count }))
+  } else if (typeof step.char_count === 'number') {
+    parts.push(t('analyze.meta.chars', { count: step.char_count }))
+  }
+  return parts.join(' · ')
+}
+
+function stepCount(step: ProgressStep): string {
+  if (typeof step.current === 'number' && typeof step.total === 'number' && step.total > 0) {
+    return `${step.current}/${step.total}`
+  }
+  return ''
 }
 </script>
 
@@ -111,7 +172,16 @@ function stepLabel(step: ProgressStep): string {
           <span v-if="step.status === 'running'" class="animate-spin">{{ stepIcon(step.status) }}</span>
           <span v-else>{{ stepIcon(step.status) }}</span>
         </span>
-        <span class="text-sm text-gray-700 dark:text-gray-300 flex-1 truncate">{{ stepLabel(step) }}</span>
+        <div class="min-w-0 flex-1">
+          <div class="text-sm text-gray-700 dark:text-gray-300 truncate">{{ stepLabel(step) }}</div>
+          <div v-if="stepDetail(step)" class="text-xs text-gray-400 truncate">{{ stepDetail(step) }}</div>
+        </div>
+        <span
+          v-if="stepCount(step)"
+          class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium text-gray-500 bg-gray-100 dark:bg-gray-700 dark:text-gray-300 tabular-nums flex-shrink-0"
+        >
+          {{ stepCount(step) }}
+        </span>
       </div>
     </div>
   </div>

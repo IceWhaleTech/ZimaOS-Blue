@@ -64,6 +64,29 @@ func TestEnsureWorkspace_NoBootstrapAfterUserEdited(t *testing.T) {
 	}
 }
 
+func TestEnsureWorkspace_RemovesStaleBootstrapAfterUserEdited(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureWorkspace()
+
+	bootstrapPath := filepath.Join(dir, FileBOOTSTRAP)
+	if _, err := os.Stat(bootstrapPath); err != nil {
+		t.Fatalf("expected BOOTSTRAP.md to exist before cleanup: %v", err)
+	}
+
+	os.WriteFile(filepath.Join(dir, FileUSER), []byte("# My custom user"), 0o644)
+
+	if err := mgr.EnsureWorkspace(); err != nil {
+		t.Fatalf("EnsureWorkspace cleanup: %v", err)
+	}
+	if _, err := os.Stat(bootstrapPath); err == nil {
+		t.Error("expected stale BOOTSTRAP.md to be removed after user edited USER.md")
+	}
+	if mgr.IsBootstrapPending() {
+		t.Error("expected bootstrap to be non-pending after user edited USER.md")
+	}
+}
+
 func TestBootstrapLifecycle(t *testing.T) {
 	dir := t.TempDir()
 	mgr := NewManager(dir)
@@ -150,6 +173,30 @@ func TestLoadContextFiles(t *testing.T) {
 	}
 }
 
+func TestStaleBootstrapIgnoredAfterUserEdited(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureWorkspace()
+
+	os.WriteFile(filepath.Join(dir, FileUSER), []byte("# My custom user"), 0o644)
+
+	if mgr.IsBootstrapPending() {
+		t.Error("expected stale bootstrap file to be ignored once USER.md is customized")
+	}
+
+	files := mgr.LoadBootstrapFiles()
+	for _, f := range files {
+		if f.Name == FileBOOTSTRAP {
+			t.Fatal("did not expect stale BOOTSTRAP.md in bootstrap file list")
+		}
+	}
+
+	ctx := mgr.LoadContextFiles()
+	if _, ok := ctx[FileBOOTSTRAP]; ok {
+		t.Fatal("did not expect stale BOOTSTRAP.md in context files")
+	}
+}
+
 func TestReadWriteFile(t *testing.T) {
 	dir := t.TempDir()
 	mgr := NewManager(dir)
@@ -167,6 +214,12 @@ func TestReadWriteFile(t *testing.T) {
 	}
 	if content != "# My User" {
 		t.Errorf("got %q, want %q", content, "# My User")
+	}
+	if _, err := os.Stat(filepath.Join(dir, FileBOOTSTRAP)); err == nil {
+		t.Error("expected WriteFile(USER.md) to remove BOOTSTRAP.md once user content is customized")
+	}
+	if mgr.IsBootstrapPending() {
+		t.Error("expected bootstrap to be non-pending after WriteFile(USER.md)")
 	}
 
 	// Disallowed file

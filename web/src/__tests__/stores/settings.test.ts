@@ -34,9 +34,6 @@ vi.mock('@/api/settings', () => ({
     getSmallModelStatus: vi.fn(),
     downloadSmallModel: vi.fn(),
     cancelSmallModelDownload: vi.fn(),
-    listSoulProposals: vi.fn(),
-    approveSoulProposal: vi.fn(),
-    rejectSoulProposal: vi.fn(),
     getSmallModelStats: vi.fn(),
     resetSmallModelStats: vi.fn(),
   },
@@ -187,43 +184,5 @@ describe('settings store - small model integration', () => {
     await store.resetSmallModelStats()
     expect(settingsApi.resetSmallModelStats).toHaveBeenCalled()
     expect(store.smallModelStats?.short_qa_route_attempts).toBe(0)
-  })
-
-  it('handles SOUL proposal list and review actions', async () => {
-    const store = useSettingsStore()
-    const base = {
-      id: 'p1',
-      title: 'habit',
-      content: 'do X first',
-      status: 'pending',
-      created_at: '2026-03-01T00:00:00Z',
-    } as const
-
-    vi.mocked(settingsApi.listSoulProposals).mockResolvedValue({ data: { proposals: [base] } } as never)
-    await store.fetchSoulProposals()
-    expect(store.soulProposals).toHaveLength(1)
-    expect(store.soulProposals[0]?.status).toBe('pending')
-
-    vi.mocked(settingsApi.approveSoulProposal).mockResolvedValue({
-      data: {
-        ...base,
-        status: 'approved',
-        reviewed_at: '2026-03-01T00:01:00Z',
-      },
-    } as never)
-    await store.approveSoulProposal('p1')
-    expect(store.soulProposals[0]?.status).toBe('approved')
-
-    vi.mocked(settingsApi.rejectSoulProposal).mockResolvedValue({
-      data: {
-        ...base,
-        id: 'p2',
-        status: 'rejected',
-        reviewed_at: '2026-03-01T00:02:00Z',
-      },
-    } as never)
-    await store.rejectSoulProposal('p2')
-    expect(store.soulProposals[0]?.id).toBe('p2')
-    expect(store.soulProposals[0]?.status).toBe('rejected')
   })
 })

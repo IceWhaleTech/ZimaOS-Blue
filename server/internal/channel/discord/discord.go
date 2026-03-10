@@ -132,6 +132,13 @@ func (c *Channel) Type() string {
 	return "discord"
 }
 
+func (c *Channel) OutboundCapabilities() channel.OutboundCapabilities {
+	return channel.OutboundCapabilities{
+		MarkdownMode:    channel.OutboundMarkdownModeChunked,
+		HumanizerPreset: "discord",
+	}
+}
+
 // SetMessageHandler sets the handler for processing messages.
 func (c *Channel) SetMessageHandler(handler MessageHandler) {
 	c.messageHandler = handler

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardTerminal } from '@/types/typeless'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardTerminal
@@ -207,7 +210,7 @@ const themeClasses = computed(() => {
         <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
         </svg>
-        <span>{{ copied ? 'Copied!' : 'Copy' }}</span>
+        <span>{{ copied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy') }}</span>
       </button>
     </div>
 

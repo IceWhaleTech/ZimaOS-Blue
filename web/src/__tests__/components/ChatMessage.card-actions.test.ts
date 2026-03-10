@@ -218,8 +218,8 @@ describe('ChatMessage card actions', () => {
     expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith(`Open ${WEB_FETCH_URL} with the browser tool.`)
   })
 
-  it('hides chinese fallback boilerplate while keeping extracted summary text', async () => {
-    const content = '工具执行已完成，但最终总结生成失败。以下是从工具结果自动提炼的安全摘要：\n\nWeb search fallback results for "OpenClaw 最近动向":\n\n- OpenClaw Release Notes\n\n原始 stdout/stderr/error 字段已隐藏以保护安全。如需我重试完整总结，请回复“重试总结”。'
+  it('keeps chinese fallback boilerplate and extracted summary text', async () => {
+    const content = '工具执行已完成，但最终总结生成失败。以下是基于工具结果整理的简要摘要：\n\nWeb search fallback results for "OpenClaw 最近动向":\n\n- OpenClaw Release Notes\n\n原始 stdout/stderr/error 字段未包含在这条简要摘要中。如需我重试完整总结，请回复“重试总结”。'
 
     const wrapper = await mountMessage(content)
     const assistant = wrapper.find('.assistant-message')
@@ -227,14 +227,14 @@ describe('ChatMessage card actions', () => {
     expect(assistant.exists()).toBe(true)
     expect(assistant.text()).toContain('Web search fallback results for "OpenClaw 最近动向"')
     expect(assistant.text()).toContain('OpenClaw Release Notes')
-    expect(assistant.text()).not.toContain('工具执行已完成，但最终总结生成失败')
-    expect(assistant.text()).not.toContain('自动提炼的安全摘要')
-    expect(assistant.text()).not.toContain('原始 stdout/stderr/error 字段已隐藏')
+    expect(assistant.text()).toContain('工具执行已完成，但最终总结生成失败')
+    expect(assistant.text()).toContain('简要摘要')
+    expect(assistant.text()).toContain('原始 stdout/stderr/error 字段未包含在这条简要摘要中')
   })
 
-  it('hides fallback boilerplate even when typeless cards are mixed into the message', async () => {
+  it('keeps fallback boilerplate when typeless cards are mixed into the message', async () => {
     const content = [
-      '工具执行已完成，但最终总结生成失败。以下是从工具结果自动提炼的安全摘要：',
+      '工具执行已完成，但最终总结生成失败。以下是基于工具结果整理的简要摘要：',
       '',
       'Web search fallback results for "OpenClaw 最近动向":',
       '',
@@ -251,7 +251,7 @@ describe('ChatMessage card actions', () => {
         ],
       }),
       '',
-      '原始 stdout/stderr/error 字段已隐藏以保护安全。如需我重试完整总结，请回复“重试总结”。',
+      '原始 stdout/stderr/error 字段未包含在这条简要摘要中。如需我重试完整总结，请回复“重试总结”。',
     ].join('\n')
 
     const wrapper = await mountMessage(content)
@@ -260,9 +260,9 @@ describe('ChatMessage card actions', () => {
     expect(assistant.exists()).toBe(true)
     expect(assistant.text()).toContain('Web search fallback results for "OpenClaw 最近动向"')
     expect(assistant.text()).toContain('OpenClaw Release Notes')
-    expect(assistant.text()).not.toContain('工具执行已完成，但最终总结生成失败')
-    expect(assistant.text()).not.toContain('自动提炼的安全摘要')
-    expect(assistant.text()).not.toContain('原始 stdout/stderr/error 字段已隐藏')
+    expect(assistant.text()).toContain('工具执行已完成，但最终总结生成失败')
+    expect(assistant.text()).toContain('简要摘要')
+    expect(assistant.text()).toContain('原始 stdout/stderr/error 字段未包含在这条简要摘要中')
   })
 
   it('submits browser extract action with browser_target_id and sends the mapped follow-up message', async () => {
@@ -394,7 +394,7 @@ describe('ChatMessage card actions', () => {
     expect(mocks.cardActionSubmit).toHaveBeenCalledTimes(1)
     expect(button!.attributes('disabled')).toBeDefined()
     expect(button!.attributes('aria-busy')).toBe('true')
-    expect(button!.text()).toContain('Working...')
+    expect(button!.text()).toContain('Processing...')
 
     deferred.resolve({
       data: {
@@ -445,7 +445,7 @@ describe('ChatMessage card actions', () => {
 
     expect(button!.attributes('disabled')).toBeDefined()
     expect(button!.attributes('aria-busy')).toBe('true')
-    expect(button!.text()).toContain('Working...')
+    expect(button!.text()).toContain('Processing...')
 
     deferred.resolve({
       data: {
@@ -482,7 +482,7 @@ describe('ChatMessage card actions', () => {
     expect(mocks.cardActionSubmit).toHaveBeenCalledTimes(1)
     expect(button!.attributes('disabled')).toBeDefined()
     expect(button!.attributes('aria-busy')).toBe('true')
-    expect(button!.text()).toContain('Working...')
+    expect(button!.text()).toContain('Processing...')
 
     deferred.resolve({
       data: {
@@ -519,7 +519,7 @@ describe('ChatMessage card actions', () => {
     expect(mocks.cardActionSubmit).toHaveBeenCalledTimes(1)
     expect(button!.attributes('disabled')).toBeDefined()
     expect(button!.attributes('aria-busy')).toBe('true')
-    expect(button!.text()).toContain('Working...')
+    expect(button!.text()).toContain('Processing...')
 
     deferred.resolve({
       data: {
@@ -646,7 +646,7 @@ describe('ChatMessage card actions', () => {
     })
     expect(alphaButton!.attributes('disabled')).toBeDefined()
     expect(betaButton!.attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('Submitting...')
+    expect(wrapper.text()).toContain('Processing...')
 
     deferred.resolve({
       data: {
@@ -658,6 +658,26 @@ describe('ChatMessage card actions', () => {
 
     expect(alphaButton!.attributes('disabled')).toBeUndefined()
     expect(betaButton!.attributes('disabled')).toBeUndefined()
-    expect(wrapper.text()).not.toContain('Submitting...')
+    expect(wrapper.text()).not.toContain('Processing...')
+  })
+
+  it('renders persisted process summaries as tool detail cards for completed messages', async () => {
+    const content = [
+      '目录已经创建。',
+      '',
+      '<!-- process-start -->',
+      '```process',
+      '[{"cmd":"mkdir -p /Users/orca/.zimaos-blue/data/workspace/tank-battle","tool":"exec","icon":"✓","status":"25ms","output":""}]',
+      '```',
+      '<!-- process-end -->',
+    ].join('\n')
+
+    const wrapper = await mountMessage(content)
+
+    expect(wrapper.find('.assistant-message').exists()).toBe(true)
+    expect(wrapper.text()).toContain('目录已经创建')
+    expect(wrapper.findAll('tool-detail-card-stub')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('```process')
+    expect(wrapper.text()).not.toContain('<!-- process-start -->')
   })
 })

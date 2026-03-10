@@ -102,8 +102,14 @@ func New(cfg channel.SlackConfig, logger *zap.Logger) *Channel {
 	}
 }
 
-func (c *Channel) Name() string                                         { return "slack" }
-func (c *Channel) Type() string                                         { return "slack" }
+func (c *Channel) Name() string { return "slack" }
+func (c *Channel) Type() string { return "slack" }
+func (c *Channel) OutboundCapabilities() channel.OutboundCapabilities {
+	return channel.OutboundCapabilities{
+		MarkdownMode:    channel.OutboundMarkdownModeChunked,
+		HumanizerPreset: "slack",
+	}
+}
 func (c *Channel) SetMessageHandler(handler MessageHandler)             { c.messageHandler = handler }
 func (c *Channel) SetSessionManager(manager *channel.BotSessionManager) { c.sessionManager = manager }
 

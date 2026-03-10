@@ -9,6 +9,15 @@ interface ProgressStep {
   name: string
   status: string
   url?: string
+  recipe_name?: string
+}
+
+const localizedStepKeys: Record<string, string> = {
+  start: 'start',
+  navigate: 'navigate',
+  snapshot: 'snapshot',
+  screenshot: 'screenshot',
+  recipe: 'recipe',
 }
 
 const props = defineProps<{
@@ -19,6 +28,7 @@ const props = defineProps<{
     name?: string
     status?: string
     url?: string
+    recipe_name?: string
     steps?: ProgressStep[]
     _streaming?: boolean
   }
@@ -34,6 +44,7 @@ const steps = computed<ProgressStep[]>(() => {
       name: props.card.name,
       status: props.card.status || 'running',
       url: props.card.url,
+      recipe_name: props.card.recipe_name,
     }]
   }
   return []
@@ -75,6 +86,30 @@ function stepBg(status: string): string {
   if (status === 'failed' || status === 'error') return 'bg-red-100 dark:bg-red-900/30'
   return 'bg-gray-100 dark:bg-gray-700'
 }
+
+function resolveRecipeName(step: ProgressStep): string {
+  if (typeof step.recipe_name === 'string' && step.recipe_name.trim()) {
+    return step.recipe_name.trim()
+  }
+  const match = (step.name || '').match(/^Running\s+(.+)$/)
+  return match?.[1]?.trim() || ''
+}
+
+function stepLabel(step: ProgressStep): string {
+  const stepKey = localizedStepKeys[(step.step || '').trim().toLowerCase()]
+  if (!stepKey) return step.name || step.step
+
+  if (stepKey === 'recipe') {
+    const recipe = resolveRecipeName(step)
+    if (!recipe) return step.name || step.step
+    const translated = t('browserProgress.steps.recipe', { recipe })
+    return translated === 'browserProgress.steps.recipe' ? (step.name || step.step) : translated
+  }
+
+  const key = `browserProgress.steps.${stepKey}`
+  const translated = t(key)
+  return translated === key ? (step.name || step.step) : translated
+}
 </script>
 
 <template>
@@ -110,7 +145,7 @@ function stepBg(status: string): string {
           <span v-if="step.status === 'running'" class="animate-spin">{{ stepIcon(step.status) }}</span>
           <span v-else>{{ stepIcon(step.status) }}</span>
         </span>
-        <span class="text-sm text-gray-700 dark:text-gray-300 flex-1 truncate">{{ step.name || step.step }}</span>
+        <span class="text-sm text-gray-700 dark:text-gray-300 flex-1 truncate">{{ stepLabel(step) }}</span>
         <span v-if="step.url" class="text-xs text-gray-400 truncate max-w-[180px]">{{ step.url }}</span>
       </div>
     </div>

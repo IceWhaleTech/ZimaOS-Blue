@@ -81,6 +81,13 @@ func (c *Channel) Type() string {
 	return "teams"
 }
 
+func (c *Channel) OutboundCapabilities() channel.OutboundCapabilities {
+	return channel.OutboundCapabilities{
+		MarkdownMode:           channel.OutboundMarkdownModeChunked,
+		SupportsMarkdownFormat: true,
+	}
+}
+
 // Start initializes and starts the Teams channel.
 func (c *Channel) Start(ctx context.Context) error {
 	c.mu.Lock()

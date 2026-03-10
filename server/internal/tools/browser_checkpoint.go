@@ -370,6 +370,68 @@ var browserCheckpointDenyTokens = map[string]struct{}{
 	"ഇല്ല": {}, "റദ്ദാക്കുക": {}, "നിർത്തുക": {},
 }
 
+func addBrowserCheckpointTokens(tokens map[string]struct{}, values ...string) {
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" {
+			continue
+		}
+		tokens[normalized] = struct{}{}
+	}
+}
+
+func init() {
+	addBrowserCheckpointTokens(browserCheckpointApproveTokens,
+		"alright", "carry on", "please continue", "continue please", "please proceed", "do it",
+		"同意", "允许", "允許", "批准",
+		"endavant", "segueix",
+		"pokračuj", "pokracuj",
+		"fortsæt", "fortsaet", "bekræft", "bekraeft",
+		"fortfahren", "bestätige", "bestaetige",
+		"επιβεβαίωσε", "επιβεβαιωσε", "συνέχισε", "συνεχισε",
+		"adelante", "sigue",
+		"continuez", "d'accord", "daccord",
+		"ceadaigh",
+		"folytasd", "rendben",
+		"procedi",
+		"進めて", "承認",
+		"계속해", "승인",
+		"ശരി", "തുടരാം",
+		"doorgaan", "bevestig", "bevestigen", "akkoord",
+		"dalej", "zatwierdź", "zatwierdz",
+		"prosseguir", "seguir",
+		"continuă", "continua",
+		"продолжай", "подтверждаю",
+		"potvrdiť",
+		"kör på", "kor pa",
+	)
+	addBrowserCheckpointTokens(browserCheckpointDenyTokens,
+		"not now", "never mind", "please cancel", "cancel please",
+		"不同意", "取消操作", "不要继续", "不要繼續",
+		"atura", "cancel·la",
+		"odmítnout", "odmitnout", "zastav", "zastavit",
+		"annuller",
+		"stoppen",
+		"σταμάτησε", "σταματησε", "απόρριψε", "απορριψε",
+		"rechaza", "cancela", "para",
+		"refuse", "arrête", "arrete",
+		"stad",
+		"prekini",
+		"állj", "allj",
+		"fermati",
+		"やめて", "中止して",
+		"멈춰", "중단",
+		"വേണ്ട",
+		"annuleren", "weiger",
+		"przerwij", "zatrzymaj",
+		"cancele", "rejeite", "pare",
+		"oprește", "opreste",
+		"отмени", "откажи",
+		"odmietni",
+		"stoppa",
+	)
+}
+
 // ParseBrowserCheckpointDecision parses a free-text IM/voice reply into a decision.
 func ParseBrowserCheckpointDecision(text string) (BrowserCheckpointDecision, bool) {
 	normalized := strings.ToLower(strings.TrimSpace(text))

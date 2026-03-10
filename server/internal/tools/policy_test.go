@@ -18,15 +18,23 @@ func TestToolPolicyResolver_GlobalProfile(t *testing.T) {
 		{Name: "exec"},
 		{Name: "message"},
 		{Name: "session_status"},
+		{Name: "research_run"},
 	}
 	filtered := resolver.Filter(ToolPolicyRequest{}, defs)
-	if len(filtered) != 3 {
-		t.Fatalf("expected 3 tools after coding profile, got %d (%#v)", len(filtered), filtered)
+	if len(filtered) != 4 {
+		t.Fatalf("expected 4 tools after coding profile, got %d (%#v)", len(filtered), filtered)
 	}
+	hasResearch := false
 	for _, def := range filtered {
 		if def.Name == "message" {
 			t.Fatalf("message should be filtered from coding profile")
 		}
+		if def.Name == "research_run" {
+			hasResearch = true
+		}
+	}
+	if !hasResearch {
+		t.Fatalf("research_run should be allowed by coding profile: %#v", filtered)
 	}
 }
 

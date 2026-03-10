@@ -1,8 +1,23 @@
 import { describe, it, expect } from 'vitest'
 import { renderMarkdown, renderMarkdownCached, copyCodeToClipboard, markdownToText, parseInline } from '@/utils/markdown'
+import { i18n } from '@/i18n'
 
 describe('Markdown Renderer', () => {
   describe('renderMarkdown', () => {
+    it('localizes code block copy controls', () => {
+      i18n.global.setLocaleMessage('zh-CN', {
+        common: { copy: '复制' },
+        codeBlock: { code: '代码' },
+      })
+      i18n.global.locale.value = 'zh-CN'
+
+      const result = renderMarkdown('```\nconsole.log(1)\n```')
+
+      expect(result).toContain('>代码<')
+      expect(result).toContain('>复制<')
+
+      i18n.global.locale.value = 'en-US'
+    })
     it('should render plain text', () => {
       const result = renderMarkdown('Hello world')
       expect(result).toContain('Hello world')

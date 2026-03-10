@@ -1,19 +1,13 @@
+//go:build !darwin
+
 package smallmodel
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/loader"
 	"github.com/jupiterrider/ffi"
-)
-
-const (
-	smallModelLlamaLibDirEnv       = "SMALL_MODEL_LLAMA_LIB_DIR"
-	smallModelLlamaCompatLibDirEnv = "ZIMAOS_AI_LIB"
 )
 
 // llamaCppFFIBackend performs runtime-level shared-library probes via libffi.
@@ -84,59 +78,4 @@ func verifyLlamaFFISymbols(lib ffi.Lib) error {
 		return nil
 	}
 	return fmt.Errorf("llama ffi symbols missing: llama_model_load_from_file/llama_load_model_from_file")
-}
-
-func resolveLlamaCppSharedLibFile(libName string) (string, string, error) {
-	candidates := llamaCppLibDirCandidates()
-	checked := make([]string, 0, len(candidates))
-	seen := map[string]struct{}{}
-
-	for _, dir := range candidates {
-		dir = strings.TrimSpace(dir)
-		if dir == "" {
-			continue
-		}
-		absDir, err := filepath.Abs(dir)
-		if err != nil {
-			absDir = dir
-		}
-		if _, ok := seen[absDir]; ok {
-			continue
-		}
-		seen[absDir] = struct{}{}
-
-		libFile := loader.LibraryFilename(absDir, libName)
-		checked = append(checked, libFile)
-		if _, statErr := os.Stat(libFile); statErr == nil {
-			return absDir, libFile, nil
-		}
-	}
-
-	return "", "", fmt.Errorf(
-		"llama runtime library not found (set %s or %s; checked %d path(s): %s)",
-		smallModelLlamaLibDirEnv,
-		loader.EnvLibPath,
-		len(checked),
-		strings.Join(checked, ", "),
-	)
-}
-
-func llamaCppLibDirCandidates() []string {
-	candidates := []string{
-		strings.TrimSpace(os.Getenv(smallModelLlamaLibDirEnv)),
-		strings.TrimSpace(os.Getenv(loader.EnvLibPath)),
-		strings.TrimSpace(os.Getenv(smallModelLlamaCompatLibDirEnv)),
-		"pkg/api/libs",
-		"libs",
-	}
-
-	if exePath, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exePath)
-		candidates = append(candidates,
-			filepath.Join(exeDir, "pkg", "api", "libs"),
-			filepath.Join(exeDir, "libs"),
-		)
-	}
-
-	return candidates
 }

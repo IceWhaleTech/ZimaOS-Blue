@@ -1485,9 +1485,9 @@ func (s *Server) workspaceWriteText(args map[string]interface{}) (string, error)
 	if !ok {
 		return "", errors.New("content is required")
 	}
-	content, err := asString(contentVal)
+	content, err := asTextContent(contentVal)
 	if err != nil {
-		return "", errors.New("content must be a string")
+		return "", errors.New("content must be text-compatible (string, number, boolean, object, or array)")
 	}
 	if len(content) > maxWorkspaceWriteBytes {
 		return "", fmt.Errorf("content too large: %d bytes (max %d)", len(content), maxWorkspaceWriteBytes)
@@ -1841,6 +1841,55 @@ func asString(v interface{}) (string, error) {
 		return t, nil
 	default:
 		return "", fmt.Errorf("expected string, got %T", v)
+	}
+}
+
+func asTextContent(v interface{}) (string, error) {
+	switch t := v.(type) {
+	case string:
+		return t, nil
+	case json.Number:
+		return t.String(), nil
+	case bool:
+		return strconv.FormatBool(t), nil
+	case int:
+		return strconv.Itoa(t), nil
+	case int8:
+		return strconv.FormatInt(int64(t), 10), nil
+	case int16:
+		return strconv.FormatInt(int64(t), 10), nil
+	case int32:
+		return strconv.FormatInt(int64(t), 10), nil
+	case int64:
+		return strconv.FormatInt(t, 10), nil
+	case uint:
+		return strconv.FormatUint(uint64(t), 10), nil
+	case uint8:
+		return strconv.FormatUint(uint64(t), 10), nil
+	case uint16:
+		return strconv.FormatUint(uint64(t), 10), nil
+	case uint32:
+		return strconv.FormatUint(uint64(t), 10), nil
+	case uint64:
+		return strconv.FormatUint(t, 10), nil
+	case float32:
+		return strconv.FormatFloat(float64(t), 'f', -1, 32), nil
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64), nil
+	case map[string]interface{}, []interface{}:
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return "", fmt.Errorf("expected text-compatible JSON, got %T", v)
+		}
+		return string(raw), nil
+	case nil:
+		return "", errors.New("expected non-null content")
+	default:
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return "", fmt.Errorf("expected text-compatible value, got %T", v)
+		}
+		return string(raw), nil
 	}
 }
 

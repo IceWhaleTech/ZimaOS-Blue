@@ -46,6 +46,8 @@ function getToolName(tool: Tool): string {
 }
 
 function getToolDescription(tool: Tool): string {
+  const localizedKey = `tools.descriptions.${tool.name}`
+  if (te(localizedKey)) return t(localizedKey)
   const key = TOOL_DESCRIPTION_KEY_MAP[tool.name]
   if (key && te(key)) return t(key)
   return tool.description || ''

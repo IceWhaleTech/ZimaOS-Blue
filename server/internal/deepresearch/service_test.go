@@ -43,6 +43,17 @@ func (m *mockSummarySynth) Summarize(ctx context.Context, input SummaryInput) (s
 	return m.summarize(ctx, input)
 }
 
+type mockExperimentBackend struct {
+	run func(ctx context.Context, req ExperimentRequest) (*ExperimentResult, error)
+}
+
+func (m *mockExperimentBackend) Run(ctx context.Context, req ExperimentRequest) (*ExperimentResult, error) {
+	if m == nil || m.run == nil {
+		return &ExperimentResult{Summary: "experiment ok"}, nil
+	}
+	return m.run(ctx, req)
+}
+
 func waitForTerminalJob(t *testing.T, svc *Service, jobID string, timeout time.Duration) *Job {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -135,6 +146,113 @@ func TestServiceCreateJobFailure(t *testing.T) {
 			t.Fatalf("timeout waiting for fail status, status=%s", current.Status)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestServiceCreateJob_DegradesExperimentRouteWithoutBackend(t *testing.T) {
+	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			return []SearchHit{{Title: "Doc A", URL: "https://example.com/a", Description: "A"}}, nil
+		},
+	})
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:     "Run an ablation benchmark for this change",
+		Mode:      ModeStandard,
+		RouteMode: RouteModeExperiment,
+	})
+	if err != nil {
+		t.Fatalf("create job failed: %v", err)
+	}
+	if job.EffectiveRouteMode != RouteModeWeb {
+		t.Fatalf("effective route mode = %q, want %q", job.EffectiveRouteMode, RouteModeWeb)
+	}
+	if job.RouteReason == "" {
+		t.Fatal("expected degrade reason")
+	}
+	current := waitForTerminalJob(t, svc, job.ID, 2*time.Second)
+	if current.Status != JobStatusCompleted {
+		t.Fatalf("status = %s, want completed", current.Status)
+	}
+	if current.Report == nil || current.Report.Answer == "" {
+		t.Fatal("expected synthesized web report after degrade")
+	}
+}
+
+func TestServiceCreateJob_ExperimentRouteUsesBackend(t *testing.T) {
+	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			return nil, errors.New("web search should not run in pure experiment mode")
+		},
+	})
+	svc.SetExperimentBackend(&mockExperimentBackend{
+		run: func(ctx context.Context, req ExperimentRequest) (*ExperimentResult, error) {
+			if req.RouteMode != RouteModeExperiment {
+				t.Fatalf("route mode = %q, want %q", req.RouteMode, RouteModeExperiment)
+			}
+			return &ExperimentResult{
+				Summary:    "Experiment summary",
+				Confidence: 0.91,
+				Findings:   []string{"improved eval by 3%"},
+			}, nil
+		},
+	})
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:     "Run an experiment benchmark",
+		Mode:      ModeStandard,
+		RouteMode: RouteModeExperiment,
+	})
+	if err != nil {
+		t.Fatalf("create job failed: %v", err)
+	}
+	if job.EffectiveRouteMode != RouteModeExperiment {
+		t.Fatalf("effective route mode = %q, want %q", job.EffectiveRouteMode, RouteModeExperiment)
+	}
+	current := waitForTerminalJob(t, svc, job.ID, 2*time.Second)
+	if current.Status != JobStatusCompleted {
+		t.Fatalf("status = %s, want completed", current.Status)
+	}
+	if current.Report == nil || current.Report.Experiment == nil {
+		t.Fatal("expected experiment report")
+	}
+	if got := current.Report.Answer; got != "Experiment summary" {
+		t.Fatalf("answer = %q, want %q", got, "Experiment summary")
+	}
+}
+
+func TestServiceCreateJob_HybridRouteMergesExperimentResults(t *testing.T) {
+	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			return []SearchHit{{Title: "Doc A", URL: "https://example.com/a", Description: "A"}}, nil
+		},
+	})
+	svc.SetExperimentBackend(&mockExperimentBackend{
+		run: func(ctx context.Context, req ExperimentRequest) (*ExperimentResult, error) {
+			if req.RouteMode != RouteModeHybrid {
+				t.Fatalf("route mode = %q, want %q", req.RouteMode, RouteModeHybrid)
+			}
+			if req.WebReport == nil {
+				t.Fatal("expected web report for hybrid run")
+			}
+			return &ExperimentResult{Summary: "Validated with a quick benchmark", Confidence: 0.77}, nil
+		},
+	})
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:     "Research the best setup and then validate with a benchmark",
+		Mode:      ModeStandard,
+		RouteMode: RouteModeHybrid,
+	})
+	if err != nil {
+		t.Fatalf("create job failed: %v", err)
+	}
+	current := waitForTerminalJob(t, svc, job.ID, 2*time.Second)
+	if current.Report == nil || current.Report.Experiment == nil {
+		t.Fatal("expected merged experiment report")
+	}
+	if !strings.Contains(current.Report.Answer, "Experiment validation") {
+		t.Fatalf("answer = %q, want experiment merge note", current.Report.Answer)
 	}
 }
 
@@ -1057,5 +1175,264 @@ func TestServiceRunJob_V2StrictEntityFiltersNoise(t *testing.T) {
 	}
 	if current.Report.EntityDisambiguation.FilteredCount == 0 {
 		t.Fatalf("expected filtered_count > 0")
+	}
+}
+
+func TestServiceRunJob_StandardFollowUpBuildsTrace(t *testing.T) {
+	var queries []string
+	var mu sync.Mutex
+	svc := NewService(&mockPlanner{
+		plan: func(query string, mode Mode, lang string) []Task {
+			return []Task{{
+				ID:       "task_1",
+				Question: "topic overview",
+				Priority: 1,
+				Depth:    1,
+				Status:   "pending",
+				Axis:     "official",
+			}}
+		},
+	}, &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			mu.Lock()
+			queries = append(queries, query)
+			mu.Unlock()
+			if strings.Contains(strings.ToLower(query), "official") || strings.Contains(query, "官方") {
+				return []SearchHit{{Title: "Official docs", URL: "https://docs.example.com/official", Description: "official documentation"}}, nil
+			}
+			return []SearchHit{{Title: "Blog post", URL: "https://blog.example.com/post", Description: "analysis"}}, nil
+		},
+	})
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{Query: "topic", Mode: ModeStandard})
+	if err != nil {
+		t.Fatalf("create job failed: %v", err)
+	}
+	current := waitForTerminalJob(t, svc, job.ID, 3*time.Second)
+	if current.Status != JobStatusCompleted {
+		t.Fatalf("expected completed status, got %s", current.Status)
+	}
+	if current.Report == nil {
+		t.Fatalf("expected report")
+	}
+	if current.Report.Iterations < 2 {
+		t.Fatalf("iterations = %d, want >= 2", current.Report.Iterations)
+	}
+	if len(current.Report.ResearchTrace) == 0 {
+		t.Fatalf("expected research trace entries")
+	}
+	if current.Report.VerificationSummary == nil {
+		t.Fatalf("expected verification summary")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(queries) < 2 {
+		t.Fatalf("expected follow-up query, got %v", queries)
+	}
+}
+
+func TestServiceRunJob_NoNewEvidenceStopsLoop(t *testing.T) {
+	svc := NewService(&mockPlanner{
+		plan: func(query string, mode Mode, lang string) []Task {
+			return []Task{{
+				ID:       "task_1",
+				Question: "topic overview",
+				Priority: 1,
+				Depth:    1,
+				Status:   "pending",
+				Axis:     "official",
+			}}
+		},
+	}, &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			if strings.Contains(strings.ToLower(query), "official") || strings.Contains(query, "官方") {
+				return []SearchHit{{Title: "Same official", URL: "https://example.com/shared", Description: "official documentation"}}, nil
+			}
+			return []SearchHit{{Title: "Shared source", URL: "https://example.com/shared", Description: "blog coverage"}}, nil
+		},
+	})
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{Query: "topic", Mode: ModeStandard})
+	if err != nil {
+		t.Fatalf("create job failed: %v", err)
+	}
+	current := waitForTerminalJob(t, svc, job.ID, 3*time.Second)
+	if current.Report == nil {
+		t.Fatalf("expected report")
+	}
+	if got := current.Report.StopReason; got != "no_new_canonical_evidence" {
+		t.Fatalf("stop_reason = %q, want no_new_canonical_evidence", got)
+	}
+	if len(current.Evidence) != 1 {
+		t.Fatalf("evidence len = %d, want 1", len(current.Evidence))
+	}
+}
+
+func TestServiceRunJob_ConflictProducesVerificationSummary(t *testing.T) {
+	svc := NewService(&mockPlanner{
+		plan: func(query string, mode Mode, lang string) []Task {
+			return []Task{{
+				ID:       "task_1",
+				Question: "claim check",
+				Priority: 1,
+				Depth:    1,
+				Status:   "pending",
+				Axis:     "research",
+			}}
+		},
+	}, &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			return []SearchHit{
+				{Title: "Feature rollout", URL: "https://example.com/1", Description: "confirmed"},
+				{Title: "Feature rollout", URL: "https://example.com/2", Description: "not confirmed"},
+			}, nil
+		},
+	})
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{Query: "feature rollout", Mode: ModeFast})
+	if err != nil {
+		t.Fatalf("create job failed: %v", err)
+	}
+	current := waitForTerminalJob(t, svc, job.ID, 3*time.Second)
+	if current.Report == nil || current.Report.VerificationSummary == nil {
+		t.Fatalf("expected verification summary")
+	}
+	foundConflict := false
+	for _, item := range current.Report.VerificationSummary.Items {
+		if item.Status == verificationStatusConflicted {
+			foundConflict = true
+			break
+		}
+	}
+	if !foundConflict {
+		t.Fatalf("expected conflicted verification item, got %+v", current.Report.VerificationSummary.Items)
+	}
+}
+
+func TestServiceSubscribe_EmitsLoopProgressEvents(t *testing.T) {
+	release := make(chan struct{})
+	svc := NewService(&mockPlanner{
+		plan: func(query string, mode Mode, lang string) []Task {
+			return []Task{{
+				ID:       "task_1",
+				Question: "topic overview",
+				Priority: 1,
+				Depth:    1,
+				Status:   "pending",
+				Axis:     "official",
+			}}
+		},
+	}, &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			if strings.Contains(strings.ToLower(query), "official") || strings.Contains(query, "primary source") {
+				return []SearchHit{{Title: "Official docs", URL: "https://docs.example.com/official", Description: "official documentation"}}, nil
+			}
+			return []SearchHit{{Title: "Blog post", URL: "https://blog.example.com/post", Description: "analysis"}}, nil
+		},
+	})
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{Query: "topic", Mode: ModeStandard})
+	if err != nil {
+		t.Fatalf("create job failed: %v", err)
+	}
+
+	events, unsubscribe, err := svc.Subscribe(job.ID)
+	if err != nil {
+		t.Fatalf("subscribe failed: %v", err)
+	}
+	defer unsubscribe()
+	close(release)
+
+	eventTypes := make([]string, 0, 16)
+	payloads := make(map[string][]map[string]interface{})
+	timeout := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-events:
+			eventTypes = append(eventTypes, ev.Type)
+			if payload, ok := ev.Payload.(map[string]interface{}); ok {
+				payloads[ev.Type] = append(payloads[ev.Type], payload)
+			}
+			if ev.Type == "job_completed" {
+				goto done
+			}
+		case <-timeout:
+			t.Fatalf("timeout waiting for terminal event, types=%v", eventTypes)
+		}
+	}
+
+done:
+	indexOf := func(want string) int {
+		for i, got := range eventTypes {
+			if got == want {
+				return i
+			}
+		}
+		return -1
+	}
+	mustIndex := func(want string) int {
+		idx := indexOf(want)
+		if idx < 0 {
+			t.Fatalf("expected event %q in %v", want, eventTypes)
+		}
+		return idx
+	}
+
+	if first := mustIndex("job_snapshot"); first != 0 {
+		t.Fatalf("expected first event to be job_snapshot, got index=%d types=%v", first, eventTypes)
+	}
+	firstVerify := mustIndex("verification_completed")
+	gapIdx := mustIndex("gap_detected")
+	followUpIdx := mustIndex("followup_planned")
+	loopStopIdx := mustIndex("loop_stopped")
+	jobCompletedIdx := mustIndex("job_completed")
+	if !(firstVerify < gapIdx && gapIdx < followUpIdx && followUpIdx < loopStopIdx && loopStopIdx < jobCompletedIdx) {
+		t.Fatalf("unexpected event order: %v", eventTypes)
+	}
+
+	verificationEvents := payloads["verification_completed"]
+	if len(verificationEvents) < 2 {
+		t.Fatalf("expected verification_completed for multiple iterations, got %#v", verificationEvents)
+	}
+	if got := parseIntArg(verificationEvents[0]["iteration"]); got != 1 {
+		t.Fatalf("first verification iteration = %d, want 1", got)
+	}
+	if got, _ := verificationEvents[0]["latest_action"].(string); got != "verification_completed" {
+		t.Fatalf("first verification latest_action = %q, want verification_completed", got)
+	}
+
+	gapEvents := payloads["gap_detected"]
+	if len(gapEvents) == 0 {
+		t.Fatalf("expected gap_detected payloads")
+	}
+	if got := strings.TrimSpace(deepResearchString(gapEvents[0]["gap"])); got == "" {
+		t.Fatalf("expected non-empty gap payload, got %#v", gapEvents[0])
+	}
+
+	followUpEvents := payloads["followup_planned"]
+	if len(followUpEvents) == 0 {
+		t.Fatalf("expected followup_planned payloads")
+	}
+	if got := parseIntArg(followUpEvents[0]["iteration"]); got != 2 {
+		t.Fatalf("follow-up iteration = %d, want 2", got)
+	}
+	if got := strings.TrimSpace(deepResearchString(followUpEvents[0]["follow_up_query"])); got == "" {
+		t.Fatalf("expected follow_up_query in payload, got %#v", followUpEvents[0])
+	}
+
+	loopStopped := payloads["loop_stopped"]
+	if len(loopStopped) == 0 {
+		t.Fatalf("expected loop_stopped payload")
+	}
+	if got, _ := loopStopped[0]["latest_action"].(string); got != "loop_stopped" {
+		t.Fatalf("loop_stopped latest_action = %q, want loop_stopped", got)
+	}
+	if got := strings.TrimSpace(deepResearchString(loopStopped[0]["stop_reason"])); got == "" {
+		t.Fatalf("expected non-empty stop_reason, got %#v", loopStopped[0])
 	}
 }

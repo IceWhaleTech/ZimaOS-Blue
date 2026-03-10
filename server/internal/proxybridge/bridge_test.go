@@ -96,6 +96,29 @@ func TestBridgeChat_PropagatesAcceptLanguageHeader(t *testing.T) {
 	}
 }
 
+func TestBridgeChat_PropagatesBackgroundTaskHeader(t *testing.T) {
+	var gotBackground string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBackground = r.Header.Get(proxy.BackgroundTaskHeader)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"1","model":"","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	})
+
+	bridge := NewBridge(handler)
+	ctx := proxy.WithBackgroundTask(context.Background())
+	_, err := bridge.Chat(ctx, llm.ChatRequest{
+		Model:    "auto",
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat failed: %v", err)
+	}
+	if gotBackground != "true" {
+		t.Fatalf("expected %s header=true, got %q", proxy.BackgroundTaskHeader, gotBackground)
+	}
+}
+
 func TestBridgeChatStream_PropagatesDisableResponsesContinuationHeader(t *testing.T) {
 	handler := &fakeProxyHandler{
 		providerName: "OpenAI",
@@ -116,6 +139,24 @@ func TestBridgeChatStream_PropagatesDisableResponsesContinuationHeader(t *testin
 	}
 	if handler.lastHeader != "1" {
 		t.Fatalf("expected %s header=1, got %q", proxy.DisableResponsesContinuationHeader, handler.lastHeader)
+	}
+}
+
+func TestProxyErrorIsOverloaded_IgnoresWrappedBuildFailures(t *testing.T) {
+	err := &ProxyError{
+		StatusCode: http.StatusBadGateway,
+		Body:       `upstream 500: {"error":{"type":"overloaded_error","message":"构建请求失败"},"type":"error"}`,
+	}
+	if err.IsOverloaded() {
+		t.Fatal("expected wrapped request-build failure to avoid overloaded classification")
+	}
+
+	overloaded := &ProxyError{
+		StatusCode: http.StatusBadGateway,
+		Body:       `upstream 500: {"error":{"type":"overloaded_error","message":"Overloaded"},"type":"error"}`,
+	}
+	if !overloaded.IsOverloaded() {
+		t.Fatal("expected plain overloaded response to remain overloaded")
 	}
 }
 

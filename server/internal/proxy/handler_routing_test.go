@@ -155,6 +155,47 @@ func TestApplyModelRouting_EmptyModel(t *testing.T) {
 	}
 }
 
+func TestApplyModelRouting_EmptyModelBackgroundUsesTierSmall(t *testing.T) {
+	mr, _ := NewModelRouter(DefaultModelRouterConfig())
+	tr := NewTierResolver()
+	if !tr.Resolve([]*providerpool.Model{
+		{
+			ID:          "claude-opus-4-6",
+			ProviderID:  "p1",
+			Enabled:     true,
+			InputPrice:  15.0,
+			OutputPrice: 75.0,
+		},
+		{
+			ID:          "claude-haiku-4-5",
+			ProviderID:  "p1",
+			Enabled:     true,
+			InputPrice:  0.25,
+			OutputPrice: 1.25,
+		},
+	}) {
+		t.Fatal("expected tier resolver to be enabled with both small and large tiers")
+	}
+	mr.SetTierResolver(tr)
+
+	ph := NewProxyHandler(nil, nil, nil)
+	ph.SetModelRouter(mr)
+
+	body := []byte(`{"model":"auto","messages":[]}`)
+	pr := &parsedRequest{body: body, model: "", requestedModel: "auto"}
+	r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	r.Header.Set("X-Background-Task", "true")
+
+	ph.applyModelRouting(r, pr)
+
+	if pr.model != "claude-haiku-4-5" {
+		t.Fatalf("expected background auto to downgrade to small tier model, got %q", pr.model)
+	}
+	if got := gjson.GetBytes(pr.body, "model").Str; got != "claude-haiku-4-5" {
+		t.Fatalf("expected request body model rewrite to small tier model, got %q", got)
+	}
+}
+
 func TestApplyModelRouting_LazyToolExtraction(t *testing.T) {
 	ph := NewProxyHandler(nil, nil, nil)
 	ph.SetRuleEngine(NewRuleEngine([]RoutingRule{

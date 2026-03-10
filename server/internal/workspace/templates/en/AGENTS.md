@@ -10,6 +10,15 @@
 - Daily notes go to memory/YYYY-MM-DD.md
 - If someone says "remember this", write it down
 
+## Multi-Step Tasks
+- Start multi-step coding tasks with a short TODO/plan.
+- Keep working after the first implementation step; do not stop at scaffolding or a partial MVP when clear TODO items remain.
+- Continue autonomously while the next action is clear.
+- Stop only when all TODO items are complete, there is a real blocker, or a key user decision is required.
+- Update the plan as items are completed.
+- Before ending, check for open TODO items. If any remain, keep going.
+- Finish with three short sections: Completed, Remaining / Blockers, Suggested Next Steps.
+
 ## Safety
 - Private things stay private. Period.
 - Don't run destructive commands without asking.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -90,6 +91,15 @@ func TestShouldRetryTransientUpstream5xx(t *testing.T) {
 			routingSingle: true,
 			status:        500,
 			body:          `{"error":{"type":"overloaded_error","message":"构建请求失败"}}`,
+			attempt:       2,
+			want:          false,
+		},
+		{
+			name:          "plain overloaded 500 still retries when routing is truly single-provider",
+			single:        true,
+			routingSingle: true,
+			status:        500,
+			body:          `{"error":{"type":"overloaded_error","message":"Overloaded"}}`,
 			attempt:       2,
 			want:          true,
 		},
@@ -185,9 +195,9 @@ func TestProxyFailureStatusCode(t *testing.T) {
 			want: http.StatusServiceUnavailable,
 		},
 		{
-			name: "wrapped overloaded 500 maps to 529",
+			name: "wrapped overloaded build failure 500 maps to 502",
 			err:  errors.New(`upstream 500: {"error":{"type":"overloaded_error","message":"构建请求失败"},"type":"error"}`),
-			want: 529,
+			want: http.StatusBadGateway,
 		},
 		{
 			name: "wrapped rate limit 500 maps to 429",
@@ -285,6 +295,29 @@ func TestParseStatusCodeFromUpstreamError(t *testing.T) {
 	for _, tc := range tests {
 		if got := parseStatusCodeFromUpstreamError(tc.msg); got != tc.want {
 			t.Fatalf("%s: parseStatusCodeFromUpstreamError(%q) = %d, want %d", tc.name, tc.msg, got, tc.want)
+		}
+	}
+}
+
+func TestShouldTreatStreamingProbeAsEmpty(t *testing.T) {
+	tests := []struct {
+		name   string
+		prefix []byte
+		err    error
+		want   bool
+	}{
+		{name: "empty eof", prefix: nil, err: io.EOF, want: true},
+		{name: "empty nil err", prefix: nil, err: nil, want: true},
+		{name: "empty non eof error", prefix: nil, err: errors.New("connection reset"), want: false},
+		{name: "done only raw", prefix: []byte("[DONE]"), err: io.EOF, want: true},
+		{name: "done only sse", prefix: []byte("data: [DONE]\n\n"), err: io.EOF, want: true},
+		{name: "done marker but stream may continue", prefix: []byte("data: [DONE]\n\n"), err: nil, want: false},
+		{name: "normal json with eof", prefix: []byte(`data: {"id":"x"}`), err: io.EOF, want: false},
+	}
+
+	for _, tc := range tests {
+		if got := shouldTreatStreamingProbeAsEmpty(tc.prefix, tc.err); got != tc.want {
+			t.Fatalf("%s: shouldTreatStreamingProbeAsEmpty(%q, %v) = %v, want %v", tc.name, string(tc.prefix), tc.err, got, tc.want)
 		}
 	}
 }

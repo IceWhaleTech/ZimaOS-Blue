@@ -34,18 +34,46 @@ func inferModelFamily(modelID string) modelFamilyHint {
 	return modelFamilyDefault
 }
 
+func PreferredAPIFormatsForModel(modelID string) []APIFormat {
+	preferred := preferredAPIFormatsForModel(modelID)
+	return append([]APIFormat(nil), preferred...)
+}
+
 func preferredAPIFormatsForModel(modelID string) []APIFormat {
+	var preferred []APIFormat
 	switch inferModelFamily(modelID) {
 	case modelFamilyClaude:
-		return []APIFormat{APIFormatAnthropic, APIFormatOpenAI, APIFormatResponses}
+		preferred = []APIFormat{APIFormatAnthropic, APIFormatOpenAI, APIFormatResponses}
 	case modelFamilyCodex:
-		return []APIFormat{APIFormatResponses, APIFormatOpenAI, APIFormatAnthropic}
+		preferred = []APIFormat{APIFormatResponses, APIFormatOpenAI, APIFormatAnthropic}
 	default:
-		return []APIFormat{APIFormatOpenAI, APIFormatAnthropic, APIFormatResponses}
+		preferred = []APIFormat{APIFormatOpenAI, APIFormatAnthropic, APIFormatResponses}
 	}
+
+	if ResponsesIntegrationEnabled() {
+		return preferred
+	}
+
+	filtered := preferred[:0]
+	for _, format := range preferred {
+		if format == APIFormatResponses {
+			continue
+		}
+		filtered = append(filtered, format)
+	}
+	return filtered
 }
 
 func recommendedAPIFormatForModel(modelID string, detectedFormat APIFormat, anthropicReachable, openAIReachable, responsesReachable, responsesOnly bool) APIFormat {
+	responsesEnabled := ResponsesIntegrationEnabled()
+	if !responsesEnabled {
+		responsesReachable = false
+		responsesOnly = false
+		if detectedFormat == APIFormatResponses {
+			detectedFormat = ""
+		}
+	}
+
 	if responsesOnly {
 		return APIFormatResponses
 	}
@@ -71,7 +99,7 @@ func recommendedAPIFormatForModel(modelID string, detectedFormat APIFormat, anth
 	if anthropicReachable {
 		return APIFormatAnthropic
 	}
-	if responsesReachable {
+	if responsesEnabled && responsesReachable {
 		return APIFormatResponses
 	}
 	if detectedFormat != "" {
@@ -108,7 +136,7 @@ func providerFormatAffinityScore(modelID string, provider *Provider) int {
 			score += 25
 		}
 	case modelFamilyCodex:
-		if format == APIFormatResponses || strings.Contains(providerID, "codex") {
+		if ResponsesIntegrationEnabled() && (format == APIFormatResponses || strings.Contains(providerID, "codex")) {
 			score += 25
 		}
 	default:

@@ -3,10 +3,8 @@ package server
 import (
 	"context"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -15,11 +13,10 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
-	"github.com/google/uuid"
 )
 
 const settingsKVKey = "config:settings"
-const soulProposalKVKey = "config:soul_proposals"
+const defaultIMHistoryLimit = 3
 
 // SettingsHandler handles user settings API endpoints
 type SettingsHandler struct {
@@ -28,7 +25,6 @@ type SettingsHandler struct {
 	settings                  *Settings
 	skillRerankerModelManager *claudecode.SkillRerankerModelManager
 	smallModelManager         *smallmodel.Manager
-	soulProposals             map[string]*SoulProposal
 	chatHandler               *ChatHandler
 }
 
@@ -48,7 +44,9 @@ type Settings struct {
 	PromptPolicyVersion                 string   `json:"prompt_policy_version,omitempty"`                     // prompt policy version marker
 	PromptPolicyProfile                 string   `json:"prompt_policy_profile,omitempty"`                     // prompt policy profile
 	MemoryRecallMode                    string   `json:"memory_recall_mode,omitempty"`                        // Memory recall strategy: aggressive|balanced|quality
+	IMHistoryLimit                      *int     `json:"im_history_limit,omitempty"`                          // IM no-history tier keeps recent rounds (default 3, 0 disables)
 	AgentMode                           *bool    `json:"agent_mode,omitempty"`                                // Autonomous agent mode (nil = default false)
+	AgentAutoReflect                    *bool    `json:"agent_auto_reflect,omitempty"`                        // Run post-task reflection in agent mode (nil = default true)
 	AgentAutoConfirm                    *bool    `json:"agent_auto_confirm,omitempty"`                        // Skip confirmation in agent mode (nil = default false)
 	AgentAskTimeoutSeconds              *int     `json:"agent_ask_timeout_seconds,omitempty"`                 // Ask timeout in seconds (default 120, range 15-1800)
 	AgentAskTimeoutAction               string   `json:"agent_ask_timeout_action,omitempty"`                  // default|error
@@ -78,16 +76,6 @@ type Settings struct {
 	SmallModelUnavailablePolicy         string   `json:"small_model_unavailable_policy,omitempty"`            // default ir_first
 }
 
-type SoulProposal struct {
-	ID         string     `json:"id"`
-	Title      string     `json:"title"`
-	Content    string     `json:"content"`
-	Source     string     `json:"source,omitempty"`
-	Status     string     `json:"status"` // pending|approved|rejected
-	CreatedAt  time.Time  `json:"created_at"`
-	ReviewedAt *time.Time `json:"reviewed_at,omitempty"`
-}
-
 var allowedThemeStyles = map[string]struct{}{
 	"default":  {},
 	"bubble":   {},
@@ -105,12 +93,10 @@ var allowedMemoryRecallModes = map[string]struct{}{
 // NewSettingsHandler creates a new settings handler
 func NewSettingsHandler(kv kvstore.Store) *SettingsHandler {
 	h := &SettingsHandler{
-		kv:            kv,
-		settings:      &Settings{},
-		soulProposals: map[string]*SoulProposal{},
+		kv:       kv,
+		settings: &Settings{},
 	}
 	h.load()
-	h.loadSoulProposals()
 	return h
 }
 
@@ -127,9 +113,6 @@ func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/settings/small-model/status", h.GetSmallModelStatus)
 	g.POST("/settings/small-model/download", h.StartSmallModelDownload)
 	g.POST("/settings/small-model/cancel", h.CancelSmallModelDownload)
-	g.GET("/settings/soul/proposals", h.ListSoulProposals)
-	g.POST("/settings/soul/proposals/:id/approve", h.ApproveSoulProposal)
-	g.POST("/settings/soul/proposals/:id/reject", h.RejectSoulProposal)
 }
 
 // SetSkillRerankerModelManager wires ONNX skill-reranker model manager for UI download APIs.
@@ -251,72 +234,6 @@ func (h *SettingsHandler) GetSmallModelStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, mgr.GetStatus())
 }
 
-// ListSoulProposals returns pending/handled SOUL write proposals.
-func (h *SettingsHandler) ListSoulProposals(c echo.Context) error {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	list := make([]SoulProposal, 0, len(h.soulProposals))
-	for _, p := range h.soulProposals {
-		cp := *p
-		list = append(list, cp)
-	}
-	sort.Slice(list, func(i, j int) bool {
-		return list[i].CreatedAt.After(list[j].CreatedAt)
-	})
-	return c.JSON(http.StatusOK, map[string]interface{}{"proposals": list})
-}
-
-// ApproveSoulProposal marks a pending proposal as approved.
-func (h *SettingsHandler) ApproveSoulProposal(c echo.Context) error {
-	return h.reviewSoulProposal(c, "approved")
-}
-
-// RejectSoulProposal marks a pending proposal as rejected.
-func (h *SettingsHandler) RejectSoulProposal(c echo.Context) error {
-	return h.reviewSoulProposal(c, "rejected")
-}
-
-func (h *SettingsHandler) reviewSoulProposal(c echo.Context, status string) error {
-	id := c.Param("id")
-	if id == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "proposal id is required"})
-	}
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	p, ok := h.soulProposals[id]
-	if !ok {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "proposal not found"})
-	}
-	now := time.Now().UTC()
-	p.Status = status
-	p.ReviewedAt = &now
-	if err := h.saveSoulProposalsLocked(); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save proposal review"})
-	}
-	return c.JSON(http.StatusOK, p)
-}
-
-// AddSoulProposal enqueues a pending proposal that requires manual review.
-func (h *SettingsHandler) AddSoulProposal(title, content, source string) (*SoulProposal, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	p := &SoulProposal{
-		ID:        uuid.NewString(),
-		Title:     title,
-		Content:   content,
-		Source:    source,
-		Status:    "pending",
-		CreatedAt: time.Now().UTC(),
-	}
-	h.soulProposals[p.ID] = p
-	if err := h.saveSoulProposalsLocked(); err != nil {
-		delete(h.soulProposals, p.ID)
-		return nil, err
-	}
-	return p, nil
-}
-
 // GetPromptPolicyStatus returns the effective prompt policy and loop policy snapshot.
 func (h *SettingsHandler) GetPromptPolicyStatus(c echo.Context) error {
 	if !isAdminRequest(c) {
@@ -414,6 +331,13 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 		if _, valid := allowedMemoryRecallModes[newSettings.MemoryRecallMode]; !valid {
 			newSettings.MemoryRecallMode = ""
 		}
+	}
+	if newSettings.IMHistoryLimit != nil {
+		v := *newSettings.IMHistoryLimit
+		if v < 0 {
+			v = 0
+		}
+		newSettings.IMHistoryLimit = &v
 	}
 	if newSettings.SkillSelectorMode != "" {
 		switch newSettings.SkillSelectorMode {
@@ -583,9 +507,22 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 			h.settings.MemoryRecallMode = mode
 		}
 	}
+	if v, ok := updates["im_history_limit"]; ok {
+		if iv, ok := intFromAny(v); ok {
+			if iv < 0 {
+				iv = 0
+			}
+			h.settings.IMHistoryLimit = &iv
+		}
+	}
 	if v, ok := updates["agent_mode"]; ok {
 		if b, isBool := v.(bool); isBool {
 			h.settings.AgentMode = &b
+		}
+	}
+	if v, ok := updates["agent_auto_reflect"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.AgentAutoReflect = &b
 		}
 	}
 	if v, ok := updates["agent_auto_confirm"]; ok {
@@ -913,6 +850,28 @@ func (h *SettingsHandler) GetMemoryRecallMode() string {
 	return "balanced"
 }
 
+// GetIMHistoryLimit returns recent rounds retained for IM no-history tier.
+// Defaults to 3; values below 0 are clamped to 0.
+func (h *SettingsHandler) GetIMHistoryLimit() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.IMHistoryLimit == nil {
+		return defaultIMHistoryLimit
+	}
+	v := *h.settings.IMHistoryLimit
+	if v < 0 {
+		return 0
+	}
+	return v
+}
+
+// HasIMHistoryLimit reports whether IM history limit is explicitly configured.
+func (h *SettingsHandler) HasIMHistoryLimit() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.settings.IMHistoryLimit != nil
+}
+
 // GetAgentMode returns whether agent mode is enabled (default false).
 func (h *SettingsHandler) GetAgentMode() bool {
 	h.mu.RLock()
@@ -921,6 +880,17 @@ func (h *SettingsHandler) GetAgentMode() bool {
 		return false
 	}
 	return *h.settings.AgentMode
+}
+
+// GetAgentAutoReflect returns whether post-task reflection is enabled.
+// Defaults to true when not explicitly configured.
+func (h *SettingsHandler) GetAgentAutoReflect() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.AgentAutoReflect != nil {
+		return *h.settings.AgentAutoReflect
+	}
+	return true
 }
 
 // GetAgentAutoConfirm returns whether agent mode skips confirmation (default false).
@@ -1388,33 +1358,6 @@ func (h *SettingsHandler) load() {
 		// Key not found or error — use defaults
 		h.settings = &Settings{}
 	}
-}
-
-func (h *SettingsHandler) loadSoulProposals() {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	var list []SoulProposal
-	if err := h.kv.GetJSON(context.Background(), soulProposalKVKey, &list); err != nil {
-		h.soulProposals = map[string]*SoulProposal{}
-		return
-	}
-	h.soulProposals = make(map[string]*SoulProposal, len(list))
-	for i := range list {
-		p := list[i]
-		cp := p
-		h.soulProposals[p.ID] = &cp
-	}
-}
-
-func (h *SettingsHandler) saveSoulProposalsLocked() error {
-	list := make([]SoulProposal, 0, len(h.soulProposals))
-	for _, p := range h.soulProposals {
-		list = append(list, *p)
-	}
-	sort.Slice(list, func(i, j int) bool {
-		return list[i].CreatedAt.After(list[j].CreatedAt)
-	})
-	return h.kv.SetJSON(context.Background(), soulProposalKVKey, list, 0)
 }
 
 // save writes settings to kvstore

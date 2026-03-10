@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/google/uuid"
@@ -19,6 +20,10 @@ const (
 	analyzeMaxURLs     = 5
 	analyzeMaxSearches = 3
 	analyzeMaxTextLen  = 50000
+
+	// analyzeLLMRequestTimeout keeps long-form analysis/report calls from being
+	// cut off by bridge fallback timeouts when the parent context has no deadline.
+	analyzeLLMRequestTimeout = 5 * time.Minute
 
 	analyzeDocExtractAutoRollbackMinAttempts = 40
 	analyzeDocExtractAutoRollbackMaxFailRate = 0.15
@@ -42,6 +47,23 @@ type AnalyzeTool struct {
 	docExtractSuccess      int64
 	docExtractGateAttempts int64
 	docExtractGateSuccess  int64
+}
+
+type analyzeGatherStats struct {
+	RequestedSources int
+	CollectedSources int
+	TextSources      int
+	TextChars        int
+	URLSources       int
+	URLCollected     int
+	SearchSources    int
+	SearchCollected  int
+}
+
+type analyzeDocExtractResult struct {
+	content string
+	status  string
+	detail  string
 }
 
 // SmallModelStatsRecorder records small-model scene-level observability counters.
@@ -180,32 +202,32 @@ func (t *AnalyzeTool) Execute(ctx context.Context, args map[string]interface{}) 
 
 // runFullAnalysis gathers data from URLs/search, then generates a report.
 func (t *AnalyzeTool) runFullAnalysis(ctx context.Context, topic string, args map[string]interface{}, lang string, bridge LLMBridge, browser BrowserBackend, executor *Executor, mediaDir string) (interface{}, error) {
-	// 1. Data collection
-	emitAnalyzeProgress(ctx, "data_collection", "Gathering data", "running")
-	rawContent := t.gatherData(ctx, args, browser, executor)
+	rawContent, stats := t.gatherData(ctx, args, lang, browser, executor)
 	if rawContent == "" {
-		emitAnalyzeProgress(ctx, "data_collection", "Gathering data", "failed")
 		return nil, errors.New("no data collected — provide URLs, search queries, or text")
 	}
-	emitAnalyzeProgress(ctx, "data_collection", "Gathering data", "success")
+	emitAnalyzeCollectionCard(ctx, lang, stats)
 
 	return t.analyzeAndGenerate(ctx, topic, rawContent, lang, bridge, mediaDir)
 }
 
 // analyzeAndGenerate runs the LLM analysis pipeline and generates HTML.
 func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent, lang string, bridge LLMBridge, mediaDir string) (interface{}, error) {
-	if preExtracted := t.smallModelDocExtract(ctx, topic, rawContent, lang); preExtracted != "" {
-		rawContent = preExtracted
+	emitAnalyzeProgress(ctx, "doc_extract", analyzeProgressLabel(lang, "doc_extract", 0, 0), "running")
+	docExtract := t.smallModelDocExtract(ctx, topic, rawContent, lang)
+	if docExtract.content != "" {
+		rawContent = docExtract.content
 	}
+	emitAnalyzeProgress(ctx, "doc_extract", analyzeProgressLabel(lang, "doc_extract", 0, 0), docExtract.status, map[string]interface{}{"detail": docExtract.detail})
 
 	// 2. LLM analysis — extract structured data
-	emitAnalyzeProgress(ctx, "analysis", "Analyzing content", "running")
+	emitAnalyzeProgress(ctx, "analysis", analyzeProgressLabel(lang, "analysis", 0, 0), "running")
 	analysisJSON, err := t.llmExtractAndAnalyze(ctx, bridge, topic, rawContent, lang)
 	if err != nil {
-		emitAnalyzeProgress(ctx, "analysis", "Analyzing content", "failed")
+		emitAnalyzeProgress(ctx, "analysis", analyzeProgressLabel(lang, "analysis", 0, 0), "failed")
 		return nil, fmt.Errorf("analysis failed: %w", err)
 	}
-	emitAnalyzeProgress(ctx, "analysis", "Analyzing content", "success")
+	emitAnalyzeProgress(ctx, "analysis", analyzeProgressLabel(lang, "analysis", 0, 0), "success")
 
 	// Extract refined_title from analysis JSON if present
 	reportTitle := topic
@@ -217,18 +239,27 @@ func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent,
 	}
 
 	// 3. Generate HTML report
-	emitAnalyzeProgress(ctx, "report", "Generating report", "running")
+	emitAnalyzeProgress(ctx, "report", analyzeProgressLabel(lang, "report", 0, 0), "running")
 	htmlBody, err := t.llmGenerateHTML(ctx, bridge, reportTitle, analysisJSON, lang)
 	if err != nil {
-		emitAnalyzeProgress(ctx, "report", "Generating report", "failed")
+		emitAnalyzeProgress(ctx, "report", analyzeProgressLabel(lang, "report", 0, 0), "failed")
 		return nil, fmt.Errorf("report generation failed: %w", err)
 	}
 
 	fullHTML := buildAnalyzeHTML(reportTitle, lang, htmlBody)
+	emitAnalyzeProgress(ctx, "report", analyzeProgressLabel(lang, "report", 0, 0), "success")
 
 	// 4. Save to disk
-	reportURL := t.saveReport(fullHTML, mediaDir)
-	emitAnalyzeProgress(ctx, "report", "Generating report", "success")
+	emitAnalyzeProgress(ctx, "save_report", analyzeProgressLabel(lang, "save_report", 0, 0), "running")
+	reportURL, saveErr := t.saveReport(fullHTML, mediaDir)
+	switch {
+	case saveErr != nil:
+		emitAnalyzeProgress(ctx, "save_report", analyzeProgressLabel(lang, "save_report", 0, 0), "failed", map[string]interface{}{"detail": analyzeLocalized(lang, "Could not save HTML report", "无法保存 HTML 报告")})
+	case reportURL != "":
+		emitAnalyzeProgress(ctx, "save_report", analyzeProgressLabel(lang, "save_report", 0, 0), "success", map[string]interface{}{"detail": analyzeLocalized(lang, "HTML report saved", "HTML 报告已保存")})
+	default:
+		emitAnalyzeProgress(ctx, "save_report", analyzeProgressLabel(lang, "save_report", 0, 0), "skipped", map[string]interface{}{"detail": analyzeLocalized(lang, "Media directory unavailable; returning the result inline", "媒体目录不可用，仅通过结果返回")})
+	}
 
 	result := map[string]interface{}{
 		"success": true,
@@ -238,13 +269,6 @@ func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent,
 	if reportURL != "" {
 		result["report_url"] = reportURL
 		result["message"] = fmt.Sprintf("Analysis report generated: %s\nReport link: %s\nThe URL is a relative path — do NOT add file:// or any host prefix. Do NOT open this URL with the browser tool. Just present the link to the user.", reportTitle, reportURL)
-		// Emit result card for frontend rendering
-		EmitCard(ctx, map[string]interface{}{
-			"type":       "result",
-			"status":     "success",
-			"title":      reportTitle,
-			"report_url": reportURL,
-		})
 	}
 
 	b, _ := json.Marshal(result)
@@ -252,54 +276,140 @@ func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent,
 }
 
 // gatherData collects content from URLs, search queries, and direct text.
-func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{}, browser BrowserBackend, executor *Executor) string {
+func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{}, lang string, browser BrowserBackend, executor *Executor) (string, analyzeGatherStats) {
 	var parts []string
+	stats := analyzeGatherStats{}
+	urls := analyzeCollectStringInputs(args["urls"], analyzeMaxURLs)
+	queries := analyzeCollectStringInputs(args["search_queries"], analyzeMaxSearches)
+
+	if text, ok := args["text"].(string); ok && strings.TrimSpace(text) != "" {
+		stats.RequestedSources++
+		stats.TextSources = 1
+	}
+	stats.URLSources = len(urls)
+	stats.SearchSources = len(queries)
+	stats.RequestedSources += stats.URLSources + stats.SearchSources
+
+	emitAnalyzeProgress(ctx, "data_collection", analyzeProgressLabel(lang, "data_collection", 0, 0), "running", map[string]interface{}{
+		"detail":  analyzeCollectionPlanDetail(lang, stats),
+		"current": 0,
+		"total":   stats.RequestedSources,
+	})
 
 	// Direct text
 	if text, ok := args["text"].(string); ok && text != "" {
+		emitAnalyzeProgress(ctx, "text_input", analyzeProgressLabel(lang, "text_input", 0, 0), "running", map[string]interface{}{
+			"detail": analyzeLocalized(lang, "Preparing direct text input", "整理直接输入文本"),
+		})
 		if len(text) > analyzeMaxTextLen {
 			text = text[:analyzeMaxTextLen]
 		}
+		stats.TextChars = utf8.RuneCountInString(text)
+		stats.CollectedSources++
 		parts = append(parts, "=== Direct Input ===\n"+text)
+		emitAnalyzeProgress(ctx, "text_input", analyzeProgressLabel(lang, "text_input", 0, 0), "success", map[string]interface{}{
+			"detail":     analyzeLocalized(lang, fmt.Sprintf("%d chars", stats.TextChars), fmt.Sprintf("%d 个字符", stats.TextChars)),
+			"char_count": stats.TextChars,
+		})
 	}
 
 	// URLs — scrape via browser
-	if urls, ok := args["urls"].([]interface{}); ok && browser != nil {
-		limit := analyzeMaxURLs
-		if len(urls) < limit {
-			limit = len(urls)
-		}
-		for i := 0; i < limit; i++ {
-			url, ok := urls[i].(string)
-			if !ok || url == "" {
-				continue
-			}
-			content := t.scrapeURL(ctx, browser, url)
-			if content != "" {
-				parts = append(parts, fmt.Sprintf("=== URL: %s ===\n%s", url, content))
+	if len(urls) > 0 {
+		if browser == nil {
+			emitAnalyzeProgress(ctx, "url_fetch_backend", analyzeLocalized(lang, "Webpage collection unavailable", "网页采集不可用"), "failed", map[string]interface{}{
+				"detail": analyzeLocalized(lang, "Browser backend unavailable", "浏览器后端不可用"),
+			})
+		} else {
+			for i, url := range urls {
+				stepID := fmt.Sprintf("url_fetch_%d", i+1)
+				emitAnalyzeProgress(ctx, stepID, analyzeProgressLabel(lang, "url_fetch", i+1, len(urls)), "running", map[string]interface{}{
+					"current":      i + 1,
+					"total":        len(urls),
+					"source_kind":  "url",
+					"source_label": url,
+				})
+				content := t.scrapeURL(ctx, browser, url)
+				if content != "" {
+					stats.CollectedSources++
+					stats.URLCollected++
+					parts = append(parts, fmt.Sprintf("=== URL: %s ===\n%s", url, content))
+					emitAnalyzeProgress(ctx, stepID, analyzeProgressLabel(lang, "url_fetch", i+1, len(urls)), "success", map[string]interface{}{
+						"current":      i + 1,
+						"total":        len(urls),
+						"source_kind":  "url",
+						"source_label": url,
+						"char_count":   utf8.RuneCountInString(content),
+						"detail":       analyzeLocalized(lang, "Page content extracted", "网页内容已提取"),
+					})
+					continue
+				}
+				emitAnalyzeProgress(ctx, stepID, analyzeProgressLabel(lang, "url_fetch", i+1, len(urls)), "failed", map[string]interface{}{
+					"current":      i + 1,
+					"total":        len(urls),
+					"source_kind":  "url",
+					"source_label": url,
+					"detail":       analyzeLocalized(lang, "Could not extract page content", "无法提取网页内容"),
+				})
 			}
 		}
 	}
 
 	// Search queries — via web_search tool
-	if queries, ok := args["search_queries"].([]interface{}); ok && executor != nil {
-		limit := analyzeMaxSearches
-		if len(queries) < limit {
-			limit = len(queries)
-		}
-		for i := 0; i < limit; i++ {
-			query, ok := queries[i].(string)
-			if !ok || query == "" {
-				continue
-			}
-			content := t.webSearch(ctx, executor, query)
-			if content != "" {
-				parts = append(parts, fmt.Sprintf("=== Search: %s ===\n%s", query, content))
+	if len(queries) > 0 {
+		if executor == nil {
+			emitAnalyzeProgress(ctx, "search_backend", analyzeLocalized(lang, "Web search unavailable", "网页搜索不可用"), "failed", map[string]interface{}{
+				"detail": analyzeLocalized(lang, "Search executor unavailable", "搜索执行器不可用"),
+			})
+		} else {
+			for i, query := range queries {
+				stepID := fmt.Sprintf("search_%d", i+1)
+				emitAnalyzeProgress(ctx, stepID, analyzeProgressLabel(lang, "search", i+1, len(queries)), "running", map[string]interface{}{
+					"current":      i + 1,
+					"total":        len(queries),
+					"source_kind":  "search",
+					"source_label": query,
+				})
+				content, resultCount := t.webSearch(ctx, executor, query)
+				if content != "" {
+					stats.CollectedSources++
+					stats.SearchCollected++
+					parts = append(parts, fmt.Sprintf("=== Search: %s ===\n%s", query, content))
+					emitAnalyzeProgress(ctx, stepID, analyzeProgressLabel(lang, "search", i+1, len(queries)), "success", map[string]interface{}{
+						"current":      i + 1,
+						"total":        len(queries),
+						"source_kind":  "search",
+						"source_label": query,
+						"result_count": resultCount,
+						"detail":       analyzeLocalized(lang, fmt.Sprintf("%d results", resultCount), fmt.Sprintf("%d 条结果", resultCount)),
+					})
+					continue
+				}
+				emitAnalyzeProgress(ctx, stepID, analyzeProgressLabel(lang, "search", i+1, len(queries)), "failed", map[string]interface{}{
+					"current":      i + 1,
+					"total":        len(queries),
+					"source_kind":  "search",
+					"source_label": query,
+					"detail":       analyzeLocalized(lang, "No search results collected", "未收集到搜索结果"),
+				})
 			}
 		}
 	}
 
-	return strings.Join(parts, "\n\n")
+	rawContent := strings.Join(parts, "\n\n")
+	if rawContent == "" {
+		emitAnalyzeProgress(ctx, "data_collection", analyzeProgressLabel(lang, "data_collection", 0, 0), "failed", map[string]interface{}{
+			"detail":  analyzeCollectionResultDetail(lang, stats),
+			"current": stats.CollectedSources,
+			"total":   stats.RequestedSources,
+		})
+		return "", stats
+	}
+	emitAnalyzeProgress(ctx, "data_collection", analyzeProgressLabel(lang, "data_collection", 0, 0), "success", map[string]interface{}{
+		"detail":  analyzeCollectionResultDetail(lang, stats),
+		"current": stats.CollectedSources,
+		"total":   stats.RequestedSources,
+	})
+	return rawContent, stats
 }
 
 func (t *AnalyzeTool) shouldUseSmallModelDocExtract() bool {
@@ -313,13 +423,13 @@ func (t *AnalyzeTool) shouldUseSmallModelDocExtract() bool {
 
 // smallModelDocExtract performs a lightweight structured extraction pre-pass.
 // It returns augmented raw content for the main analysis step, or empty when skipped.
-func (t *AnalyzeTool) smallModelDocExtract(ctx context.Context, topic, rawContent, lang string) string {
+func (t *AnalyzeTool) smallModelDocExtract(ctx context.Context, topic, rawContent, lang string) analyzeDocExtractResult {
 	if !t.shouldUseSmallModelDocExtract() {
-		return ""
+		return analyzeDocExtractResult{status: "skipped", detail: analyzeLocalized(lang, "Small-model preprocessing skipped", "已跳过小模型预处理")}
 	}
 	raw := strings.TrimSpace(rawContent)
 	if len(raw) < 80 {
-		return ""
+		return analyzeDocExtractResult{status: "skipped", detail: analyzeLocalized(lang, "Source content is already concise", "原始内容已较为精简")}
 	}
 	if len(raw) > 12000 {
 		raw = raw[:12000] + "\n... (truncated)"
@@ -330,7 +440,7 @@ func (t *AnalyzeTool) smallModelDocExtract(ctx context.Context, topic, rawConten
 	stats := t.smallModelStats
 	t.mu.RUnlock()
 	if rt == nil {
-		return ""
+		return analyzeDocExtractResult{status: "skipped", detail: analyzeLocalized(lang, "Small-model runtime unavailable", "小模型运行时不可用")}
 	}
 
 	prompt := fmt.Sprintf(`Extract a concise structured workflow summary for topic "%s".
@@ -371,20 +481,20 @@ Source:
 		if stats != nil {
 			stats.RecordFallback(analyzeSmallModelFallbackReason(err))
 		}
-		return ""
+		return analyzeDocExtractResult{status: "skipped", detail: analyzeLocalized(lang, "Small-model preprocessing unavailable; continuing with the main model", "小模型预处理不可用，继续使用主模型")}
 	}
 	if resp == nil {
 		if stats != nil {
 			stats.RecordFallback(smallmodel.FallbackReasonResourceGuard)
 		}
-		return ""
+		return analyzeDocExtractResult{status: "skipped", detail: analyzeLocalized(lang, "Small-model preprocessing unavailable; continuing with the main model", "小模型预处理不可用，继续使用主模型")}
 	}
 	extracted := strings.TrimSpace(resp.Text)
 	if extracted == "" {
 		if stats != nil {
 			stats.RecordFallback(smallmodel.FallbackReasonLowConfidence)
 		}
-		return ""
+		return analyzeDocExtractResult{status: "skipped", detail: analyzeLocalized(lang, "Small-model preprocessing was not confident enough", "小模型预处理置信度不足")}
 	}
 	if len(extracted) > 6000 {
 		extracted = extracted[:6000] + "\n... (truncated)"
@@ -396,7 +506,11 @@ Source:
 	t.docExtractSuccess++
 	t.mu.Unlock()
 
-	return "=== Small-model structured extraction ===\n" + extracted + "\n\n" + rawContent
+	return analyzeDocExtractResult{
+		content: "=== Small-model structured extraction ===\n" + extracted + "\n\n" + rawContent,
+		status:  "success",
+		detail:  analyzeLocalized(lang, "Added structured preprocessing context", "已补充结构化预处理上下文"),
+	}
 }
 
 func (t *AnalyzeTool) maybeAutoRollbackDocExtract() {
@@ -494,31 +608,35 @@ func (t *AnalyzeTool) scrapeURL(ctx context.Context, browser BrowserBackend, url
 }
 
 // webSearch calls the web_search tool via executor.
-func (t *AnalyzeTool) webSearch(ctx context.Context, executor *Executor, query string) string {
+func (t *AnalyzeTool) webSearch(ctx context.Context, executor *Executor, query string) (string, int) {
 	result, err := executor.Execute(ctx, "web_search", map[string]interface{}{
 		"query":       query,
 		"max_results": 5,
 	})
 	if err != nil {
-		return ""
+		return "", 0
 	}
 
 	// Result is JSON string from WebSearchTool
 	resultStr, ok := result.(string)
 	if !ok {
-		return ""
+		return "", 0
 	}
 
 	var searchResp WebSearchResponse
 	if json.Unmarshal([]byte(resultStr), &searchResp) != nil {
-		return resultStr // return raw if can't parse
+		return resultStr, 0
 	}
 
 	var b strings.Builder
 	for _, r := range searchResp.Results {
 		fmt.Fprintf(&b, "- %s\n  %s\n  %s\n\n", r.Title, r.URL, r.Description)
 	}
-	return b.String()
+	count := searchResp.TotalCount
+	if count <= 0 {
+		count = len(searchResp.Results)
+	}
+	return b.String(), count
 }
 
 // llmExtractAndAnalyze calls LLM to extract structured data and generate insights.
@@ -566,7 +684,10 @@ Requirements:
 - Provide 3-6 prioritized recommendations
 - All text in %s`, topic, rawContent, langName)
 
-	return bridge.Chat(ctx, prompt, 8000)
+	callCtx, cancel := ensureAnalyzeLLMTimeout(ctx)
+	defer cancel()
+
+	return bridge.Chat(callCtx, prompt, 8000)
 }
 
 // llmGenerateHTML calls LLM to generate the HTML body content.
@@ -644,23 +765,35 @@ OTHER:
 6. All text content in %s
 7. Make the report visually rich — use ALL available color variants, avoid monotone sections`, topic, analysisJSON, langName)
 
-	return bridge.Chat(ctx, prompt, 12000)
+	callCtx, cancel := ensureAnalyzeLLMTimeout(ctx)
+	defer cancel()
+
+	return bridge.Chat(callCtx, prompt, 12000)
+}
+
+func ensureAnalyzeLLMTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, analyzeLLMRequestTimeout)
 }
 
 // saveReport writes the HTML to disk and returns the media URL.
-func (t *AnalyzeTool) saveReport(html, mediaDir string) string {
+func (t *AnalyzeTool) saveReport(html, mediaDir string) (string, error) {
 	if mediaDir == "" || len(html) == 0 {
-		return ""
+		return "", nil
 	}
 	dir := filepath.Join(mediaDir, "analyze")
-	_ = os.MkdirAll(dir, 0750)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return "", err
+	}
 	id := uuid.New().String()
 	filename := id + ".html"
 	path := filepath.Join(dir, filename)
 	if err := os.WriteFile(path, []byte(html), 0644); err != nil {
-		return ""
+		return "", err
 	}
-	return "/api/v1/media/analyze/" + filename
+	return "/api/v1/media/analyze/" + filename, nil
 }
 
 // langDisplayName returns a human-readable language name.
@@ -684,11 +817,122 @@ func langDisplayName(lang string) string {
 }
 
 // emitAnalyzeProgress pushes a streaming progress card.
-func emitAnalyzeProgress(ctx context.Context, stepID, stepName, status string) {
-	EmitCard(ctx, map[string]interface{}{
+func emitAnalyzeProgress(ctx context.Context, stepID, stepName, status string, extras ...map[string]interface{}) {
+	card := map[string]interface{}{
 		"type":   "analyze-progress",
 		"step":   stepID,
 		"name":   stepName,
 		"status": status,
+	}
+	if len(extras) > 0 {
+		for key, value := range extras[0] {
+			card[key] = value
+		}
+	}
+	EmitCard(ctx, card)
+}
+
+func analyzeCollectStringInputs(raw interface{}, limit int) []string {
+	items, ok := raw.([]interface{})
+	if !ok || limit <= 0 {
+		return nil
+	}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			continue
+		}
+		text = strings.TrimSpace(text)
+		if text == "" {
+			continue
+		}
+		result = append(result, text)
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result
+}
+
+func analyzeLocalized(lang, en, zh string) string {
+	if strings.HasPrefix(strings.ToLower(lang), "zh") {
+		return zh
+	}
+	return en
+}
+
+func analyzeProgressLabel(lang, key string, current, total int) string {
+	switch key {
+	case "data_collection":
+		return analyzeLocalized(lang, "Gathering data", "收集数据")
+	case "text_input":
+		return analyzeLocalized(lang, "Preparing input text", "整理输入文本")
+	case "url_fetch":
+		if current > 0 && total > 0 {
+			return analyzeLocalized(lang, fmt.Sprintf("Fetching URL %d/%d", current, total), fmt.Sprintf("抓取网页 %d/%d", current, total))
+		}
+		return analyzeLocalized(lang, "Fetching URLs", "抓取网页")
+	case "search":
+		if current > 0 && total > 0 {
+			return analyzeLocalized(lang, fmt.Sprintf("Searching web %d/%d", current, total), fmt.Sprintf("搜索资料 %d/%d", current, total))
+		}
+		return analyzeLocalized(lang, "Searching the web", "搜索资料")
+	case "doc_extract":
+		return analyzeLocalized(lang, "Structuring key points", "提炼结构化要点")
+	case "analysis":
+		return analyzeLocalized(lang, "Analyzing content", "分析内容")
+	case "report":
+		return analyzeLocalized(lang, "Generating report", "生成报告")
+	case "save_report":
+		return analyzeLocalized(lang, "Saving report", "保存报告")
+	default:
+		return key
+	}
+}
+
+func analyzeCollectionPlanDetail(lang string, stats analyzeGatherStats) string {
+	parts := make([]string, 0, 3)
+	if stats.TextSources > 0 {
+		parts = append(parts, analyzeLocalized(lang, "text input", "文本输入"))
+	}
+	if stats.URLSources > 0 {
+		parts = append(parts, analyzeLocalized(lang, fmt.Sprintf("%d URLs", stats.URLSources), fmt.Sprintf("%d 个网页", stats.URLSources)))
+	}
+	if stats.SearchSources > 0 {
+		parts = append(parts, analyzeLocalized(lang, fmt.Sprintf("%d searches", stats.SearchSources), fmt.Sprintf("%d 个搜索", stats.SearchSources)))
+	}
+	if len(parts) == 0 {
+		return analyzeLocalized(lang, "No input sources", "没有输入来源")
+	}
+	return strings.Join(parts, " · ")
+}
+
+func analyzeCollectionResultDetail(lang string, stats analyzeGatherStats) string {
+	if stats.RequestedSources == 0 {
+		return analyzeLocalized(lang, "No data collected", "未收集到数据")
+	}
+	return analyzeLocalized(lang, fmt.Sprintf("%d/%d sources ready", stats.CollectedSources, stats.RequestedSources), fmt.Sprintf("已收集 %d/%d 个来源", stats.CollectedSources, stats.RequestedSources))
+}
+
+func emitAnalyzeCollectionCard(ctx context.Context, lang string, stats analyzeGatherStats) {
+	details := []map[string]interface{}{
+		{"label": "sources", "value": fmt.Sprintf("%d/%d", stats.CollectedSources, stats.RequestedSources)},
+	}
+	if stats.URLSources > 0 {
+		details = append(details, map[string]interface{}{"label": "urls", "value": fmt.Sprintf("%d/%d", stats.URLCollected, stats.URLSources)})
+	}
+	if stats.SearchSources > 0 {
+		details = append(details, map[string]interface{}{"label": "searches", "value": fmt.Sprintf("%d/%d", stats.SearchCollected, stats.SearchSources)})
+	}
+	if stats.TextSources > 0 {
+		details = append(details, map[string]interface{}{"label": "text_chars", "value": stats.TextChars})
+	}
+	EmitCard(ctx, map[string]interface{}{
+		"type":    "result",
+		"title":   "analyze",
+		"status":  "info",
+		"message": analyzeLocalized(lang, fmt.Sprintf("Collected %d source(s)", stats.CollectedSources), fmt.Sprintf("已收集 %d 个来源", stats.CollectedSources)),
+		"details": details,
 	})
 }

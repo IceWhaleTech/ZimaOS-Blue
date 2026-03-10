@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardMap } from '@/types/typeless'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardMap
@@ -61,7 +64,7 @@ function openInMaps() {
         class="flex-shrink-0 px-3 py-2 text-sm font-medium text-gray-900 dark:text-white dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-lg transition-colors"
         @click="openInMaps"
       >
-        Open in Maps
+        {{ t('mapCard.openInMaps', 'Open in Maps') }}
       </button>
     </div>
   </div>

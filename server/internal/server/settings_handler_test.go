@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
@@ -68,6 +67,27 @@ func TestGetMemoryRecallMode_InvalidStoredValueFallback(t *testing.T) {
 	h := NewSettingsHandler(store)
 	if got := h.GetMemoryRecallMode(); got != "balanced" {
 		t.Fatalf("GetMemoryRecallMode() = %q, want %q", got, "balanced")
+	}
+}
+
+func TestGetIMHistoryLimit_DefaultThree(t *testing.T) {
+	h := NewSettingsHandler(kvstore.NewMemoryStore())
+	if got := h.GetIMHistoryLimit(); got != 3 {
+		t.Fatalf("GetIMHistoryLimit() = %d, want 3", got)
+	}
+}
+
+func TestGetIMHistoryLimit_StoredNegativeClampedToZero(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	v := -9
+	if err := store.SetJSON(context.Background(), settingsKVKey, &Settings{
+		IMHistoryLimit: &v,
+	}, 0); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	h := NewSettingsHandler(store)
+	if got := h.GetIMHistoryLimit(); got != 0 {
+		t.Fatalf("GetIMHistoryLimit() = %d, want 0", got)
 	}
 }
 
@@ -197,6 +217,27 @@ func TestGetAgentAskTimeoutAction_StoredError(t *testing.T) {
 	h := NewSettingsHandler(store)
 	if got := h.GetAgentAskTimeoutAction(); got != "error" {
 		t.Fatalf("GetAgentAskTimeoutAction() = %q, want %q", got, "error")
+	}
+}
+
+func TestGetAgentAutoReflect_DefaultTrue(t *testing.T) {
+	h := NewSettingsHandler(kvstore.NewMemoryStore())
+	if !h.GetAgentAutoReflect() {
+		t.Fatal("GetAgentAutoReflect() = false, want true")
+	}
+}
+
+func TestGetAgentAutoReflect_StoredFalse(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	disabled := false
+	if err := store.SetJSON(context.Background(), settingsKVKey, &Settings{
+		AgentAutoReflect: &disabled,
+	}, 0); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	h := NewSettingsHandler(store)
+	if h.GetAgentAutoReflect() {
+		t.Fatal("GetAgentAutoReflect() = true, want false")
 	}
 }
 
@@ -350,6 +391,50 @@ func TestPatchSmallModelContextPruneToolRules_Persisted(t *testing.T) {
 	}
 	if len(deny2) != 1 || deny2[0] != "web_search" {
 		t.Fatalf("persisted deny = %v, want [web_search]", deny2)
+	}
+}
+
+func TestPatchIMHistoryLimit_PersistedAndClamped(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"im_history_limit":5}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	if err := h.Patch(c); err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := h.GetIMHistoryLimit(); got != 5 {
+		t.Fatalf("GetIMHistoryLimit() = %d, want 5", got)
+	}
+
+	h2 := NewSettingsHandler(store)
+	if got := h2.GetIMHistoryLimit(); got != 5 {
+		t.Fatalf("persisted GetIMHistoryLimit() = %d, want 5", got)
+	}
+
+	req2 := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"im_history_limit":-2}`))
+	req2.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec2 := httptest.NewRecorder()
+	c2 := e.NewContext(req2, rec2)
+	if err := h2.Patch(c2); err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec2.Code)
+	}
+	if got := h2.GetIMHistoryLimit(); got != 0 {
+		t.Fatalf("GetIMHistoryLimit() = %d, want 0", got)
+	}
+
+	h3 := NewSettingsHandler(store)
+	if got := h3.GetIMHistoryLimit(); got != 0 {
+		t.Fatalf("persisted GetIMHistoryLimit() = %d, want 0", got)
 	}
 }
 
@@ -547,92 +632,5 @@ func TestSmallModelDownloadEndpoints_NoManager(t *testing.T) {
 	}
 	if cancelRec.Code != http.StatusBadRequest {
 		t.Fatalf("cancel status = %d, want 400", cancelRec.Code)
-	}
-}
-
-func TestSoulProposalLifecycleAndPersistence(t *testing.T) {
-	store := kvstore.NewMemoryStore()
-	h := NewSettingsHandler(store)
-
-	first, err := h.AddSoulProposal("First", "First content", "unit")
-	if err != nil {
-		t.Fatalf("AddSoulProposal first failed: %v", err)
-	}
-	second, err := h.AddSoulProposal("Second", "Second content", "unit")
-	if err != nil {
-		t.Fatalf("AddSoulProposal second failed: %v", err)
-	}
-	// Force deterministic sort order for list assertions.
-	h.mu.Lock()
-	h.soulProposals[first.ID].CreatedAt = time.Now().UTC().Add(-1 * time.Hour)
-	h.soulProposals[second.ID].CreatedAt = time.Now().UTC()
-	if err := h.saveSoulProposalsLocked(); err != nil {
-		h.mu.Unlock()
-		t.Fatalf("saveSoulProposalsLocked failed: %v", err)
-	}
-	h.mu.Unlock()
-
-	e := echo.New()
-	listReq := httptest.NewRequest(http.MethodGet, "/api/settings/soul/proposals", nil)
-	listRec := httptest.NewRecorder()
-	listCtx := e.NewContext(listReq, listRec)
-	if err := h.ListSoulProposals(listCtx); err != nil {
-		t.Fatalf("ListSoulProposals failed: %v", err)
-	}
-	if listRec.Code != http.StatusOK {
-		t.Fatalf("list status = %d, want 200", listRec.Code)
-	}
-	var listResp struct {
-		Proposals []SoulProposal `json:"proposals"`
-	}
-	if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil {
-		t.Fatalf("decode proposals list: %v", err)
-	}
-	if len(listResp.Proposals) != 2 {
-		t.Fatalf("proposal count = %d, want 2", len(listResp.Proposals))
-	}
-	if listResp.Proposals[0].ID != second.ID {
-		t.Fatalf("expected latest proposal first, got %q want %q", listResp.Proposals[0].ID, second.ID)
-	}
-
-	approveReq := httptest.NewRequest(http.MethodPost, "/api/settings/soul/proposals/"+first.ID+"/approve", nil)
-	approveRec := httptest.NewRecorder()
-	approveCtx := e.NewContext(approveReq, approveRec)
-	approveCtx.SetParamNames("id")
-	approveCtx.SetParamValues(first.ID)
-	if err := h.ApproveSoulProposal(approveCtx); err != nil {
-		t.Fatalf("ApproveSoulProposal failed: %v", err)
-	}
-	if approveRec.Code != http.StatusOK {
-		t.Fatalf("approve status = %d, want 200", approveRec.Code)
-	}
-	var approved SoulProposal
-	if err := json.Unmarshal(approveRec.Body.Bytes(), &approved); err != nil {
-		t.Fatalf("decode approved proposal: %v", err)
-	}
-	if approved.Status != "approved" || approved.ReviewedAt == nil {
-		t.Fatalf("unexpected approved proposal: %+v", approved)
-	}
-
-	h2 := NewSettingsHandler(store)
-	if got, ok := h2.soulProposals[first.ID]; !ok || got.Status != "approved" {
-		t.Fatalf("expected approved proposal persisted, got exists=%v value=%+v", ok, got)
-	}
-}
-
-func TestReviewSoulProposal_NotFound(t *testing.T) {
-	h := NewSettingsHandler(kvstore.NewMemoryStore())
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodPost, "/api/settings/soul/proposals/not-found/reject", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("not-found")
-
-	if err := h.RejectSoulProposal(c); err != nil {
-		t.Fatalf("RejectSoulProposal failed: %v", err)
-	}
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }

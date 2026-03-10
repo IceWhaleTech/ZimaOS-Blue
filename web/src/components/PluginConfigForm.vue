@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { Plugin, PluginConfigProperty } from '@/api/plugin'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   plugin: Plugin
@@ -154,7 +157,7 @@ function handleSubmit() {
             class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
             @change="updateField(key, ($event.target as HTMLSelectElement).value)"
           >
-            <option value="" disabled>Select an option</option>
+            <option value="" disabled>{{ t('common.selectOption', 'Select an option') }}</option>
             <option v-for="opt in prop.enum" :key="String(opt)" :value="opt">
               {{ opt }}
             </option>
@@ -213,7 +216,7 @@ function handleSubmit() {
                   d="M12 4v16m8-8H4"
                 />
               </svg>
-              Add item
+              {{ t('common.addItem', 'Add item') }}
             </button>
           </div>
 
@@ -229,7 +232,7 @@ function handleSubmit() {
       </template>
 
       <div v-else class="text-gray-500 dark:text-gray-400 text-center py-4">
-        This plugin has no configurable options.
+        {{ t('plugins.configForm.empty', 'This plugin has no configurable options.') }}
       </div>
 
       <!-- Actions -->
@@ -239,14 +242,14 @@ function handleSubmit() {
           :disabled="loading"
           class="flex-1 px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors disabled:opacity-50"
         >
-          {{ loading ? 'Saving...' : 'Save Configuration' }}
+          {{ loading ? t('common.saving', 'Saving...') : t('plugins.configForm.save', 'Save Configuration') }}
         </button>
         <button
           type="button"
           class="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-white rounded-lg transition-colors"
           @click="emit('cancel')"
         >
-          Cancel
+          {{ t('common.cancel', 'Cancel') }}
         </button>
       </div>
     </form>

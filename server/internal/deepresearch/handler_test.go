@@ -200,3 +200,85 @@ func TestHandlerStreamEventsIncludesRetryAndEventID(t *testing.T) {
 		t.Fatalf("expected event id line in SSE stream, body=%q", body)
 	}
 }
+
+func TestHandlerStreamEventsIncludesDeepResearchLoopEvents(t *testing.T) {
+	release := make(chan struct{})
+	svc := NewService(&mockPlanner{
+		plan: func(query string, mode Mode, lang string) []Task {
+			return []Task{{
+				ID:       "task_1",
+				Question: "topic overview",
+				Priority: 1,
+				Depth:    1,
+				Status:   "pending",
+				Axis:     "official",
+			}}
+		},
+	}, &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			if strings.Contains(strings.ToLower(query), "official") || strings.Contains(query, "primary source") {
+				return []SearchHit{{Title: "Official docs", URL: "https://docs.example.com/official", Description: "official documentation"}}, nil
+			}
+			return []SearchHit{{Title: "Blog post", URL: "https://blog.example.com/post", Description: "analysis"}}, nil
+		},
+	})
+	handler := NewHandler(svc)
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:  "topic",
+		Mode:   ModeStandard,
+		UserID: "u1",
+	})
+	if err != nil {
+		t.Fatalf("create job failed: %v", err)
+	}
+
+	e := echo.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/deep-research/jobs/"+job.ID+"/events", nil).WithContext(ctx)
+	req = withUserClaims(req, "u1")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(job.ID)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- handler.StreamEvents(c)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	_ = waitForTerminalJob(t, svc, job.ID, 3*time.Second)
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("StreamEvents failed: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for StreamEvents to exit")
+	}
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	for _, eventType := range []string{"verification_completed", "gap_detected", "followup_planned", "loop_stopped", "job_completed"} {
+		if !strings.Contains(body, "event: "+eventType) {
+			t.Fatalf("expected %s in SSE stream, body=%q", eventType, body)
+		}
+	}
+	for _, snippet := range []string{"\"iteration\":1", "\"follow_up_query\":", "\"latest_action\":\"loop_stopped\"", "\"stop_reason\":"} {
+		if !strings.Contains(body, snippet) {
+			t.Fatalf("expected %s in SSE stream, body=%q", snippet, body)
+		}
+	}
+}

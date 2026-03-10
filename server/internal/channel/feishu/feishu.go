@@ -84,6 +84,15 @@ func New(cfg channel.FeishuConfig, logger *zap.Logger) *Channel {
 func (c *Channel) Name() string { return "feishu" }
 func (c *Channel) Type() string { return "feishu" }
 
+func (c *Channel) OutboundCapabilities() channel.OutboundCapabilities {
+	return channel.OutboundCapabilities{
+		MarkdownMode:              channel.OutboundMarkdownModePreserveWhole,
+		SupportsMarkdownFormat:    true,
+		AutoPromoteMarkdownReport: true,
+		SuppressHeartbeatText:     true,
+	}
+}
+
 func (c *Channel) SetMessageHandler(handler MessageHandler)             { c.messageHandler = handler }
 func (c *Channel) SetSessionManager(manager *channel.BotSessionManager) { c.sessionManager = manager }
 
@@ -290,6 +299,7 @@ func (c *Channel) onMessageReceive(ctx context.Context, eventData json.RawMessag
 				return
 			}
 			if response == "" {
+				c.removeTypingReaction(c.ctx, messageID)
 				return
 			}
 			if err := c.SendText(c.ctx, chatID, response, messageID); err != nil {
@@ -366,7 +376,7 @@ func (c *Channel) onBotP2pChatEntered(ctx context.Context, eventData json.RawMes
 
 func (c *Channel) SendText(ctx context.Context, chatID string, text string, replyToID string) error {
 	// Humanize: strip markdown formatting for IM readability
-	text, _ = humanizer.HumanizeForChannel(text, "feishu")
+	text, _ = humanizer.HumanizeForPreset(text, "")
 	content, _ := json.Marshal(map[string]string{"text": text})
 	receiveIDType := "chat_id"
 	if strings.HasPrefix(chatID, "ou_") {

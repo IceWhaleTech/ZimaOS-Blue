@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"go.uber.org/zap"
@@ -13,6 +14,8 @@ type mockSkillFallbackExecutor struct {
 	lastSkillID string
 	lastInput   map[string]any
 	lastUserID  string
+	hasDeadline bool
+	timeLeft    time.Duration
 	result      map[string]string
 	err         error
 }
@@ -21,6 +24,13 @@ func (m *mockSkillFallbackExecutor) Execute(ctx context.Context, skillID string,
 	m.lastSkillID = skillID
 	m.lastInput = input
 	m.lastUserID = skill.GetUserID(ctx)
+	if deadline, ok := ctx.Deadline(); ok {
+		m.hasDeadline = true
+		m.timeLeft = time.Until(deadline)
+	} else {
+		m.hasDeadline = false
+		m.timeLeft = 0
+	}
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -28,6 +38,29 @@ func (m *mockSkillFallbackExecutor) Execute(ctx context.Context, skillID string,
 		return m.result, nil
 	}
 	return map[string]string{"ok": "1"}, nil
+}
+
+func TestRegisterSkillFallback_AnalyzeUsesLongerTimeout(t *testing.T) {
+	exec := &mockSkillFallbackExecutor{result: map[string]string{"status": "ok"}}
+	conn, cleanup := setupSkillFallbackServer(t, exec)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{
+		Cmd: "analyze",
+		Params: map[string]string{
+			"topic": "homelab",
+			"text":  "sample",
+		},
+	})
+	if resp.Status != "ok" {
+		t.Fatalf("status=%q error=%q", resp.Status, resp.Error)
+	}
+	if !exec.hasDeadline {
+		t.Fatal("expected analyze fallback to apply deadline")
+	}
+	if exec.timeLeft < analyzeSkillFallbackTimeout-10*time.Second {
+		t.Fatalf("analyze timeout too short: %s", exec.timeLeft)
+	}
 }
 
 func setupSkillFallbackServer(t *testing.T, executor SkillExecutor) (net.Conn, func()) {

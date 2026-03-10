@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { isFullscreen, fullscreenContent } from '@/composables/useFullscreen'
+
+const { t } = useI18n()
 
 const copied = ref(false)
 const viewMode = ref<'unified' | 'split'>('unified')
@@ -49,7 +52,7 @@ async function copyContent() {
 
   let textToCopy = ''
   if (fullscreenContent.value.type === 'diff') {
-    textToCopy = `--- ${fullscreenContent.value.oldLabel || 'Original'}\n+++ ${fullscreenContent.value.newLabel || 'Modified'}\n\n${fullscreenContent.value.newCode || ''}`
+    textToCopy = `--- ${fullscreenContent.value.oldLabel || t('diffCard.original', 'Original')}\n+++ ${fullscreenContent.value.newLabel || t('diffCard.modified', 'Modified')}\n\n${fullscreenContent.value.newCode || ''}`
   } else {
     textToCopy = fullscreenContent.value.content
   }
@@ -230,14 +233,14 @@ const languageDisplay = computed(() => {
                 :class="viewMode === 'unified' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:bg-slate-700/40'"
                 @click="viewMode = 'unified'"
               >
-                Unified
+                {{ t('diffCard.unified', 'Unified') }}
               </button>
               <button
                 class="px-3 py-1.5 text-sm font-medium transition-colors"
                 :class="viewMode === 'split' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:bg-slate-700/40'"
                 @click="viewMode = 'split'"
               >
-                Split
+                {{ t('diffCard.split', 'Split') }}
               </button>
             </div>
 
@@ -252,7 +255,7 @@ const languageDisplay = computed(() => {
               <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
               </svg>
-              {{ copied ? 'Copied!' : 'Copy' }}
+              {{ copied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy') }}
             </button>
 
             <!-- Close button -->
@@ -270,10 +273,10 @@ const languageDisplay = computed(() => {
         <!-- Labels for diff -->
         <div v-if="fullscreenContent.type === 'diff' && (fullscreenContent.oldLabel || fullscreenContent.newLabel)" class="flex border-b border-slate-700/60 text-sm">
           <div v-if="viewMode === 'split'" class="flex-1 px-6 py-2 bg-red-900/20 text-red-300 font-medium">
-            {{ fullscreenContent.oldLabel || 'Original' }}
+            {{ fullscreenContent.oldLabel || t('diffCard.original', 'Original') }}
           </div>
           <div v-if="viewMode === 'split'" class="flex-1 px-6 py-2 bg-green-900/20 text-green-300 font-medium border-l border-slate-700/60">
-            {{ fullscreenContent.newLabel || 'Modified' }}
+            {{ fullscreenContent.newLabel || t('diffCard.modified', 'Modified') }}
           </div>
         </div>
 
@@ -331,7 +334,11 @@ const languageDisplay = computed(() => {
 
         <!-- Footer hint -->
         <div class="px-6 py-2 bg-slate-900/95 border-t border-slate-700/60 text-center">
-          <span class="text-xs text-slate-300">Press <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-600 text-slate-100">Esc</kbd> or double-click to exit fullscreen</span>
+          <i18n-t keypath="fullscreenModal.exitHint" scope="global" tag="span" class="text-xs text-slate-300">
+            <template #key>
+              <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-600 text-slate-100">Esc</kbd>
+            </template>
+          </i18n-t>
         </div>
       </div>
     </Transition>

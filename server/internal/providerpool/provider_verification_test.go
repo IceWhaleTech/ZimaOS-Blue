@@ -86,18 +86,31 @@ func TestBuildProviderVerificationURLs(t *testing.T) {
 }
 
 func TestVerifyProviderCandidate_LocalhostBaseURLAndAPIKey(t *testing.T) {
-	var verifyAuthHeaders []string
+	type seenHeaders struct {
+		Host             string
+		Authorization    string
+		XAPIKey          string
+		AnthropicVersion string
+	}
+	verifyHeaders := map[string]seenHeaders{}
 	var verifyHosts []string
 	var probeHosts []string
 
 	restoreVerify := installProviderVerifyTransport(func(r *http.Request) (int, string) {
 		verifyHosts = append(verifyHosts, r.URL.Host)
-		verifyAuthHeaders = append(verifyAuthHeaders, r.Header.Get("Authorization"))
+		verifyHeaders[r.URL.Path] = seenHeaders{
+			Host:             r.URL.Host,
+			Authorization:    r.Header.Get("Authorization"),
+			XAPIKey:          r.Header.Get("x-api-key"),
+			AnthropicVersion: r.Header.Get("anthropic-version"),
+		}
 		switch r.URL.Path {
 		case "/v1/models":
 			return http.StatusOK, `{"data":[{"id":"llama3.1"}]}`
 		case "/v1/chat/completions":
 			return http.StatusOK, `{"choices":[{"message":{"content":"pong"}}]}`
+		case "/v1/messages":
+			return http.StatusUnauthorized, `{"error":{"message":"auth checked"}}`
 		case "/v1/responses":
 			return http.StatusNotFound, `{"error":"not found"}`
 		case "/responses":
@@ -115,6 +128,8 @@ func TestVerifyProviderCandidate_LocalhostBaseURLAndAPIKey(t *testing.T) {
 			return http.StatusBadRequest, `{"error":"probe"}`
 		case "/v1/responses":
 			return http.StatusNotFound, `{"error":"not found"}`
+		case "/v1/messages":
+			return http.StatusUnauthorized, `{"error":"probe"}`
 		default:
 			return http.StatusNotFound, `{}`
 		}
@@ -149,10 +164,21 @@ func TestVerifyProviderCandidate_LocalhostBaseURLAndAPIKey(t *testing.T) {
 			t.Fatalf("probe request host = %q, want %q", host, "127.0.0.1:11434")
 		}
 	}
-	for _, auth := range verifyAuthHeaders {
-		if auth != "Bearer local-dev-key" {
-			t.Fatalf("Authorization header = %q, want %q", auth, "Bearer local-dev-key")
+	for _, endpoint := range []string{"/v1/models", "/v1/chat/completions", "/v1/responses", "/responses"} {
+		got := verifyHeaders[endpoint]
+		if got.Authorization != "Bearer local-dev-key" {
+			t.Fatalf("%s Authorization = %q, want %q", endpoint, got.Authorization, "Bearer local-dev-key")
 		}
+	}
+	anthropic := verifyHeaders["/v1/messages"]
+	if anthropic.XAPIKey != "local-dev-key" {
+		t.Fatalf("anthropic x-api-key = %q, want %q", anthropic.XAPIKey, "local-dev-key")
+	}
+	if anthropic.Authorization != "" {
+		t.Fatalf("anthropic Authorization = %q, want empty", anthropic.Authorization)
+	}
+	if anthropic.AnthropicVersion != "2023-06-01" {
+		t.Fatalf("anthropic-version = %q, want %q", anthropic.AnthropicVersion, "2023-06-01")
 	}
 }
 
@@ -215,6 +241,63 @@ func TestVerifyProviderCandidate_ResponsesOnly(t *testing.T) {
 	}
 	if got := result.Probes["responses_v1"].StatusCode; got != http.StatusOK {
 		t.Fatalf("responses_v1.status = %d, want 200", got)
+	}
+}
+
+func TestVerifyProviderCandidate_IgnoresResponsesWhenIntegrationDisabled(t *testing.T) {
+	SetResponsesIntegrationEnabled(false)
+	defer SetResponsesIntegrationEnabled(true)
+
+	restoreVerify := installProviderVerifyTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/models":
+			return http.StatusOK, `{"data":[{"id":"gpt-4o-mini"}]}`
+		case "/v1/chat/completions":
+			return http.StatusOK, `{"id":"chatcmpl-test"}`
+		case "/v1/responses", "/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreVerify()
+
+	restoreProbe := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			return http.StatusOK, `{"id":"chatcmpl-probe"}`
+		case "/v1/responses", "/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreProbe()
+
+	result, err := verifyProviderCandidate(context.Background(), providerVerificationRequest{
+		BaseURL: "https://relay.example.com",
+		APIKey:  "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("verifyProviderCandidate returned error: %v", err)
+	}
+	if result.DetectedFormat != APIFormatOpenAI {
+		t.Fatalf("DetectedFormat = %q, want %q", result.DetectedFormat, APIFormatOpenAI)
+	}
+	if result.RecommendedAPIFormat != APIFormatOpenAI {
+		t.Fatalf("RecommendedAPIFormat = %q, want %q", result.RecommendedAPIFormat, APIFormatOpenAI)
+	}
+	if result.RecommendedBaseURL != "https://relay.example.com" {
+		t.Fatalf("RecommendedBaseURL = %q, want %q", result.RecommendedBaseURL, "https://relay.example.com")
+	}
+	if result.ResponsesOnly {
+		t.Fatal("ResponsesOnly = true, want false")
+	}
+	if _, ok := result.Probes["responses_v1"]; ok {
+		t.Fatal("responses_v1 probe should be omitted when integration is disabled")
+	}
+	if _, ok := result.Probes["responses_plain"]; ok {
+		t.Fatal("responses_plain probe should be omitted when integration is disabled")
 	}
 }
 
@@ -706,9 +789,12 @@ func TestVerifyProviderCandidate_OmitsModelWhenNoModelDiscovered(t *testing.T) {
 
 func TestApplyProviderVerificationRecommendation(t *testing.T) {
 	provider := &Provider{
-		ID:        "custom",
-		BaseURL:   "https://relay.example.com",
-		APIFormat: APIFormatOpenAI,
+		ID:               "custom",
+		Type:             ProviderTypeCustom,
+		BaseURL:          "https://relay.example.com/v1/responses",
+		DetectedEndpoint: "https://relay.example.com/v1/responses",
+		APIFormat:        APIFormatOpenAI,
+		DetectedFormat:   APIFormatResponses,
 	}
 	result := &providerVerificationResult{
 		RecommendedAPIFormat: APIFormatResponses,
@@ -718,19 +804,58 @@ func TestApplyProviderVerificationRecommendation(t *testing.T) {
 
 	changed := applyProviderVerificationRecommendation(provider, result, now)
 	if !changed {
-		t.Fatal("expected recommendation to change provider")
+		t.Fatal("expected recommendation to normalize custom provider")
 	}
-	if provider.APIFormat != APIFormatResponses {
-		t.Fatalf("APIFormat = %q, want %q", provider.APIFormat, APIFormatResponses)
+	if provider.APIFormat != APIFormatOpenAI {
+		t.Fatalf("APIFormat = %q, want %q", provider.APIFormat, APIFormatOpenAI)
 	}
-	if provider.DetectedFormat != APIFormatResponses {
-		t.Fatalf("DetectedFormat = %q, want %q", provider.DetectedFormat, APIFormatResponses)
+	if provider.DetectedFormat != "" {
+		t.Fatalf("DetectedFormat = %q, want empty", provider.DetectedFormat)
 	}
-	if provider.BaseURL != "https://relay.example.com/v1/responses" {
-		t.Fatalf("BaseURL = %q, want %q", provider.BaseURL, "https://relay.example.com/v1/responses")
+	if provider.DetectedEndpoint != "" {
+		t.Fatalf("DetectedEndpoint = %q, want empty", provider.DetectedEndpoint)
 	}
-	if !provider.DetectedAt.Equal(now) {
-		t.Fatalf("DetectedAt = %v, want %v", provider.DetectedAt, now)
+	if provider.BaseURL != "https://relay.example.com" {
+		t.Fatalf("BaseURL = %q, want %q", provider.BaseURL, "https://relay.example.com")
+	}
+	if !provider.UpdatedAt.Equal(now) {
+		t.Fatalf("UpdatedAt = %v, want %v", provider.UpdatedAt, now)
+	}
+}
+
+func TestApplyProviderVerificationRecommendation_UpdatesCustomProviderFormat(t *testing.T) {
+	provider := &Provider{
+		ID:               "custom-openai-relay",
+		Type:             ProviderTypeCustom,
+		BaseURL:          "https://relay.example.com/v1/responses",
+		DetectedEndpoint: "https://relay.example.com/v1/responses",
+		APIFormat:        APIFormatResponses,
+		DetectedFormat:   APIFormatResponses,
+	}
+	result := &providerVerificationResult{
+		RecommendedAPIFormat: APIFormatOpenAI,
+		RecommendedBaseURL:   "https://relay.example.com",
+	}
+	now := time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC)
+
+	changed := applyProviderVerificationRecommendation(provider, result, now)
+	if !changed {
+		t.Fatal("expected recommendation to update custom relay provider")
+	}
+	if provider.APIFormat != APIFormatOpenAI {
+		t.Fatalf("APIFormat = %q, want %q", provider.APIFormat, APIFormatOpenAI)
+	}
+	if provider.BaseURL != "https://relay.example.com" {
+		t.Fatalf("BaseURL = %q, want %q", provider.BaseURL, "https://relay.example.com")
+	}
+	if provider.DetectedEndpoint != "" {
+		t.Fatalf("DetectedEndpoint = %q, want empty", provider.DetectedEndpoint)
+	}
+	if provider.DetectedFormat != "" {
+		t.Fatalf("DetectedFormat = %q, want empty", provider.DetectedFormat)
+	}
+	if !provider.UpdatedAt.Equal(now) {
+		t.Fatalf("UpdatedAt = %v, want %v", provider.UpdatedAt, now)
 	}
 }
 
@@ -801,6 +926,8 @@ func TestHandlerVerifyProviderByID_Apply(t *testing.T) {
 			return http.StatusOK, `{"data":[{"id":"gpt-5.3-codex"}]}`
 		case "/v1/chat/completions":
 			return http.StatusBadRequest, `{"error":{"message":"Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses."}}`
+		case "/v1/messages":
+			return http.StatusUnauthorized, `{"error":{"message":"auth checked"}}`
 		case "/v1/responses":
 			return http.StatusOK, `{"status":"completed"}`
 		case "/responses":
@@ -815,6 +942,8 @@ func TestHandlerVerifyProviderByID_Apply(t *testing.T) {
 		switch r.URL.Path {
 		case "/v1/chat/completions":
 			return http.StatusBadRequest, `{"error":{"message":"Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses."}}`
+		case "/v1/messages":
+			return http.StatusUnauthorized, `{"error":"probe"}`
 		case "/v1/responses":
 			return http.StatusBadRequest, `{"error":"invalid_request"}`
 		default:
@@ -825,12 +954,14 @@ func TestHandlerVerifyProviderByID_Apply(t *testing.T) {
 
 	h := newProviderVerificationTestHandler(t)
 	provider := &Provider{
-		ID:        "custom-verify",
-		Name:      "Custom Verify",
-		Type:      ProviderTypeCustom,
-		Enabled:   true,
-		BaseURL:   "https://relay.example.com",
-		APIFormat: APIFormatOpenAI,
+		ID:               "custom-verify",
+		Name:             "Custom Verify",
+		Type:             ProviderTypeCustom,
+		Enabled:          true,
+		BaseURL:          "https://relay.example.com/v1/responses",
+		DetectedEndpoint: "https://relay.example.com/v1/responses",
+		APIFormat:        APIFormatOpenAI,
+		DetectedFormat:   APIFormatResponses,
 		APIKeys: []APIKey{
 			{ID: "k1", Key: "sk-test", Enabled: true},
 		},
@@ -854,15 +985,31 @@ func TestHandlerVerifyProviderByID_Apply(t *testing.T) {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
 
+	var out struct {
+		Applied bool `json:"applied"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if !out.Applied {
+		t.Fatal("expected apply=true to normalize custom relay provider")
+	}
+
 	updated, err := h.pool.Registry.Get("custom-verify")
 	if err != nil {
 		t.Fatalf("registry get failed: %v", err)
 	}
-	if updated.APIFormat != APIFormatResponses {
-		t.Fatalf("APIFormat = %q, want %q", updated.APIFormat, APIFormatResponses)
+	if updated.APIFormat != APIFormatOpenAI {
+		t.Fatalf("APIFormat = %q, want %q", updated.APIFormat, APIFormatOpenAI)
 	}
-	if updated.BaseURL != "https://relay.example.com/v1/responses" {
-		t.Fatalf("BaseURL = %q, want %q", updated.BaseURL, "https://relay.example.com/v1/responses")
+	if updated.BaseURL != "https://relay.example.com" {
+		t.Fatalf("BaseURL = %q, want %q", updated.BaseURL, "https://relay.example.com")
+	}
+	if updated.DetectedEndpoint != "" {
+		t.Fatalf("DetectedEndpoint = %q, want empty", updated.DetectedEndpoint)
+	}
+	if updated.DetectedFormat != "" {
+		t.Fatalf("DetectedFormat = %q, want empty", updated.DetectedFormat)
 	}
 }
 

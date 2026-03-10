@@ -87,8 +87,8 @@ func TestRunnerSmoke_ClarifyTimeoutError_Fails(t *testing.T) {
 	if got.Status != TaskStatusFailed {
 		t.Fatalf("status=%q, want %q", got.Status, TaskStatusFailed)
 	}
-	if got.RuntimeState != RuntimeStateAborted {
-		t.Fatalf("runtime_state=%q, want %q", got.RuntimeState, RuntimeStateAborted)
+	if got.RuntimeState != RuntimeStateDone {
+		t.Fatalf("runtime_state=%q, want %q", got.RuntimeState, RuntimeStateDone)
 	}
 	if !strings.Contains(got.Error, "clarify failed") || !strings.Contains(got.Error, "timed out") {
 		t.Fatalf("unexpected error message: %q", got.Error)
@@ -96,12 +96,12 @@ func TestRunnerSmoke_ClarifyTimeoutError_Fails(t *testing.T) {
 	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateIntake, RuntimeStateClarify) {
 		t.Fatal("expected runtime transition INTAKE -> CLARIFY")
 	}
-	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateClarify, RuntimeStateAborted) {
-		t.Fatal("expected runtime transition CLARIFY -> ABORTED")
+	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateClarify, RuntimeStateReport) {
+		t.Fatal("expected runtime transition CLARIFY -> REPORT")
 	}
 }
 
-func TestRunnerSmoke_VerifyRecoverFailure_EndsAborted(t *testing.T) {
+func TestRunnerSmoke_VerifyRecoverFailure_EndsDone(t *testing.T) {
 	store := testStore(t)
 	llmMock := &scriptedLLM{
 		calls: []scriptedLLMCall{
@@ -126,8 +126,8 @@ func TestRunnerSmoke_VerifyRecoverFailure_EndsAborted(t *testing.T) {
 	if got.Status != TaskStatusFailed {
 		t.Fatalf("status=%q, want %q", got.Status, TaskStatusFailed)
 	}
-	if got.RuntimeState != RuntimeStateAborted {
-		t.Fatalf("runtime_state=%q, want %q", got.RuntimeState, RuntimeStateAborted)
+	if got.RuntimeState != RuntimeStateDone {
+		t.Fatalf("runtime_state=%q, want %q", got.RuntimeState, RuntimeStateDone)
 	}
 
 	var verifyFailed, recoverFailed bool
@@ -148,7 +148,7 @@ func TestRunnerSmoke_VerifyRecoverFailure_EndsAborted(t *testing.T) {
 	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateVerify, RuntimeStateRecover) {
 		t.Fatal("expected runtime transition VERIFY -> RECOVER")
 	}
-	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateRecover, RuntimeStateAborted) {
-		t.Fatal("expected runtime transition RECOVER -> ABORTED")
+	if !hasRuntimeTransition(got.RuntimeAudit, RuntimeStateRecover, RuntimeStateReport) {
+		t.Fatal("expected runtime transition RECOVER -> REPORT")
 	}
 }

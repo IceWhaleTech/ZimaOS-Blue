@@ -307,12 +307,12 @@ func (s *Store) ListConversations(ctx context.Context, limit, offset int, userID
 
 	if len(userID) > 0 && userID[0] != "" {
 		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?",
+			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC, created_at DESC, rowid DESC LIMIT ? OFFSET ?",
 			userID[0], limit, offset,
 		)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?",
+			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations ORDER BY pinned DESC, updated_at DESC, created_at DESC, rowid DESC LIMIT ? OFFSET ?",
 			limit, offset,
 		)
 	}
@@ -398,12 +398,12 @@ func (s *Store) SearchConversations(ctx context.Context, query string, limit int
 
 	if len(userID) > 0 && userID[0] != "" {
 		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE user_id = ? AND title LIKE ? ORDER BY pinned DESC, updated_at DESC LIMIT ?",
+			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE user_id = ? AND title LIKE ? ORDER BY pinned DESC, updated_at DESC, created_at DESC, rowid DESC LIMIT ?",
 			userID[0], "%"+query+"%", limit,
 		)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE title LIKE ? ORDER BY pinned DESC, updated_at DESC LIMIT ?",
+			"SELECT id, title, user_id, pinned, created_at, updated_at FROM conversations WHERE title LIKE ? ORDER BY pinned DESC, updated_at DESC, created_at DESC, rowid DESC LIMIT ?",
 			"%"+query+"%", limit,
 		)
 	}
@@ -520,7 +520,7 @@ func (s *Store) UpdateMessageContentFull(ctx context.Context, messageID, content
 // GetMessages retrieves messages for a conversation.
 func (s *Store) GetMessages(ctx context.Context, conversationID string, limit, offset int) ([]Message, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
+		"SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC LIMIT ? OFFSET ?",
 		conversationID, limit, offset,
 	)
 	if err != nil {
@@ -608,7 +608,7 @@ func (s *Store) GetLatestAssistantMessage(ctx context.Context, conversationID st
 		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, provider, model, stats, attachments, created_at
 		FROM messages
 		WHERE conversation_id = ? AND role = 'assistant'
-		ORDER BY created_at DESC
+		ORDER BY created_at DESC, rowid DESC
 		LIMIT 1`,
 		conversationID,
 	)
