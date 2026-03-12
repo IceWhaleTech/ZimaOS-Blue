@@ -31,7 +31,10 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
+	contextpackembed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack/embedded"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
+	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
@@ -65,7 +68,7 @@ import (
 )
 
 var (
-	version   = "0.10.31"
+	version   = "0.10.32"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -436,6 +439,20 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	if updatedCfg, err := cfgStore.LoadOrImport(cfg); err == nil {
 		cfg = updatedCfg
 	}
+	if cfg.Performance.Database.CheckpointInterval > 0 {
+		dbutil.StartPeriodicWALCheckpoint(
+			ctx,
+			services.DB,
+			cfg.Performance.Database.CheckpointInterval,
+			dbutil.CheckpointTruncate,
+			func(err error) {
+				zapLogger.Warn("Periodic WAL checkpoint failed", zap.Error(err))
+			},
+		)
+		zapLogger.Info("Periodic WAL checkpoint enabled", zap.Duration("interval", cfg.Performance.Database.CheckpointInterval))
+	} else {
+		zapLogger.Info("Periodic WAL checkpoint disabled")
+	}
 
 	// Register cleanup for services
 	registerCleanup(func() error {
@@ -575,7 +592,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	haHandler := homeassistant.NewHandler(haService)
 
 	// Initialize browser handler
-	browserService, _ := browser.NewService(nil)
+	browserService, _ := browser.NewService(&cfg.Browser)
 	var browserHandler *browser.Handler
 	if browserService != nil {
 		browserHandler = browser.NewHandler(browserService)
@@ -776,16 +793,34 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	ngrokTunnelMgr := ngrok.NewSDKTunnelManager(nil)
 
 	// Initialize workspace (SOUL.md, USER.md, IDENTITY.md, etc.)
-	// Defer file creation to background — not needed until chat starts
 	workspaceMgr := workspace.NewManager(filepath.Join(dataDir, "workspace"))
-	go func() {
-		if err := workspaceMgr.EnsureWorkspace(); err != nil {
-			zapLogger.Warn("Failed to initialize workspace", zap.Error(err))
-		}
-	}()
+	if err := workspaceMgr.EnsureWorkspace(); err != nil {
+		zapLogger.Warn("Failed to initialize workspace", zap.Error(err))
+	}
+	if err := workspaceMgr.ReleaseContextPacks(contextpackembed.PacksFS); err != nil {
+		zapLogger.Warn("Failed to release embedded context packs", zap.Error(err))
+	}
+	contextRegistry := contextpack.NewRegistry(workspaceMgr.ContextDir())
+	contextAnnotationStore, err := contextpack.NewAnnotationStore(filepath.Join(dataDir, "contextpacks.db"))
+	if err != nil {
+		zapLogger.Warn("Failed to initialize context annotation store", zap.Error(err))
+	}
+	if contextAnnotationStore != nil {
+		registerCleanup(func() error {
+			return contextAnnotationStore.Close()
+		})
+	}
+	contextResolver := contextpack.NewResolver(contextRegistry, contextAnnotationStore, contextpack.ResolverConfig{MaxFiles: 3, MaxTokens: 1500, SearchLimit: 5})
 
 	// Initialize claudecode handler
 	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir, configKV)
+	workspaceHandler := workspace.NewHandler(workspaceMgr)
+	workspaceHandler.SetAllowedRootsProvider(func() []string {
+		if claudeCodeHandler == nil {
+			return nil
+		}
+		return claudeCodeHandler.DirectoryWhitelistRoots()
+	})
 
 	// Set up system prompt builder
 	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{
@@ -793,6 +828,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	})
 	systemPromptBuilder.SetToolRegistry(services.ToolRegistry)
 	systemPromptBuilder.SetWorkspace(workspaceMgr)
+	systemPromptBuilder.SetContextResolver(contextResolver)
 	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
 
 	// Initialize channel config store
@@ -826,12 +862,15 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Lazy browser backend for browser tool + UI reviewer
 	var lazyBrowserSvc func() *browser.RodService
+	var lazyVisibleBrowserSvc func() *browser.RodService
 	{
 		var browserOnce sync.Once
 		var browserSvc *browser.RodService
+		headlessBrowserCfg := cfg.Browser
+		headlessBrowserCfg.Headless = true
 		lazyBrowserSvc = func() *browser.RodService {
 			browserOnce.Do(func() {
-				svc, err := browser.NewService(nil)
+				svc, err := browser.NewService(&headlessBrowserCfg)
 				if err != nil {
 					return
 				}
@@ -839,8 +878,23 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 			})
 			return browserSvc
 		}
+
+		var visibleBrowserOnce sync.Once
+		var visibleBrowserSvc *browser.RodService
+		visibleBrowserCfg := cfg.Browser
+		visibleBrowserCfg.Headless = false
+		lazyVisibleBrowserSvc = func() *browser.RodService {
+			visibleBrowserOnce.Do(func() {
+				svc, err := browser.NewService(&visibleBrowserCfg)
+				if err != nil {
+					return
+				}
+				visibleBrowserSvc = svc
+			})
+			return visibleBrowserSvc
+		}
 	}
-	browserBackend := tools.NewLazyRodBrowserBackend(lazyBrowserSvc)
+	browserBackend := tools.NewModeAwareRodBrowserBackend(lazyBrowserSvc, lazyVisibleBrowserSvc)
 	browserIPC := sockipc.NewToolBrowserIPCAdapter(browserBackend)
 	uiReviewerIPC := sockipc.NewUIReviewIPCAdapter(&tools.UIReviewerTool{})
 
@@ -973,7 +1027,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		ConfigStore:        cfgStore,
 		MemoryHandler:      memoryHandler,
 		HotReloader:        hotReloader,
-		WorkspaceHandler:   workspace.NewHandler(workspaceMgr),
+		WorkspaceHandler:   workspaceHandler,
 		SSEBroker:          sseBroker,
 		BrowserIPC:         browserIPC,
 		UIReviewerIPC:      uiReviewerIPC,

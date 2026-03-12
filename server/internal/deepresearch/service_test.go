@@ -1436,3 +1436,226 @@ done:
 		t.Fatalf("expected non-empty stop_reason, got %#v", loopStopped[0])
 	}
 }
+
+type recordedJobEvent struct {
+	userID    string
+	eventType string
+	data      map[string]interface{}
+}
+
+type recordingJobPublisher struct {
+	mu     sync.Mutex
+	events []recordedJobEvent
+}
+
+func (p *recordingJobPublisher) Publish(userID string, eventType string, data any) {
+	payload := map[string]interface{}{}
+	if src, ok := data.(map[string]interface{}); ok {
+		for k, v := range src {
+			payload[k] = v
+		}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, recordedJobEvent{
+		userID:    userID,
+		eventType: eventType,
+		data:      payload,
+	})
+}
+
+func (p *recordingJobPublisher) snapshot() []recordedJobEvent {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]recordedJobEvent, len(p.events))
+	copy(out, p.events)
+	return out
+}
+
+func waitForPublishedEvent(t *testing.T, publisher *recordingJobPublisher, eventType string, timeout time.Duration) recordedJobEvent {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		events := publisher.snapshot()
+		for _, ev := range events {
+			if ev.eventType == eventType {
+				return ev
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("timeout waiting for published event %q", eventType)
+	return recordedJobEvent{}
+}
+
+func TestServiceListJobsForUser_ActiveOnlyAndConversationID(t *testing.T) {
+	release := make(chan struct{})
+	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			if strings.Contains(query, "blocking") {
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return []SearchHit{{Title: "Doc", URL: "https://example.com/source", Description: "A"}}, nil
+		},
+	})
+
+	activeJob, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:          "blocking list jobs",
+		UserID:         "user-a",
+		TenantID:       "tenant-a",
+		ConversationID: "conv-active",
+	})
+	if err != nil {
+		t.Fatalf("create active job failed: %v", err)
+	}
+	completedJob, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:          "completed list jobs",
+		UserID:         "user-a",
+		TenantID:       "tenant-a",
+		ConversationID: "conv-complete",
+	})
+	if err != nil {
+		t.Fatalf("create completed job failed: %v", err)
+	}
+	otherUserJob, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:          "blocking other user",
+		UserID:         "user-b",
+		TenantID:       "tenant-a",
+		ConversationID: "conv-hidden",
+	})
+	if err != nil {
+		t.Fatalf("create other-user job failed: %v", err)
+	}
+
+	waitForTerminalJob(t, svc, completedJob.ID, 2*time.Second)
+
+	activeJobs, err := svc.ListJobsForUser("user-a", "tenant-a", true)
+	if err != nil {
+		t.Fatalf("ListJobsForUser active failed: %v", err)
+	}
+	if len(activeJobs) != 1 {
+		t.Fatalf("active job count = %d, want 1 (%#v)", len(activeJobs), activeJobs)
+	}
+	if activeJobs[0].JobID != activeJob.ID {
+		t.Fatalf("active job id = %q, want %q", activeJobs[0].JobID, activeJob.ID)
+	}
+	if activeJobs[0].ConversationID != "conv-active" {
+		t.Fatalf("conversation_id = %q, want %q", activeJobs[0].ConversationID, "conv-active")
+	}
+
+	allJobs, err := svc.ListJobsForUser("user-a", "tenant-a", false)
+	if err != nil {
+		t.Fatalf("ListJobsForUser all failed: %v", err)
+	}
+	if len(allJobs) != 2 {
+		t.Fatalf("all job count = %d, want 2 (%#v)", len(allJobs), allJobs)
+	}
+	for _, job := range allJobs {
+		if job.JobID == otherUserJob.ID {
+			t.Fatalf("unexpected foreign job in user listing: %#v", job)
+		}
+	}
+
+	close(release)
+	waitForTerminalJob(t, svc, activeJob.ID, 2*time.Second)
+	waitForTerminalJob(t, svc, otherUserJob.ID, 2*time.Second)
+}
+
+func TestServicePublishesGlobalJobEvents(t *testing.T) {
+	release := make(chan struct{})
+	publisher := &recordingJobPublisher{}
+	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			if strings.Contains(query, "blocking") {
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			if strings.Contains(query, "fail") {
+				return nil, errors.New("search backend failed")
+			}
+			return []SearchHit{{Title: "Doc", URL: "https://example.com/source", Description: "A"}}, nil
+		},
+	})
+	svc.SetEventPublisher(publisher)
+
+	createdJob, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:          "blocking published events",
+		UserID:         "user-events",
+		ConversationID: "conv-events",
+	})
+	if err != nil {
+		t.Fatalf("create published-events job failed: %v", err)
+	}
+	createdEvent := waitForPublishedEvent(t, publisher, "deep_research.job_created", 2*time.Second)
+	if createdEvent.userID != "user-events" {
+		t.Fatalf("created event user = %q, want %q", createdEvent.userID, "user-events")
+	}
+	if got, _ := createdEvent.data["job_id"].(string); got != createdJob.ID {
+		t.Fatalf("created event job_id = %q, want %q", got, createdJob.ID)
+	}
+	if got, _ := createdEvent.data["conversation_id"].(string); got != "conv-events" {
+		t.Fatalf("created event conversation_id = %q, want %q", got, "conv-events")
+	}
+
+	updatedEvent := waitForPublishedEvent(t, publisher, "deep_research.job_updated", 2*time.Second)
+	if got, _ := updatedEvent.data["job_id"].(string); got != createdJob.ID {
+		t.Fatalf("updated event job_id = %q, want %q", got, createdJob.ID)
+	}
+
+	close(release)
+	waitForTerminalJob(t, svc, createdJob.ID, 2*time.Second)
+	completedEvent := waitForPublishedEvent(t, publisher, "deep_research.job_completed", 2*time.Second)
+	if got, _ := completedEvent.data["status"].(JobStatus); got != JobStatusCompleted {
+		t.Fatalf("completed event status = %q, want %q", got, JobStatusCompleted)
+	}
+
+	failedJob, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:  "fail published events",
+		UserID: "user-events",
+	})
+	if err != nil {
+		t.Fatalf("create failed-events job failed: %v", err)
+	}
+	waitForTerminalJob(t, svc, failedJob.ID, 2*time.Second)
+	failedEvent := waitForPublishedEvent(t, publisher, "deep_research.job_failed", 2*time.Second)
+	if got, _ := failedEvent.data["job_id"].(string); got != failedJob.ID {
+		t.Fatalf("failed event job_id = %q, want %q", got, failedJob.ID)
+	}
+
+	cancelRelease := make(chan struct{})
+	cancelSvc := NewService(NewHeuristicPlanner(), &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			select {
+			case <-cancelRelease:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return []SearchHit{{Title: "Doc", URL: "https://example.com/source", Description: "A"}}, nil
+		},
+	})
+	cancelSvc.SetEventPublisher(publisher)
+	cancelJob, err := cancelSvc.CreateJob(context.Background(), CreateJobRequest{
+		Query:          "cancel published events",
+		UserID:         "user-events",
+		ConversationID: "conv-cancel",
+	})
+	if err != nil {
+		t.Fatalf("create cancel-events job failed: %v", err)
+	}
+	if err := cancelSvc.CancelJobForUser(cancelJob.ID, "user-events", ""); err != nil {
+		t.Fatalf("CancelJobForUser failed: %v", err)
+	}
+	waitForTerminalJob(t, cancelSvc, cancelJob.ID, 2*time.Second)
+	cancelledEvent := waitForPublishedEvent(t, publisher, "deep_research.job_cancelled", 2*time.Second)
+	if got, _ := cancelledEvent.data["job_id"].(string); got != cancelJob.ID {
+		t.Fatalf("cancelled event job_id = %q, want %q", got, cancelJob.ID)
+	}
+	close(cancelRelease)
+}

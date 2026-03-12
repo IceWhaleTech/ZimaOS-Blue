@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 export interface QuickAction {
   id: string
   label: string
+  labelKey?: string
   description?: string
+  descriptionKey?: string
   icon: string
   color?: 'primary' | 'success' | 'warning' | 'danger' | 'secondary'
   disabled?: boolean
@@ -47,6 +49,16 @@ function handleAction(action: QuickAction) {
     emit('action', action.id)
   }
 }
+
+function actionLabel(action: QuickAction): string {
+  if (action.labelKey && te(action.labelKey)) return t(action.labelKey)
+  return action.label
+}
+
+function actionDescription(action: QuickAction): string {
+  if (action.descriptionKey && te(action.descriptionKey)) return t(action.descriptionKey)
+  return action.description || ''
+}
 </script>
 
 <template>
@@ -85,9 +97,9 @@ function handleAction(action: QuickAction) {
         >
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="action.icon" />
         </svg>
-        <span class="text-sm font-medium text-center">{{ action.label }}</span>
-        <span v-if="action.description" class="text-xs opacity-75 text-center mt-1">
-          {{ action.description }}
+        <span class="text-sm font-medium text-center">{{ actionLabel(action) }}</span>
+        <span v-if="actionDescription(action)" class="text-xs opacity-75 text-center mt-1">
+          {{ actionDescription(action) }}
         </span>
       </button>
     </div>

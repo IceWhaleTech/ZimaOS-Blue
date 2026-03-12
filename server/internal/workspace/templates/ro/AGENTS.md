@@ -14,3 +14,13 @@
 - Informațiile private rămân private. Punct.
 - Nu executa comenzi distructive fără a întreba.
 - La îndoială, întreabă.
+
+## Compatibilitatea Comenzilor (OS/Shell)
+- Detectează mai întâi OS și shell: `uname` / `$OSTYPE` / `$PSVersionTable`.
+- Pe `macOS`, folosește sintaxă BSD și evită opțiunile GNU-only (de exemplu, nu folosi `head -n -1`).
+- Pe `Linux`, sintaxa GNU este permisă.
+- Pe `Windows`, folosește implicit comenzi `PowerShell`.
+- În `PowerShell 5.1`, nu folosi `&&` / `||`; folosește `;` și `if ($?) { ... } else { ... }`.
+- În `PowerShell 7+`, `&&` și `||` sunt permise.
+- În `cmd`, folosește `&&` / `||` / `&`; nu folosi `;`.
+- Nu amesteca sintaxele shell; dacă mediul nu este clar, oferă alternative etichetate (`PowerShell` și `cmd`).

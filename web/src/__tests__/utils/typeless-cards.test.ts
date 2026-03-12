@@ -63,6 +63,23 @@ describe('Typeless Card Parsing', () => {
     expect(card.warning).toContain('login wall')
   })
 
+  it('parses absolute directory paths into file cards', () => {
+    const result = parseTypelessContent('/Users/orca/Documents/GitHub/ZimaOS-Blue')
+
+    expect(result.cards).toHaveLength(1)
+    const card = result.cards[0] as any
+    expect(card.type).toBe('file')
+    expect(card.filename).toBe('ZimaOS-Blue')
+    expect(card.downloadUrl).toBe('/Users/orca/Documents/GitHub/ZimaOS-Blue')
+  })
+
+  it('does not parse /api paths as local file cards', () => {
+    const result = parseTypelessContent('/api/v1/media/analyze/r1.html')
+
+    expect(result.cards).toHaveLength(0)
+    expect(result.text).toContain('/api/v1/media/analyze/r1.html')
+  })
+
   it('parses typeless exec block correctly after function_calls block', () => {
     const content = [
       '<function_calls>',
@@ -131,6 +148,94 @@ describe('Typeless Card Parsing', () => {
     const second = parseTypelessContentIncremental(content, 'msg-streaming-stable', 'conv-stable')
 
     expect(second).toBe(first)
+  })
+
+  it('assigns a stable explicit card id to checklist cards within the same message', () => {
+    const initial = parseTypelessContent(
+      '- [ ] gather facts\n- [ ] write summary',
+      'render-msg-1',
+      'conv-1',
+    )
+    const updated = parseTypelessContent(
+      '- [x] gather facts\n- [ ] write summary',
+      'render-msg-1',
+      'conv-1',
+    )
+
+    const initialChecklist = initial.cards.find(card => card.type === 'list') as any
+    const updatedChecklist = updated.cards.find(card => card.type === 'list') as any
+
+    expect(initialChecklist).toBeTruthy()
+    expect(updatedChecklist).toBeTruthy()
+    expect(initialChecklist.variant).toBe('checklist')
+    expect(updatedChecklist.variant).toBe('checklist')
+    expect(initialChecklist.id).toBe(updatedChecklist.id)
+    expect(initialChecklist.id).toContain('todo-checklist-')
+  })
+
+  it('prefers explicit todo card ids when provided by message metadata', () => {
+    const result = parseTypelessContent(
+      '- [ ] gather facts\n- [ ] write summary',
+      'render-msg-1',
+      'conv-1',
+      'todo-checklist-msg-assistant-current',
+    )
+
+    const checklist = result.cards.find(card => card.type === 'list') as any
+
+    expect(checklist.id).toBe('todo-checklist-msg-assistant-current')
+    expect(checklist.variant).toBe('checklist')
+  })
+
+
+  it('keeps non-checklist card ids stable when an explicit todo card id arrives later', () => {
+    const content = [
+      '```ts',
+      'console.log("hello")',
+      '```',
+      '',
+      '- [ ] gather facts',
+      '- [ ] write summary',
+    ].join('\n')
+
+    const initial = parseTypelessContent(
+      content,
+      'render-msg-1',
+      'conv-1',
+    )
+    const updated = parseTypelessContent(
+      content,
+      'render-msg-1',
+      'conv-1',
+      'todo-checklist-msg-assistant-current',
+    )
+
+    const initialCode = initial.cards.find(card => card.type === 'code') as any
+    const updatedCode = updated.cards.find(card => card.type === 'code') as any
+    const updatedChecklist = updated.cards.find(card => card.type === 'list') as any
+
+    expect(initialCode).toBeTruthy()
+    expect(updatedCode).toBeTruthy()
+    expect(initialCode.id).toBe(updatedCode.id)
+    expect(updatedChecklist.id).toBe('todo-checklist-msg-assistant-current')
+  })
+
+  it('keeps checklist card ids unique across different messages with identical content', () => {
+    const first = parseTypelessContent(
+      '- [ ] gather facts\n- [ ] write summary',
+      'render-msg-1',
+      'conv-1',
+    )
+    const second = parseTypelessContent(
+      '- [ ] gather facts\n- [ ] write summary',
+      'render-msg-2',
+      'conv-1',
+    )
+
+    const firstChecklist = first.cards.find(card => card.type === 'list') as any
+    const secondChecklist = second.cards.find(card => card.type === 'list') as any
+
+    expect(firstChecklist.id).not.toBe(secondChecklist.id)
   })
 
   it('keeps streaming typeless cards alive when JSON content contains inner code fences', () => {

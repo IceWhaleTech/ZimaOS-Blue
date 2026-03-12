@@ -76,3 +76,19 @@ func TestT_AllLanguagesHaveMediaKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestT_AllLanguagesHaveWorkspaceRootEscapeError(t *testing.T) {
+	langs := []Language{
+		LangEnUS, LangEnGB, LangZhCN, LangZhTW, LangJaJP, LangKoKR,
+		LangDeDE, LangFrFR, LangEsES, LangItIT, LangPtBR, LangPtPT,
+		LangRuRU, LangPlPL, LangNlNL, LangSvSE, LangDaDK, LangNbNO,
+		LangCsCZ, LangSkSK, LangHuHU, LangRoRO, LangHrHR, LangElGR,
+		LangCaES, LangGaIE, LangMlIN,
+	}
+	for _, lang := range langs {
+		got := T(lang, MsgPathEscapesWorkspaceRoot)
+		if got == MsgPathEscapesWorkspaceRoot {
+			t.Errorf("T(%q, %q) returned key itself — missing translation", lang, MsgPathEscapesWorkspaceRoot)
+		}
+	}
+}

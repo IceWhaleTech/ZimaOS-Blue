@@ -146,25 +146,25 @@ func (t *PDFTool) executeRead(ctx context.Context, args map[string]interface{}, 
 	if err != nil {
 		return nil, err
 	}
-	includePages, _ := asCompatBool(args["include_pages"])
+	includePages, _ := compatBoolArg(args, "include_pages", "includePages")
 	disableOCR := false
-	if enabled, ok := asCompatBool(args["ocr"]); ok && !enabled {
+	if enabled, ok := compatBoolArg(args, "ocr"); ok && !enabled {
 		disableOCR = true
 	}
-	if disabled, ok := asCompatBool(args["disable_ocr"]); ok && disabled {
+	if disabled, ok := compatBoolArg(args, "disable_ocr", "disableOcr"); ok && disabled {
 		disableOCR = true
 	}
 	disableVision := false
-	if enabled, ok := asCompatBool(args["vision"]); ok && !enabled {
+	if enabled, ok := compatBoolArg(args, "vision"); ok && !enabled {
 		disableVision = true
 	}
-	if disabled, ok := asCompatBool(args["disable_vision"]); ok && disabled {
+	if disabled, ok := compatBoolArg(args, "disable_vision", "disableVision"); ok && disabled {
 		disableVision = true
 	}
 	request := pdfextract.ExtractRequest{
 		Pages:         pages,
-		MaxPages:      compatInt(args, "max_pages", "page_limit", "limit_pages"),
-		MaxChars:      compatInt(args, "max_chars", "char_limit", "limit", "max_length"),
+		MaxPages:      compatInt(args, "max_pages", "maxPages", "page_limit", "limit_pages"),
+		MaxChars:      compatInt(args, "max_chars", "maxChars", "char_limit", "limit", "max_length"),
 		IncludePages:  includePages,
 		DisableOCR:    disableOCR,
 		DisableVision: disableVision,
@@ -208,7 +208,7 @@ func (t *PDFTool) executeRead(ctx context.Context, args map[string]interface{}, 
 		combined.WriteString(strings.TrimSpace(result.Text))
 	}
 	text := strings.TrimSpace(combined.String())
-	text, charCount, clipped := clipPDFRunes(text, compatInt(args, "max_chars", "char_limit", "limit", "max_length"))
+	text, charCount, clipped := clipPDFRunes(text, compatInt(args, "max_chars", "maxChars", "char_limit", "limit", "max_length"))
 	if clipped {
 		truncated = true
 		warnings = append(warnings, fmt.Sprintf("combined multi-pdf text truncated to %d characters", charCount))
@@ -340,13 +340,17 @@ func collectPDFInputs(args map[string]interface{}) ([]string, error) {
 		}
 		return nil
 	}
-	for _, key := range []string{"path", "pdf", "file", "filepath", "source"} {
-		if err := appendValues(args[key]); err != nil {
-			return nil, err
+	for _, key := range []string{"path", "pdf", "file", "filepath", "filePath", "source"} {
+		if value, ok := compatArgValue(args, key); ok {
+			if err := appendValues(value); err != nil {
+				return nil, err
+			}
 		}
 	}
-	if err := appendValues(args["pdfs"]); err != nil {
-		return nil, err
+	if value, ok := compatArgValue(args, "pdfs"); ok {
+		if err := appendValues(value); err != nil {
+			return nil, err
+		}
 	}
 	if len(refs) == 0 {
 		return nil, nil
@@ -487,7 +491,7 @@ func clipPDFRunes(text string, limit int) (string, int, bool) {
 }
 
 func pdfAction(args map[string]interface{}) string {
-	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
+	action := strings.ToLower(strings.TrimSpace(compatStringArg(args, "action", "op", "operation", "command")))
 	switch action {
 	case "", "read", "get", "show", "extract", "analyze":
 		return "read"
@@ -499,26 +503,63 @@ func pdfAction(args map[string]interface{}) string {
 }
 
 func compatInt(args map[string]interface{}, keys ...string) int {
-	for _, key := range keys {
-		if value, ok := args[key]; ok {
-			if n, ok := coerceCompatInt(value); ok {
-				return n
-			}
+	if value, ok := compatArgValue(args, keys...); ok {
+		if n, ok := coerceCompatInt(value); ok {
+			return n
 		}
 	}
 	return 0
 }
 
+func compatArgValue(args map[string]interface{}, keys ...string) (interface{}, bool) {
+	for _, key := range keys {
+		if value, ok := args[key]; ok {
+			return value, true
+		}
+	}
+	for _, containerKey := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(args[containerKey])
+		if !ok {
+			continue
+		}
+		for _, key := range keys {
+			if value, ok := nested[key]; ok {
+				return value, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func compatStringArg(args map[string]interface{}, keys ...string) string {
+	value, ok := compatArgValue(args, keys...)
+	if !ok {
+		return ""
+	}
+	if s, ok := value.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func compatBoolArg(args map[string]interface{}, keys ...string) (bool, bool) {
+	value, ok := compatArgValue(args, keys...)
+	if !ok {
+		return false, false
+	}
+	return asCompatBool(value)
+}
+
 func parsePDFPages(args map[string]interface{}) ([]int, error) {
 	collected := make([]int, 0, 8)
-	if value, ok := args["page"]; ok {
+	if value, ok := compatArgValue(args, "page"); ok {
 		page, ok := coerceCompatInt(value)
 		if !ok || page < 1 {
 			return nil, fmt.Errorf("page must be a positive integer")
 		}
 		collected = appendUniqueInt(collected, page)
 	}
-	if value, ok := args["pages"]; ok {
+	if value, ok := compatArgValue(args, "pages"); ok {
 		pages, err := parsePDFPageValue(value)
 		if err != nil {
 			return nil, err

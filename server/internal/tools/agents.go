@@ -66,8 +66,8 @@ func (t *AgentsListTool) Execute(ctx context.Context, args map[string]interface{
 	if t == nil || t.cfg == nil {
 		return map[string]interface{}{"agents": []interface{}{}, "defaults": map[string]interface{}{}}, nil
 	}
-	activeOnly, _ := asCompatBool(args["active_only"])
-	profile := strings.ToLower(strings.TrimSpace(asString(args["profile"])))
+	activeOnly, _ := compatBoolArg(args, "active_only", "activeOnly")
+	profile := strings.ToLower(strings.TrimSpace(firstCompatString(args, "profile")))
 
 	agents := make([]map[string]interface{}, 0, len(t.cfg.Agents.List))
 	for _, agent := range t.cfg.Agents.List {
@@ -104,8 +104,8 @@ func (t *SubagentsTool) Execute(ctx context.Context, args map[string]interface{}
 	if t == nil || t.cfg == nil {
 		return map[string]interface{}{"agents": []interface{}{}, "defaults": map[string]interface{}{}}, nil
 	}
-	agentID := strings.TrimSpace(firstCompatString(args, "agent_id", "id", "agent"))
-	enabledOnly, _ := asCompatBool(args["enabled_only"])
+	agentID := strings.TrimSpace(firstCompatString(args, "agent_id", "agentId", "id", "agent"))
+	enabledOnly, _ := compatBoolArg(args, "enabled_only", "enabledOnly")
 
 	agents := make([]map[string]interface{}, 0, len(t.cfg.Agents.List))
 	for _, agent := range t.cfg.Agents.List {

@@ -85,6 +85,54 @@ func TestSubagentsToolExecute(t *testing.T) {
 	}
 }
 
+func TestAgentsAndSubagentsSupportNestedCamelCaseArgs(t *testing.T) {
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentConfig{
+				Enabled:    true,
+				ToolPolicy: config.ToolPolicyConfig{Profile: "coding"},
+				Subagents:  config.AgentSubagentPolicyConfig{Enabled: true, MaxParallel: 2, MaxDepth: 1, Timeout: time.Minute},
+			},
+			List: []config.AgentConfig{
+				{ID: "worker", Enabled: true, ToolPolicy: config.ToolPolicyConfig{Profile: "coding"}},
+				{ID: "viewer", Enabled: false, ToolPolicy: config.ToolPolicyConfig{Profile: "reader"}},
+			},
+		},
+	}
+
+	agentsTool := NewAgentsListTool(cfg)
+	result, err := agentsTool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"activeOnly": true,
+			"profile":    "coding",
+		},
+	})
+	if err != nil {
+		t.Fatalf("agents Execute returned error: %v", err)
+	}
+	agentsPayload := result.(map[string]interface{})
+	agents := agentsPayload["agents"].([]map[string]interface{})
+	if len(agents) != 1 || agents[0]["id"] != "worker" {
+		t.Fatalf("unexpected filtered agents: %#v", agents)
+	}
+
+	subagentsTool := NewSubagentsTool(cfg)
+	result, err = subagentsTool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"agentId":     "worker",
+			"enabledOnly": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("subagents Execute returned error: %v", err)
+	}
+	subagentsPayload := result.(map[string]interface{})
+	subagents := subagentsPayload["agents"].([]map[string]interface{})
+	if len(subagents) != 1 || subagents[0]["id"] != "worker" {
+		t.Fatalf("unexpected filtered subagents: %#v", subagents)
+	}
+}
+
 func TestSubagentsToolExecuteAgentIDNotFound(t *testing.T) {
 	cfg := &config.Config{Agents: *config.DefaultAgentsConfig()}
 	tool := NewSubagentsTool(cfg)

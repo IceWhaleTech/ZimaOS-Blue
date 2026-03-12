@@ -1,7 +1,28 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+
+const { revealPathMock, resolveLocalFileMock, isCurrentHostLoopbackMock } = vi.hoisted(() => ({
+  revealPathMock: vi.fn(),
+  resolveLocalFileMock: vi.fn(),
+  isCurrentHostLoopbackMock: vi.fn(),
+}))
+
+vi.mock('@/api/system', () => ({
+  systemApi: {
+    revealPath: revealPathMock,
+    resolveLocalFile: resolveLocalFileMock,
+  },
+}))
+
+vi.mock('@/utils/localPath', async () => {
+  const actual = await vi.importActual<typeof import('@/utils/localPath')>('@/utils/localPath')
+  return {
+    ...actual,
+    isCurrentHostLoopback: isCurrentHostLoopbackMock,
+  }
+})
+
 import { useTauri, refreshTauriDetection } from './useTauri'
 
-// Extend Window interface for test purposes
 declare global {
   interface Window {
     __TAURI__?: Record<string, unknown>
@@ -10,16 +31,25 @@ declare global {
 
 describe('useTauri', () => {
   beforeEach(() => {
-    // Reset the module state by refreshing detection
-    // Clear any Tauri-related properties
     delete window.__TAURI_INTERNALS__
     delete window.__TAURI__
+    delete window.__BLUE_DESKTOP__
+
+    revealPathMock.mockReset()
+    revealPathMock.mockResolvedValue({ success: true })
+    resolveLocalFileMock.mockReset()
+    resolveLocalFileMock.mockResolvedValue({
+      download_url: '/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt',
+    })
+    isCurrentHostLoopbackMock.mockReset()
+    isCurrentHostLoopbackMock.mockReturnValue(true)
   })
 
   afterEach(() => {
-    // Restore window
     delete window.__TAURI_INTERNALS__
     delete window.__TAURI__
+    delete window.__BLUE_DESKTOP__
+    vi.restoreAllMocks()
   })
 
   describe('isTauri detection', () => {
@@ -30,7 +60,6 @@ describe('useTauri', () => {
     })
 
     it('should return true when __TAURI_INTERNALS__ is present (Tauri v2)', () => {
-      // Simulate Tauri v2 environment
       window.__TAURI_INTERNALS__ = {
         invoke: vi.fn(),
       }
@@ -41,20 +70,9 @@ describe('useTauri', () => {
     })
 
     it('should return true when __TAURI__ is present (Tauri v1)', () => {
-      // Simulate Tauri v1 environment
       window.__TAURI__ = {
         invoke: vi.fn(),
       }
-
-      refreshTauriDetection()
-      const { isTauri } = useTauri()
-      expect(isTauri.value).toBe(true)
-    })
-
-    it('should prefer __TAURI_INTERNALS__ over __TAURI__', () => {
-      // Both present (edge case)
-      window.__TAURI_INTERNALS__ = { invoke: vi.fn() }
-      window.__TAURI__ = { invoke: vi.fn() }
 
       refreshTauriDetection()
       const { isTauri } = useTauri()
@@ -67,41 +85,196 @@ describe('useTauri', () => {
       refreshTauriDetection()
       const { isTauri: isTauri1 } = useTauri()
       const { isTauri: isTauri2 } = useTauri()
-
-      // Should be the same ref object
       expect(isTauri1).toBe(isTauri2)
     })
   })
 
-  describe('refreshTauriDetection', () => {
-    it('should update detection when environment changes', () => {
-      // Start without Tauri
+  describe('openInBrowser', () => {
+    it('should prefer reveal_path for local absolute paths in tauri desktop runtime', async () => {
+      const invoke = vi.fn().mockResolvedValue(undefined)
+      window.__TAURI_INTERNALS__ = { invoke }
+      window.__BLUE_DESKTOP__ = true
+
       refreshTauriDetection()
-      const { isTauri } = useTauri()
-      expect(isTauri.value).toBe(false)
+      const { openInBrowser } = useTauri()
+      const ok = await openInBrowser('/tmp/report.txt')
 
-      // Simulate Tauri being injected
-      window.__TAURI_INTERNALS__ = { invoke: vi.fn() }
+      expect(ok).toBe(true)
+      expect(invoke).toHaveBeenCalledWith('reveal_path', { path: '/tmp/report.txt' })
+      expect(invoke).not.toHaveBeenCalledWith('open_url', expect.anything())
+      expect(resolveLocalFileMock).not.toHaveBeenCalled()
+    })
+
+    it('should fallback to local-file download URL when reveal fails', async () => {
+      const invoke = vi.fn().mockImplementation((cmd: string) => {
+        if (cmd === 'reveal_path') return Promise.reject(new Error('reveal failed'))
+        if (cmd === 'open_url') return Promise.resolve(undefined)
+        return Promise.reject(new Error(`unexpected command ${cmd}`))
+      })
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+      window.__TAURI_INTERNALS__ = { invoke }
+      window.__BLUE_DESKTOP__ = true
+      isCurrentHostLoopbackMock.mockReturnValue(false)
+
       refreshTauriDetection()
+      const { openInBrowser } = useTauri()
+      const ok = await openInBrowser('/tmp/report.txt')
 
-      expect(isTauri.value).toBe(true)
+      expect(ok).toBe(true)
+      expect(invoke).toHaveBeenCalledWith('reveal_path', { path: '/tmp/report.txt' })
+      expect(resolveLocalFileMock).toHaveBeenCalledWith('/tmp/report.txt')
+      expect(openSpy).toHaveBeenCalledWith('/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt', '_blank')
+      expect(invoke).not.toHaveBeenCalledWith('open_url', { url: '/tmp/report.txt' })
+    })
 
-      // Simulate Tauri being removed
-      delete window.__TAURI_INTERNALS__
+    it('should fallback to open_url when local resolve fails in tauri runtime', async () => {
+      const invoke = vi.fn().mockImplementation((cmd: string) => {
+        if (cmd === 'reveal_path') return Promise.reject(new Error('reveal failed'))
+        if (cmd === 'open_url') return Promise.resolve(undefined)
+        return Promise.reject(new Error(`unexpected command ${cmd}`))
+      })
+      resolveLocalFileMock.mockRejectedValueOnce(new Error('resolve failed'))
+      window.__TAURI_INTERNALS__ = { invoke }
+      window.__BLUE_DESKTOP__ = true
+      isCurrentHostLoopbackMock.mockReturnValue(false)
+
       refreshTauriDetection()
+      const { openInBrowser } = useTauri()
+      const ok = await openInBrowser('/tmp/report.txt')
 
-      expect(isTauri.value).toBe(false)
+      expect(ok).toBe(true)
+      expect(invoke).toHaveBeenCalledWith('open_url', { url: '/tmp/report.txt' })
+    })
+
+    it('should use reveal-path API fallback in desktop runtime when invoke fails on loopback host', async () => {
+      const invoke = vi.fn().mockRejectedValue(new Error('reveal failed'))
+      window.__TAURI_INTERNALS__ = { invoke }
+      window.__BLUE_DESKTOP__ = true
+      isCurrentHostLoopbackMock.mockReturnValue(true)
+
+      refreshTauriDetection()
+      const { openInBrowser } = useTauri()
+      const ok = await openInBrowser('/tmp/report.txt')
+
+      expect(ok).toBe(true)
+      expect(revealPathMock).toHaveBeenCalledWith('/tmp/report.txt')
+      expect(resolveLocalFileMock).not.toHaveBeenCalled()
+    })
+
+    it('should return false for local paths in non-tauri runtime when reveal and resolve both fail', async () => {
+      isCurrentHostLoopbackMock.mockReturnValue(false)
+      resolveLocalFileMock.mockRejectedValueOnce(new Error('resolve failed'))
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+      refreshTauriDetection()
+      const { openInBrowser } = useTauri()
+      const ok = await openInBrowser('/tmp/report.txt')
+
+      expect(ok).toBe(false)
+      expect(openSpy).not.toHaveBeenCalled()
+    })
+
+    it('should use reveal-path API for local paths on non-tauri loopback host', async () => {
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+      isCurrentHostLoopbackMock.mockReturnValue(true)
+
+      refreshTauriDetection()
+      const { openInBrowser } = useTauri()
+      const ok = await openInBrowser('/tmp/report.txt')
+
+      expect(ok).toBe(true)
+      expect(revealPathMock).toHaveBeenCalledWith('/tmp/report.txt')
+      expect(openSpy).not.toHaveBeenCalled()
+      expect(resolveLocalFileMock).not.toHaveBeenCalled()
+    })
+
+    it('should use local-file download fallback on non-loopback web hosts', async () => {
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+      isCurrentHostLoopbackMock.mockReturnValue(false)
+
+      refreshTauriDetection()
+      const { openInBrowser } = useTauri()
+      const ok = await openInBrowser('/tmp/report.txt')
+
+      expect(ok).toBe(true)
+      expect(revealPathMock).not.toHaveBeenCalled()
+      expect(resolveLocalFileMock).toHaveBeenCalledWith('/tmp/report.txt')
+      expect(openSpy).toHaveBeenCalledWith('/api/v1/system/local-file/content?path=%2Ftmp%2Freport.txt', '_blank')
     })
   })
 
-  describe('readonly ref', () => {
-    it('should return a readonly ref', () => {
-      refreshTauriDetection()
-      const { isTauri } = useTauri()
+  describe('revealInFileManager', () => {
+    it('should invoke reveal_path in tauri desktop runtime', async () => {
+      const invoke = vi.fn().mockResolvedValue(undefined)
+      window.__TAURI_INTERNALS__ = { invoke }
+      window.__BLUE_DESKTOP__ = true
 
-      // The ref should be readonly (attempting to set should not work in strict mode)
-      // We can verify it's a ref by checking .value exists
-      expect(typeof isTauri.value).toBe('boolean')
+      refreshTauriDetection()
+      const { revealInFileManager } = useTauri()
+      const ok = await revealInFileManager('/tmp/report.txt')
+
+      expect(ok).toBe(true)
+      expect(invoke).toHaveBeenCalledWith('reveal_path', { path: '/tmp/report.txt' })
+    })
+
+    it('should fallback to reveal-path API in desktop runtime when Tauri IPC is unavailable', async () => {
+      window.__BLUE_DESKTOP__ = true
+      isCurrentHostLoopbackMock.mockReturnValue(true)
+
+      refreshTauriDetection()
+      const { revealInFileManager } = useTauri()
+      const ok = await revealInFileManager('/tmp/report.txt')
+
+      expect(ok).toBe(true)
+      expect(revealPathMock).toHaveBeenCalledWith('/tmp/report.txt')
+    })
+
+    it('should use reveal-path API on non-tauri loopback hosts', async () => {
+      isCurrentHostLoopbackMock.mockReturnValue(true)
+      refreshTauriDetection()
+      const { revealInFileManager } = useTauri()
+      const ok = await revealInFileManager('/tmp/report.txt')
+
+      expect(ok).toBe(true)
+      expect(revealPathMock).toHaveBeenCalledWith('/tmp/report.txt')
+    })
+
+    it('should return false on non-loopback hosts outside tauri', async () => {
+      isCurrentHostLoopbackMock.mockReturnValue(false)
+      refreshTauriDetection()
+      const { revealInFileManager } = useTauri()
+      const ok = await revealInFileManager('/tmp/report.txt')
+
+      expect(ok).toBe(false)
+      expect(revealPathMock).not.toHaveBeenCalled()
+    })
+
+    it('should fallback to reveal-path API when invoke fails in desktop runtime', async () => {
+      const invoke = vi.fn().mockRejectedValue(new Error('invoke failed'))
+      window.__TAURI_INTERNALS__ = { invoke }
+      window.__BLUE_DESKTOP__ = true
+      isCurrentHostLoopbackMock.mockReturnValue(true)
+
+      refreshTauriDetection()
+      const { revealInFileManager } = useTauri()
+      const ok = await revealInFileManager('/tmp/report.txt')
+
+      expect(ok).toBe(true)
+      expect(revealPathMock).toHaveBeenCalledWith('/tmp/report.txt')
+    })
+
+    it('should return false when invoke fails and loopback fallback is unavailable', async () => {
+      const invoke = vi.fn().mockRejectedValue(new Error('invoke failed'))
+      window.__TAURI_INTERNALS__ = { invoke }
+      window.__BLUE_DESKTOP__ = true
+      isCurrentHostLoopbackMock.mockReturnValue(false)
+
+      refreshTauriDetection()
+      const { revealInFileManager } = useTauri()
+      const ok = await revealInFileManager('/tmp/report.txt')
+
+      expect(ok).toBe(false)
+      expect(revealPathMock).not.toHaveBeenCalled()
     })
   })
 })

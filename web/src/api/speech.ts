@@ -1,5 +1,6 @@
 import api from './index'
 import { authFetch } from './client'
+import { isTtsSpeechMuted } from '../utils/ttsPreferences'
 
 // ASR Model types
 export interface ASRModel {
@@ -187,6 +188,9 @@ export const speechApi = {
 
   // TTS synthesis
   synthesize: async (text: string): Promise<{ audio: string; content_type: string }> => {
+    if (isTtsSpeechMuted()) {
+      return { audio: '', content_type: 'audio/mp3' }
+    }
     const response = await authFetch('/api/v1/voice/synthesize', {
       method: 'POST',
       headers: {

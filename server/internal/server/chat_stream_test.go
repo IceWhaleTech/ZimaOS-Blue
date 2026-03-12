@@ -77,6 +77,20 @@ type continuationStage2RecoveryProxyHandler struct {
 	requestToolCounts        []int
 }
 
+// postToolImplicitCompletionRecoveryProxyHandler simulates:
+// 1) first round emits visible text, then a real tool call
+// 2) second round ends cleanly but with empty content after the tool round
+// 3) third round fails before producing chunks
+// 4) silent recovery returns only metadata/progress, with no done/content/tool call
+// 5) chat layer should treat that as an empty implicit completion and issue one more nudge
+type postToolImplicitCompletionRecoveryProxyHandler struct {
+	callCount                int
+	requestDisableCont       []bool
+	effectiveUpstreamPrevIDs []string
+	cachedPreviousResponseID string
+	lastRequestMessage       string
+}
+
 // autoContinuePlanThenCompleteProxyHandler simulates:
 // 1) first stream round outputs a plan checklist only
 // 2) auto-continue round receives injected execution nudge and returns final summary
@@ -186,6 +200,8 @@ type checklistToolRoundNoUpdateProxyHandler struct {
 
 func hasMissingNextStepsNudge(s string) bool {
 	return strings.Contains(s, "Suggested next steps") ||
+		strings.Contains(s, "If you'd like, I can help with") ||
+		strings.Contains(s, "If you'd like, I can also help with") ||
 		strings.Contains(s, "WITHOUT calling tools")
 }
 
@@ -527,7 +543,7 @@ func (h *continuationRetryThenContinueProxyHandler) ServeHTTP(w http.ResponseWri
 	default:
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_round_3","choices":[{"delta":{"content":"任务已完成。完成内容：已执行。使用方法：已验证。下一步建议：无。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_round_3","choices":[{"delta":{"content":"任务已完成。完成内容：已执行。使用方法：已验证。如果你愿意，我还可以帮你：目前无需进一步操作。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
@@ -586,10 +602,86 @@ func (h *continuationStage2RecoveryProxyHandler) ServeHTTP(w http.ResponseWriter
 	default:
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_round_3","choices":[{"delta":{"content":"任务已完成。完成内容：已执行。使用方法：已验证。下一步建议：无。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_round_3","choices":[{"delta":{"content":"任务已完成。完成内容：已执行。使用方法：已验证。如果你愿意，我还可以帮你：目前无需进一步操作。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
+		return
+	}
+}
+
+func (h *postToolImplicitCompletionRecoveryProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+	disableCont := strings.TrimSpace(r.Header.Get(proxy.DisableResponsesContinuationHeader)) == "1"
+	h.requestDisableCont = append(h.requestDisableCont, disableCont)
+	effectivePrevID := ""
+	if !disableCont {
+		effectivePrevID = h.cachedPreviousResponseID
+	}
+	h.effectiveUpstreamPrevIDs = append(h.effectiveUpstreamPrevIDs, effectivePrevID)
+
+	var body struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	for i := len(body.Messages) - 1; i >= 0; i-- {
+		if body.Messages[i].Role == string(llm.RoleUser) {
+			h.lastRequestMessage = body.Messages[i].Content
+			break
+		}
+	}
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_post_tool_implicit_completion"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	switch h.callCount {
+	case 1:
+		h.cachedPreviousResponseID = "resp_tool_round_1"
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_tool_round_1","choices":[{"delta":{"content":"先检查一下当前实现。"},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_tool_round_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_implicit_post_tool_1","type":"function","function":{"name":"noop_tool","arguments":"{\"task\":\"inspect\"}"}}]},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_tool_round_1","choices":[{"delta":{},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		return
+	case 2:
+		h.cachedPreviousResponseID = "resp_empty_followup"
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_empty_followup","choices":[{"delta":{},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		return
+	case 3:
+		http.Error(w, `{"error":{"message":"previous_response_id stale","type":"upstream_error"}}`, http.StatusBadGateway)
+		return
+	case 4:
+		h.cachedPreviousResponseID = "resp_meta_recovery"
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "event: response.created\n")
+		fmt.Fprint(w, `data: {"type":"response.created","response":{"id":"resp_meta_recovery","model":"gpt-5.3-codex-spark"}}`+"\n\n")
+		flush()
+		return
+	default:
+		h.cachedPreviousResponseID = "resp_final_summary"
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"resp_final_summary","choices":[{"delta":{"content":"工具执行完成，服务已就绪，访问地址：http://localhost:3000"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
 		return
 	}
 }
@@ -1031,7 +1123,7 @@ func (h *checklistToolRoundNoUpdateProxyHandler) ServeHTTP(w http.ResponseWriter
 		fmt.Fprintf(w, "data: %s\n\n", `{"id":"checklist_round_2","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_checklist_no_update_1","type":"function","function":{"name":"noop_tool","arguments":"{\"task\":\"inspect\"}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
 	default:
-		fmt.Fprintf(w, "data: %s\n\n", `{"id":"checklist_round_3","choices":[{"delta":{"content":"任务已完成。完成内容：已执行并验证。使用方法：查看输出结果。下一步建议：1. 无需进一步操作。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"checklist_round_3","choices":[{"delta":{"content":"任务已完成。完成内容：已执行并验证。使用方法：查看输出结果。如果你愿意，我还可以帮你：1. 当前无需进一步操作。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
 	}
 }
@@ -2370,6 +2462,52 @@ func TestStreamMessageAutoContinue_Stage2ReducedRecoveryScopedToRecoveryOnly(t *
 	}
 }
 
+func TestStreamMessage_PostToolImplicitCompletionAfterSilentRecovery_Continues(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test Post-Tool Implicit Completion Recovery")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{def: tools.ToolDefinition{Name: "noop_tool"}, result: map[string]interface{}{"ok": true}})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &postToolImplicitCompletionRecoveryProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"continue the task","model":"gpt-5.3-codex-spark"}`)
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected graceful completion without STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if !strings.Contains(body, "http://localhost:3000") {
+		t.Fatalf("expected final recovery summary after implicit completion, body=%s", body)
+	}
+	if fakeProxy.callCount != 5 {
+		t.Fatalf("expected 5 proxy calls (tool + empty + failure + silent-recovery metadata + retry), got %d", fakeProxy.callCount)
+	}
+	if !strings.Contains(fakeProxy.lastRequestMessage, "The tools above have been executed successfully") {
+		t.Fatalf("expected final request to include post-tool continuation nudge, got %q", fakeProxy.lastRequestMessage)
+	}
+	if len(fakeProxy.requestDisableCont) < 5 {
+		t.Fatalf("expected disable-continuation capture for 5 calls, got %v", fakeProxy.requestDisableCont)
+	}
+	if fakeProxy.requestDisableCont[3] {
+		t.Fatalf("silent recovery call should keep continuation enabled, flags=%v", fakeProxy.requestDisableCont)
+	}
+}
+
 func TestStreamMessageAutoContinue_PlanThenExecuteThenSummary(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -2469,7 +2607,7 @@ func TestStreamMessageAutoContinue_MissingNextStepsSingleFollowUp(t *testing.T) 
 	fakeProxy := &autoContinueScriptedProxyHandler{
 		roundContents: []string{
 			"任务已完成。最终总结：功能可用。",
-			"任务已完成。最终总结：功能可用。\nSuggested next steps:\n1. 运行回归测试。\n2. 观察运行日志。",
+			"任务已完成。最终总结：功能可用。\nIf you'd like, I can also help with:\n1. If you'd like, I can help run a regression test pass.\n2. If you want, I can help review the runtime logs with you.",
 		},
 	}
 	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
@@ -2515,8 +2653,8 @@ func TestStreamMessageAutoContinue_MissingNextStepsSingleFollowUp(t *testing.T) 
 			break
 		}
 	}
-	if !strings.Contains(assistantContent, "Suggested next steps:") {
-		t.Fatalf("expected final assistant message to include suggested next steps, got=%q", assistantContent)
+	if !strings.Contains(assistantContent, "If you'd like, I can also help with:") {
+		t.Fatalf("expected final assistant message to include optional-help heading, got=%q", assistantContent)
 	}
 }
 
@@ -2569,13 +2707,27 @@ func TestStreamMessageAutoContinue_ChecklistRoundsCollapsedIntoSingleMessage(t *
 		t.Fatalf("failed to load persisted messages: %v", err)
 	}
 	checklistMsgs := 0
+	checklistContent := ""
 	for _, m := range messages {
-		if m.Role == "assistant" && strings.Contains(m.Content, "- [ ]") {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "- [ ]") {
 			checklistMsgs++
+			checklistContent = m.Content
+		}
+		if strings.Contains(m.Content, "Working on task 1:") && strings.Contains(m.Content, "- [ ]") {
+			t.Fatalf("expected progress narrative to be persisted without duplicating checklist, got %q", m.Content)
 		}
 	}
 	if checklistMsgs > 1 {
 		t.Fatalf("expected checklist rounds to collapse into at most one assistant message, got %d messages", checklistMsgs)
+	}
+	wantChecklist := `- [ ] 收集官方资料
+- [ ] 对比收益数据
+- [ ] 输出报告`
+	if checklistContent != wantChecklist {
+		t.Fatalf("expected canonical checklist message to stay checklist-only, got %q", checklistContent)
 	}
 }
 
@@ -3425,6 +3577,78 @@ func TestStreamMessage_SSEEvents_HaveStrictlyIncreasingSeq(t *testing.T) {
 		if strings.TrimSpace(fmt.Sprintf("%v", rawStreamID)) == "" {
 			t.Fatalf("event[%d] empty stream_id: %+v", i, event)
 		}
+	}
+}
+
+func TestStreamMessage_ContextCompactionSSEUsesSmartContextCounts(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test context compaction counts")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	seed := []memory.Message{
+		{Role: "user", Content: "Q1"},
+		{Role: "assistant", Content: "A1"},
+		{Role: "user", Content: "Q2"},
+		{Role: "assistant", Content: "A2"},
+		{Role: "user", Content: "Q3"},
+		{Role: "assistant", Content: "A3"},
+	}
+	for _, msg := range seed {
+		if _, err := store.AddMessage(context.Background(), conv.ID, msg); err != nil {
+			t.Fatalf("AddMessage: %v", err)
+		}
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	handler.SetSystemPromptBuilder(claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{}))
+	handler.summaryCache.Put(conv.ID, &ConversationSummary{Text: "Older context summary", MessageCount: len(seed) + 1})
+
+	fakeProxy := &secondTurnTimeoutProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"继续","model":"gpt-5.3-codex-spark"}`)
+	events := extractJSONSSEEvents(t, body)
+
+	var compaction map[string]interface{}
+	for _, event := range events {
+		if compacted, _ := event["compacted"].(bool); compacted {
+			compaction = event
+			break
+		}
+	}
+	if compaction == nil {
+		t.Fatalf("expected compaction SSE event, body=%s", body)
+	}
+
+	before, ok := compaction["before"].(float64)
+	if !ok {
+		t.Fatalf("compaction before is not numeric: %#v", compaction["before"])
+	}
+	after, ok := compaction["after"].(float64)
+	if !ok {
+		t.Fatalf("compaction after is not numeric: %#v", compaction["after"])
+	}
+	if int(before) != 7 {
+		t.Fatalf("before = %d, want 7", int(before))
+	}
+	if int(after) != 6 {
+		t.Fatalf("after = %d, want 6", int(after))
+	}
+
+	requestCounts := fakeProxy.RequestMsgCounts()
+	if len(requestCounts) == 0 {
+		t.Fatal("expected proxy to receive at least one request")
+	}
+	if requestCounts[0] <= int(after) {
+		t.Fatalf("expected final request to include extra prompt blocks beyond smart context, request_messages=%d after=%d", requestCounts[0], int(after))
 	}
 }
 

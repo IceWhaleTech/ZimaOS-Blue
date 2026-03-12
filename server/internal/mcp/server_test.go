@@ -650,6 +650,149 @@ func TestWorkspaceTools_CodingFlow(t *testing.T) {
 	}
 }
 
+func TestWorkspaceTools_CompatPayloadArgs(t *testing.T) {
+	root := t.TempDir()
+	s := testServer(t)
+	s.SetWorkspaceRoot(root)
+	sess := s.CreateSession()
+
+	writeResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceWriteTextTool,
+		Arguments: map[string]interface{}{
+			"payload": map[string]interface{}{
+				"filePath": "src/payload.txt",
+				"text":     "payload write",
+			},
+		},
+	})
+	writeResult := parseToolCallResult(t, writeResp)
+	if writeResult.IsError {
+		t.Fatalf("payload write tool failed: %v", writeResult.Content)
+	}
+
+	readResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceReadTextTool,
+		Arguments: map[string]interface{}{
+			"payload": map[string]interface{}{
+				"filePath": "src/payload.txt",
+			},
+		},
+	})
+	readResult := parseToolCallResult(t, readResp)
+	if readResult.IsError {
+		t.Fatalf("payload read tool failed: %v", readResult.Content)
+	}
+	readPayload := parseToolContentJSON(t, readResult.Content[0].Text)
+	if got := readPayload["content"]; got != "payload write" {
+		t.Fatalf("payload read content = %v, want payload write", got)
+	}
+}
+
+func TestWorkspaceTools_CompatNestedCamelCaseArgs(t *testing.T) {
+	root := t.TempDir()
+	s := testServer(t)
+	s.SetWorkspaceRoot(root)
+	sess := s.CreateSession()
+
+	writeResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceWriteTextTool,
+		Arguments: map[string]interface{}{
+			"input": map[string]interface{}{
+				"filePath":   "src/compat.txt",
+				"text":       "hello\nworld",
+				"createDirs": true,
+			},
+		},
+	})
+	writeResult := parseToolCallResult(t, writeResp)
+	if writeResult.IsError {
+		t.Fatalf("compat write tool failed: %v", writeResult.Content)
+	}
+
+	readResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceReadTextTool,
+		Arguments: map[string]interface{}{
+			"input": map[string]interface{}{
+				"filePath":  "src/compat.txt",
+				"startLine": 2,
+				"endLine":   2,
+			},
+		},
+	})
+	readResult := parseToolCallResult(t, readResp)
+	if readResult.IsError {
+		t.Fatalf("compat read tool failed: %v", readResult.Content)
+	}
+	readPayload := parseToolContentJSON(t, readResult.Content[0].Text)
+	if got := readPayload["content"]; got != "world" {
+		t.Fatalf("compat read content = %v, want world", got)
+	}
+
+	searchResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceSearchTextTool,
+		Arguments: map[string]interface{}{
+			"input": map[string]interface{}{
+				"search":        "hello",
+				"filePath":      "src",
+				"maxResults":    10,
+				"includeHidden": false,
+			},
+		},
+	})
+	searchResult := parseToolCallResult(t, searchResp)
+	if searchResult.IsError {
+		t.Fatalf("compat search tool failed: %v", searchResult.Content)
+	}
+	searchPayload := parseToolContentJSON(t, searchResult.Content[0].Text)
+	if int(searchPayload["count"].(float64)) < 1 {
+		t.Fatalf("expected at least 1 compat match, got %v", searchPayload["count"])
+	}
+
+	replaceResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceReplaceTextTool,
+		Arguments: map[string]interface{}{
+			"input": map[string]interface{}{
+				"filePath":   "src/compat.txt",
+				"oldText":    "world",
+				"newText":    "planet",
+				"replaceAll": false,
+			},
+		},
+	})
+	replaceResult := parseToolCallResult(t, replaceResp)
+	if replaceResult.IsError {
+		t.Fatalf("compat replace tool failed: %v", replaceResult.Content)
+	}
+
+	listResp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceListFilesTool,
+		Arguments: map[string]interface{}{
+			"input": map[string]interface{}{
+				"filePath":      "src",
+				"maxDepth":      3,
+				"includeHidden": false,
+			},
+		},
+	})
+	listResult := parseToolCallResult(t, listResp)
+	if listResult.IsError {
+		t.Fatalf("compat list tool failed: %v", listResult.Content)
+	}
+	listPayload := parseToolContentJSON(t, listResult.Content[0].Text)
+	entries, ok := listPayload["entries"].([]interface{})
+	if !ok || len(entries) == 0 {
+		t.Fatalf("expected compat list entries, got %v", listPayload["entries"])
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "src", "compat.txt"))
+	if err != nil {
+		t.Fatalf("failed to read compat file after replace: %v", err)
+	}
+	if got := string(data); got != "hello\nplanet" {
+		t.Fatalf("compat file content = %q, want %q", got, "hello\nplanet")
+	}
+}
+
 func TestWorkspaceWriteText_ContentCoercion(t *testing.T) {
 	root := t.TempDir()
 	s := testServer(t)

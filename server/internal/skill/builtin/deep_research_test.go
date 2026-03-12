@@ -99,6 +99,20 @@ func TestDeepResearchSkill_ValidateAcceptsFormatAliases(t *testing.T) {
 	}
 }
 
+func TestDeepResearchSkill_ValidateAcceptsKnowledgeBaseStyleAlias(t *testing.T) {
+	s := NewDeepResearch()
+	input := map[string]any{
+		"query":        "test deep research",
+		"report_style": "knowledge-base",
+	}
+	if err := s.Validate(input); err != nil {
+		t.Fatalf("expected knowledge base style alias to pass validation: %v", err)
+	}
+	if got, _ := input["report_style"].(string); got != "knowledge_base" {
+		t.Fatalf("report_style = %q, want %q", got, "knowledge_base")
+	}
+}
+
 func TestDeepResearchSkill_ValidateRejectsInvalidRouteMode(t *testing.T) {
 	s := NewDeepResearch()
 	err := s.Validate(map[string]any{

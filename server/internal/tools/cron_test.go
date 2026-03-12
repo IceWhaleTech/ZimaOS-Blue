@@ -208,6 +208,37 @@ func TestCronToolUpdateExecuteUsesExistingDefaults(t *testing.T) {
 	}
 }
 
+func TestCronToolSupportsNestedCamelCaseArgs(t *testing.T) {
+	svc := &stubCronService{
+		jobs: map[string]*CronJobInfo{
+			"job_1": {ID: "job_1", Name: "Health Check", Description: "old", Schedule: "0 * * * *", Payload: map[string]interface{}{"url": "https://example.com"}},
+		},
+	}
+	tool := NewCronTool(svc)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":      "update",
+			"jobId":       "job_1",
+			"description": "new",
+			"payload":     map[string]interface{}{"url": "https://example.com/new"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if updated, _ := payload["updated"].(bool); !updated {
+		t.Fatalf("expected updated=true, got %#v", payload)
+	}
+	if svc.lastUpdateID != "job_1" {
+		t.Fatalf("lastUpdateID = %q, want job_1", svc.lastUpdateID)
+	}
+	if got := svc.lastUpdatePayload["url"]; got != "https://example.com/new" {
+		t.Fatalf("payload url = %v, want https://example.com/new", got)
+	}
+}
+
 func TestCronToolExecutionsAndHandlersExecute(t *testing.T) {
 	svc := &stubCronService{
 		config:   CronConfigInfo{Enabled: true},

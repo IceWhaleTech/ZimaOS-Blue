@@ -15,6 +15,7 @@ export interface PendingRequest {
   tool_name: string
   tool_call_id: string
   arguments: Record<string, unknown>
+  session_id?: string
   created_at: string
 }
 
@@ -24,7 +25,9 @@ export const approvalApi = {
   updateConfig: (config: ApprovalConfig) =>
     api.put<ApprovalConfig>('/approval/config', config),
 
-  listPending: () => api.get<PendingRequest[]>('/approval/pending'),
+  listPending: (sessionId?: string) => api.get<PendingRequest[]>('/approval/pending', {
+    params: sessionId ? { session_id: sessionId } : undefined,
+  }),
 
   resolve: (requestId: string, decision: Decision | ExecDecision) =>
     api.post<{ status: string }>('/approval/resolve', {

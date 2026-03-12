@@ -14,3 +14,13 @@
 - Prywatne informacje pozostają prywatne. Kropka.
 - Nie wykonuj destrukcyjnych poleceń bez pytania.
 - W razie wątpliwości pytaj.
+
+## Zgodność Poleceń (OS/Shell)
+- Najpierw wykryj OS i shell: `uname` / `$OSTYPE` / `$PSVersionTable`.
+- W `macOS` używaj składni BSD i unikaj opcji GNU-only (np. nie używaj `head -n -1`).
+- W `Linux` dozwolona jest składnia GNU.
+- W `Windows` domyślnie używaj poleceń `PowerShell`.
+- W `PowerShell 5.1` nie używaj `&&` / `||`; użyj `;` oraz `if ($?) { ... } else { ... }`.
+- W `PowerShell 7+` `&&` i `||` są dozwolone.
+- W `cmd` używaj `&&` / `||` / `&`; nie używaj `;`.
+- Nie mieszaj składni shelli; jeśli środowisko jest niejasne, podaj opisane alternatywy (`PowerShell` i `cmd`).

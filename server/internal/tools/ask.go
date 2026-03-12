@@ -112,34 +112,48 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 	var questions []QuestionItem
 
 	// Check for multi-question format: questions array
-	if qArr, ok := args["questions"].([]interface{}); ok && len(qArr) > 0 {
-		for i, item := range qArr {
-			m, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			qText, _ := m["question"].(string)
-			qText = strings.TrimSpace(qText)
-			if qText == "" {
-				continue
-			}
-			qType, _ := m["type"].(string)
-			isMulti := strings.EqualFold(qType, "checkbox") || strings.EqualFold(qType, "multi")
-			qDetail := extractQuestionDetail(m)
+	if questionsRaw, ok := compatArgValue(args, "questions"); ok {
+		var qArr []interface{}
+		switch typed := questionsRaw.(type) {
+		case []interface{}:
+			qArr = typed
+		case map[string]interface{}:
+			qArr = []interface{}{typed}
+		}
+		if len(qArr) > 0 {
+			for i, item := range qArr {
+				m, ok := item.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				qText := strings.TrimSpace(firstCompatString(m, "question"))
+				if qText == "" {
+					continue
+				}
+				qType := firstCompatString(m, "type")
+				isMulti, _ := compatBoolArg(m, "multi_select", "multiSelect")
+				if strings.EqualFold(qType, "checkbox") || strings.EqualFold(qType, "multi") {
+					isMulti = true
+				}
+				qDetail := extractQuestionDetail(m)
 
-			qOpts := parseQuestionOptions(m["options"])
-			if len(qOpts) == 0 {
-				continue
-			}
+				qOpts := []QuestionOption{}
+				if raw, ok := compatArgValue(m, "options"); ok {
+					qOpts = parseQuestionOptions(raw)
+				}
+				if len(qOpts) == 0 {
+					continue
+				}
 
-			questions = append(questions, QuestionItem{
-				ID:          fmt.Sprintf("q%d", i),
-				Question:    qText,
-				Detail:      qDetail,
-				Header:      shortHeader(qText),
-				Options:     qOpts,
-				MultiSelect: isMulti,
-			})
+				questions = append(questions, QuestionItem{
+					ID:          fmt.Sprintf("q%d", i),
+					Question:    qText,
+					Detail:      qDetail,
+					Header:      shortHeader(qText),
+					Options:     qOpts,
+					MultiSelect: isMulti,
+				})
+			}
 		}
 	}
 
@@ -233,17 +247,21 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 // Supports the primary q/mq/a format and falls back to top-level legacy format.
 func parseAskArgs(args map[string]interface{}) (question string, detail string, multiSelect bool, options []QuestionOption) {
 	// Primary format: q/mq + a
-	if q, ok := args["q"].(string); ok && strings.TrimSpace(q) != "" {
-		question = strings.TrimSpace(q)
+	if q := strings.TrimSpace(firstCompatString(args, "q")); q != "" {
+		question = q
 	}
-	if mq, ok := args["mq"].(string); ok && strings.TrimSpace(mq) != "" {
-		question = strings.TrimSpace(mq)
+	if mq := strings.TrimSpace(firstCompatString(args, "mq")); mq != "" {
+		question = mq
 		multiSelect = true
 	}
 	detail = extractQuestionDetail(args)
-	options = parseQuestionOptions(args["a"])
+	if raw, ok := compatArgValue(args, "a"); ok {
+		options = parseQuestionOptions(raw)
+	}
 	if len(options) == 0 {
-		options = parseQuestionOptions(args["options"])
+		if raw, ok := compatArgValue(args, "options"); ok {
+			options = parseQuestionOptions(raw)
+		}
 	}
 	if question != "" {
 		return
@@ -257,27 +275,29 @@ func parseAskArgs(args map[string]interface{}) (question string, detail string, 
 // parseLegacyArgs handles the old nested "questions" format for backward compat.
 func parseLegacyArgs(args map[string]interface{}) (question string, detail string, multiSelect bool, options []QuestionOption) {
 	// Try "question" + "options" at top level
-	if q, ok := args["question"].(string); ok && q != "" {
-		question = strings.TrimSpace(q)
+	if q := strings.TrimSpace(firstCompatString(args, "question")); q != "" {
+		question = q
 		detail = extractQuestionDetail(args)
-		if ms, ok := args["multi_select"].(bool); ok {
+		if ms, ok := compatBoolArg(args, "multi_select", "multiSelect"); ok {
 			multiSelect = ms
 		}
 		// "type":"checkbox" compat
-		if typ, ok := args["type"].(string); ok {
-			if strings.EqualFold(typ, "checkbox") || strings.EqualFold(typ, "multi") {
-				multiSelect = true
-			}
+		if typ := firstCompatString(args, "type"); strings.EqualFold(typ, "checkbox") || strings.EqualFold(typ, "multi") {
+			multiSelect = true
 		}
-		options = parseQuestionOptions(args["options"])
+		if raw, ok := compatArgValue(args, "options"); ok {
+			options = parseQuestionOptions(raw)
+		}
 		if len(options) == 0 {
-			options = parseQuestionOptions(args["a"])
+			if raw, ok := compatArgValue(args, "a"); ok {
+				options = parseQuestionOptions(raw)
+			}
 		}
 		return
 	}
 
 	// Try "questions" array — take first item only
-	questionsRaw, ok := args["questions"]
+	questionsRaw, ok := compatArgValue(args, "questions")
 	if !ok {
 		return
 	}
@@ -290,27 +310,31 @@ func parseLegacyArgs(args map[string]interface{}) (question string, detail strin
 		b = append(append([]byte{'['}, b...), ']')
 	}
 	var items []map[string]interface{}
-	if json.Unmarshal(b, &items) != nil || len(items) == 0 {
+	if first, ok := coerceCompatMap(questionsRaw); ok {
+		items = []map[string]interface{}{first}
+	} else if json.Unmarshal(b, &items) != nil || len(items) == 0 {
 		return
 	}
 	first := items[0]
-	if q, ok := first["question"].(string); ok && strings.TrimSpace(q) != "" {
-		question = strings.TrimSpace(q)
+	if q := strings.TrimSpace(firstCompatString(first, "question")); q != "" {
+		question = q
 	}
 	detail = extractQuestionDetail(first)
-	if ms, ok := first["multi_select"].(bool); ok {
+	if ms, ok := compatBoolArg(first, "multi_select", "multiSelect"); ok {
 		multiSelect = ms
 	}
-	if typ, _ := first["type"].(string); strings.EqualFold(typ, "checkbox") || strings.EqualFold(typ, "multi") {
+	if typ := firstCompatString(first, "type"); strings.EqualFold(typ, "checkbox") || strings.EqualFold(typ, "multi") {
 		multiSelect = true
 	}
-	options = parseQuestionOptions(first["options"])
+	if raw, ok := compatArgValue(first, "options"); ok {
+		options = parseQuestionOptions(raw)
+	}
 	return
 }
 
 func extractQuestionDetail(obj map[string]interface{}) string {
 	for _, k := range []string{"detail", "details", "extra_detail", "description", "hint"} {
-		if raw, ok := obj[k]; ok {
+		if raw, ok := compatArgValue(obj, k); ok {
 			if s, ok := raw.(string); ok && strings.TrimSpace(s) != "" {
 				return strings.TrimSpace(s)
 			}

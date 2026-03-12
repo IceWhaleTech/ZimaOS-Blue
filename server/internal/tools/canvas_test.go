@@ -52,6 +52,61 @@ func TestCanvasToolListAndGet(t *testing.T) {
 	}
 }
 
+func TestCanvasToolSupportsNestedCamelCaseArgs(t *testing.T) {
+	mgr := a2ui.NewManager(zap.NewNop())
+	mgr.RegisterHandler("submit", func(ctx context.Context, action a2ui.Action, formData map[string]interface{}) (*a2ui.ActionResult, error) {
+		return &a2ui.ActionResult{Success: true, Data: formData["name"]}, nil
+	})
+	if err := mgr.CreateCanvas(&a2ui.Canvas{
+		ID:    "canvas_1",
+		Title: "One",
+		Components: []a2ui.Component{{
+			ID:   "btn1",
+			Type: a2ui.ComponentTypeButton,
+			Actions: []a2ui.Action{{
+				ID:      "act_1",
+				Type:    "click",
+				Handler: "submit",
+			}},
+		}},
+	}); err != nil {
+		t.Fatalf("CreateCanvas failed: %v", err)
+	}
+	tool := NewCanvasTool(mgr)
+
+	listed, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":        "list",
+			"includeCanvas": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	listPayload := listed.(map[string]interface{})
+	items := listPayload["items"].([]*a2ui.Canvas)
+	if len(items) != 1 || items[0].ID != "canvas_1" {
+		t.Fatalf("unexpected list items: %#v", items)
+	}
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":   "execute",
+			"canvasId": "canvas_1",
+			"actionId": "act_1",
+			"formData": map[string]interface{}{"name": "orca"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	actionResult := payload["result"].(*a2ui.ActionResult)
+	if !actionResult.Success || actionResult.Data != "orca" {
+		t.Fatalf("unexpected action result: %#v", actionResult)
+	}
+}
+
 func TestCanvasToolExecuteAction(t *testing.T) {
 	mgr := a2ui.NewManager(zap.NewNop())
 	mgr.RegisterHandler("submit", func(ctx context.Context, action a2ui.Action, formData map[string]interface{}) (*a2ui.ActionResult, error) {

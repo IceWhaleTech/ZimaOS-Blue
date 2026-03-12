@@ -17,6 +17,7 @@ import {
   clearSplitSegmentsIncrementalState,
 } from '@/utils/typeless'
 import { stripFirstLineHeading } from '@/utils/chat-message-text'
+import { stripDuplicateTodoChecklistForMessage } from '@/utils/todoChecklist'
 import type { TypelessCard, TypelessCardChoice, ParsedContent } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
 import ToolDetailCard from '@/components/ToolDetailCard.vue'
@@ -24,7 +25,7 @@ import MediaPlaceholder from '@/components/MediaPlaceholder.vue'
 import { ttsAudioManager, streamingTTSManager } from '@/api/voice'
 import { speechApi } from '@/api/speech'
 import { useNotificationStore } from '@/stores/notification'
-import { isTtsAutoPlayEnabled } from '@/utils/ttsPreferences'
+import { isTtsAutoPlayEnabled, isTtsSpeechMuted } from '@/utils/ttsPreferences'
 
 const { t, te } = useI18n()
 const providerPoolStore = useProviderPoolStore()
@@ -230,6 +231,15 @@ watch(
   () => trackStreamingState.value,
   () => {
     syncStreamingContentNow(props.message.content)
+  }
+)
+
+watch(
+  () => [trackStreamingState.value, chatStore.toolExecuting] as const,
+  ([trackStreaming, toolExecuting]) => {
+    if (trackStreaming && toolExecuting) {
+      syncStreamingContentNow(props.message.content)
+    }
   }
 )
 
@@ -749,6 +759,14 @@ const contentWithoutProcessBlocks = computed(() => {
   return stripProcessBlocks(strippedContent.value)
 })
 
+const displayContentWithoutProcessBlocks = computed(() => {
+  if (!isAssistant.value) return contentWithoutProcessBlocks.value
+  return stripDuplicateTodoChecklistForMessage(chatStore.messages, {
+    ...props.message,
+    content: contentWithoutProcessBlocks.value,
+  })
+})
+
 type AssistantTextState = { html: string; isEmpty: boolean }
 interface AssistantTextStateCacheEntry {
   text: string
@@ -784,7 +802,7 @@ const assistantTextState = computed<AssistantTextState>(() => {
     return { html: '', isEmpty: false }
   }
 
-  let text = contentWithoutProcessBlocks.value
+  let text = displayContentWithoutProcessBlocks.value
   // When tool details are hidden, strip process blocks and typeless card blocks
   if (!settingsStore.showToolDetails) {
     text = stripProcessContent(text)
@@ -852,7 +870,9 @@ const shouldHideMessage = computed(() => {
 // Parse typeless cards from assistant messages
 // Use incremental parsing for streaming messages, regular parsing for completed messages
 const parsedContent = computed(() => {
-  const content = contentWithoutProcessBlocks.value
+  const content = displayContentWithoutProcessBlocks.value
+  const renderMessageId = props.message.render_key || props.message.id
+  const explicitTodoCardId = props.message.todo_card_id?.trim()
   if (isUser.value) {
     return null
   }
@@ -868,9 +888,9 @@ const parsedContent = computed(() => {
   // Use incremental parsing for streaming to avoid re-parsing entire content
   // Pass conversation_id to ensure cache key uniqueness across conversations
   if (props.isStreaming) {
-    return parseTypelessContentIncremental(content, props.message.id, props.message.conversation_id)
+    return parseTypelessContentIncremental(content, renderMessageId, props.message.conversation_id, explicitTodoCardId)
   }
-  return parseTypelessContent(content)
+  return parseTypelessContent(content, renderMessageId, props.message.conversation_id, explicitTodoCardId)
 })
 
 type ContentSegment = {
@@ -900,8 +920,8 @@ const RESULT_CARD_TYPES = new Set([
   'rating', 'comparison', 'metric', 'link', 'audio', 'video', 'file',
   'media-generate', 'ui-review', 'deep-research', 'detection',
   'ui-review-progress', 'analyze-progress', 'browser-progress',
-  'deep-research-progress',
-  'web-fetch',
+  'deep-research-progress', 'deep-research-event',
+  'web-fetch', 'convert-task',
   'list', 'table', 'code', 'terminal', 'mermaid', 'accordion',
 ])
 
@@ -1264,7 +1284,7 @@ const segmentRenderState = computed(() => {
       convId,
       props.message.id,
       settingsStore.showToolDetails,
-      contentWithoutProcessBlocks.value,
+      displayContentWithoutProcessBlocks.value,
       interruptedIndicatorHtml.value,
     )
     cache = getSegmentRenderCache()
@@ -1541,7 +1561,7 @@ onUnmounted(() => {
   }
   stopToolExecutingStateWatch()
   stopWaitingTimerStateWatch()
-  clearIncrementalState(props.message.id, props.message.conversation_id)
+  clearIncrementalState(props.message.render_key || props.message.id, props.message.conversation_id)
   clearSplitSegmentsIncrementalState(`${props.message.conversation_id || 'unknown'}:${props.message.id}`)
   clearStreamingSegmentRenderIncrementalState(`${props.message.conversation_id || 'unknown'}:${props.message.id}`)
   stopToolTimer()
@@ -1770,6 +1790,9 @@ async function handlePlayTTS() {
     ttsError.value = t('chat.ttsNoContent')
     return
   }
+  if (isTtsSpeechMuted()) {
+    return
+  }
 
   await playTTSAudio(textContent)
 }
@@ -1778,6 +1801,7 @@ let ttsAborted = false
 
 function isAutoPlayEnabled(): boolean {
   if (props.disableAutoTTS) return false
+  if (isTtsSpeechMuted()) return false
   return isTtsAutoPlayEnabled()
 }
 
@@ -1805,7 +1829,7 @@ async function showInitProgressToast(): Promise<void> {
     const toastId = notification.info(
       t('speech.initProgress'),
       te(stageKey) ? t(stageKey) : stage,
-      { duration: 0, dismissible: true }
+      { duration: 0, dismissible: true, titleKey: 'speech.initProgress', messageKey: te(stageKey) ? stageKey : undefined }
     )
 
     // Poll until ready
@@ -1817,7 +1841,7 @@ async function showInitProgressToast(): Promise<void> {
           clearInterval(poll)
           notification.remove(toastId)
           if (s === 'ready') {
-            notification.success(t('speech.initComplete'), undefined, { duration: 2000 })
+            notification.success(t('speech.initComplete'), undefined, { duration: 2000, titleKey: 'speech.initComplete' })
           }
         }
       } catch {
@@ -1832,6 +1856,11 @@ async function showInitProgressToast(): Promise<void> {
 
 // Stream text sentence-by-sentence for fast first-audio and overlapping fetch/playback
 async function playTTSAudio(textContent: string) {
+  if (isTtsSpeechMuted()) {
+    ttsAborted = true
+    isSpeaking.value = false
+    return
+  }
   isSpeaking.value = true
   ttsAborted = false
 

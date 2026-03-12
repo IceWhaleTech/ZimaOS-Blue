@@ -173,8 +173,8 @@ function stepCount(step: ProgressStep): string {
           <span v-else>{{ stepIcon(step.status) }}</span>
         </span>
         <div class="min-w-0 flex-1">
-          <div class="text-sm text-gray-700 dark:text-gray-300 truncate">{{ stepLabel(step) }}</div>
-          <div v-if="stepDetail(step)" class="text-xs text-gray-400 truncate">{{ stepDetail(step) }}</div>
+          <div class="text-sm text-gray-700 dark:text-gray-300 whitespace-normal break-words leading-relaxed">{{ stepLabel(step) }}</div>
+          <div v-if="stepDetail(step)" class="text-xs text-gray-400 whitespace-normal break-words leading-relaxed">{{ stepDetail(step) }}</div>
         </div>
         <span
           v-if="stepCount(step)"

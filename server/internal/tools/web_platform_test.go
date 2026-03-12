@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 )
 
 func TestWebReadToolExecute_StaticHTML(t *testing.T) {
@@ -46,6 +48,37 @@ func TestWebReadToolExecute_StaticHTML(t *testing.T) {
 	content, _ := data["content"].(string)
 	if !strings.Contains(content, "Hello Reader") || !strings.Contains(content, "main body content") {
 		t.Fatalf("unexpected content: %q", content)
+	}
+}
+
+func TestWebReadToolExecute_PDFViaHTTP(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		_, _ = w.Write([]byte("%PDF-1.4\n%stub pdf bytes"))
+	}))
+	defer srv.Close()
+
+	tool := NewWebReadTool(WebFetchConfig{Timeout: 5 * time.Second, AllowPrivateHosts: true})
+	tool.SetPDFService(&stubPDFService{extract: pdfextract.ExtractResult{Text: "Visible PDF content", Document: pdfextract.DocumentInfo{FileName: "guide.pdf"}}})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":    srv.URL + "/guide.pdf",
+		"format": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	data := parseWebPlatformResult(t, result)
+	if data["source"] != webAccessSourceHTTP {
+		t.Fatalf("source = %v, want %q", data["source"], webAccessSourceHTTP)
+	}
+	if data["title"] != "guide.pdf" {
+		t.Fatalf("title = %v, want %q", data["title"], "guide.pdf")
+	}
+	content, _ := data["content"].(string)
+	if !strings.Contains(content, "Visible PDF content") {
+		t.Fatalf("content = %q, want extracted pdf text", content)
 	}
 }
 
@@ -132,6 +165,26 @@ func TestWebReadToolExecute_InteractiveRequired(t *testing.T) {
 	}
 }
 
+func TestWebExtractToolExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
+	tool := NewWebExtractTool(WebFetchConfig{})
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"html": `<html><body><article><h1 class="title">Nested Widget</h1></article></body></html>`,
+			"schema": map[string]interface{}{
+				"title": "h1.title",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	data := parseWebPlatformResult(t, result)
+	payload, _ := data["data"].(map[string]interface{})
+	if payload["title"] != "Nested Widget" {
+		t.Fatalf("title field = %v, want %q", payload["title"], "Nested Widget")
+	}
+}
+
 func TestWebExtractToolExecute_ExtractsAndRecovers(t *testing.T) {
 	tool := NewWebExtractTool(WebFetchConfig{Timeout: 5 * time.Second, AllowPrivateHosts: true})
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
@@ -186,6 +239,61 @@ func TestWebExtractToolExecute_ExtractsAndRecovers(t *testing.T) {
 	firstEvidence, _ := ctaEvidence[0].(map[string]interface{})
 	if firstEvidence["strategy"] != "recovered" {
 		t.Fatalf("strategy = %v, want %q", firstEvidence["strategy"], "recovered")
+	}
+}
+
+func TestWebCrawlToolExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		switch r.URL.Path {
+		case "/":
+			_, _ = w.Write([]byte(`<html><head><title>Home</title></head><body><main><a href="/a">A</a><a href="/b">B</a></main></body></html>`))
+		case "/a":
+			_, _ = w.Write([]byte(`<html><head><title>Page A</title></head><body><main><a href="/b">B</a><p>A body</p></main></body></html>`))
+		case "/b":
+			_, _ = w.Write([]byte(`<html><head><title>Page B</title></head><body><main><p>B body</p></main></body></html>`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	tool := NewWebCrawlTool(WebFetchConfig{Timeout: 5 * time.Second, AllowPrivateHosts: true})
+	first, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"seeds":          []string{srv.URL},
+			"maxDepth":       1,
+			"maxPages":       1,
+			"maxConcurrency": 1,
+			"pageMaxChars":   400,
+		},
+	})
+	if err != nil {
+		t.Fatalf("first execute failed: %v", err)
+	}
+	firstData := parseWebPlatformResult(t, first)
+	checkpoint, _ := firstData["checkpoint"].(map[string]interface{})
+	pending, _ := checkpoint["pending"].([]interface{})
+	if len(pending) == 0 {
+		t.Fatalf("expected pending checkpoint items, got %v", checkpoint["pending"])
+	}
+
+	second, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"checkpoint":     checkpoint,
+			"maxDepth":       1,
+			"maxPages":       3,
+			"maxConcurrency": 1,
+			"pageMaxChars":   400,
+		},
+	})
+	if err != nil {
+		t.Fatalf("resume execute failed: %v", err)
+	}
+	secondData := parseWebPlatformResult(t, second)
+	pages, _ := secondData["pages"].([]interface{})
+	if len(pages) != 2 {
+		t.Fatalf("resume pages = %d, want 2", len(pages))
 	}
 }
 

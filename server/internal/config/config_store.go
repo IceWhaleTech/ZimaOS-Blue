@@ -18,7 +18,7 @@ var configSections = []string{
 	"server", "log", "worker", "resources", "cgroup", "channels",
 	"performance", "security", "llm", "session", "embedding", "memory",
 	"grayscale", "companion", "claudecode", "claude_code_cli",
-	"first_run", "cc_switch", "statistics", "tool_calling",
+	"first_run", "cc_switch", "statistics", "tool_calling", "browser",
 	"proxy", "pruner", "update", "heartbeat",
 }
 

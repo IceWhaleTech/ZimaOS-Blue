@@ -59,6 +59,12 @@ func TestManagerDefaultDownloadsUseCurrentGGUFAsset(t *testing.T) {
 	if got := files[1].Filename; got != defaultMMProjFilename {
 		t.Fatalf("mmproj filename = %q, want %q", got, defaultMMProjFilename)
 	}
+	if got := files[0].Size; got != defaultModelSize {
+		t.Fatalf("model size = %q, want %q", got, defaultModelSize)
+	}
+	if got := files[1].Size; got != defaultMMProjSize {
+		t.Fatalf("mmproj size = %q, want %q", got, defaultMMProjSize)
+	}
 	if got := files[1].URL; !strings.Contains(got, "unsloth/Qwen3.5-0.8B-GGUF/resolve/main/mmproj-F16.gguf") {
 		t.Fatalf("mmproj URL = %q, want unsloth mmproj asset", got)
 	}

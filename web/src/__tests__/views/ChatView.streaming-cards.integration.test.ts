@@ -46,6 +46,19 @@ const mocks = vi.hoisted(() => ({
     fetchTrialQuota: vi.fn(),
     setRoutingMode: vi.fn(),
   },
+  deepResearchJobsStore: {
+    activeJobs: [] as Array<Record<string, unknown>>,
+    jobMap: {} as Record<string, unknown>,
+    loading: false,
+    hydrated: true,
+    pendingFocusJobId: null as string | null,
+    fetchActiveJobs: vi.fn(),
+    handleGlobalEvent: vi.fn(),
+    applyJobSnapshot: vi.fn(),
+    openJob: vi.fn(),
+    cancelJob: vi.fn(),
+    consumePendingFocusJobId: vi.fn(),
+  },
   mediaGenerate: {
     showPanel: { value: false },
     intent: { value: null },
@@ -134,6 +147,10 @@ vi.mock('@/stores/settings', () => ({
 
 vi.mock('@/stores/providerPool', () => ({
   useProviderPoolStore: () => mocks.providerPoolStore,
+}))
+
+vi.mock('@/stores/deepResearchJobs', () => ({
+  useDeepResearchJobsStore: () => mocks.deepResearchJobsStore,
 }))
 
 vi.mock('@/stores/notification', () => ({
@@ -243,6 +260,10 @@ vi.mock('@/components/MediaParamPanel.vue', () => ({
 
 vi.mock('@/components/AgentTaskPanel.vue', () => ({
   default: { name: 'AgentTaskPanel', template: '<div class="agent-task-panel-stub" />' },
+}))
+
+vi.mock('@/components/DeepResearchTaskDock.vue', () => ({
+  default: { name: 'DeepResearchTaskDock', template: '<div class="deep-research-task-dock-stub" />' },
 }))
 
 const localStorageMock = (() => {
@@ -423,6 +444,12 @@ describe('ChatView streaming card chain integration', () => {
     mocks.approvalApi.getConfig.mockReset().mockResolvedValue({ data: { auto_approve_tools: [] } })
     mocks.approvalApi.updateConfig.mockReset().mockResolvedValue({})
     mocks.systemWriteLog.mockReset().mockResolvedValue(undefined)
+    mocks.deepResearchJobsStore.fetchActiveJobs.mockReset().mockResolvedValue(undefined)
+    mocks.deepResearchJobsStore.handleGlobalEvent.mockReset()
+    mocks.deepResearchJobsStore.applyJobSnapshot.mockReset()
+    mocks.deepResearchJobsStore.openJob.mockReset().mockResolvedValue(undefined)
+    mocks.deepResearchJobsStore.cancelJob.mockReset().mockResolvedValue(undefined)
+    mocks.deepResearchJobsStore.consumePendingFocusJobId.mockReset()
 
     vi.mocked(conversationApi.list).mockReset().mockResolvedValue({ data: [CONVERSATION] } as never)
     vi.mocked(conversationApi.create).mockReset()
@@ -838,6 +865,103 @@ describe('ChatView streaming card chain integration', () => {
       form_data: { url: WEB_FETCH_URL },
     })
     expect(sendSpy).toHaveBeenCalledWith('Open ' + WEB_FETCH_URL + ' with the browser tool.')
+  })
+
+
+  it('renders persisted knowledge-base deep research cards with workflow and source artifacts', async () => {
+    const deepResearchBlock = makeTypelessBlock({
+      type: 'deep-research',
+      id: 'deep-research-kb-1',
+      query: 'EU AI Act provider obligations knowledge base',
+      mode: 'deep',
+      report_style: 'knowledge_base',
+      answer: 'Provider obligations are organized by role, timeline, and evidence coverage.',
+      evidence_count: 5,
+      support_count: 4,
+      conflict_count: 1,
+      citation_coverage: 0.92,
+      confidence: 0.81,
+      status: 'completed',
+      iterations: 4,
+      citations: [
+        {
+          title: 'EU AI Act consolidated text',
+          url: 'https://eur-lex.europa.eu/eli/reg/2024/1689/oj',
+        },
+      ],
+      open_questions: ['Need delegated acts publication date'],
+      verification_summary: {
+        resolved_count: 4,
+        conflicted_count: 1,
+        insufficient_count: 0,
+      },
+      workflow_phases: [
+        { id: 'scope', label: 'Scope', status: 'completed' },
+        { id: 'sources', label: 'Sources', status: 'completed' },
+        { id: 'extraction', label: 'Extraction', status: 'current' },
+      ],
+      source_inventory: [
+        {
+          source_id: 'src-1',
+          title: 'EU AI Act consolidated text',
+          url: 'https://eur-lex.europa.eu/eli/reg/2024/1689/oj',
+          domain: 'eur-lex.europa.eu',
+          source_type: 'law',
+          fetched_at: '2026-03-08T00:00:00.000Z',
+          relevance_score: 0.97,
+          credibility_score: 0.99,
+        },
+      ],
+      coverage_summary: {
+        task_count: 6,
+        evidence_count: 5,
+        distinct_domain_count: 2,
+        open_question_count: 1,
+      },
+      object_map: [
+        {
+          id: 'provider-obligations',
+          label: 'Provider obligations',
+          task_count: 3,
+          time_windows: ['2025-2026'],
+          status_counts: { resolved: 2, conflicted: 1 },
+          questions: ['Which GPAI duties apply to open-weight models?'],
+        },
+      ],
+    })
+
+    const persistedMessages = [
+      {
+        id: 'msg-user-kb',
+        conversation_id: 'conv-1',
+        role: 'user',
+        content: 'Build a knowledge base for EU AI Act provider obligations.',
+        created_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'msg-assistant-kb',
+        conversation_id: 'conv-1',
+        role: 'assistant',
+        content: deepResearchBlock,
+        created_at: '2026-03-08T00:00:01.000Z',
+      },
+    ]
+
+    vi.mocked(messageApi.list).mockResolvedValue({ data: persistedMessages } as never)
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    expect(store.currentConversationId).toBe('conv-1')
+    expect(wrapper.find('#deep-research-kb-1').exists()).toBe(true)
+    expect(wrapper.text()).toContain('EU AI Act provider obligations knowledge base')
+    expect(wrapper.text()).toContain('Workflow phases')
+    expect(wrapper.text()).toContain('Scope')
+    expect(wrapper.text()).toContain('Source Inventory')
+    expect(wrapper.text()).toContain('EU AI Act consolidated text')
+    expect(wrapper.text()).toContain('Coverage Summary')
+    expect(wrapper.text()).toContain('Object Map')
+    expect(wrapper.text()).toContain('Provider obligations')
+    expect(wrapper.text()).toContain('Need delegated acts publication date')
   })
 
 

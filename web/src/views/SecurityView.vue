@@ -9,17 +9,20 @@ import SessionList from '@/components/companion/SessionList.vue'
 import SessionDetail from '@/components/companion/SessionDetail.vue'
 import FixPreviewDialog from '@/components/security/FixPreviewDialog.vue'
 import DataMaskingSettings from '@/components/security/DataMaskingSettings.vue'
+import MonitoringRetentionSettings from '@/components/security/MonitoringRetentionSettings.vue'
+import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import type { LogEntry } from '@/api/system'
 
 const { t, te } = useI18n()
 
 // Tab definitions
-type TabId = 'overview' | 'firewall' | 'masking' | 'monitoring' | 'logs'
+type TabId = 'overview' | 'firewall' | 'network' | 'masking' | 'monitoring' | 'logs'
 const activeTab = ref<TabId>('overview')
 
 const tabs: { id: TabId; labelKey: string; icon: string }[] = [
   { id: 'overview', labelKey: 'security.tabs.overview', icon: 'shield' },
   { id: 'firewall', labelKey: 'security.tabs.firewall', icon: 'firewall' },
+  { id: 'network', labelKey: 'security.tabs.network', icon: 'network' },
   { id: 'masking', labelKey: 'security.tabs.masking', icon: 'masking' },
   { id: 'monitoring', labelKey: 'security.tabs.monitoring', icon: 'activity' },
   { id: 'logs', labelKey: 'security.tabs.logs', icon: 'list' },
@@ -591,7 +594,7 @@ function getItemField(item: ScanItem, field: 'risk' | 'impact' | 'remediation'):
 // Get scan item status icon and color
 function getScanStatusClass(status: string): string {
   switch (status) {
-    case 'passed': return 'text-emerald-800 dark:text-emerald-400'
+    case 'passed': return 'text-emerald-600 dark:text-emerald-400'
     case 'warning': return 'text-yellow-500'
     case 'failed': return 'text-red-500'
     case 'scanning': return 'text-gray-900 dark:text-white animate-pulse'
@@ -747,6 +750,9 @@ onUnmounted(() => {
           <svg v-else-if="tab.icon === 'firewall'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l7 4v6c0 5-3.4 9.7-7 10-3.6-.3-7-5-7-10V6l7-4zm-2.5 9l2 2 3-3" />
           </svg>
+          <svg v-else-if="tab.icon === 'network'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+          </svg>
           <!-- Mask icon for Data Masking -->
           <svg v-else-if="tab.icon === 'masking'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6c0 7.5 4.5 13 9 15 4.5-2 9-7.5 9-15l-9-3-9 3z" />
@@ -783,10 +789,10 @@ onUnmounted(() => {
               : 'bg-gray-100 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600'
       ]">
         <div class="flex items-center gap-3">
-          <div
+        <div
 :class="[
             'w-10 h-10 rounded-full flex items-center justify-center',
-            securityStatus === 'passed' ? 'bg-emerald-700' :
+            securityStatus === 'passed' ? 'bg-emerald-600' :
             securityStatus === 'warning' ? 'bg-yellow-500' :
             securityStatus === 'failed' ? 'bg-red-500' : 'bg-gray-700 dark:bg-gray-500'
           ]">
@@ -807,7 +813,7 @@ onUnmounted(() => {
             <h2
 :class="[
               'text-lg font-semibold',
-              securityStatus === 'passed' ? 'text-emerald-900 dark:text-emerald-300' :
+              securityStatus === 'passed' ? 'text-emerald-700 dark:text-emerald-300' :
               securityStatus === 'warning' ? 'text-yellow-800 dark:text-yellow-200' :
               securityStatus === 'failed' ? 'text-red-800 dark:text-red-200' :
               'text-gray-900 dark:text-white dark:text-white'
@@ -820,7 +826,7 @@ onUnmounted(() => {
             <p
 :class="[
               'text-sm',
-              securityStatus === 'passed' ? 'text-emerald-800 dark:text-emerald-300' :
+              securityStatus === 'passed' ? 'text-emerald-600 dark:text-emerald-300' :
               securityStatus === 'warning' ? 'text-yellow-600 dark:text-yellow-400' :
               securityStatus === 'failed' ? 'text-red-600 dark:text-red-400' :
               'text-gray-900 dark:text-white dark:text-white'
@@ -846,7 +852,7 @@ onUnmounted(() => {
           <button
             v-if="fixableCount > 0 && !isScanning"
             :disabled="!!fixingItem"
-            class="px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50"
+            class="px-4 py-2 rounded-lg text-white font-medium transition-all flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
             @click="fixAllIssues"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -887,7 +893,7 @@ onUnmounted(() => {
         </div>
         <div class="h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
           <div
-            class="h-full bg-gradient-to-r from-blue-500 dark:from-blue-400 to-emerald-700 dark:to-emerald-500 transition-all duration-300 ease-out"
+            class="h-full bg-gradient-to-r from-blue-500 dark:from-blue-400 to-emerald-600 dark:to-emerald-500 transition-all duration-300 ease-out"
             :style="{ width: `${scanProgress}%` }"
           ></div>
         </div>
@@ -896,8 +902,8 @@ onUnmounted(() => {
       <!-- Scan Summary -->
       <div v-if="scanCompleted" class="grid grid-cols-3 gap-4 mb-4">
         <div class="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 text-center">
-          <div class="text-2xl font-bold text-emerald-800 dark:text-emerald-300">{{ scanSummary.passed }}</div>
-          <div class="text-xs text-emerald-700 dark:text-emerald-300">{{ t('security.scan.passed') }}</div>
+          <div class="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{{ scanSummary.passed }}</div>
+          <div class="text-xs text-emerald-600 dark:text-emerald-300">{{ t('security.scan.passed') }}</div>
         </div>
         <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 text-center">
           <div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{{ scanSummary.warnings }}</div>
@@ -978,7 +984,7 @@ onUnmounted(() => {
                 <span
                   :class="[
                     'px-2 py-0.5 text-xs rounded-full font-medium',
-                    item.status === 'passed' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300' :
+                    item.status === 'passed' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' :
                     item.status === 'warning' ? 'bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300' :
                     item.status === 'failed' ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300' :
                     'bg-gray-100 dark:bg-gray-700/30 text-gray-600 dark:text-gray-400'
@@ -1038,7 +1044,7 @@ onUnmounted(() => {
                 <span class="font-medium text-red-600 dark:text-red-400">{{ t('security.scan.impact') }}:</span> {{ getItemField(item, 'impact') }}
               </div>
               <div v-if="item.remediation" class="text-xs text-gray-600 dark:text-slate-300">
-                <span class="font-medium text-emerald-800 dark:text-emerald-300">{{ t('security.scan.remediation') }}:</span> {{ getItemField(item, 'remediation') }}
+                <span class="font-medium text-emerald-700 dark:text-emerald-300">{{ t('security.scan.remediation') }}:</span> {{ getItemField(item, 'remediation') }}
               </div>
             </div>
           </div>
@@ -1047,6 +1053,11 @@ onUnmounted(() => {
       </div>
       </div>
 
+    </div>
+
+    <!-- Tab Content: Network -->
+    <div v-show="activeTab === 'network'">
+      <NetworkSettings :show-port-section="false" :show-security-sections="true" />
     </div>
 
     <!-- Tab Content: Firewall -->
@@ -1064,7 +1075,7 @@ onUnmounted(() => {
               :disabled="firewallLoading || togglingFirewall"
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                firewallConfig.enabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600',
+                firewallConfig.enabled ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600',
                 (firewallLoading || togglingFirewall) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
               ]"
               @click="togglePromptFirewall"
@@ -1097,7 +1108,7 @@ onUnmounted(() => {
                   'shrink-0 text-[10px] px-1.5 py-0.5 rounded-full transition-colors',
                   (togglingFirewallRuleId === rule.id || togglingFirewall) ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
                   rule.enabled
-                    ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300'
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
                     : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300'
                 ]"
               >
@@ -1147,7 +1158,7 @@ onUnmounted(() => {
                   'shrink-0 text-[10px] px-1.5 py-0.5 rounded-full transition-colors',
                   (togglingFirewallRuleId === rule.id || deletingFirewallRuleId === rule.id || togglingFirewall) ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
                   rule.enabled
-                    ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300'
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
                     : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300'
                 ]"
               >
@@ -1355,6 +1366,10 @@ onUnmounted(() => {
             @load-more="loadMoreSessions"
           />
         </div>
+      </div>
+
+      <div class="mt-6">
+        <MonitoringRetentionSettings />
       </div>
     </div>
 

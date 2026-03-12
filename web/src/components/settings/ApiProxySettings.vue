@@ -116,7 +116,7 @@ onMounted(fetchAll)
           </div>
         </div>
 
-        <div class="mt-4 border-t border-gray-100 dark:border-white/10 pt-3">
+        <div v-if="false" class="mt-4 border-t border-gray-100 dark:border-white/10 pt-3">
           <div class="flex items-center justify-between">
             <div>
               <h4 class="text-xs font-semibold text-gray-900 dark:text-white">{{ t('apiProxy.providerRaceTitle') }}</h4>

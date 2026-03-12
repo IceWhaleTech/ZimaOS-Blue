@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, nextTick, onMounted } from 'vue'
+import { ref, computed, onUnmounted, nextTick, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AudioRecorder, voiceApi } from '@/api/voice'
 import { speechApi } from '@/api/speech'
@@ -96,6 +96,28 @@ const SWIPE_THRESHOLD = 40 // px horizontal to trigger swipe choice
 const showImagePreview = ref(false)
 const previewImageSrc = ref('')
 const previewImageAlt = ref('')
+
+const DRAFT_STORAGE_KEY = 'zima.chat.input_draft.v1'
+
+function loadDraftFromStorage(): string {
+  try {
+    return localStorage.getItem(DRAFT_STORAGE_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+function persistDraftToStorage(value: string) {
+  try {
+    if (value) {
+      localStorage.setItem(DRAFT_STORAGE_KEY, value)
+      return
+    }
+    localStorage.removeItem(DRAFT_STORAGE_KEY)
+  } catch {
+    // Ignore storage errors (private mode/quota)
+  }
+}
 
 // Voice recording state
 const isRecording = ref(false)
@@ -883,6 +905,15 @@ onMounted(() => {
   isTouchDevice.value = 'ontouchstart' in window || navigator.maxTouchPoints > 0
   window.addEventListener('resize', checkMobile)
   document.addEventListener('click', handleClickOutside)
+
+  const cachedDraft = loadDraftFromStorage()
+  if (cachedDraft) {
+    setInput(cachedDraft)
+  }
+})
+
+watch(message, (nextMessage) => {
+  persistDraftToStorage(nextMessage)
 })
 
 function focus() {

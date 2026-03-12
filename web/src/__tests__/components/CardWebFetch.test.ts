@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
+import { nextTick } from 'vue'
 
 import CardWebFetch from '@/components/typeless/CardWebFetch.vue'
 
@@ -26,6 +27,11 @@ function createTestI18n(locale = 'en-US') {
           copyUrl: 'Copy URL',
           copyText: 'Copy text',
           noContent: 'No extracted content',
+          contentLabel: 'Web content',
+          expandHint: 'View the extracted page content',
+          collapseHint: 'Hide the extracted page content',
+          expandContent: 'Expand web content',
+          collapseContent: 'Collapse web content',
           actions: {
             use_browser: 'Use browser',
           },
@@ -52,6 +58,11 @@ function createTestI18n(locale = 'en-US') {
           copyUrl: '复制 URL',
           copyText: '复制文本',
           noContent: '没有提取到内容',
+          contentLabel: '网页内容',
+          expandHint: '查看提取到的网页内容',
+          collapseHint: '隐藏提取到的网页内容',
+          expandContent: '展开网页内容',
+          collapseContent: '收起网页内容',
           actions: {
             use_browser: '使用浏览器',
           },
@@ -67,6 +78,36 @@ function createTestI18n(locale = 'en-US') {
 }
 
 describe('CardWebFetch', () => {
+  it('keeps extracted content collapsed by default until toggled open', async () => {
+    const wrapper = mount(CardWebFetch, {
+      props: {
+        card: {
+          type: 'web-fetch',
+          title: 'web_fetch',
+          url: 'https://example.com/docs',
+          status: 'success',
+          content: 'Line one\nLine two\nLine three',
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('Expand web content')
+    expect(wrapper.text()).not.toContain('Line one')
+
+    const toggleButton = wrapper.findAll('button').find(button => button.text().includes('Expand web content'))
+    expect(toggleButton).toBeDefined()
+
+    await toggleButton!.trigger('click')
+    await nextTick()
+
+    expect(wrapper.text()).toContain('Collapse web content')
+    expect(wrapper.text()).toContain('Line one')
+    expect(wrapper.text()).toContain('Line three')
+  })
+
   it('localizes warning labels and actions for zh-CN', () => {
     const wrapper = mount(CardWebFetch, {
       props: {

@@ -7,14 +7,15 @@ import { THEME_STYLES, type ThemeStyle, type MemoryRecallMode } from '@/stores/s
 import { useLocaleStore } from '@/stores/locale'
 import { useThemeStore } from '@/stores/theme'
 import { backupApi } from '@/api/index'
+import { providerPoolApi } from '@/api/providerPool'
 import type { LocaleKey } from '@/i18n'
 import type { BackupInfo } from '@/api/index'
+import { hasConfiguredLlmApiKey } from '@/utils/providerAccess'
 import ClaudeCodeSettings from '@/components/ClaudeCodeSettings.vue'
 import ProviderPoolSection from '@/components/ProviderPoolSection.vue'
 import UserDataExport from '@/components/UserDataExport.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import SpeechSettings from '@/components/settings/SpeechSettings.vue'
-import WorkspaceSettings from '@/components/settings/WorkspaceSettings.vue'
 import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import ApiProxySettings from '@/components/settings/ApiProxySettings.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
@@ -43,14 +44,15 @@ const autoStartLoading = ref(false)
 const autoStartEnabled = computed(() => serviceInfo.value?.installed && serviceInfo.value?.enabled)
 
 // Active tab - flattened structure
-const SETTINGS_TABS = ['general', 'llm', 'proxy', 'speech', 'network', 'memory', 'userdata'] as const
+const SETTINGS_TABS = ['general', 'llm', 'proxy', 'speech', 'userdata'] as const
 type TabType = typeof SETTINGS_TABS[number]
-const initialTab = route.query.tab
-const activeTab = ref<TabType>(
-  typeof initialTab === 'string' && SETTINGS_TABS.includes(initialTab as TabType)
-    ? (initialTab as TabType)
-    : 'general'
-)
+const initialTabRaw = route.query.tab
+const initialTab = Array.isArray(initialTabRaw) ? initialTabRaw[0] : initialTabRaw
+const normalizedInitialTab = initialTab === 'memory' ? 'userdata' : initialTab
+const hasInitialTabQuery = typeof normalizedInitialTab === 'string' && SETTINGS_TABS.includes(normalizedInitialTab as TabType)
+const requestedInitialTab: TabType = hasInitialTabQuery ? (normalizedInitialTab as TabType) : 'general'
+const activeTab = ref<TabType>(requestedInitialTab === 'llm' ? 'general' : requestedInitialTab)
+const llmTabAccessChecking = ref(false)
 
 
 // Tab icons (heroicons outline, 16x16)
@@ -59,8 +61,6 @@ const tabIcons: Record<TabType, string> = {
   llm: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2a5 5 0 0 0-4.8 3.6A3.5 3.5 0 0 0 4 9a3.5 3.5 0 0 0 1.1 2.5A4 4 0 0 0 4 14a4 4 0 0 0 2.6 3.8C7 19.7 8.8 21 11 21h1V2h-1z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2a5 5 0 0 1 4.8 3.6A3.5 3.5 0 0 1 20 9a3.5 3.5 0 0 1-1.1 2.5A4 4 0 0 1 20 14a4 4 0 0 1-2.6 3.8C17 19.7 15.2 21 13 21h-1"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 9h4m-4 4h4m4-4h-4m4 4h-4"/>',
   proxy: '<circle cx="12" cy="13" r="9" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" fill="none"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 13l3.5-5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4V2m4.24 3.76l1.42-1.42M20 13h2M4 13H2m3.34-7.66L3.93 3.93"/><circle cx="12" cy="13" r="1.5" stroke-width="0" fill="currentColor"/>',
   speech: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>',
-  network: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/>',
-  memory: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3h6a2 2 0 012 2v14l-5-3-5 3V5a2 2 0 012-2z"/>',
   userdata: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>',
 }
 
@@ -121,15 +121,6 @@ async function handleMemoryRecallModeChange(mode: MemoryRecallMode) {
   }
 }
 
-async function handleAgentAutoReflectChange(next: boolean) {
-  try {
-    await settingsStore.setAgentAutoReflect(next)
-    showSaveStatus(t('settings.agentReflection.saved'))
-  } catch {
-    showSaveStatus(t('settings.agentReflection.saveFailed'))
-  }
-}
-
 const smallModelSaving = ref(false)
 let smallModelPollInterval: ReturnType<typeof setInterval> | null = null
 const smallModelDownloading = computed(() => {
@@ -142,6 +133,8 @@ const smallModelToggleDisabled = computed(() => smallModelSaving.value)
 const smallModelStatsResetting = ref(false)
 const smallModelAdvancedExpanded = ref(false)
 const smallModelStatsExpanded = ref(false)
+const smallModelDefaultStorageBytes = Math.round(737.5 * 1024 * 1024)
+const smallModelRecommendedRuntimeBytes = 2 * 1024 * 1024 * 1024
 const shortQASuccessRate = computed(() => {
   const stats = settingsStore.smallModelStats
   if (!stats || stats.short_qa_route_attempts <= 0) return 0
@@ -157,12 +150,40 @@ const fallbackReasonEntries = computed(() => {
   return Object.entries(reasons).sort((a, b) => b[1] - a[1])
 })
 
+function parseHumanSizeToBytes(size: string): number {
+  const raw = size.trim().replace(/\s+/g, '')
+  const match = raw.match(/^([\d.]+)(B|KB|MB|GB|TB)$/i)
+  if (!match) return 0
+  const value = Number(match[1])
+  if (!Number.isFinite(value) || value <= 0) return 0
+  const unitPart = match[2]
+  if (!unitPart) return 0
+  const unit = unitPart.toUpperCase()
+  const multipliers: Record<string, number> = {
+    B: 1,
+    KB: 1024,
+    MB: 1024 * 1024,
+    GB: 1024 * 1024 * 1024,
+    TB: 1024 * 1024 * 1024 * 1024,
+  }
+  return Math.round(value * (multipliers[unit] ?? 0))
+}
+
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB'
   if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
   if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return bytes + ' B'
 }
+
+const smallModelStorageBytes = computed(() => {
+  const files = settingsStore.smallModelStatus?.files
+  if (!files || files.length === 0) return smallModelDefaultStorageBytes
+  const total = files.reduce((sum, file) => sum + parseHumanSizeToBytes(file.size), 0)
+  return total > 0 ? total : smallModelDefaultStorageBytes
+})
+const smallModelStorageText = computed(() => formatBytes(smallModelStorageBytes.value))
+const smallModelRuntimeHintText = computed(() => formatBytes(smallModelRecommendedRuntimeBytes))
 
 async function withSmallModelSave(task: () => Promise<void>) {
   if (smallModelSaving.value) return
@@ -256,6 +277,10 @@ async function handleFeatureIntentIREnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setFeatureIntentIREnabled(next))
 }
 
+async function handleSmallModelIRFeaturesEnabledChange(next: boolean) {
+  await withSmallModelSave(() => settingsStore.setSmallModelIRFeaturesEnabled(next))
+}
+
 async function handleSmallModelRouteShortQAEnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setSmallModelRouteShortQAEnabled(next))
 }
@@ -316,9 +341,36 @@ async function toggleAutoStart() {
   }
 }
 
-function switchTab(tab: TabType) {
+async function canOpenLLMTab(): Promise<boolean> {
+  if (llmTabAccessChecking.value) return false
+  llmTabAccessChecking.value = true
+  try {
+    const response = await providerPoolApi.listProviders()
+    return hasConfiguredLlmApiKey(response.data.providers || [])
+  } catch {
+    return false
+  } finally {
+    llmTabAccessChecking.value = false
+  }
+}
+
+async function switchTab(tab: TabType) {
+  if (tab === 'llm') {
+    const allowed = await canOpenLLMTab()
+    if (!allowed) {
+      showSaveStatus(t('settings.llmApiKeyRequired', '请先配置 API Key，再打开 LLM Provider 页面'))
+      activeTab.value = 'general'
+      const rawCurrentTab = route.query.tab
+      const currentTab = Array.isArray(rawCurrentTab) ? rawCurrentTab[0] : rawCurrentTab
+      if (currentTab === 'llm') {
+        await router.replace({ query: { ...route.query, tab: 'general' } })
+      }
+      return
+    }
+  }
+
   activeTab.value = tab
-  router.replace({ query: { tab } })
+  router.replace({ query: { ...route.query, tab } })
 
   // Load data for specific tabs
   if (tab === 'userdata' && backups.value.length === 0) {
@@ -405,9 +457,8 @@ onMounted(async () => {
   fetchServiceInfo()
 
   // Load data based on initial tab
-  const tab = route.query.tab
-  if (typeof tab === 'string' && SETTINGS_TABS.includes(tab as TabType)) {
-    switchTab(tab as TabType)
+  if (hasInitialTabQuery) {
+    await switchTab(requestedInitialTab)
   }
 })
 
@@ -547,7 +598,7 @@ onUnmounted(() => {
       <div v-if="serviceInfo" class="glass-card p-4">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('service.autoStart') }}</h3>
+            <h3 class="text-sm text-gray-500 dark:text-slate-400">{{ t('service.autoStart') }}</h3>
             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('service.autoStartDescription') }}</p>
           </div>
           <button
@@ -566,6 +617,9 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+
+      <!-- Port Configuration -->
+      <NetworkSettings :show-port-section="true" :show-security-sections="false" @status-change="showSaveStatus" />
 
       <!-- About / Version -->
       <div class="glass-card p-4">
@@ -592,14 +646,36 @@ onUnmounted(() => {
     <div v-if="activeTab === 'proxy'" class="space-y-6">
       <ApiProxySettings @status-change="showSaveStatus" />
 
-      <!-- Assistant Capabilities -->
+      <!-- Assistive Features -->
       <div class="glass-card p-4">
         <div class="mb-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('settings.smallModel.irTitle', 'Assistant Capabilities') }}</h3>
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('settings.smallModel.irTitle', 'Assistive Features') }}</h3>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('settings.smallModel.irDesc', 'User-facing helpers for context control and tool filtering.') }}</p>
         </div>
 
         <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg space-y-3">
+          <div class="flex items-center justify-between py-2 px-2.5 bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+            <div>
+              <div class="text-sm text-gray-800 dark:text-gray-100">{{ t('settings.smallModel.irMasterTitle', 'Master Switch') }}</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('settings.smallModel.irMasterDesc', 'Toggle all helper features below at once.') }}</div>
+            </div>
+            <button
+              data-testid="small-model-ir-master-switch"
+              type="button"
+              role="switch"
+              :aria-checked="settingsStore.smallModelIRFeaturesEnabled"
+              :disabled="smallModelSaving"
+              class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+              :class="settingsStore.smallModelIRFeaturesEnabled ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+              @click="handleSmallModelIRFeaturesEnabledChange(!settingsStore.smallModelIRFeaturesEnabled)"
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="settingsStore.smallModelIRFeaturesEnabled ? 'translate-x-5' : 'translate-x-0'"
+              />
+            </button>
+          </div>
+
           <div class="flex items-center justify-between py-2 px-2.5 bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
             <div>
               <div class="text-sm text-gray-800 dark:text-gray-100">{{ t('settings.smallModel.irContextPruneTitle', 'Context Trimming') }}</div>
@@ -714,7 +790,7 @@ onUnmounted(() => {
 
       <!-- Small Model Control -->
       <div class="glass-card p-4">
-      <div class="mb-3 flex items-start justify-between gap-3">
+      <div class="mb-4 flex items-start justify-between gap-3">
         <div>
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('settings.smallModel.title', 'Lightweight Acceleration') }}</h3>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('settings.smallModel.description', 'Use a lightweight model for faster simple tasks, with automatic fallback if unavailable.') }}</p>
@@ -743,6 +819,14 @@ onUnmounted(() => {
           >
             {{ smallModelReady ? t('settings.smallModel.ready', 'Ready') : smallModelDownloading ? t('settings.smallModel.downloading', 'Downloading') : t('settings.smallModel.notReady', 'Not Ready') }}
           </span>
+        </div>
+
+        <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+          <h4 class="text-sm text-gray-800 dark:text-gray-100">{{ t('settings.smallModel.resourceTitle', 'Resource Footprint') }}</h4>
+          <ul class="mt-1.5 list-disc pl-4 space-y-1 text-xs text-gray-600 dark:text-gray-300">
+            <li>{{ t('settings.smallModel.storageUsage', { storage: smallModelStorageText }) }}</li>
+            <li>{{ t('settings.smallModel.runtimeUsage', { runtime: smallModelRuntimeHintText }) }}</li>
+          </ul>
         </div>
 
         <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
@@ -1052,47 +1136,15 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Network Tab -->
-    <div v-if="activeTab === 'network'">
-      <NetworkSettings @status-change="showSaveStatus" />
-    </div>
-
     <!-- Speech Tab -->
     <div v-if="activeTab === 'speech'">
       <SpeechSettings />
     </div>
 
-    <!-- Memory Tab -->
-    <div v-if="activeTab === 'memory'" class="space-y-6">
+    <!-- User Data Tab -->
+    <div v-if="activeTab === 'userdata'" class="space-y-6">
       <!-- Memory Management -->
       <MemoryManager @status-change="showSaveStatus" />
-
-      <!-- Agent Reflection -->
-      <div class="glass-card p-4">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <label class="block text-sm text-gray-500 dark:text-slate-400">{{ t('settings.agentReflection.title') }}</label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('settings.agentReflection.description', { agentMode: t('agent.mode') }) }}</p>
-          </div>
-          <button
-            data-testid="agent-auto-reflect-switch"
-            type="button"
-            role="switch"
-            :aria-checked="settingsStore.agentAutoReflect"
-            class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
-            :class="settingsStore.agentAutoReflect ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
-            @click="handleAgentAutoReflectChange(!settingsStore.agentAutoReflect)"
-          >
-            <span
-              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-              :class="settingsStore.agentAutoReflect ? 'translate-x-5' : 'translate-x-0'"
-            />
-          </button>
-        </div>
-        <div class="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800/30 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('settings.agentReflection.hint') }}
-        </div>
-      </div>
 
       <!-- Memory Recall Mode -->
       <div class="glass-card p-4">
@@ -1112,15 +1164,6 @@ onUnmounted(() => {
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t(`settings.memoryRecallMode.options.${mode}.hint`) }}</div>
           </button>
         </div>
-      </div>
-
-    </div>
-
-    <!-- User Data Tab -->
-    <div v-if="activeTab === 'userdata'" class="space-y-6">
-      <!-- Workspace Files -->
-      <div class="glass-card p-4">
-        <WorkspaceSettings @status-change="showSaveStatus" />
       </div>
 
       <!-- Backup -->
@@ -1178,7 +1221,7 @@ input[type='range']::-moz-range-thumb {
 .theme-style-btn-preview {
   width: 18px;
   height: 18px;
-  border-radius: 999px;
+  border-radius: 0.4rem;
   border: 1px solid rgba(148, 163, 184, 0.4);
 }
 

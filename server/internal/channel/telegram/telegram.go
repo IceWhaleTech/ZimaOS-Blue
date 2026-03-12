@@ -876,6 +876,47 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	return nil
 }
 
+// SendWithID sends a text-only Telegram message and returns the created message ID.
+// For attachment-heavy payloads we fall back to Send and return an empty ID.
+func (c *Channel) SendWithID(ctx context.Context, msg channel.OutgoingMessage) (string, error) {
+	if c.bot == nil {
+		return "", fmt.Errorf("bot not initialized")
+	}
+	if len(msg.Attachments) > 0 {
+		if err := c.Send(ctx, msg); err != nil {
+			return "", err
+		}
+		return "", nil
+	}
+	if msg.Content == "" {
+		return "", fmt.Errorf("no sendable Telegram content")
+	}
+	chatID, err := parseChatID(msg.ChatID)
+	if err != nil {
+		return "", fmt.Errorf("invalid chat ID: %w", err)
+	}
+	tgMsg := tgbotapi.NewMessage(chatID, msg.Content)
+	tgMsg.ParseMode = telegramParseMode(msg.Format)
+	if replyID, ok := telegramReplyID(msg.ReplyToID); ok {
+		tgMsg.ReplyToMessageID = replyID
+	}
+	sent, err := c.bot.Send(tgMsg)
+	if err != nil {
+		return "", fmt.Errorf("failed to send message: %w", err)
+	}
+	c.msgsSent.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastReplyAt = &now
+	c.mu.Unlock()
+	return fmt.Sprintf("%d", sent.MessageID), nil
+}
+
+// EditMessage updates an existing Telegram message in place.
+func (c *Channel) EditMessage(ctx context.Context, chatID string, messageID string, msg channel.OutgoingMessage) error {
+	return c.EditMessageWithKeyboard(ctx, chatID, messageID, msg.Content, nil, telegramParseMode(msg.Format))
+}
+
 // sendAttachment sends a single media attachment via Telegram Bot API.
 func (c *Channel) sendAttachment(chatID int64, replyToID string, caption string, format string, att channel.Attachment) error {
 	if len(att.Data) == 0 && att.URL == "" {

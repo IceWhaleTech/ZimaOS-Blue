@@ -479,6 +479,13 @@ export const useSettingsStore = defineStore('settings', () => {
   const smallModelMediaIntentEnabled = computed(() => backendSettings.value.small_model_media_intent_enabled ?? false)
   const offlineIRFallbackEnabled = computed(() => backendSettings.value.offline_ir_fallback_enabled ?? false)
   const featureIntentIREnabled = computed(() => backendSettings.value.feature_intent_ir_enabled ?? false)
+  const smallModelIRFeaturesEnabled = computed(() =>
+    smallModelContextPruneEnabled.value
+    && smallModelMediaIntentEnabled.value
+    && smartToolSelection.value
+    && offlineIRFallbackEnabled.value
+    && featureIntentIREnabled.value
+  )
   const smallModelRouteShortQAEnabled = computed(() => backendSettings.value.small_model_route_short_qa_enabled ?? false)
   const smallModelRouteToolDispatchEnabled = computed(() => backendSettings.value.small_model_route_tool_dispatch_enabled ?? false)
   const noLLMDegradeMode = computed<NoLLMDegradeMode>(() => {
@@ -604,6 +611,16 @@ export const useSettingsStore = defineStore('settings', () => {
     await updateBackendSettings({ feature_intent_ir_enabled: enabled })
   }
 
+  async function setSmallModelIRFeaturesEnabled(enabled: boolean) {
+    await updateBackendSettings({
+      small_model_context_prune_enabled: enabled,
+      small_model_media_intent_enabled: enabled,
+      smart_tool_selection: enabled,
+      offline_ir_fallback_enabled: enabled,
+      feature_intent_ir_enabled: enabled,
+    })
+  }
+
   async function setSmallModelRouteShortQAEnabled(enabled: boolean) {
     await updateBackendSettings({ small_model_route_short_qa_enabled: enabled })
   }
@@ -716,6 +733,7 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelMediaIntentEnabled,
     offlineIRFallbackEnabled,
     featureIntentIREnabled,
+    smallModelIRFeaturesEnabled,
     smallModelRouteShortQAEnabled,
     smallModelRouteToolDispatchEnabled,
     noLLMDegradeMode,
@@ -775,6 +793,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setSmallModelMediaIntentEnabled,
     setOfflineIRFallbackEnabled,
     setFeatureIntentIREnabled,
+    setSmallModelIRFeaturesEnabled,
     setSmallModelRouteShortQAEnabled,
     setSmallModelRouteToolDispatchEnabled,
     setNoLLMDegradeMode,

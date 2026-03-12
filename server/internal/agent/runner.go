@@ -1496,6 +1496,13 @@ func buildStepExecutionSystemPrompt(tools []llm.Tool) string {
 	sb.WriteString("If a tool fails, inspect the result, adjust the approach, and avoid repeating identical failing calls.\n")
 	sb.WriteString("When the step is complete or blocked, stop calling tools and explain the result or blocker concisely.\n")
 
+	sb.WriteString("\n## Coding Task Defaults\n")
+	sb.WriteString("For coding tasks, first check whether mainstream skills are available: superpowers and ui-ux-pro-max-skill.\n")
+	sb.WriteString("If missing, use available skill-install workflow before implementation; if blocked or unavailable, note it once and continue with best effort.\n")
+	sb.WriteString("If stack preferences are unclear, ask once and remember them for future steps.\n")
+	sb.WriteString("Default stack when not specified: backend Go, frontend React, mobile React Native, client Electron.\n")
+	sb.WriteString("If the repository/runtime already implies a stack (for example Python or Node.js), follow the existing environment instead of forcing defaults.\n")
+
 	if hasStepTool(tools, "ask") {
 		sb.WriteString("\n## Ask Tool\n")
 		sb.WriteString("When you encounter ambiguity, need user preferences, or face multiple valid options, use the ask tool instead of guessing.\n")
@@ -1527,10 +1534,10 @@ func buildSummarySystemPrompt() string {
 	sb.WriteString("Learned:\n")
 	sb.WriteString("- <optional short reusable lesson>\n")
 	sb.WriteString("Include the Learned block only when grounded lessons are provided. Use 1-3 bullets total.\n\n")
-	sb.WriteString("Suggested next steps:\n")
-	sb.WriteString("1. <concrete next step>\n")
-	sb.WriteString("2. <concrete next step>\n")
-	sb.WriteString("3. <optional concrete next step>\n")
+	sb.WriteString("If you'd like, I can also help with:\n")
+	sb.WriteString("1. If you'd like, I can help you <specific follow-up action>.\n")
+	sb.WriteString("2. If you want, I can also help you <specific follow-up action>.\n")
+	sb.WriteString("3. <optional additional help offer tailored to the result>\n")
 	sb.WriteString("Provide 1-3 next steps total.\n")
 
 	sb.WriteString("\n## Style\n")
@@ -1538,7 +1545,9 @@ func buildSummarySystemPrompt() string {
 	sb.WriteString("- Focus on what was accomplished, what failed, and what was verified.\n")
 	sb.WriteString("- If grounded lessons are provided, keep them reusable and short.\n")
 	sb.WriteString("- If there were failures or skipped work, mention them clearly without sounding alarmist.\n")
+	sb.WriteString("- Phrase next steps as optional help offers you can provide, not commands for the user. Prefer wording like 'If you'd like, I can help you ...'.\n")
 	sb.WriteString("- Keep next steps actionable and specific to the task result.\n")
+	sb.WriteString("- If no further action is needed, say that plainly instead of inventing work.\n")
 
 	sb.WriteString("\n## Constraints\n")
 	sb.WriteString("- Do not output markdown headers, code fences, JSON, or extra commentary.\n")
@@ -1611,19 +1620,19 @@ func (r *Runner) generateSummary(ctx context.Context, task *Task, reflection *se
 			if learned != "" {
 				result += "\n\n" + learned
 			}
-			return result + "\n\nSuggested next steps:\n" +
-				"1. Inspect the failed steps and retry with a safer fallback path.\n" +
-				"2. Re-run validation to confirm the recovery result.\n" +
-				"3. Tell me whether to continue fixing remaining issues or finalize the report."
+			return result + "\n\nIf you'd like, I can also help with:\n" +
+				"1. If you'd like, I can inspect the failed steps and retry with a safer fallback path.\n" +
+				"2. If you want, I can re-run validation after the recovery attempt to confirm the result.\n" +
+				"3. If you'd like, I can keep fixing the remaining issues or finalize the report."
 		}
 		result += "."
 		if learned != "" {
 			result += "\n\n" + learned
 		}
-		return result + "\n\nSuggested next steps:\n" +
-			"1. Verify the deliverables in your environment.\n" +
-			"2. Run relevant tests to confirm no regressions.\n" +
-			"3. Tell me what to optimize next."
+		return result + "\n\nIf you'd like, I can also help with:\n" +
+			"1. If you'd like, I can help verify the deliverables in your environment.\n" +
+			"2. If you want, I can help run the relevant tests to confirm there are no regressions.\n" +
+			"3. If you'd like, I can optimize the next area you care about."
 	}
 	return strings.TrimSpace(resp.Message.Content)
 }

@@ -57,7 +57,7 @@ Inspired by Clawdbot, we believe the **future** of personal computing will be **
 
 Built for bold developers who want to **vibe or handcraft their own agents**, Blue is **engineered for performance**: written in **Go**, with a memory footprint as low as 10 MB. It runs on **any x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — anywhere you plug in power.
 
-For the curated documentation path, start with [Docs](./docs-site/README.md). For repository-wide exploration, use [DeepWiki](https://deepwiki.com/IceWhaleTech/ZimaOS-Blue).
+For the curated documentation path, start with [Docs](./docs-site/README.md). For repository-wide exploration, start with [DeepWiki](https://deepwiki.com/IceWhaleTech/ZimaOS-Blue), then use GitHub for primary-source verification of exact files, issues, PRs, workflow runs, and current repository state.
 
 ![](./docs/assets/features.png)
 

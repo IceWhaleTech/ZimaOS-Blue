@@ -162,6 +162,176 @@ async fn open_url(url: String) -> Result<(), String> {
     open::that(url).map_err(|e| e.to_string())
 }
 
+fn resolve_reveal_target(raw_path: &str) -> Result<(std::path::PathBuf, bool), String> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return Err("path is required".to_string());
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("/api/")
+        || trimmed.contains("://")
+    {
+        return Err("path must be a local absolute filesystem path".to_string());
+    }
+
+    let path = std::path::PathBuf::from(trimmed);
+    if !path.is_absolute() {
+        return Err("path must be absolute".to_string());
+    }
+    let metadata = std::fs::metadata(&path).map_err(|e| format!("path not accessible: {}", e))?;
+    Ok((path, metadata.is_dir()))
+}
+
+#[cfg(target_os = "macos")]
+fn reveal_path_macos(path: &std::path::Path, is_dir: bool) -> Result<(), String> {
+    if is_dir {
+        return open::that(path).map_err(|e| e.to_string());
+    }
+    let status = std::process::Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .status()
+        .map_err(|e| format!("failed to invoke Finder: {}", e))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("failed to reveal path in Finder: {}", status))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn reveal_path_linux(path: &std::path::Path, is_dir: bool) -> Result<(), String> {
+    let target = if is_dir {
+        path.to_path_buf()
+    } else {
+        path.parent().unwrap_or(path).to_path_buf()
+    };
+
+    match std::process::Command::new("xdg-open").arg(&target).spawn() {
+        Ok(_) => Ok(()),
+        Err(_) => open::that(&target).map_err(|e| e.to_string()),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn path_to_wide_null(path: &std::path::Path) -> Vec<u16> {
+    use std::os::windows::ffi::OsStrExt;
+    path.as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
+}
+
+#[cfg(target_os = "windows")]
+fn reveal_path_windows(path: &std::path::Path, is_dir: bool) -> Result<(), String> {
+    use std::ptr::{null, null_mut};
+    use windows_sys::Win32::Foundation::RPC_E_CHANGED_MODE;
+    use windows_sys::Win32::System::Com::{
+        CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_APARTMENTTHREADED,
+    };
+    use windows_sys::Win32::UI::Shell::{ITEMIDLIST, SHOpenFolderAndSelectItems, SHParseDisplayName};
+
+    unsafe {
+        let mut should_uninitialize = false;
+        let hr_init = CoInitializeEx(null_mut(), COINIT_APARTMENTTHREADED);
+        if hr_init >= 0 {
+            should_uninitialize = true;
+        } else if hr_init != RPC_E_CHANGED_MODE {
+            return Err(format!("failed to initialize COM: 0x{:08X}", hr_init as u32));
+        }
+
+        let mut item_pidl: *mut ITEMIDLIST = null_mut();
+        let result = (|| -> Result<(), String> {
+            let path_wide = path_to_wide_null(path);
+            let hr_parse = SHParseDisplayName(
+                path_wide.as_ptr(),
+                null_mut(),
+                &mut item_pidl,
+                0,
+                null_mut(),
+            );
+            if hr_parse < 0 || item_pidl.is_null() {
+                return Err(format!("failed to parse path: 0x{:08X}", hr_parse as u32));
+            }
+
+            if is_dir {
+                let hr = SHOpenFolderAndSelectItems(item_pidl as *const ITEMIDLIST, 0, null(), 0);
+                if hr < 0 {
+                    return Err(format!("failed to open directory in Explorer: 0x{:08X}", hr as u32));
+                }
+                return Ok(());
+            }
+
+            let parent = path
+                .parent()
+                .ok_or_else(|| "file path has no parent directory".to_string())?;
+            let mut folder_pidl: *mut ITEMIDLIST = null_mut();
+            let parent_wide = path_to_wide_null(parent);
+            let hr_parent = SHParseDisplayName(
+                parent_wide.as_ptr(),
+                null_mut(),
+                &mut folder_pidl,
+                0,
+                null_mut(),
+            );
+            if hr_parent < 0 || folder_pidl.is_null() {
+                return Err(format!(
+                    "failed to parse parent directory: 0x{:08X}",
+                    hr_parent as u32
+                ));
+            }
+
+            let selected: [*const ITEMIDLIST; 1] = [item_pidl as *const ITEMIDLIST];
+            let hr_open = SHOpenFolderAndSelectItems(
+                folder_pidl as *const ITEMIDLIST,
+                1,
+                selected.as_ptr(),
+                0,
+            );
+            CoTaskMemFree(folder_pidl as *const _);
+            if hr_open < 0 {
+                return Err(format!("failed to reveal file in Explorer: 0x{:08X}", hr_open as u32));
+            }
+            Ok(())
+        })();
+
+        if !item_pidl.is_null() {
+            CoTaskMemFree(item_pidl as *const _);
+        }
+        if should_uninitialize {
+            CoUninitialize();
+        }
+
+        result
+    }
+}
+
+/// Reveal a local absolute path in system file manager.
+/// - macOS: reveal file in Finder, or open directory.
+/// - Windows: COM-based Explorer selection/open.
+/// - Linux: xdg-open target directory.
+#[tauri::command]
+async fn reveal_path(path: String) -> Result<(), String> {
+    let (target, is_dir) = resolve_reveal_target(&path)?;
+
+    #[cfg(target_os = "macos")]
+    {
+        return reveal_path_macos(&target, is_dir);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return reveal_path_windows(&target, is_dir);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return reveal_path_linux(&target, is_dir);
+    }
+    #[allow(unreachable_code)]
+    Err("reveal_path is not supported on this platform".to_string())
+}
+
 /// Update tray menu language to match app locale
 #[tauri::command]
 fn set_tray_locale(app: tauri::AppHandle, locale: String) {
@@ -559,6 +729,7 @@ pub fn run() {
             is_server_running,
             get_server_port,
             open_url,
+            reveal_path,
             set_close_behavior,
             install_windows_service,
             uninstall_windows_service,

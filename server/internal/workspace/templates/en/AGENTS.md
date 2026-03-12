@@ -23,3 +23,13 @@
 - Private things stay private. Period.
 - Don't run destructive commands without asking.
 - When in doubt, ask.
+
+## Command Compatibility (OS/Shell)
+- Detect OS and shell first: `uname` / `$OSTYPE` / `$PSVersionTable`.
+- On `macOS`, use BSD syntax and avoid GNU-only flags (for example, do not use `head -n -1`).
+- On `Linux`, GNU syntax is allowed.
+- On `Windows`, default to `PowerShell` commands.
+- In `PowerShell 5.1`, do not use `&&` / `||`; use `;` and `if ($?) { ... } else { ... }`.
+- In `PowerShell 7+`, `&&` and `||` are allowed.
+- In `cmd`, use `&&` / `||` / `&`; do not use `;`.
+- Do not mix shell syntaxes; if the environment is unclear, provide labeled alternatives (`PowerShell` and `cmd`).

@@ -122,6 +122,10 @@ func TestHandleCardAction_WebFetchUseBrowser_HTTP(t *testing.T) {
 	if !resp.Success || resp.Message != want {
 		t.Fatalf("response = %#v, want message %q", resp, want)
 	}
+	ctx := h.applyPendingBrowserLaunchIntent(context.Background(), conv.ID, resp.Message)
+	if got := tools.GetBrowserLaunchMode(ctx); got != tools.BrowserLaunchModeVisible {
+		t.Fatalf("browser launch mode = %q, want %q", got, tools.BrowserLaunchModeVisible)
+	}
 }
 
 func TestHandleCardAction_RedditLoginWallToBrowserExtract_HTTP(t *testing.T) {

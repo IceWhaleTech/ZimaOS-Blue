@@ -1,29 +1,49 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TypelessCardDeepResearchProgress } from '@/types/typeless'
+import { useDeepResearchJobsStore } from '@/stores/deepResearchJobs'
 
 const { t } = useI18n()
+const deepResearchJobs = useDeepResearchJobsStore()
 
 const props = defineProps<{
   card: TypelessCardDeepResearchProgress
 }>()
 
-const mode = computed(() => props.card.mode || 'standard')
-const progress = computed(() => {
-  const p = props.card.progress
-  if (typeof p !== 'number') return 0
-  return Math.max(0, Math.min(100, Math.round(p)))
+const cancelling = ref(false)
+
+const liveJob = computed(() => {
+  const jobId = props.card.job_id?.trim()
+  return jobId ? deepResearchJobs.jobMap[jobId] || null : null
 })
-const stage = computed(() => props.card.stage || 'running')
-const iteration = computed(() => props.card.iteration || 0)
-const latestGap = computed(() => props.card.latest_gap || '')
-const latestAction = computed(() => props.card.latest_action || '')
-const isDone = computed(() => props.card.status === 'completed')
-const isFailed = computed(() => props.card.status === 'failed')
+
+const effectiveCard = computed<TypelessCardDeepResearchProgress>(() => ({
+  ...props.card,
+  ...(liveJob.value || {}),
+  type: 'deep-research-progress',
+}))
+
+const progress = computed(() => {
+  const value = Number(effectiveCard.value.progress)
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, Math.round(value)))
+})
+const stage = computed(() => effectiveCard.value.stage || 'running')
+const iteration = computed(() => effectiveCard.value.iteration || 0)
+const latestGap = computed(() => effectiveCard.value.latest_gap || '')
+const latestAction = computed(() => effectiveCard.value.latest_action || '')
+const query = computed(() => effectiveCard.value.query || '')
+const mode = computed(() => effectiveCard.value.mode || 'standard')
+const conversationId = computed(() => effectiveCard.value.conversation_id || '')
+const jobId = computed(() => effectiveCard.value.job_id || '')
+const status = computed(() => effectiveCard.value.status || 'running')
+const isDone = computed(() => status.value === 'completed')
+const isFailed = computed(() => status.value === 'failed')
+const isCancelled = computed(() => status.value === 'cancelled')
+const isTerminal = computed(() => isDone.value || isFailed.value || isCancelled.value)
 
 const stageLabel = computed(() => {
-  const raw = stage.value
   const stageMap: Record<string, string> = {
     intake: t('chat.deepResearchStageIntake', 'Intake'),
     planning: t('chat.deepResearchStagePlanning', 'Planning'),
@@ -34,7 +54,21 @@ const stageLabel = computed(() => {
     failed: t('chat.deepResearchStageFailed', 'Failed'),
     cancelled: t('chat.deepResearchStageCancelled', 'Cancelled'),
   }
-  return stageMap[raw] || raw
+  return stageMap[stage.value] || stage.value
+})
+
+const statusClass = computed(() => {
+  if (isFailed.value) return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200'
+  if (isCancelled.value) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+  if (isDone.value) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+  return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'
+})
+
+const progressClass = computed(() => {
+  if (isFailed.value) return 'bg-red-500'
+  if (isCancelled.value) return 'bg-amber-500'
+  if (isDone.value) return 'bg-emerald-500'
+  return 'bg-blue-500'
 })
 
 function latestActionLabel(action?: string): string {
@@ -61,39 +95,85 @@ function latestActionLabel(action?: string): string {
       return action || ''
   }
 }
+
+async function handleView() {
+  if (!jobId.value || !conversationId.value) return
+  await deepResearchJobs.openJob(jobId.value, conversationId.value)
+}
+
+async function handleCancel() {
+  if (!jobId.value || isTerminal.value || cancelling.value) return
+  cancelling.value = true
+  try {
+    await deepResearchJobs.cancelJob(jobId.value)
+  } finally {
+    cancelling.value = false
+  }
+}
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm">
-    <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
-      <div class="flex items-center justify-between gap-3">
-        <div class="text-sm font-semibold text-gray-800 dark:text-gray-100">
-          {{ t('chat.deepResearchProgress', 'Deep Research Running') }}
+  <div class="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/80 shadow-sm overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <span class="rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {{ t('chat.deepResearchProgress', 'Deep Research Running') }}
+            </span>
+            <span class="rounded-full px-2.5 py-1" :class="statusClass">{{ stageLabel }}</span>
+            <span class="rounded-full px-2.5 py-1 bg-slate-100 text-slate-600 capitalize dark:bg-slate-800 dark:text-slate-300">{{ mode }}</span>
+          </div>
+          <div v-if="query" class="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100 break-words">
+            {{ query }}
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+            <span>{{ progress }}%</span>
+            <span v-if="iteration">{{ t('chat.deepResearchIteration', 'Iteration') }} {{ iteration }}</span>
+            <span v-if="latestAction">{{ latestActionLabel(latestAction) }}</span>
+          </div>
         </div>
-        <span class="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-          {{ mode }}
-        </span>
-      </div>
-      <div v-if="card.query" class="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">
-        {{ card.query }}
+        <div class="flex flex-col items-end gap-2">
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">{{ progress }}%</span>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="conversationId"
+              class="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+              @click="handleView"
+            >
+              {{ t('chat.deepResearchViewTask', 'View task') }}
+            </button>
+            <button
+              v-if="!isTerminal && jobId"
+              class="rounded-full border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-900/60 dark:text-amber-200 dark:hover:bg-amber-950/30 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="cancelling"
+              @click="handleCancel"
+            >
+              {{ cancelling ? t('common.loading', 'Loading...') : t('chat.deepResearchCancelTask', 'Cancel') }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="px-4 py-3">
-      <div class="flex items-center justify-between text-xs mb-2">
-        <span class="text-gray-500 dark:text-gray-400">{{ stageLabel }}</span>
-        <span class="font-medium text-gray-700 dark:text-gray-200">{{ progress }}%</span>
+
+    <div class="px-4 py-3 space-y-3">
+      <div class="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+        <div class="h-full transition-all duration-500 ease-out" :class="progressClass" :style="{ width: `${progress}%` }" />
       </div>
-      <div v-if="iteration || latestAction || latestGap" class="mb-2 space-y-1 text-xs text-gray-500 dark:text-gray-400">
-        <div v-if="iteration">{{ t('chat.deepResearchIteration', 'Iteration') }}: {{ iteration }}</div>
-        <div v-if="latestAction">{{ t('chat.deepResearchLatestAction', 'Latest action') }}: {{ latestActionLabel(latestAction) }}</div>
-        <div v-if="latestGap">{{ t('chat.deepResearchLatestGap', 'Latest gap') }}: {{ latestGap }}</div>
+
+      <div class="grid gap-2 md:grid-cols-2 text-xs text-slate-500 dark:text-slate-400">
+        <div v-if="latestAction" class="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
+          <div class="font-medium text-slate-600 dark:text-slate-300">{{ t('chat.deepResearchLatestAction', 'Latest action') }}</div>
+          <div class="mt-1 break-words">{{ latestActionLabel(latestAction) }}</div>
+        </div>
+        <div v-if="latestGap" class="rounded-xl bg-amber-50 px-3 py-2 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+          <div class="font-medium">{{ t('chat.deepResearchLatestGap', 'Latest gap') }}</div>
+          <div class="mt-1 break-words">{{ latestGap }}</div>
+        </div>
       </div>
-      <div class="h-1.5 rounded bg-gray-100 dark:bg-gray-700 overflow-hidden">
-        <div
-          class="h-full transition-all duration-500 ease-out"
-          :class="isFailed ? 'bg-red-500' : isDone ? 'bg-emerald-500' : 'bg-blue-500'"
-          :style="{ width: progress + '%' }"
-        />
+
+      <div v-if="!conversationId" class="text-xs text-slate-500 dark:text-slate-400">
+        {{ t('chat.deepResearchRunningElsewhere', 'This research task is running in the background.') }}
       </div>
     </div>
   </div>

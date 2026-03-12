@@ -30,6 +30,8 @@ function createTestRouter() {
     routes: [
       { path: '/home', name: 'Home', component: { template: '<div>Home</div>' } },
       { path: '/chat', name: 'Chat', component: { template: '<div>Chat</div>' } },
+      { path: '/cron', name: 'Cron', component: { template: '<div>Cron</div>' } },
+      { path: '/automation', redirect: '/cron' },
       { path: '/settings', name: 'Settings', component: { template: '<div>Settings</div>' } },
     ],
   })
@@ -107,5 +109,27 @@ describe('AppSidebar', () => {
     const chatLink = wrapper.find('a[href="/chat"]')
     expect(chatLink.exists()).toBe(true)
     expect(chatLink.classes()).toContain('bg-gray-100')
+  })
+
+  it('should highlight automation nav item on cron route', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const authStore = useAuthStore()
+    authStore.$patch({
+      token: 'test-token',
+      user: { username: 'admin', role: 'admin' } as never,
+    })
+    const router = createTestRouter()
+    router.push('/cron')
+    await router.isReady()
+    const wrapper = mount(AppSidebar, {
+      global: {
+        plugins: [pinia, router, i18n],
+      },
+    })
+
+    const automationLink = wrapper.find('a[href="/cron"]')
+    expect(automationLink.exists()).toBe(true)
+    expect(automationLink.classes()).toContain('bg-gray-100')
   })
 })

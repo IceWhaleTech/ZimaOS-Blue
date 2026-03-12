@@ -114,14 +114,18 @@ function stepLabel(step: ProgressStep): string {
 
 <template>
   <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm">
-    <div class="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-700/50">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L5 12.25l1.41-1.41 3.34 3.34 7.84-7.84L19 7.75z" />
-      </svg>
-      <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('browserProgress.title') }}</span>
-      <span v-if="currentURL" class="text-xs text-gray-400 truncate max-w-[220px]">{{ currentURL }}</span>
-      <span v-if="isRunning" class="ml-auto inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse flex-shrink-0" />
-      <span v-else class="ml-auto text-xs text-gray-400 tabular-nums">{{ progressPercent }}%</span>
+    <div class="px-3 py-2.5 border-b border-gray-100 dark:border-gray-700/50">
+      <div class="flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L5 12.25l1.41-1.41 3.34 3.34 7.84-7.84L19 7.75z" />
+        </svg>
+        <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('browserProgress.title') }}</span>
+        <span v-if="isRunning" class="ml-auto inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse flex-shrink-0" />
+        <span v-else class="ml-auto text-xs text-gray-400 tabular-nums">{{ progressPercent }}%</span>
+      </div>
+      <div v-if="currentURL" class="mt-1 pl-6 text-xs text-gray-400 whitespace-normal break-all leading-relaxed">
+        {{ currentURL }}
+      </div>
     </div>
 
     <div class="h-0.5 bg-gray-100 dark:bg-gray-700">
@@ -145,8 +149,10 @@ function stepLabel(step: ProgressStep): string {
           <span v-if="step.status === 'running'" class="animate-spin">{{ stepIcon(step.status) }}</span>
           <span v-else>{{ stepIcon(step.status) }}</span>
         </span>
-        <span class="text-sm text-gray-700 dark:text-gray-300 flex-1 truncate">{{ stepLabel(step) }}</span>
-        <span v-if="step.url" class="text-xs text-gray-400 truncate max-w-[180px]">{{ step.url }}</span>
+        <div class="min-w-0 flex-1">
+          <div class="text-sm text-gray-700 dark:text-gray-300 whitespace-normal break-words leading-relaxed">{{ stepLabel(step) }}</div>
+          <div v-if="step.url" class="text-xs text-gray-400 whitespace-normal break-all leading-relaxed">{{ step.url }}</div>
+        </div>
       </div>
     </div>
   </div>

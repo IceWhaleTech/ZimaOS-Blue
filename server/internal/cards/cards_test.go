@@ -35,6 +35,9 @@ func TestToCard(t *testing.T) {
 		{"ui_reviewer", "ui_reviewer", `{"url":"http://x.com","overall":80,"pass":true}`, "ui-review", false},
 		{"ui_reviewer_error", "ui_reviewer", `{"error":"fail"}`, "ui-review", false},
 		{"ui_reviewer_invalid", "ui_reviewer", `not json`, "", true},
+		{"image", "image", `{"task_id":"img-1","status":"succeeded","image_urls":["/api/v1/media/files/a.png"]}`, "media-generate", false},
+		{"image_generate", "image_generate", `{"status":"processing","task_id":"img-2","message":"still working"}`, "media-generate", false},
+		{"ppt", "ppt", `{"task_id":"slide-1","image_urls":["/api/media/generated/images/a.png"],"thumbnail_urls":["/api/media/generated/thumbnails/a.png"],"review_summary":"score 92/100"}`, "media-generate", false},
 		{"generic", "unknown_tool", `{"foo":"bar"}`, "result", false},
 		{"generic_error", "unknown_tool", `{"error":"oops"}`, "result", false},
 		{"generic_long", "unknown_tool", strings.Repeat("x", 600), "result", false},
@@ -56,6 +59,55 @@ func TestToCard(t *testing.T) {
 				t.Errorf("expected type %q, got %q", tt.wantType, got)
 			}
 		})
+	}
+}
+
+func TestImageCard_MapsTaskEnvelopeToMediaGenerate(t *testing.T) {
+	card := ToCard("image", `{"task":{"id":"task-9","status":"succeeded","outputs":[{"url":"https://example.com/a.png","thumbnail_url":"https://example.com/a-thumb.png","revised_prompt":"sunset city"}]}}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["type"]; got != "media-generate" {
+		t.Fatalf("type=%v, want media-generate", got)
+	}
+	if got := card["status"]; got != "success" {
+		t.Fatalf("status=%v, want success", got)
+	}
+	if got := card["task_id"]; got != "task-9" {
+		t.Fatalf("task_id=%v, want task-9", got)
+	}
+
+	images, ok := card["images"].([]map[string]interface{})
+	if !ok || len(images) != 1 {
+		t.Fatalf("images=%T %v, want one image item", card["images"], card["images"])
+	}
+	if got := images[0]["src"]; got != "https://example.com/a.png" {
+		t.Fatalf("image src=%v, want https://example.com/a.png", got)
+	}
+	if got := images[0]["thumbnail"]; got != "https://example.com/a-thumb.png" {
+		t.Fatalf("image thumbnail=%v, want https://example.com/a-thumb.png", got)
+	}
+	if got := images[0]["caption"]; got != "sunset city" {
+		t.Fatalf("image caption=%v, want sunset city", got)
+	}
+}
+
+func TestImageCard_MapsProcessingToGenerating(t *testing.T) {
+	card := ToCard("image_generate", `{"status":"processing","task_id":"task-42","message":"still generating"}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["type"]; got != "media-generate" {
+		t.Fatalf("type=%v, want media-generate", got)
+	}
+	if got := card["status"]; got != "generating" {
+		t.Fatalf("status=%v, want generating", got)
+	}
+	if got := card["task_id"]; got != "task-42" {
+		t.Fatalf("task_id=%v, want task-42", got)
+	}
+	if got := card["message"]; got != "still generating" {
+		t.Fatalf("message=%v, want still generating", got)
 	}
 }
 
@@ -293,6 +345,64 @@ func TestFileReadCard_ErrorShowsSanitizedMessage(t *testing.T) {
 	}
 }
 
+func TestLsCard_ShowsEntriesPreview(t *testing.T) {
+	card := ToCard("ls", `{"base_path":".","count":3,"truncated":false,"max_depth":1,"max_entries":200,"include_hidden":false,"entries":[{"path":"sub","type":"dir"},{"path":"README.md","type":"file","size":123},{"path":"server","type":"dir"}]}`)
+	if card == nil {
+		t.Fatal("expected ls card")
+	}
+	if card["type"] != "result" {
+		t.Fatalf("expected result type, got %v", card["type"])
+	}
+	if card["title"] != "ls" {
+		t.Fatalf("expected title ls, got %v", card["title"])
+	}
+	if card["message"] != "3 entries in ." {
+		t.Fatalf("unexpected message: %v", card["message"])
+	}
+	details, ok := card["details"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected details slice, got %#v", card["details"])
+	}
+	foundEntries := false
+	for _, detail := range details {
+		if detail["label"] != "entries" {
+			continue
+		}
+		value, _ := detail["value"].(string)
+		if !strings.Contains(value, "[dir] sub") || !strings.Contains(value, "[file] README.md (123 B)") {
+			t.Fatalf("unexpected entries preview: %q", value)
+		}
+		if multiline, _ := detail["multiline"].(bool); !multiline {
+			t.Fatalf("expected entries detail to be multiline")
+		}
+		foundEntries = true
+	}
+	if !foundEntries {
+		t.Fatalf("expected entries preview detail: %#v", details)
+	}
+	if _, ok := card["warning"]; ok {
+		t.Fatalf("did not expect warning for non-truncated card: %#v", card)
+	}
+}
+
+func TestLsCard_TruncatedAddsWarning(t *testing.T) {
+	card := ToCard("ls", `{"base_path":".","count":200,"truncated":true,"max_depth":1,"max_entries":200,"include_hidden":false,"entries":[{"path":"a","type":"file","size":1}]}`)
+	if card == nil {
+		t.Fatal("expected ls card")
+	}
+	if card["warning_code"] != "output_truncated" {
+		t.Fatalf("expected output_truncated warning code, got %v", card["warning_code"])
+	}
+	warning, _ := card["warning"].(string)
+	if !strings.Contains(warning, "truncated") {
+		t.Fatalf("expected truncation warning text, got %q", warning)
+	}
+	message, _ := card["message"].(string)
+	if !strings.Contains(message, "Showing first 200 entries") {
+		t.Fatalf("expected truncated message, got %q", message)
+	}
+}
+
 func TestExecCard_ShowsStructuredOutputWithMaskedSensitiveData(t *testing.T) {
 	card := ToCard("exec", `{"command":"curl -H 'Authorization: Bearer secret-token-1234567890' https://example.com?token=abc123","stdout":"AWS_SECRET_ACCESS_KEY=abc123\ncontact=user@example.com\ncookie=session=abcdef","stderr":"password=abc123","exit_code":1,"warnings":["set --token super-secret"],"session_id":"abc","host":"sandbox","risk_level":"high","duration_ms":8}`)
 	if card == nil {
@@ -449,6 +559,41 @@ func TestBrowserCard_IncludesExtractWithWebFetchAction(t *testing.T) {
 	}
 	if formData["url"] != "https://www.reddit.com/r/test" || formData["browser_target_id"] != "tab-42" {
 		t.Fatalf("unexpected browser action form_data: %#v", formData)
+	}
+	details, ok := card["details"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected details slice, got %#v", card["details"])
+	}
+	for _, detail := range details {
+		if detail["label"] == "tree" {
+			t.Fatalf("expected browser card to hide tree detail, got %#v", details)
+		}
+	}
+}
+
+func TestBrowserCard_EmbedsScreenshotImage(t *testing.T) {
+	base64PNG := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+	card := ToCard("browser", `{"message":"Screenshot captured for https://example.com","screenshot":"`+base64PNG+`"}`)
+	if card == nil {
+		t.Fatal("expected browser card")
+	}
+	if card["type"] != "result" {
+		t.Fatalf("expected result type, got %v", card["type"])
+	}
+	if card["message"] != "Screenshot captured for https://example.com" {
+		t.Fatalf("unexpected message: %v", card["message"])
+	}
+	wantImage := "data:image/png;base64," + base64PNG
+	if card["image"] != wantImage {
+		t.Fatalf("expected image %q, got %v", wantImage, card["image"])
+	}
+
+	cardWithDataURL := ToCard("browser", `{"screenshot":"data:image/png;base64,`+base64PNG+`"}`)
+	if cardWithDataURL == nil {
+		t.Fatal("expected browser card with data URL")
+	}
+	if cardWithDataURL["image"] != "data:image/png;base64,"+base64PNG {
+		t.Fatalf("expected original data URL image, got %v", cardWithDataURL["image"])
 	}
 }
 
@@ -632,5 +777,21 @@ func TestSandboxCardDispatch_NoHint(t *testing.T) {
 	}
 	if card["type"] != "result" {
 		t.Errorf("expected generic result type, got %v", card["type"])
+	}
+}
+
+func TestConvertTaskCard(t *testing.T) {
+	card := ToCard("convert", `{"task_id":"task-1","status":"processing","action":"tts","source_summary":"hello","target_format":"wav","progress":35,"message":"Processing","outputs":[]}`)
+	if card == nil {
+		t.Fatal("expected non-nil convert card")
+	}
+	if got := card["type"]; got != "convert-task" {
+		t.Fatalf("type=%v, want convert-task", got)
+	}
+	if got := card["task_id"]; got != "task-1" {
+		t.Fatalf("task_id=%v, want task-1", got)
+	}
+	if got := card["action"]; got != "tts" {
+		t.Fatalf("action=%v, want tts", got)
 	}
 }

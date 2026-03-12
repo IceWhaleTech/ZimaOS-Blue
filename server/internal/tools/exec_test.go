@@ -333,6 +333,48 @@ func TestApprovalTimeout(t *testing.T) {
 	}
 }
 
+func TestApprovalSessionIDPropagationAndLookup(t *testing.T) {
+	broker := sse.NewBroker()
+	defer broker.Close()
+
+	mgr := NewApprovalManager(broker)
+	ctx := WithSessionID(context.Background(), "conv-42")
+
+	go func() {
+		_, _ = mgr.RequestApproval(ctx, ApprovalRequest{
+			Command: "echo hi",
+			UserID:  "test-user",
+		})
+	}()
+
+	requireEventually := func(fetch func() *ApprovalRequest) *ApprovalRequest {
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			if req := fetch(); req != nil {
+				return req
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return nil
+	}
+
+	bySession := requireEventually(func() *ApprovalRequest { return mgr.GetPendingBySession("conv-42") })
+	if bySession == nil {
+		t.Fatal("GetPendingBySession(conv-42) = nil, want non-nil")
+	}
+	if bySession.SessionID != "conv-42" {
+		t.Fatalf("SessionID = %q, want %q", bySession.SessionID, "conv-42")
+	}
+	if byUser := mgr.GetPending("test-user"); byUser == nil || byUser.SessionID != "conv-42" {
+		t.Fatalf("GetPending(test-user) = %+v, want session conv-42", byUser)
+	}
+	if got := mgr.GetPendingBySession("conv-miss"); got != nil {
+		t.Fatalf("GetPendingBySession(conv-miss) = %+v, want nil", got)
+	}
+
+	mgr.ResolveApproval(bySession.ID, ApprovalAllowOnce)
+}
+
 // --- Exec tool ---
 
 func TestExecSimpleCommand(t *testing.T) {
@@ -389,6 +431,39 @@ func TestExecExitCode(t *testing.T) {
 	}
 	if res.ExitCode == nil || *res.ExitCode != 42 {
 		t.Errorf("expected exit code 42, got %v", res.ExitCode)
+	}
+}
+
+func TestExecSupportsNestedCamelCaseArgs(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	workdir := t.TempDir()
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 2 * time.Second,
+		MaxTimeout:     5 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"cmd":            "printf '%s|%s' \"$LANG\" \"$PWD\"",
+			"cwd":            workdir,
+			"language":       "en-US",
+			"timeoutSeconds": "2",
+			"host":           "local",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var res execResult
+	json.Unmarshal([]byte(result.(string)), &res)
+	if res.Status != "completed" {
+		t.Fatalf("expected completed, got %s", res.Status)
+	}
+	if !strings.Contains(res.Stdout, "en_US.UTF-8") || !strings.Contains(res.Stdout, workdir) {
+		t.Fatalf("unexpected stdout: %q", res.Stdout)
 	}
 }
 
@@ -485,6 +560,39 @@ func TestProcessToolList(t *testing.T) {
 	}
 	if res.Running[0].SessionID != "s1" {
 		t.Errorf("unexpected session ID: %s", res.Running[0].SessionID)
+	}
+}
+
+func TestProcessToolSupportsNestedCamelCaseArgs(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	s := &ProcessSession{
+		ID:        "s2",
+		Command:   "echo test",
+		StartedAt: time.Now(),
+		Stdout:    NewOutputBuffer(1024),
+		Stderr:    NewOutputBuffer(1024),
+		Status:    ProcessRunning,
+	}
+	s.Stdout.Append("test output\n")
+	sessions.Add(s)
+
+	tool := NewProcessTool(sessions)
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":    "poll",
+			"sessionId": "s2",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res processPollResult
+	json.Unmarshal([]byte(result.(string)), &res)
+	if !strings.Contains(res.Stdout, "test output") {
+		t.Errorf("expected stdout to contain 'test output', got %q", res.Stdout)
 	}
 }
 

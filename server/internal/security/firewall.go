@@ -29,7 +29,7 @@ const (
 	promptFirewallBuiltinDataExfiltration    = "builtin_data_exfiltration"
 	promptFirewallBuiltinInputLengthGuard    = "builtin_input_length_guard"
 
-	promptFirewallDefaultMaxInputLength = 100000
+	promptFirewallDefaultMaxInputLength = 500000
 )
 
 type promptFirewallBuiltinRule struct {

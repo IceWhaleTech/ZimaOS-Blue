@@ -14,3 +14,13 @@
 - Privat informasjon forblir privat. Punktum.
 - Ikke kjør destruktive kommandoer uten å spørre.
 - Spør ved tvil.
+
+## Kommandokompatibilitet (OS/Shell)
+- Oppdag først OS og shell: `uname` / `$OSTYPE` / `$PSVersionTable`.
+- På `macOS`, bruk BSD-syntaks og unngå GNU-only flagg (for eksempel ikke bruk `head -n -1`).
+- På `Linux` er GNU-syntaks tillatt.
+- På `Windows`, bruk `PowerShell`-kommandoer som standard.
+- I `PowerShell 5.1`, ikke bruk `&&` / `||`; bruk `;` og `if ($?) { ... } else { ... }`.
+- I `PowerShell 7+` er `&&` og `||` tillatt.
+- I `cmd`, bruk `&&` / `||` / `&`; ikke bruk `;`.
+- Ikke bland shell-syntaks; hvis miljøet er uklart, gi merkede alternativer (`PowerShell` og `cmd`).

@@ -8,6 +8,7 @@ const { t } = useI18n()
 defineProps<{
   conversations: Conversation[]
   currentId: string | null
+  executingConversationIds?: string[]
   loading?: boolean
   searching?: boolean
 }>()
@@ -135,7 +136,7 @@ watch(searchQuery, (query) => {
             v-model="searchQuery"
             type="text"
             :placeholder="t('chat.searchConversations')"
-            class="search-input w-full text-gray-900 dark:text-white rounded-xl px-4 py-2.5 pl-10 focus:outline-none"
+            class="search-input w-full text-sm text-gray-900 dark:text-white rounded-xl px-4 py-2 pl-10 focus:outline-none"
             @keydown.escape="toggleSearch"
           />
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -198,7 +199,10 @@ watch(searchQuery, (query) => {
           v-for="(conversation, index) in conversations"
           :key="conversation.id"
           class="conversation-item relative group rounded-xl"
-          :class="{ 'convo-card-active': conversation.id === currentId }"
+          :class="{
+            'convo-card-active': conversation.id === currentId,
+            'convo-card-running': !!executingConversationIds?.includes(conversation.id),
+          }"
           :style="{ '--item-index': String(index) }"
         >
           <button
@@ -230,7 +234,7 @@ watch(searchQuery, (query) => {
                     v-if="conversation.pinned"
                     class="pin-chip hidden sm:inline-flex"
                   >
-                    Pin
+                    {{ t('chat.pinConversation') }}
                   </span>
                 </h3>
                 <p class="convo-meta text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -456,7 +460,7 @@ watch(searchQuery, (query) => {
 .create-btn {
   border-radius: var(--cl-radius);
   background: var(--chat-sidebar-create-bg, linear-gradient(135deg, #0f172a, #334155));
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.28);
+  box-shadow: 0 7px 16px rgba(15, 23, 42, 0.24);
 }
 
 .create-count {
@@ -475,7 +479,7 @@ watch(searchQuery, (query) => {
 
 .create-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.32);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.28);
 }
 
 .search-input-wrap {
@@ -559,7 +563,7 @@ watch(searchQuery, (query) => {
   box-shadow: 0 12px 22px rgba(2, 132, 199, 0.2);
 }
 
-.convo-card-active .convo-main-btn::after {
+.convo-card-running .convo-main-btn::after {
   content: '';
   position: absolute;
   right: 0.4rem;

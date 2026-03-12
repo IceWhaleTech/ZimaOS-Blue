@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
 
@@ -189,6 +191,55 @@ func TestBuildStructured_ConfigCacheHitAndInvalidation(t *testing.T) {
 	}
 }
 
+func TestBuildStructured_ContextPacksStayInDynamicBlock(t *testing.T) {
+	workspaceDir := t.TempDir()
+	mgr := workspace.NewManager(workspaceDir)
+	if err := mgr.EnsureWorkspace(); err != nil {
+		t.Fatalf("failed to ensure workspace: %v", err)
+	}
+	packDir := filepath.Join(mgr.ContextDir(), "openai", "docs", "responses-api")
+	if err := os.MkdirAll(packDir, 0o755); err != nil {
+		t.Fatalf("mkdir packDir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packDir, "DOC.md"), []byte(`---
+id: openai/responses-api
+type: doc
+description: Responses API notes
+source_trust: official
+tags: [responses, tools]
+---
+
+Use compact tool outputs.`), 0o644); err != nil {
+		t.Fatalf("write DOC.md: %v", err)
+	}
+
+	registry := contextpack.NewRegistry(mgr.ContextDir())
+	registry.SetRefreshTTL(0)
+	store, err := contextpack.NewAnnotationStore(filepath.Join(t.TempDir(), "contextpacks.db"))
+	if err != nil {
+		t.Fatalf("NewAnnotationStore() error = %v", err)
+	}
+	defer store.Close()
+	resolver := contextpack.NewResolver(registry, store, contextpack.ResolverConfig{MaxFiles: 3, MaxTokens: 1200, SearchLimit: 5})
+
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{WorkspaceDir: workspaceDir})
+	b.SetWorkspace(mgr)
+	b.SetContextResolver(resolver)
+
+	ctx := contextpack.WithPromptQuery(context.Background(), "responses tools")
+	ctx = tools.WithLang(ctx, "en")
+	res := b.BuildStructured(ctx, "")
+	if res.ContextPacks == nil || len(res.ContextPacks.Files) == 0 {
+		t.Fatal("expected context packs in build result")
+	}
+	if !strings.Contains(res.Dynamic, "<context_pack") {
+		t.Fatalf("expected dynamic block to contain context pack, got: %s", res.Dynamic)
+	}
+	if strings.Contains(res.Config, "<context_pack") {
+		t.Fatalf("expected config block to exclude context packs, got: %s", res.Config)
+	}
+}
+
 func TestBuildAgentModeGuidance_IncludesChecklistAndAskFormat(t *testing.T) {
 	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
 	b.SetAgentMode(true)
@@ -218,6 +269,18 @@ func TestBuildAgentModeGuidance_IncludesChecklistAndAskFormat(t *testing.T) {
 	}
 	if !strings.Contains(out, "After all steps, verify: run build/tests. Fix and re-verify if needed.") {
 		t.Fatalf("agent mode guidance should include verification requirement: %s", out)
+	}
+	if !strings.Contains(out, "superpowers and ui-ux-pro-max-skill") {
+		t.Fatalf("agent mode guidance should include coding-skill bootstrap defaults: %s", out)
+	}
+	if !strings.Contains(out, "ask the user once and then remember") {
+		t.Fatalf("agent mode guidance should require asking and remembering stack preferences: %s", out)
+	}
+	if !strings.Contains(out, "backend=Go, frontend=React, mobile=React Native, client=Electron") {
+		t.Fatalf("agent mode guidance should include default stack preferences: %s", out)
+	}
+	if !strings.Contains(out, "Python or Node.js") {
+		t.Fatalf("agent mode guidance should preserve runtime-environment override guidance: %s", out)
 	}
 	if !strings.Contains(out, "Your LAST response MUST be plain text") {
 		t.Fatalf("agent mode guidance should include completion format requirement: %s", out)
@@ -249,6 +312,9 @@ func TestBuildAgentModeGuidance_IncludesChecklistAndAskFormat(t *testing.T) {
 	if !strings.Contains(out, "Ask confirmation before destructive actions") {
 		t.Fatalf("agent mode guidance should include manual-confirm clause by default: %s", out)
 	}
+	if !strings.Contains(out, "asset-loss operations") || !strings.Contains(out, "secondary user confirmation") {
+		t.Fatalf("agent mode guidance should require secondary confirmation for asset-loss operations: %s", out)
+	}
 	if strings.Contains(out, "Auto-confirm enabled — execute without asking.") {
 		t.Fatalf("agent mode guidance should not include auto-confirm clause when auto-confirm is disabled: %s", out)
 	}
@@ -263,6 +329,9 @@ func TestBuildAgentModeGuidance_AutoConfirmClause(t *testing.T) {
 	out := sb.String()
 	if !strings.Contains(out, "Auto-confirm enabled — execute without asking.") {
 		t.Fatalf("agent mode guidance should include auto-confirm clause when enabled: %s", out)
+	}
+	if !strings.Contains(out, "asset-loss operations") || !strings.Contains(out, "secondary user confirmation") {
+		t.Fatalf("agent mode guidance should require secondary confirmation for asset-loss operations even in auto-confirm mode: %s", out)
 	}
 	if strings.Contains(out, "Ask confirmation before destructive actions") {
 		t.Fatalf("agent mode guidance should not include manual confirmation clause when auto-confirm is enabled: %s", out)
@@ -375,6 +444,21 @@ func TestBuildStructured_StaticIncludesWebToolRoutingGuidance(t *testing.T) {
 	}
 	if !strings.Contains(static, "browser_target_id") {
 		t.Fatalf("expected static prompt to mention browser_target_id reuse, got: %s", static)
+	}
+}
+
+func TestBuildStructured_StaticPrefersDeepWikiBeforeGitHubForRepoResearch(t *testing.T) {
+	b := NewSystemPromptBuilder(&ClaudeCodeConfig{})
+	static := b.BuildStructured(context.Background(), "").Static
+
+	if !strings.Contains(static, "For GitHub repository research, check the corresponding DeepWiki materials first when available") {
+		t.Fatalf("expected static prompt to prefer DeepWiki before github.com for repo research, got: %s", static)
+	}
+	if !strings.Contains(static, "deepwiki.com/&lt;owner&gt;/&lt;repo&gt;") {
+		t.Fatalf("expected static prompt to include DeepWiki repo URL pattern, got: %s", static)
+	}
+	if !strings.Contains(static, "then use GitHub for primary-source verification") {
+		t.Fatalf("expected static prompt to preserve GitHub verification guidance, got: %s", static)
 	}
 }
 

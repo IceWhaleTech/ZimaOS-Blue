@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -1783,6 +1785,159 @@ func TestChatHandlerGetMessages_PaginatesFromLatest_LargeConversation(t *testing
 }
 
 // Test SendMessage endpoint with mock provider
+func TestChatHandlerRegisterRoutes_SendMessageBodyTooLarge(t *testing.T) {
+	e := echo.New()
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.RegisterRoutes(e.Group("/api/v1"))
+
+	payload := `{"message":"` + strings.Repeat("a", int(chatRequestBodyLimitBytes)) + `x"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/conv-1/messages", strings.NewReader(payload))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusRequestEntityTooLarge, rec.Body.String())
+	}
+}
+
+func TestChatHandlerRegisterRoutes_StreamMessageBodyTooLarge(t *testing.T) {
+	e := echo.New()
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.RegisterRoutes(e.Group("/api/v1"))
+
+	payload := `{"message":"` + strings.Repeat("a", int(chatRequestBodyLimitBytes)) + `x"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/conv-1/messages/stream", strings.NewReader(payload))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusRequestEntityTooLarge, rec.Body.String())
+	}
+}
+
+func newProviderPoolWithContextWindowModel(t *testing.T, modelID string, contextWindow int) *providerpool.Pool {
+	t.Helper()
+
+	storage, err := providerpool.NewFileStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("create provider storage: %v", err)
+	}
+	registry, err := providerpool.NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("create provider registry: %v", err)
+	}
+	provider := &providerpool.Provider{
+		ID:      "p-context",
+		Name:    "p-context",
+		Type:    providerpool.ProviderTypeCustom,
+		Enabled: true,
+		Status:  providerpool.ProviderStatusActive,
+		BaseURL: "https://example.com/v1",
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+	if err := storage.SaveModels(provider.ID, []*providerpool.Model{{
+		ID:            modelID,
+		Name:          modelID,
+		ProviderID:    provider.ID,
+		Enabled:       true,
+		ContextWindow: contextWindow,
+	}}); err != nil {
+		t.Fatalf("save models: %v", err)
+	}
+	discovery := providerpool.NewModelDiscovery(registry, storage, time.Hour)
+	return &providerpool.Pool{Registry: registry, Discovery: discovery}
+}
+
+func TestChatHandlerSendMessageRejectsEstimatedContextOverflow(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Test Conv")
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModel(t, "tiny-context-model", 1024))
+	if got := handler.resolveContextWindowForModel("tiny-context-model"); got != 1024 {
+		t.Fatalf("resolveContextWindowForModel() = %d, want 1024", got)
+	}
+	if estimate := handler.estimatePreparedInputBudget("tiny-context-model", 64, []llm.Message{{Role: llm.RoleUser, Content: strings.Repeat("Long context block. ", 500)}}); estimate == nil {
+		t.Fatal("expected direct input budget estimate to exceed context window")
+	}
+
+	e := echo.New()
+	body := fmt.Sprintf(`{"message":%q,"model":"tiny-context-model","max_tokens":64}`, strings.Repeat("Long context block. ", 500))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage() error = %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if exceeded, _ := resp["context_window_exceeded"].(bool); !exceeded {
+		t.Fatalf("context_window_exceeded = %#v, want true", resp["context_window_exceeded"])
+	}
+	if got, _ := resp["model"].(string); got != "tiny-context-model" {
+		t.Fatalf("model = %q, want %q", got, "tiny-context-model")
+	}
+	maxInput, _ := resp["max_input_tokens"].(float64)
+	estimated, _ := resp["estimated_input_tokens"].(float64)
+	if estimated <= maxInput {
+		t.Fatalf("estimated_input_tokens = %v, want > max_input_tokens = %v", estimated, maxInput)
+	}
+}
+
+func TestChatHandlerStreamMessageRejectsEstimatedContextOverflow(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Test Conv")
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetProviderPool(newProviderPoolWithContextWindowModel(t, "tiny-context-model", 1024))
+	if got := handler.resolveContextWindowForModel("tiny-context-model"); got != 1024 {
+		t.Fatalf("resolveContextWindowForModel() = %d, want 1024", got)
+	}
+	if estimate := handler.estimatePreparedInputBudget("tiny-context-model", 64, []llm.Message{{Role: llm.RoleUser, Content: strings.Repeat("Long context block. ", 500)}}); estimate == nil {
+		t.Fatal("expected direct input budget estimate to exceed context window")
+	}
+
+	e := echo.New()
+	body := fmt.Sprintf(`{"message":%q,"model":"tiny-context-model","max_tokens":64}`, strings.Repeat("Long context block. ", 500))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage() error = %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if exceeded, _ := resp["context_window_exceeded"].(bool); !exceeded {
+		t.Fatalf("context_window_exceeded = %#v, want true", resp["context_window_exceeded"])
+	}
+}
+
 func TestChatHandlerSendMessage(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -2150,7 +2305,7 @@ func TestChatHandlerSendMessageAutoContinue_TracksPlanStateAcrossToolAndToolless
 				Model: "gpt-5.3-codex-spark",
 				Message: llm.Message{
 					Role:    llm.RoleAssistant,
-					Content: "已完成，游戏可直接运行，地址：http://localhost:3000。下一步建议：1. 访问并验证游戏功能。2. 运行回归测试。",
+					Content: "已完成，游戏可直接运行，地址：http://localhost:3000。如果你愿意，我还可以帮你：1. 如果你愿意，我可以帮你访问并验证游戏功能。2. 如果你希望，我也可以帮你运行一轮回归测试。",
 				},
 				Usage: llm.Usage{PromptTokens: 130, CompletionTokens: 35, TotalTokens: 165},
 			},
@@ -2229,6 +2384,139 @@ func TestChatHandlerSendMessageAutoContinue_TracksPlanStateAcrossToolAndToolless
 	content, _ := resp["content"].(string)
 	if !strings.Contains(content, "http://localhost:3000") {
 		t.Fatalf("expected final completion content with localhost address, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_StripsDuplicateChecklistFromFinalResponse(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Plan State Non-Stream Checklist Dedupe")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "plan-dedupe-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_plan_create_dedupe_1",
+							Name:      "plan_create",
+							Arguments: `{"tasks":["实现2048网页游戏","本地运行并输出localhost地址"]}`,
+						},
+					},
+				},
+				Usage: llm.Usage{PromptTokens: 80, CompletionTokens: 20, TotalTokens: 100},
+			},
+			{
+				ID:    "plan-dedupe-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					Content: `- [ ] 实现2048网页游戏
+- [ ] 本地运行并输出localhost地址
+
+我先完成实现，再做本地验证。`,
+				},
+				Usage: llm.Usage{PromptTokens: 110, CompletionTokens: 30, TotalTokens: 140},
+			},
+			{
+				ID:    "plan-dedupe-round-3",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					Content: `- [x] 实现2048网页游戏
+- [x] 本地运行并输出localhost地址
+
+已完成，游戏可直接运行，地址：http://localhost:3000`,
+				},
+				Usage: llm.Usage{PromptTokens: 130, CompletionTokens: 35, TotalTokens: 165},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{
+		def: tools.ToolDefinition{
+			Name:        "plan_create",
+			Description: "plan create mock",
+		},
+		result: map[string]interface{}{
+			"operation":       "create",
+			"task_count":      2,
+			"completed_count": 0,
+			"pending_count":   2,
+			"all_completed":   false,
+			"checklist":       "- [ ] 实现2048网页游戏\n- [ ] 本地运行并输出localhost地址",
+		},
+	})
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	e := echo.New()
+	reqBody := `{"message":"帮我做完2048并给localhost地址","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM rounds (tool + duplicated checklist progress + duplicated checklist completion), got %d", scripted.CallCount())
+	}
+
+	thirdReq, ok := scripted.RequestAt(2)
+	if !ok {
+		t.Fatalf("missing third request capture")
+	}
+	last := thirdReq.Messages[len(thirdReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "A canonical TODO checklist already exists") {
+		t.Fatalf("expected pending_todo continuation nudge in third request, got role=%s content=%q", last.Role, last.Content)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "http://localhost:3000") {
+		t.Fatalf("expected final completion content with localhost address, got %q", content)
+	}
+	if strings.Contains(content, "- [x]") || strings.Contains(content, "- [ ]") {
+		t.Fatalf("expected final response content to strip duplicated checklist, got %q", content)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 50, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	assistantCount := 0
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		assistantCount++
+		if strings.Contains(m.Content, "- [x]") || strings.Contains(m.Content, "- [ ]") {
+			t.Fatalf("expected persisted assistant content to strip duplicated checklist, got %q", m.Content)
+		}
+	}
+	if assistantCount != 1 {
+		t.Fatalf("expected exactly one persisted assistant message, got %d", assistantCount)
 	}
 }
 
@@ -2349,6 +2637,108 @@ func TestChatHandlerSendMessage_DeepSearchGuardForcesSecondSearchRound(t *testin
 	content, _ := resp["content"].(string)
 	if !strings.Contains(content, "执行摘要") || !strings.Contains(content, "来源：") {
 		t.Fatalf("expected final report content, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_WriteToWhitelistAliasE2E(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Whitelist Alias Write E2E")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	workspaceRoot := t.TempDir()
+	whitelistRoot := t.TempDir()
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "write-whitelist-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_write_whitelist_1",
+							Name:      "write",
+							Arguments: `{"path":"@docs/notes/e2e.txt","content":"hello whitelist alias"}`,
+						},
+					},
+				},
+				Usage: llm.Usage{PromptTokens: 80, CompletionTokens: 18, TotalTokens: 98},
+			},
+			{
+				ID:    "write-whitelist-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已完成写入。",
+				},
+				Usage: llm.Usage{PromptTokens: 92, CompletionTokens: 12, TotalTokens: 104},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewFileWriteTool([]string{workspaceRoot}, 0))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	ccKV := kvstore.NewMemoryStore()
+	if err := ccKV.SetJSON(context.Background(), "config:claudecode", &claudecode.ClaudeCodePersistentConfig{
+		Enabled:          true,
+		DefaultModel:     "sonnet",
+		SandboxEnabled:   true,
+		NetworkEnabled:   true,
+		WhitelistEnabled: true,
+		DirectoryWhitelist: []claudecode.DirectoryWhitelistEntry{
+			{Path: whitelistRoot, Alias: "docs"},
+		},
+	}, 0); err != nil {
+		t.Fatalf("failed to seed claudecode config: %v", err)
+	}
+	handler.SetClaudeCodeHandler(claudecode.NewHandlerWithDataDir(nil, "", ccKV))
+
+	e := echo.New()
+	reqBody := `{"message":"请写入白名单目录文件","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (tool + final), got %d", scripted.CallCount())
+	}
+
+	target := filepath.Join(whitelistRoot, "notes", "e2e.txt")
+	data, readErr := os.ReadFile(target)
+	if readErr != nil {
+		t.Fatalf("expected whitelist file to be written, read error: %v", readErr)
+	}
+	if string(data) != "hello whitelist alias" {
+		t.Fatalf("unexpected whitelist file content: %q", string(data))
+	}
+
+	workspaceTarget := filepath.Join(workspaceRoot, "notes", "e2e.txt")
+	if _, statErr := os.Stat(workspaceTarget); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no mirrored file in workspace root, got stat=%v", statErr)
 	}
 }
 
@@ -5048,6 +5438,35 @@ func TestFormatIMCard_FinalUIReviewAndDeepResearch(t *testing.T) {
 	}
 }
 
+func TestFormatIMCard_DeepResearchKnowledgeBaseIncludesArtifacts(t *testing.T) {
+	deepResearch := formatIMCard(map[string]interface{}{
+		"type":         "deep-research",
+		"query":        "build a knowledge base",
+		"mode":         "deep",
+		"answer":       "KB summary",
+		"report_style": "knowledge_base",
+		"coverage_summary": map[string]interface{}{
+			"task_count":            4,
+			"distinct_domain_count": 2,
+		},
+		"workflow_phases": []interface{}{
+			map[string]interface{}{"label": "scope", "status": "completed"},
+			map[string]interface{}{"label": "audit", "status": "current"},
+		},
+		"object_map": []interface{}{
+			map[string]interface{}{"label": "Overview", "task_count": 2},
+		},
+		"source_inventory": []interface{}{
+			map[string]interface{}{"title": "Official docs", "url": "https://example.com/docs"},
+		},
+	}, i18n.LangEnUS)
+	for _, token := range []string{"Report style: knowledge_base", "Official docs", "Overview"} {
+		if !strings.Contains(deepResearch, token) {
+			t.Fatalf("unexpected deep research IM KB card, missing %q: %q", token, deepResearch)
+		}
+	}
+}
+
 func TestFormatIMCard_DeepResearchProgressIncludesIterationAndGap(t *testing.T) {
 	progress := formatIMCard(map[string]interface{}{
 		"type":          "deep-research-progress",
@@ -5237,6 +5656,93 @@ func TestSendIMToolResultCards_SendsStructuredResults(t *testing.T) {
 	}
 	if !strings.Contains(sent[1].Content, "Deep Research") {
 		t.Fatalf("second IM content = %q, want Deep Research summary", sent[1].Content)
+	}
+}
+
+func TestUpsertIMTodoChecklist_UpdatesExistingIMMessage(t *testing.T) {
+	h := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer h.Close()
+
+	var sent []channel.OutgoingMessage
+	var updates []struct {
+		channelName string
+		chatID      string
+		messageID   string
+		content     string
+	}
+
+	h.SetChannelSenderWithID(func(_ context.Context, channelName string, out channel.OutgoingMessage) (string, error) {
+		sent = append(sent, out)
+		if channelName != "feishu" {
+			t.Fatalf("channelName = %q, want feishu", channelName)
+		}
+		return "todo-msg-1", nil
+	})
+	h.SetChannelMessageUpdater(func(_ context.Context, channelName string, chatID string, messageID string, out channel.OutgoingMessage) error {
+		updates = append(updates, struct {
+			channelName string
+			chatID      string
+			messageID   string
+			content     string
+		}{channelName: channelName, chatID: chatID, messageID: messageID, content: out.Content})
+		return nil
+	})
+
+	state := &imTodoMessageState{}
+	h.upsertIMTodoChecklist(context.Background(), state, "feishu", "chat-1", "msg-root", "conv-1", "- [ ] gather facts\n- [ ] write summary")
+	h.upsertIMTodoChecklist(context.Background(), state, "feishu", "chat-1", "msg-root", "conv-1", "- [x] gather facts\n- [ ] write summary")
+
+	if len(sent) != 1 {
+		t.Fatalf("initial sends = %d, want 1", len(sent))
+	}
+	if len(updates) != 1 {
+		t.Fatalf("updates = %d, want 1", len(updates))
+	}
+	if state.ChannelMessageID != "todo-msg-1" {
+		t.Fatalf("state.ChannelMessageID = %q, want todo-msg-1", state.ChannelMessageID)
+	}
+	if updates[0].messageID != "todo-msg-1" {
+		t.Fatalf("updated message id = %q, want todo-msg-1", updates[0].messageID)
+	}
+	if !strings.Contains(updates[0].content, "[x] gather facts") {
+		t.Fatalf("updated content = %q, want completed checklist", updates[0].content)
+	}
+}
+
+func TestTodoChecklistCardID_UsesStableEncodedMessageID(t *testing.T) {
+	if got := todoChecklistCardID(" msg 1/2 "); got != "todo-checklist-msg+1%2F2" {
+		t.Fatalf("todoChecklistCardID = %q, want %q", got, "todo-checklist-msg+1%2F2")
+	}
+	if got := todoChecklistCardID("   "); got != "" {
+		t.Fatalf("todoChecklistCardID for blank id = %q, want empty string", got)
+	}
+}
+
+func TestUpsertIMTodoChecklist_FallsBackToResendWhenNoEditableMessageID(t *testing.T) {
+	h := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer h.Close()
+
+	var sent []channel.OutgoingMessage
+	h.SetChannelSender(func(_ context.Context, channelName string, out channel.OutgoingMessage) error {
+		sent = append(sent, out)
+		if channelName != "slack" {
+			t.Fatalf("channelName = %q, want slack", channelName)
+		}
+		return nil
+	})
+
+	state := &imTodoMessageState{}
+	h.upsertIMTodoChecklist(context.Background(), state, "slack", "chat-1", "msg-root", "conv-1", "- [ ] gather facts\n- [ ] write summary")
+	h.upsertIMTodoChecklist(context.Background(), state, "slack", "chat-1", "msg-root", "conv-1", "- [x] gather facts\n- [ ] write summary")
+
+	if len(sent) != 2 {
+		t.Fatalf("resend count = %d, want 2", len(sent))
+	}
+	if state.ChannelMessageID != "" {
+		t.Fatalf("state.ChannelMessageID = %q, want empty", state.ChannelMessageID)
+	}
+	if !strings.Contains(sent[1].Content, "[x] gather facts") {
+		t.Fatalf("second send content = %q, want updated checklist", sent[1].Content)
 	}
 }
 

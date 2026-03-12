@@ -37,6 +37,11 @@ const mocks = vi.hoisted(() => ({
     streaming: false,
     streamingContent: '',
     sortedConversations: [] as Array<Record<string, unknown>>,
+    toolExecuting: false,
+    toolExecutingCommands: [] as string[],
+    toolExecutingNames: [] as string[],
+    toolResults: [] as Array<Record<string, unknown>>,
+    toolSandboxAvailable: false,
     trialExhausted: false,
     fetchConversations: vi.fn(),
     selectConversation: vi.fn(),
@@ -96,6 +101,19 @@ const mocks = vi.hoisted(() => ({
     fetchTrialQuota: vi.fn(),
     setRoutingMode: vi.fn(),
   },
+  deepResearchJobsStore: {
+    activeJobs: [] as Array<Record<string, unknown>>,
+    jobMap: {} as Record<string, unknown>,
+    loading: false,
+    hydrated: true,
+    pendingFocusJobId: null as string | null,
+    fetchActiveJobs: vi.fn(),
+    handleGlobalEvent: vi.fn(),
+    applyJobSnapshot: vi.fn(),
+    openJob: vi.fn(),
+    cancelJob: vi.fn(),
+    consumePendingFocusJobId: vi.fn(),
+  },
   mediaGenerate: {
     showPanel: { value: false },
     intent: { value: null },
@@ -145,6 +163,10 @@ vi.mock('@/stores/settings', () => ({
 
 vi.mock('@/stores/providerPool', () => ({
   useProviderPoolStore: () => mocks.providerPoolStore,
+}))
+
+vi.mock('@/stores/deepResearchJobs', () => ({
+  useDeepResearchJobsStore: () => mocks.deepResearchJobsStore,
 }))
 
 vi.mock('@/stores/notification', () => ({
@@ -203,11 +225,37 @@ vi.mock('@/composables/useMediaGenerate', () => ({
 }))
 
 vi.mock('@/components/ConversationList.vue', () => ({
-  default: { name: 'ConversationList', template: '<div class="conversation-list-stub" />' },
+  default: {
+    name: 'ConversationList',
+    props: {
+      conversations: { type: Array, default: () => [] },
+    },
+    emits: ['select', 'create', 'delete', 'search', 'pin', 'unpin'],
+    template: `
+      <div class="conversation-list-stub">
+        <button
+          v-for="conversation in conversations"
+          :key="conversation.id"
+          class="conversation-select-stub"
+          @click="$emit('select', conversation.id)"
+        >
+          {{ conversation.id }}
+        </button>
+      </div>
+    `,
+  },
 }))
 
 vi.mock('@/components/ChatInput.vue', () => ({
-  default: { name: 'ChatInput', template: '<div class="chat-input-stub" />' },
+  default: {
+    name: 'ChatInput',
+    props: {
+      disabled: { type: Boolean, default: false },
+      streaming: { type: Boolean, default: false },
+      canCancel: { type: Boolean, default: false },
+    },
+    template: '<div class="chat-input-stub" :data-disabled="String(disabled)" :data-streaming="String(streaming)" :data-can-cancel="String(canCancel)" />',
+  },
 }))
 
 vi.mock('@/components/onboarding/PresetQuestions.vue', () => ({
@@ -236,6 +284,10 @@ vi.mock('@/components/MediaParamPanel.vue', () => ({
 
 vi.mock('@/components/AgentTaskPanel.vue', () => ({
   default: { name: 'AgentTaskPanel', template: '<div class="agent-task-panel-stub" />' },
+}))
+
+vi.mock('@/components/DeepResearchTaskDock.vue', () => ({
+  default: { name: 'DeepResearchTaskDock', template: '<div class="deep-research-task-dock-stub" />' },
 }))
 
 const localStorageMock = (() => {
@@ -366,6 +418,11 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.streaming = false
     mocks.chatStore.streamingContent = ''
     mocks.chatStore.sortedConversations = []
+    mocks.chatStore.toolExecuting = false
+    mocks.chatStore.toolExecutingCommands = []
+    mocks.chatStore.toolExecutingNames = []
+    mocks.chatStore.toolResults = []
+    mocks.chatStore.toolSandboxAvailable = false
     mocks.chatStore.trialExhausted = false
     mocks.chatStore.fetchConversations.mockReset().mockResolvedValue(undefined)
     mocks.chatStore.selectConversation.mockReset().mockResolvedValue(undefined)
@@ -421,6 +478,12 @@ describe('ChatView page-level card actions', () => {
     mocks.providerPoolStore.fetchProviders.mockReset().mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchRoutingMode.mockReset().mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
+    mocks.deepResearchJobsStore.fetchActiveJobs.mockReset().mockResolvedValue(undefined)
+    mocks.deepResearchJobsStore.handleGlobalEvent.mockReset()
+    mocks.deepResearchJobsStore.applyJobSnapshot.mockReset()
+    mocks.deepResearchJobsStore.openJob.mockReset().mockResolvedValue(undefined)
+    mocks.deepResearchJobsStore.cancelJob.mockReset().mockResolvedValue(undefined)
+    mocks.deepResearchJobsStore.consumePendingFocusJobId.mockReset()
     mocks.providerPoolStore.setRoutingMode.mockReset().mockResolvedValue(undefined)
 
     mocks.mediaGenerate.showPanel.value = false
@@ -466,6 +529,134 @@ describe('ChatView page-level card actions', () => {
     expect(wrapper.text()).not.toContain('Waiting for your confirmation to continue')
 
     i18n.global.locale.value = 'en-US'
+  })
+
+  it('toggles waiting indicator, stop button, and input disabled state across conversation switches', async () => {
+    mocks.chatStore.messages = [makeAssistantMessage('Streaming answer', 'msg-streaming')]
+    mocks.chatStore.streaming = true
+    mocks.chatStore.sending = true
+    mocks.chatStore.awaitingConfirmation = true
+
+    const wrapper = await mountChatViewWithMessages([{ id: 'msg-streaming', content: 'Streaming answer' }])
+
+    expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
+    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+    expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
+    expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
+    expect(wrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('true')
+
+    wrapper.unmount()
+
+    mocks.chatStore.currentConversationId = 'conv-2'
+    mocks.chatStore.currentConversation = {
+      id: 'conv-2',
+      title: 'Other conversation',
+      created_at: '2026-03-08T00:00:01.000Z',
+      updated_at: '2026-03-08T00:00:01.000Z',
+    }
+    mocks.chatStore.messages = []
+    mocks.chatStore.streaming = false
+    mocks.chatStore.sending = false
+    mocks.chatStore.awaitingConfirmation = false
+
+    const otherWrapper = await mountChatViewWithMessages([])
+
+    expect(otherWrapper.text()).not.toContain('Waiting for your confirmation to continue')
+    expect(findButtonByText(otherWrapper, 'Stop generating')).toBeUndefined()
+    expect(otherWrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('false')
+    expect(otherWrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('false')
+    expect(otherWrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('false')
+
+    otherWrapper.unmount()
+
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.currentConversation = {
+      id: 'conv-1',
+      title: 'Test conversation',
+      created_at: '2026-03-08T00:00:00.000Z',
+      updated_at: '2026-03-08T00:00:00.000Z',
+    }
+    mocks.chatStore.messages = [makeAssistantMessage('Streaming answer', 'msg-streaming')]
+    mocks.chatStore.streaming = true
+    mocks.chatStore.sending = true
+    mocks.chatStore.awaitingConfirmation = true
+
+    const restoredWrapper = await mountChatViewWithMessages([{ id: 'msg-streaming', content: 'Streaming answer' }])
+
+    expect(restoredWrapper.text()).toContain('Waiting for your confirmation to continue')
+    expect(findButtonByText(restoredWrapper, 'Stop generating')?.exists()).toBe(true)
+    expect(restoredWrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
+    expect(restoredWrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
+    expect(restoredWrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('true')
+  })
+
+  it('switches conversation through ConversationList click and updates streaming controls', async () => {
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.currentConversation = {
+      id: 'conv-1',
+      title: 'Test conversation',
+      created_at: '2026-03-08T00:00:00.000Z',
+      updated_at: '2026-03-08T00:00:00.000Z',
+    }
+    mocks.chatStore.messages = [makeAssistantMessage('Streaming answer', 'msg-streaming')]
+    mocks.chatStore.streaming = true
+    mocks.chatStore.sending = true
+    mocks.chatStore.awaitingConfirmation = true
+    mocks.chatStore.sortedConversations = [
+      { id: 'conv-1', title: 'Test conversation', created_at: '2026-03-08T00:00:00.000Z', updated_at: '2026-03-08T00:00:00.000Z' },
+      { id: 'conv-2', title: 'Other conversation', created_at: '2026-03-08T00:00:01.000Z', updated_at: '2026-03-08T00:00:01.000Z' },
+    ]
+
+    mocks.chatStore.selectConversation.mockImplementation(async (id: string) => {
+      mocks.chatStore.currentConversationId = id
+      mocks.chatStore.currentConversation = id === 'conv-1'
+        ? {
+            id: 'conv-1',
+            title: 'Test conversation',
+            created_at: '2026-03-08T00:00:00.000Z',
+            updated_at: '2026-03-08T00:00:00.000Z',
+          }
+        : {
+            id: 'conv-2',
+            title: 'Other conversation',
+            created_at: '2026-03-08T00:00:01.000Z',
+            updated_at: '2026-03-08T00:00:01.000Z',
+          }
+      mocks.chatStore.messages = id === 'conv-1' ? [makeAssistantMessage('Streaming answer', 'msg-streaming')] : []
+      mocks.chatStore.streaming = id === 'conv-1'
+      mocks.chatStore.sending = id === 'conv-1'
+      mocks.chatStore.awaitingConfirmation = id === 'conv-1'
+    })
+
+    const wrapper = await mountChatViewWithMessages([{ id: 'msg-streaming', content: 'Streaming answer' }])
+
+    expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
+    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+
+    const convoButtons = wrapper.findAll('.conversation-select-stub')
+    expect(convoButtons).toHaveLength(2)
+
+    await convoButtons[1]!.trigger('click')
+    expect(mocks.chatStore.selectConversation).toHaveBeenCalledWith('conv-2')
+    wrapper.vm.$forceUpdate()
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Waiting for your confirmation to continue')
+    expect(findButtonByText(wrapper, 'Stop generating')).toBeUndefined()
+    expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('false')
+    expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('false')
+
+    await convoButtons[0]!.trigger('click')
+    expect(mocks.chatStore.selectConversation).toHaveBeenCalledWith('conv-1')
+    wrapper.vm.$forceUpdate()
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Waiting for your confirmation to continue')
+    expect(findButtonByText(wrapper, 'Stop generating')?.exists()).toBe(true)
+    expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
+    expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
   })
 
   it('submits use_browser from a web-fetch card rendered inside ChatView', async () => {

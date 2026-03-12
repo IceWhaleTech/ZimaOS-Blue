@@ -1,8 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import type { RouteRecordRaw } from 'vue-router'
+import type { RouteLocationNormalized, RouteRecordRaw } from 'vue-router'
 import { PagePermissions } from '@/api/users'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
+import { providerPoolApi } from '@/api/providerPool'
+import { hasConfiguredLlmApiKey } from '@/utils/providerAccess'
 
 // Desktop detection: __BLUE_DESKTOP__ is injected by the Tauri on_page_load handler.
 // In desktop mode, the page is loaded from http://localhost:{port} (same-origin as the
@@ -16,6 +18,29 @@ let isPreviewMode = false
 let connectionFailed = false
 let previewTokenFetched = false
 let pendingCheck: Promise<{ preview: boolean; connectionError: boolean }> | null = null
+
+function isLLMSettingsRoute(to: RouteLocationNormalized): boolean {
+  const rawTab = to.query.tab
+  const tab = Array.isArray(rawTab) ? rawTab[0] : rawTab
+  return to.name === 'Settings' && tab === 'llm'
+}
+
+function redirectToGeneralSettingsTab(to: RouteLocationNormalized) {
+  return {
+    name: 'Settings',
+    query: { ...to.query, tab: 'general' },
+    hash: to.hash,
+  }
+}
+
+async function canOpenLLMSettings(): Promise<boolean> {
+  try {
+    const response = await providerPoolApi.listProviders()
+    return hasConfiguredLlmApiKey(response.data.providers || [])
+  } catch {
+    return false
+  }
+}
 
 async function fetchSystemMode(): Promise<Response> {
   const controller = new AbortController()
@@ -389,6 +414,13 @@ router.beforeEach(async (to, from, next) => {
         next({ name: 'Home' })
         return
       }
+      if (isLLMSettingsRoute(to)) {
+        const allowed = await canOpenLLMSettings()
+        if (!allowed) {
+          next(redirectToGeneralSettingsTab(to))
+          return
+        }
+      }
       next()
       return
     }
@@ -439,6 +471,14 @@ router.beforeEach(async (to, from, next) => {
       // Check page-level permissions
       if (requiredPermission && !authStore.hasPermission(requiredPermission)) {
         next({ name: 'Chat' })
+        return
+      }
+    }
+
+    if (isLLMSettingsRoute(to)) {
+      const allowed = await canOpenLLMSettings()
+      if (!allowed) {
+        next(redirectToGeneralSettingsTab(to))
         return
       }
     }

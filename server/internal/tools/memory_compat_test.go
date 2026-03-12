@@ -81,6 +81,27 @@ func TestMemoryCompatExecutorUsesNativeWrapper(t *testing.T) {
 	}
 }
 
+func TestMemoryCompatWriteSupportsNestedTagsArgs(t *testing.T) {
+	service := &mockMemoryService{backend: "local", rememberResult: &MemoryChunkResult{ID: "m3", Content: "nested", CreatedAt: time.Now(), UpdatedAt: time.Now()}}
+	tool := newMemoryCompatTool("memory_write", "Write a memory entry.", service)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"text": "nested note",
+			"tags": []interface{}{"prefs", "work"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if service.lastRememberContent != "nested note" {
+		t.Fatalf("content = %q, want nested note", service.lastRememberContent)
+	}
+	if len(service.lastRememberTags) != 2 || service.lastRememberTags[0] != "prefs" || service.lastRememberTags[1] != "work" {
+		t.Fatalf("tags = %#v, want [prefs work]", service.lastRememberTags)
+	}
+}
+
 func TestMemoryCompatLegacyAliasesExecuteNatively(t *testing.T) {
 	registry := NewRegistry()
 	service := &mockMemoryService{backend: "local", rememberResult: &MemoryChunkResult{ID: "m2", Content: "legacy", CreatedAt: time.Now(), UpdatedAt: time.Now()}}

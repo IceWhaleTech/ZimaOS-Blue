@@ -52,8 +52,18 @@ type Manager struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
+	convMu     sync.Mutex
+	convStates map[string]*conversationState
+
 	// onStopHooks are called when the manager stops, to persist stats
 	onStopHooks []func()
+}
+
+type conversationState struct {
+	processing    bool
+	currentMsgID  string
+	currentCancel context.CancelFunc
+	pending       *Message
 }
 
 // NewManager creates a new channel manager.
@@ -65,6 +75,7 @@ func NewManager(cfg Config, logger *zap.Logger) *Manager {
 		config:      cfg,
 		ctx:         ctx,
 		cancel:      cancel,
+		convStates:  make(map[string]*conversationState),
 		onStopHooks: make([]func(), 0),
 	}
 }
@@ -205,13 +216,123 @@ func (m *Manager) handleMessages(ch Channel) {
 				return
 			}
 
-			m.processMessage(ch, msg)
+			m.enqueueConversationMessage(ch, msg)
 		}
 	}
 }
 
+func (m *Manager) enqueueConversationMessage(ch Channel, msg Message) {
+	convID := channelConversationID(ch.Name(), msg.ChatID)
+
+	var cancel context.CancelFunc
+	var removeIDs []string
+	var shouldStartWorker bool
+
+	m.convMu.Lock()
+	state := m.convStates[convID]
+	if state == nil {
+		state = &conversationState{}
+		m.convStates[convID] = state
+	}
+
+	if state.processing {
+		cancel = state.currentCancel
+		if state.currentMsgID != "" && state.currentMsgID != msg.ID {
+			removeIDs = append(removeIDs, state.currentMsgID)
+		}
+		if state.pending != nil && state.pending.ID != "" && state.pending.ID != msg.ID {
+			removeIDs = append(removeIDs, state.pending.ID)
+		}
+		copyMsg := msg
+		state.pending = &copyMsg
+		m.convMu.Unlock()
+
+		if cancel != nil {
+			cancel()
+		}
+		for _, messageID := range removeIDs {
+			m.clearTypingReactionAsync(ch, messageID)
+		}
+		return
+	}
+
+	state.processing = true
+	state.currentMsgID = msg.ID
+	shouldStartWorker = true
+	m.convMu.Unlock()
+
+	if !shouldStartWorker {
+		return
+	}
+
+	m.wg.Add(1)
+	go m.runConversationWorker(ch, convID, msg)
+}
+
+func (m *Manager) runConversationWorker(ch Channel, convID string, msg Message) {
+	defer m.wg.Done()
+
+	current := msg
+	for {
+		workerCtx, cancel := context.WithCancel(m.ctx)
+		m.convMu.Lock()
+		state := m.convStates[convID]
+		if state != nil {
+			state.currentMsgID = current.ID
+			state.currentCancel = cancel
+		}
+		m.convMu.Unlock()
+
+		m.processMessageWithControl(ch, current, workerCtx, func() bool {
+			m.convMu.Lock()
+			defer m.convMu.Unlock()
+			state := m.convStates[convID]
+			return state != nil && state.pending != nil
+		})
+		cancel()
+
+		m.convMu.Lock()
+		state = m.convStates[convID]
+		if state == nil {
+			m.convMu.Unlock()
+			return
+		}
+		state.currentCancel = nil
+		if state.pending != nil {
+			current = *state.pending
+			state.pending = nil
+			m.convMu.Unlock()
+			continue
+		}
+		state.processing = false
+		state.currentMsgID = ""
+		delete(m.convStates, convID)
+		m.convMu.Unlock()
+		return
+	}
+}
+
+func (m *Manager) clearTypingReactionAsync(ch Channel, messageID string) {
+	if strings.TrimSpace(messageID) == "" {
+		return
+	}
+	cleaner, ok := ch.(TypingReactionCleaner)
+	if !ok {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		cleaner.ClearTypingReaction(ctx, messageID)
+	}()
+}
+
 // processMessage processes a single incoming message.
 func (m *Manager) processMessage(ch Channel, msg Message) {
+	m.processMessageWithControl(ch, msg, m.ctx, nil)
+}
+
+func (m *Manager) processMessageWithControl(ch Channel, msg Message, parentCtx context.Context, suppressSend func() bool) {
 	m.mu.RLock()
 	handler := m.handler
 	m.mu.RUnlock()
@@ -223,7 +344,10 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 		return
 	}
 
-	processCtx, cancel := context.WithTimeout(m.ctx, time.Duration(m.config.DefaultTimeoutSeconds)*time.Second)
+	if parentCtx == nil {
+		parentCtx = m.ctx
+	}
+	processCtx, cancel := context.WithTimeout(parentCtx, time.Duration(m.config.DefaultTimeoutSeconds)*time.Second)
 	defer cancel()
 
 	m.logger.Debug("processing message",
@@ -269,7 +393,16 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 	close(typingDone)
 	close(heartbeatDone)
 
+	suppressed := suppressSend != nil && suppressSend()
+
 	if err != nil {
+		if suppressed {
+			m.logger.Debug("message handling result suppressed by newer message",
+				zap.String("channel", ch.Name()),
+				zap.String("message_id", msg.ID),
+				zap.Error(err))
+			return
+		}
 		m.logger.Error("error handling message",
 			zap.String("channel", ch.Name()),
 			zap.String("message_id", msg.ID),
@@ -298,6 +431,12 @@ func (m *Manager) processMessage(ch Channel, msg Message) {
 	}
 
 	if response != nil {
+		if suppressed {
+			m.logger.Debug("response suppressed by newer message",
+				zap.String("channel", ch.Name()),
+				zap.String("message_id", msg.ID))
+			return
+		}
 		// Set the chat ID if not specified
 		if response.ChatID == "" {
 			response.ChatID = msg.ChatID
@@ -340,6 +479,43 @@ func (m *Manager) sendWithTimeout(ch Channel, msg OutgoingMessage) error {
 	sendCtx, cancel := context.WithTimeout(m.ctx, m.responseSendTimeout())
 	defer cancel()
 	return ch.Send(sendCtx, msg)
+}
+
+// SendWithID sends a message and returns the outbound message ID when the
+// underlying channel supports it. Unsupported channels still send successfully
+// but return an empty ID.
+func (m *Manager) SendWithID(ctx context.Context, channelName string, msg OutgoingMessage) (string, error) {
+	m.mu.RLock()
+	ch, exists := m.channels[channelName]
+	m.mu.RUnlock()
+	if !exists {
+		return "", fmt.Errorf("channel %s not found", channelName)
+	}
+	if sender, ok := ch.(MessageSenderWithID); ok {
+		return sender.SendWithID(ctx, msg)
+	}
+	if err := ch.Send(ctx, msg); err != nil {
+		return "", err
+	}
+	return "", nil
+}
+
+// UpdateMessage edits an existing outbound message when the channel supports it.
+func (m *Manager) UpdateMessage(ctx context.Context, channelName string, chatID string, messageID string, msg OutgoingMessage) error {
+	m.mu.RLock()
+	ch, exists := m.channels[channelName]
+	m.mu.RUnlock()
+	if !exists {
+		return fmt.Errorf("channel %s not found", channelName)
+	}
+	editor, ok := ch.(MessageEditor)
+	if !ok {
+		return fmt.Errorf("channel %s does not support message editing", channelName)
+	}
+	if msg.ChatID == "" {
+		msg.ChatID = chatID
+	}
+	return editor.EditMessage(ctx, chatID, messageID, msg)
 }
 
 func (m *Manager) responseSendTimeout() time.Duration {

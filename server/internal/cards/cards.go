@@ -38,6 +38,7 @@ var (
 const (
 	noErrorDetailsText = "Operation failed (no error details provided)"
 	sensitiveValueKey  = `(?:api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|session[_-]?token|token|secret|password|passwd|pwd|authorization|cookie|set-cookie|aws_access_key_id|aws_secret_access_key|aws_session_token|openai_api_key|x-api-key)`
+	lsPreviewEntries   = 80
 )
 
 type textRedactionRule struct {
@@ -182,6 +183,10 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return deepResearchCard(content)
 	case "ui_reviewer":
 		return uiReviewCard(content)
+	case "image", "image_generate":
+		return imageCard(content)
+	case "ppt":
+		return pptCard(content)
 	case "calculator":
 		return calculatorCard(content)
 	case "current_time":
@@ -190,6 +195,8 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return fileReadCard(content)
 	case "write", "file_write":
 		return fileWriteCard(content)
+	case "ls":
+		return lsCard(content)
 	case "system_info":
 		return systemInfoCard(content)
 	case "memory_search", "memory":
@@ -200,9 +207,41 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return analyzeCard(content)
 	case "ask":
 		return askUserQuestionCard(content)
+	case "convert":
+		return convertTaskCard(content)
 	default:
 		return GenericCard(toolName, content)
 	}
+}
+
+func convertTaskCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return GenericCard("convert", content)
+	}
+	taskID := strings.TrimSpace(formatValue(data["task_id"]))
+	if taskID == "" {
+		return GenericCard("convert", content)
+	}
+	status := strings.TrimSpace(formatValue(data["status"]))
+	if status == "" {
+		status = "pending"
+	}
+	card := map[string]interface{}{
+		"type":               "convert-task",
+		"id":                 "convert-task-" + taskID,
+		"task_id":            taskID,
+		"status":             status,
+		"action":             strings.TrimSpace(formatValue(data["action"])),
+		"source_summary":     strings.TrimSpace(formatValue(data["source_summary"])),
+		"target_format":      strings.TrimSpace(formatValue(data["target_format"])),
+		"message":            strings.TrimSpace(formatValue(data["message"])),
+		"error":              strings.TrimSpace(formatValue(data["error"])),
+		"progress":           data["progress"],
+		"outputs":            data["outputs"],
+		"transcript_preview": strings.TrimSpace(formatValue(data["transcript_preview"])),
+	}
+	return card
 }
 
 func browserCard(content string) map[string]interface{} {
@@ -223,6 +262,7 @@ func browserCard(content string) map[string]interface{} {
 	strategy := strings.TrimSpace(formatValue(data["strategy"]))
 	tree := strings.TrimSpace(formatValue(data["tree"]))
 	message := strings.TrimSpace(formatValue(data["message"]))
+	screenshot := strings.TrimSpace(formatValue(data["screenshot"]))
 
 	card := map[string]interface{}{
 		"type":   "result",
@@ -259,13 +299,6 @@ func browserCard(content string) map[string]interface{} {
 			details = append(details, map[string]interface{}{"label": "count", "value": countText})
 		}
 	}
-	if tree != "" {
-		details = append(details, map[string]interface{}{
-			"label":     "tree",
-			"value":     escapeBackticks(RedactSensitiveText(tree)),
-			"multiline": true,
-		})
-	}
 	if len(details) > 0 {
 		card["details"] = details
 	}
@@ -282,6 +315,16 @@ func browserCard(content string) map[string]interface{} {
 	}
 	if _, hasMessage := card["message"]; !hasMessage && len(details) == 0 {
 		card["message"] = "Browser tab ready"
+	}
+	if screenshot != "" {
+		normalized := screenshot
+		if !strings.HasPrefix(normalized, "data:image/") &&
+			!strings.HasPrefix(normalized, "http://") &&
+			!strings.HasPrefix(normalized, "https://") &&
+			!strings.HasPrefix(normalized, "/") {
+			normalized = "data:image/png;base64," + normalized
+		}
+		card["image"] = normalized
 	}
 
 	return card
@@ -393,6 +436,7 @@ func deepResearchCard(content string) map[string]interface{} {
 	}
 	for _, key := range []string{
 		"job_id",
+		"conversation_id",
 		"query",
 		"mode",
 		"progress",
@@ -538,6 +582,115 @@ func fileWriteCard(content string) map[string]interface{} {
 		"message": msg,
 		"details": details,
 	}
+}
+
+func lsCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return GenericCard("ls", content)
+	}
+	if hasNonEmptyError(data) {
+		return buildToolErrorCard("ls", data)
+	}
+
+	toInt := func(v interface{}) int {
+		switch n := v.(type) {
+		case float64:
+			return int(n)
+		case int:
+			return n
+		case int64:
+			return int(n)
+		default:
+			return 0
+		}
+	}
+
+	basePath := strings.TrimSpace(formatValue(data["base_path"]))
+	if basePath == "" {
+		basePath = "."
+	}
+	count := toInt(data["count"])
+	maxDepth := toInt(data["max_depth"])
+	maxEntries := toInt(data["max_entries"])
+	includeHidden, _ := data["include_hidden"].(bool)
+	truncated, _ := data["truncated"].(bool)
+
+	entriesRaw, _ := data["entries"].([]interface{})
+	previewLines := make([]string, 0, min(len(entriesRaw), lsPreviewEntries))
+	for i := 0; i < len(entriesRaw) && len(previewLines) < lsPreviewEntries; i++ {
+		entry, ok := entriesRaw[i].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		path := strings.TrimSpace(formatValue(entry["path"]))
+		if path == "" {
+			continue
+		}
+		entryType := strings.TrimSpace(formatValue(entry["type"]))
+		if entryType == "" {
+			entryType = "file"
+		}
+		if entryType == "dir" {
+			previewLines = append(previewLines, "[dir] "+path)
+			continue
+		}
+		size := toInt(entry["size"])
+		if size > 0 {
+			previewLines = append(previewLines, fmt.Sprintf("[file] %s (%d B)", path, size))
+		} else {
+			previewLines = append(previewLines, "[file] "+path)
+		}
+	}
+
+	message := fmt.Sprintf("%d entries in %s", count, basePath)
+	if count == 1 {
+		message = "1 entry in " + basePath
+	} else if count == 0 {
+		message = "No entries in " + basePath
+	}
+	if truncated {
+		message = fmt.Sprintf("Showing first %d entries in %s (more omitted)", count, basePath)
+	}
+
+	details := []map[string]interface{}{
+		{"label": "path", "value": basePath},
+		{"label": "count", "value": fmt.Sprintf("%d", count)},
+		{"label": "max_depth", "value": fmt.Sprintf("%d", maxDepth)},
+		{"label": "include_hidden", "value": fmt.Sprintf("%t", includeHidden)},
+	}
+	if maxEntries > 0 {
+		details = append(details, map[string]interface{}{
+			"label": "max_entries",
+			"value": fmt.Sprintf("%d", maxEntries),
+		})
+	}
+	if len(previewLines) > 0 {
+		details = append(details, map[string]interface{}{
+			"label":     "entries",
+			"value":     strings.Join(previewLines, "\n"),
+			"multiline": true,
+		})
+	}
+	if count > len(previewLines) {
+		details = append(details, map[string]interface{}{
+			"label": "entries_hidden_in_card",
+			"value": fmt.Sprintf("%d", count-len(previewLines)),
+		})
+	}
+
+	card := map[string]interface{}{
+		"type":    "result",
+		"title":   "ls",
+		"status":  "success",
+		"message": message,
+		"details": details,
+	}
+	if truncated {
+		card["warning_code"] = "output_truncated"
+		card["warning"] = "Listing was truncated; narrow the path or increase max_entries."
+	}
+	return card
 }
 
 func systemInfoCard(content string) map[string]interface{} {
@@ -991,4 +1144,245 @@ func uiReviewCard(content string) map[string]interface{} {
 	}
 
 	return card
+}
+
+func imageCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return GenericCard("image", content)
+	}
+
+	task, _ := data["task"].(map[string]interface{})
+	images := collectImageCardImages(data, task)
+
+	errMsg := sanitizedErrorMessage(data)
+	if errMsg == "" && task != nil {
+		if taskErr := strings.TrimSpace(formatValue(task["error"])); taskErr != "" {
+			errMsg = escapeBackticks(RedactSensitiveText(taskErr))
+		}
+	}
+
+	message := strings.TrimSpace(formatValue(data["message"]))
+	if message == "" && task != nil {
+		message = strings.TrimSpace(formatValue(task["message"]))
+	}
+	if message == "" {
+		message = errMsg
+	}
+
+	taskID := strings.TrimSpace(formatValue(data["task_id"]))
+	if taskID == "" && task != nil {
+		taskID = strings.TrimSpace(formatValue(task["id"]))
+	}
+
+	rawStatus := strings.TrimSpace(formatValue(data["status"]))
+	if rawStatus == "" && task != nil {
+		rawStatus = strings.TrimSpace(formatValue(task["status"]))
+	}
+	status := normalizeMediaGenerateStatus(rawStatus, len(images) > 0, errMsg != "")
+
+	// If there's nothing visual and no async task to track, keep the generic card.
+	if len(images) == 0 && taskID == "" && status != "error" {
+		return GenericCard("image", content)
+	}
+
+	idSeed := taskID
+	if idSeed == "" && len(images) > 0 {
+		idSeed = strings.TrimSpace(formatValue(images[0]["src"]))
+	}
+	if idSeed == "" {
+		idSeed = "latest"
+	}
+
+	card := map[string]interface{}{
+		"type":       "media-generate",
+		"id":         "image-generate-" + url.QueryEscape(idSeed),
+		"media_type": "image",
+		"status":     status,
+	}
+	if taskID != "" {
+		card["task_id"] = taskID
+	}
+	if len(images) > 0 {
+		card["images"] = images
+	}
+	if message != "" {
+		card["message"] = message
+	}
+	if status == "error" && message == "" {
+		card["message"] = noErrorDetailsText
+	}
+	if elapsed, ok := data["elapsed_ms"]; ok {
+		card["elapsed_ms"] = elapsed
+	}
+
+	return card
+}
+
+func normalizeMediaGenerateStatus(raw string, hasImages bool, hasError bool) string {
+	if hasError {
+		return "error"
+	}
+
+	status := strings.ToLower(strings.TrimSpace(raw))
+	switch status {
+	case "success", "succeeded", "completed", "done", "ok":
+		return "success"
+	case "error", "failed", "fail", "cancelled", "canceled":
+		return "error"
+	case "processing", "pending", "queued", "running", "in_progress", "generating", "created":
+		return "generating"
+	}
+
+	if strings.Contains(status, "fail") || strings.Contains(status, "error") || strings.Contains(status, "cancel") {
+		return "error"
+	}
+	if strings.Contains(status, "success") || strings.Contains(status, "succeed") || strings.Contains(status, "complete") || strings.Contains(status, "done") {
+		return "success"
+	}
+	if strings.Contains(status, "process") || strings.Contains(status, "pend") || strings.Contains(status, "queue") || strings.Contains(status, "run") || strings.Contains(status, "generat") || strings.Contains(status, "progress") {
+		return "generating"
+	}
+	if hasImages {
+		return "success"
+	}
+	return "generating"
+}
+
+func collectImageCardImages(data map[string]interface{}, task map[string]interface{}) []map[string]interface{} {
+	images := make([]map[string]interface{}, 0)
+	seen := make(map[string]struct{})
+
+	addImage := func(src, thumbnail, caption string) {
+		src = strings.TrimSpace(src)
+		if src == "" {
+			return
+		}
+		if _, ok := seen[src]; ok {
+			return
+		}
+		seen[src] = struct{}{}
+
+		image := map[string]interface{}{"src": src}
+		if strings.TrimSpace(thumbnail) != "" {
+			image["thumbnail"] = strings.TrimSpace(thumbnail)
+		}
+		if strings.TrimSpace(caption) != "" {
+			image["caption"] = strings.TrimSpace(caption)
+		}
+		images = append(images, image)
+	}
+
+	addFromList := func(raw interface{}) {
+		entries, ok := raw.([]interface{})
+		if !ok {
+			return
+		}
+		for _, entry := range entries {
+			switch item := entry.(type) {
+			case string:
+				addImage(item, "", "")
+			case map[string]interface{}:
+				src := firstNonEmptyString(item, "src", "url", "original_url", "image_url")
+				thumbnail := firstNonEmptyString(item, "thumbnail", "thumbnail_url")
+				caption := firstNonEmptyString(item, "caption", "revised_prompt", "prompt", "message")
+				addImage(src, thumbnail, caption)
+			}
+		}
+	}
+
+	addFromList(data["images"])
+	addFromList(data["image_urls"])
+	if task != nil {
+		addFromList(task["outputs"])
+		addFromList(task["images"])
+		addFromList(task["image_urls"])
+	}
+
+	return images
+}
+
+func firstNonEmptyString(data map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		value, ok := data[key]
+		if !ok {
+			continue
+		}
+		if text := stringFromAny(value); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func stringFromAny(value interface{}) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case float64, float32, int, int64, int32, uint, uint64, uint32, bool:
+		return strings.TrimSpace(fmt.Sprintf("%v", typed))
+	default:
+		return ""
+	}
+}
+
+func pptCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return GenericCard("ppt", content)
+	}
+	if hasNonEmptyError(data) {
+		return buildToolErrorCard("ppt", data)
+	}
+	status := "success"
+	if skipped, _ := data["skipped"].(bool); skipped {
+		status = "error"
+	}
+	images := make([]map[string]interface{}, 0)
+	urls, _ := data["image_urls"].([]interface{})
+	thumbs, _ := data["thumbnail_urls"].([]interface{})
+	for i, raw := range urls {
+		src := strings.TrimSpace(formatValue(raw))
+		if src == "" {
+			continue
+		}
+		image := map[string]interface{}{"src": src}
+		if i < len(thumbs) {
+			thumb := strings.TrimSpace(formatValue(thumbs[i]))
+			if thumb != "" {
+				image["thumbnail"] = thumb
+			}
+		}
+		if summary := strings.TrimSpace(formatValue(data["review_summary"])); summary != "" {
+			image["caption"] = summary
+		}
+		images = append(images, image)
+	}
+	card := map[string]interface{}{
+		"type":       "media-generate",
+		"id":         "ppt-asset-" + url.QueryEscape(strings.TrimSpace(formatValue(data["task_id"]))),
+		"media_type": "image",
+		"status":     status,
+	}
+	if taskID := strings.TrimSpace(formatValue(data["task_id"])); taskID != "" {
+		card["task_id"] = taskID
+	}
+	if len(images) > 0 {
+		card["images"] = images
+	}
+	message := strings.TrimSpace(formatValue(data["review_summary"]))
+	if message == "" {
+		message = strings.TrimSpace(formatValue(data["skip_reason"]))
+	}
+	if message == "" {
+		message = strings.TrimSpace(formatValue(data["error"]))
+	}
+	if message != "" {
+		card["message"] = message
+	}
+	return card
+}
+
+func slideAssetCard(content string) map[string]interface{} {
+	return pptCard(content)
 }

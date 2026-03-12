@@ -2,8 +2,9 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TypelessCardUIReview, UIReviewStep, UIReviewIssue } from '@/types/typeless'
+import { translateCardActionLabel } from '@/utils/cardActionLabels'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardUIReview
@@ -94,7 +95,14 @@ function isActionDisabled(action: { disabled?: boolean }): boolean {
 }
 
 function actionLabel(action: { id: string; label: string }): string {
-  return isActionActive(action.id) ? t('common.processing', 'Processing...') : t('uiReview.actions.' + action.id, action.label)
+  if (isActionActive(action.id)) return t('common.processing', 'Processing...')
+  return translateCardActionLabel({
+    id: action.id,
+    fallback: action.label,
+    t,
+    te,
+    scopes: ['uiReview.actions'],
+  })
 }
 
 function handleAction(actionId: string, disabled = false) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -449,6 +450,60 @@ func TestExecutorExecuteJSONArgs_ExecToolAliasFallback(t *testing.T) {
 	}
 }
 
+func TestExecutorExecuteJSONArgs_ExecInputCommandWrappedFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "exec", `{"input":{"command":"pwd"}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "pwd" {
+		t.Fatalf("command = %v, want %q", got, "pwd")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_ExecPayloadCommandWrappedFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "exec",
+			Description: "Execute command",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "exec", `{"payload":{"command":"pwd"}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["command"]; got != "pwd" {
+		t.Fatalf("command = %v, want %q", got, "pwd")
+	}
+}
+
 func TestExecutorExecuteJSONArgs_ExecArgumentsWrappedFallback(t *testing.T) {
 	registry := NewRegistry()
 	tool := &captureArgsTool{
@@ -517,6 +572,260 @@ func TestExecutorExecuteJSONArgs_FileWriteArgumentsAliasFallback(t *testing.T) {
 	}
 	if content != "hi" {
 		t.Fatalf("content = %q, want %q", content, "hi")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_FileWriteCamelCasePathFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "camel.txt")
+
+	registry := NewRegistry()
+	registry.Register(NewFileWriteTool([]string{tmpDir}, 0))
+	executor := NewExecutor(registry)
+
+	_, err := executor.ExecuteJSON(context.Background(), "write", `{"input":{"filePath":"`+target+`","text":"hello"}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("failed to read written file: %v", err)
+	}
+	if content != "hello" {
+		t.Fatalf("content = %q, want %q", content, "hello")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_FileReadCamelCasePathFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "read-camel.txt")
+	if err := os.WriteFile(target, []byte("a\nb\nc"), 0o644); err != nil {
+		t.Fatalf("failed to seed read target: %v", err)
+	}
+
+	registry := NewRegistry()
+	registry.Register(NewFileReadTool([]string{tmpDir}, 0))
+	executor := NewExecutor(registry)
+
+	result, err := executor.ExecuteJSON(context.Background(), "read", `{"input":{"filePath":"`+target+`","startLine":2,"endLine":2}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, ok := result.(string)
+	if !ok {
+		t.Fatalf("result type = %T, want string", result)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("failed to decode read payload: %v", err)
+	}
+	if got := payload["content"]; got != "b" {
+		t.Fatalf("content = %v, want %q", got, "b")
+	}
+	if got := payload["path"]; got != "read-camel.txt" {
+		t.Fatalf("path = %v, want %q", got, "read-camel.txt")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_EditCamelCaseArgsFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "edit-camel.txt")
+	if err := os.WriteFile(target, []byte("old old"), 0o644); err != nil {
+		t.Fatalf("failed to seed edit target: %v", err)
+	}
+
+	registry := NewRegistry()
+	registry.Register(NewEditTool([]string{tmpDir}, 0))
+	executor := NewExecutor(registry)
+
+	_, err := executor.ExecuteJSON(context.Background(), "edit", `{"input":{"filePath":"`+target+`","oldText":"old","newText":"new","replaceAll":true}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("failed to read edited file: %v", err)
+	}
+	if content != "new new" {
+		t.Fatalf("content = %q, want %q", content, "new new")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_GrepCamelCaseArgsFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "grep.txt"), []byte("hello\nHELLO"), 0o644); err != nil {
+		t.Fatalf("failed to seed grep target: %v", err)
+	}
+
+	registry := NewRegistry()
+	registry.Register(NewGrepTool([]string{tmpDir}, 0))
+	executor := NewExecutor(registry)
+
+	result, err := executor.ExecuteJSON(context.Background(), "grep", `{"input":{"filePath":".","regex":"hello","maxResults":1}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, ok := result.(string)
+	if !ok {
+		t.Fatalf("result type = %T, want string", result)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("failed to decode grep payload: %v", err)
+	}
+	if got := int(payload["count"].(float64)); got != 1 {
+		t.Fatalf("count = %d, want 1", got)
+	}
+}
+
+func TestExecutorExecuteJSONArgs_FindCamelCaseArgsFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "sub", "note.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("failed to seed find target: %v", err)
+	}
+
+	registry := NewRegistry()
+	registry.Register(NewFindTool([]string{tmpDir}))
+	executor := NewExecutor(registry)
+
+	result, err := executor.ExecuteJSON(context.Background(), "find", `{"input":{"filePath":".","glob":"*.txt","maxDepth":5,"fileType":"file"}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, ok := result.(string)
+	if !ok {
+		t.Fatalf("result type = %T, want string", result)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("failed to decode find payload: %v", err)
+	}
+	if got := int(payload["count"].(float64)); got < 1 {
+		t.Fatalf("count = %d, want >= 1", got)
+	}
+}
+
+func TestExecutorExecuteJSONArgs_LsCamelCaseArgsFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "sub", "note.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("failed to seed ls target: %v", err)
+	}
+
+	registry := NewRegistry()
+	registry.Register(NewLsTool([]string{tmpDir}))
+	executor := NewExecutor(registry)
+
+	result, err := executor.ExecuteJSON(context.Background(), "ls", `{"input":{"filePath":".","maxDepth":5,"includeHidden":false,"maxEntries":1}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, ok := result.(string)
+	if !ok {
+		t.Fatalf("result type = %T, want string", result)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("failed to decode ls payload: %v", err)
+	}
+	if got := int(payload["max_entries"].(float64)); got != 1 {
+		t.Fatalf("max_entries = %d, want 1", got)
+	}
+	if got := int(payload["count"].(float64)); got != 1 {
+		t.Fatalf("count = %d, want 1", got)
+	}
+	if got, _ := payload["truncated"].(bool); !got {
+		t.Fatalf("truncated = %v, want true", payload["truncated"])
+	}
+}
+
+func TestExecutorExecuteJSONArgs_WebSearchNestedCamelCaseFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{def: ToolDefinition{Name: "web_search", Description: "search"}}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "web_search", `{"input":{"query":"ZimaOS","maxResults":7,"region":"us-en","format":"json"}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["query"]; got != "ZimaOS" {
+		t.Fatalf("query = %v, want %q", got, "ZimaOS")
+	}
+	if got := tool.args["max_results"]; got != 7 {
+		t.Fatalf("max_results = %v, want %d", got, 7)
+	}
+	if got := tool.args["region"]; got != "us-en" {
+		t.Fatalf("region = %v, want %q", got, "us-en")
+	}
+	if got := tool.args["format"]; got != "json" {
+		t.Fatalf("format = %v, want %q", got, "json")
+	}
+}
+
+func TestExecutorExecuteJSONArgs_BrowserNestedCamelCaseFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{def: ToolDefinition{Name: "browser", Description: "browser"}}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "browser", `{"input":{"action":"act","ref":3,"actType":"click","targetId":"tab_1"}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["action"]; got != "act" {
+		t.Fatalf("action = %v, want %q", got, "act")
+	}
+	if got := tool.args["act_type"]; got != "click" {
+		t.Fatalf("act_type = %v, want %q", got, "click")
+	}
+	if got := tool.args["target_id"]; got != "tab_1" {
+		t.Fatalf("target_id = %v, want %q", got, "tab_1")
+	}
+	if got := tool.args["ref"]; got != float64(3) {
+		t.Fatalf("ref = %v, want %v", got, float64(3))
+	}
+}
+
+func TestExecutorExecuteJSONArgs_WebFetchNestedCamelCaseFallback(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{def: ToolDefinition{Name: "web_fetch", Description: "fetch"}}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "web_fetch", `{"input":{"url":"https://example.com","extractMode":"text","maxChars":321,"requestHeaders":{"X-Test":"1"},"authBearer":"tok","browserTargetId":"tab_1"}}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["url"]; got != "https://example.com" {
+		t.Fatalf("url = %v, want %q", got, "https://example.com")
+	}
+	if got := tool.args["extract_mode"]; got != "text" {
+		t.Fatalf("extract_mode = %v, want %q", got, "text")
+	}
+	if got := tool.args["max_chars"]; got != 321 {
+		t.Fatalf("max_chars = %v, want %d", got, 321)
+	}
+	headers, ok := tool.args["headers"].(map[string]interface{})
+	if !ok || headers["X-Test"] != "1" {
+		t.Fatalf("headers = %#v, want X-Test=1", tool.args["headers"])
+	}
+	if got := tool.args["auth_bearer"]; got != "tok" {
+		t.Fatalf("auth_bearer = %v, want %q", got, "tok")
+	}
+	if got := tool.args["browser_target_id"]; got != "tab_1" {
+		t.Fatalf("browser_target_id = %v, want %q", got, "tab_1")
 	}
 }
 
@@ -876,6 +1185,87 @@ func TestFileWriteToolContentCoercion(t *testing.T) {
 	}
 	if content != "42" {
 		t.Fatalf("expected numeric content to be coerced to string, got %q", content)
+	}
+}
+
+func TestFileWriteToolSupportsNestedCamelCaseArgs(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "nested-write.txt")
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"filePath": target,
+			"text":     "hello",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("failed to read test file: %v", err)
+	}
+	if content != "hello" {
+		t.Fatalf("content = %q, want %q", content, "hello")
+	}
+}
+
+func TestFileReadToolSupportsNestedCamelCaseArgs(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "nested-read.txt")
+	if err := writeTestFile(target, "a\nb\nc"); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	tool := NewFileReadTool([]string{tmpDir}, 0)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"filePath":  target,
+			"startLine": 2,
+			"endLine":   2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("failed to decode read result: %v", err)
+	}
+	if got := payload["content"]; got != "b" {
+		t.Fatalf("content = %v, want %q", got, "b")
+	}
+}
+
+func TestEditToolSupportsNestedCamelCaseArgs(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "nested-edit.txt")
+	if err := writeTestFile(target, "old old"); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	tool := NewEditTool([]string{tmpDir}, 0)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"filePath":   target,
+			"oldText":    "old",
+			"newText":    "new",
+			"replaceAll": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("failed to read edited file: %v", err)
+	}
+	if content != "new new" {
+		t.Fatalf("content = %q, want %q", content, "new new")
 	}
 }
 
@@ -1371,6 +1761,100 @@ func TestLsTool(t *testing.T) {
 	}
 }
 
+func TestLsTool_DefaultsToCurrentDirectoryOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	if err := writeTestFile(filepath.Join(tmpDir, "root.txt"), "root"); err != nil {
+		t.Fatalf("write root.txt: %v", err)
+	}
+	if err := writeTestFile(filepath.Join(tmpDir, "sub", "note.txt"), "nested"); err != nil {
+		t.Fatalf("write sub/note.txt: %v", err)
+	}
+
+	tool := NewLsTool([]string{tmpDir})
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path": ".",
+	})
+	if err != nil {
+		t.Fatalf("ls failed: %v", err)
+	}
+
+	var payload struct {
+		Count    int `json:"count"`
+		MaxDepth int `json:"max_depth"`
+		Entries  []struct {
+			Path string `json:"path"`
+			Type string `json:"type"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("decode ls result: %v", err)
+	}
+	if payload.MaxDepth != defaultFSToolLsDepth {
+		t.Fatalf("max_depth = %d, want %d", payload.MaxDepth, defaultFSToolLsDepth)
+	}
+	seen := make(map[string]struct{}, len(payload.Entries))
+	for _, entry := range payload.Entries {
+		seen[entry.Path] = struct{}{}
+	}
+	if _, ok := seen["sub/note.txt"]; ok {
+		t.Fatalf("default ls should not include nested entries: %+v", payload.Entries)
+	}
+	if _, ok := seen["sub"]; !ok {
+		t.Fatalf("expected top-level directory 'sub' in entries: %+v", payload.Entries)
+	}
+	if _, ok := seen["root.txt"]; !ok {
+		t.Fatalf("expected top-level file 'root.txt' in entries: %+v", payload.Entries)
+	}
+	if payload.Count != len(payload.Entries) {
+		t.Fatalf("count = %d, want %d", payload.Count, len(payload.Entries))
+	}
+}
+
+func TestLsTool_DefaultMaxEntriesTruncates(t *testing.T) {
+	tmpDir := t.TempDir()
+	for i := 0; i < defaultFSToolLsEntries+25; i++ {
+		name := filepath.Join(tmpDir, fmt.Sprintf("file-%03d.txt", i))
+		if err := writeTestFile(name, "x"); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	tool := NewLsTool([]string{tmpDir})
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path": ".",
+	})
+	if err != nil {
+		t.Fatalf("ls failed: %v", err)
+	}
+
+	var payload struct {
+		Count      int  `json:"count"`
+		Truncated  bool `json:"truncated"`
+		MaxEntries int  `json:"max_entries"`
+		Entries    []struct {
+			Path string `json:"path"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("decode ls result: %v", err)
+	}
+	if payload.MaxEntries != defaultFSToolLsEntries {
+		t.Fatalf("max_entries = %d, want %d", payload.MaxEntries, defaultFSToolLsEntries)
+	}
+	if !payload.Truncated {
+		t.Fatalf("truncated = false, want true")
+	}
+	if payload.Count != defaultFSToolLsEntries {
+		t.Fatalf("count = %d, want %d", payload.Count, defaultFSToolLsEntries)
+	}
+	if len(payload.Entries) != defaultFSToolLsEntries {
+		t.Fatalf("entries len = %d, want %d", len(payload.Entries), defaultFSToolLsEntries)
+	}
+}
+
 // Test RegisterBuiltinTools
 func TestRegisterBuiltinTools(t *testing.T) {
 	registry := NewRegistry()
@@ -1409,6 +1893,27 @@ func TestMCPToolDispatchesBuiltin(t *testing.T) {
 	}
 	if got != "ok" {
 		t.Fatalf("result = %v, want ok", got)
+	}
+}
+
+func TestMCPToolSupportsNestedParamsArgs(t *testing.T) {
+	registry := NewRegistry()
+	target := &captureArgsTool{def: ToolDefinition{Name: "read", Description: "Read", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"path": map[string]interface{}{"type": "string"}}}}}
+	registry.Register(target)
+	registry.Register(NewMCPTool(registry))
+
+	executor := NewExecutor(registry)
+	_, err := executor.Execute(context.Background(), "mcp", map[string]interface{}{
+		"input": map[string]interface{}{
+			"tool":   "read",
+			"params": map[string]interface{}{"path": "nested.txt"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("mcp dispatch failed: %v", err)
+	}
+	if got := target.args["path"]; got != "nested.txt" {
+		t.Fatalf("path = %v, want nested.txt", got)
 	}
 }
 
@@ -1555,6 +2060,26 @@ func TestExecutorFactoryWebFetchFallbackUsesWebFetchCommand(t *testing.T) {
 	}
 	if !strings.Contains(cmd, "url=https://example.com") {
 		t.Fatalf("command = %q, want to contain %q", cmd, "url=https://example.com")
+	}
+}
+
+func TestExecutorFactorySessionsListSupportsNestedActiveArgs(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	execTool := &captureArgsTool{
+		def: ToolDefinition{Name: "exec", Description: "Execute command", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"command": map[string]interface{}{"type": "string"}}, "required": []string{"command"}}},
+	}
+	registry.Register(execTool)
+
+	executor := NewExecutor(registry)
+	if _, err := executor.Execute(context.Background(), "sessions_list", map[string]interface{}{
+		"input": map[string]interface{}{"active": true},
+	}); err != nil {
+		t.Fatalf("execute sessions_list failed: %v", err)
+	}
+	cmd, _ := execTool.args["command"].(string)
+	if !strings.Contains(cmd, "blue sessions list --active") {
+		t.Fatalf("command = %q, want active flag", cmd)
 	}
 }
 
@@ -1722,6 +2247,77 @@ func TestExecutorFactorySessionsSendAndSpawnMapToAPICommands(t *testing.T) {
 	}
 	if !strings.Contains(cmd, "--data") {
 		t.Fatalf("send command = %q, want --data payload", cmd)
+	}
+}
+
+func TestExecutorFactoryMemoryWriteSupportsNestedTagsArgs(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	execTool := &captureArgsTool{
+		def: ToolDefinition{Name: "exec", Description: "Execute command", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"command": map[string]interface{}{"type": "string"}}, "required": []string{"command"}}},
+	}
+	registry.Register(execTool)
+
+	executor := NewExecutor(registry)
+	if _, err := executor.Execute(context.Background(), "memory_write", map[string]interface{}{
+		"input": map[string]interface{}{
+			"text": "hello",
+			"tags": []interface{}{"prefs"},
+		},
+	}); err != nil {
+		t.Fatalf("execute memory_write failed: %v", err)
+	}
+	cmd, _ := execTool.args["command"].(string)
+	if !strings.Contains(cmd, "/api/v1/memory/store") || !strings.Contains(cmd, "prefs") {
+		t.Fatalf("command = %q, want memory store tags payload", cmd)
+	}
+}
+
+func TestExecutorFactoryCronSupportsNestedPayloadArgs(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	execTool := &captureArgsTool{
+		def: ToolDefinition{Name: "exec", Description: "Execute command", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"command": map[string]interface{}{"type": "string"}}, "required": []string{"command"}}},
+	}
+	registry.Register(execTool)
+
+	executor := NewExecutor(registry)
+	if _, err := executor.Execute(context.Background(), "cron", map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":   "create",
+			"name":     "Health Check",
+			"schedule": "0 * * * *",
+			"payload":  map[string]interface{}{"url": "https://example.com"},
+		},
+	}); err != nil {
+		t.Fatalf("execute cron failed: %v", err)
+	}
+	cmd, _ := execTool.args["command"].(string)
+	if !strings.Contains(cmd, "blue cron add") || !strings.Contains(cmd, "--payload") || !strings.Contains(cmd, "https://example.com") {
+		t.Fatalf("command = %q, want cron payload", cmd)
+	}
+}
+
+func TestExecutorFactoryNodesSupportsNestedBodyArgs(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+	execTool := &captureArgsTool{
+		def: ToolDefinition{Name: "exec", Description: "Execute command", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"command": map[string]interface{}{"type": "string"}}, "required": []string{"command"}}},
+	}
+	registry.Register(execTool)
+
+	executor := NewExecutor(registry)
+	if _, err := executor.Execute(context.Background(), "nodes", map[string]interface{}{
+		"input": map[string]interface{}{
+			"name":  "Nested Flow",
+			"nodes": []interface{}{map[string]interface{}{"id": "n1", "type": "start"}},
+		},
+	}); err != nil {
+		t.Fatalf("execute nodes failed: %v", err)
+	}
+	cmd, _ := execTool.args["command"].(string)
+	if !strings.Contains(cmd, "/api/v1/workflows") || !strings.Contains(cmd, "Nested Flow") || !strings.Contains(cmd, "n1") || !strings.Contains(cmd, "start") {
+		t.Fatalf("command = %q, want nested workflow payload", cmd)
 	}
 }
 

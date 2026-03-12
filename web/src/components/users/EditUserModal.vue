@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usersApi, permissionsApi, PagePermissions, type User, type PermissionInfo } from '@/api/users'
 import { authApi, type PasswordPolicy } from '@/api/auth'
+import { getUserErrorMessage } from '@/utils/userErrors'
 
 const props = defineProps<{
   user: User
@@ -68,8 +69,6 @@ const passwordMismatch = computed(() => {
 
 const isPasswordValid = computed(() => {
   if (!allPasswordChecksPassed.value) return false
-  // When password is visible, no need for confirm password
-  if (showPassword.value) return true
   return newPassword.value === confirmPassword.value
 })
 
@@ -119,7 +118,7 @@ async function handleSubmit() {
     emit('updated')
   } catch (e) {
     const axiosError = e as { response?: { data?: { message?: string } } }
-    error.value = axiosError.response?.data?.message || t('users.error.updateFailed')
+    error.value = getUserErrorMessage(axiosError.response?.data?.message, 'users.error.updateFailed')
   } finally {
     loading.value = false
   }
@@ -139,7 +138,7 @@ async function handlePasswordReset() {
     confirmPassword.value = ''
   } catch (e) {
     const axiosError = e as { response?: { data?: { message?: string } } }
-    error.value = axiosError.response?.data?.message || t('users.error.passwordResetFailed')
+    error.value = getUserErrorMessage(axiosError.response?.data?.message, 'users.error.passwordResetFailed')
   } finally {
     passwordResetLoading.value = false
   }
@@ -306,16 +305,17 @@ onMounted(() => {
                   </div>
                 </div>
 
-                <!-- Confirm Password (hidden when password is visible) -->
-                <div v-if="!showPassword">
+                <!-- Confirm Password -->
+                <div>
                   <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     {{ t('auth.confirmPassword') }}
                   </label>
                   <input
                     v-model="confirmPassword"
-                    type="password"
+                    :type="showPassword ? 'text' : 'password'"
                     class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     :class="passwordMismatch ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
+                    :placeholder="t('auth.confirmPasswordPlaceholder')"
                   />
                   <p v-if="passwordMismatch" class="mt-1 text-sm text-red-500">
                     {{ t('auth.passwordMismatch') }}

@@ -46,14 +46,14 @@ export default {
     username: 'Gebruikersnaam',
     password: 'Wachtwoord',
     rememberMe: 'Onthoud mij',
-    invalidCredentials: "Ongeldige gebruikersnaam of wachtwoord",
-    accountLocked: "Account is vergrendeld",
-    accountDisabled: "Account is uitgeschakeld",
-    authServiceUnavailable: "Authenticatieservice tijdelijk niet beschikbaar",
-    loginFailed: "Inloggen mislukt",
-    currentPasswordIncorrect: "Huidig wachtwoord is onjuist",
-    newPasswordRequirements: "Nieuw wachtwoord voldoet niet aan de vereisten",
-    changePasswordFailed: "Wachtwoord wijzigen mislukt",
+    invalidCredentials: 'Ongeldige gebruikersnaam of wachtwoord',
+    accountLocked: 'Account is vergrendeld',
+    accountDisabled: 'Account is uitgeschakeld',
+    authServiceUnavailable: 'Authenticatieservice tijdelijk niet beschikbaar',
+    loginFailed: 'Inloggen mislukt',
+    currentPasswordIncorrect: 'Huidig wachtwoord is onjuist',
+    newPasswordRequirements: 'Nieuw wachtwoord voldoet niet aan de vereisten',
+    changePasswordFailed: 'Wachtwoord wijzigen mislukt',
   },
   errors: {
     ...enUS.errors,
@@ -62,6 +62,27 @@ export default {
   },
   nav: {
     ...enUS.nav,
+    workspaceCoreTab: 'Workspace Core Files',
+    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTitle: 'Workspace Directory Tree',
+    workspaceGeneratedDescription:
+      'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
+    workspaceGeneratedLoadFailed: 'Failed to scan generated file sources',
+    workspaceUnknownConversation: 'Conversation',
+    workspaceJumpToConversation: 'Go to conversation',
+    workspaceTreeLoadFailed: 'Failed to load workspace directory tree',
+    workspaceTreeLoading: 'Loading workspace tree and conversation links...',
+    workspaceTreeEmpty: 'No files found in workspace tree.',
+    workspaceTreeFilteredEmpty: 'No conversation-linked files in the current filtered tree view.',
+    workspaceTreeDirCount: 'Dirs',
+    workspaceTreeFileCount: 'Files',
+    workspaceTreeLinkedCount: 'Linked',
+    workspaceTreeShowAll: 'Show all files',
+    workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeExpandDir: 'Expand folder',
+    workspaceTreeCollapseDir: 'Collapse folder',
+    workspaceTreeOpenFailed: 'Unable to open workspace file',
+    workspaceTreeRevealFailed: 'Unable to open file location',
     taskCenter: 'Taakcentrum',
     channels: 'Integraties',
     automation: 'Automatisering',
@@ -138,10 +159,12 @@ export default {
     empty: {
       noMatchingTools: 'Geen overeenkomende gereedschappen gevonden',
       noToolsInstalled: 'Nog geen gereedschappen geïnstalleerd',
-      noMatchingToolsStore: 'Geen overeenkomende gereedschappen gevonden. Probeer de winkel te vernieuwen',
+      noMatchingToolsStore:
+        'Geen overeenkomende gereedschappen gevonden. Probeer de winkel te vernieuwen',
       noMatchingPlugins: 'Geen overeenkomende plugins gevonden',
       noPluginsInstalled: 'Nog geen plugins geïnstalleerd',
-      noMatchingPluginsStore: 'Geen overeenkomende plugins gevonden. Probeer de winkel te vernieuwen',
+      noMatchingPluginsStore:
+        'Geen overeenkomende plugins gevonden. Probeer de winkel te vernieuwen',
       loadingStore: 'Winkelgegevens laden...',
       loadingLogs: 'Logboeken laden...',
       noLogs: 'Geen logboeken beschikbaar',
@@ -200,7 +223,8 @@ export default {
     create: 'Aanmaken',
     saving: 'Opslaan...',
     deleteConfirm: 'Weet u zeker dat u <strong>{name}</strong> wilt verwijderen?',
-    deleteWarning: 'Deze actie kan niet ongedaan worden gemaakt. Alle gegevens worden permanent verwijderd.',
+    deleteWarning:
+      'Deze actie kan niet ongedaan worden gemaakt. Alle gegevens worden permanent verwijderd.',
     deleting: 'Verwijderen...',
     back: 'Terug',
     loading: 'Laden...',
@@ -216,7 +240,8 @@ export default {
       inviteMember: 'Lid uitnodigen',
       remove: 'Verwijderen',
       removing: 'Verwijderen...',
-      removeConfirm: 'Weet u zeker dat u <strong>{username}</strong> uit deze werkruimte wilt verwijderen?',
+      removeConfirm:
+        'Weet u zeker dat u <strong>{username}</strong> uit deze werkruimte wilt verwijderen?',
       roles: {
         owner: 'Eigenaar',
         admin: 'Beheerder',
@@ -364,12 +389,15 @@ export default {
     },
     security: {
       allowedDomains: 'Toegestane domeinen',
-      allowedDomainsHint: 'Alleen deze domeinen kunnen worden benaderd. Laat leeg om alles toe te staan (behalve geblokkeerde).',
+      allowedDomainsHint:
+        'Alleen deze domeinen kunnen worden benaderd. Laat leeg om alles toe te staan (behalve geblokkeerde).',
       allowedDomainsPlaceholder: 'example.com of *.example.com',
       add: 'Toevoegen',
-      noAllowedDomains: 'Geen toegestane domeinen geconfigureerd. Alle domeinen zijn toegestaan (behalve geblokkeerde).',
+      noAllowedDomains:
+        'Geen toegestane domeinen geconfigureerd. Alle domeinen zijn toegestaan (behalve geblokkeerde).',
       blockedDomains: 'Geblokkeerde domeinen',
-      blockedDomainsHint: 'Deze domeinen zijn altijd geblokkeerd, zelfs als ze in de toegestane lijst staan.',
+      blockedDomainsHint:
+        'Deze domeinen zijn altijd geblokkeerd, zelfs als ze in de toegestane lijst staan.',
       blockedDomainsPlaceholder: 'malicious-site.com',
       block: 'Blokkeren',
       noBlockedDomains: 'Geen geblokkeerde domeinen geconfigureerd.',
@@ -423,7 +451,8 @@ export default {
     teamsDesc: 'Verbinden met Microsoft Teams',
     googleChatDesc: 'Verbinden met Google Chat',
     feishuDesc: 'Verbinden met Feishu/Lark Bot',
-    feishuHint: 'Maak een bot in Feishu Open Platform. Vereist: 1) Schakel "Long Connection" in voor gebeurtenissen; 2) Abonneer op gebeurtenis "im.message.receive_v1"; 3) Voeg machtiging "im:message:send_as_bot" toe',
+    feishuHint:
+      'Maak een bot in Feishu Open Platform. Vereist: 1) Schakel "Long Connection" in voor gebeurtenissen; 2) Abonneer op gebeurtenis "im.message.receive_v1"; 3) Voeg machtiging "im:message:send_as_bot" toe',
     feishuOpenChat: 'Botchat openen',
     dingtalkDesc: 'Verbinden met DingTalk Bot',
     dingtalkHint: 'Maak een robot in DingTalk Developer Platform',
@@ -538,10 +567,12 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    llmApiKeyRequired: 'Configureer een API-sleutel voordat je de LLM-providerpagina opent.',
     agentReflection: {
       ...enUS.settings.agentReflection,
       title: 'Automatische reflectie',
-      description: 'Wanneer {agentMode} voltooid is of mislukt, wordt een korte reflectie gemaakt en worden herbruikbare lessen in het geheugen opgeslagen.',
+      description:
+        'Wanneer {agentMode} voltooid is of mislukt, wordt een korte reflectie gemaakt en worden herbruikbare lessen in het geheugen opgeslagen.',
       hint: 'Geannuleerde of afgebroken taken worden overgeslagen. Reflectiefouten veranderen de uiteindelijke taakstatus niet.',
       saved: 'Automatische reflectie opgeslagen',
       saveFailed: 'Instelling voor automatische reflectie kon niet worden opgeslagen',
@@ -549,15 +580,19 @@ export default {
     smallModel: {
       ...enUS.settings.smallModel,
       title: 'Lichtgewichtversnelling',
-      description: 'Gebruikt eerst het lichtgewicht model voor eenvoudige taken, met automatische fallback wanneer het niet beschikbaar is.',
+      description:
+        'Gebruikt eerst het lichtgewicht model voor eenvoudige taken, met automatische fallback wanneer het niet beschikbaar is.',
       ready: 'Beschikbaar',
       downloading: 'Downloaden',
       notReady: 'Niet gedownload',
       enabled: 'Lichtgewichtversnelling inschakelen',
-      enabledHint: 'Wanneer ingeschakeld, worden geschikte taken eerst door het lichtgewicht model verwerkt.',
+      enabledHint:
+        'Wanneer ingeschakeld, worden geschikte taken eerst door het lichtgewicht model verwerkt.',
       userGuideTitle: 'Wat dit doet',
-      userGuideItem1: 'Geeft prioriteit aan korte vragen en sommige toolbeslissingen voor snellere reacties.',
-      userGuideItem2: 'Valt automatisch terug op het hoofdmodel wanneer het lichtgewicht model niet beschikbaar is.',
+      userGuideItem1:
+        'Geeft prioriteit aan korte vragen en sommige toolbeslissingen voor snellere reacties.',
+      userGuideItem2:
+        'Valt automatisch terug op het hoofdmodel wanneer het lichtgewicht model niet beschikbaar is.',
       userGuideItem3: 'Download het model voor het eerste gebruik.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
@@ -568,11 +603,13 @@ export default {
       advancedHint: 'Alleen aanpassen voor probleemoplossing of gecontroleerde rollout-validatie.',
       expand: 'Uitklappen',
       collapse: 'Inklappen',
-      mediaIntent: 'Herkenning van mediascenario\'s',
+      mediaIntent: "Herkenning van mediascenario's",
       irOfflineFallbackTitle: 'Offline Local Fallback',
-      irOfflineFallbackDesc: 'When model fallback is needed, answer from local context recall first.',
+      irOfflineFallbackDesc:
+        'When model fallback is needed, answer from local context recall first.',
       irFeatureHintTitle: 'Feature Hint Detection',
-      irFeatureHintDesc: 'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
+      irFeatureHintDesc:
+        'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
       statsTitle: 'Runtime-statistieken (probleemoplossing)',
       statsHint: 'Vooral voor probleemoplossing en tuning; in dagelijks gebruik te negeren.',
       irTakeovers: 'Strategie-overnames',
@@ -638,11 +675,13 @@ export default {
     apply: 'Toepassen',
     reset: 'Resetten',
     exportCSV: 'Exporteer CSV',
-    featureDisabled: 'Facturering is momenteel niet beschikbaar omdat het gebruikstracking van provider niet is geinitialiseerd.',
+    featureDisabled:
+      'Facturering is momenteel niet beschikbaar omdat het gebruikstracking van provider niet is geinitialiseerd.',
     noData: 'Geen factureringsrecords gevonden voor de huidige filters',
     loadFailed: 'Laden van factureringsgegevens mislukt',
     anomalyTitle: 'Waarschuwingen voor gebruikspieken',
-    anomalyHint: 'Detecteert dagen waarop tokengebruik aanzienlijk boven de recente 7-daagse basislijn ligt.',
+    anomalyHint:
+      'Detecteert dagen waarop tokengebruik aanzienlijk boven de recente 7-daagse basislijn ligt.',
     anomalyNone: 'Geen significante gebruikspieken gedetecteerd in het huidige bereik',
     breakdownTitle: 'Samenvattende uitsplitsing',
     linesTitle: 'Gedetailleerde records',
@@ -670,10 +709,12 @@ export default {
     firewall: {
       ...enUS.security.firewall,
       title: 'Prompt-firewall',
-      description: 'Beheer een blokkadelijst met trefwoorden om risicovolle prompts te onderscheppen vóór verwerking.',
+      description:
+        'Beheer een blokkadelijst met trefwoorden om risicovolle prompts te onderscheppen vóór verwerking.',
       ruleCount: '{count} actieve trefwoordregels',
       builtinTitle: 'Standaard blokkeerregels',
-      builtinDescription: 'Ingebouwde onderscheppingsregels staan standaard aan en kunnen dynamisch worden aangepast.',
+      builtinDescription:
+        'Ingebouwde onderscheppingsregels staan standaard aan en kunnen dynamisch worden aangepast.',
       customTitle: 'Aangepaste trefwoordregels',
       keywordPlaceholder: 'Voer geblokkeerd trefwoord of zin in',
       add: 'Regel toevoegen',
@@ -684,7 +725,8 @@ export default {
     },
     settings: {
       title: 'Bewaring van beveiligingsgegevens',
-      description: 'Configureren hoe lang beveiligingsmonitoringgegevens (sessies, gebeurtenissen, meldingen) worden bewaard vóór automatische opschoning',
+      description:
+        'Configureren hoe lang beveiligingsmonitoringgegevens (sessies, gebeurtenissen, meldingen) worden bewaard vóór automatische opschoning',
       configure: 'Configureren',
       storageInfo: 'Opslaginformatie',
       sessions: 'Sessies',
@@ -696,7 +738,8 @@ export default {
       alertsRetention: 'Meldingbewaring',
       days: 'dagen',
       cleanupNow: 'Nu opschonen',
-      cleanupConfirm: 'Alle beveiligingsmonitoringgegevens ouder dan de bewaarperiode worden verwijderd. Doorgaan?',
+      cleanupConfirm:
+        'Alle beveiligingsmonitoringgegevens ouder dan de bewaarperiode worden verwijderd. Doorgaan?',
       cleanupSuccess: 'Opschoning succesvol voltooid',
     },
     scan: {
@@ -745,20 +788,30 @@ export default {
         sql_injection_enabled: 'SQL-injectiepatroondetectie is ingeschakeld',
         command_injection_enabled: 'Commando-injectiepatroondetectie is ingeschakeld',
         prompt_injection_active: 'Prompt-injectiedetectie is actief',
-        prompt_injection_disabled: 'Prompt-injectiebescherming is uitgeschakeld. Schakel PromptGuard in voor AI-beveiliging.',
+        prompt_injection_disabled:
+          'Prompt-injectiebescherming is uitgeschakeld. Schakel PromptGuard in voor AI-beveiliging.',
         ai_output_validation_enabled: 'AI-uitvoervalidatie is ingeschakeld',
-        ai_output_validation_disabled: 'AI-uitvoervalidatie is uitgeschakeld. Overweeg in te schakelen voor veiligere AI-bewerkingen.',
-        model_whitelist_no_models: 'Model-whitelist is ingeschakeld maar er zijn geen modellen geconfigureerd',
-        model_whitelist_disabled: 'Model-whitelist is uitgeschakeld. Alle modellen zijn toegankelijk. Overweeg in te schakelen voor productie.',
+        ai_output_validation_disabled:
+          'AI-uitvoervalidatie is uitgeschakeld. Overweeg in te schakelen voor veiligere AI-bewerkingen.',
+        model_whitelist_no_models:
+          'Model-whitelist is ingeschakeld maar er zijn geen modellen geconfigureerd',
+        model_whitelist_disabled:
+          'Model-whitelist is uitgeschakeld. Alle modellen zijn toegankelijk. Overweeg in te schakelen voor productie.',
         sensitive_data_filtering_enabled: 'Filtering van gevoelige gegevens is ingeschakeld',
-        sensitive_data_filtering_disabled: 'Filtering van gevoelige gegevens is uitgeschakeld. PII kan worden blootgesteld aan AI-modellen.',
-        rate_limiting_disabled: 'Snelheidsbeperking is uitgeschakeld. API is kwetsbaar voor misbruik en DoS-aanvallen.',
-        cors_all_origins_production: 'CORS staat alle oorsprongen toe in productie. Dit is een beveiligingsrisico.',
-        cors_all_origins_dev: 'CORS staat alle oorsprongen toe. Acceptabel voor ontwikkeling, maar beperk in productie.',
+        sensitive_data_filtering_disabled:
+          'Filtering van gevoelige gegevens is uitgeschakeld. PII kan worden blootgesteld aan AI-modellen.',
+        rate_limiting_disabled:
+          'Snelheidsbeperking is uitgeschakeld. API is kwetsbaar voor misbruik en DoS-aanvallen.',
+        cors_all_origins_production:
+          'CORS staat alle oorsprongen toe in productie. Dit is een beveiligingsrisico.',
+        cors_all_origins_dev:
+          'CORS staat alle oorsprongen toe. Acceptabel voor ontwikkeling, maar beperk in productie.',
         cors_no_external_origins: 'CORS is geconfigureerd om geen externe oorsprongen toe te staan',
         tls_12_min: 'TLS is ingeschakeld met minimale versie TLS 1.2',
-        tls_older_versions: 'TLS is ingeschakeld maar staat oudere versies toe. Aanbevolen: minimaal TLS 1.2.',
-        tls_disabled_production: 'TLS is uitgeschakeld in productie. Al het verkeer is niet versleuteld.',
+        tls_older_versions:
+          'TLS is ingeschakeld maar staat oudere versies toe. Aanbevolen: minimaal TLS 1.2.',
+        tls_disabled_production:
+          'TLS is uitgeschakeld in productie. Al het verkeer is niet versleuteld.',
         tls_disabled_enable: 'TLS is uitgeschakeld. Schakel in voor productie-implementatie.',
         server_localhost: 'Server is toegankelijk op localhost',
         server_binding_unknown: 'Kan serverbinding niet verifiëren',
@@ -767,17 +820,22 @@ export default {
         no_memory_limit: 'Geen geheugenlimiet geconfigureerd voor sandbox',
         no_timeout_configured: 'Geen uitvoeringstimeout geconfigureerd',
         network_disabled_sandbox: 'Netwerktoegang is uitgeschakeld in sandbox',
-        network_enabled_sandbox: 'Netwerktoegang is ingeschakeld in sandbox. Overweeg uit te schakelen voor betere isolatie.',
+        network_enabled_sandbox:
+          'Netwerktoegang is ingeschakeld in sandbox. Overweeg uit te schakelen voor betere isolatie.',
         data_dir_restricted: 'Gegevensmap heeft beperkte machtigingen',
         data_dir_permissive: 'Gegevensmap kan te permissieve toegang hebben',
         data_dir_unknown: 'Kan machtigingen van gegevensmap niet verifiëren',
-        debug_production: 'Debugmodus is ingeschakeld in productie. Dit onthult gevoelige informatie.',
+        debug_production:
+          'Debugmodus is ingeschakeld in productie. Dit onthult gevoelige informatie.',
         debug_enabled: 'Debugmodus is ingeschakeld. Schakel uit vóór productie-implementatie.',
         debug_disabled: 'Debugmodus is uitgeschakeld',
-        error_exposed_production: 'Gedetailleerde foutmeldingen zijn blootgesteld in productie. Dit kan gevoelige informatie lekken.',
-        error_exposed: 'Gedetailleerde foutmeldingen zijn blootgesteld. Schakel uit vóór productie-implementatie.',
+        error_exposed_production:
+          'Gedetailleerde foutmeldingen zijn blootgesteld in productie. Dit kan gevoelige informatie lekken.',
+        error_exposed:
+          'Gedetailleerde foutmeldingen zijn blootgesteld. Schakel uit vóór productie-implementatie.',
         error_hidden: 'Foutdetails zijn verborgen in antwoorden',
-        error_log_restrict: 'Gevoelige foutgegevens kunnen worden geregistreerd. Zorg ervoor dat logtoegang beperkt is.',
+        error_log_restrict:
+          'Gevoelige foutgegevens kunnen worden geregistreerd. Zorg ervoor dat logtoegang beperkt is.',
         error_filtered_logs: 'Gevoelige foutgegevens zijn gefilterd uit logs',
         running_production: 'Draait in productiemodus',
         running_staging: 'Draait in stagingmodus',
@@ -796,7 +854,8 @@ export default {
         ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Minimale wachtwoordlengte',
-          description: 'Controleren of de minimale wachtwoordlengte voldoet aan de beveiligingsvereisten',
+          description:
+            'Controleren of de minimale wachtwoordlengte voldoet aan de beveiligingsvereisten',
         },
         auth_password_complexity: {
           name: 'Wachtwoordcomplexiteit',
@@ -942,10 +1001,10 @@ export default {
     },
     // Direct keys used in template
     // Nested structure
-    'sessions': {
+    sessions: {
       title: 'Actieve sessies',
     },
-    'events': {
+    events: {
       title: 'Beveiligingsgebeurtenissen',
     },
   },
@@ -954,12 +1013,14 @@ export default {
     title: 'Gebruiksstatistieken',
     loadError: 'Kon statistieken niet laden',
     notEnabled: 'Statistieken niet ingeschakeld',
-    enableInSettings: 'Schakel statistiekenverzameling in via Instellingen om gebruiksgegevens te zien.',
+    enableInSettings:
+      'Schakel statistiekenverzameling in via Instellingen om gebruiksgegevens te zien.',
     noData: 'Nog geen gebruiksgegevens',
     exportJSON: 'JSON exporteren',
     exportCSV: 'CSV exporteren',
     clearAll: 'Alle statistieken wissen',
-    clearConfirm: 'Weet je zeker dat je alle statistieken wilt wissen? Dit kan niet ongedaan worden gemaakt.',
+    clearConfirm:
+      'Weet je zeker dat je alle statistieken wilt wissen? Dit kan niet ongedaan worden gemaakt.',
     consent: {
       ...enUS.stats.consent,
       title: 'Statistiekenverzameling',
@@ -974,10 +1035,16 @@ export default {
     autoRefresh: 'Auto-vernieuwen (5s)',
     lastUpdated: 'Laatst bijgewerkt',
     reset: 'Resetten',
-    confirmReset: 'Weet je zeker dat je alle metrieken wilt resetten? Dit kan niet ongedaan worden gemaakt.',
+    confirmReset:
+      'Weet je zeker dat je alle metrieken wilt resetten? Dit kan niet ongedaan worden gemaakt.',
     resetSuccess: 'Metrieken gereset',
     noData: 'Geen gegevens beschikbaar',
-    tabs: { overview: 'Overzicht', models: 'Modellen', tokens: 'Tokens', performance: 'Prestaties' },
+    tabs: {
+      overview: 'Overzicht',
+      models: 'Modellen',
+      tokens: 'Tokens',
+      performance: 'Prestaties',
+    },
     totalCalls: 'Totaal aantal aanroepen',
     successRate: 'Slagingspercentage',
     tokenUsage: 'Tokengebruik',
@@ -1053,12 +1120,14 @@ export default {
       xai: 'xAI Grok-modellen met realtime kennis',
       openrouter: 'Toegang tot meerdere AI-modellen via een uniforme API',
       'openrouter-free': 'Alleen OpenRouter-modellen van het gratisniveau',
-      ollama: 'Open-source LLM\'s lokaal draaien op uw machine',
+      ollama: "Open-source LLM's lokaal draaien op uw machine",
       lmstudio: 'Lokale LLM-inferentie met gebruiksvriendelijke interface',
       glm: 'Zhipu AI GLM-4-modellen met Chinese taalondersteuning',
       siliconflow: 'SiliconFlow - Chinees AI-cloudplatform met DeepSeek, Qwen en meer modellen',
-      nvidia: 'NVIDIA NIM - GPU-versnelde inferentie voor toonaangevende open-source en commerciële modellen',
-      'zimaos-blue-trial': 'Gratis proefversie met beperkt quotum - ervaar Blue voordat u uw eigen provider configureert',
+      nvidia:
+        'NVIDIA NIM - GPU-versnelde inferentie voor toonaangevende open-source en commerciële modellen',
+      'zimaos-blue-trial':
+        'Gratis proefversie met beperkt quotum - ervaar Blue voordat u uw eigen provider configureert',
       moonshot: 'Moonshot AI (Kimi) - Chinees taalmodel met ondersteuning voor lange context',
       azure: 'Azure OpenAI Service - Enterprise OpenAI-modellen op Azure',
       aihubmix: 'AiHubMix - AI-modelaggregator met meerdere providers',
@@ -1073,7 +1142,8 @@ export default {
       'codex-oauth': 'OpenAI Codex CLI via OAuth - ChatGPT-abonnementsmodellen',
       'dashscope-image': 'Alibaba DashScope - Qwen Image en Wanx tekst-naar-afbeelding modellen',
       'gemini-image': 'Google Gemini - Natieve beeldgeneratie via Imagen en Gemini-modellen',
-      mulerouter: 'MuleRouter - Uniforme aggregator voor DALL-E, Midjourney, Qwen Image, Wan2 video',
+      mulerouter:
+        'MuleRouter - Uniforme aggregator voor DALL-E, Midjourney, Qwen Image, Wan2 video',
       'minimax-media': 'MiniMax - Hailuo-videogeneratie en tekst-naar-spraak',
     },
     models: 'Modellen',
@@ -1169,9 +1239,9 @@ export default {
     testFailed: 'Verbinding mislukt',
     connectionError: 'Verbindingsfout',
     ideDiscovery: 'IDE-detectie',
-    scanIdes: 'IDE\'s scannen',
+    scanIdes: "IDE's scannen",
     scanning: 'Scannen...',
-    noIdesFound: 'Geen IDE\'s gevonden',
+    noIdesFound: "Geen IDE's gevonden",
     connectIde: 'Verbinden',
     ideConnected: 'Verbonden',
     ideDisconnected: 'Verbinding verbroken',
@@ -1186,7 +1256,8 @@ export default {
     confirmRemovePricing: 'Deze aangepaste prijs verwijderen?',
     pricingConfig: 'Prijzenconfiguratie',
     defaultPricing: 'Standaardprijzen',
-    defaultPricingReadOnly: 'Standaardprijzen uit modeldefinities. Overschrijf met aangepaste prijzen.',
+    defaultPricingReadOnly:
+      'Standaardprijzen uit modeldefinities. Overschrijf met aangepaste prijzen.',
     customPricing: 'Aangepaste prijzen',
     customPricingDescription: 'Prijzen overschrijven voor specifieke modellen of providers',
     capChat: 'Chat',
@@ -1233,7 +1304,8 @@ export default {
     detected: 'gedetecteerd',
     configureModels: 'Configureren',
     configureAllowedModels: 'Toegestane modellen configureren',
-    allowedModelsHint: 'Selecteer welke modellen beschikbaar zijn voor deze provider. Als er geen wordt geselecteerd, zijn alle modellen van de API beschikbaar.',
+    allowedModelsHint:
+      'Selecteer welke modellen beschikbaar zijn voor deze provider. Als er geen wordt geselecteerd, zijn alle modellen van de API beschikbaar.',
     filtered: 'gefilterd',
     filteredModels: 'Alleen toegestane modellen worden getoond',
     selectAll: 'Alles selecteren',
@@ -1274,12 +1346,16 @@ export default {
     configure: 'Configureren',
     baseUrlNotConfigured: 'Basis-URL niet geconfigureerd — klik op Configureren om in te stellen',
     healthErrors: {
-      authError: 'Authenticatie mislukt (HTTP {code}) — controleer uw API-sleutel of uw OAuth-verbinding',
+      authError:
+        'Authenticatie mislukt (HTTP {code}) — controleer uw API-sleutel of uw OAuth-verbinding',
       baseUrlNotConfigured: 'Basis-URL niet geconfigureerd — stel de endpoint-URL in',
-      baseUrlNotConfiguredAzure: 'Azure OpenAI-endpoint niet geconfigureerd — klik hierboven op Configureren om de endpoint-URL in te stellen',
-      baseUrlNotConfiguredBedrock: 'AWS Bedrock-endpoint niet geconfigureerd — klik hierboven op Configureren om de endpoint-URL in te stellen',
+      baseUrlNotConfiguredAzure:
+        'Azure OpenAI-endpoint niet geconfigureerd — klik hierboven op Configureren om de endpoint-URL in te stellen',
+      baseUrlNotConfiguredBedrock:
+        'AWS Bedrock-endpoint niet geconfigureerd — klik hierboven op Configureren om de endpoint-URL in te stellen',
       networkError: 'Netwerkverbinding mislukt — controleer de URL en uw netwerkverbinding',
-      certificateError: 'TLS-certificaatfout — schakel "TLS-verificatie overslaan" in of controleer het certificaat',
+      certificateError:
+        'TLS-certificaatfout — schakel "TLS-verificatie overslaan" in of controleer het certificaat',
       timeoutError: 'Verbinding verlopen — de server is mogelijk offline of onbereikbaar',
       connectionError: 'Verbinding mislukt — controleer de provider-URL',
       endpointNotFound: 'Gezondheidscontrole-endpoint niet gevonden (HTTP 404)',
@@ -1309,9 +1385,11 @@ export default {
     welcome: 'Welkom bij Blue!',
     subtitle: 'Je persoonlijke AI-assistent is klaar',
     previewMode: 'Voorvertoningsmodus',
-    previewModeDesc: 'Je kunt Blue direct gebruiken. Alle functies zijn beschikbaar en je gegevens worden opgeslagen.',
+    previewModeDesc:
+      'Je kunt Blue direct gebruiken. Alle functies zijn beschikbaar en je gegevens worden opgeslagen.',
     createAccountHint: 'Maak op elk moment een account',
-    createAccountHintDesc: 'Wanneer je klaar bent, maak een beheerdersaccount om gebruikersbeheer te ontgrendelen en je gegevens te beveiligen.',
+    createAccountHintDesc:
+      'Wanneer je klaar bent, maak een beheerdersaccount om gebruikersbeheer te ontgrendelen en je gegevens te beveiligen.',
     topRightHint: 'Kijk naar de knop rechtsboven',
     gotIt: 'Begrepen, laten we beginnen!',
   },
@@ -1333,7 +1411,8 @@ export default {
     startError: 'Externe toegang kon niet worden gestart',
     stopError: 'Externe toegang kon niet worden gestopt',
     antivirusBlockedTitle: 'ngrok kan door antivirus worden geblokkeerd',
-    antivirusBlockedDesc: 'Als de verbinding mislukt, controleer of je antivirus ngrok blokkeert en voeg het toe aan de whitelist.',
+    antivirusBlockedDesc:
+      'Als de verbinding mislukt, controleer of je antivirus ngrok blokkeert en voeg het toe aan de whitelist.',
   },
   localeNames: {
     'ca-ES': 'Catalaans',
@@ -1369,6 +1448,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    execDirectoryApprovalTimeout: 'De opdrachtuitvoering is geblokkeerd omdat de mapgoedkeuring is verlopen. Keur de map goed en probeer het opnieuw.',
     streamProgress: {
       requestAccepted: 'Aanvraag ontvangen, antwoord wordt voorbereid...',
       generating: 'Antwoord genereren...',
@@ -1377,7 +1457,8 @@ export default {
       processing: 'Verwerken...',
       completed: 'Voltooid',
     },
-    featureHintTapToEnable: "Optionele functies gedetecteerd. Tik om ze aan te vinken vóór verzenden:",
+    featureHintTapToEnable:
+      'Optionele functies gedetecteerd. Tik om ze aan te vinken vóór verzenden:',
     send: 'Verzenden',
     sendDuringStream: 'Verzenden (toevoegen aan gesprek)',
     responseInterrupted: 'Antwoord onderbroken',
@@ -1406,31 +1487,54 @@ export default {
     deepResearchStageCompleted: 'Voltooid',
     deepResearchStageFailed: 'Mislukt',
     deepResearchStageCancelled: 'Geannuleerd',
+    deepResearchProcess: 'Onderzoeksproces',
+    deepResearchLiveSources: 'Live-bronnen',
+    deepResearchResearchBrief: 'Onderzoeksbrief',
+    deepResearchMustVerify: 'Moet worden geverifieerd',
+    deepResearchPlannedTasks: 'Geplande taken',
+    deepResearchFollowUpQuery: 'Vervolgquery',
+    deepResearchRunningTasks: 'Lopende onderzoekstaken',
+    deepResearchRunningElsewhere: 'Volg actieve deep research-taken over gesprekken heen.',
+    deepResearchViewTask: 'Taak bekijken',
+    deepResearchCancelTask: 'Annuleren',
+    deepResearchTaskCompleted: 'Onderzoek voltooid',
+    deepResearchTaskFailed: 'Onderzoek mislukt',
+    deepResearchTaskCancelled: 'Onderzoek geannuleerd',
+    deepResearchBackToTask: 'Resultaat bekijken',
     stillListening: 'Ga door, ik luister...',
     imageGenStopped: 'Afbeelding genereren is gestopt.',
     videoGenStopped: 'Video genereren is gestopt.',
     agentTaskStopped: 'Taak "{goal}" is gestopt.',
     contextPruned: 'Context opgeschoond, {tokens} tokens bespaard',
     contextCompacted: 'Context gecomprimeerd: {before} → {after} berichten',
-    trialExhausted: 'Het proefquotum is opgebruikt. Configureer uw eigen AI-provider om door te gaan.',
-    trialServiceBusy: 'De proefservice is momenteel druk bezet vanwege hoge vraag. Probeer het over een moment opnieuw. Als dit aanhoudt, bezoek onze community voor hulp.',
+    trialExhausted:
+      'Het proefquotum is opgebruikt. Configureer uw eigen AI-provider om door te gaan.',
+    trialServiceBusy:
+      'De proefservice is momenteel druk bezet vanwege hoge vraag. Probeer het over een moment opnieuw. Als dit aanhoudt, bezoek onze community voor hulp.',
     noStreamData: 'Geen antwoord ontvangen. Probeer het opnieuw.',
-    streamEmpty: 'De verbinding werd gesloten voordat een antwoord werd ontvangen. Probeer het opnieuw.',
-    providerNoResponse: 'De provider heeft geen antwoord geretourneerd. Dit is meestal tijdelijk — probeer het opnieuw.',
-    providerReturnedEmpty: 'De provider heeft een leeg antwoord geretourneerd. Probeer het opnieuw.',
+    streamEmpty:
+      'De verbinding werd gesloten voordat een antwoord werd ontvangen. Probeer het opnieuw.',
+    providerNoResponse:
+      'De provider heeft geen antwoord geretourneerd. Dit is meestal tijdelijk — probeer het opnieuw.',
+    providerReturnedEmpty:
+      'De provider heeft een leeg antwoord geretourneerd. Probeer het opnieuw.',
     noResponseBody: 'Geen antwoordinhoud ontvangen. Controleer uw netwerkverbinding.',
-    providerOpenRouterPrivacyPolicy: 'OpenRouter heeft dit verzoek geblokkeerd vanwege privacy-instellingen. Ga naar https://openrouter.ai/settings/privacy, schakel "Free model publication" in en probeer het opnieuw.',
+    providerOpenRouterPrivacyPolicy:
+      'OpenRouter heeft dit verzoek geblokkeerd vanwege privacy-instellingen. Ga naar https://openrouter.ai/settings/privacy, schakel "Free model publication" in en probeer het opnieuw.',
     configureProvider: 'Provider configureren',
     noProvider: {
       title: 'Geen AI-provider beschikbaar',
-      description: 'U moet een AI-provider configureren om deze functie te gebruiken. Wilt u er nu een configureren?',
+      description:
+        'U moet een AI-provider configureren om deze functie te gebruiken. Wilt u er nu een configureren?',
       configure: 'Nu configureren',
     },
     // Verbeterde modus
     enhancedMode: 'Verbeterd',
-    enhancedModeDesc: 'Verbeterde modus: ondersteunt vaardigheden, tool-aanroepen, bestandsbewerkingen, code-uitvoering en meer',
+    enhancedModeDesc:
+      'Verbeterde modus: ondersteunt vaardigheden, tool-aanroepen, bestandsbewerkingen, code-uitvoering en meer',
     enableEnhancedMode: 'Verbeterde modus inschakelen',
-    enableEnhancedModeDesc: 'Schakel de verbeterde modus in voor vaardigheden, tool-aanroepen, bestandsbewerkingen en meer',
+    enableEnhancedModeDesc:
+      'Schakel de verbeterde modus in voor vaardigheden, tool-aanroepen, bestandsbewerkingen en meer',
     showToolDetails: 'Werkdetails tonen',
     hideToolDetails: 'Werkdetails verbergen',
     toolDetailExpand: 'Uitvoer uitvouwen',
@@ -1455,7 +1559,8 @@ export default {
     switchToVoice: 'Switch to voice',
     voiceTranscribing: 'Transcribing...',
     voiceTranscriptionError: 'Kan audio niet transcriberen',
-    voiceTranscriptionTimeout: 'Transcriptie verlopen. De opname is mogelijk te lang of de server is bezet, probeer het opnieuw.',
+    voiceTranscriptionTimeout:
+      'Transcriptie verlopen. De opname is mogelijk te lang of de server is bezet, probeer het opnieuw.',
     voiceRecordingError: 'A recording error occurred',
     voiceMicrophoneError: 'Kan geen toegang krijgen tot de microfoon',
     // Voice messages
@@ -1505,7 +1610,7 @@ export default {
       syncing: 'Vaardighedenwinkel synchroniseren...',
       skillsSynced: '{count} vaardigheden gesynchroniseerd',
     },
-  
+
     detail: {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
@@ -1641,14 +1746,16 @@ export default {
     },
     smartToolsDesc: 'Verstuurt alleen relevante tools per query en verlaagt zo tokengebruik',
     providerRaceTitle: 'Gelijktijdige provider-race',
-    providerRaceDesc: 'Voert gelijktijdige verzoeken uit naar meerdere providers en geeft de snelste succesvolle reactie terug; dit kan de kosten licht verhogen',
+    providerRaceDesc:
+      'Voert gelijktijdige verzoeken uit naar meerdere providers en geeft de snelste succesvolle reactie terug; dit kan de kosten licht verhogen',
     providerRaceEnabled: 'Ingeschakeld',
     providerRaceDisabled: 'Uitgeschakeld',
     providerRaceMaxParallel: 'Max. parallel',
     providerRaceMinProviders: 'Minimaal aantal providers',
     providerRaceSinkThreshold: 'Afzinkdrempel',
     providerRaceExcludeThreshold: 'Uitsluitdrempel',
-    providerRaceCooldownRule: 'Afkoeling wanneer leeglooppercentage ≥ {threshold} (min. {samples} samples), duur {duration}',
+    providerRaceCooldownRule:
+      'Afkoeling wanneer leeglooppercentage ≥ {threshold} (min. {samples} samples), duur {duration}',
     cacheTitle: 'CC-cache',
   },
   providerSettings: {
@@ -1661,6 +1768,31 @@ export default {
   },
   userdata: {
     ...enUS.userdata,
+    chatDataTitle: 'Chatgegevens',
+    chatDataDescription: 'Importeer, exporteer en ruim chatgeschiedenis en gerelateerde gegevens op vanaf een plek.',
+    manageData: 'Gegevens beheren',
+    cleanupPreviewFailed: 'Voorbeeld van opschoning mislukt',
+    cleanupFailed: 'Opschonen van gegevens mislukt',
+    cleanupSuccess: 'Gegevensopschoning voltooid',
+    importFailed: 'Importeren van gegevens mislukt',
+    exportFailed: 'Exporteren van gegevens mislukt',
+    messages: 'Berichten',
+    conversations: 'Gesprekken',
+    exportedAt: 'Geëxporteerd op',
+    preview: 'Voorbeeld',
+    selectFile: 'Bestand selecteren',
+    confirmPassword: 'Wachtwoord bevestigen',
+    passwordPlaceholder: 'Voer wachtwoord in (minimaal 6 tekens)',
+    format: 'Exportformaat',
+    previewFailed: 'Voorbeeld van gegevens mislukt',
+    hasSettings: 'Bevat instellingen',
+    previewTitle: 'Importvoorbeeld',
+    chooseFile: 'Bestand kiezen',
+    importPasswordPlaceholder: 'Voer het wachtwoord in dat bij het exporteren is gebruikt',
+    confirmPasswordPlaceholder: 'Voer het wachtwoord opnieuw in',
+    formatEncryptedDesc: 'Volledig versleuteld binair formaat. Hogere beveiliging.',
+    formatJsonDesc: 'Menselijk leesbaar formaat. Het wachtwoord wordt gebruikt om de import te verifiëren.',
+    retentionSaved: 'Retentie-instellingen opgeslagen',
     tabs: {
       ...enUS.userdata.tabs,
       export: 'Exporteren',
@@ -1674,20 +1806,76 @@ export default {
       ...enUS.userdata.retention,
       title: 'Gegevensbewaring',
       description: 'Configureer hoe lang gegevens worden bewaard vóór automatische opschoning',
+      totalRecords: 'Totaal aantal monitoringsrecords',
+      policyHint: 'Elk datatype ondersteunt 1 tot 365 dagen. Kortere retentie bespaart opslag, terwijl langere retentie helpt bij audits en probleemoplossing.',
+      daysRange: 'Toegestaan bereik: 1-365 dagen',
+      sessionsHint: 'Levenscyclus van agent-sessies en runtime-metadata.',
+      eventsHint: 'Toolaanroepen, uitvoeringssporen en auditgebeurtenissen.',
+      alertsHint: 'Beveiligingsmeldingen, risicoscores en bevestigingsstatus.',
+      sessionsSuggested: 'Aanbevolen: 14-30 dagen voor reguliere werkzaamheden',
+      eventsSuggested: 'Aanbevolen: 7-14 dagen voor een gebalanceerd auditvolume',
+      alertsSuggested: 'Aanbevolen: 30-90 dagen voor incidentbeoordeling',
+      saveHint: 'Nieuwe retentievensters gelden voor komende automatische en handmatige opschoningen.',
     },
     cleanup: {
       ...enUS.userdata.cleanup,
-      title: 'Gegevens opschonen',
-      description: 'Geselecteerde gegevens permanent verwijderen. Deze actie kan niet ongedaan worden gemaakt.',
-      confirmHintPreview: 'Typ "{confirmText}" hieronder om deze destructieve actie te bevestigen.',
+      title: 'Gegevensopschoning',
+      description: 'Verwijder geselecteerde gegevens permanent. Deze actie kan niet ongedaan worden gemaakt.',
+      warning: 'Destructieve actie',
+      warningDetail: 'Verwijderde gegevens kunnen niet worden hersteld. Exporteer eerst uw gegevens als u een back-up nodig hebt.',
+      selectData: 'Selecteer gegevens om te verwijderen',
+      chatHistory: 'Chatgeschiedenis',
+      chatHistoryDesc: 'Alle gesprekken en berichten',
+      sessions: 'Sessiegegevens',
+      sessionsDesc: 'Inlogsessies en activiteitsrecords',
+      events: 'Gebeurtenislogboeken',
+      eventsDesc: 'Systeemgebeurtenissen en auditlogboeken',
+      alerts: 'Waarschuwingsgeschiedenis',
+      alertsDesc: 'Beveiligingswaarschuwingen en meldingen',
+      settings: 'Gebruikersinstellingen',
+      settingsDesc: 'Zet alle voorkeuren terug naar de standaardinstellingen',
+      cache: 'Lokale cache',
+      cacheDesc: 'Gegevens in cache en tijdelijke bestanden',
+      previewButton: 'Voorbeeld opschoning',
+      previewTitle: 'Gegevens die worden verwijderd',
+      willReset: 'Wordt gereset',
+      willClear: 'Wordt gewist',
+      authorizationStep: 'Autorisatie vereist',
+      authorizationHint: 'Controleer de gegevens die worden verwijderd. Deze stap geldt als bevestiging van autorisatie.',
+      proceedToConfirm: 'Doorgaan naar bevestiging',
+      confirmStep: 'Definitieve bevestiging',
+      confirmHint: 'Voer uw wachtwoord in om deze destructieve actie te bevestigen.',
+      confirmHintPreview: 'Typ hieronder "{confirmText}" om deze destructieve actie te bevestigen.',
       confirmText: 'BEVESTIG VERWIJDERING',
       typeToConfirm: 'Typ om te bevestigen',
       typeToConfirmPlaceholder: 'Typ "{confirmText}" om te bevestigen',
+      productionHint: 'In productieomgevingen kunnen extra inloggegevens vereist zijn (MFA, goedkeuring door beheerder).',
+      enterPassword: 'Voer wachtwoord in',
+      passwordPlaceholder: 'Voer uw wachtwoord in om te bevestigen',
+      confirmDelete: 'Verwijderen bevestigen',
+      deleting: 'Verwijderen...',
     },
     memory: {
       ...enUS.userdata.memory,
       title: 'Geheugen',
       description: 'Exporteer of importeer uw AI-geheugengegevens als Markdown-bestanden.',
+      totalMemories: 'Totaal herinneringen',
+      backend: 'Backend',
+      exportSection: 'Herinneringen exporteren',
+      exportDesc: 'Download alle herinneringen als een Markdown-bestand voor back-up of bewerking.',
+      exportButton: 'Exporteren als Markdown',
+      exportSuccess: 'Herinneringen succesvol geëxporteerd',
+      exportFailed: 'Exporteren van herinneringen mislukt',
+      importSection: 'Herinneringen importeren',
+      importDesc: 'Importeer herinneringen uit een Markdown-bestand.',
+      importButton: 'Herinneringen importeren',
+      importSuccess: '{count} herinneringen succesvol geïmporteerd',
+      importFailed: 'Importeren van herinneringen mislukt',
+      importMode: 'Importmodus',
+      modeAppend: 'Toevoegen',
+      modeReplace: 'Vervangen',
+      modeAppendDesc: 'Voeg geïmporteerde herinneringen toe aan bestaande',
+      modeReplaceDesc: 'Wis alle bestaande herinneringen vóór het importeren',
     },
   },
   connections: {
@@ -1710,15 +1898,19 @@ export default {
   },
   companion: {
     ...enUS.companion,
-    llmDetails:
-    {
+    llmDetails: {
       input: 'Input',
       prompt: 'Input Tokens',
       completion: 'Output Tokens',
       total: 'Total Tokens',
       score: 'Score',
     },
-  },
+  
+    toasts: {
+      memorySavedTitle: 'Nieuwe inhoud onthouden',
+      memorySavedMessage: 'Geheugen uit het gesprek gehaald',
+      manageMemory: 'Geheugen beheren',
+    },},
   automation: {
     ...enUS.automation,
   },
@@ -1737,14 +1929,33 @@ export default {
     builtin: {
       ...enUS.skills.builtin,
       'discord-skill': { name: 'Discord', description: 'Discord-serverbewerkingen' },
-      scheduler: { name: 'Planner', description: 'Geplande taken (Cron-jobs) aanmaken, beheren en uitvoeren' },
-      browser: { name: 'Browser', description: 'Surfen op het web met een headless browser, paginas lezen en interactie met elementen' },
-      sandbox: { name: 'Sandbox', description: 'Opdrachten uitvoeren in een geïsoleerde omgeving met resourcelimieten' },
-      'ui-reviewer': { name: 'UI-beoordeling', description: 'Geautomatiseerde UI-kwaliteitsbeoordeling met toegankelijkheidscontroles en visuele score' },
-      autoreply: { name: 'Automatisch antwoord', description: 'Automatische antwoordregels aanmaken en beheren met trefwoord-triggers' },
-      workflows: { name: 'Workflows', description: 'n8n-achtige workflow-automatiseringen aanmaken en uitvoeren' },
+      scheduler: {
+        name: 'Planner',
+        description: 'Geplande taken (Cron-jobs) aanmaken, beheren en uitvoeren',
+      },
+      browser: {
+        name: 'Browser',
+        description: 'Surfen op het web, paginas lezen en interactie met elementen',
+      },
+      sandbox: {
+        name: 'Sandbox',
+        description: 'Opdrachten uitvoeren in een geïsoleerde omgeving met resourcelimieten',
+      },
+      'ui-reviewer': {
+        name: 'UI-beoordeling',
+        description:
+          'Geautomatiseerde UI-kwaliteitsbeoordeling met toegankelijkheidscontroles en visuele score',
+      },
+      autoreply: {
+        name: 'Automatisch antwoord',
+        description: 'Automatische antwoordregels aanmaken en beheren met trefwoord-triggers',
+      },
+      workflows: {
+        name: 'Workflows',
+        description: 'n8n-achtige workflow-automatiseringen aanmaken en uitvoeren',
+      },
     },
-  
+
     filters: {
       allStatus: 'All Status',
     },
@@ -1774,7 +1985,8 @@ export default {
   },
   workspace: {
     title: 'Werkruimtebestanden',
-    description: 'Deze bestanden definiëren de persoonlijkheid, het geheugen en het gedrag van Blue.',
+    description:
+      'Deze bestanden definiëren de persoonlijkheid, het geheugen en het gedrag van Blue.',
     saved: '{name} opgeslagen',
     empty: '(leeg)',
     noFiles: 'Geen werkruimtebestanden gevonden.',
@@ -1838,12 +2050,55 @@ export default {
   },
   home: {
     ...enUS.home,
+    description: 'Een stabiele, betrouwbare en neutrale runtime voor je AI-assistenten en automatiseringen',
   },
   brand: {
     ...enUS.brand,
   },
   speech: {
     ...enUS.speech,
+    convertTask: {
+      task: 'Taak',
+      cancelling: 'Annuleren...',
+      downloadAudio: 'Audio downloaden',
+      downloadVideo: 'Video downloaden',
+      downloadPdf: 'PDF downloaden',
+      downloadText: 'Tekst downloaden',
+      downloadFile: 'Bestand downloaden',
+      action: {
+        convert: 'Converteren',
+        merge: 'Samenvoegen',
+        split: 'Splitsen',
+        trim: 'Bijsnijden',
+        extractAudio: 'Audio extraheren',
+        extractFrames: 'Frames extraheren',
+        tts: 'Tekst-naar-spraak',
+        asr: 'Spraakherkenning',
+      },
+      previewKind: {
+        file: 'Bestand',
+        audio: 'Audio',
+        video: 'Video',
+        image: 'Afbeelding',
+        pdf: 'PDF',
+        text: 'Tekst',
+      },
+      message: {
+        queued: 'In wachtrij',
+        processing: 'Bezig met verwerken',
+        completed: 'Voltooid',
+        taskCancelled: 'Taak geannuleerd',
+        taskFailed: 'Taak mislukt',
+        convertCompleted: 'Conversie voltooid',
+        mergeCompleted: 'Samenvoegen voltooid',
+        splitCompleted: 'Splitsen voltooid',
+        trimCompleted: 'Bijsnijden voltooid',
+        extractAudioCompleted: 'Audio-extractie voltooid',
+        extractFramesCompleted: 'Frame-export voltooid',
+        ttsCompleted: 'Spraakaudio gemaakt',
+        asrCompleted: 'Transcriptie voltooid',
+      },
+    },
     status: 'Spraakstatus',
     asr: 'Spraakherkenning',
     tts: 'Tekst-naar-spraak',
@@ -1894,12 +2149,16 @@ export default {
     macosNativeSTTDesc: 'Ingebouwde macOS-spraakherkenning (offline, geen download nodig)',
     macosNativeQuality: 'Uitstekend',
     macosNativeOnDeviceOnly: 'Alleen op apparaat',
-    macosNativeOnDeviceDesc: 'Herkenning op het apparaat forceren (geen gegevens verzonden naar Apple-servers)',
+    macosNativeOnDeviceDesc:
+      'Herkenning op het apparaat forceren (geen gegevens verzonden naar Apple-servers)',
     macosNativeOnDeviceUnsupported: 'Model op het apparaat niet beschikbaar voor de huidige taal',
-    dictationDisabledGuide: 'Dicteren is niet ingeschakeld. Herkenning op het apparaat vereist dicteren. Ga naar Systeeminstellingen > Toetsenbord > Dicteren om het in te schakelen.',
+    dictationDisabledGuide:
+      'Dicteren is niet ingeschakeld. Herkenning op het apparaat vereist dicteren. Ga naar Systeeminstellingen > Toetsenbord > Dicteren om het in te schakelen.',
     recheckDictation: 'Opnieuw controleren',
-    onDeviceUnavailableError: 'Herkenning op het apparaat is niet beschikbaar. Schakel dicteren in via Systeeminstellingen > Toetsenbord > Dicteren, of schakel de modus "Alleen op apparaat" uit.',
-    kokoroDesc: 'Hoogwaardige offline neurale TTS (model ~127MB + stemmen ~5MB + ONNX Runtime ~30MB)',
+    onDeviceUnavailableError:
+      'Herkenning op het apparaat is niet beschikbaar. Schakel dicteren in via Systeeminstellingen > Toetsenbord > Dicteren, of schakel de modus "Alleen op apparaat" uit.',
+    kokoroDesc:
+      'Hoogwaardige offline neurale TTS (model ~127MB + stemmen ~5MB + ONNX Runtime ~30MB)',
     kokoroQuality: 'Natuurlijk',
     kokoroDownload: 'Kokoro Model + ONNX Runtime downloaden',
     kokoroDownloading: 'Kokoro-model en ONNX Runtime downloaden...',
@@ -1955,7 +2214,8 @@ export default {
     allPacksInfo: 'Alle {count} taalpakketten downloaden (Totaal: {size})',
     downloadAll: 'Alle taalpakketten downloaden',
     allDownloaded: 'Alle pakketten gedownload',
-    privacyWarning: 'Microsoft Edge TTS is een onlinedienst. Tekst wordt naar Microsoft-servers verzonden voor synthese.',
+    privacyWarning:
+      'Microsoft Edge TTS is een onlinedienst. Tekst wordt naar Microsoft-servers verzonden voor synthese.',
     downloadFailed: 'Download mislukt',
     espeakNote: 'Offline - lichtgewicht (8,7MB)',
     sherpaNote: 'Offline - premiumkwaliteit (download vereist)',
@@ -2047,7 +2307,7 @@ export default {
   tools: {
     names: {
       'Web Search': 'Zoeken op web',
-      'Calculator': 'Rekenmachine',
+      Calculator: 'Rekenmachine',
       'System Info': 'Systeeminformatie',
       'Current Time': 'Huidige tijd',
       read: 'Bestand lezen',
@@ -2059,12 +2319,12 @@ export default {
       'Memory Get': 'Geheugen ophalen',
       'Memory Stats': 'Geheugenstatistieken',
       mcp: 'MCP-aanroep',
-      'Scheduler': 'Planner',
-      'Browser': 'Browser',
-      'Sandbox': 'Sandbox',
+      Scheduler: 'Planner',
+      Browser: 'Browser',
+      Sandbox: 'Sandbox',
       'UI Reviewer': 'UI-beoordeling',
       'Auto Reply': 'Automatisch antwoord',
-      'Workflows': 'Workflows',
+      Workflows: 'Workflows',
       reminder: 'Herinnering',
       mediagen: 'Mediageneratie',
       ask: 'Vragen',
@@ -2081,6 +2341,20 @@ export default {
       limit: 'Limiet',
       offset: 'Offset',
       id: 'ID',
+      action: 'Actie',
+      name: 'Naam',
+      title: 'Titel',
+      description: 'Beschrijving',
+      schedule: 'Planning',
+      cron: 'Cron',
+      handler: 'Handler',
+      type: 'Type',
+      command: 'Opdracht',
+      payload: 'Payload',
+      job_id: 'Taak-ID',
+      jobId: 'Taak-ID',
+      cron_id: 'Cron-ID',
+      cronId: 'Cron-ID',
     },
     calling: 'Hulpmiddelen aanroepen',
     callingProgress: 'Hulpmiddelen aanroepen...',
@@ -2106,6 +2380,13 @@ export default {
   },
   search: {
     resultCount: '{count} resultaten',
+  },
+  cardActions: {
+    use_browser: 'Browser gebruiken',
+    extract_with_web_fetch: 'Extraheren met Web Fetch',
+    recheck: 'Opnieuw controleren',
+    check_a11y: 'Alleen toegankelijkheid',
+    full_report: 'Volledig rapport',
   },
   uiReview: {
     title: 'UI-beoordeling',
@@ -2191,7 +2472,8 @@ export default {
   },
   myProviders: {
     title: 'Mijn providers',
-    description: 'Configureer uw eigen API-sleutels voor LLM-providers. Uw sleutels overschrijven de systeemstandaarden.',
+    description:
+      'Configureer uw eigen API-sleutels voor LLM-providers. Uw sleutels overschrijven de systeemstandaarden.',
     configured: 'Geconfigureerd',
     configure: 'Configureren',
     keyUnchanged: 'Leeg laten om de huidige sleutel te behouden',
@@ -2237,17 +2519,17 @@ export default {
   },
   resultCard: {
     titles: {
-      'workspace_file': 'Werkruimtebestand',
+      workspace_file: 'Werkruimtebestand',
       calculator: 'Rekenmachine',
-      'current_time': 'Huidige tijd',
-      'read': 'Bestand lezen',
-      'write': 'Bestand schrijven',
-      'file_read': 'Bestand lezen',
-      'file_write': 'Bestand schrijven',
-      'system_info': 'Systeeminfo',
-      'memory': 'Geheugen',
-      'mcp': 'MCP-aanroep',
-      'exec': 'Opdrachtuitvoering',
+      current_time: 'Huidige tijd',
+      read: 'Bestand lezen',
+      write: 'Bestand schrijven',
+      file_read: 'Bestand lezen',
+      file_write: 'Bestand schrijven',
+      system_info: 'Systeeminfo',
+      memory: 'Geheugen',
+      mcp: 'MCP-aanroep',
+      exec: 'Opdrachtuitvoering',
     },
     labels: {
       filename: 'Bestandsnaam',
@@ -2272,7 +2554,8 @@ export default {
     ...enUS.agent,
     mode: 'Taaklusmodus',
     modeDescription: 'Schakelt doorlopende plan-en-uitvoer-lussen in totdat je het uitschakelt',
-    autoConfirmDescription: 'Bevestiging overslaan voor destructieve acties (rechtsklik op de taaklusknop om te wisselen)',
+    autoConfirmDescription:
+      'Bevestiging overslaan voor destructieve acties (rechtsklik op de taaklusknop om te wisselen)',
     sendMessage: 'Stuur een bericht naar de agent...',
     messageQueued: 'Bericht verzonden naar de agent',
   },

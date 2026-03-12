@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
@@ -9,12 +11,26 @@ import (
 type toolContextKey string
 
 const (
-	langKey       toolContextKey = "tool_lang"
-	channelKey    toolContextKey = "tool_channel"
-	deviceKey     toolContextKey = "tool_device"
-	cardEmitKey   toolContextKey = "tool_card_emit"
-	sessionIDKey  toolContextKey = "tool_session_id"
-	checkpointKey toolContextKey = "tool_browser_checkpoint"
+	langKey        toolContextKey = "tool_lang"
+	channelKey     toolContextKey = "tool_channel"
+	deviceKey      toolContextKey = "tool_device"
+	cardEmitKey    toolContextKey = "tool_card_emit"
+	sessionIDKey   toolContextKey = "tool_session_id"
+	checkpointKey  toolContextKey = "tool_browser_checkpoint"
+	browserModeKey toolContextKey = "tool_browser_launch_mode"
+	fsScopeKey     toolContextKey = "tool_fs_scope"
+)
+
+type BrowserLaunchMode string
+
+type fsScopeContext struct {
+	roots   []string
+	aliases map[string]string
+}
+
+const (
+	BrowserLaunchModeDefault BrowserLaunchMode = ""
+	BrowserLaunchModeVisible BrowserLaunchMode = "visible"
 )
 
 // CardEmitFunc is a callback that tools can use to emit streaming typeless
@@ -125,4 +141,96 @@ func GetSessionID(ctx context.Context) string {
 		return v
 	}
 	return ""
+}
+
+// WithFSScope returns a context carrying additional filesystem roots and aliases
+// for file tools (read/write/edit/grep/find/ls).
+func WithFSScope(ctx context.Context, roots []string, aliases map[string]string) context.Context {
+	normalizedRoots := make([]string, 0, len(roots))
+	seenRoots := make(map[string]struct{}, len(roots))
+	for _, raw := range roots {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		abs, err := filepath.Abs(trimmed)
+		if err != nil {
+			continue
+		}
+		clean := filepath.Clean(abs)
+		if _, ok := seenRoots[clean]; ok {
+			continue
+		}
+		seenRoots[clean] = struct{}{}
+		normalizedRoots = append(normalizedRoots, clean)
+	}
+
+	normalizedAliases := make(map[string]string, len(aliases))
+	for rawAlias, rawPath := range aliases {
+		alias := normalizeFSAliasKey(rawAlias)
+		if alias == "" {
+			continue
+		}
+		trimmed := strings.TrimSpace(rawPath)
+		if trimmed == "" {
+			continue
+		}
+		abs, err := filepath.Abs(trimmed)
+		if err != nil {
+			continue
+		}
+		normalizedAliases[alias] = filepath.Clean(abs)
+	}
+
+	if len(normalizedRoots) == 0 && len(normalizedAliases) == 0 {
+		return ctx
+	}
+
+	return context.WithValue(ctx, fsScopeKey, fsScopeContext{
+		roots:   normalizedRoots,
+		aliases: normalizedAliases,
+	})
+}
+
+// GetFSScope returns additional filesystem roots and aliases from the context.
+func GetFSScope(ctx context.Context) (roots []string, aliases map[string]string) {
+	v, ok := ctx.Value(fsScopeKey).(fsScopeContext)
+	if !ok {
+		return nil, nil
+	}
+
+	if len(v.roots) > 0 {
+		roots = make([]string, len(v.roots))
+		copy(roots, v.roots)
+	}
+	if len(v.aliases) > 0 {
+		aliases = make(map[string]string, len(v.aliases))
+		for k, path := range v.aliases {
+			aliases[k] = path
+		}
+	}
+	return roots, aliases
+}
+
+func normalizeFSAliasKey(alias string) string {
+	return strings.ToLower(strings.TrimSpace(alias))
+}
+
+// WithBrowserLaunchMode returns a context carrying a browser launch hint.
+func WithBrowserLaunchMode(ctx context.Context, mode BrowserLaunchMode) context.Context {
+	if mode == BrowserLaunchModeDefault {
+		return ctx
+	}
+	return context.WithValue(ctx, browserModeKey, mode)
+}
+
+// GetBrowserLaunchMode extracts the browser launch hint from the context.
+func GetBrowserLaunchMode(ctx context.Context) BrowserLaunchMode {
+	if v, ok := ctx.Value(browserModeKey).(BrowserLaunchMode); ok {
+		return v
+	}
+	if v, ok := ctx.Value(browserModeKey).(string); ok {
+		return BrowserLaunchMode(v)
+	}
+	return BrowserLaunchModeDefault
 }

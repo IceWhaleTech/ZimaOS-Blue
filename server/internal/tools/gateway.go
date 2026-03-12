@@ -116,7 +116,7 @@ func (t *GatewayTool) executeStatus(ctx context.Context, args map[string]interfa
 		"connection_count":  count,
 		"supported_actions": []string{"status", "list", "get", "close"},
 	}
-	includeMethods, ok := asCompatBool(args["include_methods"])
+	includeMethods, ok := compatBoolArg(args, "include_methods", "includeMethods")
 	if !ok || includeMethods {
 		methods := t.service.Methods(ctx)
 		result["methods"] = methods

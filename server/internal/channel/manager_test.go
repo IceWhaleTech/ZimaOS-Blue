@@ -25,6 +25,7 @@ type mockChannel struct {
 	respectCtx  bool
 	msgCount    int64
 	sent        []OutgoingMessage
+	cleared     []string
 }
 
 func newMockChannel(name, channelType string, enabled bool) *mockChannel {
@@ -129,6 +130,12 @@ func (m *mockChannel) Send(ctx context.Context, msg OutgoingMessage) error {
 	return nil
 }
 
+func (m *mockChannel) ClearTypingReaction(_ context.Context, messageID string) {
+	m.mu.Lock()
+	m.cleared = append(m.cleared, messageID)
+	m.mu.Unlock()
+}
+
 func (m *mockChannel) SendStreaming(ctx context.Context, chatID string, replyToID string, content <-chan string, done chan<- struct{}) error {
 	go func() {
 		for range content {
@@ -176,6 +183,23 @@ func (m *mockChannel) lastSent() (OutgoingMessage, bool) {
 		return OutgoingMessage{}, false
 	}
 	return m.sent[len(m.sent)-1], true
+}
+
+func (m *mockChannel) clearedReactions() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, len(m.cleared))
+	copy(out, m.cleared)
+	return out
+}
+
+func containsString(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestManager_Register(t *testing.T) {
@@ -782,6 +806,180 @@ func TestManager_MessageHandler(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	mgr.Stop(ctx)
+}
+
+func TestManager_MessageHandler_SupersededMessagesOnlyReplyLatest(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.DefaultTimeoutSeconds = 5
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("test", "mock", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+
+	firstStarted := make(chan struct{})
+	var firstOnce sync.Once
+	handlerCalls := make(chan string, 4)
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		if msg.Content == "first" {
+			firstOnce.Do(func() { close(firstStarted) })
+			<-ctx.Done()
+			handlerCalls <- "first"
+			return nil, ctx.Err()
+		}
+		handlerCalls <- msg.Content
+		return &OutgoingMessage{
+			ChatID:  msg.ChatID,
+			Content: "reply:" + msg.Content,
+		}, nil
+	})
+
+	if err := mgr.StartChannel(context.Background(), "test"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = mgr.Stop(stopCtx)
+	}()
+
+	ch.simulateMessage(Message{
+		ID:      "msg-1",
+		ChatID:  "chat-1",
+		UserID:  "user-1",
+		Content: "first",
+	})
+
+	select {
+	case <-firstStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first message handler did not start")
+	}
+
+	ch.simulateMessage(Message{
+		ID:      "msg-2",
+		ChatID:  "chat-1",
+		UserID:  "user-1",
+		Content: "second",
+	})
+	ch.simulateMessage(Message{
+		ID:      "msg-3",
+		ChatID:  "chat-1",
+		UserID:  "user-1",
+		Content: "third",
+	})
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		ch.mu.RLock()
+		sentCount := len(ch.sent)
+		var last OutgoingMessage
+		if sentCount > 0 {
+			last = ch.sent[sentCount-1]
+		}
+		ch.mu.RUnlock()
+
+		if sentCount == 1 {
+			if last.Content != "reply:third" {
+				t.Fatalf("latest sent content = %q, want %q", last.Content, "reply:third")
+			}
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	ch.mu.RLock()
+	if len(ch.sent) != 1 {
+		ch.mu.RUnlock()
+		t.Fatalf("expected exactly one outbound reply, got %d", len(ch.sent))
+	}
+	ch.mu.RUnlock()
+
+	collected := make([]string, 0, 3)
+	timeout := time.After(2 * time.Second)
+	for len(collected) < 2 {
+		select {
+		case call := <-handlerCalls:
+			collected = append(collected, call)
+		case <-timeout:
+			t.Fatalf("timed out waiting for handler calls: %v", collected)
+		}
+	}
+	if !containsString(collected, "first") {
+		t.Fatalf("expected first message to be processed then canceled, got %v", collected)
+	}
+	if !containsString(collected, "third") {
+		t.Fatalf("expected latest message to be processed, got %v", collected)
+	}
+	if containsString(collected, "second") {
+		t.Fatalf("did not expect middle superseded message to be processed, got %v", collected)
+	}
+}
+
+func TestManager_MessageHandler_SupersededMessagesClearPreviousReactions(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	cfg.DefaultTimeoutSeconds = 5
+
+	mgr := NewManager(cfg, logger)
+	ch := newMockChannel("feishu", "feishu", true)
+	if err := mgr.Register(ch); err != nil {
+		t.Fatalf("register channel: %v", err)
+	}
+
+	firstStarted := make(chan struct{})
+	var firstOnce sync.Once
+	mgr.SetHandler(func(ctx context.Context, msg Message) (*OutgoingMessage, error) {
+		if msg.Content == "first" {
+			firstOnce.Do(func() { close(firstStarted) })
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		return &OutgoingMessage{ChatID: msg.ChatID, Content: "reply:" + msg.Content}, nil
+	})
+
+	if err := mgr.StartChannel(context.Background(), "feishu"); err != nil {
+		t.Fatalf("start channel: %v", err)
+	}
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = mgr.Stop(stopCtx)
+	}()
+
+	ch.simulateMessage(Message{ID: "msg-1", ChatID: "chat-1", UserID: "user-1", Content: "first"})
+	select {
+	case <-firstStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first message handler did not start")
+	}
+	ch.simulateMessage(Message{ID: "msg-2", ChatID: "chat-1", UserID: "user-1", Content: "second"})
+	ch.simulateMessage(Message{ID: "msg-3", ChatID: "chat-1", UserID: "user-1", Content: "third"})
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		ch.mu.RLock()
+		sentCount := len(ch.sent)
+		ch.mu.RUnlock()
+		if sentCount == 1 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	clearedDeadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(clearedDeadline) {
+		cleared := ch.clearedReactions()
+		if containsString(cleared, "msg-1") && containsString(cleared, "msg-2") {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("expected cleared reactions for superseded messages, got %v", ch.clearedReactions())
 }
 
 func TestManager_MessageHandler_FeishuReportKeepsMarkdown(t *testing.T) {

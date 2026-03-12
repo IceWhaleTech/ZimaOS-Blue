@@ -33,6 +33,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/connection"
+	convertsvc "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepresearch"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
@@ -536,9 +537,10 @@ type RoutesDeps struct {
 	// IPC backends (optional, wired from main.go)
 	BrowserIPC     sockipc.BrowserBackend
 	UIReviewerIPC  sockipc.UIReviewBackend
-	UIReviewerTool *tools.UIReviewerTool // for VLM bridge wiring
-	AnalyzeTool    *tools.AnalyzeTool    // for LLM bridge wiring
-	MediaManager   *mediagen.Manager     // for native image tool wiring
+	UIReviewerTool *tools.UIReviewerTool  // for VLM bridge wiring
+	AnalyzeTool    *tools.AnalyzeTool     // for LLM bridge wiring
+	MediaManager   *mediagen.Manager      // for native image tool wiring
+	MediaStorage   *mediagen.MediaStorage // for ppt/image review wiring
 	PushIPC        sockipc.PushBackend
 	PushService    *push.Service // for skill/tool wiring
 	CronIPC        sockipc.CronBackend
@@ -687,6 +689,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	{
 		mediaGenDir := filepath.Join(dataDir, "media", "generated")
 		mediaStorage := mediagen.NewMediaStorage(mediaGenDir, "/api/media/generated")
+		deps.MediaStorage = mediaStorage
 		if err := mediaStorage.EnsureDirs(); err != nil {
 			logger.Warn("Failed to create media generation dirs", zap.Error(err))
 		}
@@ -1102,13 +1105,21 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		deps.ChatHandler.SetSSEBroker(deps.SSEBroker)
 	}
 
-	// Register chat routes
-	deps.ChatHandler.RegisterRoutes(v1)
+	// Register chat routes with optional auth so preview-mode access still works,
+	// while authenticated requests carry user context for ownership/SSE-bound tools.
+	chatGroup := v1.Group("")
+	if deps.AuthMiddleware != nil {
+		chatGroup.Use(deps.AuthMiddleware.OptionalAuthenticate())
+	}
+	deps.ChatHandler.RegisterRoutes(chatGroup)
 
 	webSearchConfig := buildWebSearchConfig(deps.Config)
 
 	// Deep research service (shared by API + skill executor)
 	deepResearchService := deepresearch.NewService(nil, deepresearch.NewToolWebSearcherWithConfig(webSearchConfig))
+	if deps.SSEBroker != nil {
+		deepResearchService.SetEventPublisher(deps.SSEBroker)
+	}
 	deepResearchService.SetRoutePolicy(deepresearch.RoutePolicy{
 		DefaultMode:     deepresearch.RouteMode(deps.Config.Research.Router.DefaultMode),
 		AllowExperiment: deps.Config.Research.Router.AllowExperiment,
@@ -1177,6 +1188,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	// System routes
 	systemHandler := server.NewSystemHandler(cfg.Version, cfg.BuildTime, cfg.GitCommit, cfg.DataDir)
 	systemHandler.RegisterRoutes(v1)
+	systemHandler.RegisterFileBridgeRoutes(protected)
 
 	serviceHandler := server.NewServiceHandler()
 	serviceHandler.RegisterRoutes(v1)
@@ -1280,6 +1292,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 				Enabled:          true,
 				RequireAdminRole: true,
 			})
+			registerDeepResearchCronHandler(svc, deepResearchService, logger)
 		}
 	}
 	// Browser + UI reviewer: wire backends for IPC and LLM tool use.
@@ -1332,9 +1345,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 
 	// Register native image tool backed by mediagen + ui_reviewer.
 	tools.RegisterImageTool(s.ToolRegistry, deps.UIReviewerTool, newImageGenerateAdapter(deps.MediaManager), newImageTaskLookupAdapter(deps.MediaManager))
+	pptSvc := newPPTService(deps.MediaManager, deps.MediaStorage, deps.UIReviewerTool)
+	tools.RegisterPPTTool(s.ToolRegistry, pptSvc)
 	if tool := s.ToolRegistry.Get("image"); tool != nil {
 		if imageTool, ok := tool.(*tools.ImageTool); ok {
 			imageTool.SetOCRService(newImageOCRAdapter(s.OCRService))
+			imageTool.SetPPTService(pptSvc)
 		}
 	}
 
@@ -1404,6 +1420,7 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 	}
 
 	// Exec tools (shell execution + process management)
+	var convertHandler *convertsvc.Handler
 	var execApprovals *tools.ApprovalManager
 	{
 		execConfig := tools.DefaultExecConfig()
@@ -1428,6 +1445,29 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			sbx = &sandboxExecAdapter{mgr: deps.SandboxManager}
 		}
 		tools.RegisterExecTools(s.ToolRegistry, execConfig, execApprovals, deps.SSEBroker, dirStore, sbx)
+		convertService, err := convertsvc.NewService(s.DB, cfg.DataDir)
+		if err != nil {
+			logger.Warn("Failed to initialize convert service", zap.Error(err))
+		} else {
+			deps.Closers = append(deps.Closers, convertService)
+			convertHandler = convertsvc.NewHandler(convertService, func(ctx context.Context, userID, conversationID string) error {
+				conv, err := s.MemoryStore.GetConversation(ctx, conversationID)
+				if err != nil {
+					if err == memory.ErrNotFound {
+						return echo.NewHTTPError(http.StatusNotFound, "conversation not found")
+					}
+					return echo.NewHTTPError(http.StatusInternalServerError, "failed to get conversation")
+				}
+				if strings.TrimSpace(userID) != "" && conv.UserID != "" && conv.UserID != userID {
+					return echo.NewHTTPError(http.StatusNotFound, "conversation not found")
+				}
+				return nil
+			})
+			if deps.ChatHandler != nil {
+				deps.ChatHandler.SetConvertSourceProvider(convertService)
+			}
+			tools.RegisterConvertTool(s.ToolRegistry, convertService, execApprovals)
+		}
 
 		// Wire audit store for exec commands (reuses blue.db — write volume is low: 1 row per exec).
 		if deps.DB != nil {
@@ -1504,6 +1544,11 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 			execGroup.GET("/approvals/pending", func(c echo.Context) error {
 				userID := resolveRequestUserID(c)
 				req := execApprovals.GetPending(userID)
+				if req == nil {
+					if sessionID := strings.TrimSpace(c.QueryParam("session_id")); sessionID != "" {
+						req = execApprovals.GetPendingBySession(sessionID)
+					}
+				}
 				if req == nil {
 					return c.JSON(200, map[string]interface{}{"pending": false})
 				}
@@ -1775,6 +1820,10 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		speechGroup.GET("/tts/status", stub)
 		speechGroup.GET("/tts/models", stub)
 		speechGroup.Any("/*", stub)
+	}
+	if convertHandler != nil {
+		convertHandler.RegisterRoutes(protected.Group("/convert"))
+		logger.Info("Convert routes registered")
 	}
 
 	// Form filler routes are now public (registered above in v1)
@@ -2567,6 +2616,12 @@ func RegisterAllRoutes(e *echo.Echo, deps *RoutesDeps) *echo.Group {
 		if deps.ChatHandler != nil {
 			deps.ChatHandler.SetChannelSender(func(ctx context.Context, channelName string, out channel.OutgoingMessage) error {
 				return channelManager.Send(ctx, channelName, out)
+			})
+			deps.ChatHandler.SetChannelSenderWithID(func(ctx context.Context, channelName string, out channel.OutgoingMessage) (string, error) {
+				return channelManager.SendWithID(ctx, channelName, out)
+			})
+			deps.ChatHandler.SetChannelMessageUpdater(func(ctx context.Context, channelName string, chatID string, messageID string, out channel.OutgoingMessage) error {
+				return channelManager.UpdateMessage(ctx, channelName, chatID, messageID, out)
 			})
 		}
 		// Wire channel manager into mgmt tool

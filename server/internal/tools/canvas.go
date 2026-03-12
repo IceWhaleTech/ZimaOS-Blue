@@ -83,7 +83,7 @@ func (t *CanvasTool) executeList(args map[string]interface{}) (interface{}, erro
 		"canvases": ids,
 		"count":    len(ids),
 	}
-	includeCanvas, _ := asCompatBool(args["include_canvas"])
+	includeCanvas, _ := compatBoolArg(args, "include_canvas", "includeCanvas")
 	if includeCanvas {
 		items := make([]*a2ui.Canvas, 0, len(ids))
 		for _, id := range ids {
@@ -98,7 +98,7 @@ func (t *CanvasTool) executeList(args map[string]interface{}) (interface{}, erro
 }
 
 func (t *CanvasTool) executeGet(args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "canvas_id")
+	id := firstCompatString(args, "id", "canvas_id", "canvasId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -128,7 +128,7 @@ func (t *CanvasTool) executeCreate(args map[string]interface{}) (interface{}, er
 }
 
 func (t *CanvasTool) executeUpdate(args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "canvas_id")
+	id := firstCompatString(args, "id", "canvas_id", "canvasId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -152,7 +152,7 @@ func (t *CanvasTool) executeUpdate(args map[string]interface{}) (interface{}, er
 }
 
 func (t *CanvasTool) executeDelete(args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "canvas_id")
+	id := firstCompatString(args, "id", "canvas_id", "canvasId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -164,15 +164,16 @@ func (t *CanvasTool) executeDelete(args map[string]interface{}) (interface{}, er
 }
 
 func (t *CanvasTool) executeAction(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "canvas_id")
+	id := firstCompatString(args, "id", "canvas_id", "canvasId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
-	actionID := firstCompatString(args, "action_id", "id_action")
+	actionID := firstCompatString(args, "action_id", "actionId", "id_action")
 	if actionID == "" {
 		return nil, errors.New("action_id is required")
 	}
-	formData, err := decodeMap(args["form_data"])
+	formDataRaw, _ := compatArgValue(args, "form_data", "formData")
+	formData, err := decodeMap(formDataRaw)
 	if err != nil {
 		return nil, err
 	}
@@ -187,10 +188,10 @@ func canvasAction(args map[string]interface{}) string {
 	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
 	switch action {
 	case "", "list", "ls", "status":
-		if firstCompatString(args, "action_id") != "" {
+		if firstCompatString(args, "action_id", "actionId") != "" {
 			return "execute"
 		}
-		if firstCompatString(args, "id", "canvas_id") != "" {
+		if firstCompatString(args, "id", "canvas_id", "canvasId") != "" {
 			if hasCanvasMutableArgs(args) {
 				return "update"
 			}
@@ -216,8 +217,8 @@ func canvasAction(args map[string]interface{}) string {
 }
 
 func hasCanvasMutableArgs(args map[string]interface{}) bool {
-	for _, key := range []string{"title", "description", "components", "layout", "metadata", "ttl_seconds", "content", "text", "input"} {
-		if value, ok := args[key]; ok && value != nil && !(asString(value) == "") {
+	for _, keys := range [][]string{{"title"}, {"description"}, {"components"}, {"layout"}, {"metadata"}, {"ttl_seconds", "ttlSeconds"}, {"content"}, {"text"}, {"input"}} {
+		if value, ok := compatArgValue(args, keys...); ok && value != nil && !(asString(value) == "") {
 			return true
 		}
 	}
@@ -233,7 +234,7 @@ func buildCanvasFromArgs(args map[string]interface{}, base *a2ui.Canvas) (*a2ui.
 	if canvas.CreatedAt.IsZero() {
 		canvas.CreatedAt = time.Now()
 	}
-	if id := firstCompatString(args, "id", "canvas_id"); id != "" {
+	if id := firstCompatString(args, "id", "canvas_id", "canvasId"); id != "" {
 		canvas.ID = id
 	}
 	if title := firstCompatString(args, "title", "name"); title != "" {
@@ -245,12 +246,14 @@ func buildCanvasFromArgs(args map[string]interface{}, base *a2ui.Canvas) (*a2ui.
 	if layout := firstCompatString(args, "layout"); layout != "" {
 		canvas.Layout = layout
 	}
-	if metadata, err := decodeMap(args["metadata"]); err != nil {
+	metadataRaw, _ := compatArgValue(args, "metadata")
+	if metadata, err := decodeMap(metadataRaw); err != nil {
 		return nil, err
 	} else if metadata != nil {
 		canvas.Metadata = metadata
 	}
-	if componentsRaw, ok := args["components"]; ok && componentsRaw != nil {
+	componentsRaw, hasComponents := compatArgValue(args, "components")
+	if hasComponents && componentsRaw != nil {
 		components, err := decodeComponents(componentsRaw)
 		if err != nil {
 			return nil, err
@@ -266,9 +269,11 @@ func buildCanvasFromArgs(args map[string]interface{}, base *a2ui.Canvas) (*a2ui.
 			canvas.Title = trimCompatText(content, 72)
 		}
 	}
-	if ttl, ok := asCompatInt(args["ttl_seconds"]); ok && ttl > 0 {
-		expiry := time.Now().Add(time.Duration(ttl) * time.Second)
-		canvas.ExpiresAt = &expiry
+	if ttlRaw, ok := compatArgValue(args, "ttl_seconds", "ttlSeconds"); ok {
+		if ttl, ok := asCompatInt(ttlRaw); ok && ttl > 0 {
+			expiry := time.Now().Add(time.Duration(ttl) * time.Second)
+			canvas.ExpiresAt = &expiry
+		}
 	}
 	return canvas, nil
 }

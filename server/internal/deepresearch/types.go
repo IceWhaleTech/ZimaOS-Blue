@@ -38,6 +38,7 @@ type Budget struct {
 
 type Job struct {
 	ID                 string     `json:"id"`
+	ConversationID     string     `json:"conversation_id,omitempty"`
 	UserID             string     `json:"user_id,omitempty"`
 	TenantID           string     `json:"tenant_id,omitempty"`
 	Query              string     `json:"query"`
@@ -186,6 +187,7 @@ type Event struct {
 type CreateJobRequest struct {
 	UserID       string    `json:"user_id,omitempty"`
 	TenantID     string    `json:"tenant_id,omitempty"`
+	ConversationID string  `json:"conversation_id,omitempty"`
 	Query        string    `json:"query"`
 	Mode         Mode      `json:"mode,omitempty"`
 	RouteMode    RouteMode `json:"route_mode,omitempty"`
@@ -194,6 +196,20 @@ type CreateJobRequest struct {
 	StrictEntity *bool     `json:"strict_entity,omitempty"`
 	TimeWindows  []string  `json:"time_windows,omitempty"`
 	ReportStyle  string    `json:"report_style,omitempty"`
+}
+
+type JobSummary struct {
+	ID             string    `json:"id"`
+	JobID          string    `json:"job_id"`
+	Query          string    `json:"query"`
+	Status         JobStatus `json:"status"`
+	Stage          string    `json:"stage,omitempty"`
+	Progress       int       `json:"progress"`
+	Iteration      int       `json:"iteration,omitempty"`
+	LatestAction   string    `json:"latest_action,omitempty"`
+	LatestGap      string    `json:"latest_gap,omitempty"`
+	ConversationID string    `json:"conversation_id,omitempty"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type ExperimentRequest struct {

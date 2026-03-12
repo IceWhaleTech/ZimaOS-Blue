@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
@@ -95,5 +96,58 @@ func TestUIReviewerReviewURL_EmitsIntermediateStageCards(t *testing.T) {
 	payload, _ := json.Marshal(emitted)
 	if !setupCard || !auditCard || !screenshotCard || !visualCard {
 		t.Fatalf("expected intermediate ui_review cards, got %s", payload)
+	}
+}
+
+func TestUIReviewerExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
+	tool := NewUIReviewerTool()
+	tool.SetBrowser(&mockUIReviewBrowser{})
+	tool.SetVLMBridge(&mockVLMBridge{})
+	tool.SetMediaDir(t.TempDir())
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":    "review_url",
+			"url":       "https://example.com",
+			"device":    "mobile",
+			"channel":   "telegram",
+			"lang":      string(i18n.LangEnUS),
+			"waitMs":    1,
+			"threshold": 82,
+			"format":    "json",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	raw, ok := result.(string)
+	if !ok {
+		t.Fatalf("result type = %T, want string", result)
+	}
+	var payload UIReviewResult
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("failed to decode result: %v", err)
+	}
+	if payload.Device != "mobile" {
+		t.Fatalf("device = %q, want mobile", payload.Device)
+	}
+	if payload.Channel != "telegram" {
+		t.Fatalf("channel = %q, want telegram", payload.Channel)
+	}
+	if payload.Threshold != 82 {
+		t.Fatalf("threshold = %v, want 82", payload.Threshold)
+	}
+}
+
+func TestBuildVLMPromptPPTProfile(t *testing.T) {
+	prompt := buildVLMPrompt("", i18n.LangEnUS, UIReviewProfilePPT)
+	if !strings.Contains(prompt, "typography_or_text_safety") {
+		t.Fatalf("prompt missing ppt score key: %q", prompt)
+	}
+	if !strings.Contains(prompt, "slide visual or presentation asset") {
+		t.Fatalf("prompt missing ppt guidance: %q", prompt)
+	}
+	if !strings.Contains(prompt, "Do not critique missing buttons") {
+		t.Fatalf("prompt missing non-UI reminder: %q", prompt)
 	}
 }

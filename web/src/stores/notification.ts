@@ -3,15 +3,22 @@ import { ref, computed } from 'vue'
 
 export type NotificationType = 'success' | 'error' | 'warning' | 'info'
 
+type TranslationParams = Record<string, unknown>
+
 export interface Notification {
   id: string
   type: NotificationType
   title: string
+  titleKey?: string
+  titleParams?: TranslationParams
   message?: string
+  messageKey?: string
+  messageParams?: TranslationParams
   duration?: number
   dismissible?: boolean
   action?: {
     label: string
+    labelKey?: string
     handler: () => void
   }
 }

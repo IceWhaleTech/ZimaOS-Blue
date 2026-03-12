@@ -112,3 +112,33 @@ func TestLoadOrImport_MigratesLegacyDefaultJWTSecretFromDB(t *testing.T) {
 		t.Fatalf("expected migrated secret to remain stable, first=%q second=%q", firstSecret, got2.Security.JWT.Secret)
 	}
 }
+
+func TestLoadOrImport_PreservesBrowserSection(t *testing.T) {
+	kv := kvstore.NewMemoryStore()
+	store := NewConfigStore(kv)
+	cfg := defaults()
+	cfg.Browser.Headless = false
+	cfg.Browser.PoolSize = 1
+
+	got, err := store.LoadOrImport(&cfg)
+	if err != nil {
+		t.Fatalf("LoadOrImport() error = %v", err)
+	}
+	if got.Browser.Headless {
+		t.Fatalf("Browser.Headless = %v, want false", got.Browser.Headless)
+	}
+	if got.Browser.PoolSize != 1 {
+		t.Fatalf("Browser.PoolSize = %d, want 1", got.Browser.PoolSize)
+	}
+
+	reloaded, err := store.Reload()
+	if err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+	if reloaded.Browser.Headless {
+		t.Fatalf("reloaded Browser.Headless = %v, want false", reloaded.Browser.Headless)
+	}
+	if reloaded.Browser.PoolSize != 1 {
+		t.Fatalf("reloaded Browser.PoolSize = %d, want 1", reloaded.Browser.PoolSize)
+	}
+}

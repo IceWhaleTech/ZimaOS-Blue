@@ -48,7 +48,7 @@ const (
 const (
 	ProtocolVersion = "2024-11-05"
 	ServerName      = "blue-mcp"
-	ServerVersion   = "0.10.31"
+	ServerVersion   = "0.10.32"
 )
 
 const (
@@ -1264,18 +1264,13 @@ func toolResultToText(result interface{}) string {
 }
 
 func (s *Server) workspaceListFiles(args map[string]interface{}) (string, error) {
+	args = normalizeWorkspaceListFilesArgs(args)
 	scope := "."
-	if v, ok := args["path"]; ok {
-		str, err := asString(v)
-		if err != nil {
-			return "", fmt.Errorf("path must be a string")
-		}
-		if strings.TrimSpace(str) != "" {
-			scope = str
-		}
+	if path := workspaceCompatPathString(args); path != "" {
+		scope = path
 	}
 	maxDepth := defaultWorkspaceListDepth
-	if v, ok := args["max_depth"]; ok {
+	if v, ok := workspaceCompatValue(args, "max_depth", "maxDepth"); ok {
 		n, err := asInt(v)
 		if err != nil {
 			return "", fmt.Errorf("max_depth must be an integer")
@@ -1369,16 +1364,13 @@ func (s *Server) workspaceListFiles(args map[string]interface{}) (string, error)
 }
 
 func (s *Server) workspaceReadText(args map[string]interface{}) (string, error) {
-	pathVal, ok := args["path"]
-	if !ok {
-		return "", errors.New("path is required")
-	}
-	relPath, err := asString(pathVal)
-	if err != nil || strings.TrimSpace(relPath) == "" {
+	args = normalizeWorkspaceReadTextArgs(args)
+	relPath := workspaceCompatPathString(args)
+	if strings.TrimSpace(relPath) == "" {
 		return "", errors.New("path must be a non-empty string")
 	}
 	startLine := 1
-	if v, ok := args["start_line"]; ok {
+	if v, ok := workspaceCompatValue(args, "start_line", "startLine"); ok {
 		n, convErr := asInt(v)
 		if convErr != nil {
 			return "", fmt.Errorf("start_line must be an integer")
@@ -1386,7 +1378,7 @@ func (s *Server) workspaceReadText(args map[string]interface{}) (string, error) 
 		startLine = n
 	}
 	endLine := 0
-	if v, ok := args["end_line"]; ok {
+	if v, ok := workspaceCompatValue(args, "end_line", "endLine"); ok {
 		n, convErr := asInt(v)
 		if convErr != nil {
 			return "", fmt.Errorf("end_line must be an integer")
@@ -1394,7 +1386,7 @@ func (s *Server) workspaceReadText(args map[string]interface{}) (string, error) 
 		endLine = n
 	}
 	maxBytes := maxWorkspaceReadBytes
-	if v, ok := args["max_bytes"]; ok {
+	if v, ok := workspaceCompatValue(args, "max_bytes", "maxBytes"); ok {
 		n, convErr := asInt(v)
 		if convErr != nil {
 			return "", fmt.Errorf("max_bytes must be an integer")
@@ -1473,15 +1465,12 @@ func (s *Server) workspaceReadText(args map[string]interface{}) (string, error) 
 }
 
 func (s *Server) workspaceWriteText(args map[string]interface{}) (string, error) {
-	pathVal, ok := args["path"]
-	if !ok {
-		return "", errors.New("path is required")
-	}
-	relPath, err := asString(pathVal)
-	if err != nil || strings.TrimSpace(relPath) == "" {
+	args = normalizeWorkspaceWriteTextArgs(args)
+	relPath := workspaceCompatPathString(args)
+	if strings.TrimSpace(relPath) == "" {
 		return "", errors.New("path must be a non-empty string")
 	}
-	contentVal, ok := args["content"]
+	contentVal, ok := workspaceCompatValue(args, "content", "text", "body", "value")
 	if !ok {
 		return "", errors.New("content is required")
 	}
@@ -1542,7 +1531,8 @@ func (s *Server) workspaceWriteText(args map[string]interface{}) (string, error)
 }
 
 func (s *Server) workspaceSearchText(args map[string]interface{}) (string, error) {
-	queryVal, ok := args["query"]
+	args = normalizeWorkspaceSearchTextArgs(args)
+	queryVal, ok := workspaceCompatValue(args, "query", "q", "search", "keyword", "text", "content")
 	if !ok {
 		return "", errors.New("query is required")
 	}
@@ -1551,17 +1541,11 @@ func (s *Server) workspaceSearchText(args map[string]interface{}) (string, error
 		return "", errors.New("query must be a non-empty string")
 	}
 	scope := "."
-	if v, ok := args["path"]; ok {
-		str, convErr := asString(v)
-		if convErr != nil {
-			return "", fmt.Errorf("path must be a string")
-		}
-		if strings.TrimSpace(str) != "" {
-			scope = str
-		}
+	if path := workspaceCompatPathString(args); path != "" {
+		scope = path
 	}
 	maxResults := 50
-	if v, ok := args["max_results"]; ok {
+	if v, ok := workspaceCompatValue(args, "max_results", "maxResults", "limit"); ok {
 		n, convErr := asInt(v)
 		if convErr != nil {
 			return "", fmt.Errorf("max_results must be an integer")
@@ -1688,15 +1672,12 @@ func (s *Server) workspaceSearchText(args map[string]interface{}) (string, error
 }
 
 func (s *Server) workspaceReplaceText(args map[string]interface{}) (string, error) {
-	pathVal, ok := args["path"]
-	if !ok {
-		return "", errors.New("path is required")
-	}
-	relPath, err := asString(pathVal)
-	if err != nil || strings.TrimSpace(relPath) == "" {
+	args = normalizeWorkspaceReplaceTextArgs(args)
+	relPath := workspaceCompatPathString(args)
+	if strings.TrimSpace(relPath) == "" {
 		return "", errors.New("path must be a non-empty string")
 	}
-	oldVal, ok := args["old_text"]
+	oldVal, ok := workspaceCompatValue(args, "old_text", "oldText")
 	if !ok {
 		return "", errors.New("old_text is required")
 	}
@@ -1704,7 +1685,7 @@ func (s *Server) workspaceReplaceText(args map[string]interface{}) (string, erro
 	if err != nil || oldText == "" {
 		return "", errors.New("old_text must be a non-empty string")
 	}
-	newVal, ok := args["new_text"]
+	newVal, ok := workspaceCompatValue(args, "new_text", "newText")
 	if !ok {
 		return "", errors.New("new_text is required")
 	}
@@ -1770,6 +1751,217 @@ func (s *Server) workspaceReplaceText(args map[string]interface{}) (string, erro
 		return "", err
 	}
 	return string(out), nil
+}
+
+func normalizeWorkspaceListFilesArgs(args map[string]interface{}) map[string]interface{} {
+	normalized := cloneWorkspaceCompatArgs(args)
+	if _, ok := normalized["path"]; !ok || strings.TrimSpace(asStringOrEmpty(normalized["path"])) == "" {
+		if path := workspaceCompatPathString(normalized); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if _, ok := normalized["max_depth"]; !ok {
+		if maxDepth, ok := workspaceCompatValue(normalized, "max_depth", "maxDepth"); ok {
+			normalized["max_depth"] = maxDepth
+		}
+	}
+	if _, ok := normalized["include_hidden"]; !ok {
+		if includeHidden, ok := workspaceCompatValue(normalized, "include_hidden", "includeHidden"); ok {
+			normalized["include_hidden"] = includeHidden
+		}
+	}
+	return normalized
+}
+
+func normalizeWorkspaceReadTextArgs(args map[string]interface{}) map[string]interface{} {
+	normalized := cloneWorkspaceCompatArgs(args)
+	if strings.TrimSpace(asStringOrEmpty(normalized["path"])) == "" {
+		if path := workspaceCompatPathString(normalized); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if _, ok := normalized["start_line"]; !ok {
+		if startLine, ok := workspaceCompatValue(normalized, "start_line", "startLine"); ok {
+			normalized["start_line"] = startLine
+		}
+	}
+	if _, ok := normalized["end_line"]; !ok {
+		if endLine, ok := workspaceCompatValue(normalized, "end_line", "endLine"); ok {
+			normalized["end_line"] = endLine
+		}
+	}
+	if _, ok := normalized["max_bytes"]; !ok {
+		if maxBytes, ok := workspaceCompatValue(normalized, "max_bytes", "maxBytes"); ok {
+			normalized["max_bytes"] = maxBytes
+		}
+	}
+	return normalized
+}
+
+func normalizeWorkspaceWriteTextArgs(args map[string]interface{}) map[string]interface{} {
+	normalized := cloneWorkspaceCompatArgs(args)
+	if strings.TrimSpace(asStringOrEmpty(normalized["path"])) == "" {
+		if path := workspaceCompatPathString(normalized); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if _, ok := normalized["content"]; !ok {
+		if content, ok := workspaceCompatValue(normalized, "content", "text", "body", "value"); ok {
+			normalized["content"] = content
+		}
+	}
+	if _, ok := normalized["append"]; !ok {
+		if appendMode, ok := workspaceCompatValue(normalized, "append"); ok {
+			normalized["append"] = appendMode
+		}
+	}
+	if _, ok := normalized["create_dirs"]; !ok {
+		if createDirs, ok := workspaceCompatValue(normalized, "create_dirs", "createDirs"); ok {
+			normalized["create_dirs"] = createDirs
+		}
+	}
+	return normalized
+}
+
+func normalizeWorkspaceSearchTextArgs(args map[string]interface{}) map[string]interface{} {
+	normalized := cloneWorkspaceCompatArgs(args)
+	if _, ok := normalized["query"]; !ok || strings.TrimSpace(asStringOrEmpty(normalized["query"])) == "" {
+		if query, ok := workspaceCompatValue(normalized, "query", "q", "search", "keyword", "text", "content"); ok {
+			normalized["query"] = query
+		}
+	}
+	if _, ok := normalized["path"]; !ok || strings.TrimSpace(asStringOrEmpty(normalized["path"])) == "" {
+		if path := workspaceCompatPathString(normalized); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if _, ok := normalized["max_results"]; !ok {
+		if maxResults, ok := workspaceCompatValue(normalized, "max_results", "maxResults", "limit"); ok {
+			normalized["max_results"] = maxResults
+		}
+	}
+	if _, ok := normalized["case_sensitive"]; !ok {
+		if caseSensitive, ok := workspaceCompatValue(normalized, "case_sensitive", "caseSensitive"); ok {
+			normalized["case_sensitive"] = caseSensitive
+		}
+	}
+	if _, ok := normalized["include_hidden"]; !ok {
+		if includeHidden, ok := workspaceCompatValue(normalized, "include_hidden", "includeHidden"); ok {
+			normalized["include_hidden"] = includeHidden
+		}
+	}
+	return normalized
+}
+
+func normalizeWorkspaceReplaceTextArgs(args map[string]interface{}) map[string]interface{} {
+	normalized := cloneWorkspaceCompatArgs(args)
+	if strings.TrimSpace(asStringOrEmpty(normalized["path"])) == "" {
+		if path := workspaceCompatPathString(normalized); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if _, ok := normalized["old_text"]; !ok {
+		if oldText, ok := workspaceCompatValue(normalized, "old_text", "oldText"); ok {
+			normalized["old_text"] = oldText
+		}
+	}
+	if _, ok := normalized["new_text"]; !ok {
+		if newText, ok := workspaceCompatValue(normalized, "new_text", "newText"); ok {
+			normalized["new_text"] = newText
+		}
+	}
+	if _, ok := normalized["replace_all"]; !ok {
+		if replaceAll, ok := workspaceCompatValue(normalized, "replace_all", "replaceAll"); ok {
+			normalized["replace_all"] = replaceAll
+		}
+	}
+	return normalized
+}
+
+func cloneWorkspaceCompatArgs(args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return args
+	}
+	normalized := make(map[string]interface{}, len(args)+4)
+	for k, v := range args {
+		normalized[k] = v
+	}
+	return normalized
+}
+
+func workspaceCompatValue(args map[string]interface{}, keys ...string) (interface{}, bool) {
+	for _, key := range keys {
+		if v, ok := args[key]; ok && v != nil {
+			return v, true
+		}
+	}
+	for _, containerKey := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := workspaceCompatMap(args[containerKey])
+		if !ok {
+			continue
+		}
+		for _, key := range keys {
+			if v, ok := nested[key]; ok && v != nil {
+				return v, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func workspaceCompatMap(v interface{}) (map[string]interface{}, bool) {
+	switch typed := v.(type) {
+	case map[string]interface{}:
+		return typed, true
+	case string:
+		raw := strings.TrimSpace(typed)
+		if raw == "" {
+			return nil, false
+		}
+		var parsed map[string]interface{}
+		if json.Unmarshal([]byte(raw), &parsed) == nil {
+			return parsed, true
+		}
+	}
+	return nil, false
+}
+
+func workspaceCompatPathString(args map[string]interface{}) string {
+	return workspaceCompatString(
+		args,
+		"path",
+		"file_path",
+		"filePath",
+		"filepath",
+		"path_name",
+		"pathName",
+		"pathname",
+		"filename",
+		"fileName",
+		"target_path",
+		"targetPath",
+		"target_file",
+		"targetFile",
+		"output_path",
+		"outputPath",
+		"file",
+	)
+}
+
+func workspaceCompatString(args map[string]interface{}, keys ...string) string {
+	v, ok := workspaceCompatValue(args, keys...)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(asStringOrEmpty(v))
+}
+
+func asStringOrEmpty(v interface{}) string {
+	s, err := asString(v)
+	if err != nil {
+		return ""
+	}
+	return s
 }
 
 func (s *Server) workspaceAbsRoot() string {
@@ -1920,7 +2112,7 @@ func asInt(v interface{}) (int, error) {
 }
 
 func asBoolDefault(args map[string]interface{}, key string, def bool) (bool, error) {
-	v, ok := args[key]
+	v, ok := workspaceCompatValue(args, key)
 	if !ok {
 		return def, nil
 	}

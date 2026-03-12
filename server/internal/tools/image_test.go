@@ -65,6 +65,23 @@ type imageOCRMock struct {
 	err   error
 }
 
+type pptGenerateMock struct {
+	req  PPTRequest
+	resp *PPTResult
+	err  error
+}
+
+func (m *pptGenerateMock) Generate(_ context.Context, req PPTRequest) (*PPTResult, error) {
+	m.req = req
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.resp == nil {
+		m.resp = &PPTResult{Status: "succeeded", TaskID: "slide-1", ImageURLs: []string{"/api/media/generated/images/slide.png"}}
+	}
+	return m.resp, nil
+}
+
 func (m *imageOCRMock) Extract(_ context.Context, imagePNG []byte) (ImageOCRResult, error) {
 	m.image = append([]byte(nil), imagePNG...)
 	if m.resp.Text == "" && m.err == nil {
@@ -95,6 +112,49 @@ func TestImageToolReviewFallsBackToOCR(t *testing.T) {
 	}
 	if payload["fallback_from"] != "vision" {
 		t.Fatalf("fallback_from = %v", payload["fallback_from"])
+	}
+}
+
+func TestImageToolGenerateRoutesBananaSlidesToPPTService(t *testing.T) {
+	tool := NewImageTool(nil, func(context.Context, ImageGenerateRequest) (*ImageTaskResult, error) {
+		t.Fatal("plain image generation should not run when ppt slide-asset service is selected")
+		return nil, nil
+	}, nil)
+	service := &pptGenerateMock{}
+	tool.SetPPTService(service)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":              "ppt",
+		"prompt":              "Create a revenue growth PPT slide visual",
+		"style_preset":        "banana_slides",
+		"aspect_ratio":        "16:9",
+		"quality_profile":     "ppt",
+		"review_threshold":    82.0,
+		"review_retry_budget": 1.0,
+		"reference_images":    []interface{}{"https://example.com/ref-1.png", "https://example.com/ref-2.png"},
+		"source":              "ppt",
+	})
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	typed, ok := result.(*PPTResult)
+	if !ok {
+		t.Fatalf("result type = %T, want *PPTResult", result)
+	}
+	if typed.TaskID != "slide-1" {
+		t.Fatalf("task_id = %q, want slide-1", typed.TaskID)
+	}
+	if service.req.StylePreset != "banana_slides" {
+		t.Fatalf("style_preset = %q, want banana_slides", service.req.StylePreset)
+	}
+	if service.req.QualityProfile != "ppt" {
+		t.Fatalf("quality_profile = %q, want ppt", service.req.QualityProfile)
+	}
+	if len(service.req.ReferenceImages) != 2 {
+		t.Fatalf("reference_images = %#v, want 2", service.req.ReferenceImages)
+	}
+	if service.req.Source != "ppt" {
+		t.Fatalf("source = %q, want ppt", service.req.Source)
 	}
 }
 
@@ -617,6 +677,40 @@ func TestImageToolGenerateUsesReferenceInputsForEdit(t *testing.T) {
 	payload := result.(map[string]interface{})
 	if payload["task_id"] != "task-2" {
 		t.Fatalf("task_id = %v, want task-2", payload["task_id"])
+	}
+}
+
+func TestImageToolSupportsNestedCamelCaseReviewArgs(t *testing.T) {
+	vision := &imageVisionMock{responses: []string{"red chart dashboard", "blue chart dashboard"}}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+
+	tmpDir := t.TempDir()
+	localPath := filepath.Join(tmpDir, "sample.png")
+	if err := os.WriteFile(localPath, testPNGBytes(t), 0o644); err != nil {
+		t.Fatalf("write local image: %v", err)
+	}
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"imageBase64": inlinePNGBase64(t),
+			"imagePaths":  []interface{}{localPath},
+			"compare":     true,
+			"prompt":      "compare these images",
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute nested review failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "compare" {
+		t.Fatalf("mode = %v, want compare", payload["mode"])
+	}
+	if payload["compare_requested"] != true {
+		t.Fatalf("compare_requested = %v, want true", payload["compare_requested"])
+	}
+	if payload["count"] != 2 {
+		t.Fatalf("count = %v, want 2", payload["count"])
 	}
 }
 

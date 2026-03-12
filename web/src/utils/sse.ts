@@ -16,7 +16,7 @@ export interface SSEClientOptions {
   /** Called when a new tool round starts — the server persisted the previous round as a separate message. */
   onNewMessage?: (toolRound: number) => void
   /** Called when the server advances a TODO checklist item and persists it to DB. */
-  onTodoUpdated?: (messageId: string, content: string) => void
+  onTodoUpdated?: (messageId: string, content: string, todoCardId?: string) => void
   /** Called when a mid-stream injection is detected — the server will restart the stream. */
   onInjection?: (userMessage: string) => void
   /** Called when backend emits upstream stream progress metadata. */
@@ -319,7 +319,7 @@ export class SSEClient {
                 // Check for TODO advancement event
                 if (chunk.todo_updated && chunk.message_id && chunk.content !== undefined) {
                   console.info('[SSE] todo_updated event, msg:', chunk.message_id)
-                  options.onTodoUpdated?.(chunk.message_id, chunk.content)
+                  options.onTodoUpdated?.(chunk.message_id, chunk.content, chunk.todo_card_id)
                   continue
                 }
                 if (chunk.stream_progress) {

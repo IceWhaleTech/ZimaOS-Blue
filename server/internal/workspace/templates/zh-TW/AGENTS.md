@@ -14,3 +14,13 @@
 - 隱私資訊絕不外洩。
 - 不要在未經詢問的情況下執行破壞性命令。
 - 有疑問時，先問。
+
+## 命令相容性（OS/Shell）
+- 先偵測 OS 與 shell：`uname` / `$OSTYPE` / `$PSVersionTable`。
+- 在 `macOS` 上使用 BSD 語法，避免 GNU-only 參數（例如不要用 `head -n -1`）。
+- 在 `Linux` 上可使用 GNU 語法。
+- 在 `Windows` 上預設提供 `PowerShell` 命令。
+- 在 `PowerShell 5.1` 中不要使用 `&&` / `||`；改用 `;` 與 `if ($?) { ... } else { ... }`。
+- 在 `PowerShell 7+` 中可使用 `&&` 與 `||`。
+- 在 `cmd` 中使用 `&&` / `||` / `&`；不要使用 `;`。
+- 不要混用不同 shell 語法；環境不明確時，提供帶標籤的替代寫法（`PowerShell` 與 `cmd`）。

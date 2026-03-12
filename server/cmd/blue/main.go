@@ -26,6 +26,8 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/claudecode"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
+	contextpackembed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack/embedded"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cron"
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
@@ -71,7 +73,7 @@ import (
 )
 
 var (
-	version   = "0.10.31"
+	version   = "0.10.32"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -232,6 +234,22 @@ func runServer() {
 	cfg, err = configStore.LoadOrImport(cfg)
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to load config from DB, using YAML defaults")
+	}
+	if cfg.Performance.Database.CheckpointInterval > 0 {
+		dbutil.StartPeriodicWALCheckpoint(
+			lm.Context(),
+			db,
+			cfg.Performance.Database.CheckpointInterval,
+			dbutil.CheckpointTruncate,
+			func(err error) {
+				logger.Warn().Err(err).Msg("Periodic WAL checkpoint failed")
+			},
+		)
+		logger.Info().
+			Dur("interval", cfg.Performance.Database.CheckpointInterval).
+			Msg("Periodic WAL checkpoint enabled")
+	} else {
+		logger.Info().Msg("Periodic WAL checkpoint disabled")
 	}
 
 	// Initialize user repository and service
@@ -491,6 +509,7 @@ func runServer() {
 	})
 	pdfService = pdfextract.NewService(zapLogger, ocrService)
 	tools.RegisterCanvasTools(toolRegistry, a2uiManager)
+	tools.AttachPDFServiceToWebTools(toolRegistry, pdfService)
 	tools.RegisterPDFTool(toolRegistry, pdfService)
 	autoreplyService := autoreply.NewService(autoreply.DefaultConfig(), zapLogger)
 	autoreplyHandler := autoreply.NewHandler(autoreplyService, zapLogger)
@@ -687,12 +706,15 @@ func runServer() {
 	// Wire browser service — lazy init, creates rod service on first use (for IPC only)
 	var browserBackend tools.BrowserBackend
 	var lazyBrowserSvc func() *browser.RodService
+	var lazyVisibleBrowserSvc func() *browser.RodService
 	{
 		var browserOnce sync.Once
 		var browserSvc *browser.RodService
+		headlessBrowserCfg := cfg.Browser
+		headlessBrowserCfg.Headless = true
 		lazyBrowserSvc = func() *browser.RodService {
 			browserOnce.Do(func() {
-				svc, err := browser.NewService(nil)
+				svc, err := browser.NewService(&headlessBrowserCfg)
 				if err != nil {
 					logger.Warn().Err(err).Msg("Failed to create browser service")
 					return
@@ -703,7 +725,24 @@ func runServer() {
 			return browserSvc
 		}
 
-		browserBackend = tools.NewLazyRodBrowserBackend(lazyBrowserSvc)
+		var visibleBrowserOnce sync.Once
+		var visibleBrowserSvc *browser.RodService
+		visibleBrowserCfg := cfg.Browser
+		visibleBrowserCfg.Headless = false
+		lazyVisibleBrowserSvc = func() *browser.RodService {
+			visibleBrowserOnce.Do(func() {
+				svc, err := browser.NewService(&visibleBrowserCfg)
+				if err != nil {
+					logger.Warn().Err(err).Msg("Failed to create visible browser service")
+					return
+				}
+				visibleBrowserSvc = svc
+				logger.Info().Msg("Visible browser service initialized")
+			})
+			return visibleBrowserSvc
+		}
+
+		browserBackend = tools.NewModeAwareRodBrowserBackend(lazyBrowserSvc, lazyVisibleBrowserSvc)
 	}
 
 	initPool.Go(func() {
@@ -1021,6 +1060,20 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	if err := workspaceMgr.EnsureWorkspace(); err != nil {
 		logger.Warn("Failed to initialize workspace", zap.Error(err))
 	}
+	if err := workspaceMgr.ReleaseContextPacks(contextpackembed.PacksFS); err != nil {
+		logger.Warn("Failed to release embedded context packs", zap.Error(err))
+	}
+	contextRegistry := contextpack.NewRegistry(workspaceMgr.ContextDir())
+	contextAnnotationStore, err := contextpack.NewAnnotationStore(filepath.Join(dataDir, "contextpacks.db"))
+	if err != nil {
+		logger.Warn("Failed to initialize context annotation store", zap.Error(err))
+	}
+	if contextAnnotationStore != nil {
+		lm.RegisterShutdownHook(func(ctx context.Context) error {
+			return contextAnnotationStore.Close()
+		})
+	}
+	contextResolver := contextpack.NewResolver(contextRegistry, contextAnnotationStore, contextpack.ResolverConfig{MaxFiles: 3, MaxTokens: 1500, SearchLimit: 5})
 
 	// Initialize Claude Code handler
 	claudeCodeHandler := claudecode.NewHandlerWithDataDir(nil, dataDir, configKV)
@@ -1028,6 +1081,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 	systemPromptBuilder := claudecode.NewSystemPromptBuilder(&claudecode.ClaudeCodeConfig{WorkspaceDir: workspaceDir})
 	systemPromptBuilder.SetToolRegistry(toolRegistry)
 	systemPromptBuilder.SetWorkspace(workspaceMgr)
+	systemPromptBuilder.SetContextResolver(contextResolver)
 	chatHandler.SetSystemPromptBuilder(systemPromptBuilder)
 
 	// Initialize memory handler (markdown primary, optional dual-write with vector store)

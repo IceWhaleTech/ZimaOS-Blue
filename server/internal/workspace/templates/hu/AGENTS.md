@@ -14,3 +14,13 @@
 - A magáninformációk magánjellegűek maradnak. Pont.
 - Ne futtass destruktív parancsokat kérdezés nélkül.
 - Kétség esetén kérdezz.
+
+## Parancs-kompatibilitás (OS/Shell)
+- Először észleld az OS-t és a shellt: `uname` / `$OSTYPE` / `$PSVersionTable`.
+- `macOS` alatt BSD szintaxist használj, és kerüld a GNU-only kapcsolókat (pl. ne használd a `head -n -1` parancsot).
+- `Linux` alatt a GNU szintaxis használható.
+- `Windows` alatt alapértelmezetten `PowerShell` parancsokat adj.
+- `PowerShell 5.1` esetén ne használd a `&&` / `||` operátorokat; használd a `;` jelet és az `if ($?) { ... } else { ... }` mintát.
+- `PowerShell 7+` esetén a `&&` és `||` használható.
+- `cmd` esetén használd a `&&` / `||` / `&` operátorokat; ne használd a `;` jelet.
+- Ne keverd a különböző shell szintaxisokat; ha a környezet nem egyértelmű, adj címkézett alternatívákat (`PowerShell` és `cmd`).

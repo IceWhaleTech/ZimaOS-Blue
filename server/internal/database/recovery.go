@@ -10,6 +10,12 @@ import (
 	"time"
 )
 
+var sqliteDatabaseFileExtensions = map[string]struct{}{
+	".db":      {},
+	".sqlite":  {},
+	".sqlite3": {},
+}
+
 // IsSQLiteCorruptionError reports whether err looks like SQLite file corruption.
 func IsSQLiteCorruptionError(err error) bool {
 	if err == nil {
@@ -34,8 +40,8 @@ func WrapSQLiteOpenError(dbPath string, err error) error {
 	return err
 }
 
-// OpenSQLiteWithRecovery opens a SQLite database and retries once after cleaning
-// stale WAL auxiliary files when SQLite reports corruption.
+// OpenSQLiteWithRecovery opens a SQLite database and retries once after a WAL
+// checkpoint when SQLite reports corruption.
 func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (*sql.DB, error) {
 	if strings.TrimSpace(dbPath) == "" {
 		dbPath = dsn
@@ -54,10 +60,10 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 		if err := configure(db); err != nil {
 			_ = db.Close()
 			if attempt == 0 && IsSQLiteCorruptionError(err) {
-				if cleanErr := CleanWALFiles(dbPath); cleanErr == nil {
+				if checkpointErr := CheckpointWALForDatabase(dbPath, CheckpointTruncate); checkpointErr == nil {
 					continue
 				} else {
-					return nil, fmt.Errorf("%w (failed to clean WAL files: %v)", WrapSQLiteOpenError(dbPath, err), cleanErr)
+					return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v)", WrapSQLiteOpenError(dbPath, err), checkpointErr)
 				}
 			}
 			return nil, WrapSQLiteOpenError(dbPath, err)
@@ -69,9 +75,137 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 	return nil, fmt.Errorf("failed to open sqlite database %s", dbPath)
 }
 
-// CleanWALFiles removes SQLite WAL mode auxiliary files (.shm and .wal)
-// for the given database path. This should be called after restoring a database
-// to ensure the restored database starts fresh without stale WAL data.
+// CheckpointWAL runs PRAGMA wal_checkpoint(mode) on an already opened DB.
+func CheckpointWAL(ctx context.Context, db *sql.DB, mode CheckpointMode) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	mode = normalizeCheckpointMode(mode)
+
+	if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout=5000"); err != nil {
+		return fmt.Errorf("failed to set busy_timeout: %w", err)
+	}
+
+	var busy, logFrames, checkpointed int
+	query := fmt.Sprintf("PRAGMA wal_checkpoint(%s)", mode)
+	if err := db.QueryRowContext(ctx, query).Scan(&busy, &logFrames, &checkpointed); err != nil {
+		return fmt.Errorf("wal checkpoint query failed: %w", err)
+	}
+	if busy > 0 {
+		return fmt.Errorf("wal checkpoint %s busy=%d log_frames=%d checkpointed=%d", mode, busy, logFrames, checkpointed)
+	}
+	return nil
+}
+
+// CheckpointWALForDatabase opens a SQLite database by path and checkpoints WAL.
+func CheckpointWALForDatabase(dbPath string, mode CheckpointMode) error {
+	if strings.TrimSpace(dbPath) == "" {
+		return fmt.Errorf("database path is empty")
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to stat database %s: %w", dbPath, err)
+	}
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to open database for WAL checkpoint: %w", err)
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := CheckpointWAL(ctx, db, mode); err != nil {
+		return fmt.Errorf("failed to checkpoint WAL for %s: %w", dbPath, err)
+	}
+
+	return nil
+}
+
+// CheckpointAllDatabasesInDir checkpoints WAL for top-level SQLite DB files in dir.
+func CheckpointAllDatabasesInDir(dir string, mode CheckpointMode) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	var errs []error
+	for _, entry := range entries {
+		if entry.IsDir() || !isSQLiteDatabaseFilename(entry.Name()) {
+			continue
+		}
+		dbPath := filepath.Join(dir, entry.Name())
+		if err := CheckpointWALForDatabase(dbPath, mode); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to checkpoint WAL for some databases: %v", errs)
+	}
+	return nil
+}
+
+// StartPeriodicWALCheckpoint runs wal_checkpoint(mode) on a fixed interval until ctx is done.
+func StartPeriodicWALCheckpoint(ctx context.Context, db *sql.DB, interval time.Duration, mode CheckpointMode, onError func(error)) {
+	if db == nil || interval <= 0 {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if onError == nil {
+		onError = func(error) {}
+	}
+
+	mode = normalizeCheckpointMode(mode)
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				checkpointCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				err := CheckpointWAL(checkpointCtx, db, mode)
+				cancel()
+				if err != nil {
+					onError(err)
+				}
+			}
+		}
+	}()
+}
+
+func normalizeCheckpointMode(mode CheckpointMode) CheckpointMode {
+	switch mode {
+	case CheckpointPassive, CheckpointFull, CheckpointRestart, CheckpointTruncate:
+		return mode
+	default:
+		return CheckpointTruncate
+	}
+}
+
+func isSQLiteDatabaseFilename(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	_, ok := sqliteDatabaseFileExtensions[ext]
+	return ok
+}
+
+// CleanWALFiles removes SQLite WAL auxiliary files (.shm and .wal).
+//
+// Deprecated: prefer CheckpointWALForDatabase(..., CheckpointTruncate) so
+// committed WAL frames are merged into the main database instead of dropped.
 func CleanWALFiles(dbPath string) error {
 	shmPath := dbPath + "-shm"
 	walPath := dbPath + "-wal"
@@ -99,8 +233,9 @@ func CleanWALFiles(dbPath string) error {
 	return nil
 }
 
-// CleanAllWALFilesInDir removes all SQLite WAL mode auxiliary files
-// (.shm and .wal) for all .db files in the given directory.
+// CleanAllWALFilesInDir removes all SQLite WAL auxiliary files in a directory.
+//
+// Deprecated: prefer CheckpointAllDatabasesInDir(..., CheckpointTruncate).
 func CleanAllWALFilesInDir(dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

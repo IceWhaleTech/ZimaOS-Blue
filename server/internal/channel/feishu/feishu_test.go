@@ -421,11 +421,73 @@ func TestBuildMarkdownCardJSON_TitleAndTable(t *testing.T) {
 	if strings.Contains(all, "# 周报") {
 		t.Fatalf("heading should be promoted to card title, got content: %q", all)
 	}
-	if !strings.Contains(all, "```text") {
-		t.Fatalf("table should be converted into code fence table, got content: %q", all)
+	if strings.Contains(all, "| 指标 |") || strings.Contains(all, "| 成功率 |") {
+		t.Fatalf("table pipes should be converted into bullet-style text, got content: %q", all)
 	}
-	if !strings.Contains(all, "| 指标") || !strings.Contains(all, "| 成功率") {
-		t.Fatalf("table rows missing after conversion: %q", all)
+	if !strings.Contains(all, "**成功率**") || !strings.Contains(all, "- 数值: 99%") {
+		t.Fatalf("table rows missing after bullet conversion: %q", all)
+	}
+}
+
+func TestBuildMarkdownCardJSON_BodyHeadingsDropHashes(t *testing.T) {
+	input := "# 发布说明\n\n## 重点更新\n- 功能 A\n\n### 注意事项\n请检查配置"
+	raw, err := buildMarkdownCardJSON(input)
+	if err != nil {
+		t.Fatalf("buildMarkdownCardJSON failed: %v", err)
+	}
+
+	var card struct {
+		Elements []struct {
+			Tag     string `json:"tag"`
+			Content string `json:"content"`
+			Text    struct {
+				Tag      string `json:"tag"`
+				Content  string `json:"content"`
+				TextSize string `json:"text_size"`
+			} `json:"text"`
+		} `json:"elements"`
+	}
+	if err := json.Unmarshal([]byte(raw), &card); err != nil {
+		t.Fatalf("invalid card json: %v", err)
+	}
+	if len(card.Elements) == 0 {
+		t.Fatal("elements should not be empty")
+	}
+
+	var markdownAll string
+	headingElems := make([]struct {
+		content  string
+		textSize string
+	}, 0, 2)
+	for _, el := range card.Elements {
+		if el.Tag == "markdown" {
+			markdownAll += el.Content + "\n"
+		}
+		if el.Tag == "div" {
+			headingElems = append(headingElems, struct {
+				content  string
+				textSize string
+			}{
+				content:  el.Text.Content,
+				textSize: el.Text.TextSize,
+			})
+		}
+	}
+
+	if strings.Contains(markdownAll, "## 重点更新") || strings.Contains(markdownAll, "### 注意事项") {
+		t.Fatalf("body headings should not keep markdown hashes in markdown blocks: %q", markdownAll)
+	}
+	if !strings.Contains(markdownAll, "- 功能 A") || !strings.Contains(markdownAll, "请检查配置") {
+		t.Fatalf("body markdown content missing after heading split: %q", markdownAll)
+	}
+	if len(headingElems) != 2 {
+		t.Fatalf("expected 2 heading div elements, got %d (%+v)", len(headingElems), headingElems)
+	}
+	if headingElems[0].content != "重点更新" || headingElems[0].textSize != "heading" {
+		t.Fatalf("unexpected first heading element: %+v", headingElems[0])
+	}
+	if headingElems[1].content != "注意事项" || headingElems[1].textSize != "normal_text" {
+		t.Fatalf("unexpected second heading element: %+v", headingElems[1])
 	}
 }
 
@@ -502,7 +564,7 @@ func TestChannel_Send_MarkdownUsesInteractiveCard(t *testing.T) {
 	if len(card.Elements) == 0 {
 		t.Fatal("card elements should not be empty")
 	}
-	if !strings.Contains(card.Elements[0].Content, "```text") {
-		t.Fatalf("expected table converted to code fence in card body, got %q", card.Elements[0].Content)
+	if !strings.Contains(card.Elements[0].Content, "- 值: v1.2.3") {
+		t.Fatalf("expected table converted to bullet-style text in card body, got %q", card.Elements[0].Content)
 	}
 }

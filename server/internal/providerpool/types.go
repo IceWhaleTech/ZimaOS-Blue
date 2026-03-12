@@ -112,6 +112,7 @@ type Provider struct {
 	Description string    `json:"description,omitempty"`
 	Website     string    `json:"website,omitempty"`     // Official website URL for the provider
 	APIKeyURL   string    `json:"api_key_url,omitempty"` // URL to obtain/manage API keys
+	Beta        bool      `json:"beta,omitempty"`        // Beta providers are shown in "Other" with a beta badge
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 

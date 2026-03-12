@@ -132,3 +132,24 @@ func TestNodesToolRunExecute(t *testing.T) {
 		t.Fatalf("unexpected execution: %#v serviceRun=%q", execution, svc.runID)
 	}
 }
+
+func TestNodesToolSupportsNestedCamelCaseArgs(t *testing.T) {
+	svc := &stubNodesService{workflows: map[string]*workflow.Workflow{"wf_1": {ID: "wf_1", Name: "Test"}}}
+	tool := NewNodesTool(svc)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":      "run",
+			"workflowId":  "wf_1",
+			"triggerData": map[string]interface{}{"x": 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	execution := payload["execution"].(*workflow.Execution)
+	if execution.WorkflowID != "wf_1" || svc.runID != "wf_1" {
+		t.Fatalf("unexpected execution: %#v serviceRun=%q", execution, svc.runID)
+	}
+}

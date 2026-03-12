@@ -14,3 +14,13 @@
 - Súkromné informácie zostávajú súkromné. Bodka.
 - Nespúšťaj deštruktívne príkazy bez opýtania.
 - V prípade pochybností sa opýtaj.
+
+## Kompatibilita Príkazov (OS/Shell)
+- Najprv zisti OS a shell: `uname` / `$OSTYPE` / `$PSVersionTable`.
+- Na `macOS` používaj BSD syntax a vyhýbaj sa GNU-only prepínačom (napr. nepoužívaj `head -n -1`).
+- Na `Linux` je GNU syntax povolený.
+- Na `Windows` predvolene používaj príkazy `PowerShell`.
+- V `PowerShell 5.1` nepoužívaj `&&` / `||`; používaj `;` a `if ($?) { ... } else { ... }`.
+- V `PowerShell 7+` sú `&&` a `||` povolené.
+- V `cmd` používaj `&&` / `||` / `&`; nepoužívaj `;`.
+- Nemiešaj syntax shellov; ak je prostredie nejasné, ponúkni označené alternatívy (`PowerShell` a `cmd`).

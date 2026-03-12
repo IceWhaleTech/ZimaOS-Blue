@@ -435,6 +435,11 @@ func (m *Manager) MemoryDir() string {
 	return filepath.Join(m.dir, "memory")
 }
 
+// ContextDir returns the path to the local context pack registry.
+func (m *Manager) ContextDir() string {
+	return filepath.Join(m.dir, ".blue", "context")
+}
+
 // AppendDailyLog appends content to today's daily log file (memory/YYYY-MM-DD.md).
 func (m *Manager) AppendDailyLog(content string) error {
 	m.mu.Lock()
@@ -617,6 +622,54 @@ func (m *Manager) ReleaseSkills(fsys fs.FS) error {
 		}
 		if err := os.WriteFile(mdPath, data, 0o644); err != nil {
 			log.Printf("workspace: write %s/SKILL.md: %v", entry.Name(), err)
+		}
+	}
+	return nil
+}
+
+// ReleaseContextPacks writes embedded context pack files to {workspace}/.blue/context/...
+func (m *Manager) ReleaseContextPacks(fsys fs.FS) error {
+	entries, err := fs.ReadDir(fsys, "packs")
+	if err != nil {
+		return fmt.Errorf("workspace: read embedded context packs: %w", err)
+	}
+
+	root := m.ContextDir()
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return fmt.Errorf("workspace: mkdir %s: %w", root, err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		prefix := filepath.ToSlash(filepath.Join("packs", entry.Name()))
+		if walkErr := fs.WalkDir(fsys, prefix, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			rel := strings.TrimPrefix(path, "packs/")
+			if rel == path {
+				rel = strings.TrimPrefix(path, "packs")
+			}
+			rel = strings.TrimPrefix(rel, "/")
+			target := filepath.Join(root, filepath.FromSlash(rel))
+			if d.IsDir() {
+				return os.MkdirAll(target, 0o755)
+			}
+			data, readErr := fs.ReadFile(fsys, path)
+			if readErr != nil {
+				return readErr
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			if existing, readErr := os.ReadFile(target); readErr == nil && string(existing) == string(data) {
+				return nil
+			}
+			return os.WriteFile(target, data, 0o644)
+		}); walkErr != nil {
+			log.Printf("workspace: release context pack %s: %v", entry.Name(), walkErr)
 		}
 	}
 	return nil

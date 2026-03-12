@@ -76,7 +76,7 @@ type BrowserRecipeInfo struct {
 	KeepTab     bool   `json:"keep_tab"`
 }
 
-// BrowserTool provides headless browser automation as a native tool.
+// BrowserTool provides browser automation as a native tool.
 type BrowserTool struct {
 	mu                    sync.RWMutex
 	backend               BrowserBackend
@@ -164,12 +164,12 @@ func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return jsonErr("browser service not available"), nil
 	}
 
-	action, _ := args["action"].(string)
+	action := firstCompatString(args, "action", "op", "operation", "command")
 	if action == "" {
 		return nil, errors.New("action is required")
 	}
-	targetID, _ := args["target_id"].(string)
-	vision, _ := args["vision"].(bool)
+	targetID := firstCompatString(args, "target_id", "targetId")
+	vision, _ := compatBoolArg(args, "vision")
 
 	switch action {
 	case "navigate":
@@ -200,11 +200,11 @@ func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) 
 // --- Actions ---
 
 func (t *BrowserTool) doNavigate(ctx context.Context, b BrowserBackend, args map[string]interface{}, vision bool) (interface{}, error) {
-	url, _ := args["url"].(string)
+	url := firstCompatString(args, "url", "href")
 	if url == "" {
 		return nil, errors.New("url is required for navigate")
 	}
-	targetID, _ := args["target_id"].(string)
+	targetID := firstCompatString(args, "target_id", "targetId")
 
 	emitBrowserProgress(ctx, "start", "Starting browser", "running", url)
 	_ = b.Start(ctx)
@@ -355,17 +355,16 @@ func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b Browser
 
 func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[string]interface{}, targetID string) (interface{}, error) {
 	ref := 0
-	switch r := args["ref"].(type) {
-	case float64:
-		ref = int(r)
-	case int:
-		ref = r
+	if raw, ok := compatArgValue(args, "ref"); ok {
+		if parsed, ok := coerceCompatInt(raw); ok {
+			ref = parsed
+		}
 	}
-	actType, _ := args["act_type"].(string)
+	actType := firstCompatString(args, "act_type", "actType")
 	if actType == "" {
 		return nil, errors.New("act_type is required for act")
 	}
-	value, _ := args["value"].(string)
+	value := firstCompatString(args, "value", "text")
 
 	t.mu.RLock()
 	refMode := t.lastRefMode
@@ -434,7 +433,7 @@ func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[stri
 }
 
 func (t *BrowserTool) doScreenshot(ctx context.Context, b BrowserBackend, args map[string]interface{}) (interface{}, error) {
-	url, _ := args["url"].(string)
+	url := firstCompatString(args, "url", "href")
 	if url == "" {
 		return nil, errors.New("url is required for screenshot")
 	}
@@ -483,15 +482,22 @@ func (t *BrowserTool) doClose(ctx context.Context, b BrowserBackend, targetID st
 }
 
 func (t *BrowserTool) doRecipe(ctx context.Context, b BrowserBackend, args map[string]interface{}) (interface{}, error) {
-	recipeName, _ := args["recipe"].(string)
+	recipeName := firstCompatString(args, "recipe", "recipe_name", "recipeName")
 	if recipeName == "" {
 		return nil, errors.New("recipe is required for action=recipe")
 	}
 
 	params := make(map[string]string)
-	if p, ok := args["params"].(map[string]interface{}); ok {
-		for k, v := range p {
-			params[k] = fmt.Sprintf("%v", v)
+	if raw, ok := compatArgValue(args, "params"); ok {
+		switch p := raw.(type) {
+		case map[string]interface{}:
+			for k, v := range p {
+				params[k] = fmt.Sprintf("%v", v)
+			}
+		case map[string]string:
+			for k, v := range p {
+				params[k] = v
+			}
 		}
 	}
 

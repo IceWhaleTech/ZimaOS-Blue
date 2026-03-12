@@ -18,7 +18,9 @@ const (
 	maxFSToolBytes         = 2 << 20 // 2 MiB
 	maxFSToolEntries       = 5000
 	maxFSSearchResults     = 200
-	defaultFSToolListDepth = 6
+	defaultFSToolFindDepth = 6
+	defaultFSToolLsDepth   = 1
+	defaultFSToolLsEntries = 200
 )
 
 var errFSToolWalkDone = errors.New("fs_tool_walk_done")
@@ -52,6 +54,128 @@ func newFSToolScope(allowedPaths []string) *fsToolScope {
 		roots = append(roots, ".")
 	}
 	return &fsToolScope{roots: roots}
+}
+
+func (s *fsToolScope) rootsWithContext(ctx context.Context) []string {
+	if s == nil {
+		return nil
+	}
+	roots := make([]string, 0, len(s.roots))
+	seen := make(map[string]struct{}, len(s.roots))
+	for _, r := range s.roots {
+		clean := filepath.Clean(r)
+		if clean == "" {
+			continue
+		}
+		if _, ok := seen[clean]; ok {
+			continue
+		}
+		seen[clean] = struct{}{}
+		roots = append(roots, clean)
+	}
+
+	extraRoots, _ := GetFSScope(ctx)
+	for _, r := range extraRoots {
+		clean := filepath.Clean(strings.TrimSpace(r))
+		if clean == "" {
+			continue
+		}
+		if _, ok := seen[clean]; ok {
+			continue
+		}
+		seen[clean] = struct{}{}
+		roots = append(roots, clean)
+	}
+	return roots
+}
+
+func (s *fsToolScope) aliasesWithContext(ctx context.Context) map[string]string {
+	_, aliases := GetFSScope(ctx)
+	if len(aliases) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(aliases))
+	for rawAlias, rawPath := range aliases {
+		alias := normalizeFSAliasKey(rawAlias)
+		if alias == "" {
+			continue
+		}
+		path := filepath.Clean(strings.TrimSpace(rawPath))
+		if path == "" {
+			continue
+		}
+		out[alias] = path
+	}
+	return out
+}
+
+func (s *fsToolScope) resolvePathWithContext(ctx context.Context, raw string, allowDot bool) (absPath string, relPath string, root string, err error) {
+	if s == nil {
+		return "", "", "", errors.New("workspace root is not configured")
+	}
+	roots := s.rootsWithContext(ctx)
+	scope := &fsToolScope{roots: roots}
+	candidate := strings.TrimSpace(raw)
+	if aliases := s.aliasesWithContext(ctx); len(aliases) > 0 {
+		if resolved, ok := resolveFSAliasPath(candidate, aliases); ok {
+			candidate = resolved
+		}
+	}
+	return scope.resolvePath(candidate, allowDot)
+}
+
+func resolveFSAliasPath(raw string, aliases map[string]string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || len(aliases) == 0 {
+		return "", false
+	}
+
+	// @alias/path
+	if strings.HasPrefix(trimmed, "@") {
+		aliasRef := strings.TrimPrefix(trimmed, "@")
+		alias, rest := splitFSAliasRef(aliasRef)
+		root, ok := aliases[normalizeFSAliasKey(alias)]
+		if !ok {
+			return "", false
+		}
+		return joinFSAliasRoot(root, rest), true
+	}
+
+	// alias:path (explicit alias syntax)
+	if idx := strings.IndexByte(trimmed, ':'); idx > 0 {
+		alias := normalizeFSAliasKey(trimmed[:idx])
+		if alias == "" {
+			return "", false
+		}
+		root, ok := aliases[alias]
+		if !ok {
+			return "", false
+		}
+		rest := trimmed[idx+1:]
+		return joinFSAliasRoot(root, rest), true
+	}
+
+	return "", false
+}
+
+func splitFSAliasRef(ref string) (alias string, rest string) {
+	for i, r := range ref {
+		if r == '/' || r == '\\' {
+			return ref[:i], ref[i+1:]
+		}
+	}
+	return ref, ""
+}
+
+func joinFSAliasRoot(root string, rest string) string {
+	cleanRoot := filepath.Clean(root)
+	trimmedRest := strings.TrimLeft(rest, "/\\")
+	if trimmedRest == "" {
+		return cleanRoot
+	}
+	normalizedRest := strings.ReplaceAll(trimmedRest, "\\", "/")
+	joined := filepath.Join(cleanRoot, filepath.FromSlash(normalizedRest))
+	return filepath.Clean(joined)
 }
 
 func (s *fsToolScope) resolvePath(raw string, allowDot bool) (absPath string, relPath string, root string, err error) {
@@ -135,8 +259,43 @@ func fsPathWithinRoot(root, target string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
+func fsCompatKeys(key string) []string {
+	switch key {
+	case "path":
+		return []string{"path", "file_path", "filePath"}
+	case "content":
+		return []string{"content", "text", "body", "value"}
+	case "old_text":
+		return []string{"old_text", "oldText"}
+	case "new_text":
+		return []string{"new_text", "newText"}
+	case "replace_all":
+		return []string{"replace_all", "replaceAll"}
+	case "start_line":
+		return []string{"start_line", "startLine"}
+	case "end_line":
+		return []string{"end_line", "endLine"}
+	case "max_bytes":
+		return []string{"max_bytes", "maxBytes"}
+	case "create_dirs":
+		return []string{"create_dirs", "createDirs"}
+	case "max_depth":
+		return []string{"max_depth", "maxDepth"}
+	case "max_results":
+		return []string{"max_results", "maxResults"}
+	case "max_entries":
+		return []string{"max_entries", "maxEntries"}
+	case "case_sensitive":
+		return []string{"case_sensitive", "caseSensitive"}
+	case "include_hidden":
+		return []string{"include_hidden", "includeHidden"}
+	default:
+		return []string{key}
+	}
+}
+
 func fsAsString(args map[string]interface{}, key string) (string, error) {
-	v, ok := args[key]
+	v, ok := firstCompatValueDeep(args, fsCompatKeys(key)...)
 	if !ok {
 		return "", fmt.Errorf("%s is required", key)
 	}
@@ -147,8 +306,23 @@ func fsAsString(args map[string]interface{}, key string) (string, error) {
 	return s, nil
 }
 
+func fsOptionalString(args map[string]interface{}, def, errKey string, keys ...string) (string, error) {
+	v, ok := firstCompatValueDeep(args, keys...)
+	if !ok {
+		return def, nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("%s must be a string", errKey)
+	}
+	if strings.TrimSpace(s) == "" {
+		return def, nil
+	}
+	return s, nil
+}
+
 func fsAsTextContent(args map[string]interface{}, key string) (string, error) {
-	v, ok := args[key]
+	v, ok := firstCompatValueDeep(args, fsCompatKeys(key)...)
 	if !ok {
 		return "", fmt.Errorf("%s is required", key)
 	}
@@ -205,7 +379,7 @@ func fsCoerceTextContent(v interface{}) (string, error) {
 }
 
 func fsAsInt(args map[string]interface{}, key string, def int) (int, error) {
-	v, ok := args[key]
+	v, ok := firstCompatValueDeep(args, fsCompatKeys(key)...)
 	if !ok {
 		return def, nil
 	}
@@ -232,7 +406,7 @@ func fsAsInt(args map[string]interface{}, key string, def int) (int, error) {
 }
 
 func fsAsBool(args map[string]interface{}, key string, def bool) (bool, error) {
-	v, ok := args[key]
+	v, ok := firstCompatValueDeep(args, fsCompatKeys(key)...)
 	if !ok {
 		return def, nil
 	}
@@ -319,7 +493,6 @@ func (t *EditTool) Definition() ToolDefinition {
 }
 
 func (t *EditTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	_ = ctx
 	path, err := fsAsString(args, "path")
 	if err != nil || strings.TrimSpace(path) == "" {
 		return nil, errors.New("path must be a non-empty string")
@@ -337,7 +510,7 @@ func (t *EditTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return nil, err
 	}
 
-	absPath, relPath, _, err := t.Scope.resolvePath(path, false)
+	absPath, relPath, _, err := t.Scope.resolvePathWithContext(ctx, path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -440,20 +613,13 @@ func (t *GrepTool) Definition() ToolDefinition {
 }
 
 func (t *GrepTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	_ = ctx
 	pattern, err := fsAsString(args, "pattern")
 	if err != nil || strings.TrimSpace(pattern) == "" {
 		return nil, errors.New("pattern must be a non-empty string")
 	}
-	searchPath := "."
-	if v, ok := args["path"]; ok {
-		s, ok := v.(string)
-		if !ok {
-			return nil, errors.New("path must be a string")
-		}
-		if strings.TrimSpace(s) != "" {
-			searchPath = s
-		}
+	searchPath, err := fsOptionalString(args, ".", "path", "path", "file_path", "filePath")
+	if err != nil {
+		return nil, err
 	}
 	maxResults, err := fsAsInt(args, "max_results", 50)
 	if err != nil {
@@ -478,7 +644,7 @@ func (t *GrepTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return nil, fmt.Errorf("invalid regex pattern: %w", err)
 	}
 
-	baseAbs, baseRel, _, err := t.Scope.resolvePath(searchPath, true)
+	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, searchPath, true)
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +676,7 @@ func (t *GrepTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
 			return
 		}
-		_, relPath, _, relErr := t.Scope.resolvePath(path, false)
+		_, relPath, _, relErr := t.Scope.resolvePathWithContext(ctx, path, false)
 		if relErr != nil {
 			return
 		}
@@ -616,28 +782,15 @@ func (t *FindTool) Definition() ToolDefinition {
 }
 
 func (t *FindTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	_ = ctx
-	pattern := "*"
-	if v, ok := args["pattern"]; ok {
-		s, ok := v.(string)
-		if !ok {
-			return nil, errors.New("pattern must be a string")
-		}
-		if strings.TrimSpace(s) != "" {
-			pattern = s
-		}
+	pattern, err := fsOptionalString(args, "*", "pattern", "pattern", "glob")
+	if err != nil {
+		return nil, err
 	}
-	basePath := "."
-	if v, ok := args["path"]; ok {
-		s, ok := v.(string)
-		if !ok {
-			return nil, errors.New("path must be a string")
-		}
-		if strings.TrimSpace(s) != "" {
-			basePath = s
-		}
+	basePath, err := fsOptionalString(args, ".", "path", "path", "file_path", "filePath")
+	if err != nil {
+		return nil, err
 	}
-	maxDepth, err := fsAsInt(args, "max_depth", defaultFSToolListDepth)
+	maxDepth, err := fsAsInt(args, "max_depth", defaultFSToolFindDepth)
 	if err != nil {
 		return nil, err
 	}
@@ -646,24 +799,22 @@ func (t *FindTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	if err != nil {
 		return nil, err
 	}
+	typeValue, err := fsOptionalString(args, "all", "type", "type", "file_type", "fileType")
+	if err != nil {
+		return nil, err
+	}
 	typeFilter := "all"
-	if v, ok := args["type"]; ok {
-		s, ok := v.(string)
-		if !ok {
-			return nil, errors.New("type must be a string")
+	n := strings.ToLower(strings.TrimSpace(typeValue))
+	switch n {
+	case "", "all", "file", "dir":
+		if n != "" {
+			typeFilter = n
 		}
-		n := strings.ToLower(strings.TrimSpace(s))
-		switch n {
-		case "", "all", "file", "dir":
-			if n != "" {
-				typeFilter = n
-			}
-		default:
-			return nil, errors.New("type must be one of: all, file, dir")
-		}
+	default:
+		return nil, errors.New("type must be one of: all, file, dir")
 	}
 
-	baseAbs, baseRel, _, err := t.Scope.resolvePath(basePath, true)
+	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, basePath, true)
 	if err != nil {
 		return nil, err
 	}
@@ -787,11 +938,15 @@ func (t *LsTool) Definition() ToolDefinition {
 				},
 				"max_depth": map[string]interface{}{
 					"type":        "integer",
-					"description": "Max recursion depth (default 6, cap 20)",
+					"description": "Max recursion depth (default 1, cap 20)",
 				},
 				"include_hidden": map[string]interface{}{
 					"type":        "boolean",
 					"description": "Include hidden files and directories (default false)",
+				},
+				"max_entries": map[string]interface{}{
+					"type":        "integer",
+					"description": "Maximum entries returned (default 200, cap 5000)",
 				},
 			},
 		},
@@ -799,18 +954,11 @@ func (t *LsTool) Definition() ToolDefinition {
 }
 
 func (t *LsTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	_ = ctx
-	listPath := "."
-	if v, ok := args["path"]; ok {
-		s, ok := v.(string)
-		if !ok {
-			return nil, errors.New("path must be a string")
-		}
-		if strings.TrimSpace(s) != "" {
-			listPath = s
-		}
+	listPath, err := fsOptionalString(args, ".", "path", "path", "file_path", "filePath")
+	if err != nil {
+		return nil, err
 	}
-	maxDepth, err := fsAsInt(args, "max_depth", defaultFSToolListDepth)
+	maxDepth, err := fsAsInt(args, "max_depth", defaultFSToolLsDepth)
 	if err != nil {
 		return nil, err
 	}
@@ -819,8 +967,13 @@ func (t *LsTool) Execute(ctx context.Context, args map[string]interface{}) (inte
 	if err != nil {
 		return nil, err
 	}
+	maxEntries, err := fsAsInt(args, "max_entries", defaultFSToolLsEntries)
+	if err != nil {
+		return nil, err
+	}
+	maxEntries = fsClamp(maxEntries, 1, maxFSToolEntries)
 
-	baseAbs, baseRel, _, err := t.Scope.resolvePath(listPath, true)
+	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, listPath, true)
 	if err != nil {
 		return nil, err
 	}
@@ -872,7 +1025,7 @@ func (t *LsTool) Execute(ctx context.Context, args map[string]interface{}) (inte
 			item.Size = fi.Size()
 		}
 		entries = append(entries, item)
-		if len(entries) >= maxFSToolEntries {
+		if len(entries) >= maxEntries {
 			truncated = true
 			return errFSToolWalkDone
 		}
@@ -888,6 +1041,7 @@ func (t *LsTool) Execute(ctx context.Context, args map[string]interface{}) (inte
 		"count":          len(entries),
 		"truncated":      truncated,
 		"max_depth":      maxDepth,
+		"max_entries":    maxEntries,
 		"include_hidden": includeHidden,
 	})
 	if err != nil {

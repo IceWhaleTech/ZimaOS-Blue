@@ -71,7 +71,7 @@ export default {
     signInFailed: 'Accesso fallito',
     completingSignIn: 'Completamento accesso...',
     verifyingCredentials: 'Attendere mentre verifichiamo le credenziali',
-    redirecting: 'Reindirizzamento all\'applicazione...',
+    redirecting: "Reindirizzamento all'applicazione...",
     backToLogin: 'Torna al login',
     username: 'Nome utente',
     password: 'Password',
@@ -81,17 +81,38 @@ export default {
     forgotPassword: 'Password dimenticata?',
     orContinueWith: 'Oppure continua con',
     signInWith: 'Accedi con {provider}',
-    invalidCredentials: "Nome utente o password non validi",
+    invalidCredentials: 'Nome utente o password non validi',
     accountLocked: "L'account è bloccato",
     accountDisabled: "L'account è disabilitato",
-    authServiceUnavailable: "Servizio di autenticazione temporaneamente non disponibile",
-    loginFailed: "Accesso fallito",
-    currentPasswordIncorrect: "La password attuale non è corretta",
-    newPasswordRequirements: "La nuova password non soddisfa i requisiti",
-    changePasswordFailed: "Impossibile cambiare la password",
+    authServiceUnavailable: 'Servizio di autenticazione temporaneamente non disponibile',
+    loginFailed: 'Accesso fallito',
+    currentPasswordIncorrect: 'La password attuale non è corretta',
+    newPasswordRequirements: 'La nuova password non soddisfa i requisiti',
+    changePasswordFailed: 'Impossibile cambiare la password',
   },
   nav: {
     ...enUS.nav,
+    workspaceCoreTab: 'Workspace Core Files',
+    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTitle: 'Workspace Directory Tree',
+    workspaceGeneratedDescription:
+      'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
+    workspaceGeneratedLoadFailed: 'Failed to scan generated file sources',
+    workspaceUnknownConversation: 'Conversation',
+    workspaceJumpToConversation: 'Go to conversation',
+    workspaceTreeLoadFailed: 'Failed to load workspace directory tree',
+    workspaceTreeLoading: 'Loading workspace tree and conversation links...',
+    workspaceTreeEmpty: 'No files found in workspace tree.',
+    workspaceTreeFilteredEmpty: 'No conversation-linked files in the current filtered tree view.',
+    workspaceTreeDirCount: 'Dirs',
+    workspaceTreeFileCount: 'Files',
+    workspaceTreeLinkedCount: 'Linked',
+    workspaceTreeShowAll: 'Show all files',
+    workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeExpandDir: 'Expand folder',
+    workspaceTreeCollapseDir: 'Collapse folder',
+    workspaceTreeOpenFailed: 'Unable to open workspace file',
+    workspaceTreeRevealFailed: 'Unable to open file location',
     chat: 'Chat',
     dashboard: 'Dashboard',
     settings: 'Impostazioni',
@@ -146,7 +167,8 @@ export default {
     unknownError: 'Si è verificato un errore sconosciuto',
     pleaseRetry: 'Riprova',
     contactSupport: 'Se il problema persiste, contatta il supporto',
-    connectionFailedDesc: 'Impossibile connettersi al server. Verifica che il servizio sia in esecuzione e riprova.',
+    connectionFailedDesc:
+      'Impossibile connettersi al server. Verifica che il servizio sia in esecuzione e riprova.',
     serverErrorDesc: 'Il server ha riscontrato un errore. Riprova più tardi.',
     retrying: 'Riprovo...',
   },
@@ -155,6 +177,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    execDirectoryApprovalTimeout: 'L\'esecuzione del comando è stata bloccata perché l\'approvazione della directory è scaduta. Approva la directory e riprova.',
     streamProgress: {
       requestAccepted: 'Richiesta ricevuta, preparo la risposta...',
       generating: 'Generazione della risposta...',
@@ -172,7 +195,7 @@ export default {
     thinking: 'Pensando...',
     regenerate: 'Rigenera',
     stopGenerating: 'Ferma generazione',
-    imageGenStopped: 'La generazione dell\'immagine è stata interrotta.',
+    imageGenStopped: "La generazione dell'immagine è stata interrotta.",
     videoGenStopped: 'La generazione del video è stata interrotta.',
     agentTaskStopped: 'L\'attività "{goal}" è stata interrotta.',
     stillListening: 'Continua, ti ascolto...',
@@ -219,6 +242,21 @@ export default {
     deepResearchActionLoopStopped: 'Research loop stopped',
     deepResearchActionSynthesizing: 'Synthesizing report',
     deepResearchActionCompleted: 'Completed',
+    deepResearchProcess: 'Processo di ricerca',
+    deepResearchLiveSources: 'Fonti in tempo reale',
+    deepResearchResearchBrief: 'Brief di ricerca',
+    deepResearchMustVerify: 'Da verificare',
+    deepResearchPlannedTasks: 'Attività pianificate',
+    deepResearchFollowUpQuery: 'Query di follow-up',
+    deepResearchRunningTasks: 'Attività di ricerca in corso',
+    deepResearchRunningElsewhere:
+      'Tieni traccia delle attività di deep research attive tra le conversazioni.',
+    deepResearchViewTask: 'Vedi attività',
+    deepResearchCancelTask: 'Annulla',
+    deepResearchTaskCompleted: 'Ricerca completata',
+    deepResearchTaskFailed: 'Ricerca non riuscita',
+    deepResearchTaskCancelled: 'Ricerca annullata',
+    deepResearchBackToTask: 'Vedi risultato',
     deepResearchCitations: 'Citazioni',
     deepResearchOpenQuestions: 'Domande aperte',
     deepResearchProgress: 'Ricerca approfondita in corso',
@@ -237,7 +275,7 @@ export default {
     loadingOlderMessages: 'Caricamento messaggi precedenti...',
     loadOlderMessages: 'Carica messaggi precedenti',
     startConversation: 'Inizia una conversazione',
-    startConversationDesc: 'Invia un messaggio per iniziare a chattare con l\'assistente IA.',
+    startConversationDesc: "Invia un messaggio per iniziare a chattare con l'assistente IA.",
     currentModel: 'Modello attuale',
     keyboardShortcuts: 'Scorciatoie da tastiera',
     newChatShortcut: 'Nuova chat',
@@ -246,7 +284,8 @@ export default {
     dismiss: 'Chiudi',
     attachFile: 'Allega file',
     moreActions: 'Altre azioni',
-    featureHintTapToEnable: "Sono state rilevate funzionalità opzionali. Tocca per selezionarle prima di inviare:",
+    featureHintTapToEnable:
+      'Sono state rilevate funzionalità opzionali. Tocca per selezionarle prima di inviare:',
     inputPlaceholder: 'Scrivi un messaggio... (Invio per inviare, Maiusc+Invio per nuova riga)',
     inputPlaceholderShort: 'Scrivi un messaggio...',
     newLine: 'per nuova riga',
@@ -273,8 +312,9 @@ export default {
     switchToVoice: 'Passa alla voce',
     voiceTranscribing: 'Trascrizione...',
     recording: 'Registrazione...',
-    voiceTranscriptionError: 'Impossibile trascrivere l\'audio',
-    voiceTranscriptionTimeout: 'Trascrizione scaduta. L\'audio potrebbe essere troppo lungo o il server è occupato, riprova.',
+    voiceTranscriptionError: "Impossibile trascrivere l'audio",
+    voiceTranscriptionTimeout:
+      "Trascrizione scaduta. L'audio potrebbe essere troppo lungo o il server è occupato, riprova.",
     transcription: {
       title: 'Trascrizione',
       placeholder: 'Il testo trascritto apparirà qui...',
@@ -312,7 +352,7 @@ export default {
       tapToStart: 'Tocca per iniziare a parlare',
       you: 'Tu',
       assistant: 'Assistente',
-      conversationDesc: 'Modalità conversazione continua - L\'IA risponde automaticamente',
+      conversationDesc: "Modalità conversazione continua - L'IA risponde automaticamente",
       connectionError: 'Errore di connessione al servizio vocale',
       transcriptionError: 'Errore nella trascrizione audio',
       mute: 'Disattiva audio',
@@ -327,18 +367,22 @@ export default {
     threatLevel: 'Livello di minaccia',
     dismissWarning: 'Ignora',
     trialExhausted: 'La quota di prova è esaurita. Configura il tuo provider AI per continuare.',
-    trialServiceBusy: 'Il servizio di prova è attualmente occupato a causa dell\'elevata domanda. Riprova tra un momento. Se il problema persiste, visita la nostra community per assistenza.',
+    trialServiceBusy:
+      "Il servizio di prova è attualmente occupato a causa dell'elevata domanda. Riprova tra un momento. Se il problema persiste, visita la nostra community per assistenza.",
     configureProvider: 'Configura provider',
     noProvider: {
       title: 'Nessun provider IA disponibile',
-      description: 'Devi configurare un provider IA per usare questa funzionalità. Vuoi configurarne uno ora?',
+      description:
+        'Devi configurare un provider IA per usare questa funzionalità. Vuoi configurarne uno ora?',
       configure: 'Configura ora',
     },
     // Modalità avanzata
     enhancedMode: 'Modalità avanzata',
-    enhancedModeDesc: 'Modalità avanzata: supporta abilità, chiamate di strumenti, operazioni sui file, esecuzione di codice e altro',
+    enhancedModeDesc:
+      'Modalità avanzata: supporta abilità, chiamate di strumenti, operazioni sui file, esecuzione di codice e altro',
     enableEnhancedMode: 'Attiva modalità avanzata',
-    enableEnhancedModeDesc: 'Attiva la modalità avanzata per abilità, chiamate di strumenti, operazioni sui file e altro',
+    enableEnhancedModeDesc:
+      'Attiva la modalità avanzata per abilità, chiamate di strumenti, operazioni sui file e altro',
     showToolDetails: 'Mostra dettagli del lavoro',
     hideToolDetails: 'Nascondi dettagli del lavoro',
     toolDetailExpand: 'Espandi output',
@@ -364,10 +408,12 @@ export default {
     allProvidersFailed: 'Tutti i provider sono falliti. Clicca per controllare le impostazioni.',
     noStreamData: 'Nessuna risposta ricevuta. Riprova.',
     streamEmpty: 'La connessione è stata chiusa prima di ricevere una risposta. Riprova.',
-    providerNoResponse: 'Il provider non ha restituito una risposta. Di solito è un problema temporaneo — riprova.',
+    providerNoResponse:
+      'Il provider non ha restituito una risposta. Di solito è un problema temporaneo — riprova.',
     providerReturnedEmpty: 'Il provider ha restituito una risposta vuota. Riprova.',
     noResponseBody: 'Nessun contenuto di risposta ricevuto. Controlla la tua connessione di rete.',
-    providerOpenRouterPrivacyPolicy: 'OpenRouter ha bloccato questa richiesta a causa delle impostazioni sulla privacy. Vai su https://openrouter.ai/settings/privacy, attiva "Free model publication" e riprova.',
+    providerOpenRouterPrivacyPolicy:
+      'OpenRouter ha bloccato questa richiesta a causa delle impostazioni sulla privacy. Vai su https://openrouter.ai/settings/privacy, attiva "Free model publication" e riprova.',
     providerActive: 'Il provider è attivo e pronto.',
     providerPending: 'Stato del provider in verifica...',
     // Trial quota
@@ -446,7 +492,7 @@ export default {
   home: {
     ...enUS.home,
     welcome: 'Benvenuto in ZimaOS Blue',
-    description: 'Il tuo assistente IA intelligente per il controllo e l\'automazione della smart home',
+    description: 'Un runtime stabile, affidabile e neutrale per i tuoi assistenti IA e le automazioni',
     loadingStatus: 'Caricamento stato del sistema...',
     status: 'Stato',
     version: 'Versione',
@@ -457,26 +503,32 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    llmApiKeyRequired: 'Configura una chiave API prima di aprire la pagina dei provider LLM.',
     agentReflection: {
       ...enUS.settings.agentReflection,
       title: 'Riflessione automatica',
-      description: 'Dopo il completamento o il fallimento di {agentMode}, estrae una breve riflessione e salva in memoria lezioni riutilizzabili.',
-      hint: 'Le attività annullate o interrotte vengono saltate. Gli errori di riflessione non cambiano lo stato finale dell\'attività.',
+      description:
+        'Dopo il completamento o il fallimento di {agentMode}, estrae una breve riflessione e salva in memoria lezioni riutilizzabili.',
+      hint: "Le attività annullate o interrotte vengono saltate. Gli errori di riflessione non cambiano lo stato finale dell'attività.",
       saved: 'Riflessione automatica salvata',
-      saveFailed: 'Impossibile salvare l\'impostazione della riflessione automatica',
+      saveFailed: "Impossibile salvare l'impostazione della riflessione automatica",
     },
     smallModel: {
       ...enUS.settings.smallModel,
       title: 'Accelerazione leggera',
-      description: 'Usa prima il modello leggero per le attivita semplici, con fallback automatico quando non disponibile.',
+      description:
+        'Usa prima il modello leggero per le attivita semplici, con fallback automatico quando non disponibile.',
       ready: 'Disponibile',
       downloading: 'Download in corso',
       notReady: 'Non scaricato',
       enabled: 'Abilita accelerazione leggera',
-      enabledHint: 'Quando abilitato, le attivita adatte vengono gestite prima dal modello leggero.',
+      enabledHint:
+        'Quando abilitato, le attivita adatte vengono gestite prima dal modello leggero.',
       userGuideTitle: 'Cosa fa',
-      userGuideItem1: 'Dai priorita a domande brevi e ad alcune decisioni sugli strumenti per risposte piu rapide.',
-      userGuideItem2: 'Torna automaticamente al modello principale quando il modello leggero non e disponibile.',
+      userGuideItem1:
+        'Dai priorita a domande brevi e ad alcune decisioni sugli strumenti per risposte piu rapide.',
+      userGuideItem2:
+        'Torna automaticamente al modello principale quando il modello leggero non e disponibile.',
       userGuideItem3: 'Scarica il modello prima del primo utilizzo.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
@@ -489,11 +541,14 @@ export default {
       collapse: 'Comprimi',
       mediaIntent: 'Riconoscimento scenario di generazione media',
       irOfflineFallbackTitle: 'Offline Local Fallback',
-      irOfflineFallbackDesc: 'When model fallback is needed, answer from local context recall first.',
+      irOfflineFallbackDesc:
+        'When model fallback is needed, answer from local context recall first.',
       irFeatureHintTitle: 'Feature Hint Detection',
-      irFeatureHintDesc: 'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
+      irFeatureHintDesc:
+        'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
       statsTitle: 'Statistiche di esecuzione (risoluzione problemi)',
-      statsHint: 'Principalmente per diagnostica e tuning; puo essere ignorato nell\'uso quotidiano.',
+      statsHint:
+        "Principalmente per diagnostica e tuning; puo essere ignorato nell'uso quotidiano.",
       irTakeovers: 'Subentri di strategia',
       shadowGateMinSamples: 'Campioni minimi Shadow Gate',
       shadowGateThreshold: 'Soglia Shadow Gate',
@@ -526,13 +581,16 @@ export default {
         name: 'ZimaOS BlueProva',
         description: 'Prova gratuita con quota limitata',
         quotaExhausted: 'Quota di prova esaurita',
-        quotaExhaustedTokens: 'La tua quota di token di prova è esaurita. Configura il tuo provider per continuare.',
-        quotaExhaustedConversations: 'Hai raggiunto il limite di conversazioni di prova. Configura il tuo provider per continuare.',
+        quotaExhaustedTokens:
+          'La tua quota di token di prova è esaurita. Configura il tuo provider per continuare.',
+        quotaExhaustedConversations:
+          'Hai raggiunto il limite di conversazioni di prova. Configura il tuo provider per continuare.',
         tokensUsed: '{used} / {total} token utilizzati',
         conversationsUsed: '{used} / {total} conversazioni utilizzate',
         configureProvider: 'Configura provider',
         trialEnded: 'Prova terminata',
-        trialEndedDesc: 'La tua prova gratuita è terminata. Aggiungi la tua chiave API per continuare a usareBlue.',
+        trialEndedDesc:
+          'La tua prova gratuita è terminata. Aggiungi la tua chiave API per continuare a usareBlue.',
       },
     },
     providerConfiguration: 'Configurazione provider',
@@ -550,7 +608,7 @@ export default {
     baseUrl: 'URL base',
     baseUrlPlaceholder: 'https://api.example.com/v1',
     ollamaBaseUrlPlaceholder: 'http://localhost:11434',
-    ollamaBaseUrlHint: 'L\'URL dove è in esecuzione la tua istanza Ollama',
+    ollamaBaseUrlHint: "L'URL dove è in esecuzione la tua istanza Ollama",
     customBaseUrlHint: 'URL endpoint personalizzato (per provider compatibili OpenAI)',
     baseUrlSaved: 'URL base salvata',
     ollamaUrlSaved: 'URL Ollama salvata',
@@ -641,7 +699,7 @@ export default {
     configurePlugin: 'Configura {name}',
     saveConfiguration: 'Salva configurazione',
     noConfigOptions: 'Questo plugin non ha opzioni configurabili.',
-    selectOption: 'Seleziona un\'opzione',
+    selectOption: "Seleziona un'opzione",
     addItem: 'Aggiungi elemento',
     pluginLogs: 'Log {name}',
     allLevels: 'Tutti i livelli',
@@ -686,17 +744,19 @@ export default {
     accountUnlinkedSuccessfully: 'Account scollegato con successo',
     confirmUnlinkAccount: 'Sei sicuro di voler scollegare questo account?',
     failedToStartLinking: 'Impossibile avviare il collegamento',
-    failedToUnlinkAccount: 'Impossibile scollegare l\'account',
+    failedToUnlinkAccount: "Impossibile scollegare l'account",
     apiKeys: 'Chiavi API',
     createApiKey: 'Crea chiave API',
     create: 'Crea',
-    noApiKeysCreated: 'Nessuna chiave API creata ancora. Creane una per accedere all\'API programmaticamente.',
+    noApiKeysCreated:
+      "Nessuna chiave API creata ancora. Creane una per accedere all'API programmaticamente.",
     created: 'Creato',
     expires: 'Scade',
     neverExpires: 'Non scade mai',
     lastUsed: 'Ultimo utilizzo',
     deleteApiKey: 'Elimina chiave API',
-    confirmDeleteApiKey: 'Sei sicuro di voler eliminare questa chiave API? Questa azione non può essere annullata.',
+    confirmDeleteApiKey:
+      'Sei sicuro di voler eliminare questa chiave API? Questa azione non può essere annullata.',
     apiKeyCreated: 'Chiave API creata',
     copyApiKeyWarning: 'Assicurati di copiare la tua chiave API ora. Non potrai più vederla!',
     done: 'Fatto',
@@ -730,16 +790,19 @@ export default {
   billing: {
     ...enUS.billing,
     title: 'Fatturazione',
-    description: 'Consulta costi di utilizzo e consumo token per intervallo temporale, provider e modello.',
+    description:
+      'Consulta costi di utilizzo e consumo token per intervallo temporale, provider e modello.',
     apply: 'Applica',
     reset: 'Reimposta',
     exportCSV: 'Esporta CSV',
-    featureDisabled: 'La fatturazione non e attualmente disponibile perche il monitoraggio dell\'uso del provider non e inizializzato.',
+    featureDisabled:
+      "La fatturazione non e attualmente disponibile perche il monitoraggio dell'uso del provider non e inizializzato.",
     noData: 'Nessun record di fatturazione trovato per i filtri correnti',
     loadFailed: 'Impossibile caricare i dati di fatturazione',
     anomalyTitle: 'Avvisi picchi di utilizzo',
-    anomalyHint: 'Rileva i giorni in cui l\'uso dei token e significativamente sopra la baseline recente di 7 giorni.',
-    anomalyNone: 'Nessun picco di utilizzo significativo rilevato nell\'intervallo corrente',
+    anomalyHint:
+      "Rileva i giorni in cui l'uso dei token e significativamente sopra la baseline recente di 7 giorni.",
+    anomalyNone: "Nessun picco di utilizzo significativo rilevato nell'intervallo corrente",
     breakdownTitle: 'Riepilogo per gruppo',
     linesTitle: 'Record dettagliati',
     drilldownTitle: 'Dettaglio origine del picco',
@@ -813,7 +876,8 @@ export default {
     restore: 'Ripristina',
     restoring: 'Ripristino...',
     delete: 'Elimina',
-    restoreConfirm: 'Sei sicuro di voler ripristinare questo backup? I dati attuali saranno sovrascritti.',
+    restoreConfirm:
+      'Sei sicuro di voler ripristinare questo backup? I dati attuali saranno sovrascritti.',
     deleteConfirm: 'Sei sicuro di voler eliminare questo backup?',
     backupRestored: 'Backup ripristinato con successo. Il servizio potrebbe riavviarsi.',
     backupRestoreFailed: 'Ripristino backup fallito',
@@ -825,8 +889,8 @@ export default {
   },
   service: {
     title: 'Gestione servizi',
-    autoStart: 'Avvia all\'avvio',
-    autoStartDescription: 'Avvia automaticamente il servizio all\'avvio del sistema',
+    autoStart: "Avvia all'avvio",
+    autoStartDescription: "Avvia automaticamente il servizio all'avvio del sistema",
     enableSuccess: 'Servizio abilitato con successo',
     disableSuccess: 'Servizio disabilitato con successo',
     installFailed: 'Impossibile installare il servizio',
@@ -862,7 +926,8 @@ export default {
     noRulesFound: 'Nessuna regola trovata',
     tryAdjustingFilters: 'Prova ad aggiustare i filtri',
     createFirstRule: 'Crea la tua prima regola di risposta automatica',
-    deleteConfirmation: 'Sei sicuro di voler eliminare la regola "{name}"? Questa azione non può essere annullata.',
+    deleteConfirmation:
+      'Sei sicuro di voler eliminare la regola "{name}"? Questa azione non può essere annullata.',
     deleting: 'Eliminazione...',
     ruleName: 'Nome regola',
     enterRuleName: 'Inserisci nome regola',
@@ -894,7 +959,8 @@ export default {
     channels: 'Integrazioni',
     matchedTimes: 'Corrisposto {count} volte',
     updated: 'Aggiornato {date}',
-    testDescription: 'Inserisci un messaggio qui sotto per testare le tue regole di risposta automatica.',
+    testDescription:
+      'Inserisci un messaggio qui sotto per testare le tue regole di risposta automatica.',
     testMessage: 'Messaggio di test',
     enterTestMessage: 'Inserisci un messaggio da testare...',
     channelOptional: 'Integrazione (opzionale)',
@@ -955,10 +1021,12 @@ export default {
     empty: {
       noMatchingTools: 'Nessuno strumento corrispondente trovato',
       noToolsInstalled: 'Nessuno strumento installato ancora',
-      noMatchingToolsStore: 'Nessuno strumento corrispondente trovato. Prova ad aggiornare il negozio',
+      noMatchingToolsStore:
+        'Nessuno strumento corrispondente trovato. Prova ad aggiornare il negozio',
       noMatchingPlugins: 'Nessun plugin corrispondente trovato',
       noPluginsInstalled: 'Nessun plugin installato ancora',
-      noMatchingPluginsStore: 'Nessun plugin corrispondente trovato. Prova ad aggiornare il negozio',
+      noMatchingPluginsStore:
+        'Nessun plugin corrispondente trovato. Prova ad aggiornare il negozio',
       loadingStore: 'Caricamento dati del negozio...',
       loadingLogs: 'Caricamento log...',
       noLogs: 'Nessun log disponibile',
@@ -995,7 +1063,8 @@ export default {
   taskCenter: {
     ...enUS.taskCenter,
     title: 'Centro attività',
-    subtitle: 'Gestisci attività di automazione, lavori programmati e controlli della casa intelligente',
+    subtitle:
+      'Gestisci attività di automazione, lavori programmati e controlli della casa intelligente',
     tabs: {
       smartHome: 'Casa intelligente',
       smartHomeDesc: 'Controlla dispositivi e automazioni Home Assistant',
@@ -1045,8 +1114,14 @@ export default {
     },
     templates: {
       webScraping: { name: 'Web scraping', description: 'Estrai dati da pagine web' },
-      formFilling: { name: 'Compilazione moduli', description: 'Compila automaticamente moduli web' },
-      pageMonitor: { name: 'Monitoraggio pagine', description: 'Monitora le modifiche alle pagine' },
+      formFilling: {
+        name: 'Compilazione moduli',
+        description: 'Compila automaticamente moduli web',
+      },
+      pageMonitor: {
+        name: 'Monitoraggio pagine',
+        description: 'Monitora le modifiche alle pagine',
+      },
       loginTest: { name: 'Test di accesso', description: 'Testa il flusso di accesso' },
     },
     categories: {
@@ -1128,10 +1203,12 @@ export default {
     },
     security: {
       allowedDomains: 'Domini consentiti',
-      allowedDomainsHint: 'Solo questi domini possono essere accessibili. Lasciare vuoto per consentire tutti (eccetto bloccati).',
+      allowedDomainsHint:
+        'Solo questi domini possono essere accessibili. Lasciare vuoto per consentire tutti (eccetto bloccati).',
       allowedDomainsPlaceholder: 'example.com o *.example.com',
       add: 'Aggiungi',
-      noAllowedDomains: 'Nessun dominio consentito configurato. Tutti i domini sono consentiti (eccetto bloccati).',
+      noAllowedDomains:
+        'Nessun dominio consentito configurato. Tutti i domini sono consentiti (eccetto bloccati).',
       blockedDomains: 'Domini bloccati',
       blockedDomainsHint: 'Questi domini sono sempre bloccati, anche se nella lista consentita.',
       blockedDomainsPlaceholder: 'malicious-site.com',
@@ -1142,8 +1219,8 @@ export default {
       testUrlPlaceholder: 'https://example.com/page',
       test: 'Testa',
       testing: 'Testando...',
-      urlAllowed: 'L\'URL è consentito',
-      urlBlocked: 'L\'URL è bloccato',
+      urlAllowed: "L'URL è consentito",
+      urlBlocked: "L'URL è bloccato",
     },
     screenshot: {
       title: 'Screenshot',
@@ -1164,7 +1241,8 @@ export default {
     editWorkspace: 'Modifica area di lavoro',
     deleteWorkspace: 'Elimina area di lavoro',
     loadingWorkspaces: 'Caricamento aree di lavoro...',
-    noWorkspacesYet: 'Nessuna area di lavoro ancora. Crea la tua prima area di lavoro per iniziare!',
+    noWorkspacesYet:
+      'Nessuna area di lavoro ancora. Crea la tua prima area di lavoro per iniziare!',
     created: 'Creato',
     edit: 'Modifica',
     manage: 'Gestisci',
@@ -1181,7 +1259,8 @@ export default {
     create: 'Crea',
     saving: 'Salvataggio...',
     deleteConfirm: 'Sei sicuro di voler eliminare <strong>{name}</strong>?',
-    deleteWarning: 'Questa azione non può essere annullata. Tutti i dati verranno eliminati permanentemente.',
+    deleteWarning:
+      'Questa azione non può essere annullata. Tutti i dati verranno eliminati permanentemente.',
     deleting: 'Eliminazione...',
     back: 'Indietro',
     loading: 'Caricamento...',
@@ -1197,7 +1276,8 @@ export default {
       inviteMember: 'Invita membro',
       remove: 'Rimuovi',
       removing: 'Rimozione...',
-      removeConfirm: 'Sei sicuro di voler rimuovere <strong>{username}</strong> da questa area di lavoro?',
+      removeConfirm:
+        'Sei sicuro di voler rimuovere <strong>{username}</strong> da questa area di lavoro?',
       roles: {
         owner: 'Proprietario',
         admin: 'Amministratore',
@@ -1249,7 +1329,7 @@ export default {
     saveFailed: 'Impossibile salvare la configurazione',
     saving: 'Salvataggio...',
     testFailed: 'Test di connessione non riuscito',
-    toggleFailed: 'Impossibile attivare/disattivare l\'integrazione',
+    toggleFailed: "Impossibile attivare/disattivare l'integrazione",
     fillRequiredFields: 'Compila prima i campi obbligatori',
     viewDocs: 'Vedi documentazione',
     telegramDesc: 'Connetti tramite Telegram Bot API',
@@ -1265,7 +1345,8 @@ export default {
     teamsDesc: 'Connetti Microsoft Teams',
     googleChatDesc: 'Connetti Google Chat',
     feishuDesc: 'Connetti Feishu/Lark Bot',
-    feishuHint: 'Crea un\'app su Feishu Open Platform. Richiesto: 1) Abilita "Long Connection" per gli eventi; 2) Sottoscrivi l\'evento "im.message.receive_v1"; 3) Aggiungi il permesso "im:message:send_as_bot"',
+    feishuHint:
+      'Crea un\'app su Feishu Open Platform. Richiesto: 1) Abilita "Long Connection" per gli eventi; 2) Sottoscrivi l\'evento "im.message.receive_v1"; 3) Aggiungi il permesso "im:message:send_as_bot"',
     feishuOpenChat: 'Apri chat del bot',
     dingtalkDesc: 'Connetti DingTalk Bot',
     dingtalkHint: 'Crea un robot su DingTalk Developer Platform',
@@ -1283,9 +1364,9 @@ export default {
     nextcloudTalkHint: 'Usa un account Nextcloud e il token della stanza Talk',
     blueBubblesDesc: 'Connetti a iMessage tramite BlueBubbles',
     blueBubblesHint: 'Configura il server BlueBubbles su macOS e ottieni URL e password',
-    zaloDesc: 'Connetti all\'account ufficiale Zalo',
+    zaloDesc: "Connetti all'account ufficiale Zalo",
     zaloHint: 'Crea un account ufficiale in Zalo e configura le credenziali API',
-    teamsHint: 'Crea un bot in Azure Bot Service e configura le credenziali dell\'app',
+    teamsHint: "Crea un bot in Azure Bot Service e configura le credenziali dell'app",
     tenantId: 'ID tenant',
     serverUrl: 'URL server',
     username: 'Nome utente',
@@ -1305,7 +1386,7 @@ export default {
     robotCode: 'Codice robot',
     botToken: 'Token del bot',
     slackBotToken: 'Token del bot',
-    slackAppToken: 'Token dell\'app',
+    slackAppToken: "Token dell'app",
     phoneNumber: 'Numero di telefono',
     appId: 'ID app',
     appPassword: 'Password app',
@@ -1326,10 +1407,10 @@ export default {
     dingtalkBot: 'Bot DingTalk',
     wechatWorkBot: 'Bot WeChat Work',
     nextcloudTalk: 'Nextcloud Talk',
-    slackHint: 'Crea un\'app nell\'API Slack e ottieni il token del bot e dell\'app',
+    slackHint: "Crea un'app nell'API Slack e ottieni il token del bot e dell'app",
     whatsappHint: 'Usa WhatsApp Business API o Cloud API',
     signalHint: 'Usa signal-cli o il bridge Signal Bot',
-    googleChatHint: 'Crea un account di servizio e usa l\'API Chat',
+    googleChatHint: "Crea un account di servizio e usa l'API Chat",
     imessageHint: 'Usa mautrix-imessage su macOS',
     testConnection: 'Test connessione',
     testing: 'Test in corso...',
@@ -1388,10 +1469,12 @@ export default {
     firewall: {
       ...enUS.security.firewall,
       title: 'Firewall prompt',
-      description: 'Gestisci una lista di blocco per parole chiave per intercettare prompt rischiosi prima dell\'elaborazione.',
+      description:
+        "Gestisci una lista di blocco per parole chiave per intercettare prompt rischiosi prima dell'elaborazione.",
       ruleCount: '{count} regole parole chiave attive',
       builtinTitle: 'Regole di blocco predefinite',
-      builtinDescription: 'Le regole di intercettazione integrate sono abilitate per impostazione predefinita e possono essere regolate dinamicamente.',
+      builtinDescription:
+        'Le regole di intercettazione integrate sono abilitate per impostazione predefinita e possono essere regolate dinamicamente.',
       customTitle: 'Regole personalizzate per parole chiave',
       keywordPlaceholder: 'Inserisci parola chiave o frase bloccata',
       add: 'Aggiungi regola',
@@ -1402,9 +1485,10 @@ export default {
     },
     settings: {
       title: 'Conservazione dati di sicurezza',
-      description: 'Configura per quanto tempo conservare i dati di monitoraggio (sessioni, eventi, alert) prima della pulizia automatica',
+      description:
+        'Configura per quanto tempo conservare i dati di monitoraggio (sessioni, eventi, alert) prima della pulizia automatica',
       configure: 'Configura',
-      storageInfo: 'Informazioni sull\'archiviazione',
+      storageInfo: "Informazioni sull'archiviazione",
       sessions: 'Sessioni',
       events: 'Eventi',
       alerts: 'Alert',
@@ -1414,7 +1498,8 @@ export default {
       alertsRetention: 'Conservazione alert',
       days: 'giorni',
       cleanupNow: 'Pulisci ora',
-      cleanupConfirm: 'Verranno eliminati tutti i dati di monitoraggio più vecchi del periodo di conservazione. Continuare?',
+      cleanupConfirm:
+        'Verranno eliminati tutti i dati di monitoraggio più vecchi del periodo di conservazione. Continuare?',
       cleanupSuccess: 'Pulizia completata con successo',
     },
     scan: {
@@ -1434,7 +1519,8 @@ export default {
         },
       },
       title: 'Scansione di sicurezza',
-      description: 'Scansiona il sistema per vulnerabilità di sicurezza e problemi di configurazione',
+      description:
+        'Scansiona il sistema per vulnerabilità di sicurezza e problemi di configurazione',
       startScan: 'Avvia scansione',
       scanning: 'Scansione in corso...',
       checking: 'Controllo in corso...',
@@ -1445,7 +1531,7 @@ export default {
       failed: 'Fallito',
       error: 'Errore di scansione',
       errorDesc: 'Impossibile completare la scansione di sicurezza',
-      apiError: 'Impossibile connettersi all\'API di sicurezza',
+      apiError: "Impossibile connettersi all'API di sicurezza",
       checkPassed: 'Controllo superato',
       checkWarning: 'Richiede attenzione',
       checkFailed: 'Controllo fallito',
@@ -1459,43 +1545,60 @@ export default {
       applyFix: 'Applica correzione',
       detailMessages: {
         threat_detector_not_initialized: 'Il rilevatore di minacce non è inizializzato',
-        xss_detection_enabled: 'Il rilevamento di pattern XSS è abilitato nel rilevatore di minacce',
+        xss_detection_enabled:
+          'Il rilevamento di pattern XSS è abilitato nel rilevatore di minacce',
         sql_injection_enabled: 'Il rilevamento di pattern di iniezione SQL è abilitato',
         command_injection_enabled: 'Il rilevamento di pattern di iniezione di comandi è abilitato',
         prompt_injection_active: 'Il rilevamento di iniezione di prompt è attivo',
-        prompt_injection_disabled: 'La protezione contro l\'iniezione di prompt è disabilitata. Abilita PromptGuard per la sicurezza AI.',
-        ai_output_validation_enabled: 'La validazione dell\'output AI è abilitata',
-        ai_output_validation_disabled: 'La validazione dell\'output AI è disabilitata. Considera di abilitarla per operazioni AI più sicure.',
-        model_whitelist_no_models: 'La whitelist dei modelli è abilitata ma nessun modello è configurato',
-        model_whitelist_disabled: 'La whitelist dei modelli è disabilitata. Tutti i modelli sono accessibili. Considera di abilitarla per la produzione.',
+        prompt_injection_disabled:
+          "La protezione contro l'iniezione di prompt è disabilitata. Abilita PromptGuard per la sicurezza AI.",
+        ai_output_validation_enabled: "La validazione dell'output AI è abilitata",
+        ai_output_validation_disabled:
+          "La validazione dell'output AI è disabilitata. Considera di abilitarla per operazioni AI più sicure.",
+        model_whitelist_no_models:
+          'La whitelist dei modelli è abilitata ma nessun modello è configurato',
+        model_whitelist_disabled:
+          'La whitelist dei modelli è disabilitata. Tutti i modelli sono accessibili. Considera di abilitarla per la produzione.',
         sensitive_data_filtering_enabled: 'Il filtraggio dei dati sensibili è abilitato',
-        sensitive_data_filtering_disabled: 'Il filtraggio dei dati sensibili è disabilitato. I PII possono essere esposti ai modelli AI.',
-        rate_limiting_disabled: 'La limitazione della velocità è disabilitata. L\'API è vulnerabile ad abusi e attacchi DoS.',
-        cors_all_origins_production: 'CORS consente tutte le origini in produzione. Questo è un rischio di sicurezza.',
-        cors_all_origins_dev: 'CORS consente tutte le origini. Accettabile per lo sviluppo, ma limitare in produzione.',
+        sensitive_data_filtering_disabled:
+          'Il filtraggio dei dati sensibili è disabilitato. I PII possono essere esposti ai modelli AI.',
+        rate_limiting_disabled:
+          "La limitazione della velocità è disabilitata. L'API è vulnerabile ad abusi e attacchi DoS.",
+        cors_all_origins_production:
+          'CORS consente tutte le origini in produzione. Questo è un rischio di sicurezza.',
+        cors_all_origins_dev:
+          'CORS consente tutte le origini. Accettabile per lo sviluppo, ma limitare in produzione.',
         cors_no_external_origins: 'CORS è configurato per non consentire origini esterne',
         tls_12_min: 'TLS è abilitato con versione minima TLS 1.2',
-        tls_older_versions: 'TLS è abilitato ma consente versioni più vecchie. Si raccomanda TLS 1.2 come minimo.',
-        tls_disabled_production: 'TLS è disabilitato in produzione. Tutto il traffico non è crittografato.',
+        tls_older_versions:
+          'TLS è abilitato ma consente versioni più vecchie. Si raccomanda TLS 1.2 come minimo.',
+        tls_disabled_production:
+          'TLS è disabilitato in produzione. Tutto il traffico non è crittografato.',
         tls_disabled_enable: 'TLS è disabilitato. Abilitalo per il deployment in produzione.',
         server_localhost: 'Il server è accessibile su localhost',
         server_binding_unknown: 'Impossibile verificare il binding del server',
-        sandbox_enabled: 'L\'esecuzione sandbox è abilitata',
-        sandbox_disabled: 'Il sandbox è disabilitato. L\'esecuzione del codice non è isolata.',
+        sandbox_enabled: "L'esecuzione sandbox è abilitata",
+        sandbox_disabled: "Il sandbox è disabilitato. L'esecuzione del codice non è isolata.",
         no_memory_limit: 'Nessun limite di memoria configurato per il sandbox',
         no_timeout_configured: 'Nessun timeout di esecuzione configurato',
-        network_disabled_sandbox: 'L\'accesso alla rete è disabilitato nel sandbox',
-        network_enabled_sandbox: 'L\'accesso alla rete è abilitato nel sandbox. Considera di disabilitarlo per un migliore isolamento.',
+        network_disabled_sandbox: "L'accesso alla rete è disabilitato nel sandbox",
+        network_enabled_sandbox:
+          "L'accesso alla rete è abilitato nel sandbox. Considera di disabilitarlo per un migliore isolamento.",
         data_dir_restricted: 'La directory dei dati ha permessi limitati',
         data_dir_permissive: 'La directory dei dati può avere accessi troppo permissivi',
         data_dir_unknown: 'Impossibile verificare i permessi della directory dei dati',
-        debug_production: 'La modalità debug è abilitata in produzione. Questo espone informazioni sensibili.',
-        debug_enabled: 'La modalità debug è abilitata. Disabilitala prima del deployment in produzione.',
+        debug_production:
+          'La modalità debug è abilitata in produzione. Questo espone informazioni sensibili.',
+        debug_enabled:
+          'La modalità debug è abilitata. Disabilitala prima del deployment in produzione.',
         debug_disabled: 'La modalità debug è disabilitata',
-        error_exposed_production: 'I messaggi di errore dettagliati sono esposti in produzione. Questo può rivelare informazioni sensibili.',
-        error_exposed: 'I messaggi di errore dettagliati sono esposti. Disabilitali prima del deployment in produzione.',
-        error_hidden: 'I dettagli dell\'errore sono nascosti nelle risposte',
-        error_log_restrict: 'I dati di errore sensibili possono essere registrati. Assicurati che l\'accesso ai log sia limitato.',
+        error_exposed_production:
+          'I messaggi di errore dettagliati sono esposti in produzione. Questo può rivelare informazioni sensibili.',
+        error_exposed:
+          'I messaggi di errore dettagliati sono esposti. Disabilitali prima del deployment in produzione.',
+        error_hidden: "I dettagli dell'errore sono nascosti nelle risposte",
+        error_log_restrict:
+          "I dati di errore sensibili possono essere registrati. Assicurati che l'accesso ai log sia limitato.",
         error_filtered_logs: 'I dati di errore sensibili sono filtrati dai log',
         running_production: 'In esecuzione in modalità produzione',
         running_staging: 'In esecuzione in modalità staging',
@@ -1515,7 +1618,8 @@ export default {
         // Autenticazione
         auth_password_length: {
           name: 'Lunghezza minima password',
-          description: 'Verificare se la lunghezza minima della password soddisfa i requisiti di sicurezza',
+          description:
+            'Verificare se la lunghezza minima della password soddisfa i requisiti di sicurezza',
         },
         auth_password_complexity: {
           name: 'Complessità password',
@@ -1548,11 +1652,11 @@ export default {
         },
         input_sql_injection: {
           name: 'Protezione iniezione SQL',
-          description: 'Verificare se la protezione contro l\'iniezione SQL è abilitata',
+          description: "Verificare se la protezione contro l'iniezione SQL è abilitata",
         },
         input_command_injection: {
           name: 'Protezione iniezione comandi',
-          description: 'Verificare se la protezione contro l\'iniezione di comandi è abilitata',
+          description: "Verificare se la protezione contro l'iniezione di comandi è abilitata",
         },
         input_path_traversal: {
           name: 'Protezione path traversal',
@@ -1561,15 +1665,15 @@ export default {
         // Sicurezza AI
         ai_prompt_injection: {
           name: 'Protezione iniezione prompt',
-          description: 'Verificare se la protezione contro l\'iniezione di prompt è abilitata',
+          description: "Verificare se la protezione contro l'iniezione di prompt è abilitata",
         },
         ai_output_validation: {
           name: 'Validazione output AI',
-          description: 'Verificare se gli output AI sono convalidati prima dell\'esecuzione',
+          description: "Verificare se gli output AI sono convalidati prima dell'esecuzione",
         },
         ai_model_access: {
           name: 'Controllo accesso modello',
-          description: 'Verificare se l\'accesso al modello è controllato correttamente',
+          description: "Verificare se l'accesso al modello è controllato correttamente",
         },
         ai_data_filtering: {
           name: 'Filtraggio dati sensibili',
@@ -1595,7 +1699,7 @@ export default {
         // Sandbox
         sandbox_enabled: {
           name: 'Esecuzione sandbox',
-          description: 'Verificare se l\'esecuzione sandbox è abilitata',
+          description: "Verificare se l'esecuzione sandbox è abilitata",
         },
         sandbox_resource_limits: {
           name: 'Limiti risorse',
@@ -1612,7 +1716,7 @@ export default {
         // Protezione dati
         data_encryption_rest: {
           name: 'Crittografia dati a riposo',
-          description: 'Verificare se i dati sono crittografati durante l\'archiviazione',
+          description: "Verificare se i dati sono crittografati durante l'archiviazione",
         },
         data_backup_security: {
           name: 'Sicurezza backup',
@@ -1667,10 +1771,10 @@ export default {
     },
     // Direct keys used in template
     // Nested structure
-    'sessions': {
+    sessions: {
       title: 'Sessioni attive',
     },
-    'events': {
+    events: {
       title: 'Eventi di sicurezza',
     },
   },
@@ -1685,7 +1789,8 @@ export default {
     exportJSON: 'Esporta JSON',
     exportCSV: 'Esporta CSV',
     clearAll: 'Cancella tutte le statistiche',
-    clearConfirm: 'Vuoi davvero cancellare tutte le statistiche? Questa azione non può essere annullata.',
+    clearConfirm:
+      'Vuoi davvero cancellare tutte le statistiche? Questa azione non può essere annullata.',
     totalCalls: 'Chiamate totali',
     inputTokens: 'Token in ingresso',
     outputTokens: 'Token in uscita',
@@ -1716,7 +1821,12 @@ export default {
     confirmReset: 'Reimpostare tutte le metriche? Questa azione non può essere annullata.',
     resetSuccess: 'Metriche reimpostate',
     noData: 'Nessun dato disponibile',
-    tabs: { overview: 'Panoramica', models: 'Modelli', tokens: 'Token', performance: 'Prestazioni' },
+    tabs: {
+      overview: 'Panoramica',
+      models: 'Modelli',
+      tokens: 'Token',
+      performance: 'Prestazioni',
+    },
     totalCalls: 'Chiamate totali',
     successRate: 'Tasso di successo',
     tokenUsage: 'Uso token',
@@ -1727,7 +1837,8 @@ export default {
     // Avviso disabilitato
     installFirst: 'Si prega di installare prima Claude Code CLI',
     disabledWarningTitle: 'Claude Code CLI è disabilitato',
-    disabledWarningDesc: 'La modalità standard è attiva, la modalità avanzata offre un’esperienza migliore.',
+    disabledWarningDesc:
+      'La modalità standard è attiva, la modalità avanzata offre un’esperienza migliore.',
     missingSkills: 'Skills (generazione codice, refactoring, ecc.)',
     missingToolCalling: 'Capacità avanzate di Tool Calling',
     missingFileOps: 'Operazioni sui file (lettura, scrittura, modifica)',
@@ -1776,14 +1887,15 @@ export default {
       groq: 'Inferenza Groq LPU per tempi di risposta ultra-rapidi',
       mistral: 'Modelli Mistral AI con eccellente rapporto prestazioni/costo',
       xai: 'Modelli xAI Grok con conoscenza in tempo reale',
-      openrouter: 'Accesso a più modelli IA tramite un\'API unificata',
+      openrouter: "Accesso a più modelli IA tramite un'API unificata",
       'openrouter-free': 'Solo modelli OpenRouter del livello gratuito',
       ollama: 'Eseguire LLM open-source localmente sulla propria macchina',
       lmstudio: 'Inferenza LLM locale con interfaccia intuitiva',
       glm: 'Modelli Zhipu AI GLM-4 con supporto lingua cinese',
       siliconflow: 'SiliconFlow - Piattaforma cloud IA cinese con DeepSeek, Qwen e altri modelli',
       nvidia: 'NVIDIA NIM - Inferenza accelerata da GPU per modelli open-source e commerciali',
-      'zimaos-blue-trial': 'Prova gratuita con quota limitata - prova Blue prima di configurare il tuo provider',
+      'zimaos-blue-trial':
+        'Prova gratuita con quota limitata - prova Blue prima di configurare il tuo provider',
       moonshot: 'Moonshot AI (Kimi) - Modello linguistico cinese con supporto contesto lungo',
       azure: 'Azure OpenAI Service - Modelli OpenAI enterprise su Azure',
       aihubmix: 'AiHubMix - Aggregatore di modelli IA con più provider',
@@ -1798,7 +1910,8 @@ export default {
       'codex-oauth': 'OpenAI Codex CLI via OAuth - Modelli abbonamento ChatGPT',
       'dashscope-image': 'Alibaba DashScope - Modelli Qwen Image e Wanx testo-a-immagine',
       'gemini-image': 'Google Gemini - Generazione nativa di immagini con Imagen e modelli Gemini',
-      mulerouter: 'MuleRouter - Aggregatore unificato per DALL-E, Midjourney, Qwen Image, Wan2 video',
+      mulerouter:
+        'MuleRouter - Aggregatore unificato per DALL-E, Midjourney, Qwen Image, Wan2 video',
       'minimax-media': 'MiniMax - Generazione video Hailuo e sintesi vocale',
     },
     models: 'Modelli',
@@ -1860,7 +1973,6 @@ export default {
     local: 'Locale',
     ide: 'IDE',
     tabs: {
-
       all: 'Tutti',
       trial: 'Prova',
       builtin: 'Integrati',
@@ -1912,7 +2024,8 @@ export default {
     confirmRemovePricing: 'Rimuovere questo prezzo personalizzato?',
     pricingConfig: 'Configurazione prezzi',
     defaultPricing: 'Prezzi predefiniti',
-    defaultPricingReadOnly: 'Prezzi predefiniti dalle definizioni dei modelli. Sovrascrivibili con prezzi personalizzati.',
+    defaultPricingReadOnly:
+      'Prezzi predefiniti dalle definizioni dei modelli. Sovrascrivibili con prezzi personalizzati.',
     customPricing: 'Prezzi personalizzati',
     customPricingDescription: 'Sovrascrivi prezzi per modelli o provider specifici',
     capChat: 'Chat',
@@ -1959,7 +2072,8 @@ export default {
     detected: 'rilevato',
     configureModels: 'Configura',
     configureAllowedModels: 'Configura modelli consentiti',
-    allowedModelsHint: 'Seleziona quali modelli sono disponibili per questo provider. Se nessuno è selezionato, tutti i modelli dell\'API saranno disponibili.',
+    allowedModelsHint:
+      "Seleziona quali modelli sono disponibili per questo provider. Se nessuno è selezionato, tutti i modelli dell'API saranno disponibili.",
     filtered: 'filtrato',
     filteredModels: 'Solo modelli consentiti mostrati',
     selectAll: 'Seleziona tutto',
@@ -2000,14 +2114,18 @@ export default {
     configure: 'Configura',
     baseUrlNotConfigured: 'URL base non configurato — clicca su Configura per impostarlo',
     healthErrors: {
-      authError: 'Autenticazione fallita (HTTP {code}) — controlla la tua chiave API o la connessione OAuth',
-      baseUrlNotConfigured: 'URL base non configurato — configura l\'URL dell\'endpoint',
-      baseUrlNotConfiguredAzure: 'Endpoint Azure OpenAI non configurato — clicca su Configura sopra per impostare l\'URL dell\'endpoint',
-      baseUrlNotConfiguredBedrock: 'Endpoint AWS Bedrock non configurato — clicca su Configura sopra per impostare l\'URL dell\'endpoint',
-      networkError: 'Connessione di rete fallita — controlla l\'URL e la tua connessione',
-      certificateError: 'Errore certificato TLS — abilita "Ignora verifica TLS" o controlla il certificato',
+      authError:
+        'Autenticazione fallita (HTTP {code}) — controlla la tua chiave API o la connessione OAuth',
+      baseUrlNotConfigured: "URL base non configurato — configura l'URL dell'endpoint",
+      baseUrlNotConfiguredAzure:
+        "Endpoint Azure OpenAI non configurato — clicca su Configura sopra per impostare l'URL dell'endpoint",
+      baseUrlNotConfiguredBedrock:
+        "Endpoint AWS Bedrock non configurato — clicca su Configura sopra per impostare l'URL dell'endpoint",
+      networkError: "Connessione di rete fallita — controlla l'URL e la tua connessione",
+      certificateError:
+        'Errore certificato TLS — abilita "Ignora verifica TLS" o controlla il certificato',
       timeoutError: 'Connessione scaduta — il server potrebbe essere inattivo o irraggiungibile',
-      connectionError: 'Connessione fallita — verifica l\'URL del provider',
+      connectionError: "Connessione fallita — verifica l'URL del provider",
       endpointNotFound: 'Endpoint di verifica non trovato (HTTP 404)',
       unexpectedStatus: 'Risposta imprevista (HTTP {code})',
     },
@@ -2024,10 +2142,10 @@ export default {
       connectFailed: 'Connessione OAuth fallita',
       disconnected: 'OAuth disconnesso',
       disconnectFailed: 'Disconnessione OAuth fallita',
-      browserOpened: 'Browser aperto per l\'autenticazione',
+      browserOpened: "Browser aperto per l'autenticazione",
       project: 'Progetto',
       deviceFlow: 'Autorizzazione dispositivo GitHub',
-      deviceFlowInstructions: 'Inserisci il codice qui sotto su GitHub per autorizzare l\'accesso:',
+      deviceFlowInstructions: "Inserisci il codice qui sotto su GitHub per autorizzare l'accesso:",
       openGitHub: 'Apri GitHub',
       done: 'Ho autorizzato',
       loadingQuota: 'Caricamento info abbonamento...',
@@ -2039,8 +2157,8 @@ export default {
   preview: {
     createAccount: 'Crea account',
     createAdminAccount: 'Crea account amministratore',
-    hint: 'Modalità anteprima – i tuoi dati saranno conservati dopo la creazione dell\'account',
-    upgradeTitle: 'Dopo la creazione dell\'account:',
+    hint: "Modalità anteprima – i tuoi dati saranno conservati dopo la creazione dell'account",
+    upgradeTitle: "Dopo la creazione dell'account:",
     benefit1: 'La cronologia delle conversazioni sarà conservata',
     benefit2: 'Gestisci utenti e impostazioni di sistema',
     benefit3: 'Archiviazione dati persistente e sicura',
@@ -2057,9 +2175,11 @@ export default {
     welcome: 'Benvenuto in Blue!',
     subtitle: 'Il tuo assistente IA personale è pronto',
     previewMode: 'Modalità anteprima',
-    previewModeDesc: 'Puoi usare Blue subito. Tutte le funzioni sono disponibili e i tuoi dati verranno salvati.',
+    previewModeDesc:
+      'Puoi usare Blue subito. Tutte le funzioni sono disponibili e i tuoi dati verranno salvati.',
     createAccountHint: 'Crea account in qualsiasi momento',
-    createAccountHintDesc: 'Quando sei pronto, crea un account amministratore per sbloccare la gestione utenti e proteggere i tuoi dati.',
+    createAccountHintDesc:
+      'Quando sei pronto, crea un account amministratore per sbloccare la gestione utenti e proteggere i tuoi dati.',
     topRightHint: 'Cerca il pulsante in alto a destra',
     gotIt: 'Capito, iniziamo!',
   },
@@ -2105,14 +2225,58 @@ export default {
   },
   speech: {
     ...enUS.speech,
-    privacyWarning: 'Edge-TTS è un servizio online. Il testo viene inviato ai server Microsoft per la sintesi.',
+    convertTask: {
+      task: 'Attività',
+      cancelling: 'Annullamento...',
+      downloadAudio: 'Scarica audio',
+      downloadVideo: 'Scarica video',
+      downloadPdf: 'Scarica PDF',
+      downloadText: 'Scarica testo',
+      downloadFile: 'Scarica file',
+      action: {
+        convert: 'Converti',
+        merge: 'Unisci',
+        split: 'Dividi',
+        trim: 'Ritaglia',
+        extractAudio: 'Estrai audio',
+        extractFrames: 'Estrai fotogrammi',
+        tts: 'Sintesi vocale',
+        asr: 'Riconoscimento vocale',
+      },
+      previewKind: {
+        file: 'File',
+        audio: 'Audio',
+        video: 'Video',
+        image: 'Immagine',
+        pdf: 'PDF',
+        text: 'Testo',
+      },
+      message: {
+        queued: 'In coda',
+        processing: 'Elaborazione',
+        completed: 'Completato',
+        taskCancelled: 'Attività annullata',
+        taskFailed: 'Attività non riuscita',
+        convertCompleted: 'Conversione completata',
+        mergeCompleted: 'Unione completata',
+        splitCompleted: 'Divisione completata',
+        trimCompleted: 'Ritaglio completato',
+        extractAudioCompleted: 'Estrazione audio completata',
+        extractFramesCompleted: 'Esportazione fotogrammi completata',
+        ttsCompleted: 'Audio vocale creato',
+        asrCompleted: 'Trascrizione completata',
+      },
+    },
+    privacyWarning:
+      'Edge-TTS è un servizio online. Il testo viene inviato ai server Microsoft per la sintesi.',
     downloadFailed: 'Download fallito',
     ttsProvider: 'Provider TTS',
     edgeTTSDesc: 'Voci neurali online di alta qualità (richiede internet)',
     espeakNGDesc: 'Motore leggero offline (funziona senza internet)',
     espeakNote: 'Offline - leggero (~8,5 MB)',
     sherpaNote: 'Offline - alta qualità (download richiesto)',
-    kokoroDesc: 'TTS neurale offline di alta qualità (modello ~127MB + voci ~5MB + ONNX Runtime ~30MB)',
+    kokoroDesc:
+      'TTS neurale offline di alta qualità (modello ~127MB + voci ~5MB + ONNX Runtime ~30MB)',
     kokoroQuality: 'Naturale',
     kokoroDownload: 'Scarica modello Kokoro + ONNX Runtime',
     kokoroDownloading: 'Download del modello Kokoro e ONNX Runtime...',
@@ -2146,7 +2310,8 @@ export default {
     ready: 'Pronto',
     notReady: 'Non pronto',
     editBeforeSend: 'Modifica prima di inviare',
-    editBeforeSendDesc: 'Consenti la modifica del testo dopo il riconoscimento vocale prima dell\'invio',
+    editBeforeSendDesc:
+      "Consenti la modifica del testo dopo il riconoscimento vocale prima dell'invio",
     asrModels: 'Modelli di riconoscimento vocale',
     downloading: 'Download in corso...',
     download: 'Scarica',
@@ -2168,25 +2333,30 @@ export default {
     espeakNeedRebuild: 'Dati eSpeak-NG non trovati. Ricompilare con il tag espeak.',
     macosNativeName: 'macOS Nativo',
     macosNativeDesc: 'Sintesi vocale integrata macOS (offline, nessun download necessario)',
-    macosNativeSTTDesc: 'Riconoscimento vocale integrato macOS (offline, nessun download necessario)',
+    macosNativeSTTDesc:
+      'Riconoscimento vocale integrato macOS (offline, nessun download necessario)',
     macosNativeQuality: 'Eccellente',
     macosNativeOnDeviceOnly: 'Solo dispositivo',
-    macosNativeOnDeviceDesc: 'Forza il riconoscimento sul dispositivo (nessun dato inviato ai server Apple)',
-    macosNativeOnDeviceUnsupported: 'Modello sul dispositivo non disponibile per la lingua corrente',
-    dictationDisabledGuide: 'La dettatura non è abilitata. Il riconoscimento sul dispositivo richiede la dettatura. Vai a Impostazioni di sistema > Tastiera > Dettatura per abilitarla.',
+    macosNativeOnDeviceDesc:
+      'Forza il riconoscimento sul dispositivo (nessun dato inviato ai server Apple)',
+    macosNativeOnDeviceUnsupported:
+      'Modello sul dispositivo non disponibile per la lingua corrente',
+    dictationDisabledGuide:
+      'La dettatura non è abilitata. Il riconoscimento sul dispositivo richiede la dettatura. Vai a Impostazioni di sistema > Tastiera > Dettatura per abilitarla.',
     recheckDictation: 'Ricontrolla',
-    onDeviceUnavailableError: 'Il riconoscimento sul dispositivo non è disponibile. Abilita la dettatura in Impostazioni di sistema > Tastiera > Dettatura, oppure disabilita la modalità "Solo dispositivo".',
+    onDeviceUnavailableError:
+      'Il riconoscimento sul dispositivo non è disponibile. Abilita la dettatura in Impostazioni di sistema > Tastiera > Dettatura, oppure disabilita la modalità "Solo dispositivo".',
     noModelsAvailable: 'Nessun modello disponibile da questo provider',
     asrTab: 'Riconoscimento vocale (ASR)',
     ttsTab: 'Sintesi vocale (TTS)',
     prompt: {
       asrTitle: 'Modello di riconoscimento vocale richiesto',
-      asrDescription: 'Scarica un modello di riconoscimento vocale per usare l\'input vocale.',
+      asrDescription: "Scarica un modello di riconoscimento vocale per usare l'input vocale.",
       ttsTitle: 'Modello di sintesi vocale richiesto',
-      ttsDescription: 'Scarica un modello di sintesi vocale per riprodurre l\'audio.',
+      ttsDescription: "Scarica un modello di sintesi vocale per riprodurre l'audio.",
     },
     autoPlayTTS: 'Riproduzione automatica TTS',
-    autoPlayTTSDesc: 'Riproduci automaticamente il TTS quando l\'assistente risponde',
+    autoPlayTTSDesc: "Riproduci automaticamente il TTS quando l'assistente risponde",
     rate: 'Velocità di parlata',
     pitch: 'Intonazione',
     volume: 'Volume',
@@ -2194,7 +2364,8 @@ export default {
     asrModelInfo: {
       whisperTiny: {
         name: 'Whisper Tiny',
-        description: 'Modello Whisper più piccolo. Ottimizzato per dispositivi con risorse limitate.',
+        description:
+          'Modello Whisper più piccolo. Ottimizzato per dispositivi con risorse limitate.',
       },
       whisperBase: {
         name: 'Whisper Base',
@@ -2224,11 +2395,12 @@ export default {
     remainingTime: '{time} rimanente',
     renewedCount: 'Rinnovi',
     securityWarning: 'Attenzione: chiunque abbia il link può accedere al tuo Blue',
-    loadError: 'Impossibile caricare lo stato dell\'accesso remoto',
-    startError: 'Impossibile avviare l\'accesso remoto',
-    stopError: 'Impossibile arrestare l\'accesso remoto',
-    antivirusBlockedTitle: 'ngrok potrebbe essere bloccato dall\'antivirus',
-    antivirusBlockedDesc: 'Se la connessione fallisce, verifica se l\'antivirus sta bloccando ngrok e aggiungilo alla whitelist.',
+    loadError: "Impossibile caricare lo stato dell'accesso remoto",
+    startError: "Impossibile avviare l'accesso remoto",
+    stopError: "Impossibile arrestare l'accesso remoto",
+    antivirusBlockedTitle: "ngrok potrebbe essere bloccato dall'antivirus",
+    antivirusBlockedDesc:
+      "Se la connessione fallisce, verifica se l'antivirus sta bloccando ngrok e aggiungilo alla whitelist.",
   },
   localeNames: {
     'ca-ES': 'Catalano',
@@ -2292,7 +2464,7 @@ export default {
       syncing: 'Sincronizzazione dello store delle competenze...',
       skillsSynced: '{count} competenze sincronizzate',
     },
-  
+
     detail: {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
@@ -2342,11 +2514,11 @@ export default {
     },
   },
   workspace: {
-    title: 'File dell\'area di lavoro',
+    title: "File dell'area di lavoro",
     description: 'Questi file definiscono la personalità, la memoria e il comportamento di Blue.',
     saved: '{name} salvato',
     empty: '(vuoto)',
-    noFiles: 'Nessun file dell\'area di lavoro trovato.',
+    noFiles: "Nessun file dell'area di lavoro trovato.",
     tokens: '~{count} token',
     chars: '{count} caratteri',
     label: {
@@ -2361,9 +2533,9 @@ export default {
     desc: {
       soul: 'Personalità e valori fondamentali',
       user: 'Su di te — preferenze e contesto',
-      identity: 'Nome, stile ed emoji dell\'assistente',
+      identity: "Nome, stile ed emoji dell'assistente",
       memory: 'Memoria a lungo termine e lezioni apprese',
-      agents: 'Regole dell\'area di lavoro e linee guida della sessione',
+      agents: "Regole dell'area di lavoro e linee guida della sessione",
       tools: 'Tool usage policy and call constraints',
       heartbeat: 'Configurazione controllo periodico',
     },
@@ -2417,14 +2589,33 @@ export default {
     uninstall: 'Disinstalla',
     builtin: {
       ...enUS.skills.builtin,
-      scheduler: { name: 'Pianificatore', description: 'Creare, gestire e attivare attività pianificate (Cron)' },
-      browser: { name: 'Browser', description: 'Navigare il web con un browser headless, leggere pagine e interagire con gli elementi' },
-      sandbox: { name: 'Sandbox', description: 'Eseguire comandi in un ambiente isolato con limiti di risorse' },
-      'ui-reviewer': { name: 'Revisione UI', description: "Revisione automatizzata della qualità UI con controlli di accessibilità e punteggio visivo" },
-      autoreply: { name: 'Risposta auto', description: 'Creare e gestire regole di risposta automatica con trigger per parole chiave' },
-      workflows: { name: 'Workflow', description: 'Creare ed eseguire automazioni di workflow in stile n8n' },
+      scheduler: {
+        name: 'Pianificatore',
+        description: 'Creare, gestire e attivare attività pianificate (Cron)',
+      },
+      browser: {
+        name: 'Browser',
+        description: 'Navigare il web, leggere pagine e interagire con gli elementi',
+      },
+      sandbox: {
+        name: 'Sandbox',
+        description: 'Eseguire comandi in un ambiente isolato con limiti di risorse',
+      },
+      'ui-reviewer': {
+        name: 'Revisione UI',
+        description:
+          'Revisione automatizzata della qualità UI con controlli di accessibilità e punteggio visivo',
+      },
+      autoreply: {
+        name: 'Risposta auto',
+        description: 'Creare e gestire regole di risposta automatica con trigger per parole chiave',
+      },
+      workflows: {
+        name: 'Workflow',
+        description: 'Creare ed eseguire automazioni di workflow in stile n8n',
+      },
     },
-  
+
     filters: {
       allStatus: 'All Status',
     },
@@ -2473,14 +2664,19 @@ export default {
     },
     title: 'Companion',
     subtitle: 'Assistente companion',
-  },
+  
+    toasts: {
+      memorySavedTitle: 'Nuovo contenuto memorizzato',
+      memorySavedMessage: 'Memoria estratta dalla conversazione',
+      manageMemory: 'Gestisci memoria',
+    },},
   update: {
     ...enUS.update,
     title: 'Aggiornamento sistema',
     currentVersion: 'Versione attuale',
     uptime: 'Tempo di attività',
     lastChecked: 'Ultimo controllo',
-    autoCheck: 'Controlla automaticamente gli aggiornamenti all\'avvio',
+    autoCheck: "Controlla automaticamente gli aggiornamenti all'avvio",
     autoDownload: 'Scarica automaticamente gli aggiornamenti',
     checkNow: 'Controlla ora',
     newVersionAvailable: 'Nuova versione disponibile',
@@ -2494,7 +2690,8 @@ export default {
   heartbeat: {
     ...enUS.heartbeat,
     title: 'Heartbeat',
-    description: 'Controllo periodico dell\'agente — legge HEARTBEAT.md e invia avvisi tramite canali.',
+    description:
+      "Controllo periodico dell'agente — legge HEARTBEAT.md e invia avvisi tramite canali.",
     neverRun: 'Mai eseguito',
     interval: 'Intervallo',
     lastRun: 'Ultima esecuzione',
@@ -2507,8 +2704,9 @@ export default {
     enableToggle: 'Abilita rilevamento heartbeat',
     enabled: 'Heartbeat abilitato',
     disabled: 'Heartbeat disabilitato',
-    contentDescription: 'Definisci attività che l\'agente deve controllare periodicamente',
-    contentPlaceholder: '# Aggiungi attività di monitoraggio per l\'agente\n\n- Verificare se l\'API risponde\n- Verificare che l\'uso del disco sia inferiore al 90%',
+    contentDescription: "Definisci attività che l'agente deve controllare periodicamente",
+    contentPlaceholder:
+      "# Aggiungi attività di monitoraggio per l'agente\n\n- Verificare se l'API risponde\n- Verificare che l'uso del disco sia inferiore al 90%",
     contentEmpty: '(vuoto — i controlli heartbeat verranno saltati)',
     contentSaved: 'HEARTBEAT.md salvato',
     fetchError: 'Impossibile caricare lo stato del heartbeat',
@@ -2547,7 +2745,8 @@ export default {
     cacheType: 'Tipo di cache',
     chatCache: 'Cache chat',
     proxyCache: 'Cache proxy API',
-    description: 'La cache chat memorizza le risposte non-streaming. La cache proxy API memorizza le risposte dagli endpoint /v1/*.',
+    description:
+      'La cache chat memorizza le risposte non-streaming. La cache proxy API memorizza le risposte dagli endpoint /v1/*.',
     streamingSkipped: 'Richieste streaming saltate',
   },
   tokenEconomy: {
@@ -2588,16 +2787,18 @@ export default {
   },
   apiProxy: {
     ...enUS.apiProxy,
-    smartToolsDesc: 'Invia solo gli strumenti pertinenti per query, riducendo l\'uso di token',
+    smartToolsDesc: "Invia solo gli strumenti pertinenti per query, riducendo l'uso di token",
     providerRaceTitle: 'Gara concorrente tra provider',
-    providerRaceDesc: 'Esegue richieste concorrenti a più provider e restituisce la risposta corretta più veloce; questo può aumentare leggermente il costo',
+    providerRaceDesc:
+      'Esegue richieste concorrenti a più provider e restituisce la risposta corretta più veloce; questo può aumentare leggermente il costo',
     providerRaceEnabled: 'Abilitato',
     providerRaceDisabled: 'Disabilitato',
     providerRaceMaxParallel: 'Massimo in parallelo',
     providerRaceMinProviders: 'Numero minimo di provider',
     providerRaceSinkThreshold: 'Soglia di declassamento',
     providerRaceExcludeThreshold: 'Soglia di esclusione',
-    providerRaceCooldownRule: 'Raffreddamento quando il tasso di esecuzioni vuote ≥ {threshold} (min {samples} campioni), durata {duration}',
+    providerRaceCooldownRule:
+      'Raffreddamento quando il tasso di esecuzioni vuote ≥ {threshold} (min {samples} campioni), durata {duration}',
     cacheTitle: 'Cache del Proxy API',
     cacheDesc: 'Cache delle risposte per richieste proxy API, riducendo latenza e costi',
     cacheSwitch: 'Abilita cache',
@@ -2621,13 +2822,15 @@ export default {
     circuitBreaker: 'Interruttore automatico',
     circuitBreakerDesc: 'Bloccare temporaneamente i provider in errore',
     contextWindowCheck: 'Controllo finestra di contesto',
-    contextWindowCheckDesc: 'Saltare i provider con finestra di contesto insufficiente in caso di errori di overflow',
+    contextWindowCheckDesc:
+      'Saltare i provider con finestra di contesto insufficiente in caso di errori di overflow',
     quotaCooldown: 'Raffreddamento quota',
     quotaCooldownDesc: 'Saltare i provider che hanno recentemente esaurito la quota',
     errorClassification: 'Classificazione errori',
-    errorClassificationDesc: 'Classificare gli errori API per decisioni di failover più intelligenti',
+    errorClassificationDesc:
+      'Classificare gli errori API per decisioni di failover più intelligenti',
     streamingAnomaly: 'Rilevamento anomalie streaming',
-    streamingAnomalyDesc: 'Rilevare e recuperare anomalie nell\'output in streaming',
+    streamingAnomalyDesc: "Rilevare e recuperare anomalie nell'output in streaming",
     maskingTitle: 'Mascheramento dati',
     maskingDesc: 'Mascherare dati sensibili (PII, credenziali) nelle richieste e risposte LLM',
     maskingEnabled: 'Mascheramento dati abilitato',
@@ -2686,7 +2889,7 @@ export default {
     notFoundIDEs: 'Non installati',
     found: 'Trovato',
     notFound: 'Non trovato',
-    envVarsDetected: '{count} variabile/i d\'ambiente rilevata/e',
+    envVarsDetected: "{count} variabile/i d'ambiente rilevata/e",
     supportedIDEs: 'IDE supportati',
     installed: 'Installato',
     notInstalled: 'Non installato',
@@ -2703,9 +2906,11 @@ export default {
       retention: 'Conservazione',
     },
     export: 'Esporta dati utente',
-    exportDescription: 'Esporta la cronologia chat e le impostazioni in un file protetto da password.',
+    exportDescription:
+      'Esporta la cronologia chat e le impostazioni in un file protetto da password.',
     import: 'Importa dati utente',
-    importDescription: 'Importa dati esportati in precedenza. Avrai bisogno della password usata durante l\'esportazione.',
+    importDescription:
+      "Importa dati esportati in precedenza. Avrai bisogno della password usata durante l'esportazione.",
     format: 'Formato di esportazione',
     formatJson: 'JSON',
     formatEncrypted: 'Crittografato',
@@ -2727,12 +2932,25 @@ export default {
     exportFailed: 'Esportazione dati fallita',
     importSuccess: '{conversations} conversazioni e {messages} messaggi importati',
     importFailed: 'Importazione dati fallita',
+    chatDataTitle: 'Dati chat',
+    chatDataDescription: 'Importa, esporta e pulisci la cronologia chat e i dati correlati da un unico punto.',
+    manageData: 'Gestisci dati',
+    cleanupPreviewFailed: 'Impossibile visualizzare l\'anteprima della pulizia',
+    previewFailed: 'Impossibile visualizzare l\'anteprima dei dati',
+    hasSettings: 'Contiene impostazioni',
+    previewTitle: 'Anteprima importazione',
+    chooseFile: 'Scegli file',
+    importPasswordPlaceholder: 'Inserisci la password usata durante l\'esportazione',
+    confirmPasswordPlaceholder: 'Inserisci di nuovo la password',
+    formatEncryptedDesc: 'Formato binario completamente crittografato. Maggiore sicurezza.',
+    formatJsonDesc: 'Formato leggibile dall\'uomo. La password viene usata per verificare l\'importazione.',
     retentionSaved: 'Impostazioni di conservazione salvate',
     cleanupSuccess: 'Pulizia dati completata',
     cleanupFailed: 'Pulizia dati fallita',
     retention: {
       title: 'Conservazione dati',
-      description: 'Configura per quanto tempo i dati vengono conservati prima della pulizia automatica',
+      description:
+        'Configura per quanto tempo i dati vengono conservati prima della pulizia automatica',
       storageInfo: 'Informazioni di archiviazione',
       sessions: 'Sessioni',
       events: 'Eventi',
@@ -2741,13 +2959,26 @@ export default {
       sessionsRetention: 'Conservazione sessioni',
       eventsRetention: 'Conservazione eventi',
       alertsRetention: 'Conservazione avvisi',
+      totalRecords: 'Totale record di monitoraggio',
+      policyHint: 'Ogni tipo di dato supporta da 1 a 365 giorni. Una conservazione più breve riduce lo spazio, mentre una più lunga aiuta audit e risoluzione dei problemi.',
+      daysRange: 'Intervallo consentito: 1-365 giorni',
+      sessionsHint: 'Ciclo di vita delle sessioni dell’agent e metadati di runtime.',
+      eventsHint: 'Chiamate agli strumenti, tracce di esecuzione ed eventi di audit.',
+      alertsHint: 'Avvisi di sicurezza, punteggi di rischio e stato di conferma.',
+      sessionsSuggested: 'Suggerito: 14-30 giorni per le operazioni ordinarie',
+      eventsSuggested: 'Suggerito: 7-14 giorni per un volume di audit bilanciato',
+      alertsSuggested: 'Suggerito: 30-90 giorni per la revisione degli incidenti',
+      saveHint: 'Le nuove finestre di conservazione si applicheranno alle prossime pulizie automatiche e manuali.',
+
       days: 'giorni',
     },
     cleanup: {
       title: 'Pulizia dati',
-      description: 'Elimina permanentemente i dati selezionati. Questa azione non può essere annullata.',
+      description:
+        'Elimina permanentemente i dati selezionati. Questa azione non può essere annullata.',
       warning: 'Azione distruttiva',
-      warningDetail: 'I dati eliminati non possono essere recuperati. Esporta i tuoi dati prima se hai bisogno di un backup.',
+      warningDetail:
+        'I dati eliminati non possono essere recuperati. Esporta i tuoi dati prima se hai bisogno di un backup.',
       selectData: 'Seleziona dati da eliminare',
       chatHistory: 'Cronologia chat',
       chatHistoryDesc: 'Tutte le conversazioni e i messaggi',
@@ -2768,7 +2999,8 @@ export default {
       proceedToConfirm: 'Procedi alla conferma',
       confirmStep: 'Conferma finale',
       confirmHint: 'Inserisci la password per confermare questa azione distruttiva.',
-      confirmHintPreview: 'Digita "{confirmText}" qui sotto per confermare questa azione distruttiva.',
+      confirmHintPreview:
+        'Digita "{confirmText}" qui sotto per confermare questa azione distruttiva.',
       confirmText: 'CONFERMA ELIMINAZIONE',
       typeToConfirm: 'Digita per confermare',
       typeToConfirmPlaceholder: 'Digita "{confirmText}" per confermare',
@@ -2796,7 +3028,7 @@ export default {
       modeAppend: 'Aggiungi',
       modeReplace: 'Sostituisci',
       modeAppendDesc: 'Aggiungi le memorie importate a quelle esistenti',
-      modeReplaceDesc: 'Cancella tutte le memorie esistenti prima dell\'importazione',
+      modeReplaceDesc: "Cancella tutte le memorie esistenti prima dell'importazione",
     },
   },
   connections: {
@@ -2871,7 +3103,8 @@ export default {
     secretGenerated: 'Segreto generato',
     secretWarning: 'Conserva questo segreto in modo sicuro. Non potrai visualizzarlo di nuovo.',
     confirmDelete: 'Sei sicuro di voler eliminare questo webhook?',
-    confirmRegenerate: 'Rigenerare il segreto? Le integrazioni esistenti smetteranno di funzionare fino all\'aggiornamento.',
+    confirmRegenerate:
+      "Rigenerare il segreto? Le integrazioni esistenti smetteranno di funzionare fino all'aggiornamento.",
   },
 
   // Chiavi abbreviate
@@ -2956,7 +3189,7 @@ export default {
   tools: {
     names: {
       'Web Search': 'Ricerca web',
-      'Calculator': 'Calcolatrice',
+      Calculator: 'Calcolatrice',
       'System Info': 'Info sistema',
       'Current Time': 'Ora corrente',
       read: 'Leggi file',
@@ -2968,12 +3201,12 @@ export default {
       'Memory Get': 'Ottieni memoria',
       'Memory Stats': 'Statistiche memoria',
       mcp: 'Chiamata MCP',
-      'Scheduler': 'Pianificatore',
-      'Browser': 'Browser',
-      'Sandbox': 'Sandbox',
+      Scheduler: 'Pianificatore',
+      Browser: 'Browser',
+      Sandbox: 'Sandbox',
       'UI Reviewer': 'Revisione UI',
       'Auto Reply': 'Risposta auto',
-      'Workflows': 'Workflow',
+      Workflows: 'Workflow',
       reminder: 'Promemoria',
       mediagen: 'Generazione media',
       ask: 'Chiedere',
@@ -2990,6 +3223,20 @@ export default {
       limit: 'Limite',
       offset: 'Offset',
       id: 'ID',
+      action: 'Azione',
+      name: 'Nome',
+      title: 'Titolo',
+      description: 'Descrizione',
+      schedule: 'Pianificazione',
+      cron: 'Cron',
+      handler: 'Gestore',
+      type: 'Tipo',
+      command: 'Comando',
+      payload: 'Payload',
+      job_id: 'ID attività',
+      jobId: 'ID attività',
+      cron_id: 'ID cron',
+      cronId: 'ID cron',
     },
     calling: 'Chiamata strumenti',
     callingProgress: 'Chiamata strumenti...',
@@ -2997,7 +3244,7 @@ export default {
     callCount: 'Chiamate strumenti ({count})',
   },
   askQuestion: {
-    title: 'Domanda dall\'assistente',
+    title: "Domanda dall'assistente",
     subtitle: 'Rispondi per continuare',
     submit: 'Invia',
     skip: 'Salta',
@@ -3015,6 +3262,13 @@ export default {
   },
   search: {
     resultCount: '{count} risultati',
+  },
+  cardActions: {
+    use_browser: 'Usa il browser',
+    extract_with_web_fetch: 'Estrai con Web Fetch',
+    recheck: 'Ricontrolla',
+    check_a11y: 'Solo accessibilità',
+    full_report: 'Report completo',
   },
   uiReview: {
     title: 'Revisione UI',
@@ -3082,7 +3336,7 @@ export default {
     deny: 'Nega',
     allow: 'Consenti',
     settingsTitle: 'Approvazione chiamata strumento',
-    settingsDesc: 'Controlla quali strumenti richiedono conferma prima dell\'esecuzione',
+    settingsDesc: "Controlla quali strumenti richiedono conferma prima dell'esecuzione",
     defaultPolicy: 'Criterio predefinito',
     perTool: 'Eccezioni per strumento',
     policyAuto: 'Automatico',
@@ -3113,7 +3367,8 @@ export default {
   },
   myProviders: {
     title: 'I miei provider',
-    description: 'Configura le tue chiavi API per i provider LLM. Le tue chiavi sovrascrivono i valori predefiniti.',
+    description:
+      'Configura le tue chiavi API per i provider LLM. Le tue chiavi sovrascrivono i valori predefiniti.',
     configured: 'Configurato',
     configure: 'Configura',
     keyUnchanged: 'Lasciare vuoto per mantenere la chiave attuale',
@@ -3142,7 +3397,7 @@ export default {
     exitCode: 'uscita',
     duration: 'Durata',
     outputTruncated: 'troncato',
-    outputUnavailable: 'L\'output non è disponibile in questa scheda',
+    outputUnavailable: "L'output non è disponibile in questa scheda",
     noOutput: 'Nessun output',
     running: 'Esecuzione...',
     copyCommand: 'Copia comando',
@@ -3159,17 +3414,17 @@ export default {
   },
   resultCard: {
     titles: {
-      'workspace_file': 'File area di lavoro',
+      workspace_file: 'File area di lavoro',
       calculator: 'Calcolatrice',
-      'current_time': 'Ora attuale',
-      'read': 'Lettura file',
-      'write': 'Scrittura file',
-      'file_read': 'Lettura file',
-      'file_write': 'Scrittura file',
-      'system_info': 'Info sistema',
-      'memory': 'Memoria',
-      'mcp': 'Chiamata MCP',
-      'exec': 'Esecuzione comando',
+      current_time: 'Ora attuale',
+      read: 'Lettura file',
+      write: 'Scrittura file',
+      file_read: 'Lettura file',
+      file_write: 'Scrittura file',
+      system_info: 'Info sistema',
+      memory: 'Memoria',
+      mcp: 'Chiamata MCP',
+      exec: 'Esecuzione comando',
     },
     labels: {
       filename: 'Nome file',
@@ -3194,11 +3449,12 @@ export default {
     title: 'Sandbox',
     subtitle: 'Eseguire comandi in un ambiente isolato sicuro',
     notSupported: 'Sandbox non supportato',
-    notSupportedDesc: 'L\'esecuzione sandbox non è disponibile su questa piattaforma o non è stata configurata.',
+    notSupportedDesc:
+      "L'esecuzione sandbox non è disponibile su questa piattaforma o non è stata configurata.",
     executeCommand: 'Esegui comando',
     execute: 'Esegui',
     executing: 'Esecuzione in corso...',
-    result: 'Risultato dell\'esecuzione',
+    result: "Risultato dell'esecuzione",
     kill: 'Termina processo',
     configuration: 'Configurazione',
     history: 'Cronologia esecuzioni',
@@ -3242,9 +3498,11 @@ export default {
   agent: {
     ...enUS.agent,
     mode: 'Modalità ciclo attività',
-    modeDescription: 'Abilita cicli continui di pianificazione ed esecuzione finché non la disattivi',
-    autoConfirmDescription: 'Salta la conferma per le azioni distruttive (clic destro sul pulsante ciclo attività per cambiare)',
-    sendMessage: 'Invia un messaggio all\'agente...',
-    messageQueued: 'Messaggio inviato all\'agente',
+    modeDescription:
+      'Abilita cicli continui di pianificazione ed esecuzione finché non la disattivi',
+    autoConfirmDescription:
+      'Salta la conferma per le azioni distruttive (clic destro sul pulsante ciclo attività per cambiare)',
+    sendMessage: "Invia un messaggio all'agente...",
+    messageQueued: "Messaggio inviato all'agente",
   },
 }

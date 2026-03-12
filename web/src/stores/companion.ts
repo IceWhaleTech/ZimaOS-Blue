@@ -15,6 +15,7 @@ import type {
   AlertSeverity,
 } from '@/api/companion'
 import { companionApi } from '@/api/companion'
+import { i18n } from '@/i18n'
 
 const PAGE_SIZE = 50
 
@@ -486,11 +487,14 @@ export const useCompanionStore = defineStore('companion', () => {
       const notificationStore = useNotificationStore()
       notificationStore.add({
         type: 'info',
-        title: '已记住新内容',
-        message: event.message?.content?.slice(0, 80) || '已从对话中提取记忆',
+        title: i18n.global.t('companion.toasts.memorySavedTitle', 'Remembered new content'),
+        titleKey: 'companion.toasts.memorySavedTitle',
+        message: event.message?.content?.slice(0, 80) || i18n.global.t('companion.toasts.memorySavedMessage', 'Extracted memory from the conversation'),
+        messageKey: event.message?.content ? undefined : 'companion.toasts.memorySavedMessage',
         duration: 5000,
         action: {
-          label: '管理记忆',
+          label: i18n.global.t('companion.toasts.manageMemory', 'Manage memory'),
+          labelKey: 'companion.toasts.manageMemory',
           handler: () => {
             router.push('/settings')
           },

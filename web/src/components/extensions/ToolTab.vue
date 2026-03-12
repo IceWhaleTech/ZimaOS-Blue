@@ -107,6 +107,7 @@ function getToolIconUrl(tool: Tool): string | null {
     video: 'mediagen',
     image_generate: 'mediagen',
     video_generate: 'mediagen',
+    ppt: 'mediagen',
   }
   const availableIcons = new Set([
     'analyze', 'browser', 'eye', 'file-read', 'file-write', 'mediagen', 'memory',
@@ -143,6 +144,7 @@ function getToolIconUrl(tool: Tool): string | null {
     mediagen: 'mediagen',
     image_generate: 'mediagen',
     video_generate: 'mediagen',
+    ppt: 'mediagen',
   }
   const iconName = iconMap[tool.name]
   if (iconName) {

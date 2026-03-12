@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -68,7 +69,11 @@ func (p *MacOSNativeTTS) synthesizeToWAV(ctx context.Context, req *SynthesizeReq
 	args := []string{"-o", tmpFile}
 
 	// Select voice based on language detection
-	if voice := detectMacOSVoice(req.Text); voice != "" {
+	voice := strings.TrimSpace(req.Voice)
+	if voice == "" {
+		voice = detectMacOSVoice(req.Text)
+	}
+	if voice != "" {
 		args = append(args, "-v", voice)
 	}
 
@@ -162,7 +167,8 @@ func (p *MacOSNativeTTS) SpeakLocally(ctx context.Context, text string, speed fl
 	args := []string{}
 
 	// Select voice based on language detection
-	if voice := detectMacOSVoice(text); voice != "" {
+	voice := detectMacOSVoice(text)
+	if voice != "" {
 		args = append(args, "-v", voice)
 	}
 

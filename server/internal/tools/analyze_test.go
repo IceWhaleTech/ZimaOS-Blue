@@ -212,6 +212,33 @@ func TestAnalyzeTool_Execute_NoBridge(t *testing.T) {
 	}
 }
 
+func TestAnalyzeTool_Execute_SupportsNestedCamelCaseArgs(t *testing.T) {
+	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
+	htmlBody := `<div class="hero"><h1>Test</h1></div>`
+
+	bridge := &mockLLMBridge{responses: []string{analysisJSON, htmlBody}}
+	tool := NewAnalyzeTool()
+	tool.SetLLMBridge(bridge)
+	tool.SetMediaDir(t.TempDir())
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"topic": "Test Topic",
+			"text":  "Some content to analyze",
+			"lang":  "en-US",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(bridge.calls) != 2 {
+		t.Fatalf("expected 2 LLM calls, got %d", len(bridge.calls))
+	}
+	if !strings.Contains(bridge.calls[0], "Test Topic") || !strings.Contains(bridge.calls[0], "Some content to analyze") {
+		t.Fatalf("unexpected first prompt: %q", bridge.calls[0])
+	}
+}
+
 func TestAnalyzeTool_Execute_AnalyzeWithText(t *testing.T) {
 	analysisJSON := `{"summary":"Test summary","stats":[],"themes":[],"quotes":[],"insights":[],"recommendations":[]}`
 	htmlBody := `<div class="hero"><h1>Test</h1></div>`

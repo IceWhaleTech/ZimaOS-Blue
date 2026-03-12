@@ -80,6 +80,20 @@ type UIReviewA11yResult struct {
 	Tree string
 }
 
+type UIReviewProfile string
+
+const (
+	UIReviewProfileUIScreenshot UIReviewProfile = "ui_screenshot"
+	UIReviewProfilePPT          UIReviewProfile = "ppt"
+)
+
+type UIReviewImageOptions struct {
+	Threshold float64
+	Format    string
+	Lang      i18n.Language
+	Profile   UIReviewProfile
+}
+
 // --- Review result types ---
 
 // UIReviewResult is the top-level output of a UI review.
@@ -220,18 +234,34 @@ func (t *UIReviewerTool) Definition() ToolDefinition {
 					"description": "Output format: json or human. Default: json",
 					"default":     "json",
 				},
+				"profile": map[string]interface{}{
+					"type":        "string",
+					"description": "Review rubric profile: ui_screenshot (default) or ppt.",
+				},
 			},
 			"required": []string{"action"},
 		},
 	}
 }
 
+func resolveProfile(args map[string]interface{}) UIReviewProfile {
+	profile := strings.ToLower(strings.TrimSpace(firstCompatString(args, "profile", "quality_profile", "qualityProfile")))
+	switch profile {
+	case "", string(UIReviewProfileUIScreenshot):
+		return UIReviewProfileUIScreenshot
+	case string(UIReviewProfilePPT):
+		return UIReviewProfilePPT
+	default:
+		return UIReviewProfileUIScreenshot
+	}
+}
+
 // resolveDevice determines the device type from explicit param, channel, or context.
 func resolveDevice(args map[string]interface{}, ctx context.Context) (device string, width, height int) {
-	if d, ok := args["device"].(string); ok && (d == "desktop" || d == "mobile") {
+	if d := strings.ToLower(strings.TrimSpace(firstCompatString(args, "device"))); d == "desktop" || d == "mobile" {
 		device = d
 	}
-	ch, _ := args["channel"].(string)
+	ch := firstCompatString(args, "channel")
 	if ch == "" {
 		ch = GetChannel(ctx)
 	}
@@ -256,7 +286,7 @@ func resolveDevice(args map[string]interface{}, ctx context.Context) (device str
 
 // resolveLang gets the language from args or context.
 func resolveLang(args map[string]interface{}, ctx context.Context) i18n.Language {
-	if l, ok := args["lang"].(string); ok && l != "" {
+	if l := strings.TrimSpace(firstCompatString(args, "lang", "language")); l != "" {
 		return i18n.Language(l)
 	}
 	return i18n.Language(GetLang(ctx))
@@ -264,8 +294,7 @@ func resolveLang(args map[string]interface{}, ctx context.Context) i18n.Language
 
 // resolveWaitMS gets the wait time from args.
 func resolveWaitMS(args map[string]interface{}) int {
-	if v, ok := args["wait_ms"].(float64); ok && v > 0 {
-		ms := int(v)
+	if ms := compatInt(args, "wait_ms", "waitMs"); ms > 0 {
 		if ms > maxWaitMS {
 			ms = maxWaitMS
 		}
@@ -276,39 +305,40 @@ func resolveWaitMS(args map[string]interface{}) int {
 
 // Execute runs the UI review tool.
 func (t *UIReviewerTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	action, _ := args["action"].(string)
+	action := firstCompatString(args, "action", "op", "operation", "command")
 	if action == "" {
 		return nil, errors.New("action is required")
 	}
 
 	threshold := 75.0
-	if v, ok := args["threshold"].(float64); ok && v > 0 {
+	if v := compatFloat64(args, "threshold"); v > 0 {
 		threshold = v
 	}
 	format := "json"
-	if f, ok := args["format"].(string); ok && f != "" {
+	if f := firstCompatString(args, "format", "output_format", "outputFormat"); f != "" {
 		format = f
 	}
 	lang := resolveLang(args, ctx)
+	profile := resolveProfile(args)
 
 	var result *UIReviewResult
 	var err error
 
 	switch action {
 	case "review_url":
-		url, _ := args["url"].(string)
+		url := firstCompatString(args, "url")
 		if url == "" {
 			return nil, errors.New("url is required for review_url")
 		}
 		result, err = t.reviewURL(ctx, url, args, threshold, format, lang)
 	case "review_image":
-		img, _ := args["image"].(string)
+		img := firstCompatString(args, "image", "image_base64", "imageBase64")
 		if img == "" {
 			return nil, errors.New("image is required for review_image")
 		}
-		result, err = t.reviewImage(ctx, img, threshold, format, lang)
+		result, err = t.reviewImage(ctx, img, threshold, format, lang, profile)
 	case "check_accessibility":
-		url, _ := args["url"].(string)
+		url := firstCompatString(args, "url")
 		if url == "" {
 			return nil, errors.New("url is required for check_accessibility")
 		}
@@ -330,6 +360,26 @@ func (t *UIReviewerTool) Execute(ctx context.Context, args map[string]interface{
 	return string(b), nil
 }
 
+func (t *UIReviewerTool) ReviewImage(ctx context.Context, imageB64 string, opts UIReviewImageOptions) (*UIReviewResult, error) {
+	threshold := opts.Threshold
+	if threshold <= 0 {
+		threshold = 75
+	}
+	format := opts.Format
+	if strings.TrimSpace(format) == "" {
+		format = "json"
+	}
+	lang := opts.Lang
+	if lang == "" {
+		lang = i18n.LangEnUS
+	}
+	profile := opts.Profile
+	if profile == "" {
+		profile = UIReviewProfileUIScreenshot
+	}
+	return t.reviewImage(ctx, imageB64, threshold, format, lang, profile)
+}
+
 // --- review_url: full review pipeline ---
 
 func (t *UIReviewerTool) reviewURL(ctx context.Context, url string, args map[string]interface{}, threshold float64, format string, lang i18n.Language) (*UIReviewResult, error) {
@@ -344,7 +394,7 @@ func (t *UIReviewerTool) reviewURL(ctx context.Context, url string, args map[str
 	}
 
 	device, vpWidth, vpHeight := resolveDevice(args, ctx)
-	ch, _ := args["channel"].(string)
+	ch := firstCompatString(args, "channel")
 	if ch == "" {
 		ch = GetChannel(ctx)
 	}
@@ -429,7 +479,7 @@ func (t *UIReviewerTool) reviewURL(ctx context.Context, url string, args map[str
 	structuralUsed := false
 	if bridge != nil && firstScreenshot != "" {
 		emitUIProgress(ctx, "visual", i18n.T(lang, i18n.MsgStepVisualReview), "running", url, nil)
-		vlm = t.runVLMReview(ctx, bridge, firstScreenshot, url, lang)
+		vlm = t.runVLMReview(ctx, bridge, firstScreenshot, url, lang, UIReviewProfileUIScreenshot)
 		if vlm != nil {
 			vlmScore := uiAvgScores(vlm.Scores)
 			steps = append(steps, UIReviewStep{
@@ -603,7 +653,7 @@ func resizeAndEncode(pngData []byte, maxWidth int) string {
 
 // --- review_image: VLM-only review ---
 
-func (t *UIReviewerTool) reviewImage(ctx context.Context, imageB64 string, threshold float64, format string, lang i18n.Language) (*UIReviewResult, error) {
+func (t *UIReviewerTool) reviewImage(ctx context.Context, imageB64 string, threshold float64, format string, lang i18n.Language, profile UIReviewProfile) (*UIReviewResult, error) {
 	t.mu.RLock()
 	bridge := t.bridge
 	t.mu.RUnlock()
@@ -612,7 +662,7 @@ func (t *UIReviewerTool) reviewImage(ctx context.Context, imageB64 string, thres
 		return nil, errors.New("VLM bridge not available — cannot review image")
 	}
 
-	vlm := t.runVLMReview(ctx, bridge, imageB64, "", lang)
+	vlm := t.runVLMReview(ctx, bridge, imageB64, "", lang, profile)
 
 	result := &UIReviewResult{Threshold: threshold}
 
@@ -749,8 +799,8 @@ func (t *UIReviewerTool) runA11yChecks(ctx context.Context, browser UIReviewBrow
 
 // --- VLM visual review ---
 
-func (t *UIReviewerTool) runVLMReview(ctx context.Context, bridge VLMBridge, screenshotBase64, url string, lang i18n.Language) *vlmParsedResult {
-	prompt := buildVLMPrompt(url, lang)
+func (t *UIReviewerTool) runVLMReview(ctx context.Context, bridge VLMBridge, screenshotBase64, url string, lang i18n.Language, profile UIReviewProfile) *vlmParsedResult {
+	prompt := buildVLMPrompt(url, lang, profile)
 
 	content, err := bridge.ChatWithVision(ctx, prompt, screenshotBase64)
 	if err != nil {
@@ -775,7 +825,7 @@ func (t *UIReviewerTool) runVLMReview(ctx context.Context, bridge VLMBridge, scr
 	return &result
 }
 
-func buildVLMPrompt(url string, lang i18n.Language) string {
+func buildVLMPrompt(url string, lang i18n.Language, profile UIReviewProfile) string {
 	langName := "English"
 	if strings.HasPrefix(string(lang), "zh") {
 		langName = "Chinese"
@@ -786,6 +836,13 @@ func buildVLMPrompt(url string, lang i18n.Language) string {
 	}
 
 	var b strings.Builder
+	if profile == "" {
+		profile = UIReviewProfileUIScreenshot
+	}
+	scoreRule := "- typography: Readable fonts, proper line height, consistent sizing"
+	if profile == UIReviewProfilePPT {
+		scoreRule = "- typography_or_text_safety: Preserve clean, readable, high-contrast areas that can safely receive slide titles or body copy later"
+	}
 	b.WriteString(`You are a UI/UX expert reviewer. Analyze this screenshot and provide a structured quality assessment.
 
 Return ONLY valid JSON (no markdown, no code fences) in this exact format:
@@ -794,7 +851,13 @@ Return ONLY valid JSON (no markdown, no code fences) in this exact format:
     "visual_hierarchy": <0-100>,
     "layout_alignment": <0-100>,
     "color_harmony": <0-100>,
-    "typography": <0-100>,
+    "`)
+	if profile == UIReviewProfilePPT {
+		b.WriteString(`typography_or_text_safety`)
+	} else {
+		b.WriteString(`typography`)
+	}
+	b.WriteString(`": <0-100>,
     "professionalism": <0-100>
   },
   "issues": [
@@ -807,10 +870,17 @@ Scoring criteria:
 - visual_hierarchy: Clear content hierarchy, proper heading sizes, visual weight distribution
 - layout_alignment: Consistent spacing, grid alignment, proper margins
 - color_harmony: Cohesive palette, sufficient contrast, appropriate use of color
-- typography: Readable fonts, proper line height, consistent sizing
+`)
+	b.WriteString(scoreRule)
+	b.WriteString(`
 - professionalism: Overall polish, no broken layouts, production-ready appearance
 
 Be concise. Focus on actionable issues.`)
+	if profile == UIReviewProfilePPT {
+		b.WriteString(`
+
+This is a slide visual or presentation asset, not a live product UI. Do not critique missing buttons, forms, or navigation. Focus on presentation-grade composition, safe text overlay areas, and visual polish.`)
+	}
 
 	fmt.Fprintf(&b, "\n\nRespond in %s. Return all description and suggestion text in %s.", langName, langName)
 

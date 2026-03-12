@@ -36,6 +36,7 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 
 func (h *Handler) RegisterGroup(g *echo.Group) {
 	g.POST("/jobs", h.CreateJob)
+	g.GET("/jobs", h.ListJobs)
 	g.GET("/jobs/:id", h.GetJob)
 	g.GET("/jobs/:id/report", h.GetReport)
 	g.POST("/jobs/:id/cancel", h.CancelJob)
@@ -56,6 +57,17 @@ func (h *Handler) CreateJob(c echo.Context) error {
 		return mapServiceError(c, err, http.StatusBadRequest)
 	}
 	return c.JSON(http.StatusCreated, job)
+}
+
+func (h *Handler) ListJobs(c echo.Context) error {
+	userID, tenantID := actorFromContext(c)
+	status := strings.TrimSpace(strings.ToLower(c.QueryParam("status")))
+	activeOnly := status == "active"
+	jobs, err := h.service.ListJobsForUser(userID, tenantID, activeOnly)
+	if err != nil {
+		return mapServiceError(c, err, http.StatusInternalServerError)
+	}
+	return c.JSON(http.StatusOK, jobs)
 }
 
 func (h *Handler) GetJob(c echo.Context) error {

@@ -79,20 +79,17 @@ type processKillResult struct {
 
 // Execute performs the requested process management action.
 func (t *ProcessTool) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
-	action, _ := args["action"].(string)
-	action = strings.TrimSpace(strings.ToLower(action))
+	action := strings.TrimSpace(strings.ToLower(firstCompatString(args, "action", "op", "operation", "command")))
+	sessionID := firstCompatString(args, "session_id", "sessionId", "id")
 
 	switch action {
 	case "list":
 		return t.list()
 	case "poll":
-		sessionID, _ := args["session_id"].(string)
 		return t.poll(sessionID)
 	case "log":
-		sessionID, _ := args["session_id"].(string)
 		return t.log(sessionID)
 	case "kill":
-		sessionID, _ := args["session_id"].(string)
 		return t.kill(sessionID)
 	default:
 		return nil, fmt.Errorf("unknown action %q; use list, poll, log, or kill", action)

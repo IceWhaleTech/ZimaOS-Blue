@@ -109,6 +109,48 @@ func TestPDFToolInfoExecuteSupportsMultiplePDFs(t *testing.T) {
 	}
 }
 
+func TestPDFToolReadExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
+	path := writeTestPDF(t, "report.pdf", 256)
+	svc := &stubPDFService{extract: pdfextract.ExtractResult{Text: "hello world", Document: pdfextract.DocumentInfo{FileName: "report.pdf"}}}
+	tool := NewPDFTool(svc)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"filePath":      path,
+			"page":          2,
+			"maxChars":      5,
+			"includePages":  true,
+			"disableOcr":    true,
+			"disableVision": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(pdfextract.ExtractResult)
+	if payload.Text != "hello world" {
+		t.Fatalf("text = %q, want %q", payload.Text, "hello world")
+	}
+	if svc.lastExtractReq.Path != path {
+		t.Fatalf("extract path = %q, want %q", svc.lastExtractReq.Path, path)
+	}
+	if !reflect.DeepEqual(svc.lastExtractReq.Pages, []int{2}) {
+		t.Fatalf("pages = %#v, want %#v", svc.lastExtractReq.Pages, []int{2})
+	}
+	if svc.lastExtractReq.MaxChars != 5 {
+		t.Fatalf("max chars = %d, want %d", svc.lastExtractReq.MaxChars, 5)
+	}
+	if !svc.lastExtractReq.IncludePages {
+		t.Fatal("expected include pages to be true")
+	}
+	if !svc.lastExtractReq.DisableOCR {
+		t.Fatal("expected disable OCR to be true")
+	}
+	if !svc.lastExtractReq.DisableVision {
+		t.Fatal("expected disable vision to be true")
+	}
+}
+
 func TestPDFToolReadExecuteParsesPages(t *testing.T) {
 	path := writeTestPDF(t, "report.pdf", 256)
 	svc := &stubPDFService{extract: pdfextract.ExtractResult{Text: "hello", SelectedPages: []int{1, 3, 4}}}

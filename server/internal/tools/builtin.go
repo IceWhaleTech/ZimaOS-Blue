@@ -71,8 +71,6 @@ func (f *FileReadTool) Definition() ToolDefinition {
 
 // Execute reads the file content.
 func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	_ = ctx
-
 	path, err := fsAsString(args, "path")
 	if err != nil || path == "" {
 		return nil, errors.New("path must be a non-empty string")
@@ -91,7 +89,7 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 	maxBytes = fsClamp(maxBytes, 1, int(f.MaxFileSize))
 
-	absPath, relPath, _, err := f.scope.resolvePath(path, false)
+	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -231,8 +229,6 @@ func (f *FileWriteTool) Definition() ToolDefinition {
 
 // Execute writes content to the file.
 func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	_ = ctx
-
 	path, err := fsAsString(args, "path")
 	if err != nil || path == "" {
 		return nil, errors.New("path must be a non-empty string")
@@ -252,8 +248,7 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 		return nil, err
 	}
 	line, hasLine := 0, false
-	if rawLine, ok := args["line"]; ok {
-		_ = rawLine
+	if _, ok := firstCompatValueDeep(args, "line"); ok {
 		line, err = fsAsInt(args, "line", 0)
 		if err != nil {
 			return nil, err
@@ -267,7 +262,7 @@ func (f *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 		return nil, errors.New("line must be >= 1")
 	}
 
-	absPath, relPath, _, err := f.scope.resolvePath(path, false)
+	absPath, relPath, _, err := f.scope.resolvePathWithContext(ctx, path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -508,6 +503,24 @@ func GetWebCrawlTool(registry *Registry) *WebCrawlTool {
 		return t
 	}
 	return nil
+}
+
+func AttachPDFServiceToWebTools(registry *Registry, service PDFService) {
+	if registry == nil || service == nil {
+		return
+	}
+	if tool := GetWebFetchTool(registry); tool != nil {
+		tool.SetPDFService(service)
+	}
+	if tool := GetWebReadTool(registry); tool != nil {
+		tool.SetPDFService(service)
+	}
+	if tool := GetWebExtractTool(registry); tool != nil {
+		tool.SetPDFService(service)
+	}
+	if tool := GetWebCrawlTool(registry); tool != nil {
+		tool.SetPDFService(service)
+	}
 }
 
 // RegisterMemoryTools creates a disabled unified memory tool for internal use

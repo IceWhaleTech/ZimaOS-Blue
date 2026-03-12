@@ -80,7 +80,7 @@ func (m *MemoryTool) Execute(ctx context.Context, args map[string]interface{}) (
 		return nil, errors.New("memory service not available")
 	}
 
-	action, _ := args["action"].(string)
+	action := firstCompatString(args, "action", "op", "operation", "command")
 	switch action {
 	case "search":
 		return m.executeSearch(ctx, args)
@@ -98,19 +98,16 @@ func (m *MemoryTool) Execute(ctx context.Context, args map[string]interface{}) (
 }
 
 func (m *MemoryTool) executeSearch(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	query, ok := args["query"].(string)
-	if !ok || query == "" {
+	query := firstCompatString(args, "query", "q")
+	if query == "" {
 		return nil, errors.New("query is required for search action")
 	}
 
-	limit := 10
-	if v, ok := args["limit"].(float64); ok {
-		limit = int(v)
-		if limit <= 0 {
-			limit = 10
-		} else if limit > 50 {
-			limit = 50
-		}
+	limit := compatInt(args, "limit", "max_results", "maxResults", "n")
+	if limit <= 0 {
+		limit = 10
+	} else if limit > 50 {
+		limit = 50
 	}
 
 	results, err := m.memoryService.Recall(ctx, query, limit)
@@ -145,8 +142,8 @@ func (m *MemoryTool) executeSearch(ctx context.Context, args map[string]interfac
 }
 
 func (m *MemoryTool) executeGet(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id, ok := args["id"].(string)
-	if !ok || id == "" {
+	id := firstCompatString(args, "id", "memory_id", "memoryId")
+	if id == "" {
 		return nil, errors.New("id is required for get action")
 	}
 
@@ -168,13 +165,14 @@ func (m *MemoryTool) executeGet(ctx context.Context, args map[string]interface{}
 }
 
 func (m *MemoryTool) executeRemember(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	content, ok := args["content"].(string)
-	if !ok || content == "" {
+	content := firstCompatString(args, "content", "text", "message", "input")
+	if content == "" {
 		return nil, errors.New("content is required for remember action")
 	}
 
 	var tags []string
-	switch rawTags := args["tags"].(type) {
+	rawTags, _ := compatArgValue(args, "tags")
+	switch rawTags := rawTags.(type) {
 	case []interface{}:
 		for _, t := range rawTags {
 			if s, ok := t.(string); ok {
@@ -199,7 +197,7 @@ func (m *MemoryTool) executeRemember(ctx context.Context, args map[string]interf
 		}
 	}
 	if len(tags) == 0 {
-		if category, ok := args["category"].(string); ok {
+		if category := firstCompatString(args, "category"); category != "" {
 			if trimmed := strings.TrimSpace(category); trimmed != "" {
 				tags = append(tags, trimmed)
 			}
@@ -223,8 +221,8 @@ func (m *MemoryTool) executeRemember(ctx context.Context, args map[string]interf
 }
 
 func (m *MemoryTool) executeForget(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id, ok := args["id"].(string)
-	if !ok || id == "" {
+	id := firstCompatString(args, "id", "memory_id", "memoryId")
+	if id == "" {
 		return nil, errors.New("id is required for forget action")
 	}
 

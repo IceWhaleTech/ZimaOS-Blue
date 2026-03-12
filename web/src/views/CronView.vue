@@ -153,7 +153,7 @@ async function createJob() {
     showCreateModal.value = false
     await loadJobs()
   } catch (error) {
-    notification.error(t('common.error'), getErrorMessage(error))
+    notification.error(t('common.error'), getErrorMessage(error), { titleKey: 'common.error' })
   } finally {
     loading.value = false
   }
@@ -179,7 +179,7 @@ async function updateJob() {
     showEditModal.value = false
     await loadJobs()
   } catch (error) {
-    notification.error(t('common.error'), getErrorMessage(error))
+    notification.error(t('common.error'), getErrorMessage(error), { titleKey: 'common.error' })
   } finally {
     loading.value = false
   }
@@ -194,7 +194,7 @@ async function toggleJob(job: CronJob) {
     }
     await loadJobs()
   } catch (error) {
-    notification.error(t('common.error'), getErrorMessage(error))
+    notification.error(t('common.error'), getErrorMessage(error), { titleKey: 'common.error' })
   }
 }
 
@@ -203,7 +203,7 @@ async function triggerJob(job: CronJob) {
     await cronApi.trigger(job.id)
     await loadExecutions(job)
   } catch (error) {
-    notification.error(t('common.error'), getErrorMessage(error))
+    notification.error(t('common.error'), getErrorMessage(error), { titleKey: 'common.error' })
   }
 }
 
@@ -214,7 +214,7 @@ async function deleteJob(job: CronJob) {
     await cronApi.delete(job.id)
     await loadJobs()
   } catch (error) {
-    notification.error(t('common.error'), getErrorMessage(error))
+    notification.error(t('common.error'), getErrorMessage(error), { titleKey: 'common.error' })
   }
 }
 
@@ -226,7 +226,7 @@ async function loadExecutions(job: CronJob) {
     showExecutionsModal.value = true
   } catch (error) {
     executions.value = []
-    notification.error(t('common.error'), getErrorMessage(error))
+    notification.error(t('common.error'), getErrorMessage(error), { titleKey: 'common.error' })
   }
 }
 

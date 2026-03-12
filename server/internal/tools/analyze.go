@@ -177,11 +177,11 @@ func (t *AnalyzeTool) Definition() ToolDefinition {
 
 // Execute runs the analysis pipeline.
 func (t *AnalyzeTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	topic, _ := args["topic"].(string)
+	topic := firstCompatString(args, "topic", "subject")
 	if topic == "" {
 		return nil, errors.New("topic is required")
 	}
-	lang, _ := args["lang"].(string)
+	lang := firstCompatString(args, "lang", "language")
 	if lang == "" {
 		lang = GetLang(ctx)
 	}
@@ -279,10 +279,13 @@ func (t *AnalyzeTool) analyzeAndGenerate(ctx context.Context, topic, rawContent,
 func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{}, lang string, browser BrowserBackend, executor *Executor) (string, analyzeGatherStats) {
 	var parts []string
 	stats := analyzeGatherStats{}
-	urls := analyzeCollectStringInputs(args["urls"], analyzeMaxURLs)
-	queries := analyzeCollectStringInputs(args["search_queries"], analyzeMaxSearches)
+	urlsValue, _ := compatArgValue(args, "urls")
+	queriesValue, _ := compatArgValue(args, "search_queries", "searchQueries", "queries")
+	text := strings.TrimSpace(firstCompatString(args, "text", "content"))
+	urls := analyzeCollectStringInputs(urlsValue, analyzeMaxURLs)
+	queries := analyzeCollectStringInputs(queriesValue, analyzeMaxSearches)
 
-	if text, ok := args["text"].(string); ok && strings.TrimSpace(text) != "" {
+	if text != "" {
 		stats.RequestedSources++
 		stats.TextSources = 1
 	}
@@ -297,7 +300,7 @@ func (t *AnalyzeTool) gatherData(ctx context.Context, args map[string]interface{
 	})
 
 	// Direct text
-	if text, ok := args["text"].(string); ok && text != "" {
+	if text != "" {
 		emitAnalyzeProgress(ctx, "text_input", analyzeProgressLabel(lang, "text_input", 0, 0), "running", map[string]interface{}{
 			"detail": analyzeLocalized(lang, "Preparing direct text input", "整理直接输入文本"),
 		})
@@ -833,23 +836,52 @@ func emitAnalyzeProgress(ctx context.Context, stepID, stepName, status string, e
 }
 
 func analyzeCollectStringInputs(raw interface{}, limit int) []string {
-	items, ok := raw.([]interface{})
-	if !ok || limit <= 0 {
+	if limit <= 0 || raw == nil {
 		return nil
 	}
-	result := make([]string, 0, len(items))
-	for _, item := range items {
-		text, ok := item.(string)
-		if !ok {
-			continue
-		}
+
+	appendText := func(result []string, text string) []string {
 		text = strings.TrimSpace(text)
 		if text == "" {
-			continue
+			return result
 		}
 		result = append(result, text)
-		if len(result) >= limit {
-			break
+		if len(result) > limit {
+			return result[:limit]
+		}
+		return result
+	}
+
+	result := make([]string, 0, 4)
+	switch items := raw.(type) {
+	case []interface{}:
+		for _, item := range items {
+			text, ok := item.(string)
+			if !ok {
+				continue
+			}
+			result = appendText(result, text)
+			if len(result) >= limit {
+				break
+			}
+		}
+	case []string:
+		for _, text := range items {
+			result = appendText(result, text)
+			if len(result) >= limit {
+				break
+			}
+		}
+	case string:
+		fields := strings.FieldsFunc(items, func(r rune) bool { return r == '\n' || r == ',' })
+		if len(fields) == 0 {
+			fields = []string{items}
+		}
+		for _, text := range fields {
+			result = appendText(result, text)
+			if len(result) >= limit {
+				break
+			}
 		}
 	}
 	return result

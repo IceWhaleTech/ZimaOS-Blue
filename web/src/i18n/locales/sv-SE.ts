@@ -46,14 +46,14 @@ export default {
     username: 'Användarnamn',
     password: 'Lösenord',
     rememberMe: 'Kom ihåg mig',
-    invalidCredentials: "Ogiltigt användarnamn eller lösenord",
-    accountLocked: "Kontot är låst",
-    accountDisabled: "Kontot är inaktiverat",
-    authServiceUnavailable: "Autentiseringstjänsten är tillfälligt otillgänglig",
-    loginFailed: "Inloggningen misslyckades",
-    currentPasswordIncorrect: "Nuvarande lösenord är felaktigt",
-    newPasswordRequirements: "Nytt lösenord uppfyller inte kraven",
-    changePasswordFailed: "Det gick inte att ändra lösenordet",
+    invalidCredentials: 'Ogiltigt användarnamn eller lösenord',
+    accountLocked: 'Kontot är låst',
+    accountDisabled: 'Kontot är inaktiverat',
+    authServiceUnavailable: 'Autentiseringstjänsten är tillfälligt otillgänglig',
+    loginFailed: 'Inloggningen misslyckades',
+    currentPasswordIncorrect: 'Nuvarande lösenord är felaktigt',
+    newPasswordRequirements: 'Nytt lösenord uppfyller inte kraven',
+    changePasswordFailed: 'Det gick inte att ändra lösenordet',
   },
   errors: {
     ...enUS.errors,
@@ -62,6 +62,27 @@ export default {
   },
   nav: {
     ...enUS.nav,
+    workspaceCoreTab: 'Workspace Core Files',
+    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTitle: 'Workspace Directory Tree',
+    workspaceGeneratedDescription:
+      'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
+    workspaceGeneratedLoadFailed: 'Failed to scan generated file sources',
+    workspaceUnknownConversation: 'Conversation',
+    workspaceJumpToConversation: 'Go to conversation',
+    workspaceTreeLoadFailed: 'Failed to load workspace directory tree',
+    workspaceTreeLoading: 'Loading workspace tree and conversation links...',
+    workspaceTreeEmpty: 'No files found in workspace tree.',
+    workspaceTreeFilteredEmpty: 'No conversation-linked files in the current filtered tree view.',
+    workspaceTreeDirCount: 'Dirs',
+    workspaceTreeFileCount: 'Files',
+    workspaceTreeLinkedCount: 'Linked',
+    workspaceTreeShowAll: 'Show all files',
+    workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeExpandDir: 'Expand folder',
+    workspaceTreeCollapseDir: 'Collapse folder',
+    workspaceTreeOpenFailed: 'Unable to open workspace file',
+    workspaceTreeRevealFailed: 'Unable to open file location',
     taskCenter: 'Uppgiftscenter',
     channels: 'Integrationer',
     automation: 'Automatisering',
@@ -286,12 +307,15 @@ export default {
     },
     security: {
       allowedDomains: 'Tillåtna domäner',
-      allowedDomainsHint: 'Endast dessa domäner kan nås. Lämna tomt för att tillåta alla (utom blockerade).',
+      allowedDomainsHint:
+        'Endast dessa domäner kan nås. Lämna tomt för att tillåta alla (utom blockerade).',
       allowedDomainsPlaceholder: 'example.com eller *.example.com',
       add: 'Lägg till',
-      noAllowedDomains: 'Inga tillåtna domäner konfigurerade. Alla domäner är tillåtna (utom blockerade).',
+      noAllowedDomains:
+        'Inga tillåtna domäner konfigurerade. Alla domäner är tillåtna (utom blockerade).',
       blockedDomains: 'Blockerade domäner',
-      blockedDomainsHint: 'Dessa domäner är alltid blockerade, även om de finns i listan över tillåtna.',
+      blockedDomainsHint:
+        'Dessa domäner är alltid blockerade, även om de finns i listan över tillåtna.',
       blockedDomainsPlaceholder: 'malicious-site.com',
       block: 'Blockera',
       noBlockedDomains: 'Inga blockerade domäner konfigurerade.',
@@ -355,7 +379,8 @@ export default {
       inviteMember: 'Bjud in medlem',
       remove: 'Ta bort',
       removing: 'Tar bort...',
-      removeConfirm: 'Är du säker på att du vill ta bort <strong>{username}</strong> från denna arbetsyta?',
+      removeConfirm:
+        'Är du säker på att du vill ta bort <strong>{username}</strong> från denna arbetsyta?',
       roles: {
         owner: 'Ägare',
         admin: 'Administratör',
@@ -423,7 +448,8 @@ export default {
     teamsDesc: 'Anslut till Microsoft Teams',
     googleChatDesc: 'Anslut till Google Chat',
     feishuDesc: 'Anslut till Feishu/Lark Bot',
-    feishuHint: 'Skapa en bot i Feishu Open Platform. Krävs: 1) Aktivera "Long Connection" för händelser; 2) Prenumerera på händelsen "im.message.receive_v1"; 3) Lägg till behörighet "im:message:send_as_bot"',
+    feishuHint:
+      'Skapa en bot i Feishu Open Platform. Krävs: 1) Aktivera "Long Connection" för händelser; 2) Prenumerera på händelsen "im.message.receive_v1"; 3) Lägg till behörighet "im:message:send_as_bot"',
     feishuOpenChat: 'Öppna botchatt',
     dingtalkDesc: 'Anslut till DingTalk Bot',
     dingtalkHint: 'Skapa en robot i DingTalk Developer Platform',
@@ -538,10 +564,12 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    llmApiKeyRequired: 'Konfigurera en API-nyckel innan du öppnar sidan för LLM-leverantörer.',
     agentReflection: {
       ...enUS.settings.agentReflection,
       title: 'Automatisk reflektion',
-      description: 'När {agentMode} slutförs eller misslyckas extraheras en kort reflektion och återanvändbara lärdomar sparas i minnet.',
+      description:
+        'När {agentMode} slutförs eller misslyckas extraheras en kort reflektion och återanvändbara lärdomar sparas i minnet.',
       hint: 'Avbrutna eller stoppade uppgifter hoppas över. Reflektionsfel ändrar inte uppgiftens slutliga status.',
       saved: 'Automatisk reflektion sparad',
       saveFailed: 'Det gick inte att spara inställningen för automatisk reflektion',
@@ -549,7 +577,8 @@ export default {
     smallModel: {
       ...enUS.settings.smallModel,
       title: 'Lattviktsacceleration',
-      description: 'Anvander den lattviktiga modellen forst for enkla uppgifter, med automatisk fallback nar den inte ar tillganglig.',
+      description:
+        'Anvander den lattviktiga modellen forst for enkla uppgifter, med automatisk fallback nar den inte ar tillganglig.',
       ready: 'Tillganglig',
       downloading: 'Laddar ner',
       notReady: 'Inte nedladdad',
@@ -557,7 +586,8 @@ export default {
       enabledHint: 'Nar aktiverad hanteras lampliga uppgifter forst av den lattviktiga modellen.',
       userGuideTitle: 'Vad detta gor',
       userGuideItem1: 'Prioriterar korta fragor och vissa verktygsbeslut for snabbare svar.',
-      userGuideItem2: 'Faller automatiskt tillbaka till huvudmodellen nar den lattviktiga modellen inte ar tillganglig.',
+      userGuideItem2:
+        'Faller automatiskt tillbaka till huvudmodellen nar den lattviktiga modellen inte ar tillganglig.',
       userGuideItem3: 'Ladda ner modellen fore forsta anvandning.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
@@ -579,9 +609,11 @@ export default {
       shadowGateSceneTool: 'Verktyg',
       mediaIntent: 'Identifiering av scenarier för mediegenerering',
       irOfflineFallbackTitle: 'Offline Local Fallback',
-      irOfflineFallbackDesc: 'When model fallback is needed, answer from local context recall first.',
+      irOfflineFallbackDesc:
+        'When model fallback is needed, answer from local context recall first.',
       irFeatureHintTitle: 'Feature Hint Detection',
-      irFeatureHintDesc: 'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
+      irFeatureHintDesc:
+        'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
     },
     tab: {
       general: 'Allmänt',
@@ -634,15 +666,18 @@ export default {
   billing: {
     ...enUS.billing,
     title: 'Fakturering',
-    description: 'Visa anvandningskostnader och tokenforbrukning per tidsintervall, leverantor och modell.',
+    description:
+      'Visa anvandningskostnader och tokenforbrukning per tidsintervall, leverantor och modell.',
     apply: 'Anvand',
     reset: 'Aterstall',
     exportCSV: 'Exportera CSV',
-    featureDisabled: 'Fakturering ar for narvarande inte tillganglig eftersom sparning av leverantorsanvandning inte ar initialiserad.',
+    featureDisabled:
+      'Fakturering ar for narvarande inte tillganglig eftersom sparning av leverantorsanvandning inte ar initialiserad.',
     noData: 'Inga faktureringsposter hittades for aktuella filter',
     loadFailed: 'Det gick inte att ladda faktureringsdata',
     anomalyTitle: 'Varningar for anvandningstoppar',
-    anomalyHint: 'Identifierar dagar da tokenanvandningen ligger betydligt over den senaste 7-dagars baslinjen.',
+    anomalyHint:
+      'Identifierar dagar da tokenanvandningen ligger betydligt over den senaste 7-dagars baslinjen.',
     anomalyNone: 'Inga betydande anvandningstoppar upptacktes i aktuellt intervall',
     breakdownTitle: 'Sammanfattande uppdelning',
     linesTitle: 'Detaljerade poster',
@@ -670,10 +705,12 @@ export default {
     firewall: {
       ...enUS.security.firewall,
       title: 'Prompt-brandvägg',
-      description: 'Underhåll en blockeringslista med nyckelord för att stoppa riskabla promptar innan de bearbetas.',
+      description:
+        'Underhåll en blockeringslista med nyckelord för att stoppa riskabla promptar innan de bearbetas.',
       ruleCount: '{count} aktiva nyckelordsregler',
       builtinTitle: 'Standardblockeringsregler',
-      builtinDescription: 'Inbyggda blockeringsregler är aktiverade som standard och kan justeras dynamiskt.',
+      builtinDescription:
+        'Inbyggda blockeringsregler är aktiverade som standard och kan justeras dynamiskt.',
       customTitle: 'Anpassade nyckelordsregler',
       keywordPlaceholder: 'Ange blockerat nyckelord eller fras',
       add: 'Lägg till regel',
@@ -684,7 +721,8 @@ export default {
     },
     settings: {
       title: 'Kvarhållande av säkerhetsdata',
-      description: 'Konfigurera hur länge säkerhetsövervakningsdata (sessioner, händelser, aviseringar) behålls före automatisk rensning',
+      description:
+        'Konfigurera hur länge säkerhetsövervakningsdata (sessioner, händelser, aviseringar) behålls före automatisk rensning',
       configure: 'Konfigurera',
       storageInfo: 'Lagringsinformation',
       sessions: 'Sessioner',
@@ -696,7 +734,8 @@ export default {
       alertsRetention: 'Aviseringskvarhållande',
       days: 'dagar',
       cleanupNow: 'Rensa nu',
-      cleanupConfirm: 'All säkerhetsövervakningsdata äldre än kvarhållandeperioden kommer att tas bort. Fortsätta?',
+      cleanupConfirm:
+        'All säkerhetsövervakningsdata äldre än kvarhållandeperioden kommer att tas bort. Fortsätta?',
       cleanupSuccess: 'Rensning slutförd',
     },
     scan: {
@@ -745,19 +784,27 @@ export default {
         sql_injection_enabled: 'SQL-injektionsmönsterdetektering är aktiverad',
         command_injection_enabled: 'Kommandoinjektionsmönsterdetektering är aktiverad',
         prompt_injection_active: 'Prompt-injektionsdetektering är aktiv',
-        prompt_injection_disabled: 'Prompt-injektionsskydd är inaktiverat. Aktivera PromptGuard för AI-säkerhet.',
+        prompt_injection_disabled:
+          'Prompt-injektionsskydd är inaktiverat. Aktivera PromptGuard för AI-säkerhet.',
         ai_output_validation_enabled: 'AI-utdatavalidering är aktiverad',
-        ai_output_validation_disabled: 'AI-utdatavalidering är inaktiverad. Överväg att aktivera för säkrare AI-operationer.',
+        ai_output_validation_disabled:
+          'AI-utdatavalidering är inaktiverad. Överväg att aktivera för säkrare AI-operationer.',
         model_whitelist_no_models: 'Modellvitlista är aktiverad men inga modeller är konfigurerade',
-        model_whitelist_disabled: 'Modellvitlista är inaktiverad. Alla modeller är tillgängliga. Överväg att aktivera för produktion.',
+        model_whitelist_disabled:
+          'Modellvitlista är inaktiverad. Alla modeller är tillgängliga. Överväg att aktivera för produktion.',
         sensitive_data_filtering_enabled: 'Filtrering av känsliga data är aktiverad',
-        sensitive_data_filtering_disabled: 'Filtrering av känsliga data är inaktiverad. PII kan exponeras för AI-modeller.',
-        rate_limiting_disabled: 'Hastighetsbegränsning är inaktiverad. API är sårbart för missbruk och DoS-attacker.',
-        cors_all_origins_production: 'CORS tillåter alla ursprung i produktion. Detta är en säkerhetsrisk.',
-        cors_all_origins_dev: 'CORS tillåter alla ursprung. Acceptabelt för utveckling, men begränsa i produktion.',
+        sensitive_data_filtering_disabled:
+          'Filtrering av känsliga data är inaktiverad. PII kan exponeras för AI-modeller.',
+        rate_limiting_disabled:
+          'Hastighetsbegränsning är inaktiverad. API är sårbart för missbruk och DoS-attacker.',
+        cors_all_origins_production:
+          'CORS tillåter alla ursprung i produktion. Detta är en säkerhetsrisk.',
+        cors_all_origins_dev:
+          'CORS tillåter alla ursprung. Acceptabelt för utveckling, men begränsa i produktion.',
         cors_no_external_origins: 'CORS är konfigurerad att inte tillåta externa ursprung',
         tls_12_min: 'TLS är aktiverad med minsta version TLS 1.2',
-        tls_older_versions: 'TLS är aktiverad men tillåter äldre versioner. Rekommenderas minst TLS 1.2.',
+        tls_older_versions:
+          'TLS är aktiverad men tillåter äldre versioner. Rekommenderas minst TLS 1.2.',
         tls_disabled_production: 'TLS är inaktiverad i produktion. All trafik är okrypterad.',
         tls_disabled_enable: 'TLS är inaktiverad. Aktivera för produktionsdistribution.',
         server_localhost: 'Servern är tillgänglig på localhost',
@@ -767,15 +814,19 @@ export default {
         no_memory_limit: 'Ingen minnesgräns konfigurerad för sandbox',
         no_timeout_configured: 'Ingen körningstimeout konfigurerad',
         network_disabled_sandbox: 'Nätverksåtkomst är inaktiverad i sandbox',
-        network_enabled_sandbox: 'Nätverksåtkomst är aktiverad i sandbox. Överväg att inaktivera för bättre isolering.',
+        network_enabled_sandbox:
+          'Nätverksåtkomst är aktiverad i sandbox. Överväg att inaktivera för bättre isolering.',
         data_dir_restricted: 'Datakatalog har begränsade behörigheter',
         data_dir_permissive: 'Datakatalog kan ha alltför permissiva behörigheter',
         data_dir_unknown: 'Kunde inte verifiera datakatalogbehörigheter',
-        debug_production: 'Debugläge är aktiverat i produktion. Detta exponerar känslig information.',
+        debug_production:
+          'Debugläge är aktiverat i produktion. Detta exponerar känslig information.',
         debug_enabled: 'Debugläge är aktiverat. Inaktivera före produktionsdistribution.',
         debug_disabled: 'Debugläge är inaktiverat',
-        error_exposed_production: 'Detaljerade felmeddelanden exponeras i produktion. Detta kan läcka känslig information.',
-        error_exposed: 'Detaljerade felmeddelanden exponeras. Inaktivera före produktionsdistribution.',
+        error_exposed_production:
+          'Detaljerade felmeddelanden exponeras i produktion. Detta kan läcka känslig information.',
+        error_exposed:
+          'Detaljerade felmeddelanden exponeras. Inaktivera före produktionsdistribution.',
         error_hidden: 'Felinformation är dold i svar',
         error_log_restrict: 'Känsliga feldata kan loggas. Se till att loggåtkomst är begränsad.',
         error_filtered_logs: 'Känsliga feldata filtreras från loggar',
@@ -942,10 +993,10 @@ export default {
     },
     // Direct keys used in template
     // Nested structure
-    'sessions': {
+    sessions: {
       title: 'Aktiva sessioner',
     },
-    'events': {
+    events: {
       title: 'Säkerhetshändelser',
     },
   },
@@ -974,7 +1025,8 @@ export default {
     autoRefresh: 'Auto-uppdatering (5s)',
     lastUpdated: 'Senast uppdaterad',
     reset: 'Återställ',
-    confirmReset: 'Är du säker på att du vill återställa alla mätvärden? Denna åtgärd kan inte ångras.',
+    confirmReset:
+      'Är du säker på att du vill återställa alla mätvärden? Denna åtgärd kan inte ångras.',
     resetSuccess: 'Mätvärden återställda',
     noData: 'Inga data tillgängliga',
     tabs: { overview: 'Översikt', models: 'Modeller', tokens: 'Tokens', performance: 'Prestanda' },
@@ -1058,7 +1110,8 @@ export default {
       glm: 'Zhipu AI GLM-4-modeller med stöd för kinesiska',
       siliconflow: 'SiliconFlow - Kinesisk AI-molnplattform med DeepSeek, Qwen och fler modeller',
       nvidia: 'NVIDIA NIM - GPU-accelererad inferens för ledande öppna och kommersiella modeller',
-      'zimaos-blue-trial': 'Gratis provversion med begränsad kvot - testa Blue innan du konfigurerar din egen leverantör',
+      'zimaos-blue-trial':
+        'Gratis provversion med begränsad kvot - testa Blue innan du konfigurerar din egen leverantör',
       moonshot: 'Moonshot AI (Kimi) - Kinesisk språkmodell med stöd för lång kontext',
       azure: 'Azure OpenAI Service - Enterprise OpenAI-modeller på Azure',
       aihubmix: 'AiHubMix - AI-modellaggregator med flera leverantörer',
@@ -1186,7 +1239,8 @@ export default {
     confirmRemovePricing: 'Ta bort detta anpassade pris?',
     pricingConfig: 'Priskonfiguration',
     defaultPricing: 'Standardpriser',
-    defaultPricingReadOnly: 'Standardpriser från modelldefinitioner. Överskriv med anpassade priser.',
+    defaultPricingReadOnly:
+      'Standardpriser från modelldefinitioner. Överskriv med anpassade priser.',
     customPricing: 'Anpassade priser',
     customPricingDescription: 'Överskriv priser för specifika modeller eller leverantörer',
     capChat: 'Chatt',
@@ -1233,7 +1287,8 @@ export default {
     detected: 'upptäckt',
     configureModels: 'Konfigurera',
     configureAllowedModels: 'Konfigurera tillåtna modeller',
-    allowedModelsHint: 'Välj vilka modeller som är tillgängliga för denna leverantör. Om ingen väljs kommer alla modeller från API:et att vara tillgängliga.',
+    allowedModelsHint:
+      'Välj vilka modeller som är tillgängliga för denna leverantör. Om ingen väljs kommer alla modeller från API:et att vara tillgängliga.',
     filtered: 'filtrerad',
     filteredModels: 'Visar endast tillåtna modeller',
     selectAll: 'Välj alla',
@@ -1274,12 +1329,16 @@ export default {
     configure: 'Konfigurera',
     baseUrlNotConfigured: 'Bas-URL inte konfigurerad — klicka Konfigurera för att ställa in',
     healthErrors: {
-      authError: 'Autentisering misslyckades (HTTP {code}) — kontrollera din API-nyckel eller OAuth-anslutning',
+      authError:
+        'Autentisering misslyckades (HTTP {code}) — kontrollera din API-nyckel eller OAuth-anslutning',
       baseUrlNotConfigured: 'Bas-URL inte konfigurerad — ställ in slutpunktens URL',
-      baseUrlNotConfiguredAzure: 'Azure OpenAI-slutpunkt inte konfigurerad — klicka Konfigurera ovan för att ställa in din slutpunkts-URL',
-      baseUrlNotConfiguredBedrock: 'AWS Bedrock-slutpunkt inte konfigurerad — klicka Konfigurera ovan för att ställa in din slutpunkts-URL',
+      baseUrlNotConfiguredAzure:
+        'Azure OpenAI-slutpunkt inte konfigurerad — klicka Konfigurera ovan för att ställa in din slutpunkts-URL',
+      baseUrlNotConfiguredBedrock:
+        'AWS Bedrock-slutpunkt inte konfigurerad — klicka Konfigurera ovan för att ställa in din slutpunkts-URL',
       networkError: 'Nätverksanslutning misslyckades — kontrollera URL:en och ditt nätverk',
-      certificateError: 'TLS-certifikatfel — aktivera "Hoppa över TLS-verifiering" eller kontrollera certifikatet',
+      certificateError:
+        'TLS-certifikatfel — aktivera "Hoppa över TLS-verifiering" eller kontrollera certifikatet',
       timeoutError: 'Anslutningen tog för lång tid — servern kan vara nere eller onåbar',
       connectionError: 'Anslutning misslyckades — verifiera leverantörens URL',
       endpointNotFound: 'Hälsokontrollens slutpunkt hittades inte (HTTP 404)',
@@ -1309,9 +1368,11 @@ export default {
     welcome: 'Välkommen till Blue!',
     subtitle: 'Din personliga AI-assistent är redo',
     previewMode: 'Förhandsgransningsläge',
-    previewModeDesc: 'Du kan använda Blue direkt. Alla funktioner är tillgängliga och dina data sparas.',
+    previewModeDesc:
+      'Du kan använda Blue direkt. Alla funktioner är tillgängliga och dina data sparas.',
     createAccountHint: 'Skapa konto när som helst',
-    createAccountHintDesc: 'När du är redo, skapa ett administratörskonto för att låsa upp användarhantering och säkra dina data.',
+    createAccountHintDesc:
+      'När du är redo, skapa ett administratörskonto för att låsa upp användarhantering och säkra dina data.',
     topRightHint: 'Leta efter knappen uppe till höger',
     gotIt: 'Förstått, låt oss börja!',
   },
@@ -1333,7 +1394,8 @@ export default {
     startError: 'Kunde inte starta fjärråtkomst',
     stopError: 'Kunde inte stoppa fjärråtkomst',
     antivirusBlockedTitle: 'ngrok kan blockeras av antivirus',
-    antivirusBlockedDesc: 'Om anslutningen misslyckas, kontrollera om ditt antivirusprogram blockerar ngrok och lägg till det i whitelisten.',
+    antivirusBlockedDesc:
+      'Om anslutningen misslyckas, kontrollera om ditt antivirusprogram blockerar ngrok och lägg till det i whitelisten.',
   },
   localeNames: {
     'ca-ES': 'Katalanska',
@@ -1369,6 +1431,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    execDirectoryApprovalTimeout: 'Kommando körning blockerades eftersom kataloggodkännandet tog för lång tid. Godkänn katalogen och försök igen.',
     streamProgress: {
       requestAccepted: 'Begäran mottagen, förbereder svar...',
       generating: 'Genererar svar...',
@@ -1377,7 +1440,7 @@ export default {
       processing: 'Bearbetar...',
       completed: 'Klart',
     },
-    featureHintTapToEnable: "Valfria funktioner upptäcktes. Tryck för att markera före skickning:",
+    featureHintTapToEnable: 'Valfria funktioner upptäcktes. Tryck för att markera före skickning:',
     send: 'Skicka',
     sendDuringStream: 'Skicka (lägg till i konversationen)',
     responseInterrupted: 'Svar avbrutet',
@@ -1406,31 +1469,52 @@ export default {
     deepResearchStageCompleted: 'Slutförd',
     deepResearchStageFailed: 'Misslyckades',
     deepResearchStageCancelled: 'Avbruten',
+    deepResearchProcess: 'Forskningsprocess',
+    deepResearchLiveSources: 'Livekällor',
+    deepResearchResearchBrief: 'Forskningsbrief',
+    deepResearchMustVerify: 'Måste verifieras',
+    deepResearchPlannedTasks: 'Planerade uppgifter',
+    deepResearchFollowUpQuery: 'Uppföljningsfråga',
+    deepResearchRunningTasks: 'Pågående forskningsuppgifter',
+    deepResearchRunningElsewhere: 'Följ aktiva deep research-uppgifter mellan konversationer.',
+    deepResearchViewTask: 'Visa uppgift',
+    deepResearchCancelTask: 'Avbryt',
+    deepResearchTaskCompleted: 'Forskning slutförd',
+    deepResearchTaskFailed: 'Forskning misslyckades',
+    deepResearchTaskCancelled: 'Forskning avbruten',
+    deepResearchBackToTask: 'Visa resultat',
     stillListening: 'Fortsätt, jag lyssnar...',
     imageGenStopped: 'Bildgenereringen har stoppats.',
     videoGenStopped: 'Videogenereringen har stoppats.',
     agentTaskStopped: 'Uppgiften "{goal}" har stoppats.',
     contextPruned: 'Kontext rensad, {tokens} tokens sparade',
     contextCompacted: 'Kontext komprimerad: {before} → {after} meddelanden',
-    trialExhausted: 'Provkvoten har förbrukats. Konfigurera din egen AI-leverantör för att fortsätta.',
-    trialServiceBusy: 'Provtjänsten är för närvarande upptagen på grund av hög efterfrågan. Försök igen om en stund. Om detta fortsätter, besök vår community för hjälp.',
+    trialExhausted:
+      'Provkvoten har förbrukats. Konfigurera din egen AI-leverantör för att fortsätta.',
+    trialServiceBusy:
+      'Provtjänsten är för närvarande upptagen på grund av hög efterfrågan. Försök igen om en stund. Om detta fortsätter, besök vår community för hjälp.',
     noStreamData: 'Inget svar mottaget. Försök igen.',
     streamEmpty: 'Anslutningen stängdes innan ett svar mottogs. Försök igen.',
-    providerNoResponse: 'Leverantören returnerade inget svar. Detta är vanligtvis tillfälligt — försök igen.',
+    providerNoResponse:
+      'Leverantören returnerade inget svar. Detta är vanligtvis tillfälligt — försök igen.',
     providerReturnedEmpty: 'Leverantören returnerade ett tomt svar. Försök igen.',
     noResponseBody: 'Ingen svarskropp mottagen. Kontrollera din nätverksanslutning.',
-    providerOpenRouterPrivacyPolicy: 'OpenRouter blockerade denna begäran på grund av sekretessinställningar. Gå till https://openrouter.ai/settings/privacy, aktivera "Free model publication" och försök igen.',
+    providerOpenRouterPrivacyPolicy:
+      'OpenRouter blockerade denna begäran på grund av sekretessinställningar. Gå till https://openrouter.ai/settings/privacy, aktivera "Free model publication" och försök igen.',
     configureProvider: 'Konfigurera leverantör',
     noProvider: {
       title: 'Ingen AI-leverantör tillgänglig',
-      description: 'Du måste konfigurera en AI-leverantör för att använda denna funktion. Vill du konfigurera en nu?',
+      description:
+        'Du måste konfigurera en AI-leverantör för att använda denna funktion. Vill du konfigurera en nu?',
       configure: 'Konfigurera nu',
     },
     // Förbättrat läge
     enhancedMode: 'Förbättrat',
-    enhancedModeDesc: 'Förbättrat läge: stöder färdigheter, verktygsanrop, filoperationer, kodkörning och mer',
+    enhancedModeDesc:
+      'Förbättrat läge: stöder färdigheter, verktygsanrop, filoperationer, kodkörning och mer',
     enableEnhancedMode: 'Aktivera förbättrat läge',
-    enableEnhancedModeDesc: 'Aktivera förbättrat läge för färdigheter, verktygsanrop, filoperationer och mer',
+    enableEnhancedModeDesc:
+      'Aktivera förbättrat läge för färdigheter, verktygsanrop, filoperationer och mer',
     showToolDetails: 'Visa arbetsdetaljer',
     hideToolDetails: 'Dölj arbetsdetaljer',
     toolDetailExpand: 'Expandera utdata',
@@ -1455,7 +1539,8 @@ export default {
     switchToVoice: 'Switch to voice',
     voiceTranscribing: 'Transcribing...',
     voiceTranscriptionError: 'Kunde inte transkribera ljud',
-    voiceTranscriptionTimeout: 'Transkriptionen tog för lång tid. Inspelningen kan vara för lång eller servern är upptagen, försök igen.',
+    voiceTranscriptionTimeout:
+      'Transkriptionen tog för lång tid. Inspelningen kan vara för lång eller servern är upptagen, försök igen.',
     voiceRecordingError: 'A recording error occurred',
     voiceMicrophoneError: 'Kunde inte komma åt mikrofonen',
     // Voice messages
@@ -1505,7 +1590,7 @@ export default {
       syncing: 'Synkroniserar färdighetsbutik...',
       skillsSynced: '{count} färdigheter synkroniserade',
     },
-  
+
     detail: {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
@@ -1692,14 +1777,16 @@ export default {
     },
     smartToolsDesc: 'Skickar bara relevanta verktyg per fråga och minskar tokenanvändningen',
     providerRaceTitle: 'Parallellt leverantörsrace',
-    providerRaceDesc: 'Skickar samtidiga förfrågningar till flera leverantörer och returnerar det snabbaste lyckade svaret; detta kan öka kostnaden något',
+    providerRaceDesc:
+      'Skickar samtidiga förfrågningar till flera leverantörer och returnerar det snabbaste lyckade svaret; detta kan öka kostnaden något',
     providerRaceEnabled: 'Aktiverad',
     providerRaceDisabled: 'Inaktiverad',
     providerRaceMaxParallel: 'Max parallellt',
     providerRaceMinProviders: 'Minsta antal leverantörer',
     providerRaceSinkThreshold: 'Nedgraderingsgräns',
     providerRaceExcludeThreshold: 'Exkluderingsgräns',
-    providerRaceCooldownRule: 'Nedkylning när tomkörningsgrad ≥ {threshold} (min {samples} prover), varaktighet {duration}',
+    providerRaceCooldownRule:
+      'Nedkylning när tomkörningsgrad ≥ {threshold} (min {samples} prover), varaktighet {duration}',
     cacheTitle: 'CC Cache',
     cacheDesc: 'Svarscachning för API-proxyförfrågningar, minskar latens och kostnader',
     cacheSwitch: 'Aktivera cache',
@@ -1715,7 +1802,8 @@ export default {
   ideDiscovery: {
     ...enUS.ideDiscovery,
     title: 'IDE-konfigurationsupptäckt',
-    description: 'Automatisk identifiering av API-nycklar och konfigurationer från lokala IDE-verktyg',
+    description:
+      'Automatisk identifiering av API-nycklar och konfigurationer från lokala IDE-verktyg',
     scan: 'Skanna',
     scanning: 'Skannar',
     import: 'Importera',
@@ -1727,6 +1815,31 @@ export default {
   },
   userdata: {
     ...enUS.userdata,
+    chatDataTitle: 'Chattdata',
+    chatDataDescription: 'Importera, exportera och rensa chatthistorik och relaterade data från ett ställe.',
+    manageData: 'Hantera data',
+    cleanupPreviewFailed: 'Det gick inte att förhandsvisa rensning',
+    cleanupFailed: 'Det gick inte att rensa data',
+    cleanupSuccess: 'Datarensning slutförd',
+    importFailed: 'Det gick inte att importera data',
+    exportFailed: 'Det gick inte att exportera data',
+    messages: 'Meddelanden',
+    conversations: 'Konversationer',
+    exportedAt: 'Exporterad',
+    preview: 'Förhandsvisning',
+    selectFile: 'Välj fil',
+    confirmPassword: 'Bekräfta lösenord',
+    passwordPlaceholder: 'Ange lösenord (minst 6 tecken)',
+    format: 'Exportformat',
+    previewFailed: 'Det gick inte att förhandsvisa data',
+    hasSettings: 'Innehåller inställningar',
+    previewTitle: 'Förhandsvisning av import',
+    chooseFile: 'Välj fil',
+    importPasswordPlaceholder: 'Ange lösenordet som användes vid export',
+    confirmPasswordPlaceholder: 'Ange lösenordet igen',
+    formatEncryptedDesc: 'Fullständigt krypterat binärt format. Högre säkerhet.',
+    formatJsonDesc: 'Människoläsbart format. Lösenordet används för att verifiera importen.',
+    retentionSaved: 'Retentionsinställningar sparade',
     tabs: { export: 'Exportera', import: 'Importera', cleanup: 'Rensning', retention: 'Lagring' },
     export: 'Exportera användardata',
     import: 'Importera användardata',
@@ -1738,6 +1851,17 @@ export default {
     retention: {
       title: 'Datalagring',
       description: 'Konfigurera hur länge data sparas före automatisk rensning',
+      totalRecords: 'Totalt antal övervakningsposter',
+      policyHint: 'Varje datatyp stödjer 1 till 365 dagar. Kortare lagring minskar utrymmet, medan längre lagring hjälper vid revision och felsökning.',
+      daysRange: 'Tillåtet intervall: 1-365 dagar',
+      sessionsHint: 'Livscykel för agent-sessioner och runtime-metadata.',
+      eventsHint: 'Verktygsanrop, körspår och revisionshändelser.',
+      alertsHint: 'Säkerhetsvarningar, riskpoäng och bekräftelsestatus.',
+      sessionsSuggested: 'Rekommenderat: 14-30 dagar för rutinmässig drift',
+      eventsSuggested: 'Rekommenderat: 7-14 dagar för balanserad revisionsvolym',
+      alertsSuggested: 'Rekommenderat: 30-90 dagar för incidentgranskning',
+      saveHint: 'Nya lagringsfönster gäller för kommande automatiska och manuella rensningar.',
+
       days: 'dagar',
     },
     cleanup: {
@@ -1752,10 +1876,26 @@ export default {
       deleting: 'Tar bort...',
     },
     memory: {
+      ...enUS.userdata.memory,
       title: 'Minne',
       description: 'Exportera eller importera dina AI-minnesdata som Markdown-filer.',
+      totalMemories: 'Totalt antal minnen',
+      backend: 'Backend',
+      exportSection: 'Exportera minnen',
+      exportDesc: 'Ladda ner alla minnen som en Markdown-fil för säkerhetskopiering eller redigering.',
       exportButton: 'Exportera som Markdown',
+      exportSuccess: 'Minnen exporterade',
+      exportFailed: 'Det gick inte att exportera minnen',
+      importSection: 'Importera minnen',
+      importDesc: 'Importera minnen från en Markdown-fil.',
       importButton: 'Importera minnen',
+      importSuccess: 'Importerade {count} minnen',
+      importFailed: 'Det gick inte att importera minnen',
+      importMode: 'Importläge',
+      modeAppend: 'Lägg till',
+      modeReplace: 'Ersätt',
+      modeAppendDesc: 'Lägg till importerade minnen till befintliga',
+      modeReplaceDesc: 'Rensa alla befintliga minnen innan import',
     },
   },
   connections: {
@@ -1796,7 +1936,12 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  },
+  
+    toasts: {
+      memorySavedTitle: 'Nytt innehåll sparat i minnet',
+      memorySavedMessage: 'Minne extraherat från konversationen',
+      manageMemory: 'Hantera minne',
+    },},
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
@@ -1807,14 +1952,33 @@ export default {
     builtin: {
       ...enUS.skills.builtin,
       'discord-skill': { name: 'Discord', description: 'Discord-serveroperationer' },
-      scheduler: { name: 'Schemaläggare', description: 'Skapa, hantera och köra schemalagda uppgifter (Cron-jobb)' },
-      browser: { name: 'Webbläsare', description: 'Surfa på webben med en headless-webbläsare, läsa sidor och interagera med element' },
-      sandbox: { name: 'Sandlåda', description: 'Köra kommandon i en isolerad miljö med resursbegränsningar' },
-      'ui-reviewer': { name: 'UI-granskning', description: 'Automatiserad UI-kvalitetsgranskning med tillgänglighetskontroller och visuell poängsättning' },
-      autoreply: { name: 'Autosvar', description: 'Skapa och hantera automatiska svarsregler med nyckelords-triggers' },
-      workflows: { name: 'Arbetsflöden', description: 'Skapa och köra n8n-liknande arbetsflödesautomatiseringar' },
+      scheduler: {
+        name: 'Schemaläggare',
+        description: 'Skapa, hantera och köra schemalagda uppgifter (Cron-jobb)',
+      },
+      browser: {
+        name: 'Webbläsare',
+        description: 'Surfa på webben, läsa sidor och interagera med element',
+      },
+      sandbox: {
+        name: 'Sandlåda',
+        description: 'Köra kommandon i en isolerad miljö med resursbegränsningar',
+      },
+      'ui-reviewer': {
+        name: 'UI-granskning',
+        description:
+          'Automatiserad UI-kvalitetsgranskning med tillgänglighetskontroller och visuell poängsättning',
+      },
+      autoreply: {
+        name: 'Autosvar',
+        description: 'Skapa och hantera automatiska svarsregler med nyckelords-triggers',
+      },
+      workflows: {
+        name: 'Arbetsflöden',
+        description: 'Skapa och köra n8n-liknande arbetsflödesautomatiseringar',
+      },
     },
-  
+
     filters: {
       allStatus: 'All Status',
     },
@@ -1892,10 +2056,55 @@ export default {
   },
   a2ui: { ...enUS.a2ui },
   sandbox: { ...enUS.sandbox },
-  home: { ...enUS.home },
+  home: {
+    ...enUS.home,
+    description: 'En stabil, pålitlig och neutral runtime för dina AI-assistenter och automatiseringar',
+  },
   brand: { ...enUS.brand },
   speech: {
     ...enUS.speech,
+    convertTask: {
+      task: 'Uppgift',
+      cancelling: 'Avbryter...',
+      downloadAudio: 'Ladda ner ljud',
+      downloadVideo: 'Ladda ner video',
+      downloadPdf: 'Ladda ner PDF',
+      downloadText: 'Ladda ner text',
+      downloadFile: 'Ladda ner fil',
+      action: {
+        convert: 'Konvertera',
+        merge: 'Slå ihop',
+        split: 'Dela',
+        trim: 'Trimma',
+        extractAudio: 'Extrahera ljud',
+        extractFrames: 'Extrahera bildrutor',
+        tts: 'Text-till-tal',
+        asr: 'Taligenkänning',
+      },
+      previewKind: {
+        file: 'Fil',
+        audio: 'Ljud',
+        video: 'Video',
+        image: 'Bild',
+        pdf: 'PDF',
+        text: 'Text',
+      },
+      message: {
+        queued: 'I kö',
+        processing: 'Bearbetar',
+        completed: 'Slutförd',
+        taskCancelled: 'Uppgiften avbröts',
+        taskFailed: 'Uppgiften misslyckades',
+        convertCompleted: 'Konvertering slutförd',
+        mergeCompleted: 'Sammanslagning slutförd',
+        splitCompleted: 'Delning slutförd',
+        trimCompleted: 'Trimning slutförd',
+        extractAudioCompleted: 'Ljudextrahering slutförd',
+        extractFramesCompleted: 'Export av bildrutor slutförd',
+        ttsCompleted: 'Tal-ljud skapat',
+        asrCompleted: 'Transkribering slutförd',
+      },
+    },
     status: 'Talstatus',
     asr: 'Taligenkänning',
     tts: 'Text-till-tal',
@@ -1946,12 +2155,17 @@ export default {
     macosNativeSTTDesc: 'Inbyggd macOS-taligenkänning (offline, ingen nedladdning krävs)',
     macosNativeQuality: 'Utmärkt',
     macosNativeOnDeviceOnly: 'Endast på enheten',
-    macosNativeOnDeviceDesc: 'Tvinga igenkänning på enheten (ingen data skickas till Apples servrar)',
-    macosNativeOnDeviceUnsupported: 'Modell på enheten är inte tillgänglig för det aktuella språket',
-    dictationDisabledGuide: 'Diktering är inte aktiverad. Igenkänning på enheten kräver diktering. Gå till Systeminställningar > Tangentbord > Diktering för att aktivera det.',
+    macosNativeOnDeviceDesc:
+      'Tvinga igenkänning på enheten (ingen data skickas till Apples servrar)',
+    macosNativeOnDeviceUnsupported:
+      'Modell på enheten är inte tillgänglig för det aktuella språket',
+    dictationDisabledGuide:
+      'Diktering är inte aktiverad. Igenkänning på enheten kräver diktering. Gå till Systeminställningar > Tangentbord > Diktering för att aktivera det.',
     recheckDictation: 'Kontrollera igen',
-    onDeviceUnavailableError: 'Igenkänning på enheten är inte tillgänglig. Aktivera diktering i Systeminställningar > Tangentbord > Diktering, eller inaktivera läget "Endast på enheten".',
-    kokoroDesc: 'Högkvalitativ offline neural TTS (modell ~127MB + röster ~5MB + ONNX Runtime ~30MB)',
+    onDeviceUnavailableError:
+      'Igenkänning på enheten är inte tillgänglig. Aktivera diktering i Systeminställningar > Tangentbord > Diktering, eller inaktivera läget "Endast på enheten".',
+    kokoroDesc:
+      'Högkvalitativ offline neural TTS (modell ~127MB + röster ~5MB + ONNX Runtime ~30MB)',
     kokoroQuality: 'Naturlig',
     kokoroDownload: 'Ladda ner Kokoro-modell + ONNX Runtime',
     kokoroDownloading: 'Laddar ner Kokoro-modell och ONNX Runtime...',
@@ -2007,7 +2221,8 @@ export default {
     allPacksInfo: 'Ladda ner alla {count} språkpaket (Totalt: {size})',
     downloadAll: 'Ladda ner alla språkpaket',
     allDownloaded: 'Alla paket nedladdade',
-    privacyWarning: 'Microsoft Edge TTS är en onlinetjänst. Text skickas till Microsofts servrar för syntes.',
+    privacyWarning:
+      'Microsoft Edge TTS är en onlinetjänst. Text skickas till Microsofts servrar för syntes.',
     downloadFailed: 'Nedladdning misslyckades',
     espeakNote: 'Offline - lättviktig (8,7MB)',
     sherpaNote: 'Offline - premiumkvalitet (kräver nedladdning)',
@@ -2095,7 +2310,7 @@ export default {
   tools: {
     names: {
       'Web Search': 'Webbsökning',
-      'Calculator': 'Kalkylator',
+      Calculator: 'Kalkylator',
       'System Info': 'Systeminformation',
       'Current Time': 'Aktuell tid',
       read: 'Läs fil',
@@ -2107,12 +2322,12 @@ export default {
       'Memory Get': 'Hämta minne',
       'Memory Stats': 'Minnesstatistik',
       mcp: 'MCP-anrop',
-      'Scheduler': 'Schemaläggare',
-      'Browser': 'Webbläsare',
-      'Sandbox': 'Sandlåda',
+      Scheduler: 'Schemaläggare',
+      Browser: 'Webbläsare',
+      Sandbox: 'Sandlåda',
       'UI Reviewer': 'UI-granskning',
       'Auto Reply': 'Autosvar',
-      'Workflows': 'Arbetsflöden',
+      Workflows: 'Arbetsflöden',
       reminder: 'Påminnelse',
       mediagen: 'Mediagenerering',
       ask: 'Fråga',
@@ -2129,6 +2344,20 @@ export default {
       limit: 'Gräns',
       offset: 'Förskjutning',
       id: 'ID',
+      action: 'Åtgärd',
+      name: 'Namn',
+      title: 'Titel',
+      description: 'Beskrivning',
+      schedule: 'Schema',
+      cron: 'Cron',
+      handler: 'Hanterare',
+      type: 'Typ',
+      command: 'Kommando',
+      payload: 'Nyttolast',
+      job_id: 'Jobb-ID',
+      jobId: 'Jobb-ID',
+      cron_id: 'Cron-ID',
+      cronId: 'Cron-ID',
     },
     calling: 'Anropar verktyg',
     callingProgress: 'Anropar verktyg...',
@@ -2154,6 +2383,13 @@ export default {
   },
   search: {
     resultCount: '{count} resultat',
+  },
+  cardActions: {
+    use_browser: 'Använd webbläsare',
+    extract_with_web_fetch: 'Extrahera med Web Fetch',
+    recheck: 'Kontrollera igen',
+    check_a11y: 'Endast tillgänglighet',
+    full_report: 'Fullständig rapport',
   },
   uiReview: {
     title: 'UI-granskning',
@@ -2239,7 +2475,8 @@ export default {
   },
   myProviders: {
     title: 'Mina leverantörer',
-    description: 'Konfigurera dina egna API-nycklar för LLM-leverantörer. Dina nycklar åsidosätter systemstandarden.',
+    description:
+      'Konfigurera dina egna API-nycklar för LLM-leverantörer. Dina nycklar åsidosätter systemstandarden.',
     configured: 'Konfigurerad',
     configure: 'Konfigurera',
     keyUnchanged: 'Lämna tomt för att behålla nuvarande nyckel',
@@ -2285,17 +2522,17 @@ export default {
   },
   resultCard: {
     titles: {
-      'workspace_file': 'Arbetsytefil',
+      workspace_file: 'Arbetsytefil',
       calculator: 'Kalkylator',
-      'current_time': 'Aktuell tid',
-      'read': 'Filläsning',
-      'write': 'Filskrivning',
-      'file_read': 'Filläsning',
-      'file_write': 'Filskrivning',
-      'system_info': 'Systeminfo',
-      'memory': 'Minne',
-      'mcp': 'MCP-anrop',
-      'exec': 'Kommandokörning',
+      current_time: 'Aktuell tid',
+      read: 'Filläsning',
+      write: 'Filskrivning',
+      file_read: 'Filläsning',
+      file_write: 'Filskrivning',
+      system_info: 'Systeminfo',
+      memory: 'Minne',
+      mcp: 'MCP-anrop',
+      exec: 'Kommandokörning',
     },
     labels: {
       filename: 'Filnamn',
@@ -2320,7 +2557,8 @@ export default {
     ...enUS.agent,
     mode: 'Uppgiftsloopläge',
     modeDescription: 'Aktiverar kontinuerliga planera-och-kör-loopar tills du stänger av det',
-    autoConfirmDescription: 'Hoppa över bekräftelse för destruktiva åtgärder (högerklicka på uppgiftsloop-knappen för att växla)',
+    autoConfirmDescription:
+      'Hoppa över bekräftelse för destruktiva åtgärder (högerklicka på uppgiftsloop-knappen för att växla)',
     sendMessage: 'Skicka ett meddelande till agenten...',
     messageQueued: 'Meddelande skickat till agenten',
   },

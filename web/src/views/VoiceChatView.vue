@@ -13,7 +13,7 @@ import { speechApi } from '@/api/speech'
 import { WakeWordDetector } from '@/utils/wakeword'
 import { convertToWav } from '@/utils/audioConverter'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
-import { isTtsAutoPlayEnabled, setTtsAutoPlayEnabled } from '@/utils/ttsPreferences'
+import { isTtsAutoPlayEnabled, isTtsSpeechMuted, setTtsAutoPlayEnabled } from '@/utils/ttsPreferences'
 import { useChatStore } from '@/stores/chat'
 
 const { t } = useI18n()
@@ -68,6 +68,10 @@ const stateText = computed(() => {
 const canRecord = computed(() => {
   return isConnected.value && !isRecording.value && sessionState.value === 'idle'
 })
+
+function shouldRequestAutoPlayResponse(): boolean {
+  return autoPlayResponse.value && !isTtsSpeechMuted()
+}
 
 const pendingCheckpointQuestion = computed(() => {
   const q = chatStore.pendingQuestion
@@ -147,7 +151,7 @@ async function connectWebSocket() {
   }
 
   ws.onAudioResponse = async (audio, contentType) => {
-    if (autoPlayResponse.value) {
+    if (shouldRequestAutoPlayResponse()) {
       isPlaying.value = true
       try {
         await playAudioFromBase64(audio, contentType)
@@ -173,7 +177,7 @@ async function connectWebSocket() {
     ws.updateConfig({
       language: selectedLanguage.value,
       voice: selectedVoice.value,
-      auto_play_response: autoPlayResponse.value,
+      auto_play_response: shouldRequestAutoPlayResponse(),
       continuous_listening: continuousListening.value,
     })
   } catch (e) {
@@ -201,6 +205,8 @@ async function startRecording() {
       const wavBlob = await convertToWav(audio)
       if (!wavBlob) return
       const base64 = await blobToBase64(wavBlob)
+      // Sync latest autoplay state (including mute gate) before each turn.
+      updateConfig()
       ws?.sendAudio(base64, 'wav')
     } catch (e) {
       error.value = e instanceof Error ? e.message : t('voiceView.errors.processAudioFailed')
@@ -237,7 +243,7 @@ function updateConfig() {
   ws?.updateConfig({
     language: selectedLanguage.value,
     voice: selectedVoice.value,
-    auto_play_response: autoPlayResponse.value,
+    auto_play_response: shouldRequestAutoPlayResponse(),
     continuous_listening: continuousListening.value,
   })
 }

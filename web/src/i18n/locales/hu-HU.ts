@@ -46,15 +46,40 @@ export default {
     username: 'Felhasználónév',
     password: 'Jelszó',
     rememberMe: 'Emlékezz rám',
-    invalidCredentials: "Érvénytelen felhasználónév vagy jelszó",
-    accountLocked: "A fiók zárolva van",
-    accountDisabled: "A fiók le van tiltva",
-    authServiceUnavailable: "A hitelesítési szolgáltatás átmenetileg nem érhető el",
-    loginFailed: "Bejelentkezés sikertelen",
-    currentPasswordIncorrect: "A jelenlegi jelszó helytelen",
-    newPasswordRequirements: "Az új jelszó nem felel meg a követelményeknek",
-    changePasswordFailed: "A jelszó módosítása sikertelen",
+    invalidCredentials: 'Érvénytelen felhasználónév vagy jelszó',
+    accountLocked: 'A fiók zárolva van',
+    accountDisabled: 'A fiók le van tiltva',
+    authServiceUnavailable: 'A hitelesítési szolgáltatás átmenetileg nem érhető el',
+    loginFailed: 'Bejelentkezés sikertelen',
+    currentPasswordIncorrect: 'A jelenlegi jelszó helytelen',
+    newPasswordRequirements: 'Az új jelszó nem felel meg a követelményeknek',
+    changePasswordFailed: 'A jelszó módosítása sikertelen',
   },
+  nav: {
+    ...enUS.nav,
+    workspaceCoreTab: 'Workspace Core Files',
+    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTitle: 'Workspace Directory Tree',
+    workspaceGeneratedDescription:
+      'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
+    workspaceGeneratedLoadFailed: 'Failed to scan generated file sources',
+    workspaceUnknownConversation: 'Conversation',
+    workspaceJumpToConversation: 'Go to conversation',
+    workspaceTreeLoadFailed: 'Failed to load workspace directory tree',
+    workspaceTreeLoading: 'Loading workspace tree and conversation links...',
+    workspaceTreeEmpty: 'No files found in workspace tree.',
+    workspaceTreeFilteredEmpty: 'No conversation-linked files in the current filtered tree view.',
+    workspaceTreeDirCount: 'Dirs',
+    workspaceTreeFileCount: 'Files',
+    workspaceTreeLinkedCount: 'Linked',
+    workspaceTreeShowAll: 'Show all files',
+    workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeExpandDir: 'Expand folder',
+    workspaceTreeCollapseDir: 'Collapse folder',
+    workspaceTreeOpenFailed: 'Unable to open workspace file',
+    workspaceTreeRevealFailed: 'Unable to open file location',
+  },
+
   errors: {
     ...enUS.errors,
     notFound: 'Az oldal nem található',
@@ -69,7 +94,12 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  },
+  
+    toasts: {
+      memorySavedTitle: 'Új tartalom megjegyezve',
+      memorySavedMessage: 'Memória kinyerve a beszélgetésből',
+      manageMemory: 'Memória kezelése',
+    },},
   dashboard: {
     ...enUS.dashboard,
     categories: {
@@ -288,12 +318,15 @@ export default {
     },
     security: {
       allowedDomains: 'Engedélyezett domainek',
-      allowedDomainsHint: 'Csak ezek a domainek érhetők el. Hagyja üresen, hogy minden engedélyezett legyen (a blokkoltak kivételével).',
+      allowedDomainsHint:
+        'Csak ezek a domainek érhetők el. Hagyja üresen, hogy minden engedélyezett legyen (a blokkoltak kivételével).',
       allowedDomainsPlaceholder: 'example.com vagy *.example.com',
       add: 'Hozzáadás',
-      noAllowedDomains: 'Nincs konfigurált engedélyezett domain. Minden domain engedélyezett (a blokkoltak kivételével).',
+      noAllowedDomains:
+        'Nincs konfigurált engedélyezett domain. Minden domain engedélyezett (a blokkoltak kivételével).',
       blockedDomains: 'Blokkolt domainek',
-      blockedDomainsHint: 'Ezek a domainek mindig blokkolva vannak, még akkor is, ha az engedélyezett listában vannak.',
+      blockedDomainsHint:
+        'Ezek a domainek mindig blokkolva vannak, még akkor is, ha az engedélyezett listában vannak.',
       blockedDomainsPlaceholder: 'malicious-site.com',
       block: 'Blokkolás',
       noBlockedDomains: 'Nincs konfigurált blokkolt domain.',
@@ -324,7 +357,8 @@ export default {
     editWorkspace: 'Munkaterület szerkesztése',
     deleteWorkspace: 'Munkaterület törlése',
     loadingWorkspaces: 'Munkaterületek betöltése...',
-    noWorkspacesYet: 'Még nincsenek munkaterületek. Hozza létre az első munkaterületét a kezdéshez!',
+    noWorkspacesYet:
+      'Még nincsenek munkaterületek. Hozza létre az első munkaterületét a kezdéshez!',
     created: 'Létrehozva',
     edit: 'Szerkesztés',
     manage: 'Kezelés',
@@ -357,7 +391,8 @@ export default {
       inviteMember: 'Tag meghívása',
       remove: 'Eltávolítás',
       removing: 'Eltávolítás...',
-      removeConfirm: 'Biztosan el szeretné távolítani <strong>{username}</strong> tagot ebből a munkaterületből?',
+      removeConfirm:
+        'Biztosan el szeretné távolítani <strong>{username}</strong> tagot ebből a munkaterületből?',
       roles: {
         owner: 'Tulajdonos',
         admin: 'Rendszergazda',
@@ -425,7 +460,8 @@ export default {
     teamsDesc: 'Csatlakozás a Microsoft Teamshez',
     googleChatDesc: 'Csatlakozás a Google Chathez',
     feishuDesc: 'Csatlakozás a Feishu/Lark Bot-hoz',
-    feishuHint: 'Hozzon létre botot a Feishu Open Platformon. Szükséges: 1) Engedélyezze a "Long Connection" eseményekhez; 2) Iratkozzon fel az "im.message.receive_v1" eseményre; 3) Adja hozzá az "im:message:send_as_bot" jogosultságot',
+    feishuHint:
+      'Hozzon létre botot a Feishu Open Platformon. Szükséges: 1) Engedélyezze a "Long Connection" eseményekhez; 2) Iratkozzon fel az "im.message.receive_v1" eseményre; 3) Adja hozzá az "im:message:send_as_bot" jogosultságot',
     feishuOpenChat: 'Bot csevegés megnyitása',
     dingtalkDesc: 'Csatlakozás a DingTalk Bot-hoz',
     dingtalkHint: 'Hozzon létre robotot a DingTalk Developer Platformon',
@@ -442,10 +478,13 @@ export default {
     mattermostHint: 'Hozzon létre botfiókot a Mattermostban és szerezze be a bot tokent',
     nextcloudTalkHint: 'Használjon Nextcloud-fiókot és Talk szobatokenet',
     blueBubblesDesc: 'Csatlakozás iMessage-hez BlueBubbles segítségével',
-    blueBubblesHint: 'Állítson be BlueBubbles szervert macOS-on és szerezze be a szerver URL-t és jelszót',
+    blueBubblesHint:
+      'Állítson be BlueBubbles szervert macOS-on és szerezze be a szerver URL-t és jelszót',
     zaloDesc: 'Csatlakozás Zalo Official Account-hoz',
-    zaloHint: 'Hozzon létre Official Account-ot a Zalóban és konfigurálja az API hitelesítő adatokat',
-    teamsHint: 'Hozzon létre botot az Azure Bot Service-ben és konfigurálja az alkalmazás hitelesítő adatait',
+    zaloHint:
+      'Hozzon létre Official Account-ot a Zalóban és konfigurálja az API hitelesítő adatokat',
+    teamsHint:
+      'Hozzon létre botot az Azure Bot Service-ben és konfigurálja az alkalmazás hitelesítő adatait',
     tenantId: 'Bérlő azonosító',
     serverUrl: 'Szerver URL',
     username: 'Felhasználónév',
@@ -486,7 +525,8 @@ export default {
     dingtalkBot: 'DingTalk bot',
     wechatWorkBot: 'WeChat Work bot',
     nextcloudTalk: 'Nextcloud Talk',
-    slackHint: 'Hozzon létre alkalmazást a Slack API-ban, és szerezze be a bot és alkalmazás tokenjét',
+    slackHint:
+      'Hozzon létre alkalmazást a Slack API-ban, és szerezze be a bot és alkalmazás tokenjét',
     whatsappHint: 'Használja a WhatsApp Business API-t vagy Cloud API-t',
     signalHint: 'Használja a signal-cli-t vagy a Signal Bot hídat',
     googleChatHint: 'Hozzon létre szolgáltatásfiókot és használja a Chat API-t',
@@ -540,10 +580,12 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    llmApiKeyRequired: 'Az LLM-szolgáltatók oldalának megnyitása előtt állítson be API-kulcsot.',
     agentReflection: {
       ...enUS.settings.agentReflection,
       title: 'Automatikus reflexió',
-      description: 'Miután a(z) {agentMode} befejeződik vagy hibával leáll, rövid reflexió készül, és az újra felhasználható tanulságok a memóriába kerülnek.',
+      description:
+        'Miután a(z) {agentMode} befejeződik vagy hibával leáll, rövid reflexió készül, és az újra felhasználható tanulságok a memóriába kerülnek.',
       hint: 'A megszakított vagy törölt feladatok kimaradnak. A reflexiós hibák nem változtatják meg a feladat végső állapotát.',
       saved: 'Az automatikus reflexió mentve',
       saveFailed: 'Nem sikerült menteni az automatikus reflexió beállítását',
@@ -551,14 +593,16 @@ export default {
     smallModel: {
       ...enUS.settings.smallModel,
       title: 'Konnyu gyorsitas',
-      description: 'Egyszeru feladatoknal eloszor a konnyu modellt hasznalja, es automatikusan visszavalt, ha nem erheto el.',
+      description:
+        'Egyszeru feladatoknal eloszor a konnyu modellt hasznalja, es automatikusan visszavalt, ha nem erheto el.',
       ready: 'Elerheto',
       downloading: 'Letoltes',
       notReady: 'Nincs letoltve',
       enabled: 'Konnyu gyorsitas engedelyezese',
       enabledHint: 'Bekapcsolva az alkalmas feladatokat eloszor a konnyu modell kezeli.',
       userGuideTitle: 'Mit csinal ez',
-      userGuideItem1: 'A gyorsabb valaszok erdekeben elonyben reszesiti a rovid kerdeseket es nehany eszkozdontest.',
+      userGuideItem1:
+        'A gyorsabb valaszok erdekeben elonyben reszesiti a rovid kerdeseket es nehany eszkozdontest.',
       userGuideItem2: 'Automatikusan visszavalt a fo modellre, ha a konnyu modell nem erheto el.',
       userGuideItem3: 'Az elso hasznalat elott toltse le a modellt.',
       irTitle: 'Assistant Capabilities',
@@ -572,9 +616,11 @@ export default {
       collapse: 'Osszecsukas',
       mediaIntent: 'Mediageneralasi forgatokonyv felismerese',
       irOfflineFallbackTitle: 'Offline Local Fallback',
-      irOfflineFallbackDesc: 'When model fallback is needed, answer from local context recall first.',
+      irOfflineFallbackDesc:
+        'When model fallback is needed, answer from local context recall first.',
       irFeatureHintTitle: 'Feature Hint Detection',
-      irFeatureHintDesc: 'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
+      irFeatureHintDesc:
+        'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
       statsTitle: 'Futasi statisztikak (hibakereses)',
       statsHint: 'Foent hibakereseshez es hangolashoz; napi hasznalatban figyelmen kivul hagyhato.',
       irTakeovers: 'Stratégia-átvételek',
@@ -585,7 +631,18 @@ export default {
       shadowGateSceneQA: 'Kérdés-válasz',
       shadowGateSceneTool: 'Eszköz',
     },
-    tab: { general: 'Általános', llm: 'LLM', proxy: 'Optimalizálás', metrics: 'Használat', remote: 'Távoli hozzáférés', config: 'Konfiguráció', backup: 'Biztonsági mentés', logs: 'Naplók', service: 'Szolgáltatás', retention: 'Megtartás' },
+    tab: {
+      general: 'Általános',
+      llm: 'LLM',
+      proxy: 'Optimalizálás',
+      metrics: 'Használat',
+      remote: 'Távoli hozzáférés',
+      config: 'Konfiguráció',
+      backup: 'Biztonsági mentés',
+      logs: 'Naplók',
+      service: 'Szolgáltatás',
+      retention: 'Megtartás',
+    },
     failover: {
       title: 'Intelligens feladatátvétel állapota',
       totalFailovers: 'Összes feladatátvétel',
@@ -625,15 +682,18 @@ export default {
   billing: {
     ...enUS.billing,
     title: 'Szamlazas',
-    description: 'Vizsgalja a koltsegeket es a tokenfelhasznalast idoszak, szolgaltato es modell szerint.',
+    description:
+      'Vizsgalja a koltsegeket es a tokenfelhasznalast idoszak, szolgaltato es modell szerint.',
     apply: 'Alkalmaz',
     reset: 'Visszaallitas',
     exportCSV: 'CSV exportalasa',
-    featureDisabled: 'A szamlazas jelenleg nem erheto el, mert a szolgaltatoi hasznalatkovetes nincs inicializalva.',
+    featureDisabled:
+      'A szamlazas jelenleg nem erheto el, mert a szolgaltatoi hasznalatkovetes nincs inicializalva.',
     noData: 'Nem talalhato szamlazasi rekord a jelenlegi szurokhoz',
     loadFailed: 'Nem sikerult betolteni a szamlazasi adatokat',
     anomalyTitle: 'Hasznalati csucsriasztasok',
-    anomalyHint: 'Azokat a napokat jelzi, amikor a tokenhasznalat jelentosen meghaladja a legutobbi 7 napos alapvonalat.',
+    anomalyHint:
+      'Azokat a napokat jelzi, amikor a tokenhasznalat jelentosen meghaladja a legutobbi 7 napos alapvonalat.',
     anomalyNone: 'A jelenlegi idoszakban nem eszlelheto jelentos hasznalati csucs',
     breakdownTitle: 'Osszesitett bontas',
     linesTitle: 'Reszletes rekordok',
@@ -644,7 +704,13 @@ export default {
     drilldownModel: 'Legfontosabb modellek',
     drilldownActionFilter: 'Szures',
   },
-  system: { ...enUS.system, detailedInfo: 'Részletes információ', detailedSystemInfo: 'Részletes rendszerinformációk', loadingDetailedInfo: 'Részletes információk betöltése...', noDetailedInfo: 'Nincs elérhető részletes információ' },
+  system: {
+    ...enUS.system,
+    detailedInfo: 'Részletes információ',
+    detailedSystemInfo: 'Részletes rendszerinformációk',
+    loadingDetailedInfo: 'Részletes információk betöltése...',
+    noDetailedInfo: 'Nincs elérhető részletes információ',
+  },
   security: {
     ...enUS.security,
     tabs: {
@@ -655,10 +721,12 @@ export default {
     firewall: {
       ...enUS.security.firewall,
       title: 'Prompt tűzfal',
-      description: 'Tartson fenn kulcsszó tiltólistát a kockázatos promptok feldolgozás előtti kiszűréséhez.',
+      description:
+        'Tartson fenn kulcsszó tiltólistát a kockázatos promptok feldolgozás előtti kiszűréséhez.',
       ruleCount: '{count} aktív kulcsszó-szabály',
       builtinTitle: 'Alapértelmezett blokkolási szabályok',
-      builtinDescription: 'A beépített blokkolási szabályok alapértelmezetten engedélyezettek, és dinamikusan módosíthatók.',
+      builtinDescription:
+        'A beépített blokkolási szabályok alapértelmezetten engedélyezettek, és dinamikusan módosíthatók.',
       customTitle: 'Egyéni kulcsszó-szabályok',
       keywordPlaceholder: 'Adjon meg tiltott kulcsszót vagy kifejezést',
       add: 'Szabály hozzáadása',
@@ -669,7 +737,8 @@ export default {
     },
     settings: {
       title: 'Biztonsági adatok megőrzése',
-      description: 'Állítsa be, mennyi ideig őrizhetők meg a megfigyelési adatok (munkamenetek, események, riasztások) az automatikus tisztítás előtt',
+      description:
+        'Állítsa be, mennyi ideig őrizhetők meg a megfigyelési adatok (munkamenetek, események, riasztások) az automatikus tisztítás előtt',
       configure: 'Konfigurálás',
       storageInfo: 'Tárolási információk',
       sessions: 'Munkamenetek',
@@ -730,11 +799,13 @@ export default {
         ...enUS.security.scan.items,
         auth_password_length: {
           name: 'Jelszó minimális hossza',
-          description: 'Ellenőrizze, hogy a jelszó minimális hossza megfelel-e a biztonsági követelményeknek',
+          description:
+            'Ellenőrizze, hogy a jelszó minimális hossza megfelel-e a biztonsági követelményeknek',
         },
         auth_password_complexity: {
           name: 'Jelszó összetettsége',
-          description: 'Ellenőrizze, hogy a jelszó összetettségi követelmények engedélyezve vannak-e',
+          description:
+            'Ellenőrizze, hogy a jelszó összetettségi követelmények engedélyezve vannak-e',
         },
         auth_account_lockout: {
           name: 'Fiók zárolási szabályzat',
@@ -860,7 +931,8 @@ export default {
     title: 'Használati statisztikák',
     loadError: 'A statisztikák betöltése sikertelen',
     notEnabled: 'A statisztikák nincsenek engedélyezve',
-    enableInSettings: 'Engedélyezze a statisztika gyűjtést a Beállításokban a használati adatok megtekintéséhez.',
+    enableInSettings:
+      'Engedélyezze a statisztika gyűjtést a Beállításokban a használati adatok megtekintéséhez.',
     noData: 'Még nincsenek használati adatok',
     period: 'Időszak: {start} - {end}',
     exportJSON: 'JSON exportálása',
@@ -897,7 +969,12 @@ export default {
     confirmReset: 'Biztosan visszaállítja az összes mérőszámot? Ez a művelet nem vonható vissza.',
     resetSuccess: 'Mérőszámok visszaállítva',
     noData: 'Nincsenek elérhető adatok',
-    tabs: { overview: 'Áttekintés', models: 'Modellek', tokens: 'Tokenek', performance: 'Teljesítmény' },
+    tabs: {
+      overview: 'Áttekintés',
+      models: 'Modellek',
+      tokens: 'Tokenek',
+      performance: 'Teljesítmény',
+    },
     totalCalls: 'Összes hívás',
     successRate: 'Sikerességi arány',
     tokenUsage: 'Token használat',
@@ -965,14 +1042,20 @@ export default {
     testSuccess: 'A kapcsolat sikeres',
     testFailed: 'A kapcsolat sikertelen',
     configure: 'Beállítás',
-    baseUrlNotConfigured: 'Az alap URL nincs beállítva — kattintson a Beállítás gombra a konfiguráláshoz',
+    baseUrlNotConfigured:
+      'Az alap URL nincs beállítva — kattintson a Beállítás gombra a konfiguráláshoz',
     healthErrors: {
-      authError: 'A hitelesítés sikertelen (HTTP {code}) — ellenőrizze az API kulcsot vagy az OAuth-kapcsolatot',
+      authError:
+        'A hitelesítés sikertelen (HTTP {code}) — ellenőrizze az API kulcsot vagy az OAuth-kapcsolatot',
       baseUrlNotConfigured: 'Az alap URL nincs beállítva — állítsa be a végpont URL-t',
-      baseUrlNotConfiguredAzure: 'Az Azure OpenAI végpont nincs beállítva — kattintson a fenti Beállítás gombra a végpont URL beállításához',
-      baseUrlNotConfiguredBedrock: 'Az AWS Bedrock végpont nincs beállítva — kattintson a fenti Beállítás gombra a végpont URL beállításához',
-      networkError: 'A hálózati kapcsolat sikertelen — ellenőrizze az URL-t és a hálózati kapcsolatot',
-      certificateError: 'TLS tanúsítvány hiba — engedélyezze a „TLS ellenőrzés kihagyása" opciót, vagy ellenőrizze a tanúsítványt',
+      baseUrlNotConfiguredAzure:
+        'Az Azure OpenAI végpont nincs beállítva — kattintson a fenti Beállítás gombra a végpont URL beállításához',
+      baseUrlNotConfiguredBedrock:
+        'Az AWS Bedrock végpont nincs beállítva — kattintson a fenti Beállítás gombra a végpont URL beállításához',
+      networkError:
+        'A hálózati kapcsolat sikertelen — ellenőrizze az URL-t és a hálózati kapcsolatot',
+      certificateError:
+        'TLS tanúsítvány hiba — engedélyezze a „TLS ellenőrzés kihagyása" opciót, vagy ellenőrizze a tanúsítványt',
       timeoutError: 'A kapcsolat időtúllépése — a szerver nem elérhető vagy leállt',
       connectionError: 'A kapcsolat sikertelen — ellenőrizze a szolgáltató URL-jét',
       endpointNotFound: 'Az állapotellenőrzési végpont nem található (HTTP 404)',
@@ -1002,9 +1085,11 @@ export default {
     welcome: 'Üdvözöljük az Blueban!',
     subtitle: 'A személyes AI asszisztense készen áll',
     previewMode: 'Előnézeti mód',
-    previewModeDesc: 'Az Blue azonnal használható. Minden funkció elérhető, adatai mentésre kerülnek.',
+    previewModeDesc:
+      'Az Blue azonnal használható. Minden funkció elérhető, adatai mentésre kerülnek.',
     createAccountHint: 'Fiók létrehozása bármikor',
-    createAccountHintDesc: 'Ha kész, hozzon létre admin fiókot a felhasználókezelés feloldásához és adatai védelméhez.',
+    createAccountHintDesc:
+      'Ha kész, hozzon létre admin fiókot a felhasználókezelés feloldásához és adatai védelméhez.',
     topRightHint: 'Keresse a jobb felső sarokban lévő gombot',
     gotIt: 'Értem, kezdjük!',
   },
@@ -1026,7 +1111,8 @@ export default {
     startError: 'A távoli hozzáférés nem indítható',
     stopError: 'A távoli hozzáférés nem állítható le',
     antivirusBlockedTitle: 'Az ngrok blokkolva lehet az antivirus által',
-    antivirusBlockedDesc: 'Ha a kapcsolat sikertelen, ellenőrizze, hogy az antivirus blokkolja-e az ngrok-ot, és adja hozzá a whitelisthez.',
+    antivirusBlockedDesc:
+      'Ha a kapcsolat sikertelen, ellenőrizze, hogy az antivirus blokkolja-e az ngrok-ot, és adja hozzá a whitelisthez.',
   },
   authProviders: {
     ...enUS.authProviders,
@@ -1036,7 +1122,8 @@ export default {
     loadingProviders: 'Szolgáltatók betöltése...',
     providerCreated: 'Szolgáltató sikeresen létrehozva',
     providerDeleted: 'Szolgáltató sikeresen törölve',
-    confirmDeleteProvider: 'Biztosan törölni szeretné a(z) "{name}" szolgáltatót? Ez a művelet nem vonható vissza.',
+    confirmDeleteProvider:
+      'Biztosan törölni szeretné a(z) "{name}" szolgáltatót? Ez a művelet nem vonható vissza.',
   },
   workspace: {
     title: 'Munkaterület fájlok',
@@ -1122,7 +1209,8 @@ export default {
   heartbeat: {
     ...enUS.heartbeat,
     title: 'Szívverés',
-    description: 'Időszakos ügynök-ellenőrzés — beolvassa a HEARTBEAT.md fájlt és riasztásokat küld a csatornákon.',
+    description:
+      'Időszakos ügynök-ellenőrzés — beolvassa a HEARTBEAT.md fájlt és riasztásokat küld a csatornákon.',
     neverRun: 'Soha nem futott',
     interval: 'Időköz',
     lastRun: 'Utolsó futás',
@@ -1160,7 +1248,8 @@ export default {
     enabled: 'Engedélyezve',
     disabled: 'Letiltva',
     enabledDescription: 'Fiókja kétfaktoros hitelesítéssel védett.',
-    disabledDescription: 'Engedélyezze a kétfaktoros hitelesítést a fiókja biztonságának növeléséhez.',
+    disabledDescription:
+      'Engedélyezze a kétfaktoros hitelesítést a fiókja biztonságának növeléséhez.',
     setup: 'MFA beállítása',
     disable: 'MFA letiltása',
     regenerateCodes: 'Helyreállítási kódok újragenerálása',
@@ -1179,7 +1268,8 @@ export default {
   webauthn: {
     ...enUS.webauthn,
     title: 'Biztonsági kulcsok',
-    subtitle: 'Hardveres biztonsági kulcsok vagy biometria használata jelszó nélküli bejelentkezéshez',
+    subtitle:
+      'Hardveres biztonsági kulcsok vagy biometria használata jelszó nélküli bejelentkezéshez',
     noCredentials: 'Nincsenek biztonsági kulcsok',
     addCredential: 'Biztonsági kulcs hozzáadása',
     register: 'Regisztráció',
@@ -1265,16 +1355,19 @@ export default {
     },
     smartToolsDesc: 'Kérésenként csak releváns eszközöket küld, csökkentve a tokenhasználatot',
     providerRaceTitle: 'Szolgáltatói párhuzamos verseny',
-    providerRaceDesc: 'Egyszerre több szolgáltatónak küld kérést, és a leggyorsabb sikeres választ adja vissza; ez kis mértékben növelheti a költséget',
+    providerRaceDesc:
+      'Egyszerre több szolgáltatónak küld kérést, és a leggyorsabb sikeres választ adja vissza; ez kis mértékben növelheti a költséget',
     providerRaceEnabled: 'Engedélyezve',
     providerRaceDisabled: 'Letiltva',
     providerRaceMaxParallel: 'Max. párhuzamos',
     providerRaceMinProviders: 'Minimális szolgáltatószám',
     providerRaceSinkThreshold: 'Süllyesztési küszöb',
     providerRaceExcludeThreshold: 'Kizárási küszöb',
-    providerRaceCooldownRule: 'Hűtés, ha az üres futások aránya ≥ {threshold} (min. {samples} minta), időtartam {duration}',
+    providerRaceCooldownRule:
+      'Hűtés, ha az üres futások aránya ≥ {threshold} (min. {samples} minta), időtartam {duration}',
     cacheTitle: 'CC gyorsítótár',
-    cacheDesc: 'Válasz-gyorsítótárazás API proxy kérésekhez, csökkentve a késleltetést és költségeket',
+    cacheDesc:
+      'Válasz-gyorsítótárazás API proxy kérésekhez, csökkentve a késleltetést és költségeket',
     cacheSwitch: 'Gyorsítótár engedélyezése',
   },
   providerSettings: {
@@ -1301,6 +1394,29 @@ export default {
   },
   userdata: {
     ...enUS.userdata,
+    chatDataTitle: 'Chatadatok',
+    chatDataDescription: 'A csevegési előzmények és kapcsolódó adatok importálása, exportálása és törlése egy helyről.',
+    manageData: 'Adatok kezelése',
+    cleanupPreviewFailed: 'A tisztítási előnézet sikertelen',
+    cleanupFailed: 'Az adattisztítás sikertelen',
+    cleanupSuccess: 'Az adattisztítás befejeződött',
+    messages: 'Üzenetek',
+    conversations: 'Beszélgetések',
+    exportedAt: 'Exportálva',
+    preview: 'Előnézet',
+    selectFile: 'Fájl kiválasztása',
+    confirmPassword: 'Jelszó megerősítése',
+    passwordPlaceholder: 'Adja meg a jelszót (legalább 6 karakter)',
+    format: 'Exportálási formátum',
+    previewFailed: 'Az adatelőnézet sikertelen',
+    hasSettings: 'Tartalmaz beállításokat',
+    previewTitle: 'Importálási előnézet',
+    chooseFile: 'Fájl kiválasztása',
+    importPasswordPlaceholder: 'Adja meg az exportáláskor használt jelszót',
+    confirmPasswordPlaceholder: 'Adja meg újra a jelszót',
+    formatEncryptedDesc: 'Teljesen titkosított bináris formátum. Magasabb biztonság.',
+    formatJsonDesc: 'Ember által olvasható formátum. A jelszó az import ellenőrzésére szolgál.',
+    retentionSaved: 'A megőrzési beállítások mentve',
     tabs: {
       export: 'Exportálás',
       import: 'Importálás',
@@ -1308,9 +1424,11 @@ export default {
       retention: 'Megőrzés',
     },
     export: 'Felhasználói adatok exportálása',
-    exportDescription: 'Csevegési előzmények és beállítások exportálása fájlba. A fájl jelszóval lesz védve.',
+    exportDescription:
+      'Csevegési előzmények és beállítások exportálása fájlba. A fájl jelszóval lesz védve.',
     import: 'Felhasználói adatok importálása',
-    importDescription: 'Korábban exportált adatok importálása. Szüksége lesz az exportáláskor használt jelszóra.',
+    importDescription:
+      'Korábban exportált adatok importálása. Szüksége lesz az exportáláskor használt jelszóra.',
     password: 'Jelszó',
     passwordMismatch: 'A jelszavak nem egyeznek',
     exportButton: 'Adatok exportálása',
@@ -1324,26 +1442,61 @@ export default {
     retention: {
       ...enUS.userdata.retention,
       title: 'Adatmegőrzés',
-      description: 'Állítsa be, mennyi ideig őrizhetők meg az adatok az automatikus tisztítás előtt',
+      description:
+        'Állítsa be, mennyi ideig őrizhetők meg az adatok az automatikus tisztítás előtt',
       sessions: 'Munkamenetek',
       events: 'Események',
       alerts: 'Riasztások',
       policy: 'Megőrzési irányelvek',
+      totalRecords: 'Megfigyelési rekordok összesen',
+      policyHint: 'Minden adattípus 1 és 365 nap közötti értéket támogat. A rövidebb megőrzés kevesebb tárhelyet igényel, a hosszabb segíti az auditot és a hibakeresést.',
+      daysRange: 'Engedélyezett tartomány: 1-365 nap',
+      sessionsHint: 'Az agent munkamenet-életciklusa és futásidejű metaadatai.',
+      eventsHint: 'Eszközhívások, végrehajtási nyomvonalak és audit-események.',
+      alertsHint: 'Biztonsági riasztások, kockázati pontszámok és visszaigazolási állapot.',
+      sessionsSuggested: 'Javasolt: 14-30 nap a rutinműködéshez',
+      eventsSuggested: 'Javasolt: 7-14 nap a kiegyensúlyozott auditmennyiséghez',
+      alertsSuggested: 'Javasolt: 30-90 nap incidensek áttekintéséhez',
+      saveHint: 'Az új megőrzési ablakok a következő automatikus és kézi tisztításokra érvényesek.',
+
       days: 'nap',
     },
     cleanup: {
       ...enUS.userdata.cleanup,
       title: 'Adattisztítás',
-      description: 'Kiválasztott adatok végleges törlése. Ez a művelet nem vonható vissza.',
-      warning: 'Romboló művelet',
+      description: 'A kijelölt adatok végleges törlése. Ez a művelet nem vonható vissza.',
+      warning: 'Destruktív művelet',
+      warningDetail: 'A törölt adatok nem állíthatók helyre. Ha biztonsági mentésre van szüksége, előbb exportálja az adatait.',
       selectData: 'Törlendő adatok kiválasztása',
       chatHistory: 'Csevegési előzmények',
-      chatHistoryDesc: 'Összes beszélgetés és üzenet',
-      confirmDelete: 'Törlés megerősítése',
-      confirmHintPreview: 'Írja be a „{confirmText}" szöveget alább a romboló művelet megerősítéséhez.',
+      chatHistoryDesc: 'Minden beszélgetés és üzenet',
+      sessions: 'Munkamenetadatok',
+      sessionsDesc: 'Bejelentkezési munkamenetek és aktivitási rekordok',
+      events: 'Eseménynaplók',
+      eventsDesc: 'Rendszeresemények és auditnaplók',
+      alerts: 'Riasztási előzmények',
+      alertsDesc: 'Biztonsági riasztások és értesítések',
+      settings: 'Felhasználói beállítások',
+      settingsDesc: 'Állítsa vissza az összes beállítást alapértékre',
+      cache: 'Helyi gyorsítótár',
+      cacheDesc: 'Gyorsítótárazott adatok és ideiglenes fájlok',
+      previewButton: 'Tisztítás előnézete',
+      previewTitle: 'Törlendő adatok',
+      willReset: 'Vissza lesz állítva',
+      willClear: 'Törölve lesz',
+      authorizationStep: 'Jóváhagyás szükséges',
+      authorizationHint: 'Tekintse át a törlendő adatokat. Ez a lépés jóváhagyási megerősítésként szolgál.',
+      proceedToConfirm: 'Tovább a megerősítéshez',
+      confirmStep: 'Végső megerősítés',
+      confirmHint: 'Adja meg jelszavát ennek a destruktív műveletnek a megerősítéséhez.',
+      confirmHintPreview: 'Írja be alább: "{confirmText}" a destruktív művelet megerősítéséhez.',
       confirmText: 'TÖRLÉS MEGERŐSÍTÉSE',
       typeToConfirm: 'Írja be a megerősítéshez',
-      typeToConfirmPlaceholder: 'Írja be a „{confirmText}" szöveget a megerősítéshez',
+      typeToConfirmPlaceholder: 'A megerősítéshez írja be: "{confirmText}"',
+      productionHint: 'Éles környezetben további hitelesítő adatokra lehet szükség (MFA, adminisztrátori jóváhagyás).',
+      enterPassword: 'Jelszó megadása',
+      passwordPlaceholder: 'Adja meg a jelszavát a megerősítéshez',
+      confirmDelete: 'Törlés megerősítése',
       deleting: 'Törlés...',
     },
     memory: {
@@ -1351,10 +1504,22 @@ export default {
       title: 'Memória',
       description: 'AI memória adatok exportálása vagy importálása Markdown fájlként.',
       totalMemories: 'Összes memória',
+      backend: 'Backend',
       exportSection: 'Memóriák exportálása',
+      exportDesc: 'Töltse le az összes memóriát Markdown fájlként biztonsági mentéshez vagy szerkesztéshez.',
       exportButton: 'Exportálás Markdownként',
+      exportSuccess: 'A memóriák exportálása sikeres',
+      exportFailed: 'A memóriák exportálása sikertelen',
       importSection: 'Memóriák importálása',
+      importDesc: 'Memóriák importálása Markdown fájlból.',
       importButton: 'Memóriák importálása',
+      importSuccess: '{count} memória sikeresen importálva',
+      importFailed: 'A memóriák importálása sikertelen',
+      importMode: 'Importálási mód',
+      modeAppend: 'Hozzáfűzés',
+      modeReplace: 'Csere',
+      modeAppendDesc: 'Az importált memóriák hozzáadása a meglévőkhöz',
+      modeReplaceDesc: 'Az összes meglévő memória törlése importálás előtt',
     },
   },
   connections: {
@@ -1416,14 +1581,33 @@ export default {
     ...enUS.skills,
     builtin: {
       ...enUS.skills.builtin,
-      scheduler: { name: 'Ütemező', description: 'Ütemezett feladatok (Cron) létrehozása, kezelése és futtatása' },
-      browser: { name: 'Böngésző', description: 'Webböngészés headless böngészővel, oldalak olvasása és elemekkel való interakció' },
-      sandbox: { name: 'Homokozó', description: 'Parancsok végrehajtása izolált környezetben erőforrás-korlátokkal' },
-      'ui-reviewer': { name: 'UI-ellenőrzés', description: 'Automatizált UI-minőségellenőrzés akadálymentességi vizsgálattal és vizuális pontozással' },
-      autoreply: { name: 'Automatikus válasz', description: 'Automatikus válaszszabályok létrehozása és kezelése kulcsszó-triggerekkel' },
-      workflows: { name: 'Munkafolyamatok', description: 'n8n stílusú munkafolyamat-automatizálások létrehozása és futtatása' },
+      scheduler: {
+        name: 'Ütemező',
+        description: 'Ütemezett feladatok (Cron) létrehozása, kezelése és futtatása',
+      },
+      browser: {
+        name: 'Böngésző',
+        description: 'Webböngészés, oldalak olvasása és elemekkel való interakció',
+      },
+      sandbox: {
+        name: 'Homokozó',
+        description: 'Parancsok végrehajtása izolált környezetben erőforrás-korlátokkal',
+      },
+      'ui-reviewer': {
+        name: 'UI-ellenőrzés',
+        description:
+          'Automatizált UI-minőségellenőrzés akadálymentességi vizsgálattal és vizuális pontozással',
+      },
+      autoreply: {
+        name: 'Automatikus válasz',
+        description: 'Automatikus válaszszabályok létrehozása és kezelése kulcsszó-triggerekkel',
+      },
+      workflows: {
+        name: 'Munkafolyamatok',
+        description: 'n8n stílusú munkafolyamat-automatizálások létrehozása és futtatása',
+      },
     },
-  
+
     filters: {
       allStatus: 'All Status',
     },
@@ -1467,11 +1651,57 @@ export default {
   },
   a2ui: enUS.a2ui,
   sandbox: enUS.sandbox,
-  home: enUS.home,
+  home: {
+    ...enUS.home,
+    description: 'Stabil, megbízható és semleges futtatókörnyezet az AI-asszisztensekhez és automatizálásokhoz',
+  },
   brand: enUS.brand,
   speech: {
     ...enUS.speech,
-    privacyWarning: 'Az Edge-TTS online szolgáltatás. A szöveg a Microsoft szervereire kerül szintézisre.',
+    convertTask: {
+      task: 'Feladat',
+      cancelling: 'Megszakítás...',
+      downloadAudio: 'Hang letöltése',
+      downloadVideo: 'Videó letöltése',
+      downloadPdf: 'PDF letöltése',
+      downloadText: 'Szöveg letöltése',
+      downloadFile: 'Fájl letöltése',
+      action: {
+        convert: 'Konvertálás',
+        merge: 'Egyesítés',
+        split: 'Felosztás',
+        trim: 'Vágás',
+        extractAudio: 'Hang kinyerése',
+        extractFrames: 'Képkockák kinyerése',
+        tts: 'Szövegfelolvasás',
+        asr: 'Beszédfelismerés',
+      },
+      previewKind: {
+        file: 'Fájl',
+        audio: 'Hang',
+        video: 'Videó',
+        image: 'Kép',
+        pdf: 'PDF',
+        text: 'Szöveg',
+      },
+      message: {
+        queued: 'Sorba állítva',
+        processing: 'Feldolgozás',
+        completed: 'Befejezve',
+        taskCancelled: 'Feladat megszakítva',
+        taskFailed: 'Feladat sikertelen',
+        convertCompleted: 'Konvertálás befejezve',
+        mergeCompleted: 'Egyesítés befejezve',
+        splitCompleted: 'Felosztás befejezve',
+        trimCompleted: 'Vágás befejezve',
+        extractAudioCompleted: 'Hangkinyerés befejezve',
+        extractFramesCompleted: 'Képkocka-export befejezve',
+        ttsCompleted: 'Beszédhang létrehozva',
+        asrCompleted: 'Átirat elkészült',
+      },
+    },
+    privacyWarning:
+      'Az Edge-TTS online szolgáltatás. A szöveg a Microsoft szervereire kerül szintézisre.',
     downloadFailed: 'A letöltés sikertelen',
     ttsProvider: 'TTS szolgáltató',
     espeakNote: 'Offline – könnyű (~8,5 MB)',
@@ -1495,7 +1725,8 @@ export default {
       },
     },
     // Kokoro TTS
-    kokoroDesc: 'Kiváló minőségű offline neurális TTS (modell ~127MB + hangok ~5MB + ONNX Runtime ~30MB)',
+    kokoroDesc:
+      'Kiváló minőségű offline neurális TTS (modell ~127MB + hangok ~5MB + ONNX Runtime ~30MB)',
     kokoroQuality: 'Természetes',
     kokoroDownload: 'Kokoro modell + ONNX Runtime letöltése',
     kokoroDownloading: 'Kokoro modell és ONNX Runtime letöltése...',
@@ -1556,17 +1787,21 @@ export default {
     espeakAllReady: 'Minden függőség kész',
     espeakDepLib: 'eSpeak-NG motor + nyelvi adatok',
     espeakLangs: 'nyelv',
-    espeakNeedRebuild: 'eSpeak-NG adatok nem találhatók. Kérjük, építse újra az espeak build taggel.',
+    espeakNeedRebuild:
+      'eSpeak-NG adatok nem találhatók. Kérjük, építse újra az espeak build taggel.',
     macosNativeName: 'macOS Natív',
     macosNativeDesc: 'Beépített macOS beszédszintézis (offline, letöltés nem szükséges)',
     macosNativeSTTDesc: 'Beépített macOS beszédfelismerés (offline, letöltés nem szükséges)',
     macosNativeQuality: 'Kiváló',
     macosNativeOnDeviceOnly: 'Csak eszközön',
-    macosNativeOnDeviceDesc: 'Eszközön történő felismerés kényszerítése (nem küld adatokat az Apple szervereire)',
+    macosNativeOnDeviceDesc:
+      'Eszközön történő felismerés kényszerítése (nem küld adatokat az Apple szervereire)',
     macosNativeOnDeviceUnsupported: 'Az eszközön lévő modell nem érhető el az aktuális nyelvhez',
-    dictationDisabledGuide: 'A diktálás nincs engedélyezve. Az eszközön történő felismeréshez diktálás szükséges. Lépjen a Rendszerbeállítások > Billentyűzet > Diktálás menüpontra az engedélyezéshez.',
+    dictationDisabledGuide:
+      'A diktálás nincs engedélyezve. Az eszközön történő felismeréshez diktálás szükséges. Lépjen a Rendszerbeállítások > Billentyűzet > Diktálás menüpontra az engedélyezéshez.',
     recheckDictation: 'Újraellenőrzés',
-    onDeviceUnavailableError: 'Az eszközön történő felismerés nem érhető el. Engedélyezze a diktálást a Rendszerbeállítások > Billentyűzet > Diktálás menüpontban, vagy kapcsolja ki az „Csak eszközön" módot.',
+    onDeviceUnavailableError:
+      'Az eszközön történő felismerés nem érhető el. Engedélyezze a diktálást a Rendszerbeállítások > Billentyűzet > Diktálás menüpontban, vagy kapcsolja ki az „Csak eszközön" módot.',
     noModelsAvailable: 'Nincsenek modellek ettől a szolgáltatótól',
     asrTab: 'Beszédfelismerés (ASR)',
     ttsTab: 'Szövegfelolvasás (TTS)',
@@ -1700,6 +1935,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    execDirectoryApprovalTimeout: 'A parancs végrehajtása blokkolva lett, mert a könyvtár jóváhagyása időtúllépés miatt lejárt. Hagyja jóvá a könyvtárat, majd próbálja újra.',
     streamProgress: {
       requestAccepted: 'Kérelem fogadva, válasz előkészítése...',
       generating: 'Válasz generálása...',
@@ -1708,7 +1944,7 @@ export default {
       processing: 'Feldolgozás...',
       completed: 'Kész',
     },
-    featureHintTapToEnable: "Opcionális funkciók észlelve. Küldés előtt koppintva jelölje be:",
+    featureHintTapToEnable: 'Opcionális funkciók észlelve. Küldés előtt koppintva jelölje be:',
     send: 'Küldés',
     sendDuringStream: 'Küldés (hozzáadás a beszélgetéshez)',
     responseInterrupted: 'Válasz megszakítva',
@@ -1737,31 +1973,53 @@ export default {
     deepResearchStageCompleted: 'Befejezve',
     deepResearchStageFailed: 'Sikertelen',
     deepResearchStageCancelled: 'Megszakítva',
+    deepResearchProcess: 'Kutatási folyamat',
+    deepResearchLiveSources: 'Élő források',
+    deepResearchResearchBrief: 'Kutatási összefoglaló',
+    deepResearchMustVerify: 'Ellenőrizendő',
+    deepResearchPlannedTasks: 'Tervezett feladatok',
+    deepResearchFollowUpQuery: 'Követő lekérdezés',
+    deepResearchRunningTasks: 'Futó kutatási feladatok',
+    deepResearchRunningElsewhere:
+      'Kövesse az aktív deep research feladatokat a beszélgetések között.',
+    deepResearchViewTask: 'Feladat megnyitása',
+    deepResearchCancelTask: 'Mégse',
+    deepResearchTaskCompleted: 'Kutatás befejezve',
+    deepResearchTaskFailed: 'A kutatás sikertelen',
+    deepResearchTaskCancelled: 'Kutatás megszakítva',
+    deepResearchBackToTask: 'Eredmény megtekintése',
     stillListening: 'Folytasd, figyelek...',
     imageGenStopped: 'A képgenerálás leállítva.',
     videoGenStopped: 'A videógenerálás leállítva.',
     agentTaskStopped: 'A(z) „{goal}" feladat leállítva.',
     contextPruned: 'Kontextus vágva, {tokens} token megtakarítva',
     contextCompacted: 'Kontextus tömörítve: {before} → {after} üzenet',
-    trialExhausted: 'A próbaverzió kvótája kimerült. Konfiguráljon saját AI-szolgáltatót a folytatáshoz.',
-    trialServiceBusy: 'A próbaszolgáltatás jelenleg túlterhelt a nagy kereslet miatt. Kérjük, próbálja újra egy pillanat múlva. Ha ez továbbra is fennáll, látogasson el közösségünkbe segítségért.',
+    trialExhausted:
+      'A próbaverzió kvótája kimerült. Konfiguráljon saját AI-szolgáltatót a folytatáshoz.',
+    trialServiceBusy:
+      'A próbaszolgáltatás jelenleg túlterhelt a nagy kereslet miatt. Kérjük, próbálja újra egy pillanat múlva. Ha ez továbbra is fennáll, látogasson el közösségünkbe segítségért.',
     noStreamData: 'Nem érkezett válasz. Próbálja újra.',
     streamEmpty: 'A kapcsolat bezárult, mielőtt válasz érkezett volna. Próbálja újra.',
-    providerNoResponse: 'A szolgáltató nem adott választ. Ez általában átmeneti probléma — próbálja újra.',
+    providerNoResponse:
+      'A szolgáltató nem adott választ. Ez általában átmeneti probléma — próbálja újra.',
     providerReturnedEmpty: 'A szolgáltató üres választ adott. Próbálja újra.',
     noResponseBody: 'Nem érkezett válasz tartalom. Ellenőrizze a hálózati kapcsolatot.',
-    providerOpenRouterPrivacyPolicy: 'Az OpenRouter adatvédelmi beállítások miatt blokkolta ezt a kérést. Nyissa meg a https://openrouter.ai/settings/privacy oldalt, kapcsolja be a "Free model publication" opciót, majd próbálja újra.',
+    providerOpenRouterPrivacyPolicy:
+      'Az OpenRouter adatvédelmi beállítások miatt blokkolta ezt a kérést. Nyissa meg a https://openrouter.ai/settings/privacy oldalt, kapcsolja be a "Free model publication" opciót, majd próbálja újra.',
     configureProvider: 'Szolgáltató konfigurálása',
     noProvider: {
       title: 'Nincs elérhető AI szolgáltató',
-      description: 'Konfigurálnia kell egy AI szolgáltatót a funkció használatához. Szeretné most konfigurálni?',
+      description:
+        'Konfigurálnia kell egy AI szolgáltatót a funkció használatához. Szeretné most konfigurálni?',
       configure: 'Konfigurálás most',
     },
     // Bővített mód
     enhancedMode: 'Bővített',
-    enhancedModeDesc: 'Bővített mód: támogatja a készségeket, eszközhívásokat, fájlműveleteket, kódfuttatást és egyebeket',
+    enhancedModeDesc:
+      'Bővített mód: támogatja a készségeket, eszközhívásokat, fájlműveleteket, kódfuttatást és egyebeket',
     enableEnhancedMode: 'Bővített mód bekapcsolása',
-    enableEnhancedModeDesc: 'Kapcsolja be a bővített módot a készségek, eszközhívások, fájlműveletek és egyebek használatához',
+    enableEnhancedModeDesc:
+      'Kapcsolja be a bővített módot a készségek, eszközhívások, fájlműveletek és egyebek használatához',
     showToolDetails: 'Munka részleteinek megjelenítése',
     hideToolDetails: 'Munka részleteinek elrejtése',
     toolDetailExpand: 'Kimenet kibontása',
@@ -1786,7 +2044,8 @@ export default {
     switchToVoice: 'Switch to voice',
     voiceTranscribing: 'Transcribing...',
     voiceTranscriptionError: 'Failed to transcribe audio',
-    voiceTranscriptionTimeout: 'Az átírás időtúllépés miatt megszakadt. A felvétel túl hosszú lehet, vagy a szerver foglalt, próbálja újra.',
+    voiceTranscriptionTimeout:
+      'Az átírás időtúllépés miatt megszakadt. A felvétel túl hosszú lehet, vagy a szerver foglalt, próbálja újra.',
     voiceRecordingError: 'A recording error occurred',
     voiceMicrophoneError: 'Could not access microphone',
     // Voice messages
@@ -1836,7 +2095,7 @@ export default {
       syncing: 'Képességbolt szinkronizálása...',
       skillsSynced: '{count} képesség szinkronizálva',
     },
-  
+
     detail: {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
@@ -1862,7 +2121,7 @@ export default {
   tools: {
     names: {
       'Web Search': 'Webes keresés',
-      'Calculator': 'Számológép',
+      Calculator: 'Számológép',
       'System Info': 'Rendszerinformáció',
       'Current Time': 'Aktuális idő',
       read: 'Fájl olvasása',
@@ -1874,12 +2133,12 @@ export default {
       'Memory Get': 'Memória lekérés',
       'Memory Stats': 'Memória statisztika',
       mcp: 'MCP hívás',
-      'Scheduler': 'Ütemező',
-      'Browser': 'Böngésző',
-      'Sandbox': 'Homokozó',
+      Scheduler: 'Ütemező',
+      Browser: 'Böngésző',
+      Sandbox: 'Homokozó',
       'UI Reviewer': 'UI-ellenőrzés',
       'Auto Reply': 'Automatikus válasz',
-      'Workflows': 'Munkafolyamatok',
+      Workflows: 'Munkafolyamatok',
       reminder: 'Emlékeztető',
       mediagen: 'Médiagenerálás',
       ask: 'Kérdezni',
@@ -1896,6 +2155,20 @@ export default {
       limit: 'Korlát',
       offset: 'Eltolás',
       id: 'ID',
+      action: 'Művelet',
+      name: 'Név',
+      title: 'Cím',
+      description: 'Leírás',
+      schedule: 'Ütemezés',
+      cron: 'Cron',
+      handler: 'Kezelő',
+      type: 'Típus',
+      command: 'Parancs',
+      payload: 'Hasznos teher',
+      job_id: 'Feladatazonosító',
+      jobId: 'Feladatazonosító',
+      cron_id: 'Cron-azonosító',
+      cronId: 'Cron-azonosító',
     },
     calling: 'Eszközök hívása',
     callingProgress: 'Eszközök hívása...',
@@ -1921,6 +2194,13 @@ export default {
   },
   search: {
     resultCount: '{count} találat',
+  },
+  cardActions: {
+    use_browser: 'Böngésző használata',
+    extract_with_web_fetch: 'Kinyerés Web Fetch-csel',
+    recheck: 'Újraellenőrzés',
+    check_a11y: 'Csak akadálymentesség',
+    full_report: 'Teljes jelentés',
   },
   uiReview: {
     title: 'UI áttekintés',
@@ -2006,7 +2286,8 @@ export default {
   },
   myProviders: {
     title: 'Szolgáltatóim',
-    description: 'Konfigurálja saját API-kulcsait az LLM-szolgáltatókhoz. Az Ön kulcsai felülírják a rendszer alapértelmezéseit.',
+    description:
+      'Konfigurálja saját API-kulcsait az LLM-szolgáltatókhoz. Az Ön kulcsai felülírják a rendszer alapértelmezéseit.',
     configured: 'Konfigurálva',
     configure: 'Konfigurálás',
     keyUnchanged: 'Hagyja üresen a jelenlegi kulcs megtartásához',
@@ -2052,17 +2333,17 @@ export default {
   },
   resultCard: {
     titles: {
-      'workspace_file': 'Workspace File',
-      'calculator': 'Calculator',
-      'current_time': 'Current Time',
-      'read': 'File Read',
-      'write': 'File Write',
-      'file_read': 'File Read',
-      'file_write': 'File Write',
-      'system_info': 'System Info',
-      'memory': 'Memória',
-      'mcp': 'MCP hívás',
-      'exec': 'Parancs végrehajtás',
+      workspace_file: 'Workspace File',
+      calculator: 'Calculator',
+      current_time: 'Current Time',
+      read: 'File Read',
+      write: 'File Write',
+      file_read: 'File Read',
+      file_write: 'File Write',
+      system_info: 'System Info',
+      memory: 'Memória',
+      mcp: 'MCP hívás',
+      exec: 'Parancs végrehajtás',
     },
     labels: {
       filename: 'Filename',
@@ -2087,7 +2368,8 @@ export default {
     ...enUS.agent,
     mode: 'Feladatciklus mód',
     modeDescription: 'Folyamatos tervezés-végrehajtás ciklusokat engedélyez, amíg ki nem kapcsolod',
-    autoConfirmDescription: 'Destruktív műveleteknél megerősítés kihagyása (jobb kattintás a feladatciklus gombra a váltáshoz)',
+    autoConfirmDescription:
+      'Destruktív műveleteknél megerősítés kihagyása (jobb kattintás a feladatciklus gombra a váltáshoz)',
     sendMessage: 'Üzenet küldése az ügynöknek...',
     messageQueued: 'Üzenet elküldve az ügynöknek',
   },

@@ -21,6 +21,7 @@ func (a *deepResearchToolAdapter) CreateJob(ctx context.Context, req tools.Resea
 	}
 	job, err := a.service.CreateJob(ctx, deepresearch.CreateJobRequest{
 		UserID:       req.UserID,
+		ConversationID: req.ConversationID,
 		Query:        req.Query,
 		Mode:         deepresearch.Mode(req.Mode),
 		RouteMode:    deepresearch.RouteMode(req.RouteMode),
@@ -60,6 +61,7 @@ func toToolResearchJob(job *deepresearch.Job) *tools.ResearchJob {
 	}
 	out := &tools.ResearchJob{
 		ID:                 job.ID,
+		ConversationID:     job.ConversationID,
 		Status:             string(job.Status),
 		Query:              job.Query,
 		Mode:               string(job.Mode),

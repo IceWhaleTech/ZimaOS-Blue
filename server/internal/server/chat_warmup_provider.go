@@ -31,7 +31,6 @@ var errProviderWarmupStopped = errors.New("provider warmup stopped")
 type warmupResult struct {
 	systemPromptMessages []llm.Message
 	preloadedMessages    []memory.Message
-	beforeCount          int
 	createdAt            time.Time
 }
 

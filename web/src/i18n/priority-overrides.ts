@@ -294,7 +294,15 @@ export default {
         "text_chars": "Caràcters de text",
         "report_url": "Informe",
         "device": "Dispositiu",
-        "wait_ms": "Espera (ms)"
+        "wait_ms": "Espera (ms)",
+        "target_id": "ID de destinació",
+        "browser_target_id": "ID de destinació del navegador",
+        "strategy": "Estratègia",
+        "strict_entity": "Coincidència estricta d’entitats",
+        "max_depth": "Profunditat màxima",
+        "max_entries": "Entrades màximes",
+        "include_hidden": "Inclou ocultes",
+        "entries_hidden_in_card": "Entrades ocultes"
       },
       "actions": {
         "extract_with_web_fetch": "Extreu amb captura web"
@@ -308,6 +316,16 @@ export default {
         "analyze": "Informe d’anàlisi",
         "ui_review": "Revisió de UI",
         "deep_research": "Cerca profunda"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Estricta",
+          "interactive": "Interactiva",
+          "a11y": "Accessibilitat",
+          "screenshot": "Captura de pantalla",
+          "screenshot_interactive": "Captura + Interacció",
+          "recovered": "Recuperada"
+        }
       }
     },
     "toolWarnings": {
@@ -319,6 +337,7 @@ export default {
         "loginWall": "S'ha detectat un mur d'inici de sessió",
         "challenge": "S'ha detectat una verificació",
         "browserRequired": "Cal una sessió de navegador",
+        "screenshotCaptured": "Captura de pantalla capturada",
         "unknown": "Advertència: {code}"
       }
     },
@@ -842,7 +861,15 @@ export default {
         "text_chars": "Znaky textu",
         "report_url": "Zpráva",
         "device": "Zařízení",
-        "wait_ms": "Čekání (ms)"
+        "wait_ms": "Čekání (ms)",
+        "target_id": "ID cíle",
+        "browser_target_id": "ID cíle prohlížeče",
+        "strategy": "Strategie",
+        "strict_entity": "Přísné párování entit",
+        "max_depth": "Max. hloubka",
+        "max_entries": "Max. položek",
+        "include_hidden": "Zahrnout skryté",
+        "entries_hidden_in_card": "Skryté položky"
       },
       "actions": {
         "extract_with_web_fetch": "Extrahovat pomocí načtení webu"
@@ -856,6 +883,16 @@ export default {
         "analyze": "Analytická zpráva",
         "ui_review": "Kontrola UI",
         "deep_research": "Hloubkové vyhledávání"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Přísná",
+          "interactive": "Interaktivní",
+          "a11y": "Přístupnost",
+          "screenshot": "Snímek obrazovky",
+          "screenshot_interactive": "Snímek + Interakce",
+          "recovered": "Obnoveno"
+        }
       }
     },
     "toolWarnings": {
@@ -867,6 +904,7 @@ export default {
         "loginWall": "Zjištěna přihlašovací stěna",
         "challenge": "Zjištěna ověřovací výzva",
         "browserRequired": "Je vyžadována relace prohlížeče",
+        "screenshotCaptured": "Snímek obrazovky pořízen",
         "unknown": "Varování: {code}"
       }
     },
@@ -1390,7 +1428,15 @@ export default {
         "text_chars": "Tegntegn",
         "report_url": "Rapport",
         "device": "Enhed",
-        "wait_ms": "Ventetid (ms)"
+        "wait_ms": "Ventetid (ms)",
+        "target_id": "Mål-ID",
+        "browser_target_id": "Browser-mål-ID",
+        "strategy": "Strategi",
+        "strict_entity": "Streng entitetsmatchning",
+        "max_depth": "Maks. dybde",
+        "max_entries": "Maks. poster",
+        "include_hidden": "Inkluder skjulte",
+        "entries_hidden_in_card": "Skjulte poster"
       },
       "actions": {
         "extract_with_web_fetch": "Udtræk med webhentning"
@@ -1404,6 +1450,16 @@ export default {
         "analyze": "Analyserapport",
         "ui_review": "UI-gennemgang",
         "deep_research": "Dyb søgning"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Streng",
+          "interactive": "Interaktiv",
+          "a11y": "Tilgængelighed",
+          "screenshot": "Skærmbillede",
+          "screenshot_interactive": "Skærmbillede + Interaktion",
+          "recovered": "Gendannet"
+        }
       }
     },
     "toolWarnings": {
@@ -1415,6 +1471,7 @@ export default {
         "loginWall": "Loginvæg registreret",
         "challenge": "Verifikationsudfordring registreret",
         "browserRequired": "Browsersession påkrævet",
+        "screenshotCaptured": "Skærmbillede taget",
         "unknown": "Advarsel: {code}"
       }
     },
@@ -1938,7 +1995,15 @@ export default {
         "text_chars": "Textzeichen",
         "report_url": "Bericht",
         "device": "Gerät",
-        "wait_ms": "Wartezeit (ms)"
+        "wait_ms": "Wartezeit (ms)",
+        "target_id": "Ziel-ID",
+        "browser_target_id": "Browser-Ziel-ID",
+        "strategy": "Strategie",
+        "strict_entity": "Strikte Entitätszuordnung",
+        "max_depth": "Maximale Tiefe",
+        "max_entries": "Maximale Einträge",
+        "include_hidden": "Versteckte einschließen",
+        "entries_hidden_in_card": "Versteckte Einträge"
       },
       "actions": {
         "extract_with_web_fetch": "Mit Web-Abruf extrahieren"
@@ -1952,6 +2017,16 @@ export default {
         "analyze": "Analysebericht",
         "ui_review": "UI-Überprüfung",
         "deep_research": "Tiefensuche"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Strikt",
+          "interactive": "Interaktiv",
+          "a11y": "Barrierefreiheit",
+          "screenshot": "Screenshot",
+          "screenshot_interactive": "Screenshot + Interaktion",
+          "recovered": "Wiederhergestellt"
+        }
       }
     },
     "toolWarnings": {
@@ -1963,6 +2038,7 @@ export default {
         "loginWall": "Login-Schranke erkannt",
         "challenge": "Bestätigungsabfrage erkannt",
         "browserRequired": "Browser-Sitzung erforderlich",
+        "screenshotCaptured": "Screenshot aufgenommen",
         "unknown": "Warnung: {code}"
       }
     },
@@ -2486,7 +2562,15 @@ export default {
         "text_chars": "Χαρακτήρες κειμένου",
         "report_url": "Αναφορά",
         "device": "Συσκευή",
-        "wait_ms": "Αναμονή (ms)"
+        "wait_ms": "Αναμονή (ms)",
+        "target_id": "Αναγνωριστικό στόχου",
+        "browser_target_id": "Αναγνωριστικό στόχου προγράμματος περιήγησης",
+        "strategy": "Στρατηγική",
+        "strict_entity": "Αυστηρή αντιστοίχιση οντοτήτων",
+        "max_depth": "Μέγιστο βάθος",
+        "max_entries": "Μέγιστες καταχωρήσεις",
+        "include_hidden": "Συμπερίληψη κρυφών",
+        "entries_hidden_in_card": "Κρυφές καταχωρήσεις"
       },
       "actions": {
         "extract_with_web_fetch": "Εξαγωγή με ανάκτηση ιστού"
@@ -2500,6 +2584,16 @@ export default {
         "analyze": "Αναφορά ανάλυσης",
         "ui_review": "Αξιολόγηση UI",
         "deep_research": "Βαθιά αναζήτηση"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Αυστηρή",
+          "interactive": "Διαδραστική",
+          "a11y": "Προσβασιμότητα",
+          "screenshot": "Στιγμιότυπο",
+          "screenshot_interactive": "Στιγμιότυπο + Αλληλεπίδραση",
+          "recovered": "Ανακτήθηκε"
+        }
       }
     },
     "toolWarnings": {
@@ -2511,6 +2605,7 @@ export default {
         "loginWall": "Εντοπίστηκε απαίτηση σύνδεσης",
         "challenge": "Εντοπίστηκε έλεγχος επαλήθευσης",
         "browserRequired": "Απαιτείται συνεδρία προγράμματος περιήγησης",
+        "screenshotCaptured": "Το στιγμιότυπο οθόνης καταγράφηκε",
         "unknown": "Προειδοποίηση: {code}"
       }
     },
@@ -3034,7 +3129,15 @@ export default {
         "text_chars": "Text chars",
         "report_url": "Report link",
         "device": "Device type",
-        "wait_ms": "Wait time (ms)"
+        "wait_ms": "Wait time (ms)",
+        "target_id": "Target ID",
+        "browser_target_id": "Browser Target ID",
+        "strategy": "Strategy",
+        "strict_entity": "Strict Entity Matching",
+        "max_depth": "Max Depth",
+        "max_entries": "Max Entries",
+        "include_hidden": "Include Hidden",
+        "entries_hidden_in_card": "Hidden Entries"
       },
       "actions": {
         "extract_with_web_fetch": "Extract with Web Fetch"
@@ -3048,6 +3151,16 @@ export default {
         "analyze": "Analysis report",
         "ui_review": "UI review",
         "deep_research": "Deep research"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Strict",
+          "interactive": "Interactive",
+          "a11y": "Accessibility",
+          "screenshot": "Screenshot",
+          "screenshot_interactive": "Screenshot + Interactive",
+          "recovered": "Recovered"
+        }
       }
     },
     "toolWarnings": {
@@ -3059,6 +3172,7 @@ export default {
         "loginWall": "Login wall detected",
         "challenge": "Verification challenge detected",
         "browserRequired": "Browser session required",
+        "screenshotCaptured": "Screenshot captured",
         "unknown": "Warning: {code}"
       }
     },
@@ -3582,7 +3696,15 @@ export default {
         "text_chars": "Caracteres de texto",
         "report_url": "Informe",
         "device": "Dispositivo",
-        "wait_ms": "Espera (ms)"
+        "wait_ms": "Espera (ms)",
+        "target_id": "ID de destino",
+        "browser_target_id": "ID de destino del navegador",
+        "strategy": "Estrategia",
+        "strict_entity": "Coincidencia estricta de entidades",
+        "max_depth": "Profundidad máx.",
+        "max_entries": "Entradas máx.",
+        "include_hidden": "Incluir ocultas",
+        "entries_hidden_in_card": "Entradas ocultas"
       },
       "actions": {
         "extract_with_web_fetch": "Extraer con captura web"
@@ -3596,6 +3718,16 @@ export default {
         "analyze": "Informe de análisis",
         "ui_review": "Revisión de UI",
         "deep_research": "Búsqueda profunda"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Estricta",
+          "interactive": "Interactiva",
+          "a11y": "Accesibilidad",
+          "screenshot": "Captura de pantalla",
+          "screenshot_interactive": "Captura + Interacción",
+          "recovered": "Recuperada"
+        }
       }
     },
     "toolWarnings": {
@@ -3607,6 +3739,7 @@ export default {
         "loginWall": "Se detectó un muro de inicio de sesión",
         "challenge": "Se detectó una verificación",
         "browserRequired": "Se requiere una sesión del navegador",
+        "screenshotCaptured": "Captura de pantalla realizada",
         "unknown": "Advertencia: {code}"
       }
     },
@@ -4130,7 +4263,15 @@ export default {
         "text_chars": "Caractères du texte",
         "report_url": "Rapport",
         "device": "Appareil",
-        "wait_ms": "Attente (ms)"
+        "wait_ms": "Attente (ms)",
+        "target_id": "ID de cible",
+        "browser_target_id": "ID de cible du navigateur",
+        "strategy": "Stratégie",
+        "strict_entity": "Correspondance stricte des entités",
+        "max_depth": "Profondeur max",
+        "max_entries": "Entrées max",
+        "include_hidden": "Inclure les éléments masqués",
+        "entries_hidden_in_card": "Entrées masquées"
       },
       "actions": {
         "extract_with_web_fetch": "Extraire avec récupération web"
@@ -4144,6 +4285,16 @@ export default {
         "analyze": "Rapport d’analyse",
         "ui_review": "Revue UI",
         "deep_research": "Recherche approfondie"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Stricte",
+          "interactive": "Interactive",
+          "a11y": "Accessibilité",
+          "screenshot": "Capture d’écran",
+          "screenshot_interactive": "Capture + Interaction",
+          "recovered": "Récupérée"
+        }
       }
     },
     "toolWarnings": {
@@ -4155,6 +4306,7 @@ export default {
         "loginWall": "Mur de connexion détecté",
         "challenge": "Défi de vérification détecté",
         "browserRequired": "Session navigateur requise",
+        "screenshotCaptured": "Capture d’écran effectuée",
         "unknown": "Avertissement : {code}"
       }
     },
@@ -4678,7 +4830,15 @@ export default {
         "text_chars": "Carachtair téacs",
         "report_url": "Tuarascáil",
         "device": "Gléas",
-        "wait_ms": "Fanacht (ms)"
+        "wait_ms": "Fanacht (ms)",
+        "target_id": "Aitheantas sprice",
+        "browser_target_id": "Aitheantas sprice an bhrabhsálaí",
+        "strategy": "Straitéis",
+        "strict_entity": "Meaitseáil dhian eintiteas",
+        "max_depth": "Doimhneacht uasta",
+        "max_entries": "Iontrálacha uasta",
+        "include_hidden": "Cuir cinn fholaithe san áireamh",
+        "entries_hidden_in_card": "Iontrálacha folaithe"
       },
       "actions": {
         "extract_with_web_fetch": "Bain amach le gabháil ghréasáin"
@@ -4692,6 +4852,16 @@ export default {
         "analyze": "Tuarascáil anailíse",
         "ui_review": "Athbhreithniú UI",
         "deep_research": "Cuardach domhain"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Dian",
+          "interactive": "Idirghníomhach",
+          "a11y": "Inrochtaineacht",
+          "screenshot": "Gabháil scáileáin",
+          "screenshot_interactive": "Gabháil + Idirghníomhú",
+          "recovered": "Aisghafa"
+        }
       }
     },
     "toolWarnings": {
@@ -4703,6 +4873,7 @@ export default {
         "loginWall": "Bacainn logála isteach braite",
         "challenge": "Dúshlán fíoraithe braite",
         "browserRequired": "Tá seisiún brabhsálaí riachtanach",
+        "screenshotCaptured": "Gabháil scáileáin déanta",
         "unknown": "Rabhadh: {code}"
       }
     },
@@ -5226,7 +5397,15 @@ export default {
         "text_chars": "Znakovi teksta",
         "report_url": "Izvještaj",
         "device": "Uređaj",
-        "wait_ms": "Čekanje (ms)"
+        "wait_ms": "Čekanje (ms)",
+        "target_id": "ID cilja",
+        "browser_target_id": "ID cilja preglednika",
+        "strategy": "Strategija",
+        "strict_entity": "Strogo podudaranje entiteta",
+        "max_depth": "Maks. dubina",
+        "max_entries": "Maks. unosa",
+        "include_hidden": "Uključi skrivene",
+        "entries_hidden_in_card": "Skriveni unosi"
       },
       "actions": {
         "extract_with_web_fetch": "Izdvoji pomoću web dohvaćanja"
@@ -5240,6 +5419,16 @@ export default {
         "analyze": "Izvještaj analize",
         "ui_review": "Pregled UI-ja",
         "deep_research": "Dubinsko pretraživanje"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Stroga",
+          "interactive": "Interaktivna",
+          "a11y": "Pristupačnost",
+          "screenshot": "Snimka zaslona",
+          "screenshot_interactive": "Snimka + Interakcija",
+          "recovered": "Oporavljeno"
+        }
       }
     },
     "toolWarnings": {
@@ -5251,6 +5440,7 @@ export default {
         "loginWall": "Otkriven je zid za prijavu",
         "challenge": "Otkriven je izazov provjere",
         "browserRequired": "Potrebna je sesija preglednika",
+        "screenshotCaptured": "Snimka zaslona je snimljena",
         "unknown": "Upozorenje: {code}"
       }
     },
@@ -5774,7 +5964,15 @@ export default {
         "text_chars": "Szövegkarakterek",
         "report_url": "Jelentés",
         "device": "Eszköz",
-        "wait_ms": "Várakozás (ms)"
+        "wait_ms": "Várakozás (ms)",
+        "target_id": "Célazonosító",
+        "browser_target_id": "Böngésző célazonosító",
+        "strategy": "Stratégia",
+        "strict_entity": "Szigorú entitásegyeztetés",
+        "max_depth": "Max. mélység",
+        "max_entries": "Max. bejegyzések",
+        "include_hidden": "Rejtettek belefoglalása",
+        "entries_hidden_in_card": "Rejtett bejegyzések"
       },
       "actions": {
         "extract_with_web_fetch": "Kinyerés webes lekéréssel"
@@ -5788,6 +5986,16 @@ export default {
         "analyze": "Elemzési jelentés",
         "ui_review": "UI áttekintés",
         "deep_research": "Mélykeresés"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Szigorú",
+          "interactive": "Interaktív",
+          "a11y": "Akadálymentesség",
+          "screenshot": "Képernyőkép",
+          "screenshot_interactive": "Képernyőkép + Interakció",
+          "recovered": "Helyreállítva"
+        }
       }
     },
     "toolWarnings": {
@@ -5799,6 +6007,7 @@ export default {
         "loginWall": "Bejelentkezési fal észlelve",
         "challenge": "Ellenőrzési kihívás észlelve",
         "browserRequired": "Böngészőmunkamenet szükséges",
+        "screenshotCaptured": "Képernyőkép rögzítve",
         "unknown": "Figyelmeztetés: {code}"
       }
     },
@@ -6322,7 +6531,15 @@ export default {
         "text_chars": "Caratteri di testo",
         "report_url": "Rapporto",
         "device": "Dispositivo",
-        "wait_ms": "Attesa (ms)"
+        "wait_ms": "Attesa (ms)",
+        "target_id": "ID destinazione",
+        "browser_target_id": "ID destinazione browser",
+        "strategy": "Strategia",
+        "strict_entity": "Corrispondenza rigorosa delle entità",
+        "max_depth": "Profondità max",
+        "max_entries": "Voci max",
+        "include_hidden": "Includi nascoste",
+        "entries_hidden_in_card": "Voci nascoste"
       },
       "actions": {
         "extract_with_web_fetch": "Estrai con recupero web"
@@ -6336,6 +6553,16 @@ export default {
         "analyze": "Rapporto di analisi",
         "ui_review": "Revisione UI",
         "deep_research": "Ricerca approfondita"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Rigorosa",
+          "interactive": "Interattiva",
+          "a11y": "Accessibilità",
+          "screenshot": "Screenshot",
+          "screenshot_interactive": "Screenshot + Interazione",
+          "recovered": "Recuperata"
+        }
       }
     },
     "toolWarnings": {
@@ -6347,6 +6574,7 @@ export default {
         "loginWall": "Rilevato blocco di accesso",
         "challenge": "Rilevata verifica",
         "browserRequired": "È richiesta una sessione del browser",
+        "screenshotCaptured": "Screenshot acquisito",
         "unknown": "Avviso: {code}"
       }
     },
@@ -6870,7 +7098,15 @@ export default {
         "text_chars": "文字数",
         "report_url": "レポート",
         "device": "デバイス",
-        "wait_ms": "待機時間 (ms)"
+        "wait_ms": "待機時間 (ms)",
+        "target_id": "ターゲットID",
+        "browser_target_id": "ブラウザターゲットID",
+        "strategy": "戦略",
+        "strict_entity": "厳密なエンティティ一致",
+        "max_depth": "最大深度",
+        "max_entries": "最大件数",
+        "include_hidden": "非表示を含める",
+        "entries_hidden_in_card": "カードで非表示の項目"
       },
       "actions": {
         "extract_with_web_fetch": "Web取得で抽出"
@@ -6884,6 +7120,16 @@ export default {
         "analyze": "分析レポート",
         "ui_review": "UIレビュー",
         "deep_research": "ディープサーチ"
+      },
+      "values": {
+        "strategy": {
+          "strict": "厳格",
+          "interactive": "インタラクティブ",
+          "a11y": "アクセシビリティ",
+          "screenshot": "スクリーンショット",
+          "screenshot_interactive": "スクリーンショット＋インタラクティブ",
+          "recovered": "復元済み"
+        }
       }
     },
     "toolWarnings": {
@@ -6895,6 +7141,7 @@ export default {
         "loginWall": "ログイン要求を検出しました",
         "challenge": "認証確認を検出しました",
         "browserRequired": "ブラウザーセッションが必要です",
+        "screenshotCaptured": "スクリーンショットを取得しました",
         "unknown": "警告: {code}"
       }
     },
@@ -7339,7 +7586,15 @@ export default {
         "text_chars": "텍스트 문자 수",
         "report_url": "보고서",
         "device": "기기",
-        "wait_ms": "대기 시간 (ms)"
+        "wait_ms": "대기 시간 (ms)",
+        "target_id": "대상 ID",
+        "browser_target_id": "브라우저 대상 ID",
+        "strategy": "전략",
+        "strict_entity": "엄격한 엔터티 일치",
+        "max_depth": "최대 깊이",
+        "max_entries": "최대 항목 수",
+        "include_hidden": "숨김 포함",
+        "entries_hidden_in_card": "카드에서 숨겨진 항목"
       },
       "actions": {
         "extract_with_web_fetch": "웹 가져오기로 추출"
@@ -7353,6 +7608,16 @@ export default {
         "analyze": "분석 보고서",
         "ui_review": "UI 리뷰",
         "deep_research": "딥 서치"
+      },
+      "values": {
+        "strategy": {
+          "strict": "엄격",
+          "interactive": "상호작용",
+          "a11y": "접근성",
+          "screenshot": "스크린샷",
+          "screenshot_interactive": "스크린샷 + 상호작용",
+          "recovered": "복구됨"
+        }
       }
     },
     "toolWarnings": {
@@ -7364,6 +7629,7 @@ export default {
         "loginWall": "로그인 장벽이 감지되었습니다",
         "challenge": "검증 절차가 감지되었습니다",
         "browserRequired": "브라우저 세션이 필요합니다",
+        "screenshotCaptured": "스크린샷을 캡처했습니다",
         "unknown": "경고: {code}"
       }
     },
@@ -7887,7 +8153,15 @@ export default {
         "text_chars": "ടെക്സ്റ്റ് അക്ഷരങ്ങൾ",
         "report_url": "റിപ്പോർട്ട്",
         "device": "ഉപകരണം",
-        "wait_ms": "കാത്തിരിപ്പ് (ms)"
+        "wait_ms": "കാത്തിരിപ്പ് (ms)",
+        "target_id": "ലക്ഷ്യ ID",
+        "browser_target_id": "ബ്രൗസർ ലക്ഷ്യ ID",
+        "strategy": "തന്ത്രം",
+        "strict_entity": "കർശന എന്റിറ്റി പൊരുത്തപ്പെടുത്തൽ",
+        "max_depth": "പരമാവധി ആഴം",
+        "max_entries": "പരമാവധി എൻട്രികൾ",
+        "include_hidden": "മറഞ്ഞവ ഉൾപ്പെടുത്തുക",
+        "entries_hidden_in_card": "കാർഡിൽ മറച്ച എൻട്രികൾ"
       },
       "actions": {
         "extract_with_web_fetch": "വെബ് ഫെച്ചിലൂടെ എടുക്കുക"
@@ -7901,6 +8175,16 @@ export default {
         "analyze": "വിശകലന റിപ്പോർട്ട്",
         "ui_review": "UI അവലോകനം",
         "deep_research": "ആഴത്തിലുള്ള തിരച്ചിൽ"
+      },
+      "values": {
+        "strategy": {
+          "strict": "കർശനം",
+          "interactive": "ഇന്ററാക്ടീവ്",
+          "a11y": "ആക്സസിബിലിറ്റി",
+          "screenshot": "സ്ക്രീൻഷോട്ട്",
+          "screenshot_interactive": "സ്ക്രീൻഷോട്ട് + ഇന്ററാക്ടീവ്",
+          "recovered": "വീണ്ടെടുത്തു"
+        }
       }
     },
     "toolWarnings": {
@@ -7912,6 +8196,7 @@ export default {
         "loginWall": "ലോഗിൻ ഭിത്തി കണ്ടെത്തി",
         "challenge": "സ്ഥിരീകരണ വെല്ലുവിളി കണ്ടെത്തി",
         "browserRequired": "ബ്രൗസർ സെഷൻ ആവശ്യമാണ്",
+        "screenshotCaptured": "സ്ക്രീൻഷോട്ട് പകർത്തി",
         "unknown": "മുന്നറിയിപ്പ്: {code}"
       }
     },
@@ -8435,7 +8720,15 @@ export default {
         "text_chars": "Teksttegn",
         "report_url": "Rapport",
         "device": "Enhet",
-        "wait_ms": "Ventetid (ms)"
+        "wait_ms": "Ventetid (ms)",
+        "target_id": "Mål-ID",
+        "browser_target_id": "Nettleser mål-ID",
+        "strategy": "Strategi",
+        "strict_entity": "Streng entitetsmatching",
+        "max_depth": "Maks dybde",
+        "max_entries": "Maks antall oppføringer",
+        "include_hidden": "Inkluder skjulte",
+        "entries_hidden_in_card": "Skjulte oppføringer"
       },
       "actions": {
         "extract_with_web_fetch": "Trekk ut med webhenting"
@@ -8449,6 +8742,16 @@ export default {
         "analyze": "Analyserapport",
         "ui_review": "UI-gjennomgang",
         "deep_research": "Dypsøk"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Streng",
+          "interactive": "Interaktiv",
+          "a11y": "Tilgjengelighet",
+          "screenshot": "Skjermbilde",
+          "screenshot_interactive": "Skjermbilde + Interaksjon",
+          "recovered": "Gjenopprettet"
+        }
       }
     },
     "toolWarnings": {
@@ -8460,6 +8763,7 @@ export default {
         "loginWall": "Innloggingsvegg oppdaget",
         "challenge": "Verifiseringsutfordring oppdaget",
         "browserRequired": "Nettleserøkt kreves",
+        "screenshotCaptured": "Skjermbilde tatt",
         "unknown": "Advarsel: {code}"
       }
     },
@@ -8983,7 +9287,15 @@ export default {
         "text_chars": "Teksttekens",
         "report_url": "Rapport",
         "device": "Apparaat",
-        "wait_ms": "Wachttijd (ms)"
+        "wait_ms": "Wachttijd (ms)",
+        "target_id": "Doel-ID",
+        "browser_target_id": "Browser doel-ID",
+        "strategy": "Strategie",
+        "strict_entity": "Strikte entiteitsmatching",
+        "max_depth": "Max diepte",
+        "max_entries": "Max items",
+        "include_hidden": "Verborgen opnemen",
+        "entries_hidden_in_card": "Verborgen items"
       },
       "actions": {
         "extract_with_web_fetch": "Extraheren met web ophalen"
@@ -8997,6 +9309,16 @@ export default {
         "analyze": "Analyserapport",
         "ui_review": "UI-beoordeling",
         "deep_research": "Diep zoeken"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Strikt",
+          "interactive": "Interactief",
+          "a11y": "Toegankelijkheid",
+          "screenshot": "Schermafbeelding",
+          "screenshot_interactive": "Schermafbeelding + Interactie",
+          "recovered": "Hersteld"
+        }
       }
     },
     "toolWarnings": {
@@ -9008,6 +9330,7 @@ export default {
         "loginWall": "Loginmuur gedetecteerd",
         "challenge": "Verificatie-uitdaging gedetecteerd",
         "browserRequired": "Browsersessie vereist",
+        "screenshotCaptured": "Screenshot gemaakt",
         "unknown": "Waarschuwing: {code}"
       }
     },
@@ -9531,7 +9854,15 @@ export default {
         "text_chars": "Znaki tekstu",
         "report_url": "Raport",
         "device": "Urządzenie",
-        "wait_ms": "Czekanie (ms)"
+        "wait_ms": "Czekanie (ms)",
+        "target_id": "ID celu",
+        "browser_target_id": "ID celu przeglądarki",
+        "strategy": "Strategia",
+        "strict_entity": "Ścisłe dopasowanie encji",
+        "max_depth": "Maks. głębokość",
+        "max_entries": "Maks. wpisów",
+        "include_hidden": "Uwzględnij ukryte",
+        "entries_hidden_in_card": "Ukryte wpisy"
       },
       "actions": {
         "extract_with_web_fetch": "Wyodrębnij przez pobieranie z sieci"
@@ -9545,6 +9876,16 @@ export default {
         "analyze": "Raport analizy",
         "ui_review": "Przegląd UI",
         "deep_research": "Wyszukiwanie pogłębione"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Ścisła",
+          "interactive": "Interaktywna",
+          "a11y": "Dostępność",
+          "screenshot": "Zrzut ekranu",
+          "screenshot_interactive": "Zrzut + Interakcja",
+          "recovered": "Odzyskana"
+        }
       }
     },
     "toolWarnings": {
@@ -9556,6 +9897,7 @@ export default {
         "loginWall": "Wykryto blokadę logowania",
         "challenge": "Wykryto weryfikację",
         "browserRequired": "Wymagana sesja przeglądarki",
+        "screenshotCaptured": "Zrzut ekranu został wykonany",
         "unknown": "Ostrzeżenie: {code}"
       }
     },
@@ -10079,7 +10421,15 @@ export default {
         "text_chars": "Caracteres de texto",
         "report_url": "Relatório",
         "device": "Dispositivo",
-        "wait_ms": "Espera (ms)"
+        "wait_ms": "Espera (ms)",
+        "target_id": "ID de destino",
+        "browser_target_id": "ID de destino do navegador",
+        "strategy": "Estratégia",
+        "strict_entity": "Correspondência estrita de entidades",
+        "max_depth": "Profundidade máx.",
+        "max_entries": "Entradas máx.",
+        "include_hidden": "Incluir ocultas",
+        "entries_hidden_in_card": "Entradas ocultas"
       },
       "actions": {
         "extract_with_web_fetch": "Extrair com captura web"
@@ -10093,6 +10443,16 @@ export default {
         "analyze": "Relatório de análise",
         "ui_review": "Revisão de UI",
         "deep_research": "Busca profunda"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Estrita",
+          "interactive": "Interativa",
+          "a11y": "Acessibilidade",
+          "screenshot": "Captura de tela",
+          "screenshot_interactive": "Captura + Interação",
+          "recovered": "Recuperada"
+        }
       }
     },
     "toolWarnings": {
@@ -10104,6 +10464,7 @@ export default {
         "loginWall": "Barreira de login detectada",
         "challenge": "Desafio de verificação detectado",
         "browserRequired": "Sessão do navegador necessária",
+        "screenshotCaptured": "Captura de tela realizada",
         "unknown": "Aviso: {code}"
       }
     },
@@ -10627,7 +10988,15 @@ export default {
         "text_chars": "Caracteres de texto",
         "report_url": "Relatório",
         "device": "Dispositivo",
-        "wait_ms": "Espera (ms)"
+        "wait_ms": "Espera (ms)",
+        "target_id": "ID de destino",
+        "browser_target_id": "ID de destino do navegador",
+        "strategy": "Estratégia",
+        "strict_entity": "Correspondência estrita de entidades",
+        "max_depth": "Profundidade máx.",
+        "max_entries": "Entradas máx.",
+        "include_hidden": "Incluir ocultas",
+        "entries_hidden_in_card": "Entradas ocultas"
       },
       "actions": {
         "extract_with_web_fetch": "Extrair com recolha web"
@@ -10641,6 +11010,16 @@ export default {
         "analyze": "Relatório de análise",
         "ui_review": "Revisão de UI",
         "deep_research": "Pesquisa aprofundada"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Estrita",
+          "interactive": "Interativa",
+          "a11y": "Acessibilidade",
+          "screenshot": "Captura de ecrã",
+          "screenshot_interactive": "Captura + Interação",
+          "recovered": "Recuperada"
+        }
       }
     },
     "toolWarnings": {
@@ -10652,6 +11031,7 @@ export default {
         "loginWall": "Barreira de início de sessão detetada",
         "challenge": "Desafio de verificação detetado",
         "browserRequired": "É necessária uma sessão do navegador",
+        "screenshotCaptured": "Captura de ecrã efetuada",
         "unknown": "Aviso: {code}"
       }
     },
@@ -11175,7 +11555,15 @@ export default {
         "text_chars": "Caractere text",
         "report_url": "Raport",
         "device": "Dispozitiv",
-        "wait_ms": "Așteptare (ms)"
+        "wait_ms": "Așteptare (ms)",
+        "target_id": "ID țintă",
+        "browser_target_id": "ID țintă browser",
+        "strategy": "Strategie",
+        "strict_entity": "Potrivire strictă a entităților",
+        "max_depth": "Adâncime max.",
+        "max_entries": "Intrări max.",
+        "include_hidden": "Include ascunse",
+        "entries_hidden_in_card": "Intrări ascunse"
       },
       "actions": {
         "extract_with_web_fetch": "Extrage cu preluare web"
@@ -11189,6 +11577,16 @@ export default {
         "analyze": "Raport de analiză",
         "ui_review": "Revizuire UI",
         "deep_research": "Căutare aprofundată"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Strictă",
+          "interactive": "Interactivă",
+          "a11y": "Accesibilitate",
+          "screenshot": "Captură de ecran",
+          "screenshot_interactive": "Captură + Interacțiune",
+          "recovered": "Recuperată"
+        }
       }
     },
     "toolWarnings": {
@@ -11200,6 +11598,7 @@ export default {
         "loginWall": "Barieră de autentificare detectată",
         "challenge": "Provocare de verificare detectată",
         "browserRequired": "Este necesară o sesiune de browser",
+        "screenshotCaptured": "Captura de ecran a fost realizată",
         "unknown": "Avertisment: {code}"
       }
     },
@@ -11723,7 +12122,15 @@ export default {
         "text_chars": "Символы текста",
         "report_url": "Отчёт",
         "device": "Устройство",
-        "wait_ms": "Ожидание (мс)"
+        "wait_ms": "Ожидание (мс)",
+        "target_id": "ID цели",
+        "browser_target_id": "ID цели браузера",
+        "strategy": "Стратегия",
+        "strict_entity": "Строгое сопоставление сущностей",
+        "max_depth": "Макс. глубина",
+        "max_entries": "Макс. записей",
+        "include_hidden": "Включать скрытые",
+        "entries_hidden_in_card": "Скрытые записи"
       },
       "actions": {
         "extract_with_web_fetch": "Извлечь через веб-загрузку"
@@ -11737,6 +12144,16 @@ export default {
         "analyze": "Отчёт об анализе",
         "ui_review": "Обзор UI",
         "deep_research": "Глубокий поиск"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Строгая",
+          "interactive": "Интерактивная",
+          "a11y": "Доступность",
+          "screenshot": "Скриншот",
+          "screenshot_interactive": "Скриншот + Взаимодействие",
+          "recovered": "Восстановлено"
+        }
       }
     },
     "toolWarnings": {
@@ -11748,6 +12165,7 @@ export default {
         "loginWall": "Обнаружено требование входа",
         "challenge": "Обнаружена проверка",
         "browserRequired": "Требуется сессия браузера",
+        "screenshotCaptured": "Скриншот сделан",
         "unknown": "Предупреждение: {code}"
       }
     },
@@ -12271,7 +12689,15 @@ export default {
         "text_chars": "Znaky textu",
         "report_url": "Správa",
         "device": "Zariadenie",
-        "wait_ms": "Čakanie (ms)"
+        "wait_ms": "Čakanie (ms)",
+        "target_id": "ID cieľa",
+        "browser_target_id": "ID cieľa prehliadača",
+        "strategy": "Stratégia",
+        "strict_entity": "Prísne párovanie entít",
+        "max_depth": "Max. hĺbka",
+        "max_entries": "Max. položiek",
+        "include_hidden": "Zahrnúť skryté",
+        "entries_hidden_in_card": "Skryté položky"
       },
       "actions": {
         "extract_with_web_fetch": "Extrahovať pomocou načítania webu"
@@ -12285,6 +12711,16 @@ export default {
         "analyze": "Analytická správa",
         "ui_review": "Kontrola UI",
         "deep_research": "Hĺbkové vyhľadávanie"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Prísna",
+          "interactive": "Interaktívna",
+          "a11y": "Prístupnosť",
+          "screenshot": "Snímka obrazovky",
+          "screenshot_interactive": "Snímka + Interakcia",
+          "recovered": "Obnovené"
+        }
       }
     },
     "toolWarnings": {
@@ -12296,6 +12732,7 @@ export default {
         "loginWall": "Zistená prihlasovacia stena",
         "challenge": "Zistená overovacia výzva",
         "browserRequired": "Vyžaduje sa relácia prehliadača",
+        "screenshotCaptured": "Snímka obrazovky bola vytvorená",
         "unknown": "Varovanie: {code}"
       }
     },
@@ -12819,7 +13256,15 @@ export default {
         "text_chars": "Texttecken",
         "report_url": "Rapport",
         "device": "Enhet",
-        "wait_ms": "Väntetid (ms)"
+        "wait_ms": "Väntetid (ms)",
+        "target_id": "Mål-ID",
+        "browser_target_id": "Webbläsarens mål-ID",
+        "strategy": "Strategi",
+        "strict_entity": "Strikt entitetsmatchning",
+        "max_depth": "Maxdjup",
+        "max_entries": "Maxposter",
+        "include_hidden": "Inkludera dolda",
+        "entries_hidden_in_card": "Dolda poster"
       },
       "actions": {
         "extract_with_web_fetch": "Extrahera med webbhämtning"
@@ -12833,6 +13278,16 @@ export default {
         "analyze": "Analysrapport",
         "ui_review": "UI-granskning",
         "deep_research": "Djupsökning"
+      },
+      "values": {
+        "strategy": {
+          "strict": "Strikt",
+          "interactive": "Interaktiv",
+          "a11y": "Tillgänglighet",
+          "screenshot": "Skärmdump",
+          "screenshot_interactive": "Skärmdump + Interaktion",
+          "recovered": "Återställd"
+        }
       }
     },
     "toolWarnings": {
@@ -12844,6 +13299,7 @@ export default {
         "loginWall": "Inloggningsvägg upptäckt",
         "challenge": "Verifieringsutmaning upptäckt",
         "browserRequired": "Webbläsarsession krävs",
+        "screenshotCaptured": "Skärmbild tagen",
         "unknown": "Varning: {code}"
       }
     },
@@ -13367,7 +13823,15 @@ export default {
         "text_chars": "文本字符",
         "report_url": "报告",
         "device": "设备",
-        "wait_ms": "等待毫秒"
+        "wait_ms": "等待毫秒",
+        "target_id": "目标 ID",
+        "browser_target_id": "浏览器目标 ID",
+        "strategy": "策略",
+        "strict_entity": "严格实体匹配",
+        "max_depth": "最大深度",
+        "max_entries": "最大条目数",
+        "include_hidden": "包含隐藏项",
+        "entries_hidden_in_card": "卡片中隐藏的条目"
       },
       "actions": {
         "extract_with_web_fetch": "使用网页抓取提取"
@@ -13381,6 +13845,16 @@ export default {
         "analyze": "分析报告",
         "ui_review": "UI 评审",
         "deep_research": "深度研究"
+      },
+      "values": {
+        "strategy": {
+          "strict": "严格",
+          "interactive": "交互",
+          "a11y": "无障碍",
+          "screenshot": "截图",
+          "screenshot_interactive": "截图 + 交互",
+          "recovered": "已恢复"
+        }
       }
     },
     "toolWarnings": {
@@ -13392,6 +13866,7 @@ export default {
         "loginWall": "检测到登录墙",
         "challenge": "检测到验证挑战",
         "browserRequired": "需要浏览器会话",
+        "screenshotCaptured": "已截取屏幕截图",
         "unknown": "警告：{code}"
       }
     },
@@ -13836,7 +14311,15 @@ export default {
         "text_chars": "文字字元",
         "report_url": "報告",
         "device": "裝置",
-        "wait_ms": "等待毫秒"
+        "wait_ms": "等待毫秒",
+        "target_id": "目標 ID",
+        "browser_target_id": "瀏覽器目標 ID",
+        "strategy": "策略",
+        "strict_entity": "嚴格實體匹配",
+        "max_depth": "最大深度",
+        "max_entries": "最大項目數",
+        "include_hidden": "包含隱藏項",
+        "entries_hidden_in_card": "卡片中隱藏的項目"
       },
       "actions": {
         "extract_with_web_fetch": "使用網頁抓取擷取"
@@ -13850,6 +14333,16 @@ export default {
         "analyze": "分析報告",
         "ui_review": "UI 審查",
         "deep_research": "深度研究"
+      },
+      "values": {
+        "strategy": {
+          "strict": "嚴格",
+          "interactive": "互動",
+          "a11y": "無障礙",
+          "screenshot": "截圖",
+          "screenshot_interactive": "截圖 + 互動",
+          "recovered": "已復原"
+        }
       }
     },
     "toolWarnings": {
@@ -13861,6 +14354,7 @@ export default {
         "loginWall": "偵測到登入牆",
         "challenge": "偵測到驗證挑戰",
         "browserRequired": "需要瀏覽器工作階段",
+        "screenshotCaptured": "已擷取螢幕截圖",
         "unknown": "警告：{code}"
       }
     },

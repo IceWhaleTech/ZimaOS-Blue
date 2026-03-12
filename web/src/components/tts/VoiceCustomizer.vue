@@ -38,6 +38,7 @@
 import { ref, onMounted } from 'vue'
 import { useTTSStore } from '@/stores/tts'
 import { ttsApi } from '@/api/tts'
+import { isTtsSpeechMuted } from '@/utils/ttsPreferences'
 
 useTTSStore()
 const voices = ref<{ id: string; name: string; language?: string }[]>([])
@@ -60,6 +61,9 @@ onMounted(async () => {
 })
 
 const playPreview = async () => {
+  if (isTtsSpeechMuted()) {
+    return
+  }
   try {
     const text = 'Hello, this is a voice preview.'
     await ttsApi.synthesize(text)

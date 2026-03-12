@@ -89,6 +89,37 @@ func TestAskExecute_UsesQuestionOptionLabelsInQA(t *testing.T) {
 	}
 }
 
+func TestAskExecute_SupportsNestedCamelCaseArgs(t *testing.T) {
+	mgr := NewQuestionManager(nil, func() bool { return true }, 0)
+	tool := NewAskTool(mgr)
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"question":    "Choose mode",
+			"detail":      "Extra context",
+			"multiSelect": true,
+			"options":     []interface{}{"Fast", "Safe"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	outStr, ok := raw.(string)
+	if !ok {
+		t.Fatalf("Execute() type = %T, want string", raw)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(outStr), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["mq"]; got != "Choose mode" {
+		t.Fatalf("mq = %v, want %q", got, "Choose mode")
+	}
+	selected, ok := out["a"].([]interface{})
+	if !ok || len(selected) != 1 || selected[0] != "Fast" {
+		t.Fatalf("a = %#v, want [\"Fast\"]", out["a"])
+	}
+}
+
 func TestAskExecute_RejectsQAAliasesInsideQuestions(t *testing.T) {
 	mgr := NewQuestionManager(nil, func() bool { return true }, 0)
 	tool := NewAskTool(mgr)

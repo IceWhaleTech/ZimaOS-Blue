@@ -43,7 +43,7 @@ func DefaultGuardConfig() *GuardConfig {
 		Enabled:          true,
 		BlockOnDetection: false,
 		LogDetections:    true,
-		MaxPromptLength:  100000,
+		MaxPromptLength:  500000,
 	}
 }
 
@@ -153,15 +153,7 @@ func (pg *PromptGuard) Check(prompt string) *GuardResult {
 		Matches:   make([]string, 0),
 	}
 
-	// Check prompt length
-	if pg.config.MaxPromptLength > 0 && len(prompt) > pg.config.MaxPromptLength {
-		result.Blocked = pg.config.BlockOnDetection
-		result.Reason = "prompt exceeds maximum length"
-		result.RiskLevel = "high"
-		result.Suggestions = append(result.Suggestions, "Reduce prompt length")
-		pg.incrementDetection(result.Blocked)
-		return result
-	}
+	lengthExceeded := pg.config.MaxPromptLength > 0 && len(prompt) > pg.config.MaxPromptLength
 
 	// Check whitelist first
 	pg.mu.RLock()
@@ -194,6 +186,19 @@ func (pg *PromptGuard) Check(prompt string) *GuardResult {
 		}
 
 		pg.incrementDetection(result.Blocked)
+	}
+
+	if lengthExceeded {
+		if result.Reason == "" {
+			result.Reason = "prompt exceeds maximum length"
+		}
+		if result.RiskLevel == "low" || result.RiskLevel == "none" {
+			result.RiskLevel = "medium"
+		}
+		result.Suggestions = append(result.Suggestions, "Reduce prompt length")
+		if len(result.Matches) == 0 {
+			pg.incrementDetection(false)
+		}
 	}
 
 	return result
@@ -327,12 +332,12 @@ func (pg *PromptGuard) Stats() map[string]interface{} {
 	defer pg.mu.RUnlock()
 
 	return map[string]interface{}{
-		"enabled":          pg.config.Enabled,
-		"block_on_detect":  pg.config.BlockOnDetection,
-		"pattern_count":    len(pg.patterns),
-		"whitelist_count":  len(pg.whitelistPatterns),
-		"detection_count":  pg.detectionCount,
-		"blocked_count":    pg.blockedCount,
+		"enabled":           pg.config.Enabled,
+		"block_on_detect":   pg.config.BlockOnDetection,
+		"pattern_count":     len(pg.patterns),
+		"whitelist_count":   len(pg.whitelistPatterns),
+		"detection_count":   pg.detectionCount,
+		"blocked_count":     pg.blockedCount,
 		"max_prompt_length": pg.config.MaxPromptLength,
 	}
 }

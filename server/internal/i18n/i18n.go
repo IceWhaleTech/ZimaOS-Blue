@@ -46,24 +46,25 @@ const DefaultLanguage = LangEnUS
 
 // Message keys for error messages.
 const (
-	MsgProcessingError     = "error.processing"
-	MsgChannelNotConnected = "error.channel_not_connected"
-	MsgTimeout             = "error.timeout"
-	MsgRateLimited         = "error.rate_limited"
-	MsgServiceUnavailable  = "error.service_unavailable"
-	MsgInvalidRequest      = "error.invalid_request"
-	MsgUnauthorized        = "error.unauthorized"
-	MsgInternalError       = "error.internal"
-	MsgNoProviderAvailable = "error.no_provider_available"
-	MsgProvidersInCooldown = "error.providers_in_cooldown"
+	MsgProcessingError          = "error.processing"
+	MsgChannelNotConnected      = "error.channel_not_connected"
+	MsgTimeout                  = "error.timeout"
+	MsgRateLimited              = "error.rate_limited"
+	MsgServiceUnavailable       = "error.service_unavailable"
+	MsgInvalidRequest           = "error.invalid_request"
+	MsgUnauthorized             = "error.unauthorized"
+	MsgInternalError            = "error.internal"
+	MsgNoProviderAvailable      = "error.no_provider_available"
+	MsgProvidersInCooldown      = "error.providers_in_cooldown"
+	MsgPathEscapesWorkspaceRoot = "error.path_escapes_workspace_root"
 )
 
 // Message keys for iMessage channel.
 const (
-	MsgIMNotSetUp          = "imessage.not_set_up"
-	MsgIMNotSignedIn       = "imessage.not_signed_in"
-	MsgIMFullDiskAccess    = "imessage.full_disk_access"
-	MsgIMAutomationDenied  = "imessage.automation_denied"
+	MsgIMNotSetUp            = "imessage.not_set_up"
+	MsgIMNotSignedIn         = "imessage.not_signed_in"
+	MsgIMFullDiskAccess      = "imessage.full_disk_access"
+	MsgIMAutomationDenied    = "imessage.automation_denied"
 	MsgIMUnavailablePlatform = "imessage.unavailable_platform"
 )
 
@@ -109,11 +110,11 @@ const (
 	MsgIssueVLMFailed     = "ui_review.issue.vlm_failed"
 
 	// Card action messages (sent as user message when clicking card buttons)
-	MsgActionRecheck     = "ui_review.action.recheck"
-	MsgActionRecheckURL  = "ui_review.action.recheck_url"
-	MsgActionA11yOnly    = "ui_review.action.a11y_only"
-	MsgActionA11yOnlyURL = "ui_review.action.a11y_only_url"
-	MsgActionFullReport  = "ui_review.action.full_report"
+	MsgActionRecheck       = "ui_review.action.recheck"
+	MsgActionRecheckURL    = "ui_review.action.recheck_url"
+	MsgActionA11yOnly      = "ui_review.action.a11y_only"
+	MsgActionA11yOnlyURL   = "ui_review.action.a11y_only_url"
+	MsgActionFullReport    = "ui_review.action.full_report"
 	MsgActionFullReportURL = "ui_review.action.full_report_url"
 )
 
@@ -143,16 +144,17 @@ const (
 var (
 	translations = map[Language]map[string]string{
 		LangEnUS: {
-			MsgProcessingError:     "Sorry, an error occurred while processing your message: %v",
-			MsgChannelNotConnected: "The channel is not connected. Please try again later.",
-			MsgTimeout:             "The request timed out. Please try again.",
-			MsgRateLimited:         "Too many requests. Please wait a moment and try again.",
-			MsgServiceUnavailable:  "The service is temporarily unavailable. Please try again later.",
-			MsgInvalidRequest:      "Invalid request. Please check your input and try again.",
-			MsgUnauthorized:        "You are not authorized to perform this action.",
-			MsgInternalError:       "An internal error occurred. Please try again later.",
-			MsgNoProviderAvailable: "No AI service provider is available. Please check the configuration or contact the administrator.",
-			MsgProvidersInCooldown: "No AI service provider is currently available (%d providers are in cooldown). Please try again later.",
+			MsgProcessingError:          "Sorry, an error occurred while processing your message: %v",
+			MsgChannelNotConnected:      "The channel is not connected. Please try again later.",
+			MsgTimeout:                  "The request timed out. Please try again.",
+			MsgRateLimited:              "Too many requests. Please wait a moment and try again.",
+			MsgServiceUnavailable:       "The service is temporarily unavailable. Please try again later.",
+			MsgInvalidRequest:           "Invalid request. Please check your input and try again.",
+			MsgUnauthorized:             "You are not authorized to perform this action.",
+			MsgInternalError:            "An internal error occurred. Please try again later.",
+			MsgNoProviderAvailable:      "No AI service provider is available. Please check the configuration or contact the administrator.",
+			MsgProvidersInCooldown:      "No AI service provider is currently available (%d providers are in cooldown). Please try again later.",
+			MsgPathEscapesWorkspaceRoot: "Path escapes workspace root",
 			// iMessage
 			MsgIMNotSetUp:            "iMessage is not set up. Please open Messages.app and sign in with your Apple ID first.",
 			MsgIMNotSignedIn:         "iMessage account is not signed in. Please open Messages.app and sign in with your Apple ID.",
@@ -220,16 +222,17 @@ var (
 			MsgDurationHr:      "%dh",
 		},
 		LangZhCN: {
-			MsgProcessingError:     "抱歉，处理您的消息时发生错误：%v",
-			MsgChannelNotConnected: "频道未连接，请稍后重试。",
-			MsgTimeout:             "请求超时，请重试。",
-			MsgRateLimited:         "请求过于频繁，请稍等片刻后重试。",
-			MsgServiceUnavailable:  "服务暂时不可用，请稍后重试。",
-			MsgInvalidRequest:      "无效的请求，请检查您的输入后重试。",
-			MsgUnauthorized:        "您没有权限执行此操作。",
-			MsgInternalError:       "发生内部错误，请稍后重试。",
-			MsgNoProviderAvailable: "没有可用的AI服务提供商，请检查配置或联系管理员。",
-			MsgProvidersInCooldown: "暂时没有可用的AI服务提供商（有 %d 个提供商正在冷却中），请稍后重试。",
+			MsgProcessingError:          "抱歉，处理您的消息时发生错误：%v",
+			MsgChannelNotConnected:      "频道未连接，请稍后重试。",
+			MsgTimeout:                  "请求超时，请重试。",
+			MsgRateLimited:              "请求过于频繁，请稍等片刻后重试。",
+			MsgServiceUnavailable:       "服务暂时不可用，请稍后重试。",
+			MsgInvalidRequest:           "无效的请求，请检查您的输入后重试。",
+			MsgUnauthorized:             "您没有权限执行此操作。",
+			MsgInternalError:            "发生内部错误，请稍后重试。",
+			MsgNoProviderAvailable:      "没有可用的AI服务提供商，请检查配置或联系管理员。",
+			MsgProvidersInCooldown:      "暂时没有可用的AI服务提供商（有 %d 个提供商正在冷却中），请稍后重试。",
+			MsgPathEscapesWorkspaceRoot: "路径超出工作区根目录",
 			// iMessage
 			MsgIMNotSetUp:            "iMessage 尚未设置。请先打开「信息」应用并使用 Apple ID 登录。",
 			MsgIMNotSignedIn:         "iMessage 账户未登录。请打开「信息」应用并使用 Apple ID 登录。",
@@ -297,21 +300,22 @@ var (
 			MsgDurationHr:      "%d时",
 		},
 		LangEnGB: {
-			MsgMediaGenerating:     "🎨 Generating media… I'll send the result when it's ready.",
-			MsgMediaGenFailed:      "❌ Media generation failed: %s",
-			MsgMediaGenCancelled:   "🚫 Media generation was cancelled.",
-			MsgMediaGenNoOutput:    "✅ Generation complete, but no output was returned.",
-			MsgMediaImageGenerated: "✅ Image generated (%s)",
-			MsgMediaVideoGenerated: "✅ Video generated (%s)",
-			MsgMediaGenerated:      "✅ Media generated (%s)",
-			MsgMediaGenTimeout:     "⏰ Media generation timed out. Please try again.",
-			MsgErrRateLimit:        "rate limited, please try again later",
-			MsgErrContentBlock:     "content was blocked by safety filters",
-			MsgErrAPIFailed:        "service temporarily unavailable",
-			MsgErrUnknown:          "an unexpected error occurred",
-			MsgDurationSec:         "%ds",
-			MsgDurationMin:         "%dm",
-			MsgDurationHr:          "%dh",
+			MsgPathEscapesWorkspaceRoot: "Path escapes workspace root",
+			MsgMediaGenerating:          "🎨 Generating media… I'll send the result when it's ready.",
+			MsgMediaGenFailed:           "❌ Media generation failed: %s",
+			MsgMediaGenCancelled:        "🚫 Media generation was cancelled.",
+			MsgMediaGenNoOutput:         "✅ Generation complete, but no output was returned.",
+			MsgMediaImageGenerated:      "✅ Image generated (%s)",
+			MsgMediaVideoGenerated:      "✅ Video generated (%s)",
+			MsgMediaGenerated:           "✅ Media generated (%s)",
+			MsgMediaGenTimeout:          "⏰ Media generation timed out. Please try again.",
+			MsgErrRateLimit:             "rate limited, please try again later",
+			MsgErrContentBlock:          "content was blocked by safety filters",
+			MsgErrAPIFailed:             "service temporarily unavailable",
+			MsgErrUnknown:               "an unexpected error occurred",
+			MsgDurationSec:              "%ds",
+			MsgDurationMin:              "%dm",
+			MsgDurationHr:               "%dh",
 		},
 		LangZhTW: {
 			MsgMediaGenerating:     "🎨 正在生成媒體，完成後會傳送給你。",

@@ -6,6 +6,16 @@ import { systemApi } from '@/api/system'
 
 const { t } = useI18n()
 
+interface NetworkSettingsProps {
+  showPortSection?: boolean
+  showSecuritySections?: boolean
+}
+
+const props = withDefaults(defineProps<NetworkSettingsProps>(), {
+  showPortSection: true,
+  showSecuritySections: true,
+})
+
 const emit = defineEmits<{
   'status-change': [message: string]
 }>()
@@ -382,10 +392,14 @@ async function revertPort() {
 }
 
 onMounted(() => {
-  fetchCORSConfig()
-  fetchTLSConfig()
-  fetchServerConfig()
-  checkPortChangeConfirmation()
+  if (props.showSecuritySections) {
+    fetchCORSConfig()
+    fetchTLSConfig()
+  }
+  if (props.showPortSection) {
+    fetchServerConfig()
+    checkPortChangeConfirmation()
+  }
 })
 
 onUnmounted(() => {
@@ -397,7 +411,7 @@ onUnmounted(() => {
   <div class="space-y-6">
     <!-- Port Change Confirmation Dialog -->
     <div
-      v-if="portChangeConfirm"
+      v-if="props.showPortSection && portChangeConfirm"
       class="p-4 bg-gray-700 dark:bg-gray-500/30 border border-gray-900 dark:border-white rounded-lg"
     >
       <div class="flex items-center justify-between">
@@ -414,11 +428,11 @@ onUnmounted(() => {
     </div>
 
     <!-- Port Configuration -->
-    <div class="glass-card p-4">
+    <div v-if="props.showPortSection" class="glass-card p-4">
       <div v-if="serverConfig">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('service.port') }}</h3>
+            <h3 class="text-sm text-gray-500 dark:text-slate-400">{{ t('service.port') }}</h3>
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('service.portDescription') }}</div>
           </div>
           <div class="flex items-center gap-3">
@@ -441,8 +455,9 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- TLS Configuration -->
-    <div class="glass-card p-6">
+    <template v-if="props.showSecuritySections">
+      <!-- TLS Configuration -->
+      <div class="glass-card p-6">
       <div class="flex items-center justify-between mb-4">
         <div>
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">
@@ -546,10 +561,10 @@ onUnmounted(() => {
         </svg>
         <p class="text-gray-500 dark:text-gray-400">{{ t('settings.network.tls.noCert') }}</p>
       </div>
-    </div>
+      </div>
 
-    <!-- CORS Configuration -->
-    <div class="glass-card p-6">
+      <!-- CORS Configuration -->
+      <div class="glass-card p-6">
       <div class="flex items-center justify-between mb-4">
         <div>
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('settings.network.corsTitle') }}</h3>
@@ -595,10 +610,10 @@ onUnmounted(() => {
           </div>
         </div>
       </template>
-    </div>
+      </div>
 
-    <!-- Upload Certificate Dialog -->
-    <Teleport to="body">
+      <!-- Upload Certificate Dialog -->
+      <Teleport to="body">
       <div v-if="showUploadDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showUploadDialog = false">
         <div class="bg-white dark:bg-gray-700 rounded-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('settings.network.tls.uploadCert') }}</h3>
@@ -624,10 +639,10 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-    </Teleport>
+      </Teleport>
 
-    <!-- Self-Signed Dialog -->
-    <Teleport to="body">
+      <!-- Self-Signed Dialog -->
+      <Teleport to="body">
       <div v-if="showSelfSignedDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showSelfSignedDialog = false">
         <div class="bg-white dark:bg-gray-700 rounded-xl p-6 w-full max-w-md mx-4">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('settings.network.tls.generateSelfSigned') }}</h3>
@@ -650,10 +665,10 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-    </Teleport>
+      </Teleport>
 
-    <!-- ACME Dialog -->
-    <Teleport to="body">
+      <!-- ACME Dialog -->
+      <Teleport to="body">
       <div v-if="showACMEDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showACMEDialog = false">
         <div class="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{{ t('settings.network.tls.acme.title') }}</h3>
@@ -738,6 +753,7 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-    </Teleport>
+      </Teleport>
+    </template>
   </div>
 </template>

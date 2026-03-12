@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +34,7 @@ type ApprovalRequest struct {
 	Host      string `json:"host,omitempty"`
 	Security  string `json:"security,omitempty"`
 	UserID    string `json:"user_id"`
+	SessionID string `json:"session_id,omitempty"`
 	ExpiresAt int64  `json:"expires_at"` // Unix ms
 }
 
@@ -71,6 +73,9 @@ func (m *ApprovalManager) RequestApproval(ctx context.Context, req ApprovalReque
 		userID = "default"
 	}
 	req.UserID = userID
+	if req.SessionID == "" {
+		req.SessionID = GetSessionID(ctx)
+	}
 	req.ExpiresAt = timeutil.NowMilli() + m.timeout.Milliseconds()
 
 	ch := make(chan ApprovalDecision, 1)
@@ -143,6 +148,23 @@ func (m *ApprovalManager) GetPending(userID string) *ApprovalRequest {
 	defer m.mu.Unlock()
 	for _, p := range m.pending {
 		if p.request.UserID == userID || p.request.UserID == "default" || userID == "default" {
+			req := p.request
+			return &req
+		}
+	}
+	return nil
+}
+
+// GetPendingBySession returns the first pending approval request for a session.
+func (m *ApprovalManager) GetPendingBySession(sessionID string) *ApprovalRequest {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, p := range m.pending {
+		if strings.TrimSpace(p.request.SessionID) == sessionID {
 			req := p.request
 			return &req
 		}

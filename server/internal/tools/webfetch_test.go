@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 )
 
 func TestWebFetchToolExecute_HTMLExtraction(t *testing.T) {
@@ -96,6 +98,47 @@ func TestWebFetchToolExecute_MarkdownExtractionModes(t *testing.T) {
 	}
 	if !strings.Contains(textContent, "Heading") {
 		t.Fatalf("text content missing heading text: %q", textContent)
+	}
+}
+
+func TestWebFetchToolExecute_PDFExtraction(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		_, _ = w.Write([]byte("%PDF-1.4\n%stub pdf bytes"))
+	}))
+	defer srv.Close()
+
+	svc := &stubPDFService{extract: pdfextract.ExtractResult{Text: "Quarterly revenue grew 20%.", Document: pdfextract.DocumentInfo{FileName: "report.pdf"}}}
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:           5 * time.Second,
+		AllowPrivateHosts: true,
+	})
+	tool.SetPDFService(svc)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"url":          srv.URL + "/report.pdf",
+		"extract_mode": "text",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	if len(svc.extractReqs) != 1 {
+		t.Fatalf("extract calls = %d, want 1", len(svc.extractReqs))
+	}
+	data := parseWebFetchResult(t, result)
+	if data["extractor"] != "pdf" {
+		t.Fatalf("extractor = %v, want %q", data["extractor"], "pdf")
+	}
+	if data["title"] != "report.pdf" {
+		t.Fatalf("title = %v, want %q", data["title"], "report.pdf")
+	}
+	content, _ := data["content"].(string)
+	if !strings.Contains(content, "Quarterly revenue grew 20%.") {
+		t.Fatalf("content = %q, want extracted pdf text", content)
+	}
+	if data["content_type"] != "application/pdf" {
+		t.Fatalf("content_type = %v, want %q", data["content_type"], "application/pdf")
 	}
 }
 
@@ -660,4 +703,34 @@ func parseWebFetchResult(t *testing.T, result interface{}) map[string]interface{
 		t.Fatalf("unmarshal result failed: %v", err)
 	}
 	return data
+}
+
+func TestParseWebFetchHelpersSupportNestedArgs(t *testing.T) {
+	args := map[string]interface{}{
+		"input": map[string]interface{}{
+			"maxChars":        321,
+			"requestHeaders":  map[string]interface{}{"X-Test": "1"},
+			"authBearer":      "tok",
+			"browserTargetId": "tab_1",
+		},
+	}
+	if got := parseWebFetchMaxChars(args, 1000, 2000); got != 321 {
+		t.Fatalf("max chars = %d, want 321", got)
+	}
+	opts, err := parseWebFetchRequestOptions(args)
+	if err != nil {
+		t.Fatalf("parse request options failed: %v", err)
+	}
+	if got := opts.extraHeaders["X-Test"]; got != "1" {
+		t.Fatalf("X-Test = %q, want 1", got)
+	}
+	if got := opts.extraHeaders["Authorization"]; got != "Bearer tok" {
+		t.Fatalf("Authorization = %q, want Bearer tok", got)
+	}
+	if opts.browserTargetID != "tab_1" {
+		t.Fatalf("browserTargetID = %q, want tab_1", opts.browserTargetID)
+	}
+	if opts.cacheable {
+		t.Fatal("expected cacheable=false when auth/browser target is present")
+	}
 }

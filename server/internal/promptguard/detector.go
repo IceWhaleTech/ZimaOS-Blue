@@ -83,7 +83,7 @@ type DetectorConfig struct {
 	CustomPatterns []PatternRule
 	// BlockThreshold is the minimum threat level to block (default: ThreatHigh).
 	BlockThreshold ThreatLevel
-	// MaxInputLength is the maximum allowed input length (0 = unlimited).
+	// MaxInputLength marks unusually long input for extra scrutiny (0 = unlimited).
 	MaxInputLength int
 }
 
@@ -109,7 +109,7 @@ func DefaultDetectorConfig() *DetectorConfig {
 		EnableJailbreakPatterns:   true,
 		EnableDataExfiltration:    true,
 		BlockThreshold:            ThreatHigh,
-		MaxInputLength:            100000,
+		MaxInputLength:            500000,
 	}
 }
 
@@ -240,18 +240,14 @@ func (d *Detector) Detect(input string) *DetectionResult {
 		Detections: make([]Detection, 0),
 	}
 
-	// Check input length
-	if d.config.MaxInputLength > 0 && len(input) > d.config.MaxInputLength {
-		result.IsThreat = true
-		result.ThreatLevel = ThreatHigh
+	lengthExceeded := d.config.MaxInputLength > 0 && len(input) > d.config.MaxInputLength
+	if lengthExceeded {
 		result.Detections = append(result.Detections, Detection{
 			Type:     "input_length",
 			Pattern:  "max_length_exceeded",
 			Match:    "input too long",
-			Severity: ThreatHigh,
+			Severity: ThreatMedium,
 		})
-		result.Score = 80
-		return result
 	}
 
 	// Normalize input for detection
@@ -279,7 +275,7 @@ func (d *Detector) Detect(input string) *DetectionResult {
 
 	// Calculate threat level and score
 	result.ThreatLevel, result.Score = d.calculateThreatLevel(result.Detections)
-	result.IsThreat = result.ThreatLevel >= d.config.BlockThreshold
+	result.IsThreat = d.shouldTreatAsThreat(result.Detections, lengthExceeded)
 
 	// Generate sanitized input if threat detected
 	if result.IsThreat {
@@ -287,6 +283,39 @@ func (d *Detector) Detect(input string) *DetectionResult {
 	}
 
 	return result
+}
+
+func (d *Detector) shouldTreatAsThreat(detections []Detection, lengthExceeded bool) bool {
+	if len(detections) == 0 {
+		return false
+	}
+
+	if !lengthExceeded {
+		threatLevel, _ := d.calculateThreatLevel(detections)
+		return threatLevel >= d.config.BlockThreshold
+	}
+
+	return d.maxThreatLevelExcludingType(detections, "input_length") >= d.overlengthBlockThreshold()
+}
+
+func (d *Detector) maxThreatLevelExcludingType(detections []Detection, excludeType string) ThreatLevel {
+	maxLevel := ThreatNone
+	for _, detection := range detections {
+		if detection.Type == excludeType {
+			continue
+		}
+		if detection.Severity > maxLevel {
+			maxLevel = detection.Severity
+		}
+	}
+	return maxLevel
+}
+
+func (d *Detector) overlengthBlockThreshold() ThreatLevel {
+	if d.config.BlockThreshold > ThreatHigh {
+		return d.config.BlockThreshold
+	}
+	return ThreatHigh
 }
 
 type matchResult struct {

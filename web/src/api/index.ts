@@ -20,6 +20,7 @@ export * from './claudecode'
 export * from './service'
 export * from './userdata'
 export * from './proxyCache'
+export * from './deepResearch'
 
 export interface HealthStatus {
   status: string

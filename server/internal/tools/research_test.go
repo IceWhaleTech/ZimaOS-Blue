@@ -75,6 +75,75 @@ func TestResearchRunToolReturnsAcceptedWhenWaitFalse(t *testing.T) {
 	}
 }
 
+func TestResearchRunToolSupportsNestedCamelCaseArgs(t *testing.T) {
+	service := &mockResearchService{}
+	service.create = func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {
+		if req.Query != "research this" {
+			t.Fatalf("query = %q, want %q", req.Query, "research this")
+		}
+		if req.RouteMode != "hybrid" || req.Lang != "en-US" || req.ReportStyle != "brief" {
+			t.Fatalf("unexpected request: %#v", req)
+		}
+		if req.Budget == nil || req.Budget.MaxSources != 3 || req.Budget.MaxSeconds != 9 {
+			t.Fatalf("unexpected budget: %#v", req.Budget)
+		}
+		if req.StrictEntity == nil || !*req.StrictEntity {
+			t.Fatalf("expected strict entity true, got %#v", req.StrictEntity)
+		}
+		if len(req.TimeWindows) != 2 || req.TimeWindows[0] != "7d" {
+			t.Fatalf("unexpected time windows: %#v", req.TimeWindows)
+		}
+		return &ResearchJob{ID: "job-9", Status: "pending", Query: req.Query, EffectiveRouteMode: "hybrid"}, nil
+	}
+	tool := NewResearchRunTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"query":              "research this",
+			"routeMode":          "hybrid",
+			"language":           "en-US",
+			"strictEntity":       true,
+			"timeWindows":        []interface{}{"7d", "30d"},
+			"reportStyle":        "brief",
+			"maxSources":         3,
+			"maxSeconds":         9,
+			"wait":               false,
+			"pollIntervalMs":     1,
+			"waitTimeoutSeconds": 1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["accepted"]; got != true {
+		t.Fatalf("accepted = %v, want true", got)
+	}
+}
+
+func TestResearchStatusToolSupportsNestedCamelCaseArgs(t *testing.T) {
+	service := &mockResearchService{
+		get: func(id, userID string) (*ResearchJob, error) {
+			if id != "job-3" {
+				t.Fatalf("id = %q, want %q", id, "job-3")
+			}
+			return &ResearchJob{ID: id, Status: "completed", Answer: "report"}, nil
+		},
+	}
+	tool := NewResearchStatusTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"jobId": "job-3",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["answer"]; got != "report" {
+		t.Fatalf("answer = %v, want report", got)
+	}
+}
+
 func TestResearchStatusTool(t *testing.T) {
 	service := &mockResearchService{
 		get: func(id, userID string) (*ResearchJob, error) {

@@ -118,11 +118,11 @@ function handleTerminal() {
   if (!notified) {
     notified = true
     if (task.value?.status === 'succeeded') {
-      notificationStore.success(t('media.succeeded'), t('media.completedToast'))
+      notificationStore.success(t('media.succeeded'), t('media.completedToast'), { titleKey: 'media.succeeded', messageKey: 'media.completedToast' })
     } else if (task.value?.status === 'failed') {
-      notificationStore.error(t('media.failed'), task.value?.error || t('media.toast.failed'))
+      notificationStore.error(t('media.failed'), task.value?.error || t('media.toast.failed'), { titleKey: 'media.failed', messageKey: task.value?.error ? undefined : 'media.toast.failed' })
     } else if (task.value?.status === 'cancelled') {
-      notificationStore.info(t('media.cancelled'), cancelMessage.value)
+      notificationStore.info(t('media.cancelled'), cancelMessage.value, { titleKey: 'media.cancelled' })
     }
   }
 }
@@ -191,7 +191,7 @@ async function handleRetry() {
     stopTracking()
     startTracking()
   } catch {
-    notificationStore.error(t('media.failed'), t('media.retryFailed'))
+    notificationStore.error(t('media.failed'), t('media.retryFailed'), { titleKey: 'media.failed', messageKey: 'media.retryFailed' })
   } finally {
     retrying.value = false
   }

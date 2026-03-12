@@ -1,4 +1,5 @@
 import api, { ensureFreshToken } from './client'
+import { isTtsSpeechMuted } from '../utils/ttsPreferences'
 
 // Types
 export interface VoiceSession {
@@ -676,6 +677,20 @@ class StreamingTTSManager {
 
     const onDone = () => {
       if (gen === this.generation) this.activeFetches--
+    }
+
+    if (isTtsSpeechMuted()) {
+      if (this.queue[index]) {
+        this.queue[index].fetching = false
+        this.queue[index].fetchDone = true
+        this.queue[index].playedLocally = true
+      }
+      onDone()
+      if (gen === this.generation) {
+        this.fetchNext()
+        if (this.playbackStarted && !this.isPlaying) this.playNext()
+      }
+      return
     }
 
     try {

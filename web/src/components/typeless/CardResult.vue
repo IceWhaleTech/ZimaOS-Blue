@@ -3,8 +3,12 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TypelessCardResult } from '@/types/typeless'
 import { formatToolWarningCodeLabel } from '@/utils/toolWarnings'
+import { translateCardActionLabel } from '@/utils/cardActionLabels'
+import { useTauri } from '@/composables/useTauri'
+import { isApiPath, isHttpUrl, isLocalAbsolutePath } from '@/utils/localPath'
 
 const { t, te } = useI18n()
+const { openInBrowser } = useTauri()
 
 const props = defineProps<{
   card: TypelessCardResult
@@ -130,28 +134,61 @@ function handleAction(actionId: string, disabled = false) {
   emit('action', actionId, props.card.id)
 }
 
+function normalizeResultCardKey(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[\s-]+/g, '_')
+    .replace(/[^a-z0-9_]+/g, '')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
 function tLabel(label: string): string {
-  const key = 'resultCard.labels.' + label.toLowerCase().replace(/\s+/g, '_')
+  const key = 'resultCard.labels.' + normalizeResultCardKey(label)
   return te(key) ? t(key) : label
 }
 
-const genericActionFallbacks: Record<string, string[]> = {
-  extract_with_web_fetch: ['Extract with web_fetch', 'Extract with Web Fetch'],
-  use_browser: ['Use browser'],
-}
+function tDetailValue(label: string, value: unknown): string {
+  if (typeof value === 'boolean') {
+    return value ? t('common.yes', 'Yes') : t('common.no', 'No')
+  }
 
-function shouldLocalizeActionFallback(id: string, fallback: string): boolean {
-  const normalizedFallback = fallback.trim()
-  if (!normalizedFallback || normalizedFallback === id) return true
-  return genericActionFallbacks[id]?.includes(normalizedFallback) === true
+  const rawValue = typeof value === 'string' ? value.trim() : toDisplayString(value)
+  if (!rawValue) return ''
+
+  const lowered = rawValue.toLowerCase()
+  if (lowered === 'true') return t('common.yes', 'Yes')
+  if (lowered === 'false') return t('common.no', 'No')
+
+  const normalizedLabel = normalizeResultCardKey(label)
+  const normalizedValue = normalizeResultCardKey(rawValue)
+  if (!normalizedValue) return rawValue
+
+  const scopedKey = `resultCard.values.${normalizedLabel}.${normalizedValue}`
+  if (te(scopedKey)) return t(scopedKey, rawValue)
+
+  const genericKey = `resultCard.values.${normalizedValue}`
+  if (te(genericKey)) return t(genericKey, rawValue)
+
+  return rawValue
 }
 
 function tAction(id: string, fallback: string): string {
-  const normalizedFallback = fallback.trim()
-  if (!shouldLocalizeActionFallback(id, normalizedFallback)) return normalizedFallback || id
-  const key = 'resultCard.actions.' + id
-  const translated = t(key, normalizedFallback || id)
-  return translated === key ? (normalizedFallback || id) : translated
+  return translateCardActionLabel({
+    id,
+    fallback,
+    t,
+    te,
+    scopes: ['resultCard.actions'],
+  })
+}
+
+async function handleRevealLocation(value: unknown) {
+  if (typeof value !== 'string') return
+  const path = value.trim()
+  if (!isLocalAbsolutePath(path)) return
+  await openInBrowser(path)
 }
 
 const translatedTitle = computed(() => {
@@ -189,6 +226,14 @@ const translatedMessage = computed(() => {
 
 const warningText = computed(() => (props.card.warning || '').trim())
 const warningCodeLabel = computed(() => formatToolWarningCodeLabel(props.card.warning_code, t))
+const resolvedImageSrc = computed(() => {
+  const raw = (props.card.image || '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('data:image/') || raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/')) {
+    return raw
+  }
+  return `data:image/png;base64,${raw}`
+})
 
 // Filter out details that are redundant with the title/message
 const visibleDetails = computed(() => {
@@ -205,7 +250,8 @@ const visibleDetails = computed(() => {
       ...d,
       parsedObject: tryParseObject(d.value),
       isMultiline: d.multiline || (typeof d.value === 'string' && d.value.includes('\n')),
-      isLink: typeof d.value === 'string' && (d.value.startsWith('http://') || d.value.startsWith('https://') || d.value.startsWith('/api/')),
+      isLink: typeof d.value === 'string' && (isHttpUrl(d.value) || isApiPath(d.value)),
+      isLocalPath: typeof d.value === 'string' && isLocalAbsolutePath(d.value),
     }))
 })
 </script>
@@ -269,10 +315,23 @@ const visibleDetails = computed(() => {
 
     <!-- Body -->
     <div class="px-4 py-3">
+      <div
+        v-if="resolvedImageSrc"
+        class="rounded-md overflow-hidden border border-gray-200 dark:border-gray-700/60 bg-gray-50 dark:bg-gray-900/60"
+      >
+        <img
+          :src="resolvedImageSrc"
+          :alt="translatedTitle || 'image'"
+          class="w-full max-h-[22rem] object-contain"
+          loading="lazy"
+        />
+      </div>
+
       <!-- Message -->
       <p
         v-if="card.message"
         class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed"
+        :class="resolvedImageSrc ? 'mt-3' : ''"
       >
         {{ translatedMessage }}
       </p>
@@ -324,9 +383,17 @@ const visibleDetails = computed(() => {
                 class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
               >{{ t('resultCard.openLink', 'Open') }} ↗</a>
             </div>
+            <div v-else-if="detail.isLocalPath" class="flex items-center gap-1.5">
+              <button
+                class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                @click="handleRevealLocation(detail.value)"
+              >
+                {{ t('common.openLocation', 'Open location') }}
+              </button>
+            </div>
             <!-- Simple string value -->
             <div v-else class="flex items-center gap-1.5">
-              <span class="text-gray-700 dark:text-gray-300 font-mono text-xs">{{ detail.value }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span>
+              <span class="text-gray-700 dark:text-gray-300 font-mono text-xs">{{ tDetailValue(detail.label, detail.value) }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span>
               <button
                 v-if="detail.copyable"
                 class="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"

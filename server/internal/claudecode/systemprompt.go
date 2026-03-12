@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -43,9 +44,10 @@ type ContextFileStat struct {
 // Config changes rarely (agent mode, workspace context files, tools, skills).
 // Dynamic changes every request (timestamp, extra prompt).
 type BuildResult struct {
-	Static  string // core prompt, never changes — Anthropic cache_control: ephemeral
-	Config  string // agent mode, tools, skills, workspace — Anthropic cache_control: ephemeral
-	Dynamic string // timestamp + extra prompt — NOT cached
+	Static       string // core prompt, never changes — Anthropic cache_control: ephemeral
+	Config       string // agent mode, tools, skills, workspace — Anthropic cache_control: ephemeral
+	Dynamic      string // timestamp + extra prompt — NOT cached
+	ContextPacks *contextpack.SelectionSet
 }
 
 // String returns the full system prompt as a single string (for non-Anthropic providers).
@@ -71,9 +73,10 @@ func (r BuildResult) TotalTokenEstimate() int {
 
 // SystemPromptBuilder builds system prompts for Claude Code CLI.
 type SystemPromptBuilder struct {
-	config       *ClaudeCodeConfig
-	toolRegistry *tools.Registry
-	workspace    *workspace.Manager
+	config          *ClaudeCodeConfig
+	toolRegistry    *tools.Registry
+	workspace       *workspace.Manager
+	contextResolver *contextpack.Resolver
 
 	maxContextTokens     int
 	lastContextStats     atomic.Pointer[ContextStats]
@@ -124,6 +127,10 @@ func (b *SystemPromptBuilder) SetToolRegistry(registry *tools.Registry) {
 // SetWorkspace sets the workspace manager for injecting workspace files into the prompt.
 func (b *SystemPromptBuilder) SetWorkspace(mgr *workspace.Manager) {
 	b.workspace = mgr
+}
+
+func (b *SystemPromptBuilder) SetContextResolver(resolver *contextpack.Resolver) {
+	b.contextResolver = resolver
 }
 
 // SetMaxContextTokens sets the token budget for workspace context files.
@@ -209,7 +216,7 @@ const (
 	expressivenessGuidance = "<expressiveness>In written replies, avoid stiff, generic, or overly corporate tone. Occasional natural emoji and light expressive formatting are welcome when they improve warmth, tone, or readability, especially in confirmations, congratulations, and friendly section headers. Use them sparingly and organically; never force them or let them replace substance.</expressiveness>"
 
 	toolCallStyleGuidance = "<tool_style>Do not narrate routine tool calls. Narrate only for multi-step work, complex problems, sensitive actions, or when asked. Keep narration brief.</tool_style>" +
-		"<research_style>For latest/news/deep-research requests, run multiple search rounds before concluding and return one complete report with key findings plus source links. For lightweight lookup requests, summarize key findings and then suggest next steps.</research_style>"
+		"<research_style>For latest/news/deep-research requests, run multiple search rounds before concluding and return one complete report with key findings plus source links. For GitHub repository research, check the corresponding DeepWiki materials first when available (for example `deepwiki.com/&lt;owner&gt;/&lt;repo&gt;`) before opening github.com pages, then use GitHub for primary-source verification or details that DeepWiki does not cover. For lightweight lookup requests, summarize key findings and then suggest next steps.</research_style>"
 
 	webToolRoutingGuidance = "<web_tools>Use web_fetch for lightweight public HTTP page reads. Use browser first for login flows, CAPTCHA/challenges, JS-heavy pages, or interactions. If a web_fetch result includes warning_code=login_wall, challenge, or browser_required, immediately switch to browser. When available, reuse browser session state with browser_target_id.</web_tools>"
 
@@ -233,11 +240,13 @@ const (
 
 	agentModePlanningGuidance = "<planning>For multi-step tasks, FIRST output a TODO checklist using markdown checkboxes (`- [ ] step`). The system auto-marks completed items and injects `<tp>` with current task — use it to decide what to do next. Do NOT re-output the checklist.</planning>"
 
+	agentModeCodingDefaultsGuidance = "<coding_defaults>For coding tasks, start by checking whether mainstream skills are available: superpowers and ui-ux-pro-max-skill. If missing, use available skill-install workflow to download them before implementation; if install is unavailable or blocked, state it once and continue with best effort. If stack preferences are unclear, ask the user once and then remember the answer as long-term preference (backend/frontend/mobile/client priorities). Default stack when no preference is known: backend=Go, frontend=React, mobile=React Native, client=Electron. If the repository or runtime already implies a specific language/framework (for example Python or Node.js), follow the existing environment instead of forcing defaults.</coding_defaults>"
+
 	agentModeExecutionPrefix = "<execution>Before each tool call, briefly state which task you are working on. "
 
-	agentModeExecutionAutoConfirmClause = "Auto-confirm enabled — execute without asking. "
+	agentModeExecutionAutoConfirmClause = "Auto-confirm enabled — execute without asking. For potential asset-loss operations (fund transfers, securities transactions, redemption/gift codes), always require explicit secondary user confirmation immediately before execution. "
 
-	agentModeExecutionManualConfirmClause = "Ask confirmation before destructive actions (delete, install, modify production config). Proceed without confirmation for safe operations. "
+	agentModeExecutionManualConfirmClause = "Ask confirmation before destructive actions (delete, install, modify production config). For potential asset-loss operations (fund transfers, securities transactions, redemption/gift codes), always require explicit secondary user confirmation immediately before execution. Proceed without confirmation for safe operations. "
 
 	agentModeExecutionTail = "Use exec for file ops, installs, builds, tests. For large file creation or edits via the write tool, never send one huge payload: write the first chunk, then continue with smaller chunks using append=true. Do NOT stop early. Do NOT call exec without a concrete command — think first, then execute." +
 		" When facing multiple valid approaches or ambiguous requirements, use ask instead of guessing." +
@@ -247,7 +256,7 @@ const (
 
 	agentModeVerificationGuidance = "<verification>After all steps, verify: run build/tests. Fix and re-verify if needed.</verification>"
 
-	agentModeCompletionGuidance = "<completion>Your LAST response MUST be plain text (not a tool call). Include: 1) What was accomplished. 2) How to use/test the result. 3) Suggested next steps. Never end with a tool call.</completion>"
+	agentModeCompletionGuidance = "<completion>Your LAST response MUST be plain text (not a tool call). Include: 1) What was accomplished. 2) How to use/test the result. 3) A closing optional-help section headed like 'If you'd like, I can also help with:', with first-person help offers such as 'If you'd like, I can help you ...'. Never end with a tool call.</completion>"
 
 	agentModeClosingTag = "</agent_mode>"
 )
@@ -340,6 +349,12 @@ func (b *SystemPromptBuilder) BuildStructured(ctx context.Context, extraPrompt s
 	b.writeRuntimeInfoTo(&dyn)
 	if extraPrompt != "" {
 		dyn.WriteString(extraPrompt)
+	}
+	if b.contextResolver != nil {
+		if prompt, selection, err := b.contextResolver.ResolvePrompt(ctx); err == nil && prompt != "" {
+			dyn.WriteString(prompt)
+			result.ContextPacks = selection.Clone()
+		}
 	}
 	result.Dynamic = dyn.String()
 
@@ -547,6 +562,7 @@ func (b *SystemPromptBuilder) writeAgentModeGuidanceTo(sb *strings.Builder) {
 
 	sb.WriteString(agentModeIntroGuidance)
 	sb.WriteString(agentModePlanningGuidance)
+	sb.WriteString(agentModeCodingDefaultsGuidance)
 	sb.WriteString(agentModeExecutionPrefix)
 	if autoConfirm {
 		sb.WriteString(agentModeExecutionAutoConfirmClause)
@@ -576,7 +592,7 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 
 	var sb strings.Builder
 	sb.WriteString("<skills>Invoke via exec: `blue <cmd> key=value ...` (e.g. `blue web_search query=\"latest news\"`). For reminders, prefer `blue reminder.add message=\"...\" time=...` (or call tool `reminder` directly); do not use `blue reminder --help` as an execution step. ")
-	sb.WriteString("Routing: ask→ask, search→web_search, public URL read→web_fetch, interactive/login URL→browser, UI review→ui_reviewer, analyze→analyze, reminder/alert→reminder, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. If web_fetch returns warning_code=login_wall, challenge, or browser_required, switch to browser. ")
+	sb.WriteString("Routing: ask→ask, search→web_search, public URL read→web_fetch, interactive/login URL→browser, UI review→ui_reviewer, PPT/slide visuals→ppt, analyze→analyze, reminder/alert→reminder, scheduler→scheduler, research→deep_research, admin→mgmt.{domain}.{op}. If web_fetch returns warning_code=login_wall, challenge, or browser_required, switch to browser. ")
 	sb.WriteString("Use progressive skill selection: prefer routed/pinned commands first, then inspect likely SKILL.md files on demand. ")
 	sb.WriteString("More skills in workspace `.claude/skills/` and user default `~/.claude/skills/`.")
 

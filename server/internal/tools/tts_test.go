@@ -103,6 +103,42 @@ func TestTTSToolSynthesizeWritesTempFile(t *testing.T) {
 	}
 }
 
+func TestTTSToolSynthesizeSupportsNestedCamelCaseArgs(t *testing.T) {
+	backend := &mockTTSBackend{
+		synthResult: &TTSAudioResult{Audio: []byte("abc123"), Format: "mp3", ContentType: "audio/mpeg", DurationSeconds: 2.5, Provider: "edge-tts", Voice: "alloy"},
+	}
+	tool := NewTTSTool(backend)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"text":          "hello world",
+			"provider":      "edge",
+			"audioFormat":   "mp3",
+			"includeBase64": true,
+			"speed":         1.25,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("result type = %T, want map", result)
+	}
+	if got := backend.lastSynthReq.Provider; got != "edge-tts" {
+		t.Fatalf("provider = %q, want edge-tts", got)
+	}
+	if got := backend.lastSynthReq.Format; got != "mp3" {
+		t.Fatalf("format = %q, want mp3", got)
+	}
+	if backend.lastSynthReq.Speed == nil || *backend.lastSynthReq.Speed != float32(1.25) {
+		t.Fatalf("speed = %#v, want 1.25", backend.lastSynthReq.Speed)
+	}
+	if _, ok := payload["audio_base64"].(string); !ok {
+		t.Fatalf("expected audio_base64 in payload, got %#v", payload["audio_base64"])
+	}
+}
+
 func TestTTSToolSpeakUsesLocalPlaybackWhenSupported(t *testing.T) {
 	backend := &mockTTSBackend{speakSupported: true}
 	tool := NewTTSTool(backend)

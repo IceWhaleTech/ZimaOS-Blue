@@ -139,24 +139,27 @@ func (w *WebSearchTool) Definition() ToolDefinition {
 
 // Execute performs the web search.
 func (w *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	query, ok := args["query"].(string)
-	if !ok || query == "" {
+	query := firstCompatString(args, "query", "q")
+	if query == "" {
 		return nil, errors.New("query is required")
 	}
 
-	format, err := parseWebSearchFormat(args["format"])
+	formatRaw, _ := compatArgValue(args, "format", "output_format", "outputFormat")
+	format, err := parseWebSearchFormat(formatRaw)
 	if err != nil {
 		return nil, err
 	}
 
-	maxResults := parseWebSearchMaxResults(args["max_results"], w.config.MaxResults)
+	maxResultsRaw, _ := compatArgValue(args, "max_results", "maxResults", "limit", "n")
+	maxResults := parseWebSearchMaxResults(maxResultsRaw, w.config.MaxResults)
 
 	region := w.config.Region
-	if r, ok := args["region"].(string); ok && r != "" {
+	if r := firstCompatString(args, "region"); r != "" {
 		region = r
 	}
 
-	providers := w.providerChain(args["provider"])
+	providerRaw, _ := compatArgValue(args, "provider")
+	providers := w.providerChain(providerRaw)
 	var lastErr error
 
 	for _, provider := range providers {

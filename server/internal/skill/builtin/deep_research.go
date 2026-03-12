@@ -43,7 +43,7 @@ func NewDeepResearch() *DeepResearch {
 				{Name: "max_seconds", Type: "number", Description: "Optional time budget in seconds"},
 				{Name: "strict_entity", Type: "boolean", Description: "Enable strict same-entity filtering"},
 				{Name: "time_windows", Type: "array", Description: "Optional timeline windows labels"},
-				{Name: "report_style", Type: "string", Description: "summary|timeline"},
+				{Name: "report_style", Type: "string", Description: "summary|timeline|knowledge_base"},
 				{Name: "format", Type: "string", Description: "Output format: json (default) or xml"},
 			},
 			Outputs: []skill.Parameter{
@@ -125,13 +125,30 @@ func (d *DeepResearch) Validate(input map[string]any) error {
 		if !ok {
 			return fmt.Errorf("report_style must be a string")
 		}
-		switch strings.ToLower(strings.TrimSpace(style)) {
-		case "", "summary", "timeline":
-		default:
-			return fmt.Errorf("report_style must be one of: summary, timeline")
+		normalized, err := normalizeDeepResearchSkillReportStyle(style)
+		if err != nil {
+			return err
+		}
+		if normalized == "" {
+			delete(input, "report_style")
+		} else {
+			input["report_style"] = normalized
 		}
 	}
 	return nil
+}
+
+func normalizeDeepResearchSkillReportStyle(raw string) (string, error) {
+	style := strings.ToLower(strings.TrimSpace(raw))
+	style = strings.Trim(style, ",.;:!?")
+	switch style {
+	case "", "summary", "timeline", "knowledge_base":
+		return style, nil
+	case "knowledge-base", "knowledge base", "kb":
+		return "knowledge_base", nil
+	default:
+		return "", fmt.Errorf("report_style must be one of: summary, timeline, knowledge_base")
+	}
 }
 
 func normalizeDeepResearchSkillFormat(raw string) (string, error) {

@@ -146,7 +146,7 @@ func (t *CronTool) executeList(ctx context.Context) (interface{}, error) {
 }
 
 func (t *CronTool) executeGet(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "job_id")
+	id := firstCompatString(args, "id", "job_id", "jobId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -167,7 +167,7 @@ func (t *CronTool) executeCreate(ctx context.Context, args map[string]interface{
 	if name == "" || schedule == "" || handler == "" {
 		return nil, errors.New("name, schedule, and handler are required")
 	}
-	payload := asMap(args["payload"])
+	payload := asMap(firstCompatRawValue(args, "payload"))
 	job, err := t.service.CreateJob(ctx, name, firstCompatString(args, "description"), schedule, handler, payload)
 	if err != nil {
 		return nil, err
@@ -180,7 +180,7 @@ func (t *CronTool) executeCreate(ctx context.Context, args map[string]interface{
 }
 
 func (t *CronTool) executeUpdate(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "job_id")
+	id := firstCompatString(args, "id", "job_id", "jobId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -203,7 +203,7 @@ func (t *CronTool) executeUpdate(ctx context.Context, args map[string]interface{
 	if schedule == "" {
 		schedule = job.Schedule
 	}
-	payload := asMap(args["payload"])
+	payload := asMap(firstCompatRawValue(args, "payload"))
 	if payload == nil {
 		payload = job.Payload
 	}
@@ -222,7 +222,7 @@ func (t *CronTool) executeUpdate(ctx context.Context, args map[string]interface{
 }
 
 func (t *CronTool) executeDelete(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "job_id")
+	id := firstCompatString(args, "id", "job_id", "jobId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -233,7 +233,7 @@ func (t *CronTool) executeDelete(ctx context.Context, args map[string]interface{
 }
 
 func (t *CronTool) executeEnable(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "job_id")
+	id := firstCompatString(args, "id", "job_id", "jobId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -248,7 +248,7 @@ func (t *CronTool) executeEnable(ctx context.Context, args map[string]interface{
 }
 
 func (t *CronTool) executeDisable(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "job_id")
+	id := firstCompatString(args, "id", "job_id", "jobId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -263,7 +263,7 @@ func (t *CronTool) executeDisable(ctx context.Context, args map[string]interface
 }
 
 func (t *CronTool) executeTrigger(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "job_id")
+	id := firstCompatString(args, "id", "job_id", "jobId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -278,7 +278,7 @@ func (t *CronTool) executeTrigger(ctx context.Context, args map[string]interface
 }
 
 func (t *CronTool) executeExecutions(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "job_id")
+	id := firstCompatString(args, "id", "job_id", "jobId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -311,7 +311,7 @@ func cronAction(args map[string]interface{}) string {
 	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
 	switch action {
 	case "", "list", "ls", "status":
-		if firstCompatString(args, "id", "job_id") != "" {
+		if firstCompatString(args, "id", "job_id", "jobId") != "" {
 			return "get"
 		}
 		if firstCompatString(args, "name", "title") != "" && firstCompatString(args, "schedule", "cron") != "" && firstCompatString(args, "handler", "type") != "" {

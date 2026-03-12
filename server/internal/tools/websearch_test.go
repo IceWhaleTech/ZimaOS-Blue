@@ -56,6 +56,46 @@ func TestWebSearchTool_Definition(t *testing.T) {
 	}
 }
 
+func TestWebSearchTool_Execute_SupportsNestedCamelCaseArgs(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("q")
+		if query != "nested query" {
+			t.Fatalf("unexpected query: %s", query)
+		}
+		response := map[string]interface{}{
+			"results": []map[string]interface{}{{
+				"title":   "Nested Result",
+				"url":     "https://example.com/nested",
+				"content": "Description",
+				"engine":  "searxng",
+			}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{Provider: "searxng", BaseURL: server.URL})
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"q":          "nested query",
+			"format":     "json",
+			"maxResults": 1,
+			"provider":   "searxng",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var response WebSearchResponse
+	if err := json.Unmarshal([]byte(result.(string)), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if response.Query != "nested query" || len(response.Results) != 1 {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
 func TestWebSearchTool_Execute_MissingQuery(t *testing.T) {
 	tool := NewWebSearchTool(WebSearchConfig{})
 

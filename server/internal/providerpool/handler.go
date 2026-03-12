@@ -493,6 +493,12 @@ func (p *Pool) initBuiltinProviders() {
 				needsUpdate = true
 			}
 
+			// Update beta marker if changed
+			if existingProvider.Beta != builtin.Beta {
+				existingProvider.Beta = builtin.Beta
+				needsUpdate = true
+			}
+
 			// Sync OAuth config template: if builtin defines OAuth but existing provider
 			// doesn't have it (e.g. provider was created before OAuth support was added),
 			// add the OAuth template so the UI can show the connect button.
@@ -756,6 +762,7 @@ type providerResponse struct {
 	Description string `json:"description,omitempty"`
 	Website     string `json:"website,omitempty"`
 	APIKeyURL   string `json:"api_key_url,omitempty"`
+	Beta        bool   `json:"beta,omitempty"`
 	IsBuiltin   bool   `json:"is_builtin"`
 
 	// Health check errors - returned to frontend for display
@@ -879,6 +886,7 @@ func toProviderResponse(p *Provider, models []*Model, pm *PricingManager, mpLook
 		Description:   p.Description,
 		Website:       p.Website,
 		APIKeyURL:     p.APIKeyURL,
+		Beta:          p.Beta,
 		IsBuiltin:     GetBuiltinProvider(p.ID) != nil,
 		LastError:     p.LastError,
 		LastErrorTime: p.LastErrorTime,

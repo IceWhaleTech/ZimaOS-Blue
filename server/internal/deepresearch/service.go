@@ -27,6 +27,7 @@ type Service struct {
 	experiment  ExperimentBackend
 	routePolicy RoutePolicy
 	v2Enabled   bool
+	events      EventPublisher
 
 	mu           sync.RWMutex
 	jobs         map[string]*Job
@@ -98,6 +99,10 @@ type SummarySynthesizer interface {
 	Summarize(ctx context.Context, input SummaryInput) (string, error)
 }
 
+type EventPublisher interface {
+	Publish(userID string, eventType string, data any)
+}
+
 type cachedSearchResult struct {
 	hits      []SearchHit
 	expiresAt time.Time
@@ -160,6 +165,12 @@ func (s *Service) SetExperimentBackend(backend ExperimentBackend) {
 	s.experiment = backend
 }
 
+func (s *Service) SetEventPublisher(publisher EventPublisher) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = publisher
+}
+
 func (s *Service) routePolicySnapshot() RoutePolicy {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -212,10 +223,12 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 		strictEntity = true
 	}
 	timeWindows := normalizeTimeWindows(req.TimeWindows)
-	reportStyle := strings.TrimSpace(req.ReportStyle)
+	reportStyle := normalizeReportStyle(req.ReportStyle)
 	if reportStyle == "" {
 		if looksLikePersonTimelineResearch(query, lang) {
 			reportStyle = "timeline"
+		} else if queryWantsKnowledgeBaseStyle(query) {
+			reportStyle = "knowledge_base"
 		} else {
 			reportStyle = "summary"
 		}
@@ -237,6 +250,7 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 	now := timeutil.NowTime()
 	job := &Job{
 		ID:                 uuid.NewString(),
+		ConversationID:     strings.TrimSpace(req.ConversationID),
 		UserID:             userID,
 		TenantID:           tenantID,
 		Query:              query,
@@ -268,6 +282,7 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 	s.cancelFuncs[job.ID] = cancel
 	s.pruneJobsLocked(now)
 	s.mu.Unlock()
+	s.publishJobEvent("deep_research.job_created", cloneJob(job))
 
 	go s.runJob(runCtx, job.ID)
 
@@ -293,6 +308,26 @@ func (s *Service) GetJobForUser(id, userID, tenantID string) (*Job, error) {
 		return nil, ErrJobForbidden
 	}
 	return cloneJob(job), nil
+}
+
+func (s *Service) ListJobsForUser(userID, tenantID string, activeOnly bool) ([]JobSummary, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	jobs := make([]JobSummary, 0, len(s.jobs))
+	for _, job := range s.jobs {
+		if !isAllowedActor(job, userID, tenantID) {
+			continue
+		}
+		if activeOnly && isTerminalStatus(job.Status) {
+			continue
+		}
+		jobs = append(jobs, jobSummaryFromJob(job))
+	}
+	sort.SliceStable(jobs, func(i, j int) bool {
+		return jobs[i].UpdatedAt.After(jobs[j].UpdatedAt)
+	})
+	return jobs, nil
 }
 
 func (s *Service) GetReportForUser(id, userID, tenantID string) (*Report, error) {
@@ -446,6 +481,21 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 	s.broadcast(jobID, "task_planned", map[string]interface{}{
 		"count":     len(tasks),
 		"iteration": 1,
+		"tasks": func() []map[string]interface{} {
+			out := make([]map[string]interface{}, 0, len(tasks))
+			for _, task := range tasks {
+				out = append(out, map[string]interface{}{
+					"id":          task.ID,
+					"question":    task.Question,
+					"axis":        task.Axis,
+					"category":    task.Category,
+					"time_window": task.TimeWindow,
+					"priority":    task.Priority,
+					"depth":       task.Depth,
+				})
+			}
+			return out
+		}(),
 	})
 
 	seenURLs := make(map[string]struct{})
@@ -579,6 +629,7 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 			Iterations:           iteration,
 			ResearchTrace:        trace,
 			VerificationSummary:  verificationSummary,
+			Tasks:                append([]Task(nil), tasks...),
 		})
 
 		roundOutcome := verificationOutcome(verificationSummary)
@@ -706,6 +757,7 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 		StopReason:           stopReason,
 		ResearchTrace:        trace,
 		VerificationSummary:  verificationSummary,
+		Tasks:                append([]Task(nil), tasks...),
 	})
 	if job.EffectiveRouteMode == RouteModeHybrid {
 		report = s.mergeExperimentReport(ctx, job, evidence, report)
@@ -740,6 +792,7 @@ func (s *Service) runJob(ctx context.Context, jobID string) {
 		"confidence":        report.Confidence,
 		"citation_coverage": report.CitationCoverage,
 	})
+	s.publishJobEventByID("deep_research.job_completed", jobID)
 }
 
 func (s *Service) runExperimentJob(ctx context.Context, job *Job) {
@@ -792,6 +845,7 @@ func (s *Service) runExperimentJob(ctx context.Context, job *Job) {
 		"confidence":        report.Confidence,
 		"citation_coverage": report.CitationCoverage,
 	})
+	s.publishJobEventByID("deep_research.job_completed", job.ID)
 }
 
 func (s *Service) mergeExperimentReport(ctx context.Context, job *Job, evidence []Evidence, report Report) Report {
@@ -913,6 +967,7 @@ func (s *Service) failJob(jobID, msg string) {
 		j.CompletedAt = &now
 	})
 	s.broadcast(jobID, "job_failed", map[string]interface{}{"error": msg})
+	s.publishJobEventByID("deep_research.job_failed", jobID)
 }
 
 func (s *Service) cancelJobInternal(jobID string) {
@@ -923,6 +978,7 @@ func (s *Service) cancelJobInternal(jobID string) {
 		j.CompletedAt = &now
 	})
 	s.broadcast(jobID, "job_cancelled", map[string]interface{}{"job_id": jobID})
+	s.publishJobEventByID("deep_research.job_cancelled", jobID)
 }
 
 func (s *Service) getJobPtr(jobID string) (*Job, bool) {
@@ -934,14 +990,72 @@ func (s *Service) getJobPtr(jobID string) (*Job, bool) {
 
 func (s *Service) updateJob(jobID string, fn func(*Job)) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	j, ok := s.jobs[jobID]
 	if !ok {
+		s.mu.Unlock()
 		return false
 	}
 	fn(j)
 	j.UpdatedAt = timeutil.NowTime()
+	snapshot := cloneJob(j)
+	s.mu.Unlock()
+	if snapshot != nil && !isTerminalStatus(snapshot.Status) {
+		s.publishJobEvent("deep_research.job_updated", snapshot)
+	}
 	return true
+}
+
+func (s *Service) publishJobEventByID(eventType, jobID string) {
+	if strings.TrimSpace(jobID) == "" {
+		return
+	}
+	if snapshot, err := s.GetJob(jobID); err == nil {
+		s.publishJobEvent(eventType, snapshot)
+	}
+}
+
+func (s *Service) publishJobEvent(eventType string, job *Job) {
+	if job == nil {
+		return
+	}
+	s.mu.RLock()
+	publisher := s.events
+	s.mu.RUnlock()
+	if publisher == nil || strings.TrimSpace(job.UserID) == "" {
+		return
+	}
+	publisher.Publish(job.UserID, eventType, map[string]interface{}{
+		"id":              job.ID,
+		"job_id":          job.ID,
+		"query":           job.Query,
+		"status":          job.Status,
+		"stage":           job.Stage,
+		"progress":        job.Progress,
+		"iteration":       job.Iteration,
+		"latest_action":   job.LatestAction,
+		"latest_gap":      job.LatestGap,
+		"conversation_id": job.ConversationID,
+		"updated_at":      job.UpdatedAt,
+	})
+}
+
+func jobSummaryFromJob(job *Job) JobSummary {
+	if job == nil {
+		return JobSummary{}
+	}
+	return JobSummary{
+		ID:             job.ID,
+		JobID:          job.ID,
+		Query:          job.Query,
+		Status:         job.Status,
+		Stage:          job.Stage,
+		Progress:       job.Progress,
+		Iteration:      job.Iteration,
+		LatestAction:   job.LatestAction,
+		LatestGap:      job.LatestGap,
+		ConversationID: job.ConversationID,
+		UpdatedAt:      job.UpdatedAt,
+	}
 }
 
 func (s *Service) broadcast(jobID, eventType string, payload interface{}) {
@@ -994,6 +1108,7 @@ type reportBuildOptions struct {
 	StopReason           string
 	ResearchTrace        []ResearchTraceEntry
 	VerificationSummary  *VerificationSummary
+	Tasks                []Task
 }
 
 func (s *Service) synthesizeReport(ctx context.Context, query, lang string, evidence []Evidence, opts ...reportBuildOptions) Report {
@@ -1566,6 +1681,9 @@ func synthesizeReportWithOptions(query, lang string, evidence []Evidence, opts r
 		}
 	}
 	answer := strings.Join(lines, "\n")
+	if isKnowledgeBaseReportStyle(opts.ReportStyle) {
+		answer = buildKnowledgeBaseAnswer(query, lang, evidence, citations, timelineSections, openQuestions, opts.VerificationSummary, indexByEvidenceID)
+	}
 	coverage := computeCitationCoverage(answer, len(citations))
 	if coverage < 0.8 {
 		answer = localizedCautiousConclusionPrefix(lang, query) + "\n\n" + answer

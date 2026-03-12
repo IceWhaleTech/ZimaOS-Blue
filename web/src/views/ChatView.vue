@@ -6,6 +6,7 @@ import type { ComponentPublicInstance } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
+import { useDeepResearchJobsStore } from '@/stores/deepResearchJobs'
 import { useChatShortcuts } from '@/composables/useKeyboardShortcuts'
 import { authFetch } from '@/api/client'
 import ConversationList from '@/components/ConversationList.vue'
@@ -19,7 +20,9 @@ import ToolApprovalDialog from '@/components/ToolApprovalDialog.vue'
 import ExecApprovalDialog from '@/components/ExecApprovalDialog.vue'
 import MediaParamPanel from '@/components/MediaParamPanel.vue'
 import AgentTaskPanel from '@/components/AgentTaskPanel.vue'
+import DeepResearchTaskDock from '@/components/DeepResearchTaskDock.vue'
 import { agentApi, type AgentTask, type AgentQuestionAnswer } from '@/api/chat'
+import type { DeepResearchJobSummary } from '@/api/deepResearch'
 import { onSSEEvent, offSSEEvent } from '@/composables/useEventStream'
 import { useMediaGenerate } from '@/composables/useMediaGenerate'
 import { componentPool } from '@/utils/componentPool'
@@ -35,7 +38,19 @@ const toggleAppSidebar = inject<() => void>('toggleAppSidebar', () => {})
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 const providerPoolStore = useProviderPoolStore()
+const deepResearchJobs = useDeepResearchJobsStore()
 const mediaGen = useMediaGenerate()
+
+const deepResearchEventTypes = [
+  'deep_research.job_created',
+  'deep_research.job_updated',
+  'deep_research.job_completed',
+  'deep_research.job_failed',
+  'deep_research.job_cancelled',
+] as const
+const deepResearchEventHandlers: Record<string, (data: unknown) => void> = Object.fromEntries(
+  deepResearchEventTypes.map(type => [type, (data: unknown) => handleDeepResearchEvent(type, data as Record<string, unknown>)]),
+)
 streamingTTSManager.setLocale(locale.value)
 watch(locale, (newLocale) => {
   streamingTTSManager.setLocale(newLocale)
@@ -47,6 +62,13 @@ const previousTokens = ref<number | null>(null)
 
 // Theme style class for chat interface
 const themeStyleClass = computed(() => `theme-style-${settingsStore.themeStyle}`)
+const hasActiveDeepResearchJobs = computed(() => deepResearchJobs.activeJobs.length > 0)
+const messageAreaPaddingClass = computed(() => {
+  if (isMobile.value) {
+    return hasActiveDeepResearchJobs.value ? 'pb-36' : 'pb-4'
+  }
+  return hasActiveDeepResearchJobs.value ? 'pb-56' : 'pb-32'
+})
 
 const messagesContainer = ref<HTMLElement | null>(null)
 const virtualScrollRef = ref<InstanceType<typeof VirtualScroll> | null>(null)
@@ -384,6 +406,7 @@ const MESSAGE_RENDER_META_CACHE_MAX = 1500
 const showContextMenu = ref(false)
 const contextMenuPosition = ref({ x: 0, y: 0 })
 const contextMenuMessageId = ref<string | null>(null)
+const contextMenuSelectedText = ref('')
 
 // Provider config dialog state
 const showProviderConfigDialog = ref(false)
@@ -392,11 +415,17 @@ const showProviderConfigDialog = ref(false)
 const isClaudeCodeEnabled = computed(() => settingsStore.claudeCodeEnabled)
 
 // Provider status computed properties
-const hasConfiguredProviders = computed(() => providerPoolStore.enabledProviders.length > 0)
-const hasActiveProviders = computed(() => providerPoolStore.activeProviders.length > 0)
+const enabledLlmProviders = computed(() =>
+  providerPoolStore.enabledProviders.filter(provider => provider.type !== 'media')
+)
+const activeLlmProviders = computed(() =>
+  enabledLlmProviders.value.filter(provider => provider.status === 'active')
+)
+const hasConfiguredProviders = computed(() => enabledLlmProviders.value.length > 0)
+const hasActiveProviders = computed(() => activeLlmProviders.value.length > 0)
 const allProvidersFailed = computed(() =>
   hasConfiguredProviders.value && !hasActiveProviders.value &&
-  providerPoolStore.enabledProviders.every(p => p.status === 'error')
+  enabledLlmProviders.value.every(provider => provider.status === 'error')
 )
 
 // Provider status indicator
@@ -638,12 +667,16 @@ useChatShortcuts({
 // Scroll to bottom when messages change
 let autoScrollRafId: number | null = null
 function scheduleScrollToBottom(behavior: 'auto' | 'smooth' = 'auto') {
-  if (!isUserNearBottom.value) return
+  const nearBottom = checkIfNearBottom()
+  isUserNearBottom.value = nearBottom
+  if (!nearBottom) return
   if (autoScrollRafId !== null) return
   autoScrollRafId = window.requestAnimationFrame(async () => {
     autoScrollRafId = null
     await nextTick()
-    if (isUserNearBottom.value) {
+    const stillNearBottom = checkIfNearBottom()
+    isUserNearBottom.value = stillNearBottom
+    if (stillNearBottom) {
       scrollToBottom(behavior)
     }
   })
@@ -784,6 +817,10 @@ let virtualLoadMoreLastAt = 0
 let virtualLoadMoreRetryTimer: ReturnType<typeof setTimeout> | null = null
 
 function handleVisibleRangeChange(start: number, _end: number) {
+  // Keep near-bottom state in sync for virtual scroll mode; this prevents
+  // auto-scroll from forcing users back to bottom while they read older messages.
+  isUserNearBottom.value = checkIfNearBottom()
+
   // Load more when scrolled near the top in virtual scroll mode.
   // Add a short cooldown + in-flight lock to avoid duplicate triggers
   // caused by visible range jitter near the boundary.
@@ -811,6 +848,10 @@ function handleVisibleRangeChange(start: number, _end: number) {
 }
 
 async function handleSend(message: string, attachments?: FileAttachment[]) {
+  if (!await ensureLlmProviderConfigured(message)) {
+    return
+  }
+
   // Check for media generation intent before sending to chat
   const hasImages = attachments?.some((a) => a.type.startsWith('image/')) || false
   const imageCount = attachments?.filter((a) => a.type.startsWith('image/')).length || 0
@@ -830,11 +871,11 @@ async function handleMediaGenerate() {
   await mediaGen.generate()
 }
 
-function handleMediaDismiss() {
+async function handleMediaDismiss() {
   // User chose "No, just chat" — send the original message to chat instead.
   const prompt = mediaGen.intent.value?.prompt
   mediaGen.reset()
-  if (prompt) {
+  if (prompt && await ensureLlmProviderConfigured(prompt)) {
     chatStore.sendMessage(prompt)
   }
   nextTick(() => chatInputRef.value?.focus?.())
@@ -852,7 +893,7 @@ async function handleMediaConfirm() {
 
 // Handle voice transcript from TalkMode - auto send to AI
 async function handleVoiceTranscript(text: string) {
-  if (text.trim()) {
+  if (text.trim() && await ensureLlmProviderConfigured(text)) {
     await chatStore.sendMessage(text)
   }
 }
@@ -1081,11 +1122,33 @@ function handleClickOutside(event: MouseEvent) {
   // Close context menu when clicking outside
   if (!target.closest('.context-menu') && !contextMenuJustOpened.value) {
     showContextMenu.value = false
+    contextMenuSelectedText.value = ''
   }
 }
 
 // Context menu handlers
 const contextMenuJustOpened = ref(false)
+
+function getSelectedTextWithinElement(container: HTMLElement | null): string {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return ''
+  const selectedText = selection.toString()
+  if (!selectedText.trim()) return ''
+  if (!container) return ''
+
+  const isInside = (node: Node | null) => !!node && container.contains(node)
+  if (isInside(selection.anchorNode) || isInside(selection.focusNode)) {
+    return selectedText
+  }
+
+  for (let i = 0; i < selection.rangeCount; i += 1) {
+    const range = selection.getRangeAt(i)
+    if (isInside(range.commonAncestorContainer)) {
+      return selectedText
+    }
+  }
+  return ''
+}
 
 function handleMessageContextMenu(event: MouseEvent, messageId: string) {
   event.preventDefault()
@@ -1093,6 +1156,13 @@ function handleMessageContextMenu(event: MouseEvent, messageId: string) {
   // On mobile, context menu is handled by ChatMessage's own long-press menu
   if (isMobile.value) return
 
+  const eventTarget = event.target
+  const messageElement = eventTarget instanceof Element
+    ? eventTarget.closest('.message') as HTMLElement | null
+    : eventTarget instanceof Node
+      ? eventTarget.parentElement?.closest('.message') as HTMLElement | null
+      : null
+  contextMenuSelectedText.value = getSelectedTextWithinElement(messageElement)
   contextMenuMessageId.value = messageId
   contextMenuPosition.value = { x: event.clientX, y: event.clientY }
   showContextMenu.value = true
@@ -1101,11 +1171,30 @@ function handleMessageContextMenu(event: MouseEvent, messageId: string) {
   setTimeout(() => { contextMenuJustOpened.value = false }, 200)
 }
 
+async function handleContextCopy() {
+  const selectedText = contextMenuSelectedText.value
+  const hasSelectedText = selectedText.trim().length > 0
+  const fallbackMessageContent = contextMenuMessageId.value
+    ? (chatStore.messages.find(message => message.id === contextMenuMessageId.value)?.content ?? '')
+    : ''
+  const textToCopy = hasSelectedText ? selectedText : fallbackMessageContent
+  showContextMenu.value = false
+  contextMenuSelectedText.value = ''
+  if (!textToCopy) return
+
+  try {
+    await navigator.clipboard.writeText(textToCopy)
+  } catch (err) {
+    console.error('Failed to copy from context menu:', err)
+  }
+}
+
 function handleSelectMessage() {
   if (contextMenuMessageId.value) {
     chatStore.enterMultiSelectMode(contextMenuMessageId.value)
   }
   showContextMenu.value = false
+  contextMenuSelectedText.value = ''
 }
 
 // Check if the context-menu'd message is the last assistant message (for Continue/Regenerate)
@@ -1116,11 +1205,13 @@ const isContextMenuLastAssistant = computed(() => {
 function handleContextContinue() {
   chatStore.continueMessage()
   showContextMenu.value = false
+  contextMenuSelectedText.value = ''
 }
 
 function handleContextRegenerate() {
   chatStore.regenerateMessage()
   showContextMenu.value = false
+  contextMenuSelectedText.value = ''
 }
 
 function handleMessageContinue() {
@@ -1145,27 +1236,87 @@ function handleCancelSelection() {
   chatStore.exitMultiSelectMode()
 }
 
-// Handle preset question selection - check provider availability first
-async function handlePresetQuestionSelect(text: string, attachments?: FileAttachment[]) {
-  // Ensure providers and trial quota are loaded
+function handleDeepResearchEvent(type: string, data: Record<string, unknown>) {
+  deepResearchJobs.handleGlobalEvent(type, data)
+}
+
+function findDeepResearchJobElement(jobId: string): HTMLElement | null {
+  const normalizedJobId = jobId.trim()
+  if (!normalizedJobId) return null
+  const encodedJobId = encodeURIComponent(normalizedJobId)
+  const candidateIds = [
+    `deep-research-${encodedJobId}`,
+    `deep-research-${normalizedJobId}`,
+    `deep-research-progress-${encodedJobId}`,
+    `deep-research-progress-${normalizedJobId}`,
+  ]
+  for (const id of candidateIds) {
+    const exact = document.getElementById(id)
+    if (exact) return exact
+  }
+
+  const container = messagesContainer.value || document
+  const nodes = Array.from(container.querySelectorAll<HTMLElement>('[id]'))
+  return nodes.find(node =>
+    node.id.startsWith(`deep-research-event-${normalizedJobId}-`)
+    || node.id.startsWith(`deep-research-event-${encodedJobId}-`)
+  ) || null
+}
+
+async function focusPendingDeepResearchJob() {
+  const jobId = deepResearchJobs.pendingFocusJobId
+  if (!jobId) return false
+  await nextTick()
+  const target = findDeepResearchJobElement(jobId)
+  if (!target) return false
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  deepResearchJobs.consumePendingFocusJobId()
+  return true
+}
+
+async function handleOpenDeepResearchJob(job: DeepResearchJobSummary) {
+  if (!job.conversation_id) return
+  if (isMobile.value) {
+    pageStack.value = [job.conversation_id]
+  }
+  await deepResearchJobs.openJob(job.job_id, job.conversation_id)
+}
+
+watch(
+  () => [deepResearchJobs.pendingFocusJobId, chatStore.currentConversationId, chatStore.messages.length] as const,
+  async ([jobId]) => {
+    if (!jobId) return
+    await focusPendingDeepResearchJob()
+  },
+  { flush: 'post' },
+)
+
+async function ensureLlmProviderConfigured(messageToRestore?: string) {
   if (providerPoolStore.providers.length === 0) {
-    await providerPoolStore.fetchProviders()
-  }
-  if (!providerPoolStore.trialQuota) {
-    await providerPoolStore.fetchTrialQuota()
-  }
-
-  // Check if user has configured any providers
-  const hasUserProviders = providerPoolStore.enabledProviders.length > 0
-  // Check if trial quota is available and not exhausted
-  const trialAvailable = providerPoolStore.trialQuota && !providerPoolStore.trialQuota.is_exhausted
-
-  // If no user providers and no trial quota, show dialog to guide user
-  if (!hasUserProviders && !trialAvailable) {
-    showProviderConfigDialog.value = true
-    return
+    try {
+      await providerPoolStore.fetchProviders()
+    } catch {
+      // Fall through to the provider check below.
+    }
   }
 
+  const hasLlmProviders = providerPoolStore.enabledProviders.some(provider => provider.type !== 'media')
+  if (hasLlmProviders) {
+    return true
+  }
+
+  showProviderConfigDialog.value = true
+  if (messageToRestore?.trim()) {
+    nextTick(() => {
+      chatInputRef.value?.setInput?.(messageToRestore)
+      chatInputRef.value?.focus?.()
+    })
+  }
+  return false
+}
+
+// Handle preset question selection
+async function handlePresetQuestionSelect(text: string, attachments?: FileAttachment[]) {
   await handleSend(text, attachments)
 }
 
@@ -1178,7 +1329,8 @@ onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
 
   // Preload common card components for better UX
-  componentPool.preload(['progress', 'chart', 'gallery', 'link', 'file', 'deep-research', 'deep-research-progress'])
+  componentPool.preload(['progress', 'chart', 'gallery', 'link', 'file', 'deep-research', 'deep-research-progress', 'deep-research-event'])
+  deepResearchJobs.fetchActiveJobs().catch(() => {})
 
   // Initialize speech services lazily (TTS/STT)
   authFetch('/api/v1/speech/init', { method: 'POST' }).catch(() => {})
@@ -1186,6 +1338,7 @@ onMounted(async () => {
   // Fetch agent tasks (non-blocking) + subscribe to SSE updates
   fetchAgentTasks()
   for (const evt of agentEventTypes) onSSEEvent(evt, onAgentEvent)
+  for (const evt of deepResearchEventTypes) onSSEEvent(evt, deepResearchEventHandlers[evt]!)
 
   // Fetch conversations and (if URL has conversationId) messages in parallel.
   // selectConversation only needs the ID, not the conversation list.
@@ -1237,6 +1390,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
   document.removeEventListener('click', handleClickOutside)
   for (const evt of agentEventTypes) offSSEEvent(evt, onAgentEvent)
+  for (const evt of deepResearchEventTypes) offSSEEvent(evt, deepResearchEventHandlers[evt]!)
 })
 </script>
 
@@ -1264,6 +1418,7 @@ onUnmounted(() => {
       <ConversationList
         :conversations="chatStore.sortedConversations"
         :current-id="chatStore.currentConversationId"
+        :executing-conversation-ids="chatStore.executingConversationIds"
         :loading="chatStore.loading"
         :searching="chatStore.searching"
         @select="handleSelectConversation"
@@ -1951,7 +2106,7 @@ onUnmounted(() => {
       <div
         ref="messagesContainer"
         class="flex-1 min-h-0 overflow-y-auto overscroll-contain chat-messages-area bg-surface-base"
-        :class="isMobile ? 'pb-4' : 'pb-32'"
+        :class="messageAreaPaddingClass"
         @scroll.passive="handleScroll"
       >
         <!-- Load more indicator -->
@@ -2111,6 +2266,7 @@ onUnmounted(() => {
                 chatStore.streamError === 'provider_auth_error' ? t('chat.providerAuthError') :
                 chatStore.streamError === 'provider_rate_limited' ? t('chat.providerRateLimited') :
                 chatStore.streamError === 'provider_openrouter_privacy_policy' ? t('chat.providerOpenRouterPrivacyPolicy') :
+                chatStore.streamError === 'execDirectoryApprovalTimeout' ? t('chat.execDirectoryApprovalTimeout') :
                 chatStore.streamError
               }}</span>
               <button
@@ -2200,6 +2356,15 @@ onUnmounted(() => {
           class="context-menu fixed z-[100] glass-card shadow-xl py-1 min-w-[160px]"
           :style="{ left: `${contextMenuPosition.x}px`, top: `${contextMenuPosition.y}px` }"
         >
+          <button
+            class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+            @click="handleContextCopy"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            {{ t('chat.copyMessage') }}
+          </button>
           <button
             class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
             @click="handleSelectMessage"
@@ -2353,6 +2518,7 @@ onUnmounted(() => {
           chatStore.error === 'provider_auth_error' ? t('chat.providerAuthError') :
           chatStore.error === 'provider_rate_limited' ? t('chat.providerRateLimited') :
           chatStore.error === 'provider_openrouter_privacy_policy' ? t('chat.providerOpenRouterPrivacyPolicy') :
+          chatStore.error === 'execDirectoryApprovalTimeout' ? t('chat.execDirectoryApprovalTimeout') :
           chatStore.error
         }}</span>
         <button
@@ -2404,6 +2570,9 @@ onUnmounted(() => {
 
       <!-- Input area - floating at bottom (desktop), flex at bottom (mobile) -->
       <div :class="isMobile ? 'flex-shrink-0 border-t border-gray-200 dark:border-glass-border' : 'absolute bottom-0 left-0 right-0 z-10'">
+        <div v-if="hasActiveDeepResearchJobs" class="max-w-5xl mx-auto px-3 sm:px-4 pt-3 pb-2">
+          <DeepResearchTaskDock @view="handleOpenDeepResearchJob" />
+        </div>
         <!-- Media generation param panel -->
         <div v-if="mediaGen.showPanel.value" class="max-w-4xl mx-auto px-3 sm:px-4">
           <MediaParamPanel
@@ -2468,6 +2637,9 @@ onUnmounted(() => {
               </h3>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
                 {{ t('chat.noProvider.description') }}
+              </p>
+              <p v-if="te('chat.noProvider.draftSaved')" class="text-xs text-gray-500 dark:text-gray-400 mb-6">
+                {{ t('chat.noProvider.draftSaved') }}
               </p>
               <div class="flex gap-3">
                 <button
@@ -3318,8 +3490,8 @@ header,
 }
 
 .chat-view.theme-style-ocean :deep(.assistant-message) {
-  background: rgba(2, 44, 84, 0.45);
-  border-color: rgba(56, 189, 248, 0.24);
+  background: var(--chat-assistant-bg);
+  border: var(--chat-assistant-border);
 }
 
 .chat-view.theme-style-ocean :deep(.avatar) {

@@ -144,11 +144,13 @@ func (s *Service) collectEvidenceRound(
 				}
 				result.Evidence = append(result.Evidence, ev)
 				s.broadcast(jobID, "evidence_added", map[string]interface{}{
-					"iteration": iteration,
-					"task_id":   ev.TaskID,
-					"title":     ev.Title,
-					"url":       ev.URL,
-					"domain":    ev.Domain,
+					"iteration":   iteration,
+					"task_id":     ev.TaskID,
+					"query":       r.query,
+					"title":       ev.Title,
+					"url":         ev.URL,
+					"domain":      ev.Domain,
+					"parallelism": workerCount,
 				})
 				if currentEvidenceCount+len(result.Evidence) >= maxSources {
 					maxSourcesReached = true

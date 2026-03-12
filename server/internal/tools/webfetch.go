@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 
+	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 	"golang.org/x/net/html"
 	"golang.org/x/net/publicsuffix"
 	"golang.org/x/sync/singleflight"
@@ -65,6 +66,7 @@ type WebFetchTool struct {
 	config     WebFetchConfig
 	httpClient *http.Client
 	browser    BrowserBackend
+	pdfService PDFService
 	cacheMu    sync.RWMutex
 	cache      map[string]webFetchCacheEntry
 	fetchGroup singleflight.Group
@@ -200,11 +202,19 @@ func (w *WebFetchTool) SetBrowser(browser BrowserBackend) {
 	w.browser = browser
 }
 
+// SetPDFService injects the PDF extraction service for PDF responses.
+func (w *WebFetchTool) SetPDFService(service PDFService) {
+	if w == nil {
+		return
+	}
+	w.pdfService = service
+}
+
 // Definition returns the tool definition.
 func (w *WebFetchTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "web_fetch",
-		Description: "Fetch and extract readable content from a URL via HTTP. Use this for lightweight page reading (no browser automation).",
+		Description: "Fetch and extract readable content from a URL via HTTP. Supports lightweight HTML, text, and PDF reads without browser automation.",
 		Icon:        "web-search",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -321,7 +331,7 @@ func (w *WebFetchTool) fetchAndExtract(ctx context.Context, normalizedURL string
 	if err != nil {
 		return webFetchPayload{}, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Accept", "text/markdown, text/html;q=0.9, */*;q=0.1")
+	req.Header.Set("Accept", "text/markdown, text/html;q=0.9, application/pdf;q=0.8, */*;q=0.1")
 	req.Header.Set("User-Agent", w.config.UserAgent)
 	for k, v := range opts.extraHeaders {
 		if strings.TrimSpace(k) == "" || strings.TrimSpace(v) == "" {
@@ -341,13 +351,18 @@ func (w *WebFetchTool) fetchAndExtract(ctx context.Context, normalizedURL string
 	}
 	defer resp.Body.Close()
 
-	body, bodyTruncated, err := readLimitedBody(resp.Body, w.config.MaxResponseBytes)
+	finalURL := normalizedURL
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalURL = resp.Request.URL.String()
+	}
+	bodyLimit := w.responseBodyLimit(resp.Header.Get("Content-Type"), finalURL)
+	body, bodyTruncated, err := readLimitedBody(resp.Body, bodyLimit)
 	if err != nil {
 		return webFetchPayload{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
-	content, title, extractor, err := extractWebFetchContent(contentType, body, mode)
+	content, title, extractor, extractedTruncated, err := w.extractContent(ctx, finalURL, contentType, body, mode, bodyTruncated)
 	if err != nil {
 		if fallback, ok, fbErr := w.tryFirecrawlFallback(ctx, normalizedURL, mode); ok {
 			return fallback, nil
@@ -357,10 +372,6 @@ func (w *WebFetchTool) fetchAndExtract(ctx context.Context, normalizedURL string
 		return webFetchPayload{}, err
 	}
 
-	finalURL := normalizedURL
-	if resp.Request != nil && resp.Request.URL != nil {
-		finalURL = resp.Request.URL.String()
-	}
 	if err := guardWebFetchURL(ctx, finalURL, w.config.AllowPrivateHosts); err != nil {
 		return webFetchPayload{}, err
 	}
@@ -412,10 +423,85 @@ func (w *WebFetchTool) fetchAndExtract(ctx context.Context, normalizedURL string
 		ContentType:   normalizeContentType(contentType),
 		ExtractMode:   mode,
 		Extractor:     extractor,
-		BodyTruncated: bodyTruncated,
+		BodyTruncated: bodyTruncated || extractedTruncated,
 		Warning:       authWallWarning,
 		WarningCode:   authWallCode,
 	}, nil
+}
+
+func (w *WebFetchTool) responseBodyLimit(contentType, targetURL string) int64 {
+	limit := w.config.MaxResponseBytes
+	if limit <= 0 {
+		limit = webFetchDefaultMaxResponseBytes
+	}
+	if isLikelyWebFetchPDF(contentType, targetURL) {
+		pdfLimit := int64(defaultPDFMaxBytesMB) << 20
+		if pdfLimit > limit {
+			limit = pdfLimit
+		}
+	}
+	return limit
+}
+
+func isLikelyWebFetchPDF(contentType, targetURL string) bool {
+	if strings.Contains(normalizeContentType(contentType), "pdf") {
+		return true
+	}
+	parsed, err := url.Parse(strings.TrimSpace(targetURL))
+	if err != nil {
+		return false
+	}
+	return strings.HasSuffix(strings.ToLower(parsed.Path), ".pdf")
+}
+
+func (w *WebFetchTool) extractContent(ctx context.Context, sourceURL, contentType string, body []byte, mode string, bodyTruncated bool) (content, title, extractor string, extractedTruncated bool, err error) {
+	if isLikelyWebFetchPDF(contentType, sourceURL) || looksLikePDFBytes(body) {
+		if bodyTruncated {
+			return "", "", "", false, fmt.Errorf("pdf response exceeded %d bytes limit", w.responseBodyLimit(contentType, sourceURL))
+		}
+		content, title, extractor, extractedTruncated, err = w.extractPDFContent(ctx, sourceURL, body)
+		return content, title, extractor, extractedTruncated, err
+	}
+	content, title, extractor, err = extractWebFetchContent(contentType, body, mode)
+	return content, title, extractor, false, err
+}
+
+func (w *WebFetchTool) extractPDFContent(ctx context.Context, sourceURL string, body []byte) (content, title, extractor string, truncated bool, err error) {
+	if w == nil || w.pdfService == nil {
+		return "", "", "", false, errors.New("pdf extraction service not available for web fetch")
+	}
+	file, err := os.CreateTemp("", "zimaos-blue-webfetch-*.pdf")
+	if err != nil {
+		return "", "", "", false, fmt.Errorf("create temp pdf: %w", err)
+	}
+	path := file.Name()
+	defer func() {
+		_ = os.Remove(path)
+	}()
+	if _, err := file.Write(body); err != nil {
+		_ = file.Close()
+		return "", "", "", false, fmt.Errorf("write temp pdf: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return "", "", "", false, fmt.Errorf("close temp pdf: %w", err)
+	}
+
+	result, err := w.pdfService.Extract(ctx, pdfextract.ExtractRequest{
+		Path:     path,
+		MaxChars: w.config.MaxCharsCap,
+	})
+	if err != nil {
+		return "", "", "", false, fmt.Errorf("extract pdf: %w", err)
+	}
+
+	title = strings.TrimSpace(result.Document.Metadata["Title"])
+	if title == "" {
+		title = strings.TrimSpace(result.Document.FileName)
+	}
+	if title == "" {
+		title = pdfDisplayName(sourceURL)
+	}
+	return strings.TrimSpace(result.Text), title, "pdf", result.Truncated, nil
 }
 
 func marshalWebFetchPayload(payload webFetchPayload, maxChars int) string {
@@ -712,12 +798,15 @@ func parseWebFetchMaxChars(args map[string]interface{}, fallback, cap int) int {
 		fallback = webFetchDefaultMaxChars
 	}
 	value := fallback
-	if v, ok := coerceCompatInt(args["max_chars"]); ok {
-		value = v
-	} else if v, ok := coerceCompatInt(args["maxChars"]); ok {
-		value = v
-	} else if v, ok := coerceCompatInt(args["limit"]); ok {
-		value = v
+	for _, key := range []string{"max_chars", "maxChars", "limit"} {
+		raw, ok := compatArgValue(args, key)
+		if !ok {
+			continue
+		}
+		if v, ok := coerceCompatInt(raw); ok {
+			value = v
+			break
+		}
 	}
 	if value < 100 {
 		value = 100
@@ -736,7 +825,7 @@ func parseWebFetchRequestOptions(args map[string]interface{}) (webFetchRequestOp
 	}
 
 	for _, key := range []string{"headers", "request_headers", "requestHeaders"} {
-		raw, ok := args[key]
+		raw, ok := compatArgValue(args, key)
 		if !ok || raw == nil {
 			continue
 		}
@@ -1579,56 +1668,52 @@ func cleanTextBlocks(s string) string {
 }
 
 func normalizeWebFetchCompatArgs(_ string, args map[string]interface{}) map[string]interface{} {
-	normalized := make(map[string]interface{}, len(args)+3)
+	normalized := make(map[string]interface{}, len(args)+6)
 	for k, v := range args {
 		normalized[k] = v
 	}
 
 	if strings.TrimSpace(asString(normalized["url"])) == "" {
-		if target := firstCompatString(normalized, "url", "href", "target", "input", "query", "q"); target != "" {
+		if target := firstCompatStringDeep(normalized, "url", "href", "target", "input", "query", "q"); target != "" {
 			normalized["url"] = target
 		}
 	}
 
 	if strings.TrimSpace(asString(normalized["extract_mode"])) == "" {
-		if mode := firstCompatString(normalized, "extract_mode", "extractMode", "mode"); mode != "" {
+		if mode := firstCompatStringDeep(normalized, "extract_mode", "extractMode", "mode"); mode != "" {
 			normalized["extract_mode"] = strings.ToLower(strings.TrimSpace(mode))
 		}
 	}
 
 	if _, ok := normalized["max_chars"]; !ok {
-		if limit, ok := coerceCompatInt(normalized["maxChars"]); ok && limit > 0 {
-			normalized["max_chars"] = limit
-		} else if limit, ok := coerceCompatInt(normalized["limit"]); ok && limit > 0 {
+		if limit, ok := firstCompatIntDeep(normalized, "max_chars", "maxChars", "limit"); ok && limit > 0 {
 			normalized["max_chars"] = limit
 		}
 	}
 
 	if _, ok := normalized["headers"]; !ok {
-		if headers, exists := normalized["request_headers"]; exists {
-			normalized["headers"] = headers
-		} else if headers, exists := normalized["requestHeaders"]; exists {
+		if headers, exists := firstCompatValueDeep(normalized, "headers", "request_headers", "requestHeaders"); exists {
 			normalized["headers"] = headers
 		}
 	}
 
 	if strings.TrimSpace(asString(normalized["authorization"])) == "" {
-		if v := firstCompatString(normalized, "Authorization"); v != "" {
+		if v := firstCompatStringDeep(normalized, "authorization", "Authorization"); v != "" {
 			normalized["authorization"] = v
 		}
 	}
 	if strings.TrimSpace(asString(normalized["auth_bearer"])) == "" {
-		if v := firstCompatString(normalized, "authBearer", "bearer_token"); v != "" {
+		if v := firstCompatStringDeep(normalized, "auth_bearer", "authBearer", "bearer_token"); v != "" {
 			normalized["auth_bearer"] = v
 		}
 	}
 	if strings.TrimSpace(asString(normalized["cookies"])) == "" {
-		if v := firstCompatString(normalized, "cookie", "Cookie"); v != "" {
+		if v := firstCompatStringDeep(normalized, "cookies", "cookie", "Cookie"); v != "" {
 			normalized["cookies"] = v
 		}
 	}
 	if strings.TrimSpace(asString(normalized["browser_target_id"])) == "" {
-		if v := firstCompatString(normalized, "browserTargetId"); v != "" {
+		if v := firstCompatStringDeep(normalized, "browser_target_id", "browserTargetId"); v != "" {
 			normalized["browser_target_id"] = v
 		}
 	}

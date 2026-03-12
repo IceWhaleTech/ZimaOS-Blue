@@ -19,6 +19,8 @@ const (
 	defaultHFRepo         = "unsloth/Qwen3.5-0.8B-GGUF"
 	defaultModelFilename  = "Qwen3.5-0.8B.Q4_K_M.gguf"
 	defaultMMProjFilename = "mmproj-F16.gguf"
+	defaultModelSize      = "528MB"
+	defaultMMProjSize     = "209.5MB"
 )
 
 var defaultModelDownloadCandidates = []string{
@@ -208,16 +210,16 @@ func requiredModelFiles(assets modelAssetConfig) []downloader.ModelFile {
 		modelDownloadFile(assets),
 	}
 	if strings.TrimSpace(assets.mmprojFilename) != "" {
-		files = append(files, modelFile(assets.repo, assets.mmprojFilename, assets.mmprojFilename, "1.0GB"))
+		files = append(files, modelFile(assets.repo, assets.mmprojFilename, assets.mmprojFilename, defaultMMProjSize))
 	}
 	return files
 }
 
 func modelDownloadFile(assets modelAssetConfig) downloader.ModelFile {
 	if usesDefaultModelDownloadCandidates(assets) {
-		return modelFileWithURLs(assets.modelFilename, "528MB", defaultModelDownloadCandidates...)
+		return modelFileWithURLs(assets.modelFilename, defaultModelSize, defaultModelDownloadCandidates...)
 	}
-	return modelFile(assets.repo, assets.modelFilename, assets.modelFilename, "528MB")
+	return modelFile(assets.repo, assets.modelFilename, assets.modelFilename, defaultModelSize)
 }
 
 func modelFileWithURLs(filename, size string, urls ...string) downloader.ModelFile {

@@ -36,6 +36,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Worker.PoolSize != 10 {
 		t.Errorf("Worker.PoolSize = %v, want %v", cfg.Worker.PoolSize, 10)
 	}
+	if !cfg.Browser.Headless {
+		t.Errorf("Browser.Headless = %v, want true", cfg.Browser.Headless)
+	}
 	if !cfg.Session.Audit.Enabled {
 		t.Errorf("Session.Audit.Enabled = %v, want true", cfg.Session.Audit.Enabled)
 	}
@@ -67,6 +70,9 @@ log:
   format: "json"
 worker:
   pool_size: 20
+browser:
+  headless: false
+  pool_size: 1
 `
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		t.Fatalf("Failed to write config file: %v", err)
@@ -88,6 +94,12 @@ worker:
 	}
 	if cfg.Worker.PoolSize != 20 {
 		t.Errorf("Worker.PoolSize = %v, want %v", cfg.Worker.PoolSize, 20)
+	}
+	if cfg.Browser.Headless {
+		t.Errorf("Browser.Headless = %v, want false", cfg.Browser.Headless)
+	}
+	if cfg.Browser.PoolSize != 1 {
+		t.Errorf("Browser.PoolSize = %v, want %v", cfg.Browser.PoolSize, 1)
 	}
 }
 

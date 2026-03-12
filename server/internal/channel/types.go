@@ -226,6 +226,18 @@ type Channel interface {
 	Messages() <-chan Message
 }
 
+// MessageSenderWithID is an optional interface for channels that can return
+// the outbound message ID of a sent message. This enables later in-place edits.
+type MessageSenderWithID interface {
+	SendWithID(ctx context.Context, msg OutgoingMessage) (string, error)
+}
+
+// MessageEditor is an optional interface for channels that can edit an
+// existing outbound message in place.
+type MessageEditor interface {
+	EditMessage(ctx context.Context, chatID string, messageID string, msg OutgoingMessage) error
+}
+
 // MessageHandler is a function that handles incoming messages.
 type MessageHandler func(ctx context.Context, msg Message) (*OutgoingMessage, error)
 
@@ -239,6 +251,13 @@ type TypingIndicator interface {
 	// SendTyping sends a "typing" indicator to the given chat.
 	// Best-effort: errors are logged but not propagated.
 	SendTyping(ctx context.Context, chatID string) error
+}
+
+// TypingReactionCleaner is an optional interface channels can implement to
+// clear a transient typing reaction for a specific inbound message.
+// This is used when newer user messages supersede older pending turns.
+type TypingReactionCleaner interface {
+	ClearTypingReaction(ctx context.Context, messageID string)
 }
 
 // OutboundCapabilityProvider is an optional interface for channels to describe

@@ -5,6 +5,7 @@ import { i18n } from '@/i18n'
 
 const mocks = vi.hoisted(() => ({
   chatStore: {
+    messages: [] as Array<Record<string, unknown>>,
     selectedMessageIds: new Set<string>(),
     isMultiSelectMode: false,
     toolExecuting: false,
@@ -136,6 +137,7 @@ function createDeferred<T>() {
 
 describe('ChatMessage card actions', () => {
   beforeEach(() => {
+    mocks.chatStore.messages = []
     mocks.chatStore.selectedMessageIds = new Set<string>()
     mocks.chatStore.isMultiSelectMode = false
     mocks.chatStore.toolExecuting = false

@@ -46,14 +46,14 @@ export default {
     username: 'Nazwa użytkownika',
     password: 'Hasło',
     rememberMe: 'Zapamiętaj mnie',
-    invalidCredentials: "Nieprawidłowa nazwa użytkownika lub hasło",
-    accountLocked: "Konto jest zablokowane",
-    accountDisabled: "Konto jest wyłączone",
-    authServiceUnavailable: "Usługa uwierzytelniania tymczasowo niedostępna",
-    loginFailed: "Logowanie nie powiodło się",
-    currentPasswordIncorrect: "Obecne hasło jest nieprawidłowe",
-    newPasswordRequirements: "Nowe hasło nie spełnia wymagań",
-    changePasswordFailed: "Nie udało się zmienić hasła",
+    invalidCredentials: 'Nieprawidłowa nazwa użytkownika lub hasło',
+    accountLocked: 'Konto jest zablokowane',
+    accountDisabled: 'Konto jest wyłączone',
+    authServiceUnavailable: 'Usługa uwierzytelniania tymczasowo niedostępna',
+    loginFailed: 'Logowanie nie powiodło się',
+    currentPasswordIncorrect: 'Obecne hasło jest nieprawidłowe',
+    newPasswordRequirements: 'Nowe hasło nie spełnia wymagań',
+    changePasswordFailed: 'Nie udało się zmienić hasła',
   },
   errors: {
     ...enUS.errors,
@@ -62,6 +62,27 @@ export default {
   },
   nav: {
     ...enUS.nav,
+    workspaceCoreTab: 'Workspace Core Files',
+    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTitle: 'Workspace Directory Tree',
+    workspaceGeneratedDescription:
+      'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
+    workspaceGeneratedLoadFailed: 'Failed to scan generated file sources',
+    workspaceUnknownConversation: 'Conversation',
+    workspaceJumpToConversation: 'Go to conversation',
+    workspaceTreeLoadFailed: 'Failed to load workspace directory tree',
+    workspaceTreeLoading: 'Loading workspace tree and conversation links...',
+    workspaceTreeEmpty: 'No files found in workspace tree.',
+    workspaceTreeFilteredEmpty: 'No conversation-linked files in the current filtered tree view.',
+    workspaceTreeDirCount: 'Dirs',
+    workspaceTreeFileCount: 'Files',
+    workspaceTreeLinkedCount: 'Linked',
+    workspaceTreeShowAll: 'Show all files',
+    workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeExpandDir: 'Expand folder',
+    workspaceTreeCollapseDir: 'Collapse folder',
+    workspaceTreeOpenFailed: 'Unable to open workspace file',
+    workspaceTreeRevealFailed: 'Unable to open file location',
     taskCenter: 'Centrum zadań',
     channels: 'Integracje',
     automation: 'Automatyzacja',
@@ -178,7 +199,8 @@ export default {
   taskCenter: {
     ...enUS.taskCenter,
     title: 'Centrum zadań',
-    subtitle: 'Zarządzaj zadaniami automatyzacji, zaplanowanymi pracami i sterowaniem inteligentnego domu',
+    subtitle:
+      'Zarządzaj zadaniami automatyzacji, zaplanowanymi pracami i sterowaniem inteligentnego domu',
     tabs: {
       smartHome: 'Inteligentny dom',
       smartHomeDesc: 'Steruj urządzeniami i automatyzacjami Home Assistant',
@@ -286,10 +308,12 @@ export default {
     },
     security: {
       allowedDomains: 'Dozwolone domeny',
-      allowedDomainsHint: 'Tylko te domeny mogą być dostępne. Pozostaw puste, aby zezwolić na wszystkie (oprócz zablokowanych).',
+      allowedDomainsHint:
+        'Tylko te domeny mogą być dostępne. Pozostaw puste, aby zezwolić na wszystkie (oprócz zablokowanych).',
       allowedDomainsPlaceholder: 'example.com lub *.example.com',
       add: 'Dodaj',
-      noAllowedDomains: 'Nie skonfigurowano dozwolonych domen. Wszystkie domeny są dozwolone (oprócz zablokowanych).',
+      noAllowedDomains:
+        'Nie skonfigurowano dozwolonych domen. Wszystkie domeny są dozwolone (oprócz zablokowanych).',
       blockedDomains: 'Zablokowane domeny',
       blockedDomainsHint: 'Te domeny są zawsze zablokowane, nawet jeśli są na liście dozwolonych.',
       blockedDomainsPlaceholder: 'malicious-site.com',
@@ -322,7 +346,8 @@ export default {
     editWorkspace: 'Edytuj obszar roboczy',
     deleteWorkspace: 'Usuń obszar roboczy',
     loadingWorkspaces: 'Ładowanie obszarów roboczych...',
-    noWorkspacesYet: 'Nie utworzono jeszcze żadnych obszarów roboczych. Utwórz swój pierwszy obszar roboczy, aby rozpocząć!',
+    noWorkspacesYet:
+      'Nie utworzono jeszcze żadnych obszarów roboczych. Utwórz swój pierwszy obszar roboczy, aby rozpocząć!',
     created: 'Utworzono',
     edit: 'Edytuj',
     manage: 'Zarządzaj',
@@ -355,7 +380,8 @@ export default {
       inviteMember: 'Zaproś członka',
       remove: 'Usuń',
       removing: 'Usuwanie...',
-      removeConfirm: 'Czy na pewno chcesz usunąć <strong>{username}</strong> z tego obszaru roboczego?',
+      removeConfirm:
+        'Czy na pewno chcesz usunąć <strong>{username}</strong> z tego obszaru roboczego?',
       roles: {
         owner: 'Właściciel',
         admin: 'Administrator',
@@ -423,7 +449,8 @@ export default {
     teamsDesc: 'Połącz z Microsoft Teams',
     googleChatDesc: 'Połącz z Google Chat',
     feishuDesc: 'Połącz z Feishu/Lark Bot',
-    feishuHint: 'Utwórz bota w Feishu Open Platform. Wymagane: 1) Włącz "Long Connection" dla zdarzeń; 2) Subskrybuj zdarzenie "im.message.receive_v1"; 3) Dodaj uprawnienie "im:message:send_as_bot"',
+    feishuHint:
+      'Utwórz bota w Feishu Open Platform. Wymagane: 1) Włącz "Long Connection" dla zdarzeń; 2) Subskrybuj zdarzenie "im.message.receive_v1"; 3) Dodaj uprawnienie "im:message:send_as_bot"',
     feishuOpenChat: 'Otwórz czat bota',
     dingtalkDesc: 'Połącz z DingTalk Bot',
     dingtalkHint: 'Utwórz robota w DingTalk Developer Platform',
@@ -538,10 +565,12 @@ export default {
   },
   settings: {
     ...enUS.settings,
+    llmApiKeyRequired: 'Skonfiguruj klucz API przed otwarciem strony dostawców LLM.',
     agentReflection: {
       ...enUS.settings.agentReflection,
       title: 'Automatyczna refleksja',
-      description: 'Po zakończeniu lub niepowodzeniu {agentMode} wyciąga krótką refleksję i zapisuje w pamięci lekcje możliwe do ponownego użycia.',
+      description:
+        'Po zakończeniu lub niepowodzeniu {agentMode} wyciąga krótką refleksję i zapisuje w pamięci lekcje możliwe do ponownego użycia.',
       hint: 'Anulowane lub przerwane zadania są pomijane. Błędy refleksji nie zmieniają końcowego stanu zadania.',
       saved: 'Zapisano automatyczną refleksję',
       saveFailed: 'Nie udało się zapisać ustawienia automatycznej refleksji',
@@ -549,14 +578,16 @@ export default {
     smallModel: {
       ...enUS.settings.smallModel,
       title: 'Lekka akceleracja',
-      description: 'Dla prostych zadan najpierw uzywa lekkiego modelu, z automatycznym powrotem gdy jest niedostepny.',
+      description:
+        'Dla prostych zadan najpierw uzywa lekkiego modelu, z automatycznym powrotem gdy jest niedostepny.',
       ready: 'Dostepne',
       downloading: 'Pobieranie',
       notReady: 'Niepobrane',
       enabled: 'Wlacz lekka akceleracje',
       enabledHint: 'Po wlaczeniu odpowiednie zadania sa najpierw obslugiwane przez lekki model.',
       userGuideTitle: 'Co to robi',
-      userGuideItem1: 'Nadaje priorytet krotkim pytaniom i niektorym decyzjom narzedzi, aby przyspieszyc odpowiedzi.',
+      userGuideItem1:
+        'Nadaje priorytet krotkim pytaniom i niektorym decyzjom narzedzi, aby przyspieszyc odpowiedzi.',
       userGuideItem2: 'Automatycznie wraca do modelu glownego, gdy lekki model jest niedostepny.',
       userGuideItem3: 'Pobierz model przed pierwszym uzyciem.',
       irTitle: 'Assistant Capabilities',
@@ -570,9 +601,11 @@ export default {
       collapse: 'Zwin',
       mediaIntent: 'Rozpoznawanie scenariusza generowania mediow',
       irOfflineFallbackTitle: 'Offline Local Fallback',
-      irOfflineFallbackDesc: 'When model fallback is needed, answer from local context recall first.',
+      irOfflineFallbackDesc:
+        'When model fallback is needed, answer from local context recall first.',
       irFeatureHintTitle: 'Feature Hint Detection',
-      irFeatureHintDesc: 'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
+      irFeatureHintDesc:
+        'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
       statsTitle: 'Statystyki dzialania (diagnostyka)',
       statsHint: 'Glownie do diagnostyki i strojenia; w codziennym uzyciu mozna pominac.',
       irTakeovers: 'Przejęcia przez strategię',
@@ -638,11 +671,13 @@ export default {
     apply: 'Zastosuj',
     reset: 'Resetuj',
     exportCSV: 'Eksportuj CSV',
-    featureDisabled: 'Rozliczenia sa obecnie niedostepne, poniewaz sledzenie zuzycia dostawcy nie zostalo zainicjalizowane.',
+    featureDisabled:
+      'Rozliczenia sa obecnie niedostepne, poniewaz sledzenie zuzycia dostawcy nie zostalo zainicjalizowane.',
     noData: 'Brak rekordow rozliczen dla biezacych filtrow',
     loadFailed: 'Nie udalo sie zaladowac danych rozliczen',
     anomalyTitle: 'Alerty skokow uzycia',
-    anomalyHint: 'Wykrywa dni, w ktorych zuzycie tokenow znaczaco przekracza ostatnia 7-dniowa linie bazowa.',
+    anomalyHint:
+      'Wykrywa dni, w ktorych zuzycie tokenow znaczaco przekracza ostatnia 7-dniowa linie bazowa.',
     anomalyNone: 'W biezacym zakresie nie wykryto istotnych skokow zuzycia',
     breakdownTitle: 'Podsumowanie grupowe',
     linesTitle: 'Szczegolowe rekordy',
@@ -670,10 +705,12 @@ export default {
     firewall: {
       ...enUS.security.firewall,
       title: 'Zapora promptów',
-      description: 'Utrzymuj listę blokowanych słów kluczowych, aby przechwytywać ryzykowne prompty przed przetworzeniem.',
+      description:
+        'Utrzymuj listę blokowanych słów kluczowych, aby przechwytywać ryzykowne prompty przed przetworzeniem.',
       ruleCount: '{count} aktywnych reguł słów kluczowych',
       builtinTitle: 'Domyślne reguły blokowania',
-      builtinDescription: 'Wbudowane reguły przechwytywania są domyślnie włączone i można je dynamicznie dostosowywać.',
+      builtinDescription:
+        'Wbudowane reguły przechwytywania są domyślnie włączone i można je dynamicznie dostosowywać.',
       customTitle: 'Niestandardowe reguły słów kluczowych',
       keywordPlaceholder: 'Wpisz blokowane słowo kluczowe lub frazę',
       add: 'Dodaj regułę',
@@ -684,7 +721,8 @@ export default {
     },
     settings: {
       title: 'Przechowywanie danych bezpieczeństwa',
-      description: 'Skonfiguruj, jak długo dane monitorowania (sesje, zdarzenia, alerty) są przechowywane przed automatycznym czyszczeniem',
+      description:
+        'Skonfiguruj, jak długo dane monitorowania (sesje, zdarzenia, alerty) są przechowywane przed automatycznym czyszczeniem',
       configure: 'Konfiguruj',
       storageInfo: 'Informacje o magazynie',
       sessions: 'Sesje',
@@ -696,7 +734,8 @@ export default {
       alertsRetention: 'Przechowywanie alertów',
       days: 'dni',
       cleanupNow: 'Wyczyść teraz',
-      cleanupConfirm: 'Wszystkie dane monitorowania starsze niż okres przechowywania zostaną usunięte. Kontynuować?',
+      cleanupConfirm:
+        'Wszystkie dane monitorowania starsze niż okres przechowywania zostaną usunięte. Kontynuować?',
       cleanupSuccess: 'Czyszczenie zakończone pomyślnie',
     },
     scan: {
@@ -745,19 +784,29 @@ export default {
         sql_injection_enabled: 'Wykrywanie wzorców iniekcji SQL jest włączone',
         command_injection_enabled: 'Wykrywanie wzorców iniekcji poleceń jest włączone',
         prompt_injection_active: 'Wykrywanie iniekcji promptów jest aktywne',
-        prompt_injection_disabled: 'Ochrona przed iniekcją promptów jest wyłączona. Włącz PromptGuard dla bezpieczeństwa AI.',
+        prompt_injection_disabled:
+          'Ochrona przed iniekcją promptów jest wyłączona. Włącz PromptGuard dla bezpieczeństwa AI.',
         ai_output_validation_enabled: 'Walidacja wyjścia AI jest włączona',
-        ai_output_validation_disabled: 'Walidacja wyjścia AI jest wyłączona. Rozważ włączenie dla bezpieczniejszych operacji AI.',
-        model_whitelist_no_models: 'Biała lista modeli jest włączona, ale nie skonfigurowano żadnych modeli',
-        model_whitelist_disabled: 'Biała lista modeli jest wyłączona. Wszystkie modele są dostępne. Rozważ włączenie dla produkcji.',
+        ai_output_validation_disabled:
+          'Walidacja wyjścia AI jest wyłączona. Rozważ włączenie dla bezpieczniejszych operacji AI.',
+        model_whitelist_no_models:
+          'Biała lista modeli jest włączona, ale nie skonfigurowano żadnych modeli',
+        model_whitelist_disabled:
+          'Biała lista modeli jest wyłączona. Wszystkie modele są dostępne. Rozważ włączenie dla produkcji.',
         sensitive_data_filtering_enabled: 'Filtrowanie danych wrażliwych jest włączone',
-        sensitive_data_filtering_disabled: 'Filtrowanie danych wrażliwych jest wyłączone. PII mogą być ujawnione modelom AI.',
-        rate_limiting_disabled: 'Ograniczenie szybkości jest wyłączone. API jest podatne na nadużycia i ataki DoS.',
-        cors_all_origins_production: 'CORS zezwala na wszystkie źródła w produkcji. To jest ryzyko bezpieczeństwa.',
-        cors_all_origins_dev: 'CORS zezwala na wszystkie źródła. Akceptowalne dla rozwoju, ale ogranicz w produkcji.',
-        cors_no_external_origins: 'CORS jest skonfigurowany tak, aby nie zezwalać na zewnętrzne źródła',
+        sensitive_data_filtering_disabled:
+          'Filtrowanie danych wrażliwych jest wyłączone. PII mogą być ujawnione modelom AI.',
+        rate_limiting_disabled:
+          'Ograniczenie szybkości jest wyłączone. API jest podatne na nadużycia i ataki DoS.',
+        cors_all_origins_production:
+          'CORS zezwala na wszystkie źródła w produkcji. To jest ryzyko bezpieczeństwa.',
+        cors_all_origins_dev:
+          'CORS zezwala na wszystkie źródła. Akceptowalne dla rozwoju, ale ogranicz w produkcji.',
+        cors_no_external_origins:
+          'CORS jest skonfigurowany tak, aby nie zezwalać na zewnętrzne źródła',
         tls_12_min: 'TLS jest włączony z minimalną wersją TLS 1.2',
-        tls_older_versions: 'TLS jest włączony, ale zezwala na starsze wersje. Zalecane minimum TLS 1.2.',
+        tls_older_versions:
+          'TLS jest włączony, ale zezwala na starsze wersje. Zalecane minimum TLS 1.2.',
         tls_disabled_production: 'TLS jest wyłączony w produkcji. Cały ruch nie jest szyfrowany.',
         tls_disabled_enable: 'TLS jest wyłączony. Włącz dla wdrożenia produkcyjnego.',
         server_localhost: 'Serwer jest dostępny na localhost',
@@ -767,17 +816,22 @@ export default {
         no_memory_limit: 'Nie skonfigurowano limitu pamięci dla sandbox',
         no_timeout_configured: 'Nie skonfigurowano limitu czasu wykonania',
         network_disabled_sandbox: 'Dostęp do sieci jest wyłączony w sandbox',
-        network_enabled_sandbox: 'Dostęp do sieci jest włączony w sandbox. Rozważ wyłączenie dla lepszej izolacji.',
+        network_enabled_sandbox:
+          'Dostęp do sieci jest włączony w sandbox. Rozważ wyłączenie dla lepszej izolacji.',
         data_dir_restricted: 'Katalog danych ma ograniczone uprawnienia',
         data_dir_permissive: 'Katalog danych może mieć zbyt permissywne uprawnienia',
         data_dir_unknown: 'Nie można zweryfikować uprawnień katalogu danych',
-        debug_production: 'Tryb debugowania jest włączony w produkcji. To ujawnia wrażliwe informacje.',
+        debug_production:
+          'Tryb debugowania jest włączony w produkcji. To ujawnia wrażliwe informacje.',
         debug_enabled: 'Tryb debugowania jest włączony. Wyłącz przed wdrożeniem produkcyjnym.',
         debug_disabled: 'Tryb debugowania jest wyłączony',
-        error_exposed_production: 'Szczegółowe komunikaty o błędach są ujawnione w produkcji. To może wyciekać wrażliwe informacje.',
-        error_exposed: 'Szczegółowe komunikaty o błędach są ujawnione. Wyłącz przed wdrożeniem produkcyjnym.',
+        error_exposed_production:
+          'Szczegółowe komunikaty o błędach są ujawnione w produkcji. To może wyciekać wrażliwe informacje.',
+        error_exposed:
+          'Szczegółowe komunikaty o błędach są ujawnione. Wyłącz przed wdrożeniem produkcyjnym.',
         error_hidden: 'Szczegóły błędu są ukryte w odpowiedziach',
-        error_log_restrict: 'Wrażliwe dane o błędach mogą być rejestrowane. Upewnij się, że dostęp do logów jest ograniczony.',
+        error_log_restrict:
+          'Wrażliwe dane o błędach mogą być rejestrowane. Upewnij się, że dostęp do logów jest ograniczony.',
         error_filtered_logs: 'Wrażliwe dane o błędach są filtrowane z logów',
         running_production: 'Działa w trybie produkcyjnym',
         running_staging: 'Działa w trybie staging',
@@ -942,10 +996,10 @@ export default {
     },
     // Direct keys used in template
     // Nested structure
-    'sessions': {
+    sessions: {
       title: 'Aktywne sesje',
     },
-    'events': {
+    events: {
       title: 'Zdarzenia bezpieczeństwa',
     },
   },
@@ -959,7 +1013,8 @@ export default {
     exportJSON: 'Eksportuj JSON',
     exportCSV: 'Eksportuj CSV',
     clearAll: 'Wyczyść wszystkie statystyki',
-    clearConfirm: 'Czy na pewno chcesz wyczyścić wszystkie statystyki? Tej operacji nie można cofnąć.',
+    clearConfirm:
+      'Czy na pewno chcesz wyczyścić wszystkie statystyki? Tej operacji nie można cofnąć.',
     consent: {
       ...enUS.stats.consent,
       title: 'Zbieranie statystyk',
@@ -974,7 +1029,8 @@ export default {
     autoRefresh: 'Auto-odświeżanie (5s)',
     lastUpdated: 'Ostatnia aktualizacja',
     reset: 'Resetuj',
-    confirmReset: 'Czy na pewno chcesz zresetować wszystkie metryki? Tej operacji nie można cofnąć.',
+    confirmReset:
+      'Czy na pewno chcesz zresetować wszystkie metryki? Tej operacji nie można cofnąć.',
     resetSuccess: 'Metryki zresetowane',
     noData: 'Brak dostępnych danych',
     tabs: { overview: 'Przegląd', models: 'Modele', tokens: 'Tokeny', performance: 'Wydajność' },
@@ -1057,8 +1113,10 @@ export default {
       lmstudio: 'Lokalna inferencja LLM z przyjaznym interfejsem',
       glm: 'Modele Zhipu AI GLM-4 z obsługą języka chińskiego',
       siliconflow: 'SiliconFlow - Chińska platforma chmurowa AI z DeepSeek, Qwen i innymi modelami',
-      nvidia: 'NVIDIA NIM - Inferencja z akceleracją GPU dla wiodących modeli open-source i komercyjnych',
-      'zimaos-blue-trial': 'Bezpłatna wersja próbna z ograniczonym limitem - wypróbuj Blue przed konfiguracją własnego dostawcy',
+      nvidia:
+        'NVIDIA NIM - Inferencja z akceleracją GPU dla wiodących modeli open-source i komercyjnych',
+      'zimaos-blue-trial':
+        'Bezpłatna wersja próbna z ograniczonym limitem - wypróbuj Blue przed konfiguracją własnego dostawcy',
       moonshot: 'Moonshot AI (Kimi) - Chiński model językowy z obsługą długiego kontekstu',
       azure: 'Azure OpenAI Service - Modele OpenAI klasy enterprise na Azure',
       aihubmix: 'AiHubMix - Agregator modeli AI z wieloma dostawcami',
@@ -1073,7 +1131,8 @@ export default {
       'codex-oauth': 'OpenAI Codex CLI przez OAuth - Modele subskrypcji ChatGPT',
       'dashscope-image': 'Alibaba DashScope - Modele Qwen Image i Wanx tekst-na-obraz',
       'gemini-image': 'Google Gemini - Natywne generowanie obrazów przez Imagen i modele Gemini',
-      mulerouter: 'MuleRouter - Ujednolicony agregator dla DALL-E, Midjourney, Qwen Image, Wan2 wideo',
+      mulerouter:
+        'MuleRouter - Ujednolicony agregator dla DALL-E, Midjourney, Qwen Image, Wan2 wideo',
       'minimax-media': 'MiniMax - Generowanie wideo Hailuo i synteza mowy',
     },
     models: 'Modele',
@@ -1233,7 +1292,8 @@ export default {
     detected: 'wykryto',
     configureModels: 'Konfiguruj',
     configureAllowedModels: 'Konfiguruj dozwolone modele',
-    allowedModelsHint: 'Wybierz, które modele są dostępne dla tego dostawcy. Jeśli nic nie wybrano, dostępne będą wszystkie modele z API.',
+    allowedModelsHint:
+      'Wybierz, które modele są dostępne dla tego dostawcy. Jeśli nic nie wybrano, dostępne będą wszystkie modele z API.',
     filtered: 'przefiltrowane',
     filteredModels: 'Wyświetlane są tylko dozwolone modele',
     selectAll: 'Zaznacz wszystko',
@@ -1274,13 +1334,18 @@ export default {
     configure: 'Skonfiguruj',
     baseUrlNotConfigured: 'Bazowy URL nie jest skonfigurowany — kliknij Skonfiguruj, aby ustawić',
     healthErrors: {
-      authError: 'Uwierzytelnienie nie powiodło się (HTTP {code}) — sprawdź swój klucz API lub połączenie OAuth',
+      authError:
+        'Uwierzytelnienie nie powiodło się (HTTP {code}) — sprawdź swój klucz API lub połączenie OAuth',
       baseUrlNotConfigured: 'Bazowy URL nie jest skonfigurowany — ustaw adres URL punktu końcowego',
-      baseUrlNotConfiguredAzure: 'Punkt końcowy Azure OpenAI nie jest skonfigurowany — kliknij Skonfiguruj powyżej, aby ustawić adres URL punktu końcowego',
-      baseUrlNotConfiguredBedrock: 'Punkt końcowy AWS Bedrock nie jest skonfigurowany — kliknij Skonfiguruj powyżej, aby ustawić adres URL punktu końcowego',
+      baseUrlNotConfiguredAzure:
+        'Punkt końcowy Azure OpenAI nie jest skonfigurowany — kliknij Skonfiguruj powyżej, aby ustawić adres URL punktu końcowego',
+      baseUrlNotConfiguredBedrock:
+        'Punkt końcowy AWS Bedrock nie jest skonfigurowany — kliknij Skonfiguruj powyżej, aby ustawić adres URL punktu końcowego',
       networkError: 'Połączenie sieciowe nie powiodło się — sprawdź URL i połączenie sieciowe',
-      certificateError: 'Błąd certyfikatu TLS — włącz „Pomiń weryfikację TLS" lub sprawdź certyfikat',
-      timeoutError: 'Przekroczono limit czasu połączenia — serwer może być wyłączony lub niedostępny',
+      certificateError:
+        'Błąd certyfikatu TLS — włącz „Pomiń weryfikację TLS" lub sprawdź certyfikat',
+      timeoutError:
+        'Przekroczono limit czasu połączenia — serwer może być wyłączony lub niedostępny',
       connectionError: 'Połączenie nie powiodło się — zweryfikuj URL dostawcy',
       endpointNotFound: 'Punkt końcowy sprawdzania stanu nie znaleziony (HTTP 404)',
       unexpectedStatus: 'Nieoczekiwana odpowiedź (HTTP {code})',
@@ -1309,9 +1374,11 @@ export default {
     welcome: 'Witaj w Blue!',
     subtitle: 'Twój osobisty asystent AI jest gotowy',
     previewMode: 'Tryb podglądu',
-    previewModeDesc: 'Możesz od razu korzystać zBlue. Wszystkie funkcje są dostępne, a dane będą zapisywane.',
+    previewModeDesc:
+      'Możesz od razu korzystać zBlue. Wszystkie funkcje są dostępne, a dane będą zapisywane.',
     createAccountHint: 'Utwórz konto w dowolnym momencie',
-    createAccountHintDesc: 'Gdy będziesz gotowy, utwórz konto administratora, aby odblokować zarządzanie użytkownikami i zabezpieczyć dane.',
+    createAccountHintDesc:
+      'Gdy będziesz gotowy, utwórz konto administratora, aby odblokować zarządzanie użytkownikami i zabezpieczyć dane.',
     topRightHint: 'Szukaj przycisku w prawym górnym rogu',
     gotIt: 'Rozumiem, zaczynajmy!',
   },
@@ -1333,7 +1400,8 @@ export default {
     startError: 'Nie można uruchomić dostępu zdalnego',
     stopError: 'Nie można zatrzymać dostępu zdalnego',
     antivirusBlockedTitle: 'ngrok może być zablokowany przez program antywirusowy',
-    antivirusBlockedDesc: 'Jeśli połączenie się nie powiedzie, sprawdź, czy program antywirusowy blokuje ngrok i dodaj go do whitelisty.',
+    antivirusBlockedDesc:
+      'Jeśli połączenie się nie powiedzie, sprawdź, czy program antywirusowy blokuje ngrok i dodaj go do whitelisty.',
   },
   localeNames: {
     'ca-ES': 'Kataloński',
@@ -1369,6 +1437,7 @@ export default {
   },
   chat: {
     ...enUS.chat,
+    execDirectoryApprovalTimeout: 'Wykonanie polecenia zostało zablokowane, ponieważ upłynął limit czasu zatwierdzenia katalogu. Zatwierdź katalog i spróbuj ponownie.',
     streamProgress: {
       requestAccepted: 'Otrzymano żądanie, przygotowuję odpowiedź...',
       generating: 'Generowanie odpowiedzi...',
@@ -1377,7 +1446,7 @@ export default {
       processing: 'Przetwarzanie...',
       completed: 'Ukończono',
     },
-    featureHintTapToEnable: "Wykryto opcjonalne funkcje. Stuknij, aby zaznaczyć przed wysłaniem:",
+    featureHintTapToEnable: 'Wykryto opcjonalne funkcje. Stuknij, aby zaznaczyć przed wysłaniem:',
     send: 'Wyślij',
     sendDuringStream: 'Wyślij (dodaj do rozmowy)',
     responseInterrupted: 'Odpowiedź przerwana',
@@ -1406,31 +1475,52 @@ export default {
     deepResearchStageCompleted: 'Zakończono',
     deepResearchStageFailed: 'Niepowodzenie',
     deepResearchStageCancelled: 'Anulowano',
+    deepResearchProcess: 'Proces badawczy',
+    deepResearchLiveSources: 'Źródła na żywo',
+    deepResearchResearchBrief: 'Brief badawczy',
+    deepResearchMustVerify: 'Wymaga weryfikacji',
+    deepResearchPlannedTasks: 'Zaplanowane zadania',
+    deepResearchFollowUpQuery: 'Zapytanie uzupełniające',
+    deepResearchRunningTasks: 'Aktywne zadania badawcze',
+    deepResearchRunningElsewhere: 'Śledź aktywne zadania deep research między rozmowami.',
+    deepResearchViewTask: 'Zobacz zadanie',
+    deepResearchCancelTask: 'Anuluj',
+    deepResearchTaskCompleted: 'Badanie zakończone',
+    deepResearchTaskFailed: 'Badanie nie powiodło się',
+    deepResearchTaskCancelled: 'Badanie anulowane',
+    deepResearchBackToTask: 'Zobacz wynik',
     stillListening: 'Kontynuuj, słucham...',
     imageGenStopped: 'Generowanie obrazu zostało zatrzymane.',
     videoGenStopped: 'Generowanie wideo zostało zatrzymane.',
     agentTaskStopped: 'Zadanie „{goal}" zostało zatrzymane.',
     contextPruned: 'Kontekst przycięty, zaoszczędzono {tokens} tokenów',
     contextCompacted: 'Kontekst skompresowany: {before} → {after} wiadomości',
-    trialExhausted: 'Limit próbny został wyczerpany. Skonfiguruj własnego dostawcę AI, aby kontynuować.',
-    trialServiceBusy: 'Usługa próbna jest obecnie przeciążona z powodu dużego zapotrzebowania. Spróbuj ponownie za chwilę. Jeśli problem się powtarza, odwiedź naszą społeczność po pomoc.',
+    trialExhausted:
+      'Limit próbny został wyczerpany. Skonfiguruj własnego dostawcę AI, aby kontynuować.',
+    trialServiceBusy:
+      'Usługa próbna jest obecnie przeciążona z powodu dużego zapotrzebowania. Spróbuj ponownie za chwilę. Jeśli problem się powtarza, odwiedź naszą społeczność po pomoc.',
     noStreamData: 'Nie otrzymano odpowiedzi. Spróbuj ponownie.',
     streamEmpty: 'Połączenie zostało zamknięte przed otrzymaniem odpowiedzi. Spróbuj ponownie.',
-    providerNoResponse: 'Dostawca nie zwrócił odpowiedzi. To zazwyczaj problem tymczasowy — spróbuj ponownie.',
+    providerNoResponse:
+      'Dostawca nie zwrócił odpowiedzi. To zazwyczaj problem tymczasowy — spróbuj ponownie.',
     providerReturnedEmpty: 'Dostawca zwrócił pustą odpowiedź. Spróbuj ponownie.',
     noResponseBody: 'Nie otrzymano treści odpowiedzi. Sprawdź połączenie sieciowe.',
-    providerOpenRouterPrivacyPolicy: 'OpenRouter zablokował to żądanie z powodu ustawień prywatności. Przejdź do https://openrouter.ai/settings/privacy, włącz "Free model publication" i spróbuj ponownie.',
+    providerOpenRouterPrivacyPolicy:
+      'OpenRouter zablokował to żądanie z powodu ustawień prywatności. Przejdź do https://openrouter.ai/settings/privacy, włącz "Free model publication" i spróbuj ponownie.',
     configureProvider: 'Skonfiguruj dostawcę',
     noProvider: {
       title: 'Brak dostępnego dostawcy AI',
-      description: 'Musisz skonfigurować dostawcę AI, aby użyć tej funkcji. Czy chcesz go teraz skonfigurować?',
+      description:
+        'Musisz skonfigurować dostawcę AI, aby użyć tej funkcji. Czy chcesz go teraz skonfigurować?',
       configure: 'Skonfiguruj teraz',
     },
     // Tryb rozszerzony
     enhancedMode: 'Rozszerzony',
-    enhancedModeDesc: 'Tryb rozszerzony: obsługuje umiejętności, wywołania narzędzi, operacje na plikach, wykonywanie kodu i więcej',
+    enhancedModeDesc:
+      'Tryb rozszerzony: obsługuje umiejętności, wywołania narzędzi, operacje na plikach, wykonywanie kodu i więcej',
     enableEnhancedMode: 'Włącz tryb rozszerzony',
-    enableEnhancedModeDesc: 'Włącz tryb rozszerzony dla umiejętności, wywołań narzędzi, operacji na plikach i więcej',
+    enableEnhancedModeDesc:
+      'Włącz tryb rozszerzony dla umiejętności, wywołań narzędzi, operacji na plikach i więcej',
     showToolDetails: 'Pokaż szczegóły pracy',
     hideToolDetails: 'Ukryj szczegóły pracy',
     toolDetailExpand: 'Rozwiń wyjście',
@@ -1455,7 +1545,8 @@ export default {
     switchToVoice: 'Switch to voice',
     voiceTranscribing: 'Transcribing...',
     voiceTranscriptionError: 'Nie udało się transkrybować dźwięku',
-    voiceTranscriptionTimeout: 'Transkrypcja przekroczyła limit czasu. Nagranie może być za długie lub serwer jest zajęty, spróbuj ponownie.',
+    voiceTranscriptionTimeout:
+      'Transkrypcja przekroczyła limit czasu. Nagranie może być za długie lub serwer jest zajęty, spróbuj ponownie.',
     voiceRecordingError: 'A recording error occurred',
     voiceMicrophoneError: 'Nie można uzyskać dostępu do mikrofonu',
     // Voice messages
@@ -1505,7 +1596,7 @@ export default {
       syncing: 'Synchronizacja sklepu umiejętności...',
       skillsSynced: '{count} umiejętności zsynchronizowano',
     },
-  
+
     detail: {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
@@ -1572,7 +1663,8 @@ export default {
   heartbeat: {
     ...enUS.heartbeat,
     title: 'Heartbeat',
-    description: 'Okresowe sprawdzanie agenta — odczytuje HEARTBEAT.md i wysyła alerty przez kanały.',
+    description:
+      'Okresowe sprawdzanie agenta — odczytuje HEARTBEAT.md i wysyła alerty przez kanały.',
     neverRun: 'Nigdy nie uruchomiono',
     interval: 'Interwał',
     lastRun: 'Ostatnie uruchomienie',
@@ -1692,14 +1784,16 @@ export default {
     },
     smartToolsDesc: 'Wysyła tylko istotne narzędzia dla zapytania, zmniejszając zużycie tokenów',
     providerRaceTitle: 'Równoległy wyścig dostawców',
-    providerRaceDesc: 'Wysyła równoległe żądania do wielu dostawców i zwraca najszybszą poprawną odpowiedź; może to nieznacznie zwiększyć koszt',
+    providerRaceDesc:
+      'Wysyła równoległe żądania do wielu dostawców i zwraca najszybszą poprawną odpowiedź; może to nieznacznie zwiększyć koszt',
     providerRaceEnabled: 'Włączone',
     providerRaceDisabled: 'Wyłączone',
     providerRaceMaxParallel: 'Maks. równolegle',
     providerRaceMinProviders: 'Minimalna liczba dostawców',
     providerRaceSinkThreshold: 'Próg degradacji',
     providerRaceExcludeThreshold: 'Próg wykluczenia',
-    providerRaceCooldownRule: 'Schłodzenie gdy współczynnik pustych uruchomień ≥ {threshold} (min. {samples} próbek), czas {duration}',
+    providerRaceCooldownRule:
+      'Schłodzenie gdy współczynnik pustych uruchomień ≥ {threshold} (min. {samples} próbek), czas {duration}',
     cacheTitle: 'CC Cache',
     cacheDesc: 'Buforowanie odpowiedzi dla żądań proxy API, zmniejsza opóźnienia i koszty',
     cacheSwitch: 'Włącz pamięć podręczną',
@@ -1727,7 +1821,37 @@ export default {
   },
   userdata: {
     ...enUS.userdata,
-    tabs: { export: 'Eksport', import: 'Import', cleanup: 'Czyszczenie', retention: 'Przechowywanie' },
+    chatDataTitle: 'Dane czatu',
+    chatDataDescription: 'Importuj, eksportuj i czyść historię czatu oraz powiązane dane z jednego miejsca.',
+    manageData: 'Zarządzaj danymi',
+    cleanupPreviewFailed: 'Podgląd czyszczenia nie powiódł się',
+    cleanupFailed: 'Nie udało się wyczyścić danych',
+    cleanupSuccess: 'Czyszczenie danych zakończono',
+    importFailed: 'Nie udało się zaimportować danych',
+    exportFailed: 'Nie udało się wyeksportować danych',
+    messages: 'Wiadomości',
+    conversations: 'Rozmowy',
+    exportedAt: 'Wyeksportowano',
+    preview: 'Podgląd',
+    selectFile: 'Wybierz plik',
+    confirmPassword: 'Potwierdź hasło',
+    passwordPlaceholder: 'Wprowadź hasło (minimum 6 znaków)',
+    format: 'Format eksportu',
+    previewFailed: 'Podgląd danych nie powiódł się',
+    hasSettings: 'Zawiera ustawienia',
+    previewTitle: 'Podgląd importu',
+    chooseFile: 'Wybierz plik',
+    importPasswordPlaceholder: 'Wprowadź hasło użyte podczas eksportu',
+    confirmPasswordPlaceholder: 'Wprowadź hasło ponownie',
+    formatEncryptedDesc: 'W pełni zaszyfrowany format binarny. Wyższy poziom bezpieczeństwa.',
+    formatJsonDesc: 'Format czytelny dla człowieka. Hasło służy do weryfikacji importu.',
+    retentionSaved: 'Ustawienia retencji zapisane',
+    tabs: {
+      export: 'Eksport',
+      import: 'Import',
+      cleanup: 'Czyszczenie',
+      retention: 'Przechowywanie',
+    },
     export: 'Eksportuj dane użytkownika',
     import: 'Importuj dane użytkownika',
     password: 'Hasło',
@@ -1738,6 +1862,17 @@ export default {
     retention: {
       title: 'Przechowywanie danych',
       description: 'Skonfiguruj, jak długo dane są przechowywane przed automatycznym czyszczeniem',
+      totalRecords: 'Łączna liczba rekordów monitoringu',
+      policyHint: 'Każdy typ danych obsługuje od 1 do 365 dni. Krótsza retencja zmniejsza zużycie miejsca, a dłuższa pomaga w audycie i diagnozowaniu problemów.',
+      daysRange: 'Dozwolony zakres: 1-365 dni',
+      sessionsHint: 'Cykl życia sesji agenta i metadane środowiska wykonawczego.',
+      eventsHint: 'Wywołania narzędzi, ślady wykonania i zdarzenia audytowe.',
+      alertsHint: 'Alerty bezpieczeństwa, oceny ryzyka i status potwierdzenia.',
+      sessionsSuggested: 'Sugerowane: 14-30 dni dla rutynowej pracy',
+      eventsSuggested: 'Sugerowane: 7-14 dni dla zrównoważonego wolumenu audytu',
+      alertsSuggested: 'Sugerowane: 30-90 dni do przeglądu incydentów',
+      saveHint: 'Nowe okna retencji będą stosowane przy kolejnych automatycznych i ręcznych czyszczeniach.',
+
       days: 'dni',
     },
     cleanup: {
@@ -1745,17 +1880,34 @@ export default {
       description: 'Trwale usuń wybrane dane. Tej operacji nie można cofnąć.',
       warning: 'Operacja destrukcyjna',
       confirmDelete: 'Potwierdź usunięcie',
-      confirmHintPreview: 'Wpisz „{confirmText}" poniżej, aby potwierdzić tę destrukcyjną operację.',
+      confirmHintPreview:
+        'Wpisz „{confirmText}" poniżej, aby potwierdzić tę destrukcyjną operację.',
       confirmText: 'POTWIERDŹ USUNIĘCIE',
       typeToConfirm: 'Wpisz, aby potwierdzić',
       typeToConfirmPlaceholder: 'Wpisz „{confirmText}", aby potwierdzić',
       deleting: 'Usuwanie...',
     },
     memory: {
+      ...enUS.userdata.memory,
       title: 'Pamięć',
       description: 'Eksportuj lub importuj dane pamięci AI jako pliki Markdown.',
+      totalMemories: 'Łączna liczba wspomnień',
+      backend: 'Backend',
+      exportSection: 'Eksportuj wspomnienia',
+      exportDesc: 'Pobierz wszystkie wspomnienia jako plik Markdown do kopii zapasowej lub edycji.',
       exportButton: 'Eksportuj jako Markdown',
+      exportSuccess: 'Wspomnienia wyeksportowano pomyślnie',
+      exportFailed: 'Nie udało się wyeksportować wspomnień',
+      importSection: 'Importuj wspomnienia',
+      importDesc: 'Importuj wspomnienia z pliku Markdown.',
       importButton: 'Importuj wspomnienia',
+      importSuccess: 'Pomyślnie zaimportowano {count} wspomnień',
+      importFailed: 'Nie udało się zaimportować wspomnień',
+      importMode: 'Tryb importu',
+      modeAppend: 'Dodaj',
+      modeReplace: 'Zastąp',
+      modeAppendDesc: 'Dodaj zaimportowane wspomnienia do istniejących',
+      modeReplaceDesc: 'Wyczyść wszystkie istniejące wspomnienia przed importem',
     },
   },
   connections: {
@@ -1796,7 +1948,12 @@ export default {
       total: 'Total Tokens',
       score: 'Score',
     },
-  },
+  
+    toasts: {
+      memorySavedTitle: 'Zapamiętano nową treść',
+      memorySavedMessage: 'Wyodrębniono pamięć z rozmowy',
+      manageMemory: 'Zarządzaj pamięcią',
+    },},
   automation: { ...enUS.automation },
   workflow: { ...enUS.workflow },
   cron: { ...enUS.cron },
@@ -1806,14 +1963,33 @@ export default {
     ...enUS.skills,
     builtin: {
       ...enUS.skills.builtin,
-      scheduler: { name: 'Harmonogram', description: 'Tworzenie, zarządzanie i uruchamianie zaplanowanych zadań (Cron)' },
-      browser: { name: 'Przeglądarka', description: 'Przeglądanie stron internetowych za pomocą przeglądarki headless, czytanie stron i interakcja z elementami' },
-      sandbox: { name: 'Piaskownica', description: 'Wykonywanie poleceń w izolowanym środowisku z limitami zasobów' },
-      'ui-reviewer': { name: 'Przegląd UI', description: 'Automatyczny przegląd jakości UI z kontrolą dostępności i oceną wizualną' },
-      autoreply: { name: 'Automatyczna odpowiedź', description: 'Tworzenie i zarządzanie regułami automatycznych odpowiedzi z wyzwalaczami słów kluczowych' },
-      workflows: { name: 'Przepływy pracy', description: 'Tworzenie i wykonywanie automatyzacji przepływów pracy w stylu n8n' },
+      scheduler: {
+        name: 'Harmonogram',
+        description: 'Tworzenie, zarządzanie i uruchamianie zaplanowanych zadań (Cron)',
+      },
+      browser: {
+        name: 'Przeglądarka',
+        description: 'Przeglądanie stron internetowych, czytanie stron i interakcja z elementami',
+      },
+      sandbox: {
+        name: 'Piaskownica',
+        description: 'Wykonywanie poleceń w izolowanym środowisku z limitami zasobów',
+      },
+      'ui-reviewer': {
+        name: 'Przegląd UI',
+        description: 'Automatyczny przegląd jakości UI z kontrolą dostępności i oceną wizualną',
+      },
+      autoreply: {
+        name: 'Automatyczna odpowiedź',
+        description:
+          'Tworzenie i zarządzanie regułami automatycznych odpowiedzi z wyzwalaczami słów kluczowych',
+      },
+      workflows: {
+        name: 'Przepływy pracy',
+        description: 'Tworzenie i wykonywanie automatyzacji przepływów pracy w stylu n8n',
+      },
     },
-  
+
     filters: {
       allStatus: 'All Status',
     },
@@ -1880,7 +2056,8 @@ export default {
   autoReply: { ...enUS.autoReply },
   claudecode: {
     ...enUS.claudecode,
-    disabledWarningDesc: 'Aktywny jest tryb standardowy, tryb rozszerzony zapewnia lepsze doświadczenie.',
+    disabledWarningDesc:
+      'Aktywny jest tryb standardowy, tryb rozszerzony zapewnia lepsze doświadczenie.',
     missingToolCalling: 'Zaawansowane możliwości Tool Calling',
     directoryPathPlaceholderWin: 'Ścieżka katalogu (np. C:\\Users\\user\\projects)',
     directoryPathPlaceholderMac: 'Ścieżka katalogu (np. /Users/user/projects)',
@@ -1891,11 +2068,57 @@ export default {
   },
   a2ui: { ...enUS.a2ui },
   sandbox: { ...enUS.sandbox },
-  home: { ...enUS.home },
+  home: {
+    ...enUS.home,
+    description: 'Stabilne, godne zaufania i neutralne środowisko runtime dla Twoich asystentów AI i automatyzacji',
+  },
   brand: { ...enUS.brand },
   speech: {
     ...enUS.speech,
-    privacyWarning: 'Edge-TTS to usługa online. Tekst jest wysyłany na serwery Microsoft w celu syntezy.',
+    convertTask: {
+      task: 'Zadanie',
+      cancelling: 'Anulowanie...',
+      downloadAudio: 'Pobierz audio',
+      downloadVideo: 'Pobierz wideo',
+      downloadPdf: 'Pobierz PDF',
+      downloadText: 'Pobierz tekst',
+      downloadFile: 'Pobierz plik',
+      action: {
+        convert: 'Konwertuj',
+        merge: 'Scal',
+        split: 'Podziel',
+        trim: 'Przytnij',
+        extractAudio: 'Wyodrębnij audio',
+        extractFrames: 'Wyodrębnij klatki',
+        tts: 'Synteza mowy',
+        asr: 'Rozpoznawanie mowy',
+      },
+      previewKind: {
+        file: 'Plik',
+        audio: 'Audio',
+        video: 'Wideo',
+        image: 'Obraz',
+        pdf: 'PDF',
+        text: 'Tekst',
+      },
+      message: {
+        queued: 'W kolejce',
+        processing: 'Przetwarzanie',
+        completed: 'Ukończono',
+        taskCancelled: 'Zadanie anulowane',
+        taskFailed: 'Zadanie nie powiodło się',
+        convertCompleted: 'Konwersja zakończona',
+        mergeCompleted: 'Scalanie zakończone',
+        splitCompleted: 'Dzielenie zakończone',
+        trimCompleted: 'Przycinanie zakończone',
+        extractAudioCompleted: 'Ekstrakcja audio zakończona',
+        extractFramesCompleted: 'Eksport klatek zakończony',
+        ttsCompleted: 'Utworzono dźwięk mowy',
+        asrCompleted: 'Transkrypcja zakończona',
+      },
+    },
+    privacyWarning:
+      'Edge-TTS to usługa online. Tekst jest wysyłany na serwery Microsoft w celu syntezy.',
     downloadFailed: 'Pobieranie nie powiodło się',
     ttsProvider: 'Dostawca TTS',
     espeakNote: 'Offline – lekki (~8,5 MB)',
@@ -1903,7 +2126,8 @@ export default {
     asrModelInfo: {
       whisperTiny: {
         name: 'Whisper Tiny',
-        description: 'Najmniejszy model Whisper. Zoptymalizowany dla urządzeń o ograniczonych zasobach.',
+        description:
+          'Najmniejszy model Whisper. Zoptymalizowany dla urządzeń o ograniczonych zasobach.',
       },
       whisperBase: {
         name: 'Whisper Base',
@@ -1919,7 +2143,8 @@ export default {
       },
     },
     // Kokoro TTS
-    kokoroDesc: 'Wysokiej jakości offline neural TTS (model ~127MB + głosy ~5MB + ONNX Runtime ~30MB)',
+    kokoroDesc:
+      'Wysokiej jakości offline neural TTS (model ~127MB + głosy ~5MB + ONNX Runtime ~30MB)',
     kokoroQuality: 'Naturalny',
     kokoroDownload: 'Pobierz model Kokoro + ONNX Runtime',
     kokoroDownloading: 'Pobieranie modelu Kokoro i ONNX Runtime...',
@@ -1986,11 +2211,14 @@ export default {
     macosNativeSTTDesc: 'Wbudowane rozpoznawanie mowy macOS (offline, bez pobierania)',
     macosNativeQuality: 'Doskonała',
     macosNativeOnDeviceOnly: 'Tylko na urządzeniu',
-    macosNativeOnDeviceDesc: 'Wymuś rozpoznawanie na urządzeniu (dane nie są wysyłane na serwery Apple)',
+    macosNativeOnDeviceDesc:
+      'Wymuś rozpoznawanie na urządzeniu (dane nie są wysyłane na serwery Apple)',
     macosNativeOnDeviceUnsupported: 'Model na urządzeniu niedostępny dla bieżącego języka',
-    dictationDisabledGuide: 'Dyktowanie nie jest włączone. Rozpoznawanie na urządzeniu wymaga dyktowania. Przejdź do Ustawienia systemowe > Klawiatura > Dyktowanie, aby je włączyć.',
+    dictationDisabledGuide:
+      'Dyktowanie nie jest włączone. Rozpoznawanie na urządzeniu wymaga dyktowania. Przejdź do Ustawienia systemowe > Klawiatura > Dyktowanie, aby je włączyć.',
     recheckDictation: 'Sprawdź ponownie',
-    onDeviceUnavailableError: 'Rozpoznawanie na urządzeniu jest niedostępne. Włącz dyktowanie w Ustawienia systemowe > Klawiatura > Dyktowanie lub wyłącz tryb „Tylko na urządzeniu".',
+    onDeviceUnavailableError:
+      'Rozpoznawanie na urządzeniu jest niedostępne. Włącz dyktowanie w Ustawienia systemowe > Klawiatura > Dyktowanie lub wyłącz tryb „Tylko na urządzeniu".',
     noModelsAvailable: 'Brak modeli od tego dostawcy',
     asrTab: 'Rozpoznawanie mowy (ASR)',
     ttsTab: 'Synteza mowy (TTS)',
@@ -2090,7 +2318,7 @@ export default {
   tools: {
     names: {
       'Web Search': 'Wyszukiwanie',
-      'Calculator': 'Kalkulator',
+      Calculator: 'Kalkulator',
       'System Info': 'Informacje o systemie',
       'Current Time': 'Aktualny czas',
       read: 'Odczyt pliku',
@@ -2102,12 +2330,12 @@ export default {
       'Memory Get': 'Pobieranie pamięci',
       'Memory Stats': 'Statystyki pamięci',
       mcp: 'Wywołanie MCP',
-      'Scheduler': 'Harmonogram',
-      'Browser': 'Przeglądarka',
-      'Sandbox': 'Piaskownica',
+      Scheduler: 'Harmonogram',
+      Browser: 'Przeglądarka',
+      Sandbox: 'Piaskownica',
       'UI Reviewer': 'Przegląd UI',
       'Auto Reply': 'Automatyczna odpowiedź',
-      'Workflows': 'Przepływy pracy',
+      Workflows: 'Przepływy pracy',
       reminder: 'Przypomnienie',
       mediagen: 'Generowanie mediów',
       ask: 'Zapytać',
@@ -2124,6 +2352,20 @@ export default {
       limit: 'Limit',
       offset: 'Przesunięcie',
       id: 'ID',
+      action: 'Akcja',
+      name: 'Nazwa',
+      title: 'Tytuł',
+      description: 'Opis',
+      schedule: 'Harmonogram',
+      cron: 'Cron',
+      handler: 'Handler',
+      type: 'Typ',
+      command: 'Polecenie',
+      payload: 'Ładunek',
+      job_id: 'ID zadania',
+      jobId: 'ID zadania',
+      cron_id: 'ID cron',
+      cronId: 'ID cron',
     },
     calling: 'Wywoływanie narzędzi',
     callingProgress: 'Wywoływanie narzędzi...',
@@ -2149,6 +2391,13 @@ export default {
   },
   search: {
     resultCount: '{count} wyników',
+  },
+  cardActions: {
+    use_browser: 'Użyj przeglądarki',
+    extract_with_web_fetch: 'Wyodrębnij przez Web Fetch',
+    recheck: 'Sprawdź ponownie',
+    check_a11y: 'Tylko dostępność',
+    full_report: 'Pełny raport',
   },
   uiReview: {
     title: 'Przegląd UI',
@@ -2234,7 +2483,8 @@ export default {
   },
   myProviders: {
     title: 'Moi dostawcy',
-    description: 'Skonfiguruj własne klucze API dla dostawców LLM. Twoje klucze zastępują domyślne ustawienia systemu.',
+    description:
+      'Skonfiguruj własne klucze API dla dostawców LLM. Twoje klucze zastępują domyślne ustawienia systemu.',
     configured: 'Skonfigurowano',
     configure: 'Konfiguruj',
     keyUnchanged: 'Pozostaw puste, aby zachować bieżący klucz',
@@ -2280,17 +2530,17 @@ export default {
   },
   resultCard: {
     titles: {
-      'workspace_file': 'Plik przestrzeni roboczej',
+      workspace_file: 'Plik przestrzeni roboczej',
       calculator: 'Kalkulator',
-      'current_time': 'Bieżący czas',
-      'read': 'Odczyt pliku',
-      'write': 'Zapis pliku',
-      'file_read': 'Odczyt pliku',
-      'file_write': 'Zapis pliku',
-      'system_info': 'Info o systemie',
-      'memory': 'Pamięć',
-      'mcp': 'Wywołanie MCP',
-      'exec': 'Wykonanie polecenia',
+      current_time: 'Bieżący czas',
+      read: 'Odczyt pliku',
+      write: 'Zapis pliku',
+      file_read: 'Odczyt pliku',
+      file_write: 'Zapis pliku',
+      system_info: 'Info o systemie',
+      memory: 'Pamięć',
+      mcp: 'Wywołanie MCP',
+      exec: 'Wykonanie polecenia',
     },
     labels: {
       filename: 'Nazwa pliku',
@@ -2315,7 +2565,8 @@ export default {
     ...enUS.agent,
     mode: 'Tryb pętli zadań',
     modeDescription: 'Włącza ciągłe pętle planowania i wykonywania, dopóki go nie wyłączysz',
-    autoConfirmDescription: 'Pomiń potwierdzenie dla destrukcyjnych działań (kliknij prawym przyciskiem przycisk pętli zadań, aby przełączyć)',
+    autoConfirmDescription:
+      'Pomiń potwierdzenie dla destrukcyjnych działań (kliknij prawym przyciskiem przycisk pętli zadań, aby przełączyć)',
     sendMessage: 'Wyślij wiadomość do agenta...',
     messageQueued: 'Wiadomość wysłana do agenta',
   },

@@ -31,6 +31,9 @@ func TestClassifyContext(t *testing.T) {
 		// Long conversation, no references → fresh question
 		{"long_no_ref", "What is the weather today?", 10, false, false, TierNoHistory},
 		{"long_no_ref_en", "How do I install Docker?", 20, false, false, TierNoHistory},
+		{"long_topic_switch_cn", "换个话题，聊聊 Docker 网络", 10, false, false, TierNoHistory},
+		{"topic_switch_overrides_reference_cues", "对了，换个话题，忽略之前那段", 10, false, false, TierNoHistory},
+		{"topic_switch_overrides_agent_mode", "切换话题，解释一下 HTTP/3", 10, true, false, TierNoHistory},
 
 		// Long conversation, with Chinese references
 		{"long_chinese_ref_this", "这个方案可以吗？", 10, false, false, TierCompressedMemory},
@@ -55,6 +58,7 @@ func TestClassifyContext(t *testing.T) {
 
 		// Regenerate
 		{"regenerate", "Regenerate", 10, false, true, TierCompressedMemory},
+		{"regenerate_keeps_context_even_with_switch_phrase", "换个话题", 10, false, true, TierCompressedMemory},
 	}
 
 	for _, tt := range tests {
@@ -95,6 +99,44 @@ func TestHasReference(t *testing.T) {
 		if hasReference(msg) {
 			t.Errorf("hasReference(%q) = true, want false", msg)
 		}
+	}
+}
+
+func TestHasTopicSwitchCue(t *testing.T) {
+	switchCues := []string{
+		"换个话题，我们聊点别的",
+		"切换话题，忽略之前内容",
+		"We should change the topic now",
+		"Let's talk about something else",
+		"ignore the previous discussion",
+	}
+	for _, msg := range switchCues {
+		if !hasTopicSwitchCue(msg) {
+			t.Errorf("hasTopicSwitchCue(%q) = false, want true", msg)
+		}
+	}
+
+	nonSwitch := []string{
+		"这个问题怎么解决",
+		"继续上一个方案",
+		"What about this approach?",
+	}
+	for _, msg := range nonSwitch {
+		if hasTopicSwitchCue(msg) {
+			t.Errorf("hasTopicSwitchCue(%q) = true, want false", msg)
+		}
+	}
+}
+
+func TestShouldUseFreshStandaloneIMContext(t *testing.T) {
+	if !shouldUseFreshStandaloneIMContext("换个话题，解释 Kubernetes", true) {
+		t.Fatalf("expected explicit topic switch to force fresh IM context")
+	}
+	if shouldUseFreshStandaloneIMContext("继续上一个任务", true) {
+		t.Fatalf("expected continuation cue to keep history in IM context")
+	}
+	if shouldUseFreshStandaloneIMContext("换个话题", false) {
+		t.Fatalf("expected agent_mode=false to keep existing behavior")
 	}
 }
 
@@ -820,6 +862,57 @@ func TestBuildSmartContext_UsesPruneToolRulesFromSettings(t *testing.T) {
 	}
 	if toolContent != longTool {
 		t.Fatalf("tool content should be unchanged by allow-list policy, got=%q", toolContent)
+	}
+}
+
+func TestBuildSmartContextCompressedMemoryTracksComparableMessageCounts(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	preloaded := []memory.Message{
+		{Role: "user", Content: "Q1"},
+		{Role: "assistant", Content: "A1"},
+		{Role: "user", Content: "Q2"},
+		{Role: "assistant", Content: "A2"},
+		{Role: "user", Content: "Q3"},
+		{Role: "assistant", Content: "A3"},
+		{Role: "user", Content: "继续"},
+	}
+	h.summaryCache.Put("conv-compaction-counts", &ConversationSummary{
+		Text:         "Older context summary",
+		MessageCount: len(preloaded),
+	})
+
+	got := h.buildSmartContext(context.Background(), smartContextParams{
+		ConvID:            "conv-compaction-counts",
+		UserMessage:       "继续",
+		PreloadedMessages: preloaded,
+	})
+
+	if got.Tier != TierCompressedMemory {
+		t.Fatalf("tier = %v, want %v", got.Tier, TierCompressedMemory)
+	}
+	if got.Summary == "" {
+		t.Fatal("expected cached summary to be used")
+	}
+	if got.MessageCountBefore != len(preloaded) {
+		t.Fatalf("MessageCountBefore = %d, want %d", got.MessageCountBefore, len(preloaded))
+	}
+	if got.MessageCountAfter != len(got.Messages) {
+		t.Fatalf("MessageCountAfter = %d, want %d", got.MessageCountAfter, len(got.Messages))
+	}
+	if got.MessageCountAfter != 6 {
+		t.Fatalf("MessageCountAfter = %d, want 6", got.MessageCountAfter)
+	}
+	if got.MessageCountAfter >= got.MessageCountBefore {
+		t.Fatalf("expected compacted message count to shrink, before=%d after=%d", got.MessageCountBefore, got.MessageCountAfter)
+	}
+	if got.Messages[0].Role != llm.RoleSystem || !strings.Contains(got.Messages[0].Content, "Older context summary") {
+		t.Fatalf("messages[0] = %+v, want summary system message", got.Messages[0])
 	}
 }
 

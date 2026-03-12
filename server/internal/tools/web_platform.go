@@ -250,6 +250,13 @@ func (r *webAccessRuntime) SetBrowser(browser BrowserBackend) {
 	r.base.SetBrowser(browser)
 }
 
+func (r *webAccessRuntime) SetPDFService(service PDFService) {
+	if r == nil || r.base == nil {
+		return
+	}
+	r.base.SetPDFService(service)
+}
+
 func NewWebReadTool(config WebFetchConfig) *WebReadTool {
 	return &WebReadTool{runtime: newWebAccessRuntime(config)}
 }
@@ -269,11 +276,32 @@ func (t *WebReadTool) SetBrowser(browser BrowserBackend) {
 	t.runtime.SetBrowser(browser)
 }
 
+func (t *WebReadTool) SetPDFService(service PDFService) {
+	if t == nil || t.runtime == nil {
+		return
+	}
+	t.runtime.SetPDFService(service)
+}
+
 func (t *WebExtractTool) SetBrowser(browser BrowserBackend) {
 	if t == nil || t.runtime == nil {
 		return
 	}
 	t.runtime.SetBrowser(browser)
+}
+
+func (t *WebExtractTool) SetPDFService(service PDFService) {
+	if t == nil || t.runtime == nil {
+		return
+	}
+	t.runtime.SetPDFService(service)
+}
+
+func (t *WebCrawlTool) SetPDFService(service PDFService) {
+	if t == nil || t.runtime == nil {
+		return
+	}
+	t.runtime.SetPDFService(service)
 }
 
 func (t *WebReadTool) Definition() ToolDefinition {
@@ -497,7 +525,7 @@ func (t *WebCrawlTool) Execute(ctx context.Context, args map[string]interface{})
 	pageMaxChars := parsePositiveIntArg(args, []string{"page_max_chars", "pageMaxChars"}, webCrawlDefaultPageMaxChars, t.runtime.base.config.MaxCharsCap)
 	rateLimitMs := parsePositiveIntArg(args, []string{"rate_limit_ms", "rateLimitMs"}, int(webCrawlDefaultRateLimit/time.Millisecond), int((10*time.Second)/time.Millisecond))
 	allowedHosts := parseStringListArg(args, "allowed_hosts", "allowedHosts", "hosts")
-	checkpoint, err := parseWebCrawlCheckpoint(args["checkpoint"])
+	checkpoint, err := parseWebCrawlCheckpoint(firstCompatRawValue(args, "checkpoint"))
 	if err != nil {
 		return nil, err
 	}
@@ -775,7 +803,7 @@ func (r *webAccessRuntime) fetchViaHTTP(ctx context.Context, normalizedURL strin
 	if err != nil {
 		return webAccessDocument{}, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/markdown;q=0.9,text/plain;q=0.8,*/*;q=0.2")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/markdown;q=0.9,text/plain;q=0.8,application/pdf;q=0.7,*/*;q=0.2")
 	req.Header.Set("User-Agent", r.base.config.UserAgent)
 	for key, value := range opts.request.extraHeaders {
 		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
@@ -788,19 +816,20 @@ func (r *webAccessRuntime) fetchViaHTTP(ctx context.Context, normalizedURL strin
 		return webAccessDocument{}, fmt.Errorf("failed to fetch URL: %w", err)
 	}
 	defer resp.Body.Close()
-	body, bodyTruncated, err := readLimitedBody(resp.Body, r.base.config.MaxResponseBytes)
-	if err != nil {
-		return webAccessDocument{}, fmt.Errorf("failed to read response body: %w", err)
-	}
 	finalURL := normalizedURL
 	if resp.Request != nil && resp.Request.URL != nil {
 		finalURL = resp.Request.URL.String()
+	}
+	bodyLimit := r.base.responseBodyLimit(resp.Header.Get("Content-Type"), finalURL)
+	body, bodyTruncated, err := readLimitedBody(resp.Body, bodyLimit)
+	if err != nil {
+		return webAccessDocument{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 	if err := guardWebFetchURL(ctx, finalURL, r.base.config.AllowPrivateHosts); err != nil {
 		return webAccessDocument{}, err
 	}
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
-	content, title, extractor, err := extractWebFetchContent(contentType, body, opts.format)
+	content, title, extractor, extractedTruncated, err := r.base.extractContent(ctx, finalURL, contentType, body, opts.format, bodyTruncated)
 	if err != nil {
 		return webAccessDocument{}, err
 	}
@@ -813,7 +842,7 @@ func (r *webAccessRuntime) fetchViaHTTP(ctx context.Context, normalizedURL strin
 		Source:        webAccessSourceHTTP,
 		StatusCode:    resp.StatusCode,
 		ContentType:   contentType,
-		BodyTruncated: bodyTruncated,
+		BodyTruncated: bodyTruncated || extractedTruncated,
 		Extractor:     extractor,
 	}
 	if strings.Contains(strings.ToLower(contentType), "html") || looksLikeHTMLBody(body) {
@@ -1038,10 +1067,7 @@ func extractLinksFromHTML(raw, base string) []string {
 }
 
 func parseWebExtractFieldSpecs(args map[string]interface{}) (map[string]webExtractFieldSpec, error) {
-	raw, ok := args["fields"]
-	if !ok || raw == nil {
-		raw = args["schema"]
-	}
+	raw, ok := compatArgValue(args, "fields", "schema")
 	if raw == nil {
 		return nil, errors.New("fields is required")
 	}
@@ -1849,7 +1875,11 @@ func findNodesByAbsoluteXPath(root *html.Node, path []string) []*html.Node {
 func parsePositiveIntArg(args map[string]interface{}, keys []string, fallback, max int) int {
 	value := fallback
 	for _, key := range keys {
-		if v, ok := coerceCompatInt(args[key]); ok && v > 0 {
+		valueRaw, ok := compatArgValue(args, key)
+		if !ok {
+			continue
+		}
+		if v, ok := coerceCompatInt(valueRaw); ok && v > 0 {
 			value = v
 			break
 		}
@@ -1865,7 +1895,11 @@ func parsePositiveIntArg(args map[string]interface{}, keys []string, fallback, m
 
 func parseStringListArg(args map[string]interface{}, keys ...string) []string {
 	for _, key := range keys {
-		items, ok := coerceCompatStringList(args[key])
+		valueRaw, ok := compatArgValue(args, key)
+		if !ok {
+			continue
+		}
+		items, ok := coerceCompatStringList(valueRaw)
 		if !ok {
 			continue
 		}

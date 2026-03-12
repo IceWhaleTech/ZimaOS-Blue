@@ -4,8 +4,9 @@ import { useI18n } from 'vue-i18n'
 import type { ActionButton, TypelessCardWebFetch } from '@/types/typeless'
 import { renderMarkdown } from '@/utils/markdown'
 import { formatToolWarningCodeLabel } from '@/utils/toolWarnings'
+import { translateCardActionLabel } from '@/utils/cardActionLabels'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardWebFetch
@@ -47,17 +48,10 @@ const useBrowserAction = computed<ActionButton | null>(() => {
   return { id: 'use_browser', label: t('webFetchCard.actions.use_browser', 'Use browser'), variant: 'primary' }
 })
 const renderedMarkdown = computed(() => isMarkdown.value && content.value ? renderMarkdown(content.value) : '')
-const lines = computed(() => content.value ? content.value.split('\n') : [])
-const shouldCollapse = computed(() => lines.value.length > 18 || content.value.length > 1800)
 const expanded = ref(false)
 const copiedUrl = ref(false)
 const copiedContent = ref(false)
-
-const visibleTextContent = computed(() => {
-  if (!content.value) return ''
-  if (expanded.value || !shouldCollapse.value) return content.value
-  return lines.value.slice(0, 18).join('\n')
-})
+const hasContent = computed(() => Boolean(content.value))
 
 const toneClasses = computed(() => {
   switch (props.card.status) {
@@ -114,9 +108,13 @@ function isActionDisabled(action: { disabled?: boolean }): boolean {
 
 function actionButtonLabel(action: { id: string; label: string }): string {
   if (isActionActive(action.id)) return t('common.processing', 'Processing...')
-  const key = `webFetchCard.actions.${action.id}`
-  const translated = t(key, action.label)
-  return translated === key ? action.label : translated
+  return translateCardActionLabel({
+    id: action.id,
+    fallback: action.label,
+    t,
+    te,
+    scopes: ['webFetchCard.actions'],
+  })
 }
 
 function triggerAction(actionId: string, disabled = false) {
@@ -223,29 +221,59 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
         </p>
       </div>
 
-      <div v-if="content" class="mt-3">
-        <div v-if="isMarkdown" class="relative">
-          <div
-            class="prose prose-sm dark:prose-invert max-w-none rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 px-4 py-3 overflow-hidden"
-            :class="{ 'max-h-96': shouldCollapse && !expanded }"
-            v-html="renderedMarkdown"
-          />
-          <div
-            v-if="shouldCollapse && !expanded"
-            class="pointer-events-none absolute inset-x-0 bottom-0 h-20 rounded-b-xl bg-gradient-to-t from-white dark:from-gray-800 to-transparent"
-          />
-        </div>
-        <div v-else class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 overflow-hidden">
-          <pre class="px-4 py-3 text-sm leading-6 text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{{ visibleTextContent }}</pre>
-        </div>
-
+      <div v-if="hasContent" class="mt-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 overflow-hidden">
         <button
-          v-if="shouldCollapse"
-          class="mt-2 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+          class="flex w-full items-center justify-between gap-3 bg-white/70 px-4 py-3.5 text-left transition-colors hover:bg-white dark:bg-gray-800/50 dark:hover:bg-gray-800"
+          :aria-expanded="expanded ? 'true' : 'false'"
           @click="expanded = !expanded"
         >
-          {{ expanded ? t('execCard.collapse', 'Show less') : t('execCard.expand', 'Show more') }}
+          <span class="flex min-w-0 items-center gap-3">
+            <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5A3.375 3.375 0 0010.125 2.25H8.25m0 12.75h7.5m-7.5 3h4.5M6.375 3h3.75A2.25 2.25 0 0112.375 5.25V7.5a2.25 2.25 0 002.25 2.25h2.25a2.25 2.25 0 012.25 2.25v6.75A2.25 2.25 0 0116.875 21H6.375a2.25 2.25 0 01-2.25-2.25V5.25A2.25 2.25 0 016.375 3z"
+                />
+              </svg>
+            </span>
+            <span class="min-w-0">
+              <span class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400">{{ t('webFetchCard.contentLabel', 'Web content') }}</span>
+              <span class="block text-sm text-gray-700 dark:text-gray-200">{{ expanded ? t('webFetchCard.collapseHint', 'Hide the extracted page content') : t('webFetchCard.expandHint', 'View the extracted page content') }}</span>
+            </span>
+          </span>
+          <span class="flex flex-shrink-0 items-center gap-2 text-sm font-medium text-sky-700 dark:text-sky-300">
+            <span>{{ expanded ? t('webFetchCard.collapseContent', 'Collapse web content') : t('webFetchCard.expandContent', 'Expand web content') }}</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4 text-gray-400 transition-transform duration-200"
+              :class="{ 'rotate-180': expanded }"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </span>
         </button>
+
+        <transition name="web-fetch-content">
+          <div v-if="expanded" class="border-t border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div
+              v-if="isMarkdown"
+              class="prose prose-sm dark:prose-invert max-w-none px-4 py-3"
+              v-html="renderedMarkdown"
+            />
+            <pre v-else class="px-4 py-3 text-sm leading-6 text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{{ content }}</pre>
+          </div>
+        </transition>
       </div>
 
       <div v-else class="mt-3 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
@@ -254,3 +282,25 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+.web-fetch-content-enter-active,
+.web-fetch-content-leave-active {
+  overflow: hidden;
+  transition: max-height 220ms ease, opacity 180ms ease, transform 180ms ease;
+}
+
+.web-fetch-content-enter-from,
+.web-fetch-content-leave-to {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.web-fetch-content-enter-to,
+.web-fetch-content-leave-from {
+  max-height: 960px;
+  opacity: 1;
+  transform: translateY(0);
+}
+</style>

@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
@@ -37,12 +38,13 @@ type Config struct {
 	CCSwitch      CCSwitchConfig      `yaml:"cc_switch"`       // v0.10.3
 	Statistics    StatisticsConfig    `yaml:"statistics"`      // v0.10.3
 	ToolCalling   ToolCallingConfig   `yaml:"tool_calling"`    // v0.10.3
-	Agents        AgentsConfig        `yaml:"agents"`          // v0.11.0
-	Research      ResearchConfig      `yaml:"research"`        // v0.11.x
-	Proxy         *proxy.ProxyConfig  `yaml:"proxy"`           // v0.10.5.1: API Proxy
-	Pruner        *pruner.Config      `yaml:"pruner"`          // v0.10.27: Context Pruner
-	Update        UpdateConfig        `yaml:"update"`          // OTA Update
-	Heartbeat     HeartbeatConfig     `yaml:"heartbeat"`       // Heartbeat agent polling
+	Browser       browser.Config      `yaml:"browser"`
+	Agents        AgentsConfig        `yaml:"agents"`    // v0.11.0
+	Research      ResearchConfig      `yaml:"research"`  // v0.11.x
+	Proxy         *proxy.ProxyConfig  `yaml:"proxy"`     // v0.10.5.1: API Proxy
+	Pruner        *pruner.Config      `yaml:"pruner"`    // v0.10.27: Context Pruner
+	Update        UpdateConfig        `yaml:"update"`    // OTA Update
+	Heartbeat     HeartbeatConfig     `yaml:"heartbeat"` // Heartbeat agent polling
 
 	// Deprecated: Use ClaudeCodeCLI instead. Kept for backward compatibility.
 	ClaudeCode ClaudeCodeConfig `yaml:"claudecode"`
@@ -709,6 +711,7 @@ func defaults() Config {
 		CCSwitch:      *DefaultCCSwitchConfig(),
 		Statistics:    *DefaultStatisticsConfig(),
 		ToolCalling:   *DefaultToolCallingConfig(),
+		Browser:       *browser.DefaultConfig(),
 		Agents:        *DefaultAgentsConfig(),
 		Research:      *DefaultResearchConfig(),
 

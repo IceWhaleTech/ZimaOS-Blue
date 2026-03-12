@@ -222,6 +222,7 @@ describe('SettingsView small-model controls', () => {
     const smartToolSpy = vi.spyOn(store, 'setSmartToolSelection').mockResolvedValue()
     const offlineIRFallbackSpy = vi.spyOn(store, 'setOfflineIRFallbackEnabled').mockResolvedValue()
     const featureIntentIRSpy = vi.spyOn(store, 'setFeatureIntentIREnabled').mockResolvedValue()
+    const irMasterSpy = vi.spyOn(store, 'setSmallModelIRFeaturesEnabled').mockResolvedValue()
     const summarySpy = vi.spyOn(store, 'setSmallModelSummaryEnabled').mockResolvedValue()
     const docExtractSpy = vi.spyOn(store, 'setSmallModelDocExtractEnabled').mockResolvedValue()
     const shortQASpy = vi.spyOn(store, 'setSmallModelRouteShortQAEnabled').mockResolvedValue()
@@ -239,7 +240,12 @@ describe('SettingsView small-model controls', () => {
 
     expect(wrapper.find('[data-testid="small-model-context-prune-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="smart-tool-selection-switch"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="small-model-ir-master-switch"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="small-model-rerank-switch"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="small-model-ir-master-switch"]').trigger('click')
+    await flushPromises()
+    expect(irMasterSpy).toHaveBeenCalledWith(true)
 
     await wrapper.get('[data-testid="small-model-context-prune-switch"]').trigger('click')
     await flushPromises()
@@ -297,8 +303,6 @@ describe('SettingsView small-model controls', () => {
     setActivePinia(pinia)
     const store = useSettingsStore()
 
-    const autoReflectSpy = vi.spyOn(store, 'setAgentAutoReflect').mockResolvedValue()
-
     const wrapper = mount(SettingsView, {
       shallow: true,
       global: {
@@ -308,11 +312,7 @@ describe('SettingsView small-model controls', () => {
     await flushPromises()
 
     expect(store.agentAutoReflect).toBe(true)
-    expect(wrapper.get('[data-testid="agent-auto-reflect-switch"]').attributes('aria-checked')).toBe('true')
-
-    await wrapper.get('[data-testid="agent-auto-reflect-switch"]').trigger('click')
-    await flushPromises()
-    expect(autoReflectSpy).toHaveBeenCalledWith(false)
+    expect(wrapper.find('[data-testid="agent-auto-reflect-switch"]').exists()).toBe(false)
 
     wrapper.unmount()
   })

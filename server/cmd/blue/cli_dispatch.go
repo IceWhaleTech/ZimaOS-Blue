@@ -65,6 +65,8 @@ func cliDispatch(args []string) bool {
 		return false // plugins subcommands need cobra arg validation
 	case "skills":
 		return false // skills subcommands need cobra arg validation
+	case "context":
+		return false // context subcommands use cobra/local registry helpers
 	case "sessions":
 		if dispatchSessionsFastPath(rest) {
 			break

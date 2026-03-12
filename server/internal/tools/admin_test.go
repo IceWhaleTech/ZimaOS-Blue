@@ -77,7 +77,7 @@ type mockSystemService struct{}
 
 func (m *mockSystemService) Health(_ context.Context) (*AdminSystemInfo, error) {
 	return &AdminSystemInfo{
-		Version:    "0.10.31",
+		Version:    "0.10.32",
 		Uptime:     "1h 30m",
 		GoVersion:  "go1.22.0",
 		NumCPU:     8,
@@ -247,6 +247,58 @@ func TestMgmtTool_ProvidersAdd(t *testing.T) {
 	}
 }
 
+func TestMgmtTool_SupportsNestedCamelCaseArgs(t *testing.T) {
+	tool := newTestMgmtTool()
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":       "providers.add",
+			"name":         "MyProvider",
+			"providerType": "openai",
+			"baseUrl":      "https://api.example.com",
+			"apiKey":       "sk-test",
+			"location":     "local",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := parseResult(t, result)
+	if m["location"] != "local" || m["name"] != "MyProvider" {
+		t.Fatalf("unexpected provider payload: %#v", m)
+	}
+
+	result, err = tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":     "providers.add_key",
+			"providerId": "openai",
+			"apiKey":     "sk-added",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected add_key error: %v", err)
+	}
+	m = parseResult(t, result)
+	if _, ok := m["api_keys"]; !ok {
+		t.Fatalf("expected api_keys in result, got %#v", m)
+	}
+
+	result, err = tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":       "settings.set",
+			"settingKey":   "site_name",
+			"settingValue": "Blue",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected settings.set error: %v", err)
+	}
+	m = parseResult(t, result)
+	if m["success"] != true {
+		t.Fatalf("expected success response, got %#v", m)
+	}
+}
+
 func TestMgmtTool_ProvidersAddMissingParams(t *testing.T) {
 	tool := newTestMgmtTool()
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
@@ -328,8 +380,8 @@ func TestMgmtTool_SystemHealth(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	m := parseResult(t, result)
-	if m["version"] != "0.10.31" {
-		t.Errorf("expected version '0.10.31', got %v", m["version"])
+	if m["version"] != "0.10.32" {
+		t.Errorf("expected version '0.10.32', got %v", m["version"])
 	}
 	if m["goroutines"] != float64(42) {
 		t.Errorf("expected goroutines=42, got %v", m["goroutines"])
@@ -343,8 +395,8 @@ func TestMgmtTool_SystemVersion(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	m := parseResult(t, result)
-	if m["version"] != "0.10.31" {
-		t.Errorf("expected version '0.10.31', got %v", m["version"])
+	if m["version"] != "0.10.32" {
+		t.Errorf("expected version '0.10.32', got %v", m["version"])
 	}
 }
 
@@ -873,8 +925,8 @@ func TestMgmtTool_SystemInfo(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	m := parseResult(t, result)
-	if m["version"] != "0.10.31" {
-		t.Errorf("expected version '0.10.31', got %v", m["version"])
+	if m["version"] != "0.10.32" {
+		t.Errorf("expected version '0.10.32', got %v", m["version"])
 	}
 }
 

@@ -95,6 +95,9 @@ func (c *Channel) OutboundCapabilities() channel.OutboundCapabilities {
 
 func (c *Channel) SetMessageHandler(handler MessageHandler)             { c.messageHandler = handler }
 func (c *Channel) SetSessionManager(manager *channel.BotSessionManager) { c.sessionManager = manager }
+func (c *Channel) ClearTypingReaction(ctx context.Context, messageID string) {
+	c.removeTypingReaction(ctx, messageID)
+}
 
 // Start initializes and starts the Feishu bot with WebSocket long connection.
 func (c *Channel) Start(ctx context.Context) error {
@@ -396,6 +399,23 @@ func (c *Channel) SendText(ctx context.Context, chatID string, text string, repl
 	return nil
 }
 
+func (c *Channel) sendTextWithID(ctx context.Context, chatID string, text string, replyToID string) (string, error) {
+	text, _ = humanizer.HumanizeForPreset(text, "")
+	content, _ := json.Marshal(map[string]string{"text": text})
+	receiveIDType := resolveReceiveIDType(chatID)
+	c.removeTypingReaction(ctx, replyToID)
+	messageID, err := c.client.sendMessageWithID(ctx, receiveIDType, chatID, "text", string(content), replyToID)
+	if err != nil {
+		return "", err
+	}
+	c.msgsSent.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastReplyAt = &now
+	c.mu.Unlock()
+	return messageID, nil
+}
+
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	if cardJSON, ok, err := feishuCardJSON(msg.Metadata); err != nil {
 		return err
@@ -538,6 +558,21 @@ func (c *Channel) sendCardMessage(ctx context.Context, chatID string, cardJSON s
 	return nil
 }
 
+func (c *Channel) sendCardMessageWithID(ctx context.Context, chatID string, cardJSON string, replyToID string) (string, error) {
+	receiveIDType := resolveReceiveIDType(chatID)
+	c.removeTypingReaction(ctx, replyToID)
+	messageID, err := c.client.sendMessageWithID(ctx, receiveIDType, chatID, "interactive", cardJSON, replyToID)
+	if err != nil {
+		return "", err
+	}
+	c.msgsSent.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastReplyAt = &now
+	c.mu.Unlock()
+	return messageID, nil
+}
+
 // SendMarkdown sends markdown content using Feishu interactive cards.
 // It preserves markdown structure (including headings/tables) instead of humanizing to plain text.
 func (c *Channel) SendMarkdown(ctx context.Context, chatID, markdown, replyToID string) error {
@@ -546,6 +581,51 @@ func (c *Channel) SendMarkdown(ctx context.Context, chatID, markdown, replyToID 
 		return err
 	}
 	return c.sendCardMessage(ctx, chatID, cardJSON, replyToID)
+}
+
+// SendWithID sends a message and returns the created Feishu message ID when possible.
+func (c *Channel) SendWithID(ctx context.Context, msg channel.OutgoingMessage) (string, error) {
+	if len(msg.Attachments) > 0 {
+		if err := c.Send(ctx, msg); err != nil {
+			return "", err
+		}
+		return "", nil
+	}
+	if cardJSON, ok, err := feishuCardJSON(msg.Metadata); err != nil {
+		return "", err
+	} else if ok {
+		return c.sendCardMessageWithID(ctx, msg.ChatID, cardJSON, msg.ReplyToID)
+	}
+	if msg.Content == "" {
+		return "", fmt.Errorf("no sendable Feishu content")
+	}
+	if strings.EqualFold(msg.Format, "markdown") {
+		cardJSON, err := buildMarkdownCardJSON(msg.Content)
+		if err != nil {
+			return "", err
+		}
+		return c.sendCardMessageWithID(ctx, msg.ChatID, cardJSON, msg.ReplyToID)
+	}
+	return c.sendTextWithID(ctx, msg.ChatID, msg.Content, msg.ReplyToID)
+}
+
+// EditMessage updates an existing Feishu outbound message in place.
+func (c *Channel) EditMessage(ctx context.Context, _ string, messageID string, msg channel.OutgoingMessage) error {
+	if cardJSON, ok, err := feishuCardJSON(msg.Metadata); err != nil {
+		return err
+	} else if ok {
+		return c.client.updateMessage(ctx, messageID, "interactive", cardJSON)
+	}
+	if strings.EqualFold(msg.Format, "markdown") {
+		cardJSON, err := buildMarkdownCardJSON(msg.Content)
+		if err != nil {
+			return err
+		}
+		return c.client.updateMessage(ctx, messageID, "interactive", cardJSON)
+	}
+	text, _ := humanizer.HumanizeForPreset(msg.Content, "")
+	content, _ := json.Marshal(map[string]string{"text": text})
+	return c.client.updateMessage(ctx, messageID, "text", string(content))
 }
 
 func feishuCardJSON(metadata map[string]interface{}) (string, bool, error) {
@@ -942,18 +1022,14 @@ func buildMarkdownCardJSON(markdown string) (string, error) {
 	markdown = strings.ReplaceAll(markdown, "\r\n", "\n")
 	title, body := extractMarkdownCardTitle(markdown)
 	body = normalizeMarkdownTablesForCard(body)
-
-	parts := splitMarkdownForCard(body, 1400)
-	if len(parts) == 0 {
-		parts = []string{" "}
-	}
-
-	elements := make([]map[string]string, 0, len(parts))
-	for _, p := range parts {
-		elements = append(elements, map[string]string{
-			"tag":     "markdown",
-			"content": p,
-		})
+	elements := buildMarkdownCardElements(body)
+	if len(elements) == 0 {
+		elements = []map[string]interface{}{
+			{
+				"tag":     "markdown",
+				"content": " ",
+			},
+		}
 	}
 
 	card := map[string]interface{}{
@@ -976,6 +1052,75 @@ func buildMarkdownCardJSON(markdown string) (string, error) {
 		return "", err
 	}
 	return string(raw), nil
+}
+
+func buildMarkdownCardElements(markdown string) []map[string]interface{} {
+	lines := strings.Split(markdown, "\n")
+	if len(lines) == 0 {
+		return nil
+	}
+
+	elements := make([]map[string]interface{}, 0, len(lines)/3+1)
+	markdownLines := make([]string, 0, len(lines))
+	inFence := false
+
+	flushMarkdown := func() {
+		if len(markdownLines) == 0 {
+			return
+		}
+		block := strings.Join(markdownLines, "\n")
+		for _, part := range splitMarkdownForCard(block, 1400) {
+			elements = append(elements, map[string]interface{}{
+				"tag":     "markdown",
+				"content": part,
+			})
+		}
+		markdownLines = markdownLines[:0]
+	}
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !inFence {
+			if level, heading, ok := parseATXHeadingWithLevel(trimmed); ok {
+				flushMarkdown()
+				elements = append(elements, buildMarkdownHeadingElement(level, heading))
+				continue
+			}
+		}
+
+		markdownLines = append(markdownLines, line)
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+		}
+	}
+	flushMarkdown()
+	return elements
+}
+
+func buildMarkdownHeadingElement(level int, heading string) map[string]interface{} {
+	heading = strings.TrimSpace(heading)
+	if heading == "" {
+		heading = " "
+	}
+	return map[string]interface{}{
+		"tag": "div",
+		"text": map[string]interface{}{
+			"tag":       "plain_text",
+			"content":   heading,
+			"text_size": markdownHeadingTextSize(level),
+		},
+	}
+}
+
+func markdownHeadingTextSize(level int) string {
+	switch {
+	case level <= 2:
+		return "heading"
+	case level == 3:
+		return "normal_text"
+	default:
+		return "notation"
+	}
 }
 
 func extractMarkdownCardTitle(markdown string) (title, body string) {
@@ -1010,24 +1155,29 @@ func extractMarkdownCardTitle(markdown string) (title, body string) {
 }
 
 func parseATXHeading(line string) (string, bool) {
+	_, content, ok := parseATXHeadingWithLevel(line)
+	return content, ok
+}
+
+func parseATXHeadingWithLevel(line string) (int, string, bool) {
 	if line == "" || line[0] != '#' {
-		return "", false
+		return 0, "", false
 	}
 	i := 0
 	for i < len(line) && line[i] == '#' {
 		i++
 	}
 	if i == 0 || i > 6 {
-		return "", false
+		return 0, "", false
 	}
 	if i >= len(line) || line[i] != ' ' {
-		return "", false
+		return 0, "", false
 	}
 	content := strings.TrimSpace(line[i+1:])
 	if content == "" {
-		return "", false
+		return 0, "", false
 	}
-	return content, true
+	return i, content, true
 }
 
 func normalizeMarkdownTablesForCard(markdown string) string {
@@ -1037,8 +1187,16 @@ func normalizeMarkdownTablesForCard(markdown string) string {
 	}
 
 	out := make([]string, 0, len(lines))
+	inFence := false
 	for i := 0; i < len(lines); {
-		if !isPipeTableLine(lines[i]) || i+1 >= len(lines) || !isPipeTableLine(lines[i+1]) {
+		trimmed := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			out = append(out, lines[i])
+			i++
+			continue
+		}
+		if inFence || !isPipeTableLine(lines[i]) || i+1 >= len(lines) || !isPipeTableLine(lines[i+1]) {
 			out = append(out, lines[i])
 			i++
 			continue
@@ -1058,7 +1216,7 @@ func normalizeMarkdownTablesForCard(markdown string) string {
 			rows = append(rows, parseMarkdownTableCells(lines[i]))
 			i++
 		}
-		out = append(out, renderMarkdownTableAsCodeFence(rows))
+		out = append(out, renderMarkdownTableAsBullets(rows))
 	}
 
 	return strings.Join(out, "\n")
@@ -1099,63 +1257,77 @@ func isMarkdownTableDivider(cells []string) bool {
 	return true
 }
 
-func renderMarkdownTableAsCodeFence(rows [][]string) string {
+func renderMarkdownTableAsBullets(rows [][]string) string {
 	if len(rows) == 0 {
 		return ""
 	}
 
-	colCount := 0
-	for _, row := range rows {
-		if len(row) > colCount {
-			colCount = len(row)
-		}
+	headers := rows[0]
+	bodyRows := rows[1:]
+	if len(bodyRows) == 0 {
+		return ""
 	}
-	widths := make([]int, colCount)
-	for _, row := range rows {
-		for i, cell := range row {
-			w := utf8.RuneCountInString(cell)
-			if w > widths[i] {
-				widths[i] = w
+
+	lines := make([]string, 0, len(bodyRows)*3)
+	useFirstColAsLabel := len(headers) > 1
+
+	if useFirstColAsLabel {
+		for _, row := range bodyRows {
+			label := strings.TrimSpace(markdownTableCellAt(row, 0))
+			if label != "" {
+				lines = append(lines, fmt.Sprintf("**%s**", label))
 			}
+
+			maxCols := len(headers)
+			if len(row) > maxCols {
+				maxCols = len(row)
+			}
+			for col := 1; col < maxCols; col++ {
+				value := strings.TrimSpace(markdownTableCellAt(row, col))
+				if value == "" {
+					continue
+				}
+				key := strings.TrimSpace(markdownTableCellAt(headers, col))
+				if key == "" {
+					key = fmt.Sprintf("Column %d", col+1)
+				}
+				lines = append(lines, fmt.Sprintf("- %s: %s", key, value))
+			}
+			lines = append(lines, "")
+		}
+	} else {
+		for _, row := range bodyRows {
+			maxCols := len(headers)
+			if len(row) > maxCols {
+				maxCols = len(row)
+			}
+			for col := 0; col < maxCols; col++ {
+				value := strings.TrimSpace(markdownTableCellAt(row, col))
+				if value == "" {
+					continue
+				}
+				key := strings.TrimSpace(markdownTableCellAt(headers, col))
+				if key == "" {
+					lines = append(lines, "- "+value)
+					continue
+				}
+				lines = append(lines, fmt.Sprintf("- %s: %s", key, value))
+			}
+			lines = append(lines, "")
 		}
 	}
 
-	var sb strings.Builder
-	sb.WriteString("```text\n")
-	writeMarkdownTableCodeRow(&sb, rows[0], widths)
-	sb.WriteString("|")
-	for _, w := range widths {
-		if w < 3 {
-			w = 3
-		}
-		sb.WriteString(" ")
-		sb.WriteString(strings.Repeat("-", w))
-		sb.WriteString(" |")
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
 	}
-	sb.WriteByte('\n')
-	for _, row := range rows[1:] {
-		writeMarkdownTableCodeRow(&sb, row, widths)
-	}
-	sb.WriteString("```")
-	return sb.String()
+	return strings.Join(lines, "\n")
 }
 
-func writeMarkdownTableCodeRow(sb *strings.Builder, row []string, widths []int) {
-	sb.WriteString("|")
-	for i, w := range widths {
-		cell := ""
-		if i < len(row) {
-			cell = row[i]
-		}
-		sb.WriteString(" ")
-		sb.WriteString(cell)
-		pad := w - utf8.RuneCountInString(cell)
-		for j := 0; j < pad; j++ {
-			sb.WriteByte(' ')
-		}
-		sb.WriteString(" |")
+func markdownTableCellAt(row []string, index int) string {
+	if index < 0 || index >= len(row) {
+		return ""
 	}
-	sb.WriteByte('\n')
+	return row[index]
 }
 
 const typingReactionEmojiType = "Typing"

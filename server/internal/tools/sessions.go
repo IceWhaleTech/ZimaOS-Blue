@@ -199,8 +199,8 @@ func (t *SessionsListTool) Execute(ctx context.Context, args map[string]interfac
 	if offset < 0 {
 		offset = 0
 	}
-	pinnedOnly, _ := asCompatBool(args["pinned_only"])
-	userID := asString(args["user_id"])
+	pinnedOnly, _ := compatBoolArg(args, "pinned_only", "pinnedOnly")
+	userID := firstCompatString(args, "user_id", "user", "owner_id", "ownerId")
 
 	sessions, err := t.service.ListSessions(ctx, limit, offset, userID)
 	if err != nil {
@@ -293,12 +293,12 @@ func (t *SessionsSpawnTool) Execute(ctx context.Context, args map[string]interfa
 	if title == "" {
 		title = "New Conversation"
 	}
-	userID := firstCompatString(args, "user_id", "owner_id")
+	userID := firstCompatString(args, "user_id", "user", "owner_id", "ownerId")
 	if userID == "" {
 		userID = GetUserID(ctx)
 	}
-	pinned, _ := asCompatBool(args["pinned"])
-	initialMessage := firstCompatString(args, "initial_message")
+	pinned, _ := compatBoolArg(args, "pinned", "isPinned")
+	initialMessage := firstCompatString(args, "initial_message", "initialMessage")
 	role := normalizeSessionRole(firstCompatString(args, "role"))
 
 	session, err := t.service.CreateSession(ctx, title, userID, pinned)

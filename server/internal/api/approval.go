@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/labstack/echo/v4"
@@ -29,6 +30,7 @@ type PendingRequest struct {
 	ToolName   string         `json:"tool_name"`
 	ToolCallID string         `json:"tool_call_id"`
 	Arguments  map[string]any `json:"arguments"`
+	SessionID  string         `json:"session_id,omitempty"`
 	CreatedAt  string         `json:"created_at"`
 	UserID     string         `json:"-"`
 }
@@ -97,9 +99,13 @@ func (h *ApprovalHandler) UpdateConfig(c echo.Context) error {
 
 // ListPending returns all pending approval requests.
 func (h *ApprovalHandler) ListPending(c echo.Context) error {
+	sessionID := strings.TrimSpace(c.QueryParam("session_id"))
 	h.mu.RLock()
 	out := make([]*PendingRequest, 0, len(h.pending))
 	for _, r := range h.pending {
+		if sessionID != "" && strings.TrimSpace(r.SessionID) != sessionID {
+			continue
+		}
 		out = append(out, r)
 	}
 	h.mu.RUnlock()
@@ -150,6 +156,7 @@ func (h *ApprovalHandler) Resolve(c echo.Context) error {
 // Called by the tool executor when a tool call needs approval.
 func (h *ApprovalHandler) Enqueue(userID string, req *PendingRequest) {
 	req.UserID = userID
+	req.SessionID = strings.TrimSpace(req.SessionID)
 	if req.CreatedAt == "" {
 		req.CreatedAt = timeutil.NowTime().UTC().Format("2006-01-02T15:04:05Z")
 	}

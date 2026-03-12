@@ -152,9 +152,9 @@ function confirmDelete(backup: BackupDisplay) {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-700/30 rounded-lg shadow">
+  <div class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('backup.title') }}</h2>
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('backup.title') }}</h2>
       <button
         class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
         @click="showCreateModal = true"

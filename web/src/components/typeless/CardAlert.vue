@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TypelessCardAlert } from '@/types/typeless'
+import { translateCardActionLabel } from '@/utils/cardActionLabels'
 
 const props = defineProps<{
   card: TypelessCardAlert
@@ -64,6 +65,10 @@ function handleDismiss() {
   emit('dismiss')
 }
 
+function actionLabel(action: { id: string; label: string }): string {
+  return translateCardActionLabel({ id: action.id, fallback: action.label, t, te })
+}
+
 function handleAction(actionId: string) {
   emit('action', actionId)
 }
@@ -120,7 +125,7 @@ function handleAction(actionId: string) {
           :disabled="action.disabled"
           @click="handleAction(action.id)"
         >
-          {{ action.label }}
+          {{ actionLabel(action) }}
         </button>
       </div>
     </div>

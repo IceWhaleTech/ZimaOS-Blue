@@ -181,7 +181,7 @@ func (t *TTSTool) executeSynthesize(ctx context.Context, args map[string]interfa
 		req.Text = text
 	}
 
-	playLocal, playLocalSet := asCompatBool(args["play_local"])
+	playLocal, playLocalSet := compatBoolInArgs(args, "play_local", "playLocal")
 	useLocal := preferLocal
 	if playLocalSet {
 		useLocal = playLocal
@@ -238,7 +238,7 @@ func (t *TTSTool) executeSynthesize(ctx context.Context, args map[string]interfa
 	} else if req.Voice != "" {
 		payload["voice"] = req.Voice
 	}
-	if includeBase64, ok := asCompatBool(args["include_base64"]); ok && includeBase64 {
+	if includeBase64, ok := compatBoolInArgs(args, "include_base64", "includeBase64"); ok && includeBase64 {
 		payload["audio_base64"] = base64.StdEncoding.EncodeToString(result.Audio)
 	}
 	return payload, nil
@@ -248,7 +248,7 @@ func ttsAction(args map[string]interface{}) string {
 	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
 	if action == "" {
 		if firstCompatString(args, "text", "input", "content", "message", "prompt") != "" {
-			if playLocal, ok := asCompatBool(args["play_local"]); ok && playLocal {
+			if playLocal, ok := compatBoolInArgs(args, "play_local", "playLocal"); ok && playLocal {
 				return "speak"
 			}
 			return "synthesize"
@@ -274,7 +274,7 @@ func ttsAction(args map[string]interface{}) string {
 }
 
 func normalizeTTSSynthesizeRequest(args map[string]interface{}) (TTSSynthesizeRequest, error) {
-	format, err := normalizeTTSAudioFormat(firstCompatString(args, "format", "audio_format"))
+	format, err := normalizeTTSAudioFormat(firstCompatString(args, "format", "audio_format", "audioFormat"))
 	if err != nil {
 		return TTSSynthesizeRequest{}, err
 	}
@@ -321,37 +321,43 @@ func normalizeTTSProvider(value string) string {
 }
 
 func compatFloat32Ptr(args map[string]interface{}, keys ...string) *float32 {
-	for _, key := range keys {
-		value, ok := args[key]
-		if !ok || value == nil {
-			continue
+	value, ok := firstCompatValueDeep(args, keys...)
+	if !ok || value == nil {
+		return nil
+	}
+	switch typed := value.(type) {
+	case float32:
+		v := typed
+		return &v
+	case float64:
+		v := float32(typed)
+		return &v
+	case int:
+		v := float32(typed)
+		return &v
+	case int64:
+		v := float32(typed)
+		return &v
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return nil
 		}
-		switch typed := value.(type) {
-		case float32:
-			v := typed
+		var parsed float64
+		if _, err := fmt.Sscanf(trimmed, "%f", &parsed); err == nil {
+			v := float32(parsed)
 			return &v
-		case float64:
-			v := float32(typed)
-			return &v
-		case int:
-			v := float32(typed)
-			return &v
-		case int64:
-			v := float32(typed)
-			return &v
-		case string:
-			trimmed := strings.TrimSpace(typed)
-			if trimmed == "" {
-				continue
-			}
-			var parsed float64
-			if _, err := fmt.Sscanf(trimmed, "%f", &parsed); err == nil {
-				v := float32(parsed)
-				return &v
-			}
 		}
 	}
 	return nil
+}
+
+func compatBoolInArgs(args map[string]interface{}, keys ...string) (bool, bool) {
+	value, ok := firstCompatValueDeep(args, keys...)
+	if !ok {
+		return false, false
+	}
+	return asCompatBool(value)
 }
 
 func canLocalSpeak(req TTSSynthesizeRequest) bool {

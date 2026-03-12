@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/google/uuid"
 )
 
 // MediaStorage handles downloading, caching, and serving generated media files.
@@ -128,6 +128,14 @@ func (s *MediaStorage) Cleanup(maxAge time.Duration) (int, error) {
 // ServeHTTP serves stored media files.
 func (s *MediaStorage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.FileServer(http.Dir(s.baseDir)).ServeHTTP(w, r)
+}
+
+// ReadServedURL loads a locally cached media asset by its served URL.
+func (s *MediaStorage) ReadServedURL(servedURL string) ([]byte, error) {
+	if s == nil {
+		return nil, fmt.Errorf("media storage is nil")
+	}
+	return os.ReadFile(s.localPathFromURL(servedURL))
 }
 
 // localPathFromURL converts a served URL back to a local file path.

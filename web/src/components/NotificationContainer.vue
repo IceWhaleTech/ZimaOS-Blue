@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { useNotificationStore, type NotificationType } from '@/stores/notification'
 
+const { t, te } = useI18n()
 const notificationStore = useNotificationStore()
 
 function getIcon(type: NotificationType): string {
@@ -41,6 +43,21 @@ function getIconColorClass(type: NotificationType): string {
       return 'text-gray-500 dark:text-gray-400'
   }
 }
+
+function notificationActionLabel(action: { label: string; labelKey?: string }): string {
+  if (action.labelKey && te(action.labelKey)) return t(action.labelKey)
+  return action.label
+}
+
+function notificationTitle(notification: { title: string; titleKey?: string; titleParams?: Record<string, unknown> }): string {
+  if (notification.titleKey && te(notification.titleKey)) return t(notification.titleKey, notification.titleParams || {})
+  return notification.title
+}
+
+function notificationMessage(notification: { message?: string; messageKey?: string; messageParams?: Record<string, unknown> }): string {
+  if (notification.messageKey && te(notification.messageKey)) return t(notification.messageKey, notification.messageParams || {})
+  return notification.message || ''
+}
 </script>
 
 <template>
@@ -77,9 +94,9 @@ function getIconColorClass(type: NotificationType): string {
 
             <!-- Content -->
             <div class="flex-1 min-w-0">
-              <p class="font-medium text-sm">{{ notification.title }}</p>
-              <p v-if="notification.message" class="mt-1 text-sm opacity-80">
-                {{ notification.message }}
+              <p class="font-medium text-sm">{{ notificationTitle(notification) }}</p>
+              <p v-if="notificationMessage(notification)" class="mt-1 text-sm opacity-80">
+                {{ notificationMessage(notification) }}
               </p>
 
               <!-- Action button -->
@@ -88,7 +105,7 @@ function getIconColorClass(type: NotificationType): string {
                 class="mt-2 text-sm font-medium underline hover:no-underline"
                 @click="notification.action.handler"
               >
-                {{ notification.action.label }}
+                {{ notificationActionLabel(notification.action) }}
               </button>
             </div>
 

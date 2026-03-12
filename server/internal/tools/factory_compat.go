@@ -157,12 +157,12 @@ func resolveFactoryAliasCommand(name string, args map[string]interface{}) (strin
 		return resolveFactoryTTSAliasCommand(name, args)
 	case "sessions_list":
 		cmd := "blue sessions list"
-		if active, ok := asCompatBool(args["active"]); ok && active {
+		if active, ok := compatBoolArg(args, "active"); ok && active {
 			cmd += " --active"
 		}
 		return cmd, true, ""
 	case "sessions_history":
-		id := firstCompatString(args, "id", "session_id", "session", "conversation_id")
+		id := firstCompatString(args, "id", "session_id", "sessionId", "session", "conversation_id", "conversationId")
 		if id == "" {
 			return "", true, invalidFactoryToolArgsResult(name, "id/session_id is required")
 		}
@@ -172,7 +172,7 @@ func resolveFactoryAliasCommand(name string, args map[string]interface{}) (strin
 	case "sessions_spawn":
 		return resolveFactorySessionsSpawnAliasCommand(name, args)
 	case "session_status":
-		if id := firstCompatString(args, "id", "session_id", "session", "conversation_id"); id != "" {
+		if id := firstCompatString(args, "id", "session_id", "sessionId", "session", "conversation_id", "conversationId"); id != "" {
 			return "blue sessions show " + quoteCompatShellArg(id), true, ""
 		}
 		return "blue status", true, ""
@@ -212,7 +212,7 @@ func resolveFactorySessionsSpawnAliasCommand(name string, args map[string]interf
 }
 
 func resolveFactorySessionsSendAliasCommand(name string, args map[string]interface{}) (string, bool, string) {
-	id := firstCompatString(args, "id", "session_id", "session", "conversation_id")
+	id := firstCompatString(args, "id", "session_id", "sessionId", "session", "conversation_id", "conversationId")
 	if id == "" {
 		return "", true, invalidFactoryToolArgsResult(name, "id/session_id is required")
 	}
@@ -230,7 +230,7 @@ func resolveFactorySessionsSendAliasCommand(name string, args map[string]interfa
 	if model := firstCompatString(args, "model"); model != "" {
 		payload["model"] = model
 	}
-	if regenerate, ok := asCompatBool(args["regenerate"]); ok {
+	if regenerate, ok := compatBoolArg(args, "regenerate"); ok {
 		payload["regenerate"] = regenerate
 	}
 
@@ -246,8 +246,10 @@ func resolveFactoryMemoryAliasCommand(name string, args map[string]interface{}) 
 			return "", true, invalidFactoryToolArgsResult(name, "query is required for memory_search")
 		}
 		payload := map[string]interface{}{"query": query}
-		if limit, ok := coerceCompatInt(args["limit"]); ok && limit > 0 {
-			payload["limit"] = limit
+		if raw, ok := compatArgValue(args, "limit"); ok {
+			if limit, ok := coerceCompatInt(raw); ok && limit > 0 {
+				payload["limit"] = limit
+			}
 		}
 		return buildCompatHTTPJSONCommand("POST", "/api/v1/memory/search", payload), true, ""
 	case "memory_get":
@@ -262,8 +264,10 @@ func resolveFactoryMemoryAliasCommand(name string, args map[string]interface{}) 
 			return "", true, invalidFactoryToolArgsResult(name, "content/text is required for memory_write")
 		}
 		payload := map[string]interface{}{"content": content}
-		if tags, ok := coerceCompatStringList(args["tags"]); ok && len(tags) > 0 {
-			payload["tags"] = tags
+		if raw, ok := compatArgValue(args, "tags"); ok {
+			if tags, ok := coerceCompatStringList(raw); ok && len(tags) > 0 {
+				payload["tags"] = tags
+			}
 		} else if category := firstCompatString(args, "category", "tag"); category != "" {
 			payload["tags"] = []interface{}{category}
 		}
@@ -281,10 +285,10 @@ func resolveFactoryMemoryAliasCommand(name string, args map[string]interface{}) 
 
 func resolveFactoryImageAliasCommand(name string, args map[string]interface{}) (string, bool, string) {
 	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
-	taskID := firstCompatString(args, "task_id", "id")
+	taskID := firstCompatString(args, "task_id", "taskId", "id")
 	prompt := firstCompatString(args, "prompt", "query", "input", "text", "message", "content")
 	sourceURL := firstCompatString(args, "url", "href", "source", "link")
-	inlineImage := firstCompatString(args, "image", "image_base64", "base64")
+	inlineImage := firstCompatString(args, "image", "image_base64", "imageBase64", "base64")
 
 	if action == "" {
 		switch {
@@ -351,7 +355,7 @@ func resolveFactoryTTSAliasCommand(name string, args map[string]interface{}) (st
 		payload := map[string]interface{}{
 			"text": text,
 		}
-		if format := firstCompatString(args, "format", "audio_format"); format != "" {
+		if format := firstCompatString(args, "format", "audio_format", "audioFormat"); format != "" {
 			payload["format"] = format
 		}
 		return buildCompatHTTPJSONCommand("POST", "/api/v1/voice/synthesize", payload), true, ""
@@ -370,7 +374,7 @@ func resolveFactoryTTSAliasCommand(name string, args map[string]interface{}) (st
 
 func resolveFactoryWorkflowAliasCommand(name string, args map[string]interface{}) (string, bool, string) {
 	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
-	id := firstCompatString(args, "id", "workflow_id", "canvas_id", "node_id")
+	id := firstCompatString(args, "id", "workflow_id", "workflowId", "canvas_id", "canvasId", "node_id", "nodeId")
 
 	if action == "" {
 		switch {
@@ -378,7 +382,7 @@ func resolveFactoryWorkflowAliasCommand(name string, args map[string]interface{}
 			action = "update"
 		case id != "":
 			action = "get"
-		case firstCompatString(args, "name", "title") != "" || args["nodes"] != nil || args["connections"] != nil:
+		case firstCompatString(args, "name", "title") != "" || compatHasValue(args, "nodes") || compatHasValue(args, "connections"):
 			action = "create"
 		default:
 			action = "list"
@@ -440,19 +444,19 @@ func addCompatWorkflowBodyFields(body map[string]interface{}, args map[string]in
 	if body == nil {
 		return
 	}
-	appendCompatWorkflowBodyValue(body, "name", args["name"])
-	appendCompatWorkflowBodyValue(body, "description", args["description"])
-	appendCompatWorkflowBodyValue(body, "status", args["status"])
-	appendCompatWorkflowBodyValue(body, "nodes", args["nodes"])
-	appendCompatWorkflowBodyValue(body, "connections", args["connections"])
-	appendCompatWorkflowBodyValue(body, "variables", args["variables"])
-	appendCompatWorkflowBodyValue(body, "settings", args["settings"])
-	appendCompatWorkflowBodyValue(body, "tags", args["tags"])
+	appendCompatWorkflowBodyFromArgs(body, args, "name")
+	appendCompatWorkflowBodyFromArgs(body, args, "description")
+	appendCompatWorkflowBodyFromArgs(body, args, "status")
+	appendCompatWorkflowBodyFromArgs(body, args, "nodes")
+	appendCompatWorkflowBodyFromArgs(body, args, "connections")
+	appendCompatWorkflowBodyFromArgs(body, args, "variables")
+	appendCompatWorkflowBodyFromArgs(body, args, "settings")
+	appendCompatWorkflowBodyFromArgs(body, args, "tags")
 }
 
 func hasCompatWorkflowBodyField(args map[string]interface{}) bool {
 	for _, key := range []string{"name", "description", "status", "nodes", "connections", "variables", "settings", "tags"} {
-		if v, ok := args[key]; ok && normalizeCompatRawValue(v) != nil {
+		if compatHasValue(args, key) {
 			return true
 		}
 	}
@@ -551,7 +555,7 @@ func buildFactoryMediaGenerateCommand(prompt string, args map[string]interface{}
 		cmd.WriteString(" --size ")
 		cmd.WriteString(quoteCompatShellArg(size))
 	}
-	if poll, ok := asCompatBool(args["poll"]); ok && poll {
+	if poll, ok := compatBoolArg(args, "poll"); ok && poll {
 		cmd.WriteString(" --poll")
 	}
 	return cmd.String()
@@ -565,7 +569,33 @@ func firstCompatValue(args map[string]interface{}, keys ...string) (interface{},
 		}
 		return v, true
 	}
+	for _, containerKey := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(args[containerKey])
+		if !ok {
+			continue
+		}
+		for _, key := range keys {
+			v, ok := nested[key]
+			if !ok || v == nil {
+				continue
+			}
+			return v, true
+		}
+	}
 	return nil, false
+}
+
+func compatHasValue(args map[string]interface{}, keys ...string) bool {
+	v, ok := firstCompatValue(args, keys...)
+	return ok && normalizeCompatRawValue(v) != nil
+}
+
+func appendCompatWorkflowBodyFromArgs(body map[string]interface{}, args map[string]interface{}, keys ...string) bool {
+	v, ok := firstCompatValue(args, keys...)
+	if !ok {
+		return false
+	}
+	return appendCompatWorkflowBodyValue(body, keys[0], v)
 }
 
 func normalizeCompatRawValue(v interface{}) interface{} {
@@ -625,37 +655,39 @@ func resolveFactoryCronAliasCommand(name string, args map[string]interface{}) (s
 		cmd.WriteString(quoteCompatShellArg(schedule))
 		cmd.WriteString(" --handler ")
 		cmd.WriteString(quoteCompatShellArg(handler))
-		if payload := buildCompatPayloadJSON(args["payload"]); payload != "" {
-			cmd.WriteString(" --payload ")
-			cmd.WriteString(quoteCompatShellArg(payload))
+		if raw, ok := compatArgValue(args, "payload"); ok {
+			if payload := buildCompatPayloadJSON(raw); payload != "" {
+				cmd.WriteString(" --payload ")
+				cmd.WriteString(quoteCompatShellArg(payload))
+			}
 		}
 		return cmd.String(), true, ""
 	case "delete", "remove", "rm":
-		id := firstCompatString(args, "id", "job_id", "cron_id")
+		id := firstCompatString(args, "id", "job_id", "jobId", "cron_id", "cronId")
 		if id == "" {
 			return "", true, invalidFactoryToolArgsResult(name, "id/job_id is required for delete/remove")
 		}
 		return "blue cron rm " + quoteCompatShellArg(id), true, ""
 	case "enable":
-		id := firstCompatString(args, "id", "job_id", "cron_id")
+		id := firstCompatString(args, "id", "job_id", "jobId", "cron_id", "cronId")
 		if id == "" {
 			return "", true, invalidFactoryToolArgsResult(name, "id/job_id is required for enable")
 		}
 		return "blue cron enable " + quoteCompatShellArg(id), true, ""
 	case "disable":
-		id := firstCompatString(args, "id", "job_id", "cron_id")
+		id := firstCompatString(args, "id", "job_id", "jobId", "cron_id", "cronId")
 		if id == "" {
 			return "", true, invalidFactoryToolArgsResult(name, "id/job_id is required for disable")
 		}
 		return "blue cron disable " + quoteCompatShellArg(id), true, ""
 	case "run", "trigger":
-		id := firstCompatString(args, "id", "job_id", "cron_id")
+		id := firstCompatString(args, "id", "job_id", "jobId", "cron_id", "cronId")
 		if id == "" {
 			return "", true, invalidFactoryToolArgsResult(name, "id/job_id is required for run/trigger")
 		}
 		return "blue cron run " + quoteCompatShellArg(id), true, ""
 	case "runs", "executions", "history":
-		id := firstCompatString(args, "id", "job_id", "cron_id")
+		id := firstCompatString(args, "id", "job_id", "jobId", "cron_id", "cronId")
 		if id == "" {
 			return "", true, invalidFactoryToolArgsResult(name, "id/job_id is required for runs/executions")
 		}
@@ -668,7 +700,7 @@ func resolveFactoryCronAliasCommand(name string, args map[string]interface{}) (s
 func resolveFactoryMessageAliasCommand(name string, args map[string]interface{}) (string, bool, string) {
 	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
 	if action == "" {
-		if firstCompatString(args, "id", "message_id", "reminder_id") != "" {
+		if firstCompatString(args, "id", "message_id", "messageId", "reminder_id", "reminderId") != "" {
 			action = "delete"
 		} else if firstCompatString(args, "message", "content", "text", "input") != "" {
 			action = "add"
@@ -681,7 +713,7 @@ func resolveFactoryMessageAliasCommand(name string, args map[string]interface{})
 	case "list", "status", "get":
 		return buildSkillCommand("reminder", map[string]interface{}{"action": "list"}), true, ""
 	case "delete", "remove", "rm":
-		id := firstCompatString(args, "id", "message_id", "reminder_id")
+		id := firstCompatString(args, "id", "message_id", "messageId", "reminder_id", "reminderId")
 		if id == "" {
 			return "", true, invalidFactoryToolArgsResult(name, "id/message_id is required for delete")
 		}
@@ -702,7 +734,7 @@ func resolveFactoryMessageAliasCommand(name string, args map[string]interface{})
 		if recurring := firstCompatString(args, "recurring", "repeat"); recurring != "" {
 			reminderArgs["recurring"] = recurring
 		}
-		if sessionID := firstCompatString(args, "session_id", "session", "conversation_id"); sessionID != "" {
+		if sessionID := firstCompatString(args, "session_id", "sessionId", "session", "conversation_id", "conversationId"); sessionID != "" {
 			reminderArgs["session_id"] = sessionID
 		}
 		return buildSkillCommand("reminder", reminderArgs), true, ""

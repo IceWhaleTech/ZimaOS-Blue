@@ -77,11 +77,11 @@ func (m *Manager) CheckAndAutoRecover(ctx context.Context, dbPaths []string) (*A
 	for _, dbPath := range dbPaths {
 		result.DatabasesChecked = append(result.DatabasesChecked, dbPath)
 
-		// First, try to clean WAL files if they exist
-		// This can sometimes fix "database disk image is malformed" errors
-		if err := database.CleanWALFiles(dbPath); err != nil {
+		// First, checkpoint WAL back into the main database file.
+		// This preserves committed data and avoids dropping WAL content.
+		if err := database.CheckpointWALForDatabase(dbPath, database.CheckpointTruncate); err != nil {
 			// Log but continue - this is not fatal
-			fmt.Printf("Warning: failed to clean WAL files for %s: %v\n", dbPath, err)
+			fmt.Printf("Warning: failed to checkpoint WAL for %s: %v\n", dbPath, err)
 		}
 
 		// Check database integrity

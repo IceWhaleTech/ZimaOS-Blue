@@ -104,10 +104,6 @@ async function installSkill() {
   <div class="plugins-page">
     <!-- Header -->
     <div class="header">
-      <div class="title-section">
-        <h1>{{ t('plugins.title') }}</h1>
-        <p class="subtitle">{{ t('plugins.subtitle') }}</p>
-      </div>
       <div class="header-actions">
         <button class="btn-upload" @click="openUploadModal('skill')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -275,21 +271,9 @@ async function installSkill() {
 
 .header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  justify-content: flex-end;
+  align-items: center;
   margin-bottom: 24px;
-}
-
-.title-section h1 {
-  font-size: 28px;
-  font-weight: 600;
-  margin: 0;
-  color: var(--text-primary);
-}
-
-.subtitle {
-  color: var(--text-secondary);
-  margin: 4px 0 0;
 }
 
 .header-actions {

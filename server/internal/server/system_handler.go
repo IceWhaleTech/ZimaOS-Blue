@@ -72,6 +72,14 @@ func (h *SystemHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/system/certificate", h.GetCertificate)
 }
 
+// RegisterFileBridgeRoutes registers file bridge endpoints that require authentication.
+func (h *SystemHandler) RegisterFileBridgeRoutes(g *echo.Group) {
+	g.POST("/system/reveal-path", h.RevealPath)
+	g.GET("/system/local-file", h.ResolveLocalFile)
+	g.GET("/system/local-file/content", h.DownloadLocalFile)
+	g.GET("/system/local-file/thumbnail", h.GetLocalFileThumbnail)
+}
+
 // SystemInfo represents system information
 type SystemInfo struct {
 	Version   string `json:"version"`
@@ -316,12 +324,12 @@ func (h *SystemHandler) RestartService(c echo.Context) error {
 
 // CertificateResponse represents the certificate export response
 type CertificateResponse struct {
-	Certificate string `json:"certificate"`
+	Certificate  string `json:"certificate"`
 	IsSelfSigned bool   `json:"is_self_signed"`
-	Subject     string `json:"subject"`
-	Issuer      string `json:"issuer"`
-	NotBefore   string `json:"not_before"`
-	NotAfter    string `json:"not_after"`
+	Subject      string `json:"subject"`
+	Issuer       string `json:"issuer"`
+	NotBefore    string `json:"not_before"`
+	NotAfter     string `json:"not_after"`
 }
 
 // GetCertificate exports the server's TLS certificate for client trust
@@ -354,12 +362,11 @@ func (h *SystemHandler) GetCertificate(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, CertificateResponse{
-		Certificate: certPEM,
+		Certificate:  certPEM,
 		IsSelfSigned: certInfo.IsSelfSigned,
-		Subject:     certInfo.Subject,
-		Issuer:      certInfo.Issuer,
-		NotBefore:   certInfo.NotBefore.String(),
-		NotAfter:    certInfo.NotAfter.String(),
+		Subject:      certInfo.Subject,
+		Issuer:       certInfo.Issuer,
+		NotBefore:    certInfo.NotBefore.String(),
+		NotAfter:     certInfo.NotAfter.String(),
 	})
 }
-

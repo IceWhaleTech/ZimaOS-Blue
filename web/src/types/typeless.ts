@@ -36,12 +36,14 @@ export type TypelessCardType =
   | 'search'
   | 'deep-research'
   | 'deep-research-progress'
+  | 'deep-research-event'
   | 'ui-review'
   | 'ui-review-progress'
   | 'media-generate'
   | 'analyze-progress'
   | 'browser-progress'
   | 'web-fetch'
+  | 'convert-task'
   | 'exec'
 
 export interface TypelessCardBase {
@@ -98,6 +100,7 @@ export interface TypelessCardResult extends TypelessCardBase {
   title: string
   status: 'success' | 'error' | 'warning' | 'info'
   message?: string
+  image?: string
   warning?: string
   warning_code?: string
   details?: ResultDetail[]
@@ -569,10 +572,108 @@ export interface DeepResearchVerificationSummary {
   insufficient_count?: number
   items?: DeepResearchVerificationItem[]
 }
+export interface DeepResearchWorkflowPhase {
+  id?: string
+  label?: string
+  status?: 'pending' | 'current' | 'completed' | string
+}
+
+export interface DeepResearchObjectMapItem {
+  id?: string
+  label?: string
+  task_count?: number
+  questions?: string[]
+  time_windows?: string[]
+  status_counts?: Record<string, number>
+}
+
+export interface DeepResearchSourceInventoryItem {
+  source_id?: string
+  title?: string
+  url?: string
+  source_type?: string
+  domain?: string
+  fetched_at?: string
+  published_at?: string
+  relevance_score?: number
+  credibility_score?: number
+  claim_key?: string
+  time_label?: string
+}
+
+export interface DeepResearchCoverageSummary {
+  task_count?: number
+  evidence_count?: number
+  distinct_domain_count?: number
+  citation_count?: number
+  open_question_count?: number
+  citation_coverage?: number
+  resolved_count?: number
+  conflicted_count?: number
+  insufficient_count?: number
+}
+
+
+export interface DeepResearchBrief {
+  goal?: string
+  entity?: string
+  time_windows?: string[]
+  must_verify_claims?: string[]
+}
+
+export interface DeepResearchPlannedTask {
+  question: string
+  axis?: string
+  category?: string
+  time_window?: string
+}
+
+export interface DeepResearchLiveSource {
+  title?: string
+  domain?: string
+  url?: string
+  query?: string
+}
+
+export interface DeepResearchEventVerificationSummary {
+  resolved_count?: number
+  conflicted_count?: number
+  insufficient_count?: number
+}
+
+export interface TypelessCardDeepResearchEvent extends TypelessCardBase {
+  type: 'deep-research-event'
+  job_id?: string
+  conversation_id?: string
+  query?: string
+  mode?: 'fast' | 'standard' | 'deep'
+  event_kind?: string
+  status?: string
+  summary?: string
+  brief?: DeepResearchBrief
+  tasks?: DeepResearchPlannedTask[]
+  sources?: DeepResearchLiveSource[]
+  verification?: DeepResearchEventVerificationSummary
+  gap?: string
+  focus?: string
+  follow_up_query?: string
+  stage?: string
+  search_query?: string
+  parallelism?: number
+  source_title?: string
+  stop_reason?: string
+  iteration?: number
+  task_count?: number
+  evidence_count?: number
+  citation_coverage?: number
+  attempt?: number
+  delay_ms?: number
+}
 
 export interface TypelessCardDeepResearch extends TypelessCardBase {
   type: 'deep-research'
   job_id?: string
+  conversation_id?: string
   query?: string
   mode?: 'fast' | 'standard' | 'deep'
   progress?: number
@@ -596,6 +697,10 @@ export interface TypelessCardDeepResearch extends TypelessCardBase {
   strict_entity?: boolean
   time_windows?: string[]
   report_style?: string
+  workflow_phases?: DeepResearchWorkflowPhase[]
+  object_map?: DeepResearchObjectMapItem[]
+  source_inventory?: DeepResearchSourceInventoryItem[]
+  coverage_summary?: DeepResearchCoverageSummary
   research_trace?: DeepResearchTraceItem[]
   verification_summary?: DeepResearchVerificationSummary
   status?: string
@@ -604,6 +709,7 @@ export interface TypelessCardDeepResearch extends TypelessCardBase {
 export interface TypelessCardDeepResearchProgress extends TypelessCardBase {
   type: 'deep-research-progress'
   job_id?: string
+  conversation_id?: string
   query?: string
   mode?: 'fast' | 'standard' | 'deep'
   stage?: string
@@ -762,6 +868,31 @@ export interface TypelessCardWebFetch extends TypelessCardBase {
   actions?: ActionButton[]
 }
 
+export interface ConvertTaskOutput {
+  output_id: string
+  name: string
+  mime_type?: string
+  size_bytes?: number
+  preview_kind?: 'file' | 'audio' | 'video' | 'image' | 'pdf' | 'text' | string
+  download_url?: string
+  ref?: string
+  preview_text?: string
+}
+
+export interface TypelessCardConvertTask extends TypelessCardBase {
+  type: 'convert-task'
+  task_id: string
+  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled' | string
+  action?: string
+  source_summary?: string
+  target_format?: string
+  progress?: number
+  message?: string
+  error?: string
+  outputs?: ConvertTaskOutput[]
+  transcript_preview?: string
+}
+
 // Exec Card - Display shell command execution results with terminal styling
 export interface TypelessCardExec extends TypelessCardBase {
   type: 'exec'
@@ -824,12 +955,14 @@ export type TypelessCard =
   | TypelessCardSearch
   | TypelessCardDeepResearch
   | TypelessCardDeepResearchProgress
+  | TypelessCardDeepResearchEvent
   | TypelessCardUIReview
   | TypelessCardUIReviewProgress
   | TypelessCardMediaGenerate
   | TypelessCardAnalyzeProgress
   | TypelessCardBrowserProgress
   | TypelessCardWebFetch
+  | TypelessCardConvertTask
   | TypelessCardExec
 
 // Card parsing result

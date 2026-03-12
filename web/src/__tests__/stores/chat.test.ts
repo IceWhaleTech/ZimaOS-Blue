@@ -3,6 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { parseToolResults, useChatStore } from '@/stores/chat'
 import { i18n } from '@/i18n'
 import { conversationApi, messageApi } from '@/api/chat'
+import { approvalApi } from '@/api/approval'
 
 const mocks = vi.hoisted(() => ({
   sseConnect: vi.fn(),
@@ -26,6 +27,15 @@ vi.mock('@/api/chat', () => ({
     list: vi.fn(),
     send: vi.fn(),
     cancelStream: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/approval', () => ({
+  approvalApi: {
+    getConfig: vi.fn(),
+    updateConfig: vi.fn(),
+    listPending: vi.fn(),
+    resolve: vi.fn(),
   },
 }))
 
@@ -73,6 +83,7 @@ describe('Chat Store', () => {
     mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
     vi.mocked(conversationApi.list).mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+    vi.mocked(approvalApi.listPending).mockResolvedValue({ data: [] } as never)
     vi.mocked(conversationApi.getCommandState).mockResolvedValue({
       data: {
         conversation_id: '1',
@@ -258,6 +269,82 @@ describe('Chat Store', () => {
       expect(messageApi.list).toHaveBeenCalledWith('conv-1', 50, 50)
       expect(messageApi.list).toHaveBeenCalledWith('conv-1', 50, 100)
     })
+
+    it('should ignore pending question and exec approval from another conversation', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+
+      store.setPendingQuestion({
+        id: 'question-2',
+        session_id: 'conv-2',
+        questions: [{ id: 'q1', question: 'Need input?', header: 'Question' }],
+        expires_at: Date.now() + 60000,
+      })
+      store.setPendingExecApproval({
+        id: 'exec-2',
+        session_id: 'conv-2',
+        type: 'command',
+        command: 'rm -rf /tmp/demo',
+        expires_at: Date.now() + 60000,
+      })
+
+      expect(store.pendingQuestion).toBeNull()
+      expect(store.pendingExecApproval).toBeNull()
+      expect(store.awaitingConfirmation).toBe(false)
+    })
+
+    it('should normalize exec approval payload without mutating command text', () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      const rawCommand = `blue ask q="我需要访问 /tmp 目录。是否授权我访问该目录？" a='["授权访问 /tmp 目录","拒绝访问"]'`
+
+      store.setPendingExecApproval({
+        approval: {
+          id: 'exec-1',
+          type: 'directory',
+          command: rawCommand,
+          directory: '/tmp',
+          expires_at: Math.floor((Date.now() + 60_000) / 1000),
+          session_id: 'conv-1',
+        },
+      })
+
+      expect(store.pendingExecApproval).toEqual(expect.objectContaining({
+        id: 'exec-1',
+        type: 'directory',
+        command: rawCommand,
+        directory: '/tmp',
+        session_id: 'conv-1',
+      }))
+      expect(store.pendingExecApproval?.expires_at).toBeGreaterThan(Date.now())
+      expect(store.awaitingConfirmation).toBe(true)
+    })
+
+    it('should query tool approvals scoped to the current conversation', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+
+      vi.mocked(approvalApi.listPending).mockResolvedValue({
+        data: [{
+          id: 'approval-1',
+          tool_name: 'browser',
+          tool_call_id: 'tool-1',
+          arguments: { url: 'https://example.com' },
+          session_id: 'conv-1',
+          created_at: '2026-03-11T00:00:00.000Z',
+        }],
+      } as never)
+
+      await store.checkPendingApprovals()
+
+      expect(approvalApi.listPending).toHaveBeenCalledWith('conv-1')
+      expect(store.pendingApproval).toEqual({
+        request_id: 'approval-1',
+        tool_name: 'browser',
+        tool_call_id: 'tool-1',
+        arguments: { url: 'https://example.com' },
+      })
+    })
   })
 
   describe('sortedConversations', () => {
@@ -287,6 +374,92 @@ describe('Chat Store', () => {
   })
 
   describe('sendMessage streaming', () => {
+    it('reattaches a detached stream when switching back to the original conversation', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        { id: 'conv-1', title: 'Original', created_at: '2026-03-11T00:00:00.000Z', updated_at: '2026-03-11T00:00:00.000Z' },
+        { id: 'conv-2', title: 'Other', created_at: '2026-03-11T00:00:01.000Z', updated_at: '2026-03-11T00:00:01.000Z' },
+      ]
+
+      vi.mocked(messageApi.list).mockImplementation(async (conversationId: string) => {
+        if (conversationId === 'conv-1') {
+          return {
+            data: [
+              {
+                id: 'msg-user-1',
+                conversation_id: 'conv-1',
+                role: 'user',
+                content: 'Need a decision',
+                created_at: '2026-03-11T00:00:00.000Z',
+              },
+            ],
+          } as never
+        }
+        return { data: [] } as never
+      })
+
+      let streamOptions: any
+      let resolveStream: (() => void) | null = null
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+        expect(_conversationId).toBe('conv-1')
+        expect(request).toEqual(expect.objectContaining({
+          message: 'Need a decision',
+          web_search_enabled: true,
+          deep_research_enabled: false,
+        }))
+        streamOptions = options
+        await new Promise<void>((resolve) => {
+          resolveStream = resolve
+        })
+      })
+
+      const sendPromise = store.sendMessage('Need a decision')
+      await settleAsyncWork()
+
+      expect(store.streaming).toBe(true)
+      expect(store.sending).toBe(true)
+      expect(store.messages.at(-1)?.id.startsWith('streaming-')).toBe(true)
+
+      streamOptions.onToolExecuting?.(1, ['ask'], false, ['ask'])
+      streamOptions.onMessage({ delta: '', done: false, awaiting_user_input: true })
+
+      expect(store.awaitingConfirmation).toBe(true)
+
+      await store.selectConversation('conv-2')
+
+      expect(mocks.sseDisconnect).not.toHaveBeenCalled()
+      expect(store.currentConversationId).toBe('conv-2')
+      expect(store.streaming).toBe(false)
+      expect(store.sending).toBe(false)
+      expect(store.awaitingConfirmation).toBe(false)
+
+      streamOptions.onMessage({ delta: 'Still working...', done: false })
+      await settleAsyncWork()
+
+      await store.selectConversation('conv-1')
+
+      expect(store.currentConversationId).toBe('conv-1')
+      expect(store.streaming).toBe(true)
+      expect(store.sending).toBe(true)
+      expect(store.awaitingConfirmation).toBe(true)
+      expect(store.messages.at(-1)?.role).toBe('assistant')
+      expect(store.messages.at(-1)?.content).toBe('Still working...')
+
+      streamOptions.onMessage({ delta: ' More context', done: false })
+      await settleAsyncWork()
+
+      expect(store.messages.at(-1)?.content).toBe('Still working... More context')
+
+      streamOptions.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+      resolveStream?.()
+      await sendPromise
+
+      expect(store.streaming).toBe(false)
+      expect(store.sending).toBe(false)
+    })
+
     it('should split streamed Reddit follow-up cards into separate assistant messages before persistence refresh', async () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'
@@ -386,6 +559,7 @@ describe('Chat Store', () => {
           id: message.id,
           role: message.role,
           content: message.content,
+          todo_card_id: (message as any).todo_card_id,
         })))
 
         options.onMessage({ delta: browserBlock, done: false })
@@ -443,7 +617,7 @@ describe('Chat Store', () => {
         },
       ]
 
-      let snapshotAfterTodoUpdate: Array<{ id: string; role: string; content: string }> = []
+      let snapshotAfterTodoUpdate: Array<{ id: string; role: string; content: string; todo_card_id?: string }> = []
 
       mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
         expect(_conversationId).toBe('conv-1')
@@ -455,12 +629,13 @@ describe('Chat Store', () => {
 
         options.onMessage({ delta: '- [ ] collect facts\n- [ ] write summary', done: false })
         options.onNewMessage?.(1)
-        options.onTodoUpdated?.('msg-assistant-current', '- [x] collect facts\n- [ ] write summary')
+        options.onTodoUpdated?.('msg-assistant-current', '- [x] collect facts\n- [ ] write summary', 'todo-checklist-msg-assistant-current')
 
         snapshotAfterTodoUpdate = store.messages.map(message => ({
           id: message.id,
           role: message.role,
           content: message.content,
+          todo_card_id: message.todo_card_id,
         }))
       })
 
@@ -474,6 +649,7 @@ describe('Chat Store', () => {
       const updatedChecklist = snapshotAfterTodoUpdate.find(message => message.content === '- [x] collect facts\n- [ ] write summary')
       expect(updatedChecklist).toBeTruthy()
       expect(updatedChecklist?.id.startsWith('streaming-')).toBe(true)
+      expect(updatedChecklist?.todo_card_id).toBe('todo-checklist-msg-assistant-current')
 
       const staleLegacyMatches = snapshotAfterTodoUpdate.filter(message => message.content.includes('legacy task'))
       expect(staleLegacyMatches).toHaveLength(1)
@@ -575,6 +751,41 @@ describe('Chat Store', () => {
       expect(items[0]?.warningCode).toBe('login_wall')
       expect(items[0]?.status).toBe('Login wall detected')
       expect(items[0]?.output).toContain('browser_target_id')
+      expect(items[0]?.icon).toBe('✓')
+    })
+
+    it('summarizes screenshot tool results without exposing base64 output', () => {
+      const items = parseToolResults([
+        {
+          name: 'browser',
+          id: 'browser-shot',
+          args: JSON.stringify({ action: 'screenshot', url: 'https://example.com' }),
+          result: JSON.stringify({
+            message: 'Screenshot captured for https://example.com',
+            screenshot: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII=',
+          }),
+        },
+      ])
+
+      expect(items).toHaveLength(1)
+      expect(items[0]?.status).toBe('Screenshot captured for https://example.com')
+      expect(items[0]?.output).toBe('')
+      expect(items[0]?.icon).toBe('✓')
+    })
+
+    it('handles truncated screenshot payloads without showing base64 blobs', () => {
+      const items = parseToolResults([
+        {
+          name: 'browser',
+          id: 'browser-shot-truncated',
+          args: JSON.stringify({ action: 'screenshot', url: 'https://example.com' }),
+          result: '{"message":"Screenshot captured for https://example.com","screenshot":"iVBORw0KGgoAAAANSUhEUg...[truncated]',
+        },
+      ])
+
+      expect(items).toHaveLength(1)
+      expect(items[0]?.status).toBe('Screenshot captured for https://example.com')
+      expect(items[0]?.output).toBe('')
       expect(items[0]?.icon).toBe('✓')
     })
   })

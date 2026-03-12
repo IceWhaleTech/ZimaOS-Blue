@@ -979,7 +979,7 @@ func (m *scriptedLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatRes
 func TestRunner_GenerateSummary_UsesOpenClawStyleReportPrompt(t *testing.T) {
 	llmStub := &captureResponseLLM{response: `Summary: Implemented the parser update and finished validation. One verification step still needs manual review.
 
-Suggested next steps:
+If you'd like, I can also help with:
 1. Review the manual verification output.
 2. Re-run the focused test suite after the next change.`}
 	runner := &Runner{llm: llmStub}
@@ -1011,6 +1011,7 @@ Suggested next steps:
 		"You are writing the final user-facing report for a completed ZimaOS Blue agent task.",
 		"## Output Contract",
 		"Provide 1-3 next steps total.",
+		"If you'd like, I can help you",
 		"## Style",
 		"Focus on what was accomplished, what failed, and what was verified.",
 		"## Constraints",
@@ -1051,10 +1052,10 @@ func TestRunner_GenerateSummaryFallbackIncludesNextSteps(t *testing.T) {
 	if !strings.Contains(got, "Summary: Completed 1/2 steps (1 failed).") {
 		t.Fatalf("expected fallback summary header, got=%q", got)
 	}
-	if !strings.Contains(got, "Suggested next steps:") {
-		t.Fatalf("expected fallback to include suggested next steps, got=%q", got)
+	if !strings.Contains(got, "If you'd like, I can also help with:") {
+		t.Fatalf("expected fallback to include optional-help heading, got=%q", got)
 	}
-	if !strings.Contains(got, "Inspect the failed steps") {
+	if !strings.Contains(got, "If you'd like, I can inspect the failed steps") {
 		t.Fatalf("expected fallback to include failure-oriented guidance, got=%q", got)
 	}
 }
@@ -1278,7 +1279,7 @@ func TestRunner_AutoReflectCompletedTask(t *testing.T) {
 		{content: `{"goal":"finish parser fix","subtasks":[{"description":"apply parser fix"}],"success_criteria":["verification passes"],"fallback_plan":["inspect the failing step"]}`},
 		{content: "apply parser fix completed"},
 		{content: "verification passed"},
-		{content: "Summary: The parser fix completed and verification passed.\n\nLearned:\n- Run focused verification before broader validation.\n\nSuggested next steps:\n1. Verify the deliverable in your environment.\n2. Run the adjacent parser tests.\n3. Continue with the next improvement."},
+		{content: "Summary: The parser fix completed and verification passed.\n\nLearned:\n- Run focused verification before broader validation.\n\nIf you'd like, I can also help with:\n1. If you'd like, I can help verify the deliverable in your environment.\n2. If you want, I can help run the adjacent parser tests.\n3. If you'd like, I can continue with the next improvement."},
 	}}
 	reflector := &mockReflector{result: &selfreflect.Result{
 		Summary: "Reflection complete.",
@@ -1331,7 +1332,7 @@ func TestRunner_AutoReflectFailedTask(t *testing.T) {
 		{content: "primary step completed"},
 		{err: fmt.Errorf("verify failed")},
 		{err: fmt.Errorf("recover failed")},
-		{content: "Summary: The task failed after verification and recovery both failed.\n\nLearned:\n- Record the first verification failure before retrying.\n\nSuggested next steps:\n1. Inspect the failing verification output.\n2. Narrow the recovery scope.\n3. Retry with a changed input."},
+		{content: "Summary: The task failed after verification and recovery both failed.\n\nLearned:\n- Record the first verification failure before retrying.\n\nIf you'd like, I can also help with:\n1. If you'd like, I can inspect the failing verification output.\n2. If you want, I can help narrow the recovery scope.\n3. If you'd like, I can retry with a changed input."},
 	}}
 	reflector := &mockReflector{result: &selfreflect.Result{
 		Summary: "Failure reflection complete.",

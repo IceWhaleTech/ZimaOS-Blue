@@ -9,21 +9,23 @@ import (
 
 // mockPushService implements PushServiceInterface for testing.
 type mockPushService struct {
-	addCalled   bool
-	addOwner    string
-	addMessage  string
-	addSession  string
-	listResult  []PushResult
-	deletedID   string
-	clearedUser string
-	clearCount  int64
-	err         error
+	addCalled    bool
+	addOwner     string
+	addMessage   string
+	addRecurring string
+	addSession   string
+	listResult   []PushResult
+	deletedID    string
+	clearedUser  string
+	clearCount   int64
+	err          error
 }
 
-func (m *mockPushService) Add(_ context.Context, ownerID, message string, _ time.Time, _, sessionID string) (PushResult, error) {
+func (m *mockPushService) Add(_ context.Context, ownerID, message string, _ time.Time, recurring, sessionID string) (PushResult, error) {
 	m.addCalled = true
 	m.addOwner = ownerID
 	m.addMessage = message
+	m.addRecurring = recurring
 	m.addSession = sessionID
 	if m.err != nil {
 		return PushResult{}, m.err
@@ -125,6 +127,30 @@ func TestPushToolExecuteAdd_SessionIDFromContext(t *testing.T) {
 	}
 	if svc.addSession != "conv-abc" {
 		t.Errorf("session_id = %q, want %q (should be auto-extracted from context)", svc.addSession, "conv-abc")
+	}
+}
+
+func TestPushToolExecuteAdd_SupportsNestedCompatArgs(t *testing.T) {
+	svc := &mockPushService{}
+	tool := NewPushTool(svc)
+
+	ctx := WithUserID(context.Background(), "user-1")
+	_, err := tool.Execute(ctx, map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":     "add",
+			"content":    "drink water",
+			"fireAt":     "1h",
+			"recurrence": "daily",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.addMessage != "drink water" {
+		t.Fatalf("message = %q, want %q", svc.addMessage, "drink water")
+	}
+	if svc.addRecurring != "daily" {
+		t.Fatalf("recurring = %q, want %q", svc.addRecurring, "daily")
 	}
 }
 

@@ -1,4 +1,6 @@
 import { ref, readonly, computed } from 'vue'
+import { systemApi } from '@/api/system'
+import { isCurrentHostLoopback, isLocalAbsolutePath } from '@/utils/localPath'
 
 // Declare the desktop marker type for TypeScript
 declare global {
@@ -68,10 +70,34 @@ export function useTauri() {
    * In Tauri, uses custom command. In web browser, uses window.open.
    */
   async function openInBrowser(url: string): Promise<boolean> {
+    const trimmedUrl = url.trim()
+    if (!trimmedUrl) return false
+
+    // If caller asks to open a local absolute path, first try native reveal.
+    if (isLocalAbsolutePath(trimmedUrl)) {
+      const revealed = await revealInFileManager(trimmedUrl)
+      if (revealed) return true
+
+      const downloadUrl = await resolveLocalFileDownloadURL(trimmedUrl)
+      if (downloadUrl) {
+        try {
+          window.open(downloadUrl, '_blank')
+          return true
+        } catch (e) {
+          console.error('Failed to open local file download URL:', e)
+        }
+      }
+
+      if (!isTauriApp.value) {
+        // In web mode, local absolute filesystem paths are not valid browser URLs.
+        return false
+      }
+    }
+
     // If not in Tauri, use regular window.open
     if (!isTauriApp.value) {
       try {
-        window.open(url, '_blank')
+        window.open(trimmedUrl, '_blank')
         return true
       } catch (e) {
         console.error('Failed to open URL in browser:', e)
@@ -83,17 +109,17 @@ export function useTauri() {
     try {
       const internals = window.__TAURI_INTERNALS__
       if (internals?.invoke) {
-        await internals.invoke('open_url', { url })
+        await internals.invoke('open_url', { url: trimmedUrl })
         return true
       }
       // Fallback to window.open if invoke not available
-      window.open(url, '_blank')
+      window.open(trimmedUrl, '_blank')
       return true
     } catch (e) {
       console.error('Failed to open URL in browser:', e)
       // Try fallback
       try {
-        window.open(url, '_blank')
+        window.open(trimmedUrl, '_blank')
         return true
       } catch {
         return false
@@ -125,6 +151,55 @@ export function useTauri() {
     }
   }
 
+  /**
+   * Reveal a local path in the system file manager.
+   * Only available in desktop runtime.
+   */
+  async function revealInFileManager(path: string): Promise<boolean> {
+    const trimmedPath = path.trim()
+    if (!trimmedPath) return false
+    if (!isLocalAbsolutePath(trimmedPath)) return false
+
+    const revealViaLoopbackApi = async (): Promise<boolean> => {
+      if (!isCurrentHostLoopback()) return false
+      try {
+        await systemApi.revealPath(trimmedPath)
+        return true
+      } catch (e) {
+        console.error('Failed to reveal path via loopback API:', e)
+        return false
+      }
+    }
+
+    if (!isTauriApp.value) {
+      return revealViaLoopbackApi()
+    }
+
+    try {
+      const internals = window.__TAURI_INTERNALS__
+      if (internals?.invoke) {
+        await internals.invoke('reveal_path', { path: trimmedPath })
+        return true
+      }
+      // External localhost pages in desktop runtime may not have Tauri IPC.
+      return revealViaLoopbackApi()
+    } catch (e) {
+      console.error('Failed to reveal path in file manager:', e)
+      return revealViaLoopbackApi()
+    }
+  }
+
+  async function resolveLocalFileDownloadURL(path: string): Promise<string | null> {
+    try {
+      const data = await systemApi.resolveLocalFile(path)
+      const downloadURL = String(data.download_url || '').trim()
+      return downloadURL || null
+    } catch (e) {
+      console.error('Failed to resolve local file download URL:', e)
+      return null
+    }
+  }
+
   return {
     /** Whether the app is running inside Tauri */
     isTauri: readonly(isTauriApp),
@@ -138,6 +213,8 @@ export function useTauri() {
     setCloseBehavior,
     /** Sync tray menu language with app locale */
     setTrayLocale,
+    /** Reveal path in system file manager */
+    revealInFileManager,
   }
 }
 

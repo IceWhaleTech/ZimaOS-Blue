@@ -45,18 +45,39 @@ export default {
     forgotPassword: 'Esqueceu-se da palavra-passe?',
     orContinueWith: 'Ou continuar com',
     signInWith: 'Iniciar sessão com {provider}',
-    invalidCredentials: "Nome de utilizador ou palavra-passe inválidos",
-    accountLocked: "A conta está bloqueada",
-    accountDisabled: "A conta está desativada",
-    authServiceUnavailable: "Serviço de autenticação temporariamente indisponível",
-    loginFailed: "Falha no início de sessão",
-    currentPasswordIncorrect: "A palavra-passe atual está incorreta",
-    newPasswordRequirements: "A nova palavra-passe não cumpre os requisitos",
-    changePasswordFailed: "Falha ao alterar a palavra-passe",
+    invalidCredentials: 'Nome de utilizador ou palavra-passe inválidos',
+    accountLocked: 'A conta está bloqueada',
+    accountDisabled: 'A conta está desativada',
+    authServiceUnavailable: 'Serviço de autenticação temporariamente indisponível',
+    loginFailed: 'Falha no início de sessão',
+    currentPasswordIncorrect: 'A palavra-passe atual está incorreta',
+    newPasswordRequirements: 'A nova palavra-passe não cumpre os requisitos',
+    changePasswordFailed: 'Falha ao alterar a palavra-passe',
     signUp: 'Registar', // instead of 'Cadastrar'
   },
   nav: {
     ...ptBR.nav,
+    workspaceCoreTab: 'Workspace Core Files',
+    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTitle: 'Workspace Directory Tree',
+    workspaceGeneratedDescription:
+      'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
+    workspaceGeneratedLoadFailed: 'Failed to scan generated file sources',
+    workspaceUnknownConversation: 'Conversation',
+    workspaceJumpToConversation: 'Go to conversation',
+    workspaceTreeLoadFailed: 'Failed to load workspace directory tree',
+    workspaceTreeLoading: 'Loading workspace tree and conversation links...',
+    workspaceTreeEmpty: 'No files found in workspace tree.',
+    workspaceTreeFilteredEmpty: 'No conversation-linked files in the current filtered tree view.',
+    workspaceTreeDirCount: 'Dirs',
+    workspaceTreeFileCount: 'Files',
+    workspaceTreeLinkedCount: 'Linked',
+    workspaceTreeShowAll: 'Show all files',
+    workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeExpandDir: 'Expand folder',
+    workspaceTreeCollapseDir: 'Collapse folder',
+    workspaceTreeOpenFailed: 'Unable to open workspace file',
+    workspaceTreeRevealFailed: 'Unable to open file location',
     settings: 'Definições',
     chat: 'Conversa',
     dashboard: 'Painel',
@@ -89,6 +110,7 @@ export default {
   },
   chat: {
     ...ptBR.chat,
+    execDirectoryApprovalTimeout: 'A execução do comando foi bloqueada porque a aprovação do diretório expirou. Aprove o diretório e tente novamente.',
     streamProgress: {
       requestAccepted: 'Pedido recebido, a preparar resposta...',
       generating: 'A gerar resposta...',
@@ -97,7 +119,8 @@ export default {
       processing: 'A processar...',
       completed: 'Concluído',
     },
-    featureHintTapToEnable: "Funcionalidades opcionais detetadas. Toque para assinalar antes de enviar:",
+    featureHintTapToEnable:
+      'Funcionalidades opcionais detetadas. Toque para assinalar antes de enviar:',
     send: 'Enviar',
     sendDuringStream: 'Enviar (adicionar à conversa)',
     responseInterrupted: 'Resposta interrompida',
@@ -126,13 +149,28 @@ export default {
     deepResearchStageCompleted: 'Concluído',
     deepResearchStageFailed: 'Falhou',
     deepResearchStageCancelled: 'Cancelado',
+    deepResearchProcess: 'Processo de pesquisa',
+    deepResearchLiveSources: 'Fontes em tempo real',
+    deepResearchResearchBrief: 'Resumo de pesquisa',
+    deepResearchMustVerify: 'Precisa de verificação',
+    deepResearchPlannedTasks: 'Tarefas planeadas',
+    deepResearchFollowUpQuery: 'Consulta de seguimento',
+    deepResearchRunningTasks: 'Tarefas de pesquisa em curso',
+    deepResearchRunningElsewhere: 'Acompanhe tarefas ativas de pesquisa profunda entre conversas.',
+    deepResearchViewTask: 'Ver tarefa',
+    deepResearchCancelTask: 'Cancelar',
+    deepResearchTaskCompleted: 'Pesquisa concluída',
+    deepResearchTaskFailed: 'A pesquisa falhou',
+    deepResearchTaskCancelled: 'Pesquisa cancelada',
+    deepResearchBackToTask: 'Ver resultado',
     stillListening: 'Continue, estou a ouvir...',
     imageGenStopped: 'A geração de imagem foi interrompida.',
     videoGenStopped: 'A geração de vídeo foi interrompida.',
     agentTaskStopped: 'A tarefa "{goal}" foi interrompida.',
     contextPruned: 'Contexto reduzido, {tokens} tokens poupados',
     contextCompacted: 'Contexto compactado: {before} → {after} mensagens',
-    providerOpenRouterPrivacyPolicy: 'O OpenRouter bloqueou este pedido devido às definições de privacidade. Aceda a https://openrouter.ai/settings/privacy, ative "Free model publication" e tente novamente.',
+    providerOpenRouterPrivacyPolicy:
+      'O OpenRouter bloqueou este pedido devido às definições de privacidade. Aceda a https://openrouter.ai/settings/privacy, ative "Free model publication" e tente novamente.',
     deleteConversation: 'Eliminar conversa',
     confirmDelete: 'Eliminar?',
     attachFile: 'Anexar ficheiro',
@@ -151,7 +189,8 @@ export default {
     switchToVoice: 'Switch to voice',
     voiceTranscribing: 'Transcribing...',
     voiceTranscriptionError: 'Falha ao transcrever áudio',
-    voiceTranscriptionTimeout: 'A transcrição expirou. O áudio pode ser demasiado longo ou o servidor está ocupado, tente novamente.',
+    voiceTranscriptionTimeout:
+      'A transcrição expirou. O áudio pode ser demasiado longo ou o servidor está ocupado, tente novamente.',
     voiceRecordingError: 'A recording error occurred',
     voiceMicrophoneError: 'Não foi possível aceder ao microfone',
     // Voice messages
@@ -173,13 +212,18 @@ export default {
     confirmReset: 'Tem a certeza de que pretende repor o painel para as definições predefinidas?',
     resetToDefaults: 'Repor predefinições',
   },
-  home: { ...ptBR.home },
+  home: {
+    ...ptBR.home,
+    description: 'Um runtime estável, fiável e neutro para os seus assistentes de IA e automatizações',
+  },
   settings: {
     ...ptBR.settings,
+    llmApiKeyRequired: 'Configure uma chave de API antes de abrir a página de fornecedores LLM.',
     agentReflection: {
       ...ptBR.settings.agentReflection,
       title: 'Autorreflexão automática',
-      description: 'Depois de o {agentMode} terminar ou falhar, extrai uma reflexão curta e guarda lições reutilizáveis na memória.',
+      description:
+        'Depois de o {agentMode} terminar ou falhar, extrai uma reflexão curta e guarda lições reutilizáveis na memória.',
       hint: 'Tarefas canceladas ou abortadas são ignoradas. Erros de reflexão não alteram o estado final da tarefa.',
       saved: 'Autorreflexão automática guardada',
       saveFailed: 'Falha ao guardar a definição de autorreflexão automática',
@@ -187,15 +231,18 @@ export default {
     smallModel: {
       ...ptBR.settings.smallModel,
       title: 'Aceleracao leve',
-      description: 'Usa primeiro o modelo leve para tarefas simples, com retorno automatico quando indisponivel.',
+      description:
+        'Usa primeiro o modelo leve para tarefas simples, com retorno automatico quando indisponivel.',
       ready: 'Disponivel',
       downloading: 'A transferir',
       notReady: 'Nao transferido',
       enabled: 'Ativar aceleracao leve',
       enabledHint: 'Quando ativado, as tarefas adequadas sao tratadas primeiro pelo modelo leve.',
       userGuideTitle: 'O que isto faz',
-      userGuideItem1: 'Prioriza perguntas curtas e algumas decisoes de ferramentas para respostas mais rapidas.',
-      userGuideItem2: 'Volta automaticamente ao modelo principal quando o modelo leve nao esta disponivel.',
+      userGuideItem1:
+        'Prioriza perguntas curtas e algumas decisoes de ferramentas para respostas mais rapidas.',
+      userGuideItem2:
+        'Volta automaticamente ao modelo principal quando o modelo leve nao esta disponivel.',
       userGuideItem3: 'Transfira o modelo antes da primeira utilizacao.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
@@ -207,7 +254,8 @@ export default {
       expand: 'Expandir',
       collapse: 'Recolher',
       statsTitle: 'Estatisticas de execucao (resolucao de problemas)',
-      statsHint: 'Principalmente para resolucao de problemas e ajuste; pode ser ignorado no uso diario.',
+      statsHint:
+        'Principalmente para resolucao de problemas e ajuste; pode ser ignorado no uso diario.',
       irTakeovers: 'Tomadas pela estratégia',
       shadowGateMinSamples: 'Amostras mínimas do Shadow Gate',
       shadowGateThreshold: 'Limiar do Shadow Gate',
@@ -217,9 +265,11 @@ export default {
       shadowGateSceneTool: 'Ferramenta',
       mediaIntent: 'Reconhecimento de cenários de geração de mídia',
       irOfflineFallbackTitle: 'Offline Local Fallback',
-      irOfflineFallbackDesc: 'When model fallback is needed, answer from local context recall first.',
+      irOfflineFallbackDesc:
+        'When model fallback is needed, answer from local context recall first.',
       irFeatureHintTitle: 'Feature Hint Detection',
-      irFeatureHintDesc: 'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
+      irFeatureHintDesc:
+        'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
     },
     title: 'Definições',
     languageSaved: 'Idioma guardado',
@@ -261,21 +311,25 @@ export default {
     loadingUserInformation: 'A carregar informações do utilizador...',
     loadingLinkedAccounts: 'A carregar contas vinculadas...',
     deleteApiKey: 'Eliminar chave API',
-    confirmDeleteApiKey: 'Tem a certeza de que pretende eliminar esta chave API? Esta ação não pode ser desfeita.',
+    confirmDeleteApiKey:
+      'Tem a certeza de que pretende eliminar esta chave API? Esta ação não pode ser desfeita.',
   },
   footer: { ...ptBR.footer },
   billing: {
     ...enUS.billing,
     title: 'Faturacao',
-    description: 'Consulte custos de utilizacao e consumo de tokens por intervalo de tempo, fornecedor e modelo.',
+    description:
+      'Consulte custos de utilizacao e consumo de tokens por intervalo de tempo, fornecedor e modelo.',
     apply: 'Aplicar',
     reset: 'Repor',
     exportCSV: 'Exportar CSV',
-    featureDisabled: 'A faturacao esta indisponivel neste momento porque o rastreio de utilizacao do fornecedor nao foi inicializado.',
+    featureDisabled:
+      'A faturacao esta indisponivel neste momento porque o rastreio de utilizacao do fornecedor nao foi inicializado.',
     noData: 'Nao foram encontrados registos de faturacao para os filtros atuais',
     loadFailed: 'Falha ao carregar dados de faturacao',
     anomalyTitle: 'Alertas de pico de utilizacao',
-    anomalyHint: 'Deteta dias em que a utilizacao de tokens esta significativamente acima da linha de base recente de 7 dias.',
+    anomalyHint:
+      'Deteta dias em que a utilizacao de tokens esta significativamente acima da linha de base recente de 7 dias.',
     anomalyNone: 'Nao foram detetados picos significativos de utilizacao no intervalo atual',
     breakdownTitle: 'Resumo por agrupamento',
     linesTitle: 'Registos detalhados',
@@ -293,7 +347,8 @@ export default {
     editingMode: 'Modo de edição - alterações não guardadas',
     configSaved: 'Configuração guardada com sucesso',
     deleteConfirm: 'Tem a certeza de que pretende eliminar este backup?',
-    restoreConfirm: 'Tem a certeza de que pretende restaurar este backup? Os dados atuais serão sobrescritos.',
+    restoreConfirm:
+      'Tem a certeza de que pretende restaurar este backup? Os dados atuais serão sobrescritos.',
     exportLogs: 'Exportar registos',
     clearLogs: 'Limpar registos',
     loadingLogs: 'A carregar registos...',
@@ -303,7 +358,8 @@ export default {
   autoReply: {
     ...ptBR.autoReply,
     deleteRule: 'Eliminar regra',
-    deleteConfirmation: 'Tem a certeza de que pretende eliminar a regra "{name}"? Esta ação não pode ser desfeita.',
+    deleteConfirmation:
+      'Tem a certeza de que pretende eliminar a regra "{name}"? Esta ação não pode ser desfeita.',
     deleting: 'A eliminar...',
     saving: 'A guardar...',
     reset: 'Repor',
@@ -326,7 +382,8 @@ export default {
     save: 'Guardar',
     saving: 'A guardar...',
     deleteConfirm: 'Tem a certeza de que pretende eliminar <strong>{name}</strong>?',
-    deleteWarning: 'Esta ação não pode ser desfeita. Todos os dados serão permanentemente eliminados.',
+    deleteWarning:
+      'Esta ação não pode ser desfeita. Todos os dados serão permanentemente eliminados.',
     deleting: 'A eliminar...',
     settings: {
       ...ptBR.tenants.settings,
@@ -362,6 +419,7 @@ export default {
     nextcloudTalk: 'Nextcloud Talk',
     nextcloudTalkDesc: 'Ligar via Nextcloud Talk',
     nextcloudTalkHint: 'Utilize uma conta Nextcloud e o token da sala do Talk',
+    feishuOpenChat: 'Abrir conversa do bot',
     username: 'Nome de utilizador',
     roomToken: 'Token da sala',
   },
@@ -389,10 +447,12 @@ export default {
     firewall: {
       ...enUS.security.firewall,
       title: 'Firewall de prompts',
-      description: 'Mantenha uma lista de bloqueio por palavras-chave para intercetar prompts de risco antes do processamento.',
+      description:
+        'Mantenha uma lista de bloqueio por palavras-chave para intercetar prompts de risco antes do processamento.',
       ruleCount: '{count} regras de palavras-chave ativas',
       builtinTitle: 'Regras de bloqueio predefinidas',
-      builtinDescription: 'As regras de interceção integradas estão ativas por predefinição e podem ser ajustadas dinamicamente.',
+      builtinDescription:
+        'As regras de interceção integradas estão ativas por predefinição e podem ser ajustadas dinamicamente.',
       customTitle: 'Regras personalizadas de palavras-chave',
       keywordPlaceholder: 'Introduza palavra-chave ou expressão bloqueada',
       add: 'Adicionar regra',
@@ -403,7 +463,8 @@ export default {
     },
     settings: {
       ...ptBR.security.settings,
-      cleanupConfirm: 'Todos os dados de monitoramento mais antigos que o período de retenção serão eliminados. Continuar?',
+      cleanupConfirm:
+        'Todos os dados de monitoramento mais antigos que o período de retenção serão eliminados. Continuar?',
     },
     scan: {
       ...ptBR.security.scan,
@@ -425,7 +486,8 @@ export default {
         ...ptBR.security.scan.items,
         auth_password_length: {
           name: 'Comprimento mínimo da palavra-passe',
-          description: 'Verificar se o comprimento mínimo da palavra-passe atende aos requisitos de segurança',
+          description:
+            'Verificar se o comprimento mínimo da palavra-passe atende aos requisitos de segurança',
         },
         auth_password_complexity: {
           name: 'Complexidade da palavra-passe',
@@ -440,11 +502,13 @@ export default {
   },
   stats: {
     ...ptBR.stats,
-    clearConfirm: 'Tem a certeza de que pretende limpar todas as estatísticas? Isso não pode ser desfeito.',
+    clearConfirm:
+      'Tem a certeza de que pretende limpar todas as estatísticas? Isso não pode ser desfeito.',
   },
   metrics: {
     ...ptBR.metrics,
-    confirmReset: 'Tem a certeza de que pretende repor todas as métricas? Esta ação não pode ser desfeita.',
+    confirmReset:
+      'Tem a certeza de que pretende repor todas as métricas? Esta ação não pode ser desfeita.',
     reset: 'Repor',
     resetSuccess: 'Métricas repostas',
   },
@@ -463,7 +527,8 @@ export default {
   },
   claudecode: {
     ...ptBR.claudecode,
-    disabledWarningDesc: 'O modo padrão está ativo, o modo melhorado oferece uma experiência melhor.',
+    disabledWarningDesc:
+      'O modo padrão está ativo, o modo melhorado oferece uma experiência melhor.',
     missingToolCalling: 'Capacidades avançadas de Tool Calling',
   },
   providerPool: {
@@ -484,10 +549,13 @@ export default {
     healthErrors: {
       authError: 'Autenticação falhou (HTTP {code}) — verifique a sua chave API ou a ligação OAuth',
       baseUrlNotConfigured: 'URL base não configurado — defina o URL do endpoint',
-      baseUrlNotConfiguredAzure: 'Endpoint Azure OpenAI não configurado — clique em Configurar acima para definir o URL do endpoint',
-      baseUrlNotConfiguredBedrock: 'Endpoint AWS Bedrock não configurado — clique em Configurar acima para definir o URL do endpoint',
+      baseUrlNotConfiguredAzure:
+        'Endpoint Azure OpenAI não configurado — clique em Configurar acima para definir o URL do endpoint',
+      baseUrlNotConfiguredBedrock:
+        'Endpoint AWS Bedrock não configurado — clique em Configurar acima para definir o URL do endpoint',
       networkError: 'Falha na ligação de rede — verifique o URL e a sua rede',
-      certificateError: 'Erro de certificado TLS — ative \"Ignorar verificação TLS\" ou verifique o certificado',
+      certificateError:
+        'Erro de certificado TLS — ative \"Ignorar verificação TLS\" ou verifique o certificado',
       timeoutError: 'Tempo de ligação esgotado — o servidor pode estar em baixo ou inacessível',
       connectionError: 'Falha na ligação — verifique o URL do provedor',
       endpointNotFound: 'Endpoint de verificação de saúde não encontrado (HTTP 404)',
@@ -536,32 +604,133 @@ export default {
   },
   speech: {
     ...ptBR.speech,
-    kokoroDesc: 'TTS neural offline de alta qualidade (modelo ~127MB + vozes ~5MB + ONNX Runtime ~30MB)',
-    kokoroQuality: 'Natural', kokoroDownload: 'Transferir modelo Kokoro + ONNX Runtime', kokoroDownloading: 'A transferir modelo Kokoro e ONNX Runtime...',
-    kokoroReady: 'Modelo pronto', kokoroLanguages: 'Idiomas suportados', kokoroCancelDownload: 'Cancelar transferência',
-    kokoroSupportsYourLang: 'Suporta o seu idioma ({lang})', kokoroOtherLangs: '{count} outros idiomas',
-    initProgress: 'A inicializar Kokoro', initComplete: 'Kokoro pronto',
-    initStage: { loading_dictionary: 'A carregar dicionário G2P...', loading_runtime: 'A carregar ONNX Runtime...', loading_voice: 'A carregar dados de voz...', loading_model: 'A carregar modelo ONNX...' },
-    langName: { 'en-US': 'Inglês (EUA)', 'en-GB': 'Inglês (Reino Unido)', 'ja-JP': 'Japonês', 'zh-CN': 'Chinês (simplificado)', 'es-ES': 'Espanhol', 'fr-FR': 'Francês', 'hi-IN': 'Hindi', 'it-IT': 'Italiano', 'pt-BR': 'Português (Brasil)' },
-    status: 'Estado da fala', asr: 'Reconhecimento de voz', tts: 'Síntese de voz', ready: 'Pronto', notReady: 'Não está pronto',
-    editBeforeSend: 'Editar antes de enviar', editBeforeSendDesc: 'Permitir editar o texto após o reconhecimento de voz antes de enviar',
-    asrModels: 'Modelos de reconhecimento de voz', downloading: 'A transferir...', download: 'Transferir', use: 'Utilizar', inUse: 'Em utilização',
-    fetchError: 'Não foi possível obter o estado da fala', downloadError: 'Não foi possível transferir o modelo', switchError: 'Não foi possível mudar o modelo', switching: 'A mudar...',
-    deleteError: 'Não foi possível eliminar o modelo', cancelError: 'Não foi possível cancelar a transferência', eta: 'Tempo restante', confirmDelete: 'Tem a certeza de que pretende eliminar este modelo?',
-    ttsProvider: 'Fornecedor TTS', edgeTTSName: 'Microsoft Edge TTS', edgeTTSQuality: 'Natural', espeakNGQuality: 'Offline',
-    espeakDepLib: 'Motor eSpeak-NG + dados linguísticos', espeakLangs: 'idiomas', espeakNeedRebuild: 'Dados eSpeak-NG não encontrados. Reconstrua com a etiqueta espeak.',
-    macosNativeName: 'macOS Nativo', macosNativeDesc: 'Síntese de voz macOS integrada (offline, sem transferência)', macosNativeSTTDesc: 'Reconhecimento de voz macOS integrado (offline, sem transferência)', macosNativeQuality: 'Excelente',
+    convertTask: {
+      task: 'Tarefa',
+      cancelling: 'A cancelar...',
+      downloadAudio: 'Transferir áudio',
+      downloadVideo: 'Transferir vídeo',
+      downloadPdf: 'Transferir PDF',
+      downloadText: 'Transferir texto',
+      downloadFile: 'Transferir ficheiro',
+      action: {
+        convert: 'Converter',
+        merge: 'Unir',
+        split: 'Dividir',
+        trim: 'Cortar',
+        extractAudio: 'Extrair áudio',
+        extractFrames: 'Extrair fotogramas',
+        tts: 'Síntese de voz',
+        asr: 'Reconhecimento de voz',
+      },
+      previewKind: {
+        file: 'Ficheiro',
+        audio: 'Áudio',
+        video: 'Vídeo',
+        image: 'Imagem',
+        pdf: 'PDF',
+        text: 'Texto',
+      },
+      message: {
+        queued: 'Em fila',
+        processing: 'A processar',
+        completed: 'Concluído',
+        taskCancelled: 'Tarefa cancelada',
+        taskFailed: 'Falha na tarefa',
+        convertCompleted: 'Conversão concluída',
+        mergeCompleted: 'União concluída',
+        splitCompleted: 'Divisão concluída',
+        trimCompleted: 'Corte concluído',
+        extractAudioCompleted: 'Extração de áudio concluída',
+        extractFramesCompleted: 'Exportação de fotogramas concluída',
+        ttsCompleted: 'Áudio de fala criado',
+        asrCompleted: 'Transcrição concluída',
+      },
+    },
+    kokoroDesc:
+      'TTS neural offline de alta qualidade (modelo ~127MB + vozes ~5MB + ONNX Runtime ~30MB)',
+    kokoroQuality: 'Natural',
+    kokoroDownload: 'Transferir modelo Kokoro + ONNX Runtime',
+    kokoroDownloading: 'A transferir modelo Kokoro e ONNX Runtime...',
+    kokoroReady: 'Modelo pronto',
+    kokoroLanguages: 'Idiomas suportados',
+    kokoroCancelDownload: 'Cancelar transferência',
+    kokoroSupportsYourLang: 'Suporta o seu idioma ({lang})',
+    kokoroOtherLangs: '{count} outros idiomas',
+    initProgress: 'A inicializar Kokoro',
+    initComplete: 'Kokoro pronto',
+    initStage: {
+      loading_dictionary: 'A carregar dicionário G2P...',
+      loading_runtime: 'A carregar ONNX Runtime...',
+      loading_voice: 'A carregar dados de voz...',
+      loading_model: 'A carregar modelo ONNX...',
+    },
+    langName: {
+      'en-US': 'Inglês (EUA)',
+      'en-GB': 'Inglês (Reino Unido)',
+      'ja-JP': 'Japonês',
+      'zh-CN': 'Chinês (simplificado)',
+      'es-ES': 'Espanhol',
+      'fr-FR': 'Francês',
+      'hi-IN': 'Hindi',
+      'it-IT': 'Italiano',
+      'pt-BR': 'Português (Brasil)',
+    },
+    status: 'Estado da fala',
+    asr: 'Reconhecimento de voz',
+    tts: 'Síntese de voz',
+    ready: 'Pronto',
+    notReady: 'Não está pronto',
+    editBeforeSend: 'Editar antes de enviar',
+    editBeforeSendDesc: 'Permitir editar o texto após o reconhecimento de voz antes de enviar',
+    asrModels: 'Modelos de reconhecimento de voz',
+    downloading: 'A transferir...',
+    download: 'Transferir',
+    use: 'Utilizar',
+    inUse: 'Em utilização',
+    fetchError: 'Não foi possível obter o estado da fala',
+    downloadError: 'Não foi possível transferir o modelo',
+    switchError: 'Não foi possível mudar o modelo',
+    switching: 'A mudar...',
+    deleteError: 'Não foi possível eliminar o modelo',
+    cancelError: 'Não foi possível cancelar a transferência',
+    eta: 'Tempo restante',
+    confirmDelete: 'Tem a certeza de que pretende eliminar este modelo?',
+    ttsProvider: 'Fornecedor TTS',
+    edgeTTSName: 'Microsoft Edge TTS',
+    edgeTTSQuality: 'Natural',
+    espeakNGQuality: 'Offline',
+    espeakDepLib: 'Motor eSpeak-NG + dados linguísticos',
+    espeakLangs: 'idiomas',
+    espeakNeedRebuild: 'Dados eSpeak-NG não encontrados. Reconstrua com a etiqueta espeak.',
+    macosNativeName: 'macOS Nativo',
+    macosNativeDesc: 'Síntese de voz macOS integrada (offline, sem transferência)',
+    macosNativeSTTDesc: 'Reconhecimento de voz macOS integrado (offline, sem transferência)',
+    macosNativeQuality: 'Excelente',
     macosNativeOnDeviceOnly: 'Apenas no dispositivo',
-    macosNativeOnDeviceDesc: 'Forçar reconhecimento no dispositivo (nenhum dado enviado para os servidores da Apple)',
+    macosNativeOnDeviceDesc:
+      'Forçar reconhecimento no dispositivo (nenhum dado enviado para os servidores da Apple)',
     macosNativeOnDeviceUnsupported: 'Modelo no dispositivo não disponível para o idioma atual',
-    dictationDisabledGuide: 'O ditado não está ativado. O reconhecimento no dispositivo requer ditado. Vá a Definições do Sistema > Teclado > Ditado para o ativar.',
+    dictationDisabledGuide:
+      'O ditado não está ativado. O reconhecimento no dispositivo requer ditado. Vá a Definições do Sistema > Teclado > Ditado para o ativar.',
     recheckDictation: 'Verificar novamente',
-    onDeviceUnavailableError: 'O reconhecimento no dispositivo não está disponível. Ative o ditado em Definições do Sistema > Teclado > Ditado, ou desative o modo "Apenas no dispositivo".',
+    onDeviceUnavailableError:
+      'O reconhecimento no dispositivo não está disponível. Ative o ditado em Definições do Sistema > Teclado > Ditado, ou desative o modo "Apenas no dispositivo".',
     noModelsAvailable: 'Sem modelos disponíveis deste fornecedor',
-    asrTab: 'Reconhecimento de voz (ASR)', ttsTab: 'Síntese de voz (TTS)',
-    prompt: { asrTitle: 'Modelo de reconhecimento de voz necessário', asrDescription: 'Para utilizar a entrada de voz, transfira um modelo de reconhecimento de voz.', ttsTitle: 'Modelo de síntese de voz necessário', ttsDescription: 'Para reproduzir áudio, transfira um modelo de síntese de voz.' },
-    autoPlayTTS: 'Reprodução automática TTS', autoPlayTTSDesc: 'Reproduzir TTS automaticamente quando o assistente responde',
-    rate: 'Velocidade da fala', pitch: 'Tom', volume: 'Volume', voiceSettings: 'Definições de voz',
+    asrTab: 'Reconhecimento de voz (ASR)',
+    ttsTab: 'Síntese de voz (TTS)',
+    prompt: {
+      asrTitle: 'Modelo de reconhecimento de voz necessário',
+      asrDescription:
+        'Para utilizar a entrada de voz, transfira um modelo de reconhecimento de voz.',
+      ttsTitle: 'Modelo de síntese de voz necessário',
+      ttsDescription: 'Para reproduzir áudio, transfira um modelo de síntese de voz.',
+    },
+    autoPlayTTS: 'Reprodução automática TTS',
+    autoPlayTTSDesc: 'Reproduzir TTS automaticamente quando o assistente responde',
+    rate: 'Velocidade da fala',
+    pitch: 'Tom',
+    volume: 'Volume',
+    voiceSettings: 'Definições de voz',
   },
   remoteAccess: {
     ...ptBR.remoteAccess,
@@ -573,7 +742,7 @@ export default {
       syncing: 'A sincronizar loja de competências...',
       skillsSynced: '{count} competências sincronizadas',
     },
-  
+
     detail: {
       emptyTitle: 'Select a skill',
       emptyDescription: 'Choose a skill to view detailed information and docs.',
@@ -665,16 +834,19 @@ export default {
       bearer_token: 'Token Bearer',
       credit_card: 'Número de cartão de crédito',
     },
-    smartToolsDesc: 'Envia apenas ferramentas relevantes por consulta, reduzindo o consumo de tokens',
+    smartToolsDesc:
+      'Envia apenas ferramentas relevantes por consulta, reduzindo o consumo de tokens',
     providerRaceTitle: 'Corrida concorrente de provedores',
-    providerRaceDesc: 'Executa pedidos concorrentes para vários provedores e devolve a resposta bem-sucedida mais rápida; isto pode aumentar ligeiramente o custo',
+    providerRaceDesc:
+      'Executa pedidos concorrentes para vários provedores e devolve a resposta bem-sucedida mais rápida; isto pode aumentar ligeiramente o custo',
     providerRaceEnabled: 'Ativado',
     providerRaceDisabled: 'Desativado',
     providerRaceMaxParallel: 'Máximo em paralelo',
     providerRaceMinProviders: 'Mínimo de provedores',
     providerRaceSinkThreshold: 'Limite de rebaixamento',
     providerRaceExcludeThreshold: 'Limite de exclusão',
-    providerRaceCooldownRule: 'Arrefecimento quando a taxa de execuções vazias ≥ {threshold} (mín. {samples} amostras), duração {duration}',
+    providerRaceCooldownRule:
+      'Arrefecimento quando a taxa de execuções vazias ≥ {threshold} (mín. {samples} amostras), duração {duration}',
   },
   providerSettings: {
     ...ptBR.providerSettings,
@@ -684,11 +856,45 @@ export default {
   ideDiscovery: { ...ptBR.ideDiscovery },
   userdata: {
     ...ptBR.userdata,
+    chatDataTitle: 'Dados de chat',
+    chatDataDescription: 'Importe, exporte e limpe o histórico de chat e os dados relacionados num único local.',
+    manageData: 'Gerir dados',
+    cleanupPreviewFailed: 'Falha ao pré-visualizar limpeza',
+    cleanupFailed: 'Falha ao limpar dados',
+    cleanupSuccess: 'Limpeza de dados concluída',
+    importFailed: 'Falha ao importar dados',
+    conversations: 'Conversas',
+    exportedAt: 'Exportado em',
+    preview: 'Pré-visualização',
+    selectFile: 'Selecionar ficheiro',
+    format: 'Formato de exportação',
+    previewFailed: 'Falha ao pré-visualizar dados',
+    hasSettings: 'Inclui definições',
+    previewTitle: 'Pré-visualização da importação',
+    chooseFile: 'Escolher ficheiro',
+    importPasswordPlaceholder: 'Introduza a palavra-passe usada durante a exportação',
+    confirmPasswordPlaceholder: 'Introduza novamente a palavra-passe',
+    formatEncryptedDesc: 'Formato binário totalmente encriptado. Maior segurança.',
+    formatJsonDesc: 'Formato legível por humanos. A palavra-passe é usada para verificar a importação.',
+    retentionSaved: 'Definições de retenção guardadas',
     password: 'Palavra-passe',
     confirmPassword: 'Confirmar palavra-passe',
     passwordMismatch: 'As palavras-passe não coincidem',
     exportSuccess: 'Dados exportados com sucesso',
     exportFailed: 'Falha ao exportar dados',
+    retention: {
+      ...ptBR.userdata.retention,
+      totalRecords: 'Total de registos de monitorização',
+      policyHint: 'Cada tipo de dados suporta 1 a 365 dias. Uma retenção mais curta reduz o armazenamento, enquanto uma retenção mais longa ajuda em auditorias e resolução de problemas.',
+      daysRange: 'Intervalo permitido: 1-365 dias',
+      sessionsHint: 'Ciclo de vida das sessões do agent e metadados de execução.',
+      eventsHint: 'Chamadas de ferramentas, rastos de execução e eventos de auditoria.',
+      alertsHint: 'Alertas de segurança, pontuações de risco e estado de confirmação.',
+      sessionsSuggested: 'Sugerido: 14-30 dias para operações de rotina',
+      eventsSuggested: 'Sugerido: 7-14 dias para equilibrar auditoria e armazenamento',
+      alertsSuggested: 'Sugerido: 30-90 dias para revisão de incidentes',
+      saveHint: 'As novas janelas de retenção aplicar-se-ão às próximas limpezas automáticas e manuais.',
+    },
     cleanup: {
       ...ptBR.userdata.cleanup,
       confirmDelete: 'Confirmar eliminação',
@@ -698,7 +904,30 @@ export default {
       typeToConfirmPlaceholder: 'Escreva "{confirmText}" para confirmar',
       deleting: 'A eliminar...',
     },
-  },
+  
+    memory: {
+      ...ptBR.userdata.memory,
+      title: 'Memória',
+      description: 'Exporte ou importe os seus dados de memória da IA como ficheiros Markdown.',
+      totalMemories: 'Total de memórias',
+      backend: 'Backend',
+      exportSection: 'Exportar memórias',
+      exportDesc: 'Transfira todas as memórias como ficheiro Markdown para cópia de segurança ou edição.',
+      exportButton: 'Exportar como Markdown',
+      exportSuccess: 'Memórias exportadas com sucesso',
+      exportFailed: 'Falha ao exportar memórias',
+      importSection: 'Importar memórias',
+      importDesc: 'Importe memórias a partir de um ficheiro Markdown.',
+      importButton: 'Importar memórias',
+      importSuccess: '{count} memórias importadas com sucesso',
+      importFailed: 'Falha ao importar memórias',
+      importMode: 'Modo de importação',
+      modeAppend: 'Adicionar',
+      modeReplace: 'Substituir',
+      modeAppendDesc: 'Adicionar memórias importadas às existentes',
+      modeReplaceDesc: 'Limpar todas as memórias existentes antes de importar',
+    },
+},
   connections: { ...ptBR.connections },
   mermaid: { ...ptBR.mermaid },
   browser: { ...ptBR.browser, request: 'Pedido do navegador' },
@@ -744,7 +973,7 @@ export default {
   tools: {
     names: {
       'Web Search': 'Pesquisa web',
-      'Calculator': 'Calculadora',
+      Calculator: 'Calculadora',
       'System Info': 'Informações do sistema',
       'Current Time': 'Hora atual',
       read: 'Ler ficheiro',
@@ -756,12 +985,12 @@ export default {
       'Memory Get': 'Obter memória',
       'Memory Stats': 'Estatísticas de memória',
       mcp: 'Chamada MCP',
-      'Scheduler': 'Agendador',
-      'Browser': 'Navegador',
-      'Sandbox': 'Sandbox',
+      Scheduler: 'Agendador',
+      Browser: 'Navegador',
+      Sandbox: 'Sandbox',
       'UI Reviewer': 'Revisão de UI',
       'Auto Reply': 'Resposta automática',
-      'Workflows': 'Fluxos de trabalho',
+      Workflows: 'Fluxos de trabalho',
       reminder: 'Lembrete',
       mediagen: 'Geração de média',
       ask: 'Perguntar',
@@ -778,6 +1007,20 @@ export default {
       limit: 'Limite',
       offset: 'Deslocamento',
       id: 'ID',
+      action: 'Ação',
+      name: 'Nome',
+      title: 'Título',
+      description: 'Descrição',
+      schedule: 'Agendamento',
+      cron: 'Cron',
+      handler: 'Manipulador',
+      type: 'Tipo',
+      command: 'Comando',
+      payload: 'Carga útil',
+      job_id: 'ID da tarefa',
+      jobId: 'ID da tarefa',
+      cron_id: 'ID do cron',
+      cronId: 'ID do cron',
     },
     calling: 'A chamar ferramentas',
     callingProgress: 'A chamar ferramentas...',
@@ -835,14 +1078,34 @@ export default {
     ...ptBR.skills,
     builtin: {
       ...ptBR.skills.builtin,
-      scheduler: { name: 'Agendador', description: 'Criar, gerir e executar tarefas agendadas (Cron)' },
-      browser: { name: 'Navegador', description: 'Navegar na web com um navegador headless, ler páginas e interagir com elementos' },
-      sandbox: { name: 'Sandbox', description: 'Executar comandos num ambiente isolado com limites de recursos' },
-      'ui-reviewer': { name: 'Revisão de UI', description: 'Revisão automatizada de qualidade de UI com verificações de acessibilidade e pontuação visual' },
-      autoreply: { name: 'Resposta automática', description: 'Criar e gerir regras de resposta automática com acionadores de palavras-chave' },
-      workflows: { name: 'Fluxos de trabalho', description: 'Criar e executar automatizações de fluxos de trabalho estilo n8n' },
+      scheduler: {
+        name: 'Agendador',
+        description: 'Criar, gerir e executar tarefas agendadas (Cron)',
+      },
+      browser: {
+        name: 'Navegador',
+        description: 'Navegar na web, ler páginas e interagir com elementos',
+      },
+      sandbox: {
+        name: 'Sandbox',
+        description: 'Executar comandos num ambiente isolado com limites de recursos',
+      },
+      'ui-reviewer': {
+        name: 'Revisão de UI',
+        description:
+          'Revisão automatizada de qualidade de UI com verificações de acessibilidade e pontuação visual',
+      },
+      autoreply: {
+        name: 'Resposta automática',
+        description:
+          'Criar e gerir regras de resposta automática com acionadores de palavras-chave',
+      },
+      workflows: {
+        name: 'Fluxos de trabalho',
+        description: 'Criar e executar automatizações de fluxos de trabalho estilo n8n',
+      },
     },
-  
+
     filters: {
       allStatus: 'All Status',
     },
@@ -869,6 +1132,13 @@ export default {
         documentation: 'Documentation',
       },
     },
+  },
+  cardActions: {
+    use_browser: 'Usar navegador',
+    extract_with_web_fetch: 'Extrair com Web Fetch',
+    recheck: 'Verificar novamente',
+    check_a11y: 'Apenas acessibilidade',
+    full_report: 'Relatório completo',
   },
   uiReview: {
     title: 'Revisão de UI',
@@ -988,7 +1258,8 @@ export default {
   authProviders: {
     title: 'Authentication Providers',
     noProviders: 'No authentication providers configured',
-    noProvidersDesc: 'Add an external authentication provider to allow users to sign in with their existing accounts.',
+    noProvidersDesc:
+      'Add an external authentication provider to allow users to sign in with their existing accounts.',
     providerId: 'Provider ID',
     displayName: 'Display Name',
     providerType: 'Provider Type',
@@ -996,7 +1267,7 @@ export default {
     clientSecret: 'Client Secret',
     issuerUrl: 'Issuer URL',
     redirectUrl: 'Redirect URL',
-    redirectUrlHint: 'Configure this URL in your OAuth provider\'s settings',
+    redirectUrlHint: "Configure this URL in your OAuth provider's settings",
     scopes: 'Scopes',
     autoCreateUser: 'Auto-create users on first login',
     defaultRole: 'Default Role',
@@ -1024,7 +1295,8 @@ export default {
     addAuthProvider: 'Add Authentication Provider',
     editProvider: 'Edit Provider',
     disable: 'Disable',
-    confirmDeleteProvider: 'Are you sure you want to delete the provider "{name}"? This action cannot be undone.',
+    confirmDeleteProvider:
+      'Are you sure you want to delete the provider "{name}"? This action cannot be undone.',
     issuer: 'Issuer',
     types: {
       generic: 'Generic OIDC',
@@ -1095,7 +1367,8 @@ export default {
     restore: 'Restore',
     restoreSuccess: 'Backup restored successfully',
     restoreFailed: 'Failed to restore backup',
-    confirmRestore: 'Are you sure you want to restore from backup dated {date}? Current data will be overwritten.',
+    confirmRestore:
+      'Are you sure you want to restore from backup dated {date}? Current data will be overwritten.',
     confirmDelete: 'Are you sure you want to delete this backup?',
     fullBackup: 'Full Backup',
     fullBackupDesc: 'Includes all data, configuration, and conversation history',
@@ -1149,7 +1422,8 @@ export default {
     // Demo mode
     demo: {
       title: 'No Data Yet',
-      description: 'Companion monitors AI Agent sessions across multiple platforms. When agents are connected and processing requests, you will see real-time session data, events, and security alerts here.',
+      description:
+        'Companion monitors AI Agent sessions across multiple platforms. When agents are connected and processing requests, you will see real-time session data, events, and security alerts here.',
       features: {
         title: 'What you can monitor:',
         sessions: 'Active and historical AI agent sessions',
@@ -1157,11 +1431,13 @@ export default {
         security: 'Security threats and anomaly detection',
         replay: 'Session replay for debugging and auditing',
       },
-      platforms: 'Supported platforms: WhatsApp, Telegram, Discord, Slack, Matrix, Feishu, Web, API',
+      platforms:
+        'Supported platforms: WhatsApp, Telegram, Discord, Slack, Matrix, Feishu, Web, API',
       runDemo: 'Run Demo',
       stopDemo: 'Stop Demo',
       running: 'Demo Mode Active',
-      bannerDescription: 'You are viewing simulated data. This data is for demonstration purposes only and does not reflect real sessions.',
+      bannerDescription:
+        'You are viewing simulated data. This data is for demonstration purposes only and does not reflect real sessions.',
       alertTitles: {
         unusualPattern: 'Unusual Activity Pattern Detected',
         highTokenUsage: 'High Token Usage in Session',
@@ -1211,7 +1487,8 @@ export default {
     toolCallCount: 'Tool Calls',
     llmCallCount: 'LLM Calls',
     totalTokens: 'Total Tokens',
-    deleteSessionConfirm: 'Are you sure you want to delete this session? This action cannot be undone.',
+    deleteSessionConfirm:
+      'Are you sure you want to delete this session? This action cannot be undone.',
     // View modes
     viewMode: {
       flow: 'Flow',
@@ -1370,8 +1647,7 @@ export default {
       },
     },
     // Canvas view
-    canvas: {
-    },
+    canvas: {},
     // Node components
     nodes: {
       received: 'Received',
@@ -1395,8 +1671,7 @@ export default {
       },
     },
     // LLM request details
-    llmDetails:
-    {
+    llmDetails: {
       input: 'Input',
       prompt: 'Input Tokens',
       completion: 'Output Tokens',
@@ -1404,8 +1679,7 @@ export default {
       score: 'Score',
     },
     // Message direction
-    message: {
-    },
+    message: {},
     // Security
     security: {
       title: 'Security Details',
@@ -1460,7 +1734,12 @@ export default {
       jsonDesc: 'JSON format, suitable for backup and analysis',
       csvDesc: 'CSV format, suitable for spreadsheets',
     },
-  },
+  
+    toasts: {
+      memorySavedTitle: 'Novo conteúdo memorizado',
+      memorySavedMessage: 'Memória extraída da conversa',
+      manageMemory: 'Gerir memória',
+    },},
   consent: 'Consent',
   contextmenu: 'Context menu',
   cron: {
@@ -1614,14 +1893,16 @@ export default {
     enabled: 'Enabled',
     disabled: 'Disabled',
     enabledDescription: 'Your account is protected with two-factor authentication.',
-    disabledDescription: 'Enable two-factor authentication to add an extra layer of security to your account.',
+    disabledDescription:
+      'Enable two-factor authentication to add an extra layer of security to your account.',
     setup: 'Set up MFA',
     disable: 'Disable MFA',
     regenerateCodes: 'Regenerate Recovery Codes',
     recoveryCodesRemaining: '{count} recovery codes remaining',
     // Setup flow
     step1Title: 'Step 1: Scan QR Code',
-    step1Description: 'Scan the QR code below with your authenticator app (such as Google Authenticator, Authy, or Microsoft Authenticator).',
+    step1Description:
+      'Scan the QR code below with your authenticator app (such as Google Authenticator, Authy, or Microsoft Authenticator).',
     manualEntry: 'Manual entry key:',
     step2Title: 'Step 2: Verify',
     step2Description: 'Enter the 6-digit code from your authenticator app to complete setup.',
@@ -1629,10 +1910,12 @@ export default {
     verify: 'Verify',
     // Recovery codes
     recoveryCodes: 'Recovery Codes',
-    recoveryCodesWarning: 'Save these recovery codes in a safe place. If you lose access to your authenticator app, you can use a recovery code to sign in. Each code can only be used once.',
+    recoveryCodesWarning:
+      'Save these recovery codes in a safe place. If you lose access to your authenticator app, you can use a recovery code to sign in. Each code can only be used once.',
     // Disable MFA
     disableTitle: 'Disable Two-Factor Authentication',
-    disableWarning: 'Disabling two-factor authentication will make your account less secure. Are you sure you want to continue?',
+    disableWarning:
+      'Disabling two-factor authentication will make your account less secure. Are you sure you want to continue?',
     enterPassword: 'Enter your password to confirm',
     passwordPlaceholder: 'Enter your password',
     confirmDisable: 'Confirm Disable',
@@ -1647,7 +1930,8 @@ export default {
   },
   myProviders: {
     title: 'My Providers',
-    description: 'Configure as suas próprias chaves API para fornecedores LLM. As suas chaves substituem os valores predefinidos.',
+    description:
+      'Configure as suas próprias chaves API para fornecedores LLM. As suas chaves substituem os valores predefinidos.',
     configured: 'Configured',
     configure: 'Configure',
     keyUnchanged: 'Leave empty to keep current key',
@@ -1696,17 +1980,17 @@ export default {
   },
   resultCard: {
     titles: {
-      'workspace_file': 'Workspace File',
-      'calculator': 'Calculator',
-      'current_time': 'Current Time',
-      'read': 'File Read',
-      'write': 'File Write',
-      'file_read': 'File Read',
-      'file_write': 'File Write',
-      'system_info': 'System Info',
-      'memory': 'Memória',
-      'mcp': 'Chamada MCP',
-      'exec': 'Execução de comando',
+      workspace_file: 'Workspace File',
+      calculator: 'Calculator',
+      current_time: 'Current Time',
+      read: 'File Read',
+      write: 'File Write',
+      file_read: 'File Read',
+      file_write: 'File Write',
+      system_info: 'System Info',
+      memory: 'Memória',
+      mcp: 'Chamada MCP',
+      exec: 'Execução de comando',
     },
     labels: {
       filename: 'Filename',
@@ -1732,7 +2016,8 @@ export default {
     title: 'Sandbox',
     subtitle: 'Execute commands in a secure isolated environment',
     notSupported: 'Sandbox Not Supported',
-    notSupportedDesc: 'Sandbox execution is not available on this platform or has not been configured.',
+    notSupportedDesc:
+      'Sandbox execution is not available on this platform or has not been configured.',
     executeCommand: 'Execute Command',
     execute: 'Execute',
     executing: 'A executar...',
@@ -1794,7 +2079,8 @@ export default {
     title: 'Security Keys',
     subtitle: 'Use hardware security keys or biometrics for passwordless login',
     noCredentials: 'No Security Keys',
-    noCredentialsDesc: 'Add a security key (like YubiKey) or use your device\'s biometrics for more secure login.',
+    noCredentialsDesc:
+      "Add a security key (like YubiKey) or use your device's biometrics for more secure login.",
     addCredential: 'Add Security Key',
     register: 'Register',
     registering: 'Registering...',
@@ -1879,7 +2165,8 @@ export default {
     ...enUS.agent,
     mode: 'Modo de ciclo de tarefas',
     modeDescription: 'Ativa ciclos contínuos de planear e executar tarefas até o desativar',
-    autoConfirmDescription: 'Ignorar confirmação para ações destrutivas (clique com o botão direito no botão de ciclo de tarefas para alternar)',
+    autoConfirmDescription:
+      'Ignorar confirmação para ações destrutivas (clique com o botão direito no botão de ciclo de tarefas para alternar)',
     sendMessage: 'Enviar mensagem ao agente...',
     messageQueued: 'Mensagem enviada ao agente',
   },

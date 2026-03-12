@@ -321,6 +321,50 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	return nil
 }
 
+// SendWithID sends a text Matrix message and returns the created event ID.
+// For payloads with attachments we fall back to Send and return an empty ID.
+func (c *Channel) SendWithID(ctx context.Context, msg channel.OutgoingMessage) (string, error) {
+	if c.client == nil {
+		return "", fmt.Errorf("client not initialized")
+	}
+	if len(msg.Attachments) > 0 {
+		if err := c.Send(ctx, msg); err != nil {
+			return "", err
+		}
+		return "", nil
+	}
+	textBody := msg.Content
+	if textBody == "" {
+		return "", fmt.Errorf("no sendable Matrix content")
+	}
+	content := &messageContent{MsgType: "m.text", Body: textBody}
+	if msg.Format == "html" {
+		content.Format = "org.matrix.custom.html"
+		content.FormattedBody = textBody
+	} else if msg.Format == "markdown" {
+		content.Format = "org.matrix.custom.html"
+		content.FormattedBody = markdownToHTML(textBody)
+	}
+	if msg.ReplyToID != "" {
+		content.RelatesTo = &relatesTo{InReplyTo: &inReplyTo{EventID: msg.ReplyToID}}
+	}
+	eventID, err := c.client.sendMessage(ctx, msg.ChatID, content)
+	if err != nil {
+		return "", fmt.Errorf("failed to send message: %w", err)
+	}
+	c.msgsSent.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastReplyAt = &now
+	c.mu.Unlock()
+	return eventID, nil
+}
+
+// EditMessage updates an existing Matrix message in place.
+func (c *Channel) EditMessage(ctx context.Context, chatID string, messageID string, msg channel.OutgoingMessage) error {
+	return c.editMessage(ctx, chatID, messageID, msg.Content)
+}
+
 func (c *Channel) SendStreaming(ctx context.Context, chatID string, replyToID string, content <-chan string, done chan<- struct{}) error {
 	defer close(done)
 	if c.client == nil {

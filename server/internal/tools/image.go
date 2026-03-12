@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -109,6 +110,50 @@ type ImageGenerateFunc func(ctx context.Context, req ImageGenerateRequest) (*Ima
 // ImageTaskLookupFunc fetches the current state of a generation task.
 type ImageTaskLookupFunc func(ctx context.Context, taskID string) (*ImageTaskResult, error)
 
+// PPTRequest is the normalized PPT slide-asset request passed from tools to adapters.
+type PPTRequest struct {
+	Description       string   `json:"description,omitempty"`
+	AspectRatio       string   `json:"aspect_ratio,omitempty"`
+	ReferenceImages   []string `json:"reference_images,omitempty"`
+	StylePreset       string   `json:"style_preset,omitempty"`
+	Theme             string   `json:"style_theme,omitempty"`
+	Source            string   `json:"source,omitempty"`
+	ReviewThreshold   float64  `json:"review_threshold,omitempty"`
+	ReviewRetryBudget int      `json:"review_retry_budget,omitempty"`
+	QualityProfile    string   `json:"quality_profile,omitempty"`
+	Lang              string   `json:"lang,omitempty"`
+}
+
+// PPTResult is the normalized PPT slide-asset response shape returned by adapters.
+type PPTResult struct {
+	Status         string      `json:"status,omitempty"`
+	Skipped        bool        `json:"skipped,omitempty"`
+	SkipReason     string      `json:"skip_reason,omitempty"`
+	TaskID         string      `json:"task_id,omitempty"`
+	Model          string      `json:"model,omitempty"`
+	Mode           string      `json:"mode,omitempty"`
+	FinalPrompt    string      `json:"final_prompt,omitempty"`
+	ReviewScore    float64     `json:"review_score,omitempty"`
+	ReviewSummary  string      `json:"review_summary,omitempty"`
+	RetryCount     int         `json:"retry_count,omitempty"`
+	ImageURLs      []string    `json:"image_urls,omitempty"`
+	ThumbnailURLs  []string    `json:"thumbnail_urls,omitempty"`
+	Review         interface{} `json:"review,omitempty"`
+	UsedFallback   bool        `json:"used_fallback,omitempty"`
+	QualityProfile string      `json:"quality_profile,omitempty"`
+	StylePreset    string      `json:"style_preset,omitempty"`
+	Source         string      `json:"source,omitempty"`
+	Error          string      `json:"error,omitempty"`
+	Threshold      float64     `json:"threshold,omitempty"`
+	Description    string      `json:"description,omitempty"`
+	ReferenceCount int         `json:"reference_count,omitempty"`
+}
+
+// PPTGenerateService orchestrates PPT slide-asset generation workflows.
+type PPTGenerateService interface {
+	Generate(ctx context.Context, req PPTRequest) (*PPTResult, error)
+}
+
 type imageReviewInput struct {
 	Kind  string
 	Value string
@@ -121,6 +166,7 @@ type ImageTool struct {
 	ocr        ImageOCRService
 	generate   ImageGenerateFunc
 	lookup     ImageTaskLookupFunc
+	ppt        PPTGenerateService
 	httpClient *http.Client
 }
 
@@ -158,6 +204,14 @@ func (t *ImageTool) SetHTTPClient(client *http.Client) {
 	t.httpClient = client
 }
 
+// SetPPTService injects the PPT slide-asset orchestration service.
+func (t *ImageTool) SetPPTService(svc PPTGenerateService) {
+	if t == nil {
+		return
+	}
+	t.ppt = svc
+}
+
 // Definition returns the tool definition.
 func (t *ImageTool) Definition() ToolDefinition {
 	return ToolDefinition{
@@ -169,37 +223,43 @@ func (t *ImageTool) Definition() ToolDefinition {
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"enum":        []string{"generate", "edit", "review", "analyze", "compare", "status", "get"},
+					"enum":        []string{"generate", "edit", "review", "analyze", "compare", "status", "get", "ppt"},
 					"description": "Action to perform. Auto-detected from task_id, prompt, and image/url inputs.",
 				},
-				"prompt":           map[string]interface{}{"type": "string", "description": "Prompt for image generation or editing."},
-				"negative_prompt":  map[string]interface{}{"type": "string", "description": "Optional negative prompt for generation."},
-				"model":            map[string]interface{}{"type": "string", "description": "Optional image model ID."},
-				"size":             map[string]interface{}{"type": "string", "description": "Requested output size, e.g. 1024x1024."},
-				"quality":          map[string]interface{}{"type": "string", "description": "Optional quality hint."},
-				"style":            map[string]interface{}{"type": "string", "description": "Optional style hint."},
-				"n":                map[string]interface{}{"type": "integer", "description": "Number of images to generate."},
-				"category":         map[string]interface{}{"type": "string", "description": "Generation category, e.g. t2i or i2i."},
-				"reference_image":  map[string]interface{}{"type": "string", "description": "Reference image URL for edit/i2i generation."},
-				"image_url":        map[string]interface{}{"type": "string", "description": "Alias for reference_image when generating edits."},
-				"reference_base64": map[string]interface{}{"type": "string", "description": "Base64 image content for edit/i2i generation."},
-				"task_id":          map[string]interface{}{"type": "string", "description": "Task ID for status/get."},
-				"poll":             map[string]interface{}{"type": "boolean", "description": "Wait for generation completion before returning. Defaults to true."},
-				"wait_timeout_sec": map[string]interface{}{"type": "integer", "description": "Generation wait timeout in seconds. Defaults to 120."},
-				"url":              map[string]interface{}{"type": "string", "description": "Target page/image URL for review."},
-				"urls":             map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple page/image URLs for review or recognition."},
-				"image_urls":       map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple direct or signed image URLs for review or recognition."},
-				"image":            map[string]interface{}{"type": "string", "description": "Base64 image data for review."},
-				"images":           map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple base64 image payloads for recognition in one call."},
-				"compare":          map[string]interface{}{"type": "boolean", "description": "When reviewing multiple images, emphasize shared themes and differences in a structured compare payload."},
-				"max_images":       map[string]interface{}{"type": "integer", "description": "Maximum number of unique images/URLs to review after dedupe. Defaults to 20."},
-				"lang":             map[string]interface{}{"type": "string", "description": "Output language for review."},
-				"device":           map[string]interface{}{"type": "string", "description": "desktop or mobile for URL review."},
-				"wait_ms":          map[string]interface{}{"type": "number", "description": "Extra page wait time for review_url."},
-				"threshold":        map[string]interface{}{"type": "number", "description": "Review threshold score."},
-				"format":           map[string]interface{}{"type": "string", "description": "Review output format: json or human."},
-				"aspect_ratio":     map[string]interface{}{"type": "string", "description": "Optional aspect ratio for supported generation models."},
-				"resolution":       map[string]interface{}{"type": "string", "description": "Optional resolution tier for supported generation models."},
+				"prompt":              map[string]interface{}{"type": "string", "description": "Prompt for image generation or editing."},
+				"negative_prompt":     map[string]interface{}{"type": "string", "description": "Optional negative prompt for generation."},
+				"model":               map[string]interface{}{"type": "string", "description": "Optional image model ID."},
+				"size":                map[string]interface{}{"type": "string", "description": "Requested output size, e.g. 1024x1024."},
+				"quality":             map[string]interface{}{"type": "string", "description": "Optional quality hint."},
+				"style":               map[string]interface{}{"type": "string", "description": "Optional style hint."},
+				"n":                   map[string]interface{}{"type": "integer", "description": "Number of images to generate."},
+				"category":            map[string]interface{}{"type": "string", "description": "Generation category, e.g. t2i or i2i."},
+				"reference_image":     map[string]interface{}{"type": "string", "description": "Reference image URL for edit/i2i generation."},
+				"image_url":           map[string]interface{}{"type": "string", "description": "Alias for reference_image when generating edits."},
+				"reference_base64":    map[string]interface{}{"type": "string", "description": "Base64 image content for edit/i2i generation."},
+				"task_id":             map[string]interface{}{"type": "string", "description": "Task ID for status/get."},
+				"poll":                map[string]interface{}{"type": "boolean", "description": "Wait for generation completion before returning. Defaults to true."},
+				"wait_timeout_sec":    map[string]interface{}{"type": "integer", "description": "Generation wait timeout in seconds. Defaults to 120."},
+				"url":                 map[string]interface{}{"type": "string", "description": "Target page/image URL for review."},
+				"urls":                map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple page/image URLs for review or recognition."},
+				"image_urls":          map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple direct or signed image URLs for review or recognition."},
+				"image":               map[string]interface{}{"type": "string", "description": "Base64 image data for review."},
+				"images":              map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple base64 image payloads for recognition in one call."},
+				"compare":             map[string]interface{}{"type": "boolean", "description": "When reviewing multiple images, emphasize shared themes and differences in a structured compare payload."},
+				"max_images":          map[string]interface{}{"type": "integer", "description": "Maximum number of unique images/URLs to review after dedupe. Defaults to 20."},
+				"lang":                map[string]interface{}{"type": "string", "description": "Output language for review."},
+				"device":              map[string]interface{}{"type": "string", "description": "desktop or mobile for URL review."},
+				"wait_ms":             map[string]interface{}{"type": "number", "description": "Extra page wait time for review_url."},
+				"threshold":           map[string]interface{}{"type": "number", "description": "Review threshold score."},
+				"format":              map[string]interface{}{"type": "string", "description": "Review output format: json or human."},
+				"aspect_ratio":        map[string]interface{}{"type": "string", "description": "Optional aspect ratio for supported generation models."},
+				"resolution":          map[string]interface{}{"type": "string", "description": "Optional resolution tier for supported generation models."},
+				"reference_images":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional reference images for banana_slides PPT slide-asset generation."},
+				"style_preset":        map[string]interface{}{"type": "string", "description": "Optional generation preset. Use banana_slides for PPT slide visuals."},
+				"quality_profile":     map[string]interface{}{"type": "string", "description": "Optional review profile. Use ppt to trigger PPT slide-asset generation."},
+				"review_threshold":    map[string]interface{}{"type": "number", "description": "Optional review threshold for PPT slide-asset generation."},
+				"review_retry_budget": map[string]interface{}{"type": "integer", "description": "Optional retry budget for PPT slide-asset generation."},
+				"style_theme":         map[string]interface{}{"type": "string", "description": "Optional theme or brand guidance for PPT slide-asset generation."},
 			},
 		},
 	}
@@ -223,7 +283,7 @@ func (t *ImageTool) executeStatus(ctx context.Context, args map[string]interface
 	if t == nil || t.lookup == nil {
 		return nil, errors.New("image status service not available")
 	}
-	taskID := firstCompatString(args, "task_id", "id")
+	taskID := firstCompatString(args, "task_id", "taskId", "id")
 	if taskID == "" {
 		return nil, errors.New("task_id/id is required")
 	}
@@ -575,34 +635,30 @@ func collectImageReviewInputs(args map[string]interface{}) ([]imageReviewInput, 
 		}
 		return nil
 	}
-	if err := appendValues("auto", args["image"]); err != nil {
-		return nil, err
-	}
-	if err := appendValues("inline", args["image_base64"]); err != nil {
-		return nil, err
-	}
-	if err := appendValues("inline", args["base64"]); err != nil {
-		return nil, err
-	}
-	if err := appendValues("auto", args["images"]); err != nil {
-		return nil, err
-	}
-	if err := appendValues("file", args["image_path"]); err != nil {
-		return nil, err
-	}
-	if err := appendValues("file", args["image_paths"]); err != nil {
-		return nil, err
-	}
-	for _, key := range []string{"url", "href", "source", "link"} {
-		if err := appendValues("auto", args[key]); err != nil {
+	for _, entry := range []struct {
+		kind string
+		keys []string
+	}{
+		{kind: "auto", keys: []string{"image"}},
+		{kind: "inline", keys: []string{"image_base64", "imageBase64"}},
+		{kind: "inline", keys: []string{"base64"}},
+		{kind: "auto", keys: []string{"images"}},
+		{kind: "file", keys: []string{"image_path", "imagePath"}},
+		{kind: "file", keys: []string{"image_paths", "imagePaths"}},
+		{kind: "auto", keys: []string{"url"}},
+		{kind: "auto", keys: []string{"href"}},
+		{kind: "auto", keys: []string{"source"}},
+		{kind: "auto", keys: []string{"link"}},
+		{kind: "auto", keys: []string{"urls"}},
+		{kind: "auto", keys: []string{"image_urls", "imageUrls"}},
+	} {
+		value, ok := compatArgValue(args, entry.keys...)
+		if !ok {
+			continue
+		}
+		if err := appendValues(entry.kind, value); err != nil {
 			return nil, err
 		}
-	}
-	if err := appendValues("auto", args["urls"]); err != nil {
-		return nil, err
-	}
-	if err := appendValues("auto", args["image_urls"]); err != nil {
-		return nil, err
 	}
 	if len(inputs) == 0 {
 		return nil, nil
@@ -886,10 +942,10 @@ func imageCompareRequested(args map[string]interface{}) bool {
 	if action == "compare" {
 		return true
 	}
-	if compare, ok := asCompatBool(args["compare"]); ok && compare {
+	if compare, ok := compatBoolArg(args, "compare"); ok && compare {
 		return true
 	}
-	switch strings.ToLower(strings.TrimSpace(firstCompatString(args, "mode", "review_mode"))) {
+	switch strings.ToLower(strings.TrimSpace(firstCompatString(args, "mode", "review_mode", "reviewMode"))) {
 	case "compare", "comparison", "diff":
 		return true
 	default:
@@ -959,6 +1015,15 @@ func appendStringSlices(existing interface{}, extra []string) []string {
 }
 
 func (t *ImageTool) executeGenerate(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	if shouldUsePPT(args) && t.ppt != nil {
+		result, err := executePPTService(ctx, args, t.ppt)
+		if err != nil {
+			return nil, err
+		}
+		if typed, ok := result.(*PPTResult); !ok || typed == nil || !typed.Skipped {
+			return result, nil
+		}
+	}
 	if t == nil || t.generate == nil {
 		return nil, errors.New("image generation service not available")
 	}
@@ -968,15 +1033,15 @@ func (t *ImageTool) executeGenerate(ctx context.Context, args map[string]interfa
 	}
 	request := ImageGenerateRequest{
 		Prompt:               prompt,
-		NegativePrompt:       firstCompatString(args, "negative_prompt"),
+		NegativePrompt:       firstCompatString(args, "negative_prompt", "negativePrompt"),
 		Model:                firstCompatString(args, "model"),
 		Size:                 firstCompatString(args, "size"),
 		Quality:              firstCompatString(args, "quality"),
 		Style:                firstCompatString(args, "style"),
 		Category:             firstCompatString(args, "category", "mode", "type"),
-		Count:                compatInt(args, "n", "count", "num_images"),
-		ReferenceImageURL:    firstCompatString(args, "reference_image", "reference_url", "image_url"),
-		ReferenceImageBase64: firstCompatString(args, "reference_base64", "reference_image_base64"),
+		Count:                compatInt(args, "n", "count", "num_images", "numImages"),
+		ReferenceImageURL:    firstCompatString(args, "reference_image", "referenceImage", "reference_url", "referenceUrl", "image_url", "imageUrl"),
+		ReferenceImageBase64: firstCompatString(args, "reference_base64", "referenceBase64", "reference_image_base64", "referenceImageBase64"),
 		Wait:                 true,
 		WaitTimeout:          120 * time.Second,
 	}
@@ -986,7 +1051,7 @@ func (t *ImageTool) executeGenerate(ctx context.Context, args map[string]interfa
 	if request.ReferenceImageURL == "" && request.ReferenceImageBase64 == "" {
 		if explicit := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command"))); explicit == "generate" || explicit == "edit" || explicit == "create" || explicit == "draw" {
 			request.ReferenceImageURL = firstCompatString(args, "url", "href", "source", "link")
-			request.ReferenceImageBase64 = firstCompatString(args, "image", "image_base64", "base64")
+			request.ReferenceImageBase64 = firstCompatString(args, "image", "image_base64", "imageBase64", "base64")
 		}
 	}
 	if request.Category == "" {
@@ -996,17 +1061,17 @@ func (t *ImageTool) executeGenerate(ctx context.Context, args map[string]interfa
 			request.Category = "t2i"
 		}
 	}
-	if wait, ok := asCompatBool(args["poll"]); ok {
+	if wait, ok := compatBoolArg(args, "poll"); ok {
 		request.Wait = wait
-	} else if wait, ok := asCompatBool(args["wait"]); ok {
+	} else if wait, ok := compatBoolArg(args, "wait"); ok {
 		request.Wait = wait
-	} else if wait, ok := asCompatBool(args["sync"]); ok {
+	} else if wait, ok := compatBoolArg(args, "sync"); ok {
 		request.Wait = wait
 	}
-	if timeoutSec := compatInt(args, "wait_timeout_sec", "timeout_sec", "timeout_seconds"); timeoutSec > 0 {
+	if timeoutSec := compatInt(args, "wait_timeout_sec", "waitTimeoutSec", "timeout_sec", "timeoutSec", "timeout_seconds", "timeoutSeconds"); timeoutSec > 0 {
 		request.WaitTimeout = time.Duration(fsClamp(timeoutSec, 1, 300)) * time.Second
 	}
-	if aspectRatio := firstCompatString(args, "aspect_ratio"); aspectRatio != "" {
+	if aspectRatio := firstCompatString(args, "aspect_ratio", "aspectRatio"); aspectRatio != "" {
 		if request.Extra == nil {
 			request.Extra = make(map[string]interface{})
 		}
@@ -1025,20 +1090,141 @@ func (t *ImageTool) executeGenerate(ctx context.Context, args map[string]interfa
 	return imageTaskEnvelope(task), nil
 }
 
+func executePPTService(ctx context.Context, args map[string]interface{}, service PPTGenerateService) (interface{}, error) {
+	if service == nil {
+		return nil, errors.New("ppt slide-asset service not available")
+	}
+	req, err := buildPPTRequest(args)
+	if err != nil {
+		return nil, err
+	}
+	return service.Generate(ctx, req)
+}
+
+func buildPPTRequest(args map[string]interface{}) (PPTRequest, error) {
+	description := strings.TrimSpace(firstCompatString(args, "description", "prompt", "query", "input", "text", "message", "content"))
+	if description == "" {
+		return PPTRequest{}, errors.New("description/prompt is required for ppt slide-asset generation")
+	}
+	referenceImages, err := collectPPTReferenceImages(args)
+	if err != nil {
+		return PPTRequest{}, err
+	}
+	return PPTRequest{
+		Description:       description,
+		AspectRatio:       firstCompatString(args, "aspect_ratio", "aspectRatio"),
+		ReferenceImages:   referenceImages,
+		StylePreset:       firstCompatString(args, "style_preset", "stylePreset"),
+		Theme:             firstCompatString(args, "style_theme", "styleTheme", "theme", "brand_guidance", "brandGuidance"),
+		Source:            firstCompatString(args, "source", "origin"),
+		ReviewThreshold:   compatFloat64(args, "review_threshold"),
+		ReviewRetryBudget: compatInt(args, "review_retry_budget", "reviewRetryBudget"),
+		QualityProfile:    firstCompatString(args, "quality_profile", "qualityProfile"),
+		Lang:              firstCompatString(args, "lang"),
+	}, nil
+}
+
+func collectPPTReferenceImages(args map[string]interface{}) ([]string, error) {
+	values := make([]string, 0, 4)
+	for _, keys := range [][]string{{"reference_images", "referenceImages"}, {"reference_urls", "referenceUrls"}} {
+		value, ok := compatArgValue(args, keys...)
+		if !ok {
+			continue
+		}
+		items, err := collectCompatStringValues(value)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, items...)
+	}
+	if len(values) == 0 {
+		if single := firstCompatString(args, "reference_image", "referenceImage", "reference_url", "referenceUrl", "image_url", "imageUrl"); single != "" {
+			values = append(values, single)
+		}
+	}
+	unique := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		unique = append(unique, trimmed)
+	}
+	return unique, nil
+}
+
+func shouldUsePPT(args map[string]interface{}) bool {
+	stylePreset := strings.ToLower(strings.TrimSpace(firstCompatString(args, "style_preset", "stylePreset")))
+	qualityProfile := strings.ToLower(strings.TrimSpace(firstCompatString(args, "quality_profile", "qualityProfile")))
+	source := strings.ToLower(strings.TrimSpace(firstCompatString(args, "source", "origin")))
+	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
+	if action == "ppt" {
+		return true
+	}
+	if stylePreset == "banana_slides" || qualityProfile == "ppt" {
+		return true
+	}
+	for _, hint := range []string{"ppt", "slide", "deck", "material"} {
+		if strings.Contains(source, hint) {
+			return true
+		}
+	}
+	return false
+}
+
+func compatFloat64(args map[string]interface{}, keys ...string) float64 {
+	for _, key := range keys {
+		value, ok := compatArgValue(args, key)
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case float64:
+			return typed
+		case float32:
+			return float64(typed)
+		case int:
+			return float64(typed)
+		case int64:
+			return float64(typed)
+		case string:
+			parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+			if err == nil {
+				return parsed
+			}
+		}
+	}
+	return 0
+}
+
 func imageAction(args map[string]interface{}) string {
 	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
 	switch action {
 	case "", "auto":
-		if firstCompatString(args, "task_id", "id") != "" {
+		if firstCompatString(args, "task_id", "taskId", "id") != "" {
 			return "status"
 		}
-		if firstCompatString(args, "reference_image", "reference_url", "image_url", "reference_base64", "reference_image_base64") != "" {
+		if firstCompatString(args, "reference_image", "referenceImage", "reference_url", "referenceUrl", "image_url", "imageUrl", "reference_base64", "referenceBase64", "reference_image_base64", "referenceImageBase64") != "" {
 			return "generate"
 		}
-		if args["images"] != nil || args["urls"] != nil || args["image_urls"] != nil || args["image_paths"] != nil {
+		if _, ok := compatArgValue(args, "images"); ok {
 			return "review"
 		}
-		if firstCompatString(args, "image", "image_base64", "base64", "url", "href", "source", "link", "image_path") != "" {
+		if _, ok := compatArgValue(args, "urls"); ok {
+			return "review"
+		}
+		if _, ok := compatArgValue(args, "image_urls", "imageUrls"); ok {
+			return "review"
+		}
+		if _, ok := compatArgValue(args, "image_paths", "imagePaths"); ok {
+			return "review"
+		}
+		if firstCompatString(args, "image", "image_base64", "imageBase64", "base64", "url", "href", "link", "image_path", "imagePath") != "" {
 			return "review"
 		}
 		if firstCompatString(args, "prompt", "query", "input", "text", "message", "content") != "" {
@@ -1049,7 +1235,7 @@ func imageAction(args map[string]interface{}) string {
 		return "status"
 	case "review", "analyze", "inspect", "audit", "compare":
 		return "review"
-	case "generate", "create", "draw", "edit":
+	case "generate", "create", "draw", "edit", "ppt":
 		return "generate"
 	default:
 		return action

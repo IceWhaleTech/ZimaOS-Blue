@@ -6,7 +6,7 @@ import { speechApi } from '@/api/speech'
 import { convertToWav } from '@/utils/audioConverter'
 import { EnergyVAD } from '@/utils/vad'
 import { markdownToText } from '@/utils/markdown'
-import { isTtsAutoPlayEnabled, setTtsAutoPlayEnabled } from '@/utils/ttsPreferences'
+import { isTtsAutoPlayEnabled, isTtsSpeechMuted, setTtsAutoPlayEnabled } from '@/utils/ttsPreferences'
 import ModelDownloadPrompt from '@/components/speech/ModelDownloadPrompt.vue'
 import { useLocaleStore } from '@/stores/locale'
 import { useChatStore } from '@/stores/chat'
@@ -290,7 +290,7 @@ function pushBubble(role: 'user' | 'assistant', text: string) {
 
 // Play TTS for AI response
 async function playResponseTTS(text: string) {
-  if (!text.trim() || !autoPlayTTS.value) {
+  if (!text.trim() || !autoPlayTTS.value || isTtsSpeechMuted()) {
     // No TTS — resume listening immediately
     resumeListening()
     return

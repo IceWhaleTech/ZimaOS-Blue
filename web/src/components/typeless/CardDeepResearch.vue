@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { TypelessCardDeepResearch, DeepResearchCitationItem } from '@/types/typeless'
+import type {
+  TypelessCardDeepResearch,
+  DeepResearchCitationItem,
+  DeepResearchVerificationItem,
+  DeepResearchWorkflowPhase,
+  DeepResearchObjectMapItem,
+  DeepResearchSourceInventoryItem,
+} from '@/types/typeless'
 
 const { t } = useI18n()
 
@@ -10,44 +17,57 @@ const props = defineProps<{
 }>()
 
 const query = computed(() => props.card.query || '')
-const mode = computed(() => props.card.mode || 'standard')
 const answer = computed(() => props.card.answer || '')
-const evidenceCount = computed(() => props.card.evidence_count || 0)
-const iteration = computed(() => props.card.iteration || 0)
-const iterations = computed(() => props.card.iterations || 0)
+const citations = computed(() => (props.card.citations || []).filter(validCitation))
+const openQuestions = computed(() => props.card.open_questions || [])
+const verificationSummary = computed(() => props.card.verification_summary || null)
+const verificationItems = computed(() => verificationSummary.value?.items || [])
+const researchTrace = computed(() => props.card.research_trace || [])
+const timelineSections = computed(() => props.card.timeline_sections || [])
+const stageErrors = computed(() => props.card.stage_errors || [])
+const mode = computed(() => props.card.mode || 'standard')
+const reportStyle = computed(() => props.card.report_style || '')
+const isKnowledgeBase = computed(() => reportStyle.value === 'knowledge_base')
 const supportCount = computed(() => props.card.support_count || 0)
 const conflictCount = computed(() => props.card.conflict_count || 0)
 const hasConflict = computed(() => !!props.card.has_conflict || conflictCount.value > 0)
-const citations = computed(() => (props.card.citations || []).filter(validCitation).slice(0, 8))
-const openQuestions = computed(() => props.card.open_questions || [])
-const stageErrors = computed(() => props.card.stage_errors || [])
-const timelineSections = computed(() => props.card.timeline_sections || [])
+const iterations = computed(() => props.card.iterations || props.card.iteration || 0)
+const evidenceCount = computed(() => props.card.evidence_count || 0)
+const confidenceLabel = computed(() => formatPercent(props.card.confidence))
+const citationCoverageLabel = computed(() => formatPercent(props.card.citation_coverage))
 const timeWindows = computed(() => props.card.time_windows || [])
-const stopReason = computed(() => props.card.stop_reason || '')
-const latestGap = computed(() => props.card.latest_gap || '')
-const latestAction = computed(() => props.card.latest_action || '')
-const researchTrace = computed(() => props.card.research_trace || [])
-const verificationSummary = computed(() => props.card.verification_summary || null)
-const verificationItems = computed(() => verificationSummary.value?.items || [])
-const hasResearchDetails = computed(() => verificationItems.value.length > 0 || researchTrace.value.length > 0)
-const citationCoverageText = computed(() => {
-  const v = props.card.citation_coverage
-  if (typeof v !== 'number') return '--'
-  const pct = Math.max(0, Math.min(100, Math.round(v * 100)))
-  return `${pct}%`
-})
-const entitySummary = computed(() => props.card.entity_disambiguation || null)
-const confidenceText = computed(() => {
-  const v = props.card.confidence
-  if (typeof v !== 'number') return '--'
-  const pct = Math.max(0, Math.min(100, Math.round(v * 100)))
-  return `${pct}%`
-})
+const workflowPhases = computed(() => (props.card.workflow_phases || []).filter(validWorkflowPhase))
+const objectMap = computed(() => (props.card.object_map || []).filter(validObjectMapItem))
+const sourceInventory = computed(() => (props.card.source_inventory || []).filter(validSourceInventoryItem))
+const sourceInventoryPreview = computed(() => sourceInventory.value.slice(0, 6))
+const coverageSummary = computed(() => props.card.coverage_summary || null)
 
 function validCitation(item: unknown): item is DeepResearchCitationItem {
   if (!item || typeof item !== 'object') return false
-  const c = item as Record<string, unknown>
-  return typeof c.url === 'string' && c.url.length > 0
+  const citation = item as Record<string, unknown>
+  return typeof citation.url === 'string' && citation.url.length > 0
+}
+
+function validWorkflowPhase(item: unknown): item is DeepResearchWorkflowPhase {
+  return !!item && typeof item === 'object'
+}
+
+function validObjectMapItem(item: unknown): item is DeepResearchObjectMapItem {
+  return !!item && typeof item === 'object'
+}
+
+function validSourceInventoryItem(item: unknown): item is DeepResearchSourceInventoryItem {
+  return !!item && typeof item === 'object'
+}
+
+function formatPercent(value?: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '--'
+  return `${Math.max(0, Math.min(100, Math.round(value * 100)))}%`
+}
+
+function formatScore(value?: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '--'
+  return value.toFixed(2)
 }
 
 function domainOf(url: string): string {
@@ -58,14 +78,23 @@ function domainOf(url: string): string {
   }
 }
 
+function formatDate(value?: string): string {
+  if (!value) return '--'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString()
+}
+
 function verificationStatusClass(status?: string): string {
   switch (status) {
     case 'resolved':
-      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
     case 'conflicted':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+    case 'current':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200'
     default:
-      return 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+      return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
   }
 }
 
@@ -75,6 +104,10 @@ function verificationStatusLabel(status?: string): string {
       return t('chat.deepResearchVerificationResolved', 'Resolved')
     case 'conflicted':
       return t('chat.deepResearchVerificationConflicted', 'Conflicted')
+    case 'completed':
+      return t('chat.deepResearchVerificationResolved', 'Resolved')
+    case 'current':
+      return t('chat.deepResearchStatus', 'Status')
     default:
       return t('chat.deepResearchVerificationInsufficient', 'Insufficient')
   }
@@ -89,192 +122,257 @@ function stopReasonLabel(reason?: string): string {
     case 'budget_exhausted':
       return t('chat.deepResearchStopReasonBudget', 'Research budget exhausted')
     default:
-      return reason || ''
+      return reason || '--'
   }
 }
 
-function latestActionLabel(action?: string): string {
-  switch (action) {
-    case 'augment_query':
-      return t('chat.deepResearchActionAugmentQuery', 'Augmenting query')
-    case 'initial_retrieve':
-      return t('chat.deepResearchActionInitialRetrieve', 'Running initial retrieval')
-    case 'followup_retrieve':
-      return t('chat.deepResearchActionFollowupRetrieve', 'Running follow-up retrieval')
-    case 'verification':
-      return t('chat.deepResearchActionVerification', 'Verifying evidence')
-    case 'verification_completed':
-      return t('chat.deepResearchActionVerificationCompleted', 'Verification completed')
-    case 'followup_planned':
-      return t('chat.deepResearchActionFollowupPlanned', 'Follow-up planned')
-    case 'loop_stopped':
-      return t('chat.deepResearchActionLoopStopped', 'Research loop stopped')
-    case 'synthesizing':
-      return t('chat.deepResearchActionSynthesizing', 'Synthesizing report')
+function verificationTitle(item: DeepResearchVerificationItem): string {
+  return item.focus || item.gap || t('chat.deepResearchVerificationSummary', 'Verification')
+}
+
+function workflowPhaseStatusLabel(status?: string): string {
+  switch (status) {
     case 'completed':
-      return t('chat.deepResearchActionCompleted', 'Completed')
+      return t('chat.deepResearchWorkflowCompleted', 'Completed')
+    case 'current':
+      return t('chat.deepResearchWorkflowCurrent', 'Current')
     default:
-      return action || ''
+      return t('chat.deepResearchWorkflowPending', 'Pending')
   }
+}
+
+function objectStatusBadges(item: DeepResearchObjectMapItem): string[] {
+  const counts = item.status_counts || {}
+  return Object.entries(counts)
+    .filter(([, count]) => typeof count === 'number' && count > 0)
+    .map(([status, count]) => `${status}: ${count}`)
 }
 </script>
 
 <template>
-  <div class="deep-research-card rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm">
-    <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
-      <div class="flex items-center justify-between gap-3">
-        <div class="text-sm font-semibold text-gray-800 dark:text-gray-100">
-          {{ t('chat.deepResearchTitle', 'Deep Research') }}
+  <div class="rounded-[1.25rem] border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/85 shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/60">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {{ t('chat.deepResearchTitle', 'Deep Research') }}
+          </div>
+          <div v-if="query" class="mt-2 text-lg font-semibold text-slate-900 dark:text-white break-words">
+            {{ query }}
+          </div>
         </div>
-        <div class="flex items-center gap-2 text-xs">
-          <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-            {{ mode }}
-          </span>
-          <span v-if="card.report_style" class="px-2 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
-            {{ card.report_style }}
-          </span>
-          <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-            {{ confidenceText }}
+        <div class="flex flex-wrap gap-2 text-xs">
+          <span class="rounded-full bg-blue-100 px-3 py-1 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">{{ mode }}</span>
+          <span v-if="reportStyle" class="rounded-full bg-purple-100 px-3 py-1 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200">{{ reportStyle }}</span>
+          <span class="rounded-full bg-slate-100 px-3 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200">{{ t('chat.deepResearchCitationCoverage', 'Citation coverage') }} {{ citationCoverageLabel }}</span>
+          <span class="rounded-full bg-slate-100 px-3 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200">{{ t('chat.deepResearchStatus', 'Status') }} {{ props.card.status || 'completed' }}</span>
+          <span class="rounded-full px-3 py-1" :class="hasConflict ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'">
+            {{ hasConflict ? t('chat.deepResearchHasConflict', 'Conflicting signals') : t('chat.deepResearchVerificationResolved', 'Resolved') }}
           </span>
         </div>
-      </div>
-      <div v-if="query" class="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">
-        {{ query }}
       </div>
     </div>
 
-    <div class="px-4 py-3 space-y-3">
-      <p v-if="answer" class="text-sm leading-6 text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
-        {{ answer }}
-      </p>
-
-      <div class="text-xs text-gray-500 dark:text-gray-400">
-        {{ t('chat.deepResearchEvidence', 'Evidence') }}: {{ evidenceCount }}
-      </div>
-      <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-        <span>{{ t('chat.deepResearchSupport', 'Support') }}: {{ supportCount }}</span>
-        <span>{{ t('chat.deepResearchConflict', 'Conflict') }}: {{ conflictCount }}</span>
-        <span>{{ t('chat.deepResearchCitationCoverage', 'Citation Coverage') }}: {{ citationCoverageText }}</span>
-        <span
-          v-if="hasConflict"
-          class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-        >
-          {{ t('chat.deepResearchHasConflict', 'Conflicting signals') }}
-        </span>
-      </div>
-
-      <div v-if="card.status || timeWindows.length > 0 || card.strict_entity || entitySummary || iterations || stopReason || latestGap || latestAction || iteration" class="space-y-1 text-xs text-gray-500 dark:text-gray-400">
-        <div v-if="card.status">{{ t('chat.deepResearchStatus', 'Status') }}: {{ card.status }}</div>
-        <div v-if="iteration">{{ t('chat.deepResearchCurrentIteration', 'Current iteration') }}: {{ iteration }}</div>
-        <div v-if="iterations">{{ t('chat.deepResearchIterations', 'Iterations') }}: {{ iterations }}</div>
-        <div v-if="stopReason">{{ t('chat.deepResearchStopReason', 'Stop reason') }}: {{ stopReasonLabel(stopReason) }}</div>
-        <div v-if="latestAction">{{ t('chat.deepResearchLatestAction', 'Latest action') }}: {{ latestActionLabel(latestAction) }}</div>
-        <div v-if="latestGap">{{ t('chat.deepResearchLatestGap', 'Latest gap') }}: {{ latestGap }}</div>
-        <div v-if="timeWindows.length > 0">{{ t('chat.deepResearchTimeWindows', 'Time Windows') }}: {{ timeWindows.join(', ') }}</div>
-        <div v-if="card.strict_entity">{{ t('chat.deepResearchStrictEntity', 'Strict entity matching enabled') }}</div>
-        <div v-if="entitySummary?.enabled">
-          {{ t('chat.deepResearchEntitySummary', 'Entity filtering') }}:
-          {{ t('chat.deepResearchEntityThreshold', { threshold: entitySummary.threshold ?? '--' }) }}
-          <span v-if="entitySummary.filtered_count != null"> · {{ t('chat.deepResearchEntityFiltered', { count: entitySummary.filtered_count }) }}</span>
-          <span v-if="entitySummary.ambiguous_count != null"> · {{ t('chat.deepResearchEntityAmbiguous', { count: entitySummary.ambiguous_count }) }}</span>
-        </div>
-      </div>
-
-      <div v-if="citations.length > 0" class="space-y-2">
-        <div class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('chat.deepResearchCitations', 'Citations') }}</div>
-        <a
-          v-for="(c, idx) in citations"
-          :key="idx"
-          :href="c.url"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="block px-2 py-1.5 rounded border border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
-        >
-          <div class="text-sm text-blue-600 dark:text-blue-400 line-clamp-1">
-            {{ c.title || c.url }}
-          </div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            {{ domainOf(c.url) }}
-          </div>
-        </a>
-      </div>
-
-      <div v-if="openQuestions.length > 0" class="space-y-1">
-        <div class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('chat.deepResearchOpenQuestions', 'Open questions') }}</div>
-        <ul class="text-xs text-gray-500 dark:text-gray-400 list-disc pl-4">
-          <li v-for="(q, idx) in openQuestions" :key="idx">{{ q }}</li>
-        </ul>
-      </div>
-
-      <div v-if="timelineSections.length > 0" class="space-y-2">
-        <div class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('chat.deepResearchTimeline', 'Timeline') }}</div>
-        <div
-          v-for="(section, idx) in timelineSections"
-          :key="idx"
-          class="rounded border border-gray-100 dark:border-gray-700 px-3 py-2"
-        >
-          <div class="text-sm text-gray-700 dark:text-gray-200 font-medium">{{ section.label }}</div>
-          <ul v-if="section.highlights?.length" class="mt-1 text-xs text-gray-500 dark:text-gray-400 list-disc pl-4">
-            <li v-for="(item, itemIdx) in section.highlights" :key="itemIdx">{{ item }}</li>
-          </ul>
-        </div>
-      </div>
-
-      <div v-if="stageErrors.length > 0" class="space-y-1">
-        <div class="text-xs font-medium text-amber-700 dark:text-amber-300">{{ t('chat.deepResearchStageErrors', 'Stage warnings') }}</div>
-        <ul class="text-xs text-amber-600 dark:text-amber-300 list-disc pl-4">
-          <li v-for="(item, idx) in stageErrors" :key="idx">{{ item }}</li>
-        </ul>
-      </div>
-
-      <details v-if="hasResearchDetails" class="rounded border border-gray-100 dark:border-gray-700 px-3 py-2">
-        <summary class="cursor-pointer text-xs font-medium text-gray-600 dark:text-gray-300">
-          {{ t('chat.deepResearchTrace', 'Research trace') }}
-        </summary>
-
-        <div v-if="verificationSummary" class="mt-3 space-y-2">
-          <div class="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span>{{ t('chat.deepResearchVerificationSummary', 'Verification') }}</span>
-            <span>{{ t('chat.deepResearchSupport', 'Support') }}: {{ verificationSummary.resolved_count || 0 }}</span>
-            <span>{{ t('chat.deepResearchConflict', 'Conflict') }}: {{ verificationSummary.conflicted_count || 0 }}</span>
-            <span>{{ t('chat.deepResearchVerificationInsufficient', 'Insufficient') }}: {{ verificationSummary.insufficient_count || 0 }}</span>
-          </div>
-          <div v-if="verificationItems.length > 0" class="space-y-2">
-            <div
-              v-for="(item, idx) in verificationItems"
-              :key="idx"
-              class="rounded border border-gray-100 dark:border-gray-700 px-3 py-2"
-            >
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-sm text-gray-700 dark:text-gray-200 font-medium">{{ item.focus || item.gap || t('chat.deepResearchVerificationSummary', 'Verification') }}</div>
-                <span class="px-2 py-0.5 rounded text-xs" :class="verificationStatusClass(item.status)">
-                  {{ verificationStatusLabel(item.status) }}
+    <div class="px-5 py-5 space-y-5">
+      <div class="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div class="space-y-5">
+          <section class="rounded-2xl bg-slate-50 px-4 py-4 dark:bg-slate-950/50">
+            <div class="flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span>{{ t('chat.deepResearchEvidence', 'Evidence') }} {{ evidenceCount }}</span>
+              <span>{{ t('chat.deepResearchIterations', 'Iterations') }} {{ iterations }}</span>
+              <span>{{ t('chat.deepResearchSupport', 'Support') }} {{ supportCount }}</span>
+              <span>{{ t('chat.deepResearchConflict', 'Conflict') }} {{ conflictCount }}</span>
+              <span>{{ confidenceLabel }}</span>
+            </div>
+            <div class="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-slate-800 dark:text-slate-100">
+              {{ answer || t('chat.waitingThinking', 'Thinking...') }}
+            </div>
+            <div v-if="timeWindows.length" class="mt-3 flex flex-wrap gap-2">
+              <span v-for="window in timeWindows" :key="window" class="rounded-full bg-white px-2.5 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {{ window }}
+              </span>
+            </div>
+            <div v-if="workflowPhases.length" class="mt-4 space-y-2">
+              <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {{ t('chat.deepResearchWorkflowPhases', 'Workflow phases') }}
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <span
+                  v-for="phase in workflowPhases"
+                  :key="`${phase.id || phase.label}-${phase.status}`"
+                  class="rounded-full px-2.5 py-1 text-xs"
+                  :class="verificationStatusClass(phase.status)"
+                >
+                  {{ phase.label || phase.id || '--' }} · {{ workflowPhaseStatusLabel(phase.status) }}
                 </span>
               </div>
-              <div v-if="item.summary" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ item.summary }}</div>
-              <div v-if="item.gap && item.gap !== item.focus" class="mt-1 text-xs text-amber-600 dark:text-amber-300">{{ item.gap }}</div>
             </div>
-          </div>
+          </section>
+
+          <section v-if="citations.length > 0" class="space-y-3">
+            <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ t('chat.deepResearchCitations', 'Citations') }}</div>
+            <div class="grid gap-3 md:grid-cols-2">
+              <a
+                v-for="(citation, index) in citations"
+                :key="`${citation.url}-${index}`"
+                :href="citation.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="rounded-2xl border border-slate-200 bg-white px-4 py-3 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 dark:hover:bg-slate-900/70"
+              >
+                <div class="text-sm font-medium text-blue-600 dark:text-blue-300 break-words">{{ citation.title || citation.url }}</div>
+                <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ domainOf(citation.url) }}</div>
+              </a>
+            </div>
+          </section>
+
+          <section v-if="isKnowledgeBase && sourceInventoryPreview.length" class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ t('chat.deepResearchSourceInventory', 'Source Inventory') }}</div>
+              <div class="text-xs text-slate-500 dark:text-slate-400">{{ sourceInventory.length }}</div>
+            </div>
+            <div class="mt-3 space-y-3">
+              <a
+                v-for="(source, index) in sourceInventoryPreview"
+                :key="`${source.source_id || source.url || index}`"
+                :href="source.url || '#'"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="block rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60"
+              >
+                <div class="text-sm font-medium text-blue-600 dark:text-blue-300 break-words">{{ source.title || source.url || '--' }}</div>
+                <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ source.domain || domainOf(source.url || '') }} · {{ source.source_type || 'web' }}</div>
+                <div class="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-400 dark:text-slate-500">
+                  <span v-if="source.published_at">{{ t('chat.deepResearchPublishedAt', 'Published') }} {{ formatDate(source.published_at) }}</span>
+                  <span v-if="source.fetched_at">{{ t('chat.deepResearchFetchedAt', 'Fetched') }} {{ formatDate(source.fetched_at) }}</span>
+                  <span>{{ t('chat.deepResearchRelevance', 'Rel') }} {{ formatScore(source.relevance_score) }}</span>
+                  <span>{{ t('chat.deepResearchCredibility', 'Cred') }} {{ formatScore(source.credibility_score) }}</span>
+                </div>
+              </a>
+            </div>
+          </section>
         </div>
 
-        <div v-if="researchTrace.length > 0" class="mt-3 space-y-2">
-          <div class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('chat.deepResearchTraceEntries', 'Iterations') }}</div>
-          <div
-            v-for="(entry, idx) in researchTrace"
-            :key="idx"
-            class="rounded border border-gray-100 dark:border-gray-700 px-3 py-2"
-          >
-            <div class="flex items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <div class="space-y-4">
+          <section v-if="isKnowledgeBase && coverageSummary" class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50">
+            <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ t('chat.deepResearchCoverageSummary', 'Coverage Summary') }}</div>
+            <div class="mt-3 grid grid-cols-2 gap-3 text-xs">
+              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+                <div class="text-slate-500 dark:text-slate-400">{{ t('chat.deepResearchTasks', 'Tasks') }}</div>
+                <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{{ coverageSummary.task_count || 0 }}</div>
+              </div>
+              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+                <div class="text-slate-500 dark:text-slate-400">{{ t('chat.deepResearchEvidence', 'Evidence') }}</div>
+                <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{{ coverageSummary.evidence_count || evidenceCount }}</div>
+              </div>
+              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+                <div class="text-slate-500 dark:text-slate-400">{{ t('chat.deepResearchDomains', 'Domains') }}</div>
+                <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{{ coverageSummary.distinct_domain_count || 0 }}</div>
+              </div>
+              <div class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+                <div class="text-slate-500 dark:text-slate-400">{{ t('chat.deepResearchOpenQuestions', 'Open questions') }}</div>
+                <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{{ coverageSummary.open_question_count || openQuestions.length }}</div>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="isKnowledgeBase && objectMap.length" class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50">
+            <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ t('chat.deepResearchObjectMap', 'Object Map') }}</div>
+            <div class="mt-3 space-y-3">
+              <div v-for="item in objectMap" :key="item.id || item.label" class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">{{ item.label || item.id || '--' }}</div>
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    {{ t('chat.deepResearchTasks', 'Tasks') }} {{ item.task_count || 0 }}
+                  </span>
+                </div>
+                <div v-if="item.time_windows?.length" class="mt-2 flex flex-wrap gap-2">
+                  <span v-for="window in item.time_windows" :key="window" class="rounded-full bg-white px-2 py-1 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">{{ window }}</span>
+                </div>
+                <div v-if="objectStatusBadges(item).length" class="mt-2 flex flex-wrap gap-2">
+                  <span v-for="badge in objectStatusBadges(item)" :key="badge" class="rounded-full bg-white px-2 py-1 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">{{ badge }}</span>
+                </div>
+                <ul v-if="item.questions?.length" class="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-500 dark:text-slate-400">
+                  <li v-for="question in item.questions.slice(0, 3)" :key="question">{{ question }}</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50">
+            <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ t('chat.deepResearchVerificationSummary', 'Verification') }}</div>
+            <div class="mt-3 flex flex-wrap gap-2 text-xs">
+              <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                {{ t('chat.deepResearchVerificationResolved', 'Resolved') }} {{ verificationSummary?.resolved_count || 0 }}
+              </span>
+              <span class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                {{ t('chat.deepResearchVerificationConflicted', 'Conflicted') }} {{ verificationSummary?.conflicted_count || 0 }}
+              </span>
+              <span class="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                {{ t('chat.deepResearchVerificationInsufficient', 'Insufficient') }} {{ verificationSummary?.insufficient_count || 0 }}
+              </span>
+            </div>
+            <div v-if="verificationItems.length" class="mt-3 space-y-3">
+              <div v-for="(item, index) in verificationItems" :key="index" class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">{{ verificationTitle(item) }}</div>
+                  <span class="rounded-full px-2.5 py-1 text-xs" :class="verificationStatusClass(item.status)">{{ verificationStatusLabel(item.status) }}</span>
+                </div>
+                <div v-if="item.summary" class="mt-2 text-xs text-slate-500 dark:text-slate-400 break-words">{{ item.summary }}</div>
+                <div v-if="item.gap && item.gap !== item.focus" class="mt-1 text-xs text-amber-700 dark:text-amber-200 break-words">{{ item.gap }}</div>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="timelineSections.length" class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50">
+            <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ t('chat.deepResearchTimeline', 'Timeline') }}</div>
+            <div class="mt-3 space-y-3">
+              <div v-for="(section, index) in timelineSections" :key="index" class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+                <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">{{ section.label }}</div>
+                <ul v-if="section.highlights?.length" class="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-500 dark:text-slate-400">
+                  <li v-for="(item, itemIndex) in section.highlights" :key="itemIndex">{{ item }}</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section class="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50">
+            <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ t('chat.deepResearchOpenQuestions', 'Open questions') }}</div>
+            <ul v-if="openQuestions.length" class="mt-3 list-disc space-y-1 pl-4 text-sm text-slate-600 dark:text-slate-300">
+              <li v-for="question in openQuestions" :key="question">{{ question }}</li>
+            </ul>
+            <div v-else class="mt-3 text-sm text-slate-500 dark:text-slate-400">
+              {{ stopReasonLabel(props.card.stop_reason) }}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <section v-if="stageErrors.length" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 dark:border-amber-900/60 dark:bg-amber-950/30">
+        <div class="text-sm font-semibold text-amber-700 dark:text-amber-200">{{ t('chat.deepResearchStageErrors', 'Stage warnings') }}</div>
+        <ul class="mt-2 list-disc space-y-1 pl-4 text-sm text-amber-700 dark:text-amber-200">
+          <li v-for="warning in stageErrors" :key="warning">{{ warning }}</li>
+        </ul>
+      </section>
+
+      <details v-if="researchTrace.length || verificationItems.length" class="group rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/50">
+        <summary class="list-none cursor-pointer flex items-center justify-between gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <span>{{ t('chat.deepResearchTrace', 'Research trace') }}</span>
+          <span class="text-slate-400 transition-transform group-open:rotate-180">⌄</span>
+        </summary>
+        <div class="mt-4 space-y-3">
+          <div v-for="(entry, index) in researchTrace" :key="index" class="rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-900/60">
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
               <span>{{ t('chat.deepResearchIteration', 'Iteration') }} {{ entry.iteration }}</span>
-              <span v-if="entry.verification_outcome" class="px-2 py-0.5 rounded" :class="verificationStatusClass(entry.verification_outcome)">
+              <span v-if="entry.verification_outcome" class="rounded-full px-2.5 py-1" :class="verificationStatusClass(entry.verification_outcome)">
                 {{ verificationStatusLabel(entry.verification_outcome) }}
               </span>
             </div>
-            <div v-if="entry.focus" class="mt-1 text-sm text-gray-700 dark:text-gray-200 font-medium">{{ entry.focus }}</div>
-            <div v-if="entry.gap" class="mt-1 text-xs text-amber-600 dark:text-amber-300">{{ entry.gap }}</div>
-            <div v-if="entry.follow_up_query" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ entry.follow_up_query }}</div>
-            <div v-if="entry.evidence_added != null" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('chat.deepResearchEvidenceAdded', 'Evidence added') }}: {{ entry.evidence_added }}
+            <div v-if="entry.focus" class="mt-2 text-sm font-medium text-slate-800 dark:text-slate-100 break-words">{{ entry.focus }}</div>
+            <div v-if="entry.gap" class="mt-1 text-xs text-amber-700 dark:text-amber-200 break-words">{{ entry.gap }}</div>
+            <div v-if="entry.follow_up_query" class="mt-1 text-xs text-slate-500 dark:text-slate-400 break-words">{{ entry.follow_up_query }}</div>
+            <div v-if="entry.evidence_added != null" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {{ t('chat.deepResearchEvidenceAdded', 'Evidence added') }} {{ entry.evidence_added }}
             </div>
           </div>
         </div>

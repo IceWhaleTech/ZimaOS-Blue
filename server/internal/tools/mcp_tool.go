@@ -54,8 +54,8 @@ func (t *MCPTool) Execute(ctx context.Context, args map[string]interface{}) (int
 	}
 
 	params := map[string]interface{}{}
-	if raw, ok := args["params"]; ok && raw != nil {
-		cast, ok := raw.(map[string]interface{})
+	if raw, ok := compatArgValue(args, "params"); ok && raw != nil {
+		cast, ok := coerceCompatMap(raw)
 		if !ok {
 			return nil, errors.New("params must be an object")
 		}

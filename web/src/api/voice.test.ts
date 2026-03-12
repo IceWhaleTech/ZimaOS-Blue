@@ -123,4 +123,18 @@ describe('streamingTTSManager streaming chunks', () => {
     expect(playSpy).toHaveBeenNthCalledWith(2, 'chunk-2', 'audio/wav')
     expect(source.close).toHaveBeenCalledTimes(1)
   })
+
+  it('skips synthesis requests when speech volume is muted', async () => {
+    const getItem = globalThis.localStorage.getItem as unknown as ReturnType<typeof vi.fn>
+    getItem.mockImplementation((key: string) => (key === 'tts-speech-volume' ? '0' : null))
+
+    const playSpy = vi.spyOn(ttsAudioManager, 'play').mockResolvedValue()
+
+    await streamingTTSManager.streamAndPlay('你好，世界。')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(instances).toHaveLength(0)
+    expect(playSpy).not.toHaveBeenCalled()
+  })
 })

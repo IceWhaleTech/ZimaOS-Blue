@@ -34,6 +34,7 @@ export interface Provider {
   description?: string
   website?: string
   api_key_url?: string
+  beta?: boolean
   created_at?: string
   updated_at?: string
   last_health_check?: string

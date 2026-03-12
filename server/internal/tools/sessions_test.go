@@ -109,6 +109,36 @@ func (s *stubSessionsService) AppendSessionMessage(ctx context.Context, sessionI
 	return nil, fmt.Errorf("session not found")
 }
 
+func TestSessionsListToolExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
+	svc := &stubSessionsService{
+		sessions: []SessionSummary{
+			{ID: "conv_1", UserID: "user_a", Pinned: true},
+			{ID: "conv_2", UserID: "user_a", Pinned: false},
+			{ID: "conv_3", UserID: "user_b", Pinned: true},
+		},
+	}
+	tool := NewSessionsListTool(svc)
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"limit":      10,
+			"offset":     0,
+			"user":       "user_a",
+			"pinnedOnly": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	sessions := payload["sessions"].([]SessionSummary)
+	if len(sessions) != 1 || sessions[0].ID != "conv_1" {
+		t.Fatalf("unexpected sessions: %#v", sessions)
+	}
+	if payload["count"].(int) != 1 {
+		t.Fatalf("count = %v, want 1", payload["count"])
+	}
+}
+
 func TestSessionsHistoryToolExecute(t *testing.T) {
 	svc := &stubSessionsService{
 		sessions: []SessionSummary{{ID: "conv_1", Title: "First"}},
@@ -164,6 +194,37 @@ func TestSessionsSpawnToolExecute(t *testing.T) {
 		"role":            "assistant",
 		"provider":        "openai",
 		"model":           "gpt-test",
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	session := payload["session"].(*SessionSummary)
+	if session.Title != "Conversation from prompt" {
+		t.Fatalf("title = %q, want Conversation from prompt", session.Title)
+	}
+	if svc.lastCreateUserID != "user_ctx" || !svc.lastCreatePinned {
+		t.Fatalf("unexpected create args: user=%q pinned=%v", svc.lastCreateUserID, svc.lastCreatePinned)
+	}
+	initial := payload["initial_message"].(*SessionMessage)
+	if initial.Content != "seed" || initial.Role != "assistant" {
+		t.Fatalf("unexpected initial message: %#v", initial)
+	}
+}
+
+func TestSessionsSpawnToolExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
+	svc := &stubSessionsService{}
+	tool := NewSessionsSpawnTool(svc)
+	ctx := WithUserID(context.Background(), "user_ctx")
+	result, err := tool.Execute(ctx, map[string]interface{}{
+		"input": map[string]interface{}{
+			"message":        "Conversation from prompt",
+			"pinned":         true,
+			"initialMessage": "seed",
+			"role":           "assistant",
+			"provider":       "openai",
+			"model":          "gpt-test",
+		},
 	})
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)

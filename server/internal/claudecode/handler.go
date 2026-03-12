@@ -68,11 +68,11 @@ type ValidateRequest struct {
 
 // ValidateResponse is the response for POST /api/v1/claudecode/validate
 type ValidateResponse struct {
-	Valid       bool   `json:"valid"`
-	Version     string `json:"version,omitempty"`
-	BinaryPath  string `json:"binary_path"`
-	Message     string `json:"message"`
-	DryRunOK    bool   `json:"dry_run_ok"`
+	Valid      bool   `json:"valid"`
+	Version    string `json:"version,omitempty"`
+	BinaryPath string `json:"binary_path"`
+	Message    string `json:"message"`
+	DryRunOK   bool   `json:"dry_run_ok"`
 }
 
 // ConfigResponse is the response for GET /api/v1/claudecode/config
@@ -124,6 +124,47 @@ type Handler struct {
 	healthChecker  *HealthChecker
 	circuitBreaker *CircuitBreaker
 	cache          *MemoryCache
+}
+
+// DirectoryWhitelistSnapshot returns a thread-safe copy of whitelist settings.
+func (h *Handler) DirectoryWhitelistSnapshot() (enabled bool, entries []DirectoryWhitelistEntry) {
+	h.configMu.RLock()
+	defer h.configMu.RUnlock()
+
+	enabled = h.config.WhitelistEnabled
+	if len(h.config.DirectoryWhitelist) == 0 {
+		return enabled, nil
+	}
+	entries = make([]DirectoryWhitelistEntry, 0, len(h.config.DirectoryWhitelist))
+	entries = append(entries, h.config.DirectoryWhitelist...)
+	return enabled, entries
+}
+
+// DirectoryWhitelistRoots returns normalized absolute whitelist roots when enabled.
+func (h *Handler) DirectoryWhitelistRoots() []string {
+	enabled, entries := h.DirectoryWhitelistSnapshot()
+	if !enabled || len(entries) == 0 {
+		return nil
+	}
+	roots := make([]string, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		p := strings.TrimSpace(entry.Path)
+		if p == "" {
+			continue
+		}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			continue
+		}
+		clean := filepath.Clean(abs)
+		if _, ok := seen[clean]; ok {
+			continue
+		}
+		seen[clean] = struct{}{}
+		roots = append(roots, clean)
+	}
+	return roots
 }
 
 // NewHandler creates a new Handler.

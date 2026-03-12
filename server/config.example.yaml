@@ -213,6 +213,21 @@ tool_calling:
     safe_search: false
     region: "wt-wt"
 
+# Browser automation runtime
+browser:
+  pool_size: 3
+  headless: true         # runtime default; chat card "use_browser" opens a visible window automatically
+  default_timeout: 30000
+  max_timeout: 120000
+  default_viewport_width: 1920
+  default_viewport_height: 1080
+  allowed_domains: []
+  blocked_domains: []
+  user_agent: ""
+  proxy_url: ""
+  browser_path: ""      # optional explicit Chrome/Chromium path
+  evaluate_enabled: true
+
 # Session settings (conversation context + audit trail)
 session:
   audit:

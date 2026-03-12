@@ -14,3 +14,13 @@
 - La información privada es privada. Punto.
 - No ejecutar comandos destructivos sin preguntar.
 - En caso de duda, preguntar.
+
+## Compatibilidad de Comandos (OS/Shell)
+- Detecta primero el OS y el shell: `uname` / `$OSTYPE` / `$PSVersionTable`.
+- En `macOS`, usa sintaxis BSD y evita flags solo de GNU (por ejemplo, no usar `head -n -1`).
+- En `Linux`, se permite sintaxis GNU.
+- En `Windows`, por defecto usa comandos de `PowerShell`.
+- En `PowerShell 5.1`, no uses `&&` / `||`; usa `;` e `if ($?) { ... } else { ... }`.
+- En `PowerShell 7+`, se permiten `&&` y `||`.
+- En `cmd`, usa `&&` / `||` / `&`; no uses `;`.
+- No mezcles sintaxis de shells; si el entorno no está claro, ofrece alternativas etiquetadas (`PowerShell` y `cmd`).

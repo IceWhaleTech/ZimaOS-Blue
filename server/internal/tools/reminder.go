@@ -80,7 +80,7 @@ func (t *PushTool) Definition() ToolDefinition {
 
 // Execute dispatches to the appropriate action.
 func (t *PushTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	action, _ := args["action"].(string)
+	action := firstCompatString(args, "action", "op", "operation", "command")
 	if action == "" {
 		return nil, fmt.Errorf("action is required")
 	}
@@ -109,11 +109,11 @@ func (t *PushTool) Execute(ctx context.Context, args map[string]interface{}) (in
 }
 
 func (t *PushTool) executeAdd(ctx context.Context, userID string, args map[string]interface{}) (interface{}, error) {
-	message, _ := args["message"].(string)
+	message := firstCompatString(args, "message", "content", "text")
 	if message == "" {
 		return nil, fmt.Errorf("message is required for add")
 	}
-	timeStr, _ := args["time"].(string)
+	timeStr := firstCompatString(args, "time", "fire_at", "fireAt", "when")
 	if timeStr == "" {
 		return nil, fmt.Errorf("time is required for add")
 	}
@@ -123,7 +123,7 @@ func (t *PushTool) executeAdd(ctx context.Context, userID string, args map[strin
 		return nil, err
 	}
 
-	recurring, _ := args["recurring"].(string)
+	recurring := firstCompatString(args, "recurring", "repeat", "recurrence")
 	sessionID := GetSessionID(ctx)
 
 	result, err := t.svc.Add(ctx, userID, message, fireAt, recurring, sessionID)
@@ -160,7 +160,7 @@ func (t *PushTool) executeList(ctx context.Context, userID string) (interface{},
 }
 
 func (t *PushTool) executeDelete(ctx context.Context, userID string, args map[string]interface{}) (interface{}, error) {
-	id, _ := args["id"].(string)
+	id := firstCompatString(args, "id", "reminder_id", "reminderId")
 	if id == "" {
 		return nil, fmt.Errorf("id is required for delete")
 	}

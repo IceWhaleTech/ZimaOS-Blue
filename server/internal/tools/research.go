@@ -20,19 +20,21 @@ type ResearchBudget struct {
 }
 
 type ResearchCreateJobRequest struct {
-	Query        string
-	Mode         string
-	RouteMode    string
-	Lang         string
-	Budget       *ResearchBudget
-	StrictEntity *bool
-	TimeWindows  []string
-	ReportStyle  string
-	UserID       string
+	Query          string
+	Mode           string
+	RouteMode      string
+	Lang           string
+	Budget         *ResearchBudget
+	StrictEntity   *bool
+	TimeWindows    []string
+	ReportStyle    string
+	UserID         string
+	ConversationID string
 }
 
 type ResearchJob struct {
 	ID                 string
+	ConversationID     string
 	Status             string
 	Query              string
 	Mode               string
@@ -87,7 +89,7 @@ func (t *ResearchRunTool) Definition() ToolDefinition {
 				"max_seconds":          map[string]interface{}{"type": "integer", "description": "Optional time budget override"},
 				"strict_entity":        map[string]interface{}{"type": "boolean", "description": "Enable strict same-entity filtering"},
 				"time_windows":         map[string]interface{}{"type": "array", "description": "Optional timeline windows", "items": map[string]interface{}{"type": "string"}},
-				"report_style":         map[string]interface{}{"type": "string", "description": "summary|timeline"},
+				"report_style":         map[string]interface{}{"type": "string", "description": "summary|timeline|knowledge_base"},
 				"wait":                 map[string]interface{}{"type": "boolean", "description": "Whether to wait for completion (default true)"},
 				"wait_timeout_seconds": map[string]interface{}{"type": "integer", "description": "Optional max wait time before returning pending status"},
 				"poll_interval_ms":     map[string]interface{}{"type": "integer", "description": "Polling interval when wait=true (default 500ms)"},
@@ -123,15 +125,16 @@ func (t *ResearchRunTool) Execute(ctx context.Context, args map[string]interface
 	}
 	userID := GetUserID(ctx)
 	job, err := t.service.CreateJob(ctx, ResearchCreateJobRequest{
-		Query:        query,
-		Mode:         strings.TrimSpace(firstCompatString(args, "mode")),
-		RouteMode:    strings.TrimSpace(firstCompatString(args, "route_mode")),
-		Lang:         strings.TrimSpace(firstCompatString(args, "lang")),
-		Budget:       parseResearchBudget(args),
-		StrictEntity: parseResearchBoolArg(args, "strict_entity"),
-		TimeWindows:  parseResearchStringSliceArg(args["time_windows"]),
-		ReportStyle:  strings.TrimSpace(firstCompatString(args, "report_style")),
-		UserID:       userID,
+		Query:          query,
+		Mode:           strings.TrimSpace(firstCompatString(args, "mode")),
+		RouteMode:      strings.TrimSpace(firstCompatString(args, "route_mode", "routeMode")),
+		Lang:           strings.TrimSpace(firstCompatString(args, "lang", "language")),
+		Budget:         parseResearchBudget(args),
+		StrictEntity:   parseResearchBoolArg(args, "strict_entity", "strictEntity"),
+		TimeWindows:    parseResearchStringSliceArgs(args, "time_windows", "timeWindows"),
+		ReportStyle:    strings.TrimSpace(firstCompatString(args, "report_style", "reportStyle")),
+		UserID:         userID,
+		ConversationID: strings.TrimSpace(GetSessionID(ctx)),
 	})
 	if err != nil {
 		return nil, err
@@ -140,6 +143,7 @@ func (t *ResearchRunTool) Execute(ctx context.Context, args map[string]interface
 		"type":                 "deep-research-job",
 		"status":               job.Status,
 		"job_id":               job.ID,
+		"conversation_id":      job.ConversationID,
 		"query":                job.Query,
 		"requested_route_mode": job.RequestedRouteMode,
 		"effective_route_mode": job.EffectiveRouteMode,
@@ -155,14 +159,20 @@ func (t *ResearchRunTool) Execute(ctx context.Context, args map[string]interface
 		return payload, nil
 	}
 	pollInterval := 500 * time.Millisecond
-	if ms := parseResearchIntArg(args["poll_interval_ms"]); ms > 0 {
-		pollInterval = time.Duration(ms) * time.Millisecond
+	if raw, ok := compatArgValue(args, "poll_interval_ms", "pollIntervalMs"); ok {
+		if ms := parseResearchIntArg(raw); ms > 0 {
+			pollInterval = time.Duration(ms) * time.Millisecond
+		}
 	}
 	var waitCtx context.Context
 	var cancel context.CancelFunc
-	if seconds := parseResearchIntArg(args["wait_timeout_seconds"]); seconds > 0 {
-		waitCtx, cancel = context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
-		defer cancel()
+	if raw, ok := compatArgValue(args, "wait_timeout_seconds", "waitTimeoutSeconds"); ok {
+		if seconds := parseResearchIntArg(raw); seconds > 0 {
+			waitCtx, cancel = context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
+			defer cancel()
+		} else {
+			waitCtx = ctx
+		}
 	} else {
 		waitCtx = ctx
 	}
@@ -196,7 +206,7 @@ func (t *ResearchStatusTool) Execute(ctx context.Context, args map[string]interf
 	if t == nil || t.service == nil {
 		return nil, errors.New("research service not available")
 	}
-	jobID := strings.TrimSpace(firstCompatString(args, "job_id", "id"))
+	jobID := strings.TrimSpace(firstCompatString(args, "job_id", "jobId", "id"))
 	if jobID == "" {
 		return nil, errors.New("job_id is required")
 	}
@@ -264,26 +274,36 @@ func isResearchTerminalStatus(status string) bool {
 }
 
 func parseResearchBudget(args map[string]interface{}) *ResearchBudget {
-	maxSources := parseResearchIntArg(args["max_sources"])
-	maxSeconds := parseResearchIntArg(args["max_seconds"])
+	maxSourcesRaw, _ := compatArgValue(args, "max_sources", "maxSources")
+	maxSecondsRaw, _ := compatArgValue(args, "max_seconds", "maxSeconds")
+	maxSources := parseResearchIntArg(maxSourcesRaw)
+	maxSeconds := parseResearchIntArg(maxSecondsRaw)
 	if maxSources <= 0 && maxSeconds <= 0 {
 		return nil
 	}
 	return &ResearchBudget{MaxSources: maxSources, MaxSeconds: maxSeconds}
 }
 
-func parseResearchBoolArg(args map[string]interface{}, key string) *bool {
+func parseResearchBoolArg(args map[string]interface{}, keys ...string) *bool {
 	if args == nil {
 		return nil
 	}
-	if value, ok := asCompatBool(args[key]); ok {
+	raw, ok := compatArgValue(args, keys...)
+	if !ok {
+		return nil
+	}
+	if value, ok := asCompatBool(raw); ok {
 		return &value
 	}
 	return nil
 }
 
-func parseResearchStringSliceArg(v interface{}) []string {
-	return parseResearchStringSlice(v)
+func parseResearchStringSliceArgs(args map[string]interface{}, keys ...string) []string {
+	raw, ok := compatArgValue(args, keys...)
+	if !ok {
+		return nil
+	}
+	return parseResearchStringSlice(raw)
 }
 
 func parseResearchIntArg(v interface{}) int {

@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TypelessCardFile } from '@/types/typeless'
+import { useTauri } from '@/composables/useTauri'
+import { systemApi, type LocalFileResolveResponse } from '@/api/system'
+import { isLocalAbsolutePath } from '@/utils/localPath'
 
 const { t } = useI18n()
+const { openInBrowser } = useTauri()
 
 const props = defineProps<{
   card: TypelessCardFile
@@ -62,16 +67,81 @@ function getFileExtension(): string {
   return props.card.filename.split('.').pop()?.toUpperCase() || 'FILE'
 }
 
-function handleDownload() {
-  if (props.card.downloadUrl) {
-    window.open(props.card.downloadUrl, '_blank')
+const isLocalDownloadPath = computed(() => {
+  if (!props.card.downloadUrl) return false
+  return isLocalAbsolutePath(props.card.downloadUrl)
+})
+
+const localFile = ref<LocalFileResolveResponse | null>(null)
+let resolveSeq = 0
+
+const resolvedDownloadUrl = computed(() => String(localFile.value?.download_url || '').trim())
+const thumbnailUrl = computed(() => String(localFile.value?.thumbnail_url || '').trim())
+const thumbnailDisplayUrl = computed(() => {
+  if (!thumbnailUrl.value) return ''
+  return thumbnailUrl.value.includes('?')
+    ? `${thumbnailUrl.value}&size=128`
+    : `${thumbnailUrl.value}?size=128`
+})
+
+watch(() => props.card.downloadUrl, () => {
+  void resolveLocalFileMetadata()
+}, { immediate: true })
+
+async function resolveLocalFileMetadata() {
+  resolveSeq += 1
+  const currentSeq = resolveSeq
+  localFile.value = null
+
+  const path = String(props.card.downloadUrl || '').trim()
+  if (!path || !isLocalAbsolutePath(path)) return
+
+  try {
+    const data = await systemApi.resolveLocalFile(path)
+    if (currentSeq !== resolveSeq) return
+    localFile.value = data
+  } catch {
+    if (currentSeq !== resolveSeq) return
+    localFile.value = null
   }
 }
 
-function handlePreview() {
-  if (props.card.previewUrl) {
-    window.open(props.card.previewUrl, '_blank')
+async function handleDownload() {
+  const path = String(props.card.downloadUrl || '').trim()
+  if (!path) return
+  const opened = await openInBrowser(path)
+  if (opened) return
+
+  if (isLocalDownloadPath.value && resolvedDownloadUrl.value) {
+    window.open(resolvedDownloadUrl.value, '_blank')
+    return
   }
+
+  if (isLocalDownloadPath.value) {
+    return
+  }
+
+  window.open(path, '_blank')
+}
+
+function handlePreview() {
+  const previewUrl = String(props.card.previewUrl || '').trim()
+  if (!previewUrl) return
+
+  if (isLocalAbsolutePath(previewUrl) && resolvedDownloadUrl.value) {
+    window.open(resolvedDownloadUrl.value, '_blank')
+    return
+  }
+
+  window.open(previewUrl, '_blank')
+}
+
+function handleThumbnailClick() {
+  if (resolvedDownloadUrl.value) {
+    window.open(resolvedDownloadUrl.value, '_blank')
+    return
+  }
+  void handleDownload()
 }
 </script>
 
@@ -79,8 +149,22 @@ function handlePreview() {
   <div class="file-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700">
     <div class="p-4 flex items-center gap-4">
       <!-- File icon -->
-      <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-2xl">
-        {{ getFileIcon() }}
+      <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-2xl overflow-hidden">
+        <button
+          v-if="thumbnailDisplayUrl"
+          class="w-full h-full"
+          :title="t('common.download', 'Download')"
+          :aria-label="t('common.download', 'Download')"
+          @click="handleThumbnailClick"
+        >
+          <img
+            :src="thumbnailDisplayUrl"
+            :alt="card.filename"
+            class="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </button>
+        <span v-else>{{ getFileIcon() }}</span>
       </div>
 
       <!-- File info -->
@@ -117,8 +201,8 @@ function handlePreview() {
         <button
           v-if="card.downloadUrl"
           class="p-2 text-gray-900 dark:text-white hover:text-gray-900 dark:text-white hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-600 rounded-lg transition-colors"
-          :title="t('common.download', 'Download')"
-          :aria-label="t('common.download', 'Download')"
+          :title="isLocalDownloadPath ? t('common.openLocation', 'Open location') : t('common.download', 'Download')"
+          :aria-label="isLocalDownloadPath ? t('common.openLocation', 'Open location') : t('common.download', 'Download')"
           @click="handleDownload"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

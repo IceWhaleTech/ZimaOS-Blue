@@ -139,6 +139,64 @@ func TestMemoryTool_Search(t *testing.T) {
 	}
 }
 
+func TestMemoryTool_SupportsNestedCamelCaseArgs(t *testing.T) {
+	now := time.Now()
+	mockService := &mockMemoryService{
+		recallResults: []MemorySearchResult{{
+			Chunk:         MemoryChunkResult{ID: "test-id-1", Content: "Test memory content", Metadata: map[string]string{"tag": "test"}, CreatedAt: now, UpdatedAt: now},
+			CombinedScore: 0.87,
+			MatchTypes:    []string{"keyword"},
+		}},
+		getResult:      &MemoryChunkResult{ID: "memory-1", Content: "Saved", Metadata: map[string]string{}, CreatedAt: now, UpdatedAt: now},
+		rememberResult: &MemoryChunkResult{ID: "memory-2", Content: "remembered", CreatedAt: now, UpdatedAt: now},
+		backend:        "local",
+	}
+	tool := NewMemoryTool(mockService)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":     "search",
+			"q":          "test query",
+			"maxResults": 5,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected search error: %v", err)
+	}
+	var response map[string]interface{}
+	json.Unmarshal([]byte(result.(string)), &response)
+	if response["query"] != "test query" {
+		t.Fatalf("expected query 'test query', got '%v'", response["query"])
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action": "remember",
+			"text":   "remember this",
+			"tags":   []interface{}{"prefs", "home"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected remember error: %v", err)
+	}
+	if mockService.lastRememberContent != "remember this" || len(mockService.lastRememberTags) != 2 {
+		t.Fatalf("unexpected remember args: content=%q tags=%#v", mockService.lastRememberContent, mockService.lastRememberTags)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":   "get",
+			"memoryId": "memory-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected get error: %v", err)
+	}
+	if mockService.lastGetID != "memory-1" {
+		t.Fatalf("lastGetID = %q, want memory-1", mockService.lastGetID)
+	}
+}
+
 func TestMemoryTool_Search_NoService(t *testing.T) {
 	tool := NewMemoryTool(nil)
 

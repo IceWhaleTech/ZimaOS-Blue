@@ -258,18 +258,17 @@ func (m *Manager) Restore(ctx context.Context, id string, opts RestoreOptions) (
 		result.Success = false
 	}
 
-	// Clean up WAL files for all restored databases
-	// This is critical to prevent "database disk image is malformed" errors
-	// when restoring a database that was using WAL mode
+	// Checkpoint WAL for all restored databases so committed frames are merged
+	// into the main DB files and WAL is truncated safely.
 	if !opts.DryRun && result.Success {
 		if opts.RestoreData {
-			if err := database.CleanAllWALFilesInDir(m.dataDir); err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("warning: failed to clean WAL files in data dir: %v", err))
+			if err := database.CheckpointAllDatabasesInDir(m.dataDir, database.CheckpointTruncate); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("warning: failed to checkpoint WAL in data dir: %v", err))
 			}
 		}
 		if opts.RestoreConfig {
-			if err := database.CleanAllWALFilesInDir(m.configDir); err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("warning: failed to clean WAL files in config dir: %v", err))
+			if err := database.CheckpointAllDatabasesInDir(m.configDir, database.CheckpointTruncate); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("warning: failed to checkpoint WAL in config dir: %v", err))
 			}
 		}
 	}

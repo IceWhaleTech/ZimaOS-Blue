@@ -86,6 +86,34 @@ func TestGatewayToolStatusExecute(t *testing.T) {
 	}
 }
 
+func TestGatewayToolStatusExecuteSupportsNestedCamelCaseArgs(t *testing.T) {
+	svc := &stubGatewayService{
+		stats:       map[string]interface{}{"active_connections": 1},
+		config:      GatewayConfigInfo{Enabled: true, MaxConnections: 10},
+		methods:     []string{"chat.send"},
+		connections: []GatewayConnectionInfo{{ID: "conn_1", UserID: "user_a"}},
+	}
+	tool := NewGatewayTool(svc)
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": map[string]interface{}{
+			"action":         "status",
+			"includeMethods": false,
+			"limit":          1,
+			"offset":         0,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if _, ok := payload["methods"]; ok {
+		t.Fatalf("expected methods to be omitted, got %#v", payload["methods"])
+	}
+	if payload["connection_count"].(int) != 1 {
+		t.Fatalf("connection_count = %v, want 1", payload["connection_count"])
+	}
+}
+
 func TestGatewayToolListExecuteFiltersByUser(t *testing.T) {
 	svc := &stubGatewayService{
 		connections: []GatewayConnectionInfo{{ID: "conn_1", UserID: "user_a"}, {ID: "conn_2", UserID: "user_b"}},

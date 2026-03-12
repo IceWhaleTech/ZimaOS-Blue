@@ -45,6 +45,7 @@ export default {
     enable: '启用',
     loadMore: '加载更多',
     openInNewTab: '在新标签页中打开',
+    openLocation: '打开所在位置',
     processing: '处理中...',
     unknown: '未知',
     verifying: '验证中...',
@@ -240,6 +241,39 @@ export default {
     myUsage: '我的用量',
     myProviders: '我的模型',
     mySkills: '我的技能',
+    workspace: '工作区',
+    workspacePanelTitle: '工作区文件',
+    openWorkspaceIn: '在文件管理器中打开',
+    openWorkspaceInFinder: '在 Finder 中打开',
+    openWorkspaceInExplorer: '在 Explorer 中打开',
+    workspaceFiles: '文件',
+    workspaceLoading: '正在加载工作区文件...',
+    workspaceNoFiles: '暂无可用的工作区文件',
+    workspaceSelectFileHint: '选择文件后可预览或下载',
+    workspacePathUnavailable: '工作区路径不可用',
+    workspaceLoadFailed: '加载工作区信息失败',
+    workspaceFilesLoadFailed: '加载工作区文件失败',
+    workspaceOpenFailed: '无法在文件管理器中打开工作区',
+    workspaceCoreTab: '工作区核心文件',
+    workspaceGeneratedTab: '目录树与生成文件',
+    workspaceGeneratedTitle: '工作区目录树',
+    workspaceGeneratedDescription: '展示真实目录与文件层级，并在可识别时关联到来源会话。',
+    workspaceGeneratedLoadFailed: '扫描生成文件来源失败',
+    workspaceUnknownConversation: '会话',
+    workspaceJumpToConversation: '跳转会话',
+    workspaceTreeLoadFailed: '加载工作区目录树失败',
+    workspaceTreeLoading: '正在加载目录树与会话关联...',
+    workspaceTreeEmpty: '工作区目录下暂无文件',
+    workspaceTreeFilteredEmpty: '当前筛选下没有可追溯会话来源的文件',
+    workspaceTreeDirCount: '目录',
+    workspaceTreeFileCount: '文件',
+    workspaceTreeLinkedCount: '已关联',
+    workspaceTreeShowAll: '显示全部文件',
+    workspaceTreeShowLinkedOnly: '仅显示可追溯文件',
+    workspaceTreeExpandDir: '展开目录',
+    workspaceTreeCollapseDir: '折叠目录',
+    workspaceTreeOpenFailed: '无法打开工作区文件',
+    workspaceTreeRevealFailed: '无法打开文件所在位置',
   },
   myUsage: {
     title: '我的用量',
@@ -414,6 +448,33 @@ export default {
     deepResearchActionLoopStopped: '深挖循环已停止',
     deepResearchActionSynthesizing: '正在综合报告',
     deepResearchActionCompleted: '已完成',
+    deepResearchProcess: '研究过程',
+    deepResearchLiveSources: '实时来源',
+    deepResearchResearchBrief: '研究摘要',
+    deepResearchMustVerify: '重点核验',
+    deepResearchPlannedTasks: '规划任务',
+    deepResearchFollowUpQuery: '跟进查询',
+    deepResearchRunningTasks: '进行中的深度研究',
+    deepResearchRunningElsewhere: '跨会话跟踪当前进行中的深度研究任务。',
+    deepResearchViewTask: '返回查看',
+    deepResearchCancelTask: '取消',
+    deepResearchTaskCompleted: '研究已完成',
+    deepResearchTaskFailed: '研究失败',
+    deepResearchTaskCancelled: '研究已取消',
+    deepResearchWorkflowPhases: '工作流阶段',
+    deepResearchWorkflowCompleted: '已完成',
+    deepResearchWorkflowCurrent: '当前阶段',
+    deepResearchWorkflowPending: '待开始',
+    deepResearchSourceInventory: '来源清单',
+    deepResearchPublishedAt: '发布时间',
+    deepResearchFetchedAt: '抓取时间',
+    deepResearchRelevance: '相关性',
+    deepResearchCredibility: '可信度',
+    deepResearchCoverageSummary: '覆盖摘要',
+    deepResearchTasks: '任务数',
+    deepResearchDomains: '域名数',
+    deepResearchObjectMap: '对象地图',
+    deepResearchBackToTask: '查看结果',
     taskCancelled: '任务已取消',
     waitingThinking: '思考中...',
     streamProgress: {
@@ -440,7 +501,7 @@ export default {
     dismiss: '关闭',
     attachFile: '添加附件',
     moreActions: '更多操作',
-    featureHintTapToEnable: "检测到可选功能，轻触勾选后发送时生效：",
+    featureHintTapToEnable: '检测到可选功能，轻触勾选后发送时生效：',
     inputPlaceholder: '输入消息...',
     inputPlaceholderShort: '输入消息...',
     send: '发送',
@@ -476,7 +537,8 @@ export default {
     voiceMicrophoneNotFound: '未找到麦克风设备,请连接麦克风后重试。',
     voiceMicrophoneInUse: '麦克风正被其他应用占用,请关闭其他使用麦克风的应用。',
     voiceSecureContextError: '麦克风访问需要 HTTPS 连接,请通过 https:// 或 localhost 访问。',
-    voiceNotSupportedError: '您的浏览器不支持麦克风访问,请使用 Chrome、Firefox 或 Edge 等现代浏览器。',
+    voiceNotSupportedError:
+      '您的浏览器不支持麦克风访问,请使用 Chrome、Firefox 或 Edge 等现代浏览器。',
     // Voice messages
     voiceMessage: '语音消息',
     voiceMessageTooShort: '录音时间太短',
@@ -526,11 +588,13 @@ export default {
     threatLevel: '威胁等级',
     dismissWarning: '关闭',
     trialExhausted: '试用额度已用完，请配置您自己的 AI 提供商以继续使用。',
-    trialServiceBusy: '试用服务当前使用人数较多，请稍后重试。如果持续看到此提示，请到社区寻求帮助。',
+    trialServiceBusy:
+      '试用服务当前使用人数较多，请稍后重试。如果持续看到此提示，请到社区寻求帮助。',
     configureProvider: '配置提供商',
     noProvider: {
       title: '没有可用的 AI 提供商',
       description: '您需要配置 AI 提供商才能使用此功能。是否现在去设置？',
+      draftSaved: '输入内容已保存在浏览器本地缓存中，完成配置后可继续发送。',
       configure: '立即配置',
     },
     // 增强模式
@@ -556,11 +620,14 @@ export default {
     providerNoResponse: '提供商未返回响应，通常是临时问题，请重试。',
     providerReturnedEmpty: '提供商返回了空响应，请重试。',
     noResponseBody: '未收到服务器响应，请检查网络连接。',
-    providerOpenRouterPrivacyPolicy: 'OpenRouter 因隐私设置阻止了该请求。请前往 OpenRouter 页面 https://openrouter.ai/settings/privacy 打开“Free model publication”开关后重试（该开关不在本应用内）。',
-    providerToolUnsupported: '当前提供商不支持此请求所需的工具调用。请关闭工具调用或切换到支持工具调用的提供商。',
+    providerOpenRouterPrivacyPolicy:
+      'OpenRouter 因隐私设置阻止了该请求。请前往 OpenRouter 页面 https://openrouter.ai/settings/privacy 打开“Free model publication”开关后重试（该开关不在本应用内）。',
+    providerToolUnsupported:
+      '当前提供商不支持此请求所需的工具调用。请关闭工具调用或切换到支持工具调用的提供商。',
     providerUnavailable: '没有可用的 AI 提供商来处理此请求，请检查您的提供商配置。',
     providerAuthError: 'AI 提供商认证失败，请检查您的 API 密钥或 OAuth 设置。',
     providerRateLimited: 'AI 提供商请求受限，请稍后再试。',
+    execDirectoryApprovalTimeout: '命令执行被阻止：目录授权审批已超时。请先批准该目录后重试。',
     providerActive: '提供商已就绪。',
     providerPending: '正在检查提供商状态...',
     // Trial quota
@@ -649,7 +716,10 @@ export default {
   skills: {
     builtin: {
       calculator: { name: '计算器', description: '执行基本算术计算' },
-      'system-info': { name: '系统信息', description: '返回系统信息（操作系统、主机名、CPU、内存）' },
+      'system-info': {
+        name: '系统信息',
+        description: '返回系统信息（操作系统、主机名、CPU、内存）',
+      },
       datetime: { name: '日期与时间', description: '返回当前日期和时间信息' },
       weather: { name: '天气', description: '获取指定地点的当前天气信息' },
       search: { name: '搜索', description: '搜索与过滤文本内容' },
@@ -675,11 +745,17 @@ export default {
       'slack-skill': { name: 'Slack', description: 'Slack 工作区操作' },
       'discord-skill': { name: 'Discord', description: 'Discord 服务器操作' },
       scheduler: { name: '定时任务', description: '创建、管理和触发定时任务（Cron 计划）' },
-      browser: { name: '浏览器', description: '使用无头浏览器浏览网页、读取页面内容并与元素交互' },
+      browser: { name: '浏览器', description: '使用浏览器浏览网页、读取页面内容并与元素交互' },
       sandbox: { name: '沙箱', description: '在资源受限的沙箱环境中安全执行命令' },
-      'ui-reviewer': { name: 'UI 评审', description: '自动化 UI 质量评审，含可访问性检查与视觉评分' },
+      'ui-reviewer': {
+        name: 'UI 评审',
+        description: '自动化 UI 质量评审，含可访问性检查与视觉评分',
+      },
       autoreply: { name: '自动回复', description: '创建和管理自动回复规则，支持关键词和正则触发' },
-      workflows: { name: '工作流', description: '创建和执行 n8n 风格的工作流自动化，支持触发器和动作链' },
+      workflows: {
+        name: '工作流',
+        description: '创建和执行 n8n 风格的工作流自动化，支持触发器和动作链',
+      },
     },
     noContent: '该技能暂无详细内容。',
     filters: {
@@ -724,10 +800,11 @@ export default {
 
   home: {
     welcome: '欢迎使用 ZimaOS Blue',
-    description: '您的智能 AI 助手，用于智能家居控制和自动化',
+    description: '一个稳定、可信、中立的 Runtime，承载你的 AI 助手与自动化能力',
     startChatCta: '点击{link}开始和 Blue 对话吧',
   },
   settings: {
+    llmApiKeyRequired: '请先配置 API Key，再打开 LLM Provider 页面。',
     title: '设置',
     saved: '已保存',
     saveFailed: '保存配置失败',
@@ -741,7 +818,8 @@ export default {
     closeBehaviorSaved: '关闭行为已保存',
     agentReflection: {
       title: '自动反思',
-      description: '在 {agentMode} 任务完成或失败后，自动抽取一段简短反思，并把可复用经验写入记忆。',
+      description:
+        '在 {agentMode} 任务完成或失败后，自动抽取一段简短反思，并把可复用经验写入记忆。',
       hint: '已取消或已中止的任务会跳过；反思失败不会改变任务最终状态。',
       saved: '自动反思设置已保存',
       saveFailed: '自动反思设置保存失败',
@@ -774,12 +852,17 @@ export default {
       notReady: '未下载',
       enabled: '启用轻量加速',
       enabledHint: '开启后，系统会优先用小模型处理适合的任务。',
+      resourceTitle: '资源占用',
+      storageUsage: '磁盘/下载占用：约 {storage}。',
+      runtimeUsage: '运行时内存/显存建议：至少预留 {runtime}。',
       userGuideTitle: '这项功能会做什么',
       userGuideItem1: '优先处理简短问题和部分工具决策，通常会更快。',
       userGuideItem2: '小模型不可用时会自动回退到主模型，不影响正常使用。',
       userGuideItem3: '首次使用前需要先下载模型文件。',
-      irTitle: '助手能力',
+      irTitle: '辅助功能',
       irDesc: '面向日常使用的上下文控制与工具筛选能力。',
+      irMasterTitle: '总开关',
+      irMasterDesc: '一键控制下面所有辅助功能。',
       irContextPruneTitle: '上下文裁剪',
       irContextPruneDesc: '自动裁剪低相关历史内容，减少 token 消耗。',
       irMediaIntentDesc: '识别媒体生成意图，帮助系统更准确地分流请求。',
@@ -927,7 +1010,8 @@ export default {
       originAdded: '来源已添加',
       originRemoved: '来源已移除',
       confirmRemoveDynamicOrigin: '确定要移除动态来源“{origin}”吗？这可能影响当前隧道回调。',
-      confirmRemoveDynamicOriginSecond: '请再次确认：移除“{origin}”。动态来源后续可能会被自动重新添加。',
+      confirmRemoveDynamicOriginSecond:
+        '请再次确认：移除“{origin}”。动态来源后续可能会被自动重新添加。',
       invalidUrl: 'URL 格式无效',
       tls: {
         title: 'TLS/HTTPS 配置',
@@ -1469,7 +1553,8 @@ export default {
     configSaveFailed: '配置保存失败',
     // Backup
     backups: '系统备份',
-    backupDescription: '创建和恢复系统备份，包括数据库、配置和 skills 目录。恢复会在优雅重启后应用，并保留 checkpoint。',
+    backupDescription:
+      '创建和恢复系统备份，包括数据库、配置和 skills 目录。恢复会在优雅重启后应用，并保留 checkpoint。',
     createBackup: '创建备份',
     creating: '创建中...',
     loadingBackups: '加载备份中...',
@@ -1589,7 +1674,8 @@ export default {
     enabled: '心跳检测已启用',
     disabled: '心跳检测已禁用',
     contentDescription: '定义 Agent 需要定期检查的任务',
-    contentPlaceholder: '# 添加需要 Agent 监控的任务\n\n- 检查 API 是否正常响应\n- 确认磁盘使用率低于 90%',
+    contentPlaceholder:
+      '# 添加需要 Agent 监控的任务\n\n- 检查 API 是否正常响应\n- 确认磁盘使用率低于 90%',
     contentEmpty: '（空 — 心跳检查将被跳过）',
     contentSaved: 'HEARTBEAT.md 已保存',
     fetchError: '无法加载心跳检测状态',
@@ -1622,7 +1708,8 @@ export default {
     portSaveFailed: '保存端口配置失败',
     invalidPort: '无效的端口号（必须为 1-65535）',
     portChangeConfirmTitle: '确认端口更改',
-    portChangeConfirmDesc: '服务正在使用新端口重启。点击"保留"确认，否则将在 {seconds} 秒后自动恢复。',
+    portChangeConfirmDesc:
+      '服务正在使用新端口重启。点击"保留"确认，否则将在 {seconds} 秒后自动恢复。',
     portChangeConfirmed: '端口更改已确认',
     portRevertFailed: '恢复端口失败',
     confirmKeep: '保留',
@@ -2017,8 +2104,7 @@ export default {
     screenshot: {
       title: '截图',
     },
-    status: {
-    },
+    status: {},
   },
   tenants: {
     title: '工作空间',
@@ -2109,7 +2195,8 @@ export default {
     recoveryCodesRemaining: '剩余 {count} 个恢复码',
     // Setup flow
     step1Title: '第一步：扫描二维码',
-    step1Description: '使用您的身份验证器应用（如 Google Authenticator、Authy 或 Microsoft Authenticator）扫描下方的二维码。',
+    step1Description:
+      '使用您的身份验证器应用（如 Google Authenticator、Authy 或 Microsoft Authenticator）扫描下方的二维码。',
     manualEntry: '手动输入密钥：',
     step2Title: '第二步：验证',
     step2Description: '输入身份验证器应用显示的 6 位验证码以完成设置。',
@@ -2117,7 +2204,8 @@ export default {
     verify: '验证',
     // Recovery codes
     recoveryCodes: '恢复码',
-    recoveryCodesWarning: '请将这些恢复码保存在安全的地方。如果您无法访问身份验证器应用，可以使用恢复码登录。每个恢复码只能使用一次。',
+    recoveryCodesWarning:
+      '请将这些恢复码保存在安全的地方。如果您无法访问身份验证器应用，可以使用恢复码登录。每个恢复码只能使用一次。',
     // Disable MFA
     disableTitle: '禁用双因素认证',
     disableWarning: '禁用双因素认证会降低您账户的安全性。请确认您要继续。',
@@ -2160,6 +2248,7 @@ export default {
     tabs: {
       overview: '概览',
       firewall: '防火墙',
+      network: '网络',
       masking: '数据脱敏',
       monitoring: '监控',
       events: '事件',
@@ -2590,10 +2679,10 @@ export default {
     },
     // Direct keys used in template
     // Nested structure
-    'sessions': {
+    sessions: {
       title: '活跃会话',
     },
-    'events': {
+    events: {
       title: '安全事件',
     },
     settings: {
@@ -2696,8 +2785,10 @@ export default {
       imessage: {
         not_set_up: 'iMessage 尚未设置。请打开「信息」应用并使用 Apple ID 登录。',
         not_signed_in: 'iMessage 尚未登录。请打开「信息」应用并使用 Apple ID 登录。',
-        full_disk_access: '需要「完全磁盘访问权限」才能读取 iMessage 历史记录。请在「系统设置 > 隐私与安全性 > 完全磁盘访问权限」中授权。',
-        automation_denied: '需要「自动化」权限才能发送 iMessage。请在「系统设置 > 隐私与安全性 > 自动化」中授权。',
+        full_disk_access:
+          '需要「完全磁盘访问权限」才能读取 iMessage 历史记录。请在「系统设置 > 隐私与安全性 > 完全磁盘访问权限」中授权。',
+        automation_denied:
+          '需要「自动化」权限才能发送 iMessage。请在「系统设置 > 隐私与安全性 > 自动化」中授权。',
         unavailable_platform: 'iMessage 仅在 macOS 上可用。',
       },
     },
@@ -2871,7 +2962,8 @@ export default {
     mattermostHint: '在 Mattermost 中创建机器人',
     nextcloudTalkHint: '使用 Nextcloud 账号和 Talk 房间 Token',
     googleChatHint: '在 Google Cloud 中创建服务账号',
-    feishuHint: '在飞书开放平台创建机器人。必须：1) 启用「使用长连接接收事件」；2) 订阅「im.message.receive_v1」事件；3) 添加「im:message:send_as_bot」发送消息权限；4) 发布应用',
+    feishuHint:
+      '在飞书开放平台创建机器人。必须：1) 启用「使用长连接接收事件」；2) 订阅「im.message.receive_v1」事件；3) 添加「im:message:send_as_bot」发送消息权限；4) 发布应用',
     dingtalkHint: '在钉钉开放平台创建机器人',
     qqHint: '在 QQ 开放平台创建机器人',
     wechatHint: '在企业微信中创建机器人',
@@ -2925,7 +3017,8 @@ export default {
     // 演示模式
     demo: {
       title: '暂无数据',
-      description: 'Companion 可监控多平台的 AI Agent 会话。当 Agent 连接并处理请求时，您将在此看到实时会话数据、事件和安全告警。',
+      description:
+        'Companion 可监控多平台的 AI Agent 会话。当 Agent 连接并处理请求时，您将在此看到实时会话数据、事件和安全告警。',
       features: {
         title: '可监控内容：',
         sessions: '活跃和历史 AI Agent 会话',
@@ -3102,6 +3195,11 @@ export default {
       showGuide: '显示异常指南',
       hideGuide: '隐藏指南',
     },
+    toasts: {
+      memorySavedTitle: '已记住新内容',
+      memorySavedMessage: '已从对话中提取记忆',
+      manageMemory: '管理记忆',
+    },
     // 事件类型
     eventType: {
       session_start: '会话开始',
@@ -3146,8 +3244,7 @@ export default {
       },
     },
     // 画布视图
-    canvas: {
-    },
+    canvas: {},
     // 节点组件
     nodes: {
       received: '已接收',
@@ -3179,8 +3276,7 @@ export default {
       score: '分数',
     },
     // 消息方向
-    message: {
-    },
+    message: {},
     // 安全
     security: {
       title: '安全详情',
@@ -3351,7 +3447,8 @@ export default {
     providerRaceMinProviders: '最小提供商数',
     providerRaceSinkThreshold: '沉底阈值',
     providerRaceExcludeThreshold: '排除阈值',
-    providerRaceCooldownRule: '当空跑率 ≥ {threshold}（最少 {samples} 次样本）时进入冷却，持续 {duration}',
+    providerRaceCooldownRule:
+      '当空跑率 ≥ {threshold}（最少 {samples} 次样本）时进入冷却，持续 {duration}',
     maskingTitle: '数据脱敏',
     maskingDesc: '在LLM请求和响应中遮蔽敏感数据（PII、凭证）',
     maskingEnabled: '数据脱敏已启用',
@@ -3861,8 +3958,7 @@ export default {
     noData: '暂无数据',
     noProviderMetrics: '暂无提供商指标',
     // 标签页
-    tabs: {
-    },
+    tabs: {},
     // 概览卡片
     totalCalls: '总调用次数',
     successRate: '成功率',
@@ -4079,10 +4175,12 @@ export default {
       trial: '试用',
       builtin: '主流',
       platform: '平台',
+      other: '其他',
       custom: '自定义',
       media: '媒体生成',
       oauth: '开放授权',
     },
+    beta: 'Beta',
     trialQuota: {
       title: '试用额度',
       exhausted: '试用额度已用完，请配置您自己的提供商。',
@@ -4157,8 +4255,7 @@ export default {
     noModelsAvailable: '该提供商暂无可用模型',
     configureModels: '配置',
     fetchingKeyModels: '正在获取模型...',
-    pricingConfig2: {
-    },
+    pricingConfig2: {},
     // Base URL configuration
     configure: '配置',
     baseUrlNotConfigured: '未配置 Base URL — 点击"配置"进行设置',
@@ -4318,7 +4415,8 @@ export default {
     // 断开连接确认
     disconnectConfirmTitle: '断开远程访问？',
     disconnectConfirmMessage: '如果您正在通过远程隧道访问，断开后可能无法继续访问此页面。',
-    disconnectConfirmMessageSameHost: '您当前正在通过此远程隧道访问。断开连接后，此页面将关闭，您将无法继续访问。',
+    disconnectConfirmMessageSameHost:
+      '您当前正在通过此远程隧道访问。断开连接后，此页面将关闭，您将无法继续访问。',
   },
   users: {
     title: '用户管理',
@@ -4543,7 +4641,7 @@ export default {
       export: '导出',
       import: '导入',
       cleanup: '清理',
-      retention: '保留',
+      retention: '监控保留',
     },
     export: '导出用户数据',
     exportDescription: '将您的聊天记录和设置导出到文件。文件将使用密码保护。',
@@ -4578,22 +4676,35 @@ export default {
     importSuccess: '已导入 {conversations} 个对话和 {messages} 条消息',
     importFailed: '数据导入失败',
     previewFailed: '预览数据失败',
+    chatDataTitle: '聊天数据',
+    chatDataDescription: '在一个入口中完成聊天数据的导入、导出和清理。',
+    manageData: '管理数据',
     retentionSaved: '保留设置已保存',
     cleanupSuccess: '数据清理完成',
     cleanupFailed: '数据清理失败',
     cleanupPreviewFailed: '预览清理失败',
     // 数据保留部分
     retention: {
-      title: '数据保留',
-      description: '配置数据在自动清理前的保留时间',
-      storageInfo: '存储信息',
+      title: '监控数据保留',
+      description: '设置安全监控中的会话、事件、告警数据在自动清理前的保留时长。',
+      storageInfo: '当前数据量',
       sessions: '会话',
       events: '事件',
       alerts: '告警',
-      policy: '保留策略',
-      sessionsRetention: '会话保留',
-      eventsRetention: '事件保留',
-      alertsRetention: '告警保留',
+      totalRecords: '监控数据总量',
+      policy: '保留规则',
+      policyHint: '每类数据支持 1-365 天。时间越短越省空间，时间越长越利于审计与排障。',
+      daysRange: '可设置范围：1-365 天',
+      sessionsRetention: '会话记录',
+      eventsRetention: '事件记录',
+      alertsRetention: '告警记录',
+      sessionsHint: 'Agent 会话生命周期与运行元数据。',
+      eventsHint: '工具调用、执行轨迹与审计事件。',
+      alertsHint: '安全告警、风险评分与确认状态。',
+      sessionsSuggested: '建议：14-30 天，适合常规运维',
+      eventsSuggested: '建议：7-14 天，平衡排障与存储成本',
+      alertsSuggested: '建议：30-90 天，便于安全复盘',
+      saveHint: '新的保留时长会在后续自动清理和手动清理时生效。',
       days: '天',
     },
     // 数据清理部分
@@ -4689,6 +4800,48 @@ export default {
     reconnected: '连接已恢复',
   },
   speech: {
+    convertTask: {
+      task: '任务',
+      cancelling: '取消中...',
+      downloadAudio: '下载音频',
+      downloadVideo: '下载视频',
+      downloadPdf: '下载 PDF',
+      downloadText: '下载文本',
+      downloadFile: '下载文件',
+      action: {
+        convert: '转换',
+        merge: '合并',
+        split: '拆分',
+        trim: '裁剪',
+        extractAudio: '提取音频',
+        extractFrames: '提取帧',
+        tts: '语音合成',
+        asr: '语音识别',
+      },
+      previewKind: {
+        file: '文件',
+        audio: '音频',
+        video: '视频',
+        image: '图片',
+        pdf: 'PDF',
+        text: '文本',
+      },
+      message: {
+        queued: '已排队',
+        processing: '处理中',
+        completed: '已完成',
+        taskCancelled: '任务已取消',
+        taskFailed: '任务失败',
+        convertCompleted: '转换已完成',
+        mergeCompleted: '合并已完成',
+        splitCompleted: '拆分已完成',
+        trimCompleted: '裁剪已完成',
+        extractAudioCompleted: '音频提取已完成',
+        extractFramesCompleted: '帧导出已完成',
+        ttsCompleted: '语音音频已生成',
+        asrCompleted: '转写已完成',
+      },
+    },
     status: '语音状态',
     asr: '语音识别',
     tts: '语音合成',
@@ -4744,17 +4897,20 @@ export default {
     macosNativePermissionDenied: '语音识别权限未授予',
     macosNativePermissionGuide: '前往系统设置 > 隐私与安全性 > 语音识别，为"{appName}"开启权限',
     macosNativeOpenSettings: '打开系统设置',
-    macosNativePermissionToast: '语音识别权限被拒绝，请在系统设置 > 隐私与安全性 > 语音识别中为"{appName}"开启。',
+    macosNativePermissionToast:
+      '语音识别权限被拒绝，请在系统设置 > 隐私与安全性 > 语音识别中为"{appName}"开启。',
     macosNativeQuality: '出色',
     macosNativeOnDeviceOnly: '仅离线识别',
     macosNativeOnDeviceDesc: '强制使用设备端识别（不会将数据发送到 Apple 服务器）',
     macosNativeOnDeviceUnsupported: '当前语言暂不支持设备端模型',
-    dictationDisabledGuide: '听写功能未开启，仅离线识别需要开启听写。请前往系统设置 > 键盘 > 听写，开启听写功能。',
+    dictationDisabledGuide:
+      '听写功能未开启，仅离线识别需要开启听写。请前往系统设置 > 键盘 > 听写，开启听写功能。',
     recheckDictation: '重新检查',
     offlineLanguages: '离线语言包',
     currentLangInstalled: '当前语言已安装',
     currentLangNotInstalled: '当前语言未安装',
-    onDeviceUnavailableError: '离线识别不可用，请前往系统设置 > 键盘 > 听写开启听写功能，或关闭「仅离线识别」模式。',
+    onDeviceUnavailableError:
+      '离线识别不可用，请前往系统设置 > 键盘 > 听写开启听写功能，或关闭「仅离线识别」模式。',
     error: {
       timeout: '语音识别超时，请重试。',
       audioInvalid: '音频输入无效，请重新录制。',
@@ -5066,20 +5222,20 @@ export default {
   },
   resultCard: {
     titles: {
-      'workspace_file': '工作区文件',
-      'calculator': '计算器',
-      'current_time': '当前时间',
-      'read': '读取文件',
-      'write': '写入文件',
-      'file_read': '读取文件',
-      'file_write': '写入文件',
-      'system_info': '系统信息',
-      'memory': '记忆',
-      'exec': '命令执行',
-      'mcp': 'MCP 调用',
-      'analyze': '分析报告',
-      'ui_review': 'UI 评审',
-      'deep_research': '深度研究',
+      workspace_file: '工作区文件',
+      calculator: '计算器',
+      current_time: '当前时间',
+      read: '读取文件',
+      write: '写入文件',
+      file_read: '读取文件',
+      file_write: '写入文件',
+      system_info: '系统信息',
+      memory: '记忆',
+      exec: '命令执行',
+      mcp: 'MCP 调用',
+      analyze: '分析报告',
+      ui_review: 'UI 评审',
+      deep_research: '深度研究',
     },
     labels: {
       filename: '文件名',
@@ -5187,6 +5343,20 @@ export default {
       limit: '数量限制',
       offset: '偏移量',
       id: 'ID',
+      action: '操作',
+      name: '名称',
+      title: '标题',
+      description: '描述',
+      schedule: '调度',
+      cron: 'Cron',
+      handler: '处理器',
+      type: '类型',
+      command: '命令',
+      payload: '负载',
+      job_id: '任务 ID',
+      jobId: '任务 ID',
+      cron_id: 'Cron ID',
+      cronId: 'Cron ID',
     },
     calling: '调用工具',
     callingProgress: '调用工具中...',
@@ -5299,6 +5469,27 @@ export default {
   },
   search: {
     resultCount: '{count} 条结果',
+  },
+  webFetchCard: {
+    title: '网页抓取',
+    copyUrl: '复制 URL',
+    copyText: '复制文本',
+    noContent: '没有提取到内容',
+    contentLabel: '网页内容',
+    expandHint: '查看提取到的网页内容',
+    collapseHint: '隐藏提取到的网页内容',
+    expandContent: '展开网页内容',
+    collapseContent: '收起网页内容',
+    actions: {
+      use_browser: '使用浏览器',
+    },
+  },
+  cardActions: {
+    use_browser: '使用浏览器',
+    extract_with_web_fetch: '用 Web Fetch 提取',
+    recheck: '重新检查',
+    check_a11y: '仅检查可访问性',
+    full_report: '完整报告',
   },
   uiReview: {
     title: 'UI 评审',

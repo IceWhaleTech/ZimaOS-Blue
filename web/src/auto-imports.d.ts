@@ -92,6 +92,7 @@ declare global {
   const useDark: typeof import('@vueuse/core').useDark
   const useDashboardStore: typeof import('./stores/dashboard').useDashboardStore
   const useDebounce: typeof import('@vueuse/core').useDebounce
+  const useDeepResearchJobsStore: typeof import('./stores/deepResearchJobs').useDeepResearchJobsStore
   const useEventListener: typeof import('@vueuse/core').useEventListener
   const useEventStream: typeof import('./composables/useEventStream').useEventStream
   const useFormFillerWidget: typeof import('./composables/useFormFillerWidget').useFormFillerWidget
@@ -271,6 +272,7 @@ declare module 'vue' {
     readonly useDark: UnwrapRef<typeof import('@vueuse/core')['useDark']>
     readonly useDashboardStore: UnwrapRef<typeof import('./stores/dashboard')['useDashboardStore']>
     readonly useDebounce: UnwrapRef<typeof import('@vueuse/core')['useDebounce']>
+    readonly useDeepResearchJobsStore: UnwrapRef<typeof import('./stores/deepResearchJobs')['useDeepResearchJobsStore']>
     readonly useEventListener: UnwrapRef<typeof import('@vueuse/core')['useEventListener']>
     readonly useEventStream: UnwrapRef<typeof import('./composables/useEventStream')['useEventStream']>
     readonly useFormFillerWidget: UnwrapRef<typeof import('./composables/useFormFillerWidget')['useFormFillerWidget']>

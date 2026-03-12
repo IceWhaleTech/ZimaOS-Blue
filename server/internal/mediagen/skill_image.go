@@ -94,7 +94,7 @@ func (t *ImageGenerateSkill) Definition() tools.ToolDefinition {
 func (t *ImageGenerateSkill) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	req := &MediaRequest{Type: MediaTypeImage}
 
-	if v, ok := args["prompt"].(string); ok {
+	if v := skillCompatString(args, "prompt"); v != "" {
 		req.Prompt = v
 	} else {
 		return map[string]interface{}{
@@ -102,37 +102,37 @@ func (t *ImageGenerateSkill) Execute(ctx context.Context, args map[string]interf
 			"message": "prompt is required",
 		}, nil
 	}
-	if v, ok := args["negative_prompt"].(string); ok {
+	if v := skillCompatString(args, "negative_prompt", "negativePrompt"); v != "" {
 		req.NegativePrompt = v
 	}
-	if v, ok := args["model"].(string); ok {
+	if v := skillCompatString(args, "model"); v != "" {
 		req.Model = v
 	}
-	if v, ok := args["size"].(string); ok {
+	if v := skillCompatString(args, "size"); v != "" {
 		req.Size = v
 	}
-	if v, ok := args["n"].(float64); ok {
-		req.N = int(v)
+	if v := skillCompatInt(args, "n", "count", "num_images", "numImages"); v > 0 {
+		req.N = v
 	}
-	if v, ok := args["quality"].(string); ok {
+	if v := skillCompatString(args, "quality"); v != "" {
 		req.Quality = v
 	}
-	if v, ok := args["style"].(string); ok {
+	if v := skillCompatString(args, "style"); v != "" {
 		req.Style = v
 	}
-	if v, ok := args["aspect_ratio"].(string); ok {
+	if v := skillCompatString(args, "aspect_ratio", "aspectRatio"); v != "" {
 		if req.Extra == nil {
 			req.Extra = make(map[string]any)
 		}
 		req.Extra["aspect_ratio"] = v
 	}
-	if v, ok := args["resolution"].(string); ok {
+	if v := skillCompatString(args, "resolution"); v != "" {
 		if req.Extra == nil {
 			req.Extra = make(map[string]any)
 		}
 		req.Extra["resolution"] = v
 	}
-	if v, ok := args["reference_image"].(string); ok && v != "" {
+	if v := skillCompatString(args, "reference_image", "referenceImage"); v != "" {
 		req.ReferenceURL = v
 		req.ReferenceURLs = []string{v}
 	}

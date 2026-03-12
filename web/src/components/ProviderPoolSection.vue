@@ -33,19 +33,44 @@ const verificationKeyId = ref('')
 const verificationResult = ref<ProviderVerificationResult | null>(null)
 const verificationError = ref('')
 const searchQuery = ref('')
-type ProviderTab = 'all' | 'trial' | 'builtin' | 'platform' | 'custom' | 'media'
+type ProviderTab = 'all' | 'trial' | 'builtin' | 'platform' | 'other' | 'custom' | 'media'
 const activeTab = ref<ProviderTab>('all')
-function isOAuthProvider(provider: Provider): boolean {
-  return !!provider.oauth
+function isBetaProvider(provider: Provider): boolean {
+  return provider.beta === true
 }
-function filterVisibleProviders(providers: Provider[]): Provider[] {
-  return providers.filter(p => !isOAuthProvider(p))
+function getProviderTab(provider: Provider): ProviderTab {
+  // Beta builtin/platform providers are grouped into "Other".
+  if (isBetaProvider(provider) && (provider.type === 'builtin' || provider.type === 'platform')) {
+    return 'other'
+  }
+  switch (provider.type) {
+    case 'trial':
+      return 'trial'
+    case 'builtin':
+      return 'builtin'
+    case 'platform':
+      return 'platform'
+    case 'media':
+      return 'media'
+    default:
+      return 'custom'
+  }
+}
+function providersForTab(tab: ProviderTab): Provider[] {
+  const allProviders = store.providers || []
+  if (tab === 'all') return allProviders
+  return allProviders.filter((provider) => getProviderTab(provider) === tab)
+}
+function getTabCount(tab: ProviderTab): number {
+  return providersForTab(tab).length
 }
 const availableTabs = computed<ProviderTab[]>(() => {
   const tabs: ProviderTab[] = ['all']
-  if (filterVisibleProviders(store.trialProviders || []).length) tabs.push('trial')
-  tabs.push('builtin', 'platform', 'custom')
-  if (filterVisibleProviders(store.mediaProviders || []).length) tabs.push('media')
+  if (getTabCount('trial') > 0) tabs.push('trial')
+  tabs.push('builtin', 'platform')
+  if (getTabCount('other') > 0) tabs.push('other')
+  tabs.push('custom')
+  if (getTabCount('media') > 0) tabs.push('media')
   return tabs
 })
 const iconInput = ref<HTMLInputElement | null>(null)
@@ -69,6 +94,18 @@ const addingStep = ref('')  // '', 'adding', 'probing', 'done'
 
 function tr(key: string, fallback = ''): string {
   return te(key) ? t(key) : fallback
+}
+const tabFallbackLabels: Record<ProviderTab, string> = {
+  all: 'All',
+  trial: 'Trial',
+  builtin: 'Built-in',
+  platform: 'Platform',
+  other: 'Other',
+  custom: 'Custom',
+  media: 'Media',
+}
+function getTabLabel(tab: ProviderTab): string {
+  return tr(`providerPool.tabs.${tab}`, tabFallbackLabels[tab] || tab)
 }
 
 // New API key form
@@ -249,28 +286,7 @@ function translateHealthError(error: string): string {
 
 // Computed
 const filteredProviders = computed(() => {
-  let providers: Provider[] = []
-
-  switch (activeTab.value) {
-    case 'all':
-      providers = filterVisibleProviders(store.providers || [])
-      break
-    case 'trial':
-      providers = filterVisibleProviders(store.trialProviders || [])
-      break
-    case 'builtin':
-      providers = filterVisibleProviders(store.builtinProviders || [])
-      break
-    case 'platform':
-      providers = filterVisibleProviders(store.platformProviders || [])
-      break
-    case 'custom':
-      providers = filterVisibleProviders(store.customProviders || [])
-      break
-    case 'media':
-      providers = filterVisibleProviders(store.mediaProviders || [])
-      break
-  }
+  let providers: Provider[] = providersForTab(activeTab.value)
 
   if (searchQuery.value && providers.length > 0) {
     const query = searchQuery.value.toLowerCase()
@@ -342,22 +358,7 @@ watch(availableTabs, (tabs) => {
 // Clear selection when switching to a tab with no matching provider
 watch(activeTab, () => {
   if (store.selectedProvider && activeTab.value !== 'all') {
-    if (isOAuthProvider(store.selectedProvider)) {
-      store.selectProvider(null)
-      return
-    }
-
-    const providerType = store.selectedProvider.type
-    const typeToTab: Record<string, string> = {
-      'builtin': 'builtin',
-      'platform': 'platform',
-      'custom': 'custom',
-      'acp': 'custom',
-      'ide': 'ide',
-      'trial': 'trial',
-      'media': 'media',
-    }
-    const expectedTab = typeToTab[providerType] || 'builtin'
+    const expectedTab = getProviderTab(store.selectedProvider)
 
     // If selected provider doesn't belong to new tab, clear selection
     if (expectedTab !== activeTab.value) {
@@ -365,12 +366,6 @@ watch(activeTab, () => {
     }
   }
 })
-
-watch(() => store.selectedProvider, (provider) => {
-  if (provider && isOAuthProvider(provider)) {
-    store.selectProvider(null)
-  }
-}, { immediate: true })
 
 watch(() => displayProvider.value?.id, () => {
   verificationResult.value = null
@@ -430,7 +425,7 @@ async function testConnection(providerId: string, keyId?: string) {
 async function clearProviderError(providerId: string) {
   try {
     await store.clearProviderError(providerId)
-    notification.success(t('providerPool.errorCleared'))
+    notification.success(t('providerPool.errorCleared'), undefined, { titleKey: 'providerPool.errorCleared' })
   } catch (e) {
     console.error('Failed to clear error:', e)
   }
@@ -444,6 +439,8 @@ async function refreshModels(providerId: string) {
     if (probeResult.success) {
       notification.success(
         t('providerPool.probeComplete', { available: probeResult.available, total: probeResult.total }),
+        undefined,
+        { titleKey: 'providerPool.probeComplete', titleParams: { available: probeResult.available, total: probeResult.total } },
       )
       return
     }
@@ -454,7 +451,7 @@ async function refreshModels(providerId: string) {
       notification.error(
         t('providerPool.refreshModelsFailed'),
         fetchResult.error,
-        { duration: 8000 }
+        { duration: 8000, titleKey: 'providerPool.refreshModelsFailed' }
       )
     }
   } finally {
@@ -466,7 +463,7 @@ async function runProviderVerification(apply = false) {
   const provider = displayProvider.value
   if (!provider) return
   if (!provider.base_url) {
-    notification.error(t('providerPool.verifyFailed'), t('providerPool.baseUrlRequired'))
+    notification.error(t('providerPool.verifyFailed'), t('providerPool.baseUrlRequired'), { titleKey: 'providerPool.verifyFailed', messageKey: 'providerPool.baseUrlRequired' })
     return
   }
 
@@ -487,17 +484,17 @@ async function runProviderVerification(apply = false) {
 
     if (apply) {
       if (result.applied) {
-        notification.success(t('providerPool.verifyApplied'))
+        notification.success(t('providerPool.verifyApplied'), undefined, { titleKey: 'providerPool.verifyApplied' })
       } else {
-        notification.info(t('providerPool.verifyNoChanges'))
+        notification.info(t('providerPool.verifyNoChanges'), undefined, { titleKey: 'providerPool.verifyNoChanges' })
       }
     } else {
-      notification.success(t('providerPool.verifySuccess'))
+      notification.success(t('providerPool.verifySuccess'), undefined, { titleKey: 'providerPool.verifySuccess' })
     }
   } catch (e: any) {
     const message = e?.response?.data?.error || (e instanceof Error ? e.message : t('providerPool.verifyFailed'))
     verificationError.value = message
-    notification.error(t('providerPool.verifyFailed'), message)
+    notification.error(t('providerPool.verifyFailed'), message, { titleKey: 'providerPool.verifyFailed' })
   } finally {
     if (apply) {
       applyingVerification.value = null
@@ -586,16 +583,19 @@ async function addCustomProvider() {
       notification.success(
         t('providerPool.providerAdded'),
         t('providerPool.providerAddedWithModels', { count: available }),
+        { titleKey: 'providerPool.providerAdded', messageKey: 'providerPool.providerAddedWithModels', messageParams: { count: available } },
       )
     } else if (total > 0) {
       notification.info(
         t('providerPool.providerAdded'),
         t('providerPool.noAvailableModels'),
+        { titleKey: 'providerPool.providerAdded', messageKey: 'providerPool.noAvailableModels' },
       )
     } else {
       notification.info(
         t('providerPool.providerAdded'),
         t('providerPool.noModelsFound'),
+        { titleKey: 'providerPool.providerAdded', messageKey: 'providerPool.noModelsFound' },
       )
     }
 
@@ -607,7 +607,7 @@ async function addCustomProvider() {
     newProvider.value = { name: '', base_url: '', api_key: '', priority: 50, location: 'cloud' }
   } catch (e) {
     console.error('Failed to add provider:', e)
-    notification.error(t('providerPool.addFailed'), e instanceof Error ? e.message : '')
+    notification.error(t('providerPool.addFailed'), e instanceof Error ? e.message : '', { titleKey: 'providerPool.addFailed' })
   } finally {
     addingProvider.value = false
     addingStep.value = ''
@@ -622,20 +622,10 @@ async function handleIDEImportSuccess(providerId: string) {
   }
 
   const imported = store.providers.find(p => p.id === providerId)
-  if (!imported || isOAuthProvider(imported)) {
+  if (!imported) {
     return
   }
-
-  const typeToTab: Record<string, ProviderTab> = {
-    builtin: 'builtin',
-    platform: 'platform',
-    custom: 'custom',
-    acp: 'custom',
-    ide: 'custom',
-    trial: 'trial',
-    media: 'media',
-  }
-  activeTab.value = typeToTab[imported.type] || 'all'
+  activeTab.value = getProviderTab(imported)
   store.selectProvider(providerId)
 }
 
@@ -683,6 +673,8 @@ async function addAPIKey() {
         if (result.success && result.available > 0) {
           notification.success(
             t('providerPool.probeComplete', { available: result.available, total: result.total }),
+            undefined,
+            { titleKey: 'providerPool.probeComplete', titleParams: { available: result.available, total: result.total } },
           )
         }
       })
@@ -766,7 +758,7 @@ async function startOAuthConnect(providerId: string) {
     if (result.data.auth_url) {
       // Auth code flow — open browser
       window.open(result.data.auth_url, '_blank', 'width=600,height=700')
-      notification.success(t('providerPool.oauth.browserOpened'))
+      notification.success(t('providerPool.oauth.browserOpened'), undefined, { titleKey: 'providerPool.oauth.browserOpened' })
       // Poll for status
       pollOAuthStatus(providerId)
     } else if (result.data.device_code && result.data.user_code) {
@@ -779,7 +771,7 @@ async function startOAuthConnect(providerId: string) {
       }
     }
   } catch (e: any) {
-    notification.error(e?.response?.data?.error || t('providerPool.oauth.connectFailed'))
+    notification.error(e?.response?.data?.error || t('providerPool.oauth.connectFailed'), undefined, { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.connectFailed' })
   } finally {
     connectingOAuth.value = null
   }
@@ -789,10 +781,10 @@ async function copyDeviceFlowCode() {
   if (!deviceFlowState.value) return
   try {
     await navigator.clipboard.writeText(sanitizeDeviceUserCode(deviceFlowState.value.userCode))
-    notification.success(t('common.copied'))
+    notification.success(t('common.copied'), undefined, { titleKey: 'common.copied' })
   } catch (e) {
     console.error('Failed to copy device flow code:', e)
-    notification.error(t('providerPool.oauth.connectFailed'))
+    notification.error(t('providerPool.oauth.connectFailed'), undefined, { titleKey: 'providerPool.oauth.connectFailed' })
   }
 }
 
@@ -802,12 +794,12 @@ async function completeDeviceFlow() {
   connectingOAuth.value = providerId
   try {
     await providerPoolApi.completeDeviceFlow(providerId, deviceCode)
-    notification.success(t('providerPool.oauth.connected'))
+    notification.success(t('providerPool.oauth.connected'), undefined, { titleKey: 'providerPool.oauth.connected' })
     deviceFlowState.value = null
     await store.fetchProviders()
     await fetchOAuthAccounts(providerId)
   } catch (e: any) {
-    notification.error(e?.response?.data?.error || t('providerPool.oauth.connectFailed'))
+    notification.error(e?.response?.data?.error || t('providerPool.oauth.connectFailed'), undefined, { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.connectFailed' })
   } finally {
     connectingOAuth.value = null
   }
@@ -818,12 +810,12 @@ async function disconnectOAuth(providerId: string, accountId?: string) {
   disconnectingAccountId.value = accountId || null
   try {
     await providerPoolApi.disconnectOAuth(providerId, accountId)
-    notification.success(t('providerPool.oauth.disconnected'))
+    notification.success(t('providerPool.oauth.disconnected'), undefined, { titleKey: 'providerPool.oauth.disconnected' })
     await store.fetchProviders()
     // Refresh accounts list
     await fetchOAuthAccounts(providerId)
   } catch (e: any) {
-    notification.error(e?.response?.data?.error || t('providerPool.oauth.disconnectFailed'))
+    notification.error(e?.response?.data?.error || t('providerPool.oauth.disconnectFailed'), undefined, { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.disconnectFailed' })
   } finally {
     disconnectingOAuth.value = null
     disconnectingAccountId.value = null
@@ -845,7 +837,7 @@ function pollOAuthStatus(providerId: string, attempts = 0) {
     try {
       const result = await providerPoolApi.getOAuthStatus(providerId)
       if (result.data.connected) {
-        notification.success(t('providerPool.oauth.connected'))
+        notification.success(t('providerPool.oauth.connected'), undefined, { titleKey: 'providerPool.oauth.connected' })
         await store.fetchProviders()
         await fetchOAuthAccounts(providerId)
         return
@@ -1340,9 +1332,9 @@ onMounted(() => {
         ]"
         @click="activeTab = tab"
       >
-        {{ t(`providerPool.tabs.${tab}`) }}
+        {{ getTabLabel(tab) }}
         <span class="ml-1 text-xs opacity-70">
-          ({{ tab === 'all' ? filterVisibleProviders(store.providers || []).length : tab === 'trial' ? filterVisibleProviders(store.trialProviders || []).length : tab === 'builtin' ? filterVisibleProviders(store.builtinProviders || []).length : tab === 'platform' ? filterVisibleProviders(store.platformProviders || []).length : tab === 'media' ? filterVisibleProviders(store.mediaProviders || []).length : filterVisibleProviders(store.customProviders || []).length }})
+          ({{ getTabCount(tab) }})
         </span>
       </button>
     </div>
@@ -1454,7 +1446,15 @@ onMounted(() => {
               </div>
               <ProviderIcon :provider-id="provider.id" :custom-icon="provider.custom_icon" size="lg" />
               <div>
-                <h3 class="font-medium text-gray-900 dark:text-white text-sm">{{ getProviderName(provider) }}</h3>
+                <div class="flex items-center gap-1.5">
+                  <h3 class="font-medium text-gray-900 dark:text-white text-sm">{{ getProviderName(provider) }}</h3>
+                  <span
+                    v-if="provider.beta"
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 uppercase tracking-wide"
+                  >
+                    {{ tr('providerPool.beta', 'Beta') }}
+                  </span>
+                </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ provider.id }}</p>
               </div>
             </div>
@@ -1565,7 +1565,15 @@ onMounted(() => {
                 />
               </div>
               <div class="cursor-pointer select-none" @click="showModelParams = !showModelParams">
-                <h2 class="font-bold text-gray-900 dark:text-white">{{ getProviderName(store.selectedProvider) }}</h2>
+                <div class="flex items-center gap-1.5">
+                  <h2 class="font-bold text-gray-900 dark:text-white">{{ getProviderName(store.selectedProvider) }}</h2>
+                  <span
+                    v-if="store.selectedProvider.beta"
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 uppercase tracking-wide"
+                  >
+                    {{ tr('providerPool.beta', 'Beta') }}
+                  </span>
+                </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ getProviderDescription(store.selectedProvider) }}</p>
                 <!-- Inline model params summary -->
                 <div class="flex items-center gap-2 mt-1 text-[10px] text-gray-400 dark:text-gray-500">

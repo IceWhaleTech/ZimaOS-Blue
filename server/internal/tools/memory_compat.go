@@ -86,7 +86,7 @@ func (t *MemoryCompatTool) normalizeArgs(args map[string]interface{}) (map[strin
 		}
 		normalized["action"] = "remember"
 		normalized["content"] = content
-		if tags, ok := args["tags"]; ok && tags != nil {
+		if tags, ok := compatArgValue(args, "tags"); ok && tags != nil {
 			normalized["tags"] = tags
 		} else if category := firstCompatString(args, "category", "tag"); category != "" {
 			normalized["category"] = category

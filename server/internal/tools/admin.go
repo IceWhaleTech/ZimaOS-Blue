@@ -94,7 +94,7 @@ func (t *MgmtTool) Definition() ToolDefinition {
 
 // Execute dispatches to the appropriate handler based on the action parameter.
 func (t *MgmtTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	action, _ := args["action"].(string)
+	action := adminStringArg(args, "action", "op", "operation", "command")
 	if action == "" {
 		return errJSON("action is required"), nil
 	}
@@ -146,11 +146,11 @@ func (t *MgmtTool) handleProviders(ctx context.Context, op string, args map[stri
 		}
 		return toJSON(result)
 	case "add":
-		name, _ := args["name"].(string)
-		pType, _ := args["provider_type"].(string)
-		baseURL, _ := args["base_url"].(string)
-		apiKey, _ := args["api_key"].(string)
-		location, _ := args["location"].(string)
+		name := adminStringArg(args, "name", "provider_name", "providerName")
+		pType := adminStringArg(args, "provider_type", "providerType", "type")
+		baseURL := adminStringArg(args, "base_url", "baseUrl", "url")
+		apiKey := adminStringArg(args, "api_key", "apiKey")
+		location := adminStringArg(args, "location")
 		if name == "" {
 			return errJSON("name is required for providers.add"), nil
 		}
@@ -160,8 +160,8 @@ func (t *MgmtTool) handleProviders(ctx context.Context, op string, args map[stri
 		}
 		return toJSON(result)
 	case "add_key":
-		id, _ := args["id"].(string)
-		apiKey, _ := args["api_key"].(string)
+		id := adminStringArg(args, "id", "provider_id", "providerId", "skill_id", "skillId", "user_id", "userId", "key_id", "keyId")
+		apiKey := adminStringArg(args, "api_key", "apiKey")
 		if id == "" {
 			return errJSON("id is required for providers.add_key"), nil
 		}
@@ -174,7 +174,7 @@ func (t *MgmtTool) handleProviders(ctx context.Context, op string, args map[stri
 		}
 		return toJSON(result)
 	case "remove":
-		id, _ := args["id"].(string)
+		id := adminStringArg(args, "id", "provider_id", "providerId", "skill_id", "skillId", "user_id", "userId", "key_id", "keyId")
 		if id == "" {
 			return errJSON("id is required for providers.remove"), nil
 		}
@@ -183,7 +183,7 @@ func (t *MgmtTool) handleProviders(ctx context.Context, op string, args map[stri
 		}
 		return okJSON("provider removed")
 	case "enable":
-		id, _ := args["id"].(string)
+		id := adminStringArg(args, "id", "provider_id", "providerId", "skill_id", "skillId", "user_id", "userId", "key_id", "keyId")
 		if id == "" {
 			return errJSON("id is required for providers.enable"), nil
 		}
@@ -192,7 +192,7 @@ func (t *MgmtTool) handleProviders(ctx context.Context, op string, args map[stri
 		}
 		return okJSON("provider enabled")
 	case "disable":
-		id, _ := args["id"].(string)
+		id := adminStringArg(args, "id", "provider_id", "providerId", "skill_id", "skillId", "user_id", "userId", "key_id", "keyId")
 		if id == "" {
 			return errJSON("id is required for providers.disable"), nil
 		}
@@ -201,7 +201,7 @@ func (t *MgmtTool) handleProviders(ctx context.Context, op string, args map[stri
 		}
 		return okJSON("provider disabled")
 	case "test":
-		id, _ := args["id"].(string)
+		id := adminStringArg(args, "id", "provider_id", "providerId", "skill_id", "skillId", "user_id", "userId", "key_id", "keyId")
 		if id == "" {
 			return errJSON("id is required for providers.test"), nil
 		}
@@ -235,8 +235,8 @@ func (t *MgmtTool) handleSettings(ctx context.Context, op string, args map[strin
 		}
 		return toJSON(result)
 	case "set":
-		key, _ := args["key"].(string)
-		value, _ := args["value"].(string)
+		key := adminStringArg(args, "key", "setting_key", "settingKey")
+		value := adminStringArg(args, "value", "setting_value", "settingValue")
 		if key == "" {
 			return errJSON("key is required for settings.set"), nil
 		}
@@ -263,7 +263,7 @@ func (t *MgmtTool) handleChannels(ctx context.Context, op string, args map[strin
 		}
 		return toJSON(result)
 	case "status":
-		name, _ := args["name"].(string)
+		name := adminStringArg(args, "name", "channel", "channel_name", "channelName")
 		if name == "" {
 			return errJSON("name is required for channels.status"), nil
 		}
@@ -291,7 +291,7 @@ func (t *MgmtTool) handleSkills(ctx context.Context, op string, args map[string]
 		}
 		return toJSON(result)
 	case "enable":
-		id, _ := args["id"].(string)
+		id := adminStringArg(args, "id", "provider_id", "providerId", "skill_id", "skillId", "user_id", "userId", "key_id", "keyId")
 		if id == "" {
 			return errJSON("id is required for skills.enable"), nil
 		}
@@ -300,7 +300,7 @@ func (t *MgmtTool) handleSkills(ctx context.Context, op string, args map[string]
 		}
 		return okJSON(fmt.Sprintf("skill %s enabled", id))
 	case "disable":
-		id, _ := args["id"].(string)
+		id := adminStringArg(args, "id", "provider_id", "providerId", "skill_id", "skillId", "user_id", "userId", "key_id", "keyId")
 		if id == "" {
 			return errJSON("id is required for skills.disable"), nil
 		}
@@ -327,7 +327,7 @@ func (t *MgmtTool) handleTools(ctx context.Context, op string, args map[string]i
 		}
 		return toJSON(result)
 	case "enable":
-		name, _ := args["name"].(string)
+		name := adminStringArg(args, "name", "tool", "tool_name", "toolName")
 		if name == "" {
 			return errJSON("name is required for tools.enable"), nil
 		}
@@ -336,7 +336,7 @@ func (t *MgmtTool) handleTools(ctx context.Context, op string, args map[string]i
 		}
 		return okJSON(fmt.Sprintf("tool %s enabled", name))
 	case "disable":
-		name, _ := args["name"].(string)
+		name := adminStringArg(args, "name", "tool", "tool_name", "toolName")
 		if name == "" {
 			return errJSON("name is required for tools.disable"), nil
 		}
@@ -525,7 +525,7 @@ func (t *MgmtTool) handleUsers(ctx context.Context, op string, args map[string]i
 		}
 		return toJSON(result)
 	case "lock":
-		id, _ := args["id"].(string)
+		id := adminStringArg(args, "id", "provider_id", "providerId", "skill_id", "skillId", "user_id", "userId", "key_id", "keyId")
 		if id == "" {
 			return errJSON("id is required for users.lock"), nil
 		}
@@ -534,7 +534,7 @@ func (t *MgmtTool) handleUsers(ctx context.Context, op string, args map[string]i
 		}
 		return okJSON(fmt.Sprintf("user %s locked", id))
 	case "unlock":
-		id, _ := args["id"].(string)
+		id := adminStringArg(args, "id", "provider_id", "providerId", "skill_id", "skillId", "user_id", "userId", "key_id", "keyId")
 		if id == "" {
 			return errJSON("id is required for users.unlock"), nil
 		}
@@ -561,7 +561,7 @@ func (t *MgmtTool) handleAPIKeys(ctx context.Context, op string, args map[string
 		}
 		return toJSON(result)
 	case "create":
-		name, _ := args["name"].(string)
+		name := adminStringArg(args, "name", "key_name", "keyName")
 		if name == "" {
 			return errJSON("name is required for apikeys.create"), nil
 		}
@@ -571,7 +571,7 @@ func (t *MgmtTool) handleAPIKeys(ctx context.Context, op string, args map[string
 		}
 		return toJSON(result)
 	case "revoke":
-		id, _ := args["id"].(string)
+		id := adminStringArg(args, "id", "provider_id", "providerId", "skill_id", "skillId", "user_id", "userId", "key_id", "keyId")
 		if id == "" {
 			return errJSON("id is required for apikeys.revoke"), nil
 		}
@@ -582,6 +582,10 @@ func (t *MgmtTool) handleAPIKeys(ctx context.Context, op string, args map[string
 	default:
 		return errJSON(fmt.Sprintf("unknown apikeys operation: %s", op)), nil
 	}
+}
+
+func adminStringArg(args map[string]interface{}, keys ...string) string {
+	return strings.TrimSpace(firstCompatString(args, keys...))
 }
 
 // --- Helpers ---

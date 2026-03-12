@@ -625,6 +625,29 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		c.sendMessageFunc = c.sendMessage
 	}
 
+	data, err := c.buildMessageSendData(msg)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.sendMessageFunc(msg.ChatID, data)
+	if err != nil {
+		c.logger.Error("failed to send message",
+			zap.String("channel_id", msg.ChatID),
+			zap.Error(err))
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	c.msgsSent.Add(1)
+	now := time.Now()
+	c.mu.Lock()
+	c.lastReplyAt = &now
+	c.mu.Unlock()
+
+	return nil
+}
+
+func (c *Channel) buildMessageSendData(msg channel.OutgoingMessage) (*discordgo.MessageSend, error) {
 	// Build message send data
 	data := &discordgo.MessageSend{
 		Content: msg.Content,
@@ -685,23 +708,55 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	}
 
 	if data.Content == "" && len(data.Files) == 0 && len(data.Embeds) == 0 && len(data.Components) == 0 {
-		return fmt.Errorf("no sendable Discord content")
+		return nil, fmt.Errorf("no sendable Discord content")
 	}
+	return data, nil
+}
 
-	_, err := c.sendMessageFunc(msg.ChatID, data)
+// SendWithID sends a message and returns the created Discord message ID.
+func (c *Channel) SendWithID(ctx context.Context, msg channel.OutgoingMessage) (string, error) {
+	if c.session == nil {
+		return "", fmt.Errorf("session not initialized")
+	}
+	if c.sendMessageFunc == nil {
+		c.sendMessageFunc = c.sendMessage
+	}
+	data, err := c.buildMessageSendData(msg)
+	if err != nil {
+		return "", err
+	}
+	sent, err := c.sendMessageFunc(msg.ChatID, data)
 	if err != nil {
 		c.logger.Error("failed to send message",
 			zap.String("channel_id", msg.ChatID),
 			zap.Error(err))
-		return fmt.Errorf("failed to send message: %w", err)
+		return "", fmt.Errorf("failed to send message: %w", err)
 	}
-
 	c.msgsSent.Add(1)
 	now := time.Now()
 	c.mu.Lock()
 	c.lastReplyAt = &now
 	c.mu.Unlock()
+	if sent == nil {
+		return "", nil
+	}
+	return sent.ID, nil
+}
 
+// EditMessage updates an existing Discord message in place.
+func (c *Channel) EditMessage(_ context.Context, chatID string, messageID string, msg channel.OutgoingMessage) error {
+	if c.session == nil {
+		return fmt.Errorf("session not initialized")
+	}
+	content := msg.Content
+	_, err := c.session.ChannelMessageEditComplex(&discordgo.MessageEdit{
+		ID:      messageID,
+		Channel: chatID,
+		Content: &content,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to edit message: %w", err)
+	}
 	return nil
 }
 

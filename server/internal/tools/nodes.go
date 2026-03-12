@@ -121,7 +121,7 @@ func (t *NodesTool) executeTemplates(ctx context.Context) (interface{}, error) {
 }
 
 func (t *NodesTool) executeGet(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "workflow_id")
+	id := firstCompatString(args, "id", "workflow_id", "workflowId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -145,7 +145,7 @@ func (t *NodesTool) executeCreate(ctx context.Context, args map[string]interface
 }
 
 func (t *NodesTool) executeUpdate(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "workflow_id")
+	id := firstCompatString(args, "id", "workflow_id", "workflowId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -166,7 +166,7 @@ func (t *NodesTool) executeUpdate(ctx context.Context, args map[string]interface
 }
 
 func (t *NodesTool) executeDelete(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "workflow_id")
+	id := firstCompatString(args, "id", "workflow_id", "workflowId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -177,11 +177,11 @@ func (t *NodesTool) executeDelete(ctx context.Context, args map[string]interface
 }
 
 func (t *NodesTool) executeRun(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "workflow_id")
+	id := firstCompatString(args, "id", "workflow_id", "workflowId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
-	triggerData, err := decodeMap(args["trigger_data"])
+	triggerData, err := decodeMap(firstCompatRawValue(args, "trigger_data", "triggerData"))
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +193,7 @@ func (t *NodesTool) executeRun(ctx context.Context, args map[string]interface{})
 }
 
 func (t *NodesTool) executeEnable(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "workflow_id")
+	id := firstCompatString(args, "id", "workflow_id", "workflowId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -208,7 +208,7 @@ func (t *NodesTool) executeEnable(ctx context.Context, args map[string]interface
 }
 
 func (t *NodesTool) executeDisable(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	id := firstCompatString(args, "id", "workflow_id")
+	id := firstCompatString(args, "id", "workflow_id", "workflowId")
 	if id == "" {
 		return nil, errors.New("id is required")
 	}
@@ -226,10 +226,10 @@ func nodesAction(args map[string]interface{}) string {
 	action := strings.ToLower(strings.TrimSpace(firstCompatString(args, "action", "op", "operation", "command")))
 	switch action {
 	case "", "list", "ls", "status":
-		if firstCompatString(args, "template_id") != "" && firstCompatString(args, "id") == "" {
+		if firstCompatString(args, "template_id", "templateId") != "" && firstCompatString(args, "id", "workflow_id", "workflowId") == "" {
 			return "create"
 		}
-		if firstCompatString(args, "id", "workflow_id") != "" {
+		if firstCompatString(args, "id", "workflow_id", "workflowId") != "" {
 			if hasNodesMutableArgs(args) {
 				return "update"
 			}
@@ -261,8 +261,8 @@ func nodesAction(args map[string]interface{}) string {
 }
 
 func hasNodesMutableArgs(args map[string]interface{}) bool {
-	for _, key := range []string{"name", "title", "description", "nodes", "connections", "variables", "settings", "tags", "status", "template_id"} {
-		if value, ok := args[key]; ok && value != nil && !(asString(value) == "") {
+	for _, keys := range [][]string{{"name"}, {"title"}, {"description"}, {"nodes"}, {"connections"}, {"variables"}, {"settings"}, {"tags"}, {"status"}, {"template_id", "templateId"}} {
+		if value, ok := compatArgValue(args, keys...); ok && value != nil && !(asString(value) == "") {
 			return true
 		}
 	}
@@ -270,10 +270,18 @@ func hasNodesMutableArgs(args map[string]interface{}) bool {
 }
 
 func nodesTenantID(ctx context.Context, args map[string]interface{}) string {
-	if tenantID := firstCompatString(args, "tenant_id", "tenant"); tenantID != "" {
+	if tenantID := firstCompatString(args, "tenant_id", "tenantId", "tenant"); tenantID != "" {
 		return tenantID
 	}
 	return "default"
+}
+
+func firstCompatRawValue(args map[string]interface{}, keys ...string) interface{} {
+	value, ok := compatArgValue(args, keys...)
+	if !ok {
+		return nil
+	}
+	return value
 }
 
 func buildWorkflowFromArgs(ctx context.Context, service NodesService, args map[string]interface{}, base *workflow.Workflow) (*workflow.Workflow, error) {
@@ -282,7 +290,7 @@ func buildWorkflowFromArgs(ctx context.Context, service NodesService, args map[s
 		copy := *base
 		item = &copy
 	}
-	if templateID := firstCompatString(args, "template_id", "template"); templateID != "" && base == nil {
+	if templateID := firstCompatString(args, "template_id", "templateId", "template"); templateID != "" && base == nil {
 		tpl := findWorkflowTemplate(service.Templates(ctx), templateID)
 		if tpl == nil {
 			return nil, fmt.Errorf("template %q not found", templateID)
@@ -314,7 +322,7 @@ func buildWorkflowFromArgs(ctx context.Context, service NodesService, args map[s
 		}
 		item.UpdatedBy = userID
 	}
-	if raw, ok := args["nodes"]; ok && raw != nil {
+	if raw, ok := compatArgValue(args, "nodes"); ok && raw != nil {
 		blob, _ := json.Marshal(raw)
 		var nodes []workflow.Node
 		if err := json.Unmarshal(blob, &nodes); err != nil {
@@ -322,7 +330,7 @@ func buildWorkflowFromArgs(ctx context.Context, service NodesService, args map[s
 		}
 		item.Nodes = nodes
 	}
-	if raw, ok := args["connections"]; ok && raw != nil {
+	if raw, ok := compatArgValue(args, "connections"); ok && raw != nil {
 		blob, _ := json.Marshal(raw)
 		var connections []workflow.Connection
 		if err := json.Unmarshal(blob, &connections); err != nil {
@@ -330,7 +338,7 @@ func buildWorkflowFromArgs(ctx context.Context, service NodesService, args map[s
 		}
 		item.Connections = connections
 	}
-	if raw, ok := args["variables"]; ok && raw != nil {
+	if raw, ok := compatArgValue(args, "variables"); ok && raw != nil {
 		blob, _ := json.Marshal(raw)
 		var variables map[string]string
 		if err := json.Unmarshal(blob, &variables); err != nil {
@@ -338,7 +346,7 @@ func buildWorkflowFromArgs(ctx context.Context, service NodesService, args map[s
 		}
 		item.Variables = variables
 	}
-	if raw, ok := args["settings"]; ok && raw != nil {
+	if raw, ok := compatArgValue(args, "settings"); ok && raw != nil {
 		blob, _ := json.Marshal(raw)
 		var settings workflow.WorkflowSettings
 		if err := json.Unmarshal(blob, &settings); err != nil {
@@ -346,7 +354,7 @@ func buildWorkflowFromArgs(ctx context.Context, service NodesService, args map[s
 		}
 		item.Settings = &settings
 	}
-	if raw, ok := args["tags"]; ok && raw != nil {
+	if raw, ok := compatArgValue(args, "tags"); ok && raw != nil {
 		blob, _ := json.Marshal(raw)
 		var tags []string
 		if err := json.Unmarshal(blob, &tags); err != nil {

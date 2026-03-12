@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { usePreviewStore } from '@/stores/preview'
 import { useAuthStore } from '@/stores/auth'
 import { authApi, type PasswordPolicy } from '@/api/auth'
+import { getUserErrorMessage } from '@/utils/userErrors'
 
 const emit = defineEmits<{
   close: []
@@ -44,7 +45,6 @@ onMounted(async () => {
 // Validation
 const isValid = computed(() => {
   const baseValid = username.value.length >= 3 && allPasswordChecksPassed.value
-  if (showPassword.value) return baseValid
   return baseValid && password.value === confirmPassword.value
 })
 
@@ -95,7 +95,7 @@ async function handleSubmit() {
     }
   } catch (e) {
     const axiosError = e as { response?: { data?: { message?: string } } }
-    error.value = axiosError.response?.data?.message || t('preview.upgradeFailed')
+    error.value = getUserErrorMessage(axiosError.response?.data?.message, 'preview.upgradeFailed')
   } finally {
     loading.value = false
   }
@@ -252,14 +252,14 @@ async function handleSubmit() {
             </div>
           </div>
 
-          <!-- Confirm Password (hidden when password is visible) -->
-          <div v-if="!showPassword">
+          <!-- Confirm Password -->
+          <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               {{ t('auth.confirmPassword') }}
             </label>
             <input
               v-model="confirmPassword"
-              type="password"
+              :type="showPassword ? 'text' : 'password'"
               class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               :class="passwordMismatch ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
               :placeholder="t('auth.confirmPasswordPlaceholder')"

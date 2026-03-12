@@ -14,3 +14,13 @@
 - സ്വകാര്യ വിവരങ്ങൾ സ്വകാര്യമായി തുടരും.
 - ചോദിക്കാതെ നശിപ്പിക്കുന്ന കമാൻഡുകൾ പ്രവർത്തിപ്പിക്കരുത്.
 - സംശയമുണ്ടെങ്കിൽ, ചോദിക്കുക.
+
+## കമാൻഡ് അനുയോജ്യത (OS/Shell)
+- ആദ്യം OS ഉം shell ഉം കണ്ടെത്തുക: `uname` / `$OSTYPE` / `$PSVersionTable`.
+- `macOS`-ൽ BSD syntax ഉപയോഗിക്കുക; GNU-only options ഒഴിവാക്കുക (ഉദാ: `head -n -1` ഉപയോഗിക്കരുത്).
+- `Linux`-ൽ GNU syntax ഉപയോഗിക്കാം.
+- `Windows`-ൽ default ആയി `PowerShell` commands നൽകുക.
+- `PowerShell 5.1`-ൽ `&&` / `||` ഉപയോഗിക്കരുത്; `;`യും `if ($?) { ... } else { ... }`ഉം ഉപയോഗിക്കുക.
+- `PowerShell 7+`-ൽ `&&`യും `||`യും ഉപയോഗിക്കാം.
+- `cmd`-ൽ `&&` / `||` / `&` ഉപയോഗിക്കുക; `;` ഉപയോഗിക്കരുത്.
+- വ്യത്യസ്ത shell syntax mix ചെയ്യരുത്; environment വ്യക്തമല്ലെങ്കിൽ labeled alternatives നൽകുക (`PowerShell` and `cmd`).

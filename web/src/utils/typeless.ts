@@ -20,6 +20,7 @@ import {
   TYPELESS_MARKER_START,
   TYPELESS_MARKER_END,
 } from '@/types/typeless'
+import { isLocalAbsolutePath } from '@/utils/localPath'
 
 // File extensions for different categories
 const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico']
@@ -34,7 +35,7 @@ const RE_UL_ITEM = /^(\s*)[-*+]\s+(.+)$/
 const RE_OL_ITEM = /^(\s*)\d+\.\s+(.+)$/
 const RE_IMAGE_INLINE = /!\[([^\]]*)\]\(([^)]+)\)/g
 const RE_STANDALONE_URL = /^(https?:\/\/[^\s]+)$/
-const RE_FILE_PATH = /^([a-zA-Z]:\\[^\s]+\.[a-zA-Z0-9]+|\/[^\s]+\.[a-zA-Z0-9]+)$/
+const RE_LOCAL_PATH_LINE = /^\s*(?:[a-zA-Z]:[\\/][^\s]+|\\\\[^\s]+|\/(?!api\/)[^\s]+)\s*$/m
 const RE_TABLE_SEP_CONTENT = /^[\s:-]+$/
 const RE_WINDOWS_ABS_PATH = /^[a-zA-Z]:\\/
 
@@ -103,19 +104,20 @@ class ParseResultCache {
     this.maxAge = maxAgeMs
   }
 
-  private generateKey(content: string): string {
+  private generateKey(content: string, scopeKey = ''): string {
     // Simple hash for content
+    const source = scopeKey ? `${scopeKey}\u0000${content}` : content
     let hash = 0
-    for (let i = 0; i < content.length; i++) {
-      const char = content.charCodeAt(i)
+    for (let i = 0; i < source.length; i++) {
+      const char = source.charCodeAt(i)
       hash = ((hash << 5) - hash) + char
       hash = hash & hash
     }
     return hash.toString(36)
   }
 
-  get(content: string): ParsedContent | null {
-    const key = this.generateKey(content)
+  get(content: string, scopeKey = ''): ParsedContent | null {
+    const key = this.generateKey(content, scopeKey)
     const entry = this.cache.get(key)
 
     if (!entry) return null
@@ -135,8 +137,8 @@ class ParseResultCache {
     return entry.result
   }
 
-  set(content: string, result: ParsedContent): void {
-    const key = this.generateKey(content)
+  set(content: string, result: ParsedContent, scopeKey = ''): void {
+    const key = this.generateKey(content, scopeKey)
 
     // Evict oldest if at capacity
     if (this.cache.size >= this.maxSize) {
@@ -161,6 +163,35 @@ class ParseResultCache {
 
 // Global parse cache instance
 const parseCache = new ParseResultCache()
+
+function buildCardScopeKey(messageId?: string, conversationId?: string): string {
+  const parts = [conversationId, messageId]
+    .map(value => value?.trim())
+    .filter((value): value is string => !!value)
+  if (parts.length === 0) return ''
+  return encodeURIComponent(parts.join(':'))
+}
+
+function buildParserCacheKey(messageId?: string, conversationId?: string, checklistCardId?: string): string {
+  const cardScopeKey = buildCardScopeKey(messageId, conversationId)
+  const normalizedChecklistCardId = checklistCardId?.trim()
+  if (!normalizedChecklistCardId) return cardScopeKey
+  const encodedChecklistCardId = encodeURIComponent(normalizedChecklistCardId)
+  return cardScopeKey ? `${cardScopeKey}::todo=${encodedChecklistCardId}` : `todo=${encodedChecklistCardId}`
+}
+
+function buildConversationIncrementalPrefix(conversationId: string): string {
+  const trimmedConversationId = conversationId.trim()
+  if (!trimmedConversationId) return ''
+  return encodeURIComponent(`${trimmedConversationId}:`)
+}
+
+function buildMarkdownListCardID(index: number, checklist: boolean, scopeKey?: string, explicitChecklistCardId?: string, checklistOrdinal = 0): string {
+  const normalizedChecklistCardId = explicitChecklistCardId?.trim()
+  if (checklist && normalizedChecklistCardId && checklistOrdinal === 0) return normalizedChecklistCardId
+  const prefix = checklist ? 'todo-checklist' : 'md-list'
+  return scopeKey ? `${prefix}-${scopeKey}-${index}` : `${prefix}-${index}`
+}
 
 // Export for testing/debugging
 export { parseCache }
@@ -209,10 +240,12 @@ function mightContainIncrementalCardHints(content: string): boolean {
 export function parseTypelessContentIncremental(
   content: string,
   messageId: string,
-  conversationId?: string
+  conversationId?: string,
+  explicitChecklistCardId?: string
 ): ParsedContent {
-  // Use conversation_id + message_id as cache key to avoid cross-conversation cache collisions
-  const cacheKey = conversationId ? `${conversationId}:${messageId}` : messageId
+  // Use scoped message identity to avoid cross-conversation cache collisions
+  const cardScopeKey = buildCardScopeKey(messageId, conversationId)
+  const cacheKey = buildParserCacheKey(messageId, conversationId, explicitChecklistCardId) || cardScopeKey || messageId
   const state = incrementalStates.get(cacheKey)
 
   // Helper: check if any card has _streaming flag
@@ -221,7 +254,7 @@ export function parseTypelessContentIncremental(
 
   // If no previous state or content doesn't start with previous content, do full parse
   if (!state || !content.startsWith(state.lastContent)) {
-    const result = parseTypelessContentInternal(content, 0, true) // isStreaming = true
+    const result = parseTypelessContentInternal(content, 0, true, cardScopeKey, explicitChecklistCardId) // isStreaming = true
     setIncrementalState(cacheKey, {
       lastContent: content,
       lastResult: result,
@@ -256,7 +289,7 @@ export function parseTypelessContentIncremental(
   }
 
   // Need to re-parse (new cards might be present or streaming card updated)
-  const result = parseTypelessContentInternal(content, 0, true) // isStreaming = true
+  const result = parseTypelessContentInternal(content, 0, true, cardScopeKey, explicitChecklistCardId) // isStreaming = true
   setIncrementalState(cacheKey, {
     lastContent: content,
     lastResult: result,
@@ -271,11 +304,19 @@ export function parseTypelessContentIncremental(
  * @param conversationId - The conversation ID (optional, for cache key uniqueness)
  */
 export function clearIncrementalState(messageId: string, conversationId?: string): void {
-  const cacheKey = conversationId ? `${conversationId}:${messageId}` : messageId
-  incrementalStates.delete(cacheKey)
-  // Also try to delete with just messageId for backwards compatibility
+  const scopedKey = buildCardScopeKey(messageId, conversationId)
+  const keysToDelete = new Set<string>([messageId])
   if (conversationId) {
-    incrementalStates.delete(messageId)
+    keysToDelete.add(`${conversationId}:${messageId}`)
+  }
+  if (scopedKey) {
+    keysToDelete.add(scopedKey)
+  }
+
+  for (const key of Array.from(incrementalStates.keys())) {
+    if (keysToDelete.has(key) || (scopedKey && key.startsWith(`${scopedKey}::todo=`))) {
+      incrementalStates.delete(key)
+    }
   }
 }
 
@@ -291,9 +332,11 @@ export function clearAllIncrementalStates(): void {
  * @param conversationId - The conversation ID to clear states for
  */
 export function clearConversationIncrementalStates(conversationId: string): void {
+  const encodedPrefix = buildConversationIncrementalPrefix(conversationId)
+  const rawPrefix = `${conversationId}:`
   const keysToDelete: string[] = []
   for (const key of incrementalStates.keys()) {
-    if (key.startsWith(`${conversationId}:`)) {
+    if ((encodedPrefix && key.startsWith(encodedPrefix)) || key.startsWith(rawPrefix)) {
       keysToDelete.push(key)
     }
   }
@@ -308,14 +351,16 @@ export function clearConversationIncrementalStates(conversationId: string): void
  * Also converts markdown tables, code blocks, and lists to cards.
  * Uses LRU cache for performance.
  */
-export function parseTypelessContent(content: string): ParsedContent {
+export function parseTypelessContent(content: string, messageId?: string, conversationId?: string, explicitChecklistCardId?: string): ParsedContent {
+  const scopeKey = buildCardScopeKey(messageId, conversationId)
+  const cacheKey = buildParserCacheKey(messageId, conversationId, explicitChecklistCardId)
   // Check cache first
-  const cached = parseCache.get(content)
+  const cached = parseCache.get(content, cacheKey)
   if (cached) return cached
 
   // Parse and cache
-  const result = parseTypelessContentInternal(content, 0)
-  parseCache.set(content, result)
+  const result = parseTypelessContentInternal(content, 0, false, scopeKey, explicitChecklistCardId)
+  parseCache.set(content, result, cacheKey)
   return result
 }
 
@@ -493,6 +538,7 @@ const toolIconMap: Record<string, string> = {
   'browser': '🌐',
   'sandbox': '📦',
   'ui_reviewer': '👁️',
+  'ppt': '🖼️',
   'autoreply': '💬',
   'workflows': '⚙️',
   'analyze': '📊',
@@ -714,7 +760,7 @@ function parseSpecialTags(content: string, cards: TypelessCard[], cardIndex: { v
 /**
  * Internal parsing function (no caching)
  */
-function parseTypelessContentInternal(content: string, startCardIndex: number, isStreaming = false): ParsedContent {
+function parseTypelessContentInternal(content: string, startCardIndex: number, isStreaming = false, cardScopeKey = '', explicitChecklistCardId = ''): ParsedContent {
   const cards: TypelessCard[] = []
   let text = content
   const cardIndex = { value: startCardIndex }
@@ -862,7 +908,7 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
   }
 
   // Parse markdown elements and convert to cards — SINGLE PASS over lines
-  text = parseMarkdownElementsSinglePass(text, cards, cardIndex)
+  text = parseMarkdownElementsSinglePass(text, cards, cardIndex, cardScopeKey, explicitChecklistCardId)
 
   return { text, cards }
 }
@@ -871,7 +917,6 @@ function parseTypelessContentInternal(content: string, startCardIndex: number, i
 const RE_CODE_FENCE = /```[a-z]/i
 const RE_IMAGE_LINE = /^\s*!\[[^\]]*\]\([^)]+\)\s*$/m
 const RE_URL_LINE = /^\s*https?:\/\/[^\s]+\s*$/m
-const RE_FILE_PATH_LINE = /^\s*([a-zA-Z]:\\[^\s]+\.[a-zA-Z0-9]+|\/[^\s]+\.[a-zA-Z0-9]+)\s*$/m
 const RE_DIGIT_DOT = /\d+\.\s/
 const HAS_TYPELESS_CACHE_MAX = 400
 const HAS_TYPELESS_CACHE_MAX_CONTENT_LENGTH = 12000
@@ -1007,7 +1052,7 @@ export function hasTypelessCards(content: string, useCache = true): boolean {
   }
 
   // Fast path: file paths — gate with common path separators
-  if ((content.includes(':\\') || content.includes('/')) && RE_FILE_PATH_LINE.test(content)) {
+  if ((content.includes(':\\') || content.includes('/') || content.includes('\\\\')) && RE_LOCAL_PATH_LINE.test(content)) {
     return finalize(true)
   }
 
@@ -1467,7 +1512,7 @@ function mightContainMarkdownElements(content: string): boolean {
   if (content.includes('|')) return true
   if (content.includes('![')) return true
   if (content.includes('http')) return true
-  if ((content.includes(':\\') || content.includes('/')) && RE_FILE_PATH_LINE.test(content)) return true
+  if ((content.includes(':\\') || content.includes('/') || content.includes('\\\\')) && RE_LOCAL_PATH_LINE.test(content)) return true
   if (content.includes('- ') || content.includes('* ') || content.includes('+ ')) return true
   if (content.includes('.') && RE_DIGIT_DOT.test(content)) return true
   return false
@@ -1484,6 +1529,8 @@ function parseMarkdownElementsSinglePass(
   content: string,
   cards: TypelessCard[],
   cardIndex: { value: number },
+  cardScopeKey = '',
+  explicitChecklistCardId = '',
 ): string {
   if (!mightContainMarkdownElements(content)) {
     return content
@@ -1510,6 +1557,7 @@ function parseMarkdownElementsSinglePass(
   let listChecklist = false
   let listIndent = 0
   let listParentStack: ListItem[] = []
+  let checklistCardCount = 0
 
   // === Image accumulator ===
   let pendingImages: GalleryImage[] = []
@@ -1530,13 +1578,15 @@ function parseMarkdownElementsSinglePass(
 
   const flushList = () => {
     if (!inList || listItems.length === 0) return
+    const nextIndex = cardIndex.value++
     const card: TypelessCardList = {
-      type: 'list', id: `md-list-${cardIndex.value++}`,
+      type: 'list', id: buildMarkdownListCardID(nextIndex, listChecklist, cardScopeKey, explicitChecklistCardId, checklistCardCount),
       items: listItems, ordered: listOrdered,
       variant: listChecklist ? 'checklist' : 'default',
     }
     cards.push(card)
     result.push(`[[TYPELESS_CARD:${card.id}]]`)
+    if (listChecklist) checklistCardCount++
     listItems = []; inList = false; listOrdered = false; listChecklist = false
     listIndent = 0; listParentStack = []
   }
@@ -1715,13 +1765,18 @@ function parseMarkdownElementsSinglePass(
     }
 
     // File path
-    const pathMatch = RE_FILE_PATH.exec(trimmed)
-    if (pathMatch && pathMatch[1]) {
-      const filePath = pathMatch[1]
-      const filename = filePath.split(/[/\\]/).pop() || filePath
-      const ext = filename.split('.').pop()?.toLowerCase() || ''
+    if (!/\s/.test(trimmed) && isLocalAbsolutePath(trimmed)) {
+      const normalizedPath = trimmed.replace(/[\\/]+$/, '') || trimmed
+      const filename = normalizedPath.split(/[/\\]/).pop() || normalizedPath
+      const ext = filename.includes('.') ? (filename.split('.').pop()?.toLowerCase() || '') : ''
       if (!imageExtensions.includes(ext)) {
-        const card: TypelessCardFile = { type: 'file', id: `md-file-${cardIndex.value++}`, filename, downloadUrl: filePath, previewUrl: documentExtensions.includes(ext) ? filePath : undefined }
+        const card: TypelessCardFile = {
+          type: 'file',
+          id: `md-file-${cardIndex.value++}`,
+          filename,
+          downloadUrl: trimmed,
+          previewUrl: ext && documentExtensions.includes(ext) ? trimmed : undefined,
+        }
         cards.push(card); result.push(`[[TYPELESS_CARD:${card.id}]]`); continue
       }
     }

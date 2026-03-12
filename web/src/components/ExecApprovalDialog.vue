@@ -76,7 +76,7 @@ function deny() {
             </div>
             <div v-if="approval.command" class="space-y-1">
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('execApproval.command') }}</p>
-              <code class="block text-sm px-3 py-2 rounded-md bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 break-all max-h-32 overflow-y-auto">{{ approval.command }}</code>
+              <code class="block text-sm px-3 py-2 rounded-md bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">{{ approval.command }}</code>
             </div>
           </div>
 

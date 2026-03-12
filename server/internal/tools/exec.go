@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -279,8 +280,7 @@ type execResult struct {
 
 // Execute runs the shell command.
 func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	command, _ := args["command"].(string)
-	command = strings.TrimSpace(command)
+	command := strings.TrimSpace(firstCompatString(args, "command", "cmd"))
 	if command == "" {
 		return nil, errors.New("command is required")
 	}
@@ -384,12 +384,14 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		slog.Warn("[exec] toolNames is nil, auto-forward disabled", "command", command)
 	}
 
-	workdirArg, _ := args["workdir"].(string)
-	langArg, _ := args["lang"].(string)
-	envArg := parseEnvArg(args["env"])
-	timeoutSec := parseFloatArg(args["timeout"], t.config.DefaultTimeout.Seconds())
-	usePTY, _ := args["pty"].(bool)
-	hostArg, _ := args["host"].(string)
+	workdirArg := firstCompatString(args, "workdir", "cwd", "work_dir", "working_dir", "workDir", "workingDir")
+	langArg := firstCompatString(args, "lang", "language")
+	envRaw, _ := compatArgValue(args, "env")
+	envArg := parseEnvArg(envRaw)
+	timeoutRaw, _ := compatArgValue(args, "timeout", "timeout_sec", "timeout_seconds", "timeoutSeconds")
+	timeoutSec := parseFloatArg(timeoutRaw, t.config.DefaultTimeout.Seconds())
+	usePTY, _ := compatBoolArg(args, "pty", "use_pty", "usePty")
+	hostArg := firstCompatString(args, "host")
 	hostExplicit := hostArg != "" // user explicitly chose a host
 	if hostArg == "" {
 		hostArg = t.config.Host
@@ -1725,10 +1727,19 @@ func parseFloatArg(v interface{}, defaultVal float64) float64 {
 	switch n := v.(type) {
 	case float64:
 		return n
+	case float32:
+		return float64(n)
 	case int:
+		return float64(n)
+	case int64:
 		return float64(n)
 	case json.Number:
 		f, err := n.Float64()
+		if err == nil {
+			return f
+		}
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
 		if err == nil {
 			return f
 		}

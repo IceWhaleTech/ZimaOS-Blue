@@ -6,6 +6,7 @@ import { approvalApi } from '@/api/approval'
 import type { Decision, ExecDecision } from '@/api/approval'
 import api from '@/api/client'
 import { SSEClient } from '@/utils/sse'
+import type { SSEClientOptions } from '@/utils/sse'
 import { i18n } from '@/i18n'
 import { useSettingsStore } from './settings'
 import { useProviderPoolStore } from './providerPool'
@@ -56,6 +57,13 @@ function formatToolWarningCode(code: string): string {
         ? resolve('toolWarnings.statuses.unknown', 'Warning: ' + normalized, { code: normalized })
         : ''
   }
+}
+
+function formatScreenshotCapturedStatus(): string {
+  const key = 'toolWarnings.statuses.screenshotCaptured'
+  const t = i18n.global.t
+  const te = i18n.global.te
+  return te(key) ? String(t(key)) : 'Screenshot captured'
 }
 
 /** Parse raw tool results into structured ToolResultItems. */
@@ -117,6 +125,11 @@ export function parseToolResults(results: Array<{ name: string; id: string; args
         }
         if (typeof res.warning === 'string' && res.warning.trim()) warning = res.warning.trim()
         if (typeof res.warning_code === 'string' && res.warning_code.trim()) warningCode = res.warning_code.trim()
+        const screenshot = typeof res.screenshot === 'string' ? res.screenshot.trim() : ''
+        if (screenshot && !status) {
+          const message = typeof res.message === 'string' ? res.message.trim() : ''
+          status = message || formatScreenshotCapturedStatus()
+        }
         if (res.stdout?.trim() && r.name !== 'ask') { output = res.stdout.trim() }
         if (res.stderr?.trim()) {
           const stderr = res.stderr.trim()
@@ -127,13 +140,24 @@ export function parseToolResults(results: Array<{ name: string; id: string; args
         if (res.host) host = res.host
         if (res.risk_level) riskLevel = res.risk_level
       } catch {
-        const text = r.result.slice(0, 500)
-        if (/(error|failed|unsupported|not support|invalid)/i.test(text)) {
-          icon = '✗'
-          status = text
-        } else {
-          output = text
+        const hasScreenshotPayload = /"screenshot"\s*:/.test(r.result)
+        if (hasScreenshotPayload) {
           icon = '✓'
+          const messageMatch = r.result.match(/"message"\s*:\s*"([^"]+)/)
+          if (messageMatch && messageMatch[1]) {
+            status = messageMatch[1]
+          } else {
+            status = formatScreenshotCapturedStatus()
+          }
+        } else {
+          const text = r.result.slice(0, 500)
+          if (/(error|failed|unsupported|not support|invalid)/i.test(text)) {
+            icon = '✗'
+            status = text
+          } else {
+            output = text
+            icon = '✓'
+          }
         }
       }
     }
@@ -169,6 +193,22 @@ function formatStreamProgress(stage: string): string {
 
 // Store for message metadata (provider, model, stats) - keyed by message ID
 const messageMetadata = ref<Map<string, { provider?: string; model?: string; stats?: MessageStats }>>(new Map())
+
+interface ActiveConversationStreamState {
+  conversationId: string
+  streamId: string | null
+  sending: boolean
+  streaming: boolean
+  receivedFirstChunk: boolean
+  streamProgress: string | null
+  toolExecuting: boolean
+  toolExecutingStartTime: number
+  toolExecutingNames: string[]
+  toolExecutingCommands: string[]
+  toolSandboxAvailable: boolean
+  awaitingConfirmation: boolean
+  previewContent: string
+}
 
 export const useChatStore = defineStore('chat', () => {
   const loadModelPreference = (): string => {
@@ -342,6 +382,8 @@ export const useChatStore = defineStore('chat', () => {
     workdir?: string
     host?: string
     security?: string
+    session_id?: string
+    conversation_id?: string
     expires_at: number
   } | null>(null)
 
@@ -352,9 +394,244 @@ export const useChatStore = defineStore('chat', () => {
   const webSearchEnabled = ref<boolean>(loadWebSearchEnabled())
   const deepResearchEnabled = ref<boolean>(loadDeepResearchEnabled())
   const activeStreamId = ref<string | null>(null)
+  const activeStreamState = ref<ActiveConversationStreamState | null>(null)
 
   // SSE client for streaming
   const sseClient = new SSEClient()
+  const pendingRecoveryRetryDelayMs = 700
+  const pendingRecoveryRetryLimit = 8
+  let pendingRecoveryRetryCount = 0
+  let pendingRecoveryRetryTimer: ReturnType<typeof setTimeout> | null = null
+
+  function getActiveStreamState(conversationId?: string | null): ActiveConversationStreamState | null {
+    const state = activeStreamState.value
+    if (!state) return null
+    if (conversationId && state.conversationId !== conversationId) return null
+    return state
+  }
+
+  function applyVisibleStreamState(state: ActiveConversationStreamState | null) {
+    sending.value = !!state?.sending
+    streaming.value = !!state?.streaming
+    activeStreamId.value = state?.streamId ?? null
+    streamProgress.value = state?.receivedFirstChunk ? null : (state?.streamProgress ?? null)
+    _receivedFirstChunk.value = !!state?.receivedFirstChunk
+
+    if (state?.toolExecuting) {
+      toolExecutingStartTime.value = state.toolExecutingStartTime
+      toolExecutingNames.value = [...state.toolExecutingNames]
+      toolExecutingCommands.value = [...state.toolExecutingCommands]
+      toolSandboxAvailable.value = state.toolSandboxAvailable
+      toolExecuting.value = true
+    } else {
+      toolExecuting.value = false
+      toolExecutingStartTime.value = 0
+    }
+
+    if (state?.awaitingConfirmation) {
+      awaitingConfirmation.value = true
+    } else if (!pendingQuestion.value && !pendingApproval.value && !pendingExecApproval.value) {
+      awaitingConfirmation.value = false
+    }
+  }
+
+  function beginActiveStream(conversationId: string) {
+    const next: ActiveConversationStreamState = {
+      conversationId,
+      streamId: null,
+      sending: true,
+      streaming: true,
+      receivedFirstChunk: false,
+      streamProgress: null,
+      toolExecuting: false,
+      toolExecutingStartTime: 0,
+      toolExecutingNames: [],
+      toolExecutingCommands: [],
+      toolSandboxAvailable: false,
+      awaitingConfirmation: false,
+      previewContent: '',
+    }
+    activeStreamState.value = next
+    if (currentConversationId.value === conversationId) {
+      applyVisibleStreamState(next)
+    }
+  }
+
+  function updateActiveStreamState(conversationId: string, patch: Partial<ActiveConversationStreamState>) {
+    const current = getActiveStreamState(conversationId)
+    if (!current) return
+    const next: ActiveConversationStreamState = {
+      ...current,
+      ...patch,
+      toolExecutingNames: patch.toolExecutingNames ? [...patch.toolExecutingNames] : current.toolExecutingNames,
+      toolExecutingCommands: patch.toolExecutingCommands ? [...patch.toolExecutingCommands] : current.toolExecutingCommands,
+    }
+    activeStreamState.value = next
+    if (currentConversationId.value === conversationId) {
+      applyVisibleStreamState(next)
+    }
+  }
+
+  function appendActiveStreamPreview(conversationId: string, delta: string) {
+    if (!delta) return
+    const current = getActiveStreamState(conversationId)
+    if (!current) return
+    updateActiveStreamState(conversationId, {
+      previewContent: current.previewContent + delta,
+      receivedFirstChunk: true,
+      streamProgress: null,
+      toolExecuting: false,
+    })
+  }
+
+  function resetActiveStreamRound(conversationId: string) {
+    updateActiveStreamState(conversationId, {
+      receivedFirstChunk: false,
+      streamProgress: null,
+      toolExecuting: false,
+      toolExecutingStartTime: 0,
+      toolExecutingNames: [],
+      toolExecutingCommands: [],
+      toolSandboxAvailable: false,
+      awaitingConfirmation: false,
+      previewContent: '',
+    })
+  }
+
+  function clearActiveStreamState(conversationId?: string | null) {
+    const current = activeStreamState.value
+    if (!current) return
+    if (conversationId && current.conversationId !== conversationId) return
+    activeStreamState.value = null
+  }
+
+  function clearVisibleStreamState() {
+    sending.value = false
+    streaming.value = false
+    streamProgress.value = null
+    toolExecuting.value = false
+    toolExecutingStartTime.value = 0
+    activeStreamId.value = null
+    resetPendingStreamDelta()
+    streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+    _receivedFirstChunk.value = false
+  }
+
+  function finalizeVisibleStreamSession(conversationId: string) {
+    const active = getActiveStreamState(conversationId)
+    if (active) {
+      if (currentConversationId.value === conversationId) {
+        applyVisibleStreamState(active)
+      }
+      return
+    }
+    if (currentConversationId.value === conversationId) {
+      clearVisibleStreamState()
+    }
+  }
+
+  function restoreDetachedActiveStream(conversationId: string) {
+    const state = getActiveStreamState(conversationId)
+    if (!state?.streaming || currentConversationId.value !== conversationId) return
+
+    resetPendingStreamDelta()
+    const previewContent = state.previewContent || ''
+    const lastMessage = messages.value[messages.value.length - 1]
+    const canReuseLastAssistant = !!previewContent
+      && !!lastMessage
+      && lastMessage.role === 'assistant'
+      && previewContent.startsWith(lastMessage.content)
+
+    if (canReuseLastAssistant && lastMessage) {
+      if (lastMessage.content !== previewContent) {
+        lastMessage.content = previewContent
+        triggerRef(messages)
+      }
+    } else {
+      const assistantMessage = createStreamingAssistantMessage(conversationId)
+      assistantMessage.content = previewContent
+      messages.value = [...messages.value, assistantMessage]
+    }
+
+    streamingContent.value = previewContent
+    processContentLength.value = 0
+    toolResults.value = []
+    applyVisibleStreamState(state)
+  }
+
+  async function connectConversationStream(conversationId: string, request: SendMessageRequest, options: SSEClientOptions) {
+    beginActiveStream(conversationId)
+
+    await sseClient.connect(conversationId, request, {
+      ...options,
+      onStreamId: (streamId) => {
+        updateActiveStreamState(conversationId, { streamId })
+        options.onStreamId?.(streamId)
+      },
+      onStreamProgress: (progress) => {
+        const current = getActiveStreamState(conversationId)
+        if (current && !current.receivedFirstChunk) {
+          updateActiveStreamState(conversationId, { streamProgress: formatStreamProgress(progress) })
+        }
+        options.onStreamProgress?.(progress)
+      },
+      onMessage: (chunk) => {
+        if (chunk.awaiting_user_input) {
+          updateActiveStreamState(conversationId, { awaitingConfirmation: true })
+        }
+        if (chunk.delta) {
+          appendActiveStreamPreview(conversationId, chunk.delta)
+        }
+        options.onMessage(chunk)
+      },
+      onToolExecuting: (toolCount, toolNames, sandboxAvailable, toolCommands) => {
+        updateActiveStreamState(conversationId, {
+          toolExecuting: true,
+          toolExecutingStartTime: Date.now(),
+          toolExecutingNames: toolNames || [],
+          toolExecutingCommands: toolCommands || [],
+          toolSandboxAvailable: !!sandboxAvailable,
+        })
+        options.onToolExecuting?.(toolCount, toolNames, sandboxAvailable, toolCommands)
+      },
+      onToolResults: (results, toolRound) => {
+        options.onToolResults?.(results, toolRound)
+      },
+      onNewMessage: (toolRound) => {
+        resetActiveStreamRound(conversationId)
+        options.onNewMessage?.(toolRound)
+      },
+      onTodoUpdated: (messageId, content, todoCardId) => {
+        options.onTodoUpdated?.(messageId, content, todoCardId)
+      },
+      onInjection: (userMessage) => {
+        resetActiveStreamRound(conversationId)
+        options.onInjection?.(userMessage)
+      },
+      onBlocked: (message, threatLevel) => {
+        clearActiveStreamState(conversationId)
+        options.onBlocked?.(message, threatLevel)
+      },
+      onTrialExhausted: (message) => {
+        clearActiveStreamState(conversationId)
+        options.onTrialExhausted?.(message)
+      },
+      onContextTrimmed: (info) => {
+        options.onContextTrimmed?.(info)
+      },
+      onNetworkInterrupt: () => {
+        options.onNetworkInterrupt?.()
+      },
+      onError: (err) => {
+        clearActiveStreamState(conversationId)
+        options.onError?.(err)
+      },
+      onComplete: (finalChunk) => {
+        clearActiveStreamState(conversationId)
+        options.onComplete?.(finalChunk)
+      },
+    })
+  }
 
   function applyCommandState(state: ConversationCommandState) {
     selectedProviderId.value = state.selected_provider_id?.trim() || ''
@@ -519,12 +796,23 @@ export const useChatStore = defineStore('chat', () => {
     return -1
   }
 
-  function applyTodoChecklistUpdate(messageId: string, content: string) {
+  function applyTodoChecklistUpdate(messageId: string, content: string, todoCardId?: string) {
     const idx = findTodoChecklistMessageIndex(messageId)
     if (idx < 0) return
     const msg = messages.value[idx]
-    if (msg && msg.content !== content) {
+    const normalizedTodoCardId = todoCardId?.trim()
+    if (!msg) return
+
+    let changed = false
+    if (msg.content !== content) {
       msg.content = content
+      changed = true
+    }
+    if (normalizedTodoCardId && msg.todo_card_id !== normalizedTodoCardId) {
+      msg.todo_card_id = normalizedTodoCardId
+      changed = true
+    }
+    if (changed) {
       triggerRef(messages)
     }
   }
@@ -569,6 +857,122 @@ export const useChatStore = defineStore('chat', () => {
 
   function hasPendingConfirmations(): boolean {
     return !!pendingQuestion.value || !!pendingApproval.value || !!pendingExecApproval.value
+  }
+
+  function normalizePendingSessionId(data: any): string {
+    if (!data || typeof data !== 'object') return ''
+    const sessionId = typeof data.session_id === 'string' ? data.session_id.trim() : ''
+    if (sessionId) return sessionId
+    const conversationId = typeof data.conversation_id === 'string' ? data.conversation_id.trim() : ''
+    return conversationId
+  }
+
+  function stringifyOptional(value: unknown): string | undefined {
+    if (typeof value === 'string') {
+      const v = value.trim()
+      return v || undefined
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return String(value)
+    }
+    return undefined
+  }
+
+  function normalizePendingExecApproval(data: any): {
+    id: string
+    type: string
+    command?: string
+    directory?: string
+    workdir?: string
+    host?: string
+    security?: string
+    session_id?: string
+    conversation_id?: string
+    expires_at: number
+  } | null {
+    if (!data || typeof data !== 'object') return null
+
+    const source = (() => {
+      if (data.approval && typeof data.approval === 'object') return data.approval
+      if (data.data && typeof data.data === 'object') return data.data
+      return data
+    })()
+
+    const id = stringifyOptional(source.id || source.request_id)
+    if (!id) return null
+
+    let command = source.command ?? source.cmd
+    if (Array.isArray(command)) {
+      command = command.map(v => String(v)).join(' ')
+    } else if (command && typeof command === 'object') {
+      try {
+        command = JSON.stringify(command)
+      } catch {
+        command = String(command)
+      }
+    }
+
+    let expiresAt = Number(source.expires_at ?? source.expiresAt ?? 0)
+    if (Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt < 1e12) {
+      expiresAt *= 1000
+    }
+    if (!Number.isFinite(expiresAt) || expiresAt <= 0) {
+      expiresAt = Date.now() + 2 * 60 * 1000
+    }
+
+    const normalized = {
+      id,
+      type: stringifyOptional(source.type) || 'directory',
+      command: stringifyOptional(command),
+      directory: stringifyOptional(source.directory ?? source.dir ?? source.path),
+      workdir: stringifyOptional(source.workdir ?? source.cwd),
+      host: stringifyOptional(source.host),
+      security: stringifyOptional(source.security),
+      session_id: stringifyOptional(source.session_id),
+      conversation_id: stringifyOptional(source.conversation_id),
+      expires_at: expiresAt,
+    }
+
+    if (!normalized.directory && normalized.workdir) {
+      normalized.directory = normalized.workdir
+    }
+
+    return normalized
+  }
+
+  function clearPendingRecoveryRetryTimer() {
+    if (pendingRecoveryRetryTimer) {
+      clearTimeout(pendingRecoveryRetryTimer)
+      pendingRecoveryRetryTimer = null
+    }
+    pendingRecoveryRetryCount = 0
+  }
+
+  async function recoverPendingConfirmationsWithRetry() {
+    clearPendingRecoveryRetryTimer()
+
+    const attemptRecovery = async () => {
+      await recoverPendingConfirmations(false)
+      if (hasPendingConfirmations() || !awaitingConfirmation.value) {
+        clearPendingRecoveryRetryTimer()
+        return
+      }
+      if (pendingRecoveryRetryCount >= pendingRecoveryRetryLimit) {
+        return
+      }
+      pendingRecoveryRetryCount++
+      pendingRecoveryRetryTimer = setTimeout(() => {
+        void attemptRecovery()
+      }, pendingRecoveryRetryDelayMs)
+    }
+
+    await attemptRecovery()
+  }
+
+  function shouldSurfacePendingForCurrentConversation(sessionId: string): boolean {
+    if (!sessionId) return true
+    const currentId = currentConversationId.value?.trim() || ''
+    return !currentId || currentId === sessionId
   }
 
   function extractInlineQuestionLabel(raw: string): string {
@@ -647,10 +1051,12 @@ export const useChatStore = defineStore('chat', () => {
       checkPendingExecApproval(),
     ])
     if (hasPendingConfirmations()) {
+      clearPendingRecoveryRetryTimer()
       awaitingConfirmation.value = true
       return
     }
     if (allowInlineFallback && inferInlinePendingQuestionFromAssistantMessage()) {
+      clearPendingRecoveryRetryTimer()
       return
     }
     if (!streaming.value) {
@@ -663,7 +1069,7 @@ export const useChatStore = defineStore('chat', () => {
     awaitingConfirmation.value = true
     // If the out-of-band approval event was missed, recover pending payloads.
     if (!wasAwaiting) {
-      void recoverPendingConfirmations(false)
+      void recoverPendingConfirmationsWithRetry()
     }
   }
 
@@ -687,6 +1093,16 @@ export const useChatStore = defineStore('chat', () => {
     })
   })
 
+  // Conversation IDs that still have an active execution stream.
+  const executingConversationIds = computed(() => {
+    const state = activeStreamState.value
+    if (!state?.conversationId) return []
+    if (state.streaming || state.sending || state.toolExecuting || state.awaitingConfirmation) {
+      return [state.conversationId]
+    }
+    return []
+  })
+
   // Actions
   async function fetchConversations() {
     try {
@@ -704,15 +1120,28 @@ export const useChatStore = defineStore('chat', () => {
   function stopActiveStreamForConversationSwitch() {
     if (!streaming.value && !sending.value) return
     flushPendingStreamDelta(currentConversationId.value)
-    // Conversation switch should only detach local streaming UI.
-    // Do not cancel server-side generation; let it finish in background.
-    sseClient.disconnect()
-    streaming.value = false
-    sending.value = false
-    toolExecuting.value = false
-    activeStreamId.value = null
-    resetPendingStreamDelta()
-    streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+    if (currentConversationId.value) {
+      updateActiveStreamState(currentConversationId.value, {
+        streamId: activeStreamId.value,
+        sending: true,
+        streaming: true,
+        receivedFirstChunk: _receivedFirstChunk.value,
+        streamProgress: streamProgress.value,
+        toolExecuting: toolExecuting.value,
+        toolExecutingStartTime: toolExecutingStartTime.value,
+        toolExecutingNames: [...toolExecutingNames.value],
+        toolExecutingCommands: [...toolExecutingCommands.value],
+        toolSandboxAvailable: toolSandboxAvailable.value,
+        awaitingConfirmation: awaitingConfirmation.value || !!pendingQuestion.value || !!pendingApproval.value || !!pendingExecApproval.value,
+        previewContent: streamingContent.value,
+      })
+    }
+    pendingQuestion.value = null
+    pendingApproval.value = null
+    pendingExecApproval.value = null
+    awaitingConfirmation.value = false
+    clearPendingRecoveryRetryTimer()
+    clearVisibleStreamState()
   }
 
   async function createConversation(title?: string) {
@@ -829,8 +1258,14 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
 
-    // Check if there's a pending question waiting for user input
-    checkPendingQuestion()
+    if (getActiveStreamState(id)?.streaming) {
+      restoreDetachedActiveStream(id)
+      void recoverPendingConfirmations(true)
+      return
+    }
+
+    // Restore pending confirmations for this conversation if any.
+    void recoverPendingConfirmations(false)
   }
 
   async function fetchMessages(conversationId: string, page = 0) {
@@ -1030,7 +1465,7 @@ export const useChatStore = defineStore('chat', () => {
       // Capture the conversation ID at send time so callbacks can detect stale streams
       const sendConvId = conversationId
 
-      await sseClient.connect(conversationId, request, {
+      await connectConversationStream(conversationId, request, {
         onStreamId: (streamId) => {
           if (currentConversationId.value !== sendConvId) return
           rememberActiveStreamId(streamId)
@@ -1079,9 +1514,9 @@ export const useChatStore = defineStore('chat', () => {
           const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (messageId, content) => {
+        onTodoUpdated: (messageId, content, todoCardId) => {
           if (currentConversationId.value !== sendConvId) return
-          applyTodoChecklistUpdate(messageId, content)
+          applyTodoChecklistUpdate(messageId, content, todoCardId)
         },
         onInjection: () => {
           if (currentConversationId.value !== sendConvId) return
@@ -1116,6 +1551,7 @@ export const useChatStore = defineStore('chat', () => {
             'provider_rate_limited': 'provider_rate_limited',
             'provider_openrouter_privacy_policy': 'provider_openrouter_privacy_policy',
             'trial_service_busy': 'trial_service_busy',
+            'exec_directory_approval_timeout': 'execDirectoryApprovalTimeout',
           }
           const resolveErrorKey = (message: string): string | undefined => {
             if (errorMap[message]) return errorMap[message]
@@ -1127,6 +1563,7 @@ export const useChatStore = defineStore('chat', () => {
             if (lower.includes('provider_auth_error') || lower.includes('auth error')) return 'provider_auth_error'
             if (lower.includes('provider_rate_limited') || lower.includes('429') || lower.includes('throttled')) return 'provider_rate_limited'
             if (lower.includes('trial_service_busy')) return 'trial_service_busy'
+            if (lower.includes('exec denied: directory approval') && lower.includes('approval timed out')) return 'execDirectoryApprovalTimeout'
             return undefined
           }
 
@@ -1275,12 +1712,7 @@ export const useChatStore = defineStore('chat', () => {
         )
       }
     } finally {
-      sending.value = false
-      streaming.value = false
-      toolExecuting.value = false
-      activeStreamId.value = null
-      resetPendingStreamDelta()
-      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+      finalizeVisibleStreamSession(conversationId)
     }
   }
 
@@ -1288,11 +1720,8 @@ export const useChatStore = defineStore('chat', () => {
     flushPendingStreamDelta(currentConversationId.value)
     void cancelActiveStreamOnServer(currentConversationId.value)
     sseClient.disconnect()
-    streaming.value = false
-    toolExecuting.value = false
-    activeStreamId.value = null
-    resetPendingStreamDelta()
-    streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+    clearActiveStreamState(currentConversationId.value)
+    clearVisibleStreamState()
     if (!hasPendingConfirmations()) {
       awaitingConfirmation.value = false
     }
@@ -1337,12 +1766,8 @@ export const useChatStore = defineStore('chat', () => {
     // Abort the in-flight stream
     void cancelActiveStreamOnServer(convId)
     sseClient.disconnect()
-    streaming.value = false
-    toolExecuting.value = false
-    activeStreamId.value = null
-    resetPendingStreamDelta()
-    streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
-    sending.value = false
+    clearActiveStreamState(convId)
+    clearVisibleStreamState()
 
     // Remove empty assistant placeholder
     messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
@@ -1397,7 +1822,7 @@ export const useChatStore = defineStore('chat', () => {
         deep_research_enabled: deepResearchEnabled.value,
       }
 
-      await sseClient.connect(convId, request, {
+      await connectConversationStream(convId, request, {
         onStreamId: (streamId) => {
           if (currentConversationId.value !== convId) return
           rememberActiveStreamId(streamId)
@@ -1442,9 +1867,9 @@ export const useChatStore = defineStore('chat', () => {
           const newAssistant = createStreamingAssistantMessage(convId)
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (messageId, content) => {
+        onTodoUpdated: (messageId, content, todoCardId) => {
           if (currentConversationId.value !== convId) return
-          applyTodoChecklistUpdate(messageId, content)
+          applyTodoChecklistUpdate(messageId, content, todoCardId)
         },
         onError: (err) => {
           if (currentConversationId.value !== convId) return
@@ -1486,12 +1911,7 @@ export const useChatStore = defineStore('chat', () => {
       flushPendingStreamDelta(convId)
       messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
     } finally {
-      sending.value = false
-      streaming.value = false
-      toolExecuting.value = false
-      activeStreamId.value = null
-      resetPendingStreamDelta()
-      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+      finalizeVisibleStreamSession(convId)
     }
   }
 
@@ -1534,7 +1954,7 @@ export const useChatStore = defineStore('chat', () => {
         deep_research_enabled: deepResearchEnabled.value,
       }
 
-      await sseClient.connect(conversationId, request, {
+      await connectConversationStream(conversationId, request, {
         onStreamId: (streamId) => {
           if (currentConversationId.value !== conversationId) return
           rememberActiveStreamId(streamId)
@@ -1578,9 +1998,9 @@ export const useChatStore = defineStore('chat', () => {
           const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (messageId, content) => {
+        onTodoUpdated: (messageId, content, todoCardId) => {
           if (currentConversationId.value !== conversationId) return
-          applyTodoChecklistUpdate(messageId, content)
+          applyTodoChecklistUpdate(messageId, content, todoCardId)
         },
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
@@ -1633,12 +2053,7 @@ export const useChatStore = defineStore('chat', () => {
       flushPendingStreamDelta(conversationId)
       error.value = e instanceof Error ? e.message : 'Failed to continue message'
     } finally {
-      sending.value = false
-      streaming.value = false
-      toolExecuting.value = false
-      activeStreamId.value = null
-      resetPendingStreamDelta()
-      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+      finalizeVisibleStreamSession(conversationId)
     }
   }
 
@@ -1701,7 +2116,7 @@ export const useChatStore = defineStore('chat', () => {
         deep_research_enabled: deepResearchEnabled.value,
       }
 
-      await sseClient.connect(conversationId, request, {
+      await connectConversationStream(conversationId, request, {
         onStreamId: (streamId) => {
           if (currentConversationId.value !== conversationId) return
           rememberActiveStreamId(streamId)
@@ -1745,9 +2160,9 @@ export const useChatStore = defineStore('chat', () => {
           const newAssistant = createStreamingAssistantMessage(conversationId)
           messages.value = [...messages.value, newAssistant]
         },
-        onTodoUpdated: (messageId, content) => {
+        onTodoUpdated: (messageId, content, todoCardId) => {
           if (currentConversationId.value !== conversationId) return
-          applyTodoChecklistUpdate(messageId, content)
+          applyTodoChecklistUpdate(messageId, content, todoCardId)
         },
         onError: (err) => {
           if (currentConversationId.value !== conversationId) return
@@ -1830,12 +2245,7 @@ export const useChatStore = defineStore('chat', () => {
         messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
       }
     } finally {
-      sending.value = false
-      streaming.value = false
-      toolExecuting.value = false
-      activeStreamId.value = null
-      resetPendingStreamDelta()
-      streamingContent.value = ''; processContentLength.value = 0; toolResults.value = []
+      finalizeVisibleStreamSession(conversationId)
     }
   }
 
@@ -1974,18 +2384,15 @@ export const useChatStore = defineStore('chat', () => {
 
   async function checkPendingApprovals() {
     try {
-      const response = await approvalApi.listPending()
+      const response = await approvalApi.listPending(currentConversationId.value || undefined)
       const pending = response.data
       if (pending && pending.length > 0) {
         const first = pending[0]
         if (first) {
-          pendingApproval.value = {
-            request_id: first.id,
-            tool_name: first.tool_name,
-            tool_call_id: first.tool_call_id,
-            arguments: first.arguments,
-          }
+          setPendingApproval(first)
         }
+      } else if (!streaming.value) {
+        pendingApproval.value = null
       }
     } catch {
       // Approval endpoint may not exist yet — ignore
@@ -1995,19 +2402,37 @@ export const useChatStore = defineStore('chat', () => {
   function setPendingApproval(data: any) {
     const requestId = data?.id || data?.request_id
     if (!requestId) return
+    const sessionId = normalizePendingSessionId(data)
+    if (sessionId) {
+      updateActiveStreamState(sessionId, { awaitingConfirmation: true })
+    }
+    if (!shouldSurfacePendingForCurrentConversation(sessionId)) {
+      return
+    }
     pendingApproval.value = {
       request_id: requestId,
       tool_name: data.tool_name || '',
       tool_call_id: data.tool_call_id || '',
       arguments: data.arguments || {},
     }
+    clearPendingRecoveryRetryTimer()
     awaitingConfirmation.value = true
   }
 
   // --- Ask-user-question methods ---
   function setPendingQuestion(data: any) {
     console.log('[ChatStore] setPendingQuestion called with:', data)
+    const sessionId = normalizePendingSessionId(data)
+    if (sessionId) {
+      updateActiveStreamState(sessionId, { awaitingConfirmation: !!data })
+    }
+    if (data && !shouldSurfacePendingForCurrentConversation(sessionId)) {
+      return
+    }
     pendingQuestion.value = data
+    if (data) {
+      clearPendingRecoveryRetryTimer()
+    }
     awaitingConfirmation.value = !!data
     console.log('[ChatStore] pendingQuestion.value is now:', pendingQuestion.value)
   }
@@ -2071,7 +2496,9 @@ export const useChatStore = defineStore('chat', () => {
       }
       const res = await api.get<{ pending: boolean; question?: any }>('/ask-user-question/pending', { params })
       if (res.data.pending && res.data.question) {
-        pendingQuestion.value = res.data.question
+        setPendingQuestion(res.data.question)
+      } else if (!streaming.value) {
+        setPendingQuestion(null)
       }
     } catch {
       // endpoint may not exist — ignore
@@ -2080,16 +2507,34 @@ export const useChatStore = defineStore('chat', () => {
 
   // --- Exec approval methods ---
   function setPendingExecApproval(data: any) {
-    pendingExecApproval.value = data
-    if (data) awaitingConfirmation.value = true
+    const normalized = data ? normalizePendingExecApproval(data) : null
+    const sessionId = normalizePendingSessionId(normalized || data)
+    if (sessionId) {
+      updateActiveStreamState(sessionId, { awaitingConfirmation: !!normalized })
+    }
+    if (normalized && !shouldSurfacePendingForCurrentConversation(sessionId)) {
+      return
+    }
+    pendingExecApproval.value = normalized
+    if (normalized) {
+      clearPendingRecoveryRetryTimer()
+      awaitingConfirmation.value = true
+    } else if (!streaming.value && !pendingQuestion.value && !pendingApproval.value) {
+      awaitingConfirmation.value = false
+    }
   }
 
   async function checkPendingExecApproval() {
     try {
-      const res = await api.get<{ pending: boolean; approval?: any }>('/exec/approvals/pending')
+      const params: Record<string, string> = {}
+      if (currentConversationId.value) {
+        params.session_id = currentConversationId.value
+      }
+      const res = await api.get<{ pending: boolean; approval?: any }>('/exec/approvals/pending', { params })
       if (res.data.pending && res.data.approval) {
-        pendingExecApproval.value = res.data.approval
-        awaitingConfirmation.value = true
+        setPendingExecApproval(res.data.approval)
+      } else if (!streaming.value) {
+        setPendingExecApproval(null)
       }
     } catch {
       // endpoint may not exist — ignore
@@ -2103,12 +2548,12 @@ export const useChatStore = defineStore('chat', () => {
     } catch (e) {
       console.error('Failed to resolve exec approval:', e)
     } finally {
-      pendingExecApproval.value = null
+      setPendingExecApproval(null)
     }
   }
 
   function dismissExecApproval() {
-    pendingExecApproval.value = null
+    setPendingExecApproval(null)
   }
 
   async function clearAllConversations() {
@@ -2240,6 +2685,7 @@ export const useChatStore = defineStore('chat', () => {
     // Computed
     currentConversation,
     sortedConversations,
+    executingConversationIds,
     isPreTTFT,
 
     // Actions

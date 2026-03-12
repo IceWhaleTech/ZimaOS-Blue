@@ -282,3 +282,83 @@ func TestHandlerStreamEventsIncludesDeepResearchLoopEvents(t *testing.T) {
 		}
 	}
 }
+
+func TestHandlerListJobs_ActiveOnlyAndConversationID(t *testing.T) {
+	release := make(chan struct{})
+	svc := NewService(NewHeuristicPlanner(), &mockSearcher{
+		search: func(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {
+			if strings.Contains(query, "blocking") {
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return []SearchHit{{Title: "Doc", URL: "https://example.com/a", Description: "A"}}, nil
+		},
+	})
+	handler := NewHandler(svc)
+
+	activeJob, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:          "blocking active list",
+		UserID:         "u1",
+		TenantID:       "tenant-1",
+		ConversationID: "conv-1",
+	})
+	if err != nil {
+		t.Fatalf("create active job failed: %v", err)
+	}
+	completedJob, err := svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:          "completed list",
+		UserID:         "u1",
+		TenantID:       "tenant-1",
+		ConversationID: "conv-2",
+	})
+	if err != nil {
+		t.Fatalf("create completed job failed: %v", err)
+	}
+	_, err = svc.CreateJob(context.Background(), CreateJobRequest{
+		Query:          "blocking hidden list",
+		UserID:         "u2",
+		TenantID:       "tenant-1",
+		ConversationID: "conv-hidden",
+	})
+	if err != nil {
+		t.Fatalf("create hidden job failed: %v", err)
+	}
+	waitForTerminalJob(t, svc, completedJob.ID, 2*time.Second)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/deep-research/jobs?status=active", nil)
+	req = withUserClaims(req, "u1")
+	req.Header.Set("X-Tenant-ID", "tenant-1")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListJobs(c); err != nil {
+		t.Fatalf("ListJobs failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var jobs []JobSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &jobs); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("jobs length = %d, want 1 (%#v)", len(jobs), jobs)
+	}
+	if jobs[0].JobID != activeJob.ID {
+		t.Fatalf("job_id = %q, want %q", jobs[0].JobID, activeJob.ID)
+	}
+	if jobs[0].ConversationID != "conv-1" {
+		t.Fatalf("conversation_id = %q, want %q", jobs[0].ConversationID, "conv-1")
+	}
+	if jobs[0].Status == JobStatusCompleted {
+		t.Fatalf("expected active job, got completed")
+	}
+
+	close(release)
+	waitForTerminalJob(t, svc, activeJob.ID, 2*time.Second)
+}

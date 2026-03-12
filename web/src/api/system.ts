@@ -136,6 +136,15 @@ export interface SystemInfo {
   system?: DetailedSystemInfo
 }
 
+export interface LocalFileResolveResponse {
+  path: string
+  name: string
+  size_bytes: number
+  mime_type: string
+  download_url: string
+  thumbnail_url?: string
+}
+
 // System API
 export const systemApi = {
   getLogs: (params?: LogQueryParams) => api.get<LogEntry[]>('/system/logs', { params }),
@@ -158,4 +167,10 @@ export const systemApi = {
 
   getInfo: (detailed?: boolean) =>
     api.get<SystemInfo>('/system/info', { params: detailed ? { detailed: 'true' } : undefined }),
+
+  revealPath: (path: string) =>
+    api.post<{ success: boolean }>('/system/reveal-path', { path }),
+
+  resolveLocalFile: (path: string) =>
+    api.get<LocalFileResolveResponse>('/system/local-file', { params: { path } }),
 }

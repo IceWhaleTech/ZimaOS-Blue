@@ -27,6 +27,7 @@ export interface MessageStats {
 export interface Message {
   id: string
   render_key?: string
+  todo_card_id?: string
   conversation_id: string
   role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
@@ -149,6 +150,7 @@ export interface StreamChunk {
   // TODO advancement event — server updated a TODO checklist message in DB
   todo_updated?: boolean
   message_id?: string
+  todo_card_id?: string
   content?: string
 }
 

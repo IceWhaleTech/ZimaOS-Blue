@@ -294,8 +294,18 @@ func normalizeCompatArgs(rawName, normalizedName string, args map[string]interfa
 	switch strings.ToLower(strings.TrimSpace(normalizedName)) {
 	case "exec":
 		return normalizeExecCompatArgs(args)
+	case "read":
+		return normalizeFileReadCompatArgs(args)
 	case "write":
 		return normalizeFileWriteCompatArgs(args)
+	case "edit":
+		return normalizeEditCompatArgs(args)
+	case "grep":
+		return normalizeGrepCompatArgs(args)
+	case "find":
+		return normalizeFindCompatArgs(args)
+	case "ls":
+		return normalizeLsCompatArgs(args)
 	case "memory":
 		return normalizeMemoryCompatArgs(rawName, args)
 	case "web_search":
@@ -330,41 +340,32 @@ func normalizeExecCompatArgs(args map[string]interface{}) map[string]interface{}
 	if len(args) == 0 {
 		return args
 	}
-	// Some providers emit exec arguments in non-canonical forms:
-	// {"cmd":"..."}, {"tool":"..."}, or wrapped inside {"arguments":{...}}.
-	// Normalize to the canonical schema {"command":"..."}.
-	if command, hasCommand := args["command"].(string); hasCommand && strings.TrimSpace(command) != "" {
-		return args
+	if command := firstCompatStringDeep(args, "command"); command != "" {
+		if topLevel, ok := args["command"].(string); ok && strings.TrimSpace(topLevel) != "" {
+			return args
+		}
+		normalized := make(map[string]interface{}, len(args))
+		for k, v := range args {
+			normalized[k] = v
+		}
+		normalized["command"] = command
+		return normalized
 	}
 
-	candidate := ""
-	if cmd, ok := args["cmd"].(string); ok && strings.TrimSpace(cmd) != "" {
-		candidate = cmd
-	}
-
+	candidate := firstCompatStringDeep(args, "cmd")
 	if candidate == "" {
-		if nestedCmd := extractExecCommandFromCompatValue(args["arguments"]); nestedCmd != "" {
-			candidate = nestedCmd
-		}
-	}
-	if candidate == "" {
-		if nestedCmd := extractExecCommandFromCompatValue(args["input"]); nestedCmd != "" {
-			candidate = nestedCmd
-		}
-	}
-	if candidate == "" {
-		if nestedCmd := extractExecCommandFromCompatValue(args["params"]); nestedCmd != "" {
-			candidate = nestedCmd
-		}
-	}
-	if candidate == "" {
-		if toolVal, ok := args["tool"].(string); ok {
-			trimmed := strings.TrimSpace(toolVal)
-			// Keep wrapper marker "exec" untouched; only treat as command alias
-			// when tool carries an actual shell command.
-			if trimmed != "" && !strings.EqualFold(trimmed, "exec") {
-				candidate = trimmed
+		for _, key := range []string{"arguments", "input", "params", "payload"} {
+			if nestedCmd := extractExecCommandFromCompatValue(args[key]); nestedCmd != "" {
+				candidate = nestedCmd
+				break
 			}
+		}
+	}
+	if candidate == "" {
+		toolVal := firstCompatStringDeep(args, "tool")
+		trimmed := strings.TrimSpace(toolVal)
+		if trimmed != "" && !strings.EqualFold(trimmed, "exec") {
+			candidate = trimmed
 		}
 	}
 	if strings.TrimSpace(candidate) == "" {
@@ -380,6 +381,68 @@ func normalizeExecCompatArgs(args map[string]interface{}) map[string]interface{}
 	return normalized
 }
 
+func normalizeFileReadCompatArgs(args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return args
+	}
+
+	normalized := make(map[string]interface{}, len(args)+4)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	if strings.TrimSpace(asString(normalized["path"])) == "" {
+		if path := firstCompatPathString(normalized); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if _, ok := normalized["start_line"]; !ok {
+		if startLine, ok := firstCompatValue(normalized, "start_line", "startLine"); ok {
+			normalized["start_line"] = startLine
+		}
+	}
+	if _, ok := normalized["end_line"]; !ok {
+		if endLine, ok := firstCompatValue(normalized, "end_line", "endLine"); ok {
+			normalized["end_line"] = endLine
+		}
+	}
+	if _, ok := normalized["max_bytes"]; !ok {
+		if maxBytes, ok := firstCompatValue(normalized, "max_bytes", "maxBytes"); ok {
+			normalized["max_bytes"] = maxBytes
+		}
+	}
+
+	for _, key := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(normalized[key])
+		if !ok {
+			continue
+		}
+
+		if strings.TrimSpace(asString(normalized["path"])) == "" {
+			if path := firstCompatPathString(nested); path != "" {
+				normalized["path"] = path
+			}
+		}
+		if _, hasStartLine := normalized["start_line"]; !hasStartLine {
+			if startLine, ok := firstCompatValue(nested, "start_line", "startLine"); ok {
+				normalized["start_line"] = startLine
+			}
+		}
+		if _, hasEndLine := normalized["end_line"]; !hasEndLine {
+			if endLine, ok := firstCompatValue(nested, "end_line", "endLine"); ok {
+				normalized["end_line"] = endLine
+			}
+		}
+		if _, hasMaxBytes := normalized["max_bytes"]; !hasMaxBytes {
+			if maxBytes, ok := firstCompatValue(nested, "max_bytes", "maxBytes"); ok {
+				normalized["max_bytes"] = maxBytes
+			}
+		}
+	}
+
+	return normalized
+}
+
 func normalizeFileWriteCompatArgs(args map[string]interface{}) map[string]interface{} {
 	if len(args) == 0 {
 		return args
@@ -391,13 +454,18 @@ func normalizeFileWriteCompatArgs(args map[string]interface{}) map[string]interf
 	}
 
 	if strings.TrimSpace(asString(normalized["path"])) == "" {
-		if path := firstCompatString(normalized, "path", "file_path", "filepath", "filename", "file"); path != "" {
+		if path := firstCompatPathString(normalized); path != "" {
 			normalized["path"] = path
 		}
 	}
 	if _, ok := normalized["content"]; !ok {
 		if content, ok := firstCompatValue(normalized, "content", "text", "body", "value"); ok {
 			normalized["content"] = content
+		}
+	}
+	if _, ok := normalized["create_dirs"]; !ok {
+		if createDirs, ok := firstCompatValue(normalized, "create_dirs", "createDirs"); ok {
+			normalized["create_dirs"] = createDirs
 		}
 	}
 
@@ -408,7 +476,7 @@ func normalizeFileWriteCompatArgs(args map[string]interface{}) map[string]interf
 		}
 
 		if strings.TrimSpace(asString(normalized["path"])) == "" {
-			if path := firstCompatString(nested, "path", "file_path", "filepath", "filename", "file"); path != "" {
+			if path := firstCompatPathString(nested); path != "" {
 				normalized["path"] = path
 			}
 		}
@@ -423,13 +491,290 @@ func normalizeFileWriteCompatArgs(args map[string]interface{}) map[string]interf
 			}
 		}
 		if _, hasCreateDirs := normalized["create_dirs"]; !hasCreateDirs {
-			if createDirs, ok := nested["create_dirs"]; ok {
+			if createDirs, ok := firstCompatValue(nested, "create_dirs", "createDirs"); ok {
 				normalized["create_dirs"] = createDirs
 			}
 		}
 		if _, hasLine := normalized["line"]; !hasLine {
 			if line, ok := nested["line"]; ok {
 				normalized["line"] = line
+			}
+		}
+	}
+
+	return normalized
+}
+
+func firstCompatPathString(args map[string]interface{}) string {
+	return firstCompatString(
+		args,
+		"path",
+		"file_path",
+		"filePath",
+		"filepath",
+		"path_name",
+		"pathName",
+		"pathname",
+		"filename",
+		"fileName",
+		"target_path",
+		"targetPath",
+		"target_file",
+		"targetFile",
+		"output_path",
+		"outputPath",
+		"file",
+	)
+}
+
+func normalizeEditCompatArgs(args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return args
+	}
+
+	normalized := make(map[string]interface{}, len(args)+4)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	if strings.TrimSpace(asString(normalized["path"])) == "" {
+		if path := firstCompatPathString(normalized); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if _, ok := normalized["old_text"]; !ok {
+		if oldText, ok := firstCompatValue(normalized, "old_text", "oldText"); ok {
+			normalized["old_text"] = oldText
+		}
+	}
+	if _, ok := normalized["new_text"]; !ok {
+		if newText, ok := firstCompatValue(normalized, "new_text", "newText"); ok {
+			normalized["new_text"] = newText
+		}
+	}
+	if _, ok := normalized["replace_all"]; !ok {
+		if replaceAll, ok := firstCompatValue(normalized, "replace_all", "replaceAll"); ok {
+			normalized["replace_all"] = replaceAll
+		}
+	}
+
+	for _, key := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(normalized[key])
+		if !ok {
+			continue
+		}
+
+		if strings.TrimSpace(asString(normalized["path"])) == "" {
+			if path := firstCompatPathString(nested); path != "" {
+				normalized["path"] = path
+			}
+		}
+		if _, hasOldText := normalized["old_text"]; !hasOldText {
+			if oldText, ok := firstCompatValue(nested, "old_text", "oldText"); ok {
+				normalized["old_text"] = oldText
+			}
+		}
+		if _, hasNewText := normalized["new_text"]; !hasNewText {
+			if newText, ok := firstCompatValue(nested, "new_text", "newText"); ok {
+				normalized["new_text"] = newText
+			}
+		}
+		if _, hasReplaceAll := normalized["replace_all"]; !hasReplaceAll {
+			if replaceAll, ok := firstCompatValue(nested, "replace_all", "replaceAll"); ok {
+				normalized["replace_all"] = replaceAll
+			}
+		}
+	}
+
+	return normalized
+}
+
+func normalizeGrepCompatArgs(args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return args
+	}
+
+	normalized := make(map[string]interface{}, len(args)+4)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	if strings.TrimSpace(asString(normalized["pattern"])) == "" {
+		if pattern := firstCompatString(normalized, "pattern", "regex", "query", "search", "text", "input", "content"); pattern != "" {
+			normalized["pattern"] = pattern
+		}
+	}
+	if strings.TrimSpace(asString(normalized["path"])) == "" {
+		if path := firstCompatPathString(normalized); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if _, ok := normalized["max_results"]; !ok {
+		if maxResults, ok := firstCompatValue(normalized, "max_results", "maxResults", "limit"); ok {
+			normalized["max_results"] = maxResults
+		}
+	}
+	if _, ok := normalized["case_sensitive"]; !ok {
+		if caseSensitive, ok := firstCompatValue(normalized, "case_sensitive", "caseSensitive"); ok {
+			normalized["case_sensitive"] = caseSensitive
+		}
+	}
+	if _, ok := normalized["include_hidden"]; !ok {
+		if includeHidden, ok := firstCompatValue(normalized, "include_hidden", "includeHidden"); ok {
+			normalized["include_hidden"] = includeHidden
+		}
+	}
+
+	for _, key := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(normalized[key])
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(asString(normalized["pattern"])) == "" {
+			if pattern := firstCompatString(nested, "pattern", "regex", "query", "search", "text", "input", "content"); pattern != "" {
+				normalized["pattern"] = pattern
+			}
+		}
+		if strings.TrimSpace(asString(normalized["path"])) == "" {
+			if path := firstCompatPathString(nested); path != "" {
+				normalized["path"] = path
+			}
+		}
+		if _, hasMaxResults := normalized["max_results"]; !hasMaxResults {
+			if maxResults, ok := firstCompatValue(nested, "max_results", "maxResults", "limit"); ok {
+				normalized["max_results"] = maxResults
+			}
+		}
+		if _, hasCaseSensitive := normalized["case_sensitive"]; !hasCaseSensitive {
+			if caseSensitive, ok := firstCompatValue(nested, "case_sensitive", "caseSensitive"); ok {
+				normalized["case_sensitive"] = caseSensitive
+			}
+		}
+		if _, hasIncludeHidden := normalized["include_hidden"]; !hasIncludeHidden {
+			if includeHidden, ok := firstCompatValue(nested, "include_hidden", "includeHidden"); ok {
+				normalized["include_hidden"] = includeHidden
+			}
+		}
+	}
+
+	return normalized
+}
+
+func normalizeFindCompatArgs(args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return args
+	}
+
+	normalized := make(map[string]interface{}, len(args)+4)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	if strings.TrimSpace(asString(normalized["path"])) == "" {
+		if path := firstCompatPathString(normalized); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if strings.TrimSpace(asString(normalized["pattern"])) == "" {
+		if pattern := firstCompatString(normalized, "pattern", "glob", "name"); pattern != "" {
+			normalized["pattern"] = pattern
+		}
+	}
+	if _, ok := normalized["max_depth"]; !ok {
+		if maxDepth, ok := firstCompatValue(normalized, "max_depth", "maxDepth"); ok {
+			normalized["max_depth"] = maxDepth
+		}
+	}
+	if _, ok := normalized["include_hidden"]; !ok {
+		if includeHidden, ok := firstCompatValue(normalized, "include_hidden", "includeHidden"); ok {
+			normalized["include_hidden"] = includeHidden
+		}
+	}
+	if _, ok := normalized["type"]; !ok {
+		if typeFilter, ok := firstCompatValue(normalized, "type", "fileType", "entryType"); ok {
+			normalized["type"] = typeFilter
+		}
+	}
+
+	for _, key := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(normalized[key])
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(asString(normalized["path"])) == "" {
+			if path := firstCompatPathString(nested); path != "" {
+				normalized["path"] = path
+			}
+		}
+		if strings.TrimSpace(asString(normalized["pattern"])) == "" {
+			if pattern := firstCompatString(nested, "pattern", "glob", "name"); pattern != "" {
+				normalized["pattern"] = pattern
+			}
+		}
+		if _, hasMaxDepth := normalized["max_depth"]; !hasMaxDepth {
+			if maxDepth, ok := firstCompatValue(nested, "max_depth", "maxDepth"); ok {
+				normalized["max_depth"] = maxDepth
+			}
+		}
+		if _, hasIncludeHidden := normalized["include_hidden"]; !hasIncludeHidden {
+			if includeHidden, ok := firstCompatValue(nested, "include_hidden", "includeHidden"); ok {
+				normalized["include_hidden"] = includeHidden
+			}
+		}
+		if _, hasType := normalized["type"]; !hasType {
+			if typeFilter, ok := firstCompatValue(nested, "type", "fileType", "entryType"); ok {
+				normalized["type"] = typeFilter
+			}
+		}
+	}
+
+	return normalized
+}
+
+func normalizeLsCompatArgs(args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return args
+	}
+
+	normalized := make(map[string]interface{}, len(args)+4)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	if strings.TrimSpace(asString(normalized["path"])) == "" {
+		if path := firstCompatPathString(normalized); path != "" {
+			normalized["path"] = path
+		}
+	}
+	if _, ok := normalized["max_depth"]; !ok {
+		if maxDepth, ok := firstCompatValue(normalized, "max_depth", "maxDepth"); ok {
+			normalized["max_depth"] = maxDepth
+		}
+	}
+	if _, ok := normalized["include_hidden"]; !ok {
+		if includeHidden, ok := firstCompatValue(normalized, "include_hidden", "includeHidden"); ok {
+			normalized["include_hidden"] = includeHidden
+		}
+	}
+
+	for _, key := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(normalized[key])
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(asString(normalized["path"])) == "" {
+			if path := firstCompatPathString(nested); path != "" {
+				normalized["path"] = path
+			}
+		}
+		if _, hasMaxDepth := normalized["max_depth"]; !hasMaxDepth {
+			if maxDepth, ok := firstCompatValue(nested, "max_depth", "maxDepth"); ok {
+				normalized["max_depth"] = maxDepth
+			}
+		}
+		if _, hasIncludeHidden := normalized["include_hidden"]; !hasIncludeHidden {
+			if includeHidden, ok := firstCompatValue(nested, "include_hidden", "includeHidden"); ok {
+				normalized["include_hidden"] = includeHidden
 			}
 		}
 	}
@@ -482,15 +827,15 @@ func normalizeMemoryCompatArgs(rawName string, args map[string]interface{}) map[
 }
 
 func normalizeWebSearchCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
-	normalized := make(map[string]interface{}, len(args)+2)
+	normalized := make(map[string]interface{}, len(args)+4)
 	for k, v := range args {
 		normalized[k] = v
 	}
 
 	if strings.TrimSpace(asString(normalized["query"])) == "" {
-		query := firstCompatString(normalized, "query", "q", "search", "keyword", "text", "input", "url")
+		query := firstCompatStringDeep(normalized, "query", "q", "search", "keyword", "text", "input", "url")
 		if query == "" && strings.EqualFold(strings.TrimSpace(rawName), "web_fetch") {
-			query = firstCompatString(normalized, "href", "target")
+			query = firstCompatStringDeep(normalized, "href", "target")
 		}
 		if query != "" {
 			normalized["query"] = query
@@ -498,8 +843,23 @@ func normalizeWebSearchCompatArgs(rawName string, args map[string]interface{}) m
 	}
 
 	if _, hasMaxResults := normalized["max_results"]; !hasMaxResults {
-		if limit, ok := coerceCompatInt(normalized["limit"]); ok && limit > 0 {
+		if limit, ok := firstCompatIntDeep(normalized, "max_results", "maxResults", "limit"); ok && limit > 0 {
 			normalized["max_results"] = limit
+		}
+	}
+	if strings.TrimSpace(asString(normalized["region"])) == "" {
+		if region := firstCompatStringDeep(normalized, "region"); region != "" {
+			normalized["region"] = region
+		}
+	}
+	if strings.TrimSpace(asString(normalized["provider"])) == "" {
+		if provider := firstCompatStringDeep(normalized, "provider"); provider != "" {
+			normalized["provider"] = provider
+		}
+	}
+	if strings.TrimSpace(asString(normalized["format"])) == "" {
+		if format := firstCompatStringDeep(normalized, "format"); format != "" {
+			normalized["format"] = format
 		}
 	}
 
@@ -507,18 +867,21 @@ func normalizeWebSearchCompatArgs(rawName string, args map[string]interface{}) m
 }
 
 func normalizeBrowserCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
-	normalized := make(map[string]interface{}, len(args)+2)
+	normalized := make(map[string]interface{}, len(args)+6)
 	for k, v := range args {
 		normalized[k] = v
 	}
 
 	action := strings.ToLower(strings.TrimSpace(asString(normalized["action"])))
 	if action == "" {
+		action = strings.ToLower(strings.TrimSpace(firstCompatStringDeep(normalized, "action")))
+	}
+	if action == "" {
 		switch strings.ToLower(strings.TrimSpace(rawName)) {
 		case "web_fetch":
 			action = "navigate"
 		default:
-			if strings.TrimSpace(asString(normalized["url"])) != "" {
+			if strings.TrimSpace(asString(normalized["url"])) != "" || firstCompatStringDeep(normalized, "url", "href", "target", "query", "q") != "" {
 				action = "navigate"
 			}
 		}
@@ -528,8 +891,43 @@ func normalizeBrowserCompatArgs(rawName string, args map[string]interface{}) map
 	}
 
 	if strings.TrimSpace(asString(normalized["url"])) == "" {
-		if url := firstCompatString(normalized, "url", "href", "target", "input", "query", "q"); url != "" {
+		if url := firstCompatStringDeep(normalized, "url", "href", "target", "input", "query", "q"); url != "" {
 			normalized["url"] = url
+		}
+	}
+	if _, ok := normalized["ref"]; !ok {
+		if ref, ok := firstCompatValueDeep(normalized, "ref"); ok {
+			normalized["ref"] = ref
+		}
+	}
+	if strings.TrimSpace(asString(normalized["act_type"])) == "" {
+		if actType := firstCompatStringDeep(normalized, "act_type", "actType"); actType != "" {
+			normalized["act_type"] = actType
+		}
+	}
+	if strings.TrimSpace(asString(normalized["value"])) == "" {
+		if value := firstCompatStringDeep(normalized, "value"); value != "" {
+			normalized["value"] = value
+		}
+	}
+	if strings.TrimSpace(asString(normalized["target_id"])) == "" {
+		if targetID := firstCompatStringDeep(normalized, "target_id", "targetId"); targetID != "" {
+			normalized["target_id"] = targetID
+		}
+	}
+	if _, ok := normalized["vision"]; !ok {
+		if vision, ok := firstCompatValueDeep(normalized, "vision"); ok {
+			normalized["vision"] = vision
+		}
+	}
+	if strings.TrimSpace(asString(normalized["recipe"])) == "" {
+		if recipe := firstCompatStringDeep(normalized, "recipe"); recipe != "" {
+			normalized["recipe"] = recipe
+		}
+	}
+	if _, ok := normalized["params"]; !ok {
+		if params, ok := firstCompatValueDeep(normalized, "params"); ok {
+			normalized["params"] = params
 		}
 	}
 
@@ -551,15 +949,50 @@ func inferMemoryActionFromAlias(name string) string {
 	}
 }
 
-func firstCompatString(args map[string]interface{}, keys ...string) string {
+func firstCompatValueDeep(args map[string]interface{}, keys ...string) (interface{}, bool) {
 	for _, key := range keys {
-		if v, ok := args[key]; ok {
-			if s := strings.TrimSpace(asString(v)); s != "" {
-				return s
+		value, ok := args[key]
+		if !ok || value == nil {
+			continue
+		}
+		if key == "arguments" || key == "input" || key == "params" || key == "payload" {
+			if _, nested := coerceCompatMap(value); nested {
+				continue
 			}
+		}
+		return value, true
+	}
+	for _, key := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(args[key])
+		if !ok {
+			continue
+		}
+		if value, ok := firstCompatValue(nested, keys...); ok {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+func firstCompatStringDeep(args map[string]interface{}, keys ...string) string {
+	if value, ok := firstCompatValueDeep(args, keys...); ok {
+		if s := strings.TrimSpace(asString(value)); s != "" {
+			return s
 		}
 	}
 	return ""
+}
+
+func firstCompatIntDeep(args map[string]interface{}, keys ...string) (int, bool) {
+	value, ok := firstCompatValueDeep(args, keys...)
+	if !ok {
+		return 0, false
+	}
+	return coerceCompatInt(value)
+}
+
+func firstCompatString(args map[string]interface{}, keys ...string) string {
+	return firstCompatStringDeep(args, keys...)
 }
 
 func coerceCompatMap(v interface{}) (map[string]interface{}, bool) {

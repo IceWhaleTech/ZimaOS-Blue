@@ -32,6 +32,8 @@ metadata:
 
 Use the `gh` CLI to interact with GitHub. Always specify `--repo owner/repo` when not in a git directory, or use URLs directly.
 
+For repository research, check the corresponding DeepWiki materials first when available (for example `https://deepwiki.com/owner/repo`) before opening `github.com` pages. Then use GitHub as the primary source for verification, exact file paths, issues, PRs, workflow runs, and other current repository state.
+
 ## Pull Requests
 
 Check CI status on a PR:

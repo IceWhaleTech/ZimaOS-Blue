@@ -45,6 +45,7 @@ export default {
     enable: 'Enable',
     loadMore: 'Load More',
     openInNewTab: 'Open in new tab',
+    openLocation: 'Open location',
     preview: 'Preview',
     processing: 'Processing...',
     unknown: 'Unknown',
@@ -168,7 +169,8 @@ export default {
   authProviders: {
     title: 'Authentication Providers',
     noProviders: 'No authentication providers configured',
-    noProvidersDesc: 'Add an external authentication provider to allow users to sign in with their existing accounts.',
+    noProvidersDesc:
+      'Add an external authentication provider to allow users to sign in with their existing accounts.',
     providerId: 'Provider ID',
     displayName: 'Display Name',
     providerType: 'Provider Type',
@@ -176,7 +178,7 @@ export default {
     clientSecret: 'Client Secret',
     issuerUrl: 'Issuer URL',
     redirectUrl: 'Redirect URL',
-    redirectUrlHint: 'Configure this URL in your OAuth provider\'s settings',
+    redirectUrlHint: "Configure this URL in your OAuth provider's settings",
     scopes: 'Scopes',
     autoCreateUser: 'Auto-create users on first login',
     defaultRole: 'Default Role',
@@ -204,7 +206,8 @@ export default {
     addAuthProvider: 'Add Authentication Provider',
     editProvider: 'Edit Provider',
     disable: 'Disable',
-    confirmDeleteProvider: 'Are you sure you want to delete the provider "{name}"? This action cannot be undone.',
+    confirmDeleteProvider:
+      'Are you sure you want to delete the provider "{name}"? This action cannot be undone.',
     issuer: 'Issuer',
     types: {
       generic: 'Generic OIDC',
@@ -271,6 +274,40 @@ export default {
     myUsage: 'My Usage',
     myProviders: 'My Providers',
     mySkills: 'My Skills',
+    workspace: 'Workspace',
+    workspacePanelTitle: 'Workspace Files',
+    openWorkspaceIn: 'Open in file manager',
+    openWorkspaceInFinder: 'Open in Finder',
+    openWorkspaceInExplorer: 'Open in Explorer',
+    workspaceFiles: 'Files',
+    workspaceLoading: 'Loading workspace files...',
+    workspaceNoFiles: 'No workspace files available',
+    workspaceSelectFileHint: 'Select a file to preview or download',
+    workspacePathUnavailable: 'Workspace path unavailable',
+    workspaceLoadFailed: 'Failed to load workspace details',
+    workspaceFilesLoadFailed: 'Failed to load workspace files',
+    workspaceOpenFailed: 'Unable to open workspace in file manager',
+    workspaceCoreTab: 'Workspace Core Files',
+    workspaceGeneratedTab: 'Tree & Generated Files',
+    workspaceGeneratedTitle: 'Workspace Directory Tree',
+    workspaceGeneratedDescription:
+      'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
+    workspaceGeneratedLoadFailed: 'Failed to scan generated file sources',
+    workspaceUnknownConversation: 'Conversation',
+    workspaceJumpToConversation: 'Go to conversation',
+    workspaceTreeLoadFailed: 'Failed to load workspace directory tree',
+    workspaceTreeLoading: 'Loading workspace tree and conversation links...',
+    workspaceTreeEmpty: 'No files found in workspace tree.',
+    workspaceTreeFilteredEmpty: 'No conversation-linked files in the current filtered tree view.',
+    workspaceTreeDirCount: 'Dirs',
+    workspaceTreeFileCount: 'Files',
+    workspaceTreeLinkedCount: 'Linked',
+    workspaceTreeShowAll: 'Show all files',
+    workspaceTreeShowLinkedOnly: 'Only linked files',
+    workspaceTreeExpandDir: 'Expand folder',
+    workspaceTreeCollapseDir: 'Collapse folder',
+    workspaceTreeOpenFailed: 'Unable to open workspace file',
+    workspaceTreeRevealFailed: 'Unable to open file location',
   },
   myUsage: {
     title: 'My Usage',
@@ -284,7 +321,8 @@ export default {
   },
   myProviders: {
     title: 'My Providers',
-    description: 'Configure your own API keys for LLM providers. Your keys override system defaults.',
+    description:
+      'Configure your own API keys for LLM providers. Your keys override system defaults.',
     configured: 'Configured',
     configure: 'Configure',
     keyUnchanged: 'Leave empty to keep current key',
@@ -373,7 +411,8 @@ export default {
     // Generic messages
     requestFailed: 'Request failed with status code {code}',
     connectionFailed: 'Connection Failed',
-    connectionFailedDesc: 'Unable to connect to the server. Please check if the service is running and try again.',
+    connectionFailedDesc:
+      'Unable to connect to the server. Please check if the service is running and try again.',
     checkingConnection: 'Checking connection...',
     unknownError: 'An unknown error occurred',
     pleaseRetry: 'Please try again',
@@ -394,7 +433,7 @@ export default {
     imageGenStopped: 'Image generation has been stopped.',
     videoGenStopped: 'Video generation has been stopped.',
     agentTaskStopped: 'Task "{goal}" has been stopped.',
-    stillListening: 'Go ahead, I\'m listening...',
+    stillListening: "Go ahead, I'm listening...",
     continueGenerating: 'Continue',
     responseInterrupted: 'Response interrupted',
     deepResearchTitle: 'Deep Research',
@@ -448,6 +487,33 @@ export default {
     deepResearchActionLoopStopped: 'Research loop stopped',
     deepResearchActionSynthesizing: 'Synthesizing report',
     deepResearchActionCompleted: 'Completed',
+    deepResearchProcess: 'Research process',
+    deepResearchLiveSources: 'Live sources',
+    deepResearchResearchBrief: 'Research brief',
+    deepResearchMustVerify: 'Must verify',
+    deepResearchPlannedTasks: 'Planned tasks',
+    deepResearchFollowUpQuery: 'Follow-up query',
+    deepResearchRunningTasks: 'Running research tasks',
+    deepResearchRunningElsewhere: 'Track active deep research jobs across conversations.',
+    deepResearchViewTask: 'View task',
+    deepResearchCancelTask: 'Cancel',
+    deepResearchTaskCompleted: 'Research completed',
+    deepResearchTaskFailed: 'Research failed',
+    deepResearchTaskCancelled: 'Research cancelled',
+    deepResearchWorkflowPhases: 'Workflow phases',
+    deepResearchWorkflowCompleted: 'Completed',
+    deepResearchWorkflowCurrent: 'Current',
+    deepResearchWorkflowPending: 'Pending',
+    deepResearchSourceInventory: 'Source Inventory',
+    deepResearchPublishedAt: 'Published',
+    deepResearchFetchedAt: 'Fetched',
+    deepResearchRelevance: 'Rel',
+    deepResearchCredibility: 'Cred',
+    deepResearchCoverageSummary: 'Coverage Summary',
+    deepResearchTasks: 'Tasks',
+    deepResearchDomains: 'Domains',
+    deepResearchObjectMap: 'Object Map',
+    deepResearchBackToTask: 'View result',
     taskCancelled: 'Task cancelled',
     waitingThinking: 'Thinking...',
     awaitingConfirmation: 'Waiting for your confirmation to continue',
@@ -475,7 +541,7 @@ export default {
     dismiss: 'Dismiss',
     attachFile: 'Attach file',
     moreActions: 'More actions',
-    featureHintTapToEnable: "Optional features detected. Tap to check before sending:",
+    featureHintTapToEnable: 'Optional features detected. Tap to check before sending:',
     inputPlaceholder: 'Type a message...',
     inputPlaceholderShort: 'Type a message...',
     send: 'Send',
@@ -504,14 +570,19 @@ export default {
     switchToVoice: 'Switch to voice',
     voiceTranscribing: 'Transcribing...',
     voiceTranscriptionError: 'Failed to transcribe audio',
-    voiceTranscriptionTimeout: 'Transcription timed out. The audio may be too long or the server is busy, please try again.',
+    voiceTranscriptionTimeout:
+      'Transcription timed out. The audio may be too long or the server is busy, please try again.',
     voiceRecordingError: 'Recording error occurred',
     voiceMicrophoneError: 'Could not access microphone',
-    voiceMicrophonePermissionDenied: 'Microphone permission denied. Please allow microphone access in your browser settings.',
+    voiceMicrophonePermissionDenied:
+      'Microphone permission denied. Please allow microphone access in your browser settings.',
     voiceMicrophoneNotFound: 'No microphone found. Please connect a microphone and try again.',
-    voiceMicrophoneInUse: 'Microphone is in use by another application. Please close other apps using the microphone.',
-    voiceSecureContextError: 'Microphone access requires HTTPS. Please access via https:// or localhost.',
-    voiceNotSupportedError: 'Your browser does not support microphone access. Please use a modern browser like Chrome, Firefox, or Edge.',
+    voiceMicrophoneInUse:
+      'Microphone is in use by another application. Please close other apps using the microphone.',
+    voiceSecureContextError:
+      'Microphone access requires HTTPS. Please access via https:// or localhost.',
+    voiceNotSupportedError:
+      'Your browser does not support microphone access. Please use a modern browser like Chrome, Firefox, or Edge.',
     // Voice messages
     voiceMessage: 'Voice message',
     voiceMessageTooShort: 'Recording too short',
@@ -523,7 +594,8 @@ export default {
     ttsError: 'Failed to synthesize speech',
     ttsNoContent: 'No content to speak',
     languagePackRequired: 'Language Pack Required',
-    languagePackRequiredDesc: 'Detected {language} text. Please download the language pack to play audio.',
+    languagePackRequiredDesc:
+      'Detected {language} text. Please download the language pack to play audio.',
     downloadAndPlay: 'Download & Play',
     downloadLanguagePackError: 'Failed to download language pack',
     // Camera and image
@@ -565,19 +637,24 @@ export default {
     },
     threatLevel: 'Threat Level',
     dismissWarning: 'Dismiss',
-    trialExhausted: 'Trial quota has been exhausted. Please configure your own AI provider to continue.',
-    trialServiceBusy: 'The trial service is currently busy due to high demand. Please try again in a moment. If this keeps happening, visit our community for help.',
+    trialExhausted:
+      'Trial quota has been exhausted. Please configure your own AI provider to continue.',
+    trialServiceBusy:
+      'The trial service is currently busy due to high demand. Please try again in a moment. If this keeps happening, visit our community for help.',
     configureProvider: 'Configure Provider',
     noProvider: {
       title: 'No AI Provider Available',
-      description: 'You need to configure an AI provider to use this feature. Would you like to set one up now?',
+      description:
+        'You need to configure an AI provider to use this feature. Would you like to set one up now?',
+      draftSaved: 'Your message has been saved locally. You can continue after setup.',
       configure: 'Configure Now',
     },
     // Enhanced Mode
     enhancedMode: 'Enhanced',
     enhancedModeDesc: 'Optional enhancement is on: experience may be better.',
     enableEnhancedMode: 'Optional CLI Boost',
-    enableEnhancedModeDesc: 'Optional enhancement: turning it off does not affect core chat/agent usage; turning it on may improve experience.',
+    enableEnhancedModeDesc:
+      'Optional enhancement: turning it off does not affect core chat/agent usage; turning it on may improve experience.',
     showToolDetails: 'Show work details',
     hideToolDetails: 'Hide work details',
     toolDetailExpand: 'Expand output',
@@ -606,14 +683,21 @@ export default {
     streamEmpty: 'Connection closed before a response arrived. Please try again.',
     streamError: 'An error occurred while streaming the response. Please try again.',
     genericStreamError: 'Something went wrong. Please try again.',
-    providerNoResponse: 'The provider did not return a response. This is usually temporary — please try again.',
+    providerNoResponse:
+      'The provider did not return a response. This is usually temporary — please try again.',
     providerReturnedEmpty: 'The provider returned an empty response. Please try again.',
     noResponseBody: 'No response body received. Please check your network connection.',
-    providerOpenRouterPrivacyPolicy: 'OpenRouter blocked this request due to privacy policy settings. Go to the OpenRouter page at https://openrouter.ai/settings/privacy, enable "Free model publication", then try again (this switch is not in this app).',
-    providerToolUnsupported: 'The current provider does not support tool calls for this request. Try disabling tools or switching to a tool-capable provider.',
-    providerUnavailable: 'No AI provider is available to handle this request. Please check your provider configuration.',
-    providerAuthError: 'The AI provider authentication failed. Please check your API key or OAuth settings.',
+    providerOpenRouterPrivacyPolicy:
+      'OpenRouter blocked this request due to privacy policy settings. Go to the OpenRouter page at https://openrouter.ai/settings/privacy, enable "Free model publication", then try again (this switch is not in this app).',
+    providerToolUnsupported:
+      'The current provider does not support tool calls for this request. Try disabling tools or switching to a tool-capable provider.',
+    providerUnavailable:
+      'No AI provider is available to handle this request. Please check your provider configuration.',
+    providerAuthError:
+      'The AI provider authentication failed. Please check your API key or OAuth settings.',
     providerRateLimited: 'The AI provider is rate-limited. Please wait a moment and try again.',
+    execDirectoryApprovalTimeout:
+      'Command execution was blocked because directory approval timed out. Please approve the directory and try again.',
     providerActive: 'Provider is active and ready.',
     providerPending: 'Provider status is being checked...',
     // Trial quota
@@ -685,7 +769,10 @@ export default {
   skills: {
     builtin: {
       calculator: { name: 'Calculator', description: 'Performs basic arithmetic calculations' },
-      'system-info': { name: 'System Info', description: 'Returns system information (OS, hostname, CPU, memory)' },
+      'system-info': {
+        name: 'System Info',
+        description: 'Returns system information (OS, hostname, CPU, memory)',
+      },
       datetime: { name: 'Date & Time', description: 'Returns current date and time information' },
       weather: { name: 'Weather', description: 'Get current weather information for a location' },
       search: { name: 'Search', description: 'Search and filter text content' },
@@ -695,7 +782,10 @@ export default {
       tasks: { name: 'Tasks', description: 'Task and todo management' },
       translate: { name: 'Translate', description: 'Text translation between languages' },
       notifications: { name: 'Notifications', description: 'System notifications management' },
-      'unit-converter': { name: 'Unit Converter', description: 'Convert between different units of measurement' },
+      'unit-converter': {
+        name: 'Unit Converter',
+        description: 'Convert between different units of measurement',
+      },
       files: { name: 'Files', description: 'File system operations' },
       network: { name: 'Network', description: 'Network diagnostics and information' },
       processes: { name: 'Processes', description: 'Process information and management' },
@@ -710,12 +800,30 @@ export default {
       notion: { name: 'Notion', description: 'Notion workspace integration' },
       'slack-skill': { name: 'Slack', description: 'Slack workspace operations' },
       'discord-skill': { name: 'Discord', description: 'Discord server operations' },
-      scheduler: { name: 'Scheduler', description: 'Create, list, delete, and trigger scheduled tasks (cron jobs)' },
-      browser: { name: 'Browser', description: 'Browse the web with a headless browser, read pages, and interact with elements' },
-      sandbox: { name: 'Sandbox', description: 'Execute commands in a sandboxed environment with resource limits' },
-      'ui-reviewer': { name: 'UI Reviewer', description: 'Automated UI quality review with accessibility checks and visual scoring' },
-      autoreply: { name: 'Auto Reply', description: 'Create and manage auto-reply rules with keyword and pattern triggers' },
-      workflows: { name: 'Workflows', description: 'Create and execute n8n-style workflow automations with triggers and actions' },
+      scheduler: {
+        name: 'Scheduler',
+        description: 'Create, list, delete, and trigger scheduled tasks (cron jobs)',
+      },
+      browser: {
+        name: 'Browser',
+        description: 'Browse the web, read pages, and interact with elements',
+      },
+      sandbox: {
+        name: 'Sandbox',
+        description: 'Execute commands in a sandboxed environment with resource limits',
+      },
+      'ui-reviewer': {
+        name: 'UI Reviewer',
+        description: 'Automated UI quality review with accessibility checks and visual scoring',
+      },
+      autoreply: {
+        name: 'Auto Reply',
+        description: 'Create and manage auto-reply rules with keyword and pattern triggers',
+      },
+      workflows: {
+        name: 'Workflows',
+        description: 'Create and execute n8n-style workflow automations with triggers and actions',
+      },
     },
     noContent: 'No detailed content available for this skill.',
     filters: {
@@ -760,10 +868,11 @@ export default {
 
   home: {
     welcome: 'Welcome to ZimaOS Blue',
-    description: 'Your intelligent AI assistant for smart home control and automation',
+    description: 'A stable, trustworthy, neutral runtime for your AI assistants and automations',
     startChatCta: 'Click {link} to start chatting with Blue',
   },
   settings: {
+    llmApiKeyRequired: 'Please configure an API key before opening the LLM Provider page.',
     title: 'Settings',
     saved: 'Saved',
     saveFailed: 'Failed to save configuration',
@@ -819,7 +928,8 @@ export default {
       originPlaceholder: 'https://example.com',
       originAdded: 'Origin added',
       originRemoved: 'Origin removed',
-      confirmRemoveDynamicOrigin: 'Remove dynamic origin "{origin}"? This may affect active tunnel callbacks.',
+      confirmRemoveDynamicOrigin:
+        'Remove dynamic origin "{origin}"? This may affect active tunnel callbacks.',
       confirmRemoveDynamicOriginSecond:
         'Please confirm again: remove "{origin}". Dynamic origins can be recreated automatically.',
       invalidUrl: 'Invalid URL format',
@@ -856,8 +966,10 @@ export default {
           email: 'Email Address',
           domainsHint: 'Domains must point to this server (DNS A/AAAA record)',
           note: 'Note',
-          noteText: 'Port 80 must be accessible from the internet for domain verification. The certificate will be automatically renewed.',
-          noteTextDNS: 'DNS records will be created automatically using your API credentials. No port 80 access required.',
+          noteText:
+            'Port 80 must be accessible from the internet for domain verification. The certificate will be automatically renewed.',
+          noteTextDNS:
+            'DNS records will be created automatically using your API credentials. No port 80 access required.',
           emailDomainRequired: 'Email and at least one domain are required',
           configured: 'ACME certificate configured',
           requestFailed: 'Failed to request certificate',
@@ -891,7 +1003,8 @@ export default {
     closeBehaviorSaved: 'Close behavior saved',
     agentReflection: {
       title: 'Auto Reflection',
-      description: 'After {agentMode} completes or fails, extract a short reflection and save reusable lessons to memory.',
+      description:
+        'After {agentMode} completes or fails, extract a short reflection and save reusable lessons to memory.',
       hint: 'Cancelled or aborted tasks are skipped. Reflection errors do not change the final task status.',
       saved: 'Auto reflection saved',
       saveFailed: 'Failed to save auto reflection setting',
@@ -918,25 +1031,34 @@ export default {
     },
     smallModel: {
       title: 'Lightweight Acceleration',
-      description: 'Use the lightweight model for simple tasks first, with automatic fallback when unavailable.',
+      description:
+        'Use the lightweight model for simple tasks first, with automatic fallback when unavailable.',
       ready: 'Available',
       downloading: 'Downloading',
       notReady: 'Not Downloaded',
       enabled: 'Enable Lightweight Acceleration',
       enabledHint: 'When enabled, suitable tasks are handled by the lightweight model first.',
+      resourceTitle: 'Resource Footprint',
+      storageUsage: 'Disk/download footprint: about {storage}.',
+      runtimeUsage: 'Runtime memory/VRAM recommendation: reserve at least {runtime}.',
       userGuideTitle: 'What this does',
       userGuideItem1: 'Prioritizes short questions and some tool decisions for faster responses.',
-      userGuideItem2: 'Automatically falls back to the main model when the lightweight model is unavailable.',
+      userGuideItem2:
+        'Automatically falls back to the main model when the lightweight model is unavailable.',
       userGuideItem3: 'Download the model before first use.',
       irTitle: 'Assistant Capabilities',
       irDesc: 'User-facing helpers for context control and tool filtering.',
+      irMasterTitle: 'Master Switch',
+      irMasterDesc: 'Toggle all helper features below at once.',
       irContextPruneTitle: 'Context Trimming',
       irContextPruneDesc: 'Automatically trims less relevant history to reduce token use.',
       irMediaIntentDesc: 'Detects media-generation intent to route requests more accurately.',
       irOfflineFallbackTitle: 'Offline Local Fallback',
-      irOfflineFallbackDesc: 'When model fallback is needed, answer from local context recall first.',
+      irOfflineFallbackDesc:
+        'When model fallback is needed, answer from local context recall first.',
       irFeatureHintTitle: 'Feature Hint Detection',
-      irFeatureHintDesc: 'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
+      irFeatureHintDesc:
+        'For channel messages, detect hints and auto-enable {deepResearch} / {agentMode}.',
       advancedTitle: 'Advanced Parameters (Usually no change needed)',
       advancedHint: 'Adjust only for troubleshooting or controlled rollout validation.',
       expand: 'Expand',
@@ -1220,8 +1342,10 @@ export default {
     neverExpires: 'Never expires',
     lastUsed: 'Last used',
     deleteApiKey: 'Delete API key',
-    confirmDeleteApiKey: 'Are you sure you want to delete this API key? This action cannot be undone.',
-    confirmRevokeApiKey: 'Are you sure you want to revoke the API key "{name}"? This action cannot be undone.',
+    confirmDeleteApiKey:
+      'Are you sure you want to delete this API key? This action cannot be undone.',
+    confirmRevokeApiKey:
+      'Are you sure you want to revoke the API key "{name}"? This action cannot be undone.',
     keyName: 'Key Name',
     scopes: 'Scopes',
     scopeRead: 'Read',
@@ -1232,7 +1356,7 @@ export default {
     scopeAdminDesc: 'Administrative access',
     // Create API Key Modal
     apiKeyCreated: 'API Key Created',
-    copyApiKeyWarning: 'Make sure to copy your API key now. You won\'t be able to see it again!',
+    copyApiKeyWarning: "Make sure to copy your API key now. You won't be able to see it again!",
     done: 'Done',
     name: 'Name',
     apiKeyNamePlaceholder: 'e.g., My App API Key',
@@ -1267,7 +1391,7 @@ export default {
   },
   workspace: {
     title: 'Workspace Files',
-    description: 'These files shape Blue\'s personality, memory, and behavior.',
+    description: "These files shape Blue's personality, memory, and behavior.",
     saved: '{name} saved',
     empty: '(empty)',
     noFiles: 'No workspace files found.',
@@ -1296,12 +1420,14 @@ export default {
     title: 'Backups',
     create: 'Create Backup',
     creating: 'Creating...',
-    description: 'Create and restore backups for data, config, and skills. Restore uses staged apply for DB safety.',
+    description:
+      'Create and restore backups for data, config, and skills. Restore uses staged apply for DB safety.',
     noBackups: 'No backups yet. Create one to get started.',
     restore: 'Restore',
     restoreSuccess: 'Backup restored successfully',
     restoreFailed: 'Failed to restore backup',
-    confirmRestore: 'Are you sure you want to restore from backup dated {date}? Current data will be overwritten.',
+    confirmRestore:
+      'Are you sure you want to restore from backup dated {date}? Current data will be overwritten.',
     confirmDelete: 'Are you sure you want to delete this backup?',
     fullBackup: 'Full Backup',
     fullBackupDesc: 'Includes all data, configuration, and conversation history',
@@ -1381,7 +1507,8 @@ export default {
     apply: 'Apply',
     reset: 'Reset',
     exportCSV: 'Export CSV',
-    featureDisabled: 'Billing is currently unavailable because provider usage tracking is not initialized.',
+    featureDisabled:
+      'Billing is currently unavailable because provider usage tracking is not initialized.',
     noData: 'No billing records found for current filters',
     loadFailed: 'Failed to load billing data',
     filters: {
@@ -1511,7 +1638,8 @@ export default {
     configSaveFailed: 'Failed to save configuration',
     // Backup
     backups: 'System Backup',
-    backupDescription: 'Create and restore system backups including database, configuration, and skills. Restore applies after graceful restart and keeps a checkpoint.',
+    backupDescription:
+      'Create and restore system backups including database, configuration, and skills. Restore applies after graceful restart and keeps a checkpoint.',
     createBackup: 'Create Backup',
     creating: 'Creating...',
     loadingBackups: 'Loading backups...',
@@ -1519,8 +1647,10 @@ export default {
     restore: 'Restore',
     restoring: 'Restoring...',
     delete: 'Delete',
-    restoreConfirm: 'Are you sure you want to restore this backup? Current data will be overwritten.',
-    confirmRestore: 'Are you sure you want to restore this backup? Current data will be overwritten.',
+    restoreConfirm:
+      'Are you sure you want to restore this backup? Current data will be overwritten.',
+    confirmRestore:
+      'Are you sure you want to restore this backup? Current data will be overwritten.',
     deleteConfirm: 'Are you sure you want to delete this backup?',
     confirmDeleteBackup: 'Are you sure you want to delete this backup?',
     backupRestored: 'Backup restored successfully. The service may restart.',
@@ -1631,7 +1761,8 @@ export default {
     enabled: 'Heartbeat enabled',
     disabled: 'Heartbeat disabled',
     contentDescription: 'Define tasks for the agent to check periodically',
-    contentPlaceholder: '# Add tasks for the agent to monitor\n\n- Check if the API is responding\n- Verify disk usage is below 90%',
+    contentPlaceholder:
+      '# Add tasks for the agent to monitor\n\n- Check if the API is responding\n- Verify disk usage is below 90%',
     contentEmpty: '(empty — heartbeat checks will be skipped)',
     contentSaved: 'HEARTBEAT.md saved',
     fetchError: 'Failed to load heartbeat status',
@@ -1659,12 +1790,14 @@ export default {
     port: 'Service Port',
     portDescription: 'Network port the service listens on',
     configuredPort: 'Configured port',
-    portAutoFallbackInfo: 'The configured port was in use, so the service started on a random port.',
+    portAutoFallbackInfo:
+      'The configured port was in use, so the service started on a random port.',
     portEditHint: 'Press Enter to save, Escape to cancel.',
     portSaveFailed: 'Failed to save port configuration',
     invalidPort: 'Invalid port number (must be 1-65535)',
     portChangeConfirmTitle: 'Confirm Port Change',
-    portChangeConfirmDesc: 'Service is restarting on new port. Click "Keep" to confirm, or it will revert in {seconds} seconds.',
+    portChangeConfirmDesc:
+      'Service is restarting on new port. Click "Keep" to confirm, or it will revert in {seconds} seconds.',
     portChangeConfirmed: 'Port change confirmed',
     portRevertFailed: 'Failed to revert port',
     confirmKeep: 'Keep',
@@ -1721,7 +1854,8 @@ export default {
     tryAdjustingFilters: 'Try adjusting your filters',
     createFirstRule: 'Create your first auto-reply rule to get started',
     // Delete confirmation
-    deleteConfirmation: 'Are you sure you want to delete the rule "{name}"? This action cannot be undone.',
+    deleteConfirmation:
+      'Are you sure you want to delete the rule "{name}"? This action cannot be undone.',
     deleting: 'Deleting...',
     // Form
     ruleName: 'Rule Name',
@@ -2035,7 +2169,8 @@ export default {
     },
     security: {
       allowedDomains: 'Allowed Domains',
-      allowedDomainsHint: 'Only these domains can be accessed. Leave empty to allow all (except blocked).',
+      allowedDomainsHint:
+        'Only these domains can be accessed. Leave empty to allow all (except blocked).',
       allowedDomainsPlaceholder: 'example.com or *.example.com',
       add: 'Add',
       noAllowedDomains: 'No allowed domains configured. All domains are allowed (except blocked).',
@@ -2055,8 +2190,7 @@ export default {
     screenshot: {
       title: 'Screenshot',
     },
-    status: {
-    },
+    status: {},
   },
   tenants: {
     title: 'Workspaces',
@@ -2100,7 +2234,8 @@ export default {
       inviteMember: 'Invite Member',
       remove: 'Remove',
       removing: 'Removing...',
-      removeConfirm: 'Are you sure you want to remove <strong>{username}</strong> from this workspace?',
+      removeConfirm:
+        'Are you sure you want to remove <strong>{username}</strong> from this workspace?',
       roles: {
         owner: 'Owner',
         admin: 'Admin',
@@ -2150,14 +2285,16 @@ export default {
     enabled: 'Enabled',
     disabled: 'Disabled',
     enabledDescription: 'Your account is protected with two-factor authentication.',
-    disabledDescription: 'Enable two-factor authentication to add an extra layer of security to your account.',
+    disabledDescription:
+      'Enable two-factor authentication to add an extra layer of security to your account.',
     setup: 'Set up MFA',
     disable: 'Disable MFA',
     regenerateCodes: 'Regenerate Recovery Codes',
     recoveryCodesRemaining: '{count} recovery codes remaining',
     // Setup flow
     step1Title: 'Step 1: Scan QR Code',
-    step1Description: 'Scan the QR code below with your authenticator app (such as Google Authenticator, Authy, or Microsoft Authenticator).',
+    step1Description:
+      'Scan the QR code below with your authenticator app (such as Google Authenticator, Authy, or Microsoft Authenticator).',
     manualEntry: 'Manual entry key:',
     step2Title: 'Step 2: Verify',
     step2Description: 'Enter the 6-digit code from your authenticator app to complete setup.',
@@ -2165,10 +2302,12 @@ export default {
     verify: 'Verify',
     // Recovery codes
     recoveryCodes: 'Recovery Codes',
-    recoveryCodesWarning: 'Save these recovery codes in a safe place. If you lose access to your authenticator app, you can use a recovery code to sign in. Each code can only be used once.',
+    recoveryCodesWarning:
+      'Save these recovery codes in a safe place. If you lose access to your authenticator app, you can use a recovery code to sign in. Each code can only be used once.',
     // Disable MFA
     disableTitle: 'Disable Two-Factor Authentication',
-    disableWarning: 'Disabling two-factor authentication will make your account less secure. Are you sure you want to continue?',
+    disableWarning:
+      'Disabling two-factor authentication will make your account less secure. Are you sure you want to continue?',
     enterPassword: 'Enter your password to confirm',
     passwordPlaceholder: 'Enter your password',
     confirmDisable: 'Confirm Disable',
@@ -2185,7 +2324,8 @@ export default {
     title: 'Security Keys',
     subtitle: 'Use hardware security keys or biometrics for passwordless login',
     noCredentials: 'No Security Keys',
-    noCredentialsDesc: 'Add a security key (like YubiKey) or use your device\'s biometrics for more secure login.',
+    noCredentialsDesc:
+      "Add a security key (like YubiKey) or use your device's biometrics for more secure login.",
     addCredential: 'Add Security Key',
     register: 'Register',
     registering: 'Registering...',
@@ -2208,6 +2348,7 @@ export default {
     tabs: {
       overview: 'Overview',
       firewall: 'Firewall',
+      network: 'Network',
       masking: 'Data Masking',
       monitoring: 'Monitoring',
       events: 'Events',
@@ -2215,10 +2356,12 @@ export default {
     },
     firewall: {
       title: 'Prompt Firewall',
-      description: 'Maintain a keyword blocklist to intercept risky prompts before they are processed.',
+      description:
+        'Maintain a keyword blocklist to intercept risky prompts before they are processed.',
       ruleCount: '{count} active keyword rules',
       builtinTitle: 'Default Blocking Rules',
-      builtinDescription: 'Built-in interception rules are enabled by default and can be adjusted dynamically.',
+      builtinDescription:
+        'Built-in interception rules are enabled by default and can be adjusted dynamically.',
       customTitle: 'Custom Keyword Rules',
       keywordPlaceholder: 'Enter blocked keyword or phrase',
       add: 'Add Rule',
@@ -2317,16 +2460,23 @@ export default {
         sql_injection_enabled: 'SQL injection pattern detection is enabled',
         command_injection_enabled: 'Command injection pattern detection is enabled',
         prompt_injection_active: 'Prompt injection detection is active',
-        prompt_injection_disabled: 'Prompt injection protection is disabled. Enable PromptGuard for AI security.',
+        prompt_injection_disabled:
+          'Prompt injection protection is disabled. Enable PromptGuard for AI security.',
         ai_output_validation_enabled: 'AI output validation is enabled',
-        ai_output_validation_disabled: 'AI output validation is disabled. Consider enabling for safer AI operations.',
+        ai_output_validation_disabled:
+          'AI output validation is disabled. Consider enabling for safer AI operations.',
         model_whitelist_no_models: 'Model whitelist is enabled but no models are configured',
-        model_whitelist_disabled: 'Model whitelist is disabled. All models are accessible. Consider enabling for production.',
+        model_whitelist_disabled:
+          'Model whitelist is disabled. All models are accessible. Consider enabling for production.',
         sensitive_data_filtering_enabled: 'Sensitive data filtering is enabled',
-        sensitive_data_filtering_disabled: 'Sensitive data filtering is disabled. PII may be exposed to AI models.',
-        rate_limiting_disabled: 'Rate limiting is disabled. API is vulnerable to abuse and DoS attacks.',
-        cors_all_origins_production: 'CORS allows all origins in production. This is a security risk.',
-        cors_all_origins_dev: 'CORS allows all origins. Acceptable for development, but restrict in production.',
+        sensitive_data_filtering_disabled:
+          'Sensitive data filtering is disabled. PII may be exposed to AI models.',
+        rate_limiting_disabled:
+          'Rate limiting is disabled. API is vulnerable to abuse and DoS attacks.',
+        cors_all_origins_production:
+          'CORS allows all origins in production. This is a security risk.',
+        cors_all_origins_dev:
+          'CORS allows all origins. Acceptable for development, but restrict in production.',
         cors_no_external_origins: 'CORS is configured with no external origins allowed',
         tls_12_min: 'TLS is enabled with minimum version TLS 1.2',
         tls_older_versions: 'TLS is enabled but allows older versions. Recommend TLS 1.2 minimum.',
@@ -2339,14 +2489,17 @@ export default {
         no_memory_limit: 'No memory limit configured for sandbox',
         no_timeout_configured: 'No execution timeout configured',
         network_disabled_sandbox: 'Network access is disabled in sandbox',
-        network_enabled_sandbox: 'Network access is enabled in sandbox. Consider disabling for better isolation.',
+        network_enabled_sandbox:
+          'Network access is enabled in sandbox. Consider disabling for better isolation.',
         data_dir_restricted: 'Data directory has restricted permissions',
         data_dir_permissive: 'Data directory may have overly permissive access',
         data_dir_unknown: 'Could not verify data directory permissions',
-        debug_production: 'Debug mode is enabled in production. This exposes sensitive information.',
+        debug_production:
+          'Debug mode is enabled in production. This exposes sensitive information.',
         debug_enabled: 'Debug mode is enabled. Disable before production deployment.',
         debug_disabled: 'Debug mode is disabled',
-        error_exposed_production: 'Detailed error messages are exposed in production. This may leak sensitive information.',
+        error_exposed_production:
+          'Detailed error messages are exposed in production. This may leak sensitive information.',
         error_exposed: 'Detailed error messages are exposed. Disable before production deployment.',
         error_hidden: 'Error details are hidden from responses',
         error_log_restrict: 'Sensitive error data may be logged. Ensure log access is restricted.',
@@ -2369,22 +2522,26 @@ export default {
           name: 'Password Minimum Length',
           description: 'Check if password minimum length meets security requirements',
           risk: 'Short passwords are vulnerable to brute force and dictionary attacks',
-          impact: 'Attackers could guess or crack weak passwords, gaining unauthorized access to user accounts',
+          impact:
+            'Attackers could guess or crack weak passwords, gaining unauthorized access to user accounts',
           remediation: 'Set minimum password length to 12 or more characters in security settings',
         },
         auth_password_complexity: {
           name: 'Password Complexity Requirements',
           description: 'Check if password complexity requirements are properly configured',
           risk: 'Simple passwords without mixed character types are easier to crack',
-          impact: 'Weak passwords can be compromised through automated attacks, leading to account takeover',
-          remediation: 'Enable all complexity requirements: uppercase, lowercase, numbers, and special characters',
+          impact:
+            'Weak passwords can be compromised through automated attacks, leading to account takeover',
+          remediation:
+            'Enable all complexity requirements: uppercase, lowercase, numbers, and special characters',
         },
         auth_account_lockout: {
           name: 'Account Lockout Policy',
           description: 'Check if account lockout is configured to prevent brute force attacks',
           risk: 'Without lockout, attackers can make unlimited login attempts',
           impact: 'Brute force attacks can eventually succeed, compromising user accounts',
-          remediation: 'Configure account lockout after 5 or fewer failed attempts with a lockout duration of at least 15 minutes',
+          remediation:
+            'Configure account lockout after 5 or fewer failed attempts with a lockout duration of at least 15 minutes',
         },
         auth_jwt_secret: {
           name: 'JWT Secret Strength',
@@ -2397,7 +2554,8 @@ export default {
           name: 'Token Expiration Time',
           description: 'Check if token expiration is set to a reasonable duration',
           risk: 'Long-lived tokens increase the window for token theft and misuse',
-          impact: 'Stolen tokens remain valid for extended periods, enabling persistent unauthorized access',
+          impact:
+            'Stolen tokens remain valid for extended periods, enabling persistent unauthorized access',
           remediation: 'Set token expiration to 1 hour or less for sensitive operations',
         },
         // New scanner ids
@@ -2414,7 +2572,8 @@ export default {
           description: 'Check if MFA is available and enforced',
           details: {
             passed: 'MFA is required for all users',
-            warning: 'MFA is available but not required. Consider enforcing MFA for enhanced security.',
+            warning:
+              'MFA is available but not required. Consider enforcing MFA for enhanced security.',
           },
         },
         // Legacy/fallback ids (used by older scanner)
@@ -2452,15 +2611,18 @@ export default {
           name: 'Prompt Injection Protection',
           description: 'Check if prompt injection detection is enabled',
           risk: 'Malicious prompts can manipulate AI behavior to bypass security controls',
-          impact: 'Attackers could extract sensitive data, execute unauthorized actions, or compromise system integrity',
+          impact:
+            'Attackers could extract sensitive data, execute unauthorized actions, or compromise system integrity',
           remediation: 'Enable PromptGuard to detect and block prompt injection attempts',
         },
         ai_output_validation: {
           name: 'AI Output Validation',
           description: 'Check if AI outputs are validated before execution',
           risk: 'Unvalidated AI outputs may contain malicious code or harmful content',
-          impact: 'Malicious AI-generated content could be executed, leading to code injection or data corruption',
-          remediation: 'Enable AI output validation to sanitize and verify all AI-generated content',
+          impact:
+            'Malicious AI-generated content could be executed, leading to code injection or data corruption',
+          remediation:
+            'Enable AI output validation to sanitize and verify all AI-generated content',
         },
         ai_model_access: {
           name: 'Model Access Control',
@@ -2477,29 +2639,35 @@ export default {
           name: 'Sensitive Data Filtering',
           description: 'Check if sensitive data is filtered from AI context',
           risk: 'Sensitive data in AI prompts may be logged, cached, or leaked to third parties',
-          impact: 'PII, credentials, or confidential data could be exposed through AI model interactions',
-          remediation: 'Enable sensitive data filtering to automatically redact PII and secrets from AI context',
+          impact:
+            'PII, credentials, or confidential data could be exposed through AI model interactions',
+          remediation:
+            'Enable sensitive data filtering to automatically redact PII and secrets from AI context',
         },
         // Network Security
         network_rate_limiting: {
           name: 'API Rate Limiting',
           description: 'Check if rate limiting is configured to prevent abuse',
           risk: 'Without rate limiting, APIs are vulnerable to abuse and denial of service',
-          impact: 'Attackers could overwhelm the system, causing service outages or resource exhaustion',
-          remediation: 'Enable rate limiting with appropriate thresholds (e.g., 100 requests/second per client)',
+          impact:
+            'Attackers could overwhelm the system, causing service outages or resource exhaustion',
+          remediation:
+            'Enable rate limiting with appropriate thresholds (e.g., 100 requests/second per client)',
         },
         network_cors: {
           name: 'CORS Configuration',
           description: 'Check if CORS is properly restricted',
           risk: 'Permissive CORS allows any website to make requests to your API',
-          impact: 'Cross-site request forgery attacks could steal data or perform unauthorized actions',
+          impact:
+            'Cross-site request forgery attacks could steal data or perform unauthorized actions',
           remediation: 'Restrict CORS to specific trusted origins in production environments',
         },
         network_tls: {
           name: 'TLS/HTTPS Configuration',
           description: 'Check if TLS is enabled for secure communication',
           risk: 'Unencrypted traffic can be intercepted and read by attackers',
-          impact: 'Sensitive data including credentials and API keys could be stolen via man-in-the-middle attacks',
+          impact:
+            'Sensitive data including credentials and API keys could be stolen via man-in-the-middle attacks',
           remediation: 'Enable TLS with a valid certificate and enforce HTTPS for all connections',
         },
         network_ip_blocking: {
@@ -2537,7 +2705,8 @@ export default {
           name: 'Network Isolation',
           description: 'Check if sandbox network access is restricted',
           risk: 'Network access from sandbox allows data exfiltration',
-          impact: 'Malicious code could send sensitive data to external servers or download additional payloads',
+          impact:
+            'Malicious code could send sensitive data to external servers or download additional payloads',
           remediation: 'Disable network access in sandbox unless specifically required',
         },
         sandbox_timeout: {
@@ -2578,7 +2747,8 @@ export default {
         },
         system_error_handling: {
           name: 'Error Information Exposure',
-          description: 'Check if error messages are properly sanitized to prevent information leakage',
+          description:
+            'Check if error messages are properly sanitized to prevent information leakage',
         },
         system_dependencies: {
           name: 'Dependency Security',
@@ -2640,15 +2810,16 @@ export default {
     },
     // Direct keys used in template
     // Nested structure
-    'sessions': {
+    sessions: {
       title: 'Active Sessions',
     },
-    'events': {
+    events: {
       title: 'Security Events',
     },
     settings: {
       title: 'Security Data Retention',
-      description: 'Configure how long security monitoring data (sessions, events, alerts) is retained before automatic cleanup',
+      description:
+        'Configure how long security monitoring data (sessions, events, alerts) is retained before automatic cleanup',
       storageInfo: 'Storage Information',
       sessions: 'Sessions',
       events: 'Events',
@@ -2666,7 +2837,8 @@ export default {
     title: 'Sandbox',
     subtitle: 'Execute commands in a secure isolated environment',
     notSupported: 'Sandbox Not Supported',
-    notSupportedDesc: 'Sandbox execution is not available on this platform or has not been configured.',
+    notSupportedDesc:
+      'Sandbox execution is not available on this platform or has not been configured.',
     executeCommand: 'Execute Command',
     execute: 'Execute',
     executing: 'Executing...',
@@ -2744,10 +2916,14 @@ export default {
     // Error messages (from backend last_error_key)
     errors: {
       imessage: {
-        not_set_up: 'iMessage is not set up on this Mac. Please open the Messages app and sign in with your Apple ID.',
-        not_signed_in: 'iMessage is not signed in. Please open the Messages app and sign in with your Apple ID.',
-        full_disk_access: 'Full Disk Access is required to read iMessage history. Please grant it in System Settings > Privacy & Security > Full Disk Access.',
-        automation_denied: 'Automation permission is required to send iMessages. Please grant it in System Settings > Privacy & Security > Automation.',
+        not_set_up:
+          'iMessage is not set up on this Mac. Please open the Messages app and sign in with your Apple ID.',
+        not_signed_in:
+          'iMessage is not signed in. Please open the Messages app and sign in with your Apple ID.',
+        full_disk_access:
+          'Full Disk Access is required to read iMessage history. Please grant it in System Settings > Privacy & Security > Full Disk Access.',
+        automation_denied:
+          'Automation permission is required to send iMessages. Please grant it in System Settings > Privacy & Security > Automation.',
         unavailable_platform: 'iMessage is only available on macOS.',
       },
     },
@@ -2921,7 +3097,8 @@ export default {
     mattermostHint: 'Create a bot in Mattermost',
     nextcloudTalkHint: 'Use a Nextcloud account plus Talk room token',
     googleChatHint: 'Create a service account in Google Cloud',
-    feishuHint: 'Create a bot in Feishu Open Platform. Required: 1) Enable "Long Connection" for events; 2) Subscribe to "im.message.receive_v1" event; 3) Add "im:message:send_as_bot" permission; 4) Publish the app',
+    feishuHint:
+      'Create a bot in Feishu Open Platform. Required: 1) Enable "Long Connection" for events; 2) Subscribe to "im.message.receive_v1" event; 3) Add "im:message:send_as_bot" permission; 4) Publish the app',
     dingtalkHint: 'Create a bot in DingTalk Open Platform',
     qqHint: 'Create a bot in QQ Open Platform',
     wechatHint: 'Create a bot in WeChat Work',
@@ -2975,7 +3152,8 @@ export default {
     // Demo mode
     demo: {
       title: 'No Data Yet',
-      description: 'Companion monitors AI Agent sessions across multiple platforms. When agents are connected and processing requests, you will see real-time session data, events, and security alerts here.',
+      description:
+        'Companion monitors AI Agent sessions across multiple platforms. When agents are connected and processing requests, you will see real-time session data, events, and security alerts here.',
       features: {
         title: 'What you can monitor:',
         sessions: 'Active and historical AI agent sessions',
@@ -2983,11 +3161,13 @@ export default {
         security: 'Security threats and anomaly detection',
         replay: 'Session replay for debugging and auditing',
       },
-      platforms: 'Supported platforms: WhatsApp, Telegram, Discord, Slack, Matrix, Feishu, Web, API',
+      platforms:
+        'Supported platforms: WhatsApp, Telegram, Discord, Slack, Matrix, Feishu, Web, API',
       runDemo: 'Run Demo',
       stopDemo: 'Stop Demo',
       running: 'Demo Mode Active',
-      bannerDescription: 'You are viewing simulated data. This data is for demonstration purposes only and does not reflect real sessions.',
+      bannerDescription:
+        'You are viewing simulated data. This data is for demonstration purposes only and does not reflect real sessions.',
       alertTitles: {
         unusualPattern: 'Unusual Activity Pattern Detected',
         highTokenUsage: 'High Token Usage in Session',
@@ -3037,7 +3217,8 @@ export default {
     toolCallCount: 'Tool Calls',
     llmCallCount: 'LLM Calls',
     totalTokens: 'Total Tokens',
-    deleteSessionConfirm: 'Are you sure you want to delete this session? This action cannot be undone.',
+    deleteSessionConfirm:
+      'Are you sure you want to delete this session? This action cannot be undone.',
     // View modes
     viewMode: {
       flow: 'Flow',
@@ -3152,6 +3333,11 @@ export default {
       showGuide: 'Show Anomaly Guide',
       hideGuide: 'Hide Guide',
     },
+    toasts: {
+      memorySavedTitle: 'Remembered new content',
+      memorySavedMessage: 'Extracted memory from the conversation',
+      manageMemory: 'Manage memory',
+    },
     // Event types
     eventType: {
       session_start: 'Session Start',
@@ -3196,8 +3382,7 @@ export default {
       },
     },
     // Canvas view
-    canvas: {
-    },
+    canvas: {},
     // Node components
     nodes: {
       received: 'Received',
@@ -3229,8 +3414,7 @@ export default {
       score: 'Score',
     },
     // Message direction
-    message: {
-    },
+    message: {},
     // Security
     security: {
       title: 'Security Details',
@@ -3310,7 +3494,8 @@ export default {
     cacheType: 'Cache Type',
     chatCache: 'Chat Cache',
     proxyCache: 'API Proxy Cache',
-    description: 'Chat cache stores non-streaming responses. API proxy cache stores responses from /v1/* endpoints.',
+    description:
+      'Chat cache stores non-streaming responses. API proxy cache stores responses from /v1/* endpoints.',
     streamingSkipped: 'Streaming requests skipped',
   },
   tokenEconomy: {
@@ -3394,14 +3579,16 @@ export default {
     streamingAnomaly: 'Streaming Anomaly Detection',
     streamingAnomalyDesc: 'Detect and recover from streaming output anomalies',
     providerRaceTitle: 'Provider Race',
-    providerRaceDesc: 'Run multiple providers concurrently and return the fastest successful response; this may slightly increase cost',
+    providerRaceDesc:
+      'Run multiple providers concurrently and return the fastest successful response; this may slightly increase cost',
     providerRaceEnabled: 'Enabled',
     providerRaceDisabled: 'Disabled',
     providerRaceMaxParallel: 'Max Parallel',
     providerRaceMinProviders: 'Minimum Providers',
     providerRaceSinkThreshold: 'Sink Threshold',
     providerRaceExcludeThreshold: 'Exclude Threshold',
-    providerRaceCooldownRule: 'Cooldown when empty-run rate ≥ {threshold} (min {samples} samples), duration {duration}',
+    providerRaceCooldownRule:
+      'Cooldown when empty-run rate ≥ {threshold} (min {samples} samples), duration {duration}',
     maskingTitle: 'Data Masking',
     maskingDesc: 'Redact sensitive data (PII, credentials) in LLM requests and responses',
     maskingEnabled: 'Data masking enabled',
@@ -3436,7 +3623,8 @@ export default {
     smartToolsRequests: 'Requests',
     smartToolsSkipped: 'Tools Filtered',
     promptCacheTitle: 'Prompt Caching',
-    promptCacheDesc: 'Inject cache breakpoints for Anthropic models, saving up to 90% on repeated input tokens',
+    promptCacheDesc:
+      'Inject cache breakpoints for Anthropic models, saving up to 90% on repeated input tokens',
     promptCacheEnabled: 'Prompt caching enabled',
     promptCacheDisabled: 'Prompt caching disabled',
   },
@@ -3613,7 +3801,8 @@ export default {
       installing: 'Installing...',
       // Uninstall confirmation modal
       confirmUninstallTitle: 'Confirm Uninstall',
-      confirmUninstallMessage: 'Are you sure you want to uninstall "{name}"? This action cannot be undone.',
+      confirmUninstallMessage:
+        'Are you sure you want to uninstall "{name}"? This action cannot be undone.',
       uninstall: 'Uninstall',
     },
     // Notifications
@@ -3654,7 +3843,8 @@ export default {
     enterValue: 'Enter value...',
     patterns: 'Field Patterns',
     editPatterns: 'Edit Patterns',
-    patternsDescription: 'Field patterns help detect form fields by matching keywords in field names, labels, and placeholders.',
+    patternsDescription:
+      'Field patterns help detect form fields by matching keywords in field names, labels, and placeholders.',
     fieldTypes: 'field types configured',
     createTemplate: 'Create Template',
     editTemplate: 'Edit Template',
@@ -3728,7 +3918,8 @@ export default {
     downloadSuccess: 'Downloaded version {version}',
     validateSuccess: 'Validated successfully (version {version})',
     cacheCleared: 'Cache cleared successfully',
-    notInstalledDescription: 'Claude Code CLI is not installed. Click the button below to download it.',
+    notInstalledDescription:
+      'Claude Code CLI is not installed. Click the button below to download it.',
     // Enable/Disable toggle
     enabled: 'Claude Code CLI enabled',
     disabled: 'Claude Code CLI disabled',
@@ -3766,7 +3957,8 @@ export default {
     // Disabled warning
     installFirst: 'Please install Claude Code CLI first',
     disabledWarningTitle: 'Claude Code CLI is off (optional)',
-    disabledWarningDesc: 'You are in standard mode, and chat/agent still work normally. Enhanced mode is optional and may improve experience.',
+    disabledWarningDesc:
+      'You are in standard mode, and chat/agent still work normally. Enhanced mode is optional and may improve experience.',
     missingSkills: 'Some CLI-first skills may have lower compatibility in this mode',
     missingToolCalling: 'Advanced Tool Calling capabilities',
     missingFileOps: 'Certain CLI-dependent workflows may be limited in some environments',
@@ -3913,8 +4105,7 @@ export default {
     noData: 'No data available',
     noProviderMetrics: 'No provider metrics available',
     // Tabs
-    tabs: {
-    },
+    tabs: {},
     // Overview cards
     totalCalls: 'Total Calls',
     successRate: 'Success Rate',
@@ -4114,7 +4305,7 @@ export default {
     freeTier: 'Free',
     getApiKey: 'Get API Key',
     apiKeyOptional: 'API Key (optional)',
-    apiKeyHint: 'Some providers like Ollama don\'t need an API key',
+    apiKeyHint: "Some providers like Ollama don't need an API key",
     addingProvider: 'Adding provider...',
     probingModels: 'Probing models...',
     providerAdded: 'Provider added',
@@ -4126,7 +4317,8 @@ export default {
     retry: 'Retry',
     errorCleared: 'Error cleared — you can try again',
     verifySection: 'Verify & Recommend',
-    verifyHint: 'Probe this provider and generate a best-practice API format/base URL recommendation.',
+    verifyHint:
+      'Probe this provider and generate a best-practice API format/base URL recommendation.',
     verifyRun: 'Verify',
     verifyApply: 'Apply Recommendation',
     verifyRunning: 'Verifying...',
@@ -4151,8 +4343,10 @@ export default {
       name: 'ZimaOS BlueTrial',
       description: 'Free trial with limited quota',
       quotaExhausted: 'Trial quota exhausted',
-      quotaExhaustedTokens: 'Your trial token quota has been exhausted. Please configure your own provider to continue.',
-      quotaExhaustedConversations: 'Your trial conversation limit has been reached. Please configure your own provider to continue.',
+      quotaExhaustedTokens:
+        'Your trial token quota has been exhausted. Please configure your own provider to continue.',
+      quotaExhaustedConversations:
+        'Your trial conversation limit has been reached. Please configure your own provider to continue.',
       tokensUsed: '{remaining} / {total} tokens remaining',
       configureProvider: 'Configure Provider',
       trialEnded: 'Trial Ended',
@@ -4174,7 +4368,7 @@ export default {
       deviceFlow: 'GitHub Device Authorization',
       deviceFlowInstructions: 'Enter the code below on GitHub to authorize access:',
       openGitHub: 'Open GitHub',
-      done: 'I\'ve authorized',
+      done: "I've authorized",
       loadingQuota: 'Loading subscription info...',
       quotaUnavailable: 'Subscription info unavailable',
       modelQuota: 'Model Quota',
@@ -4205,7 +4399,8 @@ export default {
       glm: 'Zhipu AI GLM-4 series models with Chinese language support',
       siliconflow: 'SiliconFlow - Chinese AI cloud platform with DeepSeek, Qwen and more models',
       nvidia: 'NVIDIA NIM - GPU-accelerated inference for leading open and commercial models',
-      'zimaos-blue-trial': 'Free trial with limited quota - experience Blue before configuring your own provider',
+      'zimaos-blue-trial':
+        'Free trial with limited quota - experience Blue before configuring your own provider',
       moonshot: 'Moonshot AI (Kimi) - Chinese language model with long context support',
       azure: 'Azure OpenAI Service - Enterprise-grade OpenAI models on Azure',
       aihubmix: 'AiHubMix - AI model aggregator with multiple providers',
@@ -4228,10 +4423,12 @@ export default {
       trial: 'Trial',
       builtin: 'Built-in',
       platform: 'Platform',
+      other: 'Other',
       custom: 'Custom',
       media: 'Media',
       oauth: 'OAuth',
     },
+    beta: 'Beta',
     trialQuota: {
       title: 'Trial Quota',
       exhausted: 'Trial quota exhausted. Please configure your own provider.',
@@ -4280,7 +4477,8 @@ export default {
     modelParams: 'Model Parameters',
     editModelParams: 'Edit Model Parameters',
     temperature: 'Expression Freedom',
-    temperatureHint: '0.0 - 2.0, controls expression freedom. Lower = more focused, higher = more creative.',
+    temperatureHint:
+      '0.0 - 2.0, controls expression freedom. Lower = more focused, higher = more creative.',
     maxTokensHint: 'Maximum output length. Leave empty to use model default.',
     topP: 'Top P',
     topPHint: '0.0 - 1.0, nucleus sampling. Alternative to expression freedom.',
@@ -4299,7 +4497,8 @@ export default {
     // Preferred models configuration
     preferredModels: 'Preferred',
     selectPreferredModels: 'Select Preferred Models',
-    preferredModelsHint: 'Check the models you prefer. Only checked models will be available; if none are checked, all models will be available.',
+    preferredModelsHint:
+      'Check the models you prefer. Only checked models will be available; if none are checked, all models will be available.',
     filtered: 'filtered',
     filteredModels: 'Only showing allowed models',
     selectAll: 'Select All',
@@ -4310,18 +4509,20 @@ export default {
     configureModels: 'Configure',
     fetchingKeyModels: 'Fetching models...',
     // Pricing configuration (nested for component usage)
-    pricingConfig2: {
-    },
+    pricingConfig2: {},
     // Base URL configuration
     configure: 'Configure',
     baseUrlNotConfigured: 'Base URL not configured — click Configure to set up',
     baseUrlRequired: 'Configure Base URL first',
     // Health check error messages
     healthErrors: {
-      authError: 'Authentication failed (HTTP {code}) — please check your API key or OAuth connection',
+      authError:
+        'Authentication failed (HTTP {code}) — please check your API key or OAuth connection',
       baseUrlNotConfigured: 'Base URL not configured — please set up the endpoint URL',
-      baseUrlNotConfiguredAzure: 'Azure OpenAI endpoint not configured — click Configure above to set your endpoint URL',
-      baseUrlNotConfiguredBedrock: 'AWS Bedrock endpoint not configured — click Configure above to set your endpoint URL',
+      baseUrlNotConfiguredAzure:
+        'Azure OpenAI endpoint not configured — click Configure above to set your endpoint URL',
+      baseUrlNotConfiguredBedrock:
+        'AWS Bedrock endpoint not configured — click Configure above to set your endpoint URL',
       networkError: 'Network connection failed — please check the URL and your network',
       certificateError: 'TLS certificate error — enable "Skip TLS Verify" or check the certificate',
       timeoutError: 'Connection timed out — the server may be down or unreachable',
@@ -4351,9 +4552,11 @@ export default {
   onboarding: {
     welcome: 'Welcome to Blue!',
     previewMode: 'Preview Mode',
-    previewModeDesc: 'You can start using Blue right away. All features are available and your data will be saved.',
-    createAccountHintDesc: 'When you\'re ready, create an admin account to unlock user management and secure your data.',
-    gotIt: 'Got it, let\'s start!',
+    previewModeDesc:
+      'You can start using Blue right away. All features are available and your data will be saved.',
+    createAccountHintDesc:
+      "When you're ready, create an admin account to unlock user management and secure your data.",
+    gotIt: "Got it, let's start!",
   },
   remoteAccess: {
     title: 'Remote Access',
@@ -4404,8 +4607,10 @@ export default {
     qrCodeError: 'Failed to load QR code',
     // Disconnect confirmation
     disconnectConfirmTitle: 'Disconnect Remote Access?',
-    disconnectConfirmMessage: 'If you are accessing via remote tunnel, you may lose access to this page.',
-    disconnectConfirmMessageSameHost: 'You are currently accessing via this remote tunnel. Disconnecting will close this page and you will lose access.',
+    disconnectConfirmMessage:
+      'If you are accessing via remote tunnel, you may lose access to this page.',
+    disconnectConfirmMessageSameHost:
+      'You are currently accessing via this remote tunnel. Disconnecting will close this page and you will lose access.',
   },
   users: {
     title: 'User Management',
@@ -4499,8 +4704,10 @@ export default {
       special: 'One special character',
     },
     // Confirmations
-    confirmDelete: 'Are you sure you want to delete user "{username}"? This action cannot be undone.',
-    confirmLock: 'Are you sure you want to lock user "{username}"? They will not be able to log in.',
+    confirmDelete:
+      'Are you sure you want to delete user "{username}"? This action cannot be undone.',
+    confirmLock:
+      'Are you sure you want to lock user "{username}"? They will not be able to log in.',
     confirmUnlock: 'Are you sure you want to unlock user "{username}"?',
     confirmResetPassword: 'Are you sure you want to reset the password for "{username}"?',
     // Messages
@@ -4555,8 +4762,10 @@ export default {
     scanError: 'Failed to scan for IDEs',
     noIDEsFound: 'No IDE configurations found',
     noConfigsFound: 'No Importable Configurations',
-    noConfigsHint: 'Install and configure IDE tools like Claude Code, Cursor, or Windsurf to auto-detect their API keys',
-    envVarsOnlyHint: 'Environment variables detected but no importable configurations found. Check the reference table below for supported environment variables.',
+    noConfigsHint:
+      'Install and configure IDE tools like Claude Code, Cursor, or Windsurf to auto-detect their API keys',
+    envVarsOnlyHint:
+      'Environment variables detected but no importable configurations found. Check the reference table below for supported environment variables.',
     availableConfigs: 'Available Configurations',
     installedOnly: 'Installed (No API Key)',
     noApiKeyFound: 'No API key found in config',
@@ -4592,7 +4801,8 @@ export default {
     notDetected: 'Not Detected',
     importFromCCSwitch: 'Import from CC Switch',
     ccSwitchTitle: 'Import from Claude Code Switch',
-    ccSwitchDescription: 'Paste the output from "cc switch" command to import provider configuration',
+    ccSwitchDescription:
+      'Paste the output from "cc switch" command to import provider configuration',
     ccSwitchPlaceholder: 'Paste cc switch output here...',
     ccSwitchParsed: 'Configuration Parsed',
     ccSwitchParseError: 'Failed to parse cc switch output',
@@ -4615,12 +4825,14 @@ export default {
       export: 'Export',
       import: 'Import',
       cleanup: 'Cleanup',
-      retention: 'Retention',
+      retention: 'Monitoring',
     },
     export: 'Export User Data',
-    exportDescription: 'Export your chat history and settings to a file. The file will be protected with a password.',
+    exportDescription:
+      'Export your chat history and settings to a file. The file will be protected with a password.',
     import: 'Import User Data',
-    importDescription: 'Import previously exported data. You will need the password used during export.',
+    importDescription:
+      'Import previously exported data. You will need the password used during export.',
     format: 'Export Format',
     formatJson: 'JSON',
     formatEncrypted: 'Encrypted',
@@ -4650,22 +4862,37 @@ export default {
     importSuccess: 'Imported {conversations} conversations and {messages} messages',
     importFailed: 'Failed to import data',
     previewFailed: 'Failed to preview data',
+    chatDataTitle: 'Chat Data',
+    chatDataDescription: 'Import, export, and cleanup chat history and related data from one place.',
+    manageData: 'Manage Data',
     retentionSaved: 'Retention settings saved',
     cleanupSuccess: 'Data cleanup completed successfully',
     cleanupFailed: 'Failed to cleanup data',
     cleanupPreviewFailed: 'Failed to preview cleanup',
     // Retention section
     retention: {
-      title: 'Data Retention',
-      description: 'Configure how long data is kept before automatic cleanup',
-      storageInfo: 'Storage Information',
+      title: 'Monitoring Data Retention',
+      description:
+        'Set how long security monitoring data (sessions, events, alerts) is kept before automatic cleanup.',
+      storageInfo: 'Current Volume',
       sessions: 'Sessions',
       events: 'Events',
       alerts: 'Alerts',
-      policy: 'Retention Policy',
-      sessionsRetention: 'Sessions Retention',
-      eventsRetention: 'Events Retention',
-      alertsRetention: 'Alerts Retention',
+      totalRecords: 'Total monitoring records',
+      policy: 'Retention Rules',
+      policyHint:
+        'Each data type supports 1 to 365 days. Shorter retention reduces storage, while longer retention helps audits and troubleshooting.',
+      daysRange: 'Allowed range: 1-365 days',
+      sessionsRetention: 'Session records',
+      eventsRetention: 'Event records',
+      alertsRetention: 'Alert records',
+      sessionsHint: 'Agent session lifecycle and runtime metadata.',
+      eventsHint: 'Tool calls, execution traces, and audit events.',
+      alertsHint: 'Security alerts, risk scores, and acknowledgement status.',
+      sessionsSuggested: 'Suggested: 14-30 days for routine operations',
+      eventsSuggested: 'Suggested: 7-14 days for balanced audit volume',
+      alertsSuggested: 'Suggested: 30-90 days for incident review',
+      saveHint: 'New retention windows apply to upcoming automatic cleanup and manual cleanup runs.',
       days: 'days',
     },
     // Cleanup section
@@ -4673,7 +4900,8 @@ export default {
       title: 'Data Cleanup',
       description: 'Permanently delete selected data. This action cannot be undone.',
       warning: 'Destructive Action',
-      warningDetail: 'Deleted data cannot be recovered. Please export your data first if you need a backup.',
+      warningDetail:
+        'Deleted data cannot be recovered. Please export your data first if you need a backup.',
       selectData: 'Select Data to Delete',
       chatHistory: 'Chat History',
       chatHistoryDesc: 'All conversations and messages',
@@ -4692,7 +4920,8 @@ export default {
       willReset: 'Will be reset',
       willClear: 'Will be cleared',
       authorizationStep: 'Authorization Required',
-      authorizationHint: 'Review the data that will be deleted. This step serves as authorization confirmation.',
+      authorizationHint:
+        'Review the data that will be deleted. This step serves as authorization confirmation.',
       proceedToConfirm: 'Proceed to Confirmation',
       confirmStep: 'Final Confirmation',
       confirmHint: 'Enter your password to confirm this destructive action.',
@@ -4700,7 +4929,8 @@ export default {
       confirmText: 'CONFIRM DELETE',
       typeToConfirm: 'Type to Confirm',
       typeToConfirmPlaceholder: 'Type "{confirmText}" to confirm',
-      productionHint: 'In production environments, additional credentials (MFA, admin approval) may be required.',
+      productionHint:
+        'In production environments, additional credentials (MFA, admin approval) may be required.',
       enterPassword: 'Enter Password',
       passwordPlaceholder: 'Enter your password to confirm',
       confirmDelete: 'Confirm Delete',
@@ -4761,6 +4991,48 @@ export default {
     reconnected: 'Connection restored',
   },
   speech: {
+    convertTask: {
+      task: 'Task',
+      cancelling: 'Cancelling...',
+      downloadAudio: 'Download audio',
+      downloadVideo: 'Download video',
+      downloadPdf: 'Download PDF',
+      downloadText: 'Download text',
+      downloadFile: 'Download file',
+      action: {
+        convert: 'Convert',
+        merge: 'Merge',
+        split: 'Split',
+        trim: 'Trim',
+        extractAudio: 'Extract Audio',
+        extractFrames: 'Extract Frames',
+        tts: 'Text-to-Speech',
+        asr: 'Speech Recognition',
+      },
+      previewKind: {
+        file: 'File',
+        audio: 'Audio',
+        video: 'Video',
+        image: 'Image',
+        pdf: 'PDF',
+        text: 'Text',
+      },
+      message: {
+        queued: 'Queued',
+        processing: 'Processing',
+        completed: 'Completed',
+        taskCancelled: 'Task cancelled',
+        taskFailed: 'Task failed',
+        convertCompleted: 'Conversion completed',
+        mergeCompleted: 'Merge completed',
+        splitCompleted: 'Split completed',
+        trimCompleted: 'Trim completed',
+        extractAudioCompleted: 'Audio extraction completed',
+        extractFramesCompleted: 'Frame export completed',
+        ttsCompleted: 'Speech audio created',
+        asrCompleted: 'Transcription completed',
+      },
+    },
     status: 'Speech Status',
     asr: 'Speech Recognition',
     tts: 'Text-to-Speech',
@@ -4793,7 +5065,7 @@ export default {
     espeakDesc: 'Offline lightweight speech synthesis engine',
     downloadAndEnable: 'Download & Enable',
     ttsProvider: 'TTS Provider',
-    edgeTTSName: "Microsoft Edge TTS",
+    edgeTTSName: 'Microsoft Edge TTS',
     edgeTTSDesc: 'High-quality online neural voices (requires internet)',
     edgeTTSQuality: 'Natural',
     espeakNGDesc: 'Offline lightweight speech synthesis (built-in, no download needed)',
@@ -4814,19 +5086,23 @@ export default {
     windowsNativeASRDesc: 'Built-in Windows SAPI speech recognition (offline, no download needed)',
     systemNative: 'System Native',
     macosNativePermissionDenied: 'Speech recognition permission not granted',
-    macosNativePermissionGuide: 'Go to System Settings > Privacy & Security > Speech Recognition, and enable permission for {appName}',
+    macosNativePermissionGuide:
+      'Go to System Settings > Privacy & Security > Speech Recognition, and enable permission for {appName}',
     macosNativeOpenSettings: 'Open System Settings',
-    macosNativePermissionToast: 'Speech recognition permission denied. Please enable it in System Settings > Privacy & Security > Speech Recognition for {appName}.',
+    macosNativePermissionToast:
+      'Speech recognition permission denied. Please enable it in System Settings > Privacy & Security > Speech Recognition for {appName}.',
     macosNativeQuality: 'Excellent',
     macosNativeOnDeviceOnly: 'On Device Only',
     macosNativeOnDeviceDesc: 'Force on-device recognition (no data sent to Apple servers)',
     macosNativeOnDeviceUnsupported: 'On-device model not available for current language',
-    dictationDisabledGuide: 'Dictation is not enabled. On-device recognition requires Dictation. Go to System Settings > Keyboard > Dictation to enable it.',
+    dictationDisabledGuide:
+      'Dictation is not enabled. On-device recognition requires Dictation. Go to System Settings > Keyboard > Dictation to enable it.',
     recheckDictation: 'Re-check',
     offlineLanguages: 'Offline Languages',
     currentLangInstalled: 'Current language available',
     currentLangNotInstalled: 'Current language not installed',
-    onDeviceUnavailableError: 'On-device recognition is not available. Please enable Dictation in System Settings > Keyboard > Dictation, or disable "On Device Only" mode.',
+    onDeviceUnavailableError:
+      'On-device recognition is not available. Please enable Dictation in System Settings > Keyboard > Dictation, or disable "On Device Only" mode.',
     error: {
       timeout: 'Speech recognition timed out. Please try again.',
       audioInvalid: 'Invalid audio input. Please record again.',
@@ -4939,7 +5215,8 @@ export default {
     allPacksInfo: 'Download all {count} language packs (Total: {size})',
     downloadAll: 'Download All Language Packs',
     allDownloaded: 'All Packs Downloaded',
-    privacyWarning: 'Microsoft Edge TTS is an online service. Text is sent to Microsoft servers for synthesis.',
+    privacyWarning:
+      'Microsoft Edge TTS is an online service. Text is sent to Microsoft servers for synthesis.',
     privacyDialog: {
       title: 'Privacy Notice: {provider}',
       intro: 'You are about to use {provider}, an online text-to-speech service.',
@@ -4965,11 +5242,13 @@ export default {
       },
       whisperTiny: {
         name: 'Whisper Tiny',
-        description: 'Smallest Whisper model. Optimized for low-resource devices and quick startup.',
+        description:
+          'Smallest Whisper model. Optimized for low-resource devices and quick startup.',
       },
       whisperBase: {
         name: 'Whisper Base',
-        description: 'Balanced accuracy and performance. Suitable for most general-purpose speech recognition.',
+        description:
+          'Balanced accuracy and performance. Suitable for most general-purpose speech recognition.',
       },
       whisperSmall: {
         name: 'Whisper Small',
@@ -5128,7 +5407,8 @@ export default {
     secretGenerated: 'Secret generated',
     secretWarning: 'Store this secret securely. You won’t be able to view it again.',
     confirmDelete: 'Are you sure you want to delete this webhook?',
-    confirmRegenerate: 'Regenerate the secret? Existing integrations will stop working until updated.',
+    confirmRegenerate:
+      'Regenerate the secret? Existing integrations will stop working until updated.',
   },
   codeBlock: {
     toolCall: 'Tool Call',
@@ -5161,20 +5441,20 @@ export default {
   },
   resultCard: {
     titles: {
-      'workspace_file': 'Workspace File',
-      'calculator': 'Calculator',
-      'current_time': 'Current Time',
-      'read': 'Read File',
-      'write': 'Write File',
-      'file_read': 'File Read',
-      'file_write': 'File Write',
-      'system_info': 'System Info',
-      'memory': 'Memory',
-      'exec': 'Command Execution',
-      'mcp': 'MCP Call',
-      'analyze': 'Analysis Report',
-      'ui_review': 'UI Review',
-      'deep_research': 'Deep Research',
+      workspace_file: 'Workspace File',
+      calculator: 'Calculator',
+      current_time: 'Current Time',
+      read: 'Read File',
+      write: 'Write File',
+      file_read: 'File Read',
+      file_write: 'File Write',
+      system_info: 'System Info',
+      memory: 'Memory',
+      exec: 'Command Execution',
+      mcp: 'MCP Call',
+      analyze: 'Analysis Report',
+      ui_review: 'UI Review',
+      deep_research: 'Deep Research',
     },
     labels: {
       filename: 'Filename',
@@ -5241,6 +5521,24 @@ export default {
       searches: 'Searches',
       text_chars: 'Text Chars',
       report_url: 'Report',
+      target_id: 'Target ID',
+      browser_target_id: 'Browser Target ID',
+      strategy: 'Strategy',
+      strict_entity: 'Strict Entity Matching',
+      max_depth: 'Max Depth',
+      max_entries: 'Max Entries',
+      include_hidden: 'Include Hidden',
+      entries_hidden_in_card: 'Hidden Entries',
+    },
+    values: {
+      strategy: {
+        strict: 'Strict',
+        interactive: 'Interactive',
+        a11y: 'Accessibility',
+        screenshot: 'Screenshot',
+        screenshot_interactive: 'Screenshot + Interactive',
+        recovered: 'Recovered',
+      },
     },
     actions: {
       extract_with_web_fetch: 'Extract with Web Fetch',
@@ -5265,6 +5563,7 @@ export default {
       loginWall: 'Login wall detected',
       challenge: 'Verification challenge detected',
       browserRequired: 'Browser session required',
+      screenshotCaptured: 'Screenshot captured',
       unknown: 'Warning: {code}',
     },
   },
@@ -5273,6 +5572,11 @@ export default {
     copyUrl: 'Copy URL',
     copyText: 'Copy text',
     noContent: 'No extracted content',
+    contentLabel: 'Web content',
+    expandHint: 'View the extracted page content',
+    collapseHint: 'Hide the extracted page content',
+    expandContent: 'Expand web content',
+    collapseContent: 'Collapse web content',
     actions: {
       use_browser: 'Use browser',
     },
@@ -5372,6 +5676,20 @@ export default {
       limit: 'Limit',
       offset: 'Offset',
       id: 'ID',
+      action: 'Action',
+      name: 'Name',
+      title: 'Title',
+      description: 'Description',
+      schedule: 'Schedule',
+      cron: 'Cron',
+      handler: 'Handler',
+      type: 'Type',
+      command: 'Command',
+      payload: 'Payload',
+      job_id: 'Job ID',
+      jobId: 'Job ID',
+      cron_id: 'Cron ID',
+      cronId: 'Cron ID',
     },
     calling: 'Calling Tools',
     callingProgress: 'Calling Tools...',
@@ -5382,7 +5700,8 @@ export default {
     mode: 'Task Loop Mode',
     modeDescription: 'Enable continuous plan-and-execute loops until you turn it off',
     autoConfirm: 'Auto-Confirm',
-    autoConfirmDescription: 'Skip confirmation for destructive actions (right-click task loop button to toggle)',
+    autoConfirmDescription:
+      'Skip confirmation for destructive actions (right-click task loop button to toggle)',
     taskCreated: 'Task created',
     taskPlanning: 'Planning...',
     taskExecuting: 'Executing step {step}...',
@@ -5491,6 +5810,13 @@ export default {
   },
   search: {
     resultCount: '{count} results',
+  },
+  cardActions: {
+    use_browser: 'Use browser',
+    extract_with_web_fetch: 'Extract with Web Fetch',
+    recheck: 'Re-check',
+    check_a11y: 'Accessibility Only',
+    full_report: 'Full Report',
   },
   uiReview: {
     title: 'UI Review',

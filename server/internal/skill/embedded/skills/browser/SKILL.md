@@ -1,13 +1,13 @@
 ---
 name: browser
-description: "Interact with live web pages using a headless browser (navigate, inspect, click/type, screenshot, tab management). Use when the user asks to open/read a URL, extract page content, fill forms, click elements, reproduce web behavior, or capture screenshots."
+description: "Interact with live web pages using the built-in browser tool (navigate, inspect, click/type, screenshot, tab management). Use when the user asks to open/read a URL, extract page content, fill forms, click elements, reproduce web behavior, or capture screenshots."
 ---
 
 # Browser Skill
 
 ## Setup
 
-No external dependencies required. Uses built-in headless browser commands.
+No external dependencies required. Uses built-in browser commands.
 
 ---
 

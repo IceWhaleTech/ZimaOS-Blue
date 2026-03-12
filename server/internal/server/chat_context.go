@@ -37,9 +37,11 @@ func (t ContextTier) String() string {
 
 // ContextStrategyResult holds the output of buildSmartContext.
 type ContextStrategyResult struct {
-	Tier     ContextTier
-	Messages []llm.Message // Context messages (excluding system prompt)
-	Summary  string        // Non-empty only for TierCompressedMemory
+	Tier               ContextTier
+	Messages           []llm.Message // Context messages (excluding system prompt)
+	Summary            string        // Non-empty only for TierCompressedMemory
+	MessageCountBefore int           // Conversation messages seen before smart-context selection
+	MessageCountAfter  int           // Context messages kept after smart-context selection/pruning
 }
 
 // ConversationSummary is the cached summary for a conversation.
@@ -148,6 +150,16 @@ var (
 		`(?i)(?:\bremember\b|\bmemory\b|\bmemories\b|\bpreference\b|\bprofile\b|` +
 			`\bcapability\b|\bcapabilities\b|\bsession\s*query\b|\bquery\s*sessions?\b|\bas i said\b|` +
 			`记得|记住|记忆|你还记得|我喜欢|我的偏好|之前说过|个人资料|习惯|会话查询|查询能力|工具能力|能力偏好)`)
+
+	// Topic-switch cues that explicitly ask to stop using prior discussion as
+	// continuation context in the current session.
+	reTopicSwitchCue = regexp.MustCompile(
+		`(?i)(?:` +
+			`换个话题|切换话题|换个问题|另起一个问题|重新开始|从头开始|先不说这个|` +
+			`忽略之前|忽略前面|抛开之前|我们聊点别的|聊点别的|` +
+			`new topic|change (?:the )?topic|switch (?:to )?(?:a )?new topic|` +
+			`let'?s talk about something else|ignore (?:the )?previous|` +
+			`forget (?:the )?previous|start over|from scratch)`)
 )
 
 // MemoryRecallReason indicates why memory recall was triggered or skipped.
@@ -473,13 +485,19 @@ func classifyContext(userMessage string, messageCount int, isAgentMode, isRegene
 		return TierNoHistory
 	}
 
-	// Agent mode always needs context for tool continuity
-	if isAgentMode {
+	// Regenerate needs the original message context.
+	if isRegenerate {
 		return TierCompressedMemory
 	}
 
-	// Regenerate needs the original message context
-	if isRegenerate {
+	// Explicit topic-switch cues should hard-reset conversational history in the
+	// same session to avoid stale-context interference.
+	if hasTopicSwitchCue(userMessage) {
+		return TierNoHistory
+	}
+
+	// Agent mode always needs context for tool continuity
+	if isAgentMode {
 		return TierCompressedMemory
 	}
 
@@ -504,6 +522,14 @@ func hasReference(msg string) bool {
 
 func hasMemoryCue(msg string) bool {
 	return reMemoryCue.MatchString(msg)
+}
+
+func hasTopicSwitchCue(msg string) bool {
+	trimmed := strings.TrimSpace(msg)
+	if trimmed == "" {
+		return false
+	}
+	return reTopicSwitchCue.MatchString(trimmed)
 }
 
 func parseMemoryRecallMode(mode string) MemoryRecallMode {
@@ -1131,8 +1157,10 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 		Msg("[context] classified")
 
 	// 3. Build context based on tier
-	var result ContextStrategyResult
-	result.Tier = tier
+	result := ContextStrategyResult{
+		Tier:               tier,
+		MessageCountBefore: messageCount,
+	}
 
 	switch tier {
 	case TierNoHistory:
@@ -1213,6 +1241,8 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 			ev.Msg("[context] trim policy report")
 		}
 	}
+
+	result.MessageCountAfter = len(result.Messages)
 
 	return result
 }

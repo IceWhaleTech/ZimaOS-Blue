@@ -70,7 +70,7 @@ func (t *VideoGenerateSkill) Definition() tools.ToolDefinition {
 func (t *VideoGenerateSkill) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	req := &MediaRequest{Type: MediaTypeVideo}
 
-	if v, ok := args["prompt"].(string); ok {
+	if v := skillCompatString(args, "prompt"); v != "" {
 		req.Prompt = v
 	} else {
 		return map[string]interface{}{
@@ -78,13 +78,13 @@ func (t *VideoGenerateSkill) Execute(ctx context.Context, args map[string]interf
 			"message": "prompt is required",
 		}, nil
 	}
-	if v, ok := args["model"].(string); ok {
+	if v := skillCompatString(args, "model"); v != "" {
 		req.Model = v
 	}
-	if v, ok := args["duration"].(float64); ok {
-		req.Duration = int(v)
+	if v := skillCompatInt(args, "duration"); v > 0 {
+		req.Duration = v
 	}
-	if v, ok := args["size"].(string); ok {
+	if v := skillCompatString(args, "size"); v != "" {
 		req.Size = v
 	}
 

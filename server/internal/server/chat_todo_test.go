@@ -179,11 +179,17 @@ func TestBuildDeepSearchExecutionHint(t *testing.T) {
 	if hint == "" {
 		t.Fatal("expected deep-search execution hint for latest/news request")
 	}
-	if !strings.Contains(hint, "at least 2 diverse web_search rounds") {
+	if !strings.Contains(hint, "at least 2 diverse retrieval rounds") {
 		t.Fatalf("expected hint to require multi-round search, got=%q", hint)
 	}
-	if !strings.Contains(hint, "complete report") {
-		t.Fatalf("expected hint to require complete report, got=%q", hint)
+	if !strings.Contains(hint, "Knowledge-base-grade deep research") {
+		t.Fatalf("expected hint to enforce knowledge-base research workflow, got=%q", hint)
+	}
+	if !strings.Contains(hint, "<phase id=\"4\" name=\"audit\">") {
+		t.Fatalf("expected hint to include audit phase, got=%q", hint)
+	}
+	if !strings.Contains(hint, "source inventory") {
+		t.Fatalf("expected hint to require source inventory, got=%q", hint)
 	}
 
 	if got := buildDeepSearchExecutionHint("你好"); got != "" {
@@ -593,7 +599,7 @@ Need include in assistant message header not possible in plaintext.
 	})
 
 	t.Run("agent mode does not request next-step guidance when already present", func(t *testing.T) {
-		current := "任务已完成。完成内容：已执行。使用方法：已验证。下一步建议：1. 运行回归测试。"
+		current := "任务已完成。完成内容：已执行。使用方法：已验证。如果你愿意，我还可以帮你：1. 如果你愿意，我可以帮你运行一轮回归测试。"
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, true)
 		if ok {
 			t.Fatalf("expected no auto-continue when next-step guidance already exists, got reason=%q", reason)
@@ -791,6 +797,67 @@ func TestSyncTrackedTodoAfterToolRound(t *testing.T) {
 		}
 		if got != tracked {
 			t.Fatalf("unexpected checklist mutation without explicit update: %q", got)
+		}
+	})
+}
+
+func TestTodoChecklistPersistenceHelpers(t *testing.T) {
+	t.Run("extracts the first checklist block from mixed content", func(t *testing.T) {
+		content := `进度如下：
+
+- [x] collect facts
+- [ ] write summary
+
+继续执行第二步。`
+		got, ok := extractFirstTodoChecklist(content)
+		if !ok {
+			t.Fatal("expected checklist block to be extracted")
+		}
+		want := `- [x] collect facts
+- [ ] write summary`
+		if got != want {
+			t.Fatalf("unexpected checklist block: %q", got)
+		}
+	})
+
+	t.Run("matches checklist signatures regardless of checkbox state", func(t *testing.T) {
+		pending := `- [ ] collect facts
+- [ ] write summary`
+		updated := `- [x] collect facts
+- [ ] write summary`
+		if todoChecklistSignature(pending) == "" {
+			t.Fatal("expected non-empty checklist signature")
+		}
+		if todoChecklistSignature(pending) != todoChecklistSignature(updated) {
+			t.Fatalf("expected matching signatures, pending=%q updated=%q", todoChecklistSignature(pending), todoChecklistSignature(updated))
+		}
+	})
+
+	t.Run("strips duplicate checklist when persisting a follow-up narrative", func(t *testing.T) {
+		tracked := `- [ ] collect facts
+- [ ] write summary`
+		content := `- [x] collect facts
+- [ ] write summary
+
+继续执行第二步。`
+		got := stripDuplicateTodoChecklistForPersistence(content, tracked)
+		if got != "继续执行第二步。" {
+			t.Fatalf("unexpected stripped follow-up content: %q", got)
+		}
+	})
+
+	t.Run("keeps canonical todo updates as checklist-only content", func(t *testing.T) {
+		tracked := `- [ ] collect facts
+- [ ] write summary`
+		content := `- [x] collect facts
+- [ ] write summary
+
+继续执行第二步。`
+		got := todoAwarePersistedContent(content, tracked, true)
+		want := `- [x] collect facts
+- [ ] write summary`
+		if got != want {
+			t.Fatalf("unexpected canonical todo content: %q", got)
 		}
 	})
 }
@@ -1054,12 +1121,18 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 		t.Fatalf("expected pending_todo nudge to enforce real execution, got=%q", pendingTodo)
 	}
 	missingNextSteps := buildToollessAutoContinueNudgeForReason(true, "missing_next_steps")
-	if !strings.Contains(missingNextSteps, "WITHOUT calling tools") || !strings.Contains(missingNextSteps, "Suggested next steps") {
+	if !strings.Contains(missingNextSteps, "WITHOUT calling tools") || !strings.Contains(missingNextSteps, "If you'd like, I can also help with") {
 		t.Fatalf("expected missing_next_steps nudge to enforce completion + next-step guidance, got=%q", missingNextSteps)
 	}
+	if !strings.Contains(missingNextSteps, "If you'd like, I can help you") {
+		t.Fatalf("expected missing_next_steps nudge to prefer optional help-offer phrasing, got=%q", missingNextSteps)
+	}
 	summaryIntro := buildToollessAutoContinueNudgeForReason(false, "summary_intro")
-	if !strings.Contains(summaryIntro, "WITHOUT calling tools") || !strings.Contains(summaryIntro, "Suggested next steps") {
+	if !strings.Contains(summaryIntro, "WITHOUT calling tools") || !strings.Contains(summaryIntro, "If you'd like, I can also help with") {
 		t.Fatalf("expected summary_intro nudge to enforce continuation summary + next steps, got=%q", summaryIntro)
+	}
+	if !strings.Contains(summaryIntro, "If you'd like, I can help you") {
+		t.Fatalf("expected summary_intro nudge to prefer optional help-offer phrasing, got=%q", summaryIntro)
 	}
 
 	if shouldPersistToollessRoundContent("pseudo_tool_call") {
@@ -1386,7 +1459,7 @@ func TestBuildToolFallbackTextWithOptions_UsesConciseSummaryWhenCardsVisible(t *
 	if !strings.Contains(out, "详细执行记录见上方工具卡片") {
 		t.Fatalf("expected cards-visible follow-up note, got=%q", out)
 	}
-	if !strings.Contains(out, "下一步建议") {
+	if !strings.Contains(out, "如果你愿意，我还可以帮你") {
 		t.Fatalf("expected fallback summary to include next-step suggestions, got=%q", out)
 	}
 	if !strings.Contains(out, "OpenClaw 发布周报") {

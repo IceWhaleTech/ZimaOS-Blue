@@ -259,7 +259,7 @@ type StepResult struct {
 type Config struct {
 	// PoolSize is the maximum number of browser instances.
 	PoolSize int `json:"pool_size" yaml:"pool_size"`
-	// Headless runs browsers in headless mode if true.
+	// Headless controls whether browsers run without a visible window.
 	Headless bool `json:"headless" yaml:"headless"`
 	// DefaultTimeout is the default timeout in milliseconds.
 	DefaultTimeout int `json:"default_timeout" yaml:"default_timeout"`
